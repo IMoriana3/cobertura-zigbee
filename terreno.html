@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · v1.5</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales de antena · v1.6</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -88,7 +88,7 @@ var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/te
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
-var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:6},{name:'S',lat:41.576,lon:-0.7988,h:6}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
+var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
@@ -187,7 +187,7 @@ async function build(){
 
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
-  if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:6};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
+  if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   buildGateways();positionGateways();buildBOS();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
@@ -323,7 +323,7 @@ function buildBOS(){
     var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(x,y+ph,-n+0.28);bosGroup.add(dot);});
   // estaciones meteorológicas (HSU/RSU): mástil + anemómetro + caja, etiquetadas (enlazan por Zigbee con su NCU)
   var metM=new THREE.MeshStandardMaterial({color:0xe8a23a,emissive:0x2a1805,roughness:.5,metalness:.4}),metBox=new THREE.MeshStandardMaterial({color:0x2b3340,roughness:.5});
-  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=4.5;
+  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=6;
     var mast=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,h,8),metM);mast.position.set(m.x,y+h/2,-m.n);bosGroup.add(mast);
     var arm=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.05,0.05),metM);arm.position.set(m.x,y+h,-m.n);bosGroup.add(arm);
     var cup=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),metM);cup.position.set(m.x+0.65,y+h,-m.n);bosGroup.add(cup);
@@ -371,8 +371,8 @@ function applyFresnel(){
   function link(glat,glon,gx,gz,hA,ay){var i=nearestNCU(gx,gz),gw=GWS[i],c=linkClearance(glat,glon,hA,gw.lat,gw.lon,gw.h),r,g,b;
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
-  TRK.forEach(function(t){link(t.glat,t.glon,t.gx,t.gz,2.2,t.rel*vex+2.3);});
-  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),3,(ELEV(glat,glon)-baseElev)*vex+3);}); // estaciones meteo también enlazan por Zigbee
+  TRK.forEach(function(t){link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3);});   // antena TCU a 30 cm del suelo (por DEBAJO de los paneles)
+  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),6,(ELEV(glat,glon)-baseElev)*vex+6);}); // estación meteo: antena a 6 m (por ENCIMA de los paneles)
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
   updateFres(cl,pa,bl);
