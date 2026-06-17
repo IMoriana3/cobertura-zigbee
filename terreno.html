@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores del gemelo (siguen la pendiente) · v0.6</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores del gemelo (drapeados al terreno) · v0.7</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -234,8 +234,9 @@ function buildTrackers(elevAt){
   function add(geo,mat,par,px,py,pz){var m=new THREE.Mesh(geo,mat);m.position.set(px||0,py||0,pz||0);par.add(m);return m;}
   NODES.forEach(function(n){
     var x=n.gx,z=n.gz,rel=elevAt(n.glat,n.glon)-baseElev;
-    var latHalf=(span/2)/mPerLat;                                              // cota en los dos extremos del tubo (N y S) para seguir la pendiente
+    var latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;                      // cota alrededor del tubo para orientarlo al terreno (N-S a lo largo del tubo, E-O lateral)
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
+    var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
     var T=new THREE.Group();nodeGroup.add(T);var filas=[];
     [-filaZ,filaZ].forEach(function(fx){
@@ -252,15 +253,20 @@ function buildTrackers(elevAt){
     add(new THREE.BoxGeometry(0.5,0.26,0.36),tcuM,west,0,-0.22,1.4);                                         // TCU colgada de la viga oeste
     var mark=add(new THREE.ConeGeometry(0.4,1.0,12),markM,west,0,-0.55,1.4);                                 // marcador del nodo TCU
     var lb=makeLabel(n.lbl||n.id);labelGroup.add(lb);
-    TRK.push({T:T,filas:filas,mark:mark,lb:lb,x:x,z:z,rel:rel,relN:relN,relS:relS,span:span,num:num,postH:postH});
+    TRK.push({T:T,filas:filas,mark:mark,lb:lb,x:x,z:z,rel:rel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:num,postH:postH});
   });
   layoutTrackers();
 }
+var _UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 function layoutTrackers(){
   TRK.forEach(function(t){var by=t.rel*vex;
     t.T.position.set(t.x,by,t.z);
-    var pitch=Math.atan2((t.relN-t.relS)*vex,t.span);                          // inclina el tubo según la pendiente N-S (extremos sobre el terreno)
-    t.T.rotation.x=Math.max(-0.35,Math.min(0.35,pitch));                       // límite ±20° por si el DEM tiene ruido
+    // DRAPE: orienta cada seguidor al plano del terreno (pendiente N-S del tubo + pendiente E-O lateral)
+    var cl=0.45/vex;                                                          // límite de pendiente (~±24° ya exagerada)
+    var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));                 // pendiente Norte (a lo largo del tubo)
+    var gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));               // pendiente Este (lateral)
+    _NRM.set(-vex*gE,1,vex*gN).normalize();                                   // normal del terreno exagerado (x=Este, z=Sur)
+    t.T.quaternion.setFromUnitVectors(_UP,_NRM);
     t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+3,t.z);});
 }
 function makeLabel(text){
