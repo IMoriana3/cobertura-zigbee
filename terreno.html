@@ -311,15 +311,12 @@ function buildBOS(){
   // inversores string (caja en cada etiqueta)
   var invM=new THREE.MeshStandardMaterial({color:0x33414f,roughness:.5,metalness:.45});
   (LAYOUT.invlab||[]).forEach(function(c){var y=localElevY(c.x,c.n);var b=new THREE.Mesh(new THREE.BoxGeometry(1.1,1.5,0.5),invM);b.position.set(c.x,y+0.75,-c.n);bosGroup.add(b);});
-  // CCTV: abanico de cobertura drapeado + poste con cámara en el vértice
-  var fillM=new THREE.MeshBasicMaterial({color:0x37c0ff,transparent:true,opacity:.10,side:THREE.DoubleSide,depthWrite:false});
+  // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
-  (LAYOUT.cctv||[]).forEach(function(pl){if(pl.length<3)return;
-    var ai=0,best=-1;for(var i=0;i<pl.length;i++){var p0=pl[(i-1+pl.length)%pl.length],p1=pl[i],p2=pl[(i+1)%pl.length];var s=Math.hypot(p1[0]-p0[0],p1[1]-p0[1])+Math.hypot(p2[0]-p1[0],p2[1]-p1[1]);if(s>best){best=s;ai=i;}}
-    var ap=pl[ai],vp=[];for(var i=0;i+1<pl.length;i++){if(i===ai||i+1===ai)continue;var a=pl[i],b=pl[i+1];vp.push(ap[0],localElevY(ap[0],ap[1])+0.3,-ap[1],a[0],localElevY(a[0],a[1])+0.3,-a[1],b[0],localElevY(b[0],b[1])+0.3,-b[1]);}
-    if(vp.length){var cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));cg.computeVertexNormals();bosGroup.add(new THREE.Mesh(cg,fillM));}
-    var y=localElevY(ap[0],ap[1]),ph=5;var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(ap[0],y+ph/2,-ap[1]);bosGroup.add(pole);
-    var cam=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.18,0.5),camM);cam.position.set(ap[0],y+ph,-ap[1]);bosGroup.add(cam);});
+  (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1],y=localElevY(x,n),ph=5;
+    var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(x,y+ph/2,-n);bosGroup.add(pole);
+    var cam=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.5),camM);cam.position.set(x,y+ph,-n);bosGroup.add(cam);
+    var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(x,y+ph,-n+0.28);bosGroup.add(dot);});
   // equipos de comunicaciones (mástiles)
   var comM=new THREE.MeshStandardMaterial({color:0x5aa9ff,emissive:0x12283e,roughness:.5});
   (LAYOUT.comms||[]).forEach(function(pl){var cx=0,cn=0;pl.forEach(function(p){cx+=p[0];cn+=p[1];});cx/=pl.length;cn/=pl.length;var y=localElevY(cx,cn),h=4;
