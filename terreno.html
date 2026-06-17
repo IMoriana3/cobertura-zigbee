@@ -174,28 +174,38 @@ async function build(){
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
 }
 
-var steelM,glassM,markM;
+var steelM,glassM,markM,panelTex;
+function makePanelTex(){
+  var c=document.createElement('canvas');c.width=c.height=128;var g=c.getContext('2d');
+  g.fillStyle='#0b1b2c';g.fillRect(0,0,128,128);g.strokeStyle='#20405e';g.lineWidth=2;
+  for(var i=0;i<=8;i++){g.beginPath();g.moveTo(i*16,0);g.lineTo(i*16,128);g.stroke();g.beginPath();g.moveTo(0,i*16);g.lineTo(128,i*16);g.stroke();}
+  var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
+}
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
-  glassM=new THREE.MeshStandardMaterial({color:0x0c1c2e,roughness:.22,metalness:.35,emissive:0x06101c,emissiveIntensity:.12});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modChord=0.9,gap=0.2,plen=2.2,postH=1.4,halfC=(modChord+gap)/2;  // INDICADOR pequeño de TCU (no la fila real); el seguidor real exacto vendrá del KMZ/DWG de implantación
+  var modChord=2.3,gap=0.5,plen=11,postH=2.2,halfC=(modChord+gap)/2;       // bifila estilo gemelo: 2 filas de 2,3 m, tubo N-S de 11 m
+  panelTex=makePanelTex();panelTex.repeat.set(modChord/0.5,plen/0.5);
+  glassM=new THREE.MeshStandardMaterial({map:panelTex,roughness:.2,metalness:.3,emissive:0x06121f,emissiveIntensity:.12});
   NODES.forEach(function(n){
     var x=projX(n.lon),z=projZ(n.lat),rel=elevAt(n.lat,n.lon)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
-    var post=new THREE.Mesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM);post.castShadow=true;nodeGroup.add(post);
+    var p1=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p1.castShadow=true;nodeGroup.add(p1);
+    var p2=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p2.castShadow=true;nodeGroup.add(p2);
     var tg=new THREE.Group();nodeGroup.add(tg);
-    tg.add(new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,plen),steelM));   // tubo de torsión (eje N-S)
-    [-halfC,halfC].forEach(function(px){var p=new THREE.Mesh(new THREE.BoxGeometry(modChord,0.05,plen),glassM);p.position.set(px,0.10,0);p.castShadow=true;tg.add(p);});  // bifila (2 filas)
-    var mark=new THREE.Mesh(new THREE.ConeGeometry(0.45,1.2,10),markM);mark.position.set(halfC+modChord/2,0.35,0);tg.add(mark);  // TCU/antena en el borde exterior
+    tg.add(new THREE.Mesh(new THREE.BoxGeometry(0.10,0.10,plen),steelM));   // tubo de torsión (eje N-S)
+    [-halfC,halfC].forEach(function(px){var p=new THREE.Mesh(new THREE.BoxGeometry(modChord,0.04,plen),glassM);p.position.set(px,0.09,0);p.castShadow=true;p.receiveShadow=true;tg.add(p);}); // bifila con textura de células
+    var mark=new THREE.Mesh(new THREE.ConeGeometry(0.4,1.0,10),markM);mark.position.set(halfC+modChord/2,0.3,0);tg.add(mark); // TCU/antena en el borde
     var lb=makeLabel(n.lbl||n.id);labelGroup.add(lb);
-    TRK.push({tg:tg,post:post,mark:mark,lb:lb,x:x,z:z,rel:rel,num:num,postH:postH});
+    TRK.push({tg:tg,p1:p1,p2:p2,mark:mark,lb:lb,x:x,z:z,rel:rel,num:num,postH:postH,plen:plen});
   });
   layoutTrackers();
 }
 function layoutTrackers(){
-  TRK.forEach(function(t){var by=t.rel*vex;t.post.position.set(t.x,by+t.postH/2,t.z);t.tg.position.set(t.x,by+t.postH,t.z);t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+2.0,t.z);});
+  TRK.forEach(function(t){var by=t.rel*vex;
+    t.p1.position.set(t.x,by+t.postH/2,t.z-t.plen*0.3);t.p2.position.set(t.x,by+t.postH/2,t.z+t.plen*0.3);
+    t.tg.position.set(t.x,by+t.postH,t.z);t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+2,t.z);});
 }
 function makeLabel(text){
   var c=document.createElement('canvas');c.width=128;c.height=40;var g=c.getContext('2d');
