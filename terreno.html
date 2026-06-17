@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · v2.3</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · v2.4</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -374,7 +374,7 @@ function buildBOS(){
   // inversores string Sungrow SG350HX (36 ud) — DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo gris con frontal Sungrow, disipador trasero y bastidor
   var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // +X,-X,+Y,-Y,+Z(trasera),-Z(frontal con marca)
-  (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);
+  (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
     var W=1.136,H=0.87,D=0.356,legH=0.95,cy=legH+H/2;                                                     // 1136×870×356 mm (DWG)
     var body=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),invFaces);body.position.y=cy;g.add(body);        // cuerpo (frontal -Z con marca Sungrow)
     for(var fi=0;fi<9;fi++){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.03,H*0.9,0.14),invFin);fin.position.set(-W*0.44+fi*(W*0.88/8),cy,D*0.5+0.08);g.add(fin);}  // aletas del disipador (trasera)
