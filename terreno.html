@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales de antena · v1.6</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central · v1.7</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -89,7 +89,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
-var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0;
+var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -188,6 +188,8 @@ async function build(){
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
+  if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
+  var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   buildGateways();positionGateways();buildBOS();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
@@ -368,11 +370,11 @@ function applyFresnel(){
   positionGateways();
   var gwp=GWS.map(function(gw){return {x:projX(gw.lon),z:projZ(gw.lat),y:(ELEV(gw.lat,gw.lon)-baseElev)*vex+gw.h};});
   var pos=[],col=[],cl=0,pa=0,bl=0;
-  function link(glat,glon,gx,gz,hA,ay){var i=nearestNCU(gx,gz),gw=GWS[i],c=linkClearance(glat,glon,hA,gw.lat,gw.lon,gw.h),r,g,b;
+  function link(glat,glon,gx,gz,hA,ay,n){var i=(n>CORRIDOR)?NIDX:SIDX,gw=GWS[i],c=linkClearance(glat,glon,hA,gw.lat,gw.lon,gw.h),r,g,b; // asignación por pasillo central
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
-  TRK.forEach(function(t){link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3);});   // antena TCU a 30 cm del suelo (por DEBAJO de los paneles)
-  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),6,(ELEV(glat,glon)-baseElev)*vex+6);}); // estación meteo: antena a 6 m (por ENCIMA de los paneles)
+  TRK.forEach(function(t){link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // antena TCU a 30 cm; norte/sur del pasillo
+  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),6,(ELEV(glat,glon)-baseElev)*vex+6,m.n);}); // estación meteo: antena a 6 m
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
   updateFres(cl,pa,bl);
