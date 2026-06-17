@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores (rejilla por etiqueta) · v0.3</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores bifila (2 mesas de 28, motor central) · v0.4</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -175,59 +175,71 @@ async function build(){
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
 }
 
-// La etiqueta "1.B.P" define una rejilla 18 bloques × 2 subcolumnas × 3 filas (=108).
-// El GPS de latitud viene corrupto en los bloques oeste (todos amontonados al sur);
-// la longitud (Este) sí es buena. Reconstruimos cada nodo sobre la rejilla: Este por
-// ajuste lineal de los bloques buenos, Norte = media de fila de los bloques buenos.
+// La etiqueta "1.B.P" define una rejilla 18 bloques × 2 columnas × 3 filas (=108).
+// El GPS de latitud viene MUY ruidoso (y corrupto en los bloques oeste). El Este sí es
+// fiable. Anclamos una rejilla limpia a la geometría real: columnas por ajuste lineal del
+// Este (bloques buenos) y 3 filas por la MEDIANA del Norte de los bloques buenos.
+var ROWC=[0,0,0],NPITCH=64;
 function gridRepair(){
   function bp(l){var p=(''+l).split('.');var B=+p[1]||1,P=+p[2]||1;return {B:B,sub:P<=3?0:1,row:(P-1)%3,P:P};}
+  function median(a){if(!a.length)return 0;var b=a.slice().sort(function(x,y){return x-y;});var h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2;}
   var bl={};
   NODES.forEach(function(n){n._b=bp(n.lbl);n._e=projX(n.lon);n._n=-projZ(n.lat);(bl[n._b.B]=bl[n._b.B]||[]).push(n._n);});
   var good={};Object.keys(bl).forEach(function(B){var a=bl[B];if(Math.max.apply(null,a)-Math.min.apply(null,a)>80)good[B]=1;});
   var rn=[[],[],[]],xs=[],ys=[];
   NODES.forEach(function(n){var b=n._b;if(good[b.B]&&b.P<=6){rn[b.row].push(n._n);xs.push((b.B-1)*2+b.sub);ys.push(n._e);}});
-  function mean(a){return a.length?a.reduce(function(s,v){return s+v;},0)/a.length:0;}
-  var ROWN=[mean(rn[0]),mean(rn[1]),mean(rn[2])];
+  ROWC=[median(rn[0]),median(rn[1]),median(rn[2])];
+  NPITCH=Math.abs(ROWC[0]-ROWC[2])/2||64;
   var m=xs.length,sx=0,sy=0,sxx=0,sxy=0;for(var i=0;i<m;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i];}
   var A=m?(m*sxy-sx*sy)/(m*sxx-sx*sx):12,B0=m?(sy-A*sx)/m:0;
   if(!isFinite(A)){A=12;B0=0;}
-  NODES.forEach(function(n){var b=n._b,gE,gN;
-    if(good[b.B]){gE=n._e;gN=n._n;}                                  // bloque bueno: posición GPS real
-    else{gE=A*((b.B-1)*2+b.sub)+B0;gN=ROWN[b.row];}                  // bloque corrupto: rejilla reconstruida
+  var used={};
+  NODES.forEach(function(n){var b=n._b,col=(b.B-1)*2+b.sub,row=b.row,k=col+','+row;
+    while(used[k]){col++;k=col+','+row;}used[k]=1;                     // P7 (nodo extra) → columna libre
+    var gE=A*col+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
-var steelM,glassM,markM,panelTex;
-function makePanelTex(){
+var steelM,glassM,markM,motorM,panelTex;
+function makePanelTex(){   // un módulo = celdas azules sobre marco oscuro
   var c=document.createElement('canvas');c.width=c.height=128;var g=c.getContext('2d');
-  g.fillStyle='#0b1b2c';g.fillRect(0,0,128,128);g.strokeStyle='#20405e';g.lineWidth=2;
-  for(var i=0;i<=8;i++){g.beginPath();g.moveTo(i*16,0);g.lineTo(i*16,128);g.stroke();g.beginPath();g.moveTo(0,i*16);g.lineTo(128,i*16);g.stroke();}
+  g.fillStyle='#0a1726';g.fillRect(0,0,128,128);
+  g.fillStyle='#13355a';for(var a=0;a<6;a++)for(var b=0;b<10;b++)g.fillRect(6+a*20,4+b*12,17,9);
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
+// Seguidor real El Burgo: BIFILA (2 filas gemelas, 1V cada una) con motor central y
+// 2 mesas de 28 módulos (norte y sur). El tubo de torsión va N-S; gira sobre el eje Z.
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modChord=2.3,gap=0.5,plen=20,postH=2.2,halfC=(modChord+gap)/2;       // bifila estilo gemelo: 2 filas de 2,3 m, tubo N-S
-  panelTex=makePanelTex();panelTex.repeat.set(modChord/0.5,plen/0.5);
-  glassM=new THREE.MeshStandardMaterial({map:panelTex,roughness:.2,metalness:.3,emissive:0x06121f,emissiveIntensity:.12});
+  motorM=new THREE.MeshStandardMaterial({color:0x2b3340,roughness:.6,metalness:.5});
+  var NMOD=28,modW=2.28,twinGap=1.7,pairHalf=(modW+twinGap)/2,postH=2.2;
+  var L=Math.min(58,NPITCH*0.9),motorGap=2.0,mesaLen=(L-motorGap)/2,mesaC=motorGap/2+mesaLen/2;  // largo = 2 mesas + motor, sin solapar la fila contigua
+  panelTex=makePanelTex();panelTex.repeat.set(1,NMOD);
+  glassM=new THREE.MeshStandardMaterial({map:panelTex,roughness:.22,metalness:.35,emissive:0x07182a,emissiveIntensity:.18});
+  function add(geo,mat,par,px,py,pz){var msh=new THREE.Mesh(geo,mat);msh.position.set(px||0,py||0,pz||0);par.add(msh);return msh;}
   NODES.forEach(function(n){
     var x=n.gx,z=n.gz,rel=elevAt(n.glat,n.glon)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
-    var p1=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p1.castShadow=true;nodeGroup.add(p1);
-    var p2=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p2.castShadow=true;nodeGroup.add(p2);
-    var tg=new THREE.Group();nodeGroup.add(tg);
-    tg.add(new THREE.Mesh(new THREE.BoxGeometry(0.10,0.10,plen),steelM));   // tubo de torsión (eje N-S)
-    [-halfC,halfC].forEach(function(px){var p=new THREE.Mesh(new THREE.BoxGeometry(modChord,0.04,plen),glassM);p.position.set(px,0.09,0);p.castShadow=true;p.receiveShadow=true;tg.add(p);}); // bifila con textura de células
-    var mark=new THREE.Mesh(new THREE.ConeGeometry(0.4,1.0,10),markM);mark.position.set(halfC+modChord/2,0.3,0);tg.add(mark); // TCU/antena en el borde
+    var tg=new THREE.Group();nodeGroup.add(tg);var posts=[];
+    [-pairHalf,pairHalf].forEach(function(px){
+      add(new THREE.BoxGeometry(0.12,0.12,L),steelM,tg,px,0,0);                                  // tubo de torsión
+      [mesaC,-mesaC].forEach(function(zc){var p=add(new THREE.BoxGeometry(modW,0.05,mesaLen),glassM,tg,px,0.10,zc);p.castShadow=true;}); // mesa N y S
+      [-L*0.34,L*0.34].forEach(function(zp){var po=add(new THREE.BoxGeometry(0.12,postH,0.12),steelM,nodeGroup);posts.push({m:po,dx:px,dz:zp});}); // postes (fijos al suelo)
+    });
+    add(new THREE.BoxGeometry(2*pairHalf,0.08,0.08),steelM,tg,0,0,0);          // eje de transmisión entre filas
+    add(new THREE.BoxGeometry(twinGap+0.3,0.42,1.5),motorM,tg,0,0,0);          // motor central
+    var mark=add(new THREE.ConeGeometry(0.4,1.1,12),markM,tg,-pairHalf,0.45,0); // TCU en la viga oeste, junto al motor
     var lb=makeLabel(n.lbl||n.id);labelGroup.add(lb);
-    TRK.push({tg:tg,p1:p1,p2:p2,mark:mark,lb:lb,x:x,z:z,rel:rel,num:num,postH:postH,plen:plen});
+    TRK.push({tg:tg,posts:posts,mark:mark,lb:lb,x:x,z:z,rel:rel,num:num,postH:postH,L:L});
   });
   layoutTrackers();
 }
 function layoutTrackers(){
   TRK.forEach(function(t){var by=t.rel*vex;
-    t.p1.position.set(t.x,by+t.postH/2,t.z-t.plen*0.3);t.p2.position.set(t.x,by+t.postH/2,t.z+t.plen*0.3);
-    t.tg.position.set(t.x,by+t.postH,t.z);t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+2,t.z);});
+    t.tg.position.set(t.x,by+t.postH,t.z);
+    t.posts.forEach(function(p){p.m.position.set(t.x+p.dx,by+t.postH/2,t.z+p.dz);});
+    t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+3,t.z);});
 }
 function makeLabel(text){
   var c=document.createElement('canvas');c.width=128;c.height=40;var g=c.getContext('2d');
