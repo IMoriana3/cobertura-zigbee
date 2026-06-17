@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + seguidores (posición real) · v0.2</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores (rejilla por etiqueta) · v0.3</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -145,6 +145,7 @@ async function build(){
   var latN=-1e9,latS=1e9,lonW=1e9,lonE=-1e9;
   NODES.forEach(function(n){latN=Math.max(latN,n.lat);latS=Math.min(latS,n.lat);lonW=Math.min(lonW,n.lon);lonE=Math.max(lonE,n.lon);});
   lat0=(latN+latS)/2;lon0=(lonW+lonE)/2;mPerLon=111320*Math.cos(lat0*DEG);
+  gridRepair();   // la latitud GPS está corrupta en los bloques oeste → recolocar en rejilla limpia por etiqueta
   var plantW=Math.round((lonE-lonW)*mPerLon),plantD=Math.round((latN-latS)*mPerLat);
   var mlat=120/mPerLat,mlon=120/mPerLon;latN+=mlat;latS-=mlat;lonW-=mlon;lonE+=mlon;
   var widthM=(lonE-lonW)*mPerLon,depthM=(latN-latS)*mPerLat;
@@ -174,6 +175,27 @@ async function build(){
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
 }
 
+// La etiqueta "1.B.P" define una rejilla 18 bloques × 2 subcolumnas × 3 filas (=108).
+// El GPS de latitud viene corrupto en los bloques oeste (todos amontonados al sur);
+// la longitud (Este) sí es buena. Reconstruimos cada nodo sobre la rejilla: Este por
+// ajuste lineal de los bloques buenos, Norte = media de fila de los bloques buenos.
+function gridRepair(){
+  function bp(l){var p=(''+l).split('.');var B=+p[1]||1,P=+p[2]||1;return {B:B,sub:P<=3?0:1,row:(P-1)%3,P:P};}
+  var bl={};
+  NODES.forEach(function(n){n._b=bp(n.lbl);n._e=projX(n.lon);n._n=-projZ(n.lat);(bl[n._b.B]=bl[n._b.B]||[]).push(n._n);});
+  var good={};Object.keys(bl).forEach(function(B){var a=bl[B];if(Math.max.apply(null,a)-Math.min.apply(null,a)>80)good[B]=1;});
+  var rn=[[],[],[]],xs=[],ys=[];
+  NODES.forEach(function(n){var b=n._b;if(good[b.B]&&b.P<=6){rn[b.row].push(n._n);xs.push((b.B-1)*2+b.sub);ys.push(n._e);}});
+  function mean(a){return a.length?a.reduce(function(s,v){return s+v;},0)/a.length:0;}
+  var ROWN=[mean(rn[0]),mean(rn[1]),mean(rn[2])];
+  var m=xs.length,sx=0,sy=0,sxx=0,sxy=0;for(var i=0;i<m;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i];}
+  var A=m?(m*sxy-sx*sy)/(m*sxx-sx*sx):12,B0=m?(sy-A*sx)/m:0;
+  if(!isFinite(A)){A=12;B0=0;}
+  NODES.forEach(function(n){var b=n._b,gE,gN;
+    if(good[b.B]){gE=n._e;gN=n._n;}                                  // bloque bueno: posición GPS real
+    else{gE=A*((b.B-1)*2+b.sub)+B0;gN=ROWN[b.row];}                  // bloque corrupto: rejilla reconstruida
+    n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
+}
 var steelM,glassM,markM,panelTex;
 function makePanelTex(){
   var c=document.createElement('canvas');c.width=c.height=128;var g=c.getContext('2d');
@@ -185,11 +207,11 @@ function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modChord=2.3,gap=0.5,plen=11,postH=2.2,halfC=(modChord+gap)/2;       // bifila estilo gemelo: 2 filas de 2,3 m, tubo N-S de 11 m
+  var modChord=2.3,gap=0.5,plen=20,postH=2.2,halfC=(modChord+gap)/2;       // bifila estilo gemelo: 2 filas de 2,3 m, tubo N-S
   panelTex=makePanelTex();panelTex.repeat.set(modChord/0.5,plen/0.5);
   glassM=new THREE.MeshStandardMaterial({map:panelTex,roughness:.2,metalness:.3,emissive:0x06121f,emissiveIntensity:.12});
   NODES.forEach(function(n){
-    var x=projX(n.lon),z=projZ(n.lat),rel=elevAt(n.lat,n.lon)-baseElev;
+    var x=n.gx,z=n.gz,rel=elevAt(n.glat,n.glon)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
     var p1=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p1.castShadow=true;nodeGroup.add(p1);
     var p2=new THREE.Mesh(new THREE.BoxGeometry(0.12,postH,0.12),steelM);p2.castShadow=true;nodeGroup.add(p2);
