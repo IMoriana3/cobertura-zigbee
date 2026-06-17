@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · v2.2</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · v2.3</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -51,7 +51,7 @@
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
-    <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · WASD/QE vuela</span></div>
   </div>
   <div id="timebar">
     <button class="btn" id="play">▶</button>
@@ -94,6 +94,19 @@ var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],l
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
 
+var KEYS={},_CF=new THREE.Vector3(),_CR=new THREE.Vector3(),_CUP=new THREE.Vector3(0,1,0),_CM=new THREE.Vector3();
+function flyStep(dt){   // movimiento libre tipo vuelo: WASD desplaza, Q/E baja/sube, Shift acelera; mueve cámara+objetivo
+  if(!camera||!controls)return;dt=Math.min(dt,0.05);
+  var sp=(KEYS['ShiftLeft']||KEYS['ShiftRight']?300:100)*dt;_CM.set(0,0,0);
+  camera.getWorldDirection(_CF);_CF.normalize();_CR.crossVectors(_CF,_CUP).normalize();
+  if(KEYS['KeyW'])_CM.addScaledVector(_CF,sp);
+  if(KEYS['KeyS'])_CM.addScaledVector(_CF,-sp);
+  if(KEYS['KeyD'])_CM.addScaledVector(_CR,sp);
+  if(KEYS['KeyA'])_CM.addScaledVector(_CR,-sp);
+  if(KEYS['KeyE'])_CM.y+=sp;
+  if(KEYS['KeyQ'])_CM.y-=sp;
+  if(_CM.lengthSq()>1e-7){camera.position.add(_CM);controls.target.add(_CM);}
+}
 function initThree(){
   renderer=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
@@ -102,23 +115,25 @@ function initThree(){
   if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
   scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);scene.fog=new THREE.Fog(0x0b0f14,1200,2800);
   camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,9000);camera.position.set(0,360,460);
-  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.maxPolarAngle=Math.PI*0.49;
+  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.maxPolarAngle=Math.PI*0.92;controls.minDistance=1.5;controls.maxDistance=7000;controls.screenSpacePanning=true;   // cámara libre: ángulos bajos, acercarse al detalle, paneo libre
   renderer.domElement.addEventListener('click',function(e){ if(!placingGw||!terrain)return;   // mueve la NCU más cercana al punto pulsado
     var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);
     var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;
     var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;
     placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';
     if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();});
-  var sun=new THREE.DirectionalLight(0xfff4e0,2.3);sun.position.set(-340,520,260);sun.castShadow=true;scene.add(sun);scene.add(sun.target);
-  sun.shadow.mapSize.set(2048,2048);var shc=sun.shadow.camera;shc.left=-560;shc.right=560;shc.top=560;shc.bottom=-560;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
-  sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.7;
-  scene.add(new THREE.HemisphereLight(0xbcd6ff,0x3a2f1e,0.95));scene.add(new THREE.AmbientLight(0xffffff,0.16));
+  var sun=new THREE.DirectionalLight(0xfff2d4,2.9);sun.position.set(-360,300,300);sun.castShadow=true;scene.add(sun);scene.add(sun.target);
+  sun.shadow.mapSize.set(4096,4096);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
+  sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.6;
+  scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+  addEventListener('keydown',function(e){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return;if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE'].indexOf(e.code)>=0){KEYS[e.code]=true;e.preventDefault();}});
+  addEventListener('keyup',function(e){KEYS[e.code]=false;});
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=ANG?ANG.maxT:840,_mn=ANG?ANG.minT:0;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    controls.update();renderer.render(scene,camera);})(performance.now());
+    flyStep(dt);controls.update();renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
