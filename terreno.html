@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central · v1.7</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v1.8</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -89,7 +89,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
-var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1;
+var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -190,7 +190,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  buildGateways();positionGateways();buildBOS();if(fresOn)applyFresnel();
+  buildGateways();positionGateways();buildBOS();buildCorridor();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
   if(ANG){$('time').min=ANG.minT;$('time').max=ANG.maxT;curMin=Math.min(540,ANG.maxT);}
@@ -289,7 +289,19 @@ function layoutTrackers(){
     _T.compose(_PV.set(-fz,ph+0.4,0),_Q.identity(),_SC.set(nsz,nsz,nsz));_M2.multiplyMatrices(Tw,_T);imMark.setMatrixAt(i,_M2); // marcador TCU
   }
   imPost.instanceMatrix.needsUpdate=true;imSlew.instanceMatrix.needsUpdate=true;imMark.instanceMatrix.needsUpdate=true;
+  if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
   setTime(curMin);
+}
+// etiquetas de seguidor (perezosas: solo se crean al activar la casilla, por rendimiento con 215)
+function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],lb=makeLabel(NODES[i].id||'');lb.position.set(t.gx,t.rel*vex+TC.postH+3.5,t.gz);labelGroup.add(lb);LBL.push(lb);}
+}
+// línea del PASILLO CENTRAL (divide qué NCU usa cada TCU): norte→NCU norte, sur→NCU sur
+function buildCorridor(){ if(corrGroup)scene.remove(corrGroup); corrGroup=new THREE.Group();scene.add(corrGroup); if(!ELEV||!FB)return;
+  var z=-CORRIDOR,pts=[];for(var x=FB.x0-15;x<=FB.x1+15;x+=8)pts.push(x,localElevY(x,CORRIDOR)+0.6,z);
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  corrGroup.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xe2574c,transparent:true,opacity:.85})));
+  var lb=makeLabel('pasillo central');lb.position.set(FB.x1+10,localElevY(FB.x1,CORRIDOR)+4,z);corrGroup.add(lb);
 }
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
@@ -390,10 +402,10 @@ function makeLabel(text){
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true}));sp.scale.set(15,4.7,1);return sp;
 }
 
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();};
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();};
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
-$('lbls').onchange=function(){labelGroup.visible=this.checked;};
+$('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
