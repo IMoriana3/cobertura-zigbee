@@ -196,7 +196,8 @@ function gridRepair(){
   var used={};   // rejilla continua; los huecos reales (corredores) se colocarán con el DWG de implantación
   NODES.forEach(function(n){var b=n._b,col=(b.B-1)*2+b.sub,row=b.row,k=col+','+row;
     while(used[k]){col++;k=col+','+row;}used[k]=1;                     // P7 (nodo extra) → columna libre
-    var gE=A*col+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
+    var gcol=col-(b.B<=6?GAP:0);                                       // abre el hueco entre bloque 6 y 7
+    var gE=A*gcol+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,darkM,tcuM,panelTex;
