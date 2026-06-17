@@ -180,15 +180,15 @@ function buildTrackers(elevAt){
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   glassM=new THREE.MeshStandardMaterial({color:0x0c1c2e,roughness:.22,metalness:.35,emissive:0x06101c,emissiveIntensity:.12});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var chord=3.2,plen=7.0,postH=2.4;
+  var modChord=2.4,gap=0.6,plen=11,postH=2.6,halfC=(modChord+gap)/2;  // bifila real: 2 filas de 2,4 m + 0,6 m de hueco; tubo N-S de 11 m
   NODES.forEach(function(n){
     var x=projX(n.lon),z=projZ(n.lat),rel=elevAt(n.lat,n.lon)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
     var post=new THREE.Mesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM);post.castShadow=true;nodeGroup.add(post);
     var tg=new THREE.Group();nodeGroup.add(tg);
-    tg.add(new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,plen),steelM));
-    var panel=new THREE.Mesh(new THREE.BoxGeometry(chord,0.05,plen),glassM);panel.position.y=0.10;panel.castShadow=true;tg.add(panel);
-    var mark=new THREE.Mesh(new THREE.ConeGeometry(0.5,1.3,10),markM);mark.position.set(chord*0.45,0.35,0);tg.add(mark);
+    tg.add(new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,plen),steelM));   // tubo de torsión (eje N-S)
+    [-halfC,halfC].forEach(function(px){var p=new THREE.Mesh(new THREE.BoxGeometry(modChord,0.05,plen),glassM);p.position.set(px,0.10,0);p.castShadow=true;tg.add(p);});  // bifila (2 filas)
+    var mark=new THREE.Mesh(new THREE.ConeGeometry(0.45,1.2,10),markM);mark.position.set(halfC+modChord/2,0.35,0);tg.add(mark);  // TCU/antena en el borde exterior
     var lb=makeLabel(n.lbl||n.id);labelGroup.add(lb);
     TRK.push({tg:tg,post:post,mark:mark,lb:lb,x:x,z:z,rel:rel,num:num,postH:postH});
   });
