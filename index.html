@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>El Burgo · Cobertura Zigbee — Máquina del tiempo</title>
+<meta name="theme-color" content="#0B0F14">
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<title>Cobertura Zigbee — El Burgo I</title>
 <style>/* required styles */
 
 .leaflet-pane,
@@ -278,7 +281,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 
 /* general typography */
 .leaflet-container {
-	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-family: var(--sans);
 	font-size: 12px;
 	font-size: 0.75rem;
 	line-height: 1.5;
@@ -668,16 +671,30 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </style>
 <style>
   :root{
-    --bg:#0b121b; --panel:#121d29; --panel2:#172534; --line:#243span; --line:#243747;
-    --text:#d6e2ee; --muted:#7e93a7; --accent:#46c6e6; --accent2:#2a7fa6;
+    --void:#0B0F14; --panel:#121922; --panel-2:#0F151D; --line:#23303D; --text:#E7EEF4; --muted:#8093A4; --accent:#36D399; --radius:14px;
+    --sans:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace; --display:'Space Grotesk',var(--sans);
+    /* alias para no tocar el cuerpo de la app */
+    --bg:var(--void); --panel2:var(--panel-2);
+    /* conservados de la app */
+    --accent2:#2a7fa6;
     --s-exc:#16c784; --s-good:#8fd14f; --s-ok:#f5b73d; --s-weak:#ef6c4d; --s-bad:#e23b4e; --s-off:#566472;
-    --mono:ui-monospace,"SF Mono",Consolas,"Roboto Mono",monospace;
-    --sans:"Segoe UI",system-ui,-apple-system,sans-serif;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
-  body{font-family:var(--sans);background:var(--bg);color:var(--text);overflow:hidden}
-  #app{display:grid;grid-template-columns:330px 1fr;grid-template-rows:1fr auto;height:100vh}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);overflow:hidden;display:flex;flex-direction:column}
+  #app{display:grid;grid-template-columns:330px 1fr;grid-template-rows:1fr auto;flex:1;min-height:0}
+
+  /* ---------- chrome de la casa (Factiun) ---------- */
+  .app-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 16px;background:var(--panel-2);border-bottom:1px solid var(--line);font-family:var(--sans)}
+  .app-bar .back{color:var(--muted);text-decoration:none;font:600 13px/1 var(--sans);padding:6px 10px;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
+  .app-bar .back:hover{color:var(--text);border-color:var(--accent)}
+  .app-bar h1{margin:0;font:700 17px/1.1 var(--display);color:var(--text)}
+  .app-bar .sub{color:var(--muted);font-size:12.5px;margin:0 auto 0 0}
+  .app-bar .client{color:var(--text);font-size:11.5px;border:1px solid var(--line);padding:3px 9px;border-radius:999px}
+  .app-bar .client:empty{display:none}
+  .app-bar .brand{color:var(--accent);font:700 14px/1 var(--display);letter-spacing:.04em}
+  .app-foot{padding:10px 16px;text-align:center;color:var(--muted);font:400 12px/1.5 var(--sans);border-top:1px solid var(--line);background:var(--panel-2)}
+  .app-foot a{color:var(--accent);text-decoration:none}.app-foot a:hover{text-decoration:underline}
 
   /* ---------- rail ---------- */
   #rail{grid-row:1 / 3;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto}
@@ -776,6 +793,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </style>
 </head>
 <body>
+<header class="app-bar"><a class="back" href="https://imoriana3.github.io/proyectos/">← Panel</a><h1>Cobertura Zigbee</h1><span class="sub">PSFV El Burgo I · Máquina del tiempo</span><span class="client">Acciona</span><span class="brand">Factiun</span></header>
 <div id="app">
   <aside id="rail">
     <div class="head">
@@ -1217,5 +1235,6 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
 window.addEventListener('resize',()=>{drawStrip();});
 buildMap(); legend();
 </script>
+<footer class="app-foot">Factiun · Cobertura Zigbee — <a href="https://imoriana3.github.io/proyectos/">Panel de Proyectos</a></footer>
 </body>
 </html>
