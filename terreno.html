@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v1.8</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v1.9</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -89,7 +89,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
-var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null;
+var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -167,6 +167,7 @@ async function build(){
   function ext(x,n){exmin=Math.min(exmin,x);exmax=Math.max(exmax,x);nmin=Math.min(nmin,n);nmax=Math.max(nmax,n);}
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
   (LAYOUT.fence||[]).forEach(function(pl){pl.forEach(function(p){if(Math.abs(p[0])<800&&Math.abs(p[1])<700)ext(p[0],p[1]);});}); // solo seguidores+vallado (otras capas del DWG tienen coords basura)
+  var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (vallado+seguidores); descarta bloques sueltos del DWG (legendas/detalles lejos de la planta)
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
   var widthM=2*hx,depthM=2*hz;
   var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat;
@@ -251,7 +252,7 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.45,metalness:.65});
-  blueM=new THREE.MeshStandardMaterial({color:0x2f5fb0,roughness:.4,metalness:.4});
+  blueM=new THREE.MeshStandardMaterial({color:0x3b4048,roughness:.5,metalness:.45});  // motor/reductora del seguidor (grafito), NO antena
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   var modW=1.134,modH=2.382,gapMod=0.012,gapDrive=0.55,modsPerStr=28;
   var pitchX=modW+gapMod,strLen=modsPerStr*pitchX,off=0.14,span=2*strLen+gapDrive,filaZ=3.0,postH=2.0,mesaC=gapDrive/2+strLen/2;
@@ -305,7 +306,7 @@ function buildCorridor(){ if(corrGroup)scene.remove(corrGroup); corrGroup=new TH
 }
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
-function inClip(x,n){ return Math.abs(x)<800&&Math.abs(n)<700; }   // descarta geometría del DWG con coords basura (lejos de la planta)
+function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   bosGroup=new THREE.Group();scene.add(bosGroup);
