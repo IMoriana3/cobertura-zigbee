@@ -165,7 +165,7 @@ async function build(){
   buildTrackers(elevAt);
 
   var haveAng=await loadAngles();
-  if(ANG){$('time').min=ANG.minT;$('time').max=ANG.maxT;curMin=Math.min(720,ANG.maxT);}
+  if(ANG){$('time').min=ANG.minT;$('time').max=ANG.maxT;curMin=Math.min(540,ANG.maxT);}
   setTime(curMin);$('time').value=curMin;
 
   camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
@@ -180,7 +180,7 @@ function buildTrackers(elevAt){
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   glassM=new THREE.MeshStandardMaterial({color:0x0c1c2e,roughness:.22,metalness:.35,emissive:0x06101c,emissiveIntensity:.12});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modChord=2.4,gap=0.6,plen=11,postH=2.6,halfC=(modChord+gap)/2;  // bifila real: 2 filas de 2,4 m + 0,6 m de hueco; tubo N-S de 11 m
+  var modChord=0.9,gap=0.2,plen=2.2,postH=1.4,halfC=(modChord+gap)/2;  // INDICADOR pequeño de TCU (no la fila real); el seguidor real exacto vendrá del KMZ/DWG de implantación
   NODES.forEach(function(n){
     var x=projX(n.lon),z=projZ(n.lat),rel=elevAt(n.lat,n.lon)-baseElev;
     var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
