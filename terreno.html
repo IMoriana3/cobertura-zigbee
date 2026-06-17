@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v2.1</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · v2.2</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -98,6 +98,8 @@ function initThree(){
   renderer=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
   if(THREE.sRGBEncoding)renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
   scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);scene.fog=new THREE.Fog(0x0b0f14,1200,2800);
   camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,9000);camera.position.set(0,360,460);
   controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.maxPolarAngle=Math.PI*0.49;
@@ -107,8 +109,10 @@ function initThree(){
     var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;
     placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';
     if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();});
-  var sun=new THREE.DirectionalLight(0xffffff,1.05);sun.position.set(-300,500,200);scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0x9fc0ff,0x202a16,0.55));
+  var sun=new THREE.DirectionalLight(0xfff4e0,2.3);sun.position.set(-340,520,260);sun.castShadow=true;scene.add(sun);scene.add(sun.target);
+  sun.shadow.mapSize.set(2048,2048);var shc=sun.shadow.camera;shc.left=-560;shc.right=560;shc.top=560;shc.bottom=-560;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
+  sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.7;
+  scene.add(new THREE.HemisphereLight(0xbcd6ff,0x3a2f1e,0.95));scene.add(new THREE.AmbientLight(0xffffff,0.16));
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   var lastT=performance.now();
@@ -184,7 +188,7 @@ async function build(){
   for(var i=0;i<pos.count;i++){var lx=pos.getX(i),ly=pos.getY(i),lon=lon0+lx/mPerLon,lat=lat0+ly/mPerLat,e=elevAt(lat,lon);emin=Math.min(emin,e);emax=Math.max(emax,e);pos.setZ(i,e-baseElev);if(sat){var q=sat.px(lat,lon);uv.setXY(i,q.x/sat.W,1-q.y/sat.H);}}
   geo.computeVertexNormals();
   var mat;if(sat&&sat.ok>0){var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});
-  terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;scene.add(terrain);
+  terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
 
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
@@ -229,7 +233,7 @@ function gridRepair(){
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
-var imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,imMark,TC={};
+var imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,TC={};
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
@@ -272,8 +276,7 @@ function buildTrackers(elevAt){
   imFlange=new THREE.InstancedMesh(gF,blueM,N);
   imGear=new THREE.InstancedMesh(new THREE.BoxGeometry(0.30,0.36,0.26),blueM,N);
   imMotor=new THREE.InstancedMesh(gMo,motorM,N);
-  imMark=new THREE.InstancedMesh(new THREE.ConeGeometry(0.4,1.0,8),markM,N);
-  [imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,imMark].forEach(function(im){im.frustumCulled=false;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  [imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
@@ -298,9 +301,8 @@ function layoutTrackers(){
     _T.makeTranslation(dvx,ph,0);_M2.multiplyMatrices(Tw,_T);imFlange.setMatrixAt(i,_M2);          // corona slew abrazada al tubo
     _T.makeTranslation(dvx,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imGear.setMatrixAt(i,_M2);       // cuerpo reductora
     _T.makeTranslation(dvx-0.55,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imMotor.setMatrixAt(i,_M2); // motor horizontal hacia fuera
-    _T.compose(_PV.set(-fz,ph+0.4,0),_Q.identity(),_SC.set(nsz,nsz,nsz));_M2.multiplyMatrices(Tw,_T);imMark.setMatrixAt(i,_M2); // marcador TCU
   }
-  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imFlange.instanceMatrix.needsUpdate=true;imGear.instanceMatrix.needsUpdate=true;imMotor.instanceMatrix.needsUpdate=true;imMark.instanceMatrix.needsUpdate=true;
+  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imFlange.instanceMatrix.needsUpdate=true;imGear.instanceMatrix.needsUpdate=true;imMotor.instanceMatrix.needsUpdate=true;
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
   setTime(curMin);
 }
@@ -318,6 +320,20 @@ function buildCorridor(){ if(corrGroup)scene.remove(corrGroup); corrGroup=new TH
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
+function makeInvTex(){   // frontal del SG350HX: cuerpo gris + marca Sungrow + display/LEDs + caja de conexiones con prensaestopas
+  var c=document.createElement('canvas');c.width=296;c.height=226;var x=c.getContext('2d');
+  var g=x.createLinearGradient(0,0,0,226);g.addColorStop(0,'#d4d9de');g.addColorStop(1,'#bcc2c8');x.fillStyle=g;x.fillRect(0,0,296,226);
+  x.strokeStyle='#9aa1a8';x.lineWidth=5;x.strokeRect(3,3,290,220);
+  x.fillStyle='#1d3f7b';x.font='bold 31px Arial';x.fillText('SUNGROW',18,56);
+  x.fillStyle='#5a6470';x.font='bold 15px Arial';x.fillText('SG350HX',20,80);
+  x.fillStyle='#0d1116';x.fillRect(196,28,82,42);
+  x.fillStyle='#2bd97f';x.beginPath();x.arc(214,96,5,0,7);x.fill();
+  x.fillStyle='#3aa0ff';x.beginPath();x.arc(232,96,5,0,7);x.fill();
+  x.fillStyle='#e2574c';x.beginPath();x.arc(250,96,5,0,7);x.fill();
+  x.fillStyle='#9aa0a8';x.fillRect(10,120,276,96);x.strokeStyle='#7f868d';x.lineWidth=2;x.strokeRect(10,120,276,96);
+  x.fillStyle='#363c44';for(var k=0;k<6;k++){x.beginPath();x.arc(42+k*42,196,9,0,7);x.fill();}
+  var t=new THREE.CanvasTexture(c);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;return t;
+}
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=[];
@@ -333,21 +349,22 @@ function buildBOS(){
       if(i===0||acc>=9){acc=0;var y=localElevY(p[0],p[1]);var po=new THREE.Mesh(new THREE.BoxGeometry(0.1,fh,0.1),postM);po.position.set(p[0],y+fh/2,-p[1]);bosGroup.add(po);}}
   });
   if(fp.length){var fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(fp,3));bosGroup.add(new THREE.LineSegments(fg,new THREE.LineBasicMaterial({color:0xcfd8e0,transparent:true,opacity:.45})));}
-  // CTs / edificios (caja del bbox de cada huella)
-  var bldM=new THREE.MeshStandardMaterial({color:0xc9cdd2,roughness:.85,metalness:.1});
+  // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
+  var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
   (LAYOUT.cts||[]).forEach(function(pl){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;pl.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
-    var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;var cx=(x0+x1)/2,cn=(n0+n1)/2,h=3.5;if(!inClip(cx,cn))return;var y=localElevY(cx,cn);
-    var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,dp),bldM);b.position.set(cx,y+h/2,-cn);bosGroup.add(b);});
-  // inversores string Sungrow SG350HX (36 ud) — cotas REALES del DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo + disipador aleteado + frontal + caja de conexiones + patas
-  var invM=new THREE.MeshStandardMaterial({color:0x3a4654,roughness:.5,metalness:.45}),invFin=new THREE.MeshStandardMaterial({color:0x232b34,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({color:0x4a5a6e,roughness:.5,metalness:.3});
+    var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;var cx=(x0+x1)/2,cn=(n0+n1)/2,h=3.1;if(!inClip(cx,cn))return;var y=localElevY(cx,cn);
+    var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,dp),bldM);b.position.set(cx,y+h/2,-cn);bosGroup.add(b);                                  // muros
+    var rf=new THREE.Mesh(new THREE.BoxGeometry(w+0.5,0.25,dp+0.5),roofM);rf.position.set(cx,y+h+0.12,-cn);bosGroup.add(rf);                // cubierta saliente
+    var dw=Math.min(1.1,w*0.4),dh=Math.min(2.2,h*0.8);var dr=new THREE.Mesh(new THREE.BoxGeometry(dw,dh,0.08),doorM);dr.position.set(cx,y+dh/2,-cn+dp/2+0.04);bosGroup.add(dr);});  // puerta
+  // inversores string Sungrow SG350HX (36 ud) — DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo gris con frontal Sungrow, disipador trasero y bastidor
+  var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
+  var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // +X,-X,+Y,-Y,+Z(trasera),-Z(frontal con marca)
   (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);
-    var W=1.136,H=0.87,D=0.356,legH=0.9,cy=legH+H/2;                                                      // 1136×870×356 mm (DWG)
-    var body=new THREE.Mesh(new THREE.BoxGeometry(W,H,D*0.78),invM);body.position.y=cy;g.add(body);       // cuerpo
-    for(var fi=0;fi<6;fi++){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.05,H*0.92,0.12),invFin);fin.position.set(-W/2+0.13+fi*(W-0.26)/5,cy,D*0.39+0.06);g.add(fin);} // aletas del disipador (trasera)
-    var fr=new THREE.Mesh(new THREE.BoxGeometry(W*0.9,H*0.5,0.05),invFront);fr.position.set(0,cy+H*0.17,-D*0.39-0.03);g.add(fr);   // tapa frontal superior
-    var wb=new THREE.Mesh(new THREE.BoxGeometry(W*0.84,H*0.34,0.10),invM);wb.position.set(0,cy-H*0.28,-D*0.39-0.05);g.add(wb);     // caja de conexiones (AC/DC) inferior
-    [-W*0.37,W*0.37].forEach(function(lx){var lg=new THREE.Mesh(new THREE.BoxGeometry(0.06,legH,0.06),invM);lg.position.set(lx,legH/2,0);g.add(lg);}); // patas
-    var cb=new THREE.Mesh(new THREE.BoxGeometry(W*0.82,0.06,0.06),invM);cb.position.y=legH-0.05;g.add(cb);  // travesaño
+    var W=1.136,H=0.87,D=0.356,legH=0.95,cy=legH+H/2;                                                     // 1136×870×356 mm (DWG)
+    var body=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),invFaces);body.position.y=cy;g.add(body);        // cuerpo (frontal -Z con marca Sungrow)
+    for(var fi=0;fi<9;fi++){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.03,H*0.9,0.14),invFin);fin.position.set(-W*0.44+fi*(W*0.88/8),cy,D*0.5+0.08);g.add(fin);}  // aletas del disipador (trasera)
+    [-W*0.42,W*0.42].forEach(function(px){var po=new THREE.Mesh(new THREE.BoxGeometry(0.07,cy+H*0.45,0.07),invPost);po.position.set(px,(cy+H*0.45)/2,D*0.5+0.06);g.add(po);}); // postes del bastidor
+    var rail=new THREE.Mesh(new THREE.BoxGeometry(W*0.9,0.07,0.07),invPost);rail.position.set(0,legH,D*0.5+0.06);g.add(rail);  // travesaño
     bosGroup.add(g);});
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
@@ -363,6 +380,7 @@ function buildBOS(){
     var cup=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),metM);cup.position.set(m.x+0.65,y+h,-m.n);bosGroup.add(cup);
     var box=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.4,0.18),metBox);box.position.set(m.x,y+h*0.55,-m.n+0.15);bosGroup.add(box);
     var lb=makeLabel(m.name);lb.position.set(m.x,y+h+2,-m.n);lb.visible=labelGroup.visible;bosGroup.add(lb);HLBL.push(lb);});  // etiqueta HSU: se conmuta con "Etiquetas" como las TCU
+  bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
 // Dos NCUs (coordinadores): Norte y Sur. Cada TCU enlaza con la NCU más cercana (la de su mitad).
