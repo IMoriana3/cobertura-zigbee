@@ -1252,7 +1252,7 @@ function agg24(){
 function render24(){
   const ov=document.getElementById('sum24');ov.classList.add('show');
   const cv=document.getElementById('s24heat'),ctx=cv.getContext('2d');
-  if(!S.frames.length){document.getElementById('s24stats').innerHTML='';document.getElementById('s24tbl').innerHTML='<tr><td style="padding:30px;color:#9fb2c4">Carga primero el <b>zigbee_log.csv</b> (o pulsa «Datos de ejemplo»).</td></tr>';cv.width=10;cv.height=10;return;}
+  if(!S.frames.length){document.getElementById('s24stats').innerHTML='';document.getElementById('s24tbl').innerHTML='<tr><td style="padding:30px;color:#9fb2c4">Carga primero el <b>zigbee_log.csv</b> (o pulsa «Datos de ejemplo»).</td></tr>';cv.width=10;cv.height=10;document.getElementById('s24angnote').textContent='';document.getElementById('s24angle').width=10;document.getElementById('s24angtbl').innerHTML='';return;}
   const rows=agg24(),t0=_ms(S.frames[0]),t1=_ms(S.frames[S.frames.length-1]),span=(t1-t0)||1;
   const up=rows.reduce((s,r)=>s+r.pct,0)/(rows.length||1),bad=rows.filter(r=>r.pct<99).length,td=rows.reduce((s,r)=>s+r.drops,0);
   document.getElementById('s24stats').innerHTML=
@@ -1279,6 +1279,41 @@ function render24(){
     ctx.fillStyle='#67788a';ctx.fillText(rows[i].pct.toFixed(0)+'%',58,y+rowH/2);ctx.textBaseline='top';}
   document.getElementById('s24tbl').innerHTML='<tr><th>Nodo</th><th>Uptime</th><th>RSSI medio</th><th>RSSI peor</th><th>Cortes</th><th>Tiempo caído</th></tr>'+
     rows.map(r=>`<tr class="${r.pct<99?'bad':''}"><td>${_sid(r.id)}</td><td>${r.pct.toFixed(1)}%</td><td>${r.rssiMean!=null?r.rssiMean.toFixed(0)+' dBm':'—'}</td><td>${r.rssiMin!=null?r.rssiMin+' dBm':'—'}</td><td>${r.drops}</td><td>${r.off?_fdur(r.off):'—'}</td></tr>`).join('');
+  render24angle();
+}
+/* ---------- Punto 3: ángulo del seguidor ↔ cobertura ---------- */
+let ANG=null;
+function _hm(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
+function todMin(ts){return _hm(ts.slice(11,16));}
+function angAt(min){const a=ANG&&ANG.field;if(!a||!a.length)return null;
+  if(min<=a[0][0])return a[0][1];if(min>=a[a.length-1][0])return a[a.length-1][1];
+  for(let i=1;i<a.length;i++){if(a[i][0]>=min){const p=a[i-1],q=a[i],f=(min-p[0])/((q[0]-p[0])||1);return p[1]+(q[1]-p[1])*f;}}return null;}
+fetch('trackers_2026-06-17.json',{cache:'no-store'}).then(r=>r.json()).then(j=>{ANG={date:j.date||'',field:Object.keys(j.field||{}).map(k=>[_hm(k),j.field[k]]).sort((a,b)=>a[0]-b[0])};}).catch(()=>{});
+function render24angle(){
+  const note=document.getElementById('s24angnote'),cv=document.getElementById('s24angle'),ctx=cv.getContext('2d'),wrap=document.getElementById('s24angwrap'),tbl=document.getElementById('s24angtbl');
+  if(!ANG||!ANG.field.length){note.innerHTML='Perfil de ángulos no disponible (no cargó <code>trackers_2026-06-17.json</code>).';cv.width=10;cv.height=10;tbl.innerHTML='';return;}
+  const ids=(S.allIds||[]).filter(id=>(S.series[id]||[]).length),BIN=10,bins={};
+  for(const id of ids)for(const r of S.series[id]){const a=angAt(todMin(r.ts));if(a==null)continue;const k=Math.round(a/BIN)*BIN;const b=bins[k]||(bins[k]={on:0,tot:0,rs:0,rc:0});b.tot++;if(r.online){b.on++;if(r.rssi!=null){b.rs+=r.rssi;b.rc++;}}}
+  const keys=Object.keys(bins).map(Number).sort((a,b)=>a-b);
+  if(!keys.length){note.innerHTML='No hay solape temporal entre el log y el perfil de ángulos.';cv.width=10;cv.height=10;tbl.innerHTML='';return;}
+  note.innerHTML=`Curva de ángulo de <b>${ANG.date}</b> cruzada con el log por hora del día. Barras = % online por ángulo; línea azul = RSSI medio. Si cae a ±50°, los paneles inclinados se tapan entre filas. <i>Requiere que el log sea de un día de seguimiento (no abanderado).</i>`;
+  const W=Math.max(640,wrap.clientWidth-2),H=232,mL=44,mR=46,mB=26,mT=12;cv.width=W;cv.height=H;
+  ctx.clearRect(0,0,W,H);ctx.font='11px ui-monospace,monospace';
+  const amin=keys[0]-BIN/2,amax=keys[keys.length-1]+BIN/2,ax=a=>mL+(a-amin)/((amax-amin)||1)*(W-mL-mR);
+  const onY=p=>mT+(1-p/100)*(H-mT-mB),rsY=r=>mT+(1-(r+95)/45)*(H-mT-mB);
+  ctx.textBaseline='middle';
+  for(let p=0;p<=100;p+=25){const y=onY(p);ctx.strokeStyle='#16202b';ctx.beginPath();ctx.moveTo(mL,y);ctx.lineTo(W-mR,y);ctx.stroke();ctx.fillStyle='#5b6b7a';ctx.textAlign='right';ctx.fillText(p+'%',mL-4,y);}
+  ctx.textAlign='center';ctx.textBaseline='top';ctx.fillStyle='#67788a';
+  for(const k of keys)ctx.fillText((k>0?'+':'')+k+'°',ax(k),H-mB+4);
+  const bw=Math.max(6,(W-mL-mR)/keys.length*0.66);
+  for(const k of keys){const b=bins[k],p=b.tot?b.on/b.tot*100:0,x=ax(k),y=onY(p);ctx.fillStyle=p>=98?'#36D399':p>=90?'#e3c149':'#e2574c';ctx.fillRect(x-bw/2,y,bw,onY(0)-y);}
+  ctx.strokeStyle='#5aa9ff';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(const k of keys){const b=bins[k];if(!b.rc)continue;const x=ax(k),y=rsY(b.rs/b.rc);if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);}
+  ctx.stroke();ctx.lineWidth=1;ctx.fillStyle='#5aa9ff';ctx.textAlign='left';ctx.textBaseline='middle';
+  for(let r=-90;r<=-55;r+=15)ctx.fillText(r,W-mR+4,rsY(r));ctx.fillText('RSSI',W-mR+4,mT+4);
+  const pen=ids.map(id=>{let hi=0,hiT=0,lo=0,loT=0;for(const r of S.series[id]){const a=angAt(todMin(r.ts));if(a==null)continue;const aa=Math.abs(a);if(aa>=40){hiT++;if(r.online)hi++;}else if(aa<=15){loT++;if(r.online)lo++;}}
+    const ph=hiT?hi/hiT*100:null,pl=loT?lo/loT*100:null;return{id,ph,pl,pen:(ph!=null&&pl!=null)?pl-ph:null};}).filter(x=>x.pen!=null&&x.pen>1).sort((a,b)=>b.pen-a.pen).slice(0,12);
+  tbl.innerHTML=pen.length?('<tr><th>Nodo</th><th>Online a ±0–15°</th><th>Online a ≥±40°</th><th>Penalización</th></tr>'+pen.map(r=>`<tr class="${r.pen>10?'bad':''}"><td>${_sid(r.id)}</td><td>${r.pl.toFixed(0)}%</td><td>${r.ph.toFixed(0)}%</td><td>−${r.pen.toFixed(0)} pts</td></tr>`).join('')):'<tr><td style="padding:14px;color:#9fb2c4">Ningún nodo pierde cobertura a ángulos extremos — no se detecta bloqueo entre filas por inclinación.</td></tr>';
 }
 document.getElementById('open24').addEventListener('click',render24);
 document.getElementById('close24').addEventListener('click',()=>document.getElementById('sum24').classList.remove('show'));
@@ -1315,6 +1350,17 @@ buildMap(); legend();
     <p class="s24note">Cada fila es un nodo (peores arriba); el color es el estado a lo largo del día — <b style="color:#36D399">verde</b> buen RSSI, amarillo/naranja flojo, <b style="color:#e2574c">rojo</b> sin respuesta. Clic en el mapa de calor salta a ese instante.</p>
     <div id="s24heatwrap"><canvas id="s24heat"></canvas></div>
     <table id="s24tbl"></table>
+    <h3 style="font-size:14px;margin:24px 0 4px">Ángulo del seguidor ↔ cobertura <span style="font-weight:400;color:#9fb2c4;font-size:12px">· punto 3</span></h3>
+    <p class="s24note" id="s24angnote"></p>
+    <div id="s24angwrap" style="overflow:auto;border:1px solid #23303d;border-radius:8px;background:#0c1219"><canvas id="s24angle"></canvas></div>
+    <table id="s24angtbl"></table>
+    <style>
+      #sum24 #s24angtbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px}
+      #sum24 #s24angtbl th{text-align:right;color:#9fb2c4;font-weight:600;padding:5px 12px;border-bottom:1px solid #23303d}
+      #sum24 #s24angtbl td{text-align:right;padding:4px 12px;border-bottom:1px solid #161f29}
+      #sum24 #s24angtbl td:first-child,#sum24 #s24angtbl th:first-child{text-align:left;font-family:ui-monospace,monospace}
+      #sum24 #s24angtbl tr.bad td{color:#f3b0a8}
+    </style>
   </div>
 </div>
 <footer class="app-foot">Factiun · Cobertura Zigbee — <a href="https://imoriana3.github.io/proyectos/">Panel de Proyectos</a></footer>
