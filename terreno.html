@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores del gemelo · corredor de 2 bifilas · v0.8</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Terreno real + 108 seguidores del gemelo (huecos exactos pendientes de DWG) · v0.9</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -193,11 +193,10 @@ function gridRepair(){
   var m=xs.length,sx=0,sy=0,sxx=0,sxy=0;for(var i=0;i<m;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i];}
   var A=m?(m*sxy-sx*sy)/(m*sxx-sx*sx):12,B0=m?(sy-A*sx)/m:0;
   if(!isFinite(A)){A=12;B0=0;}
-  var used={},GAP=2;   // corredor de acceso de ~2 bifilas entre el bloque 6 y el 7: los bloques oeste (1-6, coords corruptas) se desplazan al oeste para abrirlo; 7-18 quedan alineados con el satélite
+  var used={};   // rejilla continua; los huecos reales (corredores) se colocarán con el DWG de implantación
   NODES.forEach(function(n){var b=n._b,col=(b.B-1)*2+b.sub,row=b.row,k=col+','+row;
     while(used[k]){col++;k=col+','+row;}used[k]=1;                     // P7 (nodo extra) → columna libre
-    var gcol=col-(b.B<=6?GAP:0);                                       // abre el hueco entre bloque 6 y 7
-    var gE=A*gcol+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
+    var gE=A*col+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,darkM,tcuM,panelTex;
