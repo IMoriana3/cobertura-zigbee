@@ -100,7 +100,7 @@ function initThree(){
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
-    if(playing&&ANG){curMin+=dt*PLAYSPEED;if(curMin>ANG.maxT)curMin=ANG.minT;$('time').value=curMin;setTime(curMin);}
+    if(playing){var _mx=ANG?ANG.maxT:840,_mn=ANG?ANG.minT:0;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);}
     controls.update();renderer.render(scene,camera);})(performance.now());
 }
 
