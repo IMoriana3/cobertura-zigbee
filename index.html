@@ -1316,12 +1316,12 @@ function render24angle(){
   tbl.innerHTML=pen.length?('<tr><th>Nodo</th><th>Online a ±0–15°</th><th>Online a ≥±40°</th><th>Penalización</th></tr>'+pen.map(r=>`<tr class="${r.pen>10?'bad':''}"><td>${_sid(r.id)}</td><td>${r.pl.toFixed(0)}%</td><td>${r.ph.toFixed(0)}%</td><td>−${r.pen.toFixed(0)} pts</td></tr>`).join('')):'<tr><td style="padding:14px;color:#9fb2c4">Ningún nodo pierde cobertura a ángulos extremos — no se detecta bloqueo entre filas por inclinación.</td></tr>';
 }
 document.getElementById('open24').addEventListener('click',render24);
-document.getElementById('close24').addEventListener('click',()=>document.getElementById('sum24').classList.remove('show'));
-document.getElementById('s24heat').addEventListener('click',e=>{const cv=e.currentTarget;if(!cv._span)return;
-  const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(cv.width/r.width);
-  const fr=Math.round(((x-cv._padL)/(cv._W-cv._padL-8))*(S.frames.length-1));
-  if(fr>=0&&fr<S.frames.length){document.getElementById('sum24').classList.remove('show');pause();go(fr);}});
-window.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('sum24').classList.remove('show');});
+// #sum24 (Cerrar / mapa de calor) va DESPUÉS del <script>; delegación para no depender del orden de carga (antes el getElementById nulo rompía buildMap)
+document.addEventListener('click',function(e){ if(!e.target.closest)return;
+  if(e.target.closest('#close24')){document.getElementById('sum24').classList.remove('show');return;}
+  const cv=e.target.closest('#s24heat'); if(cv&&cv._span){const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(cv.width/r.width),fr=Math.round(((x-cv._padL)/(cv._W-cv._padL-8))*(S.frames.length-1));if(fr>=0&&fr<S.frames.length){document.getElementById('sum24').classList.remove('show');pause();go(fr);}}
+});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){const s=document.getElementById('sum24');if(s)s.classList.remove('show');}});
 buildMap(); legend();
 </script>
 <style>
