@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v1.9</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · v2.0</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -89,7 +89,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false;
-var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=-53.3,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null;
+var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -228,8 +228,8 @@ function gridRepair(){
     var gE=A*gcol+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
-var steelM,glassM,markM,blueM,panelTex;
-var imTube,imPanel,imPost,imSlew,imMark,TC={};
+var steelM,glassM,markM,blueM,motorM,panelTex;
+var imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,imMark,TC={};
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
@@ -252,7 +252,8 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.45,metalness:.65});
-  blueM=new THREE.MeshStandardMaterial({color:0x3b4048,roughness:.5,metalness:.45});  // motor/reductora del seguidor (grafito), NO antena
+  blueM=new THREE.MeshStandardMaterial({color:0x2f5fb0,roughness:.4,metalness:.4});    // reductora slew (azul, igual que el gemelo)
+  motorM=new THREE.MeshStandardMaterial({color:0x1a1c20,roughness:.5,metalness:.55}); // motor (cilindro oscuro que sale hacia fuera)
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   var modW=1.134,modH=2.382,gapMod=0.012,gapDrive=0.55,modsPerStr=28;
   var pitchX=modW+gapMod,strLen=modsPerStr*pitchX,off=0.14,span=2*strLen+gapDrive,filaZ=3.0,postH=2.0,mesaC=gapDrive/2+strLen/2;
@@ -264,9 +265,15 @@ function buildTrackers(elevAt){
   imTube=new THREE.InstancedMesh(new THREE.BoxGeometry(0.12,0.12,span),steelM,N*2);
   imPanel=new THREE.InstancedMesh(new THREE.BoxGeometry(modH,0.05,strLen),glassM,N*4);
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
-  imSlew=new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.4,0.3),blueM,N);
+  var gF=new THREE.CylinderGeometry(0.25,0.25,0.16,18);gF.rotateX(Math.PI/2);    // corona slew (eje = tubo de par, Z)
+  var gMo=new THREE.CylinderGeometry(0.085,0.085,0.40,14);gMo.rotateZ(Math.PI/2); // motor (eje = X, sale hacia fuera del seguidor)
+  var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (X)
+  imShaft=new THREE.InstancedMesh(gSh,steelM,N);
+  imFlange=new THREE.InstancedMesh(gF,blueM,N);
+  imGear=new THREE.InstancedMesh(new THREE.BoxGeometry(0.30,0.36,0.26),blueM,N);
+  imMotor=new THREE.InstancedMesh(gMo,motorM,N);
   imMark=new THREE.InstancedMesh(new THREE.ConeGeometry(0.4,1.0,8),markM,N);
-  [imTube,imPanel,imPost,imSlew,imMark].forEach(function(im){im.frustumCulled=false;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  [imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,imMark].forEach(function(im){im.frustumCulled=false;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
@@ -286,10 +293,14 @@ function layoutTrackers(){
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t);
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){_T.makeTranslation(fx,ph/2,zP[k]);_M2.multiplyMatrices(Tw,_T);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
-    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imSlew.setMatrixAt(i,_M2);             // slew drive central
+    var dvx=-fz;                                                                                  // slew drive sobre la fila -fz (como el gemelo)
+    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
+    _T.makeTranslation(dvx,ph,0);_M2.multiplyMatrices(Tw,_T);imFlange.setMatrixAt(i,_M2);          // corona slew abrazada al tubo
+    _T.makeTranslation(dvx,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imGear.setMatrixAt(i,_M2);       // cuerpo reductora
+    _T.makeTranslation(dvx-0.55,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imMotor.setMatrixAt(i,_M2); // motor horizontal hacia fuera
     _T.compose(_PV.set(-fz,ph+0.4,0),_Q.identity(),_SC.set(nsz,nsz,nsz));_M2.multiplyMatrices(Tw,_T);imMark.setMatrixAt(i,_M2); // marcador TCU
   }
-  imPost.instanceMatrix.needsUpdate=true;imSlew.instanceMatrix.needsUpdate=true;imMark.instanceMatrix.needsUpdate=true;
+  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imFlange.instanceMatrix.needsUpdate=true;imGear.instanceMatrix.needsUpdate=true;imMotor.instanceMatrix.needsUpdate=true;imMark.instanceMatrix.needsUpdate=true;
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
   setTime(curMin);
 }
@@ -309,7 +320,7 @@ function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
-  bosGroup=new THREE.Group();scene.add(bosGroup);
+  bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=[];
   if(!LAYOUT||!ELEV)return;
   // viales
   var rp=[];(LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];if(!inClip(a[0],a[1])||!inClip(b[0],b[1]))continue;rp.push(a[0],localElevY(a[0],a[1])+0.4,-a[1],b[0],localElevY(b[0],b[1])+0.4,-b[1]);}});
@@ -327,9 +338,16 @@ function buildBOS(){
   (LAYOUT.cts||[]).forEach(function(pl){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;pl.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
     var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;var cx=(x0+x1)/2,cn=(n0+n1)/2,h=3.5;if(!inClip(cx,cn))return;var y=localElevY(cx,cn);
     var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,dp),bldM);b.position.set(cx,y+h/2,-cn);bosGroup.add(b);});
-  // inversores string (caja en cada etiqueta)
-  var invM=new THREE.MeshStandardMaterial({color:0x33414f,roughness:.5,metalness:.45});
-  (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n);var b=new THREE.Mesh(new THREE.BoxGeometry(1.1,1.5,0.5),invM);b.position.set(c.x,y+0.75,-c.n);bosGroup.add(b);});
+  // inversores string Sungrow SG350HX (36 ud): cuerpo ~1,05×0,66×0,36 m sobre patas, con disipador y frontal
+  var invM=new THREE.MeshStandardMaterial({color:0x3a4654,roughness:.5,metalness:.45}),invFin=new THREE.MeshStandardMaterial({color:0x222a32,roughness:.65,metalness:.5}),invFront=new THREE.MeshStandardMaterial({color:0x4a5a6e,roughness:.5,metalness:.3});
+  (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);
+    var W=1.05,H=0.66,D=0.36,legH=0.9,cy=legH+H/2;
+    var body=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),invM);body.position.y=cy;g.add(body);                           // cuerpo SG350HX
+    var hs=new THREE.Mesh(new THREE.BoxGeometry(W*0.98,0.12,D*0.72),invFin);hs.position.y=cy+H/2+0.06;g.add(hs);         // disipador superior
+    var fr=new THREE.Mesh(new THREE.BoxGeometry(W*0.8,H*0.62,0.05),invFront);fr.position.set(0,cy,-D/2-0.025);g.add(fr); // frontal/tapa
+    [-W*0.34,W*0.34].forEach(function(lx){var lg=new THREE.Mesh(new THREE.BoxGeometry(0.06,legH,0.06),invM);lg.position.set(lx,legH/2,0);g.add(lg);});  // patas
+    var cb=new THREE.Mesh(new THREE.BoxGeometry(W*0.8,0.06,0.06),invM);cb.position.y=legH-0.05;g.add(cb);                // travesaño
+    bosGroup.add(g);});
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
@@ -343,7 +361,7 @@ function buildBOS(){
     var arm=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.05,0.05),metM);arm.position.set(m.x,y+h,-m.n);bosGroup.add(arm);
     var cup=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),metM);cup.position.set(m.x+0.65,y+h,-m.n);bosGroup.add(cup);
     var box=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.4,0.18),metBox);box.position.set(m.x,y+h*0.55,-m.n+0.15);bosGroup.add(box);
-    var lb=makeLabel(m.name);lb.position.set(m.x,y+h+2,-m.n);bosGroup.add(lb);});
+    var lb=makeLabel(m.name);lb.position.set(m.x,y+h+2,-m.n);lb.visible=labelGroup.visible;bosGroup.add(lb);HLBL.push(lb);});  // etiqueta HSU: se conmuta con "Etiquetas" como las TCU
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
 // Dos NCUs (coordinadores): Norte y Sur. Cada TCU enlaza con la NCU más cercana (la de su mitad).
@@ -406,7 +424,7 @@ function makeLabel(text){
 $('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();};
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
-$('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;};
+$('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
