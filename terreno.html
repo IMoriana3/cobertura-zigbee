@@ -38,7 +38,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · v1.1</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · v1.2 (instanciado)</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -142,7 +142,14 @@ function angleAt(num,min){
 }
 function setTime(min){
   curMin=min;
-  for(var i=0;i<TRK.length;i++){var a=angleAt(TRK[i].num,min)*DEG;TRK[i].filas[0].rotation.z=a;TRK[i].filas[1].rotation.z=a;}
+  if(imTube){var a=(angleAt(null,min)||0)*DEG;_R.makeRotationZ(a);
+    _T.makeTranslation(0,TC.off,TC.mesaC);_MN.multiplyMatrices(_R,_T);
+    _T.makeTranslation(0,TC.off,-TC.mesaC);_MS.multiplyMatrices(_R,_T);
+    for(var i=0;i<TRK.length;i++){var fb=TRK[i].fb;for(var f=0;f<2;f++){
+      _M2.multiplyMatrices(fb[f],_R);imTube.setMatrixAt(i*2+f,_M2);
+      _M2.multiplyMatrices(fb[f],_MN);imPanel.setMatrixAt(i*4+f*2,_M2);
+      _M2.multiplyMatrices(fb[f],_MS);imPanel.setMatrixAt(i*4+f*2+1,_M2);}}
+    imTube.instanceMatrix.needsUpdate=true;imPanel.instanceMatrix.needsUpdate=true;}
   $('tval').textContent=fmtHM(min);
   $('aval').textContent=(ANG?(angleAt(null,min)).toFixed(0):solarTilt(min).toFixed(0))+"°";
 }
@@ -216,7 +223,10 @@ function gridRepair(){
     var gE=A*gcol+B0,gN=ROWC[row];                                     // rejilla limpia: columnas reales + 3 filas medianas
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
-var steelM,glassM,markM,blueM,darkM,tcuM,panelTex;
+var steelM,glassM,markM,blueM,panelTex;
+var imTube,imPanel,imPost,imSlew,imMark,TC={};
+var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4();
+var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 function makePanelTex(){
   var W=128,H=256,c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');
@@ -231,60 +241,51 @@ function makePanelTex(){
   }
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;return t;
 }
-// Seguidor REAL de El Burgo, replicado del gemelo digital (cotas reales): BIFILA = 2 filas
-// gemelas (1V) a ±3 m, tubo de torsión N-S de ~64,7 m (2 mesas de 28 módulos + hueco del
-// motor central), slew drive azul + motor y TCU colgada de la viga oeste. Versión "campo"
-// (sin sombras ni geometría por módulo) para que entren los 108 sin morir el navegador.
+// Seguidor REAL (cotas del gemelo) por INSTANCIA: cada pieza es UN InstancedMesh con N copias,
+// así 215 seguidores son ~5 llamadas de dibujo en vez de miles. Las piezas que basculan (tubos
+// y mesas) se recolocan por matriz cada frame; postes/slew/marcador son fijos.
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.45,metalness:.65});
   blueM=new THREE.MeshStandardMaterial({color:0x2f5fb0,roughness:.4,metalness:.4});
-  darkM=new THREE.MeshStandardMaterial({color:0x1a1c20,roughness:.5,metalness:.55});
-  tcuM=new THREE.MeshStandardMaterial({color:0x232f3b,roughness:.5,metalness:.3});
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modW=1.134,modH=2.382,gapMod=0.012,gapDrive=0.55,modsPerStr=28;          // cotas reales del gemelo
-  var pitchX=modW+gapMod,strLen=modsPerStr*pitchX,off=0.14,span=2*strLen+gapDrive,filaZ=3.0,postH=2.0;
-  var mesaC=gapDrive/2+strLen/2;                                                // centro de cada mesa (N y S)
-  panelTex=makePanelTex();panelTex.repeat.set(1,modsPerStr);                    // 28 módulos a lo largo del tubo
+  var modW=1.134,modH=2.382,gapMod=0.012,gapDrive=0.55,modsPerStr=28;
+  var pitchX=modW+gapMod,strLen=modsPerStr*pitchX,off=0.14,span=2*strLen+gapDrive,filaZ=3.0,postH=2.0,mesaC=gapDrive/2+strLen/2;
+  var zP=[-28,-9,9,28];
+  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2};
+  panelTex=makePanelTex();panelTex.repeat.set(1,modsPerStr);
   glassM=new THREE.MeshStandardMaterial({map:panelTex,color:0xffffff,roughness:.14,metalness:.1,emissive:0x0a1626,emissiveIntensity:.07});
-  var zP=[-28,-9,9,28];                                                         // postes (4 por fila, fijos)
-  function add(geo,mat,par,px,py,pz){var m=new THREE.Mesh(geo,mat);m.position.set(px||0,py||0,pz||0);par.add(m);return m;}
+  var N=NODES.length;
+  imTube=new THREE.InstancedMesh(new THREE.BoxGeometry(0.12,0.12,span),steelM,N*2);
+  imPanel=new THREE.InstancedMesh(new THREE.BoxGeometry(modH,0.05,strLen),glassM,N*4);
+  imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
+  imSlew=new THREE.InstancedMesh(new THREE.BoxGeometry(0.34,0.4,0.3),blueM,N);
+  imMark=new THREE.InstancedMesh(new THREE.ConeGeometry(0.4,1.0,8),markM,N);
+  [imTube,imPanel,imPost,imSlew,imMark].forEach(function(im){im.frustumCulled=false;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   NODES.forEach(function(n){
-    var x=n.gx,z=n.gz,rel=elevAt(n.glat,n.glon)-baseElev;
-    var latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;                      // cota alrededor del tubo para orientarlo al terreno (N-S a lo largo del tubo, E-O lateral)
+    var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
-    var mm=n.id.match(/(\d{3})(?!.*\d)/);var num=mm?mm[1]:null;
-    var T=new THREE.Group();nodeGroup.add(T);var filas=[];
-    [-filaZ,filaZ].forEach(function(fx){
-      var g=new THREE.Group();g.position.set(fx,postH,0);T.add(g);             // grupo que bascula sobre su tubo
-      add(new THREE.BoxGeometry(0.12,0.12,span),steelM,g,0,0,0);               // tubo de torsión (eje N-S)
-      [mesaC,-mesaC].forEach(function(zc){add(new THREE.BoxGeometry(modH,0.05,strLen),glassM,g,0,off,zc);}); // mesa N y mesa S (28 módulos c/u)
-      zP.forEach(function(zp){add(new THREE.BoxGeometry(0.13,postH,0.13),steelM,T,fx,postH/2,zp);});         // postes
-      filas.push(g);
-    });
-    var et=add(new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10),steelM,T,0,postH,0);et.rotation.z=Math.PI/2; // eje de transmisión
-    add(new THREE.BoxGeometry(0.34,0.4,0.3),blueM,T,0,postH,0);                                              // slew drive (reductora azul)
-    var mot=add(new THREE.CylinderGeometry(0.09,0.09,0.5,14),darkM,T,0,postH-0.04,-0.55);mot.rotation.x=Math.PI/2; // motor
-    var west=filas[0];                                                                                       // viga OESTE (-x)
-    add(new THREE.BoxGeometry(0.5,0.26,0.36),tcuM,west,0,-0.22,1.4);                                         // TCU colgada de la viga oeste
-    var mark=add(new THREE.ConeGeometry(0.4,1.0,12),markM,west,0,-0.55,1.4);                                 // marcador del nodo TCU
-    var lb=makeLabel(n.lbl||n.id);labelGroup.add(lb);
-    TRK.push({T:T,filas:filas,mark:mark,lb:lb,x:x,z:z,rel:rel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:num,postH:postH,glat:n.glat,glon:n.glon});
+    TRK.push({gx:n.gx,gz:n.gz,rel:rel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
   });
   layoutTrackers();
 }
-var _UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
+function trackerBase(t){   // T_world = posición + drape al terreno (devuelve _M reutilizado)
+  var by=t.rel*vex,cl=0.45/vex;
+  var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
+  _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
+  return _M.compose(_PV,_Q,_SC.set(1,1,1));
+}
 function layoutTrackers(){
-  TRK.forEach(function(t){var by=t.rel*vex;
-    t.T.position.set(t.x,by,t.z);
-    // DRAPE: orienta cada seguidor al plano del terreno (pendiente N-S del tubo + pendiente E-O lateral)
-    var cl=0.45/vex;                                                          // límite de pendiente (~±24° ya exagerada)
-    var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));                 // pendiente Norte (a lo largo del tubo)
-    var gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));               // pendiente Este (lateral)
-    _NRM.set(-vex*gE,1,vex*gN).normalize();                                   // normal del terreno exagerado (x=Este, z=Sur)
-    t.T.quaternion.setFromUnitVectors(_UP,_NRM);
-    t.mark.scale.setScalar(nsz);t.lb.position.set(t.x,by+t.postH+3,t.z);});
+  if(!imPost)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t);
+    for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
+    var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){_T.makeTranslation(fx,ph/2,zP[k]);_M2.multiplyMatrices(Tw,_T);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
+    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imSlew.setMatrixAt(i,_M2);             // slew drive central
+    _T.compose(_PV.set(-fz,ph+0.4,0),_Q.identity(),_SC.set(nsz,nsz,nsz));_M2.multiplyMatrices(Tw,_T);imMark.setMatrixAt(i,_M2); // marcador TCU
+  }
+  imPost.instanceMatrix.needsUpdate=true;imSlew.instanceMatrix.needsUpdate=true;imMark.instanceMatrix.needsUpdate=true;
+  setTime(curMin);
 }
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
@@ -349,15 +350,15 @@ function fresMats(){ if(clearM)return;
 function applyFresnel(){
   if(!linkGroup){linkGroup=new THREE.Group();scene.add(linkGroup);}
   while(linkGroup.children.length)linkGroup.remove(linkGroup.children[0]);
-  if(!fresOn||!ELEV){if(gwGroup)gwGroup.visible=false;TRK.forEach(function(t){t.mark.material=markM;});updateFres(0,0,0);return;}
-  fresMats();gwGroup.visible=true;positionGateway();
+  if(!fresOn||!ELEV){if(gwGroup)gwGroup.visible=false;updateFres(0,0,0);return;}
+  gwGroup.visible=true;positionGateway();
   var gwX=projX(GW.lon),gwZ=projZ(GW.lat),gwY=(ELEV(GW.lat,GW.lon)-baseElev)*vex+GW.h,pos=[],col=[],cl=0,pa=0,bl=0;
   TRK.forEach(function(t){
     var c=linkClearance(t.glat,t.glon,2.2,GW.lat,GW.lon,GW.h),r,g,b;
-    if(c.blocked){t.mark.material=blockM;r=.886;g=.341;b=.298;bl++;}
-    else if(c.partial){t.mark.material=partM;r=.890;g=.757;b=.286;pa++;}
-    else{t.mark.material=clearM;r=.212;g=.827;b=.6;cl++;}
-    var ay=t.rel*vex+2.3;pos.push(t.x,ay,t.z,gwX,gwY,gwZ);col.push(r,g,b,r,g,b);
+    if(c.blocked){r=.886;g=.341;b=.298;bl++;}
+    else if(c.partial){r=.890;g=.757;b=.286;pa++;}
+    else{r=.212;g=.827;b=.6;cl++;}
+    var ay=t.rel*vex+2.3;pos.push(t.gx,ay,t.gz,gwX,gwY,gwZ);col.push(r,g,b,r,g,b);
   });
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.5})));
