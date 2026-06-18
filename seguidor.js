@@ -106,9 +106,9 @@
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
-            function (TH){ return new TH.BoxGeometry(D.modW, 0.045, D.modH); }, mT(THREE, cx, D.off-0.004, 0));
+            function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral (mismo plano que el vidrio)
           push('glass', 'glass', true, true,
-            function (TH){ return new TH.BoxGeometry(D.modW-0.05, 0.05, D.modH-0.05); }, mT(THREE, cx, D.off, 0));
+            function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL: vidrio-vidrio, células por las DOS caras (sobresale del marco)
           push('jbox', 'jbox', true, false,
             function (TH){ return new TH.BoxGeometry(0.10, 0.05, 0.16); }, mT(THREE, cx, D.jbY, D.jbZ));
           if (m < D.modsPerStr - 1) {                      // cable + del módulo → − del siguiente
@@ -148,8 +148,8 @@
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
-    push('corona', 'blue', false, true,                     // corona slew (disco alrededor del tubo)
-      function (TH){ var g=new TH.CylinderGeometry(0.25,0.25,0.16,24); g.rotateZ(Math.PI/2); return g; }, mT(THREE, 0,0,0));
+    out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
+      geom:function (TH){ var g=new TH.CylinderGeometry(0.25,0.25,0.16,24); g.rotateZ(Math.PI/2); return g; }, m:mT(THREE, 0,0,0) });
     push('reductora', 'blue', false, true,                  // cuerpo de la reductora (worm)
       function (TH){ return new TH.BoxGeometry(0.30,0.36,0.26); }, mT(THREE, 0,-0.04,0));
     push('cuello', 'blue', false, true,                     // cuello reductora → motor
@@ -161,8 +161,12 @@
     push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
       function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
     // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
-    out.push({ key:'soporte', mat:'steel', spin:false, cast:true, terrainScaled:true,
+    out.push({ key:'soporte', mat:'steel', spin:false, cast:true, terrainScaled:true, twin:true,   // TWIN: igual bajo la corona de la viga gemela
       geom:function (TH){ return new TH.BoxGeometry(0.26, 1.0, 0.42); }, m:mT(THREE, 0,-0.6,0) });
+    // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
+    // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
+    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,
+      geom:function (TH){ return new TH.CylinderGeometry(0.012,0.012,1.0,8); }, m:mT(THREE, D.tcuX, -0.35, 0) });
 
     return out;
   };
@@ -196,12 +200,12 @@
   S.instancePlan = function (THREE, opts) {
     var byType = {}, order = [];
     S.parts(THREE, opts).forEach(function (p) {
-      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, locals:[] }; order.push(p.key); }
+      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
     });
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.2';
+  S.VERSION = '0.1.3';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
