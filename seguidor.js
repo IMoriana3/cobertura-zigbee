@@ -32,6 +32,7 @@
     purlY: 0.085,         // correas apoyadas sobre el tubo
     jbY: 0.09, jbZ: 0.71, // cajas de conexión bajo el módulo
     tcuX: 1.4,            // TCU desplazada a lo largo del tubo, junto al motor
+    antHang: 0.50, antTip: 0.07,   // la antena CUELGA 50 cm vertical desde el conector; la antena en sí (gruesa) mide 7 cm
     medioFactor: 0.504    // el seguidor "Medio" mide ~la mitad
   };
   D.pitch  = D.modW + D.gapMod;
@@ -196,10 +197,10 @@
       geom:function (TH){ return new TH.BoxGeometry(0.22, 1.0, 0.32); }, m:mT(THREE, 0,-0.6,0) });
     // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
     // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
-    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena: FINO; la app lo estira de la TCU a la puntera
-      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX+0.12, -0.20, 0.12) });
-    out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, fija abajo (~30 cm del suelo)
-      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX+0.12, -0.20, 0.12) });
+    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena: FINO; la app lo cuelga vertical desde el conector de la TCU
+      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX-0.133, -0.22, 0) });
+    out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, 7 cm en el extremo de abajo
+      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX-0.133, -0.22, 0) });
 
     // CABLE MOTOR → TCU: del conector del motor (FIJO, en el slew) al conector de motor de la TCU (BASCULA con el tubo).
     // Cruza el límite spin/estático: extremo 'a' estático, extremo 'b' gira con el tubo. La app calcula ambos extremos
@@ -247,6 +248,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.7';
+  S.VERSION = '0.3.8';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
