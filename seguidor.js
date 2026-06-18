@@ -161,8 +161,10 @@
     push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
       function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
     // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
-    out.push({ key:'soporte', mat:'steel', spin:false, cast:true, terrainScaled:true, twin:true,   // TWIN: igual bajo la corona de la viga gemela
-      geom:function (TH){ return new TH.BoxGeometry(0.26, 1.0, 0.42); }, m:mT(THREE, 0,-0.6,0) });
+    out.push({ key:'bracket', mat:'steel', spin:false, cast:true, twin:true,   // saddle/bracket que une el poste a la corona (como el render); TWIN: en ambas vigas
+      geom:function (TH){ return new TH.BoxGeometry(0.36, 0.16, 0.48); }, m:mT(THREE, 0,-0.20,0) });
+    out.push({ key:'soporte', mat:'steel', spin:false, cast:true, terrainScaled:true, twin:true,   // poste galvanizado del soporte; TWIN: igual bajo la corona de la viga gemela
+      geom:function (TH){ return new TH.BoxGeometry(0.22, 1.0, 0.32); }, m:mT(THREE, 0,-0.6,0) });
     // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
     // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
     out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,
@@ -206,6 +208,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.3';
+  S.VERSION = '0.1.4';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
