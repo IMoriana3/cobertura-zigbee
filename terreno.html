@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (modelo real tcu.glb)+antena en la del motor · eje de transmisión bífila · sombras · trayectoria solar · v2.29</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb, blanco roto, perpendicular)+antena fina-gruesa en la del motor · abarcón rodea la viga · eje de transmisión bífila · sombras · trayectoria solar · v2.30</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -338,7 +338,7 @@ function buildTrackers(elevAt){
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={};
   planM.forEach(function(t){mM[t.key]=t.locals;});
-  _TCUMOUNT.makeTranslation(D.tcuX,-0.22,0);                                        // punto de cuelgue de la TCU en la viga oeste
+  _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.setPosition(D.tcuX,-0.22,0);          // cuelgue de la TCU (girada 90°: perpendicular a la viga, no a lo largo)
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
     if(t.key==='tcu')return;                                                       // la TCU se dibuja con su MODELO real (tcu.glb), no con caja
@@ -346,7 +346,7 @@ function buildTrackers(elevAt){
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else count=(tw?2:1)*N*n;
     var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
-    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
+    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
@@ -394,7 +394,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
-        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],gnd=t.rel*vex+0.3,aln=Math.max(0.2,ay-gnd);_PV.set(ax,(ay+gnd)/2,az);_Q.identity();_SC.set(1,aln,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: VERTICAL de la TCU a ~30 cm del suelo, solo fila oeste
+        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],gnd=t.rel*vex+0.3;if(s.tip){_PV.set(ax,gnd+0.22,az);_Q.identity();_SC.set(1,0.44,1);_M2.compose(_PV,_Q,_SC);}else{var atop=gnd+0.40,aln=Math.max(0.2,ay-atop);_PV.set(ax,(ay+atop)/2,az);_Q.identity();_SC.set(1,aln,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cable FINO + puntera GRUESA, vertical, solo fila oeste
         if((s.key==='tcu'||s.key==='tcu_brk')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
@@ -408,8 +408,9 @@ function loadTCU(){ if(typeof THREE.GLTFLoader!=='function')return;
   new THREE.GLTFLoader().load('tcu.glb',function(gl){
     var sc=gl.scene;sc.updateMatrixWorld(true);
     var bb=new THREE.Box3().setFromObject(sc),c=bb.getCenter(new THREE.Vector3()),ctr=new THREE.Matrix4().makeTranslation(-c.x,-c.y,-c.z),N=TRK.length,arr=[];
+    var tcuM=new THREE.MeshStandardMaterial({color:0xe8e4dc,roughness:.6,metalness:.05});   // blanco roto (los materiales metálicos del glb salían NEGROS sin reflejo)
     sc.traverse(function(o){ if(o.isMesh&&o.geometry){var g=o.geometry.clone();g.applyMatrix4(o.matrixWorld);g.applyMatrix4(ctr);   // geometría centrada en su bbox
-      var im=new THREE.InstancedMesh(g,o.material,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
+      var im=new THREE.InstancedMesh(g,tcuM,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
     TCUGLB=arr; if(SEG)updateSpin(panelAngle(curMin));
   }, undefined, function(){ TCUGLB=null; }); }
 // etiquetas de seguidor (perezosas: solo se crean al activar la casilla, por rendimiento con 215)

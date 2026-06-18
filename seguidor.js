@@ -69,8 +69,8 @@
     var g=new TH.ExtrudeGeometry(s,{depth:D.modH*0.96, bevelEnabled:false}); g.translate(0,0,-D.modH*0.96/2); return g;
   }
   // ABARCÓN (U-bolt) que abraza la viga y fija la correa
-  function abarconGeom(TH){
-    var p=[new TH.Vector3(0,-0.05,-0.078), new TH.Vector3(0,0.10,-0.078), new TH.Vector3(0,0.12,0), new TH.Vector3(0,0.10,0.078), new TH.Vector3(0,-0.05,0.078)];
+  function abarconGeom(TH){   // U-bolt que RODEA la viga: baja por un lado, pasa por DEBAJO del tubo y sube por el otro
+    var p=[new TH.Vector3(0,0.10,-0.072), new TH.Vector3(0,-0.072,-0.072), new TH.Vector3(0,-0.088,0), new TH.Vector3(0,-0.072,0.072), new TH.Vector3(0,0.10,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
 
@@ -152,9 +152,7 @@
       }
     });
 
-    /* --- TCU colgada del tubo (bascula con él), junto al motor --- */
-    push('tcu_brk', 'silver', true, true,
-      function (TH){ return new TH.BoxGeometry(0.46, 0.07, 0.30); }, mT(THREE, D.tcuX, -0.05, 0));
+    /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
 
@@ -171,6 +169,8 @@
       function (TH){ var g=new TH.CylinderGeometry(0.092,0.092,0.05,18); g.rotateX(Math.PI/2); return g; }, mT(THREE, 0,-0.04,-0.68));
     push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
       function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
+    push('motorcable', 'jbox', false, true,                 // cable del conector de la reductora al motor
+      function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([new TH.Vector3(0.06,-0.16,-0.12), new TH.Vector3(0.02,-0.10,-0.28), new TH.Vector3(0,-0.05,-0.40)]),8,0.011,6,false); }, mT(THREE, 0,0,0));
     // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
     out.push({ key:'bracket', mat:'steel', spin:false, cast:true, twin:true,   // saddle/bracket que une el poste a la corona (como el render); TWIN: en ambas vigas
       geom:function (TH){ return new TH.BoxGeometry(0.36, 0.16, 0.48); }, m:mT(THREE, 0,-0.20,0) });
@@ -178,8 +178,10 @@
       geom:function (TH){ return new TH.BoxGeometry(0.22, 1.0, 0.32); }, m:mT(THREE, 0,-0.6,0) });
     // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
     // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
-    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,
-      geom:function (TH){ return new TH.CylinderGeometry(0.012,0.012,1.0,8); }, m:mT(THREE, D.tcuX, -0.35, 0) });
+    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena: FINO; la app lo estira de la TCU a la puntera
+      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX, -0.35, 0) });
+    out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, fija abajo (~30 cm del suelo)
+      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX, -0.35, 0) });
 
     return out;
   };
@@ -213,12 +215,12 @@
   S.instancePlan = function (THREE, opts) {
     var byType = {}, order = [];
     S.parts(THREE, opts).forEach(function (p) {
-      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, locals:[] }; order.push(p.key); }
+      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
     });
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.5';
+  S.VERSION = '0.1.6';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
