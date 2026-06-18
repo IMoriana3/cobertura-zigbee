@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.10</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.11</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -175,7 +175,7 @@ function sunVec(min){
   return {el:el, E:Math.cos(el)*Math.sin(az), N:Math.cos(el)*Math.cos(az), U:Math.sin(el)};
 }
 // ángulo del seguidor SIN backtracking: sigue al sol en el plano E-O → empinado al amanecer/atardecer (da sombra a la fila vecina)
-function noBtAngle(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return Math.max(-60,Math.min(60,-Math.atan2(sv.E,sv.U)/DEG)); }
+function noBtAngle(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return Math.max(-55,Math.min(55,-Math.atan2(sv.E,sv.U)/DEG)); }
 function simBtAngle(min){ var R=noBtAngle(min)*DEG; if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return (R-(R<0?-1:1)*Math.acos(temp))/DEG; }  // simulación CON backtracking (no sombrea la fila vecina)
 function panelAngle(min){
   if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
@@ -329,15 +329,17 @@ function buildTrackers(elevAt){
   });
   layoutTrackers();
 }
-function trackerBase(t){   // T_world = posición + drape al terreno (devuelve _M reutilizado)
-  var by=t.rel*vex,cl=0.8/vex;   // base en la cota del CENTRO; los postes (longitud variable) llegan al suelo
+function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
+  var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
   var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
   _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 function layoutTrackers(){
   if(!imPost)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
-  for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t);
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz;for(var kk=0;kk<zP.length;kk++){_T.makeTranslation(fx0,ph,zP[kk]);_M2.multiplyMatrices(Tw,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){
       _T.makeTranslation(fx,ph,zP[k]);_M2.multiplyMatrices(Tw,_T);                                              // cúspide del poste (sobre el tubo drapeado)
