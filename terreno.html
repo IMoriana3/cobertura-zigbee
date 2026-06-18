@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · cámara libre · día/velocidad · v2.15</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CTs iguales (6,38×2,05) + subestación propia (10,92×6,4) · inversores · vallado recto sin peanas · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.16</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -190,11 +190,11 @@ function panelAngle(min){
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); }
-// la shadow camera SIGUE a la vista: cuanto más cerca miras, más pequeño el frustum → texel más fino → adiós escalones
+// la shadow camera SIGUE al objetivo (para barrer la planta) pero con tamaño FIJO → las sombras NO cambian al alejar/acercar el zoom
 function updateSunShadow(){ if(!SUN||!SUN._dir||!controls||!camera)return; var t=controls.target, dir=SUN._dir;
-  var half=Math.max(45,Math.min(560,camera.position.distanceTo(t)*0.55)), sc=SUN.shadow.camera;
-  sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=Math.max(1200,half*8);sc.updateProjectionMatrix();
-  var d=Math.max(400,half*4); SUN.position.set(t.x+dir.E*d,t.y+Math.max(0.06,dir.U)*d,t.z-dir.N*d);
+  var half=150, sc=SUN.shadow.camera;                                          // frustum FIJO (independiente de la distancia de cámara) → sombras estables
+  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=2600;sc.updateProjectionMatrix();}
+  var d=800; SUN.position.set(t.x+dir.E*d,t.y+Math.max(0.06,dir.U)*d,t.z-dir.N*d);
   SUN.target.position.copy(t); SUN.target.updateMatrixWorld(); }
 function setTime(min){
   curMin=min; syncSun(min);
@@ -400,25 +400,29 @@ function buildBOS(){
   // viales
   var rp=[];(LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];if(!inClip(a[0],a[1])||!inClip(b[0],b[1]))continue;rp.push(a[0],localElevY(a[0],a[1])+0.4,-a[1],b[0],localElevY(b[0],b[1])+0.4,-b[1]);}});
   if(rp.length){var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(rp,3));bosGroup.add(new THREE.LineSegments(rg,new THREE.LineBasicMaterial({color:0xc2ab78,transparent:true,opacity:.55})));}
-  // vallado cinegético: postes redondos galvanizados + zócalo de hormigón + paño de malla + 2 alambres superiores
+  // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.25,side:THREE.DoubleSide,roughness:.6,metalness:.4,color:0xe2e8ee});
   var sv=[],su=[],sw=[];
   (LAYOUT.fence||[]).forEach(function(pl){
-    var dense=[];                                        // densifico el trazado (~3 m) para que el paño SIGA el terreno y no vuele
-    for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),ns=Math.max(1,Math.round(L/3));
-      for(var s=0;s<ns;s++){var f=s/ns;dense.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}}
-    if(pl.length)dense.push(pl[pl.length-1]);
+    var pts=[];                                                                    // densifico el trazado (~5 m) para que la BASE siga el terreno
+    for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),ns=Math.max(1,Math.round(L/5));
+      for(var s=0;s<ns;s++){var f=s/ns;pts.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}}
+    if(pl.length)pts.push(pl[pl.length-1]);
+    if(pts.length<2)return;
+    var raw=pts.map(function(p){return localElevY(p[0],p[1]);});                    // cota cruda del terreno bajo el paño
+    var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-10;k<=10;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±50 m → techo RECTO (ni ondula ni hace muros)
     var uacc=0,pacc=1e9;
-    for(var i=0;i+1<dense.length;i++){var a=dense[i],b=dense[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],ea=localElevY(a[0],a[1]),eb=localElevY(b[0],b[1]),ba=ea-0.7,bb=eb-0.7,ta=ea+fh,tb=eb+fh,L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,v=(fh+0.7)/0.15;uacc+=L;
+    for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
+        ba=raw[i]-0.6,bb=raw[i+1]-0.6,ta=sm[i]+fh,tb=sm[i+1]+fh,
+        L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,va=(ta-ba)/0.15,vb=(tb-bb)/0.15;uacc+=L;
       sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
-      su.push(u0,v,u1,v,u1,0, u0,v,u1,0,u0,0);
+      su.push(u0,va,u1,vb,u1,0, u0,va,u1,0,u0,0);
       sw.push(Ax,ta+0.06,Az,Bx,tb+0.06,Bz, Ax,ta+0.16,Az,Bx,tb+0.16,Bz);
-      pacc+=L;if(pacc>=8){pacc=0;var y=ea;                                                          // postes cada ~8 m, embebidos en SU cota (no vuelan)
-        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,fh+0.9,8),postM);po.position.set(a[0],y+fh/2-0.3,-a[1]);bosGroup.add(po);
-        var bz=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,0.3,8),baseM);bz.position.set(a[0],y+0.08,-a[1]);bosGroup.add(bz);}}
+      pacc+=L;if(pacc>=8){pacc=0;var h=ta-(raw[i]-0.3);                            // postes cada ~8 m: del suelo al techo recto (sin peana de hormigón)
+        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h,8),postM);po.position.set(a[0],(ta+raw[i]-0.3)/2,-a[1]);bosGroup.add(po);}}
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.25});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
   if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
@@ -439,14 +443,18 @@ function buildBOS(){
     [-W*0.42,W*0.42].forEach(function(px){var po=new THREE.Mesh(new THREE.BoxGeometry(0.07,cy+H*0.45,0.07),invPost);po.position.set(px,(cy+H*0.45)/2,D*0.5+0.06);g.add(po);}); // postes del bastidor
     var rail=new THREE.Mesh(new THREE.BoxGeometry(W*0.9,0.07,0.07),invPost);rail.position.set(0,legH,D*0.5+0.06);g.add(rail);  // travesaño
     bosGroup.add(g);});
-  // compound del DWG (identificado): CTs compactos (EMU) en Norte/Sur + etiquetas de subestación y salas
+  // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  [{x:-3.5,n:30.2,lab:'CT Norte',emu:1},{x:20.5,n:-192.2,lab:'CT Sur',emu:1},
-   {x:9,n:-206,lab:'Subestación'},{x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
+  [{x:-3.5,n:30.2,lab:'CT Norte',ct:1},{x:20.5,n:-192.2,lab:'CT Sur',ct:1},
+   {x:8.9,n:-198.5,lab:'Subestación',sub:1},{x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
-    if(b.emu){var pad=new THREE.Mesh(new THREE.BoxGeometry(4,0.3,2.6),baseM);pad.position.set(b.x,y+0.15,-b.n);bosGroup.add(pad);            // skid de hormigón
-      var bx=new THREE.Mesh(new THREE.BoxGeometry(3.2,2.4,2.1),emuM);bx.position.set(b.x,y+1.5,-b.n);bosGroup.add(bx);}                       // caja del CT compacto (EMU)
-    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.emu?4.2:3.8),-b.n);bosGroup.add(lb);});
+    if(b.ct){var pad=new THREE.Mesh(new THREE.BoxGeometry(6.7,0.25,2.35),baseM);pad.position.set(b.x,y+0.12,-b.n);bosGroup.add(pad);                       // CT: 6,38(EW)×2,05(NS)×3 alto — los dos IGUALES
+      var bx=new THREE.Mesh(new THREE.BoxGeometry(6.38,3,2.05),emuM);bx.position.set(b.x,y+1.5,-b.n);bosGroup.add(bx);
+      var rf=new THREE.Mesh(new THREE.BoxGeometry(6.78,0.2,2.45),roofM);rf.position.set(b.x,y+3.05,-b.n);bosGroup.add(rf);}
+    else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
+      var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
+      var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
+    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.sub?4.4:b.ct?3.9:3.6),-b.n);bosGroup.add(lb);});
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
