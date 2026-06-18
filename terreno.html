@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.9</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.10</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -324,13 +324,13 @@ function buildTrackers(elevAt){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
-    var relMax=Math.max(rel,relN,relS,elevAt(n.glat+latHalf*0.5,n.glon)-baseElev,elevAt(n.glat-latHalf*0.5,n.glon)-baseElev);  // cota máx bajo la huella (N-S) para no hundir
-    TRK.push({gx:n.gx,gz:n.gz,rel:rel,relMax:relMax,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
+    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<zP.length;pk++){var ppx=n.gx+pfx,ppz=n.gz+zP[pk];postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste → postes de longitud variable
+    TRK.push({gx:n.gx,gz:n.gz,rel:rel,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
   });
   layoutTrackers();
 }
 function trackerBase(t){   // T_world = posición + drape al terreno (devuelve _M reutilizado)
-  var by=t.rel*vex+Math.min(6,Math.max(0,((t.relMax||t.rel)-t.rel)*vex-1.0)),cl=0.45/vex;   // sube lo justo para que el panel no se hunda en el terreno exagerado
+  var by=t.rel*vex,cl=0.8/vex;   // base en la cota del CENTRO; los postes (longitud variable) llegan al suelo
   var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
   _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
@@ -339,7 +339,11 @@ function layoutTrackers(){
   if(!imPost)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t);
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
-    var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){_T.makeTranslation(fx,ph/2,zP[k]);_M2.multiplyMatrices(Tw,_T);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
+    var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){
+      _T.makeTranslation(fx,ph,zP[k]);_M2.multiplyMatrices(Tw,_T);                                              // cúspide del poste (sobre el tubo drapeado)
+      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
+      _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
+      imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
     var dvx=-fz;                                                                                  // slew drive sobre la fila -fz (como el gemelo)
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     _T.makeTranslation(dvx,ph,0);_M2.multiplyMatrices(Tw,_T);imFlange.setMatrixAt(i,_M2);          // corona slew abrazada al tubo
