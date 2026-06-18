@@ -158,10 +158,11 @@
       function (TH){ var g=new TH.CylinderGeometry(0.085,0.085,0.40,18); g.rotateX(Math.PI/2); return g; }, mT(THREE, 0,-0.04,-0.46));
     push('tapa', 'blue', false, true,                       // tapa del motor
       function (TH){ var g=new TH.CylinderGeometry(0.092,0.092,0.05,18); g.rotateX(Math.PI/2); return g; }, mT(THREE, 0,-0.04,-0.68));
-    // SOPORTE de la corona: pedestal hasta el suelo. La LONGITUD depende del terreno,
-    // así que se marca terrainScaled: la app lo estira/baja desde la corona hasta el suelo.
+    push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
+      function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
+    // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
     out.push({ key:'soporte', mat:'steel', spin:false, cast:true, terrainScaled:true,
-      geom:function (TH){ return new TH.BoxGeometry(0.20, 1.0, 0.34); }, m:mT(THREE, 0,-0.6,0) });
+      geom:function (TH){ return new TH.BoxGeometry(0.26, 1.0, 0.42); }, m:mT(THREE, 0,-0.6,0) });
 
     return out;
   };
@@ -201,6 +202,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.1';
+  S.VERSION = '0.1.2';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
