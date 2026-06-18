@@ -1177,18 +1177,21 @@ function showPred(){
     predLayer.clearLayers(); if(!map.hasLayer(predLayer))predLayer.addTo(map);
     for(const e of PRED.edges){ const rm=e.p.rssi_medido_dbm;
       L.polyline(e.ll,{color:colRSSI(rm),weight:2,opacity:.6}).bindPopup(
-        `<div class="pn">${e.p.origen} → ${e.p.destino}</div><table><tr><td>RSSI medido</td><td>${rm??'—'} dBm</td></tr><tr><td>distancia</td><td>${e.p.distancia_m} m</td></tr><tr><td>frecuencia uso</td><td>${e.p.freq??'—'}</td></tr></table>`
+        `<div class="pn">${e.p.origen} → ${e.p.destino}</div><table><tr><td>gateway</td><td>${e.p.gw??'—'}</td></tr><tr><td>RSSI medido</td><td>${rm??'—'} dBm</td></tr><tr><td>distancia</td><td>${e.p.distancia_m} m</td></tr><tr><td>frecuencia uso</td><td>${e.p.freq??'—'}</td></tr></table>`
       ).addTo(predLayer); }
-    let spofN=0,domN=0,lats=[],lons=[];
-    for(const nd of PRED.nodes){ const sp=!!nd.p.is_spof, dsc=nd.p.descendientes||0; if(sp)spofN++; if(dsc>=26)domN++; lats.push(nd.lat);lons.push(nd.lon);
+    let spofN=0,domN=0,lats=[],lons=[]; const gwCount={},gwDom={};   // SPOF/dominadores por GW
+    for(const nd of PRED.nodes){ const sp=!!nd.p.is_spof, dsc=nd.p.descendientes||0, gw=nd.p.gw||null; if(sp)spofN++; if(dsc>=26)domN++; lats.push(nd.lat);lons.push(nd.lon);
+      if(gw){ gwCount[gw]=(gwCount[gw]||0)+1; if(!gwDom[gw]||dsc>gwDom[gw].d)gwDom[gw]={id:nd.p.id,et:nd.p.etiqueta,d:dsc}; }
       const big=sp||dsc>=26;
       L.circleMarker([nd.lat,nd.lon],{radius:big?9:6,weight:big?3:2,color:sp?'#ffffff':'rgba(0,0,0,.55)',fillColor:colDescPred(dsc,sp),fillOpacity:.95}).bindPopup(
-        `<div class="pn">${nd.p.id}${nd.p.etiqueta?(' · '+nd.p.etiqueta):''}</div><div class="pr">${sp?'⚠ punto único de fallo (SPOF)':(dsc>=26?'dominador (cuello de botella)':(nd.p.role||'TCU'))}</div><table><tr><td>descendientes</td><td>${dsc}</td></tr><tr><td>rutas que pasan</td><td>${nd.p.rutas??'—'}</td></tr><tr><td>RSSI medio</td><td>${nd.p.rssi_med_dbm??'—'} dBm</td></tr><tr><td>saltos típicos</td><td>${nd.p.hop_tipico??'—'}</td></tr><tr><td>padres distintos</td><td>${nd.p.padres_distintos??'—'}</td></tr><tr><td>padre dominante</td><td>${nd.p.padre_dominante??'—'}</td></tr><tr><td>ACK fallos</td><td>${nd.p.ack_failures??'—'}</td></tr></table>`
+        `<div class="pn">${nd.p.id}${nd.p.etiqueta?(' · '+nd.p.etiqueta):''}</div><div class="pr">${sp?'⚠ punto único de fallo (SPOF)':(dsc>=26?'dominador (cuello de botella)':(nd.p.role||'TCU'))}</div><table><tr><td>gateway</td><td>${gw||'—'}</td></tr><tr><td>descendientes</td><td>${dsc}</td></tr><tr><td>rutas que pasan</td><td>${nd.p.rutas??'—'}</td></tr><tr><td>RSSI medio</td><td>${nd.p.rssi_med_dbm??'—'} dBm</td></tr><tr><td>saltos típicos</td><td>${nd.p.hop_tipico??'—'}</td></tr><tr><td>padres distintos</td><td>${nd.p.padres_distintos??'—'}</td></tr><tr><td>padre dominante</td><td>${nd.p.padre_dominante??'—'}</td></tr><tr><td>ACK fallos</td><td>${nd.p.ack_failures??'—'}</td></tr></table>`
       ).addTo(predLayer); }
+    const gws=Object.keys(gwCount).sort();
     const set=(i,v)=>{const el=document.getElementById(i);if(el)el.textContent=v;};
     set('sTot',PRED.nodes.length); set('sOn','—'); set('sOff',spofN||'—');
     set('m1l','Enlaces'); set('m1',PRED.edges.length); set('m2l','Dominadores'); set('m2',domN);
-    const wh=document.querySelector('#worst .wh h2'); if(wh)wh.textContent='Malla real · dominadores / SPOF';
+    const wh=document.querySelector('#worst .wh h2');
+    if(wh)wh.textContent = gws.length? ('Malla real · '+gws.map(g=>g+' ('+gwCount[g]+', dom '+(gwDom[g].et||gwDom[g].id)+')').join(' · ')) : 'Malla real · dominadores / SPOF';
     if(!predFit && lats.length){ map.fitBounds([[Math.min(...lats),Math.min(...lons)],[Math.max(...lats),Math.max(...lons)]],{padding:[40,40]}); predFit=true; }
   });
 }
