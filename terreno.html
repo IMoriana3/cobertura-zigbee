@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.44"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.45"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,13 +40,12 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega ESTRECHA (chapa 3 mm, 80 cm) apoyada sobre la viga, el marco se atornilla en ella · 3 cajas en la línea CENTRAL del módulo (a lo ancho) con leapfrog 6 mm² · tapas negras en los extremos de la viga · abarcón rodea la viga · 2 abarcones de TCU sobre los salientes de los extremos (medidos del .glb) · cableado de motor negro (latiguillo + 6 mm² al conector de la TCU) · TCU con sillín/chapas + abarcones M8 · antena realista colgando 50 cm · enlaces RF desde la PUNTA de la antena · etiquetas (incl. NCU) conmutables y con mejor aspecto · slew sin caja de finales de carrera · seguidor.js versionado (anti-caché móvil) · eje de transmisión bífila · sombras · trayectoria solar · slider 24 h · v2.44</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.45</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
     <h2>Vista</h2>
     <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="14" step="0.5" value="5"><span id="vexV" style="font-family:var(--mono)">5×</span></div>
-    <div class="row"><label>Tamaño TCU</label><input type="range" id="nsz" min="0.3" max="3" step="0.1" value="1"></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -324,7 +323,7 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
-  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.needsUpdate=true;     // células FV en cada módulo
+  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
@@ -617,7 +616,6 @@ $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría)
   tMin=0;tMax=1440;   // 24 h completas en ambos modos (real / simulación)
   $('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;
   setTime(curMin);if(fresOn)applyFresnel();};
-$('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
