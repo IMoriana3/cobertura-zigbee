@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.11</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · 2 tamaños + sim · v2.12</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -174,9 +174,10 @@ function sunVec(min){
   var az=Math.atan2(-Math.cos(decl)*Math.sin(H)/ce,(Math.sin(decl)-Math.sin(lat)*sa)/(Math.cos(lat)*ce));
   return {el:el, E:Math.cos(el)*Math.sin(az), N:Math.cos(el)*Math.cos(az), U:Math.sin(el)};
 }
-// ángulo del seguidor SIN backtracking: sigue al sol en el plano E-O → empinado al amanecer/atardecer (da sombra a la fila vecina)
-function noBtAngle(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return Math.max(-55,Math.min(55,-Math.atan2(sv.E,sv.U)/DEG)); }
-function simBtAngle(min){ var R=noBtAngle(min)*DEG; if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return (R-(R<0?-1:1)*Math.acos(temp))/DEG; }  // simulación CON backtracking (no sombrea la fila vecina)
+// ángulo de seguimiento puro (rad, SIN límite); a sol bajo se acerca a ±90°
+function trueTrack(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return -Math.atan2(sv.E,sv.U); }
+function noBtAngle(min){ return Math.max(-55,Math.min(55,trueTrack(min)/DEG)); }                              // sin BT: sigue al sol y topa en ±55°
+function simBtAngle(min){ var R=trueTrack(min); if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return Math.max(-55,Math.min(55,(R-(R<0?-1:1)*Math.acos(temp))/DEG)); }  // backtracking desde el ángulo VERDADERO → al amanecer se APLANA
 function panelAngle(min){
   if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
@@ -193,10 +194,14 @@ function setTime(min){
   if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
     _T.makeTranslation(0,TC.off,TC.mesaC);_MN.multiplyMatrices(_R,_T);
     _T.makeTranslation(0,TC.off,-TC.mesaC);_MS.multiplyMatrices(_R,_T);
-    for(var i=0;i<TRK.length;i++){var fb=TRK[i].fb;for(var f=0;f<2;f++){
-      _M2.multiplyMatrices(fb[f],_R);imTube.setMatrixAt(i*2+f,_M2);
-      _M2.multiplyMatrices(fb[f],_MN);imPanel.setMatrixAt(i*4+f*2,_M2);
-      _M2.multiplyMatrices(fb[f],_MS);imPanel.setMatrixAt(i*4+f*2+1,_M2);}}
+    _T.makeTranslation(0,TC.off,0);_MC.multiplyMatrices(_R,_T);                                  // mesa CENTRADA (seguidor "Medio": 1 sola mesa)
+    for(var i=0;i<TRK.length;i++){var tk=TRK[i],fb=tk.fb;for(var f=0;f<2;f++){
+      if(tk.medio){ _SCT.makeScale(1,1,tk.mr);_M2.multiplyMatrices(_R,_SCT);_M2.premultiply(fb[f]);imTube.setMatrixAt(i*2+f,_M2);   // tubo a la mitad
+        _M2.multiplyMatrices(fb[f],_MC);imPanel.setMatrixAt(i*4+f*2,_M2);                                                          // 1 mesa centrada
+        _M2.makeScale(0,0,0);imPanel.setMatrixAt(i*4+f*2+1,_M2); }                                                                // oculta la 2ª mesa
+      else { _M2.multiplyMatrices(fb[f],_R);imTube.setMatrixAt(i*2+f,_M2);
+        _M2.multiplyMatrices(fb[f],_MN);imPanel.setMatrixAt(i*4+f*2,_M2);
+        _M2.multiplyMatrices(fb[f],_MS);imPanel.setMatrixAt(i*4+f*2+1,_M2); } }}
     imTube.instanceMatrix.needsUpdate=true;imPanel.instanceMatrix.needsUpdate=true;}
   $('tval').textContent=fmtHM(min);
   $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
@@ -208,7 +213,7 @@ async function build(){
   try{LAYOUT=await (await fetch('elburgo_layout.json',{cache:'no-store'})).json();}
   catch(e){setStatus('<span class="err">No se pudo cargar elburgo_layout.json</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
-  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot};}); // posiciones reales del DWG (metros locales E/N)
+  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
   function ext(x,n){exmin=Math.min(exmin,x);exmax=Math.max(exmax,x);nmin=Math.min(nmin,n);nmax=Math.max(nmax,n);}
@@ -277,7 +282,7 @@ function gridRepair(){
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
 var imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,TC={};
-var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4();
+var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 function makePanelTex(){
@@ -325,7 +330,8 @@ function buildTrackers(elevAt){
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
     var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<zP.length;pk++){var ppx=n.gx+pfx,ppz=n.gz+zP[pk];postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste → postes de longitud variable
-    TRK.push({gx:n.gx,gz:n.gz,rel:rel,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
+    var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
+    TRK.push({gx:n.gx,gz:n.gz,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
   });
   layoutTrackers();
 }
@@ -338,10 +344,11 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
 function layoutTrackers(){
   if(!imPost)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);
-    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz;for(var kk=0;kk<zP.length;kk++){_T.makeTranslation(fx0,ph,zP[kk]);_M2.multiplyMatrices(Tw,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz;for(var kk=0;kk<zP.length;kk++){if(t.medio&&Math.abs(zP[kk])>16){pj++;continue;}_T.makeTranslation(fx0,ph,zP[kk]);_M2.multiplyMatrices(Tw,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz;for(var k=0;k<zP.length;k++){
+      if(t.medio&&Math.abs(zP[k])>16){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // "Medio": sin postes exteriores
       _T.makeTranslation(fx,ph,zP[k]);_M2.multiplyMatrices(Tw,_T);                                              // cúspide del poste (sobre el tubo drapeado)
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
