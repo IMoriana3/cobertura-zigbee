@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + subestación sur (CT Sur dentro) en coords. exactas DWG · sin edificio de oficinas · vallado recto pegado al terreno (no desaparece) · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.17</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.18</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -447,8 +447,8 @@ function buildBOS(){
     bosGroup.add(g);});
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  [{x:-0.86,n:22.01,lab:'CT Norte',ct:1},                                              // CT Norte: edificio propio (posición exacta DWG, UTM→local)
-   {x:9.92,n:-194.24,lab:'Subestación',sub:1},{x:9.92,n:-194.24,lab:'CT Sur',lo:1},   // sur: la subestación 10,92×6,4 ALBERGA el CT Sur (misma inserción en el DWG)
+  [{x:-0.86,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Norte y CT Sur: edificios propios IGUALES, en coords. exactas DWG
+   {x:-6.9,n:-198.5,lab:'Subestación',sub:1},                                            // subestación AL SUR de la sala de control (ya NO encima del CT Sur)
    {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
     if(b.ct){var pad=new THREE.Mesh(new THREE.BoxGeometry(6.7,0.25,2.35),baseM);pad.position.set(b.x,y+0.12,-b.n);bosGroup.add(pad);                       // CT: 6,38(EW)×2,05(NS)×3 alto — los dos IGUALES
