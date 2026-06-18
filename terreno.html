@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos, correas 2n+1, cableado, corona/soporte, TCU) · sombras de toda la planta · trayectoria solar · cámara libre (WASD) · v2.23</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos, correas 2n+1, cableado, corona/soporte, TCU fila oeste) · sombras de toda la planta · trayectoria solar · cámara libre (WASD) · v2.24</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -391,6 +391,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
+        if((s.key==='tcu'||s.key==='tcu_brk')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
     }}
