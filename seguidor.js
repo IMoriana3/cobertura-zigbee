@@ -73,6 +73,10 @@
     var p=[new TH.Vector3(0,0.10,-0.072), new TH.Vector3(0,-0.072,-0.072), new TH.Vector3(0,-0.088,0), new TH.Vector3(0,-0.072,0.072), new TH.Vector3(0,0.10,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
+  // caja de conexión (2 por módulo, a 1/3 y 2/3 del lateral)
+  function jboxGeom(TH){ return new TH.BoxGeometry(0.10, 0.05, 0.14); }
+  // cable de string LEAPFROG: salta 2 módulos (paso doble). Sección 6 mm² → Ø ~6 mm (radio 0.003)
+  function leapCableGeom(TH){ return catenary(TH, new TH.Vector3(-D.pitch, D.jbY-0.02, 0), new TH.Vector3(D.pitch, D.jbY-0.02, 0), 0.12, 0.003); }
 
   /* ====================================================================
    * PIEZAS de UN tubo (una fila). Devuelve una lista de descriptores:
@@ -114,23 +118,20 @@
           push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.06, 0));      // correa omega en el hueco entre módulos
           push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
+        var jbZ = D.modH/6;                                 // 2 cajas por módulo: a 1/3 (−Z) y 2/3 (+Z) del lateral
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
-            function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral (mismo plano que el vidrio)
+            function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
           push('glass', 'glass', true, true,
-            function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL: vidrio-vidrio, células por las DOS caras (sobresale del marco)
-          push('jbox', 'jbox', true, false,
-            function (TH){ return new TH.BoxGeometry(0.10, 0.05, 0.16); }, mT(THREE, cx, D.jbY, D.jbZ));
-          if (m < D.modsPerStr - 1) {                      // cable + del módulo → − del siguiente
-            // geometría CANÓNICA (un vano de paso 'pitch') + traslación: así todas las
-            // mangueras comparten una sola geometría y cobertura las puede instanciar.
-            var midx = (cx + modX(m+1)) / 2;
-            push('cable', 'cable', true, false, function (TH){
-              return catenary(TH, new TH.Vector3(-D.pitch/2, D.jbY-0.02, D.jbZ+0.06),
-                                  new TH.Vector3(+D.pitch/2, D.jbY-0.02, D.jbZ-0.06), 0.10, 0.012);
-            }, mT(THREE, midx, 0, 0));
-          }
+            function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY, -jbZ));   // caja a 1/3
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  jbZ));   // caja a 2/3
+        }
+        // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos; + (rojo) por +Z, − (negro) por −Z (cada uno por el lado de su caja); 6 mm²
+        for (var c = 0; c <= D.modsPerStr - 3; c++) {
+          var even = (c % 2 === 0);
+          push(even?'cablepos':'cableneg', even?'cable':'jbox', true, false, leapCableGeom, mT(THREE, modX(c+1), 0, even?jbZ:-jbZ));
         }
       } else {
         /* 'mass': 1 MESA por ala (textura de células) + correas repr. + canaleta + cajas */
@@ -155,6 +156,8 @@
     /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
+    push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, D.tcuX-0.12, 0, 0));   // la TCU se fija a la viga con DOS abarcones
+    push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, D.tcuX+0.12, 0, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -221,6 +224,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.6';
+  S.VERSION = '0.1.8';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
