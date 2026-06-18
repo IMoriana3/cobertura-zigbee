@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CTs iguales (6,38×2,05) + subestación propia (10,92×6,4) · inversores · vallado recto sin peanas · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.16</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + subestación sur (CT Sur dentro) en coords. exactas DWG · sin edificio de oficinas · vallado recto pegado al terreno (no desaparece) · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.17</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -413,23 +413,25 @@ function buildBOS(){
     if(pl.length)pts.push(pl[pl.length-1]);
     if(pts.length<2)return;
     var raw=pts.map(function(p){return localElevY(p[0],p[1]);});                    // cota cruda del terreno bajo el paño
-    var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-10;k<=10;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±50 m → techo RECTO (ni ondula ni hace muros)
+    var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m: quita el zigzag fino
+    // base y techo con TOPE para que NUNCA colapse en cuestas: base nunca por encima del suelo (no vuela), techo siempre ≥ suelo+1 (no desaparece)
+    var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i])-0.3;tE[i]=Math.max(sm[i]+fh,raw[i]+1.0);}
     var uacc=0,pacc=1e9;
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
-        ba=raw[i]-0.6,bb=raw[i+1]-0.6,ta=sm[i]+fh,tb=sm[i+1]+fh,
+        ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
         L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,va=(ta-ba)/0.15,vb=(tb-bb)/0.15;uacc+=L;
       sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
       su.push(u0,va,u1,vb,u1,0, u0,va,u1,0,u0,0);
       sw.push(Ax,ta+0.06,Az,Bx,tb+0.06,Bz, Ax,ta+0.16,Az,Bx,tb+0.16,Bz);
-      pacc+=L;if(pacc>=8){pacc=0;var h=ta-(raw[i]-0.3);                            // postes cada ~8 m: del suelo al techo recto (sin peana de hormigón)
-        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h,8),postM);po.position.set(a[0],(ta+raw[i]-0.3)/2,-a[1]);bosGroup.add(po);}}
+      pacc+=L;if(pacc>=8){pacc=0;var h=ta-ba;                                       // postes cada ~8 m, de la base al techo (sin peana de hormigón)
+        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h+0.3,8),postM);po.position.set(a[0],(ta+ba)/2,-a[1]);bosGroup.add(po);}}
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.25});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
   if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
   // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
   var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
   (LAYOUT.cts||[]).forEach(function(pl){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;pl.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
-    var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;var cx=(x0+x1)/2,cn=(n0+n1)/2,h=3.1;if(!inClip(cx,cn))return;var y=localElevY(cx,cn);
+    var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;var cx=(x0+x1)/2,cn=(n0+n1)/2,h=3.1;if(cx>-6&&cx<22&&cn>-213&&cn<-201)return;if(!inClip(cx,cn))return;var y=localElevY(cx,cn);  // sin edificio de oficinas (recinto sur del DWG)
     var b=new THREE.Mesh(new THREE.BoxGeometry(w,h,dp),bldM);b.position.set(cx,y+h/2,-cn);bosGroup.add(b);                                  // muros
     var rf=new THREE.Mesh(new THREE.BoxGeometry(w+0.5,0.25,dp+0.5),roofM);rf.position.set(cx,y+h+0.12,-cn);bosGroup.add(rf);                // cubierta saliente
     var dw=Math.min(1.1,w*0.4),dh=Math.min(2.2,h*0.8);var dr=new THREE.Mesh(new THREE.BoxGeometry(dw,dh,0.08),doorM);dr.position.set(cx,y+dh/2,-cn+dp/2+0.04);bosGroup.add(dr);});  // puerta
@@ -445,8 +447,9 @@ function buildBOS(){
     bosGroup.add(g);});
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  [{x:-3.5,n:30.2,lab:'CT Norte',ct:1},{x:20.5,n:-192.2,lab:'CT Sur',ct:1},
-   {x:8.9,n:-198.5,lab:'Subestación',sub:1},{x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
+  [{x:-0.86,n:22.01,lab:'CT Norte',ct:1},                                              // CT Norte: edificio propio (posición exacta DWG, UTM→local)
+   {x:9.92,n:-194.24,lab:'Subestación',sub:1},{x:9.92,n:-194.24,lab:'CT Sur',lo:1},   // sur: la subestación 10,92×6,4 ALBERGA el CT Sur (misma inserción en el DWG)
+   {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
     if(b.ct){var pad=new THREE.Mesh(new THREE.BoxGeometry(6.7,0.25,2.35),baseM);pad.position.set(b.x,y+0.12,-b.n);bosGroup.add(pad);                       // CT: 6,38(EW)×2,05(NS)×3 alto — los dos IGUALES
       var bx=new THREE.Mesh(new THREE.BoxGeometry(6.38,3,2.05),emuM);bx.position.set(b.x,y+1.5,-b.n);bosGroup.add(bx);
@@ -454,7 +457,7 @@ function buildBOS(){
     else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
       var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
       var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
-    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.sub?4.4:b.ct?3.9:3.6),-b.n);bosGroup.add(lb);});
+    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.lo?5.9:b.sub?4.4:b.ct?3.9:3.6),-b.n);bosGroup.add(lb);});
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
