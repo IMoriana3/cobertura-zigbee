@@ -197,10 +197,10 @@
       geom:function (TH){ return new TH.BoxGeometry(0.22, 1.0, 0.32); }, m:mT(THREE, 0,-0.6,0) });
     // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
     // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
-    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena: FINO; la app lo cuelga vertical desde el conector de la TCU
-      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX-0.133, -0.22, 0) });
-    out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, 7 cm en el extremo de abajo
-      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX-0.133, -0.22, 0) });
+    out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena (coax): FINO ~Ø4,4 mm; la app lo cuelga vertical desde la TCU
+      geom:function (TH){ return new TH.CylinderGeometry(0.0022,0.0022,1.0,6); }, m:mT(THREE, D.tcuX-0.16, -0.225, 0) });
+    out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: ~Ø12 mm, 7 cm en el extremo de abajo
+      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,8); }, m:mT(THREE, D.tcuX-0.16, -0.225, 0) });
 
     // CABLE MOTOR → TCU: del conector del motor (FIJO, en el slew) al conector de motor de la TCU (BASCULA con el tubo).
     // Cruza el límite spin/estático: extremo 'a' estático, extremo 'b' gira con el tubo. La app calcula ambos extremos
@@ -248,6 +248,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.8';
+  S.VERSION = '0.3.9';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
