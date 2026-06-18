@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · vallado al terreno · CTs reales · v2.14</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · cámara libre · día/velocidad · v2.15</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -50,6 +50,8 @@
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
     <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
+    <div class="row"><label>Día (simulación)</label><input type="date" id="simdate" value="2026-06-17" style="font:inherit;font-size:12px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:6px;padding:3px 6px"></div>
+    <div class="row"><label title="Cámara libre tipo vuelo: el ratón mira alrededor (no orbita) y WASD/QE se mueve. Quítalo para volver a órbita."><input type="checkbox" id="freecam"> Cámara libre (vuelo)</label></div>
     <div class="row"><label title="Enlaces de radio de cada TCU a su NCU. Lo que apantalla no es el relieve (llano) sino los propios paneles inclinados → cambia con la hora. Arrastra la barra de tiempo o dale al ▶."><input type="checkbox" id="fres"> Enlaces a NCU (apantalla el panel)</label></div>
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
@@ -60,6 +62,7 @@
     <button class="btn" id="play">▶</button>
     <span class="t" id="tval">12:00</span>
     <input type="range" id="time" min="0" max="840" step="1" value="720">
+    <input type="range" id="spd" min="2" max="120" step="2" value="30" title="Velocidad de reproducción" style="max-width:80px">
     <span class="a" id="aval">—</span>
   </div>
   <div id="status">iniciando…</div>
@@ -90,7 +93,8 @@ var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/te
 
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
-var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=70;
+var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
+var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 
@@ -118,7 +122,10 @@ function initThree(){
   if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
   scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);scene.fog=new THREE.Fog(0x0b0f14,1200,2800);
   camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,9000);camera.position.set(0,360,460);
-  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.maxPolarAngle=Math.PI*0.92;controls.minDistance=1.5;controls.maxDistance=7000;controls.screenSpacePanning=true;   // cámara libre: ángulos bajos, acercarse al detalle, paneo libre
+  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.08;controls.maxPolarAngle=Math.PI*0.92;controls.minDistance=1.5;controls.maxDistance=7000;controls.screenSpacePanning=true;
+  renderer.domElement.addEventListener('pointerdown',function(e){if(freeCam){_md=true;_mx=e.clientX;_my=e.clientY;}});   // cámara libre (vuelo): ratón = mirar
+  addEventListener('pointermove',function(e){if(freeCam&&_md){fYaw-=(e.clientX-_mx)*0.0026;fPitch-=(e.clientY-_my)*0.0026;fPitch=Math.max(-1.5,Math.min(1.5,fPitch));_mx=e.clientX;_my=e.clientY;camera.quaternion.setFromEuler(_eul.set(fPitch,fYaw,0));}});
+  addEventListener('pointerup',function(){_md=false;});
   renderer.domElement.addEventListener('click',function(e){ if(!placingGw||!terrain)return;   // mueve la NCU más cercana al punto pulsado
     var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);
     var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;
@@ -136,7 +143,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    flyStep(dt);controls.update();updateSunShadow();renderer.render(scene,camera);})(performance.now());
+    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -166,7 +173,7 @@ function angleAt(num,min){
 var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
 // posición del sol (fecha de la telemetría, hora local CEST) → vector hacia el sol en mundo (x=E, y=arriba, z=-N)
 function sunVec(min){
-  var lat=lat0*DEG, doy=168;
+  var lat=lat0*DEG, doy=simDoy;
   var decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
   var B=2*Math.PI*(doy-81)/364, EoT=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B);
   var H=((min-120+lon0*4+EoT)/60-12)*15*DEG;                    // ángulo horario (UTC+2 + corrección de longitud + ecuación del tiempo)
@@ -368,12 +375,7 @@ function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],lb=makeLabel(NODES[i].id||'');lb.position.set(t.gx,t.rel*vex+TC.postH+3.5,t.gz);labelGroup.add(lb);LBL.push(lb);}
 }
 // línea del PASILLO CENTRAL (divide qué NCU usa cada TCU): norte→NCU norte, sur→NCU sur
-function buildCorridor(){ if(corrGroup)scene.remove(corrGroup); corrGroup=new THREE.Group();scene.add(corrGroup); if(!ELEV||!FB)return;
-  var z=-CORRIDOR,pts=[];for(var x=FB.x0-15;x<=FB.x1+15;x+=8)pts.push(x,localElevY(x,CORRIDOR)+0.6,z);
-  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
-  corrGroup.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xe2574c,transparent:true,opacity:.85})));
-  var lb=makeLabel('pasillo central');lb.position.set(FB.x1+10,localElevY(FB.x1,CORRIDOR)+4,z);corrGroup.add(lb);
-}
+function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;} }   // línea roja del pasillo retirada (el reparto N/S sigue activo por CORRIDOR)
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
@@ -410,12 +412,12 @@ function buildBOS(){
       for(var s=0;s<ns;s++){var f=s/ns;dense.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}}
     if(pl.length)dense.push(pl[pl.length-1]);
     var uacc=0,pacc=1e9;
-    for(var i=0;i+1<dense.length;i++){var a=dense[i],b=dense[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],ya=localElevY(a[0],a[1])-0.06,yb=localElevY(b[0],b[1])-0.06,L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,v=fh/0.15;uacc+=L;
-      sv.push(Ax,ya,Az,Bx,yb,Bz,Bx,yb+fh,Bz, Ax,ya,Az,Bx,yb+fh,Bz,Ax,ya+fh,Az);
+    for(var i=0;i+1<dense.length;i++){var a=dense[i],b=dense[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],ea=localElevY(a[0],a[1]),eb=localElevY(b[0],b[1]),ba=ea-0.7,bb=eb-0.7,ta=ea+fh,tb=eb+fh,L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,v=(fh+0.7)/0.15;uacc+=L;
+      sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
       su.push(u0,v,u1,v,u1,0, u0,v,u1,0,u0,0);
-      sw.push(Ax,ya+fh+0.06,Az,Bx,yb+fh+0.06,Bz, Ax,ya+fh+0.16,Az,Bx,yb+fh+0.16,Bz);
-      pacc+=L;if(pacc>=8){pacc=0;var y=localElevY(a[0],a[1]);                                       // postes cada ~8 m, apoyados en SU cota
-        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,fh+0.3,8),postM);po.position.set(a[0],y+(fh+0.3)/2-0.06,-a[1]);bosGroup.add(po);
+      sw.push(Ax,ta+0.06,Az,Bx,tb+0.06,Bz, Ax,ta+0.16,Az,Bx,tb+0.16,Bz);
+      pacc+=L;if(pacc>=8){pacc=0;var y=ea;                                                          // postes cada ~8 m, embebidos en SU cota (no vuelan)
+        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,fh+0.9,8),postM);po.position.set(a[0],y+fh/2-0.3,-a[1]);bosGroup.add(po);
         var bz=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,0.3,8),baseM);bz.position.set(a[0],y+0.08,-a[1]);bosGroup.add(bz);}}
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.25});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
@@ -549,6 +551,14 @@ $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
+$('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducción (min simulados por segundo real)
+$('simdate').onchange=function(){var dt=new Date(this.value+'T12:00:00');if(isNaN(dt))return;simDoy=Math.floor((dt-new Date(dt.getFullYear(),0,0))/86400000);   // cualquier día del año
+  if(!simOn){$('sim').checked=true;simOn=true;tMin=300;tMax=1260;$('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;}
+  setTime(curMin);if(fresOn)applyFresnel();};
+$('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
+  var d=new THREE.Vector3();camera.getWorldDirection(d);
+  if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
+  else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
 $('play').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
 
 build().catch(function(e){setStatus('<span class="err">Error: '+(e&&e.message||e)+'</span>\nConsola (F12) + captura, porfa.');});
