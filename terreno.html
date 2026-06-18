@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.40"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.41"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega ESTRECHA (chapa 3 mm, 80 cm) apoyada sobre la viga, el marco se atornilla en ella · 3 cajas en la línea CENTRAL del módulo (a lo ancho) con leapfrog 6 mm² · tapas negras en los extremos de la viga · abarcón rodea la viga · 2 abarcones de TCU sobre los salientes de los extremos (medidos del .glb) · cableado de motor negro (latiguillo + 6 mm² al conector de la TCU) · TCU con sillín/chapas de fijación + abarcones M8 (Ø8 mm) que entran por ellas · seguidor.js versionado (anti-caché móvil) · eje de transmisión bífila · etiquetas de edificios conmutables · sombras · trayectoria solar · slider 24 h · v2.40</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega ESTRECHA (chapa 3 mm, 80 cm) apoyada sobre la viga, el marco se atornilla en ella · 3 cajas en la línea CENTRAL del módulo (a lo ancho) con leapfrog 6 mm² · tapas negras en los extremos de la viga · abarcón rodea la viga · 2 abarcones de TCU sobre los salientes de los extremos (medidos del .glb) · cableado de motor negro (latiguillo + 6 mm² al conector de la TCU) · TCU con sillín/chapas + abarcones M8 · antena colgando 50 cm desde el conector real · seguidor.js versionado (anti-caché móvil) · eje de transmisión bífila · etiquetas de edificios conmutables · sombras · trayectoria solar · slider 24 h · v2.41</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -330,7 +330,7 @@ function buildTrackers(elevAt){
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
   var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
   var zP=[-28,-9,9,28];
-  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor};
+  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip};
   var N=NODES.length;
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
   var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (propio de cobertura)
@@ -395,7 +395,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
-        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],gnd=t.rel*vex+0.3;if(s.tip){_PV.set(ax,gnd+0.035,az);_Q.identity();_SC.set(1,0.07,1);_M2.compose(_PV,_Q,_SC);}else{var atop=gnd+0.07,aln=Math.max(0.2,ay-atop);_PV.set(ax,(ay+atop)/2,az);_Q.identity();_SC.set(1,aln,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cable FINO + puntera GRUESA, vertical, solo fila oeste
+        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],hang=TC.antHang||0.5,tipH=TC.antTip||0.07;if(s.tip){_PV.set(ax,ay-hang+tipH/2,az);_Q.identity();_SC.set(1,tipH,1);_M2.compose(_PV,_Q,_SC);}else{var cabL=hang-tipH;_PV.set(ax,ay-cabL/2,az);_Q.identity();_SC.set(1,cabL,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cuelga 50 cm vertical desde el conector (cable FINO + antena GRUESA 7 cm), solo fila oeste
         if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon'||s.key==='tcuchapa')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU, sus abarcones y chapas solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
