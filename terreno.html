@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · sol real + BT · v2.8</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · real/simulación · v2.9</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -49,6 +49,7 @@
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
+    <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
     <div class="row"><label title="Enlaces de radio de cada TCU a su NCU. Lo que apantalla no es el relieve (llano) sino los propios paneles inclinados → cambia con la hora. Arrastra la barra de tiempo o dale al ▶."><input type="checkbox" id="fres"> Enlaces a NCU (apantalla el panel)</label></div>
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
@@ -134,7 +135,7 @@ function initThree(){
   addEventListener('keyup',function(e){KEYS[e.code]=false;});
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
-    if(playing){var _mx=ANG?ANG.maxT:840,_mn=ANG?ANG.minT:0;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
+    if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
     flyStep(dt);controls.update();updateSunShadow();renderer.render(scene,camera);})(performance.now());
 }
 
@@ -162,7 +163,7 @@ function angleAt(num,min){
   if(ANG){var v=(num&&ANG.trk[num])?interp(ANG.trk[num],min):interp(ANG.fieldArr,min);if(v!=null)return v;}
   return solarTilt(min);
 }
-var SUN=null,btOn=true;
+var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
 // posición del sol (fecha de la telemetría, hora local CEST) → vector hacia el sol en mundo (x=E, y=arriba, z=-N)
 function sunVec(min){
   var lat=lat0*DEG, doy=168;
@@ -175,7 +176,11 @@ function sunVec(min){
 }
 // ángulo del seguidor SIN backtracking: sigue al sol en el plano E-O → empinado al amanecer/atardecer (da sombra a la fila vecina)
 function noBtAngle(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return Math.max(-60,Math.min(60,-Math.atan2(sv.E,sv.U)/DEG)); }
-function panelAngle(min){ return btOn ? (angleAt(null,min)||0) : noBtAngle(min); }   // BT on = telemetría real (anti-sombra); BT off = seguimiento puro
+function simBtAngle(min){ var R=noBtAngle(min)*DEG; if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return (R-(R<0?-1:1)*Math.acos(temp))/DEG; }  // simulación CON backtracking (no sombrea la fila vecina)
+function panelAngle(min){
+  if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
+  return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
+}
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); }
 // la shadow camera SIGUE a la vista: cuanto más cerca miras, más pequeño el frustum → texel más fino → adiós escalones
 function updateSunShadow(){ if(!SUN||!SUN._dir||!controls||!camera)return; var t=controls.target, dir=SUN._dir;
@@ -194,7 +199,7 @@ function setTime(min){
       _M2.multiplyMatrices(fb[f],_MS);imPanel.setMatrixAt(i*4+f*2+1,_M2);}}
     imTube.instanceMatrix.needsUpdate=true;imPanel.instanceMatrix.needsUpdate=true;}
   $('tval').textContent=fmtHM(min);
-  $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(btOn?"":" sin BT");
+  $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
 }
 
 async function build(){
@@ -236,7 +241,7 @@ async function build(){
   await loadNCU();buildGateways();positionGateways();buildBOS();buildCorridor();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
-  if(ANG){$('time').min=ANG.minT;$('time').max=ANG.maxT;curMin=Math.min(540,ANG.maxT);}
+  if(ANG){tMin=ANG.minT;tMax=ANG.maxT;$('time').min=tMin;$('time').max=tMax;curMin=Math.min(540,tMax);}
   setTime(curMin);$('time').value=curMin;
 
   camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
@@ -319,12 +324,13 @@ function buildTrackers(elevAt){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
-    TRK.push({gx:n.gx,gz:n.gz,rel:rel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
+    var relMax=Math.max(rel,relN,relS,elevAt(n.glat+latHalf*0.5,n.glon)-baseElev,elevAt(n.glat-latHalf*0.5,n.glon)-baseElev);  // cota máx bajo la huella (N-S) para no hundir
+    TRK.push({gx:n.gx,gz:n.gz,rel:rel,relMax:relMax,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
   });
   layoutTrackers();
 }
 function trackerBase(t){   // T_world = posición + drape al terreno (devuelve _M reutilizado)
-  var by=t.rel*vex,cl=0.45/vex;
+  var by=t.rel*vex+Math.min(6,Math.max(0,((t.relMax||t.rel)-t.rel)*vex-1.0)),cl=0.45/vex;   // sube lo justo para que el panel no se hunda en el terreno exagerado
   var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
   _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
@@ -498,6 +504,10 @@ function makeLabel(text){
 $('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();};
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
+$('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría) ↔ simulación astronómica (día completo)
+  if(simOn){tMin=300;tMax=1260;}else if(ANG){tMin=ANG.minT;tMax=ANG.maxT;}else{tMin=0;tMax=840;}
+  $('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;
+  setTime(curMin);if(fresOn)applyFresnel();};
 $('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
