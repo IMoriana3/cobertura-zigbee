@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras estables al zoom · cámara libre (WASD) · día/velocidad · v2.18</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde rectangular, estables al zoom) · cámara libre (WASD) · día/velocidad · v2.19</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -191,11 +191,12 @@ function panelAngle(min){
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); }
 // la shadow camera SIGUE al objetivo (para barrer la planta) pero con tamaño FIJO → las sombras NO cambian al alejar/acercar el zoom
-function updateSunShadow(){ if(!SUN||!SUN._dir||!controls||!camera)return; var t=controls.target, dir=SUN._dir;
-  var half=150, sc=SUN.shadow.camera;                                          // frustum FIJO (independiente de la distancia de cámara) → sombras estables
-  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=2600;sc.updateProjectionMatrix();}
-  var d=800; SUN.position.set(t.x+dir.E*d,t.y+Math.max(0.06,dir.U)*d,t.z-dir.N*d);
-  SUN.target.position.copy(t); SUN.target.updateMatrixWorld(); }
+function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
+  // frustum FIJO y centrado en TODA la planta → ni cambia al zoom ni deja borde rectangular de sombra
+  var cx=-66, cz=36, half=330, sc=SUN.shadow.camera, ty=(typeof localElevY==='function')?localElevY(cx,-cz):0;
+  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=3200;sc.updateProjectionMatrix();}
+  var d=1200; SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
 function setTime(min){
   curMin=min; syncSun(min);
   if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
