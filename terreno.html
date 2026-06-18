@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas 2n+1, cableado, corona+bracket+soporte en ambas vigas, TCU+antena en la del motor) · eje de transmisión bífila · sombras · trayectoria solar · v2.27</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas 2n+1, cableado, corona+bracket+soporte en ambas vigas, TCU (modelo real tcu.glb)+antena en la del motor · eje de transmisión bífila · sombras · trayectoria solar · v2.28</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -301,7 +301,7 @@ function gridRepair(){
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
-var imPost,imShaft,SEG=null,SEGO=null,TC={},_pAcc=0;
+var imPost,imShaft,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4();
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
@@ -338,8 +338,10 @@ function buildTrackers(elevAt){
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={};
   planM.forEach(function(t){mM[t.key]=t.locals;});
+  _TCUMOUNT.makeTranslation(D.tcuX,-0.22,0);                                        // punto de cuelgue de la TCU en la viga oeste
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
+    if(t.key==='tcu')return;                                                       // la TCU se dibuja con su MODELO real (tcu.glb), no con caja
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else count=(tw?2:1)*N*n;
     var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
@@ -354,7 +356,7 @@ function buildTrackers(elevAt){
     var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
     TRK.push({gx:n.gx,gz:n.gz,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()]});
   });
-  layoutTrackers();
+  layoutTrackers();loadTCU();
 }
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
@@ -396,9 +398,20 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         if((s.key==='tcu'||s.key==='tcu_brk')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
+      if(TCUGLB&&f===0){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
     }}
   for(var si=0;si<SEG.length;si++){if(SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
+  if(TCUGLB)for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].instanceMatrix.needsUpdate=true;
 }
+// carga el modelo REAL de la TCU (tcu.glb, 1 malla / 17 primitivas) y lo INSTANCIA (215 ud, viga oeste)
+function loadTCU(){ if(typeof THREE.GLTFLoader!=='function')return;
+  new THREE.GLTFLoader().load('tcu.glb',function(gl){
+    var sc=gl.scene;sc.updateMatrixWorld(true);
+    var bb=new THREE.Box3().setFromObject(sc),c=bb.getCenter(new THREE.Vector3()),ctr=new THREE.Matrix4().makeTranslation(-c.x,-c.y,-c.z),N=TRK.length,arr=[];
+    sc.traverse(function(o){ if(o.isMesh&&o.geometry){var g=o.geometry.clone();g.applyMatrix4(o.matrixWorld);g.applyMatrix4(ctr);   // geometría centrada en su bbox
+      var im=new THREE.InstancedMesh(g,o.material,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
+    TCUGLB=arr; if(SEG)updateSpin(panelAngle(curMin));
+  }, undefined, function(){ TCUGLB=null; }); }
 // etiquetas de seguidor (perezosas: solo se crean al activar la casilla, por rendimiento con 215)
 function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],lb=makeLabel(NODES[i].id||'');lb.position.set(t.gx,t.rel*vex+TC.postH+3.5,t.gz);labelGroup.add(lb);LBL.push(lb);}
