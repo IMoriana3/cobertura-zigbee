@@ -1068,11 +1068,12 @@ function setGateway(latlng){
     gwMarker.on('dragend',ev=>{const p=ev.target.getLatLng();S.gw=[p.lat,p.lng];drawRoutes();}); }
   drawRoutes();
 }
-function defaultGateway(){ // si no se ha situado, ponlo al sur del campo (cerca de la X que marcó el usuario)
+// Posición REAL de la NCU1 de El Burgo (plantilla SCADA, UTM30N 683559.51,4605111.23
+// -> WGS84). Es el gateway/coordinador de este dataset; se usa SIEMPRE por defecto.
+const NCU_REAL=[41.576615,-0.798170];   // [lat, lon]
+function defaultGateway(){ // si no se ha situado a mano, en la posición real de la NCU
   if(S.gw||!Object.keys(S.markers).length) return;
-  const lls=Object.values(S.markers).map(m=>m.getLatLng());
-  const lat=Math.min(...lls.map(p=>p.lat))-0.0006, lon=lls.reduce((a,p)=>a+p.lng,0)/lls.length;
-  setGateway({lat,lng:lon});
+  setGateway({lat:NCU_REAL[0],lng:NCU_REAL[1]});
 }
 function routePath(id,ts){ // lista de latlng [gw, hop1, ..., id] para la ruta de un nodo
   const p=snapVal(snapAt(ts),'pathByTarget',id); if(!p)return null;
