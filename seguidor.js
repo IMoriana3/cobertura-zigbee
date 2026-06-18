@@ -63,14 +63,20 @@
     return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 6, false);
   }
   // CORREA de perfil OMEGA (sombrero): sección en X-Y extruida a lo largo de Z (ancho del módulo)
-  function omegaGeom(TH){
-    var W=0.05, B=0.022, H=0.05, T=0.014, s=new TH.Shape();
-    s.moveTo(-W,0); s.lineTo(-W,T); s.lineTo(-B,T); s.lineTo(-B,H); s.lineTo(B,H); s.lineTo(B,T); s.lineTo(W,T); s.lineTo(W,0); s.closePath();
+  function omegaGeom(TH){   // perfil OMEGA / sombrero de PARED FINA (chapa conformada hueca), no bloque sólido
+    var W=0.048, c=0.020, H=0.05, t=0.012, ft=0.009, s=new TH.Shape();
+    s.moveTo(-W,0); s.lineTo(-W,ft); s.lineTo(-c-t,ft); s.lineTo(-c-t,H); s.lineTo(c+t,H); s.lineTo(c+t,ft); s.lineTo(W,ft); s.lineTo(W,0);   // contorno EXTERIOR (alas + paredes + ala superior)
+    s.lineTo(c,0); s.lineTo(c,H-t); s.lineTo(-c,H-t); s.lineTo(-c,0); s.closePath();                                                          // contorno INTERIOR → pared fina, canal abierto por abajo
     var g=new TH.ExtrudeGeometry(s,{depth:D.modH*0.96, bevelEnabled:false}); g.translate(0,0,-D.modH*0.96/2); return g;
   }
   // ABARCÓN (U-bolt) que abraza la viga y fija la correa
   function abarconGeom(TH){   // U-bolt que RODEA la viga: baja por un lado, pasa por DEBAJO del tubo y sube por el otro
     var p=[new TH.Vector3(0,0.10,-0.072), new TH.Vector3(0,-0.072,-0.072), new TH.Vector3(0,-0.088,0), new TH.Vector3(0,-0.072,0.072), new TH.Vector3(0,0.10,0.072)];
+    return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
+  }
+  // ABARCÓN de la TCU: ∩ POR ENCIMA de la viga, extremos hacia ABAJO (a las chapitas de la TCU). Al revés que el de la correa.
+  function abarconTcuGeom(TH){
+    var p=[new TH.Vector3(0,-0.16,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.088,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.16,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
   // caja de conexión (2 por módulo, a 1/3 y 2/3 del lateral)
@@ -156,8 +162,8 @@
     /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
-    push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, D.tcuX-0.12, 0, 0));   // la TCU se fija a la viga con DOS abarcones
-    push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, D.tcuX+0.12, 0, 0));
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.10, 0, 0));   // DOS abarcones (∩ sobre la viga, extremos hacia abajo) en las chapitas laterales de la TCU
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.10, 0, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -172,8 +178,8 @@
       function (TH){ var g=new TH.CylinderGeometry(0.092,0.092,0.05,18); g.rotateX(Math.PI/2); return g; }, mT(THREE, 0,-0.04,-0.68));
     push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
       function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
-    push('motorcable', 'jbox', false, true,                 // cable del conector de la reductora al motor
-      function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([new TH.Vector3(0.06,-0.16,-0.12), new TH.Vector3(0.02,-0.10,-0.28), new TH.Vector3(0,-0.05,-0.40)]),8,0.011,6,false); }, mT(THREE, 0,0,0));
+    push('motorcable', 'cable', false, true,                // cable de potencia al motor (rojo, visible) desde el conector hasta el motor
+      function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([new TH.Vector3(0.20,-0.06,-0.10), new TH.Vector3(0.08,-0.14,-0.24), new TH.Vector3(0,-0.06,-0.40)]),10,0.016,6,false); }, mT(THREE, 0,0,0));
     // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
     out.push({ key:'bracket', mat:'steel', spin:false, cast:true, twin:true,   // saddle/bracket que une el poste a la corona (como el render); TWIN: en ambas vigas
       geom:function (TH){ return new TH.BoxGeometry(0.36, 0.16, 0.48); }, m:mT(THREE, 0,-0.20,0) });
@@ -182,9 +188,9 @@
     // ANTENA de la TCU: cuelga VERTICAL hacia el suelo y queda a ~30 cm del suelo. La app la
     // estira (su longitud depende de la altura/terreno) y la mantiene VERTICAL aunque el tubo bascule.
     out.push({ key:'antena', mat:'jbox', spin:true, cast:true, antenna:true,        // CABLE de antena: FINO; la app lo estira de la TCU a la puntera
-      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX, -0.35, 0) });
+      geom:function (TH){ return new TH.CylinderGeometry(0.006,0.006,1.0,6); }, m:mT(THREE, D.tcuX+0.12, -0.20, 0.12) });
     out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, fija abajo (~30 cm del suelo)
-      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX, -0.35, 0) });
+      geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX+0.12, -0.20, 0.12) });
 
     return out;
   };
@@ -224,6 +230,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.8';
+  S.VERSION = '0.2.0';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
