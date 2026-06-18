@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · vallado realista · sombras · v2.13</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · vallado al terreno · CTs reales · v2.14</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -405,16 +405,20 @@ function buildBOS(){
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.25,side:THREE.DoubleSide,roughness:.6,metalness:.4,color:0xe2e8ee});
   var sv=[],su=[],sw=[];
   (LAYOUT.fence||[]).forEach(function(pl){
-    for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],ya=localElevY(a[0],a[1]),yb=localElevY(b[0],b[1]),L=Math.hypot(b[0]-a[0],b[1]-a[1]),u=L/0.15,v=fh/0.15;
+    var dense=[];                                        // densifico el trazado (~3 m) para que el paño SIGA el terreno y no vuele
+    for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),ns=Math.max(1,Math.round(L/3));
+      for(var s=0;s<ns;s++){var f=s/ns;dense.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);}}
+    if(pl.length)dense.push(pl[pl.length-1]);
+    var uacc=0,pacc=1e9;
+    for(var i=0;i+1<dense.length;i++){var a=dense[i],b=dense[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],ya=localElevY(a[0],a[1])-0.06,yb=localElevY(b[0],b[1])-0.06,L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,v=fh/0.15;uacc+=L;
       sv.push(Ax,ya,Az,Bx,yb,Bz,Bx,yb+fh,Bz, Ax,ya,Az,Bx,yb+fh,Bz,Ax,ya+fh,Az);
-      su.push(0,v,u,v,u,0, 0,v,u,0,0,0);
-      sw.push(Ax,ya+fh+0.06,Az,Bx,yb+fh+0.06,Bz, Ax,ya+fh+0.16,Az,Bx,yb+fh+0.16,Bz);}
-    var acc=0;for(var i=0;i<pl.length;i++){var p=pl[i];if(i>0)acc+=Math.hypot(p[0]-pl[i-1][0],p[1]-pl[i-1][1]);
-      if(i===0||acc>=8){acc=0;var y=localElevY(p[0],p[1]);
-        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,fh+0.25,8),postM);po.position.set(p[0],y+(fh+0.25)/2,-p[1]);bosGroup.add(po);
-        var bz=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,0.3,8),baseM);bz.position.set(p[0],y+0.15,-p[1]);bosGroup.add(bz);}}
+      su.push(u0,v,u1,v,u1,0, u0,v,u1,0,u0,0);
+      sw.push(Ax,ya+fh+0.06,Az,Bx,yb+fh+0.06,Bz, Ax,ya+fh+0.16,Az,Bx,yb+fh+0.16,Bz);
+      pacc+=L;if(pacc>=8){pacc=0;var y=localElevY(a[0],a[1]);                                       // postes cada ~8 m, apoyados en SU cota
+        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,fh+0.3,8),postM);po.position.set(a[0],y+(fh+0.3)/2-0.06,-a[1]);bosGroup.add(po);
+        var bz=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,0.3,8),baseM);bz.position.set(a[0],y+0.08,-a[1]);bosGroup.add(bz);}}
   });
-  if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();bosGroup.add(new THREE.Mesh(mg,meshM));}
+  if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.25});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
   if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
   // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
   var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
@@ -433,6 +437,14 @@ function buildBOS(){
     [-W*0.42,W*0.42].forEach(function(px){var po=new THREE.Mesh(new THREE.BoxGeometry(0.07,cy+H*0.45,0.07),invPost);po.position.set(px,(cy+H*0.45)/2,D*0.5+0.06);g.add(po);}); // postes del bastidor
     var rail=new THREE.Mesh(new THREE.BoxGeometry(W*0.9,0.07,0.07),invPost);rail.position.set(0,legH,D*0.5+0.06);g.add(rail);  // travesaño
     bosGroup.add(g);});
+  // compound del DWG (identificado): CTs compactos (EMU) en Norte/Sur + etiquetas de subestación y salas
+  var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
+  [{x:-3.5,n:30.2,lab:'CT Norte',emu:1},{x:20.5,n:-192.2,lab:'CT Sur',emu:1},
+   {x:9,n:-206,lab:'Subestación'},{x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
+    if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
+    if(b.emu){var pad=new THREE.Mesh(new THREE.BoxGeometry(4,0.3,2.6),baseM);pad.position.set(b.x,y+0.15,-b.n);bosGroup.add(pad);            // skid de hormigón
+      var bx=new THREE.Mesh(new THREE.BoxGeometry(3.2,2.4,2.1),emuM);bx.position.set(b.x,y+1.5,-b.n);bosGroup.add(bx);}                       // caja del CT compacto (EMU)
+    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.emu?4.2:3.8),-b.n);bosGroup.add(lb);});
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
