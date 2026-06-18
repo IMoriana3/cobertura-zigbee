@@ -819,6 +819,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
         <div class="mode" data-m="saltos"><span class="mi"></span>Saltos <span class="md">al coordinador</span></div>
         <div class="mode" data-m="crit"><span class="mi"></span>Criticidad <span class="md">cuántos dependen</span></div>
         <div class="mode" data-m="spof"><span class="mi"></span>SPOF dinámico <span class="md">por instante</span></div>
+        <div class="mode" data-m="spofp"><span class="mi"></span>SPOF crónico <span class="md">% del periodo</span></div>
         <div class="mode" data-m="predicho"><span class="mi"></span>Predicho/SPOF <span class="md">malla real · dominadores</span></div>
       </div>
     </div>
@@ -899,9 +900,10 @@ const LEGENDS={
   saltos:[['--s-exc','1','directo'],['--s-good','2–3','cerca'],['--s-ok','4–6','medio'],['--s-weak','7–9','lejos'],['--s-bad','≥ 10','muy profundo'],['--s-off','—','sin ruta']],
   crit:[['--s-exc','0','hoja'],['--s-good','1–2','relé leve'],['--s-ok','3–6','relé'],['--s-weak','7–15','relé clave'],['--s-bad','> 15','punto único de fallo'],['--s-off','—','sin datos']],
   spof:[['--s-bad','SPOF','punto único AHORA'],['--s-weak','7–15','relé clave'],['--s-ok','3–6','relé'],['--s-good','1–2','relé leve'],['--s-exc','0','hoja'],['--s-off','—','sin datos']],
+  spofp:[['--s-bad','≥60%','crónico'],['--s-weak','30–60%','frecuente'],['--s-ok','10–30%','intermitente'],['--s-good','<10%','esporádico'],['--s-exc','0%','nunca SPOF'],['--s-off','—','sin datos']],
   predicho:[['--s-exc','Hoja','0 desc.'],['--s-good','Poco usado','1–10'],['--s-ok','Relé','11–25'],['--s-weak','Backbone','26–45'],['--s-bad','SPOF / dominador','≥46'],['--s-off','aristas','RSSI medido']]
 };
-const LEGTITLE={rssi:'Leyenda — RSSI (dBm)',estado:'Leyenda — estado',ack:'Leyenda — ACK fallos (Δ)',saltos:'Leyenda — saltos al coordinador',crit:'Leyenda — criticidad (nodos que dependen)',spof:'Leyenda — SPOF por instante (artic. menos COORD)',predicho:'Leyenda — malla real (descendientes / SPOF)'};
+const LEGTITLE={rssi:'Leyenda — RSSI (dBm)',estado:'Leyenda — estado',ack:'Leyenda — ACK fallos (Δ)',saltos:'Leyenda — saltos al coordinador',crit:'Leyenda — criticidad (nodos que dependen)',spof:'Leyenda — SPOF por instante (artic. menos COORD)',spofp:'Leyenda — SPOF crónico (% de instantes como punto único)',predicho:'Leyenda — malla real (descendientes / SPOF)'};
 
 /* ---------- CSV ---------- */
 function parseCSV(t){const R=[];let f='',row=[],q=false,i=0;while(i<t.length){const c=t[i];
@@ -1004,8 +1006,17 @@ function loadRoutes(text){
     const spof={}; apset.forEach(n=>{ spof[n]=1; });
     return {ts, depth, crit, pathByTarget, spof};
   });
+  // Persistencia del SPOF: en qué fracción de los instantes cada nodo es punto de
+  // articulación (crónico vs esporádico). Candidatos a repetidor = los crónicos.
+  const N=S.routeSnaps.length||1, cnt={};
+  for(const sn of S.routeSnaps){ for(const k in sn.spof){ cnt[k]=(cnt[k]||0)+1; } }
+  S.spofTotal=S.routeSnaps.length;
+  S.spofPersist={}; for(const k in cnt){ S.spofPersist[k]={cnt:cnt[k], frac:cnt[k]/N}; }
   rebuildTimeline(); render();
 }
+function spofPersist(id){ const t=S.spofPersist||{}; if(id in t)return t[id];
+  const d=digits(id); if(d!=null){ for(const k in t){ if(digits(k)===d)return t[k]; } } return null; }
+function colPersist(f){ if(f>=0.6)return cv('--s-bad'); if(f>=0.3)return cv('--s-weak'); if(f>=0.1)return cv('--s-ok'); if(f>0)return cv('--s-good'); return cv('--s-exc'); }
 function snapAt(ts){ // ultimo snapshot de rutas con ts <= actual (o el primero)
   if(!S.routeSnaps.length) return null;
   let s=S.routeSnaps[0];
@@ -1047,6 +1058,7 @@ function colorOf(id,ts){
   if(S.mode==='saltos'){ const h=snapVal(snapAt(ts),'depth',id); return colHops(h==null?null:h); }
   if(S.mode==='crit'){ const c=snapVal(snapAt(ts),'crit',id); return colCrit(c==null?0:c); }
   if(S.mode==='spof'){ const sn=snapAt(ts); return snapVal(sn,'spof',id)?cv('--s-bad'):colCrit(snapVal(sn,'crit',id)||0); }
+  if(S.mode==='spofp'){ const pe=spofPersist(id); return colPersist(pe?pe.frac:0); }
   return r&&r.online?colRSSI(r.rssi):cv('--s-off');
 }
 function isAlert(id,ts){
@@ -1054,6 +1066,7 @@ function isAlert(id,ts){
   if(S.mode==='saltos'){ const h=snapVal(snapAt(ts),'depth',id); return h!=null&&h>=10; }
   if(S.mode==='crit'){ const c=snapVal(snapAt(ts),'crit',id); return c!=null&&c>15; }
   if(S.mode==='spof'){ return !!snapVal(snapAt(ts),'spof',id); }
+  if(S.mode==='spofp'){ const pe=spofPersist(id); return !!pe&&pe.frac>=0.6; }
   if(!r)return false;
   if(S.mode==='estado'||S.mode==='rssi') return !r.online || (r.online&&r.rssi!=null&&r.rssi<=-89);
   if(S.mode==='ack'){ const d=ackAt(id,ts); return !r.online || (d!=null&&d>30); }
@@ -1068,11 +1081,12 @@ function setGateway(latlng){
     gwMarker.on('dragend',ev=>{const p=ev.target.getLatLng();S.gw=[p.lat,p.lng];drawRoutes();}); }
   drawRoutes();
 }
-function defaultGateway(){ // si no se ha situado, ponlo al sur del campo (cerca de la X que marcó el usuario)
+// Posición REAL de la NCU1 de El Burgo (plantilla SCADA, UTM30N 683559.51,4605111.23
+// -> WGS84). Es el gateway/coordinador de este dataset; se usa SIEMPRE por defecto.
+const NCU_REAL=[41.576615,-0.798170];   // [lat, lon]
+function defaultGateway(){ // si no se ha situado a mano, en la posición real de la NCU
   if(S.gw||!Object.keys(S.markers).length) return;
-  const lls=Object.values(S.markers).map(m=>m.getLatLng());
-  const lat=Math.min(...lls.map(p=>p.lat))-0.0006, lon=lls.reduce((a,p)=>a+p.lng,0)/lls.length;
-  setGateway({lat,lng:lon});
+  setGateway({lat:NCU_REAL[0],lng:NCU_REAL[1]});
 }
 function routePath(id,ts){ // lista de latlng [gw, hop1, ..., id] para la ruta de un nodo
   const p=snapVal(snapAt(ts),'pathByTarget',id); if(!p)return null;
@@ -1107,7 +1121,7 @@ function render(){
     const r=readingAt(id,ts);
     if(r){ r.online?online++:off++; if(r.online&&r.rssi!=null)rssis.push(r.rssi); }
     const m=S.markers[id]; if(!m){ if(!coordFor(id))noC++; continue; }
-    let rad=7; if(S.mode==='crit'){ const c=snapVal(snapAt(ts),'crit',id); rad=c?Math.min(13,7+c/3):6; } else if(S.mode==='spof'){ rad=snapVal(snapAt(ts),'spof',id)?11:6; }
+    let rad=7; if(S.mode==='crit'){ const c=snapVal(snapAt(ts),'crit',id); rad=c?Math.min(13,7+c/3):6; } else if(S.mode==='spof'){ rad=snapVal(snapAt(ts),'spof',id)?11:6; } else if(S.mode==='spofp'){ const pe=spofPersist(id); rad=pe?Math.min(13,6+pe.frac*8):6; }
     m.setStyle({fillColor:colorOf(id,ts), fillOpacity:(r&&!r.online)?.85:.95, radius:rad});
     if(m._path){ m._path.classList.toggle('mk-alert', isAlert(id,ts)); }
   }
@@ -1129,6 +1143,8 @@ function render(){
   } else if(S.mode==='spof'){ document.getElementById('m1l').textContent='SPOF ahora'; document.getElementById('m2l').textContent='Relés (crit≥3)';
     set('m1', snap&&snap.spof?Object.keys(snap.spof).length:0);
     const cs=snap?Object.values(snap.crit):[]; set('m2', cs.filter(c=>c>=3).length);
+  } else if(S.mode==='spofp'){ document.getElementById('m1l').textContent='SPOF crónicos (≥60%)'; document.getElementById('m2l').textContent='SPOF alguna vez';
+    const ps=Object.values(S.spofPersist||{}); set('m1', ps.filter(p=>p.frac>=0.6).length); set('m2', ps.filter(p=>p.frac>0).length);
   } else { document.getElementById('m1l').textContent='RSSI mediana'; document.getElementById('m2l').textContent='RSSI peor';
     set('m1', rssis.length? rssis[Math.floor(rssis.length/2)]+' dBm':'—');
     set('m2', rssis.length? rssis[0]+' dBm':'—'); }
@@ -1148,8 +1164,10 @@ function popup(id){ const ts=S.frames[S.idx]; const r=readingAt(id,ts); const d=
    <tr><td>ACK fallos</td><td>${r&&r.ack!=null?r.ack:'—'}${d!=null?` (Δ ${d})`:''}</td></tr>
    <tr><td>Aliment.</td><td>${r&&r.mv!=null?(r.mv/1000).toFixed(3)+' V':'—'}</td></tr>
    <tr><td>Temp</td><td>${r&&r.temp!=null?r.temp+' °C':'—'}</td></tr>
-   ${(()=>{const h=snapVal(snapAt(ts),'depth',id),c=snapVal(snapAt(ts),'crit',id),sp=snapVal(snapAt(ts),'spof',id);
-     return (h!=null||c!=null)?`<tr><td>Saltos</td><td>${h??'—'}</td></tr><tr><td>Criticidad</td><td>${c??0} nodos dependen</td></tr><tr><td>SPOF (ahora)</td><td>${sp?'sí ⚠':'no'}</td></tr>`:'';})()}
+   ${(()=>{const h=snapVal(snapAt(ts),'depth',id),c=snapVal(snapAt(ts),'crit',id),sp=snapVal(snapAt(ts),'spof',id),pe=spofPersist(id);
+     if(h==null&&c==null&&!pe)return '';
+     const per=pe?`<tr><td>SPOF % periodo</td><td>${Math.round(pe.frac*100)}% (${pe.cnt}/${S.spofTotal})${pe.frac>=0.6?' · crónico':''}</td></tr>`:'';
+     return `<tr><td>Saltos</td><td>${h??'—'}</td></tr><tr><td>Criticidad</td><td>${c??0} nodos dependen</td></tr><tr><td>SPOF (ahora)</td><td>${sp?'sí ⚠':'no'}</td></tr>${per}`;})()}
    <tr><td>Instante</td><td>${ts}</td></tr></table>`;
 }
 function buildWorst(ts){
@@ -1159,6 +1177,7 @@ function buildWorst(ts){
     if(S.mode==='saltos'){ const h=snapVal(snap,'depth',id); return h==null?9e9:-h; }   // mas saltos primero
     if(S.mode==='crit'){ const c=snapVal(snap,'crit',id); return c==null?9e9:-c; }        // mas critico primero
     if(S.mode==='spof'){ const sp=snapVal(snap,'spof',id)?1:0, c=snapVal(snap,'crit',id)||0; return -(sp*1e6+c); }  // SPOF primero, luego crit
+    if(S.mode==='spofp'){ const pe=spofPersist(id); return -(pe?pe.frac:0); }   // más crónico primero
     if(!r)return 9e9; if(!r.online)return -1e6;
     if(S.mode==='ack'){const d=ackAt(id,ts); return -(d??0);} return (r.rssi??-999);};
   ids.sort((a,b)=>score(a)-score(b));
@@ -1168,6 +1187,7 @@ function buildWorst(ts){
     if(S.mode==='saltos'){ const h=snapVal(snap,'depth',id); right=`<span class="v" style="color:${colorOf(id,ts)}">${h==null?'—':h+' s'}</span>`; }
     else if(S.mode==='crit'){ const c=snapVal(snap,'crit',id); right=`<span class="v" style="color:${colorOf(id,ts)}">${c??0}</span>`; }
     else if(S.mode==='spof'){ const sp=snapVal(snap,'spof',id), c=snapVal(snap,'crit',id)||0; right=`<span class="v" style="color:${colorOf(id,ts)}">${sp?'SPOF':c}</span>`; }
+    else if(S.mode==='spofp'){ const pe=spofPersist(id); right=`<span class="v" style="color:${colorOf(id,ts)}">${pe?Math.round(pe.frac*100)+'%':'0%'}</span>`; }
     else if(r&&!r.online){ right=`<span class="badge">sin resp.</span>`; }
     else if(S.mode==='ack'){ right=`<span class="v" style="color:${colorOf(id,ts)}">Δ ${ackAt(id,ts)??'—'}</span>`; }
     else { right=`<span class="v" style="color:${colorOf(id,ts)}">${r&&r.rssi!=null?r.rssi:'—'}</span>`; }
@@ -1176,7 +1196,7 @@ function buildWorst(ts){
     el.appendChild(dv);});
   // titulo de la lista segun modo
   const wh=document.querySelector('#worst .wh h2');
-  if(wh) wh.textContent = S.mode==='saltos'?'Más profundos (saltos)' : S.mode==='crit'?'Más críticos (relés)' : S.mode==='spof'?'SPOF / relés ahora' : 'Peores en este instante';
+  if(wh) wh.textContent = S.mode==='saltos'?'Más profundos (saltos)' : S.mode==='crit'?'Más críticos (relés)' : S.mode==='spof'?'SPOF / relés ahora' : S.mode==='spofp'?'SPOF más crónicos' : 'Peores en este instante';
 }
 function legend(){
   document.getElementById('legTitle').textContent=LEGTITLE[S.mode];
