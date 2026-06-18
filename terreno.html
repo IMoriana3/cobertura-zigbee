@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="seguidor.js"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital) -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -39,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde, estables al zoom) · trayectoria solar (sol lejano + rayo) · cámara libre (WASD) · día/velocidad · v2.22</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos, correas 2n+1, cableado, corona/soporte, TCU) · sombras de toda la planta · trayectoria solar · cámara libre (WASD) · v2.23</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -144,7 +145,7 @@ function initThree(){
   addEventListener('keyup',function(e){KEYS[e.code]=false;});
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
-    if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
+    if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
     if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();renderer.render(scene,camera);})(performance.now());
 }
 
@@ -221,18 +222,7 @@ function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=
   if(sunRay){var p=sunRay.geometry.attributes.position;p.setXYZ(0,sx,sy,sz);p.setXYZ(1,cx,0,cz);p.needsUpdate=true;sunRay.visible=true;} }
 function setTime(min){
   curMin=min; syncSun(min);
-  if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
-    _T.makeTranslation(0,TC.off,TC.mesaC);_MN.multiplyMatrices(_R,_T);
-    _T.makeTranslation(0,TC.off,-TC.mesaC);_MS.multiplyMatrices(_R,_T);
-    _T.makeTranslation(0,TC.off,0);_MC.multiplyMatrices(_R,_T);                                  // mesa CENTRADA (seguidor "Medio": 1 sola mesa)
-    for(var i=0;i<TRK.length;i++){var tk=TRK[i],fb=tk.fb;for(var f=0;f<2;f++){
-      if(tk.medio){ _SCT.makeScale(1,1,tk.mr);_M2.multiplyMatrices(_R,_SCT);_M2.premultiply(fb[f]);imTube.setMatrixAt(i*2+f,_M2);   // tubo a la mitad
-        _M2.multiplyMatrices(fb[f],_MC);imPanel.setMatrixAt(i*4+f*2,_M2);                                                          // 1 mesa centrada
-        _M2.makeScale(0,0,0);imPanel.setMatrixAt(i*4+f*2+1,_M2); }                                                                // oculta la 2ª mesa
-      else { _M2.multiplyMatrices(fb[f],_R);imTube.setMatrixAt(i*2+f,_M2);
-        _M2.multiplyMatrices(fb[f],_MN);imPanel.setMatrixAt(i*4+f*2,_M2);
-        _M2.multiplyMatrices(fb[f],_MS);imPanel.setMatrixAt(i*4+f*2+1,_M2); } }}
-    imTube.instanceMatrix.needsUpdate=true;imPanel.instanceMatrix.needsUpdate=true;}
+  if(SEG) updateSpin(panelAngle(min));        // recoloca las piezas que basculan (tubo, módulos, correas, cable, cajas, TCU)
   $('tval').textContent=fmtHM(min);
   $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
 }
@@ -311,8 +301,8 @@ function gridRepair(){
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
-var imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor,TC={};
-var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4();
+var imPost,imShaft,SEG=null,SEGO=null,TC={},_pAcc=0;
+var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 function makePanelTex(){
@@ -333,28 +323,28 @@ function makePanelTex(){
 // y mesas) se recolocan por matriz cada frame; postes/slew/marcador son fijos.
 function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
-  steelM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.45,metalness:.65});
-  blueM=new THREE.MeshStandardMaterial({color:0x2f5fb0,roughness:.4,metalness:.4});    // reductora slew (azul, igual que el gemelo)
-  motorM=new THREE.MeshStandardMaterial({color:0x1a1c20,roughness:.5,metalness:.55}); // motor (cilindro oscuro que sale hacia fuera)
+  var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
+  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.needsUpdate=true;     // células FV en cada módulo
+  steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
-  var modW=1.134,modH=2.382,gapMod=0.012,gapDrive=0.55,modsPerStr=28;
-  var pitchX=modW+gapMod,strLen=modsPerStr*pitchX,off=0.14,span=2*strLen+gapDrive,filaZ=3.0,postH=2.0,mesaC=gapDrive/2+strLen/2;
+  SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
+  var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
   var zP=[-28,-9,9,28];
-  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH};
-  panelTex=makePanelTex();panelTex.repeat.set(1,modsPerStr);
-  glassM=new THREE.MeshStandardMaterial({map:panelTex,color:0xffffff,roughness:.14,metalness:.1,emissive:0x0a1626,emissiveIntensity:.07});
+  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor};
   var N=NODES.length;
-  imTube=new THREE.InstancedMesh(new THREE.BoxGeometry(0.12,0.12,span),steelM,N*2);
-  imPanel=new THREE.InstancedMesh(new THREE.BoxGeometry(modH,0.05,strLen),glassM,N*4);
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
-  var gF=new THREE.CylinderGeometry(0.25,0.25,0.16,18);gF.rotateX(Math.PI/2);    // corona slew (eje = tubo de par, Z)
-  var gMo=new THREE.CylinderGeometry(0.085,0.085,0.40,14);gMo.rotateZ(Math.PI/2); // motor (eje = X, sale hacia fuera del seguidor)
-  var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (X)
+  var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
-  imFlange=new THREE.InstancedMesh(gF,blueM,N);
-  imGear=new THREE.InstancedMesh(new THREE.BoxGeometry(0.30,0.36,0.26),blueM,N);
-  imMotor=new THREE.InstancedMesh(gMo,motorM,N);
-  [imTube,imPanel,imPost,imShaft,imFlange,imGear,imMotor].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={};
+  planM.forEach(function(t){mM[t.key]=t.locals;});
+  SEG=[];                                                                          // un InstancedMesh por tipo de pieza
+  planL.forEach(function(t){
+    var perFila=t.spin,n=t.locals.length,count=t.terrainScaled?N:(perFila?N*2*n:N*n);
+    var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
+    im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
+    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
+  });
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
@@ -372,7 +362,7 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 function layoutTrackers(){
-  if(!imPost)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
+  if(!imPost||!SEG)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);
     var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz;for(var kk=0;kk<zP.length;kk++){if(t.medio&&Math.abs(zP[kk])>16){pj++;continue;}_T.makeTranslation(fx0,ph,zP[kk]);_M2.multiplyMatrices(Tw,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
@@ -383,15 +373,28 @@ function layoutTrackers(){
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
-    var dvx=-fz;                                                                                  // slew drive sobre la fila -fz (como el gemelo)
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
-    _T.makeTranslation(dvx,ph,0);_M2.multiplyMatrices(Tw,_T);imFlange.setMatrixAt(i,_M2);          // corona slew abrazada al tubo
-    _T.makeTranslation(dvx,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imGear.setMatrixAt(i,_M2);       // cuerpo reductora
-    _T.makeTranslation(dvx-0.55,ph-0.07,0);_M2.multiplyMatrices(Tw,_T);imMotor.setMatrixAt(i,_M2); // motor horizontal hacia fuera
+    var fo=_OS.multiplyMatrices(t.fb[0],SEGO);                                                     // piezas FIJAS (slew) sobre la fila -fz, orientadas
+    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin)continue;
+      if(s.terrain){var sxx=t.fb[0].elements[12],syT=t.fb[0].elements[13]-0.22,szz=t.fb[0].elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);   // soporte de la corona hasta el suelo
+        _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(i,_M2);}
+      else for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(i*s.n+l,_M2);}}
   }
-  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imFlange.instanceMatrix.needsUpdate=true;imGear.instanceMatrix.needsUpdate=true;imMotor.instanceMatrix.needsUpdate=true;
+  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;
+  for(var si=0;si<SEG.length;si++){if(!SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
-  setTime(curMin);
+  updateSpin(panelAngle(curMin));
+}
+// recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
+function updateSpin(angDeg){ if(!SEG||!SEGO)return;
+  _R.makeRotationX(-angDeg*DEG);_OS.multiplyMatrices(SEGO,_R);                                      // mundo = orientación · basculación (signo - para casar con el seguimiento)
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
+    for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
+      for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
+        if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
+        for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
+    }}
+  for(var si=0;si<SEG.length;si++){if(SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
 }
 // etiquetas de seguidor (perezosas: solo se crean al activar la casilla, por rendimiento con 215)
 function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
