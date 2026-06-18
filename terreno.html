@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos, correas 2n+1, cableado, corona + caja de control + soporte robusto, TCU fila oeste) · eje de transmisión bífila · sombras · trayectoria solar · v2.25</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas 2n+1, cableado, corona+control+soporte en ambas vigas, TCU+antena en la del motor) · eje de transmisión bífila · sombras · trayectoria solar · v2.26</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -340,10 +340,11 @@ function buildTrackers(elevAt){
   planM.forEach(function(t){mM[t.key]=t.locals;});
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
-    var perFila=t.spin,n=t.locals.length,count=t.terrainScaled?N:(perFila?N*2*n:N*n);
+    var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
+    if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else count=(tw?2:1)*N*n;
     var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
-    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
+    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
@@ -374,11 +375,11 @@ function layoutTrackers(){
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
-    var fo=_OS.multiplyMatrices(t.fb[0],SEGO);                                                     // piezas FIJAS (slew) sobre la fila -fz, orientadas
-    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin)continue;
-      if(s.terrain){var sxx=t.fb[0].elements[12],syT=t.fb[0].elements[13]-0.22,szz=t.fb[0].elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);   // soporte de la corona hasta el suelo
-        _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(i,_M2);}
-      else for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(i*s.n+l,_M2);}}
+    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin)continue;var filas=s.twin?2:1;        // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin)
+      for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
+        if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);
+          _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
+        else {var fo=_OS.multiplyMatrices(fbx,SEGO);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(bi*s.n+l,_M2);}}}}
   }
   imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;
   for(var si=0;si<SEG.length;si++){if(!SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
@@ -391,6 +392,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
+        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],gnd=t.rel*vex+0.3,aln=Math.max(0.2,ay-gnd);_PV.set(ax,(ay+gnd)/2,az);_Q.identity();_SC.set(1,aln,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: VERTICAL de la TCU a ~30 cm del suelo, solo fila oeste
         if((s.key==='tcu'||s.key==='tcu_brk')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
