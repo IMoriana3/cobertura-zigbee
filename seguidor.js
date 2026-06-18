@@ -74,9 +74,9 @@
     var p=[new TH.Vector3(0,0.10,-0.072), new TH.Vector3(0,-0.072,-0.072), new TH.Vector3(0,-0.088,0), new TH.Vector3(0,-0.072,0.072), new TH.Vector3(0,0.10,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
-  // ABARCÓN de la TCU: ∩ POR ENCIMA de la viga, extremos hacia ABAJO (a las chapitas de la TCU). Al revés que el de la correa.
+  // ABARCÓN de la TCU: ∩ POR ENCIMA de la viga, extremos hacia ABAJO justo hasta la chapa plana de la TCU (que va contra el tubo). Al revés que el de la correa.
   function abarconTcuGeom(TH){
-    var p=[new TH.Vector3(0,-0.16,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.088,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.16,0.072)];
+    var p=[new TH.Vector3(0,-0.075,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.090,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.075,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
   // caja de conexión: 3 por módulo en la LÍNEA CENTRAL (a lo ancho del módulo), pequeñas
@@ -167,8 +167,8 @@
     /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
-    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.10, 0, 0));   // DOS abarcones (∩ sobre la viga, extremos hacia abajo) en las chapitas laterales de la TCU
-    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.10, 0, 0));
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.065, 0, 0));   // DOS abarcones (∩ sobre la viga, extremos hacia abajo) sobre los salientes centrales de la TCU
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.065, 0, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -243,6 +243,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.1';
+  S.VERSION = '0.3.2';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
