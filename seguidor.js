@@ -63,11 +63,11 @@
     return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 6, false);
   }
   // CORREA de perfil OMEGA (sombrero): sección en X-Y extruida a lo largo de Z (ancho del módulo)
-  function omegaGeom(TH){   // perfil OMEGA / sombrero de PARED FINA (chapa conformada hueca), no bloque sólido
-    var W=0.048, c=0.020, H=0.05, t=0.012, ft=0.009, s=new TH.Shape();
-    s.moveTo(-W,0); s.lineTo(-W,ft); s.lineTo(-c-t,ft); s.lineTo(-c-t,H); s.lineTo(c+t,H); s.lineTo(c+t,ft); s.lineTo(W,ft); s.lineTo(W,0);   // contorno EXTERIOR (alas + paredes + ala superior)
-    s.lineTo(c,0); s.lineTo(c,H-t); s.lineTo(-c,H-t); s.lineTo(-c,0); s.closePath();                                                          // contorno INTERIOR → pared fina, canal abierto por abajo
-    var g=new TH.ExtrudeGeometry(s,{depth:D.modH*0.96, bevelEnabled:false}); g.translate(0,0,-D.modH*0.96/2); return g;
+  function omegaGeom(TH){   // perfil OMEGA de chapa fina (3 mm), 80 cm de largo CENTRADO en la viga, VOLTEADO 180°
+    var W=0.048, c=0.020, H=0.05, t=0.003, ft=0.003, s=new TH.Shape();
+    s.moveTo(-W,0); s.lineTo(-W,ft); s.lineTo(-c-t,ft); s.lineTo(-c-t,H); s.lineTo(c+t,H); s.lineTo(c+t,ft); s.lineTo(W,ft); s.lineTo(W,0);
+    s.lineTo(c,0); s.lineTo(c,H-t); s.lineTo(-c,H-t); s.lineTo(-c,0); s.closePath();
+    var L=0.80, g=new TH.ExtrudeGeometry(s,{depth:L, bevelEnabled:false}); g.translate(0,0,-L/2); g.rotateX(Math.PI); return g;
   }
   // ABARCÓN (U-bolt) que abraza la viga y fija la correa
   function abarconGeom(TH){   // U-bolt que RODEA la viga: baja por un lado, pasa por DEBAJO del tubo y sube por el otro
@@ -121,20 +121,21 @@
         /* módulos uno a uno: marco + vidrio + caja; CORREAS solo en los HUECOS entre módulos (n+1), perfil OMEGA + abarcón; cable módulo→módulo */
         for (var b = 0; b <= D.modsPerStr; b++) {
           var bx = w.edge + w.dir * b * D.pitch;
-          push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.06, 0));      // correa omega en el hueco entre módulos
+          push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.11, 0));      // correa omega (corona plana apoyada sobre el tubo, alas hacia arriba)
           push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
-        var jbZ = D.modH/6;                                 // 2 cajas por módulo: a 1/3 (−Z) y 2/3 (+Z) del lateral
+        var jbZ = D.modH/6;                                 // 3 cajas por módulo en la línea central: a 1/3, 1/2 y 2/3 del lateral
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
           push('glass', 'glass', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY, -jbZ));   // caja a 1/3
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  jbZ));   // caja a 2/3
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY, -jbZ));   // caja a 1/3 (saca cable)
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  0));     // caja central
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  jbZ));   // caja a 2/3 (saca cable)
         }
-        // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos; + (rojo) por +Z, − (negro) por −Z (cada uno por el lado de su caja); 6 mm²
+        // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos; sale de las cajas a 1/3 (−) y 2/3 (+) y va por el lado más cercano a su caja; 6 mm²
         for (var c = 0; c <= D.modsPerStr - 3; c++) {
           var even = (c % 2 === 0);
           push(even?'cablepos':'cableneg', even?'cable':'jbox', true, false, leapCableGeom, mT(THREE, modX(c+1), 0, even?jbZ:-jbZ));
@@ -192,6 +193,13 @@
     out.push({ key:'antenatip', mat:'jbox', spin:true, cast:true, antenna:true, tip:true,   // la ANTENA en sí: más GRUESA, fija abajo (~30 cm del suelo)
       geom:function (TH){ return new TH.CylinderGeometry(0.018,0.018,1.0,8); }, m:mT(THREE, D.tcuX+0.12, -0.20, 0.12) });
 
+    // CABLE MOTOR → TCU: del conector del motor (FIJO, en el slew) al conector de motor de la TCU (BASCULA con el tubo).
+    // Cruza el límite spin/estático: extremo 'a' estático, extremo 'b' gira con el tubo. La app calcula ambos extremos
+    // en el mundo por frame y orienta este cilindro unitario (alto 1, eje Y) entre ellos.
+    out.push({ key:'motorlink', mat:'cable', spin:false, cast:true, motorLink:true,
+      a:[0,-0.06,-0.40], b:[D.tcuX-0.22,-0.30,-0.12],
+      geom:function (TH){ return new TH.CylinderGeometry(0.012,0.012,1,6); }, m:mT(THREE, 0,0,0) });
+
     return out;
   };
 
@@ -205,6 +213,7 @@
     var mats = opts.materials || S.materials(THREE);
     var spin = new THREE.Group(), stat = new THREE.Group();
     S.parts(THREE, opts).forEach(function (p) {
+      if (p.motorLink) return;   // cable motor↔TCU: cruza spin/estático; lo gestiona la app por frame (pendiente en el gemelo)
       var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
       mesh.applyMatrix4(p.m);
       mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
@@ -224,12 +233,12 @@
   S.instancePlan = function (THREE, opts) {
     var byType = {}, order = [];
     S.parts(THREE, opts).forEach(function (p) {
-      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, locals:[] }; order.push(p.key); }
+      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, a:p.a, b:p.b, locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
     });
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.2.0';
+  S.VERSION = '0.3.0';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
