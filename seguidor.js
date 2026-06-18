@@ -62,6 +62,17 @@
     var mid = a.clone().lerp(b, 0.5); mid.y -= (sag||0.10);
     return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 6, false);
   }
+  // CORREA de perfil OMEGA (sombrero): sección en X-Y extruida a lo largo de Z (ancho del módulo)
+  function omegaGeom(TH){
+    var W=0.05, B=0.022, H=0.05, T=0.014, s=new TH.Shape();
+    s.moveTo(-W,0); s.lineTo(-W,T); s.lineTo(-B,T); s.lineTo(-B,H); s.lineTo(B,H); s.lineTo(B,T); s.lineTo(W,T); s.lineTo(W,0); s.closePath();
+    var g=new TH.ExtrudeGeometry(s,{depth:D.modH*0.96, bevelEnabled:false}); g.translate(0,0,-D.modH*0.96/2); return g;
+  }
+  // ABARCÓN (U-bolt) que abraza la viga y fija la correa
+  function abarconGeom(TH){
+    var p=[new TH.Vector3(0,-0.05,-0.078), new TH.Vector3(0,0.10,-0.078), new TH.Vector3(0,0.12,0), new TH.Vector3(0,0.10,0.078), new TH.Vector3(0,-0.05,0.078)];
+    return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
+  }
 
   /* ====================================================================
    * PIEZAS de UN tubo (una fila). Devuelve una lista de descriptores:
@@ -97,11 +108,11 @@
       var wingC = w.edge + w.dir * D.strLen / 2;   // centro del ala
 
       if (detail === 'full') {
-        /* módulos uno a uno: marco + vidrio + caja; CORREAS 2n+1 (2 por módulo, paso medio); cable módulo→módulo */
-        for (var b = 0; b <= 2 * D.modsPerStr; b++) {
-          var bx = w.edge + w.dir * b * (D.pitch / 2);
-          push('correa', 'correa', true, false,
-            function (TH){ return new TH.BoxGeometry(0.05, 0.05, D.modH*0.96); }, mT(THREE, bx, D.purlY, 0));
+        /* módulos uno a uno: marco + vidrio + caja; CORREAS solo en los HUECOS entre módulos (n+1), perfil OMEGA + abarcón; cable módulo→módulo */
+        for (var b = 0; b <= D.modsPerStr; b++) {
+          var bx = w.edge + w.dir * b * D.pitch;
+          push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.06, 0));      // correa omega en el hueco entre módulos
+          push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
@@ -208,6 +219,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.1.4';
+  S.VERSION = '0.1.5';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
