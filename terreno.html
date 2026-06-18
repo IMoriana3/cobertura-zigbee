@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · sol real + BT · v2.7</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores + CTs, inversores, CCTV, vallado, viales · 2 NCUs reales + estaciones meteo · alturas reales · reparto por pasillo central (visible) · sombras + materiales · cámara libre (WASD) · NCU 3D real · sol real + BT · v2.8</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -124,7 +124,7 @@ function initThree(){
     var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;
     placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';
     if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();});
-  SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;scene.add(SUN);scene.add(SUN.target);var sun=SUN;
+  SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
   sun.shadow.mapSize.set(4096,4096);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
   scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
@@ -135,7 +135,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=ANG?ANG.maxT:840,_mn=ANG?ANG.minT:0;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;setTime(curMin);if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    flyStep(dt);controls.update();renderer.render(scene,camera);})(performance.now());
+    flyStep(dt);controls.update();updateSunShadow();renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -176,9 +176,13 @@ function sunVec(min){
 // ángulo del seguidor SIN backtracking: sigue al sol en el plano E-O → empinado al amanecer/atardecer (da sombra a la fila vecina)
 function noBtAngle(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return Math.max(-60,Math.min(60,-Math.atan2(sv.E,sv.U)/DEG)); }
 function panelAngle(min){ return btOn ? (angleAt(null,min)||0) : noBtAngle(min); }   // BT on = telemetría real (anti-sombra); BT off = seguimiento puro
-function syncSun(min){ if(!SUN)return; var sv=sunVec(min), up=Math.max(0.06,sv.U), d=600;
-  SUN.position.set(sv.E*d, up*d, -sv.N*d); SUN.target.position.set(0,0,0); SUN.target.updateMatrixWorld();
-  SUN.intensity=0.7+2.2*Math.max(0,sv.U); }
+function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); }
+// la shadow camera SIGUE a la vista: cuanto más cerca miras, más pequeño el frustum → texel más fino → adiós escalones
+function updateSunShadow(){ if(!SUN||!SUN._dir||!controls||!camera)return; var t=controls.target, dir=SUN._dir;
+  var half=Math.max(45,Math.min(560,camera.position.distanceTo(t)*0.55)), sc=SUN.shadow.camera;
+  sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=Math.max(1200,half*8);sc.updateProjectionMatrix();
+  var d=Math.max(400,half*4); SUN.position.set(t.x+dir.E*d,t.y+Math.max(0.06,dir.U)*d,t.z-dir.N*d);
+  SUN.target.position.copy(t); SUN.target.updateMatrixWorld(); }
 function setTime(min){
   curMin=min; syncSun(min);
   if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
