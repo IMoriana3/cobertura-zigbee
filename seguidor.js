@@ -76,8 +76,8 @@
   }
   // ABARCÓN de la TCU: ∩ POR ENCIMA de la viga, extremos hacia ABAJO justo hasta la chapa plana de la TCU (que va contra el tubo). Al revés que el de la correa.
   function abarconTcuGeom(TH){
-    var p=[new TH.Vector3(0,-0.085,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.090,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.085,0.072)];
-    return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
+    var p=[new TH.Vector3(0,-0.10,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.088,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.10,0.072)];
+    return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 12, 0.005, 6, false);   // más FINO (Ø10 mm) y patas que entran por los agujeros de las chapas
   }
   // caja de conexión: 3 por módulo en la LÍNEA CENTRAL (a lo ancho del módulo), pequeñas
   function jboxGeom(TH){ return new TH.BoxGeometry(0.09, 0.04, 0.08); }
@@ -243,6 +243,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.4';
+  S.VERSION = '0.3.5';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
