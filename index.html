@@ -818,7 +818,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
         <div class="mode" data-m="ack"><span class="mi"></span>ACK fallos <span class="md">Δ por intervalo</span></div>
         <div class="mode" data-m="saltos"><span class="mi"></span>Saltos <span class="md">al coordinador</span></div>
         <div class="mode" data-m="crit"><span class="mi"></span>Criticidad <span class="md">cuántos dependen</span></div>
-        <div class="mode" data-m="predicho"><span class="mi"></span>Predicho/SPOF <span class="md">malla prevista (RF)</span></div>
+        <div class="mode" data-m="predicho"><span class="mi"></span>Predicho/SPOF <span class="md">malla real · dominadores</span></div>
       </div>
     </div>
 
@@ -897,9 +897,9 @@ const LEGENDS={
   ack:[['--s-exc','0','sin fallos'],['--s-good','1–3','pocos'],['--s-ok','4–10','algunos'],['--s-weak','11–30','muchos'],['--s-bad','> 30','retransmite'],['--s-off','—','offline']],
   saltos:[['--s-exc','1','directo'],['--s-good','2–3','cerca'],['--s-ok','4–6','medio'],['--s-weak','7–9','lejos'],['--s-bad','≥ 10','muy profundo'],['--s-off','—','sin ruta']],
   crit:[['--s-exc','0','hoja'],['--s-good','1–2','relé leve'],['--s-ok','3–6','relé'],['--s-weak','7–15','relé clave'],['--s-bad','> 15','punto único de fallo'],['--s-off','—','sin datos']],
-  predicho:[['--s-exc','Hoja','0 rutas'],['--s-good','Poco usado','1–10'],['--s-ok','Relé','11–25'],['--s-weak','Backbone','26–45'],['--s-bad','SPOF / dominador','crítico'],['--s-off','aristas','rojo↔verde = margen']]
+  predicho:[['--s-exc','Hoja','0 desc.'],['--s-good','Poco usado','1–10'],['--s-ok','Relé','11–25'],['--s-weak','Backbone','26–45'],['--s-bad','SPOF / dominador','≥46'],['--s-off','aristas','RSSI medido']]
 };
-const LEGTITLE={rssi:'Leyenda — RSSI (dBm)',estado:'Leyenda — estado',ack:'Leyenda — ACK fallos (Δ)',saltos:'Leyenda — saltos al coordinador',crit:'Leyenda — criticidad (nodos que dependen)',predicho:'Leyenda — malla predicha (rutas / SPOF)'};
+const LEGTITLE={rssi:'Leyenda — RSSI (dBm)',estado:'Leyenda — estado',ack:'Leyenda — ACK fallos (Δ)',saltos:'Leyenda — saltos al coordinador',crit:'Leyenda — criticidad (nodos que dependen)',predicho:'Leyenda — malla real (descendientes / SPOF)'};
 
 /* ---------- CSV ---------- */
 function parseCSV(t){const R=[];let f='',row=[],q=false,i=0;while(i<t.length){const c=t[i];
@@ -1156,8 +1156,11 @@ function legend(){
 /* ---------- Tarea D: 6º modo "Predicho/SPOF" (malla RF del driver diagnostico_elburgo.py) ---------- */
 function colMarginPred(mb){ if(mb==null)return cv('--s-bad'); if(mb<8)return cv('--s-bad'); if(mb<14)return cv('--s-weak'); if(mb<22)return cv('--s-ok'); if(mb<30)return cv('--s-good'); return cv('--s-exc'); }
 function colRoutesPred(rt,spof){ return spof? cv('--s-bad') : colCrit(rt); }   // nodos: gradiente por rutas que pasan; SPOF en rojo
+// Tarea D (malla real / adaptador): nodo rojo si SPOF; si no, gradiente por nº de descendientes
+// (subárbol). Así los dominadores (TCU_062≈47, TCU_071≈39) destacan aunque no sean SPOF.
+function colDescPred(d,spof){ if(spof)return cv('--s-bad'); d=d||0; if(d>=46)return cv('--s-bad'); if(d>=26)return cv('--s-weak'); if(d>=11)return cv('--s-ok'); if(d>=1)return cv('--s-good'); return cv('--s-exc'); }
 function loadPred(cb){ if(predLoaded){cb&&cb();return;}
-  fetch('diagnostico_elburgo.geojson',{cache:'no-store'}).then(r=>r.json()).then(gj=>{
+  fetch('elburgo_real.geojson',{cache:'no-store'}).then(r=>r.json()).then(gj=>{
     PRED={nodes:[],edges:[]};
     for(const f of (gj.features||[])){ const g=f.geometry,p=f.properties||{}; if(!g)continue;
       if(g.type==='Point'){ const[lo,la]=g.coordinates; PRED.nodes.push({lat:la,lon:lo,p}); }
@@ -1172,19 +1175,20 @@ function showPred(){
   loadPred(()=>{
     if(S.mode!=='predicho')return;                    // por si se cambió de modo durante el fetch
     predLayer.clearLayers(); if(!map.hasLayer(predLayer))predLayer.addTo(map);
-    for(const e of PRED.edges){ const mb=e.p.margin_db;
-      L.polyline(e.ll,{color:colMarginPred(mb),weight:2,opacity:.6}).bindPopup(
-        `<div class="pn">enlace predicho</div><table><tr><td>margen</td><td>${mb} dB</td></tr><tr><td>P(enlace)</td><td>${e.p.p_link}</td></tr><tr><td>distancia</td><td>${e.p.distance_m} m</td></tr><tr><td>RSSI medido</td><td>${e.p.rssi_medido_dbm??'—'}</td></tr></table>`
+    for(const e of PRED.edges){ const rm=e.p.rssi_medido_dbm;
+      L.polyline(e.ll,{color:colRSSI(rm),weight:2,opacity:.6}).bindPopup(
+        `<div class="pn">${e.p.origen} → ${e.p.destino}</div><table><tr><td>RSSI medido</td><td>${rm??'—'} dBm</td></tr><tr><td>distancia</td><td>${e.p.distancia_m} m</td></tr><tr><td>frecuencia uso</td><td>${e.p.freq??'—'}</td></tr></table>`
       ).addTo(predLayer); }
-    let spofN=0,lats=[],lons=[];
-    for(const nd of PRED.nodes){ const sp=!!nd.p.is_spof; if(sp)spofN++; lats.push(nd.lat);lons.push(nd.lon);
-      L.circleMarker([nd.lat,nd.lon],{radius:sp?9:6,weight:sp?3:2,color:sp?'#ffffff':'rgba(0,0,0,.55)',fillColor:colRoutesPred(nd.p.routes_through,sp),fillOpacity:.95}).bindPopup(
-        `<div class="pn">${nd.p.id}</div><div class="pr">${sp?'⚠ punto único de fallo (SPOF)':'predicho'}</div><table><tr><td>rutas que pasan</td><td>${nd.p.routes_through}</td></tr><tr><td>grado</td><td>${nd.p.degree}</td></tr><tr><td>SPOF</td><td>${sp?'sí':'no'}</td></tr></table>`
+    let spofN=0,domN=0,lats=[],lons=[];
+    for(const nd of PRED.nodes){ const sp=!!nd.p.is_spof, dsc=nd.p.descendientes||0; if(sp)spofN++; if(dsc>=26)domN++; lats.push(nd.lat);lons.push(nd.lon);
+      const big=sp||dsc>=26;
+      L.circleMarker([nd.lat,nd.lon],{radius:big?9:6,weight:big?3:2,color:sp?'#ffffff':'rgba(0,0,0,.55)',fillColor:colDescPred(dsc,sp),fillOpacity:.95}).bindPopup(
+        `<div class="pn">${nd.p.id}${nd.p.etiqueta?(' · '+nd.p.etiqueta):''}</div><div class="pr">${sp?'⚠ punto único de fallo (SPOF)':(dsc>=26?'dominador (cuello de botella)':(nd.p.role||'TCU'))}</div><table><tr><td>descendientes</td><td>${dsc}</td></tr><tr><td>rutas que pasan</td><td>${nd.p.rutas??'—'}</td></tr><tr><td>RSSI medio</td><td>${nd.p.rssi_med_dbm??'—'} dBm</td></tr><tr><td>saltos típicos</td><td>${nd.p.hop_tipico??'—'}</td></tr><tr><td>padres distintos</td><td>${nd.p.padres_distintos??'—'}</td></tr><tr><td>padre dominante</td><td>${nd.p.padre_dominante??'—'}</td></tr><tr><td>ACK fallos</td><td>${nd.p.ack_failures??'—'}</td></tr></table>`
       ).addTo(predLayer); }
     const set=(i,v)=>{const el=document.getElementById(i);if(el)el.textContent=v;};
     set('sTot',PRED.nodes.length); set('sOn','—'); set('sOff',spofN||'—');
-    set('m1l','Aristas predichas'); set('m1',PRED.edges.length); set('m2l','SPOF'); set('m2',spofN);
-    const wh=document.querySelector('#worst .wh h2'); if(wh)wh.textContent='Malla predicha (sin instante)';
+    set('m1l','Enlaces'); set('m1',PRED.edges.length); set('m2l','Dominadores'); set('m2',domN);
+    const wh=document.querySelector('#worst .wh h2'); if(wh)wh.textContent='Malla real · dominadores / SPOF';
     if(!predFit && lats.length){ map.fitBounds([[Math.min(...lats),Math.min(...lons)],[Math.max(...lats),Math.max(...lons)]],{padding:[40,40]}); predFit=true; }
   });
 }
