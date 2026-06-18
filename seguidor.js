@@ -183,8 +183,8 @@
       function (TH){ var g=new TH.CylinderGeometry(0.092,0.092,0.05,18); g.rotateX(Math.PI/2); return g; }, mT(THREE, 0,-0.04,-0.68));
     push('control', 'silver', false, true,                  // caja de control / finales de carrera (gris) atornillada al frontal de la reductora
       function (TH){ return new TH.BoxGeometry(0.20, 0.20, 0.13); }, mT(THREE, 0.22, 0.04, -0.17));
-    push('motorcable', 'cable', false, true,                // cable de potencia al motor (rojo, visible) desde el conector hasta el motor
-      function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([new TH.Vector3(0.20,-0.06,-0.10), new TH.Vector3(0.08,-0.14,-0.24), new TH.Vector3(0,-0.06,-0.40)]),10,0.016,6,false); }, mT(THREE, 0,0,0));
+    push('motorcable', 'jbox', false, true,                 // cable de potencia al motor: NEGRO (antes rojo), del conector del drive hasta el motor
+      function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([new TH.Vector3(0.20,-0.06,-0.10), new TH.Vector3(0.08,-0.14,-0.24), new TH.Vector3(0,-0.06,-0.40)]),10,0.006,6,false); }, mT(THREE, 0,0,0));
     // SOPORTE de la corona: poste ROBUSTO hasta el suelo (terrainScaled: la app lo estira desde la corona al terreno)
     out.push({ key:'bracket', mat:'steel', spin:false, cast:true, twin:true,   // saddle/bracket que une el poste a la corona (como el render); TWIN: en ambas vigas
       geom:function (TH){ return new TH.BoxGeometry(0.36, 0.16, 0.48); }, m:mT(THREE, 0,-0.20,0) });
@@ -243,6 +243,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.3';
+  S.VERSION = '0.3.4';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
