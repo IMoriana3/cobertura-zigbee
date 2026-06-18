@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde, estables al zoom) · trayectoria solar · cámara libre (WASD) · día/velocidad · v2.21</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde, estables al zoom) · trayectoria solar (sol lejano + rayo) · cámara libre (WASD) · día/velocidad · v2.22</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -98,7 +98,7 @@ var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
 var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
-var sunPathGroup=null,sunMarker=null;
+var sunPathGroup=null,sunMarker=null,sunRay=null;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -199,21 +199,26 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
   if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=3200;sc.updateProjectionMatrix();}
   var d=1200; SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
-// trayectoria solar: arco del recorrido del sol del día elegido (simDoy) + marcas horarias + posición actual del sol
+// trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
+// el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
   if(sunPathGroup){scene.remove(sunPathGroup);sunPathGroup.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
-  sunPathGroup=new THREE.Group();sunMarker=null;
-  var cx=-66,cz=36,R=560,pts=[];
-  for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<-0.04)continue;pts.push(new THREE.Vector3(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N));}
-  if(pts.length>1)sunPathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0xffcf5a,transparent:true,opacity:.75})));
-  for(var h=0;h<24;h++){var sv=sunVec(h*60);if(sv.U<0.02)continue;var p=new THREE.Vector3(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N);
-    var d=new THREE.Mesh(new THREE.SphereGeometry(3.2,8,6),new THREE.MeshBasicMaterial({color:0xffe08a}));d.position.copy(p);sunPathGroup.add(d);
-    if(h%3===0){var lb=makeLabel((h<10?'0':'')+h+'h');lb.position.set(p.x,p.y+16,p.z);sunPathGroup.add(lb);}}
-  sunMarker=new THREE.Mesh(new THREE.SphereGeometry(11,16,12),new THREE.MeshBasicMaterial({color:0xfff3b0}));sunPathGroup.add(sunMarker);
+  sunPathGroup=new THREE.Group();sunMarker=null;sunRay=null;
+  var cx=-66,cz=36,R=1800,pts=[];
+  for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<-0.04)continue;pts.push(new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N));}
+  if(pts.length>1)sunPathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0xffcf5a,transparent:true,opacity:.7})));
+  for(var h=0;h<24;h++){var sv=sunVec(h*60);if(sv.U<0.02)continue;var p=new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N);
+    var d=new THREE.Mesh(new THREE.SphereGeometry(8,8,6),new THREE.MeshBasicMaterial({color:0xffe08a}));d.position.copy(p);sunPathGroup.add(d);
+    if(h%3===0){var lb=makeLabel((h<10?'0':'')+h+'h');lb.position.set(p.x,p.y+50,p.z);sunPathGroup.add(lb);}}
+  sunMarker=new THREE.Mesh(new THREE.SphereGeometry(32,20,16),new THREE.MeshBasicMaterial({color:0xfff2c0}));sunPathGroup.add(sunMarker);
+  var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,0,0,0],3));
+  sunRay=new THREE.Line(rg,new THREE.LineBasicMaterial({color:0xffe08a,transparent:true,opacity:.3}));sunPathGroup.add(sunRay);   // rayo sol→centro: la sombra cae al lado opuesto
   sunPathGroup.visible=$('sunpath')?$('sunpath').checked:true;scene.add(sunPathGroup);updateSunMarker(curMin);
 }
-function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=560,sv=sunVec(min);
-  if(sv.U<-0.05){sunMarker.visible=false;return;} sunMarker.visible=true; sunMarker.position.set(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N); }
+function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=sunVec(min);
+  if(sv.U<-0.05){sunMarker.visible=false;if(sunRay)sunRay.visible=false;return;}
+  var sx=cx+R*sv.E,sy=Math.max(1,R*sv.U),sz=cz-R*sv.N; sunMarker.visible=true; sunMarker.position.set(sx,sy,sz);
+  if(sunRay){var p=sunRay.geometry.attributes.position;p.setXYZ(0,sx,sy,sz);p.setXYZ(1,cx,0,cz);p.needsUpdate=true;sunRay.visible=true;} }
 function setTime(min){
   curMin=min; syncSun(min);
   if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
