@@ -164,10 +164,14 @@
       }
     });
 
-    /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
+    /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí el sillín de fijación + abarcones. --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
-    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.14, 0, 0));   // DOS abarcones (∩ sobre la viga) sobre los salientes de los EXTREMOS de la TCU (los del .glb)
+    // CHAPAS / sillín de fijación bajo la viga: chapa plana contra el tubo por la que el abarcón M8 entra y aprieta
+    var tcuChapa = function (TH){ return new TH.BoxGeometry(0.05, 0.012, 0.21); };
+    push('tcuchapa', 'steel', true, true, tcuChapa, mT(THREE, D.tcuX-0.13, -0.067, 0));
+    push('tcuchapa', 'steel', true, true, tcuChapa, mT(THREE, D.tcuX+0.13, -0.067, 0));
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.13, 0, 0));   // DOS abarcones M8 (∩ sobre la viga) que entran por las chapas
     push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.13, 0, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
@@ -243,6 +247,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.6';
+  S.VERSION = '0.3.7';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
