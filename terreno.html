@@ -39,7 +39,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde rectangular, estables al zoom) · cámara libre (WASD) · día/velocidad · v2.20</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · sombras de TODA la planta (sin borde, estables al zoom) · trayectoria solar · cámara libre (WASD) · día/velocidad · v2.21</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -51,6 +51,7 @@
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
     <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
     <div class="row"><label>Día (simulación)</label><input type="date" id="simdate" value="2026-06-17" style="font:inherit;font-size:12px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:6px;padding:3px 6px"></div>
+    <div class="row"><label title="Dibuja el recorrido del sol del día elegido (arco + marcas horarias) y la posición actual del sol."><input type="checkbox" id="sunpath" checked> Trayectoria solar</label></div>
     <div class="row"><label title="Cámara libre tipo vuelo: el ratón mira alrededor (no orbita) y WASD/QE se mueve. Quítalo para volver a órbita."><input type="checkbox" id="freecam"> Cámara libre (vuelo)</label></div>
     <div class="row"><label title="Enlaces de radio de cada TCU a su NCU. Lo que apantalla no es el relieve (llano) sino los propios paneles inclinados → cambia con la hora. Arrastra la barra de tiempo o dale al ▶."><input type="checkbox" id="fres"> Enlaces a NCU (apantalla el panel)</label></div>
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
@@ -97,6 +98,7 @@ var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
 var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
+var sunPathGroup=null,sunMarker=null;
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -189,7 +191,7 @@ function panelAngle(min){
   if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
-function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); }
+function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
 // la shadow camera SIGUE al objetivo (para barrer la planta) pero con tamaño FIJO → las sombras NO cambian al alejar/acercar el zoom
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
   // frustum FIJO y centrado en TODA la planta → ni cambia al zoom ni deja borde rectangular de sombra
@@ -197,6 +199,21 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
   if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=3200;sc.updateProjectionMatrix();}
   var d=1200; SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
+// trayectoria solar: arco del recorrido del sol del día elegido (simDoy) + marcas horarias + posición actual del sol
+function buildSunPath(){
+  if(sunPathGroup){scene.remove(sunPathGroup);sunPathGroup.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
+  sunPathGroup=new THREE.Group();sunMarker=null;
+  var cx=-66,cz=36,R=560,pts=[];
+  for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<-0.04)continue;pts.push(new THREE.Vector3(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N));}
+  if(pts.length>1)sunPathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0xffcf5a,transparent:true,opacity:.75})));
+  for(var h=0;h<24;h++){var sv=sunVec(h*60);if(sv.U<0.02)continue;var p=new THREE.Vector3(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N);
+    var d=new THREE.Mesh(new THREE.SphereGeometry(3.2,8,6),new THREE.MeshBasicMaterial({color:0xffe08a}));d.position.copy(p);sunPathGroup.add(d);
+    if(h%3===0){var lb=makeLabel((h<10?'0':'')+h+'h');lb.position.set(p.x,p.y+16,p.z);sunPathGroup.add(lb);}}
+  sunMarker=new THREE.Mesh(new THREE.SphereGeometry(11,16,12),new THREE.MeshBasicMaterial({color:0xfff3b0}));sunPathGroup.add(sunMarker);
+  sunPathGroup.visible=$('sunpath')?$('sunpath').checked:true;scene.add(sunPathGroup);updateSunMarker(curMin);
+}
+function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=560,sv=sunVec(min);
+  if(sv.U<-0.05){sunMarker.visible=false;return;} sunMarker.visible=true; sunMarker.position.set(cx+R*sv.E,Math.max(0.5,R*sv.U),cz-R*sv.N); }
 function setTime(min){
   curMin=min; syncSun(min);
   if(imTube){var a=panelAngle(min)*DEG;_R.makeRotationZ(a);
@@ -251,7 +268,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();buildGateways();positionGateways();buildBOS();buildCorridor();if(fresOn)applyFresnel();
+  await loadNCU();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
   if(ANG){tMin=ANG.minT;tMax=ANG.maxT;$('time').min=tMin;$('time').max=tMax;curMin=Math.min(540,tMax);}
@@ -560,13 +577,14 @@ $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría)
 $('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
+$('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
 $('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducción (min simulados por segundo real)
 $('simdate').onchange=function(){var dt=new Date(this.value+'T12:00:00');if(isNaN(dt))return;simDoy=Math.floor((dt-new Date(dt.getFullYear(),0,0))/86400000);   // cualquier día del año
   if(!simOn){$('sim').checked=true;simOn=true;tMin=300;tMax=1260;$('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;}
-  setTime(curMin);if(fresOn)applyFresnel();};
+  buildSunPath();setTime(curMin);if(fresOn)applyFresnel();};
 $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   var d=new THREE.Vector3();camera.getWorldDirection(d);
   if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
