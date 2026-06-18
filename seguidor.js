@@ -76,7 +76,7 @@
   }
   // ABARCÓN de la TCU: ∩ POR ENCIMA de la viga, extremos hacia ABAJO justo hasta la chapa plana de la TCU (que va contra el tubo). Al revés que el de la correa.
   function abarconTcuGeom(TH){
-    var p=[new TH.Vector3(0,-0.075,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.090,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.075,0.072)];
+    var p=[new TH.Vector3(0,-0.085,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.090,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.085,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
   // caja de conexión: 3 por módulo en la LÍNEA CENTRAL (a lo ancho del módulo), pequeñas
@@ -167,8 +167,8 @@
     /* --- TCU colgada del tubo (bascula con él). Se dibuja con su MODELO real tcu.glb; aquí solo el punto de cuelgue (sin chapa extra). --- */
     push('tcu', 'tcu', true, true,
       function (TH){ return new TH.BoxGeometry(0.50, 0.26, 0.36); }, mT(THREE, D.tcuX, -0.22, 0));
-    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.065, 0, 0));   // DOS abarcones (∩ sobre la viga, extremos hacia abajo) sobre los salientes centrales de la TCU
-    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.065, 0, 0));
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.14, 0, 0));   // DOS abarcones (∩ sobre la viga) sobre los salientes de los EXTREMOS de la TCU (los del .glb)
+    push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.13, 0, 0));
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -200,9 +200,9 @@
     // CABLE MOTOR → TCU: del conector del motor (FIJO, en el slew) al conector de motor de la TCU (BASCULA con el tubo).
     // Cruza el límite spin/estático: extremo 'a' estático, extremo 'b' gira con el tubo. La app calcula ambos extremos
     // en el mundo por frame y orienta este cilindro unitario (alto 1, eje Y) entre ellos.
-    out.push({ key:'motorlink', mat:'cable', spin:false, cast:true, motorLink:true,
-      a:[0,-0.06,-0.40], b:[D.tcuX-0.22,-0.30,-0.12],
-      geom:function (TH){ return new TH.CylinderGeometry(0.012,0.012,1,6); }, m:mT(THREE, 0,0,0) });
+    out.push({ key:'motorlink', mat:'jbox', spin:false, cast:true, motorLink:true,   // cable de motor: NEGRO, 6 mm² (Ø~7 mm), del conector del motor (fijo) al conector de la TCU (bascula)
+      a:[0,-0.06,-0.40], b:[D.tcuX-0.165,-0.11,0.045],
+      geom:function (TH){ return new TH.CylinderGeometry(0.0035,0.0035,1,6); }, m:mT(THREE, 0,0,0) });
 
     return out;
   };
@@ -243,6 +243,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.2';
+  S.VERSION = '0.3.3';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
