@@ -63,8 +63,8 @@
     return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 6, false);
   }
   // CORREA de perfil OMEGA (sombrero): sección en X-Y extruida a lo largo de Z (ancho del módulo)
-  function omegaGeom(TH){   // perfil OMEGA de chapa fina (3 mm), 80 cm de largo CENTRADO en la viga, VOLTEADO 180°
-    var W=0.048, c=0.020, H=0.05, t=0.003, ft=0.003, s=new TH.Shape();
+  function omegaGeom(TH){   // perfil OMEGA de chapa fina (3 mm), ESTRECHO, 80 cm CENTRADO en la viga, VOLTEADO 180° (corona plana sobre el tubo, alas arriba donde se atornilla el marco)
+    var W=0.028, c=0.013, H=0.055, t=0.003, ft=0.003, s=new TH.Shape();
     s.moveTo(-W,0); s.lineTo(-W,ft); s.lineTo(-c-t,ft); s.lineTo(-c-t,H); s.lineTo(c+t,H); s.lineTo(c+t,ft); s.lineTo(W,ft); s.lineTo(W,0);
     s.lineTo(c,0); s.lineTo(c,H-t); s.lineTo(-c,H-t); s.lineTo(-c,0); s.closePath();
     var L=0.80, g=new TH.ExtrudeGeometry(s,{depth:L, bevelEnabled:false}); g.translate(0,0,-L/2); g.rotateX(Math.PI); return g;
@@ -79,8 +79,8 @@
     var p=[new TH.Vector3(0,-0.16,-0.072), new TH.Vector3(0,0.072,-0.072), new TH.Vector3(0,0.088,0), new TH.Vector3(0,0.072,0.072), new TH.Vector3(0,-0.16,0.072)];
     return new TH.TubeGeometry(new TH.CatmullRomCurve3(p), 10, 0.008, 6, false);
   }
-  // caja de conexión (2 por módulo, a 1/3 y 2/3 del lateral)
-  function jboxGeom(TH){ return new TH.BoxGeometry(0.10, 0.05, 0.14); }
+  // caja de conexión: 3 por módulo en la LÍNEA CENTRAL (a lo ancho del módulo), pequeñas
+  function jboxGeom(TH){ return new TH.BoxGeometry(0.09, 0.04, 0.08); }
   // cable de string LEAPFROG: salta 2 módulos (paso doble). Sección 6 mm² → Ø ~6 mm (radio 0.003)
   function leapCableGeom(TH){ return catenary(TH, new TH.Vector3(-D.pitch, D.jbY-0.02, 0), new TH.Vector3(D.pitch, D.jbY-0.02, 0), 0.12, 0.003); }
 
@@ -106,6 +106,10 @@
     var tubeLen = medio ? D.span * D.medioFactor : D.span;
     push('tube', 'steel', true, true,
       function (TH){ return new TH.BoxGeometry(tubeLen, D.tube, D.tube); }, mT(THREE, 0,0,0));
+    // TAPAS NEGRAS en cada extremo de la viga de torsión
+    var capX = tubeLen/2 - 0.025, capGeom = function (TH){ return new TH.BoxGeometry(0.06, 0.135, 0.135); };
+    push('tubecap', 'jbox', true, true, capGeom, mT(THREE,  capX, 0, 0));
+    push('tubecap', 'jbox', true, true, capGeom, mT(THREE, -capX, 0, 0));
 
     /* --- ALAS: 'medio' = 1 ala centrada en X=0; 'largo' = 2 alas (+X / -X) --- */
     var wings = medio ? [ { dir:+1, edge:-D.strLen/2 } ]                       // centrada
@@ -121,24 +125,24 @@
         /* módulos uno a uno: marco + vidrio + caja; CORREAS solo en los HUECOS entre módulos (n+1), perfil OMEGA + abarcón; cable módulo→módulo */
         for (var b = 0; b <= D.modsPerStr; b++) {
           var bx = w.edge + w.dir * b * D.pitch;
-          push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.11, 0));      // correa omega (corona plana apoyada sobre el tubo, alas hacia arriba)
+          push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.115, 0));     // correa omega (corona plana sobre el tubo; las alas suben hasta el marco, ahí se atornilla)
           push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
-        var jbZ = D.modH/6;                                 // 3 cajas por módulo en la línea central: a 1/3, 1/2 y 2/3 del lateral
+        var jbX = D.modW/6;                                 // 3 cajas por módulo en la LÍNEA CENTRAL (z=0), repartidas a lo ANCHO: a 1/3, 1/2 y 2/3
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
           push('glass', 'glass', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY, -jbZ));   // caja a 1/3 (saca cable)
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  0));     // caja central
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx, D.jbY,  jbZ));   // caja a 2/3 (saca cable)
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx-jbX, D.jbY, 0));   // caja a 1/3 del ancho (saca cable)
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx,     D.jbY, 0));   // caja central
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx+jbX, D.jbY, 0));   // caja a 2/3 del ancho (saca cable)
         }
-        // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos; sale de las cajas a 1/3 (−) y 2/3 (+) y va por el lado más cercano a su caja; 6 mm²
+        // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos a lo largo de la cadena (eje X), junto a la línea central; 6 mm²
         for (var c = 0; c <= D.modsPerStr - 3; c++) {
           var even = (c % 2 === 0);
-          push(even?'cablepos':'cableneg', even?'cable':'jbox', true, false, leapCableGeom, mT(THREE, modX(c+1), 0, even?jbZ:-jbZ));
+          push(even?'cablepos':'cableneg', even?'cable':'jbox', true, false, leapCableGeom, mT(THREE, modX(c+1), 0, even?0.05:-0.05));
         }
       } else {
         /* 'mass': 1 MESA por ala (textura de células) + correas repr. + canaleta + cajas */
@@ -239,6 +243,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.0';
+  S.VERSION = '0.3.1';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);

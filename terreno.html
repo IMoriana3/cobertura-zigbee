@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega (chapa 3 mm, 80 cm) apoyada sobre la viga · 3 cajas centrales/módulo con leapfrog 6 mm² · abarcón rodea la viga · eje de transmisión bífila · sombras · trayectoria solar · slider 24 h · v2.33</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega ESTRECHA (chapa 3 mm, 80 cm) apoyada sobre la viga, el marco se atornilla en ella · 3 cajas en la línea CENTRAL del módulo (a lo ancho) con leapfrog 6 mm² · tapas negras en los extremos de la viga · abarcón rodea la viga · eje de transmisión bífila · etiquetas de edificios conmutables · sombras · trayectoria solar · slider 24 h · v2.34</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -509,7 +509,7 @@ function buildBOS(){
     else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
       var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
       var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
-    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.lo?5.9:b.sub?4.4:b.ct?3.9:3.6),-b.n);bosGroup.add(lb);});
+    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.lo?5.9:b.sub?4.4:b.ct?3.9:3.6),-b.n);lb.visible=labelGroup.visible;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios: se conmutan con "Etiquetas" (se quitan al deseleccionar)
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
