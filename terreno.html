@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb, blanco roto, perpendicular)+antena fina-gruesa en la del motor · abarcón rodea la viga · eje de transmisión bífila · sombras · trayectoria solar · v2.32</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">Implantación real (DWG): 215 seguidores · CT Norte + CT Sur (coords. DWG) · subestación al sur de la sala de control · sin edificio de oficinas · vallado recto pegado al terreno · seguidor detallado desde fuente única (seguidor.js: módulos bifaciales, correas omega (n+1) + abarcón, cableado, corona+bracket+soporte en ambas vigas, TCU (tcu.glb a color real: cuerpo blanco roto, conectores negros, seta roja) con 2 abarcones + antena fina-gruesa + cable de motor, solo en la viga del motor · correa omega (chapa 3 mm, 80 cm) apoyada sobre la viga · 3 cajas centrales/módulo con leapfrog 6 mm² · abarcón rodea la viga · eje de transmisión bífila · sombras · trayectoria solar · slider 24 h · v2.33</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -266,7 +266,7 @@ async function build(){
   await loadNCU();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();if(fresOn)applyFresnel();
 
   var haveAng=await loadAngles();
-  if(ANG){tMin=ANG.minT;tMax=ANG.maxT;$('time').min=tMin;$('time').max=tMax;curMin=Math.min(540,tMax);}
+  tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;curMin=540;   // el slider cubre las 24 h completas (no solo de día)
   setTime(curMin);$('time').value=curMin;
 
   camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
@@ -303,7 +303,7 @@ function gridRepair(){
 var steelM,glassM,markM,blueM,motorM,panelTex;
 var imPost,imShaft,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4();
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4();
-var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3();
+var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 function makePanelTex(){
   var W=128,H=256,c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');
@@ -346,7 +346,7 @@ function buildTrackers(elevAt){
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else count=(tw?2:1)*N*n;
     var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
-    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
+    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,a:t.a,b:t.b,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
@@ -377,7 +377,7 @@ function layoutTrackers(){
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
-    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin)continue;var filas=s.twin?2:1;        // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin)
+    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink se calcula por frame (cruza spin/estático)
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
         if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);
           _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
@@ -390,17 +390,22 @@ function layoutTrackers(){
 }
 // recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
 function updateSpin(angDeg){ if(!SEG||!SEGO)return;
+  var _ML=null;for(var mi=0;mi<SEG.length;mi++)if(SEG[mi].motorLink){_ML=SEG[mi];break;}            // cable motor↔TCU (se orienta por frame entre un extremo fijo y otro que bascula)
   _R.makeRotationX(-angDeg*DEG);_OS.multiplyMatrices(SEGO,_R);                                      // mundo = orientación · basculación (signo - para casar con el seguimiento)
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
         if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],gnd=t.rel*vex+0.3;if(s.tip){_PV.set(ax,gnd+0.035,az);_Q.identity();_SC.set(1,0.07,1);_M2.compose(_PV,_Q,_SC);}else{var atop=gnd+0.07,aln=Math.max(0.2,ay-atop);_PV.set(ax,(ay+atop)/2,az);_Q.identity();_SC.set(1,aln,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cable FINO + puntera GRUESA, vertical, solo fila oeste
-        if((s.key==='tcu'||s.key==='tcu_brk')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU solo en la fila OESTE (la del motor)
+        if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU y sus abarcones solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
-      if(TCUGLB&&f===0){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
+      if(f===0){
+        if(TCUGLB){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
+        if(_ML){_MS.multiplyMatrices(t.fb[0],SEGO);_PA.set(_ML.a[0],_ML.a[1],_ML.a[2]).applyMatrix4(_MS);_PB.set(_ML.b[0],_ML.b[1],_ML.b[2]).applyMatrix4(_MD);   // A=conector del motor (FIJO) · B=conector de la TCU (BASCULA)
+          _DIR.subVectors(_PB,_PA);var mlen=_DIR.length()||1e-4;_DIR.multiplyScalar(1/mlen);_PV.copy(_PA).add(_PB).multiplyScalar(0.5);_Q.setFromUnitVectors(_UP,_DIR);_SC.set(1,mlen,1);_M2.compose(_PV,_Q,_SC);_ML.im.setMatrixAt(i,_M2);}
+      }
     }}
-  for(var si=0;si<SEG.length;si++){if(SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
+  for(var si=0;si<SEG.length;si++){if(SEG[si].spin||SEG[si].motorLink)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(TCUGLB)for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].instanceMatrix.needsUpdate=true;
 }
 // carga el modelo REAL de la TCU (tcu.glb, 1 malla / 17 primitivas) y lo INSTANCIA (215 ud, viga oeste)
@@ -408,9 +413,13 @@ function loadTCU(){ if(typeof THREE.GLTFLoader!=='function')return;
   new THREE.GLTFLoader().load('tcu.glb',function(gl){
     var sc=gl.scene;sc.updateMatrixWorld(true);
     var bb=new THREE.Box3().setFromObject(sc),c=bb.getCenter(new THREE.Vector3()),ctr=new THREE.Matrix4().makeTranslation(-c.x,-c.y,-c.z),N=TRK.length,arr=[];
-    var tcuM=new THREE.MeshStandardMaterial({color:0xe8e4dc,roughness:.6,metalness:.05});   // blanco roto (los materiales metálicos del glb salían NEGROS sin reflejo)
     sc.traverse(function(o){ if(o.isMesh&&o.geometry){var g=o.geometry.clone();g.applyMatrix4(o.matrixWorld);g.applyMatrix4(ctr);   // geometría centrada en su bbox
-      var im=new THREE.InstancedMesh(g,tcuM,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
+      var src=(o.material&&o.material.isMaterial)?o.material:null,m=src?src.clone():new THREE.MeshStandardMaterial({color:0xe8e4dc});   // CONSERVA el color base del glb (cuerpo blanco roto, conectores negros)
+      if(m.metalness!=null)m.metalness=Math.min(m.metalness,0.18);else m.metalness=0.15;   // los metales del glb salían NEGROS sin reflejo → bajamos metalness
+      if(m.roughness==null||m.roughness<0.45)m.roughness=0.6;
+      if(src&&src.name==='mat_1'){m.color=new THREE.Color(0xcc1417);m.metalness=0.10;m.roughness=0.5;}   // la SETA: roja (el resto de conectores, negros)
+      m.needsUpdate=true;
+      var im=new THREE.InstancedMesh(g,m,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
     TCUGLB=arr; if(SEG)updateSpin(panelAngle(curMin));
   }, undefined, function(){ TCUGLB=null; }); }
 // etiquetas de seguidor (perezosas: solo se crean al activar la casilla, por rendimiento con 215)
@@ -596,7 +605,7 @@ $('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(te
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría) ↔ simulación astronómica (día completo)
-  if(simOn){tMin=300;tMax=1260;}else if(ANG){tMin=ANG.minT;tMax=ANG.maxT;}else{tMin=0;tMax=840;}
+  tMin=0;tMax=1440;   // 24 h completas en ambos modos (real / simulación)
   $('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;
   setTime(curMin);if(fresOn)applyFresnel();};
 $('nsz').oninput=function(){nsz=+this.value;layoutTrackers();};
@@ -608,7 +617,7 @@ $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,3
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
 $('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducción (min simulados por segundo real)
 $('simdate').onchange=function(){var dt=new Date(this.value+'T12:00:00');if(isNaN(dt))return;simDoy=Math.floor((dt-new Date(dt.getFullYear(),0,0))/86400000);   // cualquier día del año
-  if(!simOn){$('sim').checked=true;simOn=true;tMin=300;tMax=1260;$('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;}
+  if(!simOn){$('sim').checked=true;simOn=true;tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;$('time').value=curMin;}
   buildSunPath();setTime(curMin);if(fresOn)applyFresnel();};
 $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   var d=new THREE.Vector3();camera.getWorldDirection(d);
