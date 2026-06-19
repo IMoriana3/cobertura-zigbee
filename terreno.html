@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.60</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.61</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -50,7 +50,14 @@
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
     <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula) · todos</label></div>
-    <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo, arrástralo para recolocarlo sobre el terreno y marca/quita si va articulado. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores (elegir cuál articular · mover)</label></div>
+    <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo (sale un recuadro verde). Aparece aquí abajo la casilla 'Quebrado' para articularlo o no, y puedes arrastrarlo sobre el terreno. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores <span style="color:var(--tx2);font-size:11px">(clic: elegir quebrado · arrastrar: mover)</span></label></div>
+    <div id="edSel" style="display:none;margin:3px 0 4px 18px;padding:8px 10px;border-left:3px solid #36D399;background:rgba(54,211,153,.09);border-radius:6px">
+      <div style="font-size:12px;margin-bottom:6px">Seleccionado: <b id="edNum" style="font-family:var(--mono)">—</b></div>
+      <label style="display:block;font-size:13.5px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="edArtic"> <b>Quebrado</b> (articulado · rótula en el actuador)</label>
+      <div style="font-size:11px;color:var(--tx2);margin-bottom:7px">Arrástralo para recolocarlo sobre el terreno.</div>
+      <div style="display:flex;gap:6px"><button class="btn" id="edSave">💾 Guardar</button><button class="btn" id="edReset">↺ Restablecer</button></div>
+      <div id="edMsg" style="font-size:11px;color:#36D399;display:none;margin-top:6px">Guardado ✓</div>
+    </div>
     <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
     <div class="row"><label>Día (simulación)</label><input type="date" id="simdate" value="2026-06-17" style="font:inherit;font-size:12px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:6px;padding:3px 6px"></div>
     <div class="row"><label title="Dibuja el recorrido del sol del día elegido (arco + marcas horarias) y la posición actual del sol."><input type="checkbox" id="sunpath" checked> Trayectoria solar</label></div>
@@ -60,13 +67,6 @@
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · WASD/QE vuela</span></div>
-  </div>
-  <div class="panel" id="editPanel" style="left:auto;right:14px;bottom:14px;display:none;min-width:210px">
-    <h2 style="margin-bottom:6px">Seguidor <span id="edNum" style="font-family:var(--mono)">—</span></h2>
-    <div class="row"><label><input type="checkbox" id="edArtic"> Articulado (rótula en el actuador)</label></div>
-    <div class="row" style="font-size:11px;color:var(--tx2)">Arrástralo sobre el terreno para recolocarlo.</div>
-    <div class="row" style="margin-top:6px;gap:6px"><button class="btn" id="edSave">💾 Guardar</button><button class="btn" id="edReset">↺ Restablecer</button></div>
-    <div class="row" id="edMsg" style="font-size:11px;color:#36D399;display:none">Guardado ✓</div>
   </div>
   <div id="timebar">
     <button class="btn" id="play">▶</button>
@@ -686,9 +686,9 @@ function saveTrackers(){                                               // guarda
 function pickAt(e){if(!pickGroup)return -1;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObjects(pickGroup.children,false);return h.length?h[0].object.userData.tk:-1;}
 function terrainPt(e){if(!terrain)return null;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObject(terrain);return h.length?h[0].point:null;}
 function selectTracker(i){selIdx=i;
-  if(i<0||!PICK[i]){if(selWire)selWire.visible=false;$('editPanel').style.display='none';return;}
+  if(i<0||!PICK[i]){if(selWire)selWire.visible=false;$('edSel').style.display='none';return;}
   selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.scale.copy(PICK[i].scale);
-  $('editPanel').style.display='block';$('edNum').textContent=(TRK[i].id!=null?TRK[i].id:('#'+(i+1)));$('edArtic').checked=!!TRK[i].artic;$('edMsg').style.display='none';
+  $('edSel').style.display='block';$('edNum').textContent=(TRK[i].id!=null?TRK[i].id:('#'+(i+1)));$('edArtic').checked=!!TRK[i].artic;$('edMsg').style.display='none';
 }
 $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;}};
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
