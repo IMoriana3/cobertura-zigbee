@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.46"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.47"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.46</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.47</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -335,7 +335,8 @@ function buildTrackers(elevAt){
   var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
-  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={},mMab={};
+  var dampPosts=[zP[1],zP[zP.length-2]];                                            // amortiguadores al PENÚLTIMO poste (N y S) de la retícula de cobertura
+  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio',damperX:dampPosts}),mM={},mMab={};
   planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.14,0);   // TCU perpendicular (90°) y VOLTEADA (cara plana contra la viga)
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
