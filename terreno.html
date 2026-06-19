@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.58</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.59</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -338,7 +338,7 @@ function buildTrackers(elevAt){
   TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
   var N=NODES.length;
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
-  var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (propio de cobertura)
+  var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var dampPosts=[zP[1],zP[zP.length-2]];                                            // amortiguadores al PENÚLTIMO poste (N y S) de la retícula de cobertura
