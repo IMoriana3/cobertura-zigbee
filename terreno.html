@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.64</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.65</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -100,10 +100,10 @@ function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que 
     var bb={x0:1e9,x1:-1e9,z0:1e9,z1:-1e9};
     if(typeof TRK!=='undefined'&&TRK)TRK.forEach(function(t){if(t.gx<bb.x0)bb.x0=t.gx;if(t.gx>bb.x1)bb.x1=t.gx;if(t.gz<bb.z0)bb.z0=t.gz;if(t.gz>bb.z1)bb.z1=t.gz;});
     var lines=[
-      'diag v2.64 · NaN='+nanc+(info.length?' ['+info.join(',')+']':''),
+      'diag v2.65 · NaN='+nanc+(info.length?' ['+info.join(',')+']':''),
       'shadowMap='+sm+' tipo='+(renderer.shadowMap?renderer.shadowMap.type:'?')+' maxTex='+mtx,
       'SUN.cast='+(SUN?SUN.castShadow:'?')+' int='+(SUN?SUN.intensity.toFixed(2):'?')+' pos=('+(SUN?[(SUN.position.x|0),(SUN.position.y|0),(SUN.position.z|0)].join(','):'?')+')',
-      'shadowCam LRTB='+(sc?[(sc.left|0),(sc.right|0),(sc.top|0),(sc.bottom|0)].join('/'):'?')+' n/f='+(sc?(sc.near|0)+'/'+(sc.far|0):'?')+' map='+((SUN&&SUN.shadow)?SUN.shadow.mapSize.x:'?'),
+      'shadowCam LRTB='+(sc?[(sc.left|0),(sc.right|0),(sc.top|0),(sc.bottom|0)].join('/'):'?')+' n/f='+(sc?(sc.near|0)+'/'+(sc.far|0):'?')+' map='+((SUN&&SUN.shadow)?SUN.shadow.mapSize.x:'?')+' tex='+((SUN&&SUN.shadow&&SUN.shadow.map)?(SUN.shadow.map.width+'x'+SUN.shadow.map.height):'NULL'),
       'campo X['+(bb.x0|0)+','+(bb.x1|0)+'] Z['+(bb.z0|0)+','+(bb.z1|0)+']  (recuadro sombra: centro -66,36 ±'+(sc?Math.abs(sc.right|0):'?')+')'
     ];
     showBanner(lines.join('\n'), nanc>0); lines.forEach(function(l){log(l, nanc?'err':null);});
@@ -175,7 +175,7 @@ function initThree(){
   addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
   addEventListener('pointerup',function(){if(dragTk>=0){dragTk=-1;if(editMode&&!freeCam)controls.enabled=true;}});
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
-  sun.shadow.mapSize.set(4096,4096);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
+  sun.shadow.mapSize.set(2048,2048);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();   // 2048 (antes 4096): el shadow map 4096 (~64 MB) no se reservaba en móvil y desaparecían TODAS las sombras
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
   scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
