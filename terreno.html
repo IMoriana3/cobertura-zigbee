@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.51"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.52"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.51</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.52</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -345,7 +345,7 @@ function buildTrackers(elevAt){
     if(t.key==='tcu')return;                                                       // la TCU se dibuja con su MODELO real (tcu.glb), no con caja
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
-    var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
+    var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
     if(t.damperLink){imDampBody=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,1,12),mats[t.mat],count);imDampBody.frustumCulled=false;imDampBody.castShadow=true;imDampBody.receiveShadow=true;imDampBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampBody);}   // CUERPO grueso del amortiguador (body+rod como el gemelo); 'im' es el vástago fino
     SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
@@ -405,8 +405,8 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
       if(_DM){_MS.multiplyMatrices(t.fb[f],SEGO);var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
         for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],0,_DA[dl][2]).applyMatrix4(_MS);_PA.y=localElevY(_PA.x,-_PA.z)+0.40;_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_MD);   // pie a 40 cm del TERRENO REAL muestreado bajo el pie (no se entierra en cuestas); cima en la viga de torsión
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
-          _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // vástago FINO (toda la longitud)
-          if(imDampBody){var _bl=Math.min(0.5,dln*0.6);_PV.copy(_PA).addScaledVector(_DIR,_bl*0.5);_SC.set(1,_bl,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}   // CUERPO corto (≤0,5 m) anclado al PIE; el vástago sube a la viga (aspecto amortiguador, no barrote)
+          _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
+          if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}                                          // CUERPO oscuro, 62% centrado (= gemelo)
       if(f===0){
         if(TCUGLB){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
         if(_ML){_MS.multiplyMatrices(t.fb[0],SEGO);_PA.set(_ML.a[0],_ML.a[1],_ML.a[2]).applyMatrix4(_MS);_PB.set(_ML.b[0],_ML.b[1],_ML.b[2]).applyMatrix4(_MD);   // A=conector del motor (FIJO) · B=conector de la TCU (BASCULA)
