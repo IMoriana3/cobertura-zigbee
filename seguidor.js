@@ -207,6 +207,15 @@
       a:[0,-0.06,-0.40], b:[D.tcuX-0.165,-0.11,0.045],
       geom:function (TH){ return new TH.CylinderGeometry(0.0035,0.0035,1,6); }, m:mT(THREE, 0,0,0) });
 
+    // AMORTIGUADORES (2 por viga): pie FIJO al poste (a), otro extremo en la viga (b, bascula). Cruzan spin/estático
+    // -> la app los orienta por frame entre 'a' y 'b' (se alargan/acortan al bascular). 'a','b' relativos al centro del tubo.
+    var dampX = Math.min(24, tubeLen/2 - 5);
+    [-dampX, dampX].forEach(function (dx) {
+      out.push({ key:'damper', mat:'motor', spin:false, cast:true, damperLink:true,
+        a:[dx,-0.95,0.10], b:[dx,-0.15,0.28],
+        geom:function (TH){ return new TH.CylinderGeometry(0.045,0.045,1,12); }, m:mT(THREE, 0,0,0) });
+    });
+
     return out;
   };
 
@@ -220,13 +229,45 @@
     var mats = opts.materials || S.materials(THREE);
     var spin = new THREE.Group(), stat = new THREE.Group();
     S.parts(THREE, opts).forEach(function (p) {
-      if (p.motorLink) return;   // cable motor↔TCU: cruza spin/estático; lo gestiona la app por frame (pendiente en el gemelo)
+      if (p.motorLink || p.damperLink) return;   // enlaces (cable motor / amortiguadores): cruzan spin/estático; los gestiona la app por frame
       var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
       mesh.applyMatrix4(p.m);
       mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
       (p.spin ? spin : stat).add(mesh);
     });
     return { spin: spin, static: stat, dims: D };
+  };
+
+  /* ====================================================================
+   * CONVENIENCIA PARA EL GEMELO (bifila): construye UNA viga del tracker como
+   * mallas sueltas, resolviendo la lógica oeste/este/twin de la fuente:
+   *   opts.west=true  -> viga del MOTOR: todo (módulos, correas, slew completo,
+   *                      TCU + abarcones + chapas + antena).
+   *   opts.west=false -> viga GEMELA (eje de transmisión): módulos/correas/etc.
+   *                      + SOLO las piezas twin del slew (corona, bracket, soporte).
+   * Devuelve { spin, static, modCols }: 'spin' bascula (rotation.x), 'static'
+   * fija (slew); 'modCols' = centros de módulo {x,z} (p.ej. para capas de nieve).
+   * ==================================================================== */
+  S.buildBeam = function (THREE, opts) {
+    opts = opts || {};
+    var mats = opts.materials || S.materials(THREE);
+    var west = opts.west !== false;
+    var skip = opts.skip || {};
+    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1 };
+    var spin = new THREE.Group(), stat = new THREE.Group(), modCols = [], dampers = [];
+    S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full' }).forEach(function (p) {
+      if (p.motorLink) return;                                   // cable motor↔TCU: lo gestiona la app por frame (pendiente)
+      if (p.damperLink) { dampers.push({ a:p.a, b:p.b }); return; }   // amortiguadores: en AMBAS vigas; render per-frame en la app
+      if (skip[p.key]) return;
+      if (!west && (WEST[p.key] || p.antenna)) return;           // TCU/antena/abarcón-TCU/chapa: solo viga oeste
+      if (!west && !p.spin && !p.twin) return;                   // slew completo solo oeste; en la gemela solo piezas twin
+      var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
+      mesh.applyMatrix4(p.m);
+      mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
+      (p.spin ? spin : stat).add(mesh);
+      if (p.key === 'frame') modCols.push({ x:p.m.elements[12], z:p.m.elements[14] });
+    });
+    return { spin: spin, static: stat, modCols: modCols, dampers: dampers, dims: D };
   };
 
   /* ====================================================================
@@ -240,12 +281,14 @@
   S.instancePlan = function (THREE, opts) {
     var byType = {}, order = [];
     S.parts(THREE, opts).forEach(function (p) {
-      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, a:p.a, b:p.b, locals:[] }; order.push(p.key); }
+      if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, damperLink:!!p.damperLink, a:p.a, b:p.b, as:[], bs:[], locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
+      if (p.a) byType[p.key].as.push(p.a);
+      if (p.b) byType[p.key].bs.push(p.b);
     });
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.3.10';
+  S.VERSION = '0.4.1';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
