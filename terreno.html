@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.63</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.64</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -96,8 +96,17 @@ function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que 
     scan('poste',imPost);scan('eje',imShaft);scan('amortBody',imDampBody);
     var sm=(renderer&&renderer.shadowMap)?renderer.shadowMap.enabled:'?';
     var mtx=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:'?';
-    var msg='diag v2.63 · shadowMap='+sm+' · maxTex='+mtx+' · sol.y='+(SUN?SUN.position.y.toFixed(0):'?')+' · NaN='+nanc+(info.length?' ['+info.join(', ')+']':' (0)');
-    log(msg, nanc?'err':null); showBanner(msg+(nanc?'  → saneado; ¿vuelven las sombras?':''), nanc>0);
+    var sc=(SUN&&SUN.shadow)?SUN.shadow.camera:null;
+    var bb={x0:1e9,x1:-1e9,z0:1e9,z1:-1e9};
+    if(typeof TRK!=='undefined'&&TRK)TRK.forEach(function(t){if(t.gx<bb.x0)bb.x0=t.gx;if(t.gx>bb.x1)bb.x1=t.gx;if(t.gz<bb.z0)bb.z0=t.gz;if(t.gz>bb.z1)bb.z1=t.gz;});
+    var lines=[
+      'diag v2.64 · NaN='+nanc+(info.length?' ['+info.join(',')+']':''),
+      'shadowMap='+sm+' tipo='+(renderer.shadowMap?renderer.shadowMap.type:'?')+' maxTex='+mtx,
+      'SUN.cast='+(SUN?SUN.castShadow:'?')+' int='+(SUN?SUN.intensity.toFixed(2):'?')+' pos=('+(SUN?[(SUN.position.x|0),(SUN.position.y|0),(SUN.position.z|0)].join(','):'?')+')',
+      'shadowCam LRTB='+(sc?[(sc.left|0),(sc.right|0),(sc.top|0),(sc.bottom|0)].join('/'):'?')+' n/f='+(sc?(sc.near|0)+'/'+(sc.far|0):'?')+' map='+((SUN&&SUN.shadow)?SUN.shadow.mapSize.x:'?'),
+      'campo X['+(bb.x0|0)+','+(bb.x1|0)+'] Z['+(bb.z0|0)+','+(bb.z1|0)+']  (recuadro sombra: centro -66,36 ±'+(sc?Math.abs(sc.right|0):'?')+')'
+    ];
+    showBanner(lines.join('\n'), nanc>0); lines.forEach(function(l){log(l, nanc?'err':null);});
   }catch(e){ log('diag err: '+e.message,'err'); showBanner('diag err: '+e.message,true); }
 }
 
