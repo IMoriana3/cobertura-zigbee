@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.62</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.63</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -82,20 +82,23 @@ var S=document.getElementById('status');
 function setStatus(h){S.innerHTML=h;}
 function log(m,cls){S.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+m+'</span>':m);}
 function $(id){return document.getElementById(id);}
-addEventListener('error',function(e){try{log('JS error: '+((e.error&&e.error.message)||e.message||e)+'  @'+((e.filename||'').split('/').pop())+':'+(e.lineno||'?'),'err');}catch(_){}});
-addEventListener('unhandledrejection',function(e){try{log('promesa rechazada: '+((e.reason&&e.reason.message)||e.reason),'err');}catch(_){}});
-function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que proyecta sombra corrompe el shadow map de TODA la escena
+function showBanner(text,bad){try{var b=$('diagBanner');if(!b){b=document.createElement('div');b.id='diagBanner';b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;padding:11px 14px;font:bold 14px/1.45 monospace;color:#fff;white-space:pre-wrap;box-shadow:0 2px 10px rgba(0,0,0,.55);cursor:pointer';b.onclick=function(){b.style.display='none';};document.body.appendChild(b);}b.style.background=bad?'#7a1f1f':'#1f5a3a';b.textContent='🔎 '+text+'\n(toca para cerrar)';b.style.display='block';}catch(_){}}
+addEventListener('error',function(e){try{var m='JS error: '+((e.error&&e.error.message)||e.message||e)+'  @'+((e.filename||'').split('/').pop())+':'+(e.lineno||'?');log(m,'err');showBanner(m,true);}catch(_){}});
+addEventListener('unhandledrejection',function(e){try{var m='promesa rechazada: '+((e.reason&&e.reason.message)||e.reason);log(m,'err');showBanner(m,true);}catch(_){}});
+function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que proyecta sombra corrompe el shadow map de TODA la escena; aquí lo detectamos y SANEAMOS (instancia NaN -> matriz cero finita)
   try{
     var nanc=0,info=[];
-    function scan(name,im){ if(!im||!im.instanceMatrix)return; var a=im.instanceMatrix.array,n=a.length,bad=0;
-      for(var k=0;k<n;k++){ if(!isFinite(a[k]))bad++; }
-      if(bad){nanc+=bad;info.push(name+':'+bad);} }
+    function scan(name,im){ if(!im||!im.instanceMatrix)return; var a=im.instanceMatrix.array,cnt=(a.length/16)|0,bad=0,upd=false;
+      for(var inst=0;inst<cnt;inst++){var b=inst*16,nan=false;for(var k=0;k<16;k++){if(!isFinite(a[b+k])){nan=true;break;}}
+        if(nan){bad++;for(var k2=0;k2<16;k2++)a[b+k2]=0;upd=true;}}
+      if(bad){nanc+=bad;info.push(name+':'+bad);} if(upd)im.instanceMatrix.needsUpdate=true; }
     if(typeof SEG!=='undefined'&&SEG)SEG.forEach(function(s){if(s.im)scan(s.key,s.im);});
     scan('poste',imPost);scan('eje',imShaft);scan('amortBody',imDampBody);
     var sm=(renderer&&renderer.shadowMap)?renderer.shadowMap.enabled:'?';
     var mtx=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:'?';
-    log('diag v2.62 · shadowMap='+sm+' · maxTex='+mtx+' · sol.y='+(SUN?SUN.position.y.toFixed(0):'?')+' · NaN='+nanc+(info.length?' ['+info.join(', ')+']':' (ninguno)'), nanc?'err':null);
-  }catch(e){ log('diag err: '+e.message,'err'); }
+    var msg='diag v2.63 · shadowMap='+sm+' · maxTex='+mtx+' · sol.y='+(SUN?SUN.position.y.toFixed(0):'?')+' · NaN='+nanc+(info.length?' ['+info.join(', ')+']':' (0)');
+    log(msg, nanc?'err':null); showBanner(msg+(nanc?'  → saneado; ¿vuelven las sombras?':''), nanc>0);
+  }catch(e){ log('diag err: '+e.message,'err'); showBanner('diag err: '+e.message,true); }
 }
 
 var DEG=Math.PI/180;
