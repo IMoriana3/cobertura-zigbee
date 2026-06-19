@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.65</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.66</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -100,7 +100,7 @@ function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que 
     var bb={x0:1e9,x1:-1e9,z0:1e9,z1:-1e9};
     if(typeof TRK!=='undefined'&&TRK)TRK.forEach(function(t){if(t.gx<bb.x0)bb.x0=t.gx;if(t.gx>bb.x1)bb.x1=t.gx;if(t.gz<bb.z0)bb.z0=t.gz;if(t.gz>bb.z1)bb.z1=t.gz;});
     var lines=[
-      'diag v2.65 · NaN='+nanc+(info.length?' ['+info.join(',')+']':''),
+      'diag v2.66 · NaN='+nanc+(info.length?' ['+info.join(',')+']':''),
       'shadowMap='+sm+' tipo='+(renderer.shadowMap?renderer.shadowMap.type:'?')+' maxTex='+mtx,
       'SUN.cast='+(SUN?SUN.castShadow:'?')+' int='+(SUN?SUN.intensity.toFixed(2):'?')+' pos=('+(SUN?[(SUN.position.x|0),(SUN.position.y|0),(SUN.position.z|0)].join(','):'?')+')',
       'shadowCam LRTB='+(sc?[(sc.left|0),(sc.right|0),(sc.top|0),(sc.bottom|0)].join('/'):'?')+' n/f='+(sc?(sc.near|0)+'/'+(sc.far|0):'?')+' map='+((SUN&&SUN.shadow)?SUN.shadow.mapSize.x:'?')+' tex='+((SUN&&SUN.shadow&&SUN.shadow.map)?(SUN.shadow.map.width+'x'+SUN.shadow.map.height):'NULL'),
@@ -156,7 +156,7 @@ function initThree(){
   renderer=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
   if(THREE.sRGBEncoding)renderer.outputEncoding=THREE.sRGBEncoding;
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;   // PCF normal (antes PCFSoftShadowMap): el modo "suave" no dibujaba sombras en algunas GPU móviles aunque el resto estuviera bien
   if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
   scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0f14);scene.fog=new THREE.Fog(0x0b0f14,1200,2800);
   camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,9000);camera.position.set(0,360,460);
@@ -236,7 +236,7 @@ function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
   // frustum FIJO y centrado en TODA la planta → ni cambia al zoom ni deja borde rectangular de sombra
   var cx=-66, cz=36, half=330, sc=SUN.shadow.camera, ty=ELEV?localElevY(cx,-cz):0;   // ELEV aún no existe hasta que carga el DEM → cota 0 mientras tanto
-  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=1;sc.far=3200;sc.updateProjectionMatrix();}
+  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=300;sc.far=2100;sc.updateProjectionMatrix();}   // near/far ceñidos al sol (d=1200) → mucha mejor precisión de profundidad (antes 1/3200 desperdiciaba el rango)
   var d=1200; SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
