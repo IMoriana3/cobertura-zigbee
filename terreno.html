@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.53"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.54"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.53</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.54</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -303,7 +303,7 @@ function gridRepair(){
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
-var imPost,imShaft,imDampBody=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4();
+var imPost,imShaft,imDampBody=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
@@ -345,7 +345,7 @@ function buildTrackers(elevAt){
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.14,0);   // TCU perpendicular (90°) y VOLTEADA (cara plana contra la viga)
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
-    if(t.key==='tcu')return;                                                       // la TCU se dibuja con su MODELO real (tcu.glb), no con caja
+    if(t.key==='tcu'||t.key==='tcuchapa')return;                                   // la TCU es el MODELO real (tcu.glb), que YA trae sus chapas con agujeros; no dibujamos las de la fuente
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
@@ -401,7 +401,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
-        if(s.antenna){if(f===0){_M2.multiplyMatrices(_MD,s.L[0]);var ax=_M2.elements[12],ay=_M2.elements[13],az=_M2.elements[14],hang=TC.antHang||0.5,tipH=TC.antTip||0.07;if(s.tip){_PV.set(ax,ay-hang+tipH/2,az);_Q.identity();_SC.set(1,tipH,1);_M2.compose(_PV,_Q,_SC);t.aTip=[ax,ay-hang,az];}else{var cabL=hang-tipH;_PV.set(ax,ay-cabL/2,az);_Q.identity();_SC.set(1,cabL,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cuelga 50 cm vertical desde el conector; guarda la PUNTA (t.aTip) para los enlaces RF
+        if(s.antenna){if(f===0){var ax,ay,az;if(connCanon){_PV.copy(connCanon).applyMatrix4(_MD);ax=_PV.x;ay=_PV.y;az=_PV.z;}else{_M2.multiplyMatrices(_MD,s.L[0]);ax=_M2.elements[12];ay=_M2.elements[13];az=_M2.elements[14];}var hang=TC.antHang||0.5,tipH=TC.antTip||0.07;if(s.tip){_PV.set(ax,ay-hang+tipH/2,az);_Q.identity();_SC.set(1,tipH,1);_M2.compose(_PV,_Q,_SC);t.aTip=[ax,ay-hang,az];}else{var cabL=hang-tipH;_PV.set(ax,ay-cabL/2,az);_Q.identity();_SC.set(1,cabL,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cuelga 50 cm vertical desde el conector; guarda la PUNTA (t.aTip) para los enlaces RF
         if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon'||s.key==='tcuchapa')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU, sus abarcones y chapas solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
@@ -431,6 +431,7 @@ function loadTCU(){ if(typeof THREE.GLTFLoader!=='function')return;
       if(m.roughness==null||m.roughness<0.45)m.roughness=0.6;
       if(src&&src.name==='mat_1'){m.color=new THREE.Color(0xcc1417);m.metalness=0.10;m.roughness=0.5;}   // la SETA: roja (el resto de conectores, negros)
       m.needsUpdate=true;
+      if(src&&src.name==='mat_14'){var _gb=new THREE.Box3().setFromBufferAttribute(g.getAttribute('position'));connCanon=_gb.getCenter(new THREE.Vector3()).applyMatrix4(_TCUMOUNT);}   // conector DORADO de antena -> ancla la antena ahí
       var im=new THREE.InstancedMesh(g,m,N);im.frustumCulled=false;im.castShadow=false;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);arr.push(im);}});
     TCUGLB=arr; if(SEG)updateSpin(panelAngle(curMin));
   }, undefined, function(){ TCUGLB=null; }); }
