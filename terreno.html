@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.50"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.51"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.50</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.51</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -321,6 +321,7 @@ function makePanelTex(){
 // así 215 seguidores son ~5 llamadas de dibujo en vez de miles. Las piezas que basculan (tubos
 // y mesas) se recolocan por matriz cada frame; postes/slew/marcador son fijos.
 function buildTrackers(elevAt){
+  ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
@@ -437,7 +438,7 @@ function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
 // línea del PASILLO CENTRAL (divide qué NCU usa cada TCU): norte→NCU norte, sur→NCU sur
 function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;} }   // línea roja del pasillo retirada (el reparto N/S sigue activo por CORRIDOR)
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
-function localElevY(x,n){ return (ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex; }   // cota del terreno (exagerada) en un punto local E/N
+function localElevY(x,n){ return ELEV?(ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex:0; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
 function makeInvTex(){   // frontal del SG350HX: cuerpo gris + marca Sungrow + display/LEDs + caja de conexiones con prensaestopas
   var c=document.createElement('canvas');c.width=296;c.height=226;var x=c.getContext('2d');
