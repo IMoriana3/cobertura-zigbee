@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.61</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.62</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -82,6 +82,21 @@ var S=document.getElementById('status');
 function setStatus(h){S.innerHTML=h;}
 function log(m,cls){S.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+m+'</span>':m);}
 function $(id){return document.getElementById(id);}
+addEventListener('error',function(e){try{log('JS error: '+((e.error&&e.error.message)||e.message||e)+'  @'+((e.filename||'').split('/').pop())+':'+(e.lineno||'?'),'err');}catch(_){}});
+addEventListener('unhandledrejection',function(e){try{log('promesa rechazada: '+((e.reason&&e.reason.message)||e.reason),'err');}catch(_){}});
+function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que proyecta sombra corrompe el shadow map de TODA la escena
+  try{
+    var nanc=0,info=[];
+    function scan(name,im){ if(!im||!im.instanceMatrix)return; var a=im.instanceMatrix.array,n=a.length,bad=0;
+      for(var k=0;k<n;k++){ if(!isFinite(a[k]))bad++; }
+      if(bad){nanc+=bad;info.push(name+':'+bad);} }
+    if(typeof SEG!=='undefined'&&SEG)SEG.forEach(function(s){if(s.im)scan(s.key,s.im);});
+    scan('poste',imPost);scan('eje',imShaft);scan('amortBody',imDampBody);
+    var sm=(renderer&&renderer.shadowMap)?renderer.shadowMap.enabled:'?';
+    var mtx=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:'?';
+    log('diag v2.62 · shadowMap='+sm+' · maxTex='+mtx+' · sol.y='+(SUN?SUN.position.y.toFixed(0):'?')+' · NaN='+nanc+(info.length?' ['+info.join(', ')+']':' (ninguno)'), nanc?'err':null);
+  }catch(e){ log('diag err: '+e.message,'err'); }
+}
 
 var DEG=Math.PI/180;
 function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
@@ -288,6 +303,7 @@ async function build(){
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?sat.ok+" teselas":"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
+  setTimeout(diag,2200);   // diagnóstico de sombras tras estabilizar el primer frame (y cargar la TCU)
 }
 
 // La etiqueta "1.B.P" define una rejilla 18 bloques × 2 columnas × 3 filas (=108).
