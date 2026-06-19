@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.52"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.53"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.52</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.53</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -248,7 +248,10 @@ async function build(){
   var sat=null,dem=null,demImg=null;
   try{sat=await mosaic(SAT,18,latN,latS,lonW,lonE);}catch(e){}
   try{dem=await mosaic(DEM,14,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
-  function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),ix=Math.max(0,Math.min(dem.W-1,Math.round(p.x))),iy=Math.max(0,Math.min(dem.H-1,Math.round(p.y))),i=(iy*dem.W+ix)*4,d=demImg.data;return (d[i]*256+d[i+1]+d[i+2]/256)-32768;}
+  function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
+    var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
+    function gpx(ix,iy){var i=(iy*W+ix)*4;return d[i]*256+d[i+1]+d[i+2]/256;}
+    return (gpx(x0,y0)*(1-tx)+gpx(x1,y0)*tx)*(1-ty)+(gpx(x0,y1)*(1-tx)+gpx(x1,y1)*tx)*ty-32768;}
   baseElev=elevAt(lat0,lon0);var emin=1e9,emax=-1e9;
 
   var geo=new THREE.PlaneGeometry(widthM,depthM,160,90),pos=geo.attributes.position,uv=geo.attributes.uv;
