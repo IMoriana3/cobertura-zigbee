@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.55"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.56"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.55</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.56</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -345,7 +345,7 @@ function buildTrackers(elevAt){
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.14,0);   // TCU perpendicular (90°) y VOLTEADA (cara plana contra la viga)
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
-    if(t.key==='tcu'||t.key==='tcuchapa')return;                                   // la TCU es el MODELO real (tcu.glb), que YA trae sus chapas con agujeros; no dibujamos las de la fuente
+    if(t.key==='tcu'||t.key==='tcuchapa'||t.key==='tcuabarcon')return;              // la TCU es el MODELO real (tcu.glb): YA trae sus chapas/pestañas; abarcones de la fuente retirados (se alinearán aparte)
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
