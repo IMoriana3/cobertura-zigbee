@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.59</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.60</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -49,7 +49,8 @@
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
-    <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula)</label></div>
+    <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula) · todos</label></div>
+    <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo, arrástralo para recolocarlo sobre el terreno y marca/quita si va articulado. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores (elegir cuál articular · mover)</label></div>
     <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
     <div class="row"><label>Día (simulación)</label><input type="date" id="simdate" value="2026-06-17" style="font:inherit;font-size:12px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:6px;padding:3px 6px"></div>
     <div class="row"><label title="Dibuja el recorrido del sol del día elegido (arco + marcas horarias) y la posición actual del sol."><input type="checkbox" id="sunpath" checked> Trayectoria solar</label></div>
@@ -59,6 +60,13 @@
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · WASD/QE vuela</span></div>
+  </div>
+  <div class="panel" id="editPanel" style="left:auto;right:14px;bottom:14px;display:none;min-width:210px">
+    <h2 style="margin-bottom:6px">Seguidor <span id="edNum" style="font-family:var(--mono)">—</span></h2>
+    <div class="row"><label><input type="checkbox" id="edArtic"> Articulado (rótula en el actuador)</label></div>
+    <div class="row" style="font-size:11px;color:var(--tx2)">Arrástralo sobre el terreno para recolocarlo.</div>
+    <div class="row" style="margin-top:6px;gap:6px"><button class="btn" id="edSave">💾 Guardar</button><button class="btn" id="edReset">↺ Restablecer</button></div>
+    <div class="row" id="edMsg" style="font-size:11px;color:#36D399;display:none">Guardado ✓</div>
   </div>
   <div id="timebar">
     <button class="btn" id="play">▶</button>
@@ -135,6 +143,10 @@ function initThree(){
     var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;
     placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';
     if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();});
+  renderer.domElement.addEventListener('pointerdown',function(e){if(!editMode||freeCam)return;var i=pickAt(e);if(i<0)return;   // EDICIÓN: pulsar un seguidor lo selecciona; si arrastras, lo recolocas (miss = la cámara sigue orbitando)
+    selectTracker(i);dragTk=i;controls.enabled=false;var p=terrainPt(e);_dragOff.set(p?TRK[i].gx-p.x:0,0,p?TRK[i].gz-p.z:0);});
+  addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
+  addEventListener('pointerup',function(){if(dragTk>=0){dragTk=-1;if(editMode&&!freeCam)controls.enabled=true;}});
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
   sun.shadow.mapSize.set(4096,4096);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
@@ -307,6 +319,8 @@ var steelM,glassM,markM,blueM,motorM,panelTex;
 var imPost,imShaft,imDampBody=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4();
 var kinked=true;   // "trackers quebrados": cada viga tiene una RÓTULA en el actuador (centro); la mitad N y la mitad S drapean con pendiente propia según el terreno (no es una viga rígida)
+var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   // edición en 3D: cajas de selección (raycast), seguidor seleccionado y arrastre
+var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 function makePanelTex(){
@@ -361,9 +375,9 @@ function buildTrackers(elevAt){
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
     var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<zP.length;pk++){var ppx=n.gx+pfx,ppz=n.gz+zP[pk];postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste → postes de longitud variable
     var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
-    TRK.push({gx:n.gx,gz:n.gz,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
+    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,artic:kinked,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
-  layoutTrackers();loadTCU();
+  buildPickBoxes();applySavedTrackers();layoutTrackers();loadTCU();
 }
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
@@ -376,7 +390,7 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
 function computeKink(t){
   var sp=TC.span,cl=0.8/vex,latHalf=(sp/2)/mPerLat,fz=TC.filaZ;
   for(var f=0;f<2;f++){var kf=t.kink[f];
-    if(!kinked||t.medio||!ELEV){kf.dN=0;kf.dS=0;continue;}
+    if(!t.artic||t.medio||!ELEV){kf.dN=0;kf.dS=0;continue;}
     var lon=lon0+(t.gx+(f?fz:-fz))/mPerLon;                                                  // línea de ESTA fila (las dos vigas difieren en E/W)
     var rN=ELEV(t.glat+latHalf,lon)-baseElev,rC=ELEV(t.glat,lon)-baseElev,rS=ELEV(t.glat-latHalf,lon)-baseElev;
     var mA=Math.max(-cl,Math.min(cl,(rN-rS)/sp)),mN=Math.max(-cl,Math.min(cl,(rN-rC)/(sp/2))),mS=Math.max(-cl,Math.min(cl,(rC-rS)/(sp/2)));
@@ -406,6 +420,8 @@ function layoutTrackers(){
   imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;
   for(var si=0;si<SEG.length;si++){if(!SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
+  for(var pb=0;pb<TRK.length;pb++){if(PICK[pb]){var tb=TRK[pb];PICK[pb].position.set(tb.gx,tb.rel*vex+TC.postH*0.6+1,tb.gz);}}   // cajas de selección siguen al seguidor (también al arrastrarlo)
+  if(selIdx>=0&&selWire&&PICK[selIdx]){selWire.position.copy(PICK[selIdx].position);selWire.scale.copy(PICK[selIdx].scale);}
   updateSpin(panelAngle(curMin));
 }
 // recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
@@ -639,10 +655,49 @@ function makeLabel(text){   // pastilla redondeada nítida, ancho ajustado al te
   var h=4.0;sp.scale.set(h*W/H,h,1);return sp;
 }
 
+/* ───────── EDICIÓN DE SEGUIDORES EN 3D: seleccionar, articular (uno a uno) y recolocar sobre el terreno, con guardado ───────── */
+function resampleTracker(t){ if(!ELEV)return;                          // al mover el seguidor: recalcula cotas y drape del terreno en el nuevo punto
+  t.glat=lat0-t.gz/mPerLat;t.glon=lon0+t.gx/mPerLon;
+  var sp=t.span||TC.span,dE=t.dE||15,fz=TC.filaZ,zP=TC.zP,latHalf=(sp/2)/mPerLat,lonE15=dE/mPerLon;
+  t.rel=ELEV(t.glat,t.glon)-baseElev;
+  t.relN=ELEV(t.glat+latHalf,t.glon)-baseElev;t.relS=ELEV(t.glat-latHalf,t.glon)-baseElev;
+  t.relE=ELEV(t.glat,t.glon+lonE15)-baseElev;t.relW=ELEV(t.glat,t.glon-lonE15)-baseElev;
+  var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<zP.length;pk++){var ppx=t.gx+pfx,ppz=t.gz+zP[pk];pr.push(ELEV(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}
+  t.postRel=pr;
+}
+function buildPickBoxes(){                                             // una caja invisible por seguidor (raycast de selección) + un contorno de selección reutilizable
+  if(pickGroup)nodeGroup.remove(pickGroup);
+  pickGroup=new THREE.Group();nodeGroup.add(pickGroup);PICK=[];
+  var pg=new THREE.BoxGeometry(1,1,1),pm=new THREE.MeshBasicMaterial({visible:false});   // material invisible: no se dibuja pero SÍ se puede pulsar (raycast)
+  for(var i=0;i<TRK.length;i++){var m=new THREE.Mesh(pg,pm);m.scale.set(2*TC.filaZ+3,5,TRK[i].medio?36:64);m.userData.tk=i;pickGroup.add(m);PICK.push(m);}
+  if(!selWire){selWire=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0x36D399}));selWire.material.depthTest=false;selWire.renderOrder=999;selWire.visible=false;scene.add(selWire);}
+}
+function applySavedTrackers(){                                         // al abrir: aplica posición y "articulado" guardados (por id del DWG) antes del primer layout
+  var raw;try{raw=localStorage.getItem('cob3d_trackers');}catch(e){return;}if(!raw)return;var o;try{o=JSON.parse(raw);}catch(e){return;}
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],s=o[t.id!=null?t.id:('i'+i)];if(!s)continue;
+    if(typeof s.artic==='boolean')t.artic=s.artic;
+    if(typeof s.gx==='number'&&typeof s.gz==='number'){t.gx=s.gx;t.gz=s.gz;resampleTracker(t);}}
+}
+function saveTrackers(){                                               // guarda TODO el estado (posición + articulado) en el navegador → se reabre igual
+  var o={};for(var i=0;i<TRK.length;i++){var t=TRK[i];o[t.id!=null?t.id:('i'+i)]={gx:t.gx,gz:t.gz,artic:!!t.artic};}
+  var ok=true;try{localStorage.setItem('cob3d_trackers',JSON.stringify(o));}catch(e){ok=false;}
+  $('edMsg').textContent=ok?'Guardado ✓ (se reabrirá así)':'No se pudo guardar';$('edMsg').style.color=ok?'#36D399':'#e2574c';$('edMsg').style.display='block';
+}
+function pickAt(e){if(!pickGroup)return -1;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObjects(pickGroup.children,false);return h.length?h[0].object.userData.tk:-1;}
+function terrainPt(e){if(!terrain)return null;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObject(terrain);return h.length?h[0].point:null;}
+function selectTracker(i){selIdx=i;
+  if(i<0||!PICK[i]){if(selWire)selWire.visible=false;$('editPanel').style.display='none';return;}
+  selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.scale.copy(PICK[i].scale);
+  $('editPanel').style.display='block';$('edNum').textContent=(TRK[i].id!=null?TRK[i].id:('#'+(i+1)));$('edArtic').checked=!!TRK[i].artic;$('edMsg').style.display='none';
+}
+$('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;}};
+$('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
+$('edSave').onclick=saveTrackers;
+$('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
 $('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();};
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
-$('kink').onchange=function(){kinked=this.checked;layoutTrackers();};   // trackers quebrados on/off → recalcula el quiebre de cada mitad y recoloca postes + vigas
+$('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
 $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría) ↔ simulación astronómica (día completo)
   tMin=0;tMax=1440;   // 24 h completas en ambos modos (real / simulación)
   $('time').min=tMin;$('time').max=tMax;if(curMin<tMin)curMin=tMin;if(curMin>tMax)curMin=tMax;$('time').value=curMin;
