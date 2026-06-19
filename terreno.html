@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.45"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.46"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.45</div></div>
+    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.46</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -335,17 +335,17 @@ function buildTrackers(elevAt){
   var gSh=new THREE.CylinderGeometry(0.05,0.05,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
-  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={};
-  planM.forEach(function(t){mM[t.key]=t.locals;});
+  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo'}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio'}),mM={},mMab={};
+  planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.14,0);   // TCU perpendicular (90°) y VOLTEADA (cara plana contra la viga)
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
     if(t.key==='tcu')return;                                                       // la TCU se dibuja con su MODELO real (tcu.glb), no con caja
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
-    if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else count=(tw?2:1)*N*n;
+    if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
     var im=new THREE.InstancedMesh(t.geom(THREE),mats[t.mat],count);
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
-    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,a:t.a,b:t.b,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
+    SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
@@ -376,7 +376,7 @@ function layoutTrackers(){
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;}}
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
-    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink se calcula por frame (cruza spin/estático)
+    for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
         if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);
           _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
@@ -390,6 +390,7 @@ function layoutTrackers(){
 // recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
 function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   var _ML=null;for(var mi=0;mi<SEG.length;mi++)if(SEG[mi].motorLink){_ML=SEG[mi];break;}            // cable motor↔TCU (se orienta por frame entre un extremo fijo y otro que bascula)
+  var _DM=null;for(var dmi=0;dmi<SEG.length;dmi++)if(SEG[dmi].damperLink){_DM=SEG[dmi];break;}       // amortiguadores (igual: extremo fijo al poste + extremo en la viga)
   _R.makeRotationX(-angDeg*DEG);_OS.multiplyMatrices(SEGO,_R);                                      // mundo = orientación · basculación (signo - para casar con el seguimiento)
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);                                         // base de la fila · (orientación·spin)
@@ -398,13 +399,16 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon'||s.key==='tcuchapa')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU, sus abarcones y chapas solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);_M2.multiplyMatrices(_MD,_T);s.im.setMatrixAt(base,_M2);for(var l=1;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // tubo "medio": a la mitad
         for(var l=0;l<s.n;l++){if(l<L.length){_M2.multiplyMatrices(_MD,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // "medio": las piezas sobrantes se ocultan
+      if(_DM){_MS.multiplyMatrices(t.fb[f],SEGO);var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
+        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_MS);_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_MD);
+          _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_PV.copy(_PA).add(_PB).multiplyScalar(0.5);_Q.setFromUnitVectors(_UP,_DIR);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt((i*2+f)*_DM.n+dl,_M2);}}
       if(f===0){
         if(TCUGLB){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
         if(_ML){_MS.multiplyMatrices(t.fb[0],SEGO);_PA.set(_ML.a[0],_ML.a[1],_ML.a[2]).applyMatrix4(_MS);_PB.set(_ML.b[0],_ML.b[1],_ML.b[2]).applyMatrix4(_MD);   // A=conector del motor (FIJO) · B=conector de la TCU (BASCULA)
           _DIR.subVectors(_PB,_PA);var mlen=_DIR.length()||1e-4;_DIR.multiplyScalar(1/mlen);_PV.copy(_PA).add(_PB).multiplyScalar(0.5);_Q.setFromUnitVectors(_UP,_DIR);_SC.set(1,mlen,1);_M2.compose(_PV,_Q,_SC);_ML.im.setMatrixAt(i,_M2);}
       }
     }}
-  for(var si=0;si<SEG.length;si++){if(SEG[si].spin||SEG[si].motorLink)SEG[si].im.instanceMatrix.needsUpdate=true;}
+  for(var si=0;si<SEG.length;si++){if(SEG[si].spin||SEG[si].motorLink||SEG[si].damperLink)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(TCUGLB)for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].instanceMatrix.needsUpdate=true;
 }
 // carga el modelo REAL de la TCU (tcu.glb, 1 malla / 17 primitivas) y lo INSTANCIA (215 ud, viga oeste)
