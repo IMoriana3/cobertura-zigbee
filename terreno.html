@@ -39,8 +39,8 @@
 <body>
   <canvas id="cv"></canvas>
   <header>
-    <a href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1>Cobertura 3D · El Burgo I</h1><div class="sub">v2.66</div></div>
+    <a id="link2d" href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.67</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -191,8 +191,9 @@ function initThree(){
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
 function fmtHM(m){m=Math.round(m);return ("0"+Math.floor(m/60)).slice(-2)+":"+("0"+(m%60)).slice(-2);}
 async function loadAngles(){
+  var af=PLANTS[PLANT].angles; if(!af){ANG=null;return false;}   // solo El Burgo trae telemetría real; las demás → simulación
   try{
-    var j=await (await fetch('trackers_2026-06-17.json',{cache:'no-store'})).json();
+    var j=await (await fetch(af,{cache:'no-store'})).json();
     function toArr(o){return Object.keys(o).map(function(k){return [hm2min(k),o[k]];}).sort(function(a,b){return a[0]-b[0];});}
     ANG={date:j.date,fieldArr:toArr(j.field),trk:{}};
     Object.keys(j.trk).forEach(function(k){ANG.trk[k]=toArr(j.trk[k]);});
@@ -266,11 +267,17 @@ function setTime(min){
   $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
 }
 
+// ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
+var PLANTS={
+  elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json'},
+  ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null}   // Ayora: sin telemetría → simulación astronómica
+};
+var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
 async function build(){
   initThree();
   setStatus("Cargando implantación (DWG)…");
-  try{LAYOUT=await (await fetch('elburgo_layout.json',{cache:'no-store'})).json();}
-  catch(e){setStatus('<span class="err">No se pudo cargar elburgo_layout.json</span>');return;}
+  try{LAYOUT=await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json();}
+  catch(e){setStatus('<span class="err">No se pudo cargar '+PLANTS[PLANT].file+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
@@ -286,7 +293,8 @@ async function build(){
   setStatus("<b>"+NODES.length+"</b> seguidores (DWG) · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
 
   var sat=null,dem=null,demImg=null;
-  try{sat=await mosaic(SAT,18,latN,latS,lonW,lonE);}catch(e){}
+  var satZoom=Math.max(15,Math.min(18,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~7 teselas/lado (El Burgo→18, Ayora 2.5 km→16) para no bajar cientos de teselas
+  try{sat=await mosaic(SAT,satZoom,latN,latS,lonW,lonE);}catch(e){}
   try{dem=await mosaic(DEM,14,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
   function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
     var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
@@ -745,6 +753,7 @@ $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
   else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
 $('play').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
+$('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // cambiar de planta = recargar con ?planta=…
 
 build().catch(function(e){setStatus('<span class="err">Error: '+(e&&e.message||e)+'</span>\nConsola (F12) + captura, porfa.');});
 </script>
