@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.60"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.61"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.83</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.84</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -240,19 +240,14 @@ function panelAngle(min){
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
-// shadow camera ceñido a LO QUE MIRAS. Cenital: half≈1.2·distancia (cubre la planta, como antes). RASANTE (cámara baja mirando lejos): half se ata a la ALTURA de cámara (campo cercano) y el recuadro se DESPLAZA hacia delante, a las filas que tienes en pantalla → téxeles finos ahí donde miras, sin escalonado. El objetivo lejano ya no infla el recuadro.
-function updateSunShadow(){ if(!SUN||!SUN._dir||!controls)return; var dir=SUN._dir;
-  var t=controls.target, cam=camera.position, sc=SUN.shadow.camera;
-  var dist=cam.distanceTo(t), camH=Math.abs(cam.y-t.y);
-  var half=Math.max(40,Math.min(5000,Math.min(dist*1.2, camH*1.6)));   // cenital (camH≈dist) → 1.2·dist (igual que antes); rasante (camH≪dist) → 1.6·altura, mucho más ceñido
-  var vx=t.x-cam.x, vz=t.z-cam.z, hl=Math.hypot(vx,vz);                 // foco = cámara proyectada al suelo, empujada hacia delante hasta el campo cercano (tope = objetivo, para no pasarse)
-  var fx=cam.x, fz=cam.z, fy=t.y;
-  if(hl>1e-3){ var sh=Math.min(half,hl); fx=cam.x+(vx/hl)*sh; fz=cam.z+(vz/hl)*sh; }
+// shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
+function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir, sc=SUN.shadow.camera;
+  var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
   sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
-  SUN.position.set(fx+dir.E*d, fy+Math.max(0.06,dir.U)*d, fz-dir.N*d);
-  SUN.target.position.set(fx,fy,fz); SUN.target.updateMatrixWorld();
-  SUN.shadow.normalBias=Math.max(0.03,Math.min(0.14,half*0.00006)); }   // bias escalado al área actual (recuadro fino → bias fino, sin peter-panning)
+  SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
+  SUN.shadow.normalBias=Math.max(0.04,Math.min(0.2,half*0.00006)); }   // bias escalado al área de la planta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
@@ -300,11 +295,12 @@ async function build(){
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
   (LAYOUT.fence||[]).forEach(function(pl){pl.forEach(function(p){if(Math.abs(p[0])<800&&Math.abs(p[1])<700)ext(p[0],p[1]);});}); // solo seguidores+vallado (otras capas del DWG tienen coords basura)
   var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (vallado+seguidores); descarta bloques sueltos del DWG (legendas/detalles lejos de la planta)
-  // (el shadow camera lo gestiona updateSunShadow siguiendo a la cámara; aquí ya no se fija)
-  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,NODES.length>1000?4096:8192);   // escritorio: 8192 (El Burgo + Ayora) / 4096 (San José, muy grande); móvil → 2048
+  // shadow camera FIJO a la planta entera (lo usa updateSunShadow): centro en el origen (los seguidores van centrados ahí), semiancho = mayor semieje + margen
+  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,8192);   // escritorio: 8192 en TODAS (incl. San José) para la sombra más fina posible cubriendo toda la planta; móvil → 2048
   if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
   var widthM=2*hx,depthM=2*hz;
+  SH_CX=0;SH_CZ=0;SH_HALF=Math.max(hx,hz);   // recuadro de sombra ceñido a la planta entera (estable, cubre todo)
   var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat;
   var plantW=Math.round(exmax-exmin),plantD=Math.round(nmax-nmin);
   setStatus("<b>"+NODES.length+"</b> seguidores (DWG) · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
@@ -418,7 +414,8 @@ function buildTrackers(elevAt){
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.16,0);   // -0.16 (antes -0.14): baja la TCU para que la chapa superior no se meta en el tubo cuadrado; perpendicular y volteada
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
   planL.forEach(function(t){
-    if(t.key==='tcu'||t.key==='tcuchapa')return;                                   // la TCU es el MODELO real (tcu.glb): YA trae sus chapas con agujeros; los abarcones (U-bolts) SÍ se dibujan, atravesándolas
+    if(t.key==='tcuchapa')return;                                                  // chapas: las trae el glb; no se dibujan sueltas
+    if(t.key==='tcu'&&NODES.length<=1000)return;                                   // 'tcu' = sillín/caja simple: SOLO en plantas grandes (San José), donde NO se carga el tcu.glb (sería muy pesado instanciado) → así la TCU se ve igualmente; en El Burgo/Ayora lo sustituye el modelo real
     var perFila=t.spin,n=t.locals.length,tw=!!t.twin,count;
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro

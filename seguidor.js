@@ -132,16 +132,15 @@
           push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.115, 0));     // correa omega (corona plana sobre el tubo; las alas suben hasta el marco, ahí se atornilla)
           push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
-        var jbX = D.modW/6;                                 // 3 cajas por módulo en la LÍNEA CENTRAL (z=0), repartidas a lo ANCHO: a 1/3, 1/2 y 2/3
+        var jbX = D.modW/6;                                 // 2 cajas de conexión por módulo, ALINEADAS sobre la viga de torsión (línea central z=0), a 1/3 y 2/3 a lo largo
         for (var m = 0; m < D.modsPerStr; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
           push('glass', 'glass', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx-jbX, D.jbY, 0));   // caja a 1/3 del ancho (saca cable)
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx,     D.jbY, 0));   // caja central
-          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx+jbX, D.jbY, 0));   // caja a 2/3 del ancho (saca cable)
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx-jbX, D.jbY, 0));   // 2 cajas por módulo sobre la viga (z=0); el cable de string sale por el centro
+          push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx+jbX, D.jbY, 0));
         }
         // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos a lo largo de la cadena (eje X), junto a la línea central; 6 mm²
         for (var c = 0; c <= D.modsPerStr - 3; c++) {
@@ -158,12 +157,12 @@
           push('correa', 'correa', true, false,
             function (TH){ return new TH.BoxGeometry(0.05, 0.05, D.modH*0.96); }, mT(THREE, px, D.purlY, 0));
         }
-        push('cable', 'cable', true, false,                 // cable de string a lo largo del ala: CABLE redondo (no canaleta rectangular), 6 mm² → Ø6 mm (radio 0.003), eje a lo LARGO del ala (X)
-          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, D.jbY-0.02, D.jbZ));
-        for (var j = 0; j < 3; j++) {                       // 3 cajas por ala
+        push('cable', 'cable', true, false,                 // cable de string redondo (6 mm² → Ø6 mm) a lo LARGO del ala (X), POR EL CENTRO (z=0), sobre la viga de torsión
+          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, D.jbY-0.02, 0));
+        for (var j = 0; j < 3; j++) {                       // cajas de conexión representativas, ALINEADAS sobre la viga de torsión (z=0)
           var jx = w.edge + w.dir * (j + 0.5) * (D.strLen / 3);
           push('jbox', 'jbox', true, false,
-            function (TH){ return new TH.BoxGeometry(0.16, 0.05, 0.10); }, mT(THREE, jx, D.jbY, D.jbZ));
+            function (TH){ return new TH.BoxGeometry(0.16, 0.05, 0.10); }, mT(THREE, jx, D.jbY, 0));
         }
       }
     });
@@ -294,6 +293,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.7';
+  S.VERSION = '0.4.8';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
