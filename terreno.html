@@ -279,13 +279,14 @@ function setTime(min){
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
 var PLANTS={
-  elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json'},
-  ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null},
-  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
+  elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json', cod:24002},
+  ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025},
+  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // MODO OFFLINE (ciberseguridad): sin satélite/relieve, CERO llamadas externas. Por defecto sigue el estado del navegador; el botón lo fija.
+var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');var c=PLANTS[PLANT]&&PLANTS[PLANT].cod;return (m&&c&&m[String(c)])||null;}catch(e){return null;}})();   // FUENTE ÚNICA: ficha de la planta publicada por la Cartera técnica (mismo origen → localStorage compartido). Si existe, sus datos (módulos/string…) mandan sobre los valores por defecto.
 async function build(){
   initThree();
   setStatus("Cargando implantación (DWG)…");
@@ -340,8 +341,10 @@ async function build(){
 
   camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
   var camD=camera.position.length(),diag=Math.hypot(widthM,depthM)/2;if(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
+  var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?sat.ok+" teselas":"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
+    "módulos/string: <b>"+modsNow+"</b>"+((SPEC&&SPEC.mods)?" · <span style='color:#36D399'>de la Cartera técnica</span>":"")+"\n"+
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
   // diagnóstico de sombras retirado: confirmado que en escritorio se ven (v2.66 PCF); en móvil es limitación de su GPU (pendiente fallback)
 }
@@ -398,7 +401,7 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
-  if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // largo de tracker POR PLANTA (San José 32 mód/ala → 74 m; resto 28 → 64,7 m); el mapa nuevo lo trae en el layout
+  if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
