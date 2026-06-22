@@ -61,7 +61,7 @@
   // catenaria (cable con caída) entre dos puntos locales -> geometría tubular
   function catenary(THREE, a, b, sag, r){
     var mid = a.clone().lerp(b, 0.5); mid.y -= (sag||0.10);
-    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 6, false);
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 12, r||0.012, 8, false);
   }
   // CORREA de perfil OMEGA (sombrero): sección en X-Y extruida a lo largo de Z (ancho del módulo)
   function omegaGeom(TH){   // perfil OMEGA de chapa fina (3 mm), ESTRECHO, 80 cm CENTRADO en la viga, VOLTEADO 180° (corona plana sobre el tubo, alas arriba donde se atornilla el marco)
@@ -158,8 +158,8 @@
           push('correa', 'correa', true, false,
             function (TH){ return new TH.BoxGeometry(0.05, 0.05, D.modH*0.96); }, mT(THREE, px, D.purlY, 0));
         }
-        push('cable', 'cable', true, false,                 // canaleta de string a lo largo del ala
-          function (TH){ return new TH.BoxGeometry(D.strLen*0.94, 0.05, 0.035); }, mT(THREE, wingC, D.jbY-0.02, D.jbZ));
+        push('cable', 'cable', true, false,                 // cable de string a lo largo del ala: CABLE redondo (no canaleta rectangular), 6 mm² → Ø6 mm (radio 0.003), eje a lo LARGO del ala (X)
+          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, D.jbY-0.02, D.jbZ));
         for (var j = 0; j < 3; j++) {                       // 3 cajas por ala
           var jx = w.edge + w.dir * (j + 0.5) * (D.strLen / 3);
           push('jbox', 'jbox', true, false,
