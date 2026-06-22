@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.68</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.69</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -175,7 +175,8 @@ function initThree(){
   addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
   addEventListener('pointerup',function(){if(dragTk>=0){dragTk=-1;if(editMode&&!freeCam)controls.enabled=true;}});
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
-  sun.shadow.mapSize.set(2048,2048);var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();   // 2048 (antes 4096): el shadow map 4096 (~64 MB) no se reservaba en móvil y desaparecían TODAS las sombras
+  var __hiShad=!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);sun.shadow.mapSize.set(__hiShad?4096:2048,__hiShad?4096:2048);   // escritorio: 4096 (sombra fina); móvil: 2048 (memoria). El shadow camera se ciñe al zoom (updateSunShadow)
+  var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
   scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
@@ -233,13 +234,14 @@ function panelAngle(min){
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
-// la shadow camera SIGUE al objetivo (para barrer la planta) pero con tamaño FIJO → las sombras NO cambian al alejar/acercar el zoom
-function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
-  // frustum FIJO y centrado en TODA la planta → ni cambia al zoom ni deja borde rectangular de sombra
-  var cx=-66, cz=36, half=330, sc=SUN.shadow.camera, ty=ELEV?localElevY(cx,-cz):0;   // ELEV aún no existe hasta que carga el DEM → cota 0 mientras tanto
-  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=300;sc.far=2100;sc.updateProjectionMatrix();}   // near/far ceñidos al sol (d=1200) → mucha mejor precisión de profundidad (antes 1/3200 desperdiciaba el rango)
-  var d=1200; SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
-  SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
+// la shadow camera SIGUE al objetivo de la cámara y se CIÑE al zoom: al acercarte, el área de sombra se reduce → sombras MUCHO más finas (al alejarte cubre la planta, más bastas)
+function updateSunShadow(){ if(!SUN||!SUN._dir||!controls)return; var dir=SUN._dir;
+  var t=controls.target, cx=t.x, cy=t.y, cz=t.z, sc=SUN.shadow.camera;
+  var half=Math.max(70,Math.min(950,camera.position.distanceTo(t)*0.55));   // ~ el ancho visible en el objetivo → la resolución del shadow map se concentra en lo que miras
+  sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
+  var d=half*4+700, nf=half*2.5+300; sc.near=Math.max(1,d-nf); sc.far=d+nf; sc.updateProjectionMatrix();
+  SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld(); }
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
