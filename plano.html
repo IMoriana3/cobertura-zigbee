@@ -26,7 +26,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v1.0</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.1</div></div>
   <span class="brand">Factiun</span>
 </header>
 <div class="panel">
@@ -61,7 +61,7 @@ async function mosaic(z,latN,latS,lonW,lonE){
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }
 
-var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'} };
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
 
 var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
