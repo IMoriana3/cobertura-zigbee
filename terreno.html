@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.76</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.77</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -239,13 +239,15 @@ function panelAngle(min){
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
-// shadow camera FIJO ceñido a la planta (centro SH_CX/SH_CZ, semiancho SH_HALF) → sombras en TODA la planta y estables al zoom; la finura la da el tamaño del shadow map (8192 en escritorio, planta pequeña)
-function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
-  var cx=SH_CX, cz=SH_CZ, half=SH_HALF, sc=SUN.shadow.camera, ty=ELEV?localElevY(cx,-cz):0;
-  var d=half*4+800;
-  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=Math.max(1,d-half*2.2);sc.far=d+half*2.2;sc.updateProjectionMatrix();}
-  SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
-  SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
+// shadow camera SIGUE al objetivo de la cámara y CUBRE ~el viewport (half ≈ 1.2·distancia): al acercarte el área se encoge → sombras FINAS (no dentadas); al alejarte cubre la planta. half≈viewport (no un recuadro diminuto) → sin el efecto "solo una zona"
+function updateSunShadow(){ if(!SUN||!SUN._dir||!controls)return; var dir=SUN._dir;
+  var t=controls.target, cx=t.x, cy=t.y, cz=t.z, sc=SUN.shadow.camera;
+  var half=Math.max(40,Math.min(5000,camera.position.distanceTo(t)*1.2));
+  sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
+  var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
+  SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
+  SUN.shadow.normalBias=Math.max(0.03,Math.min(0.14,half*0.00006)); }   // bias escalado al área actual (zoom in → fino; zoom out → más, para no salir dentado)
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
@@ -293,7 +295,7 @@ async function build(){
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
   (LAYOUT.fence||[]).forEach(function(pl){pl.forEach(function(p){if(Math.abs(p[0])<800&&Math.abs(p[1])<700)ext(p[0],p[1]);});}); // solo seguidores+vallado (otras capas del DWG tienen coords basura)
   var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (vallado+seguidores); descarta bloques sueltos del DWG (legendas/detalles lejos de la planta)
-  SH_CX=(exmin+exmax)/2;SH_CZ=-(nmin+nmax)/2;SH_HALF=Math.max((exmax-exmin)/2,(nmax-nmin)/2)+60;if(SUN){SUN.shadow.camera.right=-1;SUN.shadow.normalBias=Math.max(0.08,SH_HALF*0.00013);SUN.shadow.bias=-0.0002-SH_HALF*1.5e-7;}   // shadow camera FIJO ceñido a la planta; bias adaptativo: plantas grandes (téxel grande, menos precisión) necesitan más bias para no salir "en sierra"/acné
+  // (el shadow camera lo gestiona updateSunShadow siguiendo a la cámara; aquí ya no se fija)
   var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,NODES.length>1000?4096:8192);   // escritorio: 8192 (El Burgo + Ayora) / 4096 (San José, muy grande); móvil → 2048
   if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
