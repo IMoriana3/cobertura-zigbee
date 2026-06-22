@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.61"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.62"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.84</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.85</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -279,7 +279,7 @@ function setTime(min){
 var PLANTS={
   elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json'},
   ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null},
-  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null}   // Ayora: sin telemetría → simulación astronómica
+  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32}   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
 };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
 async function build(){
@@ -394,13 +394,14 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
+  if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // largo de tracker POR PLANTA (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
   var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
-  var zP=[-28,-9,9,28];
+  var zMul=D.modsPerStr/28,zP=[-28*zMul,-9*zMul,9*zMul,28*zMul];   // postes proporcionales al largo del tracker (San José 32 mód → postes más separados); medio oculta los exteriores (>16)
   TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
   var N=NODES.length;
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
@@ -723,7 +724,7 @@ function buildPickBoxes(){                                             // una ca
   if(pickGroup)nodeGroup.remove(pickGroup);
   pickGroup=new THREE.Group();nodeGroup.add(pickGroup);PICK=[];
   var pg=new THREE.BoxGeometry(1,1,1),pm=new THREE.MeshBasicMaterial({visible:false});   // material invisible: no se dibuja pero SÍ se puede pulsar (raycast)
-  for(var i=0;i<TRK.length;i++){var m=new THREE.Mesh(pg,pm);m.scale.set(2*TC.filaZ+3,5,TRK[i].medio?36:64);m.userData.tk=i;pickGroup.add(m);PICK.push(m);}
+  for(var i=0;i<TRK.length;i++){var m=new THREE.Mesh(pg,pm);m.scale.set(2*TC.filaZ+3,5,(TRK[i].medio?TC.span*TC.mr:TC.span)+2);m.userData.tk=i;pickGroup.add(m);PICK.push(m);}   // caja de selección = largo REAL del tracker (San José 74/37 m; resto 64,7/32,6 m)
   if(!selWire){selWire=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0x36D399}));selWire.material.depthTest=false;selWire.renderOrder=999;selWire.visible=false;scene.add(selWire);}
 }
 function applySavedTrackers(){                                         // al abrir: aplica posición y "articulado" guardados (por id del DWG) antes del primer layout
