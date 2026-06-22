@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.77</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.78</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -307,14 +307,16 @@ async function build(){
   var sat=null,dem=null,demImg=null;
   var satZoom=Math.max(15,Math.min(18,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~7 teselas/lado (El Burgo→18, Ayora 2.5 km→16) para no bajar cientos de teselas
   try{sat=await mosaic(SAT,satZoom,latN,latS,lonW,lonE);}catch(e){}
-  try{dem=await mosaic(DEM,14,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
+  var demZoom=(Math.max(widthM,depthM)>1500)?15:14;   // plantas grandes: relieve más fino (z15 ≈ 4 m/px) para que el terreno no salga aterrazado
+  try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
   function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
     var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
     function gpx(ix,iy){var i=(iy*W+ix)*4;return d[i]*256+d[i+1]+d[i+2]/256;}
     return (gpx(x0,y0)*(1-tx)+gpx(x1,y0)*tx)*(1-ty)+(gpx(x0,y1)*(1-tx)+gpx(x1,y1)*tx)*ty-32768;}
   baseElev=elevAt(lat0,lon0);var emin=1e9,emax=-1e9;
 
-  var geo=new THREE.PlaneGeometry(widthM,depthM,160,90),pos=geo.attributes.position,uv=geo.attributes.uv;
+  var segX=Math.max(160,Math.min(440,Math.round(widthM/7))),segY=Math.max(90,Math.min(440,Math.round(depthM/7)));   // malla del terreno ~7 m/segmento: en plantas grandes (Ayora) sube de ~16 m a ~7 m para captar el relieve y no facetear/escalonar
+  var geo=new THREE.PlaneGeometry(widthM,depthM,segX,segY),pos=geo.attributes.position,uv=geo.attributes.uv;
   for(var i=0;i<pos.count;i++){var lx=pos.getX(i),ly=pos.getY(i),lon=lon0+lx/mPerLon,lat=lat0+ly/mPerLat,e=elevAt(lat,lon);emin=Math.min(emin,e);emax=Math.max(emax,e);pos.setZ(i,e-baseElev);if(sat){var q=sat.px(lat,lon);uv.setXY(i,q.x/sat.W,1-q.y/sat.H);}}
   geo.computeVertexNormals();
   var mat;if(sat&&sat.ok>0){var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});
