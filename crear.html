@@ -1,0 +1,232 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Creación de planta</title>
+<style>
+  :root{--bg:#0b0f14;--panel:#121821;--tx:#eaf4ff;--tx2:#9bb0c6;--line:#1f2a37;--line2:#2b3a4d;--accent:#5aa9ff;--ok:#36D399;--warn:#F6A623;--mono:ui-monospace,Menlo,Consolas,monospace;--sans:system-ui,Segoe UI,Roboto,sans-serif}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100%}
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line)}
+  header a{color:var(--tx2);text-decoration:none;border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font-size:13px}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
+  main{max-width:940px;margin:0 auto;padding:22px 18px 70px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--tx2);margin:0 0 14px}
+  label{display:block;font-size:12.5px;color:var(--tx2);margin:10px 0 5px}
+  input[type=text],input[type=number],select{width:100%;background:#0e141c;color:var(--tx);border:1px solid var(--line2);border-radius:8px;padding:9px 11px;font:inherit;font-size:14px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}.row>div{flex:1;min-width:150px}
+  .drop{border:1.5px dashed var(--line2);border-radius:10px;padding:22px;text-align:center;color:var(--tx2);cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#0e1822}
+  .drop b{color:var(--tx)}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:9px;padding:9px 14px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#06121f;border-color:var(--accent);font-weight:700}
+  .btn.primary:hover{filter:brightness(1.07);color:#06121f}
+  .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .muted{color:var(--tx2);font-size:12.5px;line-height:1.55}
+  code{font-family:var(--mono);background:#0e141c;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px}
+  #sum{font-family:var(--mono);font-size:12.5px;color:var(--tx2);white-space:pre-wrap;line-height:1.6}
+  #prev{width:100%;height:300px;background:#0e141c;border:1px solid var(--line2);border-radius:10px;display:block;margin-top:6px}
+  textarea{width:100%;height:150px;background:#0e141c;color:var(--tx);border:1px solid var(--line2);border-radius:8px;font-family:var(--mono);font-size:11.5px;padding:10px;line-height:1.5}
+  .err{color:#ff7a7a}.ok{color:var(--ok)}.hide{display:none}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--tx2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;margin-left:8px}
+</style></head><body>
+<header>
+  <a href="https://imoriana3.github.io/proyectos/">← Cartera</a>
+  <h1>🏭 Creación de planta</h1>
+  <span class="brand">Factiun</span>
+</header>
+<main>
+  <div class="card">
+    <h2>1 · Datos base</h2>
+    <div class="row">
+      <div><label>Nombre</label><input type="text" id="nombre" placeholder="Atalaya 26010" value="Planta nueva"></div>
+      <div><label>Código</label><input type="text" id="codigo" placeholder="26010"></div>
+      <div><label>Ubicación</label><input type="text" id="ubic" placeholder="Provincia · País"></div>
+    </div>
+    <div class="row">
+      <div><label>Tipo de tracker por defecto</label><select id="tipo"><option value="completo">Completo (2 alas)</option><option value="medio">Medio (1 ala)</option></select></div>
+      <div><label>Módulos por ala</label><input type="number" id="mods" value="28" min="6" max="48" step="1"></div>
+      <div><label>Zona UTM <span class="pill">solo si el archivo es UTM/DXF</span></label>
+        <div style="display:flex;gap:8px"><input type="number" id="utmz" placeholder="30" min="1" max="60" style="flex:1"><select id="utmh" style="flex:1"><option value="N">N (norte)</option><option value="S">S (sur)</option></select></div>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:12px">El <b>largo</b> del tracker sale de los módulos/ala (28 → 64,7 m · 32 → 74 m). La <b>zona UTM</b> hace falta para situar el satélite cuando el archivo trae coordenadas UTM (DXF o CSV x,y). Si el CSV trae <code>lat,lng</code>, no hace falta.</p>
+  </div>
+
+  <div class="card">
+    <h2>2 · Implantación (seguidores)</h2>
+    <div class="drop" id="drop">
+      <div>Arrastra el <b>CSV</b> o <b>DXF</b> aquí, o pulsa para elegir</div>
+      <div class="muted" style="margin-top:6px">CSV: <code>lat,lng</code> o <code>x,y</code> (+ opc. <code>id,tipo,ncu,gw</code>) · DXF: bloques de tracker (<code>INSERT</code>) en UTM</div>
+      <input type="file" id="file" accept=".csv,.dxf,text/csv" class="hide">
+    </div>
+    <div class="acts"><button class="btn" id="tpl">⬇ Plantilla CSV</button></div>
+    <p class="muted" id="msg" style="margin-top:12px"></p>
+    <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">¿Tienes un <b>.dwg</b> nativo? (no se lee en el navegador)</summary>
+      <p class="muted" style="margin-top:8px">El DWG es binario propietario: lo procesa una <b>GitHub Action</b> con <code>libredwg</code> (lo que se usó con San José). Dos vías: <b>a)</b> exporta el DWG a <b>DXF</b> en tu CAD y súbelo aquí (instantáneo); <b>b)</b> súbeme el <code>.dwg</code> + estos datos base y te genero la planta y la dejo fija en la cartera.</p></details>
+  </div>
+
+  <div class="card hide" id="res">
+    <h2>3 · Resultado</h2>
+    <div id="sum"></div>
+    <canvas id="prev"></canvas>
+    <div class="acts">
+      <a class="btn primary" id="ver3d" target="_blank">Ver en 3D ↗</a>
+      <a class="btn" id="ver2d" target="_blank">Ver en 2D ↗</a>
+      <button class="btn" id="dl">⬇ Descargar layout.json</button>
+    </div>
+    <h2 style="margin-top:18px">Para fijarla en la cartera</h2>
+    <p class="muted">Descarga el <code>layout.json</code> (súbelo al repo como <code>&lt;código&gt;_layout.json</code>) y pega este registro en <code>PLANTS</code> de la cartera y de los visores — o pásamelo y lo enchufo:</p>
+    <textarea id="snippet" readonly></textarea>
+    <div class="acts"><button class="btn" id="copy">⧉ Copiar registro</button></div>
+  </div>
+</main>
+<script>
+"use strict";
+var DEG=Math.PI/180, $=function(i){return document.getElementById(i);};
+var LAYOUT=null;
+function setMsg(h,cls){var m=$('msg');m.innerHTML=h;m.className='muted '+(cls||'');}
+
+/* ---------- UTM (WGS84) inverso → lat/lon ---------- */
+function utmToLatLon(E,N,zone,south){
+  var a=6378137,f=1/298.257223563,e2=f*(2-f),k0=0.9996;
+  var e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  var x=E-500000,y=south?N-10000000:N;
+  var M=y/k0,mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  var phi1=mu+(3*e1/2-27*Math.pow(e1,3)/32)*Math.sin(2*mu)+(21*e1*e1/16-55*Math.pow(e1,4)/32)*Math.sin(4*mu)+(151*Math.pow(e1,3)/96)*Math.sin(6*mu)+(1097*Math.pow(e1,4)/512)*Math.sin(8*mu);
+  var ep2=e2/(1-e2),C1=ep2*Math.pow(Math.cos(phi1),2),T1=Math.pow(Math.tan(phi1),2);
+  var N1=a/Math.sqrt(1-e2*Math.pow(Math.sin(phi1),2)),R1=a*(1-e2)/Math.pow(1-e2*Math.pow(Math.sin(phi1),2),1.5),D=x/(N1*k0);
+  var lat=phi1-(N1*Math.tan(phi1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*Math.pow(D,4)/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*Math.pow(D,6)/720);
+  var lon0=(zone*6-183)*Math.PI/180;
+  var lon=lon0+(D-(1+2*T1+C1)*Math.pow(D,3)/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*Math.pow(D,5)/120)/Math.cos(phi1);
+  return {lat:lat*180/Math.PI,lon:lon*180/Math.PI};
+}
+function mapType(s,def){ s=(s||'').toLowerCase().replace(/\s/g,''); if(!s)return def; if(/medio|half|2x|^1ala/.test(s))return 'medio'; if(/completo|complete|full|4x|largo|2ala/.test(s))return 'completo'; return def; }
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  var lines=text.replace(/\r/g,'').split('\n').filter(function(l){return l.trim();}); if(!lines.length)return null;
+  var H=lines[0].split(',').map(function(s){return s.trim().toLowerCase();});
+  var idx=function(n){return H.findIndex(function(h){return n.indexOf(h)>=0;});};
+  var ilat=idx(['lat','latitud','latitude']),ilng=idx(['lng','lon','long','longitud','longitude']);
+  var ix=idx(['x','este','easting','x_m']),iy=idx(['y','norte','northing','y_m']);
+  var iid=idx(['id','etiqueta','name','nombre','tracker_id']),it=idx(['tipo','t','type']),incu=idx(['ncu']),igw=idx(['gw','gateway']);
+  var rows=lines.slice(1).map(function(l){return l.split(',');}),pts=[];
+  rows.forEach(function(c){
+    var o={id:iid>=0?(c[iid]||'').trim():'',t:it>=0?(c[it]||'').trim():'',ncu:incu>=0?(c[incu]||'').trim():'',gw:igw>=0?(c[igw]||'').trim():''};
+    if(ilat>=0&&ilng>=0){o.lat=+c[ilat];o.lng=+c[ilng];if(isFinite(o.lat)&&isFinite(o.lng))pts.push(o);}
+    else if(ix>=0&&iy>=0){o.E=+c[ix];o.Nn=+c[iy];if(isFinite(o.E)&&isFinite(o.Nn))pts.push(o);}
+  });
+  if(!pts.length)return {error:'CSV sin columnas de posición (lat,lng o x,y).'};
+  return {rows:pts, geo:(ilat>=0&&ilng>=0)};
+}
+
+/* ---------- DXF: mide la GEOMETRÍA de cada bloque (no se fía del nombre) ---------- */
+function parseDXF(text){
+  var L=text.split(/\r?\n/),i=0,n=L.length;
+  var sawSec=false,blk=null,blocks={},inserts=[],ent=null,lastX=0;
+  function exp(b,x,y){ if(x<b.x0)b.x0=x; if(x>b.x1)b.x1=x; if(y<b.y0)b.y0=y; if(y>b.y1)b.y1=y; }
+  while(i+1<n){
+    var c=L[i].trim(),raw=L[i+1]||'',v=raw.trim(); i+=2;
+    if(c==='0'){
+      if(v==='SECTION')sawSec=true;
+      else if(v==='ENDSEC'){blk=null;ent=null;}
+      else if(v==='BLOCK'){blk={name:'',x0:1e18,x1:-1e18,y0:1e18,y1:-1e18};ent=null;}
+      else if(v==='ENDBLK'){ if(blk&&blk.name&&blk.x1>blk.x0)blocks[blk.name]={len:+Math.max(blk.x1-blk.x0,blk.y1-blk.y0).toFixed(2),wid:+Math.min(blk.x1-blk.x0,blk.y1-blk.y0).toFixed(2)}; blk=null; }
+      else if(v==='INSERT'){ent={name:'',x:0,y:0,rot:0};inserts.push(ent);}
+      else ent=null;
+    } else if(c==='2'){ if(sawSec){sawSec=false;} else if(blk&&!blk.name)blk.name=v; else if(ent&&!ent.name)ent.name=v; }
+    else if(c==='10'||c==='11'){ lastX=+v; if(blk)exp(blk,lastX,blk._y||0); if(ent&&c==='10')ent.x=lastX; }
+    else if(c==='20'||c==='21'){ var y=+v; if(blk)exp(blk,lastX,y); if(ent&&c==='20')ent.y=y; }
+    else if(c==='50'&&ent)ent.rot=+v;
+  }
+  if(!inserts.length)return {error:'No encuentro bloques INSERT en el DXF.'};
+  // cuenta instancias por bloque y deja SOLO los que se repiten (trackers) y tienen tamaño de tracker
+  var cnt={}; inserts.forEach(function(r){if(r.name)cnt[r.name]=(cnt[r.name]||0)+1;});
+  var total=inserts.length, thr=Math.max(3,Math.round(total*0.005));
+  var trk=Object.keys(cnt).filter(function(nm){var b=blocks[nm]; return b&&b.len>=8&&b.len<=160&&cnt[nm]>=thr;});
+  if(!trk.length)return {error:'No detecto bloques de tracker (medidos y repetidos). ¿Es el DXF correcto?'};
+  var pitch=1.146,gap=0.55;
+  var Lfull=Math.max.apply(0,trk.map(function(nm){return blocks[nm].len;}));   // largo del tracker completo
+  var mods=Math.round((Lfull-gap)/2/pitch);
+  var keep={}; trk.forEach(function(nm){keep[nm]=1;});
+  var rows=inserts.filter(function(r){return keep[r.name];}).map(function(r){
+    return {E:r.x, Nn:r.y, id:'', t:(blocks[r.name].len < Lfull*0.7)?'medio':'completo'};
+  });
+  var detail=trk.sort(function(a,b){return cnt[b]-cnt[a];}).map(function(nm){return cnt[nm]+'× '+nm+' ('+blocks[nm].len+' m → '+(blocks[nm].len<Lfull*0.7?'medio':'completo')+')';});
+  return {rows:rows, geo:false, mods:mods, detail:detail};
+}
+
+function build(parsed){
+  var def=$('tipo').value, mods=parsed.mods||Math.max(6,Math.min(48,+$('mods').value||28));
+  if(parsed.mods)$('mods').value=parsed.mods;   // el DXF manda: módulos/ala medidos de la geometría
+  var name=($('nombre').value||'Planta nueva').trim(), code=($('codigo').value||'').trim();
+  var rows=parsed.rows, clat, clon, mPerLat=111320, mPerLon, trackers=[];
+  if(parsed.geo){
+    var las=rows.map(function(r){return r.lat;}), lns=rows.map(function(r){return r.lng;});
+    clat=(Math.min.apply(0,las)+Math.max.apply(0,las))/2; clon=(Math.min.apply(0,lns)+Math.max.apply(0,lns))/2; mPerLon=111320*Math.cos(clat*DEG);
+    trackers=rows.map(function(r,i){return {x:+((r.lng-clon)*mPerLon).toFixed(2), n:+((r.lat-clat)*mPerLat).toFixed(2), rot:0, t:mapType(r.t,def), id:r.id||('T'+(i+1))};});
+  } else {
+    var zone=+$('utmz').value, south=$('utmh').value==='S';
+    if(!zone)return {error:'El archivo trae coordenadas UTM: indica la zona UTM en los datos base (p. ej. 30 N o 19 S).'};
+    var Es=rows.map(function(r){return r.E;}), Ns=rows.map(function(r){return r.Nn;});
+    var cE=(Math.min.apply(0,Es)+Math.max.apply(0,Es))/2, cN=(Math.min.apply(0,Ns)+Math.max.apply(0,Ns))/2;
+    var C=utmToLatLon(cE,cN,zone,south); clat=C.lat; clon=C.lon;
+    trackers=rows.map(function(r,i){return {x:+(r.E-cE).toFixed(2), n:+(r.Nn-cN).toFixed(2), rot:0, t:mapType(r.t,def), id:r.id||('T'+(i+1))};});
+  }
+  return {plant:'custom', title:name, code:code||undefined, clat:+clat.toFixed(7), clon:+clon.toFixed(7), mods:mods, trackers:trackers, ncus:[], meteo:[], reps:[], fence:[]};
+}
+
+function drawPreview(L){
+  var cv=$('prev'),W=cv.clientWidth,H=300; cv.width=W*2;cv.height=H*2; var c=cv.getContext('2d');c.scale(2,2);c.clearRect(0,0,W,H);
+  var xs=L.trackers.map(function(t){return t.x;}),ns=L.trackers.map(function(t){return t.n;});
+  var x0=Math.min.apply(0,xs),x1=Math.max.apply(0,xs),n0=Math.min.apply(0,ns),n1=Math.max.apply(0,ns);
+  var pad=18,s=Math.min((W-2*pad)/((x1-x0)||1),(H-2*pad)/((n1-n0)||1));
+  var ox=(W-(x1-x0)*s)/2-x0*s, oy=(H-(n1-n0)*s)/2+n1*s; c.fillStyle='#3a78d6';
+  var hl=L.mods*1.146; // medio largo aprox del tracker
+  L.trackers.forEach(function(t){var px=ox+t.x*s,py=oy-t.n*s,h=Math.max(2,((t.t==='medio'?hl/2:hl)/2)*s); c.fillRect(px-1.4,py-h,2.8,2*h);});
+  c.fillStyle='#9bb0c6';c.font='11px ui-monospace,monospace';c.fillText(L.trackers.length+' seguidores · '+Math.round(x1-x0)+'×'+Math.round(n1-n0)+' m',10,H-10);
+}
+
+function generate(parsed){
+  var L=build(parsed); if(L.error){setMsg('<span class="err">'+L.error+'</span>');return;}
+  LAYOUT=L;
+  try{localStorage.setItem('cobertura_layout',JSON.stringify(L));}catch(e){}
+  var nc=L.trackers.filter(function(t){return t.t==='medio';}).length;
+  $('sum').textContent='Planta: '+L.title+(L.code?(' ('+L.code+')'):'')+'\nCentro: '+L.clat+', '+L.clon+'\nSeguidores: '+L.trackers.length+'  ('+(L.trackers.length-nc)+' completos · '+nc+' medios)\nMódulos/ala: '+L.mods;
+  $('ver3d').href='terreno.html?planta=custom'; $('ver2d').href='plano.html?planta=custom';
+  var pid=(L.code||L.title).toString().toLowerCase().replace(/[^a-z0-9]+/g,'')||'planta';
+  $('snippet').value='// 1) sube el JSON al repo cobertura-zigbee como:  '+pid+'_layout.json\n'+
+    '// 2) en terreno.html y plano.html, dentro de PLANTS:\n'+
+    pid+":{file:'"+pid+"_layout.json', title:'"+L.title+"', angles:null"+(L.mods!==28?(', mods:'+L.mods):'')+"},\n"+
+    '// 3) en la cartera (Proyectos/index.html), dentro de PLANTS:\n'+
+    '{ name:"'+L.title+'", code:"'+(L.code||'')+'", loc:"'+(($('ubic').value||'').trim())+'", views:{\n'+
+    "    siting: null,\n"+
+    "    modelo3d: SITE+\"cobertura-zigbee/terreno.html?planta="+pid+"\",\n"+
+    "    cobertura: null,\n"+
+    "    plano: SITE+\"cobertura-zigbee/plano.html?planta="+pid+"\",\n}},";
+  $('res').classList.remove('hide'); drawPreview(L);
+  setMsg('<span class="ok">✓ Planta generada</span> ('+L.trackers.length+' seguidores). Previsualízala abajo.');
+  $('res').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function handleFile(f){ if(!f)return; var r=new FileReader();
+  r.onload=function(){ var isDxf=/\.dxf$/i.test(f.name)||/^\s*0\s*[\r\n]+SECTION/i.test(r.result.slice(0,200));
+    var p=isDxf?parseDXF(r.result):parseCSV(r.result);
+    if(!p||p.error){setMsg('<span class="err">'+((p&&p.error)||'Archivo no válido')+'</span>');return;}
+    var info='Leídos <b>'+p.rows.length+'</b> seguidores ('+(isDxf?'DXF':(p.geo?'lat/lng':'UTM x/y'))+').';
+    if(p.detail)info+='<br>Bloques reconocidos por su tamaño:<br>· '+p.detail.join('<br>· ');
+    setMsg(info); generate(p);
+  }; r.readAsText(f);
+}
+$('drop').onclick=function(){$('file').click();};
+$('file').onchange=function(e){handleFile(e.target.files[0]);};
+$('drop').addEventListener('dragover',function(e){e.preventDefault();this.classList.add('over');});
+$('drop').addEventListener('dragleave',function(){this.classList.remove('over');});
+$('drop').addEventListener('drop',function(e){e.preventDefault();this.classList.remove('over');handleFile(e.dataTransfer.files[0]);});
+$('tpl').onclick=function(){var s='lat,lng,id,tipo,ncu,gw\n-16.59500,-71.80600,T-001,completo,1,1\n-16.59450,-71.80600,T-002,completo,1,1\n-16.59400,-71.80540,T-003,medio,1,1';var b=new Blob([s],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='plantilla_planta.csv';a.click();URL.revokeObjectURL(a.href);};
+$('dl').onclick=function(){if(!LAYOUT)return;var pid=(LAYOUT.code||LAYOUT.title).toString().toLowerCase().replace(/[^a-z0-9]+/g,'')||'planta';var b=new Blob([JSON.stringify(LAYOUT)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=pid+'_layout.json';a.click();URL.revokeObjectURL(a.href);};
+$('copy').onclick=function(){$('snippet').select();try{document.execCommand('copy');}catch(e){}};
+['nombre','codigo','ubic','tipo','mods','utmz','utmh'].forEach(function(id){var el=$(id);if(el)el.addEventListener('change',function(){if($('file').files[0])handleFile($('file').files[0]);});});
+</script></body></html>
