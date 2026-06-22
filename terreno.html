@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.59"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.60"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.82</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.83</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -495,7 +495,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(_MD,s.Lm[l]);_M2.multiply(_T);s.im.setMatrixAt(base+l,_M2);}continue;}  // tubo "medio": las DOS medias-vigas escaladas a mr y colocadas en su posición "medio"
         for(var l=0;l<s.n;l++){if(l<L.length){var _mx=L[l].elements[12]>0.01?_MDN:(L[l].elements[12]<-0.01?_MDS:_MD);_M2.multiplyMatrices(_mx,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // cada pieza usa la matriz de SU mitad (N: x>0 → _MDN; S: x<0 → _MDS; central x≈0 → _MD); "medio": las sobrantes se ocultan
       if(_DM){_MS.multiplyMatrices(t.fb[f],SEGO);var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
-        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],0,_DA[dl][2]).applyMatrix4(_MS);_PA.y=localElevY(_PA.x,-_PA.z)+0.40;_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // pie a 40 cm del TERRENO REAL muestreado bajo el pie (no se entierra en cuestas); cima en la viga de torsión
+        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_MS);_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // pie FIJO en el rodamiento (justo bajo la viga, con la base estática del tubo) + cima en la manivela del tubo (bascula) → amortiguador CORTO
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
           if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}                                          // CUERPO oscuro, 62% centrado (= gemelo)
