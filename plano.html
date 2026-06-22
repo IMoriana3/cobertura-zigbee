@@ -26,7 +26,8 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.3</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.4</div></div>
+  <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
 <div class="panel">
@@ -63,6 +64,7 @@ async function mosaic(z,latN,latS,lonW,lonE){
 
 var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, custom:{file:null,title:'Planta nueva'} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
+var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
 
 var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
 var L=null,lat0=0,lon0=0,mPerLat=111320,mPerLon=85000,sat=null,satBox=null;
@@ -163,6 +165,7 @@ $('fit').onclick=fit;
 if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
 $('link3d').href='terreno.html?planta='+PLANT;
+(function(){var b=$('offBtn');if(!b)return;b.textContent=OFFLINE?'⛌ Sin conexión':'◑ Online';b.style.color=OFFLINE?'#F6A623':'#9bb0c6';b.onclick=function(){try{localStorage.setItem('cobertura_offline',OFFLINE?'0':'1');}catch(e){}location.reload();};})();
 
 async function build(){
   resize();
@@ -178,6 +181,7 @@ async function build(){
   var wide=Math.max(2*hx,2*hz);
   var z=Math.max(15,Math.min(19,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/wide))));   // ~7 teselas/lado
   fit();draw();
+  if(OFFLINE){ setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\n⛌ modo sin conexión (sin satélite)'); return; }   // OFFLINE: no se descarga el satélite (cero llamadas externas)
   setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\ndescargando satélite…');
   try{
     sat=await mosaic(z,latN,latS,lonW,lonE);
