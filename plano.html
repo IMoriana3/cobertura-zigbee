@@ -26,7 +26,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.2</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.3</div></div>
   <span class="brand">Factiun</span>
 </header>
 <div class="panel">
@@ -61,8 +61,8 @@ async function mosaic(z,latN,latS,lonW,lonE){
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }
 
-var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'} };
-var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, custom:{file:null,title:'Planta nueva'} };
+var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 
 var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
 var L=null,lat0=0,lon0=0,mPerLat=111320,mPerLon=85000,sat=null,satBox=null;
@@ -160,14 +160,15 @@ function hover(e){
 
 ['cbSat','cbTrk','cbNcu','cbLbl'].forEach(function(id){$(id).onchange=draw;});
 $('fit').onclick=fit;
+if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
 $('link3d').href='terreno.html?planta='+PLANT;
 
 async function build(){
   resize();
   setStatus('cargando '+PLANTS[PLANT].title+'…');
-  try{L=await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json();}
-  catch(e){setStatus('<span class="err">No se pudo cargar '+PLANTS[PLANT].file+'</span>');return;}
+  try{L=(PLANT==='custom')?JSON.parse(localStorage.getItem('cobertura_layout')||'null'):await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json(); if(!L)throw new Error('sin layout');}
+  catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
   // extensión para satélite
   var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;

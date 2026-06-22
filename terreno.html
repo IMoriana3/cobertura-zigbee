@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="seguidor.js?v=2.63"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="seguidor.js?v=2.64"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
   *{box-sizing:border-box}
@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.87</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.88</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -280,14 +280,15 @@ function setTime(min){
 var PLANTS={
   elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json'},
   ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null},
-  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32}   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
+  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
+  custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
-var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
+var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 async function build(){
   initThree();
   setStatus("Cargando implantación (DWG)…");
-  try{LAYOUT=await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json();}
-  catch(e){setStatus('<span class="err">No se pudo cargar '+PLANTS[PLANT].file+'</span>');return;}
+  try{LAYOUT=(PLANT==='custom')?JSON.parse(localStorage.getItem('cobertura_layout')||'null'):await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json(); if(!LAYOUT)throw new Error('sin layout');}
+  catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
@@ -395,7 +396,7 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
-  if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // largo de tracker POR PLANTA (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
+  if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // largo de tracker POR PLANTA (San José 32 mód/ala → 74 m; resto 28 → 64,7 m); el mapa nuevo lo trae en el layout
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
@@ -773,6 +774,7 @@ $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
   else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
 $('play').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
+if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}   // mapa nuevo: opción extra en el selector
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // cambiar de planta = recargar con ?planta=…
 if($('link2d')){var _l2=$('link2d');if(PLANT==='elburgo'){_l2.href='index.html';_l2.textContent='▦ Cobertura 2D →';}else{_l2.href='plano.html?planta='+PLANT;_l2.textContent='▦ Plano 2D →';}}   // El Burgo → visor REAL de cobertura Zigbee (RSSI/malla/saltos, index.html); Ayora/San José → plano de planta nuevo (sin datos de cobertura medidos)
 
