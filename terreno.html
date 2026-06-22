@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.78</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.79</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -183,6 +183,7 @@ function initThree(){
   var __hiShad=!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);sun.shadow.mapSize.set(__hiShad?4096:2048,__hiShad?4096:2048);   // escritorio: 4096 (sombra fina); móvil: 2048 (memoria). El shadow camera se ciñe al zoom (updateSunShadow)
   var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
+  sun.shadow.radius=__hiShad?5:2;   // PENUMBRA PCFSoft: difumina ~5 téxeles → funde el "escalonado" del borde (la sombra de un panel de 6 cm es más fina que un téxel; sin radio el borde sale dentado y asimétrico). Radio en téxeles = independiente del zoom/mapSize
   scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
