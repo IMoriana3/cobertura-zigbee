@@ -26,7 +26,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.4</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.5</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -35,8 +35,10 @@
   <div class="row"><label><input type="checkbox" id="cbTrk" checked> Seguidores</label></div>
   <div class="row"><label><input type="checkbox" id="cbNcu" checked> NCUs / meteo</label></div>
   <div class="row"><label><input type="checkbox" id="cbLbl"> Etiquetas</label></div>
+  <div class="row"><label><input type="checkbox" id="cbElec"> ⚡ Color eléctrico (NCU)</label></div>
   <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
-  <div class="leg" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
+  <div class="leg" id="legStatic" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
+  <div class="leg" id="legElec" style="margin-top:7px;display:none;max-height:210px;overflow:auto"></div>
 </div>
 <div id="status">cargando…</div>
 <div id="tip"></div>
@@ -65,6 +67,35 @@ async function mosaic(z,latN,latS,lonW,lonE){
 var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, custom:{file:null,title:'Planta nueva'} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
+
+/* ===== capa ELÉCTRICA: colorea cada seguidor por su NCU (asignación canónica) =====
+   Usa t.ncu del layout (lo emite el creador canónico de SolarGPT; real p.ej. en San José);
+   si el layout no lo trae, asigna por NCU más cercana. 100% offline (solo lee el layout). */
+var COD={elburgo:24002,ayora:24025,sanjose:24019};
+var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');var c=COD[PLANT];return (m&&c&&m[String(c)])||null;}catch(e){return null;}})();   // ficha de la planta (Cartera técnica) para anotar/validar la leyenda
+var EGROUPS=[],ECOL={};
+function ehsl(i){var h=(i*137.508)%360;return 'hsl('+h.toFixed(0)+',62%,56%)';}   // ángulo áureo → colores bien separados
+function nearestNcu(t){if(!L.ncus||!L.ncus.length)return 0;var bd=1e18,bi=0;for(var i=0;i<L.ncus.length;i++){var dx=L.ncus[i].x-t.x,dn=L.ncus[i].n-t.n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
+function ncuLabel(key,idx){if(L&&L.ncus){if(typeof key==='number'&&L.ncus[key-1]&&L.ncus[key-1].name)return L.ncus[key-1].name;if(L.ncus[idx]&&L.ncus[idx].name)return L.ncus[idx].name;}return 'NCU '+key;}
+function assignElec(){
+  EGROUPS=[];ECOL={};if(!L||!L.trackers)return;
+  var byKey={},order=[],hasNcu=L.trackers.some(function(t){return t.ncu!=null;});
+  L.trackers.forEach(function(t){var key,idx;
+    if(hasNcu&&t.ncu!=null){key=t.ncu;idx=(typeof key==='number'?key-1:-1);}
+    else{idx=nearestNcu(t);key=idx+1;}
+    t._g=key;if(!(key in byKey)){byKey[key]={key:key,idx:idx,count:0};order.push(key);}byKey[key].count++;});
+  order.sort(function(a,b){return (typeof a==='number'&&typeof b==='number')?a-b:String(a).localeCompare(String(b));});
+  order.forEach(function(key,i){var g=byKey[key];g.name=ncuLabel(key,g.idx);g.color=ehsl(i);EGROUPS.push(g);ECOL[key]=g.color;});
+}
+function buildElecLegend(){
+  var box=$('legElec'),stat=$('legStatic');if(!box)return;
+  if(!$('cbElec').checked){box.style.display='none';if(stat)stat.style.display='';return;}
+  if(stat)stat.style.display='none';
+  var declared=SPEC?((SPEC.ncu_eth||0)+(SPEC.ncu_fo||0)):null;
+  var head='<div style="color:#eaf4ff;margin-bottom:5px;white-space:nowrap">'+(SPEC&&SPEC.nombre?SPEC.nombre+' · ':'')+EGROUPS.length+' NCU · '+(L.trackers?L.trackers.length:0)+' seguidores'+(declared!=null?' <span style="color:var(--tx2)">· cartera: '+declared+'</span>':'')+'</div>';
+  var rows=EGROUPS.map(function(g){return '<div style="white-space:nowrap"><span class="dot" style="background:'+g.color+'"></span>'+g.name+' <span style="color:var(--tx2)">· '+g.count+'</span></div>';}).join('');
+  box.innerHTML=head+rows;box.style.display='';
+}
 
 var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
 var L=null,lat0=0,lon0=0,mPerLat=111320,mPerLon=85000,sat=null,satBox=null;
@@ -96,7 +127,7 @@ function draw(){
       var halfL=(medio?16:31),halfW=3.2;   // semilargo (N-S) y semiancho (E-W) aproximados
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s,wp=Math.max(0.8,halfW*s);
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
-      ctx.fillStyle='#3a78d6';
+      ctx.fillStyle=($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6';
       ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);
       if(s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
     }
@@ -156,11 +187,19 @@ function hover(e){
   var tip=$('tip'),best=null,bd=14;
   function chk(arr,kind){for(var i=0;i<arr.length;i++){var m=arr[i],d=Math.hypot(w2sx(m.x)-e.clientX,w2sy(m.n)-e.clientY);if(d<bd){bd=d;best={name:m.name,kind:kind};}}}
   chk(L.ncus||[],'NCU');chk(L.meteo||[],'meteo');chk(L.reps||[],'repetidor');
+  if(!best && $('cbElec').checked && L.trackers){   // en modo eléctrico: identifica el seguidor bajo el cursor (id · NCU · gateway)
+    var bt=null,bd2=22;
+    for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];var d=Math.hypot(w2sx(t.x)-e.clientX,w2sy(t.n)-e.clientY);if(d<bd2){bd2=d;bt=t;}}
+    if(bt){var nm='';for(var k=0;k<EGROUPS.length;k++)if(EGROUPS[k].key===bt._g){nm=EGROUPS[k].name;break;}
+      tip.innerHTML='<b>'+(bt.id||'seguidor')+'</b><br>'+nm+(bt.gw!=null?' · GW '+bt.gw:'');
+      tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;return;}
+  }
   if(best&&best.name){tip.innerHTML='<b>'+best.name+'</b><br>'+best.kind;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;}
   else tip.style.opacity=0;
 }
 
 ['cbSat','cbTrk','cbNcu','cbLbl'].forEach(function(id){$(id).onchange=draw;});
+$('cbElec').onchange=function(){buildElecLegend();draw();};
 $('fit').onclick=fit;
 if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
@@ -173,6 +212,7 @@ async function build(){
   try{L=(PLANT==='custom')?JSON.parse(localStorage.getItem('cobertura_layout')||'null'):await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json(); if(!L)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
+  assignElec();buildElecLegend();   // capa eléctrica lista (offline, desde el layout)
   // extensión para satélite
   var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
   L.trackers.forEach(function(t){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;});
