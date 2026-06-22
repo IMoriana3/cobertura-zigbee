@@ -39,8 +39,8 @@
 <body>
   <canvas id="cv"></canvas>
   <header>
-    <a id="link2d" href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.73</div></div>
+    <a id="link2d" href="plano.html">▦ Plano 2D →</a>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.74</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -762,6 +762,7 @@ $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
 $('play').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // cambiar de planta = recargar con ?planta=…
+if($('link2d'))$('link2d').href='plano.html?planta='+PLANT;   // enlace al visor 2D de LA MISMA planta
 
 build().catch(function(e){setStatus('<span class="err">Error: '+(e&&e.message||e)+'</span>\nConsola (F12) + captura, porfa.');});
 </script>

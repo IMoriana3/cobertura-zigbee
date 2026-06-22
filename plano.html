@@ -1,0 +1,191 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Plano 2D Cobertura</title>
+<style>
+  :root{--bg:#0b0f14;--panel:#121821ee;--tx:#eaf4ff;--tx2:#9bb0c6;--line:#1f2a37;--line2:#2b3a4d;--accent:#5aa9ff;--mono:ui-monospace,Menlo,Consolas,monospace;--sans:system-ui,Segoe UI,Roboto,sans-serif}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:var(--sans);overflow:hidden;-webkit-user-select:none;user-select:none}
+  #cv{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
+  #cv.drag{cursor:grabbing}
+  header{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:9px 14px;background:linear-gradient(#0b0f14ee,#0b0f1400);z-index:5;pointer-events:none}
+  header a{pointer-events:auto;color:var(--tx2);text-decoration:none;border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font-size:13px}
+  header h1{font-size:15px;margin:0;font-weight:700;display:flex;align-items:baseline;gap:7px}
+  header select{pointer-events:auto;font:inherit;font-size:.82em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer}
+  header .sub{color:var(--tx2);font-size:12px}
+  header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
+  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:13px;min-width:190px}
+  .row{display:flex;align-items:center;gap:8px;margin:4px 0}
+  .row label{cursor:pointer}
+  .btn{background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+  .leg{font-size:11.5px;color:var(--tx2);line-height:1.7}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  #status{position:absolute;right:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-family:var(--mono);font-size:11.5px;color:var(--tx2);max-width:300px;white-space:pre-wrap;line-height:1.5}
+  .err{color:#ff6b6b}
+  #tip{position:absolute;z-index:6;pointer-events:none;background:#0e1218e6;border:1px solid var(--line2);border-radius:7px;padding:5px 8px;font-size:12px;opacity:0;transition:opacity .1s;max-width:220px}
+  #tip b{color:#9fd0ff}
+</style></head><body>
+<canvas id="cv"></canvas>
+<header>
+  <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v1.0</div></div>
+  <span class="brand">Factiun</span>
+</header>
+<div class="panel">
+  <div class="row"><label><input type="checkbox" id="cbSat" checked> Satélite</label></div>
+  <div class="row"><label><input type="checkbox" id="cbTrk" checked> Seguidores</label></div>
+  <div class="row"><label><input type="checkbox" id="cbNcu" checked> NCUs / meteo</label></div>
+  <div class="row"><label><input type="checkbox" id="cbLbl"> Etiquetas</label></div>
+  <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
+  <div class="leg" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
+</div>
+<div id="status">cargando…</div>
+<div id="tip"></div>
+<script>
+"use strict";
+var DEG=Math.PI/180;
+function $(id){return document.getElementById(id);}
+function setStatus(h){$('status').innerHTML=h;}
+function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
+function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
+function tx2lon(tx,z){return tx/Math.pow(2,z)*360-180;}
+function ty2lat(ty,z){var n=Math.PI*(1-2*ty/Math.pow(2,z));return Math.atan(Math.sinh(n))*180/Math.PI;}
+function loadImg(url){return new Promise(function(res,rej){var im=new Image();im.crossOrigin='anonymous';im.onload=function(){res(im);};im.onerror=function(){rej(new Error(url));};im.src=url;});}
+var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};
+async function mosaic(z,latN,latS,lonW,lonE){
+  var xmin=Math.floor(lon2txf(lonW,z)),xmax=Math.floor(lon2txf(lonE,z));
+  var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
+  var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
+  var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var ok=0,tasks=[];
+  for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
+    tasks.push(loadImg(SAT(z,tx,ty)).then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256);ok++;}).catch(function(){}));})(tx,ty);}
+  await Promise.all(tasks);
+  return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
+}
+
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'} };
+var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return PLANTS[p]?p:'elburgo';}catch(e){return 'elburgo';}})();
+
+var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
+var L=null,lat0=0,lon0=0,mPerLat=111320,mPerLon=85000,sat=null,satBox=null;
+var view={x:0,n:0,scale:1};   // x,n = punto del mundo (m) en el centro de pantalla; scale = px/m
+var W=0,H=0;
+function resize(){W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);draw();}
+addEventListener('resize',resize);
+
+function w2sx(x){return W/2+(x-view.x)*view.scale;}
+function w2sy(n){return H/2-(n-view.n)*view.scale;}
+function s2wx(sx){return view.x+(sx-W/2)/view.scale;}
+function s2wn(sy){return view.n-(sy-H/2)/view.scale;}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0b0f14';ctx.fillRect(0,0,W,H);
+  // satélite (imagen del mosaico colocada en coords mundo)
+  if(sat&&satBox&&$('cbSat').checked){
+    var dx=w2sx(satBox.x0),dy=w2sy(satBox.n1),dw=(satBox.x1-satBox.x0)*view.scale,dh=(satBox.n1-satBox.n0)*view.scale;
+    ctx.imageSmoothingEnabled=true;
+    try{ctx.drawImage(sat.canvas,dx,dy,dw,dh);}catch(e){}
+  } else { ctx.fillStyle='#11161d';ctx.fillRect(0,0,W,H); }
+  if(!L)return;
+  // seguidores
+  if($('cbTrk').checked){
+    var s=view.scale;
+    for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];
+      var medio=/^medio/i.test(t.t||'');
+      var halfL=(medio?16:31),halfW=3.2;   // semilargo (N-S) y semiancho (E-W) aproximados
+      var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s,wp=Math.max(0.8,halfW*s);
+      if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
+      ctx.fillStyle='#3a78d6';
+      ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);
+      if(s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
+    }
+  }
+  // NCUs y meteo
+  if($('cbNcu').checked){
+    drawMarks(L.ncus||[],'#36D399',9);
+    drawMarks(L.meteo||[],'#e3c149',7);
+    drawMarks(L.reps||[],'#c98bff',6);
+  }
+  // escala
+  drawScaleBar();
+}
+function drawMarks(arr,col,r){
+  var lbl=$('cbLbl').checked;
+  for(var i=0;i<arr.length;i++){var m=arr[i],sx=w2sx(m.x),sy=w2sy(m.n);
+    if(sx<-30||sx>W+30||sy<-30||sy>H+30)continue;
+    ctx.beginPath();ctx.arc(sx,sy,r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#0b0f14';ctx.stroke();
+    if(lbl&&m.name){ctx.font='12px ui-monospace,monospace';ctx.fillStyle='#eaf4ff';ctx.strokeStyle='rgba(11,15,20,.85)';ctx.lineWidth=3;ctx.strokeText(m.name,sx+r+3,sy+4);ctx.fillText(m.name,sx+r+3,sy+4);}
+  }
+}
+function drawScaleBar(){
+  // barra de escala: elige una longitud "redonda" ~120 px
+  var targetPx=120,m=targetPx/view.scale;
+  var pow=Math.pow(10,Math.floor(Math.log10(m))),f=m/pow,nice=(f<1.5?1:f<3.5?2:f<7.5?5:10)*pow;
+  var px=nice*view.scale;
+  var x0=18,y0=H-22;
+  ctx.strokeStyle='#eaf4ff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0+px,y0);ctx.moveTo(x0,y0-5);ctx.lineTo(x0,y0+5);ctx.moveTo(x0+px,y0-5);ctx.lineTo(x0+px,y0+5);ctx.stroke();
+  ctx.font='12px ui-monospace,monospace';ctx.fillStyle='#eaf4ff';ctx.fillText(nice>=1000?(nice/1000)+' km':nice+' m',x0,y0-9);
+}
+
+function fit(){
+  if(!L||!L.trackers.length)return;
+  var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  L.trackers.forEach(function(t){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;});
+  var pad=60,sx=W/((x1-x0)+2*pad),sn=H/((n1-n0)+2*pad);
+  view.scale=Math.min(sx,sn);view.x=(x0+x1)/2;view.n=(n0+n1)/2;draw();
+}
+
+// interacción
+var drag=null;
+cv.addEventListener('pointerdown',function(e){drag={sx:e.clientX,sy:e.clientY,vx:view.x,vn:view.n};cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointermove',function(e){
+  if(drag){view.x=drag.vx-(e.clientX-drag.sx)/view.scale;view.n=drag.vn+(e.clientY-drag.sy)/view.scale;draw();return;}
+  hover(e);
+});
+cv.addEventListener('pointerup',function(e){drag=null;cv.classList.remove('drag');});
+cv.addEventListener('pointercancel',function(){drag=null;cv.classList.remove('drag');});
+cv.addEventListener('wheel',function(e){e.preventDefault();
+  var wx=s2wx(e.clientX),wn=s2wn(e.clientY);   // mundo bajo el cursor
+  var f=Math.exp(-e.deltaY*0.0014);view.scale=Math.max(0.02,Math.min(20,view.scale*f));
+  view.x=wx-(e.clientX-W/2)/view.scale;view.n=wn+(e.clientY-H/2)/view.scale;   // mantener el punto bajo el cursor
+  draw();
+},{passive:false});
+function hover(e){
+  if(!L){return;}
+  var tip=$('tip'),best=null,bd=14;
+  function chk(arr,kind){for(var i=0;i<arr.length;i++){var m=arr[i],d=Math.hypot(w2sx(m.x)-e.clientX,w2sy(m.n)-e.clientY);if(d<bd){bd=d;best={name:m.name,kind:kind};}}}
+  chk(L.ncus||[],'NCU');chk(L.meteo||[],'meteo');chk(L.reps||[],'repetidor');
+  if(best&&best.name){tip.innerHTML='<b>'+best.name+'</b><br>'+best.kind;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;}
+  else tip.style.opacity=0;
+}
+
+['cbSat','cbTrk','cbNcu','cbLbl'].forEach(function(id){$(id).onchange=draw;});
+$('fit').onclick=fit;
+$('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};
+$('link3d').href='terreno.html?planta='+PLANT;
+
+async function build(){
+  resize();
+  setStatus('cargando '+PLANTS[PLANT].title+'…');
+  try{L=await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json();}
+  catch(e){setStatus('<span class="err">No se pudo cargar '+PLANTS[PLANT].file+'</span>');return;}
+  lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
+  // extensión para satélite
+  var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+  L.trackers.forEach(function(t){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;});
+  var marg=80,hx=Math.max(Math.abs(x0),Math.abs(x1))+marg,hz=Math.max(Math.abs(n0),Math.abs(n1))+marg;
+  var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat;
+  var wide=Math.max(2*hx,2*hz);
+  var z=Math.max(15,Math.min(19,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/wide))));   // ~7 teselas/lado
+  fit();draw();
+  setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\ndescargando satélite…');
+  try{
+    sat=await mosaic(z,latN,latS,lonW,lonE);
+    // bbox del mosaico en coords mundo (m), a partir de los bordes de las teselas
+    var bl=tx2lon(sat.xmin,z),br=tx2lon(sat.xmax+1,z),bt=ty2lat(sat.ymin,z),bb=ty2lat(sat.ymax+1,z);
+    satBox={x0:(bl-lon0)*mPerLon,x1:(br-lon0)*mPerLon,n0:(bb-lat0)*mPerLat,n1:(bt-lat0)*mPerLat};
+    draw();
+    setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\nsatélite: '+sat.ok+' teselas (z'+z+')');
+  }catch(e){ setStatus('<b>'+L.trackers.length+'</b> seguidores (satélite no disponible)'); }
+}
+build();
+</script></body></html>
