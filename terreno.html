@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#0B0F14">
 <link rel="icon" href="favicon.svg">
 <title>Cobertura 3D · El Burgo I — terreno real</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN): funciona offline -->
+<script src="lib/OrbitControls.js"></script>
+<script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js?v=2.64"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
@@ -41,7 +41,8 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.88</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.89</div></div>
+    <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -284,6 +285,7 @@ var PLANTS={
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
+var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // MODO OFFLINE (ciberseguridad): sin satélite/relieve, CERO llamadas externas. Por defecto sigue el estado del navegador; el botón lo fija.
 async function build(){
   initThree();
   setStatus("Cargando implantación (DWG)…");
@@ -309,9 +311,9 @@ async function build(){
 
   var sat=null,dem=null,demImg=null;
   var satZoom=Math.max(15,Math.min(18,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~7 teselas/lado (El Burgo→18, Ayora 2.5 km→16) para no bajar cientos de teselas
-  try{sat=await mosaic(SAT,satZoom,latN,latS,lonW,lonE);}catch(e){}
+  if(!OFFLINE)try{sat=await mosaic(SAT,satZoom,latN,latS,lonW,lonE);}catch(e){}   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
   var demZoom=(Math.max(widthM,depthM)>1500)?15:14;   // plantas grandes: relieve más fino (z15 ≈ 4 m/px) para que el terreno no salga aterrazado
-  try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
+  if(!OFFLINE)try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
   function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
     var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
     function gpx(ix,iy){var i=(iy*W+ix)*4;return d[i]*256+d[i+1]+d[i+2]/256;}
@@ -778,6 +780,7 @@ if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // cambiar de planta = recargar con ?planta=…
 if($('link2d')){var _l2=$('link2d');if(PLANT==='elburgo'){_l2.href='index.html';_l2.textContent='▦ Cobertura 2D →';}else{_l2.href='plano.html?planta='+PLANT;_l2.textContent='▦ Plano 2D →';}}   // El Burgo → visor REAL de cobertura Zigbee (RSSI/malla/saltos, index.html); Ayora/San José → plano de planta nuevo (sin datos de cobertura medidos)
 
+(function(){var b=$('offBtn');if(!b)return;b.textContent=OFFLINE?'⛌ Sin conexión':'◑ Online';b.style.color=OFFLINE?'#F6A623':'#9bb0c6';b.onclick=function(){try{localStorage.setItem('cobertura_offline',OFFLINE?'0':'1');}catch(e){}location.reload();};})();   // toggle online/offline (recarga aplicando el modo)
 build().catch(function(e){setStatus('<span class="err">Error: '+(e&&e.message||e)+'</span>\nConsola (F12) + captura, porfa.');});
 </script>
 </body>
