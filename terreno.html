@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.70</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.71</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -135,6 +135,7 @@ var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
+var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera FIJO ceñido a la planta (centro y semiancho en mundo); se calcula en build() por planta → sombras en TODA la planta
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -234,14 +235,13 @@ function panelAngle(min){
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
-// la shadow camera SIGUE al objetivo de la cámara y se CIÑE al zoom: al acercarte, el área de sombra se reduce → sombras MUCHO más finas (al alejarte cubre la planta, más bastas)
-function updateSunShadow(){ if(!SUN||!SUN._dir||!controls)return; var dir=SUN._dir;
-  var t=controls.target, cx=t.x, cy=t.y, cz=t.z, sc=SUN.shadow.camera;
-  var half=Math.max(70,Math.min(950,camera.position.distanceTo(t)*0.55));   // ~ el ancho visible en el objetivo → la resolución del shadow map se concentra en lo que miras
-  sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
-  var d=half*4+700, nf=half*2.5+300; sc.near=Math.max(1,d-nf); sc.far=d+nf; sc.updateProjectionMatrix();
-  SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
-  SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld(); }
+// shadow camera FIJO ceñido a la planta (centro SH_CX/SH_CZ, semiancho SH_HALF) → sombras en TODA la planta y estables al zoom; la finura la da el tamaño del shadow map (8192 en escritorio, planta pequeña)
+function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir;
+  var cx=SH_CX, cz=SH_CZ, half=SH_HALF, sc=SUN.shadow.camera, ty=ELEV?localElevY(cx,-cz):0;
+  var d=half*4+800;
+  if(sc.right!==half){sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;sc.near=Math.max(1,d-half*2.2);sc.far=d+half*2.2;sc.updateProjectionMatrix();}
+  SUN.position.set(cx+dir.E*d, ty+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  SUN.target.position.set(cx,ty,cz); SUN.target.updateMatrixWorld(); }
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
@@ -288,6 +288,9 @@ async function build(){
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
   (LAYOUT.fence||[]).forEach(function(pl){pl.forEach(function(p){if(Math.abs(p[0])<800&&Math.abs(p[1])<700)ext(p[0],p[1]);});}); // solo seguidores+vallado (otras capas del DWG tienen coords basura)
   var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (vallado+seguidores); descarta bloques sueltos del DWG (legendas/detalles lejos de la planta)
+  SH_CX=(exmin+exmax)/2;SH_CZ=-(nmin+nmax)/2;SH_HALF=Math.max((exmax-exmin)/2,(nmax-nmin)/2)+60;if(SUN)SUN.shadow.camera.right=-1;   // shadow camera FIJO ceñido a ESTA planta → sombras en TODA la planta (no solo una zona)
+  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,NODES.length>320?4096:8192);   // escritorio planta pequeña → 8192 (sombra muy fina); grande → 4096; móvil → 2048
+  if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
   var widthM=2*hx,depthM=2*hz;
   var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat;
@@ -416,7 +419,7 @@ function buildTrackers(elevAt){
     var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,artic:kinked,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
-  buildPickBoxes();applySavedTrackers();layoutTrackers();loadTCU();
+  buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=320)loadTCU();   // plantas grandes (Ayora 754…): sin la TCU real (tcu.glb instanciada cientos de veces saturaba la GPU → parpadeaba y desaparecía)
 }
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
