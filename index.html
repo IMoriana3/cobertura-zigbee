@@ -930,7 +930,7 @@ function loadLog(text){
       rssi:o.rssi_dbm===''||o.rssi_dbm==null?null:parseInt(o.rssi_dbm,10),
       ack:o.ack_failures===''||o.ack_failures==null?null:parseInt(o.ack_failures,10),
       mv:o.supply_mv===''?null:parseInt(o.supply_mv,10), temp:o.temp_c===''?null:parseInt(o.temp_c,10)});}
-  S.rows=out; buildFrames(); rebuildTimeline(); render();
+  S.rows=out; buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
 }
 function buildFrames(){
   const bf={}, series={};
@@ -1430,7 +1430,7 @@ document.addEventListener('click',function(e){ if(!e.target.closest)return;
   const cv=e.target.closest('#s24heat'); if(cv&&cv._span){const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(cv.width/r.width),fr=Math.round(((x-cv._padL)/(cv._W-cv._padL-8))*(S.frames.length-1));if(fr>=0&&fr<S.frames.length){document.getElementById('sum24').classList.remove('show');pause();go(fr);}}
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'){const s=document.getElementById('sum24');if(s)s.classList.remove('show');}});
-buildMap(); legend();
+buildMap(); legend(); setMode('predicho');   // al abrir, muestra YA la COBERTURA real (malla medida de elburgo_real.geojson: enlaces RSSI + SPOF/dominadores), sin esperar a cargar el zigbee_log.csv
 </script>
 <style>
   #sum24{position:fixed;inset:0;z-index:1500;background:#0b0f14;display:none;flex-direction:column}
