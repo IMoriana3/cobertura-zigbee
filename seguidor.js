@@ -159,8 +159,8 @@
           push('correa', 'correa', true, false,
             function (TH){ return new TH.BoxGeometry(0.05, 0.05, D.modH*0.96); }, mT(THREE, px, D.purlY, 0));
         }
-        push('cable', 'cable', true, false,                 // cable de string redondo (6 mm² → Ø6 mm) a lo LARGO del ala (X), POR EL CENTRO (z=0), sobre la viga de torsión
-          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, D.jbY-0.02, 0));
+        push('cable', 'cable', true, false,                 // cable de string redondo (6 mm² → Ø6 mm) a lo LARGO del ala (X), POR EL CENTRO (z=0) y por DEBAJO del tubo (y=-0.10) → NO atraviesa las correas (que van sobre el tubo)
+          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, -0.10, 0));
         for (var j = 0; j < 3; j++) {                       // cajas de conexión representativas, ALINEADAS sobre la viga de torsión (z=0)
           var jx = w.edge + w.dir * (j + 0.5) * (D.strLen / 3);
           push('jbox', 'jbox', true, false,
@@ -295,6 +295,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.9';
+  S.VERSION = '0.4.10';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
