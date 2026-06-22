@@ -40,7 +40,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="https://imoriana3.github.io/cobertura-zigbee/">← Visor 2D</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.69</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option></select></h1><div class="sub">v2.70</div></div>
     <span class="brand">Factiun</span>
   </header>
   <div class="panel">
@@ -394,7 +394,8 @@ function buildTrackers(elevAt){
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var dampPosts=[zP[1],zP[zP.length-2]];                                            // amortiguadores al PENÚLTIMO poste (N y S) de la retícula de cobertura
-  var planL=Seguidor.instancePlan(THREE,{detail:'full',size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:'full',size:'medio',damperX:dampPosts}),mM={},mMab={};
+  var DET=(NODES.length>320)?'mass':'full';   // plantas grandes (Ayora 754…): "mesa" por ala (~15 piezas/fila) en vez de módulo a módulo (~200) → carga y va fluido; El Burgo (215) sigue a detalle completo
+  var planL=Seguidor.instancePlan(THREE,{detail:DET,size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:DET,size:'medio',damperX:dampPosts}),mM={},mMab={};
   planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.16,0);   // -0.16 (antes -0.14): baja la TCU para que la chapa superior no se meta en el tubo cuadrado; perpendicular y volteada
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
