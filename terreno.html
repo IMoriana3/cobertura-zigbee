@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.90</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.91</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -336,7 +336,7 @@ async function build(){
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*3]=c[0];vcol[vi*3+1]=c[1];vcol[vi*3+2]=c[2];}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,3));
   var mat;if(sat&&sat.ok>0){var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});
-  var reliefMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0});
+  var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
   terrain.userData.baseMat=mat;terrain.userData.reliefMat=reliefMat;
   if($('relief')&&$('relief').checked)terrain.material=reliefMat;   // respeta el toggle al cambiar de planta
