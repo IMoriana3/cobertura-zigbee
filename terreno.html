@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.96</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.97</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -243,7 +243,18 @@ function panelAngle(min){
   if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
   return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
 }
-function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
+/* cielo: fondo + niebla + color del sol según la ALTURA del sol (U): día azul, horizonte naranja, noche oscura */
+function skyColor(U){
+  var st=[[-0.15,0x0a0e13],[-0.02,0x171d29],[0.0,0xc9824f],[0.07,0xc0a987],[0.22,0x9ec2e2],[0.55,0x7db0e6]];
+  if(U<=st[0][0])return new THREE.Color(st[0][1]);
+  for(var i=1;i<st.length;i++){if(U<=st[i][0]){var a=st[i-1],b=st[i],f=(U-a[0])/(b[0]-a[0]);return new THREE.Color(a[1]).lerp(new THREE.Color(b[1]),f);}}
+  return new THREE.Color(st[st.length-1][1]);
+}
+function applySky(U){ if(!scene)return; var c=skyColor(U);
+  if(scene.background&&scene.background.copy)scene.background.copy(c); else scene.background=c;
+  if(scene.fog)scene.fog.color.copy(c);
+  if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));} }
+function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir, sc=SUN.shadow.camera;
   var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
