@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.93</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.94</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -664,7 +664,7 @@ function buildBOS(){
     var w=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,L,5),mtWire);
     _md.set(dx,dy,dz).normalize();_mq.setFromUnitVectors(_mu,_md);w.quaternion.copy(_mq);
     w.position.set((ax+bx)/2,(ay+by)/2,(az+bz)/2);g.add(w);}
-  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=6,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);
+  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=8.5,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);   // mástil 8,5 m
     g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.06,0.5),mtMast),X,y+0.03,Z));                                                    // placa base
     g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.075,h,10),mtMast),X,y+h/2,Z));                                             // mástil
     var ga=0.72*h,gr=3.2,ti; for(ti=0;ti<4;ti++){var an=ti*Math.PI/2+Math.PI/4,gx=X+Math.cos(an)*gr,gz=Z+Math.sin(an)*gr;               // 4 tensores + anclaje
@@ -748,7 +748,7 @@ function applyFresnel(){
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
   TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,(tp[1]-t.rel*vex)/vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
-  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),6,(ELEV(glat,glon)-baseElev)*vex+6,m.n);}); // estación meteo: antena a 6 m
+  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,m.n);}); // estación meteo: antena a 8 m (mástil 8,5 m)
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
   updateFres(cl,pa,bl);
