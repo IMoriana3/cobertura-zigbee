@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.8</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.9</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -97,6 +97,7 @@
     <span class="a" id="aval">—</span>
   </div>
   <div id="status">iniciando…</div>
+  <div id="invFicha" style="position:absolute;top:54px;right:14px;z-index:7;display:none;background:var(--panel,#121821ee);border:1px solid var(--line2,#2b3a4d);border-radius:12px;padding:12px 14px;font-size:12.5px;max-width:280px;line-height:1.5;font-family:var(--sans,system-ui)"></div>
 <script>
 "use strict";
 var S=document.getElementById('status');
@@ -187,12 +188,12 @@ function initThree(){
   renderer.domElement.addEventListener('pointerdown',function(e){if(freeCam){_md=true;_mx=e.clientX;_my=e.clientY;}});   // cámara libre (vuelo): ratón = mirar
   addEventListener('pointermove',function(e){if(freeCam&&_md){fYaw-=(e.clientX-_mx)*0.0026;fPitch-=(e.clientY-_my)*0.0026;fPitch=Math.max(-1.5,Math.min(1.5,fPitch));_mx=e.clientX;_my=e.clientY;camera.quaternion.setFromEuler(_eul.set(fPitch,fYaw,0));}});
   addEventListener('pointerup',function(){_md=false;});
-  renderer.domElement.addEventListener('click',function(e){ if(!placingGw||!terrain)return;   // mueve la NCU más cercana al punto pulsado
-    var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);
-    var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;
-    var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;
-    placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';
-    if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();});
+  renderer.domElement.addEventListener('pointerdown',function(e){_pdX=e.clientX;_pdY=e.clientY;});   // posición del down → distinguir clic de órbita
+  renderer.domElement.addEventListener('click',function(e){ if(!terrain)return;
+    if(placingGw){var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();return;}
+    if(editMode||freeCam)return;
+    if(Math.hypot(e.clientX-_pdX,e.clientY-_pdY)>6)return;   // fue arrastre/órbita, no clic
+    var r2=new THREE.Raycaster();r2.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var h2=r2.intersectObject(terrain);if(!h2.length)return;var pt=h2[0].point,idx=nearestInvIdx(pt.x,-pt.z);if(idx>=0)selectInv(idx);else closeInvFicha();});   // clic en un inversor → ficha eléctrica
   renderer.domElement.addEventListener('pointerdown',function(e){if(!editMode||freeCam)return;var i=pickAt(e);if(i<0)return;   // EDICIÓN: pulsar un seguidor lo selecciona; si arrastras, lo recolocas (miss = la cámara sigue orbitando)
     selectTracker(i);dragTk=i;controls.enabled=false;var p=terrainPt(e);_dragOff.set(p?TRK[i].gx-p.x:0,0,p?TRK[i].gz-p.z:0);});
   addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
@@ -307,6 +308,7 @@ function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=
 function setTime(min){
   curMin=min; syncSun(min);
   if(genOn){updateGenGlow();updateGenRings();updateGenHUD();}   // generación: brillo de paneles, anillos por inversor y HUD siguen la hora
+  if(INVSEL3!=null)updateInvFicha();                           // ficha del inversor seleccionado sigue la hora
   if(SEG) updateSpin(panelAngle(min));        // recoloca las piezas que basculan (tubo, módulos, correas, cable, cajas, TCU)
   $('tval').textContent=fmtHM(min);
   $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
@@ -793,6 +795,28 @@ function setGen(on){genOn=on;
   else { paintGen(false); for(var k in genFlow){if(genFlow[k])genFlow[k].visible=false;} if(genRingsG)genRingsG.visible=false; }
   var box=$('genBox');if(box)box.style.display=on?'':'none';
 }
+// ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
+var INVSEL3=null,selLine=null,_pdX=0,_pdY=0;
+function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
+function invElec(i,min){var g=genModel(min),mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,vmp=(SPEC&&SPEC.vmpp)||42,impp=wmod/vmp,
+  tcell=GENTAMB+g.poa/800*25,vir=Math.max(0,Math.min(1,g.poa/1000)),
+  istr=impp*vir*(1+0.0004*(tcell-25)), vstr=mods*vmp*(1-0.0029*(tcell-25)), pstr=istr*vstr/1000,   // string = mód en serie; I≈Impp·irrad, V≈Vmpp·(−0,29%/°C)
+  ns=INVSTR[i]||0, pdc=ns*pstr, idc=vstr>1?pdc*1000/vstr:0, pac=Math.max(0,Math.min(pdc*0.985,350)), vac=800, iac=pac*1000/(1.732*vac);   // AC 800 V trifásico, recorte 350 kW
+  return{ns:ns,istr:istr,vstr:vstr,pstr:pstr,vdc:vstr,idc:idc,pdc:pdc,vac:vac,iac:iac,pac:pac,clip:pac>=349.5};}
+function highlightInv(i){if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}
+  if(!LAYOUT||!LAYOUT.invlab||!LAYOUT.invlab[i])return;computeSinks();var a=LAYOUT.invlab[i],ct=nearestPt(a.x,a.n,CTPTS).p,v=[];
+  for(var s=0;s<24;s++){var t0=s/24,t1=(s+1)/24,ax=a.x+(ct[0]-a.x)*t0,an=a.n+(ct[1]-a.n)*t0,bx=a.x+(ct[0]-a.x)*t1,bn=a.n+(ct[1]-a.n)*t1;v.push(ax,localElevY(ax,an)+0.6,-an,bx,localElevY(bx,bn)+0.6,-bn);}   // resalta el flujo de ESTE inversor a su CT
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));selLine=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xffe08a}));scene.add(selLine);}
+function updateInvFicha(){if(INVSEL3==null)return;var f=$('invFicha');if(!f)return;var e=invElec(INVSEL3,curMin),lab=(LAYOUT.invlab[INVSEL3]&&LAYOUT.invlab[INVSEL3].s)||('I-'+INVSEL3);
+  f.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:14px">'+lab+'</b><span style="color:var(--accent);font-weight:700">SG350HX</span><span style="margin-left:auto;cursor:pointer;color:var(--tx2);font-size:15px" onclick="closeInvFicha()">✕</span></div>'
+   +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+e.ns+' strings</div>'
+   +'<div>'+e.istr.toFixed(1)+' A · '+e.vstr.toFixed(0)+' V · <b>'+e.pstr.toFixed(1)+' kW</b> <span style="color:var(--tx2)">/string</span></div>'
+   +'<div style="color:#9fd0ff;font-weight:600;margin-top:5px">Entrada DC</div>'
+   +'<div>'+e.vdc.toFixed(0)+' V · '+e.idc.toFixed(0)+' A · <b>'+e.pdc.toFixed(0)+' kW</b></div>'
+   +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida AC → CT</div>'
+   +'<div>'+e.vac+' V · '+e.iac.toFixed(0)+' A · <b>'+e.pac.toFixed(0)+' kW</b>'+(e.clip?' <span style="color:#ff8a80">· recorte</span>':'')+'</div>';}
+function selectInv(i){INVSEL3=i;if(GEN_KWP<=0)GEN_KWP=genKwp();ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();highlightInv(i);updateInvFicha();var f=$('invFicha');if(f)f.style.display='';});}
+function closeInvFicha(){INVSEL3=null;var f=$('invFicha');if(f)f.style.display='none';if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}}
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   METEO_ANIM=[];
