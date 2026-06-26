@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.99</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.0</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -608,7 +608,7 @@ var METEO_ANIM=[],metT=0,_wAcc=0,WIND={ws:3,wd:210,real:false};   // ws m/s, wd 
 var _solV=new THREE.Vector3(),_solQ=new THREE.Quaternion(),_upY=new THREE.Vector3(0,1,0);
 function animateMeteo(dt){ metT+=dt;
   _wAcc+=dt; if(_wAcc>1){_wAcc=0; var got=false;   // 1×/s: lee el viento que publique el SCADA (localStorage compartido, mismo origen)
-    try{var j=JSON.parse(localStorage.getItem('factiun_meteo')||'null');if(j&&isFinite(j.ws)){WIND.ws=Math.max(0,+j.ws);if(isFinite(j.wd))WIND.wd=+j.wd;WIND.real=true;got=true;}}catch(e){}
+    try{var j=JSON.parse(localStorage.getItem('factiun_meteo')||'null');if(j&&isFinite(j.ws)&&(!isFinite(j.t)||Date.now()-j.t<300000)){WIND.ws=Math.max(0,+j.ws);if(isFinite(j.wd))WIND.wd=+j.wd;WIND.real=true;got=true;}}catch(e){}   // sólo si es fresco (<5 min); si no, brisa sintética
     if(!got)WIND.real=false; }
   if(!WIND.real){ WIND.ws=3.0+1.8*Math.sin(metT*0.05)+0.7*Math.sin(metT*0.6); WIND.wd=210+28*Math.sin(metT*0.03); }   // sin SCADA: brisa sintética del SW (para que se mueva)
   if(!METEO_ANIM.length)return;
