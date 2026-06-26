@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.3</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.4</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -379,7 +379,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();if(fresOn)applyFresnel();
+  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
 
   var haveAng=await loadAngles();
   tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;curMin=540;   // el slider cubre las 24 h completas (no solo de día)
@@ -694,10 +694,27 @@ function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET
 function buildNetLayer(key){
   if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return null;
-  var d=NETDEF[key]||{c:0xffffff,off:.2},v=[];
-  NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];v.push(a[0],localElevY(a[0],a[1])+d.off,-a[1],b[0],localElevY(b[0],b[1])+d.off,-b[1]);}});   // drapea cada segmento sobre el relieve
-  var g=new THREE.Group();if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
+  var d=NETDEF[key]||{c:0xffffff,off:.2},g=new THREE.Group();
+  if(key==='cam_range'){   // alcance de cámaras: sectores RELLENOS translúcidos (apex = cámara) + contorno → se ve claro, no como hilos
+    var tri=[],ln=[],P=function(p){return [p[0],localElevY(p[0],p[1])+d.off,-p[1]];};
+    NET.layers[key].forEach(function(pl){if(pl.length<2)return;
+      for(var i=1;i+1<pl.length;i++){var A=P(pl[0]),B=P(pl[i]),C=P(pl[i+1]);tri.push(A[0],A[1],A[2],B[0],B[1],B[2],C[0],C[1],C[2]);}   // abanico desde el apex
+      for(var j=0;j+1<pl.length;j++){var a=P(pl[j]),b=P(pl[j+1]);ln.push(a[0],a[1],a[2],b[0],b[1],b[2]);}
+      if(pl.length>=3){var u=P(pl[pl.length-1]),w=P(pl[0]);ln.push(u[0],u[1],u[2],w[0],w[1],w[2]);}});   // cierra el sector
+    if(tri.length){var tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute(tri,3));tg.computeVertexNormals();g.add(new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:d.c,transparent:true,opacity:.16,side:THREE.DoubleSide,depthWrite:false})));}
+    if(ln.length){var lgg=new THREE.BufferGeometry();lgg.setAttribute('position',new THREE.Float32BufferAttribute(ln,3));g.add(new THREE.LineSegments(lgg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.65})));}
+  } else {
+    var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];v.push(a[0],localElevY(a[0],a[1])+d.off,-a[1],b[0],localElevY(b[0],b[1])+d.off,-b[1]);}});   // drapea cada segmento sobre el relieve
+    if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
+  }
   scene.add(g);netG[key]=g;return g;
+}
+function camAimFor(x,n){   // dirección a la que mira una cámara: hacia el centroide de su(s) sector(es) de alcance (apex ≈ posición de la cámara)
+  if(!NET||!NET.layers||!NET.layers.cam_range)return null;
+  var dx=0,dn=0,cnt=0;
+  NET.layers.cam_range.forEach(function(pl){if(pl.length<2)return;var a=pl[0];
+    if(Math.abs(a[0]-x)<4&&Math.abs(a[1]-n)<4){var fx=0,fn=0,m=0;for(var i=1;i<pl.length;i++){fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});
+  if(!cnt)return null;var L=Math.hypot(dx,dn)||1;return {dx:dx/L,dn:dn/L};
 }
 function setNet(keys,on){ ensureNet().then(function(ok){ if(!ok)return; keys.forEach(function(key){ if(on){if(!netG[key])buildNetLayer(key); if(netG[key])netG[key].visible=true;} else if(netG[key])netG[key].visible=false; }); }); }
 function buildBOS(){
@@ -775,8 +792,9 @@ function buildBOS(){
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
     var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(x,y+ph/2,-n);bosGroup.add(pole);
-    var cam=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.5),camM);cam.position.set(x,y+ph,-n);bosGroup.add(cam);
-    var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(x,y+ph,-n+0.28);bosGroup.add(dot);});
+    var aim=camAimFor(x,n),cg=new THREE.Group();cg.position.set(x,y+ph,-n);if(aim)cg.rotation.y=Math.atan2(aim.dx,-aim.dn);bosGroup.add(cg);   // orienta la cámara hacia su zona de alcance (del DWG)
+    var cam=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.2,0.52),camM);cam.rotation.x=0.3;cg.add(cam);                                       // ligera inclinación hacia el campo
+    var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(0,-0.04,0.3);cg.add(dot);});   // objetivo al frente (+z local)
   // estaciones meteorológicas (HSU/RSU): mástil con tensores + anemómetro/veleta + piranómetro + garita + datalogger + panel solar
   var mtMast=new THREE.MeshStandardMaterial({color:0xc4cad1,roughness:.5,metalness:.55}),
       mtWire=new THREE.MeshStandardMaterial({color:0x8a939e,roughness:.6,metalness:.4}),
