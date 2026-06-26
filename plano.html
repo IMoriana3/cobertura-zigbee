@@ -26,7 +26,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.6</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.7</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -37,13 +37,16 @@
   <div class="row"><label><input type="checkbox" id="cbLbl"> Etiquetas</label></div>
   <div class="row"><label><input type="checkbox" id="cbElec"> ⚡ Color eléctrico (NCU)</label></div>
   <div class="row"><label title="Pile reveal: cuánto se hinca cada pilote (del suelo al tubo), calculado del relieve real. Rojo = más hincado. Como en el 3D y en S.P.A.C.E."><input type="checkbox" id="cbPile"> ⛰️ Pile reveal (hincado)</label></div>
+  <div class="row"><label title="Capa de inversores (DC): colorea por inversor, dibuja el cableado string→inversor y el símbolo del DWG. Clic en un inversor → ficha (SG350HX · MPPT · BoM). Solo El Burgo."><input type="checkbox" id="cbInv"> 🔌 Inversor (DC)</label></div>
   <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
   <div class="leg" id="legStatic" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
   <div class="leg" id="legElec" style="margin-top:7px;display:none;max-height:210px;overflow:auto"></div>
   <div class="leg" id="legPile" style="margin-top:7px;display:none"></div>
+  <div class="leg" id="legInv" style="margin-top:7px;display:none;max-height:230px;overflow:auto"></div>
 </div>
 <div id="status">cargando…</div>
 <div id="tip"></div>
+<div id="fichaInv" style="position:absolute;top:54px;right:14px;z-index:7;display:none;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:12px 14px;font-size:12.5px;max-width:300px;max-height:calc(100% - 80px);overflow:auto;line-height:1.45"></div>
 <script>
 "use strict";
 var DEG=Math.PI/180;
@@ -98,6 +101,65 @@ function buildElecLegend(){
   var rows=EGROUPS.map(function(g){return '<div style="white-space:nowrap"><span class="dot" style="background:'+g.color+'"></span>'+g.name+' <span style="color:var(--tx2)">· '+g.count+'</span></div>';}).join('');
   box.innerHTML=head+rows;box.style.display='';
 }
+
+/* ===== capa INVERSORES (DC): color por inversor + cableado string→inversor + ficha SG350HX =====
+   El id del seguidor codifica grupo.inversor.seguidor (p.ej. "1.10.3") y L.invlab da la posición y
+   etiqueta de cada inversor (extraído del DWG de El Burgo). L.inverters son los rectángulos del símbolo.
+   100% offline (sólo lee el layout). */
+var INVG=[],INVH={},INVSEL=null;
+function invKeyOf(id){var p=String(id).split('.');return (p.length>=3&&/^\d+$/.test(p[0])&&/^\d+$/.test(p[1]))?p[0]+'.'+p[1]:null;}   // sólo ids tipo g.i.s numéricos (El Burgo)
+function hasInv(){return !!(L&&L.invlab&&L.invlab.length);}
+function strPerTrk(t){return /medio|corto/i.test(t.t||'')?2:4;}   // estimación de strings: bífila larga 4, medio/corto 2 (afinable con el string-schedule de Xamai)
+function assignInv(){
+  INVG=[];INVH={};if(!L||!L.trackers)return;
+  L.trackers.forEach(function(t,i){var k=invKeyOf(t.id);t._inv=k;if(k==null)return;var g=INVH[k];if(!g){g={key:k,label:'I-'+k,trk:[],sx:0,sn:0,x:null,n:null};INVH[k]=g;INVG.push(g);}g.trk.push(i);g.sx+=t.x;g.sn+=t.n;});
+  (L.invlab||[]).forEach(function(v){var k=String(v.s).replace(/^I-/,'');if(INVH[k]){INVH[k].x=v.x;INVH[k].n=v.n;INVH[k].label=v.s;}});
+  INVG.sort(function(a,b){return a.key.localeCompare(b.key,undefined,{numeric:true});});
+  INVG.forEach(function(g,i){var h=((i*7)*137.508)%360;g.color='hsl('+h.toFixed(0)+',62%,56%)';g.colorA='hsla('+h.toFixed(0)+',62%,62%,0.30)';if(g.x==null){g.x=g.sx/g.trk.length;g.n=g.sn/g.trk.length;}});   // *7 separa más los matices; posición = etiqueta del DWG o centroide
+}
+function buildInvLegend(){
+  var box=$('legInv');if(!box)return;
+  if(!$('cbInv').checked){box.style.display='none';return;}
+  $('legStatic').style.display='none';$('legElec').style.display='none';$('legPile').style.display='none';
+  if(!hasInv()){box.innerHTML='<div style="color:var(--tx2)">Sin datos de inversor en esta planta<br>(disponible en El Burgo, del DWG)</div>';box.style.display='';return;}
+  var dN=(SPEC&&SPEC.inv!=null)?SPEC.inv:null;
+  var head='<div style="color:#eaf4ff;margin-bottom:5px">'+INVG.length+' inversores · '+(L.trackers?L.trackers.length:0)+' seg'+(dN!=null?' <span style="color:var(--tx2)">· cartera: '+dN+'</span>':'')+'<div style="color:var(--tx2);font-weight:400;font-size:11px;margin-top:2px">clic en un inversor → ficha</div></div>';
+  var rows=INVG.map(function(g){return '<div style="white-space:nowrap;cursor:pointer" onclick="openFicha(\''+g.key+'\')"><span class="dot" style="background:'+g.color+'"></span>'+g.label+' <span style="color:var(--tx2)">· '+g.trk.length+' seg</span></div>';}).join('');
+  box.innerHTML=head+rows;box.style.display='';
+}
+function mpptMapHtml(g){
+  var inputs=[];g.trk.forEach(function(ti){var t=L.trackers[ti],ns=strPerTrk(t);for(var s=0;s<ns;s++)inputs.push(t.id);});   // strings del inversor, en orden de seguidor
+  var html='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:6px">';
+  for(var m=0;m<12;m++){var a=inputs[m*2],b=inputs[m*2+1];
+    html+='<div style="border:1px solid var(--line2);border-radius:6px;padding:3px 5px"><div style="color:var(--tx2);font-size:10px">MPPT '+(m+1)+'</div>'
+      +'<div style="font-size:10.5px">A '+(a?'<span style="color:#7be0a8">●</span> '+a.split(".").slice(-1):'<span style="color:#445">○</span>')+'</div>'
+      +'<div style="font-size:10.5px">B '+(b?'<span style="color:#7be0a8">●</span> '+b.split(".").slice(-1):'<span style="color:#445">○</span>')+'</div></div>';}
+  html+='</div>';return html;
+}
+function openFicha(key){
+  var g=INVH[key];if(!g){return;}INVSEL=key;
+  if(!$('cbInv').checked){$('cbInv').checked=true;$('cbElec').checked=false;$('cbPile').checked=false;syncLayerLegends();}
+  var nT=g.trk.length,nStr=0,dcL=0;
+  g.trk.forEach(function(ti){var t=L.trackers[ti];nStr+=strPerTrk(t);dcL+=Math.hypot(t.x-g.x,t.n-g.n);});
+  var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||0,nMods=nStr*mods,kwp=wmod?(nMods*wmod/1000):0;
+  var f=$('fichaInv');
+  f.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:14px">'+g.label+'</b>'
+    +'<span style="background:'+g.color+';width:12px;height:12px;border-radius:3px;display:inline-block"></span>'
+    +'<span style="margin-left:auto;cursor:pointer;color:var(--tx2);font-size:15px" onclick="closeFicha()">✕</span></div>'
+    +'<div style="color:var(--accent);font-weight:700;margin-bottom:4px">Sungrow SG350HX · 12 MPPT</div>'
+    +'<div><span style="color:var(--tx2)">Seguidores:</span> <b>'+nT+'</b> ('+g.trk.map(function(ti){return L.trackers[ti].id.split(".").slice(-1);}).join(", ")+')</div>'
+    +'<div><span style="color:var(--tx2)">Strings (est.):</span> <b>'+nStr+'</b> · <span style="color:var(--tx2)">mód/string:</span> '+mods+(nMods?' · <span style="color:var(--tx2)">mód:</span> '+nMods:'')+'</div>'
+    +(kwp?'<div><span style="color:var(--tx2)">Potencia DC (est.):</span> <b>'+kwp.toFixed(1)+' kWp</b></div>':'')
+    +'<div><span style="color:var(--tx2)">Cableado DC (est.):</span> ~'+Math.round(dcL)+' m · <span style="color:var(--tx2)">MC4:</span> '+(nStr*2)+'</div>'
+    +'<div style="color:var(--tx2);font-size:11px;margin-top:7px">Asignación MPPT (estimada · 2 strings/MPPT)</div>'
+    +mpptMapHtml(g)
+    +'<div style="color:var(--tx2);font-size:10.5px;margin-top:6px">El detalle exacto de strings / circuitos / cable saldrá del string-schedule de Xamai.</div>';
+  f.style.display='';
+  if(g.x!=null){view.x=g.x;view.n=g.n;if(view.scale<0.6)view.scale=0.6;}
+  draw();
+}
+function closeFicha(){INVSEL=null;var f=$('fichaInv');if(f)f.style.display='none';draw();}
+function syncLayerLegends(){buildElecLegend();buildPileLegend();buildInvLegend();}
 
 /* ===== capa PILE REVEAL: hincado de cada pilote desde el relieve real (DEM) =====
    Mismo modelo que el 3D (tubo con pendiente acotada + recubrimiento mínimo). Online (DEM). */
@@ -182,17 +244,30 @@ function draw(){
   if(!L)return;
   // seguidores
   if($('cbTrk').checked){
-    var s=view.scale, pile=$('cbPile').checked&&demReady, rng=(REVMAX-REVMIN)||1;
+    var s=view.scale, pile=$('cbPile').checked&&demReady, inv=$('cbInv').checked&&hasInv(), rng=(REVMAX-REVMIN)||1;
     for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];
       var medio=/^medio/i.test(t.t||'');
       var halfL=(medio?16:31),halfW=3.2;   // semilargo (N-S) y semiancho (E-W) aproximados
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s,wp=Math.max(0.8,halfW*s);
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
-      ctx.fillStyle=(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // pile reveal: el tubo se tiñe por el hincado MÁXIMO del seguidor (mapa legible a cualquier zoom)
+      ctx.fillStyle=(inv&&t._inv&&INVH[t._inv])?INVH[t._inv].color:(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // prioridad: inversor → pile reveal → eléctrico (NCU) → azul
       ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);
       if(pile){ if(t._rev&&s>1.2){var dr=Math.max(1.6,s*0.9);for(var k=0;k<t._zs.length;k++){var dyk=w2sy(t.n+t._zs[k]);ctx.beginPath();ctx.arc(cxp,dyk,dr,0,7);ctx.fillStyle=reliefCss((t._rev[k]-REVMIN)/rng);ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(8,12,18,.7)';ctx.stroke();} } }   // de cerca: un punto por pilote, coloreado por su propio hincado
-      else if(s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
+      else if(!inv && s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
     }
+  }
+  // capa INVERSORES: cableado string→inversor + símbolo del DWG + etiqueta
+  if($('cbInv').checked&&hasInv()){
+    for(var gi=0;gi<INVG.length;gi++){var g=INVG[gi],ix=w2sx(g.x),iy=w2sy(g.n),sel=(INVSEL===g.key);   // trunk seguidor→inversor (las "líneas rojas" del plano)
+      ctx.strokeStyle=sel?'rgba(255,90,90,.9)':g.colorA;ctx.lineWidth=sel?1.6:1;ctx.beginPath();
+      for(var ti=0;ti<g.trk.length;ti++){var t=L.trackers[g.trk[ti]];ctx.moveTo(w2sx(t.x),w2sy(t.n));ctx.lineTo(ix,iy);}
+      ctx.stroke();}
+    if(L.inverters){ctx.strokeStyle='rgba(234,244,255,.45)';ctx.lineWidth=1;ctx.beginPath();   // rectángulos de los inversores (del DWG)
+      for(var si=0;si<L.inverters.length;si++){var seg=L.inverters[si];if(seg&&seg.length>=2){ctx.moveTo(w2sx(seg[0][0]),w2sy(seg[0][1]));ctx.lineTo(w2sx(seg[1][0]),w2sy(seg[1][1]));}}
+      ctx.stroke();}
+    for(var gi=0;gi<INVG.length;gi++){var g=INVG[gi],ix=w2sx(g.x),iy=w2sy(g.n),sel=(INVSEL===g.key);   // marcador + etiqueta del inversor
+      ctx.beginPath();ctx.arc(ix,iy,sel?6:4,0,7);ctx.fillStyle=sel?'#ff5a5a':g.color;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='#0b0f14';ctx.stroke();
+      if($('cbLbl').checked||sel){ctx.font='11px ui-monospace,monospace';ctx.fillStyle='#eaf4ff';ctx.strokeStyle='rgba(11,15,20,.85)';ctx.lineWidth=3;ctx.strokeText(g.label,ix+7,iy+4);ctx.fillText(g.label,ix+7,iy+4);}}
   }
   // NCUs y meteo
   if($('cbNcu').checked){
@@ -230,14 +305,22 @@ function fit(){
 }
 
 // interacción
-var drag=null;
-cv.addEventListener('pointerdown',function(e){drag={sx:e.clientX,sy:e.clientY,vx:view.x,vn:view.n};cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
+var drag=null,_downX=0,_downY=0;
+cv.addEventListener('pointerdown',function(e){drag={sx:e.clientX,sy:e.clientY,vx:view.x,vn:view.n};_downX=e.clientX;_downY=e.clientY;cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
 cv.addEventListener('pointermove',function(e){
   if(drag){view.x=drag.vx-(e.clientX-drag.sx)/view.scale;view.n=drag.vn+(e.clientY-drag.sy)/view.scale;draw();return;}
   hover(e);
 });
 cv.addEventListener('pointerup',function(e){drag=null;cv.classList.remove('drag');});
 cv.addEventListener('pointercancel',function(){drag=null;cv.classList.remove('drag');});
+cv.addEventListener('click',function(e){   // modo inversor: clic (sin arrastrar) en un inversor o seguidor → ficha
+  if(!$('cbInv').checked||!hasInv()||!L)return;
+  if(Math.hypot(e.clientX-_downX,e.clientY-_downY)>6)return;   // fue un arrastre, no un clic
+  var best=null,bd=18;
+  for(var i=0;i<INVG.length;i++){var g=INVG[i],d=Math.hypot(w2sx(g.x)-e.clientX,w2sy(g.n)-e.clientY);if(d<bd){bd=d;best=g.key;}}
+  if(!best){var bd2=20;for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];if(t._inv==null)continue;var d=Math.hypot(w2sx(t.x)-e.clientX,w2sy(t.n)-e.clientY);if(d<bd2){bd2=d;best=t._inv;}}}
+  if(best)openFicha(best); else closeFicha();
+});
 cv.addEventListener('wheel',function(e){e.preventDefault();
   var wx=s2wx(e.clientX),wn=s2wn(e.clientY);   // mundo bajo el cursor
   var f=Math.exp(-e.deltaY*0.0014);view.scale=Math.max(0.02,Math.min(20,view.scale*f));
@@ -256,13 +339,18 @@ function hover(e){
       tip.innerHTML='<b>'+(bt.id||'seguidor')+'</b><br>'+nm+(bt.gw!=null?' · GW '+bt.gw:'');
       tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;return;}
   }
+  if(!best && $('cbInv').checked && hasInv() && L.trackers){   // modo inversor: seguidor bajo el cursor → su inversor
+    var bt=null,bd2=22;for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];if(t._inv==null)continue;var d=Math.hypot(w2sx(t.x)-e.clientX,w2sy(t.n)-e.clientY);if(d<bd2){bd2=d;bt=t;}}
+    if(bt){tip.innerHTML='<b>'+(bt.id||'seguidor')+'</b><br>'+(INVH[bt._inv]?INVH[bt._inv].label:'I-'+bt._inv)+' <span style="color:#9bb0c6">· clic para ficha</span>';tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;return;}
+  }
   if(best&&best.name){tip.innerHTML='<b>'+best.name+'</b><br>'+best.kind;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.style.opacity=1;}
   else tip.style.opacity=0;
 }
 
 ['cbSat','cbTrk','cbNcu','cbLbl'].forEach(function(id){$(id).onchange=draw;});
-$('cbElec').onchange=function(){ if(this.checked)$('cbPile').checked=false; buildElecLegend();buildPileLegend();draw(); };   // eléctrico y pile reveal son excluyentes
-$('cbPile').onchange=function(){ if(this.checked){$('cbElec').checked=false;ensureDem();} buildElecLegend();buildPileLegend();draw(); };
+$('cbElec').onchange=function(){ if(this.checked){$('cbPile').checked=false;$('cbInv').checked=false;closeFicha();} syncLayerLegends();draw(); };   // eléctrico, pile reveal e inversor son excluyentes
+$('cbPile').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbInv').checked=false;closeFicha();ensureDem();} syncLayerLegends();draw(); };
+$('cbInv').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbPile').checked=false;} else closeFicha(); syncLayerLegends();draw(); };
 $('fit').onclick=fit;
 if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
@@ -276,6 +364,7 @@ async function build(){
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
   assignElec();buildElecLegend();   // capa eléctrica lista (offline, desde el layout)
+  assignInv();buildInvLegend();      // capa de inversores (El Burgo: del DWG vía ids + invlab)
   // extensión para satélite
   var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
   L.trackers.forEach(function(t){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;});
