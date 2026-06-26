@@ -17,7 +17,8 @@ const inFoot=(pl)=>pl.some(p=>Math.abs(p[0])<900&&Math.abs(p[1])<750);   // al m
 const TARGET={
   cable_pos:['EE_Cableado N2 +'], cable_neg:['EE_Cableado N2 -'],
   earth:['EE_Tierra 35mm2'], weld:['EE_Soldadura Alum'],
-  trench_string:['EE_Zanjas String','Zanjas String'], trench_inv:['Zanjas String-Inversor'], trench_n3:['Zanja N3'],
+  trench_string:['EE_Zanjas String'], trench_inv:['Zanjas String-Inversor'],
+  trench_n3:['EE_Zanja N3'], trench_mt:['EE_Zanja MT','Cruzamientos _MT','LAMT'],
   cam_range:['CAM RANGES'], arqueta:['EE_Arquetas'], comms:['EE_Equipos comunicaciones'],
 };
 function matchKey(layer){ for(const k in TARGET){ for(const s of TARGET[k]){ if(layer.includes(s)) return k; } } return null; }
