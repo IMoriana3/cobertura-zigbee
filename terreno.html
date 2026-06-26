@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.95</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.96</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -196,7 +196,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();renderer.render(scene,camera);})(performance.now());
+    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateMeteo(dt);renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -580,8 +580,14 @@ function makeInvTex(){   // frontal del SG350HX: cuerpo gris + marca Sungrow + d
   x.fillStyle='#363c44';for(var k=0;k<6;k++){x.beginPath();x.arc(42+k*42,196,9,0,7);x.fill();}
   var t=new THREE.CanvasTexture(c);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;return t;
 }
+var METEO_ANIM=[],metT=0;
+function animateMeteo(dt){ if(!METEO_ANIM.length)return; metT+=dt;   // anemómetro gira; veleta apunta a una dirección de viento que deriva lento
+  var wdir=Math.sin(metT*0.13)*0.6+Math.cos(metT*0.07)*0.4, spin=dt*(6+2*Math.sin(metT*0.5));
+  for(var i=0;i<METEO_ANIM.length;i++){var m=METEO_ANIM[i];if(m.a)m.a.rotation.y+=spin;if(m.v)m.v.rotation.y=wdir;}
+}
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
+  METEO_ANIM=[];
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
   // viales
@@ -670,14 +676,17 @@ function buildBOS(){
     var ga=0.72*h,gr=3.2,ti; for(ti=0;ti<4;ti++){var an=ti*Math.PI/2+Math.PI/4,gx=X+Math.cos(an)*gr,gz=Z+Math.sin(an)*gr;               // 4 tensores + anclaje
       mGuy(g,X,y+ga,Z,gx,y+0.06,gz);g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.1,0.06,0.1),mtBox),gx,y+0.03,gz));}
     g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(1.5,0.04,0.04),mtMast),X,y+h,Z));                                                      // cruceta superior
-    var axx=X+0.7,at=y+h+0.34; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.34,6),mtMast),axx,y+h+0.17,Z));         // anemómetro: eje
-    g.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6),mtBox),axx,at,Z));                                                       // hub
-    for(var c=0;c<3;c++){var ca=c*2*Math.PI/3,arm=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.012,0.012),mtMast);arm.position.set(axx+Math.cos(ca)*0.065,at,Z+Math.sin(ca)*0.065);arm.rotation.y=-ca;g.add(arm);
-      g.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6,0,6.3,0,1.6),mtBox),axx+Math.cos(ca)*0.13,at,Z+Math.sin(ca)*0.13));}     // cazoletas
-    var vx=X-0.7,vt=y+h+0.18; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.18,6),mtMast),vx,y+h+0.09,Z));           // veleta: eje
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.012,0.012),mtBox),vx,vt,Z));                                                     // boom veleta
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,0.008),mtBox),vx-0.24,vt,Z));                                                // cola
-    var pt=new THREE.Mesh(new THREE.ConeGeometry(0.04,0.12,6),mtBox);pt.rotation.z=-Math.PI/2;pt.position.set(vx+0.27,vt,Z);g.add(pt);   // punta
+    var axx=X+0.7,at=y+h+0.34; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.34,6),mtMast),axx,y+h+0.17,Z));         // anemómetro: eje (fijo)
+    var anemG=new THREE.Group();anemG.position.set(axx,at,Z);g.add(anemG);                                                               // parte giratoria
+    anemG.add(new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6),mtBox));                                                                // hub
+    for(var c=0;c<3;c++){var ca=c*2*Math.PI/3,arm=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.012,0.012),mtMast);arm.position.set(Math.cos(ca)*0.065,0,Math.sin(ca)*0.065);arm.rotation.y=-ca;anemG.add(arm);
+      anemG.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6,0,6.3,0,1.6),mtBox),Math.cos(ca)*0.13,0,Math.sin(ca)*0.13));}        // cazoletas
+    var vx=X-0.7,vt=y+h+0.18; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.18,6),mtMast),vx,y+h+0.09,Z));           // veleta: eje (fijo)
+    var vaneG=new THREE.Group();vaneG.position.set(vx,vt,Z);g.add(vaneG);                                                                // veleta giratoria
+    vaneG.add(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.012,0.012),mtBox));                                                             // boom
+    vaneG.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,0.008),mtBox),-0.24,0,0));                                               // cola
+    var pt=new THREE.Mesh(new THREE.ConeGeometry(0.04,0.12,6),mtBox);pt.rotation.z=-Math.PI/2;pt.position.set(0.27,0,0);vaneG.add(pt);   // punta
+    METEO_ANIM.push({a:anemG,v:vaneG});
     var py=y+h-1.0; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.7,0.03,0.03),mtMast),X+0.35,py,Z));                                  // brazo piranómetro
     var ring=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.025,8,20),mtBlack);ring.rotation.x=Math.PI/2;ring.position.set(X+0.68,py,Z);g.add(ring);  // anillo de sombra
     g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12),mtBlack),X+0.68,py,Z));                                        // sensor central
