@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.94</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.95</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -601,8 +601,8 @@ function buildBOS(){
     if(pts.length<2)return;
     var raw=pts.map(function(p){return localElevY(p[0],p[1]);});                    // cota cruda del terreno bajo el paño
     var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m: quita el zigzag fino
-    // base y techo con TOPE para que NUNCA colapse en cuestas: base nunca por encima del suelo (no vuela), techo siempre ≥ suelo+1 (no desaparece)
-    var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i])-0.3;tE[i]=Math.max(sm[i]+fh,raw[i]+1.0);}
+    // base y techo con TOPE para que NUNCA colapse en cuestas. La base se entierra ∝ vex: la malla del terreno (~7 m) queda por debajo del DEM continuo en hondonadas y con la exageración vertical eso se amplifica → el paño flotaría. Enterrando más (solo lo invisible) la base nunca queda por encima del suelo visible (no vuela ni deja "gap sin sombra"); el techo sigue ≥ suelo+1
+    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i])-bury;tE[i]=Math.max(sm[i]+fh,raw[i]+1.0);}
     var uacc=0,pacc=1e9;
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
         ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
