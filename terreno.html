@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.92</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.93</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -651,14 +651,42 @@ function buildBOS(){
     var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(x,y+ph/2,-n);bosGroup.add(pole);
     var cam=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.5),camM);cam.position.set(x,y+ph,-n);bosGroup.add(cam);
     var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(x,y+ph,-n+0.28);bosGroup.add(dot);});
-  // estaciones meteorológicas (HSU/RSU): mástil + anemómetro + caja, etiquetadas (enlazan por Zigbee con su NCU)
-  var metM=new THREE.MeshStandardMaterial({color:0xe8a23a,emissive:0x2a1805,roughness:.5,metalness:.4}),metBox=new THREE.MeshStandardMaterial({color:0x2b3340,roughness:.5});
-  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=6;
-    var mast=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,h,8),metM);mast.position.set(m.x,y+h/2,-m.n);bosGroup.add(mast);
-    var arm=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.05,0.05),metM);arm.position.set(m.x,y+h,-m.n);bosGroup.add(arm);
-    var cup=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),metM);cup.position.set(m.x+0.65,y+h,-m.n);bosGroup.add(cup);
-    var box=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.4,0.18),metBox);box.position.set(m.x,y+h*0.55,-m.n+0.15);bosGroup.add(box);
-    var lb=makeLabel(m.name);lb.position.set(m.x,y+h+2,-m.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiqueta HSU: se conmuta con "Etiquetas" como las TCU
+  // estaciones meteorológicas (HSU/RSU): mástil con tensores + anemómetro/veleta + piranómetro + garita + datalogger + panel solar
+  var mtMast=new THREE.MeshStandardMaterial({color:0xc4cad1,roughness:.5,metalness:.55}),
+      mtWire=new THREE.MeshStandardMaterial({color:0x8a939e,roughness:.6,metalness:.4}),
+      mtWhite=new THREE.MeshStandardMaterial({color:0xf2f4f6,roughness:.85}),
+      mtBox=new THREE.MeshStandardMaterial({color:0x3a4250,roughness:.55,metalness:.3}),
+      mtPanel=new THREE.MeshStandardMaterial({color:0x16306b,roughness:.35,metalness:.2,emissive:0x05122e}),
+      mtBlack=new THREE.MeshStandardMaterial({color:0x15191e,roughness:.5,metalness:.25});
+  function mP(mesh,x,yy,z){mesh.position.set(x,yy,z);return mesh;}
+  var _mq=new THREE.Quaternion(),_mu=new THREE.Vector3(0,1,0),_md=new THREE.Vector3();
+  function mGuy(g,ax,ay,az,bx,by,bz){var dx=bx-ax,dy=by-ay,dz=bz-az,L=Math.hypot(dx,dy,dz);
+    var w=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,L,5),mtWire);
+    _md.set(dx,dy,dz).normalize();_mq.setFromUnitVectors(_mu,_md);w.quaternion.copy(_mq);
+    w.position.set((ax+bx)/2,(ay+by)/2,(az+bz)/2);g.add(w);}
+  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=6,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.06,0.5),mtMast),X,y+0.03,Z));                                                    // placa base
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.075,h,10),mtMast),X,y+h/2,Z));                                             // mástil
+    var ga=0.72*h,gr=3.2,ti; for(ti=0;ti<4;ti++){var an=ti*Math.PI/2+Math.PI/4,gx=X+Math.cos(an)*gr,gz=Z+Math.sin(an)*gr;               // 4 tensores + anclaje
+      mGuy(g,X,y+ga,Z,gx,y+0.06,gz);g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.1,0.06,0.1),mtBox),gx,y+0.03,gz));}
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(1.5,0.04,0.04),mtMast),X,y+h,Z));                                                      // cruceta superior
+    var axx=X+0.7,at=y+h+0.34; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.34,6),mtMast),axx,y+h+0.17,Z));         // anemómetro: eje
+    g.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6),mtBox),axx,at,Z));                                                       // hub
+    for(var c=0;c<3;c++){var ca=c*2*Math.PI/3,arm=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.012,0.012),mtMast);arm.position.set(axx+Math.cos(ca)*0.065,at,Z+Math.sin(ca)*0.065);arm.rotation.y=-ca;g.add(arm);
+      g.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6,0,6.3,0,1.6),mtBox),axx+Math.cos(ca)*0.13,at,Z+Math.sin(ca)*0.13));}     // cazoletas
+    var vx=X-0.7,vt=y+h+0.18; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.18,6),mtMast),vx,y+h+0.09,Z));           // veleta: eje
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.012,0.012),mtBox),vx,vt,Z));                                                     // boom veleta
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,0.008),mtBox),vx-0.24,vt,Z));                                                // cola
+    var pt=new THREE.Mesh(new THREE.ConeGeometry(0.04,0.12,6),mtBox);pt.rotation.z=-Math.PI/2;pt.position.set(vx+0.27,vt,Z);g.add(pt);   // punta
+    var py=y+h-1.0; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.7,0.03,0.03),mtMast),X+0.35,py,Z));                                  // brazo piranómetro
+    var ring=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.025,8,20),mtBlack);ring.rotation.x=Math.PI/2;ring.position.set(X+0.68,py,Z);g.add(ring);  // anillo de sombra
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12),mtBlack),X+0.68,py,Z));                                        // sensor central
+    var gyy=y+h*0.62; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.45,0.03,0.03),mtMast),X-0.22,gyy,Z));                              // brazo garita
+    for(var d=0;d<5;d++)g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.12-d*0.004,0.125-d*0.004,0.03,14),mtWhite),X-0.42,gyy-0.12+d*0.06,Z));  // garita (láminas blancas)
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.3,0.42,0.2),mtBox),X,y+h*0.46,Z+0.16));                                              // datalogger
+    var pan=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel);pan.position.set(X,y+h*0.33,Z-0.32);pan.rotation.x=-0.5;g.add(pan);  // panel solar inclinado
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));                                        // soporte panel
+    var lb=makeLabel(m.name);lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});  // etiqueta HSU (se conmuta con "Etiquetas")
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
