@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.97</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.98</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -322,9 +322,18 @@ async function build(){
   var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,8192);   // escritorio: 8192 en TODAS (incl. San José) para la sombra más fina posible cubriendo toda la planta; móvil → 2048
   if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
-  var widthM=2*hx,depthM=2*hz;
-  SH_CX=0;SH_CZ=0;SH_HALF=Math.max(hx,hz);   // recuadro de sombra ceñido a la planta entera (estable, cubre todo)
-  var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat;
+  var fadeBand=Math.max(110,0.10*Math.max(exmax-exmin,nmax-nmin));   // ancho del difuminado del borde, proporcional al tamaño de la planta
+  var tmarg=Math.round(fadeBand*1.15)+30,thx=Math.max(Math.abs(exmin),Math.abs(exmax))+tmarg,thz=Math.max(Math.abs(nmin),Math.abs(nmax))+tmarg;   // el terreno se extiende MÁS que la caja de sombra: deja un anillo donde fundir el borde con el cielo (mata el "cuadrado sobre el azul")
+  var widthM=2*thx,depthM=2*thz;
+  SH_CX=0;SH_CZ=0;SH_HALF=Math.max(hx,hz);   // recuadro de sombra ceñido a la planta (marg, no tmarg) → no perdemos resolución de sombra al ampliar el terreno
+  var lonW=lon0-thx/mPerLon,lonE=lon0+thx/mPerLon,latS=lat0-thz/mPerLat,latN=lat0+thz/mPerLat;
+  function edgeAlpha(lx,ly){var dx=(thx-Math.abs(lx))/fadeBand,dy=(thz-Math.abs(ly))/fadeBand,a=Math.min(1,Math.max(0,Math.min(dx,dy)));return a*a*(3-2*a);}   // 1 en el interior, →0 en el borde (smoothstep): alfa por vértice del relieve
+  function edgeFade(cv){var w=cv.width,h=cv.height,x=cv.getContext('2d'),bx=Math.max(1,Math.round(w*fadeBand/widthM)),by=Math.max(1,Math.round(h*fadeBand/depthM));x.save();x.globalCompositeOperation='destination-out';   // vacía el alfa del satélite en una orla → el borde del plano se funde con el cielo
+    var gL=x.createLinearGradient(0,0,bx,0);gL.addColorStop(0,'rgba(0,0,0,1)');gL.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gL;x.fillRect(0,0,bx,h);
+    var gR=x.createLinearGradient(w,0,w-bx,0);gR.addColorStop(0,'rgba(0,0,0,1)');gR.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gR;x.fillRect(w-bx,0,bx,h);
+    var gT=x.createLinearGradient(0,0,0,by);gT.addColorStop(0,'rgba(0,0,0,1)');gT.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gT;x.fillRect(0,0,w,by);
+    var gB=x.createLinearGradient(0,h,0,h-by);gB.addColorStop(0,'rgba(0,0,0,1)');gB.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gB;x.fillRect(0,h-by,w,by);
+    x.restore();}
   var plantW=Math.round(exmax-exmin),plantD=Math.round(nmax-nmin);
   setStatus("<b>"+NODES.length+"</b> seguidores (DWG) · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
 
@@ -344,11 +353,11 @@ async function build(){
   for(var i=0;i<pos.count;i++){var lx=pos.getX(i),ly=pos.getY(i),lon=lon0+lx/mPerLon,lat=lat0+ly/mPerLat,e=elevAt(lat,lon);emin=Math.min(emin,e);emax=Math.max(emax,e);pos.setZ(i,e-baseElev);if(sat){var q=sat.px(lat,lon);uv.setXY(i,q.x/sat.W,1-q.y/sat.H);}}
   geo.computeVertexNormals();
   // colores por cota → modo "Relieve" (heatmap estilo S.P.A.C.E), reusando el DEM ya descargado
-  var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*3);
-  for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*3]=c[0];vcol[vi*3+1]=c[1];vcol[vi*3+2]=c[2];}
-  geo.setAttribute('color',new THREE.BufferAttribute(vcol,3));
-  var mat;if(sat&&sat.ok>0){var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});
-  var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap
+  var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
+  for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
+  geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
+  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});   // transparent+depthWrite: el borde fundido deja ver el cielo sin romper el z de seguidores
+  var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
   terrain.userData.baseMat=mat;terrain.userData.reliefMat=reliefMat;
   if($('relief')&&$('relief').checked)terrain.material=reliefMat;   // respeta el toggle al cambiar de planta
