@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.91</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.92</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -49,6 +49,7 @@
     <h2>Vista</h2>
     <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="14" step="0.5" value="5"><span id="vexV" style="font-family:var(--mono)">5×</span></div>
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
+    <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -425,6 +426,7 @@ function buildTrackers(elevAt){
   TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
   var N=NODES.length;
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
+  pileMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0});   // base blanca: deja ver el color por instancia (modo pile reveal)
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
@@ -473,6 +475,18 @@ function computeKink(t){
     kf.dN=isFinite(dN)?dN:0;kf.dS=isFinite(dS)?dS:0;
   }
 }
+var pileOn=false,pileMat=null;
+function resetPileColors(){if(!imPost||!imPost.instanceColor)return;var c=new THREE.Color(1,1,1);for(var i=0;i<imPost.count;i++)imPost.setColorAt(i,c);imPost.instanceColor.needsUpdate=true;}
+function applyPileReveal(){   // colorea cada pilote por su REVEAL (lo que sobresale del suelo = scale.y*postH). Estilo S.P.A.C.E "pile reveal".
+  if(!imPost||!pileOn)return;
+  var n=imPost.count,ph=TC.postH,_m=new THREE.Matrix4(),_p=new THREE.Vector3(),_q=new THREE.Quaternion(),_s=new THREE.Vector3();
+  var lens=new Float32Array(n),mn=1e9,mx=-1e9,i;
+  for(i=0;i<n;i++){imPost.getMatrixAt(i,_m);_m.decompose(_p,_q,_s);var L=_s.y<0.002?NaN:_s.y*ph;lens[i]=L;if(L===L){if(L<mn)mn=L;if(L>mx)mx=L;}}
+  var rng=(mx-mn)||1,col=new THREE.Color();
+  for(i=0;i<n;i++){if(lens[i]!==lens[i]){col.setRGB(0,0,0);}else{var c=reliefColor((lens[i]-mn)/rng);col.setRGB(c[0],c[1],c[2]);}imPost.setColorAt(i,col);}
+  if(imPost.instanceColor)imPost.instanceColor.needsUpdate=true;
+  var lg=$('pileLeg');if(lg)lg.textContent=' '+mn.toFixed(2)+'–'+mx.toFixed(2)+' m';
+}
 function layoutTrackers(){
   if(!imPost||!SEG)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
@@ -498,6 +512,7 @@ function layoutTrackers(){
   for(var pb=0;pb<TRK.length;pb++){if(PICK[pb]){var tb=TRK[pb];PICK[pb].position.set(tb.gx,tb.rel*vex+TC.postH*0.6+1,tb.gz);}}   // cajas de selección siguen al seguidor (también al arrastrarlo)
   if(selIdx>=0&&selWire&&PICK[selIdx]){selWire.position.copy(PICK[selIdx].position);selWire.scale.copy(PICK[selIdx].scale);}
   updateSpin(panelAngle(curMin));
+  if(pileOn)applyPileReveal();   // re-colorea pilotes por reveal tras recolocar (arrastre/cambio de planta)
 }
 // recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
 function updateSpin(angDeg){ if(!SEG||!SEGO)return;
@@ -781,6 +796,7 @@ $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=t
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;};
+$('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
