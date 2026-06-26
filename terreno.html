@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.1</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.2</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -51,6 +51,7 @@
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
     <div class="row"><label title="Capa de inversores (DC, El Burgo): tiñe la huella de cada seguidor por su inversor y dibuja el cableado string→inversor sobre el terreno. Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
+    <div class="row"><label title="Zonas y recintos del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio) con carteles flotantes. Aditiva."><input type="checkbox" id="zones"> 🏷️ Zonas y recintos</label></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -640,43 +641,56 @@ function animateSky(){
   if(moonMesh&&SUN&&SUN._dir){var d=SUN._dir,R=3600; _moonV.set(-d.E,-d.U,d.N); if(_moonV.lengthSq()<1e-6)_moonV.set(0,1,0); _moonV.normalize();
     moonMesh.position.set(camera.position.x+_moonV.x*R,camera.position.y+_moonV.y*R,camera.position.z+_moonV.z*R); }   // luna opuesta al sol (sale al ponerse el sol)
 }
-// ===== Capa INVERSORES (DC) en 3D (El Burgo): huella de cada seguidor teñida por su inversor + cableado string→inversor drapeado + anillo y etiqueta de estación.
-// Aditiva: grupo propio (invGroup), por defecto oculta, se construye al activarla. El id del seguidor codifica grupo.inversor.seguidor; invlab da la posición del inversor (del DWG).
-var invGroup=null,invOn=false;
+// ===== Capa INVERSORES (DC) en 3D (El Burgo): PINTA LOS MÓDULOS de cada seguidor por su inversor (como el 2D) + cableado string→inversor + anillo y etiqueta de estación.
+// Aditiva: el cableado/anillos/etiquetas van en su grupo (invGroup); el color de los módulos se aplica sobre la malla de paneles existente (instanceColor) y se revierte al apagar.
+var invGroup=null,invOn=false,INVCOL={},invGlassMat=null;
 function invKey3(id){var p=String(id).split('.');return (p.length>=3&&/^\d+$/.test(p[0])&&/^\d+$/.test(p[1]))?p[0]+'.'+p[1]:null;}
-function invColor3(i){var c=new THREE.Color();c.setHSL((((i*7)*137.508)%360)/360,0.62,0.56);return c;}
+function invColor3(i){var c=new THREE.Color();c.setHSL((((i*7)*137.508)%360)/360,0.62,0.5);return c;}
+function invGlassMesh(){if(!SEG)return null;for(var i=0;i<SEG.length;i++){if(SEG[i].spin&&(SEG[i].key==='glass'||SEG[i].key==='mesa'))return SEG[i];}return null;}   // la malla de paneles (spin)
+function paintInvModules(on){   // tiñe cada instancia de panel por el inversor de su seguidor (idx → i = floor(idx/(2·n))); revierte a la malla con textura al apagar
+  var s=invGlassMesh();if(!s||!s.im)return;
+  if(on&&!invGlassMat)invGlassMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.45,metalness:.12});   // base blanca → instanceColor sale vívido (como el 2D), no apagado por la textura de células
+  s.im.material=on?invGlassMat:glassM;
+  var col=new THREE.Color(),per=2*s.n,n=s.im.count;
+  for(var idx=0;idx<n;idx++){var i=Math.floor(idx/per),key=(i<NODES.length)?invKey3(NODES[i].id):null;
+    if(on&&key&&INVCOL[key])col.copy(INVCOL[key]);else col.setRGB(1,1,1);s.im.setColorAt(idx,col);}
+  if(s.im.instanceColor)s.im.instanceColor.needsUpdate=true;
+}
 function buildInvLayer(){
   if(invGroup){scene.remove(invGroup);invGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});invGroup=null;}
+  INVCOL={};
   if(!LAYOUT||!LAYOUT.invlab||!LAYOUT.invlab.length||!NODES.length)return;   // solo plantas con datos de inversor (El Burgo)
   invGroup=new THREE.Group();invGroup.visible=invOn;scene.add(invGroup);
   var H={},order=[];
   NODES.forEach(function(n,i){var k=invKey3(n.id);if(k==null)return;if(!H[k]){H[k]={key:k,trk:[],x:null,nn:null};order.push(k);}H[k].trk.push(i);});
   order.sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});});
   (LAYOUT.invlab||[]).forEach(function(c){var k=String(c.s).replace(/^I-/,'');if(H[k]){H[k].x=c.x;H[k].nn=c.n;}});
-  var fpF=new THREE.PlaneGeometry(5,62);fpF.rotateX(-Math.PI/2);var fpM=new THREE.PlaneGeometry(5,32);fpM.rotateX(-Math.PI/2);   // huella plana bajo el seguidor (largo / medio)
-  order.forEach(function(k,gi){var g=H[k],col=invColor3(gi);
+  order.forEach(function(k,gi){var g=H[k],col=invColor3(gi);INVCOL[k]=col;
     if(g.x==null){var sx=0,sn=0;g.trk.forEach(function(i){sx+=NODES[i].gx;sn+=-NODES[i].gz;});g.x=sx/g.trk.length;g.nn=sn/g.trk.length;}
-    var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn);
-    var fmat=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.45,side:THREE.DoubleSide,depthWrite:false});
-    var lineV=[];
-    g.trk.forEach(function(i){var t=NODES[i],tx=t.gx,tz=t.gz,tn=-tz,ty=localElevY(tx,tn),medio=/medio/i.test(t.tp||'');
-      var fp=new THREE.Mesh(medio?fpM:fpF,fmat);fp.position.set(tx,ty+0.05,tz);if(t.rot)fp.rotation.y=-t.rot*DEG;invGroup.add(fp);   // tiñe la huella por inversor
+    var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn),lineV=[];
+    g.trk.forEach(function(i){var t=NODES[i],tx=t.gx,tz=t.gz,tn=-tz;
       for(var s=0;s<5;s++){var a=s/5,b=(s+1)/5,ax=tx+(ix-tx)*a,an=tn+(g.nn-tn)*a,bx=tx+(ix-tx)*b,bn=tn+(g.nn-tn)*b;lineV.push(ax,localElevY(ax,an)+0.4,-an,bx,localElevY(bx,bn)+0.4,-bn);}   // cableado drapeado seguidor→inversor
     });
     var lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(lineV,3));
-    invGroup.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.6})));
+    invGroup.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.5})));
     var ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,0.13,8,20),new THREE.MeshBasicMaterial({color:col}));ring.rotation.x=Math.PI/2;ring.position.set(ix,iy+0.12,iz);invGroup.add(ring);   // anillo en la estación
     var lb=makeLabel('I-'+k);lb.position.set(ix,iy+2.6,iz);invGroup.add(lb);
   });
+  paintInvModules(invOn);   // pinta los módulos por inversor (como el 2D)
 }
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   METEO_ANIM=[];
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
-  // viales
-  var rp=[];(LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];if(!inClip(a[0],a[1])||!inClip(b[0],b[1]))continue;rp.push(a[0],localElevY(a[0],a[1])+0.4,-a[1],b[0],localElevY(b[0],b[1])+0.4,-b[1]);}});
-  if(rp.length){var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(rp,3));bosGroup.add(new THREE.LineSegments(rg,new THREE.LineBasicMaterial({color:0xc2ab78,transparent:true,opacity:.55})));}
+  // viales: cinta de tierra compactada drapeada sobre el terreno (no una línea), que recibe la sombra de los seguidores
+  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[],rw=1.9;   // semiancho 1,9 m → vial ~3,8 m
+  (LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];if(!inClip(a[0],a[1])||!inClip(b[0],b[1]))continue;
+    var dx=b[0]-a[0],dn=b[1]-a[1],Lr=Math.hypot(dx,dn)||1e-6,px=-dn/Lr*rw,pn=dx/Lr*rw;   // perpendicular al tramo, en el plano E/N
+    function P(x,n){return [x,localElevY(x,n)+0.06,-n];}
+    var AL=P(a[0]+px,a[1]+pn),AR=P(a[0]-px,a[1]-pn),BL=P(b[0]+px,b[1]+pn),BR=P(b[0]-px,b[1]-pn);
+    rv.push(AL[0],AL[1],AL[2],AR[0],AR[1],AR[2],BL[0],BL[1],BL[2], BL[0],BL[1],BL[2],AR[0],AR[1],AR[2],BR[0],BR[1],BR[2]);}});   // 2 triángulos/tramo
+  if(rv.length){var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(rv,3));rg.computeVertexNormals();var rmesh=new THREE.Mesh(rg,roadM);rmesh.receiveShadow=true;bosGroup.add(rmesh);}
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
@@ -867,6 +881,36 @@ function makeLabel(text){   // pastilla redondeada nítida, ancho ajustado al te
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
   var h=4.0;sp.scale.set(h*W/H,h,1);return sp;
 }
+// ===== Capa ZONAS Y RECINTOS (El Burgo): carteles ámbar del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio).
+// Aditiva (grupo propio, perezosa). Distintos de las etiquetas de elemento: ámbar, mástil + base, más grandes.
+var zoneGroup=null,zonesOn=false;
+function makeZoneLabel(text){
+  text=String(text==null?'':text).toUpperCase();
+  var dpr=2,fs=30,padX=20,padY=11,font='700 '+fs+'px system-ui,Segoe UI,Roboto,Arial,sans-serif';
+  var mc=document.createElement('canvas').getContext('2d');mc.font=font;
+  var tw=Math.ceil(mc.measureText(text).width),W=tw+padX*2,H=fs+padY*2;
+  var c=document.createElement('canvas');c.width=W*dpr;c.height=H*dpr;var g=c.getContext('2d');g.scale(dpr,dpr);
+  var r=10;g.beginPath();g.moveTo(r,0);g.arcTo(W,0,W,H,r);g.arcTo(W,H,0,H,r);g.arcTo(0,H,0,0,r);g.arcTo(0,0,W,0,r);g.closePath();
+  g.fillStyle='rgba(22,17,8,.86)';g.fill();g.lineWidth=2.5;g.strokeStyle='rgba(246,166,35,.9)';g.stroke();
+  g.fillStyle='#ffd98a';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
+  var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
+  var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
+  var h=5.2;sp.scale.set(h*W/H,h,1);return sp;
+}
+function buildZoneLayer(){
+  if(zoneGroup){scene.remove(zoneGroup);zoneGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});zoneGroup=null;}
+  if(!LAYOUT||!LAYOUT.ctlab||!LAYOUT.ctlab.length)return;
+  zoneGroup=new THREE.Group();zoneGroup.visible=zonesOn;scene.add(zoneGroup);
+  var poleM=new THREE.MeshStandardMaterial({color:0xf6a623,roughness:.5,metalness:.3}),seen={};
+  LAYOUT.ctlab.forEach(function(c){
+    if(Math.abs(c.x)>1500||Math.abs(c.n)>1500)return;   // descarta entradas con coords UTM crudas (bug de extracción)
+    var k=c.s+'@'+Math.round(c.x)+','+Math.round(c.n);if(seen[k])return;seen[k]=1;
+    var y=localElevY(c.x,c.n),px=c.x,pz=-c.n,top=y+6.5;
+    var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,top-y,6),poleM);pole.position.set(px,(y+top)/2,pz);zoneGroup.add(pole);
+    var base=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.12,16),poleM);base.position.set(px,y+0.07,pz);zoneGroup.add(base);
+    var lb=makeZoneLabel(c.s);lb.position.set(px,top+0.5,pz);zoneGroup.add(lb);
+  });
+}
 
 /* ───────── EDICIÓN DE SEGUIDORES EN 3D: seleccionar, articular (uno a uno) y recolocar sobre el terreno, con guardado ───────── */
 function resampleTracker(t){ if(!ELEV)return;                          // al mover el seguidor: recalcula cotas y drape del terreno en el nuevo punto
@@ -907,7 +951,7 @@ $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();};   // la capa de inversores se redrapea con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();if(zoneGroup&&zonesOn)buildZoneLayer();};   // capas inversores/zonas se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
@@ -920,7 +964,8 @@ $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;};
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
-$('invl').onchange=function(){invOn=this.checked;if(invOn&&!invGroup)buildInvLayer();if(invGroup)invGroup.visible=invOn;};   // capa inversores: construye al activar (perezosa), aditiva
+$('invl').onchange=function(){invOn=this.checked;if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D), perezosa y aditiva
+$('zones').onchange=function(){zonesOn=this.checked;if(zonesOn&&!zoneGroup)buildZoneLayer();if(zoneGroup)zoneGroup.visible=zonesOn;};   // capa zonas y recintos (perezosa, aditiva)
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
