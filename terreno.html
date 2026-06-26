@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.11</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.12</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -805,7 +805,7 @@ var FICHA=null,selLine=null,_pdX=0,_pdY=0;
 var CTMAIN=[{name:'CT Norte',x:-0.86,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
 function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function nearestCTIdx(x,n){var bi=-1,bd=32*32;for(var i=0;i<CTMAIN.length;i++){var dx=CTMAIN[i].x-x,dn=CTMAIN[i].n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
-function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],bi=0,bd=1e18;for(var k=0;k<CTMAIN.length;k++){var dx=CTMAIN[k].x-c.x,dn=CTMAIN[k].n-c.n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=k;}}INVCT[i]=bi;}}   // cada inversor → su CT más cercano (SIN umbral)
+function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;var ord=LAYOUT.invlab.map(function(c,i){return {i:i,n:c.n};});ord.sort(function(a,b){return b.n-a.n;});for(var k=0;k<ord.length;k++)INVCT[ord[k].i]=(k<18)?0:1;}   // reparto real: los 18 inversores MÁS AL NORTE → CT Norte (0), el resto → CT Sur (1)
 function invElec(i,min){var g=genModel(min),mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,vmp=(SPEC&&SPEC.vmpp)||42,impp=wmod/vmp,
   tcell=GENTAMB+g.poa/800*25,vir=Math.max(0,Math.min(1,g.poa/1000)),
   istr=impp*vir*(1+0.0004*(tcell-25)), vstr=mods*vmp*(1-0.0029*(tcell-25)), pstr=istr*vstr/1000,   // string = mód en serie; I≈Impp·irrad, V≈Vmpp·(−0,29%/°C)
