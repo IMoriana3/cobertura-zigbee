@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.12</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.13</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -778,13 +778,33 @@ function buildFlow(key,sinkFor,colorHex,off){
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('aT',new THREE.Float32BufferAttribute(ats,1));
   var mat=flowMat(colorHex),ls=new THREE.LineSegments(geo,mat);ls.frustumCulled=false;var grp=new THREE.Group();grp.add(ls);grp.userData={mat:mat,geo:geo};scene.add(grp);genFlow[key]=grp;
 }
+var arrowMesh=null,ARR=[],_at=0,_ao=null;
+function buildArrows(){   // FLECHAS de flujo: inversor→CT y CT→subestación (conos que viajan hacia el sumidero, tamaño/color ∝ potencia)
+  if(arrowMesh){scene.remove(arrowMesh);if(arrowMesh.geometry)arrowMesh.geometry.dispose();if(arrowMesh.material)arrowMesh.material.dispose();arrowMesh=null;}
+  ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=3,ACT=6;
+  for(var i=0;i<inv.length;i++){var a=inv[i],ct=CTMAIN[INVCT[i]];for(var k=0;k<AINV;k++)ARR.push({ax:a.x,an:a.n,bx:ct.x,bn:ct.n,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
+  for(var c=0;c<CTMAIN.length;c++)for(var k2=0;k2<ACT;k2++)ARR.push({ax:CTMAIN[c].x,an:CTMAIN[c].n,bx:SUBST.x,bn:SUBST.n,off:k2/ACT,lvl:1,src:c});   // CT → subestación
+  if(!_ao)_ao=new THREE.Object3D();
+  var cone=new THREE.ConeGeometry(0.9,3,10);cone.rotateX(-Math.PI/2);   // punta hacia −Z (lookAt orienta −Z al objetivo)
+  arrowMesh=new THREE.InstancedMesh(cone,new THREE.MeshBasicMaterial({transparent:true,opacity:0.95}),ARR.length);arrowMesh.frustumCulled=false;scene.add(arrowMesh);animateArrows(0);
+}
+function animateArrows(dt){ if(!arrowMesh)return; _at+=dt; var col=new THREE.Color();
+  for(var j=0;j<ARR.length;j++){var r=ARR[j];
+    var pw=r.lvl===0?Math.max(0,Math.min(1,perInvKW(r.src,curMin)/350)):Math.max(0,Math.min(1,ctElec(r.src,curMin).pmv/6300));
+    var spd=r.lvl===0?0.10:0.07,t=(r.off+_at*spd)%1,x=r.ax+(r.bx-r.ax)*t,n=r.an+(r.bn-r.an)*t,y=localElevY(x,n)+(r.lvl===0?1.1:1.7);   // viaja de a→b
+    var dx=r.bx-r.ax,dn=r.bn-r.an,L=Math.hypot(dx,dn)||1;
+    _ao.position.set(x,y,-n);_ao.lookAt(x+dx/L,y,-(n+dn/L));   // apunta hacia el sumidero
+    var sc=pw<=0.03?0.0001:((r.lvl===0?1:2.1)*(0.55+0.7*pw));_ao.scale.set(sc,sc,sc*1.5);_ao.updateMatrix();arrowMesh.setMatrixAt(j,_ao.matrix);
+    if(r.lvl===0)col.setRGB(0.30+0.4*pw,0.85,1.0);else col.setRGB(1.0,0.45+0.3*pw,0.85);col.multiplyScalar(0.45+0.85*pw);arrowMesh.setColorAt(j,col);}
+  arrowMesh.instanceMatrix.needsUpdate=true;if(arrowMesh.instanceColor)arrowMesh.instanceColor.needsUpdate=true;
+}
 function buildGenFlows(){ computeSinks();
-  buildFlow('cable_pos',function(pl){return nearestPt(pl[0][0],pl[0][1],INVPTS).p;},0x66ccff,0.42);   // string → inversor
-  buildFlow('trench_n3',function(pl){return nearestPt(pl[0][0],pl[0][1],CTPTS).p;},0xffa83a,0.10);     // inversor → CT (N3)
-  buildFlow('trench_mt',function(){return SUBPT;},0xff3a9a,0.14);                                       // CT → subestación (MT)
+  buildFlow('cable_pos',function(pl){return nearestPt(pl[0][0],pl[0][1],INVPTS).p;},0x66ccff,0.42);   // string → inversor (detalle, líneas)
+  buildArrows();   // inversor→CT y CT→subestación: FLECHAS animadas
 }
 function genPulse(dt){ if(!genOn)return; _gp+=dt; var f=Math.max(0,Math.min(1,genModel(curMin).acKW/((GEN_KWP/1.25)||1)));
-  for(var k in genFlow){var g=genFlow[k];if(g&&g.userData.mat){g.userData.mat.uniforms.uTime.value=_gp;g.userData.mat.uniforms.uPow.value=f;}} }   // energía viajando por cada nivel del cableado
+  for(var k in genFlow){var g=genFlow[k];if(g&&g.userData.mat){g.userData.mat.uniforms.uTime.value=_gp;g.userData.mat.uniforms.uPow.value=f;}}
+  animateArrows(dt); }   // mueve las flechas de flujo
 function genHeat(f){var c=new THREE.Color();c.setHSL((1-Math.max(0,Math.min(1,f)))*0.33,0.85,0.52);return c;}   // verde (poco) → rojo (mucho / recortando)
 function buildGenRings(){
   if(genRingsG){scene.remove(genRingsG);genRingsG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});genRingsG=null;}
@@ -797,7 +817,7 @@ function setGen(on){genOn=on;
   if(on){ if(invOn){invOn=false;if($('invl'))$('invl').checked=false;paintInvModules(false);if(invGroup)invGroup.visible=false;}   // excluyente con la capa de color por inversor (ambas pintan los módulos)
     GEN_KWP=genKwp(); ensureNet().then(function(){GEN_KWP=genKwp();computeSinks();computeInvStrings();buildGenFlows();buildGenRings();paintGen(true);updateGenHUD();});
     paintGen(true);updateGenHUD(); }
-  else { paintGen(false); for(var k in genFlow){if(genFlow[k])genFlow[k].visible=false;} if(genRingsG)genRingsG.visible=false; }
+  else { paintGen(false); for(var k in genFlow){if(genFlow[k])genFlow[k].visible=false;} if(genRingsG)genRingsG.visible=false; if(arrowMesh)arrowMesh.visible=false; }
   var box=$('genBox');if(box)box.style.display=on?'':'none';
 }
 // ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
