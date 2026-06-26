@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.4</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.5</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -55,7 +55,9 @@
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG · El Burgo)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
-    <div class="row"><label title="Zanjas de cable (string y N3), real del DWG."><input type="checkbox" id="netTrench"> ▤ Zanjas de cable</label></div>
+    <div class="row"><label title="Zanjas de cable string y string→inversor, real del DWG."><input type="checkbox" id="netTrench"> ▤ Zanjas string/inversor</label></div>
+    <div class="row"><label title="Cableado/zanja inversor→CT (nivel N3), real del DWG."><input type="checkbox" id="netN3"> 🔌 Inversor→CT (N3)</label></div>
+    <div class="row"><label title="Cableado/zanja CT→subestación (MT + línea aérea LAMT), real del DWG."><input type="checkbox" id="netMT"> 🏭 CT→Subestación (MT)</label></div>
     <div class="row"><label title="Alcance de las cámaras CCTV (zonas que cubren), real del DWG."><input type="checkbox" id="netCam"> 📹 Cámaras (alcance)</label></div>
     <div class="row"><label title="Arquetas y equipos de comunicaciones, real del DWG."><input type="checkbox" id="netMisc"> ◇ Arquetas + comms</label></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
@@ -688,7 +690,7 @@ function buildInvLayer(){
 // Datos REALES extraídos de los DWG (tools/extract_dwg_networks.mjs → elburgo_networks.json) en coords locales E/N.
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
 var NET=null,netG={};
-var NETDEF={cable_pos:{c:0xff5555,off:.35},cable_neg:{c:0x5599ff,off:.30},earth:{c:0x9be23a,off:.12},trench_string:{c:0xb9893a,off:.05},trench_n3:{c:0x8a6a2a,off:.05},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
+var NETDEF={cable_pos:{c:0xff5555,off:.35},cable_neg:{c:0x5599ff,off:.30},earth:{c:0x9be23a,off:.12},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
   return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;return NET;}).catch(function(){NET=false;return false;}); }
 function buildNetLayer(key){
@@ -1008,7 +1010,9 @@ $('invl').onchange=function(){invOn=this.checked;if(invOn&&!invGroup){buildInvLa
 $('zones').onchange=function(){zonesOn=this.checked;if(zonesOn&&!zoneGroup)buildZoneLayer();if(zoneGroup)zoneGroup.visible=zonesOn;};   // capa zonas y recintos (perezosa, aditiva)
 $('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);};   // redes del DWG (perezosas): cableado DC +/−
 $('netEarth').onchange=function(){setNet(['earth'],this.checked);};                   // red de tierras
-$('netTrench').onchange=function(){setNet(['trench_string','trench_n3'],this.checked);}; // zanjas
+$('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.checked);}; // zanjas string / string→inversor
+$('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};                   // inversor→CT (N3)
+$('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT)
 $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};                  // alcance de cámaras CCTV
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
