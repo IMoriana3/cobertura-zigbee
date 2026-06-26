@@ -41,7 +41,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.98</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.99</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -190,13 +190,14 @@ function initThree(){
   sun.shadow.radius=__hiShad?5:2;   // PENUMBRA PCFSoft: difumina ~5 téxeles → funde el "escalonado" del borde (la sombra de un panel de 6 cm es más fina que un téxel; sin radio el borde sale dentado y asimétrico). Radio en téxeles = independiente del zoom/mapSize
   scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
+  buildSky();   // estrellas + luna (se encienden de noche)
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   addEventListener('keydown',function(e){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'))return;if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE'].indexOf(e.code)>=0){KEYS[e.code]=true;e.preventDefault();}});
   addEventListener('keyup',function(e){KEYS[e.code]=false;});
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateMeteo(dt);renderer.render(scene,camera);})(performance.now());
+    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky();animateMeteo(dt);renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -253,7 +254,10 @@ function skyColor(U){
 function applySky(U){ if(!scene)return; var c=skyColor(U);
   if(scene.background&&scene.background.copy)scene.background.copy(c); else scene.background=c;
   if(scene.fog)scene.fog.color.copy(c);
-  if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));} }
+  if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));}
+  var nf=Math.max(0,Math.min(1,-U/0.14));   // factor noche: 0 con el sol sobre el horizonte, 1 bien entrada la noche
+  if(starMat){starMat.opacity=nf*0.95;starGroup.visible=nf>0.02;}
+  if(moonMat){moonMat.opacity=nf*0.92;moonMesh.visible=nf>0.02;} }
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir, sc=SUN.shadow.camera;
@@ -356,7 +360,7 @@ async function build(){
   var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
-  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else mat=new THREE.MeshStandardMaterial({color:0x2e3b2a,roughness:1,metalness:0});   // transparent+depthWrite: el borde fundido deja ver el cielo sin romper el z de seguidores
+  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#2e3b2a';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
   terrain.userData.baseMat=mat;terrain.userData.reliefMat=reliefMat;
@@ -600,10 +604,40 @@ function makeInvTex(){   // frontal del SG350HX: cuerpo gris + marca Sungrow + d
   x.fillStyle='#363c44';for(var k=0;k<6;k++){x.beginPath();x.arc(42+k*42,196,9,0,7);x.fill();}
   var t=new THREE.CanvasTexture(c);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;return t;
 }
-var METEO_ANIM=[],metT=0;
-function animateMeteo(dt){ if(!METEO_ANIM.length)return; metT+=dt;   // anemómetro gira; veleta apunta a una dirección de viento que deriva lento
-  var wdir=Math.sin(metT*0.13)*0.6+Math.cos(metT*0.07)*0.4, spin=dt*(6+2*Math.sin(metT*0.5));
-  for(var i=0;i<METEO_ANIM.length;i++){var m=METEO_ANIM[i];if(m.a)m.a.rotation.y+=spin;if(m.v)m.v.rotation.y=wdir;}
+var METEO_ANIM=[],metT=0,_wAcc=0,WIND={ws:3,wd:210,real:false};   // ws m/s, wd grados desde el N (de DÓNDE viene)
+var _solV=new THREE.Vector3(),_solQ=new THREE.Quaternion(),_upY=new THREE.Vector3(0,1,0);
+function animateMeteo(dt){ metT+=dt;
+  _wAcc+=dt; if(_wAcc>1){_wAcc=0; var got=false;   // 1×/s: lee el viento que publique el SCADA (localStorage compartido, mismo origen)
+    try{var j=JSON.parse(localStorage.getItem('factiun_meteo')||'null');if(j&&isFinite(j.ws)){WIND.ws=Math.max(0,+j.ws);if(isFinite(j.wd))WIND.wd=+j.wd;WIND.real=true;got=true;}}catch(e){}
+    if(!got)WIND.real=false; }
+  if(!WIND.real){ WIND.ws=3.0+1.8*Math.sin(metT*0.05)+0.7*Math.sin(metT*0.6); WIND.wd=210+28*Math.sin(metT*0.03); }   // sin SCADA: brisa sintética del SW (para que se mueva)
+  if(!METEO_ANIM.length)return;
+  var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*(0.35+0.85*WIND.ws*gust);   // cazoletas ∝ velocidad del viento (+ rachas); a más viento, giran más rápido
+  var vy=Math.PI/2 - WIND.wd*DEG;                                              // la veleta apunta a la dirección DE DONDE viene el viento
+  var sun=(SUN&&SUN._dir)?SUN._dir:null;
+  if(sun){ if(sun.U>0.03)_solV.set(sun.E,Math.max(0.34,sun.U),-sun.N); else _solV.set(0,Math.cos(0.61),Math.sin(0.61));   // panel: de día apunta al sol (tope ~71°), de noche aparca al sur ~35°
+    _solV.normalize(); _solQ.setFromUnitVectors(_upY,_solV); }
+  for(var i=0;i<METEO_ANIM.length;i++){var m=METEO_ANIM[i];
+    if(m.a)m.a.rotation.y+=spin;
+    if(m.v)m.v.rotation.y += (vy-m.v.rotation.y)*Math.min(1,dt*1.5);          // gira suave la veleta hacia la nueva dirección
+    if(m.p&&sun)m.p.quaternion.slerp(_solQ,Math.min(1,dt*2.2)); }             // el panel de referencia se orienta al sol
+}
+// cielo nocturno: campo de estrellas (dome centrado en cámara) + luna anti-solar; opacidad por la altura del sol (en applySky)
+var starGroup=null,starMat=null,moonMesh=null,moonMat=null,_skyR=4000,_moonV=new THREE.Vector3();
+function buildSky(){
+  var N=1400,p=new Float32Array(N*3);
+  for(var i=0;i<N;i++){var th=Math.random()*6.2832,ph=Math.acos(Math.random()*0.98+0.02),r=_skyR;   // hemisferio superior (no malgastar estrellas bajo tierra)
+    p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.cos(ph)*0.9+40;p[i*3+2]=r*Math.sin(ph)*Math.sin(th);}
+  var sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(p,3));
+  starMat=new THREE.PointsMaterial({color:0xffffff,size:2.0,sizeAttenuation:false,transparent:true,opacity:0,depthWrite:false,fog:false});   // fog:false → no las traga la niebla
+  starGroup=new THREE.Points(sg,starMat);starGroup.frustumCulled=false;starGroup.renderOrder=-2;starGroup.visible=false;scene.add(starGroup);
+  moonMat=new THREE.MeshBasicMaterial({color:0xeef2f8,transparent:true,opacity:0,fog:false});
+  moonMesh=new THREE.Mesh(new THREE.SphereGeometry(70,24,16),moonMat);moonMesh.frustumCulled=false;moonMesh.renderOrder=-1;moonMesh.visible=false;scene.add(moonMesh);
+}
+function animateSky(){
+  if(starGroup)starGroup.position.copy(camera.position);                                   // dome "infinito": sigue a la cámara (sin paralaje)
+  if(moonMesh&&SUN&&SUN._dir){var d=SUN._dir,R=3600; _moonV.set(-d.E,-d.U,d.N); if(_moonV.lengthSq()<1e-6)_moonV.set(0,1,0); _moonV.normalize();
+    moonMesh.position.set(camera.position.x+_moonV.x*R,camera.position.y+_moonV.y*R,camera.position.z+_moonV.z*R); }   // luna opuesta al sol (sale al ponerse el sol)
 }
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
@@ -713,8 +747,10 @@ function buildBOS(){
     var gyy=y+h*0.62; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.45,0.03,0.03),mtMast),X-0.22,gyy,Z));                              // brazo garita
     for(var d=0;d<5;d++)g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.12-d*0.004,0.125-d*0.004,0.03,14),mtWhite),X-0.42,gyy-0.12+d*0.06,Z));  // garita (láminas blancas)
     g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.3,0.42,0.2),mtBox),X,y+h*0.46,Z+0.16));                                              // datalogger
-    var pan=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel);pan.position.set(X,y+h*0.33,Z-0.32);pan.rotation.x=-0.5;g.add(pan);  // panel solar inclinado
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));                                        // soporte panel
+    var panG=new THREE.Group();panG.position.set(X,y+h*0.33,Z-0.32);g.add(panG);                                                         // celda de referencia: se orienta al sol (animateMeteo)
+    panG.add(new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel));                                                             // panel plano (normal +Y); el grupo lo bascula hacia el sol
+    if(METEO_ANIM.length)METEO_ANIM[METEO_ANIM.length-1].p=panG;
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));                                        // soporte (fijo)
     var lb=makeLabel(m.name);lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});  // etiqueta HSU (se conmuta con "Etiquetas")
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }

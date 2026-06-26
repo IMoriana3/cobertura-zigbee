@@ -26,7 +26,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.5</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.6</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -36,9 +36,11 @@
   <div class="row"><label><input type="checkbox" id="cbNcu" checked> NCUs / meteo</label></div>
   <div class="row"><label><input type="checkbox" id="cbLbl"> Etiquetas</label></div>
   <div class="row"><label><input type="checkbox" id="cbElec"> ⚡ Color eléctrico (NCU)</label></div>
+  <div class="row"><label title="Pile reveal: cuánto se hinca cada pilote (del suelo al tubo), calculado del relieve real. Rojo = más hincado. Como en el 3D y en S.P.A.C.E."><input type="checkbox" id="cbPile"> ⛰️ Pile reveal (hincado)</label></div>
   <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
   <div class="leg" id="legStatic" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
   <div class="leg" id="legElec" style="margin-top:7px;display:none;max-height:210px;overflow:auto"></div>
+  <div class="leg" id="legPile" style="margin-top:7px;display:none"></div>
 </div>
 <div id="status">cargando…</div>
 <div id="tip"></div>
@@ -97,6 +99,65 @@ function buildElecLegend(){
   box.innerHTML=head+rows;box.style.display='';
 }
 
+/* ===== capa PILE REVEAL: hincado de cada pilote desde el relieve real (DEM) =====
+   Mismo modelo que el 3D (tubo con pendiente acotada + recubrimiento mínimo). Online (DEM). */
+var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
+var dem=null,demImg=null,demReady=false,demLoading=false,REVMIN=1,REVMAX=2;
+async function demMosaic(z,latN,latS,lonW,lonE){
+  var xmin=Math.floor(lon2txf(lonW,z)),xmax=Math.floor(lon2txf(lonE,z));
+  var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
+  var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
+  var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var tasks=[],ok=0;
+  for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
+    tasks.push(loadImg(DEM(z,tx,ty)).then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256);ok++;}).catch(function(){}));})(tx,ty);}
+  await Promise.all(tasks);
+  return {ctx:ctx,W:W,H:H,z:z,xmin:xmin,ymin:ymin,ok:ok,px:function(lat,lon){return {x:(lon2txf(lon,z)-xmin)*256,y:(lat2tyf(lat,z)-ymin)*256};}};
+}
+function elevAt(lat,lon){ if(!demImg)return 0; var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // bilineal (igual que el 3D)
+  var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
+  function g(ix,iy){var i=(iy*W+ix)*4;return d[i]*256+d[i+1]+d[i+2]/256;}
+  return (g(x0,y0)*(1-tx)+g(x1,y0)*tx)*(1-ty)+(g(x0,y1)*(1-tx)+g(x1,y1)*tx)*ty-32768; }
+function reliefCss(t){ t=Math.max(0,Math.min(1,t));   // rampa idéntica a la del 3D (índigo→azul→verde→ocre→rojo)
+  var s=[[0,.17,.10,.30],[.25,.16,.43,.59],[.5,.16,.62,.56],[.7,.91,.77,.42],[.85,.90,.44,.32],[1,.84,.16,.16]],r=[.84,.16,.16];
+  for(var i=1;i<s.length;i++){if(t<=s[i][0]){var a=s[i-1],b=s[i],f=(t-a[0])/(b[0]-a[0]);r=[a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f,a[3]+(b[3]-a[3])*f];break;}}
+  return 'rgb('+Math.round(255*r[0])+','+Math.round(255*r[1])+','+Math.round(255*r[2])+')'; }
+var CL=0.16,CMIN=1.0;   // tope de pendiente del tubo (~9°) y recubrimiento mínimo (m)
+function computeReveal(){
+  if(!demReady||!L||!L.trackers)return;
+  var mods=(SPEC&&SPEC.mods)||L.mods||28,zMul=mods/28,zb=[-28,-9,9,28];
+  REVMIN=1e9;REVMAX=-1e9;
+  for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i],medio=/^medio/i.test(t.t||''),lonC=lon0+t.x/mPerLon,zs=[],keys=[],kmax=-1e9,k;
+    for(k=0;k<zb.length;k++){var z=zb[k]*zMul;if(medio&&Math.abs(z)>16)continue;zs.push(z);}
+    var halfL=medio?16:31;
+    var gN=elevAt(lat0+(t.n+halfL)/mPerLat,lonC),gS=elevAt(lat0+(t.n-halfL)/mPerLat,lonC);
+    var tilt=Math.max(-CL,Math.min(CL,(gN-gS)/(2*halfL)));                                  // pendiente del tubo (acotada), del relieve N-S
+    for(k=0;k<zs.length;k++){var key=elevAt(lat0+(t.n+zs[k])/mPerLat,lonC)-tilt*zs[k];keys.push(key);if(key>kmax)kmax=key;}
+    var rev=[],rmax=-1e9;for(k=0;k<keys.length;k++){var rv=CMIN+kmax-keys[k];rev.push(rv);if(rv>rmax)rmax=rv;if(rv<REVMIN)REVMIN=rv;if(rv>REVMAX)REVMAX=rv;}   // tubo al recubrimiento mínimo del pilote más somero; el resto sobresale más
+    t._zs=zs;t._rev=rev;t._revMax=rmax;}
+  if(!(REVMAX>REVMIN))REVMAX=REVMIN+1;
+}
+function ensureDem(){
+  if(demReady||demLoading||OFFLINE||!L)return;
+  demLoading=true;setStatus('descargando relieve (pile reveal)…');
+  (async function(){ try{
+    var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;L.trackers.forEach(function(t){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;});
+    var marg=80,hx=Math.max(Math.abs(x0),Math.abs(x1))+marg,hz=Math.max(Math.abs(n0),Math.abs(n1))+marg;
+    var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat,wide=Math.max(2*hx,2*hz),dz=(wide>1500)?15:14;
+    dem=await demMosaic(dz,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);demReady=true;
+    computeReveal();buildPileLegend();draw();
+    setStatus('<b>'+L.trackers.length+'</b> seguidores · pile reveal '+REVMIN.toFixed(2)+'–'+REVMAX.toFixed(2)+' m');
+  }catch(e){demLoading=false;demReady=false;buildPileLegend();setStatus('<span class="err">relieve no disponible (CORS o red)</span>');} })();
+}
+function buildPileLegend(){
+  var box=$('legPile');if(!box)return;
+  if(!$('cbPile').checked){box.style.display='none';return;}
+  $('legStatic').style.display='none';$('legElec').style.display='none';
+  if(!demReady){box.innerHTML='<div style="color:var(--tx2)">'+(OFFLINE?'⛌ relieve no disponible sin conexión':'descargando relieve…')+'</div>';box.style.display='';return;}
+  var ramp='';for(var i=0;i<=6;i++)ramp+='<span style="display:inline-block;width:15px;height:10px;background:'+reliefCss(i/6)+'"></span>';
+  box.innerHTML='<div style="color:#eaf4ff;margin-bottom:4px">Pile reveal · '+(L.trackers?L.trackers.length:0)+' seguidores</div>'+ramp+'<div style="margin-top:3px">'+REVMIN.toFixed(2)+' m → '+REVMAX.toFixed(2)+' m <span style="color:var(--tx2)">(suelo→tubo)</span></div>';
+  box.style.display='';
+}
+
 var cv=$('cv'),ctx=cv.getContext('2d'),DPR=Math.min(devicePixelRatio||1,2);
 var L=null,lat0=0,lon0=0,mPerLat=111320,mPerLon=85000,sat=null,satBox=null;
 var view={x:0,n:0,scale:1};   // x,n = punto del mundo (m) en el centro de pantalla; scale = px/m
@@ -121,15 +182,16 @@ function draw(){
   if(!L)return;
   // seguidores
   if($('cbTrk').checked){
-    var s=view.scale;
+    var s=view.scale, pile=$('cbPile').checked&&demReady, rng=(REVMAX-REVMIN)||1;
     for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];
       var medio=/^medio/i.test(t.t||'');
       var halfL=(medio?16:31),halfW=3.2;   // semilargo (N-S) y semiancho (E-W) aproximados
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s,wp=Math.max(0.8,halfW*s);
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
-      ctx.fillStyle=($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6';
+      ctx.fillStyle=(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // pile reveal: el tubo se tiñe por el hincado MÁXIMO del seguidor (mapa legible a cualquier zoom)
       ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);
-      if(s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
+      if(pile){ if(t._rev&&s>1.2){var dr=Math.max(1.6,s*0.9);for(var k=0;k<t._zs.length;k++){var dyk=w2sy(t.n+t._zs[k]);ctx.beginPath();ctx.arc(cxp,dyk,dr,0,7);ctx.fillStyle=reliefCss((t._rev[k]-REVMIN)/rng);ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(8,12,18,.7)';ctx.stroke();} } }   // de cerca: un punto por pilote, coloreado por su propio hincado
+      else if(s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
     }
   }
   // NCUs y meteo
@@ -199,7 +261,8 @@ function hover(e){
 }
 
 ['cbSat','cbTrk','cbNcu','cbLbl'].forEach(function(id){$(id).onchange=draw;});
-$('cbElec').onchange=function(){buildElecLegend();draw();};
+$('cbElec').onchange=function(){ if(this.checked)$('cbPile').checked=false; buildElecLegend();buildPileLegend();draw(); };   // eléctrico y pile reveal son excluyentes
+$('cbPile').onchange=function(){ if(this.checked){$('cbElec').checked=false;ensureDem();} buildElecLegend();buildPileLegend();draw(); };
 $('fit').onclick=fit;
 if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
