@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.9</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.10</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -193,7 +193,12 @@ function initThree(){
     if(placingGw){var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();return;}
     if(editMode||freeCam)return;
     if(Math.hypot(e.clientX-_pdX,e.clientY-_pdY)>6)return;   // fue arrastre/órbita, no clic
-    var r2=new THREE.Raycaster();r2.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var h2=r2.intersectObject(terrain);if(!h2.length)return;var pt=h2[0].point,idx=nearestInvIdx(pt.x,-pt.z);if(idx>=0)selectInv(idx);else closeInvFicha();});   // clic en un inversor → ficha eléctrica
+    var r2=new THREE.Raycaster();r2.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var h2=r2.intersectObject(terrain);if(!h2.length)return;var pt=h2[0].point,X=pt.x,N=-pt.z;   // clic en inversor / CT / subestación → su ficha (gana el más cercano)
+    var cand=[],iv=nearestInvIdx(X,N);if(iv>=0)cand.push({t:'inv',id:iv,d:Math.hypot(LAYOUT.invlab[iv].x-X,LAYOUT.invlab[iv].n-N)});
+    for(var ci=0;ci<CTMAIN.length;ci++){var dct=Math.hypot(CTMAIN[ci].x-X,CTMAIN[ci].n-N);if(dct<28)cand.push({t:'ct',id:ci,d:dct});}
+    var dsu=Math.hypot(SUBST.x-X,SUBST.n-N);if(dsu<14)cand.push({t:'sub',d:dsu});
+    if(!cand.length){closeFicha();return;} cand.sort(function(a,b){return a.d-b.d;});var w=cand[0];
+    if(w.t==='inv')selectInv(w.id);else if(w.t==='ct')selectCT(w.id);else selectSub();});
   renderer.domElement.addEventListener('pointerdown',function(e){if(!editMode||freeCam)return;var i=pickAt(e);if(i<0)return;   // EDICIÓN: pulsar un seguidor lo selecciona; si arrastras, lo recolocas (miss = la cámara sigue orbitando)
     selectTracker(i);dragTk=i;controls.enabled=false;var p=terrainPt(e);_dragOff.set(p?TRK[i].gx-p.x:0,0,p?TRK[i].gz-p.z:0);});
   addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
@@ -308,7 +313,7 @@ function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=
 function setTime(min){
   curMin=min; syncSun(min);
   if(genOn){updateGenGlow();updateGenRings();updateGenHUD();}   // generación: brillo de paneles, anillos por inversor y HUD siguen la hora
-  if(INVSEL3!=null)updateInvFicha();                           // ficha del inversor seleccionado sigue la hora
+  if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
   if(SEG) updateSpin(panelAngle(min));        // recoloca las piezas que basculan (tubo, módulos, correas, cable, cajas, TCU)
   $('tval').textContent=fmtHM(min);
   $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
@@ -796,27 +801,42 @@ function setGen(on){genOn=on;
   var box=$('genBox');if(box)box.style.display=on?'':'none';
 }
 // ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
-var INVSEL3=null,selLine=null,_pdX=0,_pdY=0;
+var FICHA=null,selLine=null,_pdX=0,_pdY=0;
+var CTMAIN=[{name:'CT Norte',x:-0.86,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
 function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
+function nearestCTIdx(x,n){var bi=-1,bd=32*32;for(var i=0;i<CTMAIN.length;i++){var dx=CTMAIN[i].x-x,dn=CTMAIN[i].n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
+function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],bi=0,bd=1e18;for(var k=0;k<CTMAIN.length;k++){var dx=CTMAIN[k].x-c.x,dn=CTMAIN[k].n-c.n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=k;}}INVCT[i]=bi;}}   // cada inversor → su CT más cercano (SIN umbral)
 function invElec(i,min){var g=genModel(min),mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,vmp=(SPEC&&SPEC.vmpp)||42,impp=wmod/vmp,
   tcell=GENTAMB+g.poa/800*25,vir=Math.max(0,Math.min(1,g.poa/1000)),
   istr=impp*vir*(1+0.0004*(tcell-25)), vstr=mods*vmp*(1-0.0029*(tcell-25)), pstr=istr*vstr/1000,   // string = mód en serie; I≈Impp·irrad, V≈Vmpp·(−0,29%/°C)
   ns=INVSTR[i]||0, pdc=ns*pstr, idc=vstr>1?pdc*1000/vstr:0, pac=Math.max(0,Math.min(pdc*0.985,350)), vac=800, iac=pac*1000/(1.732*vac);   // AC 800 V trifásico, recorte 350 kW
   return{ns:ns,istr:istr,vstr:vstr,pstr:pstr,vdc:vstr,idc:idc,pdc:pdc,vac:vac,iac:iac,pac:pac,clip:pac>=349.5};}
-function highlightInv(i){if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}
-  if(!LAYOUT||!LAYOUT.invlab||!LAYOUT.invlab[i])return;computeSinks();var a=LAYOUT.invlab[i],ct=nearestPt(a.x,a.n,CTPTS).p,v=[];
-  for(var s=0;s<24;s++){var t0=s/24,t1=(s+1)/24,ax=a.x+(ct[0]-a.x)*t0,an=a.n+(ct[1]-a.n)*t0,bx=a.x+(ct[0]-a.x)*t1,bn=a.n+(ct[1]-a.n)*t1;v.push(ax,localElevY(ax,an)+0.6,-an,bx,localElevY(bx,bn)+0.6,-bn);}   // resalta el flujo de ESTE inversor a su CT
+function ctElec(c,min){var plv=0,nInv=0,clip=0;for(var i=0;i<INVCT.length;i++){if(INVCT[i]!==c)continue;var e=invElec(i,min);plv+=e.pac;nInv++;if(e.clip)clip++;}
+  var pmv=plv*0.99,vmv=30,imv=pmv>0?pmv/(1.732*vmv):0;return{nInv:nInv,plv:plv,pmv:pmv,vmv:vmv,imv:imv,clip:clip};}   // CT 0,8→30 kV (η 99%); I a 30 kV trifásico
+function subElec(min){var p=0,nCT=0;for(var c=0;c<CTMAIN.length;c++){var ce=ctElec(c,min);if(ce.nInv){p+=ce.pmv;nCT++;}}return{nCT:nCT,pmv:p,vmv:30,imv:p>0?p/(1.732*30):0};}
+function highlightLine(ax,an,bx,bn){if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}
+  var v=[];for(var s=0;s<24;s++){var t0=s/24,t1=(s+1)/24,x0=ax+(bx-ax)*t0,n0=an+(bn-an)*t0,x1=ax+(bx-ax)*t1,n1=an+(bn-an)*t1;v.push(x0,localElevY(x0,n0)+0.7,-n0,x1,localElevY(x1,n1)+0.7,-n1);}
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));selLine=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xffe08a}));scene.add(selLine);}
-function updateInvFicha(){if(INVSEL3==null)return;var f=$('invFicha');if(!f)return;var e=invElec(INVSEL3,curMin),lab=(LAYOUT.invlab[INVSEL3]&&LAYOUT.invlab[INVSEL3].s)||('I-'+INVSEL3);
-  f.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:14px">'+lab+'</b><span style="color:var(--accent);font-weight:700">SG350HX</span><span style="margin-left:auto;cursor:pointer;color:var(--tx2);font-size:15px" onclick="closeInvFicha()">✕</span></div>'
-   +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+e.ns+' strings</div>'
-   +'<div>'+e.istr.toFixed(1)+' A · '+e.vstr.toFixed(0)+' V · <b>'+e.pstr.toFixed(1)+' kW</b> <span style="color:var(--tx2)">/string</span></div>'
-   +'<div style="color:#9fd0ff;font-weight:600;margin-top:5px">Entrada DC</div>'
-   +'<div>'+e.vdc.toFixed(0)+' V · '+e.idc.toFixed(0)+' A · <b>'+e.pdc.toFixed(0)+' kW</b></div>'
-   +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida AC → CT</div>'
-   +'<div>'+e.vac+' V · '+e.iac.toFixed(0)+' A · <b>'+e.pac.toFixed(0)+' kW</b>'+(e.clip?' <span style="color:#ff8a80">· recorte</span>':'')+'</div>';}
-function selectInv(i){INVSEL3=i;if(GEN_KWP<=0)GEN_KWP=genKwp();ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();highlightInv(i);updateInvFicha();var f=$('invFicha');if(f)f.style.display='';});}
-function closeInvFicha(){INVSEL3=null;var f=$('invFicha');if(f)f.style.display='none';if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}}
+function fHdr(lab,sub,acc){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:14px">'+lab+'</b><span style="color:'+(acc||'var(--accent)')+';font-weight:700;font-size:11.5px">'+sub+'</span><span style="margin-left:auto;cursor:pointer;color:var(--tx2);font-size:15px" onclick="closeFicha()">✕</span></div>';}
+function updateFicha(){var f=$('invFicha');if(!f||!FICHA)return;
+  if(FICHA.t==='inv'){var e=invElec(FICHA.id,curMin),lab=(LAYOUT.invlab[FICHA.id]&&LAYOUT.invlab[FICHA.id].s)||('I-'+FICHA.id);
+    f.innerHTML=fHdr(lab,'SG350HX')
+      +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+e.ns+' strings</div><div>'+e.istr.toFixed(1)+' A · '+e.vstr.toFixed(0)+' V · <b>'+e.pstr.toFixed(1)+' kW</b> <span style="color:var(--tx2)">/string</span></div>'
+      +'<div style="color:#9fd0ff;font-weight:600;margin-top:5px">Entrada DC</div><div>'+e.vdc.toFixed(0)+' V · '+e.idc.toFixed(0)+' A · <b>'+e.pdc.toFixed(0)+' kW</b></div>'
+      +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida AC → CT</div><div>'+e.vac+' V · '+e.iac.toFixed(0)+' A · <b>'+e.pac.toFixed(0)+' kW</b>'+(e.clip?' <span style="color:#ff8a80">· recorte</span>':'')+'</div>';}
+  else if(FICHA.t==='ct'){var c=ctElec(FICHA.id,curMin);
+    f.innerHTML=fHdr(CTMAIN[FICHA.id].name,'Centro de transformación','#ffb060')
+      +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+c.nInv+' inversores'+(c.clip?' · <span style="color:#ff8a80">'+c.clip+' recortando</span>':'')+'</div><div>Σ entrada (0,8 kV): <b>'+(c.plv/1000).toFixed(2)+' MW</b></div>'
+      +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida MT → subestación</div><div>'+c.vmv+' kV · '+c.imv.toFixed(0)+' A · <b>'+(c.pmv/1000).toFixed(2)+' MW</b></div>';}
+  else if(FICHA.t==='sub'){var s2=subElec(curMin);
+    f.innerHTML=fHdr('Subestación','El Burgo I','#ff7ab0')
+      +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+s2.nCT+' CTs · planta completa</div>'
+      +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida MT → red</div><div>'+s2.vmv+' kV · '+s2.imv.toFixed(0)+' A · <b>'+(s2.pmv/1000).toFixed(2)+' MW</b></div>';}
+  f.style.display='';}
+function selectInv(i){FICHA={t:'inv',id:i};ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();computeSinks();var a=LAYOUT.invlab[i],ct=nearestPt(a.x,a.n,CTPTS).p;highlightLine(a.x,a.n,ct[0],ct[1]);updateFicha();});}
+function selectCT(c){FICHA={t:'ct',id:c};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();highlightLine(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);updateFicha();});}
+function selectSub(){FICHA={t:'sub'};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();if(selLine){scene.remove(selLine);selLine=null;}updateFicha();});}
+function closeFicha(){FICHA=null;var f=$('invFicha');if(f)f.style.display='none';if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}}
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   METEO_ANIM=[];
