@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v3.13</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.0</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -211,7 +211,7 @@ function initThree(){
   var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
   sun.shadow.radius=__hiShad?5:2;   // PENUMBRA PCFSoft: difumina ~5 téxeles → funde el "escalonado" del borde (la sombra de un panel de 6 cm es más fina que un téxel; sin radio el borde sale dentado y asimétrico). Radio en téxeles = independiente del zoom/mapSize
-  scene.add(new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45));scene.add(new THREE.AmbientLight(0xffffff,0.08));   // poco relleno → sombras marcadas
+  HEMI=new THREE.HemisphereLight(0xb6d2ff,0x33291a,0.45);scene.add(HEMI);AMB=new THREE.AmbientLight(0xffffff,0.08);scene.add(AMB);   // poco relleno → sombras marcadas; applySky los modula con la hora
   nodeGroup=new THREE.Group();scene.add(nodeGroup);labelGroup=new THREE.Group();labelGroup.visible=false;scene.add(labelGroup);
   buildSky();   // estrellas + luna (se encienden de noche)
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
@@ -220,7 +220,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky();animateMeteo(dt);genPulse(dt);renderer.render(scene,camera);})(performance.now());
+    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -274,16 +274,25 @@ function skyColor(U){
   for(var i=1;i<st.length;i++){if(U<=st[i][0]){var a=st[i-1],b=st[i],f=(U-a[0])/(b[0]-a[0]);return new THREE.Color(a[1]).lerp(new THREE.Color(b[1]),f);}}
   return new THREE.Color(st[st.length-1][1]);
 }
-function applySky(U){ if(!scene)return; var c=skyColor(U);
+function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN&&SUN._dir?SUN._dir:{E:0,U:U,N:1};
   if(scene.background&&scene.background.copy)scene.background.copy(c); else scene.background=c;
-  if(scene.fog)scene.fog.color.copy(c);
-  if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));}
+  if(scene.fog){scene.fog.color.copy(c);if(cl>0.03)scene.fog.color.lerp(new THREE.Color(0x8b929c),cl*0.55*Math.max(0,Math.min(1,(U+0.05)/0.3)));}   // día nublado: la niebla se agrisa
+  if(skyMat){skyMat.uniforms.uSun.value.set(dir.E,dir.U,-dir.N).normalize();skyMat.uniforms.uU.value=U;skyMat.uniforms.uCloud.value=cl;}   // el domo sigue al sol y a la nubosidad
+  if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));
+    if(U<-0.02){SUN._ldir={E:-dir.E,U:Math.max(0.18,-dir.U),N:-dir.N};SUN._baseInt=0.22;SUN.color.set(0x9fb6e6);}   // NOCHE: la luz pasa a ser la LUNA (anti-solar, azulada, tenue) → sombras lunares suaves
+    else{SUN._ldir=null;SUN._baseInt=(0.7+2.2*Math.max(0,U))*(1-0.72*cl);SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));}   // día: cálido a sol bajo; las nubes tapan
+    SUN.intensity=SUN._baseInt;}
+  if(HEMI)HEMI.intensity=0.10+0.42*Math.max(0,Math.min(1,(U+0.05)/0.5));   // el relleno acompaña al sol (noches oscuras de verdad)
+  if(AMB)AMB.intensity=0.03+0.06*Math.max(0,Math.min(1,(U+0.05)/0.4));
+  if(renderer&&THREE.ACESFilmicToneMapping)renderer.toneMappingExposure=0.82+0.38*Math.max(0,Math.min(1,(U+0.08)/0.4));   // exposición cinematográfica: sube al amanecer, plena de día
+  if(sunHalo){var ho=(0.22+0.55*Math.max(0,U))*(1-0.9*cl);sunHalo.visible=U>-0.03&&ho>0.02;sunHalo.material.opacity=ho;}
   var nf=Math.max(0,Math.min(1,-U/0.14));   // factor noche: 0 con el sol sobre el horizonte, 1 bien entrada la noche
-  if(starMat){starMat.opacity=nf*0.95;starGroup.visible=nf>0.02;}
-  if(moonMat){moonMat.opacity=nf*0.92;moonMesh.visible=nf>0.02;} }
-function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); SUN.intensity=0.7+2.2*Math.max(0,SUN._dir.U); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }
+  if(starMat){starMat.opacity=nf*0.95*(1-0.8*cl);starGroup.visible=nf>0.02;}   // las nubes tapan las estrellas
+  if(moonMat){moonMat.opacity=nf*0.92;moonMesh.visible=nf>0.02;}
+  updateEnvMap(); }   // reflejos del cielo en vidrio/acero, regenerados solo cuando cambia el sol/nubes
+function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }   // la intensidad la fija applySky (nubes/luna)
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
-function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._dir, sc=SUN.shadow.camera;
+function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
   var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
   sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
@@ -386,6 +395,7 @@ async function build(){
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
   var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#2e3b2a';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
+  addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
   var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
   terrain.userData.baseMat=mat;terrain.userData.reliefMat=reliefMat;
@@ -466,6 +476,7 @@ function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
+  if(THREE.MeshPhysicalMaterial)mats.glass=new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:0.24,metalness:0.05,clearcoat:0.9,clearcoatRoughness:0.16,envMapIntensity:1.35});   // VIDRIO REAL: clearcoat + reflejo del cielo (PMREM) → los módulos destellan según el sol/nubes
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
@@ -649,7 +660,73 @@ function animateMeteo(dt){ metT+=dt;
 }
 // cielo nocturno: campo de estrellas (dome centrado en cámara) + luna anti-solar; opacidad por la altura del sol (en applySky)
 var starGroup=null,starMat=null,moonMesh=null,moonMat=null,_skyR=4000,_moonV=new THREE.Vector3();
+/* ===== CIELO FÍSICO (ultra realismo, 100% procedural/offline) =====
+   Domo con shader: gradiente Rayleigh-ish día/atardecer/noche, banda cálida hacia el azimut del sol,
+   disco solar + halo Mie, y NUBES fbm ligadas al slider de nubosidad (deriva con el tiempo).
+   Además alimenta un environment map (PMREM) → reflejos reales en vidrio/acero. */
+var skyDome=null,skyMat=null,sunHalo=null,_skyT=0,HEMI=null,AMB=null,SKY_MOB=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+var _pmrem=null,_envRT=null,_envScene=null,_lastEnvU=99,_lastEnvC=-1,_lastEnvT=0,_sunW=new THREE.Vector3(0,1,0);
+function buildSkyDome(){
+  skyMat=new THREE.ShaderMaterial({
+    uniforms:{uSun:{value:new THREE.Vector3(0,1,0)},uU:{value:0.3},uCloud:{value:0},uTime:{value:0}},
+    vertexShader:'varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader:[
+      'precision highp float;varying vec3 vDir;uniform vec3 uSun;uniform float uU;uniform float uCloud;uniform float uTime;',
+      'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}',
+      'float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}',
+      'float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<4;i++){v+=a*noise(p);p*=2.03;a*=0.5;}return v;}',
+      'void main(){vec3 dir=normalize(vDir);float h=clamp(dir.y,0.0,1.0);',
+      ' float tDusk=smoothstep(-0.14,0.02,uU),tDay=smoothstep(0.02,0.32,uU);',
+      ' vec3 zen=mix(mix(vec3(0.010,0.016,0.038),vec3(0.10,0.13,0.30),tDusk),vec3(0.216,0.462,0.808),tDay);',           // cénit: noche → crepúsculo → día
+      ' vec3 hor=mix(mix(vec3(0.043,0.060,0.100),vec3(0.94,0.52,0.24),tDusk),vec3(0.660,0.810,0.940),tDay);',           // horizonte con bruma
+      ' vec3 col=mix(hor,zen,pow(h,0.5));',
+      ' vec2 sAz=normalize(uSun.xz+vec2(1e-4));vec2 dAz=normalize(dir.xz+vec2(1e-4));float az=max(dot(sAz,dAz),0.0);',
+      ' float duskW=tDusk*(1.0-tDay);col+=vec3(0.55,0.22,0.06)*pow(az,3.0)*pow(1.0-h,2.0)*duskW*1.5;',                   // banda naranja hacia el sol al amanecer/atardecer
+      ' float mu=clamp(dot(dir,uSun),-1.0,1.0);float sunVis=smoothstep(-0.08,0.0,uU);float cc=1.0-0.85*uCloud;',
+      ' vec3 sunCol=mix(vec3(1.0,0.45,0.15),vec3(1.0,0.96,0.86),tDay);',
+      ' col+=sunCol*(smoothstep(0.99955,0.99993,mu)*3.2+pow(max(mu,0.0),120.0)*0.35+pow(max(mu,0.0),8.0)*0.08)*sunVis*cc;', // disco solar + halo Mie (atenuados por nubes)
+      ' if(dir.y>0.015){vec2 cuv=dir.xz/(dir.y+0.22)*0.5+vec2(uTime*0.006,uTime*0.0023);float n=fbm(cuv*1.6);',
+      '  float e0=1.0-uCloud*1.15,cf=smoothstep(e0,e0+0.12+0.15*uCloud,n)*smoothstep(0.015,0.12,dir.y);',
+      '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(0.98,0.62,0.45),tDusk),vec3(1.02,1.02,1.05),tDay);',                  // nubes: blancas de día, encendidas al atardecer, oscuras de noche
+      '  float th=smoothstep(0.0,0.9,(n-e0)/max(0.12,uCloud));col=mix(col,mix(cb,cb*0.55,th),cf*0.92);}',
+      ' gl_FragColor=vec4(col,1.0);}'
+    ].join('\n'),
+    side:THREE.BackSide,depthWrite:false});
+  skyDome=new THREE.Mesh(new THREE.SphereGeometry(4300,48,24),skyMat);skyDome.frustumCulled=false;skyDome.renderOrder=-3;scene.add(skyDome);
+  var hc=document.createElement('canvas');hc.width=hc.height=256;var hg=hc.getContext('2d');   // halo/glare del sol (sprite aditivo)
+  var gr=hg.createRadialGradient(128,128,0,128,128,128);gr.addColorStop(0,'rgba(255,244,214,0.9)');gr.addColorStop(0.22,'rgba(255,214,150,0.38)');gr.addColorStop(0.55,'rgba(255,190,120,0.10)');gr.addColorStop(1,'rgba(255,180,110,0)');
+  hg.fillStyle=gr;hg.fillRect(0,0,256,256);
+  sunHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(hc),transparent:true,opacity:0,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+  sunHalo.scale.set(950,950,1);sunHalo.renderOrder=-1;sunHalo.visible=false;scene.add(sunHalo);
+}
+function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.height=256;var g=c.getContext('2d'),im=g.createImageData(256,256),d=im.data;   // ruido de suelo (media ~0,77 → no altera el brillo global al multiplicar ×1,3)
+  for(var i=0;i<d.length;i+=4){var v=160+Math.random()*72;d[i]=v;d[i+1]=v;d[i+2]=v;d[i+3]=255;}
+  g.putImageData(im,0,0);g.globalAlpha=0.10;g.fillStyle='#6b5a3f';   // manchas orgánicas grandes (calvas/matas)
+  for(var k=0;k<46;k++){g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,6+Math.random()*26,4+Math.random()*18,Math.random()*3.14,0,6.3);g.fill();}
+  var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
+}
+function addTerrainDetail(mat){ if(!mat||!mat.map)return;   // el satélite se pixela de cerca → multiplica un ruido de detalle que aparece al acercarte (<~700 m) y desaparece de lejos
+  var dtx=makeDetailTex();
+  mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
+    sh.fragmentShader=sh.fragmentShader
+      .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dF=smoothstep(700.0,90.0,length(vViewPosition));vec3 det=texture2D(uDet,vUv*170.0).rgb;diffuseColor.rgb*=mix(vec3(1.0),det*1.30,0.5*dF);\n#endif'); };
+  mat.needsUpdate=true;
+}
+function updateEnvMap(){ if(!renderer||!THREE.PMREMGenerator||!skyMat||!SUN||!SUN._dir)return;   // reflejos reales: PMREM del propio cielo → scene.environment (vidrio/acero brillan de verdad)
+  var U=SUN._dir.U,now=performance.now();
+  if(Math.abs(U-_lastEnvU)<(SKY_MOB?0.05:0.015)&&Math.abs(GENCLOUD-_lastEnvC)<0.04&&_lastEnvT)return;   // regenera SOLO si el sol/nubes cambian de verdad (throttle)
+  if(_lastEnvT&&now-_lastEnvT<(SKY_MOB?900:350))return;
+  _lastEnvU=U;_lastEnvC=GENCLOUD;_lastEnvT=now;
+  try{
+    if(!_pmrem)_pmrem=new THREE.PMREMGenerator(renderer);
+    if(!_envScene){_envScene=new THREE.Scene();_envScene.add(new THREE.Mesh(new THREE.SphereGeometry(60,32,16),skyMat));}
+    var rt=_pmrem.fromScene(_envScene,0,1,200);
+    scene.environment=rt.texture;if(_envRT)_envRT.dispose();_envRT=rt;
+  }catch(e){}
+}
 function buildSky(){
+  buildSkyDome();
   var N=1400,p=new Float32Array(N*3);
   for(var i=0;i<N;i++){var th=Math.random()*6.2832,ph=Math.acos(Math.random()*0.98+0.02),r=_skyR;   // hemisferio superior (no malgastar estrellas bajo tierra)
     p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.cos(ph)*0.9+40;p[i*3+2]=r*Math.sin(ph)*Math.sin(th);}
@@ -659,8 +736,14 @@ function buildSky(){
   moonMat=new THREE.MeshBasicMaterial({color:0xeef2f8,transparent:true,opacity:0,fog:false});
   moonMesh=new THREE.Mesh(new THREE.SphereGeometry(70,24,16),moonMat);moonMesh.frustumCulled=false;moonMesh.renderOrder=-1;moonMesh.visible=false;scene.add(moonMesh);
 }
-function animateSky(){
-  if(starGroup)starGroup.position.copy(camera.position);                                   // dome "infinito": sigue a la cámara (sin paralaje)
+function animateSky(dt){ dt=dt||0;_skyT+=dt;
+  if(skyDome){skyDome.position.copy(camera.position);if(skyMat)skyMat.uniforms.uTime.value=_skyT;}   // domo "infinito" + nubes derivando
+  if(starGroup)starGroup.position.copy(camera.position);
+  if(SUN&&SUN._dir&&sunHalo){var sd=SUN._dir;_sunW.set(sd.E,sd.U,-sd.N).normalize();
+    sunHalo.position.set(camera.position.x+_sunW.x*3900,camera.position.y+_sunW.y*3900,camera.position.z+_sunW.z*3900);}   // glare pegado al disco del shader
+  if(SUN&&SUN._baseInt!=null){var fl=1;   // nubes pasando: la luz del sol "respira" (parpadeo lento ∝ nubosidad)
+    if(GENCLOUD>0.03&&!SUN._ldir)fl=1-0.30*GENCLOUD*(0.5+0.5*Math.sin(_skyT*0.35)*Math.sin(_skyT*0.13+1.7));
+    SUN.intensity=SUN._baseInt*fl;}
   if(moonMesh&&SUN&&SUN._dir){var d=SUN._dir,R=3600; _moonV.set(-d.E,-d.U,d.N); if(_moonV.lengthSq()<1e-6)_moonV.set(0,1,0); _moonV.normalize();
     moonMesh.position.set(camera.position.x+_moonV.x*R,camera.position.y+_moonV.y*R,camera.position.z+_moonV.z*R); }   // luna opuesta al sol (sale al ponerse el sol)
 }
@@ -1155,7 +1238,7 @@ $('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};            
 $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};                  // alcance de cámaras CCTV
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
-$('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}};   // nubosidad
+$('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';syncSun(curMin);if(genOn){updateGenGlow();updateGenHUD();}};   // nubosidad: también pinta NUBES en el cielo y atenúa la luz/reflejos
 $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}};                  // temperatura ambiente
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
