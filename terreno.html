@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.4</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.5</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -685,30 +685,33 @@ function buildSkyDome(){
       ' vec3 col=mix(hor,zen,pow(h,0.5));',
       ' vec2 sAz=normalize(uSun.xz+vec2(1e-4));vec2 dAz=normalize(dir.xz+vec2(1e-4));float az=max(dot(sAz,dAz),0.0);',
       ' float duskW=tDusk*(1.0-tDay);col+=vec3(0.55,0.22,0.06)*pow(az,3.0)*pow(1.0-h,2.0)*duskW*1.5;',                   // banda naranja hacia el sol al amanecer/atardecer
-      ' col=mix(col,mix(vec3(0.030,0.040,0.055),vec3(0.30,0.32,0.35),tDay),smoothstep(-0.02,-0.22,dir.y));',              // bajo el horizonte: bruma de suelo (gris), no azul cielo flotante
+      ' col=mix(col,hor*0.52,smoothstep(-0.02,-0.22,dir.y));',                                                            // bajo el horizonte: bruma con el TONO del horizonte actual (beige día, ámbar tarde, oscura noche)
       ' float mu=clamp(dot(dir,uSun),-1.0,1.0);float sunVis=smoothstep(-0.08,0.0,uU);float cc=1.0-0.85*uCloud;',
       ' vec3 sunCol=mix(vec3(1.0,0.45,0.15),vec3(1.0,0.96,0.86),tDay);',
       ' col+=sunCol*(smoothstep(0.99955,0.99993,mu)*3.2+pow(max(mu,0.0),120.0)*0.35+pow(max(mu,0.0),8.0)*0.08)*sunVis*cc;', // disco solar + halo Mie (atenuados por nubes)
-      ' if(dir.y>0.015){vec2 cuv=dir.xz/(dir.y+0.20)*0.42+vec2(uTime*0.005,uTime*0.002);',
-      '  float m=fbm(cuv*0.5+3.7);float n=fbm(cuv*1.8+m*1.4);',                                                          // máscara de cúmulos grandes + detalle con warp (formas orgánicas)
-      '  float d=n*(0.55+0.45*m)-(1.0-uCloud*1.12);',
-      '  float cf=smoothstep(0.02,0.30,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.02,0.55,d);',
-      '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.06,1.06,1.08),tDay);',                   // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
-      '  col=mix(col,mix(cb,cb*0.62,th),cf*0.95);}',
+      ' if(dir.y>0.015){vec2 cuv=dir.xz/(dir.y+0.34)*0.62+vec2(uTime*0.005,uTime*0.002);',                                // +0.34: menos estiramiento en el horizonte (adiós vetas)
+      '  float m=fbm(cuv*0.55+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // cúmulos grandes + detalle con warp
+      '  float d=n*(0.45+0.55*m)-(1.0-uCloud*1.12);',
+      '  float cf=smoothstep(0.02,0.26,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.02,0.50,d);',
+      '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.07,1.07,1.09),tDay);',                    // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
+      '  col=mix(col,mix(cb,cb*0.55,th),cf*0.96);}',
       ' gl_FragColor=vec4(col,1.0);}'
     ].join('\n'),
     side:THREE.BackSide,depthWrite:false});
-  skyDome=new THREE.Mesh(new THREE.SphereGeometry(4300,48,24),skyMat);skyDome.frustumCulled=false;skyDome.renderOrder=-3;scene.add(skyDome);
+  skyDome=new THREE.Mesh(new THREE.SphereGeometry(4300,96,48),skyMat);skyDome.frustumCulled=false;skyDome.renderOrder=-3;scene.add(skyDome);
   var hc=document.createElement('canvas');hc.width=hc.height=256;var hg=hc.getContext('2d');   // halo/glare del sol (sprite aditivo)
   var gr=hg.createRadialGradient(128,128,0,128,128,128);gr.addColorStop(0,'rgba(255,244,214,0.9)');gr.addColorStop(0.22,'rgba(255,214,150,0.38)');gr.addColorStop(0.55,'rgba(255,190,120,0.10)');gr.addColorStop(1,'rgba(255,180,110,0)');
   hg.fillStyle=gr;hg.fillRect(0,0,256,256);
   sunHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(hc),transparent:true,opacity:0,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
   sunHalo.scale.set(950,950,1);sunHalo.renderOrder=-1;sunHalo.visible=false;scene.add(sunHalo);
 }
-function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.height=256;var g=c.getContext('2d'),im=g.createImageData(256,256),d=im.data;   // ruido de suelo (media ~0,77 → no altera el brillo global al multiplicar ×1,3)
-  for(var i=0;i<d.length;i+=4){var v=160+Math.random()*72;d[i]=v;d[i+1]=v;d[i+2]=v;d[i+3]=255;}
-  g.putImageData(im,0,0);g.globalAlpha=0.10;g.fillStyle='#6b5a3f';   // manchas orgánicas grandes (calvas/matas)
-  for(var k=0;k<46;k++){g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,6+Math.random()*26,4+Math.random()*18,Math.random()*3.14,0,6.3);g.fill();}
+function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.height=256;var g=c.getContext('2d');   // estructura que SOBREVIVE a los mips: elipses grandes con contraste (el ruido por-píxel muere en el primer mip)
+  g.fillStyle='#bdbdbd';g.fillRect(0,0,256,256);
+  for(var k=0;k<420;k++){var big=k<160;g.globalAlpha=big?0.22:0.20;g.fillStyle=(k%2)?'#3f382c':'#f0ead8';   // capas de manchas oscuras/claras solapadas (~10–70 px)
+    var rx=big?(24+Math.random()*46):(6+Math.random()*18);
+    g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rx,rx*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
+  g.globalAlpha=0.30;for(var s=0;s<1400;s++){g.fillStyle=(s%2)?'#55503f':'#e5e0cf';var r=1+Math.random()*2.5;g.beginPath();g.arc(Math.random()*256,Math.random()*256,r,0,6.3);g.fill();}   // moteado fino (primerísimos planos)
+  g.globalAlpha=1;
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
 function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactivado (v4.4): era inocente — el culpable del negro fue el PMREM. Solo escritorio.
@@ -716,7 +719,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dF=smoothstep(800.0,90.0,length(vViewPosition));vec3 det=texture2D(uDet,vUv*200.0).rgb;diffuseColor.rgb*=mix(vec3(1.0),det*1.30,0.58*dF);\n#endif'); };
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=smoothstep(320.0,35.0,dd);float dM=smoothstep(2600.0,150.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.35,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.35,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m dominantes a media distancia + grano ~2,5 m de cerca
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
@@ -735,10 +738,11 @@ function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la esc
 // ===== REFLEJOS SEGUROS (opt-in): cubemap construido en CPU (6 canvas con el gradiente del cielo actual).
 // Sin PMREM ni render targets float → no puede ennegrecer/colgar ninguna GPU. Se regenera al cambiar sol/nubes.
 var REFL_ON=false,reflTex=null,_reflU=99,_reflC=-1;
-function _reflFace(zen,hor,gnd,kind){ var c=document.createElement('canvas');c.width=c.height=64;var g=c.getContext('2d');
-  if(kind==='top'){g.fillStyle=zen;g.fillRect(0,0,64,64);}
-  else if(kind==='bot'){g.fillStyle=gnd;g.fillRect(0,0,64,64);}
-  else{var gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,zen);gr.addColorStop(0.60,hor);gr.addColorStop(0.78,gnd);gr.addColorStop(1,gnd);g.fillStyle=gr;g.fillRect(0,0,64,64);}
+var _RFS=128;   // tamaño de cara del cubemap de reflejos (128: el sol sobrevive a los mips y se ve el destello)
+function _reflFace(zen,hor,gnd,kind){ var c=document.createElement('canvas');c.width=c.height=_RFS;var g=c.getContext('2d');
+  if(kind==='top'){g.fillStyle=zen;g.fillRect(0,0,_RFS,_RFS);}
+  else if(kind==='bot'){g.fillStyle=gnd;g.fillRect(0,0,_RFS,_RFS);}
+  else{var gr=g.createLinearGradient(0,0,0,_RFS);gr.addColorStop(0,zen);gr.addColorStop(0.60,hor);gr.addColorStop(0.78,gnd);gr.addColorStop(1,gnd);g.fillStyle=gr;g.fillRect(0,0,_RFS,_RFS);}
   return c; }
 function _paintSunCube(faces,D,U,cl){ if(U<-0.03)return;   // pinta el SOL en la cara del cubemap donde cae su dirección → el destello especular que hace VISIBLE el reflejo
   var warm=Math.max(0,Math.min(1,(U+0.05)/0.35)),a=(1-0.85*cl);
@@ -750,9 +754,9 @@ function _paintSunCube(faces,D,U,cl){ if(U<-0.03)return;   // pinta el SOL en la
          function(d){var k=d.z;return k>0.02?[d.x/k,-d.y/k]:null;},    // +Z
          function(d){var k=-d.z;return k>0.02?[-d.x/k,-d.y/k]:null;}]; // -Z
   for(var i=0;i<6;i++){var st=P[i](D);if(!st)continue;var s=st[0],t=st[1];if(Math.abs(s)>1.5||Math.abs(t)>1.5)continue;
-    var g=faces[i].getContext('2d'),x=(s+1)/2*64,y=(t+1)/2*64;
-    var gr=g.createRadialGradient(x,y,0,x,y,22);gr.addColorStop(0,col+(0.95*a)+')');gr.addColorStop(0.22,col+(0.55*a)+')');gr.addColorStop(1,col+'0)');
-    g.globalCompositeOperation='lighter';g.fillStyle=gr;g.fillRect(0,0,64,64);g.globalCompositeOperation='source-over';}
+    var g=faces[i].getContext('2d'),x=(s+1)/2*_RFS,y=(t+1)/2*_RFS;
+    var gr=g.createRadialGradient(x,y,0,x,y,_RFS*0.30);gr.addColorStop(0,col+(1.0*a)+')');gr.addColorStop(0.10,col+(0.85*a)+')');gr.addColorStop(0.30,col+(0.30*a)+')');gr.addColorStop(1,col+'0)');
+    g.globalCompositeOperation='lighter';g.fillStyle=gr;g.fillRect(0,0,_RFS,_RFS);g.globalCompositeOperation='source-over';}
 }
 function buildReflTex(){ var U=SUN&&SUN._dir?SUN._dir.U:0.4,cl=GENCLOUD||0,sd=SUN&&SUN._dir?SUN._dir:{E:0,U:1,N:0};
   var hc=skyColor(U),z=hc.clone().multiplyScalar(0.62),gd=new THREE.Color(0x3a4046).multiplyScalar(0.35+0.65*Math.max(0,Math.min(1,(U+0.05)/0.5)));
@@ -776,7 +780,7 @@ function buildSky(){
   moonMesh=new THREE.Mesh(new THREE.SphereGeometry(70,24,16),moonMat);moonMesh.frustumCulled=false;moonMesh.renderOrder=-1;moonMesh.visible=false;scene.add(moonMesh);
 }
 function animateSky(dt){ dt=dt||0;_skyT+=dt;
-  if(skyDome){skyDome.position.copy(camera.position);if(skyMat)skyMat.uniforms.uTime.value=_skyT;}   // domo "infinito" + nubes derivando
+  if(skyDome){skyDome.position.copy(camera.position);if(skyMat)skyMat.uniforms.uTime.value=_skyT%1000;}   // domo "infinito" + nubes derivando
   if(starGroup)starGroup.position.copy(camera.position);
   if(SUN&&SUN._dir&&sunHalo){var sd=SUN._dir;_sunW.set(sd.E,sd.U,-sd.N).normalize();
     sunHalo.position.set(camera.position.x+_sunW.x*3900,camera.position.y+_sunW.y*3900,camera.position.z+_sunW.z*3900);}   // glare pegado al disco del shader
@@ -1304,9 +1308,13 @@ $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};    
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
 $('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';syncSun(curMin);if(genOn){updateGenGlow();updateGenHUD();}};   // nubosidad: también pinta NUBES en el cielo y atenúa la luz/reflejos
 $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}};                  // temperatura ambiente
+var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
-  if(REFL_ON){if(glassM&&glassM.envMapIntensity!==undefined)glassM.envMapIntensity=2.2;updateRefl(true);}   // 2.2: el vidrio tiene F0 bajo (dieléctrico) — sin empujón el reflejo no se ve
-  else{scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;}};
+  if(REFL_ON){ if(glassM){_gPrev={r:glassM.roughness,m:glassM.metalness,e:glassM.envMapIntensity};
+      glassM.roughness=0.08;glassM.metalness=0.35;glassM.envMapIntensity=2.6;glassM.needsUpdate=true;}   // vidrio ESPEJADO mientras está ON (el FV real refleja mucho en ángulo); se restaura al apagar
+    updateRefl(true);}
+  else{ scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;
+    if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
 $('calBtn').onclick=function(){calibrate();};
 $('repLink').href='informe.html?planta='+PLANT;
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
