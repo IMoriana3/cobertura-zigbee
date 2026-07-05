@@ -2,9 +2,9 @@
    HTML → NETWORK-FIRST (siempre la última versión cuando hay red; cae a caché sin conexión).
    Resto de assets propios → stale-while-revalidate (rápido + se actualizan en segundo plano).
    Teselas (satélite/DEM, cross-origin) → directas a red (no se cachean). */
-var CACHE = 'cobertura-v2';
+var CACHE = 'cobertura-v3';
 var SHELL = [
-  './', 'index.html', 'terreno.html', 'plano.html', 'crear.html', 'nuevo.html',
+  './', 'index.html', 'terreno.html', 'plano.html', 'crear.html', 'nuevo.html', 'informe.html',
   'lib/three.min.js', 'lib/OrbitControls.js', 'lib/GLTFLoader.js',
   'app-icon.svg', 'favicon.svg', 'manifest.webmanifest'
 ];

@@ -1,0 +1,144 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Informe de planta — Factiun</title>
+<style>
+  /* Tema CLARO siempre: pensado para imprimir/guardar como PDF */
+  :root{--ink:#1c2430;--ink2:#5a6673;--line:#d7dde4;--acc:#0b7a4b;--warn:#b3541e}
+  html,body{margin:0;background:#f2f4f6;color:var(--ink);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+  .page{max-width:880px;margin:18px auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:28px 34px;box-shadow:0 2px 10px rgba(20,30,40,.06)}
+  h1{font-size:21px;margin:0}h2{font-size:15px;margin:22px 0 8px;border-bottom:2px solid var(--line);padding-bottom:4px}
+  .sub{color:var(--ink2);font-size:12.5px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
+  .kpi{border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .kpi b{display:block;font-size:19px}.kpi span{color:var(--ink2);font-size:11.5px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:5px 8px;text-align:left}th{background:#eef1f4}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .ctrl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0 2px;font-size:12.5px;color:var(--ink2)}
+  .ctrl input{font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:6px}
+  .btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+  .foot{color:var(--ink2);font-size:11px;margin-top:22px;display:flex;justify-content:space-between}
+  .err{color:#a33}
+  @media print{ body{background:#fff} .page{border:0;box-shadow:none;margin:0;border-radius:0;max-width:none} .noprint{display:none!important} }
+</style></head><body>
+<div class="page">
+  <div style="display:flex;align-items:baseline;gap:12px">
+    <h1 id="tit">Informe de planta</h1><span class="sub" id="fecha"></span>
+    <span style="margin-left:auto;color:var(--acc);font-weight:700">Factiun</span>
+  </div>
+  <div class="sub" id="src">Datos: implantación y redes extraídas del DWG del proyecto · modelo solar offline (cielo-claro Meinel + seguidor + térmico)</div>
+
+  <h2>Resumen</h2>
+  <div class="kpis" id="kpis"></div>
+
+  <h2>Producción del día (modelo)</h2>
+  <div class="ctrl noprint">
+    <label>Fecha <input type="date" id="dia"></label>
+    <label>Nubosidad <input type="range" id="nub" min="0" max="100" value="0" style="width:110px"> <span id="nubV">0%</span></label>
+    <label>T amb <input type="number" id="tamb" value="22" style="width:52px"> °C</label>
+    <span id="calNote"></span>
+  </div>
+  <svg id="curva" viewBox="0 0 860 250" style="width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fbfcfd"></svg>
+  <div class="sub" id="curvaTxt" style="margin-top:5px"></div>
+
+  <h2>Unifilar simplificado</h2>
+  <svg id="uni" viewBox="0 0 860 205" style="width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fbfcfd"></svg>
+
+  <h2>Redes de planta (medidas del DWG)</h2>
+  <table id="redes"><thead><tr><th>Red</th><th class="num">Elementos</th><th class="num">Longitud total</th></tr></thead><tbody></tbody></table>
+
+  <div class="foot"><span>Generado por la plataforma Factiun · datos DWG + modelo offline (divulgativo; calibrable con SolarGPT)</span><span id="stamp"></span></div>
+  <div class="noprint" style="margin-top:16px;display:flex;gap:10px">
+    <button class="btn" onclick="print()">🖨️ Imprimir / guardar PDF</button>
+    <a href="terreno.html?planta=elburgo" style="align-self:center">← volver al 3D</a>
+  </div>
+</div>
+<script>
+"use strict";
+var DEG=Math.PI/180;
+function $(id){return document.getElementById(id);}
+var Q=new URLSearchParams(location.search),PLANT=Q.get('planta')||'elburgo';
+var COD={elburgo:24002,ayora:24025,sanjose:24019};
+var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');return (m&&m[String(COD[PLANT])])||null;}catch(e){return null;}})();
+var CAL=(function(){try{return JSON.parse(localStorage.getItem('factiun_cal_'+(COD[PLANT]||PLANT))||'null');}catch(e){return null;}})();
+var L=null,NET=null,lat0=41.576,lon0=-0.798,doy=172,CLOUD=0,TAMB=22,KWP=0,NSTR=0;
+
+/* ===== mismo modelo solar offline que el 3D (compacto) ===== */
+function sunU(min){var lat=lat0*DEG,decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
+  var B=2*Math.PI*(doy-81)/364,EoT=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B);
+  var H=((min-120+lon0*4+EoT)/60-12)*15*DEG;
+  var sa=Math.sin(lat)*Math.sin(decl)+Math.cos(lat)*Math.cos(decl)*Math.cos(H),el=Math.asin(Math.max(-1,Math.min(1,sa))),ce=Math.cos(el)||1e-6;
+  var az=Math.atan2(-Math.cos(decl)*Math.sin(H)/ce,(Math.sin(decl)-Math.sin(lat)*sa)/(Math.cos(lat)*ce));
+  return {E:Math.cos(el)*Math.sin(az),U:Math.sin(el)};}
+function acKW(min){var sv=sunU(min),U=sv.U;if(U<=0.005)return 0;
+  var AM=1/Math.max(0.05,U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678))*(1-0.78*CLOUD),dhi=0.10*1361*U*(1-0.5*CLOUD);
+  var R=(U<=0.02)?0:-Math.atan2(sv.E,U),th=Math.max(-55,Math.min(55,R/DEG))*DEG;
+  var cosAOI=Math.max(0,Math.sin(th)*sv.E+Math.cos(th)*U),poa=Math.max(0,dni*cosAOI+dhi);
+  var tc=TAMB+poa/800*25,der=1+(-0.0035)*(tc-25);
+  return Math.max(0,Math.min(KWP*(poa/1000)*der*0.95*0.985,KWP/1.25));}
+function calF(){return (CAL&&isFinite(CAL.f))?CAL.f:1;}
+
+function segLen(pls){var s=0;(pls||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++)s+=Math.hypot(pl[i+1][0]-pl[i][0],pl[i+1][1]-pl[i][1]);});return s;}
+function fmtKm(m){return m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m';}
+
+function drawCurve(){var svg=$('curva'),W=860,H=250,px=46,py=18,iw=W-px-14,ih=H-py-34,f=calF();
+  var pts=[],mx=0,e=0;for(var m=0;m<1440;m+=10){var p=acKW(m)*f;pts.push([m,p]);if(p>mx)mx=p;e+=p/6;}
+  mx=Math.max(mx,1);var mwh=e/1000;
+  var s='<line x1="'+px+'" y1="'+(py+ih)+'" x2="'+(px+iw)+'" y2="'+(py+ih)+'" stroke="#8a94a0"/><line x1="'+px+'" y1="'+py+'" x2="'+px+'" y2="'+(py+ih)+'" stroke="#8a94a0"/>';
+  for(var h=0;h<=24;h+=3){var x=px+iw*h/24;s+='<line x1="'+x+'" y1="'+(py+ih)+'" x2="'+x+'" y2="'+(py+ih+4)+'" stroke="#8a94a0"/><text x="'+x+'" y="'+(py+ih+16)+'" font-size="10" fill="#5a6673" text-anchor="middle">'+h+'h</text>';}
+  for(var gv=0;gv<=1;gv+=0.5){var gy=py+ih-ih*gv;s+='<line x1="'+px+'" y1="'+gy+'" x2="'+(px+iw)+'" y2="'+gy+'" stroke="#e5e9ee"/><text x="'+(px-6)+'" y="'+(gy+3)+'" font-size="10" fill="#5a6673" text-anchor="end">'+(mx*gv/1000).toFixed(1)+'</text>';}
+  s+='<text x="12" y="'+(py+8)+'" font-size="10" fill="#5a6673">MW</text>';
+  var d='';pts.forEach(function(p,i){var x=px+iw*p[0]/1440,y=py+ih-ih*(p[1]/mx);d+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
+  s+='<path d="'+d+' L'+(px+iw)+' '+(py+ih)+' L'+px+' '+(py+ih)+' Z" fill="rgba(11,122,75,.14)"/><path d="'+d+'" fill="none" stroke="#0b7a4b" stroke-width="2"/>';
+  svg.innerHTML=s;
+  $('curvaTxt').textContent='Energía del día: '+mwh.toFixed(1)+' MWh · pico '+(mx/1000).toFixed(2)+' MW · FC '+(KWP?(mwh*1000/(KWP*24)*100).toFixed(0):'—')+'%'+(CAL?' · calibrado SolarGPT (clima ×'+CAL.f+')':' · cielo-claro sin calibrar');}
+
+function drawUni(nInvN,nInvS){var svg=$('uni');
+  function box(x,y,w,h,t1,t2,col){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="7" fill="#fff" stroke="'+(col||'#8a94a0')+'" stroke-width="1.5"/><text x="'+(x+w/2)+'" y="'+(y+h/2-3)+'" font-size="11.5" font-weight="700" fill="#1c2430" text-anchor="middle">'+t1+'</text><text x="'+(x+w/2)+'" y="'+(y+h/2+12)+'" font-size="10" fill="#5a6673" text-anchor="middle">'+t2+'</text>';}
+  function ln(x1,y1,x2,y2){return '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#0b7a4b" stroke-width="2" marker-end="url(#f)"/>';}
+  var s='<defs><marker id="f" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0L7 3L0 6Z" fill="#0b7a4b"/></marker></defs>';
+  s+=box(14,72,150,52,NSTR+' strings','H1Z2Z2-K 6 mm² · '+((SPEC&&SPEC.mods)||28)+' mód/str','#5a8');
+  s+=ln(164,98,206,98);
+  s+=box(206,72,168,52,(nInvN+nInvS)+' × SG350HX','350 kW AC · 800 V · 12 MPPT','#59f');
+  s+=ln(374,86,432,52); s+=ln(374,110,432,146);
+  s+=box(432,26,158,52,'CT Norte · '+nInvN+' inv','trafo 6.300 kVA · 0,8→20 kV','#d84');
+  s+=box(432,120,158,52,'CT Sur · '+nInvS+' inv','trafo 6.300 kVA · 0,8→20 kV','#d84');
+  s+=ln(590,52,648,86); s+=ln(590,146,648,110);
+  s+=box(648,72,120,52,'Subestación','20 kV','#c5a');
+  s+=ln(768,98,806,98);
+  s+='<text x="812" y="102" font-size="12" fill="#1c2430" font-weight="700">RED</text>';
+  svg.innerHTML=s;}
+
+async function build(){
+  if(PLANT!=='elburgo'){$('tit').textContent='Informe — sin datos DWG para esta planta';$('src').innerHTML='<span class="err">El informe completo está disponible para El Burgo I (layout + redes del DWG).</span>';return;}
+  try{ L=await (await fetch('elburgo_layout.json',{cache:'no-store'})).json(); NET=await (await fetch('elburgo_networks.json',{cache:'no-store'})).json(); }
+  catch(e){ $('src').innerHTML='<span class="err">No se pudieron cargar layout/redes ('+e.message+')</span>'; return; }
+  lat0=L.clat;lon0=L.clon;
+  var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590;
+  NSTR=(NET.layers.cable_pos||[]).length||L.trackers.length*4; KWP=NSTR*mods*wmod/1000;
+  // inversores por CT: los 18 más al norte → CT Norte (reparto real)
+  var ord=(L.invlab||[]).map(function(c,i){return {i:i,n:c.n};});ord.sort(function(a,b){return b.n-a.n;});
+  var nInvN=Math.min(18,ord.length),nInvS=ord.length-nInvN;
+  $('tit').textContent='Informe de planta — El Burgo I (23003)';
+  var hoy=new Date();$('fecha').textContent=hoy.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'});$('stamp').textContent='XEC · '+hoy.toISOString().slice(0,10);
+  var kp=[['Seguidores',L.trackers.length,''],['Strings',NSTR,'del DWG'],['Potencia DC',(KWP/1000).toFixed(2)+' MWp',mods+' mód × '+wmod+' Wp'],
+          ['Inversores',(L.invlab||[]).length+' × SG350HX','12,6 MW AC'],['CTs','2 × 6.300 kVA','0,8→20 kV'],['Evacuación','20 kV','subestación propia']];
+  if(CAL)kp.push(['Yield (SolarGPT)',CAL.y+' kWh/kWp·año',(CAL.pr?'PR '+CAL.pr:'calibrado')]);
+  $('kpis').innerHTML=kp.map(function(k){return '<div class="kpi"><span>'+k[0]+'</span><b>'+k[1]+'</b><span>'+k[2]+'</span></div>';}).join('');
+  if(CAL)$('calNote').innerHTML='<span style="color:var(--acc)">✓ calibrado con SolarGPT (clima ×'+CAL.f+')</span>';
+  var d=new Date();$('dia').value=d.toISOString().slice(0,10);doy=Math.floor((d-new Date(d.getFullYear(),0,0))/86400000);
+  drawCurve(); drawUni(nInvN,nInvS);
+  var R=[['Cableado DC + (string→inversor)','cable_pos'],['Cableado DC − (string→inversor)','cable_neg'],['Red de tierras 35 mm²','earth'],
+         ['Zanjas de string','trench_string'],['Zanjas string→inversor','trench_inv'],['Zanja N3 (inversor→CT)','trench_n3'],
+         ['Zanja MT (CT→subestación) + LAMT','trench_mt'],['Canalización comunicaciones','comms']];
+  var tb=$('redes').querySelector('tbody'),rows='';
+  R.forEach(function(r){var pls=NET.layers[r[1]]||[];if(!pls.length)return;rows+='<tr><td>'+r[0]+'</td><td class="num">'+pls.length+'</td><td class="num">'+fmtKm(segLen(pls))+'</td></tr>';});
+  rows+='<tr><td>Arquetas</td><td class="num">'+((NET.layers.arqueta||[]).length)+'</td><td class="num">—</td></tr>';
+  rows+='<tr><td>Cámaras CCTV (sectores de alcance)</td><td class="num">'+((NET.layers.cam_range||[]).length)+'</td><td class="num">—</td></tr>';
+  tb.innerHTML=rows;
+}
+$('dia').onchange=function(){var d=new Date(this.value+'T12:00:00');if(!isNaN(d)){doy=Math.floor((d-new Date(d.getFullYear(),0,0))/86400000);drawCurve();}};
+$('nub').oninput=function(){CLOUD=+this.value/100;$('nubV').textContent=this.value+'%';drawCurve();};
+$('tamb').oninput=function(){TAMB=+this.value||22;drawCurve();};
+build();
+</script></body></html>

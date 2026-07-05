@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.2</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.3</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -67,6 +67,9 @@
     <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Nubosidad <input type="range" id="cloud" min="0" max="100" value="0" style="width:78px"></label><span id="cloudV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0%</span></div>
     <div class="row"><label style="display:flex;align-items:center;gap:6px">T amb <input type="number" id="tamb" value="20" style="width:48px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:12px"> °C</label></div>
     <div class="row" id="genBox" style="display:none"><div id="genHUD" class="leg" style="font-size:11.5px;line-height:1.6"></div></div>
+    <div class="row"><label title="Reflejo del cielo en los módulos. Cubemap construido en CPU (sin PMREM): seguro en cualquier GPU. Se regenera al cambiar el sol/las nubes."><input type="checkbox" id="refl"> ✨ Reflejos (cielo en módulos)</label></div>
+    <div class="row"><button id="calBtn" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">⚙️ Calibrar con SolarGPT</button><span id="calSt" style="font-size:10.5px;color:var(--tx2)"></span></div>
+    <div class="row"><a id="repLink" href="informe.html" style="color:#9fd0ff;text-decoration:none;font-size:12.5px">🖨️ Informe de planta (imprimir/PDF)</a></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -289,7 +292,7 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
   var nf=Math.max(0,Math.min(1,-U/0.14));   // factor noche: 0 con el sol sobre el horizonte, 1 bien entrada la noche
   if(starMat){starMat.opacity=nf*0.95*(1-0.8*cl);starGroup.visible=nf>0.02;}   // las nubes tapan las estrellas
   if(moonMat){moonMat.opacity=nf*0.92;moonMesh.visible=nf>0.02;}
-  updateEnvMap(); }   // reflejos del cielo en vidrio/acero, regenerados solo cuando cambia el sol/nubes
+  updateEnvMap();updateRefl(); }   // reflejos del cielo en vidrio/acero (cubemap CPU, opt-in), regenerados al cambiar sol/nubes
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }   // la intensidad la fija applySky (nubes/luna)
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
@@ -728,6 +731,23 @@ function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la esc
     scene.environment=rt.texture;if(_envRT)_envRT.dispose();_envRT=rt;
   }catch(e){}
 }
+// ===== REFLEJOS SEGUROS (opt-in): cubemap construido en CPU (6 canvas con el gradiente del cielo actual).
+// Sin PMREM ni render targets float → no puede ennegrecer/colgar ninguna GPU. Se regenera al cambiar sol/nubes.
+var REFL_ON=false,reflTex=null,_reflU=99,_reflC=-1;
+function _reflFace(zen,hor,gnd,kind){ var c=document.createElement('canvas');c.width=c.height=64;var g=c.getContext('2d');
+  if(kind==='top'){g.fillStyle=zen;g.fillRect(0,0,64,64);}
+  else if(kind==='bot'){g.fillStyle=gnd;g.fillRect(0,0,64,64);}
+  else{var gr=g.createLinearGradient(0,0,0,64);gr.addColorStop(0,zen);gr.addColorStop(0.60,hor);gr.addColorStop(0.78,gnd);gr.addColorStop(1,gnd);g.fillStyle=gr;g.fillRect(0,0,64,64);}
+  return c; }
+function buildReflTex(){ var U=SUN&&SUN._dir?SUN._dir.U:0.4,cl=GENCLOUD||0;
+  var hc=skyColor(U),z=hc.clone().multiplyScalar(0.62),gd=new THREE.Color(0x3a4046).multiplyScalar(0.35+0.65*Math.max(0,Math.min(1,(U+0.05)/0.5)));
+  if(cl>0.02){var gy=new THREE.Color(0x8b929c);hc.lerp(gy,cl*0.6);z.lerp(gy,cl*0.5);}   // nublado: reflejo gris
+  var zs='#'+z.getHexString(),hs='#'+hc.getHexString(),gs='#'+gd.getHexString();
+  var faces=[_reflFace(zs,hs,gs,'side'),_reflFace(zs,hs,gs,'side'),_reflFace(zs,hs,gs,'top'),_reflFace(zs,hs,gs,'bot'),_reflFace(zs,hs,gs,'side'),_reflFace(zs,hs,gs,'side')];
+  var t=new THREE.CubeTexture(faces);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;t.needsUpdate=true;return t; }
+function updateRefl(force){ if(!REFL_ON||!scene)return; var U=SUN&&SUN._dir?SUN._dir.U:0.4,cl=GENCLOUD||0;
+  if(!force&&Math.abs(U-_reflU)<0.02&&Math.abs(cl-_reflC)<0.05)return; _reflU=U;_reflC=cl;
+  var t=buildReflTex();scene.environment=t;if(reflTex)reflTex.dispose();reflTex=t; }
 function buildSky(){
   buildSkyDome();
   var N=1400,p=new Float32Array(N*3);
@@ -846,10 +866,34 @@ function genModel(min){var sv=sunVec(min),U=sv.U;if(U<=0.005)return{U:U,poa:0,dc
 function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP);if(key===_dayKey)return _dayMWh;var e=0;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado
 function updateGenGlow(){if(!genGlassMat)return;var f=Math.max(0,Math.min(1,genModel(curMin).poa/1000));genGlassMat.color.setRGB(0.05+0.98*f,0.05+0.74*f,0.05+0.28*f);}   // brillo de los paneles ∝ POA
 function paintGen(on){var s=invGlassMesh();if(!s||!s.im)return;if(on&&!genGlassMat)genGlassMat=new THREE.MeshStandardMaterial({color:0x111111,roughness:.45,metalness:.1});s.im.material=on?genGlassMat:glassM;if(on)updateGenGlow();}
-function updateGenHUD(){var h=$('genHUD');if(!h)return;var g=genModel(curMin),mwh=genDayMWh(),fc=GEN_KWP?(mwh*1000/(GEN_KWP*24))*100:0;
+function updateGenHUD(){var h=$('genHUD');if(!h)return;var f=calF(),g=genModel(curMin),mwh=genDayMWh()*f,fc=GEN_KWP?(mwh*1000/(GEN_KWP*24))*100:0;
   var nInv=INVSTR.length,clip=0,mn=1e9,mx=0;for(var i=0;i<nInv;i++){var ac=perInvKW(i,curMin);if(ac>=349.5)clip++;if(ac<mn)mn=ac;if(ac>mx)mx=ac;}
   var br=nInv?('<br><span style="color:var(--tx2)">'+nInv+' inversores · '+mn.toFixed(0)+'–'+mx.toFixed(0)+' kW/inv'+(clip?' · <span style="color:#ff8a80">'+clip+' recortando</span>':'')+'</span>'):'';
-  h.innerHTML='<b style="color:#ffd98a">'+(g.acKW/1000).toFixed(2)+' MW</b> ahora · '+mwh.toFixed(1)+' MWh/día · POA '+Math.round(g.poa)+' W/m² · FC '+fc.toFixed(0)+'%'+br;}
+  var cal=CAL?('<br><span style="color:#9be23a">calibrado SolarGPT · '+CAL.y+' kWh/kWp·año'+(CAL.pr?' · PR '+CAL.pr:'')+' · clima ×'+CAL.f+'</span>'):'';
+  h.innerHTML='<b style="color:#ffd98a">'+(g.acKW/1000*f).toFixed(2)+' MW</b> ahora · '+mwh.toFixed(1)+' MWh/día · POA '+Math.round(g.poa)+' W/m² · FC '+fc.toFixed(0)+'%'+br+cal;}
+// ===== CALIBRACIÓN con SolarGPT: pide al motor (túnel/localhost) la simulación ANUAL bancable (ERA5 + cadena DC→AC)
+// y deriva el FACTOR CLIMA = yield real / yield cielo-claro local. Se guarda por planta y escala MW/MWh del HUD.
+var CAL=(function(){try{return JSON.parse(localStorage.getItem('factiun_cal_'+((PLANTS[PLANT]&&PLANTS[PLANT].cod)||PLANT))||'null');}catch(e){return null;}})();
+function calF(){return (CAL&&isFinite(CAL.f))?CAL.f:1;}
+function genAnnualMWh(){var s0=simDoy,sum=0,n=0;for(var d=5;d<=365;d+=10){simDoy=d;_dayKey='';sum+=genDayMWh();n++;}simDoy=s0;_dayKey='';return sum*365/n;}   // año cielo-claro local (muestreo cada 10 días)
+function engineCands(){var u=[];try{var s=localStorage.getItem('factiun_engine_url');if(s)u.push(s.replace(/\/+$/,''));}catch(e){}u.push('http://127.0.0.1:8765');return u;}
+async function calibrate(){ var st=$('calSt');st.textContent=' calibrando (simulación anual)…';
+  if(GEN_KWP<=0)GEN_KWP=genKwp(); try{await ensureNet();}catch(e){} GEN_KWP=genKwp();
+  var body=JSON.stringify({lat:lat0,lon:lon0,kind:'tracker',meteo_mode:'openmeteo',system:{},module:{},inverter:{},losses:{},thermal:{}});
+  var cands=engineCands();
+  for(var i=0;i<cands.length;i++){ try{
+    var ctl=new AbortController(),tm=setTimeout(function(){ctl.abort();},180000);
+    var r=await fetch(cands[i]+'/generation',{method:'POST',headers:{'Content-Type':'application/json'},body:body,signal:ctl.signal});
+    clearTimeout(tm); if(!r.ok)throw new Error('HTTP '+r.status);
+    var j=await r.json(),y=+j.yield_kwh_kwp_y; if(!isFinite(y)||y<300)throw new Error('sin yield');
+    var yLoc=genAnnualMWh()*1000/Math.max(1,GEN_KWP), f=Math.max(0.4,Math.min(1.15,y/yLoc));
+    CAL={f:+f.toFixed(3),y:Math.round(y),pr:(j.pr_net!=null?+(+j.pr_net).toFixed(3):null),src:cands[i],t:Date.now()};
+    try{localStorage.setItem('factiun_cal_'+((PLANTS[PLANT]&&PLANTS[PLANT].cod)||PLANT),JSON.stringify(CAL));}catch(e){}
+    st.textContent=' ✓ '+CAL.y+' kWh/kWp·año · clima ×'+CAL.f;
+    _dayKey='';updateGenHUD();return;
+  }catch(e){} }
+  st.textContent=' ⚠ motor no accesible (arranca el túnel y guarda su URL en Sol & Simulación)';
+}
 function flowMat(colorHex){return new THREE.ShaderMaterial({   // líneas con onda viajera hacia el sumidero (vT = distancia al sumidero)
   uniforms:{uTime:{value:0},uPow:{value:0},uColor:{value:new THREE.Color(colorHex)}},transparent:true,depthWrite:false,
   vertexShader:'attribute float aT;varying float vT;void main(){vT=aT;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
@@ -1244,6 +1288,11 @@ $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};    
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
 $('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';syncSun(curMin);if(genOn){updateGenGlow();updateGenHUD();}};   // nubosidad: también pinta NUBES en el cielo y atenúa la luz/reflejos
 $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}};                  // temperatura ambiente
+$('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
+  if(REFL_ON){if(glassM&&glassM.envMapIntensity!==undefined)glassM.envMapIntensity=1.25;updateRefl(true);}
+  else{scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;}};
+$('calBtn').onclick=function(){calibrate();};
+$('repLink').href='informe.html?planta='+PLANT;
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
