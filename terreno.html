@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.1</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.2</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -476,7 +476,7 @@ function buildTrackers(elevAt){
   nodeGroup.clear();labelGroup.clear();TRK=[];
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
-  if(THREE.MeshPhysicalMaterial&&!SKY_MOB)mats.glass=new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:0.24,metalness:0.05,clearcoat:0.9,clearcoatRoughness:0.16,envMapIntensity:1.35});   // VIDRIO REAL (solo escritorio): clearcoat + reflejo del cielo (PMREM); en móvil se queda el vidrio estándar (drivers frágiles)
+  // v4.2: vidrio physical/clearcoat RETIRADO temporalmente (iba ligado al PMREM que ennegrecía la escena); se mantiene el vidrio estándar probado
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
@@ -706,7 +706,8 @@ function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.heigh
   for(var k=0;k<46;k++){g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,6+Math.random()*26,4+Math.random()*18,Math.random()*3.14,0,6.3);g.fill();}
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
-function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // solo escritorio (móvil: shader estándar intacto); el satélite se pixela de cerca → ruido de detalle que aparece al acercarte (<~700 m)
+function addTerrainDetail(mat){ return;   // DESACTIVADO (v4.2) mientras estabilizamos: volverá tras validar píxel a píxel en GPU real
+  if(SKY_MOB||!mat||!mat.map)return;
   var dtx=makeDetailTex();
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
@@ -714,7 +715,8 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // solo esc
       .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dF=smoothstep(700.0,90.0,length(vViewPosition));vec3 det=texture2D(uDet,vUv*170.0).rgb;diffuseColor.rgb*=mix(vec3(1.0),det*1.30,0.5*dF);\n#endif'); };
   mat.needsUpdate=true;
 }
-function updateEnvMap(){ if(SKY_MOB||!renderer||!(renderer.capabilities&&renderer.capabilities.isWebGL2)||!THREE.PMREMGenerator||!skyMat||!SUN||!SUN._dir)return;   // reflejos reales SOLO en escritorio+WebGL2: en varias GPU móviles los RT half-float del PMREM fallan → NaN → escena negra
+function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
+  if(SKY_MOB||!renderer||!(renderer.capabilities&&renderer.capabilities.isWebGL2)||!THREE.PMREMGenerator||!skyMat||!SUN||!SUN._dir)return;
   var U=SUN._dir.U,now=performance.now();
   if(Math.abs(U-_lastEnvU)<(SKY_MOB?0.05:0.015)&&Math.abs(GENCLOUD-_lastEnvC)<0.04&&_lastEnvT)return;   // regenera SOLO si el sol/nubes cambian de verdad (throttle)
   if(_lastEnvT&&now-_lastEnvT<(SKY_MOB?900:350))return;
@@ -744,7 +746,8 @@ function animateSky(dt){ dt=dt||0;_skyT+=dt;
     sunHalo.position.set(camera.position.x+_sunW.x*3900,camera.position.y+_sunW.y*3900,camera.position.z+_sunW.z*3900);}   // glare pegado al disco del shader
   if(SUN&&SUN._baseInt!=null){var fl=1;   // nubes pasando: la luz del sol "respira" (parpadeo lento ∝ nubosidad)
     if(GENCLOUD>0.03&&!SUN._ldir)fl=1-0.30*GENCLOUD*(0.5+0.5*Math.sin(_skyT*0.35)*Math.sin(_skyT*0.13+1.7));
-    SUN.intensity=SUN._baseInt*fl;}
+    SUN.intensity=SUN._baseInt*fl;
+    if(!isFinite(SUN.intensity))SUN.intensity=2;}   // cinturón: jamás una luz NaN (= escena negra)
   if(moonMesh&&SUN&&SUN._dir){var d=SUN._dir,R=3600; _moonV.set(-d.E,-d.U,d.N); if(_moonV.lengthSq()<1e-6)_moonV.set(0,1,0); _moonV.normalize();
     moonMesh.position.set(camera.position.x+_moonV.x*R,camera.position.y+_moonV.y*R,camera.position.z+_moonV.z*R); }   // luna opuesta al sol (sale al ponerse el sol)
 }
