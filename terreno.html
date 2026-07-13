@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.18</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.19</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -163,7 +163,7 @@ var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
-var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera FIJO ceñido a la planta (centro y semiancho en mundo); se calcula en build() por planta → sombras en TODA la planta
+var SH_CX=-66,SH_CZ=36,SH_HALF=330,_shDirV=new THREE.Vector3();   // shadow camera ceñido a la planta (centro y semiancho en mundo, por planta en build()); cerca del suelo se ciñe a la cámara (updateSunShadow)
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -303,12 +303,25 @@ function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
   var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
+  // caja ADAPTATIVA: a ras de suelo se ciñe alrededor de la cámara (texel varias veces más fino → sin
+  // sierra sobre los MÓDULOS, cuyo plano casi contiene al rayo y estira el texel aún más que el suelo);
+  // a vista de pájaro vuelve a la planta entera. Centro sesgado hacia donde MIRAS, acotado dentro de la
+  // planta y anclado a la rejilla de texels (el semiancho va en saltos de 20 m) para que no "nade".
+  var hAd=Math.min(SH_HALF,Math.max(160,Math.ceil((100+2.4*camera.position.y)/20)*20));
+  if(hAd<SH_HALF-1){
+    half=hAd;
+    var vd=camera.getWorldDirection(_shDirV);
+    var bx=camera.position.x+vd.x*half*0.45, bz=camera.position.z+vd.z*half*0.45;
+    cx=Math.max(SH_CX-(SH_HALF-half),Math.min(SH_CX+(SH_HALF-half),bx));
+    cz=Math.max(SH_CZ-(SH_HALF-half),Math.min(SH_CZ+(SH_HALF-half),bz));
+    var texw=2*half/(SUN.shadow.mapSize.x||4096);cx=Math.round(cx/texw)*texw;cz=Math.round(cz/texw)*texw;
+  }
   sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
   SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
-  SUN.shadow.radius=Math.min(13,2+1.1/Math.max(0.08,dir.U));           // sol bajo: el texel se estira 1/sin(alt) en el suelo (dientes de sierra) → penumbra PCF creciente, como la sombra real del amanecer
-  SUN.shadow.normalBias=Math.max(0.04,Math.min(0.2,half*0.00006)); }   // bias escalado al área de la planta
+  SUN.shadow.radius=Math.min(16,2+1.9/Math.max(0.08,dir.U));           // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente, como la sombra real del amanecer
+  SUN.shadow.normalBias=Math.max(0.05,Math.min(0.2,half*0.00006)); }   // bias escalado al área cubierta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
 function buildSunPath(){
