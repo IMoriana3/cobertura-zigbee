@@ -29,7 +29,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.8</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.9</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -268,12 +268,9 @@ function draw(){
       else if(!inv && s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp,cyp-lp);ctx.lineTo(cxp,cyp+lp);ctx.stroke();}   // eje del tubo
     }
   }
-  // capa INVERSORES: cableado string→inversor + símbolo del DWG + etiqueta
+  // capa INVERSORES: símbolo del DWG + etiqueta (sin "trunk" recto seguidor→inversor: unía filas
+  // desplazadas en diagonal —las "bielas"— y no sigue rutas reales; los módulos ya van pintados por inversor, como en el 3D v4.10)
   if($('cbInv').checked&&hasInv()){
-    for(var gi=0;gi<INVG.length;gi++){var g=INVG[gi],ix=w2sx(g.x),iy=w2sy(g.n),sel=(INVSEL===g.key);   // trunk seguidor→inversor (las "líneas rojas" del plano)
-      ctx.strokeStyle=sel?'rgba(255,90,90,.9)':g.colorA;ctx.lineWidth=sel?1.6:1;ctx.beginPath();
-      for(var ti=0;ti<g.trk.length;ti++){var t=L.trackers[g.trk[ti]];ctx.moveTo(w2sx(t.x),w2sy(t.n));ctx.lineTo(ix,iy);}
-      ctx.stroke();}
     if(L.inverters){ctx.strokeStyle='rgba(234,244,255,.45)';ctx.lineWidth=1;ctx.beginPath();   // rectángulos de los inversores (del DWG)
       for(var si=0;si<L.inverters.length;si++){var seg=L.inverters[si];if(seg&&seg.length>=2){ctx.moveTo(w2sx(seg[0][0]),w2sy(seg[0][1]));ctx.lineTo(w2sx(seg[1][0]),w2sy(seg[1][1]));}}
       ctx.stroke();}
