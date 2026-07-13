@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.11</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.12</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -821,7 +821,7 @@ function buildInvLayer(){
   var H={},order=[];
   NODES.forEach(function(n,i){var k=invKey3(n.id);if(k==null)return;if(!H[k]){H[k]={key:k,trk:[],x:null,nn:null};order.push(k);}H[k].trk.push(i);});
   order.sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});});
-  (LAYOUT.invlab||[]).forEach(function(c){var k=String(c.s).replace(/^I-/,'');if(H[k]){H[k].x=c.x;H[k].nn=c.n;}});
+  (LAYOUT.invlab||[]).forEach(function(c,ci){var k=String(c.s).replace(/^I-/,'');if(H[k]){var pp=invAt(ci);H[k].x=pp.x;H[k].nn=pp.n;}});
   order.forEach(function(k,gi){var g=H[k],col=invColor3(gi);INVCOL[k]=col;
     if(g.x==null){var sx=0,sn=0;g.trk.forEach(function(i){sx+=NODES[i].gx;sn+=-NODES[i].gz;});g.x=sx/g.trk.length;g.nn=sn/g.trk.length;}
     var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn);
@@ -871,9 +871,23 @@ function setNet(keys,on){ ensureNet().then(function(ok){ if(!ok)return; keys.for
 // ===== GENERACIÓN / FLUJO ELÉCTRICO (offline): cielo-claro (Meinel) + ángulo de incidencia del seguidor + térmico, según hora, día (simDoy) y meteo (nubosidad + Tamb).
 // Pinta los módulos con la luz del sol (negro de noche → oro a mediodía), energiza el cableado DC (flujo) y saca MW/MWh en un HUD. Modelo divulgativo, calibrable con la cartera/SolarGPT.
 var GENCLOUD=0,GENTAMB=20,genOn=false,genGlassMat=null,GEN_KWP=0,_gp=0,_dayMWh=0,_dayKey='';
-var genFlow={},genRingsG=null,INVPTS=[],CTPTS=[],SUBPT=[9.92,-194.24],INVSTR=[];   // sumideros del flujo (inversores, CTs, subestación) y strings/inversor (del DWG)
-function computeSinks(){
-  INVPTS=(LAYOUT&&LAYOUT.invlab||[]).map(function(c){return [c.x,c.n];});
+var genFlow={},genRingsG=null,INVPTS=[],CTPTS=[],SUBPT=[9.92,-194.24],INVSTR=[],INVPOS=[];   // sumideros del flujo; INVPOS = posición REAL del equipo (centro de su rectángulo del DWG, no la etiqueta)
+function computeInvPos(){ INVPOS=[]; if(!LAYOUT||!LAYOUT.invlab)return;
+  var segs=(LAYOUT.inverters||[]).map(function(s){return {a:s[0],b:s[1]};}),used=new Array(segs.length),rects=[];
+  function close(p,q){return Math.hypot(p[0]-q[0],p[1]-q[1])<2.5;}
+  for(var i=0;i<segs.length;i++){ if(used[i])continue; var grp=[i];used[i]=true;var grew=true;   // agrupa los segmentos del DWG en rectángulos (huella 1,14×0,36 del SG350HX)
+    while(grew){grew=false;for(var j=0;j<segs.length;j++){if(used[j])continue;
+      for(var g=0;g<grp.length;g++){var s=segs[grp[g]];
+        if(close(s.a,segs[j].a)||close(s.a,segs[j].b)||close(s.b,segs[j].a)||close(s.b,segs[j].b)){grp.push(j);used[j]=true;grew=true;break;}}}}
+    var sx=0,sn=0,c=0;for(var g2=0;g2<grp.length;g2++){var s2=segs[grp[g2]];sx+=s2.a[0]+s2.b[0];sn+=s2.a[1]+s2.b[1];c+=2;}
+    rects.push([sx/c,sn/c]); }
+  LAYOUT.invlab.forEach(function(lab){ var bd=12,bp=null;   // cada etiqueta → su rectángulo más cercano (las etiquetas van desplazadas hasta 8 m en el CAD)
+    for(var r=0;r<rects.length;r++){var d=Math.hypot(rects[r][0]-lab.x,rects[r][1]-lab.n);if(d<bd){bd=d;bp=rects[r];}}
+    INVPOS.push(bp?{x:bp[0],n:bp[1],s:lab.s}:{x:lab.x,n:lab.n,s:lab.s}); });
+}
+function invAt(i){return INVPOS[i]||(LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab[i])||{x:0,n:0,s:'I-?'};}
+function computeSinks(){ if(!INVPOS.length)computeInvPos();
+  INVPTS=INVPOS.length?INVPOS.map(function(c){return [c.x,c.n];}):(LAYOUT&&LAYOUT.invlab||[]).map(function(c){return [c.x,c.n];});
   CTPTS=[];(LAYOUT&&LAYOUT.cts||[]).forEach(function(pl){var sx=0,sn=0;pl.forEach(function(p){sx+=p[0];sn+=p[1];});var cx=sx/pl.length,cn=sn/pl.length;if(Math.abs(cx)<900&&Math.abs(cn)<900)CTPTS.push([cx,cn]);});
   if(!CTPTS.length)CTPTS=[SUBPT];
 }
@@ -960,7 +974,7 @@ function _lroute(ax,an,bx,bn){ var pts=[[ax,an],[bx,an],[bx,bn]],seg=[],tot=0;  
 function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por el corredor; tamaño/color ∝ potencia
   if(arrowMesh){scene.remove(arrowMesh);if(arrowMesh.geometry)arrowMesh.geometry.dispose();if(arrowMesh.material)arrowMesh.material.dispose();arrowMesh=null;}
   ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=2,ACT=5;
-  for(var i=0;i<inv.length;i++){var a=inv[i],ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
+  for(var i=0;i<inv.length;i++){var a=invAt(i),ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
   for(var c=0;c<CTMAIN.length;c++){var p2=_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación
   if(!_ao)_ao=new THREE.Object3D();
   var cone=new THREE.ConeGeometry(0.38,1.5,8);cone.rotateX(Math.PI/2);   // punta hacia +Z: lookAt() de un OBJETO apunta +Z al objetivo (−Z es solo cámaras) — por eso iban del revés
@@ -1004,9 +1018,9 @@ function setGen(on){genOn=on;
 // ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
 var FICHA=null,selLine=null,_pdX=0,_pdY=0;
 var CTMAIN=[{name:'CT Norte',x:-0.86,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
-function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=LAYOUT.invlab[i],dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
+function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;if(!INVPOS.length)computeInvPos();var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=invAt(i),dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function nearestCTIdx(x,n){var bi=-1,bd=32*32;for(var i=0;i<CTMAIN.length;i++){var dx=CTMAIN[i].x-x,dn=CTMAIN[i].n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
-function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;var ord=LAYOUT.invlab.map(function(c,i){return {i:i,n:c.n};});ord.sort(function(a,b){return b.n-a.n;});for(var k=0;k<ord.length;k++)INVCT[ord[k].i]=(k<18)?0:1;}   // reparto real: los 18 inversores MÁS AL NORTE → CT Norte (0), el resto → CT Sur (1)
+function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;if(!INVPOS.length)computeInvPos();var ord=LAYOUT.invlab.map(function(c,i){return {i:i,n:invAt(i).n};});ord.sort(function(a,b){return b.n-a.n;});for(var k=0;k<ord.length;k++)INVCT[ord[k].i]=(k<18)?0:1;}   // reparto real: los 18 inversores MÁS AL NORTE → CT Norte (0), el resto → CT Sur (1)
 function invElec(i,min){var g=genModel(min),mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,vmp=(SPEC&&SPEC.vmpp)||42,impp=wmod/vmp,
   tcell=GENTAMB+g.poa/800*25,vir=Math.max(0,Math.min(1,g.poa/1000)),
   istr=impp*vir*(1+0.0004*(tcell-25)), vstr=mods*vmp*(1-0.0029*(tcell-25)), pstr=istr*vstr/1000,   // string = mód en serie; I≈Impp·irrad, V≈Vmpp·(−0,29%/°C)
@@ -1035,7 +1049,7 @@ function updateFicha(){var f=$('invFicha');if(!f||!FICHA)return;
       +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+s2.nCT+' CTs · planta completa</div>'
       +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida MT → red</div><div>'+s2.vmv+' kV · '+s2.imv.toFixed(0)+' A · <b>'+(s2.pmv/1000).toFixed(2)+' MW</b></div>';}
   f.style.display='';}
-function selectInv(i){FICHA={t:'inv',id:i};ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();computeSinks();var a=LAYOUT.invlab[i],ct=nearestPt(a.x,a.n,CTPTS).p;highlightLine(a.x,a.n,ct[0],ct[1]);updateFicha();});}
+function selectInv(i){FICHA={t:'inv',id:i};ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();computeSinks();var a=invAt(i),ct=nearestPt(a.x,a.n,CTPTS).p;highlightLine(a.x,a.n,ct[0],ct[1]);updateFicha();});}
 function selectCT(c){FICHA={t:'ct',id:c};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();highlightLine(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);updateFicha();});}
 function selectSub(){FICHA={t:'sub'};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();if(selLine){scene.remove(selLine);selLine=null;}updateFicha();});}
 function closeFicha(){FICHA=null;var f=$('invFicha');if(f)f.style.display='none';if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}}
@@ -1090,7 +1104,7 @@ function buildBOS(){
   // inversores string Sungrow SG350HX (36 ud) — DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo gris con frontal Sungrow, disipador trasero y bastidor
   var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // +X,-X,+Y,-Y,+Z(trasera),-Z(frontal con marca)
-  (LAYOUT.invlab||[]).forEach(function(c){if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
+  (LAYOUT.invlab||[]).forEach(function(c0,ci){if(!INVPOS.length)computeInvPos();var c=invAt(ci);if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
     var W=1.136,H=0.87,D=0.356,legH=0.95,cy=legH+H/2;                                                     // 1136×870×356 mm (DWG)
     var body=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),invFaces);body.position.y=cy;g.add(body);        // cuerpo (frontal -Z con marca Sungrow)
     for(var fi=0;fi<9;fi++){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.03,H*0.9,0.14),invFin);fin.position.set(-W*0.44+fi*(W*0.88/8),cy,D*0.5+0.08);g.add(fin);}  // aletas del disipador (trasera)

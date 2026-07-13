@@ -29,7 +29,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.7</div></div>
+  <div><h1>Plano 2D Cobertura<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v1.8</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -116,7 +116,16 @@ function strPerTrk(t){return /medio|corto/i.test(t.t||'')?2:4;}   // estimación
 function assignInv(){
   INVG=[];INVH={};if(!L||!L.trackers)return;
   L.trackers.forEach(function(t,i){var k=invKeyOf(t.id);t._inv=k;if(k==null)return;var g=INVH[k];if(!g){g={key:k,label:'I-'+k,trk:[],sx:0,sn:0,x:null,n:null};INVH[k]=g;INVG.push(g);}g.trk.push(i);g.sx+=t.x;g.sn+=t.n;});
-  (L.invlab||[]).forEach(function(v){var k=String(v.s).replace(/^I-/,'');if(INVH[k]){INVH[k].x=v.x;INVH[k].n=v.n;INVH[k].label=v.s;}});
+  var rects=(function(){ var segs=(L.inverters||[]).map(function(s){return {a:s[0],b:s[1]};}),used=new Array(segs.length),out=[];   // posición REAL del equipo: centro de su rectángulo del DWG (las etiquetas van desplazadas hasta 8 m)
+    function close(p,q){return Math.hypot(p[0]-q[0],p[1]-q[1])<2.5;}
+    for(var i=0;i<segs.length;i++){ if(used[i])continue; var grp=[i];used[i]=true;var grew=true;
+      while(grew){grew=false;for(var j=0;j<segs.length;j++){if(used[j])continue;for(var g=0;g<grp.length;g++){var s=segs[grp[g]];
+        if(close(s.a,segs[j].a)||close(s.a,segs[j].b)||close(s.b,segs[j].a)||close(s.b,segs[j].b)){grp.push(j);used[j]=true;grew=true;break;}}}}
+      var sx=0,sn=0,c=0;for(var g2=0;g2<grp.length;g2++){var s2=segs[grp[g2]];sx+=s2.a[0]+s2.b[0];sn+=s2.a[1]+s2.b[1];c+=2;}
+      out.push([sx/c,sn/c]); } return out; })();
+  (L.invlab||[]).forEach(function(v){var k=String(v.s).replace(/^I-/,'');if(!INVH[k])return;
+    var bd=12,bp=null;for(var r=0;r<rects.length;r++){var d=Math.hypot(rects[r][0]-v.x,rects[r][1]-v.n);if(d<bd){bd=d;bp=rects[r];}}
+    INVH[k].x=bp?bp[0]:v.x;INVH[k].n=bp?bp[1]:v.n;INVH[k].label=v.s;});
   INVG.sort(function(a,b){return a.key.localeCompare(b.key,undefined,{numeric:true});});
   INVG.forEach(function(g,i){var h=((i*7)*137.508)%360;g.color='hsl('+h.toFixed(0)+',62%,56%)';g.colorA='hsla('+h.toFixed(0)+',62%,62%,0.30)';if(g.x==null){g.x=g.sx/g.trk.length;g.n=g.sn/g.trk.length;}});   // *7 separa más los matices; posición = etiqueta del DWG o centroide
 }
