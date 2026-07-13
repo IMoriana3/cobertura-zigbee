@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.7</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.8</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -935,23 +935,28 @@ function buildFlow(key,sinkFor,colorHex,off){
   var mat=flowMat(colorHex),ls=new THREE.LineSegments(geo,mat);ls.frustumCulled=false;var grp=new THREE.Group();grp.add(ls);grp.userData={mat:mat,geo:geo};scene.add(grp);genFlow[key]=grp;
 }
 var arrowMesh=null,ARR=[],_at=0,_ao=null;
-function buildArrows(){   // FLECHAS de flujo: inversor→CT y CT→subestación (conos que viajan hacia el sumidero, tamaño/color ∝ potencia)
+function _lroute(ax,an,bx,bn){ var pts=[[ax,an],[bx,an],[bx,bn]],seg=[],tot=0;   // ruta en L POR EL CORREDOR: E-W por la calle hasta la x del destino, luego N-S (no en diagonal a vista de pájaro)
+  for(var i=0;i+1<pts.length;i++){var L=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);if(L<0.5)continue;seg.push({a:pts[i],b:pts[i+1],l:L,acc:tot});tot+=L;}
+  return {seg:seg,tot:Math.max(tot,0.001)}; }
+function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por el corredor; tamaño/color ∝ potencia
   if(arrowMesh){scene.remove(arrowMesh);if(arrowMesh.geometry)arrowMesh.geometry.dispose();if(arrowMesh.material)arrowMesh.material.dispose();arrowMesh=null;}
-  ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=3,ACT=6;
-  for(var i=0;i<inv.length;i++){var a=inv[i],ct=CTMAIN[INVCT[i]];for(var k=0;k<AINV;k++)ARR.push({ax:a.x,an:a.n,bx:ct.x,bn:ct.n,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
-  for(var c=0;c<CTMAIN.length;c++)for(var k2=0;k2<ACT;k2++)ARR.push({ax:CTMAIN[c].x,an:CTMAIN[c].n,bx:SUBST.x,bn:SUBST.n,off:k2/ACT,lvl:1,src:c});   // CT → subestación
+  ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=2,ACT=5;
+  for(var i=0;i<inv.length;i++){var a=inv[i],ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
+  for(var c=0;c<CTMAIN.length;c++){var p2=_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación
   if(!_ao)_ao=new THREE.Object3D();
-  var cone=new THREE.ConeGeometry(0.9,3,10);cone.rotateX(-Math.PI/2);   // punta hacia −Z (lookAt orienta −Z al objetivo)
-  arrowMesh=new THREE.InstancedMesh(cone,new THREE.MeshBasicMaterial({transparent:true,opacity:0.95}),ARR.length);arrowMesh.frustumCulled=false;scene.add(arrowMesh);animateArrows(0);
+  var cone=new THREE.ConeGeometry(0.38,1.5,8);cone.rotateX(-Math.PI/2);   // flecha PEQUEÑA (Ø0,76×1,5 m); punta hacia −Z (lookAt orienta −Z al objetivo)
+  arrowMesh=new THREE.InstancedMesh(cone,new THREE.MeshBasicMaterial({transparent:true,opacity:0.98}),ARR.length);arrowMesh.frustumCulled=false;scene.add(arrowMesh);animateArrows(0);
 }
 function animateArrows(dt){ if(!arrowMesh)return; _at+=dt; var col=new THREE.Color();
   for(var j=0;j<ARR.length;j++){var r=ARR[j];
     var pw=r.lvl===0?Math.max(0,Math.min(1,perInvKW(r.src,curMin)/350)):Math.max(0,Math.min(1,ctElec(r.src,curMin).pmv/6300));
-    var spd=r.lvl===0?0.10:0.07,t=(r.off+_at*spd)%1,x=r.ax+(r.bx-r.ax)*t,n=r.an+(r.bn-r.an)*t,y=localElevY(x,n)+(r.lvl===0?1.1:1.7);   // viaja de a→b
-    var dx=r.bx-r.ax,dn=r.bn-r.an,L=Math.hypot(dx,dn)||1;
-    _ao.position.set(x,y,-n);_ao.lookAt(x+dx/L,y,-(n+dn/L));   // apunta hacia el sumidero
-    var sc=pw<=0.03?0.0001:((r.lvl===0?1:2.1)*(0.55+0.7*pw));_ao.scale.set(sc,sc,sc*1.5);_ao.updateMatrix();arrowMesh.setMatrixAt(j,_ao.matrix);
-    if(r.lvl===0)col.setRGB(0.30+0.4*pw,0.85,1.0);else col.setRGB(1.0,0.45+0.3*pw,0.85);col.multiplyScalar(0.45+0.85*pw);arrowMesh.setColorAt(j,col);}
+    var spd=(r.lvl===0?9:12)/r.p.tot,t=(r.off+_at*spd)%1,d=t*r.p.tot,sg=r.p.seg[0];   // velocidad ~9-12 m/s por la ruta en L
+    for(var si=0;si<r.p.seg.length;si++){if(d>=r.p.seg[si].acc)sg=r.p.seg[si];}
+    var f=(d-sg.acc)/sg.l,x=sg.a[0]+(sg.b[0]-sg.a[0])*f,n=sg.a[1]+(sg.b[1]-sg.a[1])*f,y=localElevY(x,n)+0.55;   // A RAS DE SUELO, drapeado
+    var dx=(sg.b[0]-sg.a[0])/sg.l,dn=(sg.b[1]-sg.a[1])/sg.l;
+    _ao.position.set(x,y,-n);_ao.lookAt(x+dx,y,-(n+dn));   // apunta según el tramo del corredor
+    var sc=pw<=0.03?0.0001:((r.lvl===0?1:1.6)*(0.7+0.5*pw));_ao.scale.set(sc,sc,sc);_ao.updateMatrix();arrowMesh.setMatrixAt(j,_ao.matrix);
+    if(r.lvl===0)col.setRGB(0.13,0.90,0.42);else col.setRGB(1.0,0.62,0.12);col.multiplyScalar(0.8+0.35*pw);arrowMesh.setColorAt(j,col);}   // verde intenso / naranja intenso: se ven sobre arena y paneles
   arrowMesh.instanceMatrix.needsUpdate=true;if(arrowMesh.instanceColor)arrowMesh.instanceColor.needsUpdate=true;
 }
 function buildGenFlows(){ computeSinks();
