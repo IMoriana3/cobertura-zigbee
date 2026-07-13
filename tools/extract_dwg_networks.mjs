@@ -40,3 +40,6 @@ for(const k in out){ const o=out[k]; if(!o.kept){console.log(k.padEnd(15),String
 writeFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json', JSON.stringify(json));
 const sz=readFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json').length;
 console.log('\nwrote elburgo_networks.json', (sz/1024).toFixed(0)+' KB');
+
+// NOTA: tras regenerar desde los DWG, ejecuta también tools/snap_cables_to_rows.mjs
+// (imanta el cableado DC al eje de su fila; el DWG lo dibuja a media calle por legibilidad CAD).
