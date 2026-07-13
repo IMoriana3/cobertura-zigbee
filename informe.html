@@ -73,7 +73,7 @@ function sunU(min){var lat=lat0*DEG,decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/3
 function acKW(min){var sv=sunU(min),U=sv.U;if(U<=0.005)return 0;
   var AM=1/Math.max(0.05,U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678))*(1-0.78*CLOUD),dhi=0.10*1361*U*(1-0.5*CLOUD);
   var R=(U<=0.02)?0:-Math.atan2(sv.E,U),th=Math.max(-55,Math.min(55,R/DEG))*DEG;
-  var cosAOI=Math.max(0,Math.sin(th)*sv.E+Math.cos(th)*U),poa=Math.max(0,dni*cosAOI+dhi);
+  var cosAOI=Math.max(0,-Math.sin(th)*sv.E+Math.cos(th)*U),poa=Math.max(0,dni*cosAOI+dhi);
   var tc=TAMB+poa/800*25,der=1+(-0.0035)*(tc-25);
   return Math.max(0,Math.min(KWP*(poa/1000)*der*0.95*0.985,KWP/1.25));}
 function calF(){return (CAL&&isFinite(CAL.f))?CAL.f:1;}

@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.10</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.11</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -70,6 +70,9 @@
     <div class="row"><label title="Reflejo del cielo en los módulos. Cubemap construido en CPU (sin PMREM): seguro en cualquier GPU. Se regenera al cambiar el sol/las nubes."><input type="checkbox" id="refl"> ✨ Reflejos (cielo en módulos)</label></div>
     <div class="row"><button id="calBtn" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">⚙️ Calibrar con SolarGPT</button><span id="calSt" style="font-size:10.5px;color:var(--tx2)"></span></div>
     <div class="row"><a id="repLink" href="informe.html" style="color:#9fd0ff;text-decoration:none;font-size:12.5px">🖨️ Informe de planta (imprimir/PDF)</a></div>
+    <div class="row"><button id="tourBtn" title="Vuelo de dron automático: órbita general, pasada baja por la calle central y visita a la subestación. Clic en la escena para salir." style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">🎬 Tour dron</button>
+    <button id="recBtn" title="Graba el visor a vídeo WebM (lo que veas: tour, flujo, sombras…) y lo descarga al parar." style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">⏺ Grabar</button>
+    <button id="fotoBtn" title="Captura PNG a alta resolución (2×, sombras 8K) del encuadre actual y la descarga." style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">📸 Foto</button></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -223,7 +226,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);renderer.render(scene,camera);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -357,6 +360,7 @@ async function build(){
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
+  var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
   function ext(x,n){exmin=Math.min(exmin,x);exmax=Math.max(exmax,x);nmin=Math.min(nmin,n);nmax=Math.max(nmax,n);}
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
@@ -832,7 +836,9 @@ function buildInvLayer(){
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
 var NET=null,netG={};
 var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.12},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
+var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.json: 823 strings g.i.t.s con posición)
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
+  fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
   return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;return NET;}).catch(function(){NET=false;return false;}); }
 function buildNetLayer(key){
   if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
@@ -872,26 +878,43 @@ function computeSinks(){
   if(!CTPTS.length)CTPTS=[SUBPT];
 }
 function nearestPt(x,n,pts){var bi=0,bd=1e18;for(var i=0;i<pts.length;i++){var dx=pts[i][0]-x,dn=pts[i][1]-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return {p:pts[bi],i:bi};}
-function computeInvStrings(){INVSTR=[];if(!NET||!NET.layers||!NET.layers.cable_pos||!INVPTS.length)return;
+function computeInvStrings(){INVSTR=[];if(!INVPTS.length)return;
+  if(STRDB&&STRDB.byInv&&LAYOUT&&LAYOUT.invlab){for(var i2=0;i2<LAYOUT.invlab.length;i2++){var k=String(LAYOUT.invlab[i2].s).replace(/^I-/,'');INVSTR[i2]=STRDB.byInv[k]||0;}return;}   // EXACTO: numeración del plano (823 strings)
+  if(!NET||!NET.layers||!NET.layers.cable_pos)return;
   for(var i=0;i<INVPTS.length;i++)INVSTR[i]=0;
-  NET.layers.cable_pos.forEach(function(pl){var a=pl[0],b=pl[pl.length-1],na=nearestPt(a[0],a[1],INVPTS),nb=nearestPt(b[0],b[1],INVPTS);   // asigna el cable al inversor más cercano a SU extremo de inversor (el extremo más próximo a algún inversor)
+  NET.layers.cable_pos.forEach(function(pl){var a=pl[0],b=pl[pl.length-1],na=nearestPt(a[0],a[1],INVPTS),nb=nearestPt(b[0],b[1],INVPTS);   // respaldo heurístico si no hay strings.json
     var da=Math.hypot(a[0]-na.p[0],a[1]-na.p[1]),db=Math.hypot(b[0]-nb.p[0],b[1]-nb.p[1]);INVSTR[da<db?na.i:nb.i]++;});}
 function perStringKW(min){var g=genModel(min);var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,tcell=GENTAMB+g.poa/800*25,der=1+(-0.0035)*(tcell-25);return (g.poa/1000)*mods*wmod/1000*der*0.95;}   // kW por string
 function perInvKW(i,min){var ns=INVSTR[i]||0;return Math.max(0,Math.min(ns*perStringKW(min)*0.985,350));}   // AC por inversor (recorte 350 kW SG350HX)
 function genKwp(){var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,nStr=(NET&&NET.layers&&NET.layers.cable_pos&&NET.layers.cable_pos.length)||(NODES.length*4);return nStr*mods*wmod/1000;}   // kWp DC = nº strings reales (DWG) × mód/string × Wp
 function genModel(min){var sv=sunVec(min),U=sv.U;if(U<=0.005)return{U:U,poa:0,dcKW:0,acKW:0,ghi:0};
   var AM=1/Math.max(0.05,U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678))*(1-0.78*GENCLOUD),dhi=0.10*1361*U*(1-0.5*GENCLOUD),ghi=Math.max(0,dni*U+dhi);   // DNI cielo-claro Meinel + difusa, atenuadas por nubosidad
-  var th=panelAngle(min)*DEG,cosAOI=Math.max(0,Math.sin(th)*sv.E+Math.cos(th)*sv.U),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(sinθ,cosθ,0)·sol → POA en el plano que sigue al sol
+  var th=panelAngle(min)*DEG,cosAOI=Math.max(0,-Math.sin(th)*sv.E+Math.cos(th)*sv.U),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(−sinθ,cosθ): θ negativo=Este en nuestra convención (el +sinθ anterior RECORTABA mañanas/tardes sin BT)
   var tcell=GENTAMB+poa/800*25,derate=1+(-0.0035)*(tcell-25),dc=GEN_KWP*(poa/1000)*derate*0.95,ac=Math.max(0,Math.min(dc*0.985,GEN_KWP/1.25));   // térmico (-0,35%/°C) + pérdidas 5% + recorte del inversor (ratio DC/AC 1,25)
   return{U:U,poa:poa,ghi:ghi,dcKW:dc,acKW:ac};}
 function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP);if(key===_dayKey)return _dayMWh;var e=0;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado
+// ===== SOMBRAS FILA-A-FILA cuantificadas (no solo pintadas): fracción sombreada del ancho de mesa
+// Fs = 1 − (p/W)·sin(αp)/sin(αp+θ), con αp = ángulo de perfil del sol (plano E-W, eje N-S), θ = |inclinación|,
+// p = pitch real entre ejes (12 m, medido del DWG), W = ancho de mesa (TC.modH). Con backtracking Fs→0 por diseño.
+var PITCH=12,_shdKey='',_shdBT=0,_shdNBT=0;
+function profileAlpha(min){var sv=sunVec(min);if(sv.U<=0.005)return 0;return Math.atan2(sv.U,Math.abs(sv.E));}
+function shadeFracAt(min,thetaDeg){var a=profileAlpha(min);if(a<=0)return 0;var W=(TC&&TC.modH)||2.38,th=Math.abs(thetaDeg)*DEG;
+  var p=(TC&&TC.filaZ)?Math.min(2*TC.filaZ,Math.max(2,PITCH-2*TC.filaZ)):PITCH;   // seguidor BÍFILO: la sombra es FILA-a-FILA (6 m uniformes: 2·filaZ dentro de la unidad = 12−2·filaZ entre unidades), no unidad-a-unidad
+  var fs=1-(p/W)*Math.sin(a)/Math.sin(a+th);return Math.max(0,Math.min(1,fs));}
+function dayShade(useBT){var s=0,w=0;for(var m=280;m<=1220;m+=10){var sv=sunVec(m);if(sv.U<=0.01)continue;
+  var AM=1/Math.max(0.05,sv.U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678));
+  var th=useBT?simBtAngle(m):noBtAngle(m),cosA=Math.max(0,-Math.sin(th*DEG)*sv.E+Math.cos(th*DEG)*sv.U);
+  s+=dni*cosA*shadeFracAt(m,th);w+=dni*cosA;}return w>0?s/w:0;}
+function shadeStats(){var key=simDoy+'|'+Math.round(PITCH*10)+'|'+((TC&&TC.modH)||0);if(key!==_shdKey){_shdKey=key;_shdBT=dayShade(true);_shdNBT=dayShade(false);}
+  return {now:shadeFracAt(curMin,panelAngle(curMin)),bt:_shdBT,nbt:_shdNBT};}
 function updateGenGlow(){if(!genGlassMat)return;var f=Math.max(0,Math.min(1,genModel(curMin).poa/1000));genGlassMat.color.setRGB(0.05+0.98*f,0.05+0.74*f,0.05+0.28*f);}   // brillo de los paneles ∝ POA
 function paintGen(on){var s=invGlassMesh();if(!s||!s.im)return;if(on&&!genGlassMat)genGlassMat=new THREE.MeshStandardMaterial({color:0x111111,roughness:.45,metalness:.1});s.im.material=on?genGlassMat:glassM;if(on)updateGenGlow();}
 function updateGenHUD(){var h=$('genHUD');if(!h)return;var f=calF(),g=genModel(curMin),mwh=genDayMWh()*f,fc=GEN_KWP?(mwh*1000/(GEN_KWP*24))*100:0;
   var nInv=INVSTR.length,clip=0,mn=1e9,mx=0;for(var i=0;i<nInv;i++){var ac=perInvKW(i,curMin);if(ac>=349.5)clip++;if(ac<mn)mn=ac;if(ac>mx)mx=ac;}
   var br=nInv?('<br><span style="color:var(--tx2)">'+nInv+' inversores · '+mn.toFixed(0)+'–'+mx.toFixed(0)+' kW/inv'+(clip?' · <span style="color:#ff8a80">'+clip+' recortando</span>':'')+'</span>'):'';
+  var sh=shadeStats(),shl='<br><span style="color:var(--tx2)">sombras fila-fila: ahora '+(sh.now*100).toFixed(0)+'% · día con BT '+(sh.bt*100).toFixed(1)+'% / sin BT '+(sh.nbt*100).toFixed(1)+'% <span title="fracción de área; la pérdida eléctrica real puede ser ~×1,5-2 según el módulo">(área)</span></span>';
   var cal=CAL?('<br><span style="color:#9be23a">calibrado SolarGPT · '+CAL.y+' kWh/kWp·año'+(CAL.pr?' · PR '+CAL.pr:'')+' · clima ×'+CAL.f+'</span>'):'';
-  h.innerHTML='<b style="color:#ffd98a">'+(g.acKW/1000*f).toFixed(2)+' MW</b> ahora · '+mwh.toFixed(1)+' MWh/día · POA '+Math.round(g.poa)+' W/m² · FC '+fc.toFixed(0)+'%'+br+cal;}
+  h.innerHTML='<b style="color:#ffd98a">'+(g.acKW/1000*f).toFixed(2)+' MW</b> ahora · '+mwh.toFixed(1)+' MWh/día · POA '+Math.round(g.poa)+' W/m² · FC '+fc.toFixed(0)+'%'+br+shl+cal;}
 // ===== CALIBRACIÓN con SolarGPT: pide al motor (túnel/localhost) la simulación ANUAL bancable (ERA5 + cadena DC→AC)
 // y deriva el FACTOR CLIMA = yield real / yield cielo-claro local. Se guarda por planta y escala MW/MWh del HUD.
 var CAL=(function(){try{return JSON.parse(localStorage.getItem('factiun_cal_'+((PLANTS[PLANT]&&PLANTS[PLANT].cod)||PLANT))||'null');}catch(e){return null;}})();
@@ -1000,7 +1023,7 @@ function fHdr(lab,sub,acc){return '<div style="display:flex;align-items:center;g
 function updateFicha(){var f=$('invFicha');if(!f||!FICHA)return;
   if(FICHA.t==='inv'){var e=invElec(FICHA.id,curMin),lab=(LAYOUT.invlab[FICHA.id]&&LAYOUT.invlab[FICHA.id].s)||('I-'+FICHA.id);
     f.innerHTML=fHdr(lab,'SG350HX')
-      +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+e.ns+' strings</div><div>'+e.istr.toFixed(1)+' A · '+e.vstr.toFixed(0)+' V · <b>'+e.pstr.toFixed(1)+' kW</b> <span style="color:var(--tx2)">/string</span></div>'
+      +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+e.ns+' strings <span style="color:var(--tx2);font-weight:400;font-size:10.5px">'+(STRDB?'· numeración del plano':'· estimado')+'</span></div><div>'+e.istr.toFixed(1)+' A · '+e.vstr.toFixed(0)+' V · <b>'+e.pstr.toFixed(1)+' kW</b> <span style="color:var(--tx2)">/string</span></div>'
       +'<div style="color:#9fd0ff;font-weight:600;margin-top:5px">Entrada DC</div><div>'+e.vdc.toFixed(0)+' V · '+e.idc.toFixed(0)+' A · <b>'+e.pdc.toFixed(0)+' kW</b></div>'
       +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida AC → CT</div><div>'+e.vac+' V · '+e.iac.toFixed(0)+' A · <b>'+e.pac.toFixed(0)+' kW</b>'+(e.clip?' <span style="color:#ff8a80">· recorte</span>':'')+'</div>';}
   else if(FICHA.t==='ct'){var c=ctElec(FICHA.id,curMin);
@@ -1324,6 +1347,44 @@ $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubem
     if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
 $('calBtn').onclick=function(){calibrate();};
 $('repLink').href='informe.html?planta='+PLANT;
+/* ===== MODO CINE: tour de dron + grabación WebM + foto alta resolución ===== */
+var TOUR_ON=false,_tourT=0,REC=null,RECCHUNKS=[];
+function _ease(u){return u*u*(3-2*u);}
+function _lerp(a,b,u){return a+(b-a)*u;}
+function tourStep(dt){ if(!NODES.length)return; _tourT+=dt; var T=_tourT%52;
+  var cx=(FB.x0+FB.x1)/2,cz=-(FB.n0+FB.n1)/2,R=Math.max(FB.x1-FB.x0,FB.n1-FB.n0)*0.85+120;
+  var stN=(LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length)?LAYOUT.invlab[0].n:((FB.n0+FB.n1)/2),stZ=-stN;   // calle de inversores para la pasada baja
+  var px,py,pz,tx,ty,tz;
+  if(T<20){var u=T/20,a=-Math.PI/2+u*2*Math.PI;px=cx+R*Math.cos(a);py=R*0.42;pz=cz+R*Math.sin(a);tx=cx;ty=0;tz=cz;}   // órbita completa alta
+  else if(T<24){var u2=_ease((T-20)/4);px=_lerp(cx+R*Math.cos(-Math.PI/2+2*Math.PI),FB.x0-40,u2);py=_lerp(R*0.42,9,u2);pz=_lerp(cz+R*Math.sin(-Math.PI/2+2*Math.PI),stZ,u2);tx=_lerp(cx,FB.x0+120,u2);ty=_lerp(0,4,u2);tz=stZ;}   // descenso a la calle
+  else if(T<40){var u3=(T-24)/16;px=_lerp(FB.x0-40,FB.x1+40,u3);py=9;pz=stZ;tx=px+130;ty=4;tz=stZ;}   // pasada de dron por la calle central
+  else if(T<46){var u4=_ease((T-40)/6);px=_lerp(FB.x1+40,SUBST.x+60,u4);py=_lerp(9,42,u4);pz=_lerp(stZ,-SUBST.n+70,u4);tx=_lerp(px+130,SUBST.x,u4);ty=_lerp(4,2,u4);tz=_lerp(stZ,-SUBST.n,u4);}   // visita a la subestación
+  else {var u5=_ease((T-46)/6);px=_lerp(SUBST.x+60,cx+R*Math.cos(-Math.PI/2),u5);py=_lerp(42,R*0.42,u5);pz=_lerp(-SUBST.n+70,cz+R*Math.sin(-Math.PI/2),u5);tx=_lerp(SUBST.x,cx,u5);ty=_lerp(2,0,u5);tz=_lerp(-SUBST.n,cz,u5);}   // ascenso y vuelta al inicio (bucle)
+  py+=localElevY(px,-pz);ty+=localElevY(tx,-tz);
+  camera.position.set(px,py,pz);controls.target.set(tx,ty,tz);controls.update();
+}
+function stopTour(){if(!TOUR_ON)return;TOUR_ON=false;controls.enabled=true;$('tourBtn').textContent='🎬 Tour dron';}
+$('tourBtn').onclick=function(){ if(TOUR_ON){stopTour();return;} TOUR_ON=true;_tourT=0;controls.enabled=false;if(freeCam){freeCam=false;$('freecam').checked=false;}this.textContent='⏹ Parar tour';};
+renderer&&renderer.domElement.addEventListener('pointerdown',function(){stopTour();});   // tocar la escena = salir del tour
+$('recBtn').onclick=function(){ var b=this;
+  if(REC){try{REC.stop();}catch(e){}return;}
+  if(!window.MediaRecorder||!renderer.domElement.captureStream){alert('Este navegador no soporta grabación de vídeo (usa Chrome/Edge/Firefox).');return;}
+  var mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':(MediaRecorder.isTypeSupported('video/webm')?'video/webm':'');
+  if(!mime){alert('Sin códec WebM disponible en este navegador.');return;}
+  RECCHUNKS=[];REC=new MediaRecorder(renderer.domElement.captureStream(30),{mimeType:mime,videoBitsPerSecond:12000000});
+  REC.ondataavailable=function(e){if(e.data&&e.data.size)RECCHUNKS.push(e.data);};
+  REC.onstop=function(){var bl=new Blob(RECCHUNKS,{type:'video/webm'});var a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='factiun_'+PLANT+'_'+fmtHM(curMin).replace(':','')+'.webm';a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},8000);REC=null;b.textContent='⏺ Grabar';};
+  REC.start(250);b.textContent='⏹ Parar y descargar';
+};
+$('fotoBtn').onclick=function(){ var sz=new THREE.Vector2();renderer.getSize(sz);var pr=renderer.getPixelRatio(),ms=SUN.shadow.mapSize.x;
+  try{
+    var mult=Math.min(SKY_MOB?1.5:2,4096/Math.max(sz.x,sz.y)),hi=SKY_MOB?4096:8192;   // 2× resolución + sombras al máximo, un solo frame
+    SUN.shadow.mapSize.set(hi,hi);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}
+    renderer.setPixelRatio(1);renderer.setSize(Math.round(sz.x*mult),Math.round(sz.y*mult),false);
+    updateSunShadow();renderer.render(scene,camera);
+    var a=document.createElement('a');a.href=renderer.domElement.toDataURL('image/png');a.download='factiun_'+PLANT+'_foto.png';a.click();
+  }catch(e){alert('No se pudo capturar ('+e.message+')');}
+  finally{ renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);SUN.shadow.mapSize.set(ms,ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();renderer.render(scene,camera);} };
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
