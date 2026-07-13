@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.17</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.18</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -307,6 +307,7 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._d
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
   SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
+  SUN.shadow.radius=Math.min(13,2+1.1/Math.max(0.08,dir.U));           // sol bajo: el texel se estira 1/sin(alt) en el suelo (dientes de sierra) → penumbra PCF creciente, como la sombra real del amanecer
   SUN.shadow.normalBias=Math.max(0.04,Math.min(0.2,half*0.00006)); }   // bias escalado al área de la planta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
@@ -636,18 +637,17 @@ function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;}
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return ELEV?(ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex:0; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
-function makeInvTex(){   // frontal del SG350HX: cuerpo gris + marca Sungrow + display/LEDs + caja de conexiones con prensaestopas
+function makeInvTex(){   // frontal del SG350HX según foto real: panel plateado LISO con esquinas redondeadas, tornillos, LED azul cuadrado arriba-centro y marca SUNGROW abajo-derecha (sin display ni prensaestopas frontales)
   var c=document.createElement('canvas');c.width=296;c.height=226;var x=c.getContext('2d');
-  var g=x.createLinearGradient(0,0,0,226);g.addColorStop(0,'#d4d9de');g.addColorStop(1,'#bcc2c8');x.fillStyle=g;x.fillRect(0,0,296,226);
-  x.strokeStyle='#9aa1a8';x.lineWidth=5;x.strokeRect(3,3,290,220);
-  x.fillStyle='#1d3f7b';x.font='bold 31px Arial';x.fillText('SUNGROW',18,56);
-  x.fillStyle='#5a6470';x.font='bold 15px Arial';x.fillText('SG350HX',20,80);
-  x.fillStyle='#0d1116';x.fillRect(196,28,82,42);
-  x.fillStyle='#2bd97f';x.beginPath();x.arc(214,96,5,0,7);x.fill();
-  x.fillStyle='#3aa0ff';x.beginPath();x.arc(232,96,5,0,7);x.fill();
-  x.fillStyle='#e2574c';x.beginPath();x.arc(250,96,5,0,7);x.fill();
-  x.fillStyle='#9aa0a8';x.fillRect(10,120,276,96);x.strokeStyle='#7f868d';x.lineWidth=2;x.strokeRect(10,120,276,96);
-  x.fillStyle='#363c44';for(var k=0;k<6;k++){x.beginPath();x.arc(42+k*42,196,9,0,7);x.fill();}
+  x.fillStyle='#5a6167';x.fillRect(0,0,296,226);                                       // canto oscuro tras el panel
+  var g=x.createLinearGradient(0,0,60,226);g.addColorStop(0,'#eef1f4');g.addColorStop(0.5,'#dde2e6');g.addColorStop(1,'#c8ced4');
+  var r=18;x.beginPath();x.moveTo(6+r,6);x.arcTo(290,6,290,220,r);x.arcTo(290,220,6,220,r);x.arcTo(6,220,6,6,r);x.arcTo(6,6,290,6,r);x.closePath();
+  x.fillStyle=g;x.fill();x.lineWidth=2;x.strokeStyle='#aab1b8';x.stroke();
+  x.strokeStyle='#c2c8ce';x.lineWidth=1;                                               // tornillos en esquinas y laterales
+  [[24,24],[272,24],[24,202],[272,202],[148,22],[148,204]].forEach(function(p){x.fillStyle='#b7bec5';x.beginPath();x.arc(p[0],p[1],5,0,7);x.fill();x.stroke();x.fillStyle='#8f969d';x.beginPath();x.arc(p[0],p[1],2,0,7);x.fill();});
+  x.fillStyle='#3f7fe0';var lr=5;x.beginPath();x.moveTo(138+lr,74);x.arcTo(160,74,160,96,lr);x.arcTo(160,96,138,96,lr);x.arcTo(138,96,138,74,lr);x.arcTo(138,74,160,74,lr);x.closePath();x.fill();   // LED cuadrado azul
+  x.fillStyle='#eef3f8';x.fillRect(146,82,6,6);
+  x.fillStyle='#6c757d';x.font='bold 17px Arial';x.textAlign='right';x.fillText('SUNGROW',272,196);x.textAlign='left';
   var t=new THREE.CanvasTexture(c);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;return t;
 }
 var METEO_ANIM=[],metT=0,_wAcc=0,WIND={ws:3,wd:210,real:false};   // ws m/s, wd grados desde el N (de DÓNDE viene)
@@ -697,10 +697,12 @@ function buildSkyDome(){
       ' vec3 sunCol=mix(vec3(1.0,0.45,0.15),vec3(1.0,0.96,0.86),tDay);',
       ' col+=sunCol*(smoothstep(0.99955,0.99993,mu)*3.2+pow(max(mu,0.0),120.0)*0.35+pow(max(mu,0.0),8.0)*0.08)*sunVis*cc;', // disco solar + halo Mie (atenuados por nubes)
       ' if(dir.y>0.015){vec2 cuv=dir.xz/(dir.y+0.34)*0.62+vec2(uTime*0.005,uTime*0.002);',                                // +0.34: menos estiramiento en el horizonte (adiós vetas)
+      '  cuv+=0.38*vec2(fbm(cuv*1.7+9.1),fbm(cuv*1.7+4.7));',                                                             // warp extra: con poca nubosidad las islas del umbral salían como CÍRCULOS perfectos ("dos círculos" junto al sol)
       '  float m=fbm(cuv*0.55+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // cúmulos grandes + detalle con warp
       '  float d=n*(0.45+0.55*m)-(1.0-uCloud*1.12);',
       '  float cf=smoothstep(0.02,0.26,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.02,0.50,d);',
       '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.07,1.07,1.09),tDay);',                    // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
+      '  float cg=smoothstep(0.30,0.05,uU)*pow(max(mu,0.0),6.0);cb=mix(cb,vec3(1.12,0.72,0.50),cg*0.85);',                // con sol bajo, la nube cercana al sol se enciende cálida (no blanco puro)
       '  col=mix(col,mix(cb,cb*0.55,th),cf*0.96);}',
       ' gl_FragColor=vec4(col,1.0);}'
     ].join('\n'),
@@ -1073,7 +1075,9 @@ function buildBOS(){
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
   // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
-  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.6,metalness:.4,color:0xe2e8ee});
+  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
+  meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(260.0,80.0,length(vViewPosition));');};   // el paño se desvanece 80→260 m: incluso al contraluz el enrejado lejano no puede volverse lámina
+  meshM.customProgramCacheKey=function(){return 'fencefade1';};
   var sv=[],su=[],sw=[];
   (LAYOUT.fence||[]).forEach(function(pl){
     var pts=[];                                                                    // densifico el trazado (~5 m) para que la BASE siga el terreno
