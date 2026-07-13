@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.9</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.10</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -820,12 +820,8 @@ function buildInvLayer(){
   (LAYOUT.invlab||[]).forEach(function(c){var k=String(c.s).replace(/^I-/,'');if(H[k]){H[k].x=c.x;H[k].nn=c.n;}});
   order.forEach(function(k,gi){var g=H[k],col=invColor3(gi);INVCOL[k]=col;
     if(g.x==null){var sx=0,sn=0;g.trk.forEach(function(i){sx+=NODES[i].gx;sn+=-NODES[i].gz;});g.x=sx/g.trk.length;g.nn=sn/g.trk.length;}
-    var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn),lineV=[];
-    g.trk.forEach(function(i){var t=NODES[i],tx=t.gx,tz=t.gz,tn=-tz;
-      for(var s=0;s<5;s++){var a=s/5,b=(s+1)/5,ax=tx+(ix-tx)*a,an=tn+(g.nn-tn)*a,bx=tx+(ix-tx)*b,bn=tn+(g.nn-tn)*b;lineV.push(ax,localElevY(ax,an)+0.4,-an,bx,localElevY(bx,bn)+0.4,-bn);}   // cableado drapeado seguidor→inversor
-    });
-    var lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(lineV,3));
-    invGroup.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.5})));
+    var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn);
+    // (v4.10) fuera las líneas rectas seguidor→inversor: con los módulos ya pintados por inversor eran redundantes y no seguían rutas reales (el cableado real está en la capa ⚡ Cableado DC)
     var ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,0.13,8,20),new THREE.MeshBasicMaterial({color:col}));ring.rotation.x=Math.PI/2;ring.position.set(ix,iy+0.12,iz);invGroup.add(ring);   // anillo en la estación
     var lb=makeLabel('I-'+k);lb.position.set(ix,iy+2.6,iz);invGroup.add(lb);
   });
