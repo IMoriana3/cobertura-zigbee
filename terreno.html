@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.15</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.16</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -226,7 +226,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);renderer.render(scene,camera);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);updateLabels();renderer.render(scene,camera);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -317,16 +317,16 @@ function buildSunPath(){
   for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<-0.04)continue;pts.push(new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N));}
   if(pts.length>1)sunPathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0xffcf5a,transparent:true,opacity:.7})));
   for(var h=0;h<24;h++){var sv=sunVec(h*60);if(sv.U<0.02)continue;var p=new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N);
-    var d=new THREE.Mesh(new THREE.SphereGeometry(8,8,6),new THREE.MeshBasicMaterial({color:0xffe08a}));d.position.copy(p);sunPathGroup.add(d);
-    if(h%3===0){var lb=makeLabel((h<10?'0':'')+h+'h');lb.position.set(p.x,p.y+50,p.z);sunPathGroup.add(lb);}}
-  sunMarker=new THREE.Mesh(new THREE.SphereGeometry(32,20,16),new THREE.MeshBasicMaterial({color:0xfff2c0}));sunPathGroup.add(sunMarker);
+    var d=new THREE.Mesh(new THREE.SphereGeometry(8,8,6),new THREE.MeshBasicMaterial({color:0xffb84d}));d.position.copy(p);sunPathGroup.add(d);
+    if(h%3===0){var lb=makeLabel((h<10?'0':'')+h+'h','free');lb.scale.multiplyScalar(12);lb.position.set(p.x,p.y+50,p.z);sunPathGroup.add(lb);}}   // ×12: a R=1800 la pastilla de 4 m era invisible
+  sunMarker=new THREE.Mesh(new THREE.TorusGeometry(30,2.4,8,28),new THREE.MeshBasicMaterial({color:0xffb84d}));sunPathGroup.add(sunMarker);   // ANILLO, no bola: la bola blanca de 32 m parecía un segundo sol junto al disco del shader
   var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,0,0,0],3));
   sunRay=new THREE.Line(rg,new THREE.LineBasicMaterial({color:0xffe08a,transparent:true,opacity:.3}));sunPathGroup.add(sunRay);   // rayo sol→centro: la sombra cae al lado opuesto
   sunPathGroup.visible=$('sunpath')?$('sunpath').checked:true;scene.add(sunPathGroup);updateSunMarker(curMin);
 }
 function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=sunVec(min);
   if(sv.U<-0.05){sunMarker.visible=false;if(sunRay)sunRay.visible=false;return;}
-  var sx=cx+R*sv.E,sy=Math.max(1,R*sv.U),sz=cz-R*sv.N; sunMarker.visible=true; sunMarker.position.set(sx,sy,sz);
+  var sx=cx+R*sv.E,sy=Math.max(1,R*sv.U),sz=cz-R*sv.N; sunMarker.visible=true; sunMarker.position.set(sx,sy,sz); sunMarker.lookAt(cx,0,cz);
   if(sunRay){var p=sunRay.geometry.attributes.position;p.setXYZ(0,sx,sy,sz);p.setXYZ(1,cx,0,cz);p.needsUpdate=true;sunRay.visible=true;} }
 function setTime(min){
   curMin=min; syncSun(min);
@@ -1071,8 +1071,9 @@ function buildBOS(){
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
-  var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;
-  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.25,side:THREE.DoubleSide,roughness:.6,metalness:.4,color:0xe2e8ee});
+  var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
+  // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
+  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.6,metalness:.4,color:0xe2e8ee});
   var sv=[],su=[],sw=[];
   (LAYOUT.fence||[]).forEach(function(pl){
     var pts=[];                                                                    // densifico el trazado (~5 m) para que la BASE siga el terreno
@@ -1094,7 +1095,7 @@ function buildBOS(){
       pacc+=L;if(pacc>=8){pacc=0;var h=ta-ba;                                       // postes cada ~8 m, de la base al techo (sin peana de hormigón)
         var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h+0.3,8),postM);po.position.set(a[0],(ta+ba)/2,-a[1]);bosGroup.add(po);}}
   });
-  if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.25});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
+  if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
   if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
   // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
   var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
@@ -1125,7 +1126,7 @@ function buildBOS(){
     else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
       var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
       var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
-    var lb=makeLabel(b.lab);lb.position.set(b.x,y+(b.lo?5.9:b.sub?4.4:b.ct?3.9:3.6),-b.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios: se conmutan con "Etiquetas" (se quitan al deseleccionar)
+    var lb=makeLabel(b.lab,'poi');lb.position.set(b.x,y+(b.lo?6.6:b.sub?6.2:b.ct?5.7:4.4),-b.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios (hito, por encima del tejado): se conmutan con "Etiquetas"
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
@@ -1173,7 +1174,7 @@ function buildBOS(){
     panG.add(new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel));                                                             // panel plano (normal +Y); el grupo lo bascula hacia el sol
     if(METEO_ANIM.length)METEO_ANIM[METEO_ANIM.length-1].p=panG;
     g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));                                        // soporte (fijo)
-    var lb=makeLabel(m.name);lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});  // etiqueta HSU (se conmuta con "Etiquetas")
+    var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});  // etiqueta HSU (hito; se conmuta con "Etiquetas")
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
@@ -1203,7 +1204,7 @@ function buildGateways(){
     var aBot=poleH+0.62,aTop=gw.h;                                                                          // antena externa hasta la altura real (2,5 m)
     var amast=new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.02,Math.max(0.2,aTop-aBot),8),antM);amast.position.y=(aBot+aTop)/2;amast.castShadow=true;g.add(amast);
     var atip=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),new THREE.MeshStandardMaterial({color:0x5aa9ff,emissive:0x163a5e,emissiveIntensity:.6}));atip.position.y=aTop;g.add(atip);
-    var lb=makeLabel('NCU '+gw.name);lb.position.y=gw.h+1.2;lb.visible=labelGroup.visible;g.add(lb);HLBL.push(lb);   // etiqueta NCU: se conmuta con "Etiquetas"
+    var lb=makeLabel('NCU '+gw.name,'poi');lb.position.y=gw.h+1.2;lb.visible=labelGroup.visible;g.add(lb);HLBL.push(lb);   // etiqueta NCU (hito): se conmuta con "Etiquetas"
     gwMasts.push(g);
   });
 }
@@ -1245,19 +1246,42 @@ function updateFres(cl,pa,bl){var e=$('fresStat'),lg=$('fresLeg');if(!e)return;
   if(lg)lg.style.display='flex';
   e.innerHTML='Enlace de cada TCU a su NCU: <b style="color:#36D399">'+cl+'</b> con visión · <b style="color:#e3c149">'+pa+'</b> rozando · <b style="color:#e2574c">'+bl+'</b> sin visión';
 }
-function makeLabel(text){   // pastilla redondeada nítida, ancho ajustado al texto (no se aplasta)
-  text=String(text==null?'':text);
+function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado al texto (no se aplasta)
+  // kind: 'trk' (defecto) se funde de lejos · 'poi' (hitos: CT, sub, NCU…) crece para seguir legible · 'free' fuera de la gestión
+  text=String(text==null?'':text);kind=kind||'trk';
   var dpr=2,fs=30,padX=16,padY=9,font='600 '+fs+'px system-ui,Segoe UI,Roboto,Arial,sans-serif';
   var mc=document.createElement('canvas').getContext('2d');mc.font=font;
   var tw=Math.ceil(mc.measureText(text).width),W=tw+padX*2,H=fs+padY*2;
   var c=document.createElement('canvas');c.width=W*dpr;c.height=H*dpr;
   var g=c.getContext('2d');g.scale(dpr,dpr);
   var r=H/2;g.beginPath();g.moveTo(r,0);g.arcTo(W,0,W,H,r);g.arcTo(W,H,0,H,r);g.arcTo(0,H,0,0,r);g.arcTo(0,0,W,0,r);g.closePath();
-  g.fillStyle='rgba(14,18,24,.85)';g.fill();g.lineWidth=2;g.strokeStyle='rgba(90,169,255,.5)';g.stroke();
+  g.fillStyle='rgba(14,18,24,.85)';g.fill();g.lineWidth=2;g.strokeStyle=kind==='poi'?'rgba(150,210,255,.95)':'rgba(90,169,255,.5)';g.stroke();
   g.fillStyle='#eaf4ff';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
   var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
-  var h=4.0;sp.scale.set(h*W/H,h,1);return sp;
+  var h=4.0;sp.scale.set(h*W/H,h,1);
+  sp.userData.pill={baseH:h,asp:W/H,kind:kind};if(kind!=='free')ALLPILLS.push(sp);
+  return sp;
+}
+// ===== etiquetas con tamaño EN PANTALLA acotado =====
+// La pastilla mide 4 m físicos: de cerca tapaba media fila y de lejos era confeti en el horizonte.
+// Cada frame se acota su alto en píxeles a [12,46]: >46 px se encoge; <12 px las 'trk' se funden
+// (opacidad (px/12)²) y las 'poi' crecen — los hitos de planta se leen siempre, como en un mapa.
+var ALLPILLS=[],_lblV=new THREE.Vector3(),_lblC=new THREE.Vector3(),_lblN=0;
+function updateLabels(){
+  if(!ALLPILLS.length)return;
+  if(++_lblN%180===0)ALLPILLS=ALLPILLS.filter(function(s){var o=s;while(o.parent)o=o.parent;return o===scene;});   // poda huérfanas tras reconstrucciones (cambio de planta)
+  var ch=renderer.domElement.clientHeight||renderer.domElement.height,f=ch/(2*Math.tan(camera.fov*Math.PI/360));
+  camera.getWorldPosition(_lblC);
+  for(var i=0;i<ALLPILLS.length;i++){var sp=ALLPILLS[i];if(!sp.visible)continue;
+    var ud=sp.userData.pill,d=Math.max(1,sp.getWorldPosition(_lblV).distanceTo(_lblC));
+    var px=ud.baseH*f/d,h=ud.baseH,op=1;
+    if(px>42)h=42*d/f;
+    if(ud.kind==='poi'){if(px<12)h=12*d/f;}
+    else if(px<20){op=Math.max(0,(px-9)/11);op*=op;}   // rampa 20→9 px: el horizonte no se llena de confeti
+    sp.scale.set(h*ud.asp,h,1);
+    if(sp.material.opacity!==op)sp.material.opacity=op;
+  }
 }
 // ===== Capa ZONAS Y RECINTOS (El Burgo): carteles ámbar del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio).
 // Aditiva (grupo propio, perezosa). Distintos de las etiquetas de elemento: ámbar, mástil + base, más grandes.
@@ -1273,7 +1297,9 @@ function makeZoneLabel(text){
   g.fillStyle='#ffd98a';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
   var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
-  var h=5.2;sp.scale.set(h*W/H,h,1);return sp;
+  var h=5.2;sp.scale.set(h*W/H,h,1);
+  sp.userData.pill={baseH:h,asp:W/H,kind:'poi'};ALLPILLS.push(sp);
+  return sp;
 }
 function buildZoneLayer(){
   if(zoneGroup){scene.remove(zoneGroup);zoneGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});zoneGroup=null;}
