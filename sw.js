@@ -2,7 +2,7 @@
    HTML → NETWORK-FIRST (siempre la última versión cuando hay red; cae a caché sin conexión).
    Resto de assets propios → stale-while-revalidate (rápido + se actualizan en segundo plano).
    Teselas (satélite/DEM, cross-origin) → directas a red (no se cachean). */
-var CACHE = 'cobertura-v3';
+var CACHE = 'cobertura-v4';
 var SHELL = [
   './', 'index.html', 'terreno.html', 'plano.html', 'crear.html', 'nuevo.html', 'informe.html',
   'lib/three.min.js', 'lib/OrbitControls.js', 'lib/GLTFLoader.js',
@@ -23,8 +23,8 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // teselas/CDN: directo a red
-  var isHTML = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
-  if (isHTML) {   // NETWORK-FIRST: siempre la última versión cuando hay red
+  var isFresh = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/') || url.pathname.endsWith('.json');   // HTML y DATOS (layouts/redes): siempre frescos
+  if (isFresh) {   // NETWORK-FIRST: siempre la última versión cuando hay red
     e.respondWith(
       fetch(req).then(function (res) {
         var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); return res;
