@@ -1,4 +1,4 @@
-// Imanta el cableado DC (cable_pos/cable_neg) a SU VIGA DE TORSIÓN. v4
+// Imanta el cableado DC (cable_pos/cable_neg) a SU VIGA DE TORSIÓN y los colectores E-W a SU ZANJA. v5
 // El seguidor es BÍFILO: cada unidad tiene DOS vigas a ±filaZ (±3 m) de su eje. La v3 imantaba al eje
 // de la unidad = el pasillo interior entre las dos filas (error señalado por el usuario). Ahora:
 //   1) cada cable se casa con SU string por proximidad de su extremo a la etiqueta Strings_numeración
@@ -44,7 +44,20 @@ function runsOf(pl) {
   }
   return out;
 }
-let matched = 0, fallback = 0, snapped = 0, corners = 0;
+// eje de zanja para un punto: proyecta sobre los tramos de trench_* y devuelve el n de la zanja más cercana (|Δn|≤6)
+const TRSEG = [];
+for (const tk of ['trench_string', 'trench_inv']) (NET.layers[tk] || []).forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) TRSEG.push([pl[i], pl[i + 1]]); });
+function trenchN(x, n) {
+  let bd = 6, bn = null;
+  for (const [a, b] of TRSEG) {
+    const x0 = Math.min(a[0], b[0]) - 2, x1 = Math.max(a[0], b[0]) + 2;
+    if (x < x0 || x > x1 || Math.abs(b[0] - a[0]) < 3) continue;               // solo zanjas ~E-W que cubran esa x
+    const t = (x - a[0]) / (b[0] - a[0]), nn = a[1] + (b[1] - a[1]) * Math.max(0, Math.min(1, t));
+    const d = Math.abs(nn - n); if (d < bd) { bd = d; bn = nn; }
+  }
+  return bn;
+}
+let matched = 0, fallback = 0, snapped = 0, corners = 0, ewSnapped = 0;
 for (const key of ['cable_pos', 'cable_neg']) {
   const pol = key === 'cable_pos' ? +0.10 : -0.10;         // + al este de la viga, − al oeste (mazo pegado al tubo)
   NET.layers[key] = (NET.layers[key] || []).map(pl => {
@@ -78,5 +91,58 @@ for (const key of ['cable_pos', 'cable_neg']) {
     return out;
   });
 }
+// ===== pasada E-W: los colectores de calle A SU ZANJA, apilados como mazo (±0,45 m) =====
+// (el CAD los dibuja desperdigados en ~3 m: el "código de barras" que señaló el usuario)
+const ewRuns = [];
+for (const key of ['cable_pos', 'cable_neg']) {
+  (NET.layers[key] || []).forEach((pl, pi) => {
+    let i = 0;
+    while (i < pl.length - 1) {
+      let j = i;
+      while (j < pl.length - 1 && Math.abs(pl[j + 1][1] - pl[j][1]) < 1.5) j++;
+      if (j > i) {
+        const xs = [], nsv = [];
+        for (let k = i; k <= j; k++) { xs.push(pl[k][0]); nsv.push(pl[k][1]); }
+        if (Math.max(...xs) - Math.min(...xs) >= 8) {
+          const mx = (Math.min(...xs) + Math.max(...xs)) / 2, mn = nsv.slice().sort((a, b) => a - b)[Math.floor(nsv.length / 2)];
+          ewRuns.push({ key, pi, i, j, n: mn, tn: trenchN(mx, mn) });   // tn puede ser null (zanjas cortas/sin cobertura): el cluster decide
+        }
+        i = j;
+      } else i++;
+    }
+  });
+}
+ewRuns.sort((a, b) => a.n - b.n);                          // clustering por el n PROPIO del tramo (gap ≤2,5): cada cluster = un mazo de calle
+const clusters = [];
+for (const r of ewRuns) {
+  const c = clusters[clusters.length - 1];
+  if (c && r.n - c.n1 <= 2.5) { c.rs.push(r); c.n1 = r.n; }
+  else clusters.push({ rs: [r], n1: r.n });
+}
+for (const c of clusters) {
+  const tns = c.rs.map(r => r.tn).filter(t => t != null).sort((a, b) => a - b);   // centro: la ZANJA si la conocemos; si no, la mediana del propio mazo
+  const own = c.rs.map(r => r.n).sort((a, b) => a - b);
+  const center = tns.length ? tns[Math.floor(tns.length / 2)] : own[Math.floor(own.length / 2)];
+  c.rs.sort((a, b) => a.n - b.n);
+  c.rs.forEach((r, idx) => {
+    const off = c.rs.length > 1 ? ((idx / (c.rs.length - 1)) - 0.5) * 0.9 : 0;   // mazo de ±0,45 m centrado en la zanja
+    const nn = Math.round((center + off) * 100) / 100, pl = NET.layers[r.key][r.pi];
+    for (let k = r.i; k <= r.j; k++) { pl[k] = [pl[k][0], nn, pl[k][2] || 0]; ewSnapped++; }
+  });
+}
+// esquinas en L para diagonales que toquen cualquier vértice movido (viga o zanja)
+for (const key of ['cable_pos', 'cable_neg']) {
+  NET.layers[key] = NET.layers[key].map(pl => {
+    const out = [];
+    for (let k = 0; k < pl.length; k++) {
+      out.push(pl[k]);
+      if (k + 1 < pl.length) {
+        const a = pl[k], b = pl[k + 1], dx = Math.abs(b[0] - a[0]), dn = Math.abs(b[1] - a[1]);
+        if (dx > 1.2 && dn > 1.2) { out.push(a[2] === 1 ? [a[0], b[1], 0] : [b[0], a[1], 0]); corners++; }
+      }
+    }
+    return out;
+  });
+}
 writeFileSync(NETP, JSON.stringify(NET));
-console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices imantados:', snapped, '· esquinas L:', corners);
+console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices en viga:', snapped, '· en zanja:', ewSnapped, '· esquinas L:', corners);
