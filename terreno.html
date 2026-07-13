@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.8</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.9</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -944,7 +944,7 @@ function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por el
   for(var i=0;i<inv.length;i++){var a=inv[i],ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
   for(var c=0;c<CTMAIN.length;c++){var p2=_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación
   if(!_ao)_ao=new THREE.Object3D();
-  var cone=new THREE.ConeGeometry(0.38,1.5,8);cone.rotateX(-Math.PI/2);   // flecha PEQUEÑA (Ø0,76×1,5 m); punta hacia −Z (lookAt orienta −Z al objetivo)
+  var cone=new THREE.ConeGeometry(0.38,1.5,8);cone.rotateX(Math.PI/2);   // punta hacia +Z: lookAt() de un OBJETO apunta +Z al objetivo (−Z es solo cámaras) — por eso iban del revés
   arrowMesh=new THREE.InstancedMesh(cone,new THREE.MeshBasicMaterial({transparent:true,opacity:0.98}),ARR.length);arrowMesh.frustumCulled=false;scene.add(arrowMesh);animateArrows(0);
 }
 function animateArrows(dt){ if(!arrowMesh)return; _at+=dt; var col=new THREE.Color();
@@ -960,7 +960,8 @@ function animateArrows(dt){ if(!arrowMesh)return; _at+=dt; var col=new THREE.Col
   arrowMesh.instanceMatrix.needsUpdate=true;if(arrowMesh.instanceColor)arrowMesh.instanceColor.needsUpdate=true;
 }
 function buildGenFlows(){ computeSinks();
-  buildFlow('cable_pos',function(pl){return nearestPt(pl[0][0],pl[0][1],INVPTS).p;},0x66ccff,0.16);   // string → inversor (detalle, líneas)
+  buildFlow('cable_pos',function(pl){return nearestPt(pl[0][0],pl[0][1],INVPTS).p;},0x66ccff,0.16);   // string → inversor (ondas por el cable)
+  if(genFlow.cable_pos)genFlow.cable_pos.visible=!!($('netCable')&&$('netCable').checked);   // las ondas SOLO si el usuario tiene marcado el Cableado DC (si no, parecía que la capa se encendía sola)
   buildArrows();   // inversor→CT y CT→subestación: FLECHAS animadas
 }
 function genPulse(dt){ if(!genOn)return; _gp+=dt; var f=Math.max(0,Math.min(1,genModel(curMin).acKW/((GEN_KWP/1.25)||1)));
@@ -1308,7 +1309,7 @@ $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.m
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
 $('invl').onchange=function(){invOn=this.checked;if(invOn&&genOn){setGen(false);if($('genflow'))$('genflow').checked=false;}if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D); excluyente con el flujo (ambas pintan los módulos)
 $('zones').onchange=function(){zonesOn=this.checked;if(zonesOn&&!zoneGroup)buildZoneLayer();if(zoneGroup)zoneGroup.visible=zonesOn;};   // capa zonas y recintos (perezosa, aditiva)
-$('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);};   // redes del DWG (perezosas): cableado DC +/−
+$('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);if(genFlow.cable_pos)genFlow.cable_pos.visible=this.checked&&genOn;};   // redes del DWG: cableado DC +/− (las ondas del flujo lo respetan)
 $('netEarth').onchange=function(){setNet(['earth'],this.checked);};                   // red de tierras
 $('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.checked);}; // zanjas string / string→inversor
 $('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};                   // inversor→CT (N3)
