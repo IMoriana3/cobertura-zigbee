@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.12</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.13</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -853,9 +853,10 @@ function buildNetLayer(key){
     if(tri.length){var tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute(tri,3));tg.computeVertexNormals();g.add(new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:d.c,transparent:true,opacity:.16,side:THREE.DoubleSide,depthWrite:false})));}
     if(ln.length){var lgg=new THREE.BufferGeometry();lgg.setAttribute('position',new THREE.Float32BufferAttribute(ln,3));g.add(new THREE.LineSegments(lgg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.65})));}
   } else {
-    var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m) → el cable VA POR EL SUELO, no en cuerda entre extremos
+    var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m): drapea el relieve
+      var hz=(a[2]===1&&b[2]===1)?1.72:d.off;   // tramos marcados [x,n,1] = van POR LA VIGA → altura de arnés bajo el tubo; giros/colectores en zanja (suelo)
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
-        v.push(ax,localElevY(ax,an)+d.off,-an,bx,localElevY(bx,bn)+d.off,-bn);}}});
+        v.push(ax,localElevY(ax,an)+hz,-an,bx,localElevY(bx,bn)+hz,-bn);}}});
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
   scene.add(g);netG[key]=g;return g;
@@ -961,7 +962,8 @@ function buildFlow(key,sinkFor,colorHex,off){
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return;
   var pos=[],ats=[];off=off||0.45;
   NET.layers[key].forEach(function(pl){var sk=sinkFor(pl);for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];
-    pos.push(a[0],localElevY(a[0],a[1])+off,-a[1],b[0],localElevY(b[0],b[1])+off,-b[1]);
+    var hz=(a[2]===1&&b[2]===1)?1.78:off;   // ondas por la VIGA en los tramos de arnés; en zanja el resto
+    pos.push(a[0],localElevY(a[0],a[1])+hz,-a[1],b[0],localElevY(b[0],b[1])+hz,-b[1]);
     ats.push(Math.hypot(a[0]-sk[0],a[1]-sk[1]),Math.hypot(b[0]-sk[0],b[1]-sk[1]));}});   // aT = distancia al sumidero → la onda fluye hacia él
   if(!pos.length)return;
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('aT',new THREE.Float32BufferAttribute(ats,1));
