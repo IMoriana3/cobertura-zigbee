@@ -93,7 +93,7 @@ for (const key of ['cable_pos', 'cable_neg']) {
 }
 // ===== pasada E-W: los colectores de calle A SU ZANJA, apilados como mazo (±0,45 m) =====
 // (el CAD los dibuja desperdigados en ~3 m: el "código de barras" que señaló el usuario)
-const ewRuns = [];
+const ewRuns = [], shortRuns = [];                         // largos ≥8 m definen los mazos; cortos 1,5-8 m = aproximaciones al inversor
 for (const key of ['cable_pos', 'cable_neg']) {
   (NET.layers[key] || []).forEach((pl, pi) => {
     let i = 0;
@@ -103,9 +103,12 @@ for (const key of ['cable_pos', 'cable_neg']) {
       if (j > i) {
         const xs = [], nsv = [];
         for (let k = i; k <= j; k++) { xs.push(pl[k][0]); nsv.push(pl[k][1]); }
-        if (Math.max(...xs) - Math.min(...xs) >= 8) {
+        const ext = Math.max(...xs) - Math.min(...xs);
+        if (ext >= 1.5) {
           const mx = (Math.min(...xs) + Math.max(...xs)) / 2, mn = nsv.slice().sort((a, b) => a - b)[Math.floor(nsv.length / 2)];
-          ewRuns.push({ key, pi, i, j, n: mn, tn: trenchN(mx, mn) });   // tn puede ser null (zanjas cortas/sin cobertura): el cluster decide
+          const rec = { key, pi, i, j, n: mn, tn: trenchN(mx, mn) };   // tn puede ser null (zanjas cortas/sin cobertura): el cluster decide
+          if (ext >= 8) ewRuns.push(rec);
+          else if (!(pl[i][2] === 1 && pl[j][2] === 1)) shortRuns.push(rec);   // ambos extremos en viga = cruce de bucle: no tocar
         }
         i = j;
       } else i++;
@@ -122,13 +125,34 @@ for (const r of ewRuns) {
 for (const c of clusters) {
   const tns = c.rs.map(r => r.tn).filter(t => t != null).sort((a, b) => a - b);   // centro: la ZANJA si la conocemos; si no, la mediana del propio mazo
   const own = c.rs.map(r => r.n).sort((a, b) => a - b);
-  const center = tns.length ? tns[Math.floor(tns.length / 2)] : own[Math.floor(own.length / 2)];
+  c.hasT = tns.length > 0;
+  c.center = c.hasT ? tns[Math.floor(tns.length / 2)] : own[Math.floor(own.length / 2)];
+}
+for (const c of clusters) {                                // mazo huérfano de zanja pegado (≤3,5 m) a uno CON zanja → mismo eje (sin mazos paralelos duplicados)
+  if (c.hasT) continue;
+  let bd = 3.5, bc = null;
+  for (const o of clusters) if (o.hasT) { const d = Math.abs(o.center - c.center); if (d < bd) { bd = d; bc = o.center; } }
+  if (bc != null) c.center = bc;
+}
+for (const c of clusters) {
   c.rs.sort((a, b) => a.n - b.n);
   c.rs.forEach((r, idx) => {
     const off = c.rs.length > 1 ? ((idx / (c.rs.length - 1)) - 0.5) * 0.9 : 0;   // mazo de ±0,45 m centrado en la zanja
-    const nn = Math.round((center + off) * 100) / 100, pl = NET.layers[r.key][r.pi];
+    const nn = Math.round((c.center + off) * 100) / 100, pl = NET.layers[r.key][r.pi];
     for (let k = r.i; k <= r.j; k++) { pl[k] = [pl[k][0], nn, pl[k][2] || 0]; ewSnapped++; }
   });
+}
+// tramos cortos (aproximación al inversor / bajada de fila): al mazo más cercano (≤3 m), con desfase estable por polilínea
+let shortSnap = 0;
+for (const r of shortRuns) {
+  const ref = r.tn != null ? r.tn : r.n;
+  let bd = 3.0, bc = null;
+  for (const c of clusters) { const d = Math.abs(c.center - ref); if (d < bd) { bd = d; bc = c.center; } }
+  if (bc == null) continue;                                // lejos de toda calle (p. ej. cruce entre filas a media longitud): se queda como está
+  const off = (((r.pi * 7 + (r.key === 'cable_pos' ? 0 : 3)) % 10) / 9 - 0.5) * 0.9;
+  const nn = Math.round((bc + off) * 100) / 100, pl = NET.layers[r.key][r.pi];
+  for (let k = r.i; k <= r.j; k++) { pl[k] = [pl[k][0], nn, pl[k][2] || 0]; ewSnapped++; }
+  shortSnap++;
 }
 // esquinas en L para diagonales que toquen cualquier vértice movido (viga o zanja)
 for (const key of ['cable_pos', 'cable_neg']) {
@@ -145,4 +169,4 @@ for (const key of ['cable_pos', 'cable_neg']) {
   });
 }
 writeFileSync(NETP, JSON.stringify(NET));
-console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices en viga:', snapped, '· en zanja:', ewSnapped, '· esquinas L:', corners);
+console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices en viga:', snapped, '· en zanja:', ewSnapped, '· aproximaciones cortas al mazo:', shortSnap, '· esquinas L:', corners);
