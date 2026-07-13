@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.5</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.6</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -232,7 +232,10 @@ async function loadAngles(){
   var af=PLANTS[PLANT].angles; if(!af){ANG=null;return false;}   // solo El Burgo trae telemetría real; las demás → simulación
   try{
     var j=await (await fetch(af,{cache:'no-store'})).json();
-    function toArr(o){return Object.keys(o).map(function(k){return [hm2min(k),o[k]];}).sort(function(a,b){return a[0]-b[0];});}
+    // Los timestamps del SCADA vienen en UTC; el visor trabaja en hora local CEST (UTC+2, misma convención fija que sunVec).
+    // Sin este corrimiento el tracker iba 2 h adelantado al sol (telemetría@10:00=-28,6° clava con el sol@12:00=-29,0°).
+    var TZOFF=120;
+    function toArr(o){return Object.keys(o).map(function(k){return [hm2min(k)+TZOFF,o[k]];}).sort(function(a,b){return a[0]-b[0];});}
     ANG={date:j.date,fieldArr:toArr(j.field),trk:{}};
     Object.keys(j.trk).forEach(function(k){ANG.trk[k]=toArr(j.trk[k]);});
     ANG.minT=ANG.fieldArr[0][0];ANG.maxT=ANG.fieldArr[ANG.fieldArr.length-1][0];
@@ -328,7 +331,7 @@ function setTime(min){
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
   if(SEG) updateSpin(panelAngle(min));        // recoloca las piezas que basculan (tubo, módulos, correas, cable, cajas, TCU)
   $('tval').textContent=fmtHM(min);
-  $('aval').textContent=panelAngle(min).toFixed(0)+"°"+(simOn?" · sim":" · real")+(btOn?"":" sin BT");
+  var _a=panelAngle(min);$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(simOn?" · sim":" · real")+(btOn?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
