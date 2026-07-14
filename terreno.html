@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.25</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.26</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -190,7 +190,7 @@ function flyStep(dt){   // movimiento libre tipo vuelo: WASD desplaza, Q/E baja/
 function initThree(){
   renderer=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});
   $('cv').addEventListener('webglcontextlost',function(e){e.preventDefault();showBanner('La GPU perdió el contexto WebGL en esta planta (sobrecarga de rendimiento, no un bug). Hay que aligerar más el render de la planta.',true);});   // diagnóstico: distingue pérdida de contexto (rendimiento) de un error JS
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);initPost();
   if(THREE.sRGBEncoding)renderer.outputEncoding=THREE.sRGBEncoding;
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;   // escritorio: PCFSoft (suaviza los bordes dentados "en sierra" de plantas grandes); móvil: PCF normal (PCFSoft no dibujaba sombras en algunas GPU móviles)
   if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;}
@@ -232,7 +232,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);updateLabels();renderer.render(scene,camera);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -439,7 +439,8 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
   tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;curMin=540;   // el slider cubre las 24 h completas (no solo de día)
@@ -488,18 +489,29 @@ var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   //
 var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
 var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
+var PANEL_NX=6,PANEL_NY=12;   // rejilla de células compartida por la textura y el microrrelieve (alineados)
 function makePanelTex(){
-  var W=128,H=256,c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');
-  x.fillStyle='#0a1019';x.fillRect(0,0,W,H);
-  var nx=6,ny=12,cw=W/nx,ch=H/ny,gap=1.4;
+  // módulo half-cut realista: célula azul-noche casi negra con variación sutil, multibusbar FINÍSIMO,
+  // backsheet claro asomando en las juntas, banda central de corte y marco anodizado — nada de "persianas"
+  var W=256,H=512,c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');
+  x.fillStyle='#c9ccd0';x.fillRect(0,0,W,H);                                 // backsheet claro (asoma solo en juntas)
+  var nx=PANEL_NX,ny=PANEL_NY,cw=W/nx,ch=H/ny,gap=1.1;
   for(var iy=0;iy<ny;iy++)for(var ix=0;ix<nx;ix++){
-    var L=7.5+Math.random()*3.5;var g=x.createLinearGradient(ix*cw,iy*ch,ix*cw+cw,iy*ch+ch);
-    g.addColorStop(0,'hsl(214,48%,'+(L+2).toFixed(1)+'%)');g.addColorStop(1,'hsl(214,48%,'+L.toFixed(1)+'%)');
-    x.fillStyle=g;x.fillRect(ix*cw+gap,iy*ch+gap,cw-2*gap,ch-2*gap);
-    x.strokeStyle='rgba(150,175,200,.30)';x.lineWidth=0.8;
-    for(var b=1;b<=3;b++){var bx=ix*cw+cw*b/4;x.beginPath();x.moveTo(bx,iy*ch+gap);x.lineTo(bx,iy*ch+ch-gap);x.stroke();}
+    var L=8.5+Math.random()*2.6,Hh=213+Math.random()*6;                      // tinte AR célula a célula, apenas perceptible
+    var g=x.createLinearGradient(ix*cw,iy*ch,ix*cw+cw*0.9,iy*ch+ch);
+    g.addColorStop(0,'hsl('+Hh.toFixed(0)+',42%,'+(L+1.6).toFixed(1)+'%)');g.addColorStop(1,'hsl('+Hh.toFixed(0)+',46%,'+L.toFixed(1)+'%)');
+    x.fillStyle=g;
+    var cx0=ix*cw+gap,cy0=iy*ch+gap,cwi=cw-2*gap,chi=ch-2*gap,ch2=3.5;       // esquinas achaflanadas de célula mono
+    x.beginPath();x.moveTo(cx0+ch2,cy0);x.lineTo(cx0+cwi-ch2,cy0);x.lineTo(cx0+cwi,cy0+ch2);x.lineTo(cx0+cwi,cy0+chi-ch2);
+    x.lineTo(cx0+cwi-ch2,cy0+chi);x.lineTo(cx0+ch2,cy0+chi);x.lineTo(cx0,cy0+chi-ch2);x.lineTo(cx0,cy0+ch2);x.closePath();x.fill();
+    x.strokeStyle='rgba(190,205,220,.14)';x.lineWidth=0.5;                    // 9 multibusbar: hilos casi invisibles
+    for(var b=1;b<=9;b++){var bx=cx0+cwi*b/10;x.beginPath();x.moveTo(bx,cy0+1);x.lineTo(bx,cy0+chi-1);x.stroke();}
   }
-  var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;return t;
+  x.fillStyle='rgba(201,204,208,0.9)';x.fillRect(0,H/2-1.5,W,3);              // banda central half-cut
+  var sh=x.createLinearGradient(0,0,W,H);sh.addColorStop(0,'rgba(255,255,255,0.05)');sh.addColorStop(0.45,'rgba(255,255,255,0)');sh.addColorStop(1,'rgba(120,150,190,0.05)');
+  x.fillStyle=sh;x.fillRect(0,0,W,H);                                        // veladura de vidrio muy sutil
+  x.strokeStyle='#b7bcc2';x.lineWidth=3;x.strokeRect(1.5,1.5,W-3,H-3);        // marco anodizado FINO
+  var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;return t;
 }
 // Seguidor REAL (cotas del gemelo) por INSTANCIA: cada pieza es UN InstancedMesh con N copias,
 // así 215 seguidores son ~5 llamadas de dibujo en vez de miles. Las piezas que basculan (tubos
@@ -510,7 +522,8 @@ function buildTrackers(elevAt){
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   // v4.2: vidrio physical/clearcoat RETIRADO temporalmente (iba ligado al PMREM que ennegrecía la escena); se mantiene el vidrio estándar probado
-  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x2b333d);mats.glass.emissiveIntensity=0.32;mats.glass.needsUpdate=true;     // células FV; emissiveMap → se ven también por la cara TRASERA bifacial
+  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x232a33);mats.glass.emissiveIntensity=0.12;   // 0,12: con la textura nueva (media más clara) 0,32 lavaba TODA la planta en gris
+  if(!CELLNRM)CELLNRM=makeCellNormal();mats.glass.normalMap=CELLNRM;mats.glass.normalScale=new THREE.Vector2(0.4,0.4);mats.glass.needsUpdate=true;     // células FV + microrrelieve (célula abombada/marco); emissiveMap → cara trasera bifacial
   steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
   markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
@@ -830,7 +843,7 @@ function invColor3(i){var c=new THREE.Color();c.setHSL((((i*7)*137.508)%360)/360
 function invGlassMesh(){if(!SEG)return null;for(var i=0;i<SEG.length;i++){if(SEG[i].spin&&(SEG[i].key==='glass'||SEG[i].key==='mesa'))return SEG[i];}return null;}   // la malla de paneles (spin)
 function paintInvModules(on){   // tiñe cada instancia de panel por el inversor de su seguidor (idx → i = floor(idx/(2·n))); revierte a la malla con textura al apagar
   var s=invGlassMesh();if(!s||!s.im)return;
-  if(on&&!invGlassMat)invGlassMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.45,metalness:.12});   // base blanca → instanceColor sale vívido (como el 2D), no apagado por la textura de células
+  if(on&&!invGlassMat){invGlassMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.45,metalness:.12});if(CELLNRM){invGlassMat.normalMap=CELLNRM;invGlassMat.normalScale=new THREE.Vector2(0.4,0.4);}}   // base blanca → instanceColor vívido; mismo microrrelieve que el vidrio
   s.im.material=on?invGlassMat:glassM;
   var col=new THREE.Color(),per=2*s.n,n=s.im.count;
   for(var idx=0;idx<n;idx++){var i=Math.floor(idx/per),key=(i<NODES.length)?invKey3(NODES[i].id):null;
@@ -855,6 +868,108 @@ function buildInvLayer(){
   });
   paintInvModules(invOn);   // pinta los módulos por inversor (como el 2D)
 }
+// ===== REALISMO: AO de contacto, microrrelieve, vegetación, sombras de nube y toque de cámara =====
+// (1) AO de contacto: penumbra suave DRAPEADA bajo cada línea de módulos (bífilo: a t.gx±filaZ) y bajo
+// equipos. Ancla las cosas al suelo; alfa baja para SUMARSE a la sombra real sin ennegrecer.
+var aoGroup=null,CELLNRM=null;
+function _aoTex(){var c=document.createElement('canvas');c.width=128;c.height=64;var x=c.getContext('2d');
+  var g=x.createRadialGradient(64,32,4,64,32,60);g.addColorStop(0,'rgba(10,12,10,0.50)');g.addColorStop(0.55,'rgba(10,12,10,0.28)');g.addColorStop(1,'rgba(10,12,10,0)');
+  x.save();x.translate(64,32);x.scale(1,0.5);x.translate(-64,-32);x.fillStyle=g;x.fillRect(0,0,128,64);x.restore();
+  return new THREE.CanvasTexture(c);}
+function buildContactAO(){
+  if(aoGroup){scene.remove(aoGroup);aoGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});aoGroup=null;}
+  if(!TRK.length||!ELEV)return;
+  aoGroup=new THREE.Group();scene.add(aoGroup);
+  var v=[],uv=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2;
+  TRK.forEach(function(t){var hl=(t.medio?16:31)+0.8,segs=10;
+    [t.gx-fz,t.gx+fz].forEach(function(cx){
+      for(var s=0;s<segs;s++){var nA=-t.gz-hl+2*hl*s/segs,nB=-t.gz-hl+2*hl*(s+1)/segs;
+        var yA=localElevY(cx,nA)+0.05,yB=localElevY(cx,nB)+0.05,u0=s/segs,u1=(s+1)/segs;
+        v.push(cx-w,yA,-nA, cx+w,yA,-nA, cx+w,yB,-nB, cx-w,yA,-nA, cx+w,yB,-nB, cx-w,yB,-nB);
+        uv.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
+    });});
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  var m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false}));m.renderOrder=1;aoGroup.add(m);
+  var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
+  function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
+  if(LAYOUT&&LAYOUT.invlab){if(!INVPOS.length)computeInvPos();LAYOUT.invlab.forEach(function(c,ci){var p=invAt(ci);put(p.x,p.n,2.6,1.6);});}
+  [{x:-0.86,n:22.01,sx:8.5,sz:4},{x:9.92,n:-194.24,sx:8.5,sz:4},{x:-6.9,n:-198.5,sx:9,sz:6}].forEach(function(b){put(b.x,b.n,b.sx,b.sz);});
+}
+// (2) microrrelieve de células: normal map generada (célula abombada + marco) para vidrio y capa inversores
+function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.width=W;c.height=Hh;var x=c.getContext('2d');
+  var hgt=new Float32Array(W*Hh),cw=W/PANEL_NX,ch=Hh/PANEL_NY;   // MISMA rejilla que makePanelTex: célula ligeramente abombada, junta hundida, marco
+  for(var j=0;j<Hh;j++)for(var i=0;i<W;i++){var ci=(i%cw)/cw,cj=(j%ch)/ch,dome=Math.sin(Math.PI*ci)*Math.sin(Math.PI*cj);
+    var edge=Math.min(i,j,W-1-i,Hh-1-j),fr=edge<3?0.1:1;hgt[j*W+i]=40+130*Math.pow(dome,0.55)*fr;}
+  var n=x.createImageData(W,Hh),nd=n.data;
+  function H(i,j){return hgt[((j+Hh)%Hh)*W+((i+W)%W)];}
+  for(var j2=0;j2<Hh;j2++)for(var i2=0;i2<W;i2++){var dx=(H(i2+1,j2)-H(i2-1,j2))/255,dy=(H(i2,j2+1)-H(i2,j2-1))/255,k=(j2*W+i2)*4;
+    nd[k]=Math.max(0,Math.min(255,128-dx*200));nd[k+1]=Math.max(0,Math.min(255,128-dy*200));nd[k+2]=255;nd[k+3]=255;}
+  x.putImageData(n,0,0);var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;}
+// (3) vegetación dispersa (solo escritorio): matas cruzadas instanciadas, se funden a ~90 m
+var vegMesh=null;
+function _grassTex(){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
+  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1;
+    x.strokeStyle='rgba('+(96+Math.random()*50|0)+','+(88+Math.random()*44|0)+','+(48+Math.random()*26|0)+',0.9)';x.lineWidth=1.4;
+    x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+sw*3,48-h2*0.6,bx+sw*(4+Math.random()*5),48-h2);x.stroke();}
+  return new THREE.CanvasTexture(c);}
+function buildVeg(){
+  if(vegMesh){scene.remove(vegMesh);vegMesh.geometry.dispose();vegMesh.material.dispose();vegMesh=null;}
+  if(SKY_MOB||!CLP||!ELEV)return;
+  var P=[-0.36,0,0, 0.36,0,0, 0.36,0.5,0, -0.36,0,0, 0.36,0.5,0, -0.36,0.5,0,
+         0,0,-0.36, 0,0,0.36, 0,0.5,0.36, 0,0,-0.36, 0,0.5,0.36, 0,0.5,-0.36];
+  var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
+  var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
+  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(95.0,55.0,length(vViewPosition));');};   // se funden lejos: cerca visten, lejos no ensucian
+  m.customProgramCacheKey=function(){return 'vegfade1';};
+  var N=2600;vegMesh=new THREE.InstancedMesh(g,m,N);
+  var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
+  for(var i=0;i<N;i++){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();
+    o.position.set(x,localElevY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.6+rng()*0.9;o.scale.set(sc,0.7+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}
+  vegMesh.receiveShadow=true;scene.add(vegMesh);
+}
+// (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
+// opacidad ∝ nubosidad y solo de día. El "respirar" global de la luz (animateSky) pone la otra mitad.
+var cshGroup=null,_cshT=0,_cshK=0;
+function _cloudBlobTex(){var S=256,c=document.createElement('canvas');c.width=c.height=S;var x=c.getContext('2d');
+  for(var k=0;k<6;k++){var cx=50+Math.random()*156,cy=50+Math.random()*156,r=55+Math.random()*70;   // pocas manchas ANCHAS y suaves, como la sombra de un cúmulo de verdad
+    var g=x.createRadialGradient(cx,cy,r*0.2,cx,cy,r);g.addColorStop(0,'rgba(0,0,0,0.75)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();}
+  return new THREE.CanvasTexture(c);}
+function buildCloudShadows(){
+  if(cshGroup){scene.remove(cshGroup);cshGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});cshGroup=null;}
+  if(!ELEV)return;
+  cshGroup=new THREE.Group();cshGroup.visible=false;scene.add(cshGroup);
+  for(var i=0;i<3;i++){var s=280+i*110,g=new THREE.PlaneGeometry(s,s,18,18);g.rotateX(-Math.PI/2);
+    var m=new THREE.MeshBasicMaterial({map:_cloudBlobTex(),transparent:true,depthWrite:false,opacity:0});
+    var mesh=new THREE.Mesh(g,m);mesh.renderOrder=1;mesh.frustumCulled=false;
+    mesh.userData={ox:((i*397)%900)-450,oz:((i*641)%700)-350,sp:3.2+i*1.4};cshGroup.add(mesh);}
+}
+function cloudShadowStep(dt){ if(!cshGroup)return;var cl=GENCLOUD||0,day=SUN&&SUN._dir&&SUN._dir.U>0.02;
+  var on=cl>0.05&&day;cshGroup.visible=on;if(!on)return;_cshT+=dt;
+  var wd=(((WIND&&WIND.wd)||210)+180)*DEG,vx=Math.sin(wd),vz=Math.cos(wd);   // la sombra viaja HACIA donde va el viento
+  for(var i=0;i<cshGroup.children.length;i++){var mesh=cshGroup.children[i],u=mesh.userData,t=_cshT*u.sp;
+    var X=(((u.ox+t*vx)%1500)+2250)%1500-750,Z=(((u.oz+t*vz)%1300)+1950)%1300-650;
+    mesh.position.set(X,0,Z);mesh.material.opacity=0.62*Math.min(1,cl*1.4);   // núcleo ≈45% de sombra con nubosidad alta, como un cúmulo real
+    if((_cshK++%3)===i){var p=mesh.geometry.attributes.position;   // re-drapeo rotatorio (un manto por frame): sigue el relieve, por debajo de los tubos (+0,8 m)
+      for(var k=0;k<p.count;k++)p.setY(k,localElevY(X+p.getX(k),-(Z+p.getZ(k)))+0.8);
+      p.needsUpdate=true;}
+  }}
+// (4) toque de cámara: viñeta + grano fino como OVERLAY en pase aparte (sin composer ni render targets)
+var postScene=null,postCam=null,_grainMat=null;
+function initPost(){ if(postScene)return;
+  postCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);postScene=new THREE.Scene();
+  var vig=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({transparent:true,depthTest:false,depthWrite:false,
+    vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
+    fragmentShader:'varying vec2 vU;void main(){float d=distance(vU,vec2(0.5))*1.9;float a=0.16*smoothstep(0.62,1.30,d);gl_FragColor=vec4(0.0,0.0,0.02,a);}'}));
+  postScene.add(vig);
+  _grainMat=new THREE.ShaderMaterial({transparent:true,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending,
+    uniforms:{uT:{value:0}},
+    vertexShader:'varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
+    fragmentShader:'varying vec2 vU;uniform float uT;float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}void main(){float g=(h(vU*vec2(1287.0,733.0)+uT)-0.5)*0.05;gl_FragColor=vec4(vec3(max(g,0.0)),1.0);}'});
+  postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),_grainMat));
+}
+function renderPost(dt){ if(!postScene)return;_grainMat.uniforms.uT.value=(_grainMat.uniforms.uT.value+(dt||0.016)*60)%977;
+  renderer.autoClear=false;renderer.render(postScene,postCam);renderer.autoClear=true; }
 // ===== Redes del DWG (El Burgo): cableado DC, tierras, zanjas, alcance de cámaras, arquetas, comms.
 // Datos REALES extraídos de los DWG (tools/extract_dwg_networks.mjs → elburgo_networks.json) en coords locales E/N.
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
@@ -878,7 +993,7 @@ function buildNetLayer(key){
     if(ln.length){var lgg=new THREE.BufferGeometry();lgg.setAttribute('position',new THREE.Float32BufferAttribute(ln,3));g.add(new THREE.LineSegments(lgg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.65})));}
   } else {
     var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m): drapea el relieve
-      var hz=(a[2]===1&&b[2]===1)?1.72:d.off;   // tramos marcados [x,n,1] = van POR LA VIGA → altura de arnés bajo el tubo; giros/colectores en zanja (suelo)
+      var hz=(a[2]===1&&b[2]===1)?1.45:d.off;   // tramos [x,n,1] = arnés COLGADO BAJO el tubo (eje a 2,0 m): 1,45 deja margen al barrido de módulos y al drapeado — a 1,72 en vaguadas atravesaba la viga
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
         v.push(ax,localElevY(ax,an)+hz,-an,bx,localElevY(bx,bn)+hz,-bn);}}});
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
@@ -986,7 +1101,7 @@ function buildFlow(key,sinkFor,colorHex,off){
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return;
   var pos=[],ats=[];off=off||0.45;
   NET.layers[key].forEach(function(pl){var sk=sinkFor(pl);for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];
-    var hz=(a[2]===1&&b[2]===1)?1.78:off;   // ondas por la VIGA en los tramos de arnés; en zanja el resto
+    var hz=(a[2]===1&&b[2]===1)?1.51:off;   // ondas por el ARNÉS (justo sobre el cable, bajo el tubo); en zanja el resto
     pos.push(a[0],localElevY(a[0],a[1])+hz,-a[1],b[0],localElevY(b[0],b[1])+hz,-b[1]);
     ats.push(Math.hypot(a[0]-sk[0],a[1]-sk[1]),Math.hypot(b[0]-sk[0],b[1]-sk[1]));}});   // aT = distancia al sumidero → la onda fluye hacia él
   if(!pos.length)return;
@@ -1432,7 +1547,7 @@ $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();if(zoneGroup&&zonesOn)buildZoneLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}};   // capas inversores/zonas/redes/flujo se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();if(zoneGroup&&zonesOn)buildZoneLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
@@ -1460,7 +1575,7 @@ $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){update
 var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
   if(REFL_ON){ if(glassM){_gPrev={r:glassM.roughness,m:glassM.metalness,e:glassM.envMapIntensity};
-      glassM.roughness=0.08;glassM.metalness=0.35;glassM.envMapIntensity=2.6;glassM.needsUpdate=true;}   // vidrio ESPEJADO mientras está ON (el FV real refleja mucho en ángulo); se restaura al apagar
+      glassM.roughness=0.20;glassM.metalness=0.05;glassM.envMapIntensity=0.55;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel): de frente célula oscura, el cielo aparece solo en ángulos rasantes — con metal 0,35/env 2,6 la planta entera salía lavada en blanco
     updateRefl(true);}
   else{ scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;
     if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
@@ -1500,10 +1615,10 @@ $('fotoBtn').onclick=function(){ var sz=new THREE.Vector2();renderer.getSize(sz)
     var mult=Math.min(SKY_MOB?1.5:2,4096/Math.max(sz.x,sz.y)),hi=SKY_MOB?4096:8192;   // 2× resolución + sombras al máximo, un solo frame
     SUN.shadow.mapSize.set(hi,hi);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}
     renderer.setPixelRatio(1);renderer.setSize(Math.round(sz.x*mult),Math.round(sz.y*mult),false);
-    updateSunShadow();renderer.render(scene,camera);
+    updateSunShadow();renderer.render(scene,camera);renderPost();
     var a=document.createElement('a');a.href=renderer.domElement.toDataURL('image/png');a.download='factiun_'+PLANT+'_foto.png';a.click();
   }catch(e){alert('No se pudo capturar ('+e.message+')');}
-  finally{ renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);SUN.shadow.mapSize.set(ms,ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();renderer.render(scene,camera);} };
+  finally{ renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);SUN.shadow.mapSize.set(ms,ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();renderer.render(scene,camera);renderPost();} };
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
 $('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
