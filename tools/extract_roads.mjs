@@ -41,8 +41,34 @@ for (const e of blk.entities) {
   if (L2 < 10) continue;
   roads.push(pl); roadWidths.push(e.constantWidth && e.constantWidth > 0.5 ? Math.round(e.constantWidth * 10) / 10 : 4);
 }
+// DEDUPE de ejes paralelos: el bloque trae algún vial con DOS ejes casi solapados (p. ej. eje + cuneta)
+// — si ≥70% de los puntos del corto están a <6 m del largo con dirección paralela, se descarta el corto.
+function ptSegDist(px, pn, pl) { let bd = 1e9;
+  for (let i = 0; i + 1 < pl.length; i++) { const a = pl[i], b = pl[i + 1], dx = b[0] - a[0], dn = b[1] - a[1], L2 = dx * dx + dn * dn || 1e-9;
+    let t = ((px - a[0]) * dx + (pn - a[1]) * dn) / L2; t = Math.max(0, Math.min(1, t));
+    bd = Math.min(bd, Math.hypot(px - (a[0] + t * dx), pn - (a[1] + t * dn))); } return bd; }
+function rlen(pl) { let l = 0; for (let i = 0; i + 1 < pl.length; i++) l += Math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]); return l; }
+const drop = new Set();
+for (let i = 0; i < roads.length; i++) for (let j = 0; j < roads.length; j++) {
+  if (i === j || drop.has(i) || drop.has(j)) continue;
+  if (rlen(roads[i]) > rlen(roads[j])) continue;                     // i = el corto
+  let near = 0, tot = 0;
+  for (const p of roads[i]) { tot++; if (ptSegDist(p[0], p[1], roads[j]) < 6) near++; }
+  if (tot && near / tot >= 0.7) drop.add(i);
+}
+const roads2 = roads.filter((_, i) => !drop.has(i)), widths2 = roadWidths.filter((_, i) => !drop.has(i));
+roads.length = 0; roads.push(...roads2); roadWidths.length = 0; roadWidths.push(...widths2);
+// PLAZAS de unión ("explanada triangular" donde confluyen viales): donde un EXTREMO de un vial queda a
+// <12 m de otro vial, se emite un pad circular drapeable que funde el nudo.
+const pads = [];
+for (let i = 0; i < roads.length; i++) for (const ep of [roads[i][0], roads[i][roads[i].length - 1]]) {
+  for (let j = 0; j < roads.length; j++) { if (i === j) continue;
+    if (ptSegDist(ep[0], ep[1], roads[j]) < 12) { 
+      if (!pads.some(p => Math.hypot(p[0] - ep[0], p[1] - ep[1]) < 10)) pads.push([Math.round(ep[0] * 10) / 10, Math.round(ep[1] * 10) / 10, 9]);
+      break; } }
+}
 const LAY = JSON.parse(readFileSync(LAYP, 'utf8'));
-LAY.roads = roads; LAY.roadWidths = roadWidths; LAY.roadW = 4;
+LAY.roads = roads; LAY.roadWidths = roadWidths; LAY.roadW = 4; LAY.roadPads = pads;
 writeFileSync(LAYP, JSON.stringify(LAY));
 let len = 0; roads.forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) len += Math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]); });
-console.log('viales del bloque:', roads.length, '· longitud:', len.toFixed(0), 'm · anchos:', JSON.stringify(roadWidths));
+console.log('viales del bloque:', roads.length, '· longitud:', len.toFixed(0), 'm · descartados paralelos:', drop.size, '· plazas:', pads.length);
