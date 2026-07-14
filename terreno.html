@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.23</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.24</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1306,6 +1306,7 @@ function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado 
   g.fillStyle='#eaf4ff';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
   var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
+  sp.renderOrder=995;   // SIEMPRE la última en pintarse: en la cola de transparentes cualquier malla transparente más cercana (vidrio de módulos…) se pintaba después y SECCIONABA la pastilla
   var h=4.0;sp.scale.set(h*W/H,h,1);
   sp.userData.pill={baseH:h,asp:W/H,kind:kind};if(kind!=='free')ALLPILLS.push(sp);
   return sp;
@@ -1366,6 +1367,7 @@ function makeZoneLabel(text){
   g.fillStyle='#ffd98a';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
   var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
   var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
+  sp.renderOrder=995;
   var h=5.2;sp.scale.set(h*W/H,h,1);
   sp.userData.pill={baseH:h,asp:W/H,kind:'poi'};ALLPILLS.push(sp);
   return sp;
