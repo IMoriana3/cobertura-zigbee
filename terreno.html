@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.20</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.21</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -273,8 +273,11 @@ function trueTrack(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return -Mat
 function noBtAngle(min){ return Math.max(-55,Math.min(55,trueTrack(min)/DEG)); }                              // sin BT: sigue al sol y topa en ±55°
 function simBtAngle(min){ var R=trueTrack(min); if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return Math.max(-55,Math.min(55,(R-(R<0?-1:1)*Math.acos(temp))/DEG)); }  // backtracking desde el ángulo VERDADERO → al amanecer se APLANA
 function panelAngle(min){
-  if(simOn) return btOn ? simBtAngle(min) : noBtAngle(min);   // SIMULACIÓN pura: con / sin backtracking
-  return btOn ? (angleAt(null,min)||0) : noBtAngle(min);      // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
+  var a=simOn ? (btOn ? simBtAngle(min) : noBtAngle(min))     // SIMULACIÓN pura: con / sin backtracking
+             : (btOn ? (angleAt(null,min)||0) : noBtAngle(min));   // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
+  var u=sunVec(min).U;
+  if(u<-0.02){var f=Math.max(0,1+(u+0.02)/0.05);a*=f*f;}      // NOCHE: a DORMIDO (0°, plano) con transición suave tras la puesta — el sol bajo el horizonte daba ~26°O toda la noche
+  return a;
 }
 /* cielo: fondo + niebla + color del sol según la ALTURA del sol (U): día azul, horizonte naranja, noche oscura */
 function skyColor(U){
@@ -288,11 +291,11 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
   if(scene.fog){scene.fog.color.copy(c);if(cl>0.03)scene.fog.color.lerp(new THREE.Color(0x8b929c),cl*0.55*Math.max(0,Math.min(1,(U+0.05)/0.3)));}   // día nublado: la niebla se agrisa
   if(skyMat){skyMat.uniforms.uSun.value.set(dir.E,dir.U,-dir.N).normalize();skyMat.uniforms.uU.value=U;skyMat.uniforms.uCloud.value=cl;}   // el domo sigue al sol y a la nubosidad
   if(SUN){var lo=Math.max(0,Math.min(1,(U+0.05)/0.35));
-    if(U<-0.02){SUN._ldir={E:-dir.E,U:Math.max(0.18,-dir.U),N:-dir.N};SUN._baseInt=0.22;SUN.color.set(0x9fb6e6);}   // NOCHE: la luz pasa a ser la LUNA (anti-solar, azulada, tenue) → sombras lunares suaves
+    if(U<-0.02){SUN._ldir={E:-dir.E,U:Math.max(0.18,-dir.U),N:-dir.N};SUN._baseInt=0.09;SUN.color.set(0x9fb6e6);}   // NOCHE: la luz pasa a ser la LUNA (anti-solar, azulada). 0,09 y no más: con 0,22 la sombra lunar salía en bandas negras como de día
     else{SUN._ldir=null;SUN._baseInt=(0.7+2.2*Math.max(0,U))*(1-0.72*cl);SUN.color.copy(new THREE.Color(0xff9248).lerp(new THREE.Color(0xfff2d4),lo));}   // día: cálido a sol bajo; las nubes tapan
     SUN.intensity=SUN._baseInt;}
-  if(HEMI)HEMI.intensity=0.10+0.42*Math.max(0,Math.min(1,(U+0.05)/0.5));   // el relleno acompaña al sol (noches oscuras de verdad)
-  if(AMB)AMB.intensity=0.03+0.06*Math.max(0,Math.min(1,(U+0.05)/0.4));
+  if(HEMI)HEMI.intensity=0.16+0.36*Math.max(0,Math.min(1,(U+0.05)/0.5));   // relleno: de día igual que siempre (0,52); de noche 0,16 = resplandor del cielo, para que la sombra lunar sea tenue y no negra
+  if(AMB)AMB.intensity=0.045+0.045*Math.max(0,Math.min(1,(U+0.05)/0.4));
   if(renderer&&THREE.ACESFilmicToneMapping)renderer.toneMappingExposure=0.80+0.30*Math.max(0,Math.min(1,(U+0.08)/0.4));   // exposición cinematográfica (tope 1.10: a 1.20 el satélite salía lavado)
   if(sunHalo){var ho=(0.22+0.55*Math.max(0,U))*(1-0.9*cl);sunHalo.visible=U>-0.03&&ho>0.02;sunHalo.material.opacity=ho;}
   var nf=Math.max(0,Math.min(1,-U/0.14));   // factor noche: 0 con el sol sobre el horizonte, 1 bien entrada la noche
@@ -984,12 +987,39 @@ function buildFlow(key,sinkFor,colorHex,off){
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('aT',new THREE.Float32BufferAttribute(ats,1));
   var mat=flowMat(colorHex),ls=new THREE.LineSegments(geo,mat);ls.frustumCulled=false;var grp=new THREE.Group();grp.add(ls);grp.userData={mat:mat,geo:geo};scene.add(grp);genFlow[key]=grp;
 }
-var arrowMesh=null,ARR=[],_at=0,_ao=null;
-function _lroute(ax,an,bx,bn){ var pts=[[ax,an],[bx,an],[bx,bn]],seg=[],tot=0;   // ruta en L POR EL CORREDOR: E-W por la calle hasta la x del destino, luego N-S (no en diagonal a vista de pájaro)
+var arrowMesh=null,ARR=[],_at=0,_ao=null,_SPINE=null,_STAX=null;
+// corredores REALES para el flujo: el N-S va por la ESPINA de MT del DWG (la polilínea trench_mt de mayor
+// recorrido en n: CT Norte → subestación por el pasillo central) y el E-W por el EJE de la calle (hueco
+// entre bandas de seguidores), no por la n exacta del equipo — la flecha ya no corta ninguna fila
+function _spineX(n){ if(!_SPINE)return null; var sp=_SPINE; if(n<=sp[0][1])return sp[0][0];
+  for(var i=0;i+1<sp.length;i++){ if(n<=sp[i+1][1]){var a=sp[i],b=sp[i+1],t=(n-a[1])/((b[1]-a[1])||1e-9);return a[0]+t*(b[0]-a[0]);} }
+  return sp[sp.length-1][0]; }
+function _streetAxes(){ if(_STAX)return _STAX;
+  var bands={};NODES.forEach(function(nd){var medio=/medio/i.test(nd.tp||''),hl=medio?16:31,c=-nd.gz,k=Math.round(c/5)*5;
+    if(!bands[k])bands[k]={n0:1e9,n1:-1e9};bands[k].n0=Math.min(bands[k].n0,c-hl);bands[k].n1=Math.max(bands[k].n1,c+hl);});
+  var bs=Object.keys(bands).map(function(k){return bands[k];}).sort(function(a,b){return a.n0-b.n0;}),m=[];
+  bs.forEach(function(b){var l=m[m.length-1];if(l&&b.n0<=l.n1+0.8){l.n1=Math.max(l.n1,b.n1);}else m.push({n0:b.n0,n1:b.n1});});   // +0,8: una calle estrecha (2 m entre bandas) también es calle — no la fusiones
+  _STAX=[];for(var i=0;i+1<m.length;i++)_STAX.push((m[i].n1+m[i+1].n0)/2);
+  return _STAX; }
+function _snapStreet(n){ var ax=_streetAxes(),b=n,bd=8; for(var i=0;i<ax.length;i++){var d=Math.abs(ax[i]-n);if(d<bd){bd=d;b=ax[i];}} return b; }
+function _lroute(ax,an,bx,bn){
+  var sn=_snapStreet(an),pts=[[ax,an]];
+  if(Math.abs(sn-an)>0.4)pts.push([ax,sn]);                              // del equipo al eje de SU calle
+  var sx=_spineX((sn+bn)/2);if(sx==null)sx=bx;
+  pts.push([sx,sn]);                                                     // E-W por la calle hasta la espina
+  if(_SPINE){var lo=Math.min(sn,bn),hi=Math.max(sn,bn),vs=_SPINE.filter(function(p){return p[1]>lo&&p[1]<hi;});
+    vs=vs.slice().sort(sn>bn?function(a,b){return b[1]-a[1];}:function(a,b){return a[1]-b[1];});
+    for(var vi=0;vi<vs.length;vi++)pts.push([vs[vi][0],vs[vi][1]]);}     // N-S siguiendo los vértices reales de la espina
+  var ex=_spineX(bn);pts.push([ex==null?bx:ex,bn]);pts.push([bx,bn]);    // jog E-W final hasta el CT/sub
+  var seg=[],tot=0;
   for(var i=0;i+1<pts.length;i++){var L=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);if(L<0.5)continue;seg.push({a:pts[i],b:pts[i+1],l:L,acc:tot});tot+=L;}
   return {seg:seg,tot:Math.max(tot,0.001)}; }
-function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por el corredor; tamaño/color ∝ potencia
+function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por corredores REALES; tamaño/color ∝ potencia
   if(arrowMesh){scene.remove(arrowMesh);if(arrowMesh.geometry)arrowMesh.geometry.dispose();if(arrowMesh.material)arrowMesh.material.dispose();arrowMesh=null;}
+  _STAX=null;
+  if(NET&&NET.layers&&NET.layers.trench_mt&&NET.layers.trench_mt.length){var best=null,bl=-1;
+    NET.layers.trench_mt.forEach(function(pl){var ns=pl.map(function(p){return p[1];}),ext=Math.max.apply(null,ns)-Math.min.apply(null,ns);if(ext>bl){bl=ext;best=pl;}});
+    if(best&&bl>60)_SPINE=best.slice().sort(function(a,b){return a[1]-b[1];});}
   ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=2,ACT=5;
   for(var i=0;i<inv.length;i++){var a=invAt(i),ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
   for(var c=0;c<CTMAIN.length;c++){var p2=_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación
@@ -1308,13 +1338,17 @@ function updateLabels(){
     if(_lblV2.z>1||_lblV2.z<-1){sp.material.opacity=0;continue;}                    // detrás de la cámara
     _lblQ.push({sp:sp,op:op,poi:ud.kind==='poi'?1:0,d:d,x:(_lblV2.x+1)*0.5*cw,y:(1-_lblV2.y)*0.5*ch,w:px*ud.asp,hh:px});
   }
-  _lblQ.sort(function(a,b){return (b.poi-a.poi)||(a.d-b.d);});
+  // HISTÉRESIS: la que ya está visible conserva prioridad en su hueco (sin ella, al mover la cámara
+  // el ganador cambiaba cada frame y las 36 de inversor PARPADEABAN); los cambios se funden, no saltan
+  _lblQ.sort(function(a,b){var va=a.sp.material.opacity>0.5?1:0,vb=b.sp.material.opacity>0.5?1:0;
+    return (b.poi-a.poi)||(vb-va)||(a.d-b.d);});
   var acc=[];
   for(var i=0;i<_lblQ.length;i++){var q=_lblQ[i],hit=false;
     for(var j=0;j<acc.length;j++){var a=acc[j];
       if(Math.abs(q.x-a.x)<(q.w+a.w)*0.46&&Math.abs(q.y-a.y)<(q.hh+a.hh)*0.55){hit=true;break;}}
-    if(hit){q.sp.material.opacity=0;}
-    else{acc.push(q);if(q.sp.material.opacity!==q.op)q.sp.material.opacity=q.op;}
+    var m=q.sp.material,tgt=hit?0:q.op;
+    if(!hit)acc.push(q);
+    m.opacity+=(tgt-m.opacity)*0.25;if(Math.abs(m.opacity-tgt)<0.02)m.opacity=tgt;
   }
 }
 // ===== Capa ZONAS Y RECINTOS (El Burgo): carteles ámbar del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio).
