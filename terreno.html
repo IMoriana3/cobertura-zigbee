@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.24</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.25</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -142,18 +142,24 @@ var DEG=Math.PI/180;
 function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
 function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
 function loadImg(url){return new Promise(function(res,rej){var im=new Image();im.crossOrigin='anonymous';im.onload=function(){res(im);};im.onerror=function(){rej(new Error(url));};im.src=url;});}
-async function mosaic(urlFn,z,latN,latS,lonW,lonE){
+async function mosaic(urlFn,z,latN,latS,lonW,lonE){   // urlFn: función o ARRAY de fuentes — cada tesela intenta la 1ª y cae en cadena a las siguientes (PNOA→ESRI)
+  var fns=Array.isArray(urlFn)?urlFn:[urlFn];
   var xmin=Math.floor(lon2txf(lonW,z)),xmax=Math.floor(lon2txf(lonE,z));
   var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
   var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
   var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var ok=0,fail=0,tasks=[];
+  ctx.fillStyle='#8e8a76';ctx.fillRect(0,0,W,H);   // pre-relleno tono tierra: una tesela caída en TODAS las fuentes no deja agujero transparente
   for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
-    tasks.push(loadImg(urlFn(z,tx,ty)).then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256);ok++;}).catch(function(){fail++;}));})(tx,ty);}
+    var p=Promise.reject();
+    fns.forEach(function(fn){p=p.catch(function(){return loadImg(fn(z,tx,ty));});});
+    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256,256,256);ok++;}).catch(function(){fail++;}));})(tx,ty);}
   await Promise.all(tasks);
   return {ctx:ctx,canvas:cv,z:z,xmin:xmin,ymin:ymin,W:W,H:H,ok:ok,fail:fail,
     px:function(lat,lon){return {x:(lon2txf(lon,z)-xmin)*256,y:(lat2tyf(lat,z)-ymin)*256};}};
 }
 var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};
+var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
+function satSources(lat,lon){return (lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[PNOA,SAT]:[SAT];}   // España (península+islas): PNOA primero, ESRI de respaldo tesela a tesela
 var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
 
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
@@ -403,8 +409,8 @@ async function build(){
   setStatus("<b>"+NODES.length+"</b> seguidores (DWG) · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
 
   var sat=null,dem=null,demImg=null;
-  var satZoom=Math.max(15,Math.min(18,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~7 teselas/lado (El Burgo→18, Ayora 2.5 km→16) para no bajar cientos de teselas
-  if(!OFFLINE)try{sat=await mosaic(SAT,satZoom,latN,latS,lonW,lonE);}catch(e){}   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
+  var satZoom=Math.max(15,Math.min(19,Math.round(Math.log2(10*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~10 teselas/lado con tope z19 (El Burgo→19 = 30 cm/px con PNOA; Ayora 2,5 km→17)
+  if(!OFFLINE)try{sat=await mosaic(satSources(lat0,lon0),satZoom,latN,latS,lonW,lonE);}catch(e){}   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
   var demZoom=(Math.max(widthM,depthM)>1500)?15:14;   // plantas grandes: relieve más fino (z15 ≈ 4 m/px) para que el terreno no salga aterrazado
   if(!OFFLINE)try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
   function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
@@ -421,7 +427,7 @@ async function build(){
   var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
-  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#2e3b2a';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
+  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#2e3b2a';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
   var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
