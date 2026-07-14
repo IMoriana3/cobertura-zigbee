@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.30</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.31</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -893,7 +893,7 @@ function buildContactAO(){
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
   if(LAYOUT&&LAYOUT.invlab){if(!INVPOS.length)computeInvPos();LAYOUT.invlab.forEach(function(c,ci){var p=invAt(ci);put(p.x,p.n,2.6,1.6);});}
-  [{x:-0.86,n:22.01,sx:8.5,sz:4},{x:9.92,n:-194.24,sx:8.5,sz:4},{x:-6.9,n:-198.5,sx:9,sz:6}].forEach(function(b){put(b.x,b.n,b.sx,b.sz);});
+  [{x:3.0,n:22.01,sx:8.5,sz:4},{x:9.92,n:-194.24,sx:8.5,sz:4},{x:-6.9,n:-198.5,sx:9,sz:6}].forEach(function(b){put(b.x,b.n,b.sx,b.sz);});
 }
 // (2) microrrelieve de células: normal map generada (célula abombada + marco) para vidrio y capa inversores
 function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.width=W;c.height=Hh;var x=c.getContext('2d');
@@ -922,12 +922,14 @@ function buildVeg(){
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(170.0,100.0,length(vViewPosition));');};   // se funden a ~170 m: visibles también en vistas medias (a 90 m "no se veía la vegetación" desde el dron)
   m.customProgramCacheKey=function(){return 'vegfade2';};
-  var N=36000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 36k matas en RODALES (12k aún se percibía como "sin vegetación"; un InstancedMesh con alphaTest lo aguanta de sobra)
+  var N=48000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 48k: mitad UNIFORME (sin calvas — 'sigue sin haber vegetación' era estar dentro de un claro entre rodales) + mitad en rodales
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   var i=0;
-  while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // rodal: 8-38 matas en ~9 m
-    for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x=cx2+Math.cos(a)*r,n=cn2+Math.sin(a)*r;
-      o.position.set(x,localElevY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.8+rng()*1.1;o.scale.set(sc,0.9+rng()*1.1,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
+  while(i<N/2){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
+    o.position.set(x,localElevY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.7+rng()*0.9;o.scale.set(sc,0.8+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
+  while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
+    for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
+      o.position.set(x2,localElevY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=0.8+rng()*1.1;o.scale.set(sc2,0.9+rng()*1.1,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
   vegMesh.receiveShadow=true;scene.add(vegMesh);
 }
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
@@ -1015,6 +1017,55 @@ function buildNetLayer(key){
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
         v.push(ax,localElevY(ax,an)+hz,-an,bx,localElevY(bx,bn)+hz,-bn);}}});
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
+  }
+  if(key==='earth'&&TRK.length){   // + PAT DERIVADA: la red del DWG corre por calles concretas y cada seguidor se conecta por su PRIMER POSTE ("debería llegar hasta ese primer soporte de cada tracker"). Donde el DWG no dibuja el lateral de calle (bandas enteras sin red: incompletitud del plano, como pasaba con N3) se completa en tono claro = derivado.
+    var ES=[];NET.layers.earth.forEach(function(pl){for(var i2=0;i2+1<pl.length;i2++)ES.push([pl[i2],pl[i2+1]]);});
+    function nearEarth(x,n){var bd=1e9,bp=null;
+      for(var k2=0;k2<ES.length;k2++){var a2=ES[k2][0],b2=ES[k2][1],dx2=b2[0]-a2[0],dn2=b2[1]-a2[1],L22=dx2*dx2+dn2*dn2||1e-9;
+        var t2=((x-a2[0])*dx2+(n-a2[1])*dn2)/L22;t2=Math.max(0,Math.min(1,t2));
+        var px2=a2[0]+t2*dx2,pn2=a2[1]+t2*dn2,d2=Math.hypot(x-px2,n-pn2);
+        if(d2<bd){bd=d2;bp=[px2,pn2];}}
+      return {d:bd,p:bp};}
+    var sv2=[];
+    function seg2(ax,an,bx,bn){var st4=Math.max(1,Math.round(Math.hypot(bx-ax,bn-an)/6));
+      for(var s5=0;s5<st4;s5++){var t0=s5/st4,t1=(s5+1)/st4,ax3=ax+(bx-ax)*t0,an3=an+(bn-an)*t0,bx3=ax+(bx-ax)*t1,bn3=an+(bn-an)*t1;
+        sv2.push(ax3,localElevY(ax3,an3)+0.12,-an3,bx3,localElevY(bx3,bn3)+0.12,-bn3);}}
+    var tickPts=[];function tick(x,n){tickPts.push([x,n]);}   // "pica"/soldadura en el pie del primer poste (cilindro instanciado: legible en rasante y en cenital, donde una línea de 1 px se pierde)
+    var uncov=[];
+    TRK.forEach(function(t){var hl=(t.medio?16:31)-0.8,hp=t.medio?9:28;   // unidad BÍFILA: dos vigas independientes a ±3 m del eje — cada estructura lleva SU conexión en el PRIMER POSTE (el más exterior: zP=±28 largo, ±9 medio)
+      function dd(n0,pn){var a2=nearEarth(t.gx-3,n0),b2=nearEarth(t.gx+3,n0);return {d:Math.min(a2.d,b2.d),a:a2,b:b2,pn:pn};}
+      var N2=dd(-t.gz+hl,-t.gz+hp),S2=dd(-t.gz-hl,-t.gz-hp),E2=N2.d<=S2.d?N2:S2;   // el extremo (calle) más cercano a la red
+      if(E2.d<12){seg2(t.gx-3,E2.pn,E2.a.p[0],E2.a.p[1]);tick(t.gx-3,E2.pn);
+        seg2(t.gx+3,E2.pn,E2.b.p[0],E2.b.p[1]);tick(t.gx+3,E2.pn);}
+      else uncov.push({e0:[t.gx,-t.gz+hl],e1:[t.gx,-t.gz-hl],p0:-t.gz+hp,p1:-t.gz-hp});});
+    if(uncov.length){   // bandas sin lateral en el DWG: agrupa extremos por calle (n), tiende un lateral E-W derivado, lo empalma a la red real y baja un latiguillo a cada primer poste
+      var cand=[];uncov.forEach(function(u,ui){cand.push({n:u.e0[1],x:u.e0[0],ui:ui,end:0});cand.push({n:u.e1[1],x:u.e1[0],ui:ui,end:1});});
+      cand.sort(function(a2,b2){return a2.n-b2.n;});
+      var clusters=[],cur=[cand[0]];
+      for(var c2=1;c2<cand.length;c2++){if(cand[c2].n-cand[c2-1].n>9){clusters.push(cur);cur=[];}cur.push(cand[c2]);}
+      clusters.push(cur);
+      var cidx={};clusters.forEach(function(cl,ci){cl.forEach(function(c3){cidx[c3.ui+'_'+c3.end]=ci;});});
+      var chosen=[];uncov.forEach(function(u,ui){
+        var c0=cidx[ui+'_0'],c1=cidx[ui+'_1'],pick=clusters[c0].length>=clusters[c1].length?0:1;   // el extremo cuya calle agrupa más conexiones
+        chosen.push({ci:pick?c1:c0,x:pick?u.e1[0]:u.e0[0],n:pick?u.e1[1]:u.e0[1],pn:pick?u.p1:u.p0});});
+      clusters.forEach(function(cl,ci){
+        var pts=chosen.filter(function(ch){return ch.ci===ci;});
+        if(!pts.length)return;
+        if(pts.length===1){[pts[0].x-3,pts[0].x+3].forEach(function(vx){var b1=nearEarth(vx,pts[0].pn);if(b1.p){seg2(vx,pts[0].pn,b1.p[0],b1.p[1]);tick(vx,pts[0].pn);}});return;}
+        var nlat=0,xmin=1e9,xmax=-1e9;pts.forEach(function(p2){nlat+=p2.n;xmin=Math.min(xmin,p2.x-3);xmax=Math.max(xmax,p2.x+3);});nlat/=pts.length;
+        seg2(xmin-2,nlat,xmax+2,nlat);                                   // lateral por el eje de la calle
+        var bt={d:1e9,p:null,q:null};                                    // empalme: el punto del lateral más cercano a la red real
+        for(var xx=xmin-2;xx<=xmax+2.01;xx+=6){var b3=nearEarth(xx,nlat);if(b3.d<bt.d)bt={d:b3.d,p:b3.p,q:[xx,nlat]};}
+        if(bt.p&&bt.d>0.5)seg2(bt.q[0],bt.q[1],bt.p[0],bt.p[1]);
+        pts.forEach(function(p2){[p2.x-3,p2.x+3].forEach(function(vx){seg2(vx,p2.pn,vx,nlat);tick(vx,p2.pn);});});   // latiguillo recto por la calle hasta el primer poste de CADA viga
+      });
+    }
+    if(sv2.length){var eg2=new THREE.BufferGeometry();eg2.setAttribute('position',new THREE.Float32BufferAttribute(sv2,3));
+      g.add(new THREE.LineSegments(eg2,new THREE.LineBasicMaterial({color:0xb4e84a,transparent:true,opacity:.85})));}   // tono más claro = derivado, no línea del DWG
+    if(tickPts.length){var tg2=new THREE.CylinderGeometry(0.05,0.05,0.65,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});
+      var tim=new THREE.InstancedMesh(tg2,tm2,tickPts.length),_tm2=new THREE.Matrix4();
+      for(var q2=0;q2<tickPts.length;q2++){_tm2.makeTranslation(tickPts[q2][0],localElevY(tickPts[q2][0],tickPts[q2][1])+0.33,-tickPts[q2][1]);tim.setMatrixAt(q2,_tm2);}
+      g.add(tim);}
   }
   if(key==='trench_n3'&&PLANT==='elburgo'&&LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length){   // + RUTAS AC inversor→CT derivadas de los corredores reales: la zanja N3 del DWG solo trae 41 tramos sueltos junto a los CTs — "faltaba" el resto del recorrido
     invByCT();if(!INVPOS.length)computeInvPos();
@@ -1222,7 +1273,7 @@ function setGen(on){genOn=on;
 }
 // ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
 var FICHA=null,selLine=null,_pdX=0,_pdY=0;
-var CTMAIN=[{name:'CT Norte',x:-0.86,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
+var CTMAIN=[{name:'CT Norte',x:3.0,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
 function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;if(!INVPOS.length)computeInvPos();var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=invAt(i),dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function nearestCTIdx(x,n){var bi=-1,bd=32*32;for(var i=0;i<CTMAIN.length;i++){var dx=CTMAIN[i].x-x,dn=CTMAIN[i].n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;if(!INVPOS.length)computeInvPos();var ord=LAYOUT.invlab.map(function(c,i){return {i:i,n:invAt(i).n};});ord.sort(function(a,b){return b.n-a.n;});for(var k=0;k<ord.length;k++)INVCT[ord[k].i]=(k<18)?0:1;}   // reparto real: los 18 inversores MÁS AL NORTE → CT Norte (0), el resto → CT Sur (1)
@@ -1281,12 +1332,15 @@ function buildBOS(){
     var AL=P(a[0]+px,a[1]+pn),AR=P(a[0]-px,a[1]-pn),BL=P(b[0]+px,b[1]+pn),BR=P(b[0]-px,b[1]-pn);
     rv.push(AL[0],AL[1],AL[2],AR[0],AR[1],AR[2],BL[0],BL[1],BL[2], BL[0],BL[1],BL[2],AR[0],AR[1],AR[2],BR[0],BR[1],BR[2]);}}});   // 2 triángulos/subtramo
   if(rv.length){var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(rv,3));rg.computeVertexNormals();var rmesh=new THREE.Mesh(rg,roadM);rmesh.receiveShadow=true;bosGroup.add(rmesh);}
-  (LAYOUT.roadPads||[]).forEach(function(pd){ if(!inClip(pd[0],pd[1]))return;   // PLAZAS de unión de viales (la "explanada triangular" de los nudos), drapeadas
-    var segs=18,vv=[],r=pd[2]||9;
+  (LAYOUT.roadAreas||[]).forEach(function(area){ if(!area.length||!inClip(area[0][0],area[0][1]))return;   // EXPLANADAS/EMPEDRADO del DWG (contornos cerrados del bloque Viales): abanico drapeado desde el centroide — fuera los círculos sintéticos ("horror de camino")
+    var cx3=0,cn3=0;area.forEach(function(p){cx3+=p[0];cn3+=p[1];});cx3/=area.length;cn3/=area.length;
     function PY(x,n){return [x,localElevY(x,n)+0.055,-n];}
-    for(var k=0;k<segs;k++){var a1=k/segs*Math.PI*2,a2=(k+1)/segs*Math.PI*2;
-      var C=PY(pd[0],pd[1]),P1=PY(pd[0]+Math.cos(a1)*r,pd[1]+Math.sin(a1)*r),P2=PY(pd[0]+Math.cos(a2)*r,pd[1]+Math.sin(a2)*r);
-      vv.push(C[0],C[1],C[2],P1[0],P1[1],P1[2],P2[0],P2[1],P2[2]);}
+    var vv=[];
+    for(var k=0;k<area.length;k++){var A=area[k],B=area[(k+1)%area.length];
+      var segs2=Math.max(1,Math.ceil(Math.hypot(B[0]-A[0],B[1]-A[1])/6));
+      for(var s4=0;s4<segs2;s4++){var t0=s4/segs2,t1=(s4+1)/segs2;
+        var C=PY(cx3,cn3),P1=PY(A[0]+(B[0]-A[0])*t0,A[1]+(B[1]-A[1])*t0),P2=PY(A[0]+(B[0]-A[0])*t1,A[1]+(B[1]-A[1])*t1);
+        vv.push(C[0],C[1],C[2],P1[0],P1[1],P1[2],P2[0],P2[1],P2[2]);}}
     var pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.Float32BufferAttribute(vv,3));pg.computeVertexNormals();
     var pm=new THREE.Mesh(pg,roadM);pm.receiveShadow=true;bosGroup.add(pm);});
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
@@ -1426,7 +1480,7 @@ function buildBOS(){
     bosGroup.add(g);});
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  [{x:-0.86,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Norte y CT Sur: edificios propios IGUALES, en coords. exactas DWG
+  [{x:3.0,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Norte y CT Sur: edificios propios IGUALES, en coords. exactas DWG
    {x:-6.9,n:-198.5,lab:'Subestación',sub:1},                                            // subestación AL SUR de la sala de control (ya NO encima del CT Sur)
    {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);

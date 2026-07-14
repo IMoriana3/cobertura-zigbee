@@ -154,6 +154,35 @@ for (const r of shortRuns) {
   for (let k = r.i; k <= r.j; k++) { pl[k] = [pl[k][0], nn, pl[k][2] || 0]; ewSnapped++; }
   shortSnap++;
 }
+// ===== cruces de calle rezagados: runs N-S ≥8 m que quedaron SIN imantar (sin etiqueta a ≤10 m y fuera
+// del alcance de nearestFila) — el CAD los dibuja a media calle (~3 m de la viga) y en el visor parecían
+// "cableado desplazado" junto a las últimas filas antes del mazo del CT. Se llevan a SU viga (+pol) pero
+// se quedan a nivel de SUELO (flag 0): son la zanja enterrada que cruza la calle, no arnés aéreo.
+let crossSnap = 0;
+function vigaCross(x, n0, n1) { let bd = 4, best = null;
+  for (const r of ROWS) { if (n1 < r.n - r.hl - 10 || n0 > r.n + r.hl + 10) continue;
+    for (const fx of [r.x - FILAZ, r.x + FILAZ]) { const d = Math.abs(x - fx); if (d < bd && d >= 1.5) { bd = d; best = fx; } } }
+  return best; }
+for (const key of ['cable_pos', 'cable_neg']) {
+  const pol = key === 'cable_pos' ? +0.10 : -0.10;
+  (NET.layers[key] || []).forEach(pl => {
+    let i = 0;
+    while (i < pl.length - 1) {
+      let j = i;
+      while (j < pl.length - 1 && Math.abs(pl[j + 1][0] - pl[j][0]) < 1.5) j++;
+      if (j > i) {
+        const ns = [], xs = [];
+        for (let q = i; q <= j; q++) { ns.push(pl[q][1]); xs.push(pl[q][0]); }
+        if (Math.max(...ns) - Math.min(...ns) >= 8 && pl[i][2] !== 1 && pl[j][2] !== 1) {
+          const v = vigaCross(xs[Math.floor(xs.length / 2)], Math.min(...ns), Math.max(...ns));
+          if (v != null) { const nx = Math.round((v + pol) * 100) / 100;
+            for (let q = i; q <= j; q++) pl[q] = [nx, pl[q][1], pl[q][2] || 0]; crossSnap++; }
+        }
+        i = j;
+      } else i++;
+    }
+  });
+}
 // esquinas en L para diagonales que toquen cualquier vértice movido (viga o zanja)
 for (const key of ['cable_pos', 'cable_neg']) {
   NET.layers[key] = NET.layers[key].map(pl => {
@@ -169,4 +198,4 @@ for (const key of ['cable_pos', 'cable_neg']) {
   });
 }
 writeFileSync(NETP, JSON.stringify(NET));
-console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices en viga:', snapped, '· en zanja:', ewSnapped, '· aproximaciones cortas al mazo:', shortSnap, '· esquinas L:', corners);
+console.log('cables casados con su string:', matched, '· por viga más cercana:', fallback, '· vértices en viga:', snapped, '· en zanja:', ewSnapped, '· aproximaciones cortas al mazo:', shortSnap, '· cruces de calle a su viga:', crossSnap, '· esquinas L:', corners);
