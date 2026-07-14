@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.29</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.30</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -920,8 +920,8 @@ function buildVeg(){
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(95.0,55.0,length(vViewPosition));');};   // se funden lejos: cerca visten, lejos no ensucian
-  m.customProgramCacheKey=function(){return 'vegfade1';};
+  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(170.0,100.0,length(vViewPosition));');};   // se funden a ~170 m: visibles también en vistas medias (a 90 m "no se veía la vegetación" desde el dron)
+  m.customProgramCacheKey=function(){return 'vegfade2';};
   var N=36000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 36k matas en RODALES (12k aún se percibía como "sin vegetación"; un InstancedMesh con alphaTest lo aguanta de sobra)
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   var i=0;
@@ -1270,14 +1270,25 @@ function buildBOS(){
   // viales: cinta de tierra compactada drapeada sobre el terreno (no una línea), que recibe la sombra de los seguidores
   var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];
   (LAYOUT.roads||[]).forEach(function(pl,pi){var rw=(((LAYOUT.roadWidths||[])[pi])||LAYOUT.roadW||3.8)/2;   // ancho POR VIAL (bloque "Viales" del DWG)
-    for(var i=0;i+1<pl.length;i++){var a0=pl[i],b0=pl[i+1];if(!inClip(a0[0],a0[1])||!inClip(b0[0],b0[1]))continue;
+    for(var i0=0;i0+1<pl.length;i0++){var A0=pl[i0],B0=pl[i0+1];if(!inClip(A0[0],A0[1])||!inClip(B0[0],B0[1]))continue;
+    var Lseg=Math.hypot(B0[0]-A0[0],B0[1]-A0[1])||1e-6,st=Math.max(1,Math.ceil(Lseg/6));      // SUBDIVIDE ~6 m: los ejes del bloque traen tramos de 50-200 m y la cinta debe SEGUIR LA TOPOGRAFÍA, no volar de vértice a vértice
+    for(var si2=0;si2<st;si2++){var t0=si2/st,t1=(si2+1)/st;
+    var a0=[A0[0]+(B0[0]-A0[0])*t0,A0[1]+(B0[1]-A0[1])*t0],b0=[A0[0]+(B0[0]-A0[0])*t1,A0[1]+(B0[1]-A0[1])*t1];
     var dx=b0[0]-a0[0],dn=b0[1]-a0[1],Lr=Math.hypot(dx,dn)||1e-6,px=-dn/Lr*rw,pn=dx/Lr*rw;   // perpendicular al tramo, en el plano E/N
-    var ex=dx/Lr*Math.min(0.6,Lr*0.4),en=dn/Lr*Math.min(0.6,Lr*0.4);                          // costura: alarga cada tramo 0,6 m por ambos extremos (sin huecos en giros)
+    var ex=dx/Lr*Math.min(0.6,Lr*0.4),en=dn/Lr*Math.min(0.6,Lr*0.4);                          // costura: alarga cada subtramo (sin huecos en giros)
     var a=[a0[0]-ex,a0[1]-en],b=[b0[0]+ex,b0[1]+en];
     function P(x,n){return [x,localElevY(x,n)+0.06,-n];}
     var AL=P(a[0]+px,a[1]+pn),AR=P(a[0]-px,a[1]-pn),BL=P(b[0]+px,b[1]+pn),BR=P(b[0]-px,b[1]-pn);
-    rv.push(AL[0],AL[1],AL[2],AR[0],AR[1],AR[2],BL[0],BL[1],BL[2], BL[0],BL[1],BL[2],AR[0],AR[1],AR[2],BR[0],BR[1],BR[2]);}});   // 2 triángulos/tramo
+    rv.push(AL[0],AL[1],AL[2],AR[0],AR[1],AR[2],BL[0],BL[1],BL[2], BL[0],BL[1],BL[2],AR[0],AR[1],AR[2],BR[0],BR[1],BR[2]);}}});   // 2 triángulos/subtramo
   if(rv.length){var rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(rv,3));rg.computeVertexNormals();var rmesh=new THREE.Mesh(rg,roadM);rmesh.receiveShadow=true;bosGroup.add(rmesh);}
+  (LAYOUT.roadPads||[]).forEach(function(pd){ if(!inClip(pd[0],pd[1]))return;   // PLAZAS de unión de viales (la "explanada triangular" de los nudos), drapeadas
+    var segs=18,vv=[],r=pd[2]||9;
+    function PY(x,n){return [x,localElevY(x,n)+0.055,-n];}
+    for(var k=0;k<segs;k++){var a1=k/segs*Math.PI*2,a2=(k+1)/segs*Math.PI*2;
+      var C=PY(pd[0],pd[1]),P1=PY(pd[0]+Math.cos(a1)*r,pd[1]+Math.sin(a1)*r),P2=PY(pd[0]+Math.cos(a2)*r,pd[1]+Math.sin(a2)*r);
+      vv.push(C[0],C[1],C[2],P1[0],P1[1],P1[2],P2[0],P2[1],P2[2]);}
+    var pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.Float32BufferAttribute(vv,3));pg.computeVertexNormals();
+    var pm=new THREE.Mesh(pg,roadM);pm.receiveShadow=true;bosGroup.add(pm);});
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
@@ -1365,6 +1376,37 @@ function buildBOS(){
     for(var cb=0;cb<3;cb++){var y0=new THREE.Vector3(cx+0.6,st+1.55,-cn+(cb-1)*0.28),y2=new THREE.Vector3(cx+2.35,st+1.9,-cn+(cb-1)*0.34),y1=new THREE.Vector3(cx+1.5,st+2.35,-cn+(cb-1)*0.31);
       var tube=new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(y0,y1,y2),12,0.045,6),new THREE.MeshStandardMaterial({color:0xb02a24,roughness:.55}));bosGroup.add(tube);}   // BT en arco (rojo)
   }
+  // ===== Subestación STR-12000-EDE-52 (plano BUR-STR-12000-04): skid 8,92×4,65 m, alto máx 4,72 =====
+  // TRAFO 8 MVA a un lado (cuba + radiadores + depósito de expansión + pasatapas con el mástil de AT y su
+  // anillo, todo dentro de VALLADO de malla RAL 7035) y ENVOLVENTE DE HORMIGÓN al otro (celdas AT 52 kV /
+  // MT 24 kV / SSAA: exterior rugoso RAL 7035, puerta doble y rejilla del extractor), unidos por MT en rojo.
+  function buildSubSkid(cx,cn,y){
+    var g7035=new THREE.MeshStandardMaterial({color:0xc5c9c4,roughness:.7,metalness:.15});
+    var dark=new THREE.MeshStandardMaterial({color:0x2c343a,roughness:.55,metalness:.4});
+    var slab=new THREE.Mesh(new THREE.BoxGeometry(9.2,0.3,4.9),baseM);slab.position.set(cx,y+0.15,-cn);bosGroup.add(slab);
+    var st=y+0.3,tx=cx-2.6;
+    var tank=new THREE.Mesh(new THREE.BoxGeometry(2.4,1.7,1.6),dark);tank.position.set(tx,st+0.95,-cn);bosGroup.add(tank);          // trafo 8 MVA
+    var cons=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,1.4,10),dark);cons.rotation.z=Math.PI/2;cons.position.set(tx,st+2.05,-cn);bosGroup.add(cons);
+    for(var fi3=0;fi3<10;fi3++){var fx=tx-1.05+fi3*0.23;
+      [-1,1].forEach(function(sg3){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.05,1.5,0.5),dark);fin.position.set(fx,st+0.95,-cn+sg3*1.06);bosGroup.add(fin);});}
+    var insM=new THREE.MeshStandardMaterial({color:0x8a6f4d,roughness:.4});
+    for(var bu2=0;bu2<3;bu2++){var bsh2=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.09,0.6,8),insM);bsh2.position.set(tx-0.7+bu2*0.7,st+2.15,-cn+0.35);bosGroup.add(bsh2);}
+    var mast=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.08,2.2,8),insM);mast.position.set(tx-0.9,st+2.9,-cn-0.3);bosGroup.add(mast);      // mástil AT (4,72 m total)
+    var ring=new THREE.Mesh(new THREE.TorusGeometry(0.28,0.045,8,20),new THREE.MeshStandardMaterial({color:0xb9c2c9,roughness:.3,metalness:.8}));
+    ring.rotation.x=Math.PI/2;ring.position.set(tx-0.9,st+4.05,-cn-0.3);bosGroup.add(ring);                                                     // anillo anticorona
+    var oil2=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.9,0.9),g7035);oil2.position.set(tx-2.2,st+0.45,-cn+1.6);bosGroup.add(oil2);             // depósito recogida aceite
+    var mmat2=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc5c9c4});
+    var fh3=2.3,fy2=st+fh3/2,per=[[-4.35,-2.2,-0.6,-2.2],[-4.35,2.2,-0.6,2.2],[-4.35,-2.2,-4.35,2.2],[-0.6,-2.2,-0.6,2.2]];                     // vallado del trafo
+    per.forEach(function(s3){var lx=s3[2]-s3[0],lz=s3[3]-s3[1],ln3=Math.hypot(lx,lz);
+      var p=new THREE.Mesh(new THREE.PlaneGeometry(ln3,fh3),mmat2);p.position.set(cx+(s3[0]+s3[2])/2,fy2,-cn+(s3[1]+s3[3])/2);if(Math.abs(lx)<0.01)p.rotation.y=Math.PI/2;bosGroup.add(p);});
+    [[-4.35,-2.2],[-0.6,-2.2],[-4.35,2.2],[-0.6,2.2]].forEach(function(c3){var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,fh3,6),g7035);po.position.set(cx+c3[0],fy2,-cn+c3[1]);bosGroup.add(po);});
+    var env=new THREE.Mesh(new THREE.BoxGeometry(5.0,3.6,3.6),g7035);env.position.set(cx+2.0,st+1.8,-cn);bosGroup.add(env);                     // envolvente hormigón (celdas)
+    var rf2=new THREE.Mesh(new THREE.BoxGeometry(5.2,0.18,3.8),roofM);rf2.position.set(cx+2.0,st+3.68,-cn);bosGroup.add(rf2);
+    var dr2=new THREE.Mesh(new THREE.BoxGeometry(1.5,2.3,0.06),doorM);dr2.position.set(cx+1.3,st+1.15,-cn+1.82);bosGroup.add(dr2);              // puerta doble
+    var rej=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.8,0.05),dark);rej.position.set(cx+3.2,st+2.3,-cn+1.82);bosGroup.add(rej);                // rejilla extractor
+    for(var cb2=0;cb2<3;cb2++){var q0=new THREE.Vector3(tx-0.7+cb2*0.7,st+2.5,-cn+0.35),q2=new THREE.Vector3(cx-0.45,st+2.6,-cn+(cb2-1)*0.5),q1=new THREE.Vector3((tx+cx)/2-0.5,st+3.3,-cn+(cb2-1)*0.4);
+      var tb=new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(q0,q1,q2),14,0.05,6),new THREE.MeshStandardMaterial({color:0xb02a24,roughness:.55}));bosGroup.add(tb);}   // MT en arco (rojo)
+  }
   // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
   var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
   (LAYOUT.cts||[]).forEach(function(pl){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;pl.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
@@ -1389,9 +1431,7 @@ function buildBOS(){
    {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
     if(b.ct){buildCTSkid(b.x,b.n,y);}   // CT = SKID SPS-6350 según plano de detalle BUR-SPS-6350-04 (no caseta): bancada + trafo de aletas + celda MT + cuadro BT + malla
-    else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
-      var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
-      var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
+    else if(b.sub){buildSubSkid(b.x,b.n,y);}   // subestación = STR-12000-EDE-52 (plano BUR-STR-12000-04): skid 8,92×4,65, trafo 8 MVA + envolvente de celdas
     var lb=makeLabel(b.lab,'poi');lb.position.set(b.x,y+(b.lo?6.6:b.sub?6.2:b.ct?5.7:4.4),-b.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios (hito, por encima del tejado): se conmutan con "Etiquetas"
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
