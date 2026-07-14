@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.28</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.29</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1154,7 +1154,7 @@ function _streetAxes(){ if(_STAX)return _STAX;
   bs.forEach(function(b){var l=m[m.length-1];if(l&&b.n0<=l.n1+0.8){l.n1=Math.max(l.n1,b.n1);}else m.push({n0:b.n0,n1:b.n1});});   // +0,8: una calle estrecha (2 m entre bandas) también es calle — no la fusiones
   _STAX=[];for(var i=0;i+1<m.length;i++)_STAX.push((m[i].n1+m[i+1].n0)/2);
   return _STAX; }
-function _snapStreet(n){ var ax=_streetAxes(),b=n,bd=8; for(var i=0;i<ax.length;i++){var d=Math.abs(ax[i]-n);if(d<bd){bd=d;b=ax[i];}} return b; }
+function _snapStreet(n){ var ax=_streetAxes(),b=n,bd=1e9; for(var i=0;i<ax.length;i++){var d=Math.abs(ax[i]-n);if(d<bd){bd=d;b=ax[i];}} return b; }   // SIEMPRE al eje más cercano: sin tope, el equipo sin calle a <8 m (I-2.5) tiraba una E-W pegada a las filas; el hop N-S inicial va por el pasillo de su unidad
 function _trimRoute(p,cut){ var keep=Math.max(1,p.tot-cut),seg=[],tot=0;   // recorta los últimos metros (parada en el borde del recinto, no dentro)
   for(var i=0;i<p.seg.length&&tot<keep;i++){var s=p.seg[i],l=Math.min(s.l,keep-tot);
     var f=l/s.l,b=[s.a[0]+(s.b[0]-s.a[0])*f,s.a[1]+(s.b[1]-s.a[1])*f];
@@ -1268,8 +1268,9 @@ function buildBOS(){
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
   // viales: cinta de tierra compactada drapeada sobre el terreno (no una línea), que recibe la sombra de los seguidores
-  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[],rw=((LAYOUT&&LAYOUT.roadW)||3.8)/2;   // semiancho = ancho REAL del DWG (mediana de la separación entre bordes de "Caminos Internos")
-  (LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a0=pl[i],b0=pl[i+1];if(!inClip(a0[0],a0[1])||!inClip(b0[0],b0[1]))continue;
+  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];
+  (LAYOUT.roads||[]).forEach(function(pl,pi){var rw=(((LAYOUT.roadWidths||[])[pi])||LAYOUT.roadW||3.8)/2;   // ancho POR VIAL (bloque "Viales" del DWG)
+    for(var i=0;i+1<pl.length;i++){var a0=pl[i],b0=pl[i+1];if(!inClip(a0[0],a0[1])||!inClip(b0[0],b0[1]))continue;
     var dx=b0[0]-a0[0],dn=b0[1]-a0[1],Lr=Math.hypot(dx,dn)||1e-6,px=-dn/Lr*rw,pn=dx/Lr*rw;   // perpendicular al tramo, en el plano E/N
     var ex=dx/Lr*Math.min(0.6,Lr*0.4),en=dn/Lr*Math.min(0.6,Lr*0.4);                          // costura: alarga cada tramo 0,6 m por ambos extremos (sin huecos en giros)
     var a=[a0[0]-ex,a0[1]-en],b=[b0[0]+ex,b0[1]+en];
@@ -1336,6 +1337,34 @@ function buildBOS(){
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
   if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
+  // ===== CT tipo SPS-6350 (plano BUR-SPS-6350-04): SKID intemperie de 6,385×2,05 m =====
+  // bancada de hormigón (600 sobre zócalo 150) pintada RAL 6009 (verde abeto) con: celda MT 24 kV a un
+  // extremo (RAL 7035), TRAFO 6,35 MVA con bancos de radiadores al aire en el centro, cuadro BT al otro
+  // extremo, malla perimetral 7035 alrededor del trafo y cables BT rojos en arco trafo→cuadro.
+  function buildCTSkid(cx,cn,y){
+    var g6009=new THREE.MeshStandardMaterial({color:0x2e3c31,roughness:.6,metalness:.35});   // RAL 6009
+    var g7035=new THREE.MeshStandardMaterial({color:0xc5c9c4,roughness:.55,metalness:.25});  // RAL 7035
+    var finM=new THREE.MeshStandardMaterial({color:0x28342c,roughness:.5,metalness:.5});
+    var pad=new THREE.Mesh(new THREE.BoxGeometry(6.7,0.15,2.35),baseM);pad.position.set(cx,y+0.07,-cn);bosGroup.add(pad);
+    var skid=new THREE.Mesh(new THREE.BoxGeometry(6.385,0.6,2.05),g6009);skid.position.set(cx,y+0.45,-cn);bosGroup.add(skid);
+    var st=y+0.75;                                                                            // cota superior de la bancada
+    var tank=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.45,1.15),g6009);tank.position.set(cx-0.35,st+0.85,-cn);bosGroup.add(tank);   // cuba del trafo
+    var cons=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,1.1,10),g6009);cons.rotation.z=Math.PI/2;cons.position.set(cx-0.35,st+1.78,-cn);bosGroup.add(cons);   // depósito de expansión
+    for(var fi2=0;fi2<9;fi2++){var fx=cx-1.15+fi2*0.2;                                        // bancos de radiadores a ambos lados
+      [-1,1].forEach(function(sg2){var fin=new THREE.Mesh(new THREE.BoxGeometry(0.05,1.25,0.42),finM);fin.position.set(fx,st+0.78,-cn+sg2*0.82);bosGroup.add(fin);});}
+    for(var bu=0;bu<3;bu++){var bsh=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,0.42,8),new THREE.MeshStandardMaterial({color:0x8a6f4d,roughness:.4}));bsh.position.set(cx-0.85+bu*0.5,st+1.75,-cn+0.2);bosGroup.add(bsh);}   // pasatapas
+    var mv=new THREE.Mesh(new THREE.BoxGeometry(1.05,2.5,1.95),g7035);mv.position.set(cx-2.62,st+1.25,-cn);bosGroup.add(mv);          // celda MT 24 kV
+    var mvd=new THREE.Mesh(new THREE.BoxGeometry(0.02,2.1,1.7),doorM);mvd.position.set(cx-2.08,st+1.1,-cn);bosGroup.add(mvd);          // junta de puertas
+    var bt=new THREE.Mesh(new THREE.BoxGeometry(0.95,2.05,1.85),g6009);bt.position.set(cx+2.66,st+1.02,-cn);bosGroup.add(bt);          // cuadro BT
+    var oil=new THREE.Mesh(new THREE.BoxGeometry(2.5,0.1,1.6),new THREE.MeshStandardMaterial({color:0x20262b,roughness:.8}));oil.position.set(cx-0.35,st+0.06,-cn);bosGroup.add(oil);   // bandeja de aceite
+    var mmat=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc5c9c4});
+    var fh2=2.15,fy=st+fh2/2,seg=[[-2.1,-1.02,2.1,-1.02],[-2.1,1.02,2.1,1.02],[-2.1,-1.02,-2.1,1.02],[2.1,-1.02,2.1,1.02]];   // malla perimetral del trafo
+    seg.forEach(function(s2){var lx=s2[2]-s2[0],lz=s2[3]-s2[1],ln2=Math.hypot(lx,lz);
+      var p=new THREE.Mesh(new THREE.PlaneGeometry(ln2,fh2),mmat);p.position.set(cx+(s2[0]+s2[2])/2,fy,-cn+(s2[1]+s2[3])/2);p.rotation.y=Math.atan2(lz,lx)+Math.PI/2- Math.PI/2;if(Math.abs(lx)<0.01)p.rotation.y=Math.PI/2;bosGroup.add(p);});
+    [[-2.1,-1.02],[2.1,-1.02],[-2.1,1.02],[2.1,1.02]].forEach(function(c2){var po=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,fh2,6),g7035);po.position.set(cx+c2[0],fy,-cn+c2[1]);bosGroup.add(po);});
+    for(var cb=0;cb<3;cb++){var y0=new THREE.Vector3(cx+0.6,st+1.55,-cn+(cb-1)*0.28),y2=new THREE.Vector3(cx+2.35,st+1.9,-cn+(cb-1)*0.34),y1=new THREE.Vector3(cx+1.5,st+2.35,-cn+(cb-1)*0.31);
+      var tube=new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(y0,y1,y2),12,0.045,6),new THREE.MeshStandardMaterial({color:0xb02a24,roughness:.55}));bosGroup.add(tube);}   // BT en arco (rojo)
+  }
   // CTs / edificios prefabricados (hormigón): muros + cubierta saliente + puerta
   var bldM=new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.92,metalness:.05}),roofM=new THREE.MeshStandardMaterial({color:0x6e7681,roughness:.7,metalness:.2}),doorM=new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3});
   (LAYOUT.cts||[]).forEach(function(pl){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;pl.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
@@ -1359,9 +1388,7 @@ function buildBOS(){
    {x:-6.9,n:-198.5,lab:'Subestación',sub:1},                                            // subestación AL SUR de la sala de control (ya NO encima del CT Sur)
    {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
-    if(b.ct){var pad=new THREE.Mesh(new THREE.BoxGeometry(6.7,0.25,2.35),baseM);pad.position.set(b.x,y+0.12,-b.n);bosGroup.add(pad);                       // CT: 6,38(EW)×2,05(NS)×3 alto — los dos IGUALES
-      var bx=new THREE.Mesh(new THREE.BoxGeometry(6.38,3,2.05),emuM);bx.position.set(b.x,y+1.5,-b.n);bosGroup.add(bx);
-      var rf=new THREE.Mesh(new THREE.BoxGeometry(6.78,0.2,2.45),roofM);rf.position.set(b.x,y+3.05,-b.n);bosGroup.add(rf);}
+    if(b.ct){buildCTSkid(b.x,b.n,y);}   // CT = SKID SPS-6350 según plano de detalle BUR-SPS-6350-04 (no caseta): bancada + trafo de aletas + celda MT + cuadro BT + malla
     else if(b.sub){var w=new THREE.Mesh(new THREE.BoxGeometry(10.92,3,6.4),bldM);w.position.set(b.x,y+1.5,-b.n);bosGroup.add(w);                           // subestación: 10,92(EW)×6,4(NS)×3 alto — edificio propio
       var rf=new THREE.Mesh(new THREE.BoxGeometry(11.42,0.25,6.9),roofM);rf.position.set(b.x,y+3.12,-b.n);bosGroup.add(rf);
       var dr=new THREE.Mesh(new THREE.BoxGeometry(1.2,2.2,0.08),doorM);dr.position.set(b.x-2.6,y+1.1,-b.n+3.24);bosGroup.add(dr);}
