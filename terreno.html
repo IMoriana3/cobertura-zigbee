@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.21</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.22</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -276,7 +276,7 @@ function panelAngle(min){
   var a=simOn ? (btOn ? simBtAngle(min) : noBtAngle(min))     // SIMULACIÓN pura: con / sin backtracking
              : (btOn ? (angleAt(null,min)||0) : noBtAngle(min));   // DATOS REALES: BT on = telemetría; BT off = seguimiento puro
   var u=sunVec(min).U;
-  if(u<-0.02){var f=Math.max(0,1+(u+0.02)/0.05);a*=f*f;}      // NOCHE: a DORMIDO (0°, plano) con transición suave tras la puesta — el sol bajo el horizonte daba ~26°O toda la noche
+  if(u<-0.02){var f=Math.max(0,1+(u+0.02)/0.05);f*=f;a=a*f+(-5)*(1-f);}   // NOCHE: a DORMIDO real de El Burgo (−5°, mirando al ESTE) con transición suave tras la puesta
   return a;
 }
 /* cielo: fondo + niebla + color del sol según la ALTURA del sol (U): día azul, horizonte naranja, noche oscura */
