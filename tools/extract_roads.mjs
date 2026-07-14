@@ -83,18 +83,41 @@ for (let i = 0; i < mids.length; i++) {
   }
   if (ch.length >= 4) chains.push(ch);
 }
-function simplify(ch) {                                     // quita puntos colineales (tolerancia 0,12 m)
+function simplify(ch) {                                     // quita puntos colineales (tolerancia 0,25 m)
   const out = [ch[0]];
   for (let i = 1; i + 1 < ch.length; i++) {
     const a = out[out.length - 1], b = ch[i], c = ch[i + 1];
     const ux = c[0] - a[0], un = c[1] - a[1], l = Math.hypot(ux, un) || 1e-9;
     const d = Math.abs((b[0] - a[0]) * (-un / l) + (b[1] - a[1]) * (ux / l));
-    if (d > 0.12) out.push(b);
+    if (d > 0.25) out.push(b);
   }
   out.push(ch[ch.length - 1]);
   return out;
 }
-let roads = chains.map(simplify);
+// SUAVIZADO: el encadenado por vecindad zigzaguea ±0,3 m entre muestras de bordes opuestos → en 3D salía
+// una cinta en dientes de sierra. Remuestreo a 3 m por longitud de arco + media móvil (ventana 5) + simplificado.
+function resample(ch, step) {
+  const out = [ch[0]]; let acc = 0;
+  for (let i = 0; i + 1 < ch.length; i++) {
+    const a = ch[i], b = ch[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let d = step - acc;
+    while (d <= l) { const t = d / l; out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); d += step; }
+    acc = (acc + l) % step;
+  }
+  out.push(ch[ch.length - 1]);
+  return out;
+}
+function movAvg(ch, w) {
+  return ch.map((p, i) => {
+    let sx = 0, sn = 0, c = 0;
+    for (let k = -w; k <= w; k++) { const j = i + k; if (j >= 0 && j < ch.length) { sx += ch[j][0]; sn += ch[j][1]; c++; } }
+    return [Math.round(sx / c * 100) / 100, Math.round(sn / c * 100) / 100];
+  });
+}
+function chlen(cs){let L=0;cs.forEach(ch=>{for(let i=0;i+1<ch.length;i++)L+=Math.hypot(ch[i+1][0]-ch[i][0],ch[i+1][1]-ch[i][1]);});return L.toFixed(0);}
+if(process.env.RDBG)console.log('DBG chains:',chains.length,'len',chlen(chains));
+let roads = chains.map(ch => simplify(movAvg(resample(ch, 3), 2)));
+if(process.env.RDBG)console.log('DBG smoothed:',roads.length,'len',chlen(roads));
 // FILTRO por valla: la capa "Caminos Internos" incluye viales de OTRO sector que, trasladados, caen
 // fuera de El Burgo. Se queda cada camino solo si ≥40% de su longitud está dentro del anillo de la
 // valla (+8 m de margen, para conservar el acceso que la cruza).
@@ -103,24 +126,25 @@ const fpl = (LAYF.fence || []).map(pl => pl.slice());
 let ring = fpl.sort((a, b) => b.length - a.length)[0] || [];
 const merged = ring.slice(); let moved = true;                    // suelda el anillo con el resto de tramos de valla
 const usedR = fpl.map(pl => pl === ring);
-while (moved) { moved = false;
+while (moved) { moved = false;                                     // soldadura por AMBOS extremos (solo-cola dejaba el anillo a medias → pip cerraba en diagonal y media planta quedaba "fuera")
   for (let i = 0; i < fpl.length; i++) { if (usedR[i]) continue; const q = fpl[i];
-    const t = merged[merged.length - 1], qh = q[0], qt = q[q.length - 1];
-    if (Math.hypot(t[0] - qh[0], t[1] - qh[1]) < 2) { merged.push(...q.slice(1)); usedR[i] = true; moved = true; }
-    else if (Math.hypot(t[0] - qt[0], t[1] - qt[1]) < 2) { merged.push(...q.slice(0, -1).reverse()); usedR[i] = true; moved = true; } } }
+    const h = merged[0], t = merged[merged.length - 1], qh = q[0], qt = q[q.length - 1];
+    if (Math.hypot(t[0] - qh[0], t[1] - qh[1]) < 3) { merged.push(...q.slice(1)); usedR[i] = true; moved = true; }
+    else if (Math.hypot(t[0] - qt[0], t[1] - qt[1]) < 3) { merged.push(...q.slice(0, -1).reverse()); usedR[i] = true; moved = true; }
+    else if (Math.hypot(h[0] - qt[0], h[1] - qt[1]) < 3) { merged.unshift(...q.slice(0, -1)); usedR[i] = true; moved = true; }
+    else if (Math.hypot(h[0] - qh[0], h[1] - qh[1]) < 3) { merged.unshift(...q.slice(1).reverse()); usedR[i] = true; moved = true; } } }
+if(process.env.RDBG){const xs=merged.map(p=>p[0]),ns=merged.map(p=>p[1]);
+  console.log('DBG ring:',merged.length,'vtx · bbox x',Math.min(...xs).toFixed(0),'..',Math.max(...xs).toFixed(0),'· n',Math.min(...ns).toFixed(0),'..',Math.max(...ns).toFixed(0));}
 function pip(x, n) { let ins = false; for (let i = 0, j = merged.length - 1; i < merged.length; j = i++) {
   const xi = merged[i][0], yi = merged[i][1], xj = merged[j][0], yj = merged[j][1];
   if (((yi > n) !== (yj > n)) && (x < (xj - xi) * (n - yi) / (yj - yi) + xi)) ins = !ins; } return ins; }
 function nearRing(x, n) { for (let i = 0; i + 1 < merged.length; i++) { const a = merged[i], b = merged[i + 1];
   const dx = b[0] - a[0], dn = b[1] - a[1], L2 = dx * dx + dn * dn || 1e-9; let t = ((x - a[0]) * dx + (n - a[1]) * dn) / L2; t = Math.max(0, Math.min(1, t));
   if (Math.hypot(x - (a[0] + t * dx), n - (a[1] + t * dn)) < 8) return true; } return false; }
-roads = roads.filter(ch => {
-  let inL = 0, tot = 0;
-  for (let i = 0; i + 1 < ch.length; i++) { const l = Math.hypot(ch[i + 1][0] - ch[i][0], ch[i + 1][1] - ch[i][1]);
-    const mx = (ch[i][0] + ch[i + 1][0]) / 2, mn = (ch[i][1] + ch[i + 1][1]) / 2; tot += l;
-    if (pip(mx, mn) || nearRing(mx, mn)) inL += l; }
-  return tot > 0 && inL / tot >= 0.4;
-});
+// SIN filtro de valla por ahora: el encaje de la zona de trabajo desplazada no es concluyente (la
+// correlacion con calles cada 6 m da falsos positivos). Se publican TODOS los candidatos suavizados
+// (>=30 m) para validarlos visualmente contra el layout; el filtro volvera cuando el encaje este confirmado.
+roads = roads.filter(ch => { let l = 0; for (let i = 0; i + 1 < ch.length; i++) l += Math.hypot(ch[i + 1][0] - ch[i][0], ch[i + 1][1] - ch[i][1]); return l >= 30; });
 widths.sort((a, b) => a - b);
 const W = widths.length ? Math.round(widths[Math.floor(widths.length / 2)] * 10) / 10 : 4;
 const LAY = JSON.parse(readFileSync(LAYP, 'utf8'));

@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.27</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.28</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -922,7 +922,7 @@ function buildVeg(){
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(95.0,55.0,length(vViewPosition));');};   // se funden lejos: cerca visten, lejos no ensucian
   m.customProgramCacheKey=function(){return 'vegfade1';};
-  var N=12000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 12k matas en RODALES (antes 2,6k uniformes = 1 mata/134 m²: "ni hay vegetación")
+  var N=36000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 36k matas en RODALES (12k aún se percibía como "sin vegetación"; un InstancedMesh con alphaTest lo aguanta de sobra)
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   var i=0;
   while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // rodal: 8-38 matas en ~9 m
@@ -934,8 +934,14 @@ function buildVeg(){
 // opacidad ∝ nubosidad y solo de día. El "respirar" global de la luz (animateSky) pone la otra mitad.
 var cshGroup=null,_cshT=0,_cshK=0;
 function _cloudBlobTex(){var S=256,c=document.createElement('canvas');c.width=c.height=S;var x=c.getContext('2d');
-  for(var k=0;k<6;k++){var cx=50+Math.random()*156,cy=50+Math.random()*156,r=55+Math.random()*70;   // pocas manchas ANCHAS y suaves, como la sombra de un cúmulo de verdad
-    var g=x.createRadialGradient(cx,cy,r*0.2,cx,cy,r);g.addColorStop(0,'rgba(0,0,0,0.75)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();}
+  var g0=x.createRadialGradient(128,128,20,128,128,120);g0.addColorStop(0,'rgba(0,0,0,0.55)');g0.addColorStop(1,'rgba(0,0,0,0)');   // base ancha: unifica el interior (sin "huecos" sintéticos)
+  x.fillStyle=g0;x.beginPath();x.arc(128,128,120,0,7);x.fill();
+  for(var k=0;k<5;k++){var a=k*2.39996,rr=28+((k*53)%46),cx=128+Math.cos(a)*rr,cy=128+Math.sin(a)*rr,r=42+((k*37)%34);   // grumos suaves alrededor del núcleo
+    var g=x.createRadialGradient(cx,cy,r*0.2,cx,cy,r);g.addColorStop(0,'rgba(0,0,0,0.45)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();}
+  var im=x.getImageData(0,0,S,S),dd=im.data;                                            // MÁSCARA DE BORDE: alfa→0 en el perímetro del plano — se acabó la "nube cuadrada"
+  for(var j=0;j<S;j++)for(var i=0;i<S;i++){var dx2=(i-128)/118,dy2=(j-128)/118,rr2=Math.sqrt(dx2*dx2+dy2*dy2);
+    var f=rr2>=1?0:Math.min(1,(1-rr2)*2.2);dd[(j*S+i)*4+3]*=f;}
+  x.putImageData(im,0,0);
   return new THREE.CanvasTexture(c);}
 function buildCloudShadows(){
   if(cshGroup){scene.remove(cshGroup);cshGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});cshGroup=null;}
@@ -947,7 +953,8 @@ function buildCloudShadows(){
     mesh.userData={ox:((i*397)%900)-450,oz:((i*641)%700)-350,sp:3.2+i*1.4};cshGroup.add(mesh);}
 }
 function cloudShadowStep(dt){ if(!cshGroup)return;var cl=GENCLOUD||0,day=SUN&&SUN._dir&&SUN._dir.U>0.02;
-  var on=cl>0.05&&day;cshGroup.visible=on;if(!on)return;_cshT+=dt;
+  var on=cl>0.05&&day;cshGroup.visible=on;if(!on)return;
+  if(playing)_cshT+=dt;   // la nube viaja SOLO si el tiempo corre: con el timeline pausado el instante está congelado (y la sombra también)
   var wd=(((WIND&&WIND.wd)||210)+180)*DEG,vx=Math.sin(wd),vz=Math.cos(wd);   // la sombra viaja HACIA donde va el viento
   for(var i=0;i<cshGroup.children.length;i++){var mesh=cshGroup.children[i],u=mesh.userData,t=_cshT*u.sp;
     var X=(((u.ox+t*vx)%1500)+2250)%1500-750,Z=(((u.oz+t*vz)%1300)+1950)%1300-650;
@@ -1148,8 +1155,13 @@ function _streetAxes(){ if(_STAX)return _STAX;
   _STAX=[];for(var i=0;i+1<m.length;i++)_STAX.push((m[i].n1+m[i+1].n0)/2);
   return _STAX; }
 function _snapStreet(n){ var ax=_streetAxes(),b=n,bd=8; for(var i=0;i<ax.length;i++){var d=Math.abs(ax[i]-n);if(d<bd){bd=d;b=ax[i];}} return b; }
-function _lroute(ax,an,bx,bn){
-  var sn=_snapStreet(an),pts=[[ax,an]];
+function _trimRoute(p,cut){ var keep=Math.max(1,p.tot-cut),seg=[],tot=0;   // recorta los últimos metros (parada en el borde del recinto, no dentro)
+  for(var i=0;i<p.seg.length&&tot<keep;i++){var s=p.seg[i],l=Math.min(s.l,keep-tot);
+    var f=l/s.l,b=[s.a[0]+(s.b[0]-s.a[0])*f,s.a[1]+(s.b[1]-s.a[1])*f];
+    seg.push({a:s.a,b:b,l:l,acc:tot});tot+=l;}
+  return {seg:seg,tot:Math.max(tot,0.001)}; }
+function _lroute(ax,an,bx,bn,skipSnapStart){
+  var sn=skipSnapStart?an:_snapStreet(an),pts=[[ax,an]];
   if(Math.abs(sn-an)>0.4)pts.push([ax,sn]);                              // del equipo al eje de SU calle
   var sx=_spineX((sn+bn)/2);if(sx==null)sx=bx;
   pts.push([sx,sn]);                                                     // E-W por la calle hasta la espina
@@ -1167,8 +1179,8 @@ function buildArrows(){   // FLECHAS de flujo: pequeñas, a ras de suelo, por co
     NET.layers.trench_mt.forEach(function(pl){var ns=pl.map(function(p){return p[1];}),ext=Math.max.apply(null,ns)-Math.min.apply(null,ns);if(ext>bl){bl=ext;best=pl;}});
     if(best&&bl>60)_SPINE=best.slice().sort(function(a,b){return a[1]-b[1];});}
   ARR=[];invByCT();var inv=LAYOUT&&LAYOUT.invlab;if(!inv||!inv.length)return;var AINV=2,ACT=5;
-  for(var i=0;i<inv.length;i++){var a=invAt(i),ct=CTMAIN[INVCT[i]],p=_lroute(a.x,a.n,ct.x,ct.n);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT
-  for(var c=0;c<CTMAIN.length;c++){var p2=_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación
+  for(var i=0;i<inv.length;i++){var a=invAt(i),ct=CTMAIN[INVCT[i]],p=_trimRoute(_lroute(a.x,a.n,ct.x,ct.n),3);for(var k=0;k<AINV;k++)ARR.push({p:p,off:k/AINV,lvl:0,src:i});}   // inversor → su CT (para en el borde del CT)
+  for(var c=0;c<CTMAIN.length;c++){var p2=_trimRoute(_lroute(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n,true),8);for(var k2=0;k2<ACT;k2++)ARR.push({p:p2,off:k2/ACT,lvl:1,src:c});}   // CT → subestación (sin dip a calle al salir del CT; para 8 m antes del recinto: nada "sale" del edificio)
   if(!_ao)_ao=new THREE.Object3D();
   var cone=new THREE.ConeGeometry(0.38,1.5,8);cone.rotateX(Math.PI/2);   // punta hacia +Z: lookAt() de un OBJETO apunta +Z al objetivo (−Z es solo cámaras) — por eso iban del revés
   arrowMesh=new THREE.InstancedMesh(cone,new THREE.MeshBasicMaterial({transparent:true,opacity:0.98}),ARR.length);arrowMesh.frustumCulled=false;scene.add(arrowMesh);animateArrows(0);
@@ -1222,9 +1234,13 @@ function invElec(i,min){var g=genModel(min),mods=(SPEC&&SPEC.mods)||28,wmod=(SPE
 function ctElec(c,min){var plv=0,nInv=0,clip=0;for(var i=0;i<INVCT.length;i++){if(INVCT[i]!==c)continue;var e=invElec(i,min);plv+=e.pac;nInv++;if(e.clip)clip++;}
   var rate=6300,ptr=plv*0.99,pmv=Math.min(ptr,rate),vmv=20,imv=pmv>0?pmv/(1.732*vmv):0,load=ptr/rate*100;   // CT 0,8→20 kV (η 99%); trafo 6.300 kVA → recorta; I a 20 kV trifásico
   return{nInv:nInv,plv:plv,pmv:pmv,vmv:vmv,imv:imv,clip:clip,rate:rate,load:load,trclip:ptr>rate};}
-function subElec(min){var p=0,nCT=0;for(var c=0;c<CTMAIN.length;c++){var ce=ctElec(c,min);if(ce.nInv){p+=ce.pmv;nCT++;}}return{nCT:nCT,pmv:p,vmv:20,imv:p>0?p/(1.732*20):0};}   // subestación a 20 kV
+function subElec(min){var p=0,nCT=0;for(var c=0;c<CTMAIN.length;c++){var ce=ctElec(c,min);if(ce.nInv){p+=ce.pmv;nCT++;}}return{nCT:nCT,pmv:p,vmv:45,imv:p>0?p/(1.732*45):0};}   // subestación: trafo de potencia 20/45 kV → EVACUACIÓN A 45 kV (la colectora interna de CTs sí es 20 kV)
 function highlightLine(ax,an,bx,bn){if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}
-  var v=[];for(var s=0;s<24;s++){var t0=s/24,t1=(s+1)/24,x0=ax+(bx-ax)*t0,n0=an+(bn-an)*t0,x1=ax+(bx-ax)*t1,n1=an+(bn-an)*t1;v.push(x0,localElevY(x0,n0)+0.7,-n0,x1,localElevY(x1,n1)+0.7,-n1);}
+  // la línea de la ficha sigue la RUTA REAL (calle + espina MT), no la diagonal a vista de pájaro de antes
+  var rt=_trimRoute(_lroute(ax,an,bx,bn),3),v=[];
+  rt.seg.forEach(function(sg){var st=Math.max(1,Math.min(14,Math.round(sg.l/7)));
+    for(var s=0;s<st;s++){var t0=s/st,t1=(s+1)/st,x0=sg.a[0]+(sg.b[0]-sg.a[0])*t0,n0=sg.a[1]+(sg.b[1]-sg.a[1])*t0,x1=sg.a[0]+(sg.b[0]-sg.a[0])*t1,n1=sg.a[1]+(sg.b[1]-sg.a[1])*t1;
+      v.push(x0,localElevY(x0,n0)+0.7,-n0,x1,localElevY(x1,n1)+0.7,-n1);}});
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));selLine=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xffe08a}));scene.add(selLine);}
 function fHdr(lab,sub,acc){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:14px">'+lab+'</b><span style="color:'+(acc||'var(--accent)')+';font-weight:700;font-size:11.5px">'+sub+'</span><span style="margin-left:auto;cursor:pointer;color:var(--tx2);font-size:15px" onclick="closeFicha()">✕</span></div>';}
 function updateFicha(){var f=$('invFicha');if(!f||!FICHA)return;
@@ -1240,7 +1256,7 @@ function updateFicha(){var f=$('invFicha');if(!f||!FICHA)return;
   else if(FICHA.t==='sub'){var s2=subElec(curMin);
     f.innerHTML=fHdr('Subestación','El Burgo I','#ff7ab0')
       +'<div style="color:#9fd0ff;font-weight:600;margin-top:3px">'+s2.nCT+' CTs · planta completa</div>'
-      +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida MT → red</div><div>'+s2.vmv+' kV · '+s2.imv.toFixed(0)+' A · <b>'+(s2.pmv/1000).toFixed(2)+' MW</b></div>';}
+      +'<div style="color:#ffd98a;font-weight:600;margin-top:5px">Salida AT → red (evacuación)</div><div>'+s2.vmv+' kV · '+s2.imv.toFixed(0)+' A · <b>'+(s2.pmv/1000).toFixed(2)+' MW</b> <span style="color:var(--tx2)">· trafo 20/45 kV</span></div>';}
   f.style.display='';}
 function selectInv(i){FICHA={t:'inv',id:i};ensureNet().then(function(){if(!INVPTS.length)computeSinks();if(!INVSTR.length)computeInvStrings();computeSinks();var a=invAt(i),ct=nearestPt(a.x,a.n,CTPTS).p;highlightLine(a.x,a.n,ct[0],ct[1]);updateFicha();});}
 function selectCT(c){FICHA={t:'ct',id:c};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();highlightLine(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);updateFicha();});}
@@ -1253,8 +1269,10 @@ function buildBOS(){
   if(!LAYOUT||!ELEV)return;
   // viales: cinta de tierra compactada drapeada sobre el terreno (no una línea), que recibe la sombra de los seguidores
   var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[],rw=((LAYOUT&&LAYOUT.roadW)||3.8)/2;   // semiancho = ancho REAL del DWG (mediana de la separación entre bordes de "Caminos Internos")
-  (LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1];if(!inClip(a[0],a[1])||!inClip(b[0],b[1]))continue;
-    var dx=b[0]-a[0],dn=b[1]-a[1],Lr=Math.hypot(dx,dn)||1e-6,px=-dn/Lr*rw,pn=dx/Lr*rw;   // perpendicular al tramo, en el plano E/N
+  (LAYOUT.roads||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a0=pl[i],b0=pl[i+1];if(!inClip(a0[0],a0[1])||!inClip(b0[0],b0[1]))continue;
+    var dx=b0[0]-a0[0],dn=b0[1]-a0[1],Lr=Math.hypot(dx,dn)||1e-6,px=-dn/Lr*rw,pn=dx/Lr*rw;   // perpendicular al tramo, en el plano E/N
+    var ex=dx/Lr*Math.min(0.6,Lr*0.4),en=dn/Lr*Math.min(0.6,Lr*0.4);                          // costura: alarga cada tramo 0,6 m por ambos extremos (sin huecos en giros)
+    var a=[a0[0]-ex,a0[1]-en],b=[b0[0]+ex,b0[1]+en];
     function P(x,n){return [x,localElevY(x,n)+0.06,-n];}
     var AL=P(a[0]+px,a[1]+pn),AR=P(a[0]-px,a[1]-pn),BL=P(b[0]+px,b[1]+pn),BR=P(b[0]-px,b[1]-pn);
     rv.push(AL[0],AL[1],AL[2],AR[0],AR[1],AR[2],BL[0],BL[1],BL[2], BL[0],BL[1],BL[2],AR[0],AR[1],AR[2],BR[0],BR[1],BR[2]);}});   // 2 triángulos/tramo
@@ -1277,13 +1295,25 @@ function buildBOS(){
     while(again){again=false;
       for(var fj=0;fj<fpls.length;fj++){ if(usedF[fj])continue;var q=fpls[fj];
         var h=ch[0],t=ch[ch.length-1],qh=q[0],qt=q[q.length-1];
-        if(Math.hypot(t[0]-qh[0],t[1]-qh[1])<1.5){ch=ch.concat(q.slice(1));usedF[fj]=true;again=true;}
-        else if(Math.hypot(t[0]-qt[0],t[1]-qt[1])<1.5){ch=ch.concat(q.slice(0,-1).reverse());usedF[fj]=true;again=true;}
-        else if(Math.hypot(h[0]-qt[0],h[1]-qt[1])<1.5){ch=q.slice(0,-1).concat(ch);usedF[fj]=true;again=true;}
-        else if(Math.hypot(h[0]-qh[0],h[1]-qh[1])<1.5){ch=q.slice(1).reverse().concat(ch);usedF[fj]=true;again=true;}
+        if(Math.hypot(t[0]-qh[0],t[1]-qh[1])<2.8){ch=ch.concat(q.slice(1));usedF[fj]=true;again=true;}
+        else if(Math.hypot(t[0]-qt[0],t[1]-qt[1])<2.8){ch=ch.concat(q.slice(0,-1).reverse());usedF[fj]=true;again=true;}
+        else if(Math.hypot(h[0]-qt[0],h[1]-qt[1])<2.8){ch=q.slice(0,-1).concat(ch);usedF[fj]=true;again=true;}
+        else if(Math.hypot(h[0]-qh[0],h[1]-qh[1])<2.8){ch=q.slice(1).reverse().concat(ch);usedF[fj]=true;again=true;}
       }}
-    var h2=ch[0],t2=ch[ch.length-1];if(ch.length>3&&Math.hypot(h2[0]-t2[0],h2[1]-t2[1])<1.5)ch.push([h2[0],h2[1]]);
+    var h2=ch[0],t2=ch[ch.length-1];if(ch.length>3&&Math.hypot(h2[0]-t2[0],h2[1]-t2[1])<2.8)ch.push([h2[0],h2[1]]);
     fMerged.push(ch); }
+  // ESQUINAS: donde dos vértices consecutivos quedan a <2,8 m con giro real (>25°), se sustituyen por la
+  // INTERSECCIÓN de las dos rectas — la unión queda en pico limpio, no con hueco ni solape cruzado
+  fMerged=fMerged.map(function(ch){
+    for(var ci=1;ci+2<ch.length;ci++){var A=ch[ci-1],B=ch[ci],C=ch[ci+1],D2=ch[ci+2];
+      if(Math.hypot(C[0]-B[0],C[1]-B[1])>2.8)continue;
+      var u1x=B[0]-A[0],u1n=B[1]-A[1],u2x=D2[0]-C[0],u2n=D2[1]-C[1];
+      var l1=Math.hypot(u1x,u1n)||1e-9,l2=Math.hypot(u2x,u2n)||1e-9,cosA=(u1x*u2x+u1n*u2n)/(l1*l2);
+      if(cosA>0.91)continue;                                             // casi colineal: no es esquina
+      var den=u1x*u2n-u1n*u2x;if(Math.abs(den)<1e-6)continue;
+      var t=((C[0]-B[0])*u2n-(C[1]-B[1])*u2x)/den,ix=B[0]+u1x*t,inn=B[1]+u1n*t;
+      if(Math.hypot(ix-B[0],inn-B[1])<10&&Math.hypot(ix-C[0],inn-C[1])<10){ch.splice(ci,2,[ix,inn]);}}
+    return ch;});
   fMerged.forEach(function(pl){
     var pts=[];                                                                    // densifico el trazado (~5 m) para que la BASE siga el terreno
     for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),ns=Math.max(1,Math.round(L/5));
