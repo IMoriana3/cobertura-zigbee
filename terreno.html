@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.19</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.20</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1280,25 +1280,41 @@ function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado 
   sp.userData.pill={baseH:h,asp:W/H,kind:kind};if(kind!=='free')ALLPILLS.push(sp);
   return sp;
 }
-// ===== etiquetas con tamaño EN PANTALLA acotado =====
+// ===== etiquetas con tamaño EN PANTALLA acotado + culling de colisiones =====
 // La pastilla mide 4 m físicos: de cerca tapaba media fila y de lejos era confeti en el horizonte.
-// Cada frame se acota su alto en píxeles a [12,46]: >46 px se encoge; <12 px las 'trk' se funden
-// (opacidad (px/12)²) y las 'poi' crecen — los hitos de planta se leen siempre, como en un mapa.
-var ALLPILLS=[],_lblV=new THREE.Vector3(),_lblC=new THREE.Vector3(),_lblN=0;
+// Cada frame se acota su alto en píxeles a [12,42]: >42 px se encoge; <12 px las 'trk' se funden
+// (rampa) y las 'poi' crecen. Y como en un mapa: si dos pastillas se PISAN en pantalla (rasante:
+// todos los hitos caen apilados en la línea del horizonte), solo se muestra la prioritaria
+// (hito antes que seguidor; a igual clase, la más cercana) — se acabaron las cápsulas superpuestas.
+var ALLPILLS=[],_lblV=new THREE.Vector3(),_lblV2=new THREE.Vector3(),_lblC=new THREE.Vector3(),_lblN=0,_lblQ=[];
 function updateLabels(){
   if(!ALLPILLS.length)return;
   if(++_lblN%180===0)ALLPILLS=ALLPILLS.filter(function(s){var o=s;while(o.parent)o=o.parent;return o===scene;});   // poda huérfanas tras reconstrucciones (cambio de planta)
   var ch=renderer.domElement.clientHeight||renderer.domElement.height,f=ch/(2*Math.tan(camera.fov*Math.PI/360));
+  var cw=renderer.domElement.clientWidth||renderer.domElement.width;
   camera.getWorldPosition(_lblC);
+  _lblQ.length=0;
   for(var i=0;i<ALLPILLS.length;i++){var sp=ALLPILLS[i];if(!sp.visible)continue;
+    var shown=true,o=sp;while(o){if(!o.visible){shown=false;break;}o=o.parent;}if(!shown)continue;   // en grupo oculto: ni ocupa hueco ni tapa a nadie
     var ud=sp.userData.pill,d=Math.max(1,sp.getWorldPosition(_lblV).distanceTo(_lblC));
     var px=ud.baseH*f/d,h=ud.baseH,op=1;
-    if(px>42)h=42*d/f;
-    if(ud.kind==='poi'){if(px<12)h=12*d/f;}
+    if(px>42){h=42*d/f;px=42;}
+    if(ud.kind==='poi'){if(px<12){h=12*d/f;px=12;}}
     else{var lift=1+Math.min(1.6,Math.max(0,_lblC.y-25)/55),hi=20/lift,lo=9/lift;   // cámara elevada = inspección: el fundido se retrasa (a ras declutter agresivo, desde arriba aguantan)
       if(px<hi){op=Math.max(0,(px-lo)/(hi-lo));op*=op;}}
     sp.scale.set(h*ud.asp,h,1);
-    if(sp.material.opacity!==op)sp.material.opacity=op;
+    if(op<=0.04){sp.material.opacity=0;continue;}
+    _lblV2.copy(_lblV).project(camera);
+    if(_lblV2.z>1||_lblV2.z<-1){sp.material.opacity=0;continue;}                    // detrás de la cámara
+    _lblQ.push({sp:sp,op:op,poi:ud.kind==='poi'?1:0,d:d,x:(_lblV2.x+1)*0.5*cw,y:(1-_lblV2.y)*0.5*ch,w:px*ud.asp,hh:px});
+  }
+  _lblQ.sort(function(a,b){return (b.poi-a.poi)||(a.d-b.d);});
+  var acc=[];
+  for(var i=0;i<_lblQ.length;i++){var q=_lblQ[i],hit=false;
+    for(var j=0;j<acc.length;j++){var a=acc[j];
+      if(Math.abs(q.x-a.x)<(q.w+a.w)*0.46&&Math.abs(q.y-a.y)<(q.hh+a.hh)*0.55){hit=true;break;}}
+    if(hit){q.sp.material.opacity=0;}
+    else{acc.push(q);if(q.sp.material.opacity!==q.op)q.sp.material.opacity=q.op;}
   }
 }
 // ===== Capa ZONAS Y RECINTOS (El Burgo): carteles ámbar del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio).
