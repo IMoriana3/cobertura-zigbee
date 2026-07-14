@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.22</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.23</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1319,13 +1319,14 @@ function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado 
 var ALLPILLS=[],_lblV=new THREE.Vector3(),_lblV2=new THREE.Vector3(),_lblC=new THREE.Vector3(),_lblN=0,_lblQ=[];
 function updateLabels(){
   if(!ALLPILLS.length)return;
-  if(++_lblN%180===0)ALLPILLS=ALLPILLS.filter(function(s){var o=s;while(o.parent)o=o.parent;return o===scene;});   // poda huérfanas tras reconstrucciones (cambio de planta)
+  if(++_lblN%180===0||ALLPILLS.length>600)ALLPILLS=ALLPILLS.filter(function(s){var o=s;while(o.parent)o=o.parent;return o===scene;});   // poda huérfanas tras reconstrucciones (cambio de planta, arrastre de exageración vertical…)
   var ch=renderer.domElement.clientHeight||renderer.domElement.height,f=ch/(2*Math.tan(camera.fov*Math.PI/360));
   var cw=renderer.domElement.clientWidth||renderer.domElement.width;
   camera.getWorldPosition(_lblC);
   _lblQ.length=0;
   for(var i=0;i<ALLPILLS.length;i++){var sp=ALLPILLS[i];if(!sp.visible)continue;
-    var shown=true,o=sp;while(o){if(!o.visible){shown=false;break;}o=o.parent;}if(!shown)continue;   // en grupo oculto: ni ocupa hueco ni tapa a nadie
+    var shown=true,o=sp;while(o){if(!o.visible){shown=false;break;}if(!o.parent){shown=(o===scene);break;}o=o.parent;}
+    if(!shown)continue;   // oculta O ZOMBI (desmontada de la escena, p. ej. rebuilds del arrastre de exageración): ni ocupa hueco ni roba el sitio a las vivas en el culling
     var ud=sp.userData.pill,d=Math.max(1,sp.getWorldPosition(_lblV).distanceTo(_lblC));
     var px=ud.baseH*f/d,h=ud.baseH,op=1;
     if(px>42){h=42*d/f;px=42;}
