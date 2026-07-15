@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.32</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.33</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -420,6 +420,7 @@ async function build(){
   baseElev=elevAt(lat0,lon0);var emin=1e9,emax=-1e9;
 
   var segX=Math.max(160,Math.min(440,Math.round(widthM/7))),segY=Math.max(90,Math.min(440,Math.round(depthM/7)));   // malla del terreno ~7 m/segmento: en plantas grandes (Ayora) sube de ~16 m a ~7 m para captar el relieve y no facetear/escalonar
+  TMESH={w:widthM,d:depthM,sx:segX,sy:segY};   // para terrainMeshY(): drapear sobre la malla RENDERIZADA, no sobre el DEM continuo
   var geo=new THREE.PlaneGeometry(widthM,depthM,segX,segY),pos=geo.attributes.position,uv=geo.attributes.uv;
   for(var i=0;i<pos.count;i++){var lx=pos.getX(i),ly=pos.getY(i),lon=lon0+lx/mPerLon,lat=lat0+ly/mPerLat,e=elevAt(lat,lon);emin=Math.min(emin,e);emax=Math.max(emax,e);pos.setZ(i,e-baseElev);if(sat){var q=sat.px(lat,lon);uv.setXY(i,q.x/sat.W,1-q.y/sat.H);}}
   geo.computeVertexNormals();
@@ -671,6 +672,18 @@ function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
 function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;} }   // línea roja del pasillo retirada (el reparto N/S sigue activo por CORRIDOR)
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ return ELEV?(ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex:0; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
+var TMESH=null;   // parámetros de la MALLA de terreno renderizada (rejilla ~7 m): {w,d,sx,sy}
+function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
+  // cota de la MALLA RENDERIZADA (lineal por triángulo, mismos triángulos que PlaneGeometry), no del DEM
+  // continuo: lo que se drapee con esto ni se entierra en crestas ni flota en vaguadas ("el camino está bajo tierra")
+  var dx=TMESH.w/TMESH.sx,dn=TMESH.d/TMESH.sy;
+  var fx=(x+TMESH.w/2)/dx,fn=(TMESH.d/2-n)/dn;
+  var ix=Math.max(0,Math.min(TMESH.sx-1,Math.floor(fx))),iy=Math.max(0,Math.min(TMESH.sy-1,Math.floor(fn)));
+  var tx=Math.max(0,Math.min(1,fx-ix)),tn=Math.max(0,Math.min(1,fn-iy));
+  var X0=-TMESH.w/2+ix*dx,X1=X0+dx,N1=TMESH.d/2-iy*dn,N0=N1-dn;
+  var yTL=localElevY(X0,N1),yTR=localElevY(X1,N1),yBL=localElevY(X0,N0),yBR=localElevY(X1,N0);
+  return (tx+tn<=1)?(yTL+(yTR-yTL)*tx+(yBL-yTL)*tn):(yBR+(yBL-yBR)*(1-tx)+(yTR-yBR)*(1-tn));
+}
 function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
 function makeInvTex(){   // frontal del SG350HX según foto real: panel plateado LISO con esquinas redondeadas, tornillos, LED azul cuadrado arriba-centro y marca SUNGROW abajo-derecha (sin display ni prensaestopas frontales)
   var c=document.createElement('canvas');c.width=296;c.height=226;var x=c.getContext('2d');
@@ -763,7 +776,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=smoothstep(320.0,35.0,dd);float dM=smoothstep(2600.0,150.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.35,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.35,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m dominantes a media distancia + grano ~2,5 m de cerca
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.35,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.35,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m; smoothstep en forma DEFINIDA (edges invertidos = indefinido en GLSL: en algunas GPUs anulaba el detalle)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
@@ -920,16 +933,23 @@ function buildVeg(){
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(170.0,100.0,length(vViewPosition));');};   // se funden a ~170 m: visibles también en vistas medias (a 90 m "no se veía la vegetación" desde el dron)
-  m.customProgramCacheKey=function(){return 'vegfade2';};
+  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(100.0,170.0,length(vViewPosition)));');};   // se funden a ~170 m; forma DEFINIDA de smoothstep (edge0<edge1): con edges invertidos el resultado es indefinido en GLSL y hay GPUs que devuelven 0 → capa invisible
+  m.customProgramCacheKey=function(){return 'vegfade3';};
   var N=48000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 48k: mitad UNIFORME (sin calvas — 'sigue sin haber vegetación' era estar dentro de un claro entre rodales) + mitad en rodales
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
+  // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
+  var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[],RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
+  function inRing(x,n,r){var c=false;for(var ii=0,jj=r.length-1;ii<r.length;jj=ii++){var A=r[ii],B=r[jj];if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])c=!c;}return c;}
+  function onRoad(x,n){for(var si=0;si<RS.length;si++){var b=RSB[si];if(x<b[0]||x>b[1]||n<b[2]||n>b[3])continue;
+    if(inRing(x,n,RS[si].o)){var hs=RS[si].h||[],hole=false;for(var hi=0;hi<hs.length;hi++)if(inRing(x,n,hs[hi])){hole=true;break;}if(!hole)return true;}}return false;}
   var i=0;
   while(i<N/2){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
-    o.position.set(x,localElevY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.7+rng()*0.9;o.scale.set(sc,0.8+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
+    if(onRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
+    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.7+rng()*0.9;o.scale.set(sc,0.8+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
   while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
     for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
-      o.position.set(x2,localElevY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=0.8+rng()*1.1;o.scale.set(sc2,0.9+rng()*1.1,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
+      if(onRoad(x2,n2)){o.scale.set(0,0,0);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);continue;}   // mata del rodal caída en el vial: se anula (instancia degenerada)
+      o.position.set(x2,terrainMeshY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=0.8+rng()*1.1;o.scale.set(sc2,0.9+rng()*1.1,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
   vegMesh.receiveShadow=true;scene.add(vegMesh);
 }
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
@@ -1329,15 +1349,15 @@ function buildBOS(){
       var tris=THREE.ShapeUtils.triangulateShape(cont,holes);
       var all=cont.slice();holes.forEach(function(hh){all=all.concat(hh);});
       var sv=[];
-      function emit(a,b,c,depth){   // subdivide aristas >7 m para que el firme SIGA la topografía y ordena cada triángulo con la normal hacia arriba
+      function emit(a,b,c,depth){   // subdivide aristas >4 m y drapea sobre la MALLA renderizada (terrainMeshY): con el DEM continuo el firme se enterraba en crestas ("el camino está bajo tierra")
         var lab=a.distanceTo(b),lbc=b.distanceTo(c),lca=c.distanceTo(a),mx=Math.max(lab,lbc,lca),m;
-        if(depth<7&&mx>7){
+        if(depth<9&&mx>4){
           if(lab===mx){m=a.clone().add(b).multiplyScalar(0.5);emit(a,m,c,depth+1);emit(m,b,c,depth+1);}
           else if(lbc===mx){m=b.clone().add(c).multiplyScalar(0.5);emit(a,b,m,depth+1);emit(a,m,c,depth+1);}
           else{m=c.clone().add(a).multiplyScalar(0.5);emit(a,b,m,depth+1);emit(m,b,c,depth+1);}
           return;}
         var cz=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x),B2=cz>0?b:c,C2=cz>0?c:b;
-        [a,B2,C2].forEach(function(p){sv.push(p.x,localElevY(p.x,p.y)+0.055,-p.y);});
+        [a,B2,C2].forEach(function(p){sv.push(p.x,terrainMeshY(p.x,p.y)+0.09,-p.y);});
       }
       tris.forEach(function(f){emit(all[f[0]],all[f[1]],all[f[2]],0);});
       if(sv.length){var sg2=new THREE.BufferGeometry();sg2.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));sg2.computeVertexNormals();
@@ -1373,8 +1393,8 @@ function buildBOS(){
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
   // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
-  meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=smoothstep(260.0,80.0,length(vViewPosition));');};   // el paño se desvanece 80→260 m: incluso al contraluz el enrejado lejano no puede volverse lámina
-  meshM.customProgramCacheKey=function(){return 'fencefade1';};
+  meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(80.0,260.0,length(vViewPosition)));');};   // el paño se desvanece 80→260 m; smoothstep en forma DEFINIDA (con edges invertidos hay GPUs que devuelven 0 → paño invisible también de cerca)
+  meshM.customProgramCacheKey=function(){return 'fencefade2';};
   var sv=[],su=[],sw=[];
   // SOLDADURA de la valla: el DWG la trae en varias polilíneas cuyos extremos casi se tocan; sin unirlas,
   // en cada "unión" el paño y los alambres quedaban cortados/desalineados. Encadena extremos a <1,5 m
