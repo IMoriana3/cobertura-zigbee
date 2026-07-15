@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.31</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.32</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -893,7 +893,7 @@ function buildContactAO(){
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
   if(LAYOUT&&LAYOUT.invlab){if(!INVPOS.length)computeInvPos();LAYOUT.invlab.forEach(function(c,ci){var p=invAt(ci);put(p.x,p.n,2.6,1.6);});}
-  [{x:3.0,n:22.01,sx:8.5,sz:4},{x:9.92,n:-194.24,sx:8.5,sz:4},{x:-6.9,n:-198.5,sx:9,sz:6}].forEach(function(b){put(b.x,b.n,b.sx,b.sz);});
+  [{x:-6.2,n:22.01,sx:8.5,sz:4},{x:9.92,n:-194.24,sx:8.5,sz:4},{x:-6.9,n:-198.5,sx:9,sz:6}].forEach(function(b){put(b.x,b.n,b.sx,b.sz);});
 }
 // (2) microrrelieve de células: normal map generada (célula abombada + marco) para vidrio y capa inversores
 function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.width=W;c.height=Hh;var x=c.getContext('2d');
@@ -1273,7 +1273,7 @@ function setGen(on){genOn=on;
 }
 // ===== INSPECTOR ELÉCTRICO DEL INVERSOR (clic en un inversor): strings (I/V/P), entrada DC y salida AC → CT, según hora/día/meteo.
 var FICHA=null,selLine=null,_pdX=0,_pdY=0;
-var CTMAIN=[{name:'CT Norte',x:3.0,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
+var CTMAIN=[{name:'CT Norte',x:-6.2,n:22.01},{name:'CT Sur',x:9.92,n:-194.24}],SUBST={name:'Subestación',x:-6.9,n:-198.5},INVCT=[];
 function nearestInvIdx(x,n){if(!LAYOUT||!LAYOUT.invlab)return -1;if(!INVPOS.length)computeInvPos();var bi=-1,bd=14*14;for(var i=0;i<LAYOUT.invlab.length;i++){var c=invAt(i),dx=c.x-x,dn=c.n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function nearestCTIdx(x,n){var bi=-1,bd=32*32;for(var i=0;i<CTMAIN.length;i++){var dx=CTMAIN[i].x-x,dn=CTMAIN[i].n-n,d=dx*dx+dn*dn;if(d<bd){bd=d;bi=i;}}return bi;}
 function invByCT(){INVCT=[];if(!LAYOUT||!LAYOUT.invlab)return;if(!INVPOS.length)computeInvPos();var ord=LAYOUT.invlab.map(function(c,i){return {i:i,n:invAt(i).n};});ord.sort(function(a,b){return b.n-a.n;});for(var k=0;k<ord.length;k++)INVCT[ord[k].i]=(k<18)?0:1;}   // reparto real: los 18 inversores MÁS AL NORTE → CT Norte (0), el resto → CT Sur (1)
@@ -1318,8 +1318,31 @@ function buildBOS(){
   METEO_ANIM=[];
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
-  // viales: cinta de tierra compactada drapeada sobre el terreno (no una línea), que recibe la sombra de los seguidores
+  // viales: tierra compactada drapeada sobre el terreno, que recibe la sombra de los seguidores
   var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];
+  if(LAYOUT.roadSurfaces&&LAYOUT.roadSurfaces.length&&THREE.ShapeUtils){
+    // SUPERFICIES REALES del firme (HATCH del bloque Viales, con acuerdos en arco y huecos): el bloque no
+    // trae ejes con ancho — dibujar sus bordes como cintas creaba "dos caminos en paralelo donde hay uno"
+    LAYOUT.roadSurfaces.forEach(function(sf){ if(!sf.o||sf.o.length<3||!inClip(sf.o[0][0],sf.o[0][1]))return;
+      var cont=sf.o.map(function(p){return new THREE.Vector2(p[0],p[1]);});
+      var holes=(sf.h||[]).map(function(hh){return hh.map(function(p){return new THREE.Vector2(p[0],p[1]);});});
+      var tris=THREE.ShapeUtils.triangulateShape(cont,holes);
+      var all=cont.slice();holes.forEach(function(hh){all=all.concat(hh);});
+      var sv=[];
+      function emit(a,b,c,depth){   // subdivide aristas >7 m para que el firme SIGA la topografía y ordena cada triángulo con la normal hacia arriba
+        var lab=a.distanceTo(b),lbc=b.distanceTo(c),lca=c.distanceTo(a),mx=Math.max(lab,lbc,lca),m;
+        if(depth<7&&mx>7){
+          if(lab===mx){m=a.clone().add(b).multiplyScalar(0.5);emit(a,m,c,depth+1);emit(m,b,c,depth+1);}
+          else if(lbc===mx){m=b.clone().add(c).multiplyScalar(0.5);emit(a,b,m,depth+1);emit(a,m,c,depth+1);}
+          else{m=c.clone().add(a).multiplyScalar(0.5);emit(a,b,m,depth+1);emit(m,b,c,depth+1);}
+          return;}
+        var cz=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x),B2=cz>0?b:c,C2=cz>0?c:b;
+        [a,B2,C2].forEach(function(p){sv.push(p.x,localElevY(p.x,p.y)+0.055,-p.y);});
+      }
+      tris.forEach(function(f){emit(all[f[0]],all[f[1]],all[f[2]],0);});
+      if(sv.length){var sg2=new THREE.BufferGeometry();sg2.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));sg2.computeVertexNormals();
+        var sm2=new THREE.Mesh(sg2,roadM);sm2.receiveShadow=true;bosGroup.add(sm2);}});
+  } else {
   (LAYOUT.roads||[]).forEach(function(pl,pi){var rw=(((LAYOUT.roadWidths||[])[pi])||LAYOUT.roadW||3.8)/2;   // ancho POR VIAL (bloque "Viales" del DWG)
     for(var i0=0;i0+1<pl.length;i0++){var A0=pl[i0],B0=pl[i0+1];if(!inClip(A0[0],A0[1])||!inClip(B0[0],B0[1]))continue;
     var Lseg=Math.hypot(B0[0]-A0[0],B0[1]-A0[1])||1e-6,st=Math.max(1,Math.ceil(Lseg/6));      // SUBDIVIDE ~6 m: los ejes del bloque traen tramos de 50-200 m y la cinta debe SEGUIR LA TOPOGRAFÍA, no volar de vértice a vértice
@@ -1343,6 +1366,7 @@ function buildBOS(){
         vv.push(C[0],C[1],C[2],P1[0],P1[1],P1[2],P2[0],P2[1],P2[2]);}}
     var pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.Float32BufferAttribute(vv,3));pg.computeVertexNormals();
     var pm=new THREE.Mesh(pg,roadM);pm.receiveShadow=true;bosGroup.add(pm);});
+  }
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
   var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
@@ -1480,7 +1504,7 @@ function buildBOS(){
     bosGroup.add(g);});
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  [{x:3.0,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Norte y CT Sur: edificios propios IGUALES, en coords. exactas DWG
+  [{x:-6.2,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Sur en coords DWG; CT Norte centrado en su vano real x[-20,7.6] (corrección del usuario: el rect. del DWG quedaba escorado al este)
    {x:-6.9,n:-198.5,lab:'Subestación',sub:1},                                            // subestación AL SUR de la sala de control (ya NO encima del CT Sur)
    {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}].forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);

@@ -1,13 +1,14 @@
-// Extrae los VIALES del DWG de layout desde el bloque "Viales" (capa 0) — fuente confirmada por el
-// usuario ("Esos son los viales" / "Capa 0"): 21 entidades = polilíneas de EJE con ancho constante +
-// contornos CERRADOS (explanadas/empedrado de las uniones). Los intentos anteriores con la capa
-// "Caminos Internos" (zona de trabajo desplazada + entidades espejadas) quedan retirados.
-// Escribe en elburgo_layout.json: LAYOUT.roads (ejes abiertos) + roadWidths + roadW + roadPads
-// (nudos de unión, informativos) + roadAreas (contornos cerrados → abanicos drapeados en el visor).
+// Extrae los VIALES como SUPERFICIES desde el bloque "Viales" (capa 02-CIV-Viales-Ext-Sombreados)
+// del DWG que pasó el usuario (Viales_El_Burgo.dwg; el mismo bloque vive en el layout v05C).
+// El bloque NO trae ejes con ancho: trae 7 HATCH = superficies reales del firme (con vértices bulge
+// en los acuerdos y un hueco interior) + contornos LWPOLYLINE auxiliares. La v2 dibujaba cada BORDE
+// como si fuera un eje → "dos caminos en paralelo donde hay uno" y plazas inventadas.
+// Escribe LAYOUT.roadSurfaces = [{o:[[x,n]...], h:[[[x,n]...]...]}] (anillo exterior + huecos) y vacía
+// LAYOUT.roadAreas (queda superseded). LAYOUT.roads (ejes finos) se conserva para plano.html.
 // Uso: node tools/extract_roads.mjs [ruta.dwg]
 import { LibreDwg } from '@mlightcad/libredwg-web';
 import { readFileSync, writeFileSync } from 'node:fs';
-const DWG = process.argv[2] || '/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/65f8c3da-XG23003EL_BURGOLayout_proyecto_v05C.dwg';
+const DWG = process.argv[2] || '/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/6f4e3655-Viales_El_Burgo.dwg';
 const LAYP = new URL('../elburgo_layout.json', import.meta.url).pathname;
 const cE = 683562.922059555, cN = 4605080.984298119;
 const lib = await LibreDwg.create();
@@ -16,54 +17,68 @@ const BR = (db.tables && db.tables.BLOCK_RECORD) || [];
 const recs = Array.isArray(BR) ? BR : (BR.entries || []);
 const blk = recs.find(r => /^viales$/i.test(r.name || ''));
 if (!blk || !blk.entities || !blk.entities.length) { console.error('Bloque "Viales" no encontrado'); process.exit(1); }
-const ins = (db.entities || []).find(e => e.type === 'INSERT' && /^viales$/i.test(e.name || ''));
+// el INSERT del bloque puede estar en db.entities o dentro del BLOCK_RECORD *Model_Space
+let ins = (db.entities || []).find(e => e.type === 'INSERT' && /^viales$/i.test(e.name || ''));
+if (!ins) { const ms = recs.find(r => /model_space/i.test(r.name || '')); ins = ((ms && ms.entities) || []).find(e => e.type === 'INSERT' && /^viales$/i.test(e.name || '')); }
 const bp = blk.basePoint || { x: 0, y: 0 };
-const ip = ins ? ins.insertionPoint : { x: 0, y: 0 };
+const ip = ins ? ins.insertionPoint : { x: 683170.77, y: 4605119.42 };   // fallback: IP verificado del layout v05C
 const sx = ins && ins.xScale != null ? ins.xScale : 1, sy = ins && ins.yScale != null ? ins.yScale : 1;
 const rot = ins && ins.rotation ? ins.rotation : 0, cr = Math.cos(rot), sr = Math.sin(rot);
-function T(v) {
-  const vx = ((v.x != null ? v.x : v[0]) - bp.x) * sx, vy = ((v.y != null ? v.y : v[1]) - bp.y) * sy;
+function T(x, y) {
+  const vx = (x - bp.x) * sx, vy = (y - bp.y) * sy;
   const wx = vx * cr - vy * sr + ip.x, wy = vx * sr + vy * cr + ip.y;
   return [Math.round((wx - cE) * 100) / 100, Math.round((wy - cN) * 100) / 100];
 }
-const roads = [], roadWidths = [], areas = [];
+// expande un boundaryPath de HATCH: vértices con bulge → arco teselado (θ=4·atan(b), muestreo ~12°/1,5 m)
+function expand(vs) {
+  const out = [];
+  for (let i = 0; i < vs.length; i++) {
+    const v = vs[i], w = vs[(i + 1) % vs.length];
+    out.push([v.x, v.y]);
+    const b = v.bulge || 0;
+    if (Math.abs(b) > 1e-6) {
+      const th = 4 * Math.atan(b), c = Math.hypot(w.x - v.x, w.y - v.y);
+      if (c > 1e-6) {
+        const r = c / (2 * Math.sin(Math.abs(th) / 2)), mx = (v.x + w.x) / 2, my = (v.y + w.y) / 2;
+        const d = r * Math.cos(th / 2) * Math.sign(b);                       // distancia del centro a la cuerda (lado según signo)
+        const nx = -(w.y - v.y) / c, ny = (w.x - v.x) / c;                   // normal a la cuerda
+        const cx = mx - nx * d, cy = my - ny * d;
+        const a0 = Math.atan2(v.y - cy, v.x - cx);
+        const N = Math.max(2, Math.ceil(Math.abs(th) / 0.21), Math.ceil(Math.abs(th) * r / 1.5));
+        for (let s = 1; s < N; s++) { const a = a0 + th * s / N; out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+      }
+    }
+  }
+  return out;
+}
+function simplify(pl) {                                                      // quita duplicados (<5 cm) y colineales (desvío <3 cm)
+  const a = pl.filter((p, i) => i === 0 || Math.hypot(p[0] - pl[i - 1][0], p[1] - pl[i - 1][1]) > 0.05);
+  const out = [];
+  for (let i = 0; i < a.length; i++) {
+    const p = a[(i - 1 + a.length) % a.length], q = a[i], r = a[(i + 1) % a.length];
+    const dx = r[0] - p[0], dn = r[1] - p[1], L = Math.hypot(dx, dn) || 1e-9;
+    const dev = Math.abs((q[0] - p[0]) * dn - (q[1] - p[1]) * dx) / L;
+    if (dev > 0.03) out.push(q);
+  }
+  return out.length >= 3 ? out : a;
+}
+const area = pl => { let s = 0; for (let i = 0; i < pl.length; i++) { const p = pl[i], q = pl[(i + 1) % pl.length]; s += p[0] * q[1] - q[0] * p[1]; } return s / 2; };
+const surfaces = []; let totA = 0, totV = 0, nHoles = 0;
 for (const e of blk.entities) {
-  if (!e.vertices || e.vertices.length < 2) continue;
-  const pl = e.vertices.map(T);
-  let L2 = 0; for (let i = 0; i + 1 < pl.length; i++) L2 += Math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]);
-  if (L2 < 10) continue;
-  const closed = e.closed || Math.hypot(pl[0][0] - pl[pl.length - 1][0], pl[0][1] - pl[pl.length - 1][1]) < 2;
-  if (closed) { areas.push(pl); continue; }                       // contorno CERRADO = EXPLANADA/EMPEDRADO (área), no eje: dibujado como cinta era el "horror de camino"
-  roads.push(pl); roadWidths.push(e.constantWidth && e.constantWidth > 0.5 ? Math.round(e.constantWidth * 10) / 10 : 4);
-}
-// DEDUPE de ejes paralelos: el bloque trae algún vial con DOS ejes casi solapados (p. ej. eje + cuneta)
-// — si ≥70% de los puntos del corto están a <6 m del largo con dirección paralela, se descarta el corto.
-function ptSegDist(px, pn, pl) { let bd = 1e9;
-  for (let i = 0; i + 1 < pl.length; i++) { const a = pl[i], b = pl[i + 1], dx = b[0] - a[0], dn = b[1] - a[1], L2 = dx * dx + dn * dn || 1e-9;
-    let t = ((px - a[0]) * dx + (pn - a[1]) * dn) / L2; t = Math.max(0, Math.min(1, t));
-    bd = Math.min(bd, Math.hypot(px - (a[0] + t * dx), pn - (a[1] + t * dn))); } return bd; }
-function rlen(pl) { let l = 0; for (let i = 0; i + 1 < pl.length; i++) l += Math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]); return l; }
-const drop = new Set();
-for (let i = 0; i < roads.length; i++) for (let j = 0; j < roads.length; j++) {
-  if (i === j || drop.has(i) || drop.has(j)) continue;
-  if (rlen(roads[i]) > rlen(roads[j])) continue;                     // i = el corto
-  let near = 0, tot = 0;
-  for (const p of roads[i]) { tot++; if (ptSegDist(p[0], p[1], roads[j]) < 6) near++; }
-  if (tot && near / tot >= 0.7) drop.add(i);
-}
-const roads2 = roads.filter((_, i) => !drop.has(i)), widths2 = roadWidths.filter((_, i) => !drop.has(i));
-roads.length = 0; roads.push(...roads2); roadWidths.length = 0; roadWidths.push(...widths2);
-// PLAZAS de unión ("explanada triangular" donde confluyen viales): donde un EXTREMO de un vial queda a
-// <12 m de otro vial, se emite un pad circular drapeable que funde el nudo.
-const pads = [];
-for (let i = 0; i < roads.length; i++) for (const ep of [roads[i][0], roads[i][roads[i].length - 1]]) {
-  for (let j = 0; j < roads.length; j++) { if (i === j) continue;
-    if (ptSegDist(ep[0], ep[1], roads[j]) < 12) { 
-      if (!pads.some(p => Math.hypot(p[0] - ep[0], p[1] - ep[1]) < 10)) pads.push([Math.round(ep[0] * 10) / 10, Math.round(ep[1] * 10) / 10, 9]);
-      break; } }
+  if (e.type !== 'HATCH' || !e.boundaryPaths) continue;
+  const rings = e.boundaryPaths
+    .filter(p => p.vertices && p.vertices.length >= 3)
+    .map(p => simplify(expand(p.vertices).map(([x, y]) => T(x, y))))
+    .filter(r => Math.abs(area(r)) > 5);
+  if (!rings.length) continue;
+  rings.sort((r1, r2) => Math.abs(area(r2)) - Math.abs(area(r1)));           // el anillo mayor = exterior; el resto, huecos
+  const o = rings[0], h = rings.slice(1);
+  totA += Math.abs(area(o)) - h.reduce((s, r) => s + Math.abs(area(r)), 0);
+  totV += o.length + h.reduce((s, r) => s + r.length, 0); nHoles += h.length;
+  surfaces.push(h.length ? { o, h } : { o });
 }
 const LAY = JSON.parse(readFileSync(LAYP, 'utf8'));
-LAY.roads = roads; LAY.roadWidths = roadWidths; LAY.roadW = 4; LAY.roadPads = pads; LAY.roadAreas = areas;
+LAY.roadSurfaces = surfaces; LAY.roadAreas = [];                             // las superficies sustituyen a cintas+abanicos en el visor
 writeFileSync(LAYP, JSON.stringify(LAY));
-let len = 0; roads.forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) len += Math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]); });
-console.log('viales del bloque:', roads.length, '· longitud:', len.toFixed(0), 'm · descartados paralelos:', drop.size, '· plazas:', pads.length, '· ÁREAS (explanadas):', areas.length);
+console.log('superficies:', surfaces.length, '· huecos:', nHoles, '· área total:', totA.toFixed(0), 'm² · vértices:', totV,
+  '· INSERT:', ins ? ('sí (' + ip.x.toFixed(2) + ',' + ip.y.toFixed(2) + ')') : 'fallback layout');
