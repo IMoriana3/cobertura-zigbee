@@ -17,6 +17,7 @@ const inFoot=(pl)=>pl.some(p=>Math.abs(p[0])<900&&Math.abs(p[1])<750);   // al m
 const TARGET={
   cable_pos:['EE_Cableado N2 +'], cable_neg:['EE_Cableado N2 -'],
   earth:['EE_Tierra 35mm2'], weld:['EE_Soldadura Alum'],
+  earth_lat:['EE_Latiguillo Desnudo'],                                        // latiguillos de equipotencialidad REALES (~1 m, plano RDT-1: 234 uds dibujadas en 468 trazos)
   trench_string:['EE_Zanjas String'], trench_inv:['Zanjas String-Inversor'],
   trench_n3:['EE_Zanja N3'], trench_mt:['EE_Zanja MT','Cruzamientos _MT','LAMT'],
   cam_range:['CAM RANGES'], arqueta:['EE_Arquetas'], comms:['EE_Equipos comunicaciones'],
@@ -24,11 +25,17 @@ const TARGET={
 function matchKey(layer){ for(const k in TARGET){ for(const s of TARGET[k]){ if(layer.includes(s)) return k; } } return null; }
 async function grab(path){ const lib=await LibreDwg.create(); const db=lib.convert(lib.dwg_read_data(readFileSync(path).buffer,0)); return db.entities||[]; }
 const out={}; for(const k in TARGET) out[k]={raw:0,kept:0,polys:[]};
-for(const path of [
-  "/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/fbc61f7e-XG23003EL_BURGOCableado_String_03C.dwg",
-  "/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/ef5eb3ee-XG23003EL_BURGOLayout_proyecto_v05C.dwg",
+const picas=[];                                                               // INSERTs del bloque "Pica PAT" (plano RDT-1): posiciones exactas de picas/terminales
+// tierra/latiguillos/picas SOLO del DWG del plano de tierras (RDT-1): el layout duplica la capa EE_Tierra
+for(const [path,keyOK,takePicas] of [
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/fbc61f7e-XG23003EL_BURGOCableado_String_03C.dwg", k=>k!=='earth'&&k!=='earth_lat', false],
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/ef5eb3ee-XG23003EL_BURGOLayout_proyecto_v05C.dwg", k=>k!=='earth'&&k!=='earth_lat', false],
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/6f4e3655-Viales_El_Burgo.dwg", k=>k==='earth'||k==='earth_lat', true],
 ]){ const E=await grab(path);
-  for(const e of E){ const k=matchKey(e.layer||''); if(!k)continue; for(const pl of entPolylines(e)){ out[k].raw++; if(pl.length>1&&inFoot(pl)){ out[k].kept++; out[k].polys.push(pl);} } }
+  for(const e of E){
+    if(takePicas&&e.type==='INSERT'&&/pica/i.test(e.name||'')&&e.insertionPoint){ const p=[lx(e.insertionPoint),ln(e.insertionPoint)];
+      if(Math.abs(p[0])<900&&Math.abs(p[1])<750&&!picas.some(q=>Math.hypot(q[0]-p[0],q[1]-p[1])<0.3))picas.push(p); continue; }
+    const k=matchKey(e.layer||''); if(!k||!keyOK(k))continue; for(const pl of entPolylines(e)){ out[k].raw++; if(pl.length>1&&inFoot(pl)){ out[k].kept++; out[k].polys.push(pl);} } }
 }
 const json={cE,cN,layers:{}};
 console.log('layer            raw   kept   bbox(localm)');
@@ -37,6 +44,8 @@ for(const k in out){ const o=out[k]; if(!o.kept){console.log(k.padEnd(15),String
   console.log(k.padEnd(15),String(o.raw).padStart(5),String(o.kept).padStart(6),'  x['+x0.toFixed(0)+','+x1.toFixed(0)+'] n['+n0.toFixed(0)+','+n1.toFixed(0)+']');
   json.layers[k]=o.polys;
 }
+json.layers.earth_pica=picas;
+console.log('earth_pica (INSERTs Pica PAT):',picas.length);
 writeFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json', JSON.stringify(json));
 const sz=readFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json').length;
 console.log('\nwrote elburgo_networks.json', (sz/1024).toFixed(0)+' KB');

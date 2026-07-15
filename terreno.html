@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.35</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.36</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1006,7 +1006,7 @@ function renderPost(dt){ if(!postScene)return;_grainMat.uniforms.uT.value=(_grai
 // Datos REALES extraídos de los DWG (tools/extract_dwg_networks.mjs → elburgo_networks.json) en coords locales E/N.
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
 var NET=null,netG={};
-var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.12},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
+var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.12},earth_lat:{c:0xb4e84a,off:.13},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
 var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.json: 823 strings g.i.t.s con posición)
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
   fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
@@ -1039,55 +1039,11 @@ function buildNetLayer(key){
         v.push(ax,localElevY(ax,an)+hz,-an,bx,localElevY(bx,bn)+hz,-bn);}}});
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
-  if(key==='earth'&&TRK.length){   // + PAT DERIVADA: la red del DWG corre por calles concretas y cada seguidor se conecta por su PRIMER POSTE ("debería llegar hasta ese primer soporte de cada tracker"). Donde el DWG no dibuja el lateral de calle (bandas enteras sin red: incompletitud del plano, como pasaba con N3) se completa en tono claro = derivado.
-    var ES=[];NET.layers.earth.forEach(function(pl){for(var i2=0;i2+1<pl.length;i2++)ES.push([pl[i2],pl[i2+1]]);});
-    function nearEarth(x,n){var bd=1e9,bp=null;
-      for(var k2=0;k2<ES.length;k2++){var a2=ES[k2][0],b2=ES[k2][1],dx2=b2[0]-a2[0],dn2=b2[1]-a2[1],L22=dx2*dx2+dn2*dn2||1e-9;
-        var t2=((x-a2[0])*dx2+(n-a2[1])*dn2)/L22;t2=Math.max(0,Math.min(1,t2));
-        var px2=a2[0]+t2*dx2,pn2=a2[1]+t2*dn2,d2=Math.hypot(x-px2,n-pn2);
-        if(d2<bd){bd=d2;bp=[px2,pn2];}}
-      return {d:bd,p:bp};}
-    var sv2=[];
-    function seg2(ax,an,bx,bn){var st4=Math.max(1,Math.round(Math.hypot(bx-ax,bn-an)/6));
-      for(var s5=0;s5<st4;s5++){var t0=s5/st4,t1=(s5+1)/st4,ax3=ax+(bx-ax)*t0,an3=an+(bn-an)*t0,bx3=ax+(bx-ax)*t1,bn3=an+(bn-an)*t1;
-        sv2.push(ax3,localElevY(ax3,an3)+0.12,-an3,bx3,localElevY(bx3,bn3)+0.12,-bn3);}}
-    var tickPts=[];function tick(x,n){tickPts.push([x,n]);}   // "pica"/soldadura en el pie del primer poste (cilindro instanciado: legible en rasante y en cenital, donde una línea de 1 px se pierde)
-    var uncov=[];
-    TRK.forEach(function(t){var hl=(t.medio?16:31)-0.8,hp=t.medio?9:28;   // unidad BÍFILA: dos vigas independientes a ±3 m del eje — cada estructura lleva SU conexión en el PRIMER POSTE (el más exterior: zP=±28 largo, ±9 medio)
-      function dd(n0,pn){var a2=nearEarth(t.gx-3,n0),b2=nearEarth(t.gx+3,n0);return {d:Math.min(a2.d,b2.d),a:a2,b:b2,pn:pn};}
-      var N2=dd(-t.gz+hl,-t.gz+hp),S2=dd(-t.gz-hl,-t.gz-hp),any=false;
-      [N2,S2].forEach(function(E2){if(E2.d<12){any=true;                      // TODO extremo con red a <12 m se conecta ("la red se conecta a los soportes"): si la línea pasa por ambas calles, latiguillo en ambos extremos
-        seg2(t.gx-3,E2.pn,E2.a.p[0],E2.a.p[1]);tick(t.gx-3,E2.pn);
-        seg2(t.gx+3,E2.pn,E2.b.p[0],E2.b.p[1]);tick(t.gx+3,E2.pn);}});
-      if(!any)uncov.push({e0:[t.gx,-t.gz+hl],e1:[t.gx,-t.gz-hl],p0:-t.gz+hp,p1:-t.gz-hp});});
-    if(uncov.length){   // bandas sin lateral en el DWG: agrupa extremos por calle (n), tiende un lateral E-W derivado, lo empalma a la red real y baja un latiguillo a cada primer poste
-      var cand=[];uncov.forEach(function(u,ui){cand.push({n:u.e0[1],x:u.e0[0],ui:ui,end:0});cand.push({n:u.e1[1],x:u.e1[0],ui:ui,end:1});});
-      cand.sort(function(a2,b2){return a2.n-b2.n;});
-      var clusters=[],cur=[cand[0]];
-      for(var c2=1;c2<cand.length;c2++){if(cand[c2].n-cand[c2-1].n>9){clusters.push(cur);cur=[];}cur.push(cand[c2]);}
-      clusters.push(cur);
-      var cidx={};clusters.forEach(function(cl,ci){cl.forEach(function(c3){cidx[c3.ui+'_'+c3.end]=ci;});});
-      var chosen=[];uncov.forEach(function(u,ui){
-        var c0=cidx[ui+'_0'],c1=cidx[ui+'_1'],pick=clusters[c0].length>=clusters[c1].length?0:1;   // el extremo cuya calle agrupa más conexiones
-        chosen.push({ci:pick?c1:c0,x:pick?u.e1[0]:u.e0[0],n:pick?u.e1[1]:u.e0[1],pn:pick?u.p1:u.p0});});
-      clusters.forEach(function(cl,ci){
-        var pts=chosen.filter(function(ch){return ch.ci===ci;});
-        if(!pts.length)return;
-        if(pts.length===1){[pts[0].x-3,pts[0].x+3].forEach(function(vx){var b1=nearEarth(vx,pts[0].pn);if(b1.p){seg2(vx,pts[0].pn,b1.p[0],b1.p[1]);tick(vx,pts[0].pn);}});return;}
-        var nlat=0,xmin=1e9,xmax=-1e9;pts.forEach(function(p2){nlat+=p2.n;xmin=Math.min(xmin,p2.x-3);xmax=Math.max(xmax,p2.x+3);});nlat/=pts.length;
-        seg2(xmin-2,nlat,xmax+2,nlat);                                   // lateral por el eje de la calle
-        var bt={d:1e9,p:null,q:null};                                    // empalme: el punto del lateral más cercano a la red real
-        for(var xx=xmin-2;xx<=xmax+2.01;xx+=6){var b3=nearEarth(xx,nlat);if(b3.d<bt.d)bt={d:b3.d,p:b3.p,q:[xx,nlat]};}
-        if(bt.p&&bt.d>0.5)seg2(bt.q[0],bt.q[1],bt.p[0],bt.p[1]);
-        pts.forEach(function(p2){[p2.x-3,p2.x+3].forEach(function(vx){seg2(vx,p2.pn,vx,nlat);tick(vx,p2.pn);});});   // latiguillo recto por la calle hasta el primer poste de CADA viga
-      });
-    }
-    if(sv2.length){var eg2=new THREE.BufferGeometry();eg2.setAttribute('position',new THREE.Float32BufferAttribute(sv2,3));
-      g.add(new THREE.LineSegments(eg2,new THREE.LineBasicMaterial({color:0xb4e84a,transparent:true,opacity:.85})));}   // tono más claro = derivado, no línea del DWG
-    if(tickPts.length){var tg2=new THREE.CylinderGeometry(0.05,0.05,0.65,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});
-      var tim=new THREE.InstancedMesh(tg2,tm2,tickPts.length),_tm2=new THREE.Matrix4();
-      for(var q2=0;q2<tickPts.length;q2++){_tm2.makeTranslation(tickPts[q2][0],localElevY(tickPts[q2][0],tickPts[q2][1])+0.33,-tickPts[q2][1]);tim.setMatrixAt(q2,_tm2);}
-      g.add(tim);}
+  if(key==='earth'&&NET.layers.earth_pica&&NET.layers.earth_pica.length){   // PICAS del plano RDT-1 (INSERTs "Pica PAT" del DWG de tierras, 42≈44 del cuadro): cilindro instanciado en cada posición EXACTA. Los latiguillos de equipotencialidad son la capa earth_lat (EE_Latiguillo Desnudo, 468 trazos reales) — fuera toda la PAT derivada anterior ("quita las que tienes y ponla así")
+    var PK=NET.layers.earth_pica,tg2=new THREE.CylinderGeometry(0.05,0.05,0.65,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});
+    var tim=new THREE.InstancedMesh(tg2,tm2,PK.length),_tm2=new THREE.Matrix4();
+    for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],localElevY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
+    g.add(tim);
   }
   if(key==='trench_n3'&&PLANT==='elburgo'&&LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length){   // + RUTAS AC inversor→CT derivadas de los corredores reales: la zanja N3 del DWG solo trae 41 tramos sueltos junto a los CTs — "faltaba" el resto del recorrido
     invByCT();if(!INVPOS.length)computeInvPos();
@@ -1803,7 +1759,7 @@ $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){i
 $('invl').onchange=function(){invOn=this.checked;if(invOn&&genOn){setGen(false);if($('genflow'))$('genflow').checked=false;}if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D); excluyente con el flujo (ambas pintan los módulos)
 $('zones').onchange=function(){zonesOn=this.checked;if(zonesOn&&!zoneGroup)buildZoneLayer();if(zoneGroup)zoneGroup.visible=zonesOn;};   // capa zonas y recintos (perezosa, aditiva)
 $('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);if(genFlow.cable_pos)genFlow.cable_pos.visible=this.checked&&genOn;};   // redes del DWG: cableado DC +/− (las ondas del flujo lo respetan)
-$('netEarth').onchange=function(){setNet(['earth'],this.checked);};                   // red de tierras
+$('netEarth').onchange=function(){setNet(['earth','earth_lat'],this.checked);};                   // red de tierras
 $('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.checked);}; // zanjas string / string→inversor
 $('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};                   // inversor→CT (N3)
 $('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT)
