@@ -15,7 +15,11 @@
   header select{pointer-events:auto;font:inherit;font-size:.82em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer}
   header .sub{color:var(--tx2);font-size:12px}
   header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
-  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:13px;min-width:190px}
+  /* alto acotado + scroll interno: mismo arreglo que en el 3D para pantallas bajas */
+  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:13px;min-width:190px;max-height:calc(100vh - 78px);max-height:calc(100dvh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .panel::-webkit-scrollbar{width:8px}
+  .panel::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+  .panel::-webkit-scrollbar-track{background:transparent}
   .row{display:flex;align-items:center;gap:8px;margin:4px 0}
   .row label{cursor:pointer}
   .btn{background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
