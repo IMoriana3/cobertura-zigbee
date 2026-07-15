@@ -23,7 +23,11 @@
   header h1{font-size:15px;margin:0;font-weight:700}
   header .sub{color:var(--tx2);font-size:12px}
   header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
-  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:240px;font-size:13px}
+  /* alto acotado al hueco bajo la cabecera + scroll interno: en pantallas bajas el menú se salía por arriba y no se podía ver entero */
+  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:240px;font-size:13px;max-height:calc(100vh - 78px);max-height:calc(100dvh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .panel::-webkit-scrollbar{width:8px}
+  .panel::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+  .panel::-webkit-scrollbar-track{background:transparent}
   .panel h2{margin:0 0 8px;font-size:13px;color:var(--tx2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
   .row{display:flex;align-items:center;gap:8px;margin:7px 0}
   .row label{flex:1;color:var(--tx2)}
@@ -43,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.47</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.48</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
