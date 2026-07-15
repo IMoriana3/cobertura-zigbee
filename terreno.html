@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.49</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.50</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -533,16 +533,20 @@ function buildTrackers(elevAt){
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
   var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
   var zMul=D.modsPerStr/28,zP=[-28*zMul,-9*zMul,9*zMul,28*zMul];   // postes proporcionales al largo del tracker (San José 32 mód → postes más separados); medio oculta los exteriores (>16)
-  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,np:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
+  // EL BURGO: trazado REAL de soportes por TIPO de seguidor — círculos de los bloques del Tierras.dwg
+  // ("esos círculos son soportes... puedes ponerlos en el render bien"): Interior 8/tubo, Exterior 10/tubo, Medio 4/tubo
+  var zPT=(PLANT==='elburgo')?{int:[-30.5,-22.9,-15.5,-7.7,7.7,15.5,22.9,30.5],ext:[-30.8,-24.7,-17.8,-11,-4.5,4.5,11,17.8,24.7,30.8],med:[-13.6,-6.5,6.5,13.6]}:null;
+  TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,zPT:zPT,np:zPT?20:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
   var N=NODES.length;
   imPost=new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,postH,0.13),steelM,N*TC.np);
   pileMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0});   // base blanca: deja ver el color por instancia (modo pile reveal)
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
-  var dampPosts=[zP[1],zP[zP.length-2]];                                            // amortiguadores al PENÚLTIMO poste (N y S) de la retícula de cobertura
+  var dampPosts=zPT?[-22.9,22.9]:[zP[1],zP[zP.length-2]];                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
+  var dampPostsM=zPT?[-6.5,6.5]:dampPosts;                                          // los "Medio" de El Burgo con sus soportes ±6,5
   var DET=(NODES.length>1000)?'mass':'full';   // SOLO plantas muy grandes (San José 2289): "mesa" por ala (~15 piezas/fila); El Burgo (215) y Ayora (754) a detalle completo
-  var planL=Seguidor.instancePlan(THREE,{detail:DET,size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:DET,size:'medio',damperX:dampPosts}),mM={},mMab={};
+  var planL=Seguidor.instancePlan(THREE,{detail:DET,size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:DET,size:'medio',damperX:dampPostsM}),mM={},mMab={};
   planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
   _TCUMOUNT.makeRotationY(Math.PI/2);_TCUMOUNT.multiply(new THREE.Matrix4().makeRotationX(Math.PI));_TCUMOUNT.setPosition(D.tcuX,-0.16,0);   // -0.16 (antes -0.14): baja la TCU para que la chapa superior no se meta en el tubo cuadrado; perpendicular y volteada
   SEG=[];                                                                          // un InstancedMesh por tipo de pieza
@@ -560,12 +564,14 @@ function buildTrackers(elevAt){
     var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
     var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
-    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<zP.length;pk++){var ppx=n.gx+pfx,ppz=n.gz+zP[pk];postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste → postes de longitud variable
+    var zPk=zPfor({tp:n.tp}),half=TC.np/2;
+    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){var ppx=n.gx+pfx,ppz=n.gz+(pk<zPk.length?zPk[pk]:0);postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
     var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
-    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,artic:kinked,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
+    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,tp:n.tp,artic:kinked,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
 }
+function zPfor(t){if(!TC||!TC.zPT)return TC?TC.zP:[];var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // retícula de soportes por tipo (círculos del bloque del Tierras.dwg); resto de plantas: la genérica
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
   var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
@@ -598,13 +604,14 @@ function applyPileReveal(){   // colorea cada pilote por su REVEAL (lo que sobre
   var lg=$('pileLeg');if(lg)lg.textContent=' '+mn.toFixed(2)+'–'+mx.toFixed(2)+' m';
 }
 function layoutTrackers(){
-  if(!imPost||!SEG)return;var fz=TC.filaZ,ph=TC.postH,zP=TC.zP;
+  if(!imPost||!SEG)return;var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
-    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<zP.length;kk++){if(t.medio&&Math.abs(zP[kk])>16){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[kk])>16)){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
-    var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<zP.length;k++){
-      if(t.medio&&Math.abs(zP[k])>16){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // "Medio": sin postes exteriores
+    var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
+      if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
@@ -1048,62 +1055,43 @@ function buildNetLayer(key){
     for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
   }
-  if(key==='earth_lat'&&TRK.length){   // LATIGUILLOS SOLO DONDE LOS DIBUJA EL PLANO (Tierras.dwg/RDT-1, 234 trazos): "solo un soporte de ALGUNOS trackers va a tierra. No todos!!" — fuera la garantía por poste. Cada trazo amarra UN poste (el más cercano aún libre) y el salto hace ESQUINA DE 90º: sale del conductor perpendicular a su tramo y gira una vez en ángulo recto hasta el poste
+  if(key==='earth_lat'&&TRK.length){   // LATIGUILLOS COMO EL CAD: el latiguillo es el TICK CORTO dibujado (~1 m, perpendicular al conductor, hasta el borde de la fila) + grapa vertical en su extremo de fila. NADA de ganchos hasta el poste retranqueado: v4.47-49 estiraban cada tick 4-5 m en L y salían "cuadros" que el plano no tiene ("Mira cómo está en el cad... tú lo has hecho mal")
     var PST=[],_pm=new THREE.Matrix4();
-    if(typeof imPost!=='undefined'&&imPost&&TC.np&&TC.zP){var zl=TC.zP.length;
-      for(var ti=0;ti<TRK.length;ti++)for(var f5=0;f5<2;f5++)for(var kq=0;kq<zl;kq++){
-        imPost.getMatrixAt(ti*TC.np+f5*zl+kq,_pm);
-        if(Math.abs(_pm.elements[0])>0.01)PST.push([_pm.elements[12],-_pm.elements[14]]);}}
-    var ES4=[];(NET.layers.earth||[]).concat(NET.layers.earth_cross||[]).forEach(function(pl){for(var i8=0;i8+1<pl.length;i8++)ES4.push([pl[i8],pl[i8+1]]);});   // el salto nace del conductor dibujado O de los cruces por las líneas de terminales
+    if(typeof imPost!=='undefined'&&imPost&&TC.np){
+      for(var ti=0;ti<TRK.length*TC.np;ti++){
+        imPost.getMatrixAt(ti,_pm);
+        if(Math.abs(_pm.elements[0])>0.01)PST.push([_pm.elements[12],-_pm.elements[14]]);}}   // soportes REALES (retícula por tipo del Tierras.dwg); huecos van a escala 0
+    var ES4=[];(NET.layers.earth||[]).concat(NET.layers.earth_cross||[]).forEach(function(pl){for(var i8=0;i8+1<pl.length;i8++)ES4.push([pl[i8],pl[i8+1]]);});
     function nearCond(x,n,cap){var bd=cap,bp=null;
       for(var k4=0;k4<ES4.length;k4++){var a4=ES4[k4][0],b4=ES4[k4][1],dx4=b4[0]-a4[0],dn4=b4[1]-a4[1],L4=dx4*dx4+dn4*dn4||1e-9;
         var t4=((x-a4[0])*dx4+(n-a4[1])*dn4)/L4;t4=Math.max(0,Math.min(1,t4));
         var px4=a4[0]+t4*dx4,pn4=a4[1]+t4*dn4,d4=Math.hypot(x-px4,n-pn4);
-        if(d4<bd){bd=d4;bp=[px4,pn4,Math.abs(dx4)>=Math.abs(dn4)?1:0];}}   // bp[2]=1 → ese tramo de conductor corre E-O
+        if(d4<bd){bd=d4;bp=[px4,pn4];}}
       return bp;}
-    var ev=[];
+    var ev=[],bonded={};
+    function grapa(p){ev.push(p[0],terrainMeshY(p[0],p[1])+0.02,-p[1],p[0],terrainMeshY(p[0],p[1])+0.45,-p[1]);}
     function hop(cp,pt){var st5=Math.max(1,Math.round(Math.hypot(pt[0]-cp[0],pt[1]-cp[1])/2));
       for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=cp[0]+(pt[0]-cp[0])*t0,an4=cp[1]+(pt[1]-cp[1])*t0,bx4=cp[0]+(pt[0]-cp[0])*t1,bn4=cp[1]+(pt[1]-cp[1])*t1;
         ev.push(ax4,terrainMeshY(ax4,an4)+0.17,-an4,bx4,terrainMeshY(bx4,bn4)+0.17,-bn4);}}
-    function jumpL(C,P){   // conductor N-S → codo en (P.x,C.n); conductor E-O → codo en (C.x,P.n): la salida siempre perpendicular al tramo, como los jogs ortogonales del plano
-      var E=C[2]===1?[C[0],P[1]]:[P[0],C[1]];
-      if(Math.hypot(E[0]-C[0],E[1]-C[1])<0.15||Math.hypot(P[0]-E[0],P[1]-E[1])<0.15)hop([C[0],C[1]],P);
-      else{hop([C[0],C[1]],E);hop(E,P);}
-      ev.push(P[0],terrainMeshY(P[0],P[1])+0.02,-P[1],P[0],terrainMeshY(P[0],P[1])+0.45,-P[1]);}   // grapa vertical en el poste amarrado
-    var FSEG=[];(LAYOUT.fence||[]).forEach(function(pl){for(var i9=0;i9+1<pl.length;i9++)FSEG.push([pl[i9],pl[i9+1]]);});
-    var EQ=[];(CTMAIN||[]).forEach(function(c){EQ.push([c.x,c.n]);});if(typeof SUBST!=='undefined')EQ.push([SUBST.x,SUBST.n]);
-    ((LAYOUT.meteo)||[]).forEach(function(m){EQ.push([m.x,m.n]);});((LAYOUT.ncus)||[]).forEach(function(m){EQ.push([m.x,m.n]);});
-    var bonded={};   // un solo latiguillo por poste
+    function remata(p){var bi=-1,bd=4.5;                                        // extremo de latiguillo/stub → SOPORTE REAL más cercano (círculos del CAD), recto y con grapa en el soporte
+      for(var q=0;q<PST.length;q++){if(bonded[q])continue;
+        var dp=Math.hypot(PST[q][0]-p[0],PST[q][1]-p[1]);if(dp<bd){bd=dp;bi=q;}}
+      if(bi<0){grapa(p);return;}
+      bonded[bi]=1;if(bd>0.15)hop(p,PST[bi]);grapa(PST[bi]);}
+    // 1) los 234 trazos del plano, TAL CUAL, y del extremo de FILA (el más alejado del conductor) un tramo recto al soporte real — como el CAD, donde el latiguillo toca el círculo del soporte
     NET.layers.earth_lat.forEach(function(pl){if(pl.length<2)return;
-      var A=pl[0],B=pl[pl.length-1],mx9=(A[0]+B[0])/2,mn9=(A[1]+B[1])/2;
-      var C=nearCond(mx9,mn9,4.5);                                    // el trazo marca DÓNDE sale el salto del conductor
-      var bi=-1,bdp=6.5;                                              // poste destino: el más cercano al trazo sin amarrar aún
-      for(var k3=0;k3<PST.length;k3++){if(bonded[k3])continue;
-        var dp=Math.hypot(PST[k3][0]-mx9,PST[k3][1]-mn9);if(dp<bdp){bdp=dp;bi=k3;}}
-      if(C&&bi>=0){bonded[bi]=1;jumpL(C,PST[bi]);return;}
-      // trazos que no señalan seguidor: cierre contra valla (≤6 m) o equipo (≤8 m); si no, tal cual
-      var tgt=null,btd=6;
-      for(var f9=0;f9<FSEG.length;f9++){var a9=FSEG[f9][0],b9=FSEG[f9][1],dx9=b9[0]-a9[0],dn9=b9[1]-a9[1],L9=dx9*dx9+dn9*dn9||1e-9;
-        var t9=((mx9-a9[0])*dx9+(mn9-a9[1])*dn9)/L9;t9=Math.max(0,Math.min(1,t9));
-        var qx=a9[0]+t9*dx9,qn=a9[1]+t9*dn9,d9=Math.hypot(mx9-qx,mn9-qn);if(d9<btd){btd=d9;tgt=[qx,qn];}}
-      if(!tgt){btd=8;for(var e9=0;e9<EQ.length;e9++){var d10=Math.hypot(EQ[e9][0]-mx9,EQ[e9][1]-mn9);if(d10<btd){btd=d10;tgt=EQ[e9];}}}
-      var c10=C||nearCond(mx9,mn9,9);
-      if(tgt&&c10){hop([c10[0],c10[1]],tgt);return;}
-      for(var i7=0;i7+1<pl.length;i7++){var a7=pl[i7],b7=pl[i7+1],st7=Math.max(1,Math.round(Math.hypot(b7[0]-a7[0],b7[1]-a7[1])/4));
+      for(var i7=0;i7+1<pl.length;i7++){var a7=pl[i7],b7=pl[i7+1],st7=Math.max(1,Math.round(Math.hypot(b7[0]-a7[0],b7[1]-a7[1])/2));
         for(var s7=0;s7<st7;s7++){var u0=s7/st7,u1=(s7+1)/st7;
           ev.push(a7[0]+(b7[0]-a7[0])*u0,terrainMeshY(a7[0]+(b7[0]-a7[0])*u0,a7[1]+(b7[1]-a7[1])*u0)+0.17,-(a7[1]+(b7[1]-a7[1])*u0),
                   a7[0]+(b7[0]-a7[0])*u1,terrainMeshY(a7[0]+(b7[0]-a7[0])*u1,a7[1]+(b7[1]-a7[1])*u1)+0.17,-(a7[1]+(b7[1]-a7[1])*u1));}}
-    });
-    // GRAPAS BIMETÁLICAS (cuadro RDT-1: 186): los stubs del conductor dibujado entran al pasillo y MUEREN a
-    // 3,5-5 m del poste de cabecera (el DWG no dibuja el último tramo). Todo extremo muerto del conductor con
-    // un poste libre a ≤5 m se remata en él con esquina de 90º y grapa — medidos: 189 extremos en ese radio,
-    // y el siguiente grupo ya está a ≥5 m ("vas a poder o no conectar la red de tierras a soportes?")
+      var A=pl[0],B=pl[pl.length-1],C=nearCond((A[0]+B[0])/2,(A[1]+B[1])/2,6);
+      var far=(C&&Math.hypot(A[0]-C[0],A[1]-C[1])>=Math.hypot(B[0]-C[0],B[1]-C[1]))?A:B;
+      remata(far);});
+    // 2) stubs de calle: extremo muerto del conductor dibujado → tramo recto al soporte real y grapa allí
     var SEGP=[],EPD=[];
     (NET.layers.earth||[]).forEach(function(pl,pi){if(pl.length<2)return;
       for(var i6=0;i6+1<pl.length;i6++)SEGP.push([pl[i6],pl[i6+1],pi]);
-      var dH=[pl[1][0]-pl[0][0],pl[1][1]-pl[0][1]],dT=[pl[pl.length-1][0]-pl[pl.length-2][0],pl[pl.length-1][1]-pl[pl.length-2][1]];
-      EPD.push([pl[0],pi,Math.abs(dH[0])>=Math.abs(dH[1])?1:0]);
-      EPD.push([pl[pl.length-1],pi,Math.abs(dT[0])>=Math.abs(dT[1])?1:0]);});
+      EPD.push([pl[0],pi]);EPD.push([pl[pl.length-1],pi]);});
     (NET.layers.earth_cross||[]).forEach(function(pl){for(var i6=0;i6+1<pl.length;i6++)SEGP.push([pl[i6],pl[i6+1],-1]);});
     EPD.forEach(function(e8){var p8=e8[0],pi8=e8[1],junto=false;
       for(var k8=0;k8<SEGP.length&&!junto;k8++){if(SEGP[k8][2]===pi8)continue;   // su propia polilínea no cuenta como unión
@@ -1111,11 +1099,8 @@ function buildNetLayer(key){
         var t8=((p8[0]-a8[0])*dx8+(p8[1]-a8[1])*dn8)/L8;t8=Math.max(0,Math.min(1,t8));
         if(Math.hypot(p8[0]-(a8[0]+t8*dx8),p8[1]-(a8[1]+t8*dn8))<0.45)junto=true;}
       if(junto)return;                                                          // toca la troncal u otra rama: es una T, no un stub
-      var bi8=-1,bd8=5.0;
-      for(var q8=0;q8<PST.length;q8++){if(bonded[q8])continue;
-        var dp8=Math.hypot(PST[q8][0]-p8[0],PST[q8][1]-p8[1]);if(dp8<bd8){bd8=dp8;bi8=q8;}}
-      if(bi8<0)return;
-      bonded[bi8]=1;jumpL([p8[0],p8[1],1-e8[2]],PST[bi8]);});                    // primera pierna CONTINUANDO el stub y giro de 90º al poste (flag invertido: en jumpL C[2]=1 hace la 1ª pierna N-S)
+      var hay=false;for(var q8=0;q8<PST.length&&!hay;q8++)if(!bonded[q8]&&Math.hypot(PST[q8][0]-p8[0],PST[q8][1]-p8[1])<4.5)hay=true;
+      if(hay)remata(p8);});
     if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
       g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
@@ -1781,11 +1766,11 @@ function updateLabels(){
 /* ───────── EDICIÓN DE SEGUIDORES EN 3D: seleccionar, articular (uno a uno) y recolocar sobre el terreno, con guardado ───────── */
 function resampleTracker(t){ if(!ELEV)return;                          // al mover el seguidor: recalcula cotas y drape del terreno en el nuevo punto
   t.glat=lat0-t.gz/mPerLat;t.glon=lon0+t.gx/mPerLon;
-  var sp=t.span||TC.span,dE=t.dE||15,fz=TC.filaZ,zP=TC.zP,latHalf=(sp/2)/mPerLat,lonE15=dE/mPerLon;
+  var sp=t.span||TC.span,dE=t.dE||15,fz=TC.filaZ,zP=zPfor(t),half=TC.np/2,latHalf=(sp/2)/mPerLat,lonE15=dE/mPerLon;
   t.rel=ELEV(t.glat,t.glon)-baseElev;
   t.relN=ELEV(t.glat+latHalf,t.glon)-baseElev;t.relS=ELEV(t.glat-latHalf,t.glon)-baseElev;
   t.relE=ELEV(t.glat,t.glon+lonE15)-baseElev;t.relW=ELEV(t.glat,t.glon-lonE15)-baseElev;
-  var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<zP.length;pk++){var ppx=t.gx+pfx,ppz=t.gz+zP[pk];pr.push(ELEV(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}
+  var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<half;pk++){var ppx=t.gx+pfx,ppz=t.gz+(pk<zP.length?zP[pk]:0);pr.push(ELEV(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}
   t.postRel=pr;
 }
 function buildPickBoxes(){                                             // una caja invisible por seguidor (raycast de selección) + un contorno de selección reutilizable
