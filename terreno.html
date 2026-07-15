@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.38</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.39</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1045,14 +1045,18 @@ function buildNetLayer(key){
     for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
   }
-  if(key==='earth_lat'&&TRK.length){   // el trazo del plano es SIMBÓLICO (~1 m junto al conductor): cada latiguillo se PROLONGA desde su extremo más cercano hasta el pie del poste REAL más próximo — TODOS los postes de ambas vigas (zP ±28/±9; medio solo ±9), no solo los exteriores: donde el conductor cruza a media fila, el poste bueno es uno intermedio ("ni un latiguillo va a los soportes")
-    var PST=[];TRK.forEach(function(t){var zs=t.medio?[-9,9]:[-28,-9,9,28];
-      zs.forEach(function(zp){PST.push([t.gx-3,-t.gz+zp],[t.gx+3,-t.gz+zp]);});});
+  if(key==='earth_lat'&&TRK.length){   // el trazo del plano es SIMBÓLICO (~1 m junto al conductor) y por el plano RDT-1 SOLO se conectan los postes de CABECERA junto al camino: cada latiguillo se prolonga (≤4,5 m) hasta el poste EXTREMO real más próximo, leído de las MATRICES RENDERIZADAS (imPost: articulaciones y desplazamientos por pendiente incluidos — casar contra posiciones analíticas era el "sigue desplazado")
+    var PST=[],_pm=new THREE.Matrix4();
+    if(typeof imPost!=='undefined'&&imPost&&TC.np&&TC.zP){var zl=TC.zP.length;
+      for(var ti=0;ti<TRK.length;ti++)for(var f5=0;f5<2;f5++){
+        [[0,1],[zl-1,zl-2]].forEach(function(ks){                     // poste extremo y su reserva (medio oculta el exterior: escala 0)
+          for(var kq=0;kq<ks.length;kq++){imPost.getMatrixAt(ti*TC.np+f5*zl+ks[kq],_pm);
+            if(Math.abs(_pm.elements[0])>0.01){PST.push([_pm.elements[12],-_pm.elements[14]]);break;}}});}}
     var ev=[],next=0;
     NET.layers.earth_lat.forEach(function(pl){if(pl.length<2)return;
       var best=null;
       [pl[0],pl[pl.length-1]].forEach(function(ep){for(var k3=0;k3<PST.length;k3++){var d3=Math.hypot(PST[k3][0]-ep[0],PST[k3][1]-ep[1]);
-        if(d3<8&&(!best||d3<best.d))best={d:d3,ep:ep,p:PST[k3]};}});
+        if(d3<6.0&&(!best||d3<best.d))best={d:d3,ep:ep,p:PST[k3]};}});   // 6,0: el trazo CAD está en la PUNTA del tubo (eje de unidad, ±32,7) y el poste real a (±3, ∓4,3) = 5,3 m en diagonal
       if(!best||best.d<0.3)return;next++;
       var st5=Math.max(1,Math.round(best.d/2));
       for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=best.ep[0]+(best.p[0]-best.ep[0])*t0,an4=best.ep[1]+(best.p[1]-best.ep[1])*t0,bx4=best.ep[0]+(best.p[0]-best.ep[0])*t1,bn4=best.ep[1]+(best.p[1]-best.ep[1])*t1;
