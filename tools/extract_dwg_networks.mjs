@@ -37,6 +37,13 @@ for(const [path,keyOK,takePicas] of [
       if(Math.abs(p[0])<900&&Math.abs(p[1])<750&&!picas.some(q=>Math.hypot(q[0]-p[0],q[1]-p[1])<0.3))picas.push(p); continue; }
     const k=matchKey(e.layer||''); if(!k||!keyOK(k))continue; for(const pl of entPolylines(e)){ out[k].raw++; if(pl.length>1&&inFoot(pl)){ out[k].kept++; out[k].polys.push(pl);} } }
 }
+// DEDUPE: el DWG de tierras trae cada polilínea POR TRIPLICADO (y los latiguillos por duplicado:
+// 468=2×234, el número exacto del cuadro RDT-1) — solapadas se veían como "cada vez más cables"
+for(const k in out){ const seen=new Set();
+  out[k].polys=out[k].polys.filter(pl=>{ const key=pl.map(p=>Math.round(p[0]*10)+','+Math.round(p[1]*10)).join(';');
+    const rev=pl.slice().reverse().map(p=>Math.round(p[0]*10)+','+Math.round(p[1]*10)).join(';');
+    if(seen.has(key)||seen.has(rev))return false; seen.add(key); return true; });
+  out[k].kept=out[k].polys.length; }
 const json={cE,cN,layers:{}};
 console.log('layer            raw   kept   bbox(localm)');
 for(const k in out){ const o=out[k]; if(!o.kept){console.log(k.padEnd(15),String(o.raw).padStart(5),'   0'); json.layers[k]=[]; continue;}
