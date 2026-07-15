@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.48</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.49</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1094,6 +1094,28 @@ function buildNetLayer(key){
           ev.push(a7[0]+(b7[0]-a7[0])*u0,terrainMeshY(a7[0]+(b7[0]-a7[0])*u0,a7[1]+(b7[1]-a7[1])*u0)+0.17,-(a7[1]+(b7[1]-a7[1])*u0),
                   a7[0]+(b7[0]-a7[0])*u1,terrainMeshY(a7[0]+(b7[0]-a7[0])*u1,a7[1]+(b7[1]-a7[1])*u1)+0.17,-(a7[1]+(b7[1]-a7[1])*u1));}}
     });
+    // GRAPAS BIMETÁLICAS (cuadro RDT-1: 186): los stubs del conductor dibujado entran al pasillo y MUEREN a
+    // 3,5-5 m del poste de cabecera (el DWG no dibuja el último tramo). Todo extremo muerto del conductor con
+    // un poste libre a ≤5 m se remata en él con esquina de 90º y grapa — medidos: 189 extremos en ese radio,
+    // y el siguiente grupo ya está a ≥5 m ("vas a poder o no conectar la red de tierras a soportes?")
+    var SEGP=[],EPD=[];
+    (NET.layers.earth||[]).forEach(function(pl,pi){if(pl.length<2)return;
+      for(var i6=0;i6+1<pl.length;i6++)SEGP.push([pl[i6],pl[i6+1],pi]);
+      var dH=[pl[1][0]-pl[0][0],pl[1][1]-pl[0][1]],dT=[pl[pl.length-1][0]-pl[pl.length-2][0],pl[pl.length-1][1]-pl[pl.length-2][1]];
+      EPD.push([pl[0],pi,Math.abs(dH[0])>=Math.abs(dH[1])?1:0]);
+      EPD.push([pl[pl.length-1],pi,Math.abs(dT[0])>=Math.abs(dT[1])?1:0]);});
+    (NET.layers.earth_cross||[]).forEach(function(pl){for(var i6=0;i6+1<pl.length;i6++)SEGP.push([pl[i6],pl[i6+1],-1]);});
+    EPD.forEach(function(e8){var p8=e8[0],pi8=e8[1],junto=false;
+      for(var k8=0;k8<SEGP.length&&!junto;k8++){if(SEGP[k8][2]===pi8)continue;   // su propia polilínea no cuenta como unión
+        var a8=SEGP[k8][0],b8=SEGP[k8][1],dx8=b8[0]-a8[0],dn8=b8[1]-a8[1],L8=dx8*dx8+dn8*dn8||1e-9;
+        var t8=((p8[0]-a8[0])*dx8+(p8[1]-a8[1])*dn8)/L8;t8=Math.max(0,Math.min(1,t8));
+        if(Math.hypot(p8[0]-(a8[0]+t8*dx8),p8[1]-(a8[1]+t8*dn8))<0.45)junto=true;}
+      if(junto)return;                                                          // toca la troncal u otra rama: es una T, no un stub
+      var bi8=-1,bd8=5.0;
+      for(var q8=0;q8<PST.length;q8++){if(bonded[q8])continue;
+        var dp8=Math.hypot(PST[q8][0]-p8[0],PST[q8][1]-p8[1]);if(dp8<bd8){bd8=dp8;bi8=q8;}}
+      if(bi8<0)return;
+      bonded[bi8]=1;jumpL([p8[0],p8[1],1-e8[2]],PST[bi8]);});                    // primera pierna CONTINUANDO el stub y giro de 90º al poste (flag invertido: en jumpL C[2]=1 hace la 1ª pierna N-S)
     if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
       g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
