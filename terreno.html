@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.43</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.44</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1048,10 +1048,9 @@ function buildNetLayer(key){
   if(key==='earth_lat'&&TRK.length){   // LATIGUILLOS con GARANTÍA POR POSTE: el trazo del RDT-1 es simbólico (~1 m, no toca el poste). Regla física del plano: cada poste de CABECERA junto al conductor se conecta con un salto corto conductor→poste. Sin depender del trazo → cobertura completa y uniforme ("mal, igual que hace 12 iteraciones" era la vuelta al trazo crudo)
     var PST=[],_pm=new THREE.Matrix4();
     if(typeof imPost!=='undefined'&&imPost&&TC.np&&TC.zP){var zl=TC.zP.length;
-      for(var ti=0;ti<TRK.length;ti++)for(var f5=0;f5<2;f5++){
-        [[0,1],[zl-1,zl-2]].forEach(function(ks){
-          for(var kq=0;kq<ks.length;kq++){imPost.getMatrixAt(ti*TC.np+f5*zl+ks[kq],_pm);
-            if(Math.abs(_pm.elements[0])>0.01){PST.push([_pm.elements[12],-_pm.elements[14]]);break;}}});}}
+      for(var ti=0;ti<TRK.length;ti++)for(var f5=0;f5<2;f5++)for(var kq=0;kq<zl;kq++){   // TODOS los postes (el RDT-1 cruza los bloques por EN MEDIO y amarra cada fila donde el conductor la cruza, no solo en cabecera)
+        imPost.getMatrixAt(ti*TC.np+f5*zl+kq,_pm);
+        if(Math.abs(_pm.elements[0])>0.01)PST.push([_pm.elements[12],-_pm.elements[14]]);}}
     var ES4=[];(NET.layers.earth||[]).forEach(function(pl){for(var i8=0;i8+1<pl.length;i8++)ES4.push([pl[i8],pl[i8+1]]);});
     function nearCond(x,n,cap){var bd=cap,bp=null;
       for(var k4=0;k4<ES4.length;k4++){var a4=ES4[k4][0],b4=ES4[k4][1],dx4=b4[0]-a4[0],dn4=b4[1]-a4[1],L4=dx4*dx4+dn4*dn4||1e-9;
@@ -1064,7 +1063,7 @@ function buildNetLayer(key){
       for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=cp[0]+(pt[0]-cp[0])*t0,an4=cp[1]+(pt[1]-cp[1])*t0,bx4=cp[0]+(pt[0]-cp[0])*t1,bn4=cp[1]+(pt[1]-cp[1])*t1;
         ev.push(ax4,terrainMeshY(ax4,an4)+0.17,-an4,bx4,terrainMeshY(bx4,bn4)+0.17,-bn4);}
       if(grapa)ev.push(pt[0],terrainMeshY(pt[0],pt[1])+0.02,-pt[1],pt[0],terrainMeshY(pt[0],pt[1])+0.45,-pt[1]);}
-    for(var pi9=0;pi9<PST.length;pi9++){var P9=PST[pi9],c9=nearCond(P9[0],P9[1],6.5);   // GARANTÍA: todo poste de cabecera con conductor a ≤6,5 m
+    for(var pi9=0;pi9<PST.length;pi9++){var P9=PST[pi9],c9=nearCond(P9[0],P9[1],4.5);   // GARANTÍA: todo poste con conductor a ≤4,5 m se amarra (cabeceras en calles Y cruces a media fila, como el RDT-1)
       if(c9&&Math.hypot(c9[0]-P9[0],c9[1]-P9[1])>0.25)hop(c9,P9,true);}
     // trazos que NO son de seguidor (valla/equipos): se cierran contra su objeto; si no hay, se dibujan tal cual
     var FSEG=[];(LAYOUT.fence||[]).forEach(function(pl){for(var i9=0;i9+1<pl.length;i9++)FSEG.push([pl[i9],pl[i9+1]]);});
