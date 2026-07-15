@@ -116,7 +116,13 @@ function traceMask(M, W, H, x0, n0) {
     const h1 = seg(bi, bj), h2 = seg(bj, bi);
     return h1.slice(0, -1).concat(h2.slice(0, -1));
   }
-  return loops.map(dp).filter(l => l.length >= 3 && Math.abs(area(l)) > 12);
+  // CHAIKIN (1 pasada) tras DP: los bordes diagonales quedaban con escalones del raster ("sigue todo mal");
+  // el corte de esquinas los alisa sin comerse los acuerdos (los vértices DP quedan como control)
+  function chaikin(r){ if(r.length<4)return r; const out=[];
+    for(let i=0;i<r.length;i++){const A=r[i],B=r[(i+1)%r.length];
+      out.push([A[0]*0.75+B[0]*0.25,A[1]*0.75+B[1]*0.25],[A[0]*0.25+B[0]*0.75,A[1]*0.25+B[1]*0.75]);}
+    return out; }
+  return loops.map(dp).map(chaikin).filter(l => l.length >= 3 && Math.abs(area(l)) > 12);
 }
 // ===== máscara global =====
 const HATCH_RINGS = [];                                                       // [ [anillos de un hatch], ... ]
@@ -177,15 +183,26 @@ for (const rings of HATCH_RINGS) {                                            //
     for (let i = 0; i + 1 < ch.length; i++) {
       const A = ch[i], B = ch[i + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 0.5) continue;
       const ux = (B[0] - A[0]) / L, un = (B[1] - A[1]) / L;
-      for (let t = 0; t <= L; t += 2) {
-        const px = A[0] + ux * t, pn = A[1] + un * t;
-        const c1 = [px - un * 5.5, pn + ux * 5.5], c2 = [px + un * 5.5, pn - ux * 5.5];
-        const p = (Math.hypot(c1[0] - cx, c1[1] - cn) < Math.hypot(c2[0] - cx, c2[1] - cn)) ? c1 : c2;   // el lado INTERIOR = el más cercano al centroide del vallado
-        const gi = Math.round((p[0] - x0) / RES - 0.5), gj = Math.round((p[1] - n0) / RES - 0.5);
-        for (let dj = -R2; dj <= R2; dj++) for (let di = -R2; di <= R2; di++) if (di * di + dj * dj <= R2 * R2) {
-          const ii = gi + di, jj = gj + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H && !M[jj * W + ii]) { M[jj * W + ii] = 1; painted++; } }
-        meters += 2;
+      // banda como RECTÁNGULO continuo por tramo (la cadena de discos festoneaba el borde) + disco en el vértice
+      const off = (Math.hypot(A[0] - un * 5.5 - cx, A[1] + ux * 5.5 - cn) < Math.hypot(A[0] + un * 5.5 - cx, A[1] - ux * 5.5 - cn)) ? 5.5 : -5.5;
+      const q = [[A[0] - un * off - un * 0, A[1] + ux * off], [B[0] - un * off, B[1] + ux * off]]
+        .flatMap(P => [[P[0] - un * 1.8 * Math.sign(off), P[1] + ux * 1.8 * Math.sign(off)]]);
+      const c0x = A[0] - un * off, c0n = A[1] + ux * off, c1x = B[0] - un * off, c1n = B[1] + ux * off;
+      const quad = [[c0x - un * 1.8, c0n + ux * 1.8], [c0x + un * 1.8, c0n - ux * 1.8], [c1x + un * 1.8, c1n - ux * 1.8], [c1x - un * 1.8, c1n + ux * 1.8]];
+      for (let j = 0; j < H; j++) {
+        const n = n0 + (j + 0.5) * RES, xs = [];
+        for (let k = 0; k < 4; k++) { const P = quad[k], Q = quad[(k + 1) % 4];
+          if ((P[1] > n) !== (Q[1] > n)) xs.push(P[0] + (Q[0] - P[0]) * (n - P[1]) / (Q[1] - P[1])); }
+        xs.sort((u, v) => u - v);
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+          let i0 = Math.max(0, Math.ceil((xs[k] - x0) / RES - 0.5)), i1 = Math.min(W - 1, Math.floor((xs[k + 1] - x0) / RES - 0.5));
+          for (let ii = i0; ii <= i1; ii++) if (!M[j * W + ii]) { M[j * W + ii] = 1; painted++; }
+        }
       }
+      [[c0x, c0n], [c1x, c1n]].forEach(P => { const gi = Math.round((P[0] - x0) / RES - 0.5), gj = Math.round((P[1] - n0) / RES - 0.5);
+        for (let dj = -R2; dj <= R2; dj++) for (let di = -R2; di <= R2; di++) if (di * di + dj * dj <= R2 * R2) {
+          const ii = gi + di, jj = gj + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H && !M[jj * W + ii]) { M[jj * W + ii] = 1; painted++; } } });
+      meters += L;
     }
   });
   console.log('perimetral derivado (anillo completo): ~' + meters + ' m recorridos · ' + (painted * RES * RES).toFixed(0) + ' m² nuevos');
