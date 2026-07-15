@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.34</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.35</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -329,7 +329,7 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._d
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
   SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
-  SUN.shadow.radius=Math.min(16,2+1.9/Math.max(0.08,dir.U));           // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente, como la sombra real del amanecer
+  SUN.shadow.radius=Math.min(7,2+1.9/Math.max(0.08,dir.U));            // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente; TOPE 7 (a 16, el PCF banda la penumbra: "sombras raras" a rayas al amanecer/atardecer)
   SUN.shadow.normalBias=Math.max(0.05,Math.min(0.2,half*0.00006)); }   // bias escalado al área cubierta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
@@ -942,13 +942,14 @@ function buildVeg(){
   function inRing(x,n,r){var c=false;for(var ii=0,jj=r.length-1;ii<r.length;jj=ii++){var A=r[ii],B=r[jj];if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])c=!c;}return c;}
   function onRoad(x,n){for(var si=0;si<RS.length;si++){var b=RSB[si];if(x<b[0]||x>b[1]||n<b[2]||n>b[3])continue;
     if(inRing(x,n,RS[si].o)){var hs=RS[si].h||[],hole=false;for(var hi=0;hi<hs.length;hi++)if(inRing(x,n,hs[hi])){hole=true;break;}if(!hole)return true;}}return false;}
+  function nearRoad(x,n){return onRoad(x,n)||onRoad(x+0.8,n)||onRoad(x-0.8,n)||onRoad(x,n+0.8)||onRoad(x,n-0.8);}   // margen 0,8 m: el quad de la mata (~0,7 m) no debe invadir el firme ("marcas negras" en el borde)
   var i=0;
   while(i<N/2){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
-    if(onRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
+    if(nearRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
     o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.7+rng()*0.9;o.scale.set(sc,0.8+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
   while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
     for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
-      if(onRoad(x2,n2)){o.scale.set(0,0,0);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);continue;}   // mata del rodal caída en el vial: se anula (instancia degenerada)
+      if(nearRoad(x2,n2)){o.scale.set(0,0,0);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);continue;}   // mata del rodal caída en el vial: se anula (instancia degenerada)
       o.position.set(x2,terrainMeshY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=0.8+rng()*1.1;o.scale.set(sc2,0.9+rng()*1.1,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
   vegMesh.receiveShadow=true;scene.add(vegMesh);
 }
@@ -1054,10 +1055,11 @@ function buildNetLayer(key){
     var uncov=[];
     TRK.forEach(function(t){var hl=(t.medio?16:31)-0.8,hp=t.medio?9:28;   // unidad BÍFILA: dos vigas independientes a ±3 m del eje — cada estructura lleva SU conexión en el PRIMER POSTE (el más exterior: zP=±28 largo, ±9 medio)
       function dd(n0,pn){var a2=nearEarth(t.gx-3,n0),b2=nearEarth(t.gx+3,n0);return {d:Math.min(a2.d,b2.d),a:a2,b:b2,pn:pn};}
-      var N2=dd(-t.gz+hl,-t.gz+hp),S2=dd(-t.gz-hl,-t.gz-hp),E2=N2.d<=S2.d?N2:S2;   // el extremo (calle) más cercano a la red
-      if(E2.d<12){seg2(t.gx-3,E2.pn,E2.a.p[0],E2.a.p[1]);tick(t.gx-3,E2.pn);
-        seg2(t.gx+3,E2.pn,E2.b.p[0],E2.b.p[1]);tick(t.gx+3,E2.pn);}
-      else uncov.push({e0:[t.gx,-t.gz+hl],e1:[t.gx,-t.gz-hl],p0:-t.gz+hp,p1:-t.gz-hp});});
+      var N2=dd(-t.gz+hl,-t.gz+hp),S2=dd(-t.gz-hl,-t.gz-hp),any=false;
+      [N2,S2].forEach(function(E2){if(E2.d<12){any=true;                      // TODO extremo con red a <12 m se conecta ("la red se conecta a los soportes"): si la línea pasa por ambas calles, latiguillo en ambos extremos
+        seg2(t.gx-3,E2.pn,E2.a.p[0],E2.a.p[1]);tick(t.gx-3,E2.pn);
+        seg2(t.gx+3,E2.pn,E2.b.p[0],E2.b.p[1]);tick(t.gx+3,E2.pn);}});
+      if(!any)uncov.push({e0:[t.gx,-t.gz+hl],e1:[t.gx,-t.gz-hl],p0:-t.gz+hp,p1:-t.gz-hp});});
     if(uncov.length){   // bandas sin lateral en el DWG: agrupa extremos por calle (n), tiende un lateral E-W derivado, lo empalma a la red real y baja un latiguillo a cada primer poste
       var cand=[];uncov.forEach(function(u,ui){cand.push({n:u.e0[1],x:u.e0[0],ui:ui,end:0});cand.push({n:u.e1[1],x:u.e1[0],ui:ui,end:1});});
       cand.sort(function(a2,b2){return a2.n-b2.n;});
@@ -1339,11 +1341,13 @@ function buildBOS(){
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
   // viales: tierra compactada drapeada sobre el terreno, que recibe la sombra de los seguidores
-  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];
+  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}),rv=[];   // polygonOffset: a +9 cm del terreno, a distancia la precisión de profundidad empataba y moteaba el firme ("marcas negras"/damero)
   if(LAYOUT.roadSurfaces&&LAYOUT.roadSurfaces.length&&THREE.ShapeUtils){
     // SUPERFICIES REALES del firme (HATCH del bloque Viales, con acuerdos en arco y huecos): el bloque no
     // trae ejes con ancho — dibujar sus bordes como cintas creaba "dos caminos en paralelo donde hay uno"
-    LAYOUT.roadSurfaces.forEach(function(sf){ if(!sf.o||sf.o.length<3||!inClip(sf.o[0][0],sf.o[0][1]))return;
+    LAYOUT.roadSurfaces.forEach(function(sf){ if(!sf.o||sf.o.length<3)return;
+      var bxa=1e9,bxb=-1e9,bna=1e9,bnb=-1e9;sf.o.forEach(function(p){bxa=Math.min(bxa,p[0]);bxb=Math.max(bxb,p[0]);bna=Math.min(bna,p[1]);bnb=Math.max(bnb,p[1]);});
+      if(CLP&&(bxb<CLP.x0-120||bxa>CLP.x1+120||bnb<CLP.n0-120||bna>CLP.n1+120))return;   // clip por BBOX ampliado: el anillo ÚNICO de la máscara global arranca FUERA del vallado (acceso oeste) y el test de primer vértice lo descartaba entero
       var cont=sf.o.map(function(p){return new THREE.Vector2(p[0],p[1]);});
       var holes=(sf.h||[]).map(function(hh){return hh.map(function(p){return new THREE.Vector2(p[0],p[1]);});});
       var tris=THREE.ShapeUtils.triangulateShape(cont,holes);
