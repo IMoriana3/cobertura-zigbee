@@ -44,6 +44,27 @@ for(const k in out){ const seen=new Set();
     const rev=pl.slice().reverse().map(p=>Math.round(p[0]*10)+','+Math.round(p[1]*10)).join(';');
     if(seen.has(key)||seen.has(rev))return false; seen.add(key); return true; });
   out[k].kept=out[k].polys.length; }
+// EARTH_CROSS derivado: el RDT-1 pone en 5 líneas E-O un terminal+latiguillo por fila (234), pero NI el PDF
+// NI el DWG dibujan el conductor entre terminales (verificado a 600 dpi y contra las 22.941 entidades del DWG).
+// Se tiende recto por cada línea de terminales y se ata a la red dibujada en el primer corte de cada extremo.
+{ const mids=out.earth_lat.polys.map(pl=>{const A=pl[0],B=pl[pl.length-1];return [(A[0]+B[0])/2,(A[1]+B[1])/2];});
+  const cls=[];
+  for(const m of mids){let c=cls.find(c=>Math.abs(c.sn/c.k-m[1])<3);if(!c){c={sn:0,k:0,xs:[]};cls.push(c);}c.sn+=m[1];c.k++;c.xs.push(m[0]);}
+  const ES=[];out.earth.polys.forEach(pl=>{for(let i=0;i+1<pl.length;i++)ES.push([pl[i],pl[i+1]]);});
+  const TRKS=JSON.parse(readFileSync('/home/user/Cobertura-Zigbee/elburgo_layout.json','utf8')).trackers, HLT=32.5;
+  const cross=[];
+  for(const c of cls){ const n=Math.round(c.sn/c.k*100)/100, x0=Math.min(...c.xs), x1=Math.max(...c.xs);
+    const tie=(xa,dir)=>{let best=null;
+      for(const [a,b] of ES){const dn=b[1]-a[1];if(Math.abs(dn)<1e-9)continue;const t=(n-a[1])/dn;if(t<0||t>1)continue;
+        const X=a[0]+t*(b[0]-a[0]),d=(X-xa)*dir;if(d>0.01&&d<100&&(!best||d<best.d))best={d,X};}
+      if(!best)return xa;
+      for(let s=1.5;s<best.d;s+=1.5){const X2=xa+dir*s;                              // la prolongación solo vale si llega SIN pisar un seguidor
+        if(TRKS.some(t=>Math.abs(X2-t.x)<3.05&&Math.abs(n-t.n)<HLT))return xa;}      // (si no, muere en su último terminal: ya ata por sus cruces intermedios)
+      return Math.round(best.X*100)/100;};
+    cross.push([[tie(x0,-1),n],[tie(x1,1),n]]); }
+  var CROSS=cross;
+  console.log('earth_cross (derivado de líneas de terminales):',cross.map(pl=>'n='+pl[0][1]+' x['+pl[0][0]+','+pl[1][0]+']').join(' · '));
+}
 const json={cE,cN,layers:{}};
 console.log('layer            raw   kept   bbox(localm)');
 for(const k in out){ const o=out[k]; if(!o.kept){console.log(k.padEnd(15),String(o.raw).padStart(5),'   0'); json.layers[k]=[]; continue;}
@@ -52,6 +73,7 @@ for(const k in out){ const o=out[k]; if(!o.kept){console.log(k.padEnd(15),String
   json.layers[k]=o.polys;
 }
 json.layers.earth_pica=picas;
+json.layers.earth_cross=CROSS;
 console.log('earth_pica (INSERTs Pica PAT):',picas.length);
 writeFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json', JSON.stringify(json));
 const sz=readFileSync('/home/user/Cobertura-Zigbee/elburgo_networks.json').length;
