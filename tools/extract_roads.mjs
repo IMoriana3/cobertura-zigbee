@@ -125,7 +125,12 @@ for (const e of blk.entities) {
   const rings = e.boundaryPaths
     .filter(p => p.vertices && p.vertices.length >= 3)
     .map(p => expand(p.vertices).map(([x, y]) => T(x, y)))
-    .filter(r => Math.abs(area(r)) > 5);
+    // LÓBULO del lazo "Viales-Ext" (revisión vieja del layout): sus arcos y bocas (x[-337,-295], n>15,8)
+    // se quitan del ANILLO, no solo de la máscara — recortarlo dejaba las bocas en la calle y el cierre
+    // las fundía en un bombo semicircular ("¿por qué tiene esa forma?"); el anillo se recose recto por el
+    // borde de la calle (n≈15,5)
+    .map(r => r.filter(p => !(p[1] > 15.8 && p[0] > -337 && p[0] < -295)))
+    .filter(r => r.length >= 3 && Math.abs(area(r)) > 5);
   if (rings.length) HATCH_RINGS.push(rings);
 }
 let xa = 1e9, xb = -1e9, na = 1e9, nb = -1e9;
@@ -145,6 +150,46 @@ for (const rings of HATCH_RINGS) {                                            //
     }
   }
 }
+// VIAL PERIMETRAL derivado ("¿puedes unir el camino paralelo al vallado?" / "hay que unir tmb estos"):
+// ANILLO COMPLETO de 3,6 m a 5,5 m por dentro de TODO el vallado (elburgo_layout.fence, cadenas soldadas
+// a 2,8 m). Discos r=1,8 m cada 2 m; los puentes de puntas (que corren después) enganchan la red interior
+// al anillo en la glorieta este, la horquilla norte, etc.
+(function perimetral() {
+  const LAYF = JSON.parse(readFileSync(LAYP, 'utf8'));
+  const fpls = (LAYF.fence || []).map(pl => pl.slice());
+  const usedF = new Array(fpls.length).fill(false), chains = [];
+  for (let fi = 0; fi < fpls.length; fi++) {
+    if (usedF[fi]) continue; usedF[fi] = true; let ch = fpls[fi].slice(), again = true;
+    while (again) { again = false;
+      for (let fj = 0; fj < fpls.length; fj++) { if (usedF[fj]) continue; const q = fpls[fj];
+        const h = ch[0], t = ch[ch.length - 1], qh = q[0], qt = q[q.length - 1];
+        if (Math.hypot(t[0] - qh[0], t[1] - qh[1]) < 2.8) { ch = ch.concat(q.slice(1)); usedF[fj] = true; again = true; }
+        else if (Math.hypot(t[0] - qt[0], t[1] - qt[1]) < 2.8) { ch = ch.concat(q.slice(0, -1).reverse()); usedF[fj] = true; again = true; }
+        else if (Math.hypot(h[0] - qt[0], h[1] - qt[1]) < 2.8) { ch = q.slice(0, -1).concat(ch); usedF[fj] = true; again = true; }
+        else if (Math.hypot(h[0] - qh[0], h[1] - qh[1]) < 2.8) { ch = q.slice(1).reverse().concat(ch); usedF[fj] = true; again = true; } } }
+    chains.push(ch);
+  }
+  let cx = 0, cn = 0, np = 0; chains.forEach(ch => ch.forEach(p => { cx += p[0]; cn += p[1]; np++; })); cx /= np; cn /= np;
+  const R2 = Math.round(1.8 / RES); let painted = 0, meters = 0;
+  chains.forEach(ch => {
+    let clen = 0; for (let i = 0; i + 1 < ch.length; i++) clen += Math.hypot(ch[i + 1][0] - ch[i][0], ch[i + 1][1] - ch[i][1]);
+    if (clen < 80) return;
+    for (let i = 0; i + 1 < ch.length; i++) {
+      const A = ch[i], B = ch[i + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 0.5) continue;
+      const ux = (B[0] - A[0]) / L, un = (B[1] - A[1]) / L;
+      for (let t = 0; t <= L; t += 2) {
+        const px = A[0] + ux * t, pn = A[1] + un * t;
+        const c1 = [px - un * 5.5, pn + ux * 5.5], c2 = [px + un * 5.5, pn - ux * 5.5];
+        const p = (Math.hypot(c1[0] - cx, c1[1] - cn) < Math.hypot(c2[0] - cx, c2[1] - cn)) ? c1 : c2;   // el lado INTERIOR = el más cercano al centroide del vallado
+        const gi = Math.round((p[0] - x0) / RES - 0.5), gj = Math.round((p[1] - n0) / RES - 0.5);
+        for (let dj = -R2; dj <= R2; dj++) for (let di = -R2; di <= R2; di++) if (di * di + dj * dj <= R2 * R2) {
+          const ii = gi + di, jj = gj + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H && !M[jj * W + ii]) { M[jj * W + ii] = 1; painted++; } }
+        meters += 2;
+      }
+    }
+  });
+  console.log('perimetral derivado (anillo completo): ~' + meters + ' m recorridos · ' + (painted * RES * RES).toFixed(0) + ' m² nuevos');
+})();
 // PUENTES DERIVADOS ("aquí hay que unir los dos caminos"): el bloque deja tramos sin sombrear entre
 // hatches. Genérico: se trazan los lazos preliminares, se detectan PUNTAS MUERTAS (giro ≥123° en un
 // vértice) y desde cada punta se avanza por su bisectriz exterior: si reaparece firme a ≤48 m, se pinta
@@ -162,15 +207,29 @@ for (const rings of HATCH_RINGS) {                                            //
       }
     }
   }
-  const filled = (x, n) => { const gi = Math.round((x - x0) / RES - 0.5), gj = Math.round((n - n0) / RES - 0.5);
-    return gi >= 0 && gj >= 0 && gi < W && gj < H && M[gj * W + gi]; };
+  // componentes conexas ANTES de puentear: un puente solo procede si une componentes DISTINTAS — desde
+  // las puntas de la "flecha" de la entrada salían puentes redundantes sobre zona ya conectada y el
+  // cierre los fundía en un borde ondulado ("debe ser recto")
+  const lbl = new Int32Array(W * H); { let nl = 0; const stack = [];
+    for (let s = 0; s < W * H; s++) { if (!M[s] || lbl[s]) continue; nl++; stack.push(s); lbl[s] = nl;
+      while (stack.length) { const c = stack.pop(), ci = c % W, cj = (c / W) | 0;
+        [[ci - 1, cj], [ci + 1, cj], [ci, cj - 1], [ci, cj + 1]].forEach(([ii, jj]) => {
+          if (ii < 0 || jj < 0 || ii >= W || jj >= H) return; const q = jj * W + ii;
+          if (M[q] && !lbl[q]) { lbl[q] = nl; stack.push(q); } }); } } }
+  const compAt = (x, n) => { const gi = Math.round((x - x0) / RES - 0.5), gj = Math.round((n - n0) / RES - 0.5);
+    return (gi >= 0 && gj >= 0 && gi < W && gj < H) ? lbl[gj * W + gi] : 0; };
+  const filled = (x, n) => compAt(x, n) > 0;
   const pre = traceMask(M, W, H, x0, n0);
   let made = 0;
   function tryBridge(qx, qn, bx, bn2, tag) {
     const bl = Math.hypot(bx, bn2) || 1e-9; bx /= bl; bn2 /= bl;
-    let reach = 0;
-    for (let t = 4; t <= 48; t += RES) { if (filled(qx + bx * t, qn + bn2 * t)) { reach = t + 2; break; } }
+    let own = 0;                                                              // componente propia: muestrea hacia atrás desde la punta
+    for (let t = 0; t <= 3 && !own; t += 0.4) own = compAt(qx - bx * t, qn - bn2 * t);
+    let reach = 0, hit = 0;
+    for (let t = 4; t <= 48; t += RES) { hit = compAt(qx + bx * t, qn + bn2 * t); if (hit) { reach = t + 2; break; } }
     if (!reach) return;
+    if (own && hit === own && reach > 8) return;                              // misma componente y no es un mero sellado corto: redundante
+    if (tag === 'agudo' && reach > 8) return;                                 // los PICOS agudos (puntas de la "flecha" de la entrada) no son extremos de camino: solo sellados cortos; los puentes largos, solo desde tapas cuadradas
     const px = -bn2 * 1.8, pn = bx * 1.8;                                     // medio ancho 1,8 m
     paintQuad([[qx + px - bx * 2, qn + pn - bn2 * 2], [qx - px - bx * 2, qn - pn - bn2 * 2],
                [qx - px + bx * reach, qn - pn + bn2 * reach], [qx + px + bx * reach, qn + pn + bn2 * reach]]);
@@ -194,31 +253,6 @@ for (const rings of HATCH_RINGS) {                                            //
     }
   });
   console.log('puentes derivados:', made);
-})();
-// VIAL PERIMETRAL SUR derivado ("¿puedes unir el camino paralelo al vallado?"): banda de 3,6 m a 5,5 m
-// por dentro de la valla, desde la explanada de la entrada SW, por el corredor sur y la valla este,
-// hasta la glorieta/cabo este de la calle del CT Sur (221,-188). Discos de r=1,8 m cada 2 m.
-(function perimetral() {
-  const F = [[-393, 33], [203, -354], [231, -280], [235, -110]];              // cadena de valla SW→SE→NE (elburgo_layout.fence, tramos sur/este)
-  const pts = [];
-  for (let s = 0; s + 1 < F.length; s++) {
-    const A = F[s], B = F[s + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]);
-    const ux = (B[0] - A[0]) / L, un = (B[1] - A[1]) / L, nx = -un, nn = ux;  // normal izquierda del avance = interior
-    for (let t = 0; t <= L; t += 2) {
-      const p = [A[0] + ux * t + nx * 5.5, A[1] + un * t + nn * 5.5];
-      if (s === 2 && p[1] > -195) break;                                      // el tramo este muere a la altura de la glorieta
-      pts.push(p);
-    }
-  }
-  const cap = [221.2, -188.3];
-  const last = pts[pts.length - 1], JL = Math.hypot(cap[0] - last[0], cap[1] - last[1]);
-  for (let t = 2; t <= JL + 1.9; t += 2) pts.push([last[0] + (cap[0] - last[0]) * t / JL, last[1] + (cap[1] - last[1]) * t / JL]);
-  const R2 = Math.round(1.8 / RES);
-  let painted = 0;
-  pts.forEach(p => { const gi = Math.round((p[0] - x0) / RES - 0.5), gj = Math.round((p[1] - n0) / RES - 0.5);
-    for (let dj = -R2; dj <= R2; dj++) for (let di = -R2; di <= R2; di++) if (di * di + dj * dj <= R2 * R2) {
-      const ii = gi + di, jj = gj + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H && !M[jj * W + ii]) { M[jj * W + ii] = 1; painted++; } } });
-  console.log('perimetral sur derivado: ~' + (pts.length * 2) + ' m · ' + (painted * RES * RES).toFixed(0) + ' m² nuevos');
 })();
 // morfología con núcleo CIRCULAR (sellos por celda llena): filetes redondos, no chaflanes cuadrados
 function diskDilate(src, R) {
