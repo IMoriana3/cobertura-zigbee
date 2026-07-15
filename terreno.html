@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.36</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.37</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1044,6 +1044,22 @@ function buildNetLayer(key){
     var tim=new THREE.InstancedMesh(tg2,tm2,PK.length),_tm2=new THREE.Matrix4();
     for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],localElevY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
+  }
+  if(key==='earth_lat'&&TRK.length){   // el trazo del plano es SIMBÓLICO (~1 m junto al conductor) y el primer poste del modelo queda unos metros más adentro ("no llega al primer soporte, se queda en el pasillo"): cada latiguillo se PROLONGA desde su extremo más cercano hasta el pie de ese poste (≤6 m; los de equipos/valla se quedan como están)
+    var PST=[];TRK.forEach(function(t){var hp=t.medio?9:28;
+      [[t.gx-3,-t.gz+hp],[t.gx+3,-t.gz+hp],[t.gx-3,-t.gz-hp],[t.gx+3,-t.gz-hp]].forEach(function(p){PST.push(p);});});
+    var ev=[],next=0;
+    NET.layers.earth_lat.forEach(function(pl){if(pl.length<2)return;
+      var best=null;
+      [pl[0],pl[pl.length-1]].forEach(function(ep){for(var k3=0;k3<PST.length;k3++){var d3=Math.hypot(PST[k3][0]-ep[0],PST[k3][1]-ep[1]);
+        if(d3<6&&(!best||d3<best.d))best={d:d3,ep:ep,p:PST[k3]};}});
+      if(!best||best.d<0.3)return;next++;
+      var st5=Math.max(1,Math.round(best.d/2));
+      for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=best.ep[0]+(best.p[0]-best.ep[0])*t0,an4=best.ep[1]+(best.p[1]-best.ep[1])*t0,bx4=best.ep[0]+(best.p[0]-best.ep[0])*t1,bn4=best.ep[1]+(best.p[1]-best.ep[1])*t1;
+        ev.push(ax4,localElevY(ax4,an4)+0.13,-an4,bx4,localElevY(bx4,bn4)+0.13,-bn4);}
+      ev.push(best.p[0],localElevY(best.p[0],best.p[1])+0.02,-best.p[1],best.p[0],localElevY(best.p[0],best.p[1])+0.45,-best.p[1]);});   // remate vertical en el poste (grapa)
+    if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
+      g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
   if(key==='trench_n3'&&PLANT==='elburgo'&&LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length){   // + RUTAS AC inversor→CT derivadas de los corredores reales: la zanja N3 del DWG solo trae 41 tramos sueltos junto a los CTs — "faltaba" el resto del recorrido
     invByCT();if(!INVPOS.length)computeInvPos();
