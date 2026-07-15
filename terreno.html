@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.37</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.38</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1006,7 +1006,7 @@ function renderPost(dt){ if(!postScene)return;_grainMat.uniforms.uT.value=(_grai
 // Datos REALES extraídos de los DWG (tools/extract_dwg_networks.mjs → elburgo_networks.json) en coords locales E/N.
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
 var NET=null,netG={};
-var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.12},earth_lat:{c:0xb4e84a,off:.13},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
+var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.16},earth_lat:{c:0xb4e84a,off:.17},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
 var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.json: 823 strings g.i.t.s con posición)
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
   fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
@@ -1016,9 +1016,9 @@ function buildNetLayer(key){
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return null;
   var d=NETDEF[key]||{c:0xffffff,off:.2},g=new THREE.Group();
   if(key==='cam_range'){   // alcance de cámaras: sectores RELLENOS translúcidos (apex = cámara) + contorno → se ve claro, no como hilos
-    var tri=[],ln=[],P=function(p){return [p[0],localElevY(p[0],p[1])+d.off,-p[1]];};
+    var tri=[],ln=[],P=function(p){return [p[0],terrainMeshY(p[0],p[1])+d.off,-p[1]];};
     var subTri=function(A2,B2,C2){var NS=6;                 // subdivisión baricéntrica DRAPEADA: los triángulos del abanico median 40-80 m y planos se enterraban en las lomas ("no siguen el terreno y desaparecen")
-      function bp(i2,j2){var u=i2/NS,v=j2/NS,w2=1-u-v;var x=A2[0]*w2+B2[0]*u+C2[0]*v,n=A2[1]*w2+B2[1]*u+C2[1]*v;return [x,localElevY(x,n)+d.off,-n];}
+      function bp(i2,j2){var u=i2/NS,v=j2/NS,w2=1-u-v;var x=A2[0]*w2+B2[0]*u+C2[0]*v,n=A2[1]*w2+B2[1]*u+C2[1]*v;return [x,terrainMeshY(x,n)+d.off,-n];}
       for(var i2=0;i2<NS;i2++)for(var j2=0;j2<NS-i2;j2++){
         var p1=bp(i2,j2),p2=bp(i2+1,j2),p3=bp(i2,j2+1);tri.push(p1[0],p1[1],p1[2],p2[0],p2[1],p2[2],p3[0],p3[1],p3[2]);
         if(i2+j2<NS-1){var p4=bp(i2+1,j2+1);tri.push(p2[0],p2[1],p2[2],p4[0],p4[1],p4[2],p3[0],p3[1],p3[2]);}}};
@@ -1036,28 +1036,28 @@ function buildNetLayer(key){
     var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m): drapea el relieve
       var hz=(a[2]===1&&b[2]===1)?1.45:d.off;   // tramos [x,n,1] = arnés COLGADO BAJO el tubo (eje a 2,0 m): 1,45 deja margen al barrido de módulos y al drapeado — a 1,72 en vaguadas atravesaba la viga
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
-        v.push(ax,localElevY(ax,an)+hz,-an,bx,localElevY(bx,bn)+hz,-bn);}}});
+        v.push(ax,terrainMeshY(ax,an)+hz,-an,bx,terrainMeshY(bx,bn)+hz,-bn);}}});
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
   if(key==='earth'&&NET.layers.earth_pica&&NET.layers.earth_pica.length){   // PICAS del plano RDT-1 (INSERTs "Pica PAT" del DWG de tierras, 42≈44 del cuadro): cilindro instanciado en cada posición EXACTA. Los latiguillos de equipotencialidad son la capa earth_lat (EE_Latiguillo Desnudo, 468 trazos reales) — fuera toda la PAT derivada anterior ("quita las que tienes y ponla así")
     var PK=NET.layers.earth_pica,tg2=new THREE.CylinderGeometry(0.05,0.05,0.65,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});
     var tim=new THREE.InstancedMesh(tg2,tm2,PK.length),_tm2=new THREE.Matrix4();
-    for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],localElevY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
+    for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
   }
-  if(key==='earth_lat'&&TRK.length){   // el trazo del plano es SIMBÓLICO (~1 m junto al conductor) y el primer poste del modelo queda unos metros más adentro ("no llega al primer soporte, se queda en el pasillo"): cada latiguillo se PROLONGA desde su extremo más cercano hasta el pie de ese poste (≤6 m; los de equipos/valla se quedan como están)
-    var PST=[];TRK.forEach(function(t){var hp=t.medio?9:28;
-      [[t.gx-3,-t.gz+hp],[t.gx+3,-t.gz+hp],[t.gx-3,-t.gz-hp],[t.gx+3,-t.gz-hp]].forEach(function(p){PST.push(p);});});
+  if(key==='earth_lat'&&TRK.length){   // el trazo del plano es SIMBÓLICO (~1 m junto al conductor): cada latiguillo se PROLONGA desde su extremo más cercano hasta el pie del poste REAL más próximo — TODOS los postes de ambas vigas (zP ±28/±9; medio solo ±9), no solo los exteriores: donde el conductor cruza a media fila, el poste bueno es uno intermedio ("ni un latiguillo va a los soportes")
+    var PST=[];TRK.forEach(function(t){var zs=t.medio?[-9,9]:[-28,-9,9,28];
+      zs.forEach(function(zp){PST.push([t.gx-3,-t.gz+zp],[t.gx+3,-t.gz+zp]);});});
     var ev=[],next=0;
     NET.layers.earth_lat.forEach(function(pl){if(pl.length<2)return;
       var best=null;
       [pl[0],pl[pl.length-1]].forEach(function(ep){for(var k3=0;k3<PST.length;k3++){var d3=Math.hypot(PST[k3][0]-ep[0],PST[k3][1]-ep[1]);
-        if(d3<6&&(!best||d3<best.d))best={d:d3,ep:ep,p:PST[k3]};}});
+        if(d3<8&&(!best||d3<best.d))best={d:d3,ep:ep,p:PST[k3]};}});
       if(!best||best.d<0.3)return;next++;
       var st5=Math.max(1,Math.round(best.d/2));
       for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=best.ep[0]+(best.p[0]-best.ep[0])*t0,an4=best.ep[1]+(best.p[1]-best.ep[1])*t0,bx4=best.ep[0]+(best.p[0]-best.ep[0])*t1,bn4=best.ep[1]+(best.p[1]-best.ep[1])*t1;
-        ev.push(ax4,localElevY(ax4,an4)+0.13,-an4,bx4,localElevY(bx4,bn4)+0.13,-bn4);}
-      ev.push(best.p[0],localElevY(best.p[0],best.p[1])+0.02,-best.p[1],best.p[0],localElevY(best.p[0],best.p[1])+0.45,-best.p[1]);});   // remate vertical en el poste (grapa)
+        ev.push(ax4,terrainMeshY(ax4,an4)+0.17,-an4,bx4,terrainMeshY(bx4,bn4)+0.17,-bn4);}
+      ev.push(best.p[0],terrainMeshY(best.p[0],best.p[1])+0.02,-best.p[1],best.p[0],terrainMeshY(best.p[0],best.p[1])+0.45,-best.p[1]);});   // remate vertical en el poste (grapa)
     if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
       g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
@@ -1071,7 +1071,7 @@ function buildNetLayer(key){
       var rt=_lroute(a2.x,a2.n,ct2.x,ct2.n);
       rt.seg.forEach(function(sg){var st3=Math.max(1,Math.min(14,Math.round(sg.l/7)));
         for(var s3=0;s3<st3;s3++){var t0=s3/st3,t1=(s3+1)/st3,ax2=sg.a[0]+(sg.b[0]-sg.a[0])*t0,an2=sg.a[1]+(sg.b[1]-sg.a[1])*t0,bx2=sg.a[0]+(sg.b[0]-sg.a[0])*t1,bn2=sg.a[1]+(sg.b[1]-sg.a[1])*t1;
-          rv2.push(ax2,localElevY(ax2,an2)+0.09,-an2,bx2,localElevY(bx2,bn2)+0.09,-bn2);}});}
+          rv2.push(ax2,terrainMeshY(ax2,an2)+0.09,-an2,bx2,terrainMeshY(bx2,bn2)+0.09,-bn2);}});}
     if(rv2.length){var rg2=new THREE.BufferGeometry();rg2.setAttribute('position',new THREE.Float32BufferAttribute(rv2,3));
       g.add(new THREE.LineSegments(rg2,new THREE.LineBasicMaterial({color:0xffb066,transparent:true,opacity:.5})));}   // tono claro translúcido = trazado derivado, no líneas del DWG
   }
@@ -1313,7 +1313,7 @@ function buildBOS(){
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
   // viales: tierra compactada drapeada sobre el terreno, que recibe la sombra de los seguidores
-  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}),rv=[];   // polygonOffset: a +9 cm del terreno, a distancia la precisión de profundidad empataba y moteaba el firme ("marcas negras"/damero)
+  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];   // SIN polygonOffset: a rasante desplazaba la profundidad del firme y se comía las líneas de red drapeadas encima (conductor de tierras invisible); el margen anti-motas lo da +12 cm sobre la malla
   if(LAYOUT.roadSurfaces&&LAYOUT.roadSurfaces.length&&THREE.ShapeUtils){
     // SUPERFICIES REALES del firme (HATCH del bloque Viales, con acuerdos en arco y huecos): el bloque no
     // trae ejes con ancho — dibujar sus bordes como cintas creaba "dos caminos en paralelo donde hay uno"
@@ -1333,7 +1333,7 @@ function buildBOS(){
           else{m=c.clone().add(a).multiplyScalar(0.5);emit(a,b,m,depth+1);emit(m,b,c,depth+1);}
           return;}
         var cz=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x),B2=cz>0?b:c,C2=cz>0?c:b;
-        [a,B2,C2].forEach(function(p){sv.push(p.x,terrainMeshY(p.x,p.y)+0.09,-p.y);});
+        [a,B2,C2].forEach(function(p){sv.push(p.x,terrainMeshY(p.x,p.y)+0.12,-p.y);});
       }
       tris.forEach(function(f){emit(all[f[0]],all[f[1]],all[f[2]],0);});
       if(sv.length){var sg2=new THREE.BufferGeometry();sg2.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));sg2.computeVertexNormals();
