@@ -130,7 +130,7 @@ for (const e of blk.entities) {
 }
 let xa = 1e9, xb = -1e9, na = 1e9, nb = -1e9;
 HATCH_RINGS.forEach(rs => rs.forEach(r => r.forEach(p => { xa = Math.min(xa, p[0]); xb = Math.max(xb, p[0]); na = Math.min(na, p[1]); nb = Math.max(nb, p[1]); })));
-const x0 = xa - 8 * RES, n0 = na - 8 * RES, W = Math.ceil((xb - xa) / RES) + 16, H = Math.ceil((nb - na) / RES) + 16;
+const x0 = xa - 32 * RES, n0 = na - 32 * RES, W = Math.ceil((xb - xa) / RES) + 64, H = Math.ceil((nb - na) / RES) + 64;   // margen 12,8 m: el perimetral derivado junto a la valla cae fuera del bbox de los hatches
 const M = new Uint8Array(W * H);
 for (const rings of HATCH_RINGS) {                                            // par-impar POR HATCH, unión al global
   for (let j = 0; j < H; j++) {
@@ -195,20 +195,55 @@ for (const rings of HATCH_RINGS) {                                            //
   });
   console.log('puentes derivados:', made);
 })();
-// cierre morfológico r=4 celdas (1,6 m) con imagen integral: suelda juntas ≤3 m sin engordar bordes
-function boxPass(src, test) {
-  const I = new Float64Array((W + 1) * (H + 1));
-  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++)
-    I[(j + 1) * (W + 1) + i + 1] = src[j * W + i] + I[j * (W + 1) + i + 1] + I[(j + 1) * (W + 1) + i] - I[j * (W + 1) + i];
-  const dst = new Uint8Array(W * H), R = 4;
+// VIAL PERIMETRAL SUR derivado ("¿puedes unir el camino paralelo al vallado?"): banda de 3,6 m a 5,5 m
+// por dentro de la valla, desde la explanada de la entrada SW, por el corredor sur y la valla este,
+// hasta la glorieta/cabo este de la calle del CT Sur (221,-188). Discos de r=1,8 m cada 2 m.
+(function perimetral() {
+  const F = [[-393, 33], [203, -354], [231, -280], [235, -110]];              // cadena de valla SW→SE→NE (elburgo_layout.fence, tramos sur/este)
+  const pts = [];
+  for (let s = 0; s + 1 < F.length; s++) {
+    const A = F[s], B = F[s + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const ux = (B[0] - A[0]) / L, un = (B[1] - A[1]) / L, nx = -un, nn = ux;  // normal izquierda del avance = interior
+    for (let t = 0; t <= L; t += 2) {
+      const p = [A[0] + ux * t + nx * 5.5, A[1] + un * t + nn * 5.5];
+      if (s === 2 && p[1] > -195) break;                                      // el tramo este muere a la altura de la glorieta
+      pts.push(p);
+    }
+  }
+  const cap = [221.2, -188.3];
+  const last = pts[pts.length - 1], JL = Math.hypot(cap[0] - last[0], cap[1] - last[1]);
+  for (let t = 2; t <= JL + 1.9; t += 2) pts.push([last[0] + (cap[0] - last[0]) * t / JL, last[1] + (cap[1] - last[1]) * t / JL]);
+  const R2 = Math.round(1.8 / RES);
+  let painted = 0;
+  pts.forEach(p => { const gi = Math.round((p[0] - x0) / RES - 0.5), gj = Math.round((p[1] - n0) / RES - 0.5);
+    for (let dj = -R2; dj <= R2; dj++) for (let di = -R2; di <= R2; di++) if (di * di + dj * dj <= R2 * R2) {
+      const ii = gi + di, jj = gj + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H && !M[jj * W + ii]) { M[jj * W + ii] = 1; painted++; } } });
+  console.log('perimetral sur derivado: ~' + (pts.length * 2) + ' m · ' + (painted * RES * RES).toFixed(0) + ' m² nuevos');
+})();
+// morfología con núcleo CIRCULAR (sellos por celda llena): filetes redondos, no chaflanes cuadrados
+function diskDilate(src, R) {
+  const ks = [];
+  for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) if (di * di + dj * dj <= R * R) ks.push([di, dj]);
+  const dst = new Uint8Array(W * H);
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    const i0 = Math.max(0, i - R), i1 = Math.min(W - 1, i + R), j0 = Math.max(0, j - R), j1 = Math.min(H - 1, j + R);
-    const s = I[(j1 + 1) * (W + 1) + i1 + 1] - I[j0 * (W + 1) + i1 + 1] - I[(j1 + 1) * (W + 1) + i0] + I[j0 * (W + 1) + i0];
-    dst[j * W + i] = test(s, (i1 - i0 + 1) * (j1 - j0 + 1)) ? 1 : 0;
+    if (!src[j * W + i]) continue;
+    for (const [di, dj] of ks) { const ii = i + di, jj = j + dj;
+      if (ii >= 0 && jj >= 0 && ii < W && jj < H) dst[jj * W + ii] = 1; }
   }
   return dst;
 }
-let MM = boxPass(boxPass(M, s => s > 0), (s, n2) => s >= n2);                 // dilate → erode
+function diskErode(src, R) {
+  const inv = new Uint8Array(W * H);
+  for (let s = 0; s < W * H; s++) inv[s] = src[s] ? 0 : 1;
+  const d = diskDilate(inv, R), dst = new Uint8Array(W * H);
+  for (let s = 0; s < W * H; s++) dst[s] = d[s] ? 0 : 1;
+  return dst;
+}
+// (1) +1 celda de ancho a TODO el firme: el hatch de la calle interior mide 2,8 m en el DWG (el "ancho"
+//     que se ve en AutoCAD suma sus polilíneas de borde, ≈3,6 m): a 2,8 el render quedaba esquelético
+//     ("¿por qué se estrecha?"). (2) CIERRE con disco de 7 celdas (2,8 m): suelda juntas ≤5,6 m y deja
+//     ACUERDOS REDONDEADOS en las uniones ("la unión la has hecho muy abrupta"), como los del plano.
+let MM = diskErode(diskDilate(diskDilate(M, 1), 7), 7);
 // recorte bajo seguidores (+0,8 m): el lazo del DWG "Viales-Ext" atraviesa dos filas del layout actual
 const LAYpre = JSON.parse(readFileSync(LAYP, 'utf8'));
 (LAYpre.trackers || []).forEach(t => {
