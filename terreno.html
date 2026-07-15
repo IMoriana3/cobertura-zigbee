@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.42</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.43</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1032,7 +1032,7 @@ function buildNetLayer(key){
       if(pl.length>=3)subLn(pl[pl.length-1],pl[0]);});   // cierra el sector
     if(tri.length){var tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute(tri,3));tg.computeVertexNormals();g.add(new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:d.c,transparent:true,opacity:.16,side:THREE.DoubleSide,depthWrite:false})));}
     if(ln.length){var lgg=new THREE.BufferGeometry();lgg.setAttribute('position',new THREE.Float32BufferAttribute(ln,3));g.add(new THREE.LineSegments(lgg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.65})));}
-  } else {
+  } else if(key!=='earth_lat'||!TRK.length) {
     var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m): drapea el relieve
       var hz=(a[2]===1&&b[2]===1)?1.45:d.off;   // tramos [x,n,1] = arnés COLGADO BAJO el tubo (eje a 2,0 m): 1,45 deja margen al barrido de módulos y al drapeado — a 1,72 en vaguadas atravesaba la viga
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
@@ -1044,6 +1044,50 @@ function buildNetLayer(key){
     var tim=new THREE.InstancedMesh(tg2,tm2,PK.length),_tm2=new THREE.Matrix4();
     for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
+  }
+  if(key==='earth_lat'&&TRK.length){   // LATIGUILLOS con GARANTÍA POR POSTE: el trazo del RDT-1 es simbólico (~1 m, no toca el poste). Regla física del plano: cada poste de CABECERA junto al conductor se conecta con un salto corto conductor→poste. Sin depender del trazo → cobertura completa y uniforme ("mal, igual que hace 12 iteraciones" era la vuelta al trazo crudo)
+    var PST=[],_pm=new THREE.Matrix4();
+    if(typeof imPost!=='undefined'&&imPost&&TC.np&&TC.zP){var zl=TC.zP.length;
+      for(var ti=0;ti<TRK.length;ti++)for(var f5=0;f5<2;f5++){
+        [[0,1],[zl-1,zl-2]].forEach(function(ks){
+          for(var kq=0;kq<ks.length;kq++){imPost.getMatrixAt(ti*TC.np+f5*zl+ks[kq],_pm);
+            if(Math.abs(_pm.elements[0])>0.01){PST.push([_pm.elements[12],-_pm.elements[14]]);break;}}});}}
+    var ES4=[];(NET.layers.earth||[]).forEach(function(pl){for(var i8=0;i8+1<pl.length;i8++)ES4.push([pl[i8],pl[i8+1]]);});
+    function nearCond(x,n,cap){var bd=cap,bp=null;
+      for(var k4=0;k4<ES4.length;k4++){var a4=ES4[k4][0],b4=ES4[k4][1],dx4=b4[0]-a4[0],dn4=b4[1]-a4[1],L4=dx4*dx4+dn4*dn4||1e-9;
+        var t4=((x-a4[0])*dx4+(n-a4[1])*dn4)/L4;t4=Math.max(0,Math.min(1,t4));
+        var px4=a4[0]+t4*dx4,pn4=a4[1]+t4*dn4,d4=Math.hypot(x-px4,n-pn4);
+        if(d4<bd){bd=d4;bp=[px4,pn4];}}
+      return bp;}
+    var ev=[];
+    function hop(cp,pt,grapa){var st5=Math.max(1,Math.round(Math.hypot(pt[0]-cp[0],pt[1]-cp[1])/2));
+      for(var s6=0;s6<st5;s6++){var t0=s6/st5,t1=(s6+1)/st5,ax4=cp[0]+(pt[0]-cp[0])*t0,an4=cp[1]+(pt[1]-cp[1])*t0,bx4=cp[0]+(pt[0]-cp[0])*t1,bn4=cp[1]+(pt[1]-cp[1])*t1;
+        ev.push(ax4,terrainMeshY(ax4,an4)+0.17,-an4,bx4,terrainMeshY(bx4,bn4)+0.17,-bn4);}
+      if(grapa)ev.push(pt[0],terrainMeshY(pt[0],pt[1])+0.02,-pt[1],pt[0],terrainMeshY(pt[0],pt[1])+0.45,-pt[1]);}
+    for(var pi9=0;pi9<PST.length;pi9++){var P9=PST[pi9],c9=nearCond(P9[0],P9[1],6.5);   // GARANTÍA: todo poste de cabecera con conductor a ≤6,5 m
+      if(c9&&Math.hypot(c9[0]-P9[0],c9[1]-P9[1])>0.25)hop(c9,P9,true);}
+    // trazos que NO son de seguidor (valla/equipos): se cierran contra su objeto; si no hay, se dibujan tal cual
+    var FSEG=[];(LAYOUT.fence||[]).forEach(function(pl){for(var i9=0;i9+1<pl.length;i9++)FSEG.push([pl[i9],pl[i9+1]]);});
+    var EQ=[];(CTMAIN||[]).forEach(function(c){EQ.push([c.x,c.n]);});if(typeof SUBST!=='undefined')EQ.push([SUBST.x,SUBST.n]);
+    ((LAYOUT.meteo)||[]).forEach(function(m){EQ.push([m.x,m.n]);});((LAYOUT.ncus)||[]).forEach(function(m){EQ.push([m.x,m.n]);});
+    NET.layers.earth_lat.forEach(function(pl){if(pl.length<2)return;
+      var A=pl[0],B=pl[pl.length-1],nearPost=false;
+      [A,B].forEach(function(ep){for(var k3=0;k3<PST.length;k3++)if(Math.hypot(PST[k3][0]-ep[0],PST[k3][1]-ep[1])<6){nearPost=true;break;}});
+      if(nearPost)return;   // de seguidor: ya cubierto por la garantía
+      var mx9=(A[0]+B[0])/2,mn9=(A[1]+B[1])/2,tgt=null,btd=6;
+      for(var f9=0;f9<FSEG.length;f9++){var a9=FSEG[f9][0],b9=FSEG[f9][1],dx9=b9[0]-a9[0],dn9=b9[1]-a9[1],L9=dx9*dx9+dn9*dn9||1e-9;
+        var t9=((mx9-a9[0])*dx9+(mn9-a9[1])*dn9)/L9;t9=Math.max(0,Math.min(1,t9));
+        var qx=a9[0]+t9*dx9,qn=a9[1]+t9*dn9,d9=Math.hypot(mx9-qx,mn9-qn);if(d9<btd){btd=d9;tgt=[qx,qn];}}
+      if(!tgt){btd=8;for(var e9=0;e9<EQ.length;e9++){var d10=Math.hypot(EQ[e9][0]-mx9,EQ[e9][1]-mn9);if(d10<btd){btd=d10;tgt=EQ[e9];}}}
+      var c10=nearCond(mx9,mn9,9);
+      if(tgt&&c10){hop(c10,tgt,false);return;}
+      for(var i7=0;i7+1<pl.length;i7++){var a7=pl[i7],b7=pl[i7+1],st7=Math.max(1,Math.round(Math.hypot(b7[0]-a7[0],b7[1]-a7[1])/4));
+        for(var s7=0;s7<st7;s7++){var u0=s7/st7,u1=(s7+1)/st7;
+          ev.push(a7[0]+(b7[0]-a7[0])*u0,terrainMeshY(a7[0]+(b7[0]-a7[0])*u0,a7[1]+(b7[1]-a7[1])*u0)+0.17,-(a7[1]+(b7[1]-a7[1])*u0),
+                  a7[0]+(b7[0]-a7[0])*u1,terrainMeshY(a7[0]+(b7[0]-a7[0])*u1,a7[1]+(b7[1]-a7[1])*u1)+0.17,-(a7[1]+(b7[1]-a7[1])*u1));}}
+    });
+    if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
+      g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
   if(key==='trench_n3'&&PLANT==='elburgo'&&LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length){   // + RUTAS AC inversor→CT derivadas de los corredores reales: la zanja N3 del DWG solo trae 41 tramos sueltos junto a los CTs — "faltaba" el resto del recorrido
     invByCT();if(!INVPOS.length)computeInvPos();
