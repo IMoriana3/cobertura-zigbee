@@ -43,7 +43,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.44</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.45</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -53,7 +53,6 @@
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
     <div class="row"><label title="Capa de inversores (DC, El Burgo): tiñe la huella de cada seguidor por su inversor y dibuja el cableado string→inversor sobre el terreno. Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
-    <div class="row"><label title="Zonas y recintos del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio) con carteles flotantes. Aditiva."><input type="checkbox" id="zones"> 🏷️ Zonas y recintos</label></div>
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG · El Burgo)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
@@ -1713,40 +1712,6 @@ function updateLabels(){
     m.opacity+=(tgt-m.opacity)*0.25;if(Math.abs(m.opacity-tgt)<0.02)m.opacity=tgt;
   }
 }
-// ===== Capa ZONAS Y RECINTOS (El Burgo): carteles ámbar del DWG (Oficinas, Sala control, Sala autoconsumo, Acopio).
-// Aditiva (grupo propio, perezosa). Distintos de las etiquetas de elemento: ámbar, mástil + base, más grandes.
-var zoneGroup=null,zonesOn=false;
-function makeZoneLabel(text){
-  text=String(text==null?'':text).toUpperCase();
-  var dpr=2,fs=30,padX=20,padY=11,font='700 '+fs+'px system-ui,Segoe UI,Roboto,Arial,sans-serif';
-  var mc=document.createElement('canvas').getContext('2d');mc.font=font;
-  var tw=Math.ceil(mc.measureText(text).width),W=tw+padX*2,H=fs+padY*2;
-  var c=document.createElement('canvas');c.width=W*dpr;c.height=H*dpr;var g=c.getContext('2d');g.scale(dpr,dpr);
-  var r=10;g.beginPath();g.moveTo(r,0);g.arcTo(W,0,W,H,r);g.arcTo(W,H,0,H,r);g.arcTo(0,H,0,0,r);g.arcTo(0,0,W,0,r);g.closePath();
-  g.fillStyle='rgba(22,17,8,.86)';g.fill();g.lineWidth=2.5;g.strokeStyle='rgba(246,166,35,.9)';g.stroke();
-  g.fillStyle='#ffd98a';g.font=font;g.textAlign='center';g.textBaseline='middle';g.fillText(text,W/2,H/2+1);
-  var tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;tex.anisotropy=4;
-  var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
-  sp.renderOrder=995;
-  var h=5.2;sp.scale.set(h*W/H,h,1);
-  sp.userData.pill={baseH:h,asp:W/H,kind:'poi'};ALLPILLS.push(sp);
-  return sp;
-}
-function buildZoneLayer(){
-  if(zoneGroup){scene.remove(zoneGroup);zoneGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});zoneGroup=null;}
-  if(!LAYOUT||!LAYOUT.ctlab||!LAYOUT.ctlab.length)return;
-  zoneGroup=new THREE.Group();zoneGroup.visible=zonesOn;scene.add(zoneGroup);
-  var poleM=new THREE.MeshStandardMaterial({color:0xf6a623,roughness:.5,metalness:.3}),seen={};
-  LAYOUT.ctlab.forEach(function(c){
-    if(Math.abs(c.x)>1500||Math.abs(c.n)>1500)return;   // descarta entradas con coords UTM crudas (bug de extracción)
-    var k=c.s+'@'+Math.round(c.x)+','+Math.round(c.n);if(seen[k])return;seen[k]=1;
-    var y=localElevY(c.x,c.n),px=c.x,pz=-c.n,top=y+6.5;
-    var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,top-y,6),poleM);pole.position.set(px,(y+top)/2,pz);zoneGroup.add(pole);
-    var base=new THREE.Mesh(new THREE.CylinderGeometry(0.55,0.55,0.12,16),poleM);base.position.set(px,y+0.07,pz);zoneGroup.add(base);
-    var lb=makeZoneLabel(c.s);lb.position.set(px,top+0.5,pz);zoneGroup.add(lb);
-  });
-}
-
 /* ───────── EDICIÓN DE SEGUIDORES EN 3D: seleccionar, articular (uno a uno) y recolocar sobre el terreno, con guardado ───────── */
 function resampleTracker(t){ if(!ELEV)return;                          // al mover el seguidor: recalcula cotas y drape del terreno en el nuevo punto
   t.glat=lat0-t.gz/mPerLat;t.glon=lon0+t.gx/mPerLon;
@@ -1766,9 +1731,17 @@ function buildPickBoxes(){                                             // una ca
 }
 function applySavedTrackers(){                                         // al abrir: aplica posición y "articulado" guardados (por id del DWG) antes del primer layout
   var raw;try{raw=localStorage.getItem('cob3d_trackers');}catch(e){return;}if(!raw)return;var o;try{o=JSON.parse(raw);}catch(e){return;}
+  var moved=0;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],s=o[t.id!=null?t.id:('i'+i)];if(!s)continue;
     if(typeof s.artic==='boolean')t.artic=s.artic;
-    if(typeof s.gx==='number'&&typeof s.gz==='number'){t.gx=s.gx;t.gz=s.gz;resampleTracker(t);}}
+    if(typeof s.gx==='number'&&typeof s.gz==='number'){if(Math.hypot(s.gx-t.gx,s.gz-t.gz)>0.05)moved++;t.gx=s.gx;t.gz=s.gz;resampleTracker(t);}}
+  // las ediciones guardadas se re-aplican EN SILENCIO en cada carga y parecen "seguidores mal ubicados"
+  // (no son el plano): aviso visible + restablecimiento total de un clic
+  if(moved){var eb=document.createElement('div');eb.style.cssText='position:fixed;left:12px;bottom:12px;z-index:60;background:rgba(40,30,8,.92);border:1px solid #f6a623;color:#ffd98a;font:12px system-ui;padding:8px 10px;border-radius:10px;display:flex;gap:8px;align-items:center';
+    eb.appendChild(document.createTextNode('\u270F\uFE0F '+moved+' seguidor(es) con posici\u00F3n EDITADA en este navegador (no es el plano)'));
+    var bt=document.createElement('button');bt.textContent='Restablecer plano';bt.style.cssText='font:inherit;background:#f6a623;color:#201503;border:0;border-radius:7px;padding:4px 8px;cursor:pointer';
+    bt.onclick=function(){try{localStorage.removeItem('cob3d_trackers');}catch(e){}location.reload();};
+    eb.appendChild(bt);document.body.appendChild(eb);}
 }
 function saveTrackers(){                                               // guarda TODO el estado (posición + articulado) en el navegador → se reabre igual
   var o={};for(var i=0;i<TRK.length;i++){var t=TRK[i];o[t.id!=null?t.id:('i'+i)]={gx:t.gx,gz:t.gz,artic:!!t.artic};}
@@ -1786,7 +1759,7 @@ $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();if(zoneGroup&&zonesOn)buildZoneLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
@@ -1800,7 +1773,6 @@ $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.check
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;};
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
 $('invl').onchange=function(){invOn=this.checked;if(invOn&&genOn){setGen(false);if($('genflow'))$('genflow').checked=false;}if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D); excluyente con el flujo (ambas pintan los módulos)
-$('zones').onchange=function(){zonesOn=this.checked;if(zonesOn&&!zoneGroup)buildZoneLayer();if(zoneGroup)zoneGroup.visible=zonesOn;};   // capa zonas y recintos (perezosa, aditiva)
 $('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);if(genFlow.cable_pos)genFlow.cable_pos.visible=this.checked&&genOn;};   // redes del DWG: cableado DC +/− (las ondas del flujo lo respetan)
 $('netEarth').onchange=function(){setNet(['earth','earth_lat'],this.checked);};                   // red de tierras
 $('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.checked);}; // zanjas string / string→inversor
