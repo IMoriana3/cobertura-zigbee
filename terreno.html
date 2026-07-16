@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.70</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.71</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1080,14 +1080,20 @@ function buildNetLayer(key){
         v.push(gx1,terrainMeshY(gx1,gn1)+d.off,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off,-gn2);}};
     var PROF=null;                                                          // v4.70: perfil REAL del tubo por fila (nudos = tapas de poste de imPost, con lift/quiebre/vex): el mazo va BRIDADO SOBRE EL PROPIO TUBO, como en las fotos de obra — no colgado a 1,45 m siguiendo el microrrelieve
     if(PSTc){PROF={};for(var q8=0;q8<PSTc.length;q8++){var pq=PSTc[q8];(PROF[pq[3]]=PROF[pq[3]]||[]).push([pq[1],pq[2]]);}
-      for(var r9 in PROF)PROF[r9].sort(function(A,B){return A[0]-B[0];});}
+      for(var r9 in PROF){var Ls=PROF[r9].sort(function(A,B){return A[0]-B[0];}),Lm=[];   // v4.71: FUSIONA el PAR de postes de las dos vigas (misma z de retícula, separados micras por el quiebre): con puntos casi coincidentes la pendiente del "último vano" salía dividida por ~1e-4 y los cables se iban AL CIELO ("La has liado") — en el banco con DEM plano dio 0/1=0 y no saltó
+        for(var w9=0;w9<Ls.length;w9++){var pv=Lm[Lm.length-1];
+          if(pv&&Math.abs(Ls[w9][0]-pv[0])<0.6){pv[0]=(pv[0]*pv[2]+Ls[w9][0])/(pv[2]+1);pv[1]=(pv[1]*pv[2]+Ls[w9][1])/(pv[2]+1);pv[2]++;}
+          else Lm.push([Ls[w9][0],Ls[w9][1],1]);}
+        PROF[r9]=Lm;}}
     var MAZO=0.12;                                                          // el mazo asienta sobre el tubo (eje + media viga + radio del haz)
-    var tubeY=function(r,n){var L=PROF&&PROF[r];if(!L||!L.length)return terrainMeshY(TRK[r].gx,-TRK[r].gz)+TC.postH;
-      if(n<=L[0][0]){var s0=L.length>1?(L[1][1]-L[0][1])/((L[1][0]-L[0][0])||1):0;return L[0][1]+s0*(n-L[0][0]);}     // punteras: prolonga la pendiente del último vano (la viga sigue recta)
-      var m9=L.length-1;
-      if(n>=L[m9][0]){var s1=m9>0?(L[m9][1]-L[m9-1][1])/((L[m9][0]-L[m9-1][0])||1):0;return L[m9][1]+s1*(n-L[m9][0]);}
-      for(var j9=0;j9+1<L.length;j9++){if(n>=L[j9][0]&&n<=L[j9+1][0]){var t9=(n-L[j9][0])/((L[j9+1][0]-L[j9][0])||1);return L[j9][1]+t9*(L[j9+1][1]-L[j9][1]);}}
-      return L[m9][1];};
+    var tubeY=function(r,n){var L=PROF&&PROF[r],y;
+      if(!L||!L.length)y=terrainMeshY(TRK[r].gx,-TRK[r].gz)+TC.postH;
+      else if(L.length===1)y=L[0][1];
+      else if(n<=L[0][0]){var s0=Math.max(-0.6,Math.min(0.6,(L[1][1]-L[0][1])/((L[1][0]-L[0][0])||1)));y=L[0][1]+s0*(n-L[0][0]);}   // punteras: prolonga la pendiente del último vano (la viga sigue recta), capada
+      else{var m9=L.length-1;
+        if(n>=L[m9][0]){var s1=Math.max(-0.6,Math.min(0.6,(L[m9][1]-L[m9-1][1])/((L[m9][0]-L[m9-1][0])||1)));y=L[m9][1]+s1*(n-L[m9][0]);}
+        else{y=L[m9][1];for(var j9=0;j9+1<L.length;j9++){if(n>=L[j9][0]&&n<=L[j9+1][0]){var t9=(n-L[j9][0])/((L[j9+1][0]-L[j9][0])||1);y=L[j9][1]+t9*(L[j9+1][1]-L[j9][1]);break;}}}}
+      var ty=terrainMeshY(TRK[r].gx,n);return Math.max(ty+0.6,Math.min(ty+4.5,y));};   // cinturón: el tubo real siempre queda entre 0,6 y 4,5 m sobre su terreno — nada de cables al cielo pase lo que pase
     var bajada=function(ae,r){var bp=null,bd=8.5;                           // arnés → suelo BAJANDO VERTICAL por un SOPORTE DE SU FILA ("bajando por el propio soporte"); devuelve el pie. Radio 8,5 m: junto al hueco del motor el poste más cercano queda a hasta 8,26 m (vigas a ±3 m del eje, Interior ±7,7) — el cable corre bridado al tubo hasta él
       for(var q6=0;q6<PSTc.length;q6++){if(PSTc[q6][3]!==r)continue;var dq=Math.hypot(PSTc[q6][0]-ae[0],PSTc[q6][1]-ae[1]);if(dq<bd){bd=dq;bp=PSTc[q6];}}
       var px6=bp?bp[0]:ae[0],pn6=bp?bp[1]:ae[1],yTop=bp?bp[2]+MAZO:tubeY(r,ae[1])+MAZO;
