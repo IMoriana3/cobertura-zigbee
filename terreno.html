@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.75</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.76</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -751,8 +751,8 @@ function buildSkyDome(){
       'float fbm(vec2 p){float v=0.0,a=0.55;mat2 R=mat2(0.8,-0.6,0.6,0.8);for(int i=0;i<5;i++){v+=a*noise(p);p=R*p*2.13+vec2(11.7,7.3);a*=0.5;}return v;}',   // octavas ROTADAS + offset: mata los "rectángulos" del ruido de valor
       'void main(){vec3 dir=normalize(vDir);float h=clamp(dir.y,0.0,1.0);',
       ' float tDusk=smoothstep(-0.14,0.02,uU),tDay=smoothstep(0.02,0.32,uU);',
-      ' vec3 zen=mix(mix(vec3(0.010,0.016,0.038),vec3(0.10,0.13,0.30),tDusk),vec3(0.216,0.462,0.808),tDay);',           // cénit: noche → crepúsculo → día
-      ' vec3 hor=mix(mix(vec3(0.043,0.060,0.100),vec3(0.94,0.52,0.24),tDusk),vec3(0.660,0.810,0.940),tDay);',           // horizonte con bruma
+      ' vec3 zen=mix(mix(vec3(0.010,0.016,0.038),vec3(0.10,0.13,0.30),tDusk),vec3(0.165,0.415,0.820),tDay);',           // cénit: noche → crepúsculo → día (azul más profundo y saturado, como la foto de referencia)
+      ' vec3 hor=mix(mix(vec3(0.043,0.060,0.100),vec3(0.94,0.52,0.24),tDusk),vec3(0.700,0.840,0.955),tDay);',           // horizonte con bruma, más luminoso
       ' vec3 col=mix(hor,zen,pow(h,0.5));',
       ' vec2 sAz=normalize(uSun.xz+vec2(1e-4));vec2 dAz=normalize(dir.xz+vec2(1e-4));float az=max(dot(sAz,dAz),0.0);',
       ' float duskW=tDusk*(1.0-tDay);col+=vec3(0.55,0.22,0.06)*pow(az,3.0)*pow(1.0-h,2.0)*duskW*1.5;',                   // banda naranja hacia el sol al amanecer/atardecer
@@ -761,13 +761,15 @@ function buildSkyDome(){
       ' vec3 sunCol=mix(vec3(1.0,0.45,0.15),vec3(1.0,0.96,0.86),tDay);',
       ' col+=sunCol*(smoothstep(0.99955,0.99993,mu)*3.2+pow(max(mu,0.0),120.0)*0.35+pow(max(mu,0.0),8.0)*0.08)*sunVis*cc;', // disco solar + halo Mie (atenuados por nubes)
       ' if(dir.y>0.015){vec2 cuv=dir.xz/(dir.y+0.34)*0.62+vec2(uTime*0.005,uTime*0.002);',                                // +0.34: menos estiramiento en el horizonte (adiós vetas)
-      '  cuv+=0.38*vec2(fbm(cuv*1.7+9.1),fbm(cuv*1.7+4.7));',                                                             // warp extra: con poca nubosidad las islas del umbral salían como CÍRCULOS perfectos ("dos círculos" junto al sol)
-      '  float m=fbm(cuv*0.55+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // cúmulos grandes + detalle con warp
-      '  float d=n*(0.45+0.55*m)-(1.0-uCloud*1.12);',
-      '  float cf=smoothstep(0.02,0.26,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.02,0.50,d);',
+      '  cuv+=0.22*vec2(fbm(cuv*1.7+9.1),fbm(cuv*1.7+4.7));',                                                             // warp moderado: rompe los círculos del umbral sin deshilachar el cúmulo en cirros
+      '  float m=fbm(cuv*0.62+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // la máscara manda el fbm GRANDE (islas algodonosas); el fino solo texturiza
+      '  float d=(m+0.35*n)-(0.76-0.26*uCloud);',                                                                          // despejado: ~10% de cúmulos sueltos ("mola más que el nuestro"); 100% = cubierto
+      '  float cf=smoothstep(0.005,0.10,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.03,0.34,d);',                // borde definido: algodón opaco, no gasa
       '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.07,1.07,1.09),tDay);',                    // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
       '  float cg=smoothstep(0.30,0.05,uU)*pow(max(mu,0.0),6.0);cb=mix(cb,vec3(1.12,0.72,0.50),cg*0.85);',                // con sol bajo, la nube cercana al sol se enciende cálida (no blanco puro)
-      '  col=mix(col,mix(cb,cb*0.55,th),cf*0.96);}',
+      '  float nl=fbm(cuv*2.3+m*1.6+sAz*0.22);float lit=clamp(0.55+1.6*(n-nl),0.0,1.0);',                                  // autosombreado: muestrea el fbm corrido hacia el sol → cara iluminada blanca, base gris perla (cúmulo de foto, no mancha plana)
+      '  vec3 cbody=mix(cb*(0.98+0.10*lit),cb*(0.55+0.16*lit),th);',
+      '  col=mix(col,cbody,cf*0.96);}',
       ' gl_FragColor=vec4(col,1.0);}'
     ].join('\n'),
     side:THREE.BackSide,depthWrite:false});
