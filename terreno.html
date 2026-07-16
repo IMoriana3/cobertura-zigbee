@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.52</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.53</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -340,7 +340,7 @@ function buildSunPath(){
   if(sunPathGroup){scene.remove(sunPathGroup);sunPathGroup.traverse(function(o){if(o.geometry)o.geometry.dispose();});}
   sunPathGroup=new THREE.Group();sunMarker=null;sunRay=null;
   var cx=-66,cz=36,R=1800,pts=[];
-  for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<-0.04)continue;pts.push(new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N));}
+  for(var m=0;m<=1440;m+=4){var sv=sunVec(m);if(sv.U<0.015)continue;pts.push(new THREE.Vector3(cx+R*sv.E,R*sv.U,cz-R*sv.N));}   // solo por ENCIMA del horizonte: el tramo clampado a y=1 barría el suelo como una "línea amarilla" fantasma a ras de campo
   if(pts.length>1)sunPathGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0xffcf5a,transparent:true,opacity:.7})));
   for(var h=0;h<24;h++){var sv=sunVec(h*60);if(sv.U<0.02)continue;var p=new THREE.Vector3(cx+R*sv.E,Math.max(1,R*sv.U),cz-R*sv.N);
     var d=new THREE.Mesh(new THREE.SphereGeometry(8,8,6),new THREE.MeshBasicMaterial({color:0xffb84d}));d.position.copy(p);sunPathGroup.add(d);
@@ -487,7 +487,7 @@ function gridRepair(){
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
 var imPost,imShaft,imDampBody=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
-var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4();
+var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4(),_MSN9=new THREE.Matrix4(),_MSS9=new THREE.Matrix4();
 var kinked=true;   // "trackers quebrados": cada viga tiene una RÓTULA en el actuador (centro); la mitad N y la mitad S drapean con pendiente propia según el terreno (no es una viga rígida)
 var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   // edición en 3D: cajas de selección (raycast), seguidor seleccionado y arrastre
 var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
@@ -644,8 +644,10 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon'||s.key==='tcuchapa')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU, sus abarcones y chapas solo en la fila OESTE (la del motor)
         if(s.key==='tube'&&med){_T.makeScale(t.mr,1,1);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(_MD,s.Lm[l]);_M2.multiply(_T);s.im.setMatrixAt(base+l,_M2);}continue;}  // tubo "medio": las DOS medias-vigas escaladas a mr y colocadas en su posición "medio"
         for(var l=0;l<s.n;l++){if(l<L.length){var _mx=L[l].elements[12]>0.01?_MDN:(L[l].elements[12]<-0.01?_MDS:_MD);_M2.multiplyMatrices(_mx,L[l]);}else{_M2.makeScale(0,0,0);}s.im.setMatrixAt(base+l,_M2);}}   // cada pieza usa la matriz de SU mitad (N: x>0 → _MDN; S: x<0 → _MDS; central x≈0 → _MD); "medio": las sobrantes se ocultan
-      if(_DM){_MS.multiplyMatrices(t.fb[f],SEGO);var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
-        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_MS);_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // pie FIJO en el rodamiento (justo bajo la viga, con la base estática del tubo) + cima en la manivela del tubo (bascula) → amortiguador CORTO
+      if(_DM){var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
+        _RZ.makeRotationZ(kf?kf.dN:0);_M.multiplyMatrices(SEGO,_RZ);_MSN9.multiplyMatrices(t.fb[f],_M);   // base ESTÁTICA de cada mitad CON su quiebre (sin Rx): en ±9 el desfase pie/manivela era mm, en el soporte real ±22,9 con vex el quiebre abría metros y la biela salía disparada en vertical
+        _RZ.makeRotationZ(kf?kf.dS:0);_M.multiplyMatrices(SEGO,_RZ);_MSS9.multiplyMatrices(t.fb[f],_M);
+        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_DA[dl][0]>0?_MSN9:_MSS9);_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // pie FIJO en el rodamiento de SU mitad quebrada + cima en la manivela del tubo (bascula) → amortiguador CORTO
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
           if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}                                          // CUERPO oscuro, 62% centrado (= gemelo)
@@ -1236,7 +1238,7 @@ function _spineX(n){ if(!_SPINE)return null; var sp=_SPINE; if(n<=sp[0][1])retur
   for(var i=0;i+1<sp.length;i++){ if(n<=sp[i+1][1]){var a=sp[i],b=sp[i+1],t=(n-a[1])/((b[1]-a[1])||1e-9);return a[0]+t*(b[0]-a[0]);} }
   return sp[sp.length-1][0]; }
 function _streetAxes(){ if(_STAX)return _STAX;
-  var bands={};NODES.forEach(function(nd){var medio=/medio/i.test(nd.tp||''),hl=medio?16:31,c=-nd.gz,k=Math.round(c/5)*5;
+  var bands={};NODES.forEach(function(nd){var medio=/medio/i.test(nd.tp||''),hl=medio?16.4:32.8,c=-nd.gz,k=Math.round(c/5)*5;   // semilongitudes REALES (32,7/16,3 + margen): con 31/16 los pasillos de 2-4 m entre punteras contaban como "calles" y la ruta AC inversor→CT cruzaba por EN MEDIO de los bloques — la zanja real BORDEA por las 2 calles verdaderas (n≈-187,6 y 14,9)
     if(!bands[k])bands[k]={n0:1e9,n1:-1e9};bands[k].n0=Math.min(bands[k].n0,c-hl);bands[k].n1=Math.max(bands[k].n1,c+hl);});
   var bs=Object.keys(bands).map(function(k){return bands[k];}).sort(function(a,b){return a.n0-b.n0;}),m=[];
   bs.forEach(function(b){var l=m[m.length-1];if(l&&b.n0<=l.n1+0.8){l.n1=Math.max(l.n1,b.n1);}else m.push({n0:b.n0,n1:b.n1});});   // +0,8: una calle estrecha (2 m entre bandas) también es calle — no la fusiones
