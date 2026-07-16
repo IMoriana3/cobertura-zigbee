@@ -44,6 +44,17 @@ for(const k in out){ const seen=new Set();
     const rev=pl.slice().reverse().map(p=>Math.round(p[0]*10)+','+Math.round(p[1]*10)).join(';');
     if(seen.has(key)||seen.has(rev))return false; seen.add(key); return true; });
   out[k].kept=out[k].polys.length; }
+// RECORTE del pasillo norte (lóbulo del HSU 1): los dos anillos perimetrales del DWG suben por él
+// (x≈-90,7, n 148→280) siguiendo la zanja CCTV, pero en el gemelo ese tramo sobra ("este tramo sobra")
+// — se parte la polilínea y se retira el tramo del lóbulo (y las colillas que quedarían flotando)
+{ const LOBO=p=>p[1]>152&&p[0]>-93&&p[0]<-58;
+  const out2=[];
+  for(const pl of out.earth.polys){ let cur=[];
+    for(const p of pl){ if(LOBO(p)){ if(cur.length>1)out2.push(cur); cur=[]; } else cur.push(p); }
+    if(cur.length>1)out2.push(cur); }
+  console.log('recorte lóbulo norte: earth',out.earth.polys.length,'->',out2.length,'polilíneas');
+  out.earth.polys=out2; out.earth.kept=out2.length;
+}
 // EARTH_CROSS derivado: el RDT-1 pone en 5 líneas E-O un terminal+latiguillo por fila (234), pero NI el PDF
 // NI el DWG dibujan el conductor entre terminales (verificado a 600 dpi y contra las 22.941 entidades del DWG).
 // Se tiende recto por cada línea de terminales y se ata a la red dibujada en el primer corte de cada extremo.

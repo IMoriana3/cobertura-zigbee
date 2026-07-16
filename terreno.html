@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.51</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.52</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -431,7 +431,7 @@ async function build(){
   var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
-  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#2e3b2a';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
+  var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#b7ab90';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo BEIGE árido como las fotos; antes verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
   var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
   terrain=new THREE.Mesh(geo,mat);terrain.rotation.x=-Math.PI/2;terrain.scale.z=vex;terrain.receiveShadow=true;scene.add(terrain);
@@ -501,9 +501,9 @@ function makePanelTex(){
   x.fillStyle='#c9ccd0';x.fillRect(0,0,W,H);                                 // backsheet claro (asoma solo en juntas)
   var nx=PANEL_NX,ny=PANEL_NY,cw=W/nx,ch=H/ny,gap=1.1;
   for(var iy=0;iy<ny;iy++)for(var ix=0;ix<nx;ix++){
-    var L=8.5+Math.random()*2.6,Hh=213+Math.random()*6;                      // tinte AR célula a célula, apenas perceptible
+    var L=6.6+Math.random()*2.2,Hh=213+Math.random()*6;                      // tinte AR célula a célula, apenas perceptible — azul-noche CASI NEGRO y desaturado, como las fotos reales de la planta
     var g=x.createLinearGradient(ix*cw,iy*ch,ix*cw+cw*0.9,iy*ch+ch);
-    g.addColorStop(0,'hsl('+Hh.toFixed(0)+',42%,'+(L+1.6).toFixed(1)+'%)');g.addColorStop(1,'hsl('+Hh.toFixed(0)+',46%,'+L.toFixed(1)+'%)');
+    g.addColorStop(0,'hsl('+Hh.toFixed(0)+',27%,'+(L+1.4).toFixed(1)+'%)');g.addColorStop(1,'hsl('+Hh.toFixed(0)+',31%,'+L.toFixed(1)+'%)');
     x.fillStyle=g;
     var cx0=ix*cw+gap,cy0=iy*ch+gap,cwi=cw-2*gap,chi=ch-2*gap,ch2=3.5;       // esquinas achaflanadas de célula mono
     x.beginPath();x.moveTo(cx0+ch2,cy0);x.lineTo(cx0+cwi-ch2,cy0);x.lineTo(cx0+cwi,cy0+ch2);x.lineTo(cx0+cwi,cy0+chi-ch2);
@@ -773,11 +773,11 @@ function buildSkyDome(){
   sunHalo.scale.set(950,950,1);sunHalo.renderOrder=-1;sunHalo.visible=false;scene.add(sunHalo);
 }
 function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.height=256;var g=c.getContext('2d');   // estructura que SOBREVIVE a los mips: elipses grandes con contraste (el ruido por-píxel muere en el primer mip)
-  g.fillStyle='#bdbdbd';g.fillRect(0,0,256,256);
-  for(var k=0;k<420;k++){var big=k<160;g.globalAlpha=big?0.22:0.20;g.fillStyle=(k%2)?'#3f382c':'#f0ead8';   // capas de manchas oscuras/claras solapadas (~10–70 px)
+  g.fillStyle='#c6bba4';g.fillRect(0,0,256,256);                                                                  // base BEIGE CÁLIDO árido, como el suelo real de las fotos (antes gris neutro)
+  for(var k=0;k<420;k++){var big=k<160;g.globalAlpha=big?0.22:0.20;g.fillStyle=(k%2)?'#4a4232':'#f4ecd6';   // manchas marrón seco / crema (~10–70 px)
     var rx=big?(24+Math.random()*46):(6+Math.random()*18);
     g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rx,rx*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
-  g.globalAlpha=0.30;for(var s=0;s<1400;s++){g.fillStyle=(s%2)?'#55503f':'#e5e0cf';var r=1+Math.random()*2.5;g.beginPath();g.arc(Math.random()*256,Math.random()*256,r,0,6.3);g.fill();}   // moteado fino (primerísimos planos)
+  g.globalAlpha=0.30;for(var s=0;s<1400;s++){g.fillStyle=(s%2)?'#5c543f':'#efe7cf';var r=1+Math.random()*2.5;g.beginPath();g.arc(Math.random()*256,Math.random()*256,r,0,6.3);g.fill();}   // moteado fino (primerísimos planos)
   g.globalAlpha=1;
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
 }
@@ -786,7 +786,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.35,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.35,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m; smoothstep en forma DEFINIDA (edges invertidos = indefinido en GLSL: en algunas GPUs anulaba el detalle)
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.06,1.02,0.93);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.40,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
@@ -1356,7 +1356,7 @@ function buildBOS(){
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
   if(!LAYOUT||!ELEV)return;
   // viales: tierra compactada drapeada sobre el terreno, que recibe la sombra de los seguidores
-  var roadM=new THREE.MeshStandardMaterial({color:0xb9a06e,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];   // SIN polygonOffset: a rasante desplazaba la profundidad del firme y se comía las líneas de red drapeadas encima (conductor de tierras invisible); el margen anti-motas lo da +12 cm sobre la malla
+  var roadM=new THREE.MeshStandardMaterial({color:0xcfc3a6,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];   // firme crema polvoriento como las fotos reales (antes tan). SIN polygonOffset: a rasante desplazaba la profundidad del firme y se comía las líneas de red drapeadas encima (conductor de tierras invisible); el margen anti-motas lo da +12 cm sobre la malla
   if(LAYOUT.roadSurfaces&&LAYOUT.roadSurfaces.length&&THREE.ShapeUtils){
     // SUPERFICIES REALES del firme (HATCH del bloque Viales, con acuerdos en arco y huecos): el bloque no
     // trae ejes con ancho — dibujar sus bordes como cintas creaba "dos caminos en paralelo donde hay uno"
@@ -1837,7 +1837,7 @@ $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){update
 var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
   if(REFL_ON){ if(glassM){_gPrev={r:glassM.roughness,m:glassM.metalness,e:glassM.envMapIntensity};
-      glassM.roughness=0.20;glassM.metalness=0.05;glassM.envMapIntensity=0.55;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel): de frente célula oscura, el cielo aparece solo en ángulos rasantes — con metal 0,35/env 2,6 la planta entera salía lavada en blanco
+      glassM.roughness=0.30;glassM.metalness=0.05;glassM.envMapIntensity=0.32;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel) CONTENIDO: en las fotos reales los módulos leen azul-noche casi negro desde casi todos los ángulos y el cielo solo asoma muy rasante — con 0,20/0,55 la planta entera viraba a gris-azul claro
     updateRefl(true);}
   else{ scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;
     if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
