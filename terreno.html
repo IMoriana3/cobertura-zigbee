@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.78</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.79</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -72,7 +72,7 @@
     <div class="row"><label title="Stow por viento, replicado del gemelo digital: cuando el viento supera el umbral de entrada, TODOS los trackers abanderan hacia el lado en que está el sol a la velocidad real del actuador (0,17 °/s); al bajar del umbral de salida (histéresis Schmitt) vuelven al seguimiento. Con ⚡ activo, la producción cae por el coseno."><input type="checkbox" id="stowChk"> 🌬️ Abanderamiento (stow)</label></div>
     <div id="stowBox" style="display:none">
       <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Viento <input type="range" id="wind" min="0" max="120" value="0" style="width:78px"></label><span id="windV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0 km/h</span></div>
-      <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:4px;flex-wrap:wrap">Entrada <input type="number" id="stowIn" value="60" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> · Salida <input type="number" id="stowOut" value="40" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> km/h · Bandera ±<input type="number" id="stowPos" value="55" style="width:38px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px">°</div>
+      <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:4px;flex-wrap:wrap">Entrada <input type="number" id="stowIn" value="60" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> · Salida <input type="number" id="stowOut" value="40" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> km/h · Bandera ±<input type="number" id="stowPos" value="55" style="width:38px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px">° · Lado <select id="stowSide" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"><option value="sol">Sol</option><option value="oeste">Oeste</option><option value="este">Este</option></select></div>
       <div class="leg" id="stowState" style="font-size:11px">Seguimiento normal</div>
     </div>
     <div class="row" id="genBox" style="display:none"><div id="genHUD" class="leg" style="font-size:11.5px;line-height:1.6"></div></div>
@@ -367,7 +367,7 @@ function setTime(min){
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
   if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
-  var _a=panelAngle(min);$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(simOn?" · sim":" · real")+(btOn?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
+  var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWANG!=null?" · bandera":(simOn?" · sim":" · real"))+(btOn||_STOWANG!=null?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
@@ -1269,15 +1269,16 @@ function stowStep(dt){ if(!SEG)return;
   var IN=Math.max(5,+($('stowIn').value)||60),OUT=Math.min(Math.max(1,+($('stowOut').value)||40),IN-1),POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
   if(!stowLatch&&WINDK>=IN)stowLatch=true; else if(stowLatch&&WINDK<=OUT)stowLatch=false;   // Schmitt: entra a IN, no suelta hasta bajar de OUT (nada de bandereo intermitente con racha en el umbral)
   var ideal=panelAngle(curMin);
-  var sg=Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1);             // lado del sol (θ<0 = Este); cerca del mediodía decide el acimut solar
+  var side=($('stowSide')&&$('stowSide').value)||'sol';
+  var sg=side==='oeste'?1:side==='este'?-1:(Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1));   // lado: fijo (la controladora real abandera a +55°=Oeste) o "Sol" (θ<0=Este; ojo: el mediodía SOLAR de El Burgo es ~14:20 local — hasta entonces el sol sigue al Este)
   var tgt=stowLatch?sg*POSM:ideal;
   if(_STOWANG===null)_STOWANG=ideal;
-  var rate=0.17*dt*(playing?PLAYSPEED:30);                                                  // 0,17 °/s del actuador REAL, acelerado con el reloj simulado (en pausa ×30: el viaje 0→55° se ve en ~11 s)
+  var rate=0.17*dt*Math.min(60,(playing?PLAYSPEED:30));                                     // 0,17 °/s del actuador REAL, acelerado con el reloj simulado pero capado a ×60: a velocidad alta el abanderado se TELETRANSPORTABA y no se veía el viaje
   var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
   updateSpin(_STOWANG);
   var st=$('stowState');
   if(st){var txt=stowLatch
-      ?((Math.abs(_STOWANG-tgt)<0.2?'ABANDERADO a ':'Abanderando → ')+(sg>0?'+':'−')+POSM+'° ('+(sg>0?'Oeste':'Este')+', lado del sol) · viento '+WINDK+' km/h')
+      ?((Math.abs(_STOWANG-tgt)<0.2?'ABANDERADO a ':'Abanderando → ')+(sg>0?'+':'−')+POSM+'° ('+(sg>0?'Oeste':'Este')+(side==='sol'?', lado del sol':' fijo')+') · viento '+WINDK+' km/h')
       :(Math.abs(_STOWANG-ideal)<0.2?'Seguimiento normal · viento '+WINDK+' km/h':'Volviendo al seguimiento ('+_STOWANG.toFixed(0)+'°) · viento '+WINDK+' km/h');
     if(st.textContent!==txt)st.textContent=txt;}
 }
