@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.74</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.75</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1125,7 +1125,9 @@ function buildNetLayer(key){
         var nT=k>0?tail[k-1][1]:pl[iF][1];
         var foot=bajada(l7,sd,nT);
         aereo(l7,sd,pl[iF][1],foot[1]);
-        var prev=foot;for(var i3=k;i3<tail.length;i3++){gndB(prev[0],prev[1],tail[i3][0],tail[i3][1]);prev=tail[i3];}};
+        var prev=foot;
+        if(k<tail.length&&Math.abs(tail[k][1]-foot[1])>0.4){gndB(foot[0],foot[1],foot[0],tail[k][1]);prev=[foot[0],tail[k][1]];}   // v4.75: conector en L ORTOGONAL — primero la zanja corta N-S del pie a la n de la calle, luego E-O; el tramo recto pie→calle se comía la esquina del DWG y salían DIAGONALES ("por qué en la imagen del cableado DC va en diagonal??" — el flujo pasa por todos los vértices y por eso lo hacía bien)
+        for(var i3=k;i3<tail.length;i3++){gndB(prev[0],prev[1],tail[i3][0],tail[i3][1]);prev=tail[i3];}};
       NET.layers[key].forEach(function(pl){
         var RW=pl.map(function(p){return p[2]===1?rowFoot(p[0],p[1]):-1;}); // un vértice solo es de fila si cae en su huella (viga incluida)
         var firstF=-1,lastF=-1;
