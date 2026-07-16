@@ -152,7 +152,10 @@
       } else {
         /* 'mass': 1 MESA por ala (textura de células) + correas repr. + canaleta + cajas */
         push('mesa', 'glass', true, true,
-          function (TH){ return new TH.BoxGeometry(D.strLen, 0.05, D.modH); }, mT(THREE, wingC, D.off, 0));
+          function (TH){ var g = new TH.BoxGeometry(D.strLen, 0.05, D.modH);
+            var uv = g.attributes.uv, rep = D.strLen / D.modW;              // RETRATO: un módulo (tex 256×512) por cada modW a lo largo del ala — sin esto la textura se estiraba a toda el ala y los módulos salían "en modo paisaje"
+            for (var q = 0; q < uv.count; q++) uv.setX(q, uv.getX(q) * rep);
+            return g; }, mT(THREE, wingC, D.off, 0));
         var NPUR = 8;                                       // correas representativas por ala
         for (var i = 0; i < NPUR; i++) {
           var px = w.edge + w.dir * (i + 0.5) * (D.strLen / NPUR);
