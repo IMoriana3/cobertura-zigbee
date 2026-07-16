@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.76</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.77</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -746,7 +746,7 @@ function buildSkyDome(){
     vertexShader:'varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
     fragmentShader:[
       'precision highp float;varying vec3 vDir;uniform vec3 uSun;uniform float uU;uniform float uCloud;uniform float uTime;',
-      'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}',
+      'float hash(vec2 p){vec3 p3=fract(vec3(p.xyx)*0.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}',   // hash Hoskins SIN sin(): el clasico fract(sin·43758) colapsa en GPU reales con argumentos grandes y las nubes salian facetadas ("queda muy muy artificial")
       'float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}',
       'float fbm(vec2 p){float v=0.0,a=0.55;mat2 R=mat2(0.8,-0.6,0.6,0.8);for(int i=0;i<5;i++){v+=a*noise(p);p=R*p*2.13+vec2(11.7,7.3);a*=0.5;}return v;}',   // octavas ROTADAS + offset: mata los "rectángulos" del ruido de valor
       'void main(){vec3 dir=normalize(vDir);float h=clamp(dir.y,0.0,1.0);',
@@ -764,7 +764,7 @@ function buildSkyDome(){
       '  cuv+=0.22*vec2(fbm(cuv*1.7+9.1),fbm(cuv*1.7+4.7));',                                                             // warp moderado: rompe los círculos del umbral sin deshilachar el cúmulo en cirros
       '  float m=fbm(cuv*0.62+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // la máscara manda el fbm GRANDE (islas algodonosas); el fino solo texturiza
       '  float d=(m+0.35*n)-(0.76-0.26*uCloud);',                                                                          // despejado: ~10% de cúmulos sueltos ("mola más que el nuestro"); 100% = cubierto
-      '  float cf=smoothstep(0.005,0.10,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.03,0.34,d);',                // borde definido: algodón opaco, no gasa
+      '  float cf=smoothstep(0.01,0.15,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.03,0.34,d);',                // borde definido: algodón opaco, no gasa
       '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.07,1.07,1.09),tDay);',                    // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
       '  float cg=smoothstep(0.30,0.05,uU)*pow(max(mu,0.0),6.0);cb=mix(cb,vec3(1.12,0.72,0.50),cg*0.85);',                // con sol bajo, la nube cercana al sol se enciende cálida (no blanco puro)
       '  float nl=fbm(cuv*2.3+m*1.6+sAz*0.22);float lit=clamp(0.55+1.6*(n-nl),0.0,1.0);',                                  // autosombreado: muestrea el fbm corrido hacia el sol → cara iluminada blanca, base gris perla (cúmulo de foto, no mancha plana)
@@ -797,7 +797,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,900.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.09,1.07,1.00);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.30,0.30*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(120.0,520.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.09,1.07,1.00);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.30,0.13*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
