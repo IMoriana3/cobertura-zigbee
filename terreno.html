@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.57</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.58</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -795,7 +795,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.04,1.03,0.95);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.40,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,900.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.04,1.03,0.95);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.30,0.30*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
