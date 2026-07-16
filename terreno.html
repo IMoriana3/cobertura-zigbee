@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.79</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.80</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -367,7 +367,7 @@ function setTime(min){
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
   if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
-  var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWANG!=null?" · bandera":(simOn?" · sim":" · real"))+(btOn||_STOWANG!=null?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
+  var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWTXT?" · "+_STOWTXT:(simOn?" · sim":" · real"))+((btOn||_STOWTXT)?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
@@ -728,7 +728,8 @@ function animateMeteo(dt){ metT+=dt;
     if(!got)WIND.real=false; }
   if(!WIND.real){ WIND.ws=3.0+1.8*Math.sin(metT*0.05)+0.7*Math.sin(metT*0.6); WIND.wd=210+28*Math.sin(metT*0.03); }   // sin SCADA: brisa sintética del SW (para que se mueva)
   if(!METEO_ANIM.length)return;
-  var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*(0.35+0.85*WIND.ws*gust);   // cazoletas ∝ velocidad del viento (+ rachas); a más viento, giran más rápido
+  var wsEff=STOWON?WINDK/3.6:WIND.ws;                                          // con el ABANDERAMIENTO armado manda el slider de viento (km/h→m/s): "la veleta debe girar según la velocidad que haya en el slider"
+  var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*(0.35+0.85*wsEff*gust);      // cazoletas ∝ velocidad del viento (+ rachas); a más viento, giran más rápido
   var vy=Math.PI/2 - WIND.wd*DEG;                                              // la veleta apunta a la dirección DE DONDE viene el viento
   var sun=(SUN&&SUN._dir)?SUN._dir:null;
   if(sun){ if(sun.U>0.03)_solV.set(sun.E,Math.max(0.34,sun.U),-sun.N); else _solV.set(0,Math.cos(0.61),Math.sin(0.61));   // panel: de día apunta al sol (tope ~71°), de noche aparca al sur ~35°
@@ -1263,9 +1264,9 @@ function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_
 // ===== ABANDERAMIENTO POR VIENTO (stow) — replicado del gemelo digital: histéresis Schmitt entrada/salida,
 // bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
 // Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
-var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_dayCalc=false;
+var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_STOWTXT='',_dayCalc=false;
 function stowStep(dt){ if(!SEG)return;
-  if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;updateSpin(panelAngle(curMin));} return; }
+  if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;_STOWTXT='';updateSpin(panelAngle(curMin));} return; }
   var IN=Math.max(5,+($('stowIn').value)||60),OUT=Math.min(Math.max(1,+($('stowOut').value)||40),IN-1),POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
   if(!stowLatch&&WINDK>=IN)stowLatch=true; else if(stowLatch&&WINDK<=OUT)stowLatch=false;   // Schmitt: entra a IN, no suelta hasta bajar de OUT (nada de bandereo intermitente con racha en el umbral)
   var ideal=panelAngle(curMin);
@@ -1275,6 +1276,7 @@ function stowStep(dt){ if(!SEG)return;
   if(_STOWANG===null)_STOWANG=ideal;
   var rate=0.17*dt*Math.min(60,(playing?PLAYSPEED:30));                                     // 0,17 °/s del actuador REAL, acelerado con el reloj simulado pero capado a ×60: a velocidad alta el abanderado se TELETRANSPORTABA y no se veía el viaje
   var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
+  _STOWTXT=stowLatch?(Math.abs(_STOWANG-tgt)<0.2?'bandera':'abanderando'):(Math.abs(_STOWANG-ideal)>0.2?'volviendo':'');   // etiqueta del marcador por ESTADO: en seguimiento normal vuelve a real/sim aunque el stow siga armado
   updateSpin(_STOWANG);
   var st=$('stowState');
   if(st){var txt=stowLatch
