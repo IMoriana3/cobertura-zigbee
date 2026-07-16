@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.67</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.68</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -969,7 +969,7 @@ function buildVeg(){
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
   m.customProgramCacheKey=function(){return 'vegfade5';};
-  var N=90000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
+  var N=220000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
   var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[],RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
@@ -978,7 +978,7 @@ function buildVeg(){
     if(inRing(x,n,RS[si].o)){var hs=RS[si].h||[],hole=false;for(var hi=0;hi<hs.length;hi++)if(inRing(x,n,hs[hi])){hole=true;break;}if(!hole)return true;}}return false;}
   function nearRoad(x,n){return onRoad(x,n)||onRoad(x+0.8,n)||onRoad(x-0.8,n)||onRoad(x,n+0.8)||onRoad(x,n-0.8);}   // margen 0,8 m: el quad de la mata (~0,7 m) no debe invadir el firme ("marcas negras" en el borde)
   var i=0;
-  while(i<N/2){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
+  while(i<N*0.62){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
     if(nearRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
     o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.95+rng()*1.1;o.scale.set(sc,0.9+rng()*1.0,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
   while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
@@ -1045,6 +1045,10 @@ var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.js
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
   fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
   return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;return NET;}).catch(function(){NET=false;return false;}); }
+function allPosts(){var P=[],_m=new THREE.Matrix4();
+  if(typeof imPost!=='undefined'&&imPost&&TC&&TC.np){for(var i=0;i<TRK.length*TC.np;i++){imPost.getMatrixAt(i,_m);
+    if(Math.abs(_m.elements[0])>0.01)P.push([_m.elements[12],-_m.elements[14]]);}}
+  return P;}
 function buildNetLayer(key){
   if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return null;
@@ -1067,7 +1071,19 @@ function buildNetLayer(key){
     if(tri.length){var tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.Float32BufferAttribute(tri,3));tg.computeVertexNormals();g.add(new THREE.Mesh(tg,new THREE.MeshBasicMaterial({color:d.c,transparent:true,opacity:.16,side:THREE.DoubleSide,depthWrite:false})));}
     if(ln.length){var lgg=new THREE.BufferGeometry();lgg.setAttribute('position',new THREE.Float32BufferAttribute(ln,3));g.add(new THREE.LineSegments(lgg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.65})));}
   } else if(key!=='earth_lat'||!TRK.length) {
+    var PSTc=(key==='cable_pos'||key==='cable_neg')&&TRK.length?allPosts():null;
     var v=[];NET.layers[key].forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],SL=Math.hypot(b[0]-a[0],b[1]-a[1]),st=Math.max(1,Math.min(10,Math.round(SL/7)));   // subdivide (~7 m): drapea el relieve
+      var fa=a[2]===1,fb=b[2]===1;
+      if(PSTc&&fa!==fb){                                                   // TRANSICIÓN arnés↔suelo: el cable BAJA VERTICAL por el SOPORTE más cercano ("bajando por el propio soporte"), no en arco flotante
+        var ae=fa?a:b, ge=fa?b:a, bp=null,bd=3.5;
+        for(var q6=0;q6<PSTc.length;q6++){var dq=Math.hypot(PSTc[q6][0]-ae[0],PSTc[q6][1]-ae[1]);if(dq<bd){bd=dq;bp=PSTc[q6];}}
+        var px6=bp?bp[0]:ae[0],pn6=bp?bp[1]:ae[1],yTop=terrainMeshY(px6,pn6)+1.45,yBot=terrainMeshY(px6,pn6)+d.off;
+        v.push(ae[0],terrainMeshY(ae[0],ae[1])+1.45,-ae[1], px6,yTop,-pn6); // arnés hasta el soporte
+        v.push(px6,yTop,-pn6, px6,yBot,-pn6);                              // caída vertical por el soporte
+        var L6=Math.hypot(ge[0]-px6,ge[1]-pn6),st6=Math.max(1,Math.min(10,Math.round(L6/7)));
+        for(var s6=0;s6<st6;s6++){var u0=s6/st6,u1=(s6+1)/st6,gx1=px6+(ge[0]-px6)*u0,gn1=pn6+(ge[1]-pn6)*u0,gx2=px6+(ge[0]-px6)*u1,gn2=pn6+(ge[1]-pn6)*u1;
+          v.push(gx1,terrainMeshY(gx1,gn1)+d.off,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off,-gn2);}
+        continue;}
       var hz=(a[2]===1&&b[2]===1)?1.45:d.off;   // tramos [x,n,1] = arnés COLGADO BAJO el tubo (eje a 2,0 m): 1,45 deja margen al barrido de módulos y al drapeado — a 1,72 en vaguadas atravesaba la viga
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st,ax=a[0]+(b[0]-a[0])*t0,an=a[1]+(b[1]-a[1])*t0,bx=a[0]+(b[0]-a[0])*t1,bn=a[1]+(b[1]-a[1])*t1;
         v.push(ax,terrainMeshY(ax,an)+hz,-an,bx,terrainMeshY(bx,bn)+hz,-bn);}}});
