@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.56</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.57</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -268,11 +268,12 @@ function angleAt(num,min){
 }
 var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
 // posición del sol (fecha de la telemetría, hora local CEST) → vector hacia el sol en mundo (x=E, y=arriba, z=-N)
+function tzOffMin(doy){return (doy>=88&&doy<=298)?120:60;}   // HORA LOCAL España peninsular: CEST (UTC+2) del último domingo de marzo al de octubre (~DOY 88-298), CET (UTC+1) el resto — antes UTC+2 fijo: en invierno el slider iba 1 h corrido
 function sunVec(min){
   var lat=lat0*DEG, doy=simDoy;
   var decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
   var B=2*Math.PI*(doy-81)/364, EoT=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B);
-  var H=((min-120+lon0*4+EoT)/60-12)*15*DEG;                    // ángulo horario (UTC+2 + corrección de longitud + ecuación del tiempo)
+  var H=((min-tzOffMin(doy)+lon0*4+EoT)/60-12)*15*DEG;                    // ángulo horario (hora LOCAL con DST + corrección de longitud + ecuación del tiempo)
   var sa=Math.sin(lat)*Math.sin(decl)+Math.cos(lat)*Math.cos(decl)*Math.cos(H), el=Math.asin(Math.max(-1,Math.min(1,sa))), ce=Math.cos(el)||1e-6;
   var az=Math.atan2(-Math.cos(decl)*Math.sin(H)/ce,(Math.sin(decl)-Math.sin(lat)*sa)/(Math.cos(lat)*ce));
   return {el:el, E:Math.cos(el)*Math.sin(az), N:Math.cos(el)*Math.cos(az), U:Math.sin(el)};
@@ -447,7 +448,10 @@ async function build(){
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
-  tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;curMin=540;   // el slider cubre las 24 h completas (no solo de día)
+  tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;   // el slider cubre las 24 h completas (no solo de día)
+  var _hoy=new Date();curMin=_hoy.getHours()*60+_hoy.getMinutes();   // ARRANCA EN LA HORA LOCAL ACTUAL ("necesito que el slider esté en hora local") y en el día de HOY
+  simDoy=Math.floor((_hoy-new Date(_hoy.getFullYear(),0,0))/86400000);
+  var _sd=$('simdate');if(_sd){var _mm=('0'+(_hoy.getMonth()+1)).slice(-2),_dd=('0'+_hoy.getDate()).slice(-2);_sd.value=_hoy.getFullYear()+'-'+_mm+'-'+_dd;}
   setTime(curMin);$('time').value=curMin;
 
   camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
@@ -926,7 +930,7 @@ function buildContactAO(){
   var msk=bx2.createLinearGradient(0,0,64,0);msk.addColorStop(0,'rgba(0,0,0,0)');msk.addColorStop(0.25,'rgba(0,0,0,1)');msk.addColorStop(0.75,'rgba(0,0,0,1)');msk.addColorStop(1,'rgba(0,0,0,0)');
   bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
   var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
-  var gm2=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.8}));gm2.renderOrder=0;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos
+  var gm2=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.8}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
   var m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false}));m.renderOrder=1;aoGroup.add(m);
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
@@ -959,8 +963,8 @@ function buildVeg(){
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(100.0,170.0,length(vViewPosition)));');};   // se funden a ~170 m; forma DEFINIDA de smoothstep (edge0<edge1): con edges invertidos el resultado es indefinido en GLSL y hay GPUs que devuelven 0 → capa invisible
-  m.customProgramCacheKey=function(){return 'vegfade3';};
+  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(150.0,310.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
+  m.customProgramCacheKey=function(){return 'vegfade4';};
   var N=48000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 48k: mitad UNIFORME (sin calvas — 'sigue sin haber vegetación' era estar dentro de un claro entre rodales) + mitad en rodales
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
@@ -996,7 +1000,7 @@ function buildCloudShadows(){
   if(cshGroup){scene.remove(cshGroup);cshGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});cshGroup=null;}
   if(!ELEV)return;
   cshGroup=new THREE.Group();cshGroup.visible=false;scene.add(cshGroup);
-  for(var i=0;i<3;i++){var s=280+i*110,g=new THREE.PlaneGeometry(s,s,18,18);g.rotateX(-Math.PI/2);
+  for(var i=0;i<3;i++){var s=460+i*160,g=new THREE.PlaneGeometry(s,s,18,18);g.rotateX(-Math.PI/2);   // mantos GRANDES (460-780 m): a 280-500 los grumos quedaban de 40-80 m y parecían manchas duras ("qué rara sale la sombra")
     var m=new THREE.MeshBasicMaterial({map:_cloudBlobTex(),transparent:true,depthWrite:false,opacity:0});
     var mesh=new THREE.Mesh(g,m);mesh.renderOrder=1;mesh.frustumCulled=false;
     mesh.userData={ox:((i*397)%900)-450,oz:((i*641)%700)-350,sp:3.2+i*1.4};cshGroup.add(mesh);}
@@ -1007,7 +1011,7 @@ function cloudShadowStep(dt){ if(!cshGroup)return;var cl=GENCLOUD||0,day=SUN&&SU
   var wd=(((WIND&&WIND.wd)||210)+180)*DEG,vx=Math.sin(wd),vz=Math.cos(wd);   // la sombra viaja HACIA donde va el viento
   for(var i=0;i<cshGroup.children.length;i++){var mesh=cshGroup.children[i],u=mesh.userData,t=_cshT*u.sp;
     var X=(((u.ox+t*vx)%1500)+2250)%1500-750,Z=(((u.oz+t*vz)%1300)+1950)%1300-650;
-    mesh.position.set(X,0,Z);mesh.material.opacity=0.62*Math.min(1,cl*1.4);   // núcleo ≈45% de sombra con nubosidad alta, como un cúmulo real
+    mesh.position.set(X,0,Z);mesh.material.opacity=0.38*Math.min(1,cl*1.4);   // núcleo suave (~27% con nubosidad alta): a 0,62 los borrones salían casi negros sobre el suelo ya sombreado
     if((_cshK++%3)===i){var p=mesh.geometry.attributes.position;   // re-drapeo rotatorio (un manto por frame): sigue el relieve, por debajo de los tubos (+0,8 m)
       for(var k=0;k<p.count;k++)p.setY(k,localElevY(X+p.getX(k),-(Z+p.getZ(k)))+0.8);
       p.needsUpdate=true;}
