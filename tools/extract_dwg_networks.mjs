@@ -27,10 +27,12 @@ async function grab(path){ const lib=await LibreDwg.create(); const db=lib.conve
 const out={}; for(const k in TARGET) out[k]={raw:0,kept:0,polys:[]};
 const picas=[];                                                               // INSERTs del bloque "Pica PAT" (plano RDT-1): posiciones exactas de picas/terminales
 // tierra/latiguillos/picas SOLO del DWG del plano de tierras (RDT-1): el layout duplica la capa EE_Tierra
+const ZK=new Set(['trench_string','trench_inv','trench_n3']);   // zanjas de evacuación: SOLO del Tierras.dwg ("ahí tienes todas las zanjas") — la N3 real BORDEA los bloques por dentro ("bordeamos los trackers... no nos salimos de la planta"); los DWG antiguos solo traían tramos sueltos junto a los CTs
 for(const [path,keyOK,takePicas] of [
-  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/fbc61f7e-XG23003EL_BURGOCableado_String_03C.dwg", k=>k!=='earth'&&k!=='earth_lat', false],
-  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/ef5eb3ee-XG23003EL_BURGOLayout_proyecto_v05C.dwg", k=>k!=='earth'&&k!=='earth_lat', false],
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/fbc61f7e-XG23003EL_BURGOCableado_String_03C.dwg", k=>k!=='earth'&&k!=='earth_lat'&&!ZK.has(k), false],
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/ef5eb3ee-XG23003EL_BURGOLayout_proyecto_v05C.dwg", k=>k!=='earth'&&k!=='earth_lat'&&!ZK.has(k), false],
   ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/6f4e3655-Viales_El_Burgo.dwg", k=>k==='earth'||k==='earth_lat', true],
+  ["/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/aa848ea7-Tierras.dwg", k=>ZK.has(k), false],
 ]){ const E=await grab(path);
   for(const e of E){
     if(takePicas&&e.type==='INSERT'&&/pica/i.test(e.name||'')&&e.insertionPoint){ const p=[lx(e.insertionPoint),ln(e.insertionPoint)];
