@@ -1260,28 +1260,41 @@ function _zanjaGraph(){ if(_ZG!==null)return _ZG;
   function nid(x,n){for(var i=pts.length-1;i>=0;i--){if(Math.abs(pts[i][0]-x)<0.6&&Math.abs(pts[i][1]-n)<0.6)return i;}pts.push([x,n]);adj.push([]);return pts.length-1;}
   var src=[].concat(NET.layers.trench_inv||[],NET.layers.trench_n3||[],NET.layers.trench_string||[],NET.layers.trench_mt||[]);
   if(!src.length){_ZG=false;return false;}
+  var edges=[],endp={};
   src.forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=nid(pl[i][0],pl[i][1]),b=nid(pl[i+1][0],pl[i+1][1]);
-    if(a!==b){var w=Math.hypot(pts[a][0]-pts[b][0],pts[a][1]-pts[b][1]);adj[a].push([b,w]);adj[b].push([a,w]);}}});
-  for(var i2=0;i2<pts.length;i2++)for(var j2=i2+1;j2<pts.length;j2++){   // PUENTES: extremos a <4 m (cortes de dibujo del DWG) se consideran unidos
-    var d2=Math.hypot(pts[i2][0]-pts[j2][0],pts[i2][1]-pts[j2][1]);
-    if(d2<4&&d2>0.01&&!adj[i2].some(function(e){return e[0]===j2;})){adj[i2].push([j2,d2]);adj[j2].push([i2,d2]);}}
-  _ZG={pts:pts,adj:adj};return _ZG;
+    if(a!==b){var w=Math.hypot(pts[a][0]-pts[b][0],pts[a][1]-pts[b][1]);adj[a].push([b,w]);adj[b].push([a,w]);edges.push([a,b]);}
+    if(i===0)endp[nid(pl[0][0],pl[0][1])]=1;if(i+2===pl.length)endp[nid(pl[pl.length-1][0],pl[pl.length-1][1])]=1;}});
+  for(var i2=0;i2<pts.length;i2++)for(var j2=i2+1;j2<pts.length;j2++){   // PUENTES: nodos a <4 m (cortes de dibujo del DWG); entre EXTREMOS de polilínea hasta 10 m (ahí viven los huecos grandes; los nodos intermedios no puentean → sin atajos entre zanjas paralelas)
+    var d2=Math.hypot(pts[i2][0]-pts[j2][0],pts[i2][1]-pts[j2][1]),lim=(endp[i2]&&endp[j2])?10:4;
+    if(d2<lim&&d2>0.01&&!adj[i2].some(function(e){return e[0]===j2;})){adj[i2].push([j2,d2]);adj[j2].push([i2,d2]);}}
+  _ZG={pts:pts,adj:adj,edges:edges};return _ZG;
 }
 var _ZRC={};
 function _zanjaRoute(ax,an,bx,bn){ var G=_zanjaGraph(); if(!G)return null;
   var ck=Math.round(ax)+','+Math.round(an)+'|'+Math.round(bx)+','+Math.round(bn);if(_ZRC[ck]!==undefined)return _ZRC[ck];   // caché: Dijkstra O(N²) solo una vez por par equipo→destino
-  function near(x,n){var bi=-1,bd=25;for(var i=0;i<G.pts.length;i++){var d=Math.hypot(G.pts[i][0]-x,G.pts[i][1]-n);if(d<bd){bd=d;bi=i;}}return bi;}
-  var s=near(ax,an),t=near(bx,bn); if(s<0||t<0)return null;
+  function nearEdge(x,n){var bd=25,best=null;   // punto más cercano SOBRE UNA ARISTA (no al vértice): la colectora pasa a ~2 m del inversor aunque su vértice esté a 20+ m — el salto recto largo cruzaba el vacío ("mira, sigue mal")
+    for(var i=0;i<G.edges.length;i++){var A=G.pts[G.edges[i][0]],B=G.pts[G.edges[i][1]],dx=B[0]-A[0],dn=B[1]-A[1],L=dx*dx+dn*dn||1e-9;
+      var t2=((x-A[0])*dx+(n-A[1])*dn)/L;t2=Math.max(0,Math.min(1,t2));
+      var px=A[0]+t2*dx,pn=A[1]+t2*dn,d=Math.hypot(x-px,n-pn);
+      if(d<bd){bd=d;best={a:G.edges[i][0],b:G.edges[i][1],p:[px,pn],hop:d};}}
+    return best;}
+  var S5=nearEdge(ax,an),T5=nearEdge(bx,bn); if(!S5||!T5)return null;
   var N=G.pts.length,dist=new Float64Array(N).fill(Infinity),prev=new Int32Array(N).fill(-1),done=new Uint8Array(N);
-  dist[s]=0;
+  dist[S5.a]=Math.hypot(S5.p[0]-G.pts[S5.a][0],S5.p[1]-G.pts[S5.a][1]);   // siembra: desde la proyección hacia ambos extremos de su arista
+  dist[S5.b]=Math.hypot(S5.p[0]-G.pts[S5.b][0],S5.p[1]-G.pts[S5.b][1]);
   for(var it=0;it<N;it++){var u=-1,du=Infinity;   // Dijkstra simple (N~1500: sobra)
     for(var i3=0;i3<N;i3++)if(!done[i3]&&dist[i3]<du){du=dist[i3];u=i3;}
-    if(u<0||u===t)break;done[u]=1;
+    if(u<0)break;done[u]=1;
     for(var e2=0;e2<G.adj[u].length;e2++){var v=G.adj[u][e2][0],w2=G.adj[u][e2][1];
       if(dist[u]+w2<dist[v]){dist[v]=dist[u]+w2;prev[v]=u;}}}
-  if(!isFinite(dist[t])){_ZRC[ck]=null;return null;}
-  var path=[t];while(path[path.length-1]!==s){var p2=prev[path[path.length-1]];if(p2<0){_ZRC[ck]=null;return null;}path.push(p2);}path.reverse();
-  var wp=[[ax,an]];path.forEach(function(ni){wp.push(G.pts[ni]);});wp.push([bx,bn]);
+  var tEnd=-1,tAlt=-1;
+  var cA=dist[T5.a]+Math.hypot(T5.p[0]-G.pts[T5.a][0],T5.p[1]-G.pts[T5.a][1]);
+  var cB=dist[T5.b]+Math.hypot(T5.p[0]-G.pts[T5.b][0],T5.p[1]-G.pts[T5.b][1]);
+  if(isFinite(cA)&&(!isFinite(cB)||cA<=cB)){tEnd=T5.a;}else if(isFinite(cB)){tEnd=T5.b;}
+  if(tEnd<0){_ZRC[ck]=null;return null;}
+  var path=[tEnd];while(prev[path[path.length-1]]>=0)path.push(prev[path[path.length-1]]);path.reverse();
+  if(path[0]!==S5.a&&path[0]!==S5.b){_ZRC[ck]=null;return null;}
+  var wp=[[ax,an],S5.p];path.forEach(function(ni){wp.push(G.pts[ni]);});wp.push(T5.p);wp.push([bx,bn]);
   var seg=[],tot=0;
   for(var i4=0;i4+1<wp.length;i4++){var L4=Math.hypot(wp[i4+1][0]-wp[i4][0],wp[i4+1][1]-wp[i4][1]);if(L4<0.5)continue;seg.push({a:wp[i4],b:wp[i4+1],l:L4,acc:tot});tot+=L4;}
   var res={seg:seg,tot:Math.max(tot,0.001)};_ZRC[ck]=res;return res;
