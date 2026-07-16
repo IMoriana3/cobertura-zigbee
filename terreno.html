@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.54</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.55</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1253,7 +1253,41 @@ function _trimRoute(p,cut){ var keep=Math.max(1,p.tot-cut),seg=[],tot=0;   // re
     var f=l/s.l,b=[s.a[0]+(s.b[0]-s.a[0])*f,s.a[1]+(s.b[1]-s.a[1])*f];
     seg.push({a:s.a,b:b,l:l,acc:tot});tot+=l;}
   return {seg:seg,tot:Math.max(tot,0.001)}; }
+var _ZG=null;   // grafo de ZANJAS REALES (inv+N3+string+MT del DWG): el flujo/rutas van por donde van los cables ("mira por dónde va la flecha, ahí no van los cables")
+function _zanjaGraph(){ if(_ZG!==null)return _ZG;
+  if(!NET||!NET.layers){return null;}
+  var pts=[],adj=[];
+  function nid(x,n){for(var i=pts.length-1;i>=0;i--){if(Math.abs(pts[i][0]-x)<0.6&&Math.abs(pts[i][1]-n)<0.6)return i;}pts.push([x,n]);adj.push([]);return pts.length-1;}
+  var src=[].concat(NET.layers.trench_inv||[],NET.layers.trench_n3||[],NET.layers.trench_string||[],NET.layers.trench_mt||[]);
+  if(!src.length){_ZG=false;return false;}
+  src.forEach(function(pl){for(var i=0;i+1<pl.length;i++){var a=nid(pl[i][0],pl[i][1]),b=nid(pl[i+1][0],pl[i+1][1]);
+    if(a!==b){var w=Math.hypot(pts[a][0]-pts[b][0],pts[a][1]-pts[b][1]);adj[a].push([b,w]);adj[b].push([a,w]);}}});
+  for(var i2=0;i2<pts.length;i2++)for(var j2=i2+1;j2<pts.length;j2++){   // PUENTES: extremos a <4 m (cortes de dibujo del DWG) se consideran unidos
+    var d2=Math.hypot(pts[i2][0]-pts[j2][0],pts[i2][1]-pts[j2][1]);
+    if(d2<4&&d2>0.01&&!adj[i2].some(function(e){return e[0]===j2;})){adj[i2].push([j2,d2]);adj[j2].push([i2,d2]);}}
+  _ZG={pts:pts,adj:adj};return _ZG;
+}
+var _ZRC={};
+function _zanjaRoute(ax,an,bx,bn){ var G=_zanjaGraph(); if(!G)return null;
+  var ck=Math.round(ax)+','+Math.round(an)+'|'+Math.round(bx)+','+Math.round(bn);if(_ZRC[ck]!==undefined)return _ZRC[ck];   // caché: Dijkstra O(N²) solo una vez por par equipo→destino
+  function near(x,n){var bi=-1,bd=25;for(var i=0;i<G.pts.length;i++){var d=Math.hypot(G.pts[i][0]-x,G.pts[i][1]-n);if(d<bd){bd=d;bi=i;}}return bi;}
+  var s=near(ax,an),t=near(bx,bn); if(s<0||t<0)return null;
+  var N=G.pts.length,dist=new Float64Array(N).fill(Infinity),prev=new Int32Array(N).fill(-1),done=new Uint8Array(N);
+  dist[s]=0;
+  for(var it=0;it<N;it++){var u=-1,du=Infinity;   // Dijkstra simple (N~1500: sobra)
+    for(var i3=0;i3<N;i3++)if(!done[i3]&&dist[i3]<du){du=dist[i3];u=i3;}
+    if(u<0||u===t)break;done[u]=1;
+    for(var e2=0;e2<G.adj[u].length;e2++){var v=G.adj[u][e2][0],w2=G.adj[u][e2][1];
+      if(dist[u]+w2<dist[v]){dist[v]=dist[u]+w2;prev[v]=u;}}}
+  if(!isFinite(dist[t])){_ZRC[ck]=null;return null;}
+  var path=[t];while(path[path.length-1]!==s){var p2=prev[path[path.length-1]];if(p2<0){_ZRC[ck]=null;return null;}path.push(p2);}path.reverse();
+  var wp=[[ax,an]];path.forEach(function(ni){wp.push(G.pts[ni]);});wp.push([bx,bn]);
+  var seg=[],tot=0;
+  for(var i4=0;i4+1<wp.length;i4++){var L4=Math.hypot(wp[i4+1][0]-wp[i4][0],wp[i4+1][1]-wp[i4][1]);if(L4<0.5)continue;seg.push({a:wp[i4],b:wp[i4+1],l:L4,acc:tot});tot+=L4;}
+  var res={seg:seg,tot:Math.max(tot,0.001)};_ZRC[ck]=res;return res;
+}
 function _lroute(ax,an,bx,bn,skipSnapStart){
+  var zr=_zanjaRoute(ax,an,bx,bn);if(zr)return zr;   // primero por las zanjas REALES; el derivado por calles queda de último recurso
   var sn=skipSnapStart?an:_snapStreet(an),pts=[[ax,an]];
   if(Math.abs(sn-an)>0.4)pts.push([ax,sn]);                              // del equipo al eje de SU calle
   var sx=_spineX((sn+bn)/2);if(sx==null)sx=bx;
@@ -1849,23 +1883,28 @@ $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubem
 $('calBtn').onclick=function(){calibrate();};
 $('repLink').href='informe.html?planta='+PLANT;
 /* ===== MODO CINE: tour de dron + grabación WebM + foto alta resolución ===== */
-var TOUR_ON=false,_tourT=0,REC=null,RECCHUNKS=[];
+var TOUR_ON=false,_tourT=0,_TOURLN=null,REC=null,RECCHUNKS=[];
 function _ease(u){return u*u*(3-2*u);}
 function _lerp(a,b,u){return a+(b-a)*u;}
 function tourStep(dt){ if(!NODES.length)return; _tourT+=dt; var T=_tourT%52;
   var cx=(FB.x0+FB.x1)/2,cz=-(FB.n0+FB.n1)/2,R=Math.max(FB.x1-FB.x0,FB.n1-FB.n0)*0.85+120;
-  var stN=(LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length)?LAYOUT.invlab[0].n:((FB.n0+FB.n1)/2),stZ=-stN;   // calle de inversores para la pasada baja
+  if(!_TOURLN){var ax9=_streetAxes(),best9=null,bc9=-1;   // pasada baja SIEMPRE por zona de trackers: la calle con más seguidores a ±45 m y su extensión X real ("el dron baja a altura humana en la zona que no hay nada")
+    for(var i9=0;i9<ax9.length;i9++){var c9=0,x09=1e9,x19=-1e9;
+      for(var j9=0;j9<NODES.length;j9++){var n9=-NODES[j9].gz;if(Math.abs(n9-ax9[i9])<45){c9++;x09=Math.min(x09,NODES[j9].gx);x19=Math.max(x19,NODES[j9].gx);}}
+      if(c9>bc9){bc9=c9;best9={n:ax9[i9],x0:x09,x1:x19};}}
+    _TOURLN=best9||{n:(FB.n0+FB.n1)/2,x0:FB.x0,x1:FB.x1};}
+  var stZ=-_TOURLN.n,lx0=_TOURLN.x0-35,lx1=_TOURLN.x1+35;
   var px,py,pz,tx,ty,tz;
   if(T<20){var u=T/20,a=-Math.PI/2+u*2*Math.PI;px=cx+R*Math.cos(a);py=R*0.42;pz=cz+R*Math.sin(a);tx=cx;ty=0;tz=cz;}   // órbita completa alta
-  else if(T<24){var u2=_ease((T-20)/4);px=_lerp(cx+R*Math.cos(-Math.PI/2+2*Math.PI),FB.x0-40,u2);py=_lerp(R*0.42,9,u2);pz=_lerp(cz+R*Math.sin(-Math.PI/2+2*Math.PI),stZ,u2);tx=_lerp(cx,FB.x0+120,u2);ty=_lerp(0,4,u2);tz=stZ;}   // descenso a la calle
-  else if(T<40){var u3=(T-24)/16;px=_lerp(FB.x0-40,FB.x1+40,u3);py=9;pz=stZ;tx=px+130;ty=4;tz=stZ;}   // pasada de dron por la calle central
+  else if(T<24){var u2=_ease((T-20)/4);px=_lerp(cx+R*Math.cos(-Math.PI/2+2*Math.PI),lx0,u2);py=_lerp(R*0.42,9,u2);pz=_lerp(cz+R*Math.sin(-Math.PI/2+2*Math.PI),stZ,u2);tx=_lerp(cx,lx0+120,u2);ty=_lerp(0,4,u2);tz=stZ;}   // descenso a la calle
+  else if(T<40){var u3=(T-24)/16;px=_lerp(lx0,lx1,u3);py=9;pz=stZ;tx=px+130;ty=4;tz=stZ;}   // pasada de dron por la calle con trackers
   else if(T<46){var u4=_ease((T-40)/6);px=_lerp(FB.x1+40,SUBST.x+60,u4);py=_lerp(9,42,u4);pz=_lerp(stZ,-SUBST.n+70,u4);tx=_lerp(px+130,SUBST.x,u4);ty=_lerp(4,2,u4);tz=_lerp(stZ,-SUBST.n,u4);}   // visita a la subestación
   else {var u5=_ease((T-46)/6);px=_lerp(SUBST.x+60,cx+R*Math.cos(-Math.PI/2),u5);py=_lerp(42,R*0.42,u5);pz=_lerp(-SUBST.n+70,cz+R*Math.sin(-Math.PI/2),u5);tx=_lerp(SUBST.x,cx,u5);ty=_lerp(2,0,u5);tz=_lerp(-SUBST.n,cz,u5);}   // ascenso y vuelta al inicio (bucle)
   py+=localElevY(px,-pz);ty+=localElevY(tx,-tz);
   camera.position.set(px,py,pz);controls.target.set(tx,ty,tz);controls.update();
 }
 function stopTour(){if(!TOUR_ON)return;TOUR_ON=false;controls.enabled=true;$('tourBtn').textContent='🎬 Tour dron';}
-$('tourBtn').onclick=function(){ if(TOUR_ON){stopTour();return;} TOUR_ON=true;_tourT=0;controls.enabled=false;if(freeCam){freeCam=false;$('freecam').checked=false;}this.textContent='⏹ Parar tour';};
+$('tourBtn').onclick=function(){ if(TOUR_ON){stopTour();return;} TOUR_ON=true;_tourT=0;_TOURLN=null;controls.enabled=false;if(freeCam){freeCam=false;$('freecam').checked=false;}this.textContent='⏹ Parar tour';};   // _TOURLN=null: recalcula la calle del tour por planta
 renderer&&renderer.domElement.addEventListener('pointerdown',function(){stopTour();});   // tocar la escena = salir del tour
 $('recBtn').onclick=function(){ var b=this;
   if(REC){try{REC.stop();}catch(e){}return;}
