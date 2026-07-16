@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.76</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.78</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -69,6 +69,12 @@
     <div class="row"><label title="Simula la generación: pinta los módulos con la luz del sol, energiza el cableado DC y saca MW/MWh según hora, día (barra de tiempo) y meteo. Modelo cielo-claro offline."><input type="checkbox" id="genflow"> ⚡ Flujo / generación</label></div>
     <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Nubosidad <input type="range" id="cloud" min="0" max="100" value="0" style="width:78px"></label><span id="cloudV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0%</span></div>
     <div class="row"><label style="display:flex;align-items:center;gap:6px">T amb <input type="number" id="tamb" value="20" style="width:48px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:12px"> °C</label></div>
+    <div class="row"><label title="Stow por viento, replicado del gemelo digital: cuando el viento supera el umbral de entrada, TODOS los trackers abanderan hacia el lado en que está el sol a la velocidad real del actuador (0,17 °/s); al bajar del umbral de salida (histéresis Schmitt) vuelven al seguimiento. Con ⚡ activo, la producción cae por el coseno."><input type="checkbox" id="stowChk"> 🌬️ Abanderamiento (stow)</label></div>
+    <div id="stowBox" style="display:none">
+      <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Viento <input type="range" id="wind" min="0" max="120" value="0" style="width:78px"></label><span id="windV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0 km/h</span></div>
+      <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:4px;flex-wrap:wrap">Entrada <input type="number" id="stowIn" value="60" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> · Salida <input type="number" id="stowOut" value="40" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> km/h · Bandera ±<input type="number" id="stowPos" value="55" style="width:38px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px">°</div>
+      <div class="leg" id="stowState" style="font-size:11px">Seguimiento normal</div>
+    </div>
     <div class="row" id="genBox" style="display:none"><div id="genHUD" class="leg" style="font-size:11.5px;line-height:1.6"></div></div>
     <div class="row"><label title="Reflejo del cielo en los módulos. Cubemap construido en CPU (sin PMREM): seguro en cualquier GPU. Se regenera al cambiar el sol/las nubes."><input type="checkbox" id="refl"> ✨ Reflejos (cielo en módulos)</label></div>
     <div class="row"><button id="calBtn" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">⚙️ Calibrar con SolarGPT</button><span id="calSt" style="font-size:10.5px;color:var(--tx2)"></span></div>
@@ -235,7 +241,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -359,7 +365,7 @@ function setTime(min){
   curMin=min; syncSun(min);
   if(genOn){updateGenGlow();updateGenRings();updateGenHUD();}   // generación: brillo de paneles, anillos por inversor y HUD siguen la hora
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
-  if(SEG) updateSpin(panelAngle(min));        // recoloca las piezas que basculan (tubo, módulos, correas, cable, cajas, TCU)
+  if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
   var _a=panelAngle(min);$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(simOn?" · sim":" · real")+(btOn?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
@@ -746,7 +752,7 @@ function buildSkyDome(){
     vertexShader:'varying vec3 vDir;void main(){vDir=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
     fragmentShader:[
       'precision highp float;varying vec3 vDir;uniform vec3 uSun;uniform float uU;uniform float uCloud;uniform float uTime;',
-      'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}',
+      'float hash(vec2 p){vec3 p3=fract(vec3(p.xyx)*0.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}',   // hash Hoskins SIN sin(): el clasico fract(sin·43758) colapsa en GPU reales con argumentos grandes y las nubes salian facetadas ("queda muy muy artificial")
       'float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}',
       'float fbm(vec2 p){float v=0.0,a=0.55;mat2 R=mat2(0.8,-0.6,0.6,0.8);for(int i=0;i<5;i++){v+=a*noise(p);p=R*p*2.13+vec2(11.7,7.3);a*=0.5;}return v;}',   // octavas ROTADAS + offset: mata los "rectángulos" del ruido de valor
       'void main(){vec3 dir=normalize(vDir);float h=clamp(dir.y,0.0,1.0);',
@@ -764,7 +770,7 @@ function buildSkyDome(){
       '  cuv+=0.22*vec2(fbm(cuv*1.7+9.1),fbm(cuv*1.7+4.7));',                                                             // warp moderado: rompe los círculos del umbral sin deshilachar el cúmulo en cirros
       '  float m=fbm(cuv*0.62+3.7);float n=fbm(cuv*2.3+m*1.6);',                                                          // la máscara manda el fbm GRANDE (islas algodonosas); el fino solo texturiza
       '  float d=(m+0.35*n)-(0.76-0.26*uCloud);',                                                                          // despejado: ~10% de cúmulos sueltos ("mola más que el nuestro"); 100% = cubierto
-      '  float cf=smoothstep(0.005,0.10,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.03,0.34,d);',                // borde definido: algodón opaco, no gasa
+      '  float cf=smoothstep(0.01,0.15,d)*smoothstep(0.015,0.10,dir.y);float th=smoothstep(0.03,0.34,d);',                // borde definido: algodón opaco, no gasa
       '  vec3 cb=mix(mix(vec3(0.05,0.06,0.09),vec3(1.0,0.66,0.48),tDusk),vec3(1.07,1.07,1.09),tDay);',                    // nubes: blancas brillantes de día, encendidas al atardecer, oscuras de noche
       '  float cg=smoothstep(0.30,0.05,uU)*pow(max(mu,0.0),6.0);cb=mix(cb,vec3(1.12,0.72,0.50),cg*0.85);',                // con sol bajo, la nube cercana al sol se enciende cálida (no blanco puro)
       '  float nl=fbm(cuv*2.3+m*1.6+sAz*0.22);float lit=clamp(0.55+1.6*(n-nl),0.0,1.0);',                                  // autosombreado: muestrea el fbm corrido hacia el sol → cara iluminada blanca, base gris perla (cúmulo de foto, no mancha plana)
@@ -797,7 +803,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,900.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.09,1.07,1.00);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.30,0.30*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(120.0,520.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.09,1.07,1.00);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.30,0.13*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
@@ -1250,10 +1256,31 @@ function perInvKW(i,min){var ns=INVSTR[i]||0;return Math.max(0,Math.min(ns*perSt
 function genKwp(){var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,nStr=(NET&&NET.layers&&NET.layers.cable_pos&&NET.layers.cable_pos.length)||(NODES.length*4);return nStr*mods*wmod/1000;}   // kWp DC = nº strings reales (DWG) × mód/string × Wp
 function genModel(min){var sv=sunVec(min),U=sv.U;if(U<=0.005)return{U:U,poa:0,dcKW:0,acKW:0,ghi:0};
   var AM=1/Math.max(0.05,U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678))*(1-0.78*GENCLOUD),dhi=0.10*1361*U*(1-0.5*GENCLOUD),ghi=Math.max(0,dni*U+dhi);   // DNI cielo-claro Meinel + difusa, atenuadas por nubosidad
-  var th=panelAngle(min)*DEG,cosAOI=Math.max(0,-Math.sin(th)*sv.E+Math.cos(th)*sv.U),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(−sinθ,cosθ): θ negativo=Este en nuestra convención (el +sinθ anterior RECORTABA mañanas/tardes sin BT)
+  var th=((min===curMin&&_STOWANG!=null&&!_dayCalc)?_STOWANG:panelAngle(min))*DEG,cosAOI=Math.max(0,-Math.sin(th)*sv.E+Math.cos(th)*sv.U),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(−sinθ,cosθ): θ negativo=Este. ABANDERADO: el instante usa el ángulo real de bandera → cae el coseno (la integral del día NO, es de seguimiento)
   var tcell=GENTAMB+poa/800*25,derate=1+(-0.0035)*(tcell-25),dc=GEN_KWP*(poa/1000)*derate*0.95,ac=Math.max(0,Math.min(dc*0.985,GEN_KWP/1.25));   // térmico (-0,35%/°C) + pérdidas 5% + recorte del inversor (ratio DC/AC 1,25)
   return{U:U,poa:poa,ghi:ghi,dcKW:dc,acKW:ac};}
-function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP);if(key===_dayKey)return _dayMWh;var e=0;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado
+function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP);if(key===_dayKey)return _dayMWh;var e=0;_dayCalc=true;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayCalc=false;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado — SIN el ángulo de bandera (el stow es un transitorio, no debe quedar en la caché diaria)
+// ===== ABANDERAMIENTO POR VIENTO (stow) — replicado del gemelo digital: histéresis Schmitt entrada/salida,
+// bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
+// Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
+var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_dayCalc=false;
+function stowStep(dt){ if(!SEG)return;
+  if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;updateSpin(panelAngle(curMin));} return; }
+  var IN=Math.max(5,+($('stowIn').value)||60),OUT=Math.min(Math.max(1,+($('stowOut').value)||40),IN-1),POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
+  if(!stowLatch&&WINDK>=IN)stowLatch=true; else if(stowLatch&&WINDK<=OUT)stowLatch=false;   // Schmitt: entra a IN, no suelta hasta bajar de OUT (nada de bandereo intermitente con racha en el umbral)
+  var ideal=panelAngle(curMin);
+  var sg=Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1);             // lado del sol (θ<0 = Este); cerca del mediodía decide el acimut solar
+  var tgt=stowLatch?sg*POSM:ideal;
+  if(_STOWANG===null)_STOWANG=ideal;
+  var rate=0.17*dt*(playing?PLAYSPEED:30);                                                  // 0,17 °/s del actuador REAL, acelerado con el reloj simulado (en pausa ×30: el viaje 0→55° se ve en ~11 s)
+  var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
+  updateSpin(_STOWANG);
+  var st=$('stowState');
+  if(st){var txt=stowLatch
+      ?((Math.abs(_STOWANG-tgt)<0.2?'ABANDERADO a ':'Abanderando → ')+(sg>0?'+':'−')+POSM+'° ('+(sg>0?'Oeste':'Este')+', lado del sol) · viento '+WINDK+' km/h')
+      :(Math.abs(_STOWANG-ideal)<0.2?'Seguimiento normal · viento '+WINDK+' km/h':'Volviendo al seguimiento ('+_STOWANG.toFixed(0)+'°) · viento '+WINDK+' km/h');
+    if(st.textContent!==txt)st.textContent=txt;}
+}
 // ===== SOMBRAS FILA-A-FILA cuantificadas (no solo pintadas): fracción sombreada del ancho de mesa
 // Fs = 1 − (p/W)·sin(αp)/sin(αp+θ), con αp = ángulo de perfil del sol (plano E-W, eje N-S), θ = |inclinación|,
 // p = pitch real entre ejes (12 m, medido del DWG), W = ancho de mesa (TC.modH). Con backtracking Fs→0 por diseño.
@@ -1975,6 +2002,8 @@ $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};           
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
 $('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';syncSun(curMin);if(genOn){updateGenGlow();updateGenHUD();}if(FICHA)updateFicha();};   // nubosidad: también pinta NUBES en el cielo y atenúa la luz/reflejos; la ficha abierta (inversor/CT/sub) se recalcula — se quedaba con la POA de cuando se abrió
+$('stowChk').onchange=function(){STOWON=this.checked;$('stowBox').style.display=STOWON?'block':'none';if(!STOWON)stowLatch=false;};   // abanderamiento por viento (stow): el paso a seguimiento lo hace stowStep con la rampa del actuador
+$('wind').oninput=function(){WINDK=+this.value;$('windV').textContent=this.value+' km/h';};
 $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}if(FICHA)updateFicha();};                  // temperatura ambiente: ídem ficha
 var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
