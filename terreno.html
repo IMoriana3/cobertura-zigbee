@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.80</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.81</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -729,7 +729,9 @@ function animateMeteo(dt){ metT+=dt;
   if(!WIND.real){ WIND.ws=3.0+1.8*Math.sin(metT*0.05)+0.7*Math.sin(metT*0.6); WIND.wd=210+28*Math.sin(metT*0.03); }   // sin SCADA: brisa sintética del SW (para que se mueva)
   if(!METEO_ANIM.length)return;
   var wsEff=STOWON?WINDK/3.6:WIND.ws;                                          // con el ABANDERAMIENTO armado manda el slider de viento (km/h→m/s): "la veleta debe girar según la velocidad que haya en el slider"
-  var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*(0.35+0.85*wsEff*gust);      // cazoletas ∝ velocidad del viento (+ rachas); a más viento, giran más rápido
+  var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*Math.min(12,0.35+0.85*wsEff*gust);   // cazoletas ∝ viento pero CAPADAS a ~2 rev/s VISUALES: a 4+ rev/s con 60 fps estroboscopiaban (rueda de carro: "no lo veo girar más deprisa")
+  if(vegMesh&&vegMesh.material.userData.sh){var us=vegMesh.material.userData.sh.uniforms;us.uVT.value=metT;us.uVA.value=Math.min(1,wsEff/28);   // la hierba se mece con el MISMO viento (28 m/s ≈ 100 km/h = tumbada)
+    var db=(WIND.wd+180)*DEG;us.uVD.value.set(Math.sin(db),Math.cos(db)*-1*-1);us.uVD.value.set(Math.sin(db),-Math.cos(db));}
   var vy=Math.PI/2 - WIND.wd*DEG;                                              // la veleta apunta a la dirección DE DONDE viene el viento
   var sun=(SUN&&SUN._dir)?SUN._dir:null;
   if(sun){ if(sun.U>0.03)_solV.set(sun.E,Math.max(0.34,sun.U),-sun.N); else _solV.set(0,Math.cos(0.61),Math.sin(0.61));   // panel: de día apunta al sol (tope ~71°), de noche aparca al sur ~35°
@@ -976,8 +978,12 @@ function buildVeg(){
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
-  m.customProgramCacheKey=function(){return 'vegfade5';};
+  m.onBeforeCompile=function(sh){sh.uniforms.uVT={value:0};sh.uniforms.uVA={value:0.1};sh.uniforms.uVD={value:new THREE.Vector2(0.6,0.5)};m.userData.sh=sh;   // viento sobre la hierba: tiempo, amplitud (0..1) y dirección — los actualiza animateMeteo ("La hierba debería moverse tmb")
+    sh.vertexShader=sh.vertexShader
+      .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;');   // dobla por la punta (vf=y²), fase por mata (posición de instancia): ola desacompasada, no bloque rígido
+    sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
+  m.customProgramCacheKey=function(){return 'vegwind1';};
   var N=220000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
@@ -1274,7 +1280,7 @@ function stowStep(dt){ if(!SEG)return;
   var sg=side==='oeste'?1:side==='este'?-1:(Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1));   // lado: fijo (la controladora real abandera a +55°=Oeste) o "Sol" (θ<0=Este; ojo: el mediodía SOLAR de El Burgo es ~14:20 local — hasta entonces el sol sigue al Este)
   var tgt=stowLatch?sg*POSM:ideal;
   if(_STOWANG===null)_STOWANG=ideal;
-  var rate=0.17*dt*Math.min(60,(playing?PLAYSPEED:30));                                     // 0,17 °/s del actuador REAL, acelerado con el reloj simulado pero capado a ×60: a velocidad alta el abanderado se TELETRANSPORTABA y no se veía el viaje
+  var rate=0.17*dt*(playing?PLAYSPEED*60:1);                                                // 0,17 °/s en SEGUNDOS SIMULADOS (PLAYSPEED = min sim/s real → ×60): a ×30 el viaje de 55° son 5,4 min sim = 0,18 s reales. El cap anterior lo frenaba a 0,0028 °/s sim y "le ha costado horas desabanderar". En pausa: 0,17 °/s REALES (velocidad de actuador en vivo)
   var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
   _STOWTXT=stowLatch?(Math.abs(_STOWANG-tgt)<0.2?'bandera':'abanderando'):(Math.abs(_STOWANG-ideal)>0.2?'volviendo':'');   // etiqueta del marcador por ESTADO: en seguimiento normal vuelve a real/sim aunque el stow siga armado
   updateSpin(_STOWANG);
