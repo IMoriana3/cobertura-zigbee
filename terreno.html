@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.64</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.65</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -912,25 +912,29 @@ function buildContactAO(){
   if(aoGroup){scene.remove(aoGroup);aoGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});aoGroup=null;}
   if(!TRK.length||!ELEV)return;
   aoGroup=new THREE.Group();scene.add(aoGroup);
-  var v=[],uv=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2;
+  var v=[],uv=[],v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2,w2=w*1.7;
   TRK.forEach(function(t){var hl=(t.medio?16:31)+0.8,segs=10;
     [t.gx-fz,t.gx+fz].forEach(function(cx){
       for(var s=0;s<segs;s++){var nA=-t.gz-hl+2*hl*s/segs,nB=-t.gz-hl+2*hl*(s+1)/segs;
         var yA=localElevY(cx,nA)+0.05,yB=localElevY(cx,nB)+0.05,u0=s/segs,u1=(s+1)/segs;
         v.push(cx-w,yA,-nA, cx+w,yA,-nA, cx+w,yB,-nB, cx-w,yA,-nA, cx+w,yB,-nB, cx-w,yB,-nB);
-        uv.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
+        uv.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);
+        var yA2=yA-0.01,yB2=yB-0.01;                                     // franja de hierba MÁS ANCHA que el panel (asoma a los flancos ⇒ visible desde el aire, como las fotos)
+        v2.push(cx-w2,yA2,-nA, cx+w2,yA2,-nA, cx+w2,yB2,-nB, cx-w2,yA2,-nA, cx+w2,yB2,-nB, cx-w2,yB2,-nB);
+        uv2.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
     });});
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   // FRANJAS DE HIERBA bajo cada fila ("nada verde"): en las fotos aéreas reales la sombra de los módulos
   // conserva la humedad y crece una banda verde alineada con cada fila — misma retícula que el AO, textura
   // verde a rodales con borde desvanecido; el AO (renderOrder 1) la oscurece encima donde toca
   var bc=document.createElement('canvas');bc.width=64;bc.height=256;var bx2=bc.getContext('2d');
-  for(var gk=0;gk<110;gk++){bx2.globalAlpha=0.28+Math.random()*0.3;bx2.fillStyle=(gk%3)?'#647844':'#7a8a52';
+  for(var gk=0;gk<150;gk++){bx2.globalAlpha=0.38+Math.random()*0.32;bx2.fillStyle=(gk%3)?'#4e6e33':'#5f7f3e';
     var gr2=7+Math.random()*16;bx2.beginPath();bx2.ellipse(10+Math.random()*44,Math.random()*256,gr2*0.8,gr2*1.6,0,0,6.3);bx2.fill();}
   var msk=bx2.createLinearGradient(0,0,64,0);msk.addColorStop(0,'rgba(0,0,0,0)');msk.addColorStop(0.25,'rgba(0,0,0,1)');msk.addColorStop(0.75,'rgba(0,0,0,1)');msk.addColorStop(1,'rgba(0,0,0,0)');
   bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
   var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
-  var gm2=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.6}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
+  var g2b=new THREE.BufferGeometry();g2b.setAttribute('position',new THREE.Float32BufferAttribute(v2,3));g2b.setAttribute('uv',new THREE.Float32BufferAttribute(uv2,2));
+  var gm2=new THREE.Mesh(g2b,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.78}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
   var m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false}));m.renderOrder=1;aoGroup.add(m);
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
@@ -950,8 +954,8 @@ function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.
 // (3) vegetación dispersa (solo escritorio): matas cruzadas instanciadas, se funden a ~90 m
 var vegMesh=null;
 function _grassTex(){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
-  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1,verde=Math.random()<0.45;
-    x.strokeStyle=verde?'rgba('+(74+Math.random()*36|0)+','+(112+Math.random()*38|0)+','+(52+Math.random()*26|0)+',0.9)'   // mezcla: ~45% briznas VERDES (fotos aéreas) + resto paja seca
+  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1,verde=Math.random()<0.65;
+    x.strokeStyle=verde?'rgba('+(56+Math.random()*34|0)+','+(122+Math.random()*44|0)+','+(40+Math.random()*26|0)+',0.92)'   // mezcla: ~45% briznas VERDES (fotos aéreas) + resto paja seca
       :'rgba('+(96+Math.random()*50|0)+','+(88+Math.random()*44|0)+','+(48+Math.random()*26|0)+',0.9)';x.lineWidth=1.4;
     x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+sw*3,48-h2*0.6,bx+sw*(4+Math.random()*5),48-h2);x.stroke();}
   return new THREE.CanvasTexture(c);}
