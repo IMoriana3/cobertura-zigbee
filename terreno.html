@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.61</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.62</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -783,7 +783,7 @@ function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.heigh
   for(var k=0;k<420;k++){var big=k<160;g.globalAlpha=big?0.22:0.20;g.fillStyle=(k%2)?'#4a4232':'#f4ecd6';   // manchas marrón seco / crema (~10–70 px)
     var rx=big?(24+Math.random()*46):(6+Math.random()*18);
     g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rx,rx*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
-  for(var k2=0;k2<150;k2++){g.globalAlpha=0.16+Math.random()*0.10;g.fillStyle=(k2%2)?'#6b7a48':'#7d8a55';   // RODALES VERDE OLIVA ("nada verde"): en las fotos aéreas hay hierba a manchas entre lo árido
+  for(var k2=0;k2<260;k2++){g.globalAlpha=0.20+Math.random()*0.12;g.fillStyle=(k2%2)?'#6b7a48':'#7d8a55';   // RODALES VERDE OLIVA ("nada verde"): en las fotos aéreas hay hierba a manchas entre lo árido
     var rg2=14+Math.random()*40;
     g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rg2,rg2*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
   g.globalAlpha=0.30;for(var s=0;s<1400;s++){g.fillStyle=(s%2)?'#5c543f':'#efe7cf';var r=1+Math.random()*2.5;g.beginPath();g.arc(Math.random()*256,Math.random()*256,r,0,6.3);g.fill();}   // moteado fino (primerísimos planos)
@@ -905,7 +905,7 @@ function buildInvLayer(){
 // equipos. Ancla las cosas al suelo; alfa baja para SUMARSE a la sombra real sin ennegrecer.
 var aoGroup=null,CELLNRM=null;
 function _aoTex(){var c=document.createElement('canvas');c.width=128;c.height=64;var x=c.getContext('2d');
-  var g=x.createRadialGradient(64,32,4,64,32,60);g.addColorStop(0,'rgba(10,12,10,0.50)');g.addColorStop(0.55,'rgba(10,12,10,0.28)');g.addColorStop(1,'rgba(10,12,10,0)');
+  var g=x.createRadialGradient(64,32,4,64,32,60);g.addColorStop(0,'rgba(10,12,10,0.30)');g.addColorStop(0.55,'rgba(10,12,10,0.16)');g.addColorStop(1,'rgba(10,12,10,0)');
   x.save();x.translate(64,32);x.scale(1,0.5);x.translate(-64,-32);x.fillStyle=g;x.fillRect(0,0,128,64);x.restore();
   return new THREE.CanvasTexture(c);}
 function buildContactAO(){
@@ -930,7 +930,7 @@ function buildContactAO(){
   var msk=bx2.createLinearGradient(0,0,64,0);msk.addColorStop(0,'rgba(0,0,0,0)');msk.addColorStop(0.25,'rgba(0,0,0,1)');msk.addColorStop(0.75,'rgba(0,0,0,1)');msk.addColorStop(1,'rgba(0,0,0,0)');
   bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
   var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
-  var gm2=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.8}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
+  var gm2=new THREE.Mesh(g,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.6}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
   var m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false}));m.renderOrder=1;aoGroup.add(m);
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
@@ -963,8 +963,8 @@ function buildVeg(){
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(150.0,310.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
-  m.customProgramCacheKey=function(){return 'vegfade4';};
+  m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
+  m.customProgramCacheKey=function(){return 'vegfade5';};
   var N=90000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
@@ -976,11 +976,11 @@ function buildVeg(){
   var i=0;
   while(i<N/2){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
     if(nearRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
-    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.7+rng()*0.9;o.scale.set(sc,0.8+rng()*0.9,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
+    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.95+rng()*1.1;o.scale.set(sc,0.9+rng()*1.0,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
   while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
     for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
       if(nearRoad(x2,n2)){o.scale.set(0,0,0);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);continue;}   // mata del rodal caída en el vial: se anula (instancia degenerada)
-      o.position.set(x2,terrainMeshY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=0.8+rng()*1.1;o.scale.set(sc2,0.9+rng()*1.1,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
+      o.position.set(x2,terrainMeshY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=1.0+rng()*1.3;o.scale.set(sc2,1.0+rng()*1.2,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
   vegMesh.receiveShadow=true;scene.add(vegMesh);
 }
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
@@ -1648,10 +1648,11 @@ function buildBOS(){
     for(var ci=0;ci<k;ci++){var cg=new THREE.Group();cg.position.set(x,y+ph-ci*0.28,-n);cg.rotation.y=baseR+(ci-(k-1)/2)*0.7;bosGroup.add(cg);   // k cámaras FIJAS por mástil (el plano agrupa CAM 1-3, 8-9, 13-15, 16-18), abanicadas alrededor de su alcance y escalonadas en altura
       var cam=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.2,0.52),camM);cam.rotation.x=0.3;cg.add(cam);
       var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(0,-0.04,0.3);cg.add(dot);}
-    if(ptz){var dome=new THREE.Group();dome.position.set(x,y+ph-k*0.28-0.30,-n);bosGroup.add(dome);   // PTZ1: DOMO bajo las fijas ("la PTZ no está")
-      dome.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.10,10),camM),0,0.05,0));
-      var half=new THREE.Mesh(new THREE.SphereGeometry(0.13,12,8,0,Math.PI*2,Math.PI/2,Math.PI/2),new THREE.MeshStandardMaterial({color:0x20242c,roughness:.25,metalness:.1}));dome.add(half);}
-    if(lab){var lb=makeLabel(lab,'poi');lb.position.set(x,y+ph+1.0,-n);bosGroup.add(lb);}});   // etiqueta con los nombres REALES del plano CCTV ("faltan las etiquetas")
+    if(ptz){var dome=new THREE.Group();dome.position.set(x,y+ph+0.36,-n);bosGroup.add(dome);   // PTZ1 CORONANDO el mástil a tamaño real ~0,4 m ("la PTZ sigue sin aparecer": a 0,13 m bajo las fijas era invisible)
+      dome.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.30,8),poleM),0,-0.22,0));   // vástago
+      dome.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.21,0.21,0.16,12),camM),0,0.02,0));    // carcasa
+      var half=new THREE.Mesh(new THREE.SphereGeometry(0.19,14,10,0,Math.PI*2,Math.PI/2,Math.PI/2),new THREE.MeshStandardMaterial({color:0x1c2026,roughness:.2,metalness:.15}));half.position.y=-0.06;dome.add(half);}
+    if(lab){var lb=makeLabel(lab,'poi');lb.position.set(x,y+ph+1.0,-n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);}});   // etiqueta con los nombres REALES del plano CCTV — hito: se conmuta con "Etiquetas" ("solo deben verse cuando se le de a etiquetas")
   // estaciones meteorológicas (HSU/RSU): mástil con tensores + anemómetro/veleta + piranómetro + garita + datalogger + panel solar
   var mtMast=new THREE.MeshStandardMaterial({color:0xc4cad1,roughness:.5,metalness:.55}),
       mtWire=new THREE.MeshStandardMaterial({color:0x8a939e,roughness:.6,metalness:.4}),
