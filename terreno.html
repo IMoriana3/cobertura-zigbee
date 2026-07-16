@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.53</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.54</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -779,6 +779,9 @@ function makeDetailTex(){ var c=document.createElement('canvas');c.width=c.heigh
   for(var k=0;k<420;k++){var big=k<160;g.globalAlpha=big?0.22:0.20;g.fillStyle=(k%2)?'#4a4232':'#f4ecd6';   // manchas marrón seco / crema (~10–70 px)
     var rx=big?(24+Math.random()*46):(6+Math.random()*18);
     g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rx,rx*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
+  for(var k2=0;k2<150;k2++){g.globalAlpha=0.16+Math.random()*0.10;g.fillStyle=(k2%2)?'#6b7a48':'#7d8a55';   // RODALES VERDE OLIVA ("nada verde"): en las fotos aéreas hay hierba a manchas entre lo árido
+    var rg2=14+Math.random()*40;
+    g.beginPath();g.ellipse(Math.random()*256,Math.random()*256,rg2,rg2*(0.5+Math.random()*0.5),Math.random()*3.14,0,6.3);g.fill();}
   g.globalAlpha=0.30;for(var s=0;s<1400;s++){g.fillStyle=(s%2)?'#5c543f':'#efe7cf';var r=1+Math.random()*2.5;g.beginPath();g.arc(Math.random()*256,Math.random()*256,r,0,6.3);g.fill();}   // moteado fino (primerísimos planos)
   g.globalAlpha=1;
   var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
@@ -788,7 +791,7 @@ function addTerrainDetail(mat){ if(SKY_MOB||!mat||!mat.map)return;   // reactiva
   mat.onBeforeCompile=function(sh){ sh.uniforms.uDet={value:dtx};
     sh.fragmentShader=sh.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D uDet;')
-      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.06,1.02,0.93);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.40,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
+      .replace('#include <map_fragment>','#include <map_fragment>\n#ifdef USE_MAP\nfloat dd=length(vViewPosition);float dN=1.0-smoothstep(35.0,320.0,dd);float dM=1.0-smoothstep(150.0,2600.0,dd);\nvec3 dFine=texture2D(uDet,vUv*420.0).rgb;vec3 dBig=texture2D(uDet,vUv*22.0).rgb;\ndiffuseColor.rgb*=vec3(1.04,1.03,0.95);\ndiffuseColor.rgb*=mix(vec3(1.0),dBig*1.40,0.60*dM);diffuseColor.rgb*=mix(vec3(1.0),dFine*1.40,0.62*dN);\n#endif'); };   // bi-escala: manchas ~50 m + grano ~2,5 m + GRADACIÓN CÁLIDA global (la ortofoto PNOA vira a gris; las fotos reales del suelo son beige cálido). ×1,40 mantiene la luminancia con la base beige (media ~0,71)
   mat.needsUpdate=true;
 }
 function updateEnvMap(){ return;   // DESACTIVADO (v4.2): el PMREM dejaba la escena NEGRA/colgada en GPU reales (móvil Y escritorio). Los reflejos volverán como cubemap CPU opcional, validado con píxeles.
@@ -914,6 +917,16 @@ function buildContactAO(){
         uv.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
     });});
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  // FRANJAS DE HIERBA bajo cada fila ("nada verde"): en las fotos aéreas reales la sombra de los módulos
+  // conserva la humedad y crece una banda verde alineada con cada fila — misma retícula que el AO, textura
+  // verde a rodales con borde desvanecido; el AO (renderOrder 1) la oscurece encima donde toca
+  var bc=document.createElement('canvas');bc.width=64;bc.height=256;var bx2=bc.getContext('2d');
+  for(var gk=0;gk<110;gk++){bx2.globalAlpha=0.28+Math.random()*0.3;bx2.fillStyle=(gk%3)?'#647844':'#7a8a52';
+    var gr2=7+Math.random()*16;bx2.beginPath();bx2.ellipse(10+Math.random()*44,Math.random()*256,gr2*0.8,gr2*1.6,0,0,6.3);bx2.fill();}
+  var msk=bx2.createLinearGradient(0,0,64,0);msk.addColorStop(0,'rgba(0,0,0,0)');msk.addColorStop(0.25,'rgba(0,0,0,1)');msk.addColorStop(0.75,'rgba(0,0,0,1)');msk.addColorStop(1,'rgba(0,0,0,0)');
+  bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
+  var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
+  var gm2=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.8}));gm2.renderOrder=0;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos
   var m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false}));m.renderOrder=1;aoGroup.add(m);
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
@@ -933,8 +946,9 @@ function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.
 // (3) vegetación dispersa (solo escritorio): matas cruzadas instanciadas, se funden a ~90 m
 var vegMesh=null;
 function _grassTex(){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
-  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1;
-    x.strokeStyle='rgba('+(96+Math.random()*50|0)+','+(88+Math.random()*44|0)+','+(48+Math.random()*26|0)+',0.9)';x.lineWidth=1.4;
+  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1,verde=Math.random()<0.45;
+    x.strokeStyle=verde?'rgba('+(74+Math.random()*36|0)+','+(112+Math.random()*38|0)+','+(52+Math.random()*26|0)+',0.9)'   // mezcla: ~45% briznas VERDES (fotos aéreas) + resto paja seca
+      :'rgba('+(96+Math.random()*50|0)+','+(88+Math.random()*44|0)+','+(48+Math.random()*26|0)+',0.9)';x.lineWidth=1.4;
     x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+sw*3,48-h2*0.6,bx+sw*(4+Math.random()*5),48-h2);x.stroke();}
   return new THREE.CanvasTexture(c);}
 function buildVeg(){
@@ -1106,20 +1120,9 @@ function buildNetLayer(key){
     if(ev.length){var eg3=new THREE.BufferGeometry();eg3.setAttribute('position',new THREE.Float32BufferAttribute(ev,3));
       g.add(new THREE.LineSegments(eg3,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
   }
-  if(key==='trench_n3'&&PLANT==='elburgo'&&LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length){   // + RUTAS AC inversor→CT derivadas de los corredores reales: la zanja N3 del DWG solo trae 41 tramos sueltos junto a los CTs — "faltaba" el resto del recorrido
-    invByCT();if(!INVPOS.length)computeInvPos();
-    if(!_SPINE&&NET&&NET.layers&&NET.layers.trench_mt&&NET.layers.trench_mt.length){var bestS=null,blS=-1;
-      NET.layers.trench_mt.forEach(function(pl){var ns2=pl.map(function(p){return p[1];}),ext2=Math.max.apply(null,ns2)-Math.min.apply(null,ns2);if(ext2>blS){blS=ext2;bestS=pl;}});
-      if(bestS&&blS>60)_SPINE=bestS.slice().sort(function(a,b){return a[1]-b[1];});}
-    var rv2=[];
-    for(var ii=0;ii<LAYOUT.invlab.length;ii++){var a2=invAt(ii),ct2=CTMAIN[INVCT[ii]];if(!ct2)continue;
-      var rt=_lroute(a2.x,a2.n,ct2.x,ct2.n);
-      rt.seg.forEach(function(sg){var st3=Math.max(1,Math.min(14,Math.round(sg.l/7)));
-        for(var s3=0;s3<st3;s3++){var t0=s3/st3,t1=(s3+1)/st3,ax2=sg.a[0]+(sg.b[0]-sg.a[0])*t0,an2=sg.a[1]+(sg.b[1]-sg.a[1])*t0,bx2=sg.a[0]+(sg.b[0]-sg.a[0])*t1,bn2=sg.a[1]+(sg.b[1]-sg.a[1])*t1;
-          rv2.push(ax2,terrainMeshY(ax2,an2)+0.09,-an2,bx2,terrainMeshY(bx2,bn2)+0.09,-bn2);}});}
-    if(rv2.length){var rg2=new THREE.BufferGeometry();rg2.setAttribute('position',new THREE.Float32BufferAttribute(rv2,3));
-      g.add(new THREE.LineSegments(rg2,new THREE.LineBasicMaterial({color:0xffb066,transparent:true,opacity:.5})));}   // tono claro translúcido = trazado derivado, no líneas del DWG
-  }
+  // (v4.54) FUERA las rutas inversor→CT derivadas (_lroute): con las zanjas REALES del Tierras.dwg
+  // (String-Inversor + N3, que BORDEAN los bloques por dentro) la capa dibuja solo líneas del DWG
+  // ("los tramos en círculo rojo no existen... bordeamos los trackers, no nos salimos de la planta")
   scene.add(g);netG[key]=g;return g;
 }
 function camAimFor(x,n){   // dirección a la que mira una cámara: hacia el centroide de su(s) sector(es) de alcance (apex ≈ posición de la cámara)
