@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.58</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.59</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -965,7 +965,7 @@ function buildVeg(){
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(150.0,310.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
   m.customProgramCacheKey=function(){return 'vegfade4';};
-  var N=48000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 48k: mitad UNIFORME (sin calvas — 'sigue sin haber vegetación' era estar dentro de un claro entre rodales) + mitad en rodales
+  var N=90000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
   var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[],RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
@@ -1133,7 +1133,7 @@ function camAimFor(x,n){   // dirección a la que mira una cámara: hacia el cen
   if(!NET||!NET.layers||!NET.layers.cam_range)return null;
   var dx=0,dn=0,cnt=0;
   NET.layers.cam_range.forEach(function(pl){if(pl.length<2)return;var a=pl[0];
-    if(Math.abs(a[0]-x)<4&&Math.abs(a[1]-n)<4){var fx=0,fn=0,m=0;for(var i=1;i<pl.length;i++){fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});
+    if(Math.abs(a[0]-x)<14&&Math.abs(a[1]-n)<14){var fx=0,fn=0,m=0;for(var i=1;i<pl.length;i++){fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});   // 14 m: los mástiles van fusionados (clúster 12 m) e imantados al vallado — sus ápices de sector quedan a hasta ~13 m
   if(!cnt)return null;var L=Math.hypot(dx,dn)||1;return {dx:dx/L,dn:dn/L};
 }
 function setNet(keys,on){ ensureNet().then(function(ok){ if(!ok)return; keys.forEach(function(key){ if(on){if(!netG[key])buildNetLayer(key); if(netG[key])netG[key].visible=true;} else if(netG[key])netG[key].visible=false; }); }); }
