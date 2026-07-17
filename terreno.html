@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.10</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.11</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1090,18 +1090,7 @@ function buildVegExtras(EXQ){                                                  /
   if(PSx.length){var rgG=new THREE.PlaneGeometry(0.85,0.85),imr=new THREE.InstancedMesh(rgG,ringM,PSx.length),o4=new THREE.Object3D();
     for(var pr=0;pr<PSx.length;pr++){o4.position.set(PSx[pr][0],terrainMeshY(PSx[pr][0],PSx[pr][1])+0.015,-PSx[pr][1]);o4.rotation.set(-Math.PI/2,0,0);o4.updateMatrix();imr.setMatrixAt(pr,o4.matrix);}
     VEGX.add(imr);}
-  if(!INVPOS.length)computeInvPos();                                          // ENTORNO DEL INVERSOR según la FOTO DE OBRA: los cables AC salen por el LATERAL — a nuestra derecha mirando el frontal (frontal al sur ⇒ lado ESTE) — y bajan al suelo por un PAR de corrugados morados
-  var corTex=(function(){var cv=document.createElement('canvas');cv.width=8;cv.height=32;var g2=cv.getContext('2d');
-    g2.fillStyle='#8a72a4';g2.fillRect(0,0,8,32);g2.fillStyle='#a78fc2';for(var q2=0;q2<32;q2+=8)g2.fillRect(0,q2,8,4);return new THREE.CanvasTexture(cv);})();   // anillado del corrugado
-  corTex.wrapS=corTex.wrapT=THREE.RepeatWrapping;corTex.repeat.set(1,6);
-  var corM=new THREE.MeshStandardMaterial({map:corTex,roughness:.8,metalness:.05});
-  var acM=new THREE.MeshStandardMaterial({color:0x15181c,roughness:.6,metalness:.1});
-  var glM=new THREE.MeshStandardMaterial({color:0x2a2f36,roughness:.55,metalness:.3});
-  INVPOS.forEach(function(iv){var gy=terrainMeshY(iv.x,iv.n),ex=iv.x+0.60;
-    for(var ci=0;ci<2;ci++){var nz=iv.n+(ci?0.09:-0.09);
-      var cd=new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.026,0.55,8),corM);cd.position.set(ex+0.10,gy+0.275,-nz);VEGX.add(cd);   // corrugado morado Ø52 hasta el suelo (par, como en la foto)
-      var cb=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,1.05,6),acM);cb.position.set(ex+0.05,gy+1.02,-nz);cb.rotation.z=0.22;VEGX.add(cb);   // manguera AC negra del prensaestopas lateral a la boca de su corrugado
-      var gl=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.06,6),glM);gl.position.set(ex-0.02,gy+1.56,-nz);gl.rotation.z=Math.PI/2;VEGX.add(gl);}});   // prensaestopas horizontales en el LATERAL de la caja (fondo de caja a 1,52 según plano)
+  // (la acometida AC/DC del inversor se modela en buildBOS junto a la estación: corrugado ROJO 3×120 mm² y bancada de corrugados DC entre los soportes)
   scene.add(VEGX);
 }
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
@@ -1995,56 +1984,85 @@ function buildBOS(){
     var dw=Math.min(1.1,w*0.4),dh=Math.min(2.2,h*0.8);var dr=new THREE.Mesh(new THREE.BoxGeometry(dw,dh,0.08),doorM);dr.position.set(cx,y+dh/2,-cn+dp/2+0.04);bosGroup.add(dr);});  // puerta
   // inversores string Sungrow SG350HX (36 ud) — DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo gris con frontal Sungrow, disipador trasero y bastidor
   var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
-  var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // +X,-X,+Y,-Y,+Z(trasera),-Z(frontal con marca)
-  // PLANO XTR0000256 (XAMAI "Detalle inversor") + fotos de obra: caja 1136×838×412,5 colgada de 2 perfiles
-  // OMEGA (1536×85×60) sobre 2 soportes C 180×80 de 2807 mm (450 enterrados, separación 714), TEJADILLO de
-  // chapa 1543×883 a 10° (vuelo 202 por lado, alto al frente), tapa frontal redondeada con tornillería,
-  // seccionador DC lateral, trasera oscura con banda de VENTILACIÓN perforada y asas, y llegada DC en
-  // corrugado soportado por REJILLA con abanico libre-pero-ordenado hasta la regleta
-  var W=1.136,H=0.838,D=0.4125,upH=2.807-0.450,boxTop=upH-0.286,cy=boxTop-H/2,legB=boxTop-H;   // cotas del plano
-  var _shp=new THREE.Shape(),_rw=0.55,_rh=0.38,_rr=0.085;
-  _shp.moveTo(-_rw+_rr,-_rh);_shp.lineTo(_rw-_rr,-_rh);_shp.quadraticCurveTo(_rw,-_rh,_rw,-_rh+_rr);_shp.lineTo(_rw,_rh-_rr);_shp.quadraticCurveTo(_rw,_rh,_rw-_rr,_rh);_shp.lineTo(-_rw+_rr,_rh);_shp.quadraticCurveTo(-_rw,_rh,-_rw,_rh-_rr);_shp.lineTo(-_rw,-_rh+_rr);_shp.quadraticCurveTo(-_rw,-_rh,-_rw+_rr,-_rh);
-  var plG=new THREE.ExtrudeGeometry(_shp,{depth:0.022,bevelEnabled:true,bevelThickness:0.006,bevelSize:0.006,bevelSegments:1,curveSegments:5});
-  var plTex=makeInvTex();plTex.wrapS=plTex.wrapT=THREE.ClampToEdgeWrapping;plTex.repeat.set(-1/1.10,1/0.76);plTex.offset.set(0.5,0.5);   // repeat.x NEGATIVO: la cara visible de la extrusión es la trasera y la marca salía en espejo
-  var plCap=new THREE.MeshStandardMaterial({map:plTex,roughness:.40,metalness:.12}),plSide=new THREE.MeshStandardMaterial({color:0xe6e9eb,roughness:.40,metalness:.12});
-  var swBoxM=new THREE.MeshStandardMaterial({color:0xeceff1,roughness:.42,metalness:.10}),negroM=new THREE.MeshStandardMaterial({color:0x191c20,roughness:.6,metalness:.2});
+  var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // (la caja ahora es redondeada; invFaces queda para el núcleo interior)
+  // PLANO XTR0000256 COMPLETO + fotos: cuerpo REDONDEADO, tejadillo 1543×883 a 10° con TODAS sus piezas
+  // (2×L1 832×40 bajo los bordes laterales, 2×L2 894×40 en DIAGONAL de los soportes a la esquina frontal
+  // — POR FUERA, sin atravesar la caja —, pletinas 575/509×20, 2 omegas, 2 soportes C), compartimento AC
+  // lateral del que salen 3 MANGUERAS de 120 mm² a UN corrugado ROJO, trasera oscura con banda de
+  // ventilación y bahía negra inferior, y bancada de corrugados DC ENTRE los dos soportes (tantos como
+  // seguidores alimenta ×2 — asignación por PROXIMIDAD, disclosed: el mapeo real por strings del DWG queda pendiente)
+  var W=1.136,H=0.838,upH=2.807-0.450,boxTop=upH-0.286,cy=boxTop-H/2,legB=boxTop-H;   // cotas del plano
+  var _rsh=function(w2,h2,r2){var sh=new THREE.Shape();
+    sh.moveTo(-w2+r2,-h2);sh.lineTo(w2-r2,-h2);sh.quadraticCurveTo(w2,-h2,w2,-h2+r2);sh.lineTo(w2,h2-r2);sh.quadraticCurveTo(w2,h2,w2-r2,h2);sh.lineTo(-w2+r2,h2);sh.quadraticCurveTo(-w2,h2,-w2,h2-r2);sh.lineTo(-w2,-h2+r2);sh.quadraticCurveTo(-w2,-h2,-w2+r2,-h2);return sh;};
+  var bodyG2=new THREE.ExtrudeGeometry(_rsh(W/2,H/2,0.075),{depth:0.30,bevelEnabled:true,bevelThickness:0.012,bevelSize:0.012,bevelSegments:2,curveSegments:6});
+  var plG=new THREE.ExtrudeGeometry(_rsh(0.55,0.38,0.085),{depth:0.022,bevelEnabled:true,bevelThickness:0.006,bevelSize:0.006,bevelSegments:1,curveSegments:5});
+  var plTex=makeInvTex();plTex.wrapS=plTex.wrapT=THREE.ClampToEdgeWrapping;plTex.repeat.set(-1/1.10,1/0.76);plTex.offset.set(0.5,0.5);   // repeat.x negativo: la cara visible es la trasera de la extrusión
+  var blancoM=new THREE.MeshStandardMaterial({color:0xe8ebed,roughness:.42,metalness:.10});
+  var plCap=new THREE.MeshStandardMaterial({map:plTex,roughness:.40,metalness:.12});
+  var negroM=new THREE.MeshStandardMaterial({color:0x191c20,roughness:.6,metalness:.2});
   var ventM=new THREE.MeshStandardMaterial({color:0x0d0f12,roughness:.9,metalness:.1});
   var tejM=new THREE.MeshStandardMaterial({color:0xb6bcc2,roughness:.5,metalness:.55,side:THREE.DoubleSide});
   var dcCorM=new THREE.MeshStandardMaterial({color:0x2b2e33,roughness:.85,metalness:.05});
   var rejM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.10,side:THREE.DoubleSide,color:0xc4cbd1,roughness:.55,metalness:.45});
+  var rojoTex=(function(){var cv=document.createElement('canvas');cv.width=8;cv.height=32;var g2=cv.getContext('2d');
+    g2.fillStyle='#8f2b22';g2.fillRect(0,0,8,32);g2.fillStyle='#a63a2e';for(var q2=0;q2<32;q2+=8)g2.fillRect(0,q2,8,4);return new THREE.CanvasTexture(cv);})();
+  rojoTex.wrapS=rojoTex.wrapT=THREE.RepeatWrapping;rojoTex.repeat.set(1,6);
+  var corRojoM=new THREE.MeshStandardMaterial({map:rojoTex,roughness:.8,metalness:.05});
+  var acM=new THREE.MeshStandardMaterial({color:0x15181c,roughness:.6,metalness:.1});
   var dcRojo=new THREE.MeshStandardMaterial({color:0x8c2a22,roughness:.62,metalness:.08}),dcNegro=new THREE.MeshStandardMaterial({color:0x17191d,roughness:.62,metalness:.08});
-  var bodyG=new THREE.BoxGeometry(W,H,0.30),rearG=new THREE.BoxGeometry(W*0.96,H*0.92,0.05),ventG=new THREE.BoxGeometry(W*0.88,0.22,0.012);
-  var upG=new THREE.BoxGeometry(0.18,upH,0.08),omG=new THREE.BoxGeometry(1.536,0.085,0.06);
-  var tejG=new THREE.BoxGeometry(1.543,0.02,0.883),diagG=new THREE.BoxGeometry(0.04,0.96,0.04);
-  var swG=new THREE.BoxGeometry(0.10,0.55,0.30),hdlG=new THREE.BoxGeometry(0.03,0.16,0.03),stripG=new THREE.BoxGeometry(1.05,0.10,0.18),brkG=new THREE.BoxGeometry(0.10,0.16,0.05);
-  var gripG=new THREE.CylinderGeometry(0.018,0.018,0.17,6);
-  var dcTubeG=new THREE.CylinderGeometry(0.030,0.030,1.0,8),bskG=new THREE.CylinderGeometry(0.058,0.058,1.05,8,1,true,Math.PI*0.15,Math.PI*0.7),cblG=new THREE.CylinderGeometry(0.0045,0.0045,1,5);
+  var rearG=new THREE.BoxGeometry(W*0.98,H*0.90,0.05),ventG=new THREE.BoxGeometry(W*0.88,0.26,0.014);
+  var upG=new THREE.BoxGeometry(0.18,upH,0.08),omG=new THREE.BoxGeometry(1.536,0.085,0.06),omAlaG=new THREE.BoxGeometry(1.536,0.02,0.10);
+  var tejG=new THREE.BoxGeometry(1.543,0.02,0.883);
+  var L1G=new THREE.BoxGeometry(0.04,0.04,0.832),L2G=new THREE.BoxGeometry(0.04,0.894,0.04);
+  var pl1G=new THREE.BoxGeometry(0.575,0.02,0.0015*10),pl2G=new THREE.BoxGeometry(0.509,0.02,0.015);
+  var swG=new THREE.BoxGeometry(0.12,0.62,0.34),bahiaG=new THREE.BoxGeometry(W*0.55,0.16,0.30),asaG=new THREE.BoxGeometry(W*0.35,0.03,0.03);
+  var gripG=new THREE.CylinderGeometry(0.018,0.018,0.17,6),glandG=new THREE.CylinderGeometry(0.014,0.014,0.05,6);
+  var dcTubeG=new THREE.CylinderGeometry(0.026,0.026,1.0,8),cblG=new THREE.CylinderGeometry(0.0045,0.0045,1,5);
+  var acTubeG=new THREE.CylinderGeometry(0.032,0.032,0.55,8),acHoseG=new THREE.CylinderGeometry(0.0095,0.0095,1,6);
+  var rejPlanoG=new THREE.PlaneGeometry(0.72,1.06);
+  if(!INVPOS.length)computeInvPos();   // ANTES del recuento: sin esto INVPOS estaba vacío y todos los inversores caían al fallback (6 tubos)
+  var _trkTally={};if(TRK.length&&INVPOS.length){TRK.forEach(function(t9){var bi=-1,bd=1e18;   // seguidores por inversor POR PROXIMIDAD (los corrugados DC "suben tantos como trackers en paralelo ×2")
+    for(var q9=0;q9<INVPOS.length;q9++){var dx9=INVPOS[q9].x-t9.gx,dn9=INVPOS[q9].n+t9.gz,d9=dx9*dx9+dn9*dn9;if(d9<bd){bd=d9;bi=q9;}}
+    if(bi>=0)_trkTally[bi]=(_trkTally[bi]||0)+1;});}
   (LAYOUT.invlab||[]).forEach(function(c0,ci){if(!INVPOS.length)computeInvPos();var c=invAt(ci);if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
-    var body=new THREE.Mesh(bodyG,invFaces);body.position.set(0,cy,-0.05);g.add(body);                     // cuerpo (frontal -Z)
-    var pl=new THREE.Mesh(plG,[plCap,plSide]);pl.position.set(0,cy,-0.228);g.add(pl);                      // TAPA frontal redondeada con marca/tornillería (textura)
-    var rr9=new THREE.Mesh(rearG,negroM);rr9.position.set(0,cy,0.155);g.add(rr9);                          // trasera oscura
-    var vt9=new THREE.Mesh(ventG,ventM);vt9.position.set(0,cy,0.185);g.add(vt9);                           // banda de ventilación perforada central (foto trasera)
-    var sw=new THREE.Mesh(swG,swBoxM);sw.position.set(-(W/2+0.06),cy+0.02,-0.05);g.add(sw);                // seccionador DC lateral (ESTE en mundo)
-    var hd=new THREE.Mesh(hdlG,negroM);hd.position.set(-(W/2+0.12),cy+0.02,-0.05);g.add(hd);               // maneta
-    [-1,1].forEach(function(sx){var gr=new THREE.Mesh(gripG,negroM);gr.rotation.z=Math.PI/2;gr.position.set(sx*(W/2+0.05),boxTop-0.05,0.10);g.add(gr);});   // asas negras superiores (foto trasera)
-    var st=new THREE.Mesh(stripG,negroM);st.position.set(0,legB-0.04,-0.09);g.add(st);                     // regleta de conectores DC bajo la caja
-    [-W*0.30,W*0.30].forEach(function(bx){var bk=new THREE.Mesh(brkG,negroM);bk.position.set(bx,legB-0.10,0.10);g.add(bk);});   // escuadras negras
-    [-0.357,0.357].forEach(function(px){var up=new THREE.Mesh(upG,invPost);up.position.set(px,upH/2,0.30);g.add(up);});         // 2 soportes C 180×80 (separación 714, plano)
-    [boxTop-0.10,legB+0.10].forEach(function(ry){var om=new THREE.Mesh(omG,invPost);om.position.set(0,ry,0.24);g.add(om);});    // 2 perfiles omega 1536×85
-    var tj=new THREE.Mesh(tejG,tejM);tj.position.set(0,upH+0.06,0.05);tj.rotation.x=0.1745;g.add(tj);      // TEJADILLO 1543×883 a 10°, alto al frente (vuelo 202 por lado)
-    [-0.357,0.357].forEach(function(px){var dg=new THREE.Mesh(diagG,invPost);dg.position.set(px,upH-0.42,-0.02);dg.rotation.x=-0.72;g.add(dg);});   // diagonales L del tejadillo (perfil L 40×40 del plano)
+    var body=new THREE.Mesh(bodyG2,blancoM);body.position.set(0,cy,-0.15);g.add(body);                     // CUERPO REDONDEADO (extrusión con esquinas curvas, "el inversor es más redondeado")
+    var pl=new THREE.Mesh(plG,[plCap,blancoM]);pl.position.set(0,cy,-0.185);g.add(pl);                     // tapa frontal con marca/tornillería
+    var rr9=new THREE.Mesh(rearG,negroM);rr9.position.set(0,cy,0.175);g.add(rr9);                          // trasera oscura (foto trasera)
+    var vt9=new THREE.Mesh(ventG,ventM);vt9.position.set(0,cy,0.205);g.add(vt9);                           // banda de ventilación perforada
+    var sw=new THREE.Mesh(swG,blancoM);sw.position.set(-(W/2+0.07),cy-0.04,-0.02);g.add(sw);               // COMPARTIMENTO AC lateral (más alto, foto frontal): de su fondo salen las mangueras
+    for(var gi9=0;gi9<3;gi9++){var gl=new THREE.Mesh(glandG,negroM);gl.position.set(-(W/2+0.07)+(gi9-1)*0.05,cy-0.37,-0.02);g.add(gl);}   // 3 prensaestopas (3 fases 120 mm²)
+    [-1,1].forEach(function(sx){var gr=new THREE.Mesh(gripG,negroM);gr.rotation.z=Math.PI/2;gr.position.set(sx*(W/2+0.05),boxTop-0.05,0.10);g.add(gr);});   // asas
+    var bh=new THREE.Mesh(bahiaG,negroM);bh.position.set(0,legB-0.06,-0.02);g.add(bh);                     // BAHÍA negra inferior de conectores (foto)
+    var as9=new THREE.Mesh(asaG,negroM);as9.position.set(0,legB-0.15,-0.14);g.add(as9);                    // su marco/asa frontal
+    [-0.357,0.357].forEach(function(px){var up=new THREE.Mesh(upG,invPost);up.position.set(px,upH/2,0.30);g.add(up);});   // 2 soportes C 180×80 (plano)
+    [boxTop-0.10,legB+0.10].forEach(function(ry){var om=new THREE.Mesh(omG,invPost);om.position.set(0,ry,0.24);g.add(om);
+      var ala=new THREE.Mesh(omAlaG,invPost);ala.position.set(0,ry-0.052,0.26);g.add(ala);});              // 2 omegas 1536×85 con su ALA (correas de la foto)
+    var tj=new THREE.Mesh(tejG,tejM);tj.position.set(0,upH+0.06,0.05);tj.rotation.x=0.1745;g.add(tj);      // TEJADILLO 1543×883 a 10°
+    [-0.60,0.60].forEach(function(px){var l1=new THREE.Mesh(L1G,invPost);l1.position.set(px,upH+0.035,0.05);l1.rotation.x=0.1745;g.add(l1);});   // 2× L1 832: bordes laterales bajo la chapa
+    [-0.357,0.357].forEach(function(px){var l2=new THREE.Mesh(L2G,invPost);l2.position.set(px,upH+0.02,-0.06);l2.rotation.x=-1.32;g.add(l2);});  // 2× L2 894: DIAGONALES del soporte a la esquina FRONTAL — POR ENCIMA de la caja, sin atravesarla
+    var p1=new THREE.Mesh(pl1G,invPost);p1.position.set(0,upH+0.10,-0.36);p1.rotation.x=0.1745;g.add(p1);  // pletina 575 (frontal)
+    var p2=new THREE.Mesh(pl2G,invPost);p2.position.set(0,upH-0.02,0.42);p2.rotation.x=0.1745;g.add(p2);   // pletina 509 (trasera)
     bosGroup.add(g);
-    // LLEGADA DC (foto): corrugado desde la zanja SOPORTADO POR REJILLA junto al soporte oeste; de su boca,
-    // los cables suben LIBRES pero ORDENADOS en abanico hasta la regleta — sin canaleta en este último tramo
-    var wx=c.x-0.50,wn=c.n+0.30,gy2=terrainMeshY(wx,wn);
-    var dcT=new THREE.Mesh(dcTubeG,dcCorM);dcT.position.set(wx,gy2+0.5,-wn);bosGroup.add(dcT);
-    var bk9=new THREE.Mesh(bskG,rejM);bk9.position.set(wx,gy2+0.525,-wn);bosGroup.add(bk9);                // media caña de rejilla alrededor del corrugado
-    for(var k8=0;k8<6;k8++){var lx=c.x-0.40+k8*0.14,ln=c.n+0.09,ly=y+legB-0.03;
-      var dxx=lx-wx,dyy=ly-(gy2+1.0),dzz=(-ln)-(-wn),L8=Math.sqrt(dxx*dxx+dyy*dyy+dzz*dzz)||0.01;
-      var cbl=new THREE.Mesh(cblG,(k8%2?dcNegro:dcRojo));cbl.scale.y=L8;
-      cbl.position.set((wx+lx)/2,((gy2+1.0)+ly)/2,((-wn)+(-ln))/2);
-      _cbD.set(dxx/L8,dyy/L8,dzz/L8);_cbQ.setFromUnitVectors(_cbU,_cbD);cbl.setRotationFromQuaternion(_cbQ);
-      bosGroup.add(cbl);}
+    // --- ACOMETIDAS en MUNDO ---
+    var gyE=terrainMeshY(c.x,c.n);
+    var acx=c.x+(W/2+0.07),acn=c.n+0.02;                                                                    // compartimento AC (mundo: el grupo va girado)
+    var acT=new THREE.Mesh(acTubeG,corRojoM);acT.position.set(acx+0.12,gyE+0.275,-(acn));bosGroup.add(acT);  // UN corrugado ROJO al suelo
+    for(var h9=0;h9<3;h9++){var hz=acn+(h9-1)*0.05;
+      var hb=new THREE.Mesh(acHoseG,acM);hb.scale.y=0.95;
+      hb.position.set(acx+0.06,gyE+(y-gyE)+cy-0.37-0.42,-hz);hb.rotation.z=0.14;bosGroup.add(hb);}          // 3 mangueras 120 mm² (Ø19) del compartimento al corrugado
+    var nT2=Math.max(4,Math.min(16,2*(_trkTally[ci]||3)));                                                  // corrugados DC: seguidores alimentados ×2 (proximidad)
+    var perRow=Math.ceil(nT2/2);
+    for(var d9=0;d9<nT2;d9++){var row=d9<perRow?0:1,idx=row?d9-perRow:d9;
+      var dx2=c.x-0.30+(idx+0.5)*(0.60/perRow),dn2=c.n+0.26+(row?0.11:0);
+      var gy2=terrainMeshY(dx2,dn2);
+      var dcT=new THREE.Mesh(dcTubeG,dcCorM);dcT.scale.y=(y+legB-0.06-gy2);dcT.position.set(dx2,(gy2+y+legB-0.06)/2,-dn2);bosGroup.add(dcT);   // ENTRE los dos soportes, no por fuera
+      if(d9<12){var lx=c.x-0.35+d9*0.06,ln=c.n+0.10,ly=y+legB-0.10;
+        var dxx=lx-dx2,dyy=ly-(y+legB-0.06),dzz=(-ln)-(-dn2),L8=Math.sqrt(dxx*dxx+dyy*dyy+dzz*dzz)||0.01;
+        var cbl=new THREE.Mesh(cblG,(d9%2?dcNegro:dcRojo));cbl.scale.y=L8;
+        cbl.position.set((dx2+lx)/2,((y+legB-0.06)+ly)/2,((-dn2)+(-ln))/2);
+        _cbD.set(dxx/L8,dyy/L8,dzz/L8);_cbQ.setFromUnitVectors(_cbU,_cbD);cbl.setRotationFromQuaternion(_cbQ);
+        bosGroup.add(cbl);}}
+    var rj=new THREE.Mesh(rejPlanoG,rejM);rj.position.set(c.x,terrainMeshY(c.x,c.n+0.14)+0.55,-(c.n+0.14));bosGroup.add(rj);   // REJILLA guardacables delante de la bancada
   });
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
