@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.02</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.03</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1808,8 +1808,18 @@ function buildBOS(){
   }
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
-  var ftc=document.createElement('canvas');ftc.width=ftc.height=64;var fxc=ftc.getContext('2d');fxc.strokeStyle='rgba(208,216,224,0.92)';fxc.lineWidth=2;for(var gi=0;gi<=64;gi+=8){fxc.beginPath();fxc.moveTo(gi,0);fxc.lineTo(gi,64);fxc.moveTo(0,gi);fxc.lineTo(64,gi);fxc.stroke();}
+  var _fgrid=function(SZ,lwF,solidA){var cv=document.createElement('canvas');cv.width=cv.height=SZ;var g=cv.getContext('2d');
+    if(solidA!=null){g.fillStyle='rgba(208,216,224,'+solidA+')';g.fillRect(0,0,SZ,SZ);return cv;}
+    var cell=SZ/8;g.strokeStyle='rgba(208,216,224,0.92)';g.lineWidth=Math.max(0.9,cell*lwF);
+    for(var q=0;q<=SZ;q+=cell){g.beginPath();g.moveTo(q,0);g.lineTo(q,SZ);g.moveTo(0,q);g.lineTo(SZ,q);g.stroke();}return cv;};
+  var ftc=_fgrid(64,0.25);   // nivel base: celda 8 px, línea 2 px — rejilla nítida de cerca
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
+  // MIPS PROPIOS con líneas proporcionalmente más gruesas (alpha medio ≥0,55 en todos los niveles): los mips
+  // automáticos promediaban a ~0,40 < alphaTest 0,5 y el paño DESAPARECÍA en cuanto el sampler caía a mips
+  // profundos — en rasante a lo largo de la valla no se veía la rejilla más que en el tramo frontal. El fade
+  // 120→420 m sigue retirando el paño lejos (sin "muro translúcido": alphaTest descarta, no vela)
+  ftex.mipmaps=[ftc,_fgrid(32,0.45),_fgrid(16,0.5),_fgrid(8,null,0.63),_fgrid(4,null,0.63),_fgrid(2,null,0.63),_fgrid(1,null,0.63)];
+  ftex.generateMipmaps=false;
   // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
   meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
@@ -1860,11 +1870,11 @@ function buildBOS(){
       fr.forEach(function(f){pts.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);});}
     if(pl.length)pts.push(pl[pl.length-1]);
     if(pts.length<2)return;
-    var raw=pts.map(function(p){return localElevY(p[0],p[1]);});                    // cota cruda del terreno bajo el paño (DEM continuo)
-    var rmesh=pts.map(function(p){return terrainMeshY(p[0],p[1]);});                // cota de la MALLA RENDERIZADA: en crestas la rejilla de 7 m queda POR ENCIMA del DEM y la valla anclada solo al DEM salía corta/semienterrada ("la valla sigue mal, no encaja")
-    var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m: quita el zigzag fino
+    var rmesh=pts.map(function(p){return terrainMeshY(p[0],p[1]);});                // SOLO la malla RENDERIZADA: la valla vive en el mundo visible. Anclar también al DEM continuo (raw) hacía que un pico del DEM que la rejilla de 7 m se come (÷vex amplificado) levantara paños gigantes y postes al aire ("Mira la valla, no cambia nada")
+    var raw=rmesh;                                                                  // alias (cota visible); el DEM continuo ya NO manda en la valla
+    var sm=rmesh.slice();for(var i=0;i<rmesh.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<rmesh.length){ss+=rmesh[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m sobre la malla: techo recto sin zigzag
     // base y techo con TOPE para que NUNCA colapse en cuestas. La base se entierra ∝ vex: la malla del terreno (~7 m) queda por debajo del DEM continuo en hondonadas y con la exageración vertical eso se amplifica → el paño flotaría. Enterrando más (solo lo invisible) la base nunca queda por encima del suelo visible (no vuela ni deja "gap sin sombra"); el techo sigue ≥ suelo+1
-    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i],rmesh[i])-bury;tE[i]=Math.max(sm[i]+fh,raw[i]+1.65,rmesh[i]+1.65);}   // techo ≥1,65 m sobre el terreno REAL **y sobre la malla renderizada**, base bajo AMBOS: anclada solo al DEM salía valla de un metro en montículos y postes/alambres semienterrados en crestas
+    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<rmesh.length;i++){bE[i]=Math.min(sm[i],rmesh[i])-bury;tE[i]=Math.max(sm[i]+fh,rmesh[i]+1.65);}   // techo ≥1,65 m sobre el suelo VISIBLE y ≤ ~2 m (suavizado): acotado — ya no existe el paño gigante que estiraba un pico del DEM invisible
     var uacc=0,pacc=1e9;
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
         ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
