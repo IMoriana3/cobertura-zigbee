@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.01</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.02</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1101,22 +1101,36 @@ function buildVegExtras(EXQ){                                                  /
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
 // opacidad ∝ nubosidad y solo de día. El "respirar" global de la luz (animateSky) pone la otra mitad.
 var cshGroup=null,_cshT=0,_cshK=0;
-function _cloudBlobTex(){var S=256,c=document.createElement('canvas');c.width=c.height=S;var x=c.getContext('2d');
-  var g0=x.createRadialGradient(128,128,20,128,128,120);g0.addColorStop(0,'rgba(0,0,0,0.55)');g0.addColorStop(1,'rgba(0,0,0,0)');   // base ancha: unifica el interior (sin "huecos" sintéticos)
-  x.fillStyle=g0;x.beginPath();x.arc(128,128,120,0,7);x.fill();
-  for(var k=0;k<5;k++){var a=k*2.39996,rr=28+((k*53)%46),cx=128+Math.cos(a)*rr,cy=128+Math.sin(a)*rr,r=42+((k*37)%34);   // grumos suaves alrededor del núcleo
-    var g=x.createRadialGradient(cx,cy,r*0.2,cx,cy,r);g.addColorStop(0,'rgba(0,0,0,0.45)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();}
-  var im=x.getImageData(0,0,S,S),dd=im.data;                                            // MÁSCARA DE BORDE: alfa→0 en el perímetro del plano — se acabó la "nube cuadrada"
-  for(var j=0;j<S;j++)for(var i=0;i<S;i++){var dx2=(i-128)/118,dy2=(j-128)/118,rr2=Math.sqrt(dx2*dx2+dy2*dy2);
-    var f=rr2>=1?0:Math.min(1,(1-rr2)*2.2);dd[(j*S+i)*4+3]*=f;}
+function _cloudAlphaField(S,seed){   // máscara de alpha PURA y DETERMINISTA (sin canvas ni DOM): value-noise fBm de 4 octavas + ventana de borde NO radial — la testean en Node los checks de tools/test_cloud_shadows.mjs
+  var h=function(ix,iy){var n=(ix*374761393+iy*668265263+seed*974634541)|0;n=Math.imul(n^(n>>>13),1274126177);n=(n^(n>>>16))>>>0;return n/4294967296;};
+  var sm=function(t){return t*t*(3-2*t);};
+  var vn=function(x,y){var ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+    var a=h(ix,iy),b=h(ix+1,iy),c=h(ix,iy+1),d=h(ix+1,iy+1),u=sm(fx),v=sm(fy);
+    return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;};
+  var A=new Float32Array(S*S);
+  for(var j=0;j<S;j++)for(var i=0;i<S;i++){
+    var x=i/S,y=j/S,f=0,amp=0.5,fr=3;
+    for(var o=0;o<4;o++){f+=amp*vn(x*fr+seed*17.13,y*fr*1.27+seed*9.71);amp*=0.5;fr*=2.03;}   // 4 octavas ligeramente anisótropas: masa continua con variación interior, sin simetría
+    f/=0.9375;
+    var b=Math.min(Math.min(x,1-x),Math.min(y,1-y))*2,tw=Math.min(1,b/0.35),w=tw*tw*(3-2*tw);   // ventana con MESETA: solo actúa en el anillo exterior (alpha 0 garantizado en el marco); en el interior manda el ruido — una ventana gradual en todo el plano volvía a dibujar la envolvente (masa cuasi-simétrica)
+    var g2=0.40+0.95*vn(x*2.6+seed*31.7,y*3.1+seed*13.3);   // compuerta de baja frecuencia (~9 lóbulos): sin ella el contorno seguía la ventana (masa cuasi-simétrica, otro "disco"); a f=1,7 una semilla mala anulaba el manto entero (max 0,03)
+    var al=Math.max(0,Math.min(1,(f*w*g2-0.34)/0.26));al=al*al*(3-2*al);   // corte 0,34 (sondeado): cobertura central 0,5-0,9 según semilla — masas con huecos, nunca manto macizo ni vacío
+    A[j*S+i]=al*0.55;   // alpha máx 0,55 (la densidad del núcleo del gradiente anterior): la oscuridad final la sigue mandando cloudShadowStep con GENCLOUD
+  }
+  return A;}
+function _cloudBlobTex(seed){   // se evita DELIBERADAMENTE createRadialGradient/arc: los gradientes radiales producían círculos/óvalos gigantes y evidentes sobre el terreno — la masa nubosa la da un fBm irregular POR MANTO
+  var S=256,c=document.createElement('canvas');c.width=c.height=S;var x=c.getContext('2d');
+  var A=_cloudAlphaField(S,seed),im=x.createImageData(S,S),dd=im.data;
+  for(var k=0;k<S*S;k++){dd[k*4]=0;dd[k*4+1]=0;dd[k*4+2]=0;dd[k*4+3]=Math.round(255*A[k]);}
   x.putImageData(im,0,0);
-  return new THREE.CanvasTexture(c);}
+  var t=new THREE.CanvasTexture(c);t.minFilter=THREE.LinearFilter;t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping;   // sin mips y con clamp: ni sangrado de borde ni marco de píxeles
+  return t;}
 function buildCloudShadows(){
   if(cshGroup){scene.remove(cshGroup);cshGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});cshGroup=null;}
   if(!ELEV)return;
   cshGroup=new THREE.Group();cshGroup.visible=false;scene.add(cshGroup);
   for(var i=0;i<3;i++){var s=460+i*160,g=new THREE.PlaneGeometry(s,s,18,18);g.rotateX(-Math.PI/2);   // mantos GRANDES (460-780 m): a 280-500 los grumos quedaban de 40-80 m y parecían manchas duras ("qué rara sale la sombra")
-    var m=new THREE.MeshBasicMaterial({map:_cloudBlobTex(),transparent:true,depthWrite:false,opacity:0});
+    var m=new THREE.MeshBasicMaterial({map:_cloudBlobTex(i+1),transparent:true,depthWrite:false,opacity:0});   // semilla DISTINTA por manto: tres masas diferentes (antes los tres compartían el mismo patrón radial y se veían tres copias)
     var mesh=new THREE.Mesh(g,m);mesh.renderOrder=1;mesh.frustumCulled=false;
     mesh.userData={ox:((i*397)%900)-450,oz:((i*641)%700)-350,sp:3.2+i*1.4};cshGroup.add(mesh);}
 }
