@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.14</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.15</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -643,10 +643,10 @@ function layoutTrackers(){
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
-      _SC.set(1,1,1);
-      _PV.set(wx,topY+0.06,wz-0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2,_M2);      // casquillo N
-      _PV.set(wx,topY+0.06,wz+0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2+1,_M2);    // casquillo S — la viga queda EN MEDIO
-      _PV.set(wx,topY+0.005,wz);_M2.compose(_PV,_Q,_SC);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;}}        // estribo bajo el cojinete
+      _SC.set(1,1,1);var ejeY=topY-0.06;                                                                    // topY es la CÚSPIDE sobre la viga: el EJE del tubo va 6 cm más abajo — antes los casquillos flotaban encima ('debe atravesarlos la viga')
+      _PV.set(wx,ejeY,wz-0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2,_M2);           // casquillo N, COAXIAL: el tubo pasa por dentro
+      _PV.set(wx,ejeY,wz+0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2+1,_M2);         // casquillo S
+      _PV.set(wx,ejeY-0.075,wz);_M2.compose(_PV,_Q,_SC);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;}}         // estribo BAJO el tubo, del poste al cojinete
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
@@ -990,34 +990,43 @@ function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.
   x.putImageData(n,0,0);var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;}
 // (3) vegetación dispersa (solo escritorio): matas cruzadas instanciadas, se funden a ~90 m
 var vegMesh=null,VEGM=[],VEGMATS=[],VEGX=null;
-function _grassTex(vt){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
-  // 5 VARIANTES ("hay demasiadas plantas iguales"): 0 hierba baja pajiza · 1 hierba media verde · 2 maleza alta oscura · 3 matorral seco · 4 herbácea con florecillas
-  var P=[{n:26,h:[0.35,0.62],rgb:function(r){return 'rgba('+(150+r(50))+','+(150+r(40))+','+(60+r(30))+',';},w:1.6},
-         {n:30,h:[0.55,0.95],rgb:function(r){return 'rgba('+(56+r(34))+','+(122+r(44))+','+(40+r(26))+',';},w:1.8},
-         {n:22,h:[0.75,1.0],rgb:function(r){return 'rgba('+(40+r(26))+','+(86+r(34))+','+(30+r(20))+',';},w:2.4},
-         {n:20,h:[0.5,0.85],rgb:function(r){return 'rgba('+(140+r(40))+','+(110+r(30))+','+(64+r(22))+',';},w:2.0},
-         {n:28,h:[0.5,0.9],rgb:function(r){return 'rgba('+(70+r(40))+','+(126+r(40))+','+(46+r(24))+',';},w:1.7}][vt||0];
+function _grassTex(vt){var c=document.createElement('canvas');c.width=128;c.height=96;var x=c.getContext('2d');
+  // v2 anti-"papel": cada hoja es un PATH RELLENO con taper (ancha en raíz, aguja en punta), degradado
+  // vertical raíz-oscura→punta-clara, alguna hoja vencida, y SOMBRA DE CONTACTO en la base que la asienta
+  var P=[{n:30,h:[0.35,0.62],rgb:[150,150,60,50,40,30],w:3.2},
+         {n:34,h:[0.55,0.95],rgb:[56,122,40,34,44,26],w:3.6},
+         {n:26,h:[0.75,1.0],rgb:[40,86,30,26,34,20],w:4.6},
+         {n:24,h:[0.5,0.85],rgb:[140,110,64,40,30,22],w:4.0},
+         {n:32,h:[0.5,0.9],rgb:[70,126,46,40,40,24],w:3.4}][vt||0];
   var sd=7919+vt*131,rr=function(m){sd=(sd*1103515245+12345)>>>0;return (sd/4294967296)*m;};
-  for(var i=0;i<P.n;i++){var bx=4+rr(56),tip=48-P.h[0]*48-rr((P.h[1]-P.h[0])*48),bw=P.w+rr(1.2);
-    x.strokeStyle=P.rgb(rr)+(0.55+rr(0.4)).toFixed(2)+')';x.lineWidth=bw;
-    x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+rr(8)-4,(48+tip)/2,bx+rr(12)-6,tip);x.stroke();
-    if(vt===2&&rr(1)>0.5){x.beginPath();x.moveTo(bx,34+rr(8));x.lineTo(bx+rr(10)-5,26+rr(6));x.stroke();}   // maleza: ramitas
-    if(vt===4&&rr(1)>0.45){x.fillStyle='rgba('+(230+rr(25))+','+(228+rr(24))+','+(200+rr(40))+',0.9)';x.fillRect(bx+rr(10)-5,tip+rr(4),1.6,1.6);}}   // florecillas
+  var g0=x.createRadialGradient(64,94,4,64,94,52);g0.addColorStop(0,'rgba(38,34,26,0.42)');g0.addColorStop(1,'rgba(38,34,26,0)');
+  x.fillStyle=g0;x.fillRect(0,64,128,32);                                     // sombra de contacto: asienta la mata en el suelo
+  for(var i=0;i<P.n;i++){var bx=8+rr(112),tipY=96-P.h[0]*96-rr((P.h[1]-P.h[0])*96),bw=(P.w+rr(2.0))*0.5;
+    var lean=rr(26)-13,curl=(rr(1)>0.82)?(rr(20)+8)*(rr(1)>0.5?1:-1):0;       // alguna hoja VENCIDA (curl fuerte)
+    var mx=bx+lean*0.5,tx=bx+lean+curl,cr=P.rgb;
+    var col0='rgba('+Math.round(cr[0]*0.55+rr(cr[3]))+','+Math.round(cr[1]*0.55+rr(cr[4]))+','+Math.round(cr[2]*0.55+rr(cr[5]))+',0.96)';
+    var col1='rgba('+Math.round(cr[0]+rr(cr[3]))+','+Math.round(cr[1]+rr(cr[4]))+','+Math.round(cr[2]+rr(cr[5]))+',0.88)';
+    var gg=x.createLinearGradient(0,96,0,tipY);gg.addColorStop(0,col0);gg.addColorStop(1,col1);
+    x.fillStyle=gg;x.beginPath();
+    x.moveTo(bx-bw,96);x.quadraticCurveTo(mx-bw*0.55,(96+tipY)/2,tx,tipY);   // TAPER: de bw en raíz a aguja en punta
+    x.quadraticCurveTo(mx+bw*0.55,(96+tipY)/2,bx+bw,96);x.closePath();x.fill();
+    if(vt===4&&rr(1)>0.45){x.fillStyle='rgba('+(230+rr(25))+','+(228+rr(24))+','+(200+rr(40))+',0.9)';x.fillRect(tx-1+rr(3),tipY+rr(5),2.2,2.2);}}   // florecillas
   var t=new THREE.CanvasTexture(c);t.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;return t;}
-function _makeVegMat(tex){var m=new THREE.MeshStandardMaterial({map:tex,alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
+function _makeVegMat(tex){var m=new THREE.MeshStandardMaterial({map:tex,alphaTest:0.38,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.uniforms.uVT={value:0};sh.uniforms.uVA={value:0.1};sh.uniforms.uVD={value:new THREE.Vector2(0.6,0.5)};m.userData.sh=sh;   // viento ("La hierba debería moverse tmb")
     sh.vertexShader=sh.vertexShader
       .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;varying vec3 vWPv;')
       .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;\n\tvWPv=(instanceMatrix*vec4(transformed,1.0)).xyz;')
-    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWPv;').replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));\n\tfloat vv=(cameraPosition.y-vWPv.y)/max(1.0,distance(cameraPosition,vWPv));\n\tdiffuseColor.a*=(1.0-smoothstep(0.60,0.88,vv));');};   // fundido por distancia + por ÁNGULO (en picado manda la ortofoto, no el "papel")
-  m.customProgramCacheKey=function(){return 'vegwind3';};return m;}
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWPv;').replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));\n\tfloat vv=(cameraPosition.y-vWPv.y)/max(1.0,distance(cameraPosition,vWPv));\n\tdiffuseColor.a*=(1.0-smoothstep(0.60,0.88,vv));\n\tdiffuseColor.rgb*=(0.55+0.45*smoothstep(0.02,0.55,vUv.y));');};   // fundido por distancia + por ÁNGULO, y AO de raíz: el tercio bajo en penumbra ancla la mata (anti-"papel")
+  m.customProgramCacheKey=function(){return 'vegwind4';};return m;}
 function buildVeg(){
   if(VEGM.length){VEGM.forEach(function(mm){scene.remove(mm);mm.geometry.dispose();mm.material.dispose();});VEGM=[];VEGMATS=[];vegMesh=null;}
   if(VEGX){scene.remove(VEGX);VEGX.traverse(function(o){if(o.geometry)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});VEGX=null;}
   if(SKY_MOB||!CLP||!ELEV)return;
-  var P=[-0.36,0,0, 0.36,0,0, 0.36,0.5,0, -0.36,0,0, 0.36,0.5,0, -0.36,0.5,0,
-         0,0,-0.36, 0,0,0.36, 0,0.5,0.36, 0,0,-0.36, 0,0.5,0.36, 0,0.5,-0.36];
-  var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
+  var P=[],U=[];
+  for(var q3=0;q3<3;q3++){var a3=q3*Math.PI/3,ca=Math.cos(a3),sa=Math.sin(a3);   // 3 planos a 60°: volumen desde cualquier rumbo (2 aspas se leían como cartón)
+    P.push(-0.36*ca,0,0.36*sa, 0.36*ca,0,-0.36*sa, 0.36*ca,0.5,-0.36*sa, -0.36*ca,0,0.36*sa, 0.36*ca,0.5,-0.36*sa, -0.36*ca,0.5,0.36*sa);
+    U.push(0,0, 1,0, 1,1, 0,0, 1,1, 0,1);}
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
   var N=220000,SHARE=[0.30,0.28,0.18,0.16,0.08];                              // reparto por variante; escalas propias (baja/media/alta/seca/flor)
   var SCL=[[0.7,0.5],[1.0,0.9],[1.2,1.4],[0.9,0.8],[0.9,0.9]];
@@ -1037,7 +1046,7 @@ function buildVeg(){
   var idx=[0,0,0,0,0],total=0;
   function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
     var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
-    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;o.scale.set(sc,sy,sc);o.updateMatrix();
+    o.position.set(x,terrainMeshY(x,n)-0.015,-n);o.rotation.set((rng()-0.5)*0.16,rng()*Math.PI*2,(rng()-0.5)*0.16);o.scale.set(sc,sy,sc);o.updateMatrix();   // LEAN aleatorio ±5° y base 1,5 cm hundida: ni palos verticales ni flotando
     VEGM[vt].setMatrixAt(idx[vt]++,o.matrix);total++;}
   function pick(){var r=rng();return r<0.30?0:r<0.58?1:r<0.76?2:r<0.92?3:4;}
   var guard=0;
