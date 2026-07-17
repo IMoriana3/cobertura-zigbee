@@ -55,7 +55,8 @@
       cable:  new THREE.MeshStandardMaterial({ color:0xc0392b, roughness:.60 }),
       jbox:   new THREE.MeshStandardMaterial({ color:0x101216, roughness:.70 }),
       tcu:    new THREE.MeshStandardMaterial({ color:0x232f3b, roughness:.50, metalness:.30 }),
-      silver: new THREE.MeshStandardMaterial({ color:0xaab4be, roughness:.40, metalness:.60 })
+      silver: new THREE.MeshStandardMaterial({ color:0xaab4be, roughness:.40, metalness:.60 }),
+      seccbox:new THREE.MeshStandardMaterial({ color:0xdfe3e5, roughness:.45, metalness:.10 })   // caja blanca IP66 del seccionador DC (DS132EL)
     };
   };
 
@@ -187,6 +188,20 @@
     push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX-0.16, 0, 0));   // DOS abarcones (∩ sobre el tubo cuadrado) que entran por los agujeros de las chapas del glb. POSICIÓN ESTIMADA (la placa del glb no expone agujeros parseables) -> afinar con feedback
     push('tcuabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, D.tcuX+0.16, 0, 0));
 
+    /* --- SECCIONADOR DC DS132EL (STEP del usuario, bbox 295×108×382 mm): en la viga con DOS abarcones
+       como la TCU, a 30 cm de ella HACIA EL LADO CONTRARIO A LA CORONA (la corona está en X=0 y la TCU
+       en +tcuX → el seccionador va más allá), unido a la TCU con 2 cables, NEGRO y ROJO. --- */
+    var seccX = D.tcuX + 0.25 + 0.30 + 0.1475;                 // borde de la TCU + 30 cm + media caja
+    push('secc', 'seccbox', true, true, function (TH){ return new TH.BoxGeometry(0.295, 0.19, 0.108); }, mT(THREE, seccX, -0.175, 0));
+    push('seccknob', 'motor', true, false, function (TH){ return new TH.CylinderGeometry(0.045, 0.045, 0.035, 12); }, mT(THREE, seccX, -0.285, 0));   // mando rotativo negro en la cara inferior
+    push('seccmaneta', 'motor', true, false, function (TH){ return new TH.BoxGeometry(0.02, 0.03, 0.09); }, mT(THREE, seccX, -0.305, 0));             // maneta
+    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX-0.09, -0.067, 0));
+    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX+0.09, -0.067, 0));
+    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX-0.09, 0, 0));
+    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX+0.09, 0, 0));
+    push('secclink', 'cable', true, false, function (TH){ return new TH.BoxGeometry(0.34, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, 0.028));   // ROJO
+    push('secclink', 'jbox',  true, false, function (TH){ return new TH.BoxGeometry(0.34, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, -0.028)); // NEGRO
+
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
       geom:function (TH){ var g=new TH.CylinderGeometry(0.25,0.25,0.16,24); g.rotateZ(Math.PI/2); return g; }, m:mT(THREE, 0,0,0) });
@@ -267,7 +282,7 @@
     var mats = opts.materials || S.materials(THREE);
     var west = opts.west !== false;
     var skip = opts.skip || {};
-    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1 };
+    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1, secc:1, seccknob:1, seccmaneta:1, seccchapa:1, seccabarcon:1, secclink:1 };   // el seccionador va con la TCU: solo viga oeste
     var spin = new THREE.Group(), stat = new THREE.Group(), modCols = [], dampers = [];
     S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full' }).forEach(function (p) {
       if (p.motorLink) return;                                   // cable motor↔TCU: lo gestiona la app por frame (pendiente)
@@ -303,6 +318,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.11';
+  S.VERSION = '0.4.12';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
