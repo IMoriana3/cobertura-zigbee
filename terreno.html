@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.96</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.97</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1308,7 +1308,6 @@ function buildNetLayer(key){
               var fU=(j8===0)?null:dropAt(l7,sd8,u8,sgIn);
               var fV=(j8===pts.length-2)?null:dropAt(l7,sd8,v8,-sgIn);
               aereo(l7,sd8,fU?fU.n:u8,fV?fV.n:v8,'spancut');
-              if(prevFoot&&fU)gndB(prevFoot.x,prevFoot.n,fU.x,fU.n);
               prevFoot=fV;}}
         }
       });
@@ -1323,16 +1322,13 @@ function buildNetLayer(key){
             var foot=dropAt(+lk,sdD,C.n,sg),feet={};feet[sdD]=foot;footsBySg[sg]=foot;
             if(!mainFoot)mainFoot=foot;
             if(items.some(function(x){return x.sd!==sdD;})){
-              var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;               // la viga contraria del MISMO lado: bajante en su poste del par
-              gndB(foot.x,foot.n,f2.x,f2.n);}
+              var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;}              // la viga contraria del MISMO lado: bajante en su poste del par — la unión ocurre DENTRO de la zanja, sin trazas inventadas en superficie ("¿la línea roja del suelo es un cardán?")
             items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.nT,ft.n,'ext');});
-            items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU lado
-              var prev=[foot.x,foot.n];
-              if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-foot.n)>0.4){gndB(foot.x,foot.n,foot.x,p.tail[p.k][1]);prev=[foot.x,p.tail[p.k][1]];}
+            items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU PROPIA viga (ruta del DWG, nada más)
+              var ftp=feet[p.sd]||foot,prev=[ftp.x,ftp.n];
+              if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-ftp.n)>0.4){gndB(ftp.x,ftp.n,ftp.x,p.tail[p.k][1]);prev=[ftp.x,p.tail[p.k][1]];}
               for(var i3=p.k;i3<p.tail.length;i3++){gndB(prev[0],prev[1],p.tail[i3][0],p.tail[i3][1]);prev=p.tail[i3];}});
           });
-          var sgs=Object.keys(footsBySg);
-          if(sgs.length===2){var fA=footsBySg[sgs[0]],fB=footsBySg[sgs[1]];gndB(fA.x,fA.n,fB.x,fB.n);}   // los dos lados de la calle SE UNEN por la zanja ("y no se unen...")
         });}
       if(SEGS.length){                                                       // v4.87-92: CABLES CON VOLUMEN y VIVOS — cilindro instanciado por tramo; updateCableSpin recoloca la brida al bascular
         var cylG=new THREE.CylinderGeometry(1,1,1,5,1,true);
