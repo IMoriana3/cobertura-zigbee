@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.82</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.83</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1098,13 +1098,6 @@ function buildNetLayer(key){
     var gnd=function(x1,n1,x2,n2){var L7=Math.hypot(x2-x1,n2-n1),st7=Math.max(1,Math.min(40,Math.ceil(L7/4)));   // a ras cada ~4 m: con pasos de 7-20 m la cuerda quedaba EN EL AIRE sobre las vaguadas ("¿Por qué los cables flotan?")
       for(var s7=0;s7<st7;s7++){var u0=s7/st7,u1=(s7+1)/st7,gx1=x1+(x2-x1)*u0,gn1=n1+(n2-n1)*u0,gx2=x1+(x2-x1)*u1,gn2=n1+(n2-n1)*u1;
         v.push(gx1,terrainMeshY(gx1,gn1)+d.off,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off,-gn2);}};
-    var PROF=null;                                                          // v4.70: perfil REAL del tubo por fila (nudos = tapas de poste de imPost, con lift/quiebre/vex): el mazo va BRIDADO SOBRE EL PROPIO TUBO, como en las fotos de obra — no colgado a 1,45 m siguiendo el microrrelieve
-    if(PSTc){PROF={};for(var q8=0;q8<PSTc.length;q8++){var pq=PSTc[q8];(PROF[pq[3]]=PROF[pq[3]]||[]).push([pq[1],pq[2]]);}
-      for(var r9 in PROF){var Ls=PROF[r9].sort(function(A,B){return A[0]-B[0];}),Lm=[];   // v4.71: FUSIONA el PAR de postes de las dos vigas (misma z de retícula, separados micras por el quiebre): con puntos casi coincidentes la pendiente del "último vano" salía dividida por ~1e-4 y los cables se iban AL CIELO ("La has liado") — en el banco con DEM plano dio 0/1=0 y no saltó
-        for(var w9=0;w9<Ls.length;w9++){var pv=Lm[Lm.length-1];
-          if(pv&&Math.abs(Ls[w9][0]-pv[0])<0.6){pv[0]=(pv[0]*pv[2]+Ls[w9][0])/(pv[2]+1);pv[1]=(pv[1]*pv[2]+Ls[w9][1])/(pv[2]+1);pv[2]++;}
-          else Lm.push([Ls[w9][0],Ls[w9][1],1]);}
-        PROF[r9]=Lm;}}
     var MAZO=0.12;                                                          // el mazo asienta sobre el tubo (eje + media viga + radio del haz)
     var vB=[];                                                              // trazado ENTERRADO (va por su zanja): se pinta discontinuo y tenue
     var gndB=function(x1,n1,x2,n2){var L8=Math.hypot(x2-x1,n2-n1),st9=Math.max(1,Math.min(40,Math.ceil(L8/4)));
@@ -1114,11 +1107,12 @@ function buildNetLayer(key){
       var LID={},LNS=[];                                                    // línea = seguidores con el mismo x (columna): por ella el mazo cruza los pasillos entre punteras en aéreo
       (function(){var xs=[];for(var r0=0;r0<TRK.length;r0++)xs.push([TRK[r0].gx,r0]);
         xs.sort(function(A,B){return A[0]-B[0];});var lastX=-1e9;
-        for(var q0=0;q0<xs.length;q0++){if(xs[q0][0]-lastX>0.75)LNS.push({x:0,rs:[],nodes:[]});lastX=xs[q0][0];
+        for(var q0=0;q0<xs.length;q0++){if(xs[q0][0]-lastX>0.75)LNS.push({x:0,rs:[],nA:[],nB:[]});lastX=xs[q0][0];
           LID[xs[q0][1]]=LNS.length-1;LNS[LNS.length-1].rs.push(xs[q0][1]);}
-        LNS.forEach(function(L9){var sx=0;L9.rs.forEach(function(r1){sx+=TRK[r1].gx;(PROF[r1]||[]).forEach(function(nd){L9.nodes.push(nd);});});
-          L9.x=sx/L9.rs.length;L9.nodes.sort(function(A,B){return A[0]-B[0];});});})();
-      var tubeYL=function(l2,n){var L=LNS[l2].nodes,y;                      // perfil del tubo de TODA la línea: recto de poste a poste y puenteando los vanos entre seguidores
+        LNS.forEach(function(L9){var sx=0;L9.rs.forEach(function(r1){sx+=TRK[r1].gx;});L9.x=sx/L9.rs.length;});
+        for(var q1=0;q1<PSTc.length;q1++){var P1=PSTc[q1],L1=LNS[LID[P1[3]]];if(!L1)continue;((P1[0]>=L1.x)?L1.nB:L1.nA).push([P1[1],P1[2]]);}   // v4.83: nudos POR VIGA (lado E/O) — el perfil anterior promediaba las alturas del PAR y en contrapendiente el mazo quedaba ENTRE las dos vigas ("no va por la viga... en unos casos va debajo y en otros encima"); por lado no hay nudos casi coincidentes → tampoco cables al cielo
+        LNS.forEach(function(L9){L9.nA.sort(function(A,B){return A[0]-B[0];});L9.nB.sort(function(A,B){return A[0]-B[0];});});})();
+      var tubeYL=function(l2,sd,n){var L=sd>0?LNS[l2].nB:LNS[l2].nA,y;      // perfil del tubo de SU VIGA en toda la línea: recto de poste a poste y puenteando los vanos entre seguidores
         if(!L.length)y=terrainMeshY(LNS[l2].x,n)+TC.postH;
         else if(L.length===1)y=L[0][1];
         else if(n<=L[0][0]){var s0=Math.max(-0.6,Math.min(0.6,(L[1][1]-L[0][1])/((L[1][0]-L[0][0])||1)));y=L[0][1]+s0*(n-L[0][0]);}
@@ -1130,14 +1124,14 @@ function buildNetLayer(key){
       var bajada=function(l3,sd,nT){var lx=LNS[l3].x,bp=null,bd=1e9;        // bajante en el soporte de la línea (y su misma viga) MÁS CERCANO a donde la ruta abandona la línea = la zanja ("el soporte que está más cerca de la zanja")
         for(var q6=0;q6<PSTc.length;q6++){var P6=PSTc[q6];if(LID[P6[3]]!==l3||(P6[0]-lx)*sd<0)continue;
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
-        var px=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]+MAZO:tubeYL(l3,nT)+MAZO;
+        var px=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]+MAZO:tubeYL(l3,sd,nT)+MAZO;
         var dk=px.toFixed(1)+'_'+pn.toFixed(1);
         if(!DDROP[dk]){DDROP[dk]=1;v.push(px,yT,-pn, px,terrainMeshY(px,pn)+0.04,-pn);}   // caída vertical por el soporte (compartida entre strings)
         return [px,pn];};
       var aereo=function(l4,sd,nA,nB){if(Math.abs(nB-nA)<0.05)return;       // mazo bridado al tubo, por la viga de su lado, cruzando en aéreo entre seguidores
         var bx=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(160,Math.ceil(Math.abs(nB-nA)/5)));
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
-          v.push(bx,tubeYL(l4,n1)+MAZO,-n1,bx,tubeYL(l4,n2)+MAZO,-n2);}};
+          v.push(bx,tubeYL(l4,sd,n1)+MAZO,-n1,bx,tubeYL(l4,sd,n2)+MAZO,-n2);}};
       var salida=function(pl,iF,tail,l7,sd){                                // desde el punto de conexión: AÉREO por la línea hasta el poste junto a la zanja, bajante, y SOLO ahí enterrado al inversor
         var lx=LNS[l7].x,k=0;
         while(k<tail.length&&Math.abs(tail[k][0]-lx)<4.2)k++;               // lo que la ruta DWG recorre pegado a la línea va AÉREO (no "por el suelo")
