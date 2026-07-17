@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.15</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.16</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2215,21 +2215,18 @@ function buildGateways(){
   var antM=new THREE.MeshStandardMaterial({color:0x20242a,roughness:.5,metalness:.4});
   GWS.forEach(function(gw){
     var g=new THREE.Group();gwG.add(g);
-    var poleH=1.25,pole=new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.06,poleH,10),poleM);pole.position.y=poleH/2;pole.castShadow=true;g.add(pole);   // poste de montaje
-    // NCU según el PLANO DR_NCU_v0 (SUNNER): armario 415×515×230 claro, 4 escuadras Ø9 (patrón 362×561),
-    // 2 prensaestopas inferiores, conector de antena + LED en la cara superior — LAS DOS IGUALES.
-    // (El plano pasa a mandar sobre ncu.glb: el visor construye la NCU paramétrica, idéntica en ambas.)
-    var NW=0.415,NH=0.515,ND=0.230,cy9=poleH+NH/2;
-    var cab=new THREE.Mesh(new THREE.BoxGeometry(NW,NH,ND),encM);cab.position.y=cy9;cab.castShadow=true;g.add(cab);
-    var fr9=new THREE.Mesh(new THREE.BoxGeometry(NW*0.94,NH*0.94,0.012),frontM);fr9.position.set(0,cy9,-ND/2-0.007);g.add(fr9);   // panel frontal (marca)
-    [[-0.181,0.2805],[0.181,0.2805],[-0.181,-0.2805],[0.181,-0.2805]].forEach(function(br){                  // 4 escuadras (sobresalen 23 mm arriba/abajo, patrón del plano)
-      var bk=new THREE.Mesh(new THREE.BoxGeometry(0.055,0.04,0.02),poleM);bk.position.set(br[0],cy9+br[1],ND/2+0.011);g.add(bk);});
-    [-0.05,0.05].forEach(function(gx9){var gl9=new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.016,0.05,8),antM);gl9.position.set(gx9,poleH-0.02,-0.02);g.add(gl9);});   // 2 prensaestopas inferiores
-    var ant9=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.10,6),antM);ant9.position.set(0.12,poleH+NH+0.05,0);g.add(ant9);   // conector de antena (cara superior)
-    var led9=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.005,0.02),new THREE.MeshStandardMaterial({color:0xd9a11c,emissive:0x8a5f00,emissiveIntensity:.8}));led9.position.set(0.05,poleH+NH+0.004,0.03);g.add(led9);   // LED
-    var aBot=poleH+0.62,aTop=gw.h;                                                                          // antena externa hasta la altura real (2,5 m)
-    var amast=new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.02,Math.max(0.2,aTop-aBot),8),antM);amast.position.y=(aBot+aTop)/2;amast.castShadow=true;g.add(amast);
-    var atip=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),new THREE.MeshStandardMaterial({color:0x5aa9ff,emissive:0x163a5e,emissiveIntensity:.6}));atip.position.y=aTop;g.add(atip);
+    var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.045,gw.h,10),poleM);pole.position.y=gw.h/2;pole.castShadow=true;g.add(pole);   // MÁSTIL ÚNICO y continuo hasta la antena (2,5 m)
+    // NCU según el PLANO DR_NCU_v0: armario 415×515×230 COLGADO de la cara sur del mástil por sus 4
+    // escuadras, a altura de servicio — antes iba ENSARTADO en el poste y la antena salía de la tapa ('sin sentido')
+    var NW=0.415,NH=0.515,ND=0.230,cy9=1.15,zC=-(ND/2+0.055);
+    var cab=new THREE.Mesh(new THREE.BoxGeometry(NW,NH,ND),encM);cab.position.set(0,cy9,zC);cab.castShadow=true;g.add(cab);
+    var fr9=new THREE.Mesh(new THREE.BoxGeometry(NW*0.94,NH*0.94,0.012),frontM);fr9.position.set(0,cy9,zC-ND/2-0.007);g.add(fr9);   // panel frontal (marca) mirando afuera
+    [[-0.181,0.2805],[0.181,0.2805],[-0.181,-0.2805],[0.181,-0.2805]].forEach(function(br){                  // 4 escuadras CONTRA el mástil (patrón 362×561 del plano)
+      var bk=new THREE.Mesh(new THREE.BoxGeometry(0.055,0.04,0.05),poleM);bk.position.set(br[0],cy9+br[1],zC+ND/2+0.026);g.add(bk);});
+    [-0.05,0.05].forEach(function(gx9){var gl9=new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.016,0.05,8),antM);gl9.position.set(gx9,cy9-NH/2-0.024,zC);g.add(gl9);});   // 2 prensaestopas bajo el armario
+    var ant9=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.10,6),antM);ant9.position.set(0.12,cy9+NH/2+0.05,zC);g.add(ant9);   // conector de antena en SU tapa
+    var led9=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.005,0.02),new THREE.MeshStandardMaterial({color:0xd9a11c,emissive:0x8a5f00,emissiveIntensity:.8}));led9.position.set(0.05,cy9+NH/2+0.004,zC+0.03);g.add(led9);   // LED en la tapa
+    var atip=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),new THREE.MeshStandardMaterial({color:0x5aa9ff,emissive:0x163a5e,emissiveIntensity:.6}));atip.position.y=gw.h;g.add(atip);   // radomo en la punta del MÁSTIL (no de la caja)
     var lb=makeLabel('NCU '+gw.name,'poi');lb.position.y=gw.h+1.2;lb.visible=labelGroup.visible;g.add(lb);HLBL.push(lb);   // etiqueta NCU (hito): se conmuta con "Etiquetas"
     gwMasts.push(g);
   });
