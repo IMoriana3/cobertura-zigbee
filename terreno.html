@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.03</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.04</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1808,20 +1808,19 @@ function buildBOS(){
   }
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
   var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
-  var _fgrid=function(SZ,lwF,solidA){var cv=document.createElement('canvas');cv.width=cv.height=SZ;var g=cv.getContext('2d');
+  var _fgrid=function(SZ,lwPx,solidA){var cv=document.createElement('canvas');cv.width=cv.height=SZ;var g=cv.getContext('2d');
     if(solidA!=null){g.fillStyle='rgba(208,216,224,'+solidA+')';g.fillRect(0,0,SZ,SZ);return cv;}
-    var cell=SZ/8;g.strokeStyle='rgba(208,216,224,0.92)';g.lineWidth=Math.max(0.9,cell*lwF);
+    var cell=SZ/8;g.strokeStyle='rgba(208,216,224,0.92)';g.lineWidth=lwPx;
     for(var q=0;q<=SZ;q+=cell){g.beginPath();g.moveTo(q,0);g.lineTo(q,SZ);g.moveTo(0,q);g.lineTo(SZ,q);g.stroke();}return cv;};
-  var ftc=_fgrid(64,0.25);   // nivel base: celda 8 px, línea 2 px — rejilla nítida de cerca
+  var ftc=_fgrid(256,2);   // tile de 8 celdas a 256 px: mapeado a 1,2 m ⇒ CELDA DE 15 CM y alambre ~9 mm ("es una malla de cada 15 cm o así, no tan tupida")
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
-  // MIPS PROPIOS con líneas proporcionalmente más gruesas (alpha medio ≥0,55 en todos los niveles): los mips
-  // automáticos promediaban a ~0,40 < alphaTest 0,5 y el paño DESAPARECÍA en cuanto el sampler caía a mips
-  // profundos — en rasante a lo largo de la valla no se veía la rejilla más que en el tramo frontal. El fade
-  // 120→420 m sigue retirando el paño lejos (sin "muro translúcido": alphaTest descarta, no vela)
-  ftex.mipmaps=[ftc,_fgrid(32,0.45),_fgrid(16,0.5),_fgrid(8,null,0.63),_fgrid(4,null,0.63),_fgrid(2,null,0.63),_fgrid(1,null,0.63)];
+  // MIPS PROPIOS "honestos": conservan la COBERTURA real del alambre (~11-30%) — los automáticos la diluían
+  // bajo el alphaTest y el paño desaparecía en rasante ("solo se ve la rejilla en un tramo"). Con alphaTest
+  // BAJO (0,10) los huecos siguen recortándose de cerca y de lejos queda el velo fino que tiene una malla
+  // real solapada en escorzo; el fade 120→420 m la retira del todo a distancia.
+  ftex.mipmaps=[ftc,_fgrid(128,1.6),_fgrid(64,1.2),_fgrid(32,null,0.30),_fgrid(16,null,0.22),_fgrid(8,null,0.16),_fgrid(4,null,0.13),_fgrid(2,null,0.12),_fgrid(1,null,0.12)];
   ftex.generateMipmaps=false;
-  // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
-  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
+  var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.10,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
   meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
   meshM.customProgramCacheKey=function(){return 'fencefade3';};
   var sv=[],su=[],sw=[];
@@ -1874,11 +1873,16 @@ function buildBOS(){
     var raw=rmesh;                                                                  // alias (cota visible); el DEM continuo ya NO manda en la valla
     var sm=rmesh.slice();for(var i=0;i<rmesh.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<rmesh.length){ss+=rmesh[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m sobre la malla: techo recto sin zigzag
     // base y techo con TOPE para que NUNCA colapse en cuestas. La base se entierra ∝ vex: la malla del terreno (~7 m) queda por debajo del DEM continuo en hondonadas y con la exageración vertical eso se amplifica → el paño flotaría. Enterrando más (solo lo invisible) la base nunca queda por encima del suelo visible (no vuela ni deja "gap sin sombra"); el techo sigue ≥ suelo+1
-    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<rmesh.length;i++){bE[i]=Math.min(sm[i],rmesh[i])-bury;tE[i]=Math.max(sm[i]+fh,rmesh[i]+1.65);}   // techo ≥1,65 m sobre el suelo VISIBLE y ≤ ~2 m (suavizado): acotado — ya no existe el paño gigante que estiraba un pico del DEM invisible
+    var bury=0.3+0.5*vex; var bE=[],tE=[];
+    var dcum=[0];for(var i=1;i<pts.length;i++)dcum[i]=dcum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    for(var i=0;i<rmesh.length;i++){bE[i]=Math.min(sm[i],rmesh[i])-bury;
+      var t9=rmesh[i]+fh;                                                            // ENVOLVENTE superior con pendiente acotada (10 cm/m): el techo es UNA línea continua — el max() por vértice anterior pegaba saltos donde el suelo repuntaba ("esa diferencia de altura")
+      for(var j9=0;j9<rmesh.length;j9++){var c9=rmesh[j9]+fh-0.10*Math.abs(dcum[i]-dcum[j9]);if(c9>t9)t9=c9;}
+      tE[i]=t9;}                                                                     // garantiza suelo+1,9 en cada punto y |pendiente| ≤ 0,10 — sobre vaguadas estrechas el techo las puentea recto, como se instala la malla real
     var uacc=0,pacc=1e9;
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
         ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
-        L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/0.15,u1=(uacc+L)/0.15,va=(ta-ba)/0.15,vb=(tb-bb)/0.15;uacc+=L;
+        L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/1.2,u1=(uacc+L)/1.2,va=(ta-ba)/1.2,vb=(tb-bb)/1.2;uacc+=L;   // tile (8 celdas) cada 1,2 m ⇒ celda 15 cm; el /0,15 anterior metía el tile entero en 15 cm (celda de 1,9 cm: 'tan tupida')
       var gskip=inGate((a[0]+b[0])/2,(a[1]+b[1])/2);                                // dentro del vano de una puerta: ni paño, ni alambres, ni poste
       if(!gskip){
         sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
@@ -1903,7 +1907,7 @@ function buildBOS(){
       tube(x0,0.16,x1,0.16);tube(x0,H5-0.06,x1,H5-0.06);tube(x0,0.16,x0,H5-0.06);tube(x1,0.16,x1,H5-0.06);
       tube(x0,H5-0.06,x1,0.16);                                                     // tirante quicio-arriba → centro-abajo: V entre las dos hojas, como el símbolo CAD
       var pw=x1-x0-0.05,ph=H5-0.32,pg=new THREE.PlaneGeometry(pw,ph),uv5=pg.attributes.uv;
-      for(var k5=0;k5<uv5.count;k5++){uv5.setXY(k5,uv5.getX(k5)*pw/0.15,uv5.getY(k5)*ph/0.15);}   // malla a escala real (celda 0,15 m), como el paño de la valla
+      for(var k5=0;k5<uv5.count;k5++){uv5.setXY(k5,uv5.getX(k5)*pw/1.2,uv5.getY(k5)*ph/1.2);}   // tile (8 celdas) cada 1,2 m ⇒ celda real de 15 cm, como el paño
       var pm5=new THREE.Mesh(pg,meshM);pm5.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});
       pm5.position.set((x0+x1)/2,ymid,0);lg.add(pm5);
       bosGroup.add(lg);}
