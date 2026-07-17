@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.06</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.07</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1233,7 +1233,8 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
     if(cab.lg)cab.lg.attributes.position.needsUpdate=true;});});
 }
 function buildNetLayer(key){
-  if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
+  if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];
+    if(window._BAJREG)for(var bk in window._BAJREG)if(window._BAJREG[bk]===key)delete window._BAJREG[bk];}   // libera las canaletas de las que esta capa era dueña (registro global por poste+cara)
   if(!NET||!NET.layers||!NET.layers[key]||!NET.layers[key].length)return null;
   var d=NETDEF[key]||{c:0xffffff,off:.2},g=new THREE.Group();
   if(key==='cam_range'){   // alcance de cámaras: sectores RELLENOS translúcidos (apex = cámara) + contorno → se ve claro, no como hilos
@@ -1280,6 +1281,7 @@ function buildNetLayer(key){
       var OXL=0.06+CR;                                                      // brida en la CARA EXTERIOR: media viga (0,06) + radio — pegado, sin holgura ("sigue flotando")
       var SEGS=[],BAJ=[];                                                   // registros DINÁMICOS: punto de EJE + offset de brida → updateCableSpin los rota con la viga ("embridado a la viga se mueve con esta"); BAJ = bajantes únicas con curva
       var DDROP={},PEND=[];
+      var BAJREG=window._BAJREG=window._BAJREG||{};   // canaletas YA creadas por cualquier capa (± bajan a veces en el mismo poste: una sola canaleta)
       var COVR={};
       var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
         var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
@@ -1300,9 +1302,9 @@ function buildNetLayer(key){
         var bp=CABLECORE.postePorLado(PSTc,LID,l3,lx,sd,nT,sg);
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
         var gx=ax+sd*(0.065+0.013),gy=terrainMeshY(ax,pn)+0.10;
-        var dk=ax.toFixed(1)+'_'+pn.toFixed(1);
-        if(key==='cable_pos'&&!DDROP[dk]){DDROP[dk]=1;var adD=(sg||1);       // BAJANTE ÚNICA tipo tubo Ø26 (a 9 mm parpadeaba: subpíxel) con UNIÓN CURVA (cuarto de arco R=0,22 que gira con la brida) — ambos cables mueren en ella
-          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*OXL,o1y:OY,gx:gx,gy:gy,gz:-pn});}
+        var dk=ax.toFixed(1)+'_'+pn.toFixed(1)+'_'+(sd>0?'E':'O');
+        if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;var adD=(sg||1);   // canaleta Ø26 con unión curva en TODO pie de bajada, sea del + o del −: antes solo la creaba la pasada del positivo y el poste de la otra fila (ruta solo del −) quedaba SIN corrugado ("por qué no tiene corrugado el soporte de la otra fila"). Clave global por poste+cara: sin duplicar donde bajan ambos; offsets CANÓNICOS (los del +) para que las bocas casen
+          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*(0.06+0.0045),o1y:0.020,gx:gx,gy:gy,gz:-pn});}
         return {x:gx,n:pn,ad:(sg||1),m:{x:ax,y:yT,n:pn,ad:(sg||1),ox:sd*(0.06+0.0045),oy:0.020}};};   // m = BOCA de la canaleta con el offset del POSITIVO (OXL de su pasada, radio 4,5), que es quien la registró: con el OXL de cada capa el negativo quedaba 0,5 mm desalineado
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
@@ -1360,12 +1362,14 @@ function buildNetLayer(key){
         var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.75});lmC.userData.tec=d.c;
         var lsC=new THREE.LineSegments(lgC,lmC);lsC.frustumCulled=false;g.add(lsC);   // overlay 1 px por el eje del mazo (updateCableSpin lo escribe): el cilindro real Ø9 lo tapa de cerca y a distancia mantiene el cable visible
         g.userData.cabs=[{segs:SEGS,im:imC,r:CR,lg:lgC,lm:lmC}];
-        if(key==='cable_pos'&&BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x454b52,roughness:.55,metalness:.35}),BAJ.length);
+        if(BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x454b52,roughness:.55,metalness:.35}),BAJ.length);   // también en el grupo del −: sus pies exclusivos llevan SU canaleta
           imB.frustumCulled=false;g.add(imB);g.userData.cabs.push({segs:BAJ,im:imB,r:0.013});}   // canaleta de bajada, gris galvanizado
-        if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: una por apoyo dentro del mazo (giran con la viga, como todo)
+        if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: a 1/3 y 2/3 de cada VANO, nunca sobre el apoyo — la brida colocada en el rodamiento asomaba como una "pestaña" junto a la corona al bascular ("¿qué es esto?"); las reales van por el vano
           for(var kC2 in COVR){var pr2=kC2.split('_'),l9=+pr2[0],sd9=+pr2[1],R9=COVR[kC2],Ln=sd9>0?LNS[l9].nB:LNS[l9].nA,ax9=LNS[l9].x+sd9*TC.filaZ;
-            for(var q9=0;q9<Ln.length;q9++){var nn9=Ln[q9][0];if(nn9<R9[0]-0.5||nn9>R9[1]+0.5)continue;
-              GR.push({x1:ax9,y1:Ln[q9][1],z1:-nn9,o1x:sd9*(OXL+0.004),o1y:-0.052,x2:ax9,y2:Ln[q9][1],z2:-nn9,o2x:sd9*(OXL+0.004),o2y:0.052});}}
+            for(var q9=0;q9+1<Ln.length;q9++){var nA9=Ln[q9][0],nB9=Ln[q9+1][0],sp9=nB9-nA9;if(sp9<1.2||nB9<R9[0]-0.5||nA9>R9[1]+0.5)continue;
+              for(var f9=1;f9<=2;f9++){var nn9=nA9+sp9*f9/3;if(nn9<R9[0]-0.5||nn9>R9[1]+0.5)continue;
+                var yy9=Ln[q9][1]+(Ln[q9+1][1]-Ln[q9][1])*f9/3;
+                GR.push({x1:ax9,y1:yy9,z1:-nn9,o1x:sd9*(OXL+0.004),o1y:-0.052,x2:ax9,y2:yy9,z2:-nn9,o2x:sd9*(OXL+0.004),o2y:0.052});}}}
           if(GR.length){var imG=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x22262b,roughness:.5,metalness:.3}),GR.length);
             imG.frustumCulled=false;g.add(imG);g.userData.cabs.push({segs:GR,im:imG,r:0.014});}}
         updateCableSpin(_STOWANG!=null?_STOWANG:panelAngle(curMin));
