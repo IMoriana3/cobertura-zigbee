@@ -2,10 +2,10 @@
    HTML → NETWORK-FIRST (siempre la última versión cuando hay red; cae a caché sin conexión).
    Resto de assets propios → stale-while-revalidate (rápido + se actualizan en segundo plano).
    Teselas (satélite/DEM, cross-origin) → directas a red (no se cachean). */
-var CACHE = 'cobertura-v4';
+var CACHE = 'cobertura-v5';   // v5: entra js/cableado_core.js en el precache (sin él, el visor cacheado no arrancaría offline)
 var SHELL = [
   './', 'index.html', 'terreno.html', 'plano.html', 'crear.html', 'nuevo.html', 'informe.html',
-  'lib/three.min.js', 'lib/OrbitControls.js', 'lib/GLTFLoader.js',
+  'lib/three.min.js', 'lib/OrbitControls.js', 'lib/GLTFLoader.js', 'js/cableado_core.js',
   'app-icon.svg', 'favicon.svg', 'manifest.webmanifest'
 ];
 self.addEventListener('install', function (e) {
@@ -28,7 +28,11 @@ self.addEventListener('fetch', function (e) {
     e.respondWith(
       fetch(req).then(function (res) {
         var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); return res;
-      }).catch(function () { return caches.match(req).then(function (h) { return h || caches.match('terreno.html'); }); })
+      }).catch(function () { return caches.match(req).then(function (h) {
+        if (h) return h;
+        var esNav = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+        return esNav ? caches.match('terreno.html') : Response.error();   // un JSON sin red NO degrada a HTML (el visor lo confundía con datos); la navegación conserva su fallback de siempre
+      }); })
     );
     return;
   }
