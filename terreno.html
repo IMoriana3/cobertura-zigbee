@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.16</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.17</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -563,9 +563,9 @@ function buildTrackers(elevAt){
   var _cpS=new THREE.Shape();_cpS.moveTo(-0.07,0.035);_cpS.lineTo(-0.07,-0.035);_cpS.lineTo(0.07,-0.035);_cpS.lineTo(0.07,0.035);_cpS.lineTo(0.055,0.035);_cpS.lineTo(0.055,-0.027);_cpS.lineTo(-0.055,-0.027);_cpS.lineTo(-0.055,0.035);_cpS.closePath();   // PERFIL C 140×70 con labios, canal ABIERTO (foto del poste real: se ve el interior)
   var _cpG=new THREE.ExtrudeGeometry(_cpS,{depth:postH,bevelEnabled:false});_cpG.translate(0,0,-postH/2);_cpG.rotateX(-Math.PI/2);_cpG.rotateY(Math.PI/2);   // el CANAL abierto mira al PASILLO: antes quedaba al norte y el poste parecía tubo cerrado ('los tuyos no tienen forma de C')
   imPost=new THREE.InstancedMesh(_cpG,steelM,N*TC.np);
-  var _cjG=(function(){var g=new THREE.CylinderGeometry(0.075,0.075,0.05,12);g.rotateX(Math.PI/2);return g;})();   // CASQUILLO circular
-  imBearing=new THREE.InstancedMesh(_cjG,new THREE.MeshStandardMaterial({color:0x23262b,roughness:.7,metalness:.2}),N*TC.np*2);   // 2 casquillos por poste, la viga en medio ('cojinete con sus dos casquillos')
-  imSaddle=new THREE.InstancedMesh(new THREE.BoxGeometry(0.16,0.055,0.11),steelM,N*TC.np);   // estribo galvanizado del poste al cojinete (foto)
+  var _cjG=new THREE.TorusGeometry(0.088,0.017,8,18);                       // HORQUILLA DE ARO galvanizada (fotos): el tubo ATRAVIESA su ojo circular
+  imBearing=new THREE.InstancedMesh(_cjG,steelM,N*TC.np);
+  imSaddle=new THREE.InstancedMesh(new THREE.BoxGeometry(0.11,0.07,0.13),steelM,N*TC.np);   // base de la horquilla atornillada a la cabeza del poste
   pileMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0});   // base blanca: deja ver el color por instancia (modo pile reveal)
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
@@ -643,10 +643,9 @@ function layoutTrackers(){
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
       _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
-      _SC.set(1,1,1);var ejeY=topY-0.06;                                                                    // topY es la CÚSPIDE sobre la viga: el EJE del tubo va 6 cm más abajo — antes los casquillos flotaban encima ('debe atravesarlos la viga')
-      _PV.set(wx,ejeY,wz-0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2,_M2);           // casquillo N, COAXIAL: el tubo pasa por dentro
-      _PV.set(wx,ejeY,wz+0.075);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt((i*TC.np+pi)*2+1,_M2);         // casquillo S
-      _PV.set(wx,ejeY-0.075,wz);_M2.compose(_PV,_Q,_SC);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;}}         // estribo BAJO el tubo, del poste al cojinete
+      _SC.set(1,1,1);var ejeY=topY-0.06;                                                                    // eje del tubo (topY es la cúspide)
+      _PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt(i*TC.np+pi,_M2);                     // ARO coaxial: la viga lo atraviesa (el ojo del toro mira a lo largo del tubo)
+      _PV.set(wx,ejeY-0.115,wz);_M2.compose(_PV,_Q,_SC);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;}}         // base bajo el aro, sobre la cabeza del poste
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
@@ -1835,7 +1834,7 @@ function buildBOS(){
   // bajo el alphaTest y el paño desaparecía en rasante ("solo se ve la rejilla en un tramo"). Con alphaTest
   // BAJO (0,10) los huecos siguen recortándose de cerca y de lejos queda el velo fino que tiene una malla
   // real solapada en escorzo; el fade 120→420 m la retira del todo a distancia.
-  ftex.mipmaps=[ftc,_fgrid(256,1),_fgrid(128,1),_fgrid(64,1),_fgrid(32,null,0.24),_fgrid(16,null,0.18),_fgrid(8,null,0.14),_fgrid(4,null,0.13),_fgrid(2,null,0.13),_fgrid(1,null,0.13)];   // 10 niveles (512→1): alambre de 1 px hasta donde se resuelve y velo fino decreciente después — más tenue que antes porque el alambre es más fino
+  ftex.mipmaps=[ftc,_fgrid(256,1.2),_fgrid(128,null,0.22),_fgrid(64,null,0.30),_fgrid(32,null,0.32),_fgrid(16,null,0.30),_fgrid(8,null,0.28),_fgrid(4,null,0.26),_fgrid(2,null,0.26),_fgrid(1,null,0.26)];   // niveles profundos a velo 0,22-0,32: con 0,11-0,22 la parte ALTA del paño (más lejos y en escorzo con cámara baja) se volvía invisible contra el cielo y 'los alambres flotaban'
   ftex.generateMipmaps=false;
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.10,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
   meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
@@ -2052,7 +2051,7 @@ function buildBOS(){
     var pl=new THREE.Mesh(plG,[plCap,blancoM]);pl.position.set(0,cy,-0.185);g.add(pl);                     // tapa frontal con marca/tornillería
     var rr9=new THREE.Mesh(rearG,negroM);rr9.position.set(0,cy,0.175);g.add(rr9);                          // trasera oscura (foto trasera)
     var vt9=new THREE.Mesh(ventG,ventM);vt9.position.set(0,cy,0.205);g.add(vt9);                           // banda de ventilación perforada
-    var sw=new THREE.Mesh(swG,blancoM);sw.rotation.y=-Math.PI/2;sw.position.set(-(W/2+0.098),cy-0.04,-0.02);g.add(sw);   // COMPARTIMENTO AC lateral redondeado, EMBUTIDO 3 cm en el cuerpo ('no está separado, es un compartimento pegado') — la esquina redondeada del cuerpo creaba un hueco visual
+    var sw=new THREE.Mesh(swG,blancoM);sw.rotation.y=-Math.PI/2;sw.position.set(-(W/2-0.02),cy-0.04,-0.02);g.add(sw);   // PEGADO de verdad: la extrusión girada crece hacia FUERA desde position.x, así que el plano interno va 2 cm DENTRO del cuerpo ('está flotando el compartimento, están unidos!')
     for(var gi9=0;gi9<3;gi9++){var gl=new THREE.Mesh(glandG,negroM);gl.position.set(-(W/2+0.07)+(gi9-1)*0.05,cy-0.37,-0.02);g.add(gl);}   // 3 prensaestopas (3 fases 120 mm²)
     [-1,1].forEach(function(sx){var gr=new THREE.Mesh(gripG,negroM);gr.rotation.z=Math.PI/2;gr.position.set(sx*(W/2+0.05),boxTop-0.05,0.10);g.add(gr);});   // asas
     var bh=new THREE.Mesh(bahiaG,negroM);bh.position.set(0,legB-0.06,-0.02);g.add(bh);                     // BAHÍA negra inferior de conectores (foto)
@@ -2157,34 +2156,41 @@ function buildBOS(){
     var w=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,L,5),mtWire);
     _md.set(dx,dy,dz).normalize();_mq.setFromUnitVectors(_mu,_md);w.quaternion.copy(_mq);
     w.position.set((ax+bx)/2,(ay+by)/2,(az+bz)/2);g.add(w);}
-  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=8.5,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);   // mástil 8,5 m
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.06,0.5),mtMast),X,y+0.03,Z));                                                    // placa base
-    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.075,h,10),mtMast),X,y+h/2,Z));                                             // mástil
-    var ga=0.72*h,gr=3.2,ti; for(ti=0;ti<4;ti++){var an=ti*Math.PI/2+Math.PI/4,gx=X+Math.cos(an)*gr,gz=Z+Math.sin(an)*gr;               // 4 tensores + anclaje
-      mGuy(g,X,y+ga,Z,gx,y+0.06,gz);g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.1,0.06,0.1),mtBox),gx,y+0.03,gz));}
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(1.5,0.04,0.04),mtMast),X,y+h,Z));                                                      // cruceta superior
-    var axx=X+0.7,at=y+h+0.34; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.34,6),mtMast),axx,y+h+0.17,Z));         // anemómetro: eje (fijo)
-    var anemG=new THREE.Group();anemG.position.set(axx,at,Z);g.add(anemG);                                                               // parte giratoria
-    anemG.add(new THREE.Mesh(new THREE.SphereGeometry(0.045,8,6),mtBox));                                                                // hub
-    for(var c=0;c<3;c++){var ca=c*2*Math.PI/3,arm=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.012,0.012),mtMast);arm.position.set(Math.cos(ca)*0.065,0,Math.sin(ca)*0.065);arm.rotation.y=-ca;anemG.add(arm);
-      anemG.add(mP(new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6,0,6.3,0,1.6),mtBox),Math.cos(ca)*0.13,0,Math.sin(ca)*0.13));}        // cazoletas
-    var vx=X-0.7,vt=y+h+0.18; g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.18,6),mtMast),vx,y+h+0.09,Z));           // veleta: eje (fijo)
-    var vaneG=new THREE.Group();vaneG.position.set(vx,vt,Z);g.add(vaneG);                                                                // veleta giratoria
-    vaneG.add(new THREE.Mesh(new THREE.BoxGeometry(0.5,0.012,0.012),mtBox));                                                             // boom
-    vaneG.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.22,0.16,0.008),mtBox),-0.24,0,0));                                               // cola
-    var pt=new THREE.Mesh(new THREE.ConeGeometry(0.04,0.12,6),mtBox);pt.rotation.z=-Math.PI/2;pt.position.set(0.27,0,0);vaneG.add(pt);   // punta
-    METEO_ANIM.push({a:anemG,v:vaneG});
-    var py=y+h-1.0; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.7,0.03,0.03),mtMast),X+0.35,py,Z));                                  // brazo piranómetro
-    var ring=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.025,8,20),mtBlack);ring.rotation.x=Math.PI/2;ring.position.set(X+0.68,py,Z);g.add(ring);  // anillo de sombra
-    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12),mtBlack),X+0.68,py,Z));                                        // sensor central
-    var gyy=y+h*0.62; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.45,0.03,0.03),mtMast),X-0.22,gyy,Z));                              // brazo garita
-    for(var d=0;d<5;d++)g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.12-d*0.004,0.125-d*0.004,0.03,14),mtWhite),X-0.42,gyy-0.12+d*0.06,Z));  // garita (láminas blancas)
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.3,0.42,0.2),mtBox),X,y+h*0.46,Z+0.16));                                              // datalogger
-    var panG=new THREE.Group();panG.position.set(X,y+h*0.33,Z-0.32);g.add(panG);                                                         // celda de referencia: se orienta al sol (animateMeteo)
-    panG.add(new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel));                                                             // panel plano (normal +Y); el grupo lo bascula hacia el sol
-    if(METEO_ANIM.length)METEO_ANIM[METEO_ANIM.length-1].p=panG;
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));                                        // soporte (fijo)
-    var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});  // etiqueta HSU (hito; se conmuta con "Etiquetas")
+  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=8.0,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);
+    // TORRE DE CELOSÍA triangular de la HSU (plano FTR.24.00145_5_C 'Montaje HSU': 8000 con niveles 4500/1000 + fotos):
+    // 3 montantes tubulares con celosía en zigzag, PANEL FV ESTRECHO VERTICAL y PARALELO a la cara, caja FACTIUN,
+    // ANEMÓMETRO ULTRASÓNICO (estático, sin cazoletas) en cabeza y 2 antenas látigo. Sin vientos (autoportante).
+    var RT=0.15,LEG=[];for(var lg=0;lg<3;lg++){var la=lg*2*Math.PI/3+Math.PI/2,lxx=X+Math.cos(la)*RT,lzz=Z+Math.sin(la)*RT;LEG.push([lxx,lzz]);
+      g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.016,h,8),mtMast),lxx,y+h/2,lzz));}
+    var NL=16;for(var lv=0;lv<=NL;lv++){var yy=y+lv*h/NL;                                   // cinturones + zigzag por cara
+      for(var fa=0;fa<3;fa++){var A9=LEG[fa],B9=LEG[(fa+1)%3];
+        if(lv>0){var rung=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,RT*1.732,6),mtMast);
+          rung.position.set((A9[0]+B9[0])/2,yy,(A9[1]+B9[1])/2);rung.rotation.z=Math.PI/2;rung.rotation.y=-Math.atan2(B9[1]-A9[1],B9[0]-A9[0]);g.add(rung);}
+        if(lv<NL){var top=(lv%2===0),ax9=top?A9:B9,bx9=top?B9:A9,dz=h/NL;                   // diagonal alterna
+          var dgl=Math.sqrt(RT*1.732*RT*1.732+dz*dz),dg=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.005,dgl,6),mtMast);
+          dg.position.set((ax9[0]+bx9[0])/2,yy+dz/2,(ax9[1]+bx9[1])/2);
+          dg.rotation.z=Math.PI/2-Math.atan2(dz,RT*1.732);dg.rotation.y=-Math.atan2(bx9[1]-ax9[1],bx9[0]-ax9[0]);g.add(dg);}}}
+    var fx=(LEG[0][0]+LEG[1][0])/2,fz=(LEG[0][1]+LEG[1][1])/2,fnx=fx-X,fnz=fz-Z,fl=Math.hypot(fnx,fnz)||1;fnx/=fl;fnz/=fl;   // cara 0-1 y su normal exterior
+    var pvG=new THREE.Group();pvG.position.set(fx+fnx*0.06,y+2.35,fz+fnz*0.06);pvG.rotation.y=-Math.atan2(fnz,fnx)+Math.PI/2;g.add(pvG);
+    pvG.add(new THREE.Mesh(new THREE.BoxGeometry(0.35,1.70,0.035),mtPanel));                 // PANEL FV vertical, PARALELO a la torre (foto)
+    [[-0.75],[0.75]].forEach(function(bo){var br=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.04,0.05),mtMast);br.position.set(0,bo[0],-0.045);pvG.add(br);});   // carriles de amarre a los montantes
+    var jb=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.30,0.12),mtWhite);jb.position.set(fx+fnx*0.13,y+0.95,fz+fnz*0.13);jb.rotation.y=-Math.atan2(fnz,fnx)+Math.PI/2;g.add(jb);   // caja FACTIUN
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.34,0.02,0.34),mtMast),X,y+h+0.01,Z));    // placa de cabeza
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.30,6),mtMast),X,y+h+0.16,Z));
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.02,10),mtWhite),X,y+h+0.32,Z));   // ULTRASÓNICO: disco inferior
+    for(var pr9=0;pr9<3;pr9++){var pa=pr9*2*Math.PI/3;g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.004,0.004,0.09,5),mtBlack),X+Math.cos(pa)*0.032,y+h+0.375,Z+Math.sin(pa)*0.032));}
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.015,10),mtWhite),X,y+h+0.425,Z));   // disco superior — SIN partes móviles
+    [[0.12,0.40],[-0.12,0.34]].forEach(function(an9){g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.005,an9[1],5),mtBlack),X+an9[0],y+h+0.16+an9[1]/2,Z-0.12));});   // 2 antenas látigo
+    var py=y+h-1.0; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.7,0.03,0.03),mtMast),X+0.35,py,Z));   // brazo piranómetro (se conserva)
+    var ring=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.025,8,20),mtBlack);ring.rotation.x=Math.PI/2;ring.position.set(X+0.68,py,Z);g.add(ring);
+    g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12),mtBlack),X+0.68,py,Z));
+    var gyy=y+h*0.62; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.45,0.03,0.03),mtMast),X-0.22,gyy,Z));   // garita (se conserva)
+    for(var d=0;d<5;d++)g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.12-d*0.004,0.125-d*0.004,0.03,14),mtWhite),X-0.42,gyy-0.12+d*0.06,Z));
+    var panG=new THREE.Group();panG.position.set(X,y+h*0.33,Z-0.32);g.add(panG);              // celda de referencia orientable (se conserva)
+    panG.add(new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel));
+    METEO_ANIM.push({p:panG});                                                                // SOLO la celda: el ultrasónico no gira ('anemómetro ultrasónico')
+    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));
+    var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
@@ -2215,7 +2221,17 @@ function buildGateways(){
   var antM=new THREE.MeshStandardMaterial({color:0x20242a,roughness:.5,metalness:.4});
   GWS.forEach(function(gw){
     var g=new THREE.Group();gwG.add(g);
-    var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.045,gw.h,10),poleM);pole.position.y=gw.h/2;pole.castShadow=true;g.add(pole);   // MÁSTIL ÚNICO y continuo hasta la antena (2,5 m)
+    var cpS9=new THREE.Shape();cpS9.moveTo(-0.05,0.03);cpS9.lineTo(-0.05,-0.03);cpS9.lineTo(0.05,-0.03);cpS9.lineTo(0.05,0.03);cpS9.lineTo(0.038,0.03);cpS9.lineTo(0.038,-0.022);cpS9.lineTo(-0.038,-0.022);cpS9.lineTo(-0.038,0.03);cpS9.closePath();
+    var poleH9=2.95,cpG9=new THREE.ExtrudeGeometry(cpS9,{depth:poleH9,bevelEnabled:false});cpG9.translate(0,0,-poleH9/2);cpG9.rotateX(-Math.PI/2);
+    var pole=new THREE.Mesh(cpG9,poleM);pole.position.y=poleH9/2;pole.castShadow=true;g.add(pole);   // POSTE C 100×60 (foto de la fibra + plano 'Montaje NCU' 3400 con hinca)
+    [0.42,-0.42].forEach(function(ry9){var rl=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.05,0.04),poleM);rl.position.set(0,1.15+ry9*0.66,-0.075);g.add(rl);});   // 2 CARRILES horizontales atornillados al poste (la NCU cuelga de ellos)
+    var gTx=(function(){var cv=document.createElement('canvas');cv.width=8;cv.height=32;var g2=cv.getContext('2d');
+      g2.fillStyle='#6e3d47';g2.fillRect(0,0,8,32);g2.fillStyle='#84505c';for(var q2=0;q2<32;q2+=8)g2.fillRect(0,q2,8,4);
+      var t2=new THREE.CanvasTexture(cv);t2.wrapS=t2.wrapT=THREE.RepeatWrapping;t2.repeat.set(1,5);return t2;})();
+    var corN=new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.024,1.05,8),new THREE.MeshStandardMaterial({map:gTx,roughness:.85,metalness:.05}));
+    corN.position.set(0.09,0.525,0.05);g.add(corN);                                           // corrugado GRANATE: fibra+alimentación subiendo por el poste
+    for(var q9=0;q9<2;q9++){var coil=new THREE.Mesh(new THREE.TorusGeometry(0.085,0.004,6,20),new THREE.MeshStandardMaterial({color:0x101216,roughness:.6}));
+      coil.position.set(0.02,1.02-q9*0.02,0.10);coil.rotation.y=0.5;g.add(coil);}             // BUCLE del látigo de fibra negro (foto)
     // NCU según el PLANO DR_NCU_v0: armario 415×515×230 COLGADO de la cara sur del mástil por sus 4
     // escuadras, a altura de servicio — antes iba ENSARTADO en el poste y la antena salía de la tapa ('sin sentido')
     var NW=0.415,NH=0.515,ND=0.230,cy9=1.15,zC=-(ND/2+0.055);
@@ -2226,7 +2242,7 @@ function buildGateways(){
     [-0.05,0.05].forEach(function(gx9){var gl9=new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.016,0.05,8),antM);gl9.position.set(gx9,cy9-NH/2-0.024,zC);g.add(gl9);});   // 2 prensaestopas bajo el armario
     var ant9=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.10,6),antM);ant9.position.set(0.12,cy9+NH/2+0.05,zC);g.add(ant9);   // conector de antena en SU tapa
     var led9=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.005,0.02),new THREE.MeshStandardMaterial({color:0xd9a11c,emissive:0x8a5f00,emissiveIntensity:.8}));led9.position.set(0.05,cy9+NH/2+0.004,zC+0.03);g.add(led9);   // LED en la tapa
-    var atip=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),new THREE.MeshStandardMaterial({color:0x5aa9ff,emissive:0x163a5e,emissiveIntensity:.6}));atip.position.y=gw.h;g.add(atip);   // radomo en la punta del MÁSTIL (no de la caja)
+    var whip=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.005,0.40,5),antM);whip.position.set(0.06,poleH9+0.20,0);g.add(whip);   // látigo de antena en la cabeza del poste (fuera el radomo esférico)
     var lb=makeLabel('NCU '+gw.name,'poi');lb.position.y=gw.h+1.2;lb.visible=labelGroup.visible;g.add(lb);HLBL.push(lb);   // etiqueta NCU (hito): se conmuta con "Etiquetas"
     gwMasts.push(g);
   });
