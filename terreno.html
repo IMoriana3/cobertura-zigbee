@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.97</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.98</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1194,7 +1194,14 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
     for(var i=0;i<SG.length;i++){var g9=SG[i];
       var o1x=g9.o1x*c-g9.o1y*sn,o1y=g9.o1x*sn+g9.o1y*c;                    // la brida gira con el tubo (mismo sentido que la normal del panel: (0,1)→(−sinθ,cosθ))
       var x1=g9.x1+o1x,y1=g9.y1+o1y,z1=g9.z1,x2,y2,z2;
-      if(g9.drop){x2=g9.gx;y2=g9.gy;z2=g9.gz;}                              // bajante: de la brida (gira) al pie FIJO — flexa levemente, como el cable real
+      if(g9.arc){var rB=0.22,nP=-g9.z1,Ty=y1,Sx=x1;                         // UNIÓN CURVA: cuarto de arco desde la boca (horizontal, lado de llegada) hasta la vertical, y de ahí al pie fijo
+        var thA=g9.idx/4*Math.PI/2,thB=Math.min(1,(g9.idx+1)/4)*Math.PI/2;
+        var CN=nP+g9.ad*rB,CY=Ty-rB;
+        function pA(th,ii){var nn=CN-g9.ad*rB*Math.sin(th),yy=CY+rB*Math.cos(th);
+          var f=Math.min(1,(ii)/4);return [Sx+(g9.gx-Sx)*f,yy,-nn];}
+        if(g9.idx<4){var A9=pA(thA,g9.idx),B9=pA(thB,g9.idx+1);x1=A9[0];y1=A9[1];z1=A9[2];x2=B9[0];y2=B9[1];z2=B9[2];}
+        else {var E9=pA(Math.PI/2,4);x1=E9[0];y1=E9[1];z1=E9[2];x2=g9.gx;y2=g9.gy;z2=g9.gz;}}
+      else if(g9.drop){x2=g9.gx;y2=g9.gy;z2=g9.gz;}                          // bajante recta antigua (spancut): de la brida al pie fijo
       else {var o2x=g9.o2x*c-g9.o2y*sn,o2y=g9.o2x*sn+g9.o2y*c;x2=g9.x2+o2x;y2=g9.y2+o2y;z2=g9.z2;}
       _cbD.set(x2-x1,y2-y1,z2-z1);var L9=_cbD.length()||1e-6;_cbD.normalize();
       _cbQ.setFromUnitVectors(_cbU,_cbD);_cbP.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
@@ -1253,7 +1260,7 @@ function buildNetLayer(key){
       var CR=(key==='cable_pos')?0.0045:0.004;                              // SECCIÓN REAL: cable solar de 6 mm² ≈ Ø 8-9 mm ("debe ser cable de 6mm2... lo has aumentado mucho de sección")
       var OY=(key==='cable_pos')?0.020:-0.020;                              // pareja apilada en la cara, pegada al eje
       var OXL=0.06+CR;                                                      // brida en la CARA EXTERIOR: media viga (0,06) + radio — pegado, sin holgura ("sigue flotando")
-      var SEGS=[];                                                          // registros DINÁMICOS: punto de EJE + offset de brida → updateCableSpin los rota con la viga ("embridado a la viga se mueve con esta")
+      var SEGS=[],BAJ=[];                                                   // registros DINÁMICOS: punto de EJE + offset de brida → updateCableSpin los rota con la viga ("embridado a la viga se mueve con esta"); BAJ = bajantes únicas con curva
       var DDROP={},PEND=[];
       var COVR={};
       var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
@@ -1274,10 +1281,11 @@ function buildNetLayer(key){
           if(sg&&(P6[1]-nT)*sg<-0.5)continue;
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
-        var gx=ax+sd*(0.065+CR),gy=terrainMeshY(ax,pn)+0.10;
+        var gx=ax+sd*(0.065+0.013),gy=terrainMeshY(ax,pn)+0.10;
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1);
-        if(!DDROP[dk]){DDROP[dk]=1;SEGS.push({drop:1,x1:ax,y1:yT,z1:-pn,o1x:sd*OXL,o1y:OY,gx:gx,gy:gy,gz:-pn});}   // del punto embridado (GIRA con el tubo) al pie FIJO por la cara exterior del poste
-        return {x:gx,n:pn};};
+        if(key==='cable_pos'&&!DDROP[dk]){DDROP[dk]=1;var adD=(sg||1);       // BAJANTE ÚNICA tipo tubo Ø26 (a 9 mm parpadeaba: subpíxel) con UNIÓN CURVA (cuarto de arco R=0,22 que gira con la brida) — ambos cables mueren en ella
+          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*OXL,o1y:OY,gx:gx,gy:gy,gz:-pn});}
+        return {x:gx,n:pn,ad:(sg||1)};};
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
         var lx=LNS[l7].x,k=0,n0s=pl[iF][1];
@@ -1287,8 +1295,7 @@ function buildNetLayer(key){
           if(cz)break;
           k++;}
         var nT=k>0?tail[k-1][1]:pl[iF][1];
-        aereo(l7,sd,pl[iF][1],nT,'salida');
-        PEND.push({l:l7,sd:sd,nT:nT,n0:pl[iF][1],tail:tail,k:k});};
+        PEND.push({l:l7,sd:sd,nT:nT,n0:pl[iF][1],tail:tail,k:k});};        // el tramo aéreo se dibuja al agrupar, de la conexión a SU bajante — sin ida y vuelta ("el cable debe morir en la unión con la bajante")
       NET.layers[key].forEach(function(pl){
         var RW=pl.map(function(p){return p[2]===1?rowFoot(p[0],p[1]):-1;}); // un vértice solo es de fila si cae en su huella (viga incluida)
         var firstF=-1,lastF=-1;
@@ -1323,7 +1330,7 @@ function buildNetLayer(key){
             if(!mainFoot)mainFoot=foot;
             if(items.some(function(x){return x.sd!==sdD;})){
               var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;}              // la viga contraria del MISMO lado: bajante en su poste del par — la unión ocurre DENTRO de la zanja, sin trazas inventadas en superficie ("¿la línea roja del suelo es un cardán?")
-            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.nT,ft.n,'ext');});
+            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.n0,ft.n+sg*0.22,'ext');});   // UN solo tramo: de la conexión a la boca de la CURVA de su bajante
             items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU PROPIA viga (ruta del DWG, nada más)
               var ftp=feet[p.sd]||foot,prev=[ftp.x,ftp.n];
               if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-ftp.n)>0.4){gndB(ftp.x,ftp.n,ftp.x,p.tail[p.k][1]);prev=[ftp.x,p.tail[p.k][1]];}
@@ -1336,6 +1343,8 @@ function buildNetLayer(key){
         var imC=new THREE.InstancedMesh(cylG,cabM,SEGS.length);
         imC.frustumCulled=false;g.add(imC);
         g.userData.cabs=[{segs:SEGS,im:imC,r:CR}];
+        if(key==='cable_pos'&&BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x454b52,roughness:.55,metalness:.35}),BAJ.length);
+          imB.frustumCulled=false;g.add(imB);g.userData.cabs.push({segs:BAJ,im:imB,r:0.013});}   // canaleta de bajada, gris galvanizado
         if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: una por apoyo dentro del mazo (giran con la viga, como todo)
           for(var kC2 in COVR){var pr2=kC2.split('_'),l9=+pr2[0],sd9=+pr2[1],R9=COVR[kC2],Ln=sd9>0?LNS[l9].nB:LNS[l9].nA,ax9=LNS[l9].x+sd9*TC.filaZ;
             for(var q9=0;q9<Ln.length;q9++){var nn9=Ln[q9][0];if(nn9<R9[0]-0.5||nn9>R9[1]+0.5)continue;
