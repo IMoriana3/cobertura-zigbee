@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.85</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.86</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -985,10 +985,10 @@ function buildVeg(){
   var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
   m.onBeforeCompile=function(sh){sh.uniforms.uVT={value:0};sh.uniforms.uVA={value:0.1};sh.uniforms.uVD={value:new THREE.Vector2(0.6,0.5)};m.userData.sh=sh;   // viento sobre la hierba: tiempo, amplitud (0..1) y dirección — los actualiza animateMeteo ("La hierba debería moverse tmb")
     sh.vertexShader=sh.vertexShader
-      .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;');   // dobla por la punta (vf=y²), fase por mata (posición de instancia): ola desacompasada, no bloque rígido
-    sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));');};   // se funden a ~310 m (a 170 desaparecían en cualquier vista aérea: "¿por qué no hay nada de vegetación?"); forma DEFINIDA de smoothstep (edge0<edge1)
-  m.customProgramCacheKey=function(){return 'vegwind1';};
+      .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;varying vec3 vWPv;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;\n\tvWPv=(instanceMatrix*vec4(transformed,1.0)).xyz;')
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWPv;').replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));\n\tfloat vv=(cameraPosition.y-vWPv.y)/max(1.0,distance(cameraPosition,vWPv));\n\tdiffuseColor.a*=(1.0-smoothstep(0.60,0.88,vv));');};   // fundido por distancia + POR ÁNGULO: en picado los quads cruzados se ven de canto y parecen "papel 2D" — a vista de pájaro la mata cede el sitio a la ortofoto; a pie de campo, hierba llena
+  m.customProgramCacheKey=function(){return 'vegwind2';};
   var N=220000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
   var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
   // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
@@ -1123,7 +1123,7 @@ function buildNetLayer(key){
     var vB=[];                                                              // trazado ENTERRADO (va por su zanja): se pinta discontinuo y tenue
     var gndB=function(x1,n1,x2,n2){var L8=Math.hypot(x2-x1,n2-n1),st9=Math.max(1,Math.min(40,Math.ceil(L8/4)));
       for(var s9=0;s9<st9;s9++){var w0=s9/st9,w1=(s9+1)/st9,hx1=x1+(x2-x1)*w0,hn1=n1+(n2-n1)*w0,hx2=x1+(x2-x1)*w1,hn2=n1+(n2-n1)*w1;
-        vB.push(hx1,terrainMeshY(hx1,hn1)+0.04,-hn1, hx2,terrainMeshY(hx2,hn2)+0.04,-hn2);}};
+        vB.push(hx1,terrainMeshY(hx1,hn1)+0.10,-hn1, hx2,terrainMeshY(hx2,hn2)+0.10,-hn2);}};   // +10 cm y más opaca: a +4 cm no se veía y las bajantes parecían muertas ("te falta unir esos cables")
     if(PSTc){   // v4.74: el cableado va SIEMPRE AÉREO por el tubo, saltando de seguidor a seguidor de la misma LÍNEA, hasta el soporte MÁS CERCANO A LA ZANJA; solo desde ese soporte va subterráneo al inversor ("debe ir siempre aéreo entre seguidores...")
       var LID={},LNS=[];                                                    // línea = seguidores con el mismo x (columna): por ella el mazo cruza los pasillos entre punteras en aéreo
       (function(){var xs=[];for(var r0=0;r0<TRK.length;r0++)xs.push([TRK[r0].gx,r0]);
@@ -1147,7 +1147,7 @@ function buildNetLayer(key){
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
         var px=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]+MAZO:tubeYL(l3,sd,nT)+MAZO;
         var dk=px.toFixed(1)+'_'+pn.toFixed(1);
-        if(!DDROP[dk]){DDROP[dk]=1;v.push(px,yT,-pn, px,terrainMeshY(px,pn)+0.04,-pn);}   // caída vertical por el soporte (compartida entre strings)
+        if(!DDROP[dk]){DDROP[dk]=1;v.push(px,yT,-pn, px,terrainMeshY(px,pn)+0.10,-pn);}   // caída vertical por el soporte (compartida entre strings)
         return [px,pn];};
       var aereo=function(l4,sd,nA,nB){if(Math.abs(nB-nA)<0.05)return;       // mazo bridado al tubo, por la viga de su lado, cruzando en aéreo entre seguidores
         var bx=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(160,Math.ceil(Math.abs(nB-nA)/5)));
@@ -1176,7 +1176,7 @@ function buildNetLayer(key){
     } else NET.layers[key].forEach(function(pl){for(var i6=0;i6+1<pl.length;i6++)gnd(pl[i6][0],pl[i6][1],pl[i6+1][0],pl[i6+1][1]);});   // resto de capas (zanjas, tierra, arquetas...): drapeadas a ras
     if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
     if(vB.length){var bgB=new THREE.BufferGeometry();bgB.setAttribute('position',new THREE.Float32BufferAttribute(vB,3));
-      var lsB=new THREE.LineSegments(bgB,new THREE.LineDashedMaterial({color:d.c,transparent:true,opacity:.45,dashSize:1.1,gapSize:0.9}));
+      var lsB=new THREE.LineSegments(bgB,new THREE.LineDashedMaterial({color:d.c,transparent:true,opacity:.62,dashSize:1.6,gapSize:0.7}));
       lsB.computeLineDistances();g.add(lsB);}                               // el tendido enterrado se INSINÚA discontinuo ("el cableado al inversor ha desaparecido" ↔ "por qué pones el cableado en el suelo")
   }
   if(key==='earth'&&NET.layers.earth_pica&&NET.layers.earth_pica.length){   // PICAS del plano RDT-1 (INSERTs "Pica PAT" del DWG de tierras, 42≈44 del cuadro): cilindro instanciado en cada posición EXACTA. Los latiguillos de equipotencialidad son la capa earth_lat (EE_Latiguillo Desnudo, 468 trazos reales) — fuera toda la PAT derivada anterior ("quita las que tienes y ponla así")
@@ -1606,8 +1606,8 @@ function buildBOS(){
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
   // alphaTest 0.5 > alpha medio de los mips (~0,40): en rasante el muestreo cae a mips profundos que promedian alambre+hueco y con 0,25 el paño entero pasaba el test → "muro" translúcido brillando al contraluz
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
-  meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(80.0,260.0,length(vViewPosition)));');};   // el paño se desvanece 80→260 m; smoothstep en forma DEFINIDA (con edges invertidos hay GPUs que devuelven 0 → paño invisible también de cerca)
-  meshM.customProgramCacheKey=function(){return 'fencefade2';};
+  meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
+  meshM.customProgramCacheKey=function(){return 'fencefade3';};
   var sv=[],su=[],sw=[];
   // SOLDADURA de la valla: el DWG la trae en varias polilíneas cuyos extremos casi se tocan; sin unirlas,
   // en cada "unión" el paño y los alambres quedaban cortados/desalineados. Encadena extremos a <1,5 m
@@ -1657,7 +1657,7 @@ function buildBOS(){
     var raw=pts.map(function(p){return localElevY(p[0],p[1]);});                    // cota cruda del terreno bajo el paño
     var sm=raw.slice();for(var i=0;i<raw.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<raw.length){ss+=raw[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m: quita el zigzag fino
     // base y techo con TOPE para que NUNCA colapse en cuestas. La base se entierra ∝ vex: la malla del terreno (~7 m) queda por debajo del DEM continuo en hondonadas y con la exageración vertical eso se amplifica → el paño flotaría. Enterrando más (solo lo invisible) la base nunca queda por encima del suelo visible (no vuela ni deja "gap sin sombra"); el techo sigue ≥ suelo+1
-    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i])-bury;tE[i]=Math.max(sm[i]+fh,raw[i]+1.0);}
+    var bury=0.3+0.5*vex; var bE=[],tE=[];for(var i=0;i<raw.length;i++){bE[i]=Math.min(sm[i],raw[i])-bury;tE[i]=Math.max(sm[i]+fh,raw[i]+1.65);}   // techo ≥1,65 m sobre el terreno REAL: con +1.0 en montículos quedaba una valla de un metro ("no encaja la altura de la valla")
     var uacc=0,pacc=1e9;
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
         ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
@@ -1692,7 +1692,12 @@ function buildBOS(){
       bosGroup.add(lg);}
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
-  if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));bosGroup.add(new THREE.LineSegments(wg,new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7})));}
+  if(sw.length){var wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(sw,3));
+    var wireM=new THREE.LineBasicMaterial({color:0xc4ccd4,transparent:true,opacity:.7});
+    wireM.onBeforeCompile=function(sh){sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vFD;').replace('#include <project_vertex>','#include <project_vertex>\nvFD=-mvPosition.z;');
+      sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vFD;').replace('vec4( outgoingLight, diffuseColor.a )','vec4( outgoingLight, diffuseColor.a*(1.0-smoothstep(120.0,420.0,vFD)) )');};   // los alambres se funden IGUAL que el paño: antes el paño moría a 260 m y quedaban dos alambres flotando a media altura ("el vallado no encaja")
+    wireM.customProgramCacheKey=function(){return 'fwire1';};
+    bosGroup.add(new THREE.LineSegments(wg,wireM));}
   // ===== CT tipo SPS-6350 (plano BUR-SPS-6350-04): SKID intemperie de 6,385×2,05 m =====
   // bancada de hormigón (600 sobre zócalo 150) pintada RAL 6009 (verde abeto) con: celda MT 24 kV a un
   // extremo (RAL 7035), TRAFO 6,35 MVA con bancos de radiadores al aire en el centro, cuadro BT al otro
@@ -1780,9 +1785,27 @@ function buildBOS(){
     var lb=makeLabel(b.lab,'poi');lb.position.set(b.x,y+(b.lo?6.6:b.sub?6.2:b.ct?5.7:4.4),-b.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios (hito, por encima del tejado): se conmutan con "Etiquetas"
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
-  (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1],lab=c[2]||'',k=c[3]||1,ptz=!!c[4];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
+  var FSg=[];(LAYOUT.fence||[]).forEach(function(pl9){for(var i9=0;i9+1<pl9.length;i9++)FSg.push([pl9[i9],pl9[i9+1]]);});
+  var cgx=0,cgn=0;if(TRK.length){TRK.forEach(function(t9){cgx+=t9.gx;cgn+=-t9.gz;});cgx/=TRK.length;cgn/=TRK.length;}
+  function insetCam(x9,n9){ if(!FSg.length)return [x9,n9];                             // "Las cámaras no están sobre el vallado, están hacia dentro": el mástil se RETRANQUEA 2,8 m hacia el interior, perpendicular al tramo de valla más cercano (mi imán px→local las dejaba clavadas en la valla)
+    var bd=1e9,bp=null,bnx=0,bnn=0;
+    for(var i8=0;i8<FSg.length;i8++){var a8=FSg[i8][0],b8=FSg[i8][1],dx8=b8[0]-a8[0],dn8=b8[1]-a8[1],L8=dx8*dx8+dn8*dn8||1e-9;
+      var t8=((x9-a8[0])*dx8+(n9-a8[1])*dn8)/L8;t8=Math.max(0,Math.min(1,t8));
+      var px8=a8[0]+t8*dx8,pn8=a8[1]+t8*dn8,d8=Math.hypot(x9-px8,n9-pn8);
+      if(d8<bd){bd=d8;bp=[px8,pn8];var Ls=Math.sqrt(L8);bnx=-dn8/Ls;bnn=dx8/Ls;}}
+    if(bd>6)return [x9,n9];                                                            // ya está lejos de la valla: se respeta la posición del plano CCTV
+    var sg9=((cgx-bp[0])*bnx+(cgn-bp[1])*bnn)>=0?1:-1;
+    var rx=bp[0]+bnx*sg9*2.8,rn=bp[1]+bnn*sg9*2.8;
+    for(var it9=0;it9<4;it9++){var dnow=1e9;                                           // ESQUINAS: perpendicular a un tramo puede quedar pegado al contiguo — se empuja hacia el centroide hasta despejar ≥2,4 m de TODA la valla
+      for(var i7=0;i7<FSg.length;i7++){var a7=FSg[i7][0],b7=FSg[i7][1],dx7=b7[0]-a7[0],dn7=b7[1]-a7[1],L7=dx7*dx7+dn7*dn7||1e-9;
+        var t7=((rx-a7[0])*dx7+(rn-a7[1])*dn7)/L7;t7=Math.max(0,Math.min(1,t7));
+        dnow=Math.min(dnow,Math.hypot(rx-(a7[0]+t7*dx7),rn-(a7[1]+t7*dn7)));}
+      if(dnow>=2.4)break;
+      var vx7=cgx-rx,vn7=cgn-rn,Lv7=Math.hypot(vx7,vn7)||1;rx+=vx7/Lv7*1.3;rn+=vn7/Lv7*1.3;}
+    return [rx,rn];}
+  (LAYOUT.cctvcam||[]).forEach(function(c){var xy9=insetCam(c[0],c[1]),x=xy9[0],n=xy9[1],lab=c[2]||'',k=c[3]||1,ptz=!!c[4];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
     var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(x,y+ph/2,-n);bosGroup.add(pole);
-    var aim=camAimFor(x,n),baseR=aim?Math.atan2(aim.dx,-aim.dn):0;
+    var aim=camAimFor(c[0],c[1]),baseR=aim?Math.atan2(aim.dx,-aim.dn):0;   // el aim se calibra con la posición del PLANO (los ápices de los sectores CAM RANGES quedan a <14 m de ella)
     for(var ci=0;ci<k;ci++){var cg=new THREE.Group();cg.position.set(x,y+ph-ci*0.28,-n);cg.rotation.y=baseR+(ci-(k-1)/2)*0.7;bosGroup.add(cg);   // k cámaras FIJAS por mástil (el plano agrupa CAM 1-3, 8-9, 13-15, 16-18), abanicadas alrededor de su alcance y escalonadas en altura
       var cam=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.2,0.52),camM);cam.rotation.x=0.3;cg.add(cam);
       var dot=new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6),new THREE.MeshStandardMaterial({color:0xe2574c,emissive:0x5a120e}));dot.position.set(0,-0.04,0.3);cg.add(dot);}
