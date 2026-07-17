@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.93</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.95</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1176,6 +1176,13 @@ function allPosts(){var P=[],_m=new THREE.Matrix4();
   if(typeof imPost!=='undefined'&&imPost&&TC&&TC.np){for(var i=0;i<TRK.length*TC.np;i++){imPost.getMatrixAt(i,_m);
     if(Math.abs(_m.elements[0])>0.01)P.push([_m.elements[12],-_m.elements[14],_m.elements[13]+_m.elements[5]*TC.postH/2,(i/TC.np)|0]);}}   // [x, n, yTOP del poste (=nudo de la viga), fila]: la caída del cable y el perfil del tubo salen de la cota REAL renderizada
   return P;}
+var _RSB=null;
+function onRoadG(x,n){ var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[];if(!RS.length)return false;   // ¿pisa el firme? (global: lo usan vegetación y CCTV)
+  if(!_RSB)_RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
+  function inR(r){var c=false;for(var ii=0,jj=r.length-1;ii<r.length;jj=ii++){var A=r[ii],B=r[jj];if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])c=!c;}return c;}
+  for(var si=0;si<RS.length;si++){var b=_RSB[si];if(x<b[0]||x>b[1]||n<b[2]||n>b[3])continue;
+    if(inR(RS[si].o)){var hs=RS[si].h||[],hole=false;for(var hi=0;hi<hs.length;hi++)if(inR(hs[hi])){hole=true;break;}if(!hole)return true;}}
+  return false;}
 function rowFoot(x,n){if(!TRK.length||!TC.np)return -1;                     // fila cuya huella contiene el punto (semilongitud REAL por tipo) — un vértice de cable solo es "arnés" si está aquí dentro
   for(var r=0;r<TRK.length;r++){var t=TRK[r],hl=/medio/i.test(t.tp||'')?16.8:33.2;
     if(Math.abs(x-t.gx)<4.2&&Math.abs(n+t.gz)<hl)return r;}return -1;}      // 4,2 m: los puntos de conexión del DWG van clavados a la VIGA (eje ±3 m, residuo del imán ≤1,2) — con 3,05 quedaban fuera la mitad y 164 filas se quedaban sin cable; la viga vecina más próxima está a ~8 m
@@ -1209,7 +1216,8 @@ function buildNetLayer(key){
       for(var s2=0;s2<st;s2++){var t0=s2/st,t1=(s2+1)/st;
         var p=P([a2[0]+(b2[0]-a2[0])*t0,a2[1]+(b2[1]-a2[1])*t0]),q=P([a2[0]+(b2[0]-a2[0])*t1,a2[1]+(b2[1]-a2[1])*t1]);
         ln.push(p[0],p[1],p[2],q[0],q[1],q[2]);}};
-    NET.layers[key].forEach(function(pl){if(pl.length<2)return;
+    NET.layers[key].forEach(function(plR){if(plR.length<2)return;
+      var ai=plR.length>=3?_camApexIdx(plR):0,pl=plR.slice(ai).concat(plR.slice(0,ai));   // el abanico se enraíza en el ÁPICE VERDADERO (rotando el anillo), no en pl[0]
       for(var i=1;i+1<pl.length;i++)subTri(pl[0],pl[i],pl[i+1]);   // abanico desde el apex, drapeado
       for(var j=0;j+1<pl.length;j++)subLn(pl[j],pl[j+1]);
       if(pl.length>=3)subLn(pl[pl.length-1],pl[0]);});   // cierra el sector
@@ -1251,7 +1259,10 @@ function buildNetLayer(key){
       var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
         var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
         var a=L[j][0],b=L[j+1][0];if(b-a<3||b-a>16)return 0;var t=(n-a)/(b-a);return -0.030*4*t*(1-t);};
-      var aereo=function(l4,sd,nA,nB){if(Math.abs(nB-nA)<0.05)return;
+      var aereo=function(l4,sd,nA,nB){
+        var Lb=sd>0?LNS[l4].nB:LNS[l4].nA;                                   // CLAMP al largo FÍSICO de la viga (última tapa ±2,2 m de puntera): extrapolar el perfil sacaba el mazo por el aire más allá del tubo ("se pasan de la viga")
+        if(Lb.length){var b0=Lb[0][0]-2.2,b1=Lb[Lb.length-1][0]+2.2;nA=Math.max(b0,Math.min(b1,nA));nB=Math.max(b0,Math.min(b1,nB));}
+        if(Math.abs(nB-nA)<0.05)return;
         var ax=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(320,Math.ceil(Math.abs(nB-nA)/3)));
         var kC=l4+'_'+sd,R=COVR[kC];if(!R)COVR[kC]=[Math.min(nA,nB),Math.max(nA,nB)];else{R[0]=Math.min(R[0],nA,nB);R[1]=Math.max(R[1],nA,nB);}
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
@@ -1284,14 +1295,14 @@ function buildNetLayer(key){
       var byL={};PEND.forEach(function(p){(byL[p.l]=byL[p.l]||[]).push(p);});
       for(var lk in byL){var arr=byL[lk].sort(function(A,B){return A.nT-B.nT;}),cls=[];
         arr.forEach(function(p){var C=cls[cls.length-1];if(C&&Math.abs(p.nT-C.n)<25){C.items.push(p);C.n=(C.n*(C.items.length-1)+p.nT)/C.items.length;}else cls.push({n:p.nT,items:[p]});});
-        cls.forEach(function(C){                                             // BAJADA ÚNICA por grupo de salida: los mazos de las DOS vigas convergen y bajan JUNTOS por el mismo poste
+        cls.forEach(function(C){                                             // BAJADA por grupo de salida: cada viga baja por SU PROPIO poste del par y las dos se UNEN POR LA ZANJA a ras — nada de puentes aéreos entre vigas ("¿unes cable DC de diferentes filas?... no se une a la bajante del soporte")
           var nP=C.items.filter(function(x){return x.sd>0;}).length,sdD=nP>=C.items.length-nP?1:-1;
-          var foot=dropAt(+lk,sdD,C.n);
-          C.items.forEach(function(p){aereo(+lk,p.sd,p.nT,foot.n);});        // cada mazo se extiende por SU viga hasta la n del poste compartido
-          if(C.items.some(function(x){return x.sd!==sdD;})){                 // la viga contraria cruza en PUENTE a cota de tubo por el par de postes
-            var lx3=LNS[lk].x,axA=lx3-sdD*TC.filaZ,axB=lx3+sdD*TC.filaZ;
-            SEGS.push({x1:axA,y1:tubeYL(+lk,-sdD,foot.n),z1:-foot.n,o1x:-sdD*OXL,o1y:OY,x2:axB,y2:tubeYL(+lk,sdD,foot.n),z2:-foot.n,o2x:sdD*OXL,o2y:OY});}
-          C.items.forEach(function(p){                                       // conector en L ortogonal + cola enterrada desde el pie COMPARTIDO
+          var foot=dropAt(+lk,sdD,C.n),feet={};feet[sdD]=foot;
+          if(C.items.some(function(x){return x.sd!==sdD;})){
+            var f2=dropAt(+lk,-sdD,foot.n);feet[-sdD]=f2;                    // la viga contraria: bajante en su poste (misma n del par)
+            gndB(foot.x,foot.n,f2.x,f2.n);}                                  // unión de los dos pies POR LA ZANJA (traza a ras)
+          C.items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.nT,ft.n);});   // cada mazo por SU viga hasta SU bajante
+          C.items.forEach(function(p){                                       // conector en L ortogonal + cola enterrada desde el pie del lado de la ruta
             var prev=[foot.x,foot.n];
             if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-foot.n)>0.4){gndB(foot.x,foot.n,foot.x,p.tail[p.k][1]);prev=[foot.x,p.tail[p.k][1]];}
             for(var i3=p.k;i3<p.tail.length;i3++){gndB(prev[0],prev[1],p.tail[i3][0],p.tail[i3][1]);prev=p.tail[i3];}});
@@ -1376,11 +1387,20 @@ function buildNetLayer(key){
   // ("los tramos en círculo rojo no existen... bordeamos los trackers, no nos salimos de la planta")
   scene.add(g);netG[key]=g;return g;
 }
+function _camApexIdx(pl){var bi=-1,bd=30;   // ÁPICE VERDADERO de un sector CAM RANGES: el vértice más cercano a un mástil (≤30 m; la cámara SIEMPRE está en la esquina del cono) — si no hay, el de varianza mínima de distancias (los puntos del arco equidistan del ápice). pl[0] a secas enraizaba abanicos en cualquier esquina ("un cono que sale del motor, ¿qué sentido?")
+  for(var i=0;i<pl.length;i++){for(var j=0;j<((LAYOUT&&LAYOUT.cctvcam)||[]).length;j++){var m=LAYOUT.cctvcam[j];
+    var d=Math.hypot(pl[i][0]-m[0],pl[i][1]-m[1]);if(d<bd){bd=d;bi=i;}}}
+  if(bi>=0)return bi;
+  var bv=1e18;bi=0;
+  for(var i2=0;i2<pl.length;i2++){var s1=0,s2=0,c=0;
+    for(var j2=0;j2<pl.length;j2++){if(j2===i2)continue;var dd=Math.hypot(pl[i2][0]-pl[j2][0],pl[i2][1]-pl[j2][1]);s1+=dd;s2+=dd*dd;c++;}
+    var m2=s1/c,v=s2/c-m2*m2;if(v<bv){bv=v;bi=i2;}}
+  return bi;}
 function camAimFor(x,n){   // dirección a la que mira una cámara: hacia el centroide de su(s) sector(es) de alcance (apex ≈ posición de la cámara)
   if(!NET||!NET.layers||!NET.layers.cam_range)return null;
   var dx=0,dn=0,cnt=0;
-  NET.layers.cam_range.forEach(function(pl){if(pl.length<2)return;var a=pl[0];
-    if(Math.abs(a[0]-x)<14&&Math.abs(a[1]-n)<14){var fx=0,fn=0,m=0;for(var i=1;i<pl.length;i++){fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});   // 14 m: los mástiles van fusionados (clúster 12 m) e imantados al vallado — sus ápices de sector quedan a hasta ~13 m
+  NET.layers.cam_range.forEach(function(pl){if(pl.length<2)return;var ai=pl.length>=3?_camApexIdx(pl):0,a=pl[ai];
+    if(Math.abs(a[0]-x)<14&&Math.abs(a[1]-n)<14){var fx=0,fn=0,m=0;for(var i=0;i<pl.length;i++){if(i===ai)continue;fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});   // ápice VERDADERO (posiciones ya horneadas en el layout desde los conos)
   if(!cnt)return null;var L=Math.hypot(dx,dn)||1;return {dx:dx/L,dn:dn/L};
 }
 function setNet(keys,on){ ensureNet().then(function(ok){ if(!ok)return; keys.forEach(function(key){ if(on){if(!netG[key])buildNetLayer(key); if(netG[key])netG[key].visible=true;} else if(netG[key])netG[key].visible=false; }); }); }
@@ -1947,7 +1967,11 @@ function buildBOS(){
     NET.layers.cam_range.forEach(function(pl8){if(pl8.length<2)return;var a8=pl8[0];
       if(Math.abs(a8[0]-x8)<14&&Math.abs(a8[1]-n8)<14){sx+=a8[0];sn+=a8[1];cc++;}});
     return cc?[sx/cc,sn/cc]:null;}
-  (LAYOUT.cctvcam||[]).forEach(function(c){var xy9=apexFor(c[0],c[1])||insetCam(c[0],c[1]),x=xy9[0],n=xy9[1],lab=c[2]||'',k=c[3]||1,ptz=!!c[4];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;
+  function offRoad(x7,n7,px7,pn7){ if(!onRoadG(x7,n7))return [x7,n7];                   // el ápice de CAM 10 caía EN el camino ("No encaja"): la cámara se desliza al borde del firme por el lado de su posición de plano
+    var dx7=px7-x7,dn7=pn7-n7,L7=Math.hypot(dx7,dn7)||1;dx7/=L7;dn7/=L7;
+    for(var s7=0.5;s7<=5;s7+=0.5){var X7=x7+dx7*s7,N7=n7+dn7*s7;if(!onRoadG(X7,N7))return [X7+dx7*0.4,N7+dn7*0.4];}
+    return [x7,n7];}
+  (LAYOUT.cctvcam||[]).forEach(function(c){var x=c[0],n=c[1],lab=c[2]||'',k=c[3]||1,ptz=!!c[4];if(!inClip(x,n))return;var y=localElevY(x,n),ph=5;   // posición HORNEADA en el layout: centroide de los ápices de sus conos, con guardas de vallado/firme aplicadas en el bake ('revisa todos los conos y cámaras')
     var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,ph,8),poleM);pole.position.set(x,y+ph/2,-n);bosGroup.add(pole);
     var aim=camAimFor(c[0],c[1]),baseR=aim?Math.atan2(aim.dx,-aim.dn):0;   // el aim se calibra con la posición del PLANO (los ápices de los sectores CAM RANGES quedan a <14 m de ella)
     for(var ci=0;ci<k;ci++){var cg=new THREE.Group();cg.position.set(x,y+ph-ci*0.28,-n);cg.rotation.y=baseR+(ci-(k-1)/2)*0.7;bosGroup.add(cg);   // k cámaras FIJAS por mástil (el plano agrupa CAM 1-3, 8-9, 13-15, 16-18), abanicadas alrededor de su alcance y escalonadas en altura
