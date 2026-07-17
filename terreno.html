@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.04</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.05</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1870,12 +1870,10 @@ function buildBOS(){
     if(pl.length)pts.push(pl[pl.length-1]);
     if(pts.length<2)return;
     var rmesh=pts.map(function(p){return terrainMeshY(p[0],p[1]);});                // SOLO la malla RENDERIZADA: la valla vive en el mundo visible. Anclar también al DEM continuo (raw) hacía que un pico del DEM que la rejilla de 7 m se come (÷vex amplificado) levantara paños gigantes y postes al aire ("Mira la valla, no cambia nada")
-    var raw=rmesh;                                                                  // alias (cota visible); el DEM continuo ya NO manda en la valla
-    var sm=rmesh.slice();for(var i=0;i<rmesh.length;i++){var ss=0,c=0;for(var k=-4;k<=4;k++){var j=i+k;if(j>=0&&j<rmesh.length){ss+=rmesh[j];c++;}}sm[i]=ss/c;}  // media móvil ±20 m sobre la malla: techo recto sin zigzag
     // base y techo con TOPE para que NUNCA colapse en cuestas. La base se entierra ∝ vex: la malla del terreno (~7 m) queda por debajo del DEM continuo en hondonadas y con la exageración vertical eso se amplifica → el paño flotaría. Enterrando más (solo lo invisible) la base nunca queda por encima del suelo visible (no vuela ni deja "gap sin sombra"); el techo sigue ≥ suelo+1
-    var bury=0.3+0.5*vex; var bE=[],tE=[];
+    var bE=[],tE=[];
     var dcum=[0];for(var i=1;i<pts.length;i++)dcum[i]=dcum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
-    for(var i=0;i<rmesh.length;i++){bE[i]=Math.min(sm[i],rmesh[i])-bury;
+    for(var i=0;i<rmesh.length;i++){bE[i]=rmesh[i]+0.15;                             // VALLADO CINEGÉTICO: el paño ARRANCA a 15 cm del suelo y por debajo queda paso libre de fauna ("no llega hasta el suelo, parte de 15 cm") — antes se enterraba y parecía tocar tierra
       var t9=rmesh[i]+fh;                                                            // ENVOLVENTE superior con pendiente acotada (10 cm/m): el techo es UNA línea continua — el max() por vértice anterior pegaba saltos donde el suelo repuntaba ("esa diferencia de altura")
       for(var j9=0;j9<rmesh.length;j9++){var c9=rmesh[j9]+fh-0.10*Math.abs(dcum[i]-dcum[j9]);if(c9>t9)t9=c9;}
       tE[i]=t9;}                                                                     // garantiza suelo+1,9 en cada punto y |pendiente| ≤ 0,10 — sobre vaguadas estrechas el techo las puentea recto, como se instala la malla real
@@ -1888,8 +1886,8 @@ function buildBOS(){
         sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
         su.push(u0,va,u1,vb,u1,0, u0,va,u1,0,u0,0);
         sw.push(Ax,ta+0.06,Az,Bx,tb+0.06,Bz, Ax,ta+0.16,Az,Bx,tb+0.16,Bz);}
-      pacc+=L;if(pacc>=8&&!gskip){pacc=0;var h=ta-ba;                               // postes cada ~8 m, de la base al techo (sin peana de hormigón)
-        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h+0.3,8),postM);po.position.set(a[0],(ta+ba)/2,-a[1]);bosGroup.add(po);}}
+      pacc+=L;if(pacc>=8&&!gskip){pacc=0;var pb=rmesh[i]-0.35,pt2=ta+0.05,h=pt2-pb;  // postes cada ~8 m, HINCADOS al suelo: el paño arranca a +15 cm pero el poste no flota (llega 35 cm bajo tierra y asoma justo sobre el techo)
+        var po=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,h,8),postM);po.position.set(a[0],(pb+pt2)/2,-a[1]);bosGroup.add(po);}}
   });
   // ===== PUERTAS DE DOBLE HOJA (bloques "Acceso 6m" del Tierras.dwg, marcados por el usuario): dos hojas de ~3 m
   // con marco tubular, tirante diagonal en V (como el símbolo del bloque) y paño de malla; postes de quicio reforzados =====
