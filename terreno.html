@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.89</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.92</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -70,6 +70,8 @@
     <div class="row"><label title="Simula la generación: pinta los módulos con la luz del sol, energiza el cableado DC y saca MW/MWh según hora, día (barra de tiempo) y meteo. Modelo cielo-claro offline."><input type="checkbox" id="genflow"> ⚡ Flujo / generación</label></div>
     <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Nubosidad <input type="range" id="cloud" min="0" max="100" value="0" style="width:78px"></label><span id="cloudV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0%</span></div>
     <div class="row"><label style="display:flex;align-items:center;gap:6px">T amb <input type="number" id="tamb" value="20" style="width:48px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:12px"> °C</label></div>
+    <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px" title="Perfil gráfico: Rendimiento (ligero), Técnico (cables por polaridad, por defecto) o Presentación (cables negros realistas, sombras finas, tone mapping cinematográfico)">🎛️ Perfil <select id="perfil" style="font:inherit;font-size:11px;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:6px"><option value="tecnico" selected>Técnico</option><option value="presentacion">Presentación</option><option value="rendimiento">Rendimiento</option></select></label></div>
+    <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:5px;flex-wrap:wrap">Exposición <input type="range" id="expo" min="60" max="160" value="100" style="width:52px"> · Sombras <select id="shq" style="font:inherit;font-size:11px;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:6px"><option value="2048">media</option><option value="4096" selected>alta</option><option value="8192">ultra</option></select> · Hierba <input type="range" id="vegd" min="0" max="100" value="100" style="width:52px"> · AO <input type="range" id="aoq" min="0" max="150" value="100" style="width:52px"></div>
     <div class="row"><label title="Stow por viento, replicado del gemelo digital: cuando el viento supera el umbral de entrada, TODOS los trackers abanderan hacia el lado en que está el sol a la velocidad real del actuador (0,17 °/s); al bajar del umbral de salida (histéresis Schmitt) vuelven al seguimiento. Con ⚡ activo, la producción cae por el coseno."><input type="checkbox" id="stowChk"> 🌬️ Abanderamiento (stow)</label></div>
     <div id="stowBox" style="display:none">
       <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Viento <input type="range" id="wind" min="0" max="120" value="0" style="width:78px"></label><span id="windV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0 km/h</span></div>
@@ -452,7 +454,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
@@ -738,8 +740,9 @@ function animateMeteo(dt){ metT+=dt;
   if(!METEO_ANIM.length)return;
   var wsEff=STOWON?WINDK/3.6:WIND.ws;                                          // con el ABANDERAMIENTO armado manda el slider de viento (km/h→m/s): "la veleta debe girar según la velocidad que haya en el slider"
   var gust=1+0.18*Math.sin(metT*1.7+1.3), spin=dt*Math.min(12,0.35+0.85*wsEff*gust);   // cazoletas ∝ viento pero CAPADAS a ~2 rev/s VISUALES: a 4+ rev/s con 60 fps estroboscopiaban (rueda de carro: "no lo veo girar más deprisa")
-  if(vegMesh&&vegMesh.material.userData.sh){var us=vegMesh.material.userData.sh.uniforms;us.uVT.value=metT;us.uVA.value=Math.min(1,wsEff/28);   // la hierba se mece con el MISMO viento (28 m/s ≈ 100 km/h = tumbada)
-    var db=(WIND.wd+180)*DEG;us.uVD.value.set(Math.sin(db),Math.cos(db)*-1*-1);us.uVD.value.set(Math.sin(db),-Math.cos(db));}
+  if(VEGMATS.length){var db=(WIND.wd+180)*DEG,vA=Math.min(1,wsEff/28);   // la hierba (todas las variantes) se mece con el MISMO viento (28 m/s ≈ 100 km/h = tumbada)
+    for(var vm=0;vm<VEGMATS.length;vm++){var sh9=VEGMATS[vm].userData.sh;if(!sh9)continue;
+      sh9.uniforms.uVT.value=metT;sh9.uniforms.uVA.value=vA;sh9.uniforms.uVD.value.set(Math.sin(db),-Math.cos(db));}}
   var vy=Math.PI/2 - WIND.wd*DEG;                                              // la veleta apunta a la dirección DE DONDE viene el viento
   var sun=(SUN&&SUN._dir)?SUN._dir:null;
   if(sun){ if(sun.U>0.03)_solV.set(sun.E,Math.max(0.34,sun.U),-sun.N); else _solV.set(0,Math.cos(0.61),Math.sin(0.61));   // panel: de día apunta al sol (tope ~71°), de noche aparca al sur ~35°
@@ -971,44 +974,125 @@ function makeCellNormal(){var W=128,Hh=256,c=document.createElement('canvas');c.
     nd[k]=Math.max(0,Math.min(255,128-dx*200));nd[k+1]=Math.max(0,Math.min(255,128-dy*200));nd[k+2]=255;nd[k+3]=255;}
   x.putImageData(n,0,0);var t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;}
 // (3) vegetación dispersa (solo escritorio): matas cruzadas instanciadas, se funden a ~90 m
-var vegMesh=null;
-function _grassTex(){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
-  for(var k=0;k<26;k++){var bx=8+Math.random()*48,h2=14+Math.random()*30,sw=Math.random()<0.5?-1:1,verde=Math.random()<0.65;
-    x.strokeStyle=verde?'rgba('+(56+Math.random()*34|0)+','+(122+Math.random()*44|0)+','+(40+Math.random()*26|0)+',0.92)'   // mezcla: ~45% briznas VERDES (fotos aéreas) + resto paja seca
-      :'rgba('+(96+Math.random()*50|0)+','+(88+Math.random()*44|0)+','+(48+Math.random()*26|0)+',0.9)';x.lineWidth=1.4;
-    x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+sw*3,48-h2*0.6,bx+sw*(4+Math.random()*5),48-h2);x.stroke();}
-  return new THREE.CanvasTexture(c);}
+var vegMesh=null,VEGM=[],VEGMATS=[],VEGX=null;
+function _grassTex(vt){var c=document.createElement('canvas');c.width=64;c.height=48;var x=c.getContext('2d');
+  // 5 VARIANTES ("hay demasiadas plantas iguales"): 0 hierba baja pajiza · 1 hierba media verde · 2 maleza alta oscura · 3 matorral seco · 4 herbácea con florecillas
+  var P=[{n:26,h:[0.35,0.62],rgb:function(r){return 'rgba('+(150+r(50))+','+(150+r(40))+','+(60+r(30))+',';},w:1.6},
+         {n:30,h:[0.55,0.95],rgb:function(r){return 'rgba('+(56+r(34))+','+(122+r(44))+','+(40+r(26))+',';},w:1.8},
+         {n:22,h:[0.75,1.0],rgb:function(r){return 'rgba('+(40+r(26))+','+(86+r(34))+','+(30+r(20))+',';},w:2.4},
+         {n:20,h:[0.5,0.85],rgb:function(r){return 'rgba('+(140+r(40))+','+(110+r(30))+','+(64+r(22))+',';},w:2.0},
+         {n:28,h:[0.5,0.9],rgb:function(r){return 'rgba('+(70+r(40))+','+(126+r(40))+','+(46+r(24))+',';},w:1.7}][vt||0];
+  var sd=7919+vt*131,rr=function(m){sd=(sd*1103515245+12345)>>>0;return (sd/4294967296)*m;};
+  for(var i=0;i<P.n;i++){var bx=4+rr(56),tip=48-P.h[0]*48-rr((P.h[1]-P.h[0])*48),bw=P.w+rr(1.2);
+    x.strokeStyle=P.rgb(rr)+(0.55+rr(0.4)).toFixed(2)+')';x.lineWidth=bw;
+    x.beginPath();x.moveTo(bx,48);x.quadraticCurveTo(bx+rr(8)-4,(48+tip)/2,bx+rr(12)-6,tip);x.stroke();
+    if(vt===2&&rr(1)>0.5){x.beginPath();x.moveTo(bx,34+rr(8));x.lineTo(bx+rr(10)-5,26+rr(6));x.stroke();}   // maleza: ramitas
+    if(vt===4&&rr(1)>0.45){x.fillStyle='rgba('+(230+rr(25))+','+(228+rr(24))+','+(200+rr(40))+',0.9)';x.fillRect(bx+rr(10)-5,tip+rr(4),1.6,1.6);}}   // florecillas
+  var t=new THREE.CanvasTexture(c);t.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;return t;}
+function _makeVegMat(tex){var m=new THREE.MeshStandardMaterial({map:tex,alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
+  m.onBeforeCompile=function(sh){sh.uniforms.uVT={value:0};sh.uniforms.uVA={value:0.1};sh.uniforms.uVD={value:new THREE.Vector2(0.6,0.5)};m.userData.sh=sh;   // viento ("La hierba debería moverse tmb")
+    sh.vertexShader=sh.vertexShader
+      .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;varying vec3 vWPv;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;\n\tvWPv=(instanceMatrix*vec4(transformed,1.0)).xyz;')
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWPv;').replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));\n\tfloat vv=(cameraPosition.y-vWPv.y)/max(1.0,distance(cameraPosition,vWPv));\n\tdiffuseColor.a*=(1.0-smoothstep(0.60,0.88,vv));');};   // fundido por distancia + por ÁNGULO (en picado manda la ortofoto, no el "papel")
+  m.customProgramCacheKey=function(){return 'vegwind3';};return m;}
 function buildVeg(){
-  if(vegMesh){scene.remove(vegMesh);vegMesh.geometry.dispose();vegMesh.material.dispose();vegMesh=null;}
+  if(VEGM.length){VEGM.forEach(function(mm){scene.remove(mm);mm.geometry.dispose();mm.material.dispose();});VEGM=[];VEGMATS=[];vegMesh=null;}
+  if(VEGX){scene.remove(VEGX);VEGX.traverse(function(o){if(o.geometry)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});VEGX=null;}
   if(SKY_MOB||!CLP||!ELEV)return;
   var P=[-0.36,0,0, 0.36,0,0, 0.36,0.5,0, -0.36,0,0, 0.36,0.5,0, -0.36,0.5,0,
          0,0,-0.36, 0,0,0.36, 0,0.5,0.36, 0,0,-0.36, 0,0.5,0.36, 0,0.5,-0.36];
   var U=[0,0, 1,0, 1,1, 0,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,0, 1,1, 0,1];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
-  var m=new THREE.MeshStandardMaterial({map:_grassTex(),alphaTest:0.45,transparent:true,side:THREE.DoubleSide,roughness:1,metalness:0});
-  m.onBeforeCompile=function(sh){sh.uniforms.uVT={value:0};sh.uniforms.uVA={value:0.1};sh.uniforms.uVD={value:new THREE.Vector2(0.6,0.5)};m.userData.sh=sh;   // viento sobre la hierba: tiempo, amplitud (0..1) y dirección — los actualiza animateMeteo ("La hierba debería moverse tmb")
-    sh.vertexShader=sh.vertexShader
-      .replace('#include <common>','#include <common>\nuniform float uVT;uniform float uVA;uniform vec2 uVD;varying vec3 vWPv;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\n\tfloat vf=position.y*2.0;vf*=vf;\n\tvec2 vph=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);\n\tfloat w1=sin(uVT*(1.5+2.5*uVA)+vph.x*0.35+vph.y*0.27);\n\tfloat w2=sin(uVT*3.9+vph.x*0.13-vph.y*0.31);\n\tvec2 sw=uVD*((0.03+0.20*uVA)*w1+(0.015+0.09*uVA)*w2)*vf;\n\ttransformed.x+=sw.x;transformed.z+=sw.y;\n\tvWPv=(instanceMatrix*vec4(transformed,1.0)).xyz;')
-    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vWPv;').replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(260.0,520.0,length(vViewPosition)));\n\tfloat vv=(cameraPosition.y-vWPv.y)/max(1.0,distance(cameraPosition,vWPv));\n\tdiffuseColor.a*=(1.0-smoothstep(0.60,0.88,vv));');};   // fundido por distancia + POR ÁNGULO: en picado los quads cruzados se ven de canto y parecen "papel 2D" — a vista de pájaro la mata cede el sitio a la ortofoto; a pie de campo, hierba llena
-  m.customProgramCacheKey=function(){return 'vegwind2';};
-  var N=220000;vegMesh=new THREE.InstancedMesh(g,m,N);   // 90k ("¿la vegetación cuándo podrá estar?"): mitad UNIFORME (sin calvas) + mitad en rodales; quads instanciados con alphaTest — sigue siendo barato en escritorio
-  var o=new THREE.Object3D(),s=20260714,rng=function(){s=(s*1664525+1013904223)>>>0;return s/4294967296;};   // semilla fija: mismas matas en cada carga
-  // el FIRME queda limpio: nada de matas sobre las superficies de vial ("no tener vegetación encima")
+  var N=220000,SHARE=[0.30,0.28,0.18,0.16,0.08];                              // reparto por variante; escalas propias (baja/media/alta/seca/flor)
+  var SCL=[[0.7,0.5],[1.0,0.9],[1.2,1.4],[0.9,0.8],[0.9,0.9]];
+  var counts=SHARE.map(function(f){return Math.floor(N*f);});
+  for(var vt=0;vt<5;vt++){var mV=_makeVegMat(_grassTex(vt));var im=new THREE.InstancedMesh(g,mV,counts[vt]);im.receiveShadow=true;VEGM.push(im);VEGMATS.push(mV);scene.add(im);}
+  vegMesh=VEGM[1];
+  var o=new THREE.Object3D(),sdd=20260714,rng=function(){sdd=(sdd*1664525+1013904223)>>>0;return sdd/4294967296;};
   var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[],RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
   function inRing(x,n,r){var c=false;for(var ii=0,jj=r.length-1;ii<r.length;jj=ii++){var A=r[ii],B=r[jj];if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])c=!c;}return c;}
   function onRoad(x,n){for(var si=0;si<RS.length;si++){var b=RSB[si];if(x<b[0]||x>b[1]||n<b[2]||n>b[3])continue;
     if(inRing(x,n,RS[si].o)){var hs=RS[si].h||[],hole=false;for(var hi=0;hi<hs.length;hi++)if(inRing(x,n,hs[hi])){hole=true;break;}if(!hole)return true;}}return false;}
-  function nearRoad(x,n){return onRoad(x,n)||onRoad(x+0.8,n)||onRoad(x-0.8,n)||onRoad(x,n+0.8)||onRoad(x,n-0.8);}   // margen 0,8 m: el quad de la mata (~0,7 m) no debe invadir el firme ("marcas negras" en el borde)
-  var i=0;
-  while(i<N*0.62){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();               // 1) manto UNIFORME
-    if(nearRoad(x,n))continue;   // re-sortea: densidad intacta fuera del firme
-    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;var sc=0.95+rng()*1.1;o.scale.set(sc,0.9+rng()*1.0,sc);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);i++;}
-  while(i<N){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30);   // 2) rodales por encima
-    for(var j2=0;j2<k&&i<N;j2++,i++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
-      if(nearRoad(x2,n2)){o.scale.set(0,0,0);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);continue;}   // mata del rodal caída en el vial: se anula (instancia degenerada)
-      o.position.set(x2,terrainMeshY(x2,n2),-n2);o.rotation.y=rng()*Math.PI*2;var sc2=1.0+rng()*1.3;o.scale.set(sc2,1.0+rng()*1.2,sc2);o.updateMatrix();vegMesh.setMatrixAt(i,o.matrix);}}
-  vegMesh.receiveShadow=true;scene.add(vegMesh);
+  function nearRoad(x,n){return onRoad(x,n)||onRoad(x+0.8,n)||onRoad(x-0.8,n)||onRoad(x,n+0.8)||onRoad(x,n-0.8);}
+  var EXQ=[];((LAYOUT&&LAYOUT.invlab)||[]).forEach(function(q){EXQ.push([q.x,q.n,4.5]);});   // ZONAS COMPACTADAS sin matas: inversores, CTs, subestación ("reducción progresiva de densidad bajo caminos y equipos")
+  ((LAYOUT&&LAYOUT.cts)||[]).forEach(function(pl){var sx=0,sn=0;pl.forEach(function(p){sx+=p[0];sn+=p[1];});var cx=sx/pl.length,cn=sn/pl.length;if(Math.abs(cx)<900&&Math.abs(cn)<900)EXQ.push([cx,cn,7]);});
+  var SBP=(typeof SUBPT!=='undefined'&&SUBPT)?SUBPT:[9.92,-194.24];EXQ.push([SBP[0],SBP[1],12]);   // SUBPT se declara más abajo (hoisted=undefined en el arranque): sin el guardia, buildVeg moría y la excepción se la tragaba la cadena async
+  function nearEq(x,n){for(var e=0;e<EXQ.length;e++){var d=Math.hypot(x-EXQ[e][0],n-EXQ[e][1]);if(d<EXQ[e][2])return true;if(d<EXQ[e][2]+3&&rng()<1-(d-EXQ[e][2])/3)return true;}return false;}   // borde con caída progresiva
+  var idx=[0,0,0,0,0],total=0;
+  function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
+    var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
+    o.position.set(x,terrainMeshY(x,n),-n);o.rotation.y=rng()*Math.PI*2;o.scale.set(sc,sy,sc);o.updateMatrix();
+    VEGM[vt].setMatrixAt(idx[vt]++,o.matrix);total++;}
+  function pick(){var r=rng();return r<0.30?0:r<0.58?1:r<0.76?2:r<0.92?3:4;}
+  var guard=0;
+  while(total<N*0.62&&guard++<N*4){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();   // 1) manto uniforme mezclado
+    if(nearRoad(x,n)||nearEq(x,n))continue;put(pick(),x,n,false);}
+  while(total<N&&guard++<N*6){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30),vtR=pick();   // 2) rodales MONOESPECIE encima (parches naturales)
+    for(var j2=0;j2<k&&total<N;j2++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
+      if(nearRoad(x2,n2)||nearEq(x2,n2))continue;put(vtR,x2,n2,true);}}
+  VEGM.forEach(function(mm,vi){mm.count=idx[vi];});
+  buildVegExtras(EXQ);
+}
+var _dressed=false;
+function dressMaterials(){ if(_dressed||!SEG||!renderer)return;_dressed=true;   // v4.91: VIDRIO con fresnel vivo y reflexión no uniforme, MARCO diferenciado y ACERO GALVANIZADO moteado ("el cambio con más impacto")
+  var mx=renderer.capabilities.getMaxAnisotropy();
+  var c=document.createElement('canvas');c.width=c.height=128;var x=c.getContext('2d');   // spangle de galvanizado: parches poligonales gris claro
+  x.fillStyle='#ccd1d6';x.fillRect(0,0,128,128);
+  for(var i=0;i<90;i++){var gv=198+Math.floor(Math.random()*42);x.fillStyle='rgba('+gv+','+(gv+2)+','+(gv+6)+',0.55)';
+    var cx=Math.random()*128,cy=Math.random()*128,r=6+Math.random()*14;x.beginPath();x.moveTo(cx+r,cy);
+    for(var a=1;a<6;a++){var th=a/6*6.283;x.lineTo(cx+Math.cos(th)*r*(0.7+Math.random()*0.5),cy+Math.sin(th)*r*(0.7+Math.random()*0.5));}x.closePath();x.fill();}
+  var sp=new THREE.CanvasTexture(c);sp.wrapS=sp.wrapT=THREE.RepeatWrapping;sp.anisotropy=mx;
+  var seen={};
+  function galva(m){if(!m||seen[m.uuid]||m.map)return;seen[m.uuid]=1;m.map=sp;if(m.roughness!==undefined){m.roughness=Math.min(0.58,m.roughness);m.metalness=Math.max(0.5,m.metalness||0);}m.needsUpdate=true;}
+  SEG.forEach(function(sg){if(/^(tube|tubecap|bracket|soporte|abarcon|corona|cuello|reductora|correa|motor|tapa)$/.test(sg.key)&&sg.im)galva(sg.im.material);});
+  if(typeof imPost!=='undefined'&&imPost)galva(imPost.material);
+  if(typeof imShaft!=='undefined'&&imShaft)galva(imShaft.material);
+  SEG.forEach(function(sg){if(sg.key==='frame'&&sg.im){var F=sg.im.material;if(F.color)F.color.setHex(0xb9bfc7);F.metalness=0.68;F.roughness=0.34;F.needsUpdate=true;}});   // marco de aluminio anodizado, distinto del vidrio
+  var gm=(typeof invGlassMesh==='function')?invGlassMesh():null;
+  if(gm&&gm.im){var G=gm.im.material;G.roughness=0.12;G.envMapIntensity=0.5;   // vidrio: rugosidad baja PERO no cero + reflejo de cielo más presente
+    G.onBeforeCompile=function(sh){sh.vertexShader=sh.vertexShader
+        .replace('#include <common>','#include <common>\nvarying vec2 vWXZ;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\n\tvWXZ=(instanceMatrix*vec4(transformed,1.0)).xz;');
+      sh.fragmentShader=sh.fragmentShader
+        .replace('#include <common>','#include <common>\nvarying vec2 vWXZ;')
+        .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\n\troughnessFactor*=(0.80+0.40*fract(sin(dot(floor(vWXZ/12.0),vec2(12.9898,78.233)))*43758.5453));');};   // rugosidad DISTINTA por mesa (celda de 12 m): reflexión menos uniforme entre mesas
+    G.customProgramCacheKey=function(){return 'glassvar1';};G.needsUpdate=true;}
+}
+function buildVegExtras(EXQ){                                                  // TERRENO: pads compactados bajo equipos + grava + anillo de transición en cimentaciones
+  VEGX=new THREE.Group();
+  var pc=document.createElement('canvas');pc.width=pc.height=128;var px=pc.getContext('2d');
+  var gr=px.createRadialGradient(64,64,18,64,64,64);gr.addColorStop(0,'rgba(196,189,172,0.85)');gr.addColorStop(0.75,'rgba(196,189,172,0.55)');gr.addColorStop(1,'rgba(196,189,172,0)');
+  px.fillStyle=gr;px.fillRect(0,0,128,128);
+  for(var d2=0;d2<160;d2++){var a2=Math.random()*128,b2=Math.random()*128,l2=Math.random();px.fillStyle=l2>0.5?'rgba(160,152,136,0.5)':'rgba(226,220,204,0.55)';px.fillRect(a2,b2,1.6,1.6);}
+  var padTex=new THREE.CanvasTexture(pc),padM=new THREE.MeshLambertMaterial({map:padTex,transparent:true,depthWrite:false});
+  EXQ.forEach(function(e){var pg=new THREE.Mesh(new THREE.PlaneGeometry(e[2]*2.4,e[2]*2.0),padM);
+    pg.rotation.x=-Math.PI/2;pg.position.set(e[0],terrainMeshY(e[0],e[1])+0.02,-e[1]);VEGX.add(pg);});
+  var stoneG=new THREE.IcosahedronGeometry(1,0),stoneM=new THREE.MeshStandardMaterial({color:0xb9b2a2,roughness:.95,metalness:0});
+  var NS=7000,ims=new THREE.InstancedMesh(stoneG,stoneM,NS),o2=new THREE.Object3D(),put2=0;   // GRAVA: piedrecillas junto a viales y pads
+  var RS2=(LAYOUT&&LAYOUT.roadSurfaces)||[],edges=[];
+  RS2.forEach(function(sf){for(var i=0;i+1<sf.o.length;i+=2)edges.push(sf.o[i]);});
+  for(var st=0;st<NS;st++){var p3;
+    if(edges.length&&st%3!==0){p3=edges[Math.floor(Math.random()*edges.length)];p3=[p3[0]+(Math.random()*2.6-1.3),p3[1]+(Math.random()*2.6-1.3)];}
+    else {var e3=EXQ[Math.floor(Math.random()*EXQ.length)];var a3=Math.random()*Math.PI*2,r3=Math.random()*e3[2];p3=[e3[0]+Math.cos(a3)*r3,e3[1]+Math.sin(a3)*r3];}
+    var s3=0.028+Math.random()*0.05;
+    o2.position.set(p3[0],terrainMeshY(p3[0],p3[1])+s3*0.5,-p3[1]);o2.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);o2.scale.set(s3,s3*0.7,s3);o2.updateMatrix();ims.setMatrixAt(put2++,o2.matrix);}
+  ims.count=put2;VEGX.add(ims);
+  var rc=document.createElement('canvas');rc.width=rc.height=64;var rx=rc.getContext('2d');   // anillo de TRANSICIÓN en el pie de cada hinca ("transición alrededor de cimentaciones y postes")
+  var rg=rx.createRadialGradient(32,32,4,32,32,32);rg.addColorStop(0,'rgba(60,54,44,0.5)');rg.addColorStop(0.5,'rgba(90,84,70,0.28)');rg.addColorStop(1,'rgba(90,84,70,0)');
+  rx.fillStyle=rg;rx.fillRect(0,0,64,64);
+  var ringTex=new THREE.CanvasTexture(rc),ringM=new THREE.MeshLambertMaterial({map:ringTex,transparent:true,depthWrite:false});
+  var PSx=allPosts();
+  if(PSx.length){var rgG=new THREE.PlaneGeometry(0.85,0.85),imr=new THREE.InstancedMesh(rgG,ringM,PSx.length),o4=new THREE.Object3D();
+    for(var pr=0;pr<PSx.length;pr++){o4.position.set(PSx[pr][0],terrainMeshY(PSx[pr][0],PSx[pr][1])+0.015,-PSx[pr][1]);o4.rotation.set(-Math.PI/2,0,0);o4.updateMatrix();imr.setMatrixAt(pr,o4.matrix);}
+    VEGX.add(imr);}
+  if(!INVPOS.length)computeInvPos();                                          // ENTORNO DEL INVERSOR: conduits de bajada + prensaestopas bajo la caja ("elementos que lo integren")
+  var cndM=new THREE.MeshStandardMaterial({color:0x8b9199,roughness:.6,metalness:.4}),glM=new THREE.MeshStandardMaterial({color:0x1c2126,roughness:.6});
+  INVPOS.forEach(function(iv){var gy=terrainMeshY(iv.x,iv.n);
+    for(var ci=0;ci<2;ci++){var cx=iv.x+(ci?0.35:-0.35);
+      var cd=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.72,6),cndM);cd.position.set(cx,gy+0.36,-(iv.n+0.62));VEGX.add(cd);
+      var gl=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.07,6),cndM);gl.position.set(cx,gy+0.755,-(iv.n+0.62));VEGX.add(gl);}});
+  scene.add(VEGX);
 }
 // (5) sombras de NUBE deslizándose por el campo: 3 mantos drapeados al terreno que viajan con el viento;
 // opacidad ∝ nubosidad y solo de día. El "respirar" global de la luz (animateSky) pone la otra mitad.
@@ -1098,8 +1182,8 @@ function rowFoot(x,n){if(!TRK.length||!TC.np)return -1;                     // f
 var _cbM=new THREE.Matrix4(),_cbP=new THREE.Vector3(),_cbQ=new THREE.Quaternion(),_cbS=new THREE.Vector3(),_cbU=new THREE.Vector3(0,1,0),_cbD=new THREE.Vector3();
 function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el eje de la viga al bascular ("al estar pegado, embridado a la viga se mueve con esta")
   var th=(angDeg||0)*DEG,c=Math.cos(th),sn=Math.sin(th);
-  ['cable_pos','cable_neg'].forEach(function(k9){var G9=netG[k9];if(!G9||!G9.userData.cab)return;
-    var cab=G9.userData.cab,SG=cab.segs,im=cab.im,r=cab.r;
+  ['cable_pos','cable_neg'].forEach(function(k9){var G9=netG[k9];if(!G9||!G9.userData.cabs)return;
+    G9.userData.cabs.forEach(function(cab){var SG=cab.segs,im=cab.im,r=cab.r;
     for(var i=0;i<SG.length;i++){var g9=SG[i];
       var o1x=g9.o1x*c-g9.o1y*sn,o1y=g9.o1x*sn+g9.o1y*c;                    // la brida gira con el tubo (mismo sentido que la normal del panel: (0,1)→(−sinθ,cosθ))
       var x1=g9.x1+o1x,y1=g9.y1+o1y,z1=g9.z1,x2,y2,z2;
@@ -1108,7 +1192,7 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
       _cbD.set(x2-x1,y2-y1,z2-z1);var L9=_cbD.length()||1e-6;_cbD.normalize();
       _cbQ.setFromUnitVectors(_cbU,_cbD);_cbP.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
       _cbS.set(r,L9+0.02,r);_cbM.compose(_cbP,_cbQ,_cbS);im.setMatrixAt(i,_cbM);}
-    im.instanceMatrix.needsUpdate=true;});
+    im.instanceMatrix.needsUpdate=true;});});
 }
 function buildNetLayer(key){
   if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
@@ -1163,10 +1247,15 @@ function buildNetLayer(key){
       var OXL=0.06+CR;                                                      // brida en la CARA EXTERIOR: media viga (0,06) + radio — pegado, sin holgura ("sigue flotando")
       var SEGS=[];                                                          // registros DINÁMICOS: punto de EJE + offset de brida → updateCableSpin los rota con la viga ("embridado a la viga se mueve con esta")
       var DDROP={},PEND=[];
+      var COVR={};
+      var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
+        var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
+        var a=L[j][0],b=L[j+1][0];if(b-a<3||b-a>16)return 0;var t=(n-a)/(b-a);return -0.030*4*t*(1-t);};
       var aereo=function(l4,sd,nA,nB){if(Math.abs(nB-nA)<0.05)return;
-        var ax=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(160,Math.ceil(Math.abs(nB-nA)/5)));
+        var ax=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(320,Math.ceil(Math.abs(nB-nA)/3)));
+        var kC=l4+'_'+sd,R=COVR[kC];if(!R)COVR[kC]=[Math.min(nA,nB),Math.max(nA,nB)];else{R[0]=Math.min(R[0],nA,nB);R[1]=Math.max(R[1],nA,nB);}
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
-          SEGS.push({x1:ax,y1:tubeYL(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY});}};
+          SEGS.push({x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY});}};
       var dropAt=function(l3,sd,nT){var lx=LNS[l3].x,bp=null,bd=1e9;        // bajante en el soporte de la línea MÁS CERCANO a donde la ruta abandona la línea (= la zanja)
         for(var q6=0;q6<PSTc.length;q6++){var P6=PSTc[q6];if(LID[P6[3]]!==l3||(P6[0]-lx)*sd<0)continue;
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
@@ -1207,11 +1296,18 @@ function buildNetLayer(key){
             if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-foot.n)>0.4){gndB(foot.x,foot.n,foot.x,p.tail[p.k][1]);prev=[foot.x,p.tail[p.k][1]];}
             for(var i3=p.k;i3<p.tail.length;i3++){gndB(prev[0],prev[1],p.tail[i3][0],p.tail[i3][1]);prev=p.tail[i3];}});
         });}
-      if(SEGS.length){                                                       // v4.87-89: CABLES CON VOLUMEN y VIVOS — cilindro instanciado por tramo; updateCableSpin recoloca la brida al bascular
+      if(SEGS.length){                                                       // v4.87-92: CABLES CON VOLUMEN y VIVOS — cilindro instanciado por tramo; updateCableSpin recoloca la brida al bascular
         var cylG=new THREE.CylinderGeometry(1,1,1,5,1,true);
-        var imC=new THREE.InstancedMesh(cylG,new THREE.MeshStandardMaterial({color:d.c,roughness:.62,metalness:.08}),SEGS.length);
+        var cabM=new THREE.MeshStandardMaterial({color:d.c,roughness:.62,metalness:.08});cabM.userData.tec=d.c;   // color técnico guardado: el perfil Presentación los pinta NEGRO realista
+        var imC=new THREE.InstancedMesh(cylG,cabM,SEGS.length);
         imC.frustumCulled=false;g.add(imC);
-        g.userData.cab={segs:SEGS,im:imC,r:CR};
+        g.userData.cabs=[{segs:SEGS,im:imC,r:CR}];
+        if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: una por apoyo dentro del mazo (giran con la viga, como todo)
+          for(var kC2 in COVR){var pr2=kC2.split('_'),l9=+pr2[0],sd9=+pr2[1],R9=COVR[kC2],Ln=sd9>0?LNS[l9].nB:LNS[l9].nA,ax9=LNS[l9].x+sd9*TC.filaZ;
+            for(var q9=0;q9<Ln.length;q9++){var nn9=Ln[q9][0];if(nn9<R9[0]-0.5||nn9>R9[1]+0.5)continue;
+              GR.push({x1:ax9,y1:Ln[q9][1],z1:-nn9,o1x:sd9*(OXL+0.004),o1y:-0.052,x2:ax9,y2:Ln[q9][1],z2:-nn9,o2x:sd9*(OXL+0.004),o2y:0.052});}}
+          if(GR.length){var imG=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x22262b,roughness:.5,metalness:.3}),GR.length);
+            imG.frustumCulled=false;g.add(imG);g.userData.cabs.push({segs:GR,im:imG,r:0.014});}}
         updateCableSpin(_STOWANG!=null?_STOWANG:panelAngle(curMin));
       }
     } else NET.layers[key].forEach(function(pl){for(var i6=0;i6+1<pl.length;i6++)gnd(pl[i6][0],pl[i6][1],pl[i6+1][0],pl[i6+1][1]);});   // resto de capas (zanjas, tierra, arquetas...): drapeadas a ras
@@ -1828,7 +1924,9 @@ function buildBOS(){
   var camM=new THREE.MeshStandardMaterial({color:0x12181f,roughness:.5}),poleM=new THREE.MeshStandardMaterial({color:0xbfc7cf,roughness:.5,metalness:.5});
   var FSg=[];(LAYOUT.fence||[]).forEach(function(pl9){for(var i9=0;i9+1<pl9.length;i9++)FSg.push([pl9[i9],pl9[i9+1]]);});
   var cgx=0,cgn=0;if(TRK.length){TRK.forEach(function(t9){cgx+=t9.gx;cgn+=-t9.gz;});cgx/=TRK.length;cgn/=TRK.length;}
-  function insetCam(x9,n9){ if(!FSg.length)return [x9,n9];                             // "Las cámaras no están sobre el vallado, están hacia dentro": el mástil se RETRANQUEA 2,8 m hacia el interior, perpendicular al tramo de valla más cercano (mi imán px→local las dejaba clavadas en la valla)
+  var FVX=[];(LAYOUT.fence||[]).forEach(function(pl9){pl9.forEach(function(p9){FVX.push(p9);});});
+  function insetCam(x9,n9){ if(!FSg.length)return [x9,n9];                             // "Las cámaras no están sobre el vallado, están hacia dentro": el mástil se RETRANQUEA 2,8 m hacia el interior... SALVO los de ESQUINA ("Esa cámara está ahí"): a <4 m de un vértice del vallado se respeta la posición del plano (vigilan dos lienzos desde el vértice)
+    for(var v9=0;v9<FVX.length;v9++)if(Math.hypot(x9-FVX[v9][0],n9-FVX[v9][1])<4)return [x9,n9];
     var bd=1e9,bp=null,bnx=0,bnn=0;
     for(var i8=0;i8<FSg.length;i8++){var a8=FSg[i8][0],b8=FSg[i8][1],dx8=b8[0]-a8[0],dn8=b8[1]-a8[1],L8=dx8*dx8+dn8*dn8||1e-9;
       var t8=((x9-a8[0])*dx8+(n9-a8[1])*dn8)/L8;t8=Math.max(0,Math.min(1,t8));
@@ -2094,6 +2192,22 @@ $('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.ch
 $('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};                   // inversor→CT (N3)
 $('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT interna)
 $('netEvac').onchange=function(){setNet(['evac45'],this.checked);};                    // evacuación 45 kV subestación→red
+function setCableNegro(on){['cable_pos','cable_neg'].forEach(function(k){var G=netG[k];if(!G||!G.userData.cabs)return;
+  var m=G.userData.cabs[0].im.material;m.color.setHex(on?0x15181c:m.userData.tec);m.needsUpdate=true;});}                     // modo presentación: cable solar NEGRO; técnico: rojo/azul por polaridad
+function setVegDensity(f){VEGM.forEach(function(m){if(m.userData.full===undefined)m.userData.full=m.count;m.count=Math.max(0,Math.floor(m.userData.full*f));});}
+function setShadowQ(px){if(!SUN)return;SUN.shadow.mapSize.set(px,px);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();}
+function setAOInt(f){if(aoGroup)aoGroup.traverse(function(o){if(o.material){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity;o.material.opacity=Math.min(1,o.material.userData.op0*f);}});
+  if(VEGX)VEGX.traverse(function(o){if(o.material&&o.material.transparent){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity!==undefined?o.material.opacity:1;o.material.opacity=Math.min(1,o.material.userData.op0*f);}});}
+function setExposure(v,aces){renderer.toneMapping=aces?THREE.ACESFilmicToneMapping:THREE.NoToneMapping;renderer.toneMappingExposure=v;
+  scene.traverse(function(o){if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){m.needsUpdate=true;});}});}
+$('expo').oninput=function(){renderer.toneMappingExposure=+this.value/100;};
+$('shq').onchange=function(){setShadowQ(+this.value);};
+$('vegd').oninput=function(){setVegDensity(+this.value/100);};
+$('aoq').oninput=function(){setAOInt(+this.value/100);};
+$('perfil').onchange=function(){var p=this.value;                                       // PERFILES ("Rendimiento / Técnico / Presentación")
+  if(p==='rendimiento'){setVegDensity(0.35);$('vegd').value=35;setShadowQ(2048);$('shq').value='2048';setCableNegro(false);setExposure(1.0,false);$('expo').value=100;if($('refl')&&$('refl').checked){$('refl').checked=false;$('refl').onchange.call($('refl'));}}
+  else if(p==='presentacion'){setVegDensity(1);$('vegd').value=100;setShadowQ(8192);$('shq').value='8192';setCableNegro(true);setExposure(1.05,true);$('expo').value=105;if($('refl')&&!$('refl').checked){$('refl').checked=true;$('refl').onchange.call($('refl'));}}
+  else {setVegDensity(1);$('vegd').value=100;setShadowQ(4096);$('shq').value='4096';setCableNegro(false);setExposure(1.0,false);$('expo').value=100;if($('refl')&&!$('refl').checked){$('refl').checked=true;$('refl').onchange.call($('refl'));}}};
 $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};                  // alcance de cámaras CCTV
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
@@ -2104,7 +2218,7 @@ $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){update
 var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
   if(REFL_ON){ if(glassM){_gPrev={r:glassM.roughness,m:glassM.metalness,e:glassM.envMapIntensity};
-      glassM.roughness=0.30;glassM.metalness=0.05;glassM.envMapIntensity=0.32;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel) CONTENIDO: en las fotos reales los módulos leen azul-noche casi negro desde casi todos los ángulos y el cielo solo asoma muy rasante — con 0,20/0,55 la planta entera viraba a gris-azul claro
+      glassM.roughness=0.22;glassM.metalness=0.05;glassM.envMapIntensity=0.40;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel): 0,22/0,40 — un punto más de reflejo angular que la calibración v4.52 (0,30/0,32) por la petición de "reflexión variable con el ángulo", sin llegar al 0,20/0,55 que viraba la planta a gris-azul. La rugosidad además VARÍA por mesa (glassvar1)
     updateRefl(true);}
   else{ scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;
     if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
