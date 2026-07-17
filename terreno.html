@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.99</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.00</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1194,7 +1194,7 @@ var _cbM=new THREE.Matrix4(),_cbP=new THREE.Vector3(),_cbQ=new THREE.Quaternion(
 function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el eje de la viga al bascular ("al estar pegado, embridado a la viga se mueve con esta")
   var th=(angDeg||0)*DEG,c=Math.cos(th),sn=Math.sin(th);
   ['cable_pos','cable_neg'].forEach(function(k9){var G9=netG[k9];if(!G9||!G9.userData.cabs)return;
-    G9.userData.cabs.forEach(function(cab){var SG=cab.segs,im=cab.im,r=cab.r;
+    G9.userData.cabs.forEach(function(cab){var SG=cab.segs,im=cab.im,r=cab.r,LP=cab.lg?cab.lg.attributes.position.array:null;
     if(im.userData.spinAng!==undefined&&Math.abs(im.userData.spinAng-th)<1e-7)return;   // CACHÉ de ángulo: en bandera estable stowStep llama cada frame con el MISMO ángulo — no se reescriben miles de matrices; cambiar el ángulo (o reconstruir la capa: userData nuevo) sí actualiza
     im.userData.spinAng=th;
     for(var i=0;i<SG.length;i++){var g9=SG[i];
@@ -1208,11 +1208,15 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
         if(g9.idx<4){var A9=pA(thA,g9.idx),B9=pA(thB,g9.idx+1);x1=A9[0];y1=A9[1];z1=A9[2];x2=B9[0];y2=B9[1];z2=B9[2];}
         else {var E9=pA(Math.PI/2,4);x1=E9[0];y1=E9[1];z1=E9[2];x2=g9.gx;y2=g9.gy;z2=g9.gz;}}
       else if(g9.drop){x2=g9.gx;y2=g9.gy;z2=g9.gz;}                          // bajante recta antigua (spancut): de la brida al pie fijo
-      else {var o2x=g9.o2x*c-g9.o2y*sn,o2y=g9.o2x*sn+g9.o2y*c;x2=g9.x2+o2x;y2=g9.y2+o2y;z2=g9.z2;}
+      else {var o2x=g9.o2x*c-g9.o2y*sn,o2y=g9.o2x*sn+g9.o2y*c;x2=g9.x2+o2x;y2=g9.y2+o2y;z2=g9.z2;
+        if(g9.gA){var mA=g9.gA,aox=mA.ox*c-mA.oy*sn,aoy=mA.ox*sn+mA.oy*c;x1=mA.x+aox;y1=mA.y+aoy;z1=-(mA.n+mA.ad*0.22);}   // SOLDADURA a la boca de la canaleta (θ=0 del arco): gira con la brida — "sigue sin unir cables"
+        if(g9.gB){var mB=g9.gB,box=mB.ox*c-mB.oy*sn,boy=mB.ox*sn+mB.oy*c;x2=mB.x+box;y2=mB.y+boy;z2=-(mB.n+mB.ad*0.22);}}
       _cbD.set(x2-x1,y2-y1,z2-z1);var L9=_cbD.length()||1e-6;_cbD.normalize();
       _cbQ.setFromUnitVectors(_cbU,_cbD);_cbP.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
-      _cbS.set(r,L9+0.02,r);_cbM.compose(_cbP,_cbQ,_cbS);im.setMatrixAt(i,_cbM);}
-    im.instanceMatrix.needsUpdate=true;});});
+      _cbS.set(r,L9+0.02,r);_cbM.compose(_cbP,_cbQ,_cbS);im.setMatrixAt(i,_cbM);
+      if(LP){LP[i*6]=x1;LP[i*6+1]=y1;LP[i*6+2]=z1;LP[i*6+3]=x2;LP[i*6+4]=y2;LP[i*6+5]=z2;}}   // overlay 1 px por el EJE del mazo: a >20 m un Ø9 mm es sub-píxel y "ni se ve el cable" — la línea garantiza legibilidad sin engordar la sección real
+    im.instanceMatrix.needsUpdate=true;
+    if(cab.lg)cab.lg.attributes.position.needsUpdate=true;});});
 }
 function buildNetLayer(key){
   if(netG[key]){scene.remove(netG[key]);netG[key].traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});delete netG[key];}
@@ -1267,15 +1271,17 @@ function buildNetLayer(key){
         var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
         var a=L[j][0],b=L[j+1][0];if(b-a<3||b-a>16)return 0;var t=(n-a)/(b-a);return -0.030*4*t*(1-t);};
       var cruzaC=function(a9,b9){return CABLECORE.cruzaCalle(a9,b9,STX,0);};   // núcleo puro, tolerancia explícita; devuelve el eje MÁS CERCANO a a9 (el inline devolvía el primero del array: con DOS calles podía recortar en la lejana y dejar el cruce vivo)
-      var aereo=function(l4,sd,nA,nB,tag){
+      var aereo=function(l4,sd,nA,nB,tag,glueA,glueB){
+        var nAq=nA,nBq=nB;                                                   // extremos SOLICITADOS: la soldadura a la boca solo vale si el extremo sobrevive al clamp/recorte
         var Lb=sd>0?LNS[l4].nB:LNS[l4].nA;                                   // CLAMP al largo FÍSICO de la viga (última tapa ±2,2 m de puntera): extrapolar el perfil sacaba el mazo por el aire más allá del tubo ("se pasan de la viga")
         var cl9=CABLECORE.clampViga(nA,nB,Lb,2.2);nA=cl9[0];nB=cl9[1];
         var stc=cruzaC(nA,nB);if(stc!==null)nB=stc+(nA<stc?-1.2:1.2);        // GUARDA: el mazo aéreo JAMÁS cruza una calle (se recorta en su borde) — el cruce va por la zanja
         if(Math.abs(nB-nA)<0.05)return;
+        var gA=(glueA&&Math.abs(nA-nAq)<0.25)?glueA:null,gB=(glueB&&Math.abs(nB-nBq)<0.25)?glueB:null;
         var ax=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(320,Math.ceil(Math.abs(nB-nA)/3)));
         var kC=l4+'_'+sd,R=COVR[kC];if(!R)COVR[kC]=[Math.min(nA,nB),Math.max(nA,nB)];else{R[0]=Math.min(R[0],nA,nB);R[1]=Math.max(R[1],nA,nB);}
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
-          SEGS.push({tag:tag||'?',x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY});}};
+          SEGS.push({tag:tag||'?',x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY,gA:(s===0?gA:null),gB:(s===st-1?gB:null)});}};
       var dropAt=function(l3,sd,nT,sg){var lx=LNS[l3].x;                    // bajante en el soporte MÁS CERCANO a la salida (= la zanja) pero SIEMPRE en el lado del que LLEGA el cable (sg): cruzar la calle en aéreo para bajar enfrente unía trackers ("sigues uniendo trackers entre sí")
         var bp=CABLECORE.postePorLado(PSTc,LID,l3,lx,sd,nT,sg);
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
@@ -1283,7 +1289,7 @@ function buildNetLayer(key){
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1);
         if(key==='cable_pos'&&!DDROP[dk]){DDROP[dk]=1;var adD=(sg||1);       // BAJANTE ÚNICA tipo tubo Ø26 (a 9 mm parpadeaba: subpíxel) con UNIÓN CURVA (cuarto de arco R=0,22 que gira con la brida) — ambos cables mueren en ella
           for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*OXL,o1y:OY,gx:gx,gy:gy,gz:-pn});}
-        return {x:gx,n:pn,ad:(sg||1)};};
+        return {x:gx,n:pn,ad:(sg||1),m:{x:ax,y:yT,n:pn,ad:(sg||1),ox:sd*(0.06+0.0045),oy:0.020}};};   // m = BOCA de la canaleta con el offset del POSITIVO (OXL de su pasada, radio 4,5), que es quien la registró: con el OXL de cada capa el negativo quedaba 0,5 mm desalineado
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
         var lx=LNS[l7].x,k=0,n0s=pl[iF][1];
@@ -1309,7 +1315,7 @@ function buildNetLayer(key){
           else for(var j8=0;j8<tr8.length;j8++){var u8=tr8[j8][0],v8=tr8[j8][1],sgIn=(v8>=u8)?1:-1;
               var fU=(j8===0)?null:dropAt(l7,sd8,u8,sgIn);
               var fV=(j8===tr8.length-1)?null:dropAt(l7,sd8,v8,-sgIn);
-              aereo(l7,sd8,fU?fU.n:u8,fV?fV.n:v8,'spancut');}
+              aereo(l7,sd8,fU?fU.n:u8,fV?fV.n:v8,'spancut',fU?fU.m:null,fV?fV.m:null);}   // extremos SOLDADOS a las bocas de sus bajantes (antes el cable se pasaba 22 cm del poste)
         }
       });
       var byL={};PEND.forEach(function(p){(byL[p.l]=byL[p.l]||[]).push(p);});
@@ -1324,7 +1330,7 @@ function buildNetLayer(key){
             if(!mainFoot)mainFoot=foot;
             if(items.some(function(x){return x.sd!==sdD;})){
               var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;}              // la viga contraria del MISMO lado: bajante en su poste del par — la unión ocurre DENTRO de la zanja, sin trazas inventadas en superficie ("¿la línea roja del suelo es un cardán?")
-            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.n0,ft.n+sg*0.22,'ext');});   // UN solo tramo: de la conexión a la boca de la CURVA de su bajante
+            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.n0,ft.n+sg*0.22,'ext',null,ft.m);});   // UN solo tramo: de la conexión a la boca de la CURVA de su bajante — SOLDADO a ella (± mueren en el mismo punto)
             items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU PROPIA viga (ruta del DWG, nada más)
               var ftp=feet[p.sd]||foot,prev=[ftp.x,ftp.n];
               if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-ftp.n)>0.4){gndB(ftp.x,ftp.n,ftp.x,p.tail[p.k][1]);prev=[ftp.x,p.tail[p.k][1]];}
@@ -1336,7 +1342,10 @@ function buildNetLayer(key){
         var cabM=new THREE.MeshStandardMaterial({color:d.c,roughness:.62,metalness:.08});cabM.userData.tec=d.c;   // color técnico guardado: el perfil Presentación los pinta NEGRO realista
         var imC=new THREE.InstancedMesh(cylG,cabM,SEGS.length);
         imC.frustumCulled=false;g.add(imC);
-        g.userData.cabs=[{segs:SEGS,im:imC,r:CR}];
+        var lgC=new THREE.BufferGeometry();lgC.setAttribute('position',new THREE.BufferAttribute(new Float32Array(SEGS.length*6),3));
+        var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.75});lmC.userData.tec=d.c;
+        var lsC=new THREE.LineSegments(lgC,lmC);lsC.frustumCulled=false;g.add(lsC);   // overlay 1 px por el eje del mazo (updateCableSpin lo escribe): el cilindro real Ø9 lo tapa de cerca y a distancia mantiene el cable visible
+        g.userData.cabs=[{segs:SEGS,im:imC,r:CR,lg:lgC,lm:lmC}];
         if(key==='cable_pos'&&BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x454b52,roughness:.55,metalness:.35}),BAJ.length);
           imB.frustumCulled=false;g.add(imB);g.userData.cabs.push({segs:BAJ,im:imB,r:0.013});}   // canaleta de bajada, gris galvanizado
         if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: una por apoyo dentro del mazo (giran con la viga, como todo)
@@ -2248,7 +2257,8 @@ $('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};            
 $('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT interna)
 $('netEvac').onchange=function(){setNet(['evac45'],this.checked);};                    // evacuación 45 kV subestación→red
 function setCableNegro(on){['cable_pos','cable_neg'].forEach(function(k){var G=netG[k];if(!G||!G.userData.cabs)return;
-  var m=G.userData.cabs[0].im.material;m.color.setHex(on?0x15181c:m.userData.tec);m.needsUpdate=true;});}                     // modo presentación: cable solar NEGRO; técnico: rojo/azul por polaridad
+  var m=G.userData.cabs[0].im.material;m.color.setHex(on?0x15181c:m.userData.tec);m.needsUpdate=true;
+  var lm=G.userData.cabs[0].lm;if(lm){lm.color.setHex(on?0x15181c:lm.userData.tec);lm.needsUpdate=true;}});}                     // modo presentación: cable solar NEGRO; técnico: rojo/azul por polaridad
 function setVegDensity(f){VEGM.forEach(function(m){if(m.userData.full===undefined)m.userData.full=m.count;m.count=Math.max(0,Math.floor(m.userData.full*f));});}
 function setShadowQ(px){if(!SUN)return;SUN.shadow.mapSize.set(px,px);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();}
 function setAOInt(f){if(aoGroup)aoGroup.traverse(function(o){if(o.material){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity;o.material.opacity=Math.min(1,o.material.userData.op0*f);}});
