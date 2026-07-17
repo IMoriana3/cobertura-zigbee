@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.17</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.18</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -996,7 +996,10 @@ function _grassTex(vt){var c=document.createElement('canvas');c.width=128;c.heig
          {n:34,h:[0.55,0.95],rgb:[56,122,40,34,44,26],w:3.6},
          {n:26,h:[0.75,1.0],rgb:[40,86,30,26,34,20],w:4.6},
          {n:24,h:[0.5,0.85],rgb:[140,110,64,40,30,22],w:4.0},
-         {n:32,h:[0.5,0.9],rgb:[70,126,46,40,40,24],w:3.4}][vt||0];
+         {n:32,h:[0.5,0.9],rgb:[70,126,46,40,40,24],w:3.4},
+         {n:38,h:[0.45,0.8],rgb:[104,150,72,36,36,24],w:2.6},
+         {n:22,h:[0.7,1.0],rgb:[168,138,84,36,28,20],w:3.0},
+         {n:40,h:[0.12,0.28],rgb:[86,118,58,30,30,22],w:3.8}][vt||0];   // +3: fina clara · seca alta · RASTRERA casi a ras ('mínimo 7-8 tipos')
   var sd=7919+vt*131,rr=function(m){sd=(sd*1103515245+12345)>>>0;return (sd/4294967296)*m;};
   var g0=x.createRadialGradient(64,94,4,64,94,52);g0.addColorStop(0,'rgba(38,34,26,0.42)');g0.addColorStop(1,'rgba(38,34,26,0)');
   x.fillStyle=g0;x.fillRect(0,64,128,32);                                     // sombra de contacto: asienta la mata en el suelo
@@ -1027,10 +1030,10 @@ function buildVeg(){
     P.push(-0.36*ca,0,0.36*sa, 0.36*ca,0,-0.36*sa, 0.36*ca,0.5,-0.36*sa, -0.36*ca,0,0.36*sa, 0.36*ca,0.5,-0.36*sa, -0.36*ca,0.5,0.36*sa);
     U.push(0,0, 1,0, 1,1, 0,0, 1,1, 0,1);}
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.computeVertexNormals();
-  var N=220000,SHARE=[0.30,0.28,0.18,0.16,0.08];                              // reparto por variante; escalas propias (baja/media/alta/seca/flor)
-  var SCL=[[0.7,0.5],[1.0,0.9],[1.2,1.4],[0.9,0.8],[0.9,0.9]];
+  var N=220000,SHARE=[0.20,0.20,0.12,0.12,0.06,0.14,0.08,0.08];               // 8 variantes (baja/media/alta/seca/flor/fina clara/seca alta/rastrera)
+  var SCL=[[0.7,0.5],[1.0,0.9],[1.2,1.4],[0.9,0.8],[0.9,0.9],[0.85,0.8],[1.0,1.1],[0.8,0.35]];
   var counts=SHARE.map(function(f){return Math.floor(N*f);});
-  for(var vt=0;vt<5;vt++){var mV=_makeVegMat(_grassTex(vt));var im=new THREE.InstancedMesh(g,mV,counts[vt]);im.receiveShadow=true;VEGM.push(im);VEGMATS.push(mV);scene.add(im);}
+  for(var vt=0;vt<8;vt++){var mV=_makeVegMat(_grassTex(vt));var im=new THREE.InstancedMesh(g,mV,counts[vt]);im.receiveShadow=true;VEGM.push(im);VEGMATS.push(mV);scene.add(im);}
   vegMesh=VEGM[1];
   var o=new THREE.Object3D(),sdd=20260714,rng=function(){sdd=(sdd*1664525+1013904223)>>>0;return sdd/4294967296;};
   var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[],RSB=RS.map(function(sf){var xa=1e9,xb=-1e9,na=1e9,nb=-1e9;sf.o.forEach(function(p){xa=Math.min(xa,p[0]);xb=Math.max(xb,p[0]);na=Math.min(na,p[1]);nb=Math.max(nb,p[1]);});return [xa-0.6,xb+0.6,na-0.6,nb+0.6];});
@@ -1042,19 +1045,32 @@ function buildVeg(){
   ((LAYOUT&&LAYOUT.cts)||[]).forEach(function(pl){var sx=0,sn=0;pl.forEach(function(p){sx+=p[0];sn+=p[1];});var cx=sx/pl.length,cn=sn/pl.length;if(Math.abs(cx)<900&&Math.abs(cn)<900)EXQ.push([cx,cn,7]);});
   var SBP=(typeof SUBPT!=='undefined'&&SUBPT)?SUBPT:[9.92,-194.24];EXQ.push([SBP[0],SBP[1],12]);   // SUBPT se declara más abajo (hoisted=undefined en el arranque): sin el guardia, buildVeg moría y la excepción se la tragaba la cadena async
   function nearEq(x,n){for(var e=0;e<EXQ.length;e++){var d=Math.hypot(x-EXQ[e][0],n-EXQ[e][1]);if(d<EXQ[e][2])return true;if(d<EXQ[e][2]+3&&rng()<1-(d-EXQ[e][2])/3)return true;}return false;}   // borde con caída progresiva
-  var idx=[0,0,0,0,0],total=0;
+  var idx=[0,0,0,0,0,0,0,0],total=0;
+  var _tc9=new THREE.Color();
   function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
     var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
     o.position.set(x,terrainMeshY(x,n)-0.015,-n);o.rotation.set((rng()-0.5)*0.16,rng()*Math.PI*2,(rng()-0.5)*0.16);o.scale.set(sc,sy,sc);o.updateMatrix();   // LEAN aleatorio ±5° y base 1,5 cm hundida: ni palos verticales ni flotando
+    var seq=rng()*rng(),br=0.82+rng()*0.30;                                   // TINTE POR INSTANCIA: brillo ±15% y 'sequedad' (vira a pajizo) — el verde uniforme cantaba a césped procedural
+    _tc9.setRGB(br*(1+seq*0.25),br*(1-seq*0.06),br*(1-seq*0.30));
+    VEGM[vt].setColorAt(idx[vt],_tc9);
     VEGM[vt].setMatrixAt(idx[vt]++,o.matrix);total++;}
-  function pick(){var r=rng();return r<0.30?0:r<0.58?1:r<0.76?2:r<0.92?3:4;}
+  function pick(){var r=rng();return r<0.20?0:r<0.40?1:r<0.52?2:r<0.64?3:r<0.70?4:r<0.84?5:r<0.92?6:7;}
+  var _h9=function(ix,iy){var q=(ix*374761393+iy*668265263)|0;q=Math.imul(q^(q>>>13),1274126177);return ((q^(q>>>16))>>>0)/4294967296;};
+  var _vn9=function(x,y){var ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy);
+    var a=_h9(ix,iy),b=_h9(ix+1,iy),c=_h9(ix,iy+1),d=_h9(ix+1,iy+1);return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;};
+  function calva(x,n){return _vn9(x*0.045+7.3,n*0.045+2.1)<0.30;}            // CALVAS: zonas casi limpias (~25% del campo)
+  function seca(x,n){return _vn9(x*0.03+41.7,n*0.03+13.9)>0.72;}             // MANCHAS SECAS: rodales pajizos
+  function distRoadF(x,n){for(var s9=0.8;s9<=2.6;s9+=0.9)if(onRoad(x+s9,n)||onRoad(x-s9,n)||onRoad(x,n+s9)||onRoad(x,n-s9))return s9;return 99;}
   var guard=0;
-  while(total<N*0.62&&guard++<N*4){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();   // 1) manto uniforme mezclado
-    if(nearRoad(x,n)||nearEq(x,n))continue;put(pick(),x,n,false);}
+  while(total<N*0.62&&guard++<N*4){var x=CLP.x0+(CLP.x1-CLP.x0)*rng(),n=CLP.n0+(CLP.n1-CLP.n0)*rng();   // 1) manto mezclado con CALVAS y bordes de camino PELADOS en gradiente
+    if(nearRoad(x,n)||nearEq(x,n)||calva(x,n))continue;
+    var dr9=distRoadF(x,n);if(dr9<2.6&&rng()>dr9/2.6)continue;
+    var vt9=pick();if(seca(x,n)&&rng()<0.75)vt9=[3,3,6,6,0][Math.floor(rng()*5)];   // en la mancha seca dominan las variantes pajizas
+    put(vt9,x,n,false);}
   while(total<N&&guard++<N*6){var cx2=CLP.x0+(CLP.x1-CLP.x0)*rng(),cn2=CLP.n0+(CLP.n1-CLP.n0)*rng(),k=8+Math.floor(rng()*30),vtR=pick();   // 2) rodales MONOESPECIE encima (parches naturales)
     for(var j2=0;j2<k&&total<N;j2++){var a=rng()*Math.PI*2,r=Math.pow(rng(),0.6)*9,x2=cx2+Math.cos(a)*r,n2=cn2+Math.sin(a)*r;
       if(nearRoad(x2,n2)||nearEq(x2,n2))continue;put(vtR,x2,n2,true);}}
-  VEGM.forEach(function(mm,vi){mm.count=idx[vi];});
+  VEGM.forEach(function(mm,vi){mm.count=idx[vi];if(mm.instanceColor)mm.instanceColor.needsUpdate=true;});
   buildVegExtras(EXQ);
 }
 var _dressed=false;
@@ -1106,7 +1122,14 @@ function buildVegExtras(EXQ){                                                  /
   var rg=rx.createRadialGradient(32,32,4,32,32,32);rg.addColorStop(0,'rgba(60,54,44,0.5)');rg.addColorStop(0.5,'rgba(90,84,70,0.28)');rg.addColorStop(1,'rgba(90,84,70,0)');
   rx.fillStyle=rg;rx.fillRect(0,0,64,64);
   var ringTex=new THREE.CanvasTexture(rc),ringM=new THREE.MeshLambertMaterial({map:ringTex,transparent:true,depthWrite:false});
-  // (sin anillos en las bases: TODOS los postes van HINCADOS, no hay hormigón — 'ese brillo alrededor de los soportes')
+  var oc=document.createElement('canvas');oc.width=oc.height=64;var ox9=oc.getContext('2d');   // OCLUSIÓN de contacto en cada base de poste (mancha OSCURA suave, nada de hormigón)
+  var og=ox9.createRadialGradient(32,32,3,32,32,31);og.addColorStop(0,'rgba(30,26,20,0.34)');og.addColorStop(0.6,'rgba(30,26,20,0.18)');og.addColorStop(1,'rgba(30,26,20,0)');
+  ox9.fillStyle=og;ox9.fillRect(0,0,64,64);
+  var ocM=new THREE.MeshLambertMaterial({map:new THREE.CanvasTexture(oc),transparent:true,depthWrite:false});
+  var PSo=allPosts();
+  if(PSo.length){var imo=new THREE.InstancedMesh(new THREE.PlaneGeometry(0.55,0.55),ocM,PSo.length),o5=new THREE.Object3D();
+    for(var po9=0;po9<PSo.length;po9++){o5.position.set(PSo[po9][0],terrainMeshY(PSo[po9][0],PSo[po9][1])+0.012,-PSo[po9][1]);o5.rotation.set(-Math.PI/2,0,0);o5.updateMatrix();imo.setMatrixAt(po9,o5.matrix);}
+    VEGX.add(imo);}
   // (la acometida AC/DC del inversor se modela en buildBOS junto a la estación: corrugado ROJO 3×120 mm² y bancada de corrugados DC entre los soportes)
   scene.add(VEGX);
 }
@@ -1823,7 +1846,10 @@ function buildBOS(){
     var pm=new THREE.Mesh(pg,roadM);pm.receiveShadow=true;bosGroup.add(pm);});
   }
   // vallado cinegético: postes redondos galvanizados + paño de malla (techo recto suavizado) + 2 alambres superiores (sin peanas de hormigón)
-  var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});
+  var _rn9=document.createElement('canvas');_rn9.width=_rn9.height=64;var _rx9=_rn9.getContext('2d');
+  for(var ri9=0;ri9<900;ri9++){var rv9=100+Math.floor(Math.random()*120);_rx9.fillStyle='rgb('+rv9+','+rv9+','+rv9+')';_rx9.fillRect(Math.random()*64,Math.random()*64,2,2);}
+  var _rT9=new THREE.CanvasTexture(_rn9);_rT9.wrapS=_rT9.wrapT=THREE.RepeatWrapping;_rT9.repeat.set(2,6);
+  var fh=1.9,postM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.62,metalness:.55,roughnessMap:_rT9}),baseM=new THREE.MeshStandardMaterial({color:0xbfc2c6,roughness:.95});   // galvanizado con roughness RUIDOSA: brillo no uniforme ('material demasiado perfecto')
   var _fgrid=function(SZ,lwPx,solidA){var cv=document.createElement('canvas');cv.width=cv.height=SZ;var g=cv.getContext('2d');
     if(solidA!=null){g.fillStyle='rgba(208,216,224,'+solidA+')';g.fillRect(0,0,SZ,SZ);return cv;}
     var cell=SZ/8;g.strokeStyle='rgba(208,216,224,0.92)';g.lineWidth=lwPx;
