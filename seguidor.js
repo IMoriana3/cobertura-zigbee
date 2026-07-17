@@ -117,25 +117,30 @@
     push('tubecap', 'jbox', true, true, capGeom, mT(THREE,  capX, 0, 0));
     push('tubecap', 'jbox', true, true, capGeom, mT(THREE, -capX, 0, 0));
 
-    /* --- ALAS: 'medio' = 1 ala centrada en X=0; 'largo' = 2 alas (+X / -X) --- */
-    var wings = medio ? [ { dir:+1, edge:-D.strLen/2 } ]                       // centrada
-                      : [ { dir:+1, edge:+D.gapDrive/2 }, { dir:-1, edge:-D.gapDrive/2 } ];
+    /* --- ALAS: SIEMPRE 2 alas con el HUECO DEL MOTOR (gapDrive) en medio. El 'medio' llevaba 1 ala
+       CENTRADA que pasaba POR ENCIMA del slew ("los huecos donde el motor han desaparecido... en los que
+       no son largos"): físicamente imposible — el accionamiento siempre necesita su vano. Ahora el medio
+       son 2 medias-alas de (tubo−hueco)/2; el LARGO no cambia (misma ala de strLen). --- */
+    var mWing = (tubeLen - D.gapDrive) / 2;
+    var wings = medio ? [ { dir:+1, edge:+D.gapDrive/2, len:mWing }, { dir:-1, edge:-D.gapDrive/2, len:mWing } ]
+                      : [ { dir:+1, edge:+D.gapDrive/2, len:D.strLen }, { dir:-1, edge:-D.gapDrive/2, len:D.strLen } ];
 
     wings.forEach(function (w) {
-      // X del centro del módulo m (0..27) y del borde b (0..28) del ala
+      var wMods = Math.max(1, Math.round(w.len / D.pitch));   // módulos del ala (largo: = modsPerStr)
+      // X del centro del módulo m y del borde b del ala
       var modX = function (m){ return w.edge + w.dir * (m + 0.5) * D.pitch; };
       var brdX = function (b){ return w.edge + w.dir * b * D.pitch; };
-      var wingC = w.edge + w.dir * D.strLen / 2;   // centro del ala
+      var wingC = w.edge + w.dir * w.len / 2;   // centro del ala
 
       if (detail === 'full') {
         /* módulos uno a uno: marco + vidrio + caja; CORREAS solo en los HUECOS entre módulos (n+1), perfil OMEGA + abarcón; cable módulo→módulo */
-        for (var b = 0; b <= D.modsPerStr; b++) {
+        for (var b = 0; b <= wMods; b++) {
           var bx = w.edge + w.dir * b * D.pitch;
           push('correa', 'correa', true, false, omegaGeom, mT(THREE, bx, 0.115, 0));     // correa omega (corona plana sobre el tubo; las alas suben hasta el marco, ahí se atornilla)
           push('abarcon', 'silver', true, false, abarconGeom, mT(THREE, bx, 0, 0));      // U-bolt que la fija a la viga
         }
         var jbX = D.modW/6;                                 // 2 cajas de conexión por módulo, ALINEADAS sobre la viga de torsión (línea central z=0), a 1/3 y 2/3 a lo largo
-        for (var m = 0; m < D.modsPerStr; m++) {
+        for (var m = 0; m < wMods; m++) {
           var cx = modX(m);
           push('frame', 'frame', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
@@ -145,27 +150,27 @@
           push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx+jbX, D.jbY, 0));
         }
         // CABLEADO LEAPFROG (salto de rana): cada cable salta 2 módulos a lo largo de la cadena (eje X), junto a la línea central; 6 mm²
-        for (var c = 0; c <= D.modsPerStr - 3; c++) {
+        for (var c = 0; c <= wMods - 3; c++) {
           var even = (c % 2 === 0);
           push(even?'cablepos':'cableneg', even?'cable':'jbox', true, false, leapCableGeom, mT(THREE, modX(c+1), 0, even?0.05:-0.05));
         }
       } else {
         /* 'mass': 1 MESA por ala (textura de células) + correas repr. + canaleta + cajas */
         push('mesa', 'glass', true, true,
-          function (TH){ var g = new TH.BoxGeometry(D.strLen, 0.05, D.modH);
-            var uv = g.attributes.uv, rep = D.strLen / D.modW;              // RETRATO: un módulo (tex 256×512) por cada modW a lo largo del ala — sin esto la textura se estiraba a toda el ala y los módulos salían "en modo paisaje"
+          function (TH){ var g = new TH.BoxGeometry(w.len, 0.05, D.modH);
+            var uv = g.attributes.uv, rep = w.len / D.modW;              // RETRATO: un módulo (tex 256×512) por cada modW a lo largo del ala — sin esto la textura se estiraba a toda el ala y los módulos salían "en modo paisaje"
             for (var q = 0; q < uv.count; q++) uv.setX(q, uv.getX(q) * rep);
             return g; }, mT(THREE, wingC, D.off, 0));
         var NPUR = 8;                                       // correas representativas por ala
         for (var i = 0; i < NPUR; i++) {
-          var px = w.edge + w.dir * (i + 0.5) * (D.strLen / NPUR);
+          var px = w.edge + w.dir * (i + 0.5) * (w.len / NPUR);
           push('correa', 'correa', true, false,
             function (TH){ return new TH.BoxGeometry(0.05, 0.05, D.modH*0.96); }, mT(THREE, px, D.purlY, 0));
         }
         push('cable', 'cable', true, false,                 // cable de string redondo (6 mm² → Ø6 mm) a lo LARGO del ala (X), POR EL CENTRO (z=0) y por DEBAJO del tubo (y=-0.10) → NO atraviesa las correas (que van sobre el tubo)
-          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,D.strLen*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, -0.10, 0));
+          function (TH){ var g=new TH.CylinderGeometry(0.003,0.003,w.len*0.94,8); g.rotateZ(Math.PI/2); return g; }, mT(THREE, wingC, -0.10, 0));
         for (var j = 0; j < 3; j++) {                       // cajas de conexión representativas, ALINEADAS sobre la viga de torsión (z=0)
-          var jx = w.edge + w.dir * (j + 0.5) * (D.strLen / 3);
+          var jx = w.edge + w.dir * (j + 0.5) * (w.len / 3);
           push('jbox', 'jbox', true, false,
             function (TH){ return new TH.BoxGeometry(0.16, 0.05, 0.10); }, mT(THREE, jx, D.jbY, 0));
         }
@@ -298,6 +303,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.10';
+  S.VERSION = '0.4.11';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
