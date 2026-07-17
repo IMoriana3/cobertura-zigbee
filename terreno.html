@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.05</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.06</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1812,13 +1812,13 @@ function buildBOS(){
     if(solidA!=null){g.fillStyle='rgba(208,216,224,'+solidA+')';g.fillRect(0,0,SZ,SZ);return cv;}
     var cell=SZ/8;g.strokeStyle='rgba(208,216,224,0.92)';g.lineWidth=lwPx;
     for(var q=0;q<=SZ;q+=cell){g.beginPath();g.moveTo(q,0);g.lineTo(q,SZ);g.moveTo(0,q);g.lineTo(SZ,q);g.stroke();}return cv;};
-  var ftc=_fgrid(256,2);   // tile de 8 celdas a 256 px: mapeado a 1,2 m ⇒ CELDA DE 15 CM y alambre ~9 mm ("es una malla de cada 15 cm o así, no tan tupida")
+  var ftc=_fgrid(512,1.2);   // tile de 8 celdas a 512 px mapeado a 1,2 m ⇒ celda de 15 cm y ALAMBRE ~2,8 mm (1,2 px de 64 por celda) — "el alambre es más fino que eso": el galvanizado cinegético va en 2,5-3 mm
   var ftex=new THREE.CanvasTexture(ftc);ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping;ftex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
   // MIPS PROPIOS "honestos": conservan la COBERTURA real del alambre (~11-30%) — los automáticos la diluían
   // bajo el alphaTest y el paño desaparecía en rasante ("solo se ve la rejilla en un tramo"). Con alphaTest
   // BAJO (0,10) los huecos siguen recortándose de cerca y de lejos queda el velo fino que tiene una malla
   // real solapada en escorzo; el fade 120→420 m la retira del todo a distancia.
-  ftex.mipmaps=[ftc,_fgrid(128,1.6),_fgrid(64,1.2),_fgrid(32,null,0.30),_fgrid(16,null,0.22),_fgrid(8,null,0.16),_fgrid(4,null,0.13),_fgrid(2,null,0.12),_fgrid(1,null,0.12)];
+  ftex.mipmaps=[ftc,_fgrid(256,1),_fgrid(128,1),_fgrid(64,1),_fgrid(32,null,0.24),_fgrid(16,null,0.18),_fgrid(8,null,0.14),_fgrid(4,null,0.13),_fgrid(2,null,0.13),_fgrid(1,null,0.13)];   // 10 niveles (512→1): alambre de 1 px hasta donde se resuelve y velo fino decreciente después — más tenue que antes porque el alambre es más fino
   ftex.generateMipmaps=false;
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.10,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
   meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
