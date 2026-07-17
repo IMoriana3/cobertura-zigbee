@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.95</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.96</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1259,28 +1259,36 @@ function buildNetLayer(key){
       var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
         var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
         var a=L[j][0],b=L[j+1][0];if(b-a<3||b-a>16)return 0;var t=(n-a)/(b-a);return -0.030*4*t*(1-t);};
-      var aereo=function(l4,sd,nA,nB){
+      var cruzaC=function(a9,b9){for(var s9=0;s9<STX.length;s9++)if((a9-STX[s9])*(b9-STX[s9])<0)return STX[s9];return null;};
+      var aereo=function(l4,sd,nA,nB,tag){
         var Lb=sd>0?LNS[l4].nB:LNS[l4].nA;                                   // CLAMP al largo FÍSICO de la viga (última tapa ±2,2 m de puntera): extrapolar el perfil sacaba el mazo por el aire más allá del tubo ("se pasan de la viga")
         if(Lb.length){var b0=Lb[0][0]-2.2,b1=Lb[Lb.length-1][0]+2.2;nA=Math.max(b0,Math.min(b1,nA));nB=Math.max(b0,Math.min(b1,nB));}
+        var stc=cruzaC(nA,nB);if(stc!==null)nB=stc+(nA<stc?-1.2:1.2);        // GUARDA: el mazo aéreo JAMÁS cruza una calle (se recorta en su borde) — el cruce va por la zanja
         if(Math.abs(nB-nA)<0.05)return;
         var ax=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(320,Math.ceil(Math.abs(nB-nA)/3)));
         var kC=l4+'_'+sd,R=COVR[kC];if(!R)COVR[kC]=[Math.min(nA,nB),Math.max(nA,nB)];else{R[0]=Math.min(R[0],nA,nB);R[1]=Math.max(R[1],nA,nB);}
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
-          SEGS.push({x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY});}};
-      var dropAt=function(l3,sd,nT){var lx=LNS[l3].x,bp=null,bd=1e9;        // bajante en el soporte de la línea MÁS CERCANO a donde la ruta abandona la línea (= la zanja)
+          SEGS.push({tag:tag||'?',x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY});}};
+      var dropAt=function(l3,sd,nT,sg){var lx=LNS[l3].x,bp=null,bd=1e9;     // bajante en el soporte MÁS CERCANO a la salida (= la zanja) pero SIEMPRE en el lado del que LLEGA el cable (sg): cruzar la calle en aéreo para bajar enfrente unía trackers ("sigues uniendo trackers entre sí")
         for(var q6=0;q6<PSTc.length;q6++){var P6=PSTc[q6];if(LID[P6[3]]!==l3||(P6[0]-lx)*sd<0)continue;
+          if(sg&&(P6[1]-nT)*sg<-0.5)continue;
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
         var gx=ax+sd*(0.065+CR),gy=terrainMeshY(ax,pn)+0.10;
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1);
         if(!DDROP[dk]){DDROP[dk]=1;SEGS.push({drop:1,x1:ax,y1:yT,z1:-pn,o1x:sd*OXL,o1y:OY,gx:gx,gy:gy,gz:-pn});}   // del punto embridado (GIRA con el tubo) al pie FIJO por la cara exterior del poste
         return {x:gx,n:pn};};
-      var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR (bajada única compartida → "no se unen los cableados, deben hacerlo")
-        var lx=LNS[l7].x,k=0;
-        while(k<tail.length&&Math.abs(tail[k][0]-lx)<4.2)k++;
+      var STX=(typeof _streetAxes==='function')?_streetAxes():[];
+      var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
+        var lx=LNS[l7].x,k=0,n0s=pl[iF][1];
+        while(k<tail.length&&Math.abs(tail[k][0]-lx)<4.2){                  // el paseo por la línea SE CORTA al llegar a una CALLE: seguir de largo dejaba el mazo cruzándola en aéreo ("sigues uniendo trackers entre sí")
+          var nk=tail[k][1],pv=k>0?tail[k-1][1]:n0s,cz=false;
+          for(var s9=0;s9<STX.length;s9++){if((pv-STX[s9])*(nk-STX[s9])<0){cz=true;break;}}
+          if(cz)break;
+          k++;}
         var nT=k>0?tail[k-1][1]:pl[iF][1];
-        aereo(l7,sd,pl[iF][1],nT);
-        PEND.push({l:l7,sd:sd,nT:nT,tail:tail,k:k});};
+        aereo(l7,sd,pl[iF][1],nT,'salida');
+        PEND.push({l:l7,sd:sd,nT:nT,n0:pl[iF][1],tail:tail,k:k});};
       NET.layers[key].forEach(function(pl){
         var RW=pl.map(function(p){return p[2]===1?rowFoot(p[0],p[1]):-1;}); // un vértice solo es de fila si cae en su huella (viga incluida)
         var firstF=-1,lastF=-1;
@@ -1290,22 +1298,41 @@ function buildNetLayer(key){
         salida(pl,lastF,pl.slice(lastF+1),l7,sd8);
         if(firstF>0){var l8=LID[RW[firstF]],sd9=pl[firstF][0]>=LNS[l8].x?1:-1;   // string digitalizado al revés: también sale por delante
           salida(pl,firstF,pl.slice(0,firstF).reverse(),l8,sd9);}
-        if(lastF>firstF&&LID[RW[firstF]]===l7)aereo(l7,sd8,pl[firstF][1],pl[lastF][1]);   // tramo propio del string dentro de la línea
+        if(lastF>firstF&&LID[RW[firstF]]===l7){                              // tramo propio del string dentro de la línea — PARTIDO en las calles: baja a un lado, cruza POR LA ZANJA y sube al otro
+          var spanA=pl[firstF][1],spanB=pl[lastF][1],cuts=[];
+          for(var s8=0;s8<STX.length;s8++){if((spanA-STX[s8])*(spanB-STX[s8])<0)cuts.push(STX[s8]);}
+          if(!cuts.length)aereo(l7,sd8,spanA,spanB,'span');
+          else{cuts.sort(function(A,B){return spanA<spanB?A-B:B-A;});
+            var pts=[spanA].concat(cuts,[spanB]),prevFoot=null;
+            for(var j8=0;j8+1<pts.length;j8++){var u8=pts[j8],v8=pts[j8+1],sgIn=(v8>=u8)?1:-1;
+              var fU=(j8===0)?null:dropAt(l7,sd8,u8,sgIn);
+              var fV=(j8===pts.length-2)?null:dropAt(l7,sd8,v8,-sgIn);
+              aereo(l7,sd8,fU?fU.n:u8,fV?fV.n:v8,'spancut');
+              if(prevFoot&&fU)gndB(prevFoot.x,prevFoot.n,fU.x,fU.n);
+              prevFoot=fV;}}
+        }
       });
       var byL={};PEND.forEach(function(p){(byL[p.l]=byL[p.l]||[]).push(p);});
       for(var lk in byL){var arr=byL[lk].sort(function(A,B){return A.nT-B.nT;}),cls=[];
-        arr.forEach(function(p){var C=cls[cls.length-1];if(C&&Math.abs(p.nT-C.n)<25){C.items.push(p);C.n=(C.n*(C.items.length-1)+p.nT)/C.items.length;}else cls.push({n:p.nT,items:[p]});});
-        cls.forEach(function(C){                                             // BAJADA por grupo de salida: cada viga baja por SU PROPIO poste del par y las dos se UNEN POR LA ZANJA a ras — nada de puentes aéreos entre vigas ("¿unes cable DC de diferentes filas?... no se une a la bajante del soporte")
-          var nP=C.items.filter(function(x){return x.sd>0;}).length,sdD=nP>=C.items.length-nP?1:-1;
-          var foot=dropAt(+lk,sdD,C.n),feet={};feet[sdD]=foot;
-          if(C.items.some(function(x){return x.sd!==sdD;})){
-            var f2=dropAt(+lk,-sdD,foot.n);feet[-sdD]=f2;                    // la viga contraria: bajante en su poste (misma n del par)
-            gndB(foot.x,foot.n,f2.x,f2.n);}                                  // unión de los dos pies POR LA ZANJA (traza a ras)
-          C.items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.nT,ft.n);});   // cada mazo por SU viga hasta SU bajante
-          C.items.forEach(function(p){                                       // conector en L ortogonal + cola enterrada desde el pie del lado de la ruta
-            var prev=[foot.x,foot.n];
-            if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-foot.n)>0.4){gndB(foot.x,foot.n,foot.x,p.tail[p.k][1]);prev=[foot.x,p.tail[p.k][1]];}
-            for(var i3=p.k;i3<p.tail.length;i3++){gndB(prev[0],prev[1],p.tail[i3][0],p.tail[i3][1]);prev=p.tail[i3];}});
+        arr.forEach(function(p){var C=cls[cls.length-1];if(C&&Math.abs(p.nT-C.n)<25&&cruzaC(p.nT,C.n)===null){C.items.push(p);C.n=(C.n*(C.items.length-1)+p.nT)/C.items.length;}else cls.push({n:p.nT,items:[p]});});   // un grupo de salida NUNCA abarca una calle: mezclaba salidas de ambos lados y la extensión la cruzaba en aéreo
+        cls.forEach(function(C){                                             // BAJADA por grupo de salida, SUBGRUPO por lado de llegada: el cable baja en el poste de SU lado de la calle (nunca la cruza en aéreo) y por SU viga; los pies se UNEN POR LA ZANJA
+          var subs={};C.items.forEach(function(p){var sg=(p.n0-p.nT)>=0?1:-1;(subs[sg]=subs[sg]||[]).push(p);});
+          var mainFoot=null,footsBySg={};
+          Object.keys(subs).forEach(function(sgK){var sg=+sgK,items=subs[sgK];
+            var nP=items.filter(function(x){return x.sd>0;}).length,sdD=nP>=items.length-nP?1:-1;
+            var foot=dropAt(+lk,sdD,C.n,sg),feet={};feet[sdD]=foot;footsBySg[sg]=foot;
+            if(!mainFoot)mainFoot=foot;
+            if(items.some(function(x){return x.sd!==sdD;})){
+              var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;               // la viga contraria del MISMO lado: bajante en su poste del par
+              gndB(foot.x,foot.n,f2.x,f2.n);}
+            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.nT,ft.n,'ext');});
+            items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU lado
+              var prev=[foot.x,foot.n];
+              if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-foot.n)>0.4){gndB(foot.x,foot.n,foot.x,p.tail[p.k][1]);prev=[foot.x,p.tail[p.k][1]];}
+              for(var i3=p.k;i3<p.tail.length;i3++){gndB(prev[0],prev[1],p.tail[i3][0],p.tail[i3][1]);prev=p.tail[i3];}});
+          });
+          var sgs=Object.keys(footsBySg);
+          if(sgs.length===2){var fA=footsBySg[sgs[0]],fB=footsBySg[sgs[1]];gndB(fA.x,fA.n,fB.x,fB.n);}   // los dos lados de la calle SE UNEN por la zanja ("y no se unen...")
         });}
       if(SEGS.length){                                                       // v4.87-92: CABLES CON VOLUMEN y VIVOS — cilindro instanciado por tramo; updateCableSpin recoloca la brida al bascular
         var cylG=new THREE.CylinderGeometry(1,1,1,5,1,true);
