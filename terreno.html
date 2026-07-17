@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.12</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.13</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -459,7 +459,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();loadSECC();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
@@ -2029,7 +2029,7 @@ function buildBOS(){
   var bahiaG=new THREE.BoxGeometry(W*0.55,0.16,0.30),asaG=new THREE.BoxGeometry(W*0.35,0.03,0.03);
   var gripG=new THREE.CylinderGeometry(0.018,0.018,0.17,6),glandG=new THREE.CylinderGeometry(0.014,0.014,0.05,6);
   var dcTubeG=new THREE.CylinderGeometry(0.026,0.026,1.0,8),cblG=new THREE.CylinderGeometry(0.0045,0.0045,1,5);
-  var acTubeG=new THREE.CylinderGeometry(0.032,0.032,0.55,8);
+  var acTubeG=new THREE.CylinderGeometry(0.032,0.032,0.75,8),bridaG=new THREE.BoxGeometry(0.15,0.018,0.02);   // corrugado AC embridado al soporte: más alto (0,75) + 2 bridas
   var rejPlanoG=new THREE.PlaneGeometry(0.72,1.06);
   if(!INVPOS.length)computeInvPos();   // ANTES del recuento: sin esto INVPOS estaba vacío y todos los inversores caían al fallback (6 tubos)
   var _trkTally={};if(TRK.length&&INVPOS.length){TRK.forEach(function(t9){var bi=-1,bd=1e18;   // seguidores por inversor POR PROXIMIDAD (los corrugados DC "suben tantos como trackers en paralelo ×2")
@@ -2040,7 +2040,7 @@ function buildBOS(){
     var pl=new THREE.Mesh(plG,[plCap,blancoM]);pl.position.set(0,cy,-0.185);g.add(pl);                     // tapa frontal con marca/tornillería
     var rr9=new THREE.Mesh(rearG,negroM);rr9.position.set(0,cy,0.175);g.add(rr9);                          // trasera oscura (foto trasera)
     var vt9=new THREE.Mesh(ventG,ventM);vt9.position.set(0,cy,0.205);g.add(vt9);                           // banda de ventilación perforada
-    var sw=new THREE.Mesh(swG,blancoM);sw.rotation.y=-Math.PI/2;sw.position.set(-(W/2+0.128),cy-0.04,-0.02);g.add(sw);   // COMPARTIMENTO AC lateral redondeado (cara curva hacia fuera); de su fondo salen las mangueras
+    var sw=new THREE.Mesh(swG,blancoM);sw.rotation.y=-Math.PI/2;sw.position.set(-(W/2+0.098),cy-0.04,-0.02);g.add(sw);   // COMPARTIMENTO AC lateral redondeado, EMBUTIDO 3 cm en el cuerpo ('no está separado, es un compartimento pegado') — la esquina redondeada del cuerpo creaba un hueco visual
     for(var gi9=0;gi9<3;gi9++){var gl=new THREE.Mesh(glandG,negroM);gl.position.set(-(W/2+0.07)+(gi9-1)*0.05,cy-0.37,-0.02);g.add(gl);}   // 3 prensaestopas (3 fases 120 mm²)
     [-1,1].forEach(function(sx){var gr=new THREE.Mesh(gripG,negroM);gr.rotation.z=Math.PI/2;gr.position.set(sx*(W/2+0.05),boxTop-0.05,0.10);g.add(gr);});   // asas
     var bh=new THREE.Mesh(bahiaG,negroM);bh.position.set(0,legB-0.06,-0.02);g.add(bh);                     // BAHÍA negra inferior de conectores (foto)
@@ -2057,11 +2057,13 @@ function buildBOS(){
     // --- ACOMETIDAS en MUNDO ---
     var gyE=terrainMeshY(c.x,c.n);
     var acx=c.x+(W/2+0.07),acn=c.n+0.02;                                                                    // compartimento AC (mundo: el grupo va girado)
-    var acT=new THREE.Mesh(acTubeG,corRojoM);acT.position.set(acx+0.12,gyE+0.275,-(acn));bosGroup.add(acT);  // UN corrugado ROJO al suelo
+    var pAcx=c.x+0.357+0.13,pAcn=c.n+0.30,gyP=terrainMeshY(pAcx,pAcn);                                       // el corrugado AC va EMBRIDADO al SOPORTE C más cercano al compartimento (el este)
+    var acT=new THREE.Mesh(acTubeG,corRojoM);acT.position.set(pAcx,gyP+0.375,-(pAcn));bosGroup.add(acT);
+    [0.22,0.58].forEach(function(by9){var br=new THREE.Mesh(bridaG,acM);br.position.set(pAcx-0.075,gyP+by9,-(pAcn));bosGroup.add(br);});   // 2 bridas tubo↔soporte
     for(var h9=0;h9<3;h9++){var hx=acx-(h9-1)*0.05,hn=acn+(h9-1)*0.02;
-      var S9=new THREE.Vector3(hx,y+cy-0.40,-hn),E9=new THREE.Vector3(acx+0.12+(h9-1)*0.012,gyE+0.54,-acn);
-      var cu9=new THREE.CatmullRomCurve3([S9,new THREE.Vector3(S9.x,S9.y-0.30,S9.z),new THREE.Vector3(E9.x,E9.y+0.16,E9.z),E9]);
-      var hb=new THREE.Mesh(new THREE.TubeGeometry(cu9,12,0.0095,6,false),acM);bosGroup.add(hb);}          // 3 mangueras 120 mm² FLEXIBLES: caen del compartimento, se AGRUPAN y ENTRAN por la boca del corrugado ("no son rígidos")
+      var S9=new THREE.Vector3(hx,y+cy-0.40,-hn),E9=new THREE.Vector3(pAcx+(h9-1)*0.012,gyP+0.73,-(pAcn));
+      var cu9=new THREE.CatmullRomCurve3([S9,new THREE.Vector3(S9.x,S9.y-0.28,S9.z),new THREE.Vector3(E9.x,E9.y+0.15,E9.z-0.05),E9]);
+      var hb=new THREE.Mesh(new THREE.TubeGeometry(cu9,12,0.0095,6,false),acM);bosGroup.add(hb);}          // 3 mangueras 120 mm²: caen del compartimento, se AGRUPAN y entran por la boca del corrugado EN EL SOPORTE
     var nT2=Math.max(4,Math.min(16,2*(_trkTally[ci]||3)));                                                  // corrugados DC: seguidores alimentados ×2 (proximidad)
     var perRow=Math.ceil(nT2/2);
     for(var d9=0;d9<nT2;d9++){var row=d9<perRow?0:1,idx=row?d9-perRow:d9;
