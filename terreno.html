@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.90</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.91</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -452,7 +452,7 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  await loadNCU();await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
@@ -1031,6 +1031,31 @@ function buildVeg(){
       if(nearRoad(x2,n2)||nearEq(x2,n2))continue;put(vtR,x2,n2,true);}}
   VEGM.forEach(function(mm,vi){mm.count=idx[vi];});
   buildVegExtras(EXQ);
+}
+var _dressed=false;
+function dressMaterials(){ if(_dressed||!SEG||!renderer)return;_dressed=true;   // v4.91: VIDRIO con fresnel vivo y reflexión no uniforme, MARCO diferenciado y ACERO GALVANIZADO moteado ("el cambio con más impacto")
+  var mx=renderer.capabilities.getMaxAnisotropy();
+  var c=document.createElement('canvas');c.width=c.height=128;var x=c.getContext('2d');   // spangle de galvanizado: parches poligonales gris claro
+  x.fillStyle='#ccd1d6';x.fillRect(0,0,128,128);
+  for(var i=0;i<90;i++){var gv=198+Math.floor(Math.random()*42);x.fillStyle='rgba('+gv+','+(gv+2)+','+(gv+6)+',0.55)';
+    var cx=Math.random()*128,cy=Math.random()*128,r=6+Math.random()*14;x.beginPath();x.moveTo(cx+r,cy);
+    for(var a=1;a<6;a++){var th=a/6*6.283;x.lineTo(cx+Math.cos(th)*r*(0.7+Math.random()*0.5),cy+Math.sin(th)*r*(0.7+Math.random()*0.5));}x.closePath();x.fill();}
+  var sp=new THREE.CanvasTexture(c);sp.wrapS=sp.wrapT=THREE.RepeatWrapping;sp.anisotropy=mx;
+  var seen={};
+  function galva(m){if(!m||seen[m.uuid]||m.map)return;seen[m.uuid]=1;m.map=sp;if(m.roughness!==undefined){m.roughness=Math.min(0.58,m.roughness);m.metalness=Math.max(0.5,m.metalness||0);}m.needsUpdate=true;}
+  SEG.forEach(function(sg){if(/^(tube|tubecap|bracket|soporte|abarcon|corona|cuello|reductora|correa|motor|tapa)$/.test(sg.key)&&sg.im)galva(sg.im.material);});
+  if(typeof imPost!=='undefined'&&imPost)galva(imPost.material);
+  if(typeof imShaft!=='undefined'&&imShaft)galva(imShaft.material);
+  SEG.forEach(function(sg){if(sg.key==='frame'&&sg.im){var F=sg.im.material;if(F.color)F.color.setHex(0xb9bfc7);F.metalness=0.68;F.roughness=0.34;F.needsUpdate=true;}});   // marco de aluminio anodizado, distinto del vidrio
+  var gm=(typeof invGlassMesh==='function')?invGlassMesh():null;
+  if(gm&&gm.im){var G=gm.im.material;G.roughness=0.12;G.envMapIntensity=0.5;   // vidrio: rugosidad baja PERO no cero + reflejo de cielo más presente
+    G.onBeforeCompile=function(sh){sh.vertexShader=sh.vertexShader
+        .replace('#include <common>','#include <common>\nvarying vec2 vWXZ;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\n\tvWXZ=(instanceMatrix*vec4(transformed,1.0)).xz;');
+      sh.fragmentShader=sh.fragmentShader
+        .replace('#include <common>','#include <common>\nvarying vec2 vWXZ;')
+        .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\n\troughnessFactor*=(0.80+0.40*fract(sin(dot(floor(vWXZ/12.0),vec2(12.9898,78.233)))*43758.5453));');};   // rugosidad DISTINTA por mesa (celda de 12 m): reflexión menos uniforme entre mesas
+    G.customProgramCacheKey=function(){return 'glassvar1';};G.needsUpdate=true;}
 }
 function buildVegExtras(EXQ){                                                  // TERRENO: pads compactados bajo equipos + grava + anillo de transición en cimentaciones
   VEGX=new THREE.Group();
@@ -2155,7 +2180,7 @@ $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){update
 var _gPrev=null;
 $('refl').onchange=function(){REFL_ON=this.checked;   // reflejos seguros (cubemap CPU): opt-in, reversible al instante
   if(REFL_ON){ if(glassM){_gPrev={r:glassM.roughness,m:glassM.metalness,e:glassM.envMapIntensity};
-      glassM.roughness=0.30;glassM.metalness=0.05;glassM.envMapIntensity=0.32;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel) CONTENIDO: en las fotos reales los módulos leen azul-noche casi negro desde casi todos los ángulos y el cielo solo asoma muy rasante — con 0,20/0,55 la planta entera viraba a gris-azul claro
+      glassM.roughness=0.22;glassM.metalness=0.05;glassM.envMapIntensity=0.40;glassM.needsUpdate=true;}   // vidrio FÍSICO (Fresnel): 0,22/0,40 — un punto más de reflejo angular que la calibración v4.52 (0,30/0,32) por la petición de "reflexión variable con el ángulo", sin llegar al 0,20/0,55 que viraba la planta a gris-azul. La rugosidad además VARÍA por mesa (glassvar1)
     updateRefl(true);}
   else{ scene.environment=null;if(reflTex){reflTex.dispose();reflTex=null;}_reflU=99;_reflC=-1;
     if(glassM&&_gPrev){glassM.roughness=_gPrev.r;glassM.metalness=_gPrev.m;glassM.envMapIntensity=_gPrev.e;glassM.needsUpdate=true;_gPrev=null;}}};
