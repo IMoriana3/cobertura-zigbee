@@ -47,7 +47,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.82</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v4.85</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -62,7 +62,8 @@
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
     <div class="row"><label title="Zanjas de cable string y string→inversor, real del DWG."><input type="checkbox" id="netTrench"> ▤ Zanjas string/inversor</label></div>
     <div class="row"><label title="Cableado/zanja inversor→CT (nivel N3), real del DWG."><input type="checkbox" id="netN3"> 🔌 Inversor→CT (N3)</label></div>
-    <div class="row"><label title="Cableado/zanja CT→subestación (MT + línea aérea LAMT), real del DWG."><input type="checkbox" id="netMT"> 🏭 CT→Subestación (MT)</label></div>
+    <div class="row"><label title="Cableado/zanja de MT interna CT→subestación, real del DWG."><input type="checkbox" id="netMT"> 🏭 CT→Subestación (MT)</label></div>
+    <div class="row"><label title="Línea de EVACUACIÓN 45 kV de la subestación a red (la LAMT que bordea el recinto). Separada del MT interno: ese tramo no es CT→subestación."><input type="checkbox" id="netEvac"> ⚡ Evacuación 45 kV (a red)</label></div>
     <div class="row"><label title="Alcance de las cámaras CCTV (zonas que cubren), real del DWG."><input type="checkbox" id="netCam"> 📹 Cámaras (alcance)</label></div>
     <div class="row"><label title="Arquetas y equipos de comunicaciones, real del DWG."><input type="checkbox" id="netMisc"> ◇ Arquetas + comms</label></div>
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Generación / flujo (offline)</div>
@@ -1059,11 +1060,31 @@ function renderPost(dt){ if(!postScene)return;_grainMat.uniforms.uT.value=(_grai
 // Datos REALES extraídos de los DWG (tools/extract_dwg_networks.mjs → elburgo_networks.json) en coords locales E/N.
 // Cada capa = polilíneas drapeadas sobre el terreno. Aditivas, perezosas; no añaden edificios.
 var NET=null,netG={};
-var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.16},earth_cross:{c:0x9be23a,off:.16},earth_lat:{c:0xb4e84a,off:.17},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
+var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.16},earth_cross:{c:0x9be23a,off:.16},earth_lat:{c:0xb4e84a,off:.17},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},evac45:{c:0xffc63a,off:.12},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
 var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.json: 823 strings g.i.t.s con posición)
 function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
   fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
-  return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;return NET;}).catch(function(){NET=false;return false;}); }
+  return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;if(NET)_evac45Split();return NET;}).catch(function(){NET=false;return false;}); }
+function _evac45Split(){ if(!NET||!NET.layers||!NET.layers.trench_mt||NET.layers.evac45)return;   // v4.85: separa la EVACUACIÓN 45 kV A RED del MT interno CT→SET ("ese tramo ya es evacuación a 45kV a red"). RECLASIFICACIÓN GEOMÉTRICA declarada: el extractor fundió la capa LAMT del DWG dentro de trench_mt y los DWG ya no están en la sesión para re-extraer — seed = polilínea con extremo a >80 m de todo CT/SUB y ≥30% de vértices pegados al vallado (la LAMT bordea el recinto); se adhieren solo CRUZAMIENTOS cortos (≤6 vértices, <25 m) a <8 m de la ruta. La espina interna CT Norte→SUB (220 m por el pasillo central) queda en MT, y con ella el flujo
+  var T=NET.layers.trench_mt,F=[],S=[[SUBPT[0],SUBPT[1]]];
+  ((LAYOUT&&LAYOUT.fence)||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++)F.push([pl[i],pl[i+1]]);});
+  ((LAYOUT&&LAYOUT.cts)||[]).forEach(function(pl){var sx=0,sn=0;pl.forEach(function(p){sx+=p[0];sn+=p[1];});var cx=sx/pl.length,cn=sn/pl.length;if(Math.abs(cx)<900&&Math.abs(cn)<900)S.push([cx,cn]);});
+  function dsg(x,n,a,b){var dx=b[0]-a[0],dn=b[1]-a[1],L=dx*dx+dn*dn||1e-9,t=((x-a[0])*dx+(n-a[1])*dn)/L;t=Math.max(0,Math.min(1,t));return Math.hypot(x-(a[0]+t*dx),n-(a[1]+t*dn));}
+  function dF(x,n){var bd=1e9;for(var i2=0;i2<F.length;i2++)bd=Math.min(bd,dsg(x,n,F[i2][0],F[i2][1]));return bd;}
+  function dS2(x,n){var bd=1e9;for(var i3=0;i3<S.length;i3++)bd=Math.min(bd,Math.hypot(x-S[i3][0],n-S[i3][1]));return bd;}
+  var seed=T.map(function(pl){var dA=dS2(pl[0][0],pl[0][1]),dB=dS2(pl[pl.length-1][0],pl[pl.length-1][1]),nr=0;
+    pl.forEach(function(p){if(dF(p[0],p[1])<14)nr++;});
+    return Math.max(dA,dB)>80&&nr/pl.length>=0.3;});
+  var SS=[];T.forEach(function(pl,i4){if(seed[i4])for(var k=0;k+1<pl.length;k++)SS.push([pl[k],pl[k+1]]);});
+  if(!SS.length){NET.layers.evac45=[];return;}
+  var ev=[],mt=[];
+  T.forEach(function(pl,i5){ if(seed[i5]){ev.push(pl);return;}
+    var LT=0;for(var k2=0;k2+1<pl.length;k2++)LT+=Math.hypot(pl[k2+1][0]-pl[k2][0],pl[k2+1][1]-pl[k2][1]);
+    var mx=(pl[0][0]+pl[pl.length-1][0])/2,mn=(pl[0][1]+pl[pl.length-1][1])/2,d=1e9;
+    for(var q=0;q<SS.length;q++)d=Math.min(d,dsg(mx,mn,SS[q][0],SS[q][1]));
+    if(pl.length<=6&&LT<25&&d<8)ev.push(pl);else mt.push(pl); });
+  NET.layers.trench_mt=mt;NET.layers.evac45=ev;
+}
 function allPosts(){var P=[],_m=new THREE.Matrix4();
   if(typeof imPost!=='undefined'&&imPost&&TC&&TC.np){for(var i=0;i<TRK.length*TC.np;i++){imPost.getMatrixAt(i,_m);
     if(Math.abs(_m.elements[0])>0.01)P.push([_m.elements[12],-_m.elements[14],_m.elements[13]+_m.elements[5]*TC.postH/2,(i/TC.np)|0]);}}   // [x, n, yTOP del poste (=nudo de la viga), fila]: la caída del cable y el perfil del tubo salen de la cota REAL renderizada
@@ -1098,13 +1119,6 @@ function buildNetLayer(key){
     var gnd=function(x1,n1,x2,n2){var L7=Math.hypot(x2-x1,n2-n1),st7=Math.max(1,Math.min(40,Math.ceil(L7/4)));   // a ras cada ~4 m: con pasos de 7-20 m la cuerda quedaba EN EL AIRE sobre las vaguadas ("¿Por qué los cables flotan?")
       for(var s7=0;s7<st7;s7++){var u0=s7/st7,u1=(s7+1)/st7,gx1=x1+(x2-x1)*u0,gn1=n1+(n2-n1)*u0,gx2=x1+(x2-x1)*u1,gn2=n1+(n2-n1)*u1;
         v.push(gx1,terrainMeshY(gx1,gn1)+d.off,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off,-gn2);}};
-    var PROF=null;                                                          // v4.70: perfil REAL del tubo por fila (nudos = tapas de poste de imPost, con lift/quiebre/vex): el mazo va BRIDADO SOBRE EL PROPIO TUBO, como en las fotos de obra — no colgado a 1,45 m siguiendo el microrrelieve
-    if(PSTc){PROF={};for(var q8=0;q8<PSTc.length;q8++){var pq=PSTc[q8];(PROF[pq[3]]=PROF[pq[3]]||[]).push([pq[1],pq[2]]);}
-      for(var r9 in PROF){var Ls=PROF[r9].sort(function(A,B){return A[0]-B[0];}),Lm=[];   // v4.71: FUSIONA el PAR de postes de las dos vigas (misma z de retícula, separados micras por el quiebre): con puntos casi coincidentes la pendiente del "último vano" salía dividida por ~1e-4 y los cables se iban AL CIELO ("La has liado") — en el banco con DEM plano dio 0/1=0 y no saltó
-        for(var w9=0;w9<Ls.length;w9++){var pv=Lm[Lm.length-1];
-          if(pv&&Math.abs(Ls[w9][0]-pv[0])<0.6){pv[0]=(pv[0]*pv[2]+Ls[w9][0])/(pv[2]+1);pv[1]=(pv[1]*pv[2]+Ls[w9][1])/(pv[2]+1);pv[2]++;}
-          else Lm.push([Ls[w9][0],Ls[w9][1],1]);}
-        PROF[r9]=Lm;}}
     var MAZO=0.12;                                                          // el mazo asienta sobre el tubo (eje + media viga + radio del haz)
     var vB=[];                                                              // trazado ENTERRADO (va por su zanja): se pinta discontinuo y tenue
     var gndB=function(x1,n1,x2,n2){var L8=Math.hypot(x2-x1,n2-n1),st9=Math.max(1,Math.min(40,Math.ceil(L8/4)));
@@ -1114,11 +1128,12 @@ function buildNetLayer(key){
       var LID={},LNS=[];                                                    // línea = seguidores con el mismo x (columna): por ella el mazo cruza los pasillos entre punteras en aéreo
       (function(){var xs=[];for(var r0=0;r0<TRK.length;r0++)xs.push([TRK[r0].gx,r0]);
         xs.sort(function(A,B){return A[0]-B[0];});var lastX=-1e9;
-        for(var q0=0;q0<xs.length;q0++){if(xs[q0][0]-lastX>0.75)LNS.push({x:0,rs:[],nodes:[]});lastX=xs[q0][0];
+        for(var q0=0;q0<xs.length;q0++){if(xs[q0][0]-lastX>0.75)LNS.push({x:0,rs:[],nA:[],nB:[]});lastX=xs[q0][0];
           LID[xs[q0][1]]=LNS.length-1;LNS[LNS.length-1].rs.push(xs[q0][1]);}
-        LNS.forEach(function(L9){var sx=0;L9.rs.forEach(function(r1){sx+=TRK[r1].gx;(PROF[r1]||[]).forEach(function(nd){L9.nodes.push(nd);});});
-          L9.x=sx/L9.rs.length;L9.nodes.sort(function(A,B){return A[0]-B[0];});});})();
-      var tubeYL=function(l2,n){var L=LNS[l2].nodes,y;                      // perfil del tubo de TODA la línea: recto de poste a poste y puenteando los vanos entre seguidores
+        LNS.forEach(function(L9){var sx=0;L9.rs.forEach(function(r1){sx+=TRK[r1].gx;});L9.x=sx/L9.rs.length;});
+        for(var q1=0;q1<PSTc.length;q1++){var P1=PSTc[q1],L1=LNS[LID[P1[3]]];if(!L1)continue;((P1[0]>=L1.x)?L1.nB:L1.nA).push([P1[1],P1[2]]);}   // v4.83: nudos POR VIGA (lado E/O) — el perfil anterior promediaba las alturas del PAR y en contrapendiente el mazo quedaba ENTRE las dos vigas ("no va por la viga... en unos casos va debajo y en otros encima"); por lado no hay nudos casi coincidentes → tampoco cables al cielo
+        LNS.forEach(function(L9){L9.nA.sort(function(A,B){return A[0]-B[0];});L9.nB.sort(function(A,B){return A[0]-B[0];});});})();
+      var tubeYL=function(l2,sd,n){var L=sd>0?LNS[l2].nB:LNS[l2].nA,y;      // perfil del tubo de SU VIGA en toda la línea: recto de poste a poste y puenteando los vanos entre seguidores
         if(!L.length)y=terrainMeshY(LNS[l2].x,n)+TC.postH;
         else if(L.length===1)y=L[0][1];
         else if(n<=L[0][0]){var s0=Math.max(-0.6,Math.min(0.6,(L[1][1]-L[0][1])/((L[1][0]-L[0][0])||1)));y=L[0][1]+s0*(n-L[0][0]);}
@@ -1130,14 +1145,14 @@ function buildNetLayer(key){
       var bajada=function(l3,sd,nT){var lx=LNS[l3].x,bp=null,bd=1e9;        // bajante en el soporte de la línea (y su misma viga) MÁS CERCANO a donde la ruta abandona la línea = la zanja ("el soporte que está más cerca de la zanja")
         for(var q6=0;q6<PSTc.length;q6++){var P6=PSTc[q6];if(LID[P6[3]]!==l3||(P6[0]-lx)*sd<0)continue;
           var dq=Math.abs(P6[1]-nT);if(dq<bd){bd=dq;bp=P6;}}
-        var px=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]+MAZO:tubeYL(l3,nT)+MAZO;
+        var px=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]+MAZO:tubeYL(l3,sd,nT)+MAZO;
         var dk=px.toFixed(1)+'_'+pn.toFixed(1);
         if(!DDROP[dk]){DDROP[dk]=1;v.push(px,yT,-pn, px,terrainMeshY(px,pn)+0.04,-pn);}   // caída vertical por el soporte (compartida entre strings)
         return [px,pn];};
       var aereo=function(l4,sd,nA,nB){if(Math.abs(nB-nA)<0.05)return;       // mazo bridado al tubo, por la viga de su lado, cruzando en aéreo entre seguidores
         var bx=LNS[l4].x+sd*TC.filaZ,st=Math.max(1,Math.min(160,Math.ceil(Math.abs(nB-nA)/5)));
         for(var s=0;s<st;s++){var u0=s/st,u1=(s+1)/st,n1=nA+(nB-nA)*u0,n2=nA+(nB-nA)*u1;
-          v.push(bx,tubeYL(l4,n1)+MAZO,-n1,bx,tubeYL(l4,n2)+MAZO,-n2);}};
+          v.push(bx,tubeYL(l4,sd,n1)+MAZO,-n1,bx,tubeYL(l4,sd,n2)+MAZO,-n2);}};
       var salida=function(pl,iF,tail,l7,sd){                                // desde el punto de conexión: AÉREO por la línea hasta el poste junto a la zanja, bajante, y SOLO ahí enterrado al inversor
         var lx=LNS[l7].x,k=0;
         while(k<tail.length&&Math.abs(tail[k][0]-lx)<4.2)k++;               // lo que la ruta DWG recorre pegado a la línea va AÉREO (no "por el suelo")
@@ -1274,14 +1289,17 @@ function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_
 // ===== ABANDERAMIENTO POR VIENTO (stow) — replicado del gemelo digital: histéresis Schmitt entrada/salida,
 // bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
 // Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
-var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_STOWTXT='',_dayCalc=false;
+var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_STOWTXT='',_STOWSIDE=0,_STOWSEL='',_dayCalc=false;
 function stowStep(dt){ if(!SEG)return;
   if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;_STOWTXT='';updateSpin(panelAngle(curMin));} return; }
   var IN=Math.max(5,+($('stowIn').value)||60),OUT=Math.min(Math.max(1,+($('stowOut').value)||40),IN-1),POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
-  if(!stowLatch&&WINDK>=IN)stowLatch=true; else if(stowLatch&&WINDK<=OUT)stowLatch=false;   // Schmitt: entra a IN, no suelta hasta bajar de OUT (nada de bandereo intermitente con racha en el umbral)
   var ideal=panelAngle(curMin);
   var side=($('stowSide')&&$('stowSide').value)||'sol';
-  var sg=side==='oeste'?1:side==='este'?-1:(Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1));   // lado: fijo (la controladora real abandera a +55°=Oeste) o "Sol" (θ<0=Este; ojo: el mediodía SOLAR de El Burgo es ~14:20 local — hasta entonces el sol sigue al Este)
+  var calcSide=function(){return side==='oeste'?1:side==='este'?-1:(Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1));};   // lado: fijo (la controladora real abandera a +55°=Oeste) o "Sol" (θ<0=Este; el mediodía SOLAR de El Burgo es ~14:20 local)
+  if(!stowLatch&&WINDK>=IN){stowLatch=true;_STOWSIDE=calcSide();_STOWSEL=side;}            // Schmitt: entra a IN, no suelta hasta bajar de OUT — y el LADO SE FIJA AL ABANDERAR: "si está abanderado a la mañana no cambia a la tarde a la otra posición... se mantiene hasta que desabandere, aunque no esté mirando al sol"
+  else if(stowLatch&&WINDK<=OUT){stowLatch=false;_STOWSIDE=0;_STOWSEL='';}
+  else if(stowLatch&&side!==_STOWSEL){_STOWSIDE=calcSide();_STOWSEL=side;}                 // cambiar el selector de lado A MANO sí re-apunta la bandera (acción explícita del operador)
+  var sg=stowLatch?_STOWSIDE:calcSide();
   var tgt=stowLatch?sg*POSM:ideal;
   if(_STOWANG===null)_STOWANG=ideal;
   var rate=0.17*dt*(playing?PLAYSPEED*60:1);                                                // 0,17 °/s en SEGUNDOS SIMULADOS (PLAYSPEED = min sim/s real → ×60): a ×30 el viaje de 55° son 5,4 min sim = 0,18 s reales. El cap anterior lo frenaba a 0,0028 °/s sim y "le ha costado horas desabanderar". En pausa: 0,17 °/s REALES (velocidad de actuador en vivo)
@@ -2010,7 +2028,8 @@ $('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked)
 $('netEarth').onchange=function(){setNet(['earth','earth_cross','earth_lat'],this.checked);};                   // red de tierras (earth_cross = cruces por las líneas de terminales del RDT-1)
 $('netTrench').onchange=function(){setNet(['trench_string','trench_inv'],this.checked);}; // zanjas string / string→inversor
 $('netN3').onchange=function(){setNet(['trench_n3'],this.checked);};                   // inversor→CT (N3)
-$('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT)
+$('netMT').onchange=function(){setNet(['trench_mt'],this.checked);};                   // CT→subestación (MT interna)
+$('netEvac').onchange=function(){setNet(['evac45'],this.checked);};                    // evacuación 45 kV subestación→red
 $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};                  // alcance de cámaras CCTV
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
