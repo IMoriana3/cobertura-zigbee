@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.20</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.21</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2091,10 +2091,14 @@ function buildBOS(){
     var pAcx=c.x+0.357+0.13,pAcn=c.n+0.30,gyP=terrainMeshY(pAcx,pAcn);                                       // el corrugado AC va EMBRIDADO al SOPORTE C más cercano al compartimento (el este)
     var acT=new THREE.Mesh(acTubeG,corRojoM);acT.position.set(pAcx,gyP+0.375,-(pAcn));bosGroup.add(acT);
     [0.22,0.58].forEach(function(by9){var br=new THREE.Mesh(bridaG,acM);br.position.set(pAcx-0.075,gyP+by9,-(pAcn));bosGroup.add(br);});   // 2 bridas tubo↔soporte
-    for(var h9=0;h9<3;h9++){var hx=acx,hn=acn+(h9-1)*0.05;   // las mangueras arrancan de su prensa (fila frente→atrás)
-      var S9=new THREE.Vector3(hx,y+cy-0.40,-hn),E9=new THREE.Vector3(pAcx+(h9-1)*0.012,gyP+0.73,-(pAcn));
-      var cu9=new THREE.CatmullRomCurve3([S9,new THREE.Vector3(S9.x,S9.y-0.28,S9.z),new THREE.Vector3(E9.x,E9.y+0.15,E9.z-0.05),E9]);
-      var hb=new THREE.Mesh(new THREE.TubeGeometry(cu9,12,0.0095,6,false),acM);bosGroup.add(hb);}          // 3 mangueras 120 mm²: caen del compartimento, se AGRUPAN y entran por la boca del corrugado EN EL SOPORTE
+    for(var h9=0;h9<3;h9++){var hx=acx,hn=c.n-0.02+(h9-1)*0.05;   // la manguera NACE EN LA BOQUILLA de su prensa (misma fila frente→atrás, cotas exactas)
+      var S9=new THREE.Vector3(hx,y+cy-0.395,-hn),E9=new THREE.Vector3(pAcx+(h9-1)*0.012,gyP+0.73,-(pAcn));
+      var cu9=new THREE.CatmullRomCurve3([S9,
+        new THREE.Vector3(S9.x,S9.y-0.16,S9.z),                                             // tramo recto saliendo del prensa
+        new THREE.Vector3(S9.x*0.45+E9.x*0.55,(S9.y-0.16)*0.5+(E9.y+0.22)*0.5,S9.z*0.45+E9.z*0.55),   // barrido intermedio SIEMPRE descendente
+        new THREE.Vector3(E9.x,E9.y+0.20,E9.z),                                             // llega casi vertical sobre la boca
+        E9],false,'catmullrom',0.35);                                                        // tensión baja: curva tendida, sin latigazos de >90°
+      var hb=new THREE.Mesh(new THREE.TubeGeometry(cu9,16,0.0095,6,false),acM);bosGroup.add(hb);}          // 3 mangueras 120 mm² con caída NATURAL del prensa a la boca del corrugado
     var nT2=Math.max(4,Math.min(16,2*(_trkTally[ci]||3)));                                                  // corrugados DC: seguidores alimentados ×2 (proximidad)
     var perRow=Math.ceil(nT2/2);
     for(var d9=0;d9<nT2;d9++){var row=d9<perRow?0:1,idx=row?d9-perRow:d9;
