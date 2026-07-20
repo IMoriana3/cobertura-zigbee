@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.22</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.23</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -571,7 +571,8 @@ function buildTrackers(elevAt){
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft,imBearing,imSaddle].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var dampPosts=zPT?[-22.9,22.9]:[zP[1],zP[zP.length-2]];                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
-  var dampPostsM=zPT?[-6.5,6.5]:dampPosts;                                          // los "Medio" de El Burgo con sus soportes ±6,5
+  var zPm=zP.filter(function(z){return Math.abs(z)<=16.8;}).sort(function(a,b){return a-b;});
+  var dampPostsM=zPT?[-6.5,6.5]:(zPm.length>=4?[zPm[1],zPm[zPm.length-2]]:dampPosts);   // MEDIO: 2º poste desde fuera DE SU media fila — heredaba los ±26 del largo, más allá de su puntera, y el amortiguador quedaba FLOTANDO
   var DET=(NODES.length>1000)?'mass':'full';   // SOLO plantas muy grandes (San José 2289): "mesa" por ala (~15 piezas/fila); El Burgo (215) y Ayora (754) a detalle completo
   var planL=Seguidor.instancePlan(THREE,{detail:DET,size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:DET,size:'medio',damperX:dampPostsM}),mM={},mMab={};
   planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
@@ -678,7 +679,9 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
       if(_DM){var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
         _RZ.makeRotationZ(kf?kf.dN:0);_M.multiplyMatrices(SEGO,_RZ);_MSN9.multiplyMatrices(t.fb[f],_M);   // base ESTÁTICA de cada mitad CON su quiebre (sin Rx): en ±9 el desfase pie/manivela era mm, en el soporte real ±22,9 con vex el quiebre abría metros y la biela salía disparada en vertical
         _RZ.makeRotationZ(kf?kf.dS:0);_M.multiplyMatrices(SEGO,_RZ);_MSS9.multiplyMatrices(t.fb[f],_M);
-        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_DA[dl][0]>0?_MSN9:_MSS9);_PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // pie FIJO en el rodamiento de SU mitad quebrada + cima en la manivela del tubo (bascula) → amortiguador CORTO
+        for(var dl=0;dl<_DM.n;dl++){_PA.set(_DA[dl][0],_DA[dl][1],_DA[dl][2]).applyMatrix4(_DA[dl][0]>0?_MSN9:_MSS9);
+          _PA.y=terrainMeshY(_PA.x,-_PA.z)+0.30;   // pie EN EL SOPORTE a 30 cm del SUELO ('eso está mal': anclaba ~40 cm bajo la viga) → vástago LARGO como el real; sigue solo en el 2º poste desde fuera de cada media fila
+          _PB.set(_DB[dl][0],_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // cima en la manivela del tubo (bascula): eso estaba OK
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
           if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}                                          // CUERPO oscuro, 62% centrado (= gemelo)
