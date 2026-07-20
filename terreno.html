@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.19</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.20</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2072,7 +2072,7 @@ function buildBOS(){
     var rr9=new THREE.Mesh(rearG,negroM);rr9.position.set(0,cy,0.175);g.add(rr9);                          // trasera oscura (foto trasera)
     var vt9=new THREE.Mesh(ventG,ventM);vt9.position.set(0,cy,0.205);g.add(vt9);                           // banda de ventilación perforada
     var sw=new THREE.Mesh(swG,blancoM);sw.rotation.y=-Math.PI/2;sw.position.set(-(W/2-0.02),cy-0.04,-0.02);g.add(sw);   // PEGADO de verdad: la extrusión girada crece hacia FUERA desde position.x, así que el plano interno va 2 cm DENTRO del cuerpo ('está flotando el compartimento, están unidos!')
-    for(var gi9=0;gi9<3;gi9++){var gl=new THREE.Mesh(glandG,negroM);gl.position.set(-(W/2+0.07)+(gi9-1)*0.05,cy-0.37,-0.02);g.add(gl);}   // 3 prensaestopas (3 fases 120 mm²)
+    for(var gi9=0;gi9<3;gi9++){var gl=new THREE.Mesh(glandG,negroM);gl.position.set(-(W/2+0.07),cy-0.37,-0.02+(gi9-1)*0.05);g.add(gl);}   // 3 prensaestopas EN LÍNEA frente→atrás ('van perpendiculares a como los has representado'), saliendo hacia abajo
     [-1,1].forEach(function(sx){var gr=new THREE.Mesh(gripG,negroM);gr.rotation.z=Math.PI/2;gr.position.set(sx*(W/2+0.05),boxTop-0.05,0.10);g.add(gr);});   // asas
     var bh=new THREE.Mesh(bahiaG,negroM);bh.position.set(0,legB-0.06,-0.02);g.add(bh);                     // BAHÍA negra inferior de conectores (foto)
     var as9=new THREE.Mesh(asaG,negroM);as9.position.set(0,legB-0.15,-0.14);g.add(as9);                    // su marco/asa frontal
@@ -2091,7 +2091,7 @@ function buildBOS(){
     var pAcx=c.x+0.357+0.13,pAcn=c.n+0.30,gyP=terrainMeshY(pAcx,pAcn);                                       // el corrugado AC va EMBRIDADO al SOPORTE C más cercano al compartimento (el este)
     var acT=new THREE.Mesh(acTubeG,corRojoM);acT.position.set(pAcx,gyP+0.375,-(pAcn));bosGroup.add(acT);
     [0.22,0.58].forEach(function(by9){var br=new THREE.Mesh(bridaG,acM);br.position.set(pAcx-0.075,gyP+by9,-(pAcn));bosGroup.add(br);});   // 2 bridas tubo↔soporte
-    for(var h9=0;h9<3;h9++){var hx=acx-(h9-1)*0.05,hn=acn+(h9-1)*0.02;
+    for(var h9=0;h9<3;h9++){var hx=acx,hn=acn+(h9-1)*0.05;   // las mangueras arrancan de su prensa (fila frente→atrás)
       var S9=new THREE.Vector3(hx,y+cy-0.40,-hn),E9=new THREE.Vector3(pAcx+(h9-1)*0.012,gyP+0.73,-(pAcn));
       var cu9=new THREE.CatmullRomCurve3([S9,new THREE.Vector3(S9.x,S9.y-0.28,S9.z),new THREE.Vector3(E9.x,E9.y+0.15,E9.z-0.05),E9]);
       var hb=new THREE.Mesh(new THREE.TubeGeometry(cu9,12,0.0095,6,false),acM);bosGroup.add(hb);}          // 3 mangueras 120 mm²: caen del compartimento, se AGRUPAN y entran por la boca del corrugado EN EL SOPORTE
