@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.21</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.22</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1287,9 +1287,9 @@ function buildNetLayer(key){
   } else if(key!=='earth_lat'||!TRK.length) {
     var PSTc=(key==='cable_pos'||key==='cable_neg')&&TRK.length?allPosts():null;
     var v=[];
-    var gnd=function(x1,n1,x2,n2){var L7=Math.hypot(x2-x1,n2-n1),st7=Math.max(1,Math.min(40,Math.ceil(L7/4)));   // a ras cada ~4 m: con pasos de 7-20 m la cuerda quedaba EN EL AIRE sobre las vaguadas ("¿Por qué los cables flotan?")
+    var gnd=function(x1,n1,x2,n2){var L7=Math.hypot(x2-x1,n2-n1),st7=Math.max(1,Math.min(40,Math.ceil(L7/4)));   // a ras cada ~4 m; offset COMPRIMIDO (×0,4): el tendido va ENTERRADO y solo se INSINÚA desde arriba — a +12/20 cm parecía cordón en superficie ('va enterrado, no como aquí')
       for(var s7=0;s7<st7;s7++){var u0=s7/st7,u1=(s7+1)/st7,gx1=x1+(x2-x1)*u0,gn1=n1+(n2-n1)*u0,gx2=x1+(x2-x1)*u1,gn2=n1+(n2-n1)*u1;
-        v.push(gx1,terrainMeshY(gx1,gn1)+d.off,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off,-gn2);}};
+        v.push(gx1,terrainMeshY(gx1,gn1)+d.off*0.4,-gn1, gx2,terrainMeshY(gx2,gn2)+d.off*0.4,-gn2);}};
     var vB=[];                                                              // trazado ENTERRADO (va por su zanja): se pinta discontinuo y tenue
     var gndB=function(x1,n1,x2,n2){var L8=Math.hypot(x2-x1,n2-n1),st9=Math.max(1,Math.min(40,Math.ceil(L8/4)));
       for(var s9=0;s9<st9;s9++){var w0=s9/st9,w1=(s9+1)/st9,hx1=x1+(x2-x1)*w0,hn1=n1+(n2-n1)*w0,hx2=x1+(x2-x1)*w1,hn2=n1+(n2-n1)*w1;
@@ -1404,15 +1404,17 @@ function buildNetLayer(key){
         updateCableSpin(_STOWANG!=null?_STOWANG:panelAngle(curMin));
       }
     } else NET.layers[key].forEach(function(pl){for(var i6=0;i6+1<pl.length;i6++)gnd(pl[i6][0],pl[i6][1],pl[i6+1][0],pl[i6+1][1]);});   // resto de capas (zanjas, tierra, arquetas...): drapeadas a ras
-    if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.add(new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.85})));}
+    if(v.length){var bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
+      var lsG=new THREE.LineSegments(bg,new THREE.LineDashedMaterial({color:d.c,transparent:true,opacity:.58,dashSize:1.6,gapSize:0.7}));
+      lsG.computeLineDistances();g.add(lsG);}   // TODO tendido (salvo vigas y bajantes) va ENTERRADO: trazo discontinuo a ras, visible desde arriba — 'en este caso es la red de tierras pero aplica a todas'
     if(vB.length){var bgB=new THREE.BufferGeometry();bgB.setAttribute('position',new THREE.Float32BufferAttribute(vB,3));
       var lsB=new THREE.LineSegments(bgB,new THREE.LineDashedMaterial({color:d.c,transparent:true,opacity:.62,dashSize:1.6,gapSize:0.7}));
       lsB.computeLineDistances();g.add(lsB);}                               // el tendido enterrado se INSINÚA discontinuo ("el cableado al inversor ha desaparecido" ↔ "por qué pones el cableado en el suelo")
   }
   if(key==='earth'&&NET.layers.earth_pica&&NET.layers.earth_pica.length){   // PICAS del plano RDT-1 (INSERTs "Pica PAT" del DWG de tierras, 42≈44 del cuadro): cilindro instanciado en cada posición EXACTA. Los latiguillos de equipotencialidad son la capa earth_lat (EE_Latiguillo Desnudo, 468 trazos reales) — fuera toda la PAT derivada anterior ("quita las que tienes y ponla así")
-    var PK=NET.layers.earth_pica,tg2=new THREE.CylinderGeometry(0.05,0.05,0.65,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});
+    var PK=NET.layers.earth_pica,tg2=new THREE.CylinderGeometry(0.035,0.035,0.10,6),tm2=new THREE.MeshBasicMaterial({color:0x8ee62e});   // la pica va HINCADA: solo asoma el terminal (~10 cm)
     var tim=new THREE.InstancedMesh(tg2,tm2,PK.length),_tm2=new THREE.Matrix4();
-    for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.33,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
+    for(var q2=0;q2<PK.length;q2++){_tm2.makeTranslation(PK[q2][0],terrainMeshY(PK[q2][0],PK[q2][1])+0.05,-PK[q2][1]);tim.setMatrixAt(q2,_tm2);}
     g.add(tim);
   }
   if(key==='earth_lat'&&TRK.length){   // LATIGUILLOS COMO EL CAD: el latiguillo es el TICK CORTO dibujado (~1 m, perpendicular al conductor, hasta el borde de la fila) + grapa vertical en su extremo de fila. NADA de ganchos hasta el poste retranqueado: v4.47-49 estiraban cada tick 4-5 m en L y salían "cuadros" que el plano no tiene ("Mira cómo está en el cad... tú lo has hecho mal")
