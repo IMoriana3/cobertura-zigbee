@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.18</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.19</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1101,13 +1101,7 @@ function dressMaterials(){ if(_dressed||!SEG||!renderer)return;_dressed=true;   
 var PADSM=[];
 function buildVegExtras(EXQ){                                                  // TERRENO: pads compactados bajo equipos + grava + anillo de transición en cimentaciones
   VEGX=new THREE.Group();PADSM=[];
-  var pc=document.createElement('canvas');pc.width=pc.height=128;var px=pc.getContext('2d');
-  var gr=px.createRadialGradient(64,64,18,64,64,64);gr.addColorStop(0,'rgba(196,189,172,0.85)');gr.addColorStop(0.75,'rgba(196,189,172,0.55)');gr.addColorStop(1,'rgba(196,189,172,0)');
-  px.fillStyle=gr;px.fillRect(0,0,128,128);
-  for(var d2=0;d2<160;d2++){var a2=Math.random()*128,b2=Math.random()*128,l2=Math.random();px.fillStyle=l2>0.5?'rgba(160,152,136,0.5)':'rgba(226,220,204,0.55)';px.fillRect(a2,b2,1.6,1.6);}
-  var padTex=new THREE.CanvasTexture(pc),padM=new THREE.MeshLambertMaterial({map:padTex,transparent:true,depthWrite:false});
-  EXQ.forEach(function(e){var pg=new THREE.Mesh(new THREE.PlaneGeometry(e[2]*2.4,e[2]*2.0),padM);
-    pg.rotation.x=-Math.PI/2;pg.position.set(e[0],terrainMeshY(e[0],e[1])+0.02,-e[1]);pg.visible=!($('relief')&&$('relief').checked);PADSM.push(pg);VEGX.add(pg);});   // el pad claro NO se tiñe por cota: en modo relieve salía una 'mancha' alrededor de cada inversor → se oculta
+  // (SIN pads sintéticos bajo los equipos: sobre la ortofoto PNOA real quedaban como lamparones blanqueados alrededor de cada inversor — '¿por qué se ve así el suelo?'; el compactado real ya lo trae la propia ortofoto)
   var stoneG=new THREE.IcosahedronGeometry(1,0),stoneM=new THREE.MeshStandardMaterial({color:0xb9b2a2,roughness:.95,metalness:0});
   var NS=7000,ims=new THREE.InstancedMesh(stoneG,stoneM,NS),o2=new THREE.Object3D(),put2=0;   // GRAVA: piedrecillas junto a viales y pads
   var RS2=(LAYOUT&&LAYOUT.roadSurfaces)||[],edges=[];
