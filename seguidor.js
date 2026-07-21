@@ -191,16 +191,16 @@
     /* --- SECCIONADOR DC DS132EL (STEP del usuario, bbox 295×108×382 mm): en la viga con DOS abarcones
        como la TCU, a 30 cm de ella HACIA EL LADO CONTRARIO A LA CORONA (la corona está en X=0 y la TCU
        en +tcuX → el seccionador va más allá), unido a la TCU con 2 cables, NEGRO y ROJO. --- */
-    var seccX = D.tcuX + 0.25 + 0.30 + 0.054;                  // borde de la TCU + 30 cm + media caja (girada 90°: 108 a lo largo de la viga)
-    push('secc', 'seccbox', true, true, function (TH){ return new TH.BoxGeometry(0.108, 0.19, 0.295); }, mT(THREE, seccX, -0.175, 0));   // GIRADO 90°: el largo va TRANSVERSAL a la viga; la RUEDA queda abajo
+    var seccX = D.tcuX + 0.25 + 0.30 + 0.1475;                 // borde de la TCU + 30 cm + media caja (largo 295 mm PARALELO a la viga → media caja = 0,1475)
+    push('secc', 'seccbox', true, true, function (TH){ return new TH.BoxGeometry(0.295, 0.19, 0.108); }, mT(THREE, seccX, -0.175, 0));   // PARALELO A LA VIGA: el largo (295) va A LO LARGO del tubo, el fondo (108) transversal; la RUEDA queda abajo
     push('seccknob', 'motor', true, false, function (TH){ return new TH.CylinderGeometry(0.045, 0.045, 0.035, 12); }, mT(THREE, seccX, -0.285, 0));   // RUEDA NEGRA hacia ABAJO
-    push('seccmaneta', 'motor', true, false, function (TH){ return new TH.BoxGeometry(0.02, 0.03, 0.09); }, mT(THREE, seccX, -0.305, 0));             // maneta
+    push('seccmaneta', 'motor', true, false, function (TH){ return new TH.BoxGeometry(0.09, 0.03, 0.02); }, mT(THREE, seccX, -0.305, 0));             // maneta (lever) A LO LARGO de la viga, coherente con la caja paralela
     push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX-0.075, -0.067, 0));
     push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX+0.075, -0.067, 0));
     push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX-0.075, 0, 0));
     push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX+0.075, 0, 0));   // abarcones justo por fuera de la caja girada
-    push('secclink', 'cable', true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.054)/2, -0.19, 0.028));   // ROJO (los 30 cm justos de separación)
-    push('secclink', 'jbox',  true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.054)/2, -0.19, -0.028)); // NEGRO
+    push('secclink', 'cable', true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, 0.028));   // ROJO (los 30 cm justos de separación)
+    push('secclink', 'jbox',  true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, -0.028)); // NEGRO
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -318,6 +318,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.13';
+  S.VERSION = '0.4.14';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
