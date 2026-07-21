@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.26</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.28</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -134,7 +134,7 @@ function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que 
         if(nan){bad++;for(var k2=0;k2<16;k2++)a[b+k2]=0;upd=true;}}
       if(bad){nanc+=bad;info.push(name+':'+bad);} if(upd)im.instanceMatrix.needsUpdate=true; }
     if(typeof SEG!=='undefined'&&SEG)SEG.forEach(function(s){if(s.im)scan(s.key,s.im);});
-    scan('poste',imPost);scan('eje',imShaft);scan('amortBody',imDampBody);
+    scan('poste',imPost);scan('eje',imShaft);scan('amortBody',imDampBody);scan('amortCrank',imDampCrank);
     var sm=(renderer&&renderer.shadowMap)?renderer.shadowMap.enabled:'?';
     var mtx=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:'?';
     var sc=(SUN&&SUN.shadow)?SUN.shadow.camera:null;
@@ -508,12 +508,12 @@ function gridRepair(){
     n.gx=gE;n.gz=-gN;n.glat=lat0+gN/mPerLat;n.glon=lon0+gE/mPerLon;});
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
-var imPost,imShaft,imDampBody=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
+var imPost,imShaft,imDampBody=null,imDampCrank=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
 var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4(),_MSN9=new THREE.Matrix4(),_MSS9=new THREE.Matrix4();
 var kinked=true;   // "trackers quebrados": cada viga tiene una RÓTULA en el actuador (centro); la mitad N y la mitad S drapean con pendiente propia según el terreno (no es una viga rígida)
 var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   // edición en 3D: cajas de selección (raycast), seguidor seleccionado y arrastre
 var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
-var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_DIR=new THREE.Vector3();
+var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_PT=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 var PANEL_NX=6,PANEL_NY=12;   // rejilla de células compartida por la textura y el microrrelieve (alineados)
 function makePanelTex(){
@@ -585,7 +585,8 @@ function buildTrackers(elevAt){
     if(t.terrainScaled)count=(tw?2:1)*N; else if(perFila)count=N*2*n; else if(t.damperLink)count=N*2*n; else count=(tw?2:1)*N*n;   // amortiguadores: en ambas filas
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
-    if(t.damperLink){imDampBody=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,1,12),mats[t.mat],count);imDampBody.frustumCulled=false;imDampBody.castShadow=true;imDampBody.receiveShadow=true;imDampBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampBody);}   // CUERPO grueso del amortiguador (body+rod como el gemelo); 'im' es el vástago fino
+    if(t.damperLink){imDampBody=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,1,12),mats[t.mat],count);imDampBody.frustumCulled=false;imDampBody.castShadow=true;imDampBody.receiveShadow=true;imDampBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampBody);   // CUERPO grueso del amortiguador (body+rod como el gemelo); 'im' es el vástago fino
+      imDampCrank=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.022,0.022,1,8),steelM,count);imDampCrank.frustumCulled=false;imDampCrank.castShadow=true;imDampCrank.receiveShadow=true;imDampCrank.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampCrank);}   // MANIVELA (biela de acero) del tubo a la cima del amortiguador: fija el extremo superior A LA VIGA
     SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
@@ -679,12 +680,12 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
       if(_DM){var _DA=(med&&_DM.asM)?_DM.asM:_DM.as,_DB=(med&&_DM.bsM)?_DM.bsM:_DM.bs;   // AMORTIGUADORES (ambas filas): pie FIJO al poste (sin Rx) + extremo en la viga (con Rx); cotas medio si aplica
         _RZ.makeRotationZ(kf?kf.dN:0);_M.multiplyMatrices(SEGO,_RZ);_MSN9.multiplyMatrices(t.fb[f],_M);   // base ESTÁTICA de cada mitad CON su quiebre (sin Rx): en ±9 el desfase pie/manivela era mm, en el soporte real ±22,9 con vex el quiebre abría metros y la biela salía disparada en vertical
         _RZ.makeRotationZ(kf?kf.dS:0);_M.multiplyMatrices(SEGO,_RZ);_MSS9.multiplyMatrices(t.fb[f],_M);
-        for(var dl=0;dl<_DM.n;dl++){var _ds9=_DA[dl][0]>0?1:-1,_dlat9=_ds9*0.16;_PA.set(_DA[dl][0]-_dlat9,_DA[dl][1],_DA[dl][2]).applyMatrix4(_DA[dl][0]>0?_MSN9:_MSS9);   // pie Y cima se corren 16 cm HACIA EL MOTOR a lo largo del tubo (eje x = eje de basculación, invariante): TODO el amortiguador queda al LATERAL del poste, paralelo a él, sin atravesarlo
-          _PA.y=terrainMeshY(_PA.x,-_PA.z)+0.30;   // pie EN EL SOPORTE a 30 cm del SUELO ('eso está mal': anclaba ~40 cm bajo la viga) → vástago LARGO como el real; sigue solo en el 2º poste desde fuera de cada media fila
-          _PB.set(_DB[dl][0]-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // cima en la manivela del tubo (bascula) con el MISMO lateral que el pie → el vástago sube paralelo al poste, por su costado del motor (antes la cima seguía en el eje del poste y la biela lo cruzaba arriba)
+        for(var dl=0;dl<_DM.n;dl++){var _ds9=_DA[dl][0]>0?1:-1,_dlat9=_ds9*0.08;_PA.set(_DA[dl][0]-_dlat9,_DA[dl][1],_DA[dl][2]).applyMatrix4(_DA[dl][0]>0?_MSN9:_MSS9);   // pie en su cota ORIGINAL (~40 cm bajo la viga, ARRIBA sobre el soporte, junto al rodamiento), solo corrido 8 cm HACIA EL MOTOR → cuerpo PEGADO al costado del poste. NO se baja al suelo: bajarlo a suelo+0,30 hacía un cilindro LARGO que flotaba ('render horror', 'a 30 cm del suelo eso está mal')
+          _PB.set(_DB[dl][0]-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);   // cima en la manivela del tubo (bascula) con el MISMO lateral que el pie → biela corta y paralela al poste; la manivela (imDampCrank) une esta cima al eje del tubo
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
-          if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}}}                                          // CUERPO oscuro, 62% centrado (= gemelo)
+          if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}                                          // CUERPO oscuro, 62% centrado (= gemelo)
+          if(imDampCrank){_PT.set(_DA[dl][0]-_dlat9,0,0).applyMatrix4(_DB[dl][0]>0?_MDN:_MDS);_DIR.subVectors(_PB,_PT);var cln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/cln);_Q.setFromUnitVectors(_UP,_DIR);_PV.copy(_PT).add(_PB).multiplyScalar(0.5);_SC.set(1,cln,1);_M2.compose(_PV,_Q,_SC);imDampCrank.setMatrixAt(_bidx,_M2);}}}   // MANIVELA: del EJE del tubo a la cima → la cima queda PEGADA a la viga (antes flotaba ~20 cm sobre el tubo)
       if(f===0){
         if(TCUGLB){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
         if(_ML){_MS.multiplyMatrices(t.fb[0],SEGO);_PA.set(_ML.a[0],_ML.a[1],_ML.a[2]).applyMatrix4(_MS);_PB.set(_ML.b[0],_ML.b[1],_ML.b[2]).applyMatrix4(_MD);   // A=conector del motor (FIJO) · B=conector de la TCU (BASCULA)
@@ -693,6 +694,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
     }}
   for(var si=0;si<SEG.length;si++){if(SEG[si].spin||SEG[si].motorLink||SEG[si].damperLink)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(imDampBody)imDampBody.instanceMatrix.needsUpdate=true;
+  if(imDampCrank)imDampCrank.instanceMatrix.needsUpdate=true;
   if(TCUGLB)for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].instanceMatrix.needsUpdate=true;
 }
 // carga el modelo REAL de la TCU (tcu.glb, 1 malla / 17 primitivas) y lo INSTANCIA (215 ud, viga oeste)
