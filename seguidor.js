@@ -191,16 +191,17 @@
     /* --- SECCIONADOR DC DS132EL (STEP del usuario, bbox 295×108×382 mm): en la viga con DOS abarcones
        como la TCU, a 30 cm de ella HACIA EL LADO CONTRARIO A LA CORONA (la corona está en X=0 y la TCU
        en +tcuX → el seccionador va más allá), unido a la TCU con 2 cables, NEGRO y ROJO. --- */
-    var seccX = D.tcuX + 0.25 + 0.30 + 0.1475;                 // borde de la TCU + 30 cm + media caja (largo 295 mm PARALELO a la viga → media caja = 0,1475)
-    push('secc', 'seccbox', true, true, function (TH){ return new TH.BoxGeometry(0.295, 0.19, 0.108); }, mT(THREE, seccX, -0.175, 0));   // PARALELO A LA VIGA: el largo (295) va A LO LARGO del tubo, el fondo (108) transversal; la RUEDA queda abajo
-    push('seccknob', 'motor', true, false, function (TH){ return new TH.CylinderGeometry(0.045, 0.045, 0.035, 12); }, mT(THREE, seccX, -0.285, 0));   // RUEDA NEGRA hacia ABAJO
-    push('seccmaneta', 'motor', true, false, function (TH){ return new TH.BoxGeometry(0.09, 0.03, 0.02); }, mT(THREE, seccX, -0.305, 0));             // maneta (lever) A LO LARGO de la viga, coherente con la caja paralela
-    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX-0.075, -0.067, 0));
-    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX+0.075, -0.067, 0));
-    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX-0.075, 0, 0));
-    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX+0.075, 0, 0));   // abarcones justo por fuera de la caja girada
-    push('secclink', 'cable', true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, 0.028));   // ROJO (los 30 cm justos de separación)
-    push('secclink', 'jbox',  true, false, function (TH){ return new TH.BoxGeometry(0.30, 0.007, 0.007); }, mT(THREE, (D.tcuX+0.25+seccX-0.1475)/2, -0.19, -0.028)); // NEGRO
+    var seccX = D.tcuX + 0.196 + 0.30 + 0.14;                  // borde REAL de la TCU (glb: medio ancho 0,196, no 0,25) + 30 cm de separación + media caja (0,28 largo → 0,14)
+    push('secc', 'seccbox', true, true, function (TH){ return new TH.BoxGeometry(0.28, 0.09, 0.16); }, mT(THREE, seccX, -0.11, 0));   // caja IP66 PLANA y alargada (foto real): 280 largo PARALELO al tubo × 90 de CANTO (poco profunda) × 160 transversal; la cara del mando va HACIA ABAJO (no es cúbica ni profunda como antes)
+    push('seccknob', 'motor', true, false, function (TH){ return new TH.CylinderGeometry(0.055, 0.055, 0.02, 18); }, mT(THREE, seccX, -0.165, 0));   // MANDO redondo NEGRO en la cara inferior, hacia ABAJO (disco Ø110)
+    push('seccmaneta', 'motor', true, false, function (TH){ return new TH.BoxGeometry(0.085, 0.016, 0.03); }, mT(THREE, seccX, -0.182, 0));   // maneta del mando
+    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX-0.085, -0.062, 0));
+    push('seccchapa', 'steel', true, false, tcuChapa, mT(THREE, seccX+0.085, -0.062, 0));
+    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX-0.085, 0, 0));
+    push('seccabarcon', 'silver', true, false, abarconTcuGeom, mT(THREE, seccX+0.085, 0, 0));
+    // 2 cables seccionador↔TCU (rojo/negro) que SÍ LLEGAN a la TCU: extremo TCU en tcuX+0,18 (dentro del borde real 0,196), extremo seccionador dentro de la caja; caída natural (catenaria)
+    push('secclink', 'cable', true, false, function (TH){ return catenary(TH, new TH.Vector3(D.tcuX+0.18,-0.12,0), new TH.Vector3(seccX-0.12,-0.135,0), 0.03, 0.0035); }, mT(THREE, 0,0,0.03));   // ROJO
+    push('secclink', 'jbox',  true, false, function (TH){ return catenary(TH, new TH.Vector3(D.tcuX+0.18,-0.12,0), new TH.Vector3(seccX-0.12,-0.135,0), 0.03, 0.0035); }, mT(THREE, 0,0,-0.03)); // NEGRO
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -318,6 +319,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.14';
+  S.VERSION = '0.4.15';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
