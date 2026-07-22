@@ -202,6 +202,13 @@
     // 2 cables seccionador↔TCU (rojo/negro) que SÍ LLEGAN a la TCU: extremo TCU en tcuX+0,18 (dentro del borde real 0,196), extremo seccionador dentro de la caja; caída natural (catenaria)
     push('secclink', 'cable', true, false, function (TH){ return catenary(TH, new TH.Vector3(D.tcuX+0.18,-0.12,0), new TH.Vector3(seccX-0.12,-0.135,0), 0.03, 0.0035); }, mT(THREE, 0,0,0.03));   // ROJO
     push('secclink', 'jbox',  true, false, function (TH){ return catenary(TH, new TH.Vector3(D.tcuX+0.18,-0.12,0), new TH.Vector3(seccX-0.12,-0.135,0), 0.03, 0.0035); }, mT(THREE, 0,0,-0.03)); // NEGRO
+    /* --- ALIMENTACIÓN DC EN PARALELO: 2 derivaciones del cable DC de string (que corre por la viga), de DOS
+       strings distintos (una por ala), que suben al seccionador. Punto de toma ESTIMADO (el DWG de cableado DC
+       no lo fija). Cada derivación: corre por el bajo del tubo y sube a una glándula del seccionador. --- */
+    push('seccdca', 'jbox', true, true, function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([
+      new TH.Vector3(seccX-0.55,-0.095,0.04), new TH.Vector3(seccX-0.28,-0.10,0.04), new TH.Vector3(seccX-0.17,-0.13,0.035), new TH.Vector3(seccX-0.115,-0.15,0.03)]), 18, 0.005, 7, false); }, mT(THREE, 0,0,0));   // string ala -X (lado drive) → seccionador
+    push('seccdcb', 'jbox', true, true, function (TH){ return new TH.TubeGeometry(new TH.CatmullRomCurve3([
+      new TH.Vector3(seccX+0.55,-0.095,-0.04), new TH.Vector3(seccX+0.28,-0.10,-0.04), new TH.Vector3(seccX+0.17,-0.13,-0.035), new TH.Vector3(seccX+0.115,-0.15,-0.03)]), 18, 0.005, 7, false); }, mT(THREE, 0,0,0)); // string ala +X → seccionador
 
     /* --- SLEW DRIVE en el centro del tubo (FIJO: no bascula; el tubo gira dentro) --- */
     out.push({ key:'corona', mat:'blue', spin:false, cast:true, twin:true,   // corona slew; TWIN: también en la viga GEMELA (la del eje de transmisión, sin motor)
@@ -283,7 +290,7 @@
     var mats = opts.materials || S.materials(THREE);
     var west = opts.west !== false;
     var skip = opts.skip || {};
-    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1, secc:1, seccknob:1, seccmaneta:1, seccchapa:1, seccabarcon:1, secclink:1 };   // el seccionador va con la TCU: solo viga oeste
+    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1, secc:1, seccknob:1, seccmaneta:1, seccchapa:1, seccabarcon:1, secclink:1, seccdca:1, seccdcb:1 };   // el seccionador (y sus derivaciones DC) va con la TCU: solo viga oeste
     var spin = new THREE.Group(), stat = new THREE.Group(), modCols = [], dampers = [];
     S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full' }).forEach(function (p) {
       if (p.motorLink) return;                                   // cable motor↔TCU: lo gestiona la app por frame (pendiente)
@@ -319,6 +326,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.15';
+  S.VERSION = '0.4.16';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
