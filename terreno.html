@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.38</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.39</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -673,7 +673,7 @@ function layoutTrackers(){
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
       if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
-      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,ejeY=topY-0.06,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);
+      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,ejeY=topY,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);   // _M2 cae en el EJE del tubo (el origen canónico del seguidor ES el eje; la viga es un Box centrado): antes se restaba 0,06 "de cúspide" y la viga quedaba DESCENTRADA (arriba) del hueco del tambor
       _PV.set(wx,(postTop+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);              // poste VERTICAL del suelo a la BASE de la horquilla (ya no se hunde en el tambor, como en la foto)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
       _SC.set(1,1,1);_PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);                                              // origen local de las 3 piezas = eje del tubo
