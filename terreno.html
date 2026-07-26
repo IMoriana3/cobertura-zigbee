@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.39</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.40</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -179,7 +179,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
 var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
-var imBearing=null,imSaddle=null,imVirola=null;
+var imBearing=null,imSaddle=null,imVirola=null,imBush=null;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
@@ -596,10 +596,18 @@ function buildTrackers(elevAt){
   _viS.lineTo(0.117*Math.cos(3.4034),0.117*Math.sin(3.4034));_viS.absarc(0,0,0.117,3.4034,-0.2618,true);_viS.closePath();
   var _viG=new THREE.ExtrudeGeometry(_viS,{depth:0.15,bevelEnabled:false,curveSegments:22});_viG.translate(0,0,-0.075);
   imVirola=new THREE.InstancedMesh(_viG,steelM,N*TC.np);
+  // CASQUILLO INTERIOR: manguito de polímero que ABRAZA la viga y llena el ojo del tambor ("alrededor están
+  // los casquillos"). Como en la realidad, GIRA CON la viga dentro del alojamiento estático (se recoloca por
+  // frame en updateSpin, como los amortiguadores): boca cuadrada 0,1216 ceñida a la viga de 0,12 y exterior
+  // redondo r 0,0865 que cabe en el ojo (0,088) a cualquier basculación (semidiagonal boca 0,0859 < 0,0865).
+  var _buS=new THREE.Shape();_buS.absarc(0,0,0.0865,0,Math.PI*2,false);
+  var _buH=new THREE.Path();_buH.moveTo(0.0608,0.0608);_buH.lineTo(0.0608,-0.0608);_buH.lineTo(-0.0608,-0.0608);_buH.lineTo(-0.0608,0.0608);_buH.closePath();_buS.holes.push(_buH);
+  var _buG=new THREE.ExtrudeGeometry(_buS,{depth:0.19,bevelEnabled:false,curveSegments:24});_buG.translate(0,0,-0.095);_buG.rotateY(Math.PI/2);   // giro a marco CANÓNICO: el eje de extrusión pasa a +X (a lo largo del tubo), como las piezas de seguidor.js
+  imBush=new THREE.InstancedMesh(_buG,hdpeM,N*TC.np);
   pileMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0});   // base blanca: deja ver el color por instancia (modo pile reveal)
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
-  [imPost,imShaft,imBearing,imSaddle,imVirola].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  [imPost,imShaft,imBearing,imSaddle,imVirola,imBush].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var dampPosts=zPT?[-22.9,22.9]:[zP[1],zP[zP.length-2]];                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
   var zPm=zP.filter(function(z){return Math.abs(z)<=16.8;}).sort(function(a,b){return a-b;});
   var dampPostsM=zPT?[-6.5,6.5]:(zPm.length>=4?[zPm[1],zPm[zPm.length-2]]:dampPosts);   // MEDIO: 2º poste desde fuera DE SU media fila — heredaba los ±26 del largo, más allá de su puntera, y el amortiguador quedaba FLOTANDO
@@ -702,6 +710,10 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);var kf=t.kink[f];                          // base de la fila · (orientación·spin)
       if(kf&&(kf.dN||kf.dS)){_RZ.makeRotationZ(kf.dN);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDN.multiplyMatrices(t.fb[f],_M);_RZ.makeRotationZ(kf.dS);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDS.multiplyMatrices(t.fb[f],_M);}else{_MDN.copy(_MD);_MDS.copy(_MD);}   // QUEBRADO: mitad N gira Δθ_N y mitad S Δθ_S alrededor del eje Z canónico (→ eje E/W del mundo), rótula en el actuador (x=0)
+      if(imBush){var _zB=zPfor(t),_hB=TC.np/2;                                                        // CASQUILLO interior: gira CON la viga (misma matriz basculada que el tubo), uno por poste, índice alineado con imBearing
+        for(var kb=0;kb<_hB;kb++){var _ib=i*TC.np+f*_hB+kb;
+          if(kb>=_zB.length||(t.medio&&!TC.zPT&&Math.abs(_zB[kb])>16)){_SCT.makeScale(0,0,0);imBush.setMatrixAt(_ib,_SCT);continue;}
+          _T.makeTranslation(-_zB[kb],0,0);_M2.multiplyMatrices(_zB[kb]<0?_MDN:_MDS,_T);imBush.setMatrixAt(_ib,_M2);}}   // canónico +X = −Z mundo → x_c = −zP; mitad N/S con su quiebre (mismo criterio que layoutTrackers)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var L=med?s.Lm:s.L,base=(i*2+f)*s.n;
         if(s.antenna){if(f===0){var ax,ay,az;if(connCanon){_PV.copy(connCanon).applyMatrix4(_MD);ax=_PV.x;ay=_PV.y;az=_PV.z;}else{_M2.multiplyMatrices(_MD,s.L[0]);ax=_M2.elements[12];ay=_M2.elements[13];az=_M2.elements[14];}var hang=TC.antHang||0.5,tipH=TC.antTip||0.07;if(s.tip){_PV.set(ax,ay-hang+tipH/2,az);_Q.identity();_SC.set(1,tipH,1);_M2.compose(_PV,_Q,_SC);t.aTip=[ax,ay-hang,az];}else{var cabL=hang-tipH;_PV.set(ax,ay-cabL/2,az);_Q.identity();_SC.set(1,cabL,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cuelga 50 cm vertical desde el conector; guarda la PUNTA (t.aTip) para los enlaces RF
         if((s.key==='tcu'||s.key==='tcu_brk'||s.key==='tcuabarcon'||s.key==='tcuchapa'||s.key.slice(0,4)==='secc')&&f){for(var l=0;l<s.n;l++){_SCT.makeScale(0,0,0);s.im.setMatrixAt(base+l,_SCT);}continue;}  // TCU, sus abarcones y chapas solo en la fila OESTE (la del motor)
@@ -726,6 +738,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
       }
     }}
   for(var si=0;si<SEG.length;si++){if(SEG[si].spin||SEG[si].motorLink||SEG[si].damperLink)SEG[si].im.instanceMatrix.needsUpdate=true;}
+  if(imBush)imBush.instanceMatrix.needsUpdate=true;
   if(imDampBody)imDampBody.instanceMatrix.needsUpdate=true;
   if(imDampCrank)imDampCrank.instanceMatrix.needsUpdate=true;
   if(imDampFoot)imDampFoot.instanceMatrix.needsUpdate=true;
