@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.36</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.37</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -179,7 +179,7 @@ var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
 var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
 var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
-var imBearing=null,imSaddle=null;
+var imBearing=null,imSaddle=null,imVirola=null;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
@@ -563,13 +563,41 @@ function buildTrackers(elevAt){
   var _cpS=new THREE.Shape();_cpS.moveTo(-0.07,0.035);_cpS.lineTo(-0.07,-0.035);_cpS.lineTo(0.07,-0.035);_cpS.lineTo(0.07,0.035);_cpS.lineTo(0.055,0.035);_cpS.lineTo(0.055,-0.027);_cpS.lineTo(-0.055,-0.027);_cpS.lineTo(-0.055,0.035);_cpS.closePath();   // PERFIL C 140×70 con labios, canal ABIERTO (foto del poste real: se ve el interior)
   var _cpG=new THREE.ExtrudeGeometry(_cpS,{depth:postH,bevelEnabled:false});_cpG.translate(0,0,-postH/2);_cpG.rotateX(-Math.PI/2);_cpG.rotateY(Math.PI/2);   // el CANAL abierto mira al PASILLO: antes quedaba al norte y el poste parecía tubo cerrado ('los tuyos no tienen forma de C')
   imPost=new THREE.InstancedMesh(_cpG,steelM,N*TC.np);
-  var _cjG=new THREE.TorusGeometry(0.088,0.017,8,18);                       // HORQUILLA DE ARO galvanizada (fotos): el tubo ATRAVIESA su ojo circular
-  imBearing=new THREE.InstancedMesh(_cjG,steelM,N*TC.np);
-  imSaddle=new THREE.InstancedMesh(new THREE.BoxGeometry(0.11,0.07,0.13),steelM,N*TC.np);   // base de la horquilla atornillada a la cabeza del poste
+  // ——— UNIÓN VIGA↔POSTE, según el render del fabricante (Solar Steel) enviado por el usuario. SIN COTAS:
+  // proporciones DERIVADAS de esa imagen (tambor ≈ 1,9× el ancho de viga; horquilla algo más ancha que el tambor).
+  // CASQUILLO DE GIRO: tambor redondo de polímero oscuro con ranuras radiales, atravesado por la viga. En el
+  // render es ESTÁTICO (no bascula), así que su ojo es REDONDO (r 0,088 ≥ semidiagonal 0,085 de la viga de 0,12)
+  // para que la viga cuadrada gire dentro sin atravesarlo a ninguna hora.
+  var _cjS=new THREE.Shape();_cjS.absarc(0,0,0.115,0,Math.PI*2,false);
+  var _cjH=new THREE.Path();_cjH.absarc(0,0,0.088,0,Math.PI*2,true);_cjS.holes.push(_cjH);
+  for(var _sl=0;_sl<8;_sl++){var _a0=(_sl*45+11)*DEG,_a1=(_sl*45+35)*DEG,_shp=new THREE.Path();   // 8 ranuras radiales (los nervios de la foto)
+    _shp.moveTo(0.108*Math.cos(_a1),0.108*Math.sin(_a1));_shp.absarc(0,0,0.108,_a1,_a0,true);_shp.lineTo(0.093*Math.cos(_a0),0.093*Math.sin(_a0));_shp.absarc(0,0,0.093,_a0,_a1,false);_shp.closePath();_cjS.holes.push(_shp);}
+  var _cjG=new THREE.ExtrudeGeometry(_cjS,{depth:0.17,bevelEnabled:false,curveSegments:24});_cjG.translate(0,0,-0.085);
+  var hdpeM=new THREE.MeshStandardMaterial({color:0x24272b,roughness:.9,metalness:.08});   // polímero oscuro del casquillo
+  imBearing=new THREE.InstancedMesh(_cjG,hdpeM,N*TC.np);
+  // PIEZA DE REGULACIÓN (PRE01): horquilla galvanizada — dos placas ⊥ a la viga con CUNA semicircular donde
+  // asienta el tambor, orejetas arriba, cartelas trapezoidales que bajan flanqueando el perfil C (140 va en z,
+  // así que las placas van a z=±0,082 y lo abrazan) y placa base sobre la cabeza del poste. Una sola geometría.
+  function _mrg(gs){var P=[],Nn=[],U=[],I=[],o=0;for(var g0=0;g0<gs.length;g0++){var g=gs[g0],p=g.attributes.position,n=g.attributes.normal,u=g.attributes.uv,ix=g.index,c=p.count,j;
+    for(j=0;j<c;j++){P.push(p.getX(j),p.getY(j),p.getZ(j));Nn.push(n.getX(j),n.getY(j),n.getZ(j));U.push(u?u.getX(j):0,u?u.getY(j):0);}
+    if(ix)for(j=0;j<ix.count;j++)I.push(ix.getX(j)+o);else for(j=0;j<c;j++)I.push(j+o);o+=c;}
+    var G=new THREE.BufferGeometry();G.setAttribute('position',new THREE.Float32BufferAttribute(P,3));G.setAttribute('normal',new THREE.Float32BufferAttribute(Nn,3));G.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));G.setIndex(I);return G;}
+  var _fkS=new THREE.Shape();_fkS.moveTo(-0.05,-0.44);_fkS.lineTo(0.05,-0.44);_fkS.lineTo(0.15,-0.20);_fkS.lineTo(0.15,0.03);_fkS.lineTo(0.1131,0.03);
+  _fkS.absarc(0,0,0.117,0.2594,2.8822,true);_fkS.lineTo(-0.15,0.03);_fkS.lineTo(-0.15,-0.20);_fkS.closePath();   // cuna r 0,117 (tambor 0,115 + holgura)
+  var _fkP=new THREE.ExtrudeGeometry(_fkS,{depth:0.012,bevelEnabled:false,curveSegments:20});_fkP.translate(0,0,-0.006);
+  var _fkG=_mrg([_fkP.clone().translate(0,0,0.082),_fkP.translate(0,0,-0.082),
+    new THREE.BoxGeometry(0.024,0.20,0.152).translate(0.138,-0.14,0),new THREE.BoxGeometry(0.024,0.20,0.152).translate(-0.138,-0.14,0),
+    new THREE.BoxGeometry(0.30,0.016,0.176).translate(0,-0.245,0)]);
+  imSaddle=new THREE.InstancedMesh(_fkG,steelM,N*TC.np);
+  // VIROLA: fleje-arco galvanizado que CIERRA la horquilla por encima del tambor (retiene el casquillo en su cuna)
+  var _viS=new THREE.Shape();_viS.moveTo(0.131*Math.cos(-0.2618),0.131*Math.sin(-0.2618));_viS.absarc(0,0,0.131,-0.2618,3.4034,false);
+  _viS.lineTo(0.117*Math.cos(3.4034),0.117*Math.sin(3.4034));_viS.absarc(0,0,0.117,3.4034,-0.2618,true);_viS.closePath();
+  var _viG=new THREE.ExtrudeGeometry(_viS,{depth:0.15,bevelEnabled:false,curveSegments:22});_viG.translate(0,0,-0.075);
+  imVirola=new THREE.InstancedMesh(_viG,steelM,N*TC.np);
   pileMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.82,metalness:0});   // base blanca: deja ver el color por instancia (modo pile reveal)
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
-  [imPost,imShaft,imBearing,imSaddle].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
+  [imPost,imShaft,imBearing,imSaddle,imVirola].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
   var dampPosts=zPT?[-22.9,22.9]:[zP[1],zP[zP.length-2]];                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
   var zPm=zP.filter(function(z){return Math.abs(z)<=16.8;}).sort(function(a,b){return a-b;});
   var dampPostsM=zPT?[-6.5,6.5]:(zPm.length>=4?[zPm[1],zPm[zPm.length-2]]:dampPosts);   // MEDIO: 2º poste desde fuera DE SU media fila — heredaba los ±26 del largo, más allá de su puntera, y el amortiguador quedaba FLOTANDO
@@ -641,14 +669,13 @@ function layoutTrackers(){
     var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
-      if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni rodamiento
+      if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
-      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,len=Math.max(0.3,topY-terrY);
-      _PV.set(wx,(topY+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                  // poste VERTICAL desde el suelo hasta el tubo (sin volar ni hundirse)
+      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,ejeY=topY-0.06,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);
+      _PV.set(wx,(postTop+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);              // poste VERTICAL del suelo a la BASE de la horquilla (ya no se hunde en el tambor, como en la foto)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
-      _SC.set(1,1,1);var ejeY=topY-0.06;                                                                    // eje del tubo (topY es la cúspide)
-      _PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);imBearing.setMatrixAt(i*TC.np+pi,_M2);                     // ARO coaxial: la viga lo atraviesa (el ojo del toro mira a lo largo del tubo)
-      _PV.set(wx,ejeY-0.115,wz);_M2.compose(_PV,_Q,_SC);imSaddle.setMatrixAt(i*TC.np+pi,_M2);pi++;}}         // base bajo el aro, sobre la cabeza del poste
+      _SC.set(1,1,1);_PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);                                              // origen local de las 3 piezas = eje del tubo
+      imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;}}   // tambor + horquilla PRE01 + virola
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
@@ -656,7 +683,7 @@ function layoutTrackers(){
           _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
         else {var fo=_OS.multiplyMatrices(fbx,SEGO);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(bi*s.n+l,_M2);}}}}
   }
-  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;
+  imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imBearing.instanceMatrix.needsUpdate=true;imSaddle.instanceMatrix.needsUpdate=true;imVirola.instanceMatrix.needsUpdate=true;   // (antes casquillo/base no se re-subían al arrastrar un seguidor)
   for(var si=0;si<SEG.length;si++){if(!SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
   for(var pb=0;pb<TRK.length;pb++){if(PICK[pb]){var tb=TRK[pb];PICK[pb].position.set(tb.gx,tb.rel*vex+TC.postH*0.6+1,tb.gz);}}   // cajas de selección siguen al seguidor (también al arrastrarlo)
