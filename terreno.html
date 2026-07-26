@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.37</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.38</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -570,7 +570,7 @@ function buildTrackers(elevAt){
   // para que la viga cuadrada gire dentro sin atravesarlo a ninguna hora.
   var _cjS=new THREE.Shape();_cjS.absarc(0,0,0.115,0,Math.PI*2,false);
   var _cjH=new THREE.Path();_cjH.absarc(0,0,0.088,0,Math.PI*2,true);_cjS.holes.push(_cjH);
-  for(var _sl=0;_sl<8;_sl++){var _a0=(_sl*45+11)*DEG,_a1=(_sl*45+35)*DEG,_shp=new THREE.Path();   // 8 ranuras radiales (los nervios de la foto)
+  for(var _sl=0;_sl<12;_sl++){var _a0=(_sl*30+8)*DEG,_a1=(_sl*30+24)*DEG,_shp=new THREE.Path();   // 12 ranuras radiales finas (las aletas de la foto)
     _shp.moveTo(0.108*Math.cos(_a1),0.108*Math.sin(_a1));_shp.absarc(0,0,0.108,_a1,_a0,true);_shp.lineTo(0.093*Math.cos(_a0),0.093*Math.sin(_a0));_shp.absarc(0,0,0.093,_a0,_a1,false);_shp.closePath();_cjS.holes.push(_shp);}
   var _cjG=new THREE.ExtrudeGeometry(_cjS,{depth:0.17,bevelEnabled:false,curveSegments:24});_cjG.translate(0,0,-0.085);
   var hdpeM=new THREE.MeshStandardMaterial({color:0x24272b,roughness:.9,metalness:.08});   // polímero oscuro del casquillo
@@ -585,9 +585,11 @@ function buildTrackers(elevAt){
   var _fkS=new THREE.Shape();_fkS.moveTo(-0.05,-0.44);_fkS.lineTo(0.05,-0.44);_fkS.lineTo(0.15,-0.20);_fkS.lineTo(0.15,0.03);_fkS.lineTo(0.1131,0.03);
   _fkS.absarc(0,0,0.117,0.2594,2.8822,true);_fkS.lineTo(-0.15,0.03);_fkS.lineTo(-0.15,-0.20);_fkS.closePath();   // cuna r 0,117 (tambor 0,115 + holgura)
   var _fkP=new THREE.ExtrudeGeometry(_fkS,{depth:0.012,bevelEnabled:false,curveSegments:20});_fkP.translate(0,0,-0.006);
+  var _blt=function(x,y){return new THREE.CylinderGeometry(0.013,0.013,0.20,6).rotateX(Math.PI/2).translate(x,y,0);};   // tornillo pasante hexagonal (⊥ a las placas, cabezas asomando)
   var _fkG=_mrg([_fkP.clone().translate(0,0,0.082),_fkP.translate(0,0,-0.082),
     new THREE.BoxGeometry(0.024,0.20,0.152).translate(0.138,-0.14,0),new THREE.BoxGeometry(0.024,0.20,0.152).translate(-0.138,-0.14,0),
-    new THREE.BoxGeometry(0.30,0.016,0.176).translate(0,-0.245,0)]);
+    new THREE.BoxGeometry(0.30,0.016,0.176).translate(0,-0.245,0),
+    _blt(0.1315,-0.005),_blt(-0.1315,-0.005),_blt(0,-0.30),_blt(0,-0.38)]);   // 2 en las orejetas + 2 pasantes por el poste (los de la foto)
   imSaddle=new THREE.InstancedMesh(_fkG,steelM,N*TC.np);
   // VIROLA: fleje-arco galvanizado que CIERRA la horquilla por encima del tambor (retiene el casquillo en su cuna)
   var _viS=new THREE.Shape();_viS.moveTo(0.131*Math.cos(-0.2618),0.131*Math.sin(-0.2618));_viS.absarc(0,0,0.131,-0.2618,3.4034,false);
