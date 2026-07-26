@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.40</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.41</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -573,7 +573,7 @@ function buildTrackers(elevAt){
   for(var _sl=0;_sl<12;_sl++){var _a0=(_sl*30+8)*DEG,_a1=(_sl*30+24)*DEG,_shp=new THREE.Path();   // 12 ranuras radiales finas (las aletas de la foto)
     _shp.moveTo(0.108*Math.cos(_a1),0.108*Math.sin(_a1));_shp.absarc(0,0,0.108,_a1,_a0,true);_shp.lineTo(0.093*Math.cos(_a0),0.093*Math.sin(_a0));_shp.absarc(0,0,0.093,_a0,_a1,false);_shp.closePath();_cjS.holes.push(_shp);}
   var _cjG=new THREE.ExtrudeGeometry(_cjS,{depth:0.17,bevelEnabled:false,curveSegments:24});_cjG.translate(0,0,-0.085);
-  var hdpeM=new THREE.MeshStandardMaterial({color:0x24272b,roughness:.9,metalness:.08});   // polímero oscuro del casquillo
+  var hdpeM=new THREE.MeshStandardMaterial({color:0x0e0f10,roughness:.85,metalness:.05});   // polímero NEGRO del casquillo (petición: "el casquillo debe ser negro"; casi-negro mate para no perder el volumen de las aletas)
   imBearing=new THREE.InstancedMesh(_cjG,hdpeM,N*TC.np);
   // PIEZA DE REGULACIÓN (PRE01): horquilla galvanizada — dos placas ⊥ a la viga con CUNA semicircular donde
   // asienta el tambor, orejetas arriba, cartelas trapezoidales que bajan flanqueando el perfil C (140 va en z,
