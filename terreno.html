@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.44</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.45</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -509,7 +509,7 @@ function gridRepair(){
 }
 var steelM,glassM,markM,blueM,motorM,panelTex;
 var imPost,imShaft,imDampBody=null,imDampCrank=null,imDampFoot=null,SEG=null,SEGO=null,TC={},_pAcc=0,TCUGLB=null,_TCUMOUNT=new THREE.Matrix4(),connCanon=null;   // connCanon = conector dorado de antena (en marco canónico) para colgar la antena de ahí
-var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4(),_MSN9=new THREE.Matrix4(),_MSS9=new THREE.Matrix4();
+var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new THREE.Matrix4(),_MN=new THREE.Matrix4(),_MS=new THREE.Matrix4(),_MC=new THREE.Matrix4(),_SCT=new THREE.Matrix4(),_OS=new THREE.Matrix4(),_MD=new THREE.Matrix4(),_MDN=new THREE.Matrix4(),_MDS=new THREE.Matrix4(),_RX=new THREE.Matrix4(),_RZ=new THREE.Matrix4(),_MSN9=new THREE.Matrix4(),_MSS9=new THREE.Matrix4(),_TX9=new THREE.Vector3(),_SD9=new THREE.Vector3();
 var kinked=true;   // "trackers quebrados": cada viga tiene una RÓTULA en el actuador (centro); la mitad N y la mitad S drapean con pendiente propia según el terreno (no es una viga rígida)
 var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   // edición en 3D: cajas de selección (raycast), seguidor seleccionado y arrastre
 var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
@@ -561,7 +561,7 @@ function buildTrackers(elevAt){
   TC={off:off,mesaC:mesaC,filaZ:filaZ,postH:postH,zP:zP,zPT:zPT,np:zPT?20:zP.length*2,modH:modH,span:span,mr:D.medioFactor,antHang:D.antHang,antTip:D.antTip,dampKidx:[1,zP.length-2]};   // índice (en zP) del penúltimo poste N y S, para el pie del amortiguador
   var N=NODES.length;
   var _cpS=new THREE.Shape();_cpS.moveTo(-0.07,0.035);_cpS.lineTo(-0.07,-0.035);_cpS.lineTo(0.07,-0.035);_cpS.lineTo(0.07,0.035);_cpS.lineTo(0.055,0.035);_cpS.lineTo(0.055,-0.027);_cpS.lineTo(-0.055,-0.027);_cpS.lineTo(-0.055,0.035);_cpS.closePath();   // PERFIL C 140×70 con labios, canal ABIERTO (foto del poste real: se ve el interior)
-  var _cpG=new THREE.ExtrudeGeometry(_cpS,{depth:postH,bevelEnabled:false});_cpG.translate(0,0,-postH/2);_cpG.rotateX(-Math.PI/2);_cpG.rotateY(Math.PI/2);   // el CANAL abierto mira al PASILLO: antes quedaba al norte y el poste parecía tubo cerrado ('los tuyos no tienen forma de C')
+  var _cpG=new THREE.ExtrudeGeometry(_cpS,{depth:postH,bevelEnabled:false});_cpG.translate(0,0,-postH/2);_cpG.rotateX(-Math.PI/2);   // canal abierto hacia -Z (norte); en layoutTrackers cada poste del semieje sur gira 180° → el HUECO de la C mira SIEMPRE al EXTERIOR del tracker ('los soportes están girados 90º, debe estar la parte hueca de la C hacia el exterior'); sustituye la orientación anterior al pasillo
   imPost=new THREE.InstancedMesh(_cpG,steelM,N*TC.np);
   // ——— UNIÓN VIGA↔POSTE, según el render del fabricante (Solar Steel) enviado por el usuario. SIN COTAS:
   // proporciones DERIVADAS de esa imagen (tambor ≈ 1,9× el ancho de viga; horquilla algo más ancha que el tambor).
@@ -624,7 +624,7 @@ function buildTrackers(elevAt){
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
     if(t.damperLink){imDampBody=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,1,12),mats[t.mat],count);imDampBody.frustumCulled=false;imDampBody.castShadow=true;imDampBody.receiveShadow=true;imDampBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampBody);   // CUERPO grueso del amortiguador (body+rod como el gemelo); 'im' es el vástago fino
-      imDampCrank=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.042,0.042,1,10),steelM,count);   // Ø84: la manivela se ve DE PUNTA desde el pasillo (escorzada) y en Ø44 desaparecía — el amortiguador "no llegaba a la viga"; acero claro para contrastar con el dorso oscuro de los módulosimDampCrank.frustumCulled=false;imDampCrank.castShadow=true;imDampCrank.receiveShadow=true;imDampCrank.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampCrank);   // MANIVELA (biela de acero) del tubo a la cima del amortiguador: fija el extremo superior A LA VIGA
+      imDampCrank=new THREE.InstancedMesh(new THREE.BoxGeometry(0.10,1,0.02),steelM,count);   // OREJETA-CHAPA del tubo a la cima (10 cm a lo largo de la viga × 2 cm): un cilindro se escorzaba a un punto según el ángulo y "no llegaba a la viga"; la chapa se lee desde cualquier vista (base propia en updateSpin)imDampCrank.frustumCulled=false;imDampCrank.castShadow=true;imDampCrank.receiveShadow=true;imDampCrank.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampCrank);   // MANIVELA (biela de acero) del tubo a la cima del amortiguador: fija el extremo superior A LA VIGA
       imDampFoot=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.016,0.016,1,8),steelM,count);imDampFoot.frustumCulled=false;imDampFoot.castShadow=true;imDampFoot.receiveShadow=true;imDampFoot.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampFoot);}   // MÉNSULA del pie: brazo horizontal DEL POSTE al pie del amortiguador (a 30 cm del suelo) → se ve que va sujeto AL POSTE, no flota
     SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
@@ -682,7 +682,8 @@ function layoutTrackers(){
       if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,ejeY=topY,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);   // _M2 cae en el EJE del tubo (el origen canónico del seguidor ES el eje; la viga es un Box centrado): antes se restaba 0,06 "de cúspide" y la viga quedaba DESCENTRADA (arriba) del hueco del tambor
-      _PV.set(wx,(postTop+terrY)/2,wz);_Q.identity();_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);              // poste VERTICAL del suelo a la BASE de la horquilla (ya no se hunde en el tambor, como en la foto)
+      if(zP[k]>0)_Q.setFromAxisAngle(_UP,Math.PI);else _Q.identity();                                          // HUECO de la C al EXTERIOR: semieje sur girado 180° (la geometría base abre al norte); horquilla/tambor/virola son simétricos a ese giro, comparten _Q sin cambio visual
+      _PV.set(wx,(postTop+terrY)/2,wz);_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                            // poste VERTICAL del suelo a la BASE de la horquilla (ya no se hunde en el tambor, como en la foto)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
       _SC.set(1,1,1);_PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);                                              // origen local de las 3 piezas = eje del tubo
       imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;}}   // tambor + horquilla PRE01 + virola
@@ -723,13 +724,15 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         _RZ.makeRotationZ(kf?kf.dN:0);_M.multiplyMatrices(SEGO,_RZ);_MSN9.multiplyMatrices(t.fb[f],_M);   // base ESTÁTICA de cada mitad CON su quiebre (sin Rx): en ±9 el desfase pie/manivela era mm, en el soporte real ±22,9 con vex el quiebre abría metros y la biela salía disparada en vertical
         _RZ.makeRotationZ(kf?kf.dS:0);_M.multiplyMatrices(SEGO,_RZ);_MSS9.multiplyMatrices(t.fb[f],_M);
         var _zPt=zPfor(t);   // retícula REAL de soportes del TIPO de este tracker (int/ext/medio): el amortiguador SOLO cuadra si va a un poste que EXISTE en esta fila
-        for(var dl=0;dl<_DM.n;dl++){var _postX=_DA[dl][0]<0?_zPt[1]:_zPt[_zPt.length-2],_ds9=_postX>0?1:-1,_dlat9=_ds9*0.15;_PA.set(_postX-_dlat9,_DA[dl][1],0.12).applyMatrix4(_postX>0?_MSN9:_MSS9);   // pie al 2º poste REAL del tipo; 15 cm hacia el motor (borde del poste a 7) y z=0,12 ('arréglalo de una vez': con z=0,02 el cuerpo Ø100 quedaba INCRUSTADO en el poste — tira negra pegada; ahora cuelga separado con luz entre ambos, como el real)
+        for(var dl=0;dl<_DM.n;dl++){var _postX=_DA[dl][0]<0?_zPt[1]:_zPt[_zPt.length-2],_ds9=_postX>0?1:-1,_dlat9=_ds9*0.30,_MM9=_postX>0?_MDN:_MDS,_MS9=_postX>0?_MSN9:_MSS9;_PA.set(_postX-_dlat9,_DA[dl][1],0.13).applyMatrix4(_MS9);   // pie al 2º poste REAL del tipo, 30 cm hacia el motor y z=0,13: FUERA del poste por ambos ejes ('el amortiguador atraviesa el soporte' — con la C girada el poste ocupa ±0,035 a lo largo y ±0,07 transversal; el cuerpo Ø100 cuelga en el vano con luz clara)
           _PA.y=terrainMeshY(_PA.x,-_PA.z)+0.30;   // el amortiguador LLEGA hasta 30 cm del SUELO (LARGO, como el real): 'tiene que llegar hasta 30cm del suelo'. El pie se une al POSTE con la ménsula; la manivela une la cima a la viga → DOS extremos sujetos, no flota
-          _PB.set(_postX-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_postX>0?_MDN:_MDS);   // cima en la manivela del tubo (bascula); imDampCrank la une al eje del tubo → extremo superior pegado a la viga
+          _PB.set(_postX-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_MM9);   // cima en la orejeta del tubo (bascula); imDampCrank (chapa) la une al eje → extremo superior pegado a la viga
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
           if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}                                          // CUERPO oscuro, 62% centrado (= gemelo)
-          if(imDampCrank){_PT.set(_postX-_dlat9,0,0).applyMatrix4(_postX>0?_MDN:_MDS);_DIR.subVectors(_PB,_PT);var cln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/cln);_Q.setFromUnitVectors(_UP,_DIR);_PV.copy(_PT).add(_PB).multiplyScalar(0.5);_SC.set(1,cln,1);_M2.compose(_PV,_Q,_SC);imDampCrank.setMatrixAt(_bidx,_M2);}   // MANIVELA: del EJE del tubo a la cima → la cima queda PEGADA a la viga (antes flotaba ~20 cm sobre el tubo)
+          if(imDampCrank){_PT.set(_postX-_dlat9,0,0).applyMatrix4(_MM9);_DIR.subVectors(_PB,_PT);var cln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/cln);   // OREJETA-CHAPA del eje a la cima, con BASE PROPIA: cara ancha (0,10) a lo largo de la viga → legible desde cualquier ángulo (el cilindro se escorzaba a un punto)
+            var _me9=_MM9.elements;_TX9.set(_me9[0],_me9[1],_me9[2]).normalize();_SD9.crossVectors(_TX9,_DIR).normalize();_TX9.crossVectors(_DIR,_SD9).normalize();
+            _M2.makeBasis(_TX9,_DIR,_SD9);_M2.scale(_SC.set(1,cln+0.06,1));_PV.copy(_PT).add(_PB).multiplyScalar(0.5);_M2.setPosition(_PV);imDampCrank.setMatrixAt(_bidx,_M2);}
           if(imDampFoot){_PT.set(_postX,_DA[dl][1],0).applyMatrix4(_postX>0?_MSN9:_MSS9);_PT.y=_PA.y;_DIR.subVectors(_PA,_PT);var fln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/fln);_Q.setFromUnitVectors(_UP,_DIR);_PV.copy(_PT).add(_PA).multiplyScalar(0.5);_SC.set(1,fln,1);_M2.compose(_PV,_Q,_SC);imDampFoot.setMatrixAt(_bidx,_M2);}}}   // MÉNSULA horizontal: del EJE del poste (a la altura del pie) al pie del amortiguador → se ve que el pie va SUJETO AL POSTE, no flota
       if(f===0){
         if(TCUGLB){_M2.multiplyMatrices(_MD,_TCUMOUNT);for(var gg=0;gg<TCUGLB.length;gg++)TCUGLB[gg].setMatrixAt(i,_M2);}   // TCU = modelo real (tcu.glb), viga oeste, basculando
@@ -1295,7 +1298,7 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
     for(var i=0;i<SG.length;i++){var g9=SG[i];
       var o1x=g9.o1x*c-g9.o1y*sn,o1y=g9.o1x*sn+g9.o1y*c;                    // la brida gira con el tubo (mismo sentido que la normal del panel: (0,1)→(−sinθ,cosθ))
       var x1=g9.x1+o1x,y1=g9.y1+o1y,z1=g9.z1,x2,y2,z2;
-      if(g9.arc){var rB=0.22,nP=-g9.z1,Ty=y1,Sx=x1;                         // UNIÓN CURVA: cuarto de arco desde la boca (horizontal, lado de llegada) hasta la vertical, y de ahí al pie fijo
+      if(g9.arc){var rB=0.22,nP=-g9.z1,Ty=g9.y1+g9.o1y,Sx=g9.x1+g9.o1x;     // UNIÓN CURVA: cuarto de arco desde la boca hasta la vertical y al pie. Offsets SIN rotar: la boca va FIJA al poste (0,55 bajo el eje), no orbita con la basculación
         var thA=g9.idx/4*Math.PI/2,thB=Math.min(1,(g9.idx+1)/4)*Math.PI/2;
         var CN=nP+g9.ad*rB,CY=Ty-rB;
         function pA(th,ii){var nn=CN-g9.ad*rB*Math.sin(th),yy=CY+rB*Math.cos(th);
@@ -1304,8 +1307,8 @@ function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el 
         else {var E9=pA(Math.PI/2,4);x1=E9[0];y1=E9[1];z1=E9[2];x2=g9.gx;y2=g9.gy;z2=g9.gz;}}
       else if(g9.drop){x2=g9.gx;y2=g9.gy;z2=g9.gz;}                          // bajante recta antigua (spancut): de la brida al pie fijo
       else {var o2x=g9.o2x*c-g9.o2y*sn,o2y=g9.o2x*sn+g9.o2y*c;x2=g9.x2+o2x;y2=g9.y2+o2y;z2=g9.z2;
-        if(g9.gA){var mA=g9.gA,aox=mA.ox*c-mA.oy*sn,aoy=mA.ox*sn+mA.oy*c;x1=mA.x+aox;y1=mA.y+aoy;z1=-(mA.n+mA.ad*0.22);}   // SOLDADURA a la boca de la canaleta (θ=0 del arco): gira con la brida — "sigue sin unir cables"
-        if(g9.gB){var mB=g9.gB,box=mB.ox*c-mB.oy*sn,boy=mB.ox*sn+mB.oy*c;x2=mB.x+box;y2=mB.y+boy;z2=-(mB.n+mB.ad*0.22);}}
+        if(g9.gA){var mA=g9.gA;x1=mA.x+mA.ox;y1=mA.y+mA.oy;z1=-(mA.n+mA.ad*0.22);}   // SOLDADURA a la boca de la canaleta (θ=0 del arco): la boca es FIJA (bajo la horquilla, al poste) — sin rotar con la brida
+        if(g9.gB){var mB=g9.gB;x2=mB.x+mB.ox;y2=mB.y+mB.oy;z2=-(mB.n+mB.ad*0.22);}}
       _cbD.set(x2-x1,y2-y1,z2-z1);var L9=_cbD.length()||1e-6;_cbD.normalize();
       _cbQ.setFromUnitVectors(_cbU,_cbD);_cbP.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
       _cbS.set(r,L9+0.02,r);_cbM.compose(_cbP,_cbQ,_cbS);im.setMatrixAt(i,_cbM);
@@ -1383,11 +1386,11 @@ function buildNetLayer(key){
       var dropAt=function(l3,sd,nT,sg){var lx=LNS[l3].x;                    // bajante en el soporte MÁS CERCANO a la salida (= la zanja) pero SIEMPRE en el lado del que LLEGA el cable (sg): cruzar la calle en aéreo para bajar enfrente unía trackers ("sigues uniendo trackers entre sí")
         var bp=CABLECORE.postePorLado(PSTc,LID,l3,lx,sd,nT,sg);
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
-        var gx=ax+sd*(0.065+0.024),gy=terrainMeshY(ax,pn)+0.10;   // pie desplazado el RADIO del corrugado Ø48
+        var gx=ax+sd*(0.075+0.024),gy=terrainMeshY(ax,pn)+0.10;   // pie a cara del poste (140 ahora va E-O: semiancho 0,07)+radio del corrugado Ø48+5mm
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1)+'_'+(sd>0?'E':'O');
         if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;var adD=(sg||1);   // canaleta Ø26 con unión curva en TODO pie de bajada, sea del + o del −: antes solo la creaba la pasada del positivo y el poste de la otra fila (ruta solo del −) quedaba SIN corrugado ("por qué no tiene corrugado el soporte de la otra fila"). Clave global por poste+cara: sin duplicar donde bajan ambos; offsets CANÓNICOS (los del +) para que las bocas casen
-          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*(0.06+0.0045),o1y:0.020,gx:gx,gy:gy,gz:-pn});}
-        return {x:gx,n:pn,ad:(sg||1),m:{x:ax,y:yT,n:pn,ad:(sg||1),ox:sd*(0.06+0.0045),oy:0.020}};};   // m = BOCA de la canaleta con el offset del POSITIVO (OXL de su pasada, radio 4,5), que es quien la registró: con el OXL de cada capa el negativo quedaba 0,5 mm desalineado
+          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT-0.55,z1:-pn,o1x:sd*(0.06+0.0045),o1y:0.020,gx:gx,gy:gy,gz:-pn});}   // BOCA 0,55 BAJO el eje: a la altura del eje el codo ATRAVESABA el casquillo/horquilla ("el corrugado atraviesa la virola"); el cable bucea de la viga a la boca por debajo de la horquilla
+        return {x:gx,n:pn,ad:(sg||1),m:{x:ax,y:yT-0.55,n:pn,ad:(sg||1),ox:sd*(0.06+0.0045),oy:0.020}};};   // m = BOCA de la canaleta (0,55 bajo el eje, ver arriba) con el offset del POSITIVO: el último tramo del cable BUCEA hasta ella sin tocar horquilla ni tambor
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
         var lx=LNS[l7].x,k=0,n0s=pl[iF][1];
@@ -1441,7 +1444,7 @@ function buildNetLayer(key){
         var imC=new THREE.InstancedMesh(cylG,cabM,SEGS.length);
         imC.frustumCulled=false;g.add(imC);
         var lgC=new THREE.BufferGeometry();lgC.setAttribute('position',new THREE.BufferAttribute(new Float32Array(SEGS.length*6),3));
-        var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.48});lmC.userData.tec=d.c;   // guía 1px más tenue: a .75 el mazo de las vigas lejanas parecía un láser flotando sobre el terreno en perspectiva
+        var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.30});lmC.userData.tec=d.c;   // guía 1px MUY tenue (.48 aún leía como "cable flotando" contra paneles/terreno en perspectiva); el volumen real lo da el cilindro Ø9
         var lsC=new THREE.LineSegments(lgC,lmC);lsC.frustumCulled=false;g.add(lsC);   // overlay 1 px por el eje del mazo (updateCableSpin lo escribe): el cilindro real Ø9 lo tapa de cerca y a distancia mantiene el cable visible
         g.userData.cabs=[{segs:SEGS,im:imC,r:CR,lg:lgC,lm:lmC}];
         if(BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,8,1,true),new THREE.MeshStandardMaterial({color:0x40454b,roughness:.72,metalness:.22}),BAJ.length);   // también en el grupo del −: sus pies exclusivos llevan SU canaleta
