@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.42</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.43</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -624,7 +624,7 @@ function buildTrackers(elevAt){
     var im=new THREE.InstancedMesh(t.geom(THREE),t.damperLink?steelM:mats[t.mat],count);   // amortiguador: vástago PLATEADO (acero), como el gemelo; el cuerpo (imDampBody) va oscuro
     im.frustumCulled=false;im.castShadow=!!t.cast;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);
     if(t.damperLink){imDampBody=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,1,12),mats[t.mat],count);imDampBody.frustumCulled=false;imDampBody.castShadow=true;imDampBody.receiveShadow=true;imDampBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampBody);   // CUERPO grueso del amortiguador (body+rod como el gemelo); 'im' es el vástago fino
-      imDampCrank=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.022,0.022,1,8),steelM,count);imDampCrank.frustumCulled=false;imDampCrank.castShadow=true;imDampCrank.receiveShadow=true;imDampCrank.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampCrank);   // MANIVELA (biela de acero) del tubo a la cima del amortiguador: fija el extremo superior A LA VIGA
+      imDampCrank=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.042,0.042,1,10),steelM,count);   // Ø84: la manivela se ve DE PUNTA desde el pasillo (escorzada) y en Ø44 desaparecía — el amortiguador "no llegaba a la viga"; acero claro para contrastar con el dorso oscuro de los módulosimDampCrank.frustumCulled=false;imDampCrank.castShadow=true;imDampCrank.receiveShadow=true;imDampCrank.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampCrank);   // MANIVELA (biela de acero) del tubo a la cima del amortiguador: fija el extremo superior A LA VIGA
       imDampFoot=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.016,0.016,1,8),steelM,count);imDampFoot.frustumCulled=false;imDampFoot.castShadow=true;imDampFoot.receiveShadow=true;imDampFoot.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(imDampFoot);}   // MÉNSULA del pie: brazo horizontal DEL POSTE al pie del amortiguador (a 30 cm del suelo) → se ve que va sujeto AL POSTE, no flota
     SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
@@ -1441,7 +1441,7 @@ function buildNetLayer(key){
         var imC=new THREE.InstancedMesh(cylG,cabM,SEGS.length);
         imC.frustumCulled=false;g.add(imC);
         var lgC=new THREE.BufferGeometry();lgC.setAttribute('position',new THREE.BufferAttribute(new Float32Array(SEGS.length*6),3));
-        var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.75});lmC.userData.tec=d.c;
+        var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.48});lmC.userData.tec=d.c;   // guía 1px más tenue: a .75 el mazo de las vigas lejanas parecía un láser flotando sobre el terreno en perspectiva
         var lsC=new THREE.LineSegments(lgC,lmC);lsC.frustumCulled=false;g.add(lsC);   // overlay 1 px por el eje del mazo (updateCableSpin lo escribe): el cilindro real Ø9 lo tapa de cerca y a distancia mantiene el cable visible
         g.userData.cabs=[{segs:SEGS,im:imC,r:CR,lg:lgC,lm:lmC}];
         if(BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,8,1,true),new THREE.MeshStandardMaterial({color:0x40454b,roughness:.72,metalness:.22}),BAJ.length);   // también en el grupo del −: sus pies exclusivos llevan SU canaleta
