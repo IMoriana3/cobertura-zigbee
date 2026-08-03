@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.47</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.48</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2249,7 +2249,7 @@ function buildBOS(){
     // TORRE DE CELOSÍA triangular de la HSU (plano FTR.24.00145_5_C 'Montaje HSU': 8000 con niveles 4500/1000 + fotos):
     // 3 montantes tubulares con celosía en zigzag, PANEL FV ESTRECHO VERTICAL y PARALELO a la cara, caja FACTIUN,
     // ANEMÓMETRO ULTRASÓNICO (estático, sin cazoletas) en cabeza y 2 antenas látigo. Sin vientos (autoportante).
-    var RT=0.15,LEG=[];for(var lg=0;lg<3;lg++){var la=lg*2*Math.PI/3+Math.PI/2,lxx=X+Math.cos(la)*RT,lzz=Z+Math.sin(la)*RT;LEG.push([lxx,lzz]);
+    var RT=0.15,LEG=[];for(var lg=0;lg<3;lg++){var la=lg*2*Math.PI/3+Math.PI/6,lxx=X+Math.cos(la)*RT,lzz=Z+Math.sin(la)*RT;LEG.push([lxx,lzz]);   // patas a 30°/150°/270°: la CARA 0-1 (la del panel) queda ⊥ al eje N-S mirando AL SUR — "una de las caras mirando al sur, de manera que el módulo fv quede perfectamente orientado a sur" (antes 90/210/330 → panel al OSO)
       g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.016,h,8),mtMast),lxx,y+h/2,lzz));}
     var NL=16;for(var lv=0;lv<=NL;lv++){var yy=y+lv*h/NL;                                   // cinturones + zigzag por cara
       for(var fa=0;fa<3;fa++){var A9=LEG[fa],B9=LEG[(fa+1)%3];
