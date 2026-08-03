@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.43</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.44</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -723,7 +723,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         _RZ.makeRotationZ(kf?kf.dN:0);_M.multiplyMatrices(SEGO,_RZ);_MSN9.multiplyMatrices(t.fb[f],_M);   // base ESTÁTICA de cada mitad CON su quiebre (sin Rx): en ±9 el desfase pie/manivela era mm, en el soporte real ±22,9 con vex el quiebre abría metros y la biela salía disparada en vertical
         _RZ.makeRotationZ(kf?kf.dS:0);_M.multiplyMatrices(SEGO,_RZ);_MSS9.multiplyMatrices(t.fb[f],_M);
         var _zPt=zPfor(t);   // retícula REAL de soportes del TIPO de este tracker (int/ext/medio): el amortiguador SOLO cuadra si va a un poste que EXISTE en esta fila
-        for(var dl=0;dl<_DM.n;dl++){var _postX=_DA[dl][0]<0?_zPt[1]:_zPt[_zPt.length-2],_ds9=_postX>0?1:-1,_dlat9=_ds9*0.10;_PA.set(_postX-_dlat9,_DA[dl][1],_DA[dl][2]).applyMatrix4(_postX>0?_MSN9:_MSS9);   // BUGFIX 'no está unido': el pie va al 2º poste REAL del tipo (antes fijo ±22,9 = solo Interior; en Exterior el poste está en ±24,7 y el amortiguador colgaba a 1,8 m del poste, en el vano). 10 cm hacia el motor
+        for(var dl=0;dl<_DM.n;dl++){var _postX=_DA[dl][0]<0?_zPt[1]:_zPt[_zPt.length-2],_ds9=_postX>0?1:-1,_dlat9=_ds9*0.15;_PA.set(_postX-_dlat9,_DA[dl][1],0.12).applyMatrix4(_postX>0?_MSN9:_MSS9);   // pie al 2º poste REAL del tipo; 15 cm hacia el motor (borde del poste a 7) y z=0,12 ('arréglalo de una vez': con z=0,02 el cuerpo Ø100 quedaba INCRUSTADO en el poste — tira negra pegada; ahora cuelga separado con luz entre ambos, como el real)
           _PA.y=terrainMeshY(_PA.x,-_PA.z)+0.30;   // el amortiguador LLEGA hasta 30 cm del SUELO (LARGO, como el real): 'tiene que llegar hasta 30cm del suelo'. El pie se une al POSTE con la ménsula; la manivela une la cima a la viga → DOS extremos sujetos, no flota
           _PB.set(_postX-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_postX>0?_MDN:_MDS);   // cima en la manivela del tubo (bascula); imDampCrank la une al eje del tubo → extremo superior pegado a la viga
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
