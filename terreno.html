@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.46</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.47</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -726,7 +726,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
         var _zPt=zPfor(t);   // retícula REAL de soportes del TIPO de este tracker (int/ext/medio): el amortiguador SOLO cuadra si va a un poste que EXISTE en esta fila
         for(var dl=0;dl<_DM.n;dl++){var _postX=_DA[dl][0]<0?_zPt[1]:_zPt[_zPt.length-2],_ds9=_postX>0?1:-1,_dlat9=_ds9*0.30,_MM9=_postX>0?_MDN:_MDS,_MS9=_postX>0?_MSN9:_MSS9;_PA.set(_postX-_dlat9,_DA[dl][1],0.13).applyMatrix4(_MS9);   // pie al 2º poste REAL del tipo, 30 cm hacia el motor y z=0,13: FUERA del poste por ambos ejes ('el amortiguador atraviesa el soporte' — con la C girada el poste ocupa ±0,035 a lo largo y ±0,07 transversal; el cuerpo Ø100 cuelga en el vano con luz clara)
           _PA.y=terrainMeshY(_PA.x,-_PA.z)+0.30;   // el amortiguador LLEGA hasta 30 cm del SUELO (LARGO, como el real): 'tiene que llegar hasta 30cm del suelo'. El pie se une al POSTE con la ménsula; la manivela une la cima a la viga → DOS extremos sujetos, no flota
-          _PB.set(_postX-_dlat9,_DB[dl][1],_DB[dl][2]).applyMatrix4(_MM9);   // cima en la orejeta del tubo (bascula); imDampCrank (chapa) la une al eje → extremo superior pegado a la viga
+          _PB.set(_postX-_dlat9,-0.075,0.085).applyMatrix4(_MM9);   // CIMA EN LA ESQUINA INFERIOR DE LA VIGA (radial 0,113 del eje ≈ 3 cm fuera de la cara): como la orejeta real soldada al tubo de la foto — sustituye el b=[−0,12, 0,24] de seguidor.js, que dejaba la cima a 27 cm y "el amortiguador sigue sin unirse a la viga" desde según qué ángulos; orbita con la viga al bascular
           _DIR.subVectors(_PB,_PA);var dln=_DIR.length()||1e-4;_DIR.multiplyScalar(1/dln);_Q.setFromUnitVectors(_UP,_DIR);var _bidx=(i*2+f)*_DM.n+dl;
           _PV.copy(_PA).add(_PB).multiplyScalar(0.5);_SC.set(1,dln,1);_M2.compose(_PV,_Q,_SC);_DM.im.setMatrixAt(_bidx,_M2);                          // VÁSTAGO plateado, toda la longitud, centrado (= gemelo)
           if(imDampBody){_SC.set(1,dln*0.62,1);_M2.compose(_PV,_Q,_SC);imDampBody.setMatrixAt(_bidx,_M2);}                                          // CUERPO oscuro, 62% centrado (= gemelo)
@@ -1391,10 +1391,12 @@ function buildNetLayer(key){
         if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;   // canaleta en TODO pie de bajada (± comparten por clave global poste+cara)
           BAJ.push({drop:1,x1:gx,y1:yT-0.55,z1:-pn,o1x:0,o1y:0,gx:gx,gy:gy,gz:-pn});}   // corrugado RECTO y VERTICAL, boca ABIERTA HACIA ARRIBA 0,55 bajo la cabeza del poste ("debe tener la apertura hacia arriba, debe ser recto": fuera el codo — el cable entra por arriba)
         return {x:gx,n:pn,ad:(sg||1),m:{x:gx,y:yT-0.55,n:pn,ad:(sg||1)}};};   // m = BOCA (arriba del tubo recto): la bajada en curva del cable TERMINA EN VERTICAL entrando por ella
-      var _dive=function(l4,sd,ft,sg){var mm=ft.m,nS=ft.n+sg*1.15,axD=LNS[l4].x+sd*TC.filaZ,yS=tubeYL(l4,sd,nS),yM=mm.y+0.02,ND=6,HP=Math.PI/2;   // BAJADA EN CURVA del cable: sale HORIZONTAL de la viga y entra VERTICAL por la boca del corrugado ("que llegue al corrugado y baje con una curva"); compartida por los strings del pie
-        for(var q9=0;q9<ND;q9++){var ta=Math.sin(q9/ND*HP),tb=Math.sin((q9+1)/ND*HP),ca=1-Math.cos(q9/ND*HP),cb=1-Math.cos((q9+1)/ND*HP);
-          SEGS.push({tag:'dive',x1:(q9===0?axD:axD+(mm.x-axD)*ta),y1:(q9===0?yS:yS-(yS-yM)*ca),z1:-(nS+(mm.n-nS)*ta),o1x:(q9===0?sd*OXL:0),o1y:(q9===0?OY:0),
-            x2:axD+(mm.x-axD)*tb,y2:yS-(yS-yM)*cb,z2:-(nS+(mm.n-nS)*tb),o2x:0,o2y:0,gA:null,gB:null});}
+      var _dive=function(l4,sd,ft,sg){var mm=ft.m,axD=LNS[l4].x+sd*TC.filaZ,nS=ft.n+sg*0.85,yS=tubeYL(l4,sd,nS),yM=mm.y+0.02,nK=mm.n+sg*0.42,HP=Math.PI/2,PTS=[],q9;   // "embridado por la viga, no flotando": el cable va por la viga hasta 0,85 m del poste; ARCO hasta el carril vertical a 0,42 m (libra horquilla/tambor a cualquier perfil) y S final que ATERRIZA VERTICAL en la boca del corrugado
+        var yJ=Math.min(yS-0.05,mm.y+0.30);   // cota del cambio arco→S: bajo la base de la horquilla (cabeza−0,25)
+        for(q9=0;q9<=4;q9++){var th=q9/4*HP;PTS.push([axD+(mm.x-axD)*Math.sin(th),yS-(yS-yJ)*(1-Math.cos(th)),nS+(nK-nS)*Math.sin(th)]);}
+        for(q9=1;q9<=4;q9++){var t9=q9/4,s9=t9*t9*(3-2*t9);PTS.push([mm.x,yJ-(yJ-yM)*t9,nK+(mm.n-nK)*s9]);}
+        for(q9=0;q9<PTS.length-1;q9++)SEGS.push({tag:'dive',x1:PTS[q9][0],y1:PTS[q9][1],z1:-PTS[q9][2],o1x:(q9===0?sd*OXL:0),o1y:(q9===0?OY:0),
+          x2:PTS[q9+1][0],y2:PTS[q9+1][1],z2:-PTS[q9+1][2],o2x:0,o2y:0,gA:null,gB:null});
         return nS;};
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
