@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.45</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.46</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1385,12 +1385,17 @@ function buildNetLayer(key){
           SEGS.push({tag:tag||'?',x1:ax,y1:tubeYL(l4,sd,n1)+sagAt(l4,sd,n1),z1:-n1,o1x:sd*OXL,o1y:OY,x2:ax,y2:tubeYL(l4,sd,n2)+sagAt(l4,sd,n2),z2:-n2,o2x:sd*OXL,o2y:OY,gA:(s===0?gA:null),gB:(s===st-1?gB:null)});}};
       var dropAt=function(l3,sd,nT,sg){var lx=LNS[l3].x;                    // bajante en el soporte MÁS CERCANO a la salida (= la zanja) pero SIEMPRE en el lado del que LLEGA el cable (sg): cruzar la calle en aéreo para bajar enfrente unía trackers ("sigues uniendo trackers entre sí")
         var bp=CABLECORE.postePorLado(PSTc,LID,l3,lx,sd,nT,sg);
-        var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
+        var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:Math.min(tubeYL(l3,sd,nT),terrainMeshY(lx+sd*TC.filaZ,nT)+TC.postH);   // sin poste real: capa la estimación a terreno+poste (el cinturón +4,5 dejaba una canaleta FLOTANDO en el cielo — "sigue habiendo cosas flotando")
         var gx=ax+sd*(0.075+0.024),gy=terrainMeshY(ax,pn)+0.10;   // pie a cara del poste (140 ahora va E-O: semiancho 0,07)+radio del corrugado Ø48+5mm
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1)+'_'+(sd>0?'E':'O');
-        if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;var adD=(sg||1);   // canaleta Ø26 con unión curva en TODO pie de bajada, sea del + o del −: antes solo la creaba la pasada del positivo y el poste de la otra fila (ruta solo del −) quedaba SIN corrugado ("por qué no tiene corrugado el soporte de la otra fila"). Clave global por poste+cara: sin duplicar donde bajan ambos; offsets CANÓNICOS (los del +) para que las bocas casen
-          for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT-0.55,z1:-pn,o1x:sd*(0.06+0.0045),o1y:0.020,gx:gx,gy:gy,gz:-pn});}   // BOCA 0,55 BAJO el eje: a la altura del eje el codo ATRAVESABA el casquillo/horquilla ("el corrugado atraviesa la virola"); el cable bucea de la viga a la boca por debajo de la horquilla
-        return {x:gx,n:pn,ad:(sg||1),m:{x:ax,y:yT-0.55,n:pn,ad:(sg||1),ox:sd*(0.06+0.0045),oy:0.020}};};   // m = BOCA de la canaleta (0,55 bajo el eje, ver arriba) con el offset del POSITIVO: el último tramo del cable BUCEA hasta ella sin tocar horquilla ni tambor
+        if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;   // canaleta en TODO pie de bajada (± comparten por clave global poste+cara)
+          BAJ.push({drop:1,x1:gx,y1:yT-0.55,z1:-pn,o1x:0,o1y:0,gx:gx,gy:gy,gz:-pn});}   // corrugado RECTO y VERTICAL, boca ABIERTA HACIA ARRIBA 0,55 bajo la cabeza del poste ("debe tener la apertura hacia arriba, debe ser recto": fuera el codo — el cable entra por arriba)
+        return {x:gx,n:pn,ad:(sg||1),m:{x:gx,y:yT-0.55,n:pn,ad:(sg||1)}};};   // m = BOCA (arriba del tubo recto): la bajada en curva del cable TERMINA EN VERTICAL entrando por ella
+      var _dive=function(l4,sd,ft,sg){var mm=ft.m,nS=ft.n+sg*1.15,axD=LNS[l4].x+sd*TC.filaZ,yS=tubeYL(l4,sd,nS),yM=mm.y+0.02,ND=6,HP=Math.PI/2;   // BAJADA EN CURVA del cable: sale HORIZONTAL de la viga y entra VERTICAL por la boca del corrugado ("que llegue al corrugado y baje con una curva"); compartida por los strings del pie
+        for(var q9=0;q9<ND;q9++){var ta=Math.sin(q9/ND*HP),tb=Math.sin((q9+1)/ND*HP),ca=1-Math.cos(q9/ND*HP),cb=1-Math.cos((q9+1)/ND*HP);
+          SEGS.push({tag:'dive',x1:(q9===0?axD:axD+(mm.x-axD)*ta),y1:(q9===0?yS:yS-(yS-yM)*ca),z1:-(nS+(mm.n-nS)*ta),o1x:(q9===0?sd*OXL:0),o1y:(q9===0?OY:0),
+            x2:axD+(mm.x-axD)*tb,y2:yS-(yS-yM)*cb,z2:-(nS+(mm.n-nS)*tb),o2x:0,o2y:0,gA:null,gB:null});}
+        return nS;};
       var STX=(typeof _streetAxes==='function')?_streetAxes():[];
       var salida=function(pl,iF,tail,l7,sd){                                // recoge la salida; la bajada se decide al AGRUPAR
         var lx=LNS[l7].x,k=0,n0s=pl[iF][1];
@@ -1416,7 +1421,7 @@ function buildNetLayer(key){
           else for(var j8=0;j8<tr8.length;j8++){var u8=tr8[j8][0],v8=tr8[j8][1],sgIn=(v8>=u8)?1:-1;
               var fU=(j8===0)?null:dropAt(l7,sd8,u8,sgIn);
               var fV=(j8===tr8.length-1)?null:dropAt(l7,sd8,v8,-sgIn);
-              aereo(l7,sd8,fU?fU.n:u8,fV?fV.n:v8,'spancut',fU?fU.m:null,fV?fV.m:null);}   // extremos SOLDADOS a las bocas de sus bajantes (antes el cable se pasaba 22 cm del poste)
+              aereo(l7,sd8,fU?_dive(l7,sd8,fU,sgIn):u8,fV?_dive(l7,sd8,fV,-sgIn):v8,'spancut',null,null);}   // extremos con BAJADA EN CURVA hasta la boca de su bajante (la soldadura recta hacía una diagonal tensa)
         }
       });
       var byL={};PEND.forEach(function(p){(byL[p.l]=byL[p.l]||[]).push(p);});
@@ -1431,7 +1436,7 @@ function buildNetLayer(key){
             if(!mainFoot)mainFoot=foot;
             if(items.some(function(x){return x.sd!==sdD;})){
               var f2=dropAt(+lk,-sdD,foot.n,sg);feet[-sdD]=f2;}              // la viga contraria del MISMO lado: bajante en su poste del par — la unión ocurre DENTRO de la zanja, sin trazas inventadas en superficie ("¿la línea roja del suelo es un cardán?")
-            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.n0,ft.n+sg*0.22,'ext',null,ft.m);});   // UN solo tramo: de la conexión a la boca de la CURVA de su bajante — SOLDADO a ella (± mueren en el mismo punto)
+            items.forEach(function(p){var ft=feet[p.sd]||foot;aereo(+lk,p.sd,p.n0,_dive(+lk,p.sd,ft,sg),'ext',null,null);});   // tramo aéreo hasta el arranque de la BAJADA EN CURVA compartida del pie ("que llegue al corrugado y baje con una curva"): sin diagonales tensas ni abanicos
             items.forEach(function(p){                                        // conector en L + cola enterrada desde el pie de SU PROPIA viga (ruta del DWG, nada más)
               var ftp=feet[p.sd]||foot,prev=[ftp.x,ftp.n];
               if(p.k<p.tail.length&&Math.abs(p.tail[p.k][1]-ftp.n)>0.4){gndB(ftp.x,ftp.n,ftp.x,p.tail[p.k][1]);prev=[ftp.x,p.tail[p.k][1]];}
