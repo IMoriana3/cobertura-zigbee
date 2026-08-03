@@ -48,7 +48,7 @@
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.41</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.42</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1366,7 +1366,8 @@ function buildNetLayer(key){
       var COVR={};
       var sagAt=function(l4,sd,n){var L=sd>0?LNS[l4].nB:LNS[l4].nA;if(L.length<2)return 0;   // CATENARIA: comba entre apoyos ("añadir algo de curvatura entre apoyos")
         var j=0;while(j+1<L.length&&L[j+1][0]<n)j++;if(j+1>=L.length||n<L[j][0])return 0;
-        var a=L[j][0],b=L[j+1][0];if(b-a<3||b-a>16)return 0;var t=(n-a)/(b-a);return -0.030*4*t*(1-t);};
+        var a=L[j][0],b=L[j+1][0];if(b-a<3)return 0;var t=(n-a)/(b-a);   // vanos LARGOS (saltos entre seguidores por las punteras, >16 m): antes sin comba — el mazo cruzaba el pasillo TENSO como un láser y en pendiente "¿por qué sale así el cableado?"; ahora comba proporcional al vano (1 cm/m, tope 0,35)
+        var s5=(b-a<=16)?0.030:Math.min(0.35,0.010*(b-a));return -s5*4*t*(1-t);};
       var cruzaC=function(a9,b9){return CABLECORE.cruzaCalle(a9,b9,STX,0);};   // núcleo puro, tolerancia explícita; devuelve el eje MÁS CERCANO a a9 (el inline devolvía el primero del array: con DOS calles podía recortar en la lejana y dejar el cruce vivo)
       var aereo=function(l4,sd,nA,nB,tag,glueA,glueB){
         var nAq=nA,nBq=nB;                                                   // extremos SOLICITADOS: la soldadura a la boca solo vale si el extremo sobrevive al clamp/recorte
@@ -1382,7 +1383,7 @@ function buildNetLayer(key){
       var dropAt=function(l3,sd,nT,sg){var lx=LNS[l3].x;                    // bajante en el soporte MÁS CERCANO a la salida (= la zanja) pero SIEMPRE en el lado del que LLEGA el cable (sg): cruzar la calle en aéreo para bajar enfrente unía trackers ("sigues uniendo trackers entre sí")
         var bp=CABLECORE.postePorLado(PSTc,LID,l3,lx,sd,nT,sg);
         var ax=bp?bp[0]:lx+sd*TC.filaZ,pn=bp?bp[1]:nT,yT=bp?bp[2]:tubeYL(l3,sd,nT);
-        var gx=ax+sd*(0.065+0.013),gy=terrainMeshY(ax,pn)+0.10;
+        var gx=ax+sd*(0.065+0.024),gy=terrainMeshY(ax,pn)+0.10;   // pie desplazado el RADIO del corrugado Ø48
         var dk=ax.toFixed(1)+'_'+pn.toFixed(1)+'_'+(sd>0?'E':'O');
         if(!DDROP[dk]&&!BAJREG[dk]){DDROP[dk]=1;BAJREG[dk]=key;var adD=(sg||1);   // canaleta Ø26 con unión curva en TODO pie de bajada, sea del + o del −: antes solo la creaba la pasada del positivo y el poste de la otra fila (ruta solo del −) quedaba SIN corrugado ("por qué no tiene corrugado el soporte de la otra fila"). Clave global por poste+cara: sin duplicar donde bajan ambos; offsets CANÓNICOS (los del +) para que las bocas casen
           for(var ia=0;ia<5;ia++)BAJ.push({arc:1,idx:ia,ad:adD,x1:ax,y1:yT,z1:-pn,o1x:sd*(0.06+0.0045),o1y:0.020,gx:gx,gy:gy,gz:-pn});}
@@ -1443,8 +1444,8 @@ function buildNetLayer(key){
         var lmC=new THREE.LineBasicMaterial({color:d.c,transparent:true,opacity:.75});lmC.userData.tec=d.c;
         var lsC=new THREE.LineSegments(lgC,lmC);lsC.frustumCulled=false;g.add(lsC);   // overlay 1 px por el eje del mazo (updateCableSpin lo escribe): el cilindro real Ø9 lo tapa de cerca y a distancia mantiene el cable visible
         g.userData.cabs=[{segs:SEGS,im:imC,r:CR,lg:lgC,lm:lmC}];
-        if(BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6,1,true),new THREE.MeshStandardMaterial({color:0x454b52,roughness:.55,metalness:.35}),BAJ.length);   // también en el grupo del −: sus pies exclusivos llevan SU canaleta
-          imB.frustumCulled=false;g.add(imB);g.userData.cabs.push({segs:BAJ,im:imB,r:0.013});}   // canaleta de bajada, gris galvanizado
+        if(BAJ.length){var imB=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,8,1,true),new THREE.MeshStandardMaterial({color:0x40454b,roughness:.72,metalness:.22}),BAJ.length);   // también en el grupo del −: sus pies exclusivos llevan SU canaleta
+          imB.frustumCulled=false;g.add(imB);g.userData.cabs.push({segs:BAJ,im:imB,r:0.024});}   // CORRUGADO de bajada Ø48 ("¿dónde están los corrugados que protegen las bajantes?"): antes Ø26, sub-píxel a distancia normal — invisible
         if(key==='cable_pos'){var GR=[];                                     // GRAPAS/bridas: a 1/3 y 2/3 de cada VANO, nunca sobre el apoyo — la brida colocada en el rodamiento asomaba como una "pestaña" junto a la corona al bascular ("¿qué es esto?"); las reales van por el vano
           for(var kC2 in COVR){var pr2=kC2.split('_'),l9=+pr2[0],sd9=+pr2[1],R9=COVR[kC2],Ln=sd9>0?LNS[l9].nB:LNS[l9].nA,ax9=LNS[l9].x+sd9*TC.filaZ;
             for(var q9=0;q9+1<Ln.length;q9++){var nA9=Ln[q9][0],nB9=Ln[q9+1][0],sp9=nB9-nA9;if(sp9<1.2||nB9<R9[0]-0.5||nA9>R9[1]+0.5)continue;
