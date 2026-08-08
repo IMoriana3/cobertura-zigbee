@@ -214,6 +214,22 @@ function encuadra(){
   controls.update();
 }
 var EXT={cx:0,cy:0,cz:0,R:600};
+/* Detalle fino: cables, abarcones, corrugados y correas. A escala de planta no se
+   distinguen y se llevan 13 de los 21,8 M de triangulos de San Jose; se ocultan de
+   lejos y vuelven al acercarse. */
+var FINO={secclink:1,tcuabarcon:1,seccabarcon:1,seccdca:1,seccdcb:1,correa:1,jbox:1,
+          cable:1,tcuchapa:1,seccchapa:1,seccknob:1,seccmaneta:1,leap:1};
+var _finoOn=null;
+function ajustaDetalle(){
+  var d=camera.position.distanceTo(controls.target);
+  var on = d < 220;                                   // cerca: todo; lejos: solo estructura
+  if(on===_finoOn) return;
+  _finoOn=on;
+  for(var k in GRP){
+    var g=GRP[k];
+    [].concat(g.mL,g.mM).forEach(function(m){ if(FINO[m.p.key]) m.im.visible=on; });
+  }
+}
 function ajustaSombra(){
   // la sombra se ciñe a lo que ocupa la pantalla: con 2,5 km de planta un shadow
   // camera fijo de 260 m dejaba casi todo el campo sin sombra
@@ -285,6 +301,7 @@ function buildTrackers(){
     }
     GRP[n]={root:root, rectas:rectas, mesas:mesas,
             mL:juego('largo', rectas.length), mM:juego('medio', mesas.length)};
+    _finoOn=null;
   });
   if(picker) scene.remove(picker);
   var pg=new THREE.BoxGeometry(1,1,1);
@@ -317,7 +334,7 @@ function updateFrame(){
   var Rs=Math.max(900,EXT.R*1.6);
   SUN.position.set(EXT.cx+sv.E*Rs, EXT.cy+Math.max(40,sv.U*Rs), EXT.cz-sv.N*Rs);
   SUN.target.position.set(EXT.cx,EXT.cy,EXT.cz); SUN.target.updateMatrixWorld();
-  ajustaSombra();
+  ajustaSombra(); ajustaDetalle();
   SUN.intensity=2.6*Math.max(0,Math.min(1,(sv.U+0.05)/0.35));
   HEMI.intensity=0.18+0.35*Math.max(0,sv.U);
   SUN.castShadow=ui.shadow && sv.U>0.02;
