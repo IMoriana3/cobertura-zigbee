@@ -12,13 +12,14 @@
    escena con las cotas medidas de los trackers. Enlace en la cabecera, no en el panel
    de proyectos, para que la tarjeta de planta se quede en un solo botón "3D". */
 addEventListener('DOMContentLoaded',function(){
-  var AS={ayora:'topografico.html?planta=ayora', sanjose:'topografico.html?planta=sanjose'};
-  var p=(new URLSearchParams(location.search).get('planta')||'').toLowerCase();
-  if(!AS[p]) return;
+  var CON={ayora:1,sanjose:1};                                  // plantas con levantamiento propio
+  var q=new URLSearchParams(location.search),p=(q.get('planta')||'').toLowerCase();
+  if(!CON[p] || (q.get('cotas')||'')==='levantamiento') return;  // ya fusionado: mismo visor, otro modo
   var h=document.querySelector('header'); if(!h) return;
   var a=document.createElement('a');
-  a.href=AS[p]; a.textContent='3D · cotas medidas ↗';
-  a.title='Misma planta con las cotas Z medidas de los trackers en vez de drapeadas del terreno';
+  a.href='terreno.html?planta='+p+'&cotas=levantamiento&bt=cons';
+  a.textContent='Cotas medidas + BT3D';
+  a.title='Este mismo visor con las cotas Z medidas del levantamiento y el backtracking corregido por pendiente (tambien en el panel VISTA)';
   a.style.cssText='pointer-events:auto;border-color:#36D399;color:#36D399';
   var ref=h.querySelector('a'); ref?ref.insertAdjacentElement('afterend',a):h.appendChild(a);
 });
@@ -108,6 +109,12 @@ addEventListener('DOMContentLoaded',function(){
       <select id="geosrc" style="flex:1;min-width:150px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:7px;padding:3px 7px;font:inherit;font-size:12px">
         <option value="terreno">Terreno (drapeado)</option>
         <option value="levantamiento">Levantamiento (medido)</option>
+      </select></div>
+    <div class="row" style="flex-wrap:wrap"><label title="PLANO: el backtracking supone el suelo horizontal, que es lo que hace una TCU sin corregir. BT3D: cada tracker usa la pendiente transversal MEDIDA del lado del sol (su vector de TCU), que es lo que de verdad se le va a cargar. Conservador quita sombras; agresivo busca produccion.">Backtracking</label>
+      <select id="btmode" style="flex:1;min-width:150px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:7px;padding:3px 7px;font:inherit;font-size:12px">
+        <option value="plano">Plano (suelo horizontal)</option>
+        <option value="cons">BT3D conservador (sin sombras)</option>
+        <option value="agr">BT3D agresivo (produccion)</option>
       </select></div>
     <div class="row" id="geoStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
@@ -490,7 +497,8 @@ async function build(){
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
   if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
   if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
-  await loadCotas(); if(GEO==='levantamiento'){layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
+  if($('btmode')&&!cotasFile())$('btmode').disabled=true;
+  await loadCotas(); if(GEO==='levantamiento'){aplicaResiduo();layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
   if(cobOn)cobCompute();if(cobRealOn)cobRealApply();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
@@ -697,7 +705,8 @@ function yMedia(c){var s9=0,n9=0,i,fi;for(i=0;i<c.f.length;i++){fi=c.f[i];s9+=fi
 function prepCotas(){
   if(!COTAS||!ELEV||!TRK.length)return;
   var d=[],i,c;
-  for(i=0;i<TRK.length;i++){c=COTAS.t[i];if(!c)continue;d.push((COTAS.base+yMedia(c)-baseElev)-TRK[i].rel);}
+  var HEJE=TC.postH+(TC.off||0);                              // el eje del tubo va HEJE por encima del suelo
+  for(i=0;i<TRK.length;i++){c=COTAS.t[i];if(!c)continue;d.push((COTAS.base+yMedia(c)-baseElev-HEJE)-TRK[i].rel);}
   if(!d.length)return;
   d.sort(function(a,b){return a-b;});
   COTAOFF=d[d.length>>1];                                   // mediana del desfase levantamiento - DEM
@@ -708,13 +717,63 @@ function prepCotas(){
     var yS=(f0.y[0]+f1.y[0])/2,yN=(f0.y[1]+f1.y[1])/2;      // n[0]=extremo sur, n[1]=extremo norte
     var span=Math.abs(f0.n[1]-f0.n[0])||TC.span;
     var y0=(f0.y[0]+f0.y[1])/2,y1=(f1.y[0]+f1.y[1])/2,dx=(f1.x-f0.x)||1;
-    t.mc={rel:(COTAS.base+yMedia(c)-baseElev)-COTAOFF,
+    t.mc={rel:(COTAS.base+yMedia(c)-baseElev)-COTAOFF, gnd:(COTAS.base+yMedia(c)-baseElev)-COTAOFF-HEJE,
           gN:(yN-yS)/span, gE:(y1-y0)/dx, f:[f0,f1], span:span, inc:c.inc||0,
           cse:c.cse,cso:c.cso,ase:c.ase,aso:c.aso};
   }
+  buildResiduo();
   statCotas();
 }
+/* El suelo tambien viene del levantamiento --------------------------------
+   Con las cotas medidas y el terreno del DEM, 253 de los 754 de Ayora quedaban
+   ENTERRADOS: el DEM de teselas tiene del orden de +-1 m de error vertical y el
+   levantamiento no. En vez de interpolar cotas absolutas desde los puntos
+   medidos (mal condicionado y se carga la textura fina del DEM entre filas), se
+   interpola el RESIDUO medido-DEM, que es un campo suave, y se suma al DEM. Asi
+   el suelo pasa exactamente HEJE por debajo de cada tracker medido y conserva
+   el detalle del relieve donde no hay seguidores. */
+var RESID=null;
+function buildResiduo(){
+  RESID=null;
+  if(!COTAS||!FB||!TRK.length)return;
+  var pad=60,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad;
+  var cel=40,nx=Math.max(2,Math.ceil((x1-x0)/cel)),ny=Math.max(2,Math.ceil((n1-n0)/cel));
+  if((nx+1)*(ny+1)>40000){cel=Math.sqrt((x1-x0)*(n1-n0)/40000);nx=Math.ceil((x1-x0)/cel);ny=Math.ceil((n1-n0)/cel);}
+  var P=[],i;
+  for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;P.push([t.gx,-t.gz,t.mc.gnd-t.rel]);}
+  if(!P.length)return;
+  var B={},cb=120,k;                                          // cubos de 120 m para no recorrer los 2.289
+  for(i=0;i<P.length;i++){k=Math.floor(P[i][0]/cb)+'|'+Math.floor(P[i][1]/cb);(B[k]||(B[k]=[])).push(i);}
+  var V=new Float32Array((nx+1)*(ny+1));
+  for(var j=0;j<=ny;j++){var n=n0+(n1-n0)*j/ny;
+    for(var q=0;q<=nx;q++){var x=x0+(x1-x0)*q/nx,sw=0,sv=0,bx=Math.floor(x/cb),bn=Math.floor(n/cb);
+      for(var dx=-1;dx<=1;dx++)for(var dn=-1;dn<=1;dn++){
+        var l=B[(bx+dx)+'|'+(bn+dn)];if(!l)continue;
+        for(var z=0;z<l.length;z++){var p=P[l[z]],d2=(p[0]-x)*(p[0]-x)+(p[1]-n)*(p[1]-n);
+          if(d2>cb*cb)continue;var w=1/(d2+25);sw+=w;sv+=w*p[2];}}
+      V[j*(nx+1)+q]=sw>0?sv/sw:0;}}                           // sin seguidores cerca: 0 = manda el DEM tal cual
+  RESID={x0:x0,x1:x1,n0:n0,n1:n1,nx:nx,ny:ny,v:V};
+}
+function residAt(x,n){
+  if(!RESID)return 0;
+  var fx=(x-RESID.x0)/(RESID.x1-RESID.x0)*RESID.nx,fn=(n-RESID.n0)/(RESID.n1-RESID.n0)*RESID.ny;
+  if(!(fx>=0&&fx<=RESID.nx&&fn>=0&&fn<=RESID.ny))return 0;
+  var i0=Math.min(RESID.nx-1,Math.floor(fx)),j0=Math.min(RESID.ny-1,Math.floor(fn));
+  var tx=fx-i0,tn=fn-j0,w=RESID.nx+1;
+  var a=RESID.v[j0*w+i0],b=RESID.v[j0*w+i0+1],c=RESID.v[(j0+1)*w+i0],d=RESID.v[(j0+1)*w+i0+1];
+  return (a*(1-tx)+b*tx)*(1-tn)+(c*(1-tx)+d*tx)*tn;
+}
+var TERR0=null;
+function aplicaResiduo(){                                     // corrige EN SITIO la malla ya construida (la cota vive en la z local; el vex lo pone scale.z)
+  if(!terrain||!terrain.geometry)return;
+  var pa=terrain.geometry.attributes.position,i;
+  if(!TERR0){TERR0=new Float32Array(pa.count);for(i=0;i<pa.count;i++)TERR0[i]=pa.getZ(i);}
+  var on=(GEO==='levantamiento')&&!!RESID;
+  for(i=0;i<pa.count;i++)pa.setZ(i,TERR0[i]+(on?residAt(pa.getX(i),pa.getY(i)):0));
+  pa.needsUpdate=true;terrain.geometry.computeVertexNormals();
+}
 function usaCotas(t){ return GEO==='levantamiento' && t && t.mc; }
+function suelo(t){ return usaCotas(t) ? t.mc.gnd : t.rel; }   // cota del suelo bajo el tracker, en la referencia activa
 function statCotas(){
   var e=$('geoStat');if(!e)return;
   if(GEO!=='levantamiento'){e.textContent=cotasFile()?'':'esta planta no tiene levantamiento: solo terreno drapeado';return;}
@@ -723,16 +782,17 @@ function statCotas(){
   for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;con++;
     if(t.mc.f[0].art||t.mc.f[1].art)art++;
     if(t.mc.inc)inc++;
-    if(t.mc.rel<t.rel-0.5)bajo++;}
+    if(t.mc.gnd<t.rel+residAt(t.gx,-t.gz)-0.5)bajo++;}   // el residuo corrige el SUELO (DEM), no la cota medida
+  var bt=bt3dOn()?('<br><span style="opacity:.7">BT3D '+(BT3D==='agr'?'agresivo':'conservador')+': cada tracker con la pendiente medida de su lado del sol</span>'):'';
   e.innerHTML=con+' de '+TRK.length+' seguidores sobre cota medida · '+art+' quebrados'
     +(inc?' · '+inc+' con una sola fila medida':'')
     +'<br><span style="opacity:.7">datum alineado con el DEM restando '+COTAOFF.toFixed(2)+' m (la cota se midio sobre modulo, el DEM es suelo)'
-    +(bajo?' · '+bajo+' quedan bajo el suelo del DEM':'')+'</span>';
+    +(bajo?' · '+bajo+' bajo el suelo':'')+'</span>'+bt;
 }
 function zPfor(t){if(!TC||!TC.zPT)return TC?TC.zP:[];var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // retícula de soportes por tipo (círculos del bloque del Tierras.dwg); resto de plantas: la genérica
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var mc=usaCotas(t)?t.mc:null,cl=0.8/vex;
-  var by=(mc?mc.rel:t.rel)*vex+(lift||0);  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
+  var by=(mc?mc.rel:t.rel)*vex+(lift||0);   // con cotas medidas el tubo va a SU cota y el suelo (residuo) queda HEJE por debajo  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
   var gN,gE;
   if(mc){gN=Math.max(-cl,Math.min(cl,mc.gN));gE=Math.max(-cl,Math.min(cl,mc.gE));}   // pendientes MEDIDAS (longitudinal y entre las dos filas)
   else{gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));}
@@ -806,12 +866,38 @@ function layoutTrackers(){
   if(pileOn)applyPileReveal();   // re-colorea pilotes por reveal tras recolocar (arrastre/cambio de planta)
 }
 // recoloca por matriz las piezas que BASCULAN con el tubo (giro sobre el eje X canónico)
+/* BT3D: el backtracking corregido por pendiente (Anderson & Mikofski), con la
+   pendiente transversal MEDIDA del lado del sol -- el vector que se le carga a
+   la TCU. Es la formulacion de topografico.html, aqui por tracker y con la
+   escena completa detras (sombra proyectada, vestido, terreno). */
+var BT3D='plano';
+function bt3dAng(t){
+  var mc=t.mc; if(!mc) return panelAngle(curMin);
+  var sv=(SUN&&SUN._dir)?SUN._dir:sunVec(curMin);
+  if(sv.U<=0.02) return -5;                                   // dormido, mirando al este
+  var b=Math.atan(mc.gN||0);                                  // el eje no es horizontal: lleva la pendiente longitudinal medida
+  var y=sv.N*Math.sin(b)+sv.U*Math.cos(b);
+  var R=-Math.atan2(sv.E,y);
+  var lim=(COTAS&&COTAS.limite)||55;
+  if(!btOn) return Math.max(-lim,Math.min(lim,R/DEG));
+  var sx=(sv.E>0)?((BT3D==='agr')?mc.ase:mc.cse)              // sol al ESTE (mañana): manda la pendiente del lado este
+                : ((BT3D==='agr')?mc.aso:mc.cso);
+  var bc=Math.atan((sx||0)/100);
+  var gcr=(COTAS&&COTAS.gcr)||SIM_GCR;
+  var dist=1/(gcr*Math.cos(bc));
+  var temp=Math.min(dist*Math.cos(R-bc),1);
+  var Rbt=R-(R<0?-1:1)*Math.acos(Math.max(-1,temp));
+  return Math.max(-lim,Math.min(lim,Rbt/DEG));
+}
+function bt3dOn(){ return BT3D!=='plano' && GEO==='levantamiento' && !!COTAS; }
 function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   updateCableSpin(angDeg);   // el mazo embridado bascula con las vigas
   var _ML=null;for(var mi=0;mi<SEG.length;mi++)if(SEG[mi].motorLink){_ML=SEG[mi];break;}            // cable motor↔TCU (se orienta por frame entre un extremo fijo y otro que bascula)
   var _DM=null;for(var dmi=0;dmi<SEG.length;dmi++)if(SEG[dmi].damperLink){_DM=SEG[dmi];break;}       // amortiguadores (igual: extremo fijo al poste + extremo en la viga)
   _R.makeRotationX(-angDeg*DEG);_OS.multiplyMatrices(SEGO,_R);                                      // mundo = orientación · basculación (signo - para casar con el seguimiento)
+  var _b3=bt3dOn();
   for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
+    if(_b3&&t.mc){_R.makeRotationX(-bt3dAng(t)*DEG);_OS.multiplyMatrices(SEGO,_R);}   // cada tracker con SU angulo: la pendiente de su lado del sol no es la del vecino
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);var kf=t.kink[f];                          // base de la fila · (orientación·spin)
       if(kf&&(kf.dN||kf.dS)){_RZ.makeRotationZ(kf.dN);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDN.multiplyMatrices(t.fb[f],_M);_RZ.makeRotationZ(kf.dS);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDS.multiplyMatrices(t.fb[f],_M);}else{_MDN.copy(_MD);_MDS.copy(_MD);}   // QUEBRADO: mitad N gira Δθ_N y mitad S Δθ_S alrededor del eje Z canónico (→ eje E/W del mundo), rótula en el actuador (x=0)
       if(imBush){var _zB=zPfor(t),_hB=TC.np/2;                                                        // CASQUILLO interior: gira CON la viga (misma matriz basculada que el tubo), uno por poste, índice alineado con imBearing
@@ -872,7 +958,8 @@ function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
 // línea del PASILLO CENTRAL (divide qué NCU usa cada TCU): norte→NCU norte, sur→NCU sur
 function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;} }   // línea roja del pasillo retirada (el reparto N/S sigue activo por CORRIDOR)
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
-function localElevY(x,n){ return ELEV?(ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)*vex:0; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
+function localElevY(x,n){ if(!ELEV)return 0;
+  return ((ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)+((GEO==='levantamiento')?residAt(x,n):0))*vex; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
 var TMESH=null;   // parámetros de la MALLA de terreno renderizada (rejilla ~7 m): {w,d,sx,sy}
 function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
   // cota de la MALLA RENDERIZADA (lineal por triángulo, mismos triángulos que PlaneGeometry), no del DEM
@@ -2768,9 +2855,13 @@ $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría)
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('cob').onchange=function(){cobOn=this.checked;cobCompute();};
-$('geosrc').onchange=function(){var v=this.value;loadCotas().then(function(){GEO=v;prepCotas();layoutTrackers();buildContactAO();
-  if(fresOn)applyFresnel();if(cobOn)cobCompute();statCotas();});};   // el origen de cotas mueve los seguidores: se redrapean AO, enlaces y cobertura
-(function(){var g=(new URLSearchParams(location.search).get('cotas')||'').toLowerCase();
+$('geosrc').onchange=function(){var v=this.value;loadCotas().then(function(){GEO=v;prepCotas();aplicaResiduo();layoutTrackers();buildBOS();buildContactAO();buildVeg();
+  if(fresOn)applyFresnel();if(cobOn)cobCompute();statCotas();});};   // el origen de cotas mueve suelo y seguidores: se redrapea todo
+$('btmode').onchange=function(){BT3D=this.value;
+  if(BT3D!=='plano'&&GEO!=='levantamiento'){var g=$('geosrc');if(g&&!g.disabled){g.value='levantamiento';g.onchange.call(g);return;}}   // el BT3D necesita las pendientes medidas
+  setTime(curMin);statCotas();};   // el origen de cotas mueve los seguidores: se redrapean AO, enlaces y cobertura
+(function(){var q=new URLSearchParams(location.search),g=(q.get('cotas')||'').toLowerCase(),b=(q.get('bt')||'').toLowerCase();
+  if(b==='cons'||b==='agr'){BT3D=b;var s2=$('btmode');if(s2)s2.value=b;if(!g)g='levantamiento';}   // el BT3D implica cotas medidas
   if(g==='levantamiento'){GEO='levantamiento';var e=$('geosrc');if(e)e.value='levantamiento';}})();
 $('cobreal').onchange=function(){cobRealOn=this.checked;cobRealApply();};
 (function(){var c=(new URLSearchParams(location.search).get('capa')||'').toLowerCase();   // enlace profundo desde la Cobertura 2D: ?capa=cobertura entra con el mapa puesto
