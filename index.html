@@ -1476,5 +1476,72 @@ buildMap(); legend(); setMode('predicho');   // al abrir, muestra YA la COBERTUR
   </div>
 </div>
 <footer class="app-foot">Factiun · Cobertura Zigbee — <a href="https://imoriana3.github.io/proyectos/">Panel de Proyectos</a></footer>
+<script>
+/* Selector de vista de COBERTURA. index.html y plano.html son las dos caras de la
+   misma capacidad y hasta ahora se enlazaban de forma suelta, cada una llamando
+   "3D" a terreno.html, que es la escena de terreno y seguidores y no dibuja
+   cobertura. El selector las une y nombra cada cosa por lo que es:
+     - Cobertura 2D  index.html   maquina del tiempo Zigbee. Solo El Burgo.
+     - Plano 2D      plano.html   multiplanta.
+     - Cobertura 3D               no existe todavia: sale deshabilitada.
+   El enlace suelto a terreno.html se retira y se re-emite dentro del grupo como
+   "Escena 3D", para que quede claro que no es la cobertura en 3D. */
+addEventListener('DOMContentLoaded', function(){
+  var h=document.querySelector('header'); if(!h||h.querySelector('.cobsel')) return;
+  var aqui=(location.pathname.split('/').pop()||'index.html').toLowerCase();
+  if(!aqui) aqui='index.html';
+  var pl=(aqui==='index.html') ? 'elburgo'
+        : ((new URLSearchParams(location.search).get('planta'))||'elburgo');
+  var q=(pl==='elburgo') ? '' : ('?planta='+encodeURIComponent(pl));
+
+  /* retira los enlaces sueltos a la escena 3D y recuerda donde estaban */
+  var hueco=null;
+  [].slice.call(h.querySelectorAll('a')).forEach(function(a){
+    if(/terreno\.html/.test(a.getAttribute('href')||'')){
+      if(!hueco) hueco=a.nextSibling;
+      a.parentNode.removeChild(a);
+    }
+  });
+
+  var VIS=[{f:'index.html', t:'Cobertura 2D', q:'',
+            no:(pl==='elburgo')?'':'solo El Burgo: la maquina del tiempo Zigbee necesita historico de enlaces'},
+           {f:'plano.html',  t:'Plano 2D',    q:q},
+           {f:'',            t:'Cobertura 3D',
+            no:'todavia no disponible: la cobertura no se proyecta sobre el terreno'}];
+
+  var w=document.createElement('span'); w.className='cobsel';
+  w.style.cssText='display:inline-flex;align-items:center;gap:4px;pointer-events:auto';
+  var lb=document.createElement('span'); lb.textContent='cobertura';
+  lb.style.cssText='font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;letter-spacing:.09em;color:#6b7c8d;margin-right:2px';
+  w.appendChild(lb);
+  function chip(txt,vivo){
+    var e=document.createElement(vivo?'a':'span');
+    e.textContent=txt;
+    e.style.cssText='font:600 12px/1 system-ui,sans-serif;padding:5px 9px;border-radius:8px;text-decoration:none;white-space:nowrap;';
+    return e;
+  }
+  VIS.forEach(function(v){
+    var on=(v.f===aqui), vivo=!!v.f && !on && !v.no;
+    var e=chip(v.t,vivo);
+    e.style.cssText+= on   ? 'background:#36D399;color:#06121f;'
+                    : vivo ? 'border:1px solid #2c3a49;color:#9fb2c4;'
+                           : 'border:1px dashed #2c3a49;color:#59616c;cursor:not-allowed;';
+    if(vivo) e.href=v.f+(v.q||'');
+    if(v.no && !on) e.title=v.no;
+    w.appendChild(e);
+  });
+  var t3=chip('Escena 3D \u2197',true);
+  t3.href='terreno.html'+q;
+  t3.title='Terreno y seguidores en 3D. No dibuja cobertura.';
+  t3.style.cssText+='border:1px solid #2c3a49;color:#9fb2c4;margin-left:8px';
+  w.appendChild(t3);
+
+  if(hueco && hueco.parentNode===h) h.insertBefore(w,hueco);
+  else {
+    var fin=h.querySelector('.client')||h.querySelector('.brand');
+    fin ? h.insertBefore(w,fin) : h.appendChild(w);
+  }
+});
+</script>
 </body>
 </html>
