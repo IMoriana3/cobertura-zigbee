@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0B0F14">
 <link rel="icon" href="favicon.svg">
-<title>3D topográfico · Ayora — backtracking sobre geometría as-built</title>
+<title>3D topográfico — backtracking sobre geometría as-built</title>
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN): funciona offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=2.71"></script><!-- FUENTE ÚNICA del seguidor, compartida con el gemelo digital y con terreno.html -->
@@ -60,7 +60,7 @@
 
 <header>
   <a href="https://imoriana3.github.io/proyectos/">← Panel</a>
-  <h1>3D · Ayora</h1>
+  <h1>3D</h1>
   <span class="variantes">
     <label>terreno</label>
     <select id="selTerreno">
@@ -134,13 +134,14 @@
  * ==========================================================================*/
 var DEG=Math.PI/180, D2=null, META=null, FIL=null;
 var scene,camera,renderer,controls,SUN,HEMI,AMB,ground=null;
-var SEGO=new THREE.Matrix4(), PLANS={}, GRP={}, MODS=[28,21,14];
+var SEGO=new THREE.Matrix4(), PLANS={}, GRP={}, MODS=[];   // los tipos salen de los datos
+var PLANTA=(new URLSearchParams(location.search).get('planta')||'ayora').toLowerCase();
 var ui={bt:'3d',crit:'cons',shadow:true,kink:true,ground:true,det:'mass'};
 var curMin=720, doy=355, playing=false, PLAYSPEED=90;
 var raycaster=new THREE.Raycaster(), mouse=new THREE.Vector2(), picker=null;
 
 /* ---------- posición del sol (misma formulación que terreno.html) ---------- */
-function tzOffMin(d){ return (d>=88&&d<=298)?120:60; }              // España peninsular: CEST / CET
+function tzOffMin(d){ return (META.tz==='pe') ? -300 : ((d>=88&&d<=298)?120:60); }   // Perú UTC-5 fijo · España CEST/CET
 function sunVec(min){
   var lat=META.lat*DEG;
   var decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
@@ -395,7 +396,7 @@ function bindUI(){
   function irA(){
     var t=document.getElementById('selTerreno').value, c=document.getElementById('selCotas').value;
     if(t==='cli' && c==='med') return;                       // ya estamos aquí
-    location.href='terreno.html?planta=ayora';               // el resto, por ahora, en terreno.html
+    location.href='terreno.html?planta='+(PLANTA==='sanjose'?'sanjose':PLANTA);   // el resto, por ahora, en terreno.html
   }
   document.getElementById('selTerreno').onchange=irA;
   document.getElementById('selCotas').onchange=irA;
@@ -419,10 +420,14 @@ function fechaDe(d){
 }
 
 /* ---------- arranque -------------------------------------------------------- */
-fetch('ayora_asbuilt.json').then(function(r){return r.json();}).then(function(j){
+fetch(PLANTA+'_asbuilt.json').then(function(r){return r.json();}).then(function(j){
   D2=j; META=j.meta; FIL=j.f;
+  MODS=[...new Set(FIL.map(function(f){return f.mods;}))];
+  document.title='3D · '+META.planta+' — backtracking sobre geometría as-built';
+  document.querySelector('header h1').textContent='3D · '+META.planta;
+  document.querySelector('header a').href='https://imoriana3.github.io/proyectos/';
   document.getElementById('kTrk').textContent=META.n_trk+' · '+META.n_filas;
-  document.getElementById('kArt').textContent=(META.n_art/2)+' bifilas';
+  document.getElementById('kArt').textContent=(META.n_art===META.n_filas)?'todas (2 mesas medidas)':((META.n_art/2)+' bifilas');
   document.getElementById('kGeo').textContent=META.pitch.toFixed(2)+' m · '+META.cuerda.toFixed(3)+' m';
   document.getElementById('kGcr').textContent=META.gcr.toFixed(4);
   init(); buildGround(); buildTrackers(); encuadra(); bindUI();
