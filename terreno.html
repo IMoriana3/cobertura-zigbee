@@ -104,6 +104,12 @@ addEventListener('DOMContentLoaded',function(){
     <button id="fotoBtn" title="Captura PNG a alta resolución (2×, sombras 8K) del encuadre actual y la descarga." style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">📸 Foto</button></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
+    <div class="row" style="flex-wrap:wrap"><label title="De donde sale la cota de cada seguidor. TERRENO: se drapea sobre el relieve del DEM, paralelo al suelo. LEVANTAMIENTO: cada fila va a la cota MEDIDA en campo sobre el modulo, con su pendiente y su quiebro reales; el terreno sigue siendo el DEM y los postes absorben la diferencia.">Cotas del seguidor</label>
+      <select id="geosrc" style="flex:1;min-width:150px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:7px;padding:3px 7px;font:inherit;font-size:12px">
+        <option value="terreno">Terreno (drapeado)</option>
+        <option value="levantamiento">Levantamiento (medido)</option>
+      </select></div>
+    <div class="row" id="geoStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
     <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula) · todos</label></div>
     <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo (sale un recuadro verde). Aparece aquí abajo la casilla 'Quebrado' para articularlo o no, y puedes arrastrarlo sobre el terreno. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores <span style="color:var(--tx2);font-size:11px">(clic: elegir quebrado · arrastrar: mover)</span></label></div>
@@ -482,7 +488,9 @@ async function build(){
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
-  if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';   // la malla medida solo existe en El Burgo
+  if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
+  if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
+  await loadCotas(); if(GEO==='levantamiento'){layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
   if(cobOn)cobCompute();if(cobRealOn)cobRealApply();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
@@ -663,18 +671,89 @@ function buildTrackers(elevAt){
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
 }
+/* ---------- Fusion 3D: de donde sale la cota del seguidor -------------------
+   Habia dos escenas solapadas porque dos ejes independientes estaban soldados:
+     - la cota del TERRENO  -> DEM de internet
+     - la cota del SEGUIDOR -> drapeado sobre ese terreno (terreno.html)
+                               o la MEDIDA en campo (topografico.html)
+   Aqui el segundo eje pasa a ser un selector. Con 'levantamiento' el tubo va a
+   su cota medida y el terreno sigue siendo el DEM: los POSTES absorben la
+   diferencia, que es justo lo que hace un poste.
+   Las dos referencias se alinean restando la MEDIANA de su diferencia. La cota
+   medida es sobre MODULO y el DEM es suelo desnudo, asi que el desfase
+   sistematico entre ambas (unos 6 m en Ayora) no es relieve: es la referencia.
+   Lo que se conserva del levantamiento es el relieve RELATIVO, que es lo que se
+   midio bien; el datum absoluto lo sigue poniendo el DEM. */
+var GEO='terreno',COTAS=null,COTAOFF=0,_cotasTry=false;
+function cotasFile(){ return (PLANT==='ayora'||PLANT==='sanjose') ? PLANT+'_cotas.json' : null; }
+function loadCotas(){
+  var fn=cotasFile();
+  if(!fn||COTAS||_cotasTry) return Promise.resolve(COTAS);
+  _cotasTry=true;
+  return fetch(fn,{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+    .then(function(j){COTAS=j;prepCotas();return j;}).catch(function(){return null;});
+}
+function yMedia(c){var s9=0,n9=0,i,fi;for(i=0;i<c.f.length;i++){fi=c.f[i];s9+=fi.y[0]+fi.y[1];n9+=2;}return s9/n9;}
+function prepCotas(){
+  if(!COTAS||!ELEV||!TRK.length)return;
+  var d=[],i,c;
+  for(i=0;i<TRK.length;i++){c=COTAS.t[i];if(!c)continue;d.push((COTAS.base+yMedia(c)-baseElev)-TRK[i].rel);}
+  if(!d.length)return;
+  d.sort(function(a,b){return a-b;});
+  COTAOFF=d[d.length>>1];                                   // mediana del desfase levantamiento - DEM
+  for(i=0;i<TRK.length;i++){
+    var t=TRK[i];t.mc=null;c=COTAS.t[i];if(!c)continue;
+    var f0=c.f[0],f1=c.f[1];
+    if(f1.x<f0.x){var q=f0;f0=f1;f1=q;}                     // fila 0 = OESTE, como t.fb[0]
+    var yS=(f0.y[0]+f1.y[0])/2,yN=(f0.y[1]+f1.y[1])/2;      // n[0]=extremo sur, n[1]=extremo norte
+    var span=Math.abs(f0.n[1]-f0.n[0])||TC.span;
+    var y0=(f0.y[0]+f0.y[1])/2,y1=(f1.y[0]+f1.y[1])/2,dx=(f1.x-f0.x)||1;
+    t.mc={rel:(COTAS.base+yMedia(c)-baseElev)-COTAOFF,
+          gN:(yN-yS)/span, gE:(y1-y0)/dx, f:[f0,f1], span:span, inc:c.inc||0,
+          cse:c.cse,cso:c.cso,ase:c.ase,aso:c.aso};
+  }
+  statCotas();
+}
+function usaCotas(t){ return GEO==='levantamiento' && t && t.mc; }
+function statCotas(){
+  var e=$('geoStat');if(!e)return;
+  if(GEO!=='levantamiento'){e.textContent=cotasFile()?'':'esta planta no tiene levantamiento: solo terreno drapeado';return;}
+  if(!COTAS){e.textContent='cargando levantamiento…';return;}
+  var con=0,art=0,inc=0,bajo=0,i;
+  for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;con++;
+    if(t.mc.f[0].art||t.mc.f[1].art)art++;
+    if(t.mc.inc)inc++;
+    if(t.mc.rel<t.rel-0.5)bajo++;}
+  e.innerHTML=con+' de '+TRK.length+' seguidores sobre cota medida · '+art+' quebrados'
+    +(inc?' · '+inc+' con una sola fila medida':'')
+    +'<br><span style="opacity:.7">datum alineado con el DEM restando '+COTAOFF.toFixed(2)+' m (la cota se midio sobre modulo, el DEM es suelo)'
+    +(bajo?' · '+bajo+' quedan bajo el suelo del DEM':'')+'</span>';
+}
 function zPfor(t){if(!TC||!TC.zPT)return TC?TC.zP:[];var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // retícula de soportes por tipo (círculos del bloque del Tierras.dwg); resto de plantas: la genérica
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
-  var by=t.rel*vex+(lift||0),cl=0.8/vex;   // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
-  var gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span)),gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));
+  var mc=usaCotas(t)?t.mc:null,cl=0.8/vex;
+  var by=(mc?mc.rel:t.rel)*vex+(lift||0);  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
+  var gN,gE;
+  if(mc){gN=Math.max(-cl,Math.min(cl,mc.gN));gE=Math.max(-cl,Math.min(cl,mc.gE));}   // pendientes MEDIDAS (longitudinal y entre las dos filas)
+  else{gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));}
   _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 // "Tracker quebrado": ángulos de quiebre (rótula en el actuador) de cada mitad de viga, POR FILA, a partir del terreno real.
 // La viga ya lleva la pendiente MEDIA (en t.fb, drape del centro); aquí calculamos la DESVIACIÓN de cada mitad respecto a esa media.
 function computeKink(t){
-  var sp=TC.span,cl=0.8/vex,latHalf=(sp/2)/mPerLat,fz=TC.filaZ;
+  var sp=TC.span,cl=0.8/vex,latHalf=(sp/2)/mPerLat,fz=TC.filaZ,mc=usaCotas(t)?t.mc:null;
   for(var f=0;f<2;f++){var kf=t.kink[f];
+    if(mc){                                                     // quiebro MEDIDO: la rotula esta donde la midio el topografo
+      var fi=mc.f[f];
+      if(!fi.art||fi.ym==null||fi.nm==null){kf.dN=0;kf.dS=0;continue;}
+      var s2=Math.abs(fi.n[1]-fi.n[0])||sp;
+      var hN=Math.abs(fi.n[1]-fi.nm)||s2/2,hS=Math.abs(fi.nm-fi.n[0])||s2/2;
+      var qA=Math.max(-cl,Math.min(cl,(fi.y[1]-fi.y[0])/s2));
+      var qN=Math.max(-cl,Math.min(cl,(fi.y[1]-fi.ym)/hN)),qS=Math.max(-cl,Math.min(cl,(fi.ym-fi.y[0])/hS));
+      var t2=Math.atan(vex*qA),eN=Math.atan(vex*qN)-t2,eS=Math.atan(vex*qS)-t2;
+      kf.dN=isFinite(eN)?eN:0;kf.dS=isFinite(eS)?eS:0;continue;
+    }
     if(!t.artic||t.medio||!ELEV){kf.dN=0;kf.dS=0;continue;}
     var lon=lon0+(t.gx+(f?fz:-fz))/mPerLon;                                                  // línea de ESTA fila (las dos vigas difieren en E/W)
     var rN=ELEV(t.glat+latHalf,lon)-baseElev,rC=ELEV(t.glat,lon)-baseElev,rS=ELEV(t.glat-latHalf,lon)-baseElev;
@@ -700,7 +779,7 @@ function layoutTrackers(){
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
     var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
     var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[kk])>16)){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
-    var lift=Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
+    var lift=usaCotas(t)?0:Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // con cota MEDIDA no se corrige nada: subir el tubo para que no roce falsearia el dato   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
       if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
@@ -2678,7 +2757,7 @@ $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
@@ -2689,6 +2768,10 @@ $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría)
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
 $('cob').onchange=function(){cobOn=this.checked;cobCompute();};
+$('geosrc').onchange=function(){var v=this.value;loadCotas().then(function(){GEO=v;prepCotas();layoutTrackers();buildContactAO();
+  if(fresOn)applyFresnel();if(cobOn)cobCompute();statCotas();});};   // el origen de cotas mueve los seguidores: se redrapean AO, enlaces y cobertura
+(function(){var g=(new URLSearchParams(location.search).get('cotas')||'').toLowerCase();
+  if(g==='levantamiento'){GEO='levantamiento';var e=$('geosrc');if(e)e.value='levantamiento';}})();
 $('cobreal').onchange=function(){cobRealOn=this.checked;cobRealApply();};
 (function(){var c=(new URLSearchParams(location.search).get('capa')||'').toLowerCase();   // enlace profundo desde la Cobertura 2D: ?capa=cobertura entra con el mapa puesto
   if(c!=='cobertura')return;
