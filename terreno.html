@@ -12,7 +12,7 @@
    escena con las cotas medidas de los trackers. Enlace en la cabecera, no en el panel
    de proyectos, para que la tarjeta de planta se quede en un solo botón "3D". */
 addEventListener('DOMContentLoaded',function(){
-  var AS={ayora:'topografico.html'};
+  var AS={ayora:'topografico.html?planta=ayora', sanjose:'topografico.html?planta=sanjose'};
   var p=(new URLSearchParams(location.search).get('planta')||'').toLowerCase();
   if(!AS[p]) return;
   var h=document.querySelector('header'); if(!h) return;
