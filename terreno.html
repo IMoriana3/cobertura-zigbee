@@ -7,6 +7,22 @@
 <link rel="icon" href="favicon.svg">
 <title>Cobertura 3D · El Burgo I — terreno real</title>
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="app-icon.svg"><link rel="icon" href="favicon.svg">
+<script>
+/* Selector de variante 3D: las plantas con levantamiento propio tienen además una
+   escena con las cotas medidas de los trackers. Enlace en la cabecera, no en el panel
+   de proyectos, para que la tarjeta de planta se quede en un solo botón "3D". */
+addEventListener('DOMContentLoaded',function(){
+  var AS={ayora:'topografico.html'};
+  var p=(new URLSearchParams(location.search).get('planta')||'').toLowerCase();
+  if(!AS[p]) return;
+  var h=document.querySelector('header'); if(!h) return;
+  var a=document.createElement('a');
+  a.href=AS[p]; a.textContent='3D · cotas medidas ↗';
+  a.title='Misma planta con las cotas Z medidas de los trackers en vez de drapeadas del terreno';
+  a.style.cssText='pointer-events:auto;border-color:#36D399;color:#36D399';
+  var ref=h.querySelector('a'); ref?ref.insertAdjacentElement('afterend',a):h.appendChild(a);
+});
+</script>
 <script>if('serviceWorker'in navigator)addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});</script>
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN): funciona offline -->
 <script src="lib/OrbitControls.js"></script>

@@ -21,6 +21,9 @@
   header a:hover{color:var(--tx);border-color:var(--accent)}
   header h1{font-size:15px;margin:0;font-weight:700}
   header .sub{color:var(--tx2);font-size:12px}
+  header .variantes{pointer-events:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  header .variantes label{color:#6d7d8c;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}
+  header .variantes select{width:auto;padding:4px 7px;font-size:12px}
   header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
   .panel{position:absolute;left:14px;top:52px;z-index:5;background:var(--panel);border:1px solid var(--line);
          border-radius:12px;padding:12px 14px;width:286px;font-size:13px;
@@ -57,9 +60,19 @@
 
 <header>
   <a href="https://imoriana3.github.io/proyectos/">← Panel</a>
-  <a href="terreno.html?planta=ayora">3D layout</a>
-  <h1>3D topográfico · Ayora</h1>
-  <span class="sub">backtracking sobre la geometría as-built</span>
+  <h1>3D · Ayora</h1>
+  <span class="variantes">
+    <label>terreno</label>
+    <select id="selTerreno">
+      <option value="cli" selected>levantamiento de cliente</option>
+      <option value="int">de internet (DEM)</option>
+    </select>
+    <label>trackers</label>
+    <select id="selCotas">
+      <option value="med" selected>con sus cotas medidas</option>
+      <option value="drape">paralelos al terreno</option>
+    </select>
+  </span>
   <span class="brand">Factiun</span>
 </header>
 
@@ -377,6 +390,15 @@ function bindUI(){
   });
   document.getElementById('btHelp').textContent=BTH['3d'];
   document.getElementById('crit').onchange=function(e){ ui.crit=e.target.value; };
+  // De momento las dos variantes viven en páginas distintas; al fusionar las escenas
+  // estos selectores pasarán a conmutar aquí dentro sin cambiar la interfaz.
+  function irA(){
+    var t=document.getElementById('selTerreno').value, c=document.getElementById('selCotas').value;
+    if(t==='cli' && c==='med') return;                       // ya estamos aquí
+    location.href='terreno.html?planta=ayora';               // el resto, por ahora, en terreno.html
+  }
+  document.getElementById('selTerreno').onchange=irA;
+  document.getElementById('selCotas').onchange=irA;
   document.getElementById('chkShadow').onchange=function(e){ ui.shadow=e.target.checked; };
   document.getElementById('chkKink').onchange=function(e){ ui.kink=e.target.checked; };
   document.getElementById('chkGround').onchange=function(e){ ui.ground=e.target.checked; if(ground)ground.visible=ui.ground; };
