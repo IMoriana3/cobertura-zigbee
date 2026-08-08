@@ -428,8 +428,8 @@ addEventListener('DOMContentLoaded', function(){
   var VIS=[{f:'index.html', t:'Cobertura 2D', q:'',
             no:(pl==='elburgo')?'':'solo El Burgo: la maquina del tiempo Zigbee necesita historico de enlaces'},
            {f:'plano.html',  t:'Plano 2D',    q:q},
-           {f:'',            t:'Cobertura 3D',
-            no:'todavia no disponible: la cobertura no se proyecta sobre el terreno'}];
+           {f:'terreno.html', t:'Cobertura 3D', q:q+(q?'&':'?')+'capa=cobertura',
+            ti:'Mapa de cobertura drapeado sobre el terreno, dentro de la escena 3D'}];
 
   var w=document.createElement('span'); w.className='cobsel';
   w.style.cssText='display:inline-flex;align-items:center;gap:4px;pointer-events:auto';
@@ -450,11 +450,12 @@ addEventListener('DOMContentLoaded', function(){
                            : 'border:1px dashed #2c3a49;color:#59616c;cursor:not-allowed;';
     if(vivo) e.href=v.f+(v.q||'');
     if(v.no && !on) e.title=v.no;
+    if(v.ti) e.title=v.ti;
     w.appendChild(e);
   });
   var t3=chip('Escena 3D \u2197',true);
   t3.href='terreno.html'+q;
-  t3.title='Terreno y seguidores en 3D. No dibuja cobertura.';
+  t3.title='Terreno y seguidores en 3D, con la capa de cobertura apagada.';
   t3.style.cssText+='border:1px solid #2c3a49;color:#9fb2c4;margin-left:8px';
   w.appendChild(t3);
 

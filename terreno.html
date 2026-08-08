@@ -122,6 +122,11 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
+    <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Mapa de cobertura DRAPEADO sobre el terreno: en cada punto del campo, cuantos vecinos de malla se ven con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstaculo. Cambia con la hora: al amanecer los paneles se levantan y tapan."><input type="checkbox" id="cob"> 📶 <b>Cobertura sobre el terreno</b></label></div>
+    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#7fd18a">■</span> 2</span><span><span style="color:#36D399">■</span> 3 o mas</span></div>
+    <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
+    <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
+    <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · doble-clic: ir ahí · WASD vuela</span></div>
   </div>
   <div id="timebar">
@@ -390,6 +395,7 @@ function setTime(min){
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
   if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
+  if(cobOn)cobSchedule();                                      // la cobertura depende del angulo del panel: al mover la hora, se recalcula (con freno)
   var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWTXT?" · "+_STOWTXT:(simOn?" · sim":" · real"))+((btOn||_STOWTXT)?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
@@ -475,7 +481,9 @@ async function build(){
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
-  await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
+  await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
+  if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';   // la malla medida solo existe en El Burgo
+  if(cobOn)cobCompute();if(cobRealOn)cobRealApply();   // ensureNet antes de buildBOS → las cámaras se orientan a su alcance (del DWG)
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
@@ -688,7 +696,7 @@ function applyPileReveal(){   // colorea cada pilote por su REVEAL (lo que sobre
   var lg=$('pileLeg');if(lg)lg.textContent=' '+mn.toFixed(2)+'–'+mx.toFixed(2)+' m';
 }
 function layoutTrackers(){
-  if(!imPost||!SEG)return;var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
+  if(!imPost||!SEG)return;ROWX=null;/* el layout puede cambiar (arrastre en edicion): recalcula los ejes de fila */var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
     var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
     var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[kk])>16)){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
@@ -2356,18 +2364,53 @@ function positionGateways(){ if(!gwG||!ELEV)return; GWS.forEach(function(gw,i){g
 function nearestNCU(gx,gz){var bi=0,bd=1e18;GWS.forEach(function(gw,i){var dx=gx-projX(gw.lon),dz=gz-projZ(gw.lat),dd=dx*dx+dz*dz;if(dd<bd){bd=dd;bi=i;}});return bi;}
 // altura de la CRESTA del panel (m sobre el suelo) a la inclinación actual: pivota sobre el tubo y sube media cuerda·sen(ángulo)
 function panelTopH(){ if(!TC.modH)return 0; var a=Math.abs(panelAngle(curMin)); return TC.postH+TC.off+(TC.modH/2)*Math.sin(a*DEG); }
+// BANDA que ocupa el panel: es un PLANO inclinado, no un muro. Su borde bajo BAJA al inclinarse
+// (media cuerda·sen α por debajo del tubo) y su cresta sube. Un rayo por DEBAJO del borde bajo pasa
+// limpio — que es lo que ocurre a mediodía, con los paneles casi planos a 2,14 m y las antenas a 1,3 m.
+function panelBand(){ if(!TC.modH)return null;
+  var a=Math.abs(panelAngle(curMin)),h=(TC.modH/2)*Math.sin(a*DEG),c=TC.postH+TC.off;
+  return {bot:c-h,top:c+h,hw:(TC.modH/2)*Math.cos(a*DEG)};   // hw = SEMIANCHO de la huella del panel en el suelo
+}
+// Ejes de las filas (los seguidores son filas N-S). Un enlace que va A LO LARGO de
+// una fila no cruza ningun panel; solo se topa con la banda quien CRUZA filas. Tratar
+// "dentro del campo" como un muro omnidireccional daba 95% de la planta aislada, lo
+// que contradice la malla MEDIDA (52 enlaces vivos, mediana -77 dBm, hasta 5 saltos).
+var ROWX=null;
+function buildRowX(){ var s={},a=[],i,k;
+  for(i=0;i<TRK.length;i++)s[Math.round(TRK[i].gx*10)/10]=1;
+  for(k in s)a.push(+k);
+  a.sort(function(p,q){return p-q;});ROWX=a;
+}
+function nearRowD(x){ if(!ROWX)buildRowX();
+  if(!ROWX.length)return 0;                                  // sin filas conocidas: conservador (apantalla)
+  var lo=0,hi=ROWX.length-1,m;
+  while(lo<hi){m=(lo+hi)>>1;if(ROWX[m]<x)lo=m+1;else hi=m;}
+  var d=Math.abs(ROWX[lo]-x);
+  if(lo>0)d=Math.min(d,Math.abs(ROWX[lo-1]-x));
+  if(lo+1<ROWX.length)d=Math.min(d,Math.abs(ROWX[lo+1]-x));
+  return d;
+}
 function inField(lon,lat){ if(!FB)return false; var x=projX(lon),n=-projZ(lat); return x>FB.x0-6&&x<FB.x1+6&&n>FB.n0-6&&n<FB.n1+6; }
 // Despeje de la 1ª zona de Fresnel a 2,4 GHz con cotas REALES. El terreno es llano, así que lo que
-// apantalla son los PROPIOS PANELES: dentro del campo, el obstáculo sube hasta la cresta del panel
-// (depende de la inclinación → cambia a lo largo del día). ratio<0 = sin visión, <0.6 = roza Fresnel.
+// apantalla son los PROPIOS PANELES, y cada uno solo donde ESTÁ: ocupa una banda de altura
+// (centro ± media cuerda·sen α, así que su borde bajo BAJA al inclinarse) sobre una huella en el
+// suelo de ± media cuerda·cos α alrededor del eje de su fila. Un enlace que va A LO LARGO de la
+// fila no cruza ningún panel; solo se topa con la banda quien CRUZA filas. Tratarlo como un muro
+// omnidireccional daba 95% de la planta aislada, contra los 52 enlaces MEDIDOS que están vivos.
+// ratio<0 = sin visión, <0.6 = roza Fresnel.
 function linkClearance(latA,lonA,hA,latB,lonB,hB){
   var eA=ELEV(latA,lonA)+hA,eB=ELEV(latB,lonB)+hB,dE=(lonB-lonA)*mPerLon,dN=(latB-latA)*mPerLat,D=Math.hypot(dE,dN);
   if(D<2)return{blocked:false,partial:false};
-  var lam=0.125,worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),pth=panelTopH();
-  for(var i=1;i<N;i++){var f=i/N,lat=latA+(latB-latA)*f,lon=lonA+(lonB-lonA)*f,los=eA+(eB-eA)*f,terr=ELEV(lat,lon),obst=terr;
-    if(Math.min(f,1-f)*D>4 && inField(lon,lat)) obst=terr+pth;          // dentro del campo, apantallan los paneles
-    var r=Math.sqrt(lam*D*f*(1-f)),ratio=(los-obst)/(r||1e-6);if(ratio<worst)worst=ratio;}
-  return{blocked:worst<0,partial:worst>=0&&worst<0.6};
+  var lam=0.125,worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),bd=panelBand();
+  for(var i=1;i<N;i++){var f=i/N,lat=latA+(latB-latA)*f,lon=lonA+(lonB-lonA)*f,los=eA+(eB-eA)*f,terr=ELEV(lat,lon),hueco;
+    if(Math.min(f,1-f)*D>4 && inField(lon,lat) && bd && nearRowD(projX(lon))<=bd.hw){   // apantalla el panel solo donde ESTA: su banda de altura y su huella en el suelo
+      var pb=terr+bd.bot,pt=terr+bd.top;
+      if(los>=pt) hueco=los-pt;                                         // por encima de la cresta
+      else if(los<=pb) hueco=Math.min(los-terr,pb-los);                 // por debajo del panel: limita el suelo o el propio panel
+      else hueco=-Math.min(los-pb,pt-los);                              // dentro de la banda: tapado
+    } else hueco=los-terr;                                              // fuera del campo manda el relieve
+    var r=Math.sqrt(lam*D*f*(1-f)),ratio=hueco/(r||1e-6);if(ratio<worst)worst=ratio;}
+  return{blocked:worst<0,partial:worst>=0&&worst<0.6,ratio:worst};
 }
 function applyFresnel(){
   if(!linkGroup){linkGroup=new THREE.Group();scene.add(linkGroup);}
@@ -2379,7 +2422,7 @@ function applyFresnel(){
   function link(glat,glon,gx,gz,hA,ay,n){var i=(n>CORRIDOR)?NIDX:SIDX,gw=GWS[i],c=linkClearance(glat,glon,hA,gw.lat,gw.lon,gw.h),r,g,b; // asignación por pasillo central
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
-  TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,(tp[1]-t.rel*vex)/vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
+  TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,tp[1]-t.rel*vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
   (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,m.n);}); // estación meteo: antena a 8 m (mástil 8,5 m)
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
@@ -2390,6 +2433,144 @@ function updateFres(cl,pa,bl){var e=$('fresStat'),lg=$('fresLeg');if(!e)return;
   if(lg)lg.style.display='flex';
   e.innerHTML='Enlace de cada TCU a su NCU: <b style="color:#36D399">'+cl+'</b> con visión · <b style="color:#e3c149">'+pa+'</b> rozando · <b style="color:#e2574c">'+bl+'</b> sin visión';
 }
+/* ---------- 3b: COBERTURA sobre el terreno ----------------------------------
+   Lo que este mapa NO es: dBm. Los 52 enlaces MEDIDOS de El Burgo
+   (elburgo_real.geojson) dan RSSI de -58 a -87 dBm entre 12 y 158 m, y el
+   ajuste log-distancia sale plano: n=0,38 · sigma 5,2 dB · R2=0,05. A esta
+   escala la distancia NO explica la senal, asi que pintar un modelo de
+   perdidas sobre el terreno seria inventarse la planta.
+   Lo que SI es: en cada punto del campo, cuantos vecinos de malla (NCUs y
+   antenas de TCU) se ven con la 1a zona de Fresnel despejada a 2,4 GHz, sobre
+   las cotas REALES y con los propios paneles como obstaculo -- el mismo
+   criterio de linkClearance() que ya usa la capa de enlaces.
+     0  = aislado          1 = un unico camino (si cae ese rele, cae el nodo)
+     >=2 = redundante
+   Cambia con la hora porque los paneles se levantan y tapan. Por eso la barra
+   de tiempo recalcula (con freno de 260 ms). */
+var cobOn=false,cobG=null,_cobT=null,COBR=160;                                  // COBR: alcance de primer salto. El enlace mas largo MEDIDO en El Burgo es 158 m.
+var COBCOL=[[0.886,0.341,0.298],[0.890,0.757,0.286],[0.498,0.820,0.541],[0.212,0.827,0.600]];
+
+function cobAnchors(){                                                          // NCUs + antena de cada TCU (la punta REAL: aTip bascula con el panel, luego cambia con la hora)
+  var A=[],i;
+  for(i=0;i<GWS.length;i++)A.push({x:projX(GWS[i].lon),n:-projZ(GWS[i].lat),lat:GWS[i].lat,lon:GWS[i].lon,h:GWS[i].h,ncu:true});
+  for(i=0;i<TRK.length;i++){var t=TRK[i],tp=t.aTip,h=tp?Math.max(0.1,tp[1]-t.rel*vex):(TC.postH+(TC.off||0)-(TC.antHang||0.5));
+    A.push({x:t.gx,n:-t.gz,lat:t.glat,lon:t.glon,h:h,ncu:false});}
+  return A;
+}
+function cobIndex(A){var B={},s=COBR,i;                                         // rejilla de cubos de lado COBR: el muestreo mira solo 3x3 cubos, no las 2.300 antenas
+  for(i=0;i<A.length;i++){var k=Math.floor(A[i].x/s)+'|'+Math.floor(A[i].n/s);(B[k]||(B[k]=[])).push(i);}
+  return {s:s,B:B};
+}
+function cobNear(ix,A,x,n,out){
+  out.length=0;var s=ix.s,bx=Math.floor(x/s),bn=Math.floor(n/s),dx,dn,q;
+  for(dx=-1;dx<=1;dx++)for(dn=-1;dn<=1;dn++){
+    var l=ix.B[(bx+dx)+'|'+(bn+dn)];if(!l)continue;
+    for(q=0;q<l.length;q++){var a=A[l[q]],d=Math.hypot(a.x-x,a.n-n);
+      if(d>=5&&d<=COBR)out.push({a:a,d:d});}}                                   // <5 m es el propio seguidor, no es un salto
+  var dm=1e9;for(q=0;q<out.length;q++)if(out[q].d<dm)dm=out[q].d;
+  out.dmin=dm;                                                                  // distancia al seguidor mas cercano: sirve para saber si el punto cae DENTRO de la planta
+  out.sort(function(p,r){return (p.a.ncu?0:1)-(r.a.ncu?0:1)||p.d-r.d;});        // NCUs primero: asi el corte por 3 vecinos no pierde el dato de "ve NCU directa"
+  return out;
+}
+function cobDispose(){ if(!cobG)return; scene.remove(cobG);
+  cobG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});
+  cobG=null;
+}
+function cobCompute(){
+  cobDispose();
+  if(!cobOn||!ELEV||!FB||!TRK.length){cobStat(null);return;}
+  var t0=performance.now();
+  var pad=25,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad,W=x1-x0,D=n1-n0;
+  var cell=Math.max(8,Math.sqrt(W*D/2600));                                     // ~2.600 puntos sea cual sea la planta: El Burgo sale a ~10 m, Ayora a ~25 m
+  var nx=Math.max(2,Math.round(W/cell)),ny=Math.max(2,Math.round(D/cell));
+  var A=cobAnchors(),ix=cobIndex(A),i,j,q;
+  var hh=[];for(i=0;i<A.length;i++)if(!A[i].ncu)hh.push(A[i].h);
+  hh.sort(function(p,r){return p-r;});
+  var hRx=hh.length?hh[hh.length>>1]:1.5;                                       // altura de muestreo = altura MEDIANA de las antenas de TCU
+  var pos=[],col=[],idx=[],cand=[],hist=[0,0,0,0],nn=0,ncud=0,fuera=0;
+  var DENTRO=30,esFuera=new Uint8Array((nx+1)*(ny+1));                          // >30 m del seguidor mas cercano = fuera de la planta, no es "sin cobertura"
+  for(j=0;j<=ny;j++){var n=n0+D*j/ny;
+    for(i=0;i<=nx;i++){var x=x0+W*i/nx,lat=lat0+n/mPerLat,lon=lon0+x/mPerLon,k0=j*(nx+1)+i;
+      cobNear(ix,A,x,n,cand);
+      pos.push(x,terrainMeshY(x,n)+0.8,-n);
+      if(cand.dmin>DENTRO){esFuera[k0]=1;fuera++;col.push(0.18,0.20,0.23);continue;}
+      var c=0,nd=0,lim=Math.min(cand.length,16);
+      for(q=0;q<lim;q++){var a=cand[q].a,cl=linkClearance(lat,lon,hRx,a.lat,a.lon,a.h);
+        if(cl.blocked||cl.partial)continue;
+        c++;if(a.ncu)nd=1;
+        if(c>=3)break;}
+      var b=COBCOL[Math.min(3,c)];col.push(b[0],b[1],b[2]);
+      hist[Math.min(3,c)]++;nn++;if(nd)ncud++;}}
+  for(j=0;j<ny;j++)for(i=0;i<nx;i++){var k=j*(nx+1)+i;
+    if(esFuera[k]&&esFuera[k+1]&&esFuera[k+nx+1]&&esFuera[k+nx+2])continue;     // cuadro entero fuera de la planta: no se dibuja
+    idx.push(k,k+nx+1,k+1, k+1,k+nx+1,k+nx+2);}
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.setIndex(idx);
+  var m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide}));
+  m.renderOrder=3;
+  cobG=new THREE.Group();cobG.add(m);scene.add(cobG);
+  cobStat({n:nn,cell:cell,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),h:hRx,fuera:fuera,
+           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});   // solo El Burgo trae telemetria real; en Ayora/San Jose el angulo sale de solarTilt()
+}
+function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
+  if(!r){e.textContent='';if(lg)lg.style.display='none';return;}
+  if(lg)lg.style.display='flex';
+  function p(v){return (100*v/r.n).toFixed(0)+'%';}
+  e.innerHTML='Vecinos con Fresnel despejado a '+r.h.toFixed(1)+' m: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
+    +'<br><span style="opacity:.7">paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
+    +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la senal no depende de la distancia (R²=0,05)</span>';
+}
+function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=setTimeout(function(){_cobT=null;cobCompute();},260); }
+
+/* --- malla MEDIDA (El Burgo): la verdad de campo contra la que se juzga el mapa --- */
+var cobRealOn=false,cobRealG=null,COBREAL=null,_cobRealLoad=false;
+function rssiCol(r){ if(r==null)return new THREE.Color(0.42,0.47,0.55);         // sin medida (el propio coordinador)
+  var t=Math.max(0,Math.min(1,(r+95)/35));                                      // -95 dBm (sensibilidad tipica 802.15.4) -> -60 dBm
+  return (t<0.5)?new THREE.Color(0.886+(0.890-0.886)*t*2,0.341+(0.757-0.341)*t*2,0.298+(0.286-0.298)*t*2)
+               : new THREE.Color(0.890+(0.212-0.890)*(t-0.5)*2,0.757+(0.827-0.757)*(t-0.5)*2,0.286+(0.600-0.286)*(t-0.5)*2);
+}
+function cobRealApply(){
+  if(cobRealG){scene.remove(cobRealG);
+    cobRealG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});
+    cobRealG=null;}
+  var e=$('cobRealStat');
+  if(!cobRealOn||!ELEV){if(e)e.textContent='';return;}
+  if(!COBREAL){ if(_cobRealLoad)return; _cobRealLoad=true;
+    if(e)e.textContent='cargando malla medida…';
+    fetch('elburgo_real.geojson',{cache:'no-store'}).then(function(r){return r.json();}).then(function(g){
+      COBREAL=g;_cobRealLoad=false;cobRealApply();
+    }).catch(function(){_cobRealLoad=false;COBREAL={features:[]};if(e)e.textContent='no se pudo cargar la malla medida';});
+    return;}
+  var G=new THREE.Group(),pos=[],col=[],rs=[],spof=0,nodes=0;
+  var nodeGeo=new THREE.OctahedronGeometry(1.6,0);
+  var matOk=new THREE.MeshBasicMaterial({color:0x9fd0ff}),matSp=new THREE.MeshBasicMaterial({color:0xe2574c}),matGw=new THREE.MeshBasicMaterial({color:0x36D399});
+  (COBREAL.features||[]).forEach(function(f){
+    var g=f.geometry,p=f.properties||{};if(!g)return;
+    if(g.type==='Point'){
+      var x=projX(g.coordinates[0]),z=projZ(g.coordinates[1]),h=(p.role==='COORD')?2.5:2.0;
+      var mm=new THREE.Mesh(nodeGeo,p.is_spof?matSp:(p.role==='COORD'?matGw:matOk));
+      mm.position.set(x,localElevY(x,-z)+h,z);mm.renderOrder=4;G.add(mm);
+      nodes++;if(p.is_spof)spof++;
+    }else if(g.type==='LineString'){
+      var c=rssiCol(p.rssi_medido_dbm),a=g.coordinates[0],b=g.coordinates[1];
+      var ax=projX(a[0]),az=projZ(a[1]),bx=projX(b[0]),bz=projZ(b[1]);
+      pos.push(ax,localElevY(ax,-az)+2.0,az, bx,localElevY(bx,-bz)+2.0,bz);
+      col.push(c.r,c.g,c.b,c.r,c.g,c.b);
+      if(p.rssi_medido_dbm!=null)rs.push(p.rssi_medido_dbm);
+    }});
+  if(pos.length){var lg=new THREE.BufferGeometry();
+    lg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    lg.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+    var ll=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.95}));
+    ll.renderOrder=4;G.add(ll);}
+  cobRealG=G;scene.add(G);
+  if(e){var mn=Math.min.apply(null,rs),mx=Math.max.apply(null,rs);
+    e.innerHTML=nodes+' nodos · '+rs.length+' enlaces con RSSI medido ('+mn+' a '+mx+' dBm) · <b style="color:#e2574c">'+spof+'</b> SPOF'
+      +'<br><span style="opacity:.7">el RSSI medido no depende de la distancia (R²=0,05 en 12–158 m): lo que limita es la obstruccion y la topologia</span>';}
+}
+
 function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado al texto (no se aplasta)
   // kind: 'trk' (defecto) se funde de lejos · 'poi' (hitos: CT, sub, NCU…) crece para seguir legible · 'free' fuera de la gestión
   text=String(text==null?'':text);kind=kind||'trk';
@@ -2497,7 +2678,7 @@ $('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked;layoutTrackers();if(selIdx>=0)$('edArtic').checked=kinked;};   // maestro: articula/endereza TODOS (luego se afina uno a uno en edición)
@@ -2507,6 +2688,12 @@ $('sim').onchange=function(){simOn=this.checked;   // datos reales (telemetría)
   setTime(curMin);if(fresOn)applyFresnel();};
 $('lbls').onchange=function(){if(this.checked)buildLabels();labelGroup.visible=this.checked;for(var k=0;k<HLBL.length;k++)HLBL[k].visible=this.checked;};
 $('fres').onchange=function(){fresOn=this.checked;applyFresnel();};
+$('cob').onchange=function(){cobOn=this.checked;cobCompute();};
+$('cobreal').onchange=function(){cobRealOn=this.checked;cobRealApply();};
+(function(){var c=(new URLSearchParams(location.search).get('capa')||'').toLowerCase();   // enlace profundo desde la Cobertura 2D: ?capa=cobertura entra con el mapa puesto
+  if(c!=='cobertura')return;
+  $('cob').checked=true;cobOn=true;
+  if(PLANT==='elburgo'){$('cobreal').checked=true;cobRealOn=true;}})();
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
