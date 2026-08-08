@@ -163,13 +163,14 @@ function clamp55(a){ return Math.max(-55,Math.min(55,a)); }
 function init(){
   scene=new THREE.Scene(); scene.background=new THREE.Color(0x0b0f14);
   scene.fog=new THREE.Fog(0x0b0f14, 900, 3200);
-  camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 1, 9000);
-  camera.position.set(180,240,320);
+  camera=new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 1, 12000);
+  camera.position.set(180,240,320);   // se reencuadra en encuadra() cuando ya hay datos
   renderer=new THREE.WebGLRenderer({canvas:document.getElementById('cv'), antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   controls=new THREE.OrbitControls(camera, renderer.domElement);
   controls.target.set(0,0,0); controls.maxPolarAngle=Math.PI/2-0.02; controls.enableDamping=true;
+  scene.fog=null;   // con 2,5 km de planta la niebla se comía el campo entero
 
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6); SUN.castShadow=true;
   var hi=!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -182,6 +183,30 @@ function init(){
 
   addEventListener('resize',function(){camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
   renderer.domElement.addEventListener('pointermove', onMove);
+}
+
+function encuadra(){
+  var x0=1e9,x1=-1e9,z0=1e9,z1=-1e9,y0=1e9,y1=-1e9;
+  FIL.forEach(function(f){
+    x0=Math.min(x0,f.x); x1=Math.max(x1,f.x);
+    z0=Math.min(z0,f.zs,f.zn); z1=Math.max(z1,f.zs,f.zn);
+    y0=Math.min(y0,f.ys,f.yn); y1=Math.max(y1,f.ys,f.yn);
+  });
+  var cx=(x0+x1)/2, cz=(z0+z1)/2, cy=(y0+y1)/2, R=Math.max(x1-x0,z1-z0)/2;
+  controls.target.set(cx,cy,cz);
+  camera.position.set(cx+R*0.55, cy+R*0.75, cz+R*1.15);
+  camera.far=R*12; camera.updateProjectionMatrix();
+  EXT={cx:cx,cy:cy,cz:cz,R:R};
+  controls.update();
+}
+var EXT={cx:0,cy:0,cz:0,R:600};
+function ajustaSombra(){
+  // la sombra se ciñe a lo que ocupa la pantalla: con 2,5 km de planta un shadow
+  // camera fijo de 260 m dejaba casi todo el campo sin sombra
+  var d=camera.position.distanceTo(controls.target), r=Math.max(60,Math.min(EXT.R*1.2, d*0.55));
+  var c=SUN.shadow.camera;
+  if(Math.abs(c.right-r)<1) return;
+  c.left=-r; c.right=r; c.top=r; c.bottom=-r; c.updateProjectionMatrix();
 }
 
 /* ---------- terreno: superficie interpolada de las cotas medidas ----------- */
@@ -274,8 +299,10 @@ function baseFila(f, alaSlope, zMid, yMid){
 function updateFrame(){
   var sv=sunVec(curMin);
   var d=Math.max(0.05,sv.U);
-  SUN.position.set(sv.E*900, Math.max(40,sv.U*900), -sv.N*900);
-  SUN.target.position.set(0,0,0); SUN.target.updateMatrixWorld();
+  var Rs=Math.max(900,EXT.R*1.6);
+  SUN.position.set(EXT.cx+sv.E*Rs, EXT.cy+Math.max(40,sv.U*Rs), EXT.cz-sv.N*Rs);
+  SUN.target.position.set(EXT.cx,EXT.cy,EXT.cz); SUN.target.updateMatrixWorld();
+  ajustaSombra();
   SUN.intensity=2.6*Math.max(0,Math.min(1,(sv.U+0.05)/0.35));
   HEMI.intensity=0.18+0.35*Math.max(0,sv.U);
   SUN.castShadow=ui.shadow && sv.U>0.02;
@@ -376,7 +403,7 @@ fetch('ayora_asbuilt.json').then(function(r){return r.json();}).then(function(j)
   document.getElementById('kArt').textContent=(META.n_art/2)+' bifilas';
   document.getElementById('kGeo').textContent=META.pitch.toFixed(2)+' m · '+META.cuerda.toFixed(3)+' m';
   document.getElementById('kGcr').textContent=META.gcr.toFixed(4);
-  init(); buildGround(); buildTrackers(); bindUI();
+  init(); buildGround(); buildTrackers(); encuadra(); bindUI();
   var last=performance.now();
   (function loop(now){
     requestAnimationFrame(loop);
