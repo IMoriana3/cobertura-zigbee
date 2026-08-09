@@ -87,6 +87,29 @@
   .dec td.v0{color:var(--muted)}
   .hint{font-size:.74rem;color:var(--muted);margin-top:8px}
 
+  /* simulador de bits: 16 celdas clicables */
+  .bsim{display:flex;gap:3px;flex-wrap:wrap;margin:10px 0 2px}
+  .bcell{cursor:pointer;width:30px;text-align:center;border:1px solid var(--line2);border-radius:6px;
+         padding:3px 0 4px;user-select:none;transition:.1s}
+  .bcell .bi{display:block;font-family:var(--mono);font-size:.56rem;color:var(--muted)}
+  .bcell .bv{font-family:var(--mono);font-size:.9rem;color:var(--muted)}
+  .bcell.on{border-color:var(--ok);background:#12291f}
+  .bcell.on .bv{color:var(--ok);font-weight:700}
+  .bcell.campo{border-bottom:2px solid var(--accent)}
+  .bases{font-family:var(--mono);font-size:.78rem;color:var(--tx2);margin-top:6px}
+  .bases b{color:var(--tx)}
+
+  /* localizador de direcciones */
+  .locbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+  .locbox .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .locbox label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .locbox input{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+                padding:7px 12px;font-family:var(--mono);font-size:.9rem;width:230px}
+  .locbox input:focus{outline:none;border-color:var(--accent)}
+  .locres{font-size:.86rem;margin-top:6px}
+  .locres b{color:var(--ok)}
+  .locres .addr{margin-right:4px}
+
   footer{max-width:1100px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
          color:var(--muted);font-size:.78rem}
   footer .dl a{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line2);border-radius:7px;
@@ -115,6 +138,12 @@
       <option value="legacy">El Burgo legacy (mapa 1, 0,1°/LSB)</option></select></span>
     <input type="search" id="buscar" placeholder="Filtrar: nombre, dirección, bit… (p. ej. 30513, soc, wind, setpoint)">
     <span class="pill" id="resumen"></span>
+  </div>
+  <div class="locbox" id="locbox" style="display:none">
+    <div class="row"><label>Localizador</label>
+      <input id="loc" placeholder="TCU 125 · HSU 3 · o una dirección: 33241">
+      <span style="font-size:.74rem;color:var(--muted)">¿Qué registros tiene una unidad? ¿De quién es una dirección suelta?</span></div>
+    <div class="locres" id="locres"></div>
   </div>
   <div id="cuerpo"></div>
 </div>
@@ -155,7 +184,7 @@ var DEV={
      [30100,'digital_input','u16','',{battery_low:[0,0],ups_power_fault:[1,1],stop_button:[13,13]}],
      [30101,'main_status','u16','',{alarm_battery_low:[0,0],gw1_alarm:[4,4],gw2_alarm:[5,5]}],
      [30104,'date_time','u32','epoch']]},
-   {t:'Bloque TCU (republicado)',sn:'base 30500 · 22 registros/TCU · hasta 200 · lastComm 29500+(id−1)·2',rw:'ro',base:30500,stride:22,f:[
+   {t:'Bloque TCU (republicado)',sn:'base 30500 · 22 registros/TCU · el R7 dimensiona el bloque para 200 TCU · lastComm 29500+(id−1)·2',rw:'ro',base:30500,stride:22,f:[
      [1,'msr','u16','',{bt_active:[0,0],sleep_state:[1,2],day_time:[7,7],main_state:[8,9],safe_position:[13,15]}],
      [2,'alarms1','u16','','ALARMS1'],
      [3,'alarms2','u16','','ALARMS2'],
@@ -270,6 +299,7 @@ function pinta(){
   $('idsel').style.display=d.max?'':'none';
   if(d.max){$('idlab').textContent=d.idlab;$('devid').max=d.max;if(+$('devid').value>d.max)$('devid').value=1;}
   $('varsel').style.display=d.fw?'':'none';
+  $('locbox').style.display=(cur==='tcu')?'none':'';
   pintaSecs();
 }
 
@@ -338,10 +368,18 @@ function decoHTML(sc,r,addr){
     +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">valor crudo (dec o 0x…)</label>'
     +'<input id="raw1" placeholder="'+(dos?'reg '+addr:'p. ej. 0x0182')+'" oninput="deco()">'
     +(dos?'<input id="raw2" placeholder="reg '+(addr+1)+'" oninput="deco()">':'')
-    +'<span class="out" id="dout"></span></div><div id="dbits"></div>'
-    +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian).':'Un registro de 16 bits.')+'</div></div>';
+    +'<span class="out" id="dout"></span></div>'
+    +(dos?'':'<div class="bsim" id="bsim"></div><div class="bases" id="bases"></div>')
+    +'<div id="dbits"></div>'
+    +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian). Acepta dec, 0x… y 0b…':
+      'Un registro de 16 bits. Escribe en decimal, 0x… o 0b… — o pincha los bits para construir el valor.')+'</div></div>';
 }
-function parseRaw(s){s=(s||'').trim();if(!s)return null;var v=s.slice(0,2).toLowerCase()==='0x'?parseInt(s,16):parseInt(s,10);return isNaN(v)?null:v&0xFFFF;}
+function parseRaw(s){s=(s||'').trim();if(!s)return null;var p=s.slice(0,2).toLowerCase(),v;
+  if(p==='0x')v=parseInt(s.slice(2),16);
+  else if(p==='0b')v=parseInt(s.slice(2),2);
+  else if(/^[01]{9,16}$/.test(s))v=parseInt(s,2);            // 9-16 ceros y unos seguidos: binario sin prefijo
+  else v=parseInt(s,10);
+  return isNaN(v)?null:v&0xFFFF;}
 function deco(){
   var pr=regSel(),sc=pr[0],r=pr[1];
   var ty=r[2],un=r[3]||'',bits=r[4],esc=escala(r);
@@ -379,8 +417,69 @@ function deco(){
                  :'<div class="hint">sin alarmas activas</div>';
   }
   $('dout').innerHTML=out;$('dbits').innerHTML=tb;
+  pintaBits(a,bits&&typeof bits==='object'&&r[6]!=='ENUM'?bits:null);
+}
+function pintaBits(v,campos){
+  var el=$('bsim');if(!el)return;
+  var dueño={};if(campos)for(var k in campos)for(var b=campos[k][0];b<=campos[k][1];b++)dueño[b]=k;
+  var h='';
+  for(var i=15;i>=0;i--){var on=(v>>i)&1;
+    h+='<span class="bcell'+(on?' on':'')+(dueño[i]!==undefined?' campo':'')+'" onclick="tglBit('+i+')"'
+      +(dueño[i]!==undefined?' title="'+dueño[i]+'"':'')+'><span class="bi">'+i+'</span><span class="bv">'+on+'</span></span>';}
+  el.innerHTML=h;
+  var ba=$('bases');if(ba)ba.innerHTML='dec <b>'+v+'</b> · hex <b>0x'+v.toString(16).toUpperCase().padStart(4,'0')
+    +'</b> · bin <b>0b'+v.toString(2).padStart(16,'0')+'</b>';
+}
+function tglBit(i){
+  var e=$('raw1'),v=parseRaw(e.value)||0;v^=(1<<i);
+  e.value='0x'+v.toString(16).toUpperCase().padStart(4,'0');deco();
 }
 
+/* ---------------- localizador (pestaña NCU): unidad o direccion suelta ---------------- */
+function localiza(){
+  var q=($('loc').value||'').trim(),R=$('locres');
+  if(!q){R.innerHTML='';return;}
+  var m=q.match(/^(tcu|hsu)\s*(\d+)$/i);
+  if(m){ // "TCU 125" -> rango de su bloque
+    var tipo=m[1].toUpperCase(),id=+m[2],h='';
+    if(tipo==='TCU'){
+      if(id<1||id>200){R.innerHTML='El bloque R7 llega hasta la TCU 200.';return;}
+      var b0=30500+(id-1)*22,lc=29500+(id-1)*2;
+      h='<b>TCU '+id+'</b> → bloque <span class="addr">'+b0+'–'+(b0+21)+'</span> · lastComm <span class="addr">'+lc+'–'+(lc+1)+'</span>. '
+       +'Registros clave: tilt <span class="addr">'+(b0+6)+'</span> · target <span class="addr">'+(b0+10)+'</span> · soc <span class="addr">'+(b0+13)+'</span> · alarms <span class="addr">'+(b0+2)+'–'+(b0+3)+'</span>.'
+       +' <a href="#" onclick="$(\'devid\').value='+id+';pintaSecs();return false">ver su tabla completa ↓</a>';
+    }else{
+      if(id<1||id>10){R.innerHTML='El bloque HSU llega hasta la 10.';return;}
+      var hb=30200+(id-1)*10,he=28000+(id-1)*100,hl=29440+(id-1)*2;
+      h='<b>HSU '+id+'</b> → básico <span class="addr">'+hb+'–'+(hb+9)+'</span> · extendido <span class="addr">'+he+'–'+(he+99)+'</span> · lastComm <span class="addr">'+hl+'–'+(hl+1)+'</span>.'
+       +' <a href="#" onclick="$(\'devid\').value='+id+';pintaSecs();return false">ver su tabla ↓</a>';
+    }
+    R.innerHTML=h;return;
+  }
+  var a=parseInt(q,10);
+  if(isNaN(a)){R.innerHTML='Escribe «TCU 125», «HSU 3» o una dirección (p. ej. 33241).';return;}
+  function campo(fs,off,multi){for(var i=0;i<fs.length;i++){var r=fs[i];
+      if(r[0]===off)return r[1];
+      if(multi&&(r[2]==='f32'||r[2]==='u32'||r[2]==='s32')&&r[0]+1===off)return r[1]+' (palabra baja)';}
+    return null;}
+  var d=DEV.ncu,h2='dirección <span class="addr">'+a+'</span> → ';
+  if(a>=30500&&a<30500+200*22){var id2=Math.floor((a-30500)/22)+1,off=(a-30500)%22;
+    var nm=campo(d.secs[1].f,off,true);
+    h2+='<b>TCU '+id2+'</b>, offset +'+off+(nm?': <b>'+nm+'</b>':' (hueco reservado del bloque)');}
+  else if(a>=29500&&a<29500+200*2){var id3=Math.floor((a-29500)/2)+1;
+    h2+='<b>lastComm de la TCU '+id3+'</b> ('+((a-29500)%2?'palabra baja':'palabra alta')+' del U32)';}
+  else if(a>=30200&&a<30200+10*10){var id4=Math.floor((a-30200)/10)+1,of4=(a-30200)%10;
+    var nm4=campo(d.secs[2].f,of4,true);
+    h2+='<b>HSU '+id4+'</b> (básico), offset +'+of4+(nm4?': <b>'+nm4+'</b>':' (reservado)');}
+  else if(a>=28000&&a<28000+10*100){var id5=Math.floor((a-28000)/100)+1,of5=(a-28000)%100;
+    var nm5=campo(d.secs[3].f,of5,true);
+    h2+='<b>HSU '+id5+'</b> (extendido), offset +'+of5+(nm5?': <b>'+nm5+'</b>':' (reservado)');}
+  else if(a>=29440&&a<29440+10*2){h2+='<b>lastComm de la HSU '+(Math.floor((a-29440)/2)+1)+'</b>';}
+  else{var nm6=campo(d.secs[0].f,a,true);
+    h2+=nm6?'registro propio de la NCU: <b>'+nm6+'</b>':'fuera de los bloques documentados del R7';}
+  R.innerHTML=h2;
+}
+$('loc').oninput=localiza;
 $('devid').oninput=function(){pintaSecs();};
 $('fwvar').onchange=function(){pintaSecs();};
 $('buscar').oninput=function(){pintaSecs();};
