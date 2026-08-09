@@ -157,8 +157,8 @@
   <h1>Mapas Modbus — NCU · TCU · HSU</h1>
   <div class="sub">Registro de mapas Modbus por fabricante, dispositivo y versión de firmware. Pincha cualquier
   registro para decodificar un valor crudo en vivo; la pestaña «Versiones» dice qué mapa aplica a qué planta.</div>
-  <div class="src">NCU: NCU_Modbus_Map_R7.xlsx (la misma tabla del colector SCADA) · TCU: mapa de firmware v3 del
-  gemelo digital (factiun_core/registers.py) · <a href="index.html">← cobertura</a></div>
+  <div class="src">NCU: NCU_Modbus_Map_R7.xlsx (la misma tabla del colector SCADA) · TCU: firmware v3 (gemelo digital) ·
+  HSU: HSU_Modbus_Map_R23.xlsx · <a href="index.html">← cobertura</a></div>
 </header>
 
 <div class="wrap">
@@ -305,15 +305,195 @@ var DEV={
      [10005,'di_comms','di','comunicaciones ok']]}]},
 
  hsu:{tab:'HSU',eti:'estación meteo',max:10,idlab:'Nº HSU',
-  nota:'La HSU <b>no tiene documento de mapa propio</b> en el proyecto: se publica a través del servidor Modbus de la NCU. Aquí están sus dos bloques con la dirección absoluta calculada para la unidad elegida. Si aparece el mapa del dispositivo (puerto de servicio), se añade como pestaña propia.',
+  nota:'El mapa <b>propio del dispositivo</b> (HSU_Modbus_Map_R23.xlsx): identidad, estado, medidas, comandos, configuración y calibración, con la descripción de cada registro al pasar el ratón. Al final, los dos bloques donde la NCU lo republica (con el selector de unidad). Las secciones de ESCRITURA cambian la estación: cuidado en planta.',
   secs:[
-   {t:'Bloque básico',sn:'en la NCU · base 30200 · 10 registros/HSU · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
+  {t:'Identidad, estado y medidas',sn:'registros de entrada — producto, MSR, alarmas, viento, nieve, batería',rw:'ro',f:[
+   [30000,'ProductId','u16','',{SoftwareId:[8,15]},null,null,'Group(16): Product identifier','R'],
+   [30001,'MSRLow','u8_low','',{WindLevel:[0,2],MSRHigh:[8,15],WindDirectionState:[12,15]},null,null,'Group(8): Main Status Register (low byte)','R'],
+   [30002,'Alarms1','u16','',{AlarmWindSensor:[0,0],AlarmSnowSensor:[1,1],AlarmPiraSensor:[2,2],AlarmTempSensor:[3,3],AlarmBatDisconnected:[4,4],AlarmComHailSensor:[5,5],AlarmSnow:[6,6],AlarmRain:[7,7],AlarmWindMidSafePos:[9,9],AlarmGustyWind:[10,10],AlarmWindMid2SafePos:[12,12],AlarmWindMid3SafePos:[13,13],AlarmComDualIrraSensor:[14,14],AlarmComPluvioSensor:[15,15]},null,null,'Group(16): Alarms1','R'],
+   [30003,'WindSpeed_mps','f32','m/s',null,null,null,'Wind speed','R'],
+   [30005,'WindDir_deg','f32','degrees',null,null,null,'Wind direction','R'],
+   [30007,'SnowLevel_m','f32','meters',null,null,null,'Measured snow level value (or water level in case of HasFloodSensor active)','R'],
+   [30009,'RainGaugeLastMinute_mmh','u16','mm/h',null,null,null,'Requirement: 3S-RG sensor connected and Has3SRGSensor active','R'],
+   [30010,'ExternalTemperature_Kx10','u16','Kelvin x 10',null,null,null,'External Temperature Measurement. In Kx10 (0.1K resolution). Requirement: RK330-01 sensor ','R'],
+   [30011,'ExternalRHx10','u16','% x 10',null,null,null,'External Relative Humidity Measurement. In %x10 (0.1% resolution). Requirement: 3S-RH&AT s','R'],
+   [30012,'Irradiance_Wm2x100','s32','Wm2x100',null,null,null,'','R'],
+   [30014,'?','u16','',null,null,null,'Not used','R'],
+   [30015,'?','u16','',null,null,null,'Not used','R'],
+   [30016,'ZBMacAddressLow','u32','',null,null,null,'Zigbee module lowest 32 bits of the 64 bit Zigbee MAC address','R'],
+   [30018,'ZBMacAddressHigh','u32','',null,null,null,'Zigbee module highest 32 bits of the 64 bit Zigbee MAC address','R'],
+   [30020,'?','u16','',null,null,null,'Not used','R'],
+   [30021,'Lithium primary battery Voltage','u16','mV',null,null,null,'Lithium primary battery Voltage','R'],
+   [30022,'WindSpeed_mps_RAW','f32','m/s',null,null,null,'Instantaneous Wind speed sample','R'],
+   [30024,'WindDir_deg_RAW','f32','degrees',null,null,null,'Instantaneous Wind direction sample','R'],
+   [30026,'TemperatureMeasurement_K','u16','Kelvin degrees',null,null,null,'Internal Temperature Measurement','R'],
+   [30027,'VpowMeasurement_mV','u16','mV',null,null,null,'Internal battery voltage measurement','R'],
+   [30028,'VccMeasurement_mV','u16','mV',null,null,null,'PV panel or external power supply voltage measurement','R'],
+   [30029,'?','u16','',null,null,null,'Not used','R'],
+   [30030,'?','u16','',null,null,null,'Not used','R'],
+   [30031,'SnowMeasuredDistance_mm','u16','mm',null,null,null,'Direct measured distance of snow sensor','R'],
+   [30032,'SnowTempCorrection_mm','s16','mm',null,null,null,'Distance correction in mm of snow distance sensor in case of Campbell sensor and HasTempSe','R'],
+   [30033,'DateFirstLithiumDischarge','u16','',{FirstLithiumYear:[9,14],FirstLithiumMonth:[5,8],FirstLithiumDay:[0,4]},null,null,'Date of first discharge of lithium primary battery','R'],
+   [30034,'DateLastLithiumDischarge','u16','',{LastLithiumYear:[9,14],LastLithiumMonth:[5,8],LastLithiumDay:[0,4]},null,null,'Date of last discharge of lithium primary battery','R'],
+   [30035,'PrecipitationTypeRK400','u16','Type',null,null,null,'Requirement: RK400-13 sensor connected and HasRK400Sensor active','R'],
+   [30036,'RainfallRK400_mmh','f32','mm/h',null,null,null,'Requirement: RK400-13 sensor connected and HasRK400Sensor active','R'],
+   [30038,'CompIrradiance1_Wm2','u16','W/m2',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30039,'CompIrradiance2_Wm2','u16','W/m2',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30040,'InternalTemp1_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30041,'InternalTemp2_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30042,'ModuleTemp1_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30043,'ModuleTemp2_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R']]},
+  {t:'Bloque 31000',sn:'',rw:'ro',f:[
+   [31000,'WindDirectionPrev','u16','degrees',null,null,null,'Prevailing wind direction during minute 0 (00:00h) of day especified in DayDataRequest','R'],
+   [31001,'WindSpeedAvg','u8_low','km/h',{WindSpeedMax:[8,15]},null,null,'Average value of wind speed during minute 0 (00:00h) of day specified in DayDataRequest','R'],
+   [31002,'SnowLevelMax','u16','cm',null,null,null,'Maximum snow level value during minute 0 (00:00h) of day specified in DayDataRequest','R'],
+   [31003,'IrradianceAvg','u16','W/m2*10',null,null,null,'Average value of irradiance during minute 0 (00:00h) of day specified in DayDataRequest','R']]},
+  {t:'Bloque 36760',sn:'',rw:'ro',f:[
+   [36760,'WindDirectionPrev','u16','degrees',null,null,null,'Prevailing wind direction during minute 1440 (23:59h) of day especified in DayDataRequest','R'],
+   [36761,'WindSpeedAvg','u8_low','km/h',{WindSpeedMax:[8,15]},null,null,'Average value of wind speed during minute 1440 (23:59h) of day specified in DayDataRequest','R'],
+   [36762,'SnowLevelMax','u16','cm',null,null,null,'Maximum snow level value during minute 1440 (23:59h) of day specified in DayDataRequest','R'],
+   [36763,'IrradianceAvg','u16','W/m2*10',null,null,null,'Average value of irradiance during minute 1440 (23:59h) of day specified in DayDataRequest','RW']]},
+  {t:'Comandos',sn:'holding de mando — ESCRITURA',rw:'w',f:[
+   [40000,'?','u16','',null,null,null,'Not used','RW'],
+   [40001,'Second','u16','seconds',null,null,null,'UTC Time. Seconds','RW'],
+   [40002,'Minute','u16','minutes',null,null,null,'UTC Time. Minute','RW'],
+   [40003,'Hour','u16','hours',null,null,null,'UTC Time. Hour','RW'],
+   [40004,'Day','u16','day',null,null,null,'UTC Time. Day','RW'],
+   [40005,'Month','u16','month',null,null,null,'UTC Time. Month','RW'],
+   [40006,'Year','u16','year',null,null,null,'UTC Time. Year','RW'],
+   [40007,'ExtendedControl','u16','',{CalibrateVane:[2,2],CalibrateSnowSensor:[3,3],SaveDataToNVM:[15,15]},null,null,'Group(16): Extended control register','RW'],
+   [40008,'SnowSensorHeight_cm','u16','centimeters',null,null,null,'Height at which snow sensor is installed','RW']]},
+  {t:'Configuración',sn:'holding RW — umbrales, sensores, comunicaciones',rw:'w',f:[
+   [41002,'ModbusConfig1','u16','',{SlaveAddress1:[0,7]},null,null,'Modbus Config.','RW'],
+   [41003,'?','u16','',null,null,null,'Not used','RW'],
+   [41004,'ModbusConfig2','u16','',{SlaveAddress2:[0,7]},null,null,'Modbus Config. (Exactly the same functionality as register 40002, duplicated register)','RW'],
+   [41005,'?','u16','',null,null,null,'Not used','RW'],
+   [41006,'?','u16','',null,null,null,'Not used','RW'],
+   [41007,'?','u16','',null,null,null,'Not used','RW'],
+   [41008,'Config','u16','',{Has3SRGSensor:[0,0],Has3SRHATSensor:[1,1],Has3STPSensor:[2,2],HasRK400Sensor:[3,3],HasRainSensor:[4,4],HasSnowSensor:[5,5],HasSonicAnemoSensor:[6,6],HasPiraSensor:[7,7],HasFloodSensor:[8,8],HasTempSensor:[9,9],Has3S2ISSensor:[10,10]},null,null,'Weather station configuration register','RW'],
+   [41009,'?','u32','',null,null,null,'Not used','RW'],
+   [41011,'WindSpeedLow_mps','f32','m/s',null,null,null,'Wind speed threshold for alarm deactivation','RW'],
+   [41013,'WindSpeedMid_mps','f32','m/s',null,null,null,'Wind speed threshold for alarm activation','RW'],
+   [41015,'?','f32','',null,null,null,'Not used','RW'],
+   [41017,'WindLowTime_s','u16','seconds',null,null,null,'Time for wind alarm deactivation if WindSpeed < WindSpeedLow_mps for this time, alarm will','RW'],
+   [41018,'WindMidTime_s','u16','seconds',null,null,null,'Time for wind alarm activation if WindSpeed > WindSpeedMid_mps for this time, alarm will b','RW'],
+   [41019,'WindHighTime_s','u16','',null,null,null,'Not used','RW'],
+   [41020,'WindVaneOffset_deg','f32','degrees',null,null,null,'Offset angle for vane installation. This value is added to the sensor output to compensate','RW'],
+   [41022,'WindSection1_deg','f32','degrees',null,null,null,'Wind Direction Section 1 limit','RW'],
+   [41024,'WindSection2_deg','f32','degrees',null,null,null,'Wind Direction Section 2 limit','RW'],
+   [41026,'WindSection3_deg','f32','degrees',null,null,null,'Wind Direction Section 3 limit','RW'],
+   [41028,'WindSection4_deg','f32','degrees',null,null,null,'Wind Direction Section 4 limit','RW'],
+   [41030,'WindSection5_deg','f32','degrees',null,null,null,'Wind Direction Section 5 limit','RW'],
+   [41032,'WindSection6_deg','f32','degrees',null,null,null,'Wind Direction Section 6 limit','RW'],
+   [41034,'WindSection7_deg','f32','degrees',null,null,null,'Wind Direction Section 7 limit','RW'],
+   [41036,'WindSection8_deg','f32','degrees',null,null,null,'Wind Direction Section 8 limit','RW'],
+   [41038,'WindSection9_deg','f32','degrees',null,null,null,'Wind Direction Section 9 limit','RW'],
+   [41040,'WindSection10_deg','f32','degrees',null,null,null,'Wind Direction Section 10 limit','RW'],
+   [41042,'WindSection11_deg','f32','degrees',null,null,null,'Wind Direction Section 11 limit','RW'],
+   [41044,'WindSection12_deg','f32','degrees',null,null,null,'Wind Direction Section 12 limit','RW'],
+   [41046,'WindSection13_deg','f32','degrees',null,null,null,'Wind Direction Section 13 limit','RW'],
+   [41048,'WindSection14_deg','f32','degrees',null,null,null,'Wind Direction Section 14 limit','RW'],
+   [41050,'WindSection15_deg','f32','degrees',null,null,null,'Wind Direction Section 15 limit','RW'],
+   [41052,'WindSection16_deg','f32','degrees',null,null,null,'Wind Direction Section 16 limit','RW'],
+   [41054,'SnowLevelThreshold_m','f32','meters',null,null,null,'Snow level threshold for alarm activation (or water level in case of HasFloodSensor active','RW'],
+   [41056,'SnowAlarmMaxTemperature','u8_low','celsius',null,null,null,'Maximum external temperature allowed to activate snow alarm. External temperature sensor r','RW'],
+   [41057,'ConfigGustyWind','u16','',{GustyWindowTime_s:[0,7],GustyWindNumber:[8,11],GustMinimumDuration_s:[12,15]},null,null,'','RW'],
+   [41058,'WindSpeedGust_mps','f32','m/s',null,null,null,'Wind speed threshold level for wind gust detection','RW'],
+   [41059,'?','u16','',null,null,null,'','RW'],
+   [41060,'?','u16','',null,null,null,'Not used','RW'],
+   [41061,'Gateway_NCU','u16','',{NCU:[0,7],Gateway:[8,15]},null,null,'NCU & Gateway connected to. Note: does not affect internal HSU operation. User editable','RW'],
+   [41062,'ZBPanIdLow','u32','',null,null,null,'Zigbee module lowest 32 bits of the 64 bit Zigbee MAC address 0 (also in the high part) = ','RW'],
+   [41064,'ZBPanIdHigh','u32','',null,null,null,'Zigbee module highest 32 bits of the 64 bit Zigbee MAC address 0 (also in the low part) = ','RW'],
+   [41066,'ResetCommandLow','u32','',null,null,null,'Lowest 32 bits of forced Power Cycle command. Always read as 0. Password here is 0x1234567','RW'],
+   [41068,'ResetCommandHigh','u32','',null,null,null,'Highest 32 bits of forced Power Cycle command. Always read as 0. Password here is 0x876543','RW'],
+   [41070,'NoCom2ResetTime','u8_low','hours',null,null,null,'Time with no Modbus reception to try a power cycle. 0 = power cycle disabled','RW'],
+   [41071,'WindDirectionAVGperiod_s','u8_low','seconds',{WindSpeedAVGperiod_s:[8,15]},null,null,'Wind direction averaging period','RW'],
+   [41072,'?','u16','',null,null,null,'Not used','RW'],
+   [41073,'ZigbeeEncryptionConfig','u16','',{Ib_EncryptionEnabled:[0,0],ZBStackProfile:[4,5],ZBEncryptionOptions:[8,9],ZBSlaveRestartComDelayed:[12,12]},null,null,'','RW'],
+   [41074,'ZBUserEncryptionKeyLow','u16','',null,null,null,'User encryption key low. Always read as 0 after aplying changes','RW'],
+   [41075,'ZBUserEncryptionKeyHigh','u16','',null,null,null,'User encryption key high. Always read as 0 after applying changes','RW'],
+   [41076,'WindLevel1Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 1 activation','RW'],
+   [41078,'WindLevel2Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 2 activation','RW'],
+   [41080,'WindLevel3Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 3 activation','RW'],
+   [41082,'WindLevel4Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 4 activation','RW'],
+   [41084,'WindLevel5Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 5 activation','RW'],
+   [41086,'WindLevel6Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 6 activation','RW'],
+   [41088,'WindLevel7Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 7 activation','RW'],
+   [41090,'WindLevel1OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 1 activation','RW'],
+   [41091,'WindLevel2OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 2 activation','RW'],
+   [41092,'WindLevel3OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 3 activation','RW'],
+   [41093,'WindLevel4OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 4 activation','RW'],
+   [41094,'WindLevel5OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 5 activation','RW'],
+   [41095,'WindLevel6OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 6 activation','RW'],
+   [41096,'WindLevel7OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 7 activation','RW'],
+   [41097,'WindLevel1OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 1 deactivation','RW'],
+   [41098,'WindLevel2OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 2 deactivation','RW'],
+   [41099,'WindLevel3OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 3 deactivation','RW'],
+   [41100,'WindLevel4OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 4 deactivation','RW'],
+   [41101,'WindLevel5OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 5 deactivation','RW'],
+   [41102,'WindLevel6OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 6 deactivation','RW'],
+   [41103,'WindLevel7OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 7 deactivation','RW'],
+   [41104,'WindLevel8Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 8 activation','RW'],
+   [41106,'WindLevel9Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 9 activation','RW'],
+   [41108,'WindLevel10Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 10 activation','RW'],
+   [41110,'WindLevel8OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 8 activation','RW'],
+   [41111,'WindLevel9OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 9 activation','RW'],
+   [41112,'WindLevel10OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 10 activation','RW'],
+   [41113,'WindLevel8OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 8 deactivation','RW'],
+   [41114,'WindLevel9OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 9 deactivation','RW'],
+   [41115,'WindLevel10OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 10 deactivation','RW'],
+   [41200,'WindSpeed2Low_mps','f32','m/s',null,null,null,'Wind Speed threshold for alarm 2 deactivation','RW'],
+   [41202,'WindSpeed2Mid_mps','f32','m/s',null,null,null,'Wind Speed threshold for alarm 2 activation','RW'],
+   [41204,'WindLowTime2_s','u16','seconds',null,null,null,'Time for wind alarm 2 deactivation if Windspeed < WindSpeedLow_mps for this time, alarm 2 ','RW'],
+   [41205,'WindMidTime2_s','u16','seconds',null,null,null,'Time for wind alarm 2 activation if Windspeed > WindSpeedMid_mps for this time, alarm 2 wi','RW'],
+   [41206,'WindSpeed3Low_mps','f32','m/s',null,null,null,'Wind Speed threhold for alarm 3 deactivation','RW'],
+   [41208,'WindSpeed3Mid_mps','f32','m/s',null,null,null,'Wind Speed threhold for alarm 3 activation','RW'],
+   [41210,'WindLowTime3_s','u16','seconds',null,null,null,'Time for Wind alarm 3 deactivation if Windspeed < WindSpeedLow_mps for this time, alarm 3 ','RW'],
+   [41211,'WindMidTime3_s','u16','seconds',null,null,null,'Time for Wind alarm 3 activation if Windspeed > WindSpeedMid_mps for this time, alarm 3 wi','RW'],
+   [41212,'minutosMediaWindMid3','u16','minutes',null,null,null,'','RW'],
+   [41213,'AlarmWindMid','u16','',{AlarmWindMid2:[1,1],AlarmWindMid3:[2,2]},null,null,'Alarm indicator: Wind alarm. 1=alarm active 0=no alarm','RW'],
+   [41214,'SafePosTimeout','u16','minutes',null,null,null,'Time in minutes to deactivation of AlarmWindMidXSafePos flags after deactivation of AlarmW','RW'],
+   [41215,'NetworkWatchdog','u16','minutes',null,null,null,'Command ATNW-Zigbee network watchdog time (minutes). By default in Xbee modules is 0 (WD d','RW'],
+   [41216,'Zigbee compatibility disabled','u16','',{Node_join_always_enabled:[1,1]},null,null,'If 0: ATC8 = 0x10 (compatibility enabled). If 1: ATC8 = 0x00 (compatibility disabled)','RW'],
+   [41217,'SnowOnTime_m','u16','minutes',null,null,null,'Period of time for snow alarm activation','RW'],
+   [41218,'SnowOffTime_m','u16','minutes',null,null,null,'Period of time for snow alarm deactivation','RW'],
+   [41219,'SnowSamplePeriod_m','u16','minutes',null,null,null,'Period of time between snow (or water) sensor samples in minutes','RW'],
+   [41220,'SnowChangeThr_mm','u16','mm',null,null,null,'Max change in mm in snow height (or water level) between 2 samples to activate AlarmCheckS','RW'],
+   [41221,'AlarmCheckSnowSensor','u16','',{AlarmSnowNoFiltered:[6,6]},null,null,'Snow deph rate of change out of limits (increment/decrement higher than SnowChangeThr_mm b','RW'],
+   [41222,'AutoresetCheckSnowSensorLevel_mm','u16','mm',null,null,null,'Snow depth region to execute autoreset of AlarmCheckSnowSensor If SnowLevel < AutoresetChe','RW'],
+   [41223,'?','u16','',null,null,null,'Not used','RW'],
+   [41300,'DayDataRequest','u16','days',null,null,null,'Day of data request (0=actual day/1=last day/….) for datalogger readings','RW']]},
+  {t:'Bloque 50026',sn:'',rw:'w',f:[
+   [50026,'Lithium primary battery Voltage','u16','mV',null,null,null,'Lithium primary battery Voltage','RW'],
+   [50027,'NiMh battery Voltage','u16','mV',null,null,null,'NiMh battery Voltage','RW']]},
+  {t:'Calibración / fábrica',sn:'',rw:'w',f:[
+   [51000,'FWBlockPosition','u16','',null,null,null,'32-byte Block position of new FW (.bin)','RW'],
+   [51001,'TwoByteBin1','u16','',null,null,null,'First and second byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51002,'TwoByteBin2','u16','',null,null,null,'3 and 4 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51003,'TwoByteBin3','u16','',null,null,null,'5 and 6 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51004,'TwoByteBin4','u16','',null,null,null,'7 and 8 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51005,'TwoByteBin5','u16','',null,null,null,'9 and 10 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51006,'TwoByteBin6','u16','',null,null,null,'11 and 12 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51007,'TwoByteBin7','u16','',null,null,null,'13 and 14 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51008,'TwoByteBin8','u16','',null,null,null,'15 and 16 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51009,'TwoByteBin9','u16','',null,null,null,'17 and 18 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51010,'TwoByteBin10','u16','',null,null,null,'19 and 20 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51011,'TwoByteBin11','u16','',null,null,null,'21 and 22 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51012,'TwoByteBin12','u16','',null,null,null,'23 and 24 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51013,'TwoByteBin13','u16','',null,null,null,'25 and 26 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51014,'TwoByteBin14','u16','',null,null,null,'27 and 28 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51015,'TwoByteBin15','u16','',null,null,null,'29 and 30 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51016,'TwoByteBin16','u16','',null,null,null,'31 and 32 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51017,'CRCBinOrigin','u16','',null,null,null,'CRC value of new .bin file, calculated and transmitted from Master','RW'],
+   [51018,'CRCBinCalculated','u16','',null,null,null,'CRC value of new .bin file, calculated in HSU','RW'],
+   [51019,'flagUpdateFW','u16','',null,null,null,'Master must write 0x55AA to install the new FW. This value is autoreseted','']]},
+   {t:'Bloque básico vía NCU (republicado)',sn:'en la NCU · base 30200 · 10 registros/HSU · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
      [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
      [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
      [3,'wind_speed','f32','m/s'],
      [5,'wind_direction','f32','°'],
      [7,'snow_level','f32','m']]},
-   {t:'Bloque extendido (piranómetros)',sn:'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
+   {t:'Bloque extendido vía NCU (piranómetros)',sn:'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
      [4,'wind_speed','f32','m/s'],
      [6,'wind_direction','f32','°'],
      [8,'snow_level','f32','m'],
@@ -325,6 +505,7 @@ var DEV={
 DEV.ncu.max=200;DEV.ncu.idlab='Nº TCU/HSU';
 
 var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
+function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 /* ============ REGISTRO DE VERSIONES Y FABRICANTES ============
    Cada mapa con su fuente, su estado y donde esta desplegado. Los
@@ -343,9 +524,9 @@ var REGISTRO=[
  {fab:'Sunner',dev:'TCU',ver:'legacy (mapa 1)',fuente:'gemelo digital, variante elburgo_legacy',
   estado:['campo2','en campo'],donde:'El Burgo I',verif:'reproducido en el gemelo; origen: comportamiento observado del firmware antiguo',
   notas:'Ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado. Seleccionable en la pestaña TCU.'},
- {fab:'Sunner',dev:'HSU',ver:'vía NCU R7',fuente:'bloques 30200/28000 del R7',
-  estado:['pend','falta mapa propio'],donde:'—',verif:'—',
-  notas:'Sin documento del dispositivo. Prometido: al recibirlo se monta su pestaña propia con decodificador y localizador.'},
+ {fab:'Sunner',dev:'HSU',ver:'R23',fuente:'HSU_Modbus_Map_R23.xlsx',
+  estado:['doc','documentado'],donde:'—',verif:'— (falta contraste con HSU física)',
+  notas:'El mapa propio del dispositivo: 173 direcciones en 7 bloques (estado 30xxx, comandos 40xxx, configuración 41xxx, calibración 51xxx). En la pestaña HSU, junto a los bloques republicados por la NCU.'},
  {fab:'P4Q',dev:'—',ver:'—',fuente:'pendiente de documento',
   estado:['pend','pendiente'],donde:'—',verif:'—',notas:'Cuando llegue su mapa (NCU/TCU equivalentes) se carga como fabricante seleccionable.'},
  {fab:"Track'n'Co",dev:'—',ver:'—',fuente:'pendiente de documento',
@@ -419,7 +600,7 @@ function pintaSecs(){
       rows+='<tr class="reg'+(sel===esKey?' sel':'')+'" onclick="elige(\''+esKey+'\')">'
         +'<td class="nm" style="color:var(--muted)">'+(sc.stride?'+'+r[0]:'—')+'</td>'
         +'<td class="addr">'+addr+'<small>0x'+addr.toString(16).toUpperCase()+'</small></td>'
-        +'<td class="nm">'+nm+(multi?' <span style="color:var(--muted)">('+addr+'–'+(addr+1)+')</span>':'')
+        +'<td class="nm"'+(r[7]?' title="'+esc(r[7])+(r[8]?' ['+r[8]+']':'')+'"':'')+'>'+nm+(multi?' <span style="color:var(--muted)">('+addr+'–'+(addr+1)+')</span>':'')
         +(cur==='tcu'&&!sc.stride&&ty!=='coil'&&ty!=='di'?' <span style="color:var(--muted);font-size:.72rem">(of. '+(addr%10000-1)+')</span>':'')+'</td>'
         +'<td class="ty">'+ty+(escala(r)!==1?' ×'+escala(r):'')+'</td>'
         +'<td class="un">'+(un||'—')+'</td>'
@@ -631,7 +812,8 @@ function tramaInfo(sc,r,addr){
     var tab=(r[2]==='coil')?'co':(r[2]==='di')?'di':(addr>=40000?'hr':'ir');
     fc={co:1,di:2,hr:3,ir:4}[tab];
     wire=(r[2]==='coil')?addr-1:(addr%10000)-1;
-  }else{fc=3;wire=addr;}                                      // NCU: el colector real usa FC03 con la direccion absoluta tal cual
+  }else if(cur==='hsu'&&!sc.stride){fc=(addr<40000)?4:3;wire=addr;}   // mapa propio de la HSU: entrada/holding por rango, direccion absoluta
+  else{fc=3;wire=addr;}                                       // NCU: el colector real usa FC03 con la direccion absoluta tal cual
   return {fc:fc,wire:wire,qty:qty};
 }
 function tramaHTML(sc,r,addr){
