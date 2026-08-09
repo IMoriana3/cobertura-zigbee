@@ -110,6 +110,18 @@
   .locres b{color:var(--ok)}
   .locres .addr{margin-right:4px}
 
+  /* registro de versiones */
+  .estado{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;border-radius:6px;padding:2px 8px;white-space:nowrap}
+  .estado.campo2{border:1px solid #1f5c46;color:var(--ok)}
+  .estado.doc{border:1px solid var(--line2);color:var(--tx2)}
+  .estado.pend{border:1px solid #7a5c14;color:var(--warn)}
+  .estado.gemelo{border:1px solid #2a4a7a;color:var(--accent)}
+  .notas{font-size:.78rem;color:var(--tx2);max-width:420px}
+  .fabsel{display:flex;gap:8px;align-items:center;margin:0 0 4px}
+  .fabsel label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .fabsel select{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:7px 12px;font:inherit;font-size:.88rem}
+  .fabaviso{background:#241d0c;border:1px solid #7a5c14;border-radius:10px;padding:12px 16px;color:var(--warn);font-size:.86rem;margin:10px 0}
+
   footer{max-width:1100px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
          color:var(--muted);font-size:.78rem}
   footer .dl a{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line2);border-radius:7px;
@@ -121,13 +133,19 @@
 
 <header>
   <h1>Mapas Modbus — NCU · TCU · HSU</h1>
-  <div class="sub">Los tres mapas del sistema de seguidores, cada dispositivo con el suyo. Pincha cualquier registro
-  para decodificar un valor crudo en vivo.</div>
+  <div class="sub">Registro de mapas Modbus por fabricante, dispositivo y versión de firmware. Pincha cualquier
+  registro para decodificar un valor crudo en vivo; la pestaña «Versiones» dice qué mapa aplica a qué planta.</div>
   <div class="src">NCU: NCU_Modbus_Map_R7.xlsx (la misma tabla del colector SCADA) · TCU: mapa de firmware v3 del
   gemelo digital (factiun_core/registers.py) · <a href="index.html">← cobertura</a></div>
 </header>
 
 <div class="wrap">
+  <div class="fabsel"><label>Fabricante</label>
+    <select id="fab">
+      <option value="sunner">Sunner</option>
+      <option value="p4q">P4Q — sin documento aún</option>
+      <option value="trackco">Track'n'Co — sin documento aún</option>
+    </select></div>
   <div class="tabs" id="tabs"></div>
   <div class="devnota" id="devnota"></div>
   <div class="bar">
@@ -286,14 +304,48 @@ DEV.ncu.max=200;DEV.ncu.idlab='Nº TCU/HSU';
 
 var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
 
+/* ============ REGISTRO DE VERSIONES Y FABRICANTES ============
+   Cada mapa con su fuente, su estado y donde esta desplegado. Los
+   fabricantes sin documento aparecen como pendientes: al recibir su
+   mapa se cargan como pestañas igual que los de Sunner. */
+var REGISTRO=[
+ {fab:'Sunner',dev:'NCU',ver:'R7',fuente:'NCU_Modbus_Map_R7.xlsx → scada/config/modbus_map.yml',
+  estado:['doc','documentado'],donde:'Ayora · San José (previsto)',
+  notas:'La tabla de esta ficha. Errata conocida: SoC y RemainingCapacity solapados en 30513 (resuelto: SoC en byte bajo). Solo lectura; comandos 40000+ excluidos.'},
+ {fab:'Sunner',dev:'NCU',ver:'pre-R7 (firmware antiguo)',fuente:'sin documento — evidencias de campo (scada/README)',
+  estado:['campo2','probado en campo'],donde:'El Burgo I',
+  notas:'Modbus TCP en puerto 503 (no el 502). Direccionamiento exacto (30000 responde como 30000). NO expone los bloques TCU del R7 (30500/29500 → ilegal). Reloj en 30300–30349 por campos sueltos; diagnóstico de radio (RSSI Zigbee) en 30200–30247. Pendiente: pedir a After Sales el mapa de esa versión o subir firmware a R7.'},
+ {fab:'Sunner',dev:'TCU',ver:'firmware v3 (mapa 3)',fuente:'factiun_core/registers.py (gemelo digital)',
+  estado:['gemelo','contrato del gemelo'],donde:'—',
+  notas:'La pestaña TCU de esta ficha: 0,01°/LSB en ángulos y setpoint. Incluye escritura (holding + coils).'},
+ {fab:'Sunner',dev:'TCU',ver:'legacy (mapa 1)',fuente:'gemelo digital, variante elburgo_legacy',
+  estado:['campo2','en campo'],donde:'El Burgo I',
+  notas:'Ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado. Seleccionable en la pestaña TCU.'},
+ {fab:'Sunner',dev:'HSU',ver:'vía NCU R7',fuente:'bloques 30200/28000 del R7',
+  estado:['pend','falta mapa propio'],donde:'—',
+  notas:'Sin documento del dispositivo. Prometido: al recibirlo se monta su pestaña propia con decodificador y localizador.'},
+ {fab:'P4Q',dev:'—',ver:'—',fuente:'pendiente de documento',
+  estado:['pend','pendiente'],donde:'—',notas:'Cuando llegue su mapa (NCU/TCU equivalentes) se carga como fabricante seleccionable.'},
+ {fab:"Track'n'Co",dev:'—',ver:'—',fuente:'pendiente de documento',
+  estado:['pend','pendiente'],donde:'—',notas:'Ídem.'}
+];
 function pinta(){
   var tb=$('tabs');tb.innerHTML='';
-  ['ncu','tcu','hsu'].forEach(function(k){
+  var fabOk=$('fab').value==='sunner';
+  ['ncu','tcu','hsu','ver'].forEach(function(k){
+    if(k!=='ver'&&!fabOk)return;                              // fabricante sin mapas: solo Versiones
     var b=document.createElement('button');b.className='tab'+(cur===k?' on':'');
-    b.innerHTML='<span class="n">'+DEV[k].eti+'</span>'+DEV[k].tab;
+    if(k==='ver')b.innerHTML='<span class="n">registro</span>Versiones';
+    else b.innerHTML='<span class="n">'+DEV[k].eti+'</span>'+DEV[k].tab;
     b.onclick=function(){cur=k;sel=null;$('buscar').value='';pinta();};
     tb.appendChild(b);
   });
+  if(!fabOk&&cur!=='ver')cur='ver';
+  if(cur==='ver'){
+    $('devnota').innerHTML='Qué mapa aplica a qué planta, de dónde sale cada uno y en qué estado está. El de El Burgo es la trampa a recordar: firmware anterior al R7, en el puerto 503 y sin bloques de TCU.';
+    $('idsel').style.display='none';$('varsel').style.display='none';$('locbox').style.display='none';
+    pintaRegistro();return;
+  }
   var d=DEV[cur];
   $('devnota').innerHTML=d.nota;
   $('idsel').style.display=d.max?'':'none';
@@ -356,6 +408,22 @@ function pintaSecs(){
   $('resumen').innerHTML='<b>'+n+'</b> registros';
 }
 
+function pintaRegistro(){
+  var q=$('buscar').value.trim().toLowerCase(),n=0;
+  var aviso=($('fab').value!=='sunner')?'<div class="fabaviso">De <b>'+$('fab').options[$('fab').selectedIndex].text.split(' — ')[0]
+    +'</b> aún no hay documento de mapa Modbus. Pásame su Excel/PDF y se carga como fabricante seleccionable, con las mismas pestañas, decodificador y localizador.</div>':'';
+  var h=aviso+'<div class="tblwrap"><table class="tbl"><tr><th>fabricante</th><th>dispositivo</th><th>mapa / versión</th><th>fuente</th><th>estado</th><th>desplegado en</th><th>notas</th></tr>';
+  REGISTRO.forEach(function(r){
+    if(q&&(r.fab+' '+r.dev+' '+r.ver+' '+r.fuente+' '+r.donde+' '+r.notas).toLowerCase().indexOf(q)<0)return;
+    n++;
+    h+='<tr><td class="nm">'+r.fab+'</td><td class="nm">'+r.dev+'</td><td class="nm" style="color:var(--accent)">'+r.ver+'</td>'
+      +'<td style="font-family:var(--mono);font-size:.72rem;color:var(--tx2)">'+r.fuente+'</td>'
+      +'<td><span class="estado '+r.estado[0]+'">'+r.estado[1]+'</span></td>'
+      +'<td style="font-size:.8rem">'+r.donde+'</td><td class="notas">'+r.notas+'</td></tr>';
+  });
+  h+='</table></div>';
+  $('cuerpo').innerHTML=h;$('resumen').innerHTML='<b>'+n+'</b> mapas registrados';
+}
 function elige(k){sel=(sel===k)?null:k;pintaSecs();
   var e=document.querySelector('.dec input');if(e)e.focus();}
 
@@ -482,7 +550,8 @@ function localiza(){
 $('loc').oninput=localiza;
 $('devid').oninput=function(){pintaSecs();};
 $('fwvar').onchange=function(){pintaSecs();};
-$('buscar').oninput=function(){pintaSecs();};
+$('buscar').oninput=function(){cur==='ver'?pintaRegistro():pintaSecs();};
+$('fab').onchange=function(){sel=null;if(this.value!=='sunner')cur='ver';else if(cur==='ver')cur='ncu';pinta();};
 pinta();
 </script>
 </body>
