@@ -1003,7 +1003,7 @@ function scadaOverlay(){
       _R.makeRotationX(-(parseFloat(fl.tilt)||0)*DEG);_M.multiplyMatrices(SEGO,_R);
       _MD.multiplyMatrices(t.fb[fq],_M);
       _T.makeTranslation(0,0.18,0);_M2.multiplyMatrices(_MD,_T);
-      _SCT.makeScale((TC.mesaC||2.38)*1.08,1,(t.span||TC.span)*1.02*(t.medio?(t.mr||0.5):1));   // mesaC = cuerda de la mesa
+      _SCT.makeScale((t.span||TC.span)*1.02*(t.medio?(t.mr||0.5):1),1,(TC.mesaC||2.38)*1.08);   // canónico: tubo a lo largo de +X (SEGO lo lleva a N-S mundo) → largo en X, cuerda (mesaC) en Z
       _M2.multiply(_SCT);
       scadaMesh.setMatrixAt(idx,_M2);
       col.setHex(SCADA_COL[String(fl.salud||'').toUpperCase()]||0x8093A4);
