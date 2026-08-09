@@ -946,8 +946,8 @@ function bt3dOn(){ return BT3D!=='plano' && GEO==='levantamiento' && !!COTAS; }
    el ultimo diagnostico: {tipo:'scada3d', planta, fecha, filas:[{ncu,tcu,lat,
    lon,salud,tilt,dif,soc,alarmas}]}. Aqui se casa cada fila con su tracker
    por coordenadas (lat/lon, tolerancia 6 m), se pone CADA tracker a su tilt
-   REAL y se pinta un velo de color por estado sobre sus mesas. */
-var SCADA3D=null,scadaMesh=null,scadaPend=null;
+   REAL y se pintan SUS MODULOS del color del estado. */
+var SCADA3D=null,scadaPend=null;
 var SCADA_COL={OK:0x36D399,AVISO:0xF2A900,ALARMA:0xef5f6b,OFFLINE:0x6A7B8B};
 function scadaCasar(msg){
   if(!TRK.length){scadaPend=msg;return;}
@@ -988,29 +988,21 @@ function scadaCasar(msg){
   scadaHud();
 }
 function scadaOverlay(){
-  if(!SCADA3D)return;
-  if(!scadaMesh){
-    var g=new THREE.PlaneGeometry(1,1);g.rotateX(-Math.PI/2);
-    var mMat=new THREE.MeshBasicMaterial({transparent:true,opacity:0.5,depthWrite:false,side:THREE.DoubleSide});
-    scadaMesh=new THREE.InstancedMesh(g,mMat,TRK.length*2);
-    scadaMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    scene.add(scadaMesh);
+  /* pinta LOS PROPIOS MODULOS del color de estado: el material 'glass' es
+     blanco, asi que el tinte por instancia (setColorAt multiplica) da el color
+     exacto. Sin casar -> blanco (aspecto normal). Cubre 'glass' (detalle alto)
+     y 'mesa' (detalle bajo). */
+  if(!SCADA3D||!SEG)return;
+  var col=new THREE.Color(),blanco=new THREE.Color(1,1,1);
+  for(var si=0;si<SEG.length;si++){var s=SEG[si];
+    if(s.key!=='glass'&&s.key!=='mesa')continue;
+    var nuevo=!s.im.instanceColor;   // el shader se compilo SIN color por instancia: al crear el buffer hay que recompilar (r128)
+    for(var i=0;i<TRK.length;i++){var fl=SCADA3D.byTrk[i];
+      if(fl)col.setHex(SCADA_COL[String(fl.salud||'').toUpperCase()]||0x8093A4);
+      for(var f=0;f<2;f++){var base=(i*2+f)*s.n;
+        for(var l=0;l<s.n;l++)s.im.setColorAt(base+l,fl?col:blanco);}}
+    if(s.im.instanceColor){s.im.instanceColor.needsUpdate=true;if(nuevo)s.im.material.needsUpdate=true;}
   }
-  var col=new THREE.Color();
-  for(var i=0;i<TRK.length;i++){var t=TRK[i],fl=SCADA3D.byTrk[i];
-    for(var fq=0;fq<2;fq++){var idx=i*2+fq;
-      if(!fl){_SCT.makeScale(0,0,0);scadaMesh.setMatrixAt(idx,_SCT);continue;}
-      _R.makeRotationX(-(parseFloat(fl.tilt)||0)*DEG);_M.multiplyMatrices(SEGO,_R);
-      _MD.multiplyMatrices(t.fb[fq],_M);
-      _T.makeTranslation(0,0.18,0);_M2.multiplyMatrices(_MD,_T);
-      _SCT.makeScale((t.span||TC.span)*1.02*(t.medio?(t.mr||0.5):1),1,(TC.mesaC||2.38)*1.08);   // canónico: tubo a lo largo de +X (SEGO lo lleva a N-S mundo) → largo en X, cuerda (mesaC) en Z
-      _M2.multiply(_SCT);
-      scadaMesh.setMatrixAt(idx,_M2);
-      col.setHex(SCADA_COL[String(fl.salud||'').toUpperCase()]||0x8093A4);
-      scadaMesh.setColorAt(idx,col);
-    }}
-  scadaMesh.instanceMatrix.needsUpdate=true;
-  if(scadaMesh.instanceColor)scadaMesh.instanceColor.needsUpdate=true;
 }
 function scadaHud(){
   var e=document.getElementById('scadaHud');
