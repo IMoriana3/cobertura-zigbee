@@ -717,11 +717,17 @@ function prepCotas(){
     var yS=(f0.y[0]+f1.y[0])/2,yN=(f0.y[1]+f1.y[1])/2;      // n[0]=extremo sur, n[1]=extremo norte
     var span=Math.abs(f0.n[1]-f0.n[0])||TC.span;
     var y0=(f0.y[0]+f0.y[1])/2,y1=(f1.y[0]+f1.y[1])/2,dx=(f1.x-f0.x)||1;
-    t.mc={rel:(COTAS.base+yMedia(c)-baseElev)-COTAOFF, gnd:(COTAS.base+yMedia(c)-baseElev)-COTAOFF-HEJE,
+    var _gA=(COTAS.base+yMedia(c)-baseElev)-COTAOFF-HEJE;
+    t.mc={rel:_gA, gnd:_gA,
+          gS:(COTAS.base+yS-baseElev)-COTAOFF-HEJE, gNn:(COTAS.base+yN-baseElev)-COTAOFF-HEJE,
           gN:(yN-yS)/span, gE:(y1-y0)/dx, f:[f0,f1], span:span, inc:c.inc||0,
           cse:c.cse,cso:c.cso,ase:c.ase,aso:c.aso};
   }
+  ATIP=0;
+  for(i=0;i<TRK.length;i++){var ta=TRK[i];if(!ta.mc)continue;
+    if(Math.abs(ta.mc.gnd-ta.rel)>10){ta.mc=null;ATIP++;}}   // cota a >10 m del DEM: error de dato, no relieve (habia una a +50 m que ponia un poste de 160 m)
   buildResiduo();
+  buildCava();
   statCotas();
 }
 /* El suelo tambien viene del levantamiento --------------------------------
@@ -732,13 +738,53 @@ function prepCotas(){
    interpola el RESIDUO medido-DEM, que es un campo suave, y se suma al DEM. Asi
    el suelo pasa exactamente HEJE por debajo de cada tracker medido y conserva
    el detalle del relieve donde no hay seguidores. */
-var RESID=null;
+var RESID=null,ATIP=0;
+/* Excavacion: la hinca varia HACIA ARRIBA (hincas mas altas que otras), asi que
+   un tracker bajo el suelo es imposible -- ahi el que sobra es el terreno
+   (DEM+residuo suave demasiado alto). Correccion SOLO hacia abajo y de radio
+   estrecho (capsula sobre la fila): excava lo justo para que el suelo pase por
+   la cota medida-HEJE, sin esculpir montones falsos bajo las hincas altas. */
+var CAVA=null;
+function buildCava(){
+  CAVA=null;
+  if(!RESID||!TRK.length)return;
+  var L=[],H={},cel=20,i,nt=0;
+  for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;
+    var mc=t.mc,hspan=(mc.span||TC.span)/2,zPk=zPfor(t),half=TC.np/2,hundido=false;
+    var pj=0;                                                 // mismo orden que postRel: fila W, fila E x cada apoyo
+    for(var pf=0;pf<2;pf++)for(var pk=0;pk<half;pk++){
+      var dz=(pk<zPk.length?zPk[pk]:0),pr=(t.postRel&&pj<t.postRel.length)?t.postRel[pj]:t.rel;pj++;
+      if(pk>=zPk.length||(t.medio&&!TC.zPT&&Math.abs(dz)>16))continue;   // hueco de reticula: sin poste
+      var fr=Math.min(1,Math.abs(dz)/(hspan||1));             // viga medida en el pie: lineal centro->extremo (dz<0 = norte)
+      var beam=mc.gnd+((dz<0?mc.gNn:mc.gS)-mc.gnd)*fr;
+      var xp=t.gx+(pf?TC.filaZ:-TC.filaZ),np=-(t.gz+dz);
+      var def=beam-(pr+residAt(xp,np));
+      if(def>=-0.05)continue;
+      hundido=true;var e={x:xp,n:np,hl:2,def:def};L.push(e);
+      var c0=Math.floor((np-10)/cel),c1=Math.floor((np+10)/cel),cx0=Math.floor((xp-8)/cel),cx1=Math.floor((xp+8)/cel);
+      for(var cx=cx0;cx<=cx1;cx++)for(var cn=c0;cn<=c1;cn++){var k=cx+'|'+cn;(H[k]||(H[k]=[])).push(e);}
+    }
+    if(hundido)nt++;
+  }
+  if(L.length)CAVA={h:H,cel:cel,n:nt};
+}
+function cavaAt(x,n){
+  if(!CAVA)return 0;
+  var l=CAVA.h[Math.floor(x/CAVA.cel)+'|'+Math.floor(n/CAVA.cel)];
+  if(!l)return 0;
+  var v=0;
+  for(var i=0;i<l.length;i++){var e=l[i],dx=Math.abs(x-e.x),dn=Math.max(0,Math.abs(n-e.n)-e.hl);
+    var d=Math.sqrt(dx*dx+dn*dn),w=d<=3?1:(d>=8?0:1-(d-3)/5);
+    var c=e.def*w;if(c<v)v=c;}                                // solapes: manda la excavacion mas honda, no la suma
+  return v;
+}
+function corrSuelo(x,n){return residAt(x,n)+cavaAt(x,n);}
 function buildResiduo(){
   RESID=null;
   if(!COTAS||!FB||!TRK.length)return;
   var pad=60,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad;
-  var cel=40,nx=Math.max(2,Math.ceil((x1-x0)/cel)),ny=Math.max(2,Math.ceil((n1-n0)/cel));
-  if((nx+1)*(ny+1)>40000){cel=Math.sqrt((x1-x0)*(n1-n0)/40000);nx=Math.ceil((x1-x0)/cel);ny=Math.ceil((n1-n0)/cel);}
+  var cel=15,nx=Math.max(2,Math.ceil((x1-x0)/cel)),ny=Math.max(2,Math.ceil((n1-n0)/cel));   // 15 m: en sierra la de 40 m submuestreaba el campo y los flancos quedaban a medias
+  if((nx+1)*(ny+1)>160000){cel=Math.sqrt((x1-x0)*(n1-n0)/160000);nx=Math.ceil((x1-x0)/cel);ny=Math.ceil((n1-n0)/cel);}
   var P=[],i;
   for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;P.push([t.gx,-t.gz,t.mc.gnd-t.rel]);}
   if(!P.length)return;
@@ -769,7 +815,7 @@ function aplicaResiduo(){                                     // corrige EN SITI
   var pa=terrain.geometry.attributes.position,i;
   if(!TERR0){TERR0=new Float32Array(pa.count);for(i=0;i<pa.count;i++)TERR0[i]=pa.getZ(i);}
   var on=(GEO==='levantamiento')&&!!RESID;
-  for(i=0;i<pa.count;i++)pa.setZ(i,TERR0[i]+(on?residAt(pa.getX(i),pa.getY(i)):0));
+  for(i=0;i<pa.count;i++)pa.setZ(i,TERR0[i]+(on?corrSuelo(pa.getX(i),pa.getY(i)):0));
   pa.needsUpdate=true;terrain.geometry.computeVertexNormals();
 }
 function usaCotas(t){ return GEO==='levantamiento' && t && t.mc; }
@@ -782,17 +828,19 @@ function statCotas(){
   for(i=0;i<TRK.length;i++){var t=TRK[i];if(!t.mc)continue;con++;
     if(t.mc.f[0].art||t.mc.f[1].art)art++;
     if(t.mc.inc)inc++;
-    if(t.mc.gnd<t.rel+residAt(t.gx,-t.gz)-0.5)bajo++;}   // el residuo corrige el SUELO (DEM), no la cota medida
+    if(t.mc.gnd<t.rel+corrSuelo(t.gx,-t.gz)-0.5)bajo++;}   // con la excavacion esto deberia quedar a cero
   var bt=bt3dOn()?('<br><span style="opacity:.7">BT3D '+(BT3D==='agr'?'agresivo':'conservador')+': cada tracker con la pendiente medida de su lado del sol</span>'):'';
   e.innerHTML=con+' de '+TRK.length+' seguidores sobre cota medida · '+art+' quebrados'
     +(inc?' · '+inc+' con una sola fila medida':'')
     +'<br><span style="opacity:.7">datum alineado con el DEM restando '+COTAOFF.toFixed(2)+' m (la cota se midio sobre modulo, el DEM es suelo)'
-    +(bajo?' · '+bajo+' bajo el suelo':'')+'</span>'+bt;
+    +(bajo?' · '+bajo+' bajo el suelo':'')
+    +(ATIP?' · '+ATIP+' cotas descartadas (a >10 m del DEM)':'')
+    +((CAVA&&CAVA.n)?' · suelo excavado bajo '+CAVA.n+' seguidores (la hinca solo crece hacia arriba)':'')+'</span>'+bt;
 }
 function zPfor(t){if(!TC||!TC.zPT)return TC?TC.zP:[];var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // retícula de soportes por tipo (círculos del bloque del Tierras.dwg); resto de plantas: la genérica
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var mc=usaCotas(t)?t.mc:null,cl=0.8/vex;
-  var by=(mc?mc.rel:t.rel)*vex+(lift||0);   // con cotas medidas el tubo va a SU cota y el suelo (residuo) queda HEJE por debajo  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
+  var by=(mc?mc.rel:(t.rel+((GEO==='levantamiento')?corrSuelo(t.gx,-t.gz):0)))*vex+(lift||0);   // rel es cota de SUELO (medida-HEJE con cotas): el render suma el poste encima, MISMA convencion que el DEM (si no, todo flota HEJE); sin cota propia se drapea al suelo CORREGIDO, no al DEM crudo (quedaba colgado por el residuo de los vecinos)  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
   var gN,gE;
   if(mc){gN=Math.max(-cl,Math.min(cl,mc.gN));gE=Math.max(-cl,Math.min(cl,mc.gE));}   // pendientes MEDIDAS (longitudinal y entre las dos filas)
   else{gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));}
@@ -828,7 +876,10 @@ function applyPileReveal(){   // colorea cada pilote por su REVEAL (lo que sobre
   if(!imPost||!pileOn)return;
   var n=imPost.count,ph=TC.postH,_m=new THREE.Matrix4(),_p=new THREE.Vector3(),_q=new THREE.Quaternion(),_s=new THREE.Vector3();
   var lens=new Float32Array(n),mn=1e9,mx=-1e9,i;
-  for(i=0;i<n;i++){imPost.getMatrixAt(i,_m);_m.decompose(_p,_q,_s);var L=_s.y<0.002?NaN:_s.y*ph;lens[i]=L;if(L===L){if(L<mn)mn=L;if(L>mx)mx=L;}}
+  var ph0=ph-0.253;                                         // largo del poste estandar (a la base de la horquilla)
+  for(i=0;i<n;i++){imPost.getMatrixAt(i,_m);_m.decompose(_p,_q,_s);
+    var L=_s.y<0.002?NaN:((_s.y*ph-ph0)/vex+ph0);            // la desviacion sobre el estandar va escalada por vex: se descuenta -> METROS reales de hinca vista
+    lens[i]=L;if(L===L){if(L<mn)mn=L;if(L>mx)mx=L;}}
   var rng=(mx-mn)||1,col=new THREE.Color();
   for(i=0;i<n;i++){if(lens[i]!==lens[i]){col.setRGB(0,0,0);}else{var c=reliefColor((lens[i]-mn)/rng);col.setRGB(c[0],c[1],c[2]);}imPost.setColorAt(i,col);}
   if(imPost.instanceColor)imPost.instanceColor.needsUpdate=true;
@@ -844,7 +895,7 @@ function layoutTrackers(){
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
       if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
-      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=(t.postRel?t.postRel[pi]:t.rel)*vex,ejeY=topY,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);   // _M2 cae en el EJE del tubo (el origen canónico del seguidor ES el eje; la viga es un Box centrado): antes se restaba 0,06 "de cúspide" y la viga quedaba DESCENTRADA (arriba) del hueco del tambor
+      var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=((t.postRel?t.postRel[pi]:t.rel)+((GEO==='levantamiento')?corrSuelo(wx,-wz):0))*vex,ejeY=topY,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);   // el pie sigue al suelo VISIBLE (DEM+residuo): postRel es DEM crudo y con cotas medidas el poste flotaba; la diferencia que queda ES la hinca   // _M2 cae en el EJE del tubo (el origen canónico del seguidor ES el eje; la viga es un Box centrado): antes se restaba 0,06 "de cúspide" y la viga quedaba DESCENTRADA (arriba) del hueco del tambor
       if(zP[k]>0)_Q.setFromAxisAngle(_UP,Math.PI);else _Q.identity();                                          // HUECO de la C al EXTERIOR: semieje sur girado 180° (la geometría base abre al norte); horquilla/tambor/virola son simétricos a ese giro, comparten _Q sin cambio visual
       _PV.set(wx,(postTop+terrY)/2,wz);_SC.set(1,len/ph,1);_M2.compose(_PV,_Q,_SC);                            // poste VERTICAL del suelo a la BASE de la horquilla (ya no se hunde en el tambor, como en la foto)
       imPost.setMatrixAt(i*TC.np+pi,_M2);
@@ -853,7 +904,7 @@ function layoutTrackers(){
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
-        if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=t.rel*vex,sl=Math.max(0.3,syT-terY);
+        if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=(t.rel+((GEO==='levantamiento')?corrSuelo(sxx,-szz):0))*vex,sl=Math.max(0.3,syT-terY);
           _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
         else {var fo=_OS.multiplyMatrices(fbx,SEGO);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(bi*s.n+l,_M2);}}}}
   }
@@ -959,7 +1010,7 @@ function buildLabels(){ if(labelsBuilt||!TRK.length)return; labelsBuilt=true;
 function buildCorridor(){ if(corrGroup){scene.remove(corrGroup);corrGroup=null;} }   // línea roja del pasillo retirada (el reparto N/S sigue activo por CORRIDOR)
 /* ---------- Implantación real (DWG): vallado, CTs, inversores, CCTV, viales, comunicaciones ---------- */
 function localElevY(x,n){ if(!ELEV)return 0;
-  return ((ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)+((GEO==='levantamiento')?residAt(x,n):0))*vex; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
+  return ((ELEV(lat0+n/mPerLat,lon0+x/mPerLon)-baseElev)+((GEO==='levantamiento')?corrSuelo(x,n):0))*vex; }   // cota del terreno (exagerada) en un punto local E/N (0 si el DEM aún no está)
 var TMESH=null;   // parámetros de la MALLA de terreno renderizada (rejilla ~7 m): {w,d,sx,sy}
 function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
   // cota de la MALLA RENDERIZADA (lineal por triángulo, mismos triángulos que PlaneGeometry), no del DEM
