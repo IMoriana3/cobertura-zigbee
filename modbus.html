@@ -122,6 +122,28 @@
   .fabsel select{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:7px 12px;font:inherit;font-size:.88rem}
   .fabaviso{background:#241d0c;border:1px solid #7a5c14;border-radius:10px;padding:12px 16px;color:var(--warn);font-size:.86rem;margin:10px 0}
 
+  /* tramas */
+  .trama{font-family:var(--mono);font-size:.8rem;margin-top:4px;word-break:break-all}
+  .trama b{color:var(--warn);font-weight:600}
+  .trama .seg{color:var(--tx2)}
+  .trama .crc{color:var(--ok)}
+  /* diff */
+  .diffsel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:22px 0 10px}
+  .dif-a{color:var(--accent)} .dif-b{color:var(--warn)}
+  /* utilidades */
+  .ugrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  .ucard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .ucard h3{margin:0 0 4px;font-size:.95rem}
+  .ucard .us{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-bottom:12px}
+  .ucard label{display:block;font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:8px 0 3px}
+  .ucard input{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:.9rem;width:110px}
+  .ucard input:focus{outline:none;border-color:var(--accent)}
+  .ucard .res{margin-top:12px;font-size:.86rem}
+  .ucard .res b{color:var(--ok)}
+  .ucard .res .malo{color:var(--err);font-weight:600}
+  .ucard button{cursor:pointer;background:#14213a;border:1px solid var(--accent);color:var(--tx);border-radius:8px;padding:8px 14px;font:inherit;font-size:.85rem;margin-top:10px}
+  .ucard button:hover{background:#1a2a48}
+
   footer{max-width:1100px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
          color:var(--muted);font-size:.78rem}
   footer .dl a{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line2);border-radius:7px;
@@ -310,32 +332,33 @@ var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
    mapa se cargan como pestañas igual que los de Sunner. */
 var REGISTRO=[
  {fab:'Sunner',dev:'NCU',ver:'R7',fuente:'NCU_Modbus_Map_R7.xlsx → scada/config/modbus_map.yml',
-  estado:['doc','documentado'],donde:'Ayora · San José (previsto)',
+  estado:['doc','documentado'],donde:'Ayora · San José (previsto)',verif:'decode.py contra registros sintéticos (ángulos F32, SoC, signos, K×10, alarmas) — falta contraste con NCU real',
   notas:'La tabla de esta ficha. Errata conocida: SoC y RemainingCapacity solapados en 30513 (resuelto: SoC en byte bajo). Solo lectura; comandos 40000+ excluidos.'},
  {fab:'Sunner',dev:'NCU',ver:'pre-R7 (firmware antiguo)',fuente:'sin documento — evidencias de campo (scada/README)',
-  estado:['campo2','probado en campo'],donde:'El Burgo I',
+  estado:['campo2','probado en campo'],donde:'El Burgo I',verif:'sondeo Modbus en planta (FC03): puertos, direccionamiento, reloj y radio confirmados; pendiente repetir con FC04',
   notas:'Modbus TCP en puerto 503 (no el 502). Direccionamiento exacto (30000 responde como 30000). NO expone los bloques TCU del R7 (30500/29500 → ilegal). Reloj en 30300–30349 por campos sueltos; diagnóstico de radio (RSSI Zigbee) en 30200–30247. Pendiente: pedir a After Sales el mapa de esa versión o subir firmware a R7.'},
  {fab:'Sunner',dev:'TCU',ver:'firmware v3 (mapa 3)',fuente:'factiun_core/registers.py (gemelo digital)',
-  estado:['gemelo','contrato del gemelo'],donde:'—',
+  estado:['gemelo','contrato del gemelo'],donde:'—',verif:'smoke test del gemelo (tcu-twin) — falta contraste con TCU física',
   notas:'La pestaña TCU de esta ficha: 0,01°/LSB en ángulos y setpoint. Incluye escritura (holding + coils).'},
  {fab:'Sunner',dev:'TCU',ver:'legacy (mapa 1)',fuente:'gemelo digital, variante elburgo_legacy',
-  estado:['campo2','en campo'],donde:'El Burgo I',
+  estado:['campo2','en campo'],donde:'El Burgo I',verif:'reproducido en el gemelo; origen: comportamiento observado del firmware antiguo',
   notas:'Ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado. Seleccionable en la pestaña TCU.'},
  {fab:'Sunner',dev:'HSU',ver:'vía NCU R7',fuente:'bloques 30200/28000 del R7',
-  estado:['pend','falta mapa propio'],donde:'—',
+  estado:['pend','falta mapa propio'],donde:'—',verif:'—',
   notas:'Sin documento del dispositivo. Prometido: al recibirlo se monta su pestaña propia con decodificador y localizador.'},
  {fab:'P4Q',dev:'—',ver:'—',fuente:'pendiente de documento',
-  estado:['pend','pendiente'],donde:'—',notas:'Cuando llegue su mapa (NCU/TCU equivalentes) se carga como fabricante seleccionable.'},
+  estado:['pend','pendiente'],donde:'—',verif:'—',notas:'Cuando llegue su mapa (NCU/TCU equivalentes) se carga como fabricante seleccionable.'},
  {fab:"Track'n'Co",dev:'—',ver:'—',fuente:'pendiente de documento',
-  estado:['pend','pendiente'],donde:'—',notas:'Ídem.'}
+  estado:['pend','pendiente'],donde:'—',verif:'—',notas:'Ídem.'}
 ];
 function pinta(){
   var tb=$('tabs');tb.innerHTML='';
   var fabOk=$('fab').value==='sunner';
-  ['ncu','tcu','hsu','ver'].forEach(function(k){
+  ['ncu','tcu','hsu','ver','uti'].forEach(function(k){
     if(k!=='ver'&&!fabOk)return;                              // fabricante sin mapas: solo Versiones
     var b=document.createElement('button');b.className='tab'+(cur===k?' on':'');
     if(k==='ver')b.innerHTML='<span class="n">registro</span>Versiones';
+    else if(k==='uti')b.innerHTML='<span class="n">comisionado</span>Utilidades';
     else b.innerHTML='<span class="n">'+DEV[k].eti+'</span>'+DEV[k].tab;
     b.onclick=function(){cur=k;sel=null;$('buscar').value='';pinta();};
     tb.appendChild(b);
@@ -345,6 +368,11 @@ function pinta(){
     $('devnota').innerHTML='Qué mapa aplica a qué planta, de dónde sale cada uno y en qué estado está. El de El Burgo es la trampa a recordar: firmware anterior al R7, en el puerto 503 y sin bloques de TCU.';
     $('idsel').style.display='none';$('varsel').style.display='none';$('locbox').style.display='none';
     pintaRegistro();return;
+  }
+  if(cur==='uti'){
+    $('devnota').innerHTML='Herramientas de comisionado sobre el mapa R7 de la NCU.';
+    $('idsel').style.display='none';$('varsel').style.display='none';$('locbox').style.display='none';
+    pintaUtiles();return;
   }
   var d=DEV[cur];
   $('devnota').innerHTML=d.nota;
@@ -412,19 +440,170 @@ function pintaRegistro(){
   var q=$('buscar').value.trim().toLowerCase(),n=0;
   var aviso=($('fab').value!=='sunner')?'<div class="fabaviso">De <b>'+$('fab').options[$('fab').selectedIndex].text.split(' — ')[0]
     +'</b> aún no hay documento de mapa Modbus. Pásame su Excel/PDF y se carga como fabricante seleccionable, con las mismas pestañas, decodificador y localizador.</div>':'';
-  var h=aviso+'<div class="tblwrap"><table class="tbl"><tr><th>fabricante</th><th>dispositivo</th><th>mapa / versión</th><th>fuente</th><th>estado</th><th>desplegado en</th><th>notas</th></tr>';
+  var h=aviso+'<div class="tblwrap"><table class="tbl"><tr><th>fabricante</th><th>dispositivo</th><th>mapa / versión</th><th>fuente</th><th>estado</th><th>desplegado en</th><th>verificado contra hardware</th><th>notas</th></tr>';
   REGISTRO.forEach(function(r){
     if(q&&(r.fab+' '+r.dev+' '+r.ver+' '+r.fuente+' '+r.donde+' '+r.notas).toLowerCase().indexOf(q)<0)return;
     n++;
     h+='<tr><td class="nm">'+r.fab+'</td><td class="nm">'+r.dev+'</td><td class="nm" style="color:var(--accent)">'+r.ver+'</td>'
       +'<td style="font-family:var(--mono);font-size:.72rem;color:var(--tx2)">'+r.fuente+'</td>'
       +'<td><span class="estado '+r.estado[0]+'">'+r.estado[1]+'</span></td>'
-      +'<td style="font-size:.8rem">'+r.donde+'</td><td class="notas">'+r.notas+'</td></tr>';
+      +'<td style="font-size:.8rem">'+r.donde+'</td><td class="notas" style="max-width:260px">'+(r.verif||'—')+'</td><td class="notas">'+r.notas+'</td></tr>';
   });
   h+='</table></div>';
+  h+=diffHTML();
   $('cuerpo').innerHTML=h;$('resumen').innerHTML='<b>'+n+'</b> mapas registrados';
+  var ds=$('difsel');if(ds)ds.onchange=function(){pintaRegistro();};
+}
+/* ---- diferencias entre versiones: lo que cambia y te comeria al migrar ---- */
+var DIFFS=[
+ {id:'tcu',t:'TCU: firmware v3 (mapa 3) ↔ legacy El Burgo (mapa 1)',
+  a:'v3',b:'legacy',
+  filas:[
+   ['map_version (30002)','3','1'],
+   ['angle_filt / angle_raw (30010–30011)','0,01°/LSB (1550 = 15,50°)','0,1°/LSB (1550 = 155,0°)'],
+   ['setpoint (40001)','0,01°/LSB','0,1°/LSB'],
+   ['resto del mapa','idéntico','idéntico']],
+  nota:'Un maestro v3 contra una TCU legacy lee y ESCRIBE los ángulos 10× desviados: comprobar map_version (30002) antes de operar es la salvaguarda barata.'},
+ {id:'ncu',t:'NCU: R7 ↔ pre-R7 (El Burgo)',
+  a:'R7',b:'pre-R7',
+  filas:[
+   ['puerto Modbus TCP','502 (estándar)','503'],
+   ['bloque TCU 30500 (22×200)','presente','NO existe (dirección ilegal)'],
+   ['lastComm TCU 29500','presente','NO existe'],
+   ['fecha/hora','30104 (U32 epoch)','30300–30349, campos sueltos (h/min/día/mes/año)'],
+   ['zona 30200+','bloque HSU básico','diagnóstico de radio: RSSI Zigbee y ASCII serie/versión — ¡COLISIÓN de significado con el R7!'],
+   ['telemetría de TCU','bloque compacto','no localizada por Modbus (la web la enseña por su backend interno)']],
+  nota:'La zona 30200 significa cosas DISTINTAS en cada versión: un colector R7 apuntado a El Burgo leería «viento» donde hay RSSI. Identificar la versión antes de mapear no es opcional.'}];
+function diffHTML(){
+  var cual=($('difsel')&&$('difsel').value)||'tcu';
+  var d=DIFFS.find(function(x){return x.id===cual;})||DIFFS[0];
+  var h='<div class="diffsel"><h2 style="margin:0;font-size:.98rem">Diferencias entre versiones</h2>'
+    +'<select id="difsel" style="background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:6px 10px;font:inherit;font-size:.84rem">'
+    +DIFFS.map(function(x){return '<option value="'+x.id+'"'+(x.id===cual?' selected':'')+'>'+x.t+'</option>';}).join('')+'</select></div>';
+  h+='<div class="tblwrap"><table class="tbl"><tr><th>qué</th><th class="dif-a">'+d.a+'</th><th class="dif-b">'+d.b+'</th></tr>';
+  d.filas.forEach(function(r){h+='<tr><td class="nm">'+r[0]+'</td><td class="dif-a" style="font-size:.84rem">'+r[1]+'</td><td class="dif-b" style="font-size:.84rem">'+r[2]+'</td></tr>';});
+  h+='</table></div><p class="hint">'+d.nota+'</p>';
+  return h;
+}
+/* ---- utilidades de comisionado ---- */
+var YML_R7=`# Mapa Modbus de la NCU — derivado de NCU_Modbus_Map_R7.xlsx
+# SOLO LECTURA. El rango 40000+ (comandos) se excluye deliberadamente.
+
+tcu_compat:
+  # Bloque compacto: 22 registros por TCU, contiguo para 200 TCUs.
+  base: 30500
+  stride: 22
+  max_tcus: 200
+  fields:
+    # offset: definición
+    1:  {name: msr,            type: u16, bits: {bt_active: [0,0], sleep_state: [1,2], day_time: [7,7], main_state: [8,9], safe_position: [13,15]}}
+    2:  {name: alarms1,        type: u16}
+    3:  {name: alarms2,        type: u16}
+    4:  {name: flags_a,        type: u16, bits: {west_limit: [0,0], east_limit: [1,1], motor_locked: [11,11], system_ok: [15,15]}}
+    5:  {name: panel_voltage,  type: u16, unit: mV}
+    6:  {name: tilt_angle,     type: f32, unit: rad, to_deg: true}
+    8:  {name: motor_current,  type: u16, unit: mA}
+    9:  {name: motor_peak,     type: u16, unit: mA}
+    10: {name: target_angle,   type: f32, unit: rad, to_deg: true}
+    12: {name: psu_current,    type: s16, unit: mA}
+    13: {name: soc,            type: u8_low, unit: "%"}   # R7.1: SoC confirmado en byte bajo (el doc lista RemainingCapacity U16 solapado en 30513; byte alto reservado)
+    16: {name: battery_voltage, type: u16, unit: mV}
+    18: {name: battery_current, type: s16, unit: mA}
+    19: {name: temp_pcb,       type: u16, unit: Kx10, to_celsius: true}
+    20: {name: temp_battery,   type: u16, unit: Kx10, to_celsius: true}
+    21: {name: soh,            type: u8_low, unit: "%"}
+
+tcu_lastcomm:
+  base: 29500
+  stride: 2
+  type: u32          # Unix epoch
+
+# Decodificación de bits de alarmas (registro alarms1 / alarms2 del bloque compat)
+alarm_bits:
+  alarms1:
+    2:  out_of_range
+    4:  stop_button
+    7:  default_config
+    8:  zigbee_fail
+    11: batt_limited      # SoC < L2
+    12: batt_not_enough   # SoC < L3
+    13: batt_low          # SoC < L1
+    14: batt_critical     # SoC < 10%
+    15: test_fw
+  alarms2:
+    2:  time_never_set
+    4:  motor_overcurrent_hw
+    5:  motor_overcurrent_sw
+    8:  axis_blocked
+    14: axis_low_speed
+
+ncu:
+  registers:
+    hsu_global:   {addr: 30002, type: u16, bits: {alarm_any_wind: [1,1], wind_highest_level: [2,4], alarm_any_snow: [5,5], alarm_any_gust: [6,6], global_ws_fail: [7,7], global_ss_fail: [8,8]}}
+    digital_input: {addr: 30100, type: u16, bits: {battery_low: [0,0], ups_power_fault: [1,1], stop_button: [13,13]}}
+    main_status:  {addr: 30101, type: u16, bits: {alarm_battery_low: [0,0], gw1_alarm: [4,4], gw2_alarm: [5,5]}}
+    date_time:    {addr: 30104, type: u32}
+
+hsu:
+  # Bloque básico
+  base: 30200
+  stride: 10
+  max_hsus: 10
+  lastcomm_base: 29440      # U32 por HSU, stride 2
+  fields:
+    1: {name: msr,            type: u16, bits: {wind_level: [0,2], wind_dir_east: [3,3]}}
+    2: {name: alarms1,        type: u16, bits: {wind_sensor_fail: [0,0], snow_sensor_fail: [1,1], alarm_snow: [6,6], alarm_flood: [7,7], alarm_wind: [9,9], alarm_com: [15,15]}}
+    3: {name: wind_speed,     type: f32, unit: mps}
+    5: {name: wind_direction, type: f32, unit: deg}
+    7: {name: snow_level,     type: f32, unit: m}
+
+hsu_ext:
+  # Bloque extendido (piranómetros) — solo si hsu_extended: true
+  base: 28000
+  stride: 100
+  fields:
+    4:  {name: wind_speed,       type: f32, unit: mps}
+    6:  {name: wind_direction,   type: f32, unit: deg}
+    8:  {name: snow_level,       type: f32, unit: m}
+    16: {name: battery_voltage,  type: u16, unit: mV}
+    21: {name: ghi,              type: s32, unit: Wm2x100, scale: 0.01}
+    23: {name: poa_tracking,     type: s32, unit: Wm2x100, scale: 0.01}
+    25: {name: poa_diffuse,      type: s32, unit: Wm2x100, scale: 0.01}
+`;
+function pintaUtiles(){
+  $('cuerpo').innerHTML='<div class="ugrid">'
+   +'<div class="ucard"><h3>Calculadora de polling</h3><div class="us">bloque compacto · límite Modbus 125 reg/lectura (el colector usa ≤110)</div>'
+   +'<label>nº de TCUs</label><input id="pt" value="200" oninput="calcPoll()">'
+   +'<label>nº de HSUs (básicas / extendidas)</label><input id="ph" value="2" style="width:52px" oninput="calcPoll()"> <input id="pe" value="0" style="width:52px" oninput="calcPoll()">'
+   +'<label>latencia por transacción (ms)</label><input id="pl" value="30" oninput="calcPoll()">'
+   +'<label>periodo objetivo (s)</label><input id="pp" value="10" oninput="calcPoll()">'
+   +'<div class="res" id="pres"></div></div>'
+   +'<div class="ucard"><h3>YAML del colector</h3><div class="us">scada/config/modbus_map.yml · fuente única de verdad</div>'
+   +'<p style="font-size:.84rem;color:var(--tx2);margin:0">El mismo fichero que consume el colector SCADA, tal cual: lo que esta ficha documenta es lo que el colector lee.</p>'
+   +'<button onclick="bajaYML()">⬇ modbus_map.yml (Sunner NCU R7)</button></div>'
+   +'</div>';
+  calcPoll();
+}
+function calcPoll(){
+  var nt=Math.max(0,+$('pt').value||0),nh=Math.max(0,+$('ph').value||0),ne=Math.max(0,+$('pe').value||0);
+  var lat=Math.max(1,+$('pl').value||30),per=Math.max(0.1,+$('pp').value||10),POR=110;
+  function tx(regs){return regs>0?Math.ceil(regs/POR):0;}
+  var t_datos=tx(nt*22),t_lc=tx(nt*2),t_hb=tx(nh*10),t_hlc=tx(nh*2),t_he=ne;   // ext: 1 lectura por HSU (stride 100 no contiguo útil)
+  var fijas=3;                                                                  // propios: 30002 · 30100-30104 (2 lecturas) aprox
+  var total=t_datos+t_lc+t_hb+t_hlc+t_he+fijas;
+  var ciclo=total*lat/1000;
+  var cabe=ciclo<=per;
+  $('pres').innerHTML='<b>'+total+'</b> transacciones/ciclo — TCU datos '+t_datos+' · lastComm '+t_lc
+   +' · HSU '+(t_hb+t_hlc+t_he)+' · NCU '+fijas+'<br>ciclo ≈ <b>'+ciclo.toFixed(1)+' s</b> a '+lat+' ms/transacción → '
+   +(cabe?'<b>cabe</b> en el periodo de '+per+' s (margen '+(per-ciclo).toFixed(1)+' s)'
+         :'<span class="malo">NO cabe</span> en '+per+' s: sube el periodo o baja la latencia');
+}
+function bajaYML(){
+  var b=new Blob([YML_R7],{type:'text/yaml'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='modbus_map.yml';a.click();URL.revokeObjectURL(a.href);
 }
 function elige(k){sel=(sel===k)?null:k;pintaSecs();
+  if(sel&&$('tramas'))pintaTrama();
   var e=document.querySelector('.dec input');if(e)e.focus();}
 
 /* ---------------- decodificador ---------------- */
@@ -439,8 +618,41 @@ function decoHTML(sc,r,addr){
     +'<span class="out" id="dout"></span></div>'
     +(dos?'':'<div class="bsim" id="bsim"></div><div class="bases" id="bases"></div>')
     +'<div id="dbits"></div>'
+    +tramaHTML(sc,r,addr)
     +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian). Acepta dec, 0x… y 0b…':
       'Un registro de 16 bits. Escribe en decimal, 0x… o 0b… — o pincha los bits para construir el valor.')+'</div></div>';
+}
+/* ---- generador de tramas: la peticion de lectura real, byte a byte ---- */
+function crc16(bs){var c=0xFFFF;for(var i=0;i<bs.length;i++){c^=bs[i];for(var j=0;j<8;j++)c=(c&1)?((c>>1)^0xA001):(c>>1);}return [c&0xFF,(c>>8)&0xFF];}
+function hx(b){return b.toString(16).toUpperCase().padStart(2,'0');}
+function tramaInfo(sc,r,addr){
+  var fc,wire,qty=(r[2]==='f32'||r[2]==='u32'||r[2]==='s32')?2:1;
+  if(cur==='tcu'){                                            // mapa del dispositivo: FC por tabla y offset 0-based
+    var tab=(r[2]==='coil')?'co':(r[2]==='di')?'di':(addr>=40000?'hr':'ir');
+    fc={co:1,di:2,hr:3,ir:4}[tab];
+    wire=(r[2]==='coil')?addr-1:(addr%10000)-1;
+  }else{fc=3;wire=addr;}                                      // NCU: el colector real usa FC03 con la direccion absoluta tal cual
+  return {fc:fc,wire:wire,qty:qty};
+}
+function tramaHTML(sc,r,addr){
+  return '<div style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">trama de lectura</h3>'
+    +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">esclavo</label>'
+    +'<input id="esclavo" value="1" style="width:64px" oninput="pintaTrama()"></div>'
+    +'<div id="tramas"></div></div>';
+}
+function pintaTrama(){
+  var pr=regSel(),sc=pr[0],r=pr[1];if(!r)return;
+  var id=Math.max(1,+$('devid').value||1);
+  var addr=sc.stride? sc.base+(id-1)*sc.stride+r[0] : r[0];
+  var t=tramaInfo(sc,r,addr),esc=Math.max(0,Math.min(255,+$('esclavo').value||1));
+  var pdu=[t.fc,(t.wire>>8)&0xFF,t.wire&0xFF,(t.qty>>8)&0xFF,t.qty&0xFF];
+  var rtu=[esc].concat(pdu),crc=crc16(rtu);
+  var tcp=[0,1,0,0,0,pdu.length+1,esc].concat(pdu);
+  $('tramas').innerHTML=
+    '<div class="trama">TCP&nbsp; <span class="seg">'+tcp.slice(0,6).map(hx).join(' ')+'</span> <b>'+hx(esc)+' '+pdu.map(hx).join(' ')+'</b></div>'
+   +'<div class="trama">RTU&nbsp; <b>'+rtu.map(hx).join(' ')+'</b> <span class="crc">'+crc.map(hx).join(' ')+'</span></div>'
+   +'<div class="hint">FC'+String(t.fc).padStart(2,'0')+' · dirección de cable '+t.wire+' (0x'+t.wire.toString(16).toUpperCase()+') · '+t.qty+' registro'+(t.qty>1?'s':'')
+   +(cur==='tcu'?' · FC por tabla del mapa del dispositivo':' · el colector SCADA lee la NCU con FC03 y dirección absoluta tal cual (sin offset −1)')+'. CRC en verde, byte bajo primero.</div>';
 }
 function parseRaw(s){s=(s||'').trim();if(!s)return null;var p=s.slice(0,2).toLowerCase(),v;
   if(p==='0x')v=parseInt(s.slice(2),16);
@@ -548,7 +760,7 @@ function localiza(){
   R.innerHTML=h2;
 }
 $('loc').oninput=localiza;
-$('devid').oninput=function(){pintaSecs();};
+$('devid').oninput=function(){pintaSecs();if(sel&&$('tramas'))pintaTrama();};
 $('fwvar').onchange=function(){pintaSecs();};
 $('buscar').oninput=function(){cur==='ver'?pintaRegistro():pintaSecs();};
 $('fab').onchange=function(){sel=null;if(this.value!=='sunner')cur='ver';else if(cur==='ver')cur='ncu';pinta();};
