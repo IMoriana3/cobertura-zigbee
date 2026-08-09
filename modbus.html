@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mapa Modbus — NCU · HSU · TCU</title>
+<title>Mapas Modbus — NCU · TCU · HSU</title>
 <style>
   :root{
     --bg:#0b0f14; --bg2:#101722; --card:#121a26; --line:#1e2a3a; --line2:#2a3a50;
@@ -13,35 +13,47 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
   a{color:var(--accent);text-decoration:none}
-  header{padding:26px 22px 10px;max-width:1060px;margin:0 auto}
+  header{padding:26px 22px 10px;max-width:1100px;margin:0 auto}
   header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
   header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px}
   header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px}
-  .wrap{max-width:1060px;margin:0 auto;padding:0 22px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 22px}
 
-  /* pestañas de dispositivo */
-  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 14px}
+  /* pestañas de DISPOSITIVO */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
   .tab{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--tx2);
-       border-radius:9px;padding:8px 16px;font:inherit;font-size:.85rem;transition:.15s}
+       border-radius:9px;padding:9px 18px;font:inherit;font-size:.92rem;transition:.15s}
   .tab .n{display:block;font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
   .tab.on{border-color:var(--accent);color:var(--tx);background:#14213a}
   .tab.on .n{color:var(--accent)}
+  .devnota{font-size:.8rem;color:var(--tx2);margin:2px 0 12px;max-width:900px}
+  .devnota b{color:var(--warn);font-weight:600}
 
-  /* barra de control: selector de unidad + buscador */
+  /* barra: selector unidad/variante + buscador */
   .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
   .bar label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
   .bar input[type=number]{width:86px;background:var(--bg2);border:1px solid var(--line2);color:var(--tx);
        border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:.9rem}
+  .bar select{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+       padding:7px 10px;font:inherit;font-size:.84rem}
   .bar input[type=search]{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--line);color:var(--tx);
        border-radius:8px;padding:7px 12px;font:inherit;font-size:.86rem}
-  .bar input:focus{outline:none;border-color:var(--accent)}
+  .bar input:focus,.bar select:focus{outline:none;border-color:var(--accent)}
   .pill{font-family:var(--mono);font-size:.7rem;color:var(--tx2);background:var(--bg2);border:1px solid var(--line);
         border-radius:99px;padding:4px 12px}
   .pill b{color:var(--ok);font-weight:600}
 
-  /* tabla de registros */
+  /* secciones dentro del dispositivo */
+  .sec{margin:20px 0 8px}
+  .sec h2{margin:0 0 2px;font-size:.98rem}
+  .sec .sn{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+  .rw{font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;border-radius:6px;padding:2px 8px;margin-left:8px;vertical-align:2px}
+  .rw.ro{border:1px solid var(--line2);color:var(--tx2)}
+  .rw.w{border:1px solid #7a5c14;color:var(--warn)}
+
+  /* tabla */
+  .tblwrap{overflow-x:auto;border-radius:12px;margin-top:8px}
   .tbl{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .tblwrap{overflow-x:auto;border-radius:12px}
   .tbl th{font-family:var(--mono);font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
           text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg2)}
   .tbl td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -75,45 +87,41 @@
   .dec td.v0{color:var(--muted)}
   .hint{font-size:.74rem;color:var(--muted);margin-top:8px}
 
-  /* alarmas */
-  .agrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
-  .acard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-  .acard h3{margin:0 0 8px;font-family:var(--mono);font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;color:var(--warn)}
-
-  footer{max-width:1060px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
+  footer{max-width:1100px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
          color:var(--muted);font-size:.78rem}
-  footer .dl{margin-top:6px}
   footer .dl a{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line2);border-radius:7px;
                padding:3px 10px;margin-right:8px;display:inline-block;margin-top:4px}
-  @media(max-width:640px){ .tab{padding:7px 11px} header h1{font-size:1.12rem} }
+  @media(max-width:640px){ .tab{padding:8px 12px} header h1{font-size:1.12rem} }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Mapa Modbus — NCU · HSU · TCU</h1>
-  <div class="sub">Registros de lectura del sistema de seguidores. Elige el dispositivo, el número de unidad, y pincha
-  cualquier registro para decodificar un valor crudo en vivo.</div>
-  <div class="src">Fuente: NCU_Modbus_Map_R7.xlsx · misma tabla que usa el colector SCADA (config/modbus_map.yml) ·
-  registros de entrada (FC04) · rango de comandos 40000+ excluido a propósito · <a href="index.html">← cobertura</a></div>
+  <h1>Mapas Modbus — NCU · TCU · HSU</h1>
+  <div class="sub">Los tres mapas del sistema de seguidores, cada dispositivo con el suyo. Pincha cualquier registro
+  para decodificar un valor crudo en vivo.</div>
+  <div class="src">NCU: NCU_Modbus_Map_R7.xlsx (la misma tabla del colector SCADA) · TCU: mapa de firmware v3 del
+  gemelo digital (factiun_core/registers.py) · <a href="index.html">← cobertura</a></div>
 </header>
 
 <div class="wrap">
   <div class="tabs" id="tabs"></div>
+  <div class="devnota" id="devnota"></div>
   <div class="bar">
-    <span id="idsel" style="display:none">
-      <label id="idlab">Nº TCU</label>
-      <input type="number" id="devid" min="1" max="200" value="1">
-    </span>
-    <input type="search" id="buscar" placeholder="Filtrar: nombre, dirección, bit… (p. ej. 30513, soc, wind)">
+    <span id="idsel" style="display:none"><label id="idlab">Nº TCU</label>
+      <input type="number" id="devid" min="1" max="200" value="1"></span>
+    <span id="varsel" style="display:none"><label>firmware</label>
+      <select id="fwvar"><option value="v3">v3 (mapa 3, 0,01°/LSB)</option>
+      <option value="legacy">El Burgo legacy (mapa 1, 0,1°/LSB)</option></select></span>
+    <input type="search" id="buscar" placeholder="Filtrar: nombre, dirección, bit… (p. ej. 30513, soc, wind, setpoint)">
     <span class="pill" id="resumen"></span>
   </div>
   <div id="cuerpo"></div>
 </div>
 
 <footer>
-  El bloque compacto de TCU es contiguo (22 registros por unidad): una sola lectura de bloque por NCU trae la planta entera.
-  Las marcas <i>lastComm</i> son epoch Unix (U32, 2 registros).
+  Direcciones en numeración de documentación (3xxxx = registro de entrada FC04, 4xxxx = holding FC03,
+  1xxxx = entrada discreta FC02, coils FC01). En los bloques por unidad de la NCU: absoluta = base + (id−1)·stride + offset.
   <div class="dl">Configuración de pendientes por TCU (BT3D, del levantamiento):
     <a href="config_tcu_sunner_ayora.csv" download>⬇ Ayora (754)</a>
     <a href="config_tcu_sunner_sanjose.csv" download>⬇ San José (2.186)</a>
@@ -122,137 +130,226 @@
 
 <script>
 'use strict';
-/* ============================ EL MAPA ============================
-   Espejo 1:1 de scada/config/modbus_map.yml (R7). Direccion absoluta:
-   base + (id-1)*stride + offset  — el offset es el indice dentro del
-   bloque tal y como lo indexa el colector (regs[offset]).           */
-var MAP={
- tcu:{titulo:'TCU — bloque compacto',base:30500,stride:22,max:200,idlab:'Nº TCU',
-  nota:'22 registros por TCU, contiguos para 200 TCUs. lastComm en 29500 + (id−1)·2 (U32 epoch).',
-  lastcomm:{base:29500,stride:2},
-  f:[
-   [1,'msr','u16','',{bt_active:[0,0],sleep_state:[1,2],day_time:[7,7],main_state:[8,9],safe_position:[13,15]}],
-   [2,'alarms1','u16','','ALARMS1'],
-   [3,'alarms2','u16','','ALARMS2'],
-   [4,'flags_a','u16','',{west_limit:[0,0],east_limit:[1,1],motor_locked:[11,11],system_ok:[15,15]}],
-   [5,'panel_voltage','u16','mV'],
-   [6,'tilt_angle','f32','rad → °'],
-   [8,'motor_current','u16','mA'],
-   [9,'motor_peak','u16','mA'],
-   [10,'target_angle','f32','rad → °'],
-   [12,'psu_current','s16','mA'],
-   [13,'soc','u8_low','%'],
-   [16,'battery_voltage','u16','mV'],
-   [18,'battery_current','s16','mA'],
-   [19,'temp_pcb','u16','K×10 → °C'],
-   [20,'temp_battery','u16','K×10 → °C'],
-   [21,'soh','u8_low','%']]},
- ncu:{titulo:'NCU — registros fijos',base:0,stride:0,max:0,
-  nota:'Direcciones absolutas, una sola NCU por planta.',
-  f:[
-   [30002,'hsu_global','u16','',{alarm_any_wind:[1,1],wind_highest_level:[2,4],alarm_any_snow:[5,5],alarm_any_gust:[6,6],global_ws_fail:[7,7],global_ss_fail:[8,8]}],
-   [30100,'digital_input','u16','',{battery_low:[0,0],ups_power_fault:[1,1],stop_button:[13,13]}],
-   [30101,'main_status','u16','',{alarm_battery_low:[0,0],gw1_alarm:[4,4],gw2_alarm:[5,5]}],
-   [30104,'date_time','u32','epoch']]},
- hsu:{titulo:'HSU — bloque básico',base:30200,stride:10,max:10,idlab:'Nº HSU',
-  nota:'10 registros por HSU. lastComm en 29440 + (id−1)·2 (U32 epoch).',
-  lastcomm:{base:29440,stride:2},
-  f:[
-   [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
-   [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
-   [3,'wind_speed','f32','m/s'],
-   [5,'wind_direction','f32','°'],
-   [7,'snow_level','f32','m']]},
- hsuext:{titulo:'HSU — bloque extendido (piranómetros)',base:28000,stride:100,max:10,idlab:'Nº HSU',
-  nota:'Solo si la HSU está configurada como extendida (hsu_extended).',
-  f:[
-   [4,'wind_speed','f32','m/s'],
-   [6,'wind_direction','f32','°'],
-   [8,'snow_level','f32','m'],
-   [16,'battery_voltage','u16','mV'],
-   [21,'ghi','s32','W/m²×100 → W/m²'],
-   [23,'poa_tracking','s32','W/m²×100 → W/m²'],
-   [25,'poa_diffuse','s32','W/m²×100 → W/m²']]}
-};
+/* =================================================================
+   TRES MAPAS, uno por dispositivo.
+   NCU  : espejo 1:1 de scada/config/modbus_map.yml (R7). Absoluta en
+          bloques por unidad = base + (id-1)*stride + offset.
+   TCU  : mapa PROPIO del dispositivo (firmware v3), el que implementa
+          el gemelo digital. Direccion doc + offset de cable 0-based.
+          Variante elburgo_legacy: angulos y setpoint en 0,1 en vez de 0,01.
+   HSU  : la HSU no tiene documento de mapa propio en el proyecto; se
+          publica A TRAVES de la NCU (bloque basico 30200 y ext 28000).
+   ================================================================= */
+
 var ALARMAS={
  alarms1:{2:'out_of_range',4:'stop_button',7:'default_config',8:'zigbee_fail',11:'batt_limited (SoC < L2)',12:'batt_not_enough (SoC < L3)',13:'batt_low (SoC < L1)',14:'batt_critical (SoC < 10%)',15:'test_fw'},
- alarms2:{2:'time_never_set',4:'motor_overcurrent_hw',5:'motor_overcurrent_sw',8:'axis_blocked',14:'axis_low_speed'}
+ alarms2:{2:'time_never_set',4:'motor_overcurrent_hw',5:'motor_overcurrent_sw',8:'axis_blocked',14:'axis_low_speed'}};
+
+/* filas: [addrDoc|offset, nombre, tipo, unidad/conversion, bits|enum|alarma] */
+var DEV={
+ ncu:{tab:'NCU',eti:'controlador de red',max:0,
+  nota:'El servidor Modbus de la planta: sus registros propios más los bloques donde republica las TCU y las HSU que gestiona. Solo lectura; el rango de comandos 40000+ se excluye a propósito.',
+  secs:[
+   {t:'Registros propios',sn:'direcciones absolutas · una NCU por planta',rw:'ro',f:[
+     [30002,'hsu_global','u16','',{alarm_any_wind:[1,1],wind_highest_level:[2,4],alarm_any_snow:[5,5],alarm_any_gust:[6,6],global_ws_fail:[7,7],global_ss_fail:[8,8]}],
+     [30100,'digital_input','u16','',{battery_low:[0,0],ups_power_fault:[1,1],stop_button:[13,13]}],
+     [30101,'main_status','u16','',{alarm_battery_low:[0,0],gw1_alarm:[4,4],gw2_alarm:[5,5]}],
+     [30104,'date_time','u32','epoch']]},
+   {t:'Bloque TCU (republicado)',sn:'base 30500 · 22 registros/TCU · hasta 200 · lastComm 29500+(id−1)·2',rw:'ro',base:30500,stride:22,f:[
+     [1,'msr','u16','',{bt_active:[0,0],sleep_state:[1,2],day_time:[7,7],main_state:[8,9],safe_position:[13,15]}],
+     [2,'alarms1','u16','','ALARMS1'],
+     [3,'alarms2','u16','','ALARMS2'],
+     [4,'flags_a','u16','',{west_limit:[0,0],east_limit:[1,1],motor_locked:[11,11],system_ok:[15,15]}],
+     [5,'panel_voltage','u16','mV'],
+     [6,'tilt_angle','f32','rad → °'],
+     [8,'motor_current','u16','mA'],
+     [9,'motor_peak','u16','mA'],
+     [10,'target_angle','f32','rad → °'],
+     [12,'psu_current','s16','mA'],
+     [13,'soc','u8_low','%'],
+     [16,'battery_voltage','u16','mV'],
+     [18,'battery_current','s16','mA'],
+     [19,'temp_pcb','u16','K×10 → °C'],
+     [20,'temp_battery','u16','K×10 → °C'],
+     [21,'soh','u8_low','%']]},
+   {t:'Bloque HSU básico (republicado)',sn:'base 30200 · 10 registros/HSU · hasta 10 · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
+     [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
+     [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
+     [3,'wind_speed','f32','m/s'],
+     [5,'wind_direction','f32','°'],
+     [7,'snow_level','f32','m']]},
+   {t:'Bloque HSU extendido (republicado)',sn:'base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
+     [4,'wind_speed','f32','m/s'],
+     [6,'wind_direction','f32','°'],
+     [8,'snow_level','f32','m'],
+     [16,'battery_voltage','u16','mV'],
+     [21,'ghi','s32','W/m²×100 → W/m²'],
+     [23,'poa_tracking','s32','W/m²×100 → W/m²'],
+     [25,'poa_diffuse','s32','W/m²×100 → W/m²']]},
+   {t:'Bits de alarma de TCU',sn:'alarms1 / alarms2 del bloque TCU',rw:'ro',alarmas:true}]},
+
+ tcu:{tab:'TCU',eti:'unidad de seguidor',max:0,fw:true,
+  nota:'El mapa PROPIO del dispositivo (firmware v3), tal y como lo implementa el gemelo digital: es el contrato al hablar directamente con una TCU. Incluye los registros de <b>escritura</b> (setpoint, modo y coils de mando) — cuidado en planta. La variante legacy de El Burgo (mapa 1) da ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado.',
+  secs:[
+   {t:'Identidad y posición',sn:'registros de entrada (FC04) · offset de cable 0-based entre paréntesis',rw:'ro',f:[
+     [30001,'fw_version','u16','',null,1],
+     [30002,'map_version','u16','',null,1],
+     [30003,'tracker_id','u32','',null,1],
+     [30005,'modbus_addr','u16','',null,1],
+     [30010,'angle_filt','s16','×0,01 → °',null,0.01,'FW'],
+     [30011,'angle_raw','s16','×0,01 → °',null,0.01,'FW'],
+     [30012,'incl_temp','s16','×0,1 → °C',null,0.1],
+     [30013,'sensor_valid','u16','0 = ok, >0 avería',null,1]]},
+   {t:'Motor',sn:'registros de entrada (FC04)',rw:'ro',f:[
+     [30020,'motor_current','s16','×0,01 → A',null,0.01],
+     [30021,'motor_velocity','s16','% con signo',null,1],
+     [30022,'motor_state','u16','',{'0':'parado','1':'girando CW','2':'girando CCW','3':'CALADO (stall)'},1,'ENUM'],
+     [30023,'move_count','u32','movimientos',null,1]]},
+   {t:'Batería y fotovoltaica',sn:'registros de entrada (FC04)',rw:'ro',f:[
+     [30030,'batt_voltage','u16','mV',null,1],
+     [30031,'batt_current','s16','×0,01 → A (+carga/−descarga)',null,0.01],
+     [30032,'soc','u16','×0,1 → %',null,0.1],
+     [30033,'batt_temp','s16','×0,1 → °C',null,0.1],
+     [30034,'pv_voltage','u16','mV',null,1],
+     [30035,'pv_current','u16','×0,01 → A',null,0.01],
+     [30036,'charge_state','u16','',{'0':'reposo','1':'cargando','2':'llena','3':'fallo'},1,'ENUM']]},
+   {t:'Palabra de fallo',sn:'registro de entrada 30040 (bitfield)',rw:'ro',f:[
+     [30040,'fault_word','u16','',{estop:[0,0],motor_stall:[1,1],batt_low_uv:[2,2],motor_overcurrent:[4,4],limit_max_este:[6,6],limit_min_oeste:[7,7]}]]},
+   {t:'Consigna y configuración',sn:'holding (FC03) — LECTURA/ESCRITURA',rw:'w',f:[
+     [40001,'setpoint','s16','×0,01 → ° objetivo',null,0.01,'FW'],
+     [40002,'mode','u16','',{'0':'manual/remoto','1':'auto','2':'stow','3':'limpieza'},1,'ENUM'],
+     [40003,'deadband','u16','×0,01 → °',null,0.01],
+     [40004,'vmax','u16','×0,01 → °/s',null,0.01],
+     [40005,'ramp','u16','',null,1]]},
+   {t:'Coils de mando',sn:'FC01/FC05 — ESCRITURA: mueven el seguidor',rw:'w',f:[
+     [1,'cmd_goto','coil','ir a consigna'],
+     [2,'cmd_stow','coil','a posición segura'],
+     [3,'cmd_reset','coil','rearme de fallos'],
+     [4,'cmd_jog_cw','coil','impulso CW'],
+     [5,'cmd_jog_ccw','coil','impulso CCW'],
+     [6,'cmd_stop','coil','parada']]},
+   {t:'Entradas discretas',sn:'FC02 — solo lectura',rw:'ro',f:[
+     [10001,'di_estop','di','seta de emergencia'],
+     [10002,'di_limit_pos','di','final de carrera +'],
+     [10003,'di_limit_neg','di','final de carrera −'],
+     [10004,'di_stow_active','di','stow activo'],
+     [10005,'di_comms','di','comunicaciones ok']]}]},
+
+ hsu:{tab:'HSU',eti:'estación meteo',max:10,idlab:'Nº HSU',
+  nota:'La HSU <b>no tiene documento de mapa propio</b> en el proyecto: se publica a través del servidor Modbus de la NCU. Aquí están sus dos bloques con la dirección absoluta calculada para la unidad elegida. Si aparece el mapa del dispositivo (puerto de servicio), se añade como pestaña propia.',
+  secs:[
+   {t:'Bloque básico',sn:'en la NCU · base 30200 · 10 registros/HSU · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
+     [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
+     [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
+     [3,'wind_speed','f32','m/s'],
+     [5,'wind_direction','f32','°'],
+     [7,'snow_level','f32','m']]},
+   {t:'Bloque extendido (piranómetros)',sn:'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
+     [4,'wind_speed','f32','m/s'],
+     [6,'wind_direction','f32','°'],
+     [8,'snow_level','f32','m'],
+     [16,'battery_voltage','u16','mV'],
+     [21,'ghi','s32','W/m²×100 → W/m²'],
+     [23,'poa_tracking','s32','W/m²×100 → W/m²'],
+     [25,'poa_diffuse','s32','W/m²×100 → W/m²']]}]}
 };
-var TABS=[['tcu','TCU','seguidor'],['ncu','NCU','controlador'],['hsu','HSU','meteo'],['hsuext','HSU ext','piranómetros'],['alarmas','Alarmas','bits TCU']];
-var cur='tcu',sel=-1,$=function(i){return document.getElementById(i);};
+DEV.ncu.max=200;DEV.ncu.idlab='Nº TCU/HSU';
+
+var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
 
 function pinta(){
   var tb=$('tabs');tb.innerHTML='';
-  TABS.forEach(function(t){
-    var b=document.createElement('button');b.className='tab'+(cur===t[0]?' on':'');
-    b.innerHTML='<span class="n">'+t[2]+'</span>'+t[1];
-    b.onclick=function(){cur=t[0];sel=-1;$('buscar').value='';pinta();};
+  ['ncu','tcu','hsu'].forEach(function(k){
+    var b=document.createElement('button');b.className='tab'+(cur===k?' on':'');
+    b.innerHTML='<span class="n">'+DEV[k].eti+'</span>'+DEV[k].tab;
+    b.onclick=function(){cur=k;sel=null;$('buscar').value='';pinta();};
     tb.appendChild(b);
   });
-  var m=MAP[cur];
-  $('idsel').style.display=(m&&m.max)?'':'none';
-  if(m&&m.max){$('idlab').textContent=m.idlab;$('devid').max=m.max;if(+$('devid').value>m.max)$('devid').value=1;}
-  if(cur==='alarmas'){pintaAlarmas();return;}
-  pintaTabla();
+  var d=DEV[cur];
+  $('devnota').innerHTML=d.nota;
+  $('idsel').style.display=d.max?'':'none';
+  if(d.max){$('idlab').textContent=d.idlab;$('devid').max=d.max;if(+$('devid').value>d.max)$('devid').value=1;}
+  $('varsel').style.display=d.fw?'':'none';
+  pintaSecs();
 }
 
-function addrDe(m,off,id){ return m.stride? m.base+(id-1)*m.stride+off : off; }
-
-function pintaTabla(){
-  var m=MAP[cur],id=Math.max(1,+$('devid').value||1),q=$('buscar').value.trim().toLowerCase();
-  var h='<div class="tblwrap"><table class="tbl"><tr><th>offset</th><th>dirección</th><th>registro</th><th>tipo</th><th>unidad</th><th>campos de bits</th></tr>';
-  var n=0;
-  m.f.forEach(function(r,i){
-    var off=r[0],nm=r[1],ty=r[2],un=r[3],bits=r[4];
-    var a=addrDe(m,off,id);
-    var btxt=bits?(typeof bits==='string'?bits.toLowerCase():Object.keys(bits).join(' ')):'';
-    var pajar=(nm+' '+a+' '+un+' '+btxt).toLowerCase();
-    if(q&&pajar.indexOf(q)<0)return;
-    n++;
-    var chips='';
-    if(typeof bits==='string')chips='<span class="bit">ver pestaña Alarmas ('+bits.toLowerCase()+')</span>';
-    else if(bits)for(var k in bits){var b=bits[k];chips+='<span class="bit">'+k+' <i>['+(b[0]===b[1]?b[0]:b[0]+'–'+b[1])+']</i></span>';}
-    h+='<tr class="reg'+(sel===i?' sel':'')+'" onclick="elige('+i+')">'
-      +'<td class="nm" style="color:var(--muted)">'+(m.stride?'+'+off:'—')+'</td>'
-      +'<td class="addr">'+a+'<small>0x'+a.toString(16).toUpperCase()+'</small></td>'
-      +'<td class="nm">'+nm+(ty==='f32'||ty==='u32'||ty==='s32'?' <span style="color:var(--muted)">('+a+'–'+(a+1)+')</span>':'')+'</td>'
-      +'<td class="ty">'+ty+'</td><td class="un">'+(un||'—')+'</td>'
-      +'<td><span class="bits">'+(chips||'<span style="color:var(--muted)">—</span>')+'</span></td></tr>';
-    if(sel===i)h+='<tr><td colspan="6" style="padding:0">'+decoHTML(m,r,id)+'</td></tr>';
+function escala(r){ // escala efectiva contando la variante de firmware de la TCU
+  var s=r[5]||1;
+  if(cur==='tcu'&&r[6]==='FW'&&$('fwvar').value==='legacy')s=0.1;
+  return s;
+}
+function pintaSecs(){
+  var d=DEV[cur],id=Math.max(1,+$('devid').value||1),q=$('buscar').value.trim().toLowerCase();
+  var h='',n=0;
+  d.secs.forEach(function(sc,si){
+    if(sc.alarmas){ // tarjetas de alarmas NCU
+      var hh='',nn=0;
+      ['alarms1','alarms2'].forEach(function(reg){
+        var rows='';
+        for(var b in ALARMAS[reg]){if(q&&(b+' '+ALARMAS[reg][b]).toLowerCase().indexOf(q)<0)continue;nn++;n++;
+          rows+='<tr><td class="nm" style="color:var(--warn);width:44px">'+b+'</td><td class="nm">'+ALARMAS[reg][b]+'</td></tr>';}
+        if(rows)hh+='<div class="tblwrap"><table class="tbl"><tr><th colspan="2">'+reg+'</th></tr>'+rows+'</table></div>';
+      });
+      if(nn)h+='<div class="sec"><h2>'+sc.t+'<span class="rw ro">RO</span></h2><span class="sn">'+sc.sn+'</span></div>'+hh;
+      return;
+    }
+    var rows='';
+    sc.f.forEach(function(r,ri){
+      var addr=sc.stride? sc.base+(id-1)*sc.stride+r[0] : r[0];
+      var nm=r[1],ty=r[2],un=r[3],bits=r[4];
+      var btxt=bits?(typeof bits==='string'?bits:Object.keys(bits).join(' ')+' '+Object.values(bits).join(' ')):'';
+      if(q&&(nm+' '+addr+' '+un+' '+btxt).toLowerCase().indexOf(q)<0)return;
+      n++;
+      var chips='';
+      if(typeof bits==='string')chips='<span class="bit">ver sección de alarmas ('+bits.toLowerCase()+')</span>';
+      else if(bits&&r[6]==='ENUM'){for(var k in bits)chips+='<span class="bit"><i>'+k+'</i> '+bits[k]+'</span>';}
+      else if(bits){for(var k2 in bits){var b2=bits[k2];chips+='<span class="bit">'+k2+' <i>['+(b2[0]===b2[1]?b2[0]:b2[0]+'–'+b2[1])+']</i></span>';}}
+      var esKey=si+'_'+ri;
+      var multi=(ty==='f32'||ty==='u32'||ty==='s32');
+      rows+='<tr class="reg'+(sel===esKey?' sel':'')+'" onclick="elige(\''+esKey+'\')">'
+        +'<td class="nm" style="color:var(--muted)">'+(sc.stride?'+'+r[0]:'—')+'</td>'
+        +'<td class="addr">'+addr+'<small>0x'+addr.toString(16).toUpperCase()+'</small></td>'
+        +'<td class="nm">'+nm+(multi?' <span style="color:var(--muted)">('+addr+'–'+(addr+1)+')</span>':'')
+        +(cur==='tcu'&&!sc.stride&&ty!=='coil'&&ty!=='di'?' <span style="color:var(--muted);font-size:.72rem">(of. '+(addr%10000-1)+')</span>':'')+'</td>'
+        +'<td class="ty">'+ty+(escala(r)!==1?' ×'+escala(r):'')+'</td>'
+        +'<td class="un">'+(un||'—')+'</td>'
+        +'<td><span class="bits">'+(chips||'<span style="color:var(--muted)">—</span>')+'</span></td></tr>';
+      if(sel===esKey)rows+='<tr><td colspan="6" style="padding:0">'+decoHTML(sc,r,addr)+'</td></tr>';
+    });
+    if(rows){
+      h+='<div class="sec"><h2>'+sc.t+'<span class="rw '+(sc.rw==='w'?'w':'ro')+'">'+(sc.rw==='w'?'ESCRITURA':'RO')+'</span></h2>'
+        +'<span class="sn">'+sc.sn+'</span></div>'
+        +'<div class="tblwrap"><table class="tbl"><tr><th>offset</th><th>dirección</th><th>registro</th><th>tipo</th><th>unidad</th><th>bits / valores</th></tr>'+rows+'</table></div>';
+    }
   });
-  h+='</table></div>';
-  if(m.lastcomm){
-    var lc=m.lastcomm.base+(id-1)*m.lastcomm.stride;
-    h+='<p class="hint">lastComm de esta unidad: <span class="addr">'+lc+'–'+(lc+1)+'</span> (U32 epoch Unix, 0 = nunca).</p>';
-  }
-  $('cuerpo').innerHTML=h;
-  $('resumen').innerHTML='<b>'+n+'</b> registros'+(m.stride?' · unidad '+id+' → bloque '+addrDe(m,0,id)+'–'+(addrDe(m,0,id)+m.stride-1):'');
+  $('cuerpo').innerHTML=h||'<p class="hint">Nada casa con el filtro.</p>';
+  $('resumen').innerHTML='<b>'+n+'</b> registros';
 }
 
-function elige(i){sel=(sel===i)?-1:i;pintaTabla();
+function elige(k){sel=(sel===k)?null:k;pintaSecs();
   var e=document.querySelector('.dec input');if(e)e.focus();}
 
-/* ---------------- decodificador en vivo ---------------- */
-function decoHTML(m,r,id){
+/* ---------------- decodificador ---------------- */
+function regSel(){var p=sel.split('_');return [DEV[cur].secs[+p[0]],DEV[cur].secs[+p[0]].f[+p[1]]];}
+function decoHTML(sc,r,addr){
   var ty=r[2],dos=(ty==='f32'||ty==='u32'||ty==='s32');
+  if(ty==='coil'||ty==='di')return '<div class="dec"><h3>'+r[1]+'</h3><div class="hint">Booleano: 1 = '+(r[3]||'activo')+'. '+(ty==='coil'?'Escribir 1 dispara la orden (FC05).':'Solo lectura (FC02).')+'</div></div>';
   return '<div class="dec"><h3>decodificar '+r[1]+'</h3>'
     +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">valor crudo (dec o 0x…)</label>'
-    +'<input id="raw1" placeholder="'+(dos?'reg '+addrDe(m,r[0],id):'p. ej. 0x8143')+'" oninput="deco()">'
-    +(dos?'<input id="raw2" placeholder="reg '+(addrDe(m,r[0],id)+1)+'" oninput="deco()">':'')
-    +'<span class="out" id="dout"></span></div>'
-    +'<div id="dbits"></div>'
-    +'<div class="hint">'+(dos?'Dos registros consecutivos (orden de palabra AB, como el colector).':'Un registro U16.')
-    +(typeof r[4]==='string'?' Los bits activos se listan con el nombre de alarma del mapa.':'')+'</div></div>';
+    +'<input id="raw1" placeholder="'+(dos?'reg '+addr:'p. ej. 0x0182')+'" oninput="deco()">'
+    +(dos?'<input id="raw2" placeholder="reg '+(addr+1)+'" oninput="deco()">':'')
+    +'<span class="out" id="dout"></span></div><div id="dbits"></div>'
+    +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian).':'Un registro de 16 bits.')+'</div></div>';
 }
 function parseRaw(s){s=(s||'').trim();if(!s)return null;var v=s.slice(0,2).toLowerCase()==='0x'?parseInt(s,16):parseInt(s,10);return isNaN(v)?null:v&0xFFFF;}
 function deco(){
-  var m=MAP[cur],r=m.f[sel];if(!r)return;
-  var ty=r[2],un=r[3],bits=r[4];
+  var pr=regSel(),sc=pr[0],r=pr[1];
+  var ty=r[2],un=r[3]||'',bits=r[4],esc=escala(r);
   var a=parseRaw($('raw1')&&$('raw1').value),b=$('raw2')?parseRaw($('raw2').value):null;
-  var out='',tb='';
   if(a===null){$('dout').innerHTML='';$('dbits').innerHTML='';return;}
+  var out='',tb='';
   if(ty==='f32'){
-    if(b===null){out='falta el segundo registro';}
+    if(b===null)out='falta el segundo registro';
     else{var buf=new ArrayBuffer(4),dv=new DataView(buf);dv.setUint16(0,a);dv.setUint16(2,b);var f=dv.getFloat32(0);
       out='<b>'+f.toPrecision(6)+'</b> '+(un.indexOf('rad')===0?'rad = <b>'+(f*180/Math.PI).toFixed(3)+'°</b>':un);}
   }else if(ty==='u32'||ty==='s32'){
@@ -262,13 +359,15 @@ function deco(){
       if(un.indexOf('epoch')>=0)out+=' = <b>'+new Date(v32*1000).toISOString().replace('T',' ').slice(0,19)+' UTC</b>';
       if(un.indexOf('×100')>=0)out+=' = <b>'+(v32/100).toFixed(2)+' W/m²</b>';}
   }else{
-    var v=ty==='s16'?(a>0x7FFF?a-0x10000:a):ty==='u8_low'?(a&0xFF):a;
-    out='<b>'+v+'</b>'+(un?' '+un.split('→')[0].trim():'');
-    if(un.indexOf('K×10')>=0)out+=' = <b>'+(v/10-273.15).toFixed(1)+' °C</b>';
-    if(un==='mV')out+=' = <b>'+(v/1000).toFixed(3)+' V</b>';
-    if(un==='mA'&&Math.abs(v)>=1000)out+=' = <b>'+(v/1000).toFixed(2)+' A</b>';
+    var v=(ty==='s16')?(a>0x7FFF?a-0x10000:a):(ty==='u8_low')?(a&0xFF):a;
+    var ing=v*esc;
+    out='<b>'+(esc===1?ing:ing.toFixed(2))+'</b> '+un.replace(/×[\d,\.]+ → /,'');
+    if(un.indexOf('K×10')>=0)out='<b>'+v+'</b> K×10 = <b>'+(v/10-273.15).toFixed(1)+' °C</b>';
+    if(un==='mV')out='<b>'+v+'</b> mV = <b>'+(v/1000).toFixed(3)+' V</b>';
+    if(un==='mA')out='<b>'+v+'</b> mA'+(Math.abs(v)>=1000?' = <b>'+(v/1000).toFixed(2)+' A</b>':'');
+    if(bits&&r[6]==='ENUM'){out='<b>'+v+'</b> = <b>'+(bits[String(v)]||'¿valor desconocido?')+'</b>';}
   }
-  if(bits&&typeof bits==='object'){
+  if(bits&&typeof bits==='object'&&r[6]!=='ENUM'){
     tb='<table>';
     for(var k in bits){var lo=bits[k][0],hi=bits[k][1],val=(a>>lo)&((1<<(hi-lo+1))-1);
       tb+='<tr><td>'+k+' ['+(lo===hi?lo:lo+'–'+hi)+']</td><td class="'+(val?'v1':'v0')+'">'+val+'</td></tr>';}
@@ -282,23 +381,9 @@ function deco(){
   $('dout').innerHTML=out;$('dbits').innerHTML=tb;
 }
 
-/* ---------------- pestaña de alarmas ---------------- */
-function pintaAlarmas(){
-  var h='<div class="agrid">',n=0;
-  ['alarms1','alarms2'].forEach(function(reg){
-    h+='<div class="acard"><h3>'+reg+' (TCU, offset '+(reg==='alarms1'?2:3)+')</h3><table class="tbl" style="border:none">'
-      +'<tr><th>bit</th><th>alarma</th></tr>';
-    var t=ALARMAS[reg],q=$('buscar').value.trim().toLowerCase();
-    for(var b in t){if(q&&(b+' '+t[b]).toLowerCase().indexOf(q)<0)continue;n++;
-      h+='<tr><td class="nm" style="color:var(--warn)">'+b+'</td><td class="nm">'+t[b]+'</td></tr>';}
-    h+='</table></div>';
-  });
-  h+='</div><p class="hint">Para decodificar un valor concreto, pincha el registro alarms1/alarms2 en la pestaña TCU.</p>';
-  $('cuerpo').innerHTML=h;$('resumen').innerHTML='<b>'+n+'</b> bits de alarma';
-}
-
-$('devid').oninput=function(){pintaTabla();};
-$('buscar').oninput=function(){cur==='alarmas'?pintaAlarmas():pintaTabla();};
+$('devid').oninput=function(){pintaSecs();};
+$('fwvar').onchange=function(){pintaSecs();};
+$('buscar').oninput=function(){pintaSecs();};
 pinta();
 </script>
 </body>
