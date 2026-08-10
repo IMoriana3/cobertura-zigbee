@@ -42,7 +42,7 @@ addEventListener('DOMContentLoaded',function(){
   header .sub{color:var(--tx2);font-size:12px}
   header .brand{margin-left:auto;color:var(--accent);font-weight:700;font-size:13px}
   /* alto acotado al hueco bajo la cabecera + scroll interno: en pantallas bajas el menú se salía por arriba y no se podía ver entero */
-  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:240px;font-size:13px;max-height:calc(100vh - 78px);max-height:calc(100dvh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .panel{position:absolute;left:14px;bottom:14px;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:240px;max-width:min(430px,42vw);font-size:13px;max-height:calc(100vh - 78px);max-height:calc(100dvh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   .panel::-webkit-scrollbar{width:8px}
   .panel::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
   .panel::-webkit-scrollbar-track{background:transparent}
@@ -116,7 +116,7 @@ addEventListener('DOMContentLoaded',function(){
         <option value="cons">BT3D conservador (sin sombras)</option>
         <option value="agr">BT3D agresivo (produccion)</option>
       </select></div>
-    <div class="row" id="geoStat" style="font-size:11px;color:var(--tx2)"></div>
+    <div class="row" id="geoStat" style="font-size:11px;color:var(--tx2);display:block;line-height:1.5"></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
     <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula) · todos</label></div>
     <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo (sale un recuadro verde). Aparece aquí abajo la casilla 'Quebrado' para articularlo o no, y puedes arrastrarlo sobre el terreno. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores <span style="color:var(--tx2);font-size:11px">(clic: elegir quebrado · arrastrar: mover)</span></label></div>
