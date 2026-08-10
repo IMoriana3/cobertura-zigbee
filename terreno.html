@@ -118,6 +118,9 @@ addEventListener('DOMContentLoaded',function(){
       </select></div>
     <div class="row" id="geoStat" style="font-size:11px;color:var(--tx2);display:block;line-height:1.5"></div>
     <div class="row"><label title="Backtracking: al amanecer/atardecer los seguidores se ponen casi planos para NO sombrear la fila vecina. Quítalo para ver el sombreado real entre filas y en el suelo."><input type="checkbox" id="bt" checked> Backtracking (BT)</label></div>
+    <div class="row"><label title="Afección de backtracking: elige un tracker (clic) y se pinta QUIÉN le obliga a recortar seguimiento (colores cálidos) y a quién se lo obliga él (azules), con intensidad según los grados de recorte. La sombra se calcula por geometría real (proyección de la fila vecina sobre la suya por el rayo de sol) con las cotas medidas de cada pareja. 'Todo el año' promedia 12 días tipo cada 15 min; 'en este momento' usa el sol de la barra de tiempo."><input type="checkbox" id="afbt"> 🌓 Afección BT <span style="color:var(--tx2);font-size:11px">(clic: elegir tracker)</span></label>
+      <select id="afbtM" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:7px;padding:2px 6px;font:inherit;font-size:11.5px"><option value="ano">todo el año</option><option value="mom">en este momento</option></select></div>
+    <div class="row" id="afbtStat" style="display:none;font-size:11px;color:var(--tx2);line-height:1.55"></div>
     <div class="row"><label title="Trackers quebrados: cada viga tiene una RÓTULA en el actuador (centro). La mitad norte y la mitad sur drapean con pendiente propia según el terreno, en vez de comportarse como una viga rígida. Quítalo para ver las vigas rectas."><input type="checkbox" id="kink" checked> Trackers quebrados (rótula) · todos</label></div>
     <div class="row"><label title="Modo edición: pulsa un seguidor para seleccionarlo (sale un recuadro verde). Aparece aquí abajo la casilla 'Quebrado' para articularlo o no, y puedes arrastrarlo sobre el terreno. Pulsa Guardar para que se conserve al reabrir."><input type="checkbox" id="edit"> ✏️ Editar seguidores <span style="color:var(--tx2);font-size:11px">(clic: elegir quebrado · arrastrar: mover)</span></label></div>
     <div id="edSel" style="display:none;margin:3px 0 4px 18px;padding:8px 10px;border-left:3px solid #36D399;background:rgba(54,211,153,.09);border-radius:6px">
@@ -136,7 +139,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Mapa de cobertura DRAPEADO sobre el terreno: en cada punto del campo, cuantos vecinos de malla se ven con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstaculo. Cambia con la hora: al amanecer los paneles se levantan y tapan."><input type="checkbox" id="cob"> 📶 <b>Cobertura sobre el terreno</b></label></div>
-    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#7fd18a">■</span> 2</span><span><span style="color:#36D399">■</span> 3 o mas</span></div>
+    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span style="opacity:.75">con 2 o más no se pinta (la malla va sobrada ahí)</span></div>
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
@@ -403,6 +406,7 @@ function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=
   var sx=cx+R*sv.E,sy=Math.max(1,R*sv.U),sz=cz-R*sv.N; sunMarker.visible=true; sunMarker.position.set(sx,sy,sz); sunMarker.lookAt(cx,0,cz);
   if(sunRay){var p=sunRay.geometry.attributes.position;p.setXYZ(0,sx,sy,sz);p.setXYZ(1,cx,0,cz);p.needsUpdate=true;sunRay.visible=true;} }
 function setTime(min){ if(SCADA3D)setTimeout(scadaOverlay,0);
+  if(afbtOn&&afbtSel>=0&&afbtMode==='mom'){if(_afbtT)clearTimeout(_afbtT);_afbtT=setTimeout(afbtCompute,180);}
   curMin=min; syncSun(min);
   if(genOn){updateGenGlow();updateGenRings();updateGenHUD();}   // generación: brillo de paneles, anillos por inversor y HUD siguen la hora
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
@@ -941,6 +945,114 @@ function bt3dAng(t){
   return Math.max(-lim,Math.min(lim,Rbt/DEG));
 }
 function bt3dOn(){ return BT3D!=='plano' && GEO==='levantamiento' && !!COTAS; }
+/* ================= AFECCION BT =================
+   Elige un tracker y se cuantifica QUIEN le obliga a recortar seguimiento
+   (backtracking) y a quien se lo obliga el, en grados de recorte. Nada de
+   formulas con signo: la sombra se comprueba por GEOMETRIA directa en el
+   plano E-U (proyeccion de la fila vecina sobre la suya a lo largo del rayo
+   de sol) y el angulo de backtracking sale por biseccion. Usa las cotas
+   MEDIDAS de cada fila (Δh real de la pareja) y la cuerda del proyecto. */
+var afbtOn=false,afbtSel=-1,afbtMode='ano',_afbtT=null,_afbtRes=null;
+function afbtVecinos(i){                        // vecinos E/W en la columna contigua con solape N-S
+  var A=TRK[i],out=[],sA=(A.medio?(A.mr||0.5):1)*(A.span||TC.span);
+  var a0=A.gz-sA/2,a1=A.gz+sA/2,paso=(TC.filaZ?2*TC.filaZ:6);
+  for(var j=0;j<TRK.length;j++){if(j===i)continue;var B=TRK[j];
+    var dx=B.gx-A.gx,adx=Math.abs(dx);
+    if(adx<3||adx>2.6*paso)continue;
+    var sB=(B.medio?(B.mr||0.5):1)*(B.span||TC.span);
+    var ov=Math.min(a1,B.gz+sB/2)-Math.max(a0,B.gz-sB/2);
+    if(ov<=2)continue;
+    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,ov/sA)});}
+  return out;
+}
+function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
+  if(t.mc&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
+    if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1]))return (f.y[0]+f.y[1])/2;}
+  return t.rel;                                 // sin cota medida: DEM del centro
+}
+function afbtDeficit(A,B,ladoB,sv){             // grados de recorte que B (al ladoB de A) impone a A con este sol
+  if(sv.U<=0.02)return 0;
+  var s=ladoB==='E'?1:-1;
+  if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
+  var d=(TC.filaZ?2*TC.filaZ:6);                // hueco entre las filas limitrofes = pitch del proyecto
+  var hA=afbtAlturaFila(A,ladoB),hB=afbtAlturaFila(B,ladoB==='E'?'O':'E');
+  var dh=hB-hA;                                 // vecino mas alto -> sombra mas larga (sale solo de la proyeccion)
+  var c=(COTAS&&COTAS.cuerda)||TC.mesaC||2.38;
+  var se=Math.abs(sv.E),su=sv.U;                // trabajamos con el sol "a la derecha": simetrico E/W
+  var w=Math.atan2(se,su);                      // angulo de perfil
+  function sombra(phi){                         // ambas filas a tilt phi (phi<0 = borde del sol hacia abajo = seguimiento)
+    var ux=Math.cos(phi)*c/2,uy=Math.sin(phi)*c/2;
+    function pr(x,y){return x-y*(se/su);}       // proyeccion al suelo por el rayo de sol
+    var a1=pr(-ux,-uy),a2=pr(ux,uy),b1=pr(d-ux,dh-uy),b2=pr(d+ux,dh+uy);
+    var lo=Math.max(Math.min(a1,a2),Math.min(b1,b2)),hi=Math.min(Math.max(a1,a2),Math.max(b1,b2));
+    return hi-lo>1e-4;
+  }
+  var track=Math.min(Math.PI/2-1e-3,Math.min(w,((COTAS&&COTAS.limite)||55)*DEG));
+  var phit=-track;                              // seguimiento puro: perpendicular al sol (borde del sol abajo)
+  if(!sombra(phit))return 0;
+  if(sombra(0))return track/DEG;                // ni en plano se libra (escalon fuerte): recorte total
+  var mlo=0,mhi=1;                              // m: 0=seguimiento (sombra), 1=plano (sin sombra)
+  for(var k=0;k<22;k++){var mm=(mlo+mhi)/2;sombra(phit*(1-mm))?(mlo=mm):(mhi=mm);}
+  return track*mhi/DEG;
+}
+function afbtAgg(i){                            // agregado por vecino: media de grados de recorte (x solape)
+  var A=TRK[i],vs=afbtVecinos(i),res=[],doys,mins,d0=simDoy;
+  if(afbtMode==='mom'){doys=[simDoy];mins=[curMin];}
+  else {doys=[15,46,74,105,135,166,196,227,258,288,319,349];
+        mins=[];for(var m=270;m<=1290;m+=15)mins.push(m);}
+  for(var q=0;q<vs.length;q++){var v=vs[q],B=TRK[v.j],me=0,yo=0,n=0;
+    for(var di=0;di<doys.length;di++){simDoy=doys[di];
+      for(var mi=0;mi<mins.length;mi++){var sv=sunVec(mins[mi]);
+        if(sv.U<=0.02)continue;n++;
+        me+=afbtDeficit(A,B,v.lado,sv);
+        yo+=afbtDeficit(B,A,v.lado==='E'?'O':'E',sv);}}
+    res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0)*v.ov,yo:(n?yo/n:0)*v.ov});}
+  simDoy=d0;
+  return res;
+}
+function afbtCol(t,c1,c2){var r=((c1>>16)&255)/255+(((c2>>16)&255)/255-((c1>>16)&255)/255)*t,
+  g=((c1>>8)&255)/255+(((c2>>8)&255)/255-((c1>>8)&255)/255)*t,
+  b=(c1&255)/255+((c2&255)/255-(c1&255)/255)*t;return new THREE.Color(r,g,b);}
+function afbtPaint(){
+  var res=_afbtRes||[],map={},top=1e-9,q;
+  for(q=0;q<res.length;q++)top=Math.max(top,res[q].me,res[q].yo);
+  for(q=0;q<res.length;q++){var v=res[q],tm=v.me/top,ty=v.yo/top;
+    if(v.me<=0&&v.yo<=0)continue;
+    map[v.j]=(v.me>=v.yo)
+      ?(v.yo>0.35*top?afbtCol(Math.min(1,tm),0xC9A0FF,0x7C3AED):afbtCol(Math.min(1,tm),0xF6C453,0xEF2F3F))
+      :(v.me>0.35*top?afbtCol(Math.min(1,ty),0xC9A0FF,0x7C3AED):afbtCol(Math.min(1,ty),0x8FC7FF,0x1E66F5));}
+  map[afbtSel]=new THREE.Color(0x36D399);
+  tintModulos(function(i){return map[i]||null;});
+}
+function afbtStat(){
+  var e=$('afbtStat');if(!e)return;
+  if(!afbtOn){e.style.display='none';return;}
+  if(afbtSel<0){e.style.display='block';e.innerHTML='pulsa un tracker para analizar su vecindario de sombras';return;}
+  e.style.display='block';
+  var A=TRK[afbtSel],res=_afbtRes||[],uni=afbtMode==='mom'?'°':'°/med';
+  function nom(j){return TRK[j].id||('#'+j);}
+  var meL=res.filter(function(v){return v.me>0.005;}).sort(function(a,b){return b.me-a.me;})
+    .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.me.toFixed(2)+uni+'</b>';});
+  var yoL=res.filter(function(v){return v.yo>0.005;}).sort(function(a,b){return b.yo-a.yo;})
+    .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.yo.toFixed(2)+uni+'</b>';});
+  var tot=0;res.forEach(function(v){tot+=v.me;});
+  e.innerHTML='<b style="color:#36D399">'+(A.id||('#'+afbtSel))+'</b> · '+(afbtMode==='mom'?'con el sol de AHORA':'promedio anual (12 dias tipo, cada 15 min)')
+    +'<br><span style="color:#EF9A3D">■</span> le recortan: '+(meL.length?meL.join(' · '):'nadie')
+    +'<br><span style="color:#5E96F5">■</span> el recorta a: '+(yoL.length?yoL.join(' · '):'nadie')
+    +(res.length?'<br>recorte total sobre el: <b>'+tot.toFixed(2)+uni+'</b> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua');
+}
+function afbtCompute(){
+  if(!afbtOn||afbtSel<0)return;
+  _afbtRes=afbtAgg(afbtSel);
+  afbtPaint();afbtStat();
+  if(selWire&&PICK[afbtSel]){selWire.visible=true;selWire.position.copy(PICK[afbtSel].position);selWire.scale.copy(PICK[afbtSel].scale);}
+}
+function afbtRestore(){
+  _afbtRes=null;
+  if(selWire&&!editMode)selWire.visible=false;
+  if(SCADA3D)scadaOverlay();else tintModulos(function(){return null;});
+  afbtStat();
+}
 /* ================= SCADA 3D =================
    El Seguimiento PEM abre este visor con ?scada=1 y le manda por postMessage
    el ultimo diagnostico: {tipo:'scada3d', planta, fecha, filas:[{ncu,tcu,lat,
@@ -987,22 +1099,28 @@ function scadaCasar(msg){
   updateSpin(panelAngle(curMin));
   scadaHud();
 }
-function scadaOverlay(){
-  /* pinta LOS PROPIOS MODULOS del color de estado: el material 'glass' es
-     blanco, asi que el tinte por instancia (setColorAt multiplica) da el color
-     exacto. Sin casar -> blanco (aspecto normal). Cubre 'glass' (detalle alto)
-     y 'mesa' (detalle bajo). */
-  if(!SCADA3D||!SEG)return;
-  var col=new THREE.Color(),blanco=new THREE.Color(1,1,1);
+function tintModulos(fn){
+  /* pinta LOS PROPIOS MODULOS: el material 'glass' es blanco, asi que el tinte
+     por instancia (setColorAt multiplica) da el color exacto. fn(i) devuelve
+     un THREE.Color o null (=blanco, aspecto normal). Cubre 'glass' (detalle
+     alto) y 'mesa' (detalle bajo). */
+  if(!SEG)return;
+  var blanco=new THREE.Color(1,1,1);
   for(var si=0;si<SEG.length;si++){var s=SEG[si];
     if(s.key!=='glass'&&s.key!=='mesa')continue;
     var nuevo=!s.im.instanceColor;   // el shader se compilo SIN color por instancia: al crear el buffer hay que recompilar (r128)
-    for(var i=0;i<TRK.length;i++){var fl=SCADA3D.byTrk[i];
-      if(fl)col.setHex(SCADA_COL[String(fl.salud||'').toUpperCase()]||0x8093A4);
+    for(var i=0;i<TRK.length;i++){var c=fn(i)||blanco;
       for(var f=0;f<2;f++){var base=(i*2+f)*s.n;
-        for(var l=0;l<s.n;l++)s.im.setColorAt(base+l,fl?col:blanco);}}
+        for(var l=0;l<s.n;l++)s.im.setColorAt(base+l,c);}}
     if(s.im.instanceColor){s.im.instanceColor.needsUpdate=true;if(nuevo)s.im.material.needsUpdate=true;}
   }
+}
+function scadaOverlay(){
+  if(!SCADA3D)return;
+  if(afbtOn&&afbtSel>=0)return;                 // la afeccion BT manda mientras este activa
+  var col=new THREE.Color();
+  tintModulos(function(i){var fl=SCADA3D.byTrk[i];if(!fl)return null;
+    col.setHex(SCADA_COL[String(fl.salud||'').toUpperCase()]||0x8093A4);return col;});
 }
 function scadaHud(){
   var e=document.getElementById('scadaHud');
@@ -2800,22 +2918,23 @@ function cobCompute(){
     for(i=0;i<=nx;i++){var x=x0+W*i/nx,lat=lat0+n/mPerLat,lon=lon0+x/mPerLon,k0=j*(nx+1)+i;
       cobNear(ix,A,x,n,cand);
       pos.push(x,terrainMeshY(x,n)+0.8,-n);
-      if(cand.dmin>DENTRO){esFuera[k0]=1;fuera++;col.push(0.18,0.20,0.23);continue;}
+      if(cand.dmin>DENTRO){esFuera[k0]=1;fuera++;col.push(0,0,0,0);continue;}
       var c=0,nd=0,lim=Math.min(cand.length,16);
       for(q=0;q<lim;q++){var a=cand[q].a,cl=linkClearance(lat,lon,hRx,a.lat,a.lon,a.h);
         if(cl.blocked||cl.partial)continue;
         c++;if(a.ncu)nd=1;
         if(c>=3)break;}
-      var b=COBCOL[Math.min(3,c)];col.push(b[0],b[1],b[2]);
+      var b=COBCOL[Math.min(3,c)];
+      col.push(b[0],b[1],b[2],c===0?0.85:c===1?0.65:0);                          // SOLO se pinta donde cojea: 2+ vecinos = transparente (el fundido lo hace el alfa por vertice)
       hist[Math.min(3,c)]++;nn++;if(nd)ncud++;}}
   for(j=0;j<ny;j++)for(i=0;i<nx;i++){var k=j*(nx+1)+i;
-    if(esFuera[k]&&esFuera[k+1]&&esFuera[k+nx+1]&&esFuera[k+nx+2])continue;     // cuadro entero fuera de la planta: no se dibuja
+    if(col[k*4+3]<=0&&col[(k+1)*4+3]<=0&&col[(k+nx+1)*4+3]<=0&&col[(k+nx+2)*4+3]<=0)continue;   // cuadro sin ningun vertice "cojo": no se dibuja (fuera la manta verde y los circulos)
     idx.push(k,k+nx+1,k+1, k+1,k+nx+1,k+nx+2);}
   var geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,4));             // RGBA: el 4o canal funde el borde en vez de recortarlo
   geo.setIndex(idx);
-  var m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide}));
+  var m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.9,depthWrite:false,side:THREE.DoubleSide}));
   m.renderOrder=3;
   cobG=new THREE.Group();cobG.add(m);scene.add(cobG);
   cobStat({n:nn,cell:cell,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),h:hRx,fuera:fuera,
@@ -2826,7 +2945,7 @@ function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
   if(lg)lg.style.display='flex';
   function p(v){return (100*v/r.n).toFixed(0)+'%';}
   e.innerHTML='Vecinos con Fresnel despejado a '+r.h.toFixed(1)+' m: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
-    +'<br><span style="opacity:.7">paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
+    +'<br><span style="opacity:.7">solo se pinta donde la malla cojea · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
     +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la senal no depende de la distancia (R²=0,05)</span>';
 }
 function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=setTimeout(function(){_cobT=null;cobCompute();},260); }
@@ -2981,7 +3100,22 @@ function selectTracker(i){selIdx=i;
   selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.scale.copy(PICK[i].scale);
   $('edSel').style.display='block';$('edNum').textContent=(TRK[i].id!=null?TRK[i].id:('#'+(i+1)));$('edArtic').checked=!!TRK[i].artic;$('edMsg').style.display='none';
 }
-$('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;}};
+$('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;if(afbtOn&&afbtSel>=0)afbtCompute();}};
+var _afbtClick=false;
+function afbtBindClick(){                                       // el renderer nace en el init asincrono: enganche perezoso
+  if(_afbtClick||typeof renderer==='undefined'||!renderer)return;_afbtClick=true;
+  renderer.domElement.addEventListener('pointerdown',function(e){
+    if(!afbtOn||editMode||freeCam)return;
+    var i=pickAt(e);if(i<0)return;
+    afbtSel=i;afbtCompute();
+  });
+}
+if($('afbt')){
+  $('afbt').onchange=function(){afbtOn=this.checked;afbtBindClick();
+    if(!afbtOn){afbtSel=-1;afbtRestore();}
+    else afbtStat();};                                          // pinta la ayuda "clic en un tracker"
+  $('afbtM').onchange=function(){afbtMode=this.value;if(afbtOn&&afbtSel>=0)afbtCompute();};
+}
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio del DWG y al estado maestro
