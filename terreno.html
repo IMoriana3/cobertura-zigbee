@@ -141,7 +141,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Cobertura de malla PINTADA SOBRE LOS MODULOS: cada tracker se tiñe según cuántos vecinos de malla ve SU ANTENA con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstáculo. Cambia con la hora: al levantar los paneles tapan enlaces."><input type="checkbox" id="cob"> 📶 <b>Cobertura de malla</b></label></div>
-    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#7fd18a">■</span> 2</span><span><span style="color:#36D399">■</span> 3 o más</span></div>
+    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#B9EBCF">■</span> 2-3 (justo)</span><span><span style="color:#36a878">■</span> 4-6</span><span><span style="color:#0E7A4E">■</span> 8+ (sobrada)</span></div>
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
@@ -2931,13 +2931,13 @@ function cobCompute(){
   var hist=[0,0,0,0],ncud=0;COBTRK=new Array(TRK.length);
   for(i=0;i<TRK.length;i++){var ant=A[GWS.length+i];                            // cobAnchors: primero NCUs, luego TRK en orden
     cobNear(ix,A,ant.x,ant.n,cand);
-    var c=0,nd=0,lim=Math.min(cand.length,16);
+    var c=0,nd=0,lim=Math.min(cand.length,22);
     for(q=0;q<lim;q++){var a=cand[q].a;
       var cl=linkClearance(ant.lat,ant.lon,ant.h,a.lat,a.lon,a.h);
       if(cl.blocked||cl.partial)continue;
       c++;if(a.ncu)nd=1;
-      if(c>=3)break;}
-    COBTRK[i]=Math.min(3,c);hist[COBTRK[i]]++;if(nd)ncud++;}
+      if(c>=8)break;}                                                            // cuenta hasta 8: en plantas densas (El Burgo) TODO pasa de 3 y la capa se saturaba plana
+    COBTRK[i]=Math.min(8,c);hist[Math.min(3,c)]++;if(nd)ncud++;}
   pintaEstadoModulos();
   cobStat({n:TRK.length,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),
            ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});   // solo El Burgo trae telemetria real
@@ -2946,8 +2946,10 @@ function cobCompute(){
 function pintaEstadoModulos(){
   if(afbtOn&&afbtSel>=0&&_afbtRes){afbtPaint();return;}
   if(SCADA3D){scadaOverlay();return;}
-  if(cobOn&&COBTRK){var col=new THREE.Color();
-    tintModulos(function(i){var c=COBTRK[i];if(c==null)return null;col.setHex(COBCOLH[c]);return col;});return;}
+  if(cobOn&&COBTRK){var col=new THREE.Color(),clr=new THREE.Color(0xB9EBCF),osc=new THREE.Color(0x0E7A4E);
+    tintModulos(function(i){var c=COBTRK[i];if(c==null)return null;
+      if(c<=1){col.setHex(COBCOLH[c]);return col;}
+      col.copy(clr).lerp(osc,Math.min(1,(c-2)/6));return col;});return;}         // verde GRADUADO: claro = justo (2-3 caminos), oscuro = malla sobrada (8+)
   tintModulos(function(){return null;});
 }
 function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
