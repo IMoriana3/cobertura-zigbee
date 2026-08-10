@@ -74,7 +74,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="14" step="0.5" value="5"><span id="vexV" style="font-family:var(--mono)">5×</span></div>
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
-    <div class="row"><label title="Capa de inversores (DC, El Burgo): tiñe la huella de cada seguidor por su inversor y dibuja el cableado string→inversor sobre el terreno. Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
+    <div class="row"><label title="Capa de inversores (DC): tiñe la huella de cada seguidor por su inversor (El Burgo: asignación real del DWG; Ayora: por proximidad al inversor de string). Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG · El Burgo)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
@@ -1231,8 +1231,9 @@ function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
   var yTL=localElevY(X0,N1),yTR=localElevY(X1,N1),yBL=localElevY(X0,N0),yBR=localElevY(X1,N0);
   return (tx+tn<=1)?(yTL+(yTR-yTL)*tx+(yBL-yTL)*tn):(yBR+(yBL-yBR)*(1-tx)+(yTR-yBR)*(1-tn));
 }
-function inClip(x,n){ if(!CLP)return Math.abs(x)<800&&Math.abs(n)<700; return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado); descarta bloques sueltos del DWG (legendas/detalles)
-function makeInvTex(){   // frontal del SG350HX según foto real: panel plateado LISO con esquinas redondeadas, tornillos, LED azul cuadrado arriba-centro y marca SUNGROW abajo-derecha (sin display ni prensaestopas frontales)
+function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
+function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
+  marca=marca||'SUNGROW';
   var c=document.createElement('canvas');c.width=296;c.height=226;var x=c.getContext('2d');
   x.fillStyle='#5a6167';x.fillRect(0,0,296,226);                                       // canto oscuro tras el panel
   var g=x.createLinearGradient(0,0,60,226);g.addColorStop(0,'#eef1f4');g.addColorStop(0.5,'#dde2e6');g.addColorStop(1,'#c8ced4');
@@ -1240,12 +1241,23 @@ function makeInvTex(){   // frontal del SG350HX según foto real: panel plateado
   x.fillStyle=g;x.fill();x.lineWidth=2;x.strokeStyle='#aab1b8';x.stroke();
   x.strokeStyle='#c2c8ce';x.lineWidth=1;                                               // tornillos en esquinas y laterales
   [[24,24],[272,24],[24,202],[272,202],[148,22],[148,204],[24,113],[272,113],[86,22],[210,22],[86,204],[210,204]].forEach(function(p){x.fillStyle='#b7bec5';x.beginPath();x.arc(p[0],p[1],5,0,7);x.fill();x.stroke();x.fillStyle='#8f969d';x.beginPath();x.arc(p[0],p[1],2,0,7);x.fill();});
-  x.strokeStyle='#a7aeb5';x.lineWidth=1.5;var lr=4;x.beginPath();x.moveTo(140+lr,52);x.arcTo(158,52,158,70,lr);x.arcTo(158,70,140,70,lr);x.arcTo(140,70,140,52,lr);x.arcTo(140,52,158,52,lr);x.closePath();x.stroke();   // emblema CUADRADO pequeño arriba-CENTRO (foto real: sin LED azul)
-  x.fillStyle='#9aa1a8';x.fillRect(146,58,6,6);
-  x.fillStyle='#c3c9cf';x.fillRect(128,182,42,12);x.strokeStyle='#a7aeb5';x.strokeRect(128,182,42,12);   // placa de la marca abajo-CENTRO
-  x.fillStyle='#787f86';x.font='bold 8px Arial';x.textAlign='center';x.fillText('SUNGROW',149,191);x.textAlign='left';
+  if(marca==='HUAWEI'){
+    x.save();x.translate(148,64);x.fillStyle='#c7000b';                                // emblema de PETALOS rojo arriba-centro (abanico Huawei)
+    for(var pe=0;pe<8;pe++){x.save();x.rotate((pe-3.5)*0.30);x.beginPath();
+      if(x.ellipse)x.ellipse(0,-10,2.4,7.5,0,0,Math.PI*2);else x.arc(0,-10,4,0,Math.PI*2);
+      x.fill();x.restore();}
+    x.restore();
+    x.fillStyle='#eef0f2';x.fillRect(126,182,46,12);x.strokeStyle='#c7b0b2';x.strokeRect(126,182,46,12);   // placa de la marca abajo-CENTRO
+    x.fillStyle='#c7000b';x.font='bold 9px Arial';x.textAlign='center';x.fillText('HUAWEI',149,191);x.textAlign='left';
+  } else {
+    x.strokeStyle='#a7aeb5';x.lineWidth=1.5;var lr=4;x.beginPath();x.moveTo(140+lr,52);x.arcTo(158,52,158,70,lr);x.arcTo(158,70,140,70,lr);x.arcTo(140,70,140,52,lr);x.arcTo(140,52,158,52,lr);x.closePath();x.stroke();   // emblema CUADRADO pequeño arriba-CENTRO (foto real: sin LED azul)
+    x.fillStyle='#9aa1a8';x.fillRect(146,58,6,6);
+    x.fillStyle='#c3c9cf';x.fillRect(128,182,42,12);x.strokeStyle='#a7aeb5';x.strokeRect(128,182,42,12);   // placa de la marca abajo-CENTRO
+    x.fillStyle='#787f86';x.font='bold 8px Arial';x.textAlign='center';x.fillText('SUNGROW',149,191);x.textAlign='left';
+  }
   var t=new THREE.CanvasTexture(c);if(THREE.sRGBEncoding)t.encoding=THREE.sRGBEncoding;return t;
 }
+function invMarca(){ return PLANT==='ayora'?'HUAWEI':'SUNGROW'; }   // Ayora: inversores de string Huawei; El Burgo: Sungrow (San Jose pendiente de dato)
 var METEO_ANIM=[],metT=0,_wAcc=0,WIND={ws:3,wd:210,real:false};   // ws m/s, wd grados desde el N (de DÓNDE viene)
 function boostAniso(){ if(!renderer||!scene)return;var mx=renderer.capabilities.getMaxAnisotropy();   // ANISOTROPÍA en TODO mapa (1×/s, idempotente): la retícula de células y la ortofoto en escorzo eran los "dientes de sierra" — el MSAA ya estaba activo, faltaba el filtrado
   scene.traverse(function(o){var m=o.material;if(!m)return;(Array.isArray(m)?m:[m]).forEach(function(mm){if(mm.map&&mm.map.anisotropy<mx){mm.map.anisotropy=mx;mm.map.needsUpdate=true;}});});}
@@ -2534,7 +2546,7 @@ function buildBOS(){
     var rf=new THREE.Mesh(new THREE.BoxGeometry(w+0.5,0.25,dp+0.5),roofM);rf.position.set(cx,y+h+0.12,-cn);bosGroup.add(rf);                // cubierta saliente
     var dw=Math.min(1.1,w*0.4),dh=Math.min(2.2,h*0.8);var dr=new THREE.Mesh(new THREE.BoxGeometry(dw,dh,0.08),doorM);dr.position.set(cx,y+dh/2,-cn+dp/2+0.04);bosGroup.add(dr);});  // puerta
   // inversores string Sungrow SG350HX (36 ud) — DWG: 1136×870×356 mm, 116 kg, 12 MPPT; cuerpo gris con frontal Sungrow, disipador trasero y bastidor
-  var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
+  var invBody=new THREE.MeshStandardMaterial({color:0xc7ccd2,roughness:.5,metalness:.25}),invFin=new THREE.MeshStandardMaterial({color:0x2a3037,roughness:.7,metalness:.55}),invFront=new THREE.MeshStandardMaterial({map:makeInvTex(invMarca()),roughness:.55,metalness:.15}),invPost=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:.5,metalness:.6});
   var invFaces=[invBody,invBody,invBody,invBody,invBody,invFront]; // (la caja ahora es redondeada; invFaces queda para el núcleo interior)
   // PLANO XTR0000256 COMPLETO + fotos: cuerpo REDONDEADO, tejadillo 1543×883 a 10° con TODAS sus piezas
   // (2×L1 832×40 bajo los bordes laterales, 2×L2 894×40 en DIAGONAL de los soportes a la esquina frontal
@@ -2547,7 +2559,7 @@ function buildBOS(){
     sh.moveTo(-w2+r2,-h2);sh.lineTo(w2-r2,-h2);sh.quadraticCurveTo(w2,-h2,w2,-h2+r2);sh.lineTo(w2,h2-r2);sh.quadraticCurveTo(w2,h2,w2-r2,h2);sh.lineTo(-w2+r2,h2);sh.quadraticCurveTo(-w2,h2,-w2,h2-r2);sh.lineTo(-w2,-h2+r2);sh.quadraticCurveTo(-w2,-h2,-w2+r2,-h2);return sh;};
   var bodyG2=new THREE.ExtrudeGeometry(_rsh(W/2,H/2,0.075),{depth:0.30,bevelEnabled:true,bevelThickness:0.012,bevelSize:0.012,bevelSegments:2,curveSegments:6});
   var plG=new THREE.ExtrudeGeometry(_rsh(0.55,0.38,0.085),{depth:0.022,bevelEnabled:true,bevelThickness:0.006,bevelSize:0.006,bevelSegments:1,curveSegments:5});
-  var plTex=makeInvTex();plTex.wrapS=plTex.wrapT=THREE.ClampToEdgeWrapping;plTex.repeat.set(-1/1.10,1/0.76);plTex.offset.set(0.5,0.5);   // repeat.x negativo: la cara visible es la trasera de la extrusión
+  var plTex=makeInvTex(invMarca());plTex.wrapS=plTex.wrapT=THREE.ClampToEdgeWrapping;plTex.repeat.set(-1/1.10,1/0.76);plTex.offset.set(0.5,0.5);   // repeat.x negativo: la cara visible es la trasera de la extrusión
   var blancoM=new THREE.MeshStandardMaterial({color:0xe8ebed,roughness:.42,metalness:.10});
   var plCap=new THREE.MeshStandardMaterial({map:plTex,roughness:.40,metalness:.12});
   var negroM=new THREE.MeshStandardMaterial({color:0x191c20,roughness:.6,metalness:.2});
