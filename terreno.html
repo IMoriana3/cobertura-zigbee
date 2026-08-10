@@ -331,7 +331,7 @@ function sunVec(min){
   return {el:el, E:Math.cos(el)*Math.sin(az), N:Math.cos(el)*Math.cos(az), U:Math.sin(el)};
 }
 // ángulo de seguimiento puro (rad, SIN límite); a sol bajo se acerca a ±90°
-function trueTrack(min){ var sv=sunVec(min); if(sv.U<=0.02)return 0; return -Math.atan2(sv.E,sv.U); }
+function trueTrack(min){ var sv=sunVec(min); if(sv.U<=0.02)return -5*DEG; return -Math.atan2(sv.E,sv.U); }   // sol bajo el horizonte: DORMIDO real a −5° (5° al ESTE) — antes devolvía 0 y los paneles pasaban un momento PLANOS entre la puesta y el fundido nocturno
 function noBtAngle(min){ return Math.max(-55,Math.min(55,trueTrack(min)/DEG)); }                              // sin BT: sigue al sol y topa en ±55°
 function simBtAngle(min){ var R=trueTrack(min); if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return Math.max(-55,Math.min(55,(R-(R<0?-1:1)*Math.acos(temp))/DEG)); }  // backtracking desde el ángulo VERDADERO → al amanecer se APLANA
 function panelAngle(min){
