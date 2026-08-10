@@ -141,7 +141,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Mapa de cobertura DRAPEADO sobre el terreno: en cada punto del campo, cuantos vecinos de malla se ven con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstaculo. Cambia con la hora: al amanecer los paneles se levantan y tapan."><input type="checkbox" id="cob"> 📶 <b>Cobertura sobre el terreno</b></label></div>
-    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span style="opacity:.75">con 2 o más no se pinta (la malla va sobrada ahí)</span></div>
+    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#36D399;opacity:.5">■</span> 2 o más (tenue: bien)</span></div>
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
@@ -2944,8 +2944,10 @@ function cobCompute(){
         c++;if(a.ncu)nd=1;
         if(c>=3)break;}
       hist[Math.min(3,c)]++;nn++;if(nd)ncud++;
-      if(c>=2)continue;                                                          // SOLO se pinta donde cojea
-      var b=COBCOL[c],av=c===0?0.62:0.5,hx=W/nx/2,hn=D/ny/2,v0=pos.length/3;
+      /* TODA la planta pintada, pero con jerarquia: lo sano en susurro (verde
+         muy tenue) y lo cojo fuerte — si solo se pintara lo malo, con la malla
+         sana la capa quedaba VACIA y parecia rota ("no veo la cobertura") */
+      var cc9=Math.min(3,c),b=COBCOL[cc9],av=c===0?0.62:c===1?0.5:0.13,hx=W/nx/2,hn=D/ny/2,v0=pos.length/3;
       pos.push(x-hx,terrainMeshY(x-hx,n-hn)+0.8,-(n-hn), x+hx,terrainMeshY(x+hx,n-hn)+0.8,-(n-hn),
                x+hx,terrainMeshY(x+hx,n+hn)+0.8,-(n+hn), x-hx,terrainMeshY(x-hx,n+hn)+0.8,-(n+hn));
       for(q=0;q<4;q++)col.push(b[0],b[1],b[2],av);
@@ -2967,7 +2969,8 @@ function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
   if(lg)lg.style.display='flex';
   function p(v){return (100*v/r.n).toFixed(0)+'%';}
   e.innerHTML='Vecinos con Fresnel despejado a '+r.h.toFixed(1)+' m: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
-    +'<br><span style="opacity:.7">solo se pinta donde la malla cojea · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
+    +((r.hist[0]+r.hist[1])===0?'<br><span style="color:#36D399">✅ a esta hora ninguna zona coja: con los paneles a '+r.ang.toFixed(1)+'° toda la planta ve ≥2 caminos — mueve la hora (al mediodía, con los paneles tumbados, es cuando aprieta)</span>':'')
+    +'<br><span style="opacity:.7">lo sano en verde tenue, lo cojo fuerte · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
     +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la senal no depende de la distancia (R²=0,05)</span>';
 }
 function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=setTimeout(function(){_cobT=null;cobCompute();},260); }
