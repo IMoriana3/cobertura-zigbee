@@ -2979,9 +2979,9 @@ function cobRealApply(){
       COBREAL=g;_cobRealLoad=false;cobRealApply();
     }).catch(function(){_cobRealLoad=false;COBREAL={features:[]};if(e)e.textContent='no se pudo cargar la malla medida';});
     return;}
-  var G=new THREE.Group(),pos=[],col=[],rs=[],spof=0,nodes=0;
-  var nodeGeo=new THREE.OctahedronGeometry(1.6,0);
-  var matOk=new THREE.MeshBasicMaterial({color:0x9fd0ff}),matSp=new THREE.MeshBasicMaterial({color:0xe2574c}),matGw=new THREE.MeshBasicMaterial({color:0x36D399});
+  var G=new THREE.Group(),segs=[],rs=[],spof=0,nodes=0;
+  var nodeGeo=new THREE.OctahedronGeometry(2.2,0);
+  var matOk=new THREE.MeshBasicMaterial({color:0x54A6FF}),matSp=new THREE.MeshBasicMaterial({color:0xe2574c}),matGw=new THREE.MeshBasicMaterial({color:0x36D399});
   (COBREAL.features||[]).forEach(function(f){
     var g=f.geometry,p=f.properties||{};if(!g)return;
     if(g.type==='Point'){
@@ -2992,15 +2992,22 @@ function cobRealApply(){
     }else if(g.type==='LineString'){
       var c=rssiCol(p.rssi_medido_dbm),a=g.coordinates[0],b=g.coordinates[1];
       var ax=projX(a[0]),az=projZ(a[1]),bx=projX(b[0]),bz=projZ(b[1]);
-      pos.push(ax,localElevY(ax,-az)+2.0,az, bx,localElevY(bx,-bz)+2.0,bz);
-      col.push(c.r,c.g,c.b,c.r,c.g,c.b);
+      segs.push([ax,localElevY(ax,-az)+2.0,az, bx,localElevY(bx,-bz)+2.0,bz, c]);
       if(p.rssi_medido_dbm!=null)rs.push(p.rssi_medido_dbm);
     }});
-  if(pos.length){var lg=new THREE.BufferGeometry();
-    lg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    lg.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-    var ll=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.95}));
-    ll.renderOrder=4;G.add(ll);}
+  if(segs.length){
+    /* los enlaces como CILINDROS instanciados (~0,25 m): las LineSegments de
+       1 px se perdian sobre la ortofoto ("la malla medida no se ve bien") */
+    var cg9=new THREE.CylinderGeometry(1,1,1,6);
+    var im9=new THREE.InstancedMesh(cg9,new THREE.MeshBasicMaterial({}),segs.length);
+    var A9=new THREE.Vector3(),B9=new THREE.Vector3(),D9=new THREE.Vector3(),P9=new THREE.Vector3(),
+        Q9=new THREE.Quaternion(),S9=new THREE.Vector3(),M9=new THREE.Matrix4(),UP9=new THREE.Vector3(0,1,0);
+    segs.forEach(function(s9,i9){A9.set(s9[0],s9[1],s9[2]);B9.set(s9[3],s9[4],s9[5]);
+      D9.subVectors(B9,A9);var L9=D9.length()||1e-4;D9.multiplyScalar(1/L9);
+      Q9.setFromUnitVectors(UP9,D9);P9.copy(A9).add(B9).multiplyScalar(0.5);
+      S9.set(0.25,L9,0.25);M9.compose(P9,Q9,S9);im9.setMatrixAt(i9,M9);
+      im9.setColorAt(i9,s9[6]);});
+    im9.renderOrder=4;G.add(im9);}
   cobRealG=G;scene.add(G);
   if(e){var mn=Math.min.apply(null,rs),mx=Math.max.apply(null,rs);
     e.innerHTML=nodes+' nodos · '+rs.length+' enlaces con RSSI medido ('+mn+' a '+mx+' dBm) · <b style="color:#e2574c">'+spof+'</b> SPOF'
