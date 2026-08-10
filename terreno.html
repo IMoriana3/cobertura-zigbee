@@ -140,8 +140,8 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
     <div class="row" id="fresLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2)"><span><span style="color:#36D399">●</span> visión</span><span><span style="color:#e3c149">●</span> rozando</span><span><span style="color:#e2574c">●</span> sin visión</span></div>
     <div class="row" id="fresStat" style="font-size:11px;color:var(--tx2)"></div>
-    <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Mapa de cobertura DRAPEADO sobre el terreno: en cada punto del campo, cuantos vecinos de malla se ven con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstaculo. Cambia con la hora: al amanecer los paneles se levantan y tapan."><input type="checkbox" id="cob"> 📶 <b>Cobertura sobre el terreno</b></label></div>
-    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#36D399;opacity:.5">■</span> 2 o más (tenue: bien)</span></div>
+    <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Cobertura de malla PINTADA SOBRE LOS MODULOS: cada tracker se tiñe según cuántos vecinos de malla ve SU ANTENA con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstáculo. Cambia con la hora: al levantar los paneles tapan enlaces."><input type="checkbox" id="cob"> 📶 <b>Cobertura de malla</b></label></div>
+    <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#7fd18a">■</span> 2</span><span><span style="color:#36D399">■</span> 3 o más</span></div>
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
@@ -1053,7 +1053,7 @@ function afbtCompute(){
 function afbtRestore(){
   _afbtRes=null;
   if(selWire&&!editMode)selWire.visible=false;
-  if(SCADA3D)scadaOverlay();else tintModulos(function(){return null;});
+  pintaEstadoModulos();                                        // devuelve el mando al siguiente pintor (SCADA / cobertura / normal)
   afbtStat();
 }
 /* ================= SCADA 3D =================
@@ -2916,61 +2916,46 @@ function cobDispose(){ if(!cobG)return; scene.remove(cobG);
   cobG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});
   cobG=null;
 }
+var COBTRK=null,COBCOLH=[0xE2574C,0xE3C149,0x7FD18A,0x36D399];   // clase de cobertura POR TRACKER (0..3) y sus colores
 function cobCompute(){
-  cobDispose();
-  if(!cobOn||!ELEV||!FB||!TRK.length){cobStat(null);return;}
+  /* COBERTURA SOBRE LOS MODULOS: nada de cuadrados en el suelo ("tiene que
+     pintar los modulos"). Se evalua la malla DESDE LA ANTENA REAL de cada
+     TCU (su punta, que bascula con el panel) y se tinen SUS modulos:
+     rojo aislado / ambar un camino / verdes 2 y 3+. Es ademas mas fiel:
+     la cobertura importa en la antena, no en un punto del campo. */
+  cobDispose();                                                                 // retira el mosaico antiguo si quedara
+  if(!cobOn||!TRK.length){COBTRK=null;pintaEstadoModulos();cobStat(null);return;}
   var t0=performance.now();
-  var pad=25,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad,W=x1-x0,D=n1-n0;
-  var cell=Math.max(6,Math.sqrt(W*D/5200));                                     // ~5.200 celdas sea cual sea la planta (mosaico plano: mas fino que el mallado degradado anterior)
-  var nx=Math.max(2,Math.round(W/cell)),ny=Math.max(2,Math.round(D/cell));
-  var A=cobAnchors(),ix=cobIndex(A),i,j,q;
-  var hh=[];for(i=0;i<A.length;i++)if(!A[i].ncu)hh.push(A[i].h);
-  hh.sort(function(p,r){return p-r;});
-  var hRx=hh.length?hh[hh.length>>1]:1.5;                                       // altura de muestreo = altura MEDIANA de las antenas de TCU
-  /* MOSAICO de celdas PLANAS: cada celda se evalua en su CENTRO y se pinta
-     entera de un color uniforme (o nada). Sin degradado por vertice: el
-     fundido convertia las zonas en lamparones difusos, sobre todo de noche
-     ("la cobertura no sale bien"). El borde escalonado dice ademas la
-     resolucion REAL del muestreo, sin fingir mas detalle del que hay. */
-  var pos=[],col=[],idx=[],cand=[],hist=[0,0,0,0],nn=0,ncud=0,fuera=0;
-  var DENTRO=30;
-  for(j=0;j<ny;j++){var n=n0+D*(j+0.5)/ny;
-    for(i=0;i<nx;i++){var x=x0+W*(i+0.5)/nx,lat=lat0+n/mPerLat,lon=lon0+x/mPerLon;
-      cobNear(ix,A,x,n,cand);
-      if(cand.dmin>DENTRO){fuera++;continue;}
-      var c=0,nd=0,lim=Math.min(cand.length,16);
-      for(q=0;q<lim;q++){var a=cand[q].a,cl=linkClearance(lat,lon,hRx,a.lat,a.lon,a.h);
-        if(cl.blocked||cl.partial)continue;
-        c++;if(a.ncu)nd=1;
-        if(c>=3)break;}
-      hist[Math.min(3,c)]++;nn++;if(nd)ncud++;
-      /* TODA la planta pintada, pero con jerarquia: lo sano en susurro (verde
-         muy tenue) y lo cojo fuerte — si solo se pintara lo malo, con la malla
-         sana la capa quedaba VACIA y parecia rota ("no veo la cobertura") */
-      var cc9=Math.min(3,c),b=COBCOL[cc9],av=c===0?0.62:c===1?0.5:0.13,hx=W/nx/2,hn=D/ny/2,v0=pos.length/3;
-      pos.push(x-hx,terrainMeshY(x-hx,n-hn)+0.8,-(n-hn), x+hx,terrainMeshY(x+hx,n-hn)+0.8,-(n-hn),
-               x+hx,terrainMeshY(x+hx,n+hn)+0.8,-(n+hn), x-hx,terrainMeshY(x-hx,n+hn)+0.8,-(n+hn));
-      for(q=0;q<4;q++)col.push(b[0],b[1],b[2],av);
-      idx.push(v0,v0+2,v0+1, v0,v0+3,v0+2);}}
-  if(!pos.length){cobStat({n:nn,cell:cell,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),h:hRx,fuera:fuera,
-           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});return;}
-  var geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,4));             // RGBA (alfa constante por celda: nitido, no niebla)
-  geo.setIndex(idx);
-  var m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.9,depthWrite:false,side:THREE.DoubleSide}));
-  m.renderOrder=3;
-  cobG=new THREE.Group();cobG.add(m);scene.add(cobG);
-  cobStat({n:nn,cell:cell,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),h:hRx,fuera:fuera,
-           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});   // solo El Burgo trae telemetria real; en Ayora/San Jose el angulo sale de solarTilt()
+  var A=cobAnchors(),ix=cobIndex(A),i,q,cand=[];
+  var hist=[0,0,0,0],ncud=0;COBTRK=new Array(TRK.length);
+  for(i=0;i<TRK.length;i++){var ant=A[GWS.length+i];                            // cobAnchors: primero NCUs, luego TRK en orden
+    cobNear(ix,A,ant.x,ant.n,cand);
+    var c=0,nd=0,lim=Math.min(cand.length,16);
+    for(q=0;q<lim;q++){var a=cand[q].a;
+      var cl=linkClearance(ant.lat,ant.lon,ant.h,a.lat,a.lon,a.h);
+      if(cl.blocked||cl.partial)continue;
+      c++;if(a.ncu)nd=1;
+      if(c>=3)break;}
+    COBTRK[i]=Math.min(3,c);hist[COBTRK[i]]++;if(nd)ncud++;}
+  pintaEstadoModulos();
+  cobStat({n:TRK.length,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),
+           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});   // solo El Burgo trae telemetria real
+}
+/* un unico pintor de modulos con prioridad: Afeccion BT > SCADA > cobertura > normal */
+function pintaEstadoModulos(){
+  if(afbtOn&&afbtSel>=0&&_afbtRes){afbtPaint();return;}
+  if(SCADA3D){scadaOverlay();return;}
+  if(cobOn&&COBTRK){var col=new THREE.Color();
+    tintModulos(function(i){var c=COBTRK[i];if(c==null)return null;col.setHex(COBCOLH[c]);return col;});return;}
+  tintModulos(function(){return null;});
 }
 function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
   if(!r){e.textContent='';if(lg)lg.style.display='none';return;}
   if(lg)lg.style.display='flex';
   function p(v){return (100*v/r.n).toFixed(0)+'%';}
-  e.innerHTML='Vecinos con Fresnel despejado a '+r.h.toFixed(1)+' m: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
-    +((r.hist[0]+r.hist[1])===0?'<br><span style="color:#36D399">✅ a esta hora ninguna zona coja: con los paneles a '+r.ang.toFixed(1)+'° toda la planta ve ≥2 caminos — mueve la hora (al mediodía, con los paneles tumbados, es cuando aprieta)</span>':'')
-    +'<br><span style="opacity:.7">lo sano en verde tenue, lo cojo fuerte · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' puntos de planta, celda '+r.cell.toFixed(0)+' m'+(r.fuera?' ('+r.fuera+' fuera de la planta, sin pintar)':'')+' · '+r.ms+' ms</span>'
+  e.innerHTML='Vecinos con Fresnel despejado desde la ANTENA de cada TCU: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
+    +((r.hist[0]+r.hist[1])===0?'<br><span style="color:#36D399">✅ a esta hora ningun TCU cojo: con los paneles a '+r.ang.toFixed(1)+'° todos ven ≥2 caminos — mueve la hora (al mediodía, con los paneles tumbados, es cuando aprieta)</span>':'')
+    +'<br><span style="opacity:.7">se tiñen los MODULOS de cada tracker por su clase · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' TCUs · '+r.ms+' ms</span>'
     +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la senal no depende de la distancia (R²=0,05)</span>';
 }
 function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=setTimeout(function(){_cobT=null;cobCompute();},260); }
