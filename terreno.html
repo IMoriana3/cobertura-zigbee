@@ -75,6 +75,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
     <div class="row"><label title="Capa de inversores (DC): tiñe la huella de cada seguidor por su inversor (El Burgo: asignación real del DWG; Ayora: por proximidad al inversor de string). Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
+    <div id="redesDwg">
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG · El Burgo)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
@@ -84,6 +85,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label title="Línea de EVACUACIÓN 45 kV de la subestación a red (la LAMT que bordea el recinto). Separada del MT interno: ese tramo no es CT→subestación."><input type="checkbox" id="netEvac"> ⚡ Evacuación 45 kV (a red)</label></div>
     <div class="row"><label title="Alcance de las cámaras CCTV (zonas que cubren), real del DWG."><input type="checkbox" id="netCam"> 📹 Cámaras (alcance)</label></div>
     <div class="row"><label title="Arquetas y equipos de comunicaciones, real del DWG."><input type="checkbox" id="netMisc"> ◇ Arquetas + comms</label></div>
+    </div>
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Generación / flujo (offline)</div>
     <div class="row"><label title="Simula la generación: pinta los módulos con la luz del sol, energiza el cableado DC y saca MW/MWh según hora, día (barra de tiempo) y meteo. Modelo cielo-claro offline."><input type="checkbox" id="genflow"> ⚡ Flujo / generación</label></div>
     <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Nubosidad <input type="range" id="cloud" min="0" max="100" value="0" style="width:78px"></label><span id="cloudV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0%</span></div>
@@ -500,6 +502,7 @@ async function build(){
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
   if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
+  if($('redesDwg'))$('redesDwg').style.display=(PLANT==='elburgo')?'':'none';   // las redes del DWG solo existen en El Burgo: fuera de ahi las casillas eran ruido
   if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
   if($('btmode')&&!cotasFile())$('btmode').disabled=true;
   await loadCotas(); if(GEO==='levantamiento'){aplicaResiduo();layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
@@ -2918,33 +2921,40 @@ function cobCompute(){
   if(!cobOn||!ELEV||!FB||!TRK.length){cobStat(null);return;}
   var t0=performance.now();
   var pad=25,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad,W=x1-x0,D=n1-n0;
-  var cell=Math.max(8,Math.sqrt(W*D/2600));                                     // ~2.600 puntos sea cual sea la planta: El Burgo sale a ~10 m, Ayora a ~25 m
+  var cell=Math.max(6,Math.sqrt(W*D/5200));                                     // ~5.200 celdas sea cual sea la planta (mosaico plano: mas fino que el mallado degradado anterior)
   var nx=Math.max(2,Math.round(W/cell)),ny=Math.max(2,Math.round(D/cell));
   var A=cobAnchors(),ix=cobIndex(A),i,j,q;
   var hh=[];for(i=0;i<A.length;i++)if(!A[i].ncu)hh.push(A[i].h);
   hh.sort(function(p,r){return p-r;});
   var hRx=hh.length?hh[hh.length>>1]:1.5;                                       // altura de muestreo = altura MEDIANA de las antenas de TCU
+  /* MOSAICO de celdas PLANAS: cada celda se evalua en su CENTRO y se pinta
+     entera de un color uniforme (o nada). Sin degradado por vertice: el
+     fundido convertia las zonas en lamparones difusos, sobre todo de noche
+     ("la cobertura no sale bien"). El borde escalonado dice ademas la
+     resolucion REAL del muestreo, sin fingir mas detalle del que hay. */
   var pos=[],col=[],idx=[],cand=[],hist=[0,0,0,0],nn=0,ncud=0,fuera=0;
-  var DENTRO=30,esFuera=new Uint8Array((nx+1)*(ny+1));                          // >30 m del seguidor mas cercano = fuera de la planta, no es "sin cobertura"
-  for(j=0;j<=ny;j++){var n=n0+D*j/ny;
-    for(i=0;i<=nx;i++){var x=x0+W*i/nx,lat=lat0+n/mPerLat,lon=lon0+x/mPerLon,k0=j*(nx+1)+i;
+  var DENTRO=30;
+  for(j=0;j<ny;j++){var n=n0+D*(j+0.5)/ny;
+    for(i=0;i<nx;i++){var x=x0+W*(i+0.5)/nx,lat=lat0+n/mPerLat,lon=lon0+x/mPerLon;
       cobNear(ix,A,x,n,cand);
-      pos.push(x,terrainMeshY(x,n)+0.8,-n);
-      if(cand.dmin>DENTRO){esFuera[k0]=1;fuera++;col.push(0,0,0,0);continue;}
+      if(cand.dmin>DENTRO){fuera++;continue;}
       var c=0,nd=0,lim=Math.min(cand.length,16);
       for(q=0;q<lim;q++){var a=cand[q].a,cl=linkClearance(lat,lon,hRx,a.lat,a.lon,a.h);
         if(cl.blocked||cl.partial)continue;
         c++;if(a.ncu)nd=1;
         if(c>=3)break;}
-      var b=COBCOL[Math.min(3,c)];
-      col.push(b[0],b[1],b[2],c===0?0.85:c===1?0.65:0);                          // SOLO se pinta donde cojea: 2+ vecinos = transparente (el fundido lo hace el alfa por vertice)
-      hist[Math.min(3,c)]++;nn++;if(nd)ncud++;}}
-  for(j=0;j<ny;j++)for(i=0;i<nx;i++){var k=j*(nx+1)+i;
-    if(col[k*4+3]<=0&&col[(k+1)*4+3]<=0&&col[(k+nx+1)*4+3]<=0&&col[(k+nx+2)*4+3]<=0)continue;   // cuadro sin ningun vertice "cojo": no se dibuja (fuera la manta verde y los circulos)
-    idx.push(k,k+nx+1,k+1, k+1,k+nx+1,k+nx+2);}
+      hist[Math.min(3,c)]++;nn++;if(nd)ncud++;
+      if(c>=2)continue;                                                          // SOLO se pinta donde cojea
+      var b=COBCOL[c],av=c===0?0.62:0.5,hx=W/nx/2,hn=D/ny/2,v0=pos.length/3;
+      pos.push(x-hx,terrainMeshY(x-hx,n-hn)+0.8,-(n-hn), x+hx,terrainMeshY(x+hx,n-hn)+0.8,-(n-hn),
+               x+hx,terrainMeshY(x+hx,n+hn)+0.8,-(n+hn), x-hx,terrainMeshY(x-hx,n+hn)+0.8,-(n+hn));
+      for(q=0;q<4;q++)col.push(b[0],b[1],b[2],av);
+      idx.push(v0,v0+2,v0+1, v0,v0+3,v0+2);}}
+  if(!pos.length){cobStat({n:nn,cell:cell,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),h:hRx,fuera:fuera,
+           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});return;}
   var geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,4));             // RGBA: el 4o canal funde el borde en vez de recortarlo
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,4));             // RGBA (alfa constante por celda: nitido, no niebla)
   geo.setIndex(idx);
   var m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:0.9,depthWrite:false,side:THREE.DoubleSide}));
   m.renderOrder=3;
