@@ -409,6 +409,7 @@ function updateSunMarker(min){ if(!sunMarker)return; var cx=-66,cz=36,R=1800,sv=
   if(sunRay){var p=sunRay.geometry.attributes.position;p.setXYZ(0,sx,sy,sz);p.setXYZ(1,cx,0,cz);p.needsUpdate=true;sunRay.visible=true;} }
 function setTime(min){ if(SCADA3D)setTimeout(scadaOverlay,0);
   if(afbtOn&&afbtSel>=0&&afbtMode==='mom'){if(_afbtT)clearTimeout(_afbtT);_afbtT=setTimeout(afbtCompute,180);}
+  if(cobRealOn&&typeof cobRealIM!=='undefined'&&cobRealIM){if(_zhT)clearTimeout(_zhT);_zhT=setTimeout(cobRealHora,200);}   // malla medida EN VIVO: recolorea con la hora
   curMin=min; syncSun(min);
   if(genOn){updateGenGlow();updateGenRings();updateGenHUD();}   // generación: brillo de paneles, anillos por inversor y HUD siguen la hora
   if(FICHA)updateFicha();                                      // la ficha abierta (inversor / CT / subestación) sigue la hora
@@ -2962,6 +2963,7 @@ function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=se
 
 /* --- malla MEDIDA (El Burgo): la verdad de campo contra la que se juzga el mapa --- */
 var cobRealOn=false,cobRealG=null,COBREAL=null,_cobRealLoad=false;
+var ZHORA=null,_zhLoad=false,cobRealIM=null;   // RSSI por hora de los LOGS medidos (16-22 jun): la malla "respira" con la barra de tiempo
 function rssiCol(r){ if(r==null)return new THREE.Color(0.42,0.47,0.55);         // sin medida (el propio coordinador)
   var t=Math.max(0,Math.min(1,(r+95)/35));                                      // -95 dBm (sensibilidad tipica 802.15.4) -> -60 dBm
   return (t<0.5)?new THREE.Color(0.886+(0.890-0.886)*t*2,0.341+(0.757-0.341)*t*2,0.298+(0.286-0.298)*t*2)
@@ -2970,7 +2972,7 @@ function rssiCol(r){ if(r==null)return new THREE.Color(0.42,0.47,0.55);         
 function cobRealApply(){
   if(cobRealG){scene.remove(cobRealG);
     cobRealG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});
-    cobRealG=null;}
+    cobRealG=null;cobRealIM=null;}
   var e=$('cobRealStat');
   if(!cobRealOn||!ELEV){if(e)e.textContent='';return;}
   if(!COBREAL){ if(_cobRealLoad)return; _cobRealLoad=true;
@@ -2992,7 +2994,7 @@ function cobRealApply(){
     }else if(g.type==='LineString'){
       var c=rssiCol(p.rssi_medido_dbm),a=g.coordinates[0],b=g.coordinates[1];
       var ax=projX(a[0]),az=projZ(a[1]),bx=projX(b[0]),bz=projZ(b[1]);
-      segs.push([ax,localElevY(ax,-az)+2.0,az, bx,localElevY(bx,-bz)+2.0,bz, c]);
+      segs.push([ax,localElevY(ax,-az)+2.0,az, bx,localElevY(bx,-bz)+2.0,bz, c, p.destino||null, p.rssi_medido_dbm]);
       if(p.rssi_medido_dbm!=null)rs.push(p.rssi_medido_dbm);
     }});
   if(segs.length){
@@ -3007,11 +3009,39 @@ function cobRealApply(){
       Q9.setFromUnitVectors(UP9,D9);P9.copy(A9).add(B9).multiplyScalar(0.5);
       S9.set(0.25,L9,0.25);M9.compose(P9,Q9,S9);im9.setMatrixAt(i9,M9);
       im9.setColorAt(i9,s9[6]);});
-    im9.renderOrder=4;G.add(im9);}
+    im9.renderOrder=4;im9.userData.destinos=segs.map(function(s9){return s9[7];});
+    im9.userData.rssiFijo=segs.map(function(s9){return s9[8];});
+    cobRealIM=im9;G.add(im9);}
   cobRealG=G;scene.add(G);
   if(e){var mn=Math.min.apply(null,rs),mx=Math.max.apply(null,rs);
     e.innerHTML=nodes+' nodos · '+rs.length+' enlaces con RSSI medido ('+mn+' a '+mx+' dBm) · <b style="color:#e2574c">'+spof+'</b> SPOF'
       +'<br><span style="opacity:.7">el RSSI medido no depende de la distancia (R²=0,05 en 12–158 m): lo que limita es la obstruccion y la topologia</span>';}
+  cobRealHora();   // si hay logs horarios, la malla arranca ya coloreada a la hora del slider
+}
+var _zhT=null;
+function cobRealHora(){
+  /* la malla medida EN VIVO: los logs de los dias de medida (16-22 jun,
+     cadencia ~3 min) dan el RSSI de cada nodo POR HORA -> los enlaces se
+     recolorean con la barra de tiempo y se ve la malla "respirar" con la
+     posicion de los trackers (hay nodos con 20+ dB entre noche y dia). */
+  if(!cobRealOn||!cobRealIM)return;
+  if(!ZHORA){ if(_zhLoad)return; _zhLoad=true;
+    fetch('elburgo_zigbee_horario.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(j){ZHORA=j;_zhLoad=false;if(j)cobRealHora();}).catch(function(){_zhLoad=false;});
+    return;}
+  var h=Math.max(0,Math.min(23,Math.floor(curMin/60)))%24,con=0;
+  var ds=cobRealIM.userData.destinos,fj=cobRealIM.userData.rssiFijo,i;
+  for(i=0;i<ds.length;i++){
+    var nd=ds[i]&&ZHORA.nodos[ds[i]],v=null;
+    if(nd){v=(nd.h[h]!=null)?nd.h[h]:nd.med;con++;}
+    if(v==null)v=fj[i];
+    cobRealIM.setColorAt(i,rssiCol(v));
+  }
+  if(cobRealIM.instanceColor)cobRealIM.instanceColor.needsUpdate=true;
+  var e=$('cobRealStat');
+  if(e){var sp=document.getElementById('zhLive');
+    if(!sp){sp=document.createElement('div');sp.id='zhLive';e.appendChild(sp);}
+    sp.innerHTML='<span style="color:#36D399">EN VIVO</span> (logs '+ZHORA.desde.slice(5)+' a '+ZHORA.hasta.slice(5)+'): enlaces al RSSI mediano de las '+(h<10?'0':'')+h+'h · '+con+' nodos con dato · mueve la hora y veras la malla respirar con los trackers';}
 }
 
 function makeLabel(text,kind){   // pastilla redondeada nítida, ancho ajustado al texto (no se aplasta)
