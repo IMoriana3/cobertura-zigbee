@@ -955,20 +955,32 @@ function bt3dOn(){ return BT3D!=='plano' && GEO==='levantamiento' && !!COTAS; }
    formulas con signo: la sombra se comprueba por GEOMETRIA directa en el
    plano E-U (proyeccion de la fila vecina sobre la suya a lo largo del rayo
    de sol) y el angulo de backtracking sale por biseccion. Usa las cotas
-   MEDIDAS de cada fila (Δh real de la pareja) y la cuerda del proyecto. */
+   MEDIDAS de cada fila (Δh real de la pareja) y la cuerda del proyecto.
+   El rayo se proyecta ENTERO: la componente N del sol corre la sombra a lo
+   largo de la fila (al norte en invierno, al sur en las puntas de verano),
+   asi que el solape N-S se evalua instante a instante, no por planta. */
 var afbtOn=false,afbtSel=-1,afbtMode='ano',_afbtT=null,_afbtRes=null;
-function afbtVecinos(i){                        // vecinos E/W en la columna contigua con solape N-S
+function afbtVecinos(i){                        // vecinos E/W en columnas contiguas; el solape N-S se evalua por instante (la sombra viaja al norte o al sur segun el sol)
   var A=TRK[i],out=[],sA=(A.medio?(A.mr||0.5):1)*(A.span||TC.span);
   var a0=A.gz-sA/2,a1=A.gz+sA/2,paso=(TC.filaZ?2*TC.filaZ:6);
   for(var j=0;j<TRK.length;j++){if(j===i)continue;var B=TRK[j];
     var dx=B.gx-A.gx,adx=Math.abs(dx);
     if(adx<3||adx>2.6*paso)continue;
     var sB=(B.medio?(B.mr||0.5):1)*(B.span||TC.span);
-    var ov=Math.min(a1,B.gz+sB/2)-Math.max(a0,B.gz-sB/2);
-    if(ov<=2)continue;
-    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,ov/sA),
-      gap:Math.max(0.8,adx-(TC.filaZ?2*TC.filaZ:0))});}         // hueco REAL entre las filas limitrofes: centros menos las dos medias-mesas (usar 2*filaZ a secas solo cuadraba en Ayora de casualidad y en El Burgo inventaba sombras a mediodia)
+    var b0=B.gz-sB/2,b1=B.gz+sB/2;
+    var gap=Math.max(0.8,adx-(TC.filaZ?2*TC.filaZ:0));          // hueco REAL entre las filas limitrofes: centros menos las dos medias-mesas (usar 2*filaZ a secas solo cuadraba en Ayora de casualidad y en El Burgo inventaba sombras a mediodia)
+    var ov=Math.min(a1,b1)-Math.max(a0,b0);
+    if(ov<=-3*gap)continue;                     // ni desplazando la sombra 3 huecos llegaria a tocarle
+    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,Math.max(0,ov)/sA),
+      gap:gap,a0:a0,a1:a1,b0:b0,b1:b1,sA:sA,sB:sB});}
   return out;
+}
+function afbtSolape(v,sv,quien){                // fraccion de fila que la sombra ALCANZA de verdad con este sol:
+  if(Math.abs(sv.E)<0.03)return 0;              // el rayo se proyecta entero (E,N,U) — al cruzar el hueco entre filas
+  var s=v.lado==='E'?1:-1;                      // la sombra se corre en N-S: al norte con el sol al sur (invierno) y
+  var dz=s*v.gap*(sv.N/sv.E);                   // al sur en las puntas de verano (gz = -Norte, de ahi el signo)
+  if(quien==='me'){var lo=Math.max(v.a0,v.b0+dz),hi=Math.min(v.a1,v.b1+dz);return Math.max(0,hi-lo)/v.sA;}
+  var lo2=Math.max(v.b0,v.a0-dz),hi2=Math.min(v.b1,v.a1-dz);return Math.max(0,hi2-lo2)/v.sB;
 }
 function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
   if(t.mc&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
@@ -1009,9 +1021,10 @@ function afbtAgg(i){                            // agregado por vecino: media de
     for(var di=0;di<doys.length;di++){simDoy=doys[di];
       for(var mi=0;mi<mins.length;mi++){var sv=sunVec(mins[mi]);
         if(sv.U<=0.02)continue;n++;
-        me+=afbtDeficit(A,B,v.lado,sv,v.gap);
-        yo+=afbtDeficit(B,A,v.lado==='E'?'O':'E',sv,v.gap);}}
-    res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0)*v.ov,yo:(n?yo/n:0)*v.ov});}
+        var fme=afbtSolape(v,sv,'me'),fyo=afbtSolape(v,sv,'yo');   // solape REAL de la sombra en este instante (viaja N-S con el sol)
+        if(fme>0)me+=afbtDeficit(A,B,v.lado,sv,v.gap)*fme;
+        if(fyo>0)yo+=afbtDeficit(B,A,v.lado==='E'?'O':'E',sv,v.gap)*fyo;}}
+    res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0),yo:(n?yo/n:0)});}
   simDoy=d0;
   return res;
 }
