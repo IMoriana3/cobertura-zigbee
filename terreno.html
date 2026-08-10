@@ -966,7 +966,8 @@ function afbtVecinos(i){                        // vecinos E/W en la columna con
     var sB=(B.medio?(B.mr||0.5):1)*(B.span||TC.span);
     var ov=Math.min(a1,B.gz+sB/2)-Math.max(a0,B.gz-sB/2);
     if(ov<=2)continue;
-    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,ov/sA)});}
+    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,ov/sA),
+      gap:Math.max(0.8,adx-(TC.filaZ?2*TC.filaZ:0))});}         // hueco REAL entre las filas limitrofes: centros menos las dos medias-mesas (usar 2*filaZ a secas solo cuadraba en Ayora de casualidad y en El Burgo inventaba sombras a mediodia)
   return out;
 }
 function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
@@ -974,14 +975,14 @@ function afbtAlturaFila(t,lado){                // cota real (m) de la fila este
     if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1]))return (f.y[0]+f.y[1])/2;}
   return t.rel;                                 // sin cota medida: DEM del centro
 }
-function afbtDeficit(A,B,ladoB,sv){             // grados de recorte que B (al ladoB de A) impone a A con este sol
+function afbtDeficit(A,B,ladoB,sv,gap){         // grados de recorte que B (al ladoB de A) impone a A con este sol
   if(sv.U<=0.02)return 0;
   var s=ladoB==='E'?1:-1;
   if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
-  var d=(TC.filaZ?2*TC.filaZ:6);                // hueco entre las filas limitrofes = pitch del proyecto
+  var d=gap||(TC.filaZ?2*TC.filaZ:6);           // hueco REAL entre las filas limitrofes de la pareja
   var hA=afbtAlturaFila(A,ladoB),hB=afbtAlturaFila(B,ladoB==='E'?'O':'E');
   var dh=hB-hA;                                 // vecino mas alto -> sombra mas larga (sale solo de la proyeccion)
-  var c=(COTAS&&COTAS.cuerda)||TC.mesaC||2.38;
+  var c=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // cuerda del colector = GCR x paso de fila. OJO: TC.mesaC NO es la cuerda en todas las plantas (El Burgo 16,3 m) y sombreaba hasta a mediodia
   var se=Math.abs(sv.E),su=sv.U;                // trabajamos con el sol "a la derecha": simetrico E/W
   var w=Math.atan2(se,su);                      // angulo de perfil
   function sombra(phi){                         // ambas filas a tilt phi (phi<0 = borde del sol hacia abajo = seguimiento)
@@ -1008,8 +1009,8 @@ function afbtAgg(i){                            // agregado por vecino: media de
     for(var di=0;di<doys.length;di++){simDoy=doys[di];
       for(var mi=0;mi<mins.length;mi++){var sv=sunVec(mins[mi]);
         if(sv.U<=0.02)continue;n++;
-        me+=afbtDeficit(A,B,v.lado,sv);
-        yo+=afbtDeficit(B,A,v.lado==='E'?'O':'E',sv);}}
+        me+=afbtDeficit(A,B,v.lado,sv,v.gap);
+        yo+=afbtDeficit(B,A,v.lado==='E'?'O':'E',sv,v.gap);}}
     res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0)*v.ov,yo:(n?yo/n:0)*v.ov});}
   simDoy=d0;
   return res;
@@ -1048,8 +1049,7 @@ function afbtStat(){
 function afbtCompute(){
   if(!afbtOn||afbtSel<0)return;
   _afbtRes=afbtAgg(afbtSel);
-  afbtPaint();afbtStat();
-  if(selWire&&PICK[afbtSel]){selWire.visible=true;selWire.position.copy(PICK[afbtSel].position);selWire.scale.copy(PICK[afbtSel].scale);}
+  afbtPaint();afbtStat();                                       // el elegido ya va en verde: sin recuadro (el paralelogramo flotante molestaba)
 }
 function afbtRestore(){
   _afbtRes=null;
@@ -1102,6 +1102,32 @@ function scadaCasar(msg){
   scadaOverlay();
   updateSpin(panelAngle(curMin));
   scadaHud();
+  scadaBindClick();                                             // clic en un tracker -> su ficha de diagnostico
+}
+var _scadaClick=false;
+function scadaBindClick(){
+  if(_scadaClick||typeof renderer==='undefined'||!renderer)return;_scadaClick=true;
+  renderer.domElement.addEventListener('pointerdown',function(e){
+    if(!SCADA3D||editMode||freeCam||afbtOn)return;
+    var i=pickAt(e);if(i<0)return;scadaFicha(i);});
+}
+function scadaFicha(i){
+  var fl=SCADA3D&&SCADA3D.byTrk[i];
+  var e=document.getElementById('scadaFicha');
+  if(!e){e=document.createElement('div');e.id='scadaFicha';
+    e.style.cssText='position:fixed;top:64px;right:14px;z-index:41;background:rgba(11,15,20,.94);border:1px solid #2a3a50;border-radius:10px;padding:10px 14px;font:12.5px system-ui;color:#eaf4ff;max-width:270px;line-height:1.6;cursor:pointer';
+    e.title='pulsa para cerrar';e.onclick=function(){e.style.display='none';};
+    document.body.appendChild(e);}
+  if(!fl){e.innerHTML='<b>'+(TRK[i].id||('#'+i))+'</b><br><span style="opacity:.7">sin fila en el diagnostico (no casado)</span>';e.style.display='block';return;}
+  var s=String(fl.salud||'').toUpperCase();
+  var cH={OK:'#36D399',AVISO:'#F2A900',ALARMA:'#ef5f6b',OFFLINE:'#8093A4'};
+  e.innerHTML='<b>'+(TRK[i].id||fl.eti||('#'+i))+'</b> · NCU '+fl.ncu+' / TCU '+fl.tcu
+    +'<br>estado: <b style="color:'+(cH[s]||'#eaf4ff')+'">'+(s||'?')+'</b>'
+    +'<br>tilt reportado: <b>'+fl.tilt+'°</b>'+(fl.dif!=null&&fl.dif!==''?' · dif. consigna '+fl.dif+'°':'')
+    +(fl.soc!=null&&fl.soc!==''?'<br>SoC bateria: <b>'+fl.soc+'%</b>':'')
+    +'<br>alarmas: '+(fl.alarmas?'<b style="color:#ef5f6b">'+fl.alarmas+'</b>':'ninguna')
+    +'<br><span style="opacity:.55;font-size:11px">del diagnostico '+SCADA3D.fecha+' · pulsa para cerrar</span>';
+  e.style.display='block';
 }
 function tintModulos(fn){
   /* pinta LOS PROPIOS MODULOS: el material 'glass' es blanco, asi que el tinte
@@ -1138,7 +1164,7 @@ function scadaHud(){
     (Math.abs(SCADA3D.offN)>1||Math.abs(SCADA3D.offE)>1?' · datum corregido '+SCADA3D.offE.toFixed(1)+'E/'+SCADA3D.offN.toFixed(1)+'N m':'')+
     (SCADA3D.sin?' · '+SCADA3D.sin+' sin casar':'')+
     ' · <span style="color:#ef5f6b">'+nAl+' alarma</span> · <span style="color:#8093A4">'+nOff+' offline</span>'+
-    '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU, no la simulación del sol</span>';
+    '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU · CLIC en un tracker: su ficha (estado, alarmas, SoC)</span>';
 }
 if(new URLSearchParams(location.search).get('scada')==='1'){
   addEventListener('message',function(ev){
