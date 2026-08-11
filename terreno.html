@@ -1070,10 +1070,34 @@ function afbtStat(){
   var yoL=res.filter(function(v){return v.yo>0.005;}).sort(function(a,b){return b.yo-a.yo;})
     .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.yo.toFixed(2)+uni+'</b>';});
   var tot=0;res.forEach(function(v){tot+=v.me;});
+  /* Que salga "nadie" no es un fallo: con este hueco y esta cuerda, a esta hora
+     la sombra sencillamente no llega a la fila de al lado. Se dice POR QUE, y a
+     que horas de HOY sí entra el backtracking, que es lo accionable. */
+  var expl='';
+  if(afbtMode==='mom'&&tot<0.005&&res.length){
+    var sv0=sunVec(curMin),el0=Math.asin(Math.max(-1,Math.min(1,sv0.U)))/DEG;
+    var gap0=res.reduce(function(m,v){var g=(afbtVecinos(afbtSel).filter(function(w){return w.j===v.j;})[0]||{}).gap;return g&&(m===null||g<m)?g:m;},null);
+    var cue=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));
+    var ini=null,fin=null,d0=simDoy;
+    for(var mm=240;mm<=1260;mm+=10){var svm=sunVec(mm);if(svm.U<=0.02)continue;
+      var hay=false;
+      for(var q2=0;q2<res.length;q2++){var v2=res[q2],B2=TRK[v2.j];
+        var gv=(afbtVecinos(afbtSel).filter(function(w){return w.j===v2.j;})[0]||{}).gap;
+        if(afbtDeficit(A,B2,v2.lado,svm,gv)>0.01||afbtDeficit(B2,A,v2.lado==='E'?'O':'E',svm,gv)>0.01){hay=true;break;}}
+      if(hay){if(ini===null)ini=mm;fin=mm;}
+    }
+    simDoy=d0;
+    function hhmm(m){return m==null?'—':((m/60|0)+'').padStart(2,'0')+':'+((m%60)+'').padStart(2,'0');}
+    expl='<br><span style="color:#9bb0c6">A esta hora la sombra no llega: sol a <b>'+el0.toFixed(0)+'°</b> sobre el horizonte, '
+      +'hueco entre filas <b>'+(gap0!=null?gap0.toFixed(1):'?')+' m</b> y cuerda del colector <b>'+cue.toFixed(1)+' m</b>. '
+      +(ini!=null?('Hoy el backtracking entra <b>antes de las '+hhmm(ini)+'</b> y <b>después de las '+hhmm(fin)+'</b>.')
+                 :'Hoy no hay ninguna hora con sombra entre estas filas.')+'</span>';
+  }
   e.innerHTML='<b style="color:#36D399">'+(A.id||('#'+afbtSel))+'</b> · '+(afbtMode==='mom'?'con el sol de AHORA':'promedio anual (12 dias tipo, cada 15 min)')
     +'<br><span style="color:#EF9A3D">■</span> le recortan: '+(meL.length?meL.join(' · '):'nadie')
     +'<br><span style="color:#5E96F5">■</span> el recorta a: '+(yoL.length?yoL.join(' · '):'nadie')
-    +(res.length?'<br>recorte total sobre el: <b>'+tot.toFixed(2)+uni+'</b> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua');
+    +(res.length?'<br>recorte total sobre el: <b>'+tot.toFixed(2)+uni+'</b> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua')
+    +expl;
 }
 function afbtCompute(){
   if(!afbtOn||afbtSel<0)return;

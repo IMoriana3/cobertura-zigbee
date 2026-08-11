@@ -145,7 +145,12 @@
           var cx = modX(m);
           push('frame', 'frame', true, true,
             function (TH){ return new TH.BoxGeometry(D.modW, 0.05, D.modH); }, mT(THREE, cx, D.off, 0));          // marco perimetral
-          push('glass', 'glass', true, true,
+          /* El cristal NO proyecta sombra: ya lo hace el marco, que es su
+             contorno exacto y va en la MISMA posición. Con los dos activos, el
+             mapa de sombras recibía dos siluetas casi coincidentes (el cristal
+             es 4 cm menor de lado pero 1 cm más grueso) y cada fila salía con
+             DOBLE sombra, un borde por caja. */
+          push('glass', 'glass', true, false,
             function (TH){ return new TH.BoxGeometry(D.modW-0.04, 0.06, D.modH-0.04); }, mT(THREE, cx, D.off, 0)); // BIFACIAL
           push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx-jbX, D.jbY, 0));   // 2 cajas por módulo sobre la viga (z=0); el cable de string sale por el centro
           push('jbox', 'jbox', true, false, jboxGeom, mT(THREE, cx+jbX, D.jbY, 0));
