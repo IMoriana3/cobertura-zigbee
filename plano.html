@@ -77,7 +77,14 @@ async function mosaic(z,latN,latS,lonW,lonE){
 }
 
 var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, custom:{file:null,title:'Planta nueva'} };
+/* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
+   modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
+   completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
+var TDIM_ALL={ elburgo:{modPitch:2.24,halfL:31,halfW:3.2}, ayora:{modPitch:2.34,halfL:32.8,halfW:3.2},
+  sanjose:{modPitch:2.30,halfL:36.8,halfW:3.2}, fayon:{modPitch:2.30,halfL:55.3,halfW:1.2},   // Fayón: fila ÚNICA de ~2,4 m (si fuese doble como El Burgo, halfW 3,2)
+  custom:{modPitch:2.24,halfL:31,halfW:3.2} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
+var TDIM=TDIM_ALL[PLANT]||TDIM_ALL.elburgo;
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
 
 /* ===== capa ELÉCTRICA: colorea cada seguidor por su NCU (asignación canónica) =====
@@ -263,7 +270,16 @@ function draw(){
     var s=view.scale, pile=$('cbPile').checked&&demReady, inv=$('cbInv').checked&&hasInv(), rng=(REVMAX-REVMIN)||1;
     for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];
       var medio=/^medio/i.test(t.t||'');
-      var halfL=(medio?16:31),halfW=3.2;   // semilargo (N-S) y semiancho (E-W) aproximados
+      /* Semilargo y semiancho REALES de cada planta. Antes iban fijos (31 y 3,2 m,
+         que son los de El Burgo) y en Fayon —110 m de largo y una sola fila de
+         modulos— salian rectangulos cortos y cuatro veces mas anchos que la fila
+         de verdad. El largo sale de los modulos que declara el layout cuando los
+         trae (Ayora 28/21/14, Fayon 48/40) y si no, de mr sobre el largo de la
+         planta; el ancho, del numero de filas de modulos del seguidor. */
+      var halfL=(t.mods!=null) ? (t.mods*TDIM.modPitch)/2                       // el layout dice cuántos módulos lleva: es el dato bueno
+               : (typeof t.mr==='number'&&t.mr>0&&t.mr<1) ? TDIM.halfL*t.mr     // razón real del DWG
+               : (medio ? TDIM.halfL*0.504 : TDIM.halfL);                       // "medio" genérico
+      var halfW=TDIM.halfW;
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s,wp=Math.max(0.8,halfW*s);
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
       ctx.fillStyle=(inv&&t._inv&&INVH[t._inv])?INVH[t._inv].color:(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // prioridad: inversor → pile reveal → eléctrico (NCU) → azul
