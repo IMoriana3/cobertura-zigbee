@@ -26,9 +26,28 @@ const db = lib.convert(lib.dwg_read_data(readFileSync(dwgPath).buffer, 0));   //
 const inserts = (db.entities || []).filter(e => e.type === 'INSERT');
 if (!inserts.length) { console.error('El DWG no trae bloques INSERT de seguidor.'); process.exit(1); }
 
-/* --- clasificación: capa (Int/Ext, Largo/Corto, _ART) con el nombre del bloque como respaldo --- */
+/* --- clasificación ---
+ * Dos nomenclaturas reales, según quién dibujó el plano:
+ *   ACCIONA / San José : la CAPA manda   -> IntLargo_ART, ExtCorto...      (largo 4x32 · corto 2x32)
+ *   G. Zaragozá / Ayora: el BLOQUE manda -> INT_1V28, EXT_1V21, INT_1V14_ART  (mods en el nombre)
+ * Ayora tiene TRES longitudes (28/21/14 módulos), así que además del par completo/medio se anota
+ * 'mods' y la razón de longitud 'mr' (mods/28) para que el visor no tenga que asumir solo dos.
+ */
+function clasificaAyora(layer, blk) {
+  const B = String(blk || ''), m = B.match(/^(INT|EXT)_1V(\d+)(_ART)?$/i);
+  if (!m) return null;                                   // bloque anónimo (*U9/*U10) u otro: NO se inventa
+  const mods = +m[2];
+  return {
+    artic: !!m[3], tp: (/^EXT/i.test(m[1]) ? 'Exterior' : 'Interior') + ' 1V' + mods,
+    t: mods >= 28 ? 'completo' : 'medio', mods: mods, mr: +(mods / 28).toFixed(3)
+  };
+}
 function clasifica(layer, blk) {
+  const ay = clasificaAyora(layer, blk); if (ay) return ay;
   const L = String(layer || ''), B = String(blk || '');
+  // GUARDA: si no reconozco la nomenclatura, devuelvo VACÍO. Sin esto, un bloque anónimo (*U9/*U10 de
+  // Ayora) caía en el patrón de San José y salía inventado como "Interior corto".
+  if (!/largo|corto/i.test(L) && !/\dx\d\d|corto|calibrado/i.test(B)) return {};
   const largoL = /largo/i.test(L), cortoL = /corto/i.test(L);
   const largoB = /4x32/i.test(B),  cortoB = /2x32/i.test(B) || /corto/i.test(B);
   const largo = largoL || (!cortoL && largoB);
@@ -46,9 +65,10 @@ const layout = JSON.parse(readFileSync(jsonPath, 'utf8'));
 const { cE, cN } = layout;
 if (!isFinite(cE) || !isFinite(cN)) { console.error('El layout no trae cE/cN (origen UTM).'); process.exit(1); }
 
-const pts = inserts.map(e => ({
+const pts = inserts.filter(e => e.insertionPoint).map(e => ({
   x: +(e.insertionPoint.x - cE).toFixed(2),
   n: +(e.insertionPoint.y - cN).toFixed(2),
+  blk: e.name || '',
   ...clasifica(e.layer, e.name)
 }));
 
@@ -56,7 +76,7 @@ const pts = inserts.map(e => ({
 const grid = {};
 pts.forEach((p, i) => { const k = Math.round(p.x) + '_' + Math.round(p.n); (grid[k] = grid[k] || []).push(i); });
 const used = new Set();
-let peor = 0, sinPareja = 0, cambios = { artic: 0, tp: 0, t: 0 };
+let peor = 0, sinPareja = 0, sinTipo = 0, cambios = { artic: 0, tp: 0, t: 0 };
 
 for (const trk of layout.trackers) {
   let best = -1, bd = Infinity;
@@ -68,10 +88,12 @@ for (const trk of layout.trackers) {
   if (best < 0 || bd > 1.5) { sinPareja++; continue; }
   used.add(best); if (bd > peor) peor = bd;
   const p = pts[best];
+  if (p.tp === undefined) { trk.blk = p.blk; sinTipo++; continue; }   // bloque no clasificable (anónimo dinámico): se anota SU nombre y se deja el tipo como estaba — nada inventado
   if (trk.artic !== p.artic) cambios.artic++;
   if (trk.tp !== p.tp) cambios.tp++;
   if (trk.t !== p.t) cambios.t++;
   trk.artic = p.artic; trk.tp = p.tp; trk.t = p.t;
+  if (p.mods) { trk.mods = p.mods; trk.mr = p.mr; }
   if (p.cal) trk.cal = true; if (p.suc) trk.suc = true;
 }
 
@@ -84,6 +106,8 @@ console.log('longitud (t):', JSON.stringify(cuenta('t')));
 console.log('articulados:', layout.trackers.filter(t => t.artic).length, '/', layout.trackers.length);
 console.log('con calibración:', layout.trackers.filter(t => t.cal).length, '| con sensor de suciedad:', layout.trackers.filter(t => t.suc).length);
 console.log('campos modificados:', JSON.stringify(cambios));
+console.log('SIN CLASIFICAR (bloque anónimo, tipo intacto):', sinTipo, sinTipo?JSON.stringify(layout.trackers.filter(t=>t.blk).reduce((m,t)=>(m[t.blk]=(m[t.blk]||0)+1,m),{})):'');
+if(layout.trackers.some(t=>t.mods))console.log('longitudes (mods):', JSON.stringify(layout.trackers.reduce((m,t)=>(t.mods&&(m[t.mods]=(m[t.mods]||0)+1),m),{})));
 
 if (sinPareja) { console.error('\nABORTA: hay seguidores sin pareja en el DWG; no se escribe nada.'); process.exit(1); }
 if (WRITE) { writeFileSync(jsonPath, JSON.stringify(layout)); console.log('\nescrito:', jsonPath); }
