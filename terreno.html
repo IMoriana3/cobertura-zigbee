@@ -1078,7 +1078,7 @@ function afbtRestore(){
    lon,salud,tilt,dif,soc,alarmas}]}. Aqui se casa cada fila con su tracker
    por coordenadas (lat/lon, tolerancia 6 m), se pone CADA tracker a su tilt
    REAL y se pintan SUS MODULOS del color del estado. */
-var SCADA3D=null,scadaPend=null;
+var SCADA3D=null,scadaPend=null,SCADA_METEO=null;
 var SCADA_COL={OK:0x36D399,AVISO:0xF2A900,ALARMA:0xef5f6b,OFFLINE:0x6A7B8B};
 function scadaCasar(msg){
   if(!TRK.length){scadaPend=msg;return;}
@@ -1179,6 +1179,9 @@ function scadaHud(){
     (Math.abs(SCADA3D.offN)>1||Math.abs(SCADA3D.offE)>1?' · datum corregido '+SCADA3D.offE.toFixed(1)+'E/'+SCADA3D.offN.toFixed(1)+'N m':'')+
     (SCADA3D.sin?' · '+SCADA3D.sin+' sin casar':'')+
     ' · <span style="color:#ef5f6b">'+nAl+' alarma</span> · <span style="color:#8093A4">'+nOff+' offline</span>'+
+    (SCADA_METEO&&isFinite(SCADA_METEO.ws)?' · 🌬️ <b>'+(+SCADA_METEO.ws).toFixed(1)+' m/s</b>'
+      +(isFinite(SCADA_METEO.wd)?' '+Math.round(SCADA_METEO.wd)+'°':'')
+      +(SCADA_METEO.hsu?' <span style="font-weight:400;color:#9bb0c6">('+SCADA_METEO.hsu+')</span>':''):'')+
     '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU · CLIC en un tracker: su ficha (estado, alarmas, SoC)</span>';
 }
 if(new URLSearchParams(location.search).get('scada')==='1'){
@@ -1186,6 +1189,11 @@ if(new URLSearchParams(location.search).get('scada')==='1'){
     var d=ev.data;
     if(!d||d.tipo!=='scada3d'||!Array.isArray(d.filas))return;
     try{scadaCasar(d);}catch(e){}
+    /* meteo REAL de la planta (la HSU con mas viento). Llega por postMessage
+       porque el SCADA vive en otro origen y el localStorage no cruza. */
+    try{if(d.meteo&&isFinite(d.meteo.ws)){WIND.ws=Math.max(0,+d.meteo.ws);
+      if(isFinite(d.meteo.wd))WIND.wd=+d.meteo.wd;
+      WIND.real=true;SCADA_METEO=d.meteo;SCADA_METEO._t=Date.now();}}catch(e){}
     if(ev.source)try{ev.source.postMessage({tipo:'scada3d-ack'},'*');}catch(e){}
   });
   var _scadaEspera=setInterval(function(){
@@ -1308,8 +1316,14 @@ function boostAniso(){ if(!renderer||!scene)return;var mx=renderer.capabilities.
   scene.traverse(function(o){var m=o.material;if(!m)return;(Array.isArray(m)?m:[m]).forEach(function(mm){if(mm.map&&mm.map.anisotropy<mx){mm.map.anisotropy=mx;mm.map.needsUpdate=true;}});});}
 var _solV=new THREE.Vector3(),_solQ=new THREE.Quaternion(),_upY=new THREE.Vector3(0,1,0);
 function animateMeteo(dt){ metT+=dt;
-  _wAcc+=dt; if(_wAcc>1){_wAcc=0; boostAniso(); var got=false;   // 1×/s: lee el viento que publique el SCADA (localStorage compartido, mismo origen)
-    try{var j=JSON.parse(localStorage.getItem('factiun_meteo')||'null');if(j&&isFinite(j.ws)&&(!isFinite(j.t)||Date.now()-j.t<300000)){WIND.ws=Math.max(0,+j.ws);if(isFinite(j.wd))WIND.wd=+j.wd;WIND.real=true;got=true;}}catch(e){}   // sólo si es fresco (<5 min); si no, brisa sintética
+  _wAcc+=dt; if(_wAcc>1){_wAcc=0; boostAniso(); var got=false;   // 1×/s: viento REAL si lo hay
+    /* 1) el que manda el SCADA por postMessage (otro origen, no hay localStorage
+       que valga). Vale mientras sea reciente: un diagnostico de ayer no puede
+       gobernar la veleta de hoy. */
+    if(SCADA_METEO&&isFinite(SCADA_METEO.ws)&&(!SCADA_METEO._t||Date.now()-SCADA_METEO._t<9e5)){
+      WIND.ws=Math.max(0,+SCADA_METEO.ws);if(isFinite(SCADA_METEO.wd))WIND.wd=+SCADA_METEO.wd;WIND.real=true;got=true;}
+    /* 2) el del mismo origen, por si alguna pagina de github.io lo publica */
+    if(!got)try{var j=JSON.parse(localStorage.getItem('factiun_meteo')||'null');if(j&&isFinite(j.ws)&&(!isFinite(j.t)||Date.now()-j.t<300000)){WIND.ws=Math.max(0,+j.ws);if(isFinite(j.wd))WIND.wd=+j.wd;WIND.real=true;got=true;}}catch(e){}
     if(!got)WIND.real=false; }
   if(!WIND.real){ WIND.ws=3.0+1.8*Math.sin(metT*0.05)+0.7*Math.sin(metT*0.6); WIND.wd=210+28*Math.sin(metT*0.03); }   // sin SCADA: brisa sintética del SW (para que se mueva)
   if(!METEO_ANIM.length)return;
