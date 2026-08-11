@@ -76,7 +76,7 @@ async function mosaic(z,latN,latS,lonW,lonE){
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }
 
-var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, custom:{file:null,title:'Planta nueva'} };
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, custom:{file:null,title:'Planta nueva'} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
 

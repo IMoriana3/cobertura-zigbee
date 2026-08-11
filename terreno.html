@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.50</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.51</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -424,6 +424,7 @@ var PLANTS={
   elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json', cod:24002},
   ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025},
   sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
+  fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:48, cod:24007},   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia: centro anclado al Plus Code 8FH268GF+VCC dado por el usuario
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
