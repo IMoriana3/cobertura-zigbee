@@ -201,11 +201,14 @@ function generate(parsed){
     '// 2) en terreno.html y plano.html, dentro de PLANTS:\n'+
     pid+":{file:'"+pid+"_layout.json', title:'"+L.title+"', angles:null"+(L.mods!==28?(', mods:'+L.mods):'')+"},\n"+
     '// 3) en la cartera (Proyectos/index.html), dentro de PLANTS:\n'+
+    /* claves de vista del Panel (PLANT_VIEWS): siting · topo3d · cobertura ·
+       asbuilt · scada. Antes esto emitia modelo3d/plano, de una version
+       anterior, y esos botones NO se dibujaban: el Panel ignora en silencio
+       las claves que no conoce (ver CONTRATO.md del repo proyectos). */
     '{ name:"'+L.title+'", code:"'+(L.code||'')+'", loc:"'+(($('ubic').value||'').trim())+'", views:{\n'+
     "    siting: null,\n"+
-    "    modelo3d: SITE+\"cobertura-zigbee/terreno.html?planta="+pid+"\",\n"+
-    "    cobertura: null,\n"+
-    "    plano: SITE+\"cobertura-zigbee/plano.html?planta="+pid+"\",\n}},";
+    "    topo3d: SITE+\"cobertura-zigbee/terreno.html?planta="+pid+"\",\n"+
+    "    cobertura: SITE+\"cobertura-zigbee/plano.html?planta="+pid+"\",\n}},";
   $('res').classList.remove('hide'); drawPreview(L);
   setMsg('<span class="ok">✓ Planta generada</span> ('+L.trackers.length+' seguidores). Previsualízala abajo.');
   $('res').scrollIntoView({behavior:'smooth',block:'nearest'});
