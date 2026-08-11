@@ -79,12 +79,12 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" id="redesHdr" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
-    <div class="row"><label title="Zanjas de cable string y string→inversor, real del DWG."><input type="checkbox" id="netTrench"> ▤ Zanjas string/inversor</label></div>
-    <div class="row"><label title="Cableado/zanja inversor→CT (nivel N3), real del DWG."><input type="checkbox" id="netN3"> 🔌 Inversor→CT (N3)</label></div>
-    <div class="row"><label title="Cableado/zanja de MT interna CT→subestación, real del DWG."><input type="checkbox" id="netMT"> 🏭 CT→Subestación (MT)</label></div>
+    <div class="row"><label title="Zanjas de baja tensión, reales del plano. El Burgo: string y string→inversor del DWG. Fayón: C.C. (27 tramos entre filas) + la espina C.C.+C.A. que recorre los cuatro inversores, leídas por color de la leyenda del P07."><input type="checkbox" id="netTrench"> ▤ Zanjas string/inversor</label></div>
+    <div class="row"><label title="Zanja inversor→CT (nivel N3), real del plano. En Fayón es el tramo de BAJA TENSIÓN A.C. de la leyenda del P07: 4,3 m del final de la espina a la entrada del CT."><input type="checkbox" id="netN3"> 🔌 Inversor→CT (N3)</label></div>
+    <div class="row"><label title="Zanja de alta tensión a la salida del CT, real del plano. En El Burgo va CT→subestación; en Fayón son los 50,4 m de ALTA TENSIÓN de la leyenda del P07 (no hay subestación dibujada)."><input type="checkbox" id="netMT"> 🏭 CT→Subestación (MT)</label></div>
     <div class="row"><label title="Línea de EVACUACIÓN 45 kV de la subestación a red (la LAMT que bordea el recinto). Separada del MT interno: ese tramo no es CT→subestación."><input type="checkbox" id="netEvac"> ⚡ Evacuación 45 kV (a red)</label></div>
     <div class="row"><label title="Alcance de las cámaras CCTV (zonas que cubren), real del DWG."><input type="checkbox" id="netCam"> 📹 Cámaras (alcance)</label></div>
-    <div class="row"><label title="Arquetas y equipos de comunicaciones, real del DWG."><input type="checkbox" id="netMisc"> ◇ Arquetas + comms</label></div>
+    <div class="row"><label title="Arquetas y equipos de comunicaciones, reales del plano. Fayón: 15 arquetas prefabricadas de hormigón de 600x600 mm con tapa metálica (el símbolo va sobredimensionado en el plano; se dibuja la medida de la leyenda)."><input type="checkbox" id="netMisc"> ◇ Arquetas + comms</label></div>
     </div>
     <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Generación / flujo (offline)</div>
     <div class="row"><label title="Simula la generación: pinta los módulos con la luz del sol, energiza el cableado DC y saca MW/MWh según hora, día (barra de tiempo) y meteo. Modelo cielo-claro offline."><input type="checkbox" id="genflow"> ⚡ Flujo / generación</label></div>
