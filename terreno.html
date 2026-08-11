@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.49</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v5.50</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -442,7 +442,7 @@ async function build(){
     if(!LAYOUT)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
-  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
+  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
@@ -682,7 +682,7 @@ function buildTrackers(elevAt){
     var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
     var zPk=zPfor({tp:n.tp}),half=TC.np/2;
     var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){var ppx=n.gx+pfx,ppz=n.gz+(pk<zPk.length?zPk[pk]:0);postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
-    var medio=/^medio/i.test(n.tp||''),mr=medio?0.504:1;   // 18 seguidores "Medio" miden la mitad (32.6 m vs 64.6 m)
+    var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);   // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
     var art0=(typeof n.artic==='boolean')?n.artic:kinked;   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
