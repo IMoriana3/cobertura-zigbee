@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.53</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.54</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -312,7 +312,13 @@ function interp(arr,min){
   for(var i=1;i<arr.length;i++){if(arr[i][0]>=min){var a=arr[i-1],b=arr[i],f=(min-a[0])/((b[0]-a[0])||1);return a[1]+(b[1]-a[1])*f;}}
   return arr[arr.length-1][1];
 }
-function solarTilt(min){var h=min/60;if(h<5.2||h>20)return -5;var f=(h-5.2)/14.8;return -55+f*110;} // respaldo si no hay JSON
+/* Respaldo cuando la planta NO trae telemetría (Ayora, San José, Fayón): antes era
+   una RAMPA LINEAL −55°→+55° repartida entre las 5:12 y las 20:00, que no tenía
+   ninguna relación con el sol. A las 13:44 marcaba +8° (volcado al OESTE) con el sol
+   todavía al ESTE del sur — el mediodía solar en El Burgo/Ayora cae hacia las 14:05 —
+   así que el seguidor salía inclinado al revés de su propia sombra. El respaldo es
+   ahora el SEGUIMIENTO ASTRONÓMICO de verdad, con backtracking si está activo. */
+function solarTilt(min){ return btOn?simBtAngle(min):noBtAngle(min); }
 function angleAt(num,min){
   if(ANG){var v=(num&&ANG.trk[num])?interp(ANG.trk[num],min):interp(ANG.fieldArr,min);if(v!=null)return v;}
   return solarTilt(min);
@@ -416,7 +422,7 @@ function setTime(min){ if(SCADA3D)setTimeout(scadaOverlay,0);
   if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
   if(cobOn)cobSchedule();                                      // la cobertura depende del angulo del panel: al mover la hora, se recalcula (con freno)
-  var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWTXT?" · "+_STOWTXT:(simOn?" · sim":" · real"))+((btOn||_STOWTXT)?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
+  var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWTXT?" · "+_STOWTXT:((simOn||!ANG)?" · sim":" · real"))+((btOn||_STOWTXT)?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
@@ -513,6 +519,10 @@ async function build(){
   if(!SKY_MOB&&$('refl')){$('refl').checked=true;if(glassM&&glassM.envMapIntensity!==2.6){_gPrev=null;$('refl').onchange.call($('refl'));}}   // escritorio: reflejo del cielo en módulos POR DEFECTO (cubemap CPU seguro); idempotente entre plantas — solo re-aplica sobre vidrio recién creado
 
   var haveAng=await loadAngles();
+  var _sim=$('sim');if(_sim){                                        // sin telemetría (Ayora, San José, Fayón) lo que se dibuja ES simulación: que lo diga la casilla y no se pueda desmarcar
+    _sim.checked=!haveAng||simOn;simOn=_sim.checked;_sim.disabled=!haveAng;
+    _sim.parentNode.title=haveAng?'Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking).'
+                                 :'Esta planta no tiene telemetría: el ángulo es siempre el astronómico calculado (con backtracking si está activo).';}
   tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;   // el slider cubre las 24 h completas (no solo de día)
   var _hoy=new Date();                                               // ARRANCA EN LA HORA LOCAL DE LA PLANTA ("necesito que el slider esté en hora local"): el navegador puede estar en otro huso (San José = Perú, UTC−5)
   var _doyU=Math.floor((_hoy-new Date(Date.UTC(_hoy.getUTCFullYear(),0,0)))/86400000);
@@ -868,7 +878,15 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
   var gN,gE;
   if(mc){gN=Math.max(-cl,Math.min(cl,mc.gN));gE=Math.max(-cl,Math.min(cl,mc.gE));}   // pendientes MEDIDAS (longitudinal y entre las dos filas)
   else{gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));}
-  _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
+  /* SOLO la pendiente LONGITUDINAL orienta el seguidor. La transversal (gE, el desnivel
+     entre las dos vigas) se metía antes en la normal del marco, y eso es una rotación
+     ALREDEDOR DEL PROPIO EJE del tubo: le sumaba al panel un ángulo que no manda el motor
+     —con exageración vertical 5x, hasta ±22°— así que en Ayora unos seguidores enseñaban
+     el vidrio y sus vecinos el dorso blanco (el "campo a dos tonos"), y además el tubo se
+     iba de lado varios metros a lo largo de la fila. El desnivel entre vigas se resuelve
+     donde toca: subiendo o bajando cada viga (t._dyE), no volteando el panel. */
+  _NRM.set(0,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
+  t._dyE=vex*gE;                                                     // desnivel por metro entre viga oeste y viga este (ya exagerado)
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 // "Tracker quebrado": ángulos de quiebre (rótula en el actuador) de cada mitad de viga, POR FILA, a partir del terreno real.
@@ -913,9 +931,9 @@ function layoutTrackers(){
   if(!imPost||!SEG)return;ROWX=null;/* el layout puede cambiar (arrastre en edicion): recalcula los ejes de fila */var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
     var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
-    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_MC.elements[13]+=fx0*(t._dyE||0);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=usaCotas(t)?0:Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // con cota MEDIDA no se corrige nada: subir el tubo para que no roce falsearia el dato   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
-    for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
+    for(var f=0;f<2;f++){var _fx=f?fz:-fz;_T.makeTranslation(_fx,ph,0);t.fb[f].multiplyMatrices(Tw,_T);t.fb[f].elements[13]+=_fx*(t._dyE||0);}     // base de cada fila (sobre su tubo), cada una a SU cota: el desnivel entre vigas es altura, no vuelco
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
       if(k>=zP.length){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
@@ -925,7 +943,9 @@ function layoutTrackers(){
       imPost.setMatrixAt(i*TC.np+pi,_M2);
       _SC.set(1,1,1);_PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);                                              // origen local de las 3 piezas = eje del tubo
       imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;}}   // tambor + horquilla PRE01 + virola
-    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
+    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);
+    if(t._dyE){_RZ.makeRotationZ(Math.atan(t._dyE));_M2.multiply(_RZ);_T.makeScale(Math.hypot(1,t._dyE),1,1);_M2.multiply(_T);}   // con las dos vigas a distinta cota el eje de transmisión las une en diagonal (y estira lo que haga falta)
+    imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
         if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=(t.rel+((GEO==='levantamiento')?corrSuelo(sxx,-szz):0))*vex,sl=Math.max(0.3,syT-terY);
@@ -3056,7 +3076,7 @@ function cobCompute(){
     COBTRK[i]=Math.min(8,c);hist[Math.min(3,c)]++;if(nd)ncud++;}
   pintaEstadoModulos();
   cobStat({n:TRK.length,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),
-           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: rampa sintetica'))});   // solo El Burgo trae telemetria real
+           ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: simulacion astronomica'))});   // solo El Burgo trae telemetria real
 }
 /* un unico pintor de modulos con prioridad: Afeccion BT > SCADA > cobertura > normal */
 function pintaEstadoModulos(){
