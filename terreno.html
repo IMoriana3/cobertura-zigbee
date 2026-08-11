@@ -2610,13 +2610,41 @@ function buildBOS(){
     var sh=new THREE.Shape();
     pl.forEach(function(p,i){ if(i===0)sh.moveTo(p[0]-cx,p[1]-cn); else sh.lineTo(p[0]-cx,p[1]-cn); });
     sh.closePath();
-    var H=2.60,Z=0.25;
+    /* APOYO EN EL TERRENO. Se muestrea terrainMeshY (la malla RENDERIZADA) en las 4 esquinas y en el
+       centro, no localElevY (el DEM continuo): son distintas, y anclar al DEM es lo que dejaba el
+       edificio FLOTANDO sobre la ladera. Es el mismo motivo por el que la valla ya usa terrainMeshY.
+       El edificio se nivela sobre la cota MÁS ALTA y el zócalo baja hasta por debajo de la MÁS BAJA,
+       que es como se ejecuta un prefabricado en pendiente: bancada enterrada del lado alto. */
+    var ys=pl.map(function(p){return terrainMeshY(p[0],p[1]);}); ys.push(terrainMeshY(cx,cn));
+    var yLo=Math.min.apply(null,ys), yHi=Math.max.apply(null,ys);
+    var H=2.60,Z=0.25,base=yHi+Z,hZoc=(yHi-yLo)+Z+0.30;      // 0,30 de enterramiento por el lado bajo
     var body=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:H,bevelEnabled:false}),
       new THREE.MeshStandardMaterial({color:0xd8dbd6,roughness:.72,metalness:.06}));   // hormigón prefabricado claro
-    body.rotateX(-Math.PI/2);body.position.set(cx,y+Z,-cn);body.castShadow=true;body.receiveShadow=true;bosGroup.add(body);
-    var zoc=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:Z,bevelEnabled:false}),
+    body.rotateX(-Math.PI/2);body.position.set(cx,base,-cn);body.castShadow=true;body.receiveShadow=true;bosGroup.add(body);
+    var zoc=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:hZoc,bevelEnabled:false}),
       new THREE.MeshStandardMaterial({color:0x9aa0a0,roughness:.85,metalness:.04}));   // zócalo/bancada
-    zoc.rotateX(-Math.PI/2);zoc.position.set(cx,y,-cn);zoc.receiveShadow=true;bosGroup.add(zoc);
+    zoc.rotateX(-Math.PI/2);zoc.position.set(cx,base-hZoc,-cn);zoc.receiveShadow=true;bosGroup.add(zoc);
+    /* PUERTA AL ESTE (pedido del usuario). Se elige el lado cuya normal SALIENTE apunta más al este;
+       la saliente se toma como (punto medio del lado − centroide), que en un rectángulo convexo
+       siempre sale hacia fuera. La hoja es doble, 1,60 × 2,10 m, medida de puerta de CT, no del
+       plano: el layout es 2D y no la trae. */
+    var best=null;
+    for(var i=0;i<pl.length;i++){
+      var a=pl[i],b=pl[(i+1)%pl.length],mx=(a[0]+b[0])/2,mn=(a[1]+b[1])/2;
+      var ox=mx-cx,on=mn-cn,L=Math.hypot(ox,on)||1e-9, este=ox/L;   // componente E de la normal saliente
+      if(!best||este>best.este)best={este:este,a:a,b:b,mx:mx,mn:mn,ox:ox/L,on:on/L};
+    }
+    if(best){
+      var dx=best.b[0]-best.a[0],dn=best.b[1]-best.a[1],lado=Math.hypot(dx,dn);
+      var W=Math.min(1.60,lado*0.7),HP=2.10;
+      var pm=new THREE.Mesh(new THREE.BoxGeometry(W,HP,0.06),
+        new THREE.MeshStandardMaterial({color:0x8d949a,roughness:.5,metalness:.35}));
+      pm.position.set(best.mx+best.ox*0.04, base+HP/2, -(best.mn+best.on*0.04));
+      pm.rotation.y=Math.atan2(dn,dx); pm.castShadow=true; bosGroup.add(pm);
+      var jun=new THREE.Mesh(new THREE.BoxGeometry(0.03,HP,0.07),
+        new THREE.MeshStandardMaterial({color:0x5b6167,roughness:.6}));   // junta central: se lee que son dos hojas
+      jun.position.copy(pm.position); jun.rotation.y=pm.rotation.y; bosGroup.add(jun);
+    }
   }
   function buildCTSkid(cx,cn,y){
     var g6009=new THREE.MeshStandardMaterial({color:0x2e3c31,roughness:.6,metalness:.35});   // RAL 6009
