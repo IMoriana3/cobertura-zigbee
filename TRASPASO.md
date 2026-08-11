@@ -15,22 +15,50 @@ el Panel. Este fichero es lo equivalente para las **plantas**.
 | El Burgo I 23003 | ✅ | ✅ | ✅ | ✅ 5 tipos (int/ext/medio × rótula) | ✅ |
 | Ayora 24025 | ✅ | ✅ | ✅ | ⚠️ 647 de 754 (ver abajo) | ✅ |
 | San José 24019 | ✅ | ✅ | ✅ | ✅ 2289/2289 · 1723 articulados | ✅ |
-| Fayón 24007 | ✅ | ✅ | ✅ | ✅ 24/24 (2 longitudes) | ❌ **desplazada** |
+| Fayón 24007 | ✅ | ✅ | ✅ | ✅ 24/24 (2 longitudes) | ✅ (UTM 31N, del listado del cliente) |
 | Túnez 24021 | ❌ | ❌ | ❌ | — | (UTM 32N, sí) |
 
 ---
 
 ## Pendientes, por orden de impacto
 
-### 1. Fayón — la georreferencia está desplazada · BLOQUEADO
-El array cae al **noroeste** de su sitio real (se ve claro superponiendo el 2D al satélite).
-Causa: el DWG **no trae georreferencia** (coordenadas locales, `INSBASE` 0,0, sin textos UTM) y se
-ancló al Plus Code `8FH268GF+VCC` → 41,227187 N · 0,323516 E **suponiendo que era el centro del
-campo de seguidores**. No lo es.
+### 1. ~~Fayón — la georreferencia está desplazada~~ · **RESUELTO (2026-08-11)**
+Se resolvió con el **listado de coordenadas del cliente** (`24007 · FAYÓN · Coordenadas_01C.xlsx`),
+que trae los **24 TCU en UTM 31N** — mucho mejor que el punto suelto que se pedía aquí.
 
-**Qué hace falta**: lat/lon (o Plus Code) de **la NCU** o de **una esquina del vallado**, diciendo
-cuál. Ambos están situados en el plano, así que se puede emparejar punto con punto.
-**Ojo**: el CT **no** sirve — en el DWG solo aparece como texto en la leyenda, sin posición real.
+Lo que se hizo, y **por qué es fiable**: se ajustó una semejanza (escala + giro + traslación) entre
+los 24 seguidores del DWG y los 24 TCU del listado. Sale **traslación pura**:
+
+| | valor | lectura |
+|---|---|---|
+| escala | 1,0000016 | el DWG ya estaba en metros UTM (1,6 ppm = ruido) |
+| rotación | −0,0008° | el norte del DWG **es** el norte de cuadrícula UTM |
+| residuo | **RMS 3,1 mm**, máx 5,4 mm | sobre 24 puntos y un campo de 155 × 110 m |
+
+Es decir: **las coordenadas locales del DWG son UTM 31N menos un offset constante**. El origen local
+(0,0) → **E 275.719,936 · N 4.567.402,475** (EPSG:25831) → **41,2269358 N · 0,3241528 E**.
+
+Corrección aplicada respecto al anclaje viejo del Plus Code: **60,3 m hacia el ESE** (dE +52,5 ·
+dN −29,5). Cuadra con el síntoma descrito — el array caía al **noroeste** de su sitio.
+Extra: el `id` `TKnnn` del DWG **coincide 1:1 con el número de TCU del cliente** en los 24.
+
+**Dos avisos que quedan vivos:**
+- **NCU y HSU del listado no valen**: vienen en números redondos (E 275.790/275.780 · N
+  4.567.370/4.567.360) y quedan a **22,1 m** y **17,0 m** de donde los sitúa el DWG. Son nominales,
+  no replanteo. Se ha **mantenido la posición del DWG**, que es la autoridad.
+- **Convergencia de meridianos −1,764°**: el eje `n` del layout es norte de **cuadrícula**, no norte
+  geográfico, y el visor (`terreno.html:446`) proyecta `n` como si fuera norte geográfico. Queda por
+  tanto un giro residual. **Medido** reproyectando los 24 TCU como los proyecta el visor y
+  comparándolos con el replanteo del cliente:
+
+  | | error medio | error máximo |
+  |---|---|---|
+  | antes (Plus Code) | 60,5 m | 61,6 m |
+  | **ahora** | **1,49 m** | **2,46 m** (TK002, esquina NO) |
+
+  Ese 1,5 m residual **es** la convergencia, no otro fallo de anclaje. Se deja **sin resolver a
+  propósito**: corregirlo obliga a tocar el camino de proyección **común a todas las plantas**
+  (El Burgo, Ayora y San José también son UTM y arrastran lo mismo), y no cabe en este cambio.
 
 ### 2. Túnez 24021 — falta generar la planta · BLOQUEADO
 DWG: `IMPLENTATION_TOPOGRAPHE.dwg`. Georreferenciado en UTM 32N (≈578.000 / 3.747.900).
@@ -64,10 +92,10 @@ Para añadirla: **eje propio a la derecha en metros**, con **techo** (o escala l
 **solo entre orto y ocaso** — `altura/tan(elevación)` se dispara (3 m de objeto a 1° de elevación
 son 172 m y aplastan la curva del sol).
 
-### 5. `crear.html` genera claves de vista antiguas
-El generador de registro de planta emite `modelo3d` / `plano`, que **ya no están en `PLANT_VIEWS`**
-del Panel; una tarjeta creada así no pinta ningún botón (le pasó a Fayón). Actualizarlo a las claves
-vigentes (`topo3d`, `cobertura`, `siting`, `asbuilt`, `scada`).
+### 5. ~~`crear.html` genera claves de vista antiguas~~ · **RESUELTO** (PR #321, sesión Backtracking)
+Ya emite `siting` / `topo3d` / `cobertura`, que sí están en `PLANT_VIEWS`. No emite `asbuilt` ni
+`scada` **y está bien así**: son `core:true`, así que al faltar salen **en gris** en vez de
+desaparecer, que es justo lo que hace visible la carencia en una planta recién creada.
 
 ---
 
@@ -90,7 +118,9 @@ vigentes (`topo3d`, `cobertura`, `siting`, `asbuilt`, `scada`).
 
 ## Datos ya extraídos de Fayón (por si hay que rehacer el layout)
 
-Coordenadas **locales** respecto al centro del campo de seguidores:
+Coordenadas **locales** respecto al centro del campo de seguidores. Desde 2026-08-11 se sabe que
+son **UTM 31N (EPSG:25831) menos un offset**: sumar E 275.719,936 · N 4.567.402,475 las devuelve a
+UTM. Las de NCU y HSU son las **del DWG**, no las del listado del cliente (ver pendiente 1).
 
 | Elemento | x | n |
 |---|---|---|
