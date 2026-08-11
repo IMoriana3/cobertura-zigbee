@@ -81,7 +81,7 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{fil
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
 var TDIM_ALL={ elburgo:{modPitch:2.24,halfL:31,halfW:3.2}, ayora:{modPitch:2.34,halfL:32.8,halfW:3.2},
-  sanjose:{modPitch:2.30,halfL:36.8,halfW:3.2}, fayon:{modPitch:2.30,halfL:55.3,halfW:1.2},   // Fayón: fila ÚNICA de ~2,4 m (si fuese doble como El Burgo, halfW 3,2)
+  sanjose:{modPitch:2.30,halfL:36.8,halfW:3.2}, fayon:{modPitch:2.30,halfL:55.3,halfW:3.2},   // Fayón es BIFILA, como las demás: dos vigas a 3 m del eje (lo confirmó Ignacio; el 3D ya la montaba así)
   custom:{modPitch:2.24,halfL:31,halfW:3.2} };
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var TDIM=TDIM_ALL[PLANT]||TDIM_ALL.elburgo;
