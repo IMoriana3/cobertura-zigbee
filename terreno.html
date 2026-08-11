@@ -2635,15 +2635,20 @@ function buildBOS(){
        edificio FLOTANDO sobre la ladera. Es el mismo motivo por el que la valla ya usa terrainMeshY.
        El edificio se nivela sobre la cota MÁS ALTA y el zócalo baja hasta por debajo de la MÁS BAJA,
        que es como se ejecuta un prefabricado en pendiente: bancada enterrada del lado alto. */
-    var ys=pl.map(function(p){return terrainMeshY(p[0],p[1]);}); ys.push(terrainMeshY(cx,cn));
-    var yLo=Math.min.apply(null,ys), yHi=Math.max.apply(null,ys);
-    var H=2.60,Z=0.25,base=yHi+Z,hZoc=(yHi-yLo)+Z+0.30;      // 0,30 de enterramiento por el lado bajo
-    var body=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:H,bevelEnabled:false}),
+    /* Se muestrea terrainMeshY (la malla RENDERIZADA) y no localElevY (el DEM continuo): son
+       superficies distintas, y anclar al DEM es lo que dejaba el edificio flotando. Mismo motivo
+       por el que la valla ya usa terrainMeshY.
+       OJO CON vex: terrainMeshY devuelve la cota EXAGERADA (×5 por defecto), así que el desnivel
+       bajo el edificio NO se puede usar tal cual como altura de zócalo — sale tan alto como el
+       propio CT y se ve como DOS cajas apiladas. Aquí se hace UNA sola caja que se prolonga hacia
+       abajo hasta enterrarse, con el faldón acotado: así nunca flota y nunca se parte en dos. */
+    var ys=pl.map(function(p){return terrainMeshY(p[0],p[1]);}), yc=terrainMeshY(cx,cn);
+    var yLo=Math.min.apply(null,ys);
+    var H=2.60, fald=Math.min(Math.max(yc-yLo,0)+0.30,1.20);   // faldón: lo que baje el terreno, tapado, máx 1,20 m
+    var cuerpo=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:H+fald,bevelEnabled:false}),
       new THREE.MeshStandardMaterial({color:0xd8dbd6,roughness:.72,metalness:.06}));   // hormigón prefabricado claro
-    body.rotateX(-Math.PI/2);body.position.set(cx,base,-cn);body.castShadow=true;body.receiveShadow=true;bosGroup.add(body);
-    var zoc=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:hZoc,bevelEnabled:false}),
-      new THREE.MeshStandardMaterial({color:0x9aa0a0,roughness:.85,metalness:.04}));   // zócalo/bancada
-    zoc.rotateX(-Math.PI/2);zoc.position.set(cx,base-hZoc,-cn);zoc.receiveShadow=true;bosGroup.add(zoc);
+    cuerpo.rotateX(-Math.PI/2);cuerpo.position.set(cx,yc-fald,-cn);cuerpo.castShadow=true;cuerpo.receiveShadow=true;bosGroup.add(cuerpo);
+    var base=yc;
     /* PUERTA AL ESTE (pedido del usuario). Se elige el lado cuya normal SALIENTE apunta más al este;
        la saliente se toma como (punto medio del lado − centroide), que en un rectángulo convexo
        siempre sale hacia fuera. La hoja es doble, 1,60 × 2,10 m, medida de puerta de CT, no del
@@ -2657,13 +2662,17 @@ function buildBOS(){
     if(best){
       var dx=best.b[0]-best.a[0],dn=best.b[1]-best.a[1],lado=Math.hypot(dx,dn);
       var W=Math.min(1.60,lado*0.7),HP=2.10;
-      var pm=new THREE.Mesh(new THREE.BoxGeometry(W,HP,0.06),
-        new THREE.MeshStandardMaterial({color:0x8d949a,roughness:.5,metalness:.35}));
-      pm.position.set(best.mx+best.ox*0.04, base+HP/2, -(best.mn+best.on*0.04));
+      var pm=new THREE.Mesh(new THREE.BoxGeometry(W,HP,0.10),
+        new THREE.MeshStandardMaterial({color:0x394452,roughness:.6,metalness:.3}));   // mismo RAL oscuro que las puertas de El Burgo: contra el muro claro SE VE
+      pm.position.set(best.mx+best.ox*0.05, base+0.02+HP/2, -(best.mn+best.on*0.05));
       pm.rotation.y=Math.atan2(dn,dx); pm.castShadow=true; bosGroup.add(pm);
-      var jun=new THREE.Mesh(new THREE.BoxGeometry(0.03,HP,0.07),
-        new THREE.MeshStandardMaterial({color:0x5b6167,roughness:.6}));   // junta central: se lee que son dos hojas
+      var jun=new THREE.Mesh(new THREE.BoxGeometry(0.04,HP,0.12),
+        new THREE.MeshStandardMaterial({color:0x9aa3ad,roughness:.5,metalness:.4}));   // junta central: se lee que son dos hojas
       jun.position.copy(pm.position); jun.rotation.y=pm.rotation.y; bosGroup.add(jun);
+      var din=new THREE.Mesh(new THREE.BoxGeometry(W+0.16,HP+0.12,0.05),
+        new THREE.MeshStandardMaterial({color:0xb9beb9,roughness:.8}));                // cerco, para que la hoja no quede pegada al muro
+      din.position.set(best.mx+best.ox*0.02, base+0.02+HP/2, -(best.mn+best.on*0.02));
+      din.rotation.y=pm.rotation.y; bosGroup.add(din);
     }
   }
   function buildCTSkid(cx,cn,y){
