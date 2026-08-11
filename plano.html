@@ -126,7 +126,10 @@ function hasInv(){return !!(L&&L.invlab&&L.invlab.length);}
 function strPerTrk(t){return /medio|corto/i.test(t.t||'')?2:4;}   // estimación de strings: bífila larga 4, medio/corto 2 (afinable con el string-schedule de Xamai)
 function assignInv(){
   INVG=[];INVH={};if(!L||!L.trackers)return;
-  L.trackers.forEach(function(t,i){var k=invKeyOf(t.id);t._inv=k;if(k==null)return;var g=INVH[k];if(!g){g={key:k,label:'I-'+k,trk:[],sx:0,sn:0,x:null,n:null};INVH[k]=g;INVG.push(g);}g.trk.push(i);g.sx+=t.x;g.sn+=t.n;});
+  /* El campo 'inv' del layout MANDA sobre deducirlo del id: invKeyOf solo entiende los ids g.i.s de
+     El Burgo, así que Fayón (ids TKnnn) no agrupaba. Su reparto sale del PDF P06 del proyecto, que
+     colorea los cables de string por inversor — ver el bloque 'inversores' de fayon_layout.json. */
+  L.trackers.forEach(function(t,i){var k=(t.inv!=null&&t.inv!=='')?String(t.inv):invKeyOf(t.id);t._inv=k;if(k==null)return;var g=INVH[k];if(!g){g={key:k,label:'I-'+k,trk:[],sx:0,sn:0,x:null,n:null};INVH[k]=g;INVG.push(g);}g.trk.push(i);g.sx+=t.x;g.sn+=t.n;});
   var rects=(function(){ var segs=(L.inverters||[]).map(function(s){return {a:s[0],b:s[1]};}),used=new Array(segs.length),out=[];   // posición REAL del equipo: centro de su rectángulo del DWG (las etiquetas van desplazadas hasta 8 m)
     function close(p,q){return Math.hypot(p[0]-q[0],p[1]-q[1])<2.5;}
     for(var i=0;i<segs.length;i++){ if(used[i])continue; var grp=[i];used[i]=true;var grew=true;
