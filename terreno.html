@@ -2978,7 +2978,10 @@ function buildGateways(){
     gwMasts.push(g);
   });
 }
-function positionGateways(){ if(!gwG||!ELEV)return; GWS.forEach(function(gw,i){gwMasts[i].position.set(projX(gw.lon),(ELEV(gw.lat,gw.lon)-baseElev)*vex,projZ(gw.lat));}); }
+/* La NCU se apoya en la MALLA RENDERIZADA (terrainMeshY), no en el DEM continuo: son superficies
+   distintas y con relieve fuerte la diferencia entierra el armario o lo deja en el aire. Es el mismo
+   motivo por el que ya lo hacen la valla y el CT. */
+function positionGateways(){ if(!gwG||!ELEV)return; GWS.forEach(function(gw,i){var gx9=projX(gw.lon),gz9=projZ(gw.lat);gwMasts[i].position.set(gx9,terrainMeshY(gx9,-gz9),gz9);}); }
 function nearestNCU(gx,gz){var bi=0,bd=1e18;GWS.forEach(function(gw,i){var dx=gx-projX(gw.lon),dz=gz-projZ(gw.lat),dd=dx*dx+dz*dz;if(dd<bd){bd=dd;bi=i;}});return bi;}
 // altura de la CRESTA del panel (m sobre el suelo) a la inclinación actual: pivota sobre el tubo y sube media cuerda·sen(ángulo)
 function panelTopH(){ if(!TC.modH)return 0; var a=Math.abs(panelAngle(curMin)); return TC.postH+TC.off+(TC.modH/2)*Math.sin(a*DEG); }
@@ -3346,7 +3349,7 @@ if($('afbt')){
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=(typeof t.artic0==='boolean')?t.artic0:kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio Y a su rótula DEL DWG (antes lo forzaba al maestro)
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();positionGateways();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked&&(typeof TRK[i].artic0==='boolean'?TRK[i].artic0:true);layoutTrackers();if(selIdx>=0)$('edArtic').checked=TRK[selIdx].artic;};   // maestro: al marcarlo cada seguidor recupera SU rótula del DWG (no se articulan los rígidos); al desmarcarlo, todos rectos
