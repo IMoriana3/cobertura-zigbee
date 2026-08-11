@@ -74,9 +74,9 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="14" step="0.5" value="5"><span id="vexV" style="font-family:var(--mono)">5×</span></div>
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
-    <div class="row"><label title="Capa de inversores (DC): tiñe la huella de cada seguidor por su inversor (El Burgo: asignación real del DWG; Ayora: por proximidad al inversor de string). Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
+    <div class="row"><label title="Capa de inversores (DC): tiñe los módulos de cada seguidor por su inversor. El Burgo lo deduce del id del seguidor (g.i.s) y Fayón del campo inv del layout (reparto del P06 del proyecto). Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
     <div id="redesDwg">
-    <div class="row" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG · El Burgo)</div>
+    <div class="row" id="redesHdr" style="margin-top:5px;border-top:1px solid var(--line);padding-top:6px;font-size:11px;color:var(--tx2)">Redes (extraídas del DWG)</div>
     <div class="row"><label title="Cableado DC string→inversor, real del DWG (+ rojo / − azul)."><input type="checkbox" id="netCable"> ⚡ Cableado DC (+/−)</label></div>
     <div class="row"><label title="Red de tierras (cable 35 mm² desnudo + soldaduras aluminotérmicas), real del DWG."><input type="checkbox" id="netEarth"> ⏚ Red de tierras</label></div>
     <div class="row"><label title="Zanjas de cable string y string→inversor, real del DWG."><input type="checkbox" id="netTrench"> ▤ Zanjas string/inversor</label></div>
@@ -452,7 +452,7 @@ async function build(){
     if(!LAYOUT)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
-  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
+  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
@@ -513,7 +513,7 @@ async function build(){
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
   if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
-  if($('redesDwg'))$('redesDwg').style.display=(PLANT==='elburgo')?'':'none';   // las redes del DWG solo existen en El Burgo: fuera de ahi las casillas eran ruido
+  redesPanel();invPanel();
   if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
   if($('btmode')&&!cotasFile())$('btmode').disabled=true;
   await loadCotas(); if(GEO==='levantamiento'){aplicaResiduo();layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
@@ -1561,6 +1561,11 @@ function animateSky(dt){ dt=dt||0;_skyT+=dt;
 // Aditiva: el cableado/anillos/etiquetas van en su grupo (invGroup); el color de los módulos se aplica sobre la malla de paneles existente (instanceColor) y se revierte al apagar.
 var invGroup=null,invOn=false,INVCOL={},invGlassMat=null;
 function invKey3(id){var p=String(id).split('.');return (p.length>=3&&/^\d+$/.test(p[0])&&/^\d+$/.test(p[1]))?p[0]+'.'+p[1]:null;}
+/* El inversor de un seguidor sale PRIMERO del campo `inv` del layout y solo si no existe se deduce
+   del ID. El ID codificado (1.2.3 = inversor 1.2) es una convencion de El Burgo; Fayon numera
+   TK001..TK024 y trae la agrupacion como dato (del P06 del proyecto), asi que sin esto la capa
+   3D salia vacia en Fayon aunque el 2D si la pintaba. */
+function invKeyN(n){return (n&&n.inv!=null&&n.inv!=='')?String(n.inv):invKey3(n?n.id:null);}
 function invColor3(i){var c=new THREE.Color();c.setHSL((((i*7)*137.508)%360)/360,0.62,0.5);return c;}
 function invGlassMesh(){if(!SEG)return null;for(var i=0;i<SEG.length;i++){if(SEG[i].spin&&(SEG[i].key==='glass'||SEG[i].key==='mesa'))return SEG[i];}return null;}   // la malla de paneles (spin)
 function paintInvModules(on){   // tiñe cada instancia de panel por el inversor de su seguidor (idx → i = floor(idx/(2·n))); revierte a la malla con textura al apagar
@@ -1568,22 +1573,29 @@ function paintInvModules(on){   // tiñe cada instancia de panel por el inversor
   if(on&&!invGlassMat){invGlassMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.45,metalness:.12});if(CELLNRM){invGlassMat.normalMap=CELLNRM;invGlassMat.normalScale=new THREE.Vector2(0.4,0.4);}}   // base blanca → instanceColor vívido; mismo microrrelieve que el vidrio
   s.im.material=on?invGlassMat:glassM;
   var col=new THREE.Color(),per=2*s.n,n=s.im.count;
-  for(var idx=0;idx<n;idx++){var i=Math.floor(idx/per),key=(i<NODES.length)?invKey3(NODES[i].id):null;
+  for(var idx=0;idx<n;idx++){var i=Math.floor(idx/per),key=(i<NODES.length)?invKeyN(NODES[i]):null;
     if(on&&key&&INVCOL[key])col.copy(INVCOL[key]);else col.setRGB(1,1,1);s.im.setColorAt(idx,col);}
   if(s.im.instanceColor)s.im.instanceColor.needsUpdate=true;
 }
+/* Misma regla que en las redes: la casilla solo se ofrece si HAY agrupación. Ayora, Páramo y
+   Bagnarelli traen los rótulos I-n del DWG pero ningún seguidor sabe a qué inversor cuelga, así
+   que la capa se encendía y no pintaba nada. */
+function invPanel(){ var el=$('invl');if(!el)return;
+  var ok=!!(LAYOUT&&LAYOUT.invlab&&LAYOUT.invlab.length&&NODES.some(function(n){return invKeyN(n)!=null;}));
+  var row=el.closest?el.closest('.row'):el.parentNode.parentNode;if(row)row.style.display=ok?'':'none';
+  if(!ok&&el.checked){el.checked=false;el.onchange&&el.onchange.call(el);} }
 function buildInvLayer(){
   if(invGroup){scene.remove(invGroup);invGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});invGroup=null;}
   INVCOL={};
-  if(!LAYOUT||!LAYOUT.invlab||!LAYOUT.invlab.length||!NODES.length)return;   // solo plantas con datos de inversor (El Burgo)
+  if(!LAYOUT||!LAYOUT.invlab||!LAYOUT.invlab.length||!NODES.length)return;   // solo plantas con datos de inversor (El Burgo por id, Fayón por campo inv)
   invGroup=new THREE.Group();invGroup.visible=invOn;scene.add(invGroup);
   var H={},order=[];
-  NODES.forEach(function(n,i){var k=invKey3(n.id);if(k==null)return;if(!H[k]){H[k]={key:k,trk:[],x:null,nn:null};order.push(k);}H[k].trk.push(i);});
+  NODES.forEach(function(n,i){var k=invKeyN(n);if(k==null)return;if(!H[k]){H[k]={key:k,trk:[],x:null,nn:null};order.push(k);}H[k].trk.push(i);});
   order.sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});});
   (LAYOUT.invlab||[]).forEach(function(c,ci){var k=String(c.s).replace(/^I-/,'');if(H[k]){var pp=invAt(ci);H[k].x=pp.x;H[k].nn=pp.n;}});
   order.forEach(function(k,gi){var g=H[k],col=invColor3(gi);INVCOL[k]=col;
     if(g.x==null){var sx=0,sn=0;g.trk.forEach(function(i){sx+=NODES[i].gx;sn+=-NODES[i].gz;});g.x=sx/g.trk.length;g.nn=sn/g.trk.length;}
-    var ix=g.x,iz=-g.nn,iy=localElevY(g.x,g.nn);
+    var ix=g.x,iz=-g.nn,iy=terrainMeshY(g.x,g.nn);   // sobre la malla QUE SE VE, no sobre el DEM continuo: con vex alto el anillo se hundía o flotaba (mismo fallo que tenía el CT)
     // (v4.10) fuera las líneas rectas seguidor→inversor: con los módulos ya pintados por inversor eran redundantes y no seguían rutas reales (el cableado real está en la capa ⚡ Cableado DC)
     var ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,0.13,8,20),new THREE.MeshBasicMaterial({color:col}));ring.rotation.x=Math.PI/2;ring.position.set(ix,iy+0.12,iz);invGroup.add(ring);   // anillo en la estación
     var lb=makeLabel('I-'+k,'poi');lb.position.set(ix,iy+2.6,iz);invGroup.add(lb);   // hito: el ID del equipo debe leerse siempre que la capa esté activa
@@ -2152,6 +2164,19 @@ function camAimFor(x,n){   // dirección a la que mira una cámara: hacia el cen
     if(Math.abs(a[0]-x)<14&&Math.abs(a[1]-n)<14){var fx=0,fn=0,m=0;for(var i=0;i<pl.length;i++){if(i===ai)continue;fx+=pl[i][0];fn+=pl[i][1];m++;}if(m){dx+=(fx/m-x);dn+=(fn/m-n);cnt++;}}});   // ápice VERDADERO (posiciones ya horneadas en el layout desde los conos)
   if(!cnt)return null;var L=Math.hypot(dx,dn)||1;return {dx:dx/L,dn:dn/L};
 }
+/* Panel de redes (zanjas, tierras, cableado). ANTES estaba atado al nombre de la planta
+   (PLANT==='elburgo'), asi que Fayon cargaba sus 64 polilineas de zanja y las casillas seguian
+   ocultas: no habia forma de verlas. Ahora se ata al DATO — cada planta trae su
+   <planta>_networks.json y se muestra solo la casilla cuya capa existe de verdad, para no
+   ofrecer capas vacias (Fayon solo tiene trench_string y trench_n3, El Burgo las nueve). */
+var REDES_ROWS=[['netCable',['cable_pos','cable_neg']],['netEarth',['earth','earth_cross','earth_lat']],
+  ['netTrench',['trench_string','trench_inv']],['netN3',['trench_n3']],['netMT',['trench_mt']],
+  ['netEvac',['evac45']],['netCam',['cam_range']],['netMisc',['arqueta','comms']]];
+function redesPanel(){ var L=(NET&&NET.layers)||{},vis=0;
+  REDES_ROWS.forEach(function(r){ var el=$(r[0]);if(!el)return; var ok=r[1].some(function(k){return L[k]&&L[k].length;});
+    var row=el.closest?el.closest('.row'):el.parentNode.parentNode; if(row)row.style.display=ok?'':'none';
+    if(ok)vis++; else if(el.checked){el.checked=false;el.onchange&&el.onchange.call(el);} });   // al cambiar de planta, desmarca lo que ya no existe
+  if($('redesDwg'))$('redesDwg').style.display=vis?'':'none'; }
 function setNet(keys,on){ ensureNet().then(function(ok){ if(!ok)return; keys.forEach(function(key){ if(on){if(!netG[key])buildNetLayer(key); if(netG[key])netG[key].visible=true;} else if(netG[key])netG[key].visible=false; }); }); }
 // ===== GENERACIÓN / FLUJO ELÉCTRICO (offline): cielo-claro (Meinel) + ángulo de incidencia del seguidor + térmico, según hora, día (simDoy) y meteo (nubosidad + Tamb).
 // Pinta los módulos con la luz del sol (negro de noche → oro a mediodía), energiza el cableado DC (flujo) y saca MW/MWh en un HUD. Modelo divulgativo, calibrable con la cartera/SolarGPT.
