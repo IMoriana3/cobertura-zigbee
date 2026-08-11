@@ -43,9 +43,25 @@ dN −29,5). Cuadra con el síntoma descrito — el array caía al **noroeste** 
 Extra: el `id` `TKnnn` del DWG **coincide 1:1 con el número de TCU del cliente** en los 24.
 
 **Dos avisos que quedan vivos:**
-- **NCU y HSU del listado no valen**: vienen en números redondos (E 275.790/275.780 · N
-  4.567.370/4.567.360) y quedan a **22,1 m** y **17,0 m** de donde los sitúa el DWG. Son nominales,
-  no replanteo. Se ha **mantenido la posición del DWG**, que es la autoridad.
+- **NCU, HSU y CT — resuelto a la cuarta, y esta es la lección que importa.** Se probaron cuatro
+  posiciones y las tres primeras estaban mal **por la misma razón: no eran geometría del equipo**.
+  1. El **punto de inserción de los textos** `NCU`/`HSU` del plano (51,18 · −43,93 y 47,27 · −53,62).
+     Van **girados 54°**, así que marcan **dónde empieza la palabra**, no dónde está el equipo. De
+     aquí salió la posición original del layout, y arrastró desde el principio.
+  2. El **listado del cliente** (70,06 · −32,47 y 60,06 · −42,47): redondeado a 10 m.
+  3. Los **dos círculos** de r 1,22 m del plano. **No son dos cimentaciones**: sus centros distan
+     1,22 m, o sea **se solapan** — es el **símbolo IEC de transformador de dos devanados**.
+
+  Lo bueno son dos **cuadros de 0,29 × 0,29 m** (tamaño de armario en planta), justo fuera de dos
+  esquinas opuestas del CT: **NCU (50,49 · −44,25)** y **HSU (48,24 · −50,39)**, a 6,54 m entre sí.
+
+  Y de paso: **Fayón SÍ tiene CT y SÍ tiene posición** — el rectángulo de **3,00 × 6,00 m girado
+  ~34°** en **(51,25 · −47,53)**, que es lo que lleva el símbolo del trafo. Lo que decía antes esta
+  ficha («el CT solo está como texto en la leyenda, sin posición») **era falso**. Está en `cts` del
+  layout y el visor lo levanta con la planta real. Hay una **copia del símbolo en (149,7 · 30,4),
+  fuera del vallado**: esa sí es la leyenda — mismo artefacto que los 4 seguidores fantasma.
+
+  **Regla para el próximo**: en estos DWG, un rótulo no es una posición. Buscar la entidad dibujada.
 - **Convergencia de meridianos −1,764°**: el eje `n` del layout es norte de **cuadrícula**, no norte
   geográfico, y el visor (`terreno.html:446`) proyecta `n` como si fuera norte geográfico. Queda por
   tanto un giro residual. **Medido** reproyectando los 24 TCU como los proyecta el visor y
