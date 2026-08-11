@@ -17,6 +17,11 @@ leyenda, que caen en coordenadas exactas conocidas.  Se comprueba contra el layo
   · la espina naranja pasa a 1,2-3,0 m de los CUATRO inversores del DWG
   · las 27 zanjas azules van a 0,0-5,4 m del eje de un seguidor (paso entre filas: 12,0 m)
 
+CONFLICTO CON EL DWG — el P07 dibuja el CT en (53,74 . -39,77), alineado con los ejes y de
+5,99 x 3,02 m; el DWG de layout lo pone en (51,25 . -47,52) girado 34 grados, y ahí no hay nada
+en el P07 ni al revés.  Son 8,14 m.  El P07 es de NOV 23 rev. 0 y el DWG es de 14-02-2025: el CT
+se movió y las zanjas no se redibujaron.  NO se estiran ni se desplazan para que casen.
+
 El símbolo de arqueta se dibuja en el plano a ~0,87 m de lado, pero la leyenda dice 600x600 mm:
 se emite el cuadrado REAL de 0,60 m centrado en el símbolo, igual que en El Burgo.
 """
@@ -124,6 +129,15 @@ def main():
         'comprobacion': ('la espina naranja (C.C.+C.A.) pasa a 2,29 / 1,16 / 2,55 / 2,98 m de los cuatro '
                          'inversores del layout, y las zanjas azules van a 0,0-5,4 m del eje de un seguidor '
                          '(mediana 1,84 m) con un paso entre filas de 12,0 m'),
+        'discrepancia_ct': ('OJO: el P07 dibuja el CT en (53,74 . -39,77), alineado con los ejes y de '
+                            '5,99 x 3,02 m. El DWG de layout lo pone en (51,25 . -47,52), girado 34 deg '
+                            '(rectangulo de 3 x 6 m) — comprobado con los 24 INSERT PFV-Seguidor del propio '
+                            'DWG, residuo 0,003 m, y en el DWG NO hay nada en la posicion del P07. Son 8,14 m '
+                            'de diferencia. El P07 es de NOV 23 revision 0 y el DWG es Layout_PFV_Fayon_140225 '
+                            '(14-02-2025): el CT se movio entre una y otra y las zanjas no se redibujaron. Por '
+                            'eso el tramo de A.C. (4,3 m) muere a 8 m del CT actual y la zanja de alta tension '
+                            'arranca al norte de el en vez de salir de su puerta. Las zanjas se dejan DONDE LAS '
+                            'DIBUJA SU PLANO: no se estiran ni se desplazan para que casen.'),
         'capas': meta,
         'layers': capas,
     }
