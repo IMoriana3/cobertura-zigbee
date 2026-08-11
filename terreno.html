@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.54</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.55</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -878,15 +878,16 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
   var gN,gE;
   if(mc){gN=Math.max(-cl,Math.min(cl,mc.gN));gE=Math.max(-cl,Math.min(cl,mc.gE));}   // pendientes MEDIDAS (longitudinal y entre las dos filas)
   else{gN=Math.max(-cl,Math.min(cl,(t.relN-t.relS)/t.span));gE=Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*t.dE)));}
-  /* SOLO la pendiente LONGITUDINAL orienta el seguidor. La transversal (gE, el desnivel
-     entre las dos vigas) se metía antes en la normal del marco, y eso es una rotación
-     ALREDEDOR DEL PROPIO EJE del tubo: le sumaba al panel un ángulo que no manda el motor
-     —con exageración vertical 5x, hasta ±22°— así que en Ayora unos seguidores enseñaban
-     el vidrio y sus vecinos el dorso blanco (el "campo a dos tonos"), y además el tubo se
-     iba de lado varios metros a lo largo de la fila. El desnivel entre vigas se resuelve
-     donde toca: subiendo o bajando cada viga (t._dyE), no volteando el panel. */
-  _NRM.set(0,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
-  t._dyE=vex*gE;                                                     // desnivel por metro entre viga oeste y viga este (ya exagerado)
+  /* El marco se DRAPEA al terreno (exagerado) en las dos direcciones: así el seguidor
+     se apoya donde está el suelo y sus dos vigas quedan a la cota que les toca.
+     Pero ojo: el eje del tubo va NORTE-SUR, o sea que la parte TRANSVERSAL de ese
+     drapeado (gE) es un giro ALREDEDOR DEL PROPIO EJE — le suma al panel un ángulo
+     que no manda el motor, y con exageración vertical 5x llega a ±22°. Por eso en
+     Ayora unos seguidores enseñaban el vidrio y sus vecinos el dorso blanco. Se
+     guarda aquí ese ángulo (t._roll) y updateSpin lo DESCUENTA de la basculación:
+     la estructura sigue al terreno, y el panel acaba exactamente en su consigna. */
+  _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
+  t._roll=Math.atan(vex*gE);                                         // rad; +gE (este más alto) inclina el panel al OESTE
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 // "Tracker quebrado": ángulos de quiebre (rótula en el actuador) de cada mitad de viga, POR FILA, a partir del terreno real.
@@ -931,9 +932,9 @@ function layoutTrackers(){
   if(!imPost||!SEG)return;ROWX=null;/* el layout puede cambiar (arrastre en edicion): recalcula los ejes de fila */var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
     var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
-    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_MC.elements[13]+=fx0*(t._dyE||0);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=usaCotas(t)?0:Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // con cota MEDIDA no se corrige nada: subir el tubo para que no roce falsearia el dato   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
-    for(var f=0;f<2;f++){var _fx=f?fz:-fz;_T.makeTranslation(_fx,ph,0);t.fb[f].multiplyMatrices(Tw,_T);t.fb[f].elements[13]+=_fx*(t._dyE||0);}     // base de cada fila (sobre su tubo), cada una a SU cota: el desnivel entre vigas es altura, no vuelco
+    for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
       if(k>=zP.length){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
@@ -943,9 +944,7 @@ function layoutTrackers(){
       imPost.setMatrixAt(i*TC.np+pi,_M2);
       _SC.set(1,1,1);_PV.set(wx,ejeY,wz);_M2.compose(_PV,_Q,_SC);                                              // origen local de las 3 piezas = eje del tubo
       imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;}}   // tambor + horquilla PRE01 + virola
-    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);
-    if(t._dyE){_RZ.makeRotationZ(Math.atan(t._dyE));_M2.multiply(_RZ);_T.makeScale(Math.hypot(1,t._dyE),1,1);_M2.multiply(_T);}   // con las dos vigas a distinta cota el eje de transmisión las une en diagonal (y estira lo que haga falta)
-    imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
+    _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
         if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=(t.rel+((GEO==='levantamiento')?corrSuelo(sxx,-szz):0))*vex,sl=Math.max(0.3,syT-terY);
@@ -1265,9 +1264,14 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
   var _DM=null;for(var dmi=0;dmi<SEG.length;dmi++)if(SEG[dmi].damperLink){_DM=SEG[dmi];break;}       // amortiguadores (igual: extremo fijo al poste + extremo en la viga)
   _R.makeRotationX(-angDeg*DEG);_OS.multiplyMatrices(SEGO,_R);                                      // mundo = orientación · basculación (signo - para casar con el seguimiento)
   var _b3=bt3dOn();
-  for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio;
-    if(SCADA3D&&SCADA3D.byTrk[i]){_R.makeRotationX(-(parseFloat(SCADA3D.byTrk[i].tilt)||0)*DEG);_OS.multiplyMatrices(SEGO,_R);}   // SCADA: el tilt REPORTADO por la TCU manda sobre la simulacion
-    else if(_b3&&t.mc){_R.makeRotationX(-bt3dAng(t)*DEG);_OS.multiplyMatrices(SEGO,_R);}   // cada tracker con SU angulo: la pendiente de su lado del sol no es la del vecino
+  for(var i=0;i<TRK.length;i++){var t=TRK[i],med=t.medio,_ang=angDeg;
+    if(SCADA3D&&SCADA3D.byTrk[i])_ang=parseFloat(SCADA3D.byTrk[i].tilt)||0;   // SCADA: el tilt REPORTADO por la TCU manda sobre la simulacion
+    else if(_b3&&t.mc)_ang=bt3dAng(t);                                        // cada tracker con SU angulo: la pendiente de su lado del sol no es la del vecino
+    /* -t._roll: el drapeado transversal del marco es un giro sobre el propio eje del
+       tubo, así que se le descuenta a la basculación. La estructura sigue apoyada en
+       el terreno (exagerado) y el PANEL queda en el ángulo que manda el motor, ni uno
+       más. Sin esto, en Ayora 121 de 754 seguidores enseñaban la cara contraria. */
+    _R.makeRotationX(-(_ang*DEG-(t._roll||0)));_OS.multiplyMatrices(SEGO,_R);   // por seguidor: antes, el que no traía dato de SCADA heredaba la matriz del anterior
     for(var f=0;f<2;f++){_MD.multiplyMatrices(t.fb[f],_OS);var kf=t.kink[f];                          // base de la fila · (orientación·spin)
       if(kf&&(kf.dN||kf.dS)){_RZ.makeRotationZ(kf.dN);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDN.multiplyMatrices(t.fb[f],_M);_RZ.makeRotationZ(kf.dS);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDS.multiplyMatrices(t.fb[f],_M);}else{_MDN.copy(_MD);_MDS.copy(_MD);}   // QUEBRADO: mitad N gira Δθ_N y mitad S Δθ_S alrededor del eje Z canónico (→ eje E/W del mundo), rótula en el actuador (x=0)
       if(imBush){var _zB=zPfor(t),_hB=TC.np/2;                                                        // CASQUILLO interior: gira CON la viga (misma matriz basculada que el tubo), uno por poste, índice alineado con imBearing
