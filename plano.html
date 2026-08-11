@@ -44,7 +44,7 @@
   <div class="row"><label><input type="checkbox" id="cbLbl"> Etiquetas</label></div>
   <div class="row"><label><input type="checkbox" id="cbElec"> ⚡ Color eléctrico (NCU)</label></div>
   <div class="row"><label title="Pile reveal: cuánto se hinca cada pilote (del suelo al tubo), calculado del relieve real. Rojo = más hincado. Como en el 3D y en S.P.A.C.E."><input type="checkbox" id="cbPile"> ⛰️ Pile reveal (hincado)</label></div>
-  <div class="row"><label title="Capa de inversores (DC): colorea por inversor, dibuja el cableado string→inversor y el símbolo del DWG. Clic en un inversor → ficha (SG350HX · MPPT · BoM). Solo El Burgo."><input type="checkbox" id="cbInv"> 🔌 Inversor (DC)</label></div>
+  <div class="row"><label title="Capa de inversores (DC): colorea por inversor, dibuja el cableado string→inversor y el símbolo del DWG. Clic en un inversor → ficha (SG350HX · MPPT · BoM). El Burgo (por id de seguidor) y Fayón (campo inv del layout, del P06)."><input type="checkbox" id="cbInv"> 🔌 Inversor (DC)</label></div>
   <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
   <div class="leg" id="legStatic" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
   <div class="leg" id="legElec" style="margin-top:7px;display:none;max-height:210px;overflow:auto"></div>
@@ -122,7 +122,10 @@ function buildElecLegend(){
    100% offline (sólo lee el layout). */
 var INVG=[],INVH={},INVSEL=null;
 function invKeyOf(id){var p=String(id).split('.');return (p.length>=3&&/^\d+$/.test(p[0])&&/^\d+$/.test(p[1]))?p[0]+'.'+p[1]:null;}   // sólo ids tipo g.i.s numéricos (El Burgo)
-function hasInv(){return !!(L&&L.invlab&&L.invlab.length);}
+/* Tener rótulos de inversor NO es tener agrupación: Ayora, Páramo y Bagnarelli traen sus I-n del DWG
+   pero ningún seguidor sabe a cuál cuelga (ni por id ni por campo `inv`), así que la capa pintaba
+   una leyenda vacía. Exige que assignInv haya formado al menos un grupo. */
+function hasInv(){return !!(L&&L.invlab&&L.invlab.length&&INVG.length);}
 function strPerTrk(t){return /medio|corto/i.test(t.t||'')?2:4;}   // estimación de strings: bífila larga 4, medio/corto 2 (afinable con el string-schedule de Xamai)
 function assignInv(){
   INVG=[];INVH={};if(!L||!L.trackers)return;
@@ -147,7 +150,7 @@ function buildInvLegend(){
   var box=$('legInv');if(!box)return;
   if(!$('cbInv').checked){box.style.display='none';return;}
   $('legStatic').style.display='none';$('legElec').style.display='none';$('legPile').style.display='none';
-  if(!hasInv()){box.innerHTML='<div style="color:var(--tx2)">Sin datos de inversor en esta planta<br>(disponible en El Burgo, del DWG)</div>';box.style.display='';return;}
+  if(!hasInv()){box.innerHTML='<div style="color:var(--tx2)">Sin datos de inversor en esta planta<br>(por ahora El Burgo y Fayón)</div>';box.style.display='';return;}
   var dN=(SPEC&&SPEC.inv!=null)?SPEC.inv:null;
   var head='<div style="color:#eaf4ff;margin-bottom:5px">'+INVG.length+' inversores · '+(L.trackers?L.trackers.length:0)+' seg'+(dN!=null?' <span style="color:var(--tx2)">· cartera: '+dN+'</span>':'')+'<div style="color:var(--tx2);font-weight:400;font-size:11px;margin-top:2px">clic en un inversor → ficha</div></div>';
   var rows=INVG.map(function(g){return '<div style="white-space:nowrap;cursor:pointer" onclick="openFicha(\''+g.key+'\')"><span class="dot" style="background:'+g.color+'"></span>'+g.label+' <span style="color:var(--tx2)">· '+g.trk.length+' seg</span></div>';}).join('');
@@ -384,7 +387,12 @@ $('cbElec').onchange=function(){ if(this.checked){$('cbPile').checked=false;$('c
 $('cbPile').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbInv').checked=false;closeFicha();ensureDem();} syncLayerLegends();draw(); };
 $('cbInv').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbPile').checked=false;} else closeFicha(); syncLayerLegends();draw(); };
 $('fit').onclick=fit;
-if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}
+/* El desplegable se construye desde PLANTS. Estaba escrito a mano con tres opciones, así que Fayón,
+   Bagnarelli y Páramo cargaban bien por ?planta= pero el selector salía EN BLANCO (value sin option)
+   y no había forma de saltar a ellas desde el 2D. */
+(function(){var sel=$('plantSel');if(!sel)return;sel.innerHTML='';
+  Object.keys(PLANTS).forEach(function(k){ if(k==='custom'&&PLANT!=='custom')return;
+    var o=document.createElement('option');o.value=k;o.textContent=(k==='custom'?'✚ ':'')+PLANTS[k].title;sel.appendChild(o);});})();
 $('plantSel').value=PLANT;$('plantSel').onchange=function(){if(this.value==='elburgo'){location.href='index.html';return;}var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // El Burgo: su 2D es el visor de cobertura Zigbee (index.html)
 $('link3d').href='terreno.html?planta='+PLANT;
 (function(){var b=$('offBtn');if(!b)return;b.textContent=OFFLINE?'⛌ Sin conexión':'◑ Online';b.style.color=OFFLINE?'#F6A623':'#9bb0c6';b.onclick=function(){try{localStorage.setItem('cobertura_offline',OFFLINE?'0':'1');}catch(e){}location.reload();};})();
