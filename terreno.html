@@ -1843,9 +1843,12 @@ function renderPost(dt){ if(!postScene)return;_grainMat.uniforms.uT.value=(_grai
 var NET=null,netG={};
 var NETDEF={cable_pos:{c:0xff5555,off:.14},cable_neg:{c:0x5599ff,off:.10},earth:{c:0x9be23a,off:.16},earth_cross:{c:0x9be23a,off:.16},earth_lat:{c:0xb4e84a,off:.17},trench_string:{c:0xb9893a,off:.05},trench_inv:{c:0xd8a24a,off:.06},trench_n3:{c:0xe8772e,off:.07},trench_mt:{c:0xff3a9a,off:.10},evac45:{c:0xffc63a,off:.12},cam_range:{c:0x37d0e0,off:.45},arqueta:{c:0xc98bff,off:.10},comms:{c:0xff9d3a,off:.20}};
 var STRDB=null;   // numeración EXACTA de strings del plano (elburgo_strings.json: 823 strings g.i.t.s con posición)
-function ensureNet(){ if(PLANT!=='elburgo')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
-  fetch('elburgo_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegar refresca ficha/HUD con datos exactos
-  return fetch('elburgo_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;if(NET)_evac45Split();return NET;}).catch(function(){NET=false;return false;}); }
+/* Las redes (zanjas, tierras, cableado) salen de <planta>_networks.json, no solo de El Burgo: esto
+   estaba clavado a 'elburgo' y por eso Fayón no podía tener zanjas aunque tuviera el fichero. Si la
+   planta no trae el suyo, el fetch da 404 y NET queda en false, que es lo que ya se manejaba. */
+function ensureNet(){ if(PLANT==='custom')return Promise.resolve(false); if(NET!==null)return Promise.resolve(NET);
+  fetch(PLANT+'_strings.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(j){STRDB=j;if(FICHA)updateFicha();if(genOn){computeInvStrings();updateGenHUD();updateGenRings();}}).catch(function(){});   // en paralelo; al llegarrefresca ficha/HUD con datos exactos
+  return fetch(PLANT+'_networks.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():false;}).then(function(j){NET=j||false;if(NET)_evac45Split();return NET;}).catch(function(){NET=false;return false;}); }
 function _evac45Split(){ if(!NET||!NET.layers||!NET.layers.trench_mt||NET.layers.evac45)return;   // v4.85: separa la EVACUACIÓN 45 kV A RED del MT interno CT→SET ("ese tramo ya es evacuación a 45kV a red"). RECLASIFICACIÓN GEOMÉTRICA declarada: el extractor fundió la capa LAMT del DWG dentro de trench_mt y los DWG ya no están en la sesión para re-extraer — seed = polilínea con extremo a >80 m de todo CT/SUB y ≥30% de vértices pegados al vallado (la LAMT bordea el recinto); se adhieren solo CRUZAMIENTOS cortos (≤6 vértices, <25 m) a <8 m de la ruta. La espina interna CT Norte→SUB (220 m por el pasillo central) queda en MT, y con ella el flujo
   var T=NET.layers.trench_mt,F=[],S=[[SUBPT[0],SUBPT[1]]];
   ((LAYOUT&&LAYOUT.fence)||[]).forEach(function(pl){for(var i=0;i+1<pl.length;i++)F.push([pl[i],pl[i+1]]);});
