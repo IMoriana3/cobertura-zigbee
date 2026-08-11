@@ -432,6 +432,7 @@ var PLANTS={
   sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:48, cod:24007},   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
   bagnarelli:{file:'bagnarelli_layout.json', title:'Bagnarelli 24030', angles:null, mods:21, cod:24030},   // 17 seguidores de UNA fila (filaZ 0) con modulo Risen de 1,303 m. El DWG ya viene en UTM 33N y sus 17 INSERT coinciden con el listado del cliente a 0,000 m
+  paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 var _tituloPlanta=function(){try{var t=(PLANTS[PLANT]&&PLANTS[PLANT].title)||PLANT;document.title='Cobertura 3D · '+t+' — terreno real';}catch(e){}};
