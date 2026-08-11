@@ -2602,6 +2602,22 @@ function buildBOS(){
   // bancada de hormigón (600 sobre zócalo 150) pintada RAL 6009 (verde abeto) con: celda MT 24 kV a un
   // extremo (RAL 7035), TRAFO 6,35 MVA con bancos de radiadores al aire en el centro, cuadro BT al otro
   // extremo, malla perimetral 7035 alrededor del trafo y cables BT rojos en arco trafo→cuadro.
+  /* CT levantado del POLÍGONO del layout (plantas que no son El Burgo). La planta y el giro son los
+     del plano; la ALTURA (2,60 m) y el zócalo (0,25 m) son DERIVADOS — el layout es 2D y no los
+     trae — así que esto es un prisma indicativo del envolvente, NO el equipo modelado pieza a
+     pieza como el skid de El Burgo. Si aparece el plano de detalle, se sustituye. */
+  function buildCTPoly(pl,cx,cn,y){
+    var sh=new THREE.Shape();
+    pl.forEach(function(p,i){ if(i===0)sh.moveTo(p[0]-cx,p[1]-cn); else sh.lineTo(p[0]-cx,p[1]-cn); });
+    sh.closePath();
+    var H=2.60,Z=0.25;
+    var body=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:H,bevelEnabled:false}),
+      new THREE.MeshStandardMaterial({color:0xd8dbd6,roughness:.72,metalness:.06}));   // hormigón prefabricado claro
+    body.rotateX(-Math.PI/2);body.position.set(cx,y+Z,-cn);body.castShadow=true;body.receiveShadow=true;bosGroup.add(body);
+    var zoc=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:Z,bevelEnabled:false}),
+      new THREE.MeshStandardMaterial({color:0x9aa0a0,roughness:.85,metalness:.04}));   // zócalo/bancada
+    zoc.rotateX(-Math.PI/2);zoc.position.set(cx,y,-cn);zoc.receiveShadow=true;bosGroup.add(zoc);
+  }
   function buildCTSkid(cx,cn,y){
     var g6009=new THREE.MeshStandardMaterial({color:0x2e3c31,roughness:.6,metalness:.35});   // RAL 6009
     var g7035=new THREE.MeshStandardMaterial({color:0xc5c9c4,roughness:.55,metalness:.25});  // RAL 7035
@@ -2763,12 +2779,21 @@ function buildBOS(){
   });
   // compound del DWG (identificado): CTs compactos IGUALES (Norte/Sur), subestación propia (distinta de la zona de oficinas) + etiquetas de salas
   var emuM=new THREE.MeshStandardMaterial({color:0x5d6b6f,roughness:.6,metalness:.3});
-  (PLANT!=='elburgo'?[]:                                                                  // SOLO El Burgo: son coordenadas de su DWG (ver la nota de CTMAIN)
-  [{x:-6.2,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Sur en coords DWG; CT Norte centrado en su vano real x[-20,7.6] (corrección del usuario: el rect. del DWG quedaba escorado al este)
+  (PLANT==='elburgo'                                                                      // El Burgo: coordenadas de SU DWG (ver la nota de CTMAIN); las demás plantas sacan su CT del layout
+  ?[{x:-6.2,n:22.01,lab:'CT Norte',ct:1},{x:9.92,n:-194.24,lab:'CT Sur',ct:1},          // CT Sur en coords DWG; CT Norte centrado en su vano real x[-20,7.6] (corrección del usuario: el rect. del DWG quedaba escorado al este)
    {x:-6.9,n:-198.5,lab:'Subestación',sub:1},                                            // subestación AL SUR de la sala de control (ya NO encima del CT Sur)
-   {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}]).forEach(function(b){
+   {x:-9.6,n:-191.3,lab:'Sala control'},{x:-9.6,n:-187.7,lab:'Sala autoconsumo'}]
+  /* Resto de plantas: el CT sale del POLÍGONO REAL de su layout, no del skid de El Burgo, que es un
+     modelo concreto de su plano de detalle (SPS-6350) y aquí sería inventarlo. Fayón, por ejemplo,
+     trae un rectángulo de 3,00 × 6,00 m girado ~34°. Se levanta ese polígono tal cual. */
+  :((LAYOUT&&LAYOUT.cts)||[]).map(function(pl,i){
+     var sx=0,sn=0;pl.forEach(function(p){sx+=p[0];sn+=p[1];});
+     var cx=sx/pl.length,cn=sn/pl.length,et=(LAYOUT.ctlab||[])[i];
+     return {x:cx,n:cn,lab:(et&&et.s)||'CT',ctpoly:pl};
+   })).forEach(function(b){
     if(!inClip(b.x,b.n))return;var y=localElevY(b.x,b.n);
-    if(b.ct){buildCTSkid(b.x,b.n,y);}   // CT = SKID SPS-6350 según plano de detalle BUR-SPS-6350-04 (no caseta): bancada + trafo de aletas + celda MT + cuadro BT + malla
+    if(b.ctpoly){buildCTPoly(b.ctpoly,b.x,b.n,y);}   // planta del plano; la ALTURA es derivada (el layout es 2D)
+    else if(b.ct){buildCTSkid(b.x,b.n,y);}   // CT = SKID SPS-6350 según plano de detalle BUR-SPS-6350-04 (no caseta): bancada + trafo de aletas + celda MT + cuadro BT + malla
     else if(b.sub){buildSubSkid(b.x,b.n,y);}   // subestación = STR-12000-EDE-52 (plano BUR-STR-12000-04): skid 8,92×4,65, trafo 8 MVA + envolvente de celdas
     var lb=makeLabel(b.lab,'poi');lb.position.set(b.x,y+(b.lo?6.6:b.sub?6.2:b.ct?5.7:4.4),-b.n);lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);});  // etiquetas de edificios (hito, por encima del tejado): se conmutan con "Etiquetas"
   // CCTV: SOLO la ubicación de cada cámara (sin alcances), poste + cámara en el vértice del abanico
