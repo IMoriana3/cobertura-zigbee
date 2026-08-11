@@ -764,7 +764,7 @@ function buildCava(){
     var pj=0;                                                 // mismo orden que postRel: fila W, fila E x cada apoyo
     for(var pf=0;pf<2;pf++)for(var pk=0;pk<half;pk++){
       var dz=(pk<zPk.length?zPk[pk]:0),pr=(t.postRel&&pj<t.postRel.length)?t.postRel[pj]:t.rel;pj++;
-      if(pk>=zPk.length||(t.medio&&!TC.zPT&&Math.abs(dz)>16))continue;   // hueco de reticula: sin poste
+      if(pk>=zPk.length)continue;   // hueco de reticula: sin poste
       var fr=Math.min(1,Math.abs(dz)/(hspan||1));             // viga medida en el pie: lineal centro->extremo (dz<0 = norte)
       var beam=mc.gnd+((dz<0?mc.gNn:mc.gS)-mc.gnd)*fr;
       var xp=t.gx+(pf?TC.filaZ:-TC.filaZ),np=-(t.gz+dz);
@@ -847,7 +847,20 @@ function statCotas(){
     +(ATIP?' · '+ATIP+' cotas descartadas (a >10 m del DEM)':'')
     +((CAVA&&CAVA.n)?' · suelo excavado bajo '+CAVA.n+' seguidores (la hinca solo crece hacia arriba)':'')+'</span>'+bt;
 }
-function zPfor(t){if(!TC||!TC.zPT)return TC?TC.zP:[];var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // retícula de soportes por tipo (círculos del bloque del Tierras.dwg); resto de plantas: la genérica
+function zPfor(t){
+  if(TC&&TC.zPT){var s=(t&&t.tp)||'';return /exterior/i.test(s)?TC.zPT.ext:/medio/i.test(s)?TC.zPT.med:TC.zPT.int;}   // El Burgo: retícula REAL por tipo (círculos del Tierras.dwg)
+  if(!TC)return [];
+  /* Seguidor ACORTADO (Ayora tiene 28/21/14 módulos; San José 32/16): su viga
+     mide mr veces la completa, así que sus postes van a la MISMA proporción.
+     Antes se usaba la retícula del completo y se escondían los de |z|>16: un
+     medio de 24 m quedaba sujeto por dos postes centrales y con las dos
+     punteras al aire — módulos sin estructura debajo. */
+  var mr=(t&&typeof t.mr==='number'&&t.mr>0&&t.mr<1)?t.mr:1;
+  if(mr>=1)return TC.zP;
+  TC._zpm=TC._zpm||{};var k=mr.toFixed(3);
+  if(!TC._zpm[k])TC._zpm[k]=TC.zP.map(function(v){return v*mr;});
+  return TC._zpm[k];
+}
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var mc=usaCotas(t)?t.mc:null,cl=0.8/vex;
   var by=(mc?mc.rel:(t.rel+((GEO==='levantamiento')?corrSuelo(t.gx,-t.gz):0)))*vex+(lift||0);   // rel es cota de SUELO (medida-HEJE con cotas): el render suma el poste encima, MISMA convencion que el DEM (si no, todo flota HEJE); sin cota propia se drapea al suelo CORREGIDO, no al DEM crudo (quedaba colgado por el residuo de los vecinos)  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
@@ -899,11 +912,11 @@ function layoutTrackers(){
   if(!imPost||!SEG)return;ROWX=null;/* el layout puede cambiar (arrastre en edicion): recalcula los ejes de fila */var fz=TC.filaZ,ph=TC.postH,half=TC.np/2;
   for(var i=0;i<TRK.length;i++){var t=TRK[i],Tw=trackerBase(t,0);computeKink(t);   // quiebre de cada mitad (rótula en el actuador), por fila
     var zP=zPfor(t);                                                               // retícula REAL por tipo (El Burgo) o genérica
-    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[kk])>16)){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
+    var minC=1e9,pj=0;for(var ff=0;ff<2;ff++){var fx0=ff?fz:-fz,kf0=t.kink[ff];for(var kk=0;kk<half;kk++){if(kk>=zP.length){pj++;continue;}_T.makeTranslation(fx0,ph,0);_MC.multiplyMatrices(Tw,_T);_RX.makeRotationX(zP[kk]<0?kf0.dN:kf0.dS);_MC.multiply(_RX);_T.makeTranslation(0,0,zP[kk]);_M2.multiplyMatrices(_MC,_T);var cc=_M2.elements[13]-(t.postRel?t.postRel[pj]:t.rel)*vex;if(cc<minC)minC=cc;pj++;}}
     var lift=usaCotas(t)?0:Math.max(0,1.2-minC);if(lift>0.01)Tw=trackerBase(t,lift);   // con cota MEDIDA no se corrige nada: subir el tubo para que no roce falsearia el dato   // sube el tubo lo justo para que el panel no se hunda; los postes variables lo compensan (no vuela)
     for(var f=0;f<2;f++){_T.makeTranslation(f?fz:-fz,ph,0);t.fb[f].multiplyMatrices(Tw,_T);}     // base de cada fila (sobre su tubo)
     var pi=0;for(var f=0;f<2;f++){var fx=f?fz:-fz,kf=t.kink[f];for(var k=0;k<half;k++){
-      if(k>=zP.length||(t.medio&&!TC.zPT&&Math.abs(zP[k])>16)){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
+      if(k>=zP.length){_M2.makeScale(0,0,0);imPost.setMatrixAt(i*TC.np+pi,_M2);imBearing.setMatrixAt(i*TC.np+pi,_M2);imSaddle.setMatrixAt(i*TC.np+pi,_M2);imVirola.setMatrixAt(i*TC.np+pi,_M2);pi++;continue;}   // hueco de la retícula (o "Medio" genérico): sin poste ni casquillo/horquilla
       _RX.makeRotationX(zP[k]<0?kf.dN:kf.dS);_MC.multiplyMatrices(t.fb[f],_RX);_T.makeTranslation(0,0,zP[k]);_M2.multiplyMatrices(_MC,_T);   // cúspide sobre la viga QUEBRADA: mitad N (z<0) con su pendiente, mitad S (z>0) con la suya (rótula en el actuador)
       var wx=_M2.elements[12],topY=_M2.elements[13],wz=_M2.elements[14],terrY=((t.postRel?t.postRel[pi]:t.rel)+((GEO==='levantamiento')?corrSuelo(wx,-wz):0))*vex,ejeY=topY,postTop=ejeY-0.253,len=Math.max(0.3,postTop-terrY);   // el pie sigue al suelo VISIBLE (DEM+residuo): postRel es DEM crudo y con cotas medidas el poste flotaba; la diferencia que queda ES la hinca   // _M2 cae en el EJE del tubo (el origen canónico del seguidor ES el eje; la viga es un Box centrado): antes se restaba 0,06 "de cúspide" y la viga quedaba DESCENTRADA (arriba) del hueco del tambor
       if(zP[k]>0)_Q.setFromAxisAngle(_UP,Math.PI);else _Q.identity();                                          // HUECO de la C al EXTERIOR: semieje sur girado 180° (la geometría base abre al norte); horquilla/tambor/virola son simétricos a ese giro, comparten _Q sin cambio visual
@@ -1214,7 +1227,7 @@ function updateSpin(angDeg){ if(!SEG||!SEGO)return;
       if(kf&&(kf.dN||kf.dS)){_RZ.makeRotationZ(kf.dN);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDN.multiplyMatrices(t.fb[f],_M);_RZ.makeRotationZ(kf.dS);_M.multiplyMatrices(SEGO,_RZ);_M.multiply(_R);_MDS.multiplyMatrices(t.fb[f],_M);}else{_MDN.copy(_MD);_MDS.copy(_MD);}   // QUEBRADO: mitad N gira Δθ_N y mitad S Δθ_S alrededor del eje Z canónico (→ eje E/W del mundo), rótula en el actuador (x=0)
       if(imBush){var _zB=zPfor(t),_hB=TC.np/2;                                                        // CASQUILLO interior: gira CON la viga (misma matriz basculada que el tubo), uno por poste, índice alineado con imBearing
         for(var kb=0;kb<_hB;kb++){var _ib=i*TC.np+f*_hB+kb;
-          if(kb>=_zB.length||(t.medio&&!TC.zPT&&Math.abs(_zB[kb])>16)){_SCT.makeScale(0,0,0);imBush.setMatrixAt(_ib,_SCT);continue;}
+          if(kb>=_zB.length){_SCT.makeScale(0,0,0);imBush.setMatrixAt(_ib,_SCT);continue;}
           _T.makeTranslation(-_zB[kb],0,0);_M2.multiplyMatrices(_zB[kb]<0?_MDN:_MDS,_T);imBush.setMatrixAt(_ib,_M2);}}   // canónico +X = −Z mundo → x_c = −zP; mitad N/S con su quiebre (mismo criterio que layoutTrackers)
       for(var si=0;si<SEG.length;si++){var s=SEG[si];if(!s.spin)continue;var _mrf=t.mrFull,L=(med&&!_mrf)?s.Lm:s.L,base=(i*2+f)*s.n;   // mrFull: el DWG da la razón REAL (Fayon 40/48=0,833). Con el layout 'medio' (0,504 fijo) los módulos salían a media viga y SOBRABA VIGA; se usa el layout COMPLETO escalado por mr, así módulos y viga acaban juntos
         if(s.antenna){if(f===0){var ax,ay,az;if(connCanon){_PV.copy(connCanon).applyMatrix4(_MD);ax=_PV.x;ay=_PV.y;az=_PV.z;}else{_M2.multiplyMatrices(_MD,s.L[0]);ax=_M2.elements[12];ay=_M2.elements[13];az=_M2.elements[14];}var hang=TC.antHang||0.5,tipH=TC.antTip||0.07;if(s.tip){_PV.set(ax,ay-hang+tipH/2,az);_Q.identity();_SC.set(1,tipH,1);_M2.compose(_PV,_Q,_SC);t.aTip=[ax,ay-hang,az];}else{var cabL=hang-tipH;_PV.set(ax,ay-cabL/2,az);_Q.identity();_SC.set(1,cabL,1);_M2.compose(_PV,_Q,_SC);}s.im.setMatrixAt(base,_M2);}else{_SCT.makeScale(0,0,0);s.im.setMatrixAt(base,_SCT);}continue;}  // antena: cuelga 50 cm vertical desde el conector; guarda la PUNTA (t.aTip) para los enlaces RF
