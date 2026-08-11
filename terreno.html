@@ -431,6 +431,7 @@ var PLANTS={
   ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025},
   sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:48, cod:24007},   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
+  bagnarelli:{file:'bagnarelli_layout.json', title:'Bagnarelli 24030', angles:null, mods:21, cod:24030},   // 17 seguidores de UNA fila (filaZ 0) con modulo Risen de 1,303 m. El DWG ya viene en UTM 33N y sus 17 INSERT coinciden con el listado del cliente a 0,000 m
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 var _tituloPlanta=function(){try{var t=(PLANTS[PLANT]&&PLANTS[PLANT].title)||PLANT;document.title='Cobertura 3D · '+t+' — terreno real';}catch(e){}};
@@ -605,8 +606,13 @@ function makePanelTex(){
 function buildTrackers(elevAt){
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
+  /* El seguidor canónico es el de El Burgo: BÍFILO (dos filas a ±filaZ) y módulo de 1,134 m. No
+     todas las plantas son así — Bagnarelli es de UNA fila con módulo Risen de 1,303 m — así que el
+     layout puede anular las dos cotas. Con filaZ:0 las dos filas coinciden y sale una sola. */
+  if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modW){Seguidor.DIMS.modW=LAYOUT.modW;Seguidor.DIMS.pitch=LAYOUT.modW+Seguidor.DIMS.gapMod;}
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
+  if(LAYOUT&&LAYOUT.filaZ!=null)D=Object.create(D),D.filaZ=LAYOUT.filaZ;            // planta de una sola fila: filaZ 0
   // v4.2: vidrio physical/clearcoat RETIRADO temporalmente (iba ligado al PMREM que ennegrecía la escena); se mantiene el vidrio estándar probado
   panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x232a33);mats.glass.emissiveIntensity=0.12;   // 0,12: con la textura nueva (media más clara) 0,32 lavaba TODA la planta en gris
   if(!CELLNRM)CELLNRM=makeCellNormal();mats.glass.normalMap=CELLNRM;mats.glass.normalScale=new THREE.Vector2(0.4,0.4);mats.glass.needsUpdate=true;     // células FV + microrrelieve (célula abombada/marco); emissiveMap → cara trasera bifacial
