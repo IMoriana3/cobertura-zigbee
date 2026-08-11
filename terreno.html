@@ -2693,10 +2693,8 @@ function buildBOS(){
      · usaba la CAJA ENVOLVENTE del polígono, así que un CT girado (el de Fayón es de 3,00 × 6,00 m
        a ~34°) salía como un cuadrado de 5,85 × 6,65 alineado con los ejes. Ahora se extruye el
        POLÍGONO REAL, con lo que la planta y el giro son los del plano;
-     · se apoyaba en localElevY (el DEM continuo) y el edificio se ve contra la malla RENDERIZADA:
-       por eso FLOTABA. Ahora se muestrea terrainMeshY en las esquinas, se nivela sobre la más alta
-       y los muros bajan hasta 0,40 m por debajo de la más baja, sin tope: enterrado no se ve, pero
-       flotando sí. Es el mismo motivo por el que la valla ya usa terrainMeshY;
+     · la cota se deja en localElevY del centro, como estaba. NO tocar esto sin poder probarlo
+       contra relieve real: el intento de anclarlo a terrainMeshY por esquinas lo dejo flotando;
      · la puerta iba siempre al sur. Ahora va al ESTE (petición del usuario): se elige el lado cuya
        normal saliente apunta más al este.
      La ALTURA (3,10 m) y la puerta (1,10 × 2,20 m) son DERIVADAS: el layout es 2D y no las trae. */
@@ -2707,11 +2705,14 @@ function buildBOS(){
     var w=x1-x0,dp=n1-n0;if(w<1.5||dp<1.5||w>80||dp>80)return;
     var cx=P.reduce(function(s,p){return s+p[0];},0)/P.length, cn=P.reduce(function(s,p){return s+p[1];},0)/P.length, h=3.1;
     if(cx>-6&&cx<22&&cn>-213&&cn<-201)return;if(!inClip(cx,cn))return;   // sin edificio de oficinas (recinto sur del DWG)
-    var ys=P.map(function(p){return terrainMeshY(p[0],p[1]);});
-    var yHi=Math.max.apply(null,ys),base=yHi,fald=(yHi-Math.min.apply(null,ys))+0.40;
+    /* La cota es la de SIEMPRE: localElevY en el centro. Se probo a muestrear terrainMeshY en las
+       cuatro esquinas y nivelar sobre la mas alta con faldon, y el CT acabo FLOTANDO en Fayon
+       (usuario, sobre relieve real de 87,9 m). Revertido: aqui solo cambian la FORMA y la PUERTA,
+       que es lo que se pidio; el anclaje vertical se deja como estaba antes de la #336. */
+    var base=localElevY(cx,cn),fald=0;
     var sh=new THREE.Shape();P.forEach(function(p,i){ if(i)sh.lineTo(p[0]-cx,p[1]-cn); else sh.moveTo(p[0]-cx,p[1]-cn); });sh.closePath();
-    var b=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:h+fald,bevelEnabled:false}),bldM);
-    b.rotateX(-Math.PI/2);b.position.set(cx,base-fald,-cn);b.castShadow=true;b.receiveShadow=true;bosGroup.add(b);   // muros
+    var b=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:h,bevelEnabled:false}),bldM);
+    b.rotateX(-Math.PI/2);b.position.set(cx,base,-cn);b.castShadow=true;b.receiveShadow=true;bosGroup.add(b);   // muros
     var k=1+0.5/Math.max(w,dp),shR=new THREE.Shape();                                                                // cubierta saliente: el mismo polígono, escalado
     P.forEach(function(p,i){var rx=(p[0]-cx)*k,rn=(p[1]-cn)*k; if(i)shR.lineTo(rx,rn); else shR.moveTo(rx,rn);});shR.closePath();
     var rf=new THREE.Mesh(new THREE.ExtrudeGeometry(shR,{depth:0.25,bevelEnabled:false}),roofM);
@@ -2978,10 +2979,11 @@ function buildGateways(){
     gwMasts.push(g);
   });
 }
-/* La NCU se apoya en la MALLA RENDERIZADA (terrainMeshY), no en el DEM continuo: son superficies
-   distintas y con relieve fuerte la diferencia entierra el armario o lo deja en el aire. Es el mismo
-   motivo por el que ya lo hacen la valla y el CT. */
-function positionGateways(){ if(!gwG||!ELEV)return; GWS.forEach(function(gw,i){var gx9=projX(gw.lon),gz9=projZ(gw.lat);gwMasts[i].position.set(gx9,terrainMeshY(gx9,-gz9),gz9);}); }
+/* Cota de la NCU: la de siempre, el DEM. Se probo a pasarla a terrainMeshY (la malla renderizada) y
+   NO se pudo verificar contra relieve real, asi que se revierte. Lo que SI se conserva es que
+   positionGateways() se llama tambien al mover la exageracion vertical: antes no, y la NCU se
+   quedaba a la cota del valor anterior del deslizador. */
+function positionGateways(){ if(!gwG||!ELEV)return; GWS.forEach(function(gw,i){gwMasts[i].position.set(projX(gw.lon),(ELEV(gw.lat,gw.lon)-baseElev)*vex,projZ(gw.lat));}); }
 function nearestNCU(gx,gz){var bi=0,bd=1e18;GWS.forEach(function(gw,i){var dx=gx-projX(gw.lon),dz=gz-projZ(gw.lat),dd=dx*dx+dz*dz;if(dd<bd){bd=dd;bi=i;}});return bi;}
 // altura de la CRESTA del panel (m sobre el suelo) a la inclinación actual: pivota sobre el tubo y sube media cuerda·sen(ángulo)
 function panelTopH(){ if(!TC.modH)return 0; var a=Math.abs(panelAngle(curMin)); return TC.postH+TC.off+(TC.modH/2)*Math.sin(a*DEG); }
