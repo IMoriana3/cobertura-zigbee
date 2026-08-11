@@ -1,0 +1,18 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>3D topográfico — fusionado en el visor de terreno</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{background:#0b0f14;color:#9bb0c6;font:14px/1.6 system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0}a{color:#5aa9ff}</style>
+<script>
+/* La escena as-built se fusiono con el visor de terreno: mismas cotas medidas,
+   mismo BT3D, pero con terreno real, sombra proyectada y la planta vestida.
+   Esta URL se conserva como redireccion para no romper enlaces. */
+(function(){
+  var q=new URLSearchParams(location.search);
+  var p=(q.get('planta')||'ayora').toLowerCase();
+  location.replace('terreno.html?planta='+encodeURIComponent(p)+'&cotas=levantamiento&bt=cons');
+})();
+</script></head><body>
+<p>Este visor se fusionó con la escena de terreno.
+<a id="d" href="terreno.html?planta=ayora&cotas=levantamiento&bt=cons">Continuar</a></p>
+<script>document.getElementById('d').href='terreno.html?planta='+encodeURIComponent((new URLSearchParams(location.search).get('planta')||'ayora').toLowerCase())+'&cotas=levantamiento&bt=cons';</script>
+</body></html>

@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapas Modbus — NCU · TCU · HSU</title>
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#101722; --card:#121a26; --line:#1e2a3a; --line2:#2a3a50;
+    --tx:#eaf4ff; --tx2:#9bb0c6; --muted:#5c7189; --accent:#5aa9ff; --ok:#36d399;
+    --warn:#fbbd23; --err:#f87272; --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
+  a{color:var(--accent);text-decoration:none}
+  header{padding:26px 22px 10px;max-width:1100px;margin:0 auto}
+  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
+  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px}
+  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 22px}
+
+  /* pestañas de DISPOSITIVO */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
+  .tab{cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--tx2);
+       border-radius:9px;padding:9px 18px;font:inherit;font-size:.92rem;transition:.15s}
+  .tab .n{display:block;font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .tab.on{border-color:var(--accent);color:var(--tx);background:#14213a}
+  .tab.on .n{color:var(--accent)}
+  .devnota{font-size:.8rem;color:var(--tx2);margin:2px 0 12px;max-width:900px}
+  .devnota b{color:var(--warn);font-weight:600}
+
+  /* barra: selector unidad/variante + buscador */
+  .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .bar label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .bar input[type=number]{width:86px;background:var(--bg2);border:1px solid var(--line2);color:var(--tx);
+       border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:.9rem}
+  .bar select{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+       padding:7px 10px;font:inherit;font-size:.84rem}
+  .bar input[type=search]{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--line);color:var(--tx);
+       border-radius:8px;padding:7px 12px;font:inherit;font-size:.86rem}
+  .bar input:focus,.bar select:focus{outline:none;border-color:var(--accent)}
+  .pill{font-family:var(--mono);font-size:.7rem;color:var(--tx2);background:var(--bg2);border:1px solid var(--line);
+        border-radius:99px;padding:4px 12px}
+  .pill b{color:var(--ok);font-weight:600}
+
+  /* secciones dentro del dispositivo */
+  .sec{margin:20px 0 8px}
+  .sec h2{margin:0 0 2px;font-size:.98rem}
+  .sec .sn{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+  .rw{font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;border-radius:6px;padding:2px 8px;margin-left:8px;vertical-align:2px}
+  .rw.ro{border:1px solid var(--line2);color:var(--tx2)}
+  .rw.w{border:1px solid #7a5c14;color:var(--warn)}
+
+  /* tabla */
+  .tblwrap{overflow-x:auto;border-radius:12px;margin-top:8px}
+  .tbl{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tbl th{font-family:var(--mono);font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+          text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .tbl td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl tr.reg{cursor:pointer;transition:background .12s}
+  .tbl tr.reg:hover{background:#16202e}
+  .tbl tr.reg.sel{background:#14213a}
+  .addr{font-family:var(--mono);color:var(--accent);white-space:nowrap}
+  .addr small{color:var(--muted);margin-left:6px}
+  .nm{font-family:var(--mono);font-size:.88rem}
+  .ty{font-family:var(--mono);font-size:.75rem;color:var(--warn);white-space:nowrap}
+  .un{font-size:.8rem;color:var(--tx2);white-space:nowrap}
+  .bits{display:flex;flex-wrap:wrap;gap:4px}
+  .bit{font-family:var(--mono);font-size:.66rem;border:1px solid var(--line2);border-radius:6px;
+       padding:2px 7px;color:var(--tx2);white-space:nowrap}
+  .bit i{font-style:normal;color:var(--muted)}
+
+  /* decodificador */
+  .dec{background:#0e1520;border:1px solid var(--line2);border-left:3px solid var(--accent);
+       border-radius:0 0 10px 10px;padding:14px 16px;margin:-1px 0 0}
+  .dec h3{margin:0 0 10px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .dec .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .dec input{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+             padding:7px 10px;font-family:var(--mono);font-size:.92rem;width:130px}
+  .dec input:focus{outline:none;border-color:var(--accent)}
+  .dec .out{font-family:var(--mono);font-size:.92rem}
+  .dec .out b{color:var(--ok);font-weight:600}
+  .dec table{border-collapse:collapse;margin-top:4px}
+  .dec td{padding:3px 12px 3px 0;font-family:var(--mono);font-size:.78rem;color:var(--tx2)}
+  .dec td.v1{color:var(--ok);font-weight:600}
+  .dec td.v0{color:var(--muted)}
+  .hint{font-size:.74rem;color:var(--muted);margin-top:8px}
+
+  /* simulador de bits: 16 celdas clicables */
+  .bsim{display:flex;gap:3px;flex-wrap:wrap;margin:10px 0 2px}
+  .bcell{cursor:pointer;width:30px;text-align:center;border:1px solid var(--line2);border-radius:6px;
+         padding:3px 0 4px;user-select:none;transition:.1s}
+  .bcell .bi{display:block;font-family:var(--mono);font-size:.56rem;color:var(--muted)}
+  .bcell .bv{font-family:var(--mono);font-size:.9rem;color:var(--muted)}
+  .bcell.on{border-color:var(--ok);background:#12291f}
+  .bcell.on .bv{color:var(--ok);font-weight:700}
+  .bcell.campo{border-bottom:2px solid var(--accent)}
+  .bases{font-family:var(--mono);font-size:.78rem;color:var(--tx2);margin-top:6px}
+  .bases b{color:var(--tx)}
+
+  /* localizador de direcciones */
+  .locbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+  .locbox .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .locbox label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .locbox input{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;
+                padding:7px 12px;font-family:var(--mono);font-size:.9rem;width:230px}
+  .locbox input:focus{outline:none;border-color:var(--accent)}
+  .locres{font-size:.86rem;margin-top:6px}
+  .locres b{color:var(--ok)}
+  .locres .addr{margin-right:4px}
+
+  /* registro de versiones */
+  .estado{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;border-radius:6px;padding:2px 8px;white-space:nowrap}
+  .estado.campo2{border:1px solid #1f5c46;color:var(--ok)}
+  .estado.doc{border:1px solid var(--line2);color:var(--tx2)}
+  .estado.pend{border:1px solid #7a5c14;color:var(--warn)}
+  .estado.gemelo{border:1px solid #2a4a7a;color:var(--accent)}
+  .notas{font-size:.78rem;color:var(--tx2);max-width:420px}
+  .fabsel{display:flex;gap:8px;align-items:center;margin:0 0 4px}
+  .fabsel label{font-family:var(--mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .fabsel select{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:7px 12px;font:inherit;font-size:.88rem}
+  .fabaviso{background:#241d0c;border:1px solid #7a5c14;border-radius:10px;padding:12px 16px;color:var(--warn);font-size:.86rem;margin:10px 0}
+
+  /* tramas */
+  .trama{font-family:var(--mono);font-size:.8rem;margin-top:4px;word-break:break-all}
+  .trama b{color:var(--warn);font-weight:600}
+  .trama .seg{color:var(--tx2)}
+  .trama .crc{color:var(--ok)}
+  /* diff */
+  .diffsel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:22px 0 10px}
+  .dif-a{color:var(--accent)} .dif-b{color:var(--warn)}
+  /* utilidades */
+  .ugrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  .ucard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .ucard h3{margin:0 0 4px;font-size:.95rem}
+  .ucard .us{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-bottom:12px}
+  .ucard label{display:block;font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:8px 0 3px}
+  .ucard input{background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:.9rem;width:110px}
+  .ucard input:focus{outline:none;border-color:var(--accent)}
+  .ucard .res{margin-top:12px;font-size:.86rem}
+  .ucard .res b{color:var(--ok)}
+  .ucard .res .malo{color:var(--err);font-weight:600}
+  .ucard button{cursor:pointer;background:#14213a;border:1px solid var(--accent);color:var(--tx);border-radius:8px;padding:8px 14px;font:inherit;font-size:.85rem;margin-top:10px}
+  .ucard button:hover{background:#1a2a48}
+
+  footer{max-width:1100px;margin:26px auto 0;padding:14px 22px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:.78rem}
+  footer .dl a{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line2);border-radius:7px;
+               padding:3px 10px;margin-right:8px;display:inline-block;margin-top:4px}
+  @media(max-width:640px){ .tab{padding:8px 12px} header h1{font-size:1.12rem} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mapas Modbus — NCU · TCU · HSU</h1>
+  <div class="sub">Registro de mapas Modbus por fabricante, dispositivo y versión de firmware. Pincha cualquier
+  registro para decodificar un valor crudo en vivo; la pestaña «Versiones» dice qué mapa aplica a qué planta.</div>
+  <div class="src">NCU: NCU_Modbus_Map_R7.xlsx (la misma tabla del colector SCADA) · TCU: firmware v3 (gemelo digital) ·
+  HSU: HSU_Modbus_Map_R23.xlsx · <a href="index.html">← cobertura</a></div>
+</header>
+
+<div class="wrap">
+  <div class="fabsel"><label>Fabricante</label>
+    <select id="fab">
+      <option value="sunner">Sunner</option>
+      <option value="p4q">P4Q — sin documento aún</option>
+      <option value="trackco">Track'n'Co — sin documento aún</option>
+    </select></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="devnota" id="devnota"></div>
+  <div class="bar">
+    <span id="idsel" style="display:none"><label id="idlab">Nº TCU</label>
+      <input type="number" id="devid" min="1" max="200" value="1"></span>
+    <span id="varsel" style="display:none"><label>firmware</label>
+      <select id="fwvar"><option value="v3">v3 (mapa 3, 0,01°/LSB)</option>
+      <option value="legacy">El Burgo legacy (mapa 1, 0,1°/LSB)</option></select></span>
+    <input type="search" id="buscar" placeholder="Filtrar: nombre, dirección, bit… (p. ej. 30513, soc, wind, setpoint)">
+    <span class="pill" id="resumen"></span>
+  </div>
+  <div class="locbox" id="locbox" style="display:none">
+    <div class="row"><label>Localizador</label>
+      <input id="loc" placeholder="TCU 125 · HSU 3 · o una dirección: 33241">
+      <span style="font-size:.74rem;color:var(--muted)">¿Qué registros tiene una unidad? ¿De quién es una dirección suelta?</span></div>
+    <div class="locres" id="locres"></div>
+  </div>
+  <div id="cuerpo"></div>
+</div>
+
+<footer>
+  Direcciones en numeración de documentación (3xxxx = registro de entrada FC04, 4xxxx = holding FC03,
+  1xxxx = entrada discreta FC02, coils FC01). En los bloques por unidad de la NCU: absoluta = base + (id−1)·stride + offset.
+  <div class="dl">Configuración de pendientes por TCU (BT3D, del levantamiento):
+    <a href="config_tcu_sunner_ayora.csv" download>⬇ Ayora (754)</a>
+    <a href="config_tcu_sunner_sanjose.csv" download>⬇ San José (2.186)</a>
+  </div>
+</footer>
+
+<script>
+'use strict';
+/* =================================================================
+   TRES MAPAS, uno por dispositivo.
+   NCU  : espejo 1:1 de scada/config/modbus_map.yml (R7). Absoluta en
+          bloques por unidad = base + (id-1)*stride + offset.
+   TCU  : mapa PROPIO del dispositivo (firmware v3), el que implementa
+          el gemelo digital. Direccion doc + offset de cable 0-based.
+          Variante elburgo_legacy: angulos y setpoint en 0,1 en vez de 0,01.
+   HSU  : la HSU no tiene documento de mapa propio en el proyecto; se
+          publica A TRAVES de la NCU (bloque basico 30200 y ext 28000).
+   ================================================================= */
+
+var ALARMAS={
+ alarms1:{2:'out_of_range',4:'stop_button',7:'default_config',8:'zigbee_fail',11:'batt_limited (SoC < L2)',12:'batt_not_enough (SoC < L3)',13:'batt_low (SoC < L1)',14:'batt_critical (SoC < 10%)',15:'test_fw'},
+ alarms2:{2:'time_never_set',4:'motor_overcurrent_hw',5:'motor_overcurrent_sw',8:'axis_blocked',14:'axis_low_speed'}};
+
+/* filas: [addrDoc|offset, nombre, tipo, unidad/conversion, bits|enum|alarma] */
+var DEV={
+ ncu:{tab:'NCU',eti:'controlador de red',max:0,
+  nota:'El servidor Modbus de la planta: sus registros propios más los bloques donde republica las TCU y las HSU que gestiona. Solo lectura; el rango de comandos 40000+ se excluye a propósito.',
+  secs:[
+   {t:'Registros propios',sn:'direcciones absolutas · una NCU por planta',rw:'ro',f:[
+     [30002,'hsu_global','u16','',{alarm_any_wind:[1,1],wind_highest_level:[2,4],alarm_any_snow:[5,5],alarm_any_gust:[6,6],global_ws_fail:[7,7],global_ss_fail:[8,8]}],
+     [30100,'digital_input','u16','',{battery_low:[0,0],ups_power_fault:[1,1],stop_button:[13,13]}],
+     [30101,'main_status','u16','',{alarm_battery_low:[0,0],gw1_alarm:[4,4],gw2_alarm:[5,5]}],
+     [30104,'date_time','u32','epoch']]},
+   {t:'Bloque TCU (republicado)',sn:'base 30500 · 22 registros/TCU · el R7 dimensiona el bloque para 200 TCU · lastComm 29500+(id−1)·2',rw:'ro',base:30500,stride:22,f:[
+     [1,'msr','u16','',{bt_active:[0,0],sleep_state:[1,2],day_time:[7,7],main_state:[8,9],safe_position:[13,15]}],
+     [2,'alarms1','u16','','ALARMS1'],
+     [3,'alarms2','u16','','ALARMS2'],
+     [4,'flags_a','u16','',{west_limit:[0,0],east_limit:[1,1],motor_locked:[11,11],system_ok:[15,15]}],
+     [5,'panel_voltage','u16','mV'],
+     [6,'tilt_angle','f32','rad → °'],
+     [8,'motor_current','u16','mA'],
+     [9,'motor_peak','u16','mA'],
+     [10,'target_angle','f32','rad → °'],
+     [12,'psu_current','s16','mA'],
+     [13,'soc','u8_low','%'],
+     [16,'battery_voltage','u16','mV'],
+     [18,'battery_current','s16','mA'],
+     [19,'temp_pcb','u16','K×10 → °C'],
+     [20,'temp_battery','u16','K×10 → °C'],
+     [21,'soh','u8_low','%']]},
+   {t:'Bloque HSU básico (republicado)',sn:'base 30200 · 10 registros/HSU · hasta 10 · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
+     [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
+     [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
+     [3,'wind_speed','f32','m/s'],
+     [5,'wind_direction','f32','°'],
+     [7,'snow_level','f32','m']]},
+   {t:'Bloque HSU extendido (republicado)',sn:'base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
+     [4,'wind_speed','f32','m/s'],
+     [6,'wind_direction','f32','°'],
+     [8,'snow_level','f32','m'],
+     [16,'battery_voltage','u16','mV'],
+     [21,'ghi','s32','W/m²×100 → W/m²'],
+     [23,'poa_tracking','s32','W/m²×100 → W/m²'],
+     [25,'poa_diffuse','s32','W/m²×100 → W/m²']]},
+   {t:'Bits de alarma de TCU',sn:'alarms1 / alarms2 del bloque TCU',rw:'ro',alarmas:true}]},
+
+ tcu:{tab:'TCU',eti:'unidad de seguidor',max:0,fw:true,
+  nota:'El mapa PROPIO del dispositivo (firmware v3), tal y como lo implementa el gemelo digital: es el contrato al hablar directamente con una TCU. Incluye los registros de <b>escritura</b> (setpoint, modo y coils de mando) — cuidado en planta. La variante legacy de El Burgo (mapa 1) da ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado.',
+  secs:[
+   {t:'Identidad y posición',sn:'registros de entrada (FC04) · offset de cable 0-based entre paréntesis',rw:'ro',f:[
+     [30001,'fw_version','u16','',null,1],
+     [30002,'map_version','u16','',null,1],
+     [30003,'tracker_id','u32','',null,1],
+     [30005,'modbus_addr','u16','',null,1],
+     [30010,'angle_filt','s16','×0,01 → °',null,0.01,'FW'],
+     [30011,'angle_raw','s16','×0,01 → °',null,0.01,'FW'],
+     [30012,'incl_temp','s16','×0,1 → °C',null,0.1],
+     [30013,'sensor_valid','u16','0 = ok, >0 avería',null,1]]},
+   {t:'Motor',sn:'registros de entrada (FC04)',rw:'ro',f:[
+     [30020,'motor_current','s16','×0,01 → A',null,0.01],
+     [30021,'motor_velocity','s16','% con signo',null,1],
+     [30022,'motor_state','u16','',{'0':'parado','1':'girando CW','2':'girando CCW','3':'CALADO (stall)'},1,'ENUM'],
+     [30023,'move_count','u32','movimientos',null,1]]},
+   {t:'Batería y fotovoltaica',sn:'registros de entrada (FC04)',rw:'ro',f:[
+     [30030,'batt_voltage','u16','mV',null,1],
+     [30031,'batt_current','s16','×0,01 → A (+carga/−descarga)',null,0.01],
+     [30032,'soc','u16','×0,1 → %',null,0.1],
+     [30033,'batt_temp','s16','×0,1 → °C',null,0.1],
+     [30034,'pv_voltage','u16','mV',null,1],
+     [30035,'pv_current','u16','×0,01 → A',null,0.01],
+     [30036,'charge_state','u16','',{'0':'reposo','1':'cargando','2':'llena','3':'fallo'},1,'ENUM']]},
+   {t:'Palabra de fallo',sn:'registro de entrada 30040 (bitfield)',rw:'ro',f:[
+     [30040,'fault_word','u16','',{estop:[0,0],motor_stall:[1,1],batt_low_uv:[2,2],motor_overcurrent:[4,4],limit_max_este:[6,6],limit_min_oeste:[7,7]}]]},
+   {t:'Consigna y configuración',sn:'holding (FC03) — LECTURA/ESCRITURA',rw:'w',f:[
+     [40001,'setpoint','s16','×0,01 → ° objetivo',null,0.01,'FW'],
+     [40002,'mode','u16','',{'0':'manual/remoto','1':'auto','2':'stow','3':'limpieza'},1,'ENUM'],
+     [40003,'deadband','u16','×0,01 → °',null,0.01],
+     [40004,'vmax','u16','×0,01 → °/s',null,0.01],
+     [40005,'ramp','u16','',null,1]]},
+   {t:'Coils de mando',sn:'FC01/FC05 — ESCRITURA: mueven el seguidor',rw:'w',f:[
+     [1,'cmd_goto','coil','ir a consigna'],
+     [2,'cmd_stow','coil','a posición segura'],
+     [3,'cmd_reset','coil','rearme de fallos'],
+     [4,'cmd_jog_cw','coil','impulso CW'],
+     [5,'cmd_jog_ccw','coil','impulso CCW'],
+     [6,'cmd_stop','coil','parada']]},
+   {t:'Entradas discretas',sn:'FC02 — solo lectura',rw:'ro',f:[
+     [10001,'di_estop','di','seta de emergencia'],
+     [10002,'di_limit_pos','di','final de carrera +'],
+     [10003,'di_limit_neg','di','final de carrera −'],
+     [10004,'di_stow_active','di','stow activo'],
+     [10005,'di_comms','di','comunicaciones ok']]}]},
+
+ hsu:{tab:'HSU',eti:'estación meteo',max:10,idlab:'Nº HSU',
+  nota:'El mapa <b>propio del dispositivo</b> (HSU_Modbus_Map_R23.xlsx): identidad, estado, medidas, comandos, configuración y calibración, con la descripción de cada registro al pasar el ratón. Al final, los dos bloques donde la NCU lo republica (con el selector de unidad). Las secciones de ESCRITURA cambian la estación: cuidado en planta.',
+  secs:[
+  {t:'Identidad, estado y medidas',sn:'registros de entrada — producto, MSR, alarmas, viento, nieve, batería',rw:'ro',f:[
+   [30000,'ProductId','u16','',{SoftwareId:[8,15]},null,null,'Group(16): Product identifier','R'],
+   [30001,'MSRLow','u8_low','',{WindLevel:[0,2],MSRHigh:[8,15],WindDirectionState:[12,15]},null,null,'Group(8): Main Status Register (low byte)','R'],
+   [30002,'Alarms1','u16','',{AlarmWindSensor:[0,0],AlarmSnowSensor:[1,1],AlarmPiraSensor:[2,2],AlarmTempSensor:[3,3],AlarmBatDisconnected:[4,4],AlarmComHailSensor:[5,5],AlarmSnow:[6,6],AlarmRain:[7,7],AlarmWindMidSafePos:[9,9],AlarmGustyWind:[10,10],AlarmWindMid2SafePos:[12,12],AlarmWindMid3SafePos:[13,13],AlarmComDualIrraSensor:[14,14],AlarmComPluvioSensor:[15,15]},null,null,'Group(16): Alarms1','R'],
+   [30003,'WindSpeed_mps','f32','m/s',null,null,null,'Wind speed','R'],
+   [30005,'WindDir_deg','f32','degrees',null,null,null,'Wind direction','R'],
+   [30007,'SnowLevel_m','f32','meters',null,null,null,'Measured snow level value (or water level in case of HasFloodSensor active)','R'],
+   [30009,'RainGaugeLastMinute_mmh','u16','mm/h',null,null,null,'Requirement: 3S-RG sensor connected and Has3SRGSensor active','R'],
+   [30010,'ExternalTemperature_Kx10','u16','Kelvin x 10',null,null,null,'External Temperature Measurement. In Kx10 (0.1K resolution). Requirement: RK330-01 sensor ','R'],
+   [30011,'ExternalRHx10','u16','% x 10',null,null,null,'External Relative Humidity Measurement. In %x10 (0.1% resolution). Requirement: 3S-RH&AT s','R'],
+   [30012,'Irradiance_Wm2x100','s32','Wm2x100',null,null,null,'','R'],
+   [30014,'?','u16','',null,null,null,'Not used','R'],
+   [30015,'?','u16','',null,null,null,'Not used','R'],
+   [30016,'ZBMacAddressLow','u32','',null,null,null,'Zigbee module lowest 32 bits of the 64 bit Zigbee MAC address','R'],
+   [30018,'ZBMacAddressHigh','u32','',null,null,null,'Zigbee module highest 32 bits of the 64 bit Zigbee MAC address','R'],
+   [30020,'?','u16','',null,null,null,'Not used','R'],
+   [30021,'Lithium primary battery Voltage','u16','mV',null,null,null,'Lithium primary battery Voltage','R'],
+   [30022,'WindSpeed_mps_RAW','f32','m/s',null,null,null,'Instantaneous Wind speed sample','R'],
+   [30024,'WindDir_deg_RAW','f32','degrees',null,null,null,'Instantaneous Wind direction sample','R'],
+   [30026,'TemperatureMeasurement_K','u16','Kelvin degrees',null,null,null,'Internal Temperature Measurement','R'],
+   [30027,'VpowMeasurement_mV','u16','mV',null,null,null,'Internal battery voltage measurement','R'],
+   [30028,'VccMeasurement_mV','u16','mV',null,null,null,'PV panel or external power supply voltage measurement','R'],
+   [30029,'?','u16','',null,null,null,'Not used','R'],
+   [30030,'?','u16','',null,null,null,'Not used','R'],
+   [30031,'SnowMeasuredDistance_mm','u16','mm',null,null,null,'Direct measured distance of snow sensor','R'],
+   [30032,'SnowTempCorrection_mm','s16','mm',null,null,null,'Distance correction in mm of snow distance sensor in case of Campbell sensor and HasTempSe','R'],
+   [30033,'DateFirstLithiumDischarge','u16','',{FirstLithiumYear:[9,14],FirstLithiumMonth:[5,8],FirstLithiumDay:[0,4]},null,null,'Date of first discharge of lithium primary battery','R'],
+   [30034,'DateLastLithiumDischarge','u16','',{LastLithiumYear:[9,14],LastLithiumMonth:[5,8],LastLithiumDay:[0,4]},null,null,'Date of last discharge of lithium primary battery','R'],
+   [30035,'PrecipitationTypeRK400','u16','Type',null,null,null,'Requirement: RK400-13 sensor connected and HasRK400Sensor active','R'],
+   [30036,'RainfallRK400_mmh','f32','mm/h',null,null,null,'Requirement: RK400-13 sensor connected and HasRK400Sensor active','R'],
+   [30038,'CompIrradiance1_Wm2','u16','W/m2',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30039,'CompIrradiance2_Wm2','u16','W/m2',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30040,'InternalTemp1_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30041,'InternalTemp2_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30042,'ModuleTemp1_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R'],
+   [30043,'ModuleTemp2_Cx10','s16','ºC',null,null,null,'Requirement: 3S-2IS sensor connected and Has3S2ISSensor active','R']]},
+  {t:'Bloque 31000',sn:'',rw:'ro',f:[
+   [31000,'WindDirectionPrev','u16','degrees',null,null,null,'Prevailing wind direction during minute 0 (00:00h) of day especified in DayDataRequest','R'],
+   [31001,'WindSpeedAvg','u8_low','km/h',{WindSpeedMax:[8,15]},null,null,'Average value of wind speed during minute 0 (00:00h) of day specified in DayDataRequest','R'],
+   [31002,'SnowLevelMax','u16','cm',null,null,null,'Maximum snow level value during minute 0 (00:00h) of day specified in DayDataRequest','R'],
+   [31003,'IrradianceAvg','u16','W/m2*10',null,null,null,'Average value of irradiance during minute 0 (00:00h) of day specified in DayDataRequest','R']]},
+  {t:'Bloque 36760',sn:'',rw:'ro',f:[
+   [36760,'WindDirectionPrev','u16','degrees',null,null,null,'Prevailing wind direction during minute 1440 (23:59h) of day especified in DayDataRequest','R'],
+   [36761,'WindSpeedAvg','u8_low','km/h',{WindSpeedMax:[8,15]},null,null,'Average value of wind speed during minute 1440 (23:59h) of day specified in DayDataRequest','R'],
+   [36762,'SnowLevelMax','u16','cm',null,null,null,'Maximum snow level value during minute 1440 (23:59h) of day specified in DayDataRequest','R'],
+   [36763,'IrradianceAvg','u16','W/m2*10',null,null,null,'Average value of irradiance during minute 1440 (23:59h) of day specified in DayDataRequest','RW']]},
+  {t:'Comandos',sn:'holding de mando — ESCRITURA',rw:'w',f:[
+   [40000,'?','u16','',null,null,null,'Not used','RW'],
+   [40001,'Second','u16','seconds',null,null,null,'UTC Time. Seconds','RW'],
+   [40002,'Minute','u16','minutes',null,null,null,'UTC Time. Minute','RW'],
+   [40003,'Hour','u16','hours',null,null,null,'UTC Time. Hour','RW'],
+   [40004,'Day','u16','day',null,null,null,'UTC Time. Day','RW'],
+   [40005,'Month','u16','month',null,null,null,'UTC Time. Month','RW'],
+   [40006,'Year','u16','year',null,null,null,'UTC Time. Year','RW'],
+   [40007,'ExtendedControl','u16','',{CalibrateVane:[2,2],CalibrateSnowSensor:[3,3],SaveDataToNVM:[15,15]},null,null,'Group(16): Extended control register','RW'],
+   [40008,'SnowSensorHeight_cm','u16','centimeters',null,null,null,'Height at which snow sensor is installed','RW']]},
+  {t:'Configuración',sn:'holding RW — umbrales, sensores, comunicaciones',rw:'w',f:[
+   [41002,'ModbusConfig1','u16','',{SlaveAddress1:[0,7]},null,null,'Modbus Config.','RW'],
+   [41003,'?','u16','',null,null,null,'Not used','RW'],
+   [41004,'ModbusConfig2','u16','',{SlaveAddress2:[0,7]},null,null,'Modbus Config. (Exactly the same functionality as register 40002, duplicated register)','RW'],
+   [41005,'?','u16','',null,null,null,'Not used','RW'],
+   [41006,'?','u16','',null,null,null,'Not used','RW'],
+   [41007,'?','u16','',null,null,null,'Not used','RW'],
+   [41008,'Config','u16','',{Has3SRGSensor:[0,0],Has3SRHATSensor:[1,1],Has3STPSensor:[2,2],HasRK400Sensor:[3,3],HasRainSensor:[4,4],HasSnowSensor:[5,5],HasSonicAnemoSensor:[6,6],HasPiraSensor:[7,7],HasFloodSensor:[8,8],HasTempSensor:[9,9],Has3S2ISSensor:[10,10]},null,null,'Weather station configuration register','RW'],
+   [41009,'?','u32','',null,null,null,'Not used','RW'],
+   [41011,'WindSpeedLow_mps','f32','m/s',null,null,null,'Wind speed threshold for alarm deactivation','RW'],
+   [41013,'WindSpeedMid_mps','f32','m/s',null,null,null,'Wind speed threshold for alarm activation','RW'],
+   [41015,'?','f32','',null,null,null,'Not used','RW'],
+   [41017,'WindLowTime_s','u16','seconds',null,null,null,'Time for wind alarm deactivation if WindSpeed < WindSpeedLow_mps for this time, alarm will','RW'],
+   [41018,'WindMidTime_s','u16','seconds',null,null,null,'Time for wind alarm activation if WindSpeed > WindSpeedMid_mps for this time, alarm will b','RW'],
+   [41019,'WindHighTime_s','u16','',null,null,null,'Not used','RW'],
+   [41020,'WindVaneOffset_deg','f32','degrees',null,null,null,'Offset angle for vane installation. This value is added to the sensor output to compensate','RW'],
+   [41022,'WindSection1_deg','f32','degrees',null,null,null,'Wind Direction Section 1 limit','RW'],
+   [41024,'WindSection2_deg','f32','degrees',null,null,null,'Wind Direction Section 2 limit','RW'],
+   [41026,'WindSection3_deg','f32','degrees',null,null,null,'Wind Direction Section 3 limit','RW'],
+   [41028,'WindSection4_deg','f32','degrees',null,null,null,'Wind Direction Section 4 limit','RW'],
+   [41030,'WindSection5_deg','f32','degrees',null,null,null,'Wind Direction Section 5 limit','RW'],
+   [41032,'WindSection6_deg','f32','degrees',null,null,null,'Wind Direction Section 6 limit','RW'],
+   [41034,'WindSection7_deg','f32','degrees',null,null,null,'Wind Direction Section 7 limit','RW'],
+   [41036,'WindSection8_deg','f32','degrees',null,null,null,'Wind Direction Section 8 limit','RW'],
+   [41038,'WindSection9_deg','f32','degrees',null,null,null,'Wind Direction Section 9 limit','RW'],
+   [41040,'WindSection10_deg','f32','degrees',null,null,null,'Wind Direction Section 10 limit','RW'],
+   [41042,'WindSection11_deg','f32','degrees',null,null,null,'Wind Direction Section 11 limit','RW'],
+   [41044,'WindSection12_deg','f32','degrees',null,null,null,'Wind Direction Section 12 limit','RW'],
+   [41046,'WindSection13_deg','f32','degrees',null,null,null,'Wind Direction Section 13 limit','RW'],
+   [41048,'WindSection14_deg','f32','degrees',null,null,null,'Wind Direction Section 14 limit','RW'],
+   [41050,'WindSection15_deg','f32','degrees',null,null,null,'Wind Direction Section 15 limit','RW'],
+   [41052,'WindSection16_deg','f32','degrees',null,null,null,'Wind Direction Section 16 limit','RW'],
+   [41054,'SnowLevelThreshold_m','f32','meters',null,null,null,'Snow level threshold for alarm activation (or water level in case of HasFloodSensor active','RW'],
+   [41056,'SnowAlarmMaxTemperature','u8_low','celsius',null,null,null,'Maximum external temperature allowed to activate snow alarm. External temperature sensor r','RW'],
+   [41057,'ConfigGustyWind','u16','',{GustyWindowTime_s:[0,7],GustyWindNumber:[8,11],GustMinimumDuration_s:[12,15]},null,null,'','RW'],
+   [41058,'WindSpeedGust_mps','f32','m/s',null,null,null,'Wind speed threshold level for wind gust detection','RW'],
+   [41059,'?','u16','',null,null,null,'','RW'],
+   [41060,'?','u16','',null,null,null,'Not used','RW'],
+   [41061,'Gateway_NCU','u16','',{NCU:[0,7],Gateway:[8,15]},null,null,'NCU & Gateway connected to. Note: does not affect internal HSU operation. User editable','RW'],
+   [41062,'ZBPanIdLow','u32','',null,null,null,'Zigbee module lowest 32 bits of the 64 bit Zigbee MAC address 0 (also in the high part) = ','RW'],
+   [41064,'ZBPanIdHigh','u32','',null,null,null,'Zigbee module highest 32 bits of the 64 bit Zigbee MAC address 0 (also in the low part) = ','RW'],
+   [41066,'ResetCommandLow','u32','',null,null,null,'Lowest 32 bits of forced Power Cycle command. Always read as 0. Password here is 0x1234567','RW'],
+   [41068,'ResetCommandHigh','u32','',null,null,null,'Highest 32 bits of forced Power Cycle command. Always read as 0. Password here is 0x876543','RW'],
+   [41070,'NoCom2ResetTime','u8_low','hours',null,null,null,'Time with no Modbus reception to try a power cycle. 0 = power cycle disabled','RW'],
+   [41071,'WindDirectionAVGperiod_s','u8_low','seconds',{WindSpeedAVGperiod_s:[8,15]},null,null,'Wind direction averaging period','RW'],
+   [41072,'?','u16','',null,null,null,'Not used','RW'],
+   [41073,'ZigbeeEncryptionConfig','u16','',{Ib_EncryptionEnabled:[0,0],ZBStackProfile:[4,5],ZBEncryptionOptions:[8,9],ZBSlaveRestartComDelayed:[12,12]},null,null,'','RW'],
+   [41074,'ZBUserEncryptionKeyLow','u16','',null,null,null,'User encryption key low. Always read as 0 after aplying changes','RW'],
+   [41075,'ZBUserEncryptionKeyHigh','u16','',null,null,null,'User encryption key high. Always read as 0 after applying changes','RW'],
+   [41076,'WindLevel1Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 1 activation','RW'],
+   [41078,'WindLevel2Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 2 activation','RW'],
+   [41080,'WindLevel3Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 3 activation','RW'],
+   [41082,'WindLevel4Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 4 activation','RW'],
+   [41084,'WindLevel5Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 5 activation','RW'],
+   [41086,'WindLevel6Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 6 activation','RW'],
+   [41088,'WindLevel7Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 7 activation','RW'],
+   [41090,'WindLevel1OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 1 activation','RW'],
+   [41091,'WindLevel2OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 2 activation','RW'],
+   [41092,'WindLevel3OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 3 activation','RW'],
+   [41093,'WindLevel4OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 4 activation','RW'],
+   [41094,'WindLevel5OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 5 activation','RW'],
+   [41095,'WindLevel6OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 6 activation','RW'],
+   [41096,'WindLevel7OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 7 activation','RW'],
+   [41097,'WindLevel1OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 1 deactivation','RW'],
+   [41098,'WindLevel2OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 2 deactivation','RW'],
+   [41099,'WindLevel3OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 3 deactivation','RW'],
+   [41100,'WindLevel4OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 4 deactivation','RW'],
+   [41101,'WindLevel5OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 5 deactivation','RW'],
+   [41102,'WindLevel6OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 6 deactivation','RW'],
+   [41103,'WindLevel7OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 7 deactivation','RW'],
+   [41104,'WindLevel8Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 8 activation','RW'],
+   [41106,'WindLevel9Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 9 activation','RW'],
+   [41108,'WindLevel10Thr_mps','f32','meters/second',null,null,null,'Wind Speed Threshold for wind level 10 activation','RW'],
+   [41110,'WindLevel8OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 8 activation','RW'],
+   [41111,'WindLevel9OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 9 activation','RW'],
+   [41112,'WindLevel10OnTime_s','u16','seconds',null,null,null,'Period of time for wind level 10 activation','RW'],
+   [41113,'WindLevel8OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 8 deactivation','RW'],
+   [41114,'WindLevel9OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 9 deactivation','RW'],
+   [41115,'WindLevel10OffTime_s','u16','seconds',null,null,null,'Period of time for wind level 10 deactivation','RW'],
+   [41200,'WindSpeed2Low_mps','f32','m/s',null,null,null,'Wind Speed threshold for alarm 2 deactivation','RW'],
+   [41202,'WindSpeed2Mid_mps','f32','m/s',null,null,null,'Wind Speed threshold for alarm 2 activation','RW'],
+   [41204,'WindLowTime2_s','u16','seconds',null,null,null,'Time for wind alarm 2 deactivation if Windspeed < WindSpeedLow_mps for this time, alarm 2 ','RW'],
+   [41205,'WindMidTime2_s','u16','seconds',null,null,null,'Time for wind alarm 2 activation if Windspeed > WindSpeedMid_mps for this time, alarm 2 wi','RW'],
+   [41206,'WindSpeed3Low_mps','f32','m/s',null,null,null,'Wind Speed threhold for alarm 3 deactivation','RW'],
+   [41208,'WindSpeed3Mid_mps','f32','m/s',null,null,null,'Wind Speed threhold for alarm 3 activation','RW'],
+   [41210,'WindLowTime3_s','u16','seconds',null,null,null,'Time for Wind alarm 3 deactivation if Windspeed < WindSpeedLow_mps for this time, alarm 3 ','RW'],
+   [41211,'WindMidTime3_s','u16','seconds',null,null,null,'Time for Wind alarm 3 activation if Windspeed > WindSpeedMid_mps for this time, alarm 3 wi','RW'],
+   [41212,'minutosMediaWindMid3','u16','minutes',null,null,null,'','RW'],
+   [41213,'AlarmWindMid','u16','',{AlarmWindMid2:[1,1],AlarmWindMid3:[2,2]},null,null,'Alarm indicator: Wind alarm. 1=alarm active 0=no alarm','RW'],
+   [41214,'SafePosTimeout','u16','minutes',null,null,null,'Time in minutes to deactivation of AlarmWindMidXSafePos flags after deactivation of AlarmW','RW'],
+   [41215,'NetworkWatchdog','u16','minutes',null,null,null,'Command ATNW-Zigbee network watchdog time (minutes). By default in Xbee modules is 0 (WD d','RW'],
+   [41216,'Zigbee compatibility disabled','u16','',{Node_join_always_enabled:[1,1]},null,null,'If 0: ATC8 = 0x10 (compatibility enabled). If 1: ATC8 = 0x00 (compatibility disabled)','RW'],
+   [41217,'SnowOnTime_m','u16','minutes',null,null,null,'Period of time for snow alarm activation','RW'],
+   [41218,'SnowOffTime_m','u16','minutes',null,null,null,'Period of time for snow alarm deactivation','RW'],
+   [41219,'SnowSamplePeriod_m','u16','minutes',null,null,null,'Period of time between snow (or water) sensor samples in minutes','RW'],
+   [41220,'SnowChangeThr_mm','u16','mm',null,null,null,'Max change in mm in snow height (or water level) between 2 samples to activate AlarmCheckS','RW'],
+   [41221,'AlarmCheckSnowSensor','u16','',{AlarmSnowNoFiltered:[6,6]},null,null,'Snow deph rate of change out of limits (increment/decrement higher than SnowChangeThr_mm b','RW'],
+   [41222,'AutoresetCheckSnowSensorLevel_mm','u16','mm',null,null,null,'Snow depth region to execute autoreset of AlarmCheckSnowSensor If SnowLevel < AutoresetChe','RW'],
+   [41223,'?','u16','',null,null,null,'Not used','RW'],
+   [41300,'DayDataRequest','u16','days',null,null,null,'Day of data request (0=actual day/1=last day/….) for datalogger readings','RW']]},
+  {t:'Bloque 50026',sn:'',rw:'w',f:[
+   [50026,'Lithium primary battery Voltage','u16','mV',null,null,null,'Lithium primary battery Voltage','RW'],
+   [50027,'NiMh battery Voltage','u16','mV',null,null,null,'NiMh battery Voltage','RW']]},
+  {t:'Calibración / fábrica',sn:'',rw:'w',f:[
+   [51000,'FWBlockPosition','u16','',null,null,null,'32-byte Block position of new FW (.bin)','RW'],
+   [51001,'TwoByteBin1','u16','',null,null,null,'First and second byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51002,'TwoByteBin2','u16','',null,null,null,'3 and 4 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51003,'TwoByteBin3','u16','',null,null,null,'5 and 6 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51004,'TwoByteBin4','u16','',null,null,null,'7 and 8 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51005,'TwoByteBin5','u16','',null,null,null,'9 and 10 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51006,'TwoByteBin6','u16','',null,null,null,'11 and 12 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51007,'TwoByteBin7','u16','',null,null,null,'13 and 14 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51008,'TwoByteBin8','u16','',null,null,null,'15 and 16 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51009,'TwoByteBin9','u16','',null,null,null,'17 and 18 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51010,'TwoByteBin10','u16','',null,null,null,'19 and 20 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51011,'TwoByteBin11','u16','',null,null,null,'21 and 22 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51012,'TwoByteBin12','u16','',null,null,null,'23 and 24 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51013,'TwoByteBin13','u16','',null,null,null,'25 and 26 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51014,'TwoByteBin14','u16','',null,null,null,'27 and 28 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51015,'TwoByteBin15','u16','',null,null,null,'29 and 30 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51016,'TwoByteBin16','u16','',null,null,null,'31 and 32 byte of 32-byte block. First byte is LSB. Second byte is MSB','RW'],
+   [51017,'CRCBinOrigin','u16','',null,null,null,'CRC value of new .bin file, calculated and transmitted from Master','RW'],
+   [51018,'CRCBinCalculated','u16','',null,null,null,'CRC value of new .bin file, calculated in HSU','RW'],
+   [51019,'flagUpdateFW','u16','',null,null,null,'Master must write 0x55AA to install the new FW. This value is autoreseted','']]},
+   {t:'Bloque básico vía NCU (republicado)',sn:'en la NCU · base 30200 · 10 registros/HSU · lastComm 29440+(id−1)·2',rw:'ro',base:30200,stride:10,f:[
+     [1,'msr','u16','',{wind_level:[0,2],wind_dir_east:[3,3]}],
+     [2,'alarms1','u16','',{wind_sensor_fail:[0,0],snow_sensor_fail:[1,1],alarm_snow:[6,6],alarm_flood:[7,7],alarm_wind:[9,9],alarm_com:[15,15]}],
+     [3,'wind_speed','f32','m/s'],
+     [5,'wind_direction','f32','°'],
+     [7,'snow_level','f32','m']]},
+   {t:'Bloque extendido vía NCU (piranómetros)',sn:'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended',rw:'ro',base:28000,stride:100,f:[
+     [4,'wind_speed','f32','m/s'],
+     [6,'wind_direction','f32','°'],
+     [8,'snow_level','f32','m'],
+     [16,'battery_voltage','u16','mV'],
+     [21,'ghi','s32','W/m²×100 → W/m²'],
+     [23,'poa_tracking','s32','W/m²×100 → W/m²'],
+     [25,'poa_diffuse','s32','W/m²×100 → W/m²']]}]}
+};
+DEV.ncu.max=200;DEV.ncu.idlab='Nº TCU/HSU';
+
+var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
+function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+/* ============ REGISTRO DE VERSIONES Y FABRICANTES ============
+   Cada mapa con su fuente, su estado y donde esta desplegado. Los
+   fabricantes sin documento aparecen como pendientes: al recibir su
+   mapa se cargan como pestañas igual que los de Sunner. */
+var REGISTRO=[
+ {fab:'Sunner',dev:'NCU',ver:'R7',fuente:'NCU_Modbus_Map_R7.xlsx → scada/config/modbus_map.yml',
+  estado:['doc','documentado'],donde:'Ayora · San José (previsto)',verif:'decode.py contra registros sintéticos (ángulos F32, SoC, signos, K×10, alarmas) — falta contraste con NCU real',
+  notas:'La tabla de esta ficha. Errata conocida: SoC y RemainingCapacity solapados en 30513 (resuelto: SoC en byte bajo). Solo lectura; comandos 40000+ excluidos.'},
+ {fab:'Sunner',dev:'NCU',ver:'pre-R7 (firmware antiguo)',fuente:'sin documento — evidencias de campo (scada/README)',
+  estado:['campo2','probado en campo'],donde:'El Burgo I',verif:'sondeo Modbus en planta (FC03): puertos, direccionamiento, reloj y radio confirmados; pendiente repetir con FC04',
+  notas:'Modbus TCP en puerto 503 (no el 502). Direccionamiento exacto (30000 responde como 30000). NO expone los bloques TCU del R7 (30500/29500 → ilegal). Reloj en 30300–30349 por campos sueltos; diagnóstico de radio (RSSI Zigbee) en 30200–30247. Pendiente: pedir a After Sales el mapa de esa versión o subir firmware a R7.'},
+ {fab:'Sunner',dev:'TCU',ver:'firmware v3 (mapa 3)',fuente:'factiun_core/registers.py (gemelo digital)',
+  estado:['gemelo','contrato del gemelo'],donde:'—',verif:'smoke test del gemelo (tcu-twin) — falta contraste con TCU física',
+  notas:'La pestaña TCU de esta ficha: 0,01°/LSB en ángulos y setpoint. Incluye escritura (holding + coils).'},
+ {fab:'Sunner',dev:'TCU',ver:'legacy (mapa 1)',fuente:'gemelo digital, variante elburgo_legacy',
+  estado:['campo2','en campo'],donde:'El Burgo I',verif:'reproducido en el gemelo; origen: comportamiento observado del firmware antiguo',
+  notas:'Ángulos y setpoint en 0,1°/LSB: un maestro v3 lee/escribe 10× desviado. Seleccionable en la pestaña TCU.'},
+ {fab:'Sunner',dev:'HSU',ver:'R23',fuente:'HSU_Modbus_Map_R23.xlsx',
+  estado:['doc','documentado'],donde:'—',verif:'— (falta contraste con HSU física)',
+  notas:'El mapa propio del dispositivo: 173 direcciones en 7 bloques (estado 30xxx, comandos 40xxx, configuración 41xxx, calibración 51xxx). En la pestaña HSU, junto a los bloques republicados por la NCU.'},
+ {fab:'P4Q',dev:'—',ver:'—',fuente:'pendiente de documento',
+  estado:['pend','pendiente'],donde:'—',verif:'—',notas:'Cuando llegue su mapa (NCU/TCU equivalentes) se carga como fabricante seleccionable.'},
+ {fab:"Track'n'Co",dev:'—',ver:'—',fuente:'pendiente de documento',
+  estado:['pend','pendiente'],donde:'—',verif:'—',notas:'Ídem.'}
+];
+function pinta(){
+  var tb=$('tabs');tb.innerHTML='';
+  var fabOk=$('fab').value==='sunner';
+  ['ncu','tcu','hsu','ver','uti'].forEach(function(k){
+    if(k!=='ver'&&!fabOk)return;                              // fabricante sin mapas: solo Versiones
+    var b=document.createElement('button');b.className='tab'+(cur===k?' on':'');
+    if(k==='ver')b.innerHTML='<span class="n">registro</span>Versiones';
+    else if(k==='uti')b.innerHTML='<span class="n">comisionado</span>Utilidades';
+    else b.innerHTML='<span class="n">'+DEV[k].eti+'</span>'+DEV[k].tab;
+    b.onclick=function(){cur=k;sel=null;$('buscar').value='';pinta();};
+    tb.appendChild(b);
+  });
+  if(!fabOk&&cur!=='ver')cur='ver';
+  if(cur==='ver'){
+    $('devnota').innerHTML='Qué mapa aplica a qué planta, de dónde sale cada uno y en qué estado está. El de El Burgo es la trampa a recordar: firmware anterior al R7, en el puerto 503 y sin bloques de TCU.';
+    $('idsel').style.display='none';$('varsel').style.display='none';$('locbox').style.display='none';
+    pintaRegistro();return;
+  }
+  if(cur==='uti'){
+    $('devnota').innerHTML='Herramientas de comisionado sobre el mapa R7 de la NCU.';
+    $('idsel').style.display='none';$('varsel').style.display='none';$('locbox').style.display='none';
+    pintaUtiles();return;
+  }
+  var d=DEV[cur];
+  $('devnota').innerHTML=d.nota;
+  $('idsel').style.display=d.max?'':'none';
+  if(d.max){$('idlab').textContent=d.idlab;$('devid').max=d.max;if(+$('devid').value>d.max)$('devid').value=1;}
+  $('varsel').style.display=d.fw?'':'none';
+  $('locbox').style.display=(cur==='tcu')?'none':'';
+  pintaSecs();
+}
+
+function escala(r){ // escala efectiva contando la variante de firmware de la TCU
+  var s=r[5]||1;
+  if(cur==='tcu'&&r[6]==='FW'&&$('fwvar').value==='legacy')s=0.1;
+  return s;
+}
+function pintaSecs(){
+  var d=DEV[cur],id=Math.max(1,+$('devid').value||1),q=$('buscar').value.trim().toLowerCase();
+  var h='',n=0;
+  d.secs.forEach(function(sc,si){
+    if(sc.alarmas){ // tarjetas de alarmas NCU
+      var hh='',nn=0;
+      ['alarms1','alarms2'].forEach(function(reg){
+        var rows='';
+        for(var b in ALARMAS[reg]){if(q&&(b+' '+ALARMAS[reg][b]).toLowerCase().indexOf(q)<0)continue;nn++;n++;
+          rows+='<tr><td class="nm" style="color:var(--warn);width:44px">'+b+'</td><td class="nm">'+ALARMAS[reg][b]+'</td></tr>';}
+        if(rows)hh+='<div class="tblwrap"><table class="tbl"><tr><th colspan="2">'+reg+'</th></tr>'+rows+'</table></div>';
+      });
+      if(nn)h+='<div class="sec"><h2>'+sc.t+'<span class="rw ro">RO</span></h2><span class="sn">'+sc.sn+'</span></div>'+hh;
+      return;
+    }
+    var rows='';
+    sc.f.forEach(function(r,ri){
+      var addr=sc.stride? sc.base+(id-1)*sc.stride+r[0] : r[0];
+      var nm=r[1],ty=r[2],un=r[3],bits=r[4];
+      var btxt=bits?(typeof bits==='string'?bits:Object.keys(bits).join(' ')+' '+Object.values(bits).join(' ')):'';
+      if(q&&(nm+' '+addr+' '+un+' '+btxt).toLowerCase().indexOf(q)<0)return;
+      n++;
+      var chips='';
+      if(typeof bits==='string')chips='<span class="bit">ver sección de alarmas ('+bits.toLowerCase()+')</span>';
+      else if(bits&&r[6]==='ENUM'){for(var k in bits)chips+='<span class="bit"><i>'+k+'</i> '+bits[k]+'</span>';}
+      else if(bits){for(var k2 in bits){var b2=bits[k2];chips+='<span class="bit">'+k2+' <i>['+(b2[0]===b2[1]?b2[0]:b2[0]+'–'+b2[1])+']</i></span>';}}
+      var esKey=si+'_'+ri;
+      var multi=(ty==='f32'||ty==='u32'||ty==='s32');
+      rows+='<tr class="reg'+(sel===esKey?' sel':'')+'" onclick="elige(\''+esKey+'\')">'
+        +'<td class="nm" style="color:var(--muted)">'+(sc.stride?'+'+r[0]:'—')+'</td>'
+        +'<td class="addr">'+addr+'<small>0x'+addr.toString(16).toUpperCase()+'</small></td>'
+        +'<td class="nm"'+(r[7]?' title="'+esc(r[7])+(r[8]?' ['+r[8]+']':'')+'"':'')+'>'+nm+(multi?' <span style="color:var(--muted)">('+addr+'–'+(addr+1)+')</span>':'')
+        +(cur==='tcu'&&!sc.stride&&ty!=='coil'&&ty!=='di'?' <span style="color:var(--muted);font-size:.72rem">(of. '+(addr%10000-1)+')</span>':'')+'</td>'
+        +'<td class="ty">'+ty+(escala(r)!==1?' ×'+escala(r):'')+'</td>'
+        +'<td class="un">'+(un||'—')+'</td>'
+        +'<td><span class="bits">'+(chips||'<span style="color:var(--muted)">—</span>')+'</span></td></tr>';
+      if(sel===esKey)rows+='<tr><td colspan="6" style="padding:0">'+decoHTML(sc,r,addr)+'</td></tr>';
+    });
+    if(rows){
+      h+='<div class="sec"><h2>'+sc.t+'<span class="rw '+(sc.rw==='w'?'w':'ro')+'">'+(sc.rw==='w'?'ESCRITURA':'RO')+'</span></h2>'
+        +'<span class="sn">'+sc.sn+'</span></div>'
+        +'<div class="tblwrap"><table class="tbl"><tr><th>offset</th><th>dirección</th><th>registro</th><th>tipo</th><th>unidad</th><th>bits / valores</th></tr>'+rows+'</table></div>';
+    }
+  });
+  $('cuerpo').innerHTML=h||'<p class="hint">Nada casa con el filtro.</p>';
+  $('resumen').innerHTML='<b>'+n+'</b> registros';
+}
+
+function pintaRegistro(){
+  var q=$('buscar').value.trim().toLowerCase(),n=0;
+  var aviso=($('fab').value!=='sunner')?'<div class="fabaviso">De <b>'+$('fab').options[$('fab').selectedIndex].text.split(' — ')[0]
+    +'</b> aún no hay documento de mapa Modbus. Pásame su Excel/PDF y se carga como fabricante seleccionable, con las mismas pestañas, decodificador y localizador.</div>':'';
+  var h=aviso+'<div class="tblwrap"><table class="tbl"><tr><th>fabricante</th><th>dispositivo</th><th>mapa / versión</th><th>fuente</th><th>estado</th><th>desplegado en</th><th>verificado contra hardware</th><th>notas</th></tr>';
+  REGISTRO.forEach(function(r){
+    if(q&&(r.fab+' '+r.dev+' '+r.ver+' '+r.fuente+' '+r.donde+' '+r.notas).toLowerCase().indexOf(q)<0)return;
+    n++;
+    h+='<tr><td class="nm">'+r.fab+'</td><td class="nm">'+r.dev+'</td><td class="nm" style="color:var(--accent)">'+r.ver+'</td>'
+      +'<td style="font-family:var(--mono);font-size:.72rem;color:var(--tx2)">'+r.fuente+'</td>'
+      +'<td><span class="estado '+r.estado[0]+'">'+r.estado[1]+'</span></td>'
+      +'<td style="font-size:.8rem">'+r.donde+'</td><td class="notas" style="max-width:260px">'+(r.verif||'—')+'</td><td class="notas">'+r.notas+'</td></tr>';
+  });
+  h+='</table></div>';
+  h+=diffHTML();
+  $('cuerpo').innerHTML=h;$('resumen').innerHTML='<b>'+n+'</b> mapas registrados';
+  var ds=$('difsel');if(ds)ds.onchange=function(){pintaRegistro();};
+}
+/* ---- diferencias entre versiones: lo que cambia y te comeria al migrar ---- */
+var DIFFS=[
+ {id:'tcu',t:'TCU: firmware v3 (mapa 3) ↔ legacy El Burgo (mapa 1)',
+  a:'v3',b:'legacy',
+  filas:[
+   ['map_version (30002)','3','1'],
+   ['angle_filt / angle_raw (30010–30011)','0,01°/LSB (1550 = 15,50°)','0,1°/LSB (1550 = 155,0°)'],
+   ['setpoint (40001)','0,01°/LSB','0,1°/LSB'],
+   ['resto del mapa','idéntico','idéntico']],
+  nota:'Un maestro v3 contra una TCU legacy lee y ESCRIBE los ángulos 10× desviados: comprobar map_version (30002) antes de operar es la salvaguarda barata.'},
+ {id:'ncu',t:'NCU: R7 ↔ pre-R7 (El Burgo)',
+  a:'R7',b:'pre-R7',
+  filas:[
+   ['puerto Modbus TCP','502 (estándar)','503'],
+   ['bloque TCU 30500 (22×200)','presente','NO existe (dirección ilegal)'],
+   ['lastComm TCU 29500','presente','NO existe'],
+   ['fecha/hora','30104 (U32 epoch)','30300–30349, campos sueltos (h/min/día/mes/año)'],
+   ['zona 30200+','bloque HSU básico','diagnóstico de radio: RSSI Zigbee y ASCII serie/versión — ¡COLISIÓN de significado con el R7!'],
+   ['telemetría de TCU','bloque compacto','no localizada por Modbus (la web la enseña por su backend interno)']],
+  nota:'La zona 30200 significa cosas DISTINTAS en cada versión: un colector R7 apuntado a El Burgo leería «viento» donde hay RSSI. Identificar la versión antes de mapear no es opcional.'}];
+function diffHTML(){
+  var cual=($('difsel')&&$('difsel').value)||'tcu';
+  var d=DIFFS.find(function(x){return x.id===cual;})||DIFFS[0];
+  var h='<div class="diffsel"><h2 style="margin:0;font-size:.98rem">Diferencias entre versiones</h2>'
+    +'<select id="difsel" style="background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:6px 10px;font:inherit;font-size:.84rem">'
+    +DIFFS.map(function(x){return '<option value="'+x.id+'"'+(x.id===cual?' selected':'')+'>'+x.t+'</option>';}).join('')+'</select></div>';
+  h+='<div class="tblwrap"><table class="tbl"><tr><th>qué</th><th class="dif-a">'+d.a+'</th><th class="dif-b">'+d.b+'</th></tr>';
+  d.filas.forEach(function(r){h+='<tr><td class="nm">'+r[0]+'</td><td class="dif-a" style="font-size:.84rem">'+r[1]+'</td><td class="dif-b" style="font-size:.84rem">'+r[2]+'</td></tr>';});
+  h+='</table></div><p class="hint">'+d.nota+'</p>';
+  return h;
+}
+/* ---- utilidades de comisionado ---- */
+var YML_R7=`# Mapa Modbus de la NCU — derivado de NCU_Modbus_Map_R7.xlsx
+# SOLO LECTURA. El rango 40000+ (comandos) se excluye deliberadamente.
+
+tcu_compat:
+  # Bloque compacto: 22 registros por TCU, contiguo para 200 TCUs.
+  base: 30500
+  stride: 22
+  max_tcus: 200
+  fields:
+    # offset: definición
+    1:  {name: msr,            type: u16, bits: {bt_active: [0,0], sleep_state: [1,2], day_time: [7,7], main_state: [8,9], safe_position: [13,15]}}
+    2:  {name: alarms1,        type: u16}
+    3:  {name: alarms2,        type: u16}
+    4:  {name: flags_a,        type: u16, bits: {west_limit: [0,0], east_limit: [1,1], motor_locked: [11,11], system_ok: [15,15]}}
+    5:  {name: panel_voltage,  type: u16, unit: mV}
+    6:  {name: tilt_angle,     type: f32, unit: rad, to_deg: true}
+    8:  {name: motor_current,  type: u16, unit: mA}
+    9:  {name: motor_peak,     type: u16, unit: mA}
+    10: {name: target_angle,   type: f32, unit: rad, to_deg: true}
+    12: {name: psu_current,    type: s16, unit: mA}
+    13: {name: soc,            type: u8_low, unit: "%"}   # R7.1: SoC confirmado en byte bajo (el doc lista RemainingCapacity U16 solapado en 30513; byte alto reservado)
+    16: {name: battery_voltage, type: u16, unit: mV}
+    18: {name: battery_current, type: s16, unit: mA}
+    19: {name: temp_pcb,       type: u16, unit: Kx10, to_celsius: true}
+    20: {name: temp_battery,   type: u16, unit: Kx10, to_celsius: true}
+    21: {name: soh,            type: u8_low, unit: "%"}
+
+tcu_lastcomm:
+  base: 29500
+  stride: 2
+  type: u32          # Unix epoch
+
+# Decodificación de bits de alarmas (registro alarms1 / alarms2 del bloque compat)
+alarm_bits:
+  alarms1:
+    2:  out_of_range
+    4:  stop_button
+    7:  default_config
+    8:  zigbee_fail
+    11: batt_limited      # SoC < L2
+    12: batt_not_enough   # SoC < L3
+    13: batt_low          # SoC < L1
+    14: batt_critical     # SoC < 10%
+    15: test_fw
+  alarms2:
+    2:  time_never_set
+    4:  motor_overcurrent_hw
+    5:  motor_overcurrent_sw
+    8:  axis_blocked
+    14: axis_low_speed
+
+ncu:
+  registers:
+    hsu_global:   {addr: 30002, type: u16, bits: {alarm_any_wind: [1,1], wind_highest_level: [2,4], alarm_any_snow: [5,5], alarm_any_gust: [6,6], global_ws_fail: [7,7], global_ss_fail: [8,8]}}
+    digital_input: {addr: 30100, type: u16, bits: {battery_low: [0,0], ups_power_fault: [1,1], stop_button: [13,13]}}
+    main_status:  {addr: 30101, type: u16, bits: {alarm_battery_low: [0,0], gw1_alarm: [4,4], gw2_alarm: [5,5]}}
+    date_time:    {addr: 30104, type: u32}
+
+hsu:
+  # Bloque básico
+  base: 30200
+  stride: 10
+  max_hsus: 10
+  lastcomm_base: 29440      # U32 por HSU, stride 2
+  fields:
+    1: {name: msr,            type: u16, bits: {wind_level: [0,2], wind_dir_east: [3,3]}}
+    2: {name: alarms1,        type: u16, bits: {wind_sensor_fail: [0,0], snow_sensor_fail: [1,1], alarm_snow: [6,6], alarm_flood: [7,7], alarm_wind: [9,9], alarm_com: [15,15]}}
+    3: {name: wind_speed,     type: f32, unit: mps}
+    5: {name: wind_direction, type: f32, unit: deg}
+    7: {name: snow_level,     type: f32, unit: m}
+
+hsu_ext:
+  # Bloque extendido (piranómetros) — solo si hsu_extended: true
+  base: 28000
+  stride: 100
+  fields:
+    4:  {name: wind_speed,       type: f32, unit: mps}
+    6:  {name: wind_direction,   type: f32, unit: deg}
+    8:  {name: snow_level,       type: f32, unit: m}
+    16: {name: battery_voltage,  type: u16, unit: mV}
+    21: {name: ghi,              type: s32, unit: Wm2x100, scale: 0.01}
+    23: {name: poa_tracking,     type: s32, unit: Wm2x100, scale: 0.01}
+    25: {name: poa_diffuse,      type: s32, unit: Wm2x100, scale: 0.01}
+`;
+function pintaUtiles(){
+  $('cuerpo').innerHTML='<div class="ugrid">'
+   +'<div class="ucard"><h3>Calculadora de polling</h3><div class="us">bloque compacto · límite Modbus 125 reg/lectura (el colector usa ≤110)</div>'
+   +'<label>nº de TCUs</label><input id="pt" value="200" oninput="calcPoll()">'
+   +'<label>nº de HSUs (básicas / extendidas)</label><input id="ph" value="2" style="width:52px" oninput="calcPoll()"> <input id="pe" value="0" style="width:52px" oninput="calcPoll()">'
+   +'<label>latencia por transacción (ms)</label><input id="pl" value="30" oninput="calcPoll()">'
+   +'<label>periodo objetivo (s)</label><input id="pp" value="10" oninput="calcPoll()">'
+   +'<div class="res" id="pres"></div></div>'
+   +'<div class="ucard"><h3>YAML del colector</h3><div class="us">scada/config/modbus_map.yml · fuente única de verdad</div>'
+   +'<p style="font-size:.84rem;color:var(--tx2);margin:0">El mismo fichero que consume el colector SCADA, tal cual: lo que esta ficha documenta es lo que el colector lee.</p>'
+   +'<button onclick="bajaYML()">⬇ modbus_map.yml (Sunner NCU R7)</button></div>'
+   +'</div>';
+  calcPoll();
+}
+function calcPoll(){
+  var nt=Math.max(0,+$('pt').value||0),nh=Math.max(0,+$('ph').value||0),ne=Math.max(0,+$('pe').value||0);
+  var lat=Math.max(1,+$('pl').value||30),per=Math.max(0.1,+$('pp').value||10),POR=110;
+  function tx(regs){return regs>0?Math.ceil(regs/POR):0;}
+  var t_datos=tx(nt*22),t_lc=tx(nt*2),t_hb=tx(nh*10),t_hlc=tx(nh*2),t_he=ne;   // ext: 1 lectura por HSU (stride 100 no contiguo útil)
+  var fijas=3;                                                                  // propios: 30002 · 30100-30104 (2 lecturas) aprox
+  var total=t_datos+t_lc+t_hb+t_hlc+t_he+fijas;
+  var ciclo=total*lat/1000;
+  var cabe=ciclo<=per;
+  $('pres').innerHTML='<b>'+total+'</b> transacciones/ciclo — TCU datos '+t_datos+' · lastComm '+t_lc
+   +' · HSU '+(t_hb+t_hlc+t_he)+' · NCU '+fijas+'<br>ciclo ≈ <b>'+ciclo.toFixed(1)+' s</b> a '+lat+' ms/transacción → '
+   +(cabe?'<b>cabe</b> en el periodo de '+per+' s (margen '+(per-ciclo).toFixed(1)+' s)'
+         :'<span class="malo">NO cabe</span> en '+per+' s: sube el periodo o baja la latencia');
+}
+function bajaYML(){
+  var b=new Blob([YML_R7],{type:'text/yaml'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='modbus_map.yml';a.click();URL.revokeObjectURL(a.href);
+}
+function elige(k){sel=(sel===k)?null:k;pintaSecs();
+  if(sel&&$('tramas'))pintaTrama();
+  var e=document.querySelector('.dec input');if(e)e.focus();}
+
+/* ---------------- decodificador ---------------- */
+function regSel(){var p=sel.split('_');return [DEV[cur].secs[+p[0]],DEV[cur].secs[+p[0]].f[+p[1]]];}
+function decoHTML(sc,r,addr){
+  var ty=r[2],dos=(ty==='f32'||ty==='u32'||ty==='s32');
+  if(ty==='coil'||ty==='di')return '<div class="dec"><h3>'+r[1]+'</h3><div class="hint">Booleano: 1 = '+(r[3]||'activo')+'. '+(ty==='coil'?'Escribir 1 dispara la orden (FC05).':'Solo lectura (FC02).')+'</div></div>';
+  return '<div class="dec"><h3>decodificar '+r[1]+'</h3>'
+    +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">valor crudo (dec o 0x…)</label>'
+    +'<input id="raw1" placeholder="'+(dos?'reg '+addr:'p. ej. 0x0182')+'" oninput="deco()">'
+    +(dos?'<input id="raw2" placeholder="reg '+(addr+1)+'" oninput="deco()">':'')
+    +'<span class="out" id="dout"></span></div>'
+    +(dos?'':'<div class="bsim" id="bsim"></div><div class="bases" id="bases"></div>')
+    +'<div id="dbits"></div>'
+    +tramaHTML(sc,r,addr)
+    +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian). Acepta dec, 0x… y 0b…':
+      'Un registro de 16 bits. Escribe en decimal, 0x… o 0b… — o pincha los bits para construir el valor.')+'</div></div>';
+}
+/* ---- generador de tramas: la peticion de lectura real, byte a byte ---- */
+function crc16(bs){var c=0xFFFF;for(var i=0;i<bs.length;i++){c^=bs[i];for(var j=0;j<8;j++)c=(c&1)?((c>>1)^0xA001):(c>>1);}return [c&0xFF,(c>>8)&0xFF];}
+function hx(b){return b.toString(16).toUpperCase().padStart(2,'0');}
+function tramaInfo(sc,r,addr){
+  var fc,wire,qty=(r[2]==='f32'||r[2]==='u32'||r[2]==='s32')?2:1;
+  if(cur==='tcu'){                                            // mapa del dispositivo: FC por tabla y offset 0-based
+    var tab=(r[2]==='coil')?'co':(r[2]==='di')?'di':(addr>=40000?'hr':'ir');
+    fc={co:1,di:2,hr:3,ir:4}[tab];
+    wire=(r[2]==='coil')?addr-1:(addr%10000)-1;
+  }else if(cur==='hsu'&&!sc.stride){fc=(addr<40000)?4:3;wire=addr;}   // mapa propio de la HSU: entrada/holding por rango, direccion absoluta
+  else{fc=3;wire=addr;}                                       // NCU: el colector real usa FC03 con la direccion absoluta tal cual
+  return {fc:fc,wire:wire,qty:qty};
+}
+function tramaHTML(sc,r,addr){
+  return '<div style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">trama de lectura</h3>'
+    +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">esclavo</label>'
+    +'<input id="esclavo" value="1" style="width:64px" oninput="pintaTrama()"></div>'
+    +'<div id="tramas"></div></div>';
+}
+function pintaTrama(){
+  var pr=regSel(),sc=pr[0],r=pr[1];if(!r)return;
+  var id=Math.max(1,+$('devid').value||1);
+  var addr=sc.stride? sc.base+(id-1)*sc.stride+r[0] : r[0];
+  var t=tramaInfo(sc,r,addr),esc=Math.max(0,Math.min(255,+$('esclavo').value||1));
+  var pdu=[t.fc,(t.wire>>8)&0xFF,t.wire&0xFF,(t.qty>>8)&0xFF,t.qty&0xFF];
+  var rtu=[esc].concat(pdu),crc=crc16(rtu);
+  var tcp=[0,1,0,0,0,pdu.length+1,esc].concat(pdu);
+  $('tramas').innerHTML=
+    '<div class="trama">TCP&nbsp; <span class="seg">'+tcp.slice(0,6).map(hx).join(' ')+'</span> <b>'+hx(esc)+' '+pdu.map(hx).join(' ')+'</b></div>'
+   +'<div class="trama">RTU&nbsp; <b>'+rtu.map(hx).join(' ')+'</b> <span class="crc">'+crc.map(hx).join(' ')+'</span></div>'
+   +'<div class="hint">FC'+String(t.fc).padStart(2,'0')+' · dirección de cable '+t.wire+' (0x'+t.wire.toString(16).toUpperCase()+') · '+t.qty+' registro'+(t.qty>1?'s':'')
+   +(cur==='tcu'?' · FC por tabla del mapa del dispositivo':' · el colector SCADA lee la NCU con FC03 y dirección absoluta tal cual (sin offset −1)')+'. CRC en verde, byte bajo primero.</div>';
+}
+function parseRaw(s){s=(s||'').trim();if(!s)return null;var p=s.slice(0,2).toLowerCase(),v;
+  if(p==='0x')v=parseInt(s.slice(2),16);
+  else if(p==='0b')v=parseInt(s.slice(2),2);
+  else if(/^[01]{9,16}$/.test(s))v=parseInt(s,2);            // 9-16 ceros y unos seguidos: binario sin prefijo
+  else v=parseInt(s,10);
+  return isNaN(v)?null:v&0xFFFF;}
+function deco(){
+  var pr=regSel(),sc=pr[0],r=pr[1];
+  var ty=r[2],un=r[3]||'',bits=r[4],esc=escala(r);
+  var a=parseRaw($('raw1')&&$('raw1').value),b=$('raw2')?parseRaw($('raw2').value):null;
+  if(a===null){$('dout').innerHTML='';$('dbits').innerHTML='';return;}
+  var out='',tb='';
+  if(ty==='f32'){
+    if(b===null)out='falta el segundo registro';
+    else{var buf=new ArrayBuffer(4),dv=new DataView(buf);dv.setUint16(0,a);dv.setUint16(2,b);var f=dv.getFloat32(0);
+      out='<b>'+f.toPrecision(6)+'</b> '+(un.indexOf('rad')===0?'rad = <b>'+(f*180/Math.PI).toFixed(3)+'°</b>':un);}
+  }else if(ty==='u32'||ty==='s32'){
+    if(b===null)out='falta el segundo registro';
+    else{var v32=((a<<16)>>>0)+b;if(ty==='s32'&&v32>0x7FFFFFFF)v32-=0x100000000;
+      out='<b>'+v32+'</b>';
+      if(un.indexOf('epoch')>=0)out+=' = <b>'+new Date(v32*1000).toISOString().replace('T',' ').slice(0,19)+' UTC</b>';
+      if(un.indexOf('×100')>=0)out+=' = <b>'+(v32/100).toFixed(2)+' W/m²</b>';}
+  }else{
+    var v=(ty==='s16')?(a>0x7FFF?a-0x10000:a):(ty==='u8_low')?(a&0xFF):a;
+    var ing=v*esc;
+    out='<b>'+(esc===1?ing:ing.toFixed(2))+'</b> '+un.replace(/×[\d,\.]+ → /,'');
+    if(un.indexOf('K×10')>=0)out='<b>'+v+'</b> K×10 = <b>'+(v/10-273.15).toFixed(1)+' °C</b>';
+    if(un==='mV')out='<b>'+v+'</b> mV = <b>'+(v/1000).toFixed(3)+' V</b>';
+    if(un==='mA')out='<b>'+v+'</b> mA'+(Math.abs(v)>=1000?' = <b>'+(v/1000).toFixed(2)+' A</b>':'');
+    if(bits&&r[6]==='ENUM'){out='<b>'+v+'</b> = <b>'+(bits[String(v)]||'¿valor desconocido?')+'</b>';}
+  }
+  if(bits&&typeof bits==='object'&&r[6]!=='ENUM'){
+    tb='<table>';
+    for(var k in bits){var lo=bits[k][0],hi=bits[k][1],val=(a>>lo)&((1<<(hi-lo+1))-1);
+      tb+='<tr><td>'+k+' ['+(lo===hi?lo:lo+'–'+hi)+']</td><td class="'+(val?'v1':'v0')+'">'+val+'</td></tr>';}
+    tb+='</table>';
+  }else if(typeof bits==='string'){
+    var t=ALARMAS[bits.toLowerCase()],act=[];
+    for(var bit in t)if((a>>bit)&1)act.push(bit+': '+t[bit]);
+    tb=act.length?'<table>'+act.map(function(x){return '<tr><td class="v1">⚠ '+x+'</td></tr>';}).join('')+'</table>'
+                 :'<div class="hint">sin alarmas activas</div>';
+  }
+  $('dout').innerHTML=out;$('dbits').innerHTML=tb;
+  pintaBits(a,bits&&typeof bits==='object'&&r[6]!=='ENUM'?bits:null);
+}
+function pintaBits(v,campos){
+  var el=$('bsim');if(!el)return;
+  var dueño={};if(campos)for(var k in campos)for(var b=campos[k][0];b<=campos[k][1];b++)dueño[b]=k;
+  var h='';
+  for(var i=15;i>=0;i--){var on=(v>>i)&1;
+    h+='<span class="bcell'+(on?' on':'')+(dueño[i]!==undefined?' campo':'')+'" onclick="tglBit('+i+')"'
+      +(dueño[i]!==undefined?' title="'+dueño[i]+'"':'')+'><span class="bi">'+i+'</span><span class="bv">'+on+'</span></span>';}
+  el.innerHTML=h;
+  var ba=$('bases');if(ba)ba.innerHTML='dec <b>'+v+'</b> · hex <b>0x'+v.toString(16).toUpperCase().padStart(4,'0')
+    +'</b> · bin <b>0b'+v.toString(2).padStart(16,'0')+'</b>';
+}
+function tglBit(i){
+  var e=$('raw1'),v=parseRaw(e.value)||0;v^=(1<<i);
+  e.value='0x'+v.toString(16).toUpperCase().padStart(4,'0');deco();
+}
+
+/* ---------------- localizador (pestaña NCU): unidad o direccion suelta ---------------- */
+function localiza(){
+  var q=($('loc').value||'').trim(),R=$('locres');
+  if(!q){R.innerHTML='';return;}
+  var m=q.match(/^(tcu|hsu)\s*(\d+)$/i);
+  if(m){ // "TCU 125" -> rango de su bloque
+    var tipo=m[1].toUpperCase(),id=+m[2],h='';
+    if(tipo==='TCU'){
+      if(id<1||id>200){R.innerHTML='El bloque R7 llega hasta la TCU 200.';return;}
+      var b0=30500+(id-1)*22,lc=29500+(id-1)*2;
+      h='<b>TCU '+id+'</b> → bloque <span class="addr">'+b0+'–'+(b0+21)+'</span> · lastComm <span class="addr">'+lc+'–'+(lc+1)+'</span>. '
+       +'Registros clave: tilt <span class="addr">'+(b0+6)+'</span> · target <span class="addr">'+(b0+10)+'</span> · soc <span class="addr">'+(b0+13)+'</span> · alarms <span class="addr">'+(b0+2)+'–'+(b0+3)+'</span>.'
+       +' <a href="#" onclick="$(\'devid\').value='+id+';pintaSecs();return false">ver su tabla completa ↓</a>';
+    }else{
+      if(id<1||id>10){R.innerHTML='El bloque HSU llega hasta la 10.';return;}
+      var hb=30200+(id-1)*10,he=28000+(id-1)*100,hl=29440+(id-1)*2;
+      h='<b>HSU '+id+'</b> → básico <span class="addr">'+hb+'–'+(hb+9)+'</span> · extendido <span class="addr">'+he+'–'+(he+99)+'</span> · lastComm <span class="addr">'+hl+'–'+(hl+1)+'</span>.'
+       +' <a href="#" onclick="$(\'devid\').value='+id+';pintaSecs();return false">ver su tabla ↓</a>';
+    }
+    R.innerHTML=h;return;
+  }
+  var a=parseInt(q,10);
+  if(isNaN(a)){R.innerHTML='Escribe «TCU 125», «HSU 3» o una dirección (p. ej. 33241).';return;}
+  function campo(fs,off,multi){for(var i=0;i<fs.length;i++){var r=fs[i];
+      if(r[0]===off)return r[1];
+      if(multi&&(r[2]==='f32'||r[2]==='u32'||r[2]==='s32')&&r[0]+1===off)return r[1]+' (palabra baja)';}
+    return null;}
+  var d=DEV.ncu,h2='dirección <span class="addr">'+a+'</span> → ';
+  if(a>=30500&&a<30500+200*22){var id2=Math.floor((a-30500)/22)+1,off=(a-30500)%22;
+    var nm=campo(d.secs[1].f,off,true);
+    h2+='<b>TCU '+id2+'</b>, offset +'+off+(nm?': <b>'+nm+'</b>':' (hueco reservado del bloque)');}
+  else if(a>=29500&&a<29500+200*2){var id3=Math.floor((a-29500)/2)+1;
+    h2+='<b>lastComm de la TCU '+id3+'</b> ('+((a-29500)%2?'palabra baja':'palabra alta')+' del U32)';}
+  else if(a>=30200&&a<30200+10*10){var id4=Math.floor((a-30200)/10)+1,of4=(a-30200)%10;
+    var nm4=campo(d.secs[2].f,of4,true);
+    h2+='<b>HSU '+id4+'</b> (básico), offset +'+of4+(nm4?': <b>'+nm4+'</b>':' (reservado)');}
+  else if(a>=28000&&a<28000+10*100){var id5=Math.floor((a-28000)/100)+1,of5=(a-28000)%100;
+    var nm5=campo(d.secs[3].f,of5,true);
+    h2+='<b>HSU '+id5+'</b> (extendido), offset +'+of5+(nm5?': <b>'+nm5+'</b>':' (reservado)');}
+  else if(a>=29440&&a<29440+10*2){h2+='<b>lastComm de la HSU '+(Math.floor((a-29440)/2)+1)+'</b>';}
+  else{var nm6=campo(d.secs[0].f,a,true);
+    h2+=nm6?'registro propio de la NCU: <b>'+nm6+'</b>':'fuera de los bloques documentados del R7';}
+  R.innerHTML=h2;
+}
+$('loc').oninput=localiza;
+$('devid').oninput=function(){pintaSecs();if(sel&&$('tramas'))pintaTrama();};
+$('fwvar').onchange=function(){pintaSecs();};
+$('buscar').oninput=function(){cur==='ver'?pintaRegistro():pintaSecs();};
+$('fab').onchange=function(){sel=null;if(this.value!=='sunner')cur='ver';else if(cur==='ver')cur='ncu';pinta();};
+pinta();
+</script>
+</body>
+</html>
