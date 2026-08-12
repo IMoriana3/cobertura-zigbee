@@ -919,6 +919,7 @@ const PLANTS={
   fayon:{file:'fayon_layout.json',title:'Fayón 24007'},
   bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'},
   paramo:{file:'paramo_layout.json',title:'Páramo 25019'},
+  tunez:{file:'tunez_layout.json',title:'Túnez 24021'},
   custom:{file:null,title:'Planta nueva'}
 };
 const PLANT=(function(){try{const p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
@@ -935,7 +936,7 @@ const MESHFILE=(PLANT==='custom')?null:(PLANT+'_real.geojson');
      cuerda  ancho de una fila = un módulo en vertical
    El largo de CADA seguidor sale luego de t.mr, la razón real del DWG, que sí es unívoca entre
    plantas (t.mods no lo es: en Ayora es por ala y en Fayón por fila). */
-const TMODS={elburgo:28,ayora:28,sanjose:32,fayon:24,bagnarelli:21,paramo:24,custom:28};   // módulos por ALA
+const TMODS={elburgo:28,ayora:28,sanjose:32,fayon:24,bagnarelli:21,paramo:24,tunez:14,custom:28};   // módulos por ALA
 const TMEAS={fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413}};                                // cotas MEDIDAS que mandan sobre el modelo (Fayón, del plano de proyecto P06)
 let LAY=null, TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382};
 function resuelveTDIM(lay){
