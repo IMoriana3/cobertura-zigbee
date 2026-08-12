@@ -16,9 +16,9 @@ el Panel. Este fichero es lo equivalente para las **plantas**.
 | Ayora 24025 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ⚠️ 647 de 754 (ver abajo) | ✅ |
 | San José 24019 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 2289/2289 · 1723 articulados | ✅ |
 | Fayón 24007 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 24/24 (2 longitudes) | ✅ (UTM 31N, del listado del cliente) |
-| Bagnarelli 24030 | ✅ | ✅ | ⚠️ solo mapa | ❌ | ✅ 17/17 · UNA fila | ✅ (UTM 33N, el DWG ya venía) |
+| Bagnarelli 24030 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 17/17 · UNA fila | ✅ (UTM 33N, el DWG ya venía) |
 | Páramo 25019 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 396/396 · UNA fila | ✅ (UTM 30N) |
-| Túnez 24021 | ❌ | ❌ | ❌ | ❌ | — | (UTM 32N, sí) |
+| Túnez 24021 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 19/19 · 2V14 | ✅ (UTM 32N, el DWG ya venía) |
 
 «⚠️ solo mapa» = la página abre entera, con su plano y sus NCUs, pero sin malla Zigbee medida.
 Lo que falta y cómo se rellena, justo abajo.
@@ -73,6 +73,28 @@ contadores en «—» y no en 0 — cero nodos y no haberlos medido no son lo mi
   en los 17. Es la única planta con `rot ≠ 0` de las seis, así que no afecta a nadie más.
   *(Se quedó marcado como pendiente porque la nota se escribió en la #350 y el arreglo entró en la
   #351. Ojo con eso: otra sesión llegó a rehacerlo por leer aquí que faltaba.)*
+
+---
+
+## Fayón — el siting no cuadra con su layout (2026-08-12) · SIN RESOLVER
+
+Al generar el siting de Bagnarelli y Túnez del layout (`Siting/tools/gen_siting.mjs`, con el
+convenio deducido reproduciendo Páramo a 12 mm), se probó el mismo generador contra Fayón para
+verificar. **No cuadra**: 23,4 m de distancia media y 28,3 m en el peor caso entre los 24 TCU del
+layout y los 24 que ya tiene el siting. No es una traslación —la diferencia varía por seguidor—,
+así que las dos fuentes no son la misma.
+
+Lo más probable es que el siting de Fayón se hiciera del **plano de proyecto P06** (de donde salen
+sus cotas medidas: 55,16 de largo, 2,413 de cuerda, 6,012 entre filas) y el layout del DWG de
+implantación. **No se ha tocado nada**: el 3D de Fayón está dado por bueno y el siting también.
+
+Además, el siting de Fayón tiene **`ox:0, oy:0`** — sin origen UTM, así que no da coordenadas
+absolutas. El origen bueno sí se conoce: **E 275719,936 · N 4567402,475** (UTM 31N), que sale tanto
+de la ficha del 3D como de convertir su `clat/clon`, y las dos coinciden. Ponerlo requiere saber
+antes cuál de las dos geometrías manda.
+
+**Qué hace falta**: decir cuál es la buena. Si manda el P06, hay que corregir el layout del DWG (y
+con él el 3D y el Layout 2D); si manda el DWG, hay que regenerar el siting.
 
 ---
 
@@ -132,16 +154,11 @@ Extra: el `id` `TKnnn` del DWG **coincide 1:1 con el número de TCU del cliente*
   propósito**: corregirlo obliga a tocar el camino de proyección **común a todas las plantas**
   (El Burgo, Ayora y San José también son UTM y arrastran lo mismo), y no cabe en este cambio.
 
-### 2. Túnez 24021 — falta generar la planta · BLOQUEADO
-DWG: `IMPLENTATION_TOPOGRAPHE.dwg`. Georreferenciado en UTM 32N (≈578.000 / 3.747.900).
-Los seguidores **no son bloques**: son 1.067 rectángulos de módulo (2,3 m) en la capa
-`KTR Tracker STI-H250`, que agrupan en ~19 mesas de ~56 módulos → cuadra con el `trk_total` 19 de
-la cartera. Hay además una **instalación fija** aparte: capa `mesas`, 72 módulos de 1,3 × 2,2 m en
-un bloque de 8 × 4 m, 17 m al norte del campo (NO estaba contada en los 1.067).
-
-**Descuadre sin resolver**: 1.067 + 72 = **1.139** módulos frente a los **1.344** de la cartera.
-**Qué hace falta**: saber si ese plano topográfico está incompleto o si la cartera es de otra fase
-— en la cartera hay **dos Túnez**, el 24021 (con datos) y el 26322 (vacío).
+### 2. ~~Túnez 24021 — falta generar la planta~~ · **GENERADA** (PR #357)
+Los 19 seguidores 2V14 salieron del DWG del topógrafo, ya en UTM 32N. Tiene layout 3D, Layout 2D,
+cobertura (solo mapa) y, desde Siting#19, siting. Sigue abierto el **descuadre de módulos** contra
+la cartera: ver el detalle en el propio PR y en la cartera, donde hay **dos Túnez** (24021 con
+datos y 26322 vacío).
 
 ### 3. Ayora — 107 seguidores sin clasificar · BLOQUEADO
 De los 754, hay **107** que son variantes **anónimas de bloque dinámico**: `*U9` (56) y `*U10` (51).
@@ -267,6 +284,18 @@ para calibrarlo: `elburgo_real_rssi.csv`.
   Detalle: en varios DWG la miniatura BMP revienta el WASM — el script anula `dwg_bmp`, que no se usa.
 
 - **`proyectos/tests/test_integridad.js`** — 6 comprobaciones del Panel en 2 s, sin navegador.
+
+- **`Siting/tools/gen_siting.mjs`** — saca el conjunto de datos de una planta para el siting a
+  partir de su `<planta>_layout.json`. El convenio de coordenadas no se adivinó: se dedujo
+  reproduciendo Páramo, que está en los dos sitios (12 mm de media sobre sus 396 TCU). El origen
+  UTM se calcula de `clat/clon` cuando el layout no trae `cE/cN`, con una conversión validada
+  contra las tres plantas que sí lo traen (3 mm en el peor caso, tres zonas distintas).
+  ```bash
+  node tools/gen_siting.mjs paramo --verifica    # prueba del convenio contra el que ya existe
+  node tools/gen_siting.mjs tunez --write
+  ```
+  **Guarda**: si el layout no trae `modW/mods/filaZ` NO inventa cotas de mesa — con el
+  `|| 1.134` y el `|| 28` que llevaba al principio, Fayón salía con la mesa de El Burgo.
 
 - **`tools/bench_cobertura_multi.mjs`** — banco headless de las dos vistas 2D en las seis plantas.
   Mide de verdad: píxeles pintados, encuadre sobre la planta, contadores, aviso de carencia, y dos
