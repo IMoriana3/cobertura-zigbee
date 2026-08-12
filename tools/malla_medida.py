@@ -10,8 +10,9 @@ NODOS.CSV — una fila por equipo que haya reportado:
     id                identificador del equipo (p.ej. TCU_SUNNER_ID_057)
     etiqueta          su nombre en el layout (1.10.4, TK012, NCU 1…)
     role              TCU o COORD (la NCU/coordinador va como COORD)
-    x, n              posición en metros locales de la planta   ── usa esto,
-    lat, lon          o bien la posición geográfica             ── o esto
+    ncu, esclavo      NCU y nº de esclavo Modbus                ── con esto basta,
+    x, n              o la posición en metros locales de la planta,
+    lat, lon          o bien la posición geográfica
     rssi_med_dbm      RSSI medio del nodo, en dBm (negativo)
     padre_dominante   id del equipo por el que enruta casi siempre
     padres_distintos  cuántos padres distintos ha usado
@@ -29,12 +30,19 @@ ENLACES.CSV — una fila por enlace medido:
     freq              canal/frecuencia (opcional)
     nota              lo que haga falta anotar (opcional)
 
+Un volcado del SCADA no habla de nombres del plano: habla de "el esclavo 57 de la NCU 3". Por eso
+basta con `ncu` y `esclavo` (y `id`, para poder referirlo en los enlaces): la posición y el nombre
+salen del CENSO que ya está en el repo, `cobertura_coords/<planta>/coords_<planta>.csv`, generado
+por tools/gen_coords_cobertura.py cruzando el layout con la topología del SCADA. Esas coordenadas
+además vienen PROYECTADAS con el CRS de la planta, así que son mejores que convertir x/n aquí.
+
 El script comprueba que cada nodo casa con un equipo del layout y avisa de los que no.
 Sin `lat/lon` los convierte desde x/n con el mismo origen que usa el visor.
 """
 import csv, json, math, sys, os
 
 MPERLAT = 111320.0
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def leer(ruta):
@@ -63,8 +71,23 @@ def main():
     conocidos |= {str(c.get('name')) for c in lay.get('ncus', [])}
     conocidos |= {str(c.get('name')) for c in lay.get('meteo', [])}
 
-    feats, pos, sin_casar = [], {}, []
+    # censo del repo: (NCU, esclavo, rol) -> equipo, para los volcados que vienen por nº de esclavo
+    censo, fcenso = {}, os.path.join(RAIZ, 'cobertura_coords', planta, 'coords_%s.csv' % planta)
+    if os.path.exists(fcenso):
+        for c in leer(fcenso):
+            if c.get('ncu') and c.get('esclavo'):
+                censo.setdefault((int(c['ncu']), int(c['esclavo']), c['rol']), c)
+
+    feats, pos, sin_casar, sin_censo = [], {}, [], []
     for r in leer(fnodos):
+        if r.get('ncu') and r.get('esclavo') and not (r.get('x') or r.get('lat')):
+            rol = {'COORD': 'NCU', 'METEO': 'HSU'}.get((r.get('role') or 'TCU').upper(),
+                                                       (r.get('role') or 'TCU').upper())
+            eq = censo.get((int(r['ncu']), int(r['esclavo']), rol))
+            if eq is None:
+                sin_censo.append('NCU%s esclavo %s (%s)' % (r['ncu'], r['esclavo'], rol))
+                continue
+            r = dict(r, lat=eq['lat'], lon=eq['lon'], etiqueta=r.get('etiqueta') or eq['etiqueta'])
         if r.get('lat') and r.get('lon'):
             lat, lon = float(r['lat']), float(r['lon'])
         else:
@@ -113,11 +136,14 @@ def main():
     rs = [v for v in rs if v is not None]
     print('%s  ·  %d nodos  ·  %d enlaces%s' % (salida, nod, enl,
           ('  ·  RSSI %d a %d dBm' % (min(rs), max(rs))) if rs else ''))
+    if sin_censo:
+        print('AVISO: %d nodos con NCU+esclavo que no están en el censo y se han dejado fuera: %s' %
+              (len(sin_censo), ', '.join(sin_censo[:8])))
     if sin_casar:
         print('AVISO: %d etiquetas no existen en %s_layout.json: %s' % (len(sin_casar), planta, ', '.join(sin_casar[:8])))
     if huerfanos:
         print('AVISO: %d enlaces con un extremo que no está en nodos.csv: %s' % (len(huerfanos), huerfanos[:4]))
-    if not sin_casar and not huerfanos:
+    if not sin_casar and not huerfanos and not sin_censo:
         print('todas las etiquetas casan con el layout y todos los enlaces tienen sus dos extremos')
 
 
