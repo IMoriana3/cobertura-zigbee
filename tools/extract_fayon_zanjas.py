@@ -20,7 +20,9 @@ leyenda, que caen en coordenadas exactas conocidas.  Se comprueba contra el layo
 CONFLICTO CON EL DWG — el P07 dibuja el CT en (53,74 . -39,77), alineado con los ejes y de
 5,99 x 3,02 m; el DWG de layout lo pone en (51,25 . -47,52) girado 34 grados, y ahí no hay nada
 en el P07 ni al revés.  Son 8,14 m.  El P07 es de NOV 23 rev. 0 y el DWG es de 14-02-2025: el CT
-se movió y las zanjas no se redibujaron.  NO se estiran ni se desplazan para que casen.
+se movió y las zanjas no se redibujaron.  Los dos tramos que colgaban del CT (el de A.C. y el de
+alta tensión) se REENGANCHAN al CT vigente con un desplazamiento rígido declarado — ver DESPLAZA
+más abajo.  El resto de la red no se toca.
 
 El símbolo de arqueta se dibuja en el plano a ~0,87 m de lado, pero la leyenda dice 600x600 mm:
 se emite el cuadrado REAL de 0,60 m centrado en el símbolo, igual que en El Burgo.
@@ -43,6 +45,16 @@ COLORES = [
 ]
 X_DIBUJO = 1000.0      # a la derecha están las secciones y el cajetín, no la planta
 X_LEYENDA = -95.0      # en metros: los trazos de la leyenda caen en x ≈ -104..-99
+
+# DERIVADO, NO MEDIDO — reenganche de los dos últimos tramos al CT vigente.
+# El P07 (NOV-23) dibuja el CT 8,14 m al NNE de donde lo pone el DWG de layout (14-02-2025).
+# Se desplazan en bloque SOLO las zanjas que morían/nacían en el CT viejo, por el vector que va
+# del centro del CT del P07 (53,7345 . -39,7735) al centroide del CT del DWG (51,245 . -47,525).
+# Las 27 zanjas de string y la espina C.C.+C.A. NO se tocan: casan con las filas de seguidores a
+# 1,84 m de mediana y moverlas las despegaría.  El salto de 8 m que queda en la unión espina→A.C.
+# es real y se deja a la vista: marca exactamente dónde discrepan los dos planos.
+DESPLAZA = {'trench_n3', 'trench_mt'}
+DX, DN = -2.49, -7.75
 
 
 def polilineas(items):
@@ -69,7 +81,7 @@ def polilineas(items):
 def main():
     pag = pymupdf.open(PDF)[0]
     dib = [it for it in pag.get_drawings() if it.get('color') and it['rect'].x0 <= X_DIBUJO]
-    capas, meta = {}, {}
+    capas, meta, sin_mover = {}, {}, {}
 
     for rgb, capa, desc in COLORES:
         pls = []
@@ -84,8 +96,12 @@ def main():
                     continue
                 pls.append(m)
         if pls:
-            capas[capa] = pls
             largo = sum(math.dist(a, b) for pl in pls for a, b in zip(pl, pl[1:]))
+            if capa in DESPLAZA:
+                sin_mover[capa] = pls
+                pls = [[[round(q[0] + DX, 2), round(q[1] + DN, 2)] for q in pl] for pl in pls]
+                desc += ' · DESPLAZADA %.2f m al CT vigente' % math.hypot(DX, DN)
+            capas[capa] = pls
             meta[capa] = '%s · %d polilíneas · %.0f m' % (desc, len(pls), largo)
 
     # arquetas: cuadrados magenta rellenos (cada uno viene partido en dos subtrazados)
@@ -136,9 +152,20 @@ def main():
                             'de diferencia. El P07 es de NOV 23 revision 0 y el DWG es Layout_PFV_Fayon_140225 '
                             '(14-02-2025): el CT se movio entre una y otra y las zanjas no se redibujaron. Por '
                             'eso el tramo de A.C. (4,3 m) muere a 8 m del CT actual y la zanja de alta tension '
-                            'arranca al norte de el en vez de salir de su puerta. Las zanjas se dejan DONDE LAS '
-                            'DIBUJA SU PLANO: no se estiran ni se desplazan para que casen.'),
+                            'arrancaba al norte de el en vez de salir de su puerta. Ver el campo desplazamiento: esos '
+                            'dos tramos se reenganchan al CT vigente; el resto de la red se queda donde la '
+                            'dibuja su plano.'),
+        'desplazamiento': ('DERIVADO, NO MEDIDO: trench_n3 y trench_mt van desplazadas en bloque '
+                           '(dx %+.2f m / dn %+.2f m, o sea 8,14 m al SSO, azimut 197,8 deg) para que '
+                           'enganchen con el CT del DWG de 14-02-2025 en vez de con el del P07 de NOV-23. '
+                           'Ni las 27 zanjas de string ni la espina C.C.+C.A. se tocan: casan con las filas '
+                           'de seguidores a 1,84 m de mediana. El salto de 8 m que queda en la union '
+                           'espina->A.C. es REAL y se deja a la vista: marca donde discrepan los dos planos. '
+                           'El trazado sin desplazar queda en original_sin_desplazar. Aviso: el CT ademas '
+                           'GIRO 34 grados, asi que el punto de conexion acierta pero no la entrada real del '
+                           'cable en la caseta nueva — vale para el gemelo, no para replanteo.') % (DX, DN),
         'capas': meta,
+        'original_sin_desplazar': sin_mover,
         'layers': capas,
     }
     with open(OUT, 'w', encoding='utf-8') as f:
