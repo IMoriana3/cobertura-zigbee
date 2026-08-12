@@ -127,7 +127,7 @@ const CURADO = {
 };
 
 /* ---------- construcción de una sección ---------- */
-function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null } = {}) {
+function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null, max = null } = {}) {
   const f = regs.map(r => {
     const bits = {}, bdesc = {};
     for (const h of r.hijos) if (h.bits) { bits[h.nombre] = h.bits; if (h.desc) bdesc[h.nombre] = h.desc; }
@@ -144,7 +144,7 @@ function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null 
             Object.keys(bdesc).length ? bdesc : null];
   });
   const s = { t, sn, rw, f };
-  if (base !== null) { s.base = base; s.stride = stride; }
+  if (base !== null) { s.base = base; s.stride = stride; s.max = max; }   // max = cuántas unidades tiene el bloque, del R7 (hoja Overview)
   return s;
 }
 const entre = (regs, a, b) => regs.filter(r => r.addr >= a && r.addr <= b);
@@ -162,17 +162,17 @@ const NCU = [
   seccion('Registros propios', 'hoja «NCU Info» · direcciones absolutas · una NCU por planta', 'ro', entre(nInfo, 30000, 30199)),
   seccion('Comandos y forzados', 'hoja «NCU RW registers» · ESCRITURA sobre la planta entera: fuerza posiciones seguras y limpieza por grupo', 'w', nRW),
   seccion('Bloque TCU (republicado)', 'hoja «TCU Compat» · base 30500 · 22 registros/TCU · hasta 200 TCU · lastComm 29500+(id−1)·2', 'ro',
-    entre(nTCUc, 30500, 30599), { base: 30500, stride: 22, offsetDe: 30500 }),
+    entre(nTCUc, 30500, 30599), { base: 30500, stride: 22, offsetDe: 30500, max: 200 }),
   seccion('TCU · último contacto', 'hoja «TCU Compat» · base 29500 · 2 registros/TCU', 'ro',
-    entre(nTCUc, 29500, 29599), { base: 29500, stride: 2, offsetDe: 29500 }),
+    entre(nTCUc, 29500, 29599), { base: 29500, stride: 2, offsetDe: 29500, max: 200 }),
   seccion('Bloque TCU completo', 'hoja «TCU» · base 50000 · 50 registros/TCU · el mapa entero de cada seguidor a través de la NCU', 'ro',
-    nTCU, { base: 50000, stride: 50, offsetDe: 50000 }),
+    nTCU, { base: 50000, stride: 50, offsetDe: 50000, max: 200 }),
   seccion('Bloque HSU básico (republicado)', 'hoja «HSU» · base 30200 · 10 registros/HSU', 'ro',
-    entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200 }),
+    entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200, max: 10 }),
   seccion('HSU · marcas de tiempo', 'hoja «HSU» · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/HSU', 'ro',
     entre(nHSU, 29000, 29499)),
   seccion('Bloque HSU extendido (republicado)', 'hoja «HSU EXT» · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
-    nHSUx, { base: 28000, stride: 100, offsetDe: 28000 }),
+    nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
 /* ================= TCU (PDF v6, FW 1.4.3) ================= */
@@ -198,11 +198,11 @@ const HSU = [
   seccion('Bloque 50026', 'R23', 'w', entre(hR23, 50000, 50999)),
   seccion('Calibración / fábrica', 'R23 · ESCRITURA: no tocar en planta sin instrucción del fabricante', 'w', entre(hR23, 51000, 99999)),
   seccion('Bloque básico vía NCU (republicado)', 'en la NCU · base 30200 · 10 registros/HSU', 'ro',
-    entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200 }),
+    entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200, max: 10 }),
   seccion('Marcas de tiempo vía NCU', 'en la NCU · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/HSU', 'ro',
     entre(nHSU, 29000, 29499)),
   seccion('Bloque extendido vía NCU (piranómetros)', 'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
-    nHSUx, { base: 28000, stride: 100, offsetDe: 28000 }),
+    nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
 /* ---------- salida ---------- */
