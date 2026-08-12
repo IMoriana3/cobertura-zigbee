@@ -522,8 +522,70 @@ hsu_ext:
     23: {name: poa_tracking,     type: s32, unit: Wm2x100, scale: 0.01}
     25: {name: poa_diffuse,      type: s32, unit: Wm2x100, scale: 0.01}
 `;
+/* ================== PLANTA REAL, a traves del agente ==================
+   El agente (tools/tcu-agente/TCU_Agente.ps1 del repo SCADA) ya expone HTTP de SOLO LECTURA sobre
+   Modbus, con token en la cabecera X-Token y CORS abierto, y se publica por un tunel de Cloudflare.
+   Esta ficha se limita a preguntarle. Reglas que NO se saltan:
+     - Nada codificado aqui: ni URL ni token. Los pone el usuario.
+     - Se guardan SOLO en el localStorage de ESE navegador, y hay boton para borrarlos.
+     - Solo GET /ping y GET /leer. Ni una escritura, ni un POST.
+   La pagina va por HTTPS, asi que la URL del agente tiene que ser https:// (el tunel lo es). Un
+   http:// lo bloquea el navegador por contenido mixto, y se avisa en vez de fallar en silencio. */
+function agCfg(){ try{return JSON.parse(localStorage.getItem('factiun_agente')||'null')||{};}catch(e){return {};} }
+function agGuarda(){
+  var u=($('agUrl').value||'').trim().replace(/\/+$/,''), t=($('agTok').value||'').trim();
+  try{localStorage.setItem('factiun_agente',JSON.stringify({url:u,tok:t}));}catch(e){}
+  agPing();
+}
+function agBorra(){ try{localStorage.removeItem('factiun_agente');}catch(e){}
+  $('agUrl').value='';$('agTok').value='';$('agEstado').innerHTML='<span class="hint">credenciales borradas de este navegador.</span>'; }
+function agFetch(ruta){
+  var c=agCfg(); if(!c.url) return Promise.reject(new Error('falta la URL del agente'));
+  if(location.protocol==='https:'&&/^http:/i.test(c.url))
+    return Promise.reject(new Error('la URL del agente es http:// y esta página va por https://. El navegador lo bloquea por contenido mixto — usa la URL del túnel, que es https://'));
+  return fetch(c.url+ruta,{headers:c.tok?{'X-Token':c.tok}:{}}).then(function(r){
+    if(r.status===401||r.status===403)throw new Error('el agente rechaza el token (HTTP '+r.status+')');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();});
+}
+function agPing(){
+  var e=$('agEstado'); if(!e)return;
+  e.innerHTML='<span class="hint">preguntando al agente…</span>';
+  agFetch('/ping').then(function(j){
+    e.innerHTML='<div class="res"><b>'+esc(j.planta||'?')+'</b> · agente '+esc(j.agente||'?')
+      +' · mapa '+esc(j.mapa||'?')+' · escritura '+(j.escritura?'<b style="color:#e2574c">HABILITADA</b>':'deshabilitada')
+      +'<br>'+(j.ncus||[]).map(function(n){return 'NCU '+n.ncu+' (TCU '+esc(n.tcus)+')';}).join(' · ')
+      +((j.gws||[]).length?'<br>gateways: '+j.gws.map(esc).join(' · '):'')+'</div>';
+  }).catch(function(err){ e.innerHTML='<div class="aviso">No se pudo hablar con el agente: '+esc(err.message)+'</div>'; });
+}
+/* Lee EN PLANTA el registro que se tenga abierto. El agente devuelve el valor ya decodificado por
+   su propio mapa, no el crudo, asi que se muestra tal cual y se dice de donde sale. */
+function agLee(){
+  var pr=regSel(),sc=pr[0],r=pr[1],out=$('agLeeOut'); if(!r||!out)return;
+  var id=Math.max(1,+$('devid').value||1);
+  var addr=sc.stride? sc.base+(id-1)*sc.stride+r[0] : r[0];
+  var rango=($('agTcus').value||'1-5').trim();
+  out.innerHTML='<span class="hint">leyendo '+addr+' en planta…</span>';
+  agFetch('/leer?vars='+encodeURIComponent(addr)+'&tcus='+encodeURIComponent(rango)).then(function(j){
+    var fs=j.tcus||[];
+    if(!fs.length){out.innerHTML='<div class="hint">el agente no devolvió ningún TCU para «'+esc(rango)+'».</div>';return;}
+    var cols=Object.keys(fs[0]);
+    out.innerHTML='<div class="hint">'+esc(j.planta||'')+' · '+esc(j.fecha||'')+' · valor decodificado por el agente con SU mapa, no el crudo</div>'
+      +'<table class="sub"><tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'</tr>'
+      +fs.map(function(f){return '<tr>'+cols.map(function(c){return '<td'+(f.Estado==='sin respuesta'?' class="v0"':'')+'>'+esc(f[c])+'</td>';}).join('')+'</tr>';}).join('')
+      +'</table>';
+  }).catch(function(err){ out.innerHTML='<div class="aviso">'+esc(err.message)+'</div>'; });
+}
+
 function pintaUtiles(){
+  var c=agCfg();
   $('cuerpo').innerHTML='<div class="ugrid">'
+   +'<div class="ucard"><h3>Planta real · agente</h3><div class="us">solo lectura · GET /ping y GET /leer</div>'
+   +'<p style="font-size:.82rem;color:var(--tx2);margin:0 0 10px">Pega la URL del túnel del agente y su token. Se guardan <b>solo en este navegador</b> y no se mandan a ningún otro sitio. El agente es de solo lectura; esta ficha nunca escribe.</p>'
+   +'<label>URL del agente (https del túnel)</label><input id="agUrl" placeholder="https://algo.trycloudflare.com" value="'+esc(c.url||'')+'">'
+   +'<label>token (cabecera X-Token)</label><input id="agTok" type="password" placeholder="el token de agente_config.json" value="'+esc(c.tok||'')+'">'
+   +'<button onclick="agGuarda()">Conectar</button> <button onclick="agBorra()">Borrar credenciales</button>'
+   +'<div id="agEstado" style="margin-top:10px"></div></div>'
    +'<div class="ucard"><h3>Calculadora de polling</h3><div class="us">bloque compacto · límite Modbus 125 reg/lectura (el colector usa ≤110)</div>'
    +'<label>nº de TCUs</label><input id="pt" value="200" oninput="calcPoll()">'
    +'<label>nº de HSUs (básicas / extendidas)</label><input id="ph" value="2" style="width:52px" oninput="calcPoll()"> <input id="pe" value="0" style="width:52px" oninput="calcPoll()">'
@@ -573,6 +635,10 @@ function decoHTML(sc,r,addr){
     +(dos?'':'<div id="comp"></div>')
     +'<div id="dbits"></div>'
     +tramaHTML(sc,r,addr)
+    +(agCfg().url?('<div style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">leer en planta</h3>'
+        +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">TCU</label>'
+        +'<input id="agTcus" value="1-5" style="width:110px"><button onclick="agLee()">Leer '+addr+'</button></div>'
+        +'<div id="agLeeOut" style="margin-top:8px"></div></div>'):'')
     +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian). Acepta dec, 0x… y 0b…':
       'Un registro de 16 bits. Escribe en decimal, 0x… o 0b… — o pincha los bits para construir el valor.')+'</div></div>';
 }
