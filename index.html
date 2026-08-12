@@ -1188,8 +1188,16 @@ function buildMap(){
 function ensureMarkers(){
   // crea un marcador por nodo con coordenadas (posiciones estáticas)
   const ids=S.allIds||[]; const pts=[];
+  /* La MARCA DICE EL PAPEL. Todos los nodos se dibujaban idénticos —círculo de radio 7—, así que la
+     estación meteo y los repetidores eran indistinguibles de un TCU: su ruta estaba ahí, pero no se
+     sabía a cuál de los cientos de puntos había que pulsar. Ahora el relleno sigue siendo la métrica
+     que se esté mirando (que es de lo que va el mapa) y lo que cambia es el CONTORNO y el tamaño,
+     con los mismos colores que la leyenda: la HSU en ámbar, el repetidor en violeta. */
+  const PAPEL={HSU:{r:9,w:3,c:'#F6A623'},REP:{r:9,w:3,c:'#8e44ad'}};
   for(const id of ids){ if(S.markers[id])continue; const c=coordFor(id); if(!c)continue;
-    const m=L.circleMarker(c,{radius:7,weight:2,color:'rgba(0,0,0,.55)',fillColor:cv('--s-off'),fillOpacity:.9});
+    const _f=(S.rows||[]).find(o=>o.id===id), _p=PAPEL[(_f&&_f.role)||'']||null;
+    const m=L.circleMarker(c,{radius:_p?_p.r:7,weight:_p?_p.w:2,color:_p?_p.c:'rgba(0,0,0,.55)',fillColor:cv('--s-off'),fillOpacity:.9});
+    m._papel=_p?((_f&&_f.role)||''):null;
     m._nid=id; m.addTo(layer); S.markers[id]=m;
     m.bindPopup(()=>popup(id),{className:'pop'});
     m.on('click',()=>{ S.sel=id; drawRoutes(); });
@@ -1294,6 +1302,9 @@ function render(){
     if(r){ r.online?online++:off++; if(r.online&&r.rssi!=null)rssis.push(r.rssi); }
     const m=S.markers[id]; if(!m){ if(!coordFor(id))noC++; continue; }
     let rad=7; if(S.mode==='crit'){ const c=snapVal(snapAt(ts),'crit',id); rad=c?Math.min(13,7+c/3):6; } else if(S.mode==='spof'){ rad=snapVal(snapAt(ts),'spof',id)?11:6; } else if(S.mode==='spofp'){ const pe=spofPersist(id); rad=pe?Math.min(13,6+pe.frac*8):6; }
+    /* el papel manda sobre el radio base: la HSU y el repetidor se quedan más grandes salvo que el
+       modo (criticidad / SPOF) esté diciendo algo con el tamaño, que entonces manda el modo */
+    if(m._papel && S.mode!=='crit' && S.mode!=='spof' && S.mode!=='spofp') rad=Math.max(rad,9);
     m.setStyle({fillColor:colorOf(id,ts), fillOpacity:(r&&!r.online)?.85:.95, radius:rad});
     if(m._path){ m._path.classList.toggle('mk-alert', isAlert(id,ts)); }
   }
