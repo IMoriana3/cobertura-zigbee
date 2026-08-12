@@ -143,7 +143,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" style="margin-top:7px;border-top:1px solid var(--line);padding-top:7px"><label title="Cobertura de malla PINTADA SOBRE LOS MODULOS: cada tracker se tiñe según cuántos vecinos de malla ve SU ANTENA con la primera zona de Fresnel despejada, con las cotas reales y los propios paneles como obstáculo. Cambia con la hora: al levantar los paneles tapan enlaces."><input type="checkbox" id="cob"> 📶 <b>Cobertura de malla</b></label></div>
     <div class="row" id="cobLeg" style="display:none;gap:9px;font-size:11px;color:var(--tx2);flex-wrap:wrap"><span><span style="color:#e2574c">■</span> aislado</span><span><span style="color:#e3c149">■</span> un solo vecino</span><span><span style="color:#B9EBCF">■</span> 2-3 (justo)</span><span><span style="color:#36a878">■</span> 4-6</span><span><span style="color:#0E7A4E">■</span> 8+ (sobrada)</span></div>
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
-    <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
+    <div class="row" id="cobRealRow" style="display:none"><label title="Los enlaces REALMENTE medidos en campo: padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad contra la que se juzga el mapa simulado. Sale de &lt;planta&gt;_real.geojson; ahora mismo solo El Burgo lo tiene."><input type="checkbox" id="cobreal"> 📈 Malla medida</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
     <!-- BUSCADOR DE EQUIPOS: escribe y salta. Con 2.289 seguidores en San José, dar con uno a base
          de arrastrar y hacer zoom era inviable. Escribe texto y sale la lista; clic (o Intro) vuela. -->
@@ -581,8 +581,11 @@ async function build(){
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
-  if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
-  redesPanel();invPanel();indexaEquipos();
+  /* La malla MEDIDA ya no es solo de El Burgo: la casilla se muestra si la planta trae su
+     <planta>_real.geojson. Se comprueba con un HEAD, que no descarga el fichero. */
+  if($('cobRealRow')){var _cr=$('cobRealRow');_cr.style.display='none';
+    fetch(PLANT+'_real.geojson',{method:'HEAD',cache:'no-store'}).then(function(r){if(r.ok)_cr.style.display='';}).catch(function(){});}
+  redesPanel();invPanel();indexaEquipos();COBREAL=null;_cobRealLoad=false;   // la malla medida es por planta: se olvida la de la anterior
   if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
   if($('btmode')&&!cotasFile())$('btmode').disabled=true;
   await loadCotas(); if(GEO==='levantamiento'){aplicaResiduo();layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
@@ -3403,7 +3406,7 @@ function cobRealApply(){
   if(!cobRealOn||!ELEV){if(e)e.textContent='';return;}
   if(!COBREAL){ if(_cobRealLoad)return; _cobRealLoad=true;
     if(e)e.textContent='cargando malla medida…';
-    fetch('elburgo_real.geojson',{cache:'no-store'}).then(function(r){return r.json();}).then(function(g){
+    fetch(PLANT+'_real.geojson',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(g){   // <planta>_real.geojson: cada planta la suya, ya no solo El Burgo
       COBREAL=g;_cobRealLoad=false;cobRealApply();
     }).catch(function(){_cobRealLoad=false;COBREAL={features:[]};if(e)e.textContent='no se pudo cargar la malla medida';});
     return;}
