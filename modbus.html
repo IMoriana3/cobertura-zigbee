@@ -93,6 +93,22 @@
   .dec td{padding:3px 12px 3px 0;font-family:var(--mono);font-size:.78rem;color:var(--tx2)}
   .dec td.v1{color:var(--ok);font-weight:600}
   .dec td.v0{color:var(--muted)}
+  .dec table.sub{width:100%;margin-top:6px}
+  .dec table.sub th{text-align:left;padding:3px 12px 5px 0;font-family:var(--mono);font-size:.62rem;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+  .dec table.sub td{vertical-align:top;border-bottom:1px solid #14202e}
+  .dec table.sub td.sd{font-family:inherit;font-size:.78rem;color:var(--tx2);line-height:1.4;white-space:normal;max-width:52ch}
+  .dec .mut{color:var(--muted);font-weight:400}
+  /* compositor: un control por subcampo. Los de mas de un bit son numericos, que a mano en binario
+     es donde se cuela el error (WindHighestLevel son 3 bits, no un booleano). */
+  .comp{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .cf{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line2);
+      border-radius:8px;padding:4px 9px;font-family:var(--mono);font-size:.72rem;color:var(--tx2)}
+  .cf input[type=number]{width:58px;background:#0b1017;border:1px solid var(--line2);color:var(--tx);
+      border-radius:6px;padding:2px 5px;font:inherit}
+  .cf .cfb{color:var(--muted);font-size:.64rem}
+  .aviso{background:#2a1410;border:1px solid #7a2a12;color:#ffd9c7;border-radius:8px;
+      padding:7px 11px;font-size:.78rem;margin-top:10px;line-height:1.45}
   .hint{font-size:.74rem;color:var(--muted);margin-top:8px}
 
   /* simulador de bits: 16 celdas clicables */
@@ -255,6 +271,7 @@ DEV.ncu.max=200;DEV.ncu.idlab='Nº TCU/HSU';
 
 var cur='ncu',sel=null,$=function(i){return document.getElementById(i);};
 function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var escT=esc;   // dentro de deco() y pintaTrama() la variable local 'esc' es la escala / el nº de esclavo
 
 /* ============ REGISTRO DE VERSIONES Y FABRICANTES ============
    Cada mapa con su fuente, su estado y donde esta desplegado. Los
@@ -538,7 +555,8 @@ function bajaYML(){
   a.href=URL.createObjectURL(b);a.download='modbus_map.yml';a.click();URL.revokeObjectURL(a.href);
 }
 function elige(k){sel=(sel===k)?null:k;pintaSecs();
-  if(sel&&$('tramas'))pintaTrama();
+  if(sel&&$('raw1'))deco();            // pinta ya los bits, el compositor y las tramas, a cero
+  else if(sel&&$('tramas'))pintaTrama();
   var e=document.querySelector('.dec input');if(e)e.focus();}
 
 /* ---------------- decodificador ---------------- */
@@ -552,6 +570,7 @@ function decoHTML(sc,r,addr){
     +(dos?'<input id="raw2" placeholder="reg '+(addr+1)+'" oninput="deco()">':'')
     +'<span class="out" id="dout"></span></div>'
     +(dos?'':'<div class="bsim" id="bsim"></div><div class="bases" id="bases"></div>')
+    +(dos?'':'<div id="comp"></div>')
     +'<div id="dbits"></div>'
     +tramaHTML(sc,r,addr)
     +'<div class="hint">'+(dos?'Dos registros consecutivos, orden de palabra AB (big-endian). Acepta dec, 0x… y 0b…':
@@ -560,20 +579,26 @@ function decoHTML(sc,r,addr){
 /* ---- generador de tramas: la peticion de lectura real, byte a byte ---- */
 function crc16(bs){var c=0xFFFF;for(var i=0;i<bs.length;i++){c^=bs[i];for(var j=0;j<8;j++)c=(c&1)?((c>>1)^0xA001):(c>>1);}return [c&0xFF,(c>>8)&0xFF];}
 function hx(b){return b.toString(16).toUpperCase().padStart(2,'0');}
+/* DIRECCION DE CABLE. Antes se restaba 1 en la TCU (addr%10000 - 1), heredado del mapa inventado,
+   cuyas direcciones empezaban en 30001/40001. Con el mapa real es IMPOSIBLE: el primer registro es
+   exactamente 30000 y el primer holding exactamente 40000, asi que un -1 da -1 (0xFFFF).
+   Los tres documentos rotulan los bloques igual ("Input registers" en 3xxxx, "Holding registers" en
+   4xxxx) y los tres empiezan en x0000. Queda una ambiguedad que el documento no resuelve: si la
+   direccion de cable es el numero tal cual o el numero menos la base del bloque. Se usa TAL CUAL,
+   que es lo unico con evidencia: el sondeo Modbus de El Burgo confirmo que la NCU responde a 30000
+   como 30000. Para TCU y HSU no hay ese contraste todavia y la ficha lo dice. */
 function tramaInfo(sc,r,addr){
   var fc,wire,qty=(r[2]==='f32'||r[2]==='u32'||r[2]==='s32')?2:1;
-  if(cur==='tcu'){                                            // mapa del dispositivo: FC por tabla y offset 0-based
-    var tab=(r[2]==='coil')?'co':(r[2]==='di')?'di':(addr>=40000?'hr':'ir');
-    fc={co:1,di:2,hr:3,ir:4}[tab];
-    wire=(r[2]==='coil')?addr-1:(addr%10000)-1;
-  }else if(cur==='hsu'&&!sc.stride){fc=(addr<40000)?4:3;wire=addr;}   // mapa propio de la HSU: entrada/holding por rango, direccion absoluta
-  else{fc=3;wire=addr;}                                       // NCU: el colector real usa FC03 con la direccion absoluta tal cual
-  return {fc:fc,wire:wire,qty:qty};
+  if(cur==='ncu'||sc.stride)fc=3;              // NCU: el colector real usa FC03 sobre la direccion absoluta
+  else fc=(addr>=40000)?3:4;                   // mapa propio de TCU/HSU: holding en 4xxxx, entrada en 3xxxx
+  wire=addr;
+  return {fc:fc,wire:wire,qty:qty,dudoso:(cur!=='ncu'&&!sc.stride)};
 }
 function tramaHTML(sc,r,addr){
-  return '<div style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">trama de lectura</h3>'
+  return '<div style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:.8rem;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">tramas</h3>'
     +'<div class="row"><label style="font-family:var(--mono);font-size:.68rem;color:var(--muted)">esclavo</label>'
-    +'<input id="esclavo" value="1" style="width:64px" oninput="pintaTrama()"></div>'
+    +'<input id="esclavo" value="'+(cur==='tcu'?245:1)+'" style="width:64px" oninput="pintaTrama()">'
+    +(cur==='tcu'?'<span class="hint" style="margin:0">ID de fábrica de la TCU · RTU 19200 8E1</span>':'')+'</div>'
     +'<div id="tramas"></div></div>';
 }
 function pintaTrama(){
@@ -584,11 +609,40 @@ function pintaTrama(){
   var pdu=[t.fc,(t.wire>>8)&0xFF,t.wire&0xFF,(t.qty>>8)&0xFF,t.qty&0xFF];
   var rtu=[esc].concat(pdu),crc=crc16(rtu);
   var tcp=[0,1,0,0,0,pdu.length+1,esc].concat(pdu);
-  $('tramas').innerHTML=
-    '<div class="trama">TCP&nbsp; <span class="seg">'+tcp.slice(0,6).map(hx).join(' ')+'</span> <b>'+hx(esc)+' '+pdu.map(hx).join(' ')+'</b></div>'
-   +'<div class="trama">RTU&nbsp; <b>'+rtu.map(hx).join(' ')+'</b> <span class="crc">'+crc.map(hx).join(' ')+'</span></div>'
+  var h='<div class="trama"><span class="seg">leer TCP</span>&nbsp; <span class="seg">'+tcp.slice(0,6).map(hx).join(' ')+'</span> <b>'+hx(esc)+' '+pdu.map(hx).join(' ')+'</b></div>'
+   +'<div class="trama"><span class="seg">leer RTU</span>&nbsp; <b>'+rtu.map(hx).join(' ')+'</b> <span class="crc">'+crc.map(hx).join(' ')+'</span></div>'
    +'<div class="hint">FC'+String(t.fc).padStart(2,'0')+' · dirección de cable '+t.wire+' (0x'+t.wire.toString(16).toUpperCase()+') · '+t.qty+' registro'+(t.qty>1?'s':'')
-   +(cur==='tcu'?' · FC por tabla del mapa del dispositivo':' · el colector SCADA lee la NCU con FC03 y dirección absoluta tal cual (sin offset −1)')+'. CRC en verde, byte bajo primero.</div>';
+   +'. CRC en verde, byte bajo primero.'
+   +(t.dudoso?' <b>Dirección sin contrastar contra equipo</b>: se manda el número tal cual, como hace el colector con la NCU (sondeo de El Burgo: 30000 responde como 30000). Si no contesta, probar '+(t.wire%10000)+' (número menos la base del bloque).'
+             :' El colector SCADA lee la NCU así, con la dirección absoluta y sin offset −1.')+'</div>';
+
+  /* ESCRITURA. Solo en las secciones marcadas de escritura y solo cuando hay un valor compuesto:
+     la trama sale del valor que se acaba de componer arriba, no de la nada.
+       FC06  escribe la palabra entera
+       FC16  escribe N palabras (el único camino para f32/u32: hay que mandar las dos de golpe)
+       FC22  máscara: cambia SOLO los bits de los subcampos declarados y respeta el resto, que es
+             lo que se quiere cuando el registro comparte campos con otras funciones.
+     El equipo admite 06/16/22 según su propio documento; por eso no se ofrece FC05 ni FC15. */
+  if(sc.rw==='w'){
+    var v=parseRaw($('raw1')&&$('raw1').value);
+    if(v===null) h+='<div class="hint" style="margin-top:10px">Compón arriba el valor y aquí sale la trama de escritura.</div>';
+    else{
+      var w6=[esc,6,(t.wire>>8)&0xFF,t.wire&0xFF,(v>>8)&0xFF,v&0xFF],c6=crc16(w6);
+      var w16=[esc,0x10,(t.wire>>8)&0xFF,t.wire&0xFF,0,1,2,(v>>8)&0xFF,v&0xFF],c16=crc16(w16);
+      var cub=0,bb=r[4];                                   // máscara de lo que declaran los subcampos
+      if(bb&&typeof bb==='object'&&r[6]!=='ENUM')for(var kk in bb)for(var q=bb[kk][0];q<=bb[kk][1];q++)cub|=(1<<q);
+      var andM=(~cub)&0xFFFF, orM=v&cub;
+      if(!cub){andM=0x0000;orM=v&0xFFFF;}                  // sin subcampos: equivale a escribir la palabra entera
+      var w22=[esc,0x16,(t.wire>>8)&0xFF,t.wire&0xFF,(andM>>8)&0xFF,andM&0xFF,(orM>>8)&0xFF,orM&0xFF],c22=crc16(w22);
+      h+='<div class="trama" style="margin-top:10px"><span class="seg">FC06 &nbsp;RTU</span>&nbsp; <b>'+w6.map(hx).join(' ')+'</b> <span class="crc">'+c6.map(hx).join(' ')+'</span></div>'
+       + '<div class="trama"><span class="seg">FC16 &nbsp;RTU</span>&nbsp; <b>'+w16.map(hx).join(' ')+'</b> <span class="crc">'+c16.map(hx).join(' ')+'</span></div>'
+       + '<div class="trama"><span class="seg">FC22 &nbsp;RTU</span>&nbsp; <b>'+w22.map(hx).join(' ')+'</b> <span class="crc">'+c22.map(hx).join(' ')+'</span></div>'
+       + '<div class="hint">Valor <b>0x'+v.toString(16).toUpperCase().padStart(4,'0')+'</b> · FC22 con AND 0x'+andM.toString(16).toUpperCase().padStart(4,'0')
+       + ' y OR 0x'+orM.toString(16).toUpperCase().padStart(4,'0')+(cub?': toca solo los bits de los subcampos y deja el resto como está.':': el registro no declara subcampos, así que equivale a escribirlo entero.')+'</div>'
+       + '<div class="aviso">⚠ Esto <b>actúa sobre el equipo</b>. Antes de mandarla: comprobar el nº de esclavo, que la dirección de cable es la de este mapa y no la del documento, y leer el registro antes y después.</div>';
+    }
+  }
+  $('tramas').innerHTML=h;
 }
 function parseRaw(s){s=(s||'').trim();if(!s)return null;var p=s.slice(0,2).toLowerCase(),v;
   if(p==='0x')v=parseInt(s.slice(2),16);
@@ -600,7 +654,10 @@ function deco(){
   var pr=regSel(),sc=pr[0],r=pr[1];
   var ty=r[2],un=r[3]||'',bits=r[4],esc=escala(r);
   var a=parseRaw($('raw1')&&$('raw1').value),b=$('raw2')?parseRaw($('raw2').value):null;
-  if(a===null){$('dout').innerHTML='';$('dbits').innerHTML='';return;}
+  /* Sin valor todavía: el compositor y la trama se pintan igual, a cero. Si no, había que escribir
+     algo a mano para que apareciera el control de cada subcampo, que es lo que uno viene buscando. */
+  if(a===null){$('dout').innerHTML='';$('dbits').innerHTML='';
+    pintaBits(0,bits&&typeof bits==='object'&&r[6]!=='ENUM'?bits:null); pintaComp(0); pintaTrama(); return;}
   var out='',tb='';
   if(ty==='f32'){
     if(b===null)out='falta el segundo registro';
@@ -625,9 +682,15 @@ function deco(){
     if(bits&&r[6]==='ENUM'){out='<b>'+v+'</b> = <b>'+(bits[String(v)]||'¿valor desconocido?')+'</b>';}
   }
   if(bits&&typeof bits==='object'&&r[6]!=='ENUM'){
-    tb='<table>';
-    for(var k in bits){var lo=bits[k][0],hi=bits[k][1],val=(a>>lo)&((1<<(hi-lo+1))-1);
-      tb+='<tr><td>'+k+' ['+(lo===hi?lo:lo+'–'+hi)+']</td><td class="'+(val?'v1':'v0')+'">'+val+'</td></tr>';}
+    /* Cada subcampo con SU descripción del documento y su valor en dec/hex/bin. Antes solo salía el
+       nombre y el valor, y para saber qué significaba había que volver a la tabla de arriba. */
+    var bd=r[9]||{};
+    tb='<table class="sub"><tr><th>subcampo</th><th>bits</th><th>valor</th><th>qué significa</th></tr>';
+    for(var k in bits){var lo=bits[k][0],hi=bits[k][1],anc=hi-lo+1,val=(a>>lo)&((1<<anc)-1);
+      tb+='<tr><td>'+k+'</td><td class="v0">['+(lo===hi?lo:lo+'–'+hi)+']</td>'
+        +'<td class="'+(val?'v1':'v0')+'">'+val
+        +(anc>1?' <span class="mut">0x'+val.toString(16).toUpperCase()+' · 0b'+val.toString(2).padStart(anc,'0')+'</span>':'')
+        +'</td><td class="sd">'+(bd[k]?escT(bd[k]):'<span class="mut">el documento no lo describe</span>')+'</td></tr>';}
     tb+='</table>';
   }else if(typeof bits==='string'){
     var t=ALARMAS[bits.toLowerCase()],act=[];
@@ -637,6 +700,40 @@ function deco(){
   }
   $('dout').innerHTML=out;$('dbits').innerHTML=tb;
   pintaBits(a,bits&&typeof bits==='object'&&r[6]!=='ENUM'?bits:null);
+  pintaComp(a); pintaTrama();
+}
+
+/* ---- compositor: del significado al valor crudo, que es el camino que faltaba ----
+   El simulador de bits ya dejaba encender bits sueltos, pero los subcampos de varios bits (U2, U3)
+   había que componerlos a mano en binario, que es justo donde se cuela el error. Aquí cada subcampo
+   tiene su control: casilla si es de un bit, número si es de varios, acotado a su rango. */
+function pintaComp(a){
+  var pr=regSel(),sc=pr[0],r=pr[1],el=$('comp'); if(!el||!r)return;
+  var bits=r[4];
+  if(!bits||typeof bits!=='object'||r[6]==='ENUM'){el.innerHTML='';return;}
+  var clave=r[1]+'@'+(r[0]);
+  if(el.dataset.reg===clave){                       // mismo registro: solo se refrescan los valores
+    var ins=el.querySelectorAll('input');
+    for(var i=0;i<ins.length;i++){ if(document.activeElement===ins[i])continue;
+      var lo=+ins[i].dataset.lo,anc=+ins[i].dataset.anc,v=(a>>lo)&((1<<anc)-1);
+      if(ins[i].type==='checkbox')ins[i].checked=!!v; else ins[i].value=v; }
+    return;
+  }
+  var h='';
+  for(var k in bits){var lo=bits[k][0],hi=bits[k][1],anc=hi-lo+1,val=(a>>lo)&((1<<anc)-1);
+    h+='<label class="cf" title="'+escT((r[9]||{})[k]||k)+'"><span>'+k+'</span>'
+     + (anc===1 ? '<input type="checkbox" data-lo="'+lo+'" data-anc="1"'+(val?' checked':'')+' onchange="componer()">'
+                : '<input type="number" min="0" max="'+((1<<anc)-1)+'" value="'+val+'" data-lo="'+lo+'" data-anc="'+anc+'" oninput="componer()">')
+     + '<span class="cfb">['+(lo===hi?lo:lo+'–'+hi)+']</span></label>';}
+  el.dataset.reg=clave;
+  el.innerHTML='<div class="comp">'+h+'</div>';
+}
+function componer(){
+  var a=parseRaw($('raw1').value)||0, ins=$('comp').querySelectorAll('input');
+  for(var i=0;i<ins.length;i++){var lo=+ins[i].dataset.lo,anc=+ins[i].dataset.anc;
+    var v=(ins[i].type==='checkbox')?(ins[i].checked?1:0):Math.max(0,Math.min((1<<anc)-1,+ins[i].value||0));
+    var m=(((1<<anc)-1)<<lo)&0xFFFF; a=((a&~m)|((v<<lo)&m))&0xFFFF;}
+  $('raw1').value='0x'+a.toString(16).toUpperCase().padStart(4,'0'); deco();
 }
 function pintaBits(v,campos){
   var el=$('bsim');if(!el)return;
