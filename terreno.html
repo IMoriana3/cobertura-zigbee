@@ -2791,7 +2791,7 @@ function buildBOS(){
     var yHi=Math.max.apply(null,ys),base=yHi,fald=(yHi-Math.min.apply(null,ys))+0.40;
     var sh=new THREE.Shape();P.forEach(function(p,i){ if(i)sh.lineTo(p[0]-cx,p[1]-cn); else sh.moveTo(p[0]-cx,p[1]-cn); });sh.closePath();
     var b=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:h+fald,bevelEnabled:false}),bldM);
-    b.rotateX(-Math.PI/2);b.position.set(cx,base-fald,-cn);b.castShadow=true;b.receiveShadow=true;bosGroup.add(b);   // muros
+    b.rotateX(-Math.PI/2);b.position.set(cx,base-fald,-cn);b.castShadow=true;b.receiveShadow=true;b.userData.caseta=ci;bosGroup.add(b);   // muros (userData.caseta = índice del CT: el banco necesita distinguirla de las naves del recinto, que también son extrusiones)
     var k=1+0.5/Math.max(w,dp),shR=new THREE.Shape();                                                                // cubierta saliente: el mismo polígono, escalado
     P.forEach(function(p,i){var rx=(p[0]-cx)*k,rn=(p[1]-cn)*k; if(i)shR.lineTo(rx,rn); else shR.moveTo(rx,rn);});shR.closePath();
     var rf=new THREE.Mesh(new THREE.ExtrudeGeometry(shR,{depth:0.25,bevelEnabled:false}),roofM);
