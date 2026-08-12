@@ -145,6 +145,13 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row" id="cobStat" style="font-size:11px;color:var(--tx2)"></div>
     <div class="row" id="cobRealRow" style="display:none"><label title="Los 52 enlaces REALMENTE medidos en El Burgo (NCU1-GW2): padre dominante de cada TCU, RSSI medio y nodos SPOF. Es la verdad de campo contra la que se juzga el mapa."><input type="checkbox" id="cobreal"> 📈 Malla medida (El Burgo)</label></div>
     <div class="row" id="cobRealStat" style="font-size:11px;color:var(--tx2)"></div>
+    <!-- BUSCADOR DE EQUIPOS: escribe y salta. Con 2.289 seguidores en San José, dar con uno a base
+         de arrastrar y hacer zoom era inviable. Escribe texto y sale la lista; clic (o Intro) vuela. -->
+    <div class="row" style="margin-top:7px;position:relative">
+      <input id="buscaEq" type="text" placeholder="Buscar TCU / NCU / HSU…" autocomplete="off" title="Escribe parte del nombre (TK012, NCU 3, HSU 7, I-2, CT…) y pulsa Intro o elige de la lista: la cámara vuela hasta ese equipo."
+             style="flex:1;min-width:0;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:5px 9px;font:inherit;font-size:12.5px">
+      <div id="buscaLista" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;z-index:9;background:#0e1218f2;border:1px solid var(--line2);border-radius:9px;max-height:210px;overflow:auto;font-size:12.5px"></div>
+    </div>
     <div class="row" style="margin-top:8px"><button class="btn" id="reset">◎ Centrar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · doble-clic: ir ahí · WASD vuela</span></div>
   </div>
   <div id="timebar">
@@ -285,7 +292,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();}updateSunShadow();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();viajeStep(dt);}updateSunShadow();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -458,6 +465,36 @@ function encuadra(){ var f=FOCO||{x:0,n:0,w:720,d:480};
   var R=Math.max(60,CAM_K*Math.max(f.w,f.d));
   camera.position.set(f.x,R*Math.sin(CAM_EL),-f.n+R*Math.cos(CAM_EL));
   controls.target.set(f.x,0,-f.n);controls.update(); }
+/* ───────── BUSCADOR DE EQUIPOS ─────────
+   Con 2.289 seguidores en San José, dar con uno concreto arrastrando y haciendo zoom no es
+   viable. Se indexa todo lo que tiene nombre —TCU, NCU, HSU, inversores y CT— y se vuela hasta
+   él. El índice sale del LAYOUT, así que cada planta trae lo suyo sin tocar código. */
+var EQIDX=[],VIAJE=null;
+function _sinTildes(t){return String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function indexaEquipos(){ EQIDX=[];
+  if(!LAYOUT)return;
+  (LAYOUT.trackers||[]).forEach(function(t){if(t.id)EQIDX.push({k:'TCU',t:t.id,x:t.x,n:t.n,d:26});});
+  (LAYOUT.ncus||[]).forEach(function(c){EQIDX.push({k:'NCU',t:c.name||'NCU',x:c.x,n:c.n,d:18});});
+  (LAYOUT.meteo||[]).forEach(function(c){EQIDX.push({k:'HSU',t:c.name||'HSU',x:c.x,n:c.n,d:18});});
+  (LAYOUT.invlab||[]).forEach(function(c,i){var q=(typeof invAt==='function')?invAt(i):c;EQIDX.push({k:'INV',t:c.s||('I-'+(i+1)),x:q.x,n:q.n,d:20});});
+  (LAYOUT.ctlab||[]).forEach(function(c){EQIDX.push({k:'CT',t:c.s||'CT',x:c.x,n:c.n,d:26});});
+  if(!(LAYOUT.ctlab||[]).length)(LAYOUT.cts||[]).forEach(function(pl,i){ var sx=0,sn=0;pl.forEach(function(q){sx+=q[0];sn+=q[1];});
+    var cx=sx/pl.length,cn=sn/pl.length; if(Math.abs(cx)<3000&&Math.abs(cn)<3000)EQIDX.push({k:'CT',t:'CT '+(i+1),x:cx,n:cn,d:26});});
+  (LAYOUT.fijas||[]).forEach(function(f,i){EQIDX.push({k:'FIJA',t:f.nombre||('Instalación fija '+(i+1)),x:f.x,n:f.n,d:22});});
+  EQIDX.forEach(function(e){e._b=_sinTildes(e.k+' '+e.t);});
+}
+/* vuelo suave a un punto: mantiene el RUMBO desde el que estabas mirando y se acerca a `d` metros */
+function volarA(x,n,d){ if(!controls)return; d=d||24;
+  var y=(typeof terrainMeshY==='function')?terrainMeshY(x,n):0;
+  var off=new THREE.Vector3().subVectors(camera.position,controls.target);
+  var hl=Math.hypot(off.x,off.z)||1; off.x=off.x/hl*d*0.72; off.z=off.z/hl*d*0.72;
+  VIAJE={u:0,T:0.85,p0:camera.position.clone(),t0:controls.target.clone(),
+    p1:new THREE.Vector3(x+off.x, y+d*0.62, -n+off.z), t1:new THREE.Vector3(x,y+2.2,-n)};
+}
+function viajeStep(dt){ if(!VIAJE)return;
+  VIAJE.u=Math.min(1,VIAJE.u+dt/VIAJE.T); var u=VIAJE.u, e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;   // easing suave
+  camera.position.lerpVectors(VIAJE.p0,VIAJE.p1,e);controls.target.lerpVectors(VIAJE.t0,VIAJE.t1,e);controls.update();
+  if(u>=1)VIAJE=null; }
 var _tituloPlanta=function(){try{var t=(PLANTS[PLANT]&&PLANTS[PLANT].title)||PLANT;document.title='Cobertura 3D · '+t+' — terreno real';}catch(e){}};
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // MODO OFFLINE (ciberseguridad): sin satélite/relieve, CERO llamadas externas. Por defecto sigue el estado del navegador; el botón lo fija.
@@ -487,7 +524,7 @@ async function build(){
      y se dibujaban 9 de 10. Las NCU y las HSU vienen de un listado curado, no son bloques sueltos
      del DWG, así que ENSANCHAN el recorte; se ignoran solo si están a más de 300 m del campo, que
      es lo que descarta de verdad una copia de leyenda. */
-  var _eq=[].concat(LAYOUT.ncus||[],LAYOUT.meteo||[]),_fu=0;
+  var _eq=[].concat(LAYOUT.ncus||[],LAYOUT.meteo||[],LAYOUT.fijas||[]),_fu=0;   // las fijas también: la de Túnez cae 145 m al sur del campo y el recorte se la comía
   _eq.forEach(function(c){ var dx=Math.max(exmin-c.x,0,c.x-exmax),dn=Math.max(nmin-c.n,0,c.n-nmax);
     if(Math.hypot(dx,dn)<300)ext(c.x,c.n); else _fu++; });
   if(_fu)console.warn('[cobertura] '+_fu+' equipo(s) del layout a más de 300 m del campo: fuera del recorte');
@@ -545,7 +582,7 @@ async function build(){
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
   if($('cobRealRow'))$('cobRealRow').style.display=(PLANT==='elburgo')?'':'none';
-  redesPanel();invPanel();
+  redesPanel();invPanel();indexaEquipos();
   if(!cotasFile()){var _gs=$('geosrc');if(_gs){_gs.value='terreno';_gs.disabled=true;}}
   if($('btmode')&&!cotasFile())$('btmode').disabled=true;
   await loadCotas(); if(GEO==='levantamiento'){aplicaResiduo();layoutTrackers();} statCotas();   // la malla medida solo existe en El Burgo
@@ -2927,7 +2964,7 @@ function buildBOS(){
        correas 100x70. Y con sus UNIONES: placa de anclaje al suelo, cartela poste-viga, grapa en
        cada cruce correa-viga y tornapunta triangulando el poste bajo con la viga. Sin ellas la
        estructura parecía flotar por piezas sueltas. */
-    var PS=0.12, VH=0.16, VW=0.10, CH=0.07, CW=0.10;
+    var PS=0.09, VH=0.12, VW=0.07, CH=0.05, CW=0.07;   // perfiles finos: con 120x120 y 100x160 la mesa parecía un puente
     var yV=function(dl){return sz*dl-(CH+VH/2)*cz;}, zV=function(dl){return -cz*dl-(CH+VH/2)*sz;};   // eje de la viga, por debajo de las correas
     for(var k=0;k<=rows;k++){ var dl2=k*ml;                                                    // CORREAS a lo ancho
       var co=new THREE.Mesh(new THREE.BoxGeometry(w+0.12,CH,CW),steelM);
@@ -2937,24 +2974,30 @@ function buildBOS(){
       var vi=new THREE.Mesh(new THREE.BoxGeometry(VW,VH,L),steelM);                            // VIGA a lo largo de la pendiente
       vi.rotation.x=inc;vi.position.set(dx,yV(L/2),zV(L/2));vi.castShadow=true;vi.receiveShadow=true;g.add(vi);
       for(var k2=0;k2<=rows;k2++){ var dl4=k2*ml;                                              // GRAPA correa-viga en cada cruce
-        var gr=new THREE.Mesh(new THREE.BoxGeometry(CW+0.05,CH+VH*0.6,CW+0.05),mUni);
-        gr.rotation.x=inc;gr.position.set(dx,sz*dl4-(CH*0.35)*cz,-cz*dl4-(CH*0.35)*sz);g.add(gr);}
+        /* SIEMPRE por debajo del plano de módulos: antes medía CH+0,6·VH centrada a 0,35·CH y
+           asomaba 5,8 cm POR ENCIMA del vidrio ("¿qué hay encima de los módulos?"). */
+        var gh=CH*0.9, gr=new THREE.Mesh(new THREE.BoxGeometry(CW+0.035,gh,CW+0.035),mUni);
+        gr.rotation.x=inc;gr.position.set(dx,sz*dl4-(CH/2)*cz,-cz*dl4-(CH/2)*sz);g.add(gr);}
       PIES.forEach(function(r,ri){
         var dl3=r[0]*L, dp=cz*dl3, q2=W(dx,dp), sue=terrainMeshY(q2[0],q2[1]);
         var yTop=yBase+yV(dl3)-VH/2, hh=Math.max(0.30,yTop-sue);                               // del suelo REAL de SU punto a la viga
         var pa=new THREE.Mesh(new THREE.BoxGeometry(PS,hh,PS),steelM);
         pa.position.set(dx,(yTop+sue)/2-yBase,-dp);pa.castShadow=true;pa.receiveShadow=true;g.add(pa);
-        var pl2=new THREE.Mesh(new THREE.BoxGeometry(PS+0.16,0.03,PS+0.16),mUni);           // PLACA de anclaje al suelo
-        pl2.position.set(dx,sue-yBase+0.015,-dp);pl2.receiveShadow=true;g.add(pl2);
-        var ca=new THREE.Mesh(new THREE.BoxGeometry(0.022,0.30,PS+0.16),mUni);              // CARTELA poste-viga
-        ca.rotation.x=inc;ca.position.set(dx+PS/2+0.012,yV(dl3)-0.05,zV(dl3));g.add(ca);
-        if(ri===0){                                                                            // TORNAPUNTA: triangula el poste bajo con la viga
-          var yP=yTop-hh*0.55, dl5=0.42*L, yQ=yBase+yV(dl5)-VH/2, dq=cz*dl5;
-          var vx=0, vy=yQ-(yBase+yP-yBase)-0, vz=-(dq-dp);
-          var ax=yQ-(yBase+yP), az2=-(dq-dp), Lt=Math.hypot(ax,az2);
-          var to=new THREE.Mesh(new THREE.BoxGeometry(0.06,Lt,0.06),steelM);
-          to.position.set(dx,(yP+ (yQ-yBase))/2,-(dp+dq)/2);
-          to.rotation.x=-Math.atan2(az2,ax);to.castShadow=true;g.add(to);}
+        var pl2=new THREE.Mesh(new THREE.BoxGeometry(PS+0.10,0.018,PS+0.10),mUni);          // PLACA de anclaje al suelo
+        pl2.position.set(dx,sue-yBase+0.009,-dp);pl2.receiveShadow=true;g.add(pl2);
+        var ca=new THREE.Mesh(new THREE.BoxGeometry(0.014,0.17,PS+0.09),mUni);              // CARTELA poste-viga
+        ca.rotation.x=inc;ca.position.set(dx+PS/2+0.008,yV(dl3)-0.03,zV(dl3));g.add(ca);
+        if(ri===0){
+          /* TORNAPUNTA: del poste bajo a la viga, TODO en coordenadas LOCALES de la mesa. La primera
+             versión mezclaba altura del mundo con altura local y la diagonal salía disparada 26 cm
+             por encima del vidrio. Sus dos extremos van agarrados a piezas que ya están por debajo
+             del plano (el poste y la cara inferior de la viga), así que no puede asomar. */
+          var yA=(yV(dl3)-VH/2)+((sue-yBase)-(yV(dl3)-VH/2))*0.55, zA=-dp;                  // punto en el poste
+          var dl5=0.45*L, yB=yV(dl5)-VH/2, zB=zV(dl5);                                       // punto en la viga
+          var dY=yB-yA, dZ=zB-zA, Lt=Math.hypot(dY,dZ);
+          var to=new THREE.Mesh(new THREE.BoxGeometry(0.045,Lt,0.045),steelM);
+          to.position.set(dx,(yA+yB)/2,(zA+zB)/2);to.rotation.x=Math.atan2(dZ,dY);
+          to.castShadow=true;g.add(to);}
       });}
     bosGroup.add(g);
     if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);bosGroup.add(lb);}
@@ -3662,6 +3705,28 @@ $('fotoBtn').onclick=function(){ var sz=new THREE.Vector2();renderer.getSize(sz)
   }catch(e){alert('No se pudo capturar ('+e.message+')');}
   finally{ renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);SUN.shadow.mapSize.set(ms,ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();renderer.render(scene,camera);renderPost();} };
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
+/* BUSCADOR: escribe -> lista filtrada -> clic o Intro y la cámara vuela hasta el equipo. */
+(function(){ var inp=$('buscaEq'), lst=$('buscaLista'); if(!inp||!lst)return;
+  var sel=-1, res=[];
+  function pinta(){ if(!res.length){lst.style.display='none';return;}
+    lst.innerHTML=res.map(function(e,i){return '<div class="bres" data-i="'+i+'" style="padding:5px 9px;cursor:pointer;display:flex;gap:8px;align-items:baseline;'+(i===sel?'background:#1d2836':'')+'">'
+      +'<span style="color:var(--accent);font-family:var(--mono);font-size:11px;min-width:34px">'+e.k+'</span><span>'+e.t+'</span></div>';}).join('');
+    lst.style.display='';
+    [].slice.call(lst.querySelectorAll('.bres')).forEach(function(d){
+      d.onmousedown=function(ev){ev.preventDefault();ir(res[+d.dataset.i]);};});}
+  function ir(e){ if(!e)return; volarA(e.x,e.n,e.d); lst.style.display='none'; inp.value=e.t; inp.blur(); }
+  function filtra(){ var q=_sinTildes(inp.value.trim());
+    res=!q?EQIDX.slice(0,12):EQIDX.filter(function(e){return e._b.indexOf(q)>=0;}).slice(0,12);
+    sel=res.length?0:-1; pinta(); }
+  inp.oninput=filtra;
+  inp.onfocus=filtra;
+  inp.onblur=function(){setTimeout(function(){lst.style.display='none';},120);};
+  inp.onkeydown=function(ev){
+    if(ev.key==='ArrowDown'){sel=Math.min(res.length-1,sel+1);pinta();ev.preventDefault();}
+    else if(ev.key==='ArrowUp'){sel=Math.max(0,sel-1);pinta();ev.preventDefault();}
+    else if(ev.key==='Enter'){ir(res[sel<0?0:sel]);ev.preventDefault();}
+    else if(ev.key==='Escape'){lst.style.display='none';inp.blur();}};
+})();
 $('reset').onclick=function(){encuadra();};   // "Reset" vuelve al encuadre de la planta, no a un punto fijo: con la planta descentrada (Bagnarelli) el fijo la sacaba de cuadro
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
 $('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducción (min simulados por segundo real)
