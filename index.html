@@ -1560,10 +1560,16 @@ function demo(){
     /* El padre no es solo el más cercano: se penaliza la PROFUNDIDAD, porque encadenar por cercanía
        a secas hace serpientes de 30 saltos y una malla real es ancha y corta (en El Burgo el salto
        típico medido es 5). Cada salto de más cuesta como PENA metros de distancia. */
+    /* SUPUESTO, y por eso está aquí a la vista y no enterrado en una fórmula: la HSU y el repetidor
+       van sobre MÁSTIL, bastante más alto que la TCU (que va a ~1,5 m sobre la viga). Con la antena
+       despejada alcanzan la NCU en directo aunque estén más lejos, así que ven la NCU como si
+       estuviera ALTURA veces más cerca. Es una hipótesis de planificación, no una medida: el día que
+       haya volcado del coordinador se contrasta y se ajusta el número. */
+    const ALTURA = { HSU: 3, REP: 3 };
     const PENA = 60, prof = {};
     while(pend.length){
       const nd = pend.shift();
-      let mejor = null, mc = Math.sqrt(d2(nd, r));               // coste de colgar de la propia NCU
+      let mejor = null, mc = Math.sqrt(d2(nd, r)) / (ALTURA[nd.rol] || 1);   // coste de colgar de la propia NCU
       for(const c of dentro){ let cc = Math.sqrt(d2(nd, c)) + PENA * (prof[c.id] || 0);
         if(c.rol === 'REP') cc -= 120;                          // el repetidor está para eso: se prefiere como padre
         if(cc < mc){ mc = cc; mejor = c; } }

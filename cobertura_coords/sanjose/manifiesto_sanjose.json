@@ -3,7 +3,10 @@
  "titulo": "San José 24019",
  "crs": "EPSG:32719",
  "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 2306,
  "tcus": 2289,
+ "hsus": 8,
+ "reps": 9,
  "ncus": 21,
  "gws": 2,
  "una_fila": false,
@@ -18,12 +21,12 @@
  "ambitos": [
   {
    "fichero": "coords_sanjose.csv",
-   "tcus": 2289,
+   "tcus": 2306,
    "ambito": "planta"
   },
   {
    "fichero": "coords_sanjose_NCU01.csv",
-   "tcus": 119,
+   "tcus": 121,
    "ambito": "ncu",
    "ncu": 1
   },
@@ -38,7 +41,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU01_GW2.csv",
-   "tcus": 51,
+   "tcus": 53,
    "ambito": "gateway",
    "ncu": 1,
    "gw": 2,
@@ -119,13 +122,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU05.csv",
-   "tcus": 124,
+   "tcus": 125,
    "ambito": "ncu",
    "ncu": 5
   },
   {
    "fichero": "coords_sanjose_NCU05_GW1.csv",
-   "tcus": 56,
+   "tcus": 57,
    "ambito": "gateway",
    "ncu": 5,
    "gw": 1,
@@ -143,7 +146,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU06.csv",
-   "tcus": 119,
+   "tcus": 120,
    "ambito": "ncu",
    "ncu": 6
   },
@@ -158,7 +161,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU06_GW2.csv",
-   "tcus": 51,
+   "tcus": 52,
    "ambito": "gateway",
    "ncu": 6,
    "gw": 2,
@@ -167,7 +170,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU07.csv",
-   "tcus": 119,
+   "tcus": 120,
    "ambito": "ncu",
    "ncu": 7
   },
@@ -182,7 +185,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU07_GW2.csv",
-   "tcus": 60,
+   "tcus": 61,
    "ambito": "gateway",
    "ncu": 7,
    "gw": 2,
@@ -191,13 +194,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU08.csv",
-   "tcus": 119,
+   "tcus": 120,
    "ambito": "ncu",
    "ncu": 8
   },
   {
    "fichero": "coords_sanjose_NCU08_GW1.csv",
-   "tcus": 69,
+   "tcus": 70,
    "ambito": "gateway",
    "ncu": 8,
    "gw": 1,
@@ -263,13 +266,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU11.csv",
-   "tcus": 118,
+   "tcus": 119,
    "ambito": "ncu",
    "ncu": 11
   },
   {
    "fichero": "coords_sanjose_NCU11_GW1.csv",
-   "tcus": 38,
+   "tcus": 39,
    "ambito": "gateway",
    "ncu": 11,
    "gw": 1,
@@ -287,13 +290,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU12.csv",
-   "tcus": 118,
+   "tcus": 120,
    "ambito": "ncu",
    "ncu": 12
   },
   {
    "fichero": "coords_sanjose_NCU12_GW1.csv",
-   "tcus": 66,
+   "tcus": 67,
    "ambito": "gateway",
    "ncu": 12,
    "gw": 1,
@@ -302,7 +305,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU12_GW2.csv",
-   "tcus": 52,
+   "tcus": 53,
    "ambito": "gateway",
    "ncu": 12,
    "gw": 2,
@@ -311,13 +314,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU13.csv",
-   "tcus": 119,
+   "tcus": 120,
    "ambito": "ncu",
    "ncu": 13
   },
   {
    "fichero": "coords_sanjose_NCU13_GW1.csv",
-   "tcus": 49,
+   "tcus": 50,
    "ambito": "gateway",
    "ncu": 13,
    "gw": 1,
@@ -335,25 +338,25 @@
   },
   {
    "fichero": "coords_sanjose_NCU14.csv",
-   "tcus": 64,
+   "tcus": 65,
    "ambito": "ncu",
    "ncu": 14
   },
   {
    "fichero": "coords_sanjose_NCU15.csv",
-   "tcus": 54,
+   "tcus": 55,
    "ambito": "ncu",
    "ncu": 15
   },
   {
    "fichero": "coords_sanjose_NCU16.csv",
-   "tcus": 121,
+   "tcus": 124,
    "ambito": "ncu",
    "ncu": 16
   },
   {
    "fichero": "coords_sanjose_NCU16_GW1.csv",
-   "tcus": 41,
+   "tcus": 43,
    "ambito": "gateway",
    "ncu": 16,
    "gw": 1,
@@ -362,7 +365,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU16_GW2.csv",
-   "tcus": 80,
+   "tcus": 81,
    "ambito": "gateway",
    "ncu": 16,
    "gw": 2,
@@ -419,7 +422,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU19.csv",
-   "tcus": 123,
+   "tcus": 124,
    "ambito": "ncu",
    "ncu": 19
   },
@@ -434,7 +437,7 @@
   },
   {
    "fichero": "coords_sanjose_NCU19_GW2.csv",
-   "tcus": 63,
+   "tcus": 64,
    "ambito": "gateway",
    "ncu": 19,
    "gw": 2,
@@ -449,19 +452,19 @@
   },
   {
    "fichero": "coords_sanjose_NCU21.csv",
-   "tcus": 69,
+   "tcus": 70,
    "ambito": "ncu",
    "ncu": 21
   },
   {
    "fichero": "coords_sanjose_GW1.csv",
-   "tcus": 1217,
+   "tcus": 1227,
    "ambito": "gw",
    "gw": 1
   },
   {
    "fichero": "coords_sanjose_GW2.csv",
-   "tcus": 1072,
+   "tcus": 1079,
    "ambito": "gw",
    "gw": 2
   }

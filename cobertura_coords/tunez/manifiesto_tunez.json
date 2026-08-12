@@ -3,7 +3,10 @@
  "titulo": "Túnez 24021",
  "crs": "EPSG:32632",
  "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 20,
  "tcus": 19,
+ "hsus": 1,
+ "reps": 0,
  "ncus": 1,
  "gws": 1,
  "una_fila": false,
@@ -12,12 +15,12 @@
  "ambitos": [
   {
    "fichero": "coords_tunez.csv",
-   "tcus": 19,
+   "tcus": 20,
    "ambito": "planta"
   },
   {
    "fichero": "coords_tunez_NCU01.csv",
-   "tcus": 19,
+   "tcus": 20,
    "ambito": "ncu",
    "ncu": 1
   }

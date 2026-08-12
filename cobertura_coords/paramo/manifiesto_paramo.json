@@ -3,7 +3,10 @@
  "titulo": "Páramo 25019",
  "crs": "EPSG:25830",
  "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 399,
  "tcus": 396,
+ "hsus": 3,
+ "reps": 0,
  "ncus": 4,
  "gws": 2,
  "una_fila": true,
@@ -17,18 +20,18 @@
  "ambitos": [
   {
    "fichero": "coords_paramo.csv",
-   "tcus": 396,
+   "tcus": 399,
    "ambito": "planta"
   },
   {
    "fichero": "coords_paramo_NCU01.csv",
-   "tcus": 120,
+   "tcus": 121,
    "ambito": "ncu",
    "ncu": 1
   },
   {
    "fichero": "coords_paramo_NCU01_GW1.csv",
-   "tcus": 79,
+   "tcus": 80,
    "ambito": "gateway",
    "ncu": 1,
    "gw": 1,
@@ -46,7 +49,7 @@
   },
   {
    "fichero": "coords_paramo_NCU02.csv",
-   "tcus": 84,
+   "tcus": 85,
    "ambito": "ncu",
    "ncu": 2
   },
@@ -76,13 +79,13 @@
   },
   {
    "fichero": "coords_paramo_NCU04.csv",
-   "tcus": 72,
+   "tcus": 73,
    "ambito": "ncu",
    "ncu": 4
   },
   {
    "fichero": "coords_paramo_GW1.csv",
-   "tcus": 286,
+   "tcus": 289,
    "ambito": "gw",
    "gw": 1
   },

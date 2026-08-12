@@ -3,7 +3,10 @@
  "titulo": null,
  "crs": "EPSG:25830",
  "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 219,
  "tcus": 215,
+ "hsus": 4,
+ "reps": 0,
  "ncus": 2,
  "gws": 2,
  "una_fila": false,
@@ -12,18 +15,18 @@
  "ambitos": [
   {
    "fichero": "coords_elburgo.csv",
-   "tcus": 215,
+   "tcus": 219,
    "ambito": "planta"
   },
   {
    "fichero": "coords_elburgo_NCU01.csv",
-   "tcus": 108,
+   "tcus": 111,
    "ambito": "ncu",
    "ncu": 1
   },
   {
    "fichero": "coords_elburgo_NCU01_GW1.csv",
-   "tcus": 56,
+   "tcus": 58,
    "ambito": "gateway",
    "ncu": 1,
    "gw": 1,
@@ -32,7 +35,7 @@
   },
   {
    "fichero": "coords_elburgo_NCU01_GW2.csv",
-   "tcus": 52,
+   "tcus": 53,
    "ambito": "gateway",
    "ncu": 1,
    "gw": 2,
@@ -41,7 +44,7 @@
   },
   {
    "fichero": "coords_elburgo_NCU02.csv",
-   "tcus": 107,
+   "tcus": 108,
    "ambito": "ncu",
    "ncu": 2
   },
@@ -56,7 +59,7 @@
   },
   {
    "fichero": "coords_elburgo_NCU02_GW2.csv",
-   "tcus": 62,
+   "tcus": 63,
    "ambito": "gateway",
    "ncu": 2,
    "gw": 2,
@@ -65,13 +68,13 @@
   },
   {
    "fichero": "coords_elburgo_GW1.csv",
-   "tcus": 101,
+   "tcus": 103,
    "ambito": "gw",
    "gw": 1
   },
   {
    "fichero": "coords_elburgo_GW2.csv",
-   "tcus": 114,
+   "tcus": 116,
    "ambito": "gw",
    "gw": 2
   }
