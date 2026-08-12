@@ -37,6 +37,24 @@ def extrae(ws):
         })
     return cols, filas
 
+def extrae_overview(ws):
+    """Hoja «Overview» del R7: el reparto COMPLETO del espacio de direcciones, con los bloques
+       reservados y los huecos libres. Es lo que permite decir «esta direccion es un hueco
+       reservado del bloque» en vez de un «no existe» a secas."""
+    bloques=[]
+    for r in range(2, ws.max_row+1):
+        nom=ws.cell(r,2).value
+        a1,a2=ws.cell(r,3).value, ws.cell(r,4).value
+        if nom is None or not isinstance(a1,(int,float)) or not isinstance(a2,(int,float)): continue
+        if a2 < a1: continue
+        b={'nombre':re.sub(r'\s+',' ',str(nom)).strip(),'de':int(a1),'a':int(a2),
+           'tam':ws.cell(r,5).value,'unidades':ws.cell(r,6).value}
+        l1,l2=ws.cell(r,10).value, ws.cell(r,11).value
+        if isinstance(l1,(int,float)) and isinstance(l2,(int,float)) and l2>=l1:
+            b['libre']=[int(l1),int(l2)]
+        bloques.append(b)
+    return bloques
+
 out={}
 for f,lab in [('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/32737926-NCU_Modbus_Map_R7_1.xlsx','ncu_r7'),
               ('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/91ba946e-250506_HSU_Modbus_Map_R23.xlsx','hsu_r23')]:
@@ -49,5 +67,10 @@ for f,lab in [('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/32737
             continue
         out[lab][ws.title]=filas
         print(f'  {lab}/{ws.title}: {len(filas)} filas · columnas {sorted(cols.keys())}')
+# el reparto del espacio de direcciones va aparte: no es una tabla de registros
+wb=openpyxl.load_workbook('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/32737926-NCU_Modbus_Map_R7_1.xlsx',data_only=True)
+out['bloques_r7']=extrae_overview(wb['Overview'])
+print(f"  bloques del espacio de direcciones (hoja Overview): {len(out['bloques_r7'])}")
+
 json.dump(out,open('/tmp/modbus_docs.json','w'),ensure_ascii=False,indent=1)
 print('\nescrito /tmp/modbus_docs.json')

@@ -104,7 +104,10 @@ function agrupaPDF(filas) {
         unidad: f.unidad, escala: f.escala, rango: f.rango, defecto: f.defecto, cat: f.cat, hijos: [] };
       porAddr.set(f.addr, cur); out.push(cur); usados.set(f.addr, new Set()); }
     if (cur.nombre === null && esCompleto(b)) {              // fila padre: la que ocupa el registro entero
-      cur.nombre = slug(f.desc, 4); cur.desc = f.desc; cur.tipo = f.tipo; cur.unidad = f.unidad;
+      /* Ocho registros del PDF traen la celda de descripción VACÍA (41060, 41062, 42005…). No se
+         inventa nada, pero el nombre no puede ser 'reg' en los ocho: se distinguen por dirección. */
+      cur.nombre = f.desc ? slug(f.desc, 4) : ('reg_' + f.addr);
+      cur.desc = f.desc; cur.tipo = f.tipo; cur.unidad = f.unidad;
       cur.escala = f.escala; cur.defecto = f.defecto; cur.rango = f.rango; cur.cat = f.cat;
     } else {
       const lo = b ? b[0] : '?';
@@ -113,7 +116,7 @@ function agrupaPDF(filas) {
     }
   }
   for (const r of out) if (r.nombre === null) {              // sin fila de registro entero: se usa el primer hijo
-    const h = r.hijos.shift(); r.nombre = h ? h.nombre : 'reg_' + r.addr; r.desc = h ? h.desc : '';
+    const h = r.hijos.shift(); r.nombre = (h && h.desc) ? h.nombre : ('reg_' + r.addr); r.desc = h ? h.desc : '';
   }
   return out;
 }
@@ -133,15 +136,16 @@ function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null,
     for (const h of r.hijos) if (h.bits) { bits[h.nombre] = h.bits; if (h.desc) bdesc[h.nombre] = h.desc; }
     const cur = (CURADO.ncu[r.addr] || CURADO.hsu[r.addr] || CURADO.tcu[r.addr] || {});
     const un = cur.un || UNI(r.unidad, r.escala);
-    let desc = r.desc || '';
-    const extra = [];
-    if (r.rango && r.rango !== 'None') extra.push('rango ' + r.rango);
-    if (r.defecto && r.defecto !== 'None') extra.push('por defecto ' + r.defecto);
-    if (extra.length) desc = (desc ? desc + ' · ' : '') + extra.join(' · ');
+    /* El valor por defecto y el rango van como CAMPOS, no metidos dentro del texto. Antes se
+       concatenaban a la descripcion y ahi no servian para nada: son 361 valores por defecto y 440
+       rangos de los tres documentos, que es justo lo que hace falta para comparar una unidad contra
+       fabrica y para avisar de que un valor compuesto se sale de lo que el documento admite. */
     const dir = (offsetDe !== null) ? (r.addr - offsetDe) : r.addr;
+    const lim = (r.rango && r.rango !== 'None') ? String(r.rango).trim() : null;
+    const def = (r.defecto && r.defecto !== 'None') ? String(r.defecto).trim() : null;
     return [dir, r.nombre, TIPO(r.tipo), un, Object.keys(bits).length ? bits : null,
-            ESC(r.escala), null, desc, (r.acc || '').toUpperCase() || null,
-            Object.keys(bdesc).length ? bdesc : null];
+            ESC(r.escala), null, r.desc || '', (r.acc || '').toUpperCase() || null,
+            Object.keys(bdesc).length ? bdesc : null, def, lim];
   });
   const s = { t, sn, rw, f };
   if (base !== null) { s.base = base; s.stride = stride; s.max = max; }   // max = cuántas unidades tiene el bloque, del R7 (hoja Overview)
@@ -165,8 +169,8 @@ const NCU = [
     entre(nTCUc, 30500, 30599), { base: 30500, stride: 22, offsetDe: 30500, max: 200 }),
   seccion('TCU · último contacto', 'hoja «TCU Compat» · base 29500 · 2 registros/TCU', 'ro',
     entre(nTCUc, 29500, 29599), { base: 29500, stride: 2, offsetDe: 29500, max: 200 }),
-  seccion('Bloque TCU completo', 'hoja «TCU» · base 50000 · 50 registros/TCU · el mapa entero de cada seguidor a través de la NCU', 'ro',
-    nTCU, { base: 50000, stride: 50, offsetDe: 50000, max: 200 }),
+  seccion('Bloque TCU completo', 'hoja «TCU» · base 50000 · 50 registros/TCU · 256 unidades (hoja Overview) · el mapa entero de cada seguidor a través de la NCU', 'ro',
+    nTCU, { base: 50000, stride: 50, offsetDe: 50000, max: 256 }),
   seccion('Bloque HSU básico (republicado)', 'hoja «HSU» · base 30200 · 10 registros/HSU', 'ro',
     entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200, max: 10 }),
   seccion('HSU · marcas de tiempo', 'hoja «HSU» · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/HSU', 'ro',
@@ -205,6 +209,10 @@ const HSU = [
     nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
+/* ---------- reparto del espacio de direcciones (hoja Overview del R7) ---------- */
+const BLOQUES = (XL.bloques_r7 || []).map(b => ({ de: b.de, a: b.a, n: b.nombre,
+  res: /^reserved/i.test(b.nombre), lib: b.libre || null }));
+
 /* ---------- salida ---------- */
 const cuenta = secs => secs.reduce((n, s) => n + s.f.length, 0);
 const js = o => JSON.stringify(o).replace(/"([A-Za-z_$][A-Za-z0-9_$]*)":/g, '$1:');
@@ -222,6 +230,10 @@ const bloque =
    Los nombres de registro de la TCU se derivan de su descripción porque el PDF de Sunner
    no trae columna de nombre de variable; la descripción va literal en su columna.
    ================================================================================== */
+/* Reparto COMPLETO del espacio de direcciones, de la hoja «Overview» del R7. Sirve para que una
+   dirección que no cae en ningún registro diga QUE es (hueco reservado, rango libre, o de qué
+   bloque) en vez de un «no existe» a secas. */
+var BLOQUES=${js(BLOQUES)};
 var DEV={
  ncu:{tab:'NCU',eti:'controlador de red',max:0,
   nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona.',
