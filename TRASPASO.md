@@ -16,6 +16,8 @@ el Panel. Este fichero es lo equivalente para las **plantas**.
 | Ayora 24025 | ✅ | ✅ | ✅ | ⚠️ 647 de 754 (ver abajo) | ✅ |
 | San José 24019 | ✅ | ✅ | ✅ | ✅ 2289/2289 · 1723 articulados | ✅ |
 | Fayón 24007 | ✅ | ✅ | ✅ | ✅ 24/24 (2 longitudes) | ✅ (UTM 31N, del listado del cliente) |
+| Bagnarelli 24030 | ✅ | ✅ | ❌ | ✅ 17/17 · UNA fila | ✅ (UTM 33N, el DWG ya venía) |
+| Páramo 25019 | ✅ | ✅ | ✅ | ✅ 396/396 · UNA fila | ✅ (UTM 30N) |
 | Túnez 24021 | ❌ | ❌ | ❌ | — | (UTM 32N, sí) |
 
 ---
@@ -112,6 +114,85 @@ son 172 m y aplastan la curva del sol).
 Ya emite `siting` / `topo3d` / `cobertura`, que sí están en `PLANT_VIEWS`. No emite `asbuilt` ni
 `scada` **y está bien así**: son `core:true`, así que al faltar salen **en gris** en vez de
 desaparecer, que es justo lo que hace visible la carencia en una planta recién creada.
+
+---
+
+## Geometría del seguidor — el error que ya ha caído TRES veces (2026-08-12)
+
+Va aquí porque lo hemos vuelto a arreglar en sitios distintos y por separado. Si estás tocando
+cualquier dibujo de seguidores, lee esto antes.
+
+### La trampa
+
+`t.mods` del layout **no significa lo mismo en todas las plantas**:
+
+- **Ayora**: módulos por **ALA** (28 / 21 / 14)
+- **Fayón**: módulos por **FILA** (40 / 48) — "2x1V48" son dos alas de 24
+
+Quien lee el 48 de Fayón como si fuera por ala, le sale el seguidor al **DOBLE**: 110,6 m en vez de
+55,16. Ha pasado en el 3D (corregido con `PLANTS.fayon mods:24`), en el siting (PR #18, deshecho) y
+en el Plano 2D (PR #340, deshecho). **Usa `t.mr`**, que es la razón real del DWG y sí es unívoca:
+Ayora 1 / 0,75 / 0,5 · Fayón 0,833 / 1.
+
+### Las cotas buenas
+
+El largo sale del modelo de `seguidor.js`: `span = 2 · mods_por_ALA · (modW + 0,012) + 0,55`.
+
+| Planta | mód/ala | modW | Largo completo | Filas |
+|---|---|---|---|---|
+| El Burgo, Ayora | 28 | 1,134 | 64,73 m | 2 (±3,0) |
+| San José | 32 | 1,134 | 73,89 m | 2 (±3,0) |
+| Fayón | 24 | 1,134 | **55,16 / 46,02 m** (medido) | 2 (±3,006) |
+| Bagnarelli | 21 | 1,303 (Risen) | 55,78 m | **1** (filaZ 0) |
+| Páramo | 24 | 1,134 | 55,56 / 53,22 m | **1** (filaZ 0) |
+
+Fayón va con cotas **medidas**, no derivadas: salen de la geometría vectorial del plano de proyecto
+**P06** (LAYOUT PLANTA SOLAR), que dibuja las 48 bandas de módulos y las 24 bielas. Escala fijada
+contra el listado del cliente (`Coordenadas_01C`, UTM 31N):
+
+    cuerda de fila      2,413 m     idéntica en las 48 bandas
+    entre filas         6,012 m     centro a centro
+    envolvente          8,425 m
+    largo 2x1V48       55,16 m      48 módulos a paso 1,149
+    largo 2x1V40       46,02 m      40 módulos a paso 1,151
+
+Y queda comprobado que **la mesa va CENTRADA en el punto del listado** (residuo transversal de 1 cm
+en los 24). Longitudinalmente el plano la corre hasta 2,1 m (mediana 0,2); no se ha reproducido.
+
+### Bífilo y biela
+
+Las plantas de dos filas se dibujan como **dos bandas de `cuerda` a ±filaZ**, no como una mesa
+maciza: de la envolvente de 8,4 m solo hay módulos en 2 × 2,382 y el resto es el pasillo, que es por
+donde pasa todo. Y **hace falta la biela**: en Fayón el pasillo interior mide 3,60 m y el hueco hasta
+el seguidor vecino 3,58 m, o sea que las bandas forman un peine uniforme y sin la biela se leen como
+mesas sueltas. La biela mide de **viga a viga** (6,01 m = `2·filaZ`, el `imShaft` del 3D); el plano
+solo dibuja los 3,58 m que no tapa el módulo, pero esa no es la cota de la pieza.
+
+Con `filaZ: 0` (Bagnarelli, Páramo) es UNA fila: una sola banda y sin biela.
+
+### La TCU no está en el eje
+
+El punto que guardan layout y listado es el **eje** del seguidor, donde va la biela. La TCU va
+atornillada a la **viga del motor** (fila oeste, `terreno.html`: *"TCU, sus abarcones y chapas solo
+en la fila OESTE"*), a ~3 m del eje. Importa porque el radio está dentro de la TCU. Ya aplicado en el
+siting: marca y cobertura se calculan ahí. Falta el corrimiento a lo largo del tubo (`tcuX = 1,4 m`),
+que no está confirmado de qué lado cae.
+
+### Dónde está arreglado
+
+- `siting/index.html` — ✅ cotas medidas, bífilo, biela, punto de TCU, obstáculos RF por filas reales
+- `cobertura-zigbee/plano.html` — ✅ v2.0, cotas derivadas del layout, las 6 plantas
+- `cobertura-zigbee/terreno.html` (3D) — ✅ ya estaba bien
+
+**Sin revisar**: cualquier otro visor que dibuje seguidores (`visores`, `visor-san-jose`,
+`proyectos/layout.html`). Si alguno usa `t.mods` como si fuera por ala, tiene el mismo fallo.
+
+### Pendiente de verdad: el modelo RF pinta casi todo en rojo
+
+En el siting, con los obstáculos ya bien contados, la mediana del margen sale en −22 dB en Fayón y
+−20 dB en El Burgo, y 208 de 215 TCU de El Burgo quedarían sin enlace. **El Burgo funciona en
+campo**, así que el pesimismo está en el modelo de difracción, no en la geometría. Hay medidas reales
+para calibrarlo: `elburgo_real_rssi.csv`.
 
 ---
 

@@ -80,22 +80,31 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{fil
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
-/* COTAS DEL SEGUIDOR POR PLANTA. halfL = MEDIO largo del seguidor completo; filaZ = separación del
-   eje a cada viga; cuerda = ancho de una fila de módulos (un módulo en vertical). Las cuatro plantas
-   son BÍFILAS: dos filas a ±filaZ con su pasillo, no una mesa maciza.
-   El largo sale del modelo de seguidor.js: span = 2·mód_por_ALA·1,146 + 0,55 (hueco del actuador).
-     El Burgo y Ayora  28 mód/ala -> 64,73 m     San José  32 -> 73,89 m
-   Fayón va con sus cotas MEDIDAS en el plano de proyecto P06, que dibuja las 48 bandas y las 24
-   bielas: 55,16 de largo, 2,413 de cuerda y 6,012 entre filas.
-   OJO con t.mods del layout: NO significa lo mismo en todas. En Ayora son módulos por ALA (28/21/14)
-   y en Fayón por FILA (40/48, o sea 2x1V48 = dos alas de 24). Por eso el largo ya no sale de ahí,
-   sino de t.mr, que es la razón REAL del DWG y sí es unívoca (Ayora 1/0,75/0,5 · Fayón 0,833/1).
-   Antes se usaba t.mods y Fayón salía al DOBLE: 110,6 m en vez de 55,16. */
-var TDIM_ALL={ elburgo:{halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191}, ayora:{halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191},
-  sanjose:{halfL:36.95,filaZ:3.0,cuerda:2.382,halfW:4.191}, fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413,halfW:4.2125},
-  custom:{halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191} };
+/* COTAS DEL SEGUIDOR. Ya no van en una tabla por planta: se DERIVAN del layout con el mismo criterio
+   que el 3D (terreno.html + seguidor.js), que es la fuente única. Así una planta nueva sale bien sin
+   tocar esto, y no se puede quedar ninguna heredando por error las cotas de El Burgo — que es lo que
+   les pasaba a Bagnarelli y Páramo: sin entrada propia caían en el 'else' de El Burgo y se pintaban
+   BÍFILAS midiendo 62 m, cuando son de UNA fila.
+     modW    del layout (Bagnarelli monta Risen de 1,303) o 1,134 del canónico
+     mods    módulos por ALA: del layout, o de la tabla de abajo (misma que PLANTS en terreno.html)
+     span    = 2·mods·(modW+0,012) + 0,55 (hueco del actuador)  ->  halfL = span/2
+     filaZ   del layout; con filaZ 0 la planta es de UNA fila y se pinta una sola banda, sin biela
+     cuerda  ancho de una fila = un módulo en vertical (modH de seguidor.js)
+   OJO con t.mods POR SEGUIDOR: NO significa lo mismo en todas. En Ayora son módulos por ALA
+   (28/21/14) y en Fayón por FILA (40/48, o sea 2x1V48 = dos alas de 24). Por eso el largo de cada
+   seguidor sale de t.mr, la razón REAL del DWG, que sí es unívoca. Usando t.mods, Fayón salía al
+   DOBLE: 110,6 m en vez de 55,16. */
+var TMODS={ elburgo:28, ayora:28, sanjose:32, fayon:24, bagnarelli:21, paramo:24, custom:28 };   // módulos por ALA
+var TMEAS={ fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413} };                                      // cotas MEDIDAS que mandan sobre el modelo (Fayón, del plano P06)
+var TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191};                                       // valores de arranque; calcTDIM() los fija al cargar el layout
+function calcTDIM(){
+  var modW=(L&&L.modW)||1.134, mods=(L&&L.mods)||TMODS[PLANT]||28;
+  var d={halfL:(2*mods*(modW+0.012)+0.55)/2, filaZ:(L&&L.filaZ!=null)?L.filaZ:3.0, cuerda:2.382};
+  var m=TMEAS[PLANT]; if(m)for(var k in m)d[k]=m[k];
+  d.halfW=d.filaZ+d.cuerda/2;
+  TDIM=d;
+}
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
-var TDIM=TDIM_ALL[PLANT]||TDIM_ALL.elburgo;
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
 
 /* ===== capa ELÉCTRICA: colorea cada seguidor por su NCU (asignación canónica) =====
@@ -300,13 +309,13 @@ function draw(){
          es por donde pasa todo. Y la BIELA (eje de transmisión) las une a la altura del motor: sin
          ella las bandas se leen como mesas sueltas, porque el pasillo interior y el hueco hasta el
          seguidor vecino miden casi lo mismo. Igual que en el siting y que el imShaft del 3D. */
-      var off=TDIM.filaZ*s, wp=Math.max(0.6,(TDIM.cuerda/2)*s);
-      ctx.fillRect(cxp-off-wp,cyp-lp,2*wp,2*lp);
-      ctx.fillRect(cxp+off-wp,cyp-lp,2*wp,2*lp);
-      ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=Math.max(1,Math.min(3,s*1.6));ctx.beginPath();ctx.moveTo(cxp-off,cyp);ctx.lineTo(cxp+off,cyp);ctx.stroke();
+      var off=TDIM.filaZ*s, wp=Math.max(0.6,(TDIM.cuerda/2)*s), bif=TDIM.filaZ>0.05;
+      if(bif){ ctx.fillRect(cxp-off-wp,cyp-lp,2*wp,2*lp); ctx.fillRect(cxp+off-wp,cyp-lp,2*wp,2*lp);
+        ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=Math.max(1,Math.min(3,s*1.6));ctx.beginPath();ctx.moveTo(cxp-off,cyp);ctx.lineTo(cxp+off,cyp);ctx.stroke(); }
+      else ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);   // Bagnarelli y Páramo: UNA fila, sin pasillo ni biela
       if(pile){ if(t._rev&&s>1.2){var dr=Math.max(1.6,s*0.9);for(var k=0;k<t._zs.length;k++){var dyk=w2sy(t.n+t._zs[k]);ctx.fillStyle=reliefCss((t._rev[k]-REVMIN)/rng);ctx.lineWidth=1;ctx.strokeStyle='rgba(8,12,18,.7)';
-        ctx.beginPath();ctx.arc(cxp-off,dyk,dr,0,7);ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(cxp+off,dyk,dr,0,7);ctx.fill();ctx.stroke();} } }   // de cerca: un punto por pilote y por viga, coloreado por su propio hincado
-      else if(!inv && s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp-off,cyp-lp);ctx.lineTo(cxp-off,cyp+lp);ctx.moveTo(cxp+off,cyp-lp);ctx.lineTo(cxp+off,cyp+lp);ctx.stroke();}   // eje de cada viga
+        ctx.beginPath();ctx.arc(cxp-off,dyk,dr,0,7);ctx.fill();ctx.stroke();if(bif){ctx.beginPath();ctx.arc(cxp+off,dyk,dr,0,7);ctx.fill();ctx.stroke();}} } }   // de cerca: un punto por pilote y por viga, coloreado por su propio hincado
+      else if(!inv && s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp-off,cyp-lp);ctx.lineTo(cxp-off,cyp+lp);if(bif){ctx.moveTo(cxp+off,cyp-lp);ctx.lineTo(cxp+off,cyp+lp);}ctx.stroke();}   // eje de cada viga
     }
   }
   // capa INVERSORES: símbolo del DWG + etiqueta (sin "trunk" recto seguidor→inversor: unía filas
@@ -418,6 +427,7 @@ async function build(){
   try{L=(PLANT==='custom')?JSON.parse(localStorage.getItem('cobertura_layout')||'null'):await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json(); if(!L)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
+  calcTDIM();   // cotas del seguidor, derivadas del layout recién cargado
   assignElec();buildElecLegend();   // capa eléctrica lista (offline, desde el layout)
   assignInv();buildInvLegend();      // capa de inversores (El Burgo: del DWG vía ids + invlab)
   // extensión para satélite
