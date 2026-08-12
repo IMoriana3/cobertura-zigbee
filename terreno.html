@@ -2865,6 +2865,34 @@ function buildBOS(){
   var _trkTally={};if(TRK.length&&INVPOS.length){TRK.forEach(function(t9){var bi=-1,bd=1e18;   // seguidores por inversor POR PROXIMIDAD (los corrugados DC "suben tantos como trackers en paralelo ×2")
     for(var q9=0;q9<INVPOS.length;q9++){var dx9=INVPOS[q9].x-t9.gx,dn9=INVPOS[q9].n+t9.gz,d9=dx9*dx9+dn9*dn9;if(d9<bd){bd=d9;bi=q9;}}
     if(bi>=0)_trkTally[bi]=(_trkTally[bi]||0)+1;});}
+  /* INSTALACIONES FIJAS (mesas de inclinación fija, no seguidores). El visor solo sabía de
+     seguidores, así que la instalación fija de Túnez —12 módulos a 20°, 20 m al norte del campo—
+     no se dibujaba y el gemelo se dejaba fuera una parte de la planta.
+     El layout las trae en `fijas`: cada mesa es un rectángulo en PLANTA (x, n, ancho w, fondo p),
+     su inclinación, su azimut y la altura de su borde bajo. El fondo REAL de la mesa es p/cos(i)
+     —en planta se ve escorzado— y de ahí sale todo lo demás, así que no hay ninguna cota inventada:
+     lo que se dibuja es el rectángulo del DWG desescorzado por su propia inclinación. */
+  (LAYOUT.fijas||[]).forEach(function(f){
+    var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
+    var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc));                       // L = fondo real sobre el plano inclinado
+    var y0=terrainMeshY(f.x,f.n)+(f.h==null?0.8:f.h);                        // borde BAJO sobre el terreno visible
+    var g=new THREE.Group();g.position.set(f.x,y0,-f.n);g.rotation.y=-az+Math.PI;   // azimut 180 (sur) = sin girar
+    var tex=panelTex?panelTex.clone():null;
+    if(tex){tex.needsUpdate=true;tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(f.cols||1,f.rows||1);}
+    var mat=new THREE.MeshStandardMaterial({color:0xffffff,map:tex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
+    if(CELLNRM){mat.normalMap=CELLNRM;mat.normalScale=new THREE.Vector2(0.4,0.4);}
+    var pl=new THREE.Mesh(new THREE.PlaneGeometry(w,L),mat);                 // el plano nace tumbado y se levanta su inclinación
+    pl.rotation.x=-Math.PI/2+inc;pl.position.set(0,Math.sin(inc)*L/2,-Math.cos(inc)*L/2);
+    pl.castShadow=true;pl.receiveShadow=true;g.add(pl);
+    var mrc=new THREE.Mesh(new THREE.BoxGeometry(w+0.06,0.08,L+0.06),steelM); // marco
+    mrc.rotation.x=inc;mrc.position.copy(pl.position);mrc.position.y-=0.06;g.add(mrc);
+    [[-w/2+0.35,0],[w/2-0.35,0]].forEach(function(q){                        // dos pares de patas: la trasera más alta
+      [[0,0.0],[1,Math.sin(inc)*L]].forEach(function(r){
+        var hh=(f.h==null?0.8:f.h)+r[1], pa=new THREE.Mesh(new THREE.BoxGeometry(0.08,hh,0.08),steelM);
+        pa.position.set(q[0],-hh/2+r[1],-Math.cos(inc)*L*(r[0]?1:0));pa.castShadow=true;g.add(pa);});});
+    bosGroup.add(g);
+    if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,y0+Math.sin(inc)*L+2.2,-f.n);bosGroup.add(lb);}
+  });
   (LAYOUT.invlab||[]).forEach(function(c0,ci){if(!INVPOS.length)computeInvPos();var c=invAt(ci);if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
     var body=new THREE.Mesh(bodyG2,blancoM);body.position.set(0,cy,-0.15);g.add(body);                     // CUERPO REDONDEADO (extrusión con esquinas curvas, "el inversor es más redondeado")
     var pl=new THREE.Mesh(plG,[plCap,blancoM]);pl.position.set(0,cy,-0.185);g.add(pl);                     // tapa frontal con marca/tornillería
