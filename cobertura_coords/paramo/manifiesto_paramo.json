@@ -1,0 +1,97 @@
+{
+ "planta": "paramo",
+ "titulo": "Páramo 25019",
+ "crs": "EPSG:25830",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "tcus": 396,
+ "ncus": 4,
+ "gws": 2,
+ "una_fila": true,
+ "gateways_declarados_en_scada": false,
+ "ncus_sin_declarar_en_scada": [
+  1,
+  2,
+  3,
+  4
+ ],
+ "ambitos": [
+  {
+   "fichero": "coords_paramo.csv",
+   "tcus": 396,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_paramo_NCU01.csv",
+   "tcus": 120,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_paramo_NCU01_GW1.csv",
+   "tcus": 79,
+   "ambito": "gateway",
+   "ncu": 1,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_paramo_NCU01_GW2.csv",
+   "tcus": 41,
+   "ambito": "gateway",
+   "ncu": 1,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_paramo_NCU02.csv",
+   "tcus": 84,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_paramo_NCU03.csv",
+   "tcus": 120,
+   "ambito": "ncu",
+   "ncu": 3
+  },
+  {
+   "fichero": "coords_paramo_NCU03_GW1.csv",
+   "tcus": 51,
+   "ambito": "gateway",
+   "ncu": 3,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_paramo_NCU03_GW2.csv",
+   "tcus": 69,
+   "ambito": "gateway",
+   "ncu": 3,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_paramo_NCU04.csv",
+   "tcus": 72,
+   "ambito": "ncu",
+   "ncu": 4
+  },
+  {
+   "fichero": "coords_paramo_GW1.csv",
+   "tcus": 286,
+   "ambito": "gw",
+   "gw": 1
+  },
+  {
+   "fichero": "coords_paramo_GW2.csv",
+   "tcus": 110,
+   "ambito": "gw",
+   "gw": 2
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv paramo_real.geojson"
+}

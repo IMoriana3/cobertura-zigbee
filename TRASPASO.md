@@ -52,6 +52,12 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    `diagnostico_elburgo.py`: puntos = TCU (con `is_spof`, `descendientes`, `rutas`, `rssi_med_dbm`,
    `gw`, `hop_tipico`, `padres_distintos`, `ack_failures`) y líneas = enlaces (con
    `rssi_medido_dbm`, `distancia_m`, `freq`, `origen`, `destino`).
+
+   **Las coordenadas de entrada ya están hechas para las seis**, en `cobertura_coords/<planta>/`, y
+   se regeneran con `tools/gen_coords_cobertura.py`. Hay un fichero por ámbito —planta entera, por
+   NCU, por **(NCU,GW)** y por GW— y el manifiesto de cada planta dice cuáles hay, con la IP y el
+   puerto de cada gateway. El ámbito que se lanza es el **(NCU,GW)**, porque cada uno es una IP:puerto
+   del SCADA. Lo que sigue faltando es el volcado del coordinador; eso no se puede generar.
 2. **`zigbee_log.csv`** — la serie temporal, para la máquina del tiempo. Se carga a mano desde el
    panel; no hace falta que esté en el repo.
 

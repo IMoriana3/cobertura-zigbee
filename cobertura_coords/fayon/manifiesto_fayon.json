@@ -1,0 +1,26 @@
+{
+ "planta": "fayon",
+ "titulo": "Fayón 24007",
+ "crs": "EPSG:25831",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "tcus": 24,
+ "ncus": 1,
+ "gws": 1,
+ "una_fila": false,
+ "gateways_declarados_en_scada": true,
+ "ncus_sin_declarar_en_scada": [],
+ "ambitos": [
+  {
+   "fichero": "coords_fayon.csv",
+   "tcus": 24,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_fayon_NCU01.csv",
+   "tcus": 24,
+   "ambito": "ncu",
+   "ncu": 1
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv fayon_real.geojson"
+}

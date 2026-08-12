@@ -1,0 +1,470 @@
+{
+ "planta": "sanjose",
+ "titulo": "San José 24019",
+ "crs": "EPSG:32719",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "tcus": 2289,
+ "ncus": 21,
+ "gws": 2,
+ "una_fila": false,
+ "gateways_declarados_en_scada": true,
+ "ncus_sin_declarar_en_scada": [
+  7,
+  12,
+  16,
+  17,
+  19
+ ],
+ "ambitos": [
+  {
+   "fichero": "coords_sanjose.csv",
+   "tcus": 2289,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_sanjose_NCU01.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_sanjose_NCU01_GW1.csv",
+   "tcus": 68,
+   "ambito": "gateway",
+   "ncu": 1,
+   "gw": 1,
+   "ip": "10.21.236.1",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU01_GW2.csv",
+   "tcus": 51,
+   "ambito": "gateway",
+   "ncu": 1,
+   "gw": 2,
+   "ip": "10.21.236.1",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU02.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_sanjose_NCU02_GW1.csv",
+   "tcus": 47,
+   "ambito": "gateway",
+   "ncu": 2,
+   "gw": 1,
+   "ip": "10.21.236.11",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU02_GW2.csv",
+   "tcus": 72,
+   "ambito": "gateway",
+   "ncu": 2,
+   "gw": 2,
+   "ip": "10.21.236.11",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU03.csv",
+   "tcus": 120,
+   "ambito": "ncu",
+   "ncu": 3
+  },
+  {
+   "fichero": "coords_sanjose_NCU03_GW1.csv",
+   "tcus": 45,
+   "ambito": "gateway",
+   "ncu": 3,
+   "gw": 1,
+   "ip": "10.21.236.6",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU03_GW2.csv",
+   "tcus": 75,
+   "ambito": "gateway",
+   "ncu": 3,
+   "gw": 2,
+   "ip": "10.21.236.6",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU04.csv",
+   "tcus": 124,
+   "ambito": "ncu",
+   "ncu": 4
+  },
+  {
+   "fichero": "coords_sanjose_NCU04_GW1.csv",
+   "tcus": 89,
+   "ambito": "gateway",
+   "ncu": 4,
+   "gw": 1,
+   "ip": "10.21.236.16",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU04_GW2.csv",
+   "tcus": 35,
+   "ambito": "gateway",
+   "ncu": 4,
+   "gw": 2,
+   "ip": "10.21.236.16",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU05.csv",
+   "tcus": 124,
+   "ambito": "ncu",
+   "ncu": 5
+  },
+  {
+   "fichero": "coords_sanjose_NCU05_GW1.csv",
+   "tcus": 56,
+   "ambito": "gateway",
+   "ncu": 5,
+   "gw": 1,
+   "ip": "10.21.236.26",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU05_GW2.csv",
+   "tcus": 68,
+   "ambito": "gateway",
+   "ncu": 5,
+   "gw": 2,
+   "ip": "10.21.236.26",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU06.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 6
+  },
+  {
+   "fichero": "coords_sanjose_NCU06_GW1.csv",
+   "tcus": 68,
+   "ambito": "gateway",
+   "ncu": 6,
+   "gw": 1,
+   "ip": "10.21.236.31",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU06_GW2.csv",
+   "tcus": 51,
+   "ambito": "gateway",
+   "ncu": 6,
+   "gw": 2,
+   "ip": "10.21.236.31",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU07.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 7
+  },
+  {
+   "fichero": "coords_sanjose_NCU07_GW1.csv",
+   "tcus": 59,
+   "ambito": "gateway",
+   "ncu": 7,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU07_GW2.csv",
+   "tcus": 60,
+   "ambito": "gateway",
+   "ncu": 7,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU08.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 8
+  },
+  {
+   "fichero": "coords_sanjose_NCU08_GW1.csv",
+   "tcus": 69,
+   "ambito": "gateway",
+   "ncu": 8,
+   "gw": 1,
+   "ip": "10.21.236.36",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU08_GW2.csv",
+   "tcus": 50,
+   "ambito": "gateway",
+   "ncu": 8,
+   "gw": 2,
+   "ip": "10.21.236.36",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU09.csv",
+   "tcus": 120,
+   "ambito": "ncu",
+   "ncu": 9
+  },
+  {
+   "fichero": "coords_sanjose_NCU09_GW1.csv",
+   "tcus": 48,
+   "ambito": "gateway",
+   "ncu": 9,
+   "gw": 1,
+   "ip": "10.21.236.21",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU09_GW2.csv",
+   "tcus": 72,
+   "ambito": "gateway",
+   "ncu": 9,
+   "gw": 2,
+   "ip": "10.21.236.21",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU10.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 10
+  },
+  {
+   "fichero": "coords_sanjose_NCU10_GW1.csv",
+   "tcus": 62,
+   "ambito": "gateway",
+   "ncu": 10,
+   "gw": 1,
+   "ip": "10.21.236.46",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU10_GW2.csv",
+   "tcus": 57,
+   "ambito": "gateway",
+   "ncu": 10,
+   "gw": 2,
+   "ip": "10.21.236.46",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU11.csv",
+   "tcus": 118,
+   "ambito": "ncu",
+   "ncu": 11
+  },
+  {
+   "fichero": "coords_sanjose_NCU11_GW1.csv",
+   "tcus": 38,
+   "ambito": "gateway",
+   "ncu": 11,
+   "gw": 1,
+   "ip": "10.21.236.51",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU11_GW2.csv",
+   "tcus": 80,
+   "ambito": "gateway",
+   "ncu": 11,
+   "gw": 2,
+   "ip": "10.21.236.51",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU12.csv",
+   "tcus": 118,
+   "ambito": "ncu",
+   "ncu": 12
+  },
+  {
+   "fichero": "coords_sanjose_NCU12_GW1.csv",
+   "tcus": 66,
+   "ambito": "gateway",
+   "ncu": 12,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU12_GW2.csv",
+   "tcus": 52,
+   "ambito": "gateway",
+   "ncu": 12,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU13.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 13
+  },
+  {
+   "fichero": "coords_sanjose_NCU13_GW1.csv",
+   "tcus": 49,
+   "ambito": "gateway",
+   "ncu": 13,
+   "gw": 1,
+   "ip": "10.21.236.61",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU13_GW2.csv",
+   "tcus": 70,
+   "ambito": "gateway",
+   "ncu": 13,
+   "gw": 2,
+   "ip": "10.21.236.61",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU14.csv",
+   "tcus": 64,
+   "ambito": "ncu",
+   "ncu": 14
+  },
+  {
+   "fichero": "coords_sanjose_NCU15.csv",
+   "tcus": 54,
+   "ambito": "ncu",
+   "ncu": 15
+  },
+  {
+   "fichero": "coords_sanjose_NCU16.csv",
+   "tcus": 121,
+   "ambito": "ncu",
+   "ncu": 16
+  },
+  {
+   "fichero": "coords_sanjose_NCU16_GW1.csv",
+   "tcus": 41,
+   "ambito": "gateway",
+   "ncu": 16,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU16_GW2.csv",
+   "tcus": 80,
+   "ambito": "gateway",
+   "ncu": 16,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU17.csv",
+   "tcus": 122,
+   "ambito": "ncu",
+   "ncu": 17
+  },
+  {
+   "fichero": "coords_sanjose_NCU17_GW1.csv",
+   "tcus": 70,
+   "ambito": "gateway",
+   "ncu": 17,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU17_GW2.csv",
+   "tcus": 52,
+   "ambito": "gateway",
+   "ncu": 17,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU18.csv",
+   "tcus": 122,
+   "ambito": "ncu",
+   "ncu": 18
+  },
+  {
+   "fichero": "coords_sanjose_NCU18_GW1.csv",
+   "tcus": 38,
+   "ambito": "gateway",
+   "ncu": 18,
+   "gw": 1,
+   "ip": "10.21.236.86",
+   "puerto": 503
+  },
+  {
+   "fichero": "coords_sanjose_NCU18_GW2.csv",
+   "tcus": 84,
+   "ambito": "gateway",
+   "ncu": 18,
+   "gw": 2,
+   "ip": "10.21.236.86",
+   "puerto": 504
+  },
+  {
+   "fichero": "coords_sanjose_NCU19.csv",
+   "tcus": 123,
+   "ambito": "ncu",
+   "ncu": 19
+  },
+  {
+   "fichero": "coords_sanjose_NCU19_GW1.csv",
+   "tcus": 60,
+   "ambito": "gateway",
+   "ncu": 19,
+   "gw": 1,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU19_GW2.csv",
+   "tcus": 63,
+   "ambito": "gateway",
+   "ncu": 19,
+   "gw": 2,
+   "ip": null,
+   "puerto": null
+  },
+  {
+   "fichero": "coords_sanjose_NCU20.csv",
+   "tcus": 57,
+   "ambito": "ncu",
+   "ncu": 20
+  },
+  {
+   "fichero": "coords_sanjose_NCU21.csv",
+   "tcus": 69,
+   "ambito": "ncu",
+   "ncu": 21
+  },
+  {
+   "fichero": "coords_sanjose_GW1.csv",
+   "tcus": 1217,
+   "ambito": "gw",
+   "gw": 1
+  },
+  {
+   "fichero": "coords_sanjose_GW2.csv",
+   "tcus": 1072,
+   "ambito": "gw",
+   "gw": 2
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv sanjose_real.geojson"
+}

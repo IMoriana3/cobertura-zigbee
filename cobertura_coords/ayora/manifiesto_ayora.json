@@ -1,0 +1,116 @@
+{
+ "planta": "ayora",
+ "titulo": "Ayora 24025",
+ "crs": "EPSG:25830",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "tcus": 754,
+ "ncus": 16,
+ "gws": 1,
+ "una_fila": false,
+ "gateways_declarados_en_scada": true,
+ "ncus_sin_declarar_en_scada": [],
+ "ambitos": [
+  {
+   "fichero": "coords_ayora.csv",
+   "tcus": 754,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_ayora_NCU01.csv",
+   "tcus": 63,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_ayora_NCU02.csv",
+   "tcus": 69,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_ayora_NCU03.csv",
+   "tcus": 66,
+   "ambito": "ncu",
+   "ncu": 3
+  },
+  {
+   "fichero": "coords_ayora_NCU04.csv",
+   "tcus": 30,
+   "ambito": "ncu",
+   "ncu": 4
+  },
+  {
+   "fichero": "coords_ayora_NCU05.csv",
+   "tcus": 48,
+   "ambito": "ncu",
+   "ncu": 5
+  },
+  {
+   "fichero": "coords_ayora_NCU06.csv",
+   "tcus": 26,
+   "ambito": "ncu",
+   "ncu": 6
+  },
+  {
+   "fichero": "coords_ayora_NCU07.csv",
+   "tcus": 25,
+   "ambito": "ncu",
+   "ncu": 7
+  },
+  {
+   "fichero": "coords_ayora_NCU08.csv",
+   "tcus": 44,
+   "ambito": "ncu",
+   "ncu": 8
+  },
+  {
+   "fichero": "coords_ayora_NCU09.csv",
+   "tcus": 41,
+   "ambito": "ncu",
+   "ncu": 9
+  },
+  {
+   "fichero": "coords_ayora_NCU10.csv",
+   "tcus": 40,
+   "ambito": "ncu",
+   "ncu": 10
+  },
+  {
+   "fichero": "coords_ayora_NCU11.csv",
+   "tcus": 65,
+   "ambito": "ncu",
+   "ncu": 11
+  },
+  {
+   "fichero": "coords_ayora_NCU12.csv",
+   "tcus": 53,
+   "ambito": "ncu",
+   "ncu": 12
+  },
+  {
+   "fichero": "coords_ayora_NCU13.csv",
+   "tcus": 72,
+   "ambito": "ncu",
+   "ncu": 13
+  },
+  {
+   "fichero": "coords_ayora_NCU14.csv",
+   "tcus": 24,
+   "ambito": "ncu",
+   "ncu": 14
+  },
+  {
+   "fichero": "coords_ayora_NCU15.csv",
+   "tcus": 43,
+   "ambito": "ncu",
+   "ncu": 15
+  },
+  {
+   "fichero": "coords_ayora_NCU16.csv",
+   "tcus": 45,
+   "ambito": "ncu",
+   "ncu": 16
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv ayora_real.geojson"
+}
