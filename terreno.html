@@ -3040,7 +3040,6 @@ function buildBOS(){
       mtWire=new THREE.MeshStandardMaterial({color:0x8a939e,roughness:.6,metalness:.4}),
       mtWhite=new THREE.MeshStandardMaterial({color:0xf2f4f6,roughness:.85}),
       mtBox=new THREE.MeshStandardMaterial({color:0x3a4250,roughness:.55,metalness:.3}),
-      mtPanel=new THREE.MeshStandardMaterial({color:0x16306b,roughness:.35,metalness:.2,emissive:0x05122e}),
       mtBlack=new THREE.MeshStandardMaterial({color:0x15191e,roughness:.5,metalness:.25});
   function mP(mesh,x,yy,z){mesh.position.set(x,yy,z);return mesh;}
   var _mq=new THREE.Quaternion(),_mu=new THREE.Vector3(0,1,0),_md=new THREE.Vector3();
@@ -3048,6 +3047,7 @@ function buildBOS(){
     var w=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,L,5),mtWire);
     _md.set(dx,dy,dz).normalize();_mq.setFromUnitVectors(_mu,_md);w.quaternion.copy(_mq);
     w.position.set((ax+bx)/2,(ay+by)/2,(az+bz)/2);g.add(w);}
+  var HSU_PV=!(LAYOUT.hsu&&LAYOUT.hsu.pv===false);   // por defecto SÍ lleva módulo; Ayora lo desactiva en su layout
   (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=8.0,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);
     // TORRE DE CELOSÍA triangular de la HSU (plano FTR.24.00145_5_C 'Montaje HSU': 8000 con niveles 4500/1000 + fotos):
     // 3 montantes tubulares con celosía en zigzag, PANEL FV ESTRECHO VERTICAL y PARALELO a la cara, caja FACTIUN,
@@ -3063,9 +3063,20 @@ function buildBOS(){
           dg.position.set((ax9[0]+bx9[0])/2,yy+dz/2,(ax9[1]+bx9[1])/2);
           dg.rotation.z=Math.PI/2-Math.atan2(dz,RT*1.732);dg.rotation.y=-Math.atan2(bx9[1]-ax9[1],bx9[0]-ax9[0]);g.add(dg);}}}
     var fx=(LEG[0][0]+LEG[1][0])/2,fz=(LEG[0][1]+LEG[1][1])/2,fnx=fx-X,fnz=fz-Z,fl=Math.hypot(fnx,fnz)||1;fnx/=fl;fnz/=fl;   // cara 0-1 y su normal exterior
-    var pvG=new THREE.Group();pvG.position.set(fx+fnx*0.06,y+2.35,fz+fnz*0.06);pvG.rotation.y=-Math.atan2(fnz,fnx)+Math.PI/2;g.add(pvG);
-    pvG.add(new THREE.Mesh(new THREE.BoxGeometry(0.35,1.70,0.035),mtPanel));                 // PANEL FV vertical, PARALELO a la torre (foto)
-    [[-0.75],[0.75]].forEach(function(bo){var br=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.04,0.05),mtMast);br.position.set(0,bo[0],-0.045);pvG.add(br);});   // carriles de amarre a los montantes
+    /* MÓDULO FV de la torre. Es un módulo fotovoltaico de verdad (0,35 x 1,70), así que se dibuja
+       como tal —vidrio con sus células y marco de aluminio— y no como un rectángulo azul liso.
+       Las HSU de Ayora NO lo llevan, así que sale del dato (`hsu.pv:false` en su layout) y no del
+       nombre de la planta. */
+    if(HSU_PV){
+      var pvG=new THREE.Group();pvG.position.set(fx+fnx*0.06,y+2.35,fz+fnz*0.06);pvG.rotation.y=-Math.atan2(fnz,fnx)+Math.PI/2;g.add(pvG);
+      var ptx=panelTex?panelTex.clone():null;
+      if(ptx){ptx.needsUpdate=true;ptx.wrapS=ptx.wrapT=THREE.RepeatWrapping;ptx.repeat.set(1,5);}   // 0,35 x 1,70 -> 5 tramos deja la célula casi cuadrada
+      var pvM=new THREE.MeshStandardMaterial({color:0xffffff,map:ptx,roughness:.30,metalness:.10});
+      if(CELLNRM){pvM.normalMap=CELLNRM;pvM.normalScale=new THREE.Vector2(0.4,0.4);}
+      pvG.add(new THREE.Mesh(new THREE.BoxGeometry(0.37,1.72,0.030),mtMast));                // marco de aluminio
+      var pvL=new THREE.Mesh(new THREE.PlaneGeometry(0.33,1.68),pvM);pvL.position.z=0.017;pvG.add(pvL);   // vidrio hacia fuera
+      [[-0.75],[0.75]].forEach(function(bo){var br=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.04,0.05),mtMast);br.position.set(0,bo[0],-0.045);pvG.add(br);});   // carriles de amarre a los montantes
+    }
     var jb=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.30,0.12),mtWhite);jb.position.set(fx+fnx*0.13,y+0.95,fz+fnz*0.13);jb.rotation.y=-Math.atan2(fnz,fnx)+Math.PI/2;g.add(jb);   // caja FACTIUN
     g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.34,0.02,0.34),mtMast),X,y+h+0.01,Z));    // placa de cabeza
     g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.30,6),mtMast),X,y+h+0.16,Z));
@@ -3078,10 +3089,8 @@ function buildBOS(){
     g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.05,12),mtBlack),X+0.68,py,Z));
     var gyy=y+h*0.62; g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.45,0.03,0.03),mtMast),X-0.22,gyy,Z));   // garita (se conserva)
     for(var d=0;d<5;d++)g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.12-d*0.004,0.125-d*0.004,0.03,14),mtWhite),X-0.42,gyy-0.12+d*0.06,Z));
-    var panG=new THREE.Group();panG.position.set(X,y+h*0.33,Z-0.32);g.add(panG);              // celda de referencia orientable (se conserva)
-    panG.add(new THREE.Mesh(new THREE.BoxGeometry(0.55,0.02,0.36),mtPanel));
-    METEO_ANIM.push({p:panG});                                                                // SOLO la celda: el ultrasónico no gira ('anemómetro ultrasónico')
-    g.add(mP(new THREE.Mesh(new THREE.BoxGeometry(0.03,0.3,0.03),mtMast),X,y+h*0.33-0.1,Z-0.16));
+    /* FUERA la celda de referencia inclinada que colgaba por detrás: la HSU real no la lleva. Se
+       va con ella su brazo y su entrada en METEO_ANIM (era lo único que animaba ese grupo). */
     var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
 }
