@@ -2898,24 +2898,40 @@ function buildBOS(){
      lo que se dibuja es el rectángulo del DWG desescorzado por su propia inclinación. */
   (LAYOUT.fijas||[]).forEach(function(f){
     var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
-    var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc));                       // L = fondo real sobre el plano inclinado
-    var y0=terrainMeshY(f.x,f.n)+(f.h==null?0.8:f.h);                        // borde BAJO sobre el terreno visible
-    var g=new THREE.Group();g.position.set(f.x,y0,-f.n);g.rotation.y=-az+Math.PI;   // azimut 180 (sur) = sin girar
-    var tex=panelTex?panelTex.clone():null;
-    if(tex){tex.needsUpdate=true;tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(f.cols||1,f.rows||1);}
-    var mat=new THREE.MeshStandardMaterial({color:0xffffff,map:tex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
-    if(CELLNRM){mat.normalMap=CELLNRM;mat.normalScale=new THREE.Vector2(0.4,0.4);}
-    var pl=new THREE.Mesh(new THREE.PlaneGeometry(w,L),mat);                 // el plano nace tumbado y se levanta su inclinación
-    pl.rotation.x=-Math.PI/2+inc;pl.position.set(0,Math.sin(inc)*L/2,-Math.cos(inc)*L/2);
-    pl.castShadow=true;pl.receiveShadow=true;g.add(pl);
-    var mrc=new THREE.Mesh(new THREE.BoxGeometry(w+0.06,0.08,L+0.06),steelM); // marco
-    mrc.rotation.x=inc;mrc.position.copy(pl.position);mrc.position.y-=0.06;g.add(mrc);
-    [[-w/2+0.35,0],[w/2-0.35,0]].forEach(function(q){                        // dos pares de patas: la trasera más alta
-      [[0,0.0],[1,Math.sin(inc)*L]].forEach(function(r){
-        var hh=(f.h==null?0.8:f.h)+r[1], pa=new THREE.Mesh(new THREE.BoxGeometry(0.08,hh,0.08),steelM);
-        pa.position.set(q[0],-hh/2+r[1],-Math.cos(inc)*L*(r[0]?1:0));pa.castShadow=true;g.add(pa);});});
+    var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
+    var cols=f.cols||1, rows=f.rows||1;
+    var sA=Math.sin(az), cA=Math.cos(az);
+    /* local (dx = a lo ancho, dp = hacia arriba de la pendiente MEDIDO EN PLANTA) -> (x,n) del mundo */
+    function W(dx,dp){ return [f.x+dx*cA-dp*sA, f.n-dx*sA-dp*cA]; }
+    var g=new THREE.Group();g.position.set(f.x,0,-f.n);g.rotation.y=Math.PI-az;g.userData.fija=true;   // azimut 180 (sur) = sin girar; la marca la usa el banco para no confundirla con otras mallas del BOS
+    var yBase=terrainMeshY(f.x,f.n)+hb;g.position.y=yBase;
+    var cz=Math.cos(inc), sz=Math.sin(inc);
+    /* MÓDULOS uno a uno, con su junta: una losa lisa no se lee como una mesa. Cada módulo lleva su
+       propia textura de células, igual que los de los seguidores. */
+    var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);
+    for(var i=0;i<cols;i++)for(var j=0;j<rows;j++){
+      var mt=new THREE.MeshStandardMaterial({color:0xffffff,map:panelTex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
+      if(CELLNRM){mt.normalMap=CELLNRM;mt.normalScale=new THREE.Vector2(0.4,0.4);}
+      var m=new THREE.Mesh(new THREE.PlaneGeometry(mw-jw,ml-jl),mt);
+      var dl=(j+0.5)*ml;                                                  // distancia sobre el plano inclinado
+      m.rotation.x=-Math.PI/2+inc;
+      m.position.set(-w/2+(i+0.5)*mw, sz*dl, -cz*dl);
+      m.castShadow=true;m.receiveShadow=true;g.add(m);}
+    /* CORREAS: perfiles a lo ancho por debajo del plano, uno por junta de fila y en los dos bordes */
+    for(var k=0;k<=rows;k++){ var dl2=k*ml, co=new THREE.Mesh(new THREE.BoxGeometry(w+0.10,0.09,0.06),steelM);
+      co.rotation.x=inc;co.position.set(0,sz*dl2-0.055*cz,-cz*dl2+0.055*sz);co.castShadow=true;g.add(co);}
+    /* VIGAS a lo largo de la pendiente + POSTES hincados. Un par de postes cada 3,5 m como mucho. */
+    var np=Math.max(2,Math.round(w/3.5)+1);
+    for(var q=0;q<np;q++){ var dx=-w/2+q*(w/(np-1));
+      var vi=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.11,L),steelM);
+      vi.rotation.x=inc;vi.position.set(dx,sz*L/2-0.14*cz,-cz*L/2+0.14*sz);vi.castShadow=true;g.add(vi);
+      [[0.15,0],[0.85,1]].forEach(function(r){                            // pata delantera (baja) y trasera (alta)
+        var dl3=r[0]*L, dp=cz*dl3, sue=(function(){var q2=W(dx,dp);return terrainMeshY(q2[0],q2[1]);})();
+        var yTop=yBase+sz*dl3-0.20, hh=Math.max(0.25,yTop-sue);           // del suelo REAL de ese punto a la viga
+        var pa=new THREE.Mesh(new THREE.BoxGeometry(0.09,hh,0.09),steelM);
+        pa.position.set(dx,(yTop+sue)/2-yBase,-dp);pa.castShadow=true;pa.receiveShadow=true;g.add(pa);});}
     bosGroup.add(g);
-    if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,y0+Math.sin(inc)*L+2.2,-f.n);bosGroup.add(lb);}
+    if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);bosGroup.add(lb);}
   });
   (LAYOUT.invlab||[]).forEach(function(c0,ci){if(!INVPOS.length)computeInvPos();var c=invAt(ci);if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
     var body=new THREE.Mesh(bodyG2,blancoM);body.position.set(0,cy,-0.15);g.add(body);                     // CUERPO REDONDEADO (extrusión con esquinas curvas, "el inversor es más redondeado")
