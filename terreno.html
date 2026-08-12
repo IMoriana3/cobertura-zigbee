@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.56</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.57</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1316,7 +1316,7 @@ function scadaHud(){
     (Math.abs(SCADA3D.offN)>1||Math.abs(SCADA3D.offE)>1?' · datum corregido '+SCADA3D.offE.toFixed(1)+'E/'+SCADA3D.offN.toFixed(1)+'N m':'')+
     (SCADA3D.sin?' · '+SCADA3D.sin+' sin casar':'')+
     ' · <span style="color:#ef5f6b">'+nAl+' alarma</span> · <span style="color:#8093A4">'+nOff+' offline</span>'+
-    (SCADA_METEO&&isFinite(SCADA_METEO.ws)?' · 🌬️ <b>'+(+SCADA_METEO.ws).toFixed(1)+' m/s</b>'
+    (SCADA_METEO&&isFinite(SCADA_METEO.ws)?' · 🌬️ <b>'+(3.6*(+SCADA_METEO.ws)).toFixed(0)+' km/h</b>'   // toda la plataforma enseña el viento en km/h; el dato viaja en m/s
       +(isFinite(SCADA_METEO.wd)?' '+Math.round(SCADA_METEO.wd)+'°':'')
       +(SCADA_METEO.hsu?' <span style="font-weight:400;color:#9bb0c6">('+SCADA_METEO.hsu+')</span>':''):'')+
     '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU · <b style="color:#eaf4ff">CLIC en un seguidor</b>: su ficha — esclavo Modbus, gateway, modo, posición vs consigna, batería y alarmas</span>';
