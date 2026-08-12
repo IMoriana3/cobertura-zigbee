@@ -1508,20 +1508,28 @@ function demo(){
     return { id: 'TCU_SUNNER_ID_' + String(i + 1).padStart(4, '0'), lat: ll[0], lon: ll[1],
              x: t.x, n: t.n, ncu: ncu, gw: (t.gw != null ? t.gw : 1) }; });
 
-  /* HSU Y REPETIDORES TAMBIÉN SON NODOS. La estación meteo habla por la misma malla, y el repetidor
-     está puesto justo para retransmitir: dejarlos fuera daba una malla incompleta y, peor, escondía
-     el papel del repetidor, que es lo que se quiere ver al planificar. Ni unos ni otros traen NCU en
-     el layout, así que se asignan a la NCU más cercana, que es como se instalan. */
+  /* HSU Y REPETIDORES TAMBIÉN SON NODOS, y cada uno cuelga de UN gateway. La estación meteo habla
+     por la misma malla y el repetidor está puesto justo para retransmitir, pero retransmite lo de SU
+     gateway, no lo de cualquiera: son nodos de esa red, no antenas sueltas. Por eso se les asigna un
+     (NCU, GW) y entran en ese grupo y solo en ese.
+       NCU: la del layout si la trae —Ayora la tiene, sacada del GZ que da el listado del cliente—,
+            y si no, la más cercana. Esa regla geométrica está contrastada: en Ayora, donde sí hay
+            dato, acierta los 5 de 5, con el repetidor a 74-135 m de su NCU.
+       GW : el del TCU más cercano DE ESA NCU. Antes se cogía el primero que apareciera, que en una
+            NCU con dos gateways —San José, El Burgo, Páramo— es echarlo a suertes; un repetidor se
+            planta para alargar el alcance de un gateway concreto, así que manda la cercanía. */
   const cercaNCU = o => { let mejor = 1, md = Infinity;
     (LAY.ncus || []).forEach((c, i) => { const d = (c.x - o.x) * (c.x - o.x) + (c.n - o.n) * (c.n - o.n);
       if(d < md){ md = d; mejor = i + 1; } });
     return mejor; };
-  const gwDeNCU = {}; nodos.forEach(nd => { if(gwDeNCU[nd.ncu] == null) gwDeNCU[nd.ncu] = nd.gw; });
+  const gwCerca = (o, ncu) => { let g = null, md = Infinity;
+    nodos.forEach(nd => { if(nd.ncu !== ncu) return;
+      const d = (nd.x - o.x) * (nd.x - o.x) + (nd.n - o.n) * (nd.n - o.n); if(d < md){ md = d; g = nd.gw; } });
+    return g != null ? g : 1; };
   [['meteo', 'HSU'], ['reps', 'REP']].forEach(([clave, rol]) => {
-    (LAY[clave] || []).forEach((o, j) => { const ncu = cercaNCU(o), ll = layLL(o.x, o.n);
+    (LAY[clave] || []).forEach((o, j) => { const ncu = (o.ncu != null ? o.ncu : cercaNCU(o)), ll = layLL(o.x, o.n);
       nodos.push({ id: rol + '_' + String(j + 1).padStart(2, '0'), lat: ll[0], lon: ll[1],
-                   x: o.x, n: o.n, ncu: ncu, gw: (gwDeNCU[ncu] != null ? gwDeNCU[ncu] : 1),
-                   rol: rol, et: o.name || '' }); });
+                   x: o.x, n: o.n, ncu: ncu, gw: gwCerca(o, ncu), rol: rol, et: o.name || '' }); });
   });
 
   /* grupos (NCU,GW) = una malla independiente cada uno */
