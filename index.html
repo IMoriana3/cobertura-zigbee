@@ -947,7 +947,7 @@ function resuelveTDIM(lay){
 }
 function loadLayout(cb){
   if(PLANT==='custom'){ try{LAY=JSON.parse(localStorage.getItem('cobertura_layout')||'null');}catch(e){LAY=null;} TDIM=resuelveTDIM(LAY); cb&&cb(); return; }
-  fetch(PMETA.file,{cache:'no-store'}).then(r=>r.json()).then(j=>{LAY=j;TDIM=resuelveTDIM(j);cb&&cb();}).catch(()=>{LAY=null;cb&&cb();});
+  fetch(PMETA.file,{cache:'no-store'}).then(r=>r.json()).then(j=>{LAY=j;TDIM=resuelveTDIM(j);GWPOS=null;cb&&cb();}).catch(()=>{LAY=null;cb&&cb();});
 }
 const mPerLatK=111320;
 function layLL(x,n){ return [LAY.clat+n/mPerLatK, LAY.clon+x/(mPerLatK*Math.cos(LAY.clat*Math.PI/180))]; }   // metros locales E/N del DWG -> lat/lon, igual que en el 3D y en el Layout 2D
@@ -1240,9 +1240,28 @@ function defaultGateway(){ // si no se ha situado a mano, en la posición real d
   const p=ncuPorDefecto(); if(!p)return;
   setGateway({lat:p[0],lng:p[1]});
 }
+/* Posición de CADA gateway, no solo del que se ha situado a mano. La página guardaba un único S.gw y
+   dibujaba todas las rutas saliendo de ese punto: en una planta con varias NCU —Ayora tiene 16, San
+   José 21— el primer salto de todos los árboles salía disparado desde la misma marca, cruzando la
+   planta entera. Se lee como si las TCU hablaran con una NCU que no es la suya, y no es así.
+   Se resuelve con las NCU del layout: la columna 'gateway' del registro trae NCUnn-GWg, y de ahí se
+   saca cuál es su coordenada. Si el nombre no encaja —datos reales con otra nomenclatura— se cae al
+   S.gw de siempre, así que no rompe nada de lo que ya funcionaba. */
+let GWPOS=null;
+function gwPos(nombre){
+  if(GWPOS===null){ GWPOS={};
+    if(LAY&&LAY.ncus)LAY.ncus.forEach((o,i)=>{ const ll=layLL(o.x,o.n);
+      GWPOS['NCU'+String(i+1).padStart(2,'0')]=ll; if(o.name)GWPOS[o.name]=ll; }); }
+  if(!nombre)return null;
+  const m=/^(NCU\s*0*\d+)/i.exec(String(nombre));
+  if(m){ const k='NCU'+String(parseInt(m[1].replace(/\D/g,''),10)).padStart(2,'0'); if(GWPOS[k])return GWPOS[k]; }
+  return GWPOS[nombre]||null;
+}
+function gwDeNodo(id,ts){ const f=snapAt(ts); const r=(S.byId&&S.byId[id])||null;
+  const fila=(S.rows||[]).find(o=>o.id===id&&(!ts||o.ts<=ts)); return (fila&&fila.gw)||(r&&r.gw)||null; }
 function routePath(id,ts){ // lista de latlng [gw, hop1, ..., id] para la ruta de un nodo
   const p=snapVal(snapAt(ts),'pathByTarget',id); if(!p)return null;
-  const out=[]; if(S.gw)out.push(S.gw);
+  const out=[]; const o=gwPos(gwDeNodo(id,ts))||S.gw; if(o)out.push(o);
   for(let k=1;k<p.length;k++){ const c=coordFor(p[k]); if(c)out.push(c); }
   return out.length>1?out:null;
 }
@@ -1462,61 +1481,85 @@ function toggle(){ S.playing?pause():play(); }
 function setMode(m){ S.mode=m; [...document.querySelectorAll('.mode')].forEach(x=>x.classList.toggle('on',x.dataset.m===m)); legend(); render(); drawStrip(); }
 
 /* ---------- demo ---------- */
-/* La malla de ejemplo se genera SOBRE LA PLANTA ELEGIDA. Antes la base de coordenadas estaba escrita
-   a mano —41,5773 / -0,7969, o sea El Burgo— de cuando esta página era solo de El Burgo. Con
-   cualquier otra planta seleccionada, los 22 nodos simulados caían donde El Burgo: con Ayora, 273 km
-   al norte. De ahí que no se viera nada sobre los seguidores y que "dibujar todas las rutas" sacara
-   una línea al norte, que era el enlace del gateway a una malla a tres provincias de distancia.
-   Ahora los nodos salen de los seguidores del layout, en la viga del MOTOR (donde está la TCU), y el
-   gateway lo coloca defaultGateway() en la NCU real de la planta. Sigue siendo SIMULACIÓN: el RSSI,
-   las caídas y las rutas son inventados; lo real son las posiciones. Para medir de verdad hace falta
-   el volcado del coordinador. */
-const DEMO_MAX = 120;   // en plantas grandes se muestrea: San José tiene 2.289 y las cadenas de ruta crecen al cuadrado
+/* Malla de ejemplo SOBRE LA PLANTA ELEGIDA y respetando su topología real.
+   Dos cosas que estaban mal y se notaban en cuanto se dibujaban las rutas:
+   1) la base de coordenadas estaba escrita a mano (El Burgo), así que con otra planta la malla caía
+      a cientos de km — con Ayora, 273 al norte;
+   2) los nodos se repartían en cadenas POR ÍNDICE, así que los saltos cruzaban la planta de lóbulo
+      a lóbulo y, peor, unían TCU de GW distintos. Eso no existe: cada gateway es su propia malla.
+   Ahora los nodos salen de los seguidores del layout —en la viga del MOTOR, girados con su azimut—
+   y se agrupan por (NCU, GW), que el layout ya trae por seguidor. Dentro de cada grupo el árbol se
+   arma por CERCANÍA desde su NCU: cada nodo cuelga del ya conectado más próximo, que es como se
+   comporta una malla de verdad. Ningún salto cruza de un grupo a otro.
+   Sigue siendo SIMULACIÓN: el RSSI y las caídas son inventados; lo real son las posiciones y quién
+   cuelga de quién. Para medir de verdad hace falta el volcado del coordinador.
+   OJO con lo que se ve: la página solo guarda UN gateway (S.gw), así que dibuja todas las rutas
+   saliendo de ese punto. En una planta con varias NCU las líneas del primer salto se ven abanicadas
+   desde la NCU situada, aunque el árbol de debajo sí sea el correcto. */
 function demo(){
   const T = (LAY && LAY.trackers && LAY.trackers.length) ? LAY.trackers : null;
   if(!T){ alert('Esta planta no tiene layout cargado, así que no hay dónde poner la malla de ejemplo.'); return; }
-  const paso = Math.max(1, Math.ceil(T.length / DEMO_MAX)), sel = [];
-  for(let i = 0; i < T.length; i += paso) sel.push(T[i]);
-  const off = TDIM.filaZ || 0;                                   // la TCU va en la viga del motor, no en el eje
-  const nodos = sel.map((t, i) => { const th = (t.rot || 0) * Math.PI / 180;
+  const off = TDIM.filaZ || 0;
+  const nodos = T.map((t, i) => { const th = (t.rot || 0) * Math.PI / 180;
     const ll = layLL(t.x - off * Math.cos(th), t.n - off * Math.sin(th));
-    return { id: 'TCU_SUNNER_ID_' + String(i + 1).padStart(3, '0'), lat: ll[0], lon: ll[1] }; });
+    /* El Burgo no trae ncu/gw por seguidor: van en el primer tramo del id ('1.10.3' -> NCU 1), que
+       es como está numerada la planta. Mismo criterio que tools/gen_coords_cobertura.py. */
+    let ncu = t.ncu; if(ncu == null){ const m0 = /^(\d+)\./.exec(String(t.id || '')); ncu = m0 ? +m0[1] : 1; }
+    return { id: 'TCU_SUNNER_ID_' + String(i + 1).padStart(4, '0'), lat: ll[0], lon: ll[1],
+             x: t.x, n: t.n, ncu: ncu, gw: (t.gw != null ? t.gw : 1) }; });
+
+  /* grupos (NCU,GW) = una malla independiente cada uno */
+  const grupos = {};
+  nodos.forEach(nd => { const k = nd.ncu + '/' + nd.gw; (grupos[k] = grupos[k] || { ncu: nd.ncu, gw: nd.gw, nodos: [] }).nodos.push(nd); });
+  const ncuXY = {};
+  (LAY.ncus || []).forEach((o, i) => ncuXY[i + 1] = o);
+  const raiz = g => ncuXY[g.ncu] || { x: g.nodos.reduce((a, b) => a + b.x, 0) / g.nodos.length,
+                                      n: g.nodos.reduce((a, b) => a + b.n, 0) / g.nodos.length };
+
+  /* árbol por CERCANÍA dentro del grupo: cada nodo cuelga del ya conectado más próximo */
+  const padre = {};
+  Object.values(grupos).forEach(g => {
+    const r = raiz(g), d2 = (a, b) => (a.x - b.x) * (a.x - b.x) + (a.n - b.n) * (a.n - b.n);
+    const pend = g.nodos.slice(), dentro = [];
+    pend.sort((a, b) => d2(a, r) - d2(b, r));
+    /* El padre no es solo el más cercano: se penaliza la PROFUNDIDAD, porque encadenar por cercanía
+       a secas hace serpientes de 30 saltos y una malla real es ancha y corta (en El Burgo el salto
+       típico medido es 5). Cada salto de más cuesta como PENA metros de distancia. */
+    const PENA = 60, prof = {};
+    while(pend.length){
+      const nd = pend.shift();
+      let mejor = null, mc = Math.sqrt(d2(nd, r));               // coste de colgar de la propia NCU
+      for(const c of dentro){ const cc = Math.sqrt(d2(nd, c)) + PENA * (prof[c.id] || 0); if(cc < mc){ mc = cc; mejor = c; } }
+      padre[nd.id] = mejor ? mejor.id : null;
+      prof[nd.id] = mejor ? (prof[mejor.id] || 0) + 1 : 0;
+      dentro.push(nd);
+    }
+  });
+  const camino = id => { const out = []; let c = id, tope = 0;
+    while(c && tope++ < 40){ out.unshift(c); c = padre[c]; } return out; };
 
   let co = 'node_id,lat,lon\n';
-  nodos.forEach(n => { co += n.id + ',' + n.lat.toFixed(6) + ',' + n.lon.toFixed(6) + '\n'; });
+  nodos.forEach(nd => { co += nd.id + ',' + nd.lat.toFixed(6) + ',' + nd.lon.toFixed(6) + '\n'; });
 
-  const N = 24, ack = {}, caen = [Math.floor(nodos.length * 0.35), Math.floor(nodos.length * 0.7)];
-  nodos.forEach(n => ack[n.id] = Math.floor(Math.random() * 300));
-  let log = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
+  const N = 24, ack = {}, caen = [nodos[Math.floor(nodos.length * 0.35)].id, nodos[Math.floor(nodos.length * 0.7)].id];
+  nodos.forEach(nd => ack[nd.id] = Math.floor(Math.random() * 300));
   const sello = f => '2026-06-16 ' + String(12 + Math.floor(f / 6)).padStart(2, '0') + ':' + String((f * 10) % 60).padStart(2, '0') + ':00';
+  let log = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
   for(let f = 0; f < N; f++){ const ts = sello(f);
-    nodos.forEach((n, i) => {   // dos nodos caen dentro del periodo, el resto fluctúa
+    nodos.forEach((nd, i) => {
       let online = 1, rssi = -(60 + Math.floor(Math.random() * 32));
-      if((i === caen[0] && f >= 8 && f <= 15) || (i === caen[1] && f >= 11)){ online = 0; rssi = ''; }
-      const dack = online ? Math.floor(Math.random() * Math.random() * ((i === caen[0] + 3 || i === caen[1] - 4) ? 40 : 6)) : 0;
-      ack[n.id] += dack;
-      log += '"' + ts + '","GW-01","' + n.id + '","TCU","00:13:a2:00:00:00:00:' + String(i + 1).padStart(2, '0') +
-             '","' + online + '","' + rssi + '","' + (online ? ack[n.id] : '') + '","3290","44"\n'; });
+      if((nd.id === caen[0] && f >= 8 && f <= 15) || (nd.id === caen[1] && f >= 11)){ online = 0; rssi = ''; }
+      const dack = online ? Math.floor(Math.random() * Math.random() * 6) : 0; ack[nd.id] += dack;
+      log += '"' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
+             '","TCU","00:13:a2:00:00:00:' + String(i + 1).padStart(4, '0') + '","' + online + '","' + rssi +
+             '","' + (online ? ack[nd.id] : '') + '","3290","44"\n'; });
   }
   loadCoords(co); loadLog(log);
 
-  /* Rutas que EVOLUCIONAN, para que se vean saltos y criticidad: los nodos se reparten en cadenas y
-     la cola de una migra a otra a mitad del periodo. Solo se citan nodos que existen — antes las
-     rutas nombraban 076 y 078, que no estaban en las coordenadas, y de ahí el "Sin coordenadas 2". */
-  const ids = nodos.map(n => n.id), directos = ids.slice(0, Math.min(4, ids.length));
-  const resto = ids.slice(directos.length), nCad = Math.max(2, Math.min(4, Math.ceil(resto.length / 12)));
-  const cad = Array.from({ length: nCad }, () => []);
-  resto.forEach((id, i) => cad[i % nCad].push(id));
   let rt = '"timestamp","target","hop_count","path_ids","path_addrs"\n';
-  const emite = (ts, arr) => { for(let k = 0; k < arr.length; k++){
-    const camino = ['COORD'].concat(arr.slice(0, k + 1));
-    rt += '"' + ts + '","' + arr[k] + '","' + (k + 1) + '","' + camino.join('>') + '","x"\n'; } };
   for(let f = 0; f < N; f++){ const ts = sello(f);
-    const hoy = cad.map(c => c.slice());
-    if(f >= 12 && hoy[0].length > 1 && hoy.length > 1) hoy[1].push(hoy[0].pop());   // la cola de la cadena 1 se re-engancha a la 2
-    if(f >= 16 && hoy[0].length > 1 && hoy.length > 2) hoy[2].push(hoy[0].pop());
-    hoy.forEach(c => emite(ts, c));
-    directos.forEach(id => { rt += '"' + ts + '","' + id + '","1","COORD>' + id + '","x"\n'; });
+    nodos.forEach(nd => { const c = camino(nd.id);
+      rt += '"' + ts + '","' + nd.id + '","' + c.length + '","' + (['COORD'].concat(c)).join('>') + '","x"\n'; });
   }
   loadRoutes(rt);
   drawStrip(); legend();
