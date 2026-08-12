@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.55</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.56</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1232,12 +1232,27 @@ function scadaCasar(msg){
   scadaHud();
   scadaBindClick();                                             // clic en un tracker -> su ficha de diagnostico
 }
-var _scadaClick=false;
+var _scadaClick=false,_scadaHov=0,_sdX=0,_sdY=0,_sdOk=false;
 function scadaBindClick(){
   if(_scadaClick||typeof renderer==='undefined'||!renderer)return;_scadaClick=true;
+  /* CLIC de verdad, no "pointerdown": se abre la ficha al soltar y solo si el
+     puntero no se ha movido. Antes bastaba con empezar a orbitar encima de un
+     seguidor para que saltara la ficha, y en CÁMARA LIBRE —justo cuando estás
+     paseando por la planta y quieres preguntar por uno— el clic no hacía nada,
+     porque el manejador se salía si freeCam estaba puesto. */
   renderer.domElement.addEventListener('pointerdown',function(e){
-    if(!SCADA3D||editMode||freeCam||afbtOn)return;
+    _sdOk=!!SCADA3D&&!editMode&&!afbtOn;_sdX=e.clientX;_sdY=e.clientY;});
+  renderer.domElement.addEventListener('pointerup',function(e){
+    if(!_sdOk)return;_sdOk=false;
+    if(Math.abs(e.clientX-_sdX)>4||Math.abs(e.clientY-_sdY)>4)return;   // era un arrastre de cámara
     var i=pickAt(e);if(i<0)return;scadaFicha(i);});
+  /* que se NOTE que se puede pulsar: el cursor cambia sobre un seguidor. Sin
+     esto la ficha existía y no la encontraba nadie. Se limita a 12 veces por
+     segundo para no lanzar un raycast por cada píxel de ratón. */
+  renderer.domElement.addEventListener('pointermove',function(e){
+    if(!SCADA3D||editMode||afbtOn||_md)return;
+    var t=Date.now();if(t-_scadaHov<80)return;_scadaHov=t;
+    renderer.domElement.style.cursor=(pickAt(e)>=0)?'pointer':'';});
 }
 function scadaFicha(i){
   var fl=SCADA3D&&SCADA3D.byTrk[i];
@@ -1248,13 +1263,22 @@ function scadaFicha(i){
     document.body.appendChild(e);}
   if(!fl){e.innerHTML='<b>'+(TRK[i].id||('#'+i))+'</b><br><span style="opacity:.7">sin fila en el diagnostico (no casado)</span>';e.style.display='block';return;}
   var s=String(fl.salud||'').toUpperCase();
-  var cH={OK:'#36D399',AVISO:'#F2A900',ALARMA:'#ef5f6b',OFFLINE:'#8093A4'};
-  e.innerHTML='<b>'+(TRK[i].id||fl.eti||('#'+i))+'</b> · NCU '+fl.ncu+' / TCU '+fl.tcu
-    +'<br>estado: <b style="color:'+(cH[s]||'#eaf4ff')+'">'+(s||'?')+'</b>'
-    +'<br>tilt reportado: <b>'+fl.tilt+'°</b>'+(fl.dif!=null&&fl.dif!==''?' · dif. consigna '+fl.dif+'°':'')
-    +(fl.soc!=null&&fl.soc!==''?'<br>SoC bateria: <b>'+fl.soc+'%</b>':'')
+  var cH={OK:'#36D399',AVISO:'#F2A900',ALARMA:'#ef5f6b',OFFLINE:'#8093A4','SIN LECTURA':'#8093A4'};
+  var hay=function(v){return v!=null&&v!=='';};
+  var edad=hay(fl.edad)?(+fl.edad<90?'ahora mismo':(+fl.edad<5400?Math.round(fl.edad/60)+' min':Math.round(fl.edad/3600)+' h')):null;
+  /* Lo que se pregunta delante de un seguidor parado: qué es (esclavo Modbus y
+     gateway, para ir a buscarlo), en qué modo está, dónde apunta contra dónde
+     debería, cómo va su batería, de cuándo es el dato y qué alarma tiene. */
+  var tit=(TRK[i].id||fl.eti||('#'+i));
+  e.innerHTML='<b>'+tit+'</b> <span style="opacity:.55">'+(TRK[i].tpx||'seguidor')+'</span>'
+    +'<br><span style="opacity:.75">NCU '+fl.ncu+' · esclavo Modbus <b>'+fl.tcu+'</b>'+(hay(fl.gw)?' · GW '+fl.gw:'')+'</span>'
+    +'<br>estado: <b style="color:'+(cH[s]||'#eaf4ff')+'">'+(s||'?')+'</b>'+(hay(fl.modo)&&fl.modo!=='-'?' · modo <b>'+fl.modo+'</b>':'')
+    +'<br>posición: <b>'+fl.tilt+'°</b>'+(hay(fl.obj)?' · consigna '+fl.obj+'°':'')
+      +(hay(fl.dif)?' · <b style="color:'+(Math.abs(parseFloat(fl.dif))>2?'#F2A900':'#36D399')+'">'+fl.dif+'°</b> de desviación':'')
+    +(hay(fl.soc)?'<br>batería: <b>'+fl.soc+'%</b> SoC'+(hay(fl.soh)?' · '+fl.soh+'% SoH':''):'')
+    +(edad?'<br>última lectura: <b>'+edad+'</b>':'')
     +'<br>alarmas: '+(fl.alarmas?'<b style="color:#ef5f6b">'+fl.alarmas+'</b>':'ninguna')
-    +'<br><span style="opacity:.55;font-size:11px">del diagnostico '+SCADA3D.fecha+' · pulsa para cerrar</span>';
+    +'<br><span style="opacity:.55;font-size:11px">del diagnóstico '+SCADA3D.fecha+' · pulsa para cerrar</span>';
   e.style.display='block';
 }
 function tintModulos(fn){
@@ -1295,7 +1319,7 @@ function scadaHud(){
     (SCADA_METEO&&isFinite(SCADA_METEO.ws)?' · 🌬️ <b>'+(+SCADA_METEO.ws).toFixed(1)+' m/s</b>'
       +(isFinite(SCADA_METEO.wd)?' '+Math.round(SCADA_METEO.wd)+'°':'')
       +(SCADA_METEO.hsu?' <span style="font-weight:400;color:#9bb0c6">('+SCADA_METEO.hsu+')</span>':''):'')+
-    '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU · CLIC en un tracker: su ficha (estado, alarmas, SoC)</span>';
+    '<br><span style="font-weight:400;color:#9bb0c6;font-size:11.5px">los ángulos y colores son los REPORTADOS por cada TCU · <b style="color:#eaf4ff">CLIC en un seguidor</b>: su ficha — esclavo Modbus, gateway, modo, posición vs consigna, batería y alarmas</span>';
 }
 if(new URLSearchParams(location.search).get('scada')==='1'){
   addEventListener('message',function(ev){
