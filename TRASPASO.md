@@ -10,15 +10,60 @@ el Panel. Este fichero es lo equivalente para las **plantas**.
 
 ## Estado por planta
 
-| Planta | Layout 3D | Plano 2D | Siting | Tipos reales del DWG | Georref. |
-|---|---|---|---|---|---|
-| El Burgo I 23003 | ✅ | ✅ | ✅ | ✅ 5 tipos (int/ext/medio × rótula) | ✅ |
-| Ayora 24025 | ✅ | ✅ | ✅ | ⚠️ 647 de 754 (ver abajo) | ✅ |
-| San José 24019 | ✅ | ✅ | ✅ | ✅ 2289/2289 · 1723 articulados | ✅ |
-| Fayón 24007 | ✅ | ✅ | ✅ | ✅ 24/24 (2 longitudes) | ✅ (UTM 31N, del listado del cliente) |
-| Bagnarelli 24030 | ✅ | ✅ | ❌ | ✅ 17/17 · UNA fila | ✅ (UTM 33N, el DWG ya venía) |
-| Páramo 25019 | ✅ | ✅ | ✅ | ✅ 396/396 · UNA fila | ✅ (UTM 30N) |
-| Túnez 24021 | ❌ | ❌ | ❌ | — | (UTM 32N, sí) |
+| Planta | Layout 3D | Layout 2D | Cobertura | Siting | Tipos reales del DWG | Georref. |
+|---|---|---|---|---|---|---|
+| El Burgo I 23003 | ✅ | ✅ | ✅ malla medida | ✅ | ✅ 5 tipos (int/ext/medio × rótula) | ✅ |
+| Ayora 24025 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ⚠️ 647 de 754 (ver abajo) | ✅ |
+| San José 24019 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 2289/2289 · 1723 articulados | ✅ |
+| Fayón 24007 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 24/24 (2 longitudes) | ✅ (UTM 31N, del listado del cliente) |
+| Bagnarelli 24030 | ✅ | ✅ | ⚠️ solo mapa | ❌ | ✅ 17/17 · UNA fila | ✅ (UTM 33N, el DWG ya venía) |
+| Páramo 25019 | ✅ | ✅ | ⚠️ solo mapa | ✅ | ✅ 396/396 · UNA fila | ✅ (UTM 30N) |
+| Túnez 24021 | ❌ | ❌ | ❌ | ❌ | — | (UTM 32N, sí) |
+
+«⚠️ solo mapa» = la página abre entera, con su plano y sus NCUs, pero sin malla Zigbee medida.
+Lo que falta y cómo se rellena, justo abajo.
+
+---
+
+## Las dos vistas 2D: Layout 2D y Cobertura (2026-08-12)
+
+Compartían botón en el Panel bajo la clave `cobertura`, y eran cosas distintas: en El Burgo abría la
+malla Zigbee y en el resto el plano 2D. Ya están separadas, y **las dos existen en las seis plantas**:
+
+| | Página | Qué es |
+|---|---|---|
+| **Layout 2D** | `plano.html?planta=` | El plano sobre el satélite: seguidores a su largo real, NCUs, meteo, color eléctrico, pile reveal, inversores. |
+| **Cobertura** | `index.html?planta=` | La malla Zigbee: enlaces con su RSSI, SPOF, dominadores y máquina del tiempo. |
+
+`index.html` era **solo de El Burgo** y tenía sus ficheros escritos a mano. Ahora:
+
+- El **mapa de la planta** (seguidores + NCUs + meteo del layout) se dibuja en las seis, en un canvas
+  propio debajo de la malla, con las **mismas cotas** que el Layout 2D — `resuelveTDIM()` es copia de
+  `calcTDIM()`, y el banco lo exige igualdad exacta. Si se toca una, hay que tocar la otra.
+- La malla medida se busca **por convención**: `<planta>_real.geojson`. En cuanto exista el fichero,
+  esa planta lo coge sola, sin tocar código.
+- La telemetría de basculación (pestaña 24 h) va en `PLANTS[planta].ang`; hoy solo El Burgo.
+
+### Lo que hace falta para que una planta tenga cobertura de verdad
+
+Dos ficheros, ninguno de los cuales se puede inventar:
+
+1. **`<planta>_real.geojson`** — la malla medida. Sale del volcado del coordinador con el driver
+   `diagnostico_elburgo.py`: puntos = TCU (con `is_spof`, `descendientes`, `rutas`, `rssi_med_dbm`,
+   `gw`, `hop_tipico`, `padres_distintos`, `ack_failures`) y líneas = enlaces (con
+   `rssi_medido_dbm`, `distancia_m`, `freq`, `origen`, `destino`).
+2. **`zigbee_log.csv`** — la serie temporal, para la máquina del tiempo. Se carga a mano desde el
+   panel; no hace falta que esté en el repo.
+
+Sin ellos la página **no se esconde**: abre entera, encaja sobre la planta y lo dice, con los
+contadores en «—» y no en 0 — cero nodos y no haberlos medido no son lo mismo.
+
+### Lo que NO está hecho
+
+- **`t.rot` en el 3D.** El Layout 2D ya gira cada seguidor con el ángulo del INSERT (Bagnarelli está
+  a −23,7°). `terreno.html` lee `rot` en `NODES` pero **no lo aplica en ninguna parte**: los 17
+  seguidores de Bagnarelli salen norte-sur en la escena 3D. Toca en las matrices de las instancias.
+  Es la única planta con `rot ≠ 0` de las seis, así que no afecta a nadie más.
 
 ---
 
@@ -181,7 +226,8 @@ que no está confirmado de qué lado cae.
 ### Dónde está arreglado
 
 - `siting/index.html` — ✅ cotas medidas, bífilo, biela, punto de TCU, obstáculos RF por filas reales
-- `cobertura-zigbee/plano.html` — ✅ v2.0, cotas derivadas del layout, las 6 plantas
+- `cobertura-zigbee/plano.html` (Layout 2D) — ✅ v2.1, cotas derivadas del layout, giro del DWG, las 6 plantas
+- `cobertura-zigbee/index.html` (Cobertura) — ✅ mapa de planta con las mismas cotas, las 6 plantas
 - `cobertura-zigbee/terreno.html` (3D) — ✅ ya estaba bien
 
 **Sin revisar**: cualquier otro visor que dibuje seguidores (`visores`, `visor-san-jose`,
@@ -212,6 +258,17 @@ para calibrarlo: `elburgo_real_rssi.csv`.
   Detalle: en varios DWG la miniatura BMP revienta el WASM — el script anula `dwg_bmp`, que no se usa.
 
 - **`proyectos/tests/test_integridad.js`** — 6 comprobaciones del Panel en 2 s, sin navegador.
+
+- **`tools/bench_cobertura_multi.mjs`** — banco headless de las dos vistas 2D en las seis plantas.
+  Mide de verdad: píxeles pintados, encuadre sobre la planta, contadores, aviso de carencia, y dos
+  comprobaciones geométricas que conviene no perder —
+  la **georreferencia cruzada** de El Burgo (NCU1 del DWG contra NCU1 de la plantilla SCADA: 1,01 m)
+  y el **giro de Bagnarelli** medido sobre los píxeles (eje principal de un seguidor aislado: 113,69°
+  frente a 113,70°). Exige además que Cobertura y Layout 2D usen cotas idénticas.
+  ```bash
+  python3 -m http.server 8123 --bind 127.0.0.1 --directory . &
+  node tools/bench_cobertura_multi.mjs
+  ```
 
 ## Datos ya extraídos de Fayón (por si hay que rehacer el layout)
 
