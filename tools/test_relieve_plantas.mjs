@@ -53,19 +53,19 @@ for (const planta of PLANTAS) {
       +(g.position.y - terrainMeshY(g.position.x, -g.position.z)).toFixed(2));
     // CT: hueco bajo cada esquina del polígono (negativo = enterrado, positivo = flota)
     out.cts = [];
-    ((LAYOUT.cts) || []).forEach(ct0 => {
+    ((LAYOUT.cts) || []).forEach((ct0, idx) => {
       const ct = ct0.slice();
       if (ct.length > 2 && Math.hypot(ct[0][0] - ct[ct.length - 1][0], ct[0][1] - ct[ct.length - 1][1]) < 1e-6) ct.pop();
       if (ct.length < 3) { out.cts.push('punto sin contorno: no se levanta'); return; }
       const cx = ct.reduce((s, q) => s + q[0], 0) / ct.length, cn = ct.reduce((s, q) => s + q[1], 0) / ct.length;
       let mu = null;
+      // por userData.caseta, NO por proximidad: El Burgo tiene naves en el recinto que también son
+      // extrusiones y el banco las confundía con el CT (daba huecos falsos de +4 m)
       (bosGroup ? bosGroup.children : []).forEach(o => {
-        if (!o.geometry || o.geometry.type !== 'ExtrudeGeometry') return;
-        const bb = new THREE.Box3().setFromObject(o);
-        if (Math.hypot((bb.min.x + bb.max.x) / 2 - cx, -(bb.min.z + bb.max.z) / 2 - cn) < 6 && bb.max.y - bb.min.y > 1)
-          mu = +bb.min.y.toFixed(2);
+        if (o.userData.caseta !== idx) return;
+        mu = +new THREE.Box3().setFromObject(o).min.y.toFixed(2);
       });
-      out.cts.push(mu == null ? 'no se ha encontrado la caseta' :
+      out.cts.push(mu == null ? 'sin caseta levantada (polígono descartado por tamaño)' :
         { hueco_esquinas: ct.map(q => +(mu - terrainMeshY(q[0], q[1])).toFixed(2)) });
     });
     // ¿hay algo dibujado? bounding box de la escena y nº de mallas visibles
