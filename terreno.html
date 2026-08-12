@@ -435,6 +435,21 @@ var PLANTS={
   paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
+/* ENCUADRE INICIAL. Antes salía del tamaño del TERRENO, que se dimensiona por la distancia al
+   ORIGEN del punto más lejano (seguidores + vallado). En Bagnarelli el vallado baja a n = -372 m
+   mientras los 17 seguidores ocupan 100 m: la cámara se iba a 1.584 m y la planta quedaba en el
+   4% de la pantalla — "no me sale nada". Y la diana estaba clavada en (0,0), así que una planta
+   descentrada se iba de cuadro.
+   Ahora se encuadra la caja de los SEGUIDORES (anclajes + el vuelo real del seguidor, TC.span),
+   con la regla CALIBRADA sobre El Burgo, que es el encuadre que ya daba buena vista: allí la
+   cámara estaba a 584 m con 38° de elevación para una caja de 536 m, o sea R = 1,106 · lado.
+   Con esta regla El Burgo repite su encuadre (593 m, 1,5% de diferencia) y las demás plantas
+   pasan a verse igual de llenas en vez de cada una a su aire. */
+var FOCO=null, CAM_K=1.106, CAM_EL=38*Math.PI/180;
+function encuadra(){ var f=FOCO||{x:0,n:0,w:720,d:480};
+  var R=Math.max(60,CAM_K*Math.max(f.w,f.d));
+  camera.position.set(f.x,R*Math.sin(CAM_EL),-f.n+R*Math.cos(CAM_EL));
+  controls.target.set(f.x,0,-f.n);controls.update(); }
 var _tituloPlanta=function(){try{var t=(PLANTS[PLANT]&&PLANTS[PLANT].title)||PLANT;document.title='Cobertura 3D · '+t+' — terreno real';}catch(e){}};
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // MODO OFFLINE (ciberseguridad): sin satélite/relieve, CERO llamadas externas. Por defecto sigue el estado del navegador; el botón lo fija.
@@ -534,8 +549,20 @@ async function build(){
   var _sd=$('simdate');if(_sd){var _mm=('0'+(_pl.getUTCMonth()+1)).slice(-2),_dd=('0'+_pl.getUTCDate()).slice(-2);_sd.value=_pl.getUTCFullYear()+'-'+_mm+'-'+_dd;}
   setTime(curMin);$('time').value=curMin;
 
-  camera.position.set(0,Math.max(240,depthM*1.5),Math.max(360,widthM*0.85));controls.target.set(0,0,0);controls.update();
-  var camD=camera.position.length(),diag=Math.hypot(widthM,depthM)/2;if(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
+  /* ENCUADRE INICIAL sobre la caja de los SEGUIDORES, no sobre la del terreno.
+     widthM/depthM miden el plano de terreno, que se dimensiona por la DISTANCIA AL ORIGEN del
+     punto mas lejano (seguidores + vallado). En Bagnarelli el vallado baja hasta n = -372 m
+     mientras los 17 seguidores ocupan 100 m: la camara se iba a 1.386 m de altura y la planta
+     quedaba en una mancha de 40 px ("no me sale nada"). Se usa la caja de los seguidores MAS EL
+     MISMO margen tmarg, asi que en las plantas centradas en el origen (El Burgo, Ayora, San Jose,
+     Fayon, Paramo) el encuadre sale identico al de antes: alli tkx1 = -tkx0 = thx - tmarg. */
+  var _tx0=1e9,_tx1=-1e9,_tn0=1e9,_tn1=-1e9;
+  NODES.forEach(function(q){_tx0=Math.min(_tx0,q.gx);_tx1=Math.max(_tx1,q.gx);_tn0=Math.min(_tn0,-q.gz);_tn1=Math.max(_tn1,-q.gz);});
+  if(!NODES.length){_tx0=_tn0=-100;_tx1=_tn1=100;}
+  var _sp=(TC&&TC.span)||55, _an=((TC&&TC.modH)||2.4)+2*((TC&&TC.filaZ)||0);   // el ancla es el centro: el seguidor vuela span/2 en n y su ancho en x
+  FOCO={x:(_tx0+_tx1)/2,n:(_tn0+_tn1)/2,w:(_tx1-_tx0)+_an,d:(_tn1-_tn0)+_sp};
+  encuadra();
+  var camD=camera.position.distanceTo(controls.target),diag=Math.hypot(widthM,depthM)/2;   // distancia REAL a la diana: con la planta descentrada, length() medía desde el origen y la niebla salía cortaif(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?sat.ok+" teselas":"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
@@ -575,7 +602,7 @@ var _M=new THREE.Matrix4(),_M2=new THREE.Matrix4(),_T=new THREE.Matrix4(),_R=new
 var kinked=true;   // "trackers quebrados": cada viga tiene una RÓTULA en el actuador (centro); la mitad N y la mitad S drapean con pendiente propia según el terreno (no es una viga rígida)
 var editMode=false,selIdx=-1,dragTk=-1,PICK=[],pickGroup=null,selWire=null;   // edición en 3D: cajas de selección (raycast), seguidor seleccionado y arrastre
 var _dragOff=new THREE.Vector3(),_pr=new THREE.Raycaster(),_v2=new THREE.Vector2();
-var _Q=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_PT=new THREE.Vector3(),_DIR=new THREE.Vector3();
+var _Q=new THREE.Quaternion(),_QR=new THREE.Quaternion(),_PV=new THREE.Vector3(),_SC=new THREE.Vector3(1,1,1),_UP=new THREE.Vector3(0,1,0),_NRM=new THREE.Vector3(),_PA=new THREE.Vector3(),_PB=new THREE.Vector3(),_PT=new THREE.Vector3(),_DIR=new THREE.Vector3();
 // Textura FV real del gemelo digital: rejilla 6×12 de células azul oscuro con busbars.
 var PANEL_NX=6,PANEL_NY=12;   // rejilla de células compartida por la textura y el microrrelieve (alineados)
 function makePanelTex(){
@@ -696,14 +723,16 @@ function buildTrackers(elevAt){
     SEG.push({key:t.key,im:im,spin:perFila,terrain:!!t.terrainScaled,twin:tw,antenna:!!t.antenna,tip:!!t.tip,motorLink:!!t.motorLink,damperLink:!!t.damperLink,a:t.a,b:t.b,as:t.as,bs:t.bs,asM:(mMab[t.key]||t).as,bsM:(mMab[t.key]||t).bs,L:t.locals,Lm:mM[t.key]||t.locals,n:n});
   });
   NODES.forEach(function(n){
-    var rel=elevAt(n.glat,n.glon)-baseElev,latHalf=(span/2)/mPerLat,dE=15,lonE15=dE/mPerLon;
-    var relN=elevAt(n.glat+latHalf,n.glon)-baseElev,relS=elevAt(n.glat-latHalf,n.glon)-baseElev;
-    var relE=elevAt(n.glat,n.glon+lonE15)-baseElev,relW=elevAt(n.glat,n.glon-lonE15)-baseElev;
+    var _rr={gx:n.gx,gz:n.gz,rot:(n.rot||0)*DEG};                                   // muestreo del terreno A LO LARGO DEL EJE REAL del seguidor, no siempre norte-sur
+    var _E=function(dx,dz){var q=locXN(_rr,dx,dz);return elevAt(lat0+q[1]/mPerLat,lon0+q[0]/mPerLon)-baseElev;};
+    var rel=elevAt(n.glat,n.glon)-baseElev,dE=15;
+    var relN=_E(0,-span/2),relS=_E(0,span/2);                                       // extremos del tubo (dz>0 = hacia el sur en el marco canónico)
+    var relE=_E(dE,0),relW=_E(-dE,0);                                               // a un lado y otro del eje
     var zPk=zPfor({tp:n.tp}),half=TC.np/2;
-    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){var ppx=n.gx+pfx,ppz=n.gz+(pk<zPk.length?zPk[pk]:0);postRel.push(elevAt(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
+    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
     var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);   // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
     var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
-    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
+    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
 }
@@ -879,6 +908,17 @@ function zPfor(t){
   if(!TC._zpm[k])TC._zpm[k]=TC.zP.map(function(v){return v*mr;});
   return TC._zpm[k];
 }
+/* GIRO DEL SEGUIDOR. El layout puede traer `rot`: el RUMBO del eje del seguidor en grados al
+   ESTE del norte de cuadrícula (rot 0 = eje norte-sur, que es lo que son todas menos Bagnarelli).
+   Estaba en el dato desde que se generó Bagnarelli pero el visor NO LO USABA: dibujaba sus 17
+   seguidores norte-sur cuando en el DWG van a 23,7°, y por eso se pisaban unos a otros.
+   Convención: el marco canónico tiene el eje en +Z (sur) y las dos filas en ±X, así que girar el
+   rumbo r equivale a una rotación de -r alrededor de la vertical del mundo. */
+function locXN(t,dx,dz){   // desplazamiento local (dx = perpendicular al eje, dz = a lo largo) -> (x,n) del mundo
+  var r=t.rot||0; if(!r)return [t.gx+dx,-t.gz-dz];
+  var c=Math.cos(r),s2=Math.sin(r);
+  return [t.gx+dx*c-dz*s2, -t.gz-dx*s2-dz*c];
+}
 function trackerBase(t,lift){   // T_world = posición + drape al terreno (devuelve _M reutilizado); 'lift' sube el tubo
   var mc=usaCotas(t)?t.mc:null,cl=0.8/vex;
   var by=(mc?mc.rel:(t.rel+((GEO==='levantamiento')?corrSuelo(t.gx,-t.gz):0)))*vex+(lift||0);   // rel es cota de SUELO (medida-HEJE con cotas): el render suma el poste encima, MISMA convencion que el DEM (si no, todo flota HEJE); sin cota propia se drapea al suelo CORREGIDO, no al DEM crudo (quedaba colgado por el residuo de los vecinos)  // base en la cota del CENTRO (+lift); los postes (longitud variable) llegan al suelo
@@ -895,6 +935,7 @@ function trackerBase(t,lift){   // T_world = posición + drape al terreno (devue
      la estructura sigue al terreno, y el panel acaba exactamente en su consigna. */
   _NRM.set(-vex*gE,1,vex*gN).normalize();_Q.setFromUnitVectors(_UP,_NRM);_PV.set(t.gx,by,t.gz);
   t._roll=Math.atan(vex*gE);                                         // rad; +gE (este más alto) inclina el panel al OESTE
+  if(t.rot){_QR.setFromAxisAngle(_UP,-t.rot);_Q.premultiply(_QR);}   // rumbo del eje: el drape va en el marco del seguidor (gN/gE se muestrean ya girados) y este giro lo lleva al mundo
   return _M.compose(_PV,_Q,_SC.set(1,1,1));
 }
 // "Tracker quebrado": ángulos de quiebre (rótula en el actuador) de cada mitad de viga, POR FILA, a partir del terreno real.
@@ -1620,13 +1661,18 @@ function buildContactAO(){
   aoGroup=new THREE.Group();scene.add(aoGroup);
   var v=[],uv=[],v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2,w2=w*1.25;
   TRK.forEach(function(t){var hl=(t.medio?16:31)+0.8,segs=10;
-    [t.gx-fz,t.gx+fz].forEach(function(cx){
-      for(var s=0;s<segs;s++){var nA=-t.gz-hl+2*hl*s/segs,nB=-t.gz-hl+2*hl*(s+1)/segs;
-        var yA=localElevY(cx,nA)+0.05,yB=localElevY(cx,nB)+0.05,u0=s/segs,u1=(s+1)/segs;
-        v.push(cx-w,yA,-nA, cx+w,yA,-nA, cx+w,yB,-nB, cx-w,yA,-nA, cx+w,yB,-nB, cx-w,yB,-nB);
+    /* la banda va A LO LARGO DEL EJE del seguidor: con `rot` (Bagnarelli, 23,7°) las sombras de
+       contacto salían norte-sur y cruzaban los paneles en diagonal */
+    [-fz,fz].forEach(function(pfx){
+      for(var s=0;s<segs;s++){var dzA=hl-2*hl*s/segs,dzB=hl-2*hl*(s+1)/segs;   // dz DECRECIENTE: con rot 0 reproduce exactamente el orden de vértices anterior (si se invierte, las caras miran abajo y el AO y la franja de hierba desaparecen)
+        var cA=locXN(t,pfx,dzA),cB=locXN(t,pfx,dzB);
+        var A0=locXN(t,pfx-w,dzA),A1=locXN(t,pfx+w,dzA),B0=locXN(t,pfx-w,dzB),B1=locXN(t,pfx+w,dzB);
+        var yA=localElevY(cA[0],cA[1])+0.05,yB=localElevY(cB[0],cB[1])+0.05,u0=s/segs,u1=(s+1)/segs;
+        v.push(A0[0],yA,-A0[1], A1[0],yA,-A1[1], B1[0],yB,-B1[1], A0[0],yA,-A0[1], B1[0],yB,-B1[1], B0[0],yB,-B0[1]);
         uv.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);
         var yA2=yA-0.01,yB2=yB-0.01;                                     // franja de hierba MÁS ANCHA que el panel (asoma a los flancos ⇒ visible desde el aire, como las fotos)
-        v2.push(cx-w2,yA2,-nA, cx+w2,yA2,-nA, cx+w2,yB2,-nB, cx-w2,yA2,-nA, cx+w2,yB2,-nB, cx-w2,yB2,-nB);
+        var C0=locXN(t,pfx-w2,dzA),C1=locXN(t,pfx+w2,dzA),D0=locXN(t,pfx-w2,dzB),D1=locXN(t,pfx+w2,dzB);
+        v2.push(C0[0],yA2,-C0[1], C1[0],yA2,-C1[1], D1[0],yB2,-D1[1], C0[0],yA2,-C0[1], D1[0],yB2,-D1[1], D0[0],yB2,-D0[1]);
         uv2.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
     });});
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
@@ -3324,11 +3370,12 @@ function updateLabels(){
 /* ───────── EDICIÓN DE SEGUIDORES EN 3D: seleccionar, articular (uno a uno) y recolocar sobre el terreno, con guardado ───────── */
 function resampleTracker(t){ if(!ELEV)return;                          // al mover el seguidor: recalcula cotas y drape del terreno en el nuevo punto
   t.glat=lat0-t.gz/mPerLat;t.glon=lon0+t.gx/mPerLon;
-  var sp=t.span||TC.span,dE=t.dE||15,fz=TC.filaZ,zP=zPfor(t),half=TC.np/2,latHalf=(sp/2)/mPerLat,lonE15=dE/mPerLon;
+  var sp=t.span||TC.span,dE=t.dE||15,fz=TC.filaZ,zP=zPfor(t),half=TC.np/2;
+  var _E=function(dx,dz){var q=locXN(t,dx,dz);return ELEV(lat0+q[1]/mPerLat,lon0+q[0]/mPerLon)-baseElev;};   // igual que al construir: a lo largo del eje REAL
   t.rel=ELEV(t.glat,t.glon)-baseElev;
-  t.relN=ELEV(t.glat+latHalf,t.glon)-baseElev;t.relS=ELEV(t.glat-latHalf,t.glon)-baseElev;
-  t.relE=ELEV(t.glat,t.glon+lonE15)-baseElev;t.relW=ELEV(t.glat,t.glon-lonE15)-baseElev;
-  var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<half;pk++){var ppx=t.gx+pfx,ppz=t.gz+(pk<zP.length?zP[pk]:0);pr.push(ELEV(lat0-ppz/mPerLat,lon0+ppx/mPerLon)-baseElev);}}
+  t.relN=_E(0,-sp/2);t.relS=_E(0,sp/2);
+  t.relE=_E(dE,0);t.relW=_E(-dE,0);
+  var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<half;pk++){pr.push(_E(pfx,(pk<zP.length?zP[pk]:0)));}}
   t.postRel=pr;
 }
 function buildPickBoxes(){                                             // una caja invisible por seguidor (raycast de selección) + un contorno de selección reutilizable
@@ -3495,7 +3542,7 @@ $('fotoBtn').onclick=function(){ var sz=new THREE.Vector2();renderer.getSize(sz)
   }catch(e){alert('No se pudo capturar ('+e.message+')');}
   finally{ renderer.setPixelRatio(pr);renderer.setSize(sz.x,sz.y,false);SUN.shadow.mapSize.set(ms,ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();renderer.render(scene,camera);renderPost();} };
 $('placeGw').onclick=function(){placingGw=!placingGw;this.textContent=placingGw?'📡 clic para mover la NCU…':'📡 Mover NCU (clic)';};
-$('reset').onclick=function(){controls.target.set(0,0,0);camera.position.set(0,300,420);controls.update();};
+$('reset').onclick=function(){encuadra();};   // "Reset" vuelve al encuadre de la planta, no a un punto fijo: con la planta descentrada (Bagnarelli) el fijo la sacaba de cuadro
 $('time').oninput=function(){playing=false;$('play').textContent='▶';setTime(+this.value);if(fresOn)applyFresnel();};
 $('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducción (min simulados por segundo real)
 $('simdate').onchange=function(){var dt=new Date(this.value+'T12:00:00');if(isNaN(dt))return;simDoy=Math.floor((dt-new Date(dt.getFullYear(),0,0))/86400000);   // cualquier día del año
@@ -3506,7 +3553,13 @@ $('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
   if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
   else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
 $('play').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
-if(PLANT==='custom'&&$('plantSel')&&!$('plantSel').querySelector('option[value="custom"]')){var _co=document.createElement('option');_co.value='custom';_co.textContent='✚ Planta nueva';$('plantSel').appendChild(_co);}   // mapa nuevo: opción extra en el selector
+/* El desplegable se construye desde PLANTS. Estaba escrito a mano con cuatro opciones, así que
+   Bagnarelli y Páramo existían, cargaban por ?planta= y NO HABÍA MANERA DE LLEGAR A ELLAS desde el
+   visor: no salían en la lista y, si entrabas por enlace directo, el selector se quedaba en blanco
+   (value sin option). Mismo fallo que tenía plano.html. */
+(function(){var sel=$('plantSel');if(!sel)return;sel.innerHTML='';
+  Object.keys(PLANTS).forEach(function(k){ if(k==='custom'&&PLANT!=='custom')return;
+    var o=document.createElement('option');o.value=k;o.textContent=(k==='custom'?'✚ ':'')+PLANTS[k].title;sel.appendChild(o);});})();   // mapa nuevo: opción extra solo si estás en él
 _tituloPlanta();$('plantSel').value=PLANT;$('plantSel').onchange=function(){var u=new URL(location.href);u.searchParams.set('planta',this.value);location.href=u.href;};   // cambiar de planta = recargar con ?planta=…
 if($('link2d')){var _l2=$('link2d');if(PLANT==='elburgo'){_l2.href='index.html';_l2.textContent='▦ Cobertura 2D →';}else{_l2.href='plano.html?planta='+PLANT;_l2.textContent='▦ Plano 2D →';}}   // El Burgo → visor REAL de cobertura Zigbee (RSSI/malla/saltos, index.html); Ayora/San José → plano de planta nuevo (sin datos de cobertura medidos)
 
