@@ -325,8 +325,15 @@ function angleAt(num,min){
 }
 var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
 // posición del sol (fecha de la telemetría, hora local CEST) → vector hacia el sol en mundo (x=E, y=arriba, z=-N)
-function tzOffMin(doy){if(PLANT==='sanjose')return -300;   // San José está en PERÚ: UTC−5 todo el año, sin DST ("San José es Perú... a las 12:48 de noche" — el reloj usaba el huso español en todas las plantas)
-  return (doy>=88&&doy<=298)?120:60;}   // España peninsular: CEST (UTC+2) del último domingo de marzo al de octubre (~DOY 88-298), CET (UTC+1) el resto — antes UTC+2 fijo: en invierno el slider iba 1 h corrido
+/* HUSO de la planta. Estaba clavado al de España (con San José como excepción a mano) y por eso
+   Túnez iba una hora adelantado: Tunicia es UTC+1 TODO EL AÑO, sin cambio de hora, así que en
+   verano el sol se dibujaba con la hora de Madrid y a las 10:35 se veía el sol de las 9:35. Ahora
+   la planta puede traer `tzFijo` (minutos, sin DST) en su layout; si no lo trae, sigue la regla
+   peninsular, que vale para España e Italia. */
+function tzOffMin(doy){
+  var f=(LAYOUT&&LAYOUT.tzFijo!=null)?LAYOUT.tzFijo:(PLANT==='sanjose'?-300:null);
+  if(f!=null)return f;
+  return (doy>=88&&doy<=298)?120:60;}   // España/Italia: CEST (UTC+2) del último domingo de marzo al de octubre (~DOY 88-298), CET (UTC+1) el resto
 function sunVec(min){
   var lat=lat0*DEG, doy=simDoy;
   var decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
@@ -433,7 +440,7 @@ var PLANTS={
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:24, cod:24007},   // mods = modulos por ALA, no por fila. Fayon es 2x1V48: 48 por fila en DOS alas de 24. Con 48 salia span 110,57 m cuando el DWG mide 55,15 (y 46,03 el 1V40, que sale del mr 0,833). Estaba mal desde la #317   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
   bagnarelli:{file:'bagnarelli_layout.json', title:'Bagnarelli 24030', angles:null, mods:21, cod:24030},   // 17 seguidores de UNA fila (filaZ 0) con modulo Risen de 1,303 m. El DWG ya viene en UTM 33N y sus 17 INSERT coinciden con el listado del cliente a 0,000 m
   paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
-  tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N; DATUM SIN CONFIRMAR (WGS84 vs Carthage = 460 m), ver el layout
+  tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 /* ENCUADRE INICIAL. Antes salía del tamaño del TERRENO, que se dimensiona por la distancia al
@@ -1661,7 +1668,12 @@ function buildContactAO(){
   if(!TRK.length||!ELEV)return;
   aoGroup=new THREE.Group();scene.add(aoGroup);
   var v=[],uv=[],v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2,w2=w*1.25;
-  TRK.forEach(function(t){var hl=(t.medio?16:31)+0.8,segs=10;
+  /* El semilargo de la franja era 31,8 m CLAVADO (16,8 los "medio"), que es el de El Burgo. En una
+     planta con seguidores más cortos la banda oscura se salía por los dos extremos de cada fila y
+     parecía una sombra mal puesta: en Túnez el seguidor mide 37,3 m y la franja 63,6, o sea 13,2 m
+     de más POR CADA PUNTA. Ahora sale del largo real (span x mr), que es el mismo que ya usaban la
+     caja de selección y el recorte de módulos. */
+  TRK.forEach(function(t){var hl=((t.span||TC.span)*(t.mr||1))/2,segs=10;
     /* la banda va A LO LARGO DEL EJE del seguidor: con `rot` (Bagnarelli, 23,7°) las sombras de
        contacto salían norte-sur y cruzaban los paneles en diagonal */
     [-fz,fz].forEach(function(pfx){
