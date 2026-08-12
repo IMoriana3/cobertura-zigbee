@@ -44,11 +44,11 @@ layout: es quien declara los gateways, y para El Burgo el layout ni los trae.
 """
 import json, csv, sys, math, os, re
 
-PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "paramo"]
+PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "paramo", "tunez"]
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAL = os.path.join(RAIZ, "cobertura_coords")
 TOOLBOX = {"elburgo": "elburgo.json", "ayora": "24025-ayora.json", "sanjose": "24019-san-jose.json",
-           "fayon": "24007-fayon.json", "bagnarelli": "24030-bagnarelli.json"}   # Páramo aún no está declarada
+           "fayon": "24007-fayon.json", "bagnarelli": "24030-bagnarelli.json", "tunez": "24021-tunez.json"}   # Páramo aún no está declarada
 SCADA = os.path.join(os.path.dirname(RAIZ), "scada", "tools", "tcu-toolbox", "plantas")
 
 

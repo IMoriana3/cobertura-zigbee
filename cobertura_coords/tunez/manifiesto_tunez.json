@@ -1,0 +1,26 @@
+{
+ "planta": "tunez",
+ "titulo": "Túnez 24021",
+ "crs": "EPSG:32632",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "tcus": 19,
+ "ncus": 1,
+ "gws": 1,
+ "una_fila": false,
+ "gateways_declarados_en_scada": true,
+ "ncus_sin_declarar_en_scada": [],
+ "ambitos": [
+  {
+   "fichero": "coords_tunez.csv",
+   "tcus": 19,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_tunez_NCU01.csv",
+   "tcus": 19,
+   "ambito": "ncu",
+   "ncu": 1
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv tunez_real.geojson"
+}
