@@ -2857,8 +2857,11 @@ function buildBOS(){
        POLÍGONO REAL, con lo que la planta y el giro son los del plano;
      · la cota se deja en localElevY del centro, como estaba. NO tocar esto sin poder probarlo
        contra relieve real: el intento de anclarlo a terrainMeshY por esquinas lo dejo flotando;
-     · la puerta iba siempre al sur. Ahora va al ESTE (petición del usuario): se elige el lado cuya
-       normal saliente apunta más al este.
+     · la puerta iba siempre al sur. Ahora va al ESTE por defecto (petición del usuario): se elige
+       el lado cuya normal saliente apunta más a esa dirección. Cada planta puede cambiarla con
+       `ctPuerta` en su layout ("este" | "oeste" | "norte" | "sur"): Túnez la lleva al OESTE. El
+       LADO al que abre NO viene en el plano —es 2D y no dibuja la hoja—, así que es un DATO
+       DECLARADO por el usuario planta a planta, no algo medido.
      La ALTURA (3,10 m) y la puerta (1,10 × 2,20 m) son DERIVADAS: el layout es 2D y no las trae. */
   (LAYOUT.cts||[]).forEach(function(pl,ci){
     var P=pl.slice(); if(P.length>2&&Math.hypot(P[0][0]-P[P.length-1][0],P[0][1]-P[P.length-1][1])<1e-6)P.pop();   // sin el vértice de cierre repetido
@@ -2883,9 +2886,11 @@ function buildBOS(){
     P.forEach(function(p,i){var rx=(p[0]-cx)*k,rn=(p[1]-cn)*k; if(i)shR.lineTo(rx,rn); else shR.moveTo(rx,rn);});shR.closePath();
     var rf=new THREE.Mesh(new THREE.ExtrudeGeometry(shR,{depth:0.25,bevelEnabled:false}),roofM);
     rf.rotateX(-Math.PI/2);rf.position.set(cx,base+h,-cn);rf.castShadow=true;bosGroup.add(rf);
-    var mej=null;                                                                                                    // puerta al ESTE
+    var DIRP={este:[1,0],oeste:[-1,0],norte:[0,1],sur:[0,-1]},pd=DIRP[String(LAYOUT.ctPuerta||'este').toLowerCase()]||DIRP.este;
+    var mej=null;                                                                                                    // lado cuya normal saliente apunta más a `ctPuerta`
     for(var i=0;i<P.length;i++){var a=P[i],b2=P[(i+1)%P.length],mx=(a[0]+b2[0])/2,mn=(a[1]+b2[1])/2,ox=mx-cx,on=mn-cn,Lc=Math.hypot(ox,on)||1e-9;
-      if(!mej||ox/Lc>mej.e)mej={e:ox/Lc,a:a,b:b2,mx:mx,mn:mn,ox:ox/Lc,on:on/Lc};}
+      var sc=(ox/Lc)*pd[0]+(on/Lc)*pd[1];
+      if(!mej||sc>mej.e)mej={e:sc,a:a,b:b2,mx:mx,mn:mn,ox:ox/Lc,on:on/Lc};}
     var ldo=Math.hypot(mej.b[0]-mej.a[0],mej.b[1]-mej.a[1]),dw=Math.min(1.1,ldo*0.5),dh=Math.min(2.2,h*0.8);
     var dr=new THREE.Mesh(new THREE.BoxGeometry(dw,dh,0.10),doorM);
     dr.position.set(mej.mx+mej.ox*0.05,base+dh/2,-(mej.mn+mej.on*0.05));
@@ -3003,7 +3008,10 @@ function buildBOS(){
           to.castShadow=true;g.add(to);}
       });}
     bosGroup.add(g);
-    if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);bosGroup.add(lb);}
+    /* La etiqueta se CONMUTA con la casilla "Etiquetas", como las del CT, los edificios y las
+       cámaras. Estaba siempre encendida y con 14 mesas tapaba la instalación entera. */
+    if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);
+      lb.visible=labelGroup.visible;lb.userData.bos=true;bosGroup.add(lb);HLBL.push(lb);}
   });
   (LAYOUT.invlab||[]).forEach(function(c0,ci){if(!INVPOS.length)computeInvPos();var c=invAt(ci);if(!inClip(c.x,c.n))return;var y=localElevY(c.x,c.n),g=new THREE.Group();g.position.set(c.x,y,-c.n);g.rotation.y=Math.PI;   // girado 180°: el frontal (marca) mira al SUR
     var body=new THREE.Mesh(bodyG2,blancoM);body.position.set(0,cy,-0.15);g.add(body);                     // CUERPO REDONDEADO (extrusión con esquinas curvas, "el inversor es más redondeado")
