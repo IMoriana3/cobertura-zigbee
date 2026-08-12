@@ -782,6 +782,15 @@ svg.leaflet-image-layer.leaflet-interactive path {
   #scrub::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid #06222b;box-shadow:0 0 10px var(--accent)}
   .strip-lbl{position:absolute;top:3px;left:8px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);pointer-events:none}
 
+  #plantSel{margin-top:9px;width:100%;background:#131c26;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:12.5px;cursor:pointer}
+  /* Aviso de "esta planta no tiene X". Va ARRIBA y sin tapar: el mapa de la planta tiene que verse
+     igual, que es justo lo que se pidió — mostrarlo todo y decir qué falta, no esconder la vista. */
+  #nodata{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;pointer-events:none;max-width:min(560px,92%);
+    background:rgba(18,29,41,.95);border:1px solid var(--line);border-left:3px solid var(--warn,#F6A623);border-radius:10px;
+    padding:10px 14px;color:var(--muted);font-size:12.5px;line-height:1.5;display:none}
+  #nodata.show{display:block}
+  #nodata b{color:var(--text)}
+  #nodata .t{color:#F6A623;font-weight:700;display:block;margin-bottom:3px}
   .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:600}
   .empty div{background:rgba(18,29,41,.94);border:1px solid var(--line);border-radius:12px;padding:22px 26px;max-width:400px;text-align:center;color:var(--muted);font-size:13px;line-height:1.55}
   .empty b{color:var(--text)}
@@ -795,13 +804,14 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </style>
 </head>
 <body>
-<header class="app-bar"><a class="back" href="https://imoriana3.github.io/proyectos/">← Panel</a><h1>Cobertura Zigbee</h1><span class="sub">PSFV El Burgo I · Máquina del tiempo</span><a class="back" href="terreno.html" title="Vista 3D con terreno real">🌍 3D</a><button id="open24" title="Fiabilidad agregada de las 24 h" style="cursor:pointer;background:#1a2330;color:#cfe;border:1px solid #2c3a49;border-radius:8px;padding:5px 10px;font:inherit;font-size:13px">📊 24 h</button><button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="cursor:pointer;background:#1a2330;color:#9bb0c6;border:1px solid #2c3a49;border-radius:8px;padding:5px 10px;font:inherit;font-size:13px"></button><span class="client">EIG</span><span class="brand">Factiun</span></header>
+<header class="app-bar"><a class="back" href="https://imoriana3.github.io/proyectos/">← Panel</a><h1>Cobertura Zigbee</h1><span class="sub" id="hdrSub">Máquina del tiempo</span><a class="back" id="link3d" href="terreno.html" title="Vista 3D con terreno real">🌍 3D</a><button id="open24" title="Fiabilidad agregada de las 24 h" style="cursor:pointer;background:#1a2330;color:#cfe;border:1px solid #2c3a49;border-radius:8px;padding:5px 10px;font:inherit;font-size:13px">📊 24 h</button><button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="cursor:pointer;background:#1a2330;color:#9bb0c6;border:1px solid #2c3a49;border-radius:8px;padding:5px 10px;font:inherit;font-size:13px"></button><span class="client">EIG</span><span class="brand">Factiun</span></header>
 <div id="app">
   <aside id="rail">
     <div class="head">
       <p class="eyebrow">Factiun · After Sales</p>
       <h1>Cobertura Zigbee — Máquina del tiempo</h1>
-      <div class="sub">PSFV El Burgo I · malla TCU</div>
+      <div class="sub" id="railSub">malla TCU</div>
+      <select id="plantSel" title="Planta"></select>
     </div>
 
     <div class="block">
@@ -828,6 +838,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 
     <div class="block">
       <h2>Topología (rutas)</h2>
+      <label class="chk" title="Seguidores, NCUs y estaciones meteo del DWG, a escala y debajo de la malla"><input type="checkbox" id="cbPlant" checked> Mapa de la planta</label>
       <label class="chk"><input type="checkbox" id="allRoutes"> Dibujar todas las rutas</label>
       <button class="btn" id="setGw" style="margin-top:9px">Situar gateway (NCU) <span class="k">pulsa y luego clic en el mapa</span></button>
     </div>
@@ -876,6 +887,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </div>
 
 <div class="empty" id="empty"><div>Carga el <b>zigbee_log.csv</b> y el <b>CSV de coordenadas</b>.<br><br>Luego dale a <b>▶</b> y verás la cobertura evolucionar en el tiempo.<br><br>¿Sin datos? Pulsa <b>Datos de ejemplo</b>.</div></div>
+<div id="nodata"></div>
 
 <script>/* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -886,6 +898,130 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <script>
 const OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin teselas de satélite (cero llamadas externas); la cobertura se ve igual
 const cv=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* =====================================================================
+   PLANTA (multiplanta)
+   Esta página era SOLO de El Burgo: el fichero de la malla y el de ángulos estaban escritos a mano,
+   y las demás plantas tenían el botón «Cobertura» apuntando al Layout 2D, que es otra cosa. Ahora la
+   planta llega en ?planta= igual que en terreno.html y en plano.html, y cada una aporta lo que
+   REALMENTE tiene:
+     · mapa de la planta   -> <planta>_layout.json    (seguidores, NCUs, meteo)  · TODAS lo tienen
+     · malla Zigbee medida -> <planta>_real.geojson   (enlaces RSSI, SPOF)       · hoy solo El Burgo
+     · máquina del tiempo  -> zigbee_log.csv que carga el usuario                · hoy solo El Burgo
+   Lo que falta se DICE encima del mapa; no se esconde ningún menú ni ninguna pestaña. El fichero de
+   la malla se busca POR CONVENCIÓN (<planta>_real.geojson): el día que exista, la planta lo coge
+   sola sin tocar código.
+   ===================================================================== */
+const PLANTS={
+  elburgo:{file:'elburgo_layout.json',title:'El Burgo I',ncu:[41.576615,-0.798170],ang:'trackers_2026-06-17.json'},   // ncu = posición REAL del coordinador (plantilla SCADA, UTM30N 683559,51 / 4605111,23) · ang = telemetría de basculación, para cruzar cobertura contra ángulo en el informe de 24 h
+  ayora:{file:'ayora_layout.json',title:'Ayora 24025'},
+  sanjose:{file:'sanjose_layout.json',title:'San José 24019'},
+  fayon:{file:'fayon_layout.json',title:'Fayón 24007'},
+  bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'},
+  paramo:{file:'paramo_layout.json',title:'Páramo 25019'},
+  custom:{file:null,title:'Planta nueva'}
+};
+const PLANT=(function(){try{const p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
+const PMETA=PLANTS[PLANT];
+const MESHFILE=(PLANT==='custom')?null:(PLANT+'_real.geojson');
+
+/* Cotas del seguidor para dibujarlo a escala. MISMO criterio y mismos números que el Layout 2D
+   (plano.html · calcTDIM): se derivan del layout, que es la fuente única, en vez de una tabla por
+   planta — así una planta nueva sale bien sin tocar esto y ninguna hereda por error las de El Burgo.
+     modW    del layout (Bagnarelli monta Risen de 1,303) o 1,134 del canónico
+     mods    módulos por ALA: del layout, o de la tabla de abajo (la misma que PLANTS en terreno.html)
+     span    = 2·mods·(modW+0,012) + 0,55 (hueco del actuador)  ->  halfL = span/2
+     filaZ   del layout; con filaZ 0 la planta es de UNA fila: una banda sola y sin biela
+     cuerda  ancho de una fila = un módulo en vertical
+   El largo de CADA seguidor sale luego de t.mr, la razón real del DWG, que sí es unívoca entre
+   plantas (t.mods no lo es: en Ayora es por ala y en Fayón por fila). */
+const TMODS={elburgo:28,ayora:28,sanjose:32,fayon:24,bagnarelli:21,paramo:24,custom:28};   // módulos por ALA
+const TMEAS={fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413}};                                // cotas MEDIDAS que mandan sobre el modelo (Fayón, del plano de proyecto P06)
+let LAY=null, TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382};
+function resuelveTDIM(lay){
+  const modW=(lay&&lay.modW)||1.134, mods=(lay&&lay.mods)||TMODS[PLANT]||28;
+  const d={halfL:(2*mods*(modW+0.012)+0.55)/2, filaZ:(lay&&lay.filaZ!=null)?+lay.filaZ:3.0, cuerda:2.382};
+  const m=TMEAS[PLANT]; if(m)for(const k in m)d[k]=m[k];
+  return d;
+}
+function loadLayout(cb){
+  if(PLANT==='custom'){ try{LAY=JSON.parse(localStorage.getItem('cobertura_layout')||'null');}catch(e){LAY=null;} TDIM=resuelveTDIM(LAY); cb&&cb(); return; }
+  fetch(PMETA.file,{cache:'no-store'}).then(r=>r.json()).then(j=>{LAY=j;TDIM=resuelveTDIM(j);cb&&cb();}).catch(()=>{LAY=null;cb&&cb();});
+}
+const mPerLatK=111320;
+function layLL(x,n){ return [LAY.clat+n/mPerLatK, LAY.clon+x/(mPerLatK*Math.cos(LAY.clat*Math.PI/180))]; }   // metros locales E/N del DWG -> lat/lon, igual que en el 3D y en el Layout 2D
+function layBounds(){ if(!LAY||!LAY.trackers||!LAY.trackers.length)return null;
+  let x0=1e9,x1=-1e9,n0=1e9,n1=-1e9; for(const t of LAY.trackers){if(t.x<x0)x0=t.x;if(t.x>x1)x1=t.x;if(t.n<n0)n0=t.n;if(t.n>n1)n1=t.n;}
+  const m=TDIM.halfL+20; return L.latLngBounds(layLL(x0-m,n0-m),layLL(x1+m,n1+m)); }
+
+/* ---------- capa «mapa de la planta» ----------
+   Los seguidores, NCUs y meteo del layout, en un canvas propio DEBAJO de la malla Zigbee (va al
+   overlayPane; los marcadores de la malla viven en el markerPane, por encima). Un canvas y no ~7.000
+   vectores de Leaflet porque San José tiene 2.289 seguidores x (2 bandas + biela).
+   La geometría es la MISMA que la del Layout 2D: bífila a ±filaZ con su biela, largo por t.mr y giro
+   por t.rot. La escala se toma en el centro de la planta y se aplica uniforme: en Mercator el factor
+   cambia con la latitud, pero sobre 3 km (San José, la mayor) eso es < 0,05 %, sub-píxel. */
+const PlantLayer=L.Layer.extend({
+  onAdd:function(m){
+    this._map=m;
+    const c=this._c=L.DomUtil.create('canvas','plant-canvas');
+    c.style.position='absolute'; c.style.pointerEvents='none'; c.style.opacity='.62';   // de fondo: la malla manda
+    m.getPanes().overlayPane.appendChild(c);
+    m.on('move zoom viewreset resize zoomend',this._reset,this);
+    if(m.options.zoomAnimation&&L.Browser.any3d)m.on('zoomanim',this._anim,this);
+    this._reset();
+  },
+  onRemove:function(m){ L.DomUtil.remove(this._c); m.off('move zoom viewreset resize zoomend',this._reset,this); m.off('zoomanim',this._anim,this); },
+  _anim:function(e){ const m=this._map,sc=m.getZoomScale(e.zoom),
+    off=m._latLngToNewLayerPoint(m.layerPointToLatLng(this._org),e.zoom,e.center);
+    L.DomUtil.setTransform(this._c,off,sc); },
+  _reset:function(){
+    const m=this._map,sz=m.getSize(),tl=m.containerPointToLayerPoint([0,0]),dpr=Math.min(devicePixelRatio||1,2),c=this._c;
+    this._org=tl; L.DomUtil.setTransform(c,tl,1);
+    if(c.width!==Math.round(sz.x*dpr)||c.height!==Math.round(sz.y*dpr)){c.width=Math.round(sz.x*dpr);c.height=Math.round(sz.y*dpr);c.style.width=sz.x+'px';c.style.height=sz.y+'px';}
+    this._draw(sz,dpr);
+  },
+  _draw:function(sz,dpr){
+    const x=this._c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,sz.x,sz.y);
+    if(!LAY||!LAY.trackers)return;
+    const m=this._map,DEG=Math.PI/180;
+    const p0=m.latLngToContainerPoint([LAY.clat,LAY.clon]);    // origen: redondeado, igual que los marcadores de la malla
+    /* px por metro CON DECIMALES: latLngToContainerPoint redondea a entero, y en una planta grande
+       vista entera (Ayora y San José caben a zoom 14) un metro son 0,11 px -> la resta daba 0 y no
+       se pintaba absolutamente nada. project() no redondea. */
+    const z=m.getZoom(), q0=m.project([LAY.clat,LAY.clon],z),
+          qE=m.project([LAY.clat,LAY.clon+1/(mPerLatK*Math.cos(LAY.clat*DEG))],z);
+    const s=qE.x-q0.x; if(!(s>0))return;
+    const lp0=TDIM.halfL*s, off=TDIM.filaZ*s, wp=Math.max(0.5,(TDIM.cuerda/2)*s);
+    x.fillStyle='#3a78d6';
+    for(let i=0;i<LAY.trackers.length;i++){ const t=LAY.trackers[i];
+      const cx=p0.x+t.x*s, cy=p0.y-t.n*s;
+      if(cx<-60||cx>sz.x+60||cy<-60||cy>sz.y+60)continue;       // fuera de pantalla
+      const mr=(typeof t.mr==='number'&&t.mr>0&&t.mr<1)?t.mr:(/^medio/i.test(t.t||'')?0.504:1);
+      const lp=lp0*mr, rot=+t.rot||0;
+      if(rot){x.save();x.translate(cx,cy);x.rotate(-rot*DEG);x.translate(-cx,-cy);}
+      x.fillRect(cx-off-wp,cy-lp,2*wp,2*lp);
+      if(off){ x.fillRect(cx+off-wp,cy-lp,2*wp,2*lp);           // monofila (filaZ 0): una banda y sin biela
+        x.strokeStyle='#3a78d6';x.lineWidth=Math.max(1,Math.min(3,s*1.6));x.beginPath();x.moveTo(cx-off,cy);x.lineTo(cx+off,cy);x.stroke(); }
+      if(rot)x.restore();
+    }
+    const mark=(arr,col,r)=>{ for(const p of (arr||[])){ const px=p0.x+p.x*s,py=p0.y-p.n*s;
+      if(px<-20||px>sz.x+20||py<-20||py>sz.y+20)continue;
+      x.beginPath();x.arc(px,py,r,0,7);x.fillStyle=col;x.fill();x.lineWidth=1.5;x.strokeStyle='rgba(11,15,20,.85)';x.stroke(); } };
+    mark(LAY.ncus,'#36D399',7); mark(LAY.meteo,'#e3c149',5.5); mark(LAY.reps,'#c98bff',4.5);   // misma paleta que el Layout 2D
+  }
+});
+let plantLayer=null;
+function syncPlantLayer(){
+  const on=document.getElementById('cbPlant'), want=!on||on.checked;
+  if(!map||!LAY)return;
+  if(want&&!plantLayer){ plantLayer=new PlantLayer(); plantLayer.addTo(map); }
+  else if(!want&&plantLayer){ map.removeLayer(plantLayer); plantLayer=null; }
+}
+/* Aviso de carencia. Dice QUÉ falta y CÓMO se rellena — nada de una pantalla vacía sin explicación. */
+function avisa(titulo,html){ const el=document.getElementById('nodata'); if(!el)return;
+  if(!titulo){el.classList.remove('show');el.innerHTML='';return;}
+  el.innerHTML='<span class="t">'+titulo+'</span>'+html; el.classList.add('show'); }
 /* ---------- escalas de color por modo ---------- */
 function colRSSI(r){ if(r==null) return cv('--s-off');
   if(r>=-65)return cv('--s-exc'); if(r>=-72)return cv('--s-good'); if(r>=-80)return cv('--s-ok'); if(r>=-88)return cv('--s-weak'); return cv('--s-bad'); }
@@ -1036,8 +1172,14 @@ function snapVal(snap, table, id){
 
 /* ---------- mapa ---------- */
 function buildMap(){
-  map=L.map('map',{zoomControl:true,attributionControl:false}).setView([41.577,-0.798],16);
+  if(map)return;   // el arranque es asíncrono (espera al layout); render() también puede llamar aquí
+  // Centro de la PLANTA, no el de El Burgo escrito a mano: si no, las demás plantas abrían sobre
+  // Zaragoza y saltaban al encajar. Si el layout no cargó, se queda el de El Burgo como antes.
+  const c0=(LAY&&isFinite(LAY.clat))?[LAY.clat,LAY.clon]:[41.577,-0.798];
+  map=L.map('map',{zoomControl:true,attributionControl:false}).setView(c0,16);
   if(!OFFLINE)L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20}).addTo(map);   // OFFLINE: sin teselas (cero llamadas externas); la malla/markers se dibujan igual sobre el mapa gris
+  const _nd=document.getElementById('nodata'); if(_nd)map.getContainer().appendChild(_nd);   // el aviso, dentro del mapa: si no, se colocaba sobre la barra de cabecera
+  syncPlantLayer();                       // mapa de la planta: debajo de todo lo demás
   routeLayer=L.layerGroup().addTo(map);   // rutas debajo de los marcadores
   layer=L.layerGroup().addTo(map);
   map.on('click',e=>{ if(S.placingGw){ setGateway(e.latlng); S.placingGw=false; document.getElementById('setGw').classList.remove('loaded'); } });
@@ -1084,12 +1226,18 @@ function setGateway(latlng){
     gwMarker.on('dragend',ev=>{const p=ev.target.getLatLng();S.gw=[p.lat,p.lng];drawRoutes();}); }
   drawRoutes();
 }
-// Posición REAL de la NCU1 de El Burgo (plantilla SCADA, UTM30N 683559.51,4605111.23
-// -> WGS84). Es el gateway/coordinador de este dataset; se usa SIEMPRE por defecto.
-const NCU_REAL=[41.576615,-0.798170];   // [lat, lon]
+/* Gateway por defecto. El Burgo trae la posición REAL de su NCU1 escrita en PLANTS (plantilla SCADA,
+   UTM30N 683559,51 / 4605111,23 -> WGS84). Para el resto se coge la NCU 1 de su propio layout, que
+   sale del DWG: antes cualquier planta habría puesto su coordinador en Zaragoza. */
+function ncuPorDefecto(){
+  if(PMETA&&PMETA.ncu)return PMETA.ncu;
+  if(LAY&&LAY.ncus&&LAY.ncus.length&&isFinite(LAY.clat))return layLL(LAY.ncus[0].x,LAY.ncus[0].n);
+  return null;
+}
 function defaultGateway(){ // si no se ha situado a mano, en la posición real de la NCU
   if(S.gw||!Object.keys(S.markers).length) return;
-  setGateway({lat:NCU_REAL[0],lng:NCU_REAL[1]});
+  const p=ncuPorDefecto(); if(!p)return;
+  setGateway({lat:p[0],lng:p[1]});
 }
 function routePath(id,ts){ // lista de latlng [gw, hop1, ..., id] para la ruta de un nodo
   const p=snapVal(snapAt(ts),'pathByTarget',id); if(!p)return null;
@@ -1114,6 +1262,7 @@ function render(){
   hidePred();
   const hasData = (S.frames&&S.frames.length>0);
   document.getElementById('empty').style.display = hasData? 'none':'flex';
+  if(hasData) avisa(null);   // en cuanto hay serie temporal cargada, el aviso de "sin datos" sobra
   if(!hasData) return;
   ensureMarkers();
   if(S.routeSnaps.length) defaultGateway();
@@ -1214,7 +1363,8 @@ function colRoutesPred(rt,spof){ return spof? cv('--s-bad') : colCrit(rt); }   /
 // (subárbol). Así los dominadores (TCU_062≈47, TCU_071≈39) destacan aunque no sean SPOF.
 function colDescPred(d,spof){ if(spof)return cv('--s-bad'); d=d||0; if(d>=46)return cv('--s-bad'); if(d>=26)return cv('--s-weak'); if(d>=11)return cv('--s-ok'); if(d>=1)return cv('--s-good'); return cv('--s-exc'); }
 function loadPred(cb){ if(predLoaded){cb&&cb();return;}
-  fetch('elburgo_real.geojson',{cache:'no-store'}).then(r=>r.json()).then(gj=>{
+  if(!MESHFILE){ PRED={nodes:[],edges:[]}; predLoaded=true; cb&&cb(); return; }
+  fetch(MESHFILE,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(gj=>{
     PRED={nodes:[],edges:[]};
     for(const f of (gj.features||[])){ const g=f.geometry,p=f.properties||{}; if(!g)continue;
       if(g.type==='Point'){ const[lo,la]=g.coordinates; PRED.nodes.push({lat:la,lon:lo,p}); }
@@ -1229,6 +1379,8 @@ function showPred(){
   loadPred(()=>{
     if(S.mode!=='predicho')return;                    // por si se cambió de modo durante el fetch
     predLayer.clearLayers(); if(!map.hasLayer(predLayer))predLayer.addTo(map);
+    if(!PRED.nodes.length){ sinMalla(); return; }      // planta sin malla medida: se dice y se enseña el mapa
+    avisa(null);
     for(const e of PRED.edges){ const rm=e.p.rssi_medido_dbm;
       L.polyline(e.ll,{color:colRSSI(rm),weight:2,opacity:.6}).bindPopup(
         `<div class="pn">${e.p.origen} → ${e.p.destino}</div><table><tr><td>gateway</td><td>${e.p.gw??'—'}</td></tr><tr><td>RSSI medido</td><td>${rm??'—'} dBm</td></tr><tr><td>distancia</td><td>${e.p.distancia_m} m</td></tr><tr><td>frecuencia uso</td><td>${e.p.freq??'—'}</td></tr></table>`
@@ -1249,6 +1401,25 @@ function showPred(){
     if(!predFit && lats.length){ map.fitBounds([[Math.min(...lats),Math.min(...lons)],[Math.max(...lats),Math.max(...lons)]],{padding:[40,40]}); predFit=true; }
   });
 }
+/* Planta SIN malla Zigbee medida. No se esconde nada: siguen los ocho modos, la topología, la
+   máquina del tiempo y el 24 h. Lo que se hace es (1) enseñar el mapa de la planta encajado,
+   (2) poner los contadores a «—» en vez de a 0 —que sería mentira, 0 nodos no es lo mismo que no
+   haberlos medido— y (3) decir qué fichero falta y de dónde sale. */
+function sinMalla(){
+  const set=(i,v)=>{const el=document.getElementById(i);if(el)el.textContent=v;};
+  set('sTot','—'); set('sOn','—'); set('sOff','—');
+  set('m1l','Enlaces'); set('m1','—'); set('m2l','Dominadores'); set('m2','—'); set('mNo','—');
+  const wh=document.querySelector('#worst .wh h2'); if(wh)wh.textContent='Malla real · sin medir';
+  const wl=document.getElementById('worstList');
+  if(wl)wl.innerHTML='<div style="padding:10px 2px;color:var(--muted);font-size:12px;line-height:1.5">Sin histórico de enlaces en esta planta.</div>';
+  const nT=(LAY&&LAY.trackers)?LAY.trackers.length:0, nN=(LAY&&LAY.ncus)?LAY.ncus.length:0;
+  avisa('Sin datos Zigbee de '+PMETA.title,
+    'El mapa de la planta sí está: <b>'+nT+'</b> seguidores y <b>'+nN+'</b> NCU'+(nN===1?'':'s')+' del DWG. '+
+    'Lo que no hay todavía es la <b>malla medida</b> (<code>'+(MESHFILE||'—')+'</code>: enlaces, RSSI, SPOF y dominadores), '+
+    'que se genera del volcado del coordinador. Con el <b>zigbee_log.csv</b> de esta planta, la máquina del tiempo funciona ya — cárgalo arriba a la izquierda.');
+  fitPlanta();
+}
+function fitPlanta(){ const b=layBounds(); if(b&&map){ map.fitBounds(b,{padding:[30,30]}); } }
 function hidePred(){ if(predLayer&&map&&map.hasLayer(predLayer))map.removeLayer(predLayer);
   if(layer&&map&&!map.hasLayer(layer))layer.addTo(map);
   if(routeLayer&&map&&!map.hasLayer(routeLayer))routeLayer.addTo(map); }
@@ -1399,10 +1570,13 @@ function todMin(ts){return _hm(ts.slice(11,16));}
 function angAt(min){const a=ANG&&ANG.field;if(!a||!a.length)return null;
   if(min<=a[0][0])return a[0][1];if(min>=a[a.length-1][0])return a[a.length-1][1];
   for(let i=1;i<a.length;i++){if(a[i][0]>=min){const p=a[i-1],q=a[i],f=(min-p[0])/((q[0]-p[0])||1);return p[1]+(q[1]-p[1])*f;}}return null;}
-fetch('trackers_2026-06-17.json',{cache:'no-store'}).then(r=>r.json()).then(j=>{ANG={date:j.date||'',field:Object.keys(j.field||{}).map(k=>[_hm(k),j.field[k]]).sort((a,b)=>a[0]-b[0])};}).catch(()=>{});
+// Telemetría de basculación (solo la planta que la tenga; el resto lo dice en la pestaña de 24 h)
+if(PMETA.ang)fetch(PMETA.ang,{cache:'no-store'}).then(r=>r.json()).then(j=>{ANG={date:j.date||'',field:Object.keys(j.field||{}).map(k=>[_hm(k),j.field[k]]).sort((a,b)=>a[0]-b[0])};}).catch(()=>{});
 function render24angle(){
   const note=document.getElementById('s24angnote'),cv=document.getElementById('s24angle'),ctx=cv.getContext('2d'),wrap=document.getElementById('s24angwrap'),tbl=document.getElementById('s24angtbl');
-  if(!ANG||!ANG.field.length){note.innerHTML='Perfil de ángulos no disponible (no cargó <code>trackers_2026-06-17.json</code>).';cv.width=10;cv.height=10;tbl.innerHTML='';return;}
+  if(!ANG||!ANG.field.length){note.innerHTML=PMETA.ang?('Perfil de ángulos no disponible (no cargó <code>'+PMETA.ang+'</code>).')
+    :('<b>'+PMETA.title+'</b> no tiene todavía telemetría de basculación, así que no se puede cruzar la cobertura contra el ángulo del seguidor. Hace falta el volcado de ángulos del SCADA (hora → ángulo de campo), como el que hay en El Burgo.');
+    cv.width=10;cv.height=10;tbl.innerHTML='';return;}
   const ids=(S.allIds||[]).filter(id=>(S.series[id]||[]).length),BIN=10,bins={};
   for(const id of ids)for(const r of S.series[id]){const a=angAt(todMin(r.ts));if(a==null)continue;const k=Math.round(a/BIN)*BIN;const b=bins[k]||(bins[k]={on:0,tot:0,rs:0,rc:0});b.tot++;if(r.online){b.on++;if(r.rssi!=null){b.rs+=r.rssi;b.rc++;}}}
   const keys=Object.keys(bins).map(Number).sort((a,b)=>a-b);
@@ -1433,7 +1607,27 @@ document.addEventListener('click',function(e){ if(!e.target.closest)return;
   const cv=e.target.closest('#s24heat'); if(cv&&cv._span){const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(cv.width/r.width),fr=Math.round(((x-cv._padL)/(cv._W-cv._padL-8))*(S.frames.length-1));if(fr>=0&&fr<S.frames.length){document.getElementById('sum24').classList.remove('show');pause();go(fr);}}
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'){const s=document.getElementById('sum24');if(s)s.classList.remove('show');}});
-buildMap(); legend(); setMode('predicho');   // al abrir, muestra YA la COBERTURA real (malla medida de elburgo_real.geojson: enlaces RSSI + SPOF/dominadores), sin esperar a cargar el zigbee_log.csv
+/* Arranque. Primero el layout (da el centro y el mapa de la planta) y luego el mapa: si no, las
+   plantas que no son El Burgo abrían sobre Zaragoza y pegaban un salto al encajar.
+   Al abrir se muestra YA la cobertura real (<planta>_real.geojson: enlaces RSSI + SPOF/dominadores)
+   sin esperar al zigbee_log.csv; y si esa planta no la tiene, se dice y se enseña el mapa. */
+(function arranca(){
+  const t=PMETA.title;
+  document.title='Cobertura Zigbee · '+t;
+  const sub=document.getElementById('hdrSub'); if(sub)sub.textContent=t+' · Máquina del tiempo';
+  const rs=document.getElementById('railSub'); if(rs)rs.textContent=t+' · malla TCU';
+  const s24=document.querySelector('#sum24 .s24bar h2'); if(s24)s24.textContent='📊 Fiabilidad 24 h · '+t;
+  const q=(PLANT==='elburgo')?'':('?planta='+encodeURIComponent(PLANT));
+  const l3=document.getElementById('link3d'); if(l3)l3.href='terreno.html'+q;
+  const sel=document.getElementById('plantSel');
+  if(sel){ sel.innerHTML='';
+    Object.keys(PLANTS).forEach(k=>{ if(k==='custom'&&PLANT!=='custom')return;
+      const o=document.createElement('option');o.value=k;o.textContent=(k==='custom'?'✚ ':'')+PLANTS[k].title;sel.appendChild(o); });
+    sel.value=PLANT;
+    sel.onchange=function(){ const u=new URL(location.href); u.searchParams.set('planta',this.value); location.href=u.href; }; }
+  const cbp=document.getElementById('cbPlant'); if(cbp)cbp.onchange=syncPlantLayer;
+  loadLayout(function(){ buildMap(); legend(); setMode('predicho'); });
+})();
 (function(){var b=document.getElementById('offBtn');if(!b)return;b.textContent=OFFLINE?'⛌ Sin conexión':'◑ Online';b.style.color=OFFLINE?'#F6A623':'#9bb0c6';b.onclick=function(){try{localStorage.setItem('cobertura_offline',OFFLINE?'0':'1');}catch(e){}location.reload();};})();   // toggle online/offline
 </script>
 <style>
@@ -1481,8 +1675,8 @@ buildMap(); legend(); setMode('predicho');   // al abrir, muestra YA la COBERTUR
    misma capacidad y hasta ahora se enlazaban de forma suelta, cada una llamando
    "3D" a terreno.html, que es la escena de terreno y seguidores y no dibuja
    cobertura. El selector las une y nombra cada cosa por lo que es:
-     - Cobertura 2D  index.html   maquina del tiempo Zigbee. Solo El Burgo.
-     - Plano 2D      plano.html   multiplanta.
+     - Cobertura     index.html   malla Zigbee. Multiplanta: cada una ensena lo que tiene.
+     - Layout 2D     plano.html   multiplanta.
      - Cobertura 3D               no existe todavia: sale deshabilitada.
    El enlace suelto a terreno.html se retira y se re-emite dentro del grupo como
    "Escena 3D", para que quede claro que no es la cobertura en 3D. */
@@ -1490,8 +1684,9 @@ addEventListener('DOMContentLoaded', function(){
   var h=document.querySelector('header'); if(!h||h.querySelector('.cobsel')) return;
   var aqui=(location.pathname.split('/').pop()||'index.html').toLowerCase();
   if(!aqui) aqui='index.html';
-  var pl=(aqui==='index.html') ? 'elburgo'
-        : ((new URLSearchParams(location.search).get('planta'))||'elburgo');
+  /* La planta sale de ?planta= en TODAS las paginas. Antes index.html se forzaba a 'elburgo'
+     porque la cobertura era solo suya; ya no: al saltar de planta se perdia la planta elegida. */
+  var pl=(new URLSearchParams(location.search).get('planta'))||'elburgo';
   var q=(pl==='elburgo') ? '' : ('?planta='+encodeURIComponent(pl));
 
   /* retira los enlaces sueltos a la escena 3D y recuerda donde estaban */
@@ -1503,9 +1698,9 @@ addEventListener('DOMContentLoaded', function(){
     }
   });
 
-  var VIS=[{f:'index.html', t:'Cobertura 2D', q:'',
-            no:(pl==='elburgo')?'':'solo El Burgo: la maquina del tiempo Zigbee necesita historico de enlaces'},
-           {f:'plano.html',  t:'Plano 2D',    q:q},
+  var VIS=[{f:'index.html', t:'Cobertura',  q:q,
+            ti:'Malla Zigbee sobre el mapa de la planta. La planta que aun no tenga historico de enlaces lo dice ahi.'},
+           {f:'plano.html',  t:'Layout 2D',  q:q},
            {f:'terreno.html', t:'Cobertura 3D', q:q+(q?'&':'?')+'capa=cobertura',
             ti:'Mapa de cobertura drapeado sobre el terreno, dentro de la escena 3D'}];
 
