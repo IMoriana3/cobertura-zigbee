@@ -95,8 +95,35 @@ let sinDesc = [];
 for (const k of Object.keys(DEV)) for (const s of DEV[k].secs) for (const r of (s.f || []))
   if (!r[7]) sinDesc.push(k + ':' + r[1]);
 const total = Object.keys(DEV).reduce((n, k) => n + DEV[k].secs.reduce((m, s) => m + (s.f || []).length, 0), 0);
-ok(sinDesc.length <= 3, `${total - sinDesc.length}/${total} registros con descripción del documento` +
-   (sinDesc.length ? ` — sin ella: ${sinDesc.join(', ')}` : ''));
+/* 12 registros tienen la celda de descripción VACÍA en el documento de origen (8 del PDF de la TCU
+   y 4 del Excel de la HSU). No se inventan: la tabla dice «sin descripción en el documento». Lo que
+   sí se exige es que no crezcan y que cada uno tenga nombre propio — llegaron a llamarse todos
+   'reg', ocho registros distintos indistinguibles entre sí. */
+ok(sinDesc.length <= 12, `${total - sinDesc.length}/${total} registros con descripción del documento` +
+   (sinDesc.length ? ` — vacía en el documento: ${sinDesc.length}` : ''));
+ok(new Set(sinDesc).size === sinDesc.length,
+   `los ${sinDesc.length} sin descripción tienen nombre propio y no colisionan`);
+
+/* ---------- valores por defecto y rangos: el dato que antes se aplanaba en el texto ---------- */
+console.log('\n=== valores por defecto y rangos ===');
+let cDef = 0, cRan = 0;
+for (const k of Object.keys(DEV)) for (const s of DEV[k].secs) for (const r of (s.f || [])) {
+  if (r[10]) cDef++; if (r[11]) cRan++;
+}
+ok(cDef >= 190, `${cDef} registros con valor por defecto como CAMPO (no dentro de la descripción)`);
+ok(cRan >= 240, `${cRan} registros con rango declarado como CAMPO`);
+const enDesc = [];
+for (const k of Object.keys(DEV)) for (const s of DEV[k].secs) for (const r of (s.f || []))
+  if (/·\s*(rango|por defecto)\s/.test(r[7] || '')) enDesc.push(k + ':' + r[1]);
+ok(enDesc.length === 0, `ninguna descripción arrastra ya el rango ni el valor por defecto pegados${enDesc.length ? ': ' + enDesc.slice(0,4).join(', ') : ''}`);
+
+/* ---------- reparto del espacio de direcciones (hoja Overview) ---------- */
+console.log('\n=== espacio de direcciones ===');
+const BLOQUES = (new Function(h.slice(h.indexOf('var BLOQUES='), h.indexOf('var DEV={')) + '; return BLOQUES;'))();
+ok(BLOQUES.length === 17, `${BLOQUES.length} bloques del R7 (hoja Overview)`);
+const dentro = a => BLOQUES.some(b => a >= b.de && a <= b.a);
+const fuera = [...dirs.ncu].filter(a => !dentro(a));
+ok(fuera.length === 0, `todas las direcciones de la NCU caen dentro de un bloque declarado${fuera.length ? ': ' + fuera.slice(0,6).join(' ') : ''}`);
 
 /* ---------- lo que el mapa antiguo decía y el documento desmiente ---------- */
 console.log('\n=== regresión: el mapa inventado de la TCU no puede volver ===');

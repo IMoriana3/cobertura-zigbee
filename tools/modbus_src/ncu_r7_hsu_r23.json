@@ -6880,5 +6880,162 @@
     "defecto": ""
    }
   ]
- }
+ },
+ "bloques_r7": [
+  {
+   "nombre": "Global Data",
+   "de": 0,
+   "a": 999,
+   "tam": 1000,
+   "unidades": 1,
+   "libre": [
+    1000,
+    27999
+   ]
+  },
+  {
+   "nombre": "HSU Data extended",
+   "de": 28000,
+   "a": 28999,
+   "tam": 100,
+   "unidades": 10,
+   "libre": [
+    29000,
+    29319
+   ]
+  },
+  {
+   "nombre": "HSU Last valid snow",
+   "de": 29320,
+   "a": 29339,
+   "tam": 2,
+   "unidades": 10
+  },
+  {
+   "nombre": "Reserved",
+   "de": 29340,
+   "a": 29379,
+   "tam": 2,
+   "unidades": 20
+  },
+  {
+   "nombre": "HSU Last valid wind",
+   "de": 29380,
+   "a": 29399,
+   "tam": 2,
+   "unidades": 10
+  },
+  {
+   "nombre": "Reserved",
+   "de": 29400,
+   "a": 29439,
+   "tam": 2,
+   "unidades": 20
+  },
+  {
+   "nombre": "HSU Last Comunication",
+   "de": 29440,
+   "a": 29459,
+   "tam": 2,
+   "unidades": 10
+  },
+  {
+   "nombre": "Reserved",
+   "de": 29460,
+   "a": 29499,
+   "tam": 2,
+   "unidades": 20
+  },
+  {
+   "nombre": "TCUs Last Comunication",
+   "de": 29500,
+   "a": 29899,
+   "tam": 2,
+   "unidades": 200,
+   "libre": [
+    29900,
+    29999
+   ]
+  },
+  {
+   "nombre": "NCU Base Info",
+   "de": 30000,
+   "a": 30105,
+   "tam": 106,
+   "unidades": 1
+  },
+  {
+   "nombre": "Reserved",
+   "de": 30106,
+   "a": 30199,
+   "tam": 94,
+   "unidades": 1
+  },
+  {
+   "nombre": "HSU Data",
+   "de": 30200,
+   "a": 30299,
+   "tam": 10,
+   "unidades": 10,
+   "libre": [
+    30300,
+    30499
+   ]
+  },
+  {
+   "nombre": "TCU Data",
+   "de": 30500,
+   "a": 34899,
+   "tam": 22,
+   "unidades": 200,
+   "libre": [
+    34900,
+    35777
+   ]
+  },
+  {
+   "nombre": "Reserved: last connection time in readable format",
+   "de": 35778,
+   "a": 36801,
+   "tam": 4,
+   "unidades": 256,
+   "libre": [
+    36802,
+    36999
+   ]
+  },
+  {
+   "nombre": "Reserved",
+   "de": 37000,
+   "a": 37089,
+   "tam": 1,
+   "unidades": 90,
+   "libre": [
+    37090,
+    39999
+   ]
+  },
+  {
+   "nombre": "NCU RW registers",
+   "de": 40000,
+   "a": 40516,
+   "tam": 517,
+   "unidades": 1,
+   "libre": [
+    40517,
+    49999
+   ]
+  },
+  {
+   "nombre": "TCU Registers",
+   "de": 50000,
+   "a": 62799,
+   "tam": 50,
+   "unidades": 256,
+   "libre": [
+    62800,
+    65534
+   ]
+  }
+ ]
 }
