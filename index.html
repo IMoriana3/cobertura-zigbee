@@ -947,7 +947,7 @@ function resuelveTDIM(lay){
 }
 function loadLayout(cb){
   if(PLANT==='custom'){ try{LAY=JSON.parse(localStorage.getItem('cobertura_layout')||'null');}catch(e){LAY=null;} TDIM=resuelveTDIM(LAY); cb&&cb(); return; }
-  fetch(PMETA.file,{cache:'no-store'}).then(r=>r.json()).then(j=>{LAY=j;TDIM=resuelveTDIM(j);GWPOS=null;cb&&cb();}).catch(()=>{LAY=null;cb&&cb();});
+  fetch(PMETA.file,{cache:'no-store'}).then(r=>r.json()).then(j=>{LAY=j;TDIM=resuelveTDIM(j);GWPOS=null;_cable=null;cb&&cb();}).catch(()=>{LAY=null;cb&&cb();});
 }
 const mPerLatK=111320;
 function layLL(x,n){ return [LAY.clat+n/mPerLatK, LAY.clon+x/(mPerLatK*Math.cos(LAY.clat*Math.PI/180))]; }   // metros locales E/N del DWG -> lat/lon, igual que en el 3D y en el Layout 2D
@@ -1205,7 +1205,24 @@ function ensureMarkers(){
   }
   if(pts.length && !didFit){ map.fitBounds(Object.values(S.markers).map(m=>m.getLatLng()),{padding:[45,45],maxZoom:19}); didFit=true; }
 }
+/* HSU CABLEADA. La estación meteo que se monta SOBRE la NCU no habla por radio: va por cable, así
+   que ni tiene enlace que medir ni se cae con la malla — está siempre en verde. Medido en los
+   layouts, la separación no deja lugar a dudas: Bagnarelli HSU 1 a 0,0 m de su NCU, Túnez a 2,7 y
+   Fayón a 6,5; la siguiente más próxima de cualquier planta está a 89 m. Con ese hueco, el umbral
+   de 20 m no es un ajuste fino. Se deduce de la geometría y no de un campo, así que vale igual para
+   los datos reales del coordinador, no solo para la malla de ejemplo. */
+const CABLE_M = 20;
+let _cable = null;
+function esCableada(id){
+  if(_cable === null){ _cable = {};
+    if(LAY && LAY.ncus) (LAY.meteo || []).forEach((h, j) => {
+      const d = Math.min.apply(null, LAY.ncus.map(c => Math.hypot(c.x - h.x, c.n - h.n)));
+      if(d <= CABLE_M) _cable['HSU_' + String(j + 1).padStart(2, '0')] = true; }); }
+  return !!_cable[id];
+}
 function colorOf(id,ts){
+  if(esCableada(id)) return cv('--s-exc');   // por cable: no hay enlace que colorear, y no falla
+
   const r=readingAt(id,ts);
   if(S.mode==='estado') return r?colEstado(r.online):cv('--s-off');
   if(S.mode==='ack'){ const d=ackAt(id,ts); return (r&&!r.online)?cv('--s-off'):colACK(d); }
@@ -1569,6 +1586,7 @@ function demo(){
     const PENA = 60, prof = {};
     while(pend.length){
       const nd = pend.shift();
+      if(esCableada(nd.id)){ padre[nd.id] = null; prof[nd.id] = 0; dentro.push(nd); continue; }   // cableada: cuelga de la NCU y punto
       let mejor = null, mc = Math.sqrt(d2(nd, r)) / (ALTURA[nd.rol] || 1);   // coste de colgar de la propia NCU
       for(const c of dentro){ let cc = Math.sqrt(d2(nd, c)) + PENA * (prof[c.id] || 0);
         if(c.rol === 'REP') cc -= 120;                          // el repetidor está para eso: se prefiere como padre
@@ -1591,7 +1609,8 @@ function demo(){
   for(let f = 0; f < N; f++){ const ts = sello(f);
     nodos.forEach((nd, i) => {
       let online = 1, rssi = -(60 + Math.floor(Math.random() * 32));
-      if((nd.id === caen[0] && f >= 8 && f <= 15) || (nd.id === caen[1] && f >= 11)){ online = 0; rssi = ''; }
+      if(esCableada(nd.id)) rssi = '';        // por cable: no hay RSSI que dar, y no se cae con la malla
+      else if((nd.id === caen[0] && f >= 8 && f <= 15) || (nd.id === caen[1] && f >= 11)){ online = 0; rssi = ''; }
       const dack = online ? Math.floor(Math.random() * Math.random() * 6) : 0; ack[nd.id] += dack;
       log += '"' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
              '","' + (nd.rol || 'TCU') + '","00:13:a2:00:00:00:' + String(i + 1).padStart(4, '0') + '","' + online + '","' + rssi +

@@ -21,13 +21,19 @@ Salida en cobertura_coords/<planta>/:
 Columnas del CSV, las mismas que ya come el driver (diagnostico_elburgo.py autodetecta
 id/lat/lon) más dos de contexto:
 
-    node_id,lat,lon,etiqueta,rol,ncu,gw
+    node_id,lat,lon,etiqueta,rol,enlace,ncu,gw
 
 GEORREFERENCIA — el detalle que hay que hacer bien. Las coordenadas del layout son metros
 de CUADRÍCULA UTM sobre el origen de la planta, no metros sobre el norte geográfico. Pasar
 de ahí a lat/lon con la fórmula esférica de toda la vida mete el error de la convergencia
 de meridianos: en El Burgo son 1,46°, que sobre ±300 m desplaza hasta 7,7 m. Así que se
 proyecta de verdad, con el CRS que declara cada layout.
+
+ENLACE — 'radio' o 'cable'. La HSU que se monta SOBRE la NCU no habla por radio: va cableada, así
+que no hay enlace que medirle. Se deduce de la geometría, que no deja lugar a dudas: Bagnarelli
+HSU 1 a 0,0 m de su NCU, Túnez a 2,7 y Fayón a 6,5, mientras que la siguiente más próxima de
+cualquier planta está a 89 m. Sigue en el fichero —hay que saber que está y que se lee—, pero
+marcada, para no apuntarle un fallo de cobertura que no existe.
 
 QUÉ NODOS ENTRAN — TCU, HSU y REPETIDORES. Los tres hablan por la misma malla, así que los
 tres se sondean. Antes las HSU y los repetidores iban a un fichero aparte y se quedaban fuera de
@@ -117,7 +123,7 @@ def puntos(planta, en_viga):
         lon, lat = aWGS.transform(E0 + t["x"] + dx, N0 + t["n"] + dn)
         n, g = ncu_gw(t, planta)
         filas.append({"lat": round(lat, 6), "lon": round(lon, 6), "etiqueta": t["id"],
-                      "rol": "TCU", "ncu": n, "gw": g, "x": t["x"], "n_": t["n"]})
+                      "rol": "TCU", "enlace": "radio", "ncu": n, "gw": g, "x": t["x"], "n_": t["n"]})
     # numeración 1..N DENTRO de cada NCU, por orden natural de etiqueta (así lo numera el SCADA)
     for n in {r["ncu"] for r in filas}:
         sub = sorted([r for r in filas if r["ncu"] == n], key=lambda r: orden_natural(r["etiqueta"]))
@@ -137,12 +143,15 @@ def puntos(planta, en_viga):
         cand = [r for r in filas if r["ncu"] == n]
         if not cand: return 1
         return min(cand, key=lambda r: (r["x"] - o["x"]) ** 2 + (r["n_"] - o["n"]) ** 2)["gw"]
+    CABLE_M = 20.0   # HSU pegada a la NCU -> va por cable, no por radio
     for clave, rol in (("meteo", "HSU"), ("reps", "REP")):
         for j, o in enumerate(L.get(clave) or [], 1):
             n = o.get("ncu") if o.get("ncu") is not None else cerca_ncu(o)
+            dncu = min([math.hypot(c["x"] - o["x"], c["n"] - o["n"]) for c in (L.get("ncus") or [])] or [1e9])
+            enlace = "cable" if (rol == "HSU" and dncu <= CABLE_M) else "radio"
             lon, lat = aWGS.transform(E0 + o["x"], N0 + o["n"])
             filas.append({"node_id": "%s_%02d" % (rol, j), "lat": round(lat, 6), "lon": round(lon, 6),
-                          "etiqueta": o.get("name") or ("%s%d" % (rol, j)), "rol": rol,
+                          "etiqueta": o.get("name") or ("%s%d" % (rol, j)), "rol": rol, "enlace": enlace,
                           "ncu": n, "gw": gw_cerca(o, n), "idx": 900 + j, "x": o["x"], "n_": o["n"]})
 
     filas.sort(key=lambda r: ((r["ncu"] is None, r["ncu"]), r["idx"]))
@@ -163,7 +172,7 @@ def escribe(ruta, filas, cols):
 def genera(planta, en_viga):
     L, filas, otros, gws = puntos(planta, en_viga)
     d = os.path.join(SAL, planta); os.makedirs(d, exist_ok=True)
-    COLS = ["node_id", "lat", "lon", "etiqueta", "rol", "ncu", "gw"]
+    COLS = ["node_id", "lat", "lon", "etiqueta", "rol", "enlace", "ncu", "gw"]
     ambitos = []
 
     def emite(nombre, sub, extra=None):
@@ -193,6 +202,7 @@ def genera(planta, en_viga):
            "punto": "viga del motor, fila oeste (donde está la TCU)" if en_viga else "eje del seguidor",
            "nodos": len(filas), "tcus": sum(1 for r in filas if r["rol"] == "TCU"),
            "hsus": sum(1 for r in filas if r["rol"] == "HSU"), "reps": sum(1 for r in filas if r["rol"] == "REP"),
+           "cableados": sum(1 for r in filas if r["enlace"] == "cable"),
            "ncus": len(ncus), "gws": len(todos_gw),
            "una_fila": not L.get("filaZ", 3.0),
            "gateways_declarados_en_scada": bool(gws),
@@ -214,4 +224,4 @@ if __name__ == "__main__":
         elif m["ncus_sin_declarar_en_scada"]: aviso = "  · NCU sin declarar en el SCADA: %s" % m["ncus_sin_declarar_en_scada"]
         print("%-11s %4d nodos (%d TCU + %d HSU + %d REP) · %2d NCU · %d GW · %2d ámbitos%s%s" %
               (p, m["nodos"], m["tcus"], m["hsus"], m["reps"], m["ncus"], m["gws"], len(m["ambitos"]),
-               "  (una fila)" if m["una_fila"] else "", aviso))
+               ("  (una fila)" if m["una_fila"] else "") + (("  · %d por cable" % m["cableados"]) if m["cableados"] else ""), aviso))
