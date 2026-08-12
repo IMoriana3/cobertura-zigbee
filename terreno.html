@@ -71,7 +71,7 @@ addEventListener('DOMContentLoaded',function(){
   </header>
   <div class="panel">
     <h2>Vista</h2>
-    <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="14" step="0.5" value="5"><span id="vexV" style="font-family:var(--mono)">5×</span></div>
+    <div class="row"><label>Exageración vertical</label><input type="range" id="vex" min="1" max="3" step="0.25" value="1"><span id="vexV" style="font-family:var(--mono)">1×</span></div>
     <div class="row"><label title="Colorea el terreno por cota (mapa de relieve, estilo S.P.A.C.E). Reusa el relieve ya descargado; en modo sin conexión queda plano."><input type="checkbox" id="relief"> Relieve (cota coloreada)</label></div>
     <div class="row"><label title="Reveal de cada pilote: cuánto sobresale del terreno (del suelo al tubo). Rojo = más hincado. Como el PILE REVEAL de S.P.A.C.E."><input type="checkbox" id="pile"> Pile reveal (hincado)</label><span id="pileLeg" style="font-size:11px;color:var(--tx2);font-family:var(--mono)"></span></div>
     <div class="row"><label title="Capa de inversores (DC): tiñe los módulos de cada seguidor por su inversor. El Burgo lo deduce del id del seguidor (g.i.s) y Fayón del campo inv del layout (reparto del P06 del proyecto). Aditiva; no toca el resto del render."><input type="checkbox" id="invl"> 🔌 Inversores (DC)</label></div>
@@ -215,7 +215,7 @@ function satSources(lat,lon){return (lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[PNOA
 var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
 
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
-var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=5,nsz=1;
+var NODES=[],mPerLat=111320,mPerLon=85000,lat0=41.5774,lon0=-0.7988,baseElev=0,vex=1,nsz=1;   // exageración vertical: arranca SIEMPRE en 1 (terreno real) y el usuario la sube hasta 3 si quiere leer el relieve
 var TRK=[],ANG=null,curMin=720,playing=false,PLAYSPEED=30,simDoy=168;
 var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0,0,'YXZ');
 var imBearing=null,imSaddle=null,imVirola=null,imBush=null;
@@ -482,7 +482,16 @@ async function build(){
   function ext(x,n){exmin=Math.min(exmin,x);exmax=Math.max(exmax,x);nmin=Math.min(nmin,n);nmax=Math.max(nmax,n);}
   NODES.forEach(function(n){ext(n.gx,-n.gz);});
   (LAYOUT.fence||[]).forEach(function(pl){pl.forEach(function(p){if(Math.abs(p[0])<800&&Math.abs(p[1])<700)ext(p[0],p[1]);});}); // solo seguidores+vallado (otras capas del DWG tienen coords basura)
-  var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (vallado+seguidores); descarta bloques sueltos del DWG (legendas/detalles lejos de la planta)
+  /* El recorte salía SOLO de seguidores+vallado, así que un equipo plantado un poco fuera del campo
+     desaparecía sin avisar: en Ayora la HSU 10 cae a n 1.460 y el recorte llegaba a 1.437 — 23 m —
+     y se dibujaban 9 de 10. Las NCU y las HSU vienen de un listado curado, no son bloques sueltos
+     del DWG, así que ENSANCHAN el recorte; se ignoran solo si están a más de 300 m del campo, que
+     es lo que descarta de verdad una copia de leyenda. */
+  var _eq=[].concat(LAYOUT.ncus||[],LAYOUT.meteo||[]),_fu=0;
+  _eq.forEach(function(c){ var dx=Math.max(exmin-c.x,0,c.x-exmax),dn=Math.max(nmin-c.n,0,c.n-nmax);
+    if(Math.hypot(dx,dn)<300)ext(c.x,c.n); else _fu++; });
+  if(_fu)console.warn('[cobertura] '+_fu+' equipo(s) del layout a más de 300 m del campo: fuera del recorte');
+  var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (seguidores + vallado + NCU/HSU del listado)
   // shadow camera FIJO a la planta entera (lo usa updateSunShadow): centro en el origen (los seguidores van centrados ahí), semiancho = mayor semieje + margen
   var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,8192);   // escritorio: 8192 en TODAS (incl. San José) para la sombra más fina posible cubriendo toda la planta; móvil → 2048
   if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
@@ -570,7 +579,8 @@ async function build(){
   var _sp=(TC&&TC.span)||55, _an=((TC&&TC.modH)||2.4)+2*((TC&&TC.filaZ)||0);   // el ancla es el centro: el seguidor vuela span/2 en n y su ancho en x
   FOCO={x:(_tx0+_tx1)/2,n:(_tn0+_tn1)/2,w:(_tx1-_tx0)+_an,d:(_tn1-_tn0)+_sp};
   encuadra();
-  var camD=camera.position.distanceTo(controls.target),diag=Math.hypot(widthM,depthM)/2;   // distancia REAL a la diana: con la planta descentrada, length() medía desde el origen y la niebla salía cortaif(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
+  var camD=camera.position.distanceTo(controls.target),diag=Math.hypot(widthM,depthM)/2;   // distancia REAL a la diana: con la planta descentrada, length() medía desde el origen y la niebla salía corta
+  if(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?sat.ok+" teselas":"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
@@ -2899,37 +2909,53 @@ function buildBOS(){
   (LAYOUT.fijas||[]).forEach(function(f){
     var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
     var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
-    var cols=f.cols||1, rows=f.rows||1;
+    var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
     var sA=Math.sin(az), cA=Math.cos(az);
-    /* local (dx = a lo ancho, dp = hacia arriba de la pendiente MEDIDO EN PLANTA) -> (x,n) del mundo */
-    function W(dx,dp){ return [f.x+dx*cA-dp*sA, f.n-dx*sA-dp*cA]; }
-    var g=new THREE.Group();g.position.set(f.x,0,-f.n);g.rotation.y=Math.PI-az;g.userData.fija=true;   // azimut 180 (sur) = sin girar; la marca la usa el banco para no confundirla con otras mallas del BOS
-    var yBase=terrainMeshY(f.x,f.n)+hb;g.position.y=yBase;
-    var cz=Math.cos(inc), sz=Math.sin(inc);
-    /* MÓDULOS uno a uno, con su junta: una losa lisa no se lee como una mesa. Cada módulo lleva su
-       propia textura de células, igual que los de los seguidores. */
+    function W(dx,dp){ return [f.x+dx*cA-dp*sA, f.n-dx*sA-dp*cA]; }   // local (ancho, avance en PLANTA) -> mundo
+    var mUni=new THREE.MeshStandardMaterial({color:0xb9c0c8,roughness:.55,metalness:.6});   // herrajes galvanizados (placas, cartelas, grapas)
+    var yBase=terrainMeshY(f.x,f.n)+hb;
+    var g=new THREE.Group();g.position.set(f.x,yBase,-f.n);g.rotation.y=Math.PI-az;g.userData.fija=true;
+    /* MÓDULOS uno a uno con su junta: una losa lisa no se lee como una mesa. */
     var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);
     for(var i=0;i<cols;i++)for(var j=0;j<rows;j++){
       var mt=new THREE.MeshStandardMaterial({color:0xffffff,map:panelTex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
       if(CELLNRM){mt.normalMap=CELLNRM;mt.normalScale=new THREE.Vector2(0.4,0.4);}
-      var m=new THREE.Mesh(new THREE.PlaneGeometry(mw-jw,ml-jl),mt);
-      var dl=(j+0.5)*ml;                                                  // distancia sobre el plano inclinado
-      m.rotation.x=-Math.PI/2+inc;
-      m.position.set(-w/2+(i+0.5)*mw, sz*dl, -cz*dl);
+      var m=new THREE.Mesh(new THREE.PlaneGeometry(mw-jw,ml-jl),mt), dl=(j+0.5)*ml;
+      m.rotation.x=-Math.PI/2+inc;m.position.set(-w/2+(i+0.5)*mw, sz*dl, -cz*dl);
       m.castShadow=true;m.receiveShadow=true;g.add(m);}
-    /* CORREAS: perfiles a lo ancho por debajo del plano, uno por junta de fila y en los dos bordes */
-    for(var k=0;k<=rows;k++){ var dl2=k*ml, co=new THREE.Mesh(new THREE.BoxGeometry(w+0.10,0.09,0.06),steelM);
-      co.rotation.x=inc;co.position.set(0,sz*dl2-0.055*cz,-cz*dl2+0.055*sz);co.castShadow=true;g.add(co);}
-    /* VIGAS a lo largo de la pendiente + POSTES hincados. Un par de postes cada 3,5 m como mucho. */
-    var np=Math.max(2,Math.round(w/3.5)+1);
+    /* ESTRUCTURA. Secciones de mesa fija de verdad, no varillas: postes 120x120, vigas 100x160,
+       correas 100x70. Y con sus UNIONES: placa de anclaje al suelo, cartela poste-viga, grapa en
+       cada cruce correa-viga y tornapunta triangulando el poste bajo con la viga. Sin ellas la
+       estructura parecía flotar por piezas sueltas. */
+    var PS=0.12, VH=0.16, VW=0.10, CH=0.07, CW=0.10;
+    var yV=function(dl){return sz*dl-(CH+VH/2)*cz;}, zV=function(dl){return -cz*dl-(CH+VH/2)*sz;};   // eje de la viga, por debajo de las correas
+    for(var k=0;k<=rows;k++){ var dl2=k*ml;                                                    // CORREAS a lo ancho
+      var co=new THREE.Mesh(new THREE.BoxGeometry(w+0.12,CH,CW),steelM);
+      co.rotation.x=inc;co.position.set(0,sz*dl2-(CH/2)*cz,-cz*dl2-(CH/2)*sz);co.castShadow=true;co.receiveShadow=true;g.add(co);}
+    var np=Math.max(2,Math.round(w/3.5)+1), PIES=[[0.16,0],[0.84,1]];
     for(var q=0;q<np;q++){ var dx=-w/2+q*(w/(np-1));
-      var vi=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.11,L),steelM);
-      vi.rotation.x=inc;vi.position.set(dx,sz*L/2-0.14*cz,-cz*L/2+0.14*sz);vi.castShadow=true;g.add(vi);
-      [[0.15,0],[0.85,1]].forEach(function(r){                            // pata delantera (baja) y trasera (alta)
-        var dl3=r[0]*L, dp=cz*dl3, sue=(function(){var q2=W(dx,dp);return terrainMeshY(q2[0],q2[1]);})();
-        var yTop=yBase+sz*dl3-0.20, hh=Math.max(0.25,yTop-sue);           // del suelo REAL de ese punto a la viga
-        var pa=new THREE.Mesh(new THREE.BoxGeometry(0.09,hh,0.09),steelM);
-        pa.position.set(dx,(yTop+sue)/2-yBase,-dp);pa.castShadow=true;pa.receiveShadow=true;g.add(pa);});}
+      var vi=new THREE.Mesh(new THREE.BoxGeometry(VW,VH,L),steelM);                            // VIGA a lo largo de la pendiente
+      vi.rotation.x=inc;vi.position.set(dx,yV(L/2),zV(L/2));vi.castShadow=true;vi.receiveShadow=true;g.add(vi);
+      for(var k2=0;k2<=rows;k2++){ var dl4=k2*ml;                                              // GRAPA correa-viga en cada cruce
+        var gr=new THREE.Mesh(new THREE.BoxGeometry(CW+0.05,CH+VH*0.6,CW+0.05),mUni);
+        gr.rotation.x=inc;gr.position.set(dx,sz*dl4-(CH*0.35)*cz,-cz*dl4-(CH*0.35)*sz);g.add(gr);}
+      PIES.forEach(function(r,ri){
+        var dl3=r[0]*L, dp=cz*dl3, q2=W(dx,dp), sue=terrainMeshY(q2[0],q2[1]);
+        var yTop=yBase+yV(dl3)-VH/2, hh=Math.max(0.30,yTop-sue);                               // del suelo REAL de SU punto a la viga
+        var pa=new THREE.Mesh(new THREE.BoxGeometry(PS,hh,PS),steelM);
+        pa.position.set(dx,(yTop+sue)/2-yBase,-dp);pa.castShadow=true;pa.receiveShadow=true;g.add(pa);
+        var pl2=new THREE.Mesh(new THREE.BoxGeometry(PS+0.16,0.03,PS+0.16),mUni);           // PLACA de anclaje al suelo
+        pl2.position.set(dx,sue-yBase+0.015,-dp);pl2.receiveShadow=true;g.add(pl2);
+        var ca=new THREE.Mesh(new THREE.BoxGeometry(0.022,0.30,PS+0.16),mUni);              // CARTELA poste-viga
+        ca.rotation.x=inc;ca.position.set(dx+PS/2+0.012,yV(dl3)-0.05,zV(dl3));g.add(ca);
+        if(ri===0){                                                                            // TORNAPUNTA: triangula el poste bajo con la viga
+          var yP=yTop-hh*0.55, dl5=0.42*L, yQ=yBase+yV(dl5)-VH/2, dq=cz*dl5;
+          var vx=0, vy=yQ-(yBase+yP-yBase)-0, vz=-(dq-dp);
+          var ax=yQ-(yBase+yP), az2=-(dq-dp), Lt=Math.hypot(ax,az2);
+          var to=new THREE.Mesh(new THREE.BoxGeometry(0.06,Lt,0.06),steelM);
+          to.position.set(dx,(yP+ (yQ-yBase))/2,-(dp+dq)/2);
+          to.rotation.x=-Math.atan2(az2,ax);to.castShadow=true;g.add(to);}
+      });}
     bosGroup.add(g);
     if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);bosGroup.add(lb);}
   });
@@ -3052,7 +3078,11 @@ function buildBOS(){
     // TORRE DE CELOSÍA triangular de la HSU (plano FTR.24.00145_5_C 'Montaje HSU': 8000 con niveles 4500/1000 + fotos):
     // 3 montantes tubulares con celosía en zigzag, PANEL FV ESTRECHO VERTICAL y PARALELO a la cara, caja FACTIUN,
     // ANEMÓMETRO ULTRASÓNICO (estático, sin cazoletas) en cabeza y 2 antenas látigo. Sin vientos (autoportante).
-    var RT=0.15,LEG=[];for(var lg=0;lg<3;lg++){var la=lg*2*Math.PI/3+Math.PI/6,lxx=X+Math.cos(la)*RT,lzz=Z+Math.sin(la)*RT;LEG.push([lxx,lzz]);   // patas a 30°/150°/270°: la CARA 0-1 (la del panel) queda ⊥ al eje N-S mirando AL SUR — "una de las caras mirando al sur, de manera que el módulo fv quede perfectamente orientado a sur" (antes 90/210/330 → panel al OSO)
+    /* La cara del módulo mira al ECUADOR: al SUR en el hemisferio norte y al NORTE en el sur.
+       Estaba fijo al sur, así que en San José (Perú, lat -16,6) el módulo miraba al lado contrario
+       del sol. Se gira la torre media vuelta cuando la latitud es negativa. */
+    var GIRO=(lat0<0)?Math.PI:0;
+    var RT=0.15,LEG=[];for(var lg=0;lg<3;lg++){var la=lg*2*Math.PI/3+Math.PI/6+GIRO,lxx=X+Math.cos(la)*RT,lzz=Z+Math.sin(la)*RT;LEG.push([lxx,lzz]);   // patas a 30°/150°/270° (+180° en el sur): la CARA 0-1, la del panel, queda ⊥ al eje N-S y orientada al ecuador
       g.add(mP(new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.016,h,8),mtMast),lxx,y+h/2,lzz));}
     var NL=16;for(var lv=0;lv<=NL;lv++){var yy=y+lv*h/NL;                                   // cinturones + zigzag por cara
       for(var fa=0;fa<3;fa++){var A9=LEG[fa],B9=LEG[(fa+1)%3];
