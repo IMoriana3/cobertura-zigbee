@@ -60,10 +60,13 @@ contadores en «—» y no en 0 — cero nodos y no haberlos medido no son lo mi
 
 ### Lo que NO está hecho
 
-- **`t.rot` en el 3D.** El Layout 2D ya gira cada seguidor con el ángulo del INSERT (Bagnarelli está
-  a −23,7°). `terreno.html` lee `rot` en `NODES` pero **no lo aplica en ninguna parte**: los 17
-  seguidores de Bagnarelli salen norte-sur en la escena 3D. Toca en las matrices de las instancias.
-  Es la única planta con `rot ≠ 0` de las seis, así que no afecta a nadie más.
+- ~~**`t.rot` en el 3D.**~~ **HECHO** en la PR #351, en el mismo empujón que lo escribió. `terreno.html`
+  ya mete `rot` en `TRK` y lo aplica en `trackerBase` (`_Q.premultiply` del rumbo), y además muestrea
+  el terreno **a lo largo del eje real** del seguidor, no siempre norte-sur. Comprobado desde fuera:
+  el eje del tubo de Bagnarelli sale a −156,3° frente a los 180° de El Burgo, o sea sus 23,7° justos,
+  en los 17. Es la única planta con `rot ≠ 0` de las seis, así que no afecta a nadie más.
+  *(Se quedó marcado como pendiente porque la nota se escribió en la #350 y el arreglo entró en la
+  #351. Ojo con eso: otra sesión llegó a rehacerlo por leer aquí que faltaba.)*
 
 ---
 
