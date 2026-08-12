@@ -21,7 +21,7 @@ Salida en cobertura_coords/<planta>/:
 Columnas del CSV, las mismas que ya come el driver (diagnostico_elburgo.py autodetecta
 id/lat/lon) más dos de contexto:
 
-    node_id,lat,lon,etiqueta,rol,enlace,ncu,gw
+    node_id,lat,lon,etiqueta,rol,enlace,ncu,gw,esclavo
 
 GEORREFERENCIA — el detalle que hay que hacer bien. Las coordenadas del layout son metros
 de CUADRÍCULA UTM sobre el origen de la planta, no metros sobre el norte geográfico. Pasar
@@ -50,11 +50,25 @@ DWG y los listados del cliente y lo que hay en el coords_ElBurgo_NCU1.csv antigu
 sobre radios de cientos: ruido para la cobertura, pero conviene saber cuál se usó al
 comparar dos campañas. En plantas de una fila (filaZ 0) las dos opciones coinciden.
 
-NUMERACIÓN — los TCU se numeran 1..N DENTRO DE SU NCU, por orden natural de etiqueta, que
-es como los numera el SCADA. Comprobado contra El Burgo: ese orden reproduce exactamente
-los node_id 001..108 del fichero que ya existía, y los rangos de la toolbox lo parten en
-56 + 52. El GW sale de esos rangos (tools/tcu-toolbox/plantas del repo scada), no del
-layout: es quien declara los gateways, y para El Burgo el layout ni los trae.
+NUMERACIÓN Y ESCLAVO — los TCU se numeran 1..N DENTRO DE SU NCU, por orden natural de
+etiqueta, que es como los numera el SCADA, y ese número ES el unit id Modbus con el que la
+NCU habla con cada TCU: va en la columna `esclavo`. Comprobado contra El Burgo: ese orden
+reproduce exactamente los node_id 001..108 del fichero que ya existía, y los rangos de la
+toolbox lo parten en 56 + 52. Comprobado por segunda vía en las plantas cuyo id del plano
+lleva el número dentro (Ayora `TK <n>-<sector>`, San José `TR-<z>_<g>-<n>`): la numeración
+del plano es continua a lo largo del sector y reinicia en cada NCU, así que
+`n − n del primero de su NCU + 1` da lo mismo que el orden natural — 754/754 en Ayora y
+1.685 de los 1.686 declarados en San José (el que falla es el hueco del propio fichero del
+SCADA: NCU9 GW1 llega a 48 y GW2 arranca en 50). El GW sale de esos rangos
+(tools/tcu-toolbox/plantas del repo scada), no del layout: es quien declara los gateways, y
+para El Burgo el layout ni los trae.
+
+DE QUÉ NCU CUELGA CADA HSU — lo declara el SCADA con su campo `hsus` por NCU, y de ahí sale
+también el esclavo Modbus de la HSU cuando el fichero lo trae (`hsu_esclavos`: en Ayora,
+230 y 231). Las HSU se reparten con esos cupos y distancia total mínima, no por simple
+cercanía, que se equivoca: en Ayora la HSU 2 está a 194 m de la NCU 6 y a 204 de la 3, y el
+SCADA dice que la 6 no tiene ninguna. Donde el SCADA no declara HSU se sigue usando la NCU
+más cercana, y queda dicho en el manifiesto (`hsus_asignadas_por`).
 """
 import json, csv, sys, math, os, re
 
@@ -89,8 +103,37 @@ def gateways(planta):
         if not m: continue
         g = re.search(r"GW\s*(\d+)", p["nombre"] or "")
         out.setdefault((int(m.group(1)), int(g.group(1)) if g else 1), []).append(
-            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"), "puerto": p.get("puerto")})
+            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"), "puerto": p.get("puerto"),
+             "hsus": p.get("hsus") or 0, "hsu_esclavos": p.get("hsu_esclavos") or []})
     return out
+
+
+def reparte_hsus(met, ncus, cupo):
+    """Reparte las HSU del layout entre las NCU respetando el nº de HSU que declara el SCADA,
+       con la distancia total mínima. La cercanía a secas NO vale: en Ayora se equivoca en dos
+       (HSU 2 cae a 194 m de la NCU 6 y a 204 de la 3, y el SCADA dice que la 6 no tiene ninguna
+       y la 3 sí). Devuelve [ncu por cada HSU] o None si los recuentos no cuadran."""
+    plazas = [n for n, c in sorted(cupo.items()) for _ in range(c)]
+    if not plazas or len(plazas) != len(met):
+        return None
+    d = [[math.hypot(m["x"] - ncus[n - 1]["x"], m["n"] - ncus[n - 1]["n"]) if n <= len(ncus) else 1e9
+          for n in plazas] for m in met]
+    mejor = {"coste": float("inf"), "sol": None}
+
+    def rec(i, usadas, coste, sol):
+        if coste >= mejor["coste"]:
+            return
+        if i == len(met):
+            mejor["coste"], mejor["sol"] = coste, list(sol)
+            return
+        for j in range(len(plazas)):
+            if usadas >> j & 1:
+                continue
+            sol.append(plazas[j])
+            rec(i + 1, usadas | 1 << j, coste + d[i][j], sol)
+            sol.pop()
+    rec(0, 0, 0.0, [])
+    return mejor["sol"]
 
 
 def orden_natural(s):
@@ -129,6 +172,7 @@ def puntos(planta, en_viga):
         sub = sorted([r for r in filas if r["ncu"] == n], key=lambda r: orden_natural(r["etiqueta"]))
         for i, r in enumerate(sub, 1):
             r["idx"] = i
+            r["esclavo"] = i                                        # unit id Modbus con el que la NCU le habla
             r["node_id"] = "TCU_SUNNER_ID_%03d" % i
             for (nn, gg), tramos in gws.items():                    # el GW manda el rango de la toolbox
                 if nn == n and any(x["ini"] <= i <= x["fin"] for x in tramos if x["ini"] and x["fin"]):
@@ -143,16 +187,42 @@ def puntos(planta, en_viga):
         cand = [r for r in filas if r["ncu"] == n]
         if not cand: return 1
         return min(cand, key=lambda r: (r["x"] - o["x"]) ** 2 + (r["n_"] - o["n"]) ** 2)["gw"]
+    # HSU: la NCU de la que cuelga cada una la DECLARA el SCADA (cuántas por NCU), no la cercanía
+    met = L.get("meteo") or []
+    # OJO: make_plantas.py escribe el MISMO `hsus` en las dos entradas (GW1 y GW2) de una NCU
+    # —la HSU cuelga de un gateway, pero el Excel no dice de cual—, asi que aqui se toma el MAXIMO
+    # por NCU, no la suma: sumando, San Jose salia con 9 HSU declaradas cuando son 5.
+    cupo = {}
+    for (nn, _gg), tr in gws.items():
+        cupo[nn] = max([cupo.get(nn, 0)] + [x["hsus"] for x in tr])
+    cupo = {k: v for k, v in cupo.items() if v}
+    hsu_ncu = reparte_hsus(met, L.get("ncus") or [], cupo)
+    hsu_esc = {}                                                    # esclavo Modbus de la HSU, si el SCADA lo trae
+    for (nn, _gg), tr in gws.items():
+        for x in tr:
+            for e in x["hsu_esclavos"]:                             # repetidos por la misma razon
+                if e not in hsu_esc.setdefault(nn, []):
+                    hsu_esc[nn].append(e)
+
     CABLE_M = 20.0   # HSU pegada a la NCU -> va por cable, no por radio
     for clave, rol in (("meteo", "HSU"), ("reps", "REP")):
         for j, o in enumerate(L.get(clave) or [], 1):
-            n = o.get("ncu") if o.get("ncu") is not None else cerca_ncu(o)
+            n = o.get("ncu")
+            if n is None and rol == "HSU" and hsu_ncu:
+                n = hsu_ncu[j - 1]
+            if n is None:
+                n = cerca_ncu(o)
+            esc = ""
+            if rol == "HSU" and hsu_esc.get(n):
+                usados = [r.get("esclavo") for r in filas if r["rol"] == "HSU" and r["ncu"] == n]
+                libres = [e for e in hsu_esc[n] if e not in usados]
+                esc = libres[0] if libres else hsu_esc[n][0]
             dncu = min([math.hypot(c["x"] - o["x"], c["n"] - o["n"]) for c in (L.get("ncus") or [])] or [1e9])
             enlace = "cable" if (rol == "HSU" and dncu <= CABLE_M) else "radio"
             lon, lat = aWGS.transform(E0 + o["x"], N0 + o["n"])
             filas.append({"node_id": "%s_%02d" % (rol, j), "lat": round(lat, 6), "lon": round(lon, 6),
                           "etiqueta": o.get("name") or ("%s%d" % (rol, j)), "rol": rol, "enlace": enlace,
-                          "ncu": n, "gw": gw_cerca(o, n), "idx": 900 + j, "x": o["x"], "n_": o["n"]})
+                          "ncu": n, "gw": gw_cerca(o, n), "esclavo": esc, "idx": 900 + j, "x": o["x"], "n_": o["n"]})
 
     filas.sort(key=lambda r: ((r["ncu"] is None, r["ncu"]), r["idx"]))
     ncus = []
@@ -160,7 +230,18 @@ def puntos(planta, en_viga):
         lon, lat = aWGS.transform(E0 + o["x"], N0 + o["n"])
         ncus.append({"tipo": "NCU", "nombre": o.get("name") or ("NCU%d" % j),
                      "lat": round(lat, 6), "lon": round(lon, 6)})
-    return L, filas, ncus, gws
+    if not met:                                                     # de donde ha salido la NCU de cada HSU
+        origen = "no hay HSU"
+    elif hsu_ncu:
+        origen = "scada (cupo de `hsus` por NCU) + distancia minima"
+    elif any(o.get("ncu") is not None for o in met):
+        origen = "layout"
+    elif sum(cupo.values()):
+        origen = ("NCU mas cercana: el scada declara %d HSU y el layout tiene %d, no cuadran"
+                  % (sum(cupo.values()), len(met)))
+    else:
+        origen = "NCU mas cercana (el scada no declara ninguna HSU)"
+    return L, filas, ncus, gws, origen
 
 
 def escribe(ruta, filas, cols):
@@ -170,9 +251,9 @@ def escribe(ruta, filas, cols):
 
 
 def genera(planta, en_viga):
-    L, filas, otros, gws = puntos(planta, en_viga)
+    L, filas, otros, gws, hsu_origen = puntos(planta, en_viga)
     d = os.path.join(SAL, planta); os.makedirs(d, exist_ok=True)
-    COLS = ["node_id", "lat", "lon", "etiqueta", "rol", "enlace", "ncu", "gw"]
+    COLS = ["node_id", "lat", "lon", "etiqueta", "rol", "enlace", "ncu", "gw", "esclavo"]
     ambitos = []
 
     def emite(nombre, sub, extra=None):
@@ -206,6 +287,7 @@ def genera(planta, en_viga):
            "ncus": len(ncus), "gws": len(todos_gw),
            "una_fila": not L.get("filaZ", 3.0),
            "gateways_declarados_en_scada": bool(gws),
+           "hsus_asignadas_por": hsu_origen,
            "ncus_sin_declarar_en_scada": sin_tb,
            "ambitos": ambitos,
            "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv %s_real.geojson" % planta}

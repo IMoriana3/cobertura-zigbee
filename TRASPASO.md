@@ -58,6 +58,15 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    NCU, por **(NCU,GW)** y por GW— y el manifiesto de cada planta dice cuáles hay, con la IP y el
    puerto de cada gateway. El ámbito que se lanza es el **(NCU,GW)**, porque cada uno es una IP:puerto
    del SCADA. Lo que sigue faltando es el volcado del coordinador; eso no se puede generar.
+
+   **El nº de esclavo y la NCU de cada equipo ya están en el repo, no hay que pedirlos.** Cada fila
+   de esos CSV lleva `ncu`, `gw` y `esclavo` (el unit id Modbus con el que la NCU habla con ese
+   equipo), y las HSU llevan además el suyo (230/231 en Ayora) y cuelgan de la NCU que declara el
+   SCADA. Por eso `tools/malla_medida.py` acepta un volcado que solo traiga **`ncu` + `esclavo`**,
+   que es como habla el SCADA: la posición y el nombre del plano los pone él desde ese censo.
+   El único sitio donde el esclavo NO se puede comprobar contra el id del plano es **El Burgo**,
+   cuyo id (`1.10.3`) trae la NCU pero no el número: allí vale el orden natural, que es el que
+   reproduce el `coords_ElBurgo_NCU1.csv` original.
 2. **`zigbee_log.csv`** — la serie temporal, para la máquina del tiempo. Se carga a mano desde el
    panel; no hace falta que esté en el repo.
 

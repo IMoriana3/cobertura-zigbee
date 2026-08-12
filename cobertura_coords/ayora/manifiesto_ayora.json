@@ -12,6 +12,7 @@
  "gws": 1,
  "una_fila": false,
  "gateways_declarados_en_scada": true,
+ "hsus_asignadas_por": "scada (cupo de `hsus` por NCU) + distancia minima",
  "ncus_sin_declarar_en_scada": [],
  "ambitos": [
   {
@@ -33,7 +34,7 @@
   },
   {
    "fichero": "coords_ayora_NCU03.csv",
-   "tcus": 66,
+   "tcus": 67,
    "ambito": "ncu",
    "ncu": 3
   },
@@ -51,7 +52,7 @@
   },
   {
    "fichero": "coords_ayora_NCU06.csv",
-   "tcus": 27,
+   "tcus": 26,
    "ambito": "ncu",
    "ncu": 6
   },
@@ -105,13 +106,13 @@
   },
   {
    "fichero": "coords_ayora_NCU15.csv",
-   "tcus": 45,
+   "tcus": 46,
    "ambito": "ncu",
    "ncu": 15
   },
   {
    "fichero": "coords_ayora_NCU16.csv",
-   "tcus": 47,
+   "tcus": 46,
    "ambito": "ncu",
    "ncu": 16
   }
