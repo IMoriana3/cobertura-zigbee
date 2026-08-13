@@ -755,6 +755,7 @@ function buildTrackers(elevAt){
      todas las plantas son así — Bagnarelli es de UNA fila con módulo Risen de 1,303 m — así que el
      layout puede anular las dos cotas. Con filaZ:0 las dos filas coinciden y sale una sola. */
   if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modW){Seguidor.DIMS.modW=LAYOUT.modW;Seguidor.DIMS.pitch=LAYOUT.modW+Seguidor.DIMS.gapMod;}
+  if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modH)Seguidor.DIMS.modH=LAYOUT.modH;   // cuerda del módulo por planta (Túnez 2,35 del DWG); sin esto todas heredaban los 2,382 de El Burgo
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
   var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
   if(LAYOUT&&LAYOUT.filaZ!=null)D=Object.create(D),D.filaZ=LAYOUT.filaZ;            // planta de una sola fila: filaZ 0
@@ -1813,7 +1814,15 @@ function buildContactAO(){
   if(aoGroup){scene.remove(aoGroup);aoGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});aoGroup=null;}
   if(!TRK.length||!ELEV)return;
   aoGroup=new THREE.Group();scene.add(aoGroup);
-  var v=[],uv=[],v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w=((((TC&&TC.modH)||2.4)*1.05)+1.0)/2,w2=w*1.25;
+  /* ANCHO DE LAS FRANJAS. Iban a (modH*1,05 + 1,00)/2, o sea 3,51 m de AO y 4,37 m de hierba para un
+     panel de 2,38 m: 1,47 y 1,84 VECES el panel. Con el paso de fila de estas plantas (6,0-6,3 m) eso
+     tapa el 70 % del pasillo, y como la franja NO se mueve con el sol, lo que se ve es una segunda
+     sombra fija, más ancha que la de verdad y con el borde duro. Medido en Túnez a las 09:35 (sol 47,9°
+     de altura, acimut 107,7°): la sombra REAL sale de 2,97 m contra los 2,91 m que toca por geometría
+     con la penumbra del PCF —o sea la sombra está BIEN—, mientras que la franja pintada mide 4,37 m.
+     Ahora la franja se ata al panel: el AO no puede ser más ancho que lo que lo produce (+5 % de marco)
+     y la hierba asoma un 25 % a los flancos, que era su intención (verse desde el aire). */
+  var v=[],uv=[],v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w=(((TC&&TC.modH)||2.4)*1.05)/2,w2=w*1.25;
   /* El semilargo de la franja era 31,8 m CLAVADO (16,8 los "medio"), que es el de El Burgo. En una
      planta con seguidores más cortos la banda oscura se salía por los dos extremos de cada fila y
      parecía una sombra mal puesta: en Túnez el seguidor mide 37,3 m y la franja 63,6, o sea 13,2 m
