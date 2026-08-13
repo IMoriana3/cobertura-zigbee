@@ -520,15 +520,21 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
   if(!groups)return angles;
   const a=applyDrive(angles,groups);
   if(!(isFinite(zen)&&zen<87))return a;
-  const shadedPair=(p,ang)=>{
+  // medida de violación por pareja: fracción sombreada (2.5D) o mm de invasión
+  // (3D). El refinado la MINIMIZA cuando no puede anularla — a sol rasante los
+  // umbrales duros rechazaban todo candidato por lascas del 2% y dejaban un
+  // 67% real sin tocar (lo cazó la curva del día sobre Ayora)
+  const pairViol=(p,ang)=>{
     if(crit3d){
       const r=tangentResidualPairMm(zen,az,T,ang,p);
-      return isFinite(r)&&r<-1;                        // criterio del core: −1 mm
+      return isFinite(r)?Math.max(0,-(r+1)):0;         // mm por debajo de −1 (core)
     }
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
-    return shadeFracPair(psz,ang[p],ang[p+1],pr.pitch,T.cw,pr.slope,T.z0)>1e-3;
+    const f=shadeFracPair(psz,ang[p],ang[p+1],pr.pitch,T.cw,pr.slope,T.z0);
+    return f>1e-3?f:0;
   };
+  const shadedPair=(p,ang)=>pairViol(p,ang)>0;
   // OJO: la tangencia a sol rasante vive en θ ≈ pendiente del par (CON signo:
   // pvlib alinea el panel al plano del terreno), no en θ=0 — aplanar hacia cero
   // puede EMPEORAR. Por eso la búsqueda barre el rango firmado entero y elige
@@ -541,23 +547,42 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
       const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
       const emit=psz>=0?p+1:p;                         // la fila up-sun emite
       const g=groups.find(gr=>gr.includes(emit));
-      const orig=a[emit];
-      const touching=[];                               // pares que tocan el grupo
-      for(let q=0;q<T.pairs.length;q++)
-        if(g.includes(q)||g.includes(q+1))touching.push(q);
-      let best=null;
       const paso=T.pairs.length>30?1.0:0.25;   // con 80 vanos reales, el fino no paga
-      for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=paso){
-        const trial=a.slice(); for(const r of g)trial[r]=cand;
-        let ok=true;
-        for(const q of touching)if(shadedPair(q,trial)){ok=false;break;}
-        if(ok&&(best===null||Math.abs(cand-orig)<Math.abs(best-orig)))best=cand;
+      // barrido de un grupo: candidato SIN sombra más cercano al original, o si
+      // no existe, el de MÍNIMA violación (min-max — nunca peor que quedarse)
+      const scanGroup=(g2)=>{
+        const orig=a[g2[0]];
+        const touch=[];
+        for(let q=0;q<T.pairs.length;q++)
+          if(g2.includes(q)||g2.includes(q+1))touch.push(q);
+        let cur=0;for(const q of touch)cur=Math.max(cur,pairViol(q,a));
+        let best=null,bestV=cur,bestVc=null;
+        for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=paso){
+          const trial=a.slice(); for(const r of g2)trial[r]=cand;
+          let v=0;
+          for(const q of touch){v=Math.max(v,pairViol(q,trial));if(v>=bestV&&v>0)break;}
+          if(v<=0){if(best===null||Math.abs(cand-orig)<Math.abs(best-orig))best=cand;}
+          else if(v<bestV-1e-12){bestV=v;bestVc=cand;}
+        }
+        const pick=best!==null?best:bestVc;
+        if(pick!==null&&Math.abs(pick-orig)>1e-9){
+          for(const r of g2)a[r]=pick;
+          return true;
+        }
+        return best!==null?false:null;                 // null = irreducible aquí
+      };
+      const res1=scanGroup(g);
+      if(res1===true)dirty=true;
+      else if(res1===null){
+        // el emisor solo no basta: a sol rasante la tangencia exige que TAMBIÉN
+        // el receptor vaya terreno-paralelo (pvlib degrada en 82–87° de cenit y
+        // deja θ≈0 donde tocaba θ≈pendiente — lo cazó la curva del día real).
+        // Mismo barrido sobre el grupo RECEPTOR; si tampoco, irreducible y a la
+        // vista — el Martinez lo cobra, no se maquilla.
+        const recv=psz>=0?p:p+1;
+        const g2=groups.find(gr=>gr.includes(recv));
+        if(g2&&g2!==g&&scanGroup(g2)===true)dirty=true;
       }
-      if(best!==null&&Math.abs(best-orig)>1e-9){
-        for(const r of g)a[r]=best; dirty=true;
-      }
-      // best===null ⇒ IRREDUCIBLE para este grupo (sol rasante en terreno roto):
-      // se deja el residuo a la vista y el Martinez lo cobra — no se maquilla
     }
     if(!dirty)break;
   }
@@ -1386,7 +1411,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.5.1';
+const VER='v1.5.2';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
