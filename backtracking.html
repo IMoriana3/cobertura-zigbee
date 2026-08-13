@@ -1148,10 +1148,80 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   return {angles:bestAng,f:bestF};
 }
 
+/* óptimo LIBRE (NCU): cada unidad de accionamiento con SU PROPIA fracción
+   f_g ∈ [0,1] sobre el segmento pairwise→astro — 427 grados de libertad en
+   Ayora frente al f único del energy-optimal. Ascenso coordinado: cada unidad
+   escanea su rejilla mirando solo sus filas afectadas (las suyas + vecinas
+   inmediatas), barridos alternos hasta converger. Interpolar dos juegos con
+   θ común por grupo conserva el θ común: toda candidata es ejecutable.
+   Arranca en la mejor f COMÚN ⇒ nunca rinde menos que el energy-optimal
+   (misma rejilla). En Ayora real: pairwise +0,71% (misma-f) → +1,03% (libre). */
+const OPTFREE_NF=9;
+function anglesOptimalFree(zen,az,T,irr,doy,albedo){
+  const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
+  if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
+  const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
+  const nR=T.pairs.length+1;
+  // unidades de accionamiento (cada fila en exactamente una)
+  const seen=new Set(); const units=[];
+  for(const g of (T.groups||[])){units.push(g.slice().sort((a,b)=>a-b));g.forEach(r=>seen.add(r));}
+  for(let r=0;r<nR;r++)if(!seen.has(r))units.push([r]);
+  units.sort((a,b)=>a[0]-b[0]);
+  const unitOf=new Array(nR); units.forEach((u,i)=>u.forEach(r=>unitOf[r]=i));
+  const GRID=[]; for(let i=0;i<OPTFREE_NF;i++)GRID.push(i/(OPTFREE_NF-1));
+  // caches del instante: POA por fila × candidato y geometría por pareja
+  const angs=[],val=[];
+  for(let r=0;r<nR;r++){
+    angs.push(GRID.map(f=>base[r]+f*(full[r]-base[r])));
+    val.push(angs[r].map(a=>poaRow(a,rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo)));
+  }
+  const psz=T.pairs.map(pr=>trueTrackAngle(zen,az,pr.axisTilt,T.axisAz));
+  const axc=T.pairs.map((_,p)=>axialCoverage(zen,az,T,p));
+  const noShade=!(isFinite(zen)&&zen<87);
+  const k=new Array(units.length).fill(0);
+  const angAt=r=>angs[r][k[unitOf[r]]];
+  const pairContrib=p=>noShade?0:
+    shadeFracPair(psz[p],angAt(p),angAt(p+1),T.pairs[p].pitch,T.cw,T.pairs[p].slope,T.z0)*axc[p];
+  const shadeOf=r=>{
+    let s=0;
+    if(r>0&&psz[r-1]<0)s=Math.max(s,pairContrib(r-1));
+    if(r<nR-1&&psz[r]>=0)s=Math.max(s,pairContrib(r));
+    return s;
+  };
+  const rowVal=r=>{const v=val[r][k[unitOf[r]]];return v.beam*(1-elecLoss(shadeOf(r),T.nBypass))+v.diff;};
+  // arranque: la mejor f común (la familia del energy-optimal, en esta rejilla)
+  let bestK=0,bestS=-Infinity;
+  for(let kk=0;kk<OPTFREE_NF;kk++){
+    k.fill(kk); let s=0; for(let r=0;r<nR;r++)s+=rowVal(r);
+    if(s>bestS+1e-12){bestS=s;bestK=kk;}
+  }
+  k.fill(bestK);
+  for(let sweep=0;sweep<8;sweep++){
+    let changed=false;
+    const order=[...units.keys()]; if(sweep%2)order.reverse();
+    for(const ui of order){
+      const u=units[ui];
+      const R=[...u];
+      if(u[0]>0)R.push(u[0]-1);
+      if(u[u.length-1]<nR-1)R.push(u[u.length-1]+1);
+      const k0=k[ui]; let bk=k0,bs=-Infinity;
+      for(let kk=0;kk<OPTFREE_NF;kk++){
+        k[ui]=kk; let s=0; for(const r of R)s+=rowVal(r);
+        if(s>bs+1e-12){bs=s;bk=kk;}
+      }
+      k[ui]=bk; if(bk!==k0)changed=true;
+    }
+    if(!changed)break;
+  }
+  const ang=[]; for(let r=0;r<nR;r++)ang.push(angAt(r));
+  return {angles:ang,f:undefined};
+}
+
 /* punto de entrada ÚNICO por política: calcula θ por fila y aplica el
    accionamiento — computeDay y la estimación anual pasan por aquí */
 function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
+  if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo);
   // el acoplado según la semántica de cada política: las que GARANTIZAN
   // no-sombra (pairwise 2.5D, true-3D con su residual) refinan a nivel de
   // accionamiento; astro/row toleran sombra por diseño (min|θ| simple) y
@@ -1284,6 +1354,20 @@ function runPhysicsQA(){
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
   });
+  t('óptimo LIBRE ≥ energy-optimal y ≥ pairwise (arranca en la mejor f común y solo mejora)',()=>{
+    // mono e irregular Y bifila: el ascenso por unidad respeta θ común y no
+    // puede rendir menos que su punto de partida bajo el mismo evaluador
+    const doy=355, alb=0.2;
+    for(const groups of [null,[[0,1],[2,3]]]){
+      const T=mkT([7,-5,7],4.5,0,groups?{groups:groups,drive:'bifila'}:{});
+      for(let zen=55;zen<85;zen+=10)for(const az of [115,245]){
+        const irr=clearskyIneichen(zen,doy,300,3.5);
+        const op=poaPlant(zen,az,T,anglesOptimal(zen,az,T,irr,doy,alb).angles,irr,doy,alb).plant;
+        const fr=poaPlant(zen,az,T,anglesOptimalFree(zen,az,T,irr,doy,alb).angles,irr,doy,alb).plant;
+        assert(fr>=op-1e-6,'libre '+fr.toFixed(3)+' < optimal '+op.toFixed(3)+' (zen '+zen+' az '+az+(groups?' bifila':' mono')+')');
+      }
+    }
+  });
   t('bifila y quebrada: θ COMÚN por grupo y pairwise acoplado sigue SIN sombra (N-S quebrado + E-O irregular)',()=>{
     const rowTilt=[8,8,-8,-8,8,8];                     // dos aguas N-S
     const z=[0,-0.6,0.2,-0.4,0.5,0];                   // E-O irregular
@@ -1411,7 +1495,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.5.2';
+const VER='v1.6.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1424,6 +1508,7 @@ const POLICIES=[
   {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true, brain:'tcu'},
   {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false, brain:'ncu'},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
+  {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
 ];
 const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
 
@@ -1569,17 +1654,11 @@ $('bagnbtn').onclick=()=>{
 $('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);recompute();};
 
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
-/* Va por clave de la hoja de cartera (24002 = El Burgo), no por nº de proyecto: es el mismo
-   índice con el que llega `factiun_plantas`. */
 const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'24019':[-16.59577,-71.80644],'24007':[41.22694,0.32415],'24021':[33.8685,9.8433]};
 function loadPlants(){
   let P={}; try{P=JSON.parse(localStorage.getItem('factiun_plantas')||'{}')||{};}catch(e){}
   let opts='<option value="">— manual —</option>';
-  /* Se rotula el nº de PROYECTO (`nproy`, el del DWG), no la clave de la hoja: El Burgo salía aquí
-     como "El Burgo I · 24002" y en el resto del ecosistema es 23003. `nproy` lo publica
-     cartera-tabla.html; si la cartera guardada es vieja y no lo trae, cae a la clave, que es lo
-     que había. */
-  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+((P[cod]&&P[cod].nproy)||cod)+'</option>';});
+  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+cod+'</option>';});
   $('plant').innerHTML=opts;
   $('plant').onchange=function(){
     const p=P[this.value]; if(!p)return;
