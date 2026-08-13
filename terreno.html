@@ -200,17 +200,22 @@ async function mosaic(urlFn,z,latN,latS,lonW,lonE){   // urlFn: función o ARRAY
   var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
   var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
   var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var ok=0,fail=0,tasks=[];
+  var porFuente={};fns.forEach(function(fn){porFuente[fn.fuente||'?']=0;});porFuente['sin datos']=0;   // CUÁNTAS teselas ha puesto cada fuente: un mosaico MIXTO (PNOA nítido + ESRI borroso, o el relleno liso) se ve como "una capa" con costura recta sobre el terreno, y hasta ahora el estado solo decía el total — parecía un fallo del render y era el origen de las teselas
   ctx.fillStyle='#8e8a76';ctx.fillRect(0,0,W,H);   // pre-relleno tono tierra: una tesela caída en TODAS las fuentes no deja agujero transparente
   for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
     var p=Promise.reject();
-    fns.forEach(function(fn){p=p.catch(function(){return loadImg(fn(z,tx,ty));});});
-    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256,256,256);ok++;}).catch(function(){fail++;}));})(tx,ty);}
+    fns.forEach(function(fn){p=p.catch(function(){return loadImg(fn(z,tx,ty)).then(function(im){im._fuente=fn.fuente||'?';return im;});});});
+    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256,256,256);ok++;porFuente[im._fuente]=(porFuente[im._fuente]||0)+1;})
+                .catch(function(){fail++;porFuente['sin datos']++;}));})(tx,ty);}
   await Promise.all(tasks);
+  var usadas=Object.keys(porFuente).filter(function(k){return porFuente[k]>0;});
   return {ctx:ctx,canvas:cv,z:z,xmin:xmin,ymin:ymin,W:W,H:H,ok:ok,fail:fail,
+    porFuente:porFuente,fuentes:usadas,mixto:usadas.length>1,
+    resumen:usadas.map(function(k){return porFuente[k]+' '+k;}).join(' + ') || '—',
     px:function(lat,lon){return {x:(lon2txf(lon,z)-xmin)*256,y:(lat2tyf(lat,z)-ymin)*256};}};
 }
-var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};
-var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
+var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};SAT.fuente="ESRI";
+var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};PNOA.fuente="PNOA";   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
 function satSources(lat,lon){return (lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[PNOA,SAT]:[SAT];}   // España (península+islas): PNOA primero, ESRI de respaldo tesela a tesela
 var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
 
@@ -513,7 +518,18 @@ async function build(){
 
   var sat=null,dem=null,demImg=null;
   var satZoom=Math.max(15,Math.min(19,Math.round(Math.log2(10*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~10 teselas/lado con tope z19 (El Burgo→19 = 30 cm/px con PNOA; Ayora 2,5 km→17)
-  if(!OFFLINE)try{sat=await mosaic(satSources(lat0,lon0),satZoom,latN,latS,lonW,lonE);}catch(e){}   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
+  if(!OFFLINE)try{sat=await mosaic(satSources(lat0,lon0),satZoom,latN,latS,lonW,lonE);}catch(e){}
+  /* COSTURA DE ORTOFOTO: PNOA da 25 cm/px y ESRI mucho menos, asi que un mosaico servido a medias
+     entre las dos (o con teselas caidas, que se rellenan con el liso #8e8a76) se ve como UNA CAPA
+     pegada sobre el terreno, con borde recto por la linde de tesela. No es un fallo del render:
+     es de donde vino cada tesela, y hasta ahora el estado solo decia el total. Ahora se declara. */
+  if(sat&&sat.ok>0&&(sat.mixto||sat.fail)){   // con ok=0 no hay ortofoto NINGUNA y ya se cae al suelo beige: ese caso no es una costura, es otra cosa
+    var _av='ortofoto NO uniforme: '+sat.resumen+(sat.fail?' — el relleno liso deja parches sin foto':'')
+           +'. La costura recta que se ve sobre el terreno es la linde entre teselas de distinta fuente,'
+           +' no un fallo del 3D. Recargar suele arreglarlo (IGN cae a ratos); si insiste, es que PNOA'
+           +' no sirve el zoom '+satZoom+' en esta zona.';
+    log('⚠ '+_av,'err');showBanner(_av,true);
+  }   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
   var demZoom=(Math.max(widthM,depthM)>1500)?15:14;   // plantas grandes: relieve más fino (z15 ≈ 4 m/px) para que el terreno no salga aterrazado
   if(!OFFLINE)try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
   function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
@@ -583,7 +599,7 @@ async function build(){
   if(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
-    "satélite: "+(sat&&sat.ok?sat.ok+" teselas":"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
+    "satélite: "+(sat&&sat.ok?(sat.resumen+(sat.mixto?" <span class='err'>(MIXTO)</span>":"")):"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
     "módulos/string: <b>"+modsNow+"</b>"+((SPEC&&SPEC.mods)?" · <span style='color:#36D399'>de la Cartera técnica</span>":"")+"\n"+
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
   // diagnóstico de sombras retirado: confirmado que en escritorio se ven (v2.66 PCF); en móvil es limitación de su GPU (pendiente fallback)
