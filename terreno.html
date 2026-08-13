@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.58</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.59</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -197,6 +197,7 @@ function diag(){   // diagnóstico de sombras: un solo NaN en una instancia que 
   }catch(e){ log('diag err: '+e.message,'err'); showBanner('diag err: '+e.message,true); }
 }
 
+var TESELAS_DIAG=(function(){try{return new URLSearchParams(location.search).get('teselas')==='1';}catch(e){return false;}})();   // diagnostico: ver de que fuente viene cada trozo de ortofoto
 var DEG=Math.PI/180;
 function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
 function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
@@ -207,19 +208,45 @@ async function mosaic(urlFn,z,latN,latS,lonW,lonE){   // urlFn: función o ARRAY
   var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
   var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
   var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var ok=0,fail=0,tasks=[];
-  var porFuente={};fns.forEach(function(fn){porFuente[fn.fuente||'?']=0;});porFuente['sin datos']=0;   // CUÁNTAS teselas ha puesto cada fuente: un mosaico MIXTO (PNOA nítido + ESRI borroso, o el relleno liso) se ve como "una capa" con costura recta sobre el terreno, y hasta ahora el estado solo decía el total — parecía un fallo del render y era el origen de las teselas
+  // CUÁNTAS teselas pone cada fuente y CUÁL viene de dónde. Un mosaico mixto
+  // (PNOA nítido + ESRI lavado, o el relleno liso donde no contesta nadie) se ve
+  // como una "capa" con costura recta sobre el terreno, y con solo el total no
+  // hay manera de localizar la zona rara: parece cosa del render y es la tesela.
+  var porFuente={};fns.forEach(function(fn){porFuente[fn.fuente||'?']=0;});porFuente['sin datos']=0;
+  var teselas=[];
   ctx.fillStyle='#8e8a76';ctx.fillRect(0,0,W,H);   // pre-relleno tono tierra: una tesela caída en TODAS las fuentes no deja agujero transparente
   for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
     var p=Promise.reject();
     fns.forEach(function(fn){p=p.catch(function(){return loadImg(fn(z,tx,ty)).then(function(im){im._fuente=fn.fuente||'?';return im;});});});
-    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256,256,256);ok++;porFuente[im._fuente]=(porFuente[im._fuente]||0)+1;})
-                .catch(function(){fail++;porFuente['sin datos']++;}));})(tx,ty);}
+    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256,256,256);ok++;porFuente[im._fuente]=(porFuente[im._fuente]||0)+1;
+                  teselas.push({tx:tx,ty:ty,fuente:im._fuente});})
+                .catch(function(){fail++;porFuente['sin datos']++;teselas.push({tx:tx,ty:ty,fuente:'sin datos'});}));})(tx,ty);}
   await Promise.all(tasks);
   var usadas=Object.keys(porFuente).filter(function(k){return porFuente[k]>0;});
   return {ctx:ctx,canvas:cv,z:z,xmin:xmin,ymin:ymin,W:W,H:H,ok:ok,fail:fail,
-    porFuente:porFuente,fuentes:usadas,mixto:usadas.length>1,
+    porFuente:porFuente,fuentes:usadas,mixto:usadas.length>1,teselas:teselas,
     resumen:usadas.map(function(k){return porFuente[k]+' '+k;}).join(' + ') || '—',
     px:function(lat,lon){return {x:(lon2txf(lon,z)-xmin)*256,y:(lat2tyf(lat,z)-ymin)*256};}};
+}
+/* ?teselas=1 — TINTA cada tesela segun su ORIGEN sobre el propio terreno.
+   "Hay una capa blanquecina en alguna zona" no se puede diagnosticar con un
+   recuento: hay que ver DONDE. Verde = PNOA (25 cm/px), naranja = ESRI de
+   respaldo (mas basto y suele virar a lavado), rojo = no contesto nadie y ahi
+   solo esta el relleno liso. Si la mancha que ves coincide con naranja o rojo,
+   es la ortofoto; si cae sobre verde limpio, el sospechoso es el render y hay
+   que buscar en otro sitio. Es una ayuda de diagnostico, no una capa del visor. */
+var TESELA_COLOR={'PNOA':'rgba(0,200,90,0.30)','ESRI':'rgba(255,150,0,0.42)','sin datos':'rgba(255,40,40,0.55)'};
+function pintaTeselas(sat){
+  if(!sat||!sat.teselas||!sat.teselas.length)return;
+  var x=sat.ctx;x.save();
+  sat.teselas.forEach(function(t){
+    var px=(t.tx-sat.xmin)*256,py=(t.ty-sat.ymin)*256;
+    x.fillStyle=TESELA_COLOR[t.fuente]||'rgba(160,0,255,0.40)';x.fillRect(px,py,256,256);
+    x.strokeStyle='rgba(0,0,0,0.55)';x.lineWidth=3;x.strokeRect(px+1.5,py+1.5,253,253);
+    x.fillStyle='#fff';x.font='bold 30px monospace';x.textBaseline='top';
+    x.strokeStyle='rgba(0,0,0,0.85)';x.lineWidth=5;
+    x.strokeText(t.fuente,px+12,py+12);x.fillText(t.fuente,px+12,py+12);});
+  x.restore();
 }
 var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};SAT.fuente="ESRI";
 var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};PNOA.fuente="PNOA";   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
@@ -584,6 +611,7 @@ async function build(){
   var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
+  if(sat&&TESELAS_DIAG)pintaTeselas(sat);   // ?teselas=1: el mapa de origen se pinta ANTES del edgeFade, para que se tinte tambien la orla
   var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#cfc8b6';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo BEIGE árido como las fotos; antes verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
   var reliefMat=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:true});   // SIN luz ni sombras: mapa de cota puro (estilo S.P.A.C.E); evita la "sombra rara" del sol sobre el heatmap; alfa por vértice funde el borde con el cielo
