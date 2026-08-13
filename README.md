@@ -59,8 +59,11 @@ Publicado como página estática en GitHub Pages: **https://imoriana3.github.io/
 
 Este repo aloja también el **Simulador de Backtracking**: un espejo JS del motor BT3D de SolarGPT
 (`tracker3d.py`) para comparar políticas de backtracking —astronómico · global · row · pairwise ·
-true-3D · energy-optimal (Deeptrack)— sobre terreno irregular editable, con corte transversal animado,
-curvas θ(t), POA por política (Ineichen + Perez + Martinez) y estimación anual. Un único HTML offline.
+true-3D · energy-optimal (Deeptrack)— sobre terreno 3D editable (pendiente E-O por pareja + tilt N-S
+por fila) y con los tres accionamientos: **monofila, bifila rígida y bifila quebrada** (θ común por
+grupo, backtracking resuelto a nivel de accionamiento, residuo irreducible a la vista). Corte
+transversal animado, curvas θ(t), POA por política (Ineichen + Perez + Martinez) y estimación anual.
+Un único HTML offline.
 
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la

@@ -115,10 +115,30 @@
     </div>
     <div class="three">
       <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
-      <div class="f"><label>Tilt eje N-S °</label><input id="axtilt" type="number" step="0.5" value="0" title="Inclinación del eje a lo largo (terreno N-S). Es lo que separa true-3D del 2.5D."></div>
       <div class="f"><label>Diodos bypass</label><input id="nbp" type="number" step="1" min="0" max="6" value="3"></div>
+      <div class="f"><label>Offset sup–eje m</label><input id="z0" type="number" step="0.01" min="0" value="0"></div>
     </div>
-    <div class="f"><label>Offset superficie–eje m</label><input id="z0" type="number" step="0.01" min="0" value="0"></div>
+    <div class="f"><label>Accionamiento</label>
+      <select id="drive">
+        <option value="mono">Monofila — 1 motor por fila</option>
+        <option value="bifila">Bifila rígida — 1 motor / 2 filas, tubo sin quebrar</option>
+        <option value="quebrado">Bifila quebrada — 1 motor / 2 filas, cardan</option>
+      </select></div>
+    <div class="two">
+      <div class="f"><label>Perfil N-S (tilt eje por fila)</label>
+        <select id="nspreset">
+          <option value="constante">Constante</option>
+          <option value="quebrado">Quebrado (dos aguas)</option>
+          <option value="senoidal">Senoidal</option>
+          <option value="aleatorio">Aleatorio</option>
+        </select></div>
+      <div class="f"><label>Tilt N-S ° (valor)</label><input id="axtilt" type="number" step="0.5" value="0" title="Inclinación del eje a lo largo (terreno N-S): valor del perfil (constante/amplitud). Es lo que separa true-3D del 2.5D."></div>
+    </div>
+    <span class="pill" id="motorsinfo"></span>
+    <div class="nota">En <b>bifila</b> las dos filas del grupo giran con el MISMO θ: se adopta el
+      min(|θ|) del grupo (reducir |θ| desde un ángulo de backtracking nunca crea sombra — la misma
+      regla que el acoplado interior del core). La <b>rígida</b> además comparte tilt N-S (el medio del
+      grupo: el tubo no se dobla); la <b>quebrada</b> lleva cardan y cada fila conserva su tilt local.</div>
   </div>
 
   <div class="card">
@@ -370,10 +390,111 @@ function elecLoss(f,nBypass){
    nRows = pairs.length + 1. Cotas por fila ↔ pendientes por pareja:
    z[p+1] = z[p] − pitch·tan(slope_p).                                       */
 function pairsFromElev(z,pitch,axisTilt){
+  // axisTilt: escalar (toda la planta) o array POR FILA (terreno N-S variable);
+  // la pareja toma la media de sus dos filas — inverso exacto de la regla del
+  // core en compute_bt_angles_rowwise (fila = media de sus dos parejas)
+  const tiltAt=i=>Array.isArray(axisTilt)?(axisTilt[i]+axisTilt[i+1])/2:axisTilt;
   const out=[];
   for(let i=0;i<z.length-1;i++)
-    out.push({slope:Math.atan2(z[i]-z[i+1],pitch)*DEG,pitch:pitch,axisTilt:axisTilt});
+    out.push({slope:Math.atan2(z[i]-z[i+1],pitch)*DEG,pitch:pitch,axisTilt:tiltAt(i)});
   return out;
+}
+
+/* ── accionamiento: monofila / bifila rígida / bifila quebrada ──────────────
+   Nomenclatura de la casa (CONTRATO scada): bifila = UN motor mueve DOS filas
+   unidas por el eje de transmisión. Reglas:
+   · el ángulo es COMÚN al grupo: se adopta el min(|θ|) de sus filas — reducir
+     |θ| desde un ángulo de backtracking nunca crea sombra (la MISMA regla que
+     el acoplado interior de compute_bt_angles);
+   · la RÍGIDA además comparte geometría de eje: tilt N-S = media del grupo
+     (un tubo de transmisión recto no se dobla) ⇒ en terreno N-S quebrado los
+     paneles quedan desalineados del terreno y el POA lo enseña;
+   · la QUEBRADA lleva cardan: mismo θ, pero cada fila conserva su tilt local.
+   Con nº impar de filas la última va con motor propio (unidad completa). */
+function driveGroups(nRows,mode){
+  if(mode!=='bifila'&&mode!=='quebrado')return null;   // monofila: sin acoplar
+  const g=[];
+  for(let r=0;r<nRows;r+=2)g.push(r+1<nRows?[r,r+1]:[r]);
+  return g;
+}
+function effRowTilts(rowTilt,mode,groups){
+  if(!groups||mode!=='bifila')return rowTilt.slice();
+  const out=rowTilt.slice();
+  for(const g of groups)if(g.length===2){
+    const m=(rowTilt[g[0]]+rowTilt[g[1]])/2; out[g[0]]=m; out[g[1]]=m;
+  }
+  return out;
+}
+function applyDrive(angles,groups){
+  if(!groups)return angles;
+  const out=angles.slice();
+  for(const g of groups)if(g.length===2){
+    const a=out[g[0]],b=out[g[1]];
+    const m=Math.abs(a)<=Math.abs(b)?a:b;
+    out[g[0]]=m; out[g[1]]=m;
+  }
+  return out;
+}
+function nMotors(nRows,mode){
+  return (mode==='bifila'||mode==='quebrado')?Math.ceil(nRows/2):nRows;
+}
+
+/* Backtracking a nivel de ACCIONAMIENTO. El min(|θ|) del grupo NO basta en
+   terreno quebrado: aplanar una fila mueve su borde hacia el vecino y ensancha
+   su perfil, así que rotaciones DESIGUALES pueden sombrear aunque ambas estén
+   por debajo de su ángulo pairwise (lo descubrió la propia QA). Aquí se refina:
+   mientras algún par sombree, se aplana el grupo EMISOR por bisección hasta la
+   tangencia. Las magnitudes solo bajan ⇒ converge; si ni en plano desaparece
+   (sol rasante en terreno roto) el residuo es IRREDUCIBLE por el accionamiento
+   y se deja a la vista — es el precio físico de la bifila, no se maquilla.
+   `crit3d` cambia el criterio de sombra: 2.5D geométrico (pairwise) o residual
+   de tangencia 3D en mm (true-3D, coherente con su árbitro). */
+function driveCoupleSafe(zen,az,T,angles,crit3d){
+  const groups=T.groups;
+  if(!groups)return angles;
+  const a=applyDrive(angles,groups);
+  if(!(isFinite(zen)&&zen<87))return a;
+  const shadedPair=(p,ang)=>{
+    if(crit3d){
+      const r=tangentResidualMm(zen,az,T,ang)[p];
+      return isFinite(r)&&r<-1;                        // criterio del core: −1 mm
+    }
+    const pr=T.pairs[p];
+    const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+    return shadeFracPair(psz,ang[p],ang[p+1],pr.pitch,T.cw,pr.slope,T.z0)>1e-3;
+  };
+  // OJO: la tangencia a sol rasante vive en θ ≈ pendiente del par (CON signo:
+  // pvlib alinea el panel al plano del terreno), no en θ=0 — aplanar hacia cero
+  // puede EMPEORAR. Por eso la búsqueda barre el rango firmado entero y elige
+  // el ángulo sin sombra más CERCANO al actual (mínima distorsión de energía).
+  for(let it=0;it<6;it++){
+    let dirty=false;
+    for(let p=0;p<T.pairs.length;p++){
+      if(!shadedPair(p,a))continue;
+      const pr=T.pairs[p];
+      const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+      const emit=psz>=0?p+1:p;                         // la fila up-sun emite
+      const g=groups.find(gr=>gr.includes(emit));
+      const orig=a[emit];
+      const touching=[];                               // pares que tocan el grupo
+      for(let q=0;q<T.pairs.length;q++)
+        if(g.includes(q)||g.includes(q+1))touching.push(q);
+      let best=null;
+      for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=0.25){
+        const trial=a.slice(); for(const r of g)trial[r]=cand;
+        let ok=true;
+        for(const q of touching)if(shadedPair(q,trial)){ok=false;break;}
+        if(ok&&(best===null||Math.abs(cand-orig)<Math.abs(best-orig)))best=cand;
+      }
+      if(best!==null&&Math.abs(best-orig)>1e-9){
+        for(const r of g)a[r]=best; dirty=true;
+      }
+      // best===null ⇒ IRREDUCIBLE para este grupo (sol rasante en terreno roto):
+      // se deja el residuo a la vista y el Martinez lo cobra — no se maquilla
+    }
+    if(!dirty)break;
+  }
+  return a;
 }
 function elevFromPairs(pairs){
   const z=[0];
@@ -403,12 +524,20 @@ function anglesPairwise(zen,az,T){
   for(let r=1;r<nR-1;r++)out[r]=Math.abs(th[r-1])<Math.abs(th[r])?th[r-1]:th[r];
   return out;
 }
+function rowTiltAt(T,r){
+  // tilt N-S de la fila: el perfil por fila si el terreno lo trae (T.rowTilt),
+  // si no la media de sus parejas (regla de compute_bt_angles_rowwise)
+  if(T.rowTilt)return T.rowTilt[r];
+  const nP=T.pairs.length;
+  const lo=T.pairs[Math.max(r-1,0)], hi=T.pairs[Math.min(r,nP-1)];
+  return (lo.axisTilt+hi.axisTilt)/2;
+}
 function anglesRow(zen,az,T){
   // por fila INDEPENDIENTE con su terreno local (media de sus dos parejas)
   const nR=T.pairs.length+1, nP=T.pairs.length, out=new Array(nR);
   for(let r=0;r<nR;r++){
     const lo=T.pairs[Math.max(r-1,0)], hi=T.pairs[Math.min(r,nP-1)];
-    out[r]=nan0(singleaxis(zen,az,{axisTilt:(lo.axisTilt+hi.axisTilt)/2,axisAz:T.axisAz,
+    out[r]=nan0(singleaxis(zen,az,{axisTilt:rowTiltAt(T,r),axisAz:T.axisAz,
       maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/((lo.pitch+hi.pitch)/2),
       crossAxisTilt:(lo.slope+hi.slope)/2}));
   }
@@ -426,7 +555,7 @@ function anglesAstro(zen,az,T){
   const nR=T.pairs.length+1, nP=Math.max(T.pairs.length,1), out=new Array(nR);
   for(let r=0;r<nR;r++){
     const p=T.pairs[Math.min(r,nP-1)];
-    out[r]=nan0(singleaxis(zen,az,{axisTilt:p.axisTilt,axisAz:T.axisAz,maxAngle:T.maxAngle,
+    out[r]=nan0(singleaxis(zen,az,{axisTilt:rowTiltAt(T,r),axisAz:T.axisAz,maxAngle:T.maxAngle,
       backtrack:false,gcr:T.gcr,crossAxisTilt:p.slope}));
   }
   return out;
@@ -586,11 +715,9 @@ function poaPlant(zen,az,T,rowAngles,irr,doy,albedo){
   // beam·(1 − Martinez) + difusa, fila a fila; planta = MEDIA por fila (la
   // agregación energética correcta: POA(θ media) ≠ media de POA(θ_r))
   const sh=shadeRows(zen,az,T,rowAngles);
-  const nP=Math.max(T.pairs.length,1);
   let sum=0; const rows=[];
   for(let r=0;r<rowAngles.length;r++){
-    const axt=T.pairs[Math.min(r,nP-1)].axisTilt;
-    const p=poaRow(rowAngles[r],axt,T.axisAz,zen,az,irr,doy,albedo);
+    const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo);
     const se=elecLoss(sh[r],T.nBypass);
     const v=p.beam*(1-se)+p.diff;
     rows.push(v); sum+=v;
@@ -603,8 +730,11 @@ function poaPlant(zen,az,T,rowAngles,irr,doy,albedo){
    f=0 primero ⇒ en empate estricto gana el candidato conservador. */
 const OPT_FRACTIONS=[0,0.25,0.5,0.75,1];
 function anglesOptimal(zen,az,T,irr,doy,albedo){
-  const base=anglesPairwise(zen,az,T);
-  const full=anglesAstro(zen,az,T);
+  // el acoplado de accionamiento (T.groups) se aplica a los DOS extremos antes
+  // de interpolar: la combinación lineal de valores iguales por grupo conserva
+  // el θ común, así toda candidata es físicamente ejecutable por los motores
+  const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
+  const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
   if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
   let best=-Infinity, bestAng=base, bestF=0;
   for(const f of OPT_FRACTIONS){
@@ -613,6 +743,21 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
     if(p>best+1e-12){best=p;bestAng=ang;bestF=f;}
   }
   return {angles:bestAng,f:bestF};
+}
+
+/* punto de entrada ÚNICO por política: calcula θ por fila y aplica el
+   accionamiento — computeDay y la estimación anual pasan por aquí */
+function policyAngles(key,zen,az,T,irr,doy,albedo){
+  if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
+  // el acoplado según la semántica de cada política: las que GARANTIZAN
+  // no-sombra (pairwise 2.5D, true-3D con su residual) refinan a nivel de
+  // accionamiento; astro/row toleran sombra por diseño (min|θ| simple) y
+  // global ya es un único ángulo (el acoplado es un no-op)
+  if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
+  if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
+  if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
+  if(key==='true3d')return {angles:driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),f:undefined};
+  return {angles:driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),f:undefined};
 }
 
 /* ray-cast BRUTO para el QA: muestrea M puntos del panel sombreado y lanza el
@@ -734,6 +879,53 @@ function runPhysicsQA(){
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
   });
+  t('bifila y quebrada: θ COMÚN por grupo y pairwise acoplado sigue SIN sombra (N-S quebrado + E-O irregular)',()=>{
+    const rowTilt=[8,8,-8,-8,8,8];                     // dos aguas N-S
+    const z=[0,-0.6,0.2,-0.4,0.5,0];                   // E-O irregular
+    for(const mode of ['bifila','quebrado']){
+      const groups=driveGroups(6,mode);
+      const eff=effRowTilts(rowTilt,mode,groups);
+      const T={pairs:pairsFromElev(z,6,eff),cw:2.382,axisAz:0,maxAngle:55,gcr:0.397,z0:0,nBypass:3,rowTilt:eff,groups:groups};
+      // hasta zen<80: a sol MÁS rasante el residuo puede ser IRREDUCIBLE por el
+      // accionamiento (un motor no puede alinear dos filas a dos pendientes
+      // distintas) — la misma exclusión que la máscara de reducibilidad del core
+      for(let zen=30;zen<80;zen+=8)for(const az of [95,265]){
+        const a=policyAngles('pairwise',zen,az,T).angles;
+        for(const g of groups)if(g.length===2)
+          assert(a[g[0]]===a[g[1]],mode+': θ no común en grupo '+g);
+        const sh=shadeRows(zen,az,T,a);
+        assert(Math.max(...sh)<2e-3,mode+': sombra '+Math.max(...sh).toFixed(4)+' zen='+zen+' az='+az);
+      }
+    }
+  });
+  t('accionamientos degeneran: terreno uniforme ⇒ monofila = bifila = quebrada',()=>{
+    const z=[0,0,0,0,0,0], tilt=[5,5,5,5,5,5];
+    const mk=(mode)=>{
+      const groups=driveGroups(6,mode);
+      const eff=effRowTilts(tilt,mode,groups);
+      return {pairs:pairsFromElev(z,6,eff),cw:2.382,axisAz:0,maxAngle:55,gcr:0.397,z0:0,nBypass:3,rowTilt:eff,groups:groups};
+    };
+    for(let zen=25;zen<85;zen+=10)for(const az of [95,265])for(const key of ['pairwise','row','astro']){
+      const a=policyAngles(key,zen,az,mk('mono')).angles;
+      const b=policyAngles(key,zen,az,mk('bifila')).angles;
+      const c=policyAngles(key,zen,az,mk('quebrado')).angles;
+      for(let r=0;r<6;r++)
+        assert(Math.abs(a[r]-b[r])<1e-9&&Math.abs(a[r]-c[r])<1e-9,key+' fila '+r+' diverge');
+    }
+  });
+  t('rígida = tilt N-S MEDIO por grupo · quebrada lo conserva · nº de motores correcto',()=>{
+    const rowTilt=[10,10,10,-10,-10,-10];              // el quiebro cae DENTRO del grupo [2,3]
+    const gB=driveGroups(6,'bifila');
+    const effB=effRowTilts(rowTilt,'bifila',gB);
+    assert(JSON.stringify(effB)===JSON.stringify([10,10,0,0,-10,-10]),
+      'rígida: '+effB+' (el grupo que cruza el quiebro debe quedar a la media, 0)');
+    const effQ=effRowTilts(rowTilt,'quebrado',driveGroups(6,'quebrado'));
+    assert(JSON.stringify(effQ)===JSON.stringify(rowTilt),'quebrada no debe tocar los tilts');
+    assert(nMotors(6,'mono')===6&&nMotors(6,'bifila')===3&&nMotors(7,'quebrado')===4,
+      'motores: '+nMotors(6,'mono')+'/'+nMotors(6,'bifila')+'/'+nMotors(7,'quebrado'));
+    const gI=driveGroups(7,'bifila');
+    assert(gI[gI.length-1].length===1,'con filas impares la última va con motor propio');
+  });
   t('Martinez: escalones exactos y saturación',()=>{
     assert(elecLoss(0,3)===0,'f=0');
     assert(elecLoss(1e-9,3)===0,'polvo flotante no dispara escalón');
@@ -762,7 +954,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.0';
+const VER='v1.1';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -788,12 +980,25 @@ function cfg(){
     lat:+$('lat').value, lon:+$('lon').value, date:$('date').value, tz:+$('tz').value,
     alt:+$('alt').value, albedo:+$('albedo').value, tl:+$('tl').value,
     pitch:pitch, cw:cw, maxang:+$('maxang').value, nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
-    axaz:+$('axaz').value, axtilt:+$('axtilt').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value,
+    axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
+    drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value,
   };
 }
+function nsProfile(c){
+  // tilt N-S del eje POR FILA — el terreno a lo largo, fila a fila. Derivado
+  // SIEMPRE de (preset, valor, nº filas): no hay estado que se pueda desfasar.
+  const n=c.nrows, v=c.axtilt, out=new Array(n).fill(v);
+  if(c.nspreset==='quebrado')for(let i=0;i<n;i++)out[i]=i<n/2?v:-v;
+  else if(c.nspreset==='senoidal')for(let i=0;i<n;i++)out[i]=v*Math.sin(2*Math.PI*i/Math.max(3,Math.floor(n/2)));
+  else if(c.nspreset==='aleatorio'){const r=mulberry32(1234);for(let i=0;i<n;i++)out[i]=(r()*2-1)*v;}
+  return out;
+}
 function terrain(c){
-  return {pairs:pairsFromElev(ELEV,c.pitch,c.axtilt),cw:c.cw,axisAz:c.axaz,
-          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp};
+  const groups=driveGroups(c.nrows,c.drive);
+  const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
+  return {pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
+          rowTilt:eff,groups:groups,drive:c.drive};
 }
 function ensureElev(n){
   while(ELEV.length<n)ELEV.push(ELEV.length?ELEV[ELEV.length-1]:0);
@@ -861,15 +1066,11 @@ function computeDay(){
     if(!P.on)continue;
     const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
     for(let t=0;t<nT;t++){
-      const g=sun[t]; let a;
-      if(P.key==='astro')a=anglesAstro(g.zen,g.az,T);
-      else if(P.key==='global')a=anglesGlobal(g.zen,g.az,T);
-      else if(P.key==='row')a=anglesRow(g.zen,g.az,T);
-      else if(P.key==='pairwise')a=anglesPairwise(g.zen,g.az,T);
-      else if(P.key==='true3d')a=anglesTrue3d(g.zen,g.az,T);
-      else{const o=anglesOptimal(g.zen,g.az,T,irr[t],doy,c.albedo);a=o.angles;fArr[t]=o.f;}
-      const pp=poaPlant(g.zen,g.az,T,a,irr[t],doy,c.albedo);
-      ang[t]=a; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
+      const g=sun[t];
+      const o=policyAngles(P.key,g.zen,g.az,T,irr[t],doy,c.albedo);
+      fArr[t]=o.f;
+      const pp=poaPlant(g.zen,g.az,T,o.angles,irr[t],doy,c.albedo);
+      ang[t]=o.angles; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
     }
     pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,f:fArr};
   }
@@ -1003,6 +1204,35 @@ function drawScene(){
     ctx.beginPath();ctx.arc(px,pyG,4.5,0,7);ctx.fill();
   }
 
+  // accionamiento: transmisión y motores. Bifila = eje entre los dos postes del
+  // grupo con el motor en medio; la QUEBRADA añade los cardanes (rótulas) en los
+  // extremos del eje; monofila = un motor en cada poste.
+  const midY=i=>Y(ELEV[i])-(hubH*0.55)*mScale;
+  ctx.lineWidth=2;
+  if(T.groups){
+    for(const g2 of T.groups){
+      if(g2.length===2){
+        const xA=X(g2[0]*c.pitch), xB=X(g2[1]*c.pitch);
+        const yA=midY(g2[0]), yB=midY(g2[1]);
+        ctx.strokeStyle='#8a6d2f';
+        ctx.beginPath();ctx.moveTo(xA,yA);ctx.lineTo(xB,yB);ctx.stroke();
+        const mx=(xA+xB)/2,my=(yA+yB)/2;
+        ctx.fillStyle='#fbbd23';ctx.fillRect(mx-4,my-4,8,8);            // el motor del grupo
+        if(T.drive==='quebrado'){
+          ctx.fillStyle='#eaf4ff';                                       // cardanes
+          ctx.beginPath();ctx.arc(xA,yA,3,0,7);ctx.fill();
+          ctx.beginPath();ctx.arc(xB,yB,3,0,7);ctx.fill();
+        }
+      }else{
+        const xA=X(g2[0]*c.pitch);
+        ctx.fillStyle='#fbbd23';ctx.fillRect(xA-4,midY(g2[0])-4,8,8);   // fila impar: motor propio
+      }
+    }
+  }else{
+    ctx.fillStyle='#fbbd23';
+    for(let i=0;i<n;i++)ctx.fillRect(X(i*c.pitch)-3,midY(i)-3,6,6);
+  }
+
   // rótulos de lado (la escena es el plano ⊥ eje; +x = azimut del eje + 90°)
   ctx.fillStyle='#5c7189';ctx.font='10px '+getComputedStyle(document.body).getPropertyValue('--mono');
   const rightAz=((c.axaz+90)%360+360)%360;
@@ -1049,6 +1279,8 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   card('GHI / DNI',Math.round(irrN.ghi)+' / '+Math.round(irrN.dni),'W/m²');
   if(p){
     card('θ fila '+(selRow+1),p.ang[tIdx][selRow].toFixed(1)+'°',POL[key]?POL[key].nm:'');
+    if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
+      card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
     if(key==='optimal'&&p.f[tIdx]!=null)card('f elegida',p.f[tIdx].toFixed(2),'0 = pairwise · 1 = astro');
@@ -1144,7 +1376,11 @@ function fillDayTable(){
   }
   $('daytab').innerHTML=rows.join('');
   const u=terrainIsUniform(DAY.T);
-  $('daynote').innerHTML=(u?'Terreno <b>uniforme</b>: global = row = pairwise por construcción (la diferencia que veas es 0). ':'Terreno <b>no uniforme</b>: las políticas divergen — pairwise garantiza sombra cero, row apunta mejor y puede dejar sombra residual. ')+
+  const drv=DAY.c.drive, nm2=nMotors(DAY.c.nrows,drv);
+  $('daynote').innerHTML=
+    'Accionamiento <b>'+(drv==='mono'?'monofila':drv==='bifila'?'bifila rígida':'bifila quebrada')+'</b> ('+nm2+' motores'+
+    (drv==='mono'?'': ' — θ común por grupo; pairwise y true-3D refinan a nivel de accionamiento y el residuo que ni así se evita es IRREDUCIBLE: el precio físico de la bifila en terreno roto')+'). '+
+    (u?'Terreno <b>uniforme</b>: global = row = pairwise por construcción (la diferencia que veas es 0). ':'Terreno <b>no uniforme</b>: las políticas divergen — pairwise garantiza sombra cero, row apunta mejor y puede dejar sombra residual. ')+
     'Con tilt N-S del eje = '+DAY.c.axtilt+'° '+(Math.abs(DAY.c.axtilt)<=0.5?'true-3D <b>ES</b> la baseline (guard de degeneración 2.5D, como el core).':
     'true-3D puede empinar más: la sombra 3D se deflecta a lo largo del eje. <b>Ojo</b>: la columna de sombra (y su pérdida Martinez) es el diagnóstico 2.5D del core (<code>shaded_fraction1d</code>), ciego a esa deflexión — puede sobrestimar la sombra de true-3D; el árbitro geométrico es el residual de tangencia del HUD, como en <code>tracker3d.py</code>.');
 }
@@ -1165,13 +1401,7 @@ $('yearbtn').onclick=()=>{
       const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
       for(const P of POLICIES){
         if(!P.on)continue;
-        let a;
-        if(P.key==='astro')a=anglesAstro(g.zen,g.az,T);
-        else if(P.key==='global')a=anglesGlobal(g.zen,g.az,T);
-        else if(P.key==='row')a=anglesRow(g.zen,g.az,T);
-        else if(P.key==='pairwise')a=anglesPairwise(g.zen,g.az,T);
-        else if(P.key==='true3d')a=anglesTrue3d(g.zen,g.az,T);
-        else a=anglesOptimal(g.zen,g.az,T,irr,doy,c.albedo).angles;
+        const a=policyAngles(P.key,g.zen,g.az,T,irr,doy,c.albedo).angles;
         tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
       }
     }
@@ -1245,10 +1475,13 @@ function recompute(light){
   drawScene();drawCurves();fillDayTable();
   const slopes=DAY.T.pairs.map(p=>p.slope);
   $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
-  $('sidelbl').textContent='+x = azimut '+(((cfg().axaz+90)%360+360)%360)+'°';
+  const c2=cfg();
+  $('motorsinfo').textContent='motores: '+nMotors(c2.nrows,c2.drive)+' ('+
+    (c2.drive==='mono'?'monofila':c2.drive==='bifila'?'bifila rígida':'bifila quebrada')+')';
+  $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
-const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nbp','z0'];
+const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{ensureElev(cfg().nrows);recompute();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
