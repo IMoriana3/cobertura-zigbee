@@ -38,6 +38,17 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
 t('el GCR es readonly (derivado = ancho/pitch, regla del core: no es un input)', () => {
   if (!/id="gcr"[^>]*readonly/.test(html)) throw new Error('GCR editable');
 });
+t('escena 3D con las libs LOCALES del repo (three.min.js + OrbitControls), no CDN', () => {
+  if (!/<script src="lib\/three\.min\.js">/.test(html)) throw new Error('sin lib/three.min.js');
+  if (!/<script src="lib\/OrbitControls\.js">/.test(html)) throw new Error('sin lib/OrbitControls.js');
+  if (!/id="view3d"/.test(html)) throw new Error('sin contenedor 3D');
+});
+t('degrada a 2D si THREE/WebGL no están (has3D + try/catch en init3D)', () => {
+  if (!/function has3D\(\)/.test(html)) throw new Error('sin guard has3D');
+  const init = html.slice(html.indexOf('function init3D'), html.indexOf('function build3D'));
+  if (!/catch\s*\(/.test(init)) throw new Error('init3D sin try/catch de WebGL');
+  if (!/setTab\(false\)/.test(init)) throw new Error('el fallo de WebGL no cae al corte 2D');
+});
 
 // ── bloque de física, ejecutado de verdad ────────────────────────────────────
 const i0 = html.indexOf('FÍSICA PURA');

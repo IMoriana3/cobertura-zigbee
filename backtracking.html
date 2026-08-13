@@ -38,6 +38,10 @@
   .btn.acc{border-color:var(--accent);color:var(--accent)}
   .btn.small{padding:4px 10px;font-size:.76rem}
   canvas.viz{width:100%;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
+  .viz3d{width:100%;height:440px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .viz3d canvas{display:block}
+  .viz3d .hint{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:.64rem;color:var(--muted);pointer-events:none}
+  .card h2{display:flex;align-items:center;gap:8px}
   .hud{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
   .ro{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
   .ro .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
@@ -183,8 +187,13 @@
 <div><!-- columna derecha: escena + resultados -->
 
   <div class="card">
-    <h2>Corte transversal <span class="sn">plano ⊥ eje · <span id="sidelbl"></span></span></h2>
-    <canvas id="scene" class="viz" height="430"></canvas>
+    <h2>Escena <span class="sn"><span id="sidelbl"></span></span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small" id="tab2d" title="El corte ⊥ al eje: aquí se arrastran los postes para editar el terreno">Corte 2D · editor</button>
+      </span></h2>
+    <div id="view3d" class="viz3d"></div>
+    <canvas id="scene" class="viz" height="430" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
       <input type="range" id="hour" min="0" max="1439" step="5" value="720">
@@ -220,6 +229,8 @@
 </div>
 </div>
 
+<script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
+<script src="lib/OrbitControls.js"></script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -954,7 +965,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.1';
+const VER='v1.2';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1270,6 +1281,190 @@ function compass(a){const d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO'
   scene.addEventListener('pointerup',up);scene.addEventListener('pointercancel',up);
 })();
 
+/* ══ ESCENA 3D — three.js LOCAL (mismas libs que terreno.html) ══════════════
+   La razón de ser del 3D: el corte 2D no puede enseñar el tilt N-S ni la
+   deflexión de la sombra A LO LARGO del eje — que es justo lo que separa
+   true-3D del 2.5D y la bifila rígida de la quebrada. Las sombras son del
+   shadow-map (geometría real) y son DIAGNÓSTICO VISUAL: los números salen
+   del motor (shadeRows/Martinez), no del render. Si THREE o WebGL fallan,
+   la página degrada sola al corte 2D (patrón de la casa). */
+let TD=null, VIEW3D=true;
+function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=='undefined';}
+function disposeGroup(g){g.traverse(o=>{
+  if(o.geometry)o.geometry.dispose();
+  if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());
+});}
+function init3D(){
+  if(TD||!has3D())return;
+  const holder=$('view3d');
+  try{
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    holder.appendChild(renderer.domElement);
+    const scene3=new THREE.Scene();
+    scene3.background=new THREE.Color(0x101722);
+    const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
+    const controls=new THREE.OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true;controls.dampingFactor=.08;
+    controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1500;
+    const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
+    const sun=new THREE.DirectionalLight(0xffeecc,1.25);
+    sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+    sun.shadow.bias=-2e-4;
+    const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
+      new THREE.MeshBasicMaterial({color:0xfbbd23}));
+    scene3.add(hemi,sun,sun.target,sunMesh);
+    const hint=document.createElement('div');hint.className='hint';
+    hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · el terreno se edita en «Corte 2D»';
+    holder.appendChild(hint);
+    TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,
+        sunMesh:sunMesh,world:null,rows:[],camSet:false,w:0,h:0};
+  }catch(e){TD=null;VIEW3D=false;$('tab3d').style.display='none';setTab(false);}
+}
+function build3D(){
+  if(!DAY)return;
+  init3D(); if(!TD)return;
+  const c=DAY.c,T=DAY.T,n=c.nrows;
+  if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
+  const world=new THREE.Group(); TD.world=world; TD.rows=[];
+  const raw=nsProfile(c);              // terreno N-S REAL (la rígida puede separarse de él)
+  const L=Math.max(30,4*c.pitch);      // largo de fila dibujado
+  const hub=1.6;
+  // frame: x = ⊥ eje (la derecha del corte 2D) · y = arriba · z = −norte
+  const x0=-c.pitch, x1=n*c.pitch, cx=(n-1)*c.pitch/2;
+  const clampi=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const elevAt=x=>{const t=x/c.pitch,i=clampi(Math.floor(t),0,n-2),f=clampi(t-i,0,1);return ELEV[i]*(1-f)+ELEV[i+1]*f;};
+  const tiltAt=x=>{const t=x/c.pitch,i=clampi(Math.floor(t),0,n-2),f=clampi(t-i,0,1);return raw[i]*(1-f)+raw[i+1]*f;};
+  // terreno: heightfield z(x, norte) = cota(x) + norte·tan(tiltNS(x))
+  const marg=L*0.3, gw=(x1-x0)+2*c.pitch, gl=L+2*marg;
+  const geo=new THREE.PlaneGeometry(gw,gl,72,24);
+  geo.rotateX(-Math.PI/2);
+  const pos=geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i)+cx;
+    const north=-pos.getZ(i);
+    pos.setX(i,x);
+    pos.setY(i,elevAt(x)+north*Math.tan(tiltAt(x)*RAD));
+  }
+  geo.computeVertexNormals();
+  const terr=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0x22301c}));
+  terr.receiveShadow=true; world.add(terr);
+  // filas: grupo de tilt (eje EFECTIVO del accionamiento) → grupo de giro θ
+  const postM=new THREE.MeshLambertMaterial({color:0x3a4a5f});
+  const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
+  for(let r=0;r<n;r++){
+    const effT=(T.rowTilt?T.rowTilt[r]:0);
+    const gTilt=new THREE.Group();
+    gTilt.position.set(r*c.pitch,ELEV[r]+hub,0);
+    gTilt.rotation.x=effT*RAD;                    // +tilt levanta el extremo norte (−z)
+    const gRot=new THREE.Group();
+    const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,L),tubeM);
+    tube.castShadow=true;
+    const pm=new THREE.MeshLambertMaterial({color:0x274b8f,side:THREE.DoubleSide});
+    const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.05,L),pm);
+    panel.position.y=0.10+c.z0;
+    panel.castShadow=true;panel.receiveShadow=true; // recibe la sombra de la fila vecina: el fenómeno, a la vista
+    gRot.add(tube,panel);
+    gTilt.add(gRot);
+    world.add(gTilt);
+    // postes: pie en el TERRENO real, cabeza en el tubo EFECTIVO — con bifila
+    // rígida sobre N-S quebrado crecen/encogen: el detalle que delata la rígida
+    for(const north of [-L/3,0,L/3]){
+      const topY=ELEV[r]+hub+north*Math.tan(effT*RAD);
+      const botY=ELEV[r]+north*Math.tan(raw[r]*RAD);
+      const h=Math.max(0.3,topY-botY);
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),postM);
+      post.position.set(r*c.pitch,(topY+botY)/2-0.05,-north);
+      post.castShadow=true;
+      world.add(post);
+    }
+    TD.rows.push({rot:gRot,mat:pm});
+  }
+  // accionamiento: transmisión + motor por grupo, cardanes en la quebrada
+  const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
+  const barM=new THREE.MeshLambertMaterial({color:0x8a6d2f});
+  const cardM=new THREE.MeshLambertMaterial({color:0xeaf4ff});
+  const motorAt=(x,y)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.set(x,y,0);m.castShadow=true;world.add(m);};
+  if(T.groups){
+    for(const g2 of T.groups){
+      if(g2.length===2){
+        const pA=new THREE.Vector3(g2[0]*c.pitch,ELEV[g2[0]]+hub*0.55,0);
+        const pB=new THREE.Vector3(g2[1]*c.pitch,ELEV[g2[1]]+hub*0.55,0);
+        const bar=new THREE.Mesh(new THREE.BoxGeometry(pA.distanceTo(pB),0.08,0.08),barM);
+        bar.position.copy(pA).lerp(pB,0.5);
+        bar.rotation.z=Math.atan2(pB.y-pA.y,pB.x-pA.x);
+        bar.castShadow=true;world.add(bar);
+        motorAt(bar.position.x,bar.position.y);
+        if(T.drive==='quebrado')for(const P of [pA,pB]){
+          const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
+          card.position.copy(P);world.add(card);
+        }
+      }else motorAt(g2[0]*c.pitch,ELEV[g2[0]]+hub*0.55);
+    }
+  }else for(let r=0;r<n;r++)motorAt(r*c.pitch,ELEV[r]+hub*0.55);
+  TD.scene.add(world);
+  // sombra del sol acotada a la planta
+  const R=Math.max(gw,gl)*0.75, sc=TD.sun.shadow.camera;
+  sc.left=-R;sc.right=R;sc.top=R;sc.bottom=-R;sc.near=1;sc.far=R*6;
+  sc.updateProjectionMatrix();
+  TD.sun.target.position.set(cx,0,0);
+  if(!TD.camSet){
+    TD.camera.position.set(x1+2*c.pitch,Math.max(16,gw*0.4),L*0.95);
+    TD.controls.target.set(cx,0,0);
+    TD.camSet=true;
+  }
+}
+function update3D(){
+  if(!TD||!DAY)return;
+  const tIdx=timeIndex(),g=DAY.sun[tIdx];
+  const key=$('polview').value,p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  const sh=p?p.shade[tIdx]:null;
+  TD.rows.forEach((row,r)=>{
+    row.rot.rotation.z=-(p?p.ang[tIdx][r]:0)*RAD;   // θ>0 ⇒ borde +x abajo (mismo signo que el 2D)
+    const f=sh?sh[r]:0;                              // tinte por sombra: diagnóstico, como el visor de campo
+    row.mat.color.setRGB(0.153+(0.937-0.153)*f,0.294+(0.325-0.294)*f,0.561+(0.314-0.561)*f);
+  });
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const cx=(DAY.c.nrows-1)*DAY.c.pitch/2;
+  const R=Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
+  const up=Math.min(1,Math.max(0,g.elev/35));
+  if(g.elev>0){
+    TD.sun.position.set(cx+Math.sin(azRel)*Math.cos(el)*R,Math.sin(el)*R,-Math.cos(azRel)*Math.cos(el)*R);
+    TD.sun.intensity=1.25;
+    TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
+    TD.scene.background.setRGB(0.07+0.1*up,0.11+0.13*up,0.2+0.2*up);
+  }else{
+    TD.sun.intensity=0.02;TD.sunMesh.visible=false;
+    TD.scene.background.setRGB(0.043,0.055,0.08);
+  }
+}
+function loop3D(){
+  requestAnimationFrame(loop3D);
+  if(!TD||!VIEW3D)return;
+  const holder=$('view3d');
+  const w=holder.clientWidth,h=holder.clientHeight;
+  if(w&&h&&(w!==TD.w||h!==TD.h)){
+    TD.w=w;TD.h=h;TD.renderer.setSize(w,h,false);
+    TD.renderer.domElement.style.width='100%';TD.renderer.domElement.style.height='100%';
+    TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
+  }
+  TD.controls.update();
+  TD.renderer.render(TD.scene,TD.camera);
+}
+function setTab(three){
+  VIEW3D=!!three&&has3D()&&TD!==null;
+  if(three&&!VIEW3D&&has3D())VIEW3D=true;        // aún sin inicializar: se intenta
+  $('view3d').style.display=VIEW3D?'':'none';
+  $('scene').style.display=VIEW3D?'none':'';
+  $('tab3d').classList.toggle('acc',VIEW3D);
+  $('tab2d').classList.toggle('acc',!VIEW3D);
+  if(VIEW3D){build3D();update3D();}
+  else drawScene();
+}
+$('tab3d').onclick=()=>setTab(true);
+$('tab2d').onclick=()=>setTab(false);
+
 /* ── HUD ── */
 function updateHud(tIdx,g,irrN,key,p,sh){
   const c=DAY.c, selRow=+$('rowsel').value||0;
@@ -1473,6 +1668,7 @@ function recompute(light){
   rebuildSelectors();
   computeDay();
   drawScene();drawCurves();fillDayTable();
+  if(VIEW3D){build3D();update3D();}
   const slopes=DAY.T.pairs.map(p=>p.slope);
   $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
   const c2=cfg();
@@ -1483,9 +1679,9 @@ function recompute(light){
 }
 const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{ensureElev(cfg().nrows);recompute();}));
-$('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();});
+$('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
-$('polview').onchange=drawScene;
+$('polview').onchange=()=>{drawScene();update3D();};
 $('play').onclick=()=>{
   playing=!playing;
   $('play').textContent=playing?'⏸':'▶';
@@ -1495,7 +1691,7 @@ $('play').onclick=()=>{
       if(!playing)return;
       let v=+$('hour').value+STEP_MIN; if(v>1439)v=0;
       $('hour').value=v;$('hourlbl').textContent=hhmm(v);
-      drawScene();drawCurves();
+      drawScene();drawCurves();update3D();
       playTimer=requestAnimationFrame(step);
     };
     playTimer=requestAnimationFrame(step);
@@ -1516,7 +1712,9 @@ window.addEventListener('resize',()=>{drawScene();drawCurves();});
   ensureElev(cfg().nrows);
   loadPlants();
   $('hourlbl').textContent=hhmm(+$('hour').value);
+  if(!has3D()){$('tab3d').style.display='none';VIEW3D=false;setTab(false);}
   recompute();
+  loop3D();
 })();
 </script>
 </body>
