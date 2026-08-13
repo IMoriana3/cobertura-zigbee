@@ -1846,9 +1846,18 @@ function buildContactAO(){
         v2.push(C0[0],yA2,-C0[1], C1[0],yA2,-C1[1], D1[0],yB2,-D1[1], C0[0],yA2,-C0[1], D1[0],yB2,-D1[1], D0[0],yB2,-D0[1]);
         uv2.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
     });});
-  // FRANJAS DE HIERBA bajo cada fila ("nada verde"): en las fotos aéreas reales la sombra de los módulos
-  // conserva la humedad y crece una banda verde alineada con cada fila — misma retícula que el AO, textura
-  // verde a rodales con borde desvanecido; el AO (renderOrder 1) la oscurece encima donde toca
+  /* FRANJAS DE HIERBA bajo cada fila ("nada verde"): en las fotos aéreas de EL BURGO la sombra de los
+     módulos conserva la humedad y crece una banda verde alineada con cada fila; textura verde a
+     rodales con el borde desvanecido.
+     PERO eso se observó en El Burgo y se estaba aplicando a las siete plantas sin haberlo visto en
+     ninguna otra. Quitada ya la franja de AO, esta es la ÚNICA banda pintada que queda bajo las
+     filas, y sobre la arena clara de Túnez —58 % de opacidad y 3,1 m de ancho, fija— se lee
+     exactamente como la marca permanente de la que venimos: "sigue ahí".
+     Así que ahora es opt-out por planta: `hierba:false` en el layout la apaga. Túnez la apaga
+     porque es un campo ÁRIDO y no hay ninguna foto que respalde la banda verde ahí; donde sí se
+     observó (El Burgo) y en el resto de plantas españolas sigue como estaba. Es dato, no estética:
+     no se pinta vegetación que nadie ha visto. */
+  if(!(LAYOUT&&LAYOUT.hierba===false)){
   var bc=document.createElement('canvas');bc.width=64;bc.height=256;var bx2=bc.getContext('2d');
   for(var gk=0;gk<150;gk++){bx2.globalAlpha=0.30+Math.random()*0.26;bx2.fillStyle=(gk%3)?'#61793f':'#71854b';
     var gr2=7+Math.random()*16;bx2.beginPath();bx2.ellipse(10+Math.random()*44,Math.random()*256,gr2*0.8,gr2*1.6,0,0,6.3);bx2.fill();}
@@ -1856,7 +1865,9 @@ function buildContactAO(){
   bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
   var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
   var g2b=new THREE.BufferGeometry();g2b.setAttribute('position',new THREE.Float32BufferAttribute(v2,3));g2b.setAttribute('uv',new THREE.Float32BufferAttribute(uv2,2));
-  var gm2=new THREE.Mesh(g2b,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.58}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);   // misma geometría que el AO (reutiliza g): franja ~3,5 m bajo cada línea de módulos. Lambert (ILUMINADO): con Basic las franjas se quedaban con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
+  var gm2=new THREE.Mesh(g2b,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.58}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);
+   // franja bajo cada línea de módulos. Lambert (ILUMINADO): con Basic se quedaba con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
+  }   // fin de la franja de hierba: el AO de los EQUIPOS, abajo, se dibuja SIEMPRE (con `return` se lo habría comido)
   /* AQUÍ IBA LA FRANJA DE AO BAJO CADA FILA, Y SE HA QUITADO. Preguntado: "¿qué representa esa
      sombra?". Respuesta honesta: NADA que no estuviera ya calculado. Es una sombra de contacto
      PINTADA, un truco para pegar los objetos al suelo, de cuando la sombra real no daba para tanto.
