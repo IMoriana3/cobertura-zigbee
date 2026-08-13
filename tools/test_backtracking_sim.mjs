@@ -116,6 +116,29 @@ t('POA de planta = media por fila (no POA del ángulo medio): difieren en terren
   if (Math.abs(p.plant - media) > 1e-9) throw new Error('plant ≠ media por fila');
 });
 
+t('ámbito por NCU: layout↔cotas 1:1 y el parque de cada NCU forma planta válida', () => {
+  // la base del selector de ámbito: ayora_layout.json (ncu por tracker) va en
+  // el MISMO orden que ayora_cotas.json — si un re-export lo rompe, esto avisa
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_layout.json'), 'utf-8'));
+  if (lay.trackers.length !== cotas.t.length) throw new Error('layout ' + lay.trackers.length + ' ≠ cotas ' + cotas.t.length);
+  let mism = 0;
+  for (let i = 0; i < cotas.t.length; i++) {
+    const f = cotas.t[i].f[0], lt = lay.trackers[i];
+    const [n0, n1] = f.n;
+    if (Math.abs(f.x - lt.x) > 3 || lt.n < Math.min(n0, n1) - 2 || lt.n > Math.max(n0, n1) + 2) mism++;
+  }
+  if (mism > 0) throw new Error(mism + ' trackers no casan por índice (posición)');
+  const ncuOf = lay.trackers.map(t => t.ncu);
+  const ncus = [...new Set(ncuOf)].sort((a, b) => a - b);
+  if (ncus.length < 2) throw new Error('sin variedad de NCUs: ' + ncus);
+  for (const n of ncus.slice(0, 4)) {
+    const sub = Object.assign({}, cotas, { t: cotas.t.filter((_, i) => ncuOf[i] === n) });
+    const P = F.plantFromCotas(sub, 80, 0);
+    if (!(P.elev.length >= 2)) throw new Error('NCU ' + n + ': ' + P.elev.length + ' líneas');
+    if (!(P.nFilas > 0)) throw new Error('NCU ' + n + ' sin filas');
+  }
+});
 t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila
   const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);

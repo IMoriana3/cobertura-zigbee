@@ -1495,7 +1495,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.6.0';
+const VER='v1.7.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1606,8 +1606,8 @@ $('tpreset').onchange=()=>{
   $('tparam').value=P==='ondulado'?1.2:P==='valle'||P==='cresta'?2:P==='aleatorio'?7:6;
 };
 $('tapply').onclick=()=>{PLANT_REAL=null;$('realnote').style.display='none';applyPreset();};
-const COTAS_CACHE={};
-async function loadRealPlant(name,blockIdx){
+const COTAS_CACHE={}, LAYOUT_CACHE={};
+async function loadRealPlant(name,blockIdx,ncuSel){
   const note=$('realnote');
   note.style.display='';note.textContent='cargando '+name+'…';
   try{
@@ -1616,9 +1616,26 @@ async function loadRealPlant(name,blockIdx){
       if(!r.ok)throw new Error('HTTP '+r.status);
       COTAS_CACHE[name]=await r.json();
     }
+    // topología NCU→TCU del layout (mismo orden 1:1 que las cotas — verificado
+    // en test): permite simular el ámbito que gobierna UNA NCU, que es la
+    // unidad real de despliegue (y la que despacharía una tabla de consignas)
+    if(LAYOUT_CACHE[name]===undefined){
+      try{
+        const r2=await fetch(name+'_layout.json',{cache:'no-store'});
+        LAYOUT_CACHE[name]=r2.ok?await r2.json():null;
+      }catch(e){LAYOUT_CACHE[name]=null;}
+    }
+    const lay=LAYOUT_CACHE[name];
+    const ncuOf=lay&&lay.trackers&&lay.trackers.length===COTAS_CACHE[name].t.length?
+      lay.trackers.map(t=>t.ncu):null;
+    let data=COTAS_CACHE[name];
+    if(ncuOf&&ncuSel!=null){
+      data=Object.assign({},data,{t:data.t.filter((_,i)=>ncuOf[i]===ncuSel)});
+      if(!data.t.length)throw new Error('NCU '+ncuSel+' sin trackers');
+    }
     // el BLOQUE es la unidad con forma real (la planta se parte por sus
     // huecos de x); hasta 80 líneas — más ya no es una escena, es la planta
-    const P=plantFromCotas(COTAS_CACHE[name],80,blockIdx);
+    const P=plantFromCotas(data,80,blockIdx);
     PLANT_REAL=P;
     ELEV=P.elev.slice();
     const pMed=P.lineX.length>1?(P.lineX[P.lineX.length-1]-P.lineX[0])/(P.lineX.length-1):P.pitch;
@@ -1628,13 +1645,26 @@ async function loadRealPlant(name,blockIdx){
     const blkSel=P.blocks.length>1?
       ' · bloque <select id="blksel" class="btn small">'+P.blocks.map(bk=>
         '<option value="'+bk.i+'"'+(bk.i===P.block?' selected':'')+'>'+(bk.i+1)+' — '+bk.lines+' líneas, '+bk.filas+' filas</option>').join('')+'</select>':'';
-    note.innerHTML='<b>'+name+'</b> (cotas reales): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
+    // ámbito: planta entera (por bloques) o el parque de UNA NCU
+    let ncuSelHtml='';
+    if(ncuOf){
+      const counts={};
+      ncuOf.forEach(n=>{if(n!=null)counts[n]=(counts[n]||0)+1;});
+      const opts=Object.keys(counts).map(Number).sort((a,b)=>a-b).map(n=>
+        '<option value="'+n+'"'+(n===ncuSel?' selected':'')+'>NCU '+n+' — '+counts[n]+' trackers</option>').join('');
+      ncuSelHtml=' · ámbito <select id="ncusel" class="btn small" title="Simular la planta entera (por bloques) o SOLO el parque de trackers que gobierna una NCU — la unidad real de control (y de la tabla de consignas). Las filas frontera con la NCU vecina se tratan como bordes.">'+
+        '<option value=""'+(ncuSel==null?' selected':'')+'>planta (bloques)</option>'+opts+'</select>';
+    }
+    note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
       P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
-      Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+
+      Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+ncuSelHtml+
+      (ncuSel!=null?'. Frontera con NCU vecinas = bordes (declarado)':'')+
       '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.';
     const bs=document.getElementById('blksel');
-    if(bs)bs.onchange=()=>loadRealPlant(name,+bs.value);
+    if(bs)bs.onchange=()=>loadRealPlant(name,+bs.value,ncuSel);
+    const ns=document.getElementById('ncusel');
+    if(ns)ns.onchange=()=>loadRealPlant(name,undefined,ns.value===''?null:+ns.value);
     recompute();
   }catch(e){
     PLANT_REAL=null;
@@ -2165,10 +2195,30 @@ function build3D(){
   const fitKey=Math.round(gw/20)+'x'+Math.round(gl/20);
   if(!TD.camSet||TD.fitKey!==fitKey){
     const dMax=Math.max(gw,gl);
-    TD.camera.position.set(cx+dMax*0.5,dMax*0.45,gl*0.55);
     TD.camera.far=Math.max(6000,dMax*8);TD.camera.updateProjectionMatrix();
-    TD.controls.target.set(cx,0,0);
     TD.controls.maxDistance=Math.max(1500,dMax*3);
+    if(T.segs&&gl>2.2*gw){
+      // planta «cinta» (líneas de km): encuadre CERCANO sobre la banda con más
+      // mesas — la planta entera queda a un golpe de rueda, no al revés
+      const n=ELEV.length, NB=60;
+      let n0=Infinity,n1=-Infinity;
+      for(const line of T.segs)for(const sg of line){n0=Math.min(n0,sg[0],sg[1]);n1=Math.max(n1,sg[0],sg[1]);}
+      const bins=new Array(NB).fill(0), bw=(n1-n0)/NB||1;
+      for(const line of T.segs)for(const sg of line){
+        const a=Math.max(0,Math.floor((Math.min(sg[0],sg[1])-n0)/bw)),
+              b=Math.min(NB-1,Math.floor((Math.max(sg[0],sg[1])-n0)/bw));
+        for(let k=a;k<=b;k++)bins[k]++;
+      }
+      let bk=0;for(let k=1;k<NB;k++)if(bins[k]>bins[bk])bk=k;
+      const bandN=n0+(bk+0.5)*bw;
+      let ey=0;for(let r=0;r<n;r++)ey+=ELEV[r];ey/=n||1;
+      const dist=Math.min(260,Math.max(70,gw*0.85));
+      TD.controls.target.set(cx,ey+1,-bandN);
+      TD.camera.position.set(cx+dist*0.55,ey+dist*0.45,-bandN+dist*0.6);
+    }else{
+      TD.camera.position.set(cx+dMax*0.5,dMax*0.45,gl*0.55);
+      TD.controls.target.set(cx,0,0);
+    }
     TD.camSet=true;TD.fitKey=fitKey;
   }
 }
