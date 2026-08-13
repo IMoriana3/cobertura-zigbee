@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.64</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.65</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1286,6 +1286,10 @@ function afbtPaint(){
 function afbtStat(){
   var e=$('afbtStat');if(!e)return;
   if(!afbtOn){e.style.display='none';return;}
+  if(freeCam||editMode){e.style.display='block';
+    e.innerHTML='<b style="color:#F2A900">el clic no elige tracker ahora mismo</b>: est'+String.fromCharCode(225)+' activada <b>'+
+      (freeCam?'C'+String.fromCharCode(225)+'mara libre (vuelo)':'Editar seguidores')+'</b>, que se queda con el rat'+String.fromCharCode(243)+'n. Desmárcala y vuelve a pulsar sobre un seguidor.';
+    return;}
   if(afbtSel<0){e.style.display='block';e.innerHTML='pulsa un tracker para analizar su vecindario de sombras';return;}
   e.style.display='block';
   var A=TRK[afbtSel],res=_afbtRes||[],uni=afbtMode==='mom'?'°':'°/med';
@@ -3675,12 +3679,16 @@ function selectTracker(i){selIdx=i;
   var _t9=TRK[i],_et=[];if(_t9.tpx)_et.push(_t9.tpx);if(_t9.cal)_et.push('calibración');if(_t9.suc)_et.push('suciedad');   // taxonomía REAL del DWG (Int/Ext · largo/corto) + instrumentación
   $('edSel').style.display='block';$('edNum').textContent=(_t9.id!=null?_t9.id:('#'+(i+1)))+(_et.length?(' · '+_et.join(' · ')):'');$('edArtic').checked=!!_t9.artic;$('edMsg').style.display='none';
 }
-$('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;if(afbtOn&&afbtSel>=0)afbtCompute();}};
+$('edit').onchange=function(){editMode=this.checked;if(!editMode){selectTracker(-1);dragTk=-1;if(!freeCam)controls.enabled=true;if(afbtOn&&afbtSel>=0)afbtCompute();}if(afbtOn)afbtStat();};
 var _afbtClick=false;
 function afbtBindClick(){                                       // el renderer nace en el init asincrono: enganche perezoso
   if(_afbtClick||typeof renderer==='undefined'||!renderer)return;_afbtClick=true;
   renderer.domElement.addEventListener('pointerdown',function(e){
-    if(!afbtOn||editMode||freeCam)return;
+    if(!afbtOn)return;
+    /* "No me funciona ahora para ver la afeccion". El clic estaba BLOQUEADO en camara libre y en
+       edicion —tiene sentido: alli el raton vuela y arrastra seguidores— pero se descartaba EN
+       SILENCIO, asi que la capa parecia rota. Ahora lo dice y ademas explica como salir. */
+    if(editMode||freeCam){afbtStat();return;}
     var i=pickAt(e);if(i<0)return;
     afbtSel=i;afbtCompute();
   });
@@ -3850,7 +3858,7 @@ $('spd').oninput=function(){PLAYSPEED=+this.value;};   // velocidad de reproducc
 $('simdate').onchange=function(){var dt=new Date(this.value+'T12:00:00');if(isNaN(dt))return;simDoy=Math.floor((dt-new Date(dt.getFullYear(),0,0))/86400000);   // cualquier día del año
   if(!simOn){$('sim').checked=true;simOn=true;tMin=0;tMax=1440;$('time').min=tMin;$('time').max=tMax;$('time').value=curMin;}
   buildSunPath();setTime(curMin);if(fresOn)applyFresnel();};
-$('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;
+$('freecam').onchange=function(){freeCam=this.checked;controls.enabled=!freeCam;if(afbtOn)setTimeout(afbtStat,0);   // refresca el aviso de la Afeccion BT
   var d=new THREE.Vector3();camera.getWorldDirection(d);
   if(freeCam){fYaw=Math.atan2(-d.x,-d.z);fPitch=Math.asin(Math.max(-1,Math.min(1,d.y)));}
   else{controls.target.copy(camera.position).addScaledVector(d,60);controls.update();}};
