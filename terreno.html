@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.63</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.64</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1179,25 +1179,46 @@ function bt3dOn(){ return BT3D!=='plano' && GEO==='levantamiento' && !!COTAS; }
    largo de la fila (al norte en invierno, al sur en las puntas de verano),
    asi que el solape N-S se evalua instante a instante, no por planta. */
 var afbtOn=false,afbtSel=-1,afbtMode='ano',_afbtT=null,_afbtRes=null;
-function afbtVecinos(i){                        // vecinos E/W en columnas contiguas; el solape N-S se evalua por instante (la sombra viaja al norte o al sur segun el sol)
+/* EN EL EJE DEL SEGUIDOR, NO EN LA X DEL MUNDO. Todo esto razonaba con `B.gx-A.gx` y con los
+   `gz`, que solo es la separacion entre filas cuando el tubo va norte-sur (rot 0). En Bagnarelli,
+   girado 23,7 grados, daba vecinos falsos y se saltaba los de verdad: al TK003 le sacaba el TK007
+   (dx -5,00 m, o sea "al oeste") cuando perpendicular al eje esta a +11,01 m, al ESTE; y se dejaba
+   fuera al TK001 y al TK002, que son fila contigua de verdad (u = -11 m) pero caen a dx -19,97 y
+   -42,78. Medido sobre el layout: perpendicular al eje las filas de Bagnarelli estan a 0, +-11 y
+   +-22 m, limpias. De ahi "la afeccion se salta un tracker".
+   Con rot 0 (El Burgo, Fayon, Tunez, Ayora, San Jose, Paramo) la transformacion es la identidad y
+   el resultado es EL MISMO de antes. */
+function afbtLoc(A,B){                          // (perpendicular al eje, a lo largo del eje) entre dos seguidores
+  var r=A.rot||0,dgx=B.gx-A.gx,dgz=B.gz-A.gz;
+  if(!r)return [dgx,dgz];
+  var c=Math.cos(r),s2=Math.sin(r);
+  return [dgx*c+dgz*s2, -dgx*s2+dgz*c];
+}
+function afbtSol(sv,r){                         // el sol en el marco del seguidor (E = perpendicular al tubo)
+  if(!r)return sv;
+  var c=Math.cos(r),s2=Math.sin(r);
+  return {E:sv.E*c-sv.N*s2, N:sv.E*s2+sv.N*c, U:sv.U};
+}
+function afbtVecinos(i){                        // vecinos E/W en columnas contiguas; el solape a lo largo del eje se evalua por instante (la sombra viaja segun el sol)
   var A=TRK[i],out=[],sA=(A.medio?(A.mr||0.5):1)*(A.span||TC.span);
-  var a0=A.gz-sA/2,a1=A.gz+sA/2,paso=(TC.filaZ?2*TC.filaZ:6);
+  var a0=-sA/2,a1=sA/2,paso=(TC.filaZ?2*TC.filaZ:6);   // todo RELATIVO a A (solo cuentan diferencias)
   for(var j=0;j<TRK.length;j++){if(j===i)continue;var B=TRK[j];
-    var dx=B.gx-A.gx,adx=Math.abs(dx);
+    var lc=afbtLoc(A,B),dx=lc[0],dw=lc[1],adx=Math.abs(dx);
     if(adx<3||adx>2.6*paso)continue;
     var sB=(B.medio?(B.mr||0.5):1)*(B.span||TC.span);
-    var b0=B.gz-sB/2,b1=B.gz+sB/2;
+    var b0=dw-sB/2,b1=dw+sB/2;
     var gap=Math.max(0.8,adx-(TC.filaZ?2*TC.filaZ:0));          // hueco REAL entre las filas limitrofes: centros menos las dos medias-mesas (usar 2*filaZ a secas solo cuadraba en Ayora de casualidad y en El Burgo inventaba sombras a mediodia)
     var ov=Math.min(a1,b1)-Math.max(a0,b0);
     if(ov<=-3*gap)continue;                     // ni desplazando la sombra 3 huecos llegaria a tocarle
-    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,Math.max(0,ov)/sA),
+    out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,Math.max(0,ov)/sA),rot:A.rot||0,dx:dx,
       gap:gap,a0:a0,a1:a1,b0:b0,b1:b1,sA:sA,sB:sB});}
   return out;
 }
-function afbtSolape(v,sv,quien){                // fraccion de fila que la sombra ALCANZA de verdad con este sol:
+function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombra ALCANZA de verdad con este sol:
+  var sv=afbtSol(sv0,v.rot);                    // en el marco del seguidor: con rot 0 es el mismo sol
   if(Math.abs(sv.E)<0.03)return 0;              // el rayo se proyecta entero (E,N,U) — al cruzar el hueco entre filas
-  var s=v.lado==='E'?1:-1;                      // la sombra se corre en N-S: al norte con el sol al sur (invierno) y
-  var dz=s*v.gap*(sv.N/sv.E);                   // al sur en las puntas de verano (gz = -Norte, de ahi el signo)
+  var s=v.lado==='E'?1:-1;                      // la sombra se corre a lo largo del tubo: hacia una punta u otra segun
+  var dz=s*v.gap*(sv.N/sv.E);                   // la epoca (gz = -Norte, de ahi el signo)
   if(quien==='me'){var lo=Math.max(v.a0,v.b0+dz),hi=Math.min(v.a1,v.b1+dz);return Math.max(0,hi-lo)/v.sA;}
   var lo2=Math.max(v.b0,v.a0-dz),hi2=Math.min(v.b1,v.a1-dz);return Math.max(0,hi2-lo2)/v.sB;
 }
@@ -1206,7 +1227,8 @@ function afbtAlturaFila(t,lado){                // cota real (m) de la fila este
     if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1]))return (f.y[0]+f.y[1])/2;}
   return t.rel;                                 // sin cota medida: DEM del centro
 }
-function afbtDeficit(A,B,ladoB,sv,gap){         // grados de recorte que B (al ladoB de A) impone a A con este sol
+function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al ladoB de A) impone a A con este sol
+  var sv=afbtSol(sv0,A.rot||0);                 // "este/oeste" son los lados del TUBO, no los del mundo
   if(sv.U<=0.02)return 0;
   var s=ladoB==='E'?1:-1;
   if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
