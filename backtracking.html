@@ -76,9 +76,11 @@
   <h1>Simulador de Backtracking <span class="chip">BT3D en el navegador</span></h1>
   <div class="sub">Espejo JS del motor BT3D de SolarGPT (<code>tracker3d.py</code>): seguimiento pvlib
     (Anderson &amp; Mikofski 2020), sombra entre filas por geometría exacta (equivalente a Anderson 2023),
-    modelo eléctrico Martinez por diodos bypass, y las cinco políticas del core — <b>global · row ·
-    pairwise · true-3D · energy-optimal</b> (estilo PVH Deeptrack) — sobre terreno editable, comparadas
-    fila a fila y minuto a minuto. Todo corre offline en esta página.</div>
+    modelo eléctrico Martinez por diodos bypass, y el inventario COMPLETO de políticas del core —
+    <b>BT2D plano · global · row · pairwise · true-3D · min-ground-light · energy-optimal</b> (Deeptrack)
+    más el astronómico de referencia — sobre terreno 3D editable (E-O + N-S), con monofila / bifila
+    rígida / bifila quebrada e implantación real a lo largo del eje (trackers cortos, tresbolillo,
+    huecos). La escena 3D usa el MODELO del seguidor de la casa (<code>seguidor.js</code>). Todo corre offline.</div>
   <div class="src">motor: pvlib singleaxis + shaded_fraction geométrico + Martinez + Ineichen/Perez ·
     QA integrada con ray-cast bruto · <span id="verlbl"></span> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
 </header>
@@ -170,6 +172,25 @@
   </div>
 
   <div class="card">
+    <h2>▤ Implantación a lo largo <span class="sn">líneas con varios trackers</span></h2>
+    <div class="three">
+      <div class="f"><label>Preset</label>
+        <select id="nsl">
+          <option value="alineadas">Alineadas</option>
+          <option value="tresbolillo">Tresbolillo</option>
+          <option value="medios">Cortos delante de largos</option>
+          <option value="aleatorio">Aleatorio</option>
+        </select></div>
+      <div class="f"><label>Filas por línea</label><input id="ntrk" type="number" min="1" max="3" step="1" value="1"></div>
+      <div class="f"><label>Módulos por ala</label><input id="mods" type="number" min="8" max="32" step="1" value="28"></div>
+    </div>
+    <div class="nota">La sombra transversal se pondera por el <b>solape axial real</b> (con la deflexión
+      de la sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
+      extremos de línea se libran. La fila «media» es tipo real de catálogo (≈0,504·larga, San José).
+      La sombra punta-a-punta entre trackers de una misma línea no se modela (declarado).</div>
+  </div>
+
+  <div class="card">
     <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
     <div class="pols" id="polbox"></div>
     <div class="nota">En terreno <b>uniforme</b> global = row = pairwise (degeneración exacta, como en el
@@ -199,7 +220,8 @@
       <input type="range" id="hour" min="0" max="1439" step="5" value="720">
       <span class="t" id="hourlbl">12:00</span>
       <select id="rowsel" class="btn small" title="Fila del HUD y de las curvas"></select>
-      <select id="polview" class="btn small" title="Política que mueve los paneles de la escena"></select>
+      <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
+      <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
     </div>
     <div class="hud" id="hud"></div>
   </div>
@@ -231,6 +253,7 @@
 
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
 <script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js?v=0.4.16"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -674,8 +697,58 @@ function tangentResidualMm(zen,az,T,rowAngles){
   return out;
 }
 
+/* ── implantación a lo largo del eje: líneas con VARIOS trackers ────────────
+   T.segs[r] = lista de tramos [y0,y1] (m, y = +norte) ocupados por filas en la
+   línea r. Sin T.segs se asume fila infinita (el modelo clásico). La sombra
+   transversal solo existe donde HAY emisor delante: la fracción se pondera por
+   el solape axial receptor∩(emisor desplazado por la deflexión de la sombra a
+   lo largo del eje). Exacto para el prisma de sombra; cubre los mil casos
+   reales — tracker corto delante del largo, tresbolillo, huecos. La sombra
+   punta-a-punta ENTRE trackers de la misma línea no se modela (declarado). */
+function axialCoverage(zen,az,T,p){
+  if(!T.segs)return 1;
+  const azRel=(az-T.axisAz)*RAD;
+  const sx=Math.sin(azRel), sxa=Math.abs(sx);
+  if(sxa<1e-4)return 0;                       // sol ~paralelo al eje: la sombra corre a lo largo, no cruza
+  const dy=T.pairs[p].pitch*Math.cos(azRel)/sxa;   // deflexión axial al cruzar un pitch
+  const recv=sx>=0?T.segs[p]:T.segs[p+1];
+  const emit=sx>=0?T.segs[p+1]:T.segs[p];
+  if(!recv||!emit||!recv.length||!emit.length)return 0;
+  const tot=recv.reduce((t,s)=>t+(s[1]-s[0]),0);
+  if(tot<=0)return 0;
+  let ov=0;
+  for(const rs of recv)for(const es of emit)
+    ov+=Math.max(0,Math.min(rs[1],es[1]-dy)-Math.max(rs[0],es[0]-dy));
+  return Math.max(0,Math.min(1,ov/tot));
+}
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* tramos por línea según el preset de implantación. filaLen = fila LARGA
+   (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
+   San José). Determinista (semilla fija): reproducible siempre. */
+function nsSegments(nRows,preset,nPer,filaLen,gapNS){
+  const media=filaLen*0.504;
+  const mk=(M,len,off)=>{const tot=M*len+(M-1)*gapNS;const o=[];let y=-tot/2+off;
+    for(let k=0;k<M;k++){o.push([y,y+len]);y+=len+gapNS;}return o;};
+  const out=[];
+  const rnd=mulberry32(77);
+  for(let r=0;r<nRows;r++){
+    if(preset==='tresbolillo')out.push(mk(nPer,filaLen,(r%2)?(filaLen+gapNS)/2:0));
+    else if(preset==='medios')out.push((r%2)?mk(2*nPer,media,0):mk(nPer,filaLen,0));
+    else if(preset==='aleatorio'){
+      const M=1+Math.floor(rnd()*nPer);
+      const len=rnd()<0.35?media:filaLen;
+      out.push(mk(M,len,(rnd()-0.5)*filaLen*0.5));
+    }
+    else out.push(mk(nPer,filaLen,0));        // alineadas
+  }
+  return out;
+}
+
 /* sombra por fila en un instante — semántica de compute_shade: la fila up-sun
-   sombrea a la down-sun; cada pareja acredita la sombra SOLO a su fila física. */
+   sombrea a la down-sun; cada pareja acredita la sombra SOLO a su fila física.
+   Con T.segs la fracción va ponderada por el solape axial real. */
 function shadeRows(zen,az,T,rowAngles){
   const nR=T.pairs.length+1;
   const out=new Array(nR).fill(0);
@@ -683,11 +756,62 @@ function shadeRows(zen,az,T,rowAngles){
   for(let p=0;p<T.pairs.length;p++){
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
-    const f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0);
+    const f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0)
+            *axialCoverage(zen,az,T,p);
     if(psz>=0)out[p]=Math.max(out[p],f);              // sol a la derecha ⇒ sombreada la izquierda
     else out[p+1]=Math.max(out[p+1],f);
   }
   return out;
+}
+
+/* BT2D "plano": decide θ IGNORANDO el relieve (pvlib sin pendiente ni tilt) y
+   se evalúa sobre el terreno real — port de bt_audit.theta_bt2d. Es lo que hace
+   un tracker sin configurar la pendiente: en llano es exacto, en pendiente
+   sombrea. La referencia didáctica que faltaba del inventario del notebook. */
+function anglesBt2d(zen,az,T){
+  const pitch=T.pairs.length?T.pairs[0].pitch:6;
+  const th=nan0(singleaxis(zen,az,{axisTilt:0,axisAz:T.axisAz,maxAngle:T.maxAngle,
+    backtrack:true,gcr:T.cw/pitch,crossAxisTilt:0}));
+  return new Array(T.pairs.length+1).fill(th);
+}
+
+/* luz directa transmitida al suelo (0..1) — port de ground_light_fraction
+   (infinite-sheds de pvlib): lo que minimiza el modo min_ground_light. */
+function groundLightFrac(thetaDeg,zen,az,gcr,axisAz){
+  const beta=Math.abs(thetaDeg)*RAD;
+  const surfAz=thetaDeg>=0?axisAz+90:axisAz+270;
+  const tanphi=Math.tan(zen*RAD)*Math.cos((az-surfAz)*RAD);
+  const term=gcr*Math.abs(Math.cos(beta)+Math.sin(beta)*tanphi);
+  return Math.max(0,1-Math.min(1,term));
+}
+
+/* min_ground_light — port de compute_bt_angles_min_ground_light: parte del
+   pairwise (sin sombra garantizada) y EMPINA cada fila por ascenso coordinado
+   mientras la sombra física siga en cero Y la luz al suelo BAJE (el gate evita
+   empeorar con sol casi paralelo al eje). Nunca rinde menos que el baseline. */
+function anglesMinGroundLight(zen,az,T){
+  const base=anglesPairwise(zen,az,T);
+  if(!(isFinite(zen)&&zen<87))return base;
+  const a=base.slice(), maxA=T.maxAngle;
+  const glSum=ang=>ang.reduce((s,th)=>s+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
+  for(let it=0;it<3;it++){
+    let improved=false;
+    for(let r=0;r<a.length;r++){
+      const sgn=Math.sign(a[r])||1;
+      let lo=Math.abs(a[r]), hi=maxA;
+      if(hi-lo<0.25)continue;
+      for(let b=0;b<14;b++){
+        const mid=(lo+hi)/2, trial=a.slice(); trial[r]=sgn*mid;
+        if(Math.max(...shadeRows(zen,az,T,trial))<=2e-3)lo=mid; else hi=mid;
+      }
+      if(lo>Math.abs(a[r])+1e-6){
+        const trial=a.slice(); trial[r]=sgn*lo;
+        if(glSum(trial)<glSum(a)-1e-12){a[r]=sgn*lo;improved=true;}
+      }
+    }
+    if(!improved)break;
+  }
+  return a;
 }
 
 /* ── POA por fila (Perez 1990) — espejo de compute_bt3d_poa_per_row ──────── */
@@ -766,8 +890,10 @@ function policyAngles(key,zen,az,T,irr,doy,albedo){
   // global ya es un único ángulo (el acoplado es un no-op)
   if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
+  if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
   if(key==='true3d')return {angles:driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),f:undefined};
+  if(key==='mgl')return {angles:driveCoupleSafe(zen,az,T,anglesMinGroundLight(zen,az,T),false),f:undefined};
   return {angles:driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),f:undefined};
 }
 
@@ -937,6 +1063,42 @@ function runPhysicsQA(){
     const gI=driveGroups(7,'bifila');
     assert(gI[gI.length-1].length===1,'con filas impares la última va con motor propio');
   });
+  t('BT2D plano: = pairwise en llano, y SOMBREA en pendiente (evaluado sobre terreno real)',()=>{
+    const flat=mkT([0,0,0],6,0), slope=mkT([8,8,8],6,0);
+    for(let zen=60;zen<85;zen+=6)for(const az of [100,260]){
+      const a=anglesBt2d(zen,az,flat), b=anglesPairwise(zen,az,flat);
+      for(let r=0;r<a.length;r++)assert(Math.abs(a[r]-b[r])<1e-9,'en llano difiere de pairwise');
+    }
+    let anyShade=false;
+    for(let zen=68;zen<86;zen+=3)for(const az of [95,105,255,265])
+      if(Math.max(...shadeRows(zen,az,slope,anglesBt2d(zen,az,slope)))>0.02)anyShade=true;
+    assert(anyShade,'BT2D debería sombrear en pendiente 8° y no lo hace');
+  });
+  t('min_ground_light: sin sombra, nunca más plano que pairwise, y no más luz al suelo',()=>{
+    const T=mkT([6,-4,2,-6],6,0);
+    for(let zen=55;zen<85;zen+=10)for(const az of [110,250]){
+      const b=anglesPairwise(zen,az,T), m=anglesMinGroundLight(zen,az,T);
+      assert(Math.max(...shadeRows(zen,az,T,m))<=2e-3+1e-9,'mgl sombrea (zen '+zen+')');
+      let gb=0,gm=0;
+      for(let r=0;r<b.length;r++){
+        assert(Math.abs(m[r])>=Math.abs(b[r])-1e-9,'fila '+r+' más plana que pairwise');
+        gb+=groundLightFrac(b[r],zen,az,T.gcr,0);gm+=groundLightFrac(m[r],zen,az,T.gcr,0);
+      }
+      assert(gm<=gb+1e-9,'deja pasar más luz que el baseline');
+    }
+  });
+  t('solape axial: emisor corto delante del largo ⇒ media sombra; sol paralelo al eje ⇒ cero',()=>{
+    const T=mkT([0,0],6,0);
+    const zen=75,az=90;                        // sol ⊥ eje: deflexión axial nula
+    const aA=anglesAstro(zen,az,T);
+    const shInf=shadeRows(zen,az,T,aA);
+    assert(shInf[0]>0.05,'el caso base debe tener sombra para poder medir');
+    T.segs=[[[-30,30]],[[-15,15]],[[-30,30]]]; // receptora larga, emisora a mitad
+    const shSeg=shadeRows(zen,az,T,aA);
+    assert(Math.abs(shSeg[0]-shInf[0]*0.5)<1e-6,
+      'esperaba la mitad: '+shSeg[0].toFixed(4)+' vs '+(shInf[0]*0.5).toFixed(4));
+    assert(axialCoverage(75,0,T,0)===0,'sol paralelo al eje debería dar cobertura 0');
+  });
   t('Martinez: escalones exactos y saturación',()=>{
     assert(elecLoss(0,3)===0,'f=0');
     assert(elecLoss(1e-9,3)===0,'polvo flotante no dispara escalón');
@@ -965,7 +1127,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.2';
+const VER='v1.3';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -973,8 +1135,10 @@ const POLICIES=[
   {key:'astro',   nm:'Astronómico',   ds:'sin backtracking — el que auto-sombrea (referencia)', col:'#f87272', on:false},
   {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false},
   {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false},
+  {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false},
   {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — sombra cero garantizada (canónica)', col:'#36d399', on:true},
   {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true},
+  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true},
 ];
 const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
@@ -993,6 +1157,8 @@ function cfg(){
     pitch:pitch, cw:cw, maxang:+$('maxang').value, nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
     axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
     drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value,
+    nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
+    mods:Math.max(8,Math.min(32,Math.round(+$('mods').value))),
   };
 }
 function nsProfile(c){
@@ -1007,9 +1173,11 @@ function nsProfile(c){
 function terrain(c){
   const groups=driveGroups(c.nrows,c.drive);
   const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
+  const filaLen=2*c.mods*1.146+0.55;                  // 2 alas + hueco de motor (cotas del modelo)
   return {pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
-          rowTilt:eff,groups:groups,drive:c.drive};
+          rowTilt:eff,groups:groups,drive:c.drive,
+          segs:nsSegments(c.nrows,c.nsl,c.ntrk,filaLen,1.0),filaLen:filaLen};
 }
 function ensureElev(n){
   while(ELEV.length<n)ELEV.push(ELEV.length?ELEV[ELEV.length-1]:0);
@@ -1017,7 +1185,6 @@ function ensureElev(n){
 }
 
 /* ── presets de terreno ── */
-function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 function applyPreset(){
   const c=cfg(), n=c.nrows, P=$('tpreset').value, v=+$('tparam').value;
   const z=new Array(n).fill(0);
@@ -1329,7 +1496,10 @@ function build3D(){
   if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
   const world=new THREE.Group(); TD.world=world; TD.rows=[];
   const raw=nsProfile(c);              // terreno N-S REAL (la rígida puede separarse de él)
-  const L=Math.max(30,4*c.pitch);      // largo de fila dibujado
+  // extensión a lo largo del eje: la que pidan los tramos de la implantación
+  let ext=15;
+  if(T.segs)for(const line of T.segs)for(const sg of line)ext=Math.max(ext,Math.abs(sg[0]),Math.abs(sg[1]));
+  const L=2*ext;
   const hub=1.6;
   // frame: x = ⊥ eje (la derecha del corte 2D) · y = arriba · z = −norte
   const x0=-c.pitch, x1=n*c.pitch, cx=(n-1)*c.pitch/2;
@@ -1350,59 +1520,126 @@ function build3D(){
   geo.computeVertexNormals();
   const terr=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0x22301c}));
   terr.receiveShadow=true; world.add(terr);
-  // filas: grupo de tilt (eje EFECTIVO del accionamiento) → grupo de giro θ
+  // ── filas: el MODELO REAL del seguidor (seguidor.js, la fuente única que
+  // comparten el gemelo y Cobertura 3D) colocado por los tramos de la
+  // implantación. Cada tramo es UNA fila entera (2 alas + slew); en bifila la
+  // línea motora lleva la viga west (motor+TCU) y su pareja la GEMELA
+  // (west:false, accionada por el eje de transmisión — la semántica exacta
+  // del modelo). Los tramos «medios» usan el tamaño medio real de catálogo.
+  // Sin Seguidor (o si algo falla) degrada al camino clásico de cajas.
+  const useModel=(typeof Seguidor!=='undefined');
+  const mats=useModel?Seguidor.materials(THREE):null;
+  if(mats){mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;}   // pala azulada, no blanco quirófano
   const postM=new THREE.MeshLambertMaterial({color:0x3a4a5f});
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
+  const pmFallback=()=>new THREE.MeshLambertMaterial({color:0x274b8f,side:THREE.DoubleSide});
+  const twinOf={};                                   // línea gemela → true (viga sin motor)
+  if(T.groups)for(const g2 of T.groups)if(g2.length===2)twinOf[g2[1]]=true;
+  const D0=useModel?Seguidor.DIMS:null;
   for(let r=0;r<n;r++){
     const effT=(T.rowTilt?T.rowTilt[r]:0);
-    const gTilt=new THREE.Group();
-    gTilt.position.set(r*c.pitch,ELEV[r]+hub,0);
-    gTilt.rotation.x=effT*RAD;                    // +tilt levanta el extremo norte (−z)
-    const gRot=new THREE.Group();
-    const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,L),tubeM);
-    tube.castShadow=true;
-    const pm=new THREE.MeshLambertMaterial({color:0x274b8f,side:THREE.DoubleSide});
-    const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.05,L),pm);
-    panel.position.y=0.10+c.z0;
-    panel.castShadow=true;panel.receiveShadow=true; // recibe la sombra de la fila vecina: el fenómeno, a la vista
-    gRot.add(tube,panel);
-    gTilt.add(gRot);
-    world.add(gTilt);
-    // postes: pie en el TERRENO real, cabeza en el tubo EFECTIVO — con bifila
-    // rígida sobre N-S quebrado crecen/encogen: el detalle que delata la rígida
-    for(const north of [-L/3,0,L/3]){
-      const topY=ELEV[r]+hub+north*Math.tan(effT*RAD);
-      const botY=ELEV[r]+north*Math.tan(raw[r]*RAD);
-      const h=Math.max(0.3,topY-botY);
-      const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),postM);
-      post.position.set(r*c.pitch,(topY+botY)/2-0.05,-north);
-      post.castShadow=true;
-      world.add(post);
+    const spins=[];
+    const segs=(T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]];
+    for(const sg of segs){
+      const yc=(sg[0]+sg[1])/2, len=sg[1]-sg[0];
+      const cy=ELEV[r]+hub+yc*Math.tan(effT*RAD);
+      const tiltG=new THREE.Group();
+      tiltG.position.set(r*c.pitch,cy,-yc);
+      tiltG.rotation.x=effT*RAD;                     // +tilt levanta el extremo norte (−z)
+      let spin=null, built=false;
+      if(useModel){
+        try{
+          const media=T.filaLen&&len<0.7*T.filaLen;  // tramo corto ⇒ tamaño «medio» real
+          const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
+          Seguidor.setModsPerStr(mods);
+          const beam=Seguidor.buildBeam(THREE,{west:!twinOf[r],detail:'mass',size:media?'medio':'largo',
+                                               materials:mats,skip:{antena:1,antenatip:1}});
+          const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
+          beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
+          yaw.add(beam.spin,beam.static);
+          tiltG.add(yaw);
+          spin=beam.spin; built=true;
+        }catch(e){built=false;}
+      }
+      if(!built){                                    // camino clásico: cajas (sin modelo)
+        const gRot=new THREE.Group();
+        const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),tubeM);
+        tube.castShadow=true;
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.05,len),pmFallback());
+        panel.position.y=0.10+c.z0;
+        panel.castShadow=true;panel.receiveShadow=true;
+        gRot.add(tube,panel);
+        tiltG.add(gRot);
+        spin=gRot;
+      }
+      world.add(tiltG);
+      spins.push(spin);
+      // postes: pie en el TERRENO real, cabeza en el tubo EFECTIVO — con bifila
+      // rígida sobre N-S quebrado crecen/encogen: el detalle que delata la rígida
+      for(const dn of [-len/3,0,len/3]){
+        const north=yc+dn;
+        const topY=ELEV[r]+hub+north*Math.tan(effT*RAD);
+        const botY=ELEV[r]+north*Math.tan(raw[r]*RAD);
+        const h=Math.max(0.3,topY-botY);
+        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),postM);
+        post.position.set(r*c.pitch,(topY+botY)/2-0.05,-north);
+        post.castShadow=true;
+        world.add(post);
+      }
     }
-    TD.rows.push({rot:gRot,mat:pm});
+    TD.rows.push({spins:spins,model:useModel});
   }
-  // accionamiento: transmisión + motor por grupo, cardanes en la quebrada
+  if(useModel)Seguidor.setModsPerStr(28);            // restaurar el canónico compartido
+  // accionamiento: eje de transmisión entre las líneas del grupo (por fila con
+  // mejor solape — desalineadas ⇒ eje en diagonal, para eso está el cardan)
   const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
   const barM=new THREE.MeshLambertMaterial({color:0x8a6d2f});
   const cardM=new THREE.MeshLambertMaterial({color:0xeaf4ff});
-  const motorAt=(x,y)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.set(x,y,0);m.castShadow=true;world.add(m);};
+  const linkBar=(pA,pB)=>{
+    const len=pA.distanceTo(pB); if(len<0.1)return;
+    const g3=new THREE.CylinderGeometry(0.045,0.045,len,8);
+    const bar=new THREE.Mesh(g3,barM);
+    bar.position.copy(pA).lerp(pB,0.5);
+    bar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),pB.clone().sub(pA).normalize());
+    bar.castShadow=true;world.add(bar);
+  };
+  const hubAt=(r,yc)=>new THREE.Vector3(r*c.pitch,
+    ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD),-yc);
+  const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
+  const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
   if(T.groups){
     for(const g2 of T.groups){
       if(g2.length===2){
-        const pA=new THREE.Vector3(g2[0]*c.pitch,ELEV[g2[0]]+hub*0.55,0);
-        const pB=new THREE.Vector3(g2[1]*c.pitch,ELEV[g2[1]]+hub*0.55,0);
-        const bar=new THREE.Mesh(new THREE.BoxGeometry(pA.distanceTo(pB),0.08,0.08),barM);
-        bar.position.copy(pA).lerp(pB,0.5);
-        bar.rotation.z=Math.atan2(pB.y-pA.y,pB.x-pA.x);
-        bar.castShadow=true;world.add(bar);
-        motorAt(bar.position.x,bar.position.y);
-        if(T.drive==='quebrado')for(const P of [pA,pB]){
-          const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
-          card.position.copy(P);world.add(card);
+        for(const [ycA] of segCenters(g2[0])){
+          // pareja de la gemela: el tramo con el centro más próximo
+          let best=null;
+          for(const [ycB] of segCenters(g2[1]))
+            if(best===null||Math.abs(ycB-ycA)<Math.abs(best-ycA))best=ycB;
+          if(best===null)continue;
+          const pA=hubAt(g2[0],ycA), pB=hubAt(g2[1],best);
+          linkBar(pA,pB);
+          motorAt(pA);                               // el motor va en la viga west (línea motora)
+          if(T.drive==='quebrado')for(const P of [pA,pB]){
+            const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
+            card.position.copy(P);world.add(card);
+          }
         }
-      }else motorAt(g2[0]*c.pitch,ELEV[g2[0]]+hub*0.55);
+      }else for(const [yc] of segCenters(g2[0]))motorAt(hubAt(g2[0],yc));
     }
-  }else for(let r=0;r<n;r++)motorAt(r*c.pitch,ELEV[r]+hub*0.55);
+  }else if(!useModel){                               // con el modelo el slew ya trae su motor
+    for(let r=0;r<n;r++)for(const [yc] of segCenters(r))motorAt(hubAt(r,yc));
+  }
+  // flecha de NORTE: la planta puede ir con azimut de eje ≠ 0 y hay que verlo
+  const northDir=new THREE.Vector3(-Math.sin(c.axaz*RAD),0,-Math.cos(c.axaz*RAD));
+  const arrO=new THREE.Vector3(x0-c.pitch*0.5,(Math.max(...ELEV)+3),L/2+marg*0.5);
+  const arr=new THREE.ArrowHelper(northDir,arrO,6,0xeaf4ff,2,1);
+  world.add(arr);
+  const nCv=document.createElement('canvas');nCv.width=nCv.height=64;
+  const nCtx=nCv.getContext('2d');nCtx.font='bold 44px sans-serif';nCtx.fillStyle='#eaf4ff';
+  nCtx.textAlign='center';nCtx.textBaseline='middle';nCtx.fillText('N',32,34);
+  const nSpr=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(nCv),depthTest:false}));
+  nSpr.position.copy(arrO).addScaledVector(northDir,7.5);nSpr.scale.set(2.4,2.4,1);
+  world.add(nSpr);
   TD.scene.add(world);
   // sombra del sol acotada a la planta
   const R=Math.max(gw,gl)*0.75, sc=TD.sun.shadow.camera;
@@ -1421,9 +1658,13 @@ function update3D(){
   const key=$('polview').value,p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
   const sh=p?p.shade[tIdx]:null;
   TD.rows.forEach((row,r)=>{
-    row.rot.rotation.z=-(p?p.ang[tIdx][r]:0)*RAD;   // θ>0 ⇒ borde +x abajo (mismo signo que el 2D)
-    const f=sh?sh[r]:0;                              // tinte por sombra: diagnóstico, como el visor de campo
-    row.mat.color.setRGB(0.153+(0.937-0.153)*f,0.294+(0.325-0.294)*f,0.561+(0.314-0.561)*f);
+    const th=(p?p.ang[tIdx][r]:0)*RAD;
+    for(const sp of row.spins){
+      // modelo Seguidor: spin gira sobre su X local (el tubo, que apunta al
+      // norte tras el yaw) — θ>0 ⇒ borde +x de la escena abajo, como el 2D.
+      // Camino de cajas: mismo convenio pero sobre Z local (el tubo va en Z).
+      if(row.model)sp.rotation.x=th; else sp.rotation.z=-th;
+    }
   });
   const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const cx=(DAY.c.nrows-1)*DAY.c.pitch/2;
@@ -1677,7 +1918,7 @@ function recompute(light){
   $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
-const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0'];
+const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0','nsl','ntrk','mods'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{ensureElev(cfg().nrows);recompute();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};

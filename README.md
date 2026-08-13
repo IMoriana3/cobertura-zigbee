@@ -58,16 +58,18 @@ Publicado como página estática en GitHub Pages: **https://imoriana3.github.io/
 ## Simulador de Backtracking (`backtracking.html`)
 
 Este repo aloja también el **Simulador de Backtracking**: un espejo JS del motor BT3D de SolarGPT
-(`tracker3d.py`) para comparar políticas de backtracking —astronómico · global · row · pairwise ·
-true-3D · energy-optimal (Deeptrack)— sobre terreno 3D editable (pendiente E-O por pareja + tilt N-S
-por fila) y con los tres accionamientos: **monofila, bifila rígida y bifila quebrada** (θ común por
-grupo, backtracking resuelto a nivel de accionamiento, residuo irreducible a la vista). Corte
-transversal animado, curvas θ(t), POA por política (Ineichen + Perez + Martinez) y estimación anual.
-Un único HTML offline.
+(`tracker3d.py`) con el inventario COMPLETO de políticas de backtracking del core —astronómico ·
+BT2D plano · global · row · pairwise · true-3D · min-ground-light · energy-optimal (Deeptrack)— sobre
+terreno 3D editable (pendiente E-O por pareja + tilt N-S por fila), los tres accionamientos
+(**monofila, bifila rígida y bifila quebrada**, backtracking resuelto a nivel de accionamiento) y la
+implantación real a lo largo del eje (cortos delante de largos, tresbolillo — con el solape axial en
+la física). La escena 3D usa el **modelo del seguidor de la casa** (`seguidor.js`, tamaño medio real
+incluido) con sombras por shadow-map; corte 2D como editor de terreno, curvas θ(t), POA por política
+(Ineichen + Perez + Martinez) y estimación anual. Un único HTML offline.
 
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
-  misma batería (17 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+  misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
 - Documentación completa: `proyectos/docs/backtracking-sim.md` (botón Documentación de su ficha en el Panel).
 
 *Factiun · proyecto interno.*
