@@ -116,6 +116,16 @@ t('POA de planta = media por fila (no POA del ángulo medio): difieren en terren
   if (Math.abs(p.plant - media) > 1e-9) throw new Error('plant ≠ media por fila');
 });
 
+t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
+  // mismo cálculo que hace terrain() con preset tresbolillo + bifila
+  const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);
+  const groups = [[0,1],[2,3],[4,5]];
+  for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
+  for (const g of groups)
+    if (JSON.stringify(segs[g[0]]) !== JSON.stringify(segs[g[1]]))
+      throw new Error('grupo ' + g + ' desalineado');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

@@ -199,6 +199,12 @@
 
   <div class="card">
     <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
+    <div class="f"><label>¿Dónde vive la inteligencia?</label>
+      <select id="brainsel">
+        <option value="all">— sin filtro —</option>
+        <option value="tcu">TCU (distribuida): cada tracker decide con SUS vanos y su tilt</option>
+        <option value="ncu">NCU (central): la planta entera coordina — puede ejecutarlas todas</option>
+      </select></div>
     <div class="pols" id="polbox"></div>
     <div class="nota">En terreno <b>uniforme</b> global = row = pairwise (degeneración exacta, como en el
       core). <b>true-3D</b> solo gana con tilt N-S del eje ≠ 0. <b>energy-optimal</b> tolera sombra
@@ -516,7 +522,7 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
   if(!(isFinite(zen)&&zen<87))return a;
   const shadedPair=(p,ang)=>{
     if(crit3d){
-      const r=tangentResidualMm(zen,az,T,ang)[p];
+      const r=tangentResidualPairMm(zen,az,T,ang,p);
       return isFinite(r)&&r<-1;                        // criterio del core: −1 mm
     }
     const pr=T.pairs[p];
@@ -540,7 +546,8 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
       for(let q=0;q<T.pairs.length;q++)
         if(g.includes(q)||g.includes(q+1))touching.push(q);
       let best=null;
-      for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=0.25){
+      const paso=T.pairs.length>30?1.0:0.25;   // con 80 vanos reales, el fino no paga
+      for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=paso){
         const trial=a.slice(); for(const r of g)trial[r]=cand;
         let ok=true;
         for(const q of touching)if(shadedPair(q,trial)){ok=false;break;}
@@ -695,6 +702,33 @@ function anglesTrue3d(zen,az,T){
 
 /* residual de tangencia por pareja [mm] — port de bt3d_tangent_residual:
    >0 hueco · ≈0 tangente · <0 el rayo cruza el interior = auto-sombra 3D. */
+function tangentResidualPairMm(zen,az,T,rowAngles,p){
+  // residual de UNA pareja — driveCoupleSafe lo llama en bucles calientes:
+  // calcular las n parejas para leer una era O(n²) y con 80 vanos reales
+  // convertía la carga de planta en 27 segundos
+  const dA=(az-T.axisAz)*RAD, morning=Math.sin(dA)>=0;
+  const pr=T.pairs[p], hw=T.cw/2;
+  const thU=morning?rowAngles[p+1]:rowAngles[p];
+  const thD=morning?rowAngles[p]:rowAngles[p+1];
+  const atr=pr.axisTilt*RAD, ca=Math.cos(atr), sa=Math.sin(atr);
+  const a=[0,ca,sa], z1=-pr.pitch*Math.tan(pr.slope*RAD), Z=zen*RAD;
+  const sv=[Math.sin(Z)*Math.sin(dA),Math.sin(Z)*Math.cos(dA),Math.cos(Z)];
+  const thu=thU*RAD, thd=thD*RAD;
+  const cdu=[Math.cos(thu),Math.sin(thu)*sa,-Math.sin(thu)*ca];
+  const cdd=[Math.cos(thd),Math.sin(thd)*sa,-Math.sin(thd)*ca];
+  const Cup=morning?[pr.pitch,0,z1]:[0,0,0], Cdn=morning?[0,0,0]:[pr.pitch,0,z1];
+  const eW=[Cup[0]-hw*cdu[0],Cup[1]-hw*cdu[1],Cup[2]-hw*cdu[2]];
+  const eE=[Cup[0]+hw*cdu[0],Cup[1]+hw*cdu[1],Cup[2]+hw*cdu[2]];
+  const Ph=eW[2]>eE[2]?eW:eE;
+  const nrm=[cdd[1]*a[2]-cdd[2]*a[1],cdd[2]*a[0]-cdd[0]*a[2],cdd[0]*a[1]-cdd[1]*a[0]];
+  const den=sv[0]*nrm[0]+sv[1]*nrm[1]+sv[2]*nrm[2];
+  if(Math.abs(den)<1e-15)return NaN;
+  const tau=((Ph[0]-Cdn[0])*nrm[0]+(Ph[1]-Cdn[1])*nrm[1]+(Ph[2]-Cdn[2])*nrm[2])/den;
+  const hit=[Ph[0]-tau*sv[0],Ph[1]-tau*sv[1],Ph[2]-tau*sv[2]];
+  const cc=(hit[0]-Cdn[0])*cdd[0]+(hit[1]-Cdn[1])*cdd[1]+(hit[2]-Cdn[2])*cdd[2];
+  return ((morning?1:-1)*cc-hw)*1e3;
+}
+
 function tangentResidualMm(zen,az,T,rowAngles){
   const out=[];
   const dA=(az-T.axisAz)*RAD, morning=Math.sin(dA)>=0;
@@ -809,12 +843,27 @@ function nsSegments(nRows,preset,nPer,filaLen,gapNS){
    reales (con su flag de articulado). Se elige la banda de nLines líneas
    consecutivas con más filas. Puro y testeable (el test de Node lo corre
    contra el fichero real). */
-function plantFromCotas(data,nLines){
+function pairsFromElevX(z,xs,tilt){
+  // parejas con el PITCH REAL por vano (Δx medido entre líneas): la planta
+  // real trae huecos y calles — asumir pitch uniforme falsearía las pendientes
+  const out=[];
+  for(let i=0;i<z.length-1;i++){
+    const dx=Math.max(0.5,xs[i+1]-xs[i]);
+    out.push({slope:Math.atan2(z[i]-z[i+1],dx)*DEG,pitch:dx,
+              axisTilt:((tilt[i]||0)+(tilt[i+1]||0))/2});
+  }
+  return out;
+}
+
+function plantFromCotas(data,maxLines,blockIdx){
   const pitch=data.pitch||6;
   const filas=[];
-  for(const trk of (data.t||[]))for(const f of (trk.f||[])){
-    if(!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
-    filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk});
+  for(const trk of (data.t||[])){
+    if(!trk||!trk.f)continue;
+    for(const f of trk.f){
+      if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
+      filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk});
+    }
   }
   if(!filas.length)throw new Error('cotas sin filas');
   // clúster de líneas por x (tolerancia medio pitch)
@@ -825,15 +874,27 @@ function plantFromCotas(data,nLines){
     if(L&&Math.abs(f.x-L.x)<pitch/2){L.f.push(f);L.x=(L.x*(L.f.length-1)+f.x)/L.f.length;}
     else lines.push({x:f.x,f:[f]});
   }
-  // banda de nLines consecutivas con MÁS filas (y arrancando en pareja par,
-  // para que los grupos bifila reales caigan enteros dentro)
-  nLines=Math.min(nLines,lines.length);
-  let best=0,bestN=-1;
-  for(let a=0;a+nLines<=lines.length;a+=2){
-    const cnt=lines.slice(a,a+nLines).reduce((s,l)=>s+l.f.length,0);
-    if(cnt>bestN){bestN=cnt;best=a;}
+  // BLOQUES: la planta se parte sola por los huecos de x (> 2,5·pitch) — la
+  // unidad con forma real. Se carga el elegido (o el mayor), y solo si aun
+  // así excede maxLines se recorta a la ventana más densa
+  const blocks=[];let cur=[lines[0]];
+  for(let i=1;i<lines.length;i++){
+    if(lines[i].x-lines[i-1].x>2.5*pitch){blocks.push(cur);cur=[];}
+    cur.push(lines[i]);
   }
-  const band=lines.slice(best,best+nLines);
+  blocks.push(cur);
+  const meta=blocks.map((b,i)=>({i:i,lines:b.length,filas:b.reduce((s2,l)=>s2+l.f.length,0)}));
+  let bi=(blockIdx!=null&&blocks[blockIdx])?blockIdx
+        :meta.reduce((m,e)=>e.filas>meta[m].filas?e.i:m,0);
+  let band=blocks[bi];
+  if(band.length>maxLines){
+    let best=0,bestN=-1;
+    for(let a2=0;a2+maxLines<=band.length;a2+=2){
+      const cnt=band.slice(a2,a2+maxLines).reduce((s2,l)=>s2+l.f.length,0);
+      if(cnt>bestN){bestN=cnt;best=a2;}
+    }
+    band=band.slice(best,best+maxLines);
+  }
   // por línea: cota media, tilt N-S medio (ponderado por largo) y tramos
   const elev=[],tilt=[],segs=[];
   let nMid=0,nCnt=0;
@@ -860,6 +921,27 @@ function plantFromCotas(data,nLines){
   const eMean=elev.reduce((s,v)=>s+v,0)/elev.length;
   for(let i=0;i<elev.length;i++)elev[i]-=eMean;
   for(const line of segZ)for(const z of line){z[0]-=eMean;z[1]-=eMean;}
+  // posiciones x REALES de las líneas, recentradas
+  const x0b=band[0].x;
+  const lineX=band.map(L=>L.x-x0b);
+  // Δz por PAREJA medido en el SOLAPE norte de las dos líneas — la cota media
+  // de línea engaña cuando las líneas van escalonadas y no comparten norte
+  // (fabricaba pendientes absurdas y sombras del 85% en pairwise); sin solape,
+  // Δz=0: esas líneas no interactúan (la cobertura axial ya lo pone a cero)
+  const pairDz=[];
+  for(let i=0;i<band.length-1;i++){
+    let acc=0,w=0;
+    const A=segs[i],ZA=segZ[i],B=segs[i+1],ZB=segZ[i+1];
+    for(let ai=0;ai<A.length;ai++)for(let bi=0;bi<B.length;bi++){
+      const lo=Math.max(A[ai][0],B[bi][0]),hi=Math.min(A[ai][1],B[bi][1]);
+      if(hi<=lo)continue;
+      const mid=(lo+hi)/2,len=hi-lo;
+      const za=ZA[ai][0]+(ZA[ai][1]-ZA[ai][0])*((mid-A[ai][0])/((A[ai][1]-A[ai][0])||1));
+      const zb=ZB[bi][0]+(ZB[bi][1]-ZB[bi][0])*((mid-B[bi][0])/((B[bi][1]-B[bi][0])||1));
+      acc+=(za-zb)*len;w+=len;
+    }
+    pairDz.push(w>0?acc/w:0);
+  }
   // parejas bifila REALES: las dos filas de un mismo tracker, si ambas caen en
   // la banda; art del tracker = alguna de sus filas articulada
   const groups=[],seen=new Set(),gseen=new Set();
@@ -877,10 +959,12 @@ function plantFromCotas(data,nLines){
     const key=idx.join('-');
     if(idx.length&&!gseen.has(key)){gseen.add(key);groups.push(idx);}
   }
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,lineX:lineX,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
-          xFrom:band[0].x,xTo:band[band.length-1].x,nFilas:bestN,nArt:nArt,nPairs:nPairs};
+          xFrom:band[0].x,xTo:band[band.length-1].x,
+          nFilas:band.reduce((s2,l)=>s2+l.f.length,0),
+          nArt:nArt,nPairs:nPairs,blocks:meta,block:bi};
 }
 
 /* sombra por fila en un instante — semántica de compute_shade: la fila up-sun
@@ -1280,19 +1364,19 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.4';
+const VER='v1.5';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
 const POLICIES=[
-  {key:'astro',   nm:'Astronómico',   ds:'sin backtracking — el que auto-sombrea (referencia)', col:'#f87272', on:false},
-  {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false},
-  {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false},
-  {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false},
-  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — sombra cero garantizada (canónica)', col:'#36d399', on:true},
-  {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true},
-  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false},
-  {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true},
+  {key:'astro',   nm:'Astronómico',   ds:'sin backtracking — el que auto-sombrea (referencia)', col:'#f87272', on:false, brain:'tcu'},
+  {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false, brain:'ncu'},
+  {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false, brain:'tcu'},
+  {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false, brain:'tcu'},
+  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — sombra cero garantizada (canónica)', col:'#36d399', on:true, brain:'tcu'},
+  {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true, brain:'tcu'},
+  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false, brain:'ncu'},
+  {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
 ];
 const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
 
@@ -1307,7 +1391,9 @@ function cfg(){
   return {
     lat:+$('lat').value, lon:+$('lon').value, date:$('date').value, tz:+$('tz').value,
     alt:+$('alt').value, albedo:+$('albedo').value, tl:+$('tl').value,
-    pitch:pitch, cw:cw, maxang:+$('maxang').value, nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
+    pitch:pitch, cw:cw, maxang:+$('maxang').value,
+    // con planta real cargada el tope sube: un bloque real puede tener 80 líneas
+    nrows:Math.max(2,Math.min(PLANT_REAL?200:24,Math.round(+$('nrows').value))),
     axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
     drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value,
     nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
@@ -1330,20 +1416,33 @@ function terrain(c){
     // ELEV sigue siendo editable (arrastra postes); tilts/tramos/parejas, reales.
     const P=PLANT_REAL;
     const groups=c.drive==='mono'?null:P.groups;
-    // tilts MEDIDOS tal cual: el montaje ya los fijó (postes sobre el terreno);
-    // rígida vs quebrada cambia el acople de θ, no la geometría construida
-    return {pairs:pairsFromElev(ELEV,c.pitch,P.tilt),cw:c.cw,axisAz:c.axaz,
+    // tilts MEDIDOS tal cual (el montaje ya los fijó), PITCH REAL por vano y
+    // pendiente por pareja desde el Δz del SOLAPE norte (+delta del editor)
+    const pairs=[];
+    for(let i=0;i<P.lineX.length-1;i++){
+      const dx=Math.max(0.5,P.lineX[i+1]-P.lineX[i]);
+      const dz=(P.pairDz?P.pairDz[i]:0)+(ELEV[i]-P.elev[i])-(ELEV[i+1]-P.elev[i+1]);
+      pairs.push({slope:Math.atan2(dz,dx)*DEG,pitch:dx,
+                  axisTilt:(P.tilt[i]+P.tilt[i+1])/2});
+    }
+    return {pairs:pairs,cw:c.cw,axisAz:c.axaz,
             maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
-            rowTilt:P.tilt,groups:groups,drive:c.drive,
+            rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
             segs:P.segs,filaLen:2*c.mods*1.146+0.55,real:P};
   }
   const groups=driveGroups(c.nrows,c.drive);
   const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
   const filaLen=2*c.mods*1.146+0.55;                  // 2 alas + hueco de motor (cotas del modelo)
+  const segs=nsSegments(c.nrows,c.nsl,c.ntrk,filaLen,1.0);
+  // BIFILA: el eje de transmisión es PERPENDICULAR a las vigas ⇒ las dos filas
+  // del grupo van ALINEADAS. La implantación se aplica por GRUPO: la gemela
+  // copia los tramos de la motora (tresbolillo/aleatorio desplazan GRUPOS,
+  // no filas dentro de un grupo). En las plantas reales ya vienen alineadas.
+  if(groups)for(const g of groups)if(g.length===2)segs[g[1]]=segs[g[0]].map(sg=>sg.slice());
   return {pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
           rowTilt:eff,groups:groups,drive:c.drive,
-          segs:nsSegments(c.nrows,c.nsl,c.ntrk,filaLen,1.0),filaLen:filaLen};
+          segs:segs,filaLen:filaLen};
 }
 function ensureElev(n){
   while(ELEV.length<n)ELEV.push(ELEV.length?ELEV[ELEV.length-1]:0);
@@ -1375,24 +1474,35 @@ $('tpreset').onchange=()=>{
   $('tparam').value=P==='ondulado'?1.2:P==='valle'||P==='cresta'?2:P==='aleatorio'?7:6;
 };
 $('tapply').onclick=()=>{PLANT_REAL=null;$('realnote').style.display='none';applyPreset();};
-async function loadRealPlant(name,lat,lon){
+const COTAS_CACHE={};
+async function loadRealPlant(name,blockIdx){
   const note=$('realnote');
   note.style.display='';note.textContent='cargando '+name+'…';
   try{
-    const r=await fetch(name+'_cotas.json',{cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json();
-    const nLines=Math.max(2,Math.min(24,Math.round(+$('nrows').value)||18));
-    const P=plantFromCotas(data,nLines);
+    if(!COTAS_CACHE[name]){
+      const r=await fetch(name+'_cotas.json',{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      COTAS_CACHE[name]=await r.json();
+    }
+    // el BLOQUE es la unidad con forma real (la planta se parte por sus
+    // huecos de x); hasta 80 líneas — más ya no es una escena, es la planta
+    const P=plantFromCotas(COTAS_CACHE[name],80,blockIdx);
     PLANT_REAL=P;
     ELEV=P.elev.slice();
-    $('nrows').value=P.elev.length;$('pitch').value=P.pitch.toFixed(2);
+    const pMed=P.lineX.length>1?(P.lineX[P.lineX.length-1]-P.lineX[0])/(P.lineX.length-1):P.pitch;
+    $('nrows').value=P.elev.length;$('nrows').max=200;$('pitch').value=P.pitch.toFixed(2);
     $('cw').value=P.cw;$('maxang').value=P.maxAngle;$('axaz').value=0;
     $('drive').value=P.drive;
-    note.innerHTML='<b>'+name+'</b> (cotas reales): banda x '+P.xFrom.toFixed(0)+'–'+P.xTo.toFixed(0)+' m · '+
+    const blkSel=P.blocks.length>1?
+      ' · bloque <select id="blksel" class="btn small">'+P.blocks.map(bk=>
+        '<option value="'+bk.i+'"'+(bk.i===P.block?' selected':'')+'>'+(bk.i+1)+' — '+bk.lines+' líneas, '+bk.filas+' filas</option>').join('')+'</select>':'';
+    note.innerHTML='<b>'+name+'</b> (cotas reales): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
       P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
-      Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°. Azimut de eje ≈ 0 (aprox declarada). Las cotas siguen siendo editables.';
+      Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+
+      '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.';
+    const bs=document.getElementById('blksel');
+    if(bs)bs.onchange=()=>loadRealPlant(name,+bs.value);
     recompute();
   }catch(e){
     PLANT_REAL=null;
@@ -1491,6 +1601,7 @@ function drawScene(){
   if(!DAY)return;
   const {ctx,W,H}=fitCanvas(scene);
   const c=DAY.c, T=DAY.T, n=c.nrows;
+  const xof=i=>T.lineX?T.lineX[i]:i*c.pitch;      // posiciones REALES si las hay
   const tIdx=timeIndex(), g=DAY.sun[tIdx], irrN=DAY.irr[tIdx];
   const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
   const ang=p?p.ang[tIdx]:new Array(n).fill(0);
@@ -1505,7 +1616,7 @@ function drawScene(){
 
   // encuadre: x ∈ [−pitch, (n)·pitch], z centrado
   const zMin=Math.min(...ELEV), zMax=Math.max(...ELEV);
-  const xm0=-c.pitch, xm1=n*c.pitch;
+  const xm0=xof(0)-c.pitch, xm1=xof(n-1)+c.pitch;
   const mScale=Math.min((W-40)/(xm1-xm0),(H-110)/Math.max(6,(zMax-zMin)+5));
   const x0=20, yGround=H-58;
   const X=xm=>x0+(xm-xm0)*mScale;
@@ -1528,13 +1639,13 @@ function drawScene(){
   // terreno: polilínea por los postes, extendida
   ctx.beginPath();
   ctx.moveTo(X(xm0),Y(ELEV[0]));
-  for(let i=0;i<n;i++)ctx.lineTo(X(i*c.pitch),Y(ELEV[i]));
+  for(let i=0;i<n;i++)ctx.lineTo(X(xof(i)),Y(ELEV[i]));
   ctx.lineTo(X(xm1),Y(ELEV[n-1]));
   ctx.lineTo(X(xm1),H);ctx.lineTo(X(xm0),H);ctx.closePath();
   ctx.fillStyle='#141c14';ctx.fill();
   ctx.strokeStyle='#2c3b2c';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(X(xm0),Y(ELEV[0]));
-  for(let i=0;i<n;i++)ctx.lineTo(X(i*c.pitch),Y(ELEV[i]));
+  for(let i=0;i<n;i++)ctx.lineTo(X(xof(i)),Y(ELEV[i]));
   ctx.lineTo(X(xm1),Y(ELEV[n-1]));ctx.stroke();
 
   // sombras al suelo (visual: proyección del panel sobre su vano local)
@@ -1544,7 +1655,7 @@ function drawScene(){
     ctx.fillStyle='rgba(0,0,0,.34)';
     for(let i=0;i<n;i++){
       const th=ang[i]*RAD, hw=c.cw/2;
-      const cx=i*c.pitch, cz=ELEV[i]+hubH;
+      const cx=xof(i), cz=ELEV[i]+hubH;
       const ex=[cx-hw*Math.cos(th),cx+hw*Math.cos(th)];
       const ez=[cz+hw*Math.sin(th),cz-hw*Math.sin(th)];
       // rayo desde el sol: dirección (−sin psz, −cos psz) ⇒ x_suelo = x − (z−z_suelo)·tan psz
@@ -1557,7 +1668,7 @@ function drawScene(){
   // postes + paneles
   const selRow=+$('rowsel').value||0;
   for(let i=0;i<n;i++){
-    const px=X(i*c.pitch), pyG=Y(ELEV[i]), pyT=Y(ELEV[i]+hubH);
+    const px=X(xof(i)), pyG=Y(ELEV[i]), pyT=Y(ELEV[i]+hubH);
     ctx.strokeStyle=i===selRow?'#5aa9ff':'#3a4a5f';ctx.lineWidth=i===selRow?2.5:2;
     ctx.beginPath();ctx.moveTo(px,pyG);ctx.lineTo(px,pyT);ctx.stroke();
     // panel: cuerda con θ firmado — θ>0 ⇒ borde derecho ABAJO (metros: z−hw·sinθ;
@@ -1629,7 +1740,7 @@ function compass(a){const d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO'
     if(!SCENE_MAP||!DAY)return -1;
     const r=scene.getBoundingClientRect(), mx=ev.clientX-r.left, my=ev.clientY-r.top;
     for(let i=0;i<ELEV.length;i++){
-      const px=SCENE_MAP.X(i*DAY.c.pitch), py=SCENE_MAP.Y(ELEV[i]);
+      const px=SCENE_MAP.X(DAY.T.lineX?DAY.T.lineX[i]:i*DAY.c.pitch), py=SCENE_MAP.Y(ELEV[i]);
       if((mx-px)*(mx-px)+(my-py)*(my-py)<150)return i;
     }
     return -1;
@@ -1702,7 +1813,8 @@ function build3D(){
   const L=2*ext;
   const hub=2.0;                       // postH canónico del modelo (seguidor.js)
   // frame: x = ⊥ eje (la derecha del corte 2D) · y = arriba · z = −norte
-  const x0=-c.pitch, x1=n*c.pitch, cx=(n-1)*c.pitch/2;
+  const xof=i=>T.lineX?T.lineX[i]:i*c.pitch;      // posiciones REALES si las hay
+  const x0=xof(0)-c.pitch, x1=xof(n-1)+c.pitch, cx=(xof(0)+xof(n-1))/2;
   const clampi=(v,a,b)=>Math.max(a,Math.min(b,v));
   const elevAt=x=>{const t=x/c.pitch,i=clampi(Math.floor(t),0,n-2),f=clampi(t-i,0,1);return ELEV[i]*(1-f)+ELEV[i+1]*f;};
   // perfil de cota A LO LARGO de cada línea: con planta real, el poligonal de
@@ -1730,10 +1842,14 @@ function build3D(){
       lineProf.push(no=>ELEV[rr]+no*Math.tan(raw[rr]*RAD));
     }
   }
-  const terrY=(x,no)=>{const t=x/c.pitch,i2=clampi(Math.floor(t),0,n-2),f2=clampi(t-i2,0,1);
+  const terrY=(x,no)=>{
+    let i2=0;
+    while(i2<n-2&&x>xof(i2+1))i2++;
+    const xa=xof(i2),xb=xof(i2+1);
+    const f2=clampi((x-xa)/((xb-xa)||1),0,1);
     return lineProf[i2](no)*(1-f2)+lineProf[i2+1](no)*f2;};
   // terreno: heightfield z(x, norte) = cota(x) + norte·tan(tiltNS(x))
-  const marg=L*0.3, gw=(x1-x0)+2*c.pitch, gl=L+2*marg;
+  const marg=Math.max(L*0.3,30), gw=(x1-x0)+Math.max(60,(x1-x0)*0.25), gl=L+2*marg;
   const geo=new THREE.PlaneGeometry(gw,gl,72,24);
   geo.rotateX(-Math.PI/2);
   const pos=geo.attributes.position;
@@ -1792,7 +1908,7 @@ function build3D(){
         for(let k=0;k<=8;k++){
           const north=yc+(k/8-0.5)*len;
           const tubeY=ELEV[r]+hub+north*Math.tan(effT*RAD);
-          lift=Math.max(lift,terrY(r*c.pitch,north)+hub-tubeY);
+          lift=Math.max(lift,terrY(xof(r),north)+hub-tubeY);
         }
         // límite práctico: postes desproporcionados = irrealizable (típico de
         // la bifila RÍGIDA sobre quiebro N-S fuerte). No se esconde: en rojo
@@ -1802,7 +1918,7 @@ function build3D(){
       }
       LIFTS[r+'|'+yc.toFixed(2)]=lift;
       tiltG.rotation.x=tiltR;
-      tiltG.position.set(r*c.pitch,cy,-yc);
+      tiltG.position.set(xof(r),cy,-yc);
       let spin=null, built=false;
       if(useModel){
         try{
@@ -1836,10 +1952,10 @@ function build3D(){
       for(const dn of [-len/3,0,len/3]){
         const north=yc+dn;
         const topY=cy+dn*Math.tan(tiltR);
-        const botY=terrY(r*c.pitch,north);
+        const botY=terrY(xof(r),north);
         const h=Math.max(0.3,topY-botY);
         const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),bad?postBadM:postM);
-        post.position.set(r*c.pitch,(topY+botY)/2-0.05,-north);
+        post.position.set(xof(r),(topY+botY)/2-0.05,-north);
         post.castShadow=true;
         world.add(post);
       }
@@ -1867,7 +1983,7 @@ function build3D(){
     bar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),pB.clone().sub(pA).normalize());
     bar.castShadow=true;world.add(bar);
   };
-  const hubAt=(r,yc)=>new THREE.Vector3(r*c.pitch,
+  const hubAt=(r,yc)=>new THREE.Vector3(xof(r),
     ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD)+(LIFTS[r+'|'+yc.toFixed(2)]||0),-yc);
   const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
   const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
@@ -1910,10 +2026,18 @@ function build3D(){
   sc.left=-R;sc.right=R;sc.top=R;sc.bottom=-R;sc.near=1;sc.far=R*6;
   sc.updateProjectionMatrix();
   TD.sun.target.position.set(cx,0,0);
-  if(!TD.camSet){
-    TD.camera.position.set(x1+2*c.pitch,Math.max(16,gw*0.4),L*0.95);
+  TD.cx=cx; TD.R=Math.max(gw,gl)*0.9;
+  // reencuadrar cuando cambia la EXTENSIÓN (cargar Ayora con la cámara de una
+  // planta de 8 filas dejaba una «pista infinita»); la órbita del usuario se
+  // respeta mientras la geometría no cambie de tamaño
+  const fitKey=Math.round(gw/20)+'x'+Math.round(gl/20);
+  if(!TD.camSet||TD.fitKey!==fitKey){
+    const dMax=Math.max(gw,gl);
+    TD.camera.position.set(cx+dMax*0.5,dMax*0.45,gl*0.55);
+    TD.camera.far=Math.max(6000,dMax*8);TD.camera.updateProjectionMatrix();
     TD.controls.target.set(cx,0,0);
-    TD.camSet=true;
+    TD.controls.maxDistance=Math.max(1500,dMax*3);
+    TD.camSet=true;TD.fitKey=fitKey;
   }
 }
 function update3D(){
@@ -1931,8 +2055,8 @@ function update3D(){
     }
   });
   const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
-  const cx=(DAY.c.nrows-1)*DAY.c.pitch/2;
-  const R=Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
+  const cx=TD.cx!=null?TD.cx:(DAY.c.nrows-1)*DAY.c.pitch/2;
+  const R=TD.R||Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
   const up=Math.min(1,Math.max(0,g.elev/35));
   if(g.elev>0){
     TD.sun.position.set(cx+Math.sin(azRel)*Math.cos(el)*R,Math.sin(el)*R,-Math.cos(azRel)*Math.cos(el)*R);
@@ -1984,7 +2108,10 @@ function updateHud(tIdx,g,irrN,key,p,sh){
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
     if(key==='optimal'&&p.f[tIdx]!=null)card('f elegida',p.f[tIdx].toFixed(2),'0 = pairwise · 1 = astro');
-    const rmm=tangentResidualMm(g.zen,g.az,DAY.T,p.ang[tIdx]).filter(isFinite);
+    // solo parejas que INTERACTÚAN ahora mismo (cobertura axial > 0): en una
+    // planta real hay vecinas sin solape norte cuyo residual es ruido
+    const rmmAll=tangentResidualMm(g.zen,g.az,DAY.T,p.ang[tIdx]);
+    const rmm=rmmAll.filter((v,pi)=>isFinite(v)&&axialCoverage(g.zen,g.az,DAY.T,pi)>0);
     if(rmm.length&&g.elev>0){
       const mn=Math.min(...rmm);
       card('Residual mín',(mn>=1000?'≥1 m':mn.toFixed(0)+' mm'),mn<-1?'⚠ auto-sombra 3D':'hueco al vecino');
@@ -2156,10 +2283,25 @@ function rebuildSelectors(){
   $('polview').innerHTML=en.map(P=>'<option value="'+P.key+'"'+(P.key===(curP||'pairwise')?' selected':'')+'>'+P.nm+'</option>').join('');
 }
 function buildPolicyBox(){
-  $('polbox').innerHTML=POLICIES.map(P=>
-    '<label class="pol"><input type="checkbox" data-k="'+P.key+'"'+(P.on?' checked':'')+'>'+
+  // TCU distribuida = solo políticas computables con conocimiento LOCAL (sus
+  // dos vanos + su tilt: los registros BT3D del levantamiento). La NCU central
+  // puede ejecutarlas TODAS (manda consignas por tracker), así que solo el
+  // filtro TCU deshabilita algo.
+  const brainMode=$('brainsel')?$('brainsel').value:'all';
+  $('polbox').innerHTML=POLICIES.map(P=>{
+    const blocked=brainMode==='tcu'&&P.brain==='ncu';
+    return '<label class="pol"'+(blocked?' style="opacity:.38" title="Necesita inteligencia central (NCU): la TCU no conoce la planta"':'')+'>'+
+    '<input type="checkbox" data-k="'+P.key+'"'+((P.on&&!blocked)?' checked':'')+(blocked?' disabled':'')+'>'+
     '<span class="dot" style="background:'+P.col+'"></span>'+
-    '<span><span class="nm">'+P.nm+'</span><div class="ds">'+P.ds+'</div></span></label>').join('');
+    '<span><span class="nm">'+P.nm+' <span class="chip" style="border-color:'+(P.brain==='tcu'?'var(--ok)':'var(--accent)')+';color:'+(P.brain==='tcu'?'var(--ok)':'var(--accent)')+'">'+P.brain.toUpperCase()+'</span></span><div class="ds">'+P.ds+'</div></span></label>';
+  }).join('');
+  const bs2=$('brainsel');
+  if(bs2&&!bs2._wired){bs2._wired=true;bs2.onchange=()=>{
+    // con TCU distribuida las políticas de NCU se apagan (no son ejecutables)
+    if(bs2.value==='tcu')POLICIES.forEach(P=>{if(P.brain==='ncu')P.on=false;});
+    if(!POLICIES.some(P=>P.on))POL['pairwise'].on=true;
+    buildPolicyBox();recompute();
+  };}
   $('polbox').querySelectorAll('input').forEach(i=>i.onchange=()=>{
     POL[i.dataset.k].on=i.checked;
     if(!POLICIES.some(P=>P.on)){POL['pairwise'].on=true;buildPolicyBox();}
