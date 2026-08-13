@@ -55,4 +55,16 @@ Publicado como página estática en GitHub Pages: **https://imoriana3.github.io/
 - El **mapeo de IDs** a coordenadas lleva una hipótesis (orden de strings de la nomenclatura `1.X.Y`); valídala con un TCU conocido antes de sacar conclusiones de posición exacta.
 - No bajes mucho los intervalos en producción: cada ronda compite con el tráfico de control de la NCU (5–10 min está bien).
 
+## Simulador de Backtracking (`backtracking.html`)
+
+Este repo aloja también el **Simulador de Backtracking**: un espejo JS del motor BT3D de SolarGPT
+(`tracker3d.py`) para comparar políticas de backtracking —astronómico · global · row · pairwise ·
+true-3D · energy-optimal (Deeptrack)— sobre terreno irregular editable, con corte transversal animado,
+curvas θ(t), POA por política (Ineichen + Perez + Martinez) y estimación anual. Un único HTML offline.
+
+- Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
+  tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
+  misma batería (17 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- Documentación completa: `proyectos/docs/backtracking-sim.md` (botón Documentación de su ficha en el Panel).
+
 *Factiun · proyecto interno.*
