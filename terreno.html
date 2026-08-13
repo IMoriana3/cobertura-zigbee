@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.59</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.60</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -664,7 +664,18 @@ async function build(){
   FOCO={x:(_tx0+_tx1)/2,n:(_tn0+_tn1)/2,w:(_tx1-_tx0)+_an,d:(_tn1-_tn0)+_sp};
   encuadra();
   var camD=camera.position.distanceTo(controls.target),diag=Math.hypot(widthM,depthM)/2;   // distancia REAL a la diana: con la planta descentrada, length() medía desde el origen y la niebla salía corta
-  if(scene.fog){scene.fog.near=Math.max(1200,camD-diag);scene.fog.far=Math.max(2800,camD+diag*2+800);}   // NIEBLA adaptativa: con plantas grandes (Ayora 2,5 km) la cámara se aleja ~4,7 km y la planta caía MÁS ALLÁ del fondo de niebla fijo (2800) → se veía solo el fondo. Ahora la niebla se abre según el tamaño
+  /* NIEBLA: su sitio es el FONDO, no la planta. El suelo de 1200 m del `near`
+     se puso pensando en El Burgo (654 m: la niebla no llegaba nunca), pero
+     Ayora mide 2.477×2.853 m y al ACERCARSE la cámara (camD < diag) el
+     `camD-diag` se va negativo y el max() clava el near en 1200 m — o sea
+     DENTRO de la planta. A partir de ahí los seguidores del fondo se iban
+     lavando con color de cielo hasta no verse: los del sur de Ayora salían
+     al 26 %. Ahora el near arranca pasado el punto de escena más lejano
+     (camD+diag), así que la niebla nunca muerde lo que estás mirando. El
+     borde del terreno lo sigue fundiendo con el cielo el alfa de edgeFade,
+     que es de quien era ese trabajo. */
+  if(scene.fog){var _lejos=camD+diag;scene.fog.near=Math.max(1200,_lejos);
+    scene.fog.far=Math.max(scene.fog.near+1500,camD+diag*2+800);}
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?(sat.resumen+(sat.mixto?" <span class='err'>(MIXTO)</span>":"")):"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
