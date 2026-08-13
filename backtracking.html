@@ -1522,11 +1522,17 @@ $('bagnbtn').onclick=()=>{
 $('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);recompute();};
 
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
+/* Va por clave de la hoja de cartera (24002 = El Burgo), no por nº de proyecto: es el mismo
+   índice con el que llega `factiun_plantas`. */
 const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'24019':[-16.59577,-71.80644],'24007':[41.22694,0.32415],'24021':[33.8685,9.8433]};
 function loadPlants(){
   let P={}; try{P=JSON.parse(localStorage.getItem('factiun_plantas')||'{}')||{};}catch(e){}
   let opts='<option value="">— manual —</option>';
-  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+cod+'</option>';});
+  /* Se rotula el nº de PROYECTO (`nproy`, el del DWG), no la clave de la hoja: El Burgo salía aquí
+     como "El Burgo I · 24002" y en el resto del ecosistema es 23003. `nproy` lo publica
+     cartera-tabla.html; si la cartera guardada es vieja y no lo trae, cae a la clave, que es lo
+     que había. */
+  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+((P[cod]&&P[cod].nproy)||cod)+'</option>';});
   $('plant').innerHTML=opts;
   $('plant').onchange=function(){
     const p=P[this.value]; if(!p)return;

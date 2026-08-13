@@ -58,6 +58,9 @@
 var DEG=Math.PI/180;
 function $(id){return document.getElementById(id);}
 var Q=new URLSearchParams(location.search),PLANT=Q.get('planta')||'elburgo';
+/* COD = clave de la HOJA DE CARTERA. El título de esta página ya rotula el 23003, que es el del
+   DWG y el del Excel de siting, y es el que manda (decidido 2026-08-13). Ver NPROY en
+   proyectos/cartera-tabla.html. */
 var COD={elburgo:24002,ayora:24025,sanjose:24019};
 var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');return (m&&m[String(COD[PLANT])])||null;}catch(e){return null;}})();
 var CAL=(function(){try{return JSON.parse(localStorage.getItem('factiun_cal_'+(COD[PLANT]||PLANT))||'null');}catch(e){return null;}})();

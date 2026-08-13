@@ -33,7 +33,7 @@
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
-  <div><h1>Layout 2D<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.1</div></div>
+  <div><h1>Layout 2D<span style="opacity:.5">·</span><select id="plantSel"><option value="elburgo">El Burgo I 23003</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option></select></h1><div class="sub">v2.1</div></div>
   <button id="offBtn" title="Modo sin conexión: no descarga el satélite (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
   <span class="brand">Factiun</span>
 </header>
@@ -76,7 +76,7 @@ async function mosaic(z,latN,latS,lonW,lonE){
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }
 
-var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'}, paramo:{file:'paramo_layout.json',title:'Páramo 25019'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'}, custom:{file:null,title:'Planta nueva'} };
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'}, paramo:{file:'paramo_layout.json',title:'Páramo 25019'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'}, custom:{file:null,title:'Planta nueva'} };
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
@@ -110,6 +110,10 @@ var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');retu
 /* ===== capa ELÉCTRICA: colorea cada seguidor por su NCU (asignación canónica) =====
    Usa t.ncu del layout (lo emite el creador canónico de SolarGPT; real p.ej. en San José);
    si el layout no lo trae, asigna por NCU más cercana. 100% offline (solo lee el layout). */
+/* COD = clave de la HOJA DE CARTERA, no el número de la planta. El Burgo es 24002 ahí y 23003 en
+   el DWG y en el Excel de siting; el que se rotula es el 23003 (decidido 2026-08-13) y este 24002
+   sirve solo para encontrar su ficha. La equivalencia vive en proyectos/cartera-tabla.html (NPROY)
+   y viaja en `factiun_plantas` como `nproy`. */
 var COD={elburgo:24002,ayora:24025,sanjose:24019};
 var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');var c=COD[PLANT];return (m&&c&&m[String(c)])||null;}catch(e){return null;}})();   // ficha de la planta (Cartera técnica) para anotar/validar la leyenda
 var EGROUPS=[],ECOL={};
