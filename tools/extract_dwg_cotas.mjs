@@ -259,7 +259,10 @@ console.log(`  módulos que salen de esta taxonomía: ${totMods.toLocaleString('
 
 if (!WRITE) { console.log('\n(dry-run: pasa --write para escribirlo en ' + planta + '_layout.json)'); process.exit(0); }
 
-L.trackers.forEach(t => { delete t.__blk; });
+/* Cada seguidor se queda con SU bloque. Sin esto, el dibujo tendría que adivinar el tipo por el
+   nombre —y Ayora tiene 107 en bloques anónimos y San José nombra los suyos "Interior largo"—.
+   El campo `blk` ya existía en Ayora justo para esos 107; ahora lo llevan todos. */
+L.trackers.forEach(t => { t.blk = t.__blk; delete t.__blk; });
 L.mesa = { ...mesa, filaZ: mesa.pasoFila != null ? +(mesa.pasoFila / 2).toFixed(4) : null, tipos,
            fuente: `medido en ${dwgPath.split('/').pop()} (bloques ${Object.keys(medidos).join(', ')})` };
 writeFileSync(RAIZ + planta + '_layout.json', JSON.stringify(L));

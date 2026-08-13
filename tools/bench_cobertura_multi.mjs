@@ -53,7 +53,7 @@ for (const p of PLANTAS) {
   ok(r.trk > 0, `layout cargado (${r.trk} seguidores)`);
   ok(r.canvas && r.pintados > 3000, `la capa del mapa de planta pinta (${r.pintados} px)`);
   ok(r.modos === 8, `los 8 modos de coloreado siguen ahí (${r.modos})`);
-  ok(r.opciones === 6, `el selector lista las 6 plantas (${r.opciones})`);
+  ok(r.opciones === PLANTAS.length + 1, `el selector lista las ${PLANTAS.length + 1} plantas con layout (${r.opciones})`);   // +1: Túnez, que no entra en este banco pero sí en el selector
   ok(r.docTitle.includes(r.titulo), `título de página con la planta: "${r.docTitle}"`);
   // el mapa tiene que estar SOBRE la planta, no sobre El Burgo
   const dLat = Math.abs(r.centro[0] - r.clat), dLon = Math.abs(r.centro[1] - r.clon);
@@ -82,7 +82,19 @@ for (const p of PLANTAS) {
 
 /* ---------- Layout 2D (plano.html) ---------- */
 console.log('\n\n########## LAYOUT 2D ##########');
-const ESPERADO = { elburgo: [32.37, 3], ayora: [32.37, 3], sanjose: [36.95, 3], fayon: [27.58, 3.006], bagnarelli: [27.89, 0], paramo: [27.78, 0] };
+/* Cotas esperadas. Las tres plantas cuyo DWG está MEDIDO (campo `mesa` del layout) no llevan
+   número aquí: se leen del propio layout, que es la autoridad, y así no vuelven a quedarse viejas
+   —esta tabla decía que Ayora medía 32,37 de semilargo cuando su DWG dibuja 37,379—.
+   Las demás sí van a mano, porque su cota es derivada y lo que se vigila es que no cambie sola. */
+import { readFileSync as _rf } from 'node:fs';
+const LAY_DIR = new URL('..', import.meta.url).pathname;
+function esperado(p) {
+  const L = JSON.parse(_rf(LAY_DIR + p + '_layout.json', 'utf8'));
+  if (L.mesa) return [Math.max(...Object.values(L.mesa.tipos).map(z => z.largo)) / 2,
+                      (L.mesa.filaZ != null ? L.mesa.filaZ : 3.0), 'del DWG medido'];
+  const M = { elburgo: [32.363, 3], bagnarelli: [27.878, 2.75], paramo: [27.767, 0] };
+  return [M[p][0], M[p][1], 'derivada (su DWG no se ha medido)'];
+}
 for (const p of PLANTAS) {
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
@@ -96,8 +108,9 @@ for (const p of PLANTAS) {
   console.log(`\n=== ${p} ===  ${r.trk} seguidores · halfL ${r.tdim.halfL} filaZ ${r.tdim.filaZ} · ${r.azul} px de seguidor`);
   ok(errs.length === 0, `sin errores de JS ${errs.length ? '→ ' + errs[0].slice(0, 140) : ''}`);
   ok(r.plant === p, `?planta= resuelve a ${r.plant} (antes bagnarelli/paramo caían a El Burgo)`);
-  ok(Math.abs(r.tdim.halfL - ESPERADO[p][0]) < 0.02 && Math.abs(r.tdim.filaZ - ESPERADO[p][1]) < 0.01,
-     `cotas del seguidor correctas (halfL ${r.tdim.halfL}, filaZ ${r.tdim.filaZ})`);
+  const ESP = esperado(p);
+  ok(Math.abs(r.tdim.halfL - ESP[0]) < 0.02 && Math.abs(r.tdim.filaZ - ESP[1]) < 0.01,
+     `cotas del seguidor correctas (halfL ${r.tdim.halfL.toFixed(3)} vs ${ESP[0].toFixed(3)}, filaZ ${r.tdim.filaZ} vs ${ESP[1]}) — ${ESP[2]}`);
   ok(r.azul > 2000, `dibuja los seguidores (${r.azul} px)`);
   ok(r.titulo.includes('Layout 2D'), `se llama Layout 2D ("${r.titulo}")`);
   /* Lo que de verdad importa: las dos vistas dibujan el MISMO seguidor. Si divergen, el mapa de la
@@ -123,10 +136,12 @@ for (const p of PLANTAS) {
       for (const [x, y] of px) { const u = x - mx, v = y - my; a += u * u; b += u * v; cc += v * v; }
       return { deg: 0.5 * Math.atan2(2 * b / n, (a - cc) / n) * 180 / Math.PI, n, rot: t.rot };
     });
-    /* La banda va a lo largo del tubo (norte-sur = 90° en pantalla). `rot` es el ángulo del INSERT
-       del DWG, antihorario y con el norte arriba; en pantalla (y hacia abajo) eso es un giro de
-       signo contrario, así que el eje esperado queda en 90 − rot. */
-    const esp = 90 - ang.rot, dif = Math.abs(((ang.deg - esp + 90) % 180 + 180) % 180 - 90);
+    /* `rot` NO es el ángulo del INSERT: es el RUMBO del eje en grados al ESTE del norte de
+       cuadrícula (23,7 en Bagnarelli, sacado de las 38 mesas dibujadas del DWG). Con el norte
+       arriba y la y hacia ABAJO, la dirección del eje es (sin rot, −cos rot), o sea un ángulo de
+       pantalla de −(90 − rot). Este banco esperaba +(90 − rot) —la interpretación vieja, de cuando
+       se creía que era el INSERT— y por eso daba 47° de error midiendo un dibujo correcto. */
+    const esp = -(90 - ang.rot), dif = Math.abs(((ang.deg - esp + 90) % 180 + 180) % 180 - 90);
     console.log(`   eje principal medido ${ang.deg.toFixed(2)}° · esperado ${esp.toFixed(2)}° (rot ${ang.rot}° del DWG) · ${ang.n} px`);
     ok(dif < 2.5, `los seguidores salen girados como en el DWG (error ${dif.toFixed(2)}°)`);
   }
