@@ -913,7 +913,11 @@ function corrSuelo(x,n){return residAt(x,n)+cavaAt(x,n);}
 function buildResiduo(){
   RESID=null;
   if(!COTAS||!FB||!TRK.length)return;
-  var pad=60,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad;
+  /* El pad tiene que ser MAYOR que el radio de influencia (cb): si el campo
+     todavía vale algo en la linde de la caja, `residAt` lo corta a 0 de golpe
+     ahí y sale un ESCALÓN RECTO en el suelo — la "capa" rectangular que se veía
+     en Ayora. Con pad>cb el campo ya ha bajado a 0 antes de que la caja acabe. */
+  var pad=150,x0=FB.x0-pad,x1=FB.x1+pad,n0=FB.n0-pad,n1=FB.n1+pad;
   var cel=15,nx=Math.max(2,Math.ceil((x1-x0)/cel)),ny=Math.max(2,Math.ceil((n1-n0)/cel));   // 15 m: en sierra la de 40 m submuestreaba el campo y los flancos quedaban a medias
   if((nx+1)*(ny+1)>160000){cel=Math.sqrt((x1-x0)*(n1-n0)/160000);nx=Math.ceil((x1-x0)/cel);ny=Math.ceil((n1-n0)/cel);}
   var P=[],i;
@@ -924,11 +928,19 @@ function buildResiduo(){
   var V=new Float32Array((nx+1)*(ny+1));
   for(var j=0;j<=ny;j++){var n=n0+(n1-n0)*j/ny;
     for(var q=0;q<=nx;q++){var x=x0+(x1-x0)*q/nx,sw=0,sv=0,bx=Math.floor(x/cb),bn=Math.floor(n/cb);
+      var dmin=Infinity;
       for(var dx=-1;dx<=1;dx++)for(var dn=-1;dn<=1;dn++){
         var l=B[(bx+dx)+'|'+(bn+dn)];if(!l)continue;
         for(var z=0;z<l.length;z++){var p=P[l[z]],d2=(p[0]-x)*(p[0]-x)+(p[1]-n)*(p[1]-n);
+          if(d2<dmin)dmin=d2;
           if(d2>cb*cb)continue;var w=1/(d2+25);sw+=w;sv+=w*p[2];}}
-      V[j*(nx+1)+q]=sw>0?sv/sw:0;}}                           // sin seguidores cerca: 0 = manda el DEM tal cual
+      /* El IDW NORMALIZA, así que rebajar los pesos no baja el valor: a 119 m de
+         un seguidor salía el residuo entero y a 121 m un 0 seco. Ese salto es el
+         escalón que seguía el contorno de la planta. La confianza va aparte: 1
+         hasta cb/2 y a 0 en cb, con smoothstep. Fuera del área levantada no
+         sabemos el residuo, y "no saberlo" se parece al DEM, no a un talud. */
+      var _dm=Math.sqrt(dmin),_u=Math.max(0,Math.min(1,(cb-_dm)/(cb*0.5))),_f=_u*_u*(3-2*_u);
+      V[j*(nx+1)+q]=sw>0?(sv/sw)*_f:0;}}                      // sin seguidores cerca: 0 = manda el DEM tal cual
   RESID={x0:x0,x1:x1,n0:n0,n1:n1,nx:nx,ny:ny,v:V};
 }
 function residAt(x,n){
