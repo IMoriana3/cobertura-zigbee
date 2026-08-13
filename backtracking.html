@@ -1217,6 +1217,19 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   return {angles:ang,f:undefined};
 }
 
+/* velocidad del actuador (Sunner: 0,17 °/s) — la consigna no teletransporta:
+   cada paso el tracker avanza como mucho rate·dt hacia su objetivo. Se aplica
+   SECUENCIALMENTE en la simulación del día (paso 5 min ⇒ 51°/paso: muerde en
+   los saltos de amanecer/ocaso, en los virajes rasantes y en los cambios de f
+   del energy-optimal). En la estimación anual (paso 20 min ⇒ 204°) no llega a
+   morder y se omite, declarado. */
+const TRACKER_SLEW=0.17;                             // °/s (spec del actuador)
+function slewLimit(prev,cmd,dtSec,rate){
+  const r=(rate==null?TRACKER_SLEW:rate)*dtSec;
+  if(!prev)return cmd.slice();
+  return cmd.map((c,i)=>{const d=c-prev[i];return Math.abs(d)<=r?c:prev[i]+Math.sign(d)*r;});
+}
+
 /* punto de entrada ÚNICO por política: calcula θ por fila y aplica el
    accionamiento — computeDay y la estimación anual pasan por aquí */
 function policyAngles(key,zen,az,T,irr,doy,albedo){
@@ -1353,6 +1366,14 @@ function runPhysicsQA(){
       const op=poaPlant(zen,az,T,anglesOptimal(zen,az,T,irr,doy,alb).angles,irr,doy,alb).plant;
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
+  });
+  t('slewLimit: respeta 0,17 °/s — clava el objetivo si llega, recorta si no, y el signo es el del movimiento',()=>{
+    const lim1=slewLimit([0,0],[30,-30],300);        // 51°/paso: llega
+    assert(lim1[0]===30&&lim1[1]===-30,'objetivo alcanzable recortado: '+lim1);
+    const lim2=slewLimit([0,10],[80,-80],300);       // no llega: avanza 51°
+    assert(Math.abs(lim2[0]-51)<1e-9&&Math.abs(lim2[1]-(10-51))<1e-9,'recorte mal: '+lim2);
+    const lim3=slewLimit(null,[55,55],300);          // sin previo: arranque directo
+    assert(lim3[0]===55,'arranque: '+lim3);
   });
   t('óptimo LIBRE ≥ energy-optimal y ≥ pairwise (arranca en la mejor f común y solo mejora)',()=>{
     // mono e irregular Y bifila: el ascenso por unidad respeta θ común y no
@@ -1495,7 +1516,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.7.0';
+const VER='v1.7.1';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1715,12 +1736,15 @@ function computeDay(){
   for(const P of POLICIES){
     if(!P.on)continue;
     const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
+    let prev=null;
     for(let t=0;t<nT;t++){
       const g=sun[t];
       const o=policyAngles(P.key,g.zen,g.az,T,irr[t],doy,c.albedo);
       fArr[t]=o.f;
-      const pp=poaPlant(g.zen,g.az,T,o.angles,irr[t],doy,c.albedo);
-      ang[t]=o.angles; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
+      // lo que la planta HACE: la consigna limitada a la velocidad del tracker
+      const lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
+      const pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+      ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
     }
     pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,f:fArr};
   }
@@ -2138,6 +2162,7 @@ function build3D(){
   const barM=new THREE.MeshLambertMaterial({color:0x8a6d2f});
   const cardM=new THREE.MeshLambertMaterial({color:0xeaf4ff});
   const linkBar=(pA,pB)=>{
+    if(pA.distanceTo(pB)>9)return;   // una biela no cruza huecos: solo entre vigas enfrentadas
     const len=pA.distanceTo(pB); if(len<0.1)return;
     const g3=new THREE.CylinderGeometry(0.045,0.045,len,8);
     const bar=new THREE.Mesh(g3,barM);
@@ -2152,13 +2177,19 @@ function build3D(){
   if(T.groups){
     for(const g2 of T.groups){
       if(g2.length===2){
-        for(const [ycA] of segCenters(g2[0])){
-          // pareja de la gemela: el tramo con el centro más próximo
+        for(const [ycA,lenA] of segCenters(g2[0])){
+          // pareja de la gemela: el tramo con el centro más próximo — pero SOLO
+          // si de verdad está enfrente (el eje de transmisión es ⊥ a las vigas;
+          // una barra diagonal entre mesas destresbolilladas es imposible)
           let best=null;
           for(const [ycB] of segCenters(g2[1]))
             if(best===null||Math.abs(ycB-ycA)<Math.abs(best-ycA))best=ycB;
-          if(best===null)continue;
-          const pA=hubAt(g2[0],ycA), pB=hubAt(g2[1],best);
+          const pA=hubAt(g2[0],ycA);
+          if(best===null||Math.abs(best-ycA)>Math.min(1.5,(lenA||1)*0.34)){
+            motorAt(pA);                             // sin gemela enfrente: mesa suelta, motor propio
+            continue;
+          }
+          const pB=hubAt(g2[1],best);
           linkBar(pA,pB);
           motorAt(pA);                               // el motor va en la viga west (línea motora)
           if(T.drive==='quebrado')for(const P of [pA,pB]){
