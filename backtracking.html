@@ -180,10 +180,17 @@
           <option value="tresbolillo">Tresbolillo</option>
           <option value="medios">Cortos delante de largos</option>
           <option value="aleatorio">Aleatorio</option>
+          <option value="bagnarelli">Bagnarelli ×N (real)</option>
         </select></div>
       <div class="f"><label>Filas por línea</label><input id="ntrk" type="number" min="1" max="3" step="1" value="1"></div>
       <div class="f"><label>Módulos por ala</label><input id="mods" type="number" min="8" max="32" step="1" value="28"></div>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 multiplicada por 3: 18 líneas a pitch 11,0 m, eje a 23,7°, 51 trackers escalonados con sus medios (patrón medido de bagnarelli_layout.json)">⛳ Bagnarelli ×3</button>
+      <button class="btn small" id="ayorabtn" title="Cotas X,Y,Z reales de los extremos de mesa (ayora_cotas.json): la banda de líneas con más filas, con sus tilts N-S medidos y las parejas bifila reales">⛰ Ayora real</button>
+      <button class="btn small" id="sjbtn" title="Cotas X,Y,Z reales de los extremos de mesa (sanjose_cotas.json)">⛰ San José real</button>
+    </div>
+    <div class="nota" id="realnote" style="display:none"></div>
     <div class="nota">La sombra transversal se pondera por el <b>solape axial real</b> (con la deflexión
       de la sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
       extremos de línea se libran. La fila «media» es tipo real de catálogo (≈0,504·larga, San José).
@@ -214,9 +221,17 @@
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje: aquí se arrastran los postes para editar el terreno">Corte 2D · editor</button>
       </span></h2>
     <div id="view3d" class="viz3d"></div>
+    <div class="nota" id="warn3d" style="display:none;color:var(--err)"></div>
     <canvas id="scene" class="viz" height="430" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
+      <input type="date" id="date2" class="btn small" title="La fecha (el mismo campo que en Emplazamiento)">
+      <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
+        <option value="30">×½</option>
+        <option value="60" selected>×1</option>
+        <option value="150">×2,5</option>
+        <option value="360">×6</option>
+      </select>
       <input type="range" id="hour" min="0" max="1439" step="5" value="720">
       <span class="t" id="hourlbl">12:00</span>
       <select id="rowsel" class="btn small" title="Fila del HUD y de las curvas"></select>
@@ -472,6 +487,17 @@ function applyDrive(angles,groups){
 function nMotors(nRows,mode){
   return (mode==='bifila'||mode==='quebrado')?Math.ceil(nRows/2):nRows;
 }
+function nMotorsSegs(T){
+  // n_motors con implantación: monofila = un motor por TRAMO (tracker);
+  // bifila = un motor por fila de la línea MOTORA del grupo (la gemela va
+  // por transmisión); líneas sueltas, motor propio por tramo
+  if(!T.segs)return nMotors(T.pairs.length+1,T.drive||'mono');
+  const segsOf=r=>(T.segs[r]||[]).length||1;
+  if(!T.groups){let m=0;for(let r=0;r<T.pairs.length+1;r++)m+=segsOf(r);return m;}
+  let m=0;
+  for(const g of T.groups)m+=segsOf(g[0]);
+  return m;
+}
 
 /* Backtracking a nivel de ACCIONAMIENTO. El min(|θ|) del grupo NO basta en
    terreno quebrado: aplanar una fila mueve su borde hacia el vecino y ensancha
@@ -724,10 +750,38 @@ function axialCoverage(zen,az,T,p){
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
+/* Bagnarelli 24030, patrón REAL medido del layout del repo
+   (bagnarelli_layout.json, proyectado al frame del eje a 23,7°): 6 líneas a
+   pitch 11,0 m, trackers ESCALONADOS +4,8 m por línea, con los «medios» en
+   los extremos norte de las líneas 2-4. Cada entrada: [vCentro_m, esMedio].
+   Completo = 2 alas de 21 módulos de 27,68 m + hueco ≈ 55,9 m; medio ≈ 26,9 m.
+   El preset lo replica en ciclo (×3 con 18 líneas = 51 trackers). */
+const BAGN_LC=55.9, BAGN_LM=26.9;
+const BAGN_PATTERN=[
+  [[-43.8,0],[13.0,0]],
+  [[-61.5,0],[-4.7,0],[37.6,1]],
+  [[-56.7,0],[0.1,0],[42.5,1]],
+  [[-51.8,0],[4.9,0],[47.3,1]],
+  [[-47.0,0],[9.8,0],[66.5,0]],
+  [[-42.2,0],[14.6,0],[71.4,0]],
+];
+const BAGN_PITCH=11.0, BAGN_AXAZ=23.7;
+
 /* tramos por línea según el preset de implantación. filaLen = fila LARGA
    (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
    San José). Determinista (semilla fija): reproducible siempre. */
 function nsSegments(nRows,preset,nPer,filaLen,gapNS){
+  if(preset==='bagnarelli'){
+    // patrón real en ciclo de 6, centrado (el layout va de −89,5 a 99,4 m)
+    const shift=-4.95;
+    const out=[];
+    for(let r=0;r<nRows;r++)
+      out.push(BAGN_PATTERN[r%6].map(([v,m])=>{
+        const L=m?BAGN_LM:BAGN_LC;
+        return [v+shift-L/2,v+shift+L/2];
+      }));
+    return out;
+  }
   const media=filaLen*0.504;
   const mk=(M,len,off)=>{const tot=M*len+(M-1)*gapNS;const o=[];let y=-tot/2+off;
     for(let k=0;k<M;k++){o.push([y,y+len]);y+=len+gapNS;}return o;};
@@ -744,6 +798,89 @@ function nsSegments(nRows,preset,nPer,filaLen,gapNS){
     else out.push(mk(nPer,filaLen,0));        // alineadas
   }
   return out;
+}
+
+/* ── planta REAL desde las cotas X,Y,Z de los extremos de mesa ──────────────
+   ayora_cotas.json / sanjose_cotas.json (de este repo): t[] = trackers BIFILA,
+   cada uno con f[] = sus 2 filas; por fila x (transversal), n=[n0,n1] (extremos
+   a lo largo) e y=[y0,y1] (COTAS medidas en esos extremos, relativas a la base).
+   De ahí sale TODO medido: líneas por clúster de x, cota media por línea, tilt
+   N-S por línea desde (y1−y0)/(n1−n0), tramos reales y las parejas bifila
+   reales (con su flag de articulado). Se elige la banda de nLines líneas
+   consecutivas con más filas. Puro y testeable (el test de Node lo corre
+   contra el fichero real). */
+function plantFromCotas(data,nLines){
+  const pitch=data.pitch||6;
+  const filas=[];
+  for(const trk of (data.t||[]))for(const f of (trk.f||[])){
+    if(!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
+    filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk});
+  }
+  if(!filas.length)throw new Error('cotas sin filas');
+  // clúster de líneas por x (tolerancia medio pitch)
+  filas.sort((a,b)=>a.x-b.x);
+  const lines=[];
+  for(const f of filas){
+    const L=lines[lines.length-1];
+    if(L&&Math.abs(f.x-L.x)<pitch/2){L.f.push(f);L.x=(L.x*(L.f.length-1)+f.x)/L.f.length;}
+    else lines.push({x:f.x,f:[f]});
+  }
+  // banda de nLines consecutivas con MÁS filas (y arrancando en pareja par,
+  // para que los grupos bifila reales caigan enteros dentro)
+  nLines=Math.min(nLines,lines.length);
+  let best=0,bestN=-1;
+  for(let a=0;a+nLines<=lines.length;a+=2){
+    const cnt=lines.slice(a,a+nLines).reduce((s,l)=>s+l.f.length,0);
+    if(cnt>bestN){bestN=cnt;best=a;}
+  }
+  const band=lines.slice(best,best+nLines);
+  // por línea: cota media, tilt N-S medio (ponderado por largo) y tramos
+  const elev=[],tilt=[],segs=[];
+  let nMid=0,nCnt=0;
+  for(const L of band)for(const f of L.f){nMid+=(f.n0+f.n1)/2;nCnt++;}
+  nMid/=Math.max(nCnt,1);
+  const segZ=[];
+  for(const L of band){
+    let e=0,tw=0,wt=0;
+    const sg=[];
+    for(const f of L.f){
+      const len=Math.abs(f.n1-f.n0);
+      e+=(f.y0+f.y1)/2;
+      tw+=Math.atan2(f.y1-f.y0,f.n1-f.n0)*len; wt+=len;
+      const asc=f.n0<=f.n1;
+      sg.push({s:[Math.min(f.n0,f.n1)-nMid,Math.max(f.n0,f.n1)-nMid],
+               z:asc?[f.y0,f.y1]:[f.y1,f.y0]});
+    }
+    sg.sort((a,b)=>a.s[0]-b.s[0]);
+    elev.push(e/L.f.length);
+    tilt.push(wt>0?(tw/wt)*DEG:0);
+    segs.push(sg.map(o=>o.s));
+    segZ.push(sg.map(o=>o.z));
+  }
+  const eMean=elev.reduce((s,v)=>s+v,0)/elev.length;
+  for(let i=0;i<elev.length;i++)elev[i]-=eMean;
+  for(const line of segZ)for(const z of line){z[0]-=eMean;z[1]-=eMean;}
+  // parejas bifila REALES: las dos filas de un mismo tracker, si ambas caen en
+  // la banda; art del tracker = alguna de sus filas articulada
+  const groups=[],seen=new Set(),gseen=new Set();
+  let nArt=0,nPairs=0;
+  for(const L of band)for(const f of L.f){
+    const t=f.trk;
+    if(seen.has(t))continue;
+    seen.add(t);
+    const idx=[];
+    for(let li=0;li<band.length;li++)
+      if(band[li].f.some(g=>g.trk===t))idx.push(li);
+    if(idx.length===2){nPairs++;if(t.f.some(g=>g.art))nArt++;}
+    // los GRUPOS son parejas de LÍNEAS (muchos trackers comparten pareja):
+    // deduplicar o el acoplado y el conteo de motores se multiplican
+    const key=idx.join('-');
+    if(idx.length&&!gseen.has(key)){gseen.add(key);groups.push(idx);}
+  }
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,
+          pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
+          drive:(nArt>nPairs/2)?'quebrado':'bifila',
+          xFrom:band[0].x,xTo:band[band.length-1].x,nFilas:bestN,nArt:nArt,nPairs:nPairs};
 }
 
 /* sombra por fila en un instante — semántica de compute_shade: la fila up-sun
@@ -1099,6 +1236,22 @@ function runPhysicsQA(){
       'esperaba la mitad: '+shSeg[0].toFixed(4)+' vs '+(shInf[0]*0.5).toFixed(4));
     assert(axialCoverage(75,0,T,0)===0,'sol paralelo al eje debería dar cobertura 0');
   });
+  t('Bagnarelli ×3: 18 líneas del patrón real en ciclo ⇒ 51 trackers, 9 medios, escalonado +4,8 m',()=>{
+    const segs=nsSegments(18,'bagnarelli',1,55.9,1.0);
+    assert(segs.length===18,'líneas: '+segs.length);
+    let tot=0,medios=0;
+    for(const line of segs)for(const sg of line){
+      tot++;
+      const L=sg[1]-sg[0];
+      if(Math.abs(L-26.9)<0.01)medios++;
+      else assert(Math.abs(L-55.9)<0.01,'largo raro: '+L.toFixed(1));
+    }
+    assert(tot===51,'trackers: '+tot+' (17 reales × 3)');
+    assert(medios===9,'medios: '+medios+' (3 reales × 3)');
+    // el escalón real: el primer completo de la línea 2 va ~+4,8 m más al norte que el de la 1
+    const c1=(segs[1][0][0]+segs[1][0][1])/2, c2=(segs[2][0][0]+segs[2][0][1])/2;
+    assert(Math.abs((c2-c1)-4.8)<0.2,'escalón: '+(c2-c1).toFixed(2)+' m');
+  });
   t('Martinez: escalones exactos y saturación',()=>{
     assert(elecLoss(0,3)===0,'f=0');
     assert(elecLoss(1e-9,3)===0,'polvo flotante no dispara escalón');
@@ -1127,7 +1280,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.3';
+const VER='v1.4';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1170,7 +1323,20 @@ function nsProfile(c){
   else if(c.nspreset==='aleatorio'){const r=mulberry32(1234);for(let i=0;i<n;i++)out[i]=(r()*2-1)*v;}
   return out;
 }
+let PLANT_REAL=null;   // planta cargada de cotas reales (Ayora/San José); null = presets
 function terrain(c){
+  if(PLANT_REAL){
+    // terreno/implantación MEDIDOS: cotas y tilts de los extremos de mesa.
+    // ELEV sigue siendo editable (arrastra postes); tilts/tramos/parejas, reales.
+    const P=PLANT_REAL;
+    const groups=c.drive==='mono'?null:P.groups;
+    // tilts MEDIDOS tal cual: el montaje ya los fijó (postes sobre el terreno);
+    // rígida vs quebrada cambia el acople de θ, no la geometría construida
+    return {pairs:pairsFromElev(ELEV,c.pitch,P.tilt),cw:c.cw,axisAz:c.axaz,
+            maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
+            rowTilt:P.tilt,groups:groups,drive:c.drive,
+            segs:P.segs,filaLen:2*c.mods*1.146+0.55,real:P};
+  }
   const groups=driveGroups(c.nrows,c.drive);
   const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
   const filaLen=2*c.mods*1.146+0.55;                  // 2 alas + hueco de motor (cotas del modelo)
@@ -1208,7 +1374,41 @@ $('tpreset').onchange=()=>{
   $('tparamlbl').textContent=P==='ondulado'?'Amplitud m':P==='valle'||P==='cresta'?'Desnivel m':P==='aleatorio'?'Semilla':'Pendiente °';
   $('tparam').value=P==='ondulado'?1.2:P==='valle'||P==='cresta'?2:P==='aleatorio'?7:6;
 };
-$('tapply').onclick=applyPreset;
+$('tapply').onclick=()=>{PLANT_REAL=null;$('realnote').style.display='none';applyPreset();};
+async function loadRealPlant(name,lat,lon){
+  const note=$('realnote');
+  note.style.display='';note.textContent='cargando '+name+'…';
+  try{
+    const r=await fetch(name+'_cotas.json',{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const nLines=Math.max(2,Math.min(24,Math.round(+$('nrows').value)||18));
+    const P=plantFromCotas(data,nLines);
+    PLANT_REAL=P;
+    ELEV=P.elev.slice();
+    $('nrows').value=P.elev.length;$('pitch').value=P.pitch.toFixed(2);
+    $('cw').value=P.cw;$('maxang').value=P.maxAngle;$('axaz').value=0;
+    $('drive').value=P.drive;
+    note.innerHTML='<b>'+name+'</b> (cotas reales): banda x '+P.xFrom.toFixed(0)+'–'+P.xTo.toFixed(0)+' m · '+
+      P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
+      (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
+      Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°. Azimut de eje ≈ 0 (aprox declarada). Las cotas siguen siendo editables.';
+    recompute();
+  }catch(e){
+    PLANT_REAL=null;
+    note.innerHTML='No se pudo cargar '+name+'_cotas.json ('+(e&&e.message||e)+'). '+
+      'El fetch necesita servirse por http (GitHub Pages); abriendo el fichero en local (file://) el navegador lo bloquea.';
+  }
+}
+$('ayorabtn').onclick=()=>loadRealPlant('ayora');
+$('sjbtn').onclick=()=>loadRealPlant('sanjose');
+$('bagnbtn').onclick=()=>{
+  PLANT_REAL=null;$('realnote').style.display='none';
+  // la implantación real trae su geometría: pitch y azimut de eje MEDIDOS
+  $('nrows').value=18;$('pitch').value='11.00';$('axaz').value=BAGN_AXAZ;
+  $('nsl').value='bagnarelli';$('drive').value='mono';   // Bagnarelli es monofila
+  ensureElev(18);recompute();
+};
 $('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);recompute();};
 
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
@@ -1500,12 +1700,38 @@ function build3D(){
   let ext=15;
   if(T.segs)for(const line of T.segs)for(const sg of line)ext=Math.max(ext,Math.abs(sg[0]),Math.abs(sg[1]));
   const L=2*ext;
-  const hub=1.6;
+  const hub=2.0;                       // postH canónico del modelo (seguidor.js)
   // frame: x = ⊥ eje (la derecha del corte 2D) · y = arriba · z = −norte
   const x0=-c.pitch, x1=n*c.pitch, cx=(n-1)*c.pitch/2;
   const clampi=(v,a,b)=>Math.max(a,Math.min(b,v));
   const elevAt=x=>{const t=x/c.pitch,i=clampi(Math.floor(t),0,n-2),f=clampi(t-i,0,1);return ELEV[i]*(1-f)+ELEV[i+1]*f;};
-  const tiltAt=x=>{const t=x/c.pitch,i=clampi(Math.floor(t),0,n-2),f=clampi(t-i,0,1);return raw[i]*(1-f)+raw[i+1]*f;};
+  // perfil de cota A LO LARGO de cada línea: con planta real, el poligonal de
+  // las cotas z0→z1 de cada mesa (más el delta de arrastre del editor); con
+  // presets, el plano cota+tilt de siempre
+  const PR=T.real||null;
+  const lineProf=[];
+  for(let r0=0;r0<n;r0++){
+    if(PR){
+      const pts=[];
+      PR.segs[r0].forEach((sg,k)=>{const z=PR.segZ[r0][k];pts.push([sg[0],z[0]],[sg[1],z[1]]);});
+      pts.sort((q,w)=>q[0]-w[0]);
+      const dd=ELEV[r0]-PR.elev[r0];
+      lineProf.push(no=>{
+        if(!pts.length)return ELEV[r0];
+        if(no<=pts[0][0])return pts[0][1]+dd;
+        for(let i2=1;i2<pts.length;i2++)if(no<=pts[i2][0]){
+          const f2=(no-pts[i2-1][0])/((pts[i2][0]-pts[i2-1][0])||1);
+          return pts[i2-1][1]*(1-f2)+pts[i2][1]*f2+dd;
+        }
+        return pts[pts.length-1][1]+dd;
+      });
+    }else{
+      const rr=r0;
+      lineProf.push(no=>ELEV[rr]+no*Math.tan(raw[rr]*RAD));
+    }
+  }
+  const terrY=(x,no)=>{const t=x/c.pitch,i2=clampi(Math.floor(t),0,n-2),f2=clampi(t-i2,0,1);
+    return lineProf[i2](no)*(1-f2)+lineProf[i2+1](no)*f2;};
   // terreno: heightfield z(x, norte) = cota(x) + norte·tan(tiltNS(x))
   const marg=L*0.3, gw=(x1-x0)+2*c.pitch, gl=L+2*marg;
   const geo=new THREE.PlaneGeometry(gw,gl,72,24);
@@ -1515,7 +1741,7 @@ function build3D(){
     const x=pos.getX(i)+cx;
     const north=-pos.getZ(i);
     pos.setX(i,x);
-    pos.setY(i,elevAt(x)+north*Math.tan(tiltAt(x)*RAD));
+    pos.setY(i,terrY(x,north));
   }
   geo.computeVertexNormals();
   const terr=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0x22301c}));
@@ -1531,7 +1757,14 @@ function build3D(){
   const mats=useModel?Seguidor.materials(THREE):null;
   if(mats){mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;}   // pala azulada, no blanco quirófano
   const postM=new THREE.MeshLambertMaterial({color:0x3a4a5f});
+  const postBadM=new THREE.MeshLambertMaterial({color:0xf87272});
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
+  // DRAPEADO (como los render 3D de la casa): el tramo mantiene el tilt que
+  // manda el accionamiento pero se ELEVA hasta volar sobre el terreno en todo
+  // su largo — los postes se alargan, que es lo que hace el montaje real. La
+  // física no cambia: usa las pendientes del terreno, como el core (declarado).
+  const LIFTS={};
+  let infeasible=0;
   const pmFallback=()=>new THREE.MeshLambertMaterial({color:0x274b8f,side:THREE.DoubleSide});
   const twinOf={};                                   // línea gemela → true (viga sin motor)
   if(T.groups)for(const g2 of T.groups)if(g2.length===2)twinOf[g2[1]]=true;
@@ -1540,12 +1773,36 @@ function build3D(){
     const effT=(T.rowTilt?T.rowTilt[r]:0);
     const spins=[];
     const segs=(T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]];
-    for(const sg of segs){
+    for(let si=0;si<segs.length;si++){
+      const sg=segs[si];
       const yc=(sg[0]+sg[1])/2, len=sg[1]-sg[0];
-      const cy=ELEV[r]+hub+yc*Math.tan(effT*RAD);
       const tiltG=new THREE.Group();
+      let tiltR=effT*RAD, lift=0, cy, bad=false;
+      if(PR){
+        // planta real: el tubo de cada mesa va de su cota z0 a su z1 MEDIDAS
+        // (+delta del editor) — el montaje ya lo drapeó; postes = hub exacto
+        const dd=ELEV[r]-PR.elev[r];
+        const z=PR.segZ[r][si]||[0,0];
+        const z0=z[0]+dd, z1=z[1]+dd;
+        tiltR=Math.atan2(z1-z0,len||1);
+        cy=(z0+z1)/2+hub;
+      }else{
+        // presets: DRAPEADO — el tramo mantiene el tilt del accionamiento pero
+        // se eleva hasta volar sobre el terreno en todo su largo
+        for(let k=0;k<=8;k++){
+          const north=yc+(k/8-0.5)*len;
+          const tubeY=ELEV[r]+hub+north*Math.tan(effT*RAD);
+          lift=Math.max(lift,terrY(r*c.pitch,north)+hub-tubeY);
+        }
+        // límite práctico: postes desproporcionados = irrealizable (típico de
+        // la bifila RÍGIDA sobre quiebro N-S fuerte). No se esconde: en rojo
+        bad=lift>2.5;
+        if(bad)infeasible++;
+        cy=ELEV[r]+hub+yc*Math.tan(effT*RAD)+lift;
+      }
+      LIFTS[r+'|'+yc.toFixed(2)]=lift;
+      tiltG.rotation.x=tiltR;
       tiltG.position.set(r*c.pitch,cy,-yc);
-      tiltG.rotation.x=effT*RAD;                     // +tilt levanta el extremo norte (−z)
       let spin=null, built=false;
       if(useModel){
         try{
@@ -1578,10 +1835,10 @@ function build3D(){
       // rígida sobre N-S quebrado crecen/encogen: el detalle que delata la rígida
       for(const dn of [-len/3,0,len/3]){
         const north=yc+dn;
-        const topY=ELEV[r]+hub+north*Math.tan(effT*RAD);
-        const botY=ELEV[r]+north*Math.tan(raw[r]*RAD);
+        const topY=cy+dn*Math.tan(tiltR);
+        const botY=terrY(r*c.pitch,north);
         const h=Math.max(0.3,topY-botY);
-        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),postM);
+        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,h,8),bad?postBadM:postM);
         post.position.set(r*c.pitch,(topY+botY)/2-0.05,-north);
         post.castShadow=true;
         world.add(post);
@@ -1590,6 +1847,13 @@ function build3D(){
     TD.rows.push({spins:spins,model:useModel});
   }
   if(useModel)Seguidor.setModsPerStr(28);            // restaurar el canónico compartido
+  const w3=$('warn3d');
+  if(infeasible>0){
+    w3.style.display='';
+    w3.innerHTML='⚠ <b>'+infeasible+' fila'+(infeasible>1?'s':'')+'</b> con postes de más de ~4,5 m (en rojo): '+
+      'el drapeado vuela sobre el terreno, pero el tilt del accionamiento se separa tanto que el montaje sale desproporcionado. '+
+      (T.drive==='bifila'?'Es el límite práctico de la <b>rígida</b> en quiebro N-S: prueba la quebrada (cardan) o reduce el tilt.':'Reduce el tilt N-S o revisa el terreno.');
+  }else w3.style.display='none';
   // accionamiento: eje de transmisión entre las líneas del grupo (por fila con
   // mejor solape — desalineadas ⇒ eje en diagonal, para eso está el cardan)
   const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
@@ -1604,7 +1868,7 @@ function build3D(){
     bar.castShadow=true;world.add(bar);
   };
   const hubAt=(r,yc)=>new THREE.Vector3(r*c.pitch,
-    ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD),-yc);
+    ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD)+(LIFTS[r+'|'+yc.toFixed(2)]||0),-yc);
   const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
   const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
   if(T.groups){
@@ -1716,7 +1980,7 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   if(p){
     card('θ fila '+(selRow+1),p.ang[tIdx][selRow].toFixed(1)+'°',POL[key]?POL[key].nm:'');
     if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
-      card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
+      card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
     if(key==='optimal'&&p.f[tIdx]!=null)card('f elegida',p.f[tIdx].toFixed(2),'0 = pairwise · 1 = astro');
@@ -1913,31 +2177,45 @@ function recompute(light){
   const slopes=DAY.T.pairs.map(p=>p.slope);
   $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
   const c2=cfg();
-  $('motorsinfo').textContent='motores: '+nMotors(c2.nrows,c2.drive)+' ('+
+  $('motorsinfo').textContent='motores: '+nMotorsSegs(DAY.T)+' ('+
     (c2.drive==='mono'?'monofila':c2.drive==='bifila'?'bifila rígida':'bifila quebrada')+')';
   $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
 const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0','nsl','ntrk','mods'];
-INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{ensureElev(cfg().nrows);recompute();}));
+INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
+  // tocar la implantación por presets abandona la planta real cargada (nrows/
+  // pitch cambiados a mano también: la banda ya no cuadraría con las cotas)
+  if(PLANT_REAL&&['nsl','ntrk','mods','nspreset','nrows','pitch'].includes(id)){PLANT_REAL=null;$('realnote').style.display='none';}
+  ensureElev(cfg().nrows);recompute();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
 $('polview').onchange=()=>{drawScene();update3D();};
+let PLAYPOS=0, PLAYTS=0;
 $('play').onclick=()=>{
   playing=!playing;
   $('play').textContent=playing?'⏸':'▶';
   if(playTimer)cancelAnimationFrame(playTimer);
   if(playing){
-    const step=()=>{
+    PLAYPOS=+$('hour').value; PLAYTS=performance.now();
+    const step=(ts)=>{
       if(!playing)return;
-      let v=+$('hour').value+STEP_MIN; if(v>1439)v=0;
-      $('hour').value=v;$('hourlbl').textContent=hhmm(v);
-      drawScene();drawCurves();update3D();
+      const mps=+$('speed').value;                 // minutos simulados / segundo real
+      PLAYPOS+=mps*(ts-PLAYTS)/1000; PLAYTS=ts;
+      if(PLAYPOS>1439)PLAYPOS=0;
+      const v=Math.round(PLAYPOS/STEP_MIN)*STEP_MIN;
+      if(v!==+$('hour').value){
+        $('hour').value=v;$('hourlbl').textContent=hhmm(v);
+        drawScene();drawCurves();update3D();
+      }
       playTimer=requestAnimationFrame(step);
     };
     playTimer=requestAnimationFrame(step);
   }
 };
+// la fecha del slider ES la de Emplazamiento (dos vistas del mismo campo)
+$('date2').addEventListener('change',()=>{$('date').value=$('date2').value;recompute();});
+$('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
 window.addEventListener('resize',()=>{drawScene();drawCurves();});
 
 /* arranque: restaurar config guardada si la hay */
@@ -1953,6 +2231,7 @@ window.addEventListener('resize',()=>{drawScene();drawCurves();});
   ensureElev(cfg().nrows);
   loadPlants();
   $('hourlbl').textContent=hhmm(+$('hour').value);
+  $('date2').value=$('date').value;
   if(!has3D()){$('tab3d').style.display='none';VIEW3D=false;setTab(false);}
   recompute();
   loop3D();
