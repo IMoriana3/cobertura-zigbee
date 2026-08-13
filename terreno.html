@@ -419,6 +419,12 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
   var nf=Math.max(0,Math.min(1,-U/0.14));   // factor noche: 0 con el sol sobre el horizonte, 1 bien entrada la noche
   if(starMat){starMat.opacity=nf*0.95*(1-0.8*cl);starGroup.visible=nf>0.02;}   // las nubes tapan las estrellas
   if(moonMat){moonMat.opacity=nf*0.92;moonMesh.visible=nf>0.02;}
+  /* El AO de contacto es MeshBasic, o sea SIN luz: pintaba el mismo negro a mediodía que a las
+     03:00, y de noche —con el suelo ya oscuro— quedaba una mancha negra permanente bajo cada
+     seguidor ("hay una marca negra de sombra"). Mismo fallo que tenían los anillos del flujo.
+     Y es que físicamente la oclusión ambiental oscurece la luz que LLEGA al suelo: si no llega
+     luz, no hay nada que ocluir. Así que se atenúa con la altura del sol y se apaga de noche. */
+  aoLuz(Math.max(0.05,Math.min(1,(U+0.06)/0.35)));
   updateEnvMap();updateRefl(); }   // reflejos del cielo en vidrio/acero (cubemap CPU, opt-in), regenerados al cambiar sol/nubes
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }   // la intensidad la fija applySky (nubes/luna)
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
@@ -3725,8 +3731,19 @@ function setCableNegro(on){['cable_pos','cable_neg'].forEach(function(k){var G=n
   var lm=G.userData.cabs[0].lm;if(lm){lm.color.setHex(on?0x15181c:lm.userData.tec);lm.needsUpdate=true;}});}                     // modo presentación: cable solar NEGRO; técnico: rojo/azul por polaridad
 function setVegDensity(f){VEGM.forEach(function(m){if(m.userData.full===undefined)m.userData.full=m.count;m.count=Math.max(0,Math.floor(m.userData.full*f));});}
 function setShadowQ(px){if(!SUN)return;SUN.shadow.mapSize.set(px,px);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();}
-function setAOInt(f){if(aoGroup)aoGroup.traverse(function(o){if(o.material){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity;o.material.opacity=Math.min(1,o.material.userData.op0*f);}});
-  if(VEGX)VEGX.traverse(function(o){if(o.material&&o.material.transparent){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity!==undefined?o.material.opacity:1;o.material.opacity=Math.min(1,o.material.userData.op0*f);}});}
+/* Dos mandos independientes sobre la MISMA opacidad: el slider "AO" (_aoF, lo pone el usuario) y la
+   luz que hay (_aoL, lo pone applySky). Antes solo existía el primero y multiplicaba sobre op0, así
+   que si el segundo escribiera aparte se pisarían: se guardan separados y se aplican juntos.
+   La HIERBA es MeshLambert —la luz ya la apaga sola— y por eso solo se atenúan los MeshBasic. */
+var _aoF=1,_aoL=1;
+function _aoAplica(){
+  var uf=(_aoF==null?1:_aoF),ul=(_aoL==null?1:_aoL);   // applySky corre antes de que estas dos se inicialicen: sin esto la opacidad salia NaN y el AO desaparecia
+  if(aoGroup)aoGroup.traverse(function(o){if(!o.material)return;
+    if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity;
+    o.material.opacity=Math.min(1,o.material.userData.op0*uf*(o.material.isMeshBasicMaterial?ul:1));});
+  if(VEGX)VEGX.traverse(function(o){if(o.material&&o.material.transparent){if(o.material.userData.op0===undefined)o.material.userData.op0=o.material.opacity!==undefined?o.material.opacity:1;o.material.opacity=Math.min(1,o.material.userData.op0*uf);}});}
+function setAOInt(f){_aoF=f;_aoAplica();}
+function aoLuz(l){if(_aoL!=null&&Math.abs(l-_aoL)<0.01)return;_aoL=l;_aoAplica();}
 /* `aces` elige la CURVA, no si hay exposición. Con NoToneMapping three.js
    ignora `toneMappingExposure` por completo: en los perfiles Técnico y
    Rendimiento el slider de Exposición escribía 0,6…1,6 y no pasaba NADA en
