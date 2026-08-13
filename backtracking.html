@@ -243,6 +243,7 @@
       <select id="rowsel" class="btn small" title="Fila del HUD y de las curvas"></select>
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
+      <label class="btn small" title="Etiquetas por fila en el 3D: θ, % de sombra calculada y POA de la política de la ESCENA" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="lbl3d"> nº</label>
     </div>
     <div class="hud" id="hud"></div>
   </div>
@@ -1516,7 +1517,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.7.2';
+const VER='v1.8.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1973,7 +1974,7 @@ function init3D(){
     controls.enableDamping=true;controls.dampingFactor=.08;
     controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1500;
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
-    const sun=new THREE.DirectionalLight(0xffeecc,1.25);
+    const sun=new THREE.DirectionalLight(0xffeecc,1.45);
     sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
     sun.shadow.bias=-2e-4;
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
@@ -2061,6 +2062,9 @@ function build3D(){
   const postM=new THREE.MeshLambertMaterial({color:0x3a4a5f});
   const postBadM=new THREE.MeshLambertMaterial({color:0xf87272});
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
+  // banda ROJA de sombra CALCULADA: pinta sobre la pala la fracción sombreada
+  // exacta (shadeRows) por el borde por el que entra — la física, no el shadow-map
+  const ovM=new THREE.MeshBasicMaterial({color:0xe34948,transparent:true,opacity:0.8,depthWrite:false,side:THREE.DoubleSide});
   // DRAPEADO (como los render 3D de la casa): el tramo mantiene el tilt que
   // manda el accionamiento pero se ELEVA hasta volar sobre el terreno en todo
   // su largo — los postes se alargan, que es lo que hace el montaje real. La
@@ -2073,7 +2077,7 @@ function build3D(){
   const D0=useModel?Seguidor.DIMS:null;
   for(let r=0;r<n;r++){
     const effT=(T.rowTilt?T.rowTilt[r]:0);
-    const spins=[];
+    const spins=[], ovls=[];
     const segs=(T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]];
     for(let si=0;si<segs.length;si++){
       const sg=segs[si];
@@ -2117,6 +2121,10 @@ function build3D(){
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
+          const ov=new THREE.Mesh(new THREE.PlaneGeometry(len,2.382),ovM);
+          ov.rotation.x=-Math.PI/2; ov.position.y=0.16; ov.visible=false; ov.renderOrder=3;
+          beam.spin.add(ov);
+          ovls.push({m:ov,ax:'model',half:2.382/2});
           spin=beam.spin; built=true;
         }catch(e){built=false;}
       }
@@ -2128,6 +2136,10 @@ function build3D(){
         panel.position.y=0.10+c.z0;
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
+        const ovb=new THREE.Mesh(new THREE.PlaneGeometry(c.cw,len),ovM);
+        ovb.rotation.x=-Math.PI/2; ovb.position.y=0.16+c.z0; ovb.visible=false; ovb.renderOrder=3;
+        gRot.add(ovb);
+        ovls.push({m:ovb,ax:'box',half:c.cw/2});
         tiltG.add(gRot);
         spin=gRot;
       }
@@ -2146,7 +2158,7 @@ function build3D(){
         world.add(post);
       }
     }
-    TD.rows.push({spins:spins,model:useModel});
+    TD.rows.push({spins:spins,ovls:ovls,model:useModel});
   }
   if(useModel)Seguidor.setModsPerStr(28);            // restaurar el canónico compartido
   const w3=$('warn3d');
@@ -2223,6 +2235,36 @@ function build3D(){
   }else if(!useModel){                               // con el modelo el slew ya trae su motor
     for(let r=0;r<n;r++)for(const [yc] of segCenters(r))motorAt(hubAt(r,yc));
   }
+  // ETIQUETAS por fila: θ · sombra · POA de la política de la ESCENA — el
+  // render enseña los números, no solo la postura (conmutable con «nº»)
+  {
+    let bandC=0;
+    if(T.segs){
+      let n0=Infinity,n1=-Infinity;
+      for(const line of T.segs)for(const sg of line){n0=Math.min(n0,sg[0],sg[1]);n1=Math.max(n1,sg[0],sg[1]);}
+      const NB=60,bw=(n1-n0)/NB||1,bins=new Array(NB).fill(0);
+      for(const line of T.segs)for(const sg of line){
+        const a2=Math.max(0,Math.floor((Math.min(sg[0],sg[1])-n0)/bw)),b2=Math.min(NB-1,Math.floor((Math.max(sg[0],sg[1])-n0)/bw));
+        for(let k=a2;k<=b2;k++)bins[k]++;
+      }
+      let bk=0;for(let k=1;k<NB;k++)if(bins[k]>bins[bk])bk=k;
+      bandC=n0+(bk+0.5)*bw;
+    }
+    for(let r=0;r<n;r++){
+      let yc=0;
+      if(T.segs&&T.segs[r]&&T.segs[r].length){
+        let bd=Infinity;
+        for(const sg of T.segs[r]){const cyc=(sg[0]+sg[1])/2,dd2=Math.abs(cyc-bandC);if(dd2<bd){bd=dd2;yc=cyc;}}
+      }
+      const cv=document.createElement('canvas');cv.width=256;cv.height=104;
+      const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false,transparent:true}));
+      const Ph=hubAt(r,yc); spr.position.set(Ph.x,Ph.y+2.6,Ph.z);
+      spr.scale.set(6.2,2.5,1); spr.renderOrder=6; spr.visible=false;
+      spr.userData={cv:cv,txt:''};
+      world.add(spr);
+      TD.rows[r].lbl=spr;
+    }
+  }
   // flecha de NORTE: la planta puede ir con azimut de eje ≠ 0 y hay que verlo
   const northDir=new THREE.Vector3(-Math.sin(c.axaz*RAD),0,-Math.cos(c.axaz*RAD));
   const arrO=new THREE.Vector3(x0-c.pitch*0.5,(Math.max(...ELEV)+3),L/2+marg*0.5);
@@ -2279,6 +2321,7 @@ function update3D(){
   const tIdx=timeIndex(),g=DAY.sun[tIdx];
   const key=$('polview').value,p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
   const sh=p?p.shade[tIdx]:null;
+  const lblOn=$('lbl3d')&&$('lbl3d').checked;
   TD.rows.forEach((row,r)=>{
     const th=(p?p.ang[tIdx][r]:0)*RAD;
     for(const sp of row.spins){
@@ -2287,6 +2330,46 @@ function update3D(){
       // Camino de cajas: mismo convenio pero sobre Z local (el tubo va en Z).
       if(row.model)sp.rotation.x=th; else sp.rotation.z=-th;
     }
+    // banda de sombra CALCULADA sobre la pala: fracción exacta desde el borde emisor
+    const sFrac=sh?sh[r]:0;
+    if(row.ovls){
+      const show=sFrac>1e-3&&g.elev>0;
+      let sign=1;
+      if(show){
+        const ps=trueTrackAngle(g.zen,g.az,DAY.T.rowTilt?DAY.T.rowTilt[r]:0,DAY.c.axaz);
+        sign=ps>=0?1:-1;                       // el mismo convenio que el corte 2D
+      }
+      for(const ov of row.ovls){
+        ov.m.visible=show;
+        if(!show)continue;
+        const fr=Math.max(sFrac,0.03);
+        if(ov.ax==='model'){ov.m.scale.y=fr;ov.m.position.z=sign*ov.half*(1-fr);}
+        else{ov.m.scale.x=fr;ov.m.position.x=sign*ov.half*(1-fr);}
+      }
+    }
+    // etiqueta: θ · sombra · POA de la fila
+    if(row.lbl){
+      row.lbl.visible=!!(lblOn&&p);
+      if(lblOn&&p){
+        const poa=(p.poaR&&p.poaR[tIdx])?p.poaR[tIdx][r]:0;
+        const thD=p.ang[tIdx][r];
+        const key=thD.toFixed(0)+'|'+(sFrac*100).toFixed(1)+'|'+poa.toFixed(0);
+        if(row.lbl.userData.txt!==key){
+          row.lbl.userData.txt=key;
+          const cv=row.lbl.userData.cv,cx=cv.getContext('2d');
+          cx.clearRect(0,0,256,104);
+          cx.fillStyle='rgba(10,14,18,0.74)';cx.fillRect(0,0,256,104);
+          cx.textBaseline='middle';
+          cx.font='bold 38px sans-serif';cx.fillStyle='#7fb3ff';
+          cx.fillText('θ '+thD.toFixed(0)+'°',10,28);
+          cx.fillStyle=sFrac>1e-3?'#f87272':'#8fa596';
+          cx.fillText((sFrac*100).toFixed(sFrac>=0.095?0:1)+'%',150,28);
+          cx.font='32px sans-serif';cx.fillStyle='#e8e8e4';
+          cx.fillText(poa.toFixed(0)+' W/m²',10,78);
+          row.lbl.material.map.needsUpdate=true;
+        }
+      }
+    }
   });
   const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const cx=TD.cx!=null?TD.cx:(DAY.c.nrows-1)*DAY.c.pitch/2;
@@ -2294,7 +2377,7 @@ function update3D(){
   const up=Math.min(1,Math.max(0,g.elev/35));
   if(g.elev>0){
     TD.sun.position.set(cx+Math.sin(azRel)*Math.cos(el)*R,Math.sin(el)*R,-Math.cos(azRel)*Math.cos(el)*R);
-    TD.sun.intensity=1.25;
+    TD.sun.intensity=1.45;
     TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
     TD.scene.background.setRGB(0.07+0.1*up,0.11+0.13*up,0.2+0.2*up);
   }else{
@@ -2567,6 +2650,7 @@ INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
 $('polview').onchange=()=>{drawScene();update3D();};
+$('lbl3d').onchange=()=>update3D();
 let PLAYPOS=0, PLAYTS=0;
 $('play').onclick=()=>{
   playing=!playing;
