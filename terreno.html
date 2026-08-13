@@ -763,6 +763,16 @@ function buildTrackers(elevAt){
   /* El seguidor canónico es el de El Burgo: BÍFILO (dos filas a ±filaZ) y módulo de 1,134 m. No
      todas las plantas son así — Bagnarelli es de UNA fila con módulo Risen de 1,303 m — así que el
      layout puede anular las dos cotas. Con filaZ:0 las dos filas coinciden y sale una sola. */
+  /* COTAS MEDIDAS EN EL DWG (campo `mesa` del layout, de tools/extract_dwg_cotas.mjs). Manda sobre
+     las canónicas de seguidor.js, que son las de El Burgo: el hueco entre módulos son 15 mm en
+     Ayora y San José y 7 en Fayón —no los 12 de la constante— y el del motor va de 0,40 a 0,98
+     según planta, no 0,55. Con las de El Burgo, la mesa de Ayora salía de 64,73 m y su DWG dibuja
+     74,758: diez metros menos en 754 seguidores, porque su módulo es un Risen de 1,303 m.
+     Va ANTES del pitch y de setModsPerStr, que recalculan strLen, span y mesaC con estos valores. */
+  if(Seguidor.DIMS&&LAYOUT&&LAYOUT.mesa){var _ME=LAYOUT.mesa,_DD=Seguidor.DIMS;
+    if(_ME.modW!=null)_DD.modW=_ME.modW; if(_ME.modH!=null)_DD.modH=_ME.modH;
+    if(_ME.gapMod!=null)_DD.gapMod=_ME.gapMod; if(_ME.gapDrive!=null)_DD.gapDrive=_ME.gapDrive;
+    if(_ME.filaZ!=null)_DD.filaZ=_ME.filaZ; _DD.pitch=_DD.modW+_DD.gapMod;}
   if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modW){Seguidor.DIMS.modW=LAYOUT.modW;Seguidor.DIMS.pitch=LAYOUT.modW+Seguidor.DIMS.gapMod;}
   if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modH)Seguidor.DIMS.modH=LAYOUT.modH;   // cuerda del módulo por planta (Túnez 2,35 del DWG); sin esto todas heredaban los 2,382 de El Burgo
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
@@ -857,7 +867,13 @@ function buildTrackers(elevAt){
     var relE=_E(dE,0),relW=_E(-dE,0);                                               // a un lado y otro del eje
     var zPk=zPfor({tp:n.tp}),half=TC.np/2;
     var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
-    var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);   // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
+    // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
+    var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);
+    /* Si el DWG está MEDIDO, la razón sale del largo real de SU bloque y no de una proporción de
+       módulos: el hueco del motor no escala, así que 0,75 sobre el 1V28 de Ayora dejaba el 1V21 en
+       56,07 m cuando mide 56,306, y el 1V14 en 37,38 cuando mide 37,854. */
+    if(LAYOUT&&LAYOUT.mesa&&n.blk&&LAYOUT.mesa.tipos[n.blk]&&D&&D.span){
+      var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);}}
     var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });

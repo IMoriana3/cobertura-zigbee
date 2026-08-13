@@ -939,11 +939,27 @@ const MESHFILE=(PLANT==='custom')?null:(PLANT+'_real.geojson');
 const TMODS={elburgo:28,ayora:28,sanjose:32,fayon:24,bagnarelli:21,paramo:24,tunez:14,custom:28};   // módulos por ALA
 const TMEAS={fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413}};                                // cotas MEDIDAS que mandan sobre el modelo (Fayón, del plano de proyecto P06)
 let LAY=null, TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382};
+/* COTAS MEDIDAS EN EL DWG. Si el layout trae `mesa` (de tools/extract_dwg_cotas.mjs), manda ella:
+   cada planta tiene SU módulo, SU hueco entre módulos y SU hueco de motor, y usar los de El Burgo
+   dibujaba Ayora diez metros corta. Sin `mesa`, el modelo de siempre pero con la fórmula buena:
+   N-1 huecos por ala, que es lo que miden los tres DWG. Misma función que en el Layout 2D. */
 function resuelveTDIM(lay){
-  const modW=(lay&&lay.modW)||1.134, mods=(lay&&lay.mods)||TMODS[PLANT]||28;
-  const d={halfL:(2*mods*(modW+0.012)+0.55)/2, filaZ:(lay&&lay.filaZ!=null)?+lay.filaZ:3.0, cuerda:2.382};
+  if(lay&&lay.mesa){
+    const M=lay.mesa, largos=Object.keys(M.tipos).map(k=>M.tipos[k].largo);
+    return {halfL:Math.max(...largos)/2, filaZ:(M.filaZ!=null?M.filaZ:3.0), cuerda:M.modH};
+  }
+  const modW=(lay&&lay.modW)||1.134, mods=(lay&&lay.mods)||TMODS[PLANT]||28, g=0.012;
+  const d={halfL:(2*(mods*modW+(mods-1)*g)+0.55)/2, filaZ:(lay&&lay.filaZ!=null)?+lay.filaZ:3.0, cuerda:2.382};
   const m=TMEAS[PLANT]; if(m)for(const k in m)d[k]=m[k];
   return d;
+}
+/* Largo de UN seguidor: del bloque que le toca en el DWG si lo hay, y si no, de su razón t.mr. */
+function cotasSeg(t){
+  const M=LAY&&LAY.mesa;
+  if(M&&t.blk&&M.tipos[t.blk]){ const z=M.tipos[t.blk];
+    return {half:z.largo/2, desde:(z.desde!=null?z.desde:-z.largo/2), hasta:(z.hasta!=null?z.hasta:z.largo/2)}; }
+  const mr=(typeof t.mr==='number'&&t.mr>0&&t.mr<1)?t.mr:(/^medio/i.test(t.t||'')?0.504:1);
+  const h=TDIM.halfL*mr; return {half:h, desde:-h, hasta:h};
 }
 function loadLayout(cb){
   if(PLANT==='custom'){ try{LAY=JSON.parse(localStorage.getItem('cobertura_layout')||'null');}catch(e){LAY=null;} TDIM=resuelveTDIM(LAY); cb&&cb(); return; }
@@ -993,14 +1009,18 @@ const PlantLayer=L.Layer.extend({
     const z=m.getZoom(), q0=m.project([LAY.clat,LAY.clon],z),
           qE=m.project([LAY.clat,LAY.clon+1/(mPerLatK*Math.cos(LAY.clat*DEG))],z);
     const s=qE.x-q0.x; if(!(s>0))return;
-    const lp0=TDIM.halfL*s, off=TDIM.filaZ*s, wp=Math.max(0.5,(TDIM.cuerda/2)*s);
+    const off=TDIM.filaZ*s, wp=Math.max(0.5,(TDIM.cuerda/2)*s);   // el largo va por seguidor, en cotasSeg()
     x.fillStyle='#3a78d6';
     for(let i=0;i<LAY.trackers.length;i++){ const t=LAY.trackers[i];
       const cx=p0.x+t.x*s, cy=p0.y-t.n*s;
       if(cx<-60||cx>sz.x+60||cy<-60||cy>sz.y+60)continue;       // fuera de pantalla
-      const mr=(typeof t.mr==='number'&&t.mr>0&&t.mr<1)?t.mr:(/^medio/i.test(t.t||'')?0.504:1);
-      const lp=lp0*mr, rot=+t.rot||0;
-      if(rot){x.save();x.translate(cx,cy);x.rotate(-rot*DEG);x.translate(-cx,-cy);}
+      const _c=cotasSeg(t), lp=_c.half*s, rot=+t.rot||0;
+      /* GIRO: el mismo signo que el Layout 2D. Aquí iba con el contrario y Bagnarelli salía
+         ESPEJADA respecto al plano de la misma planta: medido con un solo seguidor, el Layout 2D
+         da -66,33° y esto daba +64,86°. `rot` es el RUMBO del eje en grados al este del norte de
+         cuadrícula (23,7 en Bagnarelli, de las 38 mesas dibujadas del DWG); con el norte arriba y
+         la y hacia abajo, ese rumbo es un giro HORARIO, o sea rotate(+rot). */
+      if(rot){x.save();x.translate(cx,cy);x.rotate(rot*DEG);x.translate(-cx,-cy);}
       x.fillRect(cx-off-wp,cy-lp,2*wp,2*lp);
       if(off){ x.fillRect(cx+off-wp,cy-lp,2*wp,2*lp);           // monofila (filaZ 0): una banda y sin biela
         x.strokeStyle='#3a78d6';x.lineWidth=Math.max(1,Math.min(3,s*1.6));x.beginPath();x.moveTo(cx-off,cy);x.lineTo(cx+off,cy);x.stroke(); }

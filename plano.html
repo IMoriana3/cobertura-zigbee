@@ -97,12 +97,41 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayor
 var TMODS={ elburgo:28, ayora:28, sanjose:32, fayon:24, bagnarelli:21, paramo:24, custom:28 };   // módulos por ALA
 var TMEAS={ fayon:{halfL:27.58,filaZ:3.006,cuerda:2.413} };                                      // cotas MEDIDAS que mandan sobre el modelo (Fayón, del plano P06)
 var TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191};                                       // valores de arranque; calcTDIM() los fija al cargar el layout
+/* COTAS MEDIDAS EN EL DWG. Cuando el layout trae `mesa` (lo escribe tools/extract_dwg_cotas.mjs),
+   manda ella y no el modelo: cada planta tiene SU módulo, SU hueco entre módulos y SU hueco de
+   motor, y dar por buenas las de El Burgo dibujaba Ayora DIEZ METROS corta —64,73 m en vez de los
+   74,758 que mide su DWG— en sus 754 seguidores, porque su módulo es un Risen de 1,303 m y no el
+   de 1,134. El hueco entre módulos son 15 mm en Ayora y San José y 7 en Fayón, nunca los 12 que
+   había puestos; el del motor va de 0,40 a 0,98 según planta.
+   El modelo de abajo se queda para las plantas cuyo DWG aún no se ha medido (El Burgo, Bagnarelli,
+   Páramo, Túnez), con la fórmula BUENA: N-1 huecos por ala, que es lo que dicen los tres DWG
+   medidos (54 huecos para 56 módulos en Ayora, 62 para 64 en San José, 46 para 48 en Fayón). */
 function calcTDIM(){
-  var modW=(L&&L.modW)||1.134, mods=(L&&L.mods)||TMODS[PLANT]||28;
-  var d={halfL:(2*mods*(modW+0.012)+0.55)/2, filaZ:(L&&L.filaZ!=null)?L.filaZ:3.0, cuerda:2.382};
-  var m=TMEAS[PLANT]; if(m)for(var k in m)d[k]=m[k];
+  var d;
+  if(L&&L.mesa){
+    var M=L.mesa;
+    var largos=Object.keys(M.tipos).map(function(k){return M.tipos[k].largo;});
+    d={halfL:Math.max.apply(null,largos)/2, filaZ:(M.filaZ!=null?M.filaZ:3.0), cuerda:M.modH};
+  }else{
+    var modW=(L&&L.modW)||1.134, mods=(L&&L.mods)||TMODS[PLANT]||28, g=0.012;
+    d={halfL:(2*(mods*modW+(mods-1)*g)+0.55)/2, filaZ:(L&&L.filaZ!=null)?L.filaZ:3.0, cuerda:2.382};
+    var m=TMEAS[PLANT]; if(m)for(var k in m)d[k]=m[k];
+  }
   d.halfW=d.filaZ+d.cuerda/2;
   TDIM=d;
+}
+/* Largo de UN seguidor, con su envolvente respecto al punto del motor. `desde`/`hasta` no son
+   simétricos siempre: los bloques de calibración de San José crecen solo hacia un lado. */
+function cotasSeg(t){
+  if(L&&L.mesa&&t.blk&&L.mesa.tipos[t.blk]){
+    var z=L.mesa.tipos[t.blk];
+    return {half:z.largo/2, desde:(z.desde!=null?z.desde:-z.largo/2), hasta:(z.hasta!=null?z.hasta:z.largo/2)};
+  }
+  /* sin DWG medido: la razón del DWG, que es unívoca. NO t.mods, que en Ayora es por ala y en
+     Fayón por fila y por eso Fayón llegó a salir a 110,6 m. */
+  var medio=/^medio/i.test(t.t||'');
+  var h=(typeof t.mr==='number'&&t.mr>0&&t.mr<1) ? TDIM.halfL*t.mr : (medio ? TDIM.halfL*0.504 : TDIM.halfL);
+  return {half:h, desde:-h, hasta:h};
 }
 var PLANT=(function(){try{var p=new URLSearchParams(location.search).get('planta');return (p==='custom')?'custom':(PLANTS[p]?p:'elburgo');}catch(e){return 'elburgo';}})();
 var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');return s===null?!navigator.onLine:s==='1';}catch(e){return !navigator.onLine;}})();   // modo offline: sin satélite, cero llamadas externas
@@ -299,12 +328,7 @@ function draw(){
   if($('cbTrk').checked){
     var s=view.scale, pile=$('cbPile').checked&&demReady, inv=$('cbInv').checked&&hasInv(), rng=(REVMAX-REVMIN)||1;
     for(var i=0;i<L.trackers.length;i++){var t=L.trackers[i];
-      var medio=/^medio/i.test(t.t||'');
-      /* El largo sale de t.mr, la razón REAL del DWG, que es unívoca en todas las plantas. NO de
-         t.mods: ese campo no significa lo mismo en Ayora (por ala) que en Fayón (por fila), y por
-         usarlo Fayón salía a 110,6 m, el doble de sus 55,16 reales. */
-      var halfL=(typeof t.mr==='number'&&t.mr>0&&t.mr<1) ? TDIM.halfL*t.mr     // Ayora 0,75 y 0,5 · Fayón 0,833
-               : (medio ? TDIM.halfL*0.504 : TDIM.halfL);                      // "medio" genérico, sin razón medida
+      var _c=cotasSeg(t), halfL=_c.half;
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s;
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
       ctx.fillStyle=(inv&&t._inv&&INVH[t._inv])?INVH[t._inv].color:(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // prioridad: inversor → pile reveal → eléctrico (NCU) → azul
