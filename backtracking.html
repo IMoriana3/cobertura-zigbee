@@ -1516,7 +1516,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.7.1';
+const VER='v1.7.2';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2170,8 +2170,29 @@ function build3D(){
     bar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),pB.clone().sub(pA).normalize());
     bar.castShadow=true;world.add(bar);
   };
-  const hubAt=(r,yc)=>new THREE.Vector3(xof(r),
-    ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD)+(LIFTS[r+'|'+yc.toFixed(2)]||0),-yc);
+  const hubAt=(r,yc)=>{
+    // altura del eje de transmisión: con planta REAL, la cota MEDIDA del tramo
+    // en ese punto (la misma que usa la mesa) — el plano cota-media+tilt de los
+    // presets dejaba motores y bielas volando donde el terreno se aparta de él
+    let base;
+    if(PR){
+      const dd=ELEV[r]-PR.elev[r];
+      const segs=PR.segs[r]||[], zz=PR.segZ[r]||[];
+      let bi=-1,bd=Infinity;
+      for(let k=0;k<segs.length;k++){
+        const lo=Math.min(segs[k][0],segs[k][1]), hi=Math.max(segs[k][0],segs[k][1]);
+        const d=yc<lo?lo-yc:(yc>hi?yc-hi:0);
+        if(d<bd){bd=d;bi=k;}
+      }
+      if(bi>=0&&zz[bi]){
+        const [a2,b2]=segs[bi], t=Math.max(0,Math.min(1,(yc-a2)/((b2-a2)||1)));
+        base=zz[bi][0]+t*(zz[bi][1]-zz[bi][0])+dd+hub*0.62;
+      }else base=ELEV[r]+hub*0.62;
+    }else{
+      base=ELEV[r]+hub*0.62+yc*Math.tan((T.rowTilt?T.rowTilt[r]:0)*RAD)+(LIFTS[r+'|'+yc.toFixed(2)]||0);
+    }
+    return new THREE.Vector3(xof(r),base,-yc);
+  };
   const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
   const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
   if(T.groups){
