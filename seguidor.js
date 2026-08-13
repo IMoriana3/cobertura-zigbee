@@ -1,3 +1,8 @@
+/* SINCRONIZADO 2026-08-12. Este fichero es COPIA EXACTA de cobertura-zigbee/seguidor.js.
+ * Las dos copias llegaron a decir las dos VERSION 0.4.16 siendo distintas, que es peor que
+ * llevar versiones distintas: el gemelo se quedo con el cristal proyectando sombra ademas del
+ * marco, asi que cada fila salia con DOBLE sombra. Al tocar una, copiar la otra ENTERA y subir
+ * la version en las dos; si divergen otra vez, el numero deja de servir para nada. */
 /* ============================================================================
  * seguidor.js — FUENTE ÚNICA del seguidor solar (cotas + piezas + materiales)
  * ----------------------------------------------------------------------------
@@ -331,6 +336,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.16';
+  S.VERSION = '0.4.17';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
