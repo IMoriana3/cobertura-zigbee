@@ -483,7 +483,10 @@ function setTime(min){ if(SCADA3D)setTimeout(scadaOverlay,0);
 
 // ───────── MULTIPLANTA: cada planta es un layout (mismo formato que El Burgo) + su telemetría opcional ─────────
 var PLANTS={
-  elburgo:{file:'elburgo_layout.json', title:'El Burgo I', angles:'trackers_2026-06-17.json', cod:24002},
+    /* `cod` es la clave de la HOJA DE CARTERA, no el número de la planta. El Burgo es 24002 ahí y
+     23003 en el DWG y en el Excel de siting; se rotula el 23003 (decidido 2026-08-13). La
+     equivalencia vive en proyectos/cartera-tabla.html (NPROY) y viaja en `factiun_plantas`. */
+  elburgo:{file:'elburgo_layout.json', title:'El Burgo I 23003', angles:'trackers_2026-06-17.json', cod:24002},
   ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025},
   sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:24, cod:24007},   // mods = modulos por ALA, no por fila. Fayon es 2x1V48: 48 por fila en DOS alas de 24. Con 48 salia span 110,57 m cuando el DWG mide 55,15 (y 46,03 el 1V40, que sale del mr 0,833). Estaba mal desde la #317   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
