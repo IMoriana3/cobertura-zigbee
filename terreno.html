@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.62</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.63</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1820,65 +1820,28 @@ function buildContactAO(){
   if(aoGroup){scene.remove(aoGroup);aoGroup.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});aoGroup=null;}
   if(!TRK.length||!ELEV)return;
   aoGroup=new THREE.Group();scene.add(aoGroup);
-  /* ANCHO DE LAS FRANJAS. Iban a (modH*1,05 + 1,00)/2, o sea 3,51 m de AO y 4,37 m de hierba para un
-     panel de 2,38 m: 1,47 y 1,84 VECES el panel. Con el paso de fila de estas plantas (6,0-6,3 m) eso
-     tapa el 70 % del pasillo, y como la franja NO se mueve con el sol, lo que se ve es una segunda
-     sombra fija, más ancha que la de verdad y con el borde duro. Medido en Túnez a las 09:35 (sol 47,9°
-     de altura, acimut 107,7°): la sombra REAL sale de 2,97 m contra los 2,91 m que toca por geometría
-     con la penumbra del PCF —o sea la sombra está BIEN—, mientras que la franja pintada mide 4,37 m.
-     Ahora la franja se ata al panel: el AO no puede ser más ancho que lo que lo produce (+5 % de marco)
-     y la hierba asoma un 25 % a los flancos, que era su intención (verse desde el aire). */
-  var v2=[],uv2=[],fz=(TC&&TC.filaZ)||3,w2=((((TC&&TC.modH)||2.4)*1.05)/2)*1.25;
-  /* El semilargo de la franja era 31,8 m CLAVADO (16,8 los "medio"), que es el de El Burgo. En una
-     planta con seguidores más cortos la banda oscura se salía por los dos extremos de cada fila y
-     parecía una sombra mal puesta: en Túnez el seguidor mide 37,3 m y la franja 63,6, o sea 13,2 m
-     de más POR CADA PUNTA. Ahora sale del largo real (span x mr), que es el mismo que ya usaban la
-     caja de selección y el recorte de módulos. */
-  TRK.forEach(function(t){var hl=((t.span||TC.span)*(t.mr||1))/2,segs=10;
-    /* la banda va A LO LARGO DEL EJE del seguidor: con `rot` (Bagnarelli, 23,7°) las sombras de
-       contacto salían norte-sur y cruzaban los paneles en diagonal */
-    [-fz,fz].forEach(function(pfx){
-      for(var s=0;s<segs;s++){var dzA=hl-2*hl*s/segs,dzB=hl-2*hl*(s+1)/segs;   // dz DECRECIENTE: con rot 0 reproduce exactamente el orden de vértices anterior (si se invierte, las caras miran abajo y el AO y la franja de hierba desaparecen)
-        var cA=locXN(t,pfx,dzA),cB=locXN(t,pfx,dzB);
-        var yA=localElevY(cA[0],cA[1])+0.05,yB=localElevY(cB[0],cB[1])+0.05,u0=s/segs,u1=(s+1)/segs;
-        var yA2=yA-0.01,yB2=yB-0.01;                                     // franja de hierba MÁS ANCHA que el panel (asoma a los flancos ⇒ visible desde el aire, como las fotos)
-        var C0=locXN(t,pfx-w2,dzA),C1=locXN(t,pfx+w2,dzA),D0=locXN(t,pfx-w2,dzB),D1=locXN(t,pfx+w2,dzB);
-        v2.push(C0[0],yA2,-C0[1], C1[0],yA2,-C1[1], D1[0],yB2,-D1[1], C0[0],yA2,-C0[1], D1[0],yB2,-D1[1], D0[0],yB2,-D0[1]);
-        uv2.push(0,u0, 1,u0, 1,u1, 0,u0, 1,u1, 0,u1);}
-    });});
-  /* FRANJAS DE HIERBA bajo cada fila ("nada verde"): en las fotos aéreas de EL BURGO la sombra de los
-     módulos conserva la humedad y crece una banda verde alineada con cada fila; textura verde a
-     rodales con el borde desvanecido.
-     PERO eso se observó en El Burgo y se estaba aplicando a las siete plantas sin haberlo visto en
-     ninguna otra. Quitada ya la franja de AO, esta es la ÚNICA banda pintada que queda bajo las
-     filas, y sobre la arena clara de Túnez —58 % de opacidad y 3,1 m de ancho, fija— se lee
-     exactamente como la marca permanente de la que venimos: "sigue ahí".
-     Así que ahora es opt-out por planta: `hierba:false` en el layout la apaga. Túnez la apaga
-     porque es un campo ÁRIDO y no hay ninguna foto que respalde la banda verde ahí; donde sí se
-     observó (El Burgo) y en el resto de plantas españolas sigue como estaba. Es dato, no estética:
-     no se pinta vegetación que nadie ha visto. */
-  if(!(LAYOUT&&LAYOUT.hierba===false)){
-  var bc=document.createElement('canvas');bc.width=64;bc.height=256;var bx2=bc.getContext('2d');
-  for(var gk=0;gk<150;gk++){bx2.globalAlpha=0.30+Math.random()*0.26;bx2.fillStyle=(gk%3)?'#61793f':'#71854b';
-    var gr2=7+Math.random()*16;bx2.beginPath();bx2.ellipse(10+Math.random()*44,Math.random()*256,gr2*0.8,gr2*1.6,0,0,6.3);bx2.fill();}
-  var msk=bx2.createLinearGradient(0,0,64,0);msk.addColorStop(0,'rgba(0,0,0,0)');msk.addColorStop(0.25,'rgba(0,0,0,1)');msk.addColorStop(0.75,'rgba(0,0,0,1)');msk.addColorStop(1,'rgba(0,0,0,0)');
-  bx2.globalAlpha=1;bx2.globalCompositeOperation='destination-in';bx2.fillStyle=msk;bx2.fillRect(0,0,64,256);bx2.globalCompositeOperation='source-over';
-  var btex=new THREE.CanvasTexture(bc);btex.wrapS=btex.wrapT=THREE.RepeatWrapping;
-  var g2b=new THREE.BufferGeometry();g2b.setAttribute('position',new THREE.Float32BufferAttribute(v2,3));g2b.setAttribute('uv',new THREE.Float32BufferAttribute(uv2,2));
-  var gm2=new THREE.Mesh(g2b,new THREE.MeshLambertMaterial({map:btex,transparent:true,depthWrite:false,opacity:0.58}));gm2.renderOrder=0;gm2.receiveShadow=true;aoGroup.add(gm2);
-   // franja bajo cada línea de módulos. Lambert (ILUMINADO): con Basic se quedaba con brillo de mediodía al atardecer ("¿qué es ese brillo bajo los módulos?")
-  }   // fin de la franja de hierba: el AO de los EQUIPOS, abajo, se dibuja SIEMPRE (con `return` se lo habría comido)
-  /* AQUÍ IBA LA FRANJA DE AO BAJO CADA FILA, Y SE HA QUITADO. Preguntado: "¿qué representa esa
-     sombra?". Respuesta honesta: NADA que no estuviera ya calculado. Es una sombra de contacto
-     PINTADA, un truco para pegar los objetos al suelo, de cuando la sombra real no daba para tanto.
-     Pero el visor ya proyecta la sombra de verdad desde el sol, y está MEDIDA y correcta (2,97 m
-     frente a los 2,91 m que tocan por geometría en Túnez a las 09:35). O sea que la franja era una
-     SEGUNDA sombra, encima de la buena, que ni se movía con el sol ni tenía penumbra. Por eso
-     "quedaba una marca permanente bajo los trackers": porque no representaba nada.
-     Se conserva el AO de los EQUIPOS (`blob`, abajo): ahí no hay sombra propia que lo sustituya —
-     son cajas pequeñas sobre el terreno— y su cometido de pegarlas al suelo sigue en pie.
-     La franja de HIERBA se queda: esa sí representa algo real (la banda que se ve más verde bajo
-     las filas en las fotos aéreas, porque la sombra conserva la humedad) y va por su cuenta. */
+  /* AQUÍ IBAN LAS DOS FRANJAS PINTADAS BAJO CADA FILA. NO QUEDA NINGUNA.
+
+     (1) La de AO era una sombra de contacto PINTADA: un truco para pegar los objetos al suelo, de
+     cuando la sombra real no daba para tanto. Pero el visor ya proyecta la sombra de verdad desde
+     el sol y está MEDIDA y correcta: 2,97 m frente a los 2,91 m que tocan por geometría en Túnez a
+     las 09:35 (cuerda 2,38 / sen 74,7° del ángulo de perfil, más la penumbra del PCF). O sea que
+     era una SEGUNDA sombra encima de la buena, que ni se movía con el sol ni tenía penumbra: de ahí
+     la marca permanente bajo cada seguidor.
+
+     (2) La de HIERBA venía de las fotos aéreas de EL BURGO —la sombra conserva la humedad y crece
+     una banda más verde alineada con cada fila— y se estaba pintando en las SIETE plantas sin
+     haberla visto en ninguna otra. Quitada la de AO, era la única banda que quedaba, y sobre la
+     arena clara de Túnez se leía igual: 3,1 m de ancho, 58 % de opacidad, fija y sin penumbra.
+     Cambiaba el color del problema, no el problema.
+
+     Se probó primero apagarla solo en Túnez (`hierba:false` en su layout). Confirmado allí, se
+     aplica a TODAS: la franja no se construye en ninguna planta, así que tampoco hace falta el
+     flag ni la geometría. La sombra de las filas la pinta el sol y solo el sol.
+
+     Lo que SÍ se queda es el AO de los EQUIPOS (`blob`, abajo): ahí no hay sombra propia que lo
+     sustituya —son cajas pequeñas sobre el terreno— y su cometido de pegarlas al suelo sigue en
+     pie. Y las matas de hierba en 3D (VEGX) son otra cosa y van por su cuenta. */
   var blob=new THREE.MeshBasicMaterial({map:_aoTex(),transparent:true,depthWrite:false});
   function put(x,n,sx,sz){var p=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),blob);p.rotation.x=-Math.PI/2;p.renderOrder=1;p.position.set(x,localElevY(x,n)+0.07,-n);aoGroup.add(p);}
   if(LAYOUT&&LAYOUT.invlab){if(!INVPOS.length)computeInvPos();LAYOUT.invlab.forEach(function(c,ci){var p=invAt(ci);put(p.x,p.n,2.6,1.6);});}
