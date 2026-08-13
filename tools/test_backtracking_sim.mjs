@@ -61,7 +61,7 @@ const sandbox = new Function(src + `
   return { runPhysicsQA, singleaxis, trueTrackAngle, shadeFracPair, shadeBrute,
            anglesPairwise, anglesTrue3d, anglesOptimal, anglesAstro, anglesGlobal, anglesRow,
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
-           pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag };`);
+           pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -72,6 +72,22 @@ for (const r of F.runPhysicsQA()) {
 }
 
 console.log('extra (solo tiene sentido en Node: reproducibilidad y aristas)');
+t('plantFromCotas sobre ayora_cotas.json REAL: banda coherente, tilts medidos y parejas bifila', () => {
+  const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(data, 18);
+  if (P.elev.length !== 18) throw new Error('líneas: ' + P.elev.length);
+  if (Math.abs(P.pitch - 6.002) > 0.01) throw new Error('pitch: ' + P.pitch);
+  if (Math.abs(P.cw - 2.384) > 0.01) throw new Error('cuerda: ' + P.cw);
+  const eSpan = Math.max(...P.elev) - Math.min(...P.elev);
+  if (!(eSpan > 0 && eSpan < 60)) throw new Error('desnivel raro: ' + eSpan.toFixed(1) + ' m');
+  for (const tl of P.tilt) if (Math.abs(tl) > 20) throw new Error('tilt N-S fuera de rango: ' + tl.toFixed(1) + '°');
+  const mean = P.elev.reduce((s, v) => s + v, 0) / P.elev.length;
+  if (Math.abs(mean) > 1e-9) throw new Error('cotas sin recentrar');
+  if (!(P.nPairs > 0)) throw new Error('sin parejas bifila');
+  for (const g of P.groups) if (g.length === 2 && Math.abs(g[0] - g[1]) !== 1) throw new Error('pareja no adyacente: ' + g);
+  const segCount = P.segs.reduce((s, l) => s + l.length, 0);
+  if (!(segCount >= 18)) throw new Error('tramos: ' + segCount);
+});
 t('cotas ↔ pendientes: ida y vuelta exacta (pairsFromElev ∘ elevFromPairs = id)', () => {
   const z = [0, -0.4, 0.7, 0.1, -1.2];
   const back = F.elevFromPairs(F.pairsFromElev(z, 6, 0));
