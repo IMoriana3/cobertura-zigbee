@@ -944,7 +944,13 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   // parejas bifila REALES: las dos filas de un mismo tracker, si ambas caen en
   // la banda; art del tracker = alguna de sus filas articulada
-  const groups=[],seen=new Set(),gseen=new Set();
+  // El emparejamiento bifila real ALTERNA a lo largo de la línea (la línea i
+  // se empareja con i−1 en unos tramos y con i+1 en otros). El modelo de
+  // accionamiento es por LÍNEA, así que se toma el emparejamiento MAYORITARIO
+  // sin solapes (greedy por nº de trackers) — aproximación DECLARADA; los
+  // grupos solapados pisaban el acople y rompían el θ común (lo cazó la demo
+  // de invariantes sobre Ayora).
+  const seen=new Set(),pairCount={};
   let nArt=0,nPairs=0;
   for(const L of band)for(const f of L.f){
     const t=f.trk;
@@ -953,12 +959,20 @@ function plantFromCotas(data,maxLines,blockIdx){
     const idx=[];
     for(let li=0;li<band.length;li++)
       if(band[li].f.some(g=>g.trk===t))idx.push(li);
-    if(idx.length===2){nPairs++;if(t.f.some(g=>g.art))nArt++;}
-    // los GRUPOS son parejas de LÍNEAS (muchos trackers comparten pareja):
-    // deduplicar o el acoplado y el conteo de motores se multiplican
-    const key=idx.join('-');
-    if(idx.length&&!gseen.has(key)){gseen.add(key);groups.push(idx);}
+    if(idx.length===2){
+      nPairs++;if(t.f.some(g=>g.art))nArt++;
+      const key=idx[0]+'-'+idx[1];
+      pairCount[key]=(pairCount[key]||0)+1;
+    }
   }
+  const groups=[],usedLine=new Set();
+  for(const key of Object.keys(pairCount).sort((x,y)=>pairCount[y]-pairCount[x])){
+    const [i1,i2]=key.split('-').map(Number);
+    if(usedLine.has(i1)||usedLine.has(i2))continue;
+    usedLine.add(i1);usedLine.add(i2);groups.push([i1,i2]);
+  }
+  for(let li=0;li<band.length;li++)if(!usedLine.has(li))groups.push([li]);
+  groups.sort((x,y)=>x[0]-y[0]);
   return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,lineX:lineX,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
@@ -1011,23 +1025,31 @@ function groundLightFrac(thetaDeg,zen,az,gcr,axisAz){
    mientras la sombra física siga en cero Y la luz al suelo BAJE (el gate evita
    empeorar con sol casi paralelo al eje). Nunca rinde menos que el baseline. */
 function anglesMinGroundLight(zen,az,T){
-  const base=anglesPairwise(zen,az,T);
+  // parte del pairwise YA ACOPLADO y seguro (así nunca queda por debajo de él
+  // bajo el mismo accionamiento) y empina por UNIDAD DE ACCIONAMIENTO — el
+  // grupo entero con θ común en bifila, la fila en monofila — verificando la
+  // sombra física con los ángulos reales en cada paso
+  const base=T.groups?driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false)
+                     :anglesPairwise(zen,az,T);
   if(!(isFinite(zen)&&zen<87))return base;
   const a=base.slice(), maxA=T.maxAngle;
+  const units=T.groups?T.groups:a.map((_,r)=>[r]);
   const glSum=ang=>ang.reduce((s,th)=>s+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
   for(let it=0;it<3;it++){
     let improved=false;
-    for(let r=0;r<a.length;r++){
-      const sgn=Math.sign(a[r])||1;
-      let lo=Math.abs(a[r]), hi=maxA;
+    for(const u of units){
+      const r0=u[0];
+      const sgn=Math.sign(a[r0])||1;
+      let lo=Math.abs(a[r0]), hi=maxA;
       if(hi-lo<0.25)continue;
       for(let b=0;b<14;b++){
-        const mid=(lo+hi)/2, trial=a.slice(); trial[r]=sgn*mid;
+        const mid=(lo+hi)/2, trial=a.slice();
+        for(const r of u)trial[r]=sgn*mid;
         if(Math.max(...shadeRows(zen,az,T,trial))<=2e-3)lo=mid; else hi=mid;
       }
-      if(lo>Math.abs(a[r])+1e-6){
-        const trial=a.slice(); trial[r]=sgn*lo;
-        if(glSum(trial)<glSum(a)-1e-12){a[r]=sgn*lo;improved=true;}
+      if(lo>Math.abs(a[r0])+1e-6){
+        const trial=a.slice(); for(const r of u)trial[r]=sgn*lo;
+        if(glSum(trial)<glSum(a)-1e-12){for(const r of u)a[r]=sgn*lo;improved=true;}
       }
     }
     if(!improved)break;
@@ -1114,7 +1136,7 @@ function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
   if(key==='true3d')return {angles:driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),f:undefined};
-  if(key==='mgl')return {angles:driveCoupleSafe(zen,az,T,anglesMinGroundLight(zen,az,T),false),f:undefined};
+  if(key==='mgl')return {angles:anglesMinGroundLight(zen,az,T),f:undefined};   // ya acoplado y sin sombra por construcción
   return {angles:driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),f:undefined};
 }
 
@@ -1364,7 +1386,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.5';
+const VER='v1.5.1';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
