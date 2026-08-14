@@ -244,6 +244,8 @@
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
       <label class="btn small" title="Etiquetas por fila en el 3D: θ, % de sombra calculada y POA de la política de la ESCENA" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="lbl3d"> nº</label>
+      <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
+      <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
     </div>
     <div class="hud" id="hud"></div>
   </div>
@@ -691,14 +693,17 @@ function anglesTrue3d(zen,az,T){
   if(nR<2)return base;
   if(!(isFinite(zen)&&isFinite(az)&&zen<87))return base.slice();
   const MARGIN=0.5, EPS_TILT=0.5;
-  const pm=[],pc=[]; let sunSide=1;
+  // signo POR PAREJA: cerca del tránsito cada pareja (su axisTilt) cambia de
+  // lado en un momento distinto — un signo global (bug: el de la ÚLTIMA pareja
+  // pisaba a todas) ponía filas a −θ con la vecina a +θ ⇒ sombra masiva
+  const pm=[],pc=[],ps=[];
   for(const p of T.pairs){
     const b=bt3dPairMaxMag(zen,az,p.slope,p.axisTilt,p.pitch,T.cw,T.axisAz,T.maxAngle);
     const full=Math.abs(nan0(singleaxis(zen,az,{axisTilt:p.axisTilt,axisAz:T.axisAz,
       maxAngle:T.maxAngle,backtrack:false,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})));
     pm.push(Math.min(full,Math.max(0,Math.min(b.mag-MARGIN,T.maxAngle))));
     pc.push(Math.max(0,Math.min(b.mag,T.maxAngle)));
-    sunSide=b.sgn;
+    ps.push(b.sgn);
   }
   const mag=new Array(nR), ceil=new Array(nR);
   mag[0]=pm[0]; mag[nR-1]=pm[pm.length-1];
@@ -707,7 +712,11 @@ function anglesTrue3d(zen,az,T){
   const out=new Array(nR);
   const meaningful=zen<82;
   for(let r=0;r<nR;r++){
-    let v=sunSide*mag[r];
+    // signo de ESTA fila: el de sus parejas; si discrepan (tránsito), arbitra
+    // el signo de la baseline pvlib, que es continua
+    const sgnR=(r===0)?ps[0]:(r===nR-1)?ps[ps.length-1]:
+      (ps[r-1]===ps[r]?ps[r]:(Math.sign(base[r])||ps[r]));
+    let v=sgnR*mag[r];
     const bAbs=Math.abs(base[r]);
     // suelo en la baseline (energía ≥ baseline) solo donde la baseline no auto-sombrea en 3D
     if(!meaningful||bAbs<=ceil[r]+1e-9){
@@ -1368,6 +1377,25 @@ function runPhysicsQA(){
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
   });
+  t('true-3D continuo en el TRÁNSITO: sin bandazos de signo ni sombra masiva a mediodía',()=>{
+    // el bug del signo global (la última pareja pisaba a todas) ponía filas a
+    // −θ con la vecina a +θ justo en el tránsito ⇒ 98% de sombra a mediodía
+    const T=mkT([7,-5,7,-5,7],4.5,0,{gcr:2.382/4.5});
+    T.pairs.forEach((p,i)=>{p.axisTilt=[-3.6,-0.3,2.8,-1.9,0.9][i%5];});   // tilts N-S dispares: tránsitos desincronizados
+    let prev=null;
+    for(let m=11*60;m<=15*60;m+=10){
+      const doy=172, g=solarPos(Date.UTC(2026,5,21,0,0)+m*60000-2*3600000,41.6,-0.8);
+      if(!(g.elev>15))continue;
+      const a2=anglesTrue3d(g.zen,g.az,T);
+      const sh=shadeRows(g.zen,g.az,T,a2);
+      assert(Math.max(...sh)<0.10,'sombra '+(Math.max(...sh)*100).toFixed(0)+'% a las '+Math.floor(m/60)+':'+(m%60));
+      if(prev){
+        const j=Math.max(...a2.map((v,i)=>Math.abs(v-prev[i])));
+        assert(j<35,'bandazo de '+j.toFixed(0)+'° a las '+Math.floor(m/60)+':'+(m%60));
+      }
+      prev=a2;
+    }
+  });
   t('slewLimit: respeta 0,17 °/s — clava el objetivo si llega, recorta si no, y el signo es el del movimiento',()=>{
     const lim1=slewLimit([0,0],[30,-30],300);        // 51°/paso: llega
     assert(lim1[0]===30&&lim1[1]===-30,'objetivo alcanzable recortado: '+lim1);
@@ -1517,7 +1545,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.8.0';
+const VER='v1.9.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -1615,7 +1643,14 @@ function applyPreset(){
   ELEV=z; clampSlopes(c); recompute();
 }
 function clampSlopes(c){
-  // el editor no debe fabricar pendientes que ni un tracker real montaría
+  // el editor no debe fabricar pendientes que ni un tracker real montaría.
+  // ¡PERO nunca con cotas MEDIDAS!: en las plantas reales las medias de línea
+  // entre bandas destresbolilladas difieren varios metros LEGÍTIMAMENTE (las
+  // mesas ni se solapan) — caparlas aquí reescribía ELEV, los «deltas del
+  // editor» dejaban de ser cero y corrompían el Δz real de las parejas
+  // (pendientes de −52° donde el solape mide −0,8°). La física de las plantas
+  // reales va por pairDz; este clamp es SOLO para el editor de presets.
+  if(PLANT_REAL)return;
   for(let i=1;i<ELEV.length;i++){
     const dz=ELEV[i-1]-ELEV[i], lim=c.pitch*Math.tan(30*RAD);
     if(dz>lim)ELEV[i]=ELEV[i-1]-lim;
@@ -1660,6 +1695,10 @@ async function loadRealPlant(name,blockIdx,ncuSel){
     const P=plantFromCotas(data,80,blockIdx);
     PLANT_REAL=P;
     ELEV=P.elev.slice();
+    // el EMPLAZAMIENTO de la planta, no el que hubiera: sin esto «Ayora» se
+    // simulaba con la lat/lon por defecto (el sol de otra provincia)
+    if(lay&&isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
+    if(isFinite(COTAS_CACHE[name].base))$('alt').value=Math.round(COTAS_CACHE[name].base);
     const pMed=P.lineX.length>1?(P.lineX[P.lineX.length-1]-P.lineX[0])/(P.lineX.length-1):P.pitch;
     $('nrows').value=P.elev.length;$('nrows').max=200;$('pitch').value=P.pitch.toFixed(2);
     $('cw').value=P.cw;$('maxang').value=P.maxAngle;$('axaz').value=0;
@@ -1983,6 +2022,16 @@ function init3D(){
     const hint=document.createElement('div');hint.className='hint';
     hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · el terreno se edita en «Corte 2D»';
     holder.appendChild(hint);
+    // globo de mesa: aparece al PINCHAR una mesa (pick3D) o con «⚠»
+    const globo=document.createElement('div');globo.id='globo3d';
+    globo.style.cssText='position:absolute;display:none;max-width:250px;background:rgba(10,15,22,.93);border:1px solid #2a3a4f;border-radius:8px;padding:8px 10px;font-size:.78rem;line-height:1.5;color:#dfe5ea;z-index:6';
+    holder.appendChild(globo);
+    let pd=null;
+    renderer.domElement.addEventListener('pointerdown',e=>{pd=[e.clientX,e.clientY];});
+    renderer.domElement.addEventListener('pointerup',e=>{
+      if(pd&&Math.hypot(e.clientX-pd[0],e.clientY-pd[1])<6)pick3D(e.clientX,e.clientY);
+      pd=null;
+    });
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,
         sunMesh:sunMesh,world:null,rows:[],camSet:false,w:0,h:0};
   }catch(e){TD=null;VIEW3D=false;$('tab3d').style.display='none';setTab(false);}
@@ -2064,7 +2113,7 @@ function build3D(){
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
   // banda ROJA de sombra CALCULADA: pinta sobre la pala la fracción sombreada
   // exacta (shadeRows) por el borde por el que entra — la física, no el shadow-map
-  const ovM=new THREE.MeshBasicMaterial({color:0xe34948,transparent:true,opacity:0.8,depthWrite:false,side:THREE.DoubleSide});
+  const ovM=new THREE.MeshBasicMaterial({color:0xe34948,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
   // DRAPEADO (como los render 3D de la casa): el tramo mantiene el tilt que
   // manda el accionamiento pero se ELEVA hasta volar sobre el terreno en todo
   // su largo — los postes se alargan, que es lo que hace el montaje real. La
@@ -2109,6 +2158,7 @@ function build3D(){
       LIFTS[r+'|'+yc.toFixed(2)]=lift;
       tiltG.rotation.x=tiltR;
       tiltG.position.set(xof(r),cy,-yc);
+      tiltG.userData.row=r; tiltG.userData.seg=si;   // para el picking (globo)
       let spin=null, built=false;
       if(useModel){
         try{
@@ -2122,7 +2172,7 @@ function build3D(){
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
           const ov=new THREE.Mesh(new THREE.PlaneGeometry(len,2.382),ovM);
-          ov.rotation.x=-Math.PI/2; ov.position.y=0.16; ov.visible=false; ov.renderOrder=3;
+          ov.rotation.x=-Math.PI/2; ov.position.y=0.32; ov.visible=false; ov.renderOrder=3;
           beam.spin.add(ov);
           ovls.push({m:ov,ax:'model',half:2.382/2});
           spin=beam.spin; built=true;
@@ -2137,7 +2187,7 @@ function build3D(){
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
         const ovb=new THREE.Mesh(new THREE.PlaneGeometry(c.cw,len),ovM);
-        ovb.rotation.x=-Math.PI/2; ovb.position.y=0.16+c.z0; ovb.visible=false; ovb.renderOrder=3;
+        ovb.rotation.x=-Math.PI/2; ovb.position.y=0.32+c.z0; ovb.visible=false; ovb.renderOrder=3;
         gRot.add(ovb);
         ovls.push({m:ovb,ax:'box',half:c.cw/2});
         tiltG.add(gRot);
@@ -2649,6 +2699,79 @@ INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   ensureElev(cfg().nrows);recompute();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
+/* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
+   su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
+   fila con más sombra del instante o del día entero de la política animada ── */
+function rowInfoHTML(r){
+  if(!DAY)return '';
+  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  const t=timeIndex();
+  const th=p.ang[t][r], sh=p.shade[t][r]||0, poa=(p.poaR&&p.poaR[t])?p.poaR[t][r]:0;
+  let wt=0,ws=0;
+  for(let k=0;k<DAY.times.length;k++){const v=p.shade[k][r]||0;if(v>ws){ws=v;wt=k;}}
+  const tilt=DAY.T.rowTilt?DAY.T.rowTilt[r]:0;
+  return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
+    '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+
+    '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b> · POA '+poa.toFixed(0)+' W/m²'+
+    (ws>1e-3?'<br>peor de esta fila: '+hhmm(DAY.times[wt])+' ('+(ws*100).toFixed(1)+'%) <button class="btn small" onclick="gotoT('+wt+','+r+')">ir</button>'
+            :'<br>sin sombra en todo el día');
+}
+window.gotoT=(t,r)=>{$('hour').value=DAY.times[t];$('hour').dispatchEvent(new Event('input'));if(r!=null)selectRow(r);showGlobo(rowInfoHTML(r),12,12);};
+function selectRow(r){
+  $('rowsel').value=r;$('rowsel').onchange();
+  if(TD&&TD.rows[r]&&TD.rows[r].lbl){
+    const P=TD.rows[r].lbl.position;
+    TD.controls.target.set(P.x,P.y-2.6,P.z);
+    TD.camera.position.set(P.x+26,P.y+12,P.z+30);
+    TD.controls.update();
+  }
+  update3D();
+}
+function showGlobo(html,x,y){
+  const g=document.getElementById('globo3d'); if(!g)return;
+  g.innerHTML=html+'<span style="cursor:pointer;opacity:.7;float:right;margin-left:8px" data-x=1>✕</span>';
+  g.querySelector('[data-x]').onclick=()=>{g.style.display='none';};
+  g.style.display='block';
+  const rect=$('view3d').getBoundingClientRect();
+  g.style.left=Math.max(6,Math.min(x,rect.width-260))+'px';
+  g.style.top=Math.max(6,Math.min(y,rect.height-120))+'px';
+}
+function pick3D(px,py){
+  if(!TD||!DAY)return;
+  const rect=TD.renderer.domElement.getBoundingClientRect();
+  const nd=new THREE.Vector2(((px-rect.left)/rect.width)*2-1,-(((py-rect.top)/rect.height)*2-1));
+  const ray=new THREE.Raycaster(); ray.setFromCamera(nd,TD.camera);
+  for(const h of ray.intersectObjects(TD.world.children,true)){
+    let o=h.object;
+    while(o&&o.userData.row==null)o=o.parent;
+    if(o&&o.userData.row!=null){
+      const r=o.userData.row;
+      $('rowsel').value=r;$('rowsel').onchange();update3D();
+      showGlobo(rowInfoHTML(r),px-rect.left,py-rect.top);
+      return;
+    }
+  }
+  const g=document.getElementById('globo3d'); if(g)g.style.display='none';
+}
+function worstNow(){
+  if(!DAY)return;
+  const key=$('polview').value, p=DAY.pol[key]; if(!p)return;
+  const t=timeIndex(); let r=0,mx=0;
+  p.shade[t].forEach((v,i)=>{if(v>mx){mx=v;r=i;}});
+  if(mx<=1e-3){showGlobo('<b>'+(POL[key]?POL[key].nm:key)+'</b>: sin sombra en ninguna fila en este instante',12,12);return;}
+  selectRow(r);showGlobo(rowInfoHTML(r),12,12);
+}
+function worstDay(){
+  if(!DAY)return;
+  const key=$('polview').value, p=DAY.pol[key]; if(!p)return;
+  let wt=0,wr=0,mx=0;
+  for(let t=0;t<DAY.times.length;t++)p.shade[t].forEach((v,i)=>{if(v>mx){mx=v;wt=t;wr=i;}});
+  if(mx<=1e-3){showGlobo('<b>'+(POL[key]?POL[key].nm:key)+'</b>: sin sombra en todo el día en ninguna fila',12,12);return;}
+  $('hour').value=DAY.times[wt];$('hour').dispatchEvent(new Event('input'));
+  selectRow(wr);showGlobo(rowInfoHTML(wr),12,12);
+}
+$('worstnow').onclick=worstNow;
+$('worstday').onclick=worstDay;
 $('polview').onchange=()=>{drawScene();update3D();};
 $('lbl3d').onchange=()=>update3D();
 let PLAYPOS=0, PLAYTS=0;
