@@ -344,11 +344,14 @@
           <option value="centroeuropa">Centroeuropa</option>
           <option value="custom">Personalizado</option>
         </select></div>
-      <div class="f"><label>% claro</label><input id="wclear" type="number" step="1" min="0" max="100" value="55"></div>
-      <div class="f"><label>% parcial · % overcast</label>
+      <div class="f"><label>% días claros</label><input id="wclear" type="number" step="1" min="0" max="100" value="55"
+        title="Fracción de días del año tipo DESPEJADO (cielo Ineichen limpio). Solo afecta al modo sintético «12 días × mezcla»; el de 365 días reales usa la meteo medida. Si los tres pesos no suman 100, se normalizan."></div>
+      <div class="f"><label>% frentes · % overcast</label>
         <div style="display:flex;gap:6px">
-          <input id="wpart" type="number" step="1" min="0" max="100" value="30" style="width:50%">
-          <input id="wover" type="number" step="1" min="0" max="100" value="15" style="width:50%">
+          <input id="wpart" type="number" step="1" min="0" max="100" value="30" style="width:50%"
+            title="Días tipo FRENTES: base cc 0,15 con pulsos overcast — el día donde el chattering castiga a las políticas sin histéresis. Se normaliza con los otros dos pesos.">
+          <input id="wover" type="number" step="1" min="0" max="100" value="15" style="width:50%"
+            title="Días CUBIERTOS TOTALES: cc 0,95 todo el día, 100 % difusa — donde el modo plano gana. Se normaliza con los otros dos pesos.">
         </div></div>
     </div>
     <div class="f"><label>Sitio de referencia climática</label>
@@ -1238,7 +1241,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.7.0';
+const VER='v1.7.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2693,6 +2696,9 @@ $('yearbtn').onclick=()=>{
   const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:c.maxAngle}:null;
   let w=[+$('wclear').value,+$('wpart').value,+$('wover').value];
   const sw=w[0]+w[1]+w[2]||1; w=w.map(v=>v/sw);
+  // si los pesos no suman 100, se dice en el pill qué mezcla EFECTIVA se usó
+  $('yearinfo').innerHTML='mezcla sintética '+w.map(v=>Math.round(100*v)).join('/')+
+    ' (claro/frentes/overcast'+(Math.abs(sw-100)>0.5?' — normalizada de '+Math.round(sw):'')+')';
   const year=(c.dateStr||'2026-06-21').split('-')[0];
   const months=['01','02','03','04','05','06','07','08','09','10','11','12'];
   const tot={};for(const k of POL_ORDER)if(POL_ON[k])tot[k]=0;
