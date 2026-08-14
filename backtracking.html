@@ -211,6 +211,13 @@
       de la sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
       extremos de línea se libran. La fila «media» es tipo real de catálogo (≈0,504·larga, San José).
       La sombra punta-a-punta entre trackers de una misma línea no se modela (declarado).</div>
+    <div class="nota"><b>Modelo eléctrico (hipótesis acotada, auditoría 2/6):</b> Martinez por diodos
+      bypass aplicado a la penetración de cuerda de cada <b>estación axial</b> y promediado por mesa —
+      equivale a strings en serie a lo largo del eje con bypass ideal y MPPT sin mismatch residual
+      (declarado). Acotado en el año de Ayora: solo área −1,6% de amplificación eléctrica por debajo;
+      banda uniforme (el modelo del −8% espurio) muy por encima; el publicado queda al 20% del recorrido.
+      La granularidad estación≈módulo está validada: refinar de 9,3 m a 1,2 m mueve el anual +0,007%.
+      Sin validar contra curvas IV reales (pendiente: SCADA de Ayora).</div>
   </div>
 
   <div class="card">
@@ -1590,12 +1597,21 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   // salvaguarda: si bajo la MISMA métrica del arranque el ascenso no mejora,
   // se queda el arranque (que ya es ≥ energy-optimal por construcción)
   let cand=(poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant<bestS-1e-9)?startAng:ang;
-  // REPARACIÓN con el contador EXACTO: los barridos rápidos (2.5D) son ciegos
-  // a la torsión — si el ray-cast ve sombra en el resultado, se prueba el
-  // mismo juego APLANADO medio paso de rejilla en las unidades afectadas y
-  // gana quien prefiera el contador exacto (2 evaluaciones exactas por paso)
-  if((90-zen)>=40)return {angles:cand,f:undefined};   // reparación: solo sol <40° (la torsión muerde ahí; con sol alto era coste sin hallazgo)
-  const ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
+  // ELECCIÓN EXACTA (v1.27, auditoría punto 4): el buscador rápido es ciego a
+  // la torsión y bajo el contador exacto el libre podía rendir MENOS que el
+  // óptimo común (medido: −0,01% anual). Se elige por instante, con el
+  // ray-cast, entre el resultado libre y el común — libre ≥ común por
+  // CONSTRUCCIÓN bajo la métrica publicada (+0,07% anual medido).
+  const com=anglesOptimal(zen,az,T,irr,doy,albedo).angles;
+  let ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
+  const evc=poaPlant(zen,az,T,com,irr,doy,albedo);
+  if(evc.plant>ev.plant+1e-9){cand=com;ev=evc;}
+  // REPARACIÓN con el contador EXACTO: si el ray-cast ve sombra en el
+  // ganador, se prueba el mismo juego APLANADO medio paso de rejilla en las
+  // unidades afectadas y gana quien prefiera el contador exacto. Solo sol
+  // <40° (la torsión muerde ahí; con sol alto era coste sin hallazgo —
+  // barrido de sensibilidad: 0,0000%)
+  if((90-zen)>=40)return {angles:cand,f:undefined};
   if(ev.shade.some(v=>v>1e-3)){
     const df=(1-OPTFREE_F0)/(OPTFREE_NF-1)/2;
     const alt=cand.slice();
@@ -1997,7 +2013,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.26.1';
+const VER='v1.27.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

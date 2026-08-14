@@ -62,7 +62,7 @@ const sandbox = new Function(src + `
            anglesPairwise, anglesTrue3d, anglesOptimal, anglesAstro, anglesGlobal, anglesRow,
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
-           shadeBand3DAll };`);
+           shadeBand3DAll, anglesOptimalFree };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -484,6 +484,39 @@ t('ORÁCULO de método: cuerda analítica ≡ muestreo bruto MU=192 (Ayora, ≤0
   }
 });
 
+t('v1.27: óptimo libre ≥ óptimo común BAJO EL CONTADOR EXACTO (elección por instante)', () => {
+  // punto 4 de la auditoría: el buscador rápido es ciego a la torsión y el
+  // libre podía rendir menos que el común bajo la métrica publicada; ahora
+  // elige entre ambos con el ray-cast — invariante por construcción
+  if (!/ELECCIÓN EXACTA/.test(html)) throw new Error('sin elección exacta en el óptimo libre');
+  const T = ayoraPlantT();
+  for (const [lo, hi] of [[1.5, 4], [20, 24.9]]) {
+    const g = findElevCase(Date.UTC(2026, 11, 21), lo, hi);
+    const irr = F.clearskyIneichen(g.zen, 355, 739, 3.5);
+    const aC = F.anglesOptimal(g.zen, g.az, T, irr, 355, 0.20).angles;
+    const aF = policyFree(g, T, irr);
+    const pC = F.poaPlant(g.zen, g.az, T, aC, irr, 355, 0.20).plant;
+    const pF = F.poaPlant(g.zen, g.az, T, aF, irr, 355, 0.20).plant;
+    if (pF < pC - 1e-9)
+      throw new Error(`elev ${g.elev.toFixed(1)}°: libre ${pF.toFixed(2)} < común ${pC.toFixed(2)} bajo el contador exacto`);
+  }
+  function policyFree(g, T, irr) {
+    return F.anglesOptimalFree(g.zen, g.az, T, irr, 355, 0.20).angles;
+  }
+});
+t('eléctrico: pérdida por fila ≥ sombra óptica (elecLoss amplifica, nunca regala)', () => {
+  // punto 2 de la auditoría (cota inferior del sándwich): el Martinez por
+  // estación siempre carga al menos el área sombreada — medido en el año:
+  // óptica sola 2806,0 · publicado 2760,3 (−1,63% de amplificación) ·
+  // banda uniforme 2582,0 (−7,98%, el modelo del −8% espurio)
+  const T = ayoraPlantT();
+  const g = findElevCase(Date.UTC(2026, 11, 21), 1.5, 4);
+  const ang = F.anglesPairwise(g.zen, g.az, T);
+  const sh = F.shadeRows(g.zen, g.az, T, ang);
+  for (let r = 0; r < sh.length; r++)
+    if (sh.elec[r] < sh[r] - 1e-9)
+      throw new Error(`fila ${r}: elec ${sh.elec[r].toFixed(4)} < sombra ${sh[r].toFixed(4)}`);
+});
 t('bifila: gemela alineada con su motora Y tresbolillo REAL entre grupos', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila (pairStep 2):
   // dentro del grupo alineadas (eje perpendicular), entre grupos DESALINEADAS —
