@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.22.2';
+const VER='v1.22.3';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2676,7 +2676,10 @@ function build3D(){
           const bb=new THREE.Box3().setFromObject(beam.spin);
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
-          const ovg=new THREE.Group(); ovg.position.y=0.19; ovg.renderOrder=3;
+          // la pegatina roja va a 5 mm del CRISTAL (cara 0,14 + canto/2 = 0,165):
+          // a 0,19 quedaba 2,5 cm en el aire y en TANGENCIA el rayo rasante
+          // hacía visible esa altura desde el sol como una raya roja imposible
+          const ovg=new THREE.Group(); ovg.position.y=0.170; ovg.renderOrder=3;
           beam.spin.add(ovg);
           ovls.push({g:ovg,ax:'model',half:2.382/2,x0:bb.min.x,x1:bb.max.x,yc:yc});
           spin=beam.spin; built=true;
@@ -2993,7 +2996,8 @@ function update3D(){
       setSky([0.04+0.09*up,0.07+0.12*up,0.14+0.22*up],
              [0.20+0.25*up+0.62*warm*(1-0.5*up),0.28+0.30*up+0.20*warm*(1-0.5*up),0.42+0.35*up-0.20*warm]);
     }
-    TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
+    TD.sunMesh.visible=!TD.sunPov;             // en modo «👁 sol» el disco taparía la planta
+    TD.sunMesh.position.copy(TD.sun.position);
     if(TD.sunPov)snapSunPov();                 // modo «👁 sol»: la vista sigue al sol
   }else{
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
