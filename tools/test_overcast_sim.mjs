@@ -108,7 +108,7 @@ const sandbox = new Function(src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
-           shiftCC, shiftOM, zonalRun };`);
+           shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1 };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -166,6 +166,58 @@ t('métricas: un día overcast total tiene menos recorrido con poa_switch que la
   const mS = F.dayMetrics(day, r.theta, r.flag, F.poaSeries(day, r.theta));
   if (!(mS.travelDeg < mB.travelDeg)) throw new Error('flat no ahorra maniobra: ' + mS.travelDeg + ' vs ' + mB.travelDeg);
   if (!(mS.poaWh > mB.poaWh)) throw new Error('flat no gana POA en overcast total');
+});
+
+// ── fuzz determinista: 400 configuraciones del planeta entero ───────────────
+// Semilla fija (reproducible). Cada configuración exige TODOS los invariantes a
+// la vez. Así se cazó que el stow no obedecía al hard-stop mecánico.
+console.log('fuzz (400 configuraciones deterministas, todos los invariantes a la vez)');
+t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni slew violado, ni diario discrepante', () => {
+  let s = 20260814;
+  const rnd = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t2 = Math.imul(s ^ s >>> 15, 1 | s); t2 = t2 + Math.imul(t2 ^ t2 >>> 7, 61 | t2) ^ t2; return ((t2 ^ t2 >>> 14) >>> 0) / 4294967296; };
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const fallos = [];
+  for (let it = 0; it < 400; it++) {
+    const dtMin = pick([5, 10, 15, 30]);
+    const cc = new Array(288).fill(0);
+    const modo = pick(['claro', 'ovc', 'frentes', 'ruido']);
+    if (modo === 'ovc') cc.fill(0.6 + 0.4 * rnd());
+    else if (modo === 'frentes') { for (let k = 0; k < 1 + Math.floor(rnd() * 6); k++) { const a = Math.floor(rnd() * 280); for (let j = a; j < Math.min(288, a + Math.floor(rnd() * 40)); j++) cc[j] = rnd(); } }
+    else if (modo === 'ruido') for (let j = 0; j < 288; j++) cc[j] = rnd();
+    const o = { lat: -60 + 120 * rnd(), lon: -180 + 360 * rnd(), tz: Math.round(-12 + 24 * rnd()),
+      dateStr: pick(['2024-02-29', '2025-01-01', '2025-06-21', '2025-12-31', '2025-09-15']),
+      altM: Math.round(3000 * rnd()), TL: 2 + 5 * rnd(), dtMin, albedo: rnd(),
+      axisAz: pick([0, 23.7, 90, 180]), maxAngle: 5 + 55 * rnd(), gcr: 0.1 + 0.8 * rnd(),
+      nightStow: -10 + 20 * rnd(), cc, om: null };
+    const loop = { deadbandDeg: 2 * rnd(), slewDegS: 0.05 + 0.4 * rnd(), maxAngle: o.maxAngle };
+    try {
+      const day = F.buildDay(o), dayF = F.buildDay(Object.assign({}, o, { dtMin: 5 }));
+      const thN = F.thetaBaselineDay(day), poaN = F.poaSeries(day, thN);
+      if (!thN.every(Number.isFinite)) throw new Error('θ_n NaN');
+      for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
+        const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
+        if (!r.theta.every(Number.isFinite)) throw new Error(k + ': θ NaN');
+        for (let i = 0; i < day.n; i++) {
+          if (Math.abs(r.theta[i]) > Math.abs(thN[i]) + 1e-6) throw new Error(k + ': clamp de backtracking roto');
+          if (Math.abs(r.theta[i]) > o.maxAngle + 1e-6) throw new Error(k + ': supera el tope mecánico');
+        }
+        const ex = F.execOnFineGrid(r.theta, dtMin, dayF.n, 5, loop);
+        for (let i = 1; i < ex.length; i++)
+          if (Math.abs(ex[i] - ex[i - 1]) > loop.slewDegS * 300 + 1e-6) throw new Error(k + ': slew violado');
+        if (!F.poaSeries(dayF, ex).every(v => Number.isFinite(v) && v >= 0)) throw new Error(k + ': POA NaN o negativa');
+        const e = F.EXPLAIN[k](day, thN, poaN, F.DCFG_DEFAULT);
+        if (!e.flag.every((v, i) => !!v === !!r.flag[i])) throw new Error(k + ': el diario discrepa de la política');
+      }
+      const rc = F.POLICIES.diffuse_continuous(day, thN, poaN, F.DCFG_DEFAULT);
+      const pc = F.poaSeries(day, rc.theta);
+      for (let i = 0; i < day.n; i++)
+        if (day.ghi[i] > F.DCFG_DEFAULT.ghiMin && pc[i] < poaN[i] - 1e-6) throw new Error('continuous < pvlib');
+    } catch (e) {
+      fallos.push('#' + it + ' ' + e.message + ' · lat ' + o.lat.toFixed(1) + ' θmáx ' + o.maxAngle.toFixed(1) +
+                  ' dt ' + dtMin + ' ' + modo);
+    }
+  }
+  if (fallos.length) throw new Error(fallos.length + '/400 · ' + fallos.slice(0, 3).join(' | '));
 });
 
 console.log('');

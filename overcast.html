@@ -643,11 +643,16 @@ function buildDay(o){
 }
 /* get_baseline_theta: singleaxis + backtracking, noche NaN→stow (5° al este) */
 function thetaBaselineDay(day){
+  // el stow también obedece al hard-stop: es una posición MECÁNICA, no una
+  // preferencia. Sin este recorte, un stow mayor que θmáx metía la baseline
+  // (y con ella todas las políticas) fuera del tope del actuador — lo cazó el
+  // fuzz con θmáx pequeños, y en campo sería una consigna imposible.
+  const stow=Math.max(-day.maxAngle,Math.min(day.maxAngle,day.nightStow));
   const th=[];
   for(let i=0;i<day.n;i++){
     const v=singleaxis(day.zen[i],day.az[i],{axisTilt:day.axisTilt,axisAz:day.axisAz,
       maxAngle:day.maxAngle,backtrack:true,gcr:day.gcr,crossAxisTilt:0});
-    th.push(isFinite(v)?v:day.nightStow);
+    th.push(isFinite(v)?v:stow);
   }
   return th;
 }
@@ -1456,6 +1461,20 @@ function runPhysicsQA(){
     const r=zonalRun(o,3,45,'diffuse_poa_switch',DCFG_DEFAULT,[0,0,0]);
     A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'difieren: '+(r.plantZonal-r.plantGlobal));
   });
+  t('el stow obedece al hard-stop: un stow mayor que θmáx no puede sacar al tracker de su tope',()=>{
+    // lo cazó el fuzz: el stow entraba tal cual en la baseline nocturna, así
+    // que con θmáx pequeño la planta entera quedaba fuera del tope mecánico.
+    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2025-06-21',tz:2,altM:300,TL:3.5,dtMin:15,
+                        albedo:0.2,axisAz:0,maxAngle:8,gcr:0.397,nightStow:50,
+                        cc:new Array(288).fill(0),om:null});
+    const thN=thetaBaselineDay(day);
+    for(let i=0;i<day.n;i++)A(Math.abs(thN[i])<=8+1e-9,'θ_n '+thN[i].toFixed(1)+'° supera el θmáx de 8°');
+    const poaN=poaSeries(day,thN);
+    for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+      const r=POLICIES[k](day,thN,poaN,DCFG_DEFAULT);
+      for(let i=0;i<day.n;i++)A(Math.abs(r.theta[i])<=8+1e-9,k+' supera el tope mecánico');
+    }
+  });
   t('casos límite del planeta: hemisferio sur, polos, husos extremos y bisiesto sin romper un invariante',()=>{
     // donde suelen esconderse los bugs: sur, sol de medianoche, noche polar,
     // UTC+12, 29-feb y bordes de año. En TODOS deben cumplirse a la vez:
@@ -1533,7 +1552,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.9.1';
+const VER='v1.9.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
