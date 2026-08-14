@@ -1546,7 +1546,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.11.0';
+const VER='v1.12.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2172,8 +2172,8 @@ function build3D(){
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
-          const ov=new THREE.Mesh(new THREE.BoxGeometry(len,2.382,0.10),ovM);
-          ov.rotation.x=-Math.PI/2; ov.position.y=0.32; ov.visible=false; ov.renderOrder=3;
+          const ov=new THREE.Mesh(new THREE.BoxGeometry(len,2.382,0.04),ovM);
+          ov.rotation.x=-Math.PI/2; ov.position.y=0.18; ov.visible=false; ov.renderOrder=3;   // pegada al cristal: franja pintada, no raíl flotante
           beam.spin.add(ov);
           ovls.push({m:ov,ax:'model',half:2.382/2});
           spin=beam.spin; built=true;
@@ -2187,8 +2187,8 @@ function build3D(){
         panel.position.y=0.10+c.z0;
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
-        const ovb=new THREE.Mesh(new THREE.BoxGeometry(c.cw,len,0.10),ovM);
-        ovb.rotation.x=-Math.PI/2; ovb.position.y=0.32+c.z0; ovb.visible=false; ovb.renderOrder=3;
+        const ovb=new THREE.Mesh(new THREE.BoxGeometry(c.cw,len,0.04),ovM);
+        ovb.rotation.x=-Math.PI/2; ovb.position.y=0.16+c.z0; ovb.visible=false; ovb.renderOrder=3;
         gRot.add(ovb);
         ovls.push({m:ovb,ax:'box',half:c.cw/2});
         tiltG.add(gRot);
@@ -2224,14 +2224,21 @@ function build3D(){
   const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
   const barM=new THREE.MeshLambertMaterial({color:0x8a6d2f});
   const cardM=new THREE.MeshLambertMaterial({color:0xeaf4ff});
+  const bielM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:0.45,metalness:0.65});  // acero del modelo
   const linkBar=(pA,pB)=>{
     if(pA.distanceTo(pB)>9)return;   // una biela no cruza huecos: solo entre vigas enfrentadas
-    const len=pA.distanceTo(pB); if(len<0.1)return;
-    const g3=new THREE.CylinderGeometry(0.045,0.045,len,8);
-    const bar=new THREE.Mesh(g3,barM);
-    bar.position.copy(pA).lerp(pB,0.5);
-    bar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),pB.clone().sub(pA).normalize());
-    bar.castShadow=true;world.add(bar);
+    // eje de transmisión como en el render: barra de acero a la altura del
+    // TUBO (donde está el slew del modelo) con copa/brida en cada extremo
+    const dir=pB.clone().sub(pA), L2=dir.length(); dir.normalize();
+    const seg=(len,rad,at)=>{
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,12),bielM);
+      m.position.copy(at);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+      m.castShadow=true; world.add(m);
+    };
+    seg(Math.max(0.3,L2-0.36),0.045,pA.clone().lerp(pB,0.5));                    // el eje
+    seg(0.20,0.095,pA.clone().add(dir.clone().multiplyScalar(0.16)));            // copa lado motora
+    seg(0.20,0.095,pB.clone().sub(dir.clone().multiplyScalar(0.16)));            // copa lado gemela
   };
   const hubAt=(r,yc)=>{
     // altura del eje de transmisión: con planta REAL, la cota MEDIDA del tramo
@@ -2268,20 +2275,21 @@ function build3D(){
           let best=null;
           for(const [ycB] of segCenters(g2[1]))
             if(best===null||Math.abs(ycB-ycA)<Math.abs(best-ycA))best=ycB;
-          const pA=hubAt(g2[0],ycA);
+          const up=new THREE.Vector3(0,hub*0.38,0);          // del punto de accionamiento al TUBO
+          const pA=hubAt(g2[0],ycA).add(up);
           if(best===null||Math.abs(best-ycA)>Math.min(1.5,(lenA||1)*0.34)){
-            motorAt(pA);                             // sin gemela enfrente: mesa suelta, motor propio
+            if(!useModel)motorAt(pA);                // sin gemela enfrente: mesa suelta
             continue;
           }
-          const pB=hubAt(g2[1],best);
+          const pB=hubAt(g2[1],best).add(up);
           linkBar(pA,pB);
-          motorAt(pA);                               // el motor va en la viga west (línea motora)
+          if(!useModel)motorAt(pA);                  // con modelo, el slew YA es el motor
           if(T.drive==='quebrado')for(const P of [pA,pB]){
             const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
             card.position.copy(P);world.add(card);
           }
         }
-      }else for(const [yc] of segCenters(g2[0]))motorAt(hubAt(g2[0],yc));
+      }else if(!useModel)for(const [yc] of segCenters(g2[0]))motorAt(hubAt(g2[0],yc));
     }
   }else if(!useModel){                               // con el modelo el slew ya trae su motor
     for(let r=0;r<n;r++)for(const [yc] of segCenters(r))motorAt(hubAt(r,yc));
