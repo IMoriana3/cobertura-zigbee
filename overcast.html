@@ -1230,7 +1230,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.4';
+const VER='v1.6.5';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1442,9 +1442,11 @@ const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'
   let opts='<option value="">— manual —</option>';
   /* Se rotula el nº de PROYECTO (`nproy`, el del DWG), no la clave de la hoja: El Burgo salía aquí
      como "El Burgo I · 24002" y en el resto del ecosistema es 23003. `nproy` lo publica
-     cartera-tabla.html; si la cartera guardada es vieja y no lo trae, cae a la clave, que es lo
-     que había. */
-  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+((P[cod]&&P[cod].nproy)||cod)+'</option>';});
+     cartera-tabla.html; si la cartera guardada es vieja y no lo trae, cae a la clave.
+     ORDEN NUMÉRICO por nº de proyecto y rótulo «número · nombre» (petición 2026-08). */
+  const nproy=cod=>(P[cod]&&P[cod].nproy)||cod;
+  Object.keys(P).sort((a,b)=>(parseFloat(nproy(a))-parseFloat(nproy(b)))||String(nproy(a)).localeCompare(String(nproy(b))))
+    .forEach(cod=>{opts+='<option value="'+cod+'">'+nproy(cod)+' · '+((P[cod]&&P[cod].nombre)||'?')+'</option>';});
   $('plant').innerHTML=opts;
   $('plant').onchange=function(){
     const p=P[this.value]; if(!p)return;
