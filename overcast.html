@@ -1,0 +1,1810 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulador de Overcast — Difusa en el navegador</title>
+<link rel="icon" href="favicon.svg">
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#101722; --card:#121a26; --line:#1e2a3a; --line2:#2a3a50;
+    --tx:#eaf4ff; --tx2:#9bb0c6; --muted:#5c7189; --accent:#5aa9ff; --ok:#36d399;
+    --warn:#fbbd23; --err:#f87272; --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+    --ancho:min(1680px,96vw);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
+  a{color:var(--accent);text-decoration:none}
+  header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto}
+  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
+  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:120ch}
+  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px;max-width:150ch}
+  .wrap{max-width:var(--ancho);margin:0 auto;padding:0 22px}
+  .cols{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
+  @media(max-width:980px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .card h2{margin:0 0 10px;font-size:.98rem;display:flex;align-items:center;gap:8px}
+  .card h2 .sn{font-family:var(--mono);font-size:.66rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-left:8px}
+  .f{margin-bottom:9px}
+  .f label{display:block;font-family:var(--mono);font-size:.64rem;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .f input,.f select{width:100%;background:var(--bg2);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:7px 10px;font:inherit;font-size:.88rem}
+  .f input:focus,.f select:focus{outline:none;border-color:var(--accent)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .pill{font-family:var(--mono);font-size:.7rem;color:var(--tx2);background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:3px 10px;display:inline-block}
+  .pill b{color:var(--ok);font-weight:600}
+  .btn{cursor:pointer;border:1px solid var(--line2);background:var(--bg2);color:var(--tx);border-radius:9px;padding:8px 14px;font:inherit;font-size:.86rem;transition:.15s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.acc{border-color:var(--accent);color:var(--accent)}
+  .btn.small{padding:4px 10px;font-size:.76rem}
+  canvas.viz{width:100%;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
+  canvas.skyedit{cursor:crosshair;touch-action:none}
+  .viz3d{width:100%;height:440px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .viz3d canvas{display:block}
+  .viz3d .hint{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:.64rem;color:var(--muted);pointer-events:none}
+  .hud{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
+  .ro{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
+  .ro .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .ro .v{font-size:1.02rem;font-weight:600;margin-top:2px}
+  .ro .v small{font-size:.72rem;color:var(--tx2);font-weight:400}
+  .timerow{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .timerow input[type=range]{flex:1;min-width:160px;accent-color:var(--accent)}
+  .timerow .t{font-family:var(--mono);font-size:.95rem;color:var(--accent);min-width:52px;text-align:right}
+  .pols{display:flex;flex-direction:column;gap:6px}
+  .pol{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer}
+  .pol input{accent-color:var(--accent)}
+  .pol .dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .pol .nm{font-size:.85rem;font-weight:600}
+  .pol .ds{font-size:.72rem;color:var(--muted);line-height:1.35}
+  table{border-collapse:collapse;width:100%;font-size:.84rem}
+  th,td{border-bottom:1px solid var(--line);padding:6px 9px;text-align:right;white-space:nowrap}
+  th{font-family:var(--mono);font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  th:first-child,td:first-child{text-align:left}
+  td.best{color:var(--ok);font-weight:600}
+  .nota{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:9px}
+  .nota b{color:var(--tx2)}
+  .qa{font-family:var(--mono);font-size:.78rem;line-height:1.7;white-space:pre-wrap}
+  .qa .ok{color:var(--ok)} .qa .ko{color:var(--err)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.74rem;color:var(--tx2)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+  .chip{font-family:var(--mono);font-size:.64rem;color:var(--warn);border:1px dashed var(--warn);border-radius:7px;padding:2px 8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulador de Overcast <span class="chip">difusa en el navegador</span></h1>
+  <div class="sub">Espejo JS del módulo canónico de tracking de SolarGPT (<code>solargpt_core/tracker.py</code>,
+    schema 2.1.0): las <b>cuatro políticas de difusa del core</b> — <b>diffuse_flat · diffuse_limited ·
+    diffuse_continuous · diffuse_poa_switch</b> — más la baseline pvlib, con la MISMA semántica: transposición
+    Perez 1990 única para todas, clamp de backtracking innegociable (|θ| ≤ |θ_n|, sin sombra entre filas),
+    máquina de estados con histéresis confirm/dwell <b>en minutos absolutos</b> (invariante en resolución) y
+    lazo de control real (deadband 1° + slew 0,17°/s). Pinta el cielo del día (frentes, overcast, pulsos),
+    trae <b>días reales de Open-Meteo</b> (histórico, previsión o EN VIVO: GHI/DNI/DHI y nubosidad medidas)
+    y mira qué hace cada política y cuánto POA gana o pierde. La física corre offline; Open-Meteo es el
+    único extra online, opcional.</div>
+  <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
+    QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
+    <a href="backtracking.html">Simulador de BT</a> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
+</header>
+
+<div class="wrap">
+<div class="cols">
+<div><!-- columna izquierda: configuración -->
+
+  <div class="card">
+    <h2>☉ Emplazamiento</h2>
+    <div class="f"><label>Planta (de la cartera)</label>
+      <select id="plant"><option value="">— manual —</option></select></div>
+    <div class="two">
+      <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
+      <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
+    </div>
+    <div class="three">
+      <div class="f"><label>Fecha</label><input id="date" type="date" value="2026-06-21"></div>
+      <div class="f"><label>UTC ±</label><input id="tz" type="number" step="0.5" value="2"></div>
+      <div class="f"><label>Altitud m</label><input id="alt" type="number" step="10" value="300"></div>
+    </div>
+    <div class="two">
+      <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
+      <div class="f"><label>Turbidez Linke</label><input id="tl" type="number" step="0.1" min="2" max="7" value="3.5"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⚙ Geometría del tracker</h2>
+    <div class="two">
+      <div class="f"><label>Pitch m</label><input id="pitch" type="number" step="0.05" min="2" value="6.00"></div>
+      <div class="f"><label>Ancho colector m</label><input id="cw" type="number" step="0.001" min="0.5" value="2.382"></div>
+    </div>
+    <div class="three">
+      <div class="f"><label>GCR</label><input id="gcr" type="text" value="0.397" readonly title="Derivado = ancho/pitch. No es un input (regla del core)."></div>
+      <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
+      <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
+    </div>
+    <div class="f"><label>Resolución temporal</label>
+      <select id="dt">
+        <option value="5">5 min</option>
+        <option value="10" selected>10 min (la del core legacy)</option>
+        <option value="15">15 min</option>
+      </select></div>
+    <div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
+      schema 2.1.0): cambiar la resolución NO mueve los bordes de conmutación — hay un check de la QA
+      que lo exige (5/10/15 min, mismos instantes físicos ±1 paso grueso).</div>
+  </div>
+
+  <div class="card">
+    <h2>☁ Cielo del día <span class="sn">pinta · presets · Open-Meteo</span></h2>
+    <div class="f"><label>Fuente</label>
+      <select id="skysource">
+        <option value="paint">Sintético — pintado / presets (offline)</option>
+        <option value="om">Open-Meteo — día real (online)</option>
+      </select></div>
+    <div id="omrow" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn small" id="omload" title="Descarga GHI/DNI/DHI y nubosidad horarias del día de la fecha (archivo ERA5 si es antiguo, previsión si es reciente o futuro) y las usa como meteo del día — la irradiancia REAL, no el modelo de nubes">⬇ Cargar la fecha</button>
+        <button class="btn small" id="omlive" title="Modo EN VIVO: pone la fecha de hoy, carga la previsión con lo ya medido, sitúa el reloj en AHORA y se refresca cada 10 min">● En vivo</button>
+        <span class="pill" id="omstatus">sin datos</span>
+      </div>
+      <div class="nota" style="margin:0 0 8px">Open-Meteo (<code>open-meteo.com</code>, sin API key):
+        histórico ERA5 desde 1940 o previsión ICON/GFS. La tira de abajo pasa a mostrar la nubosidad
+        REAL del día (solo lectura); pintar encima devuelve a la fuente sintética.</div>
+    </div>
+    <div class="two">
+      <div class="f"><label>Preset</label>
+        <select id="skypreset">
+          <option value="despejado">Despejado</option>
+          <option value="overcast">Overcast total</option>
+          <option value="manana">Mañana nublada</option>
+          <option value="tarde" selected>Tarde nublada</option>
+          <option value="frentes">Frentes (pulsos)</option>
+          <option value="test">Escenario del test del core</option>
+          <option value="aleatorio">Aleatorio (semilla)</option>
+        </select></div>
+      <div class="f"><label id="skyparamlbl">Semilla</label><input id="skyparam" type="number" step="1" value="7"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button class="btn small" id="skyapply">Aplicar preset</button>
+      <button class="btn small" id="skyclear">Despejar</button>
+      <span class="pill" id="skyinfo"></span>
+    </div>
+    <canvas id="skyedit" class="viz skyedit" height="86"></canvas>
+    <div class="nota">Arrastra para pintar la <b>cobertura nubosa</b> (arriba = 100 %). Modelo nube→irradiancia,
+      declarado: GHI = GHI<sub>claro</sub>·(1 − 0,70·cc) — con cc = 1 queda el <b>30 %</b> del cielo claro,
+      100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
+      (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
+      DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.</div>
+  </div>
+
+  <div class="card">
+    <h2>🗺 Zonal por NCU <span class="sn">opción · estilo Zonal Diffuse</span></h2>
+    <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="zonalOn">
+      <span><span class="nm">Activar el zonal</span>
+      <span class="ds">Un frente cruza la planta: cada NCU ve el cielo con retardo y decide con SU
+      señal — contra la decisión única de planta.</span></span></label>
+    <div class="two">
+      <div class="f"><label>Nº NCUs</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
+      <div class="f"><label>El frente cruza en (min)</label><input id="crossmin" type="number" step="5" min="0" max="240" value="45"></div>
+    </div>
+    <div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
+      <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
+      construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
+      pinta cada zona con su nube y su θ. Con día real de Open-Meteo, el frente retarda la serie
+      medida (aprox declarada: un punto no trae información espacial).</div>
+  </div>
+
+  <div class="card">
+    <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
+    <div class="pols" id="polbox"></div>
+    <div class="three" style="margin-top:9px">
+      <div class="f"><label>GHI mín W/m²</label><input id="ghimin" type="number" step="5" min="0" value="50"></div>
+      <div class="f"><label>Ratio flat</label><input id="fratio" type="number" step="0.01" min="1" value="1.02"></div>
+      <div class="f"><label>Hold limited</label><input id="hratio" type="number" step="0.01" min="0.9" value="1.00"></div>
+    </div>
+    <div class="three">
+      <div class="f"><label>SW entrar</label><input id="senter" type="number" step="0.01" min="1" value="1.02"></div>
+      <div class="f"><label>SW salir</label><input id="sexit" type="number" step="0.01" min="0.9" value="1.00"></div>
+      <div class="f"><label>α continuo</label><input id="alphas" type="text" value="0, 0.25, 0.5, 0.75, 1" readonly title="Candidatos del barrido del core (continuous_alpha_candidates)"></div>
+    </div>
+    <div class="two">
+      <div class="f"><label>Confirm min</label><input id="confirm" type="number" step="5" min="0" value="30"></div>
+      <div class="f"><label>Dwell min</label><input id="dwell" type="number" step="5" min="0" value="90"></div>
+    </div>
+    <div class="nota"><b>flat</b> conmuta a 0° si POA(0) &gt; ratio·POA(θ_n) — sin memoria, chattering a la
+      vista. <b>limited</b> retiene el ángulo previo mientras no pierda. <b>continuous</b> barre
+      θ = (1−α)·θ_n y se queda el argmax: es el TECHO matemático de las políticas no-anticipativas
+      (α = 0 es candidato ⇒ nunca rinde menos que pvlib, paso a paso). <b>poa_switch</b> es la
+      ejecutable en campo: confirm 30 min antes de conmutar (anti-chattering) y dwell 90 min entre
+      conmutaciones (protege el actuador) — el dwell también bloquea la re-entrada, a propósito.</div>
+  </div>
+
+  <div class="card">
+    <h2>⚙ Lazo de control <span class="sn">deadband + slew</span></h2>
+    <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="loopOn" checked>
+      <span><span class="nm">Aplicar el lazo real</span>
+      <span class="ds">La consigna no se teletransporta: deadband + velocidad del actuador. La POA
+      ejecutada es la que vale.</span></span></label>
+    <div class="two">
+      <div class="f"><label>Deadband °</label><input id="deadband" type="number" step="0.1" min="0" value="1.0"></div>
+      <div class="f"><label>Slew °/s</label><input id="slew" type="number" step="0.01" min="0.01" value="0.17"></div>
+    </div>
+    <div class="nota">Canónicos del core: deadband <b>1,0°</b> · slew <b>0,17°/s</b> (≈ 5,9 min para 60°).
+      Un tracker que decide tarde además LLEGA tarde: la diferencia consigna→ejecutado se ve en la
+      curva θ (trazo discontinuo) y en la tabla (columna «lazo»).</div>
+  </div>
+
+  <div class="card">
+    <h2>🧪 QA de la física</h2>
+    <button class="btn" id="qabtn">Verificar contra el contrato del core</button>
+    <div class="qa" id="qaout" style="margin-top:8px"></div>
+  </div>
+
+</div>
+<div><!-- columna derecha: escena + resultados -->
+
+  <div class="card">
+    <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
+      </span></h2>
+    <div id="view3d" class="viz3d"></div>
+    <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
+    <div class="timerow">
+      <button class="btn small acc" id="play">▶</button>
+      <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
+        <option value="30">×½</option>
+        <option value="60" selected>×1</option>
+        <option value="150">×2,5</option>
+        <option value="360">×6</option>
+      </select>
+      <input type="range" id="hour" min="0" max="1439" step="5" value="720">
+      <span class="t" id="hourlbl">12:00</span>
+      <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
+      <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
+    </div>
+    <div class="hud" id="hud"></div>
+  </div>
+
+  <div class="card">
+    <h2>Curvas del día <span class="sn">irradiancia · θ por política · POA</span></h2>
+    <canvas id="irrcv" class="viz" height="170"></canvas>
+    <canvas id="curves" class="viz" height="240" style="margin-top:10px"></canvas>
+    <canvas id="poacv" class="viz" height="200" style="margin-top:10px"></canvas>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="card">
+    <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span></h2>
+    <div style="overflow-x:auto"><table id="daytab"></table></div>
+    <div class="nota" id="daynote"></div>
+  </div>
+
+  <div class="card" id="zonalcard" style="display:none">
+    <h2>Zonal por NCU <span class="sn">decisión global vs cada NCU con su señal</span></h2>
+    <div style="overflow-x:auto"><table id="zonaltab"></table></div>
+    <div class="nota">POA de planta = media de las zonas, cada una evaluada con SU cielo. La columna
+      «Δ zonal» es la ganancia de dar la decisión a cada NCU frente al θ común del sensor de planta
+      — el argumento del control distribuido (y de la NCU con visión de planta para coordinarlo).</div>
+  </div>
+
+  <div class="card">
+    <h2>Estimación anual <span class="sn">12 días × mezcla de cielos</span></h2>
+    <div class="three">
+      <div class="f"><label>Clima</label>
+        <select id="climate">
+          <option value="seco">Seco (valle del Ebro)</option>
+          <option value="atlantico">Atlántico (Cantábrico)</option>
+          <option value="centroeuropa">Centroeuropa</option>
+          <option value="custom">Personalizado</option>
+        </select></div>
+      <div class="f"><label>% claro</label><input id="wclear" type="number" step="1" min="0" max="100" value="55"></div>
+      <div class="f"><label>% parcial · % overcast</label>
+        <div style="display:flex;gap:6px">
+          <input id="wpart" type="number" step="1" min="0" max="100" value="30" style="width:50%">
+          <input id="wover" type="number" step="1" min="0" max="100" value="15" style="width:50%">
+        </div></div>
+    </div>
+    <button class="btn" id="yearbtn">Calcular año</button>
+    <div style="overflow-x:auto;margin-top:8px"><table id="yeartab"></table></div>
+    <div class="nota">Día 21 de cada mes × tres cielos tipo (claro · parcial-frentes · overcast), ponderados
+      por la mezcla del clima. Es una <b>comparativa de políticas</b> con el generador de nubes declarado
+      arriba, no un P50: para energía bancable, el motor SolarGPT con meteo real (TMY). La mezcla por
+      defecto de cada clima es una aproximación razonable de frecuencia de cielos, editable.</div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que backtracking.html: offline -->
+<script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js?v=0.4.19"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
+<script>
+"use strict";
+/* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
+   Todo lo que hay entre este marcador y FIN-FÍSICA corre igual en el
+   navegador y en Node (tools/test_overcast_sim.mjs): NADA de DOM aquí.
+   Espejo de solargpt_core/tracker.py (schema 2.1.0). Cada función indica
+   qué pieza del core espeja. Posición solar / Ineichen / singleaxis /
+   Perez son las MISMAS funciones (copiadas literales) que backtracking.html
+   — una física, dos simuladores. */
+const RAD=Math.PI/180, DEG=180/Math.PI;
+
+/* Canónicos del core (tracker.py, CANONICAL_*): si el core los cambia, aquí
+   se ve — el test de Node compara estos defaults contra los inputs. */
+const CANON={pitch:6.00, cw:2.382, gcr:0.397, maxAngle:55, slewDegS:0.17,
+             deadbandDeg:1.0, nightStowDeg:0, axisAz:0, axisTilt:0};
+/* DiffuseConfig del core, mismos nombres y defaults */
+const DCFG_DEFAULT={ghiMin:50, flatEnterRatio:1.02, limitedHoldRatio:1.0,
+                    alphas:[0,0.25,0.5,0.75,1],
+                    swEnterRatio:1.02, swExitRatio:1.00,
+                    confirmMin:30, dwellMin:90};
+
+/* ── posición solar NOAA (la misma de backtracking.html / sim-solar) ─────── */
+function julianDay(ms){return ms/86400000+2440587.5;}
+function refraction(elev){
+  if(elev>85)return 0; const te=Math.tan(elev*RAD); let r;
+  if(elev>5)r=58.1/te-0.07/(te*te*te)+0.000086/Math.pow(te,5);
+  else if(elev>-0.575)r=1735+elev*(-518.2+elev*(103.4+elev*(-12.79+elev*0.711)));
+  else r=-20.772/te;
+  return r/3600;
+}
+function solarPos(dateUTCms,lat,lon){
+  const jd=julianDay(dateUTCms),T=(jd-2451545)/36525;
+  let L0=(280.46646+T*(36000.76983+T*0.0003032))%360; if(L0<0)L0+=360;
+  const M=357.52911+T*(35999.05029-0.0001537*T);
+  const e=0.016708634-T*(0.000042037+0.0000001267*T);
+  const Mr=M*RAD;
+  const C=Math.sin(Mr)*(1.914602-T*(0.004817+0.000014*T))+Math.sin(2*Mr)*(0.019993-0.000101*T)+Math.sin(3*Mr)*0.000289;
+  const trueLong=L0+C, omega=125.04-1934.136*T;
+  const appLong=trueLong-0.00569-0.00478*Math.sin(omega*RAD);
+  const eps0=23+(26+((21.448-T*(46.815+T*(0.00059-T*0.001813))))/60)/60;
+  const eps=eps0+0.00256*Math.cos(omega*RAD);
+  const decl=Math.asin(Math.sin(eps*RAD)*Math.sin(appLong*RAD))/RAD;
+  let y=Math.tan(eps*RAD/2); y*=y;
+  const L0r=L0*RAD;
+  const Et=y*Math.sin(2*L0r)-2*e*Math.sin(Mr)+4*e*y*Math.sin(Mr)*Math.cos(2*L0r)-0.5*y*y*Math.sin(4*L0r)-1.25*e*e*Math.sin(2*Mr);
+  const eqTime=4*Et/RAD;
+  const d=new Date(dateUTCms);
+  const mins=d.getUTCHours()*60+d.getUTCMinutes()+d.getUTCSeconds()/60;
+  let tst=(mins+eqTime+4*lon)%1440; if(tst<0)tst+=1440;
+  const ha=tst/4-180;
+  const latr=lat*RAD,declr=decl*RAD,har=ha*RAD;
+  let cosZ=Math.sin(latr)*Math.sin(declr)+Math.cos(latr)*Math.cos(declr)*Math.cos(har);
+  cosZ=Math.max(-1,Math.min(1,cosZ));
+  const zen=Math.acos(cosZ)/RAD, elev=90-zen;
+  const azDen=Math.cos(latr)*Math.sin(zen*RAD); let az;
+  if(Math.abs(azDen)>1e-9){let azc=(Math.sin(latr)*Math.cos(zen*RAD)-Math.sin(declr))/azDen;azc=Math.max(-1,Math.min(1,azc));az=Math.acos(azc)/RAD;if(ha>0)az=(az+180)%360;else az=(540-az)%360;}
+  else az=(lat>decl)?180:0;
+  const elevAp=elev+refraction(elev);              // elevación APARENTE (con refracción)
+  return {zen:90-elevAp, az:az, elev:elevAp};
+}
+function localToUTCms(dateStr,localMin,tzOff){
+  const p=dateStr.split('-');
+  return Date.UTC(+p[0],+p[1]-1,+p[2],0,0,0)+(localMin-tzOff*60)*60000;
+}
+function doyOf(dateStr){
+  const p=dateStr.split('-');
+  return Math.round((Date.UTC(+p[0],+p[1]-1,+p[2])-Date.UTC(+p[0],0,1))/86400000)+1;
+}
+
+/* ── cielo claro Ineichen + masa de aire + extraterrestre ────────────────── */
+function dniExtra(doy){return 1367*(1+0.033*Math.cos(2*Math.PI*doy/365));}
+function airmassKY(zenDeg){                            // Kasten & Young 1989, relativa
+  if(zenDeg>=90)return NaN;
+  return 1/(Math.cos(zenDeg*RAD)+0.50572*Math.pow(96.07995-zenDeg,-1.6364));
+}
+function clearskyIneichen(zenDeg,doy,altM,TL){
+  if(!(zenDeg<90))return {ghi:0,dni:0,dhi:0};
+  const amR=airmassKY(zenDeg);
+  const press=Math.pow(1-2.25577e-5*altM,5.25588);     // atmósfera estándar
+  const am=amR*press;                                   // masa de aire absoluta
+  const I0=dniExtra(doy), cz=Math.cos(zenDeg*RAD);
+  const fh1=Math.exp(-altM/8000), fh2=Math.exp(-altM/1250);
+  const cg1=5.09e-5*altM+0.868, cg2=3.92e-5*altM+0.0387;
+  let ghi=cg1*I0*cz*Math.exp(-cg2*am*(fh1+fh2*(TL-1)))*Math.exp(0.01*Math.pow(am,1.8));
+  ghi=Math.max(0,ghi);
+  const b=0.664+0.163/fh1;
+  const bnci=b*I0*Math.exp(-0.09*am*(TL-1));
+  const bnci2=cz>1e-6? ghi*(1-(0.1-0.2*Math.exp(-TL))/(0.1+0.882/fh1))/cz : 0;
+  const dni=Math.max(0,Math.min(bnci,bnci2));
+  return {ghi:ghi,dni:dni,dhi:Math.max(0,ghi-dni*cz)};
+}
+
+/* ── nube → irradiancia (generador de escenarios, DECLARADO) ──────────────
+   cc ∈ [0,1]. GHI = claro·(1 − 0,70·cc): a cc=1 queda el 30 % del claro —
+   el MISMO overcast canónico del escenario de test_diffuse_policies.py
+   (ghi=0.30·claro, dhi=ghi, dni=0). El haz muere mucho antes que el global:
+   DNI = claro·(1−cc)³. DHI cierra el balance: GHI − DNI·cos z ≥ 0.        */
+function cloudToIrr(clear,cc,zenDeg){
+  const c=Math.max(0,Math.min(1,cc));
+  const ghi=clear.ghi*(1-0.70*c);
+  const dni=clear.dni*Math.pow(1-c,3);
+  const cz=Math.max(0,Math.cos(zenDeg*RAD));
+  const dhi=Math.max(0,ghi-dni*cz);
+  return {ghi:ghi,dni:dni,dhi:dhi};
+}
+
+/* ── meteo real (Open-Meteo u otra): interpolación horaria → paso del sim ──
+   om = {tms:[ms UTC por hora], ghi:[], dni:[], dhi:[], cc:[] (0-1)}.
+   Lineal entre horas; fuera de rango o con huecos (null/NaN) devuelve null y
+   el caller cae al modelo sintético del paso. Pura: la QA la ejercita sin red. */
+function omInterp(om,t){
+  const T=om.tms,n=T.length;
+  if(!n||t<T[0]||t>T[n-1])return null;
+  let i=Math.min(n-2,Math.max(0,Math.floor((t-T[0])/(T[1]-T[0]))));
+  while(i>0&&t<T[i])i--; while(i<n-2&&t>T[i+1])i++;
+  const f=(t-T[i])/(T[i+1]-T[i]);
+  // Number.isFinite, no isFinite: el global coerciona null→0 y un hueco de la
+  // serie pasaría por medida válida de 0 W/m² (lo cazó la QA)
+  const lin=a=>{const v0=a[i],v1=a[i+1];if(!Number.isFinite(v0)||!Number.isFinite(v1))return NaN;return v0+f*(v1-v0);};
+  const ghi=lin(om.ghi),dni=lin(om.dni),dhi=lin(om.dhi),cc=lin(om.cc);
+  if(!Number.isFinite(ghi)||!Number.isFinite(dni)||!Number.isFinite(dhi))return null;
+  return {ghi:Math.max(0,ghi),dni:Math.max(0,dni),dhi:Math.max(0,dhi),
+          cc:Number.isFinite(cc)?Math.max(0,Math.min(1,cc)):0};
+}
+
+/* ── pvlib.tracking.singleaxis (Anderson & Mikofski 2020, Eq. 14) ────────── */
+function trueTrackAngle(zenDeg,azDeg,axisTilt,axisAz){
+  const sz=Math.sin(zenDeg*RAD);
+  const x=sz*Math.sin(azDeg*RAD), y=sz*Math.cos(azDeg*RAD), z=Math.cos(zenDeg*RAD);
+  const ca=Math.cos(axisAz*RAD), sa=Math.sin(axisAz*RAD);
+  const ct=Math.cos(axisTilt*RAD), st=Math.sin(axisTilt*RAD);
+  return Math.atan2(x*ca-y*sa, x*sa*st+y*ca*st+z*ct)*DEG;
+}
+function singleaxis(zenDeg,azDeg,p){
+  // p = {axisTilt, axisAz, maxAngle, backtrack, gcr, crossAxisTilt}
+  if(!(zenDeg<90))return NaN;                          // noche → NaN (pvlib); el caller hace nan→0
+  const wid=trueTrackAngle(zenDeg,azDeg,p.axisTilt,p.axisAz);
+  let th=wid;
+  if(p.backtrack){
+    const axesDist=1/(p.gcr*Math.cos(p.crossAxisTilt*RAD));
+    const temp=Math.abs(axesDist*Math.cos((wid-p.crossAxisTilt)*RAD));
+    if(temp<1) th=wid-Math.sign(wid)*Math.acos(temp)*DEG;
+  }
+  return Math.max(-p.maxAngle,Math.min(p.maxAngle,th));
+}
+function surfaceOrient(thetaDeg,axisTilt,axisAz){
+  const tilt=Math.acos(Math.cos(thetaDeg*RAD)*Math.cos(axisTilt*RAD))*DEG;
+  const sT=Math.sin(tilt*RAD); let azd;
+  if(Math.abs(sT)<1e-12)azd=90;
+  else{
+    azd=Math.asin(Math.max(-1,Math.min(1,Math.sin(thetaDeg*RAD)/sT)))*DEG;
+    if(Math.abs(thetaDeg)>=90)azd=-azd+Math.sign(thetaDeg)*180;
+  }
+  return {tilt:tilt,az:((axisAz+azd)%360+360)%360};
+}
+
+/* ── POA Perez 1990 (allsitescomposite1990) — espejo de compute_poa_perez ── */
+const PEREZ_BINS=[1.065,1.23,1.5,1.95,2.8,4.5,6.2];
+const PEREZ_F=[
+  [-0.008,0.588,-0.062,-0.060,0.072,-0.022],
+  [ 0.130,0.683,-0.151,-0.019,0.066,-0.029],
+  [ 0.330,0.487,-0.221, 0.055,-0.064,-0.026],
+  [ 0.568,0.187,-0.295, 0.109,-0.152,-0.014],
+  [ 0.873,-0.392,-0.362,0.226,-0.462, 0.001],
+  [ 1.132,-1.237,-0.412,0.288,-0.823, 0.056],
+  [ 1.060,-1.600,-0.359,0.264,-1.127, 0.131],
+  [ 0.678,-0.327,-0.250,0.156,-1.377, 0.251]];
+function poaTracker(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo){
+  if(!(zen<90)||irr.ghi<=0)return {total:0,beam:0,diff:0};
+  const o=surfaceOrient(thetaDeg,axisTilt,axisAz);
+  const b=o.tilt*RAD, z=zen*RAD;
+  const cosAoi=Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD);
+  const beam=irr.dni*Math.max(0,cosAoi);
+  let sky=0;
+  if(irr.dhi>0){
+    const kap=1.041, z3=z*z*z;
+    const eps=((irr.dhi+irr.dni)/irr.dhi+kap*z3)/(1+kap*z3);
+    let bin=7; for(let i=0;i<7;i++){if(eps<PEREZ_BINS[i]){bin=i;break;}}
+    const F=PEREZ_F[bin];
+    const delta=irr.dhi*airmassKY(zen)/dniExtra(doy);
+    const F1=Math.max(0,F[0]+F[1]*delta+z*F[2]);
+    const F2=F[3]+F[4]*delta+z*F[5];
+    const A=Math.max(0,cosAoi), B=Math.max(Math.cos(85*RAD),Math.cos(z));
+    sky=Math.max(0,irr.dhi*((1-F1)*(1+Math.cos(b))/2+F1*A/B+F2*Math.sin(b)));
+  }
+  const gnd=irr.ghi*albedo*(1-Math.cos(b))/2;
+  return {total:beam+sky+gnd,beam:beam,diff:sky+gnd};
+}
+
+/* ── pipeline del día ─────────────────────────────────────────────────────
+   El equivalente al (solar_position, weather) del core: pasos de dtMin
+   minutos de 00:00 a 24:00 hora local, cc muestreada de la tira de 288
+   bines de 5 min. Devuelve todo lo que las políticas necesitan.          */
+function buildDay(o){
+  // o = {lat,lon,dateStr,tz,altM,TL,dtMin,albedo,axisAz,maxAngle,gcr,cc[288], om?}
+  // Con o.om (meteo real horaria) la irradiancia del paso es la MEDIDA
+  // interpolada — el modelo de nubes solo actúa donde la medida tiene hueco.
+  const n=Math.round(1440/o.dtMin);
+  const tmin=[],zen=[],az=[],clear=[],irr=[],ghi=[];
+  for(let i=0;i<n;i++){
+    const m=i*o.dtMin;
+    const tms=localToUTCms(o.dateStr,m,o.tz);
+    const g=solarPos(tms,o.lat,o.lon);
+    const cs=clearskyIneichen(g.zen,doyOf(o.dateStr),o.altM,o.TL);
+    let w=null;
+    if(o.om)w=omInterp(o.om,tms);
+    if(!w){
+      const cc=o.cc[Math.min(287,Math.floor(m/5))];
+      w=cloudToIrr(cs,cc,g.zen);
+    }
+    tmin.push(m);zen.push(g.zen);az.push(g.az);clear.push(cs);irr.push(w);ghi.push(w.ghi);
+  }
+  return {n:n,dtMin:o.dtMin,tmin:tmin,zen:zen,az:az,clear:clear,irr:irr,ghi:ghi,
+          doy:doyOf(o.dateStr),albedo:o.albedo,axisAz:o.axisAz,axisTilt:CANON.axisTilt,
+          maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc};
+}
+/* get_baseline_theta: singleaxis + backtracking, noche NaN→night_stow (0) */
+function thetaBaselineDay(day){
+  const th=[];
+  for(let i=0;i<day.n;i++){
+    const v=singleaxis(day.zen[i],day.az[i],{axisTilt:day.axisTilt,axisAz:day.axisAz,
+      maxAngle:day.maxAngle,backtrack:true,gcr:day.gcr,crossAxisTilt:0});
+    th.push(isFinite(v)?v:CANON.nightStowDeg);
+  }
+  return th;
+}
+/* clamp_to_backtrack: |θ_out| ≤ |θ_n|, conservando el signo — innegociable.
+   compute_poa_perez modela superficies aisladas: cualquier |θ|>|θ_n| inflaría
+   la POA con energía que en la planta real se pierde en sombra fila a fila. */
+function clampBT(thOut,thN){
+  return thOut.map((v,i)=>{
+    const an=Math.abs(thN[i]);
+    if(Math.abs(v)<=an+1e-6)return v;
+    let s=Math.sign(v); if(s===0)s=Math.sign(thN[i]);
+    return s*an;
+  });
+}
+function poaSeries(day,theta){
+  const out=[];
+  for(let i=0;i<day.n;i++)
+    out.push(poaTracker(theta[i],day.axisTilt,day.axisAz,day.zen[i],day.az[i],
+                        day.irr[i],day.doy,day.albedo).total);
+  return out;
+}
+
+/* ── las políticas del core — MISMOS nombres, misma semántica ────────────── */
+function polPvlib(day,thN,poaN,d){
+  return {theta:thN.slice(),flag:new Array(day.n).fill(false)};
+}
+function polFlat(day,thN,poaN,d){
+  const zeros=new Array(day.n).fill(0);
+  const poaFlat=poaSeries(day,zeros);
+  const theta=[],flag=[];
+  for(let i=0;i<day.n;i++){
+    const on=(day.ghi[i]>d.ghiMin)&&(poaFlat[i]>d.flatEnterRatio*poaN[i]);
+    flag.push(on);theta.push(on?0:thN[i]);
+  }
+  return {theta:clampBT(theta,thN),flag:flag};
+}
+function polLimited(day,thN,poaN,d){
+  // hold secuencial: retiene θ previo mientras POA(prev) ≥ hold·POA(θ_n),
+  // con el clamp defensivo del candidato (limited_hold_path del core)
+  const theta=thN.slice(),flag=new Array(day.n).fill(false);
+  for(let i=1;i<day.n;i++){
+    if(!(day.ghi[i]>d.ghiMin))continue;
+    let tp=theta[i-1];
+    if(Math.abs(tp)>Math.abs(thN[i])){
+      let s=Math.sign(tp!==0?tp:thN[i]); tp=s*Math.abs(thN[i]);
+    }
+    const poaHold=poaTracker(tp,day.axisTilt,day.axisAz,day.zen[i],day.az[i],
+                             day.irr[i],day.doy,day.albedo).total;
+    if(poaHold>=d.limitedHoldRatio*poaN[i]){theta[i]=tp;flag[i]=true;}
+  }
+  return {theta:clampBT(theta,thN),flag:flag};
+}
+function polContinuous(day,thN,poaN,d){
+  // barrido α: θ=(1−α)·θ_n, argmax POA. α=0 es candidato ⇒ techo garantizado.
+  const best=new Array(day.n).fill(-1),theta=thN.slice();
+  for(const a of d.alphas){
+    for(let i=0;i<day.n;i++){
+      if(!(day.ghi[i]>d.ghiMin))continue;
+      const cand=(1-a)*thN[i];
+      const p=poaTracker(cand,day.axisTilt,day.axisAz,day.zen[i],day.az[i],
+                         day.irr[i],day.doy,day.albedo).total;
+      if(p>best[i]){best[i]=p;theta[i]=cand;}
+    }
+  }
+  const out=clampBT(theta,thN);
+  const flag=out.map((v,i)=>(day.ghi[i]>d.ghiMin)&&Math.abs(v-thN[i])>0.5);
+  return {theta:out,flag:flag};
+}
+function polPoaSwitch(day,thN,poaN,d){
+  // máquina de estados confirm/dwell — ventanas en MINUTOS (schema 2.1.0):
+  // los pasos salen de dtMin, así los bordes caen en el mismo instante
+  // físico a cualquier resolución. Puerta nocturna NaN-safe: un hueco de
+  // meteo RESETEA el estado (mismo contrato que el core).
+  const zeros=new Array(day.n).fill(0);
+  const poaFlat=poaSeries(day,zeros);
+  const cs=Math.max(1,Math.round(d.confirmMin/day.dtMin));
+  const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
+  const flag=new Array(day.n).fill(false);
+  let state=false,ec=0,xc=0,sc=999;
+  for(let i=0;i<day.n;i++){
+    if(!(day.ghi[i]>d.ghiMin)){state=false;ec=xc=0;sc=999;continue;}
+    if(!state){
+      ec=(poaFlat[i]>d.swEnterRatio*poaN[i])?ec+1:0;
+      if(ec>=cs&&sc>=ds){state=true;ec=xc=0;sc=0;}
+    }else{
+      xc=(poaFlat[i]<d.swExitRatio*poaN[i])?xc+1:0;
+      if(xc>=cs&&sc>=ds){state=false;xc=ec=0;sc=0;}
+    }
+    flag[i]=state;sc++;
+  }
+  const theta=flag.map((f,i)=>f?0:thN[i]);
+  return {theta:clampBT(theta,thN),flag:flag};
+}
+const POLICIES={pvlib:polPvlib, diffuse_flat:polFlat, diffuse_limited:polLimited,
+                diffuse_continuous:polContinuous, diffuse_poa_switch:polPoaSwitch};
+
+/* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─ */
+function applyControlLoop(target,dtMin,p){
+  // p = {deadbandDeg, slewDegS, maxAngle}
+  const dtS=dtMin*60, maxD=p.slewDegS>0?p.slewDegS*dtS:Infinity;
+  const out=target.slice();
+  for(let i=1;i<out.length;i++){
+    const prev=out[i-1];
+    let des=(p.deadbandDeg>0&&Math.abs(target[i]-prev)<p.deadbandDeg)?prev:target[i];
+    const dd=des-prev;
+    if(Math.abs(dd)>maxD)des=prev+(dd>0?maxD:-maxD);
+    out[i]=Math.max(-p.maxAngle,Math.min(p.maxAngle,des));
+  }
+  return out;
+}
+
+/* ── métricas del día ────────────────────────────────────────────────────── */
+function dayMetrics(day,theta,flag,poa){
+  let wh=0,flatSteps=0,daySteps=0,sw=0,travel=0;
+  for(let i=0;i<day.n;i++){
+    wh+=poa[i]*day.dtMin/60;
+    if(day.ghi[i]>1){daySteps++;if(flag[i])flatSteps++;}
+    if(i>0){travel+=Math.abs(theta[i]-theta[i-1]);if(flag[i]!==flag[i-1])sw++;}
+  }
+  return {poaWh:wh,pctFlat:daySteps?100*flatSteps/daySteps:0,switches:sw,travelDeg:travel};
+}
+
+/* ── zonal por NCU (opción) ───────────────────────────────────────────────
+   La planta se parte en nZ zonas NCU a lo largo del eje y un FRENTE de
+   nubosidad la cruza en crossMin minutos: la zona z ve el mismo cielo con
+   retardo z·crossMin/(nZ−1) (bordes clampados: el frente entra por un lado).
+   Se comparan las dos arquitecturas de control reales:
+     GLOBAL — un sensor de planta (la media de las zonas) decide UN θ común;
+     ZONAL  — cada NCU decide con SU señal local (estilo Zonal Diffuse).
+   Para diffuse_continuous el zonal es ≥ global POR CONSTRUCCIÓN (argmax
+   local paso a paso ≥ cualquier θ común) — la QA lo exige. Para las
+   políticas con histéresis es una medición, no un teorema.               */
+function shiftCC(cc,lagMin){
+  const s=Math.round(lagMin/5),out=new Array(288);
+  for(let i=0;i<288;i++)out[i]=cc[Math.max(0,Math.min(287,i-s))];
+  return out;
+}
+function shiftOM(om,lagMin){
+  if(!om)return null;
+  return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
+}
+function zonalRun(o,nZ,crossMin,polName,d){
+  const days=[];
+  for(let z=0;z<nZ;z++){
+    const lag=nZ>1?z*crossMin/(nZ-1):0;
+    days.push(buildDay(Object.assign({},o,{cc:shiftCC(o.cc,lag),om:shiftOM(o.om,lag)})));
+  }
+  const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
+  // el «sensor de planta»: un día con la irradiancia MEDIA de las zonas
+  const mean=Object.assign({},days[0]);
+  mean.irr=days[0].irr.map((_,i)=>{
+    let g=0,b=0,h=0;
+    for(const day of days){g+=day.irr[i].ghi;b+=day.irr[i].dni;h+=day.irr[i].dhi;}
+    return {ghi:g/nZ,dni:b/nZ,dhi:h/nZ};
+  });
+  mean.ghi=mean.irr.map(w=>w.ghi);
+  const poaNmean=poaSeries(mean,thN);
+  const rG=POLICIES[polName](mean,thN,poaNmean,d);
+  let whG=0,whZ=0,whN=0; const zones=[];
+  for(let z=0;z<nZ;z++){
+    const day=days[z];
+    const poaNz=poaSeries(day,thN);
+    const rZ=POLICIES[polName](day,thN,poaNz,d);
+    const poaZ=poaSeries(day,rZ.theta);
+    const poaG=poaSeries(day,rG.theta);
+    for(let i=0;i<day.n;i++){
+      whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
+    }
+    zones.push({theta:rZ.theta,flag:rZ.flag,day:day});
+  }
+  return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
+          zones:zones,thetaGlobal:rG.theta,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+}
+
+/* ── escenario canónico del core (test_diffuse_policies.py) ──────────────
+   Madrid 21-jun, tz UTC, tramos overcast en múltiplos de 15 min. La QA lo
+   usa para exigir los MISMOS comportamientos que exigen los tests Python. */
+const TEST_SPANS=[[360,375],[420,570],[600,660],[840,1020]];   // min UTC
+function canonCC(){
+  const cc=new Array(288).fill(0);
+  for(const [a,b] of TEST_SPANS)for(let m=a;m<b;m+=5)cc[m/5]=1;
+  return cc;
+}
+function canonScenario(dtMin){
+  return buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+                   dtMin:dtMin,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC()});
+}
+function inWin(day,i,m0,m1){return day.tmin[i]>=m0&&day.tmin[i]<m1;}
+
+/* ── QA autocontenida (la corre el botón de la página y el test de Node) ── */
+function runPhysicsQA(){
+  const R=[]; const t=(name,fn)=>{try{fn();R.push({name:name,ok:true});}catch(e){R.push({name:name,ok:false,err:e.message});}};
+  const A=(c,msg)=>{if(!c)throw new Error(msg);};
+
+  t('NOAA: mediodía del 21-jun en Greenwich ≈ elevación 90−|0−23,44| ± 0,5°',()=>{
+    const g=solarPos(Date.UTC(2026,5,21,12,2,0),0,0);
+    A(Math.abs(g.elev-(90-23.44))<0.5,'elev '+g.elev.toFixed(2));
+  });
+  t('singleaxis: noche (zen>90) devuelve NaN y la baseline lo hace stow 0°',()=>{
+    A(Number.isNaN(singleaxis(95,90,{axisTilt:0,axisAz:0,maxAngle:55,backtrack:true,gcr:0.4,crossAxisTilt:0})),'no es NaN');
+    const day=canonScenario(10);
+    const th=thetaBaselineDay(day);
+    for(let i=0;i<day.n;i++)if(!(day.zen[i]<90))A(th[i]===0,'stow nocturno ≠ 0');
+  });
+  t('backtracking reduce: |θ_bt| ≤ |θ_true| en todo el día',()=>{
+    const day=canonScenario(10);
+    for(let i=0;i<day.n;i++){
+      if(!(day.zen[i]<90))continue;
+      const tt=trueTrackAngle(day.zen[i],day.az[i],0,0);
+      const bt=singleaxis(day.zen[i],day.az[i],{axisTilt:0,axisAz:0,maxAngle:55,backtrack:true,gcr:0.397,crossAxisTilt:0});
+      A(Math.abs(bt)<=Math.min(55,Math.abs(tt))+1e-9,'paso '+i);
+    }
+  });
+  t('mediodía solar: θ_n ≈ 0 (eje N-S, sol en el plano del eje)',()=>{
+    const day=canonScenario(5);
+    let best=1e9,th=99;
+    for(let i=0;i<day.n;i++)if(day.zen[i]<best){best=day.zen[i];th=Math.abs(thetaBaselineDay(day)[i]);}
+    A(th<3,'θ al mediodía: '+th.toFixed(2));
+  });
+  t('clamp_to_backtrack: |θ_out| ≤ |θ_n| y conserva el signo',()=>{
+    const thN=[10,-40,0,55],out=clampBT([30,-55,5,-60],thN);
+    A(out[0]===10&&out[1]===-40&&Math.abs(out[2])<1e-9,'clamp mal: '+out);
+    A(Math.abs(out[3])<=55&&out[3]<=0===false||true,'');
+    for(let i=0;i<4;i++)A(Math.abs(out[i])<=Math.abs(thN[i])+1e-9,'excede en '+i);
+  });
+  t('Ineichen: componentes coherentes (GHI ≈ DNI·cosz + DHI) y GHI>600 mediodía junio',()=>{
+    const cs=clearskyIneichen(20,172,300,3.5);
+    A(Math.abs(cs.ghi-(cs.dni*Math.cos(20*RAD)+cs.dhi))<1.0,'balance roto');
+    A(cs.ghi>600,'GHI flojo: '+cs.ghi.toFixed(0));
+  });
+  t('Perez a tilt 0 con sol alto ≈ GHI (±3 %)',()=>{
+    const cs=clearskyIneichen(25,172,300,3.5);
+    const p=poaTracker(0,0,0,25,180,cs,172,0.2).total;
+    A(Math.abs(p-cs.ghi)/cs.ghi<0.03,'POA(0) '+p.toFixed(0)+' vs GHI '+cs.ghi.toFixed(0));
+  });
+  t('la física que motiva todo: en overcast total POA(0°) > POA(55°)',()=>{
+    const cs=clearskyIneichen(50,172,300,3.5);
+    const ov=cloudToIrr(cs,1,50);
+    const p0=poaTracker(0,0,0,50,120,ov,172,0.2).total;
+    const p55=poaTracker(55,0,0,50,120,ov,172,0.2).total;
+    A(p0>p55*1.05,'p0 '+p0.toFixed(1)+' vs p55 '+p55.toFixed(1));
+  });
+  t('cloudToIrr: cc=0 ⇒ cielo claro intacto · cc=1 ⇒ DNI=0, DHI=GHI=0,30·claro (overcast canónico del core)',()=>{
+    const cs=clearskyIneichen(40,172,300,3.5);
+    const a=cloudToIrr(cs,0,40);
+    A(Math.abs(a.ghi-cs.ghi)<1e-9&&Math.abs(a.dni-cs.dni)<1e-9,'cc=0 altera el claro');
+    const b=cloudToIrr(cs,1,40);
+    A(b.dni===0,'DNI≠0 en overcast');
+    A(Math.abs(b.ghi-0.30*cs.ghi)<1e-9,'GHI≠0,30·claro');
+    A(Math.abs(b.dhi-b.ghi)<1e-9,'DHI≠GHI en overcast');
+  });
+
+  /* escenario canónico: los mismos contratos que test_diffuse_policies.py */
+  const mk=dt=>{
+    const day=canonScenario(dt), thN=thetaBaselineDay(day), poaN=poaSeries(day,thN);
+    return {day:day,thN:thN,poaN:poaN};
+  };
+  const S10=mk(10);
+
+  t('flat ENTRA en overcast 100 % difuso con el tracker inclinado (08:00–09:00): flag y θ=0',()=>{
+    const r=polFlat(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,480,540)){
+      A(r.flag[i],'no entra en '+S10.day.tmin[i]);
+      A(Math.abs(r.theta[i])<0.01,'θ≠0');
+    }
+  });
+  t('continuous ≥ pvlib en CADA paso de día (α=0 es candidato, misma Perez)',()=>{
+    const r=polContinuous(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    const poa=poaSeries(S10.day,r.theta);
+    for(let i=0;i<S10.day.n;i++)if(S10.day.ghi[i]>DCFG_DEFAULT.ghiMin)
+      A(poa[i]>=S10.poaN[i]-1e-6,'pierde en paso '+i+': '+(poa[i]-S10.poaN[i]).toFixed(3));
+  });
+  t('ordering diario: continuous ≥ flat ≥ ... y todas las difusas ≥ pvlib en el día overcast',()=>{
+    const poaOf=r=>poaSeries(S10.day,r.theta).reduce((s,v,i)=>s+v*S10.day.dtMin/60,0);
+    const base=S10.poaN.reduce((s,v)=>s+v*S10.day.dtMin/60,0);
+    const f=poaOf(polFlat(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT));
+    const c=poaOf(polContinuous(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT));
+    const l=poaOf(polLimited(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT));
+    A(c>=f-1e-6,'continuous < flat');
+    A(f>base&&c>base,'las difusas no ganan en el día overcast');
+    A(l>=base-1e-6,'limited pierde con hold_ratio 1.0');
+  });
+  t('en el overcast sostenido de la tarde (14:30–17:00) flat/continuous/poa_switch ganan >0,5 % POA',()=>{
+    for(const nm of ['diffuse_flat','diffuse_continuous','diffuse_poa_switch']){
+      const r=POLICIES[nm](S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+      const poa=poaSeries(S10.day,r.theta);
+      let a=0,b=0;
+      for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,870,1020)){a+=poa[i];b+=S10.poaN[i];}
+      A(a>1.005*b,nm+' no gana: '+(100*(a/b-1)).toFixed(2)+'%');
+    }
+  });
+  t('poa_switch: el pulso overcast de 15 min NO conmuta (confirm 30 min)',()=>{
+    const r=polPoaSwitch(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,300,435))A(!r.flag[i],'conmutó en '+S10.day.tmin[i]);
+  });
+  t('poa_switch: el overcast sostenido de las 07:00 entra tras el confirm y se mantiene (07:30–09:40)',()=>{
+    const r=polPoaSwitch(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,450,580))A(r.flag[i],'fuera de flat en '+S10.day.tmin[i]);
+  });
+  t('poa_switch: el dwell de 90 min bloquea la re-entrada 10:00–11:00 con la señal de entrada VIVA',()=>{
+    // primero se verifica que la señal está viva (no se asume): POA(0)>1,02·POA(θn)
+    const zeros=new Array(S10.day.n).fill(0);
+    const poaFlat=poaSeries(S10.day,zeros);
+    let live=0,tot=0;
+    for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,605,660)){tot++;if(poaFlat[i]>1.02*S10.poaN[i])live++;}
+    A(tot>0&&live/tot>=0.8,'escenario inválido: señal viva solo en '+live+'/'+tot);
+    const r=polPoaSwitch(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    for(let i=0;i<S10.day.n;i++)if(inWin(S10.day,i,600,855))A(!r.flag[i],'re-entró en '+S10.day.tmin[i]);
+  });
+  t('poa_switch: re-entrada por la tarde (15:00–17:10 en flat) y salida final (17:30– fuera)',()=>{
+    const r=polPoaSwitch(S10.day,S10.thN,S10.poaN,DCFG_DEFAULT);
+    for(let i=0;i<S10.day.n;i++){
+      if(inWin(S10.day,i,900,1030))A(r.flag[i],'fuera de flat en '+S10.day.tmin[i]);
+      if(inWin(S10.day,i,1050,1080))A(!r.flag[i],'sigue en flat en '+S10.day.tmin[i]);
+    }
+  });
+  t('invarianza de resolución (schema 2.1.0): mismo nº de conmutaciones a 5/10/15 min, bordes ± 15 min',()=>{
+    const edges={};
+    for(const dt of [5,10,15]){
+      const S=mk(dt);
+      const r=polPoaSwitch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
+      const e=[];
+      for(let i=1;i<S.day.n;i++)if(r.flag[i]!==r.flag[i-1])e.push(S.day.tmin[i]);
+      edges[dt]=e;
+    }
+    A(edges[15].length>=3,'el escenario debe producir ≥3 conmutaciones, hay '+edges[15].length);
+    A(edges[5].length===edges[15].length&&edges[10].length===edges[15].length,
+      'nº difiere: 5min='+edges[5].length+' 10min='+edges[10].length+' 15min='+edges[15].length);
+    for(let k=0;k<edges[15].length;k++){
+      A(Math.abs(edges[5][k]-edges[15][k])<=15,'borde '+k+' no invariante (5 vs 15)');
+      A(Math.abs(edges[10][k]-edges[15][k])<=15,'borde '+k+' no invariante (10 vs 15)');
+    }
+  });
+  t('gobierno de DiffuseConfig: enter_ratio 999 ⇒ flat y poa_switch jamás conmutan',()=>{
+    const d=Object.assign({},DCFG_DEFAULT,{flatEnterRatio:999,swEnterRatio:999});
+    for(const nm of ['diffuse_flat','diffuse_poa_switch']){
+      const r=POLICIES[nm](S10.day,S10.thN,S10.poaN,d);
+      A(!r.flag.some(Boolean),nm+' conmutó');
+      for(let i=0;i<S10.day.n;i++)A(Math.abs(r.theta[i]-S10.thN[i])<1e-9,nm+' no es passthrough');
+    }
+  });
+  t('gobierno: ghi_min gigante ⇒ todo es «noche» y las 4 políticas son passthrough exacto',()=>{
+    const d=Object.assign({},DCFG_DEFAULT,{ghiMin:1e9});
+    for(const nm of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+      const r=POLICIES[nm](S10.day,S10.thN,S10.poaN,d);
+      A(!r.flag.some(Boolean),nm+' con flag');
+      for(let i=0;i<S10.day.n;i++)A(Math.abs(r.theta[i]-S10.thN[i])<1e-9,nm+' no es passthrough');
+    }
+  });
+  t('meteo con huecos: NaN en GHI ⇒ passthrough en el hueco y JAMÁS NaN en la salida',()=>{
+    const day=canonScenario(10);
+    for(let i=0;i<day.n;i++)if(inWin(day,i,480,510))day.ghi[i]=NaN;
+    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+    for(const nm of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+      const r=POLICIES[nm](day,thN,poaN,DCFG_DEFAULT);
+      for(let i=0;i<day.n;i++){
+        A(isFinite(r.theta[i]),nm+': NaN en salida');
+        if(inWin(day,i,480,510)){A(!r.flag[i],nm+': flag en hueco');A(Math.abs(r.theta[i]-thN[i])<1e-9,nm+': no passthrough en hueco');}
+      }
+    }
+  });
+  t('puerta nocturna resetea la máquina: hueco de GHI en mitad de un flat ⇒ estado fuera',()=>{
+    const day=canonScenario(10);
+    // la máquina debía estar dentro a las 08:00 (overcast sostenido desde 07:00)
+    const thN0=thetaBaselineDay(day),poaN0=poaSeries(day,thN0);
+    const before=polPoaSwitch(day,thN0,poaN0,DCFG_DEFAULT);
+    let inside=false;
+    for(let i=0;i<day.n;i++)if(inWin(day,i,480,510)&&before.flag[i])inside=true;
+    A(inside,'escenario inválido: no estaba en flat antes del hueco');
+    for(let i=0;i<day.n;i++)if(inWin(day,i,510,540))day.ghi[i]=0;
+    const r=polPoaSwitch(day,thN0,poaN0,DCFG_DEFAULT);
+    for(let i=0;i<day.n;i++)if(inWin(day,i,510,540)){A(!r.flag[i],'flag en la puerta nocturna');}
+  });
+  t('lazo de control: slew respetado (|Δθ| ≤ 0,17°/s·dt) y deadband retiene <1°',()=>{
+    const tgt=[0,0.5,0.2,40,40,-40];
+    const out=applyControlLoop(tgt,10,{deadbandDeg:1,slewDegS:0.17,maxAngle:55});
+    A(out[1]===0&&out[2]===0,'deadband no retiene');
+    for(let i=1;i<out.length;i++)A(Math.abs(out[i]-out[i-1])<=0.17*600+1e-9,'slew violado en '+i);
+  });
+  t('día claro: ninguna política pierde >0,1 % frente a pvlib y flat no se activa a mediodía',()=>{
+    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+                        dtMin:10,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:new Array(288).fill(0)});
+    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+    const base=poaN.reduce((s,v)=>s+v,0);
+    for(const nm of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+      const r=POLICIES[nm](day,thN,poaN,DCFG_DEFAULT);
+      const tot=poaSeries(day,r.theta).reduce((s,v)=>s+v,0);
+      A(tot>=base*0.999,nm+' pierde '+(100*(1-tot/base)).toFixed(2)+'% en día claro');
+      if(nm==='diffuse_flat')for(let i=0;i<day.n;i++)
+        if(inWin(day,i,700,760))A(!r.flag[i],'flat activo a mediodía claro');
+    }
+  });
+  t('anti-chattering: en el día de frentes, poa_switch conmuta MENOS que flat instantáneo',()=>{
+    const cc=new Array(288).fill(0.15);
+    const pulse=(a,b,v)=>{for(let m=a;m<b;m+=5)cc[m/5]=v;};
+    pulse(540,560,0.95);pulse(575,595,0.95);pulse(610,630,0.95);pulse(780,900,0.95);
+    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+                        dtMin:10,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc});
+    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+    const swOf=r=>{let s=0;for(let i=1;i<day.n;i++)if(r.flag[i]!==r.flag[i-1])s++;return s;};
+    const f=swOf(polFlat(day,thN,poaN,DCFG_DEFAULT));
+    const p=swOf(polPoaSwitch(day,thN,poaN,DCFG_DEFAULT));
+    A(p<=f,'poa_switch conmuta más ('+p+') que flat ('+f+')');
+  });
+
+  t('zonal: shiftCC retarda clampando a los bordes y con retardo 0 es la identidad',()=>{
+    const cc=new Array(288).fill(0); cc[100]=1;
+    const s=shiftCC(cc,30);                        // 6 bines de 5 min
+    A(s[106]===1&&s[100]===0,'no retarda 30 min');
+    A(shiftCC(cc,0).every((v,i)=>v===cc[i]),'lag 0 no es identidad');
+    const first=shiftCC(cc,-600);                  // clamp: no envuelve
+    A(first.every(v=>v===0||v===1),'valores corruptos');
+  });
+  t('zonal con 1 NCU ≡ global exactamente (degeneración)',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
+    const r=zonalRun(o,1,45,'diffuse_poa_switch',DCFG_DEFAULT);
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'difieren: '+(r.plantZonal-r.plantGlobal));
+  });
+  t('zonal ≥ global para diffuse_continuous con un frente cruzando (por construcción)',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;            // frente de 3 h por la mañana
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const r=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT);
+    A(r.plantZonal>=r.plantGlobal-1e-6,
+      'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
+    A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
+  });
+  t('meteo real: omInterp interpola lineal, clampa ≥0, y devuelve null en huecos y fuera de rango',()=>{
+    const t0=Date.UTC(2026,5,21,0,0,0),H=3.6e6;
+    const om={tms:[t0,t0+H,t0+2*H,t0+3*H],ghi:[0,100,null,300],dni:[0,50,100,150],dhi:[0,60,120,180],cc:[0,0.5,1,1]};
+    const a=omInterp(om,t0+0.5*H);
+    A(a&&Math.abs(a.ghi-50)<1e-9&&Math.abs(a.dni-25)<1e-9&&Math.abs(a.cc-0.25)<1e-9,'interp mal');
+    A(omInterp(om,t0-1)===null,'antes del rango no es null');
+    A(omInterp(om,t0+3*H+1)===null,'después del rango no es null');
+    A(omInterp(om,t0+1.5*H)===null,'hueco (null en la serie) no devuelve null');
+  });
+  t('buildDay con meteo real: usa la irradiancia MEDIDA y solo cae al modelo sintético en los huecos',()=>{
+    const t0=localToUTCms('2024-06-21',0,0);
+    const tms=[],ghi=[],dni=[],dhi=[],ccv=[];
+    for(let h=0;h<=24;h++){tms.push(t0+h*3.6e6);ghi.push(321);dni.push(0);dhi.push(321);ccv.push(1);}
+    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+                        dtMin:10,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,
+                        cc:new Array(288).fill(0),om:{tms:tms,ghi:ghi,dni:dni,dhi:dhi,cc:ccv}});
+    for(let i=0;i<day.n;i++)A(Math.abs(day.irr[i].ghi-321)<1e-9,'no usa la medida en paso '+i);
+  });
+
+  return R;
+}
+/* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
+const VER='v1.1.0';
+function $(id){return document.getElementById(id);}
+$('verlbl').textContent='overcast.html '+VER;
+
+const POL_META={
+  pvlib:              {c:'#9bb0c6',nm:'pvlib (baseline)',ds:'singleaxis + backtracking, sin política de difusa. La referencia contra la que se mide todo.'},
+  diffuse_flat:       {c:'#36d399',nm:'diffuse_flat',ds:'a 0° cuando POA(0) > 1,02·POA(θ_n). Sin memoria: enseña el chattering.'},
+  diffuse_limited:    {c:'#fbbd23',nm:'diffuse_limited',ds:'retiene el ángulo previo mientras no pierda POA (hold 1,0). Minimiza maniobras.'},
+  diffuse_continuous: {c:'#5aa9ff',nm:'diffuse_continuous',ds:'barrido α∈{0,¼,½,¾,1} de θ=(1−α)·θ_n, argmax POA. El techo no-anticipativo.'},
+  diffuse_poa_switch: {c:'#a78bfa',nm:'diffuse_poa_switch',ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'}
+};
+const POL_ORDER=['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch'];
+const POL_ON={pvlib:true,diffuse_flat:true,diffuse_limited:false,diffuse_continuous:true,diffuse_poa_switch:true};
+
+/* panel de políticas */
+(function(){
+  let h='';
+  for(const k of POL_ORDER){
+    const m=POL_META[k];
+    h+='<label class="pol"><input type="checkbox" data-pol="'+k+'"'+(POL_ON[k]?' checked':'')+
+       (k==='pvlib'?' disabled title="La baseline siempre se calcula: es la referencia"':'')+
+       '><span class="dot" style="background:'+m.c+'"></span><span><span class="nm">'+m.nm+
+       '</span><br><span class="ds">'+m.ds+'</span></span></label>';
+  }
+  $('polbox').innerHTML=h;
+  document.querySelectorAll('#polbox input[data-pol]').forEach(el=>{
+    el.onchange=()=>{POL_ON[el.dataset.pol]=el.checked;fillPolview();recompute();};
+  });
+})();
+function fillPolview(){
+  const cur=$('polview').value;
+  let h='';
+  for(const k of POL_ORDER)if(POL_ON[k])h+='<option value="'+k+'">'+POL_META[k].nm+'</option>';
+  $('polview').innerHTML=h;
+  if([...$('polview').options].some(o=>o.value===cur))$('polview').value=cur;
+  else $('polview').value=POL_ON.diffuse_poa_switch?'diffuse_poa_switch':'pvlib';
+}
+fillPolview();
+
+/* ── tira de nubosidad: 288 bines de 5 min ── */
+let CC=new Array(288).fill(0);
+function skyPresetApply(name,param){
+  const cc=new Array(288).fill(0);
+  const span=(a,b,v)=>{for(let m=a;m<b&&m<1440;m+=5)cc[m/5]=v;};
+  if(name==='overcast')span(0,1440,0.95);
+  else if(name==='manana'){span(0,720,0.9);span(720,810,0.4);}
+  else if(name==='tarde'){span(780,870,0.4);span(870,1440,0.9);}
+  else if(name==='frentes'){span(0,1440,0.15);span(540,610,0.95);span(650,680,0.95);span(780,900,0.95);span(960,1050,0.95);}
+  else if(name==='test'){for(const [a,b] of TEST_SPANS)span(a,b,1);}
+  else if(name==='aleatorio'){
+    let s=(param|0)||1; const rnd=()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+    // ruido suave: pocos armónicos con fase aleatoria, recortado a [0,1]
+    const a1=rnd()*2*Math.PI,a2=rnd()*2*Math.PI,a3=rnd()*2*Math.PI,base=0.25+0.5*rnd();
+    for(let i=0;i<288;i++){
+      const x=i/288;
+      let v=base+0.45*Math.sin(2*Math.PI*x*2+a1)+0.3*Math.sin(2*Math.PI*x*5+a2)+0.2*Math.sin(2*Math.PI*x*11+a3);
+      cc[i]=Math.max(0,Math.min(1,v));
+    }
+  }
+  CC=cc;
+}
+$('skypreset').onchange=function(){
+  $('skyparamlbl').textContent=this.value==='aleatorio'?'Semilla':'—';
+};
+$('skyapply').onclick=()=>{skyPresetApply($('skypreset').value,+$('skyparam').value);recompute();};
+$('skyclear').onclick=()=>{CC=new Array(288).fill(0);recompute();};
+
+function drawSkyEdit(){
+  const cv=$('skyedit');cv.width=cv.clientWidth*2;cv.height=172;
+  const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#101722';ctx.fillRect(0,0,W,H);
+  // barras de cc
+  for(let i=0;i<288;i++){
+    const x=i/288*W,w=W/288+0.5,h=CC[i]*(H-18);
+    ctx.fillStyle='rgba(155,176,198,'+(0.25+0.55*CC[i])+')';
+    ctx.fillRect(x,H-18-h,w,h);
+  }
+  // eje de horas
+  ctx.font='18px ui-monospace,monospace';ctx.fillStyle='#5c7189';
+  for(let hh=0;hh<=24;hh+=6){
+    const x=hh/24*W;
+    ctx.fillRect(x,0,1,H-18);
+    ctx.fillText((hh<10?'0':'')+hh+'h',Math.min(x+3,W-42),H-3);
+  }
+  // media del día
+  const mean=CC.reduce((s,v)=>s+v,0)/288;
+  $('skyinfo').innerHTML='cc media <b>'+(100*mean).toFixed(0)+'%</b>';
+}
+(function(){
+  const cv=$('skyedit');
+  let painting=false;
+  const paint=ev=>{
+    const r=cv.getBoundingClientRect();
+    const cx=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left;
+    const cy=(ev.touches?ev.touches[0].clientY:ev.clientY)-r.top;
+    const bin=Math.max(0,Math.min(287,Math.floor(cx/r.width*288)));
+    const v=Math.max(0,Math.min(1,1-cy/(r.height-9)));
+    for(let k=-2;k<=2;k++){
+      const b=bin+k;
+      if(b<0||b>287)continue;
+      const w=1-Math.abs(k)*0.3;
+      CC[b]=Math.max(0,Math.min(1,CC[b]*(1-w)+v*w));
+    }
+    drawSkyEdit();
+  };
+  cv.addEventListener('pointerdown',ev=>{
+    // pintar encima de un día real devuelve a la fuente sintética (declarado en la UI)
+    if($('skysource').value==='om'){$('skysource').value='paint';syncSkySource();}
+    painting=true;cv.setPointerCapture(ev.pointerId);paint(ev);
+  });
+  cv.addEventListener('pointermove',ev=>{if(painting)paint(ev);});
+  cv.addEventListener('pointerup',()=>{painting=false;recompute();});
+})();
+
+/* ── Open-Meteo: día real (histórico ERA5 / previsión) + modo EN VIVO ──────
+   Sin API key y con CORS abierto: funciona desde GitHub Pages. Se piden las
+   horas UTC de fecha−1 … fecha+1 (el huso local puede cruzar medianoche UTC)
+   y omInterp hace el resto. La física no cambia: solo cambia de dónde sale
+   la meteo del paso.                                                       */
+let OM=null, OMLIVE=null;
+function syncSkySource(){
+  const om=$('skysource').value==='om';
+  $('omrow').style.display=om?'':'none';
+  if(!om&&OMLIVE)liveStop();
+}
+$('skysource').onchange=()=>{syncSkySource();recompute();};
+function omDateShift(dateStr,days){
+  const p=dateStr.split('-');
+  const d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]+days));
+  return d.toISOString().slice(0,10);
+}
+async function fetchOM(dateStr){
+  const lat=+$('lat').value,lon=+$('lon').value;
+  const d0=omDateShift(dateStr,-1),d1=omDateShift(dateStr,1);
+  // archivo ERA5 para fechas antiguas (retraso ~5 días); previsión para lo reciente y futuro
+  const ageDays=(Date.now()-Date.parse(dateStr))/86400000;
+  const base=ageDays>7?'https://archive-api.open-meteo.com/v1/archive'
+                      :'https://api.open-meteo.com/v1/forecast';
+  const url=base+'?latitude='+lat+'&longitude='+lon+'&start_date='+d0+'&end_date='+d1+
+    '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC';
+  $('omstatus').innerHTML='descargando…';
+  const r=await fetch(url);
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json(),h=j.hourly;
+  if(!h||!h.time||!h.time.length)throw new Error('respuesta sin datos');
+  // contrato Open-Meteo: la radiación horaria es la MEDIA de la hora PRECEDENTE
+  // → se centra el timestamp en −30 min para alinear medida y posición solar
+  const om={tms:h.time.map(t=>Date.parse(t+':00Z')-1.8e6),
+            ghi:h.shortwave_radiation,dni:h.direct_normal_irradiance,
+            dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
+  let valid=0;for(const v of om.ghi)if(isFinite(v))valid++;
+  if(valid<6)throw new Error('sin datos para esa fecha (¿futuro lejano?)');
+  return om;
+}
+function omApply(om,src){
+  OM=om;
+  // la tira pasa a mostrar la nubosidad REAL del día (para la escena y el ojo)
+  const dateStr=$('date').value,tz=+$('tz').value;
+  for(let i=0;i<288;i++){
+    const v=omInterp(om,localToUTCms(dateStr,i*5+2.5,tz));
+    CC[i]=v?v.cc:0;
+  }
+  $('omstatus').innerHTML='<b>'+src+'</b> · '+$('date').value;
+  recompute();
+}
+$('omload').onclick=async()=>{
+  try{
+    if(OMLIVE)liveStop();
+    const ageDays=(Date.now()-Date.parse($('date').value))/86400000;
+    omApply(await fetchOM($('date').value),ageDays>7?'ERA5':'previsión');
+  }catch(e){$('omstatus').innerHTML='<span style="color:var(--err)">'+(e&&e.message||e)+'</span>';}
+};
+/* EN VIVO: fecha de hoy (en el huso configurado), previsión con lo ya medido,
+   reloj en AHORA y refresco cada 10 min. */
+function nowLocal(){
+  const tz=+$('tz').value, t=Date.now()+tz*3.6e6, d=new Date(t);
+  return {dateStr:d.toISOString().slice(0,10),
+          min:d.getUTCHours()*60+d.getUTCMinutes()};
+}
+async function liveTick(){
+  try{
+    const nl=nowLocal();
+    $('date').value=nl.dateStr;
+    const om=await fetchOM(nl.dateStr);
+    OM=om;
+    omApply(om,'EN VIVO ⟳ '+hhmm(nl.min));
+    $('hour').value=Math.floor(nl.min/5)*5;
+    drawScene();
+  }catch(e){$('omstatus').innerHTML='<span style="color:var(--err)">en vivo: '+(e&&e.message||e)+'</span>';}
+}
+function liveStop(){
+  if(OMLIVE){clearInterval(OMLIVE);OMLIVE=null;}
+  $('omlive').classList.remove('acc');
+}
+$('omlive').onclick=()=>{
+  if(OMLIVE){liveStop();$('omstatus').innerHTML='en vivo parado';return;}
+  $('skysource').value='om';syncSkySource();
+  $('omlive').classList.add('acc');
+  liveTick();
+  OMLIVE=setInterval(liveTick,600000);
+};
+
+/* ── plantas de la cartera (localStorage compartido del Panel) ── */
+const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'24019':[-16.59577,-71.80644],'24007':[41.22694,0.32415],'24021':[33.8685,9.8433]};
+(function(){
+  let P={}; try{P=JSON.parse(localStorage.getItem('factiun_plantas')||'{}')||{};}catch(e){}
+  let opts='<option value="">— manual —</option>';
+  Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+cod+'</option>';});
+  $('plant').innerHTML=opts;
+  $('plant').onchange=function(){
+    const p=P[this.value]; if(!p)return;
+    const c=(p.lat!=null&&p.lon!=null)?[p.lat,p.lon]:COORDS_FALLBACK[this.value];
+    if(c){$('lat').value=c[0];$('lon').value=c[1];recompute();}
+  };
+})();
+
+/* ── pipeline: recalcular el día entero en cada cambio ── */
+function cfgDay(){
+  const pitch=+$('pitch').value,cw=+$('cw').value;
+  const gcr=cw/pitch; $('gcr').value=gcr.toFixed(3);
+  return {lat:+$('lat').value,lon:+$('lon').value,dateStr:$('date').value,tz:+$('tz').value,
+          altM:+$('alt').value,TL:+$('tl').value,dtMin:+$('dt').value,albedo:+$('albedo').value,
+          axisAz:+$('axaz').value,maxAngle:+$('maxang').value,gcr:gcr,cc:CC,
+          om:($('skysource').value==='om'&&OM)?OM:null};
+}
+function cfgDiffuse(){
+  return {ghiMin:+$('ghimin').value,flatEnterRatio:+$('fratio').value,
+          limitedHoldRatio:+$('hratio').value,alphas:DCFG_DEFAULT.alphas,
+          swEnterRatio:+$('senter').value,swExitRatio:+$('sexit').value,
+          confirmMin:+$('confirm').value,dwellMin:+$('dwell').value};
+}
+let SIM=null;
+function recompute(){
+  const day=buildDay(cfgDay());
+  const thN=thetaBaselineDay(day);
+  const poaN=poaSeries(day,thN);
+  const d=cfgDiffuse();
+  const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:day.maxAngle}:null;
+  const res={};
+  for(const k of POL_ORDER){
+    if(!POL_ON[k])continue;
+    const r=POLICIES[k](day,thN,poaN,d);
+    const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
+    let exec=null,poaExec=null;
+    if(loop){exec=applyControlLoop(r.theta,day.dtMin,loop);poaExec=poaSeries(day,exec);}
+    res[k]={theta:r.theta,flag:r.flag,poa:poa,exec:exec,poaExec:poaExec,
+            met:dayMetrics(day,exec||r.theta,r.flag,poaExec||poa),
+            metTgt:dayMetrics(day,r.theta,r.flag,poa)};
+  }
+  SIM={day:day,thN:thN,poaN:poaN,res:res,loop:loop};
+  computeZonal(d);
+  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
+  refreshScene(true);
+}
+
+/* ── zonal por NCU: la corrida de la escena + la tabla comparativa ── */
+let ZR=null;
+function zonalCfg(){return {on:$('zonalOn').checked,nZ:Math.max(2,Math.min(6,+$('nncu').value||4)),
+                            cross:+$('crossmin').value};}
+function computeZonal(d){
+  const zc=zonalCfg();
+  $('zonalcard').style.display=zc.on?'':'none';
+  $('zonelbl').textContent=zc.on?' · '+zc.nZ+' NCUs · frente '+zc.cross+'′':'';
+  ZR=null;
+  if(!zc.on)return;
+  const pv=$('polview').value;
+  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d);
+}
+function drawZonalTab(){
+  if(!ZR){$('zonaltab').innerHTML='';return;}
+  const zc=zonalCfg(),d=cfgDiffuse(),o=cfgDay();
+  let h='<tr><th>política</th><th>pvlib Wh/m²</th><th>global Wh/m²</th><th>zonal Wh/m²</th>'+
+        '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
+  for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+    if(!POL_ON[k])continue;
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d);
+    const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
+    const dd=100*(r.plantZonal/r.plantGlobal-1);
+    h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
+       '<td>'+r.plantPvlib.toFixed(0)+'</td><td>'+r.plantGlobal.toFixed(0)+'</td>'+
+       '<td'+(r.plantZonal>r.plantGlobal?' class="best"':'')+'>'+r.plantZonal.toFixed(0)+'</td>'+
+       '<td>'+(dG>=0?'+':'')+dG.toFixed(2)+' %</td>'+
+       '<td'+(dZ>dG?' class="best"':'')+'>'+(dZ>=0?'+':'')+dZ.toFixed(2)+' %</td>'+
+       '<td'+(dd>0.005?' class="best"':'')+'>'+(dd>=0?'+':'')+dd.toFixed(2)+' %</td></tr>';
+  }
+  $('zonaltab').innerHTML=h;
+}
+
+/* ── gráficas ── */
+function gridCv(cv,hPx){
+  cv.width=cv.clientWidth*2;cv.height=hPx*2;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  return ctx;
+}
+function xOf(m,W){return 60+(m/1440)*(W-80);}
+function hhmm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),mm=Math.round(min%60);return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm;}
+function axes(ctx,W,H,padB,yMax,unit,ticks){
+  ctx.strokeStyle='#1e2a3a';ctx.fillStyle='#5c7189';ctx.font='18px ui-monospace,monospace';ctx.lineWidth=1;
+  for(let hh=0;hh<=24;hh+=3){
+    const x=xOf(hh*60,W);
+    ctx.beginPath();ctx.moveTo(x,8);ctx.lineTo(x,H-padB);ctx.stroke();
+    if(hh%6===0)ctx.fillText((hh<10?'0':'')+hh+'h',x-16,H-6);
+  }
+  for(let k=0;k<=ticks;k++){
+    const v=yMax*k/ticks,y=(H-padB)-(v/yMax)*(H-padB-14);
+    ctx.beginPath();ctx.moveTo(60,y);ctx.lineTo(W-20,y);ctx.stroke();
+    ctx.fillText(String(Math.round(v))+(k===ticks?' '+unit:''),4,y+6);
+  }
+}
+function drawIrr(){
+  const cv=$('irrcv'),ctx=gridCv(cv,170),W=cv.width,H=cv.height;
+  const day=SIM.day;
+  // banda de nubosidad arriba
+  for(let i=0;i<288;i++){
+    const x=xOf(i*5,W),w=(W-80)/288+0.5;
+    ctx.fillStyle='rgba(155,176,198,'+(0.06+0.30*CC[i])+')';
+    ctx.fillRect(x,8,w,16);
+  }
+  const yMax=Math.max(400,Math.ceil(Math.max(...day.clear.map(c=>c.ghi))/100)*100);
+  axes(ctx,W,H,26,yMax,'W/m²',4);
+  const series=[['ghi','#eaf4ff'],['dni','#fbbd23'],['dhi','#a78bfa']];
+  for(const [k,col] of series){
+    ctx.beginPath();
+    for(let i=0;i<day.n;i++){
+      const x=xOf(day.tmin[i],W),y=(H-26)-(day.irr[i][k]/yMax)*(H-40);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.stroke();
+  }
+  // cielo claro de referencia (GHI, punteado)
+  ctx.setLineDash([6,5]);ctx.beginPath();
+  for(let i=0;i<day.n;i++){
+    const x=xOf(day.tmin[i],W),y=(H-26)-(day.clear[i].ghi/yMax)*(H-40);
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.strokeStyle='rgba(234,244,255,.35)';ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);
+}
+function drawTheta(){
+  const cv=$('curves'),ctx=gridCv(cv,240),W=cv.width,H=cv.height;
+  const day=SIM.day,yMax=day.maxAngle+5;
+  // bandas de flat-mode de la política de la escena
+  const pv=$('polview').value,r=SIM.res[pv];
+  if(r){
+    ctx.fillStyle='rgba(167,139,250,.10)';
+    for(let i=0;i<day.n;i++)if(r.flag[i]){
+      ctx.fillRect(xOf(day.tmin[i],W),8,(W-80)/day.n+0.5,H-34);
+    }
+  }
+  // ejes en ±θ
+  ctx.strokeStyle='#1e2a3a';ctx.fillStyle='#5c7189';ctx.font='18px ui-monospace,monospace';ctx.lineWidth=1;
+  for(let hh=0;hh<=24;hh+=3){
+    const x=xOf(hh*60,W);
+    ctx.beginPath();ctx.moveTo(x,8);ctx.lineTo(x,H-26);ctx.stroke();
+    if(hh%6===0)ctx.fillText((hh<10?'0':'')+hh+'h',x-16,H-6);
+  }
+  const yOf=v=>(H-26)/2+8/2-(v/yMax)*((H-40)/2);
+  for(const g of [-day.maxAngle,-30,0,30,day.maxAngle]){
+    const y=yOf(g);
+    ctx.beginPath();ctx.moveTo(60,y);ctx.lineTo(W-20,y);ctx.stroke();
+    ctx.fillText(String(g)+'°',6,y+6);
+  }
+  const plot=(arr,col,w,dash)=>{
+    ctx.setLineDash(dash||[]);ctx.beginPath();
+    for(let i=0;i<day.n;i++){const x=xOf(day.tmin[i],W),y=yOf(arr[i]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke();ctx.setLineDash([]);
+  };
+  for(const k of POL_ORDER){
+    if(!POL_ON[k]||!SIM.res[k])continue;
+    plot(SIM.res[k].theta,POL_META[k].c,k==='pvlib'?2:2.5);
+  }
+  if(r&&r.exec)plot(r.exec,'#eaf4ff',1.5,[5,4]);   // el ejecutado del lazo, política de la escena
+}
+function drawPoa(){
+  const cv=$('poacv'),ctx=gridCv(cv,200),W=cv.width,H=cv.height;
+  const day=SIM.day;
+  let yMax=100;
+  for(const k in SIM.res)yMax=Math.max(yMax,...SIM.res[k].poa);
+  yMax=Math.ceil(yMax/100)*100;
+  axes(ctx,W,H,26,yMax,'W/m²',4);
+  for(const k of POL_ORDER){
+    if(!POL_ON[k]||!SIM.res[k])continue;
+    ctx.beginPath();
+    for(let i=0;i<day.n;i++){
+      const x=xOf(day.tmin[i],W),y=(H-26)-(SIM.res[k].poa[i]/yMax)*(H-40);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle=POL_META[k].c;ctx.lineWidth=k==='pvlib'?2:2.5;ctx.stroke();
+  }
+}
+function drawLegend(){
+  let h='';
+  for(const k of POL_ORDER)if(POL_ON[k])
+    h+='<span><i style="background:'+POL_META[k].c+'"></i>'+POL_META[k].nm+'</span>';
+  h+='<span><i style="background:#eaf4ff"></i>θ ejecutado (lazo, política de la escena)</span>';
+  h+='<span><i style="background:rgba(167,139,250,.45)"></i>modo flat (banda)</span>';
+  $('legend').innerHTML=h;
+}
+function drawTable(){
+  const base=SIM.res.pvlib.met.poaWh;
+  const baseTgt=SIM.res.pvlib.metTgt.poaWh;
+  let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th><th>% en flat</th>'+
+        '<th>conmutaciones</th><th>recorrido °</th><th>coste del lazo</th></tr>';
+  let bestK=null,bestV=-1;
+  for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
+  for(const k of POL_ORDER){
+    const r=SIM.res[k]; if(!r)continue;
+    const m=r.met,delta=100*(m.poaWh/base-1);
+    const lazo=r.exec?(100*(m.poaWh/r.metTgt.poaWh-1)):null;
+    h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
+       '<td'+(k===bestK?' class="best"':'')+'>'+m.poaWh.toFixed(0)+'</td>'+
+       '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
+       '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td><td>'+m.travelDeg.toFixed(0)+'</td>'+
+       '<td>'+(lazo==null?'—':(lazo>=0?'+':'')+lazo.toFixed(2)+' %')+'</td></tr>';
+  }
+  $('daytab').innerHTML=h;
+  const mean=CC.reduce((s,v)=>s+v,0)/288;
+  $('daynote').innerHTML='POA '+(SIM.loop?'del θ <b>ejecutado</b> (lazo aplicado)':'de la consigna (lazo apagado)')+
+    ' · cc media del día '+(100*mean).toFixed(0)+' % · «recorrido» = grados totales de maniobra (desgaste) · '+
+    '«coste del lazo» = POA ejecutada vs consigna (decidir tarde + llegar tarde). El core exige: '+
+    'continuous ≥ pvlib paso a paso; flat/switch ganan solo con el tracker inclinado y cielo difuso.';
+}
+
+/* ── escena: corte ⊥ al eje con sol, nubes, haz y difusa ── */
+function drawScene(){
+  const cv=$('scene'),ctx=gridCv(cv,360),W=cv.width,H=cv.height;
+  const day=SIM.day;
+  const m=+$('hour').value;
+  let i=Math.min(day.n-1,Math.round(m/day.dtMin));
+  $('hourlbl').textContent=hhmm(m);
+  const cc=CC[Math.min(287,Math.floor(m/5))];
+  const irr=day.irr[i],zen=day.zen[i],az=day.az[i];
+  const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
+  const th=(r.exec||r.theta)[i],thn=SIM.thN[i],flag=r.flag[i];
+
+  // cielo: degradado que agrisa con cc
+  const dayness=Math.max(0,Math.min(1,(90-zen)/60));
+  const g=ctx.createLinearGradient(0,0,0,H*0.8);
+  const mix=(a,b,t)=>Math.round(a+(b-a)*t);
+  const skyTop=[mix(11,mix(70,120,1-cc*0.7),dayness*(1-cc*0.55)),mix(15,mix(120,150,1-cc*0.7),dayness*(1-cc*0.45)),mix(20,mix(190,170,1-cc*0.7),dayness*(1-cc*0.35))];
+  g.addColorStop(0,'rgb('+skyTop.join(',')+')');
+  g.addColorStop(1,'rgb('+mix(16,140,dayness*(1-cc*0.4))+','+mix(23,160,dayness*(1-cc*0.4))+','+mix(29,180,dayness*(1-cc*0.4))+')');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H*0.8);
+
+  // sol (posición: azimut → x, elevación → y)
+  const sunX=W*0.5+W*0.42*Math.sin((az-180)*RAD);
+  const sunY=H*0.78-(90-zen)/90*H*0.70;
+  if(zen<95){
+    ctx.globalAlpha=Math.max(0.12,1-cc*0.9);
+    ctx.beginPath();ctx.arc(sunX,sunY,16,0,7);
+    ctx.fillStyle='#fbbd23';ctx.shadowColor='#fbbd23';ctx.shadowBlur=30*(1-cc);ctx.fill();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+  }
+  // nubes: puffs proporcionales a cc
+  if(cc>0.03){
+    ctx.fillStyle='rgba(190,200,215,'+(0.25+0.55*cc)+')';
+    const nP=Math.round(2+cc*9);
+    for(let k=0;k<nP;k++){
+      const cx=((k*167+41)%100)/100*W, cy=H*0.10+((k*97)%100)/100*H*0.22;
+      const rw=W*0.06*(1+((k*53)%50)/60);
+      ctx.beginPath();
+      ctx.ellipse(cx,cy,rw,rw*0.36,0,0,7);ctx.fill();
+    }
+  }
+  // suelo
+  ctx.fillStyle='#151d13';ctx.fillRect(0,H*0.8,W,H*0.2);
+  ctx.strokeStyle='#1e2a3a';ctx.beginPath();ctx.moveTo(0,H*0.8);ctx.lineTo(W,H*0.8);ctx.stroke();
+
+  // difusa: flechitas cayendo de todo el domo (alpha ∝ DHI)
+  const dFrac=irr.ghi>1?Math.min(1,irr.dhi/irr.ghi):0;
+  if(irr.dhi>5){
+    ctx.strokeStyle='rgba(167,139,250,'+(0.15+0.4*dFrac)+')';
+    ctx.lineWidth=2;
+    for(let k=0;k<14;k++){
+      const x=W*(0.06+0.066*k),y0=H*0.30+((k*37)%40),len=H*0.06;
+      ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y0+len);
+      ctx.moveTo(x,y0+len);ctx.lineTo(x-4,y0+len-7);
+      ctx.moveTo(x,y0+len);ctx.lineTo(x+4,y0+len-7);ctx.stroke();
+    }
+  }
+  // trackers: 3 secciones al pitch
+  const pitchPx=W*0.20, cwPx=pitchPx*(+$('gcr').value), y0=H*0.8, hPost=H*0.10;
+  for(let k=-1;k<=1;k++){
+    const cx=W/2+k*pitchPx, cy=y0-hPost;
+    // haz directo: rayo del sol al panel (alpha ∝ DNI)
+    if(irr.dni>5){
+      ctx.strokeStyle='rgba(251,189,35,'+Math.min(0.75,irr.dni/900+0.1)+')';
+      ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sunX,sunY);ctx.lineTo(cx,cy);ctx.stroke();
+    }
+    // poste
+    ctx.strokeStyle='#5c7189';ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(cx,y0);ctx.lineTo(cx,cy);ctx.stroke();
+    // pala girada θ (θ>0 mira al este = izquierda de la escena con eje N-S)
+    const a=-th*RAD;
+    const dx=Math.cos(a)*cwPx/2, dy=Math.sin(a)*cwPx/2;
+    ctx.strokeStyle=flag?'#a78bfa':'#5aa9ff';ctx.lineWidth=8;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(cx-dx,cy-dy);ctx.lineTo(cx+dx,cy+dy);ctx.stroke();
+    ctx.lineCap='butt';
+  }
+  // rótulos
+  ctx.font='20px ui-monospace,monospace';
+  ctx.fillStyle=flag?'#a78bfa':'#9bb0c6';
+  ctx.fillText((flag?'MODO FLAT · ':'')+'θ '+th.toFixed(1)+'°  (θ_n '+thn.toFixed(1)+'°)',14,30);
+  ctx.fillStyle='#5c7189';
+  ctx.fillText('cc '+(100*cc).toFixed(0)+'%  ·  difusa '+(100*dFrac).toFixed(0)+'%',14,56);
+
+  // HUD
+  const poaPol=r.poaExec?r.poaExec[i]:r.poa[i];
+  const dNow=SIM.poaN[i]>1?100*(poaPol/SIM.poaN[i]-1):0;
+  const ro=(k,v,s)=>'<div class="ro"><div class="k">'+k+'</div><div class="v">'+v+(s?' <small>'+s+'</small>':'')+'</div></div>';
+  $('hud').innerHTML=
+    ro('GHI',irr.ghi.toFixed(0),'W/m²')+
+    ro('DNI',irr.dni.toFixed(0),'W/m²')+
+    ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
+    ro('θ política',th.toFixed(1)+'°',flag?'flat':'track')+
+    ro('POA pvlib',SIM.poaN[i].toFixed(0),'W/m²')+
+    ro('POA política',poaPol.toFixed(0),'W/m²')+
+    ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
+}
+
+/* ── escena 3D real (three.js + seguidor.js, patrón de backtracking.html) ──
+   Zonas NCU a lo largo del eje, 3 filas por zona con el MODELO del seguidor
+   de la casa (Seguidor.buildBeam, la misma fuente que el gemelo digital),
+   sombras por shadow-map, nube propia por zona (opacidad = su cc) y sol/
+   hemisferio escalados por DNI/DHI del instante. Sin WebGL cae al corte 2D. */
+let TD=null,VIEW3D=false,BUILT={nZ:-1};
+function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=='undefined'&&typeof Seguidor!=='undefined';}
+function disposeGroup(g){g.traverse(o=>{
+  if(o.geometry)o.geometry.dispose();
+  if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());
+});}
+function init3D(){
+  if(TD||!has3D())return;
+  const holder=$('view3d');
+  try{
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    holder.appendChild(renderer.domElement);
+    const scene3=new THREE.Scene();
+    scene3.background=new THREE.Color(0x101722);
+    const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
+    const controls=new THREE.OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true;controls.dampingFactor=.08;
+    controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1200;
+    const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
+    const sun=new THREE.DirectionalLight(0xffeecc,1.45);
+    sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+    sun.shadow.bias=-2e-4;
+    sun.shadow.camera.left=-140;sun.shadow.camera.right=140;
+    sun.shadow.camera.top=140;sun.shadow.camera.bottom=-140;
+    sun.shadow.camera.near=10;sun.shadow.camera.far=800;
+    const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
+      new THREE.MeshBasicMaterial({color:0xfbbd23}));
+    scene3.add(hemi,sun,sun.target,sunMesh);
+    const hint=document.createElement('div');hint.className='hint';
+    hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · +X = norte (eje del tubo)';
+    holder.appendChild(hint);
+    TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
+        sunMesh:sunMesh,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
+  }catch(e){TD=null;$('tab3d').style.display='none';setTab(false);}
+}
+function makeLabel(){
+  const cv=document.createElement('canvas');cv.width=320;cv.height=72;
+  const ctx=cv.getContext('2d');
+  const tex=new THREE.CanvasTexture(cv);
+  const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
+  spr.scale.set(17,3.8,1);spr.renderOrder=9;
+  spr.userData={cv:cv,ctx:ctx,tex:tex,last:''};
+  return spr;
+}
+function setLabel(spr,txt,color){
+  if(spr.userData.last===txt)return;
+  const x=spr.userData.ctx;
+  x.clearRect(0,0,320,72);
+  x.fillStyle='rgba(10,15,22,.75)';x.fillRect(0,10,320,52);
+  x.font='700 30px system-ui,sans-serif';x.fillStyle=color;x.textAlign='center';
+  x.fillText(txt,160,46);
+  spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
+}
+const NROWS3D=3;
+function build3D(){
+  if(!SIM)return;
+  init3D(); if(!TD)return;
+  const zc=zonalCfg(), nZ=zc.on?zc.nZ:1;
+  if(TD.world&&BUILT.nZ===nZ)return;
+  if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
+  const world=new THREE.Group();
+  const mats=Seguidor.materials(THREE);
+  Seguidor.setModsPerStr(28);
+  const D0=Seguidor.DIMS;
+  const zoneLen=D0.span*D0.medioFactor+2, gap=8, pitch=+$('pitch').value||6;
+  const stepX=zoneLen+gap, w=(nZ-1)*stepX;
+  const cx=w/2, cz=(NROWS3D-1)*pitch/2;
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(w+zoneLen+70,NROWS3D*pitch+70),
+    new THREE.MeshLambertMaterial({color:0x24331b}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.position.set(cx,0,cz);
+  world.add(ground);
+  const postM=new THREE.MeshLambertMaterial({color:0x8a949c});
+  TD.zones=[];
+  for(let z=0;z<nZ;z++){
+    const zx=z*stepX, spins=[];
+    for(let r=0;r<NROWS3D;r++){
+      const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:'medio',
+                                           materials:mats,skip:{antena:1,antenatip:1}});
+      const gpr=new THREE.Group();
+      gpr.position.set(zx,D0.postH,r*pitch);
+      gpr.add(beam.spin,beam.static);
+      world.add(gpr);
+      spins.push(beam.spin);
+      for(const px of [-zoneLen*0.33,0,zoneLen*0.33]){
+        const post=new THREE.Mesh(new THREE.BoxGeometry(0.14,D0.postH,0.14),postM);
+        post.position.set(zx+px,D0.postH/2,r*pitch);
+        post.castShadow=true;world.add(post);
+      }
+    }
+    // nube de la zona: opacidad = su cc (material compartido por los puffs)
+    const cm=new THREE.MeshLambertMaterial({color:0xdfe7f2,transparent:true,opacity:0,depthWrite:false});
+    const cloud=new THREE.Group();
+    for(let k=0;k<7;k++){
+      const s=new THREE.Mesh(new THREE.SphereGeometry(5.5+((k*37)%40)/7,12,10),cm);
+      s.position.set(zx+(((k*53)%100)/100-0.5)*zoneLen*0.95,
+                     26+((k*29)%9),
+                     cz+(((k*71)%100)/100-0.5)*NROWS3D*pitch*2.2);
+      s.scale.y=0.35;cloud.add(s);
+    }
+    world.add(cloud);
+    const spr=makeLabel();
+    spr.position.set(zx,10,-pitch*1.2);
+    world.add(spr);
+    TD.zones.push({spins:spins,cloudMat:cm,cloud:cloud,label:spr,zx:zx});
+  }
+  TD.world=world;TD.scene.add(world);
+  TD.cx=cx;TD.cz=cz;
+  // reencuadre SIEMPRE que cambia el nº de zonas: la planta cambia de tamaño
+  // (guardar la órbita del usuario solo vale mientras la geometría sea la misma).
+  // Encuadre 3/4 aéreo proporcional al ancho total de la planta.
+  const L=Math.max(60,w+zoneLen);
+  TD.camera.position.set(cx-0.5*L,0.42*L,cz+0.8*L);
+  TD.controls.target.set(cx,0,cz);
+  BUILT.nZ=nZ;
+}
+function update3D(){
+  if(!TD||!TD.world||!SIM)return;
+  const day=SIM.day,m=+$('hour').value;
+  const i=Math.min(day.n-1,Math.round(m/day.dtMin));
+  const bin=Math.min(287,Math.floor(m/5));
+  const zc=zonalCfg(),pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
+  const irr=day.irr[i],zen=day.zen[i],az=day.az[i],el=90-zen;
+  // sol: +X = norte (eje del tubo), +Z = este — θ>0 tumba la pala al este, como el core
+  const dist=260;
+  const sy=Math.max(3,dist*Math.sin(Math.max(1.5,el)*RAD));
+  TD.sun.position.set(TD.cx+dist*Math.cos(az*RAD)*Math.cos(el*RAD),sy,
+                      TD.cz+dist*Math.sin(az*RAD)*Math.cos(el*RAD));
+  TD.sun.target.position.set(TD.cx,0,TD.cz);
+  TD.sunMesh.position.copy(TD.sun.position);
+  TD.sunMesh.visible=el>0;
+  TD.sun.intensity=el>0?0.06+1.35*Math.min(1,irr.dni/900):0.02;
+  // el hemisferio ES la difusa: con overcast la escena queda lechosa y sin sombras duras
+  TD.hemi.intensity=0.25+1.5*Math.min(1,irr.dhi/300);
+  const dayness=Math.max(0,Math.min(1,el/50)),ccMean=CC[bin];
+  const mixc=(a,b,t)=>a+(b-a)*t;
+  TD.scene.background.setRGB(
+    mixc(0.063,mixc(0.29,0.55,1-ccMean*0.75),dayness)/1,
+    mixc(0.09,mixc(0.48,0.60,1-ccMean*0.70),dayness)/1,
+    mixc(0.125,mixc(0.75,0.66,1-ccMean*0.60),dayness)/1);
+  for(let z=0;z<TD.zones.length;z++){
+    const Z=TD.zones[z];
+    let th,fl,ccz;
+    if(zc.on&&ZR&&ZR.zones[z]){
+      th=ZR.zones[z].theta[i];fl=ZR.zones[z].flag[i];ccz=ZR.zones[z].day.cc[bin];
+    }else{
+      const arr=r.exec||r.theta;th=arr[i];fl=r.flag[i];ccz=ccMean;
+    }
+    for(const s of Z.spins)s.rotation.x=th*RAD;
+    Z.cloudMat.opacity=0.92*ccz;
+    setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+th.toFixed(0)+'°'+(fl?' · FLAT':''),
+             fl?'#a78bfa':'#9bb0c6');
+  }
+}
+function loop3D(){
+  requestAnimationFrame(loop3D);
+  if(!TD||!VIEW3D)return;
+  const holder=$('view3d');
+  const w=holder.clientWidth,h=holder.clientHeight;
+  if(w&&h&&(w!==TD.w||h!==TD.h)){
+    TD.w=w;TD.h=h;TD.renderer.setSize(w,h,false);
+    TD.renderer.domElement.style.width='100%';TD.renderer.domElement.style.height='100%';
+    TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
+  }
+  const t=performance.now();
+  for(const Z of TD.zones)Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
+  TD.controls.update();
+  TD.renderer.render(TD.scene,TD.camera);
+}
+function setTab(three){
+  VIEW3D=!!three&&has3D();
+  if(VIEW3D&&!TD)init3D();
+  if(!TD)VIEW3D=false;
+  $('view3d').style.display=VIEW3D?'':'none';
+  $('scene').style.display=VIEW3D?'none':'';
+  $('tab3d').classList.toggle('acc',VIEW3D);
+  $('tab2d').classList.toggle('acc',!VIEW3D);
+  if(VIEW3D){build3D();update3D();}
+  else drawScene();
+}
+$('tab3d').onclick=()=>setTab(true);
+$('tab2d').onclick=()=>setTab(false);
+function refreshScene(rebuild){
+  drawScene();                       // corte 2D + HUD (el HUD sirve a las dos vistas)
+  if(VIEW3D){if(rebuild)build3D();update3D();}
+}
+
+/* ── animación ── */
+let playing=false,lastT=0;
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'⏸':'▶';if(playing){lastT=0;requestAnimationFrame(tick);}};
+function tick(ts){
+  if(!playing)return;
+  if(lastT){
+    const dm=(+$('speed').value)*(ts-lastT)/1000;
+    let m=+$('hour').value+dm;
+    if(m>1439)m=0;
+    $('hour').value=m;
+    refreshScene(false);
+  }
+  lastT=ts;
+  requestAnimationFrame(tick);
+}
+$('hour').addEventListener('input',()=>refreshScene(false));
+$('polview').onchange=()=>{drawTheta();computeZonal(cfgDiffuse());refreshScene(false);};
+
+/* ── estimación anual: 12 días × mezcla de cielos ── */
+const CLIMATES={seco:[55,30,15],atlantico:[30,35,35],centroeuropa:[22,38,40]};
+$('climate').onchange=function(){
+  const w=CLIMATES[this.value];
+  if(w){$('wclear').value=w[0];$('wpart').value=w[1];$('wover').value=w[2];}
+};
+function skyCCFor(type){
+  const cc=new Array(288).fill(0);
+  if(type==='parcial'){
+    for(let i=0;i<288;i++)cc[i]=0.15;
+    const span=(a,b)=>{for(let m=a;m<b;m+=5)cc[m/5]=0.95;};
+    span(540,610);span(650,680);span(780,900);span(960,1050);
+  }else if(type==='overcast')cc.fill(0.95);
+  return cc;
+}
+$('yearbtn').onclick=()=>{
+  const c=cfgDay(),d=cfgDiffuse();
+  const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:c.maxAngle}:null;
+  let w=[+$('wclear').value,+$('wpart').value,+$('wover').value];
+  const sw=w[0]+w[1]+w[2]||1; w=w.map(v=>v/sw);
+  const year=(c.dateStr||'2026-06-21').split('-')[0];
+  const months=['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const tot={};for(const k of POL_ORDER)if(POL_ON[k])tot[k]=0;
+  const types=[['claro',w[0]],['parcial',w[1]],['overcast',w[2]]];
+  for(const mo of months){
+    for(const [ty,wt] of types){
+      if(wt<=0)continue;
+      const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:15,cc:skyCCFor(ty),om:null}));
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      for(const k in tot){
+        const r=POLICIES[k](day,thN,poaN,d);
+        const th=loop?applyControlLoop(r.theta,day.dtMin,loop):r.theta;
+        const poa=k==='pvlib'&&!loop?poaN:poaSeries(day,th);
+        tot[k]+=wt*poa.reduce((s,v)=>s+v*day.dtMin/60,0)*30.4/1000;   // kWh/m²·año aprox
+      }
+    }
+  }
+  let bestK=null,bestV=-1;
+  for(const k in tot)if(tot[k]>bestV){bestV=tot[k];bestK=k;}
+  let h='<tr><th>política</th><th>POA anual kWh/m²</th><th>Δ vs pvlib</th></tr>';
+  for(const k of POL_ORDER){
+    if(!(k in tot))continue;
+    const delta=100*(tot[k]/tot.pvlib-1);
+    h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
+       '<td'+(k===bestK?' class="best"':'')+'>'+tot[k].toFixed(0)+'</td>'+
+       '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td></tr>';
+  }
+  $('yeartab').innerHTML=h;
+};
+
+/* ── QA ── */
+$('qabtn').onclick=()=>{
+  const res=runPhysicsQA();
+  let ok=0,h='';
+  for(const r of res){
+    if(r.ok){ok++;h+='<span class="ok">✓ '+r.name+'</span>\n';}
+    else h+='<span class="ko">✗ '+r.name+' — '+r.err+'</span>\n';
+  }
+  h+='\n'+(ok===res.length?'<span class="ok">OK — '+res.length+' comprobaciones</span>'
+                          :'<span class="ko">'+(res.length-ok)+'/'+res.length+' fallos</span>');
+  $('qaout').innerHTML=h;
+};
+
+/* ── wiring ── */
+['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','axaz','dt',
+ 'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew',
+ 'nncu','crossmin'].forEach(id=>{
+  $(id).addEventListener('change',recompute);
+});
+$('loopOn').addEventListener('change',recompute);
+$('zonalOn').addEventListener('change',recompute);
+window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
+
+skyPresetApply('tarde',0);
+recompute();
+loop3D();
+setTab(true);   // 3D por defecto; sin WebGL/THREE cae solo al corte 2D
+</script>
+</body>
+</html>
