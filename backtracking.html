@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.21.2';
+const VER='v1.21.3';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2663,29 +2663,6 @@ function build3D(){
           Seguidor.setModsPerStr(mods);
           const beam=Seguidor.buildBeam(THREE,{west:!twinOf[r],detail:'mass',size:media?'medio':'largo',
                                                materials:mats,skip:{antena:1,antenatip:1}});
-          // PACTO DEL ROJO: el CANTO de los módulos (5 cm en el modelo) fabricaba
-          // sombra visible de energía ~0 en tangencia (la física modela palas sin
-          // espesor) — gris sin rojo. Se adelgaza SOLO aquí (seguidor.js es
-          // fuente única compartida): lo gris que quede será sombra real ⇒ rojo
-          beam.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.type==='BoxGeometry'){
-            // el canto se adelgaza EN LA GEOMETRÍA y ALREDEDOR DE SU CENTRO:
-            // escalar el mesh escalaba también el desplazamiento horneado en
-            // la malla (el panel se hundía al tubo y el giro parecía cambiar
-            // de eje — reportado). Eje fino por bounding box; guard anti-doble.
-            const ge=o.geometry;
-            if(ge.userData&&ge.userData.thinned)return;
-            ge.computeBoundingBox();
-            const bb2=ge.boundingBox;
-            const ex=bb2.max.x-bb2.min.x, ey=bb2.max.y-bb2.min.y, ez=bb2.max.z-bb2.min.z;
-            const mx2=Math.max(ex,ey,ez), mn2=Math.min(ex,ey,ez);
-            if(mx2>1&&mn2<=0.061){
-              const cx3=(bb2.max.x+bb2.min.x)/2, cy3=(bb2.max.y+bb2.min.y)/2, cz3=(bb2.max.z+bb2.min.z)/2;
-              ge.translate(-cx3,-cy3,-cz3);
-              ge.scale(mn2===ex?0.25:1, mn2===ey?0.25:1, mn2===ez?0.25:1);
-              ge.translate(cx3,cy3,cz3);
-              ge.userData=ge.userData||{}; ge.userData.thinned=true;
-            }
-          }});
           const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           // SILUETA de sombra: el bb se toma con el spin AÚN SUELTO (marco local
