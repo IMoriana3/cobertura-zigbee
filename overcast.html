@@ -90,7 +90,8 @@
     trae <b>días reales de Open-Meteo</b> (histórico, previsión o EN VIVO: GHI/DNI/DHI y nubosidad medidas)
     y mira qué hace cada política y cuánto POA gana o pierde. Y no solo la difusa: la TCU completa, con
     <b>las tres capas que compiten por el mando</b> y su orden de autoridad — <b>stow de viento</b>
-    (T1 40 km/h parcial, T2 60 km/h total, con hold de 30′ a la salida) &gt; <b>tope mecánico</b> ±θmáx &gt;
+    (la «Estrategia de Stow» de la casa: pre-stow 40 km/h en banda 30–55°, stow 60 km/h a 55°, salida
+    30′ desde la última racha) &gt; <b>tope mecánico</b> ±θmáx &gt;
     <b>backtracking</b> &gt; <b>política de difusa</b> &gt; astronómico. El árbitro decide paso a paso y el
     diario dice <b>quién mandó y por qué</b> en cada maniobra. La física corre offline; Open-Meteo es el
     único extra online, opcional (y trae también el <b>viento medido</b>).</div>
@@ -198,27 +199,37 @@
       <div class="f"><label>Perfil del día</label>
         <select id="wpreset">
           <option value="calma">Calma (sin stow)</option>
-          <option value="brisa">Brisa (roza el parcial)</option>
-          <option value="racheado" selected>Racheado (rachas al parcial)</option>
-          <option value="temporal">Temporal (entra en stow total)</option>
+          <option value="brisa">Brisa (roza el pre-stow)</option>
+          <option value="racheado" selected>Racheado (rachas al pre-stow)</option>
+          <option value="temporal">Temporal (entra en stow)</option>
           <option value="tormenta">Tormenta (stow casi todo el día)</option>
         </select></div>
       <div class="f"><label>Escala del perfil ×</label><input id="wscale" type="number" step="0.1" min="0" max="3" value="1"></div>
     </div>
     <div class="three">
-      <div class="f"><label>T1 parcial km/h</label><input id="wt1" type="number" step="1" min="0" value="40"
-        title="CANONICAL_WIND_STOW_STRATEGY_E_T1: entra en stow PARCIAL (se limita el sector)"></div>
-      <div class="f"><label>T2 total km/h</label><input id="wt2" type="number" step="1" min="0" value="60"
-        title="CANONICAL_WIND_STOW_STRATEGY_E_T2 (= el umbral bankable de 16,67 m/s): stow TOTAL"></div>
-      <div class="f"><label>Hold de salida min</label><input id="whold" type="number" step="5" min="0" value="30"
-        title="Subir de nivel es inmediato (es seguridad); BAJAR exige este tiempo seguido de calma, para que una racha no saque al tracker del refugio"></div>
+      <div class="f"><label>pre-stow km/h</label><input id="wt1" type="number" step="1" min="0" value="40"
+        title="pre_kmh del documento «Estrategia de Stow» (tabla 3). Por encima, |θ| queda encerrado en la banda 30–55°"></div>
+      <div class="f"><label>stow km/h</label><input id="wt2" type="number" step="1" min="0" value="60"
+        title="stow_kmh: el tracker se va a la posición de stow (55°, el tope)"></div>
+      <div class="f"><label>salida min</label><input id="whold" type="number" step="5" min="0" value="30"
+        title="salida_min: se cuentan desde la ÚLTIMA RACHA sobre el umbral, no desde que el viento afloja. En campo manda además la desactivación de la alarma de la estación (anemómetro de 1 s)"></div>
     </div>
-    <div class="nota"><b>Jerarquía de mando de la TCU</b>, de mayor a menor autoridad:
-      <b>1</b> stow de viento · <b>2</b> tope mecánico ±θmáx · <b>3</b> backtracking (la difusa no
-      puede crear sombra) · <b>4</b> política de difusa · <b>5</b> astronómico. El orden importa: el
-      core aplica el clamp de backtracking ANTES del stow porque si no, el clamp recortaba la
-      posición de refugio y <b>el stow no llegaba a ejecutarse</b>. Con meteo real de Open-Meteo el
-      viento es el MEDIDO (a 10 m, declarado); si no, este perfil sintético.</div>
+    <div class="nota"><b>Esto no se inventa aquí.</b> Es la <b>«Estrategia de Stow» de la casa</b>
+      (tabla 3), la misma que el comprobador de <i>Seguimiento PEM</i> verifica contra los logs
+      reales de planta (<code>STOW_DEF</code>): pre 40 · stow 60 · <b>posición 55°</b> · mín pre 30° ·
+      salida 30′ · noche 5° este. Tres cosas que sorprenden y vienen de campo:
+      <b>(1)</b> la posición de stow es <b>55°, el TOPE — no plano</b>: se pone de canto para
+      descargar la pala, irse a 0° sería ofrecerla entera. <b>(2)</b> el pre-stow no es un tope sino
+      una <b>banda 30–55°</b>: prohíbe exactamente lo que la difusa quiere hacer, bajar a plano.
+      <b>(3)</b> los 30′ de salida cuentan desde la <b>última racha</b>, no desde que afloja.
+      <br><b>Jerarquía de mando</b>, de mayor a menor: <b>1</b> stow · <b>2</b> tope mecánico ±θmáx ·
+      <b>3</b> backtracking · <b>4</b> política de difusa · <b>5</b> astronómico. El orden importa:
+      el clamp de backtracking va ANTES del stow, porque si no recortaba la posición de refugio y
+      <b>el stow no llegaba a ejecutarse</b>. Y al amanecer la banda de pre-stow puede empujar al
+      tracker MÁS ABIERTO que el backtracking: sombrea a la fila de al lado, y es correcto — la
+      seguridad está por encima.
+      <br><b>No cubierto</b> de la estrategia: la defensa por <b>nieve</b> (entra &gt;10 cm, sale
+      &lt;2 cm) — aquí no hay serie de espesor. Con meteo real, el viento es el MEDIDO a 10 m.</div>
   </div>
 
   <div class="card">
@@ -827,14 +838,34 @@ function applyControlLoop(target,dtMin,p){
 }
 
 /* ── VIENTO y STOW — la capa de SEGURIDAD ─────────────────────────────────
-   Umbrales canónicos del core (CANONICAL_WIND_STOW_*). «Strategy E» del
-   proyecto: T1 = 40 km/h entra en stow PARCIAL (se limita el sector), T2 =
-   60 km/h entra en stow TOTAL, y una vez dentro NO se sale hasta que el
-   viento afloja durante `hold` minutos seguidos — una racha no puede sacar
-   al tracker de refugio y volver a meterlo. */
-const WIND={T1_MS:40/3.6, T2_MS:60/3.6, HOLD_MIN:30,
-            STOW_DEG:0,          // posición de refugio: plano
-            PARTIAL_MAX_DEG:30}; // en parcial, |θ| se limita a este sector
+   ESTO NO SE INVENTA AQUÍ. Es la «Estrategia de Stow» de la casa (tabla 3 del
+   documento), tal y como está implementada y VERIFICADA CONTRA LOGS REALES en
+   el comprobador de stow de factiun-cartera (seguimiento-pem.html, STOW_DEF):
+
+     pre_kmh 40 · stow_kmh 60 · pos_deg 55 · pre_min_deg 30 · salida_min 30
+     nieve_on 0,10 m · nieve_off 0,02 m · noche 5° (este)
+
+   Tres cosas que NO son lo que uno supondría, y que vienen de campo:
+
+   1. La posición de stow es 55°, NO plano. El tracker se pone al TOPE para
+      descargar el viento; irse a 0° sería ofrecer la pala entera. (En el
+      comprobador, «la línea de stow a 55°».)
+   2. El pre-stow no es un tope, es una BANDA: 30° ≤ |θ| ≤ 55°. Prohíbe
+      justamente lo que la difusa quiere hacer — bajar a plano.
+   3. La salida son 30 min desde la ÚLTIMA RACHA ≥ 60, no desde que el viento
+      afloja. En campo manda además la desactivación de la alarma de la
+      estación (anemómetro de 1 s): nuestra serie submuestreada es cota
+      inferior. Aquí, con serie sintética o de Open-Meteo, se aplica la regla
+      de la última racha, que es la que se puede comprobar sin alarma.
+
+   Lo que este simulador NO cubre de la estrategia: la defensa por NIEVE
+   (>10 cm entra, <2 cm sale) — no hay serie de espesor. Se declara. */
+const WIND={T1_MS:40/3.6,          // pre_kmh: entra el pre-stow
+            T2_MS:60/3.6,          // stow_kmh: entra el stow
+            HOLD_MIN:30,           // salida_min: desde la última racha ≥ stow
+            STOW_DEG:55,           // pos_deg: la posición de refugio es el TOPE
+            PARTIAL_MIN_DEG:30,    // pre_min_deg: en pre-stow, |θ| ≥ esto
+            PARTIAL_MAX_DEG:55};   // …y ≤ pos_deg: es una banda, no un tope
 /* Estado del stow paso a paso: 0 = sin viento · 1 = parcial · 2 = total.
    Devuelve el nivel vigente en cada paso ya con el hold aplicado. */
 function windStowLevel(wind,dtMin,w){
@@ -869,7 +900,7 @@ function windStowLevel(wind,dtMin,w){
    stow no llegaba a ejecutarse nunca. Devuelve también QUIÉN mandó en cada
    paso, que es lo que el diario y la escena tienen que poder justificar. */
 const MANDO={astro:'astronómico',difusa:'difusa',bt:'backtracking',
-             parcial:'stow parcial',total:'STOW VIENTO'};
+             parcial:'PRE-STOW',total:'STOW VIENTO'};
 function arbitrate(thetaPol,thN,level,maxAngle,w,thTrue){
   const cfg=w||WIND;
   const n=thN.length,theta=new Array(n),quien=new Array(n);
@@ -883,10 +914,17 @@ function arbitrate(thetaPol,thN,level,maxAngle,w,thTrue){
       let s=Math.sign(th)||Math.sign(thN[i]);th=s*an;q=MANDO.bt;
     }else if(q===MANDO.astro&&thTrue&&Math.abs(thN[i])<Math.abs(thTrue[i])-0.05)
       q=MANDO.bt;
-    // (1) el stow GANA — se aplica DESPUÉS del clamp, como en run_tracker
-    if(level[i]===2){th=cfg.STOW_DEG;q=MANDO.total;}
-    else if(level[i]===1&&Math.abs(th)>cfg.PARTIAL_MAX_DEG){
-      th=(Math.sign(th)||1)*cfg.PARTIAL_MAX_DEG;q=MANDO.parcial;
+    // (1) el stow GANA — se aplica DESPUÉS del clamp, como en run_tracker.
+    // Y gana de verdad: la banda de pre-stow puede EMPUJAR AL TRACKER FUERA
+    // del límite de backtracking al amanecer (|θ_n| < 30°). Eso sombrea la
+    // fila de al lado, y es correcto: la seguridad está por encima. Lo que no
+    // puede rebasar es el hierro, que va después.
+    const lado=Math.sign(th)||Math.sign(thN[i])||1;
+    if(level[i]===2){th=lado*cfg.STOW_DEG;q=MANDO.total;}
+    else if(level[i]===1){
+      const a=Math.abs(th);
+      if(a<cfg.PARTIAL_MIN_DEG){th=lado*cfg.PARTIAL_MIN_DEG;q=MANDO.parcial;}
+      else if(a>cfg.PARTIAL_MAX_DEG){th=lado*cfg.PARTIAL_MAX_DEG;q=MANDO.parcial;}
     }
     // (2) tope mecánico, la última palabra del hierro
     theta[i]=Math.max(-maxAngle,Math.min(maxAngle,th));
@@ -907,14 +945,16 @@ function windEvents(day,wlev,w,ev){
     const L=wlev[i]; if(L===prev)continue;
     const v=day.wind[i]||0;
     if(L>prev)ev.push({t:day.tmin[i],type:'wind',
-      msg:(L===2?'STOW TOTAL POR VIENTO (θ→'+(-cfg.STOW_DEG).toFixed(0)+'° TCU)':
-                 'STOW PARCIAL POR VIENTO (|θ| ≤ '+cfg.PARTIAL_MAX_DEG+'°)')+
-          ': racha '+kmh(v)+' km/h ≥ T'+L+'='+kmh(L===2?cfg.T2_MS:cfg.T1_MS)+
+      msg:(L===2?'STOW POR VIENTO (θ → '+cfg.STOW_DEG+'°, el TOPE: al tracker se le pone de canto '+
+                 'para descargar la pala; irse a plano sería ofrecerla entera)':
+                 'PRE-STOW (banda '+cfg.PARTIAL_MIN_DEG+'–'+cfg.PARTIAL_MAX_DEG+'°: |θ| NO puede bajar de '+
+                 cfg.PARTIAL_MIN_DEG+'°, justo lo que la difusa querría hacer)')+
+          ': racha '+kmh(v)+' km/h ≥ '+kmh(L===2?cfg.T2_MS:cfg.T1_MS)+
           ' km/h — SEGURIDAD: manda sobre la difusa y sobre el backtracking'});
     else ev.push({t:day.tmin[i],type:'windout',
-      msg:'SALE'+(L>0?' a stow parcial':' del stow')+': el viento lleva '+cfg.HOLD_MIN+
-          '′ seguidos por debajo del umbral ('+kmh(v)+' km/h) — el hold impide que una racha '+
-          'lo saque y lo vuelva a meter'+(L===0?'. Devuelve el mando a la política de difusa':'')});
+      msg:'SALE'+(L>0?' del stow al pre-stow':' del pre-stow')+': '+cfg.HOLD_MIN+
+          '′ desde la última racha sobre el umbral ('+kmh(v)+' km/h ahora) — la espera cuenta '+
+          'desde la RACHA, no desde que afloja'+(L===0?'. Devuelve el mando a la política de difusa':'')});
     prev=L;
   }
   return ev;
@@ -1809,12 +1849,17 @@ function runPhysicsQA(){
       const rp=POLICIES[k](day,thN,poaN,DCFG_DEFAULT);
       const a2=arbitrate(rp.theta,thN,L2,day.maxAngle,WIND);
       for(let i=0;i<day.n;i++){
-        A(Math.abs(a2.theta[i]-WIND.STOW_DEG)<1e-9,k+': la difusa se salió del stow TOTAL en '+i+' → '+a2.theta[i]);
+        // el refugio es ±pos_deg (el comprobador de campo mira |ángulo|)
+        A(Math.abs(Math.abs(a2.theta[i])-WIND.STOW_DEG)<1e-9,k+': la difusa se salió del stow en '+i+' → '+a2.theta[i]);
         A(a2.quien[i]===MANDO.total,k+': el mando en stow total no es el viento en '+i);
       }
       const a1=arbitrate(rp.theta,thN,L1,day.maxAngle,WIND);
-      for(let i=0;i<day.n;i++)
-        A(Math.abs(a1.theta[i])<=WIND.PARTIAL_MAX_DEG+1e-9,k+': stow PARCIAL rebasado en '+i+' → '+a1.theta[i]);
+      for(let i=0;i<day.n;i++){
+        const a=Math.abs(a1.theta[i]);
+        A(a<=WIND.PARTIAL_MAX_DEG+1e-9,k+': el pre-stow rebasa la banda por arriba en '+i+' → '+a1.theta[i]);
+        // lo que de verdad prohíbe el pre-stow: bajar a plano
+        A(a>=WIND.PARTIAL_MIN_DEG-1e-9,k+': el pre-stow dejó bajar de '+WIND.PARTIAL_MIN_DEG+'° en '+i+' → '+a1.theta[i]);
+      }
     }
   });
   t('el clamp de backtracking va ANTES del stow: la posición de refugio LLEGA a ejecutarse aunque |θ_n| sea menor',()=>{
@@ -1827,7 +1872,7 @@ function runPhysicsQA(){
     const a=arbitrate(thN.slice(),thN,L,day.maxAngle,w);
     let hubo=false;
     for(let i=0;i<day.n;i++){
-      A(Math.abs(a.theta[i]-45)<1e-9,'el refugio no se ejecutó en '+i+' → '+a.theta[i]);
+      A(Math.abs(Math.abs(a.theta[i])-45)<1e-9,'el refugio no se ejecutó en '+i+' → '+a.theta[i]);
       if(Math.abs(thN[i])<45-1e-6)hubo=true;
     }
     A(hubo,'el escenario no ejercita el caso |θ_n| < refugio');
@@ -1883,7 +1928,7 @@ function runPhysicsQA(){
     A(r.wlev.every(v=>v===2),'el nivel de stow de planta no llegó al zonal');
     r.zones.forEach((Z,z)=>{
       for(let i=0;i<Z.theta.length;i++){
-        A(Math.abs(Z.theta[i]-WIND.STOW_DEG)<1e-9,'NCU '+(z+1)+' fuera del stow en '+i+' → '+Z.theta[i]);
+        A(Math.abs(Math.abs(Z.theta[i])-WIND.STOW_DEG)<1e-9,'NCU '+(z+1)+' fuera del stow en '+i+' → '+Z.theta[i]);
         A(!Z.flag[i],'NCU '+(z+1)+' marca difusa activa bajo stow en '+i);
         A(!Z.signal[i],'NCU '+(z+1)+' enseña señal viva bajo stow en '+i);
       }
@@ -1935,7 +1980,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.11.1';
+const VER='v1.12.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1978,7 +2023,7 @@ function stateLabel(polKey,th,flag,sig,rate,wlev){
   // el stow gana también en la ROTULACIÓN: si el tracker está refugiado, eso
   // es lo que hay que decir, por encima de cualquier estado de difusa
   if(wlev===2)return {txt:'💨 STOW VIENTO',col:ST_COL.stow,estado:'stow'};
-  if(wlev===1)return {txt:'💨 stow parcial',col:ST_COL.parcial,estado:'parcial'};
+  if(wlev===1)return {txt:'💨 PRE-STOW',col:ST_COL.parcial,estado:'parcial'};
   if(rate>0.001)return {txt:'↻ '+rate.toFixed(2)+' °/s',col:ST_COL.girando,estado:'girando'};
   if(flag&&m.mode){
     const llegando=m.flat0&&Math.abs(th)>1.0;
@@ -2190,7 +2235,7 @@ $('omlive').onclick=()=>{
 function cfgWind(){
   return {T1_MS:(+$('wt1').value||40)/3.6, T2_MS:(+$('wt2').value||60)/3.6,
           HOLD_MIN:+$('whold').value, STOW_DEG:WIND.STOW_DEG,
-          PARTIAL_MAX_DEG:WIND.PARTIAL_MAX_DEG};
+          PARTIAL_MIN_DEG:WIND.PARTIAL_MIN_DEG, PARTIAL_MAX_DEG:WIND.PARTIAL_MAX_DEG};
 }
 let WS=new Array(288).fill(0);          // m/s por bin de 5 min
 function windPreset(name,esc){
@@ -2749,7 +2794,7 @@ function drawScene(){
     ro('DNI',irr.dni.toFixed(0),'W/m²')+
     ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
     ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',st2.txt)+
-    ro('viento',(dayF.wind[iF]*3.6).toFixed(0),'km/h · '+['—','parcial','STOW'][SIM.wlevF[iF]])+
+    ro('viento',(dayF.wind[iF]*3.6).toFixed(0),'km/h · '+['—','pre-stow','STOW 55°'][SIM.wlevF[iF]])+
     // QUIÉN manda ahora mismo: la salida del árbitro, no una etiqueta aparte
     '<div class="ro"><div class="k">manda</div><div class="v" style="color:'+
       (SIM.wlevF[iF]?ST_COL[SIM.wlevF[iF]===2?'stow':'parcial']:st2.col)+'">'+

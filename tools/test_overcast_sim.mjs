@@ -213,7 +213,8 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
       modoW === 'calma' ? 3 * rnd() : modoW === 'temporal' ? 12 + 8 * rnd() :
       (rnd() < 0.25 ? 10 + 12 * rnd() : 4 * rnd()));
     const wc = { T1_MS: 40 / 3.6, T2_MS: 60 / 3.6, HOLD_MIN: pick([0, 15, 30, 60]),
-                 STOW_DEG: pick([0, 0, 0, 30 * rnd()]), PARTIAL_MAX_DEG: 10 + 40 * rnd() };
+                 STOW_DEG: pick([55, 55, 55, 20 + 35 * rnd()]),
+                 PARTIAL_MIN_DEG: 10 + 20 * rnd(), PARTIAL_MAX_DEG: 40 + 15 * rnd() };
     const loop = { deadbandDeg: 2 * rnd(), slewDegS: 0.05 + 0.4 * rnd(), maxAngle: o.maxAngle };
     try {
       const day = F.buildDay(o), dayF = F.buildDay(Object.assign({}, o, { dtMin: 5 }));
@@ -247,10 +248,16 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
         const refugio = Math.max(-o.maxAngle, Math.min(o.maxAngle, wc.STOW_DEG));
         for (let i = 0; i < day.n; i++) {
           if (Math.abs(a.theta[i]) > o.maxAngle + 1e-6) throw new Error(k + ': el stow rebasó el tope mecánico');
-          if (wlev[i] === 2 && Math.abs(a.theta[i] - refugio) > 1e-6)
-            throw new Error(k + ': la difusa se salió del stow TOTAL');
-          if (wlev[i] === 1 && Math.abs(a.theta[i]) > Math.min(o.maxAngle, wc.PARTIAL_MAX_DEG) + 1e-6)
-            throw new Error(k + ': stow PARCIAL rebasado');
+          // el refugio es ±pos_deg recortado al hierro (el comprobador de
+          // campo mira |ángulo|, y el lado lo elige el árbitro por cercanía)
+          const refugio = Math.min(o.maxAngle, wc.STOW_DEG);
+          if (wlev[i] === 2 && Math.abs(Math.abs(a.theta[i]) - refugio) > 1e-6)
+            throw new Error(k + ': la difusa se salió del stow');
+          if (wlev[i] === 1) {
+            const banda0 = Math.min(o.maxAngle, wc.PARTIAL_MIN_DEG), banda1 = Math.min(o.maxAngle, wc.PARTIAL_MAX_DEG);
+            if (Math.abs(a.theta[i]) > banda1 + 1e-6) throw new Error(k + ': pre-stow rebasado por arriba');
+            if (Math.abs(a.theta[i]) < Math.min(banda0, banda1) - 1e-6) throw new Error(k + ': el pre-stow dejó bajar a plano');
+          }
           if (wlev[i] === 0 && Math.abs(a.theta[i]) > Math.abs(thN[i]) + 1e-6)
             throw new Error(k + ': sin viento el árbitro dejó pasar sombra');
         }
