@@ -263,7 +263,7 @@
         <option value="150">×2,5</option>
         <option value="360">×6</option>
       </select>
-      <input type="range" id="hour" min="0" max="1439" step="5" value="720">
+      <input type="range" id="hour" min="0" max="1439" step="1" value="720">
       <span class="t" id="hourlbl">12:00</span>
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
@@ -1457,7 +1457,10 @@ function drawScene(){
   let i=Math.min(day.n-1,Math.round(m/day.dtMin));
   $('hourlbl').textContent=hhmm(m);
   const cc=CC[Math.min(287,Math.floor(m/5))];
-  const irr=day.irr[i],zen=day.zen[i],az=day.az[i];
+  // slider MINUTAL: el sol se dibuja en su posición exacta del minuto; la
+  // política y la irradiancia van al paso del sim (dtMin), que es lo honesto
+  const gm=solarPos(localToUTCms($('date').value,m,+$('tz').value),+$('lat').value,+$('lon').value);
+  const irr=day.irr[i],zen=gm.zen,az=gm.az;
   const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
   const th=(r.exec||r.theta)[i],thn=SIM.thN[i],flag=r.flag[i];
 
@@ -1674,7 +1677,9 @@ function update3D(){
   const i=Math.min(day.n-1,Math.round(m/day.dtMin));
   const bin=Math.min(287,Math.floor(m/5));
   const zc=zonalCfg(),pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
-  const irr=day.irr[i],zen=day.zen[i],az=day.az[i],el=90-zen;
+  // slider MINUTAL: sol y cielo al minuto exacto; políticas al paso del sim
+  const gm=solarPos(localToUTCms($('date').value,m,+$('tz').value),+$('lat').value,+$('lon').value);
+  const irr=day.irr[i],zen=gm.zen,az=gm.az,el=90-zen;
   // sol: +X = norte (eje del tubo), +Z = este — θ>0 tumba la pala al este, como el core
   const dist=260;
   const sy=Math.max(3,dist*Math.sin(Math.max(1.5,el)*RAD));
