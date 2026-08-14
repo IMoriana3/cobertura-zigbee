@@ -156,6 +156,15 @@ t('v1.18: banda rasante MULTI-EMISORA + paso minutal + BT OFF/ON fijo + HUD esta
   if (!/BT OFF/.test(html)) throw new Error('indicador BT sin estado OFF (no debe desaparecer)');
   if (!/sin parejas interactuando/.test(html)) throw new Error('HUD: la tarjeta de residual debe existir siempre');
 });
+t('v1.19: contador ray-cast a TODAS horas + Martinez por estación + θ<0=este + rayo recortado', () => {
+  // el contador publicado es el ray-cast multi-emisora a cualquier cénit
+  if (!/return shadeBand3DAll\(zen,az,T,rowAngles\);\s*\}/.test(html)) throw new Error('shadeRows no es el ray-cast');
+  if (!/function shadeRows25/.test(html)) throw new Error('sin evaluador rápido para optimizadores');
+  if (!/elecSum\+=elecLoss\(colHit\/MU/.test(html)) throw new Error('Martinez no va por estación axial');
+  if (!/const TH_DISP=-1/.test(html)) throw new Error('sin convención de presentación θ<0=este');
+  if (!/firstHit\(edgeW,hitW/.test(html)) throw new Error('el rayo no se recorta contra las mesas');
+  if (!/d\.irr\[t\]\.dni>25/.test(html)) throw new Error('sombra máx sin filtro de sol útil');
+});
 t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila
   const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);
