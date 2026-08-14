@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.70</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.71</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2807,6 +2807,18 @@ function buildBOS(){
   ftex.mipmaps=[ftc,_fgrid(256,1.2),_fgrid(128,null,0.22),_fgrid(64,null,0.30),_fgrid(32,null,0.32),_fgrid(16,null,0.30),_fgrid(8,null,0.28),_fgrid(4,null,0.26),_fgrid(2,null,0.26),_fgrid(1,null,0.26)];   // niveles profundos a velo 0,22-0,32: con 0,11-0,22 la parte ALTA del paño (más lejos y en escorzo con cámara baja) se volvía invisible contra el cielo y 'los alambres flotaban'
   ftex.generateMipmaps=false;
   var meshM=new THREE.MeshStandardMaterial({map:ftex,transparent:true,alphaTest:0.10,side:THREE.DoubleSide,roughness:.72,metalness:.12,color:0xc9d0d6});
+  /* MALLA DE LA HOJA, aparte de la del paño. La hoja llevaba la misma malla cinegética que el
+     vallado: celda de 15 cm y alambre de 2,8 mm, o sea ~4 % de alambre. De frente eso es casi
+     transparente, y la puerta se leía como un marco vacío — "ambas siguen abiertas"— aunque la
+     geometría estuviera cerrada (medido tres veces: en el plano del vano y cubriendo de 0,01 a
+     0,99 del hueco). Una puerta real no lleva la malla del vallado: lleva electrosoldada, más
+     tupida y más gruesa. Aquí, celda de 5 cm y alambre de 4 mm ⇒ ~15 % de alambre, que sí se lee. */
+  var gtc=(function(){var SZ=256,cv=document.createElement('canvas');cv.width=cv.height=SZ;var g=cv.getContext('2d');
+    var cell=SZ/12;g.strokeStyle='rgba(214,221,228,0.96)';g.lineWidth=SZ*0.004/0.6;   // 12 celdas en 0,60 m ⇒ 5 cm de celda; 4 mm de alambre
+    for(var q=0;q<=SZ;q+=cell){g.beginPath();g.moveTo(q,0);g.lineTo(q,SZ);g.moveTo(0,q);g.lineTo(SZ,q);g.stroke();}return cv;})();
+  var gtex=new THREE.CanvasTexture(gtc);gtex.wrapS=gtex.wrapT=THREE.RepeatWrapping;
+  gtex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;
+  var gateM=new THREE.MeshStandardMaterial({map:gtex,transparent:true,alphaTest:0.06,side:THREE.DoubleSide,roughness:.68,metalness:.16,color:0xccd3d9});
   meshM.onBeforeCompile=function(sh){sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n\tdiffuseColor.a*=(1.0-smoothstep(120.0,420.0,length(vViewPosition)));');};   // el paño se desvanece 120→420 m (a 80→260 desaparecía antes que los alambres y quedaban "alambres flotando"); smoothstep en forma DEFINIDA
   meshM.customProgramCacheKey=function(){return 'fencefade3';};
   var sv=[],su=[],sw=[];
@@ -2923,9 +2935,9 @@ function buildBOS(){
       pg.setAttribute('position',new THREE.Float32BufferAttribute([
         x0,0.15,0,  x1,0.15,0,  x1,H5,0,   x0,0.15,0,  x1,H5,0,  x0,H5,0],3));
       pg.setAttribute('uv',new THREE.Float32BufferAttribute([
-        0,0,  pw/1.2,0,  pw/1.2,ph/1.2,  0,0,  pw/1.2,ph/1.2,  0,ph/1.2],2));   // tile (8 celdas) cada 1,2 m ⇒ celda real de 15 cm, como el paño
+        0,0,  pw/0.6,0,  pw/0.6,ph/0.6,  0,0,  pw/0.6,ph/0.6,  0,ph/0.6],2));   // tile (12 celdas) cada 0,60 m ⇒ celda real de 5 cm
       pg.computeVertexNormals();
-      var pm5=new THREE.Mesh(pg,meshM);pm5.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});
+      var pm5=new THREE.Mesh(pg,gateM);pm5.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:gtex,alphaTest:0.3});
       lg.add(pm5);
       bosGroup.add(lg);}
   });
