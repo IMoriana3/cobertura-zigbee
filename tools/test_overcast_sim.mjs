@@ -61,6 +61,7 @@ t('plantas reales: botones Ayora/San José, carga por fetch del layout y vuelta 
     throw new Error('faltan los botones de planta');
   if (!/_layout\.json/.test(html)) throw new Error('no carga el layout real');
   if (!/function buildReal3D/.test(html)) throw new Error('sin escena de planta real');
+  if (!/Seguidor\.instancePlan/.test(html)) throw new Error('la planta real no usa el instanciado de los cobertura 3D');
 });
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
