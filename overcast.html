@@ -236,7 +236,7 @@
     <div class="three">
       <div class="f"><label>SW entrar</label><input id="senter" type="number" step="0.01" min="1" value="1.02"></div>
       <div class="f"><label>SW salir</label><input id="sexit" type="number" step="0.01" min="0.9" value="1.00"></div>
-      <div class="f"><label>α continuo</label><input id="alphas" type="text" value="0, 0.25, 0.5, 0.75, 1" readonly title="Candidatos del barrido del core (continuous_alpha_candidates)"></div>
+      <div class="f"><label>α continuo</label><input id="alphas" type="text" readonly title="Candidatos del barrido del core (continuous_alpha_candidates)"></div>
     </div>
     <div class="two">
       <div class="f"><label>Histéresis: confirm (min)</label><input id="confirm" type="number" step="5" min="0" value="30"
@@ -747,14 +747,16 @@ const POLICIES={pvlib:polPvlib, diffuse_flat:polFlat, diffuse_limited:polLimited
 /* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─ */
 function applyControlLoop(target,dtMin,p){
   // p = {deadbandDeg, slewDegS, maxAngle}
-  const dtS=dtMin*60, maxD=p.slewDegS>0?p.slewDegS*dtS:Infinity;
+  const dtS=dtMin*60;
   const out=target.slice();
   for(let i=1;i<out.length;i++){
     const prev=out[i-1];
-    let des=(p.deadbandDeg>0&&Math.abs(target[i]-prev)<p.deadbandDeg)?prev:target[i];
-    const dd=des-prev;
-    if(Math.abs(dd)>maxD)des=prev+(dd>0?maxD:-maxD);
-    out[i]=Math.max(-p.maxAngle,Math.min(p.maxAngle,des));
+    // deadband: por debajo del umbral el motor ni arranca (ahorra desgaste)
+    const des=(p.deadbandDeg>0&&Math.abs(target[i]-prev)<p.deadbandDeg)?prev:target[i];
+    // y el recorte por velocidad es UNA sola pieza compartida (slewLimit1),
+    // la misma que verifica la QA: si se toca, se toca en un solo sitio
+    const paso=p.slewDegS>0?slewLimit1(prev,des,dtS,p.slewDegS):des;
+    out[i]=Math.max(-p.maxAngle,Math.min(p.maxAngle,paso));
   }
   return out;
 }
@@ -1454,6 +1456,47 @@ function runPhysicsQA(){
     const r=zonalRun(o,3,45,'diffuse_poa_switch',DCFG_DEFAULT,[0,0,0]);
     A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'difieren: '+(r.plantZonal-r.plantGlobal));
   });
+  t('casos límite del planeta: hemisferio sur, polos, husos extremos y bisiesto sin romper un invariante',()=>{
+    // donde suelen esconderse los bugs: sur, sol de medianoche, noche polar,
+    // UTC+12, 29-feb y bordes de año. En TODOS deben cumplirse a la vez:
+    // nada de NaN, POA ≥ 0, clamp de backtracking, el actuador ≤ 0,17 °/s y el
+    // diario coincidiendo con su política.
+    const zero=new Array(288).fill(0), ovc=new Array(288).fill(0.95);
+    const base={altM:300,TL:3.5,dtMin:15,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,nightStow:5,om:null};
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    const casos=[
+      ['Arequipa sur UTC−5', -16.60,-71.81,-5,'2025-06-21',zero],
+      ['sol de medianoche',   69.65, 18.96, 2,'2025-06-21',zero],
+      ['noche polar',         69.65, 18.96, 2,'2025-12-21',zero],
+      ['UTC+12',             -41.29,174.78,12,'2025-01-01',zero],
+      ['bisiesto 29-feb',     40.40, -3.70, 1,'2024-02-29',ovc],
+      ['fin de año overcast', 40.40, -3.70, 1,'2025-12-31',ovc]];
+    for(const [nm,lat,lon,tz,fecha,cc] of casos){
+      const o=Object.assign({},base,{lat,lon,tz,dateStr:fecha,cc});
+      const day=buildDay(o), dayF=buildDay(Object.assign({},o,{dtMin:5}));
+      const thN=thetaBaselineDay(day), poaN=poaSeries(day,thN);
+      A(thN.every(Number.isFinite),nm+': θ_n con NaN');
+      for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+        const r=POLICIES[k](day,thN,poaN,DCFG_DEFAULT);
+        A(r.theta.every(Number.isFinite),nm+' · '+k+': θ con NaN');
+        A(r.theta.every((v,i)=>Math.abs(v)<=Math.abs(thN[i])+1e-6),nm+' · '+k+': rompe el clamp de backtracking');
+        const ex=execOnFineGrid(r.theta,day.dtMin,dayF.n,5,loop);
+        A(ex.every(Number.isFinite),nm+' · '+k+': ejecutado con NaN');
+        for(let i=1;i<ex.length;i++)
+          A(Math.abs(ex[i]-ex[i-1])<=0.17*300+1e-6,nm+' · '+k+': el actuador gira demasiado');
+        A(poaSeries(dayF,ex).every(v=>Number.isFinite(v)&&v>=0),nm+' · '+k+': POA NaN o negativa');
+        const e=EXPLAIN[k](day,thN,poaN,DCFG_DEFAULT);
+        A(e.flag.every((v,i)=>!!v===!!r.flag[i]),nm+' · '+k+': el diario discrepa de la política');
+      }
+      // la noche polar no puede producir energía ni maniobras
+      if(nm==='noche polar'){
+        A(day.ghi.every(v=>!(v>DCFG_DEFAULT.ghiMin)),'la noche polar tiene día');
+        const r=POLICIES.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT);
+        A(!r.flag.some(Boolean),'la noche polar conmuta la difusa');
+        A(r.theta.every(v=>Math.abs(v-day.nightStow)<1e-9),'la noche polar no se queda en stow');
+      }
+    }
+  });
   t('meteo real: omInterp interpola lineal, clampa ≥0, y devuelve null en huecos y fuera de rango',()=>{
     const t0=Date.UTC(2026,5,21,0,0,0),H=3.6e6;
     const om={tms:[t0,t0+H,t0+2*H,t0+3*H],ghi:[0,100,null,300],dni:[0,50,100,150],dhi:[0,60,120,180],cc:[0,0.5,1,1]};
@@ -1490,7 +1533,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.9.0';
+const VER='v1.9.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1526,6 +1569,9 @@ function stateLabel(polKey,th,flag,sig,rate){
   if(sig)return {txt:'☁ retiene',col:'#fbbd23'};
   return {txt:'track',col:'#9bb0c6'};
 }
+// el barrido α se rotula desde la FUENTE (DCFG_DEFAULT), no a mano: si el core
+// cambia sus continuous_alpha_candidates, la UI no puede quedarse mintiendo
+$('alphas').value=DCFG_DEFAULT.alphas.map(v=>String(v).replace('.',',')).join(' · ');
 const POL_ORDER=['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch'];
 const POL_ON={pvlib:true,diffuse_flat:true,diffuse_limited:false,diffuse_continuous:true,diffuse_poa_switch:true};
 
@@ -2216,9 +2262,18 @@ function fineIdx(m){return Math.max(0,Math.min(SIM.dayF.n-1,Math.round(m/DT_FINE
    hemisferio escalados por DNI/DHI del instante. Sin WebGL cae al corte 2D. */
 let TD=null,VIEW3D=false,BUILT={key:null},FLY=null;
 function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=='undefined'&&typeof Seguidor!=='undefined';}
+/* liberar de verdad: material.dispose() NO libera sus texturas, y esta escena
+   genera unas cuantas por reconstrucción (cada manto de nube lleva 2 canvas de
+   256², cada etiqueta de NCU uno de 320×72). Cambiar de planta varias veces
+   dejaba decenas de MB de texturas colgadas en la GPU. */
 function disposeGroup(g){g.traverse(o=>{
   if(o.geometry)o.geometry.dispose();
-  if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());
+  if(!o.material)return;
+  for(const m of (Array.isArray(o.material)?o.material:[o.material])){
+    for(const k of ['map','alphaMap','emissiveMap','normalMap','roughnessMap','metalnessMap','aoMap'])
+      if(m[k]&&m[k].dispose)m[k].dispose();
+    m.dispose();
+  }
 });}
 function init3D(){
   if(TD||!has3D())return;
@@ -2635,7 +2690,7 @@ function buildReal3D(zc,reframe){
   });
   const SKIP={antena:1,antenatip:1,tcuchapa:1};
   const westOnly=k=>/^(tcu|secc)/.test(k);              // TCU y seccionador: solo la viga motora
-  TD.real={groups:[],mesaGroups:[],cols:[],cx:cx,cz:cz,L:L,nZones:R.ncuIds.length,
+  TD.real={groups:[],cols:[],cx:cx,cz:cz,L:L,nZones:R.ncuIds.length,
            ry:rotR?new THREE.Matrix4().makeRotationY(-rotR):null};
   const postGeo=new THREE.CylinderGeometry(0.08,0.08,2.0,6);
   const postM2=new THREE.MeshLambertMaterial({color:0x8a949c});
@@ -2656,7 +2711,6 @@ function buildReal3D(zc,reframe){
       world.add(im);
       const g={im:im,key:p.key,spin:!!p.spin,locals:p.locals,rows:rows,nL:nL};
       TD.real.groups.push(g);
-      if(p.key==='mesa')TD.real.mesaGroups.push(g);
       if(!p.spin){                                       // estáticas: se escriben UNA vez
         rows.forEach((t,i)=>{for(let j=0;j<nL;j++){
           if(TD.real.ry)_m4.multiplyMatrices(TD.real.ry,p.locals[j]);
@@ -2717,6 +2771,7 @@ function buildReal3D(zc,reframe){
   }
   TD.world=world;TD.scene.add(world);
   TD.cx=cx;TD.cz=cz;
+  TD.realDirty=true;   // sin esto, las piezas que BASCULAN quedaban sin matriz hasta el primer cambio de θ
   const sc2=TD.sun.shadow.camera,R2=L*0.62;
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;
   sc2.near=10;sc2.far=L*4;sc2.updateProjectionMatrix();
@@ -2821,10 +2876,9 @@ function update3D(){
     }
     // el θ EJECUTADO ya lleva la rampa de 0,17 °/s dentro (rejilla fina): la
     // pala se coloca directamente, sin persecución que pudiera adelantarla
-    Z.thTarget=th;Z.flag=fl;Z.sig=sig;Z.rate=rate;
-    if(Z.thDisp==null)Z.thDisp=th;
-    for(const s of Z.spins)s.rotation.x=th*RAD;
-    if(Math.abs(Z.thDisp-th)>1e-9){Z.thDisp=th;TD.realDirty=true;}
+    Z.flag=fl;Z.sig=sig;Z.rate=rate;
+    for(const s of Z.spins)s.rotation.x=th*RAD;              // escena sintética
+    if(Z.th==null||Math.abs(Z.th-th)>1e-9){Z.th=th;TD.realDirty=true;}   // planta real
     if(Z.cloudMat){
       Z.cloudMat.opacity=0.9*ccz;
       if(Z.shadowMat)Z.shadowMat.opacity=(el>0?1:0)*0.38*Math.min(1,ccz*1.4);
@@ -2886,7 +2940,7 @@ function loop3D(){
   }
   if(FLY)flyStep(fdt);
   if(TD.real&&TD.realDirty){
-    writeRealInstances(TD.zones.map(Z=>Z.thDisp||0),TD.zones.map(Z=>!!Z.flag),TD.zones.map(Z=>!!Z.sig));
+    writeRealInstances(TD.zones.map(Z=>Z.th||0),TD.zones.map(Z=>!!Z.flag),TD.zones.map(Z=>!!Z.sig));
     TD.realDirty=false;
   }
   if(!FLY)TD.controls.update();      // en vuelo libre manda flyStep, no la órbita
@@ -2896,6 +2950,9 @@ function setTab(three){
   VIEW3D=!!three&&has3D();
   if(VIEW3D&&!TD)init3D();
   if(!TD)VIEW3D=false;
+  // salir del 3D con el vuelo activo dejaba los listeners de teclado vivos:
+  // WASD seguía moviendo una cámara invisible y el ratón quedaba capturado
+  if(!VIEW3D&&FLY)flyStop();
   $('view3d').style.display=VIEW3D?'':'none';
   $('scene').style.display=VIEW3D?'none':'';
   $('tab3d').classList.toggle('acc',VIEW3D);
