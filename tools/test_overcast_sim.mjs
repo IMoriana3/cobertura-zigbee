@@ -56,12 +56,14 @@ t('stow nocturno del proyecto en convención TCU: −5° (5° al este; la UI ent
   if (!/id="stow"[^>]*value="-5"/.test(html)) throw new Error('stow default ≠ −5');
   if (!/function tcuDeg\(/.test(html)) throw new Error('sin conversor de convención tcuDeg');
 });
-t('plantas reales: botones Ayora/San José, carga por fetch del layout y vuelta a sintética', () => {
-  if (!/id="ayorabtn"/.test(html) || !/id="sjbtn"/.test(html) || !/id="synbtn"/.test(html))
-    throw new Error('faltan los botones de planta');
+t('plantas reales: selector con TODA la cartera con layout, carga por fetch y vuelta a sintética', () => {
+  if (!/id="realplant"/.test(html)) throw new Error('falta el selector de planta real');
+  for (const p of ['ayora', 'sanjose', 'elburgo', 'fayon', 'paramo', 'tunez', 'bagnarelli'])
+    if (!html.includes('value="' + p + '"')) throw new Error('falta la planta ' + p);
   if (!/_layout\.json/.test(html)) throw new Error('no carga el layout real');
   if (!/function buildReal3D/.test(html)) throw new Error('sin escena de planta real');
   if (!/Seguidor\.instancePlan/.test(html)) throw new Error('la planta real no usa el instanciado de los cobertura 3D');
+  if (!/bifila:false/.test(html.slice(html.indexOf('REALMETA')))) throw new Error('Bagnarelli debe ser monofila en REALMETA');
 });
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])

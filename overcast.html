@@ -196,10 +196,18 @@
       <div class="f"><label>Nº NCUs (sintética)</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
       <div class="f"><label>El frente cruza en (min)</label><input id="crossmin" type="number" step="5" min="0" max="240" value="45"></div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <button class="btn small" id="ayorabtn" title="Carga ayora_layout.json: 754 seguidores y las 16 NCUs REALES — las zonas del zonal son las NCUs de verdad, con el retardo del frente según la posición de cada centroide (oeste→este). Fija lat/lon (y UTC+2).">⛰ Ayora real</button>
-      <button class="btn small" id="sjbtn" title="Carga sanjose_layout.json: 2.289 seguidores y 21 NCUs reales (Arequipa, Perú — UTC−5, hemisferio sur).">⛰ San José real</button>
-      <button class="btn small" id="synbtn" title="Vuelve a la planta sintética de N zonas equiespaciadas">◻ Sintética</button>
+    <div class="f"><label>Planta real (layout del repo)</label>
+      <select id="realplant" title="Carga el <planta>_layout.json: los seguidores y las NCUs REALES — las zonas del zonal son las NCUs de verdad, con el retardo del frente por la posición de cada centroide. Fija lat/lon y huso.">
+        <option value="">— sintética (N zonas equiespaciadas) —</option>
+        <option value="elburgo">23003 · El Burgo (215 uds · 2 NCUs)</option>
+        <option value="fayon">24007 · Fayón (24 uds)</option>
+        <option value="sanjose">24019 · San José, Perú (2.289 uds · 21 NCUs)</option>
+        <option value="tunez">24021 · Túnez (19 uds)</option>
+        <option value="ayora">24025 · Ayora (754 uds · 16 NCUs)</option>
+        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · monofila · eje 23,7°)</option>
+        <option value="paramo">Páramo, León (396 uds · 4 NCUs)</option>
+      </select></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <span class="pill" id="plantinfo"></span>
     </div>
     <div class="nota" id="plantnote" style="display:none"></div>
@@ -1230,7 +1238,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.5';
+const VER='v1.7.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1565,25 +1573,43 @@ function computeZonal(d){
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
               SIM?SIM.loop:null);
 }
+/* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
+   unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
+   (Bagnarelli es monofila — dato del sim de BT). El azimut de eje ≠ 0 del
+   layout alimenta TAMBIÉN la física (axaz). */
+const REALMETA={
+  ayora:     {tz:2, bifila:true,  title:'Ayora'},
+  sanjose:   {tz:-5,bifila:true,  title:'San José'},
+  elburgo:   {tz:2, bifila:true,  title:'El Burgo'},
+  fayon:     {tz:2, bifila:true,  title:'Fayón'},
+  paramo:    {tz:2, bifila:true,  title:'Páramo'},
+  tunez:     {tz:1, bifila:true,  title:'Túnez'},
+  bagnarelli:{tz:2, bifila:false, title:'Bagnarelli'}
+};
 async function loadRealPlant(name){
   const note=$('plantnote');
   try{
     const r=await fetch(name+'_layout.json',{cache:'no-store'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();
+    const meta=REALMETA[name]||{tz:2,bifila:true,title:name};
     const byN={};
     for(const t of j.trackers){const k=t.ncu==null?1:t.ncu;(byN[k]=byN[k]||[]).push(t);}
     const ncuIds=Object.keys(byN).map(Number).sort((a,b)=>a-b);
     const cents=ncuIds.map(k=>{const a=byN[k];
       return {id:k,x:a.reduce((s,t)=>s+t.x,0)/a.length,n:a.reduce((s,t)=>s+t.n,0)/a.length};});
     const xs=cents.map(c=>c.x);
-    PLANT_REAL={name:name,title:name==='ayora'?'Ayora':'San José',data:j,byN:byN,
+    const rots=[...new Set(j.trackers.map(t=>t.rot||0))];
+    const rot=(rots.length===1)?rots[0]:0;             // eje común de la planta (Bagnarelli 23,7°)
+    PLANT_REAL={name:name,title:meta.title,data:j,byN:byN,bifila:meta.bifila,rot:rot,
                 ncuIds:ncuIds,cents:cents,x0:Math.min(...xs),x1:Math.max(...xs)};
     if(j.clat!=null){$('lat').value=j.clat;$('lon').value=j.clon;}
-    $('tz').value=name==='sanjose'?-5:2;              // Arequipa · España
-    $('zonalOn').checked=true;
-    $('plantinfo').innerHTML='<b>'+PLANT_REAL.title+'</b> · '+j.trackers.length+' trackers · '+
-      ncuIds.length+' NCUs';
+    $('tz').value=meta.tz;
+    $('axaz').value=rot;                               // la física sigue el eje real
+    if(ncuIds.length>1)$('zonalOn').checked=true;
+    $('plantinfo').innerHTML='<b>'+meta.title+'</b> · '+j.trackers.length+' uds · '+
+      ncuIds.length+' NCU'+(ncuIds.length>1?'s':'')+' · '+(meta.bifila?'bifila':'monofila')+
+      (rot?' · eje '+rot+'°':'');
     note.style.display='none';
     BUILT.key='';
     recompute();
@@ -1593,9 +1619,10 @@ async function loadRealPlant(name){
       'El fetch necesita servirse por http (GitHub Pages); abriendo el fichero en local (file://) el navegador lo bloquea.';
   }
 }
-$('ayorabtn').onclick=()=>loadRealPlant('ayora');
-$('sjbtn').onclick=()=>loadRealPlant('sanjose');
-$('synbtn').onclick=()=>{PLANT_REAL=null;$('plantinfo').innerHTML='';$('plantnote').style.display='none';BUILT.key='';recompute();};
+$('realplant').onchange=function(){
+  if(!this.value){PLANT_REAL=null;$('plantinfo').innerHTML='';$('plantnote').style.display='none';BUILT.key='';recompute();return;}
+  loadRealPlant(this.value);
+};
 function drawZonalTab(){
   if(!ZR){$('zonaltab').innerHTML='';return;}
   const zc=zonalCfg(),d=cfgDiffuse(),o=cfgDay();
@@ -2282,18 +2309,27 @@ function buildReal3D(zc,reframe){
   const ncuIdx={};R.ncuIds.forEach((id,i)=>ncuIdx[id]=i);
   const isShort=t=>/medio|corto/i.test((t.t||'')+' '+(t.tp||''));
   // BIFILA (como terreno.html): cada entrada del layout es una UNIDAD de dos
-  // filas a ±filaZ — viga motora (oeste: TCU, seccionador) + viga gemela,
+  // filas a ±filaZ ⊥ al eje — viga motora (oeste: TCU, seccionador) + gemela,
   // unidas por el eje de transmisión. Ayora: 754 unidades = 1.508 filas.
+  // MONOFILA (Bagnarelli): una fila por unidad, sin transmisión. Con eje
+  // girado (rot ≠ 0) los offsets giran con él y el modelo lleva su yaw.
   const filaZ=(J.mesa&&J.mesa.filaZ)||3;
+  const rotR=(R.rot||0)*RAD, cRo=Math.cos(rotR), sRo=Math.sin(rotR);
+  const mkRow=(t,off,z)=>({px:t.n+off*(-sRo),pz:t.x+off*cRo,z:z});
   const bySize={largo:{all:[],west:[]},medio:{all:[],west:[]}};
   T.forEach(t=>{
     const z=ncuIdx[t.ncu==null?1:t.ncu]||0, g=bySize[isShort(t)?'medio':'largo'];
-    const w={px:t.n,pz:t.x-filaZ,z:z}, e={px:t.n,pz:t.x+filaZ,z:z};
-    g.all.push(w,e); g.west.push(w);
+    if(R.bifila){
+      const w=mkRow(t,-filaZ,z), e=mkRow(t,filaZ,z);
+      g.all.push(w,e); g.west.push(w);
+    }else{
+      const u=mkRow(t,0,z); g.all.push(u); g.west.push(u);
+    }
   });
   const SKIP={antena:1,antenatip:1,tcuchapa:1};
   const westOnly=k=>/^(tcu|secc)/.test(k);              // TCU y seccionador: solo la viga motora
-  TD.real={groups:[],mesaGroups:[],cols:[],cx:cx,cz:cz,L:L,nZones:R.ncuIds.length};
+  TD.real={groups:[],mesaGroups:[],cols:[],cx:cx,cz:cz,L:L,nZones:R.ncuIds.length,
+           ry:rotR?new THREE.Matrix4().makeRotationY(-rotR):null};
   const postGeo=new THREE.CylinderGeometry(0.08,0.08,2.0,6);
   const postM2=new THREE.MeshLambertMaterial({color:0x8a949c});
   for(const size of ['largo','medio']){
@@ -2316,7 +2352,8 @@ function buildReal3D(zc,reframe){
       if(p.key==='mesa')TD.real.mesaGroups.push(g);
       if(!p.spin){                                       // estáticas: se escriben UNA vez
         rows.forEach((t,i)=>{for(let j=0;j<nL;j++){
-          _m4.copy(p.locals[j]);
+          if(TD.real.ry)_m4.multiplyMatrices(TD.real.ry,p.locals[j]);
+          else _m4.copy(p.locals[j]);
           _m4.elements[12]+=t.px;_m4.elements[13]+=2.0;_m4.elements[14]+=t.pz;
           im.setMatrixAt(i*nL+j,_m4);
         }});
@@ -2327,16 +2364,23 @@ function buildReal3D(zc,reframe){
     const nP=size==='largo'?9:5, span=size==='largo'?64.7:32.6;
     const imP=new THREE.InstancedMesh(postGeo,postM2,B.all.length*nP);
     B.all.forEach((t,i)=>{for(let k=0;k<nP;k++){
-      _m4.makeTranslation(t.px-span/2+(k+0.5)*span/nP,1.0,t.pz);
+      const a=-span/2+(k+0.5)*span/nP;                  // offset AXIAL (gira con el eje)
+      _m4.makeTranslation(t.px+a*cRo,1.0,t.pz+a*sRo);
       imP.setMatrixAt(i*nP+k,_m4);
     }});
     imP.frustumCulled=false;imP.castShadow=true;world.add(imP);
   }
-  // eje de transmisión de cada unidad bifila (Ø 60 mm, motora→gemela)
-  const gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ-0.5,8);gSh.rotateX(Math.PI/2);
-  const imSh=new THREE.InstancedMesh(gSh,new THREE.MeshLambertMaterial({color:0x9aa4ad}),T.length);
-  T.forEach((t,i)=>{_m4.makeTranslation(t.n,1.78,t.x);imSh.setMatrixAt(i,_m4);});
-  imSh.frustumCulled=false;world.add(imSh);
+  // eje de transmisión de cada unidad BIFILA (Ø 60 mm, motora→gemela)
+  if(R.bifila){
+    const gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ-0.5,8);gSh.rotateX(Math.PI/2);
+    const imSh=new THREE.InstancedMesh(gSh,new THREE.MeshLambertMaterial({color:0x9aa4ad}),T.length);
+    T.forEach((t,i)=>{
+      if(TD.real.ry)_m4.copy(TD.real.ry);else _m4.identity();
+      _m4.setPosition(t.n,1.78,t.x);
+      imSh.setMatrixAt(i,_m4);
+    });
+    imSh.frustumCulled=false;world.add(imSh);
+  }
 
   // marcadores + etiquetas de NCU (las etiquetas llevan el estado vivo)
   TD.zones=[];
@@ -2393,7 +2437,11 @@ function writeRealInstances(thByZone,flagByZone,sigByZone){
     if(!g.spin)continue;
     // precomputa Rx(θ_z)·local (nZ×nL matrices) y luego solo copia + traslada
     const cache=[];
-    for(let z=0;z<nZ;z++){const row=[];for(let j=0;j<g.nL;j++){row.push(new THREE.Matrix4().multiplyMatrices(rx[z],g.locals[j]));}cache.push(row);}
+    for(let z=0;z<nZ;z++){const row=[];for(let j=0;j<g.nL;j++){
+      const m=new THREE.Matrix4().multiplyMatrices(rx[z],g.locals[j]);
+      if(TD.real.ry)m.premultiply(TD.real.ry);         // el yaw del eje girado (Bagnarelli 23,7°)
+      row.push(m);
+    }cache.push(row);}
     const trk=g.rows,nL=g.nL,im=g.im,isMesa=g.key==='mesa';
     for(let i=0;i<trk.length;i++){
       const t=trk[i],row=cache[t.z];
