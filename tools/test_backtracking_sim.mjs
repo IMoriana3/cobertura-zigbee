@@ -186,6 +186,13 @@ t('v1.25: cuerda ANALÍTICA en el contador (sin MU) — la auditoría midió +0,
     throw new Error('la batería perdió el oráculo de podas');
 });
 
+t('v1.26.1: existe el GATE de pre-release con sus 5 pasos (auditoría, punto 6)', () => {
+  const gp = path.join(ROOT, 'tools', 'release_gate.mjs');
+  if (!fs.existsSync(gp)) throw new Error('sin tools/release_gate.mjs');
+  const g = fs.readFileSync(gp, 'utf-8');
+  for (const paso of ['SINTAXIS', 'BATERÍA', 'SMOKE', 'INVARIANTES', 'VISUAL', 'PACTO DEL ROJO'])
+    if (!g.includes(paso)) throw new Error('el gate perdió el paso ' + paso);
+});
 t('v1.26: terreno a TODA elevación (el gate de 25° costaba −0,34% anual medido)', () => {
   // punto 3 de la auditoría: umbrales con dato, no con fe — podas 0,0000%,
   // reparación <40° 0,0000%, marcha 4 m ≤0,03% (declarado), y el único
