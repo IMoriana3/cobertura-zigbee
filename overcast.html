@@ -122,12 +122,17 @@
       <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
       <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
     </div>
-    <div class="f"><label>Resolución temporal</label>
-      <select id="dt">
-        <option value="5">5 min</option>
-        <option value="10" selected>10 min (la del core legacy)</option>
-        <option value="15">15 min</option>
-      </select></div>
+    <div class="two">
+      <div class="f"><label>Resolución temporal</label>
+        <select id="dt">
+          <option value="5">5 min</option>
+          <option value="10" selected>10 min (la del core legacy)</option>
+          <option value="15">15 min</option>
+        </select></div>
+      <div class="f"><label>Stow nocturno ° (+ = este)</label>
+        <input id="stow" type="number" step="1" min="-55" max="55" value="5"
+          title="Los trackers DUERMEN a 5° hacia el ESTE (dato de proyecto). Convención del core/pvlib con eje a 0°: este = POSITIVO — en la TCU de campo la misma posición se escribe −5° (su signo va al revés)."></div>
+    </div>
     <div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
       schema 2.1.0): cambiar la resolución NO mueve los bordes de conmutación — hay un check de la QA
       que lo exige (5/10/15 min, mismos instantes físicos ±1 paso grueso).</div>
@@ -333,8 +338,24 @@ const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* Canónicos del core (tracker.py, CANONICAL_*): si el core los cambia, aquí
    se ve — el test de Node compara estos defaults contra los inputs. */
+/* nightStowDeg: los trackers DUERMEN a 5° hacia el ESTE (dato de proyecto,
+   usuario 2026-08). En la convención del core/pvlib con eje a 0° el este es
+   POSITIVO (compute_poa_perez: θ≥0 → az 90), así que aquí es +5; en la TCU
+   de campo la misma posición se escribe −5° (su signo va al revés). El
+   CANONICAL_NIGHT_STOW_DEG del core aún dice 0 — cuando el core adopte el
+   dato de proyecto, este default debe seguirle. */
 const CANON={pitch:6.00, cw:2.382, gcr:0.397, maxAngle:55, slewDegS:0.17,
-             deadbandDeg:1.0, nightStowDeg:0, axisAz:0, axisTilt:0};
+             deadbandDeg:1.0, nightStowDeg:5, axisAz:0, axisTilt:0};
+/* velocidad del actuador (Sunner: 0,17 °/s) — la consigna no teletransporta,
+   ni en el lazo (applyControlLoop) ni en la ESCENA (la pala del 3D se mueve
+   a esta velocidad, escalada al tiempo simulado). Misma pieza que en
+   backtracking.html. */
+const TRACKER_SLEW=0.17;                              // °/s (spec del actuador)
+function slewLimit1(prev,cmd,dtSec,rate){
+  const r=(rate==null?TRACKER_SLEW:rate)*dtSec, d=cmd-prev;
+  if(Math.abs(d)<=r)return cmd;
+  return prev+(d>0?r:-r);
+}
 /* DiffuseConfig del core, mismos nombres y defaults */
 const DCFG_DEFAULT={ghiMin:50, flatEnterRatio:1.02, limitedHoldRatio:1.0,
                     alphas:[0,0.25,0.5,0.75,1],
@@ -534,15 +555,16 @@ function buildDay(o){
   }
   return {n:n,dtMin:o.dtMin,tmin:tmin,zen:zen,az:az,clear:clear,irr:irr,ghi:ghi,
           doy:doyOf(o.dateStr),albedo:o.albedo,axisAz:o.axisAz,axisTilt:CANON.axisTilt,
-          maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc};
+          maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc,
+          nightStow:o.nightStow!=null?o.nightStow:CANON.nightStowDeg};
 }
-/* get_baseline_theta: singleaxis + backtracking, noche NaN→night_stow (0) */
+/* get_baseline_theta: singleaxis + backtracking, noche NaN→stow (5° al este) */
 function thetaBaselineDay(day){
   const th=[];
   for(let i=0;i<day.n;i++){
     const v=singleaxis(day.zen[i],day.az[i],{axisTilt:day.axisTilt,axisAz:day.axisAz,
       maxAngle:day.maxAngle,backtrack:true,gcr:day.gcr,crossAxisTilt:0});
-    th.push(isFinite(v)?v:CANON.nightStowDeg);
+    th.push(isFinite(v)?v:day.nightStow);
   }
   return th;
 }
@@ -741,11 +763,17 @@ function runPhysicsQA(){
     const g=solarPos(Date.UTC(2026,5,21,12,2,0),0,0);
     A(Math.abs(g.elev-(90-23.44))<0.5,'elev '+g.elev.toFixed(2));
   });
-  t('singleaxis: noche (zen>90) devuelve NaN y la baseline lo hace stow 0°',()=>{
+  t('singleaxis: noche (zen>90) devuelve NaN y la baseline duerme a 5° al este (dato de proyecto; TCU: −5)',()=>{
     A(Number.isNaN(singleaxis(95,90,{axisTilt:0,axisAz:0,maxAngle:55,backtrack:true,gcr:0.4,crossAxisTilt:0})),'no es NaN');
+    A(CANON.nightStowDeg===5,'stow canónico ≠ 5° este: '+CANON.nightStowDeg);
     const day=canonScenario(10);
     const th=thetaBaselineDay(day);
-    for(let i=0;i<day.n;i++)if(!(day.zen[i]<90))A(th[i]===0,'stow nocturno ≠ 0');
+    for(let i=0;i<day.n;i++)if(!(day.zen[i]<90))A(th[i]===5,'stow nocturno ≠ 5: '+th[i]);
+  });
+  t('slewLimit: respeta 0,17 °/s — clava el objetivo si llega, recorta si no, con el signo del movimiento',()=>{
+    A(slewLimit1(0,30,300)===30,'51°/paso: debía llegar');           // 0.17·300=51
+    A(Math.abs(slewLimit1(0,80,300)-51)<1e-9,'no recorta a 51');
+    A(Math.abs(slewLimit1(10,-80,300)-(-41))<1e-9,'signo del recorte mal');
   });
   t('backtracking reduce: |θ_bt| ≤ |θ_true| en todo el día',()=>{
     const day=canonScenario(10);
@@ -996,7 +1024,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.1.0';
+const VER='v1.2.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1220,6 +1248,7 @@ function cfgDay(){
   return {lat:+$('lat').value,lon:+$('lon').value,dateStr:$('date').value,tz:+$('tz').value,
           altM:+$('alt').value,TL:+$('tl').value,dtMin:+$('dt').value,albedo:+$('albedo').value,
           axisAz:+$('axaz').value,maxAngle:+$('maxang').value,gcr:gcr,cc:CC,
+          nightStow:+$('stow').value,
           om:($('skysource').value==='om'&&OM)?OM:null};
 }
 function cfgDiffuse(){
@@ -1550,7 +1579,7 @@ function init3D(){
     sun.shadow.camera.top=140;sun.shadow.camera.bottom=-140;
     sun.shadow.camera.near=10;sun.shadow.camera.far=800;
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
-      new THREE.MeshBasicMaterial({color:0xfbbd23}));
+      new THREE.MeshBasicMaterial({color:0xfbbd23,transparent:true}));
     scene3.add(hemi,sun,sun.target,sunMesh);
     const hint=document.createElement('div');hint.className='hint';
     hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · +X = norte (eje del tubo)';
@@ -1653,16 +1682,30 @@ function update3D(){
                       TD.cz+dist*Math.sin(az*RAD)*Math.cos(el*RAD));
   TD.sun.target.position.set(TD.cx,0,TD.cz);
   TD.sunMesh.position.copy(TD.sun.position);
-  TD.sunMesh.visible=el>0;
-  TD.sun.intensity=el>0?0.06+1.35*Math.min(1,irr.dni/900):0.02;
-  // el hemisferio ES la difusa: con overcast la escena queda lechosa y sin sombras duras
-  TD.hemi.intensity=0.25+1.5*Math.min(1,irr.dhi/300);
-  const dayness=Math.max(0,Math.min(1,el/50)),ccMean=CC[bin];
-  const mixc=(a,b,t)=>a+(b-a)*t;
-  TD.scene.background.setRGB(
-    mixc(0.063,mixc(0.29,0.55,1-ccMean*0.75),dayness)/1,
-    mixc(0.09,mixc(0.48,0.60,1-ccMean*0.70),dayness)/1,
-    mixc(0.125,mixc(0.75,0.66,1-ccMean*0.60),dayness)/1);
+  const ccMean=CC[bin];
+  // CIELO como en backtracking.html (luz real: el sol pierde altura ⇒ pierde
+  // fuerza y se va al rojo; fondo noche → alba rojiza → azul de día)…
+  const up=Math.min(1,Math.max(0,el/35));
+  if(el>0){
+    const warm=Math.max(0,Math.min(1,(12-el)/12));
+    TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
+    // …con lo que este simulador añade: las NUBES. El sol va con el DNI del
+    // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
+    TD.sun.intensity=(1.45-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
+    TD.hemi.intensity=0.35+0.15*warm+1.35*Math.min(1,irr.dhi/300);
+    let r0=0.07+0.10*up+0.22*warm*(1-up),
+        g0=0.11+0.13*up+0.04*warm*(1-up),
+        b0=0.20+0.20*up-0.04*warm*(1-up);
+    // …y el fondo se agrisa hacia la tapa lechosa del overcast
+    const grey=(0.30*r0+0.50*g0+0.20*b0)*1.9+0.10, f=0.8*ccMean;
+    TD.scene.background.setRGB(r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f);
+    TD.sunMesh.visible=true;
+    TD.sunMesh.material.opacity=1-0.85*ccMean;      // el disco, velado por las nubes
+  }else{
+    TD.sun.intensity=0.02;TD.sunMesh.visible=false;
+    TD.hemi.intensity=0.12;
+    TD.scene.background.setRGB(0.043,0.055,0.08);   // la noche de backtracking.html
+  }
   for(let z=0;z<TD.zones.length;z++){
     const Z=TD.zones[z];
     let th,fl,ccz;
@@ -1671,7 +1714,10 @@ function update3D(){
     }else{
       const arr=r.exec||r.theta;th=arr[i];fl=r.flag[i];ccz=ccMean;
     }
-    for(const s of Z.spins)s.rotation.x=th*RAD;
+    // la pala NO teletransporta: aquí solo se fija la CONSIGNA; loop3D la
+    // persigue a la velocidad real del actuador (0,17 °/s en tiempo simulado)
+    Z.thTarget=th;
+    if(Z.thDisp==null){Z.thDisp=th;for(const s of Z.spins)s.rotation.x=th*RAD;}
     Z.cloudMat.opacity=0.92*ccz;
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+th.toFixed(0)+'°'+(fl?' · FLAT':''),
              fl?'#a78bfa':'#9bb0c6');
@@ -1688,7 +1734,18 @@ function loop3D(){
     TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
   }
   const t=performance.now();
-  for(const Z of TD.zones)Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
+  const fdt=TD.lastT?Math.min(0.1,(t-TD.lastT)/1000):0.016; TD.lastT=t;
+  // la pala persigue la consigna a 0,17 °/s en TIEMPO SIMULADO: en ▶ va al
+  // ritmo de la animación; arrastrando el reloj, al equivalente de ×1
+  const simRate=(playing?+$('speed').value:60)*60;    // s simulados por s real
+  for(const Z of TD.zones){
+    Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
+    if(Z.thTarget==null||Z.thDisp==null)continue;
+    if(Z.thDisp!==Z.thTarget){
+      Z.thDisp=slewLimit1(Z.thDisp,Z.thTarget,fdt*simRate);
+      for(const s of Z.spins)s.rotation.x=Z.thDisp*RAD;
+    }
+  }
   TD.controls.update();
   TD.renderer.render(TD.scene,TD.camera);
 }
@@ -1794,7 +1851,7 @@ $('qabtn').onclick=()=>{
 /* ── wiring ── */
 ['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','axaz','dt',
  'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew',
- 'nncu','crossmin'].forEach(id=>{
+ 'nncu','crossmin','stow'].forEach(id=>{
   $(id).addEventListener('change',recompute);
 });
 $('loopOn').addEventListener('change',recompute);
