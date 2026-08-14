@@ -1546,7 +1546,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.10.0';
+const VER='v1.10.1';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2393,7 +2393,9 @@ function update3D(){
       for(const ov of row.ovls){
         ov.m.visible=show;
         if(!show)continue;
-        const fr=Math.max(sFrac,0.03);
+        // anchura PROPORCIONAL a la fracción real (el mínimo del 3% hacía que
+        // un 0,3% pintara casi como un 3% y parecía más sombra de la que hay)
+        const fr=Math.max(sFrac,0.008);
         if(ov.ax==='model'){ov.m.scale.y=fr;ov.m.position.z=sign*ov.half*(1-fr);}
         else{ov.m.scale.x=fr;ov.m.position.x=sign*ov.half*(1-fr);}
       }
