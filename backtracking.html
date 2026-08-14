@@ -49,6 +49,12 @@
   .ro .v small{font-size:.72rem;color:var(--tx2);font-weight:400}
   .timerow{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
   .timerow input[type=range]{flex:1;min-width:160px;accent-color:var(--accent)}
+  /* el slider de hora se pinta por tramos (noche · día · BT) desde la física */
+  #hour{-webkit-appearance:none;appearance:none;height:12px;border-radius:6px;border:1px solid var(--line2);background:#2a3a50;outline:none}
+  #hour::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:20px;border-radius:4px;background:var(--tx);border:2px solid var(--accent);cursor:pointer;box-shadow:0 0 4px #000a;margin-top:-5px}
+  #hour::-moz-range-thumb{width:10px;height:18px;border-radius:4px;background:var(--tx);border:2px solid var(--accent);cursor:pointer}
+  #hour::-moz-range-track{background:transparent}
+  #btflag{font-family:var(--mono);font-size:.64rem;letter-spacing:.09em;font-weight:700;color:#12100a;background:var(--warn);border-radius:6px;padding:2px 7px;cursor:help;white-space:nowrap}
   .timerow .t{font-family:var(--mono);font-size:.95rem;color:var(--accent);min-width:52px;text-align:right}
   .pols{display:flex;flex-direction:column;gap:6px}
   .pol{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer}
@@ -238,8 +244,9 @@
         <option value="150">×2,5</option>
         <option value="360">×6</option>
       </select>
-      <input type="range" id="hour" min="0" max="1439" step="5" value="720">
+      <input type="range" id="hour" min="0" max="1439" step="5" value="720" title="Los tramos ÁMBAR son las horas de BACKTRACKING de la política de la escena (consigna fuera de la posición astronómica >0,5°); oscuro = noche">
       <span class="t" id="hourlbl">12:00</span>
+      <span id="btflag" style="display:none" title="BACKTRACKING ACTIVO: la consigna de la política de la escena está fuera de la posición astronómica (>0,5° en alguna fila, con la misma referencia limitada a la velocidad del tracker). Las horas ámbar del slider son todas las horas de BT del día.">BT ON</span>
       <select id="rowsel" class="btn small" title="Fila del HUD y de las curvas"></select>
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
@@ -1765,7 +1772,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.16.0';
+const VER='v1.17.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2008,7 +2015,15 @@ function computeDay(){
     }
     pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,f:fArr};
   }
-  DAY={c:c,T:T,doy:doy,times:times,sun:sun,irr:irr,pol:pol};
+  // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
+  // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
+  // BT en la política astro, y en las demás marca exactamente las horas de BT
+  const astroAng=new Array(nT); let prevA=null;
+  for(let t2=0;t2<nT;t2++){
+    const limA=slewLimit(prevA,anglesAstro(sun[t2].zen,sun[t2].az,T),STEP_MIN*60);
+    prevA=limA; astroAng[t2]=limA;
+  }
+  DAY={c:c,T:T,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
   return DAY;
 }
 function dayKpis(key){
@@ -2273,7 +2288,7 @@ function init3D(){
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
     sun.castShadow=true;sun.shadow.mapSize.width=4096;sun.shadow.mapSize.height=4096;
-    sun.shadow.bias=-2e-4;
+    sun.shadow.bias=-2e-4;sun.shadow.normalBias=0.3;
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
       new THREE.MeshBasicMaterial({color:0xfbbd23}));
     scene3.add(hemi,sun,sun.target,sunMesh);
@@ -2695,8 +2710,18 @@ function update3D(){
     // vista (4096 px sobre 4 km daban texels de 2 m: la sierra) y sigue a la
     // cámara — lejos de la vista el shadow-map no pinta, y no importa
     TD.sun.target.position.copy(TD.controls.target);
+    // frustum ANISÓTROPO: con sol rasante cada texel del mapa se proyecta
+    // 1/sin(elev) por el suelo — con el cuadrado fijo de 140 m, a 2° de
+    // elevación el texel medía ~2 m: la SIERRA, y la sombra avanzaba a saltos
+    // (clavada hasta cruzar un texel). El alto del frustum se ciñe a lo que la
+    // escena ocupa vista desde el sol (patch·sin(el) + alturas·cos(el)) y el
+    // texel proyectado vuelve a centímetros a cualquier hora.
     const sc2=TD.sun.shadow.camera, R2=140;
-    sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
+    const vy=Math.max(20,R2*Math.sin(el)+15*Math.cos(el));
+    sc2.left=-R2;sc2.right=R2;sc2.top=vy;sc2.bottom=-vy;
+    const dLT=TD.sun.position.distanceTo(TD.sun.target.position);
+    sc2.near=Math.max(1,dLT-450);sc2.far=dLT+450;
+    sc2.updateProjectionMatrix();
     const lmode=$('light3d')?$('light3d').value:'real';
     if(lmode==='tope'){
       // luz A TOPE: plana y brillante — para INSPECCIONAR sombras al alba/ocaso
@@ -2710,12 +2735,15 @@ function update3D(){
       TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
       TD.sun.intensity=1.45-0.25*warm;
       if(TD.hemi)TD.hemi.intensity=0.55+0.15*warm;
-      TD.scene.background.setRGB(0.07+0.10*up+0.22*warm*(1-up),0.11+0.13*up+0.04*warm*(1-up),0.20+0.20*up-0.04*warm*(1-up));
+      // el CIELO vira a rojizo con el sol bajo, como en los 3D de las plantas
+      TD.scene.background.setRGB(0.07+0.10*up+0.38*warm*(1-up),0.11+0.13*up+0.07*warm*(1-up),0.20+0.20*up-0.08*warm*(1-up));
     }
     TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
   }else{
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
-    TD.scene.background.setRGB(0.043,0.055,0.08);
+    // crepúsculo: el rescoldo rojizo se apaga entre 0 y −8° de elevación
+    const tw=Math.max(0,(g.elev+8)/8);
+    TD.scene.background.setRGB(0.043+0.20*tw,0.055+0.045*tw,0.08+0.02*tw);
   }
 }
 /* RAYO CRÍTICO en el MARCO DE LA FÍSICA: criticalRayPair vive junto a
@@ -3180,6 +3208,40 @@ $('qabtn').onclick=()=>{
 
 /* ── wiring ── */
 function timeIndex(){return Math.min(DAY.times.length-1,Math.floor((+$('hour').value)/STEP_MIN));}
+/* ── HORAS DE BT: el slider se pinta por tramos (noche · seguimiento · BT) y
+   el aviso «BT ON» se enciende cuando la política de la ESCENA está fuera de
+   la posición astronómica — la misma referencia (limitada a slew) de computeDay ── */
+function btActiveAt(t){
+  if(!DAY||!DAY.astroAng)return false;
+  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  if(!p||DAY.sun[t].elev<=0)return false;
+  const a=p.ang[t], ref=DAY.astroAng[t];
+  for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>0.5)return true;
+  return false;
+}
+function paintHourTrack(){
+  if(!DAY)return;
+  const nT=DAY.times.length, stops=[];
+  const colBT='#fbbd23', colDay='#2a3a50', colNight='#0d1420';
+  const colOf=t=>DAY.sun[t].elev<=0?colNight:(btActiveAt(t)?colBT:colDay);
+  let cur=null,start=0;
+  for(let t=0;t<=nT;t++){
+    const col=t<nT?colOf(t):null;
+    if(col!==cur){
+      if(cur!==null){
+        const a=(start*STEP_MIN/1440*100).toFixed(2), b=(Math.min(t*STEP_MIN,1440)/1440*100).toFixed(2);
+        stops.push(cur+' '+a+'% '+b+'%');
+      }
+      cur=col;start=t;
+    }
+  }
+  $('hour').style.background='linear-gradient(90deg,'+stops.join(',')+')';
+  updateBtUI();
+}
+function updateBtUI(){
+  if(!DAY)return;
+  $('btflag').style.display=btActiveAt(timeIndex())?'inline-block':'none';
+}
 function hhmm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),m=Math.round(min%60);return (h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
 function rebuildSelectors(){
   const n=cfg().nrows;
@@ -3222,6 +3284,7 @@ function recompute(light){
   $('gcr').value=(cfg().cw/cfg().pitch).toFixed(3);
   rebuildSelectors();
   computeDay();
+  paintHourTrack();
   drawScene();drawCurves();fillDayTable();
   if(VIEW3D){build3D();update3D();}
   const slopes=DAY.T.pairs.map(p=>p.slope);
@@ -3238,7 +3301,7 @@ INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   // pitch cambiados a mano también: la banda ya no cuadraría con las cotas)
   if(PLANT_REAL&&['nsl','ntrk','mods','nspreset','nrows','pitch'].includes(id)){PLANT_REAL=null;$('realnote').style.display='none';}
   ensureElev(cfg().nrows);recompute();}));
-$('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();});
+$('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();updateBtUI();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
    su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
@@ -3347,9 +3410,10 @@ function worstDay(){
 }
 $('worstnow').onclick=worstNow;
 $('worstday').onclick=worstDay;
-$('polview').onchange=()=>{drawScene();update3D();};
+$('polview').onchange=()=>{drawScene();update3D();paintHourTrack();};
 $('lbl3d').onchange=()=>update3D();
 $('light3d').onchange=()=>update3D();
+$('ray3d').onchange=()=>update3D();     // sin esto, desmarcar «☀ rayo» no borraba
 let PLAYPOS=0, PLAYTS=0;
 $('play').onclick=()=>{
   playing=!playing;
@@ -3365,7 +3429,7 @@ $('play').onclick=()=>{
       const v=Math.round(PLAYPOS/STEP_MIN)*STEP_MIN;
       if(v!==+$('hour').value){
         $('hour').value=v;$('hourlbl').textContent=hhmm(v);
-        drawScene();drawCurves();update3D();
+        drawScene();drawCurves();update3D();updateBtUI();
       }
       playTimer=requestAnimationFrame(step);
     };
