@@ -343,6 +343,19 @@
           <input id="wover" type="number" step="1" min="0" max="100" value="15" style="width:50%">
         </div></div>
     </div>
+    <div class="f"><label>Sitio de referencia climática</label>
+      <select id="refsite">
+        <option value="">— el emplazamiento configurado arriba —</option>
+        <option value="ebro">Valle del Ebro · Zaragoza (seco continental · difusa BAJA ≈ +0,1 %)</option>
+        <option value="ayora">Ayora · Valencia (mediterráneo interior · difusa baja-media)</option>
+        <option value="cantabrico">Cantábrico · Santander (atlántico · difusa MEDIA ≈ +0,3–0,8 %)</option>
+        <option value="galicia">Galicia · Santiago (atlántico húmedo · difusa media-alta)</option>
+        <option value="uk">Reino Unido · Midlands (nuboso · difusa ALTA ≈ +0,5–1,5 % — cartera Lightsource)</option>
+        <option value="baviera">Alemania · Baviera (centroeuropa · difusa alta)</option>
+        <option value="tunez">Túnez · Gabès (desértico mediterráneo · difusa baja)</option>
+        <option value="arequipa">Arequipa · San José, Perú (altiplano · difusa muy baja)</option>
+        <option value="atacama">Atacama · Calama, Chile (el extremo claro del planeta)</option>
+      </select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn acc" id="year365" title="Descarga los ÚLTIMOS 365 DÍAS medidos (ERA5, Open-Meteo) en el emplazamiento y corre las políticas día a día con la meteo real, a paso de 30 min y con el lazo si está activo. Esto es lo enseñable: 365 días de verdad, no 12 días × mezcla.">⬇ 365 días reales (ERA5)</button>
       <button class="btn" id="yearbtn" title="La aproximación rápida sin red: 12 días representativos × tres cielos sintéticos ponderados por clima">12 días × mezcla</button>
@@ -1188,7 +1201,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.1';
+const VER='v1.6.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2617,6 +2630,28 @@ $('yearbtn').onclick=()=>{
        '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td></tr>';
   }
   $('yeartab').innerHTML=h;
+};
+
+/* ── sitios de referencia climática: el contraste de climas en dos clics ──
+   Escribe lat/lon/altitud/huso en Emplazamiento (mueve también el día del
+   sim) y el «esperado» sale de la literatura del estudio: NREL 2022 dice
+   0,1–0,4 % típico y ~1 % solo en climas de alta fracción difusa. */
+const REFSITES={
+  ebro:     {lat:41.5763,lon:-0.7981, alt:250, tz:2,  nb:'seco continental — el techo físico aquí ronda +0,1 % (NREL: sitios claros)'},
+  ayora:    {lat:39.1182,lon:-1.1599, alt:600, tz:2,  nb:'mediterráneo interior — la casa'},
+  cantabrico:{lat:43.4623,lon:-3.8100,alt:30,  tz:2,  nb:'atlántico — difusa media: espera ≈ +0,3–0,8 % anual'},
+  galicia:  {lat:42.8782,lon:-8.5449, alt:260, tz:2,  nb:'atlántico húmedo — de lo más difuso de Iberia'},
+  uk:       {lat:52.4862,lon:-1.8904, alt:140, tz:1,  nb:'nuboso — la cartera de Lightsource vive AQUÍ: espera ≈ +0,5–1,5 % anual'},
+  baviera:  {lat:48.1374,lon:11.5755, alt:520, tz:2,  nb:'centroeuropa — difusa alta'},
+  tunez:    {lat:33.8685,lon:9.8433,  alt:100, tz:1,  nb:'desértico mediterráneo — planta de la cartera (24021)'},
+  arequipa: {lat:-16.5958,lon:-71.8064,alt:2300,tz:-5,nb:'altiplano — San José: cielo clarísimo, la difusa apenas paga'},
+  atacama:  {lat:-22.4524,lon:-68.9204,alt:2300,tz:-4,nb:'el cielo más claro del planeta: el modo difuso NO es para aquí — y poder decirlo es credibilidad'}
+};
+$('refsite').onchange=function(){
+  const s=REFSITES[this.value]; if(!s)return;
+  $('lat').value=s.lat;$('lon').value=s.lon;$('alt').value=s.alt;$('tz').value=s.tz;
+  $('yearinfo').innerHTML=this.options[this.selectedIndex].text.split('(')[0].trim()+' · '+s.nb;
+  recompute();
 };
 
 /* ── anual con 365 DÍAS MEDIDOS (ERA5): lo enseñable ── */
