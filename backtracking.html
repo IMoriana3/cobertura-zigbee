@@ -1235,7 +1235,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   const horiz=Math.hypot(sv[0],sv[1]);
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
-  const MU=(res&&res.MU)||6, MV=(res&&res.MV)||8;
+  const MV=(res&&res.MV)||8;
   const elec=new Array(nR).fill(0); let elecSum=0,nCol=0;
   // precálculo del denominador por plano (no depende del receptor)
   for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
@@ -1267,24 +1267,46 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       // (aplicarlo al promedio de fila trataba un parche local como banda
       // uniforme en toda la mesa y multiplicaba la pérdida indebidamente)
       const dvSt=(v1-v0)/MV;
+      const cR=Math.cos(thR), s2=-Math.sin(thR);
       for(let j=0;j<MV;j++){
         const v=v0+(v1-v0)*(j+0.5)/MV;
-        let colHit=0;
-        for(let i=0;i<MU;i++){
-          const u=-hw+T.cw*(i+0.5)/MU;
-          const P0=xs[r]+u*Math.cos(thR), P1=v, P2=cot(r,v)-u*Math.sin(thR);
-          N++;
-          for(const pl of cSeg){
-            const t=((pl.C[0]-P0)*pl.nE[0]+(pl.C[1]-P1)*pl.nE[1]+(pl.C[2]-P2)*pl.nE[2])/pl.den;
-            if(t<=1e-6)continue;
-            const H1=P1+t*sv[1];
-            if(H1<pl.w0||H1>pl.w1)continue;
-            const H0=P0+t*sv[0], H2=P2+t*sv[2];
-            const du=(H0-pl.C[0])*pl.uD[0]+(H1-pl.C[1])*pl.uD[1]+(H2-pl.C[2])*pl.uD[2];
-            if(Math.abs(du)<=hw){colHit++;break;}
-          }
+        // CUERDA ANALÍTICA (v1.25): el impacto contra cada plano emisor es
+        // LINEAL en u ⇒ la sombra de la estación es una unión de intervalos
+        // en cerrado, sin discretizar la cuerda. El muestreo MU=6 cuantizaba
+        // la penetración a saltos de 1/6 y sesgaba el POA anual +0,52%
+        // (estudio de convergencia de la auditoría, Ayora 12 días).
+        const zR=cot(r,v);
+        let ivs=null;
+        for(const pl of cSeg){
+          const t0=(pl.C[0]-xs[r])*pl.nE[0]+(pl.C[1]-v)*pl.nE[1]+(pl.C[2]-zR)*pl.nE[2];
+          const tc=cR*pl.nE[0]+s2*pl.nE[2];
+          let lo=-hw, hi=hw, ok=true;
+          const lin=(A,B)=>{                 // A·u ≤ B; A~0 ⇒ no depende de u
+            if(A>1e-12){const x=B/A;if(x<hi)hi=x;}
+            else if(A<-1e-12){const x=B/A;if(x>lo)lo=x;}
+            else if(B<-1e-12)ok=false;
+          };
+          if(pl.den>0)lin(tc,t0-1e-6*pl.den); else lin(-tc,1e-6*pl.den-t0);   // t>0
+          const q=sv[1]/pl.den;                                               // H1∈[w0,w1]
+          lin(q*tc, v+q*t0-pl.w0);
+          lin(-q*tc, pl.w1-v-q*t0);
+          const a0=(xs[r]-pl.C[0])*pl.uD[0]+(v-pl.C[1])*pl.uD[1]+(zR-pl.C[2])*pl.uD[2];
+          const a1=cR*pl.uD[0]+s2*pl.uD[2];
+          const a2=sv[0]*pl.uD[0]+sv[1]*pl.uD[1]+sv[2]*pl.uD[2];
+          const d0=a0+a2*t0/pl.den, dc=a1-a2*tc/pl.den;                       // |du|≤hw
+          lin(dc,hw-d0); lin(-dc,hw+d0);
+          if(ok&&hi-lo>1e-12)(ivs=ivs||[]).push([lo,hi]);
         }
-        let fCol=colHit/MU;
+        let fCol=0;
+        if(ivs){
+          ivs.sort((a,b)=>a[0]-b[0]);
+          let len=0,cl=ivs[0][0],ch=ivs[0][1];
+          for(let k=1;k<ivs.length;k++){
+            if(ivs[k][0]>ch){len+=ch-cl;cl=ivs[k][0];ch=ivs[k][1];}
+            else if(ivs[k][1]>ch)ch=ivs[k][1];
+          }
+          fCol=Math.min(1,(len+ch-cl)/T.cw);
+        }
         // TERRENO: penetración desde el borde BAJO por bisección (2 marchas +
         // 3 refinos) — el borde alto libre ⇒ estación libre por arriba
         if(doTerr&&fCol<1){
@@ -1309,7 +1331,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
             fCol=Math.max(fCol,tf);
           }
         }
-        hit+=fCol*MU;
+        hit+=fCol; N++;
         elecSum+=elecLoss(fCol,T.nBypass); nCol++;
       }
     }
@@ -1970,7 +1992,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.24.0';
+const VER='v1.25.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
