@@ -2902,6 +2902,11 @@ function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_
 // bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
 // Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
 var STOWON=false,WINDK=0,stowLatch=false,_AB=null,_STOWANG=null,_STOWTXT='',_STOWSIDE=0,_STOWSEL='',_dayCalc=false;
+// Velocidad real del actuador, medida en campo. Es la canónica del proyecto
+// (SolarGPT · tracker.CANONICAL_SLEW_RATE_DEG_PER_S) y la misma que usan el gemelo y
+// el estudio de batería; aquí es una constante con nombre y no un número suelto dentro
+// de la función, que es como se quedan atrás.
+var SLEW_DPS=0.17;
 function stowStep(dt){ if(!SEG)return;
   if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;_STOWTXT='';_AB=null;updateSpin(panelAngle(curMin));} return; }
   // Las CUATRO estrategias canónicas (SolarGPT · wind_stow_strategies.py) viven en
@@ -2929,7 +2934,7 @@ function stowStep(dt){ if(!SEG)return;
   _STOWSIDE=r.lado;
   var tgt=r.objetivo;
   if(_STOWANG===null)_STOWANG=ideal;
-  var rate=0.17*dtSim;                                                   // 0,17 °/s en segundos SIMULADOS
+  var rate=SLEW_DPS*dtSim;                                               // °/s en segundos SIMULADOS
   var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
   var llegado=Math.abs(_STOWANG-tgt)<0.2;
   _STOWTXT=r.estado===2?(llegado?'bandera':'abanderando'):(r.estado===1?(llegado?'bandera parcial':'abanderando'):(Math.abs(_STOWANG-ideal)>0.2?'volviendo':''));
