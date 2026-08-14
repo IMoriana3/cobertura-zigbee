@@ -1970,7 +1970,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.23.0';
+const VER='v1.24.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3113,88 +3113,102 @@ function clipPoly(poly,edge){                        // edge [a,b,c]: a·u+b·v 
   return out;
 }
 function drawShadowSilhouette(g,p,tIdx,r,row){
+  /* SILUETA con la MISMA geometría por tramos que el contador: cota del eje
+     por tramo (segZ real; presets: cadena de pendientes + tilt), plano
+     receptor POR MESA y emisoras por tramo — antes el plano único por fila
+     desplazaba el rojo respecto al gris del shadow-map en terreno curvado
+     (reportado: «sombra gris y roja en los mismos módulos»). */
   const T=DAY.T, ang=p.ang[tIdx], nR=TD.rows.length;
   const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return;
-  const hw=T.cw/2;
-  // MULTI-EMISORA: la sombra rasante cruza varias filas — se proyectan TODAS
-  // las emisoras del lado del sol dentro del alcance (Δx por pitch de pareja,
-  // Δz por la pendiente medida), no solo la vecina
+  const hw=T.cw/2, PRr=T.real;
   const xs=[0], zch=[0];
   for(let i=0;i<T.pairs.length;i++){
     xs.push(xs[i]+T.pairs[i].pitch);
     zch.push(zch[i]-T.pairs[i].pitch*Math.tan(T.pairs[i].slope*RAD));
   }
-  const tR=(T.rowTilt?T.rowTilt[r]:0)*RAD, thR=ang[r]*RAD;
-  const A0=[0,0,0];
+  const cot=(rw,v)=>{
+    if(PRr&&PRr.segZ&&PRr.segZ[rw]){
+      const sg2=PRr.segs[rw], zz=PRr.segZ[rw];
+      let bi=-1,bd=Infinity;
+      for(let k=0;k<sg2.length;k++){
+        const lo=Math.min(sg2[k][0],sg2[k][1]), hi=Math.max(sg2[k][0],sg2[k][1]);
+        const d2=v<lo?lo-v:(v>hi?v-hi:0);
+        if(d2<bd){bd=d2;bi=k;}
+      }
+      const [a3,b3]=sg2[bi], t3=Math.max(0,Math.min(1,(v-a3)/((b3-a3)||1)));
+      return zz[bi][0]+t3*(zz[bi][1]-zz[bi][0]);
+    }
+    return zch[rw]+v*Math.tan(((T.rowTilt?T.rowTilt[rw]:0))*RAD);
+  };
+  const thR=ang[r]*RAD;
   const uH=[Math.cos(thR),0,-Math.sin(thR)];
-  const vH=[0,1,Math.tan(tR)];
-  const nRm=[uH[1]*vH[2]-uH[2]*vH[1],uH[2]*vH[0]-uH[0]*vH[2],uH[0]*vH[1]-uH[1]*vH[0]];
   const dsh=[-sv[0],-sv[1],-sv[2]];                  // la sombra viaja EN CONTRA del sol
-  const denS=nRm[0]*dsh[0]+nRm[1]*dsh[1]+nRm[2]*dsh[2];
-  if(Math.abs(denS)<1e-9)return;
-  const tOf=(P)=>((A0[0]-P[0])*nRm[0]+(A0[1]-P[1])*nRm[1]+(A0[2]-P[2])*nRm[2])/denS;
   const horiz=Math.hypot(sv[0],sv[1]);
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
-  for(let e=0;e<nR&&e<xs.length;e++){
-  if(e===r)continue;
-  const dx=xs[e]-xs[r];
-  if(dx*sgn<=0||Math.abs(dx)>reach)continue;
-  const thE=ang[e]*RAD, tE=(T.rowTilt?T.rowTilt[e]:0)*RAD;
-  const xe=dx, ze=zch[e]-zch[r];
-  const segE=(T.segs&&T.segs[e])?T.segs[e]:[[-30,30]];
-  for(const sg of segE){
-    const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
-    // el cuadrilátero EMISOR se recorta ANTES al semiespacio que de verdad
-    // proyecta sobre el plano receptor (t>0): con sol rasante una esquina
-    // suele quedar del lado del sol y antes se descartaba la silueta ENTERA —
-    // mesas claramente sombreadas se quedaban sin rojo
-    const quad=[[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
-      [xe+u2*Math.cos(thE), v2, ze+v2*Math.tan(tE)-u2*Math.sin(thE)]);
-    const EPS=1e-6, cut=[];
-    for(let i2=0;i2<quad.length;i2++){
-      const A=quad[i2], B=quad[(i2+1)%quad.length];
-      const ta=tOf(A), tb=tOf(B);
-      if(ta>EPS)cut.push(A);
-      if((ta>EPS)!==(tb>EPS)){
-        const s=(EPS-ta)/((tb-ta)||1);
-        cut.push([A[0]+s*(B[0]-A[0]),A[1]+s*(B[1]-A[1]),A[2]+s*(B[2]-A[2])]);
+  const segsOf=rw=>(T.segs&&T.segs[rw])?T.segs[rw]:[[-30,30]];
+  for(const ov of row.ovls){
+    if(!ov.g)continue;
+    const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;            // rango axial REAL de la mesa
+    // plano RECEPTOR de ESTA mesa: cuerda girada + pendiente axial del tramo
+    const zA=cot(r,vA), zB=cot(r,vB);
+    const sR=(zB-zA)/((vB-vA)||1);
+    const A0=[xs[r],(vA+vB)/2,(zA+zB)/2];
+    const vHp=[0,1,sR];
+    const nRm=[uH[1]*vHp[2]-uH[2]*vHp[1],uH[2]*vHp[0]-uH[0]*vHp[2],uH[0]*vHp[1]-uH[1]*vHp[0]];
+    const denS=nRm[0]*dsh[0]+nRm[1]*dsh[1]+nRm[2]*dsh[2];
+    if(Math.abs(denS)<1e-9)continue;
+    const tOf=(P)=>((A0[0]-P[0])*nRm[0]+(A0[1]-P[1])*nRm[1]+(A0[2]-P[2])*nRm[2])/denS;
+    for(let e=0;e<nR&&e<xs.length;e++){
+      if(e===r)continue;
+      const dx=xs[e]-xs[r];
+      if(dx*sgn<=0||Math.abs(dx)>reach)continue;
+      const thE=ang[e]*RAD;
+      for(const sg of segsOf(e)){
+        const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
+        // cuadrilátero EMISOR con cotas por tramo, recortado ANTES al
+        // semiespacio que proyecta (con sol rasante una esquina suele quedar
+        // del lado del sol y sin recorte se perdía la silueta entera)
+        const quad=[[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
+          [xs[e]+u2*Math.cos(thE), v2, cot(e,v2)-u2*Math.sin(thE)]);
+        const EPS=1e-6, cut=[];
+        for(let i2=0;i2<quad.length;i2++){
+          const A=quad[i2], B=quad[(i2+1)%quad.length];
+          const ta=tOf(A), tb=tOf(B);
+          if(ta>EPS)cut.push(A);
+          if((ta>EPS)!==(tb>EPS)){
+            const s2=(EPS-ta)/((tb-ta)||1);
+            cut.push([A[0]+s2*(B[0]-A[0]),A[1]+s2*(B[1]-A[1]),A[2]+s2*(B[2]-A[2])]);
+          }
+        }
+        if(cut.length<3)continue;
+        const corners=cut.map(P=>{
+          const t=Math.max(EPS,tOf(P));
+          const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
+          const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
+          return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], A0[1]+d0[1]];
+        });
+        let poly=corners.slice();
+        for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
+          poly=clipPoly(poly,edge);
+        if(poly.length<3)continue;
+        const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
+        const verts=[];
+        for(let i2=1;i2<poly.length-1;i2++)
+          for(const q of [poly[0],poly[i2],poly[i2+1]]){
+            if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
+            else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
+          }
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+        const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
+        ov.g.add(m);
       }
     }
-    if(cut.length<3)continue;
-    const corners=cut.map(P=>{
-      const t=Math.max(EPS,tOf(P));
-      const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
-      const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
-      return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], d0[1]];
-    });
-    for(const ov of row.ovls){
-      if(!ov.g)continue;
-      let poly=corners.slice();
-      const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;          // rango axial REAL de la mesa
-      for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
-        poly=clipPoly(poly,edge);
-      if(poly.length<3)continue;
-      const zS=(ov.ax==='model')?(2.382/T.cw):1;     // la escala de pala vive en el padre
-      const verts=[];
-      for(let i2=1;i2<poly.length-1;i2++)
-        for(const q of [poly[0],poly[i2],poly[i2+1]]){
-          if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
-          else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
-        }
-      const geo=new THREE.BufferGeometry();
-      geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
-      const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
-      ov.g.add(m);
-    }
-  }
   }
 }
-/* franjas de sombra de TERRENO sobre la pala: vienen del PROPIO contador
-   (penetración por estación desde el borde bajo) — el render no puede
-   contradecir al número porque ES el número */
 function drawTerrainStrips(row,st,thDeg){
   const T=DAY.T, hw=T.cw/2, thR=thDeg*RAD;
   const uEdge=Math.sin(thR)>=0?hw:-hw;
