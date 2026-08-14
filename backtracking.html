@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.21.0';
+const VER='v1.21.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2668,8 +2668,15 @@ function build3D(){
           // espesor) — gris sin rojo. Se adelgaza SOLO aquí (seguidor.js es
           // fuente única compartida): lo gris que quede será sombra real ⇒ rojo
           beam.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.type==='BoxGeometry'){
-            const pr2=o.geometry.parameters;
-            if(pr2&&pr2.width>1&&pr2.height<=0.061)o.scale.y=0.25;
+            // el eje FINO se detecta por bounding box (asumir que era el «y»
+            // local aplastó la CUERDA en algunos meshes — reportado: palillos)
+            o.geometry.computeBoundingBox();
+            const bb2=o.geometry.boundingBox;
+            const ex=bb2.max.x-bb2.min.x, ey=bb2.max.y-bb2.min.y, ez=bb2.max.z-bb2.min.z;
+            const mx2=Math.max(ex,ey,ez), mn2=Math.min(ex,ey,ez);
+            if(mx2>1&&mn2<=0.061){
+              if(mn2===ex)o.scale.x*=0.25; else if(mn2===ey)o.scale.y*=0.25; else o.scale.z*=0.25;
+            }
           }});
           const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
