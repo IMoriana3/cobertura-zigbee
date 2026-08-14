@@ -1546,7 +1546,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.10.1';
+const VER='v1.11.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2114,7 +2114,7 @@ function build3D(){
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
   // banda ROJA de sombra CALCULADA: pinta sobre la pala la fracción sombreada
   // exacta (shadeRows) por el borde por el que entra — la física, no el shadow-map
-  const ovM=new THREE.MeshBasicMaterial({color:0xe34948,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+  const ovM=new THREE.MeshBasicMaterial({color:0xe34948});   // lomo OPACO con volumen: la lámina translúcida coplanaria aliasaba en sierra
   // DRAPEADO (como los render 3D de la casa): el tramo mantiene el tilt que
   // manda el accionamiento pero se ELEVA hasta volar sobre el terreno en todo
   // su largo — los postes se alargan, que es lo que hace el montaje real. La
@@ -2172,7 +2172,7 @@ function build3D(){
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
-          const ov=new THREE.Mesh(new THREE.PlaneGeometry(len,2.382),ovM);
+          const ov=new THREE.Mesh(new THREE.BoxGeometry(len,2.382,0.10),ovM);
           ov.rotation.x=-Math.PI/2; ov.position.y=0.32; ov.visible=false; ov.renderOrder=3;
           beam.spin.add(ov);
           ovls.push({m:ov,ax:'model',half:2.382/2});
@@ -2187,7 +2187,7 @@ function build3D(){
         panel.position.y=0.10+c.z0;
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
-        const ovb=new THREE.Mesh(new THREE.PlaneGeometry(c.cw,len),ovM);
+        const ovb=new THREE.Mesh(new THREE.BoxGeometry(c.cw,len,0.10),ovM);
         ovb.rotation.x=-Math.PI/2; ovb.position.y=0.32+c.z0; ovb.visible=false; ovb.renderOrder=3;
         gRot.add(ovb);
         ovls.push({m:ovb,ax:'box',half:c.cw/2});
@@ -2384,7 +2384,19 @@ function update3D(){
     // banda de sombra CALCULADA sobre la pala: fracción exacta desde el borde emisor
     const sFrac=sh?sh[r]:0;
     if(row.ovls){
-      const show=sFrac>1e-3&&g.elev>0;
+      let show=sFrac>1e-3&&g.elev>0;
+      // true-3D: el contador de sombra es 2.5D y NO ve la deflexión axial que
+      // esta política explota — el árbitro es el residual de tangencia. Si el
+      // residual confirma que NO hay contacto 3D, la banda roja no se pinta.
+      if(show&&key==='true3d'){
+        const ang=p.ang[tIdx];
+        const ps2=trueTrackAngle(g.zen,g.az,DAY.T.rowTilt?DAY.T.rowTilt[r]:0,DAY.c.axaz);
+        const pr2=ps2>=0?r-1:r;                     // la pareja por la que le entra la sombra
+        if(pr2>=0&&pr2<DAY.T.pairs.length){
+          const rmm=tangentResidualPairMm(g.zen,g.az,DAY.T,ang,pr2);
+          if(isFinite(rmm)&&rmm>=-1)show=false;
+        }
+      }
       let sign=1;
       if(show){
         const ps=trueTrackAngle(g.zen,g.az,DAY.T.rowTilt?DAY.T.rowTilt[r]:0,DAY.c.axaz);
@@ -2833,9 +2845,35 @@ function rowInfoHTML(r){
   let wt=0,ws=0;
   for(let k=0;k<DAY.times.length;k++){const v=p.shade[k][r]||0;if(v>ws){ws=v;wt=k;}}
   const tilt=DAY.T.rowTilt?DAY.T.rowTilt[r]:0;
+  // registros del vano (lo que llevaría la TCU): pitch, pendiente transversal
+  // y azimut del vector pendiente (transversal ⊕ longitudinal), estilo Sunner
+  const vano=(pp,lado)=>{
+    if(!pp)return lado+': borde';
+    const gE=Math.tan(pp.slope*RAD)*(lado==='O'?-1:1), gN=Math.tan((pp.axisTilt||0)*RAD);
+    const pend=Math.hypot(gE,gN)*100, azS=((Math.atan2(gE,gN)*DEG)+360)%360;
+    return lado+': '+pp.pitch.toFixed(1)+' m · pend '+pend.toFixed(1)+'% · az '+azS.toFixed(0)+'°';
+  };
+  const g2=DAY.sun[t];
+  // residual geométrico de la fila con sus parejas (el árbitro 3D)
+  let rmm=Infinity;
+  for(const pp of [r-1,r])if(pp>=0&&pp<DAY.T.pairs.length){
+    const v2=tangentResidualPairMm(g2.zen,g2.az,DAY.T,p.ang[t],pp);
+    if(isFinite(v2))rmm=Math.min(rmm,v2);
+  }
+  // ¿la sombra es EVITABLE? — contra el óptimo sin sombra (pairwise acoplado)
+  let evit='';
+  if(sh>1e-3){
+    const shPW=shadeRows(g2.zen,g2.az,DAY.T,driveCoupleSafe(g2.zen,g2.az,DAY.T,anglesPairwise(g2.zen,g2.az,DAY.T),false))[r]||0;
+    evit=shPW<=1e-3?'<br><b style="color:#fbbd23">evitable</b>: pairwise la deja en 0,0%'
+        :'<br><b style="color:#f87272">inevitable</b> a este sol: pairwise también '+(shPW*100).toFixed(1)+'%';
+    if(key==='true3d'&&isFinite(rmm)&&rmm>=-1)evit='<br><b style="color:#36d399">sin contacto 3D</b>: sombra 2.5D del contador (deflexión axial)';
+  }
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+
+    '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
+    '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+
     '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b> · POA '+poa.toFixed(0)+' W/m²'+
+    (isFinite(rmm)?' · residual '+(rmm>=0?'+':'')+rmm.toFixed(0)+' mm':'')+evit+
     (ws>1e-3?'<br>peor de esta fila: '+hhmm(DAY.times[wt])+' ('+(ws*100).toFixed(1)+'%) <button class="btn small" onclick="gotoT('+wt+','+r+')">ir</button>'
             :'<br>sin sombra en todo el día');
 }
