@@ -1205,7 +1205,12 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     const f2=(x-xs[i])/((xs[i+1]-xs[i])||1);
     return (cot(i,v)*(1-f2)+cot(i+1,v)*f2)-HUB;
   };
-  const doTerr=(90-zen)<25;                    // lomas: relevantes con sol bajo (declarado)
+  // TERRENO a TODA elevación (v1.26): el gate «solo sol<25°» costaba −0,34%
+  // anual medido — en Ayora hay vanos al 36% y las lomas muerden hasta ~60°
+  // de sol (decaimiento suave, sin escalón: −2,9 kWh en 25–30°, −0,6 en
+  // 50–55°). La marcha sale barata con sol alto (el rayo supera zSky en
+  // pocos pasos). Paso 4 m + 3 refinos: error medido ≤0,03% anual, declarado.
+  const doTerr=true;
   const terrBlocked=(P0,P1,P2)=>{
     // ¿el rayo hacia el sol se clava en el terreno antes de salir del parque?
     const stepH=4, horizC=Math.hypot(sv[0],sv[1]);
@@ -1992,7 +1997,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.25.0';
+const VER='v1.26.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

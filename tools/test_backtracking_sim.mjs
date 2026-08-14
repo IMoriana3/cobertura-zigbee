@@ -186,6 +186,14 @@ t('v1.25: cuerda ANALÍTICA en el contador (sin MU) — la auditoría midió +0,
     throw new Error('la batería perdió el oráculo de podas');
 });
 
+t('v1.26: terreno a TODA elevación (el gate de 25° costaba −0,34% anual medido)', () => {
+  // punto 3 de la auditoría: umbrales con dato, no con fe — podas 0,0000%,
+  // reparación <40° 0,0000%, marcha 4 m ≤0,03% (declarado), y el único
+  // material (gate de terreno) RETIRADO
+  if (!/const doTerr=true;/.test(html)) throw new Error('el contador aún tiene gate de elevación en el terreno');
+  if (!/TERRENO a TODA elevación/.test(html)) throw new Error('sin la justificación medida del cambio');
+});
+
 /* ── ORÁCULOS independientes del contador (auditoría, punto 5) ──────────────
    Dos niveles, con implementación SEPARADA de la del contador publicado:
 
@@ -206,7 +214,8 @@ t('v1.25: cuerda ANALÍTICA en el contador (sin MU) — la auditoría midió +0,
 
    Ambos replican la física declarada: planos por tramo con cotas reales,
    estaciones axiales MV=8, terreno con marcha de 4 m + bisección de 3
-   refinos con sol < 25°. */
+   refinos, a TODA elevación — el gate de 25° se retiró en v1.26 tras medir
+   que costaba −0,34% anual). */
 function oracleGeom(T, rowAngles) {
   const RAD = Math.PI / 180;
   const nR = T.pairs.length + 1;
@@ -256,7 +265,7 @@ function oracleTerr(G, sv, zen) {
     return (G.cot(i, v) * (1 - f2) + G.cot(i + 1, v) * f2) - HUB;
   };
   const zSky = (G.planes.length ? Math.max(...G.planes.map(p => p.C[2])) : 0) + 4;
-  const doTerr = (90 - zen) < 25;
+  const doTerr = true;
   const blocked = (P0, P1, P2) => {
     const stepH = 4, horizC = Math.hypot(sv[0], sv[1]);
     if (horizC < 1e-6) return false;
