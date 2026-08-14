@@ -244,6 +244,7 @@
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
       <label class="btn small" title="Etiquetas por fila en el 3D: θ, % de sombra calculada y POA de la política de la ESCENA" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="lbl3d"> nº</label>
+      <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
       <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
     </div>
@@ -1545,7 +1546,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.9.0';
+const VER='v1.10.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2421,6 +2422,7 @@ function update3D(){
       }
     }
   });
+  drawCriticalRay(g,p,tIdx);
   const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const cx=TD.cx!=null?TD.cx:(DAY.c.nrows-1)*DAY.c.pitch/2;
   const R=TD.R||Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
@@ -2434,6 +2436,125 @@ function update3D(){
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
     TD.scene.background.setRGB(0.043,0.055,0.08);
   }
+}
+/* RAYO CRÍTICO didáctico: el rayo solar por el borde ALTO del emisor de la
+   fila seleccionada — aterriza en el suelo (margen, verde) o pincha a la
+   vecina (sombra, rojo). En 3D pleno: la deflexión axial va incluida, que es
+   exactamente lo que explota el true-3D. */
+function drawCriticalRay(g,p,tIdx){
+  if(!TD)return;
+  if(TD.rayGrp){TD.scene.remove(TD.rayGrp);disposeGroup(TD.rayGrp);TD.rayGrp=null;}
+  const on=$('ray3d')&&$('ray3d').checked;
+  if(!on||!p||!(g.elev>0))return;
+  const r=+$('rowsel').value||0, T=DAY.T, nR=TD.rows.length;
+  const psz=trueTrackAngle(g.zen,g.az,T.rowTilt?T.rowTilt[r]:0,DAY.c.axaz);
+  const e=psz>=0?r+1:r-1;                       // el emisor: la vecina del lado del sol
+  if(e<0||e>=nR||!TD.rows[r].lbl||!TD.rows[e].lbl)return;
+  const grp=new THREE.Group(); TD.rayGrp=grp; TD.scene.add(grp);
+  // dirección del rayo (del sol hacia la escena), el mismo convenio que TD.sun
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const d=new THREE.Vector3(-Math.sin(azRel)*Math.cos(el),-Math.sin(el),Math.cos(azRel)*Math.cos(el)).normalize();
+  // centros de tubo (desde la posición de la etiqueta: hub·0,62 + 2,6 ⇒ tubo = −2,6+0,76)
+  const Ce=TD.rows[e].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
+  const Cr=TD.rows[r].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
+  const thE=(p.ang[tIdx][e]||0)*RAD, thR=(p.ang[tIdx][r]||0)*RAD, hw=T.cw/2;
+  // borde del emisor cuya sombra mira a la receptora (la punta de la sombra)
+  const sgn=Math.sign(Cr.x-Ce.x)||1;
+  const E1=Ce.clone().add(new THREE.Vector3( Math.cos(thE)*hw,-Math.sin(thE)*hw,0));
+  const E2=Ce.clone().add(new THREE.Vector3(-Math.cos(thE)*hw, Math.sin(thE)*hw,0));
+  const land=(P)=>P.x+((P.y)/(d.y||-1e-9))*0;  // placeholder
+  // elegir el borde cuya proyección horizontal cae más hacia la receptora
+  const proj=(P)=>P.x - d.x*(P.y/ (d.y||-1e-9));
+  const edge=(sgn*(proj(E1))>sgn*(proj(E2)))?E1:E2;
+  // intersección con el PLANO de la pala receptora (normal (sinθ, cosθ, 0))
+  const nrm=new THREE.Vector3(Math.sin(thR),Math.cos(thR),0);
+  const w=new THREE.Vector3(Math.cos(thR),-Math.sin(thR),0);
+  let hit=null, onPanel=false;
+  const denom=nrm.dot(d);
+  if(Math.abs(denom)>1e-9){
+    const t=nrm.dot(Cr.clone().sub(edge))/denom;
+    if(t>0.01){
+      const H=edge.clone().add(d.clone().multiplyScalar(t));
+      if(Math.abs(H.clone().sub(Cr).dot(w))<=hw+1e-6){hit=H;onPanel=true;}
+    }
+  }
+  if(!hit){                                    // al suelo: cota interpolada entre líneas
+    const gY=(x)=>{const X=T.lineX||null;
+      if(!X)return 0;
+      let i=0; while(i<X.length-2&&X[i+1]<x)i++;
+      const f=Math.max(0,Math.min(1,(x-X[i])/((X[i+1]-X[i])||1)));
+      return ELEV[i]*(1-f)+ELEV[i+1]*f;};
+    let t=(gY(edge.x)-edge.y)/(d.y||-1e-9);
+    for(let k=0;k<3;k++){const H=edge.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
+    hit=edge.clone().add(d.clone().multiplyScalar(Math.max(0.01,t)));
+  }
+  // el rayo: 26 m hacia el sol desde el borde, hasta el aterrizaje
+  const A=edge.clone().sub(d.clone().multiplyScalar(26));
+  const geo=new THREE.BufferGeometry().setFromPoints([A,edge,hit]);
+  const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xfbbd23,transparent:true,opacity:0.95}));
+  line.renderOrder=7; grp.add(line);
+  const mk=new THREE.Mesh(new THREE.SphereGeometry(0.30,12,12),
+    new THREE.MeshBasicMaterial({color:onPanel?0xe34948:0x36d399}));
+  mk.position.copy(hit); mk.renderOrder=7; grp.add(mk);
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.18,10,10),new THREE.MeshBasicMaterial({color:0xfbbd23}));
+  dot.position.copy(edge); grp.add(dot);
+
+  // ── HAZ DE LUZ AL SUELO del vano receptor↔emisor: franja iluminada MEDIDA ──
+  const gY=(x)=>{const X=T.lineX||null;
+    if(!X)return 0;
+    let i=0; while(i<X.length-2&&X[i+1]<x)i++;
+    const f=Math.max(0,Math.min(1,(x-X[i])/((X[i+1]-X[i])||1)));
+    return ELEV[i]*(1-f)+ELEV[i+1]*f;};
+  const landX=(P)=>{let t=(gY(P.x)-P.y)/(d.y||-1e-9);
+    for(let k=0;k<3;k++){const H=P.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
+    return P.x+d.x*Math.max(0,t);};
+  // sombras en el suelo del vano: de TODAS las filas del corte (a sol bajo la
+  // sombra que cae en el vano viene de filas 2-3 posiciones más allá, no de la
+  // vecina inmediata). Postes y tubo, despreciados (declarado).
+  const V=[Math.min(Cr.x,Ce.x),Math.max(Cr.x,Ce.x)];
+  const zC0=Cr.z, ivs=[];
+  for(let k=0;k<nR;k++){
+    if(!TD.rows[k]||!TD.rows[k].lbl)continue;
+    const Ck=TD.rows[k].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
+    if(Math.abs(Ck.z-zC0)>40)continue;                     // otra banda: fuera del corte
+    const thK=(p.ang[tIdx][k]||0)*RAD, hwc=Math.cos(thK)*hw, hws=Math.sin(thK)*hw;
+    const a1=landX(Ck.clone().add(new THREE.Vector3( hwc,-hws,0)));
+    const a2=landX(Ck.clone().add(new THREE.Vector3(-hwc, hws,0)));
+    const i0=Math.max(V[0],Math.min(a1,a2)), i1=Math.min(V[1],Math.max(a1,a2));
+    if(i1>i0+0.02)ivs.push([i0,i1]);
+  }
+  ivs.sort((q,w)=>q[0]-w[0]);
+  const un=[];
+  for(const iv of ivs){
+    if(un.length&&iv[0]<=un[un.length-1][1]+0.02)un[un.length-1][1]=Math.max(un[un.length-1][1],iv[1]);
+    else un.push(iv.slice());
+  }
+  const lit=[]; let cur=V[0];
+  for(const iv of un){ if(iv[0]>cur+0.02)lit.push([cur,iv[0]]); cur=Math.max(cur,iv[1]); }
+  if(V[1]>cur+0.02)lit.push([cur,V[1]]);
+  const zC=Cr.z, ZL=12;
+  const strip=(x0,x1,col,op)=>{
+    if(x1-x0<0.03)return;
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,ZL),
+      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide}));
+    m.rotation.x=-Math.PI/2;
+    m.position.set((x0+x1)/2,gY((x0+x1)/2)+0.12,zC);
+    m.renderOrder=5; grp.add(m);
+  };
+  for(const iv of un)strip(iv[0],iv[1],0x0a0e12,0.55);             // sombras en el suelo
+  let litW=0; for(const seg of lit){litW+=seg[1]-seg[0];strip(seg[0],seg[1],0xfbe08a,0.42);}
+  // etiqueta métrica del haz
+  const pct=100*litW/Math.max(0.01,V[1]-V[0]);
+  const cv2=document.createElement('canvas');cv2.width=300;cv2.height=72;
+  const cx2=cv2.getContext('2d');
+  cx2.fillStyle='rgba(10,14,18,0.78)';cx2.fillRect(0,0,300,72);
+  cx2.font='bold 34px sans-serif';cx2.textBaseline='middle';
+  cx2.fillStyle='#fbe08a';cx2.fillText('haz '+litW.toFixed(2)+' m',12,24);
+  cx2.fillStyle='#9aa89b';cx2.font='28px sans-serif';cx2.fillText(pct.toFixed(0)+'% del vano',12,54);
+  const spr2=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv2),depthTest:false,transparent:true}));
+  const mx2=lit.length?(lit[0][0]+lit[lit.length-1][1])/2:(V[0]+V[1])/2;
+  spr2.position.set(mx2,gY(mx2)+1.5,zC);
+  spr2.scale.set(6.4,1.55,1); spr2.renderOrder=8; grp.add(spr2);
 }
 function loop3D(){
   requestAnimationFrame(loop3D);
