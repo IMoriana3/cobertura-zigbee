@@ -149,6 +149,13 @@ t('horas de BT en el slider + aviso «BT ON» + sombra render anisótropa + rayo
   if (!/R2\*Math\.sin\(el\)/.test(html)) throw new Error('frustum de sombra no anisótropo');
   if (!/\$\('ray3d'\)\.onchange/.test(html)) throw new Error('☀ rayo sin listener de cambio');
 });
+t('v1.18: banda rasante MULTI-EMISORA + paso minutal + BT OFF/ON fijo + HUD estable', () => {
+  if (!/function shadeBand3DAll/.test(html)) throw new Error('banda rasante sin multi-emisora');
+  if (!/function sceneInstant/.test(html)) throw new Error('sin física del instante exacto');
+  if (!/id="hour"[^>]*step="1"/.test(html)) throw new Error('slider no minutal');
+  if (!/BT OFF/.test(html)) throw new Error('indicador BT sin estado OFF (no debe desaparecer)');
+  if (!/sin parejas interactuando/.test(html)) throw new Error('HUD: la tarjeta de residual debe existir siempre');
+});
 t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila
   const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);

@@ -54,7 +54,9 @@
   #hour::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:20px;border-radius:4px;background:var(--tx);border:2px solid var(--accent);cursor:pointer;box-shadow:0 0 4px #000a;margin-top:-5px}
   #hour::-moz-range-thumb{width:10px;height:18px;border-radius:4px;background:var(--tx);border:2px solid var(--accent);cursor:pointer}
   #hour::-moz-range-track{background:transparent}
-  #btflag{font-family:var(--mono);font-size:.64rem;letter-spacing:.09em;font-weight:700;color:#12100a;background:var(--warn);border-radius:6px;padding:2px 7px;cursor:help;white-space:nowrap}
+  /* indicador FIJO: BT OFF (apagado) / BT ON (ámbar) — nunca desaparece */
+  #btflag{font-family:var(--mono);font-size:.64rem;letter-spacing:.09em;font-weight:700;color:var(--muted);background:var(--bg2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;cursor:help;white-space:nowrap;min-width:52px;text-align:center}
+  #btflag.on{color:#12100a;background:var(--warn);border-color:var(--warn)}
   .timerow .t{font-family:var(--mono);font-size:.95rem;color:var(--accent);min-width:52px;text-align:right}
   .pols{display:flex;flex-direction:column;gap:6px}
   .pol{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer}
@@ -244,9 +246,9 @@
         <option value="150">×2,5</option>
         <option value="360">×6</option>
       </select>
-      <input type="range" id="hour" min="0" max="1439" step="5" value="720" title="Los tramos ÁMBAR son las horas de BACKTRACKING de la política de la escena (consigna fuera de la posición astronómica >0,5°); oscuro = noche">
+      <input type="range" id="hour" min="0" max="1439" step="1" value="720" title="Paso MINUTAL (escena y HUD calculan el instante exacto; curvas y tablas van en malla de 5 min, declarado). Los tramos ÁMBAR son las horas de BACKTRACKING de la política de la escena (consigna fuera de la posición astronómica >0,5°); oscuro = noche">
       <span class="t" id="hourlbl">12:00</span>
-      <span id="btflag" style="display:none" title="BACKTRACKING ACTIVO: la consigna de la política de la escena está fuera de la posición astronómica (>0,5° en alguna fila, con la misma referencia limitada a la velocidad del tracker). Las horas ámbar del slider son todas las horas de BT del día.">BT ON</span>
+      <span id="btflag" title="BACKTRACKING: ON cuando la consigna de la política de la escena está fuera de la posición astronómica (>0,5° en alguna fila, con la misma referencia limitada a la velocidad del tracker). Las horas ámbar del slider son todas las horas de BT del día.">BT OFF</span>
       <select id="rowsel" class="btn small" title="Fila del HUD y de las curvas"></select>
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
@@ -1148,18 +1150,91 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
   }
   return {f:N?hit/N:0,recv:recv};
 }
+/* banda rasante MULTI-EMISORA: con sol a 1-3° las sombras miden cientos de
+   metros y cruzan los huecos entre mesas — mirar SOLO la pareja adyacente
+   dejaba sombra real sin contar (y sin pintar). Planos emisores por tramo con
+   cotas reales, precalculados una vez; primer impacto gana. */
+function shadeBand3DAll(zen,az,T,rowAngles,res){
+  const nR=T.pairs.length+1;
+  const out=new Array(nR).fill(0);
+  const azR=(az-T.axisAz)*RAD, el=(90-zen)*RAD;
+  const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
+  if(sv[2]<=0)return out;
+  const hw=T.cw/2, PRr=T.real;
+  const xs=[0], zch=[0];
+  for(let i=0;i<T.pairs.length;i++){
+    xs.push(xs[i]+T.pairs[i].pitch);
+    zch.push(zch[i]-T.pairs[i].pitch*Math.tan(T.pairs[i].slope*RAD));
+  }
+  const cot=(row,v)=>{
+    if(PRr&&PRr.segZ&&PRr.segZ[row]){
+      const segs=PRr.segs[row], zz=PRr.segZ[row];
+      let bi=-1,bd=Infinity;
+      for(let k=0;k<segs.length;k++){
+        const lo=Math.min(segs[k][0],segs[k][1]), hi=Math.max(segs[k][0],segs[k][1]);
+        const d=v<lo?lo-v:(v>hi?v-hi:0);
+        if(d<bd){bd=d;bi=k;}
+      }
+      const [a2,b2]=segs[bi], t2=Math.max(0,Math.min(1,(v-a2)/((b2-a2)||1)));
+      return zz[bi][0]+t2*(zz[bi][1]-zz[bi][0]);
+    }
+    return zch[row]+v*Math.tan(((T.rowTilt?T.rowTilt[row]:0))*RAD);
+  };
+  const segsOf=row=>(T.segs&&T.segs[row])?T.segs[row]:[[-30,30]];
+  const planes=[];
+  for(let e=0;e<nR;e++){
+    const thE=rowAngles[e]*RAD;
+    for(const sg of segsOf(e)){
+      const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
+      const z0e=cot(e,w0), z1e=cot(e,w1);
+      const sE=(z1e-z0e)/((w1-w0)||1);
+      const uD=[Math.cos(thE),0,-Math.sin(thE)], vD=[0,1,sE];
+      const nE=[uD[1]*vD[2]-uD[2]*vD[1],uD[2]*vD[0]-uD[0]*vD[2],uD[0]*vD[1]-uD[1]*vD[0]];
+      planes.push({e:e,x:xs[e],w0:w0,w1:w1,C:[xs[e],(w0+w1)/2,(z0e+z1e)/2],nE:nE,uD:uD});
+    }
+  }
+  // alcance de la sombra: altura útil ~9 m (cuerda + desniveles) / tan(elev)
+  const horiz=Math.hypot(sv[0],sv[1]);
+  const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
+  const sgn=sv[0]>=0?1:-1;
+  const MU=(res&&res.MU)||6, MV=(res&&res.MV)||8;
+  for(let r=0;r<nR;r++){
+    const thR=rowAngles[r]*RAD;
+    let hit=0,N=0;
+    for(const sg of segsOf(r)){
+      const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
+      for(let i=0;i<MU;i++)for(let j=0;j<MV;j++){
+        const u=-hw+T.cw*(i+0.5)/MU, v=v0+(v1-v0)*(j+0.5)/MV;
+        const Pt=[xs[r]+u*Math.cos(thR), v, cot(r,v)-u*Math.sin(thR)];
+        N++;
+        for(const pl of planes){
+          if(pl.e===r)continue;
+          const dx=pl.x-xs[r];
+          if(dx*sgn<=0||Math.abs(dx)>reach)continue;
+          const den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
+          if(Math.abs(den)<1e-9)continue;
+          const t=((pl.C[0]-Pt[0])*pl.nE[0]+(pl.C[1]-Pt[1])*pl.nE[1]+(pl.C[2]-Pt[2])*pl.nE[2])/den;
+          if(t<=1e-6)continue;
+          const H1=Pt[1]+t*sv[1];
+          if(H1<pl.w0||H1>pl.w1)continue;
+          const H0=Pt[0]+t*sv[0], H2=Pt[2]+t*sv[2];
+          const du=(H0-pl.C[0])*pl.uD[0]+(H1-pl.C[1])*pl.uD[1]+(H2-pl.C[2])*pl.uD[2];
+          if(Math.abs(du)<=hw){hit++;break;}
+        }
+      }
+    }
+    out[r]=N?hit/N:0;
+  }
+  return out;
+}
 function shadeRows(zen,az,T,rowAngles){
   const nR=T.pairs.length+1;
   const out=new Array(nR).fill(0);
   if(!(isFinite(zen)&&zen<89.5))return out;           // el 3D llega hasta sol ~0,5°
   const band=zen>80;                                  // franja rasante: contador 3D
-  if(!band&&zen>=87)return out;                       // fuera de banda, el corte de siempre
+  if(band)return shadeBand3DAll(zen,az,T,rowAngles);  // MULTI-EMISORA (no solo la vecina)
+  if(zen>=87)return out;                              // fuera de banda, el corte de siempre
   for(let p=0;p<T.pairs.length;p++){
-    if(band){
-      const r3=shadePair3DBand(zen,az,T,rowAngles,p);
-      out[r3.recv]=Math.max(out[r3.recv],r3.f);
-      continue;
-    }
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
     // fuera de la banda rasante: el 2.5D exacto arbitrado por residual (la vía
@@ -1772,7 +1847,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.17.0';
+const VER='v1.18.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2021,6 +2096,10 @@ function computeDay(){
   const astroAng=new Array(nT); let prevA=null;
   for(let t2=0;t2<nT;t2++){
     const limA=slewLimit(prevA,anglesAstro(sun[t2].zen,sun[t2].az,T),STEP_MIN*60);
+    // bifila: la referencia astro se ACOPLA como el accionamiento (la gemela
+    // copia a la motora) — si no, el mero acoplamiento contaría como «BT»
+    if(c.drive!=='mono'&&T.groups)
+      for(const gr of T.groups)if(gr.length===2)limA[gr[1]]=limA[gr[0]];
     prevA=limA; astroAng[t2]=limA;
   }
   DAY={c:c,T:T,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
@@ -2096,9 +2175,10 @@ function drawScene(){
   const {ctx,W,H}=fitCanvas(scene);
   const c=DAY.c, T=DAY.T, n=c.nrows;
   const xof=i=>T.lineX?T.lineX[i]:i*c.pitch;      // posiciones REALES si las hay
-  const tIdx=timeIndex(), g=DAY.sun[tIdx], irrN=DAY.irr[tIdx];
+  const inst=sceneInstant();  // paso minutal: física EXACTA del minuto pedido
+  const tIdx=timeIndex(), g=inst?inst.g:DAY.sun[tIdx], irrN=inst?inst.irr:DAY.irr[tIdx];
   const EL2D=viewElev(n);   // corte REAL en la banda (planta real) o ELEV (presets)
-  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  const key=$('polview').value, p=inst?inst.pv:(DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]]);
   const ang=p?p.ang[tIdx]:new Array(n).fill(0);
   ctx.clearRect(0,0,W,H);
   if(PLANT_REAL&&EL2D.bandN!==undefined){
@@ -2280,7 +2360,17 @@ function init3D(){
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     holder.appendChild(renderer.domElement);
     const scene3=new THREE.Scene();
-    scene3.background=new THREE.Color(0x101722);
+    // CIELO: CÚPULA con degradado por altura real (cénit oscuro → horizonte
+    // encendido), como los 3D de las plantas. Un fondo de pantalla pondría el
+    // resplandor bajo el viewport (tapado por el terreno); la esfera lo deja
+    // en el horizonte de verdad, mires donde mires.
+    const skyCv=document.createElement('canvas');skyCv.width=4;skyCv.height=512;
+    const skyTx=new THREE.CanvasTexture(skyCv);
+    const skyMesh=new THREE.Mesh(new THREE.SphereGeometry(2400,24,32),
+      new THREE.MeshBasicMaterial({map:skyTx,side:THREE.BackSide,depthWrite:false,fog:false}));
+    skyMesh.renderOrder=-10;
+    scene3.add(skyMesh);
+    scene3.background=new THREE.Color(0x06080c);
     const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true;controls.dampingFactor=.08;
@@ -2306,7 +2396,7 @@ function init3D(){
       pd=null;
     });
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
-        sunMesh:sunMesh,world:null,rows:[],camSet:false,w:0,h:0};
+        sunMesh:sunMesh,world:null,rows:[],camSet:false,w:0,h:0,skyCv:skyCv,skyTx:skyTx,skyMesh:skyMesh,skyKey:''};
   }catch(e){TD=null;VIEW3D=false;$('tab3d').style.display='none';setTab(false);}
 }
 function build3D(){
@@ -2652,10 +2742,30 @@ function build3D(){
     TD.camSet=true;TD.fitKey=fitKey;
   }
 }
+function setSky(top,hor){
+  // degradado vertical del cielo: top/hor en [r,g,b] 0..1 — se repinta solo si cambia
+  if(!TD||!TD.skyCv)return;
+  const css=v=>'rgb('+v.map(x=>Math.round(Math.max(0,Math.min(1,x))*255)).join(',')+')';
+  const k=css(top)+'|'+css(hor);
+  if(TD.skyKey===k)return;
+  TD.skyKey=k;
+  const cx=TD.skyCv.getContext('2d');
+  const mix=(a,b,t)=>css(a.map((x,i)=>x+(b[i]-x)*t));
+  // esfera: y=0 cénit · y≈mitad horizonte (resplandor concentrado) · abajo bruma oscura
+  const gr=cx.createLinearGradient(0,0,0,512);
+  gr.addColorStop(0,css(top));
+  gr.addColorStop(0.34,mix(top,hor,0.28));
+  gr.addColorStop(0.48,css(hor));
+  gr.addColorStop(0.54,mix(hor,[0.03,0.035,0.05],0.55));
+  gr.addColorStop(1,'rgb(8,9,13)');
+  cx.fillStyle=gr;cx.fillRect(0,0,4,512);
+  TD.skyTx.needsUpdate=true;
+}
 function update3D(){
   if(!TD||!DAY)return;
-  const tIdx=timeIndex(),g=DAY.sun[tIdx];
-  const key=$('polview').value,p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  const inst=sceneInstant();  // paso minutal: física EXACTA del minuto pedido
+  const tIdx=timeIndex(),g=inst?inst.g:DAY.sun[tIdx];
+  const key=$('polview').value,p=inst?inst.pv:(DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]]);
   const sh=p?p.shade[tIdx]:null;
   const lblOn=$('lbl3d')&&$('lbl3d').checked;
   TD.rows.forEach((row,r)=>{
@@ -2686,13 +2796,14 @@ function update3D(){
           row.lbl.userData.txt=key;
           const cv=row.lbl.userData.cv,cx=cv.getContext('2d');
           cx.clearRect(0,0,256,104);
-          cx.fillStyle='rgba(10,14,18,0.74)';cx.fillRect(0,0,256,104);
+          cx.fillStyle='rgba(8,11,15,0.9)';cx.fillRect(0,0,256,104);
           cx.textBaseline='middle';
           cx.font='bold 38px sans-serif';cx.fillStyle='#7fb3ff';
           cx.fillText('θ '+thD.toFixed(0)+'°',10,28);
-          cx.fillStyle=sFrac>1e-3?'#f87272':'#8fa596';
-          cx.fillText((sFrac*100).toFixed(sFrac>=0.095?0:1)+'%',150,28);
-          cx.font='32px sans-serif';cx.fillStyle='#e8e8e4';
+          cx.fillStyle=sFrac>1e-3?'#ff8a8a':'#8fa596';
+          cx.textAlign='right';cx.fillText((sFrac*100).toFixed(sFrac>=0.095?0:1)+'%',246,28);
+          cx.textAlign='left';
+          cx.font='bold 34px sans-serif';cx.fillStyle='#f2f6fa';
           cx.fillText(poa.toFixed(0)+' W/m²',10,78);
           row.lbl.material.map.needsUpdate=true;
         }
@@ -2727,7 +2838,7 @@ function update3D(){
       // luz A TOPE: plana y brillante — para INSPECCIONAR sombras al alba/ocaso
       TD.sun.intensity=1.6; TD.sun.color.setHex(0xffffff);
       if(TD.hemi)TD.hemi.intensity=1.2;
-      TD.scene.background.setRGB(0.16,0.20,0.28);
+      setSky([0.13,0.17,0.25],[0.30,0.37,0.50]);
     }else{
       // luz REAL: el sol pierde altura ⇒ pierde fuerza y se va al rojo, como
       // en los 3D de la casa (amanecer/ocaso rojizos)
@@ -2735,15 +2846,19 @@ function update3D(){
       TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
       TD.sun.intensity=1.45-0.25*warm;
       if(TD.hemi)TD.hemi.intensity=0.55+0.15*warm;
-      // el CIELO vira a rojizo con el sol bajo, como en los 3D de las plantas
-      TD.scene.background.setRGB(0.07+0.10*up+0.38*warm*(1-up),0.11+0.13*up+0.07*warm*(1-up),0.20+0.20*up-0.08*warm*(1-up));
+      // el CIELO vira a rojizo con el sol bajo, como en los 3D de las plantas:
+      // horizonte encendido (naranja al alba/ocaso, azul pálido a mediodía) y
+      // cénit oscuro — degradado, no color plano
+      setSky([0.04+0.09*up,0.07+0.12*up,0.14+0.22*up],
+             [0.20+0.25*up+0.62*warm*(1-0.5*up),0.28+0.30*up+0.20*warm*(1-0.5*up),0.42+0.35*up-0.20*warm]);
     }
     TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
   }else{
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
-    // crepúsculo: el rescoldo rojizo se apaga entre 0 y −8° de elevación
+    // crepúsculo: el rescoldo naranja vive en el HORIZONTE y se apaga entre
+    // 0 y −8° de elevación; el cénit ya es noche
     const tw=Math.max(0,(g.elev+8)/8);
-    TD.scene.background.setRGB(0.043+0.20*tw,0.055+0.045*tw,0.08+0.02*tw);
+    setSky([0.028,0.038,0.065],[0.05+0.55*tw,0.055+0.19*tw,0.08+0.03*tw]);
   }
 }
 /* RAYO CRÍTICO en el MARCO DE LA FÍSICA: criticalRayPair vive junto a
@@ -2771,45 +2886,62 @@ function clipPoly(poly,edge){                        // edge [a,b,c]: a·u+b·v 
 }
 function drawShadowSilhouette(g,p,tIdx,r,row){
   const T=DAY.T, ang=p.ang[tIdx], nR=TD.rows.length;
-  const pszRow=trueTrackAngle(g.zen,g.az,T.rowTilt?T.rowTilt[r]:0,DAY.c.axaz);
-  const pi=pszRow>=0?r:r-1;
-  if(pi<0||pi>=T.pairs.length)return;
-  const e=pszRow>=0?r+1:r-1;
-  if(e<0||e>=nR)return;
-  const pr=T.pairs[pi];
   const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return;
-  const left=pi, hw=T.cw/2;
-  const xr=(r===left)?0:pr.pitch, xe=(e===left)?0:pr.pitch;
-  const zr=(r===left)?0:-pr.pitch*Math.tan(pr.slope*RAD);
-  const ze=(e===left)?0:-pr.pitch*Math.tan(pr.slope*RAD);
-  const tR=(T.rowTilt?T.rowTilt[r]:pr.axisTilt)*RAD, tE=(T.rowTilt?T.rowTilt[e]:pr.axisTilt)*RAD;
-  const thR=ang[r]*RAD, thE=ang[e]*RAD;
-  const A0=[xr,0,zr];
+  const hw=T.cw/2;
+  // MULTI-EMISORA: la sombra rasante cruza varias filas — se proyectan TODAS
+  // las emisoras del lado del sol dentro del alcance (Δx por pitch de pareja,
+  // Δz por la pendiente medida), no solo la vecina
+  const xs=[0], zch=[0];
+  for(let i=0;i<T.pairs.length;i++){
+    xs.push(xs[i]+T.pairs[i].pitch);
+    zch.push(zch[i]-T.pairs[i].pitch*Math.tan(T.pairs[i].slope*RAD));
+  }
+  const tR=(T.rowTilt?T.rowTilt[r]:0)*RAD, thR=ang[r]*RAD;
+  const A0=[0,0,0];
   const uH=[Math.cos(thR),0,-Math.sin(thR)];
   const vH=[0,1,Math.tan(tR)];
   const nRm=[uH[1]*vH[2]-uH[2]*vH[1],uH[2]*vH[0]-uH[0]*vH[2],uH[0]*vH[1]-uH[1]*vH[0]];
   const dsh=[-sv[0],-sv[1],-sv[2]];                  // la sombra viaja EN CONTRA del sol
   const denS=nRm[0]*dsh[0]+nRm[1]*dsh[1]+nRm[2]*dsh[2];
   if(Math.abs(denS)<1e-9)return;
-  const proj=(P)=>{
-    const t=((A0[0]-P[0])*nRm[0]+(A0[1]-P[1])*nRm[1]+(A0[2]-P[2])*nRm[2])/denS;
-    if(t<=1e-6)return null;
-    const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
-    const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
-    return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], d0[1]];
-  };
+  const tOf=(P)=>((A0[0]-P[0])*nRm[0]+(A0[1]-P[1])*nRm[1]+(A0[2]-P[2])*nRm[2])/denS;
+  const horiz=Math.hypot(sv[0],sv[1]);
+  const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
+  const sgn=sv[0]>=0?1:-1;
+  for(let e=0;e<nR&&e<xs.length;e++){
+  if(e===r)continue;
+  const dx=xs[e]-xs[r];
+  if(dx*sgn<=0||Math.abs(dx)>reach)continue;
+  const thE=ang[e]*RAD, tE=(T.rowTilt?T.rowTilt[e]:0)*RAD;
+  const xe=dx, ze=zch[e]-zch[r];
   const segE=(T.segs&&T.segs[e])?T.segs[e]:[[-30,30]];
   for(const sg of segE){
     const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
-    const corners=[]; let ok=true;
-    for(const [u2,v2] of [[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]]){
-      const q=proj([xe+u2*Math.cos(thE), v2, ze+v2*Math.tan(tE)-u2*Math.sin(thE)]);
-      if(!q){ok=false;break;}
-      corners.push(q);
+    // el cuadrilátero EMISOR se recorta ANTES al semiespacio que de verdad
+    // proyecta sobre el plano receptor (t>0): con sol rasante una esquina
+    // suele quedar del lado del sol y antes se descartaba la silueta ENTERA —
+    // mesas claramente sombreadas se quedaban sin rojo
+    const quad=[[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
+      [xe+u2*Math.cos(thE), v2, ze+v2*Math.tan(tE)-u2*Math.sin(thE)]);
+    const EPS=1e-6, cut=[];
+    for(let i2=0;i2<quad.length;i2++){
+      const A=quad[i2], B=quad[(i2+1)%quad.length];
+      const ta=tOf(A), tb=tOf(B);
+      if(ta>EPS)cut.push(A);
+      if((ta>EPS)!==(tb>EPS)){
+        const s=(EPS-ta)/((tb-ta)||1);
+        cut.push([A[0]+s*(B[0]-A[0]),A[1]+s*(B[1]-A[1]),A[2]+s*(B[2]-A[2])]);
+      }
     }
-    if(!ok)continue;
+    if(cut.length<3)continue;
+    const corners=cut.map(P=>{
+      const t=Math.max(EPS,tOf(P));
+      const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
+      const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
+      return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], d0[1]];
+    });
     for(const ov of row.ovls){
       if(!ov.g)continue;
       let poly=corners.slice();
@@ -2829,6 +2961,7 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
       const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
       ov.g.add(m);
     }
+  }
   }
 }
 function drawCriticalRay(g,p,tIdx){
@@ -3015,6 +3148,8 @@ function loop3D(){
     TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
   }
   TD.controls.update();
+  // la cúpula de cielo viaja con la cámara: nunca se sale de ella
+  if(TD.skyMesh)TD.skyMesh.position.copy(TD.camera.position);
   TD.renderer.render(TD.scene,TD.camera);
 }
 function setTab(three){
@@ -3043,15 +3178,16 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
-    if(key==='optimal'&&p.f[tIdx]!=null)card('f elegida',p.f[tIdx].toFixed(2),'0 = pairwise · 1 = astro');
+    if(key==='optimal')card('f elegida',p.f[tIdx]!=null?p.f[tIdx].toFixed(2):'—','0 = pairwise · 1 = astro');
     // solo parejas que INTERACTÚAN ahora mismo (cobertura axial > 0): en una
-    // planta real hay vecinas sin solape norte cuyo residual es ruido
+    // planta real hay vecinas sin solape norte cuyo residual es ruido.
+    // La tarjeta existe SIEMPRE (con «—» si no aplica): el HUD no baila
     const rmmAll=tangentResidualMm(g.zen,g.az,DAY.T,p.ang[tIdx]);
     const rmm=rmmAll.filter((v,pi)=>isFinite(v)&&axialCoverage(g.zen,g.az,DAY.T,pi)>0);
     if(rmm.length&&g.elev>0){
       const mn=Math.min(...rmm);
       card('Residual mín',(mn>=1000?'≥1 m':mn.toFixed(0)+' mm'),mn<-1?'⚠ auto-sombra 3D':'hueco al vecino');
-    }
+    }else card('Residual mín','—',g.elev>0?'sin parejas interactuando':'noche');
   }
   $('hud').innerHTML=cards.join('');
 }
@@ -3208,6 +3344,28 @@ $('qabtn').onclick=()=>{
 
 /* ── wiring ── */
 function timeIndex(){return Math.min(DAY.times.length-1,Math.floor((+$('hour').value)/STEP_MIN));}
+/* ── PASO MINUTAL: la malla física del día sigue a 5 min (curvas, tablas,
+   anual — declarado), pero la ESCENA y el HUD calculan el instante EXACTO
+   bajo demanda: un paso de una política son milisegundos. Interpolar sería
+   inventar física; esto es física del minuto pedido. ── */
+let INSTANT=null;
+function sceneInstant(){
+  if(!DAY)return null;
+  const m=+$('hour').value;
+  if(m%STEP_MIN===0)return null;                     // en la malla: DAY manda
+  const key=$('polview').value;
+  if(!DAY.pol[key])return null;
+  if(INSTANT&&INSTANT.m===m&&INSTANT.key===key&&INSTANT.stamp===DAY)return INSTANT;
+  const c=DAY.c, tIdx=timeIndex();
+  const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
+  const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
+  const o=policyAngles(key,g.zen,g.az,DAY.T,irr,DAY.doy,c.albedo);
+  const ang=slewLimit(DAY.pol[key].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+  INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,
+           pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:o.f}}};
+  return INSTANT;
+}
 /* ── HORAS DE BT: el slider se pinta por tramos (noche · seguimiento · BT) y
    el aviso «BT ON» se enciende cuando la política de la ESCENA está fuera de
    la posición astronómica — la misma referencia (limitada a slew) de computeDay ── */
@@ -3240,7 +3398,9 @@ function paintHourTrack(){
 }
 function updateBtUI(){
   if(!DAY)return;
-  $('btflag').style.display=btActiveAt(timeIndex())?'inline-block':'none';
+  const on=btActiveAt(timeIndex()), el=$('btflag');
+  el.textContent=on?'BT ON':'BT OFF';
+  el.classList.toggle('on',on);
 }
 function hhmm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),m=Math.round(min%60);return (h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
 function rebuildSelectors(){
@@ -3426,7 +3586,7 @@ $('play').onclick=()=>{
       const mps=+$('speed').value;                 // minutos simulados / segundo real
       PLAYPOS+=mps*(ts-PLAYTS)/1000; PLAYTS=ts;
       if(PLAYPOS>1439)PLAYPOS=0;
-      const v=Math.round(PLAYPOS/STEP_MIN)*STEP_MIN;
+      const v=Math.round(PLAYPOS);              // paso minutal también al animar
       if(v!==+$('hour').value){
         $('hour').value=v;$('hourlbl').textContent=hhmm(v);
         drawScene();drawCurves();update3D();updateBtUI();
