@@ -129,9 +129,9 @@
           <option value="10" selected>10 min (la del core legacy)</option>
           <option value="15">15 min</option>
         </select></div>
-      <div class="f"><label>Stow nocturno ° (+ = este)</label>
-        <input id="stow" type="number" step="1" min="-55" max="55" value="5"
-          title="Los trackers DUERMEN a 5° hacia el ESTE (dato de proyecto). Convención del core/pvlib con eje a 0°: este = POSITIVO — en la TCU de campo la misma posición se escribe −5° (su signo va al revés)."></div>
+      <div class="f"><label>Stow nocturno ° (− = este)</label>
+        <input id="stow" type="number" step="1" min="-55" max="55" value="-5"
+          title="Los trackers DUERMEN a −5° (5° hacia el ESTE). Toda la UI va en convención TCU: NEGATIVO = este. Por dentro la física espeja al core/pvlib (su signo va al revés con eje a 0°); la conversión vive en el borde de la UI."></div>
     </div>
     <div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
       schema 2.1.0): cambiar la resolución NO mueve los bordes de conmutación — hay un check de la QA
@@ -195,7 +195,12 @@
       <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
       construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
       pinta cada zona con su nube y su θ. Con día real de Open-Meteo, el frente retarda la serie
-      medida (aprox declarada: un punto no trae información espacial).</div>
+      medida (aprox declarada: un punto no trae información espacial).
+      <br><b>¿Nube encima y la NCU sigue tracking?</b> Es el <b>poa_switch</b> haciendo su trabajo:
+      cada NCU arrastra SU confirm (30′) y SU dwell (90′) — una nube corta puede no llegar a
+      conmutar NUNCA. La etiqueta lo enseña en <span style="color:var(--warn)">ámbar</span>
+      («☁ retiene»): la señal está viva, la histéresis manda. Con <b>flat</b> o <b>continuous</b>
+      en la escena, la zona reacciona al instante.</div>
   </div>
 
   <div class="card">
@@ -730,10 +735,15 @@ function zonalRun(o,nZ,crossMin,polName,d){
     const rZ=POLICIES[polName](day,thN,poaNz,d);
     const poaZ=poaSeries(day,rZ.theta);
     const poaG=poaSeries(day,rG.theta);
+    // señal CRUDA de entrada de la zona (POA(0) > ratio·POA(θn), con puerta de
+    // día): la escena la enseña en ámbar cuando está viva pero la histéresis
+    // del poa_switch la retiene — «lo veo, pero el confirm/dwell mandan»
+    const poaF=poaSeries(day,new Array(day.n).fill(0));
+    const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]);
     for(let i=0;i<day.n;i++){
       whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
     }
-    zones.push({theta:rZ.theta,flag:rZ.flag,day:day});
+    zones.push({theta:rZ.theta,flag:rZ.flag,signal:signal,day:day});
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
           zones:zones,thetaGlobal:rG.theta,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
@@ -1024,7 +1034,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.2.0';
+const VER='v1.3.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1242,13 +1252,19 @@ const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'
 })();
 
 /* ── pipeline: recalcular el día entero en cada cambio ── */
+/* CONVENCIÓN DE SIGNOS DE LA UI: la de la TCU de campo — NEGATIVO = ESTE
+   (petición de proyecto). Por dentro TODA la física es espejo del core
+   (compute_poa_perez: θ≥0 → este con eje a 0°); la conversión es tcuDeg()
+   al mostrar y −stow al leer el input. Ningún invariante de la QA toca la
+   convención de pantalla. */
+function tcuDeg(thCore){return -thCore;}
 function cfgDay(){
   const pitch=+$('pitch').value,cw=+$('cw').value;
   const gcr=cw/pitch; $('gcr').value=gcr.toFixed(3);
   return {lat:+$('lat').value,lon:+$('lon').value,dateStr:$('date').value,tz:+$('tz').value,
           altM:+$('alt').value,TL:+$('tl').value,dtMin:+$('dt').value,albedo:+$('albedo').value,
           axisAz:+$('axaz').value,maxAngle:+$('maxang').value,gcr:gcr,cc:CC,
-          nightStow:+$('stow').value,
+          nightStow:-(+$('stow').value),     // TCU − = este → core + = este
           om:($('skysource').value==='om'&&OM)?OM:null};
 }
 function cfgDiffuse(){
@@ -1389,10 +1405,13 @@ function drawTheta(){
     ctx.fillText(String(g)+'°',6,y+6);
   }
   const plot=(arr,col,w,dash)=>{
+    // las curvas van en convención TCU (− = este): se convierte al pintar
     ctx.setLineDash(dash||[]);ctx.beginPath();
-    for(let i=0;i<day.n;i++){const x=xOf(day.tmin[i],W),y=yOf(arr[i]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    for(let i=0;i<day.n;i++){const x=xOf(day.tmin[i],W),y=yOf(tcuDeg(arr[i]));i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
     ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke();ctx.setLineDash([]);
   };
+  ctx.fillStyle='#5c7189';ctx.font='18px ui-monospace,monospace';
+  ctx.fillText('θ TCU · − = este',W-190,24);
   for(const k of POL_ORDER){
     if(!POL_ON[k]||!SIM.res[k])continue;
     plot(SIM.res[k].theta,POL_META[k].c,k==='pvlib'?2:2.5);
@@ -1528,10 +1547,10 @@ function drawScene(){
     ctx.beginPath();ctx.moveTo(cx-dx,cy-dy);ctx.lineTo(cx+dx,cy+dy);ctx.stroke();
     ctx.lineCap='butt';
   }
-  // rótulos
+  // rótulos (convención TCU: − = este)
   ctx.font='20px ui-monospace,monospace';
   ctx.fillStyle=flag?'#a78bfa':'#9bb0c6';
-  ctx.fillText((flag?'MODO FLAT · ':'')+'θ '+th.toFixed(1)+'°  (θ_n '+thn.toFixed(1)+'°)',14,30);
+  ctx.fillText((flag?'MODO FLAT · ':'')+'θ '+tcuDeg(th).toFixed(1)+'°  (θ_n '+tcuDeg(thn).toFixed(1)+'°)',14,30);
   ctx.fillStyle='#5c7189';
   ctx.fillText('cc '+(100*cc).toFixed(0)+'%  ·  difusa '+(100*dFrac).toFixed(0)+'%',14,56);
 
@@ -1543,7 +1562,7 @@ function drawScene(){
     ro('GHI',irr.ghi.toFixed(0),'W/m²')+
     ro('DNI',irr.dni.toFixed(0),'W/m²')+
     ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
-    ro('θ política',th.toFixed(1)+'°',flag?'flat':'track')+
+    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',flag?'flat':'track')+
     ro('POA pvlib',SIM.poaN[i].toFixed(0),'W/m²')+
     ro('POA política',poaPol.toFixed(0),'W/m²')+
     ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
@@ -1567,9 +1586,14 @@ function init3D(){
     const renderer=new THREE.WebGLRenderer({antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    // tone mapping fílmico: doma las altas luces (los módulos a pleno sol
+    // saturaban a blanco puro) sin apagar la escena
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.05;
     holder.appendChild(renderer.domElement);
     const scene3=new THREE.Scene();
     scene3.background=new THREE.Color(0x101722);
+    scene3.fog=new THREE.Fog(0x101722,260,850);   // el color se acopla al cielo por frame
     const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true;controls.dampingFactor=.08;
@@ -1609,7 +1633,28 @@ function setLabel(spr,txt,color){
   x.fillText(txt,160,46);
   spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
 }
-const NROWS3D=3;
+/* ── la planta 3D: bifila real, tamaño real y sitio alrededor ──────────────
+   Filas 'largo' (2 alas de 28 = 64,7 m) a lo largo de +X (norte), en PAREJAS
+   BIFILA: viga MOTORA (oeste: motor, TCU) + viga GEMELA unidas por el eje de
+   transmisión perpendicular. Las zonas NCU se apilan en Z: el frente de nubes
+   cruza la planta de fila en fila, como en la física del zonal. Alrededor:
+   terreno ondulado (explanado bajo la planta), camino perimetral pintado en
+   el vértice, valla, caseta del inversor, arbustos y niebla acoplada al cielo. */
+const ROWSZONE=4;                                    // filas por zona = 2 parejas bifila
+function terrainH(x,z,P){
+  // colinas suaves — CERO bajo la planta (margen 14 m) creciendo con la distancia
+  const n=Math.sin(x*0.021+1.7)*Math.cos(z*0.017-0.6)*1.5
+        +Math.sin(x*0.037-0.9+Math.sin(z*0.011)*2.1)*Math.sin(z*0.029+2.2)*0.8
+        +Math.sin(x*0.0085+0.3)*Math.cos(z*0.0065+1.1)*5.5;
+  const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
+  const d=Math.hypot(dx,dz);
+  const f=Math.min(1,Math.max(0,(d-14)/70));
+  return n*f*f;
+}
+function distPlant(x,z,P){
+  const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
+  return Math.hypot(dx,dz);
+}
 function build3D(){
   if(!SIM)return;
   init3D(); if(!TD)return;
@@ -1618,56 +1663,147 @@ function build3D(){
   if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
   const world=new THREE.Group();
   const mats=Seguidor.materials(THREE);
+  mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;   // pala azulada, no blanco quirófano (el mismo ajuste que backtracking.html)
   Seguidor.setModsPerStr(28);
-  const D0=Seguidor.DIMS;
-  const zoneLen=D0.span*D0.medioFactor+2, gap=8, pitch=+$('pitch').value||6;
-  const stepX=zoneLen+gap, w=(nZ-1)*stepX;
-  const cx=w/2, cz=(NROWS3D-1)*pitch/2;
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(w+zoneLen+70,NROWS3D*pitch+70),
-    new THREE.MeshLambertMaterial({color:0x24331b}));
-  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.position.set(cx,0,cz);
+  const D0=Seguidor.DIMS, span=D0.span, pitch=+$('pitch').value||6, zgap=6;
+  const depth=nZ*ROWSZONE*pitch+(nZ-1)*zgap-pitch;   // z de la primera a la última fila
+  const P={x0:-span/2,x1:span/2,z0:-4,z1:depth+4};   // rectángulo de planta
+  const cx=0, cz=depth/2;
+
+  // terreno: malla grande con colinas lejos y explanada bajo la planta
+  const TW=760,TH2=560,SX=76,SZ=56;
+  const geo=new THREE.PlaneGeometry(TW,TH2,SX,SZ);
+  geo.rotateX(-Math.PI/2);
+  const pos=geo.attributes.position, colors=[];
+  const col=new THREE.Color();
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i)+cx, z=pos.getZ(i)+cz;
+    const h=terrainH(x,z,P);
+    pos.setY(i,h);
+    const d=distPlant(x,z,P);
+    // pintado por vértice: explanada parda en planta, camino perimetral de
+    // zahorra (banda 3–8 m), verde oliva con variación, más seco en las lomas
+    // moteado pseudoaleatorio (hash), no bandas regulares
+    const v=(Math.sin(x*12.9898+z*78.233)*43758.5453)%1*0.5+0.5;
+    if(d<3)col.setRGB(0.16+0.02*v,0.15+0.02*v,0.10);                 // explanada
+    else if(d<8)col.setRGB(0.34+0.03*v,0.28+0.03*v,0.19);            // camino
+    else col.setRGB(0.10+0.05*v+h*0.012,0.16+0.06*v+h*0.008,0.07+0.03*v);
+    colors.push(col.r,col.g,col.b);
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geo.computeVertexNormals();
+  const ground=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true}));
+  ground.position.set(cx,0,cz);
+  ground.receiveShadow=true;
   world.add(ground);
-  const postM=new THREE.MeshLambertMaterial({color:0x8a949c});
-  TD.zones=[];
-  for(let z=0;z<nZ;z++){
-    const zx=z*stepX, spins=[];
-    for(let r=0;r<NROWS3D;r++){
-      const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:'medio',
-                                           materials:mats,skip:{antena:1,antenatip:1}});
-      const gpr=new THREE.Group();
-      gpr.position.set(zx,D0.postH,r*pitch);
-      gpr.add(beam.spin,beam.static);
-      world.add(gpr);
-      spins.push(beam.spin);
-      for(const px of [-zoneLen*0.33,0,zoneLen*0.33]){
-        const post=new THREE.Mesh(new THREE.BoxGeometry(0.14,D0.postH,0.14),postM);
-        post.position.set(zx+px,D0.postH/2,r*pitch);
-        post.castShadow=true;world.add(post);
+
+  // valla perimetral: postes + 3 hilos
+  const fm=new THREE.MeshLambertMaterial({color:0x6d7a85});
+  const F={x0:P.x0-10,x1:P.x1+10,z0:P.z0-8,z1:P.z1+8};
+  const fpGeo=new THREE.CylinderGeometry(0.045,0.045,1.9,5);
+  const wirePts=[];
+  const ring=[[F.x0,F.z0],[F.x1,F.z0],[F.x1,F.z1],[F.x0,F.z1],[F.x0,F.z0]];
+  for(let s=0;s<4;s++){
+    const [ax,az2]=ring[s],[bx,bz]=ring[s+1];
+    const len=Math.hypot(bx-ax,bz-az2),n=Math.max(2,Math.round(len/9));
+    for(let k=0;k<=n;k++){
+      const x=ax+(bx-ax)*k/n, z=az2+(bz-az2)*k/n;
+      if(k<n){const p=new THREE.Mesh(fpGeo,fm);p.position.set(x,0.95,z);world.add(p);}
+      if(k>0){
+        const px=ax+(bx-ax)*(k-1)/n, pz=az2+(bz-az2)*(k-1)/n;
+        for(const hy of [0.6,1.2,1.75])wirePts.push(px,hy,pz,x,hy,z);
       }
     }
-    // nube de la zona: opacidad = su cc (material compartido por los puffs)
+  }
+  const wgeo=new THREE.BufferGeometry();
+  wgeo.setAttribute('position',new THREE.Float32BufferAttribute(wirePts,3));
+  world.add(new THREE.LineSegments(wgeo,new THREE.LineBasicMaterial({color:0x55616c,transparent:true,opacity:0.7})));
+
+  // caseta del inversor junto a la puerta este
+  const caseta=new THREE.Group();
+  const cw1=new THREE.Mesh(new THREE.BoxGeometry(6,3,2.6),new THREE.MeshLambertMaterial({color:0xd8d4c8}));
+  cw1.position.y=1.5;cw1.castShadow=true;
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(6.4,0.18,3.0),new THREE.MeshLambertMaterial({color:0x4a4f55}));
+  roof.position.y=3.06;
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.06,2.1,0.9),new THREE.MeshLambertMaterial({color:0x39424a}));
+  door.position.set(3.02,1.05,0);
+  caseta.add(cw1,roof,door);
+  caseta.position.set(F.x1+7,terrainH(F.x1+7,cz,P),cz);
+  world.add(caseta);
+
+  // arbustos fuera de la valla (sembrados, deterministas)
+  const bm=new THREE.MeshLambertMaterial({color:0x2c4020});
+  const bGeo=new THREE.IcosahedronGeometry(1,0);
+  let sB=12345; const rndB=()=>{sB|=0;sB=sB+0x6D2B79F5|0;let t=Math.imul(sB^sB>>>15,1|sB);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  for(let k=0;k<52;k++){
+    const x=cx+(rndB()-0.5)*TW*0.85, z=cz+(rndB()-0.5)*TH2*0.85;
+    if(distPlant(x,z,P)<16)continue;
+    const b=new THREE.Mesh(bGeo,bm);
+    const s0=0.5+rndB()*1.3;
+    b.scale.set(s0,s0*0.55,s0);
+    b.position.set(x,terrainH(x,z,P)+s0*0.3,z);
+    world.add(b);
+  }
+
+  // las filas: por zona, 2 parejas bifila (motora + gemela + eje de transmisión)
+  const postM=new THREE.MeshLambertMaterial({color:0x8a949c});
+  const postGeo=new THREE.BoxGeometry(0.16,D0.postH,0.16);
+  const shaftM=new THREE.MeshLambertMaterial({color:0x9aa4ad});
+  TD.zones=[];
+  for(let z=0;z<nZ;z++){
+    const z00=z*(ROWSZONE*pitch+zgap), spins=[];
+    for(let p=0;p<ROWSZONE/2;p++){
+      const zr=z00+p*2*pitch;
+      for(let half=0;half<2;half++){                 // 0 = motora (oeste), 1 = gemela
+        const beam=Seguidor.buildBeam(THREE,{west:half===0,detail:'mass',size:'largo',
+                                             materials:mats,skip:{antena:1,antenatip:1}});
+        const gpr=new THREE.Group();
+        gpr.position.set(0,D0.postH,zr+half*pitch);
+        gpr.add(beam.spin,beam.static);
+        world.add(gpr);
+        spins.push(beam.spin);
+        for(let k=0;k<9;k++){                        // postes cada ~7 m
+          const post=new THREE.Mesh(postGeo,postM);
+          post.position.set(-span/2+(k+0.5)*span/9,D0.postH/2,zr+half*pitch);
+          post.castShadow=true;world.add(post);
+        }
+      }
+      // eje de transmisión de la pareja: perpendicular, del motor a la gemela
+      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,pitch-0.5,8),shaftM);
+      shaft.rotation.x=Math.PI/2;
+      shaft.position.set(0,D0.postH-0.25,zr+pitch/2);
+      shaft.castShadow=true;
+      world.add(shaft);
+      for(const zz of [zr+0.22,zr+pitch-0.22]){      // cardanes
+        const c2=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.3,8),shaftM);
+        c2.rotation.x=Math.PI/2;c2.position.set(0,D0.postH-0.25,zz);
+        world.add(c2);
+      }
+    }
+    // nube de la zona: sobre SUS filas, cubriendo el ancho de mesa
     const cm=new THREE.MeshLambertMaterial({color:0xdfe7f2,transparent:true,opacity:0,depthWrite:false});
     const cloud=new THREE.Group();
-    for(let k=0;k<7;k++){
-      const s=new THREE.Mesh(new THREE.SphereGeometry(5.5+((k*37)%40)/7,12,10),cm);
-      s.position.set(zx+(((k*53)%100)/100-0.5)*zoneLen*0.95,
-                     26+((k*29)%9),
-                     cz+(((k*71)%100)/100-0.5)*NROWS3D*pitch*2.2);
-      s.scale.y=0.35;cloud.add(s);
+    const zcen=z00+(ROWSZONE-1)*pitch/2;
+    for(let k=0;k<8;k++){
+      const s0=new THREE.Mesh(new THREE.SphereGeometry(7+((k*37)%40)/6,12,10),cm);
+      s0.position.set((((k*53)%100)/100-0.5)*span*0.95,
+                      34+((k*29)%10),
+                      zcen+(((k*71)%100)/100-0.5)*ROWSZONE*pitch*1.4);
+      s0.scale.y=0.32;cloud.add(s0);
     }
     world.add(cloud);
     const spr=makeLabel();
-    spr.position.set(zx,10,-pitch*1.2);
+    spr.position.set(-span/2-11,8,zcen);
     world.add(spr);
-    TD.zones.push({spins:spins,cloudMat:cm,cloud:cloud,label:spr,zx:zx});
+    TD.zones.push({spins:spins,cloudMat:cm,cloud:cloud,label:spr,zx:zcen});
   }
   TD.world=world;TD.scene.add(world);
   TD.cx=cx;TD.cz=cz;
-  // reencuadre SIEMPRE que cambia el nº de zonas: la planta cambia de tamaño
-  // (guardar la órbita del usuario solo vale mientras la geometría sea la misma).
-  // Encuadre 3/4 aéreo proporcional al ancho total de la planta.
-  const L=Math.max(60,w+zoneLen);
-  TD.camera.position.set(cx-0.5*L,0.42*L,cz+0.8*L);
+  // sombras ceñidas a la planta (texel fino) y reencuadre 3/4 aéreo al tamaño
+  const sc2=TD.sun.shadow.camera,R2=Math.max(70,span*0.62,depth*0.72);
+  sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
+  const L=Math.max(80,Math.max(span,depth)+30);
+  TD.camera.position.set(cx-0.60*L,0.34*L,cz+0.72*L);
   TD.controls.target.set(cx,0,cz);
   BUILT.nZ=nZ;
 }
@@ -1696,8 +1832,8 @@ function update3D(){
     TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
     // …con lo que este simulador añade: las NUBES. El sol va con el DNI del
     // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
-    TD.sun.intensity=(1.45-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
-    TD.hemi.intensity=0.35+0.15*warm+1.35*Math.min(1,irr.dhi/300);
+    TD.sun.intensity=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
+    TD.hemi.intensity=0.25+0.12*warm+1.05*Math.min(1,irr.dhi/350);   // clara ≈0,55 (como BT) · overcast ≈1,2
     let r0=0.07+0.10*up+0.22*warm*(1-up),
         g0=0.11+0.13*up+0.04*warm*(1-up),
         b0=0.20+0.20*up-0.04*warm*(1-up);
@@ -1713,9 +1849,10 @@ function update3D(){
   }
   for(let z=0;z<TD.zones.length;z++){
     const Z=TD.zones[z];
-    let th,fl,ccz;
+    let th,fl,ccz,sig=false;
     if(zc.on&&ZR&&ZR.zones[z]){
       th=ZR.zones[z].theta[i];fl=ZR.zones[z].flag[i];ccz=ZR.zones[z].day.cc[bin];
+      sig=!!(ZR.zones[z].signal&&ZR.zones[z].signal[i]);
     }else{
       const arr=r.exec||r.theta;th=arr[i];fl=r.flag[i];ccz=ccMean;
     }
@@ -1724,9 +1861,13 @@ function update3D(){
     Z.thTarget=th;
     if(Z.thDisp==null){Z.thDisp=th;for(const s of Z.spins)s.rotation.x=th*RAD;}
     Z.cloudMat.opacity=0.92*ccz;
-    setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+th.toFixed(0)+'°'+(fl?' · FLAT':''),
-             fl?'#a78bfa':'#9bb0c6');
+    // tres estados a la vista: FLAT (violeta) · señal viva RETENIDA por la
+    // histéresis (ámbar — «la NCU ve la nube, el confirm/dwell mandan») · track
+    setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
+             (fl?' · FLAT':(sig?' · ☁ retiene':'')),
+             fl?'#a78bfa':(sig?'#fbbd23':'#9bb0c6'));
   }
+  TD.scene.fog.color.copy(TD.scene.background);   // la niebla ES el cielo lejano
 }
 function loop3D(){
   requestAnimationFrame(loop3D);
