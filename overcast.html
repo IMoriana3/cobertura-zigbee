@@ -36,6 +36,8 @@
   .f input:focus,.f select:focus{outline:none;border-color:var(--accent)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .four{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px}
+  @media(max-width:1200px){.four{grid-template-columns:1fr 1fr}}
   .pill{font-family:var(--mono);font-size:.7rem;color:var(--tx2);background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:3px 10px;display:inline-block}
   .pill b{color:var(--ok);font-weight:600}
   .btn{cursor:pointer;border:1px solid var(--line2);background:var(--bg2);color:var(--tx);border-radius:9px;padding:8px 14px;font:inherit;font-size:.86rem;transition:.15s}
@@ -336,7 +338,7 @@
 
   <div class="card">
     <h2>Estimación anual <span class="sn">12 días × mezcla de cielos</span></h2>
-    <div class="three">
+    <div class="four">
       <div class="f"><label>Clima</label>
         <select id="climate">
           <option value="seco">Seco (valle del Ebro)</option>
@@ -346,13 +348,10 @@
         </select></div>
       <div class="f"><label>% días claros</label><input id="wclear" type="number" step="1" min="0" max="100" value="55"
         title="Fracción de días del año tipo DESPEJADO (cielo Ineichen limpio). Solo afecta al modo sintético «12 días × mezcla»; el de 365 días reales usa la meteo medida. Si los tres pesos no suman 100, se normalizan."></div>
-      <div class="f"><label>% frentes · % overcast</label>
-        <div style="display:flex;gap:6px">
-          <input id="wpart" type="number" step="1" min="0" max="100" value="30" style="width:50%"
-            title="Días tipo FRENTES: base cc 0,15 con pulsos overcast — el día donde el chattering castiga a las políticas sin histéresis. Se normaliza con los otros dos pesos.">
-          <input id="wover" type="number" step="1" min="0" max="100" value="15" style="width:50%"
-            title="Días CUBIERTOS TOTALES: cc 0,95 todo el día, 100 % difusa — donde el modo plano gana. Se normaliza con los otros dos pesos.">
-        </div></div>
+      <div class="f"><label>% frentes</label><input id="wpart" type="number" step="1" min="0" max="100" value="30"
+        title="Días tipo FRENTES: base cc 0,15 con pulsos overcast — el día donde el chattering castiga a las políticas sin histéresis. Se normaliza con los otros dos pesos."></div>
+      <div class="f"><label>% overcast</label><input id="wover" type="number" step="1" min="0" max="100" value="15"
+        title="Días CUBIERTOS TOTALES: cc 0,95 todo el día, 100 % difusa — donde el modo plano gana. Se normaliza con los otros dos pesos."></div>
     </div>
     <div class="f"><label>Sitio de referencia climática</label>
       <select id="refsite">
@@ -1241,7 +1240,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.7.1';
+const VER='v1.7.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
