@@ -1488,7 +1488,13 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
    θ común por grupo conserva el θ común: toda candidata es ejecutable.
    Arranca en la mejor f COMÚN ⇒ nunca rinde menos que el energy-optimal
    (misma rejilla). En Ayora real: pairwise +0,71% (misma-f) → +1,03% (libre). */
-const OPTFREE_NF=9;
+/* SIN LÍMITES ALGORÍTMICOS (petición explícita): la rejilla de f baja hasta
+   −0,5 — MÁS PLANO que pairwise. Con el contador honesto pairwise ya no es
+   sombra-cero (la torsión del terreno), así que el óptimo real puede vivir
+   fuera del huso [pairwise, astro]. Los únicos límites que quedan son de
+   HARDWARE: clamp ±θmáx y slew del actuador. El energy-optimal de misma-f se
+   queda fiel al core (Deeptrack, f∈[0,1]), declarado. */
+const OPTFREE_F0=-0.5, OPTFREE_NF=13;
 function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
   if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
@@ -1500,11 +1506,11 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   for(let r=0;r<nR;r++)if(!seen.has(r))units.push([r]);
   units.sort((a,b)=>a[0]-b[0]);
   const unitOf=new Array(nR); units.forEach((u,i)=>u.forEach(r=>unitOf[r]=i));
-  const GRID=[]; for(let i=0;i<OPTFREE_NF;i++)GRID.push(i/(OPTFREE_NF-1));
+  const GRID=[]; for(let i=0;i<OPTFREE_NF;i++)GRID.push(OPTFREE_F0+(1-OPTFREE_F0)*i/(OPTFREE_NF-1));
   // caches del instante: POA por fila × candidato y geometría por pareja
   const angs=[],val=[];
   for(let r=0;r<nR;r++){
-    angs.push(GRID.map(f=>base[r]+f*(full[r]-base[r])));
+    angs.push(GRID.map(f=>Math.max(-T.maxAngle,Math.min(T.maxAngle,base[r]+f*(full[r]-base[r])))));
     val.push(angs[r].map(a=>poaRow(a,rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo)));
   }
   const psz=T.pairs.map(pr=>trueTrackAngle(zen,az,pr.axisTilt,T.axisAz));
@@ -1553,9 +1559,21 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   const ang=[]; for(let r=0;r<nR;r++)ang.push(angAt(r));
   // salvaguarda: si bajo la MISMA métrica del arranque el ascenso no mejora,
   // se queda el arranque (que ya es ≥ energy-optimal por construcción)
-  if(poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant<bestS-1e-9)
-    return {angles:startAng,f:undefined};
-  return {angles:ang,f:undefined};
+  let cand=(poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant<bestS-1e-9)?startAng:ang;
+  // REPARACIÓN con el contador EXACTO: los barridos rápidos (2.5D) son ciegos
+  // a la torsión — si el ray-cast ve sombra en el resultado, se prueba el
+  // mismo juego APLANADO medio paso de rejilla en las unidades afectadas y
+  // gana quien prefiera el contador exacto (2 evaluaciones exactas por paso)
+  const ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
+  if(ev.shade.some(v=>v>1e-3)){
+    const df=(1-OPTFREE_F0)/(OPTFREE_NF-1)/2;
+    const alt=cand.slice();
+    for(let r=0;r<nR;r++)if(ev.shade[r]>1e-3)
+      for(const rr of units[unitOf[r]])
+        alt[rr]=Math.max(-T.maxAngle,Math.min(T.maxAngle,alt[rr]-df*(full[rr]-base[rr])));
+    if(poaPlant(zen,az,T,alt,irr,doy,albedo).plant>ev.plant+1e-9)cand=alt;
+  }
+  return {angles:cand,f:undefined};
 }
 
 /* velocidad del actuador (Sunner: 0,17 °/s) — la consigna no teletransporta:
@@ -1948,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.20.1';
+const VER='v1.21.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2645,6 +2663,14 @@ function build3D(){
           Seguidor.setModsPerStr(mods);
           const beam=Seguidor.buildBeam(THREE,{west:!twinOf[r],detail:'mass',size:media?'medio':'largo',
                                                materials:mats,skip:{antena:1,antenatip:1}});
+          // PACTO DEL ROJO: el CANTO de los módulos (5 cm en el modelo) fabricaba
+          // sombra visible de energía ~0 en tangencia (la física modela palas sin
+          // espesor) — gris sin rojo. Se adelgaza SOLO aquí (seguidor.js es
+          // fuente única compartida): lo gris que quede será sombra real ⇒ rojo
+          beam.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.type==='BoxGeometry'){
+            const pr2=o.geometry.parameters;
+            if(pr2&&pr2.width>1&&pr2.height<=0.061)o.scale.y=0.25;
+          }});
           const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           // SILUETA de sombra: el bb se toma con el spin AÚN SUELTO (marco local
@@ -2664,7 +2690,7 @@ function build3D(){
         const gRot=new THREE.Group();
         const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),tubeM);
         tube.castShadow=true;
-        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.05,len),pmFallback());
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.02,len),pmFallback());
         panel.position.y=0.10+c.z0;
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
