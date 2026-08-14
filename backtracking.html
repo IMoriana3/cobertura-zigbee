@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.21.3';
+const VER='v1.22.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2990,6 +2990,7 @@ function update3D(){
              [0.20+0.25*up+0.62*warm*(1-0.5*up),0.28+0.30*up+0.20*warm*(1-0.5*up),0.42+0.35*up-0.20*warm]);
     }
     TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
+    if(TD.sunPov)snapSunPov();                 // modo «👁 sol»: la vista sigue al sol
   }else{
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
     // crepúsculo: el rescoldo naranja vive en el HORIZONTE y se apaga entre
@@ -3778,18 +3779,46 @@ $('polview').onchange=()=>{drawScene();update3D();paintHourTrack();};
 $('lbl3d').onchange=()=>update3D();
 $('light3d').onchange=()=>update3D();
 $('ray3d').onchange=()=>update3D();     // sin esto, desmarcar «☀ rayo» no borraba
-// cámara desde el SOL: lo oculto desde aquí ES la sombra — prueba visual
-$('sunpov').onclick=()=>{
+// cámara desde el SOL: lo oculto desde aquí ES la sombra — prueba visual.
+// Es un MODO (toggle): al mover el slider o animar, la vista SIGUE al sol,
+// siempre bocarriba (up fijo al cielo) y nunca bajo el horizonte (elev ≥1,5°)
+function snapSunPov(){
   if(!TD||!DAY)return;
   const inst=sceneInstant(), tIdx=timeIndex();
   const g=inst?inst.g:DAY.sun[tIdx];
-  if(!(g.elev>0))return;
-  const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const el=Math.max(1.5,g.elev)*RAD;
+  const azR=(g.az-DAY.c.axaz)*RAD;
   const dir=new THREE.Vector3(Math.sin(azR)*Math.cos(el),Math.sin(el),-Math.cos(azR)*Math.cos(el));
   const t=TD.controls.target;
-  const dist=Math.max(60,TD.camera.position.distanceTo(t));
+  // el sol está en el INFINITO: con la cámara cerca hay paralaje y se ve
+  // «alrededor» de las emisoras (rojos a cielo abierto — imposible desde el
+  // rayo exacto). Cámara MUY lejos = casi ortográfica: cada sombra debe
+  // quedar tapada por su emisora; si ves rojo despejado, eso es un hallazgo.
+  const dist=Math.max(900,(TD.R||150)*3);
+  TD.camera.up.set(0,1,0);
   TD.camera.position.copy(t.clone().add(dir.multiplyScalar(dist)));
-  TD.controls.update();update3D();
+  // TELEOBJETIVO: FOV estrecho que encuadra la planta — eso ES la
+  // aproximación ortográfica (rayos casi paralelos, paralaje mínimo)
+  const fov=Math.max(4,Math.min(30,2*Math.atan(((TD.R||150)*0.62)/dist)*DEG));
+  TD.camera.fov=fov;TD.camera.updateProjectionMatrix();
+  if(TD.controls.maxDistance<dist)TD.controls.maxDistance=dist*1.2;
+  TD.controls.update();
+}
+$('sunpov').onclick=()=>{
+  if(!TD||!DAY)return;
+  TD.sunPov=!TD.sunPov;
+  $('sunpov').classList.toggle('acc',TD.sunPov);
+  if(TD.sunPov){
+    TD.povPrev={pos:TD.camera.position.clone(),max:TD.controls.maxDistance,fov:TD.camera.fov};
+    snapSunPov();update3D();
+  }else if(TD.povPrev){
+    TD.camera.position.copy(TD.povPrev.pos);
+    TD.controls.maxDistance=TD.povPrev.max;
+    TD.camera.fov=TD.povPrev.fov||45;TD.camera.updateProjectionMatrix();
+    TD.camera.up.set(0,1,0);
+    TD.controls.update();update3D();
+    TD.povPrev=null;
+  }
 };
 let PLAYPOS=0, PLAYTS=0;
 $('play').onclick=()=>{
