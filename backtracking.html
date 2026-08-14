@@ -10,7 +10,12 @@
     --bg:#0b0f14; --bg2:#101722; --card:#121a26; --line:#1e2a3a; --line2:#2a3a50;
     --tx:#eaf4ff; --tx2:#9bb0c6; --muted:#5c7189; --accent:#5aa9ff; --ok:#36d399;
     --warn:#fbbd23; --err:#f87272; --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
-    --ancho:min(1680px,96vw);
+    /* 2560 y no 1680: el tope viejo mordía a partir de 1.750 px de ventana y en un monitor 2,5K esta
+       pantalla usaba el 66 % del ancho, y el 49 % en un ultrapanorámico. Aquí ancho es útil de
+       verdad —la escena 3D y las curvas del día crecen con él— y el texto no sufre, porque el
+       párrafo de cabecera lleva su propio tope en ch. A partir de 2560 deja de crecer para que en
+       un 21:9 no se estire sin sentido. */
+    --ancho:min(2560px,96vw);
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}

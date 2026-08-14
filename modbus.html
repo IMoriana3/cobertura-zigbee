@@ -13,7 +13,9 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
   a{color:var(--accent);text-decoration:none}
-  :root{--ancho:min(1680px,96vw)}
+  /* 2560 y no 1680: el tope viejo mordía a partir de 1.750 px y en un monitor 2,5K esta pantalla
+     usaba el 66 % del ancho. Aquí el ancho es la tabla de registros, que es lo que se viene a leer. */
+  :root{--ancho:min(2560px,96vw)}
   header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto}
   header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
   header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:100ch}
