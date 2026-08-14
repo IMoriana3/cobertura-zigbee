@@ -52,6 +52,9 @@ t('lazo de control canónico: deadband 1.0° · slew 0.17°/s', () => {
   if (!/id="deadband"[^>]*value="1\.0"/.test(html)) throw new Error('deadband ≠ 1.0');
   if (!/id="slew"[^>]*value="0\.17"/.test(html)) throw new Error('slew ≠ 0.17');
 });
+t('stow nocturno del proyecto: 5° al este (+5 en convención core; −5 en la TCU de campo)', () => {
+  if (!/id="stow"[^>]*value="5"/.test(html)) throw new Error('stow default ≠ 5');
+});
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
     if (!html.includes("'" + nm + "'") && !html.includes('"' + nm + '"'))
@@ -92,11 +95,14 @@ for (const r of F.runPhysicsQA()) {
 }
 
 console.log('extra (solo tiene sentido en Node: coherencia con el core y aristas)');
-t('CANON espeja las constantes canónicas de tracker.py', () => {
+t('CANON espeja las constantes canónicas de tracker.py (salvo stow: dato de proyecto)', () => {
   const C = F.CANON;
   if (C.pitch !== 6.00 || C.cw !== 2.382 || C.gcr !== 0.397) throw new Error('geometría');
   if (C.maxAngle !== 55 || C.slewDegS !== 0.17 || C.deadbandDeg !== 1.0) throw new Error('mecánica');
-  if (C.nightStowDeg !== 0) throw new Error('night stow');
+  // el core aún dice CANONICAL_NIGHT_STOW_DEG=0; el proyecto duerme a 5° ESTE
+  // (usuario 2026-08, en la TCU se escribe −5). Si el core adopta el dato,
+  // este test debe seguirle.
+  if (C.nightStowDeg !== 5) throw new Error('night stow ≠ 5° este: ' + C.nightStowDeg);
 });
 t('DCFG_DEFAULT espeja DiffuseConfig del core (schema 2.1.0)', () => {
   const D = F.DCFG_DEFAULT;
