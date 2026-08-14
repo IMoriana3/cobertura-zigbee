@@ -39,6 +39,9 @@
   .btn.small{padding:4px 10px;font-size:.76rem}
   canvas.viz{width:100%;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
   canvas.skyedit{cursor:crosshair;touch-action:none}
+  .viz3d{width:100%;height:440px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .viz3d canvas{display:block}
+  .viz3d .hint{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:.64rem;color:var(--muted);pointer-events:none}
   .hud{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
   .ro{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
   .ro .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
@@ -174,6 +177,23 @@
   </div>
 
   <div class="card">
+    <h2>🗺 Zonal por NCU <span class="sn">opción · estilo Zonal Diffuse</span></h2>
+    <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="zonalOn">
+      <span><span class="nm">Activar el zonal</span>
+      <span class="ds">Un frente cruza la planta: cada NCU ve el cielo con retardo y decide con SU
+      señal — contra la decisión única de planta.</span></span></label>
+    <div class="two">
+      <div class="f"><label>Nº NCUs</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
+      <div class="f"><label>El frente cruza en (min)</label><input id="crossmin" type="number" step="5" min="0" max="240" value="45"></div>
+    </div>
+    <div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
+      <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
+      construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
+      pinta cada zona con su nube y su θ. Con día real de Open-Meteo, el frente retarda la serie
+      medida (aprox declarada: un punto no trae información espacial).</div>
+  </div>
+
+  <div class="card">
     <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
     <div class="pols" id="polbox"></div>
     <div class="three" style="margin-top:9px">
@@ -223,8 +243,13 @@
 <div><!-- columna derecha: escena + resultados -->
 
   <div class="card">
-    <h2>Escena <span class="sn">corte ⊥ al eje · la política elegida</span></h2>
-    <canvas id="scene" class="viz" height="360"></canvas>
+    <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
+      </span></h2>
+    <div id="view3d" class="viz3d"></div>
+    <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
       <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
@@ -253,6 +278,14 @@
     <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span></h2>
     <div style="overflow-x:auto"><table id="daytab"></table></div>
     <div class="nota" id="daynote"></div>
+  </div>
+
+  <div class="card" id="zonalcard" style="display:none">
+    <h2>Zonal por NCU <span class="sn">decisión global vs cada NCU con su señal</span></h2>
+    <div style="overflow-x:auto"><table id="zonaltab"></table></div>
+    <div class="nota">POA de planta = media de las zonas, cada una evaluada con SU cielo. La columna
+      «Δ zonal» es la ganancia de dar la decisión a cada NCU frente al θ común del sensor de planta
+      — el argumento del control distribuido (y de la NCU con visión de planta para coordinarlo).</div>
   </div>
 
   <div class="card">
@@ -284,6 +317,9 @@
 </div>
 </div>
 
+<script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que backtracking.html: offline -->
+<script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js?v=0.4.19"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
 <script>
 "use strict";
 /* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
@@ -629,6 +665,58 @@ function dayMetrics(day,theta,flag,poa){
   return {poaWh:wh,pctFlat:daySteps?100*flatSteps/daySteps:0,switches:sw,travelDeg:travel};
 }
 
+/* ── zonal por NCU (opción) ───────────────────────────────────────────────
+   La planta se parte en nZ zonas NCU a lo largo del eje y un FRENTE de
+   nubosidad la cruza en crossMin minutos: la zona z ve el mismo cielo con
+   retardo z·crossMin/(nZ−1) (bordes clampados: el frente entra por un lado).
+   Se comparan las dos arquitecturas de control reales:
+     GLOBAL — un sensor de planta (la media de las zonas) decide UN θ común;
+     ZONAL  — cada NCU decide con SU señal local (estilo Zonal Diffuse).
+   Para diffuse_continuous el zonal es ≥ global POR CONSTRUCCIÓN (argmax
+   local paso a paso ≥ cualquier θ común) — la QA lo exige. Para las
+   políticas con histéresis es una medición, no un teorema.               */
+function shiftCC(cc,lagMin){
+  const s=Math.round(lagMin/5),out=new Array(288);
+  for(let i=0;i<288;i++)out[i]=cc[Math.max(0,Math.min(287,i-s))];
+  return out;
+}
+function shiftOM(om,lagMin){
+  if(!om)return null;
+  return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
+}
+function zonalRun(o,nZ,crossMin,polName,d){
+  const days=[];
+  for(let z=0;z<nZ;z++){
+    const lag=nZ>1?z*crossMin/(nZ-1):0;
+    days.push(buildDay(Object.assign({},o,{cc:shiftCC(o.cc,lag),om:shiftOM(o.om,lag)})));
+  }
+  const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
+  // el «sensor de planta»: un día con la irradiancia MEDIA de las zonas
+  const mean=Object.assign({},days[0]);
+  mean.irr=days[0].irr.map((_,i)=>{
+    let g=0,b=0,h=0;
+    for(const day of days){g+=day.irr[i].ghi;b+=day.irr[i].dni;h+=day.irr[i].dhi;}
+    return {ghi:g/nZ,dni:b/nZ,dhi:h/nZ};
+  });
+  mean.ghi=mean.irr.map(w=>w.ghi);
+  const poaNmean=poaSeries(mean,thN);
+  const rG=POLICIES[polName](mean,thN,poaNmean,d);
+  let whG=0,whZ=0,whN=0; const zones=[];
+  for(let z=0;z<nZ;z++){
+    const day=days[z];
+    const poaNz=poaSeries(day,thN);
+    const rZ=POLICIES[polName](day,thN,poaNz,d);
+    const poaZ=poaSeries(day,rZ.theta);
+    const poaG=poaSeries(day,rG.theta);
+    for(let i=0;i<day.n;i++){
+      whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
+    }
+    zones.push({theta:rZ.theta,flag:rZ.flag,day:day});
+  }
+  return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
+          zones:zones,thetaGlobal:rG.theta,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+}
+
 /* ── escenario canónico del core (test_diffuse_policies.py) ──────────────
    Madrid 21-jun, tz UTC, tramos overcast en múltiplos de 15 min. La QA lo
    usa para exigir los MISMOS comportamientos que exigen los tests Python. */
@@ -860,6 +948,30 @@ function runPhysicsQA(){
     A(p<=f,'poa_switch conmuta más ('+p+') que flat ('+f+')');
   });
 
+  t('zonal: shiftCC retarda clampando a los bordes y con retardo 0 es la identidad',()=>{
+    const cc=new Array(288).fill(0); cc[100]=1;
+    const s=shiftCC(cc,30);                        // 6 bines de 5 min
+    A(s[106]===1&&s[100]===0,'no retarda 30 min');
+    A(shiftCC(cc,0).every((v,i)=>v===cc[i]),'lag 0 no es identidad');
+    const first=shiftCC(cc,-600);                  // clamp: no envuelve
+    A(first.every(v=>v===0||v===1),'valores corruptos');
+  });
+  t('zonal con 1 NCU ≡ global exactamente (degeneración)',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
+    const r=zonalRun(o,1,45,'diffuse_poa_switch',DCFG_DEFAULT);
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'difieren: '+(r.plantZonal-r.plantGlobal));
+  });
+  t('zonal ≥ global para diffuse_continuous con un frente cruzando (por construcción)',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;            // frente de 3 h por la mañana
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const r=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT);
+    A(r.plantZonal>=r.plantGlobal-1e-6,
+      'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
+    A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
+  });
   t('meteo real: omInterp interpola lineal, clampa ≥0, y devuelve null en huecos y fuera de rango',()=>{
     const t0=Date.UTC(2026,5,21,0,0,0),H=3.6e6;
     const om={tms:[t0,t0+H,t0+2*H,t0+3*H],ghi:[0,100,null,300],dni:[0,50,100,150],dhi:[0,60,120,180],cc:[0,0.5,1,1]};
@@ -884,7 +996,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.0.0';
+const VER='v1.1.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1135,7 +1247,42 @@ function recompute(){
             metTgt:dayMetrics(day,r.theta,r.flag,poa)};
   }
   SIM={day:day,thN:thN,poaN:poaN,res:res,loop:loop};
-  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawScene();
+  computeZonal(d);
+  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
+  refreshScene(true);
+}
+
+/* ── zonal por NCU: la corrida de la escena + la tabla comparativa ── */
+let ZR=null;
+function zonalCfg(){return {on:$('zonalOn').checked,nZ:Math.max(2,Math.min(6,+$('nncu').value||4)),
+                            cross:+$('crossmin').value};}
+function computeZonal(d){
+  const zc=zonalCfg();
+  $('zonalcard').style.display=zc.on?'':'none';
+  $('zonelbl').textContent=zc.on?' · '+zc.nZ+' NCUs · frente '+zc.cross+'′':'';
+  ZR=null;
+  if(!zc.on)return;
+  const pv=$('polview').value;
+  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d);
+}
+function drawZonalTab(){
+  if(!ZR){$('zonaltab').innerHTML='';return;}
+  const zc=zonalCfg(),d=cfgDiffuse(),o=cfgDay();
+  let h='<tr><th>política</th><th>pvlib Wh/m²</th><th>global Wh/m²</th><th>zonal Wh/m²</th>'+
+        '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
+  for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+    if(!POL_ON[k])continue;
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d);
+    const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
+    const dd=100*(r.plantZonal/r.plantGlobal-1);
+    h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
+       '<td>'+r.plantPvlib.toFixed(0)+'</td><td>'+r.plantGlobal.toFixed(0)+'</td>'+
+       '<td'+(r.plantZonal>r.plantGlobal?' class="best"':'')+'>'+r.plantZonal.toFixed(0)+'</td>'+
+       '<td>'+(dG>=0?'+':'')+dG.toFixed(2)+' %</td>'+
+       '<td'+(dZ>dG?' class="best"':'')+'>'+(dZ>=0?'+':'')+dZ.toFixed(2)+' %</td>'+
+       '<td'+(dd>0.005?' class="best"':'')+'>'+(dd>=0?'+':'')+dd.toFixed(2)+' %</td></tr>';
+  }
+  $('zonaltab').innerHTML=h;
 }
 
 /* ── gráficas ── */
@@ -1370,6 +1517,199 @@ function drawScene(){
     ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
 }
 
+/* ── escena 3D real (three.js + seguidor.js, patrón de backtracking.html) ──
+   Zonas NCU a lo largo del eje, 3 filas por zona con el MODELO del seguidor
+   de la casa (Seguidor.buildBeam, la misma fuente que el gemelo digital),
+   sombras por shadow-map, nube propia por zona (opacidad = su cc) y sol/
+   hemisferio escalados por DNI/DHI del instante. Sin WebGL cae al corte 2D. */
+let TD=null,VIEW3D=false,BUILT={nZ:-1};
+function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=='undefined'&&typeof Seguidor!=='undefined';}
+function disposeGroup(g){g.traverse(o=>{
+  if(o.geometry)o.geometry.dispose();
+  if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());
+});}
+function init3D(){
+  if(TD||!has3D())return;
+  const holder=$('view3d');
+  try{
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    holder.appendChild(renderer.domElement);
+    const scene3=new THREE.Scene();
+    scene3.background=new THREE.Color(0x101722);
+    const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
+    const controls=new THREE.OrbitControls(camera,renderer.domElement);
+    controls.enableDamping=true;controls.dampingFactor=.08;
+    controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1200;
+    const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
+    const sun=new THREE.DirectionalLight(0xffeecc,1.45);
+    sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+    sun.shadow.bias=-2e-4;
+    sun.shadow.camera.left=-140;sun.shadow.camera.right=140;
+    sun.shadow.camera.top=140;sun.shadow.camera.bottom=-140;
+    sun.shadow.camera.near=10;sun.shadow.camera.far=800;
+    const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
+      new THREE.MeshBasicMaterial({color:0xfbbd23}));
+    scene3.add(hemi,sun,sun.target,sunMesh);
+    const hint=document.createElement('div');hint.className='hint';
+    hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · +X = norte (eje del tubo)';
+    holder.appendChild(hint);
+    TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
+        sunMesh:sunMesh,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
+  }catch(e){TD=null;$('tab3d').style.display='none';setTab(false);}
+}
+function makeLabel(){
+  const cv=document.createElement('canvas');cv.width=320;cv.height=72;
+  const ctx=cv.getContext('2d');
+  const tex=new THREE.CanvasTexture(cv);
+  const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
+  spr.scale.set(17,3.8,1);spr.renderOrder=9;
+  spr.userData={cv:cv,ctx:ctx,tex:tex,last:''};
+  return spr;
+}
+function setLabel(spr,txt,color){
+  if(spr.userData.last===txt)return;
+  const x=spr.userData.ctx;
+  x.clearRect(0,0,320,72);
+  x.fillStyle='rgba(10,15,22,.75)';x.fillRect(0,10,320,52);
+  x.font='700 30px system-ui,sans-serif';x.fillStyle=color;x.textAlign='center';
+  x.fillText(txt,160,46);
+  spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
+}
+const NROWS3D=3;
+function build3D(){
+  if(!SIM)return;
+  init3D(); if(!TD)return;
+  const zc=zonalCfg(), nZ=zc.on?zc.nZ:1;
+  if(TD.world&&BUILT.nZ===nZ)return;
+  if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
+  const world=new THREE.Group();
+  const mats=Seguidor.materials(THREE);
+  Seguidor.setModsPerStr(28);
+  const D0=Seguidor.DIMS;
+  const zoneLen=D0.span*D0.medioFactor+2, gap=8, pitch=+$('pitch').value||6;
+  const stepX=zoneLen+gap, w=(nZ-1)*stepX;
+  const cx=w/2, cz=(NROWS3D-1)*pitch/2;
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(w+zoneLen+70,NROWS3D*pitch+70),
+    new THREE.MeshLambertMaterial({color:0x24331b}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.position.set(cx,0,cz);
+  world.add(ground);
+  const postM=new THREE.MeshLambertMaterial({color:0x8a949c});
+  TD.zones=[];
+  for(let z=0;z<nZ;z++){
+    const zx=z*stepX, spins=[];
+    for(let r=0;r<NROWS3D;r++){
+      const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:'medio',
+                                           materials:mats,skip:{antena:1,antenatip:1}});
+      const gpr=new THREE.Group();
+      gpr.position.set(zx,D0.postH,r*pitch);
+      gpr.add(beam.spin,beam.static);
+      world.add(gpr);
+      spins.push(beam.spin);
+      for(const px of [-zoneLen*0.33,0,zoneLen*0.33]){
+        const post=new THREE.Mesh(new THREE.BoxGeometry(0.14,D0.postH,0.14),postM);
+        post.position.set(zx+px,D0.postH/2,r*pitch);
+        post.castShadow=true;world.add(post);
+      }
+    }
+    // nube de la zona: opacidad = su cc (material compartido por los puffs)
+    const cm=new THREE.MeshLambertMaterial({color:0xdfe7f2,transparent:true,opacity:0,depthWrite:false});
+    const cloud=new THREE.Group();
+    for(let k=0;k<7;k++){
+      const s=new THREE.Mesh(new THREE.SphereGeometry(5.5+((k*37)%40)/7,12,10),cm);
+      s.position.set(zx+(((k*53)%100)/100-0.5)*zoneLen*0.95,
+                     26+((k*29)%9),
+                     cz+(((k*71)%100)/100-0.5)*NROWS3D*pitch*2.2);
+      s.scale.y=0.35;cloud.add(s);
+    }
+    world.add(cloud);
+    const spr=makeLabel();
+    spr.position.set(zx,10,-pitch*1.2);
+    world.add(spr);
+    TD.zones.push({spins:spins,cloudMat:cm,cloud:cloud,label:spr,zx:zx});
+  }
+  TD.world=world;TD.scene.add(world);
+  TD.cx=cx;TD.cz=cz;
+  // reencuadre SIEMPRE que cambia el nº de zonas: la planta cambia de tamaño
+  // (guardar la órbita del usuario solo vale mientras la geometría sea la misma).
+  // Encuadre 3/4 aéreo proporcional al ancho total de la planta.
+  const L=Math.max(60,w+zoneLen);
+  TD.camera.position.set(cx-0.5*L,0.42*L,cz+0.8*L);
+  TD.controls.target.set(cx,0,cz);
+  BUILT.nZ=nZ;
+}
+function update3D(){
+  if(!TD||!TD.world||!SIM)return;
+  const day=SIM.day,m=+$('hour').value;
+  const i=Math.min(day.n-1,Math.round(m/day.dtMin));
+  const bin=Math.min(287,Math.floor(m/5));
+  const zc=zonalCfg(),pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
+  const irr=day.irr[i],zen=day.zen[i],az=day.az[i],el=90-zen;
+  // sol: +X = norte (eje del tubo), +Z = este — θ>0 tumba la pala al este, como el core
+  const dist=260;
+  const sy=Math.max(3,dist*Math.sin(Math.max(1.5,el)*RAD));
+  TD.sun.position.set(TD.cx+dist*Math.cos(az*RAD)*Math.cos(el*RAD),sy,
+                      TD.cz+dist*Math.sin(az*RAD)*Math.cos(el*RAD));
+  TD.sun.target.position.set(TD.cx,0,TD.cz);
+  TD.sunMesh.position.copy(TD.sun.position);
+  TD.sunMesh.visible=el>0;
+  TD.sun.intensity=el>0?0.06+1.35*Math.min(1,irr.dni/900):0.02;
+  // el hemisferio ES la difusa: con overcast la escena queda lechosa y sin sombras duras
+  TD.hemi.intensity=0.25+1.5*Math.min(1,irr.dhi/300);
+  const dayness=Math.max(0,Math.min(1,el/50)),ccMean=CC[bin];
+  const mixc=(a,b,t)=>a+(b-a)*t;
+  TD.scene.background.setRGB(
+    mixc(0.063,mixc(0.29,0.55,1-ccMean*0.75),dayness)/1,
+    mixc(0.09,mixc(0.48,0.60,1-ccMean*0.70),dayness)/1,
+    mixc(0.125,mixc(0.75,0.66,1-ccMean*0.60),dayness)/1);
+  for(let z=0;z<TD.zones.length;z++){
+    const Z=TD.zones[z];
+    let th,fl,ccz;
+    if(zc.on&&ZR&&ZR.zones[z]){
+      th=ZR.zones[z].theta[i];fl=ZR.zones[z].flag[i];ccz=ZR.zones[z].day.cc[bin];
+    }else{
+      const arr=r.exec||r.theta;th=arr[i];fl=r.flag[i];ccz=ccMean;
+    }
+    for(const s of Z.spins)s.rotation.x=th*RAD;
+    Z.cloudMat.opacity=0.92*ccz;
+    setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+th.toFixed(0)+'°'+(fl?' · FLAT':''),
+             fl?'#a78bfa':'#9bb0c6');
+  }
+}
+function loop3D(){
+  requestAnimationFrame(loop3D);
+  if(!TD||!VIEW3D)return;
+  const holder=$('view3d');
+  const w=holder.clientWidth,h=holder.clientHeight;
+  if(w&&h&&(w!==TD.w||h!==TD.h)){
+    TD.w=w;TD.h=h;TD.renderer.setSize(w,h,false);
+    TD.renderer.domElement.style.width='100%';TD.renderer.domElement.style.height='100%';
+    TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
+  }
+  const t=performance.now();
+  for(const Z of TD.zones)Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
+  TD.controls.update();
+  TD.renderer.render(TD.scene,TD.camera);
+}
+function setTab(three){
+  VIEW3D=!!three&&has3D();
+  if(VIEW3D&&!TD)init3D();
+  if(!TD)VIEW3D=false;
+  $('view3d').style.display=VIEW3D?'':'none';
+  $('scene').style.display=VIEW3D?'none':'';
+  $('tab3d').classList.toggle('acc',VIEW3D);
+  $('tab2d').classList.toggle('acc',!VIEW3D);
+  if(VIEW3D){build3D();update3D();}
+  else drawScene();
+}
+$('tab3d').onclick=()=>setTab(true);
+$('tab2d').onclick=()=>setTab(false);
+function refreshScene(rebuild){
+  drawScene();                       // corte 2D + HUD (el HUD sirve a las dos vistas)
+  if(VIEW3D){if(rebuild)build3D();update3D();}
+}
+
 /* ── animación ── */
 let playing=false,lastT=0;
 $('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'⏸':'▶';if(playing){lastT=0;requestAnimationFrame(tick);}};
@@ -1380,13 +1720,13 @@ function tick(ts){
     let m=+$('hour').value+dm;
     if(m>1439)m=0;
     $('hour').value=m;
-    drawScene();
+    refreshScene(false);
   }
   lastT=ts;
   requestAnimationFrame(tick);
 }
-$('hour').addEventListener('input',drawScene);
-$('polview').onchange=()=>{drawTheta();drawScene();};
+$('hour').addEventListener('input',()=>refreshScene(false));
+$('polview').onchange=()=>{drawTheta();computeZonal(cfgDiffuse());refreshScene(false);};
 
 /* ── estimación anual: 12 días × mezcla de cielos ── */
 const CLIMATES={seco:[55,30,15],atlantico:[30,35,35],centroeuropa:[22,38,40]};
@@ -1453,14 +1793,18 @@ $('qabtn').onclick=()=>{
 
 /* ── wiring ── */
 ['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','axaz','dt',
- 'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew'].forEach(id=>{
+ 'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew',
+ 'nncu','crossmin'].forEach(id=>{
   $(id).addEventListener('change',recompute);
 });
 $('loopOn').addEventListener('change',recompute);
+$('zonalOn').addEventListener('change',recompute);
 window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
 
 skyPresetApply('tarde',0);
 recompute();
+loop3D();
+setTab(true);   // 3D por defecto; sin WebGL/THREE cae solo al corte 2D
 </script>
 </body>
 </html>
