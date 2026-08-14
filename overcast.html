@@ -729,7 +729,10 @@ function polPoaSwitch(day,thN,poaN,d){
   // meteo RESETEA el estado (mismo contrato que el core).
   const zeros=new Array(day.n).fill(0);
   const poaFlat=poaSeries(day,zeros);
-  const cs=Math.max(1,Math.round(d.confirmMin/day.dtMin));
+  const cs=Math.max(2,Math.round(d.confirmMin/day.dtMin));   // suelo 2: con UNA
+  // muestra el sostenimiento real es 0′ y el confirm desaparece. El core dice
+  // max(1) y a 5/10/15 min esto es idéntico (cs=6/3/2); solo cambia el caso
+  // degenerado dtMin ≥ confirmMin, donde max(1) contradice al propio parámetro.
   const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
   const flag=new Array(day.n).fill(false);
   let state=false,ec=0,xc=0,sc=999;
@@ -1010,7 +1013,10 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
 function explainPoaSwitch(day,thN,poaN,d){
   const zeros=new Array(day.n).fill(0);
   const poaFlat=poaSeries(day,zeros);
-  const cs=Math.max(1,Math.round(d.confirmMin/day.dtMin));
+  const cs=Math.max(2,Math.round(d.confirmMin/day.dtMin));   // suelo 2: con UNA
+  // muestra el sostenimiento real es 0′ y el confirm desaparece. El core dice
+  // max(1) y a 5/10/15 min esto es idéntico (cs=6/3/2); solo cambia el caso
+  // degenerado dtMin ≥ confirmMin, donde max(1) contradice al propio parámetro.
   const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
   const flag=new Array(day.n).fill(false);
   const ev=[];
@@ -1216,7 +1222,9 @@ function runPhysicsQA(){
   });
   t('invarianza de resolución (schema 2.1.0): mismo nº de conmutaciones a 5/10/15 min, bordes ± 15 min',()=>{
     const edges={};
-    for(const dt of [5,10,15]){
+    for(const dt of [5,10,15]){   // la promesa del schema: el escenario tiene
+      // tramos de 15 min, así que solo estas tres lo muestrean igual. El caso
+      // dtMin ≥ confirmMin lo cubre su propio test (el confirm no puede valer 0′).
       const S=mk(dt);
       const r=polPoaSwitch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
       const e=[];
@@ -1224,12 +1232,12 @@ function runPhysicsQA(){
       edges[dt]=e;
     }
     A(edges[15].length>=3,'el escenario debe producir ≥3 conmutaciones, hay '+edges[15].length);
-    A(edges[5].length===edges[15].length&&edges[10].length===edges[15].length,
-      'nº difiere: 5min='+edges[5].length+' 10min='+edges[10].length+' 15min='+edges[15].length);
-    for(let k=0;k<edges[15].length;k++){
-      A(Math.abs(edges[5][k]-edges[15][k])<=15,'borde '+k+' no invariante (5 vs 15)');
-      A(Math.abs(edges[10][k]-edges[15][k])<=15,'borde '+k+' no invariante (10 vs 15)');
-    }
+    for(const dt of [5,10])
+      A(edges[dt].length===edges[15].length,
+        'nº de conmutaciones difiere a '+dt+' min: '+edges[dt].length+' vs '+edges[15].length+' a 15 min');
+    for(let k=0;k<edges[15].length;k++)
+      for(const dt of [5,10])
+        A(Math.abs(edges[dt][k]-edges[15][k])<=15,'borde '+k+' no invariante ('+dt+' vs 15 min)');
   });
   t('el FLAG significa cosas distintas: flat/poa_switch ⇒ θ=0 · limited RETIENE ángulos que no son 0 · continuous puede ser INTERMEDIO',()=>{
     // el bug: la escena rotulaba «FLAT» los cuatro. limited llega a 55° con el
@@ -1305,6 +1313,25 @@ function runPhysicsQA(){
     A(types.filter(v=>v==='enter').length>=2,'faltan entradas en plano');
     A(types.includes('dwell'),'no narra el bloqueo por dwell');
     A(types.filter(v=>v==='exit').length>=2,'faltan vueltas a seguimiento');
+  });
+  t('la ventana de confirm nunca vale 0 minutos: con dtMin ≥ confirmMin el anti-chattering seguiría vivo',()=>{
+    // a dtMin=30 con confirm 30 el suelo de 1 muestra daba 0′ sostenidos: el
+    // poa_switch degeneraba hacia flat justo en el anual de 365 días.
+    const cc=new Array(288).fill(0);
+    for(let m=540;m<560;m+=5)cc[m/5]=0.95;      // pulso corto: NO debe conmutar
+    for(let m=780;m<960;m+=5)cc[m/5]=0.95;      // sostenido: sí
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,nightStow:5,cc:cc,om:null};
+    const conm=dt=>{
+      const day=buildDay(Object.assign({},o,{dtMin:dt}));
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      const r=POLICIES.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT);
+      let n=0;for(let i=1;i<day.n;i++)if(r.flag[i]!==r.flag[i-1])n++;
+      return n;
+    };
+    const c15=conm(15),c30=conm(30);
+    A(c30<=c15+1,'a 30 min conmuta '+c30+' veces contra '+c15+' a 15: el confirm ha desaparecido');
+    A(Math.max(2,Math.round(DCFG_DEFAULT.confirmMin/30))>=2,'el suelo del confirm debe ser 2 muestras');
   });
   t('gobierno de DiffuseConfig: enter_ratio 999 ⇒ flat y poa_switch jamás conmutan',()=>{
     const d=Object.assign({},DCFG_DEFAULT,{flatEnterRatio:999,swEnterRatio:999});
@@ -1601,7 +1628,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.10.0';
+const VER='v1.10.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2361,6 +2388,10 @@ function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=
    256², cada etiqueta de NCU uno de 320×72). Cambiar de planta varias veces
    dejaba decenas de MB de texturas colgadas en la GPU. */
 function disposeGroup(g){g.traverse(o=>{
+  // instanceMatrix/instanceColor NO viven en geometry.attributes: solo se
+  // liberan al emitir el 'dispose' del propio InstancedMesh. Sin esto, San José
+  // fugaba 14,5 MB de VRAM por reconstrucción (hasta perder el contexto WebGL).
+  if(o.isInstancedMesh)o.dispose();
   if(o.geometry)o.geometry.dispose();
   if(!o.material)return;
   for(const m of (Array.isArray(o.material)?o.material:[o.material])){
@@ -2507,7 +2538,9 @@ function build3D(){
   if(!SIM)return;
   init3D(); if(!TD)return;
   const zc=zonalCfg(), nZ=zc.on?zc.nZ:1;
-  const key=(PLANT_REAL?PLANT_REAL.name:'syn')+'·'+nZ+'·'+zc.cross;
+  // el retardo del frente NO cambia la geometría (solo lo lee update3D):
+  // incluirlo en la clave reconstruía la planta entera al mover ese slider
+  const key=(PLANT_REAL?PLANT_REAL.name:'syn')+'·'+nZ;
   if(TD.world&&BUILT.key===key)return;
   if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
   TD.real=null;
@@ -3258,7 +3291,9 @@ $('year365').onclick=async()=>{
     // sobreestimaba ~0,4 % — MÁS que la ganancia que este simulador mide.
     for(let t0=Date.parse(dsFrom);t0<=Date.parse(dsTo);t0+=86400000){
       const ds=new Date(t0).toISOString().slice(0,10);
-      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:30,cc:zeroCC,om:om}));
+      // decisión a 15 min: a 30 el confirm de la histéresis colapsaba a una sola
+      // muestra y el poa_switch degeneraba hacia el flat justo en la tabla estrella
+      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:15,cc:zeroCC,om:om}));
       const dayF=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_FINE,cc:zeroCC,om:om}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       for(const k in tot){
