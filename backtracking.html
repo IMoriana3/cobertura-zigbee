@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.22.1';
+const VER='v1.22.2';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3810,12 +3810,22 @@ function snapSunPov(){
   oc.near=1;oc.far=dist*2+500;
   oc.updateProjectionMatrix();
 }
+// ZOOM en el modo sol: en ortográfica es escala de encuadre (los rayos siguen
+// exactamente paralelos — el teorema «desde el sol sin sombras» se conserva)
+$('view3d').addEventListener('wheel',(e)=>{
+  if(!TD||!TD.sunPov||!TD.orthoCam)return;
+  e.preventDefault();e.stopPropagation();
+  const z=TD.orthoCam.zoom*(e.deltaY<0?1.12:0.89);
+  TD.orthoCam.zoom=Math.max(0.25,Math.min(12,z));
+  TD.orthoCam.updateProjectionMatrix();
+},{passive:false,capture:true});
 $('sunpov').onclick=()=>{
   if(!TD||!DAY)return;
   TD.sunPov=!TD.sunPov;
   $('sunpov').classList.toggle('acc',TD.sunPov);
   if(TD.sunPov){
     TD.controls.enabled=false;                 // es la vista del SOL: no se orbita
+    TD.orthoCam.zoom=1;TD.orthoCam.updateProjectionMatrix();
     snapSunPov();update3D();
   }else{
     TD.controls.enabled=true;
