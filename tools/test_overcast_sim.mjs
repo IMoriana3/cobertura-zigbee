@@ -56,6 +56,12 @@ t('stow nocturno del proyecto en convención TCU: −5° (5° al este; la UI ent
   if (!/id="stow"[^>]*value="-5"/.test(html)) throw new Error('stow default ≠ −5');
   if (!/function tcuDeg\(/.test(html)) throw new Error('sin conversor de convención tcuDeg');
 });
+t('plantas reales: botones Ayora/San José, carga por fetch del layout y vuelta a sintética', () => {
+  if (!/id="ayorabtn"/.test(html) || !/id="sjbtn"/.test(html) || !/id="synbtn"/.test(html))
+    throw new Error('faltan los botones de planta');
+  if (!/_layout\.json/.test(html)) throw new Error('no carga el layout real');
+  if (!/function buildReal3D/.test(html)) throw new Error('sin escena de planta real');
+});
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
     if (!html.includes("'" + nm + "'") && !html.includes('"' + nm + '"'))

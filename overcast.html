@@ -188,9 +188,16 @@
       <span class="ds">Un frente cruza la planta: cada NCU ve el cielo con retardo y decide con SU
       señal — contra la decisión única de planta.</span></span></label>
     <div class="two">
-      <div class="f"><label>Nº NCUs</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
+      <div class="f"><label>Nº NCUs (sintética)</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
       <div class="f"><label>El frente cruza en (min)</label><input id="crossmin" type="number" step="5" min="0" max="240" value="45"></div>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="btn small" id="ayorabtn" title="Carga ayora_layout.json: 754 seguidores y las 16 NCUs REALES — las zonas del zonal son las NCUs de verdad, con el retardo del frente según la posición de cada centroide (oeste→este). Fija lat/lon (y UTC+2).">⛰ Ayora real</button>
+      <button class="btn small" id="sjbtn" title="Carga sanjose_layout.json: 2.289 seguidores y 21 NCUs reales (Arequipa, Perú — UTC−5, hemisferio sur).">⛰ San José real</button>
+      <button class="btn small" id="synbtn" title="Vuelve a la planta sintética de N zonas equiespaciadas">◻ Sintética</button>
+      <span class="pill" id="plantinfo"></span>
+    </div>
+    <div class="nota" id="plantnote" style="display:none"></div>
     <div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
       <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
       construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
@@ -711,10 +718,14 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d){
+function zonalRun(o,nZ,crossMin,polName,d,lags){
+  // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
+  // su centroide proyectada en la dirección del frente; sin él, reparto
+  // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
+  // zonas ven el MISMO cielo ⇒ zonal ≡ global exactamente (QA).
   const days=[];
   for(let z=0;z<nZ;z++){
-    const lag=nZ>1?z*crossMin/(nZ-1):0;
+    const lag=lags?lags[z]:(nZ>1?z*crossMin/(nZ-1):0);
     days.push(buildDay(Object.assign({},o,{cc:shiftCC(o.cc,lag),om:shiftOM(o.om,lag)})));
   }
   const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
@@ -1010,6 +1021,12 @@ function runPhysicsQA(){
       'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
     A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
   });
+  t('zonal con lags explícitos de CERO: todas las zonas ven el mismo cielo ⇒ zonal ≡ global exacto',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
+    const r=zonalRun(o,3,45,'diffuse_poa_switch',DCFG_DEFAULT,[0,0,0]);
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'difieren: '+(r.plantZonal-r.plantGlobal));
+  });
   t('meteo real: omInterp interpola lineal, clampa ≥0, y devuelve null en huecos y fuera de rango',()=>{
     const t0=Date.UTC(2026,5,21,0,0,0),H=3.6e6;
     const om={tms:[t0,t0+H,t0+2*H,t0+3*H],ghi:[0,100,null,300],dni:[0,50,100,150],dhi:[0,60,120,180],cc:[0,0.5,1,1]};
@@ -1034,7 +1051,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.3.0';
+const VER='v1.4.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1299,17 +1316,62 @@ function recompute(){
 
 /* ── zonal por NCU: la corrida de la escena + la tabla comparativa ── */
 let ZR=null;
-function zonalCfg(){return {on:$('zonalOn').checked,nZ:Math.max(2,Math.min(6,+$('nncu').value||4)),
-                            cross:+$('crossmin').value};}
+/* planta REAL cargada (layout con NCUs de verdad) o null = sintética */
+let PLANT_REAL=null;
+function zonalCfg(){
+  const cross=+$('crossmin').value;
+  if(PLANT_REAL){
+    // zonas = las NCUs reales; el lag de cada una = posición del centroide
+    // proyectada en la dirección del frente (oeste→este, +x), normalizada al
+    // tiempo de cruce configurado
+    const c=PLANT_REAL;
+    const lags=c.cents.map(ct=>cross*(ct.x-c.x0)/((c.x1-c.x0)||1));
+    return {on:$('zonalOn').checked,nZ:c.ncuIds.length,cross:cross,lags:lags,real:c};
+  }
+  return {on:$('zonalOn').checked,nZ:Math.max(2,Math.min(6,+$('nncu').value||4)),
+          cross:cross,lags:null,real:null};
+}
 function computeZonal(d){
   const zc=zonalCfg();
   $('zonalcard').style.display=zc.on?'':'none';
-  $('zonelbl').textContent=zc.on?' · '+zc.nZ+' NCUs · frente '+zc.cross+'′':'';
+  $('zonelbl').textContent=(PLANT_REAL?' · '+PLANT_REAL.title:'')+
+    (zc.on?' · '+zc.nZ+' NCUs · frente '+zc.cross+'′':'');
   ZR=null;
   if(!zc.on)return;
   const pv=$('polview').value;
-  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d);
+  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags);
 }
+async function loadRealPlant(name){
+  const note=$('plantnote');
+  try{
+    const r=await fetch(name+'_layout.json',{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    const byN={};
+    for(const t of j.trackers){const k=t.ncu==null?1:t.ncu;(byN[k]=byN[k]||[]).push(t);}
+    const ncuIds=Object.keys(byN).map(Number).sort((a,b)=>a-b);
+    const cents=ncuIds.map(k=>{const a=byN[k];
+      return {id:k,x:a.reduce((s,t)=>s+t.x,0)/a.length,n:a.reduce((s,t)=>s+t.n,0)/a.length};});
+    const xs=cents.map(c=>c.x);
+    PLANT_REAL={name:name,title:name==='ayora'?'Ayora':'San José',data:j,byN:byN,
+                ncuIds:ncuIds,cents:cents,x0:Math.min(...xs),x1:Math.max(...xs)};
+    if(j.clat!=null){$('lat').value=j.clat;$('lon').value=j.clon;}
+    $('tz').value=name==='sanjose'?-5:2;              // Arequipa · España
+    $('zonalOn').checked=true;
+    $('plantinfo').innerHTML='<b>'+PLANT_REAL.title+'</b> · '+j.trackers.length+' trackers · '+
+      ncuIds.length+' NCUs';
+    note.style.display='none';
+    BUILT.key='';
+    recompute();
+  }catch(e){
+    note.style.display='';
+    note.innerHTML='No se pudo cargar '+name+'_layout.json ('+(e&&e.message||e)+'). '+
+      'El fetch necesita servirse por http (GitHub Pages); abriendo el fichero en local (file://) el navegador lo bloquea.';
+  }
+}
+$('ayorabtn').onclick=()=>loadRealPlant('ayora');
+$('sjbtn').onclick=()=>loadRealPlant('sanjose');
+$('synbtn').onclick=()=>{PLANT_REAL=null;$('plantinfo').innerHTML='';$('plantnote').style.display='none';BUILT.key='';recompute();};
 function drawZonalTab(){
   if(!ZR){$('zonaltab').innerHTML='';return;}
   const zc=zonalCfg(),d=cfgDiffuse(),o=cfgDay();
@@ -1317,7 +1379,7 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
-    const r=zonalRun(o,zc.nZ,zc.cross,k,d);
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags);
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
@@ -1573,7 +1635,7 @@ function drawScene(){
    de la casa (Seguidor.buildBeam, la misma fuente que el gemelo digital),
    sombras por shadow-map, nube propia por zona (opacidad = su cc) y sol/
    hemisferio escalados por DNI/DHI del instante. Sin WebGL cae al corte 2D. */
-let TD=null,VIEW3D=false,BUILT={nZ:-1};
+let TD=null,VIEW3D=false,BUILT={key:null};
 function has3D(){return typeof THREE!=='undefined'&&typeof THREE.OrbitControls!=='undefined'&&typeof Seguidor!=='undefined';}
 function disposeGroup(g){g.traverse(o=>{
   if(o.geometry)o.geometry.dispose();
@@ -1659,8 +1721,11 @@ function build3D(){
   if(!SIM)return;
   init3D(); if(!TD)return;
   const zc=zonalCfg(), nZ=zc.on?zc.nZ:1;
-  if(TD.world&&BUILT.nZ===nZ)return;
+  const key=(PLANT_REAL?PLANT_REAL.name:'syn')+'·'+nZ+'·'+zc.cross;
+  if(TD.world&&BUILT.key===key)return;
   if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
+  TD.real=null;
+  if(PLANT_REAL){buildReal3D(zc);BUILT.key=key;return;}
   const world=new THREE.Group();
   const mats=Seguidor.materials(THREE);
   mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;   // pala azulada, no blanco quirófano (el mismo ajuste que backtracking.html)
@@ -1805,7 +1870,97 @@ function build3D(){
   const L=Math.max(80,Math.max(span,depth)+30);
   TD.camera.position.set(cx-0.60*L,0.34*L,cz+0.72*L);
   TD.controls.target.set(cx,0,cz);
-  BUILT.nZ=nZ;
+  TD.scene.fog.near=260;TD.scene.fog.far=850;
+  BUILT.key=key;
+}
+
+/* ── la planta REAL en 3D: instanciado de todos los seguidores ─────────────
+   Escena: +X = norte (n del layout), +Z = este (x del layout). Cada tracker
+   es una losa instanciada (largo real por tipo) que bascula con el θ de SU
+   NCU y se tiñe por estado (azul módulo · violeta FLAT · ámbar retiene). El
+   frente es un banco de columnas de nubes cuya opacidad local sigue la
+   MISMA cc retardada que ve cada NCU en la física. A esta escala no hay
+   shadow-map útil: la luz cuenta la historia (DNI/DHI), no las sombras.   */
+function buildReal3D(zc){
+  const world=new THREE.Group();
+  const R=PLANT_REAL, J=R.data, T=J.trackers;
+  const xs=T.map(t=>t.x),ns=T.map(t=>t.n);
+  const bx0=Math.min(...xs),bx1=Math.max(...xs),bn0=Math.min(...ns),bn1=Math.max(...ns);
+  const cx=(bn0+bn1)/2, cz=(bx0+bx1)/2;                 // centro en coords de ESCENA
+  const W=bx1-bx0, D=bn1-bn0, L=Math.max(W,D);
+  // suelo plano a esta escala (la planta real ya viene explanada)
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(D+600,W+600),
+    new THREE.MeshLambertMaterial({color:0x27371d}));
+  ground.rotation.x=-Math.PI/2;ground.position.set(cx,-0.3,cz);
+  world.add(ground);
+  // losas instanciadas: un mesh por LARGO de tipo (completo/medio)
+  const ncuIdx={};R.ncuIds.forEach((id,i)=>ncuIdx[id]=i);
+  const isShort=t=>/medio|corto/i.test((t.t||'')+' '+(t.tp||''));
+  const groupsByLen={};
+  T.forEach(t=>{const len=isShort(t)?33:65;(groupsByLen[len]=groupsByLen[len]||[]).push(t);});
+  const slabM=new THREE.MeshLambertMaterial({color:0xffffff});
+  TD.real={items:[],meshes:[],cols:[],cx:cx,cz:cz,L:L};
+  for(const len in groupsByLen){
+    const arr=groupsByLen[len];
+    const geom=new THREE.BoxGeometry(+len,0.35,2.4);
+    const im=new THREE.InstancedMesh(geom,slabM,arr.length);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    arr.forEach((t,i)=>{
+      im.setColorAt(i,new THREE.Color(0x2a4b8f));
+      TD.real.items.push({mesh:im,i:i,z:ncuIdx[t.ncu==null?1:t.ncu]||0,
+                          px:t.n,pz:t.x});
+    });
+    world.add(im);TD.real.meshes.push(im);
+  }
+  // marcadores + etiquetas de NCU (las etiquetas llevan el estado vivo)
+  TD.zones=[];
+  const mM=new THREE.MeshLambertMaterial({color:0xd8d4c8});
+  R.cents.forEach((c,z)=>{
+    const box=new THREE.Mesh(new THREE.BoxGeometry(8,6,8),mM);
+    const nc=(J.ncus||[])[z];
+    const mx=nc?nc.n:c.n, mz=nc?nc.x:c.x;
+    box.position.set(mx,3,mz);world.add(box);
+    const spr=makeLabel();
+    spr.scale.set(120,27,1);
+    spr.position.set(c.n,40,c.x);world.add(spr);
+    TD.zones.push({spins:[],cloudMat:null,cloud:null,label:spr,zx:c.x});
+  });
+  // banco de nubes: columnas a lo ancho del frente (eje x del layout = Z escena)
+  TD.real.cols=[];
+  const NC=14;
+  for(let k=0;k<NC;k++){
+    const colx=bx0-60+(k+0.5)*(W+120)/NC;
+    const cm=new THREE.MeshLambertMaterial({color:0xdfe7f2,transparent:true,opacity:0,depthWrite:false});
+    const g=new THREE.Group();
+    for(let q=0;q<5;q++){
+      const s0=new THREE.Mesh(new THREE.SphereGeometry(45+((q*37)%40),10,8),cm);
+      s0.position.set(cx+(((q*53+k*17)%100)/100-0.5)*D*0.9,150+((q*29)%40),colx);
+      s0.scale.y=0.30;g.add(s0);
+    }
+    world.add(g);
+    TD.real.cols.push({mat:cm,lagMin:zc.cross*(colx-R.x0)/((R.x1-R.x0)||1)});
+  }
+  TD.world=world;TD.scene.add(world);
+  TD.cx=cx;TD.cz=cz;
+  TD.camera.position.set(cx-0.45*L,0.42*L,cz+0.72*L);
+  TD.camera.far=L*6;TD.camera.updateProjectionMatrix(); // 2,7 km de planta: far acorde
+  TD.controls.target.set(cx,0,cz);
+  TD.controls.maxDistance=L*2.5;
+  TD.scene.fog.near=L*0.9;TD.scene.fog.far=L*2.6;      // niebla lejos: la planta entera a la vista
+}
+const _m4=typeof THREE!=='undefined'?new THREE.Matrix4():null;
+const _rot=typeof THREE!=='undefined'?new THREE.Matrix4():null;
+const COL_TRACK=0x2a4b8f,COL_FLAT=0x7b5fd4,COL_SIG=0xc99527;
+function writeRealInstances(thByZone,flagByZone,sigByZone){
+  if(!TD||!TD.real)return;
+  for(const it of TD.real.items){
+    const th=thByZone[it.z]||0;
+    _rot.makeRotationX(th*RAD);
+    _m4.copy(_rot).setPosition(it.px,2,it.pz);
+    it.mesh.setMatrixAt(it.i,_m4);
+    it.mesh.setColorAt(it.i,new THREE.Color(flagByZone[it.z]?COL_FLAT:(sigByZone[it.z]?COL_SIG:COL_TRACK)));
+  }
+  for(const m of TD.real.meshes){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;}
 }
 function update3D(){
   if(!TD||!TD.world||!SIM)return;
@@ -1858,14 +2013,23 @@ function update3D(){
     }
     // la pala NO teletransporta: aquí solo se fija la CONSIGNA; loop3D la
     // persigue a la velocidad real del actuador (0,17 °/s en tiempo simulado)
-    Z.thTarget=th;
-    if(Z.thDisp==null){Z.thDisp=th;for(const s of Z.spins)s.rotation.x=th*RAD;}
-    Z.cloudMat.opacity=0.92*ccz;
+    Z.thTarget=th;Z.flag=fl;Z.sig=sig;
+    if(Z.thDisp==null){Z.thDisp=th;for(const s of Z.spins)s.rotation.x=th*RAD;TD.realDirty=true;}
+    if(Z.cloudMat)Z.cloudMat.opacity=0.92*ccz;
     // tres estados a la vista: FLAT (violeta) · señal viva RETENIDA por la
     // histéresis (ámbar — «la NCU ve la nube, el confirm/dwell mandan») · track
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
              (fl?' · FLAT':(sig?' · ☁ retiene':'')),
              fl?'#a78bfa':(sig?'#fbbd23':'#9bb0c6'));
+  }
+  // planta real: el banco de nubes barre el frente — cada columna respira la
+  // MISMA cc retardada que ve su vertical en la física del zonal
+  if(TD.real){
+    for(const col of TD.real.cols){
+      const b=Math.max(0,Math.min(287,bin-Math.round((zc.on?col.lagMin:0)/5)));
+      col.mat.opacity=0.85*CC[b];
+    }
+    TD.realDirty=true;
   }
   TD.scene.fog.color.copy(TD.scene.background);   // la niebla ES el cielo lejano
 }
@@ -1885,12 +2049,17 @@ function loop3D(){
   // ritmo de la animación; arrastrando el reloj, al equivalente de ×1
   const simRate=(playing?+$('speed').value:60)*60;    // s simulados por s real
   for(const Z of TD.zones){
-    Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
+    if(Z.cloud)Z.cloud.position.x=Math.sin(t/9000+Z.zx)*2.5;
     if(Z.thTarget==null||Z.thDisp==null)continue;
     if(Z.thDisp!==Z.thTarget){
       Z.thDisp=slewLimit1(Z.thDisp,Z.thTarget,fdt*simRate);
       for(const s of Z.spins)s.rotation.x=Z.thDisp*RAD;
+      TD.realDirty=true;
     }
+  }
+  if(TD.real&&TD.realDirty){
+    writeRealInstances(TD.zones.map(Z=>Z.thDisp||0),TD.zones.map(Z=>!!Z.flag),TD.zones.map(Z=>!!Z.sig));
+    TD.realDirty=false;
   }
   TD.controls.update();
   TD.renderer.render(TD.scene,TD.camera);
