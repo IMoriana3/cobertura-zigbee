@@ -1065,11 +1065,69 @@ function plantFromCotas(data,maxLines,blockIdx){
 /* sombra por fila en un instante — semántica de compute_shade: la fila up-sun
    sombrea a la down-sun; cada pareja acredita la sombra SOLO a su fila física.
    Con T.segs la fracción va ponderada por el solape axial real. */
+/* evaluador RASANTE 3D: con 80°<zen<89° el término temp≥1 de pvlib declara
+   «sin sombra» mientras la geometría 3D real sombrea (deflexión axial + tilt
+   N-S + azimut de eje) — medido: hasta 27% de módulo con el contador 2.5D en
+   cero y DNI ya no despreciable (Bagnarelli, GCR 0,22). En esa franja la
+   sombra por pareja se calcula con ray-cast 3D sobre TRAMOS finitos (mesas
+   reales). Las DECISIONES de las políticas no cambian (son las de las TCU /
+   pvlib); cambia el CONTADOR, que ya no puede mentir. */
+function shadePair3DBand(zen,az,T,rowAngles,p){
+  const pr=T.pairs[p];
+  const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+  if(!isFinite(psz))return {f:0,recv:p};
+  const recv=psz>=0?p:p+1, emit=psz>=0?p+1:p;
+  const azR=(az-T.axisAz)*RAD, el=(90-zen)*RAD;
+  const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
+  if(sv[2]<=0)return {f:0,recv:recv};
+  const hw=T.cw/2;
+  const xr=recv===p?0:pr.pitch, xe=emit===p?0:pr.pitch;
+  const zr=recv===p?0:-pr.pitch*Math.tan(pr.slope*RAD);
+  const ze=emit===p?0:-pr.pitch*Math.tan(pr.slope*RAD);
+  const tR=(T.rowTilt?T.rowTilt[recv]:pr.axisTilt)*RAD, tE=(T.rowTilt?T.rowTilt[emit]:pr.axisTilt)*RAD;
+  const thR=rowAngles[recv]*RAD, thE=rowAngles[emit]*RAD;
+  const segR=(T.segs&&T.segs[recv])?T.segs[recv]:[[-30,30]];
+  const segE=(T.segs&&T.segs[emit])?T.segs[emit]:[[-30,30]];
+  const nE=[Math.sin(thE),0,Math.cos(thE)];
+  let hit=0,N=0;
+  for(const sg of segR){
+    const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
+    const MU=6, MV=5;
+    for(let i=0;i<MU;i++)for(let j=0;j<MV;j++){
+      const u=-hw+T.cw*(i+0.5)/MU, v=v0+(v1-v0)*(j+0.5)/MV;
+      const P=[xr+u*Math.cos(thR), v, zr+v*Math.tan(tR)-u*Math.sin(thR)+T.z0];
+      N++;
+      let sh=false;
+      for(const sg2 of segE){
+        const w0=Math.min(sg2[0],sg2[1]), w1=Math.max(sg2[0],sg2[1]);
+        const vm=(w0+w1)/2;
+        const C=[xe, vm, ze+vm*Math.tan(tE)+T.z0];
+        const den=nE[0]*sv[0]+nE[1]*sv[1]+nE[2]*sv[2];
+        if(Math.abs(den)<1e-9)continue;
+        const t=((C[0]-P[0])*nE[0]+(C[1]-P[1])*nE[1]+(C[2]-P[2])*nE[2])/den;
+        if(t<=1e-6)continue;
+        const H=[P[0]+t*sv[0],P[1]+t*sv[1],P[2]+t*sv[2]];
+        const du=(H[0]-C[0])*Math.cos(thE)-(H[2]-C[2])*Math.sin(thE);
+        const dv=H[1]-vm;
+        if(Math.abs(du)<=hw&&dv>=w0-vm&&dv<=w1-vm){sh=true;break;}
+      }
+      if(sh)hit++;
+    }
+  }
+  return {f:N?hit/N:0,recv:recv};
+}
 function shadeRows(zen,az,T,rowAngles){
   const nR=T.pairs.length+1;
   const out=new Array(nR).fill(0);
-  if(!(isFinite(zen)&&zen<87))return out;
+  if(!(isFinite(zen)&&zen<89.5))return out;           // el 3D llega hasta sol ~0,5°
+  const band=zen>80;                                  // franja rasante: contador 3D
+  if(!band&&zen>=87)return out;                       // fuera de banda, el corte de siempre
   for(let p=0;p<T.pairs.length;p++){
+    if(band){
+      const r3=shadePair3DBand(zen,az,T,rowAngles,p);
+      out[r3.recv]=Math.max(out[r3.recv],r3.f);
+      continue;
+    }
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
     const f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0)
@@ -1423,6 +1481,29 @@ function runPhysicsQA(){
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
   });
+  t('evaluador rasante 3D: reproduce al 2.5D donde el 2.5D es exacto, y VE lo que el 2.5D no',()=>{
+    // (a) tilt N-S 0 + azimut 0 + tramos largos ⇒ el 3D debe coincidir con el 2.5D (±muestreo)
+    const T1=mkT([4,4,4],6,0);
+    T1.segs=[[[-60,60]],[[-60,60]],[[-60,60]],[[-60,60]]];
+    for(const zen of [82,84,86])for(const az of [100,260]){
+      const psz=trueTrackAngle(zen,az,0,0);
+      const ang=[15,15,15,15];
+      const f25=shadeFracPair(psz,ang[0],ang[1],6,2.382,4,0);
+      const r3=shadePair3DBand(zen,az,T1,ang,0);
+      assert(Math.abs(r3.f-f25)<0.08,'zen '+zen+' az '+az+': 3D '+(r3.f*100).toFixed(1)+'% vs 2.5D '+(f25*100).toFixed(1)+'%');
+    }
+    // (b) el caso Bagnarelli: azimut de eje 23,7° + tilt N-S 2° a zen 82,8 — el
+    // 2.5D declara cero (temp≥1) y el 3D DEBE ver la sombra real
+    const T2=mkT([2.5,2.5,2.5],11,0,{gcr:2.382/11});
+    T2.axisAz=23.7; T2.rowTilt=[2,2,2,2];
+    T2.segs=[[[-13,13]],[[-13,13]],[[-13,13]],[[-13,13]]];
+    const zen2=88.5, az2=60;                       // sol a 1,5°: ceguera TOTAL del 2.5D
+    const psz2=trueTrackAngle(zen2,az2,2,23.7);
+    const f25b=shadeFracPair(psz2,30,30,11,2.382,2.5,0);
+    const r3b=shadePair3DBand(zen2,az2,T2,[30,30,30,30],0);
+    assert(f25b<0.01,'el 2.5D debería estar ~ciego aquí: '+f25b);
+    assert(r3b.f>0.05,'el 3D no ve la sombra rasante real: '+(r3b.f*100).toFixed(1)+'%');
+  });
   t('rayo crítico ≡ shadeFracPair: la frontera dibujada reproduce fs (200 casos aleatorios)',()=>{
     const rnd=mulberry32(7);
     for(let i=0;i<200;i++){
@@ -1610,7 +1691,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.14.0';
+const VER='v1.15.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2117,7 +2198,7 @@ function init3D(){
     controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1500;
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
-    sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+    sun.castShadow=true;sun.shadow.mapSize.width=4096;sun.shadow.mapSize.height=4096;
     sun.shadow.bias=-2e-4;
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
       new THREE.MeshBasicMaterial({color:0xfbbd23}));
@@ -2555,6 +2636,12 @@ function update3D(){
   const up=Math.min(1,Math.max(0,g.elev/35));
   if(g.elev>0){
     TD.sun.position.set(cx+Math.sin(azRel)*Math.cos(el)*R,Math.sin(el)*R,-Math.cos(azRel)*Math.cos(el)*R);
+    // sombras NÍTIDAS: el frustum de sombra se ciñe a 140 m alrededor de la
+    // vista (4096 px sobre 4 km daban texels de 2 m: la sierra) y sigue a la
+    // cámara — lejos de la vista el shadow-map no pinta, y no importa
+    TD.sun.target.position.copy(TD.controls.target);
+    const sc2=TD.sun.shadow.camera, R2=140;
+    sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
     TD.sun.intensity=1.45;
     TD.sunMesh.visible=true;TD.sunMesh.position.copy(TD.sun.position);
     TD.scene.background.setRGB(0.07+0.1*up,0.11+0.13*up,0.2+0.2*up);
