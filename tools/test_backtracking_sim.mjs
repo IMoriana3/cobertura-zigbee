@@ -172,14 +172,21 @@ t('v1.20: terreno que sombrea CONTADO y pintado + rayo recto anclado al clic + P
   if (!/id="sunpov"/.test(html)) throw new Error('sin cámara desde el sol');
   if (!/borde emisor \+ dirección REAL del sol/.test(html)) throw new Error('rayo no recto por construcción');
 });
-t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
-  // mismo cálculo que hace terrain() con preset tresbolillo + bifila
-  const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);
+t('bifila: gemela alineada con su motora Y tresbolillo REAL entre grupos', () => {
+  // mismo cálculo que hace terrain() con preset tresbolillo + bifila (pairStep 2):
+  // dentro del grupo alineadas (eje perpendicular), entre grupos DESALINEADAS —
+  // con r%2 a secas la motora era siempre fila par y el tresbolillo salía todo
+  // alineado (reportado con captura)
+  const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0, 2);
   const groups = [[0,1],[2,3],[4,5]];
   for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
   for (const g of groups)
     if (JSON.stringify(segs[g[0]]) !== JSON.stringify(segs[g[1]]))
       throw new Error('grupo ' + g + ' desalineado');
+  if (JSON.stringify(segs[0]) === JSON.stringify(segs[2]))
+    throw new Error('grupos consecutivos alineados: no es tresbolillo');
+  if (JSON.stringify(segs[0]) !== JSON.stringify(segs[4]))
+    throw new Error('el patrón no alterna con periodo de 2 grupos');
 });
 
 console.log('');

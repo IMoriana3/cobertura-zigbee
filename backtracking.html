@@ -896,7 +896,11 @@ const BAGN_PITCH=11.0, BAGN_AXAZ=23.7;
 /* tramos por línea según el preset de implantación. filaLen = fila LARGA
    (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
    San José). Determinista (semilla fija): reproducible siempre. */
-function nsSegments(nRows,preset,nPer,filaLen,gapNS){
+function nsSegments(nRows,preset,nPer,filaLen,gapNS,pairStep){
+  // pairStep=2 en bifila: el tresbolillo alterna por PAREJA — con r%2 a secas,
+  // la gemela copiaba a la motora (siempre fila PAR ⇒ desplazamiento 0) y el
+  // «tresbolillo» salía TODO ALINEADO (reportado con captura)
+  const PS=pairStep||1;
   if(preset==='bagnarelli'){
     // patrón real en ciclo de 6, centrado (el layout va de −89,5 a 99,4 m)
     const shift=-4.95;
@@ -914,7 +918,7 @@ function nsSegments(nRows,preset,nPer,filaLen,gapNS){
   const out=[];
   const rnd=mulberry32(77);
   for(let r=0;r<nRows;r++){
-    if(preset==='tresbolillo')out.push(mk(nPer,filaLen,(r%2)?(filaLen+gapNS)/2:0));
+    if(preset==='tresbolillo')out.push(mk(nPer,filaLen,(Math.floor(r/PS)%2)?(filaLen+gapNS)/2:0));
     else if(preset==='medios')out.push((r%2)?mk(2*nPer,media,0):mk(nPer,filaLen,0));
     else if(preset==='aleatorio'){
       const M=1+Math.floor(rnd()*nPer);
@@ -1939,7 +1943,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.20.0';
+const VER='v1.20.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2014,7 +2018,7 @@ function terrain(c){
   const groups=driveGroups(c.nrows,c.drive);
   const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
   const filaLen=2*c.mods*1.146+0.55;                  // 2 alas + hueco de motor (cotas del modelo)
-  const segs=nsSegments(c.nrows,c.nsl,c.ntrk,filaLen,1.0);
+  const segs=nsSegments(c.nrows,c.nsl,c.ntrk,filaLen,1.0,c.drive==='mono'?1:2);
   // BIFILA: el eje de transmisión es PERPENDICULAR a las vigas ⇒ las dos filas
   // del grupo van ALINEADAS. La implantación se aplica por GRUPO: la gemela
   // copia los tramos de la motora (tresbolillo/aleatorio desplazan GRUPOS,
