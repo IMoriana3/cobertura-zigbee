@@ -1966,7 +1966,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.22.0';
+const VER='v1.22.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2528,7 +2528,11 @@ function init3D(){
       if(pd&&Math.hypot(e.clientX-pd[0],e.clientY-pd[1])<6)pick3D(e.clientX,e.clientY);
       pd=null;
     });
-    TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
+    // cámara ORTOGRÁFICA del modo «👁 sol»: el sol está en el infinito y solo
+    // los rayos exactamente paralelos hacen cierto el teorema «desde el sol no
+    // se ven sombras» (la perspectiva, por lejos que esté, deja paralaje)
+    const orthoCam=new THREE.OrthographicCamera(-1,1,1,-1,1,9000);
+    TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,orthoCam:orthoCam,
         sunMesh:sunMesh,world:null,rows:[],camSet:false,w:0,h:0,skyCv:skyCv,skyTx:skyTx,skyMesh:skyMesh,skyKey:''};
   }catch(e){TD=null;VIEW3D=false;$('tab3d').style.display='none';setTab(false);}
 }
@@ -3350,9 +3354,10 @@ function loop3D(){
     TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
   }
   TD.controls.update();
-  // la cúpula de cielo viaja con la cámara: nunca se sale de ella
-  if(TD.skyMesh)TD.skyMesh.position.copy(TD.camera.position);
-  TD.renderer.render(TD.scene,TD.camera);
+  const cam=(TD.sunPov&&TD.orthoCam)?TD.orthoCam:TD.camera;
+  // la cúpula de cielo viaja con la vista (en modo sol, con la planta)
+  if(TD.skyMesh)TD.skyMesh.position.copy(TD.sunPov?TD.controls.target:TD.camera.position);
+  TD.renderer.render(TD.scene,cam);
 }
 function setTab(three){
   VIEW3D=!!three&&has3D()&&TD!==null;
@@ -3794,30 +3799,28 @@ function snapSunPov(){
   // «alrededor» de las emisoras (rojos a cielo abierto — imposible desde el
   // rayo exacto). Cámara MUY lejos = casi ortográfica: cada sombra debe
   // quedar tapada por su emisora; si ves rojo despejado, eso es un hallazgo.
-  const dist=Math.max(900,(TD.R||150)*3);
-  TD.camera.up.set(0,1,0);
-  TD.camera.position.copy(t.clone().add(dir.multiplyScalar(dist)));
-  // TELEOBJETIVO: FOV estrecho que encuadra la planta — eso ES la
-  // aproximación ortográfica (rayos casi paralelos, paralaje mínimo)
-  const fov=Math.max(4,Math.min(30,2*Math.atan(((TD.R||150)*0.62)/dist)*DEG));
-  TD.camera.fov=fov;TD.camera.updateProjectionMatrix();
-  if(TD.controls.maxDistance<dist)TD.controls.maxDistance=dist*1.2;
-  TD.controls.update();
+  const oc=TD.orthoCam;
+  const dist=Math.min(4000,Math.max(1200,(TD.R||150)*3));
+  oc.up.set(0,1,0);
+  oc.position.copy(t.clone().add(dir.multiplyScalar(dist)));
+  oc.lookAt(t);
+  const holder=$('view3d'), asp=(holder.clientWidth||1200)/(holder.clientHeight||700);
+  const h=(TD.R||150)*0.62;
+  oc.left=-h*asp;oc.right=h*asp;oc.top=h;oc.bottom=-h;
+  oc.near=1;oc.far=dist*2+500;
+  oc.updateProjectionMatrix();
 }
 $('sunpov').onclick=()=>{
   if(!TD||!DAY)return;
   TD.sunPov=!TD.sunPov;
   $('sunpov').classList.toggle('acc',TD.sunPov);
   if(TD.sunPov){
-    TD.povPrev={pos:TD.camera.position.clone(),max:TD.controls.maxDistance,fov:TD.camera.fov};
+    TD.controls.enabled=false;                 // es la vista del SOL: no se orbita
     snapSunPov();update3D();
-  }else if(TD.povPrev){
-    TD.camera.position.copy(TD.povPrev.pos);
-    TD.controls.maxDistance=TD.povPrev.max;
-    TD.camera.fov=TD.povPrev.fov||45;TD.camera.updateProjectionMatrix();
+  }else{
+    TD.controls.enabled=true;
     TD.camera.up.set(0,1,0);
     TD.controls.update();update3D();
-    TD.povPrev=null;
   }
 };
 let PLAYPOS=0, PLAYTS=0;
