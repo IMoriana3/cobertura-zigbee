@@ -425,6 +425,7 @@ const CANON={pitch:6.00, cw:2.382, gcr:0.397, maxAngle:55, slewDegS:0.17,
    ni en el lazo (applyControlLoop) ni en la ESCENA (la pala del 3D se mueve
    a esta velocidad, escalada al tiempo simulado). Misma pieza que en
    backtracking.html. */
+const DT_FINE_PHYS=1;                 // paso de la rejilla del ACTUADOR (min)
 const TRACKER_SLEW=0.17;                              // °/s (spec del actuador)
 function slewLimit1(prev,cmd,dtSec,rate){
   const r=(rate==null?TRACKER_SLEW:rate)*dtSec, d=cmd-prev;
@@ -752,6 +753,9 @@ const POLICIES={pvlib:polPvlib, diffuse_flat:polFlat, diffuse_limited:polLimited
 /* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─ */
 function applyControlLoop(target,dtMin,p){
   // p = {deadbandDeg, slewDegS, maxAngle}
+  // El slew NUNCA puede ser 0/negativo: sería un actuador de velocidad
+  // infinita. Un 0 tecleado en la UI teletransportaba el tracker.
+  if(!(p.slewDegS>0))p=Object.assign({},p,{slewDegS:CANON.slewDegS});
   const dtS=dtMin*60;
   const out=target.slice();
   for(let i=1;i<out.length;i++){
@@ -941,12 +945,21 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   // loop opcional {deadbandDeg,slewDegS,maxAngle}: el actuador NO teletransporta
   // tampoco por zonas — la POA zonal y la global salen del θ EJECUTADO
   // (deadband + slew), el mismo apply_control_loop del pipeline principal.
-  const days=[];
+  // dos rejillas por zona, como en el pipeline principal: la de DECISIÓN
+  // (o.dtMin) donde razona la política, y la FINA donde rampa el actuador y se
+  // integra la energía. Sin esto la tabla zonal cobraba TELETRANSPORTE (a 10
+  // min el techo por paso es 102°, más que el recorrido del tracker) mientras
+  // la tabla del día ya cobraba la rampa: dos físicas en la misma pantalla.
+  const F=fine||{n:1440,dt:DT_FINE_PHYS};
+  const days=[],daysF=[];
   for(let z=0;z<nZ;z++){
     const lag=lags?lags[z]:(nZ>1?z*crossMin/(nZ-1):0);
-    days.push(buildDay(Object.assign({},o,{cc:shiftCC(o.cc,lag),om:shiftOM(o.om,lag)})));
+    const cc=shiftCC(o.cc,lag), om=shiftOM(o.om,lag);
+    days.push(buildDay(Object.assign({},o,{cc,om})));
+    daysF.push(buildDay(Object.assign({},o,{cc,om,dtMin:F.dt})));
   }
   const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
+  const thNF=thetaBaselineDay(daysF[0]);
   // el «sensor de planta»: un día con la irradiancia MEDIA de las zonas
   const mean=Object.assign({},days[0]);
   mean.irr=days[0].irr.map((_,i)=>{
@@ -957,35 +970,34 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
   const rG=POLICIES[polName](mean,thN,poaNmean,d);
-  const thG=loop?applyControlLoop(rG.theta,days[0].dtMin,loop):rG.theta;
+  const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop);
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
-    const day=days[z];
+    const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
     const rZ=POLICIES[polName](day,thN,poaNz,d);
-    const thZ=loop?applyControlLoop(rZ.theta,day.dtMin,loop):rZ.theta;
-    const poaZ=poaSeries(day,thZ);
-    const poaG=poaSeries(day,thG);
+    // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
+    const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop);
+    const poaZ=poaSeries(dayF,execZ);
+    const poaG=poaSeries(dayF,execG);
+    const poaNf=poaSeries(dayF,thNF);
     // señal CRUDA de entrada de la zona (POA(0) > ratio·POA(θn), con puerta de
     // día): la escena la enseña en ámbar cuando está viva pero la histéresis
     // del poa_switch la retiene — «lo veo, pero el confirm/dwell mandan»
     const poaF=poaSeries(day,new Array(day.n).fill(0));
     const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]);
-    for(let i=0;i<day.n;i++){
-      whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
+    for(let i=0;i<dayF.n;i++){
+      whZ+=poaZ[i]*F.dt/60; whG+=poaG[i]*F.dt/60; whN+=poaNf[i]*F.dt/60;
     }
-    // la escena necesita el EJECUTADO al minuto de cada NCU (misma rampa de
-    // 0,17 °/s): `fine` = {n, dt} de la rejilla fina; sin él, no se calcula
-    const zEntry={theta:thZ,flag:rZ.flag,signal:signal,day:day};
-    if(fine){
-      zEntry.execF=execOnFineGrid(rZ.theta,day.dtMin,fine.n,fine.dt,loop);
-      zEntry.flagF=execOnFineGrid(rZ.flag.map(v=>v?1:0),day.dtMin,fine.n,fine.dt,null).map(v=>!!v);
-      zEntry.signalF=execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,fine.n,fine.dt,null).map(v=>!!v);
-    }
-    zones.push(zEntry);
+    // la consigna gruesa (theta) SOLO alimenta el diario y la curva de
+    // consigna; ninguna integral de energía vuelve a salir de ella
+    zones.push({theta:rZ.theta,flag:rZ.flag,signal:signal,day:day,
+      execF:execZ,
+      flagF:execOnFineGrid(rZ.flag.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v),
+      signalF:execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v)});
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
-          zones:zones,thetaGlobal:thG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
 }
 
 /* ── diario de decisiones: la máquina del poa_switch EXPLICADA ─────────────
@@ -1436,6 +1448,43 @@ function runPhysicsQA(){
       'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
     A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
   });
+  t('LA ENERGÍA ZONAL SE COBRA SOBRE EL EJECUTADO: zonal y tabla del día no pueden usar físicas distintas',()=>{
+    // el bug: zonalRun integraba en la rejilla de DECISIÓN, donde el techo por
+    // paso (102° a 10 min) nunca ata ⇒ la tabla zonal cobraba teletransporte
+    // mientras la tabla del día ya cobraba la rampa. Dos físicas en pantalla.
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:10,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,nightStow:5,cc:cc,om:null};
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    // con lags de CERO todas las zonas ven el mismo cielo: la POA de planta
+    // debe coincidir con la del día suelto calculado en la rejilla fina
+    const r=zonalRun(o,3,60,'diffuse_poa_switch',DCFG_DEFAULT,[0,0,0],loop,{n:1440,dt:1});
+    const day=buildDay(o), dayF=buildDay(Object.assign({},o,{dtMin:1}));
+    const thN=thetaBaselineDay(day), poaN=poaSeries(day,thN);
+    const rp=POLICIES.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT);
+    const ex=execOnFineGrid(rp.theta,day.dtMin,dayF.n,1,loop);
+    const wh=poaSeries(dayF,ex).reduce((s,v)=>s+v/60,0);
+    A(Math.abs(r.plantZonal-wh)<1e-6,
+      'la tabla zonal ('+r.plantZonal.toFixed(1)+') no cuadra con la del día ('+wh.toFixed(1)+') — físicas distintas');
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'con lags 0, zonal debe ser idéntico a global');
+  });
+  t('EL SLEW ES HIERRO: ninguna serie que se muestre o se integre puede girar más rápido, ni «sin lazo»',()=>{
+    // desmarcar la casilla del lazo daba 55°/min = 5,4× la spec en la escena.
+    // El deadband SÍ es opcional (parámetro de la TCU); la velocidad no.
+    const S=mk(10);
+    const sinDeadband={deadbandDeg:0,slewDegS:0.17,maxAngle:55};
+    const slewCero={deadbandDeg:1,slewDegS:0,maxAngle:55};       // 0 tecleado en la UI
+    for(const [nm,loop] of [['sin deadband',sinDeadband],['slew tecleado a 0',slewCero]]){
+      for(const k of ['diffuse_flat','diffuse_continuous','diffuse_poa_switch']){
+        const r=POLICIES[k](S.day,S.thN,S.poaN,DCFG_DEFAULT);
+        const ex=execOnFineGrid(r.theta,10,1440,1,loop);
+        for(let i=1;i<ex.length;i++)
+          A(Math.abs(ex[i]-ex[i-1])<=0.17*60+1e-9,
+            nm+' · '+k+': '+Math.abs(ex[i]-ex[i-1]).toFixed(1)+'°/min (máx físico 10,2)');
+      }
+    }
+  });
   t('zonal con lazo: el θ ejecutado de CADA zona respeta el slew (|Δθ| ≤ 0,17°/s·dt) y la POA sale de él',()=>{
     const cc=new Array(288).fill(0);
     for(let m=420;m<600;m+=5)cc[m/5]=1;
@@ -1552,7 +1601,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.9.2';
+const VER='v1.10.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1576,17 +1625,28 @@ const POL_META={
   diffuse_poa_switch: {c:'#a78bfa',nm:'diffuse_poa_switch',mode:'PLANO',flat0:true,
                        ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'}
 };
-/* etiqueta de estado honesta: girando > modo de la política > señal retenida.
-   Para las políticas de plano, si el actuador aún no ha llegado se dice. */
+/* ÚNICA FUENTE DE VERDAD del estado: texto Y color salen de aquí, para que
+   ninguna vista pueda contradecir a otra en el mismo fotograma (la mesa 3D
+   decía violeta «plano» mientras su etiqueta decía DIFUSA). Un color por
+   significado, todos distinguibles entre sí. */
+const ST_COL={girando:'#22d3ee', PLANO:'#a78bfa', RETENIDO:'#e07b39',
+              DIFUSA:'#5aa9ff', senal:'#fbbd23', track:'#9bb0c6'};
+/* la política EFECTIVA: con el zonal activo y pvlib en la escena, quien decide
+   de verdad es el poa_switch (lo elige computeZonal) — rotular pvlib ahí sería
+   otra contradicción */
+function polEfectiva(pv){
+  const zc=(typeof zonalCfg==='function')?zonalCfg():{on:false};
+  return (zc.on&&pv==='pvlib')?'diffuse_poa_switch':pv;
+}
 function stateLabel(polKey,th,flag,sig,rate){
-  const m=POL_META[polKey]||{};
-  if(rate>0.001)return {txt:'↻ '+rate.toFixed(2)+' °/s',col:'#5aa9ff'};
+  const m=POL_META[polEfectiva(polKey)]||{};
+  if(rate>0.001)return {txt:'↻ '+rate.toFixed(2)+' °/s',col:ST_COL.girando,estado:'girando'};
   if(flag&&m.mode){
     const llegando=m.flat0&&Math.abs(th)>1.0;
-    return {txt:m.mode+(llegando?' (llegando)':''),col:m.flat0?'#a78bfa':'#36d399'};
+    return {txt:m.mode+(llegando?' (llegando)':''),col:ST_COL[m.mode],estado:m.mode};
   }
-  if(sig)return {txt:'☁ retiene',col:'#fbbd23'};
-  return {txt:'track',col:'#9bb0c6'};
+  if(sig)return {txt:'☁ retiene',col:ST_COL.senal,estado:'senal'};
+  return {txt:'track',col:ST_COL.track,estado:'track'};
 }
 // el barrido α se rotula desde la FUENTE (DCFG_DEFAULT), no a mano: si el core
 // cambia sus continuous_alpha_candidates, la UI no puede quedarse mintiendo
@@ -1829,6 +1889,16 @@ function cfgDiffuse(){
 }
 let SIM=null;
 const DT_FINE=1;                       // el actuador se integra al MINUTO
+/* EL SLEW ES HIERRO, no una opción: en campo no hay casilla que apague la
+   velocidad del actuador. La casilla gobierna SOLO el deadband (eso sí es un
+   parámetro de la TCU). Desmarcarla llegó a dar 55°/min = 5,4× la spec en la
+   escena. La referencia teletransportada sigue existiendo donde le toca:
+   consF, que se calcula aparte para medir el coste del hierro. */
+function cfgLoop(maxAngle){
+  return {deadbandDeg:$('loopOn').checked?+$('deadband').value:0,
+          slewDegS:Math.max(1e-6,+$('slew').value||CANON.slewDegS),
+          maxAngle:maxAngle};
+}
 function recompute(){
   const cfg=cfgDay();
   const day=buildDay(cfg);             // rejilla de DECISIÓN (ciclo de la TCU)
@@ -1839,7 +1909,7 @@ function recompute(){
   const poaN=poaSeries(day,thN);
   const thNF=thetaBaselineDay(dayF);
   const d=cfgDiffuse();
-  const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:day.maxAngle}:null;
+  const loop=cfgLoop(day.maxAngle);
   const res={};
   for(const k of POL_ORDER){
     if(!POL_ON[k])continue;
@@ -2079,10 +2149,13 @@ function drawIrr(){
 function drawTheta(){
   const cv=$('curves'),ctx=gridCv(cv,240),W=cv.width,H=cv.height;
   const day=SIM.day,yMax=day.maxAngle+5;
-  // bandas de flat-mode de la política de la escena
+  // banda de DIFUSA ACTIVA con el color del modo de ESA política (PLANO,
+  // RETENIDO o DIFUSA): un violeta único para los tres significaba que con
+  // limited se veía el 70 % del día «en plano» con la curva clavada a ±40°
   const pv=$('polview').value,r=SIM.res[pv];
   if(r){
-    ctx.fillStyle='rgba(167,139,250,.10)';
+    const mm=POL_META[polEfectiva(pv)]||{};
+    ctx.fillStyle=(ST_COL[mm.mode]||'#a78bfa')+'1f';
     for(let i=0;i<day.n;i++)if(r.flag[i]){
       ctx.fillRect(xOf(day.tmin[i],W),8,(W-80)/day.n+0.5,H-34);
     }
@@ -2184,6 +2257,7 @@ function drawScene(){
   const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
   const th=r.execF[iF],thn=SIM.thNF[iF],flag=r.flagF[iF];
   const rate=slewRateAt(r.execF,iF,DT_FINE);            // °/s que está girando AHORA
+  const st2=stateLabel(pv,th,flag,false,rate);         // texto Y color del estado
 
   // cielo: degradado que agrisa con cc
   const dayness=Math.max(0,Math.min(1,(90-zen)/60));
@@ -2245,14 +2319,15 @@ function drawScene(){
     // pala girada θ (θ>0 mira al este = izquierda de la escena con eje N-S)
     const a=-th*RAD;
     const dx=Math.cos(a)*cwPx/2, dy=Math.sin(a)*cwPx/2;
-    ctx.strokeStyle=flag?'#a78bfa':'#5aa9ff';ctx.lineWidth=8;ctx.lineCap='round';
+    ctx.strokeStyle=st2.col;ctx.lineWidth=8;ctx.lineCap='round';
     ctx.beginPath();ctx.moveTo(cx-dx,cy-dy);ctx.lineTo(cx+dx,cy+dy);ctx.stroke();
     ctx.lineCap='butt';
   }
-  // rótulos (convención TCU: − = este)
+  // rótulos (convención TCU: − = este) — el estado con SU nombre, nunca un
+  // «MODO FLAT» genérico: lo dicta stateLabel, igual que el HUD y el 3D
   ctx.font='20px ui-monospace,monospace';
-  ctx.fillStyle=flag?'#a78bfa':'#9bb0c6';
-  ctx.fillText((flag?'MODO FLAT · ':'')+'θ '+tcuDeg(th).toFixed(1)+'°  (θ_n '+tcuDeg(thn).toFixed(1)+'°)',14,30);
+  ctx.fillStyle=st2.col;
+  ctx.fillText((st2.txt==='track'?'':st2.txt+' · ')+'θ '+tcuDeg(th).toFixed(1)+'°  (θ_n '+tcuDeg(thn).toFixed(1)+'°)',14,30);
   ctx.fillStyle='#5c7189';
   ctx.fillText('cc '+(100*cc).toFixed(0)+'%  ·  difusa '+(100*dFrac).toFixed(0)+'%',14,56);
 
@@ -2806,10 +2881,16 @@ function buildReal3D(zc,reframe){
 const _m4=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rot=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rxl=[];                                           // caché Rx(θ_zona)·local por frame
-const COL_TRACK=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x2a4b8f),
-      COL_FLAT=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x7b5fd4),
-      COL_SIG=new (typeof THREE!=='undefined'?THREE.Color:Object)(0xc99527);
-function writeRealInstances(thByZone,flagByZone,sigByZone){
+const COL_TRACK=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x2a4b8f);
+const _colCache={};
+function stCol(hex){ // cache: son ≤6 valores, no un THREE.Color por instancia
+  if(!hex)return COL_TRACK;
+  return _colCache[hex]||(_colCache[hex]=new THREE.Color(hex));
+}
+/* colByZone lleva el color de estado de CADA NCU (el mismo que su etiqueta):
+   antes era un booleano y teñía de violeta «plano» toda la planta aunque la
+   política fuera limited o continuous — el color contradecía al texto. */
+function writeRealInstances(thByZone,colByZone,sigByZone){
   if(!TD||!TD.real)return;
   const nZ=TD.real.nZones;
   const rx=[];
@@ -2832,7 +2913,7 @@ function writeRealInstances(thByZone,flagByZone,sigByZone){
         im.setMatrixAt(i*nL+j,_m4);
       }
       if(isMesa){
-        const c2=flagByZone[t.z]?COL_FLAT:(sigByZone[t.z]?COL_SIG:COL_TRACK);
+        const c2=stCol(colByZone[t.z]);
         for(let j=0;j<nL;j++)im.setColorAt(i*nL+j,c2);
       }
     }
@@ -2906,6 +2987,7 @@ function update3D(){
     // (flat/poa_switch) · RETENIDO (limited) · DIFUSA (continuous, ángulo
     // intermedio) · ↻ girando · ☁ retiene (señal viva bloqueada por histéresis)
     const st=stateLabel(pv,th,fl,sig,rate);
+    Z.stCol=(st.estado==='track')?null:st.col;   // la mesa se tiñe con SU estado
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
              (st.txt==='track'?'':' · '+st.txt),st.col);
   }
@@ -2959,7 +3041,7 @@ function loop3D(){
   }
   if(FLY)flyStep(fdt);
   if(TD.real&&TD.realDirty){
-    writeRealInstances(TD.zones.map(Z=>Z.th||0),TD.zones.map(Z=>!!Z.flag),TD.zones.map(Z=>!!Z.sig));
+    writeRealInstances(TD.zones.map(Z=>Z.th||0),TD.zones.map(Z=>Z.stCol),TD.zones.map(Z=>!!Z.sig));
     TD.realDirty=false;
   }
   if(!FLY)TD.controls.update();      // en vuelo libre manda flyStep, no la órbita
@@ -3040,21 +3122,23 @@ function flyStep(dt){
 }
 
 /* ── animación ── */
-let playing=false,lastT=0;
+let playing=false,lastT=0,CLOCK=720;   // minutos en FLOAT: el input range tiene
+// step=1 y redondea, así que leer de él cada frame perdía la fracción — a ×½
+// (0,5 min/frame) el redondeo a +1 hacía correr el día al DOBLE de lo anunciado
 $('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'⏸':'▶';if(playing){lastT=0;requestAnimationFrame(tick);}};
 function tick(ts){
   if(!playing)return;
   if(lastT){
     const dm=(+$('speed').value)*(ts-lastT)/1000;
-    let m=+$('hour').value+dm;
-    if(m>1439)m=0;
-    $('hour').value=m;
+    CLOCK+=dm;
+    if(CLOCK>1439)CLOCK-=1440;
+    $('hour').value=Math.round(CLOCK);
     refreshScene(false);
   }
   lastT=ts;
   requestAnimationFrame(tick);
 }
-$('hour').addEventListener('input',()=>refreshScene(false));
+$('hour').addEventListener('input',()=>{CLOCK=+$('hour').value;refreshScene(false);});
 $('polview').onchange=()=>{const d=cfgDiffuse();drawTheta();computeZonal(d);drawZonalTab();drawDiario(d);refreshScene(false);};
 
 /* ── estimación anual: 12 días × mezcla de cielos ── */
@@ -3074,7 +3158,7 @@ function skyCCFor(type){
 }
 $('yearbtn').onclick=()=>{
   const c=cfgDay(),d=cfgDiffuse();
-  const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:c.maxAngle}:null;
+  const loop=cfgLoop(c.maxAngle);   // el slew es hierro: nunca null
   let w=[+$('wclear').value,+$('wpart').value,+$('wover').value];
   const sw=w[0]+w[1]+w[2]||1; w=w.map(v=>v/sw);
   // si los pesos no suman 100, se dice en el pill qué mezcla EFECTIVA se usó
@@ -3087,13 +3171,16 @@ $('yearbtn').onclick=()=>{
   for(const mo of months){
     for(const [ty,wt] of types){
       if(wt<=0)continue;
+      // dos rejillas también aquí: decidir a 15 min, RAMPAR e integrar al
+      // minuto. En la gruesa el techo por paso (153°) no ata nunca y el año
+      // regalaba los tránsitos.
       const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:15,cc:skyCCFor(ty),om:null}));
+      const dayF=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:DT_FINE,cc:skyCCFor(ty),om:null}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       for(const k in tot){
         const r=POLICIES[k](day,thN,poaN,d);
-        const th=loop?applyControlLoop(r.theta,day.dtMin,loop):r.theta;
-        const poa=k==='pvlib'&&!loop?poaN:poaSeries(day,th);
-        tot[k]+=wt*poa.reduce((s,v)=>s+v*day.dtMin/60,0)*30.4/1000;   // kWh/m²·año aprox
+        const th=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop);
+        tot[k]+=wt*poaSeries(dayF,th).reduce((s,v)=>s+v*DT_FINE/60,0)*30.4/1000;   // kWh/m²·año aprox
       }
     }
   }
@@ -3158,7 +3245,7 @@ $('year365').onclick=async()=>{
     const dsFrom=new Date(om.tms[iF]+1.8e6+86400000).toISOString().slice(0,10);
     const dsTo=new Date(om.tms[iL]+1.8e6-86400000).toISOString().slice(0,10);
     const c=cfgDay(),d=cfgDiffuse();
-    const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:c.maxAngle}:null;
+    const loop=cfgLoop(c.maxAngle);   // el slew es hierro: nunca null
     const tot={},fl={},sw={};
     for(const k of POL_ORDER)if(POL_ON[k]){tot[k]=0;fl[k]=0;sw[k]=0;}
     const zeroCC=new Array(288).fill(0);
