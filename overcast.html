@@ -348,9 +348,9 @@
         <option value="">— el emplazamiento configurado arriba —</option>
         <option value="ebro">Valle del Ebro · Zaragoza (seco continental · difusa BAJA ≈ +0,1 %)</option>
         <option value="ayora">Ayora · Valencia (mediterráneo interior · difusa baja-media)</option>
-        <option value="cantabrico">Cantábrico · Santander (atlántico · difusa MEDIA ≈ +0,3–0,8 %)</option>
+        <option value="cantabrico">Cantábrico · Santander (atlántico · difusa MEDIA)</option>
         <option value="galicia">Galicia · Santiago (atlántico húmedo · difusa media-alta)</option>
-        <option value="uk">Reino Unido · Midlands (nuboso · difusa ALTA ≈ +0,5–1,5 % — cartera Lightsource)</option>
+        <option value="uk">Reino Unido · Midlands (nuboso · difusa ALTA — cartera Lightsource)</option>
         <option value="baviera">Alemania · Baviera (centroeuropa · difusa alta)</option>
         <option value="tunez">Túnez · Gabès (desértico mediterráneo · difusa baja)</option>
         <option value="arequipa">Arequipa · San José, Perú (altiplano · difusa muy baja)</option>
@@ -361,12 +361,21 @@
       <button class="btn" id="yearbtn" title="La aproximación rápida sin red: 12 días representativos × tres cielos sintéticos ponderados por clima">12 días × mezcla</button>
       <span class="pill" id="yearinfo"></span>
     </div>
+    <div class="two" style="margin-top:8px">
+      <div class="f"><label>Planta (MWp) — para leerlo en €</label><input id="mwp" type="number" step="10" min="1" value="100"></div>
+      <div class="f"><label>€/MWh</label><input id="eurmwh" type="number" step="1" min="1" value="45"></div>
+    </div>
     <div style="overflow-x:auto;margin-top:8px"><table id="yeartab"></table></div>
     <div class="nota"><b>365 días reales</b> = los últimos 365 días MEDIDOS (ERA5) en el emplazamiento,
       política a política, día a día, a paso de 30 min y con el θ ejecutado si el lazo está activo —
-      esto es lo enseñable. <b>12 × mezcla</b> es la aproximación sintética sin red (día 21 de cada
-      mes × tres cielos ponderados por clima). Ninguna es un P50 bancable: para eso, el motor
-      SolarGPT con TMY; pero la de 365 días es meteo de verdad, no un generador.</div>
+      esto es lo enseñable. <b>12 × mezcla</b> es la aproximación sintética sin red.
+      <b>Sesgos, declarados</b>: fila aislada (sin apantallamiento difuso de vecinas) ⇒ la POA
+      ABSOLUTA sale optimista; las <b>Δ % entre políticas</b> comparten sesgo arriba y abajo y son
+      mucho más robustas — es lo que esta tabla mide. ERA5 es media HORARIA: alisa los tránsitos
+      nube/claro ⇒ el modo difuso queda <b>infraestimado</b> (la realidad minutal está por encima).
+      El DNI medido va tapado con su techo físico (≤ cielo claro ×1,1: el DNI horario se dispara en
+      amaneceres y el tracker lo perseguiría). MWh ≈ MWp × ΔPOA × PR 0,85 — proxy para leer la
+      escala, no un yield bancable (para eso, el motor SolarGPT con TMY).</div>
   </div>
 
 </div>
@@ -597,7 +606,15 @@ function buildDay(o){
     const g=solarPos(tms,o.lat,o.lon);
     const cs=clearskyIneichen(g.zen,doyOf(o.dateStr),o.altM,o.TL);
     let w=null;
-    if(o.om)w=omInterp(o.om,tms);
+    if(o.om){
+      w=omInterp(o.om,tms);
+      // TECHO FÍSICO al DNI medido: el DNI horario de ERA5/Open-Meteo se
+      // deriva dividiendo por el cos(z) medio de la hora y se dispara en
+      // amaneceres/ocasos — y el tracker, que lo persigue, multiplica el
+      // error. Nada puede superar el cielo claro del instante (+10 % de
+      // margen por cloud-enhancement). GHI y DHI van medidos tal cual.
+      if(w)w={ghi:w.ghi,dni:Math.min(w.dni,cs.dni*1.1+10),dhi:w.dhi,cc:w.cc};
+    }
     if(!w){
       const cc=o.cc[Math.min(287,Math.floor(m/5))];
       w=cloudToIrr(cs,cc,g.zen);
@@ -1186,6 +1203,18 @@ function runPhysicsQA(){
     A(omInterp(om,t0+3*H+1)===null,'después del rango no es null');
     A(omInterp(om,t0+1.5*H)===null,'hueco (null en la serie) no devuelve null');
   });
+  t('meteo real: el DNI medido se tapa con el techo físico (≤ cielo claro ×1,1) — el tracker no persigue espejismos del amanecer',()=>{
+    const t0=localToUTCms('2024-06-21',0,0);
+    const tms=[],ghi=[],dni=[],dhi=[],ccv=[];
+    for(let h=0;h<=24;h++){tms.push(t0+h*3.6e6);ghi.push(400);dni.push(1500);dhi.push(100);ccv.push(0);}
+    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
+                        dtMin:30,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,
+                        cc:new Array(288).fill(0),om:{tms,ghi,dni,dhi,cc:ccv}});
+    for(let i=0;i<day.n;i++){
+      A(day.irr[i].dni<=day.clear[i].dni*1.1+10+1e-9,'DNI sin techo en paso '+i+': '+day.irr[i].dni.toFixed(0));
+      if(day.zen[i]<90)A(Math.abs(day.irr[i].ghi-400)<1e-9,'el GHI medido no debe tocarse');
+    }
+  });
   t('buildDay con meteo real: usa la irradiancia MEDIDA y solo cae al modelo sintético en los huecos',()=>{
     const t0=localToUTCms('2024-06-21',0,0);
     const tms=[],ghi=[],dni=[],dhi=[],ccv=[];
@@ -1201,7 +1230,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.2';
+const VER='v1.6.3';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2639,9 +2668,9 @@ $('yearbtn').onclick=()=>{
 const REFSITES={
   ebro:     {lat:41.5763,lon:-0.7981, alt:250, tz:2,  nb:'seco continental — el techo físico aquí ronda +0,1 % (NREL: sitios claros)'},
   ayora:    {lat:39.1182,lon:-1.1599, alt:600, tz:2,  nb:'mediterráneo interior — la casa'},
-  cantabrico:{lat:43.4623,lon:-3.8100,alt:30,  tz:2,  nb:'atlántico — difusa media: espera ≈ +0,3–0,8 % anual'},
+  cantabrico:{lat:43.4623,lon:-3.8100,alt:30,  tz:2,  nb:'atlántico — difusa media'},
   galicia:  {lat:42.8782,lon:-8.5449, alt:260, tz:2,  nb:'atlántico húmedo — de lo más difuso de Iberia'},
-  uk:       {lat:52.4862,lon:-1.8904, alt:140, tz:1,  nb:'nuboso — la cartera de Lightsource vive AQUÍ: espera ≈ +0,5–1,5 % anual'},
+  uk:       {lat:52.4862,lon:-1.8904, alt:140, tz:1,  nb:'nuboso — la cartera de Lightsource vive AQUÍ. Ojo: ERA5 horario alisa los tránsitos, el año simulado INFRAESTIMA el modo difuso'},
   baviera:  {lat:48.1374,lon:11.5755, alt:520, tz:2,  nb:'centroeuropa — difusa alta'},
   tunez:    {lat:33.8685,lon:9.8433,  alt:100, tz:1,  nb:'desértico mediterráneo — planta de la cartera (24021)'},
   arequipa: {lat:-16.5958,lon:-71.8064,alt:2300,tz:-5,nb:'altiplano — San José: cielo clarísimo, la difusa apenas paga'},
@@ -2672,6 +2701,13 @@ $('year365').onclick=async()=>{
     const om={tms:h.time.map(t=>Date.parse(t+':00Z')-1.8e6),
               ghi:h.shortwave_radiation,dni:h.direct_normal_irradiance,
               dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
+    // el rango REAL con dato: ERA5 llega con retraso variable — sin este
+    // recorte, una cola sin dato caería EN SILENCIO al cielo claro sintético
+    let iF=-1,iL=-1;
+    for(let i=0;i<om.ghi.length;i++)if(Number.isFinite(om.ghi[i])){if(iF<0)iF=i;iL=i;}
+    if(iF<0||iL-iF<24*30)throw new Error('ERA5 devolvió menos de 30 días con dato');
+    const dsFrom=new Date(om.tms[iF]+1.8e6+86400000).toISOString().slice(0,10);
+    const dsTo=new Date(om.tms[iL]+1.8e6-86400000).toISOString().slice(0,10);
     const c=cfgDay(),d=cfgDiffuse();
     const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:c.maxAngle}:null;
     const tot={},fl={},sw={};
@@ -2680,7 +2716,7 @@ $('year365').onclick=async()=>{
     let nd=0;
     // día a día con la meteo MEDIDA, a paso de 30 min (confirm/dwell van en
     // minutos: la histéresis conserva su física). Troceado para no congelar la UI.
-    for(let t0=Date.parse(d0);t0<=Date.parse(d1);t0+=86400000){
+    for(let t0=Date.parse(dsFrom);t0<=Date.parse(dsTo);t0+=86400000){
       const ds=new Date(t0).toISOString().slice(0,10);
       const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:30,cc:zeroCC,om:om}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
@@ -2696,22 +2732,38 @@ $('year365').onclick=async()=>{
         await new Promise(res=>setTimeout(res,0));
       }
     }
-    let bestK=null,bestV=-1;
-    for(const k in tot)if(tot[k]>bestV){bestV=tot[k];bestK=k;}
-    let hh2='<tr><th>política</th><th>POA anual kWh/m²</th><th>Δ vs pvlib</th><th>% día en flat</th><th>conmutaciones/año</th></tr>';
-    for(const k of POL_ORDER){
-      if(!(k in tot))continue;
-      const delta=100*(tot[k]/tot.pvlib-1);
-      hh2+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
-        '<td'+(k===bestK?' class="best"':'')+'>'+tot[k].toFixed(1)+'</td>'+
-        '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
-        '<td>'+(fl[k]/nd).toFixed(1)+' %</td><td>'+sw[k]+'</td></tr>';
-    }
-    $('yeartab').innerHTML=hh2;
-    $('yearinfo').innerHTML='<b>'+d0+' → '+d1+'</b> · ERA5 medido · paso 30′ · '+
-      (loop?'θ ejecutado (lazo)':'consigna');
+    YR365={tot:tot,fl:fl,sw:sw,nd:nd};
+    renderYear365();
+    $('yearinfo').innerHTML='<b>'+dsFrom+' → '+dsTo+'</b> · ERA5 medido ('+nd+' días) · paso 30′ · '+
+      (loop?'θ ejecutado (lazo)':'consigna')+' · DNI ≤ cielo claro ×1,1';
   }catch(e){$('yearinfo').innerHTML='<span style="color:var(--err)">'+(e&&e.message||e)+'</span>';}
 };
+/* el año en € — MWh ≈ MWp × ΔPOA(kWh/m² ≈ kWh/kWp) × PR 0,85. Es un proxy
+   declarado para LEER la escala, no un yield bancable. */
+let YR365=null;
+function renderYear365(){
+  if(!YR365)return;
+  const tot=YR365.tot,fl=YR365.fl,sw=YR365.sw,nd=YR365.nd;
+  const MW=+$('mwp').value||100,eur=+$('eurmwh').value||45,PR=0.85;
+  let bestK=null,bestV=-1;
+  for(const k in tot)if(tot[k]>bestV){bestV=tot[k];bestK=k;}
+  let hh2='<tr><th>política</th><th>POA anual kWh/m²</th><th>Δ vs pvlib</th>'+
+          '<th>MWh/año extra ('+MW+' MWp)</th><th>€/año</th><th>% día en flat</th><th>conmutaciones/año</th></tr>';
+  for(const k of POL_ORDER){
+    if(!(k in tot))continue;
+    const delta=100*(tot[k]/tot.pvlib-1);
+    const mwh=MW*(tot[k]-tot.pvlib)*PR;
+    hh2+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
+      '<td'+(k===bestK?' class="best"':'')+'>'+tot[k].toFixed(1)+'</td>'+
+      '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
+      '<td>'+(k==='pvlib'?'—':(mwh>=0?'+':'')+mwh.toFixed(0))+'</td>'+
+      '<td'+(mwh*eur>500?' class="best"':'')+'>'+(k==='pvlib'?'—':(mwh>=0?'+':'')+Math.round(mwh*eur).toLocaleString('es')+' €')+'</td>'+
+      '<td>'+(fl[k]/nd).toFixed(1)+' %</td><td>'+sw[k]+'</td></tr>';
+  }
+  $('yeartab').innerHTML=hh2;
+}
+$('mwp').addEventListener('change',renderYear365);
+$('eurmwh').addEventListener('change',renderYear365);
 
 /* ── QA ── */
 $('qabtn').onclick=()=>{
