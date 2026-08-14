@@ -199,7 +199,7 @@
       <div class="f"><label>Módulos por ala</label><input id="mods" type="number" min="8" max="32" step="1" value="28"></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 multiplicada por 3: 18 líneas a pitch 11,0 m, eje a 23,7°, 51 trackers escalonados con sus medios (patrón medido de bagnarelli_layout.json)">⛳ Bagnarelli ×3</button>
+      <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 tal cual: 6 líneas a pitch 11,0 m, eje a 23,7°, 17 trackers escalonados con sus medios (patrón medido de bagnarelli_layout.json). El preset «Bagnarelli ×N» del selector sigue permitiendo ciclarlo a más líneas.">⛳ Bagnarelli</button>
       <button class="btn small" id="ayorabtn" title="Cotas X,Y,Z reales de los extremos de mesa (ayora_cotas.json): la banda de líneas con más filas, con sus tilts N-S medidos y las parejas bifila reales">⛰ Ayora real</button>
       <button class="btn small" id="sjbtn" title="Cotas X,Y,Z reales de los extremos de mesa (sanjose_cotas.json)">⛰ San José real</button>
     </div>
@@ -2163,10 +2163,11 @@ $('ayorabtn').onclick=()=>loadRealPlant('ayora');
 $('sjbtn').onclick=()=>loadRealPlant('sanjose');
 $('bagnbtn').onclick=()=>{
   PLANT_REAL=null;$('realnote').style.display='none';
-  // la implantación real trae su geometría: pitch y azimut de eje MEDIDOS
-  $('nrows').value=18;$('pitch').value='11.00';$('axaz').value=BAGN_AXAZ;
+  // la implantación real trae su geometría: pitch y azimut de eje MEDIDOS.
+  // Sin multiplicar (antes ×3): las 6 líneas del patrón medido, tal cual.
+  $('nrows').value=6;$('pitch').value='11.00';$('axaz').value=BAGN_AXAZ;
   $('nsl').value='bagnarelli';$('drive').value='mono';   // Bagnarelli es monofila
-  ensureElev(18);recompute();
+  ensureElev(6);recompute();
 };
 $('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);recompute();};
 
