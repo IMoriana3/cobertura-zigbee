@@ -1230,7 +1230,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.3';
+const VER='v1.6.4';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1622,6 +1622,14 @@ function gridCv(cv,hPx){
   return ctx;
 }
 function xOf(m,W){return 60+(m/1440)*(W-80);}
+/* cursor de tiempo: la vertical del reloj en cada gráfica (sigue al slider y a ▶) */
+function drawTimeCursor(ctx,W,H,padB){
+  const x=xOf(+$('hour').value,W);
+  ctx.strokeStyle='rgba(90,169,255,.65)';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(x,8);ctx.lineTo(x,H-padB);ctx.stroke();
+  ctx.fillStyle='rgba(90,169,255,.9)';
+  ctx.beginPath();ctx.moveTo(x-6,8);ctx.lineTo(x+6,8);ctx.lineTo(x,20);ctx.closePath();ctx.fill();
+}
 function hhmm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),mm=Math.round(min%60);return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm;}
 function axes(ctx,W,H,padB,yMax,unit,ticks){
   ctx.strokeStyle='#1e2a3a';ctx.fillStyle='#5c7189';ctx.font='18px ui-monospace,monospace';ctx.lineWidth=1;
@@ -1673,6 +1681,7 @@ function drawIrr(){
   let lx=W-560;
   const leg=[['GHI','#eaf4ff'],['DNI','#fbbd23'],['DHI','#a78bfa'],['GHI claro ┄','rgba(234,244,255,.55)'],['nubes ▮ (banda)','#9bb0c6']];
   for(const [txt,col] of leg){ctx.fillStyle=col;ctx.fillText(txt,lx,46);lx+=ctx.measureText(txt).width+26;}
+  drawTimeCursor(ctx,W,H,26);
 }
 function drawTheta(){
   const cv=$('curves'),ctx=gridCv(cv,240),W=cv.width,H=cv.height;
@@ -1711,6 +1720,7 @@ function drawTheta(){
     plot(SIM.res[k].theta,POL_META[k].c,k==='pvlib'?2:2.5);
   }
   if(r&&r.exec)plot(r.exec,'#eaf4ff',1.5,[5,4]);   // el ejecutado del lazo, política de la escena
+  drawTimeCursor(ctx,W,H,26);
 }
 function drawPoa(){
   const cv=$('poacv'),ctx=gridCv(cv,200),W=cv.width,H=cv.height;
@@ -1728,6 +1738,7 @@ function drawPoa(){
     }
     ctx.strokeStyle=POL_META[k].c;ctx.lineWidth=k==='pvlib'?2:2.5;ctx.stroke();
   }
+  drawTimeCursor(ctx,W,H,26);
 }
 function drawLegend(){
   let h='';
@@ -2538,6 +2549,7 @@ $('tab3d').onclick=()=>setTab(true);
 $('tab2d').onclick=()=>setTab(false);
 function refreshScene(rebuild){
   drawScene();                       // corte 2D + HUD (el HUD sirve a las dos vistas)
+  drawIrr();drawTheta();drawPoa();   // el cursor de tiempo sigue al reloj (también en ▶)
   if(VIEW3D){if(rebuild)build3D();update3D();}
 }
 
