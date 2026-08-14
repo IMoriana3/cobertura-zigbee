@@ -1183,7 +1183,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.6.0';
+const VER='v1.6.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1845,6 +1845,19 @@ function init3D(){
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true;controls.dampingFactor=.08;
     controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1200;
+    controls.screenSpacePanning=false;              // el pan (botón dcho) desliza sobre el suelo, como un mapa
+    // DOBLE CLIC: centra la órbita donde apuntas — desde entonces el zoom de
+    // la rueda va HACIA ese punto (la lib local no trae zoomToCursor; esto es
+    // el equivalente operativo para moverse por una planta de km)
+    renderer.domElement.addEventListener('dblclick',e=>{
+      const r2=renderer.domElement.getBoundingClientRect();
+      const nx=((e.clientX-r2.left)/r2.width)*2-1, ny=-((e.clientY-r2.top)/r2.height)*2+1;
+      const v=new THREE.Vector3(nx,ny,0.5).unproject(camera).sub(camera.position).normalize();
+      if(v.y>=-1e-4)return;                          // apuntas al cielo: no hay suelo que fijar
+      const t2=-(camera.position.y-1)/v.y;
+      const p=camera.position.clone().addScaledVector(v,t2);
+      controls.target.set(p.x,1,p.z);
+    });
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
     sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
@@ -1856,7 +1869,7 @@ function init3D(){
       new THREE.MeshBasicMaterial({color:0xfbbd23,transparent:true}));
     scene3.add(hemi,sun,sun.target,sunMesh);
     const hint=document.createElement('div');hint.className='hint';
-    hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · +X = norte (eje del tubo)';
+    hint.textContent='arrastrar: orbitar · DOBLE CLIC: centrar ahí (y el zoom va ahí) · botón dcho: desplazarse · rueda: zoom · ✈ vuelo libre · +X = norte';
     holder.appendChild(hint);
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
         sunMesh:sunMesh,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
@@ -1955,7 +1968,13 @@ function build3D(){
   if(TD.world&&BUILT.key===key)return;
   if(TD.world){TD.scene.remove(TD.world);disposeGroup(TD.world);}
   TD.real=null;
-  if(PLANT_REAL){buildReal3D(zc);BUILT.key=key;return;}
+  // REENCUADRAR solo al cambiar DE PLANTA (sintética ↔ Ayora ↔ San José):
+  // los demás rebuilds (nº de NCUs, minutos del frente…) respetan TU cámara
+  // — antes cada retoque del zonal te devolvía al centro de la escena
+  const plantName=PLANT_REAL?PLANT_REAL.name:'syn';
+  const reframe=BUILT.plant!==plantName;
+  BUILT.plant=plantName;
+  if(PLANT_REAL){buildReal3D(zc,reframe);BUILT.key=key;return;}
   const world=new THREE.Group();
   const mats=Seguidor.materials(THREE);
   mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;   // pala azulada, no blanco quirófano (el mismo ajuste que backtracking.html)
@@ -2092,9 +2111,11 @@ function build3D(){
   // sombras ceñidas a la planta (texel fino) y reencuadre 3/4 aéreo al tamaño
   const sc2=TD.sun.shadow.camera,R2=Math.max(70,span*0.62,depth*0.72);
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
-  const L=Math.max(80,Math.max(span,depth)+30);
-  TD.camera.position.set(cx-0.60*L,0.34*L,cz+0.72*L);
-  TD.controls.target.set(cx,0,cz);
+  if(reframe){
+    const L=Math.max(80,Math.max(span,depth)+30);
+    TD.camera.position.set(cx-0.60*L,0.34*L,cz+0.72*L);
+    TD.controls.target.set(cx,0,cz);
+  }
   TD.scene.fog.near=260;TD.scene.fog.far=850;
   BUILT.key=key;
 }
@@ -2112,7 +2133,7 @@ function build3D(){
    (FLAT) · ámbar (señal retenida por confirm/dwell). Alrededor, lo mismo que
    la sintética a escala de km: terreno con explanada y camino perimetral
    pintados en vértice, valla instanciada, caseta, arbustos y niebla.        */
-function buildReal3D(zc){
+function buildReal3D(zc,reframe){
   const world=new THREE.Group();
   const R=PLANT_REAL, J=R.data, T=J.trackers;
   const xs=T.map(t=>t.x),ns=T.map(t=>t.n);
@@ -2289,9 +2310,11 @@ function buildReal3D(zc){
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;
   sc2.near=10;sc2.far=L*4;sc2.updateProjectionMatrix();
   TD.sun.shadow.bias=-4e-4;
-  TD.camera.position.set(cx-0.45*L,0.42*L,cz+0.72*L);
+  if(reframe){                                          // solo al cambiar de planta
+    TD.camera.position.set(cx-0.45*L,0.42*L,cz+0.72*L);
+    TD.controls.target.set(cx,0,cz);
+  }
   TD.camera.far=L*8;TD.camera.updateProjectionMatrix(); // 2,7 km de planta: far acorde
-  TD.controls.target.set(cx,0,cz);
   TD.controls.maxDistance=L*2.5;
   TD.scene.fog.near=L*1.1;TD.scene.fog.far=L*3.2;       // niebla lejos: la planta entera a la vista
 }
