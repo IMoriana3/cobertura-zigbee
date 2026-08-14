@@ -300,9 +300,11 @@
   <div class="card" id="zonalcard" style="display:none">
     <h2>Zonal por NCU <span class="sn">decisión global vs cada NCU con su señal</span></h2>
     <div style="overflow-x:auto"><table id="zonaltab"></table></div>
-    <div class="nota">POA de planta = media de las zonas, cada una evaluada con SU cielo. La columna
-      «Δ zonal» es la ganancia de dar la decisión a cada NCU frente al θ común del sensor de planta
-      — el argumento del control distribuido (y de la NCU con visión de planta para coordinarlo).</div>
+    <div class="nota">POA de planta = media de las zonas, cada una evaluada con SU cielo y con el
+      <b>θ ejecutado</b> (si el lazo está activo: deadband 1° + slew 0,17 °/s también por zona — el
+      actuador no teletransporta tampoco aquí). La columna «Δ zonal» es la ganancia de dar la
+      decisión a cada NCU frente al θ común del sensor de planta — el argumento del control
+      distribuido (y de la NCU con visión de planta para coordinarlo).</div>
   </div>
 
   <div class="card">
@@ -718,11 +720,14 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags){
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop){
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
   // zonas ven el MISMO cielo ⇒ zonal ≡ global exactamente (QA).
+  // loop opcional {deadbandDeg,slewDegS,maxAngle}: el actuador NO teletransporta
+  // tampoco por zonas — la POA zonal y la global salen del θ EJECUTADO
+  // (deadband + slew), el mismo apply_control_loop del pipeline principal.
   const days=[];
   for(let z=0;z<nZ;z++){
     const lag=lags?lags[z]:(nZ>1?z*crossMin/(nZ-1):0);
@@ -739,13 +744,15 @@ function zonalRun(o,nZ,crossMin,polName,d,lags){
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
   const rG=POLICIES[polName](mean,thN,poaNmean,d);
+  const thG=loop?applyControlLoop(rG.theta,days[0].dtMin,loop):rG.theta;
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
     const day=days[z];
     const poaNz=poaSeries(day,thN);
     const rZ=POLICIES[polName](day,thN,poaNz,d);
-    const poaZ=poaSeries(day,rZ.theta);
-    const poaG=poaSeries(day,rG.theta);
+    const thZ=loop?applyControlLoop(rZ.theta,day.dtMin,loop):rZ.theta;
+    const poaZ=poaSeries(day,thZ);
+    const poaG=poaSeries(day,thG);
     // señal CRUDA de entrada de la zona (POA(0) > ratio·POA(θn), con puerta de
     // día): la escena la enseña en ámbar cuando está viva pero la histéresis
     // del poa_switch la retiene — «lo veo, pero el confirm/dwell mandan»
@@ -754,10 +761,10 @@ function zonalRun(o,nZ,crossMin,polName,d,lags){
     for(let i=0;i<day.n;i++){
       whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
     }
-    zones.push({theta:rZ.theta,flag:rZ.flag,signal:signal,day:day});
+    zones.push({theta:thZ,flag:rZ.flag,signal:signal,day:day});
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
-          zones:zones,thetaGlobal:rG.theta,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+          zones:zones,thetaGlobal:thG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
 }
 
 /* ── escenario canónico del core (test_diffuse_policies.py) ──────────────
@@ -1021,6 +1028,25 @@ function runPhysicsQA(){
       'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
     A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
   });
+  t('zonal con lazo: el θ ejecutado de CADA zona respeta el slew (|Δθ| ≤ 0,17°/s·dt) y la POA sale de él',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:10,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    const r=zonalRun(o,3,60,'diffuse_flat',DCFG_DEFAULT,null,loop);
+    const maxD=0.17*600+1e-9;
+    for(const Z of r.zones)
+      for(let i=1;i<Z.theta.length;i++)
+        A(Math.abs(Z.theta[i]-Z.theta[i-1])<=maxD,'slew violado: '+Math.abs(Z.theta[i]-Z.theta[i-1]).toFixed(1)+'°/paso');
+    // y la fontanería exacta: el θ por zona ES applyControlLoop(consigna)
+    const r0=zonalRun(o,3,60,'diffuse_flat',DCFG_DEFAULT,null,null);
+    for(let z=0;z<3;z++){
+      const exec=applyControlLoop(r0.zones[z].theta,10,loop);
+      for(let i=0;i<exec.length;i++)
+        A(Math.abs(exec[i]-r.zones[z].theta[i])<1e-9,'zona '+z+' paso '+i+' no es el ejecutado');
+    }
+  });
   t('zonal con lags explícitos de CERO: todas las zonas ven el mismo cielo ⇒ zonal ≡ global exacto',()=>{
     const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
              albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
@@ -1051,7 +1077,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.4.0';
+const VER='v1.5.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1345,7 +1371,8 @@ function computeZonal(d){
   ZR=null;
   if(!zc.on)return;
   const pv=$('polview').value;
-  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags);
+  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
+              SIM?SIM.loop:null);
 }
 async function loadRealPlant(name){
   const note=$('plantnote');
@@ -1385,7 +1412,7 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
-    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags);
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null);
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
@@ -1880,57 +1907,163 @@ function build3D(){
   BUILT.key=key;
 }
 
-/* ── la planta REAL en 3D: instanciado de todos los seguidores ─────────────
-   Escena: +X = norte (n del layout), +Z = este (x del layout). Cada tracker
-   es una losa instanciada (largo real por tipo) que bascula con el θ de SU
-   NCU y se tiñe por estado (azul módulo · violeta FLAT · ámbar retiene). El
-   frente es un banco de columnas de nubes cuya opacidad local sigue la
-   MISMA cc retardada que ve cada NCU en la física. A esta escala no hay
-   shadow-map útil: la luz cuenta la historia (DNI/DHI), no las sombras.   */
+/* ── la planta REAL con el RENDER de los cobertura 3D (terreno.html) ───────
+   Mismo patrón: Seguidor.instancePlan(detail:'mass') → UN InstancedMesh por
+   tipo de pieza (mesa texturizable, correas, cajas, TCU, corona, bracket…),
+   N copias con el contrato spin/static del modelo canónico:
+     spin=true : M = base_t · Rx(θ de SU NCU) · local
+     spin=false: M = base_t · local
+   Las Rx·local se precomputan POR ZONA (≤21) y por local (≤10): escribir las
+   ~15–40 k instancias de Ayora/San José es copiar matrices + sumar la
+   traslación — fluido incluso persiguiendo la consigna a 0,17 °/s.
+   La MESA lleva instanceColor de ESTADO: azul módulo (tracking) · violeta
+   (FLAT) · ámbar (señal retenida por confirm/dwell). Alrededor, lo mismo que
+   la sintética a escala de km: terreno con explanada y camino perimetral
+   pintados en vértice, valla instanciada, caseta, arbustos y niebla.        */
 function buildReal3D(zc){
   const world=new THREE.Group();
   const R=PLANT_REAL, J=R.data, T=J.trackers;
   const xs=T.map(t=>t.x),ns=T.map(t=>t.n);
   const bx0=Math.min(...xs),bx1=Math.max(...xs),bn0=Math.min(...ns),bn1=Math.max(...ns);
-  const cx=(bn0+bn1)/2, cz=(bx0+bx1)/2;                 // centro en coords de ESCENA
+  const cx=(bn0+bn1)/2, cz=(bx0+bx1)/2;                 // centro en coords de ESCENA (X=n, Z=x)
   const W=bx1-bx0, D=bn1-bn0, L=Math.max(W,D);
-  // suelo plano a esta escala (la planta real ya viene explanada)
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(D+600,W+600),
-    new THREE.MeshLambertMaterial({color:0x27371d}));
-  ground.rotation.x=-Math.PI/2;ground.position.set(cx,-0.3,cz);
+  const P={x0:bn0-20,x1:bn1+20,z0:bx0-20,z1:bx1+20};    // rectángulo de planta en ESCENA
+
+  // terreno: colinas lejos, explanada bajo la planta, camino perimetral pintado
+  const TW=D+1600,TH2=W+1600,SX=96,SZ=96;
+  const geo=new THREE.PlaneGeometry(TW,TH2,SX,SZ);
+  geo.rotateX(-Math.PI/2);
+  const pos=geo.attributes.position, colors=[];
+  const col=new THREE.Color();
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i)+cx, z=pos.getZ(i)+cz;
+    const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
+    const d=Math.hypot(dx,dz);
+    const f=Math.min(1,Math.max(0,(d-60)/300));
+    const h=(Math.sin(x*0.004+1.7)*Math.cos(z*0.0033-0.6)*14
+            +Math.sin(x*0.0011+0.3)*Math.cos(z*0.0009+1.1)*30)*f*f;
+    pos.setY(i,h);
+    const v=(Math.sin(x*12.9898+z*78.233)*43758.5453)%1*0.5+0.5;
+    if(d<8)col.setRGB(0.16+0.02*v,0.15+0.02*v,0.10);                 // explanada
+    else if(d<22)col.setRGB(0.34+0.03*v,0.28+0.03*v,0.19);           // camino perimetral
+    else col.setRGB(0.10+0.05*v+h*0.002,0.16+0.06*v+h*0.0015,0.07+0.03*v);
+    colors.push(col.r,col.g,col.b);
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geo.computeVertexNormals();
+  const ground=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true}));
+  ground.position.set(cx,-0.25,cz);
+  ground.receiveShadow=true;
   world.add(ground);
-  // losas instanciadas: un mesh por LARGO de tipo (completo/medio)
+
+  // valla perimetral instanciada + 3 hilos, y caseta del inversor
+  const F={x0:P.x0-14,x1:P.x1+14,z0:P.z0-14,z1:P.z1+14};
+  const ring=[[F.x0,F.z0],[F.x1,F.z0],[F.x1,F.z1],[F.x0,F.z1],[F.x0,F.z0]];
+  const fposts=[],wirePts=[];
+  for(let s=0;s<4;s++){
+    const [ax,az2]=ring[s],[bx,bz]=ring[s+1];
+    const len=Math.hypot(bx-ax,bz-az2),n=Math.max(2,Math.round(len/10));
+    for(let k=0;k<=n;k++){
+      const x=ax+(bx-ax)*k/n, z=az2+(bz-az2)*k/n;
+      if(k<n)fposts.push([x,z]);
+      if(k>0){
+        const px=ax+(bx-ax)*(k-1)/n, pz=az2+(bz-az2)*(k-1)/n;
+        for(const hy of [0.6,1.2,1.8])wirePts.push(px,hy,pz,x,hy,z);
+      }
+    }
+  }
+  const imF=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05,0.05,2.0,5),
+    new THREE.MeshLambertMaterial({color:0x6d7a85}),fposts.length);
+  fposts.forEach((p,i)=>{_m4.makeTranslation(p[0],1.0,p[1]);imF.setMatrixAt(i,_m4);});
+  imF.frustumCulled=false;world.add(imF);
+  const wgeo=new THREE.BufferGeometry();
+  wgeo.setAttribute('position',new THREE.Float32BufferAttribute(wirePts,3));
+  world.add(new THREE.LineSegments(wgeo,new THREE.LineBasicMaterial({color:0x55616c,transparent:true,opacity:0.55})));
+  const caseta=new THREE.Group();
+  const cw1=new THREE.Mesh(new THREE.BoxGeometry(14,6,7),new THREE.MeshLambertMaterial({color:0xd8d4c8}));
+  cw1.position.y=3;cw1.castShadow=true;
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(15,0.4,8),new THREE.MeshLambertMaterial({color:0x4a4f55}));
+  roof.position.y=6.2;
+  caseta.add(cw1,roof);
+  caseta.position.set(F.x1+16,0,cz);
+  world.add(caseta);
+  // arbustos fuera de la valla
+  const bm=new THREE.MeshLambertMaterial({color:0x2c4020});
+  const bGeo=new THREE.IcosahedronGeometry(1,0);
+  let sB=4242; const rndB=()=>{sB|=0;sB=sB+0x6D2B79F5|0;let t2=Math.imul(sB^sB>>>15,1|sB);t2=t2+Math.imul(t2^t2>>>7,61|t2)^t2;return((t2^t2>>>14)>>>0)/4294967296;};
+  const nBush=140,bushes=new THREE.InstancedMesh(bGeo,bm,nBush);
+  let bi=0;
+  for(let k=0;k<600&&bi<nBush;k++){
+    const x=cx+(rndB()-0.5)*TW*0.85, z=cz+(rndB()-0.5)*TH2*0.85;
+    const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
+    if(Math.hypot(dx,dz)<30)continue;
+    const s0=1.2+rndB()*2.6;
+    _m4.makeScale(s0,s0*0.55,s0);_m4.setPosition(x,s0*0.3,z);
+    bushes.setMatrixAt(bi++,_m4);
+  }
+  bushes.count=bi;bushes.frustumCulled=false;world.add(bushes);
+
+  // ── los seguidores: el instanciado de los cobertura 3D ──
+  const mats=Seguidor.materials(THREE);
+  mats.glass.color.set(0xffffff);                       // la MESA toma el color por instancia (estado)
   const ncuIdx={};R.ncuIds.forEach((id,i)=>ncuIdx[id]=i);
   const isShort=t=>/medio|corto/i.test((t.t||'')+' '+(t.tp||''));
-  const groupsByLen={};
-  T.forEach(t=>{const len=isShort(t)?33:65;(groupsByLen[len]=groupsByLen[len]||[]).push(t);});
-  const slabM=new THREE.MeshLambertMaterial({color:0xffffff});
-  TD.real={items:[],meshes:[],cols:[],cx:cx,cz:cz,L:L};
-  for(const len in groupsByLen){
-    const arr=groupsByLen[len];
-    const geom=new THREE.BoxGeometry(+len,0.35,2.4);
-    const im=new THREE.InstancedMesh(geom,slabM,arr.length);
-    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    arr.forEach((t,i)=>{
-      im.setColorAt(i,new THREE.Color(0x2a4b8f));
-      TD.real.items.push({mesh:im,i:i,z:ncuIdx[t.ncu==null?1:t.ncu]||0,
-                          px:t.n,pz:t.x});
-    });
-    world.add(im);TD.real.meshes.push(im);
+  const bySize={largo:[],medio:[]};
+  T.forEach(t=>{bySize[isShort(t)?'medio':'largo'].push(
+    {px:t.n,pz:t.x,z:ncuIdx[t.ncu==null?1:t.ncu]||0});});
+  const SKIP={antena:1,antenatip:1,tcuchapa:1};
+  TD.real={groups:[],mesaGroups:[],cols:[],cx:cx,cz:cz,L:L,nZones:R.ncuIds.length};
+  const postGeo=new THREE.CylinderGeometry(0.08,0.08,2.0,6);
+  const postM2=new THREE.MeshLambertMaterial({color:0x8a949c});
+  for(const size of ['largo','medio']){
+    const trk=bySize[size];
+    if(!trk.length)continue;
+    Seguidor.setModsPerStr(28);
+    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:size});
+    for(const p of plan){
+      if(SKIP[p.key]||p.motorLink||p.damperLink||p.antenna)continue;
+      const nL=p.locals.length;
+      const mat=(p.key==='mesa')?new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.35,metalness:0.10})
+                                :mats[p.mat];
+      const im=new THREE.InstancedMesh(p.geom(THREE),mat,trk.length*nL);
+      im.frustumCulled=false;im.castShadow=!!p.cast;im.receiveShadow=true;
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      world.add(im);
+      const g={im:im,key:p.key,spin:!!p.spin,locals:p.locals,trk:trk,nL:nL};
+      TD.real.groups.push(g);
+      if(p.key==='mesa')TD.real.mesaGroups.push(g);
+      if(!p.spin){                                       // estáticas: se escriben UNA vez
+        trk.forEach((t,i)=>{for(let j=0;j<nL;j++){
+          _m4.copy(p.locals[j]);
+          _m4.elements[12]+=t.px;_m4.elements[13]+=2.0;_m4.elements[14]+=t.pz;
+          im.setMatrixAt(i*nL+j,_m4);
+        }});
+        im.instanceMatrix.needsUpdate=true;
+      }
+    }
+    // postes propios (terreno.html también los pone la app): 9 el largo, 5 el medio
+    const nP=size==='largo'?9:5, span=size==='largo'?64.7:32.6;
+    const imP=new THREE.InstancedMesh(postGeo,postM2,trk.length*nP);
+    trk.forEach((t,i)=>{for(let k=0;k<nP;k++){
+      _m4.makeTranslation(t.px-span/2+(k+0.5)*span/nP,1.0,t.pz);
+      imP.setMatrixAt(i*nP+k,_m4);
+    }});
+    imP.frustumCulled=false;imP.castShadow=true;world.add(imP);
   }
+
   // marcadores + etiquetas de NCU (las etiquetas llevan el estado vivo)
   TD.zones=[];
   const mM=new THREE.MeshLambertMaterial({color:0xd8d4c8});
   R.cents.forEach((c,z)=>{
     const box=new THREE.Mesh(new THREE.BoxGeometry(8,6,8),mM);
     const nc=(J.ncus||[])[z];
-    const mx=nc?nc.n:c.n, mz=nc?nc.x:c.x;
-    box.position.set(mx,3,mz);world.add(box);
+    box.position.set(nc?nc.n:c.n,3,nc?nc.x:c.x);world.add(box);
     const spr=makeLabel();
     spr.scale.set(120,27,1);
     spr.position.set(c.n,40,c.x);world.add(spr);
     TD.zones.push({spins:[],cloudMat:null,cloud:null,label:spr,zx:c.x});
   });
+
   // banco de nubes: columnas a lo ancho del frente (eje x del layout = Z escena)
   TD.real.cols=[];
   const NC=14;
@@ -1939,8 +2072,8 @@ function buildReal3D(zc){
     const cm=new THREE.MeshLambertMaterial({color:0xdfe7f2,transparent:true,opacity:0,depthWrite:false});
     const g=new THREE.Group();
     for(let q=0;q<5;q++){
-      const s0=new THREE.Mesh(new THREE.SphereGeometry(45+((q*37)%40),10,8),cm);
-      s0.position.set(cx+(((q*53+k*17)%100)/100-0.5)*D*0.9,150+((q*29)%40),colx);
+      const s0=new THREE.Mesh(new THREE.SphereGeometry(55+((q*37)%50),10,8),cm);
+      s0.position.set(cx+(((q*53+k*17)%100)/100-0.5)*D*0.9,170+((q*29)%50),colx);
       s0.scale.y=0.30;g.add(s0);
     }
     world.add(g);
@@ -1948,26 +2081,50 @@ function buildReal3D(zc){
   }
   TD.world=world;TD.scene.add(world);
   TD.cx=cx;TD.cz=cz;
+  const sc2=TD.sun.shadow.camera,R2=L*0.62;
+  sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;
+  sc2.near=10;sc2.far=L*4;sc2.updateProjectionMatrix();
+  TD.sun.shadow.bias=-4e-4;
   TD.camera.position.set(cx-0.45*L,0.42*L,cz+0.72*L);
-  TD.camera.far=L*6;TD.camera.updateProjectionMatrix(); // 2,7 km de planta: far acorde
+  TD.camera.far=L*8;TD.camera.updateProjectionMatrix(); // 2,7 km de planta: far acorde
   TD.controls.target.set(cx,0,cz);
   TD.controls.maxDistance=L*2.5;
-  TD.scene.fog.near=L*0.9;TD.scene.fog.far=L*2.6;      // niebla lejos: la planta entera a la vista
+  TD.scene.fog.near=L*1.1;TD.scene.fog.far=L*3.2;       // niebla lejos: la planta entera a la vista
 }
 const _m4=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rot=typeof THREE!=='undefined'?new THREE.Matrix4():null;
-const COL_TRACK=0x2a4b8f,COL_FLAT=0x7b5fd4,COL_SIG=0xc99527;
+const _rxl=[];                                           // caché Rx(θ_zona)·local por frame
+const COL_TRACK=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x2a4b8f),
+      COL_FLAT=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x7b5fd4),
+      COL_SIG=new (typeof THREE!=='undefined'?THREE.Color:Object)(0xc99527);
 function writeRealInstances(thByZone,flagByZone,sigByZone){
   if(!TD||!TD.real)return;
-  for(const it of TD.real.items){
-    const th=thByZone[it.z]||0;
-    _rot.makeRotationX(th*RAD);
-    _m4.copy(_rot).setPosition(it.px,2,it.pz);
-    it.mesh.setMatrixAt(it.i,_m4);
-    it.mesh.setColorAt(it.i,new THREE.Color(flagByZone[it.z]?COL_FLAT:(sigByZone[it.z]?COL_SIG:COL_TRACK)));
+  const nZ=TD.real.nZones;
+  const rx=[];
+  for(let z=0;z<nZ;z++){rx.push(new THREE.Matrix4().makeRotationX((thByZone[z]||0)*RAD));}
+  for(const g of TD.real.groups){
+    if(!g.spin)continue;
+    // precomputa Rx(θ_z)·local (nZ×nL matrices) y luego solo copia + traslada
+    const cache=[];
+    for(let z=0;z<nZ;z++){const row=[];for(let j=0;j<g.nL;j++){row.push(new THREE.Matrix4().multiplyMatrices(rx[z],g.locals[j]));}cache.push(row);}
+    const trk=g.trk,nL=g.nL,im=g.im,isMesa=g.key==='mesa';
+    for(let i=0;i<trk.length;i++){
+      const t=trk[i],row=cache[t.z];
+      for(let j=0;j<nL;j++){
+        _m4.copy(row[j]);
+        _m4.elements[12]+=t.px;_m4.elements[13]+=2.0;_m4.elements[14]+=t.pz;
+        im.setMatrixAt(i*nL+j,_m4);
+      }
+      if(isMesa){
+        const c2=flagByZone[t.z]?COL_FLAT:(sigByZone[t.z]?COL_SIG:COL_TRACK);
+        for(let j=0;j<nL;j++)im.setColorAt(i*nL+j,c2);
+      }
+    }
+    im.instanceMatrix.needsUpdate=true;
+    if(isMesa&&im.instanceColor)im.instanceColor.needsUpdate=true;
   }
-  for(const m of TD.real.meshes){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;}
 }
+
 function update3D(){
   if(!TD||!TD.world||!SIM)return;
   const day=SIM.day,m=+$('hour').value;
