@@ -98,22 +98,6 @@ t('degrada a 2D si THREE/WebGL no están (has3D + try/catch en init3D)', () => {
 });
 
 // ── bloque de física, ejecutado de verdad ────────────────────────────────────
-t('el viento se pide MEDIDO a Open-Meteo (m/s) en las DOS descargas: día suelto y año de 365', () => {
-  // la URL va troceada en concatenaciones: se mira una ventana tras el hourly=
-  const urls = html.match(/hourly=shortwave_radiation[\s\S]{0,220}/g) || [];
-  if (urls.length < 2) throw new Error('esperaba 2 peticiones de meteo, veo ' + urls.length);
-  for (const u of urls) {
-    if (!/wind_speed_10m/.test(u)) throw new Error('una descarga no pide viento: ' + u.slice(0, 60));
-    if (!/wind_speed_unit=ms/.test(u)) throw new Error('el viento vendría en km/h y el stow compara m/s');
-  }
-});
-t('el ÁRBITRO manda en TODAS las vistas: día, anual y escena pasan por arbitrate()', () => {
-  const n = (html.match(/=\s*arbitrate\(/g) || []).length;
-  if (n < 2) throw new Error('arbitrate() solo se usa en ' + n + ' sitio(s): una vista quedaría con otra física');
-  if (!/wlev\[i\]===0/.test(html)) throw new Error('el flag de difusa no se enmascara bajo stow');
-  if (!/windEvents\(SIM\.day/.test(html)) throw new Error('el diario no narra el viento');
-});
-
 const i0 = html.indexOf('FÍSICA PURA');
 const i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA'); process.exit(1); }
@@ -124,8 +108,7 @@ const sandbox = new Function(src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
-           shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           WIND, MANDO, windStowLevel, arbitrate, windEvents, thetaTrueDay };`);
+           shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1 };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -206,15 +189,6 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
       altM: Math.round(3000 * rnd()), TL: 2 + 5 * rnd(), dtMin, albedo: rnd(),
       axisAz: pick([0, 23.7, 90, 180]), maxAngle: 5 + 55 * rnd(), gcr: 0.1 + 0.8 * rnd(),
       nightStow: -10 + 20 * rnd(), cc, om: null };
-    // viento sintético: calma, temporal o rachas — el árbitro tiene que
-    // aguantar cualquiera de los tres sin sacar al tracker del hierro
-    const modoW = pick(['calma', 'temporal', 'rachas']);
-    o.ws = new Array(288).fill(0).map((_, j) =>
-      modoW === 'calma' ? 3 * rnd() : modoW === 'temporal' ? 12 + 8 * rnd() :
-      (rnd() < 0.25 ? 10 + 12 * rnd() : 4 * rnd()));
-    const wc = { T1_MS: 40 / 3.6, T2_MS: 60 / 3.6, HOLD_MIN: pick([0, 15, 30, 60]),
-                 STOW_DEG: pick([55, 55, 55, 20 + 35 * rnd()]),
-                 PARTIAL_MIN_DEG: 10 + 20 * rnd(), PARTIAL_MAX_DEG: 40 + 15 * rnd() };
     const loop = { deadbandDeg: 2 * rnd(), slewDegS: 0.05 + 0.4 * rnd(), maxAngle: o.maxAngle };
     try {
       const day = F.buildDay(o), dayF = F.buildDay(Object.assign({}, o, { dtMin: 5 }));
@@ -234,50 +208,13 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
         const e = F.EXPLAIN[k](day, thN, poaN, F.DCFG_DEFAULT);
         if (!e.flag.every((v, i) => !!v === !!r.flag[i])) throw new Error(k + ': el diario discrepa de la política');
       }
-      // ── jerarquía de mando con viento: la seguridad no se negocia ──
-      const wlev = F.windStowLevel(day.wind, dtMin, wc);
-      const thT = F.thetaTrueDay(day);
-      for (let i = 0; i < day.n; i++)
-        if (day.zen[i] < 90 && Math.abs(thN[i]) > Math.abs(thT[i]) + 1e-6)
-          throw new Error('la baseline abre más que el seguimiento verdadero');
-      if (!wlev.every(v => v === 0 || v === 1 || v === 2)) throw new Error('nivel de stow fuera de {0,1,2}');
-      for (const k of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
-        const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
-        const a = F.arbitrate(r.theta, thN, wlev, o.maxAngle, wc, thT);
-        if (!a.theta.every(Number.isFinite)) throw new Error(k + ': θ arbitrada NaN');
-        const refugio = Math.max(-o.maxAngle, Math.min(o.maxAngle, wc.STOW_DEG));
-        for (let i = 0; i < day.n; i++) {
-          if (Math.abs(a.theta[i]) > o.maxAngle + 1e-6) throw new Error(k + ': el stow rebasó el tope mecánico');
-          // el refugio es ±pos_deg recortado al hierro (el comprobador de
-          // campo mira |ángulo|, y el lado lo elige el árbitro por cercanía)
-          const refugio = Math.min(o.maxAngle, wc.STOW_DEG);
-          if (wlev[i] === 2 && Math.abs(Math.abs(a.theta[i]) - refugio) > 1e-6)
-            throw new Error(k + ': la difusa se salió del stow');
-          if (wlev[i] === 1) {
-            const banda0 = Math.min(o.maxAngle, wc.PARTIAL_MIN_DEG), banda1 = Math.min(o.maxAngle, wc.PARTIAL_MAX_DEG);
-            if (Math.abs(a.theta[i]) > banda1 + 1e-6) throw new Error(k + ': pre-stow rebasado por arriba');
-            if (Math.abs(a.theta[i]) < Math.min(banda0, banda1) - 1e-6) throw new Error(k + ': el pre-stow dejó bajar a plano');
-          }
-          if (wlev[i] === 0 && Math.abs(a.theta[i]) > Math.abs(thN[i]) + 1e-6)
-            throw new Error(k + ': sin viento el árbitro dejó pasar sombra');
-        }
-        const exW = F.execOnFineGrid(a.theta, dtMin, dayF.n, 5, loop);
-        for (let i = 1; i < exW.length; i++)
-          if (Math.abs(exW[i] - exW[i - 1]) > loop.slewDegS * 300 + 1e-6)
-            throw new Error(k + ': el stow teletransporta (slew violado al ir al refugio)');
-        const cambios = F.windEvents(day, wlev, wc, []).length;
-        // el día que AMANECE ya en stow también es una maniobra que narrar
-        let n2 = wlev[0] !== 0 ? 1 : 0;
-        for (let i = 1; i < day.n; i++) if (wlev[i] !== wlev[i - 1]) n2++;
-        if (cambios !== n2) throw new Error('el diario narra ' + cambios + ' maniobras de viento y hubo ' + n2);
-      }
       const rc = F.POLICIES.diffuse_continuous(day, thN, poaN, F.DCFG_DEFAULT);
       const pc = F.poaSeries(day, rc.theta);
       for (let i = 0; i < day.n; i++)
         if (day.ghi[i] > F.DCFG_DEFAULT.ghiMin && pc[i] < poaN[i] - 1e-6) throw new Error('continuous < pvlib');
     } catch (e) {
       fallos.push('#' + it + ' ' + e.message + ' · lat ' + o.lat.toFixed(1) + ' θmáx ' + o.maxAngle.toFixed(1) +
-                  ' dt ' + dtMin + ' ' + modo + '/' + modoW);
+                  ' dt ' + dtMin + ' ' + modo);
     }
   }
   if (fallos.length) throw new Error(fallos.length + '/400 · ' + fallos.slice(0, 3).join(' | '));

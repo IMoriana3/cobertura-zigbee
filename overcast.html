@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Simulador de TCU — backtracking · viento · difusa</title>
+<title>Simulador de Overcast — Difusa en el navegador</title>
 <link rel="icon" href="favicon.svg">
 <style>
   :root{
@@ -80,7 +80,7 @@
 </head>
 <body>
 <header>
-  <h1>Simulador de TCU <span class="chip">backtracking · viento · difusa, con la jerarquía de mando</span></h1>
+  <h1>Simulador de Overcast <span class="chip">difusa en el navegador</span></h1>
   <div class="sub">Espejo JS del módulo canónico de tracking de SolarGPT (<code>solargpt_core/tracker.py</code>,
     schema 2.1.0): las <b>cuatro políticas de difusa del core</b> — <b>diffuse_flat · diffuse_limited ·
     diffuse_continuous · diffuse_poa_switch</b> — más la baseline pvlib, con la MISMA semántica: transposición
@@ -88,13 +88,8 @@
     máquina de estados con histéresis confirm/dwell <b>en minutos absolutos</b> (invariante en resolución) y
     lazo de control real (deadband 1° + slew 0,17°/s). Pinta el cielo del día (frentes, overcast, pulsos),
     trae <b>días reales de Open-Meteo</b> (histórico, previsión o EN VIVO: GHI/DNI/DHI y nubosidad medidas)
-    y mira qué hace cada política y cuánto POA gana o pierde. Y no solo la difusa: la TCU completa, con
-    <b>las tres capas que compiten por el mando</b> y su orden de autoridad — <b>stow de viento</b>
-    (la «Estrategia de Stow» de la casa: pre-stow 40 km/h en banda 30–55°, stow 60 km/h a 55°, salida
-    30′ desde la última racha) &gt; <b>tope mecánico</b> ±θmáx &gt;
-    <b>backtracking</b> &gt; <b>política de difusa</b> &gt; astronómico. El árbitro decide paso a paso y el
-    diario dice <b>quién mandó y por qué</b> en cada maniobra. La física corre offline; Open-Meteo es el
-    único extra online, opcional (y trae también el <b>viento medido</b>).</div>
+    y mira qué hace cada política y cuánto POA gana o pierde. La física corre offline; Open-Meteo es el
+    único extra online, opcional.</div>
   <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
     QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
     <a href="backtracking.html">Simulador de BT</a> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
@@ -191,45 +186,6 @@
       100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
       (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
       DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.</div>
-  </div>
-
-  <div class="card">
-    <h2>💨 Viento y stow <span class="sn">la capa de SEGURIDAD · gana a la difusa</span></h2>
-    <div class="two">
-      <div class="f"><label>Perfil del día</label>
-        <select id="wpreset">
-          <option value="calma">Calma (sin stow)</option>
-          <option value="brisa">Brisa (roza el pre-stow)</option>
-          <option value="racheado" selected>Racheado (rachas al pre-stow)</option>
-          <option value="temporal">Temporal (entra en stow)</option>
-          <option value="tormenta">Tormenta (stow casi todo el día)</option>
-        </select></div>
-      <div class="f"><label>Escala del perfil ×</label><input id="wscale" type="number" step="0.1" min="0" max="3" value="1"></div>
-    </div>
-    <div class="three">
-      <div class="f"><label>pre-stow km/h</label><input id="wt1" type="number" step="1" min="0" value="40"
-        title="pre_kmh del documento «Estrategia de Stow» (tabla 3). Por encima, |θ| queda encerrado en la banda 30–55°"></div>
-      <div class="f"><label>stow km/h</label><input id="wt2" type="number" step="1" min="0" value="60"
-        title="stow_kmh: el tracker se va a la posición de stow (55°, el tope)"></div>
-      <div class="f"><label>salida min</label><input id="whold" type="number" step="5" min="0" value="30"
-        title="salida_min: se cuentan desde la ÚLTIMA RACHA sobre el umbral, no desde que el viento afloja. En campo manda además la desactivación de la alarma de la estación (anemómetro de 1 s)"></div>
-    </div>
-    <div class="nota"><b>Esto no se inventa aquí.</b> Es la <b>«Estrategia de Stow» de la casa</b>
-      (tabla 3), la misma que el comprobador de <i>Seguimiento PEM</i> verifica contra los logs
-      reales de planta (<code>STOW_DEF</code>): pre 40 · stow 60 · <b>posición 55°</b> · mín pre 30° ·
-      salida 30′ · noche 5° este. Tres cosas que sorprenden y vienen de campo:
-      <b>(1)</b> la posición de stow es <b>55°, el TOPE — no plano</b>: se pone de canto para
-      descargar la pala, irse a 0° sería ofrecerla entera. <b>(2)</b> el pre-stow no es un tope sino
-      una <b>banda 30–55°</b>: prohíbe exactamente lo que la difusa quiere hacer, bajar a plano.
-      <b>(3)</b> los 30′ de salida cuentan desde la <b>última racha</b>, no desde que afloja.
-      <br><b>Jerarquía de mando</b>, de mayor a menor: <b>1</b> stow · <b>2</b> tope mecánico ±θmáx ·
-      <b>3</b> backtracking · <b>4</b> política de difusa · <b>5</b> astronómico. El orden importa:
-      el clamp de backtracking va ANTES del stow, porque si no recortaba la posición de refugio y
-      <b>el stow no llegaba a ejecutarse</b>. Y al amanecer la banda de pre-stow puede empujar al
-      tracker MÁS ABIERTO que el backtracking: sombrea a la fila de al lado, y es correcto — la
-      seguridad está por encima.
-      <br><b>No cubierto</b> de la estrategia: la defensa por <b>nieve</b> (entra &gt;10 cm, sale
-      &lt;2 cm) — aquí no hay serie de espesor. Con meteo real, el viento es el MEDIDO a 10 m.</div>
   </div>
 
   <div class="card">
@@ -581,11 +537,9 @@ function omInterp(om,t){
   // serie pasaría por medida válida de 0 W/m² (lo cazó la QA)
   const lin=a=>{const v0=a[i],v1=a[i+1];if(!Number.isFinite(v0)||!Number.isFinite(v1))return NaN;return v0+f*(v1-v0);};
   const ghi=lin(om.ghi),dni=lin(om.dni),dhi=lin(om.dhi),cc=lin(om.cc);
-  const ws=om.ws?lin(om.ws):NaN;
   if(!Number.isFinite(ghi)||!Number.isFinite(dni)||!Number.isFinite(dhi))return null;
   return {ghi:Math.max(0,ghi),dni:Math.max(0,dni),dhi:Math.max(0,dhi),
-          cc:Number.isFinite(cc)?Math.max(0,Math.min(1,cc)):0,
-          wind:Number.isFinite(ws)?Math.max(0,ws):NaN};
+          cc:Number.isFinite(cc)?Math.max(0,Math.min(1,cc)):0};
 }
 
 /* ── pvlib.tracking.singleaxis (Anderson & Mikofski 2020, Eq. 14) ────────── */
@@ -661,7 +615,7 @@ function buildDay(o){
   // Con o.om (meteo real horaria) la irradiancia del paso es la MEDIDA
   // interpolada — el modelo de nubes solo actúa donde la medida tiene hueco.
   const n=Math.round(1440/o.dtMin);
-  const tmin=[],zen=[],az=[],clear=[],irr=[],ghi=[],wind=[];
+  const tmin=[],zen=[],az=[],clear=[],irr=[],ghi=[];
   for(let i=0;i<n;i++){
     const m=i*o.dtMin;
     const tms=localToUTCms(o.dateStr,m,o.tz);
@@ -675,19 +629,15 @@ function buildDay(o){
       // amaneceres/ocasos — y el tracker, que lo persigue, multiplica el
       // error. Nada puede superar el cielo claro del instante (+10 % de
       // margen por cloud-enhancement). GHI y DHI van medidos tal cual.
-      if(w)w={ghi:w.ghi,dni:Math.min(w.dni,cs.dni*1.1+10),dhi:w.dhi,cc:w.cc,wind:w.wind};
+      if(w)w={ghi:w.ghi,dni:Math.min(w.dni,cs.dni*1.1+10),dhi:w.dhi,cc:w.cc};
     }
     if(!w){
       const cc=o.cc[Math.min(287,Math.floor(m/5))];
       w=cloudToIrr(cs,cc,g.zen);
     }
-    // viento: el MEDIDO si la meteo real lo trae; si no, la tira sintética
-    let v=(o.om&&w&&Number.isFinite(w.wind))?w.wind
-         :(o.ws?o.ws[Math.min(287,Math.floor(m/5))]:0);
     tmin.push(m);zen.push(g.zen);az.push(g.az);clear.push(cs);irr.push(w);ghi.push(w.ghi);
-    wind.push(Number.isFinite(v)?v:0);
   }
-  return {n:n,dtMin:o.dtMin,tmin:tmin,zen:zen,az:az,clear:clear,irr:irr,ghi:ghi,wind:wind,
+  return {n:n,dtMin:o.dtMin,tmin:tmin,zen:zen,az:az,clear:clear,irr:irr,ghi:ghi,
           doy:doyOf(o.dateStr),albedo:o.albedo,axisAz:o.axisAz,axisTilt:CANON.axisTilt,
           maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc,
           nightStow:o.nightStow!=null?o.nightStow:CANON.nightStowDeg};
@@ -704,20 +654,6 @@ function thetaBaselineDay(day){
     const v=singleaxis(day.zen[i],day.az[i],{axisTilt:day.axisTilt,axisAz:day.axisAz,
       maxAngle:day.maxAngle,backtrack:true,gcr:day.gcr,crossAxisTilt:0});
     th.push(isFinite(v)?v:stow);
-  }
-  return th;
-}
-/* seguimiento VERDADERO (sin backtracking): la referencia contra la que se ve
-   CUÁNDO manda el backtracking de verdad. |θ_n| < |θ_true| ⇔ el tracker está
-   cerrándose para no dar sombra a la fila de al lado — el régimen de las
-   primeras y últimas horas, que es lo que el simulador de BT enseña. */
-function thetaTrueDay(day){
-  const stow=Math.max(-day.maxAngle,Math.min(day.maxAngle,day.nightStow));
-  const th=[];
-  for(let i=0;i<day.n;i++){
-    if(!(day.zen[i]<90)){th.push(stow);continue;}
-    const v=trueTrackAngle(day.zen[i],day.az[i],day.axisTilt,day.axisAz);
-    th.push(Math.max(-day.maxAngle,Math.min(day.maxAngle,v)));
   }
   return th;
 }
@@ -837,129 +773,6 @@ function applyControlLoop(target,dtMin,p){
   return out;
 }
 
-/* ── VIENTO y STOW — la capa de SEGURIDAD ─────────────────────────────────
-   ESTO NO SE INVENTA AQUÍ. Es la «Estrategia de Stow» de la casa (tabla 3 del
-   documento), tal y como está implementada y VERIFICADA CONTRA LOGS REALES en
-   el comprobador de stow de factiun-cartera (seguimiento-pem.html, STOW_DEF):
-
-     pre_kmh 40 · stow_kmh 60 · pos_deg 55 · pre_min_deg 30 · salida_min 30
-     nieve_on 0,10 m · nieve_off 0,02 m · noche 5° (este)
-
-   Tres cosas que NO son lo que uno supondría, y que vienen de campo:
-
-   1. La posición de stow es 55°, NO plano. El tracker se pone al TOPE para
-      descargar el viento; irse a 0° sería ofrecer la pala entera. (En el
-      comprobador, «la línea de stow a 55°».)
-   2. El pre-stow no es un tope, es una BANDA: 30° ≤ |θ| ≤ 55°. Prohíbe
-      justamente lo que la difusa quiere hacer — bajar a plano.
-   3. La salida son 30 min desde la ÚLTIMA RACHA ≥ 60, no desde que el viento
-      afloja. En campo manda además la desactivación de la alarma de la
-      estación (anemómetro de 1 s): nuestra serie submuestreada es cota
-      inferior. Aquí, con serie sintética o de Open-Meteo, se aplica la regla
-      de la última racha, que es la que se puede comprobar sin alarma.
-
-   Lo que este simulador NO cubre de la estrategia: la defensa por NIEVE
-   (>10 cm entra, <2 cm sale) — no hay serie de espesor. Se declara. */
-const WIND={T1_MS:40/3.6,          // pre_kmh: entra el pre-stow
-            T2_MS:60/3.6,          // stow_kmh: entra el stow
-            HOLD_MIN:30,           // salida_min: desde la última racha ≥ stow
-            STOW_DEG:55,           // pos_deg: la posición de refugio es el TOPE
-            PARTIAL_MIN_DEG:30,    // pre_min_deg: en pre-stow, |θ| ≥ esto
-            PARTIAL_MAX_DEG:55};   // …y ≤ pos_deg: es una banda, no un tope
-/* Estado del stow paso a paso: 0 = sin viento · 1 = parcial · 2 = total.
-   Devuelve el nivel vigente en cada paso ya con el hold aplicado. */
-function windStowLevel(wind,dtMin,w){
-  const cfg=w||WIND;
-  const holdSteps=Math.max(1,Math.round(cfg.HOLD_MIN/dtMin));
-  const out=new Array(wind.length).fill(0);
-  let nivel=0,calma=0;
-  for(let i=0;i<wind.length;i++){
-    const v=Number.isFinite(wind[i])?wind[i]:0;
-    const pide=v>=cfg.T2_MS?2:(v>=cfg.T1_MS?1:0);
-    if(pide>=nivel){          // subir de nivel es INMEDIATO: es seguridad
-      if(pide>nivel)nivel=pide;
-      calma=0;
-    }else{                    // bajar exige `hold` minutos seguidos de calma
-      calma++;
-      if(calma>=holdSteps){nivel=pide;calma=0;}
-    }
-    out[i]=nivel;
-  }
-  return out;
-}
-
-/* ── EL ÁRBITRO DE LA TCU: la jerarquía de mando ──────────────────────────
-   De mayor a menor autoridad:
-     1. STOW DE VIENTO   — seguridad: gana a todo, incluida la difusa
-     2. TOPE MECÁNICO    — ±θmáx, el hierro no negocia
-     3. BACKTRACKING     — |θ| ≤ |θ_n|: la difusa no puede crear sombra
-     4. POLÍTICA DE DIFUSA
-     5. ASTRONÓMICO (θ_n) por defecto
-   El orden importa y el core lo dice expreso: el clamp de backtracking va
-   ANTES del stow, porque si no recortaba la posición de refugio a |θ_n| y el
-   stow no llegaba a ejecutarse nunca. Devuelve también QUIÉN mandó en cada
-   paso, que es lo que el diario y la escena tienen que poder justificar. */
-const MANDO={astro:'astronómico',difusa:'difusa',bt:'backtracking',
-             parcial:'PRE-STOW',total:'STOW VIENTO'};
-function arbitrate(thetaPol,thN,level,maxAngle,w,thTrue){
-  const cfg=w||WIND;
-  const n=thN.length,theta=new Array(n),quien=new Array(n);
-  for(let i=0;i<n;i++){
-    let th=thetaPol[i],q=Math.abs(th-thN[i])>0.01?MANDO.difusa:MANDO.astro;
-    // (3) backtracking: nunca más abierto que la baseline. Dos formas de
-    // mandar — el clamp defensivo (una política que se pasa) y el RÉGIMEN de
-    // backtracking, cuando la propia baseline ya viene cerrada por sombra.
-    const an=Math.abs(thN[i]);
-    if(Math.abs(th)>an+1e-6){
-      let s=Math.sign(th)||Math.sign(thN[i]);th=s*an;q=MANDO.bt;
-    }else if(q===MANDO.astro&&thTrue&&Math.abs(thN[i])<Math.abs(thTrue[i])-0.05)
-      q=MANDO.bt;
-    // (1) el stow GANA — se aplica DESPUÉS del clamp, como en run_tracker.
-    // Y gana de verdad: la banda de pre-stow puede EMPUJAR AL TRACKER FUERA
-    // del límite de backtracking al amanecer (|θ_n| < 30°). Eso sombrea la
-    // fila de al lado, y es correcto: la seguridad está por encima. Lo que no
-    // puede rebasar es el hierro, que va después.
-    const lado=Math.sign(th)||Math.sign(thN[i])||1;
-    if(level[i]===2){th=lado*cfg.STOW_DEG;q=MANDO.total;}
-    else if(level[i]===1){
-      const a=Math.abs(th);
-      if(a<cfg.PARTIAL_MIN_DEG){th=lado*cfg.PARTIAL_MIN_DEG;q=MANDO.parcial;}
-      else if(a>cfg.PARTIAL_MAX_DEG){th=lado*cfg.PARTIAL_MAX_DEG;q=MANDO.parcial;}
-    }
-    // (2) tope mecánico, la última palabra del hierro
-    theta[i]=Math.max(-maxAngle,Math.min(maxAngle,th));
-    quien[i]=q;
-  }
-  return {theta:theta,quien:quien};
-}
-
-/* Narrativa del stow de viento: una entrada por CAMBIO de nivel, con la
-   racha medida y el umbral cruzado. Es la capa que manda sobre todas las
-   demás, así que sus eventos tienen que aparecer en el diario de cualquier
-   política — si no, el diario contaría una difusa que el viento canceló. */
-function windEvents(day,wlev,w,ev){
-  const cfg=w||WIND;
-  const kmh=v=>(v*3.6).toFixed(0);
-  let prev=0;
-  for(let i=0;i<day.n;i++){
-    const L=wlev[i]; if(L===prev)continue;
-    const v=day.wind[i]||0;
-    if(L>prev)ev.push({t:day.tmin[i],type:'wind',
-      msg:(L===2?'STOW POR VIENTO (θ → '+cfg.STOW_DEG+'°, el TOPE: al tracker se le pone de canto '+
-                 'para descargar la pala; irse a plano sería ofrecerla entera)':
-                 'PRE-STOW (banda '+cfg.PARTIAL_MIN_DEG+'–'+cfg.PARTIAL_MAX_DEG+'°: |θ| NO puede bajar de '+
-                 cfg.PARTIAL_MIN_DEG+'°, justo lo que la difusa querría hacer)')+
-          ': racha '+kmh(v)+' km/h ≥ '+kmh(L===2?cfg.T2_MS:cfg.T1_MS)+
-          ' km/h — SEGURIDAD: manda sobre la difusa y sobre el backtracking'});
-    else ev.push({t:day.tmin[i],type:'windout',
-      msg:'SALE'+(L>0?' del stow al pre-stow':' del pre-stow')+': '+cfg.HOLD_MIN+
-          '′ desde la última racha sobre el umbral ('+kmh(v)+' km/h ahora) — la espera cuenta '+
-          'desde la RACHA, no desde que afloja'+(L===0?'. Devuelve el mando a la política de difusa':'')});
-    prev=L;
-  }
-  return ev;
-}
-
 /* ── el ACTUADOR no vive en la rejilla de decisión ────────────────────────
    La TCU fija consigna cada dtMin (SU ciclo de control) y el actuador rampa
    hacia ella a slew constante. Evaluar el lazo SOLO en la rejilla de decisión
@@ -982,15 +795,14 @@ function slewRateAt(exec,i,dtFine){
 }
 
 /* ── métricas del día ────────────────────────────────────────────────────── */
-function dayMetrics(day,theta,flag,poa,wlev){
-  let wh=0,flatSteps=0,daySteps=0,sw=0,travel=0,stowSteps=0;
+function dayMetrics(day,theta,flag,poa){
+  let wh=0,flatSteps=0,daySteps=0,sw=0,travel=0;
   for(let i=0;i<day.n;i++){
     wh+=poa[i]*day.dtMin/60;
-    if(day.ghi[i]>1){daySteps++;if(flag[i])flatSteps++;if(wlev&&wlev[i])stowSteps++;}
+    if(day.ghi[i]>1){daySteps++;if(flag[i])flatSteps++;}
     if(i>0){travel+=Math.abs(theta[i]-theta[i-1]);if(flag[i]!==flag[i-1])sw++;}
   }
-  return {poaWh:wh,pctFlat:daySteps?100*flatSteps/daySteps:0,switches:sw,travelDeg:travel,
-          pctStow:daySteps?100*stowSteps/daySteps:0};
+  return {poaWh:wh,pctFlat:daySteps?100*flatSteps/daySteps:0,switches:sw,travelDeg:travel};
 }
 
 /* ── el diario, POLÍTICA A POLÍTICA ───────────────────────────────────────
@@ -1128,7 +940,7 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
@@ -1151,13 +963,6 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
   }
   const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
   const thNF=thetaBaselineDay(daysF[0]);
-  const thT=thetaTrueDay(days[0]);
-  // el VIENTO es de planta, no de NCU: un anemómetro, un nivel de stow para
-  // todas. Y tiene que pasar por el MISMO árbitro que la vista global — si el
-  // zonal se saltara el stow, la escena por NCU seguiría girando mientras la
-  // vista de planta está en refugio: dos físicas en la misma pantalla.
-  const wlev=wc?windStowLevel(days[0].wind,days[0].dtMin,wc)
-              :new Array(days[0].n).fill(0);
   // el «sensor de planta»: un día con la irradiancia MEDIA de las zonas
   const mean=Object.assign({},days[0]);
   mean.irr=days[0].irr.map((_,i)=>{
@@ -1167,18 +972,13 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
   });
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
-  const rG0=POLICIES[polName](mean,thN,poaNmean,d);
-  const rG={theta:arbitrate(rG0.theta,thN,wlev,days[0].maxAngle,wc,thT).theta,
-            flag:rG0.flag.map((v,i)=>v&&wlev[i]===0),
-            flagGlobal:rG0.flagGlobal?rG0.flagGlobal.map((v,i)=>v&&wlev[i]===0):null};
+  const rG=POLICIES[polName](mean,thN,poaNmean,d);
   const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop);
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
     const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
-    const rZ0=POLICIES[polName](day,thN,poaNz,d);
-    const rZ={theta:arbitrate(rZ0.theta,thN,wlev,day.maxAngle,wc,thT).theta,
-              flag:rZ0.flag.map((v,i)=>v&&wlev[i]===0)};
+    const rZ=POLICIES[polName](day,thN,poaNz,d);
     // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
     const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop);
     const poaZ=poaSeries(dayF,execZ);
@@ -1188,7 +988,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
     // día): la escena la enseña en ámbar cuando está viva pero la histéresis
     // del poa_switch la retiene — «lo veo, pero el confirm/dwell mandan»
     const poaF=poaSeries(day,new Array(day.n).fill(0));
-    const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]&&wlev[i]===0);
+    const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]);
     for(let i=0;i<dayF.n;i++){
       whZ+=poaZ[i]*F.dt/60; whG+=poaG[i]*F.dt/60; whN+=poaNf[i]*F.dt/60;
     }
@@ -1200,7 +1000,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
       signalF:execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v)});
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
-          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN,wlev:wlev};
+          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
 }
 
 /* ── diario de decisiones: la máquina del poa_switch EXPLICADA ─────────────
@@ -1823,164 +1623,12 @@ function runPhysicsQA(){
     for(let i=0;i<day.n;i++)A(Math.abs(day.irr[i].ghi-321)<1e-9,'no usa la medida en paso '+i);
   });
 
-  /* ── VIENTO: la capa que manda sobre todas las demás ──────────────────── */
-  t('stow de viento: subir de nivel es INMEDIATO y bajar exige el hold completo de calma sostenida',()=>{
-    const dt=10,hold=30;                                    // 3 pasos de calma
-    const w=Object.assign({},WIND,{HOLD_MIN:hold});
-    const V=[0,0,WIND.T1_MS,WIND.T2_MS,0,0,0,0,WIND.T2_MS,0,0,0,0,0];
-    const L=windStowLevel(V,dt,w);
-    A(L[2]===1,'T1 no subió a parcial en el acto: '+L[2]);
-    A(L[3]===2,'T2 no subió a total en el acto: '+L[3]);
-    A(L[4]===2&&L[5]===2,'bajó antes de cumplir el hold: '+L.slice(4,7));
-    A(L[6]===0,'no bajó tras 3 pasos de calma: '+L[6]);
-    A(L[8]===2,'una racha nueva no volvió a subir: '+L[8]);
-    // una racha aislada REINICIA el contador: la salida se retrasa un hold entero
-    const sinRacha=windStowLevel([WIND.T2_MS,0,0,0,0,0,0,0],dt,w);
-    const conRacha=windStowLevel([WIND.T2_MS,0,0,WIND.T2_MS,0,0,0,0],dt,w);
-    A(sinRacha[3]===0,'sin racha debía salir en el paso 3: '+sinRacha);
-    A(conRacha[3]===2&&conRacha[4]===2&&conRacha[5]===2,'la racha no reinició el hold: '+conRacha);
-    A(conRacha[6]===0,'tras un hold completo desde la racha debía salir: '+conRacha);
-  });
-  t('JERARQUÍA DE MANDO: NINGUNA política de difusa puede sacar al tracker del stow de viento',()=>{
-    const day=canonScenario(10);
-    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
-    const L2=new Array(day.n).fill(2), L1=new Array(day.n).fill(1);
-    for(const k in POLICIES){
-      const rp=POLICIES[k](day,thN,poaN,DCFG_DEFAULT);
-      const a2=arbitrate(rp.theta,thN,L2,day.maxAngle,WIND);
-      for(let i=0;i<day.n;i++){
-        // el refugio es ±pos_deg (el comprobador de campo mira |ángulo|)
-        A(Math.abs(Math.abs(a2.theta[i])-WIND.STOW_DEG)<1e-9,k+': la difusa se salió del stow en '+i+' → '+a2.theta[i]);
-        A(a2.quien[i]===MANDO.total,k+': el mando en stow total no es el viento en '+i);
-      }
-      const a1=arbitrate(rp.theta,thN,L1,day.maxAngle,WIND);
-      for(let i=0;i<day.n;i++){
-        const a=Math.abs(a1.theta[i]);
-        A(a<=WIND.PARTIAL_MAX_DEG+1e-9,k+': el pre-stow rebasa la banda por arriba en '+i+' → '+a1.theta[i]);
-        // lo que de verdad prohíbe el pre-stow: bajar a plano
-        A(a>=WIND.PARTIAL_MIN_DEG-1e-9,k+': el pre-stow dejó bajar de '+WIND.PARTIAL_MIN_DEG+'° en '+i+' → '+a1.theta[i]);
-      }
-    }
-  });
-  t('el clamp de backtracking va ANTES del stow: la posición de refugio LLEGA a ejecutarse aunque |θ_n| sea menor',()=>{
-    const day=canonScenario(10);
-    const thN=thetaBaselineDay(day);
-    // refugio a 45°: al amanecer |θ_n| ronda el tope, pero hay pasos donde es
-    // menor que 45 — si el clamp se aplicara DESPUÉS, el stow no llegaría
-    const w=Object.assign({},WIND,{STOW_DEG:45});
-    const L=new Array(day.n).fill(2);
-    const a=arbitrate(thN.slice(),thN,L,day.maxAngle,w);
-    let hubo=false;
-    for(let i=0;i<day.n;i++){
-      A(Math.abs(Math.abs(a.theta[i])-45)<1e-9,'el refugio no se ejecutó en '+i+' → '+a.theta[i]);
-      if(Math.abs(thN[i])<45-1e-6)hubo=true;
-    }
-    A(hubo,'el escenario no ejercita el caso |θ_n| < refugio');
-  });
-  t('el tope mecánico tiene la última palabra: un refugio mayor que θmáx se recorta al hierro',()=>{
-    const day=canonScenario(10);
-    const thN=thetaBaselineDay(day);
-    const w=Object.assign({},WIND,{STOW_DEG:80});
-    const a=arbitrate(thN.slice(),thN,new Array(day.n).fill(2),day.maxAngle,w);
-    for(let i=0;i<day.n;i++)A(Math.abs(a.theta[i])<=day.maxAngle+1e-9,'fuera del tope en '+i+' → '+a.theta[i]);
-  });
-  t('sin viento el árbitro es TRANSPARENTE: no toca la política salvo el clamp de backtracking',()=>{
-    const day=canonScenario(10);
-    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
-    const L0=new Array(day.n).fill(0);
-    for(const k in POLICIES){
-      const rp=POLICIES[k](day,thN,poaN,DCFG_DEFAULT);
-      const a=arbitrate(rp.theta,thN,L0,day.maxAngle,WIND);
-      for(let i=0;i<day.n;i++){
-        A(Math.abs(a.theta[i])<=Math.abs(thN[i])+1e-6,k+': el árbitro dejó pasar sombra en '+i);
-        A(a.quien[i]!==MANDO.total&&a.quien[i]!==MANDO.parcial,k+': mando de viento sin viento en '+i);
-        // sin recorte, la consigna debe salir intacta
-        if(Math.abs(rp.theta[i])<=Math.abs(thN[i]))
-          A(Math.abs(a.theta[i]-rp.theta[i])<1e-9,k+': el árbitro alteró una consigna válida en '+i);
-      }
-    }
-  });
-  t('el árbitro distingue el RÉGIMEN de backtracking del seguimiento astronómico puro',()=>{
-    const day=canonScenario(10);
-    const thN=thetaBaselineDay(day),thT=thetaTrueDay(day);
-    const L0=new Array(day.n).fill(0);
-    const a=arbitrate(thN.slice(),thN,L0,day.maxAngle,WIND,thT);
-    let bt=0,astro=0;
-    for(let i=0;i<day.n;i++){
-      if(!(day.zen[i]<90))continue;
-      A(Math.abs(thN[i])<=Math.abs(thT[i])+1e-6,'la baseline abre MÁS que el seguimiento verdadero en '+i);
-      if(a.quien[i]===MANDO.bt){bt++;A(Math.abs(thN[i])<Math.abs(thT[i]),'rotula bt sin cerrar en '+i);}
-      else if(a.quien[i]===MANDO.astro)astro++;
-    }
-    A(bt>0,'ningún paso del día en régimen de backtracking: el simulador de BT no se ve');
-    A(astro>0,'todo el día en backtracking: el mediodía debe ser astronómico');
-    // sin la referencia de seguimiento verdadero, el árbitro NO puede inventárselo
-    const a0=arbitrate(thN.slice(),thN,L0,day.maxAngle,WIND);
-    for(let i=0;i<day.n;i++)A(a0.quien[i]!==MANDO.bt,'rotula backtracking sin referencia en '+i);
-  });
-  t('EL ZONAL OBEDECE AL MISMO ÁRBITRO: ninguna NCU puede seguir girando mientras la planta está en stow',()=>{
-    const cc=new Array(288).fill(0);
-    for(let m=420;m<600;m+=5)cc[m/5]=1;
-    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
-             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null,
-             ws:new Array(288).fill(20)};                  // 72 km/h > T2 todo el día
-    const r=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,WIND);
-    A(r.wlev.every(v=>v===2),'el nivel de stow de planta no llegó al zonal');
-    r.zones.forEach((Z,z)=>{
-      for(let i=0;i<Z.theta.length;i++){
-        A(Math.abs(Math.abs(Z.theta[i])-WIND.STOW_DEG)<1e-9,'NCU '+(z+1)+' fuera del stow en '+i+' → '+Z.theta[i]);
-        A(!Z.flag[i],'NCU '+(z+1)+' marca difusa activa bajo stow en '+i);
-        A(!Z.signal[i],'NCU '+(z+1)+' enseña señal viva bajo stow en '+i);
-      }
-    });
-    // en stow permanente todas las NCUs están donde mismo: zonal ≡ global
-    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'zonal y global difieren con la planta entera en refugio');
-    // y sin config de viento el zonal es exactamente el de siempre (compat)
-    const r0=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT);
-    A(r0.wlev.every(v=>v===0),'sin config de viento el zonal se inventa un stow');
-  });
-  t('el diario NARRA el viento: un evento por cada cambio de nivel, con la racha y el umbral',()=>{
-    const day=canonScenario(10);
-    const wl=new Array(day.n).fill(0);
-    for(let i=10;i<14;i++)wl[i]=1;
-    for(let i=14;i<20;i++)wl[i]=2;
-    const ev=windEvents(day,wl,WIND,[]);
-    let cambios=0;for(let i=1;i<day.n;i++)if(wl[i]!==wl[i-1])cambios++;
-    A(ev.length===cambios,'eventos ('+ev.length+') ≠ cambios de nivel ('+cambios+')');
-    A(ev.filter(e=>e.type==='wind').length===2,'no narra las dos subidas');
-    A(ev.filter(e=>e.type==='windout').length===1,'no narra la salida');
-    for(const e of ev)A(/km\/h/.test(e.msg),'un evento de viento sin la racha medida: '+e.msg);
-    for(let i=1;i<ev.length;i++)A(ev[i].t>=ev[i-1].t,'los eventos no van en orden temporal');
-  });
-  t('«% en stow» cuenta lo que de verdad pasó: 100 % bajo stow permanente, 0 % sin viento',()=>{
-    const day=canonScenario(10);
-    const th=thetaBaselineDay(day),poa=poaSeries(day,th),fl=new Array(day.n).fill(false);
-    const m1=dayMetrics(day,th,fl,poa,new Array(day.n).fill(2));
-    const m0=dayMetrics(day,th,fl,poa,new Array(day.n).fill(0));
-    A(Math.abs(m1.pctStow-100)<1e-9,'stow permanente no da 100 %: '+m1.pctStow);
-    A(m0.pctStow===0,'sin viento marca stow: '+m0.pctStow);
-    A(dayMetrics(day,th,fl,poa).pctStow===0,'sin serie de viento no debe inventar stow');
-  });
-  t('el viento MEDIDO manda sobre el sintético: buildDay toma om.ws cuando la meteo real lo trae',()=>{
-    const t0=localToUTCms('2024-06-21',0,0);
-    const tms=[],ghi=[],dni=[],dhi=[],ccv=[],ws=[];
-    for(let h=0;h<=24;h++){tms.push(t0+h*3.6e6);ghi.push(321);dni.push(0);dhi.push(321);ccv.push(1);ws.push(18);}
-    const day=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,
-                        dtMin:10,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,
-                        cc:new Array(288).fill(0),ws:new Array(288).fill(0),
-                        om:{tms:tms,ghi:ghi,dni:dni,dhi:dhi,cc:ccv,ws:ws}});
-    for(let i=0;i<day.n;i++)A(Math.abs(day.wind[i]-18)<1e-9,'ignora el viento medido en '+i+' → '+day.wind[i]);
-    // 18 m/s = 65 km/h > T2 ⇒ el día entero en stow total
-    const L=windStowLevel(day.wind,day.dtMin,WIND);
-    A(L.every(v=>v===2),'65 km/h medidos no disparan el stow total');
-  });
-
   return R;
 }
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.12.0';
+const VER='v1.10.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2009,8 +1657,7 @@ const POL_META={
    decía violeta «plano» mientras su etiqueta decía DIFUSA). Un color por
    significado, todos distinguibles entre sí. */
 const ST_COL={girando:'#22d3ee', PLANO:'#a78bfa', RETENIDO:'#e07b39',
-              DIFUSA:'#5aa9ff', senal:'#fbbd23', track:'#9bb0c6',
-              stow:'#f87272', parcial:'#fb923c'};   // seguridad: rojo y naranja
+              DIFUSA:'#5aa9ff', senal:'#fbbd23', track:'#9bb0c6'};
 /* la política EFECTIVA: con el zonal activo y pvlib en la escena, quien decide
    de verdad es el poa_switch (lo elige computeZonal) — rotular pvlib ahí sería
    otra contradicción */
@@ -2018,12 +1665,8 @@ function polEfectiva(pv){
   const zc=(typeof zonalCfg==='function')?zonalCfg():{on:false};
   return (zc.on&&pv==='pvlib')?'diffuse_poa_switch':pv;
 }
-function stateLabel(polKey,th,flag,sig,rate,wlev){
+function stateLabel(polKey,th,flag,sig,rate){
   const m=POL_META[polEfectiva(polKey)]||{};
-  // el stow gana también en la ROTULACIÓN: si el tracker está refugiado, eso
-  // es lo que hay que decir, por encima de cualquier estado de difusa
-  if(wlev===2)return {txt:'💨 STOW VIENTO',col:ST_COL.stow,estado:'stow'};
-  if(wlev===1)return {txt:'💨 PRE-STOW',col:ST_COL.parcial,estado:'parcial'};
   if(rate>0.001)return {txt:'↻ '+rate.toFixed(2)+' °/s',col:ST_COL.girando,estado:'girando'};
   if(flag&&m.mode){
     const llegando=m.flat0&&Math.abs(th)>1.0;
@@ -2164,8 +1807,7 @@ async function fetchOM(dateStr){
   const base=ageDays>7?'https://archive-api.open-meteo.com/v1/archive'
                       :'https://api.open-meteo.com/v1/forecast';
   const url=base+'?latitude='+lat+'&longitude='+lon+'&start_date='+d0+'&end_date='+d1+
-    '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover,'+
-    'wind_speed_10m&wind_speed_unit=ms&timezone=UTC';
+    '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC';
   $('omstatus').innerHTML='descargando…';
   const r=await fetch(url);
   if(!r.ok)throw new Error('HTTP '+r.status);
@@ -2175,10 +1817,7 @@ async function fetchOM(dateStr){
   // → se centra el timestamp en −30 min para alinear medida y posición solar
   const om={tms:h.time.map(t=>Date.parse(t+':00Z')-1.8e6),
             ghi:h.shortwave_radiation,dni:h.direct_normal_irradiance,
-            dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100),
-            // viento MEDIDO en m/s (wind_speed_unit=ms): si viene, el stow del
-            // día real lo decide la meteo, no el preset sintético
-            ws:h.wind_speed_10m?h.wind_speed_10m.map(v=>v==null?NaN:v):null};
+            dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
   let valid=0;for(const v of om.ghi)if(isFinite(v))valid++;
   if(valid<6)throw new Error('sin datos para esa fecha (¿futuro lejano?)');
   return om;
@@ -2231,29 +1870,6 @@ $('omlive').onclick=()=>{
   OMLIVE=setInterval(liveTick,600000);
 };
 
-/* ── viento: config y perfil del día ── */
-function cfgWind(){
-  return {T1_MS:(+$('wt1').value||40)/3.6, T2_MS:(+$('wt2').value||60)/3.6,
-          HOLD_MIN:+$('whold').value, STOW_DEG:WIND.STOW_DEG,
-          PARTIAL_MIN_DEG:WIND.PARTIAL_MIN_DEG, PARTIAL_MAX_DEG:WIND.PARTIAL_MAX_DEG};
-}
-let WS=new Array(288).fill(0);          // m/s por bin de 5 min
-function windPreset(name,esc){
-  const k=(esc==null?1:esc), ws=new Array(288).fill(0);
-  // perfil diario típico: mínimo de madrugada, máximo por la tarde, con rachas
-  for(let i=0;i<288;i++){
-    const h=i*5/60;
-    const base={calma:2,brisa:6,racheado:8,temporal:12,tormenta:17}[name]||8;
-    const diurno=1+0.45*Math.sin((h-9)/24*2*Math.PI);
-    const racha={calma:0,brisa:1.5,racheado:5,temporal:6,tormenta:5}[name]||0;
-    const r=racha*Math.max(0,Math.sin(h*2.7)*Math.sin(h*1.3+1)*Math.sin(h*0.7+2));
-    ws[i]=Math.max(0,(base*diurno+r)*k);
-  }
-  WS=ws;
-}
-$('wpreset').onchange=()=>{windPreset($('wpreset').value,+$('wscale').value);recompute();};
-$('wscale').addEventListener('change',()=>{windPreset($('wpreset').value,+$('wscale').value);recompute();});
-
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
 /* Va por clave de la hoja de cartera (24002 = El Burgo), no por nº de proyecto: es el mismo
    índice con el que llega `factiun_plantas`. */
@@ -2290,7 +1906,6 @@ function cfgDay(){
           altM:+$('alt').value,TL:+$('tl').value,dtMin:+$('dt').value,albedo:+$('albedo').value,
           axisAz:+$('axaz').value,maxAngle:+$('maxang').value,gcr:gcr,cc:CC,
           nightStow:-(+$('stow').value),     // TCU − = este → core + = este
-          ws:WS,
           om:($('skysource').value==='om'&&OM)?OM:null};
 }
 function cfgDiffuse(){
@@ -2323,17 +1938,10 @@ function recompute(){
   const d=cfgDiffuse();
   const loop=cfgLoop(day.maxAngle);
   const res={};
-  // el viento manda por encima de todo: nivel de stow paso a paso
-  const wlev=windStowLevel(day.wind,day.dtMin,cfgWind());
-  const wlevF=execOnFineGrid(wlev,day.dtMin,dayF.n,DT_FINE,null).map(v=>Math.round(v));
-  const thT=thetaTrueDay(day);   // para distinguir «astronómico» de RÉGIMEN de backtracking
   for(const k of POL_ORDER){
     if(!POL_ON[k])continue;
-    const rp=POLICIES[k](day,thN,poaN,d);
-    // ÁRBITRO: stow > tope > backtracking > difusa > astronómico
-    const arb=arbitrate(rp.theta,thN,wlev,day.maxAngle,cfgWind(),thT);
-    const r={theta:arb.theta,flag:rp.flag.map((v,i)=>v&&wlev[i]===0)};
-    const poa=poaSeries(day,r.theta);
+    const r=POLICIES[k](day,thN,poaN,d);
+    const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
     // consigna → actuador (rampa al minuto) → POA fina, y la consigna sin lazo
     // en la MISMA rejilla fina para poder medir el coste del hierro
     const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop);
@@ -2341,13 +1949,12 @@ function recompute(){
     const poaF=poaSeries(dayF,execF);
     const poaConsF=loop?poaSeries(dayF,consF):poaF;
     const flagF=execOnFineGrid(r.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
-    res[k]={theta:r.theta,flag:r.flag,poa:poa,quien:arb.quien,
+    res[k]={theta:r.theta,flag:r.flag,poa:poa,
             execF:execF,consF:consF,poaF:poaF,flagF:flagF,
-            met:dayMetrics(dayF,execF,flagF,poaF,wlevF),
-            metTgt:dayMetrics(dayF,consF,flagF,poaConsF,wlevF)};
+            met:dayMetrics(dayF,execF,flagF,poaF),
+            metTgt:dayMetrics(dayF,consF,flagF,poaConsF)};
   }
-  SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop,
-       wlev:wlev,wlevF:wlevF};
+  SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop};
   computeZonal(d);
   drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
   drawDiario(d);
@@ -2358,8 +1965,7 @@ function recompute(){
 const EV_STYLE={wake:['🌅','#5c7189'],sleep:['🌙','#5c7189'],night:['🌙','#5c7189'],
                 enter:['▼','#a78bfa'],exit:['▲','#5aa9ff'],
                 pulse:['✋','#fbbd23'],dwell:['⛔','#fbbd23'],
-                chatter:['⚡','#f87272'],info:['ℹ','#5c7189'],
-                wind:['💨','#f87272'],windout:['💨','#5aa9ff']};
+                chatter:['⚡','#f87272'],info:['ℹ','#5c7189']};
 function drawDiario(d){
   const zc=zonalCfg();
   const pv=$('polview').value||'diffuse_poa_switch';   // narra LA POLÍTICA ELEGIDA
@@ -2371,10 +1977,7 @@ function drawDiario(d){
     ZR.zones.forEach((Z,z)=>{
       const poaNz=poaSeries(Z.day,SIM.thN);
       const e=expl(Z.day,SIM.thN,poaNz,d);
-      // la consigna que se anota tiene que ser la ARBITRADA, la misma que
-      // ejecuta Z.execF: si no, el diario diría que una orden nunca llegó
-      const th=arbitrate(POLICIES[pv](Z.day,SIM.thN,poaNz,d).theta,SIM.thN,
-                         ZR.wlev||SIM.wlev,Z.day.maxAngle,cfgWind()).theta;
+      const th=POLICIES[pv](Z.day,SIM.thN,poaNz,d).theta;
       if(Z.execF)annotateArrivals(e.events,th,Z.execF,DT_FINE,Z.day,tol);
       for(const ev of e.events)rows.push(Object.assign({tag:'NCU '+(z+1)},ev));
     });
@@ -2385,10 +1988,6 @@ function drawDiario(d){
                           r.execF,DT_FINE,SIM.day,tol);
     for(const ev of e.events)rows.push(Object.assign({tag:'planta'},ev));
   }
-  // el viento es de PLANTA y manda sobre cualquier política: sus eventos
-  // entran una sola vez, sea cual sea la política narrada o el zonal
-  for(const ev of windEvents(SIM.day,SIM.wlev,cfgWind(),[]))
-    rows.push(Object.assign({tag:'planta'},ev));
   rows.sort((a,b)=>a.t-b.t||(a.tag<b.tag?-1:1));
   // los stow de todas las NCUs son el mismo: uno solo por instante
   const seen=new Set();
@@ -2433,7 +2032,7 @@ function computeZonal(d){
   if(!zc.on)return;
   const pv=$('polview').value;
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
-              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,cfgWind());
+              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null);
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
@@ -2492,7 +2091,7 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
-    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null,null,cfgWind());
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null);
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
@@ -2572,22 +2171,6 @@ function drawIrr(){
   let lx=W-560;
   const leg=[['GHI','#eaf4ff'],['DNI','#fbbd23'],['DHI','#a78bfa'],['GHI claro ┄','rgba(234,244,255,.55)'],['nubes ▮ (banda)','#9bb0c6']];
   for(const [txt,col] of leg){ctx.fillStyle=col;ctx.fillText(txt,lx,46);lx+=ctx.measureText(txt).width+26;}
-  // viento (eje derecho implícito, escalado a T2×1,6) y sus umbrales
-  const wc=cfgWind(), wMax=Math.max(wc.T2_MS*1.6,...day.wind);
-  ctx.setLineDash([]);
-  for(const [v,col] of [[wc.T1_MS,'#fb923c'],[wc.T2_MS,'#f87272']]){
-    const y=(H-26)-(v/wMax)*(H-40)*0.42;
-    ctx.strokeStyle=col+'66';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);
-    ctx.beginPath();ctx.moveTo(60,y);ctx.lineTo(W-20,y);ctx.stroke();
-  }
-  ctx.setLineDash([]);ctx.beginPath();
-  for(let i=0;i<day.n;i++){
-    const x=xOf(day.tmin[i],W),y=(H-26)-(day.wind[i]/wMax)*(H-40)*0.42;
-    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
-  }
-  ctx.strokeStyle='#f87272';ctx.lineWidth=2;ctx.stroke();
-  ctx.fillStyle='#f87272';ctx.font='18px ui-monospace,monospace';
-  ctx.fillText('viento (T1/T2 ┄)',66,H-40);
   drawTimeCursor(ctx,W,H,26);
 }
 function drawTheta(){
@@ -2598,11 +2181,6 @@ function drawTheta(){
   // limited se veía el 70 % del día «en plano» con la curva clavada a ±40°
   const pv=$('polview').value,r=SIM.res[pv];
   if(r){
-    // primero la banda de STOW (roja): manda sobre cualquier estado de difusa
-    for(let i=0;i<day.n;i++)if(SIM.wlev[i]){
-      ctx.fillStyle=SIM.wlev[i]===2?'#f8727233':'#fb923c22';
-      ctx.fillRect(xOf(day.tmin[i],W),8,(W-80)/day.n+0.5,H-34);
-    }
     const mm=POL_META[polEfectiva(pv)]||{};
     ctx.fillStyle=(ST_COL[mm.mode]||'#a78bfa')+'1f';
     for(let i=0;i<day.n;i++)if(r.flag[i]){
@@ -2669,7 +2247,6 @@ function drawTable(){
   const base=SIM.res.pvlib.met.poaWh;
   const baseTgt=SIM.res.pvlib.metTgt.poaWh;
   let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th><th title="% del día con la política de difusa ACTIVA. Ojo: activa no es sinónimo de plano — solo flat y poa_switch van a 0°; limited retiene el ángulo previo y continuous elige un ángulo intermedio.">% difusa activa</th>'+
-        '<th title="% del día con stow de viento activo (parcial o total). La seguridad manda sobre la difusa: mientras dura, la política de difusa no decide.">% en stow</th>'+
         '<th>conmutaciones</th><th>recorrido °</th><th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
   for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
@@ -2680,9 +2257,7 @@ function drawTable(){
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
        '<td'+(k===bestK?' class="best"':'')+'>'+m.poaWh.toFixed(0)+'</td>'+
        '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
-       '<td>'+m.pctFlat.toFixed(0)+' %</td>'+
-       '<td'+(m.pctStow>0.5?' style="color:'+ST_COL.stow+'"':'')+'>'+m.pctStow.toFixed(0)+' %</td>'+
-       '<td>'+m.switches+'</td><td>'+m.travelDeg.toFixed(0)+'</td>'+
+       '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td><td>'+m.travelDeg.toFixed(0)+'</td>'+
        '<td>'+(lazo==null?'—':(lazo>=0?'+':'')+lazo.toFixed(2)+' %')+'</td></tr>';
   }
   $('daytab').innerHTML=h;
@@ -2709,7 +2284,7 @@ function drawScene(){
   const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
   const th=r.execF[iF],thn=SIM.thNF[iF],flag=r.flagF[iF];
   const rate=slewRateAt(r.execF,iF,DT_FINE);            // °/s que está girando AHORA
-  const st2=stateLabel(pv,th,flag,false,rate,SIM.wlevF[iF]);  // texto Y color del estado
+  const st2=stateLabel(pv,th,flag,false,rate);         // texto Y color del estado
 
   // cielo: degradado que agrisa con cc
   const dayness=Math.max(0,Math.min(1,(90-zen)/60));
@@ -2793,12 +2368,7 @@ function drawScene(){
     ro('GHI',irr.ghi.toFixed(0),'W/m²')+
     ro('DNI',irr.dni.toFixed(0),'W/m²')+
     ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
-    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',st2.txt)+
-    ro('viento',(dayF.wind[iF]*3.6).toFixed(0),'km/h · '+['—','pre-stow','STOW 55°'][SIM.wlevF[iF]])+
-    // QUIÉN manda ahora mismo: la salida del árbitro, no una etiqueta aparte
-    '<div class="ro"><div class="k">manda</div><div class="v" style="color:'+
-      (SIM.wlevF[iF]?ST_COL[SIM.wlevF[iF]===2?'stow':'parcial']:st2.col)+'">'+
-      (r.quien?r.quien[Math.min(day.n-1,Math.floor(m/day.dtMin))]:MANDO.astro)+'</div></div>'+
+    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',stateLabel(pv,th,flag,false,rate).txt)+
     ro('POA pvlib',poaBase.toFixed(0),'W/m²')+
     ro('POA política',poaPol.toFixed(0),'W/m²')+
     ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
@@ -3449,7 +3019,7 @@ function update3D(){
     // el estado con el NOMBRE de la política, no un «FLAT» genérico: PLANO
     // (flat/poa_switch) · RETENIDO (limited) · DIFUSA (continuous, ángulo
     // intermedio) · ↻ girando · ☁ retiene (señal viva bloqueada por histéresis)
-    const st=stateLabel(pv,th,fl,sig,rate,SIM.wlevF[iF]);
+    const st=stateLabel(pv,th,fl,sig,rate);
     Z.stCol=(st.estado==='track')?null:st.col;   // la mesa se tiñe con SU estado
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
              (st.txt==='track'?'':' · '+st.txt),st.col);
@@ -3692,16 +3262,14 @@ $('year365').onclick=async()=>{
     const d0=new Date(dEnd.getTime()-364*86400000).toISOString().slice(0,10);
     const url='https://archive-api.open-meteo.com/v1/archive?latitude='+lat+'&longitude='+lon+
       '&start_date='+d0+'&end_date='+d1+
-      '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover,'+
-      'wind_speed_10m&wind_speed_unit=ms&timezone=UTC';
+      '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC';
     const r=await fetch(url);
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json(),h=j.hourly;
     if(!h||!h.time||!h.time.length)throw new Error('respuesta sin datos');
     const om={tms:h.time.map(t=>Date.parse(t+':00Z')-1.8e6),
               ghi:h.shortwave_radiation,dni:h.direct_normal_irradiance,
-              dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100),
-              ws:h.wind_speed_10m?h.wind_speed_10m.map(v=>v==null?NaN:v):null};
+              dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
     // el rango REAL con dato: ERA5 llega con retraso variable — sin este
     // recorte, una cola sin dato caería EN SILENCIO al cielo claro sintético
     let iF=-1,iL=-1;
@@ -3711,9 +3279,8 @@ $('year365').onclick=async()=>{
     const dsTo=new Date(om.tms[iL]+1.8e6-86400000).toISOString().slice(0,10);
     const c=cfgDay(),d=cfgDiffuse();
     const loop=cfgLoop(c.maxAngle);   // el slew es hierro: nunca null
-    const wc=cfgWind();
-    const tot={},fl={},sw={},st={};
-    for(const k of POL_ORDER)if(POL_ON[k]){tot[k]=0;fl[k]=0;sw[k]=0;st[k]=0;}
+    const tot={},fl={},sw={};
+    for(const k of POL_ORDER)if(POL_ON[k]){tot[k]=0;fl[k]=0;sw[k]=0;}
     const zeroCC=new Array(288).fill(0);
     let nd=0;
     // día a día con la meteo MEDIDA, a paso de 30 min (confirm/dwell van en
@@ -3729,27 +3296,20 @@ $('year365').onclick=async()=>{
       const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:15,cc:zeroCC,om:om}));
       const dayF=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_FINE,cc:zeroCC,om:om}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
-      // el viento MEDIDO del propio ERA5 manda también en el anual: si el año
-      // no pasara por el árbitro, la tabla estrella sería otra física que la
-      // del día — y una de las dos estaría mintiendo
-      const wlev=windStowLevel(day.wind,day.dtMin,wc);
-      const wlevF=execOnFineGrid(wlev,day.dtMin,dayF.n,DT_FINE,null).map(v=>Math.round(v));
       for(const k in tot){
         const r2=POLICIES[k](day,thN,poaN,d);
-        const arb=arbitrate(r2.theta,thN,wlev,day.maxAngle,wc,thetaTrueDay(day));
-        const fl2=r2.flag.map((v,i)=>v&&wlev[i]===0);
-        const th=execOnFineGrid(arb.theta,day.dtMin,dayF.n,DT_FINE,loop);
-        const flagF=execOnFineGrid(fl2.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
+        const th=execOnFineGrid(r2.theta,day.dtMin,dayF.n,DT_FINE,loop);
+        const flagF=execOnFineGrid(r2.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
         const poa=poaSeries(dayF,th);
-        const met=dayMetrics(dayF,th,flagF,poa,wlevF);
-        tot[k]+=met.poaWh/1000;fl[k]+=met.pctFlat;sw[k]+=met.switches;st[k]+=met.pctStow;
+        const met=dayMetrics(dayF,th,flagF,poa);
+        tot[k]+=met.poaWh/1000;fl[k]+=met.pctFlat;sw[k]+=met.switches;
       }
       if((++nd%30)===0){
         $('yearinfo').textContent='calculando… '+ds+' ('+nd+'/365)';
         await new Promise(res=>setTimeout(res,0));
       }
     }
-    YR365={tot:tot,fl:fl,sw:sw,st:st,nd:nd};
+    YR365={tot:tot,fl:fl,sw:sw,nd:nd};
     renderYear365();
     $('yearinfo').innerHTML='<b>'+dsFrom+' → '+dsTo+'</b> · ERA5 medido ('+nd+' días) · decisión 30′ · '+
       'actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+' · DNI ≤ cielo claro ×1,1';
@@ -3760,14 +3320,12 @@ $('year365').onclick=async()=>{
 let YR365=null;
 function renderYear365(){
   if(!YR365)return;
-  const tot=YR365.tot,fl=YR365.fl,sw=YR365.sw,st=YR365.st||{},nd=YR365.nd;
+  const tot=YR365.tot,fl=YR365.fl,sw=YR365.sw,nd=YR365.nd;
   const MW=+$('mwp').value||100,eur=+$('eurmwh').value||45,PR=0.85;
   let bestK=null,bestV=-1;
   for(const k in tot)if(tot[k]>bestV){bestV=tot[k];bestK=k;}
   let hh2='<tr><th>política</th><th>POA anual kWh/m²</th><th>Δ vs pvlib</th>'+
-          '<th>MWh/año extra ('+MW+' MWp)</th><th>€/año</th><th>% día con difusa activa</th>'+
-          '<th title="% del día con stow de viento, del viento MEDIDO por ERA5. Es el mismo para todas las políticas: la seguridad no negocia.">% en stow</th>'+
-          '<th>conmutaciones/año</th></tr>';
+          '<th>MWh/año extra ('+MW+' MWp)</th><th>€/año</th><th>% día con difusa activa</th><th>conmutaciones/año</th></tr>';
   for(const k of POL_ORDER){
     if(!(k in tot))continue;
     const delta=100*(tot[k]/tot.pvlib-1);
@@ -3777,8 +3335,7 @@ function renderYear365(){
       '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
       '<td>'+(k==='pvlib'?'—':(mwh>=0?'+':'')+mwh.toFixed(0))+'</td>'+
       '<td'+(mwh*eur>500?' class="best"':'')+'>'+(k==='pvlib'?'—':(mwh>=0?'+':'')+Math.round(mwh*eur).toLocaleString('es')+' €')+'</td>'+
-      '<td>'+(fl[k]/nd).toFixed(1)+' %</td>'+
-      '<td>'+((st[k]||0)/nd).toFixed(1)+' %</td><td>'+sw[k]+'</td></tr>';
+      '<td>'+(fl[k]/nd).toFixed(1)+' %</td><td>'+sw[k]+'</td></tr>';
   }
   $('yeartab').innerHTML=hh2;
 }
@@ -3801,14 +3358,13 @@ $('qabtn').onclick=()=>{
 /* ── wiring ── */
 ['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','axaz','dt',
  'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew',
- 'nncu','crossmin','stow','wt1','wt2','whold'].forEach(id=>{
+ 'nncu','crossmin','stow'].forEach(id=>{
   $(id).addEventListener('change',recompute);
 });
 $('loopOn').addEventListener('change',recompute);
 $('zonalOn').addEventListener('change',recompute);
 window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
 
-windPreset('racheado',1);
 skyPresetApply('tarde',0);
 recompute();
 loop3D();
