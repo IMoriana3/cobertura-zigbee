@@ -1102,6 +1102,30 @@ function runPhysicsQA(){
       A(Math.abs(edges[10][k]-edges[15][k])<=15,'borde '+k+' no invariante (10 vs 15)');
     }
   });
+  t('el FLAG significa cosas distintas: flat/poa_switch ⇒ θ=0 · limited RETIENE ángulos que no son 0 · continuous puede ser INTERMEDIO',()=>{
+    // el bug: la escena rotulaba «FLAT» los cuatro. limited llega a 55° con el
+    // flag activo, y continuous elige ángulos intermedios cuando el cielo solo
+    // es parcialmente difuso (su óptimo anisótropo NO es 0°).
+    const S=mk(10);
+    for(const nm of ['diffuse_flat','diffuse_poa_switch']){
+      const r=POLICIES[nm](S.day,S.thN,S.poaN,DCFG_DEFAULT);
+      for(let i=0;i<S.day.n;i++)
+        if(r.flag[i])A(Math.abs(r.theta[i])<0.01,nm+' dice flat con θ='+r.theta[i].toFixed(1)+'° (paso '+i+')');
+    }
+    const rl=POLICIES.diffuse_limited(S.day,S.thN,S.poaN,DCFG_DEFAULT);
+    let noPlano=0,peor=0;
+    for(let i=0;i<S.day.n;i++)if(rl.flag[i]){const a=Math.abs(rl.theta[i]);if(a>1){noPlano++;peor=Math.max(peor,a);}}
+    A(noPlano>0&&peor>10,'limited debe RETENER ángulos lejos de 0 (medido: '+noPlano+' pasos, máx '+peor.toFixed(0)+'°) — rotularlo «flat» sería mentir');
+    // continuous con cielo PARCIALMENTE difuso: su óptimo es intermedio
+    const cc=new Array(288).fill(0.55);
+    const dayP=buildDay({lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:10,
+                         albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null});
+    const thNp=thetaBaselineDay(dayP),poaNp=poaSeries(dayP,thNp);
+    const rc=POLICIES.diffuse_continuous(dayP,thNp,poaNp,DCFG_DEFAULT);
+    let inter=0;
+    for(let i=0;i<dayP.n;i++)if(rc.flag[i]&&Math.abs(rc.theta[i])>1)inter++;
+    A(inter>0,'continuous debe poder elegir ángulos INTERMEDIOS con cielo parcialmente difuso');
+  });
   t('diario de decisiones: el espejo anotado reproduce EXACTAMENTE los flags del poa_switch y narra el día',()=>{
     for(const dt of [5,10,15]){
       const S=mk(dt);
@@ -1320,17 +1344,42 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.8.0';
+const VER='v1.8.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
+/* `mode` = QUÉ SIGNIFICA de verdad el flag de cada política. En el core son
+   campos con NOMBRES DISTINTOS y no se pueden rotular todos «FLAT»:
+     flat / poa_switch → flat_mode   (θ = 0°, plano de verdad)   flat0:true
+     limited           → held        (retiene el ángulo PREVIO, que casi nunca
+                                      es 0: en el escenario canónico llega a 55°)
+     continuous        → diff_active (θ = (1−α)·θ_n INTERMEDIO; con cielo solo
+                                      parcialmente difuso el óptimo NO es 0°)
+   Rotularlas todas «FLAT» hacía que la escena dijera «θ 13° · FLAT». */
 const POL_META={
-  pvlib:              {c:'#9bb0c6',nm:'pvlib (baseline)',ds:'singleaxis + backtracking, sin política de difusa. La referencia contra la que se mide todo.'},
-  diffuse_flat:       {c:'#36d399',nm:'diffuse_flat',ds:'a 0° cuando POA(0) > 1,02·POA(θ_n). Sin memoria: enseña el chattering.'},
-  diffuse_limited:    {c:'#fbbd23',nm:'diffuse_limited',ds:'retiene el ángulo previo mientras no pierda POA (hold 1,0). Minimiza maniobras.'},
-  diffuse_continuous: {c:'#5aa9ff',nm:'diffuse_continuous',ds:'barrido α∈{0,¼,½,¾,1} de θ=(1−α)·θ_n, argmax POA. El techo no-anticipativo.'},
-  diffuse_poa_switch: {c:'#a78bfa',nm:'diffuse_poa_switch',ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'}
+  pvlib:              {c:'#9bb0c6',nm:'pvlib (baseline)',mode:null,flat0:false,
+                       ds:'singleaxis + backtracking, sin política de difusa. La referencia contra la que se mide todo.'},
+  diffuse_flat:       {c:'#36d399',nm:'diffuse_flat',mode:'PLANO',flat0:true,
+                       ds:'a 0° cuando POA(0) > 1,02·POA(θ_n). Sin memoria: enseña el chattering.'},
+  diffuse_limited:    {c:'#fbbd23',nm:'diffuse_limited',mode:'RETENIDO',flat0:false,
+                       ds:'retiene el ángulo previo mientras no pierda POA (hold 1,0). Minimiza maniobras — el ángulo retenido NO es plano.'},
+  diffuse_continuous: {c:'#5aa9ff',nm:'diffuse_continuous',mode:'DIFUSA',flat0:false,
+                       ds:'barrido α∈{0,¼,½,¾,1} de θ=(1−α)·θ_n, argmax POA. El techo no-anticipativo; su óptimo suele ser un ángulo INTERMEDIO, no 0°.'},
+  diffuse_poa_switch: {c:'#a78bfa',nm:'diffuse_poa_switch',mode:'PLANO',flat0:true,
+                       ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'}
 };
+/* etiqueta de estado honesta: girando > modo de la política > señal retenida.
+   Para las políticas de plano, si el actuador aún no ha llegado se dice. */
+function stateLabel(polKey,th,flag,sig,rate){
+  const m=POL_META[polKey]||{};
+  if(rate>0.001)return {txt:'↻ '+rate.toFixed(2)+' °/s',col:'#5aa9ff'};
+  if(flag&&m.mode){
+    const llegando=m.flat0&&Math.abs(th)>1.0;
+    return {txt:m.mode+(llegando?' (llegando)':''),col:m.flat0?'#a78bfa':'#36d399'};
+  }
+  if(sig)return {txt:'☁ retiene',col:'#fbbd23'};
+  return {txt:'track',col:'#9bb0c6'};
+}
 const POL_ORDER=['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch'];
 const POL_ON={pvlib:true,diffuse_flat:true,diffuse_limited:false,diffuse_continuous:true,diffuse_poa_switch:true};
 
@@ -1870,13 +1919,13 @@ function drawLegend(){
     h+='<span><i style="background:'+POL_META[k].c+'"></i>'+POL_META[k].nm+'</span>';
   h+='<span><i style="background:#9bb0c6;height:1px"></i>consigna de la TCU (escalón, cada ciclo)</span>';
   h+='<span><i style="background:#9bb0c6"></i>θ EJECUTADO por el actuador (rampa 0,17 °/s, al minuto)</span>';
-  h+='<span><i style="background:rgba(167,139,250,.45)"></i>modo flat (banda)</span>';
+  h+='<span><i style="background:rgba(167,139,250,.45)"></i>difusa activa (banda) — PLANO, RETENIDO o DIFUSA según la política</span>';
   $('legend').innerHTML=h;
 }
 function drawTable(){
   const base=SIM.res.pvlib.met.poaWh;
   const baseTgt=SIM.res.pvlib.metTgt.poaWh;
-  let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th><th>% en flat</th>'+
+  let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th><th title="% del día con la política de difusa ACTIVA. Ojo: activa no es sinónimo de plano — solo flat y poa_switch van a 0°; limited retiene el ángulo previo y continuous elige un ángulo intermedio.">% difusa activa</th>'+
         '<th>conmutaciones</th><th>recorrido °</th><th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
   for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
@@ -1996,8 +2045,7 @@ function drawScene(){
     ro('GHI',irr.ghi.toFixed(0),'W/m²')+
     ro('DNI',irr.dni.toFixed(0),'W/m²')+
     ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
-    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',
-       rate>0.001?('↻ '+rate.toFixed(2)+' °/s'):(flag?'flat':'track'))+
+    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',stateLabel(pv,th,flag,false,rate).txt)+
     ro('POA pvlib',poaBase.toFixed(0),'W/m²')+
     ro('POA política',poaPol.toFixed(0),'W/m²')+
     ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
@@ -2625,13 +2673,12 @@ function update3D(){
       Z.cloudMat.opacity=0.9*ccz;
       if(Z.shadowMat)Z.shadowMat.opacity=(el>0?1:0)*0.38*Math.min(1,ccz*1.4);
     }
-    // cuatro estados a la vista: GIRANDO (cian, con su velocidad real — el
-    // tracker aún NO ha llegado) · FLAT (violeta, ya colocado) · señal viva
-    // RETENIDA por la histéresis (ámbar) · track
-    const moving=rate>0.001;
+    // el estado con el NOMBRE de la política, no un «FLAT» genérico: PLANO
+    // (flat/poa_switch) · RETENIDO (limited) · DIFUSA (continuous, ángulo
+    // intermedio) · ↻ girando · ☁ retiene (señal viva bloqueada por histéresis)
+    const st=stateLabel(pv,th,fl,sig,rate);
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
-             (moving?' · ↻ '+rate.toFixed(2)+' °/s':(fl?' · FLAT':(sig?' · ☁ retiene':''))),
-             moving?'#5aa9ff':(fl?'#a78bfa':(sig?'#fbbd23':'#9bb0c6')));
+             (st.txt==='track'?'':' · '+st.txt),st.col);
   }
   // sombra de nube desplazada según el sol (m de desplazamiento por m de altura)
   const kOff=el>3?Math.min(3,1/Math.tan(el*RAD)):0;
@@ -2924,7 +2971,7 @@ function renderYear365(){
   let bestK=null,bestV=-1;
   for(const k in tot)if(tot[k]>bestV){bestV=tot[k];bestK=k;}
   let hh2='<tr><th>política</th><th>POA anual kWh/m²</th><th>Δ vs pvlib</th>'+
-          '<th>MWh/año extra ('+MW+' MWp)</th><th>€/año</th><th>% día en flat</th><th>conmutaciones/año</th></tr>';
+          '<th>MWh/año extra ('+MW+' MWp)</th><th>€/año</th><th>% día con difusa activa</th><th>conmutaciones/año</th></tr>';
   for(const k of POL_ORDER){
     if(!(k in tot))continue;
     const delta=100*(tot[k]/tot.pvlib-1);

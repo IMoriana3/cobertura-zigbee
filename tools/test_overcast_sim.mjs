@@ -65,6 +65,20 @@ t('plantas reales: selector con TODA la cartera con layout, carga por fetch y vu
   if (!/Seguidor\.instancePlan/.test(html)) throw new Error('la planta real no usa el instanciado de los cobertura 3D');
   if (!/bifila:false/.test(html.slice(html.indexOf('REALMETA')))) throw new Error('Bagnarelli debe ser monofila en REALMETA');
 });
+t('la UI NO rotula «FLAT» lo que no es plano: cada política declara su propio estado', () => {
+  const meta = html.slice(html.indexOf('const POL_META'), html.indexOf('const POL_ORDER'));
+  for (const [pol, mode] of [['diffuse_flat', 'PLANO'], ['diffuse_limited', 'RETENIDO'],
+                             ['diffuse_continuous', 'DIFUSA'], ['diffuse_poa_switch', 'PLANO']]) {
+    const i = meta.indexOf(pol + ':');
+    if (i < 0) throw new Error('POL_META sin ' + pol);
+    const linea = meta.slice(i, meta.indexOf('\n', meta.indexOf('ds:', i)));
+    if (!linea.includes("mode:'" + mode + "'")) throw new Error(pol + ' debería declarar mode ' + mode);
+  }
+  // solo las de plano de verdad pueden llevar flat0:true
+  if (!/diffuse_limited:[\s\S]{0,120}flat0:false/.test(meta)) throw new Error('limited no puede ser flat0');
+  if (!/diffuse_continuous:[\s\S]{0,160}flat0:false/.test(meta)) throw new Error('continuous no puede ser flat0');
+  if (!/function stateLabel\(/.test(html)) throw new Error('sin stateLabel: la etiqueta volvería a ser genérica');
+});
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
     if (!html.includes("'" + nm + "'") && !html.includes('"' + nm + '"'))
