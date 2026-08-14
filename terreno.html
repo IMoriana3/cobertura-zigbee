@@ -29,6 +29,7 @@ addEventListener('DOMContentLoaded',function(){
 <script src="lib/OrbitControls.js"></script>
 <script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js?v=2.71"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
+<script src="viento.js?v=1"></script><!-- abanderamiento canónico B2 (compartido con gemelo-digital/sim) -->
 <script src="js/cableado_core.js"></script><!-- núcleo PURO del cableado DC (sin THREE/DOM): lo testean en Node tools/test_cableado_core.mjs -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
@@ -107,7 +108,7 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label title="Stow por viento, replicado del gemelo digital: cuando el viento supera el umbral de entrada, TODOS los trackers abanderan hacia el lado en que está el sol a la velocidad real del actuador (0,17 °/s); al bajar del umbral de salida (histéresis Schmitt) vuelven al seguimiento. Con ⚡ activo, la producción cae por el coseno."><input type="checkbox" id="stowChk"> 🌬️ Abanderamiento (stow)</label></div>
     <div id="stowBox" style="display:none">
       <div class="row"><label style="flex:1;display:flex;align-items:center;gap:6px">Viento <input type="range" id="wind" min="0" max="120" value="0" style="width:78px"></label><span id="windV" style="color:var(--tx2);font-family:var(--mono);font-size:11px">0 km/h</span></div>
-      <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:4px;flex-wrap:wrap">Entrada <input type="number" id="stowIn" value="60" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> · Salida <input type="number" id="stowOut" value="40" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> km/h · Bandera ±<input type="number" id="stowPos" value="55" style="width:38px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px">° · Lado <select id="stowSide" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"><option value="sol">Sol</option><option value="oeste">Oeste</option><option value="este">Este</option></select></div>
+      <div class="row" style="font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:4px;flex-wrap:wrap">Parcial <input type="number" id="stowIn" value="40" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> · Total <input type="number" id="stowOut" value="60" style="width:42px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"> km/h · Bandera ±<input type="number" id="stowPos" value="55" style="width:38px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px">° · Lado <select id="stowSide" style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:11px"><option value="sol">Sol</option><option value="oeste">Oeste</option><option value="este">Este</option></select></div>
       <div class="leg" id="stowState" style="font-size:11px">Seguimiento normal</div>
     </div>
     <div class="row" id="genBox" style="display:none"><div id="genHUD" class="leg" style="font-size:11.5px;line-height:1.6"></div></div>
@@ -2897,27 +2898,38 @@ function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_
 // ===== ABANDERAMIENTO POR VIENTO (stow) — replicado del gemelo digital: histéresis Schmitt entrada/salida,
 // bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
 // Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
-var STOWON=false,WINDK=0,stowLatch=false,_STOWANG=null,_STOWTXT='',_STOWSIDE=0,_STOWSEL='',_dayCalc=false;
+var STOWON=false,WINDK=0,stowLatch=false,_AB=null,_STOWANG=null,_STOWTXT='',_STOWSIDE=0,_STOWSEL='',_dayCalc=false;
 function stowStep(dt){ if(!SEG)return;
-  if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;_STOWTXT='';updateSpin(panelAngle(curMin));} return; }
-  var IN=Math.max(5,+($('stowIn').value)||60),OUT=Math.min(Math.max(1,+($('stowOut').value)||40),IN-1),POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
+  if(!STOWON){ if(_STOWANG!==null){_STOWANG=null;_STOWTXT='';_AB=null;updateSpin(panelAngle(curMin));} return; }
+  // Estrategia B2 canónica (SolarGPT · wind_stow_strategies.py), en viento.js — el
+  // MISMO fichero que usa el simulador de planta del gemelo. Dos umbrales: parcial a
+  // 40 km/h (sector [30°,55°], sigue produciendo) y total a 60 (±55°), con 30 min de
+  // histéresis. Antes esto era un Schmitt 60/40 sin sector parcial: abanderaba un 63 %
+  // menos de tiempo, pero cada viaje era a tope.
+  var T1=Math.max(1,+($('stowIn').value)||40)/3.6, T2=Math.max(T1*3.6+1,+($('stowOut').value)||60)/3.6;
+  var POSM=Math.min(60,Math.abs(+($('stowPos').value)||55));
+  if(!_AB||_AB.t1!==T1||_AB.t2!==T2||_AB.total!==POSM) _AB=new Abanderamiento({t1:T1,t2:T2,total:POSM});
   var ideal=panelAngle(curMin);
   var side=($('stowSide')&&$('stowSide').value)||'sol';
-  var calcSide=function(){return side==='oeste'?1:side==='este'?-1:(Math.abs(ideal)>3?(ideal>0?1:-1):((SUN&&SUN._dir&&SUN._dir.E>0)?-1:1));};   // lado: fijo (la controladora real abandera a +55°=Oeste) o "Sol" (θ<0=Este; el mediodía SOLAR de El Burgo es ~14:20 local)
-  if(!stowLatch&&WINDK>=IN){stowLatch=true;_STOWSIDE=calcSide();_STOWSEL=side;}            // Schmitt: entra a IN, no suelta hasta bajar de OUT — y el LADO SE FIJA AL ABANDERAR: "si está abanderado a la mañana no cambia a la tarde a la otra posición... se mantiene hasta que desabandere, aunque no esté mirando al sol"
-  else if(stowLatch&&WINDK<=OUT){stowLatch=false;_STOWSIDE=0;_STOWSEL='';}
-  else if(stowLatch&&side!==_STOWSEL){_STOWSIDE=calcSide();_STOWSEL=side;}                 // cambiar el selector de lado A MANO sí re-apunta la bandera (acción explícita del operador)
-  var sg=stowLatch?_STOWSIDE:calcSide();
-  var tgt=stowLatch?sg*POSM:ideal;
+  // azimut solar equivalente para el módulo: el lado fijo lo fuerza el operador
+  var azSol=side==='oeste'?270:side==='este'?90:((ideal>0)?270:90);
+  var dtSim=dt*(playing?PLAYSPEED*60:1);
+  var r=_AB.paso(dtSim,WINDK/3.6,ideal,azSol);
+  // el LADO SE FIJA AL ABANDERAR y lo mantiene el módulo; cambiarlo a mano sí re-apunta
+  if(r.estado>0&&side!==_STOWSEL&&_STOWSEL!==''){_AB.lado=(side==='oeste'?1:side==='este'?-1:_AB.lado);}
+  _STOWSEL=r.estado>0?side:'';
+  _STOWSIDE=r.lado;
+  var tgt=r.objetivo;
   if(_STOWANG===null)_STOWANG=ideal;
-  var rate=0.17*dt*(playing?PLAYSPEED*60:1);                                                // 0,17 °/s en SEGUNDOS SIMULADOS (PLAYSPEED = min sim/s real → ×60): a ×30 el viaje de 55° son 5,4 min sim = 0,18 s reales. El cap anterior lo frenaba a 0,0028 °/s sim y "le ha costado horas desabanderar". En pausa: 0,17 °/s REALES (velocidad de actuador en vivo)
+  var rate=0.17*dtSim;                                                   // 0,17 °/s en segundos SIMULADOS
   var d5=tgt-_STOWANG; if(Math.abs(d5)<=rate)_STOWANG=tgt; else _STOWANG+=(d5>0?rate:-rate);
-  _STOWTXT=stowLatch?(Math.abs(_STOWANG-tgt)<0.2?'bandera':'abanderando'):(Math.abs(_STOWANG-ideal)>0.2?'volviendo':'');   // etiqueta del marcador por ESTADO: en seguimiento normal vuelve a real/sim aunque el stow siga armado
+  var llegado=Math.abs(_STOWANG-tgt)<0.2;
+  _STOWTXT=r.estado===2?(llegado?'bandera':'abanderando'):(r.estado===1?(llegado?'bandera parcial':'abanderando'):(Math.abs(_STOWANG-ideal)>0.2?'volviendo':''));
   updateSpin(_STOWANG);
   var st=$('stowState');
-  if(st){var txt=stowLatch
-      ?((Math.abs(_STOWANG-tgt)<0.2?'ABANDERADO a ':'Abanderando → ')+(sg>0?'+':'−')+POSM+'° ('+(sg>0?'Oeste':'Este')+(side==='sol'?', lado del sol':' fijo')+') · viento '+WINDK+' km/h')
-      :(Math.abs(_STOWANG-ideal)<0.2?'Seguimiento normal · viento '+WINDK+' km/h':'Volviendo al seguimiento ('+_STOWANG.toFixed(0)+'°) · viento '+WINDK+' km/h');
+  if(st){var txt=r.estado>0
+      ?((llegado?'ABANDERADO ':'Abanderando → ')+(r.estado===2?'TOTAL ':'PARCIAL ')+(_STOWANG>0?'+':'')+_STOWANG.toFixed(0)+'° ('+(r.lado>0?'Oeste':'Este')+(side==='sol'?', lado del sol':' fijo')+') · viento '+WINDK+' km/h')
+      :(Math.abs(_STOWANG-ideal)<0.2?'Seguimiento normal · viento '+WINDK+' km/h':'Volviendo al seguimiento ('+_STOWANG.toFixed(0)+'°) · viento '+WINDK+(r.holdRestante>0?' km/h · histéresis '+Math.ceil(r.holdRestante/60)+' min':' km/h'));
     if(st.textContent!==txt)st.textContent=txt;}
 }
 // ===== SOMBRAS FILA-A-FILA cuantificadas (no solo pintadas): fracción sombreada del ancho de mesa
@@ -4398,7 +4410,7 @@ $('netCam').onchange=function(){setNet(['cam_range'],this.checked);};           
 $('netMisc').onchange=function(){setNet(['arqueta','comms'],this.checked);};           // arquetas + comunicaciones
 $('genflow').onchange=function(){setGen(this.checked);};                                                                    // flujo / generación
 $('cloud').oninput=function(){GENCLOUD=+this.value/100;$('cloudV').textContent=this.value+'%';_dayKey='';syncSun(curMin);if(genOn){updateGenGlow();updateGenHUD();}if(FICHA)updateFicha();};   // nubosidad: también pinta NUBES en el cielo y atenúa la luz/reflejos; la ficha abierta (inversor/CT/sub) se recalcula — se quedaba con la POA de cuando se abrió
-$('stowChk').onchange=function(){STOWON=this.checked;$('stowBox').style.display=STOWON?'block':'none';if(!STOWON)stowLatch=false;};   // abanderamiento por viento (stow): el paso a seguimiento lo hace stowStep con la rampa del actuador
+$('stowChk').onchange=function(){STOWON=this.checked;$('stowBox').style.display=STOWON?'block':'none';if(!STOWON){stowLatch=false;_AB=null;}};   // abanderamiento por viento (stow): el paso a seguimiento lo hace stowStep con la rampa del actuador
 $('wind').oninput=function(){WINDK=+this.value;$('windV').textContent=this.value+' km/h';};
 $('tamb').oninput=function(){GENTAMB=+this.value||20;_dayKey='';if(genOn){updateGenGlow();updateGenHUD();}if(FICHA)updateFicha();};                  // temperatura ambiente: ídem ficha
 var _gPrev=null;
