@@ -202,6 +202,9 @@
       <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 tal cual: 6 líneas a pitch 11,0 m, eje a 23,7°, 17 trackers escalonados con sus medios (patrón medido de bagnarelli_layout.json). El preset «Bagnarelli ×N» del selector sigue permitiendo ciclarlo a más líneas.">⛳ Bagnarelli</button>
       <button class="btn small" id="ayorabtn" title="Cotas X,Y,Z reales de los extremos de mesa (ayora_cotas.json): la banda de líneas con más filas, con sus tilts N-S medidos y las parejas bifila reales">⛰ Ayora real</button>
       <button class="btn small" id="sjbtn" title="Cotas X,Y,Z reales de los extremos de mesa (sanjose_cotas.json)">⛰ San José real</button>
+      <button class="btn small" id="burgoplbtn" title="Implantación REAL del layout (líneas, mesas y huecos del DWG) — SIN cotas de levantamiento: terreno PLANO, declarado">⛰ El Burgo</button>
+      <button class="btn small" id="paramoplbtn" title="Implantación REAL del layout — SIN cotas: terreno PLANO, declarado">⛰ Páramo</button>
+      <button class="btn small" id="fayonplbtn" title="Implantación REAL del layout — SIN cotas: terreno PLANO, declarado">⛰ Fayón</button>
     </div>
     <div class="nota" id="realnote" style="display:none"></div>
     <div class="nota">La sombra transversal se pondera por el <b>solape axial real</b> (con la deflexión
@@ -1564,6 +1567,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   // a la torsión — si el ray-cast ve sombra en el resultado, se prueba el
   // mismo juego APLANADO medio paso de rejilla en las unidades afectadas y
   // gana quien prefiera el contador exacto (2 evaluaciones exactas por paso)
+  if((90-zen)>=40)return {angles:cand,f:undefined};   // reparación: solo sol <40° (la torsión muerde ahí; con sol alto era coste sin hallazgo)
   const ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
   if(ev.shade.some(v=>v>1e-3)){
     const df=(1-OPTFREE_F0)/(OPTFREE_NF-1)/2;
@@ -1966,7 +1970,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.22.3';
+const VER='v1.23.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2159,6 +2163,83 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       'El fetch necesita servirse por http (GitHub Pages); abriendo el fichero en local (file://) el navegador lo bloquea.';
   }
 }
+/* ── plantas por LAYOUT (sin cotas de levantamiento): la implantación REAL
+   del DWG (líneas, mesas, huecos, NCUs, emplazamiento) sobre terreno PLANO —
+   DECLARADO. El Burgo · Páramo · Fayón. Túnez queda fuera: instalación FIJA,
+   no hay backtracking que simular. Con el levantamiento topográfico entraría
+   el terreno de verdad, como Ayora/San José. ── */
+const PLANTAS_LAYOUT={elburgo:'El Burgo',paramo:'Páramo',fayon:'Fayón'};
+async function loadLayoutPlant(name){
+  const note=$('realnote');
+  note.style.display='';note.textContent='cargando '+PLANTAS_LAYOUT[name]+'…';
+  try{
+    if(LAYOUT_CACHE[name]===undefined){
+      const r=await fetch(name+'_layout.json',{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      LAYOUT_CACHE[name]=await r.json();
+    }
+    const lay=LAYOUT_CACHE[name];
+    const tks=(lay.trackers||[]).filter(t=>isFinite(t.x)&&isFinite(t.n));
+    if(!tks.length)throw new Error('layout sin trackers');
+    const lines=[];
+    for(const t of tks){
+      let L=null;
+      for(const l of lines)if(Math.abs(l.x-t.x)<=0.8){L=l;break;}
+      if(!L){L={x:t.x,tks:[]};lines.push(L);}
+      L.tks.push(t);
+    }
+    lines.sort((a,b)=>a.x-b.x);
+    if(lines.length<2)throw new Error('menos de 2 líneas');
+    // largo de mesa: mediana del salto entre trackers de línea menos 1 m de
+    // hueco (aproximación declarada; los «medio» miden la mitad)
+    const diffs=[];
+    for(const L of lines){
+      L.tks.sort((a,b)=>a.n-b.n);
+      for(let i=1;i<L.tks.length;i++)diffs.push(L.tks[i].n-L.tks[i-1].n);
+    }
+    diffs.sort((a,b)=>a-b);
+    const step=diffs.length?diffs[Math.floor(diffs.length/2)]:60;
+    const mesaL=Math.max(6,step-1.0);
+    let best=0;
+    if(lines.length>80){
+      let bestN=-1;
+      for(let i=0;i+80<=lines.length;i++){
+        const nAll=lines.slice(i,i+80).reduce((s2,l)=>s2+l.tks.length,0);
+        if(nAll>bestN){bestN=nAll;best=i;}
+      }
+    }
+    const band=lines.slice(best,best+80);
+    const x0=(band[0].x+band[band.length-1].x)/2;
+    const lineX=band.map(l=>l.x-x0);
+    const segs=band.map(l=>l.tks.map(t=>{
+      const half=(String(t.t||t.tp||'').toLowerCase().indexOf('medio')>=0?mesaL/2:mesaL)/2;
+      return [t.n-half,t.n+half];
+    }));
+    const segZ=segs.map(sg=>sg.map(()=>[0,0]));
+    const nR=band.length;
+    const dxs=[];for(let i=1;i<nR;i++)dxs.push(lineX[i]-lineX[i-1]);
+    dxs.sort((a,b)=>a-b);
+    const pitch=dxs.length?dxs[Math.floor(dxs.length/2)]:6;
+    const nFilas=segs.reduce((s2,l)=>s2+l.length,0);
+    const P={elev:new Array(nR).fill(0),tilt:new Array(nR).fill(0),
+             segs:segs,segZ:segZ,groups:null,lineX:lineX,
+             pairDz:new Array(Math.max(0,nR-1)).fill(0),
+             pitch:pitch,cw:2.382,maxAngle:55,drive:'mono',
+             xFrom:lineX[0],xTo:lineX[nR-1],
+             nFilas:nFilas,nPairs:0,
+             blocks:[{i:0,lines:nR,filas:nFilas}],block:0};
+    PLANT_REAL=P;
+    ELEV=P.elev.slice();
+    if(isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
+    $('nrows').value=nR;$('nrows').max=200;$('pitch').value=pitch.toFixed(2);
+    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value='mono';
+    note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+nR+' líneas · '+nFilas+' mesas · pitch '+pitch.toFixed(1)+' m) · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
+    recompute();
+  }catch(e){note.textContent='error cargando '+name+': '+e.message;}
+}
+$('burgoplbtn').onclick=()=>loadLayoutPlant('elburgo');
+$('paramoplbtn').onclick=()=>loadLayoutPlant('paramo');
+$('fayonplbtn').onclick=()=>loadLayoutPlant('fayon');
 $('ayorabtn').onclick=()=>loadRealPlant('ayora');
 $('sjbtn').onclick=()=>loadRealPlant('sanjose');
 $('bagnbtn').onclick=()=>{
@@ -3568,6 +3649,9 @@ function sceneInstant(){
   if(m%STEP_MIN===0)return null;                     // en la malla: DAY manda
   const key=$('polview').value;
   if(!DAY.pol[key])return null;
+  // optimizadores: su búsqueda por instante (ascenso + reparación exacta)
+  // haría lento el arrastre del slider — muestran la malla de 5 min, declarado
+  if(key==='optimal'||key==='optfree')return null;
   if(INSTANT&&INSTANT.m===m&&INSTANT.key===key&&INSTANT.stamp===DAY)return INSTANT;
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
@@ -3824,6 +3908,27 @@ $('view3d').addEventListener('wheel',(e)=>{
   TD.orthoCam.zoom=Math.max(0.25,Math.min(12,z));
   TD.orthoCam.updateProjectionMatrix();
 },{passive:false,capture:true});
+// PAN en modo sol: arrastrar mueve el TARGET en el plano de la vista — la
+// dirección al sol no cambia (sigues siendo el sol, apuntando a otro sitio)
+(function(){
+  let drag=null;
+  $('view3d').addEventListener('pointerdown',e=>{
+    if(TD&&TD.sunPov){drag=[e.clientX,e.clientY];e.preventDefault();e.stopPropagation();}
+  },true);
+  window.addEventListener('pointermove',e=>{
+    if(!drag||!TD||!TD.sunPov||!TD.orthoCam)return;
+    const oc=TD.orthoCam, cv=TD.renderer.domElement;
+    const dx=e.clientX-drag[0], dy=e.clientY-drag[1];
+    drag=[e.clientX,e.clientY];
+    const right=new THREE.Vector3().setFromMatrixColumn(oc.matrixWorld,0);
+    const upv=new THREE.Vector3().setFromMatrixColumn(oc.matrixWorld,1);
+    TD.controls.target
+      .addScaledVector(right,-dx*(oc.right-oc.left)/oc.zoom/(cv.clientWidth||1))
+      .addScaledVector(upv,dy*(oc.top-oc.bottom)/oc.zoom/(cv.clientHeight||1));
+    snapSunPov();
+  },true);
+  window.addEventListener('pointerup',()=>{drag=null;},true);
+})();
 $('sunpov').onclick=()=>{
   if(!TD||!DAY)return;
   TD.sunPov=!TD.sunPov;
