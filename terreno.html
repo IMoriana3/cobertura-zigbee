@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.71</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.72</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2853,8 +2853,17 @@ function buildBOS(){
   // PUERTAS "Acceso 6m" (Tierras.dwg): hueco EXACTO de 6 m en el paño — se insertan vértices de corte
   // en los extremos de cada puerta y se salta el quad cuyo punto medio cae dentro del vano
   var GTS=(LAYOUT.gates||[]).map(function(g5){return {x:g5.x,n:g5.n,rot:g5.rot,ux:Math.cos(g5.rot),un:Math.sin(g5.rot),w:g5.w||6};});
+  /* QUE EL PAÑO LLEGUE AL QUICIO. Esto decidía qué tramo de valla cae "dentro de la puerta" con una
+     banda de 1,6 m PERPENDICULARES al vano. La puerta está SOBRE la línea del vallado, así que 1,6 m
+     es enorme: cuando el paño llega al quicio en ángulo —que es lo normal, la puerta suele ir en un
+     quiebro— sus últimos tramos caen dentro de esa banda y se borraban, dejando un hueco de valla
+     ANTES de la puerta. Se ve en cuanto lo miras de frente: la hoja cierra su vano pero el vallado
+     se queda corto y el conjunto sigue leyéndose abierto.
+     Ahora la banda es de 0,35 m (el propio espesor del paño y su holgura), y además se exige que el
+     tramo esté dentro POR SUS DOS EXTREMOS, no por su punto medio: así un tramo que cruza el borde
+     del vano se dibuja hasta el vértice de corte en vez de desaparecer entero. */
   function inGate(x5,n5){for(var gi5=0;gi5<GTS.length;gi5++){var g5=GTS[gi5],dx5=x5-g5.x,dn5=n5-g5.n,t5=dx5*g5.ux+dn5*g5.un;
-    if(t5>0.02&&t5<g5.w-0.02&&Math.abs(dn5*g5.ux-dx5*g5.un)<1.6)return true;}return false;}
+    if(t5>0.02&&t5<g5.w-0.02&&Math.abs(dn5*g5.ux-dx5*g5.un)<0.35)return true;}return false;}
   fMerged.forEach(function(pl){
     var pts=[];                                                                    // densifico el trazado (~5 m) para que la BASE siga el terreno
     for(var i=0;i+1<pl.length;i++){var a=pl[i],b=pl[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),ns=Math.max(1,Math.round(L/5));
@@ -2884,7 +2893,7 @@ function buildBOS(){
     for(var i=0;i+1<pts.length;i++){var a=pts[i],b=pts[i+1],Ax=a[0],Az=-a[1],Bx=b[0],Bz=-b[1],
         ba=bE[i],bb=bE[i+1],ta=tE[i],tb=tE[i+1],
         L=Math.hypot(b[0]-a[0],b[1]-a[1]),u0=uacc/1.2,u1=(uacc+L)/1.2,va=(ta-ba)/1.2,vb=(tb-bb)/1.2;uacc+=L;   // tile (8 celdas) cada 1,2 m ⇒ celda 15 cm; el /0,15 anterior metía el tile entero en 15 cm (celda de 1,9 cm: 'tan tupida')
-      var gskip=inGate((a[0]+b[0])/2,(a[1]+b[1])/2);                                // dentro del vano de una puerta: ni paño, ni alambres, ni poste
+      var gskip=inGate(a[0],a[1])&&inGate(b[0],b[1]);                                // dentro del vano POR LOS DOS EXTREMOS: ni paño, ni alambres, ni poste. Con el punto medio, un tramo a caballo del borde se borraba entero
       if(!gskip){
         sv.push(Ax,ba,Az,Bx,bb,Bz,Bx,tb,Bz, Ax,ba,Az,Bx,tb,Bz,Ax,ta,Az);
         su.push(u0,va,u1,vb,u1,0, u0,va,u1,0,u0,0);
