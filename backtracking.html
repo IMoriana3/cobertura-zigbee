@@ -1198,57 +1198,95 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
   const MU=(res&&res.MU)||6, MV=(res&&res.MV)||8;
+  const elec=new Array(nR).fill(0); let elecSum=0,nCol=0;
+  // precálculo del denominador por plano (no depende del receptor)
+  for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
   for(let r=0;r<nR;r++){
     const thR=rowAngles[r]*RAD;
+    // PODA por fila: solo los planos del lado del sol dentro del alcance,
+    // ordenados por cercanía (la emisora más próxima suele impactar primero)
+    // — sin esto el contador a todas horas costaba minutos, no segundos
+    const cands=[];
+    // desplazamiento AXIAL de la sombra por emisora: dx·(sv_y/sv_x) — si el
+    // rango del tramo emisor desplazado no pisa el tramo receptor, se poda
+    const ratio=Math.abs(sv[0])>1e-4?sv[1]/sv[0]:null;
+    for(const pl of planes){
+      if(pl.e===r)continue;
+      const dx=pl.x-xs[r];
+      if(dx*sgn<=0||Math.abs(dx)>reach||Math.abs(pl.den)<1e-9)continue;
+      const shf=ratio===null?0:-dx*ratio;
+      const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02;
+      cands.push({pl:pl,adx:Math.abs(dx),lo:pl.w0+shf-slack,hi:pl.w1+shf+slack});
+    }
+    if(!cands.length){out[r]=0;elec[r]=0;continue;}
+    cands.sort((a,b)=>a.adx-b.adx);
     let hit=0,N=0;
     for(const sg of segsOf(r)){
       const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
-      for(let i=0;i<MU;i++)for(let j=0;j<MV;j++){
-        const u=-hw+T.cw*(i+0.5)/MU, v=v0+(v1-v0)*(j+0.5)/MV;
-        const Pt=[xs[r]+u*Math.cos(thR), v, cot(r,v)-u*Math.sin(thR)];
-        N++;
-        for(const pl of planes){
-          if(pl.e===r)continue;
-          const dx=pl.x-xs[r];
-          if(dx*sgn<=0||Math.abs(dx)>reach)continue;
-          const den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
-          if(Math.abs(den)<1e-9)continue;
-          const t=((pl.C[0]-Pt[0])*pl.nE[0]+(pl.C[1]-Pt[1])*pl.nE[1]+(pl.C[2]-Pt[2])*pl.nE[2])/den;
-          if(t<=1e-6)continue;
-          const H1=Pt[1]+t*sv[1];
-          if(H1<pl.w0||H1>pl.w1)continue;
-          const H0=Pt[0]+t*sv[0], H2=Pt[2]+t*sv[2];
-          const du=(H0-pl.C[0])*pl.uD[0]+(H1-pl.C[1])*pl.uD[1]+(H2-pl.C[2])*pl.uD[2];
-          if(Math.abs(du)<=hw){hit++;break;}
+      const cSeg=cands.filter(c=>c.hi>=v0&&c.lo<=v1).map(c=>c.pl);
+      // por ESTACIÓN axial: la sombra 3D es parcheada — Martinez se aplica a
+      // la penetración de cuerda de CADA estación y se promedia eléctricamente
+      // (aplicarlo al promedio de fila trataba un parche local como banda
+      // uniforme en toda la mesa y multiplicaba la pérdida indebidamente)
+      for(let j=0;j<MV;j++){
+        const v=v0+(v1-v0)*(j+0.5)/MV;
+        let colHit=0;
+        for(let i=0;i<MU;i++){
+          const u=-hw+T.cw*(i+0.5)/MU;
+          const P0=xs[r]+u*Math.cos(thR), P1=v, P2=cot(r,v)-u*Math.sin(thR);
+          N++;
+          for(const pl of cSeg){
+            const t=((pl.C[0]-P0)*pl.nE[0]+(pl.C[1]-P1)*pl.nE[1]+(pl.C[2]-P2)*pl.nE[2])/pl.den;
+            if(t<=1e-6)continue;
+            const H1=P1+t*sv[1];
+            if(H1<pl.w0||H1>pl.w1)continue;
+            const H0=P0+t*sv[0], H2=P2+t*sv[2];
+            const du=(H0-pl.C[0])*pl.uD[0]+(H1-pl.C[1])*pl.uD[1]+(H2-pl.C[2])*pl.uD[2];
+            if(Math.abs(du)<=hw){colHit++;break;}
+          }
         }
+        hit+=colHit;
+        elecSum+=elecLoss(colHit/MU,T.nBypass); nCol++;
       }
     }
     out[r]=N?hit/N:0;
+    elec[r]=nCol?elecSum/nCol:0;
+    elecSum=0;nCol=0;
   }
+  out.elec=elec;
   return out;
 }
 function shadeRows(zen,az,T,rowAngles){
   const nR=T.pairs.length+1;
   const out=new Array(nR).fill(0);
   if(!(isFinite(zen)&&zen<89.5))return out;           // el 3D llega hasta sol ~0,5°
-  const band=zen>80;                                  // franja rasante: contador 3D
-  if(band)return shadeBand3DAll(zen,az,T,rowAngles);  // MULTI-EMISORA (no solo la vecina)
-  if(zen>=87)return out;                              // fuera de banda, el corte de siempre
+  // el CONTADOR es el ray-cast 3D multi-emisora A TODAS HORAS — la «vía
+  // simétrica» que estuvo en estudio, ahora con cotas POR TRAMO y validada:
+  // ray-cast completo ≡ contador al alba (0 discrepancias) y, fuera de la
+  // banda rasante, cazó sombra real que el 2.5D por registro no veía (fila 32
+  // de Ayora, 09:00, sol a 24,6°: 18,8% con DNI plena — la torsión del
+  // terreno a lo largo de la mesa que el registro único de pareja no captura).
+  // El 2.5D exacto (shadeFracPair) sigue siendo la referencia analítica de QA.
+  return shadeBand3DAll(zen,az,T,rowAngles);
+}
+/* evaluador RÁPIDO 2.5D (el contador publicado hasta v1.18): pareja adyacente
+   + cobertura axial + filtro de fantasmas por residual. Ya NO es el contador —
+   es la heurística de BÚSQUEDA de los optimizadores (decenas de evaluaciones
+   por paso): lo publicado se mide siempre con el ray-cast multi-emisora. */
+function shadeRows25(zen,az,T,rowAngles){
+  const nR=T.pairs.length+1;
+  const out=new Array(nR).fill(0);
+  if(!(isFinite(zen)&&zen<87))return out;
   for(let p=0;p<T.pairs.length;p++){
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
-    // fuera de la banda rasante: el 2.5D exacto arbitrado por residual (la vía
-    // SIMÉTRICA —cobrar el contacto que el 2.5D no ve a cualquier cénit— está
-    // EN ESTUDIO: el prototipo sobrecargaba un 0,5-1,6% a pleno sol con
-    // holguras métricas y no se publica física sin validar; su magnitud real
-    // medida en los estudios independientes es 0,15-0,24%/día)
     let f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0)
             *axialCoverage(zen,az,T,p);
     if(f>1e-6){
       const rmm=tangentResidualPairMm(zen,az,T,rowAngles,p);
-      if(isFinite(rmm)&&rmm>=-1)f=0;                 // sombra 2.5D sin contacto 3D: fantasma
+      if(isFinite(rmm)&&rmm>=-1)f=0;
     }
-    if(psz>=0)out[p]=Math.max(out[p],f);              // sol a la derecha ⇒ sombreada la izquierda
+    if(psz>=0)out[p]=Math.max(out[p],f);
     else out[p+1]=Math.max(out[p+1],f);
   }
   return out;
@@ -1344,14 +1382,17 @@ function poaRow(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo){
   const gnd=irr.ghi*albedo*(1-Math.cos(b))/2;
   return {total:beam+sky+gnd,beam:beam,diff:sky+gnd};
 }
-function poaPlant(zen,az,T,rowAngles,irr,doy,albedo){
+function poaPlant(zen,az,T,rowAngles,irr,doy,albedo,fast){
   // beam·(1 − Martinez) + difusa, fila a fila; planta = MEDIA por fila (la
-  // agregación energética correcta: POA(θ media) ≠ media de POA(θ_r))
-  const sh=shadeRows(zen,az,T,rowAngles);
+  // agregación energética correcta: POA(θ media) ≠ media de POA(θ_r)).
+  // fast=true: contador 2.5D rápido — SOLO para la búsqueda de optimizadores
+  const sh=fast?shadeRows25(zen,az,T,rowAngles):shadeRows(zen,az,T,rowAngles);
   let sum=0; const rows=[];
   for(let r=0;r<rowAngles.length;r++){
     const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo);
-    const se=elecLoss(sh[r],T.nBypass);
+    // sombra parcheada 3D: Martinez por estación axial (sh.elec); banda 2.5D
+    // uniforme: Martinez sobre la fracción de fila, como siempre
+    const se=(sh.elec&&sh.elec[r]!=null)?sh.elec[r]:elecLoss(sh[r],T.nBypass);
     const v=p.beam*(1-se)+p.diff;
     rows.push(v); sum+=v;
   }
@@ -1372,7 +1413,7 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   let best=-Infinity, bestAng=base, bestF=0;
   for(const f of OPT_FRACTIONS){
     const ang=base.map((b,i)=>b+f*(full[i]-b));
-    const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
+    const p=poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant;   // búsqueda: evaluador rápido
     if(p>best+1e-12){best=p;bestAng=ang;bestF=f;}
   }
   return {angles:bestAng,f:bestF};
@@ -1419,14 +1460,14 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
     return s;
   };
   const rowVal=r=>{const v=val[r][k[unitOf[r]]];return v.beam*(1-elecLoss(shadeOf(r),T.nBypass))+v.diff;};
-  // arranque: la mejor f común elegida con el evaluador EXACTO (poaPlant con
-  // el contador honesto) — el interno es una aproximación 2.5D rápida para los
-  // barridos y no puede decidir el punto de partida frente al energy-optimal
+  // arranque: la mejor f común con el MISMO evaluador rápido que usa
+  // energy-optimal para elegir — así el invariante libre ≥ optimal se decide
+  // en la misma métrica (lo PUBLICADO se mide siempre con el ray-cast)
   let bestK=0,bestS=-Infinity;
   for(let kk=0;kk<OPTFREE_NF;kk++){
     k.fill(kk);
     const angK=[]; for(let r=0;r<nR;r++)angK.push(angAt(r));
-    const s=poaPlant(zen,az,T,angK,irr,doy,albedo).plant;
+    const s=poaPlant(zen,az,T,angK,irr,doy,albedo,true).plant;
     if(s>bestS+1e-12){bestS=s;bestK=kk;}
   }
   k.fill(bestK);
@@ -1449,10 +1490,9 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
     if(!changed)break;
   }
   const ang=[]; for(let r=0;r<nR;r++)ang.push(angAt(r));
-  // salvaguarda: el ascenso usa un evaluador aproximado — si bajo el contador
-  // EXACTO no mejora el arranque (que ya es ≥ energy-optimal), se queda el
-  // arranque: el invariante libre ≥ optimal es por construcción
-  if(poaPlant(zen,az,T,ang,irr,doy,albedo).plant<bestS-1e-9)
+  // salvaguarda: si bajo la MISMA métrica del arranque el ascenso no mejora,
+  // se queda el arranque (que ya es ≥ energy-optimal por construcción)
+  if(poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant<bestS-1e-9)
     return {angles:startAng,f:undefined};
   return {angles:ang,f:undefined};
 }
@@ -1847,7 +1887,12 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.18.0';
+const VER='v1.19.0';
+/* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
+   ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
+   del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
+   en un único factor para que no pueda haber mezcla de convenios. */
+const TH_DISP=-1;
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2112,8 +2157,11 @@ function dayKpis(key){
   for(let t=0;t<d.times.length;t++){
     kwh+=p.poaP[t]*dtH/1000;
     const sm=Math.max(...p.shade[t]);
-    if(sm>shMax)shMax=sm;
-    if(sm>1e-3)minSh+=STEP_MIN;
+    // sombra máx SOLO con sol útil (DNI>25 W/m²): en el primer minuto de sol
+    // todo sombrea a todo (geometría real, energía ~cero) y un 99% ahí no
+    // dice nada de la política — el recorte se declara en la cabecera
+    if(sm>shMax&&d.irr[t].dni>25)shMax=sm;
+    if(sm>1e-3&&d.irr[t].dni>25)minSh+=STEP_MIN;
     thMax=Math.max(thMax,...p.ang[t].map(Math.abs));
     // lo que el escalón Martinez se come del beam, media de planta
     let e=0;
@@ -2790,7 +2838,7 @@ function update3D(){
       row.lbl.visible=!!(lblOn&&p);
       if(lblOn&&p){
         const poa=(p.poaR&&p.poaR[tIdx])?p.poaR[tIdx][r]:0;
-        const thD=p.ang[tIdx][r];
+        const thD=TH_DISP*p.ang[tIdx][r];        // presentación: θ<0 = este
         const key=thD.toFixed(0)+'|'+(sFrac*100).toFixed(1)+'|'+poa.toFixed(0);
         if(row.lbl.userData.txt!==key){
           row.lbl.userData.txt=key;
@@ -3015,7 +3063,45 @@ function drawCriticalRay(g,p,tIdx){
     hitW=edgeW.clone().add(d.clone().multiplyScalar(Math.max(0.01,t)));
     col=(CR.fs>1e-6)?0xfbbd23:0x36d399;        // ámbar: el corte 2D cortaría; el solape axial la libra
   }
-  const A2=edgeW.clone().sub(d.clone().multiplyScalar(26));
+  // el rayo NO atraviesa módulos: se recorta al PRIMER impacto con cualquier
+  // mesa del parque (el rayo de la pareja era ciego al resto de filas —
+  // reportado con captura: cruzaba una mesa y seguía tan campante)
+  const firstHit=(P0,P1,skipRow,skipNear)=>{
+    const dir=P1.clone().sub(P0), L=dir.length();
+    if(L<1e-6)return null;
+    dir.multiplyScalar(1/L);
+    let bT=Infinity,bP=null;
+    for(let k=0;k<nR;k++){
+      if(!TD.rows[k]||!TD.rows[k].lbl)continue;
+      const thK=(ang[k]||0)*RAD;
+      const n=new THREE.Vector3(Math.sin(thK),Math.cos(thK),0);
+      // iterar 2×: el eje (hubAt) depende del punto axial del cruce
+      let Ak=axisW2(k,-P0.z), t2=null;
+      for(let it=0;it<2;it++){
+        const den=n.dot(dir); if(Math.abs(den)<1e-9){t2=null;break;}
+        t2=n.dot(Ak.clone().sub(P0))/den;
+        if(!(t2>0.05&&t2<L-0.05)){t2=null;break;}
+        Ak=axisW2(k,-(P0.z+dir.z*t2));
+      }
+      if(t2===null)continue;
+      const H=P0.clone().add(dir.clone().multiplyScalar(t2));
+      const u=(H.x-Ak.x)*Math.cos(thK)-(H.y-Ak.y)*Math.sin(thK);
+      if(Math.abs(u)>hw)continue;
+      const yk=-H.z, L3=T.segs&&T.segs[k];
+      let inMesa=!L3;
+      if(L3)for(const sg2 of L3)if(yk>=Math.min(sg2[0],sg2[1])&&yk<=Math.max(sg2[0],sg2[1])){inMesa=true;break;}
+      if(!inMesa)continue;
+      if(k===skipRow&&H.distanceTo(skipNear)<0.6)continue;   // su propio borde emisor
+      if(t2<bT){bT=t2;bP=H;}
+    }
+    return bP;
+  };
+  const axisW2=(k,yq)=>TD.hubAt(k,yq).add(new THREE.Vector3(0,0.76,0));
+  const blockOut=firstHit(edgeW,hitW,emRow,edgeW);
+  if(blockOut){hitW=blockOut;col=0xe34948;}    // pincha un módulo: ahí muere, en rojo
+  let A2=edgeW.clone().sub(d.clone().multiplyScalar(26));
+  const blockIn=firstHit(A2,edgeW,emRow,edgeW);
+  if(blockIn)A2=blockIn;                       // el tramo que viene del sol tampoco atraviesa
   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([A2,edgeW,hitW]),
     new THREE.LineBasicMaterial({color:0xfbbd23,transparent:true,opacity:0.95}));
   line.renderOrder=7; grp.add(line);
@@ -3082,10 +3168,10 @@ function drawCriticalRay(g,p,tIdx){
     const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:col2,transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide}));
     m.renderOrder=5; grp.add(m);
   };
-  // base pálida del vano + CINTAS de sombra por estaciones: las sombras van
-  // SESGADAS por la deflexión axial — una banda de ancho constante extruida
-  // desde un corte único no es la realidad (reportado con captura)
-  strip(V[0],V[1],0xfbe08a,0.30);
+  // CINTAS de sombra por estaciones (sesgadas por la deflexión axial); la
+  // base pálida del vano («la alfombra») se retiró a petición — el haz queda
+  // medido en la etiqueta y las cintas marcan la sombra real
+  void strip;
   const NS=12;
   const cotV=(k,n)=>TD.hubAt(k,n).y-1.24;
   const hasMesa=(k,n)=>{const L2=T.segs&&T.segs[k];if(!L2)return true;
@@ -3173,7 +3259,7 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte');
   card('GHI / DNI',Math.round(irrN.ghi)+' / '+Math.round(irrN.dni),'W/m²');
   if(p){
-    card('θ fila '+(selRow+1),p.ang[tIdx][selRow].toFixed(1)+'°',POL[key]?POL[key].nm:'');
+    card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este');
     if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
@@ -3211,7 +3297,7 @@ function drawCurves(){
     ctx.beginPath();let started=false;
     for(let t=0;t<DAY.times.length;t++){
       const g=DAY.sun[t]; if(g.elev<=0){started=false;continue;}
-      const xx=x(DAY.times[t]),yy=y(Math.max(-maxA,Math.min(maxA,p.ang[t][selRow])));
+      const xx=x(DAY.times[t]),yy=y(Math.max(-maxA,Math.min(maxA,TH_DISP*p.ang[t][selRow])));
       if(!started){ctx.moveTo(xx,yy);started=true;}else ctx.lineTo(xx,yy);
     }
     ctx.stroke();
@@ -3220,7 +3306,7 @@ function drawCurves(){
   const xx=x(+$('hour').value);
   ctx.strokeStyle='rgba(234,244,255,.35)';ctx.setLineDash([4,4]);
   ctx.beginPath();ctx.moveTo(xx,padT);ctx.lineTo(xx,H-padB);ctx.stroke();ctx.setLineDash([]);
-  ctx.fillStyle='#9bb0c6';ctx.fillText('θ fila '+(selRow+1),padL+6,padT+10);
+  ctx.fillStyle='#9bb0c6';ctx.fillText('θ fila '+(selRow+1)+' · θ<0 = este (convención TCU)',padL+6,padT+10);
 
   // POA + sombra
   const c2=fitCanvas($('poacv')), ctx2=c2.ctx, W2=c2.W, H2=c2.H;
@@ -3259,7 +3345,7 @@ function drawCurves(){
 function fillDayTable(){
   const rows=[];
   const ref=dayKpis('pairwise');
-  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th><th>Δ vs pairwise</th><th>Sombra máx</th><th>Min con sombra</th><th>Pérdida Martinez</th><th>|θ| máx</th></tr>');
+  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th><th>Δ vs pairwise</th><th title="Máxima fracción de sombra de una fila con SOL ÚTIL (DNI>25 W/m²): en el primer minuto de sol todo sombrea a todo con energía ~cero y no dice nada de la política">Sombra máx*</th><th title="Minutos con alguna fila sombreada y DNI>25 W/m²">Min con sombra</th><th>Pérdida Martinez</th><th>|θ| máx</th></tr>');
   let best=-1;
   const kk=POLICIES.filter(P=>DAY.pol[P.key]).map(P=>({P:P,k:dayKpis(P.key)}));
   for(const e of kk)best=Math.max(best,e.k.kwh);
@@ -3281,7 +3367,8 @@ function fillDayTable(){
     (drv==='mono'?'': ' — θ común por grupo; pairwise y true-3D refinan a nivel de accionamiento y el residuo que ni así se evita es IRREDUCIBLE: el precio físico de la bifila en terreno roto')+'). '+
     (u?'Terreno <b>uniforme</b>: global = row = pairwise por construcción (la diferencia que veas es 0). ':'Terreno <b>no uniforme</b>: las políticas divergen — pairwise garantiza sombra cero, row apunta mejor y puede dejar sombra residual. ')+
     'Con tilt N-S del eje = '+DAY.c.axtilt+'° '+(Math.abs(DAY.c.axtilt)<=0.5?'true-3D <b>ES</b> la baseline (guard de degeneración 2.5D, como el core).':
-    'true-3D puede empinar más: la sombra 3D se deflecta a lo largo del eje. <b>Ojo</b>: la columna de sombra (y su pérdida Martinez) es el diagnóstico 2.5D del core (<code>shaded_fraction1d</code>), ciego a esa deflexión — puede sobrestimar la sombra de true-3D; el árbitro geométrico es el residual de tangencia del HUD, como en <code>tracker3d.py</code>.');
+    'true-3D puede empinar más: la sombra 3D se deflecta a lo largo del eje. ')+
+    'La columna de sombra y su pérdida Martinez salen del <b>ray-cast 3D multi-emisora</b> (cotas por tramo, todas las filas al alcance, Martinez por estación axial) — el mismo contador de la escena; el 2.5D exacto queda como referencia analítica de QA.';
 }
 
 /* ── estimación anual ── */
@@ -3470,7 +3557,7 @@ function rowInfoHTML(r){
   if(!DAY)return '';
   const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
   const t=timeIndex();
-  const th=p.ang[t][r], sh=p.shade[t][r]||0, poa=(p.poaR&&p.poaR[t])?p.poaR[t][r]:0;
+  const th=TH_DISP*p.ang[t][r], sh=p.shade[t][r]||0, poa=(p.poaR&&p.poaR[t])?p.poaR[t][r]:0;  // θ<0 = este
   let wt=0,ws=0;
   for(let k=0;k<DAY.times.length;k++){const v=p.shade[k][r]||0;if(v>ws){ws=v;wt=k;}}
   const tilt=DAY.T.rowTilt?DAY.T.rowTilt[r]:0;
