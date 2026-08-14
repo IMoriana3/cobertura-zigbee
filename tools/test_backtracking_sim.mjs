@@ -139,6 +139,16 @@ t('ámbito por NCU: layout↔cotas 1:1 y el parque de cada NCU forma planta vál
     if (!(P.nFilas > 0)) throw new Error('NCU ' + n + ' sin filas');
   }
 });
+t('horas de BT en el slider + aviso «BT ON» + sombra render anisótropa + rayo con listener', () => {
+  // v1.17: el slider se pinta por tramos desde la física (referencia astro con
+  // slew en computeDay), el aviso BT ON existe, el frustum de sombra se encoge
+  // con la elevación (fuera la sierra rasante) y «☀ rayo» redibuja al cambiar
+  if (!/id="btflag"/.test(html)) throw new Error('sin aviso BT ON');
+  if (!/function paintHourTrack/.test(html)) throw new Error('sin pintado del slider');
+  if (!/astroAng/.test(html)) throw new Error('computeDay sin referencia astronómica');
+  if (!/R2\*Math\.sin\(el\)/.test(html)) throw new Error('frustum de sombra no anisótropo');
+  if (!/\$\('ray3d'\)\.onchange/.test(html)) throw new Error('☀ rayo sin listener de cambio');
+});
 t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila
   const segs = F.nsSegments(6, 'tresbolillo', 1, 55.9, 1.0);
