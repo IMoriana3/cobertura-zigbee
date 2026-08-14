@@ -263,8 +263,13 @@
       <div class="f"><label>Slew °/s</label><input id="slew" type="number" step="0.01" min="0.01" value="0.17"></div>
     </div>
     <div class="nota">Canónicos del core: deadband <b>1,0°</b> · slew <b>0,17°/s</b> (≈ 5,9 min para 60°).
-      Un tracker que decide tarde además LLEGA tarde: la diferencia consigna→ejecutado se ve en la
-      curva θ (trazo discontinuo) y en la tabla (columna «lazo»).</div>
+      <b>Dos relojes, a propósito</b>: la TCU <b>decide</b> en su ciclo de control (la resolución de
+      arriba) y el <b>actuador rampa al minuto</b> hacia esa consigna. Evaluar el lazo solo en el
+      ciclo de decisión era un error físico: a 10 min el techo por paso es 0,17·600 = <b>102°</b>,
+      más que el recorrido entero del tracker (110°) ⇒ nunca ataba y un giro de 55° salía colocado
+      «dentro del paso». Ahora la curva θ enseña la consigna (trazo fino) y lo que hace el hierro
+      (trazo grueso), el HUD marca <b>↻ °/s</b> mientras gira, y la POA del día se integra al minuto:
+      <b>el tránsito se paga</b> (columna «coste del lazo»).</div>
   </div>
 
   <div class="card">
@@ -754,6 +759,27 @@ function applyControlLoop(target,dtMin,p){
   return out;
 }
 
+/* ── el ACTUADOR no vive en la rejilla de decisión ────────────────────────
+   La TCU fija consigna cada dtMin (SU ciclo de control) y el actuador rampa
+   hacia ella a slew constante. Evaluar el lazo SOLO en la rejilla de decisión
+   era un error físico: a 10 min el límite por paso es 0,17·600 = 102°, más que
+   el recorrido total del tracker (110°) ⇒ NUNCA ataba, y un giro de 55° salía
+   colocado «dentro del paso». Aquí la consigna (escalón) se expande a una
+   rejilla FINA y se le aplica el MISMO apply_control_loop del core con el paso
+   fino: a 1 min el techo es 10,2°/min, que sí ata y dibuja la rampa real.
+   Devuelve el θ EJECUTADO minuto a minuto. */
+function execOnFineGrid(theta,dtMin,nFine,dtFine,loop){
+  const cons=new Array(nFine);
+  for(let i=0;i<nFine;i++)
+    cons[i]=theta[Math.min(theta.length-1,Math.floor((i*dtFine)/dtMin))];
+  return loop?applyControlLoop(cons,dtFine,loop):cons;
+}
+/* velocidad instantánea del actuador (°/s de tiempo simulado) en el paso i */
+function slewRateAt(exec,i,dtFine){
+  if(i<=0||i>=exec.length)return 0;
+  return Math.abs(exec[i]-exec[i-1])/(dtFine*60);
+}
+
 /* ── métricas del día ────────────────────────────────────────────────────── */
 function dayMetrics(day,theta,flag,poa){
   let wh=0,flatSteps=0,daySteps=0,sw=0,travel=0;
@@ -784,7 +810,7 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags,loop){
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
@@ -825,7 +851,15 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop){
     for(let i=0;i<day.n;i++){
       whZ+=poaZ[i]*day.dtMin/60; whG+=poaG[i]*day.dtMin/60; whN+=poaNz[i]*day.dtMin/60;
     }
-    zones.push({theta:thZ,flag:rZ.flag,signal:signal,day:day});
+    // la escena necesita el EJECUTADO al minuto de cada NCU (misma rampa de
+    // 0,17 °/s): `fine` = {n, dt} de la rejilla fina; sin él, no se calcula
+    const zEntry={theta:thZ,flag:rZ.flag,signal:signal,day:day};
+    if(fine){
+      zEntry.execF=execOnFineGrid(rZ.theta,day.dtMin,fine.n,fine.dt,loop);
+      zEntry.flagF=execOnFineGrid(rZ.flag.map(v=>v?1:0),day.dtMin,fine.n,fine.dt,null).map(v=>!!v);
+      zEntry.signalF=execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,fine.n,fine.dt,null).map(v=>!!v);
+    }
+    zones.push(zEntry);
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
           zones:zones,thetaGlobal:thG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
@@ -1123,6 +1157,52 @@ function runPhysicsQA(){
     const r=polPoaSwitch(day,thN0,poaN0,DCFG_DEFAULT);
     for(let i=0;i<day.n;i++)if(inWin(day,i,510,540)){A(!r.flag[i],'flag en la puerta nocturna');}
   });
+  t('EL ACTUADOR NO TELETRANSPORTA: en la rejilla fina de 1 min, |Δθ| ≤ 0,17°/s·60 = 10,2° SIEMPRE',()=>{
+    // el bug que cazó el usuario: a dtMin=10 el lazo permitía 102°/paso (más
+    // que el recorrido total del tracker) y un giro de 55° salía «hecho» en un
+    // paso; con el slider minutal eso son 55° en 1 min = 3× lo posible.
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    const maxMin=0.17*60+1e-9;
+    for(const dt of [5,10,15]){
+      const S=mk(dt);
+      for(const nm of ['diffuse_flat','diffuse_continuous','diffuse_poa_switch']){
+        const r=POLICIES[nm](S.day,S.thN,S.poaN,DCFG_DEFAULT);
+        // el camino VIEJO (lazo solo en la rejilla de decisión) violaba esto:
+        const viejo=applyControlLoop(r.theta,dt,loop);
+        let peorViejo=0;
+        for(let i=1;i<viejo.length;i++)peorViejo=Math.max(peorViejo,Math.abs(viejo[i]-viejo[i-1]));
+        A(peorViejo>maxMin,'el escenario debe contener un salto que el paso grueso no ataba (dt '+dt+')');
+        // el camino NUEVO: rampa en rejilla fina de 1 min
+        const fino=execOnFineGrid(r.theta,dt,1440,1,loop);
+        for(let i=1;i<fino.length;i++)
+          A(Math.abs(fino[i]-fino[i-1])<=maxMin,
+            nm+' (dt '+dt+') gira '+Math.abs(fino[i]-fino[i-1]).toFixed(1)+'°/min en el minuto '+i);
+      }
+    }
+  });
+  t('la rampa fina LLEGA a la consigna: sin deadband, el ejecutado alcanza el objetivo y no lo sobrepasa',()=>{
+    const loop={deadbandDeg:0,slewDegS:0.17,maxAngle:55};
+    const cons=[0,55,55,55,-55,-55,-55];          // pasos de 10 min
+    const f=execOnFineGrid(cons,10,70,1,loop);
+    A(Math.abs(f[0])<1e-9,'no arranca en la consigna inicial');
+    A(Math.abs(f[35]-55)<1e-6,'no ha llegado a +55 tras 35 min (necesita 5,4)');
+    for(let i=0;i<f.length;i++)A(Math.abs(f[i])<=55+1e-9,'sobrepasa el tope mecánico');
+    const dirs=new Set();
+    for(let i=1;i<40;i++)if(Math.abs(f[i]-f[i-1])>1e-9)dirs.add(Math.sign(f[i]-f[i-1]));
+    A(dirs.size<=1,'oscila en vez de rampar monótono hacia la consigna');
+  });
+  t('el tránsito CUESTA energía: la POA del ejecutado fino ≤ la de la consigna instantánea',()=>{
+    const S=mk(10);
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    const dayF=canonScenario(1);
+    const r=POLICIES.diffuse_poa_switch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
+    const fino=execOnFineGrid(r.theta,10,dayF.n,1,loop);
+    const ideal=execOnFineGrid(r.theta,10,dayF.n,1,null);   // teletransporte
+    const whF=poaSeries(dayF,fino).reduce((s,v)=>s+v/60,0);
+    const whI=poaSeries(dayF,ideal).reduce((s,v)=>s+v/60,0);
+    A(whF<=whI+1e-6,'el tránsito no puede SUMAR energía: fino '+whF.toFixed(1)+' > ideal '+whI.toFixed(1));
+    A(whF>0.9*whI,'el tránsito no puede costar >10 % del día: '+(100*(1-whF/whI)).toFixed(1)+'%');
+  });
   t('lazo de control: slew respetado (|Δθ| ≤ 0,17°/s·dt) y deadband retiene <1°',()=>{
     const tgt=[0,0.5,0.2,40,40,-40];
     const out=applyControlLoop(tgt,10,{deadbandDeg:1,slewDegS:0.17,maxAngle:55});
@@ -1240,7 +1320,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.7.2';
+const VER='v1.8.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1488,10 +1568,16 @@ function cfgDiffuse(){
           confirmMin:+$('confirm').value,dwellMin:+$('dwell').value};
 }
 let SIM=null;
+const DT_FINE=1;                       // el actuador se integra al MINUTO
 function recompute(){
-  const day=buildDay(cfgDay());
+  const cfg=cfgDay();
+  const day=buildDay(cfg);             // rejilla de DECISIÓN (ciclo de la TCU)
+  // rejilla del ACTUADOR y de la ENERGÍA: 1 min. Aquí la rampa de 0,17 °/s sí
+  // ata (10,2°/min) y el tránsito entre ángulos se paga en POA.
+  const dayF=buildDay(Object.assign({},cfg,{dtMin:DT_FINE}));
   const thN=thetaBaselineDay(day);
   const poaN=poaSeries(day,thN);
+  const thNF=thetaBaselineDay(dayF);
   const d=cfgDiffuse();
   const loop=$('loopOn').checked?{deadbandDeg:+$('deadband').value,slewDegS:+$('slew').value,maxAngle:day.maxAngle}:null;
   const res={};
@@ -1499,13 +1585,19 @@ function recompute(){
     if(!POL_ON[k])continue;
     const r=POLICIES[k](day,thN,poaN,d);
     const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
-    let exec=null,poaExec=null;
-    if(loop){exec=applyControlLoop(r.theta,day.dtMin,loop);poaExec=poaSeries(day,exec);}
-    res[k]={theta:r.theta,flag:r.flag,poa:poa,exec:exec,poaExec:poaExec,
-            met:dayMetrics(day,exec||r.theta,r.flag,poaExec||poa),
-            metTgt:dayMetrics(day,r.theta,r.flag,poa)};
+    // consigna → actuador (rampa al minuto) → POA fina, y la consigna sin lazo
+    // en la MISMA rejilla fina para poder medir el coste del hierro
+    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop);
+    const consF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,null);
+    const poaF=poaSeries(dayF,execF);
+    const poaConsF=loop?poaSeries(dayF,consF):poaF;
+    const flagF=execOnFineGrid(r.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
+    res[k]={theta:r.theta,flag:r.flag,poa:poa,
+            execF:execF,consF:consF,poaF:poaF,flagF:flagF,
+            met:dayMetrics(dayF,execF,flagF,poaF),
+            metTgt:dayMetrics(dayF,consF,flagF,poaConsF)};
   }
-  SIM={day:day,thN:thN,poaN:poaN,res:res,loop:loop};
+  SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop};
   computeZonal(d);
   drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
   drawDiario(d);
@@ -1573,7 +1665,7 @@ function computeZonal(d){
   if(!zc.on)return;
   const pv=$('polview').value;
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
-              SIM?SIM.loop:null);
+              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null);
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
@@ -1738,33 +1830,34 @@ function drawTheta(){
     ctx.beginPath();ctx.moveTo(60,y);ctx.lineTo(W-20,y);ctx.stroke();
     ctx.fillText(String(g)+'°',6,y+6);
   }
-  const plot=(arr,col,w,dash)=>{
-    // las curvas van en convención TCU (− = este): se convierte al pintar
+  // las curvas van en convención TCU (− = este) y cada serie con SU rejilla:
+  // la consigna es escalón en la de decisión, el EJECUTADO es la rampa fina
+  const plot=(arr,dy,col,w,dash)=>{
     ctx.setLineDash(dash||[]);ctx.beginPath();
-    for(let i=0;i<day.n;i++){const x=xOf(day.tmin[i],W),y=yOf(tcuDeg(arr[i]));i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    for(let i=0;i<dy.n;i++){const x=xOf(dy.tmin[i],W),y=yOf(tcuDeg(arr[i]));i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
     ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke();ctx.setLineDash([]);
   };
   ctx.fillStyle='#5c7189';ctx.font='18px ui-monospace,monospace';
-  ctx.fillText('θ TCU · − = este',W-190,24);
+  ctx.fillText('θ TCU · − = este · trazo fino = consigna, grueso = EJECUTADO (0,17 °/s)',W-800,24);
   for(const k of POL_ORDER){
     if(!POL_ON[k]||!SIM.res[k])continue;
-    plot(SIM.res[k].theta,POL_META[k].c,k==='pvlib'?2:2.5);
+    plot(SIM.res[k].theta,day,POL_META[k].c,1,[4,3]);              // consigna de la TCU
+    plot(SIM.res[k].execF,SIM.dayF,POL_META[k].c,k==='pvlib'?2:2.5); // lo que hace el hierro
   }
-  if(r&&r.exec)plot(r.exec,'#eaf4ff',1.5,[5,4]);   // el ejecutado del lazo, política de la escena
   drawTimeCursor(ctx,W,H,26);
 }
 function drawPoa(){
   const cv=$('poacv'),ctx=gridCv(cv,200),W=cv.width,H=cv.height;
-  const day=SIM.day;
+  const dayF=SIM.dayF;                       // la POA se cuenta en la rejilla fina
   let yMax=100;
-  for(const k in SIM.res)yMax=Math.max(yMax,...SIM.res[k].poa);
+  for(const k in SIM.res)for(const v of SIM.res[k].poaF)if(v>yMax)yMax=v;
   yMax=Math.ceil(yMax/100)*100;
   axes(ctx,W,H,26,yMax,'W/m²',4);
   for(const k of POL_ORDER){
     if(!POL_ON[k]||!SIM.res[k])continue;
     ctx.beginPath();
-    for(let i=0;i<day.n;i++){
-      const x=xOf(day.tmin[i],W),y=(H-26)-(SIM.res[k].poa[i]/yMax)*(H-40);
+    for(let i=0;i<dayF.n;i++){
+      const x=xOf(dayF.tmin[i],W),y=(H-26)-(SIM.res[k].poaF[i]/yMax)*(H-40);
       i?ctx.lineTo(x,y):ctx.moveTo(x,y);
     }
     ctx.strokeStyle=POL_META[k].c;ctx.lineWidth=k==='pvlib'?2:2.5;ctx.stroke();
@@ -1775,7 +1868,8 @@ function drawLegend(){
   let h='';
   for(const k of POL_ORDER)if(POL_ON[k])
     h+='<span><i style="background:'+POL_META[k].c+'"></i>'+POL_META[k].nm+'</span>';
-  h+='<span><i style="background:#eaf4ff"></i>θ ejecutado (lazo, política de la escena)</span>';
+  h+='<span><i style="background:#9bb0c6;height:1px"></i>consigna de la TCU (escalón, cada ciclo)</span>';
+  h+='<span><i style="background:#9bb0c6"></i>θ EJECUTADO por el actuador (rampa 0,17 °/s, al minuto)</span>';
   h+='<span><i style="background:rgba(167,139,250,.45)"></i>modo flat (banda)</span>';
   $('legend').innerHTML=h;
 }
@@ -1789,7 +1883,7 @@ function drawTable(){
   for(const k of POL_ORDER){
     const r=SIM.res[k]; if(!r)continue;
     const m=r.met,delta=100*(m.poaWh/base-1);
-    const lazo=r.exec?(100*(m.poaWh/r.metTgt.poaWh-1)):null;
+    const lazo=SIM.loop?(100*(m.poaWh/r.metTgt.poaWh-1)):null;
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
        '<td'+(k===bestK?' class="best"':'')+'>'+m.poaWh.toFixed(0)+'</td>'+
        '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
@@ -1807,17 +1901,19 @@ function drawTable(){
 /* ── escena: corte ⊥ al eje con sol, nubes, haz y difusa ── */
 function drawScene(){
   const cv=$('scene'),ctx=gridCv(cv,360),W=cv.width,H=cv.height;
-  const day=SIM.day;
+  const day=SIM.day,dayF=SIM.dayF;
   const m=+$('hour').value;
   let i=Math.min(day.n-1,Math.round(m/day.dtMin));
+  const iF=fineIdx(m);                 // el minuto exacto: aquí vive el actuador
   $('hourlbl').textContent=hhmm(m);
   const cc=CC[Math.min(287,Math.floor(m/5))];
-  // slider MINUTAL: el sol se dibuja en su posición exacta del minuto; la
-  // política y la irradiancia van al paso del sim (dtMin), que es lo honesto
+  // slider MINUTAL: sol, irradiancia y θ EJECUTADO al minuto exacto (rejilla
+  // fina); la DECISIÓN de la política sigue en su ciclo de control (dtMin)
   const gm=solarPos(localToUTCms($('date').value,m,+$('tz').value),+$('lat').value,+$('lon').value);
-  const irr=day.irr[i],zen=gm.zen,az=gm.az;
+  const irr=dayF.irr[iF],zen=gm.zen,az=gm.az;
   const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
-  const th=(r.exec||r.theta)[i],thn=SIM.thN[i],flag=r.flag[i];
+  const th=r.execF[iF],thn=SIM.thNF[iF],flag=r.flagF[iF];
+  const rate=slewRateAt(r.execF,iF,DT_FINE);            // °/s que está girando AHORA
 
   // cielo: degradado que agrisa con cc
   const dayness=Math.max(0,Math.min(1,(90-zen)/60));
@@ -1891,18 +1987,23 @@ function drawScene(){
   ctx.fillText('cc '+(100*cc).toFixed(0)+'%  ·  difusa '+(100*dFrac).toFixed(0)+'%',14,56);
 
   // HUD
-  const poaPol=r.poaExec?r.poaExec[i]:r.poa[i];
-  const dNow=SIM.poaN[i]>1?100*(poaPol/SIM.poaN[i]-1):0;
+  const poaPol=r.poaF[iF];
+  const poaBase=poaTracker(SIM.thNF[iF],dayF.axisTilt,dayF.axisAz,dayF.zen[iF],dayF.az[iF],
+                           dayF.irr[iF],dayF.doy,dayF.albedo).total;
+  const dNow=poaBase>1?100*(poaPol/poaBase-1):0;
   const ro=(k,v,s)=>'<div class="ro"><div class="k">'+k+'</div><div class="v">'+v+(s?' <small>'+s+'</small>':'')+'</div></div>';
   $('hud').innerHTML=
     ro('GHI',irr.ghi.toFixed(0),'W/m²')+
     ro('DNI',irr.dni.toFixed(0),'W/m²')+
     ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
-    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',flag?'flat':'track')+
-    ro('POA pvlib',SIM.poaN[i].toFixed(0),'W/m²')+
+    ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',
+       rate>0.001?('↻ '+rate.toFixed(2)+' °/s'):(flag?'flat':'track'))+
+    ro('POA pvlib',poaBase.toFixed(0),'W/m²')+
     ro('POA política',poaPol.toFixed(0),'W/m²')+
     ro('Δ ahora',(dNow>=0?'+':'')+dNow.toFixed(1)+' %','vs pvlib');
 }
+/* índice en la rejilla fina para un minuto del reloj */
+function fineIdx(m){return Math.max(0,Math.min(SIM.dayF.n-1,Math.round(m/DT_FINE)));}
 
 /* ── escena 3D real (three.js + seguidor.js, patrón de backtracking.html) ──
    Zonas NCU a lo largo del eje, 3 filas por zona con el MODELO del seguidor
@@ -2466,11 +2567,12 @@ function update3D(){
   if(!TD||!TD.world||!SIM)return;
   const day=SIM.day,m=+$('hour').value;
   const i=Math.min(day.n-1,Math.round(m/day.dtMin));
+  const iF=fineIdx(m);                 // el actuador vive al minuto
   const bin=Math.min(287,Math.floor(m/5));
   const zc=zonalCfg(),pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
-  // slider MINUTAL: sol y cielo al minuto exacto; políticas al paso del sim
+  // slider MINUTAL: sol, cielo y θ EJECUTADO al minuto exacto
   const gm=solarPos(localToUTCms($('date').value,m,+$('tz').value),+$('lat').value,+$('lon').value);
-  const irr=day.irr[i],zen=gm.zen,az=gm.az,el=90-zen;
+  const irr=SIM.dayF.irr[iF],zen=gm.zen,az=gm.az,el=90-zen;
   // sol: +X = norte (eje del tubo), +Z = este — θ>0 tumba la pala al este, como el core
   const dist=260;
   const sy=Math.max(3,dist*Math.sin(Math.max(1.5,el)*RAD));
@@ -2504,26 +2606,32 @@ function update3D(){
   }
   for(let z=0;z<TD.zones.length;z++){
     const Z=TD.zones[z];
-    let th,fl,ccz,sig=false;
+    let th,fl,ccz,sig=false,rate=0;
     if(zc.on&&ZR&&ZR.zones[z]){
-      th=ZR.zones[z].theta[i];fl=ZR.zones[z].flag[i];ccz=ZR.zones[z].day.cc[bin];
-      sig=!!(ZR.zones[z].signal&&ZR.zones[z].signal[i]);
+      const Zn=ZR.zones[z];
+      th=Zn.execF[iF];fl=Zn.flagF[iF];ccz=Zn.day.cc[bin];
+      sig=!!(Zn.signalF&&Zn.signalF[iF]);
+      rate=slewRateAt(Zn.execF,iF,DT_FINE);
     }else{
-      const arr=r.exec||r.theta;th=arr[i];fl=r.flag[i];ccz=ccMean;
+      th=r.execF[iF];fl=r.flagF[iF];ccz=ccMean;rate=slewRateAt(r.execF,iF,DT_FINE);
     }
-    // la pala NO teletransporta: aquí solo se fija la CONSIGNA; loop3D la
-    // persigue a la velocidad real del actuador (0,17 °/s en tiempo simulado)
-    Z.thTarget=th;Z.flag=fl;Z.sig=sig;
-    if(Z.thDisp==null){Z.thDisp=th;for(const s of Z.spins)s.rotation.x=th*RAD;TD.realDirty=true;}
+    // el θ EJECUTADO ya lleva la rampa de 0,17 °/s dentro (rejilla fina): la
+    // pala se coloca directamente, sin persecución que pudiera adelantarla
+    Z.thTarget=th;Z.flag=fl;Z.sig=sig;Z.rate=rate;
+    if(Z.thDisp==null)Z.thDisp=th;
+    for(const s of Z.spins)s.rotation.x=th*RAD;
+    if(Math.abs(Z.thDisp-th)>1e-9){Z.thDisp=th;TD.realDirty=true;}
     if(Z.cloudMat){
       Z.cloudMat.opacity=0.9*ccz;
       if(Z.shadowMat)Z.shadowMat.opacity=(el>0?1:0)*0.38*Math.min(1,ccz*1.4);
     }
-    // tres estados a la vista: FLAT (violeta) · señal viva RETENIDA por la
-    // histéresis (ámbar — «la NCU ve la nube, el confirm/dwell mandan») · track
+    // cuatro estados a la vista: GIRANDO (cian, con su velocidad real — el
+    // tracker aún NO ha llegado) · FLAT (violeta, ya colocado) · señal viva
+    // RETENIDA por la histéresis (ámbar) · track
+    const moving=rate>0.001;
     setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
-             (fl?' · FLAT':(sig?' · ☁ retiene':'')),
-             fl?'#a78bfa':(sig?'#fbbd23':'#9bb0c6'));
+             (moving?' · ↻ '+rate.toFixed(2)+' °/s':(fl?' · FLAT':(sig?' · ☁ retiene':''))),
+             moving?'#5aa9ff':(fl?'#a78bfa':(sig?'#fbbd23':'#9bb0c6')));
   }
   // sombra de nube desplazada según el sol (m de desplazamiento por m de altura)
   const kOff=el>3?Math.min(3,1/Math.tan(el*RAD)):0;
@@ -2556,20 +2664,15 @@ function loop3D(){
   }
   const t=performance.now();
   const fdt=TD.lastT?Math.min(0.1,(t-TD.lastT)/1000):0.016; TD.lastT=t;
-  // la pala persigue la consigna a 0,17 °/s en TIEMPO SIMULADO: en ▶ va al
-  // ritmo de la animación; arrastrando el reloj, al equivalente de ×1
-  const simRate=(playing?+$('speed').value:60)*60;    // s simulados por s real
+  // La pala YA NO se persigue aquí: el θ que llega de update3D es el EJECUTADO
+  // de la rejilla fina, que lleva dentro la rampa de 0,17 °/s. Perseguirlo otra
+  // vez solo podía adelantarlo (a reloj parado el chase daba 612 °/s visuales:
+  // el «teletransporte» que se veía al arrastrar el slider).
   for(const Z of TD.zones){
     if(Z.cloudMesh){                                 // deriva del manto + su sombra pegada al sol
       Z.cloudMesh.position.x=Math.sin(t/9000+Z.zx)*2.5;
       Z.shadowMesh.position.x=Z.cloudMesh.position.x+(TD.cOffX||0)*Z.cloudMesh.position.y;
       Z.shadowMesh.position.z=Z.cloudMesh.position.z+(TD.cOffZ||0)*Z.cloudMesh.position.y;
-    }
-    if(Z.thTarget==null||Z.thDisp==null)continue;
-    if(Z.thDisp!==Z.thTarget){
-      Z.thDisp=slewLimit1(Z.thDisp,Z.thTarget,fdt*simRate);
-      for(const s of Z.spins)s.rotation.x=Z.thDisp*RAD;
-      TD.realDirty=true;
     }
   }
   if(TD.real){
@@ -2783,15 +2886,21 @@ $('year365').onclick=async()=>{
     let nd=0;
     // día a día con la meteo MEDIDA, a paso de 30 min (confirm/dwell van en
     // minutos: la histéresis conserva su física). Troceado para no congelar la UI.
+    // dos rejillas por día, como en el día suelto: la TCU DECIDE cada 30 min y
+    // el actuador RAMPA al minuto. Contar el tránsito no es cosmético: a paso
+    // de 30 min el giro salía promediado a ~0,03 °/s (gratis) y el año se
+    // sobreestimaba ~0,4 % — MÁS que la ganancia que este simulador mide.
     for(let t0=Date.parse(dsFrom);t0<=Date.parse(dsTo);t0+=86400000){
       const ds=new Date(t0).toISOString().slice(0,10);
       const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:30,cc:zeroCC,om:om}));
+      const dayF=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_FINE,cc:zeroCC,om:om}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       for(const k in tot){
         const r2=POLICIES[k](day,thN,poaN,d);
-        const th=loop?applyControlLoop(r2.theta,day.dtMin,loop):r2.theta;
-        const poa=(k==='pvlib'&&!loop)?poaN:poaSeries(day,th);
-        const met=dayMetrics(day,th,r2.flag,poa);
+        const th=execOnFineGrid(r2.theta,day.dtMin,dayF.n,DT_FINE,loop);
+        const flagF=execOnFineGrid(r2.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
+        const poa=poaSeries(dayF,th);
+        const met=dayMetrics(dayF,th,flagF,poa);
         tot[k]+=met.poaWh/1000;fl[k]+=met.pctFlat;sw[k]+=met.switches;
       }
       if((++nd%30)===0){
@@ -2801,8 +2910,8 @@ $('year365').onclick=async()=>{
     }
     YR365={tot:tot,fl:fl,sw:sw,nd:nd};
     renderYear365();
-    $('yearinfo').innerHTML='<b>'+dsFrom+' → '+dsTo+'</b> · ERA5 medido ('+nd+' días) · paso 30′ · '+
-      (loop?'θ ejecutado (lazo)':'consigna')+' · DNI ≤ cielo claro ×1,1';
+    $('yearinfo').innerHTML='<b>'+dsFrom+' → '+dsTo+'</b> · ERA5 medido ('+nd+' días) · decisión 30′ · '+
+      'actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+' · DNI ≤ cielo claro ×1,1';
   }catch(e){$('yearinfo').innerHTML='<span style="color:var(--err)">'+(e&&e.message||e)+'</span>';}
 };
 /* el año en € — MWh ≈ MWp × ΔPOA(kWh/m² ≈ kWh/kWp) × PR 0,85. Es un proxy
