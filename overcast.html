@@ -321,7 +321,7 @@
   </div>
 
   <div class="card">
-    <h2>📋 Diario de decisiones <span class="sn">cada movimiento, justificado — como el SCADA</span></h2>
+    <h2>📋 Diario de decisiones <span class="sn">cada movimiento, justificado — como el SCADA · <b id="diariopol"></b></span></h2>
     <div class="qa" id="diario" style="max-height:320px;overflow-y:auto"></div>
     <div class="nota">La narración de la política de campo (<b>poa_switch</b>): stow del amanecer y del
       anochecer, pulsos de señal RECHAZADOS por el confirm, entradas y salidas del plano con sus W/m²
@@ -791,6 +791,122 @@ function dayMetrics(day,theta,flag,poa){
   return {poaWh:wh,pctFlat:daySteps?100*flatSteps/daySteps:0,switches:sw,travelDeg:travel};
 }
 
+/* ── el diario, POLÍTICA A POLÍTICA ───────────────────────────────────────
+   Cada política razona distinto y el diario debe narrar SU lógica, no la del
+   poa_switch: flat conmuta sin memoria (y se le ve el chatteo), limited
+   RETIENE un ángulo concreto, continuous elige una fracción α del barrido, y
+   poa_switch arrastra confirm/dwell. Todos los explicadores devuelven
+   {events, flag} y la QA exige que el flag coincida BIT A BIT con el de
+   POLICIES[k]: lo narrado es exactamente lo ejecutado. */
+function stowEvents(day,d,ev){
+  let iw=-1,is2=-1;
+  for(let i=0;i<day.n;i++)if(day.ghi[i]>d.ghiMin){if(iw<0)iw=i;is2=i;}
+  if(iw>=0)ev.push({t:day.tmin[iw],type:'wake',
+    msg:'AMANECE (GHI '+day.ghi[iw].toFixed(0)+' > '+d.ghiMin+' W/m²): sale del stow ('+
+        (-day.nightStow).toFixed(0)+'° TCU) y arranca el seguimiento'});
+  if(is2>=0)ev.push({t:day.tmin[is2],type:'sleep',
+    msg:'ANOCHECE: entra a stow ('+(-day.nightStow).toFixed(0)+'° TCU, al este) hasta el amanecer'});
+  return {first:iw,last:is2};
+}
+function explainPvlib(day,thN,poaN,d){
+  const ev=[];stowEvents(day,d,ev);
+  ev.push({t:day.tmin[Math.floor(day.n/2)],type:'info',
+    msg:'BASELINE: seguimiento astronómico con backtracking, sin política de difusa. '+
+        'No hay decisiones que justificar — es la referencia contra la que se miden las demás.'});
+  ev.sort((a,b)=>a.t-b.t);
+  return {events:ev,flag:new Array(day.n).fill(false)};
+}
+function explainFlat(day,thN,poaN,d){
+  const r=polFlat(day,thN,poaN,d);
+  const poaFlat=poaSeries(day,new Array(day.n).fill(0));
+  const ev=[];stowEvents(day,d,ev);
+  let prev=false,lastSw=null;
+  for(let i=0;i<day.n;i++){
+    const f=r.flag[i];
+    if(f!==prev){
+      const umbral=(d.flatEnterRatio*poaN[i]).toFixed(0);
+      ev.push(f
+        ?{t:day.tmin[i],type:'enter',
+          msg:'A PLANO (θ→0°): POA(0)='+poaFlat[i].toFixed(0)+' W/m² > '+d.flatEnterRatio.toFixed(2)+
+              '×POA(θn)='+umbral+' — SIN confirmación: esta política no tiene memoria'}
+        :{t:day.tmin[i],type:'exit',
+          msg:'VUELVE A SEGUIMIENTO: POA(0)='+poaFlat[i].toFixed(0)+' W/m² ya no supera '+umbral});
+      if(lastSw!=null&&day.tmin[i]-lastSw<d.confirmMin)
+        ev.push({t:day.tmin[i],type:'chatter',
+          msg:'⚡ CHATTEO: solo '+(day.tmin[i]-lastSw)+'′ desde la maniobra anterior — con el confirm de '+
+              d.confirmMin+'′ del poa_switch este viaje no habría ocurrido'});
+      lastSw=day.tmin[i];prev=f;
+    }
+  }
+  ev.sort((a,b)=>a.t-b.t);
+  return {events:ev,flag:r.flag};
+}
+function explainLimited(day,thN,poaN,d){
+  const r=polLimited(day,thN,poaN,d);
+  const poaSel=poaSeries(day,r.theta);
+  const ev=[];stowEvents(day,d,ev);
+  let prev=false;
+  for(let i=0;i<day.n;i++){
+    const f=r.flag[i];
+    if(f&&!prev)ev.push({t:day.tmin[i],type:'enter',
+      msg:'RETIENE θ='+(-r.theta[i]).toFixed(0)+'° TCU (no lo mueve): quieto da '+poaSel[i].toFixed(0)+
+          ' W/m² ≥ '+(d.limitedHoldRatio*poaN[i]).toFixed(0)+' del seguimiento — maniobra ahorrada, cero pérdida'});
+    if(!f&&prev)ev.push({t:day.tmin[i],type:'exit',
+      msg:'SUELTA y retoma el seguimiento: quedarse quieto ya costaría POA'});
+    prev=f;
+  }
+  ev.sort((a,b)=>a.t-b.t);
+  return {events:ev,flag:r.flag};
+}
+function explainContinuous(day,thN,poaN,d){
+  const r=polContinuous(day,thN,poaN,d);
+  const poaSel=poaSeries(day,r.theta);
+  const ev=[];stowEvents(day,d,ev);
+  let prevA=null;
+  for(let i=0;i<day.n;i++){
+    if(!(day.ghi[i]>d.ghiMin)){prevA=null;continue;}
+    // α reconstruida de la rejilla del core: θ = (1−α)·θ_n
+    let a=0;
+    if(Math.abs(thN[i])>1e-6)a=1-r.theta[i]/thN[i];
+    let best=d.alphas[0];
+    for(const c of d.alphas)if(Math.abs(c-a)<Math.abs(best-a))best=c;
+    if(prevA===null||Math.abs(best-prevA)>1e-9){
+      const gan=poaN[i]>1?100*(poaSel[i]/poaN[i]-1):0;
+      ev.push({t:day.tmin[i],type:best>0?'enter':'exit',
+        msg:best>0
+          ?('DIFUSA α='+best.toFixed(2).replace('.',',')+': el barrido elige θ='+(-r.theta[i]).toFixed(0)+
+            '° TCU en vez de '+(-thN[i]).toFixed(0)+'° — POA '+poaSel[i].toFixed(0)+' vs '+poaN[i].toFixed(0)+
+            ' W/m² ('+(gan>=0?'+':'')+gan.toFixed(1)+' %)'+(best===1?' · α=1 ES el plano':''))
+          :('SEGUIMIENTO PLENO (α=0): ningún ángulo intermedio mejora la POA en este instante')});
+      prevA=best;
+    }
+  }
+  ev.sort((a,b)=>a.t-b.t);
+  return {events:ev,flag:r.flag};
+}
+const EXPLAIN={pvlib:explainPvlib, diffuse_flat:explainFlat, diffuse_limited:explainLimited,
+               diffuse_continuous:explainContinuous, diffuse_poa_switch:explainPoaSwitch};
+/* cuándo LLEGA el hierro: para cada orden, el minuto en que el ejecutado
+   alcanza la consigna (± deadband). Cierra el círculo entre decidir y llegar. */
+function annotateArrivals(events,theta,execF,dtFine,day,tolDeg){
+  for(const e of events){
+    if(e.type!=='enter'&&e.type!=='exit')continue;
+    const iC=Math.min(theta.length-1,Math.floor(e.t/day.dtMin));
+    const objetivo=theta[iC];
+    const i0=Math.round(e.t/dtFine);
+    if(Math.abs(execF[Math.min(execF.length-1,i0)]-objetivo)<=tolDeg)continue;   // ya estaba
+    for(let i=i0;i<execF.length;i++){
+      if(Math.abs(execF[i]-objetivo)<=tolDeg){
+        const min=i*dtFine-e.t;
+        if(min>0)e.msg+=' · el actuador tarda '+min+'′ a 0,17 °/s: colocado a las '+
+          (h=>((h/60|0)<10?'0':'')+(h/60|0)+':'+String(h%60).padStart(2,'0'))(i*dtFine);
+        break;
+      }
+    }
+  }
+  return events;
+}
+
 /* ── zonal por NCU (opción) ───────────────────────────────────────────────
    La planta se parte en nZ zonas NCU a lo largo del eje y un FRENTE de
    nubosidad la cruza en crossMin minutos: la zona z ve el mismo cielo con
@@ -879,12 +995,8 @@ function explainPoaSwitch(day,thN,poaN,d){
   const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
   const flag=new Array(day.n).fill(false);
   const ev=[];
-  // abanderado diario: salida y entrada del stow (los movimientos que el
-  // SCADA también justifica)
-  let iw=-1,is2=-1;
-  for(let i=0;i<day.n;i++)if(day.ghi[i]>d.ghiMin){if(iw<0)iw=i;is2=i;}
-  if(iw>=0)ev.push({t:day.tmin[iw],type:'wake',
-    msg:'AMANECE (GHI '+day.ghi[iw].toFixed(0)+' > '+d.ghiMin+' W/m²): sale del stow ('+(-day.nightStow).toFixed(0)+'° TCU) y arranca el seguimiento'});
+  // abanderado diario (stow de amanecer y anochecer): compartido con las demás
+  stowEvents(day,d,ev);
   let state=false,ec=0,xc=0,sc=999,blockE=false,blockX=false;
   for(let i=0;i<day.n;i++){
     const t=day.tmin[i];
@@ -931,8 +1043,6 @@ function explainPoaSwitch(day,thN,poaN,d){
     }
     flag[i]=state;sc++;
   }
-  if(is2>=0)ev.push({t:day.tmin[is2],type:'sleep',
-    msg:'ANOCHECE: entra a stow ('+(-day.nightStow).toFixed(0)+'° TCU, 5° al este) hasta el amanecer'});
   ev.sort((a,b)=>a.t-b.t);
   return {events:ev,flag:flag};
 }
@@ -1125,6 +1235,42 @@ function runPhysicsQA(){
     let inter=0;
     for(let i=0;i<dayP.n;i++)if(rc.flag[i]&&Math.abs(rc.theta[i])>1)inter++;
     A(inter>0,'continuous debe poder elegir ángulos INTERMEDIOS con cielo parcialmente difuso');
+  });
+  t('el diario narra LA POLÍTICA ELEGIDA: las 5 tienen su explicador y todos casan bit a bit con su flag',()=>{
+    const S=mk(10);
+    for(const k of ['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
+      A(typeof EXPLAIN[k]==='function','sin explicador para '+k);
+      const e=EXPLAIN[k](S.day,S.thN,S.poaN,DCFG_DEFAULT);
+      const r=POLICIES[k](S.day,S.thN,S.poaN,DCFG_DEFAULT);
+      for(let i=0;i<S.day.n;i++)
+        A(!!e.flag[i]===!!r.flag[i],k+': el diario y la política discrepan en el paso '+i);
+      A(e.events.length>=2,k+' no narra ni el stow');
+      const tipos=e.events.map(v=>v.type);
+      A(tipos.includes('wake')&&tipos.includes('sleep'),k+' sin abanderado de stow');
+    }
+    // y cada una cuenta SU historia, no la del poa_switch
+    const msgFlat=EXPLAIN.diffuse_flat(S.day,S.thN,S.poaN,DCFG_DEFAULT).events.map(v=>v.msg).join(' ');
+    A(/no tiene memoria/i.test(msgFlat),'flat debe declarar que no tiene memoria');
+    const msgLim=EXPLAIN.diffuse_limited(S.day,S.thN,S.poaN,DCFG_DEFAULT).events.map(v=>v.msg).join(' ');
+    A(/RETIENE/.test(msgLim)&&!/PLANO/.test(msgLim),'limited narra RETIENE, nunca PLANO');
+    const msgCon=EXPLAIN.diffuse_continuous(S.day,S.thN,S.poaN,DCFG_DEFAULT).events.map(v=>v.msg).join(' ');
+    A(/α=/.test(msgCon),'continuous debe narrar la fracción α elegida');
+    const msgSw=EXPLAIN.diffuse_poa_switch(S.day,S.thN,S.poaN,DCFG_DEFAULT).events.map(v=>v.msg).join(' ');
+    A(/dwell/i.test(msgSw),'poa_switch debe narrar el dwell');
+  });
+  t('el diario dice cuándo LLEGA el hierro: annotateArrivals añade el minuto de colocación',()=>{
+    const S=mk(10);
+    const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
+    const r=POLICIES.diffuse_poa_switch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
+    const execF=execOnFineGrid(r.theta,S.day.dtMin,1440,1,loop);
+    const e=EXPLAIN.diffuse_poa_switch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
+    annotateArrivals(e.events,r.theta,execF,1,S.day,1);
+    const conLlegada=e.events.filter(v=>/actuador tarda/.test(v.msg));
+    A(conLlegada.length>0,'ninguna orden anota cuándo llega el actuador');
+    for(const v of conLlegada){
+      const min=+(/tarda (\d+)′/.exec(v.msg)||[])[1];
+      A(min>0&&min<=110/0.17/60+1,'tiempo de colocación imposible: '+min+' min');
+    }
   });
   t('diario de decisiones: el espejo anotado reproduce EXACTAMENTE los flags del poa_switch y narra el día',()=>{
     for(const dt of [5,10,15]){
@@ -1344,7 +1490,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.8.1';
+const VER='v1.9.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1656,19 +1802,29 @@ function recompute(){
 /* ── el diario en pantalla: planta entera o cada NCU con el suyo ── */
 const EV_STYLE={wake:['🌅','#5c7189'],sleep:['🌙','#5c7189'],night:['🌙','#5c7189'],
                 enter:['▼','#a78bfa'],exit:['▲','#5aa9ff'],
-                pulse:['✋','#fbbd23'],dwell:['⛔','#fbbd23']};
+                pulse:['✋','#fbbd23'],dwell:['⛔','#fbbd23'],
+                chatter:['⚡','#f87272'],info:['ℹ','#5c7189']};
 function drawDiario(d){
   const zc=zonalCfg();
+  const pv=$('polview').value||'diffuse_poa_switch';   // narra LA POLÍTICA ELEGIDA
+  const expl=EXPLAIN[pv]||explainPoaSwitch;
+  const tol=SIM.loop?Math.max(1,+$('deadband').value):0.01;
+  $('diariopol').textContent=POL_META[pv]?POL_META[pv].nm:pv;
   let rows=[];
   if(zc.on&&ZR){
     ZR.zones.forEach((Z,z)=>{
       const poaNz=poaSeries(Z.day,SIM.thN);
-      for(const e of explainPoaSwitch(Z.day,SIM.thN,poaNz,d).events)
-        rows.push(Object.assign({tag:'NCU '+(z+1)},e));
+      const e=expl(Z.day,SIM.thN,poaNz,d);
+      const th=POLICIES[pv](Z.day,SIM.thN,poaNz,d).theta;
+      if(Z.execF)annotateArrivals(e.events,th,Z.execF,DT_FINE,Z.day,tol);
+      for(const ev of e.events)rows.push(Object.assign({tag:'NCU '+(z+1)},ev));
     });
   }else{
-    for(const e of explainPoaSwitch(SIM.day,SIM.thN,SIM.poaN,d).events)
-      rows.push(Object.assign({tag:'planta'},e));
+    const e=expl(SIM.day,SIM.thN,SIM.poaN,d);
+    const r=SIM.res[pv];
+    if(r)annotateArrivals(e.events,POLICIES[pv](SIM.day,SIM.thN,SIM.poaN,d).theta,
+                          r.execF,DT_FINE,SIM.day,tol);
+    for(const ev of e.events)rows.push(Object.assign({tag:'planta'},ev));
   }
   rows.sort((a,b)=>a.t-b.t||(a.tag<b.tag?-1:1));
   // los stow de todas las NCUs son el mismo: uno solo por instante
@@ -2823,7 +2979,7 @@ function tick(ts){
   requestAnimationFrame(tick);
 }
 $('hour').addEventListener('input',()=>refreshScene(false));
-$('polview').onchange=()=>{drawTheta();computeZonal(cfgDiffuse());refreshScene(false);};
+$('polview').onchange=()=>{const d=cfgDiffuse();drawTheta();computeZonal(d);drawZonalTab();drawDiario(d);refreshScene(false);};
 
 /* ── estimación anual: 12 días × mezcla de cielos ── */
 const CLIMATES={seco:[55,30,15],atlantico:[30,35,35],centroeuropa:[22,38,40]};
