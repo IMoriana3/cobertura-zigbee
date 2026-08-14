@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.68</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.69</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2890,21 +2890,36 @@ function buildBOS(){
        cota que la valla —de +0,15 a +FENCE_H sobre su base— y las dos hojas cubren el vano menos
        una holgura de 4 cm en total. La base es la del quicio MAS BAJO: la hoja es rigida y plana,
        asi que en cuesta se apoya en el lado bajo y nunca flota sobre el alto. */
-    var y5=Math.min(terrainMeshY(S5[0],S5[1]),terrainMeshY(E5[0],E5[1])),H5=FENCE_H;
-    [S5,E5].forEach(function(pq){                                                   // quicios: más gruesos y altos que los postes del paño, con remate esférico
-      var pc=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.08,H5+0.65,10),postM);pc.position.set(pq[0],y5+(H5+0.65)/2-0.35,-pq[1]);bosGroup.add(pc);
-      var cap=new THREE.Mesh(new THREE.SphereGeometry(0.09,10,8),postM);cap.position.set(pq[0],y5+H5+0.3,-pq[1]);bosGroup.add(cap);});   // quicio: 30 cm por encima del pano, como en las fotos
+    /* ...Y EN CUESTA TAMBIEN. La base era la del quicio MAS BAJO, con lo que en un vano inclinado la
+       hoja se hundia en el lado alto ("la puerta oeste la engulle la tierra") y en el este quedaba el
+       hueco al reves. Llamarlo "apoyarse en el lado bajo" fue una excusa mia: una puerta real se
+       FABRICA AL TALUD del vano, con el marco en paralelogramo y los largueros cortados a la
+       pendiente. Ahora cada hoja cuelga de SU quicio, a la cota de SU terreno, y sus largueros
+       siguen la pendiente del vano: las dos se encuentran en el centro a la misma altura. */
+    var yA5=terrainMeshY(S5[0],S5[1]),yB5=terrainMeshY(E5[0],E5[1]),H5=FENCE_H;
+    var pend5=(yB5-yA5)/g5.w;                                                       // pendiente del vano (m/m), de A hacia B
+    [[S5,yA5],[E5,yB5]].forEach(function(pr5){var pq=pr5[0],yq=pr5[1];               // quicios: más gruesos y altos que los del paño, con remate esférico. CADA UNO a la cota de SU terreno
+      var pc=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.08,H5+0.65,10),postM);pc.position.set(pq[0],yq+(H5+0.65)/2-0.35,-pq[1]);bosGroup.add(pc);
+      var cap=new THREE.Mesh(new THREE.SphereGeometry(0.09,10,8),postM);cap.position.set(pq[0],yq+H5+0.3,-pq[1]);bosGroup.add(cap);});   // quicio: 30 cm por encima del pano, como en las fotos
     for(var h5=0;h5<2;h5++){                                                        // hoja: grupo local con +X del quicio hacia el centro
-      var lg=new THREE.Group();var hg=h5?E5:S5;lg.position.set(hg[0],y5,-hg[1]);lg.rotation.y=g5.rot+(h5?Math.PI:0);
-      var x0=0.05,x1=g5.w/2-0.02,ymid=(0.15+H5)/2;   // holgura total 4 cm en el vano (2 cm por hoja); antes 38 cm
+      var lg=new THREE.Group();var hg=h5?E5:S5;lg.position.set(hg[0],h5?yB5:yA5,-hg[1]);lg.rotation.y=g5.rot+(h5?Math.PI:0);
+      var sl5=h5?-pend5:pend5;                                                      // la hoja B va girada 180°: su +X local apunta hacia A, y la pendiente cambia de signo
+      var x0=0.05,x1=g5.w/2-0.02,d5=sl5*(x1-x0);   // holgura total 4 cm en el vano (2 cm por hoja); antes 38 cm. d5 = lo que sube el larguero del quicio al centro
       var tube=function(ax5,ay5,bx5,by5){var l5=Math.hypot(bx5-ax5,by5-ay5),c5=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.028,l5,8),postM);
         c5.position.set((ax5+bx5)/2,(ay5+by5)/2,0);c5.rotation.z=Math.atan2(by5-ay5,bx5-ax5)-Math.PI/2;lg.add(c5);};
-      tube(x0,0.15,x1,0.15);tube(x0,H5,x1,H5);tube(x0,0.15,x0,H5);tube(x1,0.15,x1,H5);   // marco a la MISMA cota que el pano (0,15 a FENCE_H)
-      tube(x0,H5,x1,0.15);                                                          // tirante quicio-arriba → centro-abajo: V entre las dos hojas, como el símbolo CAD
-      var pw=x1-x0,ph=H5-0.15,pg=new THREE.PlaneGeometry(pw,ph),uv5=pg.attributes.uv;   // el pano de malla llena el marco entero: antes dejaba 5 cm por arriba y por abajo
-      for(var k5=0;k5<uv5.count;k5++){uv5.setXY(k5,uv5.getX(k5)*pw/1.2,uv5.getY(k5)*ph/1.2);}   // tile (8 celdas) cada 1,2 m ⇒ celda real de 15 cm, como el paño
+      tube(x0,0.15,x1,0.15+d5);tube(x0,H5,x1,H5+d5);tube(x0,0.15,x0,H5);tube(x1,0.15+d5,x1,H5+d5);   // marco en PARALELOGRAMO: largueros a la pendiente del vano, montantes verticales
+      tube(x0,H5,x1,0.15+d5);                                                          // tirante quicio-arriba → centro-abajo: V entre las dos hojas, como el símbolo CAD
+      /* la malla va como PARALELOGRAMO, no como plano rectangular: si el marco sigue la pendiente y
+         la malla no, queda un triángulo abierto en cada hoja. Llena el marco entero (antes dejaba
+         5 cm por arriba y por abajo). */
+      var pw=x1-x0,ph=H5-0.15,pg=new THREE.BufferGeometry();
+      pg.setAttribute('position',new THREE.Float32BufferAttribute([
+        x0,0.15,0,  x1,0.15+d5,0,  x1,H5+d5,0,   x0,0.15,0,  x1,H5+d5,0,  x0,H5,0],3));
+      pg.setAttribute('uv',new THREE.Float32BufferAttribute([
+        0,0,  pw/1.2,0,  pw/1.2,ph/1.2,  0,0,  pw/1.2,ph/1.2,  0,ph/1.2],2));   // tile (8 celdas) cada 1,2 m ⇒ celda real de 15 cm, como el paño
+      pg.computeVertexNormals();
       var pm5=new THREE.Mesh(pg,meshM);pm5.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});
-      pm5.position.set((x0+x1)/2,ymid,0);lg.add(pm5);
+      lg.add(pm5);
       bosGroup.add(lg);}
   });
   if(sv.length){var mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));mg.setAttribute('uv',new THREE.Float32BufferAttribute(su,2));mg.computeVertexNormals();var fm=new THREE.Mesh(mg,meshM);fm.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:ftex,alphaTest:0.5});bosGroup.add(fm);}   // sombra de MALLA (no rígida): el depth respeta el alpha de la rejilla
