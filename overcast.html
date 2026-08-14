@@ -1088,7 +1088,7 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,wc){
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
@@ -1111,6 +1111,13 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   }
   const thN=thetaBaselineDay(days[0]);            // geometría idéntica en todas las zonas
   const thNF=thetaBaselineDay(daysF[0]);
+  const thT=thetaTrueDay(days[0]);
+  // el VIENTO es de planta, no de NCU: un anemómetro, un nivel de stow para
+  // todas. Y tiene que pasar por el MISMO árbitro que la vista global — si el
+  // zonal se saltara el stow, la escena por NCU seguiría girando mientras la
+  // vista de planta está en refugio: dos físicas en la misma pantalla.
+  const wlev=wc?windStowLevel(days[0].wind,days[0].dtMin,wc)
+              :new Array(days[0].n).fill(0);
   // el «sensor de planta»: un día con la irradiancia MEDIA de las zonas
   const mean=Object.assign({},days[0]);
   mean.irr=days[0].irr.map((_,i)=>{
@@ -1120,13 +1127,18 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   });
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
-  const rG=POLICIES[polName](mean,thN,poaNmean,d);
+  const rG0=POLICIES[polName](mean,thN,poaNmean,d);
+  const rG={theta:arbitrate(rG0.theta,thN,wlev,days[0].maxAngle,wc,thT).theta,
+            flag:rG0.flag.map((v,i)=>v&&wlev[i]===0),
+            flagGlobal:rG0.flagGlobal?rG0.flagGlobal.map((v,i)=>v&&wlev[i]===0):null};
   const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop);
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
     const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
-    const rZ=POLICIES[polName](day,thN,poaNz,d);
+    const rZ0=POLICIES[polName](day,thN,poaNz,d);
+    const rZ={theta:arbitrate(rZ0.theta,thN,wlev,day.maxAngle,wc,thT).theta,
+              flag:rZ0.flag.map((v,i)=>v&&wlev[i]===0)};
     // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
     const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop);
     const poaZ=poaSeries(dayF,execZ);
@@ -1136,7 +1148,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
     // día): la escena la enseña en ámbar cuando está viva pero la histéresis
     // del poa_switch la retiene — «lo veo, pero el confirm/dwell mandan»
     const poaF=poaSeries(day,new Array(day.n).fill(0));
-    const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]);
+    const signal=poaF.map((v,i)=>(day.ghi[i]>d.ghiMin)&&v>d.swEnterRatio*poaNz[i]&&wlev[i]===0);
     for(let i=0;i<dayF.n;i++){
       whZ+=poaZ[i]*F.dt/60; whG+=poaG[i]*F.dt/60; whN+=poaNf[i]*F.dt/60;
     }
@@ -1148,7 +1160,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
       signalF:execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v)});
   }
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
-          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN,wlev:wlev};
 }
 
 /* ── diario de decisiones: la máquina del poa_switch EXPLICADA ─────────────
@@ -1861,6 +1873,27 @@ function runPhysicsQA(){
     const a0=arbitrate(thN.slice(),thN,L0,day.maxAngle,WIND);
     for(let i=0;i<day.n;i++)A(a0.quien[i]!==MANDO.bt,'rotula backtracking sin referencia en '+i);
   });
+  t('EL ZONAL OBEDECE AL MISMO ÁRBITRO: ninguna NCU puede seguir girando mientras la planta está en stow',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null,
+             ws:new Array(288).fill(20)};                  // 72 km/h > T2 todo el día
+    const r=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,WIND);
+    A(r.wlev.every(v=>v===2),'el nivel de stow de planta no llegó al zonal');
+    r.zones.forEach((Z,z)=>{
+      for(let i=0;i<Z.theta.length;i++){
+        A(Math.abs(Z.theta[i]-WIND.STOW_DEG)<1e-9,'NCU '+(z+1)+' fuera del stow en '+i+' → '+Z.theta[i]);
+        A(!Z.flag[i],'NCU '+(z+1)+' marca difusa activa bajo stow en '+i);
+        A(!Z.signal[i],'NCU '+(z+1)+' enseña señal viva bajo stow en '+i);
+      }
+    });
+    // en stow permanente todas las NCUs están donde mismo: zonal ≡ global
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,'zonal y global difieren con la planta entera en refugio');
+    // y sin config de viento el zonal es exactamente el de siempre (compat)
+    const r0=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT);
+    A(r0.wlev.every(v=>v===0),'sin config de viento el zonal se inventa un stow');
+  });
   t('el diario NARRA el viento: un evento por cada cambio de nivel, con la racha y el umbral',()=>{
     const day=canonScenario(10);
     const wl=new Array(day.n).fill(0);
@@ -1902,7 +1935,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.11.0';
+const VER='v1.11.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2293,7 +2326,10 @@ function drawDiario(d){
     ZR.zones.forEach((Z,z)=>{
       const poaNz=poaSeries(Z.day,SIM.thN);
       const e=expl(Z.day,SIM.thN,poaNz,d);
-      const th=POLICIES[pv](Z.day,SIM.thN,poaNz,d).theta;
+      // la consigna que se anota tiene que ser la ARBITRADA, la misma que
+      // ejecuta Z.execF: si no, el diario diría que una orden nunca llegó
+      const th=arbitrate(POLICIES[pv](Z.day,SIM.thN,poaNz,d).theta,SIM.thN,
+                         ZR.wlev||SIM.wlev,Z.day.maxAngle,cfgWind()).theta;
       if(Z.execF)annotateArrivals(e.events,th,Z.execF,DT_FINE,Z.day,tol);
       for(const ev of e.events)rows.push(Object.assign({tag:'NCU '+(z+1)},ev));
     });
@@ -2352,7 +2388,7 @@ function computeZonal(d){
   if(!zc.on)return;
   const pv=$('polview').value;
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
-              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null);
+              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,cfgWind());
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
@@ -2411,7 +2447,7 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
-    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null);
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null,null,cfgWind());
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
