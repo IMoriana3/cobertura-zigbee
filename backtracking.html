@@ -257,6 +257,7 @@
       <select id="light3d" class="btn small" title="Iluminación de la escena: LUZ REAL (intensidad y color según la altura del sol — amanecer y ocaso rojizos, como en los 3D de la casa) o LUZ A TOPE (plana y brillante para inspeccionar sombras a cualquier hora)"><option value="real">☀ luz real</option><option value="tope">🔦 a tope</option></select>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
       <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
+      <button class="btn small" id="sunpov" title="Cámara desde el SOL: lo que no ves desde aquí es EXACTAMENTE lo que está en sombra — la prueba visual del contador">👁 sol</button>
     </div>
     <div class="hud" id="hud"></div>
   </div>
@@ -1181,6 +1182,30 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     return zch[row]+v*Math.tan(((T.rowTilt?T.rowTilt[row]:0))*RAD);
   };
   const segsOf=row=>(T.segs&&T.segs[row])?T.segs[row]:[[-30,30]];
+  // SUELO en el marco físico: cota del eje interpolada entre filas menos la
+  // altura de buje (~2 m) — para la oclusión de TERRENO (lomas que sombrean
+  // módulos con sol bajo: se veía en el render y el contador no lo contaba)
+  const HUB=2.0;
+  const gzOf=(x,v)=>{
+    if(x<=xs[0])return cot(0,v)-HUB;
+    if(x>=xs[nR-1])return cot(nR-1,v)-HUB;
+    let i=0; while(i<nR-2&&xs[i+1]<x)i++;
+    const f2=(x-xs[i])/((xs[i+1]-xs[i])||1);
+    return (cot(i,v)*(1-f2)+cot(i+1,v)*f2)-HUB;
+  };
+  const doTerr=(90-zen)<25;                    // lomas: relevantes con sol bajo (declarado)
+  const terrBlocked=(P0,P1,P2)=>{
+    // ¿el rayo hacia el sol se clava en el terreno antes de salir del parque?
+    const stepH=4, horizC=Math.hypot(sv[0],sv[1]);
+    if(horizC<1e-6)return false;
+    const dt=stepH/horizC, tMax=Math.min(650/horizC,(xs[nR-1]-xs[0]+40)/Math.max(1e-6,Math.abs(sv[0])));
+    for(let t=dt;t<tMax;t+=dt){
+      const z=P2+t*sv[2];
+      if(z>zSky)return false;                  // ya vuela por encima de todo
+      if(z<gzOf(P0+t*sv[0],P1+t*sv[1]))return true;
+    }
+    return false;
+  };
   const planes=[];
   for(let e=0;e<nR;e++){
     const thE=rowAngles[e]*RAD;
@@ -1193,6 +1218,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       planes.push({e:e,x:xs[e],w0:w0,w1:w1,C:[xs[e],(w0+w1)/2,(z0e+z1e)/2],nE:nE,uD:uD});
     }
   }
+  const zSky=(planes.length?Math.max(...planes.map(p=>p.C[2])):0)+4;
   // alcance de la sombra: altura útil ~9 m (cuerda + desniveles) / tan(elev)
   const horiz=Math.hypot(sv[0],sv[1]);
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
@@ -1228,6 +1254,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       // la penetración de cuerda de CADA estación y se promedia eléctricamente
       // (aplicarlo al promedio de fila trataba un parche local como banda
       // uniforme en toda la mesa y multiplicaba la pérdida indebidamente)
+      const dvSt=(v1-v0)/MV;
       for(let j=0;j<MV;j++){
         const v=v0+(v1-v0)*(j+0.5)/MV;
         let colHit=0;
@@ -1245,8 +1272,33 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
             if(Math.abs(du)<=hw){colHit++;break;}
           }
         }
-        hit+=colHit;
-        elecSum+=elecLoss(colHit/MU,T.nBypass); nCol++;
+        let fCol=colHit/MU;
+        // TERRENO: penetración desde el borde BAJO por bisección (2 marchas +
+        // 3 refinos) — el borde alto libre ⇒ estación libre por arriba
+        if(doTerr&&fCol<1){
+          const uLo=Math.sin(thR)>=0?hw:-hw, uHi=-uLo;      // borde bajo: z mínima
+          const pt=(u2)=>[xs[r]+u2*Math.cos(thR),v,cot(r,v)-u2*Math.sin(thR)];
+          const pLo=pt(uLo);
+          if(terrBlocked(pLo[0],pLo[1],pLo[2])){
+            const pHi=pt(uHi);
+            let tf=1;
+            if(!terrBlocked(pHi[0],pHi[1],pHi[2])){
+              let a2=0,b2=1;                                 // fracción desde el borde bajo
+              for(let it=0;it<3;it++){
+                const m2=(a2+b2)/2, um=uLo+(uHi-uLo)*m2, pm=pt(um);
+                if(terrBlocked(pm[0],pm[1],pm[2]))a2=m2; else b2=m2;
+              }
+              tf=(a2+b2)/2;
+            }
+            if(tf>fCol+0.01){
+              if(!out.st)out.st=[];
+              (out.st[r]=out.st[r]||[]).push({v0:v-dvSt/2,v1:v+dvSt/2,f:tf});
+            }
+            fCol=Math.max(fCol,tf);
+          }
+        }
+        hit+=fCol*MU;
+        elecSum+=elecLoss(fCol,T.nBypass); nCol++;
       }
     }
     out[r]=N?hit/N:0;
@@ -1887,7 +1939,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.19.0';
+const VER='v1.20.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2643,7 +2695,8 @@ function build3D(){
   const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
   const barM=new THREE.MeshLambertMaterial({color:0x8a6d2f});
   const cardM=new THREE.MeshLambertMaterial({color:0xeaf4ff});
-  const bielM=new THREE.MeshStandardMaterial({color:0x9aa3ac,roughness:0.45,metalness:0.65});  // acero del modelo
+  // GRIS acero visible: metalness alta sin mapa de entorno renderiza NEGRO
+  const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
   const linkBar=(pA,pB)=>{
     if(pA.distanceTo(pB)>9)return;   // una biela no cruza huecos: solo entre vigas enfrentadas
     // eje de transmisión como en el render: barra de acero a la altura del
@@ -2838,6 +2891,9 @@ function update3D(){
     if(row.ovls){
       for(const ov of row.ovls)if(ov.g)ov.g.clear();
       if(sFrac>1e-3&&g.elev>0)drawShadowSilhouette(g,p,tIdx,r,row);
+      // sombra de TERRENO (lomas): franjas rojas por estación, del contador
+      const stT=sh&&sh.st&&sh.st[r];
+      if(stT&&g.elev>0)drawTerrainStrips(row,stT,(p.ang[tIdx][r]||0));
     }
     // etiqueta: θ · sombra · POA de la fila
     if(row.lbl){
@@ -3018,6 +3074,34 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   }
   }
 }
+/* franjas de sombra de TERRENO sobre la pala: vienen del PROPIO contador
+   (penetración por estación desde el borde bajo) — el render no puede
+   contradecir al número porque ES el número */
+function drawTerrainStrips(row,st,thDeg){
+  const T=DAY.T, hw=T.cw/2, thR=thDeg*RAD;
+  const uEdge=Math.sin(thR)>=0?hw:-hw;
+  for(const ov of row.ovls){
+    if(!ov.g)continue;
+    const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;
+    for(const s2 of st){
+      const a2=Math.max(vA,s2.v0), b2=Math.min(vB,s2.v1);
+      if(b2<=a2+0.01)continue;
+      const u0=uEdge-(uEdge>0?1:-1)*Math.max(0.03,s2.f)*T.cw;
+      const poly=[[u0,a2],[uEdge,a2],[uEdge,b2],[u0,b2]];
+      const zS=(ov.ax==='model')?(2.382/T.cw):1;
+      const verts=[];
+      for(let i2=1;i2<poly.length-1;i2++)
+        for(const q of [poly[0],poly[i2],poly[i2+1]]){
+          if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);
+          else verts.push(q[0],0,q[1]-ov.yc);
+        }
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+      const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
+      ov.g.add(m);
+    }
+  }
+}
 function drawCriticalRay(g,p,tIdx){
   if(!TD)return;
   if(TD.rayGrp){TD.scene.remove(TD.rayGrp);disposeGroup(TD.rayGrp);TD.rayGrp=null;}
@@ -3038,7 +3122,8 @@ function drawCriticalRay(g,p,tIdx){
   // target de la cámara): dibujado en otra banda parecía atravesar los módulos
   let yc=-TD.rows[r].lbl.position.z;
   {
-    const nT=-TD.controls.target.z;
+    // preferencia: la banda de la mesa CLICADA; si no, la del target de cámara
+    const nT=TD.rayYc!=null?TD.rayYc:-TD.controls.target.z;
     const L2=T.segs&&T.segs[r];
     if(L2&&L2.length){
       let bd=Infinity;
@@ -3059,19 +3144,15 @@ function drawCriticalRay(g,p,tIdx){
     let i=0; while(i<X.length-2&&X[i+1]<x)i++;
     const f=Math.max(0,Math.min(1,(x-X[i])/((X[i+1]-X[i])||1)));
     return ELEV[i]*(1-f)+ELEV[i+1]*f;};
-  const shaded=(sh[r]||0)>1e-3;
-  let hitW,col;
-  if(shaded&&CR.hit){                          // sombra REAL: marcador sobre la pala, del motor
-    hitW=toWorld(r,CR.hit); col=0xe34948;
-  }else{
-    let t=(gY(edgeW.x)-edgeW.y)/(d.y||-1e-9);
-    for(let k=0;k<3;k++){const H=edgeW.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
-    hitW=edgeW.clone().add(d.clone().multiplyScalar(Math.max(0.01,t)));
-    col=(CR.fs>1e-6)?0xfbbd23:0x36d399;        // ámbar: el corte 2D cortaría; el solape axial la libra
-  }
-  // el rayo NO atraviesa módulos: se recorta al PRIMER impacto con cualquier
-  // mesa del parque (el rayo de la pareja era ciego al resto de filas —
-  // reportado con captura: cruzaba una mesa y seguía tan campante)
+  // el rayo es RECTO por construcción: borde emisor + dirección REAL del sol.
+  // Antes el tramo saliente iba al impacto del MARCO DE PAREJA (dibujado en el
+  // plano del corte): con eje girado se veía un CODO en el borde — reportado.
+  // Destino = PRIMER impacto con cualquier mesa del parque (rojo) o el suelo
+  // (verde; ámbar si el corte 2D cortaría y el solape axial la libra).
+  let t0=(gY(edgeW.x)-edgeW.y)/(d.y||-1e-9);
+  for(let k=0;k<3;k++){const H=edgeW.clone().add(d.clone().multiplyScalar(t0));t0+=((gY(H.x)-H.y)/(d.y||-1e-9));}
+  let hitW=edgeW.clone().add(d.clone().multiplyScalar(Math.max(0.01,t0)));
+  let col=(CR.fs>1e-6)?0xfbbd23:0x36d399;
   const firstHit=(P0,P1,skipRow,skipNear)=>{
     const dir=P1.clone().sub(P0), L=dir.length();
     if(L<1e-6)return null;
@@ -3108,6 +3189,7 @@ function drawCriticalRay(g,p,tIdx){
   let A2=edgeW.clone().sub(d.clone().multiplyScalar(26));
   const blockIn=firstHit(A2,edgeW,emRow,edgeW);
   if(blockIn)A2=blockIn;                       // el tramo que viene del sol tampoco atraviesa
+  TD.lastRay={A2:A2,edge:edgeW,hit:hitW};
   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([A2,edgeW,hitW]),
     new THREE.LineBasicMaterial({color:0xfbbd23,transparent:true,opacity:0.95}));
   line.renderOrder=7; grp.add(line);
@@ -3637,7 +3719,9 @@ function pick3D(px,py){
     while(o&&o.userData.row==null)o=o.parent;
     if(o&&o.userData.row!=null){
       const r=o.userData.row;
-      $('rowsel').value=r;$('rowsel').onchange();update3D();
+      $('rowsel').value=r;$('rowsel').onchange();
+      TD.rayYc=-h.point.z;                       // el rayo corta por DONDE pinchas
+      update3D();
       showGlobo(rowInfoHTML(r),px-rect.left,py-rect.top);
       return;
     }
@@ -3667,6 +3751,19 @@ $('polview').onchange=()=>{drawScene();update3D();paintHourTrack();};
 $('lbl3d').onchange=()=>update3D();
 $('light3d').onchange=()=>update3D();
 $('ray3d').onchange=()=>update3D();     // sin esto, desmarcar «☀ rayo» no borraba
+// cámara desde el SOL: lo oculto desde aquí ES la sombra — prueba visual
+$('sunpov').onclick=()=>{
+  if(!TD||!DAY)return;
+  const inst=sceneInstant(), tIdx=timeIndex();
+  const g=inst?inst.g:DAY.sun[tIdx];
+  if(!(g.elev>0))return;
+  const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const dir=new THREE.Vector3(Math.sin(azR)*Math.cos(el),Math.sin(el),-Math.cos(azR)*Math.cos(el));
+  const t=TD.controls.target;
+  const dist=Math.max(60,TD.camera.position.distanceTo(t));
+  TD.camera.position.copy(t.clone().add(dir.multiplyScalar(dist)));
+  TD.controls.update();update3D();
+};
 let PLAYPOS=0, PLAYTS=0;
 $('play').onclick=()=>{
   playing=!playing;

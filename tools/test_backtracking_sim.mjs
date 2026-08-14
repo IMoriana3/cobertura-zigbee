@@ -160,10 +160,17 @@ t('v1.19: contador ray-cast a TODAS horas + Martinez por estación + θ<0=este +
   // el contador publicado es el ray-cast multi-emisora a cualquier cénit
   if (!/return shadeBand3DAll\(zen,az,T,rowAngles\);\s*\}/.test(html)) throw new Error('shadeRows no es el ray-cast');
   if (!/function shadeRows25/.test(html)) throw new Error('sin evaluador rápido para optimizadores');
-  if (!/elecSum\+=elecLoss\(colHit\/MU/.test(html)) throw new Error('Martinez no va por estación axial');
+  if (!/elecSum\+=elecLoss\(fCol/.test(html)) throw new Error('Martinez no va por estación axial');
   if (!/const TH_DISP=-1/.test(html)) throw new Error('sin convención de presentación θ<0=este');
   if (!/firstHit\(edgeW,hitW/.test(html)) throw new Error('el rayo no se recorta contra las mesas');
   if (!/d\.irr\[t\]\.dni>25/.test(html)) throw new Error('sombra máx sin filtro de sol útil');
+});
+t('v1.20: terreno que sombrea CONTADO y pintado + rayo recto anclado al clic + POV sol', () => {
+  if (!/terrBlocked/.test(html)) throw new Error('sin oclusión de terreno en el contador');
+  if (!/function drawTerrainStrips/.test(html)) throw new Error('la sombra de terreno no se pinta');
+  if (!/TD\.rayYc=-h\.point\.z/.test(html)) throw new Error('el rayo no se ancla a la mesa clicada');
+  if (!/id="sunpov"/.test(html)) throw new Error('sin cámara desde el sol');
+  if (!/borde emisor \+ dirección REAL del sol/.test(html)) throw new Error('rayo no recto por construcción');
 });
 t('bifila: la gemela copia los tramos de la motora (eje de transmisión perpendicular)', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila
