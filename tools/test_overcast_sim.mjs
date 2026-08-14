@@ -52,8 +52,9 @@ t('lazo de control canónico: deadband 1.0° · slew 0.17°/s', () => {
   if (!/id="deadband"[^>]*value="1\.0"/.test(html)) throw new Error('deadband ≠ 1.0');
   if (!/id="slew"[^>]*value="0\.17"/.test(html)) throw new Error('slew ≠ 0.17');
 });
-t('stow nocturno del proyecto: 5° al este (+5 en convención core; −5 en la TCU de campo)', () => {
-  if (!/id="stow"[^>]*value="5"/.test(html)) throw new Error('stow default ≠ 5');
+t('stow nocturno del proyecto en convención TCU: −5° (5° al este; la UI entera va con − = este)', () => {
+  if (!/id="stow"[^>]*value="-5"/.test(html)) throw new Error('stow default ≠ −5');
+  if (!/function tcuDeg\(/.test(html)) throw new Error('sin conversor de convención tcuDeg');
 });
 t('las 5 políticas del core con sus nombres exactos en el panel', () => {
   for (const nm of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
