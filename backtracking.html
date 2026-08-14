@@ -436,6 +436,51 @@ function shadeFracPair(pszDeg,thLeft,thRight,pitch,cw,slopeDeg,z0){
   return Math.max(0,Math.min(1,ov/w));
 }
 
+/* rayo crítico de la pareja EN EL MARCO de shadeFracPair: la geometría que se
+   dibuja es LA MISMA que decide la sombra — no pueden contradecirse (hay un
+   test de 200 casos que lo exige). Devuelve el borde emisor crítico, el punto
+   de impacto sobre la recta de la pala receptora (μ desde su centro) y fs. */
+function criticalRayPair(pszDeg,thLeft,thRight,pitch,cw,slopeDeg,z0){
+  if(!isFinite(pszDeg)||Math.abs(pszDeg)>=89.9)return null;
+  const hw=cw/2, ps=pszDeg*RAD, zR=-pitch*Math.tan(slopeDeg*RAD);
+  const seg=(cx,cz,thDeg)=>{
+    const th=thDeg*RAD;
+    const dx=Math.cos(th), dz=-Math.sin(th);
+    const nx=Math.sin(th), nz=Math.cos(th);
+    const px=cx+z0*nx, pz=cz+z0*nz;
+    return [[px-hw*dx,pz-hw*dz],[px+hw*dx,pz+hw*dz]];
+  };
+  const up  = pszDeg>=0? seg(pitch,zR,thRight) : seg(0,0,thLeft);
+  const dn  = pszDeg>=0? seg(0,0,thLeft)       : seg(pitch,zR,thRight);
+  const u=(P)=>P[0]*Math.cos(ps)-P[1]*Math.sin(ps);
+  const uE=[u(up[0]),u(up[1])], vRc=[u(dn[0]),u(dn[1])];
+  const u1=Math.min(uE[0],uE[1]), u2=Math.max(uE[0],uE[1]);
+  const v1=Math.min(vRc[0],vRc[1]), v2=Math.max(vRc[0],vRc[1]);
+  const fs=shadeFracPair(pszDeg,thLeft,thRight,pitch,cw,slopeDeg,z0);
+  // borde crítico: el extremo de la banda emisora que corta (o roza) la receptora
+  const edgeMin=(uE[0]<=uE[1])?up[0]:up[1], edgeMax=(uE[0]<=uE[1])?up[1]:up[0];
+  let edge;
+  if(u1>=v1-1e-12&&u1<=v2+1e-12)edge=edgeMin;
+  else if(u2>=v1-1e-12&&u2<=v2+1e-12)edge=edgeMax;
+  else{
+    const dA=Math.min(Math.abs(u1-v1),Math.abs(u1-v2)), dB=Math.min(Math.abs(u2-v1),Math.abs(u2-v2));
+    edge=dA<=dB?edgeMin:edgeMax;
+  }
+  // impacto sobre la RECTA de la cuerda receptora: edge − λ·s = C + μ·d̂
+  const sv=[Math.sin(ps),Math.cos(ps)];
+  const C=[(dn[0][0]+dn[1][0])/2,(dn[0][1]+dn[1][1])/2];
+  const dch=[(dn[1][0]-dn[0][0])/cw,(dn[1][1]-dn[0][1])/cw];
+  const ex=edge[0]-C[0], ez=edge[1]-C[1];
+  const det=sv[0]*dch[1]-sv[1]*dch[0];
+  let hit=null, mu=null;
+  if(Math.abs(det)>1e-12){
+    mu=(sv[0]*ez-sv[1]*ex)/det;
+    hit=[C[0]+mu*dch[0],C[1]+mu*dch[1]];
+  }
+  return {fs:fs,edge:edge,hit:hit,mu:mu,u:u,v1:v1,v2:v2,
+          upIsRight:pszDeg>=0,zR:zR,pitch:pitch};
+}
+
 /* Martinez escalonado: un módulo con n diodos pierde 1/n en cuanto una célula
    de esa subcadena se sombrea. Umbral anti-polvo flotante como el core. */
 function elecLoss(f,nBypass){
@@ -1378,6 +1423,25 @@ function runPhysicsQA(){
       assert(op>=pw-1e-9,'optimal '+op.toFixed(2)+' < pairwise '+pw.toFixed(2)+' (zen '+zen+')');
     }
   });
+  t('rayo crítico ≡ shadeFracPair: la frontera dibujada reproduce fs (200 casos aleatorios)',()=>{
+    const rnd=mulberry32(7);
+    for(let i=0;i<200;i++){
+      const psz=rnd()*160-80, thL=rnd()*110-55, thR=rnd()*110-55,
+            pitch=4+rnd()*4, cw=2.382, slope=rnd()*20-10, z0=rnd()*0.2;
+      const fs=shadeFracPair(psz,thL,thR,pitch,cw,slope,z0);
+      const CR=criticalRayPair(psz,thL,thR,pitch,cw,slope,z0);
+      if(!CR)continue;
+      assert(Math.abs(CR.fs-fs)<1e-12,'fs distinto del canónico');
+      if(fs>1e-6&&fs<1-1e-6){
+        assert(CR.hit!==null,'sombra parcial sin impacto');
+        assert(Math.abs(CR.mu)<=cw/2+1e-6,'impacto fuera de la pala: mu='+CR.mu);
+        const w=CR.v2-CR.v1, uH=CR.u(CR.hit);
+        const c1=(CR.v2-uH)/w, c2=(uH-CR.v1)/w;
+        assert(Math.min(Math.abs(c1-fs),Math.abs(c2-fs))<1e-6,
+          'la frontera no reproduce fs: '+c1.toFixed(4)+'/'+c2.toFixed(4)+' vs '+fs.toFixed(4));
+      }
+    }
+  });
   t('true-3D continuo en el TRÁNSITO: sin bandazos de signo ni sombra masiva a mediodía',()=>{
     // el bug del signo global (la última pareja pisaba a todas) ponía filas a
     // −θ con la vecina a +θ justo en el tránsito ⇒ 98% de sombra a mediodía
@@ -1546,7 +1610,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.12.0';
+const VER='v1.13.0';
 $('verlbl').textContent='backtracking.html '+VER;
 
 /* Políticas — colores CVD-safe, mismos nombres que el core */
@@ -2240,6 +2304,7 @@ function build3D(){
     seg(0.20,0.095,pA.clone().add(dir.clone().multiplyScalar(0.16)));            // copa lado motora
     seg(0.20,0.095,pB.clone().sub(dir.clone().multiplyScalar(0.16)));            // copa lado gemela
   };
+  TD.hubAt=null;   // se asigna abajo: el update3D ancla el rayo a la MISMA geometría del montaje
   const hubAt=(r,yc)=>{
     // altura del eje de transmisión: con planta REAL, la cota MEDIDA del tramo
     // en ese punto (la misma que usa la mesa) — el plano cota-media+tilt de los
@@ -2263,6 +2328,7 @@ function build3D(){
     }
     return new THREE.Vector3(xof(r),base,-yc);
   };
+  TD.hubAt=hubAt;
   const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
   const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
   if(T.groups){
@@ -2399,7 +2465,7 @@ function update3D(){
       if(show&&key==='true3d'){
         const ang=p.ang[tIdx];
         const ps2=trueTrackAngle(g.zen,g.az,DAY.T.rowTilt?DAY.T.rowTilt[r]:0,DAY.c.axaz);
-        const pr2=ps2>=0?r-1:r;                     // la pareja por la que le entra la sombra
+        const pr2=ps2>=0?r:r-1;                     // psz≥0 ⇒ sombreada la IZQUIERDA de la pareja (r,r+1)
         if(pr2>=0&&pr2<DAY.T.pairs.length){
           const rmm=tangentResidualPairMm(g.zen,g.az,DAY.T,ang,pr2);
           if(isFinite(rmm)&&rmm>=-1)show=false;
@@ -2459,93 +2525,80 @@ function update3D(){
     TD.scene.background.setRGB(0.043,0.055,0.08);
   }
 }
-/* RAYO CRÍTICO didáctico: el rayo solar por el borde ALTO del emisor de la
-   fila seleccionada — aterriza en el suelo (margen, verde) o pincha a la
-   vecina (sombra, rojo). En 3D pleno: la deflexión axial va incluida, que es
-   exactamente lo que explota el true-3D. */
+/* RAYO CRÍTICO en el MARCO DE LA FÍSICA: criticalRayPair vive junto a
+   shadeFracPair y comparte su geometría — lo dibujado no puede contradecir al
+   número (QA de 200 casos). Marcador: ROJO sobre la pala si HAY sombra,
+   VERDE al suelo, ÁMBAR si el corte 2D cortaría pero el solape axial la
+   libra (la deflexión que explota true-3D). */
 function drawCriticalRay(g,p,tIdx){
   if(!TD)return;
   if(TD.rayGrp){TD.scene.remove(TD.rayGrp);disposeGroup(TD.rayGrp);TD.rayGrp=null;}
   const on=$('ray3d')&&$('ray3d').checked;
-  if(!on||!p||!(g.elev>0))return;
+  if(!on||!p||!(g.elev>0)||!TD.hubAt)return;
   const r=+$('rowsel').value||0, T=DAY.T, nR=TD.rows.length;
-  const psz=trueTrackAngle(g.zen,g.az,T.rowTilt?T.rowTilt[r]:0,DAY.c.axaz);
-  const e=psz>=0?r+1:r-1;                       // el emisor: la vecina del lado del sol
-  if(e<0||e>=nR||!TD.rows[r].lbl||!TD.rows[e].lbl)return;
+  if(!TD.rows[r]||!TD.rows[r].lbl)return;
+  const ang=p.ang[tIdx], sh=p.shade[tIdx]||[];
+  const pszRow=trueTrackAngle(g.zen,g.az,T.rowTilt?T.rowTilt[r]:0,DAY.c.axaz);
+  const pi=pszRow>=0?r:r-1;                    // la pareja por la que le entra la sombra a r
+  if(pi<0||pi>=T.pairs.length)return;
+  const pr=T.pairs[pi];
+  const pszP=trueTrackAngle(g.zen,g.az,pr.axisTilt,T.axisAz);
+  const CR=criticalRayPair(pszP,ang[pi],ang[pi+1],pr.pitch,T.cw,pr.slope,T.z0);
+  if(!CR)return;
   const grp=new THREE.Group(); TD.rayGrp=grp; TD.scene.add(grp);
-  // dirección del rayo (del sol hacia la escena), el mismo convenio que TD.sun
+  const zC=TD.rows[r].lbl.position.z, yc=-zC, hw=T.cw/2;
+  const axisW=(k)=>TD.hubAt(k,yc).add(new THREE.Vector3(0,0.76,0));   // hubAt da hub·0,62; el tubo, a 2,0
+  const leftRow=pi, rightRow=pi+1;
+  const anchorL={}; anchorL[leftRow]=[0,0]; anchorL[rightRow]=[CR.pitch,CR.zR];
+  const toWorld=(k,pt)=>{const A=axisW(k);
+    return new THREE.Vector3(A.x+(pt[0]-anchorL[k][0]),A.y+(pt[1]-anchorL[k][1]),zC);};
+  const emRow=CR.upIsRight?rightRow:leftRow;
+  const edgeW=toWorld(emRow,CR.edge);
   const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const d=new THREE.Vector3(-Math.sin(azRel)*Math.cos(el),-Math.sin(el),Math.cos(azRel)*Math.cos(el)).normalize();
-  // centros de tubo (desde la posición de la etiqueta: hub·0,62 + 2,6 ⇒ tubo = −2,6+0,76)
-  const Ce=TD.rows[e].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
-  const Cr=TD.rows[r].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
-  const thE=(p.ang[tIdx][e]||0)*RAD, thR=(p.ang[tIdx][r]||0)*RAD, hw=T.cw/2;
-  // borde del emisor cuya sombra mira a la receptora (la punta de la sombra)
-  const sgn=Math.sign(Cr.x-Ce.x)||1;
-  const E1=Ce.clone().add(new THREE.Vector3( Math.cos(thE)*hw,-Math.sin(thE)*hw,0));
-  const E2=Ce.clone().add(new THREE.Vector3(-Math.cos(thE)*hw, Math.sin(thE)*hw,0));
-  const land=(P)=>P.x+((P.y)/(d.y||-1e-9))*0;  // placeholder
-  // elegir el borde cuya proyección horizontal cae más hacia la receptora
-  const proj=(P)=>P.x - d.x*(P.y/ (d.y||-1e-9));
-  const edge=(sgn*(proj(E1))>sgn*(proj(E2)))?E1:E2;
-  // intersección con el PLANO de la pala receptora (normal (sinθ, cosθ, 0))
-  const nrm=new THREE.Vector3(Math.sin(thR),Math.cos(thR),0);
-  const w=new THREE.Vector3(Math.cos(thR),-Math.sin(thR),0);
-  let hit=null, onPanel=false;
-  const denom=nrm.dot(d);
-  if(Math.abs(denom)>1e-9){
-    const t=nrm.dot(Cr.clone().sub(edge))/denom;
-    if(t>0.01){
-      const H=edge.clone().add(d.clone().multiplyScalar(t));
-      if(Math.abs(H.clone().sub(Cr).dot(w))<=hw+1e-6){hit=H;onPanel=true;}
-    }
-  }
-  if(!hit){                                    // al suelo: cota interpolada entre líneas
-    const gY=(x)=>{const X=T.lineX||null;
-      if(!X)return 0;
-      let i=0; while(i<X.length-2&&X[i+1]<x)i++;
-      const f=Math.max(0,Math.min(1,(x-X[i])/((X[i+1]-X[i])||1)));
-      return ELEV[i]*(1-f)+ELEV[i+1]*f;};
-    let t=(gY(edge.x)-edge.y)/(d.y||-1e-9);
-    for(let k=0;k<3;k++){const H=edge.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
-    hit=edge.clone().add(d.clone().multiplyScalar(Math.max(0.01,t)));
-  }
-  // el rayo: 26 m hacia el sol desde el borde, hasta el aterrizaje
-  const A=edge.clone().sub(d.clone().multiplyScalar(26));
-  const geo=new THREE.BufferGeometry().setFromPoints([A,edge,hit]);
-  const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xfbbd23,transparent:true,opacity:0.95}));
-  line.renderOrder=7; grp.add(line);
-  const mk=new THREE.Mesh(new THREE.SphereGeometry(0.30,12,12),
-    new THREE.MeshBasicMaterial({color:onPanel?0xe34948:0x36d399}));
-  mk.position.copy(hit); mk.renderOrder=7; grp.add(mk);
-  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.18,10,10),new THREE.MeshBasicMaterial({color:0xfbbd23}));
-  dot.position.copy(edge); grp.add(dot);
-
-  // ── HAZ DE LUZ AL SUELO del vano receptor↔emisor: franja iluminada MEDIDA ──
-  const gY=(x)=>{const X=T.lineX||null;
-    if(!X)return 0;
+  const gY=(x)=>{const X=T.lineX||null; if(!X)return 0;
     let i=0; while(i<X.length-2&&X[i+1]<x)i++;
     const f=Math.max(0,Math.min(1,(x-X[i])/((X[i+1]-X[i])||1)));
     return ELEV[i]*(1-f)+ELEV[i+1]*f;};
+  const shaded=(sh[r]||0)>1e-3;
+  let hitW,col;
+  if(shaded&&CR.hit){                          // sombra REAL: marcador sobre la pala, del motor
+    hitW=toWorld(r,CR.hit); col=0xe34948;
+  }else{
+    let t=(gY(edgeW.x)-edgeW.y)/(d.y||-1e-9);
+    for(let k=0;k<3;k++){const H=edgeW.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
+    hitW=edgeW.clone().add(d.clone().multiplyScalar(Math.max(0.01,t)));
+    col=(CR.fs>1e-6)?0xfbbd23:0x36d399;        // ámbar: el corte 2D cortaría; el solape axial la libra
+  }
+  const A2=edgeW.clone().sub(d.clone().multiplyScalar(26));
+  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([A2,edgeW,hitW]),
+    new THREE.LineBasicMaterial({color:0xfbbd23,transparent:true,opacity:0.95}));
+  line.renderOrder=7; grp.add(line);
+  const mk=new THREE.Mesh(new THREE.SphereGeometry(0.30,12,12),new THREE.MeshBasicMaterial({color:col}));
+  mk.position.copy(hitW); mk.renderOrder=7; grp.add(mk);
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.18,10,10),new THREE.MeshBasicMaterial({color:0xfbbd23}));
+  dot.position.copy(edgeW); grp.add(dot);
+
+  // ── HAZ DE LUZ AL SUELO del vano: sombras de TODAS las filas del corte ──
   const landX=(P)=>{let t=(gY(P.x)-P.y)/(d.y||-1e-9);
     for(let k=0;k<3;k++){const H=P.clone().add(d.clone().multiplyScalar(t));t+=((gY(H.x)-H.y)/(d.y||-1e-9));}
     return P.x+d.x*Math.max(0,t);};
-  // sombras en el suelo del vano: de TODAS las filas del corte (a sol bajo la
-  // sombra que cae en el vano viene de filas 2-3 posiciones más allá, no de la
-  // vecina inmediata). Postes y tubo, despreciados (declarado).
+  const eRow=pszRow>=0?r+1:r-1;
+  if(eRow<0||eRow>=nR)return;
+  const Cr=axisW(r), Ce=axisW(eRow);
   const V=[Math.min(Cr.x,Ce.x),Math.max(Cr.x,Ce.x)];
-  const zC0=Cr.z, ivs=[];
+  const ivs=[];
   for(let k=0;k<nR;k++){
     if(!TD.rows[k]||!TD.rows[k].lbl)continue;
-    const Ck=TD.rows[k].lbl.position.clone().add(new THREE.Vector3(0,-1.84,0));
-    if(Math.abs(Ck.z-zC0)>40)continue;                     // otra banda: fuera del corte
-    const thK=(p.ang[tIdx][k]||0)*RAD, hwc=Math.cos(thK)*hw, hws=Math.sin(thK)*hw;
+    const Ck=axisW(k);
+    if(Math.abs(Ck.z-zC)>40)continue;
+    const thK=(ang[k]||0)*RAD, hwc=Math.cos(thK)*hw, hws=Math.sin(thK)*hw;
     const a1=landX(Ck.clone().add(new THREE.Vector3( hwc,-hws,0)));
     const a2=landX(Ck.clone().add(new THREE.Vector3(-hwc, hws,0)));
-    const i0=Math.max(V[0],Math.min(a1,a2)), i1=Math.min(V[1],Math.max(a1,a2));
-    if(i1>i0+0.02)ivs.push([i0,i1]);
+    const i02=Math.max(V[0],Math.min(a1,a2)), i12=Math.min(V[1],Math.max(a1,a2));
+    if(i12>i02+0.02)ivs.push([i02,i12]);
   }
-  ivs.sort((q,w)=>q[0]-w[0]);
+  ivs.sort((q,w2)=>q[0]-w2[0]);
   const un=[];
   for(const iv of ivs){
     if(un.length&&iv[0]<=un[un.length-1][1]+0.02)un[un.length-1][1]=Math.max(un[un.length-1][1],iv[1]);
@@ -2554,18 +2607,16 @@ function drawCriticalRay(g,p,tIdx){
   const lit=[]; let cur=V[0];
   for(const iv of un){ if(iv[0]>cur+0.02)lit.push([cur,iv[0]]); cur=Math.max(cur,iv[1]); }
   if(V[1]>cur+0.02)lit.push([cur,V[1]]);
-  const zC=Cr.z, ZL=12;
-  const strip=(x0,x1,col,op)=>{
+  const strip=(x0,x1,col2,op)=>{
     if(x1-x0<0.03)return;
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,ZL),
-      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide}));
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,12),
+      new THREE.MeshBasicMaterial({color:col2,transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide}));
     m.rotation.x=-Math.PI/2;
     m.position.set((x0+x1)/2,gY((x0+x1)/2)+0.12,zC);
     m.renderOrder=5; grp.add(m);
   };
-  for(const iv of un)strip(iv[0],iv[1],0x0a0e12,0.55);             // sombras en el suelo
-  let litW=0; for(const seg of lit){litW+=seg[1]-seg[0];strip(seg[0],seg[1],0xfbe08a,0.42);}
-  // etiqueta métrica del haz
+  for(const iv of un)strip(iv[0],iv[1],0x0a0e12,0.55);
+  let litW=0; for(const seg2 of lit){litW+=seg2[1]-seg2[0];strip(seg2[0],seg2[1],0xfbe08a,0.42);}
   const pct=100*litW/Math.max(0.01,V[1]-V[0]);
   const cv2=document.createElement('canvas');cv2.width=300;cv2.height=72;
   const cx2=cv2.getContext('2d');
