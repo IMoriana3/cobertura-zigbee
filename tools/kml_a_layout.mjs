@@ -137,6 +137,17 @@ const haDisp = areas.reduce((s, a) => s + a.ha, 0), haRes = restr.reduce((s, a) 
 console.log(`área disponible ${haDisp.toFixed(2)} ha − restringida ${haRes.toFixed(2)} = ${(haDisp - haRes).toFixed(2)} ha aptas`);
 
 /* ---------- el fichero ---------- */
+/* Reparto de módulos por mesa. El plano dice «Generic - 3V» —tres filas— y el módulo Astronergy
+   CHSM66N(DG)F-BH-685 mide 1,134 m de ancho, así que en los 20,48 m medidos entran 18 columnas y
+   en los 10,28 entran 9.
+   NO CUADRA CON EL PLANO, y queda escrito en el propio fichero: 4.851×54 + 642×27 = 279.288
+   módulos, y el plano declara 263.640. Un 5,9 %. No hay reparto entero que dé la cifra del plano
+   (con 17 columnas salen 262.809 y con 17/9, 264.735), así que no es un redondeo: es que el KML y
+   el plano son revisiones distintas. Lo mismo pasa con los centros de transformación (19 medidos
+   contra 18 declarados) y con el vallado (17,77 km contra 18,83). Manda lo dibujado, que es lo que
+   se ve; la cifra del plano queda anotada al lado. */
+const MODW = 1.134, ROWS = 3, TILT = 10;
+
 const L = {
   plant: planta, title: 'El Naranjo Dicayagua', estado: 'oferta',
   crs: `EPSG:${(sur ? 32700 : 32600) + zona}`, clat: +clat.toFixed(7), clon: +clon.toFixed(7),
@@ -145,15 +156,38 @@ const L = {
   fija: { tilt: 10, tipo: 'Generic 3V', pitch: 8.8, nota: 'inclinación fija 10°, 3 módulos en vertical (del plano de layout)' },
   mesa: { modH: null, filaZ: 0, tipos: mesaTipos,
           fuente: `medido en ${kmlPath.split('/').pop()} (carpeta Structures del KML)` },
+  /* MESAS FIJAS en el esquema `fijas` de la casa, el mismo que Túnez: el 3D y el Layout 2D ya lo
+     saben dibujar y no hace falta inventar nada nuevo.
+       w  ancho de la mesa, MEDIDO
+       p  fondo EN PLANTA, MEDIDO (la mesa sobre su plano inclinado mide p/cos(i); lo desescorza
+          el propio visor, como en Túnez)
+       inclinacion  10°, del plano de oferta
+       azimut 180   mirando al sur. DERIVADO: el plano no lo dice, pero las mesas son largas
+          este-oeste y esto es hemisferio norte; no hay otra orientación posible
+       h 0.8        canto bajo sobre el suelo. DERIVADO: el proyecto no lo publica y es la misma
+          cota que usa Túnez
+       cols/rows    DERIVADOS y NO cuadran con el plano — ver la nota `modulos` de abajo */
+  fijas: mesas.map(m => { const cols = Math.round(m.largo / MODW), rows = ROWS;
+    return { nombre: m.id, x: m.x, n: m.n, w: m.largo, p: m.ancho, cols, rows, mods: cols * rows,
+             inclinacion: TILT, azimut: 180, h: 0.8 }; }),
+  /* trackers[] se mantiene porque es lo que leen el Layout 2D y la Cobertura para el encuadre y el
+     recuento; aquí NO son seguidores, son las mismas mesas fijas. */
   trackers: mesas.map(m => ({ x: m.x, n: m.n, rot: 90, t: 'completo', id: m.id, blk: clave(m), ncu: 1, gw: 1 })),
   ncus: [], meteo: [], reps: [],
   ps, subestacion: sub[0] || null, bess,
   roads, fence, areas, restringidas: restr,
+  modulos: { por_geometria: null, declarado_plano: 263640, modW: MODW, rows: ROWS,
+             nota: 'cols = ancho medido / 1,134 (módulo Astronergy CHSM66N-685) y 3 filas («Generic 3V»). El total por geometría NO coincide con el del plano: son revisiones distintas, igual que 19 CT medidos contra 18 declarados' },
   generado_de: `${kmlPath.split('/').pop()} · tools/kml_a_layout.mjs`,
 };
 /* La cuerda de la mesa fija es su fondo: 7,25 m, el mismo en los dos tamaños. Se toma del propio
    dato medido y no de la constante de El Burgo. */
 L.mesa.modH = tipos.length ? +tipos[0][0].split('x')[1] : null;
+
+L.modulos.por_geometria = L.fijas.reduce((s2, f) => s2 + f.mods, 0);
+console.log(`\nmódulos por geometría ${L.modulos.por_geometria.toLocaleString('es')} · el plano declara ${L.modulos.declarado_plano.toLocaleString('es')} (${((L.modulos.por_geometria / L.modulos.declarado_plano - 1) * 100).toFixed(1)} %)`);
+const rep = {}; L.fijas.forEach(f => { const k = f.cols + 'x' + f.rows; rep[k] = (rep[k] || 0) + 1; });
+console.log('reparto: ' + Object.entries(rep).map(([k, v]) => k + ' → ' + v + ' mesas').join(' · '));
 
 if (!WRITE) { console.log('\n(dry-run: pasa --write para escribir ' + planta + '_layout.json)'); process.exit(0); }
 writeFileSync(RAIZ + planta + '_layout.json', JSON.stringify(L));

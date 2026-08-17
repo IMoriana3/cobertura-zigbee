@@ -494,7 +494,11 @@ var PLANTS={
   sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:24, cod:24007},   // mods = modulos por ALA, no por fila. Fayon es 2x1V48: 48 por fila en DOS alas de 24. Con 48 salia span 110,57 m cuando el DWG mide 55,15 (y 46,03 el 1V40, que sale del mr 0,833). Estaba mal desde la #317   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
   bagnarelli:{file:'bagnarelli_layout.json', title:'Bagnarelli 24030', angles:null, mods:21, cod:24030},   // 17 seguidores de UNA fila (filaZ 0) con modulo Risen de 1,303 m. El DWG ya viene en UTM 33N y sus 17 INSERT coinciden con el listado del cliente a 0,000 m
-  paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
+  paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},
+  /* DICAYAGUA — EN OFERTA y de ESTRUCTURA FIJA a 10°, no de seguidores: sin NCU, sin TCU y sin nada
+     que bascular. Sus 5.493 mesas van en `fijas`, el mismo esquema que la instalación fija de
+     Túnez. `relieve` es su levantamiento propio (164 curvas de nivel + 672 puntos de cota). */
+  dicayagua:{file:'dicayagua_layout.json', title:'El Naranjo Dicayagua · oferta', angles:null, cod:null},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
   tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
@@ -3196,7 +3200,52 @@ function buildBOS(){
      su inclinación, su azimut y la altura de su borde bajo. El fondo REAL de la mesa es p/cos(i)
      —en planta se ve escorzado— y de ahí sale todo lo demás, así que no hay ninguna cota inventada:
      lo que se dibuja es el rectángulo del DWG desescorzado por su propia inclinación. */
-  (LAYOUT.fijas||[]).forEach(function(f){
+  function buildFijasInst(FJ){
+    var tot=0,totC=0,i,j,f;
+    for(i=0;i<FJ.length;i++){f=FJ[i];tot+=(f.cols||1)*(f.rows||1);totC+=(f.rows||1)+1;}
+    var mt=new THREE.MeshStandardMaterial({color:0xffffff,map:panelTex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
+    if(CELLNRM){mt.normalMap=CELLNRM;mt.normalScale=new THREE.Vector2(0.4,0.4);}
+    var imM=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),mt,tot);
+    var imC=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),steelM,totC);
+    [imM,imC].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;scene.add(im);});
+    var _B=new THREE.Matrix4(),_L=new THREE.Matrix4(),_R=new THREE.Matrix4(),_S=new THREE.Matrix4(),_T=new THREE.Matrix4();
+    var im0=0,ic=0;
+    for(i=0;i<FJ.length;i++){
+      f=FJ[i];
+      var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
+      var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
+      var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
+      var yBase=terrainMeshY(f.x,f.n)+hb;
+      /* base de la mesa: misma que el Group del camino detallado */
+      _B.makeRotationY(Math.PI-az); _B.setPosition(f.x,yBase*vex,-f.n);
+      var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);
+      for(var a2=0;a2<cols;a2++)for(var b2=0;b2<rows;b2++){
+        var dl=(b2+0.5)*ml;
+        _R.makeRotationX(-Math.PI/2+inc);
+        _S.makeScale(mw-jw,ml-jl,1);
+        _L.multiplyMatrices(_R,_S);
+        _L.setPosition(-w/2+(a2+0.5)*mw, sz*dl*vex, -cz*dl);
+        _T.multiplyMatrices(_B,_L);
+        imM.setMatrixAt(im0++,_T);
+      }
+      var CH=0.05,CW=0.07;
+      for(var k=0;k<=rows;k++){ var dl2=k*ml;
+        _R.makeRotationX(inc); _S.makeScale(w+0.12,CH,CW); _L.multiplyMatrices(_R,_S);
+        _L.setPosition(0, (sz*dl2-(CH/2)*cz)*vex, -cz*dl2-(CH/2)*sz);
+        _T.multiplyMatrices(_B,_L); imC.setMatrixAt(ic++,_T);
+      }
+    }
+    imM.count=im0; imC.count=ic;
+    imM.instanceMatrix.needsUpdate=true; imC.instanceMatrix.needsUpdate=true;
+  }
+  /* MUCHAS MESAS: instanciado. El camino detallado de abajo construye un Group por mesa con una
+     malla POR MÓDULO, y con las 14 mesas de Túnez son 376 mallas —perfecto—. Dicayagua tiene 5.493
+     mesas de 54 módulos: 296.000 mallas, que no las traga ningún navegador. Por encima de 200 mesas
+     se dibuja lo mismo con InstancedMesh: los módulos con su junta y las correas, con la MISMA
+     colocación que el camino detallado (se compone la misma cadena de matrices), y se dejan fuera
+     las piezas de herrajería fina, que a esa distancia no se ven. */
+  if((LAYOUT.fijas||[]).length>200){ buildFijasInst(LAYOUT.fijas); }
+  else (LAYOUT.fijas||[]).forEach(function(f){
     var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
     var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
     var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
