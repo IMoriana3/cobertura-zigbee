@@ -813,13 +813,32 @@ function dayMetrics(day,theta,flag,poa){
    {events, flag} y la QA exige que el flag coincida BIT A BIT con el de
    POLICIES[k]: lo narrado es exactamente lo ejecutado. */
 function stowEvents(day,d,ev){
-  let iw=-1,is2=-1;
-  for(let i=0;i<day.n;i++)if(day.ghi[i]>d.ghiMin){if(iw<0)iw=i;is2=i;}
+  /* DOS RELOJES TAMBIÉN AQUÍ, y antes se contaban como uno solo:
+       · el HIERRO sale del stow y vuelve a él con el amanecer y el ocaso
+         GEOMÉTRICOS (zen < 90), que es lo que decide thetaBaselineDay;
+       · la PUERTA DE LA DIFUSA se abre y se cierra con GHI > ghi_min.
+     No caen a la misma hora — medido en el día de tarde nublada, 30 min de
+     diferencia al amanecer y 79 al ocaso. Anclar los dos eventos del stow en
+     la puerta de GHI hacía que el diario dijera «arranca el seguimiento»
+     media hora TARDE y «entra a stow» hora y cuarto PRONTO, narrando un
+     movimiento que la gráfica de θ desmentía en la misma pantalla. */
+  let iw=-1,is2=-1,gw=-1,gs=-1;
+  for(let i=0;i<day.n;i++){
+    if(day.zen[i]<90){if(iw<0)iw=i;is2=i;}
+    if(day.ghi[i]>d.ghiMin){if(gw<0)gw=i;gs=i;}
+  }
+  const st=(-day.nightStow).toFixed(0);
   if(iw>=0)ev.push({t:day.tmin[iw],type:'wake',
-    msg:'AMANECE (GHI '+day.ghi[iw].toFixed(0)+' > '+d.ghiMin+' W/m²): sale del stow ('+
-        (-day.nightStow).toFixed(0)+'° TCU) y arranca el seguimiento'});
+    msg:'SALE DEL STOW ('+st+'° TCU) y arranca el seguimiento: sale el sol (elevación > 0°). '+
+        'El hierro no espera a la difusa'});
+  if(gw>=0)ev.push({t:day.tmin[gw],type:'gate',
+    msg:'se ABRE la puerta de la difusa (GHI '+day.ghi[gw].toFixed(0)+' > '+d.ghiMin+
+        ' W/m²): a partir de aquí la política puede decidir — el tracker ya llevaba rato siguiendo'});
+  if(gs>=0)ev.push({t:day.tmin[gs],type:'gate',
+    msg:'se CIERRA la puerta de la difusa (GHI ≤ '+d.ghiMin+' W/m²): la política deja de decidir '+
+        'y θ vuelve al seguimiento astronómico — ojo, esto NO es el stow, el sol sigue arriba'});
   if(is2>=0)ev.push({t:day.tmin[is2],type:'sleep',
-    msg:'ANOCHECE: entra a stow ('+(-day.nightStow).toFixed(0)+'° TCU, al este) hasta el amanecer'});
+    msg:'ENTRA A STOW ('+st+'° TCU, al este) hasta el amanecer: se pone el sol'});
   return {first:iw,last:is2};
 }
 function explainPvlib(day,thN,poaN,d){
@@ -1026,7 +1045,8 @@ function explainPoaSwitch(day,thN,poaN,d){
   for(let i=0;i<day.n;i++){
     const t=day.tmin[i];
     if(!(day.ghi[i]>d.ghiMin)){
-      if(state)ev.push({t:t,type:'night',msg:'puerta nocturna (GHI ≤ '+d.ghiMin+' W/m²): resetea la máquina; θ → stow'});
+      if(state)ev.push({t:t,type:'night',msg:'puerta nocturna (GHI ≤ '+d.ghiMin+
+        ' W/m²): SALE DEL PLANO y resetea la máquina — se pierde el estado y el dwell vuelve a cero'});
       state=false;ec=xc=0;sc=999;blockE=blockX=false;continue;
     }
     if(!state){
@@ -1623,12 +1643,58 @@ function runPhysicsQA(){
     for(let i=0;i<day.n;i++)A(Math.abs(day.irr[i].ghi-321)<1e-9,'no usa la medida en paso '+i);
   });
 
+  t('EL DIARIO NO PUEDE DESMENTIR A LA GRÁFICA: el stow que narra es el minuto en que el hierro se mueve de verdad',()=>{
+    // el bug: «AMANECE … arranca el seguimiento» y «ANOCHECE … entra a stow»
+    // iban anclados en GHI > ghi_min (la puerta de la DIFUSA) mientras θ salía
+    // y volvía al stow con el amanecer GEOMÉTRICO. En un día de tarde nublada
+    // eso son 30′ de desfase por la mañana y 79′ por la tarde: el diario
+    // narraba un movimiento que la curva de θ contradecía en la misma pantalla.
+    for(const dtMin of [5,10,15]){
+      const day=canonScenario(dtMin);
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      const ev=EXPLAIN.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT).events;
+      const wake=ev.find(e=>e.type==='wake'), sleep=ev.find(e=>e.type==='sleep');
+      A(wake&&sleep,'faltan los eventos de stow a dt='+dtMin);
+      // el minuto en que el HIERRO deja el stow y vuelve a él, en la rejilla fina
+      const nF=1440/DT_FINE_PHYS;
+      const dayF=buildDay(Object.assign({},{lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,
+        altM:600,TL:2.5,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC()},{dtMin:DT_FINE_PHYS}));
+      const exec=execOnFineGrid(thetaBaselineDay(dayF),DT_FINE_PHYS,dayF.n,DT_FINE_PHYS,null);
+      let sale=null,vuelve=null;
+      for(let i=1;i<exec.length;i++){
+        if(sale===null&&Math.abs(exec[i]-exec[0])>0.05)sale=dayF.tmin[i];
+        if(Math.abs(exec[i]-exec[exec.length-1])>0.05)vuelve=dayF.tmin[i];
+      }
+      const tol=dtMin+DT_FINE_PHYS+1;
+      A(Math.abs(wake.t-sale)<=tol,'dt='+dtMin+': el diario dice que sale del stow a '+wake.t+
+        '′ y el hierro se mueve a '+sale+'′ (desfase '+Math.abs(wake.t-sale)+'′)');
+      A(Math.abs(sleep.t-vuelve)<=tol,'dt='+dtMin+': el diario dice que entra a stow a '+sleep.t+
+        '′ y el hierro llega a '+vuelve+'′ (desfase '+Math.abs(sleep.t-vuelve)+'′)');
+      // y la puerta de la difusa es OTRO evento, con su propio reloj
+      const gates=ev.filter(e=>e.type==='gate');
+      A(gates.length===2,'dt='+dtMin+': la puerta de la difusa debe narrarse aparte (abre y cierra)');
+      A(gates[0].t>=wake.t&&gates[1].t<=sleep.t,
+        'dt='+dtMin+': la puerta de la difusa no puede caer fuera del día del hierro');
+    }
+  });
+  t('las cinco políticas narran el MISMO stow: es del hierro, no de la política',()=>{
+    const day=canonScenario(10);
+    const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+    let ref=null;
+    for(const k in EXPLAIN){
+      const ev=EXPLAIN[k](day,thN,poaN,DCFG_DEFAULT).events;
+      const par=[ev.find(e=>e.type==='wake'),ev.find(e=>e.type==='sleep')].map(e=>e&&e.t);
+      if(ref===null)ref=par;
+      else A(par[0]===ref[0]&&par[1]===ref[1],k+' narra un stow distinto: '+par+' vs '+ref);
+    }
+  });
+
   return R;
 }
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.10.1';
+const VER='v1.10.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1965,7 +2031,7 @@ function recompute(){
 const EV_STYLE={wake:['🌅','#5c7189'],sleep:['🌙','#5c7189'],night:['🌙','#5c7189'],
                 enter:['▼','#a78bfa'],exit:['▲','#5aa9ff'],
                 pulse:['✋','#fbbd23'],dwell:['⛔','#fbbd23'],
-                chatter:['⚡','#f87272'],info:['ℹ','#5c7189']};
+                chatter:['⚡','#f87272'],info:['ℹ','#5c7189'],gate:['⛅','#5aa9ff']};
 function drawDiario(d){
   const zc=zonalCfg();
   const pv=$('polview').value||'diffuse_poa_switch';   // narra LA POLÍTICA ELEGIDA
