@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.75</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.76</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -327,7 +327,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();viajeStep(dt);}updateSunShadow();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();viajeStep(dt);}updateSunShadow();solCamFrame();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
@@ -517,20 +517,68 @@ function encuadra(){ var f=FOCO||{x:0,n:0,w:720,d:480};
    La cámara se pone EN la dirección del sol, mirando al centro de la planta. Desde ahí lo que se ve
    está iluminado y lo que queda oculto está en sombra, así que el backtracking se comprueba de un
    vistazo: con el seguimiento bien recortado NINGÚN módulo debe asomar por detrás de otro.
-   Conserva la distancia a la que estabas (solo cambia de sitio, no de zoom) y se mantiene pegada al
-   sol mientras muevas la hora o el día. De noche no hace nada: por debajo del horizonte no hay
-   vista que valga, y se avisa en la etiqueta. */
-var solCam=false;
+   Encuadra la planta entera y se mantiene pegada al sol mientras muevas la hora o el día. De noche
+   no hace nada: por debajo del horizonte no hay vista que valga, y se avisa en la etiqueta. */
+/* RAYOS PARALELOS: CÁMARA ORTOGONAL. Los rayos del sol son PARALELOS porque el sol está a 150
+   millones de km. Una cámara en PERSPECTIVA, esté donde esté, ve en abanico, y ese abanico es
+   exactamente lo que deja ver las sombras que aquí no deberían verse. Dos intentos fallidos antes
+   de aceptarlo:
+     1) cámara a la distancia a la que estuvieras (181 m en Fayón): el desvío del rayo en el borde
+        de la planta era de 32° — se veía la sombra entera, con toda la razón del mundo;
+     2) cámara MUY lejos (2.500 m) con el campo cerrado a 4,7°: en Fayón bajaba a 1,7°, pero en
+        Ayora, que es 20 veces mayor, seguía en 14,8°. Alejarse más no vale: para dejarlo en 1° en
+        Ayora habría que irse a 100 km, con el consiguiente destrozo de precisión del buffer de
+        profundidad.
+   Con proyección ORTOGONAL el paralaje es CERO por construcción, sin importar el tamaño de la
+   planta, y la cámara puede quedarse a una distancia razonable. Se cambia la cámara del visor
+   mientras dure el modo y se devuelve la de perspectiva al salir. */
+var solCam=false,_solPersp=null,_solOrto=null,_solD=0,_solNiebla=null,_solZoom=null;
+function solCamEsfera(){   // qué hay que encuadrar: centro y radio de la nube de seguidores (FOCO no vale: en Ayora se queda corto)
+  var f=FOCO||{x:0,n:0,w:720,d:480},cx=f.x,cn=f.n,R=Math.max(f.w,f.d)/2;
+  if(window.TRK&&TRK.length){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
+    for(var i=0;i<TRK.length;i++){var t=TRK[i],nn=-t.gz;
+      if(t.gx<x0)x0=t.gx; if(t.gx>x1)x1=t.gx; if(nn<n0)n0=nn; if(nn>n1)n1=nn;}
+    cx=(x0+x1)/2;cn=(n0+n1)/2;R=Math.max(Math.hypot(x1-x0,n1-n0)/2,40);}   // radio, no semilado: así entra con el sol en cualquier acimut
+  return {x:cx,n:cn,y:(typeof terrainMeshY==='function')?terrainMeshY(cx,cn):0,R:R*1.06+15};
+}
 function camDesdeElSol(){
   if(!solCam||!SUN||!SUN._dir)return false;
   var d=SUN._dir; if(d.U<=0.03)return false;                       // sol bajo el horizonte: no se mueve la cámara
-  var f=FOCO||{x:0,n:0,w:720,d:480};
-  var tx=f.x,tz=-f.n,ty=(typeof terrainMeshY==='function')?terrainMeshY(f.x,f.n):0;
-  var R=Math.hypot(camera.position.x-tx,camera.position.y-ty,camera.position.z-tz);
-  if(!isFinite(R)||R<20)R=Math.max(60,CAM_K*Math.max(f.w,f.d));    // primera vez: el mismo encuadre que usa el visor
-  camera.position.set(tx+d.E*R, ty+d.U*R, tz-d.N*R);
-  controls.target.set(tx,ty,tz);controls.update();
+  var e=solCamEsfera(),asp=(innerWidth/innerHeight)||1.6;
+  if(!_solOrto)_solOrto=new THREE.OrthographicCamera(-1,1,1,-1,1,10);
+  var h=e.R,w=e.R*asp; if(asp<1){w=e.R;h=e.R/asp;}                 // el radio entra siempre por el lado corto del encuadre
+  _solD=e.R*3+200;                                                 // en ortogonal la distancia NO cambia el encuadre: solo tiene que dejar la planta delante
+  _solOrto.left=-w;_solOrto.right=w;_solOrto.top=h;_solOrto.bottom=-h;
+  _solOrto.near=1;_solOrto.far=2*_solD+4*e.R;_solOrto.zoom=1;_solOrto.updateProjectionMatrix();
+  if(camera!==_solOrto){_solPersp=camera;camera=_solOrto;                 // se cambia la cámara del visor
+    if(controls){controls.object=camera;_solZoom=controls.enableZoom;controls.enableZoom=false;}   // el encuadre lo fija la planta: la rueda aquí solo estorba
+    if(scene.fog)_solNiebla=[scene.fog.near,scene.fog.far];}
+  camera.position.set(e.x+d.E*_solD, e.y+d.U*_solD, -e.n-d.N*_solD);
+  controls.target.set(e.x,e.y,-e.n);controls.update();
+  /* Y FUERA LA NIEBLA. Su banda la calcula build() para la cámara de a pie; con el ojo a esta
+     distancia cae justo sobre la planta y la vista sale en blanco liso. Aquí no estamos lejos de
+     verdad, estamos simulando el infinito del sol, así que se manda mucho más allá de la planta
+     mientras dure el modo (y se restaura al salir). */
+  if(scene.fog){scene.fog.near=_solD*3;scene.fog.far=_solD*9;}
   return true;
+}
+function solCamSalir(){                                            // devuelve la cámara de perspectiva y lo que se tocó con ella
+  if(camera===_solOrto&&_solPersp){camera=_solPersp;
+    if(controls)controls.object=camera;
+    camera.aspect=(innerWidth/innerHeight)||camera.aspect;camera.updateProjectionMatrix();}
+  if(scene.fog&&_solNiebla){scene.fog.near=_solNiebla[0];scene.fog.far=_solNiebla[1];}
+  if(controls&&_solZoom!=null)controls.enableZoom=_solZoom;
+  _solPersp=_solNiebla=_solZoom=null;_solD=0;
+}
+/* Cada fotograma se vuelve a clavar la cámara en el rayo solar (el amortiguado de los controles la
+   va sacando) y se apaga el HALO del sol: ese resplandor es un sprite de 950 m que animateSky
+   planta en la dirección del sol, y desde aquí —que es justo donde está el sol— cubría los 4,7° del
+   encuadre entero y lo dejaba todo en blanco lavado con un arco amarillo. Estamos DENTRO del sol:
+   su glare no pinta nada. applySky se lo devuelve solo al salir del modo. */
+function solCamFrame(){
+  if(!solCam||!SUN||!SUN._dir||SUN._dir.U<=0.03)return;
+  camDesdeElSol();
+  if(sunHalo)sunHalo.visible=false;
 }
 function solCamAviso(){var e=$('solcamStat');if(!e)return;
   if(!solCam){e.style.display='none';return;}
@@ -3754,7 +3802,7 @@ var ALLPILLS=[],_lblV=new THREE.Vector3(),_lblV2=new THREE.Vector3(),_lblC=new T
 function updateLabels(){
   if(!ALLPILLS.length)return;
   if(++_lblN%180===0||ALLPILLS.length>600)ALLPILLS=ALLPILLS.filter(function(s){var o=s;while(o.parent)o=o.parent;return o===scene;});   // poda huérfanas tras reconstrucciones (cambio de planta, arrastre de exageración vertical…)
-  var ch=renderer.domElement.clientHeight||renderer.domElement.height,f=ch/(2*Math.tan(camera.fov*Math.PI/360));
+  var ch=renderer.domElement.clientHeight||renderer.domElement.height,f=ch/(2*Math.tan((camera.fov||55)*Math.PI/360));   // la vista desde el sol usa cámara ORTOGONAL (sin fov): sin este cinturón el tamaño de las cápsulas sale NaN
   var cw=renderer.domElement.clientWidth||renderer.domElement.width;
   camera.getWorldPosition(_lblC);
   _lblQ.length=0;
@@ -3881,7 +3929,7 @@ $('cobreal').onchange=function(){cobRealOn=this.checked;cobRealApply();};
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
 $('solcam').onchange=function(){solCam=this.checked;                                   // ver la planta DESDE el sol
   if(solCam&&freeCam){freeCam=false;$('freecam').checked=false;controls.enabled=true;}  // la cámara libre se queda con el ratón: son excluyentes
-  if(solCam)camDesdeElSol(); else encuadra();
+  if(solCam)camDesdeElSol(); else {solCamSalir();encuadra();}
   solCamAviso();};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
