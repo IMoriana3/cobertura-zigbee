@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.74</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.75</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -135,6 +135,8 @@ addEventListener('DOMContentLoaded',function(){
     <div class="row"><label title="Datos reales = telemetría del 17-jun (00:00–13:55). Simulación = ángulo astronómico calculado, día completo (combínalo con Backtracking)."><input type="checkbox" id="sim"> Simulación (día completo)</label></div>
     <div class="row"><label>Día (simulación)</label><input type="date" id="simdate" value="2026-06-17" style="font:inherit;font-size:12px;background:#1a2330;color:var(--tx);border:1px solid var(--line2);border-radius:6px;padding:3px 6px"></div>
     <div class="row"><label title="Dibuja el recorrido del sol del día elegido (arco + marcas horarias) y la posición actual del sol."><input type="checkbox" id="sunpath" checked> Trayectoria solar</label></div>
+    <div class="row"><label title="Pone la cámara EN EL SOL, mirando a la planta. Desde ahí, todo lo que ves está iluminado y lo que no ves está en sombra: es la forma directa de comprobar el backtracking — si un módulo asoma por detrás de otro, esa fila está sombreando. Sigue a la barra de tiempo y al día."><input type="checkbox" id="solcam"> ☀ Vista desde el sol</label></div>
+    <div class="row" id="solcamStat" style="display:none;font-size:11px;color:var(--tx2);line-height:1.5"></div>
     <div class="row"><label title="Cámara libre tipo vuelo: el ratón mira alrededor (no orbita) y WASD/QE se mueve. Quítalo para volver a órbita."><input type="checkbox" id="freecam"> Cámara libre (vuelo)</label></div>
     <div class="row"><label title="Enlaces de radio de cada TCU a su NCU. Lo que apantalla no es el relieve (llano) sino los propios paneles inclinados → cambia con la hora. Arrastra la barra de tiempo o dale al ▶."><input type="checkbox" id="fres"> Enlaces a NCU (apantalla el panel)</label></div>
     <div class="row"><button class="btn" id="placeGw">📡 Mover NCU (clic)</button></div>
@@ -427,7 +429,7 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
      luz, no hay nada que ocluir. Así que se atenúa con la altura del sol y se apaga de noche. */
   aoLuz(Math.max(0.05,Math.min(1,(U+0.06)/0.35)));
   updateEnvMap();updateRefl(); }   // reflejos del cielo en vidrio/acero (cubemap CPU, opt-in), regenerados al cambiar sol/nubes
-function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); }   // la intensidad la fija applySky (nubes/luna)
+function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); camDesdeElSol(); solCamAviso(); }   // la vista desde el sol se pega a la barra de tiempo   // la intensidad la fija applySky (nubes/luna)
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
   var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
@@ -511,6 +513,35 @@ function encuadra(){ var f=FOCO||{x:0,n:0,w:720,d:480};
   var R=Math.max(60,CAM_K*Math.max(f.w,f.d));
   camera.position.set(f.x,R*Math.sin(CAM_EL),-f.n+R*Math.cos(CAM_EL));
   controls.target.set(f.x,0,-f.n);controls.update(); }
+/* ───────── VISTA DESDE EL SOL ─────────
+   La cámara se pone EN la dirección del sol, mirando al centro de la planta. Desde ahí lo que se ve
+   está iluminado y lo que queda oculto está en sombra, así que el backtracking se comprueba de un
+   vistazo: con el seguimiento bien recortado NINGÚN módulo debe asomar por detrás de otro.
+   Conserva la distancia a la que estabas (solo cambia de sitio, no de zoom) y se mantiene pegada al
+   sol mientras muevas la hora o el día. De noche no hace nada: por debajo del horizonte no hay
+   vista que valga, y se avisa en la etiqueta. */
+var solCam=false;
+function camDesdeElSol(){
+  if(!solCam||!SUN||!SUN._dir)return false;
+  var d=SUN._dir; if(d.U<=0.03)return false;                       // sol bajo el horizonte: no se mueve la cámara
+  var f=FOCO||{x:0,n:0,w:720,d:480};
+  var tx=f.x,tz=-f.n,ty=(typeof terrainMeshY==='function')?terrainMeshY(f.x,f.n):0;
+  var R=Math.hypot(camera.position.x-tx,camera.position.y-ty,camera.position.z-tz);
+  if(!isFinite(R)||R<20)R=Math.max(60,CAM_K*Math.max(f.w,f.d));    // primera vez: el mismo encuadre que usa el visor
+  camera.position.set(tx+d.E*R, ty+d.U*R, tz-d.N*R);
+  controls.target.set(tx,ty,tz);controls.update();
+  return true;
+}
+function solCamAviso(){var e=$('solcamStat');if(!e)return;
+  if(!solCam){e.style.display='none';return;}
+  e.style.display='block';
+  var d=SUN&&SUN._dir?SUN._dir:null;
+  if(!d||d.U<=0.03){e.innerHTML='<b style="color:#F2A900">el sol está bajo el horizonte</b>: mueve la hora para ver la planta desde él.';return;}
+  var alt=Math.asin(Math.max(-1,Math.min(1,d.U)))/DEG, az=(Math.atan2(d.E,d.N)/DEG+360)%360;
+  e.innerHTML='desde el sol · altura <b>'+alt.toFixed(1)+'°</b> · acimut <b>'+az.toFixed(1)+'°</b>'+
+    ' · <span style="color:var(--tx2)">lo que ves está al sol; lo que no asoma, en sombra</span>';
+}
+
 /* ───────── BUSCADOR DE EQUIPOS ─────────
    Con 2.289 seguidores en San José, dar con uno concreto arrastrando y haciendo zoom no es
    viable. Se indexa todo lo que tiene nombre —TCU, NCU, HSU, inversores y CT— y se vuela hasta
@@ -3848,6 +3879,10 @@ $('cobreal').onchange=function(){cobRealOn=this.checked;cobRealApply();};
   $('cob').checked=true;cobOn=true;
   if(PLANT==='elburgo'){$('cobreal').checked=true;cobRealOn=true;}})();
 $('sunpath').onchange=function(){if(sunPathGroup)sunPathGroup.visible=this.checked;};
+$('solcam').onchange=function(){solCam=this.checked;                                   // ver la planta DESDE el sol
+  if(solCam&&freeCam){freeCam=false;$('freecam').checked=false;controls.enabled=true;}  // la cámara libre se queda con el ratón: son excluyentes
+  if(solCam)camDesdeElSol(); else encuadra();
+  solCamAviso();};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
 $('invl').onchange=function(){invOn=this.checked;if(invOn&&genOn){setGen(false);if($('genflow'))$('genflow').checked=false;}if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D); excluyente con el flujo (ambas pintan los módulos)
