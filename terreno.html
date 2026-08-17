@@ -262,7 +262,7 @@ var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0
 var imBearing=null,imSaddle=null,imVirola=null,imBush=null;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var FENCE_H=3.0;   // ALTURA DEL VALLADO, en metros. CONSTANTE para todas las plantas (pedido asi): antes 1,9. La hoja de las puertas se saca de aqui, no de un numero suelto.
-var LAYOUT=null,bosGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
+var LAYOUT=null,bosGroup=null,fijGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
 var SH_CX=-66,SH_CZ=36,SH_HALF=330,_shDirV=new THREE.Vector3();   // shadow camera ceñido a la planta (centro y semiancho en mundo, por planta en build()); cerca del suelo se ciñe a la cámara (updateSunShadow)
 
@@ -498,7 +498,7 @@ var PLANTS={
   /* DICAYAGUA — EN OFERTA y de ESTRUCTURA FIJA a 10°, no de seguidores: sin NCU, sin TCU y sin nada
      que bascular. Sus 5.493 mesas van en `fijas`, el mismo esquema que la instalación fija de
      Túnez. `relieve` es su levantamiento propio (164 curvas de nivel + 672 puntos de cota). */
-  dicayagua:{file:'dicayagua_layout.json', title:'El Naranjo Dicayagua · oferta', angles:null, cod:null},   // 396 seguidores de UNA fila (filaZ 0). Bloques TRX_1V_1x(24+24) y 1x(23+23): 156x48 + 240x46 = 18.528 mod, los de la cartera. DWG en UTM 30N, 396/396 a 0,000 m
+  dicayagua:{file:'dicayagua_layout.json', title:'El Naranjo Dicayagua · oferta', angles:null, cod:null, relieve:'dicayagua_relieve.json'},   // 5.493 mesas fijas a 10° (4.851 de 18x3 y 642 de 9x3) del KML de layout, en UTM 19N. No tiene DWG: es una oferta
   tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
@@ -703,10 +703,34 @@ async function build(){
   }   // MODO OFFLINE: ni satélite ni relieve (cero llamadas externas) → suelo liso + terreno plano (los fallbacks de abajo)
   var demZoom=(Math.max(widthM,depthM)>1500)?15:14;   // plantas grandes: relieve más fino (z15 ≈ 4 m/px) para que el terreno no salga aterrazado
   if(!OFFLINE)try{dem=await mosaic(DEM,demZoom,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);}catch(e){}
-  function elevAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
+  function demAt(lat,lon){if(!demImg)return 0;var p=dem.px(lat,lon),W=dem.W,H=dem.H,d=demImg.data;   // BILINEAL: la malla y el pie del amortiguador comparten la misma cota interpolada (a píxel pegado el pie se enterraba en cuestas)
     var fx=Math.max(0,Math.min(W-1,p.x)),fy=Math.max(0,Math.min(H-1,p.y)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1),tx=fx-x0,ty=fy-y0;
     function gpx(ix,iy){var i=(iy*W+ix)*4;return d[i]*256+d[i+1]+d[i+2]/256;}
     return (gpx(x0,y0)*(1-tx)+gpx(x1,y0)*tx)*(1-ty)+(gpx(x0,y1)*(1-tx)+gpx(x1,y1)*tx)*ty-32768;}
+  /* ───────── LEVANTAMIENTO PROPIO DE LA PLANTA ─────────
+     El DEM global (teselas Terrarium) da ~30 m de paso: sirve para ver el valle, no para leer una
+     vaguada de la parcela. Cuando la planta trae su topografía —Dicayagua: 164 curvas de nivel y
+     672 puntos de cota del levantamiento del cliente, en <planta>_relieve.json— esa malla MANDA
+     dentro de su extensión y el DEM se queda solo para el entorno.
+     Los dos vienen en metros sobre el nivel del mar, pero NO en el mismo dato: entre un DEM global
+     y un levantamiento hay siempre un escalón sistemático (en El Burgo eran ~6 m). Si se pegan tal
+     cual sale un cantil en el borde de la malla. Así que se mide ese escalón —la mediana de
+     (levantamiento − DEM) sobre los nodos con dato— y se le suma al DEM: el levantamiento se
+     respeta EXACTO y el entorno se acopla a él. El desfase medido se declara en el estado.
+     Es interpolación bilineal sobre la malla; los nodos a null (sin curva a tiro) caen al DEM. */
+  var REL=null,RELDZ=0;
+  if(PLANTS[PLANT]&&PLANTS[PLANT].relieve){try{var rR=await fetch(PLANTS[PLANT].relieve,{cache:'no-store'});if(rR.ok)REL=await rR.json();}catch(e){REL=null;}}   // fichero LOCAL: también en modo sin conexión (no es una llamada externa)
+  function relAt(x,n){if(!REL)return null;                                                          // x,n = metros locales E/N, el mismo sistema que el layout
+    var fi=(x-REL.x0)/REL.paso,fj=(n-REL.n0)/REL.paso,i0=Math.floor(fi),j0=Math.floor(fj);
+    if(i0<0||j0<0||i0+1>=REL.nx||j0+1>=REL.nn)return null;
+    var a=REL.z[j0*REL.nx+i0],b=REL.z[j0*REL.nx+i0+1],c=REL.z[(j0+1)*REL.nx+i0],d2=REL.z[(j0+1)*REL.nx+i0+1];
+    if(a==null||b==null||c==null||d2==null)return null;                                             // borde de la zona levantada: manda el DEM
+    var tx=fi-i0,ty=fj-j0;return (a*(1-tx)+b*tx)*(1-ty)+(c*(1-tx)+d2*tx)*ty;}
+  if(REL){var _dl=[];for(var _rj=0;_rj<REL.nn;_rj+=3)for(var _ri=0;_ri<REL.nx;_ri+=3){var _rz=REL.z[_rj*REL.nx+_ri];if(_rz==null)continue;
+      var _rx=REL.x0+_ri*REL.paso,_rn=REL.n0+_rj*REL.paso;_dl.push(_rz-demAt(lat0+_rn/mPerLat,lon0+_rx/mPerLon));}
+    if(_dl.length){_dl.sort(function(u,v){return u-v;});RELDZ=_dl[_dl.length>>1];}}
+  function elevAt(lat,lon){var v=REL?relAt((lon-lon0)*mPerLon,(lat-lat0)*mPerLat):null;
+    return v!=null?v:demAt(lat,lon)+RELDZ;}
   baseElev=elevAt(lat0,lon0);var emin=1e9,emax=-1e9;
 
   var segX=Math.max(160,Math.min(440,Math.round(widthM/7))),segY=Math.max(90,Math.min(440,Math.round(depthM/7)));   // malla del terreno ~7 m/segmento: en plantas grandes (Ayora) sube de ~16 m a ~7 m para captar el relieve y no facetear/escalonar
@@ -789,7 +813,7 @@ async function build(){
     scene.fog.far=Math.max(scene.fog.near+1500,camD+diag*2+800);}
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
   setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
-    "satélite: "+(sat&&sat.ok?(sat.resumen+(sat.mixto?" <span class='err'>(MIXTO)</span>":"")):"—")+" · relieve "+(demImg?(emax-emin).toFixed(1)+" m":"plano")+"\n"+
+    "satélite: "+(sat&&sat.ok?(sat.resumen+(sat.mixto?" <span class='err'>(MIXTO)</span>":"")):"—")+" · relieve "+(REL?(emax-emin).toFixed(1)+" m (levantamiento"+(demImg?", DEM "+(RELDZ>=0?"+":"")+RELDZ.toFixed(1)+" m alrededor":"")+")":(demImg?(emax-emin).toFixed(1)+" m":"plano"))+"\n"+   // el levantamiento propio se declara: no es el DEM global
     "módulos/string: <b>"+modsNow+"</b>"+((SPEC&&SPEC.mods)?" · <span style='color:#36D399'>de la Cartera técnica</span>":"")+"\n"+
     "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
   // diagnóstico de sombras retirado: confirmado que en escritorio se ven (v2.66 PCF); en móvil es limitación de su GPU (pendiente fallback)
@@ -856,6 +880,23 @@ function makePanelTex(){
 // así 215 seguidores son ~5 llamadas de dibujo en vez de miles. Las piezas que basculan (tubos
 // y mesas) se recolocan por matriz cada frame; postes/slew/marcador son fijos.
 function buildTrackers(elevAt){
+  /* MATERIALES COMPARTIDOS, ANTES DE NADA. `steelM`, `glassM`, `panelTex` y compañía los usa TODO
+     el visor —el BOS entero, el vallado, las mesas fijas—, no solo el seguidor, así que se preparan
+     aquí arriba: si se quedan detrás del corte de planta fija, Dicayagua pinta el BOS con el
+     material por defecto de three (blanco liso) y sus mesas sin textura de módulo. */
+  var mats=Seguidor.materials(THREE);                                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
+  // v4.2: vidrio physical/clearcoat RETIRADO temporalmente (iba ligado al PMREM que ennegrecía la escena); se mantiene el vidrio estándar probado
+  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x232a33);mats.glass.emissiveIntensity=0.12;   // 0,12: con la textura nueva (media más clara) 0,32 lavaba TODA la planta en gris
+  if(!CELLNRM)CELLNRM=makeCellNormal();mats.glass.normalMap=CELLNRM;mats.glass.normalScale=new THREE.Vector2(0.4,0.4);mats.glass.needsUpdate=true;     // células FV + microrrelieve (célula abombada/marco); emissiveMap → cara trasera bifacial
+  steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
+  markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
+  /* PLANTA DE ESTRUCTURA FIJA: aquí no hay seguidores que construir. Dicayagua trae sus 5.493 mesas
+     en `fijas` —las dibuja buildBOS, igual que la instalación fija de Túnez— y su `trackers` es la
+     misma lista, que existe solo para el encuadre y el recuento del Layout 2D y la Cobertura.
+     Sin este corte se intentaba levantar el MODELO DE SEGUIDOR (tubo de par, motor, TCU, antena,
+     amortiguadores) 5.493 veces para una planta que no tiene ninguno: la página se quedaba
+     construyendo y el 3D no llegaba a aparecer. */
+  if(LAYOUT&&LAYOUT.fija){ ELEV=elevAt; nodeGroup.clear(); labelGroup.clear(); TRK=[]; SEG=[]; SEGO=null; return; }
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
   /* El seguidor canónico es el de El Burgo: BÍFILO (dos filas a ±filaZ) y módulo de 1,134 m. No
@@ -874,13 +915,8 @@ function buildTrackers(elevAt){
   if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modW){Seguidor.DIMS.modW=LAYOUT.modW;Seguidor.DIMS.pitch=LAYOUT.modW+Seguidor.DIMS.gapMod;}
   if(Seguidor.DIMS&&LAYOUT&&LAYOUT.modH)Seguidor.DIMS.modH=LAYOUT.modH;   // cuerda del módulo por planta (Túnez 2,35 del DWG); sin esto todas heredaban los 2,382 de El Burgo
   if(Seguidor.setModsPerStr)Seguidor.setModsPerStr((SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28);   // módulos/string POR PLANTA. Prioridad: Cartera técnica (SPEC) → layout → registro → 28. (San José 32 mód/ala → 74 m; resto 28 → 64,7 m)
-  var mats=Seguidor.materials(THREE),D=Seguidor.DIMS;                              // FUENTE ÚNICA del seguidor (seguidor.js, compartida con el gemelo)
+  var D=Seguidor.DIMS;                                                             // cotas del seguidor, ya con las medidas del DWG aplicadas arriba
   if(LAYOUT&&LAYOUT.filaZ!=null)D=Object.create(D),D.filaZ=LAYOUT.filaZ;            // planta de una sola fila: filaZ 0
-  // v4.2: vidrio physical/clearcoat RETIRADO temporalmente (iba ligado al PMREM que ennegrecía la escena); se mantiene el vidrio estándar probado
-  panelTex=makePanelTex();mats.glass.map=panelTex;mats.glass.emissiveMap=panelTex;mats.glass.emissive=new THREE.Color(0x232a33);mats.glass.emissiveIntensity=0.12;   // 0,12: con la textura nueva (media más clara) 0,32 lavaba TODA la planta en gris
-  if(!CELLNRM)CELLNRM=makeCellNormal();mats.glass.normalMap=CELLNRM;mats.glass.normalScale=new THREE.Vector2(0.4,0.4);mats.glass.needsUpdate=true;     // células FV + microrrelieve (célula abombada/marco); emissiveMap → cara trasera bifacial
-  steelM=mats.steel;blueM=mats.blue;motorM=mats.motor;glassM=mats.glass;
-  markM=new THREE.MeshStandardMaterial({color:0x36D399,emissive:0x0c2a1d,roughness:.4,metalness:.2});
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
   var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
   var zMul=D.modsPerStr/28,zP=[-28*zMul,-9*zMul,9*zMul,28*zMul];   // postes proporcionales al largo del tracker (San José 32 mód → postes más separados); medio oculta los exteriores (>16)
@@ -3005,6 +3041,12 @@ function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   METEO_ANIM=[];
   bosGroup=new THREE.Group();scene.add(bosGroup);HLBL=HLBL.filter(function(l){return !(l.userData&&l.userData.bos);});   // conserva las etiquetas de NCU (de otro grupo); solo retira las de BOS al reconstruir
+  /* Las MESAS FIJAS van en su propio grupo, no en el de instalaciones: son el campo generador, no
+     BOS. En Dicayagua la planta ENTERA son mesas fijas y con ellas dentro de bosGroup la casilla
+     «Instalaciones (CT, inversores, CCTV, vallado)» borraba la planta de la pantalla. Se reconstruye
+     a la vez que el BOS —misma llamada, mismo ciclo de vida— para que no se apilen copias. */
+  if(fijGroup)scene.remove(fijGroup);
+  fijGroup=new THREE.Group();scene.add(fijGroup);
   if(!LAYOUT||!ELEV)return;
   // viales: tierra compactada drapeada sobre el terreno, que recibe la sombra de los seguidores
   var roadM=new THREE.MeshStandardMaterial({color:0xcfc3a6,roughness:.98,metalness:0,side:THREE.DoubleSide}),rv=[];   // firme crema polvoriento como las fotos reales (antes tan). SIN polygonOffset: a rasante desplazaba la profundidad del firme y se comía las líneas de red drapeadas encima (conductor de tierras invisible); el margen anti-motas lo da +12 cm sobre la malla
@@ -3398,7 +3440,11 @@ function buildBOS(){
     if(CELLNRM){mt.normalMap=CELLNRM;mt.normalScale=new THREE.Vector2(0.4,0.4);}
     var imM=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),mt,tot);
     var imC=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),steelM,totC);
-    [imM,imC].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;scene.add(im);});
+    /* Al grupo de mesas fijas, igual que el camino detallado. Colgadas de `scene` se quedaban
+       fuera de todo ciclo de vida: buildBOS() se vuelve a llamar al mover la exageración vertical
+       o al cambiar de origen de cotas, y cada pasada apilaba otras 5.493 mesas sobre las
+       anteriores, ya con la cota vieja. */
+    [imM,imC].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;fijGroup.add(im);});
     var _B=new THREE.Matrix4(),_L=new THREE.Matrix4(),_R=new THREE.Matrix4(),_S=new THREE.Matrix4(),_T=new THREE.Matrix4();
     var im0=0,ic=0;
     for(i=0;i<FJ.length;i++){
@@ -3406,23 +3452,26 @@ function buildBOS(){
       var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
       var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
       var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
+      /* base de la mesa: la MISMA que el Group del camino detallado. terrainMeshY ya devuelve la
+         cota EXAGERADA (localElevY multiplica por vex), y la mesa en sí no se exagera —solo el
+         terreno—, así que aquí no se vuelve a multiplicar: hacerlo elevaba las mesas al triple de
+         la cota del suelo en cuanto se subía la exageración vertical. */
       var yBase=terrainMeshY(f.x,f.n)+hb;
-      /* base de la mesa: misma que el Group del camino detallado */
-      _B.makeRotationY(Math.PI-az); _B.setPosition(f.x,yBase*vex,-f.n);
+      _B.makeRotationY(Math.PI-az); _B.setPosition(f.x,yBase,-f.n);
       var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);
       for(var a2=0;a2<cols;a2++)for(var b2=0;b2<rows;b2++){
         var dl=(b2+0.5)*ml;
         _R.makeRotationX(-Math.PI/2+inc);
         _S.makeScale(mw-jw,ml-jl,1);
         _L.multiplyMatrices(_R,_S);
-        _L.setPosition(-w/2+(a2+0.5)*mw, sz*dl*vex, -cz*dl);
+        _L.setPosition(-w/2+(a2+0.5)*mw, sz*dl, -cz*dl);
         _T.multiplyMatrices(_B,_L);
         imM.setMatrixAt(im0++,_T);
       }
       var CH=0.05,CW=0.07;
       for(var k=0;k<=rows;k++){ var dl2=k*ml;
         _R.makeRotationX(inc); _S.makeScale(w+0.12,CH,CW); _L.multiplyMatrices(_R,_S);
-        _L.setPosition(0, (sz*dl2-(CH/2)*cz)*vex, -cz*dl2-(CH/2)*sz);
+        _L.setPosition(0, sz*dl2-(CH/2)*cz, -cz*dl2-(CH/2)*sz);
         _T.multiplyMatrices(_B,_L); imC.setMatrixAt(ic++,_T);
       }
     }
@@ -3492,7 +3541,7 @@ function buildBOS(){
           to.position.set(dx,(yA+yB)/2,(zA+zB)/2);to.rotation.x=Math.atan2(dZ,dY);
           to.castShadow=true;g.add(to);}
       });}
-    bosGroup.add(g);
+    fijGroup.add(g);
     /* La etiqueta se CONMUTA con la casilla "Etiquetas", como las del CT, los edificios y las
        cámaras. Estaba siempre encendida y con 14 mesas tapaba la instalación entera. */
     if(f.nombre){var lb=makeLabel(f.nombre,'poi');lb.position.set(f.x,yBase+sz*L+2.2,-f.n);
@@ -3662,6 +3711,7 @@ function buildBOS(){
        va con ella su brazo y su entrada en METEO_ANIM (era lo único que animaba ese grupo). */
     var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
+  fijGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // y en las mesas fijas, que antes colgaban de bosGroup y heredaban esta misma pasada (herrajes: grapa, cartela, placa)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
 // Dos NCUs (coordinadores): Norte y Sur. Cada TCU enlaza con la NCU más cercana (la de su mitad).
