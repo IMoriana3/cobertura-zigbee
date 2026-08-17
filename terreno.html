@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.78</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.79</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1792,39 +1792,33 @@ function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
 }
 var _natural=false;   // interruptor para muestrear el terreno SIN explanadas (lo necesita el propio parche para saber qué se ha movido)
 function rayoSuelo(ray){ var o=[];if(terrain)o.push(terrain);if(EXCG)o=o.concat(EXCG.children);return o.length?ray.intersectObjects(o,false):[]; }   // el suelo son la malla Y los parches de las explanadas: donde hay hueco en la malla, el clic lo recoge el parche
-/* ───────── EXPLANADA DEL CT: excavación con pasillo y talud ─────────
+/* ───────── EXPLANADA DEL CT: excavación plana con pasillo de 1 m ─────────
    DERIVADO, NO ESTÁ EN EL PLANO. El DWG es 2D: da la PLANTA del CT y se acabó — ni cota de solera,
    ni explanación, ni taludes. Sin explanar, la caseta es una caja nivelada sobre una ladera y solo
-   caben dos remedios feos: dejarla en el aire por un lado o enterrarla por el otro (hasta ahora se
-   nivelaba sobre la esquina alta con un faldón de muros hacia abajo). Aquí se labra la explanada
-   que hace falta para que quede HORIZONTAL y la puerta a ras, que es como se construye de verdad:
-     · SOLERA a la cota más baja del contorno del edificio ⇒ todo lo demás es CORTE (en Fayón el
-       terreno sube al noreste, así que es ahí donde se excava, como pedía el usuario);
-     · PASILLO de 1,00 m alrededor de la caseta antes de que arranque el talud (pedido así);
-     · TALUD 1H:1V en metros REALES desde el borde del pasillo hasta empalmar con el terreno natural
-       —corte en el lado alto y un poco de terraplén en el bajo—, y si el desmonte no cerrase dentro
-       de los 30 m que se permiten, se empina el talud lo justo para que cierre (nunca se deja un
-       escalón: el parche tiene que coser con la malla del terreno).
-   Las tres cifras son DECISIONES DE PROYECTO, no medidas de plano. El talud se calcula en metros
-   reales y se dibuja con la exageración vertical que haya puesta (con vex=1, el arranque, se ve tal
-   cual: 45°; con vex=3 se ve tres veces más empinado, como todo el relieve). */
-var EXC=[],EXCG=null,SATUV=null,RELIEVE=null,PASILLO=1.00,TALUD=1.00;   // TALUD: metros horizontales por metro de desmonte
-function excavaY(x,n,y){   // recorta la cota natural con las explanadas: dentro, la solera; fuera, el talud
+   caben dos remedios feos: dejarla en el aire por un lado o enterrarla por el otro. Aquí se labra
+   la explanada que hace falta para que quede HORIZONTAL y la puerta a ras:
+     · SOLERA plana a la cota MÁS BAJA de su entorno ⇒ se corta POR TODOS LOS LADOS, nunca se
+       rellena (pedido así: "corte por todos lados hasta quedar plano");
+     · PASILLO de 1,00 m alrededor de la caseta: la solera es el polígono del CT desplazado 1 m,
+       o sea LADOS RECTOS Y PARALELOS A LOS MUROS, que es como se replantea en obra;
+     · el encuentro con el terreno natural es un CORTE VERTICAL en el borde de la solera. Un primer
+       intento lo resolvió con talud en rampa y marcando la tierra celda a celda de la rejilla: salía
+       un borde de escalones de 40 cm — "queda muy mal", "debe ser un pasillo recto, no eso
+       pixelado". La rejilla no puede dibujar un borde recto: hay que recortarla CONTRA el polígono,
+       que es lo que se hace ahora.
+   Las dos cifras (1,00 m de pasillo y solera a la cota mínima) son DECISIONES DE PROYECTO, no
+   medidas de plano. */
+var EXC=[],EXCG=null,SATUV=null,RELIEVE=null,PASILLO=1.00;
+function excavaY(x,n,y){   // dentro de la solera, su cota; fuera, el terreno natural (el corte es vertical)
   for(var i=0;i<EXC.length;i++){var e=EXC[i];
-    if(x<e.x0||x>e.x1||n<e.n0||n>e.n1)continue;                        // fuera de su región: la malla no se toca
-    var m=distPoli(x,n,e.p)/e.tal*vex;                                 // margen vertical DIBUJADO admisible a esa distancia
-    return Math.max(e.y-m,Math.min(e.y+m,y));}
+    if(x<e.x0||x>e.x1||n<e.n0||n>e.n1)continue;
+    if(dentroPoli(x,n,e.p))return e.y;
+    return y;}
   return y;
 }
-function distPoli(x,n,P){   // distancia al polígono (0 dentro): el pasillo ya está incluido en P
-  var dentro=false;
+function dentroPoli(x,n,P){ var d=false;
   for(var i=0,j=P.length-1;i<P.length;j=i++){var A=P[i],B=P[j];
-    if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])dentro=!dentro;}
-  if(dentro)return 0;
-  var d=1e9;
-  for(var k=0,l=P.length-1;k<P.length;l=k++){var a=P[k],b=P[l],vx=b[0]-a[0],vn=b[1]-a[1],L2=vx*vx+vn*vn||1e-9;
-    var t=Math.max(0,Math.min(1,((x-a[0])*vx+(n-a[1])*vn)/L2));
-    d=Math.min(d,Math.hypot(x-(a[0]+vx*t),n-(a[1]+vn*t)));}
+    if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])d=!d;}
   return d;
 }
 function polOff(P,d){   // polígono desplazado d hacia FUERA (miter): el borde de la solera = caseta + pasillo
@@ -1837,7 +1831,27 @@ function polOff(P,d){   // polígono desplazado d hacia FUERA (miter): el borde 
     out.push([b[0]+(n1[0]+n2[0])/den*d, b[1]+(n1[1]+n2[1])/den*d]);}
   return out;
 }
-function excavaCT(){   // recalcula las explanadas (hay que llamarla ANTES de drapear nada, y al cambiar vex: la solera va en metros dibujados)
+function semiPlano(P,A,B,dentro){   // recorta el polígono convexo P por la recta A→B (Sutherland-Hodgman)
+  var R=[],m=P.length;
+  for(var i=0;i<m;i++){var C=P[i],D=P[(i+1)%m];
+    var sc=(B[0]-A[0])*(C[1]-A[1])-(B[1]-A[1])*(C[0]-A[0]),sd=(B[0]-A[0])*(D[1]-A[1])-(B[1]-A[1])*(D[0]-A[0]);
+    if(!dentro){sc=-sc;sd=-sd;}
+    if(sc>=0)R.push(C);
+    if((sc>=0)!==(sd>=0)){var t=sc/(sc-sd);R.push([C[0]+(D[0]-C[0])*t,C[1]+(D[1]-C[1])*t]);}}
+  return R;
+}
+/* Trozos de una celda de la rejilla que caen FUERA del polígono Q (convexo, que es lo que son las
+   casetas del plano). Descomposición estándar del complementario: pieza_i = celda ∩ fuera(lado_i) ∩
+   dentro(lados anteriores). Son disjuntas, convexas y juntas cubren celda − Q, así que el borde de
+   la solera queda RECTO aunque la rejilla no sepa nada de él. */
+function celdaFuera(cel,Q){
+  var out=[],resto=cel;
+  for(var i=0;i<Q.length&&resto.length>2;i++){var A=Q[i],B=Q[(i+1)%Q.length];
+    var f=semiPlano(resto,A,B,false); if(f.length>2)out.push(f);
+    resto=semiPlano(resto,A,B,true);}
+  return out;
+}
+function excavaCT(){   // recalcula las explanadas (ANTES de drapear nada, y al cambiar vex: la solera va en metros dibujados)
   EXC=[]; if(!TMESH||!ELEV||!LAYOUT)return;
   (LAYOUT.cts||[]).forEach(function(pl,ci){
     var P=pl.slice(); if(P.length>2&&Math.hypot(P[0][0]-P[P.length-1][0],P[0][1]-P[P.length-1][1])<1e-6)P.pop();
@@ -1847,30 +1861,25 @@ function excavaCT(){   // recalcula las explanadas (hay que llamarla ANTES de dr
     var cx=P.reduce(function(s,p){return s+p[0];},0)/P.length,cn=P.reduce(function(s,p){return s+p[1];},0)/P.length;
     if(cx>-6&&cx<22&&cn>-213&&cn<-201)return; if(!inClip(cx,cn))return;
     var Q=polOff(P,PASILLO),y=1e9;
-    P.concat(Q).forEach(function(q){y=Math.min(y,terrainMeshY(q[0],q[1]));});   // solera = la cota MÁS BAJA del contorno (EXC está vacío aquí: es terreno natural)
     var bx0=1e9,bx1=-1e9,bn0=1e9,bn1=-1e9;Q.forEach(function(p){bx0=Math.min(bx0,p[0]);bx1=Math.max(bx1,p[0]);bn0=Math.min(bn0,p[1]);bn1=Math.max(bn1,p[1]);});
-    var alc=1.5,salto=0;                                               // alcance del talud: el MÍNIMO que cierra contra el terreno natural (se itera)
-    for(var it=0;it<10;it++){
-      salto=0;
-      for(var sx=bx0-alc;sx<=bx1+alc+0.5;sx+=0.5)for(var sn=bn0-alc;sn<=bn1+alc+0.5;sn+=0.5)salto=Math.max(salto,Math.abs(terrainMeshY(sx,sn)-y));
-      var pide=salto/vex*TALUD+0.5;
-      if(pide<=alc+0.01)break;
-      alc=Math.min(30,pide);
-      if(alc>=30)break;}
-    var tal=TALUD;
-    if(salto/vex*TALUD+0.5>alc)tal=Math.max(0.15,(alc-0.5)/(salto/vex||1e-9));   // no cabe con 1H:1V ⇒ se empina lo justo (nunca un escalón en el borde del parche)
+    for(var sx=bx0;sx<=bx1+0.25;sx+=0.25)for(var sn=bn0;sn<=bn1+0.25;sn+=0.25)                    // solera = cota MÍNIMA de TODA su superficie: así se corta por todos lados y no se rellena por ninguno
+      if(dentroPoli(sx,sn,Q))y=Math.min(y,terrainMeshY(sx,sn));                                    // (EXC está vacío aquí: lo que se muestrea es terreno natural)
+    Q.forEach(function(q){y=Math.min(y,terrainMeshY(q[0],q[1]));});
+    if(y>1e8)return;
     var dx=TMESH.w/TMESH.sx,dn=TMESH.d/TMESH.sy;                       // la región se CUADRA con la malla del terreno: el parche cose sin costura ni grieta
-    var R=[bx0-alc,bx1+alc,bn0-alc,bn1+alc];
+    var R=[bx0-dx,bx1+dx,bn0-dn,bn1+dn];
     R[0]=-TMESH.w/2+Math.floor((R[0]+TMESH.w/2)/dx)*dx; R[1]=-TMESH.w/2+Math.ceil((R[1]+TMESH.w/2)/dx)*dx;
     R[2]=TMESH.d/2-Math.ceil((TMESH.d/2-R[2])/dn)*dn;   R[3]=TMESH.d/2-Math.floor((TMESH.d/2-R[3])/dn)*dn;
-    EXC.push({ci:ci,p:Q,y:y,x0:R[0],x1:R[1],n0:R[2],n1:R[3],tal:tal,alc:alc,salto:salto});});   // ci = índice del CT en LAYOUT.cts (no todos tienen explanada: valen los mismos filtros que la caseta)
+    EXC.push({ci:ci,p:Q,y:y,x0:R[0],x1:R[1],n0:R[2],n1:R[3]});});      // ci = índice del CT en LAYOUT.cts (no todos tienen explanada: valen los mismos filtros que la caseta)
 }
 /* El terreno se dibuja con una malla regular de ~2,5 m en las plantas pequeñas: una excavación de
-   5×8 m con pasillo de 1 m NO cabe ahí. Así que se le abre HUECO (se quitan sus triángulos en la
-   región de cada explanada, siempre partiendo del índice original para que sea idempotente) y se
-   cose un parche fino de 0,40 m. El parche muestrea terrainMeshY, que ya lleva la explanada, y en
-   el borde de la región vale el terreno natural exacto —la región está cuadrada con la malla y el
-   talud cierra antes— así que encaja vértice a vértice, sin grieta.
+   5×8 m con pasillo de 1 m NO cabe ahí. Se le abre HUECO (fuera sus triángulos en la región de cada
+   explanada, siempre partiendo del índice original, así que es idempotente) y se cose un parche:
+     · fuera de la solera, rejilla fina RECORTADA contra el polígono → el borde sale recto;
+     · dentro, la solera plana;
+     · entre las dos, el corte VERTICAL, de la cota de solera al terreno natural de cada punto.
+   En el borde de la región el parche vale el terreno natural exacto (la región está cuadrada con la
+   malla), así que encaja vértice a vértice, sin grieta.
    Va en su propio grupo, NO en `bosGroup`: la excavación es TERRENO. Si colgara de las
    instalaciones, al desmarcar "Instalaciones" desaparecería el parche y quedaría un agujero. */
 function buildExcavacion(){
@@ -1889,34 +1898,53 @@ function buildExcavacion(){
     geo.setIndex(keep);}
   if(!EXC.length)return;
   EXCG=new THREE.Group();scene.add(EXCG);
-  var tierraM=new THREE.MeshStandardMaterial({color:0xa8926d,roughness:1,metalness:0});   // tierra desnuda: lo excavado no tiene ni ortofoto ni hierba, es obra reciente
+  var tierraM=new THREE.MeshStandardMaterial({color:0xa8926d,roughness:1,metalness:0});             // solera y corte: tierra compactada, sin ortofoto ni hierba
+  var corteM=new THREE.MeshStandardMaterial({color:0x9a8360,roughness:1,metalness:0,side:THREE.DoubleSide});   // la cara del corte, un punto más oscura
   EXC.forEach(function(e){
-    var W=e.x1-e.x0,D=e.n1-e.n0,nx=Math.max(4,Math.min(220,Math.round(W/0.40))),nn=Math.max(4,Math.min(220,Math.round(D/0.40)));
-    var vp=[],vu=[],vc=[],tocado=[];
-    for(var j=0;j<=nn;j++)for(var i=0;i<=nx;i++){
-      var X=e.x0+W*i/nx,N=e.n0+D*j/nn,Y=terrainMeshY(X,N);
-      _natural=true;var Yn=terrainMeshY(X,N);_natural=false;                 // cota natural, para saber qué se ha movido de verdad
-      vp.push(X,Y,-N);
-      var q=SATUV?SATUV(X,N):[0,0]; vu.push(q[0],q[1]);
+    var W=e.x1-e.x0,D=e.n1-e.n0,paso=0.5,nx=Math.max(2,Math.round(W/paso)),nn=Math.max(2,Math.round(D/paso));
+    var vp=[],vu=[],vc=[];
+    function nat(x,n){_natural=true;var v=terrainMeshY(x,n);_natural=false;return v;}
+    function vert(x,n){                                                                            // vértice del parche, SIEMPRE a cota natural (la solera va aparte)
+      var Y=nat(x,n); vp.push(x,Y,-n);
+      var q=SATUV?SATUV(x,n):[0,0]; vu.push(q[0],q[1]);
       var c=(RELIEVE&&typeof reliefColor==='function')?reliefColor((Y/(vex||1)+baseElev-RELIEVE.emin)/RELIEVE.rango):[1,1,1];
-      vc.push(c[0],c[1],c[2],1);
-      tocado.push((Math.abs(Y-Yn)>0.02||distPoli(X,N,e.p)<0.01)?1:0);}
-    var suelo=[],obra=[];                                              // dos grupos: terreno intacto y superficie MOVIDA (tierra desnuda)
-    for(var j2=0;j2<nn;j2++)for(var i2=0;i2<nx;i2++){
-      var a=j2*(nx+1)+i2,b=a+1,c2=a+nx+1,d2=c2+1;
-      var mov=tocado[a]||tocado[b]||tocado[c2]||tocado[d2];
-      (mov?obra:suelo).push(a,b,c2, b,d2,c2);}
+      vc.push(c[0],c[1],c[2],1);}
+    for(var j=0;j<nn;j++)for(var i=0;i<nx;i++){
+      var ax=e.x0+W*i/nx,bx=e.x0+W*(i+1)/nx,an=e.n0+D*j/nn,bn=e.n0+D*(j+1)/nn;
+      var cel=[[ax,an],[bx,an],[bx,bn],[ax,bn]];
+      var todoFuera=true;for(var v=0;v<4;v++)if(dentroPoli(cel[v][0],cel[v][1],e.p))todoFuera=false;
+      var piezas;
+      if(todoFuera&&!(e.p.some(function(q2){return q2[0]>=ax&&q2[0]<=bx&&q2[1]>=an&&q2[1]<=bn;})))piezas=[cel];   // celda limpia: no la toca el polígono
+      else piezas=celdaFuera(cel,e.p);
+      piezas.forEach(function(pz){for(var k2=1;k2+1<pz.length;k2++){                                // abanico: cada pieza es convexa
+        vert(pz[0][0],pz[0][1]);vert(pz[k2][0],pz[k2][1]);vert(pz[k2+1][0],pz[k2+1][1]);}});}
     var g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));
     g.setAttribute('uv',new THREE.Float32BufferAttribute(vu,2));
     g.setAttribute('color',new THREE.Float32BufferAttribute(vc,4));
-    g.setIndex(suelo.concat(obra));
-    g.addGroup(0,suelo.length,0);g.addGroup(suelo.length,obra.length,1);
     g.computeVertexNormals();
-    var m=new THREE.Mesh(g,[terrain.material,tierraM]);
-    m.receiveShadow=true;m.castShadow=true;
+    var m=new THREE.Mesh(g,terrain.material);m.receiveShadow=true;
     m.userData.exc=true;m.userData.matSuelo=terrain.userData.baseMat;m.userData.matRel=terrain.userData.reliefMat;
-    EXCG.add(m);});
+    EXCG.add(m);
+    var sp=[],cx2=0,cn2=0;e.p.forEach(function(q2){cx2+=q2[0];cn2+=q2[1];});cx2/=e.p.length;cn2/=e.p.length;
+    for(var s2=0;s2<e.p.length;s2++){var A=e.p[s2],B=e.p[(s2+1)%e.p.length];                       // SOLERA: abanico desde el centro, borde recto
+      sp.push(cx2,e.y,-cn2, A[0],e.y,-A[1], B[0],e.y,-B[1]);}
+    var gs=new THREE.BufferGeometry();gs.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));gs.computeVertexNormals();
+    var nrm=gs.attributes.normal,ar=0;for(var q3=0;q3<nrm.count;q3++)ar+=nrm.getY(q3);
+    if(ar<0){var fl=[];for(var t3=0;t3<sp.length;t3+=9)fl.push(sp[t3],sp[t3+1],sp[t3+2],sp[t3+6],sp[t3+7],sp[t3+8],sp[t3+3],sp[t3+4],sp[t3+5]);
+      gs=new THREE.BufferGeometry();gs.setAttribute('position',new THREE.Float32BufferAttribute(fl,3));gs.computeVertexNormals();}   // la solera mira ARRIBA venga como venga el polígono del DWG
+    var ms=new THREE.Mesh(gs,tierraM);ms.receiveShadow=true;EXCG.add(ms);
+    var cp=[];                                                                                     // CORTE: pared vertical del borde de la solera al terreno natural
+    for(var s3=0;s3<e.p.length;s3++){var A2=e.p[s3],B2=e.p[(s3+1)%e.p.length],L3=Math.hypot(B2[0]-A2[0],B2[1]-A2[1]),ns=Math.max(2,Math.round(L3/0.35));
+      var ux=(B2[1]-A2[1])/(L3||1e-9),un=-(B2[0]-A2[0])/(L3||1e-9);                                // normal hacia fuera: se muestrea 2 cm fuera para coger terreno natural
+      for(var k3=0;k3<ns;k3++){
+        var p1=[A2[0]+(B2[0]-A2[0])*k3/ns, A2[1]+(B2[1]-A2[1])*k3/ns],p2=[A2[0]+(B2[0]-A2[0])*(k3+1)/ns, A2[1]+(B2[1]-A2[1])*(k3+1)/ns];
+        var y1=nat(p1[0]+ux*0.02,p1[1]+un*0.02),y2=nat(p2[0]+ux*0.02,p2[1]+un*0.02);
+        if(y1<=e.y+0.005&&y2<=e.y+0.005)continue;                                                  // ahí no hay desmonte: no hay pared que dibujar
+        cp.push(p1[0],e.y,-p1[1], p2[0],e.y,-p2[1], p2[0],Math.max(y2,e.y),-p2[1]);
+        cp.push(p1[0],e.y,-p1[1], p2[0],Math.max(y2,e.y),-p2[1], p1[0],Math.max(y1,e.y),-p1[1]);}}
+    if(cp.length){var gc=new THREE.BufferGeometry();gc.setAttribute('position',new THREE.Float32BufferAttribute(cp,3));gc.computeVertexNormals();
+      var mc=new THREE.Mesh(gc,corteM);mc.receiveShadow=true;mc.castShadow=true;EXCG.add(mc);}});
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
