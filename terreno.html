@@ -534,6 +534,12 @@ var PLANTS={
      que bascular. Sus 5.493 mesas van en `fijas`, el mismo esquema que la instalación fija de
      Túnez. `relieve` es su levantamiento propio (164 curvas de nivel + 672 puntos de cota). */
   dicayagua:{file:'dicayagua_layout.json', title:'El Naranjo Dicayagua · oferta', angles:null, cod:null, relieve:'dicayagua_relieve.json'},   // 5.493 mesas fijas a 10° (4.851 de 18x3 y 642 de 9x3) del KML de layout, en UTM 19N. No tiene DWG: es una oferta
+  /* BENANTE 25004 y PANBIANCO 25004.2 (Sicilia) — dos plantas del MISMO emplazamiento, a 1,3 km
+     una de otra, con seguidor idéntico: 1V62 de 71,908 m y 1V31 de 36,289 m, módulo 1,134 x 2,382,
+     hueco 15 mm y motor 0,70. El DWG no trae sistema de coordenadas; el huso 33N sale de que la
+     cartera las declara en Italia (ver `georef` del layout). */
+  benante:{file:'benante_layout.json', title:'Benante 25004', angles:null, mods:31, cod:25004},      // 730 seguidores (545 completos 1V62 + 185 medios 1V31) · 6 NCU
+  panbianco:{file:'panbianco_layout.json', title:'Panbianco 25004.2', angles:null, mods:31, cod:'25004.2'},   // 1.476 seguidores (1.084 + 392 medios) · 12 NCU · 2 repetidores
   tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
