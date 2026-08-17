@@ -152,6 +152,10 @@ const L = {
   plant: planta, title: 'El Naranjo Dicayagua', estado: 'oferta',
   crs: `EPSG:${(sur ? 32700 : 32600) + zona}`, clat: +clat.toFixed(7), clon: +clon.toFixed(7),
   cE: +cE.toFixed(3), cN: +cN.toFixed(3),
+  /* HUSO de la planta, en minutos y SIN cambio de hora. La República Dominicana va en UTC−4 todo
+     el año (no aplica horario de verano desde 1974). Sin este dato el visor cae a la regla
+     peninsular —España/Italia— y en verano dibujaba el sol de Madrid: seis horas de desfase. */
+  tzFijo: -240,
   /* NO es una planta de seguidores: estructura fija. Va aquí arriba para que se lea antes que nada. */
   fija: { tilt: 10, tipo: 'Generic 3V', pitch: 8.8, nota: 'inclinación fija 10°, 3 módulos en vertical (del plano de layout)' },
   mesa: { modH: null, filaZ: 0, tipos: mesaTipos,

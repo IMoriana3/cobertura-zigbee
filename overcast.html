@@ -2038,22 +2038,43 @@ function computeZonal(d){
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
    (Bagnarelli es monofila — dato del sim de BT). El azimut de eje ≠ 0 del
    layout alimenta TAMBIÉN la física (axaz). */
+/* El huso YA NO vive aqui: lo declara el layout de cada planta (`tzFijo`). Estaba fijo todo el
+   año —Ayora tz:2 tambien en enero— y era un tercer sitio diciendo lo mismo. */
 const REALMETA={
-  ayora:     {tz:2, bifila:true,  title:'Ayora'},
-  sanjose:   {tz:-5,bifila:true,  title:'San José'},
-  elburgo:   {tz:2, bifila:true,  title:'El Burgo'},
-  fayon:     {tz:2, bifila:true,  title:'Fayón'},
-  paramo:    {tz:2, bifila:true,  title:'Páramo'},
-  tunez:     {tz:1, bifila:true,  title:'Túnez'},
-  bagnarelli:{tz:2, bifila:false, title:'Bagnarelli'}
+  ayora:     {bifila:true,  title:'Ayora'},
+  sanjose:   {bifila:true,  title:'San José'},
+  elburgo:   {bifila:true,  title:'El Burgo'},
+  fayon:     {bifila:true,  title:'Fayón'},
+  paramo:    {bifila:true,  title:'Páramo'},
+  tunez:     {bifila:true,  title:'Túnez'},
+  bagnarelli:{bifila:false, title:'Bagnarelli'}
 };
+/* HUSO LOCAL DE LA PLANTA. El campo «UTC ±» arrancaba clavado en 2 —hora de verano peninsular— y
+   al cargar una planta real no se tocaba, asi que la simulacion corria con la hora de Madrid:
+   Tunez salia una hora adelantado, San Jose siete y Dicayagua seis. El dato es del layout
+   (`tzFijo`, en minutos y SIN cambio de hora, que es como van Republica Dominicana, Peru y
+   Tunicia); si no lo trae, se aplica la regla peninsular sobre la FECHA simulada, que es la que
+   vale para Espana e Italia. Se respeta el valor si lo has cambiado a mano. */
+function husoPlanta(lay,fechaISO){
+  if(lay&&lay.tzFijo!=null)return lay.tzFijo/60;
+  const d=new Date((fechaISO||'')+'T12:00:00');
+  const doy=isNaN(d)?172:Math.floor((d-new Date(d.getFullYear(),0,0))/86400000);
+  return (doy>=88&&doy<=298)?2:1;
+}
+let _huso=null;                                   // ultimo valor puesto por nosotros: si el campo sigue en el, se puede refrescar
+function aplicaHuso(lay){
+  const t=$('tz'); if(!t)return; if(lay)_husoLay=lay;
+  const v=husoPlanta(_husoLay,$('date')?$('date').value:'');
+  if(_huso===null||+t.value===_huso){t.value=v;_huso=v;}
+}
+let _husoLay=null;
 async function loadRealPlant(name){
   const note=$('plantnote');
   try{
     const r=await fetch(name+'_layout.json',{cache:'no-store'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();
-    const meta=REALMETA[name]||{tz:2,bifila:true,title:name};
+    const meta=REALMETA[name]||{bifila:true,title:name};
     const byN={};
     for(const t of j.trackers){const k=t.ncu==null?1:t.ncu;(byN[k]=byN[k]||[]).push(t);}
     const ncuIds=Object.keys(byN).map(Number).sort((a,b)=>a-b);
@@ -2065,7 +2086,7 @@ async function loadRealPlant(name){
     PLANT_REAL={name:name,title:meta.title,data:j,byN:byN,bifila:meta.bifila,rot:rot,
                 ncuIds:ncuIds,cents:cents,x0:Math.min(...xs),x1:Math.max(...xs)};
     if(j.clat!=null){$('lat').value=j.clat;$('lon').value=j.clon;}
-    $('tz').value=meta.tz;
+    aplicaHuso(j);   // huso del LAYOUT (tzFijo) o regla peninsular sobre la fecha simulada
     $('axaz').value=rot;                               // la física sigue el eje real
     if(ncuIds.length>1)$('zonalOn').checked=true;
     $('plantinfo').innerHTML='<b>'+meta.title+'</b> · '+j.trackers.length+' uds · '+
@@ -3361,6 +3382,7 @@ $('qabtn').onclick=()=>{
  'nncu','crossmin','stow'].forEach(id=>{
   $(id).addEventListener('change',recompute);
 });
+$('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
 $('loopOn').addEventListener('change',recompute);
 $('zonalOn').addEventListener('change',recompute);
 window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
