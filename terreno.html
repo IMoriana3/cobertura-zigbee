@@ -177,6 +177,28 @@ function termUnidad(){ return (LAYOUT&&LAYOUT.fija)?'mesas fijas':'seguidores'; 
    proyecto y su implantación sale del KML de layout: el rótulo lo dice el propio layout, en
    `generado_de`, en vez de dar el DWG por supuesto. */
 function termFuente(){ return /\.kml/i.test((LAYOUT&&LAYOUT.generado_de)||'')?'KML':'DWG'; }
+/* EL PANEL, SEGÚN LO QUE LA PLANTA TIENE DE VERDAD.
+   Dicayagua es de estructura FIJA: no hay backtracking que quitar, ni tracker que quebrar, ni
+   pilote que medir, ni TCU que enlazar con una NCU que tampoco existe. Dejar esos mandos a la
+   vista no es solo ruido: invitan a leer un ángulo de seguimiento, un stow o una cobertura de
+   malla que en esta planta no significan nada.
+   Se oculta por lo que el layout DECLARA, no por el nombre de la planta:
+     · `fija`      → fuera todo lo de seguimiento (BT, afección BT, quebrado, edición de
+                     seguidores, stow, pile reveal, cotas del seguidor, datos reales/simulación)
+                     y fuera «Calibrar con SolarGPT», que pide una simulación kind:'tracker' y
+                     para una fija devolvería una producción que no es la suya;
+     · sin `ncus`  → fuera todo lo de radio (enlaces a NCU, mover NCU, cobertura de malla).
+   Se conserva lo que SÍ aplica: sol, sombras, relieve, instalaciones, vista desde el sol y la
+   barra de tiempo —el sol se mueve aunque las mesas no—. */
+function ajustaPanelPlanta(){
+  var fija=!!(LAYOUT&&LAYOUT.fija), sinNCU=!(LAYOUT&&LAYOUT.ncus&&LAYOUT.ncus.length);
+  function fila(el){ if(!el)return null; return (el.closest&&el.closest('.row'))||el.parentNode; }
+  function oculta(id,cond,propio){ var e=$(id); if(!e)return; var t=propio?e:fila(e); if(t)t.style.display=cond?'none':''; }
+  ['pile','stowChk','bt','afbt','kink','edit','sim','geosrc','btmode','calBtn'].forEach(function(id){oculta(id,fija);});
+  ['stowIn','afbtM'].forEach(function(id){oculta(id,fija);});                      // sub-filas de umbral y de modo
+  ['geoStat','afbtStat','edSel'].forEach(function(id){oculta(id,fija,true);});     // avisos y panel de edición, que son el elemento entero
+  ['fres','placeGw','cob'].forEach(function(id){oculta(id,sinNCU);});
+}
 function log(m,cls){S.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+m+'</span>':m);}
 function $(id){return document.getElementById(id);}
 function showBanner(text,bad){try{var b=$('diagBanner');if(!b){b=document.createElement('div');b.id='diagBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:11px 14px;font:bold 14px/1.45 monospace;color:#fff;white-space:pre-wrap;box-shadow:0 2px 10px rgba(0,0,0,.55);cursor:pointer';b.onclick=function(){b.style.display='none';};document.body.appendChild(b);}b.style.background=bad?'#7a1f1f':'#1f5a3a';b.textContent='🔎 '+text+'\n(toca para cerrar)';b.style.display='block';}catch(_){}}
@@ -489,6 +511,9 @@ function setTime(min){ if(SCADA3D)setTimeout(scadaOverlay,0);
   if(SEG) updateSpin(_STOWANG!=null?_STOWANG:panelAngle(min));        // recoloca las piezas que basculan; ABANDERADO manda el ángulo de bandera (si no, al mover la hora se "des-abanderaba" un frame)
   $('tval').textContent=fmtHM(min);
   if(cobOn)cobSchedule();                                      // la cobertura depende del angulo del panel: al mover la hora, se recalcula (con freno)
+  /* En una planta FIJA el marcador daba un ángulo de seguimiento —«13° O · sim»— para unas mesas
+     que no se mueven. Se muestra su inclinación, que es lo único que hay. */
+  if(LAYOUT&&LAYOUT.fija){ $('aval').textContent=(LAYOUT.fija.tilt!=null?LAYOUT.fija.tilt:(LAYOUT.fijas&&LAYOUT.fijas[0]?LAYOUT.fijas[0].inclinacion:0))+"° fijo"; return; }
   var _a=(_STOWANG!=null?_STOWANG:panelAngle(min));$('aval').textContent=Math.abs(_a).toFixed(0)+"°"+(Math.abs(_a)<0.5?"":(_a<0?" E":" O"))+(_STOWTXT?" · "+_STOWTXT:((simOn||!ANG)?" · sim":" · real"))+((btOn||_STOWTXT)?"":" sin BT");   // con punto cardinal: negativo=Este (convención del render), positivo=Oeste
 }
 
@@ -659,6 +684,7 @@ async function build(){
     if(!LAYOUT)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
+  ajustaPanelPlanta();   // fuera los mandos de seguimiento y de radio si la planta no los tiene
   NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)

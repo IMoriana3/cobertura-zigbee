@@ -65,9 +65,25 @@ function setStatus(h){$('status').innerHTML=h;}
 function termUnidad(){ return (typeof L!=='undefined'&&L&&L.fija)?'mesas fijas':'seguidores'; }
 /* Los rótulos fijos del panel («Seguidores», la leyenda) se reescriben al cargar el layout: son
    HTML estático y en una planta fija mentían igual que el estado. */
+/* «0 NCU · 0 meteo» no es información: es un hueco donde no hay nada. En una planta sin radio se
+   calla, en vez de anunciar dos ceros. */
+function txtNCU(){ var n=(typeof L!=='undefined'&&L&&L.ncus)?L.ncus.length:0, m=(typeof L!=='undefined'&&L&&L.meteo)?L.meteo.length:0;
+  return n?(' · '+n+' NCU · '+m+' meteo'):''; }
 function rotulaUnidad(){ var fija=!!(typeof L!=='undefined'&&L&&L.fija);
   var cb=$('cbTrk'); if(cb&&cb.parentNode&&cb.parentNode.tagName==='LABEL')cb.parentNode.lastChild.textContent=fija?' Mesas fijas':' Seguidores';
   var lg=$('legStatic'); if(lg&&fija)lg.innerHTML=lg.innerHTML.replace('>seguidor ','>mesa fija ');
+  /* Y fuera lo que esta planta no tiene. Dicayagua es FIJA y sin radio: el pile reveal es del
+     pilote de un seguidor (suelo→tubo), el color eléctrico agrupa por NCU y la capa de NCU/meteo
+     no tiene nada que pintar. Se decide por lo que declara el layout, no por el nombre. */
+  var sinNCU=!(typeof L!=='undefined'&&L&&L.ncus&&L.ncus.length);
+  [['cbPile',fija],['cbNcu',sinNCU],['cbElec',sinNCU]].forEach(function(q){ var e=$(q[0]); if(!e)return;
+    var r=(e.closest&&e.closest('.row'))||e.parentNode; if(r)r.style.display=q[1]?'none':''; if(q[1]&&e.checked){e.checked=false;} });
+  if(lg&&sinNCU)lg.innerHTML=lg.innerHTML.replace(/&nbsp;\s*<span class="dot"[^>]*><\/span>NCU[\s\S]*$/,'');   // y su leyenda
+  /* Y las pestañas de COBERTURA: en una planta sin radio no hay malla Zigbee que enseñar —ni TCU
+     en las estructuras ni NCU a la que enlazar—, así que se retiran en vez de abrir un mapa vacío.
+     Se hace aquí y no al construir la barra porque esa corre en DOMContentLoaded, cuando todavía
+     no se ha cargado el layout y `L` es null: allí se habrían escondido en TODAS las plantas. */
+  if(sinNCU)[].slice.call(document.querySelectorAll('.cobsel [data-cob]')).forEach(function(e){e.parentNode.removeChild(e);});
 }
 function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
 function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
@@ -495,15 +511,15 @@ async function build(){
   var wide=Math.max(2*hx,2*hz);
   var z=Math.max(15,Math.min(19,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/wide))));   // ~7 teselas/lado
   fit();draw();
-  if(OFFLINE){ setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\n⛌ modo sin conexión (sin satélite)'); return; }   // OFFLINE: no se descarga el satélite (cero llamadas externas)
-  setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\ndescargando satélite…');
+  if(OFFLINE){ setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+txtNCU()+'\n⛌ modo sin conexión (sin satélite)'); return; }   // OFFLINE: no se descarga el satélite (cero llamadas externas)
+  setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+txtNCU()+'\ndescargando satélite…');
   try{
     sat=await mosaic(z,latN,latS,lonW,lonE);
     // bbox del mosaico en coords mundo (m), a partir de los bordes de las teselas
     var bl=tx2lon(sat.xmin,z),br=tx2lon(sat.xmax+1,z),bt=ty2lat(sat.ymin,z),bb=ty2lat(sat.ymax+1,z);
     satBox={x0:(bl-lon0)*mPerLon,x1:(br-lon0)*mPerLon,n0:(bb-lat0)*mPerLat,n1:(bt-lat0)*mPerLat};
     draw();
-    setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\nsatélite: '+sat.ok+' teselas (z'+z+')');
+    setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+txtNCU()+'\nsatélite: '+sat.ok+' teselas (z'+z+')');
   }catch(e){ setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' (satélite no disponible)'); }
 }
 build();
@@ -561,11 +577,12 @@ addEventListener('DOMContentLoaded', function(){
     if(vivo) e.href=v.f+(v.q||'');
     if(v.no && !on) e.title=v.no;
     if(v.ti) e.title=v.ti;
+    if(v.t!=='Layout 2D')e.setAttribute('data-cob','1');   // pestañas de COBERTURA: se retiran luego si la planta no tiene radio (aquí aún no hay layout)
     w.appendChild(e);
   });
   var t3=chip('Escena 3D \u2197',true);
   t3.href='terreno.html'+q;
-  t3.title='Terreno y seguidores en 3D, con la capa de cobertura apagada.';
+  t3.title='Terreno y estructuras en 3D, con la capa de cobertura apagada.';
   t3.style.cssText+='border:1px solid #2c3a49;color:#9fb2c4;margin-left:8px';
   w.appendChild(t3);
 
