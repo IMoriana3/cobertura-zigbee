@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.76</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.77</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -531,8 +531,11 @@ function encuadra(){ var f=FOCO||{x:0,n:0,w:720,d:480};
         profundidad.
    Con proyección ORTOGONAL el paralaje es CERO por construcción, sin importar el tamaño de la
    planta, y la cámara puede quedarse a una distancia razonable. Se cambia la cámara del visor
-   mientras dure el modo y se devuelve la de perspectiva al salir. */
-var solCam=false,_solPersp=null,_solOrto=null,_solD=0,_solNiebla=null,_solZoom=null;
+   mientras dure el modo y se devuelve la de perspectiva al salir.
+   Es lo mismo que hace el SIMULADOR DE BACKTRACKING en su botón «👁 sol» (backtracking.html,
+   snapSunPov): cámara ortogonal, rueda = zoom de encuadre, arrastre = mover el objetivo. Aquí se
+   sigue el mismo criterio para que las dos herramientas se comporten igual. */
+var solCam=false,_solPersp=null,_solOrto=null,_solD=0,_solNiebla=null,_solLim=null;
 function solCamEsfera(){   // qué hay que encuadrar: centro y radio de la nube de seguidores (FOCO no vale: en Ayora se queda corto)
   var f=FOCO||{x:0,n:0,w:720,d:480},cx=f.x,cn=f.n,R=Math.max(f.w,f.d)/2;
   if(window.TRK&&TRK.length){var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;
@@ -549,12 +552,19 @@ function camDesdeElSol(){
   var h=e.R,w=e.R*asp; if(asp<1){w=e.R;h=e.R/asp;}                 // el radio entra siempre por el lado corto del encuadre
   _solD=e.R*3+200;                                                 // en ortogonal la distancia NO cambia el encuadre: solo tiene que dejar la planta delante
   _solOrto.left=-w;_solOrto.right=w;_solOrto.top=h;_solOrto.bottom=-h;
-  _solOrto.near=1;_solOrto.far=2*_solD+4*e.R;_solOrto.zoom=1;_solOrto.updateProjectionMatrix();
-  if(camera!==_solOrto){_solPersp=camera;camera=_solOrto;                 // se cambia la cámara del visor
-    if(controls){controls.object=camera;_solZoom=controls.enableZoom;controls.enableZoom=false;}   // el encuadre lo fija la planta: la rueda aquí solo estorba
+  _solOrto.near=1;_solOrto.far=2*_solD+4*e.R;
+  if(camera!==_solOrto){_solPersp=camera;camera=_solOrto;camera.zoom=1;                 // se cambia la cámara del visor; el zoom solo se resetea AL ENTRAR (si no, se comería el de la rueda)
+    if(controls){controls.object=camera;_solLim=[controls.minZoom,controls.maxZoom];controls.minZoom=0.25;controls.maxZoom=12;
+      controls.target.set(e.x,e.y,-e.n);}
     if(scene.fog)_solNiebla=[scene.fog.near,scene.fog.far];}
-  camera.position.set(e.x+d.E*_solD, e.y+d.U*_solD, -e.n-d.N*_solD);
-  controls.target.set(e.x,e.y,-e.n);controls.update();
+  _solOrto.updateProjectionMatrix();
+  /* El objetivo NO se reimpone cada fotograma: así el arrastre (pan) mueve el punto al que se mira
+     y la cámara le sigue por el rayo, igual que en el simulador de backtracking. Lo único que se
+     clava es la DIRECCIÓN al sol. Y la rueda sí funciona: en ortogonal el zoom es escala de
+     encuadre, no distancia, y los rayos siguen exactamente paralelos. */
+  var t=controls.target;
+  camera.position.set(t.x+d.E*_solD, t.y+d.U*_solD, t.z-d.N*_solD);
+  controls.update();
   /* Y FUERA LA NIEBLA. Su banda la calcula build() para la cámara de a pie; con el ojo a esta
      distancia cae justo sobre la planta y la vista sale en blanco liso. Aquí no estamos lejos de
      verdad, estamos simulando el infinito del sol, así que se manda mucho más allá de la planta
@@ -567,13 +577,13 @@ function solCamSalir(){                                            // devuelve l
     if(controls)controls.object=camera;
     camera.aspect=(innerWidth/innerHeight)||camera.aspect;camera.updateProjectionMatrix();}
   if(scene.fog&&_solNiebla){scene.fog.near=_solNiebla[0];scene.fog.far=_solNiebla[1];}
-  if(controls&&_solZoom!=null)controls.enableZoom=_solZoom;
-  _solPersp=_solNiebla=_solZoom=null;_solD=0;
+  if(controls&&_solLim){controls.minZoom=_solLim[0];controls.maxZoom=_solLim[1];}
+  _solPersp=_solNiebla=_solLim=null;_solD=0;
 }
 /* Cada fotograma se vuelve a clavar la cámara en el rayo solar (el amortiguado de los controles la
    va sacando) y se apaga el HALO del sol: ese resplandor es un sprite de 950 m que animateSky
-   planta en la dirección del sol, y desde aquí —que es justo donde está el sol— cubría los 4,7° del
-   encuadre entero y lo dejaba todo en blanco lavado con un arco amarillo. Estamos DENTRO del sol:
+   planta en la dirección del sol, y desde aquí —que es justo donde está el sol— cubría el encuadre
+   entero y lo dejaba todo en blanco lavado con un arco amarillo. Estamos DENTRO del sol:
    su glare no pinta nada. applySky se lo devuelve solo al salir del modo. */
 function solCamFrame(){
   if(!solCam||!SUN||!SUN._dir||SUN._dir.U<=0.03)return;
