@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.79</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.80</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -756,7 +756,7 @@ async function build(){
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
   excavaCT();buildExcavacion();                                                // explanadas de los CT: ANTES de buildBOS, para que la caseta se apoye ya nivelada
-  if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
+  if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){var q=fueraDeLosa(c.x,c.n);return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+q[1]/mPerLat,lon:lon0+q[0]/mPerLon,h:2.5};});}   // fueraDeLosa: si el listado la pone sobre la explanada del CT, se planta 0,60 m por fuera (declarado)  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
   await loadNCU();/* loadSECC() DESACTIVADO: la malla cruda del STEP sin sus materiales se veía como un bulto oscuro a escala de planta ('¿qué es eso?') — queda secc.json para retomarla con materiales/orientación refinados */await ensureNet();buildGateways();positionGateways();buildBOS();buildCorridor();buildSunPath();buildContactAO();buildVeg();dressMaterials();buildCloudShadows();if(fresOn)applyFresnel();
@@ -1809,11 +1809,15 @@ function rayoSuelo(ray){ var o=[];if(terrain)o.push(terrain);if(EXCG)o=o.concat(
    Las dos cifras (1,00 m de pasillo y solera a la cota mínima) son DECISIONES DE PROYECTO, no
    medidas de plano. */
 var EXC=[],EXCG=null,SATUV=null,RELIEVE=null,PASILLO=1.00;
-function excavaY(x,n,y){   // dentro de la solera, su cota; fuera, el terreno natural (el corte es vertical)
+/* Dentro de la solera, su cota; fuera, el terreno natural (el corte es vertical). Se recorren TODAS
+   las explanadas: caer en la REGIÓN de una no significa nada, hay que mirar si se está dentro de
+   ALGUNA solera. Salir en la primera región costó 2,53 m de desnivel en la caseta del CT 9 de El
+   Burgo, que comparte región con la del CT 8: sus esquinas caían en la región de la 8, fuera de su
+   solera, y se les devolvía terreno natural sin llegar a mirar la suya. */
+function excavaY(x,n,y){
   for(var i=0;i<EXC.length;i++){var e=EXC[i];
     if(x<e.x0||x>e.x1||n<e.n0||n>e.n1)continue;
-    if(dentroPoli(x,n,e.p))return e.y;
-    return y;}
+    if(dentroPoli(x,n,e.p))return e.y;}
   return y;
 }
 function dentroPoli(x,n,P){ var d=false;
@@ -1850,6 +1854,29 @@ function celdaFuera(cel,Q){
     var f=semiPlano(resto,A,B,false); if(f.length>2)out.push(f);
     resto=semiPlano(resto,A,B,true);}
   return out;
+}
+/* NCU y HSU, FUERA de la losa. DESPLAZAMIENTO DECLARADO, no es dato de plano: el listado las pone
+   pegadas al CT (en Fayón, la NCU 1 a 1,19 m del muro y la HSU1 a 1,22 m), o sea DENTRO del pasillo
+   de 1 m, y quedaban plantadas sobre la solera. Se las echa al terreno natural, 0,60 m por fuera
+   del borde de la losa por el camino más corto. Es un movimiento de decímetros, pero se mueve el
+   equipo ENTERO —mástil, antena y su enlace de radio—, no solo el dibujo, para que el estudio de
+   cobertura siga viendo lo mismo que se ve. */
+function fueraDeLosa(x,n,m){
+  m=(m==null)?0.60:m;                                                   // HOLGURA mínima al borde de la losa, no "solo si cae dentro":
+  for(var it=0;it<4;it++){var ok=true;                                  // la HSU1 de Fayón estaba 6 cm FUERA y seguía pegada al canto
+    for(var i=0;i<EXC.length;i++){var e=EXC[i];
+      var mx=0,mn=0,md=1e9;
+      for(var k=0,l=e.p.length-1;k<e.p.length;l=k++){var A=e.p[k],B=e.p[l],vx=B[0]-A[0],vn=B[1]-A[1],L2=vx*vx+vn*vn||1e-9;
+        var t=Math.max(0,Math.min(1,((x-A[0])*vx+(n-A[1])*vn)/L2)),px=A[0]+vx*t,pn=A[1]+vn*t,d=Math.hypot(x-px,n-pn);
+        if(d<md){md=d;mx=px;mn=pn;}}
+      var dentro=dentroPoli(x,n,e.p);
+      if(!dentro&&md>=m-1e-6)continue;                                  // ya está fuera y con holgura: no se toca
+      ok=false;
+      var dx=dentro?(mx-x):(x-mx),dn=dentro?(mn-n):(n-mn),L=Math.hypot(dx,dn)||1e-9;
+      if(L<1e-6){dx=1;dn=0;L=1;}                                        // justo sobre el borde: se aparta por donde sea
+      x=mx+dx/L*m;n=mn+dn/L*m;break;}
+    if(ok)break;}
+  return [x,n];
 }
 function excavaCT(){   // recalcula las explanadas (ANTES de drapear nada, y al cambiar vex: la solera va en metros dibujados)
   EXC=[]; if(!TMESH||!ELEV||!LAYOUT)return;
@@ -1911,11 +1938,17 @@ function buildExcavacion(){
       vc.push(c[0],c[1],c[2],1);}
     for(var j=0;j<nn;j++)for(var i=0;i<nx;i++){
       var ax=e.x0+W*i/nx,bx=e.x0+W*(i+1)/nx,an=e.n0+D*j/nn,bn=e.n0+D*(j+1)/nn;
-      var cel=[[ax,an],[bx,an],[bx,bn],[ax,bn]];
-      var todoFuera=true;for(var v=0;v<4;v++)if(dentroPoli(cel[v][0],cel[v][1],e.p))todoFuera=false;
-      var piezas;
-      if(todoFuera&&!(e.p.some(function(q2){return q2[0]>=ax&&q2[0]<=bx&&q2[1]>=an&&q2[1]<=bn;})))piezas=[cel];   // celda limpia: no la toca el polígono
-      else piezas=celdaFuera(cel,e.p);
+      var cel=[[ax,an],[bx,an],[bx,bn],[ax,bn]],piezas=[cel];
+      /* se recorta contra TODAS las soleras que pisen esta celda, no solo la propia: en El Burgo hay
+         explanadas que comparten región y, si solo se mira la propia, el parche pinta terreno
+         natural por encima de la solera de la vecina. */
+      EXC.forEach(function(e2){
+        if(e2.x1<ax-0.01||e2.x0>bx+0.01||e2.n1<an-0.01||e2.n0>bn+0.01)return;
+        var toca=false;
+        for(var v=0;v<4&&!toca;v++)if(dentroPoli(cel[v][0],cel[v][1],e2.p))toca=true;
+        if(!toca)toca=e2.p.some(function(q2){return q2[0]>=ax-0.01&&q2[0]<=bx+0.01&&q2[1]>=an-0.01&&q2[1]<=bn+0.01;});
+        if(!toca)return;                                                                           // esa solera ni roza la celda: nada que recortar
+        var res=[];piezas.forEach(function(pz){res=res.concat(celdaFuera(pz,e2.p));});piezas=res;});
       piezas.forEach(function(pz){for(var k2=1;k2+1<pz.length;k2++){                                // abanico: cada pieza es convexa
         vert(pz[0][0],pz[0][1]);vert(pz[k2][0],pz[k2][1]);vert(pz[k2+1][0],pz[k2+1][1]);}});}
     var g=new THREE.BufferGeometry();
@@ -3690,7 +3723,7 @@ function buildBOS(){
     _md.set(dx,dy,dz).normalize();_mq.setFromUnitVectors(_mu,_md);w.quaternion.copy(_mq);
     w.position.set((ax+bx)/2,(ay+by)/2,(az+bz)/2);g.add(w);}
   var HSU_PV=!(LAYOUT.hsu&&LAYOUT.hsu.pv===false);   // por defecto SÍ lleva módulo; Ayora lo desactiva en su layout
-  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var y=localElevY(m.x,m.n),h=8.0,X=m.x,Z=-m.n,g=new THREE.Group();bosGroup.add(g);
+  (LAYOUT.meteo||[]).forEach(function(m){if(!inClip(m.x,m.n))return;var qm=fueraDeLosa(m.x,m.n,0.90),y=localElevY(qm[0],qm[1]),h=8.0,X=qm[0],Z=-qm[1],g=new THREE.Group();bosGroup.add(g);   // fueraDeLosa: la HSU tampoco se planta sobre la solera del CT (declarado)
     // TORRE DE CELOSÍA triangular de la HSU (plano FTR.24.00145_5_C 'Montaje HSU': 8000 con niveles 4500/1000 + fotos):
     // 3 montantes tubulares con celosía en zigzag, PANEL FV ESTRECHO VERTICAL y PARALELO a la cara, caja FACTIUN,
     // ANEMÓMETRO ULTRASÓNICO (estático, sin cazoletas) en cabeza y 2 antenas látigo. Sin vientos (autoportante).
@@ -3862,7 +3895,7 @@ function applyFresnel(){
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
   TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,tp[1]-t.rel*vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
-  (LAYOUT.meteo||[]).forEach(function(m){var glat=lat0+m.n/mPerLat,glon=lon0+m.x/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,m.n);}); // estación meteo: antena a 8 m (mástil 8,5 m)
+  (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado // estación meteo: antena a 8 m (mástil 8,5 m)
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
   updateFres(cl,pa,bl);
