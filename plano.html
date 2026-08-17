@@ -76,7 +76,12 @@ async function mosaic(z,latN,latS,lonW,lonE){
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }
 
-var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'}, paramo:{file:'paramo_layout.json',title:'Páramo 25019'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'}, custom:{file:null,title:'Planta nueva'} };
+var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayora:{file:'ayora_layout.json',title:'Ayora 24025'}, sanjose:{file:'sanjose_layout.json',title:'San José 24019'}, fayon:{file:'fayon_layout.json',title:'Fayón 24007'}, bagnarelli:{file:'bagnarelli_layout.json',title:'Bagnarelli 24030'}, paramo:{file:'paramo_layout.json',title:'Páramo 25019'},
+  /* DICAYAGUA (El Naranjo, República Dominicana) — EN OFERTA, sin firmar. Y OJO: no es una planta
+     de seguidores. Es estructura FIJA a 10°, «Generic 3V», así que sus 5.493 mesas son largas
+     este-oeste (20,48 m) y estrechas norte-sur (7,25). Se dibujan con rot 90 y una sola banda
+     (filaZ 0), que es lo que son. Del KML de layout, no de DWG. */
+  dicayagua:{file:'dicayagua_layout.json',title:'El Naranjo Dicayagua · oferta'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'}, custom:{file:null,title:'Planta nueva'} };
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
