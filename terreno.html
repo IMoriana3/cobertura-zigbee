@@ -65,7 +65,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.77</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.78</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -297,10 +297,10 @@ function initThree(){
   addEventListener('pointerup',function(){_md=false;});
   renderer.domElement.addEventListener('pointerdown',function(e){_pdX=e.clientX;_pdY=e.clientY;});   // posición del down → distinguir clic de órbita
   renderer.domElement.addEventListener('click',function(e){ if(!terrain)return;
-    if(placingGw){var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=ray.intersectObject(terrain);if(!hit.length)return;var p=hit[0].point;var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();return;}
+    if(placingGw){var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=rayoSuelo(ray);if(!hit.length)return;var p=hit[0].point;var i=nearestNCU(p.x,p.z);GWS[i].lon=lon0+p.x/mPerLon;GWS[i].lat=lat0-p.z/mPerLat;placingGw=false;$('placeGw').textContent='📡 Mover NCU (clic)';if(!fresOn){fresOn=true;$('fres').checked=true;}applyFresnel();return;}
     if(editMode||freeCam)return;
     if(Math.hypot(e.clientX-_pdX,e.clientY-_pdY)>6)return;   // fue arrastre/órbita, no clic
-    var r2=new THREE.Raycaster();r2.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var h2=r2.intersectObject(terrain);if(!h2.length)return;var pt=h2[0].point,X=pt.x,N=-pt.z;   // clic en inversor / CT / subestación → su ficha (gana el más cercano)
+    var r2=new THREE.Raycaster();r2.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var h2=rayoSuelo(r2);if(!h2.length)return;var pt=h2[0].point,X=pt.x,N=-pt.z;   // clic en inversor / CT / subestación → su ficha (gana el más cercano)
     var cand=[],iv=nearestInvIdx(X,N);if(iv>=0)cand.push({t:'inv',id:iv,d:Math.hypot(LAYOUT.invlab[iv].x-X,LAYOUT.invlab[iv].n-N)});
     for(var ci=0;ci<CTMAIN.length;ci++){var dct=Math.hypot(CTMAIN[ci].x-X,CTMAIN[ci].n-N);if(dct<28)cand.push({t:'ct',id:ci,d:dct});}
     if(CTMAIN.length){var dsu=Math.hypot(SUBST.x-X,SUBST.n-N);if(dsu<14)cand.push({t:'sub',d:dsu});}   // sin compound no hay subestación que abrir
@@ -311,7 +311,7 @@ function initThree(){
   addEventListener('pointermove',function(e){if(dragTk<0)return;var p=terrainPt(e);if(!p)return;var t=TRK[dragTk];t.gx=p.x+_dragOff.x;t.gz=p.z+_dragOff.z;resampleTracker(t);layoutTrackers();});   // arrastre: el seguidor se redrapea sobre el terreno en su nueva posición
   addEventListener('pointerup',function(){if(dragTk>=0){dragTk=-1;if(editMode&&!freeCam)controls.enabled=true;}});
   renderer.domElement.addEventListener('dblclick',function(e){if(placingGw||editMode||freeCam||!terrain)return;   // DOBLE-CLIC = ir a esa zona: recentra el pivot de órbita en el punto pulsado (manteniendo ángulo y distancia) → puedes recorrer toda la planta
-    var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=ray.intersectObject(terrain);if(!hit.length)return;
+    var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=rayoSuelo(ray);if(!hit.length)return;
     var p=hit[0].point,off=new THREE.Vector3().subVectors(camera.position,controls.target);controls.target.copy(p);camera.position.copy(p).add(off);controls.update();});
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
   var __hiShad=!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);sun.shadow.mapSize.set(__hiShad?4096:2048,__hiShad?4096:2048);   // escritorio: 4096 (sombra fina); móvil: 2048 (memoria). El shadow camera se ciñe al zoom (updateSunShadow)
@@ -718,6 +718,9 @@ async function build(){
   var erange=(emax-emin)||1, vcol=new Float32Array(pos.count*4);   // RGBA: alfa por vértice difumina el borde del relieve igual que el satélite
   for(var vi=0;vi<pos.count;vi++){var c=reliefColor((pos.getZ(vi)+baseElev-emin)/erange);vcol[vi*4]=c[0];vcol[vi*4+1]=c[1];vcol[vi*4+2]=c[2];vcol[vi*4+3]=edgeAlpha(pos.getX(vi),pos.getY(vi));}
   geo.setAttribute('color',new THREE.BufferAttribute(vcol,4));
+  RELIEVE={emin:emin,rango:erange};                                            // el parche de la explanada colorea por cota con el MISMO baremo que el terreno
+  SATUV=(sat&&sat.ok>0)?function(x,n){var q=sat.px(lat0+n/mPerLat,lon0+x/mPerLon);return [q.x/sat.W,1-q.y/sat.H];}
+                       :function(x,n){return [(x+widthM/2)/widthM,(n+depthM/2)/depthM];};   // sin satélite, la UV por defecto del plano (textura beige)
   if(sat&&TESELAS_DIAG)pintaTeselas(sat);   // ?teselas=1: el mapa de origen se pinta ANTES del edgeFade, para que se tinte tambien la orla
   var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#cfc8b6';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo BEIGE árido como las fotos; antes verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
@@ -728,6 +731,7 @@ async function build(){
 
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
+  excavaCT();buildExcavacion();                                                // explanadas de los CT: ANTES de buildBOS, para que la caseta se apoye ya nivelada
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+c.n/mPerLat,lon:lon0+c.x/mPerLon,h:2.5};});}  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
@@ -1747,7 +1751,136 @@ function terrainMeshY(x,n){ if(!TMESH||!ELEV)return localElevY(x,n);
   var tx=Math.max(0,Math.min(1,fx-ix)),tn=Math.max(0,Math.min(1,fn-iy));
   var X0=-TMESH.w/2+ix*dx,X1=X0+dx,N1=TMESH.d/2-iy*dn,N0=N1-dn;
   var yTL=localElevY(X0,N1),yTR=localElevY(X1,N1),yBL=localElevY(X0,N0),yBR=localElevY(X1,N0);
-  return (tx+tn<=1)?(yTL+(yTR-yTL)*tx+(yBL-yTL)*tn):(yBR+(yBL-yBR)*(1-tx)+(yTR-yBR)*(1-tn));
+  var y=(tx+tn<=1)?(yTL+(yTR-yTL)*tx+(yBL-yTL)*tn):(yBR+(yBL-yBR)*(1-tx)+(yTR-yBR)*(1-tn));
+  return (EXC.length&&!_natural)?excavaY(x,n,y):y;
+}
+var _natural=false;   // interruptor para muestrear el terreno SIN explanadas (lo necesita el propio parche para saber qué se ha movido)
+function rayoSuelo(ray){ var o=[];if(terrain)o.push(terrain);if(EXCG)o=o.concat(EXCG.children);return o.length?ray.intersectObjects(o,false):[]; }   // el suelo son la malla Y los parches de las explanadas: donde hay hueco en la malla, el clic lo recoge el parche
+/* ───────── EXPLANADA DEL CT: excavación con pasillo y talud ─────────
+   DERIVADO, NO ESTÁ EN EL PLANO. El DWG es 2D: da la PLANTA del CT y se acabó — ni cota de solera,
+   ni explanación, ni taludes. Sin explanar, la caseta es una caja nivelada sobre una ladera y solo
+   caben dos remedios feos: dejarla en el aire por un lado o enterrarla por el otro (hasta ahora se
+   nivelaba sobre la esquina alta con un faldón de muros hacia abajo). Aquí se labra la explanada
+   que hace falta para que quede HORIZONTAL y la puerta a ras, que es como se construye de verdad:
+     · SOLERA a la cota más baja del contorno del edificio ⇒ todo lo demás es CORTE (en Fayón el
+       terreno sube al noreste, así que es ahí donde se excava, como pedía el usuario);
+     · PASILLO de 1,00 m alrededor de la caseta antes de que arranque el talud (pedido así);
+     · TALUD 1H:1V en metros REALES desde el borde del pasillo hasta empalmar con el terreno natural
+       —corte en el lado alto y un poco de terraplén en el bajo—, y si el desmonte no cerrase dentro
+       de los 30 m que se permiten, se empina el talud lo justo para que cierre (nunca se deja un
+       escalón: el parche tiene que coser con la malla del terreno).
+   Las tres cifras son DECISIONES DE PROYECTO, no medidas de plano. El talud se calcula en metros
+   reales y se dibuja con la exageración vertical que haya puesta (con vex=1, el arranque, se ve tal
+   cual: 45°; con vex=3 se ve tres veces más empinado, como todo el relieve). */
+var EXC=[],EXCG=null,SATUV=null,RELIEVE=null,PASILLO=1.00,TALUD=1.00;   // TALUD: metros horizontales por metro de desmonte
+function excavaY(x,n,y){   // recorta la cota natural con las explanadas: dentro, la solera; fuera, el talud
+  for(var i=0;i<EXC.length;i++){var e=EXC[i];
+    if(x<e.x0||x>e.x1||n<e.n0||n>e.n1)continue;                        // fuera de su región: la malla no se toca
+    var m=distPoli(x,n,e.p)/e.tal*vex;                                 // margen vertical DIBUJADO admisible a esa distancia
+    return Math.max(e.y-m,Math.min(e.y+m,y));}
+  return y;
+}
+function distPoli(x,n,P){   // distancia al polígono (0 dentro): el pasillo ya está incluido en P
+  var dentro=false;
+  for(var i=0,j=P.length-1;i<P.length;j=i++){var A=P[i],B=P[j];
+    if((A[1]>n)!==(B[1]>n)&&x<(B[0]-A[0])*(n-A[1])/(B[1]-A[1])+A[0])dentro=!dentro;}
+  if(dentro)return 0;
+  var d=1e9;
+  for(var k=0,l=P.length-1;k<P.length;l=k++){var a=P[k],b=P[l],vx=b[0]-a[0],vn=b[1]-a[1],L2=vx*vx+vn*vn||1e-9;
+    var t=Math.max(0,Math.min(1,((x-a[0])*vx+(n-a[1])*vn)/L2));
+    d=Math.min(d,Math.hypot(x-(a[0]+vx*t),n-(a[1]+vn*t)));}
+  return d;
+}
+function polOff(P,d){   // polígono desplazado d hacia FUERA (miter): el borde de la solera = caseta + pasillo
+  var ar=0;for(var i=0,j=P.length-1;i<P.length;j=i++)ar+=(P[j][0]*P[i][1]-P[i][0]*P[j][1]);
+  var Q=(ar<0)?P.slice().reverse():P.slice(),out=[];                   // se fuerza el sentido antihorario: así (dy,-dx) apunta hacia fuera
+  for(var k=0;k<Q.length;k++){var a=Q[(k-1+Q.length)%Q.length],b=Q[k],c=Q[(k+1)%Q.length];
+    var e1=[b[0]-a[0],b[1]-a[1]],e2=[c[0]-b[0],c[1]-b[1]],L1=Math.hypot(e1[0],e1[1])||1e-9,L2=Math.hypot(e2[0],e2[1])||1e-9;
+    var n1=[e1[1]/L1,-e1[0]/L1],n2=[e2[1]/L2,-e2[0]/L2],den=1+n1[0]*n2[0]+n1[1]*n2[1];
+    if(den<0.15){out.push([b[0]+n2[0]*d,b[1]+n2[1]*d]);continue;}      // esquina casi invertida: sin miter, que se dispara al infinito
+    out.push([b[0]+(n1[0]+n2[0])/den*d, b[1]+(n1[1]+n2[1])/den*d]);}
+  return out;
+}
+function excavaCT(){   // recalcula las explanadas (hay que llamarla ANTES de drapear nada, y al cambiar vex: la solera va en metros dibujados)
+  EXC=[]; if(!TMESH||!ELEV||!LAYOUT)return;
+  (LAYOUT.cts||[]).forEach(function(pl,ci){
+    var P=pl.slice(); if(P.length>2&&Math.hypot(P[0][0]-P[P.length-1][0],P[0][1]-P[P.length-1][1])<1e-6)P.pop();
+    if(P.length<3)return;
+    var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;P.forEach(function(p){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);n0=Math.min(n0,p[1]);n1=Math.max(n1,p[1]);});
+    var w=x1-x0,dp=n1-n0; if(w<1.5||dp<1.5||w>80||dp>80)return;        // los MISMOS filtros con los que se dibuja la caseta: si no hay caseta, no hay explanada
+    var cx=P.reduce(function(s,p){return s+p[0];},0)/P.length,cn=P.reduce(function(s,p){return s+p[1];},0)/P.length;
+    if(cx>-6&&cx<22&&cn>-213&&cn<-201)return; if(!inClip(cx,cn))return;
+    var Q=polOff(P,PASILLO),y=1e9;
+    P.concat(Q).forEach(function(q){y=Math.min(y,terrainMeshY(q[0],q[1]));});   // solera = la cota MÁS BAJA del contorno (EXC está vacío aquí: es terreno natural)
+    var bx0=1e9,bx1=-1e9,bn0=1e9,bn1=-1e9;Q.forEach(function(p){bx0=Math.min(bx0,p[0]);bx1=Math.max(bx1,p[0]);bn0=Math.min(bn0,p[1]);bn1=Math.max(bn1,p[1]);});
+    var alc=1.5,salto=0;                                               // alcance del talud: el MÍNIMO que cierra contra el terreno natural (se itera)
+    for(var it=0;it<10;it++){
+      salto=0;
+      for(var sx=bx0-alc;sx<=bx1+alc+0.5;sx+=0.5)for(var sn=bn0-alc;sn<=bn1+alc+0.5;sn+=0.5)salto=Math.max(salto,Math.abs(terrainMeshY(sx,sn)-y));
+      var pide=salto/vex*TALUD+0.5;
+      if(pide<=alc+0.01)break;
+      alc=Math.min(30,pide);
+      if(alc>=30)break;}
+    var tal=TALUD;
+    if(salto/vex*TALUD+0.5>alc)tal=Math.max(0.15,(alc-0.5)/(salto/vex||1e-9));   // no cabe con 1H:1V ⇒ se empina lo justo (nunca un escalón en el borde del parche)
+    var dx=TMESH.w/TMESH.sx,dn=TMESH.d/TMESH.sy;                       // la región se CUADRA con la malla del terreno: el parche cose sin costura ni grieta
+    var R=[bx0-alc,bx1+alc,bn0-alc,bn1+alc];
+    R[0]=-TMESH.w/2+Math.floor((R[0]+TMESH.w/2)/dx)*dx; R[1]=-TMESH.w/2+Math.ceil((R[1]+TMESH.w/2)/dx)*dx;
+    R[2]=TMESH.d/2-Math.ceil((TMESH.d/2-R[2])/dn)*dn;   R[3]=TMESH.d/2-Math.floor((TMESH.d/2-R[3])/dn)*dn;
+    EXC.push({ci:ci,p:Q,y:y,x0:R[0],x1:R[1],n0:R[2],n1:R[3],tal:tal,alc:alc,salto:salto});});   // ci = índice del CT en LAYOUT.cts (no todos tienen explanada: valen los mismos filtros que la caseta)
+}
+/* El terreno se dibuja con una malla regular de ~2,5 m en las plantas pequeñas: una excavación de
+   5×8 m con pasillo de 1 m NO cabe ahí. Así que se le abre HUECO (se quitan sus triángulos en la
+   región de cada explanada, siempre partiendo del índice original para que sea idempotente) y se
+   cose un parche fino de 0,40 m. El parche muestrea terrainMeshY, que ya lleva la explanada, y en
+   el borde de la región vale el terreno natural exacto —la región está cuadrada con la malla y el
+   talud cierra antes— así que encaja vértice a vértice, sin grieta.
+   Va en su propio grupo, NO en `bosGroup`: la excavación es TERRENO. Si colgara de las
+   instalaciones, al desmarcar "Instalaciones" desaparecería el parche y quedaría un agujero. */
+function buildExcavacion(){
+  if(EXCG){scene.remove(EXCG);EXCG.traverse(function(o){if(o.geometry)o.geometry.dispose();});EXCG=null;}
+  if(!terrain||!terrain.geometry)return;
+  var geo=terrain.geometry;
+  if(!geo.userData.idx0&&geo.index)geo.userData.idx0=Array.prototype.slice.call(geo.index.array);
+  if(geo.userData.idx0){
+    var pos=geo.attributes.position,src=geo.userData.idx0,keep=[];
+    for(var t=0;t<src.length;t+=3){var fuera=true;
+      for(var e=0;e<EXC.length&&fuera;e++){var E=EXC[e],dentro=true;
+        for(var k=0;k<3&&dentro;k++){var vi=src[t+k],vx=pos.getX(vi),vn=pos.getY(vi);
+          if(vx<E.x0-0.01||vx>E.x1+0.01||vn<E.n0-0.01||vn>E.n1+0.01)dentro=false;}
+        if(dentro)fuera=false;}
+      if(fuera)keep.push(src[t],src[t+1],src[t+2]);}
+    geo.setIndex(keep);}
+  if(!EXC.length)return;
+  EXCG=new THREE.Group();scene.add(EXCG);
+  var tierraM=new THREE.MeshStandardMaterial({color:0xa8926d,roughness:1,metalness:0});   // tierra desnuda: lo excavado no tiene ni ortofoto ni hierba, es obra reciente
+  EXC.forEach(function(e){
+    var W=e.x1-e.x0,D=e.n1-e.n0,nx=Math.max(4,Math.min(220,Math.round(W/0.40))),nn=Math.max(4,Math.min(220,Math.round(D/0.40)));
+    var vp=[],vu=[],vc=[],tocado=[];
+    for(var j=0;j<=nn;j++)for(var i=0;i<=nx;i++){
+      var X=e.x0+W*i/nx,N=e.n0+D*j/nn,Y=terrainMeshY(X,N);
+      _natural=true;var Yn=terrainMeshY(X,N);_natural=false;                 // cota natural, para saber qué se ha movido de verdad
+      vp.push(X,Y,-N);
+      var q=SATUV?SATUV(X,N):[0,0]; vu.push(q[0],q[1]);
+      var c=(RELIEVE&&typeof reliefColor==='function')?reliefColor((Y/(vex||1)+baseElev-RELIEVE.emin)/RELIEVE.rango):[1,1,1];
+      vc.push(c[0],c[1],c[2],1);
+      tocado.push((Math.abs(Y-Yn)>0.02||distPoli(X,N,e.p)<0.01)?1:0);}
+    var suelo=[],obra=[];                                              // dos grupos: terreno intacto y superficie MOVIDA (tierra desnuda)
+    for(var j2=0;j2<nn;j2++)for(var i2=0;i2<nx;i2++){
+      var a=j2*(nx+1)+i2,b=a+1,c2=a+nx+1,d2=c2+1;
+      var mov=tocado[a]||tocado[b]||tocado[c2]||tocado[d2];
+      (mov?obra:suelo).push(a,b,c2, b,d2,c2);}
+    var g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(vu,2));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(vc,4));
+    g.setIndex(suelo.concat(obra));
+    g.addGroup(0,suelo.length,0);g.addGroup(suelo.length,obra.length,1);
+    g.computeVertexNormals();
+    var m=new THREE.Mesh(g,[terrain.material,tierraM]);
+    m.receiveShadow=true;m.castShadow=true;
+    m.userData.exc=true;m.userData.matSuelo=terrain.userData.baseMat;m.userData.matRel=terrain.userData.reliefMat;
+    EXCG.add(m);});
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
@@ -3931,7 +4064,7 @@ function saveTrackers(){                                               // guarda
   $('edMsg').textContent=ok?'Guardado ✓ (se reabrirá así)':'No se pudo guardar';$('edMsg').style.color=ok?'#36D399':'#e2574c';$('edMsg').style.display='block';
 }
 function pickAt(e){if(!pickGroup)return -1;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObjects(pickGroup.children,false);return h.length?h[0].object.userData.tk:-1;}
-function terrainPt(e){if(!terrain)return null;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=_pr.intersectObject(terrain);return h.length?h[0].point:null;}
+function terrainPt(e){if(!terrain)return null;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=rayoSuelo(_pr);return h.length?h[0].point:null;}
 function selectTracker(i){selIdx=i;
   if(i<0||!PICK[i]){if(selWire)selWire.visible=false;$('edSel').style.display='none';return;}
   selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.scale.copy(PICK[i].scale);
@@ -3961,7 +4094,7 @@ if($('afbt')){
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=(typeof t.artic0==='boolean')?t.artic0:kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio Y a su rótula DEL DWG (antes lo forzaba al maestro)
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;layoutTrackers();positionGateways();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;excavaCT();buildExcavacion();layoutTrackers();positionGateways();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked&&(typeof TRK[i].artic0==='boolean'?TRK[i].artic0:true);layoutTrackers();if(selIdx>=0)$('edArtic').checked=TRK[selIdx].artic;};   // maestro: al marcarlo cada seguidor recupera SU rótula del DWG (no se articulan los rígidos); al desmarcarlo, todos rectos
@@ -3990,7 +4123,9 @@ $('solcam').onchange=function(){solCam=this.checked;                            
   if(solCam&&freeCam){freeCam=false;$('freecam').checked=false;controls.enabled=true;}  // la cámara libre se queda con el ratón: son excluyentes
   if(solCam)camDesdeElSol(); else {solCamSalir();encuadra();}
   solCamAviso();};
-$('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
+$('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;
+  if(EXCG)EXCG.children.forEach(function(m9){if(m9.userData.exc&&m9.material&&m9.material.length)m9.material[0]=this.checked?m9.userData.matRel:m9.userData.matSuelo;},this);   // el parche de la explanada cambia con el terreno (si no, quedaba un recorte de ortofoto en medio del mapa de cotas)
+  var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
 $('pile').onchange=function(){pileOn=this.checked;if(!imPost)return;if(pileOn){imPost.material=pileMat;applyPileReveal();}else{imPost.material=steelM;resetPileColors();var lg=$('pileLeg');if(lg)lg.textContent='';}};
 $('invl').onchange=function(){invOn=this.checked;if(invOn&&genOn){setGen(false);if($('genflow'))$('genflow').checked=false;}if(invOn&&!invGroup){buildInvLayer();}else{paintInvModules(invOn);}if(invGroup)invGroup.visible=invOn;};   // capa inversores: pinta los módulos por inversor (como el 2D); excluyente con el flujo (ambas pintan los módulos)
 $('netCable').onchange=function(){setNet(['cable_pos','cable_neg'],this.checked);if(genFlow.cable_pos)genFlow.cable_pos.visible=this.checked&&genOn;};   // redes del DWG: cableado DC +/− (las ondas del flujo lo respetan)
