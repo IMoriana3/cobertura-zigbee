@@ -70,9 +70,13 @@ var CAL=(function(){try{return JSON.parse(localStorage.getItem('factiun_cal_'+(C
 var L=null,NET=null,lat0=41.576,lon0=-0.798,doy=172,CLOUD=0,TAMB=22,KWP=0,NSTR=0;
 
 /* ===== mismo modelo solar offline que el 3D (compacto) ===== */
+/* HUSO de la planta, igual que en el 3D: `tzFijo` del layout (minutos, sin cambio de hora) y, si
+   no lo trae, la regla peninsular. Estaba clavado a −120 —CEST— para todo el año, asi que de
+   noviembre a marzo el informe corria la curva de produccion una hora entera. */
+function tzOffMin(){ if(L&&L.tzFijo!=null)return L.tzFijo; return (doy>=88&&doy<=298)?120:60; }
 function sunU(min){var lat=lat0*DEG,decl=23.44*DEG*Math.sin(2*Math.PI*(doy-80)/365.24);
   var B=2*Math.PI*(doy-81)/364,EoT=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B);
-  var H=((min-120+lon0*4+EoT)/60-12)*15*DEG;
+  var H=((min-tzOffMin()+lon0*4+EoT)/60-12)*15*DEG;
   var sa=Math.sin(lat)*Math.sin(decl)+Math.cos(lat)*Math.cos(decl)*Math.cos(H),el=Math.asin(Math.max(-1,Math.min(1,sa))),ce=Math.cos(el)||1e-6;
   var az=Math.atan2(-Math.cos(decl)*Math.sin(H)/ce,(Math.sin(decl)-Math.sin(lat)*sa)/(Math.cos(lat)*ce));
   return {E:Math.cos(el)*Math.sin(az),U:Math.sin(el)};}

@@ -403,8 +403,10 @@ var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
    la planta puede traer `tzFijo` (minutos, sin DST) en su layout; si no lo trae, sigue la regla
    peninsular, que vale para España e Italia. */
 function tzOffMin(doy){
-  var f=(LAYOUT&&LAYOUT.tzFijo!=null)?LAYOUT.tzFijo:(PLANT==='sanjose'?-300:null);
-  if(f!=null)return f;
+  /* El huso sale SOLO del layout, que es donde vive el dato de la planta. Estaba además a mano
+     aquí —`PLANT==='sanjose'?-300`— duplicando lo que su propio layout ya declara: dos sitios que
+     decir lo mismo es un sitio de más donde se desincronizan. */
+  if(LAYOUT&&LAYOUT.tzFijo!=null)return LAYOUT.tzFijo;
   return (doy>=88&&doy<=298)?120:60;}   // España/Italia: CEST (UTC+2) del último domingo de marzo al de octubre (~DOY 88-298), CET (UTC+1) el resto
 function sunVec(min){
   var lat=lat0*DEG, doy=simDoy;
