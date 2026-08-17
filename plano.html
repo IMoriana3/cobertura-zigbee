@@ -145,10 +145,18 @@ var TDIM={halfL:32.37,filaZ:3.0,cuerda:2.382,halfW:4.191};                      
    medidos (54 huecos para 56 módulos en Ayora, 62 para 64 en San José, 46 para 48 en Fayón). */
 function calcTDIM(){
   var d;
-  if(L&&L.mesa){
+  /* `mesa.tipos` es OPCIONAL: una planta puede traer las cotas del módulo y no el desglose por tipo
+     de bloque. Sin esta guarda, Object.keys(undefined) reventaba y se llevaba por delante la página
+     ENTERA —el Layout 2D de Benante y Panbianco no llegaba a pintar—. Si no hay tipos, el largo sale
+     del propio modelo con las cotas medidas, que es lo que hace la rama de abajo. */
+  if(L&&L.mesa&&L.mesa.tipos&&Object.keys(L.mesa.tipos).length){
     var M=L.mesa;
     var largos=Object.keys(M.tipos).map(function(k){return M.tipos[k].largo;});
     d={halfL:Math.max.apply(null,largos)/2, filaZ:(M.filaZ!=null?M.filaZ:3.0), cuerda:M.modH};
+  }else if(L&&L.mesa){
+    var M2=L.mesa, mods2=(L.mods)||28;
+    d={halfL:(2*(mods2*M2.modW+(mods2-1)*(M2.gapMod!=null?M2.gapMod:0.012))+(M2.gapDrive!=null?M2.gapDrive:0.55))/2,
+       filaZ:(M2.filaZ!=null?M2.filaZ:3.0), cuerda:M2.modH||2.382};
   }else{
     var modW=(L&&L.modW)||1.134, mods=(L&&L.mods)||TMODS[PLANT]||28, g=0.012;
     d={halfL:(2*(mods*modW+(mods-1)*g)+0.55)/2, filaZ:(L&&L.filaZ!=null)?L.filaZ:3.0, cuerda:2.382};
