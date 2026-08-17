@@ -169,6 +169,14 @@ addEventListener('DOMContentLoaded',function(){
 "use strict";
 var S=document.getElementById('status');
 function setStatus(h){S.innerHTML=h;}
+/* CÓMO SE LLAMA LO QUE HAY EN EL CAMPO. Dicayagua es de estructura FIJA y el estado la anunciaba
+   como «5493 seguidores», que es sencillamente falso: no hay ni uno. El layout de una planta fija
+   trae `fija`, y su lista `trackers` existe solo para el encuadre y el recuento. */
+function termUnidad(){ return (LAYOUT&&LAYOUT.fija)?'mesas fijas':'seguidores'; }
+/* Y DE DÓNDE SALE. Casi todas las plantas vienen de su DWG, pero Dicayagua es una oferta sin
+   proyecto y su implantación sale del KML de layout: el rótulo lo dice el propio layout, en
+   `generado_de`, en vez de dar el DWG por supuesto. */
+function termFuente(){ return /\.kml/i.test((LAYOUT&&LAYOUT.generado_de)||'')?'KML':'DWG'; }
 function log(m,cls){S.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+m+'</span>':m);}
 function $(id){return document.getElementById(id);}
 function showBanner(text,bad){try{var b=$('diagBanner');if(!b){b=document.createElement('div');b.id='diagBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:11px 14px;font:bold 14px/1.45 monospace;color:#fff;white-space:pre-wrap;box-shadow:0 2px 10px rgba(0,0,0,.55);cursor:pointer';b.onclick=function(){b.style.display='none';};document.body.appendChild(b);}b.style.background=bad?'#7a1f1f':'#1f5a3a';b.textContent='🔎 '+text+'\n(toca para cerrar)';b.style.display='block';}catch(_){}}
@@ -262,7 +270,7 @@ var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0
 var imBearing=null,imSaddle=null,imVirola=null,imBush=null;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var FENCE_H=3.0;   // ALTURA DEL VALLADO, en metros. CONSTANTE para todas las plantas (pedido asi): antes 1,9. La hoja de las puertas se saca de aqui, no de un numero suelto.
-var LAYOUT=null,bosGroup=null,fijGroup=null,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
+var LAYOUT=null,bosGroup=null,fijGroup=null,FJEXPL=0,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
 var SH_CX=-66,SH_CZ=36,SH_HALF=330,_shDirV=new THREE.Vector3();   // shadow camera ceñido a la planta (centro y semiancho en mundo, por planta en build()); cerca del suelo se ciñe a la cámara (updateSunShadow)
 
@@ -685,7 +693,7 @@ async function build(){
     var gB=x.createLinearGradient(0,h,0,h-by);gB.addColorStop(0,'rgba(0,0,0,1)');gB.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gB;x.fillRect(0,h-by,w,by);
     x.restore();}
   var plantW=Math.round(exmax-exmin),plantD=Math.round(nmax-nmin);
-  setStatus("<b>"+NODES.length+"</b> seguidores (DWG) · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
+  setStatus("<b>"+NODES.length+"</b> "+termUnidad()+" ("+termFuente()+") · planta ≈ "+plantW+"×"+plantD+" m\nDescargando satélite + relieve…");
 
   var sat=null,dem=null,demImg=null;
   var satZoom=Math.max(15,Math.min(19,Math.round(Math.log2(10*40075016*Math.cos(lat0*DEG)/Math.max(widthM,depthM)))));   // zoom adaptativo: ~10 teselas/lado con tope z19 (El Burgo→19 = 30 cm/px con PNOA; Ayora 2,5 km→17)
@@ -812,10 +820,14 @@ async function build(){
   if(scene.fog){var _lejos=camD+diag;scene.fog.near=Math.max(1200,_lejos);
     scene.fog.far=Math.max(scene.fog.near+1500,camD+diag*2+800);}
   var modsNow=(SPEC&&SPEC.mods)||(LAYOUT&&LAYOUT.mods)||(PLANTS[PLANT]&&PLANTS[PLANT].mods)||28;   // mismo criterio que setModsPerStr
-  setStatus("<b>"+NODES.length+"</b> seguidores · "+plantW+"×"+plantD+" m\n"+
+  setStatus("<b>"+NODES.length+"</b> "+termUnidad()+" · "+plantW+"×"+plantD+" m\n"+
     "satélite: "+(sat&&sat.ok?(sat.resumen+(sat.mixto?" <span class='err'>(MIXTO)</span>":"")):"—")+" · relieve "+(REL?(emax-emin).toFixed(1)+" m (levantamiento"+(demImg?", DEM "+(RELDZ>=0?"+":"")+RELDZ.toFixed(1)+" m alrededor":"")+")":(demImg?(emax-emin).toFixed(1)+" m":"plano"))+"\n"+   // el levantamiento propio se declara: no es el DEM global
-    "módulos/string: <b>"+modsNow+"</b>"+((SPEC&&SPEC.mods)?" · <span style='color:#36D399'>de la Cartera técnica</span>":"")+"\n"+
-    "ángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día");
+    "módulos/string: <b>"+modsNow+"</b>"+((SPEC&&SPEC.mods)?" · <span style='color:#36D399'>de la Cartera técnica</span>":"")+
+    ((LAYOUT&&LAYOUT.fija)?"":"\nángulos: "+(haveAng?("<b>"+ANG.date+"</b> ("+fmtHM(ANG.minT)+"–"+fmtHM(ANG.maxT)+")"):"<span class='err'>no cargados — curva aprox.</span>")+"\n▶ para reproducir el día")   // planta FIJA: no hay ángulo de seguimiento que declarar
+    /* Se declara lo que el 3D ha tenido que estirar: estas mesas se dibujan apoyadas sobre el punto
+       más alto de su huella porque el terreno sube más de 1,5 m bajo ellas. En obra eso no se
+       resuelve con poste sino con explanación, que el KML —que es 2D— no trae. */
+    +(FJEXPL?"\n<span class='err'>⚠ "+FJEXPL+" mesa(s) sobre un desnivel >1,5 m en su huella: el 3D las levanta hasta librar el terreno (en obra sería explanación, no poste)</span>":""));
   // diagnóstico de sombras retirado: confirmado que en escritorio se ven (v2.66 PCF); en móvil es limitación de su GPU (pendiente fallback)
 }
 
@@ -3461,30 +3473,61 @@ function buildBOS(){
      su inclinación, su azimut y la altura de su borde bajo. El fondo REAL de la mesa es p/cos(i)
      —en planta se ve escorzado— y de ahí sale todo lo demás, así que no hay ninguna cota inventada:
      lo que se dibuja es el rectángulo del DWG desescorzado por su propia inclinación. */
+  /* Local de la mesa (dx a lo ancho, dp de avance EN PLANTA) → coordenadas de mundo E/N. Es el
+     mismo giro que hace three con `rotation.y = π − azimut` sobre el Group del camino detallado,
+     deshecho a mano porque hace falta la cota del SUELO bajo cada pie y eso se muestrea en E/N.
+     Con θ = π − az: X = −dx·cos(az) − dp·sin(az) y N = +dx·sin(az) − dp·cos(az). El signo de los
+     términos en dx estaba al revés (venía así del camino detallado): con azimut 180 —el de Túnez y
+     el de Dicayagua— θ vale 0 y la mesa NO gira, así que un poste en dx=+2 está en x+2, no en x−2.
+     Se muestreaba el suelo del lado contrario de la mesa y en ladera transversal el poste salía con
+     la longitud del pie de enfrente. */
+  function fijaMundo(f,dx,dp,sA,cA){ return [f.x-dx*cA-dp*sA, f.n+dx*sA-dp*cA]; }
+  /* COTA DE APOYO DE LA MESA. Se anclaba por el CENTRO —suelo(centro) + canto— y en cuanto el
+     terreno sube hacia el lado alto la mesa se metía DENTRO del cerro. Medido sobre el
+     levantamiento de Dicayagua: 831 de sus 5.493 mesas (el 15,1 %) cortaban el terreno, la peor
+     4,25 m enterrada. Una mesa real no se entierra: el instalador saca poste hasta que el canto
+     bajo libra. Así que se muestrea la HUELLA (rejilla 3x3) y se sube la mesa hasta que la holgura
+     mínima sea la de diseño. Comprobado sobre una rejilla más fina (7x7): 0 mesas cortando, y la
+     subida mediana es de 4 cm —en terreno llano el máximo cae en el canto bajo y sale exactamente
+     el valor de antes, así que la instalación fija de Túnez no se mueve—.
+     Lo que NO arregla esto, y hay que decirlo: 57 mesas (el 1 %) piden más de 3 m de poste porque
+     su huella tiene ese desnivel. En obra eso es explanación, no poste; el KML es 2D y no la trae. */
+  function fijaYBase(f,inc,hb,sA,cA){
+    var cz=Math.cos(inc),sz=Math.sin(inc),L=f.p/Math.max(0.2,cz),y=-1e9;
+    for(var a=0;a<=2;a++)for(var b=0;b<=2;b++){
+      var dl=b*(L/2), q=fijaMundo(f,-f.w/2+a*(f.w/2),cz*dl,sA,cA);
+      y=Math.max(y,terrainMeshY(q[0],q[1])+hb-sz*dl);
+    }
+    return y;
+  }
   function buildFijasInst(FJ){
-    var tot=0,totC=0,i,j,f;
-    for(i=0;i<FJ.length;i++){f=FJ[i];tot+=(f.cols||1)*(f.rows||1);totC+=(f.rows||1)+1;}
+    var tot=0,totC=0,totV=0,totP=0,i,j,f;
+    /* np = columnas de postes, la MISMA regla del camino detallado (una cada ~3,5 m de ancho). */
+    function nPostes(w){ return Math.max(2,Math.round(w/3.5)+1); }
+    for(i=0;i<FJ.length;i++){f=FJ[i];tot+=(f.cols||1)*(f.rows||1);totC+=(f.rows||1)+1;var _np=nPostes(f.w);totV+=_np;totP+=_np*2;}
     var mt=new THREE.MeshStandardMaterial({color:0xffffff,map:panelTex,roughness:.28,metalness:.1,side:THREE.DoubleSide});
     if(CELLNRM){mt.normalMap=CELLNRM;mt.normalScale=new THREE.Vector2(0.4,0.4);}
     var imM=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),mt,tot);
     var imC=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),steelM,totC);
+    var imV=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),steelM,totV);   // vigas a lo largo de la pendiente
+    var imP=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),steelM,totP);   // POSTES hincados: sin ellos la mesa flota
     /* Al grupo de mesas fijas, igual que el camino detallado. Colgadas de `scene` se quedaban
        fuera de todo ciclo de vida: buildBOS() se vuelve a llamar al mover la exageración vertical
        o al cambiar de origen de cotas, y cada pasada apilaba otras 5.493 mesas sobre las
        anteriores, ya con la cota vieja. */
-    [imM,imC].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;fijGroup.add(im);});
+    [imM,imC,imV,imP].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;fijGroup.add(im);});
     var _B=new THREE.Matrix4(),_L=new THREE.Matrix4(),_R=new THREE.Matrix4(),_S=new THREE.Matrix4(),_T=new THREE.Matrix4();
-    var im0=0,ic=0;
+    var im0=0,ic=0,iv=0,ip=0;
     for(i=0;i<FJ.length;i++){
       f=FJ[i];
       var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
       var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
-      var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
+      var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc), sA=Math.sin(az), cA=Math.cos(az);
       /* base de la mesa: la MISMA que el Group del camino detallado. terrainMeshY ya devuelve la
          cota EXAGERADA (localElevY multiplica por vex), y la mesa en sí no se exagera —solo el
          terreno—, así que aquí no se vuelve a multiplicar: hacerlo elevaba las mesas al triple de
          la cota del suelo en cuanto se subía la exageración vertical. */
-      var yBase=terrainMeshY(f.x,f.n)+hb;
+      var yBase=fijaYBase(f,inc,hb,sA,cA); if(yBase-(terrainMeshY(f.x,f.n)+hb)>1.5)FJEXPL++;
       _B.makeRotationY(Math.PI-az); _B.setPosition(f.x,yBase,-f.n);
       var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);
       for(var a2=0;a2<cols;a2++)for(var b2=0;b2<rows;b2++){
@@ -3496,15 +3539,36 @@ function buildBOS(){
         _T.multiplyMatrices(_B,_L);
         imM.setMatrixAt(im0++,_T);
       }
-      var CH=0.05,CW=0.07;
-      for(var k=0;k<=rows;k++){ var dl2=k*ml;
+      var PS=0.09, VH=0.12, VW=0.07, CH=0.05, CW=0.07;                            // mismas secciones que el camino detallado
+      for(var k=0;k<=rows;k++){ var dl2=k*ml;                                      // CORREAS a lo ancho
         _R.makeRotationX(inc); _S.makeScale(w+0.12,CH,CW); _L.multiplyMatrices(_R,_S);
         _L.setPosition(0, sz*dl2-(CH/2)*cz, -cz*dl2-(CH/2)*sz);
         _T.multiplyMatrices(_B,_L); imC.setMatrixAt(ic++,_T);
       }
+      /* ESTRUCTURA PORTANTE. Faltaba entera: el instanciado dibujaba módulos y correas y nada más,
+         así que las 5.493 mesas quedaban suspendidas en el aire a 0,8 m del suelo. Ahora lleva la
+         viga a lo largo de la pendiente y los DOS pies de cada columna, cada uno hincado en la cota
+         REAL de su propio punto —igual que el camino detallado—, que es lo que hace que la mesa se
+         apoye en el terreno y no lo atraviese en ladera. Fuera quedan placa de anclaje, cartela,
+         grapa y tornapunta: a escala de planta no se ven y son 5 piezas más por poste. */
+      var yV=function(dl){return sz*dl-(CH+VH/2)*cz;}, zV=function(dl){return -cz*dl-(CH+VH/2)*sz;};
+      var np=nPostes(w), PIES=[0.16,0.84];
+      for(var q=0;q<np;q++){ var dx=-w/2+q*(w/(np-1));
+        _R.makeRotationX(inc); _S.makeScale(VW,VH,L); _L.multiplyMatrices(_R,_S);
+        _L.setPosition(dx,yV(L/2),zV(L/2));
+        _T.multiplyMatrices(_B,_L); imV.setMatrixAt(iv++,_T);
+        for(var r2=0;r2<2;r2++){
+          var dl3=PIES[r2]*L, dp3=cz*dl3, q2=fijaMundo(f,dx,dp3,sA,cA), sue=terrainMeshY(q2[0],q2[1]);
+          var yTop=yBase+yV(dl3)-VH/2, hh=Math.max(0.30,yTop-sue);
+          _S.makeScale(PS,hh,PS); _L.copy(_S);
+          _L.setPosition(dx,(yTop+sue)/2-yBase,-dp3);
+          _T.multiplyMatrices(_B,_L); imP.setMatrixAt(ip++,_T);
+        }
+      }
     }
-    imM.count=im0; imC.count=ic;
+    imM.count=im0; imC.count=ic; imV.count=iv; imP.count=ip;
     imM.instanceMatrix.needsUpdate=true; imC.instanceMatrix.needsUpdate=true;
+    imV.instanceMatrix.needsUpdate=true; imP.instanceMatrix.needsUpdate=true;
   }
   /* MUCHAS MESAS: instanciado. El camino detallado de abajo construye un Group por mesa con una
      malla POR MÓDULO, y con las 14 mesas de Túnez son 376 mallas —perfecto—. Dicayagua tiene 5.493
@@ -3512,15 +3576,16 @@ function buildBOS(){
      se dibuja lo mismo con InstancedMesh: los módulos con su junta y las correas, con la MISMA
      colocación que el camino detallado (se compone la misma cadena de matrices), y se dejan fuera
      las piezas de herrajería fina, que a esa distancia no se ven. */
+  FJEXPL=0;   // recuento de mesas que el 3D tiene que levantar por desnivel; se declara en el estado (buildBOS se repite al mover la exageración vertical)
   if((LAYOUT.fijas||[]).length>200){ buildFijasInst(LAYOUT.fijas); }
   else (LAYOUT.fijas||[]).forEach(function(f){
     var inc=(f.inclinacion||25)*DEG, az=(f.azimut==null?180:f.azimut)*DEG;
     var w=f.w, p=f.p, L=p/Math.max(0.2,Math.cos(inc)), hb=(f.h==null?0.8:f.h);
     var cols=f.cols||1, rows=f.rows||1, cz=Math.cos(inc), sz=Math.sin(inc);
     var sA=Math.sin(az), cA=Math.cos(az);
-    function W(dx,dp){ return [f.x+dx*cA-dp*sA, f.n-dx*sA-dp*cA]; }   // local (ancho, avance en PLANTA) -> mundo
+    function W(dx,dp){ return fijaMundo(f,dx,dp,sA,cA); }   // local (ancho, avance en PLANTA) -> mundo; ver fijaMundo: el signo de dx estaba invertido
     var mUni=new THREE.MeshStandardMaterial({color:0xb9c0c8,roughness:.55,metalness:.6});   // herrajes galvanizados (placas, cartelas, grapas)
-    var yBase=terrainMeshY(f.x,f.n)+hb;
+    var yBase=fijaYBase(f,inc,hb,sA,cA); if(yBase-(terrainMeshY(f.x,f.n)+hb)>1.5)FJEXPL++;   // apoyo por holgura MÍNIMA, no por el centro (ver fijaYBase); en llano da el mismo valor de siempre
     var g=new THREE.Group();g.position.set(f.x,yBase,-f.n);g.rotation.y=Math.PI-az;g.userData.fija=true;
     /* MÓDULOS uno a uno con su junta: una losa lisa no se lee como una mesa. */
     var mw=w/cols, ml=L/rows, jw=Math.min(0.02,mw*0.02), jl=Math.min(0.02,ml*0.02);

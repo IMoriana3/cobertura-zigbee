@@ -59,6 +59,16 @@
 var DEG=Math.PI/180;
 function $(id){return document.getElementById(id);}
 function setStatus(h){$('status').innerHTML=h;}
+/* CÓMO SE LLAMA LO QUE HAY EN EL CAMPO. Dicayagua es de estructura FIJA y el plano la anunciaba
+   como «5493 seguidores», que es falso: no hay ni uno. El layout de una planta fija trae `fija`,
+   y su lista `trackers` existe solo para el encuadre y el recuento. */
+function termUnidad(){ return (typeof L!=='undefined'&&L&&L.fija)?'mesas fijas':'seguidores'; }
+/* Los rótulos fijos del panel («Seguidores», la leyenda) se reescriben al cargar el layout: son
+   HTML estático y en una planta fija mentían igual que el estado. */
+function rotulaUnidad(){ var fija=!!(typeof L!=='undefined'&&L&&L.fija);
+  var cb=$('cbTrk'); if(cb&&cb.parentNode&&cb.parentNode.tagName==='LABEL')cb.parentNode.lastChild.textContent=fija?' Mesas fijas':' Seguidores';
+  var lg=$('legStatic'); if(lg&&fija)lg.innerHTML=lg.innerHTML.replace('>seguidor ','>mesa fija ');
+}
 function lon2txf(lon,z){return (lon+180)/360*Math.pow(2,z);}
 function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z);}
 function tx2lon(tx,z){return tx/Math.pow(2,z)*360-180;}
@@ -169,7 +179,7 @@ function buildElecLegend(){
   if(!$('cbElec').checked){box.style.display='none';if(stat)stat.style.display='';return;}
   if(stat)stat.style.display='none';
   var declared=SPEC?((SPEC.ncu_eth||0)+(SPEC.ncu_fo||0)):null;
-  var head='<div style="color:#eaf4ff;margin-bottom:5px;white-space:nowrap">'+(SPEC&&SPEC.nombre?SPEC.nombre+' · ':'')+EGROUPS.length+' NCU · '+(L.trackers?L.trackers.length:0)+' seguidores'+(declared!=null?' <span style="color:var(--tx2)">· cartera: '+declared+'</span>':'')+'</div>';
+  var head='<div style="color:#eaf4ff;margin-bottom:5px;white-space:nowrap">'+(SPEC&&SPEC.nombre?SPEC.nombre+' · ':'')+EGROUPS.length+' NCU · '+(L.trackers?L.trackers.length:0)+' '+termUnidad()+(declared!=null?' <span style="color:var(--tx2)">· cartera: '+declared+'</span>':'')+'</div>';
   var rows=EGROUPS.map(function(g){return '<div style="white-space:nowrap"><span class="dot" style="background:'+g.color+'"></span>'+g.name+' <span style="color:var(--tx2)">· '+g.count+'</span></div>';}).join('');
   box.innerHTML=head+rows;box.style.display='';
 }
@@ -294,7 +304,7 @@ function ensureDem(){
     var lonW=lon0-hx/mPerLon,lonE=lon0+hx/mPerLon,latS=lat0-hz/mPerLat,latN=lat0+hz/mPerLat,wide=Math.max(2*hx,2*hz),dz=(wide>1500)?15:14;
     dem=await demMosaic(dz,latN,latS,lonW,lonE);demImg=dem.ctx.getImageData(0,0,dem.W,dem.H);demReady=true;
     computeReveal();buildPileLegend();draw();
-    setStatus('<b>'+L.trackers.length+'</b> seguidores · pile reveal '+REVMIN.toFixed(2)+'–'+REVMAX.toFixed(2)+' m');
+    setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · pile reveal '+REVMIN.toFixed(2)+'–'+REVMAX.toFixed(2)+' m');
   }catch(e){demLoading=false;demReady=false;buildPileLegend();setStatus('<span class="err">relieve no disponible (CORS o red)</span>');} })();
 }
 function buildPileLegend(){
@@ -472,6 +482,7 @@ async function build(){
   try{L=(PLANT==='custom')?JSON.parse(localStorage.getItem('cobertura_layout')||'null'):await (await fetch(PLANTS[PLANT].file,{cache:'no-store'})).json(); if(!L)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=L.clat;lon0=L.clon;mPerLon=111320*Math.cos(lat0*DEG);
+  rotulaUnidad();   // «Seguidores» → «Mesas fijas» si la planta es de estructura fija
   calcTDIM();   // cotas del seguidor, derivadas del layout recién cargado
   document.title='Layout 2D · '+PLANTS[PLANT].title;
   assignElec();buildElecLegend();   // capa eléctrica lista (offline, desde el layout)
@@ -484,16 +495,16 @@ async function build(){
   var wide=Math.max(2*hx,2*hz);
   var z=Math.max(15,Math.min(19,Math.round(Math.log2(7*40075016*Math.cos(lat0*DEG)/wide))));   // ~7 teselas/lado
   fit();draw();
-  if(OFFLINE){ setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\n⛌ modo sin conexión (sin satélite)'); return; }   // OFFLINE: no se descarga el satélite (cero llamadas externas)
-  setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\ndescargando satélite…');
+  if(OFFLINE){ setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\n⛌ modo sin conexión (sin satélite)'); return; }   // OFFLINE: no se descarga el satélite (cero llamadas externas)
+  setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\ndescargando satélite…');
   try{
     sat=await mosaic(z,latN,latS,lonW,lonE);
     // bbox del mosaico en coords mundo (m), a partir de los bordes de las teselas
     var bl=tx2lon(sat.xmin,z),br=tx2lon(sat.xmax+1,z),bt=ty2lat(sat.ymin,z),bb=ty2lat(sat.ymax+1,z);
     satBox={x0:(bl-lon0)*mPerLon,x1:(br-lon0)*mPerLon,n0:(bb-lat0)*mPerLat,n1:(bt-lat0)*mPerLat};
     draw();
-    setStatus('<b>'+L.trackers.length+'</b> seguidores · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\nsatélite: '+sat.ok+' teselas (z'+z+')');
-  }catch(e){ setStatus('<b>'+L.trackers.length+'</b> seguidores (satélite no disponible)'); }
+    setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' · '+(L.ncus?L.ncus.length:0)+' NCU · '+(L.meteo?L.meteo.length:0)+' meteo\nsatélite: '+sat.ok+' teselas (z'+z+')');
+  }catch(e){ setStatus('<b>'+L.trackers.length+'</b> '+termUnidad()+' (satélite no disponible)'); }
 }
 build();
 </script><script>
