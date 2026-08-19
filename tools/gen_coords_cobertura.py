@@ -222,7 +222,8 @@ def puntos(planta, en_viga):
             lon, lat = aWGS.transform(E0 + o["x"], N0 + o["n"])
             filas.append({"node_id": "%s_%02d" % (rol, j), "lat": round(lat, 6), "lon": round(lon, 6),
                           "etiqueta": o.get("name") or ("%s%d" % (rol, j)), "rol": rol, "enlace": enlace,
-                          "ncu": n, "gw": gw_cerca(o, n), "esclavo": esc, "idx": 900 + j, "x": o["x"], "n_": o["n"]})
+                          "ncu": n, "gw": o.get("gw") or gw_cerca(o, n), "esclavo": esc,
+                          "idx": 900 + j, "x": o["x"], "n_": o["n"]})
 
     filas.sort(key=lambda r: ((r["ncu"] is None, r["ncu"]), r["idx"]))
     ncus = []
@@ -232,10 +233,16 @@ def puntos(planta, en_viga):
                      "lat": round(lat, 6), "lon": round(lon, 6)})
     if not met:                                                     # de donde ha salido la NCU de cada HSU
         origen = "no hay HSU"
+    elif all(o.get("ncu") is not None for o in met):
+        # El layout MANDA cuando lo declara, y esta rama va la primera porque es la que se aplica
+        # de verdad (`n = o.get("ncu")` se mira antes que el cupo del scada). En El Burgo la casa
+        # dice que va 1 HSU por cada GW de cada NCU, y eso esta escrito en el layout: adivinarlo
+        # por cercania colgaba la HSU 3 de la NCU 1 cuando sus mesas son de la NCU 2.
+        origen = "layout (ncu%s declarada en `meteo`)" % (" y gw" if all(o.get("gw") for o in met) else "")
     elif hsu_ncu:
         origen = "scada (cupo de `hsus` por NCU) + distancia minima"
     elif any(o.get("ncu") is not None for o in met):
-        origen = "layout"
+        origen = "layout (solo en algunas)"
     elif sum(cupo.values()):
         origen = ("NCU mas cercana: el scada declara %d HSU y el layout tiene %d, no cuadran"
                   % (sum(cupo.values()), len(met)))
