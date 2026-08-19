@@ -539,6 +539,10 @@ var PLANTS={
      hueco 15 mm y motor 0,70. El DWG no trae sistema de coordenadas; el huso 33N sale de que la
      cartera las declara en Italia (ver `georef` del layout). */
   benante:{file:'benante_layout.json', title:'Benante 25004', angles:null, mods:31, cod:25004},      // 730 seguidores (545 completos 1V62 + 185 medios 1V31) · 6 NCU
+  /* POLVORÍN (25082 · El Polvorín + Higueras, Badajoz). SIETE tipos de seguidor, no dos, y el tipo
+     lo da el nombre de bloque del DWG, que coincide con el reparto de string de la cartera. Dos son
+     MONOFILARES (filaZ 0 en su tracker). Sus 12.896 módulos son EXACTAMENTE los de la cartera. */
+  polvorin:{file:'polvorin_layout.json', title:'El Polvorín 25082', angles:null, mods:31, cod:25082},
   panbianco:{file:'panbianco_layout.json', title:'Panbianco 25004.2', angles:null, mods:31, cod:'25004.2'},   // 1.476 seguidores (1.084 + 392 medios) · 12 NCU · 2 repetidores
   tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
