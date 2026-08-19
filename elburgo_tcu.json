@@ -2,7 +2,7 @@
  "fuente": "TCU_Template_V1.4_23003_El_Burgo_I_v01.xlsm",
  "hoja": "TCU",
  "crs": "UTM huso 30, banda T (la plantilla declara huso y banda, no datum)",
- "nota": "coordX/coordY por TCU. longitude/latitude NO se incluyen por TCU: valen lo mismo en las 219 filas, son el punto de referencia de la planta.",
+ "nota": "coordX/coordY por TCU. longitude/latitude NO se incluyen por TCU: valen lo mismo en las 219 lineas, son el punto de referencia de la planta.",
  "constantes": {
   "zoneLetter": "T",
   "zoneNum": "30",
@@ -3546,5 +3546,6 @@
     "d": 0.004
    }
   ]
- }
+ },
+ "sinSeguidor": "las lineas tcu 216..219 (esclavos 108..111 de la NCU 2 GW2) no cruzan con ningun seguidor del DWG. Ver elburgo_layout.json -> numeracion.sinMesa"
 }
