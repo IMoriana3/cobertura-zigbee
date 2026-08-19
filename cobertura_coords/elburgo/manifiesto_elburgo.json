@@ -11,12 +11,9 @@
  "ncus": 2,
  "gws": 2,
  "una_fila": false,
- "gateways_declarados_en_scada": false,
+ "gateways_declarados_en_scada": true,
  "hsus_asignadas_por": "layout (ncu y gw declarada en `meteo`)",
- "ncus_sin_declarar_en_scada": [
-  1,
-  2
- ],
+ "ncus_sin_declarar_en_scada": [],
  "ambitos": [
   {
    "fichero": "coords_elburgo.csv",
@@ -35,8 +32,8 @@
    "ambito": "gateway",
    "ncu": 1,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.100.1.52",
+   "puerto": 503
   },
   {
    "fichero": "coords_elburgo_NCU01_GW2.csv",
@@ -44,8 +41,8 @@
    "ambito": "gateway",
    "ncu": 1,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.100.1.52",
+   "puerto": 504
   },
   {
    "fichero": "coords_elburgo_NCU02.csv",
@@ -59,8 +56,8 @@
    "ambito": "gateway",
    "ncu": 2,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.100.1.56",
+   "puerto": 503
   },
   {
    "fichero": "coords_elburgo_NCU02_GW2.csv",
@@ -68,8 +65,8 @@
    "ambito": "gateway",
    "ncu": 2,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.100.1.56",
+   "puerto": 504
   },
   {
    "fichero": "coords_elburgo_GW1.csv",
