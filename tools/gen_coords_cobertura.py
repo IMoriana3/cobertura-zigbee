@@ -77,7 +77,12 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAL = os.path.join(RAIZ, "cobertura_coords")
 TOOLBOX = {"elburgo": "elburgo.json", "ayora": "24025-ayora.json", "sanjose": "24019-san-jose.json",
            "fayon": "24007-fayon.json", "bagnarelli": "24030-bagnarelli.json", "tunez": "24021-tunez.json"}   # Páramo aún no está declarada
-SCADA = os.path.join(os.path.dirname(RAIZ), "scada", "tools", "tcu-toolbox", "plantas")
+# El repo del SCADA se clona unas veces como "scada" y otras como "SCADA", y en Linux eso importa:
+# con el nombre que no era, esto no encontraba nada y se saltaba en silencio lo que declara el
+# SCADA (cupos de HSU, esclavos, IP y puerto de cada gateway). Se prueban los dos.
+SCADA = next((p for p in (os.path.join(os.path.dirname(RAIZ), d, "tools", "tcu-toolbox", "plantas")
+                          for d in ("scada", "SCADA")) if os.path.isdir(p)),
+             os.path.join(os.path.dirname(RAIZ), "scada", "tools", "tcu-toolbox", "plantas"))
 
 
 def origen_utm(L):
@@ -212,8 +217,11 @@ def puntos(planta, en_viga):
                 n = hsu_ncu[j - 1]
             if n is None:
                 n = cerca_ncu(o)
-            esc = ""
-            if rol == "HSU" and hsu_esc.get(n):
+            # El esclavo de la HSU, si el layout lo DECLARA, manda: en El Burgo lo dice el
+            # gateway —230 en el GW1, 231 en el GW2— y repartir por "el primero libre de esta
+            # NCU" dependía del orden en que salieran las HSU del layout.
+            esc = o.get("esclavo") or ""
+            if not esc and rol == "HSU" and hsu_esc.get(n):
                 usados = [r.get("esclavo") for r in filas if r["rol"] == "HSU" and r["ncu"] == n]
                 libres = [e for e in hsu_esc[n] if e not in usados]
                 esc = libres[0] if libres else hsu_esc[n][0]
