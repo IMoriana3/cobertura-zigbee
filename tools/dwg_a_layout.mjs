@@ -21,6 +21,22 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const SUBIDAS = '/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/';
 
+/* Cotas MEDIDAS con tools/extract_dwg_cotas.mjs sobre estos mismos ficheros. Las dos plantas dan lo
+   mismo al milímetro —mismo emplazamiento y mismo diseño—:
+     1V62  62·1,134 + 60·0,015 + 0,70 = 71,908 m   (el DWG mide 71,91)
+     1V31  31·1,134 + 29·0,015 + 0,70 = 36,289 m   (el DWG mide 36,29) */
+const SICILIA = { modW: 1.134, modH: 2.382, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.62,
+                  fuente: 'medido en el propio DWG con tools/extract_dwg_cotas.mjs' };
+/* POLVORÍN. Su módulo NO es el de Sicilia: 1,303 x 2,384 (Luxen Luxpower N6 710 W), y su bifilar
+   lleva las dos filas a 2,25 m del eje (ancho 6,884 = 2 x 2,384 + 2,116 de calle). Medido con
+   tools/_blq.mjs, que resuelve bloques ANIDADOS: aquí el bloque del seguidor solo contiene
+   sub-INSERT y la geometría está un nivel más abajo, por eso extract_dwg_cotas no veía nada.
+   El modelo cuadra al milímetro en los SIETE tipos:  n·modW + (n−2)·gapMod + gapDrive
+     31+31    62/columna ->  62·1,303 + 60·0,015 + 0,70 = 82,386   (el DWG mide 82,386)
+     24+23x3  47/columna ->  62,616                                (mide 62,616)             */
+const POLVORIN = { modW: 1.303, modH: 2.384, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.25,
+                   fuente: 'medido en el propio DWG con tools/_blq.mjs (bloques anidados)' };
+
 /* Cada DWG nombra sus capas a su manera; aquí se declara la equivalencia, plano a plano, en vez de
    adivinarla con expresiones regulares que un día casan otra cosa. */
 const PLANTAS = {
@@ -34,6 +50,7 @@ const PLANTAS = {
     capaHSU: 'HSU', capaHSUtxt: 'HSU text', capaTorre: 'Sensores - Torre',
     capaPS: 'AE_ELE_Power Station', capaVallado: 'AE_IMP_Vallado',
     capaRep: 'AE_ELE_Repetidor', capaPira: 'AE_PYRANOMETER',
+    mesa: SICILIA, largo: { '1V62': 71.908, '1V31': 36.289 }, mods: 31,
   },
   benante: {
     title: 'Benante 25004', num: '25004', pais: 'Italia',
@@ -45,16 +62,39 @@ const PLANTAS = {
     capaHSU: 'Sensor - IWC CAZOLETAS', capaHSUtxt: 'Sensor - IWC Text', capaTorre: 'Sensores - Torre',
     capaPS: 'AE_ELE_Power Station', capaVallado: 'AE_IMP_Vallado',
     capaRep: null, capaPira: 'AE_PYRANOMETER',
+    mesa: SICILIA, largo: { '1V62': 71.908, '1V31': 36.289 }, mods: 31,
+  },
+  /* POLVORÍN (25082 · El Polvorín + Higueras, Badajoz). Aquí NO hay dos tipos de seguidor sino
+     SIETE, y el tipo lo da el nombre de bloque, que es además el reparto de string que declara la
+     cartera («31», «16+15», «8+8+8+7», «5+5+4+4», «3+3+3+4», «24+23*3»). Dos son MONOFILARES, los
+     mismos dos que la cartera cuenta en trk_mono. */
+  polvorin: {
+    title: 'El Polvorín 25082', num: '25082', pais: 'España',
+    zona: 29, sur: false, crs: 'EPSG:25829', tzFijo: null,   // Badajoz: en 30N caería en Albacete
+    geo: SUBIDAS + 'a0a6539b-LO.PR25.082_R12C_LAYOUT_COMUNICACIONES_02C_1.dwg',
+    com: null,
+    trk: { '_INT_31+31': '31+31', '_EXT_31+31': '31+31', '_Mono_31+31': 'Mono 31+31',
+           '_INT 16+15': '16+15', '_EXT 16+15': '16+15',
+           '_2423X3_Interiores': '24+23x3', '_24+23x3': '24+23x3',
+           '_EXT 8+8+8+7': '7+8x3', '_5+4': '5+4', '_4+3x3': '4+3x3' },
+    capaNCU: 'NCU', capaNCUtxt: 'NCU Text', capaNCUsop: 'NCU',
+    capaHSU: 'Sensores - Torre', capaHSUtxt: 'Sensor Text', capaTorre: 'Sensores - Torre',
+    capaPS: null, capaVallado: 'Perimetro', capaRep: null, capaPira: null,
+    mesa: POLVORIN, mods: 31,
+    /* envolvente MEDIDA de cada bloque, con su nº de módulos: el motor no cae en el centro cuando
+       las dos alas son desiguales (16+15, 24+23x3, 5+4, 4+3x3), y por eso desde/hasta no son
+       simétricos. Sale de tools/_blq.mjs sobre los bloques resueltos. */
+    tipos: {
+      '31+31':      { largo: 82.386, ancho: 6.884, desde: -41.193, hasta: 41.193, mods: 124 },
+      'Mono 31+31': { largo: 82.386, ancho: 2.384, desde: -41.193, hasta: 41.193, mods: 62, mono: true },
+      '16+15':      { largo: 41.528, ancho: 6.884, desde: -20.105, hasta: 21.423, mods: 62 },
+      '24+23x3':    { largo: 62.616, ancho: 6.884, desde: -30.649, hasta: 31.967, mods: 93 },
+      '7+8x3':      { largo: 21.758, ancho: 6.884, desde: -10.879, hasta: 10.879, mods: 31 },
+      '5+4':        { largo: 12.532, ancho: 6.884, desde: -5.607,  hasta: 6.925,  mods: 18 },
+      '4+3x3':      { largo: 9.896,  ancho: 6.884, desde: -4.289,  hasta: 5.607,  mods: 13 },
+    },
   },
 };
-
-/* Cotas MEDIDAS con tools/extract_dwg_cotas.mjs sobre estos mismos ficheros. Las dos plantas dan lo
-   mismo al milímetro —mismo emplazamiento y mismo diseño—:
-     1V62  62·1,134 + 60·0,015 + 0,70 = 71,908 m   (el DWG mide 71,91)
-     1V31  31·1,134 + 29·0,015 + 0,70 = 36,289 m   (el DWG mide 36,29) */
-const MESA = { modW: 1.134, modH: 2.382, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.62,
-               fuente: 'medido en el propio DWG con tools/extract_dwg_cotas.mjs' };
-const LARGO = { '1V62': 71.908, '1V31': 36.289 };
 
 const [planta, ...rest] = process.argv.slice(2);
 const WRITE = rest.includes('--write');
@@ -231,26 +271,41 @@ console.log('   ' + NCUS.map((o, i) => o.name + ':' + (porNCU[i + 1] || 0)).join
 const L = {
   plant: planta, title: C.title, num: C.num, pais: C.pais,
   crs: C.crs, clat: +clat.toFixed(7), clon: +clon.toFixed(7), cE: r3(cE), cN: r3(cN),
-  mods: 31, filaZ: MESA.filaZ,
-  mesa: MESA,
+  mods: C.mods, filaZ: C.mesa.filaZ,
+  /* `tipos` con la envolvente MEDIDA por bloque. Lo lee calcTDIM del Layout 2D para dibujar cada
+     seguidor a su tamaño, y `desde`/`hasta` no son simétricos cuando el motor no cae en el centro
+     —alas desiguales—. Si la planta no lo declara, se compone con el modelo a partir del `largo`. */
+  mesa: { ...C.mesa, tipos: C.tipos ? C.tipos
+    : Object.fromEntries(Object.entries(C.largo || {}).map(([k, lg]) => [k,
+        { largo: lg, ancho: 2 * C.mesa.filaZ + C.mesa.modH, desde: -lg / 2, hasta: lg / 2,
+          unidades: TRK.filter(t => t.tipo === k).length }])) },
   georef: {
     fuente: C.geo.split('/').pop() + (C.com ? ' + ' + C.com.split('/').pop() : ''),
     huso: `UTM ${C.zona}N`,
-    nota: 'El DWG NO trae sistema de coordenadas: ni GEODATA ni texto de cajetín, solo X e Y. ' +
-          'La misma coordenada cae en Andalucía (30N) o en Sicilia (33N). Se toma 33N porque la ' +
-          'cartera declara la planta en ITALIA y es el único huso compatible que cae en Italia ' +
-          '(32N daría Túnez y 34N el mar Jónico). NO verificado contra ortofoto: el entorno de ' +
-          'generación no tiene salida a los servidores de teselas.',
+    nota: 'El DWG NO trae sistema de coordenadas: ni GEODATA ni texto de cajetín, solo X e Y, y la ' +
+          'misma coordenada cae en países distintos según el huso. Se elige el ÚNICO huso ' +
+          'compatible que cae en el país que declara la cartera (' + C.pais + '). NO verificado ' +
+          'contra ortofoto: el entorno de generación no tiene salida a los servidores de teselas.',
   },
   tipos: { fuente: 'nombre de capa/bloque del DWG, no inferido',
-           '1V62': 'seguidor completo, 62 módulos por fila (2 alas de 31) · 71,908 m',
-           '1V31': 'seguidor MEDIO, 31 módulos por fila · 36,289 m' },
-  trackers: TRK.map((t, i) => { const [x, n] = loc(t.E, t.N);
-    const medio = t.tipo === '1V31';
-    return { x, n, rot: t.rot, t: medio ? 'Medio' : 'completo', id: 'TK' + String(i + 1).padStart(4, '0'),
-             tp: t.tipo, mods: 31, ncu: t.ncu, gw: t.ncu,
-             ...(medio ? { mr: +(LARGO['1V31'] / LARGO['1V62']).toFixed(5) } : {}),
-             ...(t.esp ? { esp: 1 } : {}), ...(t.zona ? {} : { ncuCerca: 1 }) }; }),
+           ...Object.fromEntries(Object.keys(C.tipos || C.largo || {}).map(k => {
+             const T = (C.tipos || {})[k], lg = T ? T.largo : (C.largo || {})[k];
+             return [k, `${T && T.mono ? 'MONOFILAR' : 'bifilar'} · ${T && T.mods ? T.mods + ' módulos · ' : ''}${lg} m` +
+                        `  (×${TRK.filter(t => t.tipo === k).length})`]; })) },
+  /* El seguidor MÁS LARGO de la planta es el que fija la cota canónica; los demás se declaran con
+     `mr`, la razón entre su largo y el de aquél, que es como el visor acorta un seguidor corto sin
+     inventarle una cota propia. Un `t:'Medio'` es lo que el 3D busca para saber que va acortado. */
+  trackers: (() => {
+    const lg = k => ((C.tipos || {})[k] || {}).largo || (C.largo || {})[k] || 0;
+    const LMAX = Math.max(...TRK.map(t => lg(t.tipo)), 0) || 1;
+    return TRK.map((t, i) => { const [x, n] = loc(t.E, t.N);
+      const T = (C.tipos || {})[t.tipo] || {}, corto = lg(t.tipo) < LMAX - 0.01;
+      return { x, n, rot: t.rot, t: corto ? 'Medio' : 'completo', id: 'TK' + String(i + 1).padStart(4, '0'),
+               tp: t.tipo, mods: T.mods != null ? T.mods : C.mods, ncu: t.ncu, gw: t.ncu,
+               ...(corto ? { mr: +(lg(t.tipo) / LMAX).toFixed(5) } : {}),
+               ...(T.mono ? { filaZ: 0 } : {}),                      // monofilar: sus dos filas son una
+               ...(t.esp ? { esp: 1 } : {}), ...(t.zona ? {} : { ncuCerca: 1 }) }; });
+  })(),
   ncus: NCUS.map(o => ({ x: o.x, n: o.n, name: o.name, enlace: o.enlace })),
   meteo: METEO, reps: REPS, ps: PS, piranometros: PIRA, fence: FENCE,
   /* Lo que el DWG trae y AQUÍ NO se ha extraído todavía, dicho en vez de callado: los viales van
@@ -260,7 +315,11 @@ const L = {
   ...(ajuste ? { traslacion: { ...ajuste, nota: 'El campo de seguidores venía dibujado en marco LOCAL y el resto del plano en UTM. Traslación recuperada maximizando los seguidores dentro de los ámbitos de NCU dibujados, y CONTRASTADA contra el vallado, que no entró en el ajuste.' } } : {}),
   generado_de: 'tools/dwg_a_layout.mjs',
 };
-console.log(`\n  módulos: ${(TRK.reduce((s, t) => s + (t.tipo === '1V62' ? 62 : 31), 0)).toLocaleString('es')} (62 por 1V62, 31 por 1V31)`);
+/* RECUENTO DE MÓDULOS por tipo, que es el contraste independiente contra la cartera: si el DWG y
+   la ficha dicen el mismo número, la lectura de bloques es buena. */
+const _mods = TRK.reduce((a, t) => a + (((C.tipos || {})[t.tipo] || {}).mods || 0), 0);
+console.log(`\n  módulos: ${_mods.toLocaleString('es')}  (` +
+  Object.keys(C.tipos || {}).map(k => k + ' ' + (((C.tipos || {})[k] || {}).mods || 0) + '×' + TRK.filter(t => t.tipo === k).length).join(' · ') + ')');
 const xs = L.trackers.map(t => t.x), ns = L.trackers.map(t => t.n);
 console.log(`  huella ${(Math.max(...xs) - Math.min(...xs)).toFixed(0)} x ${(Math.max(...ns) - Math.min(...ns)).toFixed(0)} m`);
 if (!WRITE) { console.log('\n(dry-run: pasa --write)'); process.exit(0); }

@@ -108,6 +108,7 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayor
      hueco 15 mm y motor 0,70. El DWG no trae sistema de coordenadas; el huso 33N sale de que la
      cartera las declara en Italia (ver `georef` del layout). */
   benante:{file:'benante_layout.json',title:'Benante 25004'},
+  polvorin:{file:'polvorin_layout.json',title:'El Polvorín 25082'},
   panbianco:{file:'panbianco_layout.json',title:'Panbianco 25004.2'},
   /* DICAYAGUA (El Naranjo, República Dominicana) — EN OFERTA, sin firmar. Y OJO: no es una planta
      de seguidores. Es estructura FIJA a 10°, «Generic 3V», así que sus 5.493 mesas son largas
@@ -188,7 +189,7 @@ var OFFLINE=(function(){try{var s=localStorage.getItem('cobertura_offline');retu
    el DWG y en el Excel de siting; el que se rotula es el 23003 (decidido 2026-08-13) y este 24002
    sirve solo para encontrar su ficha. La equivalencia vive en proyectos/cartera-tabla.html (NPROY)
    y viaja en `factiun_plantas` como `nproy`. */
-var COD={elburgo:24002,ayora:24025,sanjose:24019,benante:25004};   // Panbianco es la 25004.2 y la cartera no la indexa por número entero
+var COD={elburgo:24002,ayora:24025,sanjose:24019,benante:25004,polvorin:25082};   // Panbianco es la 25004.2 y la cartera no la indexa por número entero
 var SPEC=(function(){try{var m=JSON.parse(localStorage.getItem('factiun_plantas')||'null');var c=COD[PLANT];return (m&&c&&m[String(c)])||null;}catch(e){return null;}})();   // ficha de la planta (Cartera técnica) para anotar/validar la leyenda
 var EGROUPS=[],ECOL={};
 function ehsl(i){var h=(i*137.508)%360;return 'hsl('+h.toFixed(0)+',62%,56%)';}   // ángulo áureo → colores bien separados
