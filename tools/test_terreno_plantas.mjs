@@ -31,8 +31,19 @@ for (const p of process.argv.slice(2)) {
   try {
     await pg.goto(`http://localhost:${PUERTO}/terreno.html?planta=` + p, { waitUntil: 'domcontentloaded', timeout: 120000 });
     /* Espera a que el BOS esté construido, no a un reloj: con swiftshader una planta grande tarda
-       minutos y un waitForTimeout fijo daba falsos negativos. */
-    await pg.waitForFunction(() => typeof LAYOUT !== 'undefined' && LAYOUT && typeof bosGroup !== 'undefined' && bosGroup && bosGroup.children.length > 0, { timeout: 300000 });
+       minutos y un waitForTimeout fijo daba falsos negativos.
+       A MANO, no con waitForFunction: en playwright-core 1.62.1 esa espera se corta sola a los
+       ~30 s por mucho que se le pase timeout: 300000 —medido, con 5000 espera 32,9 s y con 45000
+       espera 46,0 s, y el mensaje de error dice "Timeout 30000ms" en los dos casos—. El Burgo en
+       una ventana de móvil tarda 30,4 s en montar el BOS, así que caía justo al otro lado y el
+       banco fallaba de vez en cuando sin que la página tuviera nada. */
+    const listo = () => pg.evaluate(() => typeof LAYOUT !== 'undefined' && LAYOUT
+      && typeof bosGroup !== 'undefined' && bosGroup && bosGroup.children.length > 0);
+    const t0 = Date.now();
+    while (!(await listo())) {
+      if (Date.now() - t0 > 300000) throw new Error('el BOS no se ha construido en 300 s');
+      await pg.waitForTimeout(1000);
+    }
     r = await pg.evaluate(() => {
       let inst = 0, ins2 = 0, fij = 0; scene.traverse(o => { if (o.isInstancedMesh) { inst++; ins2 += o.count; } });
       if (fijGroup) fijGroup.traverse(o => { if (o.isInstancedMesh) fij += o.count; else if (o.isMesh) fij++; });
