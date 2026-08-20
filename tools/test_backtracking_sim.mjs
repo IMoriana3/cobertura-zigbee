@@ -62,7 +62,7 @@ const sandbox = new Function(src + `
            anglesPairwise, anglesTrue3d, anglesOptimal, anglesAstro, anglesGlobal, anglesRow,
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
-           shadeBand3DAll, anglesOptimalFree, iamAshrae, PEREZ_BINS, PEREZ_F,
+           shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient };`);
 const F = sandbox();
 
@@ -737,6 +737,39 @@ t('bifila: gemela alineada con su motora Y tresbolillo REAL entre grupos', () =>
     throw new Error('el patrón no alterna con periodo de 2 grupos');
 });
 
+t('v1.31.1: el veto exacto vale A TODAS LAS HORAS (pendiente 8° · mono · 21-jun)', () => {
+  // el barrido de invariantes cazó que con el veto limitado a zen>65 el óptimo
+  // salía −0,47% POR DEBAJO de pairwise con sol alto: el evaluador rápido es
+  // ciego a la estructura (v1.28) y al circunsolar tapado (v1.31), así que
+  // «con sol alto más beam siempre gana» dejó de ser cierto
+  const n = 12, pitch = 6.0, cw = 2.382;
+  const T = {
+    pairs: Array.from({ length: n - 1 }, () => ({ slope: 8, pitch, axisTilt: 0 })),
+    cw, axisAz: 0, maxAngle: 55, gcr: cw / pitch, z0: 0.17, nBypass: 3, iam: 0.05,
+    rowTilt: new Array(n).fill(0), groups: null, drive: 'mono',
+    segs: Array.from({ length: n }, () => [[-30, 30]]),
+  };
+  const day = Date.UTC(2026, 5, 21), doy = 172;
+  const acc = { pairwise: 0, optimal: 0, optfree: 0, astro: 0 };
+  for (let m = 0; m < 1440; m += 20) {
+    const g = F.solarPos(day + m * 60000, 39.1, -1.16);
+    if (g.elev <= 0) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 700, 3.5);
+    for (const k of Object.keys(acc)) {
+      const ang = F.policyAngles(k, g.zen, g.az, T, irr, doy, 0.2).angles;
+      acc[k] += F.poaPlant(g.zen, g.az, T, ang, irr, doy, 0.2).plant;
+    }
+  }
+  for (const k of ['optimal', 'optfree'])
+    if (acc[k] < acc.pairwise - 1e-6)
+      throw new Error(`${k} ${(100 * (acc[k] / acc.pairwise - 1)).toFixed(3)}% por DEBAJO de pairwise con sol alto`);
+  if (acc.optimal < acc.astro - 1e-6) throw new Error('óptimo por debajo de astro');
+  if (acc.optfree < acc.optimal - 1e-6) throw new Error('libre por debajo del óptimo común');
+});
+t('v1.31.1 estático: el veto NO está condicionado al cenit', () => {
+  if (/if\(zen>\d+&&\(bestF>0\|\|bestF<1\)\)/.test(html))
+    throw new Error('el veto exacto volvió a quedar limitado a una banda de cenit');
+});
 t('v1.31 estático: el IAM está en la página, cableado, y NINGÚN camino lo pierde', () => {
   if (!/id="iam"[^>]*value="0\.05"/.test(html)) throw new Error('falta el campo IAM b₀ con 0,05');
   if (!/iam:\+\$\('iam'\)\.value/.test(html)) throw new Error('cfg() no lee el campo IAM');
