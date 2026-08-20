@@ -62,7 +62,8 @@ const sandbox = new Function(src + `
            anglesPairwise, anglesTrue3d, anglesOptimal, anglesAstro, anglesGlobal, anglesRow,
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
-           shadeBand3DAll, anglesOptimalFree };`);
+           shadeBand3DAll, anglesOptimalFree, iamAshrae, PEREZ_BINS, PEREZ_F,
+           airmassKY, dniExtra, surfaceOrient };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -734,6 +735,147 @@ t('bifila: gemela alineada con su motora Y tresbolillo REAL entre grupos', () =>
     throw new Error('grupos consecutivos alineados: no es tresbolillo');
   if (JSON.stringify(segs[0]) !== JSON.stringify(segs[4]))
     throw new Error('el patrón no alterna con periodo de 2 grupos');
+});
+
+t('v1.31 estático: el IAM está en la página, cableado, y NINGÚN camino lo pierde', () => {
+  if (!/id="iam"[^>]*value="0\.05"/.test(html)) throw new Error('falta el campo IAM b₀ con 0,05');
+  if (!/iam:\+\$\('iam'\)\.value/.test(html)) throw new Error('cfg() no lee el campo IAM');
+  if ((html.match(/iam:c\.iam/g) || []).length < 2) throw new Error('el IAM no llega a los DOS ensamblados de T');
+  if (!/INPUT_IDS=\[[^\]]*'iam'/.test(html)) throw new Error('el IAM no se persiste con los demás campos');
+  // el bug que esto veta: un poaRow() sin b₀ calcula SIN IAM y contradice al
+  // contador publicado en la misma pantalla (pasó en dayKpis, v1.31)
+  const qa = html.indexOf('function runPhysicsQA'), finQa = html.indexOf('/* FIN-FÍSICA');
+  const decl = html.indexOf('function poaRow(') + 'function '.length;
+  let vistos = 0;
+  for (let i = html.indexOf('poaRow('); i >= 0; i = html.indexOf('poaRow(', i + 1)) {
+    if (i === decl) continue;                                  // la declaración
+    if (qa > 0 && i > qa && i < finQa) continue;               // la QA prueba b₀ ausente a propósito
+    vistos++;
+    let d = 0, j = i + 6, args = '';                           // scanner de paréntesis balanceados
+    for (; j < html.length; j++) {
+      const ch = html[j];
+      if (ch === '(') d++;
+      else if (ch === ')') { d--; if (d === 0) break; }
+      args += ch;
+    }
+    const nArgs = args.slice(1).split(/,(?![^(\[]*[)\]])/).length;
+    if (nArgs < 9) throw new Error(`poaRow con ${nArgs} argumentos (falta el IAM): ` + args.slice(0, 80));
+  }
+  if (vistos < 3) throw new Error('el escáner solo vio ' + vistos + ' llamadas a poaRow: no está mirando donde debe');
+});
+t('v1.31 estático: la tabla del día PUBLICA la banda y avisa si cruza el cero', () => {
+  if (!/Δ vs pairwise \(banda\)/.test(html)) throw new Error('la cabecera no anuncia la banda');
+  if (!/const cruza=bl<-1e-9&&bh>1e-9/.test(html)) throw new Error('no se detecta el cruce por cero');
+  if (!/td \.cruza\{color:var\(--warn\)\}/.test(html)) throw new Error('el cruce no se marca en ámbar');
+  if (!/poaHi:poaHi,poaLo:poaLo/.test(html)) throw new Error('el día no guarda las cotas por paso');
+});
+t('v1.31 IAM: b₀=0 es transparente, ASHRAE es decreciente y 60° vale 0,95', () => {
+  for (const aoi of [0, 15, 30, 45, 60, 75, 89])
+    if (F.iamAshrae(aoi, 0) !== 1) throw new Error('b₀=0 no es transparente en AOI ' + aoi);
+  if (Math.abs(F.iamAshrae(0, 0.05) - 1) > 1e-12) throw new Error('AOI 0 ≠ 1');
+  // 1 − b₀·(1/cos 60 − 1) = 1 − 0,05·(2−1) = 0,95, valor de libro
+  if (Math.abs(F.iamAshrae(60, 0.05) - 0.95) > 1e-12) throw new Error('AOI 60 ≠ 0,95');
+  let prev = 1.000001;
+  for (let a = 0; a <= 89; a += 1) {
+    const k = F.iamAshrae(a, 0.05);
+    if (k > prev + 1e-12) throw new Error('IAM no decreciente en AOI ' + a);
+    if (k < 0 || k > 1) throw new Error('IAM fuera de [0,1] en AOI ' + a);
+    prev = k;
+  }
+  if (F.iamAshrae(90, 0.05) !== 0) throw new Error('AOI 90 ≠ 0 (rasante debe anular)');
+  if (F.iamAshrae(120, 0.05) !== 0) throw new Error('AOI > 90 ≠ 0');
+});
+
+t('v1.31 IAM: el sesgo va A FAVOR de astro — es el término que empuja al otro lado', () => {
+  // el astronómico apunta al sol (AOI≈0, IAM≈1) y el backtracking se gira
+  // fuera (AOI grande, IAM<1): activar el IAM tiene que MEJORAR la razón
+  // astro/pairwise. Si algún día sale al revés, el IAM está mal aplicado.
+  const T0 = ayoraPlantT();
+  const g = findElevCase(Date.UTC(2026, 11, 21), 8, 12);   // sol bajo: horas de BT
+  const irr = F.clearskyIneichen(g.zen, 355, 700, 3.5);
+  const ratio = (b0) => {
+    const T = Object.assign({}, T0, { iam: b0 });
+    const pw = F.poaPlant(g.zen, g.az, T, F.anglesPairwise(g.zen, g.az, T), irr, 355, 0.2).plant;
+    const as = F.poaPlant(g.zen, g.az, T, F.anglesAstro(g.zen, g.az, T), irr, 355, 0.2).plant;
+    return as / pw;
+  };
+  const sin = ratio(0), con = ratio(0.05);
+  if (!(con > sin + 1e-9))
+    throw new Error(`el IAM no favorece a astro: sin ${sin.toFixed(5)} → con ${con.toFixed(5)}`);
+});
+
+t('v1.31 circunsolar: la sombra lo tapa, y la BANDA es un sándwich lo ≤ pub ≤ hi', () => {
+  const T = Object.assign({}, ayoraPlantT(), { iam: 0.05 });
+  let visto = 0;
+  // sol bajo y medio en diciembre, y sol ALTO en junio (en diciembre a esta
+  // latitud no se llega a 40° de elevación: no existe el caso)
+  for (const [ms, doy, lo, hi] of [[Date.UTC(2026, 11, 21), 355, 1.5, 4],
+                                   [Date.UTC(2026, 11, 21), 355, 8, 12],
+                                   [Date.UTC(2026, 11, 21), 355, 20, 24.9],
+                                   [Date.UTC(2026, 5, 21), 172, 60, 70]]) {
+    const g = findElevCase(ms, lo, hi);
+    if (!g) throw new Error(`no hay instante con elevación ${lo}-${hi}`);
+    const irr = F.clearskyIneichen(g.zen, doy, 700, 3.5);
+    for (const pol of ['anglesPairwise', 'anglesAstro']) {
+      const ang = F[pol](g.zen, g.az, T);
+      const p = F.poaPlant(g.zen, g.az, T, ang, irr, doy, 0.2);
+      if (!(p.plantLo <= p.plant + 1e-9 && p.plant <= p.plantHi + 1e-9))
+        throw new Error(`banda rota (${pol}, elev ${lo}-${hi}): ${p.plantLo} / ${p.plant} / ${p.plantHi}`);
+      const sombra = p.shade.reduce((s, v) => Math.max(s, v), 0);
+      if (sombra > 1e-3 && p.plantHi > p.plant + 1e-9) visto++;
+      // sin sombra no hay nada que tapar: la banda COLAPSA
+      if (sombra <= 1e-12 && Math.abs(p.plantHi - p.plant) > 1e-9)
+        throw new Error(`sin sombra la banda no colapsa (${pol}, elev ${lo}-${hi})`);
+    }
+  }
+  if (visto === 0) throw new Error('ningún caso con sombra movió el circunsolar: ¿se está sombreando?');
+});
+
+t('v1.31 banda: plantHi reproduce el circunsolar SIN sombrear (lo de ≤v1.30)', () => {
+  // reconstruido desde poaRow, independiente del acumulador de poaPlant
+  const T = Object.assign({}, ayoraPlantT(), { iam: 0.05 });
+  const g = findElevCase(Date.UTC(2026, 11, 21), 8, 12);
+  const irr = F.clearskyIneichen(g.zen, 355, 700, 3.5);
+  const ang = F.anglesPairwise(g.zen, g.az, T);
+  const p = F.poaPlant(g.zen, g.az, T, ang, irr, 355, 0.2);
+  let extra = 0;
+  for (let r = 0; r < ang.length; r++) {
+    const tilt = (T.rowTilt && T.rowTilt[r] != null) ? T.rowTilt[r] : 0;
+    const pr = F.poaRow(ang[r], tilt, T.axisAz, g.zen, g.az, irr, 355, 0.2, T.iam);
+    extra += pr.circ * Math.max(0, Math.min(1, p.shade[r] || 0));
+  }
+  extra /= ang.length;
+  if (Math.abs((p.plant + extra) - p.plantHi) > 1e-9)
+    throw new Error(`plantHi ${p.plantHi.toFixed(6)} ≠ plant+extra ${(p.plant + extra).toFixed(6)}`);
+});
+
+t('v1.31 Perez: el desglose SUMA lo mismo que la fórmula agregada (clamp por componente)', () => {
+  // al separar el circunsolar el recorte a ≥0 pasa a ser por componente: solo
+  // puede diferir cuando isótropa+horizonte sola sale negativa. Se ACOTA aquí.
+  let peor = 0;
+  for (const zen of [10, 35, 55, 70, 80, 86]) {
+    const irr = F.clearskyIneichen(zen, 172, 700, 3.5);
+    if (!(irr.ghi > 0)) continue;
+    for (const th of [-55, -30, 0, 30, 55]) {
+      const p = F.poaRow(th, 0, 0, zen, 150, irr, 172, 0.2, 0);
+      for (const [k, v] of Object.entries(p)) if (v < -1e-12) throw new Error('componente negativa: ' + k);
+      // fórmula agregada de ≤v1.30, recortada UNA vez sobre el total del cielo
+      const o = F.surfaceOrient(th, 0, 0), b = o.tilt * Math.PI / 180, z = zen * Math.PI / 180;
+      const cosAoi = Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((150 - o.az) * Math.PI / 180);
+      const kap = 1.041, z3 = z * z * z;
+      const eps = ((irr.dhi + irr.dni) / irr.dhi + kap * z3) / (1 + kap * z3);
+      let bin = 7; for (let i = 0; i < 7; i++) { if (eps < F.PEREZ_BINS[i]) { bin = i; break; } }
+      const Fc = F.PEREZ_F[bin];
+      const delta = irr.dhi * F.airmassKY(zen) / F.dniExtra(172);
+      const F1 = Math.max(0, Fc[0] + Fc[1] * delta + z * Fc[2]);
+      const F2 = Fc[3] + Fc[4] * delta + z * Fc[5];
+      const A = Math.max(0, cosAoi), B = Math.max(Math.cos(85 * Math.PI / 180), Math.cos(z));
+      const skyOld = Math.max(0, irr.dhi * ((1 - F1) * (1 + Math.cos(b)) / 2 + F1 * A / B + F2 * Math.sin(b)));
+      const oldTot = irr.dni * Math.max(0, cosAoi) + skyOld + irr.ghi * 0.2 * (1 - Math.cos(b)) / 2;
+      peor = Math.max(peor, Math.abs(p.total - oldTot) / Math.max(1, oldTot));
+    }
+  }
+  if (peor > 2e-3) throw new Error('el clamp por componente desvía ' + (100 * peor).toFixed(3) + '% (>0,2%)');
 });
 
 console.log('');

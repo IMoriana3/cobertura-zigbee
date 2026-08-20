@@ -75,6 +75,8 @@
   th:first-child,td:first-child{text-align:left}
   td.best{color:var(--ok);font-weight:600}
   td .mut{color:var(--muted)}
+  td .band{color:var(--muted);font-size:11px}
+  td .cruza{color:var(--warn)}
   .nota{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:9px}
   .nota b{color:var(--tx2)}
   .qa{font-family:var(--mono);font-size:.78rem;line-height:1.7;white-space:pre-wrap}
@@ -133,10 +135,13 @@
       <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
       <div class="f"><label>Filas</label><input id="nrows" type="number" step="1" min="2" max="24" value="8"></div>
     </div>
-    <div class="three">
+    <div class="two">
       <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
-      <div class="f"><label>Subcadenas en la cuerda</label><input id="nbp" type="number" step="1" min="0" max="6" value="2" title="CUÁNTAS subcadenas de diodo atraviesa la sombra al subir por la cuerda — no es el nº de diodos del módulo, es cómo lo cruza la sombra fila-a-fila.&#10;· 1 = módulo en RETRATO de célula entera: las tres subcadenas corren A LO LARGO de la cuerda, así que la sombra las cruza TODAS a la vez y se lleva el módulo entero.&#10;· 2 = retrato de MEDIA CÉLULA (el caso de Ayora: mesa 1V, módulo 2,384 m sobre la cuerda): las dos mitades van en paralelo, la sombra mata la de abajo y la de arriba sigue produciendo hasta que cruza el centro.&#10;· 3 = módulo TUMBADO: las subcadenas se apilan atravesando la cuerda y la sombra las mata de una en una.&#10;Cambia el signo de la comparación entre backtracking y astronómico: verifícalo antes de fiarte."></div>
       <div class="f"><label>Cara sup–eje m</label><input id="z0" type="number" step="0.01" min="0" value="0.17" title="Altura de la CARA COLECTORA sobre el eje del tubo. Del modelo de la casa (seguidor.js): 0,14 m de la cara del laminado sobre el tubo + medio canto (6 cm) = 0,17. Es el MISMO número para el corte 2D, el rayo, el vano y el contador 3D: si lo cambias, cambian todos"></div>
+    </div>
+    <div class="two">
+      <div class="f"><label>Subcadenas en la cuerda</label><input id="nbp" type="number" step="1" min="0" max="6" value="2" title="CUÁNTAS subcadenas de diodo atraviesa la sombra al subir por la cuerda — no es el nº de diodos del módulo, es cómo lo cruza la sombra fila-a-fila.&#10;· 1 = módulo en RETRATO de célula entera: las tres subcadenas corren A LO LARGO de la cuerda, así que la sombra las cruza TODAS a la vez y se lleva el módulo entero.&#10;· 2 = retrato de MEDIA CÉLULA (el caso de Ayora: mesa 1V, módulo 2,384 m sobre la cuerda): las dos mitades van en paralelo, la sombra mata la de abajo y la de arriba sigue produciendo hasta que cruza el centro.&#10;· 3 = módulo TUMBADO: las subcadenas se apilan atravesando la cuerda y la sombra las mata de una en una.&#10;Cambia el signo de la comparación entre backtracking y astronómico: verifícalo antes de fiarte."></div>
+      <div class="f"><label>IAM b₀</label><input id="iam" type="number" step="0.01" min="0" max="0.5" value="0.05" title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz.&#10;b₀ = 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo DESACTIVA.&#10;OJO con el signo: este término juega A FAVOR del astronómico —que apunta al sol, AOI≈0— y en contra del backtracking, que se gira deliberadamente fuera. Es el único sesgo conocido que empuja hacia astro.&#10;Difusa isótropa y albedo: ángulos equivalentes de Duffie-Beckman. Circunsolar: el mismo IAM que el haz."></div>
     </div>
     <div class="f"><label>Accionamiento</label>
       <select id="drive">
@@ -226,6 +231,16 @@
       banda uniforme (el modelo del −8% espurio) muy por encima; el publicado queda al 20% del recorrido.
       La granularidad estación≈módulo está validada: refinar de 9,3 m a 1,2 m mueve el anual +0,007%.
       Sin validar contra curvas IV reales (pendiente: SCADA de Ayora).</div>
+    <div class="nota"><b>Óptica de la difusa (v1.31):</b> el <b>circunsolar</b> de Perez entra como
+      fuente puntual en la posición del sol, así que <b>lo tapa la misma sombra que tapa el haz</b>
+      (en proporción al área — es óptica, no electricidad). Hasta la v1.30 entraba entero: era energía
+      regalada justo a las horas de backtracking. El <b>IAM</b> (ASHRAE b₀, ángulos equivalentes de
+      Duffie-Beckman para isótropa y albedo) va en el sentido contrario: penaliza al que apunta fuera
+      del sol. Ambos se publican con su <b>banda</b> en la tabla del día, y si la banda cruza el cero
+      el simulador lo dice en ámbar en vez de fingir un ganador. <b>Fuera del modelo, declarados:</b>
+      el bloqueo de bóveda por la fila de delante (factor de vista), el cono real de ~25° del
+      circunsolar —que suavizaría el bloqueo—, el mismatch entre módulos <b>en serie</b> del mismo
+      string, los puntos calientes y la garantía, y que todo esto es <b>cielo claro</b>.</div>
   </div>
 
   <div class="card">
@@ -332,6 +347,10 @@
      · energy-optimal: grid f∈{0,¼,½,¾,1} con argmax del POA de planta neto del
                        modelo Martinez (whitepaper PVH Backtracking 3D)
      · cielo claro:    Ineichen-Perrin (pvlib clearsky.ineichen) · difusa Perez 1990
+     · circunsolar:    el término F1 de Perez viene del cono del sol ⇒ LO TAPA LA
+                       MISMA SOMBRA que tapa el haz, en proporción al área (v1.31)
+     · IAM:            ASHRAE b₀ al haz y al circunsolar; ángulos equivalentes de
+                       Duffie-Beckman a la isótropa y al albedo (v1.31)
    ═══════════════════════════════════════════════════════════════════════════ */
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
@@ -1597,13 +1616,39 @@ const PEREZ_F=[
   [ 1.132,-1.237,-0.412,0.288,-0.823, 0.056],
   [ 1.060,-1.600,-0.359,0.264,-1.127, 0.131],
   [ 0.678,-0.327,-0.250,0.156,-1.377, 0.251]];
-function poaRow(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo){
-  if(!(zen<90)||irr.ghi<=0)return {total:0,beam:0,diff:0};
+/* IAM (ASHRAE, b0): el vidrio refleja MÁS cuanto más oblicuo entra la luz, y
+   este término juega A FAVOR del astronómico — quien apunta al sol trabaja a
+   AOI≈0 y quien hace backtracking se gira DELIBERADAMENTE fuera del sol. Sin
+   IAM el simulador le regalaba al BT una transmisión que el vidrio no da: es
+   el único sesgo conocido que empuja al otro lado. b0=0 lo desactiva.
+   Difusa isótropa y albedo no tienen un AOI único: ángulos EQUIVALENTES de
+   Duffie-Beckman (§5.4), que es lo que se hace cuando no se integra la bóveda
+   —aproximación declarada, no exactitud—. El circunsolar SÍ tiene AOI: viene
+   del sol, así que lleva el mismo IAM que el haz. */
+function iamAshrae(aoiDeg,b0){
+  if(!(b0>0))return 1;
+  if(!(aoiDeg<90))return 0;
+  const c=Math.cos(aoiDeg*RAD);
+  if(c<=1e-6)return 0;
+  return Math.max(0,Math.min(1,1-b0*(1/c-1)));
+}
+const iamSkyEq=(bDeg,b0)=>iamAshrae(59.7-0.1388*bDeg+0.001497*bDeg*bDeg,b0);
+const iamGndEq=(bDeg,b0)=>iamAshrae(90-0.5788*bDeg+0.002693*bDeg*bDeg,b0);
+
+/* Devuelve la difusa DESGLOSADA: el circunsolar (F1·A/B) es luz que viene del
+   cono del sol, así que LO TAPA LA MISMA SOMBRA que tapa el haz — v1.31. El
+   resto (isótropa + horizonte + albedo) viene de toda la bóveda y aquí no se
+   sombrea: el bloqueo de cielo por la fila de delante es factor de vista, y
+   está DECLARADO como pendiente. */
+function poaRow(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo,b0){
+  if(!(zen<90)||irr.ghi<=0)return {total:0,beam:0,circ:0,sky:0,gnd:0,diff:0};
   const o=surfaceOrient(thetaDeg,axisTilt,axisAz);
-  const b=o.tilt*RAD, z=zen*RAD;
+  const b=o.tilt*RAD, z=zen*RAD, bDeg=o.tilt;
   const cosAoi=Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD);
-  const beam=irr.dni*Math.max(0,cosAoi);
-  let sky=0;
+  const aoi=Math.acos(Math.max(-1,Math.min(1,cosAoi)))/RAD;
+  const kBeam=iamAshrae(aoi,b0);
+  const beam=irr.dni*Math.max(0,cosAoi)*kBeam;
+  let circ=0, sky=0;
   if(irr.dhi>0){
     const kap=1.041, z3=z*z*z;
     const eps=((irr.dhi+irr.dni)/irr.dhi+kap*z3)/(1+kap*z3);
@@ -1613,26 +1658,35 @@ function poaRow(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo){
     const F1=Math.max(0,F[0]+F[1]*delta+z*F[2]);
     const F2=F[3]+F[4]*delta+z*F[5];
     const A=Math.max(0,cosAoi), B=Math.max(Math.cos(85*RAD),Math.cos(z));
-    sky=Math.max(0,irr.dhi*((1-F1)*(1+Math.cos(b))/2+F1*A/B+F2*Math.sin(b)));
+    circ=irr.dhi*F1*A/B*kBeam;                       // cono del sol → IAM del haz
+    sky=Math.max(0,irr.dhi*((1-F1)*(1+Math.cos(b))/2+F2*Math.sin(b)))*iamSkyEq(bDeg,b0);
   }
-  const gnd=irr.ghi*albedo*(1-Math.cos(b))/2;
-  return {total:beam+sky+gnd,beam:beam,diff:sky+gnd};
+  const gnd=irr.ghi*albedo*(1-Math.cos(b))/2*iamGndEq(bDeg,b0);
+  return {total:beam+circ+sky+gnd,beam:beam,circ:circ,sky:sky,gnd:gnd,diff:circ+sky+gnd};
 }
 function poaPlant(zen,az,T,rowAngles,irr,doy,albedo,fast){
   // beam·(1 − Martinez) + difusa, fila a fila; planta = MEDIA por fila (la
   // agregación energética correcta: POA(θ media) ≠ media de POA(θ_r)).
   // fast=true: contador 2.5D rápido — SOLO para la búsqueda de optimizadores
   const sh=fast?shadeRows25(zen,az,T,rowAngles):shadeRows(zen,az,T,rowAngles);
-  let sum=0; const rows=[];
+  let sum=0, cOpt=0, cEle=0; const rows=[];
   for(let r=0;r<rowAngles.length;r++){
-    const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo);
+    const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo,T.iam);
     // sombra parcheada 3D: Martinez por estación axial (sh.elec); banda 2.5D
     // uniforme: Martinez sobre la fracción de fila, como siempre
     const se=(sh.elec&&sh.elec[r]!=null)?sh.elec[r]:elecLoss(sh[r],T.nBypass);
-    const v=p.beam*(1-se)+p.diff;
+    const fo=Math.max(0,Math.min(1,sh[r]||0));       // fracción ÓPTICA sombreada
+    // el circunsolar viene del cono del sol: lo tapa la sombra, en proporción
+    // al ÁREA tapada (sin amplificación de subcadena — eso es óptica, no
+    // electricidad). Las dos cotas de la banda salen del mismo cálculo:
+    //   plantHi = circunsolar SIN sombrear (lo que hacíamos hasta v1.30)
+    //   plantLo = la subcadena muerta tampoco convierte SU circunsolar
+    const v=p.beam*(1-se)+p.circ*(1-fo)+p.sky+p.gnd;
+    cOpt+=p.circ*fo; cEle+=p.circ*se;
     rows.push(v); sum+=v;
   }
-  return {rows:rows,plant:sum/rowAngles.length,shade:sh};
+  const n=rowAngles.length;
+  return {rows:rows,plant:sum/n,plantHi:(sum+cOpt)/n,plantLo:(sum-(cEle-cOpt))/n,shade:sh};
 }
 
 /* energy-optimal (Deeptrack): θ_c(f)=θ_bt+f·(θ_full−θ_bt), MISMA f para todas
@@ -1706,7 +1760,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   const angs=[],val=[];
   for(let r=0;r<nR;r++){
     angs.push(GRID.map(f=>Math.max(-T.maxAngle,Math.min(T.maxAngle,base[r]+f*(full[r]-base[r])))));
-    val.push(angs[r].map(a=>poaRow(a,rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo)));
+    val.push(angs[r].map(a=>poaRow(a,rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo,T.iam)));
   }
   const psz=T.pairs.map(pr=>trueTrackAngle(zen,az,pr.axisTilt,T.axisAz));
   const axc=T.pairs.map((_,p)=>axialCoverage(zen,az,T,p));
@@ -1721,7 +1775,8 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
     if(r<nR-1&&psz[r]>=0)s=Math.max(s,pairContrib(r));
     return s;
   };
-  const rowVal=r=>{const v=val[r][k[unitOf[r]]];return v.beam*(1-elecLoss(shadeOf(r),T.nBypass))+v.diff;};
+  const rowVal=r=>{const v=val[r][k[unitOf[r]]], f=shadeOf(r);
+    return v.beam*(1-elecLoss(f,T.nBypass))+v.circ*(1-f)+v.sky+v.gnd;};
   // arranque: la mejor f común con el MISMO evaluador rápido que usa
   // energy-optimal para elegir — así el invariante libre ≥ optimal se decide
   // en la misma métrica (lo PUBLICADO se mide siempre con el ray-cast)
@@ -2198,9 +2253,19 @@ function runPhysicsQA(){
   });
   t('Perez: β=0 devuelve exactamente la DHI (sin término circumsolar extra)',()=>{
     const irr={ghi:500,dni:600,dhi:120};
-    const p=poaRow(0,0,0,40,180,irr,172,0);
+    const p=poaRow(0,0,0,40,180,irr,172,0,0);          // b₀=0: sin IAM, a propósito
     const beam=600*Math.cos(40*RAD);
     assert(Math.abs(p.total-beam-120)<1.5,'horizontal: '+p.total.toFixed(1)+' vs '+(beam+120).toFixed(1));
+  });
+  t('v1.31 IAM: b₀=0 transparente · 60° vale 0,95 · el circunsolar lo lleva',()=>{
+    assert(iamAshrae(45,0)===1,'b₀=0 no es transparente');
+    assert(Math.abs(iamAshrae(60,0.05)-0.95)<1e-12,'AOI 60 ≠ 0,95 (valor de libro)');
+    assert(iamAshrae(90,0.05)===0,'AOI 90 no anula');
+    const irr={ghi:500,dni:600,dhi:120};
+    const a=poaRow(30,0,0,40,180,irr,172,0.2,0), b=poaRow(30,0,0,40,180,irr,172,0.2,0.05);
+    assert(b.total<a.total,'el IAM no resta nada');
+    assert(a.circ>0&&b.circ<a.circ,'el circunsolar no lleva el IAM del haz');
+    assert(b.sky<a.sky&&b.gnd<a.gnd,'isótropa/albedo sin ángulo equivalente');
   });
   return res;
 }
@@ -2208,7 +2273,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.30.0';
+const VER='v1.31.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2245,7 +2310,7 @@ function cfg(){
     // con planta real cargada el tope sube: un bloque real puede tener 80 líneas
     nrows:Math.max(2,Math.min(PLANT_REAL?200:24,Math.round(+$('nrows').value))),
     axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
-    drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value,
+    drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value, iam:+$('iam').value,
     nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
     mods:Math.max(8,Math.min(32,Math.round(+$('mods').value))),
   };
@@ -2276,7 +2341,7 @@ function terrain(c){
                   axisTilt:(P.tilt[i]+P.tilt[i+1])/2});
     }
     return {pairs:pairs,cw:c.cw,axisAz:c.axaz,
-            maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
+            maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,iam:c.iam,
             rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
             segs:P.segs,filaLen:2*c.mods*1.146+0.55,real:P};
   }
@@ -2290,7 +2355,7 @@ function terrain(c){
   // no filas dentro de un grupo). En las plantas reales ya vienen alineadas.
   if(groups)for(const g of groups)if(g.length===2)segs[g[1]]=segs[g[0]].map(sg=>sg.slice());
   return {pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
-          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,iam:c.iam,
           rowTilt:eff,groups:groups,drive:c.drive,
           segs:segs,filaLen:filaLen};
 }
@@ -2549,6 +2614,9 @@ function computeDay(){
   for(const P of POLICIES){
     if(!P.on)continue;
     const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
+    // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
+    // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
+    const poaHi=new Array(nT), poaLo=new Array(nT);
     let prev=null;
     for(let t=0;t<nT;t++){
       const g=sun[t];
@@ -2558,8 +2626,9 @@ function computeDay(){
       const lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
       const pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
       ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
+      poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
     }
-    pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,f:fArr};
+    pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr};
   }
   // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
   // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
@@ -2579,9 +2648,11 @@ function computeDay(){
 function dayKpis(key){
   const d=DAY, p=d.pol[key]; if(!p)return null;
   const dtH=STEP_MIN/60;
-  let kwh=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0;
+  let kwh=0, kwhHi=0, kwhLo=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0;
   for(let t=0;t<d.times.length;t++){
     kwh+=p.poaP[t]*dtH/1000;
+    kwhHi+=(p.poaHi?p.poaHi[t]:p.poaP[t])*dtH/1000;
+    kwhLo+=(p.poaLo?p.poaLo[t]:p.poaP[t])*dtH/1000;
     const nRt=p.ang[t].length;
     const med=p.shade[t].reduce((a,v)=>a+v,0)/nRt;          // media de PLANTA
     // SOMBRA PONDERADA POR ENERGÍA: la media de planta pesada por la DNI del
@@ -2600,7 +2671,7 @@ function dayKpis(key){
     let e=0,ep=0;
     for(let r=0;r<nRt;r++){
       const axt=d.T.pairs[Math.min(r,d.T.pairs.length-1)].axisTilt;
-      const b=poaRow(p.ang[t][r],axt,d.T.axisAz,d.sun[t].zen,d.sun[t].az,d.irr[t],d.doy,d.c.albedo).beam;
+      const b=poaRow(p.ang[t][r],axt,d.T.axisAz,d.sun[t].zen,d.sun[t].az,d.irr[t],d.doy,d.c.albedo,d.T.iam).beam;
       e+=b*elecLoss(p.shade[t][r],d.T.nBypass);
       const spl=p.shade[t].pl?p.shade[t].pl[r]:p.shade[t][r];
       ep+=b*elecLoss(spl,d.T.nBypass);
@@ -2608,7 +2679,7 @@ function dayKpis(key){
     elecKwh+=(e/nRt)*dtH/1000;
     elecPl+=(ep/nRt)*dtH/1000;
   }
-  return {kwh:kwh,shW:wSum?shW/wSum:0,minSh:minSh,thMax:thMax,
+  return {kwh:kwh,kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,minSh:minSh,thMax:thMax,
           elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl)};
 }
 
@@ -3881,7 +3952,8 @@ function drawCurves(){
 function fillDayTable(){
   const rows=[];
   const ref=dayKpis('pairwise');
-  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th><th>Δ vs pairwise</th>'+
+  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th>'+
+    '<th title="Diferencia de POA de planta contra pairwise, y entre corchetes la BANDA del circunsolar: cota alta = circunsolar SIN sombrear (lo que se hacía hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte. Si la banda CRUZA EL CERO el simulador NO decide quién gana: sale marcada en ámbar">Δ vs pairwise (banda)</th>'+
     '<th title="Sombra media de PLANTA ponderada por la DNI del instante: cuánta sombra te comes donde hay energía. Sustituye al «máximo de una fila», que en terreno roto saturaba al 100% en todas las políticas y no distinguía nada">Sombra (pond. energía)</th>'+
     '<th title="Minutos con sombra media de planta >1% y DNI>25 W/m² (antes: cualquier fila >0,1%, que salía igual para todas)">Min con sombra >1%</th>'+
     '<th title="Pérdida eléctrica Martinez sobre el beam. Entre paréntesis, la parte que NO puede evitar ninguna consigna: la estructura de la mesa (viga de torsión y canto del laminado)">Pérdida Martinez (de estructura)</th>'+
@@ -3891,9 +3963,18 @@ function fillDayTable(){
   for(const e of kk)best=Math.max(best,e.k.kwh);
   for(const e of kk){
     const d=ref?100*(e.k.kwh/ref.kwh-1):0;
+    // la banda se evalua con LA MISMA cota en la politica y en la referencia
+    const dA=ref&&ref.kwhLo?100*(e.k.kwhLo/ref.kwhLo-1):d;
+    const dB=ref&&ref.kwhHi?100*(e.k.kwhHi/ref.kwhHi-1):d;
+    const bl=Math.min(dA,dB), bh=Math.max(dA,dB);
+    const cruza=bl<-1e-9&&bh>1e-9;
+    const banda=ref?' <span class="band'+(cruza?' cruza':'')+'" title="'+
+      (cruza?'LA BANDA CRUZA EL CERO: con el circunsolar sin sombrear gana uno y con la cota pesimista gana el otro. El simulador no decide este caso.'
+            :'Banda del circunsolar: el signo no cambia dentro de ella.')+'">['+
+      (bl>=0?'+':'')+bl.toFixed(2)+' \u2026 '+(bh>=0?'+':'')+bh.toFixed(2)+']'+(cruza?' \u26a0':'')+'</span>':'';
     rows.push('<tr><td style="color:'+e.P.col+'">'+e.P.nm+'</td>'+
       '<td class="'+(Math.abs(e.k.kwh-best)<1e-9?'best':'')+'">'+e.k.kwh.toFixed(3)+'</td>'+
-      '<td>'+(ref?(d>=0?'+':'')+d.toFixed(2)+'%':'—')+'</td>'+
+      '<td>'+(ref?(d>=0?'+':'')+d.toFixed(2)+'%'+banda:'—')+'</td>'+
       '<td>'+(e.k.shW*100).toFixed(2)+'%</td>'+
       '<td>'+e.k.minSh+'</td>'+
       '<td>'+e.k.elecKwh.toFixed(3)+' <span class="mut">('+e.k.elecStr.toFixed(3)+')</span> kWh/m²</td>'+
@@ -4086,7 +4167,7 @@ function recompute(light){
   $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
-const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','z0','nsl','ntrk','mods'];
+const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','iam','z0','nsl','ntrk','mods'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   // tocar la implantación por presets abandona la planta real cargada (nrows/
   // pitch cambiados a mano también: la banda ya no cuadraría con las cotas)
