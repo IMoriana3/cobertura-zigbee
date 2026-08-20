@@ -135,7 +135,7 @@
     </div>
     <div class="three">
       <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
-      <div class="f"><label>Diodos bypass</label><input id="nbp" type="number" step="1" min="0" max="6" value="3"></div>
+      <div class="f"><label>Subcadenas en la cuerda</label><input id="nbp" type="number" step="1" min="0" max="6" value="2" title="CUÁNTAS subcadenas de diodo atraviesa la sombra al subir por la cuerda — no es el nº de diodos del módulo, es cómo lo cruza la sombra fila-a-fila.&#10;· 1 = módulo en RETRATO de célula entera: las tres subcadenas corren A LO LARGO de la cuerda, así que la sombra las cruza TODAS a la vez y se lleva el módulo entero.&#10;· 2 = retrato de MEDIA CÉLULA (el caso de Ayora: mesa 1V, módulo 2,384 m sobre la cuerda): las dos mitades van en paralelo, la sombra mata la de abajo y la de arriba sigue produciendo hasta que cruza el centro.&#10;· 3 = módulo TUMBADO: las subcadenas se apilan atravesando la cuerda y la sombra las mata de una en una.&#10;Cambia el signo de la comparación entre backtracking y astronómico: verifícalo antes de fiarte."></div>
       <div class="f"><label>Cara sup–eje m</label><input id="z0" type="number" step="0.01" min="0" value="0.17" title="Altura de la CARA COLECTORA sobre el eje del tubo. Del modelo de la casa (seguidor.js): 0,14 m de la cara del laminado sobre el tubo + medio canto (6 cm) = 0,17. Es el MISMO número para el corte 2D, el rayo, el vano y el contador 3D: si lo cambias, cambian todos"></div>
     </div>
     <div class="f"><label>Accionamiento</label>
@@ -219,8 +219,8 @@
       <b>−0,60% anual</b> y con sol rasante llega a un tercio de cuerda en pendiente. Fuera del
       modelo, declarados: correas, cables, TCU, motor y seccionador (piezas cortas que además no
       proyectan en el render).</div>
-    <div class="nota"><b>Modelo eléctrico (hipótesis acotada, auditoría 2/6):</b> Martinez por diodos
-      bypass aplicado a la penetración de cuerda de cada <b>estación axial</b> y promediado por mesa —
+    <div class="nota"><b>Modelo eléctrico (hipótesis acotada, auditoría 2/6):</b> Martinez por
+      subcadenas aplicado a la penetración de cuerda de cada <b>estación axial</b> y promediado por mesa —
       equivale a strings en serie a lo largo del eje con bypass ideal y MPPT sin mismatch residual
       (declarado). Acotado en el año de Ayora: solo área −1,6% de amplificación eléctrica por debajo;
       banda uniforme (el modelo del −8% espurio) muy por encima; el publicado queda al 20% del recorrido.
@@ -515,8 +515,17 @@ function criticalRayPair(pszDeg,thLeft,thRight,pitch,cw,slopeDeg,z0){
           upIsRight:pszDeg>=0,zR:zR,pitch:pitch};
 }
 
-/* Martinez escalonado: un módulo con n diodos pierde 1/n en cuanto una célula
-   de esa subcadena se sombrea. Umbral anti-polvo flotante como el core. */
+/* Martinez escalonado: la sombra que sube por la cuerda va matando subcadenas
+   de una en una, y cada una se lleva 1/n en cuanto se le sombrea UNA célula.
+   OJO — n NO es «los diodos del módulo», es CUÁNTAS subcadenas atraviesa la
+   sombra fila-a-fila, que depende de cómo esté montado el módulo:
+     · retrato de célula entera → las tres corren a lo largo de la cuerda y la
+       sombra las cruza a la vez: n=1 (se va el módulo entero);
+     · retrato de media célula → las dos mitades van en paralelo: n=2;
+     · tumbado → se apilan atravesando la cuerda: n=3.
+   El defecto es 2, que es la mesa 1V de Ayora (módulo de 2,384 m sobre la
+   cuerda). Con n=3 —geometría de módulo tumbado— el astronómico ganaba al
+   backtracking; con n=1 pierde. Es el parámetro que decide ese signo. */
 function elecLoss(f,nBypass){
   if(!(f>1e-6))return 0;
   if(nBypass<=0)return Math.min(1,f);
@@ -2199,7 +2208,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.29.2';
+const VER='v1.30.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
