@@ -186,6 +186,20 @@ t('v1.25: cuerda ANALÍTICA en el contador (sin MU) — la auditoría midió +0,
     throw new Error('la batería perdió el oráculo de podas');
 });
 
+t('v1.28: la ESTRUCTURA real entra en el contador con las cotas de seguidor.js', () => {
+  // viga cuadrada de 120 mm y laminado de 6 cm con su cara colectora a 0,17 m
+  // del eje — los mismos números que el modelo de la casa, no inventados
+  const mod = fs.readFileSync(path.join(ROOT, 'seguidor.js'), 'utf-8');
+  const mt = mod.match(/tube:\s*([0-9.]+)/), mo = mod.match(/off:\s*([0-9.]+)/);
+  if (!mt || !mo) throw new Error('no encuentro tube/off en seguidor.js');
+  const ht = html.match(/const MOD_OFF=([0-9.]+),\s*TUBE=([0-9.]+),\s*GLASS=([0-9.]+)/);
+  if (!ht) throw new Error('el contador no declara la geometría de la mesa');
+  if (Math.abs(+ht[1] - +mo[1]) > 1e-9) throw new Error(`MOD_OFF ${ht[1]} ≠ seguidor.js off ${mo[1]}`);
+  if (Math.abs(+ht[2] - +mt[1]) > 1e-9) throw new Error(`TUBE ${ht[2]} ≠ seguidor.js tube ${mt[1]}`);
+  if (!/const REC_OFF=MOD_OFF\+GLASS\/2/.test(html)) throw new Error('la cara colectora no es el vidrio');
+  if (!/function boxChordIv/.test(html)) throw new Error('sin intervalo de cuerda por caja convexa');
+  if (!/pl\.tb/.test(html) || !/pl\.sl/.test(html)) throw new Error('faltan viga o laminado como emisores');
+});
 t('v1.26.1: existe el GATE de pre-release con sus 5 pasos (auditoría, punto 6)', () => {
   const gp = path.join(ROOT, 'tools', 'release_gate.mjs');
   if (!fs.existsSync(gp)) throw new Error('sin tools/release_gate.mjs');
@@ -255,10 +269,105 @@ function oracleGeom(T, rowAngles) {
       const sE = (z1e - z0e) / ((w1 - w0) || 1);
       const uD = [Math.cos(thE), 0, -Math.sin(thE)], vD = [0, 1, sE];
       const nE = [uD[1] * vD[2] - uD[2] * vD[1], uD[2] * vD[0] - uD[0] * vD[2], uD[0] * vD[1] - uD[1] * vD[0]];
-      planes.push({ e, w0, w1, C: [xs[e], (w0 + w1) / 2, (z0e + z1e) / 2], nE, uD });
+      const ln = Math.hypot(nE[0], nE[1], nE[2]) || 1;
+      const nu = [nE[0] / ln, nE[1] / ln, nE[2] / ln];
+      const axC = [xs[e], (w0 + w1) / 2, (z0e + z1e) / 2];
+      const lv = Math.hypot(vD[0], vD[1], vD[2]) || 1;
+      // MISMO modelo declarado que el contador (v1.28): cara del módulo a
+      // MOD_OFF sobre el eje y VIGA de torsión (sección cuadrada PERPENDICULAR
+      // al eje: base ortonormal) como emisor propio
+      const e3 = [vD[0] / lv, vD[1] / lv, vD[2] / lv];
+      const pr = uD[0] * e3[0] + uD[1] * e3[1] + uD[2] * e3[2];
+      const e1r = [uD[0] - pr * e3[0], uD[1] - pr * e3[1], uD[2] - pr * e3[2]];
+      const l1 = Math.hypot(e1r[0], e1r[1], e1r[2]) || 1;
+      const e1 = [e1r[0] / l1, e1r[1] / l1, e1r[2] / l1];
+      const e2 = [e3[1] * e1[2] - e3[2] * e1[1], e3[2] * e1[0] - e3[0] * e1[2], e3[0] * e1[1] - e3[1] * e1[0]];
+      planes.push({ e, w0, w1, nE, uD,
+        C: [axC[0] + O_REC * nu[0], axC[1] + O_REC * nu[1], axC[2] + O_REC * nu[2]],
+        tb: { C: axC, ax: [e1, e2, e3], hf: [O_TUBE / 2, O_TUBE / 2, Math.abs(w1 - w0) * lv / 2] },
+        sl: { C: [axC[0] + O_OFF * nu[0], axC[1] + O_OFF * nu[1], axC[2] + O_OFF * nu[2]],
+              ax: [e1, e2, e3], hf: [T.cw / 2, O_GLASS / 2, Math.abs(w1 - w0) * lv / 2] } });
     }
   }
   return { nR, xs, cot, segsOf, planes };
+}
+// geometría real de la mesa (seguidor.js): cara del módulo sobre el eje y viga
+const O_OFF = 0.14, O_TUBE = 0.12, O_GLASS = 0.06, O_REC = 0.14 + 0.03;
+// ¿el rayo P+t·s corta la CAJA (viga)? Método de lonjas, escalar (el oráculo no
+// necesita el intervalo analítico: comprueba punto a punto)
+function oracleHitsBox(P, s, box) {
+  let t0 = 1e-6, t1 = 1e9;
+  for (let k = 0; k < 3; k++) {
+    const a = box.ax[k], h = box.hf[k];
+    const A = (P[0] - box.C[0]) * a[0] + (P[1] - box.C[1]) * a[1] + (P[2] - box.C[2]) * a[2];
+    const S = s[0] * a[0] + s[1] * a[1] + s[2] * a[2];
+    if (Math.abs(S) < 1e-9) { if (Math.abs(A) > h) return false; continue; }
+    let ta = (-h - A) / S, tb = (h - A) / S;
+    if (ta > tb) { const w = ta; ta = tb; tb = w; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+/* intervalo de cuerda bloqueado por la CAJA, por una vía DISTINTA a la del
+   contador (que lo resuelve con álgebra de lonjas): aquí se corta la caja con
+   el PLANO que barren los rayos {P0+u·c+t·s} — la sección es un polígono
+   convexo cuyos vértices salen de las 12 aristas — y se proyecta sobre u.
+   Exacto y algorítmicamente independiente. */
+function oracleBoxIv(P0, c, s, box, hw) {
+  const n = [c[1] * s[2] - c[2] * s[1], c[2] * s[0] - c[0] * s[2], c[0] * s[1] - c[1] * s[0]];
+  if (Math.hypot(n[0], n[1], n[2]) < 1e-12) return null;
+  const cor = [];
+  for (let i = 0; i < 8; i++) {
+    const s0 = (i & 1) ? 1 : -1, s1 = (i & 2) ? 1 : -1, s2 = (i & 4) ? 1 : -1;
+    cor.push([0, 1, 2].map(k =>
+      box.C[k] + s0 * box.hf[0] * box.ax[0][k] + s1 * box.hf[1] * box.ax[1][k] + s2 * box.hf[2] * box.ax[2][k]));
+  }
+  const ar = [];
+  for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) { const j = i ^ bit; if (j > i) ar.push([i, j]); }
+  const cc = c[0] * c[0] + c[1] * c[1] + c[2] * c[2], ss = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
+  const cs = c[0] * s[0] + c[1] * s[1] + c[2] * s[2], det = cc * ss - cs * cs;
+  if (Math.abs(det) < 1e-12) return null;
+  const pts = [];
+  const f = X => (X[0] - P0[0]) * n[0] + (X[1] - P0[1]) * n[1] + (X[2] - P0[2]) * n[2];
+  for (const [i, j] of ar) {
+    const A = cor[i], B = cor[j], fA = f(A), fB = f(B);
+    if ((fA > 0 && fB > 0) || (fA < 0 && fB < 0)) continue;
+    const w = Math.abs(fA - fB) < 1e-15 ? 0 : fA / (fA - fB);
+    const X = [A[0] + w * (B[0] - A[0]), A[1] + w * (B[1] - A[1]), A[2] + w * (B[2] - A[2])];
+    const d = [X[0] - P0[0], X[1] - P0[1], X[2] - P0[2]];
+    const dc = d[0] * c[0] + d[1] * c[1] + d[2] * c[2], ds = d[0] * s[0] + d[1] * s[1] + d[2] * s[2];
+    pts.push({ u: (ss * dc - cs * ds) / det, t: (cc * ds - cs * dc) / det });
+  }
+  if (pts.length < 2) return null;
+  // la sección es CONVEXA: envolvente en (u,t) y recorte por t≥0 — quedarse
+  // solo con los vértices de t>0 truncaría el intervalo (subestimaba sombra)
+  pts.sort((a, b) => a.u - b.u || a.t - b.t);
+  const cr = (o, a, b) => (a.u - o.u) * (b.t - o.t) - (a.t - o.t) * (b.u - o.u);
+  const low = [], up = [];
+  for (const p of pts) { while (low.length >= 2 && cr(low[low.length - 2], low[low.length - 1], p) <= 0) low.pop(); low.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  const poly = low.slice(0, -1).concat(up.slice(0, -1));
+  if (poly.length < 2) return null;
+  const EPS = 1e-6, keep = [];
+  for (let i = 0; i < poly.length; i++) {
+    const A = poly[i], B = poly[(i + 1) % poly.length];
+    const inA = A.t >= EPS, inB = B.t >= EPS;
+    if (inA) keep.push(A);
+    if (inA !== inB) { const w = (EPS - A.t) / ((B.t - A.t) || 1); keep.push({ u: A.u + w * (B.u - A.u), t: EPS }); }
+  }
+  if (keep.length < 2) return null;
+  let lo = Math.min(...keep.map(p => p.u)), hi = Math.max(...keep.map(p => p.u));
+  lo = Math.max(lo, -hw); hi = Math.min(hi, hw);
+  return hi - lo > 1e-12 ? [lo, hi] : null;
+}
+// desplazamiento del receptor: su cara también está a O_OFF sobre el eje
+function oracleOff(G, r, v0, v1, thR) {
+  const cR = Math.cos(thR);
+  const sRr = (G.cot(r, v1) - G.cot(r, v0)) / ((v1 - v0) || 1);
+  const n = [Math.sin(thR), -cR * sRr, cR], l = Math.hypot(n[0], n[1], n[2]) || 1;
+  return [O_REC * n[0] / l, O_REC * n[1] / l, O_REC * n[2] / l];
 }
 // terreno declarado: suelo = cota del eje interpolada − 2 m de buje;
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
@@ -286,11 +395,14 @@ function oracleTerr(G, sv, zen) {
   };
   return { doTerr, blocked };
 }
-function oracleTerrFCol(G, terr, T, r, thR, v, fCol) {
+function oracleTerrFCol(G, terr, T, r, thR, v, fCol, off) {
   if (!terr.doTerr || fCol >= 1) return fCol;
   const hw = T.cw / 2;
   const uLo = Math.sin(thR) >= 0 ? hw : -hw, uHi = -uLo;
-  const pt = (u2) => [G.xs[r] + u2 * Math.cos(thR), v, G.cot(r, v) - u2 * Math.sin(thR)];
+  // la cara receptora está O_OFF sobre el eje también aquí: con sol rasante
+  // 14 cm cambian qué loma tapa y qué loma no
+  const o = off || [0, 0, 0];
+  const pt = (u2) => [G.xs[r] + u2 * Math.cos(thR) + o[0], v + o[1], G.cot(r, v) - u2 * Math.sin(thR) + o[2]];
   const pLo = pt(uLo);
   if (!terr.blocked(pLo[0], pLo[1], pLo[2])) return fCol;
   const pHi = pt(uHi);
@@ -321,14 +433,16 @@ function oracleExact(F2, zen, az, T, rowAngles) {
     let acc = 0, n = 0, elecSum = 0;
     for (const sg of G.segsOf(r)) {
       const v0 = Math.min(sg[0], sg[1]), v1 = Math.max(sg[0], sg[1]);
+      const off = oracleOff(G, r, v0, v1, thR);
       for (let j = 0; j < MV; j++) {
         const v = v0 + (v1 - v0) * (j + 0.5) / MV, zR = G.cot(r, v);
+        const px0 = G.xs[r] + off[0], py0 = v + off[1], pz0 = zR + off[2];
         const ivs = [];
         for (const pl of G.planes) {
           if (pl.e === r) continue;
           const den = pl.nE[0] * sv[0] + pl.nE[1] * sv[1] + pl.nE[2] * sv[2];
           if (Math.abs(den) < 1e-9) continue;
-          const t0 = (pl.C[0] - G.xs[r]) * pl.nE[0] + (pl.C[1] - v) * pl.nE[1] + (pl.C[2] - zR) * pl.nE[2];
+          const t0 = (pl.C[0] - px0) * pl.nE[0] + (pl.C[1] - py0) * pl.nE[1] + (pl.C[2] - pz0) * pl.nE[2];
           const tc = cR * pl.nE[0] + s2 * pl.nE[2];
           let lo = -hw, hi = hw, ok = true;
           const lin = (A, B) => {
@@ -338,14 +452,20 @@ function oracleExact(F2, zen, az, T, rowAngles) {
           };
           if (den > 0) lin(tc, t0 - 1e-6 * den); else lin(-tc, 1e-6 * den - t0);
           const q = sv[1] / den;
-          lin(q * tc, v + q * t0 - pl.w0);
-          lin(-q * tc, pl.w1 - v - q * t0);
-          const a0 = (G.xs[r] - pl.C[0]) * pl.uD[0] + (v - pl.C[1]) * pl.uD[1] + (zR - pl.C[2]) * pl.uD[2];
+          lin(q * tc, py0 + q * t0 - pl.w0);
+          lin(-q * tc, pl.w1 - py0 - q * t0);
+          const a0 = (px0 - pl.C[0]) * pl.uD[0] + (py0 - pl.C[1]) * pl.uD[1] + (pz0 - pl.C[2]) * pl.uD[2];
           const a1 = cR * pl.uD[0] + s2 * pl.uD[2];
           const a2 = sv[0] * pl.uD[0] + sv[1] * pl.uD[1] + sv[2] * pl.uD[2];
           const d0 = a0 + a2 * t0 / den, dc = a1 - a2 * tc / den;
           lin(dc, hw - d0); lin(-dc, hw + d0);
           if (ok && hi - lo > 1e-12) ivs.push([lo, hi]);
+          // VIGA por MÉTODO DISTINTO al del contador (sección de la caja
+          // con el plano de los rayos, exacta — ver oracleBoxIv)
+          const ivT = oracleBoxIv([px0, py0, pz0], [cR, 0, s2], sv, pl.tb, hw);
+          if (ivT) ivs.push(ivT);
+          const ivS = oracleBoxIv([px0, py0, pz0], [cR, 0, s2], sv, pl.sl, hw);   // CANTO
+          if (ivS) ivs.push(ivS);
         }
         let fCol = 0;
         if (ivs.length) {
@@ -357,7 +477,7 @@ function oracleExact(F2, zen, az, T, rowAngles) {
           }
           fCol = Math.min(1, (len + ch - cl) / T.cw);
         }
-        fCol = oracleTerrFCol(G, terr, T, r, thR, v, fCol);
+        fCol = oracleTerrFCol(G, terr, T, r, thR, v, fCol, off);
         acc += fCol; n++;
         elecSum += F2.elecLoss(fCol, T.nBypass);
       }
@@ -384,15 +504,18 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
     let acc = 0, n = 0;
     for (const sg of G.segsOf(r)) {
       const v0 = Math.min(sg[0], sg[1]), v1 = Math.max(sg[0], sg[1]);
+      const off = oracleOff(G, r, v0, v1, thR);
       for (let j = 0; j < MV; j++) {
         const v = v0 + (v1 - v0) * (j + 0.5) / MV, zR = G.cot(r, v);
         let colHit = 0;
         for (let i = 0; i < MU; i++) {
           const u = -hw + T.cw * (i + 0.5) / MU;
-          const P0 = G.xs[r] + u * Math.cos(thR), P1 = v, P2 = zR - u * Math.sin(thR);
+          const P0 = G.xs[r] + u * Math.cos(thR) + off[0], P1 = v + off[1], P2 = zR - u * Math.sin(thR) + off[2];
           let sh = false;
           for (const pl of G.planes) {
             if (pl.e === r || Math.abs(pl.den) < 1e-9) continue;
+            if (oracleHitsBox([P0, P1, P2], sv, pl.tb)) { sh = true; break; }   // VIGA
+            if (oracleHitsBox([P0, P1, P2], sv, pl.sl)) { sh = true; break; }   // CANTO
             const t2 = ((pl.C[0] - P0) * pl.nE[0] + (pl.C[1] - P1) * pl.nE[1] + (pl.C[2] - P2) * pl.nE[2]) / pl.den;
             if (t2 <= 1e-6) continue;
             const H1 = P1 + t2 * sv[1];
@@ -404,7 +527,7 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
           if (sh) colHit++;
         }
         let fCol = colHit / MU;
-        fCol = oracleTerrFCol(G, terr, T, r, thR, v, fCol);
+        fCol = oracleTerrFCol(G, terr, T, r, thR, v, fCol, off);
         acc += fCol; n++;
       }
     }

@@ -211,6 +211,13 @@
       de la sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
       extremos de línea se libran. La fila «media» es tipo real de catálogo (≈0,504·larga, San José).
       La sombra punta-a-punta entre trackers de una misma línea no se modela (declarado).</div>
+    <div class="nota"><b>La ESTRUCTURA sombrea y se cuenta</b> (v1.28), con las cotas del modelo de
+      la casa (<code>seguidor.js</code>): cara colectora del vidrio 0,17 m sobre el eje, laminado de
+      6 cm y viga de torsión cuadrada de 120 mm. El backtracking se calcula con PLANOS (pvlib), así
+      que la viga y el canto dejan un residuo que ninguna consigna cancela: en Ayora vale
+      <b>−0,60% anual</b> y con sol rasante llega a un tercio de cuerda en pendiente. Fuera del
+      modelo, declarados: correas, cables, TCU, motor y seccionador (piezas cortas que además no
+      proyectan en el render).</div>
     <div class="nota"><b>Modelo eléctrico (hipótesis acotada, auditoría 2/6):</b> Martinez por diodos
       bypass aplicado a la penetración de cuerda de cada <b>estación axial</b> y promediado por mesa —
       equivale a strings en serie a lo largo del eje con bypass ideal y MPPT sin mismatch residual
@@ -1170,6 +1177,45 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
   }
   return {f:N?hit/N:0,recv:recv};
 }
+/* GEOMETRÍA REAL DE LA MESA (del MODELO de la casa, seguidor.js — no son
+   números inventados): la cara del módulo va 0,14 m sobre el eje del tubo y la
+   viga de torsión es cuadrada de 120 mm. Ambas ENTRAN en el contador: el
+   módulo a su altura real y la viga como emisor propio. Quedan fuera, de
+   segundo orden y declarados, el marco (5 cm), las correas (8,5 cm) y el canto
+   del vidrio (6 cm). */
+const MOD_OFF=0.14, TUBE=0.12, GLASS=0.06;
+/* la cara que COLECTA es el vidrio (arriba del laminado), no el plano medio:
+   con el receptor ahí la tangencia del backtracking se conserva y la cara
+   INFERIOR de la vecina —3 cm más abajo— ya no la alcanza en llano */
+const REC_OFF=MOD_OFF+GLASS/2;
+/* intervalo de CUERDA bloqueado por una CAJA convexa (la viga), en cerrado:
+   la caja es intersección de 3 lonjas |(P+t·s−C)·a_k| ≤ h_k; con P(u) afín en u
+   y s constante, cada cota de t es afín en u ⇒ el conjunto factible de u es un
+   intervalo (proyección de un convexo sobre una recta). Mismo criterio exacto
+   que la cuerda analítica del módulo — sin muestrear. */
+function boxChordIv(P0,c,sv,box,lo0,hi0){
+  let lo=lo0, hi=hi0, ok=true;
+  const lin=(A,B)=>{                            // A·u ≤ B
+    if(A>1e-12){const x=B/A;if(x<hi)hi=x;}
+    else if(A<-1e-12){const x=B/A;if(x>lo)lo=x;}
+    else if(B<-1e-12)ok=false;
+  };
+  const L=[[1e-6,0]], U=[];                     // t ≥ 1e-6 (delante del receptor)
+  for(let k=0;k<3;k++){
+    const a=box.ax[k], h=box.hf[k];
+    const A=(P0[0]-box.C[0])*a[0]+(P0[1]-box.C[1])*a[1]+(P0[2]-box.C[2])*a[2];
+    const B=c[0]*a[0]+c[1]*a[1]+c[2]*a[2];
+    const S=sv[0]*a[0]+sv[1]*a[1]+sv[2]*a[2];
+    if(Math.abs(S)<1e-9){ lin(B,h-A); lin(-B,h+A); }        // sin t: recorta u
+    else{
+      const t1=(-h-A)/S, t2=(h-A)/S, sb=-B/S;
+      if(S>0){L.push([t1,sb]);U.push([t2,sb]);}else{L.push([t2,sb]);U.push([t1,sb]);}
+    }
+  }
+  if(!U.length)return null;                     // rayo paralelo a las 3 lonjas
+  for(const l of L)for(const u2 of U)lin(l[1]-u2[1],u2[0]-l[0]);   // L(u) ≤ U(u)
+  return (ok&&hi-lo>1e-12)?[lo,hi]:null;
+}
 /* banda rasante MULTI-EMISORA: con sol a 1-3° las sombras miden cientos de
    metros y cruzan los huecos entre mesas — mirar SOLO la pareja adyacente
    dejaba sombra real sin contar (y sin pintar). Planos emisores por tramo con
@@ -1239,7 +1285,35 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const sE=(z1e-z0e)/((w1-w0)||1);
       const uD=[Math.cos(thE),0,-Math.sin(thE)], vD=[0,1,sE];
       const nE=[uD[1]*vD[2]-uD[2]*vD[1],uD[2]*vD[0]-uD[0]*vD[2],uD[0]*vD[1]-uD[1]*vD[0]];
-      planes.push({e:e,x:xs[e],w0:w0,w1:w1,C:[xs[e],(w0+w1)/2,(z0e+z1e)/2],nE:nE,uD:uD});
+      const ln=Math.hypot(nE[0],nE[1],nE[2])||1;
+      const nu=[nE[0]/ln,nE[1]/ln,nE[2]/ln];              // normal UNITARIA del módulo
+      const axC=[xs[e],(w0+w1)/2,(z0e+z1e)/2];            // eje del tubo (centro del tramo)
+      // el plano del módulo va a su ALTURA REAL sobre el eje (MOD_OFF), no
+      // pasando por el tubo — con sol rasante 14 cm desplazan la sombra
+      // MOD_OFF/tan(elev) (12 m con el sol a 0,65°): era la última «sombra
+      // sin rojo» que quedaba en pantalla
+      const lv=Math.hypot(vD[0],vD[1],vD[2])||1;
+      // base ORTONORMAL de la viga: su sección es cuadrada y PERPENDICULAR al
+      // eje. Con base oblicua «caja por lonjas» y «caja por aristas» describen
+      // cuerpos distintos y con sol a 2° esa diferencia se amplifica ×30
+      const e3=[vD[0]/lv,vD[1]/lv,vD[2]/lv];
+      const pr=uD[0]*e3[0]+uD[1]*e3[1]+uD[2]*e3[2];
+      const e1r=[uD[0]-pr*e3[0],uD[1]-pr*e3[1],uD[2]-pr*e3[2]];
+      const l1=Math.hypot(e1r[0],e1r[1],e1r[2])||1;
+      const e1=[e1r[0]/l1,e1r[1]/l1,e1r[2]/l1];
+      const e2=[e3[1]*e1[2]-e3[2]*e1[1],e3[2]*e1[0]-e3[0]*e1[2],e3[0]*e1[1]-e3[1]*e1[0]];
+      planes.push({e:e,x:xs[e],w0:w0,w1:w1,nE:nE,uD:uD,
+        C:[axC[0]+REC_OFF*nu[0],axC[1]+REC_OFF*nu[1],axC[2]+REC_OFF*nu[2]],
+        // VIGA de torsión (cuadrada, 120 mm — seguidor.js D.tube): caja sobre
+        // el eje. Con el módulo casi de canto al sol (backtracking rasante) es
+        // ella quien hace la sombra
+        tb:{C:axC,ax:[e1,e2,e3],hf:[TUBE/2,TUBE/2,Math.abs(w1-w0)*lv/2]},
+        // CANTO del módulo: el laminado+marco tiene 6 cm y su cara INFERIOR
+        // sombrea 3 cm por debajo del plano — con sol a 0,6° eso son 2,6 m de
+        // sombra que se veía en pantalla sin contar. El plano sigue estando
+        // (es subconjunto de la loncha): la unión no cambia el caso normal
+        sl:{C:[axC[0]+MOD_OFF*nu[0],axC[1]+MOD_OFF*nu[1],axC[2]+MOD_OFF*nu[2]],
+            ax:[e1,e2,e3],hf:[hw,GLASS/2,Math.abs(w1-w0)*lv/2]}});
     }
   }
   const zSky=(planes.length?Math.max(...planes.map(p=>p.C[2])):0)+4;
@@ -1247,7 +1321,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   const horiz=Math.hypot(sv[0],sv[1]);
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
-  const MV=(res&&res.MV)||8;
+  const MV=(res&&res.MV)||8, noStruct=!!(res&&res.noStruct);
   const elec=new Array(nR).fill(0); let elecSum=0,nCol=0;
   // precálculo del denominador por plano (no depende del receptor)
   for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
@@ -1280,6 +1354,11 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       // uniforme en toda la mesa y multiplicaba la pérdida indebidamente)
       const dvSt=(v1-v0)/MV;
       const cR=Math.cos(thR), s2=-Math.sin(thR);
+      // normal unitaria del tramo RECEPTOR: su cara está MOD_OFF por encima
+      // del eje, igual que las emisoras (modelo simétrico)
+      const sRr=(cot(r,v1)-cot(r,v0))/((v1-v0)||1);
+      const nrv=[Math.sin(thR),-cR*sRr,cR], lnr=Math.hypot(nrv[0],nrv[1],nrv[2])||1;
+      const of0=REC_OFF*nrv[0]/lnr, of1=REC_OFF*nrv[1]/lnr, of2=REC_OFF*nrv[2]/lnr;
       for(let j=0;j<MV;j++){
         const v=v0+(v1-v0)*(j+0.5)/MV;
         // CUERDA ANALÍTICA (v1.25): el impacto contra cada plano emisor es
@@ -1288,9 +1367,10 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         // la penetración a saltos de 1/6 y sesgaba el POA anual +0,52%
         // (estudio de convergencia de la auditoría, Ayora 12 días).
         const zR=cot(r,v);
+        const px0=xs[r]+of0, py0=v+of1, pz0=zR+of2;      // cara del módulo receptor
         let ivs=null;
         for(const pl of cSeg){
-          const t0=(pl.C[0]-xs[r])*pl.nE[0]+(pl.C[1]-v)*pl.nE[1]+(pl.C[2]-zR)*pl.nE[2];
+          const t0=(pl.C[0]-px0)*pl.nE[0]+(pl.C[1]-py0)*pl.nE[1]+(pl.C[2]-pz0)*pl.nE[2];
           const tc=cR*pl.nE[0]+s2*pl.nE[2];
           let lo=-hw, hi=hw, ok=true;
           const lin=(A,B)=>{                 // A·u ≤ B; A~0 ⇒ no depende de u
@@ -1300,14 +1380,23 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
           };
           if(pl.den>0)lin(tc,t0-1e-6*pl.den); else lin(-tc,1e-6*pl.den-t0);   // t>0
           const q=sv[1]/pl.den;                                               // H1∈[w0,w1]
-          lin(q*tc, v+q*t0-pl.w0);
-          lin(-q*tc, pl.w1-v-q*t0);
-          const a0=(xs[r]-pl.C[0])*pl.uD[0]+(v-pl.C[1])*pl.uD[1]+(zR-pl.C[2])*pl.uD[2];
+          lin(q*tc, py0+q*t0-pl.w0);
+          lin(-q*tc, pl.w1-py0-q*t0);
+          const a0=(px0-pl.C[0])*pl.uD[0]+(py0-pl.C[1])*pl.uD[1]+(pz0-pl.C[2])*pl.uD[2];
           const a1=cR*pl.uD[0]+s2*pl.uD[2];
           const a2=sv[0]*pl.uD[0]+sv[1]*pl.uD[1]+sv[2]*pl.uD[2];
           const d0=a0+a2*t0/pl.den, dc=a1-a2*tc/pl.den;                       // |du|≤hw
           lin(dc,hw-d0); lin(-dc,hw+d0);
           if(ok&&hi-lo>1e-12)(ivs=ivs||[]).push([lo,hi]);
+          // VIGA de torsión de esa misma emisora (caja convexa, exacta).
+          // res.noStruct la apaga: sirve para AISLAR el invariante clásico
+          // «backtracking de planos ⇒ sombra cero», que se sigue cumpliendo
+          if(!noStruct){
+            const ivT=boxChordIv([px0,py0,pz0],[cR,0,s2],sv,pl.tb,-hw,hw);
+            if(ivT)(ivs=ivs||[]).push(ivT);
+            const ivS=boxChordIv([px0,py0,pz0],[cR,0,s2],sv,pl.sl,-hw,hw);
+            if(ivS)(ivs=ivs||[]).push(ivS);
+          }
         }
         let fCol=0;
         if(ivs){
@@ -1323,7 +1412,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         // 3 refinos) — el borde alto libre ⇒ estación libre por arriba
         if(doTerr&&fCol<1){
           const uLo=Math.sin(thR)>=0?hw:-hw, uHi=-uLo;      // borde bajo: z mínima
-          const pt=(u2)=>[xs[r]+u2*Math.cos(thR),v,cot(r,v)-u2*Math.sin(thR)];
+          const pt=(u2)=>[px0+u2*cR,py0,pz0+u2*s2];
           const pLo=pt(uLo);
           if(terrBlocked(pLo[0],pLo[1],pLo[2])){
             const pHi=pt(uHi);
@@ -1713,15 +1802,49 @@ function runPhysicsQA(){
       assert(Math.abs(th-ref)<0.01,'h='+h+': pvlib '+th.toFixed(3)+' vs cerrado '+ref.toFixed(3));
     }
   });
-  t('backtracking pairwise ⇒ sombra CERO (llano, pendiente ±8°, ondulado)',()=>{
+  t('backtracking pairwise ⇒ sombra de PLANOS cero (llano, pendiente ±8°, ondulado)',()=>{
+    // el invariante clásico se enuncia sobre los PLANOS de módulo, que es lo
+    // que resuelve la geometría de backtracking; la ESTRUCTURA (viga) se aísla
     for(const slopes of [[0,0,0,0],[8,8,8,8],[-8,-8,-8,-8],[6,-4,2,-6]]){
       const T=mkT(slopes,6,0);
       for(let zen=20;zen<87;zen+=6)for(const az of [80,100,255,280]){
         const ang=anglesPairwise(zen,az,T);
-        const sh=shadeRows(zen,az,T,ang);
+        const sh=shadeBand3DAll(zen,az,T,ang,{noStruct:true});
         assert(Math.max(...sh)<2e-3,'sombra '+Math.max(...sh).toFixed(4)+' con zen='+zen+' az='+az+' slopes='+slopes);
       }
     }
+  });
+  t('ESTRUCTURA real (viga + canto): residuo acotado, creciente con sol bajo',()=>{
+    // el backtracking cancela la sombra entre planos, NO la de la viga de
+    // torsión (0,12 m sobre el eje): pérdida estructural real, reconocida en
+    // la literatura de terreno. Con sol alto la viga se esconde tras su módulo
+    // EN LLANO la VIGA no alcanza nunca a la vecina (está 0,14 m por debajo de
+    // la cara que recibe: un emisor más bajo proyecta hacia abajo); lo poco que
+    // queda es el CANTO del módulo en tangencia, que sí la roza. Con PENDIENTE
+    // la vecina cae y la viga entra de lleno con sol bajo.
+    const Tll=mkT([0,0,0,0],6,0);
+    for(const az of [80,255])for(let zen=20;zen<87;zen+=6){
+      const mx=Math.max(...shadeRows(zen,az,Tll,anglesPairwise(zen,az,Tll)));
+      assert(mx<0.02,'en llano el residuo de canto se dispara: '+mx.toFixed(4)+' zen='+zen);
+    }
+    const T=mkT([8,8,8,8],6,0);
+    let vistoBajo=false, altoMax=0;
+    for(const az of [80,100,255,280])for(let zen=20;zen<87;zen+=6){
+      const ang=anglesPairwise(zen,az,T);
+      const mx=Math.max(...shadeRows(zen,az,T,ang));
+      // cota generosa: con 8° de pendiente la vecina cae 0,84 m en 6 m de paso
+      // y la viga (0,12 m) con sol a 4° tira 1,7 m de sombra — un tercio de
+      // cuerda es geométricamente posible; lo que NO puede es acercarse a 1
+      assert(mx<0.35,'residuo estructural desbocado: '+mx.toFixed(4)+' zen='+zen);
+      if(zen<=60)altoMax=Math.max(altoMax,mx);
+      if(zen>=80&&mx>1e-3)vistoBajo=true;
+    }
+    assert(altoMax<0.02,'con sol alto la estructura casi no debe morder: '+altoMax.toFixed(4));
+    assert(vistoBajo,'la estructura no aparece nunca: ¿se ha desactivado?');
+    // y el modelo de PLANOS sigue dando cero: el residuo es TODO estructural
+    for(const az of [80,255])for(let zen=20;zen<87;zen+=6)
+      assert(Math.max(...shadeBand3DAll(zen,az,T,anglesPairwise(zen,az,T),{noStruct:true}))<2e-3,
+             'el modelo de planos ya no da cero: zen='+zen);
   });
   t('terreno uniforme ⇒ global = row = pairwise (degeneración exacta)',()=>{
     const T=mkT([5,5,5,5],6,0);
@@ -1948,7 +2071,9 @@ function runPhysicsQA(){
     const T=mkT([6,-4,2,-6],6,0);
     for(let zen=55;zen<85;zen+=10)for(const az of [110,250]){
       const b=anglesPairwise(zen,az,T), m=anglesMinGroundLight(zen,az,T);
-      assert(Math.max(...shadeRows(zen,az,T,m))<=2e-3+1e-9,'mgl sombrea (zen '+zen+')');
+      // propiedad del CORE, enunciada sobre el modelo de planos (la estructura
+      // real —viga y canto— deja un residuo aparte, acotado en su propio test)
+      assert(Math.max(...shadeBand3DAll(zen,az,T,m,{noStruct:true}))<=2e-3+1e-9,'mgl sombrea (zen '+zen+')');
       let gb=0,gm=0;
       for(let r=0;r<b.length;r++){
         assert(Math.abs(m[r])>=Math.abs(b[r])-1e-9,'fila '+r+' más plana que pairwise');
@@ -2013,7 +2138,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.27.0';
+const VER='v1.28.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3216,12 +3341,14 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   for(const ov of row.ovls){
     if(!ov.g)continue;
     const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;            // rango axial REAL de la mesa
-    // plano RECEPTOR de ESTA mesa: cuerda girada + pendiente axial del tramo
+    // plano RECEPTOR de ESTA mesa: cuerda girada + pendiente axial del tramo,
+    // a la ALTURA REAL de la cara (MOD_OFF sobre el eje) — igual que el contador
     const zA=cot(r,vA), zB=cot(r,vB);
     const sR=(zB-zA)/((vB-vA)||1);
-    const A0=[xs[r],(vA+vB)/2,(zA+zB)/2];
     const vHp=[0,1,sR];
     const nRm=[uH[1]*vHp[2]-uH[2]*vHp[1],uH[2]*vHp[0]-uH[0]*vHp[2],uH[0]*vHp[1]-uH[1]*vHp[0]];
+    const lnR=Math.hypot(nRm[0],nRm[1],nRm[2])||1;
+    const A0=[xs[r]+REC_OFF*nRm[0]/lnR,(vA+vB)/2+REC_OFF*nRm[1]/lnR,(zA+zB)/2+REC_OFF*nRm[2]/lnR];
     const denS=nRm[0]*dsh[0]+nRm[1]*dsh[1]+nRm[2]*dsh[2];
     if(Math.abs(denS)<1e-9)continue;
     const tOf=(P)=>((A0[0]-P[0])*nRm[0]+(A0[1]-P[1])*nRm[1]+(A0[2]-P[2])*nRm[2])/denS;
@@ -3235,40 +3362,79 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
         // cuadrilátero EMISOR con cotas por tramo, recortado ANTES al
         // semiespacio que proyecta (con sol rasante una esquina suele quedar
         // del lado del sol y sin recorte se perdía la silueta entera)
-        const quad=[[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
-          [xs[e]+u2*Math.cos(thE), v2, cot(e,v2)-u2*Math.sin(thE)]);
-        const EPS=1e-6, cut=[];
-        for(let i2=0;i2<quad.length;i2++){
-          const A=quad[i2], B=quad[(i2+1)%quad.length];
-          const ta=tOf(A), tb=tOf(B);
-          if(ta>EPS)cut.push(A);
-          if((ta>EPS)!==(tb>EPS)){
-            const s2=(EPS-ta)/((tb-ta)||1);
-            cut.push([A[0]+s2*(B[0]-A[0]),A[1]+s2*(B[1]-A[1]),A[2]+s2*(B[2]-A[2])]);
+        const EPS=1e-6;
+        // proyecta un CONTORNO 3D (ya ordenado) y lo pinta sobre esta mesa
+        const pinta=(cut)=>{
+          if(cut.length<3)return;
+          const corners=cut.map(P=>{
+            const t=Math.max(EPS,tOf(P));
+            const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
+            const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
+            return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], A0[1]+d0[1]];
+          });
+          let poly=corners.slice();
+          for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
+            poly=clipPoly(poly,edge);
+          if(poly.length<3)return;
+          const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
+          const verts=[];
+          for(let i2=1;i2<poly.length-1;i2++)
+            for(const q of [poly[0],poly[i2],poly[i2+1]]){
+              if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
+              else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
+            }
+          const geo=new THREE.BufferGeometry();
+          geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+          const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
+          ov.g.add(m);
+        };
+        // recorte al semiespacio que proyecta (con sol rasante una esquina
+        // suele quedar del lado del sol y sin recorte se perdía la silueta)
+        const clipT=(ring)=>{
+          const cut=[];
+          for(let i2=0;i2<ring.length;i2++){
+            const A=ring[i2], B=ring[(i2+1)%ring.length];
+            const ta=tOf(A), tb=tOf(B);
+            if(ta>EPS)cut.push(A);
+            if((ta>EPS)!==(tb>EPS)){
+              const s2=(EPS-ta)/((tb-ta)||1);
+              cut.push([A[0]+s2*(B[0]-A[0]),A[1]+s2*(B[1]-A[1]),A[2]+s2*(B[2]-A[2])]);
+            }
           }
+          return cut;
+        };
+        // 1) MÓDULO emisor, a su altura real sobre el eje (MOD_OFF)
+        const uDe=[Math.cos(thE),0,-Math.sin(thE)];
+        const z0e=cot(e,w0), z1e=cot(e,w1), sEe=(z1e-z0e)/((w1-w0)||1);
+        const vDe=[0,1,sEe];
+        const nEe=[uDe[1]*vDe[2]-uDe[2]*vDe[1],uDe[2]*vDe[0]-uDe[0]*vDe[2],uDe[0]*vDe[1]-uDe[1]*vDe[0]];
+        const lnE=Math.hypot(nEe[0],nEe[1],nEe[2])||1;
+        const ne=[nEe[0]/lnE,nEe[1]/lnE,nEe[2]/lnE];
+        for(const dOf of [REC_OFF,REC_OFF-GLASS])           // cara del vidrio y cara inferior
+          pinta(clipT([[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
+            [xs[e]+u2*Math.cos(thE)+dOf*ne[0], v2+dOf*ne[1],
+             cot(e,v2)-u2*Math.sin(thE)+dOf*ne[2]])));
+        // 2) VIGA de torsión: la sombra de una caja convexa es la envolvente de
+        //    sus 8 esquinas proyectadas — se pinta su silueta (4 caras vistas)
+        const lvE=Math.hypot(vDe[0],vDe[1],vDe[2])||1;
+        const e3=[vDe[0]/lvE,vDe[1]/lvE,vDe[2]/lvE];
+        const pr=uDe[0]*e3[0]+uDe[1]*e3[1]+uDe[2]*e3[2];
+        const e1r=[uDe[0]-pr*e3[0],uDe[1]-pr*e3[1],uDe[2]-pr*e3[2]];
+        const l1=Math.hypot(e1r[0],e1r[1],e1r[2])||1;
+        const e1=[e1r[0]/l1,e1r[1]/l1,e1r[2]/l1];
+        const e2=[e3[1]*e1[2]-e3[2]*e1[1],e3[2]*e1[0]-e3[0]*e1[2],e3[0]*e1[1]-e3[1]*e1[0]];
+        const axC=[xs[e],(w0+w1)/2,(z0e+z1e)/2], hT=TUBE/2, hL=Math.abs(w1-w0)*lvE/2;
+        // se proyectan sus 4 caras longitudinales: la UNIÓN de sus sombras es
+        // la silueta de la viga (las tapas no añaden nada visible)
+        for(const car of [[[1,-1,-1],[1,1,-1],[1,1,1],[1,-1,1]],   // caras ±e1
+                          [[-1,-1,-1],[-1,1,-1],[-1,1,1],[-1,-1,1]],
+                          [[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]],   // caras ±e2
+                          [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1]]]){
+          pinta(clipT(car.map(([a,b2,c2])=>[
+            axC[0]+a*hT*e1[0]+b2*hT*e2[0]+c2*hL*e3[0],
+            axC[1]+a*hT*e1[1]+b2*hT*e2[1]+c2*hL*e3[1],
+            axC[2]+a*hT*e1[2]+b2*hT*e2[2]+c2*hL*e3[2]])));
         }
-        if(cut.length<3)continue;
-        const corners=cut.map(P=>{
-          const t=Math.max(EPS,tOf(P));
-          const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
-          const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
-          return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], A0[1]+d0[1]];
-        });
-        let poly=corners.slice();
-        for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
-          poly=clipPoly(poly,edge);
-        if(poly.length<3)continue;
-        const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
-        const verts=[];
-        for(let i2=1;i2<poly.length-1;i2++)
-          for(const q of [poly[0],poly[i2],poly[i2+1]]){
-            if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
-            else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
-          }
-        const geo=new THREE.BufferGeometry();
-        geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
-        const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
-        ov.g.add(m);
       }
     }
   }
