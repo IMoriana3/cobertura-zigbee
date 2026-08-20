@@ -233,6 +233,27 @@ t('v1.29: UNA fuente para la cara colectora (campo «cara sup–eje» = T.z0) y 
   if (!/nOf\*Math\.sin\(thK\)/.test(html)) throw new Error('el visor del vano no sube el borde a la cara del módulo');
   if (!fs.existsSync(path.join(ROOT, 'tools', 'audit_sweep.mjs'))) throw new Error('sin barrido de auditoría');
 });
+t('EXPORT de consignas: claves del CONTRATO de scada y marco de coordenadas correcto', () => {
+  const ep = path.join(ROOT, 'tools', 'export_consignas.mjs');
+  if (!fs.existsSync(ep)) throw new Error('sin tools/export_consignas.mjs');
+  const e = fs.readFileSync(ep, 'utf-8');
+  for (const k of ['ncu', 'tcu', 'theta_sim_deg', 'theta_tcu_deg', 'asesoria'])
+    if (!e.includes(k)) throw new Error('la cabecera del CSV pierde la clave ' + k);
+  // el fallo que costó 500 seguidores: lineX va RECENTRADO por bloque y la x
+  // cruda es xFrom + lineX. Si alguien vuelve a comparar lineX con la x del
+  // layout, el 70% de la planta se queda sin consigna y en silencio.
+  if (!/B\.P\.xFrom \+ B\.P\.lineX\[r\]/.test(e))
+    throw new Error('el emparejamiento seguidor→línea no usa xFrom + lineX');
+  // los optimizadores dependen del evaluador provisional: salen como asesoría
+  if (!/GEOMETRICAS/.test(e) || !/asesoria/.test(e))
+    throw new Error('el export no separa consigna de asesoría');
+  // y la identidad tiene que existir en el layout
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_layout.json'), 'utf-8'));
+  const conNcu = lay.trackers.filter(t => t.ncu != null).length;
+  if (conNcu !== lay.trackers.length) throw new Error(`${lay.trackers.length - conNcu} seguidores sin NCU en el layout`);
+  const conId = lay.trackers.filter(t => /(\d+)/.test(String(t.id || ''))).length;
+  if (conId !== lay.trackers.length) throw new Error('hay seguidores sin nº de TCU en el id');
+});
 t('v1.26.1: existe el GATE de pre-release con sus 5 pasos (auditoría, punto 6)', () => {
   const gp = path.join(ROOT, 'tools', 'release_gate.mjs');
   if (!fs.existsSync(gp)) throw new Error('sin tools/release_gate.mjs');
