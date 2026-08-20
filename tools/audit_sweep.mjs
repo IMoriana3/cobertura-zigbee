@@ -77,7 +77,7 @@ for (const c of CASOS) {
   for (const day of (c.ligero ? DIAS.slice(0, 1) : DIAS)) {
     const doy = Math.round((day - Date.UTC(2026, 0, 1)) / 86400000) + 1;
     const prev = {}; for (const k of POLS) prev[k] = null;
-    let poaPw = 0, poaOpt = 0, poaFree = 0;
+    let poaPw = 0, poaOpt = 0, poaFree = 0, poaAstro = 0;
     for (let mm = 0; mm < 1440; mm += paso) {
       const g = F.solarPos(day + mm * 60000, LAT, LON);
       const irr = F.clearskyIneichen(g.zen, doy, 739, 3.5);
@@ -122,15 +122,19 @@ for (const c of CASOS) {
         if (!isFinite(pp.plant) || pp.plant < -1e-9) bad(`${c.nombre} · ${k} · ${mm}min: POA ${pp.plant}`);
         const media = pp.rows.reduce((a, v) => a + v, 0) / nR;
         if (Math.abs(pp.plant - media) > 1e-9) bad(`${c.nombre} · ${k} · ${mm}min: POA planta ≠ media por fila`);
+        if (k === 'astro') poaAstro += pp.plant;
         if (k === 'pairwise') poaPw += pp.plant;
         if (k === 'optimal') poaOpt += pp.plant;
         if (k === 'optfree') poaFree += pp.plant;
       }
     }
     // invariantes de día: los optimizadores no pueden rendir menos que la base
-    if (poaOpt < poaPw * (1 - 1e-9)) bad(`${c.nombre} · día ${new Date(day).toISOString().slice(5, 10)}: óptimo ${poaOpt.toFixed(1)} < pairwise ${poaPw.toFixed(1)}`);
+    // los dos extremos de la rejilla (f=0 pairwise, f=1 astro) SON candidatos:
+    // el óptimo no puede quedar por debajo de ninguno bajo el contador exacto
+    const suelo = Math.max(poaPw, poaAstro), cual = poaAstro > poaPw ? 'astro' : 'pairwise';
+    if (poaOpt < suelo * (1 - 1e-9)) bad(`${c.nombre} · día ${new Date(day).toISOString().slice(5, 10)}: óptimo ${poaOpt.toFixed(1)} < ${cual} ${suelo.toFixed(1)}`);
     if (poaFree < poaOpt * (1 - 1e-9)) bad(`${c.nombre} · día ${new Date(day).toISOString().slice(5, 10)}: libre ${poaFree.toFixed(1)} < óptimo ${poaOpt.toFixed(1)}`);
-    if (poaFree < poaPw * (1 - 1e-9)) bad(`${c.nombre} · día ${new Date(day).toISOString().slice(5, 10)}: libre ${poaFree.toFixed(1)} < pairwise ${poaPw.toFixed(1)}`);
+    if (poaFree < suelo * (1 - 1e-9)) bad(`${c.nombre} · día ${new Date(day).toISOString().slice(5, 10)}: libre ${poaFree.toFixed(1)} < ${cual} ${suelo.toFixed(1)}`);
   }
   // degeneración: terreno uniforme ⇒ global = row = pairwise
   const uni = c.T.pairs.every(p => Math.abs(p.slope - c.T.pairs[0].slope) < 1e-9 && Math.abs(p.pitch - c.T.pairs[0].pitch) < 1e-9);
