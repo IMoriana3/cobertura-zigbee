@@ -181,7 +181,8 @@ t('v1.25: cuerda ANALÍTICA en el contador (sin MU) — la auditoría midió +0,
   if (!/CUERDA ANALÍTICA/.test(html)) throw new Error('el contador no declara cuerda analítica');
   const band = html.slice(html.indexOf('function shadeBand3DAll'), html.indexOf('function shadeRows('));
   if (/const MU=/.test(band)) throw new Error('shadeBand3DAll aún muestrea la cuerda con MU');
-  if (!/ivs\.sort/.test(band)) throw new Error('sin unión de intervalos en el contador');
+  if (!/const unir=\(iv\)=>/.test(band) || !/iv\.sort/.test(band))
+    throw new Error('sin unión de intervalos en el contador');
   if (!/function oracleExact/.test(fs.readFileSync(fileURLToPath(import.meta.url), 'utf-8')))
     throw new Error('la batería perdió el oráculo de podas');
 });
@@ -199,6 +200,38 @@ t('v1.28: la ESTRUCTURA real entra en el contador con las cotas de seguidor.js',
   if (!/const REC_OFF=MOD_OFF\+GLASS\/2/.test(html)) throw new Error('la cara colectora no es el vidrio');
   if (!/function boxChordIv/.test(html)) throw new Error('sin intervalo de cuerda por caja convexa');
   if (!/pl\.tb/.test(html) || !/pl\.sl/.test(html)) throw new Error('faltan viga o laminado como emisores');
+});
+t('KPI del día: la sombra se pondera por ENERGÍA y los minutos por sombra RELEVANTE', () => {
+  // el máximo por fila saturaba al 100% en las 9 políticas (terreno roto) y no
+  // distinguía nada: se sustituyó por media de planta pesada por DNI
+  if (/shMax/.test(html)) throw new Error('la tabla sigue con el máximo por fila');
+  if (!/shW\+=med\*w/.test(html)) throw new Error('la sombra no va ponderada por energía');
+  if (!/med>0\.01&&d\.irr\[t\]\.dni>25/.test(html)) throw new Error('los minutos no usan sombra relevante');
+  if (!/elecStr/.test(html)) throw new Error('la tabla no separa la pérdida estructural');
+});
+t('v1.29: energy-optimal ≥ pairwise BAJO EL CONTADOR EXACTO (lo cazó el barrido en llano)', () => {
+  // el evaluador de búsqueda es 2.5D y ciego a la estructura: en llano elegía
+  // f>0 que bajo el contador publicado rendía MENOS que la base (−0,27% el
+  // 21-jun). El core garantiza optimal ≥ pairwise porque f=0 ES pairwise.
+  if (!/VETO con el contador EXACTO/.test(html)) throw new Error('energy-optimal sin veto exacto');
+  const T = { pairs: [0, 0, 0, 0].map(s => ({ slope: s, pitch: 6, axisTilt: 0 })),
+              cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 3 };
+  for (const [zen, az] of [[80, 100], [75, 260], [70, 95], [65, 265], [60, 100]]) {
+    const irr = F.clearskyIneichen(zen, 172, 739, 3.5);
+    const pw = F.poaPlant(zen, az, T, F.anglesPairwise(zen, az, T), irr, 172, 0.20).plant;
+    const op = F.poaPlant(zen, az, T, F.anglesOptimal(zen, az, T, irr, 172, 0.20).angles, irr, 172, 0.20).plant;
+    if (op < pw - 1e-9) throw new Error(`zen ${zen} az ${az}: óptimo ${op.toFixed(3)} < pairwise ${pw.toFixed(3)}`);
+  }
+});
+t('v1.29: UNA fuente para la cara colectora (campo «cara sup–eje» = T.z0) y barrido de auditoría', () => {
+  // la v1.28 metió 0,17 a fuego en el contador 3D mientras el corte 2D, el
+  // rayo y el vano seguían con el campo z0 (que valía 0): dos verdades para el
+  // mismo número. Ahora el contador lee T.z0 y el campo trae el valor real.
+  if (!/id="z0"[^>]*value="0\.17"/.test(html)) throw new Error('el campo «cara sup–eje» no trae 0,17');
+  if (!/const zOff=\(T\.z0!=null&&isFinite\(T\.z0\)\)\?T\.z0:REC_OFF/.test(html))
+    throw new Error('el contador no lee la cara colectora de T.z0');
+  if (!/nOf\*Math\.sin\(thK\)/.test(html)) throw new Error('el visor del vano no sube el borde a la cara del módulo');
+  if (!fs.existsSync(path.join(ROOT, 'tools', 'audit_sweep.mjs'))) throw new Error('sin barrido de auditoría');
 });
 t('v1.26.1: existe el GATE de pre-release con sus 5 pasos (auditoría, punto 6)', () => {
   const gp = path.join(ROOT, 'tools', 'release_gate.mjs');
@@ -239,6 +272,7 @@ t('v1.26: terreno a TODA elevación (el gate de 25° costaba −0,34% anual medi
    que costaba −0,34% anual). */
 function oracleGeom(T, rowAngles) {
   const RAD = Math.PI / 180;
+  const zOff = (T.z0 != null && isFinite(T.z0)) ? T.z0 : O_REC;
   const nR = T.pairs.length + 1;
   const PRr = T.real, xs = [0], zch = [0];
   for (let i = 0; i < T.pairs.length; i++) {
@@ -283,9 +317,9 @@ function oracleGeom(T, rowAngles) {
       const e1 = [e1r[0] / l1, e1r[1] / l1, e1r[2] / l1];
       const e2 = [e3[1] * e1[2] - e3[2] * e1[1], e3[2] * e1[0] - e3[0] * e1[2], e3[0] * e1[1] - e3[1] * e1[0]];
       planes.push({ e, w0, w1, nE, uD,
-        C: [axC[0] + O_REC * nu[0], axC[1] + O_REC * nu[1], axC[2] + O_REC * nu[2]],
+        C: [axC[0] + zOff * nu[0], axC[1] + zOff * nu[1], axC[2] + zOff * nu[2]],
         tb: { C: axC, ax: [e1, e2, e3], hf: [O_TUBE / 2, O_TUBE / 2, Math.abs(w1 - w0) * lv / 2] },
-        sl: { C: [axC[0] + O_OFF * nu[0], axC[1] + O_OFF * nu[1], axC[2] + O_OFF * nu[2]],
+        sl: { C: [axC[0] + (zOff - O_GLASS / 2) * nu[0], axC[1] + (zOff - O_GLASS / 2) * nu[1], axC[2] + (zOff - O_GLASS / 2) * nu[2]],
               ax: [e1, e2, e3], hf: [T.cw / 2, O_GLASS / 2, Math.abs(w1 - w0) * lv / 2] } });
     }
   }
@@ -363,11 +397,12 @@ function oracleBoxIv(P0, c, s, box, hw) {
   return hi - lo > 1e-12 ? [lo, hi] : null;
 }
 // desplazamiento del receptor: su cara también está a O_OFF sobre el eje
-function oracleOff(G, r, v0, v1, thR) {
+function oracleOff(G, r, v0, v1, thR, T) {
   const cR = Math.cos(thR);
+  const zOff = (T && T.z0 != null && isFinite(T.z0)) ? T.z0 : O_REC;
   const sRr = (G.cot(r, v1) - G.cot(r, v0)) / ((v1 - v0) || 1);
   const n = [Math.sin(thR), -cR * sRr, cR], l = Math.hypot(n[0], n[1], n[2]) || 1;
-  return [O_REC * n[0] / l, O_REC * n[1] / l, O_REC * n[2] / l];
+  return [zOff * n[0] / l, zOff * n[1] / l, zOff * n[2] / l];
 }
 // terreno declarado: suelo = cota del eje interpolada − 2 m de buje;
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
@@ -433,7 +468,7 @@ function oracleExact(F2, zen, az, T, rowAngles) {
     let acc = 0, n = 0, elecSum = 0;
     for (const sg of G.segsOf(r)) {
       const v0 = Math.min(sg[0], sg[1]), v1 = Math.max(sg[0], sg[1]);
-      const off = oracleOff(G, r, v0, v1, thR);
+      const off = oracleOff(G, r, v0, v1, thR, T);
       for (let j = 0; j < MV; j++) {
         const v = v0 + (v1 - v0) * (j + 0.5) / MV, zR = G.cot(r, v);
         const px0 = G.xs[r] + off[0], py0 = v + off[1], pz0 = zR + off[2];
@@ -504,7 +539,7 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
     let acc = 0, n = 0;
     for (const sg of G.segsOf(r)) {
       const v0 = Math.min(sg[0], sg[1]), v1 = Math.max(sg[0], sg[1]);
-      const off = oracleOff(G, r, v0, v1, thR);
+      const off = oracleOff(G, r, v0, v1, thR, T);
       for (let j = 0; j < MV; j++) {
         const v = v0 + (v1 - v0) * (j + 0.5) / MV, zR = G.cot(r, v);
         let colHit = 0;
@@ -543,7 +578,7 @@ function ayoraPlantT() {
     const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
     pairs.push({ slope: Math.atan2(P.pairDz[i], dx) * 180 / Math.PI, pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
   }
-  return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0,
+  return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
            nBypass: 3, rowTilt: P.tilt, groups: P.groups, drive: 'bifila', segs: P.segs, real: P };
 }
 const AYORA_LL = [39.1182081, -1.1598527];
@@ -639,6 +674,24 @@ t('eléctrico: pérdida por fila ≥ sombra óptica (elecLoss amplifica, nunca r
   for (let r = 0; r < sh.length; r++)
     if (sh.elec[r] < sh[r] - 1e-9)
       throw new Error(`fila ${r}: elec ${sh.elec[r].toFixed(4)} < sombra ${sh[r].toFixed(4)}`);
+});
+t('v1.29: el contador separa PLANOS de estructura y el desglose es coherente', () => {
+  // out.pl = sombra sin la estructura de la mesa (terreno incluido, como en
+  // out): 0 ≤ pl ≤ total, y con noStruct el total coincide con pl
+  const T = ayoraPlantT();
+  for (const [lo, hi] of [[1.5, 4], [10, 14], [20, 24.9]]) {
+    const g = findElevCase(Date.UTC(2026, 11, 21), lo, hi);
+    const ang = F.anglesPairwise(g.zen, g.az, T);
+    const sh = F.shadeRows(g.zen, g.az, T, ang);
+    if (!sh.pl) throw new Error('el contador no expone la sombra de planos');
+    const ns = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
+    for (let r = 0; r < sh.length; r++) {
+      if (sh.pl[r] > sh[r] + 1e-9) throw new Error(`fila ${r}: planos ${sh.pl[r].toFixed(4)} > total ${sh[r].toFixed(4)}`);
+      if (sh.pl[r] < -1e-9) throw new Error(`fila ${r}: planos negativo`);
+      if (Math.abs(sh.pl[r] - ns[r]) > 1e-9)
+        throw new Error(`fila ${r}: pl ${sh.pl[r].toFixed(6)} ≠ noStruct ${ns[r].toFixed(6)}`);
+    }
+  }
 });
 t('bifila: gemela alineada con su motora Y tresbolillo REAL entre grupos', () => {
   // mismo cálculo que hace terrain() con preset tresbolillo + bifila (pairStep 2):
