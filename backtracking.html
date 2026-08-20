@@ -1649,12 +1649,19 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   // garantiza energy-optimal ≥ pairwise porque f=0 ES pairwise: se comprueba
   // con la métrica que se publica, no con la de la búsqueda.
   // Solo con sol BAJO: ahí el evaluador rápido devuelve cero sombra por encima
-  // de zen 87 y elige f=1 (astro) creyendo que sale gratis. Con sol alto no hay
-  // sombra para ninguna f y más beam siempre gana, así que el veto sobra.
-  if(bestF>0&&zen>65){
-    const eB=poaPlant(zen,az,T,base,irr,doy,albedo).plant;
-    const eC=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
-    if(eB>eC+1e-9){bestAng=base;bestF=0;}
+  // de zen 87 y elige mal creyendo que sale gratis. Con sol alto no hay sombra
+  // para ninguna f y más beam siempre gana, así que el veto sobra.
+  // Se compara contra los DOS extremos de la rejilla —f=0 (pairwise) y f=1
+  // (astro)—: ambos SON candidatos, así que el óptimo no puede quedar por
+  // debajo de ninguno. Con solo el extremo f=0 se colaba lo contrario: en
+  // diciembre el óptimo salía 0,3% por DEBAJO de astro (auditoría v1.29.2).
+  if(zen>65&&(bestF>0||bestF<1)){
+    let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
+    for(const [f2,ang2] of [[0,base],[1,full]]){
+      if(f2===bestF)continue;
+      const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;
+      if(e2>eBest+1e-9){eBest=e2;bestAng=ang2;bestF=f2;}
+    }
   }
   return {angles:bestAng,f:bestF};
 }
@@ -2192,7 +2199,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.29.1';
+const VER='v1.29.2';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

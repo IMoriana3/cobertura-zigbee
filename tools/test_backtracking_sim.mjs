@@ -214,13 +214,18 @@ t('v1.29: energy-optimal ≥ pairwise BAJO EL CONTADOR EXACTO (lo cazó el barri
   // f>0 que bajo el contador publicado rendía MENOS que la base (−0,27% el
   // 21-jun). El core garantiza optimal ≥ pairwise porque f=0 ES pairwise.
   if (!/VETO con el contador EXACTO/.test(html)) throw new Error('energy-optimal sin veto exacto');
+  if (!/\[\[0,base\],\[1,full\]\]/.test(html)) throw new Error('el veto no mira los DOS extremos de la rejilla');
   const T = { pairs: [0, 0, 0, 0].map(s => ({ slope: s, pitch: 6, axisTilt: 0 })),
               cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 3 };
   for (const [zen, az] of [[80, 100], [75, 260], [70, 95], [65, 265], [60, 100]]) {
     const irr = F.clearskyIneichen(zen, 172, 739, 3.5);
     const pw = F.poaPlant(zen, az, T, F.anglesPairwise(zen, az, T), irr, 172, 0.20).plant;
+    const as = F.poaPlant(zen, az, T, F.anglesAstro(zen, az, T), irr, 172, 0.20).plant;
     const op = F.poaPlant(zen, az, T, F.anglesOptimal(zen, az, T, irr, 172, 0.20).angles, irr, 172, 0.20).plant;
+    // f=0 (pairwise) y f=1 (astro) son candidatos de su rejilla: el óptimo no
+    // puede quedar por debajo de NINGUNO bajo el contador que se publica
     if (op < pw - 1e-9) throw new Error(`zen ${zen} az ${az}: óptimo ${op.toFixed(3)} < pairwise ${pw.toFixed(3)}`);
+    if (op < as - 1e-9) throw new Error(`zen ${zen} az ${az}: óptimo ${op.toFixed(3)} < astro ${as.toFixed(3)}`);
   }
 });
 t('v1.29: UNA fuente para la cara colectora (campo «cara sup–eje» = T.z0) y barrido de auditoría', () => {
