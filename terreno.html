@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.81</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.82</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2057,7 +2057,7 @@ function buildExcavacion(){
    Proyectan sombra sobre el campo, que es para lo que sirven: una nave al sur sombrea de verdad.
    Es una llamada EXTERNA: la capa arranca apagada, no se pide nada hasta encenderla, y en modo
    offline no se pide nunca. */
-var OSMD=null,OSMG=null,_osmCargando=false;
+var OSMD=null,OSMG=null,_osmCargando=false,OSMBB='',OSMN=0;   // OSMBB/OSMN: el recuadro que se pidio y cuantos elementos vinieron — sin esto, un 0 no se puede diagnosticar
 var OSM_EP=['https://overpass-api.de/api/interpreter',                    // los mismos espejos que usa SolarGPT
             'https://overpass.kumi.systems/api/interpreter',
             'https://overpass.private.coffee/api/interpreter'];
@@ -2079,6 +2079,7 @@ function osmCarga(){   // descarga y cachea (una vez por planta); devuelve prome
   if(!TMESH||!mPerLon)return Promise.reject(new Error('el terreno aún no está'));
   var rn=TMESH.d/2/mPerLat,rx=TMESH.w/2/mPerLon;
   var bb=[(lat0-rn).toFixed(6),(lon0-rx).toFixed(6),(lat0+rn).toFixed(6),(lon0+rx).toFixed(6)].join(',');
+  OSMBB=bb;
   var q='[out:json][timeout:60];(way["building"]('+bb+');relation["building"]["type"="multipolygon"]('+bb+'););out geom tags;';
   var i=0;
   function intenta(){
@@ -2086,8 +2087,15 @@ function osmCarga(){   // descarga y cachea (una vez por planta); devuelve prome
     var ep=OSM_EP[i++];
     return fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}})
       .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
-      .then(function(j){ OSMD=osmParsea(j); return OSMD; })
-      .catch(function(){ return intenta(); });                            // 429/504/red: al siguiente espejo, como en SolarGPT
+      .then(function(j){
+        /* Overpass responde 200 con `remark: runtime error / timed out` y la lista VACIA cuando la
+           consulta se le atraganta. Tragarse eso es lo peor que puede pasar aqui: sale "0 edificios"
+           y parece que OSM no tiene nada mapeado cuando lo que ha habido es un fallo. Se trata como
+           error para que salte al siguiente espejo y, si fallan todos, se diga en rojo. */
+        if(j&&j.remark)throw new Error(String(j.remark).slice(0,120));
+        OSMN=((j&&j.elements)||[]).length;
+        OSMD=osmParsea(j); return OSMD; })
+      .catch(function(){ return intenta(); });                            // 429/504/remark/red: al siguiente espejo, como en SolarGPT
   }
   return intenta();
 }
@@ -2131,10 +2139,15 @@ function buildOSM(){
     OSMG.add(me);
     var ed=new THREE.LineSegments(new THREE.EdgesGeometry(g),mE);ed.position.copy(me.position);OSMG.add(ed);
     n++; if(b.src==='osm')nOsm++; else if(b.src==='plantas')nPl++; else nDef++;});
+  var bbTxt=OSMBB?(' <span style="color:var(--tx2)">· recuadro pedido a Overpass (S,O,N,E): '+OSMBB+'</span>'):'';
+  if(!n&&!dentro&&!lejos){   // CERO de verdad: hay que poder distinguir "OSM no los tiene" de "la consulta fallo"
+    osmAviso('<b>0 edificios</b>: Overpass ha respondido bien, con <b>'+OSMN+'</b> elementos. '+
+      'Si ahí hay casas, es que <b>no están mapeadas en OSM</b> como <code>building</code> — compruébalo en openstreetmap.org sobre ese mismo recuadro.'+bbTxt);
+    return;}
   osmAviso('<b>'+n+'</b> edificios de OSM · '+nOsm+' con altura del tag <code>height</code> · '+nPl+' por plantas×3 m · '+
     '<b>'+nDef+'</b> con el default de 6 m <span style="color:var(--tx2)">(no verificada)</span>'+
     (dentro?' · '+dentro+' descartados por caer dentro del vallado (ahí manda el DWG)':'')+
-    (lejos?' · '+lejos+' fuera del terreno dibujado':''));
+    (lejos?' · '+lejos+' fuera del terreno dibujado':'')+bbTxt);
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
