@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.88</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.89</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2092,7 +2092,23 @@ function buildExcavacion(){
    Proyectan sombra sobre el campo, que es para lo que sirven: una nave al sur sombrea de verdad.
    Es una llamada EXTERNA: la capa arranca apagada, no se pide nada hasta encenderla, y en modo
    offline no se pide nunca. */
-var SATPX=null,SATPXN=1024;   // 1.024 px sobre el ancho del terreno: en Fayón 0,6 m/px. A 512 un camino de hormigón de 3 m se difuminaba con la tierra y se le sembraba hierba encima
+var SATPX=null,SATPXN=1024,SATSUELO=0,SATLIM=0.12;   // saturación mediana del suelo de la planta, y el corte que sale de ella
+/* Mediana de saturación del suelo NO VERDE de la planta, muestreando la ortofoto en rejilla gruesa.
+   Es la referencia contra la que se juzga si algo es hormigón: "mucho menos saturado que la tierra
+   de aquí" viaja de una planta a otra, y "menos de 0,18" no. */
+function calibraSuelo(){
+  SATSUELO=0;SATLIM=0.12; if(!SATPX||!TMESH)return;
+  var v=[],paso=Math.max(4,Math.round(TMESH.w/160));
+  for(var x=-TMESH.w/2;x<TMESH.w/2;x+=paso)for(var n=-TMESH.d/2;n<TMESH.d/2;n+=paso){
+    var c=satRGB(x,n); if(!c)continue;
+    var r=c[0],g=c[1],b=c[2],br=(r+g+b)/3; if(br<45)continue;
+    if(2*g-r-b>=12)continue;                                    // el verde no es suelo desnudo
+    v.push((Math.max(r,g,b)-Math.min(r,g,b))/Math.max(br,1));}
+  if(v.length<50)return;
+  v.sort(function(a,b2){return a-b2;});
+  SATSUELO=v[Math.floor(v.length/2)];
+  SATLIM=Math.max(0.04,Math.min(0.18,SATSUELO*0.55));           // topes: ni tan bajo que no vea el asfalto, ni tan alto que se coma un arenal
+}   // 1.024 px sobre el ancho del terreno: en Fayón 0,6 m/px. A 512 un camino de hormigón de 3 m se difuminaba con la tierra y se le sembraba hierba encima
 function satRGB(x,n){ if(!SATPX||!SATUV)return null;
   var q=SATUV(x,n),i=Math.round(q[0]*(SATPXN-1)),j=Math.round((1-q[1])*(SATPXN-1));
   if(i<0||j<0||i>=SATPXN||j>=SATPXN)return null;
@@ -2116,10 +2132,13 @@ function sueloConstruido(c){ if(!c)return false;
      es que son ACROMÁTICOS: (max−min)/brillo ≈ 0,03-0,08, mientras que el suelo árido es cromático
      y cálido (0,20-0,45). Con el umbral en 0,12 entra el hormigón sucio y NO entra la tierra. */
   var mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=(mx-mn)/Math.max(br,1);
-  /* 0,18 y no 0,12: una carretera de hormigón o zahorra clara da 0,15 —"invade la carretera"— y se
-     escapaba. El suelo natural queda MUY por encima (tierra batida 0,37 · arena 0,32 · rastrojo 0,36
-     · tierra rojiza 0,44), así que el hueco entre 0,18 y 0,30 es holgado. */
-  if(sat<0.18&&br>45)return true;                   // hormigón, asfalto, zahorra, cubierta clara
+  /* EL UMBRAL ES RELATIVO AL SUELO DE ESTA PLANTA, no un número fijo. Con 0,12 se colaba la
+     carretera clara (0,15) y con 0,18 se fue TODA la planta: en un arenal la arena pálida vale
+     también 0,15, o sea que le dije al visor que el campo entero era hormigón y desapareció la
+     hierba. Ningún corte absoluto separa arena de hormigón, porque en color SON lo mismo.
+     Lo que sí es estable: el hormigón está MUY por debajo del suelo que lo rodea. Se mide la
+     saturación mediana del suelo de esta planta (SATSUELO) y se corta en el 55 % de ella. */
+  if(sat<SATLIM&&br>45)return true;                 // hormigón, asfalto, zahorra, cubierta clara
   if(b>r+6)return true;                             // azulado: chapa, agua, piscina
   if(r-g>45&&r-b>60&&br<180)return true;            // teja
   return false;
@@ -2218,7 +2237,20 @@ function osmParsea(j){
    cesped sobre las casas y sobre la carretera — "pone hierba donde hay edificios".
    Se aplica en cuanto hay datos, tengas o no encendida la capa: que no veas las cajas no significa
    que ahi crezca hierba. */
-var OSMMASK=null,OSMMK={c:2.0},OSMFOTO=0,OSMTEX=0;   // celdas marcadas por el COLOR de la ortofoto y por su TEXTURA
+var OSMMASK=null,OSMMK={c:2.0},OSMFOTO=0,OSMTEX=0,OSMEXCESO=0;   // OSMEXCESO: % de terreno que llegó a marcarse cuando hubo que descartar el color
+function marcaEn(m,x,n){var c=OSMMK.c,i=Math.floor((x+TMESH.w/2)/c),j=Math.floor((n+TMESH.d/2)/c);
+  if(i>=0&&j>=0&&i<OSMMK.nx&&j<OSMMK.nn)m[j*OSMMK.nx+i]=1;}
+function pintaPoli2(m,P,orla){
+  var c=OSMMK.c,x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;P.forEach(function(q){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);n0=Math.min(n0,q[1]);n1=Math.max(n1,q[1]);});
+  for(var x=x0-orla;x<=x1+orla;x+=c)for(var n=n0-orla;n<=n1+orla;n+=c)
+    if(dentroPoli(x,n,P)||(orla>0&&distSegPoli(x,n,P)<orla))marcaEn(m,x,n);
+}
+function pintaVia(m,r){var c=OSMMK.c,hw=r.w/2+1.0;
+  for(var k=0;k+1<r.p.length;k++){var A=r.p[k],B=r.p[k+1],L=Math.hypot(B[0]-A[0],B[1]-A[1]);
+    var pasos=Math.max(1,Math.ceil(L/c));
+    for(var t=0;t<=pasos;t++){var px=A[0]+(B[0]-A[0])*t/pasos,pn=A[1]+(B[1]-A[1])*t/pasos;
+      for(var dx=-hw;dx<=hw;dx+=c)for(var dn=-hw;dn<=hw;dn+=c)if(dx*dx+dn*dn<=hw*hw)marcaEn(m,px+dx,pn+dn);}}
+}   // celdas marcadas por el COLOR de la ortofoto y por su TEXTURA
 /* SUELO EDIFICADO POR TEXTURA. El color no basta y ya me ha fallado dos veces: las cubiertas de un
    caserío rural son BEIS CÁLIDO, con la misma cromaticidad que la tierra de al lado, así que ningún
    umbral de saturación las separa — "sigue habiendo hierba".
@@ -2240,6 +2272,7 @@ function sueloEdificado(x,n){
 }
 function osmMascara(){
   OSMMASK=null; if(!TMESH)return;
+  calibraSuelo();
   if(!OSMD&&!OSMR.length&&!OSMU.length&&!SATPX)return;
   var c=OSMMK.c,nx=Math.ceil(TMESH.w/c),nn=Math.ceil(TMESH.d/c);
   if(nx*nn>4e6)return;                                                     // planta enorme: la rejilla no compensa
@@ -2309,6 +2342,24 @@ function osmMascara(){
       if(j6<nn-1){var kk4=k5+nx; if(!dil[kk4]&&!vis[kk4]){vis[kk4]=1;pila.push(kk4);}}}
     for(var k6=0;k6<m2.length;k6++)if(!m2[k6]&&!vis[k6]){m2[k6]=1;hue++;}
     m=m2;OSMTEX+=rel+hue;}
+  /* RED DE SEGURIDAD. Si la máscara se come más de la mitad del terreno, lo que ha fallado es la
+     regla, no el paisaje: una planta no es medio pueblo. Pasó de verdad —umbral de saturación 0,18
+     sobre un arenal: la planta entera marcada y CERO hierba, sin un solo aviso— así que ahora se
+     tira lo marcado por COLOR (que es lo frágil) y se conserva lo de OSM y lo de textura, que se
+     apoyan en geometría. Queda dicho en la etiqueta de la capa. */
+  OSMEXCESO=0;
+  var ocup=0; for(var kz=0;kz<m.length;kz++)if(m[kz])ocup++;
+  if(ocup>0.55*m.length&&OSMFOTO>0){
+    OSMEXCESO=Math.round(100*ocup/m.length);
+    m=new Uint8Array(m.length);
+    (OSMD||[]).forEach(function(b3){ if(valeParaMascara(b3.p))pintaPoli2(m,b3.p,1.5); });
+    OSMU.forEach(function(u2){ if(valeParaMascara(u2.p))pintaPoli2(m,u2.p,0); });
+    OSMR.forEach(function(r2){pintaVia(m,r2);});
+    if(SATPX)for(var j9=0;j9<nn;j9++)for(var i9=0;i9<nx;i9++){var k9=j9*nx+i9; if(m[k9])continue;
+      var x9=-TMESH.w/2+(i9+0.5)*c,n9=-TMESH.d/2+(j9+0.5)*c;
+      if(sueloEdificado(x9,n9))m[k9]=1;}
+    OSMFOTO=0;
+  }
   OSMMASK=m;
 }
 function osmOcupado(x,n){ if(!OSMMASK)return false;
@@ -2385,7 +2436,7 @@ function buildOSM(){
     (lejos?' · '+lejos+' fuera del terreno dibujado':'')+
     (enorme?' · '+enorme+' descartados por ocupar media planta (OSM la tiene mapeada como un solo edificio)':'')+
     ' · '+OSMR.length+' viales y '+OSMU.length+' recintos de suelo urbano <span style="color:var(--tx2)">(sin hierba encima)</span>'+
-    ' <span style="color:var(--tx2)">· '+OSMN+' elementos recibidos · sin hierba: '+OSMFOTO+' celdas por color y '+OSMTEX+' por textura de la ortofoto</span>'+bbTxt);
+    ' <span style="color:var(--tx2)">· '+OSMN+' elementos recibidos · sin hierba: '+OSMFOTO+' celdas por color y '+OSMTEX+' por textura de la ortofoto</span>'+(OSMEXCESO?' <b style="color:#F2A900">· el color marcaba el '+OSMEXCESO+'% del terreno (imposible): se ha descartado y solo cuentan OSM y la textura</b>':'')+bbTxt);
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
