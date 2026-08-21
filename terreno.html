@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.86</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.87</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2268,7 +2268,21 @@ function osmMascara(){
       if(m[k2])continue;
       var xx=-TMESH.w/2+(ii+0.5)*c,nn2=-TMESH.d/2+(jj+0.5)*c;
       if(sueloConstruido(satRGB(xx,nn2))){m[k2]=1;OSMFOTO++;continue;}
-      if(sueloEdificado(xx,nn2)){m[k2]=1;OSMTEX++;}}}
+      if(sueloEdificado(xx,nn2)){m[k2]=1;OSMTEX++;}}
+    /* RELLENO DE INTERIORES. La textura salta en los BORDES —tejado contra sombra contra calle— pero
+       el centro de una cubierta grande es liso y no dispara: quedaban matas en medio de las manzanas
+       ("aún sobra"). Aquí se marca toda celda rodeada de celdas marcadas: si en 9 m a la redonda más
+       de la mitad es suelo edificado, esa celda es el interior de una manzana, no un claro de campo.
+       Con tabla de sumas (integral), que es O(1) por celda: en plantas grandes hay más de un millón. */
+    var R=Math.max(2,Math.round(9/c)),W=nx+1,S=new Int32Array(W*(nn+1));
+    for(var j3=0;j3<nn;j3++)for(var i3=0;i3<nx;i3++)
+      S[(j3+1)*W+i3+1]=m[j3*nx+i3]+S[j3*W+i3+1]+S[(j3+1)*W+i3]-S[j3*W+i3];
+    var rel=0,m2=new Uint8Array(m);
+    for(var j4=0;j4<nn;j4++)for(var i4=0;i4<nx;i4++){var k4=j4*nx+i4; if(m[k4])continue;
+      var a4=Math.max(0,i4-R),b4=Math.min(nx-1,i4+R),c4=Math.max(0,j4-R),d4=Math.min(nn-1,j4+R);
+      var suma=S[(d4+1)*W+b4+1]-S[c4*W+b4+1]-S[(d4+1)*W+a4]+S[c4*W+a4];
+      if(suma>0.55*(b4-a4+1)*(d4-c4+1)){m2[k4]=1;rel++;}}
+    m=m2;OSMTEX+=rel;}
   OSMMASK=m;
 }
 function osmOcupado(x,n){ if(!OSMMASK)return false;
