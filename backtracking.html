@@ -85,6 +85,20 @@
   .legend span{display:flex;align-items:center;gap:5px}
   .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
   .chip{font-family:var(--mono);font-size:.64rem;color:var(--warn);border:1px dashed var(--warn);border-radius:7px;padding:2px 8px}
+
+/* ── careo: cajita de resumen (formato de captura) ── */
+#careobox{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  background:#0e1520;font-family:var(--mono)}
+#careobox .ct{font-size:.62rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+#careobox .cbig{font-size:1.9rem;font-weight:600;line-height:1.1;margin:2px 0 2px}
+#careobox .crow{display:flex;flex-wrap:wrap;gap:18px;margin-top:8px}
+#careobox .cq{font-size:.78rem}
+#careobox .band{color:var(--muted);font-size:.72rem}
+#careobox .cruza{color:var(--warn)}
+#careobox .cbase{margin-top:9px;font-size:.7rem;color:var(--muted);border-top:1px solid var(--line);
+  padding-top:7px}
+#careobox .cdesc{margin-top:7px;font-size:.74rem;opacity:.92}
+#careobox .cdesc span{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -184,6 +198,15 @@
       <button class="btn small" id="tapply">Aplicar preset</button>
       <button class="btn small" id="tflat">Aplanar</button>
       <span class="pill" id="tinfo"></span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;
+                border-top:1px solid var(--line);padding-top:8px">
+      <label class="btn small acc" title="Compara sobre ESTE MISMO corte dos backtrackings: el clásico (BT2D plano, que ignora el relieve) y el bt3d. Con el careo apagado la página se comporta igual que siempre." style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="careo"> CAREO clásico vs bt3d</label>
+      <label class="btn small" id="careolibrolbl" title="Añade el MODELO DE LIBRO: el mismo mando clásico pero medido como lo mide una simulación de fila infinita y terreno plano (pvlib/PVsyst). Descompone la diferencia total en implantación axial, relieve y control." style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;opacity:.5"><input type="checkbox" id="careolibro" disabled> + modelo de libro</label>
+      <span class="pill" style="opacity:.7">demo:</span>
+      <button class="btn small" id="cp_pend" title="Pendiente constante del 9 % (5,1°) — valores fijos, para que dos capturas del mismo preset den los mismos números">Pendiente 9 %</button>
+      <button class="btn small" id="cp_valle" title="Vaguada de 2 m de desnivel — valores fijos">Vaguada 2 m</button>
+      <button class="btn small" id="cp_cresta" title="Cresta de 2 m de desnivel — valores fijos">Cresta 2 m</button>
     </div>
     <div class="nota">Pendiente <b>positiva = el terreno cae hacia la derecha</b> de la escena (convención
       pvlib de <code>cross_axis_tilt</code>, la misma que el core). El editor mueve la cota de cada fila;
@@ -298,6 +321,7 @@
       <button class="btn small" id="sunpov" title="Cámara desde el SOL: lo que no ves desde aquí es EXACTAMENTE lo que está en sombra — la prueba visual del contador">👁 sol</button>
     </div>
     <div class="hud" id="hud"></div>
+    <div id="careobox" style="display:none"></div>
   </div>
 
   <div class="card">
@@ -2379,7 +2403,11 @@ function applyPreset(){
   else if(P==='valle')for(let i=0;i<n;i++)z[i]=v*Math.abs(i-(n-1)/2)/((n-1)/2);
   else if(P==='cresta')for(let i=0;i<n;i++)z[i]=-v*Math.abs(i-(n-1)/2)/((n-1)/2)+v;
   else if(P==='aleatorio'){const r=mulberry32(Math.round(v)||1);let acc=0;for(let i=0;i<n;i++){z[i]=acc;acc+=(r()-0.5)*2*0.12*c.pitch;}}
-  ELEV=z; clampSlopes(c); recompute();
+  ELEV=z; clampSlopes(c);
+  CAREO_TERR=$('tpreset').selectedOptions[0].textContent+
+    (P==='llano'?'':' '+$('tparam').value+($('tpreset').value==='pendiente'?'° ('+
+      (100*Math.tan(v*RAD)).toFixed(0)+' %)':' m'));
+  recompute();
 }
 function clampSlopes(c){
   // el editor no debe fabricar pendientes que ni un tracker real montaría.
@@ -2580,7 +2608,50 @@ $('bagnbtn').onclick=()=>{
   $('nsl').value='bagnarelli';$('drive').value='mono';   // Bagnarelli es monofila
   ensureElev(6);recompute();
 };
-$('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);recompute();};
+$('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);CAREO_TERR='aplanado';recompute();};
+
+/* ── mandos del careo ──────────────────────────────────────────────────────
+   Encender el careo enciende las DOS políticas que compara y lleva la escena
+   al bt3d; apagarlo devuelve exactamente el estado anterior, para que con el
+   careo apagado la página se comporte igual que siempre. */
+function careoSet(on){
+  CAREO=!!on;
+  $('careolibro').disabled=!CAREO;
+  $('careolibrolbl').style.opacity=CAREO?1:.5;
+  if(CAREO){
+    CAREO_PREV={pol:POLICIES.map(P=>P.on),view:$('polview').value};
+    // DOS trayectorias, no siete: con cinco curvas encima el careo no se lee.
+    // El estado anterior se repone tal cual al apagarlo.
+    POLICIES.forEach(P=>{P.on=(P.key===CAREO_A||P.key===CAREO_B);});
+    rebuildSelectors();
+    $('polview').value=CAREO_B;
+  }else if(CAREO_PREV){
+    POLICIES.forEach((P,i)=>{P.on=CAREO_PREV.pol[i];});
+    CAREO_LIBRO=false; $('careolibro').checked=false;
+    rebuildSelectors();
+    if([...$('polview').options].some(o=>o.value===CAREO_PREV.view))$('polview').value=CAREO_PREV.view;
+    CAREO_PREV=null; CAREO_RES=null;
+  }
+  buildPolicyBox();     // las casillas del panel Políticas reflejan el cambio
+  recompute();
+}
+$('careo').onchange=e=>careoSet(e.target.checked);
+$('careolibro').onchange=e=>{CAREO_LIBRO=e.target.checked;careoCompute();fillCareoBox();};
+
+/* Los botones de demo son ATAJOS sobre el preset de terreno que ya existe, con
+   los valores CLAVADOS: la reproducibilidad es su razón de ser (dos capturas
+   del mismo preset tienen que dar los mismos números). El camino manual —editar
+   el corte o poner tus propios valores en el panel— queda intacto. */
+function careoPreset(tipo,valor){
+  PLANT_REAL=null; $('realnote').style.display='none';
+  $('tpreset').value=tipo; $('tpreset').dispatchEvent(new Event('change'));
+  $('tparam').value=valor;                      // el change del select repone el defecto
+  if(!CAREO){$('careo').checked=true;careoSet(true);}
+  applyPreset();
+}
+$('cp_pend').onclick=()=>careoPreset('pendiente',5.14);   // 9 % = atan(0,09) = 5,14°
+$('cp_valle').onclick=()=>careoPreset('valle',2);
+$('cp_cresta').onclick=()=>careoPreset('cresta',2);
 
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
 /* Va por clave de la hoja de cartera (24002 = El Burgo), no por nº de proyecto: es el mismo
@@ -2651,16 +2722,30 @@ function computeDay(){
   DAY={c:c,T:T,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
   return DAY;
 }
-function dayKpis(key){
-  const d=DAY, p=d.pol[key]; if(!p)return null;
+/* La integral del día vive en UN solo sitio. `dayKpis` la llama con lo que
+   `computeDay` ya calculó; el careo la llama con el MISMO mando evaluado sobre
+   otro terreno —que es un dato, no otra física— y entonces `pre` no viene y se
+   recalcula con `poaPlant`, la misma función. Ni una fórmula nueva. */
+function kpisSerie(T,angArr,pre){
+  const d=DAY;
+  const p=pre||null;
   const dtH=STEP_MIN/60;
   let kwh=0, kwhHi=0, kwhLo=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0;
+  let worstT=-1, shPeak=0;
   for(let t=0;t<d.times.length;t++){
-    kwh+=p.poaP[t]*dtH/1000;
-    kwhHi+=(p.poaHi?p.poaHi[t]:p.poaP[t])*dtH/1000;
-    kwhLo+=(p.poaLo?p.poaLo[t]:p.poaP[t])*dtH/1000;
-    const nRt=p.ang[t].length;
-    const med=p.shade[t].reduce((a,v)=>a+v,0)/nRt;          // media de PLANTA
+    const ang=angArr[t];
+    const pp=p?{plant:p.poaP[t],plantHi:p.poaHi?p.poaHi[t]:p.poaP[t],
+                plantLo:p.poaLo?p.poaLo[t]:p.poaP[t],shade:p.shade[t]}
+              :poaPlant(d.sun[t].zen,d.sun[t].az,T,ang,d.irr[t],d.doy,d.c.albedo);
+    kwh+=pp.plant*dtH/1000;
+    kwhHi+=pp.plantHi*dtH/1000;
+    kwhLo+=pp.plantLo*dtH/1000;
+    const nRt=ang.length;
+    const med=pp.shade.reduce((a,v)=>a+v,0)/nRt;            // media de PLANTA
+    // el peor momento se mide con la MISMA magnitud que el resto de la v1.31
+    // (media de planta con sol útil), no con el máximo de una fila, que
+    // saturaba al 100% en todas las políticas y no distinguía nada
+    if(med>shPeak&&d.irr[t].dni>25){shPeak=med;worstT=t;}
     // SOMBRA PONDERADA POR ENERGÍA: la media de planta pesada por la DNI del
     // instante. El máximo de una fila saturaba al 100% en TODAS las políticas
     // (en terreno roto siempre hay un minuto de sol bajo con una fila entera
@@ -2671,22 +2756,151 @@ function dayKpis(key){
     // minutos con sombra RELEVANTE: media de planta >1% con sol útil (antes
     // era «alguna fila >0,1%», que también salía igual para todas)
     if(med>0.01&&d.irr[t].dni>25)minSh+=STEP_MIN;
-    thMax=Math.max(thMax,...p.ang[t].map(Math.abs));
+    thMax=Math.max(thMax,...ang.map(Math.abs));
     // lo que el escalón Martinez se come del beam, media de planta — y la
     // misma cuenta con la sombra SIN estructura, para separar el hierro
     let e=0,ep=0;
     for(let r=0;r<nRt;r++){
-      const axt=d.T.pairs[Math.min(r,d.T.pairs.length-1)].axisTilt;
-      const b=poaRow(p.ang[t][r],axt,d.T.axisAz,d.sun[t].zen,d.sun[t].az,d.irr[t],d.doy,d.c.albedo,d.T.iam).beam;
-      e+=b*elecLoss(p.shade[t][r],d.T.nBypass);
-      const spl=p.shade[t].pl?p.shade[t].pl[r]:p.shade[t][r];
-      ep+=b*elecLoss(spl,d.T.nBypass);
+      const axt=T.pairs[Math.min(r,T.pairs.length-1)].axisTilt;
+      const b=poaRow(ang[r],axt,T.axisAz,d.sun[t].zen,d.sun[t].az,d.irr[t],d.doy,d.c.albedo,T.iam).beam;
+      e+=b*elecLoss(pp.shade[r],T.nBypass);
+      const spl=pp.shade.pl?pp.shade.pl[r]:pp.shade[r];
+      ep+=b*elecLoss(spl,T.nBypass);
     }
     elecKwh+=(e/nRt)*dtH/1000;
     elecPl+=(ep/nRt)*dtH/1000;
   }
   return {kwh:kwh,kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,minSh:minSh,thMax:thMax,
-          elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl)};
+          elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl),
+          worstT:worstT,shPeak:shPeak};
+}
+function dayKpis(key){
+  const d=DAY, p=d.pol[key]; if(!p)return null;
+  return kpisSerie(d.T,p.ang,p);
+}
+
+/* ══ CAREO: clásico (BT2D plano) vs bt3d, sobre el MISMO corte ═════════════
+   Regla de oro: cero física nueva. El careo no inventa un modelo, usa los dos
+   que ya viven en el fichero:
+     · clásico = política `bt2d` — pvlib sin pendiente, «el tracker sin
+       configurar»— con su consigna EJECUTADA sobre el corte real;
+     · bt3d    = política `true3d` — bisección 3D sobre el corte editado.
+   Las dos consignas ya se calculan en computeDay; aquí solo se comparan, con
+   la misma integral del día (kpisSerie) y la MISMA banda del circunsolar que
+   publica la tabla — si la banda cruza el cero, el careo tampoco decide.
+
+   El «modelo de libro» (casilla opcional) NO es una tercera consigna: el mando
+   de bt2d es idéntico —depende de pitch, ancho, azimut y θmáx, no del relieve—,
+   así que dibujar una tercera curva sería pintar la misma línea encima. Lo que
+   cambia es DÓNDE se mide ese mando: un terreno plano y de fila infinita, que
+   es lo que asume una simulación de libro. Por eso el libro vive en los
+   NÚMEROS (descomposición) y no en la gráfica θ(t). */
+let CAREO=false, CAREO_LIBRO=false, CAREO_PREV=null, CAREO_RES=null;
+/* Qué corte se está careando, para que la captura se autoexplique. Lo pone el
+   preset al aplicarse y lo borra cualquier edición posterior: una captura que
+   dijera «pendiente constante» sobre un corte arrastrado a mano mentiría. */
+let CAREO_TERR='';
+const CAREO_A='bt2d', CAREO_B='true3d';
+
+/* Variante de terreno: DATO, no física. Aplanar = pendientes y tilts a cero;
+   fila infinita = sin tramos axiales (el camino `sin T.segs` que ya existe). */
+function careoTerreno(T,plano,infinita){
+  const V=Object.assign({},T);
+  if(plano){
+    V.pairs=T.pairs.map(p=>({slope:0,pitch:p.pitch,axisTilt:0}));
+    if(T.rowTilt)V.rowTilt=T.rowTilt.map(()=>0);
+  }
+  if(infinita)V.segs=null;
+  return V;
+}
+
+/* La banda de un Δ se evalúa con LA MISMA cota arriba y abajo — la convención
+   de la tabla del día, para no contradecirla tres centímetros más abajo. */
+function careoBanda(a,b){
+  const d=100*(b.kwh/a.kwh-1);
+  const dLo=(a.kwhLo&&b.kwhLo)?100*(b.kwhLo/a.kwhLo-1):d;
+  const dHi=(a.kwhHi&&b.kwhHi)?100*(b.kwhHi/a.kwhHi-1):d;
+  const bl=Math.min(dLo,dHi), bh=Math.max(dLo,dHi);
+  return {d:d,lo:bl,hi:bh,cruza:bl<-1e-9&&bh>1e-9};
+}
+
+function careoCompute(){
+  if(!CAREO||!DAY||!DAY.pol[CAREO_A]||!DAY.pol[CAREO_B]){CAREO_RES=null;return null;}
+  const angA=DAY.pol[CAREO_A].ang;
+  const clasico=dayKpis(CAREO_A), bt3d=dayKpis(CAREO_B);
+  const r={clasico:clasico,bt3d:bt3d,banda:careoBanda(clasico,bt3d),
+           dAbs:bt3d.kwh-clasico.kwh,
+           minEvitados:clasico.minSh-bt3d.minSh};
+  if(CAREO_LIBRO){
+    // el MISMO mando clásico, medido en los dos mundos que asume el libro
+    const libro=kpisSerie(careoTerreno(DAY.T,true,true),angA);      // plano + fila infinita
+    const axial=kpisSerie(careoTerreno(DAY.T,true,false),angA);     // plano + implantación real
+    r.libro=libro; r.axial=axial;
+    const b=libro.kwh||1;
+    r.desc={total:100*(bt3d.kwh-libro.kwh)/b,
+            axial:100*(axial.kwh-libro.kwh)/b,
+            relieve:100*(clasico.kwh-axial.kwh)/b,
+            control:100*(bt3d.kwh-clasico.kwh)/b,
+            banda:careoBanda(libro,bt3d)};
+  }
+  CAREO_RES=r; return r;
+}
+
+function fmtHora(t){
+  if(t==null||t<0||!DAY)return '—';
+  const m=DAY.times[t];
+  return (m/60|0).toString().padStart(2,'0')+':'+(m%60).toString().padStart(2,'0');
+}
+function careoBandaHtml(b){
+  return '<span class="band'+(b.cruza?' cruza':'')+'" title="'+
+    (b.cruza?'LA BANDA CRUZA EL CERO: con el circunsolar sin sombrear gana uno y con la cota pesimista gana el otro. El careo NO decide este caso.'
+            :'Banda del circunsolar: cota alta = sin sombrear (lo de hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte')+
+    '">['+(b.lo>=0?'+':'')+b.lo.toFixed(2)+' … '+(b.hi>=0?'+':'')+b.hi.toFixed(2)+']'+
+    (b.cruza?' \u26a0':'')+'</span>';
+}
+function fillCareoBox(){
+  const box=$('careobox');
+  if(!CAREO||!CAREO_RES){box.style.display='none';box.innerHTML='';return;}
+  const r=CAREO_RES, c=DAY.c, sg=v=>(v>=0?'+':'')+v.toFixed(2);
+  const terreno=(PLANT_REAL?'planta real':(CAREO_TERR||'corte editado'))+' · pendientes '+
+    Math.min(...DAY.T.pairs.map(p=>p.slope)).toFixed(1)+'…'+
+    Math.max(...DAY.T.pairs.map(p=>p.slope)).toFixed(1)+'°';
+  const b=r.banda;
+  let html='<div class="ct">Careo del día · '+c.date+' · '+terreno+'</div>'+
+    '<div class="cbig" style="color:'+(b.cruza?'var(--warn)':POL[CAREO_B].col)+'">'+sg(b.d)+' %'+
+      ' <span style="font-size:.8rem;font-weight:400;color:var(--muted);margin-left:8px">'+
+      'vs. clásico (implantación real)</span></div>'+
+    '<div class="cq">'+careoBandaHtml(b)+
+      (b.cruza?' <b style="color:var(--warn)">la banda cruza el cero: el careo NO decide</b>':'')+'</div>'+
+    '<div class="cq" style="margin-top:4px"><b>'+r.bt3d.kwh.toFixed(3)+'</b> kWh/m²·d con bt3d frente a <b>'+
+      r.clasico.kwh.toFixed(3)+'</b> con el clásico <span style="color:var(--muted)">('+
+      sg(r.dAbs)+' kWh/m²·d)</span></div>'+
+    '<div class="crow">'+
+      '<span class="cq">Sombra evitada: <b>'+r.minEvitados+' min</b> '+
+        '<span style="color:var(--muted)">('+r.clasico.minSh+' → '+r.bt3d.minSh+' min con sombra)</span></span>'+
+      '<span class="cq">Hora peor del clásico: <b>'+fmtHora(r.clasico.worstT)+'</b> '+
+        '<span style="color:var(--muted)">· sombra media de planta '+(r.clasico.shPeak*100).toFixed(1)+' %</span></span>'+
+      '<span class="cq">Pérdida eléctrica: <b>'+r.clasico.elecKwh.toFixed(3)+'</b> → <b>'+
+        r.bt3d.elecKwh.toFixed(3)+'</b> kWh/m²</span>'+
+    '</div>';
+  if(r.desc){
+    const d=r.desc;
+    html+='<div class="cdesc"><b>Frente al modelo de libro</b> (fila infinita y terreno plano): '+
+      '<b>'+sg(d.total)+' %</b> '+careoBandaHtml(d.banda)+' en total <span>=</span> '+
+      sg(d.axial)+' % implantación axial <span>+</span> '+
+      sg(d.relieve)+' % relieve <span>+</span> '+
+      sg(d.control)+' % control <span>(los cuatro sobre el libro)</span>'+
+      ' <span>· el libro predice '+r.libro.kwh.toFixed(3)+' kWh/m²·d</span></div>';
+  }
+  // los dos porcentajes del control son el MISMO efecto con denominadores
+  // distintos (clásico y libro): que cada uno lleve el suyo pegado
+  html+='<div class="cbase">Cifra grande: <b>Δ vs. BT2D plano (implantación real)</b>'+
+    (r.desc?' · descomposición: <b>Δ vs. BT2D plano + fila infinita</b> (el modelo de libro), '+
+            'por eso el control sale '+sg(r.desc.control)+' % ahí y '+sg(b.d)+' % arriba: '+
+            'mismo efecto, otro denominador':'')+
+    ' · mismo corte, mismo día, mismo seguidor: solo cambia el control. '+
+    'POA de planta con paso de '+STEP_MIN+' min, con la banda del circunsolar de la v1.31.</div>';
+  box.innerHTML=html; box.style.display='';
 }
 
 /* ── escena: corte transversal ── */
@@ -2834,6 +3048,50 @@ function drawScene(){
     ctx.beginPath();ctx.arc(px,pyG,4.5,0,7);ctx.fill();
   }
 
+  // CAREO: el otro modelo, en fantasma. El sólido es el bt3d (la escena se
+  // fuerza a él al encender el careo); el fantasma es el clásico, con SU
+  // sombra al suelo y SU porción sombreada — que se vea dónde el control que
+  // ignora el relieve sombrea a la vecina o desperdicia ángulo.
+  if(CAREO&&DAY.pol[CAREO_A]&&key===CAREO_B){
+    const gi=careoGhostInstant();
+    const angG=gi?gi.ang:DAY.pol[CAREO_A].ang[tIdx];
+    const shG=gi?gi.shade:DAY.pol[CAREO_A].shade[tIdx];
+    const colG=POL[CAREO_A].col;
+    if(elev>0&&Math.abs(psz)<89){
+      ctx.fillStyle='rgba(251,146,60,.16)';           // su sombra al suelo
+      for(let i=0;i<n;i++){
+        const th=angG[i]*RAD, hw=c.cw/2, cx=xof(i), cz=EL2D[i]+hubH;
+        const ex=[cx-hw*Math.cos(th),cx+hw*Math.cos(th)];
+        const ez=[cz+hw*Math.sin(th),cz-hw*Math.sin(th)];
+        const tanp=Math.tan(psz*RAD);
+        const gx=[ex[0]-(ez[0]-EL2D[i])*tanp, ex[1]-(ez[1]-EL2D[i])*tanp];
+        ctx.fillRect(Math.min(X(gx[0]),X(gx[1])),Y(EL2D[i])-6,Math.abs(X(gx[1])-X(gx[0])),3);
+      }
+    }
+    ctx.setLineDash([5,4]);
+    for(let i=0;i<n;i++){
+      const px=X(xof(i)), pyT=Y(EL2D[i]+hubH);
+      const th=angG[i]*RAD, hwPx=(c.cw/2)*mScale;
+      const dx=Math.cos(th)*hwPx, dy=Math.sin(th)*hwPx;
+      ctx.strokeStyle=colG;ctx.lineWidth=Math.max(2,0.06*mScale);ctx.globalAlpha=.95;
+      ctx.beginPath();ctx.moveTo(px-dx,pyT-dy);ctx.lineTo(px+dx,pyT+dy);ctx.stroke();
+      if(shG[i]>1e-3){                                  // lo que el clásico sombrea
+        const f=shG[i], fromRight=psz>=0;
+        const ax=fromRight?px+dx:px-dx, ay=fromRight?pyT+dy:pyT-dy;
+        ctx.strokeStyle='#f87272';ctx.lineWidth=Math.max(3,0.10*mScale);
+        ctx.beginPath();ctx.moveTo(ax,ay);
+        ctx.lineTo(ax-(fromRight?1:-1)*2*dx*f,ay-(fromRight?1:-1)*2*dy*f);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+    ctx.setLineDash([]);
+    ctx.font='11px '+getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textAlign='right';
+    ctx.fillStyle=POL[CAREO_B].col;ctx.fillText('\u2500\u2500 bt3d (corte real)',W-10,20);
+    ctx.fillStyle=colG;ctx.fillText('- - '+POL[CAREO_A].nm+' (fantasma)',W-10,34);
+    ctx.textAlign='left';
+  }
+
   // accionamiento: transmisión y motores. Bifila = eje entre los dos postes del
   // grupo con el motor en medio; la QUEBRADA añade los cardanes (rótulas) en los
   // extremos del eje; monofila = un motor en cada poste.
@@ -2893,6 +3151,7 @@ function compass(a){const d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO'
     // invertir Y(z): z = zMin + 1.2 + (yGround−y)/mScale — reconstruido desde el mapa
     const zg=SCENE_MAP.Y(0), z=(zg-my)/SCENE_MAP.mScale;
     ELEV[drag]=Math.max(-8,Math.min(8,z));
+    CAREO_TERR='corte editado a mano';      // la captura no puede decir «preset»
     clampSlopes(DAY.c);
     recompute(true);
   });
@@ -3957,7 +4216,10 @@ function drawCurves(){
 /* ── tabla del día ── */
 function fillDayTable(){
   const rows=[];
-  const ref=dayKpis('pairwise');
+  // con el careo, pairwise está apagada: la referencia pasa a ser el clásico,
+  // que es contra quien compara la cajita — y la cabecera lo dice
+  const refKey=DAY.pol['pairwise']?'pairwise':(CAREO&&DAY.pol[CAREO_A]?CAREO_A:null);
+  const ref=refKey?dayKpis(refKey):null;
   rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th>'+
     '<th title="Diferencia de POA de planta contra pairwise, y entre corchetes la BANDA del circunsolar: cota alta = circunsolar SIN sombrear (lo que se hacía hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte. Si la banda CRUZA EL CERO el simulador NO decide quién gana: sale marcada en ámbar">Δ vs pairwise (banda)</th>'+
     '<th title="Sombra media de PLANTA ponderada por la DNI del instante: cuánta sombra te comes donde hay energía. Sustituye al «máximo de una fila», que en terreno roto saturaba al 100% en todas las políticas y no distinguía nada">Sombra (pond. energía)</th>'+
@@ -4064,6 +4326,25 @@ function timeIndex(){return Math.min(DAY.times.length-1,Math.floor((+$('hour').v
    bajo demanda: un paso de una política son milisegundos. Interpolar sería
    inventar física; esto es física del minuto pedido. ── */
 let INSTANT=null;
+/* El fantasma del careo en el minuto exacto: mismo patrón que sceneInstant
+   pero para la política clásica. bt2d es cerrada y poaPlant ya existe, así que
+   el arrastre no se resiente; se cachea por minuto. */
+let GHOST=null;
+function careoGhostInstant(){
+  if(!CAREO||!DAY||!DAY.pol[CAREO_A])return null;
+  const m=+$('hour').value;
+  if(m%STEP_MIN===0)return null;                      // en la malla: DAY manda
+  if(GHOST&&GHOST.m===m&&GHOST.stamp===DAY)return GHOST;
+  const c=DAY.c, tIdx=timeIndex();
+  const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
+  const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
+  const o=policyAngles(CAREO_A,g.zen,g.az,DAY.T,irr,DAY.doy,c.albedo);
+  const ang=slewLimit(DAY.pol[CAREO_A].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+  GHOST={m:m,stamp:DAY,ang:ang,shade:pp.shade};
+  return GHOST;
+}
+
 function sceneInstant(){
   if(!DAY)return null;
   const m=+$('hour').value;
@@ -4152,6 +4433,12 @@ function buildPolicyBox(){
   };}
   $('polbox').querySelectorAll('input').forEach(i=>i.onchange=()=>{
     POL[i.dataset.k].on=i.checked;
+    // el careo compara DOS políticas concretas: si se apaga una, el careo se
+    // apaga con ella en vez de enseñar media comparación
+    if(CAREO&&!(POL[CAREO_A].on&&POL[CAREO_B].on)){
+      CAREO=false;CAREO_PREV=null;CAREO_RES=null;
+      $('careo').checked=false;$('careolibro').disabled=true;$('careolibrolbl').style.opacity=.5;
+    }
     if(!POLICIES.some(P=>P.on)){POL['pairwise'].on=true;buildPolicyBox();}
     recompute();
   });
@@ -4163,7 +4450,8 @@ function recompute(light){
   rebuildSelectors();
   computeDay();
   paintHourTrack();
-  drawScene();drawCurves();fillDayTable();
+  careoCompute();
+  drawScene();drawCurves();fillDayTable();fillCareoBox();
   if(VIEW3D){build3D();update3D();}
   const slopes=DAY.T.pairs.map(p=>p.slope);
   $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
