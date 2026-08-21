@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.84</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.85</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -482,8 +482,8 @@ function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U
    mal o directamente no salen: "las sombras del OSM las hace mal". Aquí se amplía el recuadro (y el
    margen por el que puede pasear el recuadro adaptativo) para que abarque lo que se está dibujando.
    Si la capa está apagada, SHX_* valen lo mismo que SH_* y no cambia nada. */
-var SHX_CX=0,SHX_CZ=0,SHX_HALF=0;
-function shadowExt(){ SHX_CX=SH_CX;SHX_CZ=SH_CZ;SHX_HALF=SH_HALF;
+var SHX_CX=0,SHX_CZ=0,SHX_HALF=0,SHX_BASE='';
+function shadowExt(){ SHX_CX=SH_CX;SHX_CZ=SH_CZ;SHX_HALF=SH_HALF;SHX_BASE=SH_CX+'|'+SH_CZ+'|'+SH_HALF;
   if(!OSMG||!OSMG.children.length)return;
   var bb=new THREE.Box3().setFromObject(OSMG); if(!isFinite(bb.min.x))return;
   var x0=Math.min(SH_CX-SH_HALF,bb.min.x),x1=Math.max(SH_CX+SH_HALF,bb.max.x);
@@ -491,7 +491,11 @@ function shadowExt(){ SHX_CX=SH_CX;SHX_CZ=SH_CZ;SHX_HALF=SH_HALF;
   SHX_CX=(x0+x1)/2;SHX_CZ=(z0+z1)/2;SHX_HALF=Math.max((x1-x0)/2,(z1-z0)/2);
 }
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
-  if(!SHX_HALF)shadowExt();
+  /* Se recalcula si CAMBIA el recuadro de la planta, no solo la primera vez: SH_* se fija en build()
+     y la primera llamada a updateSunShadow() puede llegar antes, con el valor de la planta anterior.
+     Medido en Fayón: semilado 330 cacheado contra 174,31 real, o sea el mapa de sombra cubriendo casi
+     el cuádruple de superficie y perdiendo nitidez en los seguidores. */
+  if(!SHX_HALF||SHX_BASE!==SH_CX+'|'+SH_CZ+'|'+SH_HALF)shadowExt();
   var cx=SHX_CX, cy=0, cz=SHX_CZ, half=SHX_HALF;
   // caja ADAPTATIVA: a ras de suelo se ciñe alrededor de la cámara (texel varias veces más fino → sin
   // sierra sobre los MÓDULOS, cuyo plano casi contiene al rayo y estira el texel aún más que el suelo);
@@ -2088,7 +2092,7 @@ function buildExcavacion(){
    Proyectan sombra sobre el campo, que es para lo que sirven: una nave al sur sombrea de verdad.
    Es una llamada EXTERNA: la capa arranca apagada, no se pide nada hasta encenderla, y en modo
    offline no se pide nunca. */
-var SATPX=null,SATPXN=512;
+var SATPX=null,SATPXN=1024;   // 1.024 px sobre el ancho del terreno: en Fayón 0,6 m/px. A 512 un camino de hormigón de 3 m se difuminaba con la tierra y se le sembraba hierba encima
 function satRGB(x,n){ if(!SATPX||!SATUV)return null;
   var q=SATUV(x,n),i=Math.round(q[0]*(SATPXN-1)),j=Math.round((1-q[1])*(SATPXN-1));
   if(i<0||j<0||i>=SATPXN||j>=SATPXN)return null;
@@ -2106,8 +2110,14 @@ function satRGB(x,n){ if(!SATPX||!SATUV)return null;
 function sueloConstruido(c){ if(!c)return false;
   var r=c[0],g=c[1],b=c[2],exg=2*g-r-b,br=(r+g+b)/3;
   if(exg>=12)return false;                          // verde: eso es campo
-  if(Math.abs(r-b)<10&&br>60)return true;           // gris o blanco
-  if(b>r+6)return true;                             // azulado
+  /* HORMIGÓN Y ASFALTO SE DETECTAN POR SATURACIÓN, no por "R−B pequeño". Ese fue el fallo de la
+     primera versión —"seguimos con hierba sobre el cemento"—: pedía |R−B|<10, o sea gris PURO, y el
+     hormigón real es gris CÁLIDO (190,185,175 da R−B=15 y se colaba). Lo que de verdad los separa
+     es que son ACROMÁTICOS: (max−min)/brillo ≈ 0,03-0,08, mientras que el suelo árido es cromático
+     y cálido (0,20-0,45). Con el umbral en 0,12 entra el hormigón sucio y NO entra la tierra. */
+  var mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=(mx-mn)/Math.max(br,1);
+  if(sat<0.12&&br>45)return true;                   // hormigón, asfalto, cubierta clara: gris, frío o cálido
+  if(b>r+6)return true;                             // azulado: chapa, agua, piscina
   if(r-g>45&&r-b>60&&br<180)return true;            // teja
   return false;
 }
