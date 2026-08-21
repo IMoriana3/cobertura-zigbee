@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.82</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.83</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2070,17 +2070,32 @@ function osmAltura(t){
   return [OSM_H_DEF,'default'];
 }
 function osmAviso(html,err){var e=$('osmStat');if(!e)return;e.style.display=html?'block':'none';e.innerHTML=err?('<b style="color:#F2A900">'+html+'</b>'):html;}
-function osmEnVallado(x,n){var f=(LAYOUT&&LAYOUT.fence)||[];
-  for(var i=0;i<f.length;i++)if(f[i].length>2&&dentroPoli(x,n,f[i]))return true;
+/* ¿Lo dibuja YA el DWG? Ese, y solo ese, es el motivo para descartar un edificio de OSM.
+   La primera versión descartaba todo lo que cayera DENTRO DEL VALLADO, y eso se lleva por delante
+   justo los edificios más próximos cuando la parcela abarca el caserío de al lado — "solo me detecta
+   esos edificios, no los más próximos". Ahora se descarta un edificio solo si pisa una caseta del
+   plano o está pegado a un equipo que ya se dibuja (CT o inversor). */
+function osmYaEnDWG(x,n){
+  var c=(LAYOUT&&LAYOUT.cts)||[];
+  for(var i=0;i<c.length;i++)if(c[i].length>2&&dentroPoli(x,n,c[i]))return true;
+  var et=[].concat((LAYOUT&&LAYOUT.ctlab)||[],(LAYOUT&&LAYOUT.invlab)||[]);
+  for(var k=0;k<et.length;k++)if(Math.hypot(x-et[k].x,n-et[k].n)<12)return true;   // 12 m: la caseta del CT mapeada en OSM cae aquí
   return false;
 }
+function osmArea(P){var a=0;for(var i=0,j=P.length-1;i<P.length;j=i++)a+=(P[j][0]*P[i][1]-P[i][0]*P[j][1]);return Math.abs(a)/2;}
 function osmCarga(){   // descarga y cachea (una vez por planta); devuelve promesa
   if(OSMD)return Promise.resolve(OSMD);
   if(!TMESH||!mPerLon)return Promise.reject(new Error('el terreno aún no está'));
   var rn=TMESH.d/2/mPerLat,rx=TMESH.w/2/mPerLon;
   var bb=[(lat0-rn).toFixed(6),(lon0-rx).toFixed(6),(lat0+rn).toFixed(6),(lon0+rx).toFixed(6)].join(',');
   OSMBB=bb;
-  var q='[out:json][timeout:60];(way["building"]('+bb+');relation["building"]["type"="multipolygon"]('+bb+'););out geom tags;';
+  /* Se piden tres cosas, no una: EDIFICIOS (los que se extruyen), VIARIO (mismas clases que el
+     notebook) y USOS DEL SUELO urbanos. Las dos ultimas no son decorado: son las que dicen DONDE NO
+     HAY QUE SEMBRAR HIERBA — "ya ves que pone hierba donde hay edificios". */
+  var vias='motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track';
+  var usos='residential|industrial|commercial|retail|farmyard';
+  var q='[out:json][timeout:60];(way["building"]('+bb+');relation["building"]["type"="multipolygon"]('+bb+');'
+       +'way["highway"~"^('+vias+')$"]('+bb+');way["landuse"~"^('+usos+')$"]('+bb+'););out geom tags;';
   var i=0;
   function intenta(){
     if(i>=OSM_EP.length)return Promise.reject(new Error('los '+OSM_EP.length+' espejos de Overpass han fallado'));
@@ -2099,9 +2114,21 @@ function osmCarga(){   // descarga y cachea (una vez por planta); devuelve prome
   }
   return intenta();
 }
+var OSMR=[],OSMU=[];   // viario y usos del suelo de OSM (no se extruyen: mandan sobre la siembra de hierba)
+var OSM_ANCHO={motorway:11,trunk:10,primary:8,secondary:7,tertiary:6,unclassified:5,residential:6,service:4,track:3};   // anchura tipica por clase, m (DERIVADA: OSM casi nunca trae `width`)
 function osmParsea(j){
-  var out=[],el=(j&&j.elements)||[];
+  var out=[],el=(j&&j.elements)||[];OSMR=[];OSMU=[];
   for(var i=0;i<el.length;i++){var e=el[i],t=e.tags||{};
+    if(t.highway&&e.geometry&&e.geometry.length>1){var rp=[];
+      for(var rk=0;rk<e.geometry.length;rk++){var rg=e.geometry[rk];
+        if(rg.lon!=null&&rg.lat!=null)rp.push([(rg.lon-lon0)*mPerLon,(rg.lat-lat0)*mPerLat]);}
+      if(rp.length>1)OSMR.push({p:rp,k:t.highway,w:(t.width&&parseFloat(t.width))||OSM_ANCHO[t.highway]||4});
+      continue;}
+    if(t.landuse&&e.geometry&&e.geometry.length>2){var up=[];
+      for(var uk=0;uk<e.geometry.length;uk++){var ug=e.geometry[uk];
+        if(ug.lon!=null&&ug.lat!=null)up.push([(ug.lon-lon0)*mPerLon,(ug.lat-lat0)*mPerLat]);}
+      if(up.length>2)OSMU.push({p:up,k:t.landuse});
+      continue;}
     if(!t.building)continue;
     var aros=[];
     if(e.geometry&&e.geometry.length>2)aros.push(e.geometry);
@@ -2118,17 +2145,92 @@ function osmParsea(j){
       out.push({p:pts,h:ah[0],src:ah[1],name:t.name||('edificio '+(e.id||'?'))});}}
   return out;
 }
+/* MASCARA DE SUELO OCUPADO. Rejilla de 2 m sobre el terreno con lo que OSM dice que NO es campo:
+   huella de edificio (con 1,5 m de orla), suelo urbano (`landuse` residencial/industrial/…) y la
+   banda del viario. La siembra de hierba la consulta antes de plantar cada mata: sin esto salia
+   cesped sobre las casas y sobre la carretera — "pone hierba donde hay edificios".
+   Se aplica en cuanto hay datos, tengas o no encendida la capa: que no veas las cajas no significa
+   que ahi crezca hierba. */
+var OSMMASK=null,OSMMK={c:2.0};
+function osmMascara(){
+  OSMMASK=null; if(!TMESH||(!OSMD&&!OSMR.length&&!OSMU.length))return;
+  var c=OSMMK.c,nx=Math.ceil(TMESH.w/c),nn=Math.ceil(TMESH.d/c);
+  if(nx*nn>4e6)return;                                                     // planta enorme: la rejilla no compensa
+  var m=new Uint8Array(nx*nn);OSMMK.nx=nx;OSMMK.nn=nn;
+  function marca(x,n){var i=Math.floor((x+TMESH.w/2)/c),j=Math.floor((n+TMESH.d/2)/c);
+    if(i>=0&&j>=0&&i<nx&&j<nn)m[j*nx+i]=1;}
+  function pintaPoli(P,orla){
+    var x0=1e9,x1=-1e9,n0=1e9,n1=-1e9;P.forEach(function(q){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);n0=Math.min(n0,q[1]);n1=Math.max(n1,q[1]);});
+    for(var x=x0-orla;x<=x1+orla;x+=c)for(var n=n0-orla;n<=n1+orla;n+=c)
+      if(dentroPoli(x,n,P)||(orla>0&&distSegPoli(x,n,P)<orla))marca(x,n);}
+  /* LOS MISMOS GUARDIAS QUE AL DIBUJAR, y por la misma razon. Sin ellos, un poligono que abarque la
+     planta —OSM mapea a veces el huerto entero como un `building`, y casi siempre como
+     `landuse=industrial`— marcaba TODO el campo y la hierba desaparecia de la planta entera: medido,
+     58 % del terreno marcado y las 8 mallas de vegetacion a CERO instancias. Se salta lo que ocupa
+     mas del 20 % del terreno y lo que contiene el centro de la planta (eso es la planta, no un
+     vecino). */
+  var areaMax2=0.20*TMESH.w*TMESH.d;
+  function valeParaMascara(P){ return !(osmArea(P)>areaMax2||dentroPoli(0,0,P)); }
+  (OSMD||[]).forEach(function(b2){ if(valeParaMascara(b2.p))pintaPoli(b2.p,1.5); });
+  OSMU.forEach(function(u){ if(valeParaMascara(u.p))pintaPoli(u.p,0); });
+  OSMR.forEach(function(r){var hw=r.w/2+1.0;                               // banda del vial + 1 m de arcen
+    for(var k=0;k+1<r.p.length;k++){var A=r.p[k],B=r.p[k+1],L=Math.hypot(B[0]-A[0],B[1]-A[1]);
+      var pasos=Math.max(1,Math.ceil(L/c));
+      for(var t=0;t<=pasos;t++){var px=A[0]+(B[0]-A[0])*t/pasos,pn=A[1]+(B[1]-A[1])*t/pasos;
+        for(var dx=-hw;dx<=hw;dx+=c)for(var dn=-hw;dn<=hw;dn+=c)if(dx*dx+dn*dn<=hw*hw)marca(px+dx,pn+dn);}}});
+  OSMMASK=m;
+}
+function osmOcupado(x,n){ if(!OSMMASK)return false;
+  var i=Math.floor((x+TMESH.w/2)/OSMMK.c),j=Math.floor((n+TMESH.d/2)/OSMMK.c);
+  return (i>=0&&j>=0&&i<OSMMK.nx&&j<OSMMK.nn)?!!OSMMASK[j*OSMMK.nx+i]:false;
+}
+function distSegPoli(x,n,P){var d=1e9;
+  for(var k=0,l=P.length-1;k<P.length;l=k++){var a=P[k],b=P[l],vx=b[0]-a[0],vn=b[1]-a[1],L2=vx*vx+vn*vn||1e-9;
+    var t=Math.max(0,Math.min(1,((x-a[0])*vx+(n-a[1])*vn)/L2));
+    d=Math.min(d,Math.hypot(x-(a[0]+vx*t),n-(a[1]+vn*t)));}
+  return d;
+}
+/* VIARIO de OSM: cinta drapeada sobre el terreno, no una linea de un pixel. Se salta lo que el DWG
+   ya dibuja (roadSurfaces): dentro de la planta manda el plano. La anchura es DERIVADA de la clase
+   de via (OSM casi nunca trae `width`), asi que es orientativa. */
+function buildOSMViario(){
+  if(!OSMR.length)return;
+  var RS=(LAYOUT&&LAYOUT.roadSurfaces)||[];
+  var mat=new THREE.MeshStandardMaterial({color:0x8a8377,roughness:.95,metalness:0});
+  var vp=[];
+  OSMR.forEach(function(r){
+    for(var k=0;k+1<r.p.length;k++){var A=r.p[k],B=r.p[k+1];
+      var mx=(A[0]+B[0])/2,mn=(A[1]+B[1])/2;
+      if(Math.abs(mx)>TMESH.w/2||Math.abs(mn)>TMESH.d/2)continue;
+      var yaDWG=false;
+      for(var q=0;q<RS.length&&!yaDWG;q++)if(RS[q].o&&RS[q].o.length>2&&dentroPoli(mx,mn,RS[q].o))yaDWG=true;
+      if(yaDWG)continue;                                                   // ese tramo ya lo pinta el DWG
+      var L=Math.hypot(B[0]-A[0],B[1]-A[1])||1e-9,ux=(B[1]-A[1])/L*r.w/2,un=-(B[0]-A[0])/L*r.w/2;
+      var tramos=Math.max(1,Math.ceil(L/4));                               // se trocea para que la cinta siga el relieve
+      for(var t=0;t<tramos;t++){
+        var p0=[A[0]+(B[0]-A[0])*t/tramos,A[1]+(B[1]-A[1])*t/tramos],p1=[A[0]+(B[0]-A[0])*(t+1)/tramos,A[1]+(B[1]-A[1])*(t+1)/tramos];
+        var q1=[p0[0]+ux,p0[1]+un],q2=[p0[0]-ux,p0[1]-un],q3=[p1[0]+ux,p1[1]+un],q4=[p1[0]-ux,p1[1]-un];
+        function V(p){return [p[0],terrainMeshY(p[0],p[1])+0.08,-p[1]];}
+        var a1=V(q1),a2=V(q2),a3=V(q3),a4=V(q4);
+        vp.push(a1[0],a1[1],a1[2], a2[0],a2[1],a2[2], a3[0],a3[1],a3[2]);
+        vp.push(a2[0],a2[1],a2[2], a4[0],a4[1],a4[2], a3[0],a3[1],a3[2]);}}});
+  if(!vp.length)return;
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));g.computeVertexNormals();
+  var me=new THREE.Mesh(g,mat);me.receiveShadow=true;OSMG.add(me);
+}
 function buildOSM(){
   if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}
   if(!OSMD||!$('osmb')||!$('osmb').checked)return;
   OSMG=new THREE.Group();scene.add(OSMG);
   var mB=new THREE.MeshStandardMaterial({color:0xb8b2a8,roughness:.92,metalness:.04}),   // misma paleta que el visor del notebook
       mE=new THREE.LineBasicMaterial({color:0x6d6a63,transparent:true,opacity:.65});
-  var n=0,nOsm=0,nPl=0,nDef=0,dentro=0,lejos=0;
+  var n=0,nOsm=0,nPl=0,nDef=0,dentro=0,lejos=0,enorme=0;
+  var areaMax=0.20*TMESH.w*TMESH.d;                                                      // guardia: si OSM tiene la PLANTA ENTERA dibujada como un `building`, no se extruye una caja sobre el campo
   OSMD.forEach(function(b){
     var cx=0,cn=0;b.p.forEach(function(q){cx+=q[0];cn+=q[1];});cx/=b.p.length;cn/=b.p.length;
     if(Math.abs(cx)>TMESH.w/2||Math.abs(cn)>TMESH.d/2){lejos++;return;}                 // fuera del terreno dibujado
-    if(osmEnVallado(cx,cn)){dentro++;return;}                                            // dentro del vallado manda el DWG
+    if(osmArea(b.p)>areaMax){enorme++;return;}
+    if(osmYaEnDWG(cx,cn)){dentro++;return;}                                              // eso ya lo dibuja el plano
     var sh=new THREE.Shape();
     b.p.forEach(function(q,k){ if(k)sh.lineTo(q[0]-cx,q[1]-cn); else sh.moveTo(q[0]-cx,q[1]-cn); });
     sh.closePath();
@@ -2139,15 +2241,19 @@ function buildOSM(){
     OSMG.add(me);
     var ed=new THREE.LineSegments(new THREE.EdgesGeometry(g),mE);ed.position.copy(me.position);OSMG.add(ed);
     n++; if(b.src==='osm')nOsm++; else if(b.src==='plantas')nPl++; else nDef++;});
+  buildOSMViario();
   var bbTxt=OSMBB?(' <span style="color:var(--tx2)">· recuadro pedido a Overpass (S,O,N,E): '+OSMBB+'</span>'):'';
-  if(!n&&!dentro&&!lejos){   // CERO de verdad: hay que poder distinguir "OSM no los tiene" de "la consulta fallo"
+  if(!n&&!dentro&&!lejos&&!enorme){   // CERO de verdad: hay que poder distinguir "OSM no los tiene" de "la consulta fallo"
     osmAviso('<b>0 edificios</b>: Overpass ha respondido bien, con <b>'+OSMN+'</b> elementos. '+
       'Si ahí hay casas, es que <b>no están mapeadas en OSM</b> como <code>building</code> — compruébalo en openstreetmap.org sobre ese mismo recuadro.'+bbTxt);
     return;}
   osmAviso('<b>'+n+'</b> edificios de OSM · '+nOsm+' con altura del tag <code>height</code> · '+nPl+' por plantas×3 m · '+
     '<b>'+nDef+'</b> con el default de 6 m <span style="color:var(--tx2)">(no verificada)</span>'+
-    (dentro?' · '+dentro+' descartados por caer dentro del vallado (ahí manda el DWG)':'')+
-    (lejos?' · '+lejos+' fuera del terreno dibujado':'')+bbTxt);
+    (dentro?' · '+dentro+' descartados porque ya los dibuja el DWG':'')+
+    (lejos?' · '+lejos+' fuera del terreno dibujado':'')+
+    (enorme?' · '+enorme+' descartados por ocupar media planta (OSM la tiene mapeada como un solo edificio)':'')+
+    ' · '+OSMR.length+' viales y '+OSMU.length+' recintos de suelo urbano <span style="color:var(--tx2)">(sin hierba encima)</span>'+
+    ' <span style="color:var(--tx2)">· '+OSMN+' elementos recibidos</span>'+bbTxt);
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
@@ -2499,6 +2605,7 @@ function buildVeg(){
   var idx=[0,0,0,0,0,0,0,0],total=0;
   var _tc9=new THREE.Color();
   function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
+    if(osmOcupado(x,n))return;                                              // OSM dice que ahi hay casa, calle o suelo urbano: no se siembra
     var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
     o.position.set(x,terrainMeshY(x,n)-0.015,-n);o.rotation.set((rng()-0.5)*0.16,rng()*Math.PI*2,(rng()-0.5)*0.16);o.scale.set(sc,sy,sc);o.updateMatrix();   // LEAN aleatorio ±5° y base 1,5 cm hundida: ni palos verticales ni flotando
     var seq=rng()*rng(),br=0.82+rng()*0.30;                                   // TINTE POR INSTANCIA: brillo ±15% y 'sequedad' (vira a pajizo) — el verde uniforme cantaba a césped procedural
@@ -4461,9 +4568,9 @@ $('osmb').onchange=function(){
   if(!this.checked){if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}osmAviso('');return;}
   if(OFFLINE){this.checked=false;osmAviso('modo OFFLINE: no se piden datos a Overpass.',true);return;}
   if(_osmCargando)return;
-  if(OSMD){buildOSM();return;}
-  _osmCargando=true;osmAviso('pidiendo edificios a Overpass…');
-  osmCarga().then(function(){_osmCargando=false;buildOSM();})
+  if(OSMD){buildOSM();return;}   // ya descargados: la mascara y la siembra ya se rehicieron en su momento
+  _osmCargando=true;osmAviso('pidiendo edificios, viario y suelo urbano a Overpass…');
+  osmCarga().then(function(){_osmCargando=false;osmMascara();buildVeg();buildOSM();})   // la mascara obliga a resembrar: la hierba ya plantada no sabia de las casas
     .catch(function(e){_osmCargando=false;var cb=$('osmb');if(cb)cb.checked=false;osmAviso('no se han podido traer los edificios: '+e.message,true);});};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;
   if(EXCG)EXCG.children.forEach(function(m9){if(m9.userData.exc&&m9.material&&m9.material.length)m9.material[0]=this.checked?m9.userData.matRel:m9.userData.matSuelo;},this);   // el parche de la explanada cambia con el terreno (si no, quedaba un recorte de ortofoto en medio del mapa de cotas)
