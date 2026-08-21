@@ -119,6 +119,8 @@ addEventListener('DOMContentLoaded',function(){
     <button id="fotoBtn" title="Captura PNG a alta resolución (2×, sombras 8K) del encuadre actual y la descarga." style="background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer">📸 Foto</button></div>
     <div class="row"><label><input type="checkbox" id="lbls"> Etiquetas</label></div>
     <div class="row"><label><input type="checkbox" id="bos" checked> Instalaciones (CT, inversores, CCTV, vallado)</label></div>
+    <div class="row"><label title="Edificios del ENTORNO extraídos de OpenStreetMap (naves, casas, granjas): se piden a Overpass y se extruye su huella, con el mismo criterio que la celda 02.5e del notebook de SolarGPT. La altura sale del tag height; si no lo hay, de building:levels x 3 m; y si tampoco, 6 m por defecto. En zona rural casi nadie etiqueta altura, así que la mayoría saldrán con el default: NO son alturas verificadas. Proyectan sombra sobre el campo. Lo que dibuja el DWG (CT, oficinas) no se toca: se descarta todo edificio de OSM que caiga dentro del vallado. Es una llamada externa, por eso arranca apagada."><input type="checkbox" id="osmb"> 🏘 Edificios del entorno (OSM)</label></div>
+    <div class="row" id="osmStat" style="display:none;font-size:11px;color:var(--tx2);line-height:1.5"></div>
     <div class="row" style="flex-wrap:wrap"><label title="De donde sale la cota de cada seguidor. TERRENO: se drapea sobre el relieve del DEM, paralelo al suelo. LEVANTAMIENTO: cada fila va a la cota MEDIDA en campo sobre el modulo, con su pendiente y su quiebro reales; el terreno sigue siendo el DEM y los postes absorben la diferencia.">Cotas del seguidor</label>
       <select id="geosrc" style="flex:1;min-width:150px;background:#1a2330;color:#eaf4ff;border:1px solid var(--line2);border-radius:7px;padding:3px 7px;font:inherit;font-size:12px">
         <option value="terreno">Terreno (drapeado)</option>
@@ -2040,6 +2042,99 @@ function buildExcavacion(){
         cp.push(p1[0],e.y,-p1[1], p2[0],Math.max(y2,e.y),-p2[1], p1[0],Math.max(y1,e.y),-p1[1]);}}
     if(cp.length){var gc=new THREE.BufferGeometry();gc.setAttribute('position',new THREE.Float32BufferAttribute(cp,3));gc.computeVertexNormals();
       var mc=new THREE.Mesh(gc,corteM);mc.receiveShadow=true;mc.castShadow=true;EXCG.add(mc);}});
+}
+/* ───────── ENTORNO: EDIFICIOS DE OPENSTREETMAP ─────────
+   El MISMO criterio que la celda «02.5e — Render 3D» del notebook de SolarGPT
+   (solargpt_core/osm_context.py + render3d_field.py): se piden a Overpass los `building` que caen
+   en el recuadro del terreno y se extruye su huella. Altura, por orden y CON FUENTE:
+     1) tag `height` (o `building:height`)   2) `building:levels` × 3 m   3) 6,0 m por defecto
+   Las alturas de OSM faltan o están mal a menudo —en rural casi nadie las etiqueta—, así que la
+   cuenta POR FUENTE sale en la etiqueta de la capa: lo que salga con el default de 6 m no es una
+   altura medida, es un relleno. Igual que avisa el notebook.
+   Estos edificios NO sustituyen a nada del plano: se descarta todo el que caiga DENTRO del vallado,
+   porque ahí manda el DWG (CT, oficinas, inversores). Y solo edificios: el viario de la planta ya
+   viene del DWG y meter el de OSM encima sería pintar dos veces la misma calle.
+   Proyectan sombra sobre el campo, que es para lo que sirven: una nave al sur sombrea de verdad.
+   Es una llamada EXTERNA: la capa arranca apagada, no se pide nada hasta encenderla, y en modo
+   offline no se pide nunca. */
+var OSMD=null,OSMG=null,_osmCargando=false;
+var OSM_EP=['https://overpass-api.de/api/interpreter',                    // los mismos espejos que usa SolarGPT
+            'https://overpass.kumi.systems/api/interpreter',
+            'https://overpass.private.coffee/api/interpreter'];
+var OSM_H_DEF=6.0,OSM_H_PLANTA=3.0;                                       // default y altura por planta: las del notebook
+function osmAltura(t){
+  var h=t.height||t['building:height'];
+  if(h){var v=parseFloat(String(h).toLowerCase().replace('m','').trim()); if(isFinite(v)&&v>0)return [v,'osm'];}
+  var lv=t['building:levels'];
+  if(lv){var n=parseFloat(lv); if(isFinite(n)&&n>0)return [Math.max(OSM_H_PLANTA,n*OSM_H_PLANTA),'plantas'];}
+  return [OSM_H_DEF,'default'];
+}
+function osmAviso(html,err){var e=$('osmStat');if(!e)return;e.style.display=html?'block':'none';e.innerHTML=err?('<b style="color:#F2A900">'+html+'</b>'):html;}
+function osmEnVallado(x,n){var f=(LAYOUT&&LAYOUT.fence)||[];
+  for(var i=0;i<f.length;i++)if(f[i].length>2&&dentroPoli(x,n,f[i]))return true;
+  return false;
+}
+function osmCarga(){   // descarga y cachea (una vez por planta); devuelve promesa
+  if(OSMD)return Promise.resolve(OSMD);
+  if(!TMESH||!mPerLon)return Promise.reject(new Error('el terreno aún no está'));
+  var rn=TMESH.d/2/mPerLat,rx=TMESH.w/2/mPerLon;
+  var bb=[(lat0-rn).toFixed(6),(lon0-rx).toFixed(6),(lat0+rn).toFixed(6),(lon0+rx).toFixed(6)].join(',');
+  var q='[out:json][timeout:60];(way["building"]('+bb+');relation["building"]["type"="multipolygon"]('+bb+'););out geom tags;';
+  var i=0;
+  function intenta(){
+    if(i>=OSM_EP.length)return Promise.reject(new Error('los '+OSM_EP.length+' espejos de Overpass han fallado'));
+    var ep=OSM_EP[i++];
+    return fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}})
+      .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(j){ OSMD=osmParsea(j); return OSMD; })
+      .catch(function(){ return intenta(); });                            // 429/504/red: al siguiente espejo, como en SolarGPT
+  }
+  return intenta();
+}
+function osmParsea(j){
+  var out=[],el=(j&&j.elements)||[];
+  for(var i=0;i<el.length;i++){var e=el[i],t=e.tags||{};
+    if(!t.building)continue;
+    var aros=[];
+    if(e.geometry&&e.geometry.length>2)aros.push(e.geometry);
+    else if(e.members)for(var m=0;m<e.members.length;m++)                 // multipolígono: solo los anillos EXTERIORES (los patios no se restan)
+      if(e.members[m].role==='outer'&&e.members[m].geometry&&e.members[m].geometry.length>2)aros.push(e.members[m].geometry);
+    var ah=osmAltura(t);
+    for(var a=0;a<aros.length;a++){
+      var pts=[];
+      for(var k=0;k<aros[a].length;k++){var g=aros[a][k];
+        if(g.lon==null||g.lat==null)continue;
+        pts.push([(g.lon-lon0)*mPerLon,(g.lat-lat0)*mPerLat]);}          // al frame local del visor: el MISMO origen que todo lo demás
+      if(pts.length>2&&Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.05)pts.pop();
+      if(pts.length<3)continue;
+      out.push({p:pts,h:ah[0],src:ah[1],name:t.name||('edificio '+(e.id||'?'))});}}
+  return out;
+}
+function buildOSM(){
+  if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}
+  if(!OSMD||!$('osmb')||!$('osmb').checked)return;
+  OSMG=new THREE.Group();scene.add(OSMG);
+  var mB=new THREE.MeshStandardMaterial({color:0xb8b2a8,roughness:.92,metalness:.04}),   // misma paleta que el visor del notebook
+      mE=new THREE.LineBasicMaterial({color:0x6d6a63,transparent:true,opacity:.65});
+  var n=0,nOsm=0,nPl=0,nDef=0,dentro=0,lejos=0;
+  OSMD.forEach(function(b){
+    var cx=0,cn=0;b.p.forEach(function(q){cx+=q[0];cn+=q[1];});cx/=b.p.length;cn/=b.p.length;
+    if(Math.abs(cx)>TMESH.w/2||Math.abs(cn)>TMESH.d/2){lejos++;return;}                 // fuera del terreno dibujado
+    if(osmEnVallado(cx,cn)){dentro++;return;}                                            // dentro del vallado manda el DWG
+    var sh=new THREE.Shape();
+    b.p.forEach(function(q,k){ if(k)sh.lineTo(q[0]-cx,q[1]-cn); else sh.moveTo(q[0]-cx,q[1]-cn); });
+    sh.closePath();
+    var g=new THREE.ExtrudeGeometry(sh,{depth:b.h,bevelEnabled:false});
+    g.rotateX(-Math.PI/2);                                                               // huella en (x, norte) extruida en +z → z pasa a ser la altura
+    var base=1e9;b.p.forEach(function(q){base=Math.min(base,terrainMeshY(q[0],q[1]));});  // se apoya en su punto MÁS BAJO: enterrado no se ve, en el aire sí
+    var me=new THREE.Mesh(g,mB);me.position.set(cx,base-0.2,-cn);me.castShadow=true;me.receiveShadow=true;me.userData.osm=b;
+    OSMG.add(me);
+    var ed=new THREE.LineSegments(new THREE.EdgesGeometry(g),mE);ed.position.copy(me.position);OSMG.add(ed);
+    n++; if(b.src==='osm')nOsm++; else if(b.src==='plantas')nPl++; else nDef++;});
+  osmAviso('<b>'+n+'</b> edificios de OSM · '+nOsm+' con altura del tag <code>height</code> · '+nPl+' por plantas×3 m · '+
+    '<b>'+nDef+'</b> con el default de 6 m <span style="color:var(--tx2)">(no verificada)</span>'+
+    (dentro?' · '+dentro+' descartados por caer dentro del vallado (ahí manda el DWG)':'')+
+    (lejos?' · '+lejos+' fuera del terreno dibujado':''));
 }
 function inClip(x,n){ if(!CLP){ if(FB&&FB.x1>FB.x0)return x>FB.x0-120&&x<FB.x1+120&&n>FB.n0-120&&n<FB.n1+120; return Math.abs(x)<800&&Math.abs(n)<700; } return x>CLP.x0&&x<CLP.x1&&n>CLP.n0&&n<CLP.n1; }   // recorta al footprint real (vallado o, sin vallado, la huella del campo +120 m: Ayora llega a ±1200 y el tope fijo ±800 se comia equipos); descarta bloques sueltos del DWG
 function makeInvTex(marca){   // frontal del inversor: panel LISO con esquinas redondeadas y tornillos. SUNGROW (SG350HX, foto real) o HUAWEI (SUN2000 de string: mismo cuerpo, emblema de petalos rojo y marca en rojo)
@@ -4320,7 +4415,7 @@ if($('afbt')){
 $('edArtic').onchange=function(){if(selIdx<0)return;TRK[selIdx].artic=this.checked;layoutTrackers();};   // articula/endereza SOLO el seleccionado
 $('edSave').onclick=saveTrackers;
 $('edReset').onclick=function(){if(selIdx<0)return;var t=TRK[selIdx];t.gx=t.gx0;t.gz=t.gz0;t.artic=(typeof t.artic0==='boolean')?t.artic0:kinked;resampleTracker(t);layoutTrackers();selectTracker(selIdx);};   // vuelve el seleccionado a su sitio Y a su rótula DEL DWG (antes lo forzaba al maestro)
-$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;excavaCT();buildExcavacion();layoutTrackers();positionGateways();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
+$('vex').oninput=function(){vex=+this.value;$('vexV').textContent=vex+'×';if(terrain)terrain.scale.z=vex;excavaCT();buildExcavacion();buildOSM();layoutTrackers();positionGateways();buildBOS();buildCorridor();buildContactAO();buildVeg();if(bosGroup)bosGroup.visible=$('bos').checked;if(fresOn)applyFresnel();if(invGroup&&invOn)buildInvLayer();Object.keys(netG).forEach(function(k){if(netG[k]&&netG[k].visible)buildNetLayer(k);});if(genOn){buildGenFlows();buildGenRings();}if(cobOn)cobCompute();if(cobRealOn)cobRealApply();statCotas();};   // capas inversores/zonas/redes/flujo/AO/vegetación se redrapean con la exageración vertical
 $('bos').onchange=function(){if(bosGroup)bosGroup.visible=this.checked;};
 $('bt').onchange=function(){btOn=this.checked;setTime(curMin);if(fresOn)applyFresnel();};   // backtracking on/off → cambia el sombreado entre filas
 $('kink').onchange=function(){kinked=this.checked;for(var i=0;i<TRK.length;i++)TRK[i].artic=kinked&&(typeof TRK[i].artic0==='boolean'?TRK[i].artic0:true);layoutTrackers();if(selIdx>=0)$('edArtic').checked=TRK[selIdx].artic;};   // maestro: al marcarlo cada seguidor recupera SU rótula del DWG (no se articulan los rígidos); al desmarcarlo, todos rectos
@@ -4349,6 +4444,14 @@ $('solcam').onchange=function(){solCam=this.checked;                            
   if(solCam&&freeCam){freeCam=false;$('freecam').checked=false;controls.enabled=true;}  // la cámara libre se queda con el ratón: son excluyentes
   if(solCam)camDesdeElSol(); else {solCamSalir();encuadra();}
   solCamAviso();};
+$('osmb').onchange=function(){
+  if(!this.checked){if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}osmAviso('');return;}
+  if(OFFLINE){this.checked=false;osmAviso('modo OFFLINE: no se piden datos a Overpass.',true);return;}
+  if(_osmCargando)return;
+  if(OSMD){buildOSM();return;}
+  _osmCargando=true;osmAviso('pidiendo edificios a Overpass…');
+  osmCarga().then(function(){_osmCargando=false;buildOSM();})
+    .catch(function(e){_osmCargando=false;var cb=$('osmb');if(cb)cb.checked=false;osmAviso('no se han podido traer los edificios: '+e.message,true);});};
 $('relief').onchange=function(){if(terrain&&terrain.userData.reliefMat)terrain.material=this.checked?terrain.userData.reliefMat:terrain.userData.baseMat;
   if(EXCG)EXCG.children.forEach(function(m9){if(m9.userData.exc&&m9.material&&m9.material.length)m9.material[0]=this.checked?m9.userData.matRel:m9.userData.matSuelo;},this);   // el parche de la explanada cambia con el terreno (si no, quedaba un recorte de ortofoto en medio del mapa de cotas)
   var ck9=this.checked;PADSM.forEach(function(p9){p9.visible=!ck9;});};   // los pads de grava se ocultan al colorear por cota ('mira qué sale alrededor de los inversores')
