@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.87</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.88</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -2116,7 +2116,10 @@ function sueloConstruido(c){ if(!c)return false;
      es que son ACROMÁTICOS: (max−min)/brillo ≈ 0,03-0,08, mientras que el suelo árido es cromático
      y cálido (0,20-0,45). Con el umbral en 0,12 entra el hormigón sucio y NO entra la tierra. */
   var mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=(mx-mn)/Math.max(br,1);
-  if(sat<0.12&&br>45)return true;                   // hormigón, asfalto, cubierta clara: gris, frío o cálido
+  /* 0,18 y no 0,12: una carretera de hormigón o zahorra clara da 0,15 —"invade la carretera"— y se
+     escapaba. El suelo natural queda MUY por encima (tierra batida 0,37 · arena 0,32 · rastrojo 0,36
+     · tierra rojiza 0,44), así que el hueco entre 0,18 y 0,30 es holgado. */
+  if(sat<0.18&&br>45)return true;                   // hormigón, asfalto, zahorra, cubierta clara
   if(b>r+6)return true;                             // azulado: chapa, agua, piscina
   if(r-g>45&&r-b>60&&br<180)return true;            // teja
   return false;
@@ -2282,7 +2285,30 @@ function osmMascara(){
       var a4=Math.max(0,i4-R),b4=Math.min(nx-1,i4+R),c4=Math.max(0,j4-R),d4=Math.min(nn-1,j4+R);
       var suma=S[(d4+1)*W+b4+1]-S[c4*W+b4+1]-S[(d4+1)*W+a4]+S[c4*W+a4];
       if(suma>0.55*(b4-a4+1)*(d4-c4+1)){m2[k4]=1;rel++;}}
-    m=m2;OSMTEX+=rel;}
+    /* Y SE TAPAN LOS HUECOS CERRADOS. Una plaza o un patio rodeado de manzana no tiene vecinos
+       marcados suficientes en 9 m —"invade la plaza interior"—, pero sí está ENCERRADO. Se inunda el
+       mapa desde el borde por las celdas libres: lo que no se alcanza es interior, y se marca. Esto
+       no puede crecer hacia el campo, porque el campo siempre conecta con el borde. */
+    /* Se inunda sobre una copia DILATADA un paso. Sin eso, una sola celda floja del anillo de
+       manzana abre un pasillo de 2 m por el que la inundación entra en la plaza y ya no la ve como
+       hueco: medido, 319 matas se quedaban dentro. Dilatar cierra los portillos de hasta 4 m sin
+       tocar el resultado final, porque los huecos se marcan sobre el mapa SIN dilatar. */
+    var dil=new Uint8Array(m2);
+    for(var jd=0;jd<nn;jd++)for(var id=0;id<nx;id++){ if(!m2[jd*nx+id])continue;
+      for(var dj=-1;dj<=1;dj++)for(var di=-1;di<=1;di++){var ii=id+di,jj2=jd+dj;
+        if(ii>=0&&jj2>=0&&ii<nx&&jj2<nn)dil[jj2*nx+ii]=1;}}
+    var vis=new Uint8Array(nx*nn),pila=[],hue=0;
+    for(var i5=0;i5<nx;i5++){var kA=i5,kB=(nn-1)*nx+i5;
+      if(!dil[kA]&&!vis[kA]){vis[kA]=1;pila.push(kA);} if(!dil[kB]&&!vis[kB]){vis[kB]=1;pila.push(kB);}}
+    for(var j5=0;j5<nn;j5++){var kC=j5*nx,kD=j5*nx+nx-1;
+      if(!dil[kC]&&!vis[kC]){vis[kC]=1;pila.push(kC);} if(!dil[kD]&&!vis[kD]){vis[kD]=1;pila.push(kD);}}
+    while(pila.length){var k5=pila.pop(),i6=k5%nx,j6=(k5-i6)/nx;
+      if(i6>0){var kk=k5-1; if(!dil[kk]&&!vis[kk]){vis[kk]=1;pila.push(kk);}}
+      if(i6<nx-1){var kk2=k5+1; if(!dil[kk2]&&!vis[kk2]){vis[kk2]=1;pila.push(kk2);}}
+      if(j6>0){var kk3=k5-nx; if(!dil[kk3]&&!vis[kk3]){vis[kk3]=1;pila.push(kk3);}}
+      if(j6<nn-1){var kk4=k5+nx; if(!dil[kk4]&&!vis[kk4]){vis[kk4]=1;pila.push(kk4);}}}
+    for(var k6=0;k6<m2.length;k6++)if(!m2[k6]&&!vis[k6]){m2[k6]=1;hue++;}
+    m=m2;OSMTEX+=rel+hue;}
   OSMMASK=m;
 }
 function osmOcupado(x,n){ if(!OSMMASK)return false;
@@ -2711,7 +2737,10 @@ function buildVeg(){
   var idx=[0,0,0,0,0,0,0,0],total=0;
   var _tc9=new THREE.Color();
   function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
-    if(osmOcupado(x,n))return;                                              // OSM dice que ahi hay casa, calle o suelo urbano: no se siembra
+    if(osmOcupado(x,n))return;                                              // OSM o la ortofoto dicen que ahi hay casa, calle o suelo urbano: no se siembra
+    /* (Probado y DESCARTADO: consultar la máscara además a 1,2 m en cruz, por si la mata cae en el
+       borde de una celda. No mejoró nada —222 matas antes, 248 después, o sea ruido— y a cambio
+       pelaba un metro de hierba alrededor de cada camino y cada tejado. Fuera.) */
     if(SATPX&&sueloConstruido(satRGB(x,n)))return;                          // y la ORTOFOTO se mira MATA A MATA: la rejilla de 2 m muestrea su centro y en el borde de un tejado dejaba caer hierba (3,8 % medido)
     if(SATPX&&sueloEdificado(x,n))return;                                   // idem con la TEXTURA: por rejilla se colaban 35.950 matas de 220.000 (16 %) dentro del caserío
     var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
