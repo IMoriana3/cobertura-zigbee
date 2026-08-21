@@ -77,7 +77,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.83</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.84</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -477,24 +477,48 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
   updateEnvMap();updateRefl(); }   // reflejos del cielo en vidrio/acero (cubemap CPU, opt-in), regenerados al cambiar sol/nubes
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); camDesdeElSol(); solCamAviso(); }   // la vista desde el sol se pega a la barra de tiempo   // la intensidad la fija applySky (nubes/luna)
 // shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
+/* El recuadro de sombra se ciñe a la PLANTA. Con los edificios de OSM encendidos eso deja fuera del
+   mapa de sombra a todo lo que hay alrededor —el caserío, la nave del vecino— y sus sombras salen
+   mal o directamente no salen: "las sombras del OSM las hace mal". Aquí se amplía el recuadro (y el
+   margen por el que puede pasear el recuadro adaptativo) para que abarque lo que se está dibujando.
+   Si la capa está apagada, SHX_* valen lo mismo que SH_* y no cambia nada. */
+var SHX_CX=0,SHX_CZ=0,SHX_HALF=0;
+function shadowExt(){ SHX_CX=SH_CX;SHX_CZ=SH_CZ;SHX_HALF=SH_HALF;
+  if(!OSMG||!OSMG.children.length)return;
+  var bb=new THREE.Box3().setFromObject(OSMG); if(!isFinite(bb.min.x))return;
+  var x0=Math.min(SH_CX-SH_HALF,bb.min.x),x1=Math.max(SH_CX+SH_HALF,bb.max.x);
+  var z0=Math.min(SH_CZ-SH_HALF,bb.min.z),z1=Math.max(SH_CZ+SH_HALF,bb.max.z);
+  SHX_CX=(x0+x1)/2;SHX_CZ=(z0+z1)/2;SHX_HALF=Math.max((x1-x0)/2,(z1-z0)/2);
+}
 function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._dir, sc=SUN.shadow.camera;   // de noche la "luz" es la luna (_ldir) → sombras lunares
-  var cx=SH_CX, cy=0, cz=SH_CZ, half=SH_HALF;
+  if(!SHX_HALF)shadowExt();
+  var cx=SHX_CX, cy=0, cz=SHX_CZ, half=SHX_HALF;
   // caja ADAPTATIVA: a ras de suelo se ciñe alrededor de la cámara (texel varias veces más fino → sin
   // sierra sobre los MÓDULOS, cuyo plano casi contiene al rayo y estira el texel aún más que el suelo);
   // a vista de pájaro vuelve a la planta entera. Centro sesgado hacia donde MIRAS, acotado dentro de la
   // planta y anclado a la rejilla de texels (el semiancho va en saltos de 20 m) para que no "nade".
-  var hAd=Math.min(SH_HALF,Math.max(160,Math.ceil((100+2.4*camera.position.y)/20)*20));
-  if(hAd<SH_HALF-1){
+  var hAd=Math.min(SHX_HALF,Math.max(160,Math.ceil((100+2.4*camera.position.y)/20)*20));
+  if(hAd<SHX_HALF-1){
     half=hAd;
     var vd=camera.getWorldDirection(_shDirV);
     var bx=camera.position.x+vd.x*half*0.45, bz=camera.position.z+vd.z*half*0.45;
-    cx=Math.max(SH_CX-(SH_HALF-half),Math.min(SH_CX+(SH_HALF-half),bx));
-    cz=Math.max(SH_CZ-(SH_HALF-half),Math.min(SH_CZ+(SH_HALF-half),bz));
+    cx=Math.max(SHX_CX-(SHX_HALF-half),Math.min(SHX_CX+(SHX_HALF-half),bx));
+    cz=Math.max(SHX_CZ-(SHX_HALF-half),Math.min(SHX_CZ+(SHX_HALF-half),bz));
     var texw=2*half/(SUN.shadow.mapSize.x||4096);cx=Math.round(cx/texw)*texw;cz=Math.round(cz/texw)*texw;
   }
   sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
-  SUN.position.set(cx+dir.E*d, cy+Math.max(0.06,dir.U)*d, cz-dir.N*d);
+  /* SOL RASANTE. Habia un suelo de 0,06 en la altura del sol (3,44 grados) para colocar la luz, y eso
+     DEFORMA la sombra: su longitud va como h/tan(alt), asi que con el sol de verdad a 1 grado una
+     nave de 12 m tira 690 m de sombra y con el suelo puesto salian 199 — 3,5 veces corta. De ahi que
+     "en diciembre si lo hace bien" (a mediodia de diciembre el sol va a 25-30 grados y el suelo ni
+     entra) y a las 19:49 no. Ahora se usa la altura REAL hasta 1,15 grados; por debajo NO se dibuja
+     sombra de sol: a esa altura la componente directa es despreciable —todo esta ya en penumbra— y
+     ademas la sombra ni cabria en el mapa. */
+  var uSol=Math.max(0.02,dir.U);
+  SUN.position.set(cx+dir.E*d, cy+uSol*d, cz-dir.N*d);
+  var raso=(!SUN._ldir)&&dir.U<0.02;
+  if(SUN.castShadow!==!raso)SUN.castShadow=!raso;
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
   SUN.shadow.radius=Math.min(7,2+1.9/Math.max(0.08,dir.U));            // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente; TOPE 7 (a 16, el PCF banda la penumbra: "sombras raras" a rayas al amanecer/atardecer)
   SUN.shadow.normalBias=Math.max(0.05,Math.min(0.2,half*0.00006)); }   // bias escalado al área cubierta
@@ -805,6 +829,12 @@ async function build(){
   RELIEVE={emin:emin,rango:erange};                                            // el parche de la explanada colorea por cota con el MISMO baremo que el terreno
   SATUV=(sat&&sat.ok>0)?function(x,n){var q=sat.px(lat0+n/mPerLat,lon0+x/mPerLon);return [q.x/sat.W,1-q.y/sat.H];}
                        :function(x,n){return [(x+widthM/2)/widthM,(n+depthM/2)/depthM];};   // sin satélite, la UV por defecto del plano (textura beige)
+  /* MUESTREO DE LA ORTOFOTO: se reduce a 512x512 UNA vez y se guarda su ImageData. Con eso se puede
+     preguntar por el color del suelo en cualquier punto sin leer el canvas grande pixel a pixel. */
+  SATPX=null;
+  if(sat&&sat.ok>0)try{var _mc=document.createElement('canvas');_mc.width=_mc.height=SATPXN;
+    var _mx=_mc.getContext('2d');_mx.drawImage(sat.canvas,0,0,SATPXN,SATPXN);
+    SATPX=_mx.getImageData(0,0,SATPXN,SATPXN);}catch(e){SATPX=null;}
   if(sat&&TESELAS_DIAG)pintaTeselas(sat);   // ?teselas=1: el mapa de origen se pinta ANTES del edgeFade, para que se tinte tambien la orla
   var mat;if(sat&&sat.ok>0){edgeFade(sat.canvas);var tex=new THREE.CanvasTexture(sat.canvas);if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;tex.anisotropy=(renderer&&renderer.capabilities)?renderer.capabilities.getMaxAnisotropy():8;mat=new THREE.MeshStandardMaterial({map:tex,roughness:.96,metalness:0,transparent:true,depthWrite:true});}else{var gc=document.createElement('canvas');gc.width=gc.height=256;var gx=gc.getContext('2d');gx.fillStyle='#cfc8b6';gx.fillRect(0,0,256,256);edgeFade(gc);var gt=new THREE.CanvasTexture(gc);mat=new THREE.MeshStandardMaterial({map:gt,roughness:1,metalness:0,transparent:true,depthWrite:true});}   // offline (suelo BEIGE árido como las fotos; antes verde): mismo difuminado de borde vía textura+alfa, también se funde con el cielo
   addTerrainDetail(mat);   // micro-detalle de suelo al acercarte (el satélite deja de verse "borroso" de cerca)
@@ -816,6 +846,7 @@ async function build(){
   buildTrackers(elevAt);
   ELEV=elevAt;                                                                 // guarda el muestreo de cota para el análisis Fresnel
   excavaCT();buildExcavacion();                                                // explanadas de los CT: ANTES de buildBOS, para que la caseta se apoye ya nivelada
+  osmMascara();                                                                // dónde NO sembrar hierba: lo dice la ortofoto (y OSM, si ya está cargado)
   if(LAYOUT.ncus&&LAYOUT.ncus.length){GWS=LAYOUT.ncus.map(function(c){var q=fueraDeLosa(c.x,c.n);return {name:c.name.replace(/^NCU\s*/i,''),lat:lat0+q[1]/mPerLat,lon:lon0+q[0]/mPerLon,h:2.5};});}   // fueraDeLosa: si el listado la pone sobre la explanada del CT, se planta 0,60 m por fuera (declarado)  // NCUs REALES del DWG (NCU 1, NCU 2)
   if(LAYOUT.corridorN!=null)CORRIDOR=LAYOUT.corridorN;                          // pasillo central: norte→NCU norte, sur→NCU sur
   var mxla=-1e9,mnla=1e9;GWS.forEach(function(gw,i){if(gw.lat>mxla){mxla=gw.lat;NIDX=i;}if(gw.lat<mnla){mnla=gw.lat;SIDX=i;}});
@@ -2057,6 +2088,29 @@ function buildExcavacion(){
    Proyectan sombra sobre el campo, que es para lo que sirven: una nave al sur sombrea de verdad.
    Es una llamada EXTERNA: la capa arranca apagada, no se pide nada hasta encenderla, y en modo
    offline no se pide nunca. */
+var SATPX=null,SATPXN=512;
+function satRGB(x,n){ if(!SATPX||!SATUV)return null;
+  var q=SATUV(x,n),i=Math.round(q[0]*(SATPXN-1)),j=Math.round((1-q[1])*(SATPXN-1));
+  if(i<0||j<0||i>=SATPXN||j>=SATPXN)return null;
+  var k=(j*SATPXN+i)*4,d=SATPX.data;
+  if(d[k+3]<8)return null;                          // orla difuminada del borde: ahí no hay foto que valga
+  return [d[k],d[k+1],d[k+2]];
+}
+/* ¿ESE PUNTO DE LA ORTOFOTO ES SUELO CONSTRUIDO? Pedido: "aunque sea quitar la hierba donde vemos
+   que el fondo es edificio". Sin infrarrojo, la vegetación se detecta por EXCESO DE VERDE (2G−R−B).
+   Lo que no es verde se cuenta como construido SOLO si además el color es NEUTRO (hormigón, asfalto,
+   cubierta clara), AZULADO (chapa, agua, piscina) o ROJO DE TEJA. El suelo árido es CÁLIDO —R>G>B
+   con R−B amplio— y queda fuera a propósito: si no, media planta se quedaría sin hierba.
+   AVISO: los umbrales están ajustados sobre colores sintéticos del banco; NO he podido validarlos
+   contra ortofoto real (aquí no hay red). Si en alguna planta se come hierba de campo, se tocan aquí. */
+function sueloConstruido(c){ if(!c)return false;
+  var r=c[0],g=c[1],b=c[2],exg=2*g-r-b,br=(r+g+b)/3;
+  if(exg>=12)return false;                          // verde: eso es campo
+  if(Math.abs(r-b)<10&&br>60)return true;           // gris o blanco
+  if(b>r+6)return true;                             // azulado
+  if(r-g>45&&r-b>60&&br<180)return true;            // teja
+  return false;
+}
 var OSMD=null,OSMG=null,_osmCargando=false,OSMBB='',OSMN=0;   // OSMBB/OSMN: el recuadro que se pidio y cuantos elementos vinieron — sin esto, un 0 no se puede diagnosticar
 var OSM_EP=['https://overpass-api.de/api/interpreter',                    // los mismos espejos que usa SolarGPT
             'https://overpass.kumi.systems/api/interpreter',
@@ -2151,9 +2205,10 @@ function osmParsea(j){
    cesped sobre las casas y sobre la carretera — "pone hierba donde hay edificios".
    Se aplica en cuanto hay datos, tengas o no encendida la capa: que no veas las cajas no significa
    que ahi crezca hierba. */
-var OSMMASK=null,OSMMK={c:2.0};
+var OSMMASK=null,OSMMK={c:2.0},OSMFOTO=0;   // OSMFOTO: celdas que ha marcado la ORTOFOTO (no OSM)
 function osmMascara(){
-  OSMMASK=null; if(!TMESH||(!OSMD&&!OSMR.length&&!OSMU.length))return;
+  OSMMASK=null; if(!TMESH)return;
+  if(!OSMD&&!OSMR.length&&!OSMU.length&&!SATPX)return;
   var c=OSMMK.c,nx=Math.ceil(TMESH.w/c),nn=Math.ceil(TMESH.d/c);
   if(nx*nn>4e6)return;                                                     // planta enorme: la rejilla no compensa
   var m=new Uint8Array(nx*nn);OSMMK.nx=nx;OSMMK.nn=nn;
@@ -2178,6 +2233,12 @@ function osmMascara(){
       var pasos=Math.max(1,Math.ceil(L/c));
       for(var t=0;t<=pasos;t++){var px=A[0]+(B[0]-A[0])*t/pasos,pn=A[1]+(B[1]-A[1])*t/pasos;
         for(var dx=-hw;dx<=hw;dx+=c)for(var dn=-hw;dn<=hw;dn+=c)if(dx*dx+dn*dn<=hw*hw)marca(px+dx,pn+dn);}}});
+  OSMFOTO=0;
+  if(SATPX){                                                                     // y lo que la ORTOFOTO enseña como construido, haya o no nada en OSM
+    for(var jj=0;jj<nn;jj++)for(var ii=0;ii<nx;ii++){var k2=jj*nx+ii;
+      if(m[k2])continue;
+      var xx=-TMESH.w/2+(ii+0.5)*c,nn2=-TMESH.d/2+(jj+0.5)*c;
+      if(sueloConstruido(satRGB(xx,nn2))){m[k2]=1;OSMFOTO++;}}}
   OSMMASK=m;
 }
 function osmOcupado(x,n){ if(!OSMMASK)return false;
@@ -2219,7 +2280,7 @@ function buildOSMViario(){
   var me=new THREE.Mesh(g,mat);me.receiveShadow=true;OSMG.add(me);
 }
 function buildOSM(){
-  if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}
+  if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;shadowExt();}
   if(!OSMD||!$('osmb')||!$('osmb').checked)return;
   OSMG=new THREE.Group();scene.add(OSMG);
   var mB=new THREE.MeshStandardMaterial({color:0xb8b2a8,roughness:.92,metalness:.04}),   // misma paleta que el visor del notebook
@@ -2242,6 +2303,7 @@ function buildOSM(){
     var ed=new THREE.LineSegments(new THREE.EdgesGeometry(g),mE);ed.position.copy(me.position);OSMG.add(ed);
     n++; if(b.src==='osm')nOsm++; else if(b.src==='plantas')nPl++; else nDef++;});
   buildOSMViario();
+  shadowExt();updateSunShadow();                                                 // el recuadro de sombra tiene que abarcar lo recien dibujado
   var bbTxt=OSMBB?(' <span style="color:var(--tx2)">· recuadro pedido a Overpass (S,O,N,E): '+OSMBB+'</span>'):'';
   if(!n&&!dentro&&!lejos&&!enorme){   // CERO de verdad: hay que poder distinguir "OSM no los tiene" de "la consulta fallo"
     osmAviso('<b>0 edificios</b>: Overpass ha respondido bien, con <b>'+OSMN+'</b> elementos. '+
@@ -2606,6 +2668,7 @@ function buildVeg(){
   var _tc9=new THREE.Color();
   function put(vt,x,n,rodal){ if(idx[vt]>=counts[vt])return;
     if(osmOcupado(x,n))return;                                              // OSM dice que ahi hay casa, calle o suelo urbano: no se siembra
+    if(SATPX&&sueloConstruido(satRGB(x,n)))return;                          // y la ORTOFOTO se mira MATA A MATA: la rejilla de 2 m muestrea su centro y en el borde de un tejado dejaba caer hierba (3,8 % medido)
     var sc=SCL[vt][0]*(0.8+rng()*0.5)*(rodal?1.15:1),sy=SCL[vt][1]*(0.8+rng()*0.6)*(rodal?1.15:1);
     o.position.set(x,terrainMeshY(x,n)-0.015,-n);o.rotation.set((rng()-0.5)*0.16,rng()*Math.PI*2,(rng()-0.5)*0.16);o.scale.set(sc,sy,sc);o.updateMatrix();   // LEAN aleatorio ±5° y base 1,5 cm hundida: ni palos verticales ni flotando
     var seq=rng()*rng(),br=0.82+rng()*0.30;                                   // TINTE POR INSTANCIA: brillo ±15% y 'sequedad' (vira a pajizo) — el verde uniforme cantaba a césped procedural
@@ -4565,7 +4628,7 @@ $('solcam').onchange=function(){solCam=this.checked;                            
   if(solCam)camDesdeElSol(); else {solCamSalir();encuadra();}
   solCamAviso();};
 $('osmb').onchange=function(){
-  if(!this.checked){if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;}osmAviso('');return;}
+  if(!this.checked){if(OSMG){scene.remove(OSMG);OSMG.traverse(function(o){if(o.geometry)o.geometry.dispose();});OSMG=null;shadowExt();updateSunShadow();}osmAviso('');return;}
   if(OFFLINE){this.checked=false;osmAviso('modo OFFLINE: no se piden datos a Overpass.',true);return;}
   if(_osmCargando)return;
   if(OSMD){buildOSM();return;}   // ya descargados: la mascara y la siembra ya se rehicieron en su momento
