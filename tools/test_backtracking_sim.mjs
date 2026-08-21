@@ -25,6 +25,29 @@ function t(name, fn) {
 }
 
 console.log('estático');
+t('careo: apagado por defecto y sin física nueva (usa bt2d y true3d, que ya existían)', () => {
+  if (!/type="checkbox" id="careo"/.test(html)) throw new Error('sin casilla de careo');
+  if (/id="careo"[^>]*checked/.test(html)) throw new Error('el careo arranca encendido');
+  if (!/id="careolibro" disabled/.test(html)) throw new Error('el modelo de libro no arranca deshabilitado');
+  if (!/const CAREO_A='bt2d', CAREO_B='true3d'/.test(html)) throw new Error('el careo no compara las políticas existentes');
+  // el careo no puede traerse una integral del día propia: una sola maquinaria
+  const n = (html.match(/function kpisSerie\(/g) || []).length;
+  if (n !== 1) throw new Error('kpisSerie duplicada (' + n + ')');
+  if (!/function dayKpis\(key\)\{[\s\S]{0,200}kpisSerie\(/.test(html)) throw new Error('dayKpis no delega en kpisSerie');
+});
+t('careo: el «modelo de libro» es un DATO (terreno sin pendiente y sin segs), no una física nueva', () => {
+  const f = html.slice(html.indexOf('function careoTerreno'), html.indexOf('/* La banda de un'));
+  if (!/slope:0/.test(f) || !/V\.segs=null/.test(f)) throw new Error('careoTerreno no aplana ni quita los tramos');
+  if (/Math\.(sin|cos|tan|asin|acos|atan)/.test(f)) throw new Error('careoTerreno hace trigonometría: eso es física');
+});
+t('careo: publica la BANDA del circunsolar con la misma convención que la tabla', () => {
+  const f = html.slice(html.indexOf('function careoBanda('), html.indexOf('function careoCompute'));
+  // misma cota arriba y abajo en los dos lados del cociente, como en fillDayTable
+  if (!/kwhLo\/a\.kwhLo/.test(f) || !/kwhHi\/a\.kwhHi/.test(f))
+    throw new Error('la banda del careo no usa la misma cota en política y referencia');
+  if (!/cruza:bl<-1e-9&&bh>1e-9/.test(f)) throw new Error('el careo no marca el cruce del cero');
+  if (!/careoBandaHtml\(b\)/.test(html)) throw new Error('la cajita no pinta la banda');
+});
 t('sin dependencias externas (offline): ni http(s) en <script src>/<link href> de CDN', () => {
   const m = html.match(/<script[^>]+src=["']https?:|<link[^>]+href=["']https?:/g);
   if (m) throw new Error('carga remota: ' + m.join(' · '));

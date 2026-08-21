@@ -67,6 +67,52 @@ la física). La escena 3D usa el **modelo del seguidor de la casa** (`seguidor.j
 incluido) con sombras por shadow-map; corte 2D como editor de terreno, curvas θ(t), POA por política
 (Ineichen + Perez + Martinez) y estimación anual. Un único HTML offline.
 
+### Careo: clásico vs bt3d
+
+El simulador traía los dos modelos, pero el clásico era una degradación a la que se caía, no una
+comparación que se enseña. La casilla **CAREO clásico vs bt3d** (panel *Terreno transversal*) los pone
+frente a frente **sobre el mismo corte y el mismo día**:
+
+- **dos trayectorias θ(t)** superpuestas — el clásico (`BT2D plano`, pvlib sin pendiente: el tracker sin
+  configurar) y el bt3d (bisección 3D sobre el corte editado). El resto de políticas se apagan mientras
+  dura el careo: con cinco curvas encima no se lee nada. Al apagarlo vuelve el estado anterior tal cual;
+- **los dos fantasmas en el corte 2D**: el bt3d sólido y el clásico a trazos, cada uno con su sombra al
+  suelo y con la porción sombreada de cada mesa en rojo — se ve dónde el clásico sombrea a la vecina y
+  dónde desperdicia ángulo;
+- **la cajita del día**, pensada para captura: Δ de POA **con su banda del circunsolar** (la misma
+  convención que la tabla: misma cota arriba y abajo, y **ámbar si cruza el cero** — entonces el careo
+  tampoco decide), minutos de sombra evitados, la hora peor del clásico con su sombra media de planta, y
+  la pérdida eléctrica de cada uno. Cada porcentaje lleva **su denominador declarado**, porque la
+  captura acaba en una oferta donde nadie recuerda contra qué se comparó.
+
+![Careo sobre pendiente del 9 %](docs/careo-corte.png)
+
+Con **+ modelo de libro** (opcional, apagada por defecto) el mismo mando clásico se mide además como lo
+mide una simulación de fila infinita y terreno plano —lo que asume un PVsyst/pvlib de manual— y la
+cajita **descompone** la diferencia: implantación axial + relieve + control. Es la respuesta a una IE
+que ha simulado con el modelo de libro: en vez de un delta a secas, cuánto pesa cada simplificación.
+
+Medido sobre pendiente del 9 % (21-jun, 8 filas, monofila), con la óptica de la v1.31:
+
+| | POA planta | vs. clásico |
+|---|---|---|
+| bt3d | 11,256 kWh/m²·d | **+2,66 %** [+2,37 … +2,97] |
+| BT2D plano (clásico) | 10,964 kWh/m²·d | — |
+| Modelo de libro (fila infinita, plano) | 11,340 kWh/m²·d | descompuesto: **+0,00 %** axial · **−3,32 %** relieve · **+2,57 %** control |
+
+Tres botones de demo (**Pendiente 9 %**, **Vaguada 2 m**, **Cresta 2 m**) son atajos sobre los presets
+de terreno que ya existían, con los **valores clavados**: dos capturas del mismo preset tienen que dar
+los mismos números. El camino manual —arrastrar los postes o poner tus valores en el panel— queda
+intacto.
+
+> **Cero física nueva.** El careo no añade un modelo: usa los dos que ya vivían en el fichero y la
+> misma integral del día (`kpisSerie`, una sola maquinaria con dos puntos de entrada, con la banda y la
+> sombra ponderada de la v1.31). El «modelo de libro» es un **dato**, no una física: el mismo terreno
+> con las pendientes a cero y sin tramos axiales (el camino «sin `T.segs`» que ya existía). Por eso el
+> libro vive en los números y no en una tercera curva: el mando de `BT2D plano` no depende del relieve,
+> así que dibujarlo sería pintar la misma línea encima. Sanity check de la aceptación: **terreno plano
+> ⇒ Δ = 0,00 %**, banda incluida.
+
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
