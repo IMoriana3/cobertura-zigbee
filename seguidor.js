@@ -50,6 +50,81 @@
   S.setModsPerStr = function (n) { D.modsPerStr = n; D.strLen = n * D.modW + (n - 1) * D.gapMod; D.span = 2 * D.strLen + D.gapDrive; D.mesaC = D.gapDrive / 2 + D.strLen / 2; };
 
   /* ---------- MATERIALES (cada app crea los suyos con su THREE) ---------- */
+  /* Células FV para la cara del módulo. Vive AQUÍ, con el modelo, y no en cada página:
+     `glass` a secas es blanco liso, y un campo de seguidores blancos no se parece a
+     una planta -- según le dé el sol sale una fila cegada y la de al lado negra, que
+     es lo que hacía que el campo se viera "raro". Se cachea porque generar el canvas
+     por cada llamada tira una textura nueva a la GPU sin motivo. */
+  var _ptex = null;
+  S.panelTex = function (THREE) {
+    if (_ptex) return _ptex;
+    if (typeof document === 'undefined') return null;
+    var W = 128, H = 256, c = document.createElement('canvas'), x = c.getContext('2d');
+    c.width = W; c.height = H;
+    x.fillStyle = '#0a1019'; x.fillRect(0, 0, W, H);                    // marco/fondo casi negro
+    var nx = 6, ny = 12, cw = W / nx, ch = H / ny, gap = 1.4;           // rejilla de células 6x12
+    for (var iy = 0; iy < ny; iy++) for (var ix = 0; ix < nx; ix++) {
+      var L = 7.5 + Math.random() * 3.5;                                // azul muy oscuro con leve variación
+      var g = x.createLinearGradient(ix * cw, iy * ch, ix * cw + cw, iy * ch + ch);
+      g.addColorStop(0, 'hsl(214,48%,' + (L + 2).toFixed(1) + '%)');
+      g.addColorStop(1, 'hsl(214,48%,' + L.toFixed(1) + '%)');
+      x.fillStyle = g; x.fillRect(ix * cw + gap, iy * ch + gap, cw - 2 * gap, ch - 2 * gap);
+      x.strokeStyle = 'rgba(150,175,200,.30)'; x.lineWidth = 0.8;       // 3 busbars por célula
+      for (var b = 1; b <= 3; b++) {
+        var bx = ix * cw + cw * b / 4;
+        x.beginPath(); x.moveTo(bx, iy * ch + gap); x.lineTo(bx, iy * ch + ch - gap); x.stroke();
+      }
+    }
+    _ptex = new THREE.CanvasTexture(c);
+    _ptex.wrapS = _ptex.wrapT = THREE.RepeatWrapping;
+    _ptex.anisotropy = 4;
+    return _ptex;
+  };
+
+  /* Deja `glass` como un módulo de verdad: células por delante y cara trasera bifacial
+     apagada. Es lo que hacía a mano cada página; ahora lo hace el modelo. */
+  S.vistePaneles = function (THREE, mats) {
+    var t = S.panelTex(THREE);
+    if (!t || !mats || !mats.glass) return mats;
+    mats.glass.map = t; mats.glass.emissiveMap = t;
+    mats.glass.emissive = new THREE.Color(0x2b333d);
+    mats.glass.emissiveIntensity = 0.32;
+    mats.glass.needsUpdate = true;
+    return mats;
+  };
+
+  /* ---------- EJE DE TRANSMISIÓN (bífila) ----------
+     En una bífila el motor está en UNA viga y la gemela se mueve por un eje que cruza
+     hasta la otra. `parts()` describe UNA viga, así que este eje no cabe ahí: va ENTRE
+     las dos, y lo coloca la app, igual que el cable motor↔TCU y los amortiguadores.
+
+     Las medidas NO se inventan aquí: salen de `overcast.html`, que lo dibuja desde
+     antes, y están CONFIRMADAS (Ignacio, ago-2026). Ojo con eso, porque dentro del
+     propio overcast conviven dos ejes distintos: Ø 60 en la vista instanciada y Ø 100
+     en la de detalle. El bueno es el Ø 60 — que esté aquí es lo que evita que la
+     próxima página elija el otro. */
+  D.ejeTransD = 0.06;        // Ø 60 mm — confirmado
+  D.ejeTransY = -0.22;       // por debajo del eje del tubo
+  D.cardanD = 0.18;          // acoplamientos de los extremos (Ø 180 mm)
+  D.cardanL = 0.30;
+  D.cardanHueco = 0.25;      // lo que el eje deja libre a cada lado
+  D.cardanOffset = 0.22;     // a qué distancia de cada viga va su cardán
+  S.ejeTransGeom = function (THREE, sep) {
+    var g = new THREE.CylinderGeometry(D.ejeTransD / 2, D.ejeTransD / 2,
+                                       Math.max(0.1, sep - 2 * D.cardanHueco), 8);
+    g.rotateX(Math.PI / 2);            // el cilindro nace en Y; el eje cruza en Z
+    g.translate(0, D.ejeTransY, 0);
+    return g;
+  };
+  /* los dos cardanes, en los extremos del eje. `dz` = ±(sep/2 − hueco + L/2) */
+  S.cardanGeom = function (THREE) {
+    var g = new THREE.CylinderGeometry(D.cardanD / 2, D.cardanD / 2, D.cardanL, 8);
+    g.rotateX(Math.PI / 2);
+    g.translate(0, D.ejeTransY, 0);
+    return g;
+  };
+  S.cardanDz = function (sep) { return sep / 2 - D.cardanOffset; };
+
   S.materials = function (THREE) {
     return {
       glass:  new THREE.MeshStandardMaterial({ color:0xffffff, roughness:.14, metalness:.10, emissive:0x0a1626, emissiveIntensity:.07 }),
@@ -296,19 +371,32 @@
    * Devuelve { spin, static, modCols }: 'spin' bascula (rotation.x), 'static'
    * fija (slew); 'modCols' = centros de módulo {x,z} (p.ej. para capas de nieve).
    * ==================================================================== */
+  /* Piezas que van SOLO en la viga del motor: la TCU con sus abarcones y chapas, la
+     antena, y el seccionador con sus derivaciones DC. La gemela lleva el eje de
+     transmisión y punto. La lista y el criterio son ÚNICOS y los comparten buildBeam e
+     instancePlan: con una copia en cada sitio, el día que se toque una acaba habiendo
+     una bífila con dos TCU y dos motores, que es un seguidor que no existe. */
+  var SOLO_OESTE = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1,
+                     secc:1, seccknob:1, seccmaneta:1, seccchapa:1, seccabarcon:1,
+                     secclink:1, seccdca:1, seccdcb:1 };
+  function esDeEstaViga(p, west) {
+    if (west) return true;
+    if (SOLO_OESTE[p.key] || p.antenna) return false;   // TCU / antena / seccionador
+    return !!(p.spin || p.twin);                        // del slew, en la gemela solo las twin
+  }
+  S.SOLO_OESTE = SOLO_OESTE;
+
   S.buildBeam = function (THREE, opts) {
     opts = opts || {};
     var mats = opts.materials || S.materials(THREE);
     var west = opts.west !== false;
     var skip = opts.skip || {};
-    var WEST = { tcu:1, tcuabarcon:1, tcuchapa:1, antena:1, antenatip:1, motorlink:1, secc:1, seccknob:1, seccmaneta:1, seccchapa:1, seccabarcon:1, secclink:1, seccdca:1, seccdcb:1 };   // el seccionador (y sus derivaciones DC) va con la TCU: solo viga oeste
     var spin = new THREE.Group(), stat = new THREE.Group(), modCols = [], dampers = [];
     S.parts(THREE, { size:opts.size||'largo', detail:opts.detail||'full' }).forEach(function (p) {
       if (p.motorLink) return;                                   // cable motor↔TCU: lo gestiona la app por frame (pendiente)
       if (p.damperLink) { dampers.push({ a:p.a, b:p.b }); return; }   // amortiguadores: en AMBAS vigas; render per-frame en la app
       if (skip[p.key]) return;
-      if (!west && (WEST[p.key] || p.antenna)) return;           // TCU/antena/abarcón-TCU/chapa: solo viga oeste
-      if (!west && !p.spin && !p.twin) return;                   // slew completo solo oeste; en la gemela solo piezas twin
+      if (!esDeEstaViga(p, west)) return;
       var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
       mesh.applyMatrix4(p.m);
       mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
@@ -325,10 +413,19 @@
    *   plan = Seguidor.instancePlan(THREE, {detail:'mass', size:'largo'})
    *   -> [{ key, mat, geom, spin, cast, locals:[Matrix4,...] }]
    * La app: por cada tracker t y cada local L -> setMatrixAt(base_t · (spin?Rx:1) · L)
+   *
+   * opts.west funciona IGUAL que en buildBeam, y por el mismo motivo: un seguidor es
+   * BIFILA, dos vigas, y solo una lleva motor, TCU, antena y seccionador. Antes esta
+   * función ignoraba la opción y devolvía siempre la viga completa; quien la llamaba
+   * con west:true creyendo que pedía «la del motor» dibujaba en realidad un campo de
+   * seguidores monofila, cada uno con su propia TCU. Sin la opción no se filtra nada,
+   * que es lo que hacía siempre: los que ya la usan así no notan el cambio.
    * ==================================================================== */
   S.instancePlan = function (THREE, opts) {
     var byType = {}, order = [];
+    var west = !opts || opts.west !== false;
     S.parts(THREE, opts).forEach(function (p) {
+      if (!esDeEstaViga(p, west)) return;
       if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, damperLink:!!p.damperLink, a:p.a, b:p.b, as:[], bs:[], locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
       if (p.a) byType[p.key].as.push(p.a);
@@ -337,6 +434,6 @@
     return order.map(function (k){ return byType[k]; });
   };
 
-  S.VERSION = '0.4.19';
+  S.VERSION = '0.4.20';
   root.Seguidor = S;
 })(typeof window !== 'undefined' ? window : this);
