@@ -206,7 +206,7 @@
         <option value="sanjose">24019 · San José, Perú (2.289 uds · 21 NCUs)</option>
         <option value="tunez">24021 · Túnez (19 uds)</option>
         <option value="ayora">24025 · Ayora (754 uds · 16 NCUs)</option>
-        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · monofila · eje 23,7°)</option>
+        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · bífila 5,5 m · eje 23,7°)</option>
         <option value="paramo">Páramo, León (396 uds · 4 NCUs)</option>
       </select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
@@ -2113,7 +2113,7 @@ const REALMETA={
   fayon:     {bifila:true,  title:'Fayón'},
   paramo:    {bifila:true,  title:'Páramo'},
   tunez:     {bifila:true,  title:'Túnez'},
-  bagnarelli:{bifila:false, title:'Bagnarelli'}
+  bagnarelli:{bifila:true,  title:'Bagnarelli'}   // era false: el layout y la cartera (trk_bi 17, trk_mono 0) dicen BIFILA; ver geometria.bifilo
 };
 /* HUSO LOCAL DE LA PLANTA. El campo «UTC ±» arrancaba clavado en 2 —hora de verano peninsular— y
    al cargar una planta real no se tocaba, asi que la simulacion corria con la hora de Madrid:
