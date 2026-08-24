@@ -213,6 +213,25 @@
       <span class="pill" id="plantinfo"></span>
     </div>
     <div class="nota" id="plantnote" style="display:none"></div>
+    <div class="f" style="margin-bottom:8px"><label>Cielo de las zonas</label>
+      <select id="zskymode">
+        <option value="frente" selected>Un frente que cruza la planta (el cielo de planta, retardado)</option>
+        <option value="porncu">Un cielo PROPIO por NCU</option>
+      </select></div>
+    <div id="zskybox" style="display:none">
+      <div class="nota" style="margin-bottom:8px">Cada NCU con su cielo: es la única forma de ver la
+        zonificación de verdad. Con el frente, todas las zonas ven la MISMA serie retardada — si el
+        cielo es uniforme, el zonal es idéntico al global por construcción.
+        <b>Ojo:</b> con día real de Open-Meteo este modo usa la meteo medida SIN retardar (un punto
+        no trae información espacial); lo que cambia por zona es la nubosidad sintética.</div>
+      <div id="zskygrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));
+           gap:6px;max-height:224px;overflow-y:auto;padding-right:4px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn small" id="zskyalt">Alternar despejado / overcast</button>
+        <button class="btn small" id="zskyrnd">Aleatorio por NCU</button>
+        <button class="btn small" id="zskysame">Todas igual que la planta</button>
+      </div>
+    </div>
     <div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
       <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
       construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
@@ -959,7 +978,7 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
@@ -974,9 +993,17 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine){
   // la tabla del día ya cobraba la rampa: dos físicas en la misma pantalla.
   const F=fine||{n:1440,dt:DT_FINE_PHYS};
   const days=[],daysF=[];
+  // ccz (opcional): un cielo PROPIO por zona. Sin él, el modelo de siempre —
+  // un cielo de planta que cruza con retardo. El retardo solo puede enseñar un
+  // FRENTE; con cielo uniforme todas las zonas ven lo mismo y el zonal es
+  // idéntico al global POR CONSTRUCCIÓN. Para ver de verdad la zonificación
+  // (una NCU con la nube encima y la de al lado despejada) hace falta esto.
   for(let z=0;z<nZ;z++){
     const lag=lags?lags[z]:(nZ>1?z*crossMin/(nZ-1):0);
-    const cc=shiftCC(o.cc,lag), om=shiftOM(o.om,lag);
+    const cc=ccz?ccz[z]:shiftCC(o.cc,lag);
+    // con cielo por zona la meteo real no se retarda: un punto de Open-Meteo
+    // no trae información espacial y fingir que sí sería inventarse el dato
+    const om=ccz?o.om:shiftOM(o.om,lag);
     days.push(buildDay(Object.assign({},o,{cc,om})));
     daysF.push(buildDay(Object.assign({},o,{cc,om,dtMin:F.dt})));
   }
@@ -1096,6 +1123,27 @@ function explainPoaSwitch(day,thN,poaN,d){
    Madrid 21-jun, tz UTC, tramos overcast en múltiplos de 15 min. La QA lo
    usa para exigir los MISMOS comportamientos que exigen los tests Python. */
 const TEST_SPANS=[[360,375],[420,570],[600,660],[840,1020]];   // min UTC
+/* Un preset de cielo como SERIE (288 bines de 5 min), sin tocar nada global:
+   así el mismo generador vale para el cielo de planta y para el de cada NCU. */
+function skyPresetSeries(name,param){
+  const cc=new Array(288).fill(0);
+  const span=(a,b,v)=>{for(let m=a;m<b&&m<1440;m+=5)cc[m/5]=v;};
+  if(name==='overcast')span(0,1440,0.95);
+  else if(name==='manana'){span(0,720,0.9);span(720,810,0.4);}
+  else if(name==='tarde'){span(780,870,0.4);span(870,1440,0.9);}
+  else if(name==='frentes'){span(0,1440,0.15);span(540,610,0.95);span(650,680,0.95);span(780,900,0.95);span(960,1050,0.95);}
+  else if(name==='test'){for(const [a,b] of TEST_SPANS)span(a,b,1);}
+  else if(name==='aleatorio'){
+    let s=(param|0)||1; const rnd=()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+    const a1=rnd()*2*Math.PI,a2=rnd()*2*Math.PI,a3=rnd()*2*Math.PI,base=0.25+0.5*rnd();
+    for(let i=0;i<288;i++){
+      const x=i/288;
+      let v=base+0.45*Math.sin(2*Math.PI*x*2+a1)+0.3*Math.sin(2*Math.PI*x*5+a2)+0.2*Math.sin(2*Math.PI*x*11+a3);
+      cc[i]=Math.max(0,Math.min(1,v));
+    }
+  }
+  return cc;
+}
 function canonCC(){
   const cc=new Array(288).fill(0);
   for(const [a,b] of TEST_SPANS)for(let m=a;m<b;m+=5)cc[m/5]=1;
@@ -1677,6 +1725,49 @@ function runPhysicsQA(){
         'dt='+dtMin+': la puerta de la difusa no puede caer fuera del día del hierro');
     }
   });
+  t('cielo POR NCU: con todas las zonas iguales es un no-op exacto (zonal ≡ global)',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
+    const mismo=[0,1,2,3].map(()=>canonCC());
+    const r=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,mismo);
+    A(Math.abs(r.plantZonal-r.plantGlobal)<1e-6,
+      'con el mismo cielo en las 4 zonas, zonal y global difieren: '+(r.plantZonal-r.plantGlobal));
+    // y las cuatro zonas tienen que decidir EXACTAMENTE lo mismo
+    for(let z=1;z<4;z++)for(let i=0;i<r.zones[0].theta.length;i++)
+      A(Math.abs(r.zones[z].theta[i]-r.zones[0].theta[i])<1e-9,
+        'zona '+z+' decide distinto con el MISMO cielo, paso '+i);
+  });
+  t('cielo POR NCU: es lo ÚNICO que enseña la zonificación — nube encima de una y la de al lado despejada',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:new Array(288).fill(0),om:null};
+    const alterno=[0,1,2,3].map(z=>z%2?skyPresetSeries('overcast'):new Array(288).fill(0));
+    const r=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT,null,null,null,alterno);
+    // las zonas despejadas siguen al sol; las cubiertas se aplanan
+    const n=r.zones[0].theta.length;
+    let dif=0;
+    for(let i=0;i<n;i++)if(Math.abs(r.zones[0].theta[i]-r.zones[1].theta[i])>1)dif++;
+    A(dif>n*0.15,'las zonas apenas se diferencian ('+dif+'/'+n+'): no se ve la zonificación');
+    A(r.zones[0].theta.join()===r.zones[2].theta.join(),'zonas con el MISMO cielo deben coincidir');
+    A(r.zones[1].theta.join()===r.zones[3].theta.join(),'zonas con el MISMO cielo deben coincidir');
+    A(r.plantZonal>r.plantGlobal,'el zonal no gana al global con medio campo cubierto: '+
+      r.plantZonal.toFixed(1)+' vs '+r.plantGlobal.toFixed(1));
+    // el modelo de FRENTE sobre cielo uniforme no puede enseñar esto
+    const rf=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT,null,null,null,null);
+    A(Math.abs(rf.plantZonal-rf.plantGlobal)<1e-6,
+      'con cielo uniforme el frente debería dar zonal ≡ global (es la limitación que motiva esto)');
+  });
+  t('skyPresetSeries es puro: 288 bines en [0,1], mismo resultado dos veces, y no toca nada global',()=>{
+    for(const nm of ['despejado','overcast','manana','tarde','frentes','test','aleatorio']){
+      const a=skyPresetSeries(nm,7), b2=skyPresetSeries(nm,7);
+      A(a.length===288,nm+': no son 288 bines');
+      A(a.every(v=>Number.isFinite(v)&&v>=0&&v<=1),nm+': cc fuera de [0,1]');
+      A(a.join()===b2.join(),nm+': no es determinista');
+    }
+    A(skyPresetSeries('aleatorio',1).join()!==skyPresetSeries('aleatorio',2).join(),
+      'la semilla no cambia nada');
+    A(skyPresetSeries('overcast').some(v=>v>0.9),'overcast no cubre');
+    A(skyPresetSeries('despejado').every(v=>v===0),'despejado no está despejado');
+  });
   t('las cinco políticas narran el MISMO stow: es del hierro, no de la política',()=>{
     const day=canonScenario(10);
     const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
@@ -1694,7 +1785,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.10.2';
+const VER='v1.13.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1774,26 +1865,7 @@ fillPolview();
 
 /* ── tira de nubosidad: 288 bines de 5 min ── */
 let CC=new Array(288).fill(0);
-function skyPresetApply(name,param){
-  const cc=new Array(288).fill(0);
-  const span=(a,b,v)=>{for(let m=a;m<b&&m<1440;m+=5)cc[m/5]=v;};
-  if(name==='overcast')span(0,1440,0.95);
-  else if(name==='manana'){span(0,720,0.9);span(720,810,0.4);}
-  else if(name==='tarde'){span(780,870,0.4);span(870,1440,0.9);}
-  else if(name==='frentes'){span(0,1440,0.15);span(540,610,0.95);span(650,680,0.95);span(780,900,0.95);span(960,1050,0.95);}
-  else if(name==='test'){for(const [a,b] of TEST_SPANS)span(a,b,1);}
-  else if(name==='aleatorio'){
-    let s=(param|0)||1; const rnd=()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
-    // ruido suave: pocos armónicos con fase aleatoria, recortado a [0,1]
-    const a1=rnd()*2*Math.PI,a2=rnd()*2*Math.PI,a3=rnd()*2*Math.PI,base=0.25+0.5*rnd();
-    for(let i=0;i<288;i++){
-      const x=i/288;
-      let v=base+0.45*Math.sin(2*Math.PI*x*2+a1)+0.3*Math.sin(2*Math.PI*x*5+a2)+0.2*Math.sin(2*Math.PI*x*11+a3);
-      cc[i]=Math.max(0,Math.min(1,v));
-    }
-  }
-  CC=cc;
-}
+function skyPresetApply(name,param){CC=skyPresetSeries(name,param);}
 $('skypreset').onchange=function(){
   $('skyparamlbl').textContent=this.value==='aleatorio'?'Semilla':'—';
 };
@@ -2076,6 +2148,61 @@ function drawDiario(d){
 let ZR=null;
 /* planta REAL cargada (layout con NCUs de verdad) o null = sintética */
 let PLANT_REAL=null;
+/* Cielo por NCU: el estado vive aquí, indexado por zona. `null` = «igual que
+   la planta», que es lo que hace que activar el modo no cambie NADA hasta que
+   se toca algo (y que la QA pueda exigir zonal ≡ global en ese caso). */
+let ZSKY=[];                       // [{preset, semilla}] o null por zona
+const ZSKY_OPC=[['—','igual que la planta'],['despejado','despejado'],
+  ['overcast','overcast total'],['manana','mañana nublada'],['tarde','tarde nublada'],
+  ['frentes','frentes'],['test','escenario del test'],['aleatorio','aleatorio']];
+function zskyOn(){return $('zskymode').value==='porncu';}
+function zskyNombres(nZ){
+  if(PLANT_REAL&&PLANT_REAL.ncuIds&&PLANT_REAL.ncuIds.length===nZ)
+    return PLANT_REAL.ncuIds.map(id=>'NCU '+id);
+  return Array.from({length:nZ},(_,z)=>'NCU '+(z+1));
+}
+function zskyRender(){
+  const on=zskyOn(), zc0=$('zonalOn').checked;
+  $('zskybox').style.display=(on&&zc0)?'':'none';
+  if(!(on&&zc0))return;
+  const nZ=PLANT_REAL?PLANT_REAL.ncuIds.length:Math.max(2,Math.min(6,+$('nncu').value||4));
+  while(ZSKY.length<nZ)ZSKY.push(null);
+  ZSKY.length=nZ;
+  const nom=zskyNombres(nZ);
+  let h='';
+  for(let z=0;z<nZ;z++){
+    const cur=ZSKY[z];
+    h+='<div class="f"><label>'+nom[z]+'</label><select data-z="'+z+'" class="zsky">'+
+       ZSKY_OPC.map(([v,t])=>'<option value="'+v+'"'+
+         ((cur?cur.preset:'—')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+       (cur&&cur.preset==='aleatorio'
+         ?'<input type="number" class="zseed" data-z="'+z+'" value="'+cur.semilla+'" step="1" min="1" title="semilla">'
+         :'')+'</div>';
+  }
+  $('zskygrid').innerHTML=h;
+  $('zskygrid').querySelectorAll('select.zsky').forEach(el=>{
+    el.onchange=()=>{
+      const z=+el.dataset.z;
+      ZSKY[z]=el.value==='—'?null:{preset:el.value,semilla:z+1};
+      zskyRender();recompute();
+    };
+  });
+  $('zskygrid').querySelectorAll('input.zseed').forEach(el=>{
+    el.onchange=()=>{const z=+el.dataset.z;if(ZSKY[z])ZSKY[z].semilla=+el.value||1;recompute();};
+  });
+}
+$('zskymode').onchange=()=>{zskyRender();recompute();};
+$('zskyalt').onclick=()=>{                       // el caso demostrativo: una sí y otra no
+  const nZ=ZSKY.length||4;
+  for(let z=0;z<nZ;z++)ZSKY[z]={preset:z%2?'overcast':'despejado',semilla:z+1};
+  zskyRender();recompute();
+};
+$('zskyrnd').onclick=()=>{
+  for(let z=0;z<ZSKY.length;z++)ZSKY[z]={preset:'aleatorio',semilla:z+1};
+  zskyRender();recompute();
+};
+$('zskysame').onclick=()=>{ZSKY=ZSKY.map(()=>null);zskyRender();recompute();};
+
 function zonalCfg(){
   const cross=+$('crossmin').value;
   if(PLANT_REAL){
@@ -2084,10 +2211,21 @@ function zonalCfg(){
     // tiempo de cruce configurado
     const c=PLANT_REAL;
     const lags=c.cents.map(ct=>cross*(ct.x-c.x0)/((c.x1-c.x0)||1));
-    return {on:$('zonalOn').checked,nZ:c.ncuIds.length,cross:cross,lags:lags,real:c};
+    return {on:$('zonalOn').checked,nZ:c.ncuIds.length,cross:cross,lags:lags,real:c,
+            ccz:zskySeries(c.ncuIds.length)};
   }
-  return {on:$('zonalOn').checked,nZ:Math.max(2,Math.min(6,+$('nncu').value||4)),
-          cross:cross,lags:null,real:null};
+  const nZ=Math.max(2,Math.min(6,+$('nncu').value||4));
+  return {on:$('zonalOn').checked,nZ:nZ,cross:cross,lags:null,real:null,ccz:zskySeries(nZ)};
+}
+/* Las series por zona, o null si el modo está apagado o TODAS dicen «igual que
+   la planta» — así el modo encendido sin tocar nada es un no-op exacto. */
+function zskySeries(nZ){
+  if(!zskyOn())return null;
+  while(ZSKY.length<nZ)ZSKY.push(null);
+  ZSKY.length=nZ;
+  if(ZSKY.every(v=>v===null))return null;
+  return ZSKY.map(v=>v===null?CC.slice()
+    :(v.preset==='despejado'?new Array(288).fill(0):skyPresetSeries(v.preset,v.semilla)));
 }
 function computeZonal(d){
   const zc=zonalCfg();
@@ -2098,7 +2236,7 @@ function computeZonal(d){
   if(!zc.on)return;
   const pv=$('polview').value;
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
-              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null);
+              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,zc.ccz);
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
@@ -2155,6 +2293,7 @@ async function loadRealPlant(name){
     aplicaHuso(j);   // huso del LAYOUT (tzFijo) o regla peninsular sobre la fecha simulada
     $('axaz').value=rot;                               // la física sigue el eje real
     if(ncuIds.length>1)$('zonalOn').checked=true;
+    ZSKY=[];zskyRender();     // otra planta, otras NCUs: el cielo por zona se reinicia
     $('plantinfo').innerHTML='<b>'+meta.title+'</b> · '+j.trackers.length+' uds · '+
       ncuIds.length+' NCU'+(ncuIds.length>1?'s':'')+' · '+(meta.bifila?'bifila':'monofila')+
       (rot?' · eje '+rot+'°':'');
@@ -2168,7 +2307,8 @@ async function loadRealPlant(name){
   }
 }
 $('realplant').onchange=function(){
-  if(!this.value){PLANT_REAL=null;$('plantinfo').innerHTML='';$('plantnote').style.display='none';BUILT.key='';recompute();return;}
+  if(!this.value){PLANT_REAL=null;$('plantinfo').innerHTML='';$('plantnote').style.display='none';
+    BUILT.key='';ZSKY=[];zskyRender();recompute();return;}
   loadRealPlant(this.value);
 };
 function drawZonalTab(){
@@ -2178,7 +2318,7 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
-    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null);
+    const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null,null,zc.ccz);
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
     h+='<tr><td style="color:'+POL_META[k].c+'">'+POL_META[k].nm+'</td>'+
@@ -2300,6 +2440,43 @@ function drawTheta(){
     if(!POL_ON[k]||!SIM.res[k])continue;
     plot(SIM.res[k].theta,day,POL_META[k].c,1,[4,3]);              // consigna de la TCU
     plot(SIM.res[k].execF,SIM.dayF,POL_META[k].c,k==='pvlib'?2:2.5); // lo que hace el hierro
+  }
+  // ZONAL: el θ EJECUTADO de cada NCU. Sin esto la zonificación solo se veía
+  // en la escena y en la tabla, y la gráfica —que es donde se mira— seguía
+  // enseñando una única curva de planta, como si todas fueran a la vez.
+  // Color: un hue FIJO fuera de la paleta de políticas (el magenta; el violeta
+  // del poa_switch y el azul del continuous ya están cogidos), variando solo
+  // la luminosidad. Un arcoíris por zona chocaba con las políticas justo
+  // donde hay que distinguirlas, y con 21 NCUs no habría hues suficientes.
+  const zc=zonalCfg();
+  if(zc.on&&ZR&&ZR.zones.length>1){
+    const nZ=ZR.zones.length, nF=SIM.dayF.n;
+    const zcol=z=>'hsl(330,80%,'+(46+Math.round(30*(nZ>1?z/(nZ-1):0)))+'%)';
+    // envolvente mín–máx entre zonas: con 2 o con 21 NCUs se lee igual de bien
+    ctx.beginPath();
+    for(let i=0;i<nF;i++){
+      let mx=-1e9;for(const Z of ZR.zones)mx=Math.max(mx,tcuDeg(Z.execF[i]));
+      const x=xOf(SIM.dayF.tmin[i],W),y=yOf(mx);i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    for(let i=nF-1;i>=0;i--){
+      let mn=1e9;for(const Z of ZR.zones)mn=Math.min(mn,tcuDeg(Z.execF[i]));
+      ctx.lineTo(xOf(SIM.dayF.tmin[i],W),yOf(mn));
+    }
+    ctx.closePath();ctx.fillStyle='hsla(330,80%,60%,0.13)';ctx.fill();
+    ZR.zones.forEach((Z,z)=>plot(Z.execF,SIM.dayF,zcol(z),1.5));
+    // leyenda: el nombre de la NCU y SU nubosidad media, que es lo que explica
+    // por qué esa curva se separa de las demás
+    const nom=zskyNombres(nZ);
+    ctx.font='17px ui-monospace,monospace';
+    let tx=64;
+    for(let z=0;z<nZ;z++){
+      const cc=Math.round(100*ZR.zones[z].day.cc.reduce((a,v)=>a+v,0)/288);
+      const t=nom[z]+' '+cc+'%';
+      if(tx+ctx.measureText(t).width+30>W-820){ctx.fillStyle='#5c7189';ctx.fillText('+'+(nZ-z),tx,24);break;}
+      ctx.fillStyle=zcol(z);ctx.fillRect(tx,17,12,3);
+      ctx.fillStyle='#9bb0c6';ctx.fillText(t,tx+18,24);
+      tx+=ctx.measureText(t).width+32;
+    }
   }
   drawTimeCursor(ctx,W,H,26);
 }
@@ -2592,11 +2769,21 @@ function makeMantle(sizeX,sizeZ,seed,yCloud){
 }
 function setLabel(spr,txt,color){
   if(spr.userData.last===txt)return;
-  const x=spr.userData.ctx;
-  x.clearRect(0,0,320,72);
-  x.fillStyle='rgba(10,15,22,.75)';x.fillRect(0,10,320,52);
-  x.font='700 30px system-ui,sans-serif';x.fillStyle=color;x.textAlign='center';
-  x.fillText(txt,160,46);
+  // AUTOAJUSTE: el canvas es de 320 px y «NCU 1 · θ -31° · ☁ retiene» se salía,
+  // así que se leía «retien» — cortado justo en el estado que hay que explicar.
+  // El texto se encoge hasta caber y la caja se ajusta a él, en vez de ocupar
+  // todo el ancho con el rótulo desbordado por los lados.
+  const x=spr.userData.ctx,W=320,H=72,pad=14,maxW=W-2*pad;
+  x.clearRect(0,0,W,H);
+  let fs=30;
+  x.font='700 '+fs+'px system-ui,sans-serif';
+  const w0=x.measureText(txt).width;
+  if(w0>maxW){fs=Math.max(16,Math.floor(fs*maxW/w0));x.font='700 '+fs+'px system-ui,sans-serif';}
+  const w=Math.min(maxW,x.measureText(txt).width);
+  x.fillStyle='rgba(10,15,22,.75)';x.fillRect((W-w)/2-pad,10,w+2*pad,52);
+  x.fillStyle=color;x.textAlign='center';x.textBaseline='middle';
+  x.fillText(txt,W/2,36);
+  x.textBaseline='alphabetic';
   spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
 }
 /* ── la planta 3D: bifila real, tamaño real y sitio alrededor ──────────────
@@ -3446,14 +3633,15 @@ $('qabtn').onclick=()=>{
 ['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','axaz','dt',
  'ghimin','fratio','hratio','senter','sexit','confirm','dwell','deadband','slew',
  'nncu','crossmin','stow'].forEach(id=>{
-  $(id).addEventListener('change',recompute);
+  $(id).addEventListener('change',id==='nncu'?()=>{zskyRender();recompute();}:recompute);
 });
 $('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
 $('loopOn').addEventListener('change',recompute);
-$('zonalOn').addEventListener('change',recompute);
+$('zonalOn').addEventListener('change',()=>{zskyRender();recompute();});
 window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
 
 skyPresetApply('tarde',0);
+zskyRender();
 recompute();
 loop3D();
 setTab(true);   // 3D por defecto; sin WebGL/THREE cae solo al corte 2D
