@@ -98,6 +98,15 @@ t('degrada a 2D si THREE/WebGL no están (has3D + try/catch en init3D)', () => {
 });
 
 // ── bloque de física, ejecutado de verdad ────────────────────────────────────
+t('cielo por NCU: el modo está en la UI, es no-op por defecto y no finge meteo real por zona', () => {
+  if (!/id="zskymode"/.test(html)) throw new Error('falta el selector de modo de cielo zonal');
+  if (!/value="frente" selected/.test(html)) throw new Error('el modo por defecto debe seguir siendo el frente');
+  if (!/ZSKY\.every\(v => v === null\)|ZSKY\.every\(v=>v===null\)/.test(html))
+    throw new Error('activar el modo sin tocar nada tiene que ser un no-op exacto');
+  if (!/ccz\?o\.om:shiftOM/.test(html))
+    throw new Error('con cielo por zona la meteo real NO puede retardarse: un punto no trae información espacial');
+});
+
 const i0 = html.indexOf('FÍSICA PURA');
 const i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA'); process.exit(1); }
@@ -108,7 +117,8 @@ const sandbox = new Function(src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
-           shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1 };`);
+           shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
+           skyPresetSeries };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
