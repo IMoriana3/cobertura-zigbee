@@ -130,13 +130,26 @@ async function build(){
   var ord=(L.invlab||[]).map(function(c,i){return {i:i,n:c.n};});ord.sort(function(a,b){return b.n-a.n;});
   var nInvN=Math.min(18,ord.length),nInvS=ord.length-nInvN;
   $('tit').textContent='Informe de planta — El Burgo I (23003)';
-  var hoy=new Date();$('fecha').textContent=hoy.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'});$('stamp').textContent='XEC · '+hoy.toISOString().slice(0,10);
+  /* LAS DOS FECHAS SALIAN DEL MISMO INSTANTE Y NO COINCIDIAN. La cabecera se
+     formateaba en hora LOCAL y el sello XEC con `toISOString()`, que es UTC: entre las
+     00:00 y las 02:00 de aqui el mismo documento se fechaba en DOS dias distintos
+     —«24 de agosto» arriba y «2026-08-23» en el sello—. Un informe de planta que se
+     imprime y se firma no puede llevar dos fechas. Las dos salen ahora del mismo dia
+     local, con una funcion que lo dice. */
+  var hoy=new Date();
+  var diaLocal=function(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+
+                                 '-'+String(d.getDate()).padStart(2,'0');};
+  $('fecha').textContent=hoy.toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'});
+  $('stamp').textContent='XEC · '+diaLocal(hoy);
   var kp=[['Seguidores',L.trackers.length,''],['Strings',NSTR,'del DWG'],['Potencia DC',(KWP/1000).toFixed(2)+' MWp',mods+' mód × '+wmod+' Wp'],
           ['Inversores',(L.invlab||[]).length+' × SG350HX','12,6 MW AC'],['CTs','2 × 6.300 kVA','0,8→20 kV'],['Evacuación','20 kV','subestación propia']];
   if(CAL)kp.push(['Yield (SolarGPT)',CAL.y+' kWh/kWp·año',(CAL.pr?'PR '+CAL.pr:'calibrado')]);
   $('kpis').innerHTML=kp.map(function(k){return '<div class="kpi"><span>'+k[0]+'</span><b>'+k[1]+'</b><span>'+k[2]+'</span></div>';}).join('');
   if(CAL)$('calNote').innerHTML='<span style="color:var(--acc)">✓ calibrado con SolarGPT (clima ×'+CAL.f+')</span>';
-  var d=new Date();$('dia').value=d.toISOString().slice(0,10);doy=Math.floor((d-new Date(d.getFullYear(),0,0))/86400000);
+  /* Y aqui el mismo desajuste por dentro: el campo de fecha salia de UTC y el dia
+     del ano se calculaba en LOCAL, asi que entre las 00:00 y las 02:00 la curva solar
+     se dibujaba para un dia y la etiqueta decia el otro. Los dos, del mismo dia local. */
+  var d=new Date();$('dia').value=diaLocal(d);doy=Math.floor((d-new Date(d.getFullYear(),0,0))/86400000);
   drawCurve(); drawUni(nInvN,nInvS);
   var R=[['Cableado DC + (string→inversor)','cable_pos'],['Cableado DC − (string→inversor)','cable_neg'],['Red de tierras 35 mm²','earth'],
          ['Zanjas de string','trench_string'],['Zanjas string→inversor','trench_inv'],['Zanja N3 (inversor→CT)','trench_n3'],
