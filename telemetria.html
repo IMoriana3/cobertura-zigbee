@@ -497,10 +497,26 @@ function aperturaSolBajo(lista, N, paso) {
 function veredicto(ap, med, nEq, paso, porNcu, N) {
   // el mediodía es donde las dos firmas coinciden: se juzga por los EXTREMOS,
   // que es donde el backtracking existe
-  /* «sol bajo» se decide por lo GIRADOS que están los seguidores (|θ|>35°), no
-     por la hora: así el veredicto no depende de en qué huso venga el dato —los
-     logs de la NCU vienen en UTC— ni de acertar con el orto. */
-  const idx = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
+  const todos = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
+  /* SOLO DENTRO DEL SEGUIMIENTO. Un eje N-S gira siempre de este a oeste, así
+     que el seguimiento es el tramo donde la mediana crece de forma monótona.
+     Fuera de él solo hay posición nocturna y MANIOBRAS de entrada y salida —y
+     esas maniobras dispersan muchísimo, porque los seguidores no arrancan a la
+     vez—. Medir ahí daba 19° de «apertura» en una planta que durante las nueve
+     horas de seguimiento manda un ángulo ÚNICO: el error que este criterio
+     existe para no repetir. */
+  let mejor = [0, -1], i2 = 0;
+  while (i2 < todos.length) {
+    let j = i2;
+    while (j + 1 < todos.length && todos[j + 1].med >= todos[j].med - 0.05) j++;
+    if (j - i2 > mejor[1] - mejor[0]) mejor = [i2, j];
+    i2 = Math.max(j, i2 + 1);
+  }
+  const idx = todos.slice(mejor[0], mejor[1] + 1);
+  const hhh = (i) => String(Math.floor(i * paso / 3600)).padStart(2, '0') + ':' +
+                     String(Math.floor(i * paso % 3600 / 60)).padStart(2, '0');
+  const tramo = idx.length ? `${hhh(idx[0].i)}–${hhh(idx[idx.length - 1].i)}` : '—';
+  const fueraMax = todos.filter(x => !idx.includes(x)).reduce((a, b) => Math.max(a, b.v), 0);
   if (!idx.length) { $('ver').innerHTML = '<div class="ver warn">sin instantes con suficientes seguidores</div>'; return; }
   const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados
   /* El «centro» NO puede definirse por |θ| pequeño: en una planta CON
@@ -524,8 +540,16 @@ function veredicto(ap, med, nEq, paso, porNcu, N) {
       `<div class="nota">Compatible con backtracking que sí usa la pendiente de cada seguidor.</div>`;
   else h = `<div class="ver warn">Apertura al sol bajo: ${aE.toFixed(2)}° — intermedia</div>` +
       `<div class="nota">Ni ángulo único ni bt3d pleno. Mirar el detalle antes de concluir.</div>`;
-  h += `<div class="nota">En el centro del día: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
-       `Pico del día ${pico.v.toFixed(2)}° a las ${hh(pico.i)}. Seguidores contados: hasta ${Math.max(...nEq)}.</div>`;
+  h += `<div class="nota">Medido <b>solo dentro del seguimiento</b> (${tramo}), que es donde el ` +
+       `backtracking existe. En el centro del día: ${aC == null ? '—' : aC.toFixed(2) + '°'} ` +
+       `<b>(ahí las dos firmas coinciden: no distingue)</b>. Fuera del seguimiento —posición nocturna y ` +
+       `maniobras— la dispersión llega a <b>${fueraMax.toFixed(2)}°</b>, y NO cuenta: los seguidores no ` +
+       `arrancan a la vez y eso no es apuntamiento. Seguidores contados: hasta ${Math.max(...nEq)}.</div>`;
+  if (aE != null && aE < 1.5)
+    h += `<div class="nota" style="margin-top:6px"><b class="warn">Antes de concluir:</b> en terreno ` +
+         `PLANO un backtracking correcto <b>también</b> da apertura cero, porque no hay pendiente que ` +
+         `corregir. Esta firma solo distingue donde <b>hay relieve</b>: compruébalo con el ` +
+         `levantamiento de la planta antes de decir que no corrige.</div>`;
   /* DE QUÉ se está hablando: si el fichero trae una sola NCU, esto NO es la
      planta. Generalizar de una parte al todo es el error fácil aquí —lo cometí
      yo al leer el primer resultado— y por eso lo dice el propio informe. */

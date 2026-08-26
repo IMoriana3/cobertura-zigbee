@@ -28,6 +28,10 @@ t('la apertura es ROBUSTA (p95−p5), no máx−mín: un seguidor en tope no pue
   /0\.95\)\]\s*-\s*v\[Math\.floor\(v\.length \* 0\.05\)\]/.test(html));
 t('el eje declara el huso del DATO, no un «local» inventado',
   /el huso que declara el propio dato/.test(html));
+t('la apertura se mide SOLO dentro del seguimiento, no en las maniobras',
+  /mejor\[1\] - mejor\[0\]/.test(html) && /Fuera del seguimiento/.test(html));
+t('con apertura cero avisa de que en terreno PLANO eso no prueba nada',
+  /en terreno ` \+\s*`PLANO un backtracking correcto/.test(html) || /PLANO un backtracking correcto/.test(html));
 t('el veredicto se juzga por los EXTREMOS, no por el día entero',
   /Math\.abs\(x\.med\) > 35/.test(html) && /no distingue/.test(html));
 t('el remuestreo descarta la muestra si cae fuera de media malla',
@@ -88,15 +92,28 @@ const serie = (paso, fn) => {
 // θ astronómico de juguete: −55 al alba, 0 al mediodía, +55 al ocaso
 const astro = (s) => Math.max(-55, Math.min(55, (s - 43200) / 43200 * 90));
 
+/* La planta sintética incluye POSICIÓN NOCTURNA y MANIOBRAS de entrada y
+   salida, porque es lo que trae la planta real: cada seguidor sale de la noche
+   en un instante distinto y durante ese tránsito los ángulos difieren
+   muchísimo. Sin eso, el test no probaría el fallo que costó un veredicto
+   equivocado (19° de «apertura» que eran maniobra). */
 function planta(abre, ncu = '1') {
   const filas = [];
+  const T0 = 7 * 3600, T1 = 17 * 3600;               // ventana de seguimiento
   for (let i = 1; i <= 40; i++) {
-    // «abre»: cada seguidor se desvía en proporción a su pendiente, y el
-    // desvío CRECE con |θ|, que es como se comporta el backtracking real
     const pend = (i - 20) / 20;                       // −1 … +1
+    const arranque = T0 + (i % 10) * 600;             // cada uno sale cuando le toca
     filas.push({ ncu, equipo: 'TCU ' + i, tz: 'UTC', paso_s: 300, cobertura: 99,
-      series: serie(300, (s) => { const a = astro(s);
-        return a + (abre ? pend * 6 * Math.abs(a) / 55 : 0); }) });
+      series: serie(300, (s) => {
+        // La noche se pasa al OESTE (+40, como quien viene de un stow) y el
+        // seguimiento arranca al ESTE (−50): así la maniobra hace CAER la
+        // mediana, igual que en El Burgo real (−30 → −54 al arrancar, +55 → −5
+        // al acabar). Sin esa caída el tramo de seguimiento no se distingue.
+        if (s < arranque) return 40;
+        if (s > T1 + (i % 10) * 600) return -5;
+        const a = astro(s);
+        return a + (abre ? pend * 6 * Math.abs(a) / 55 : 0);
+      }) });
   }
   return filas;
 }
@@ -117,42 +134,42 @@ await pg.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
 console.log('navegador');
 t('la página carga sin errores de consola', errs.length === 0, errs.join(' · '));
 
-for (const [nombre, abre, espera] of [['ángulo único', false, 'err'], ['ángulos abiertos', true, 'ok']]) {
-  await pg.evaluate((filas) => {
-    // stub del índice y de la consulta del día
-    window.fetch = async (u) => ({ ok: true, status: 200, json: async () =>
-      String(u).includes('series')
-        ? filas
-        : [{ planta: 'P', ncu: '1', clase: 'tcu', dia: '2026-08-20', equipo: 'TCU 1', cobertura: 99, paso_s: 300 }] });
-  }, planta(abre));
-  await pg.click('#bSondeo');
-  await pg.waitForFunction(() => document.getElementById('cDia').style.display === '');
-  await pg.click('#bAnalizar');
-  await pg.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
-  const r = await pg.evaluate(() => ({
-    html: document.getElementById('ver').innerHTML,
-    clase: (document.querySelector('#ver .ver') || {}).className || '',
-  }));
-  t(`${nombre}: el veredicto acierta`, r.clase.includes(espera),
-    `clase «${r.clase}» · ${r.html.replace(/<[^>]+>/g, ' ').slice(0, 110)}`);
-}
+/* ── el caso REAL, que es mejor test que cualquier planta de juguete ──────
+   El Burgo I, NCU2, 5-ago-2026: 51 de sus 102 seguidores, a malla de 15 min.
+   Trae lo que una planta trae de verdad —posición nocturna, maniobras de
+   entrada y salida escalonadas, huecos de radio— y por eso caza el fallo que
+   una planta sintética no cazó: medir la apertura EN LAS MANIOBRAS daba 19° en
+   una planta que durante las nueve horas de seguimiento manda un ángulo único.
+   El caso positivo se construye MUTANDO el real: mismo día, mismas maniobras,
+   pero abriendo los ángulos en proporción a un índice, como haría el relieve. */
+const REAL = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'fixture_elburgo_20260805.json'), 'utf-8'));
+const abriendo = (grados) => REAL.map((f, k) => ({
+  ...f, target_angle: f.target_angle.map(v => {
+    if (v == null) return v;
+    // solo se abre lo que está EN SEGUIMIENTO (|θ|<54,5 y fuera del reposo)
+    const pend = (k - REAL.length / 2) / (REAL.length / 2);
+    return Math.abs(v) < 54.5 ? v + pend * grados * Math.abs(v) / 55 : v;
+  }),
+}));
 
-/* fichero: la misma respuesta sin tocar la red ni los permisos */
-for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'],
-                                      ['fichero · ángulos abiertos', true, 'ok']]) {
-  const pg5 = await browser.newPage();
-  const e5 = []; pg5.on('pageerror', e => e5.push(e.message));
-  await pg5.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
-  // lo que saldría del SQL Editor: arrays sueltos, sin `series`
-  const filas = planta(abre).map(f => ({ ncu: f.ncu, equipo: f.equipo, tz: f.tz, paso_s: f.paso_s,
-    t: f.series.t, target_angle: f.series.v.target_angle, angle: f.series.v.angle }));
-  await pg5.fill('#pegado', JSON.stringify(filas));
-  await pg5.click('#bPegar');
-  await pg5.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
-  const r5 = await pg5.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
-  t(`${nombre}: acierta sin tocar la red`, r5.includes(espera), `clase «${r5}»`);
-  t(`${nombre}: sin errores de consola`, e5.length === 0, e5.join(' · '));
-  await pg5.close();
+for (const [nombre, filas, espera] of [['El Burgo REAL', REAL, 'err'],
+                                       ['el mismo día, abriendo 12°', abriendo(12), 'ok']]) {
+  const pgR = await browser.newPage();
+  const eR = []; pgR.on('pageerror', e => eR.push(e.message));
+  await pgR.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await pgR.fill('#pegado', JSON.stringify(filas));
+  await pgR.click('#bPegar');
+  await pgR.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const rR = await pgR.evaluate(() => ({
+    clase: (document.querySelector('#ver .ver') || {}).className || '',
+    txt: document.getElementById('ver').textContent }));
+  t(`${nombre}: el veredicto acierta`, rR.clase.includes(espera),
+    `clase «${rR.clase}» · ${rR.txt.slice(0, 130)}`);
+  t(`${nombre}: sin errores de consola`, eR.length === 0, eR.join(' · '));
+  if (filas === REAL)
+    t('el REAL no cuela las maniobras como apertura (el fallo que costó el veredicto)',
+      /0[.,]\d\d°/.test(rR.txt.split('—')[0]), rR.txt.slice(0, 90));
+  await pgR.close();
 }
 
 /* ALCANCE: una sola NCU no es la planta, y el informe tiene que decirlo */
