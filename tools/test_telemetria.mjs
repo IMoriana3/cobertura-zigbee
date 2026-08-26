@@ -62,6 +62,12 @@ t('hay entrada por GitHub, que es como se autentica la casa',
 // permisos deja sin respuesta una pregunta que no depende de permisos
 t('se puede analizar SIN conexión, desde fichero o pegando',
   /id="fich"/.test(html) && /id="pegado"/.test(html) && /function normaliza/.test(html));
+// el alias de la subconsulta NO puede ser «t»: hay una columna «t» y Postgres
+// resuelve esa, con «row_to_json(jsonb) does not exist». Pasó en el primer uso.
+t('la consulta de ejemplo no colisiona el alias con la columna «t»',
+  /\)\s*q;/.test(html) && !/\)\s*t;/.test(html));
+t('la consulta de ejemplo avisa del límite de 100 filas del editor',
+  /No limit/.test(html));
 t('el fichero se NORMALIZA en vez de exigir un formato',
   /Array\.isArray\(j\.equipos\)/.test(html) && /x\.series \|\| \{ t: x\.t/.test(html));
 
