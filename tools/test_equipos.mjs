@@ -20,6 +20,15 @@
 //      este banco corre DOS plantas con perfiles distintos y exige que el bosque
 //      llegue entero hasta el final.
 //
+// CONTAR HIJOS DEL GRUPO NO VALE. `instanciaBOS()` junta las mallas repetidas de
+// las instalaciones y las sustituye por InstancedMesh, SACÁNDOLAS de su grupo:
+// en El Burgo pasa de 2.837 mallas a 405, con 2.469 retiradas en 37 lotes. Una
+// HSU entera parecía entonces tener 17 piezas de 123 y este banco cantó una
+// regresión que no existía —la celosía estaba, instanciada—. Aquí se cuenta por
+// GEOMETRÍA en TODO el bosque sumando `count` cuando la malla es instanciada,
+// que es lo que de verdad se dibuja, y las cotas se miden sobre un modelo recién
+// construido, que es el contrato de `equipos.js` y no lo toca el instanciado.
+//
 //   python3 -m http.server 8100        (en otra terminal)
 //   node tools/test_equipos.mjs
 import { chromium } from 'playwright';
@@ -45,23 +54,52 @@ const SONDA = `(() => {
   const bb = o => { const b = new THREE.Box3();
     o.traverse(n => { if (n.isMesh) b.expandByObject(n); });
     return { min: b.min.toArray(), max: b.max.toArray() }; };
-  // las HSU son los grupos hijos de bosGroup con un toro (el aro del piranómetro)
-  const hsus = [];
-  bosGroup.children.forEach(c => {
-    let toro = false, mallas = 0, pv = false;
-    c.traverse(o => {
-      if (o.geometry && o.geometry.type === 'TorusGeometry') toro = true;
-      if (o.isMesh) mallas++;
-      const p = o.geometry && o.geometry.parameters;
-      if (p && p.width !== undefined && Math.abs(p.width - (D.hsuPvW + 0.02)) < 1e-9) pv = true;
-    });
-    if (toro && mallas > 50) hsus.push({ mallas, pv, bb: bb(c), y: c.position.y });
-  });
+  const eq = (a, b2) => Math.abs(a - b2) < 1e-9;
+  /* Cuántas veces se DIBUJA una geometría en todo el bosque. Una InstancedMesh
+     vale por su "count": es lo que hace que esto sobreviva a "instanciaBOS". */
+  const cuenta = (raiz, pred) => { let n = 0;
+    raiz.traverse(o => { if (!o.isMesh) return;
+      const q = o.geometry && o.geometry.parameters;
+      if (q && pred(q)) n += (o.isInstancedMesh ? o.count : 1); });
+    return n; };
+  const cil = (rt, rb, h, seg) => q => q.radiusTop !== undefined && eq(q.radiusTop, rt) &&
+        eq(q.radiusBottom, rb) && (h === null || eq(q.height, h)) && (seg === null || q.radialSegments === seg);
+  const caja = (w, h, d) => q => q.width !== undefined && eq(q.width, w) && eq(q.height, h) && eq(q.depth, d);
+  const ncu = pred => gwMasts.reduce((n, g) => n + cuenta(g, pred), 0);
+  const W = D.hsuLegR * 1.732, dgl = Math.sqrt(W * W + Math.pow(D.hsuTowerH / D.hsuLevels, 2));
+  const piezas = {
+    // HSU
+    piranometro: cuenta(bosGroup, q => q.tube !== undefined && eq(q.radius, 0.16) && eq(q.tube, 0.025)),
+    patas:       cuenta(bosGroup, cil(0.014, 0.016, D.hsuTowerH, 8)),
+    travesanos:  cuenta(bosGroup, cil(0.006, 0.006, W, 6)),
+    diagonales:  cuenta(bosGroup, cil(0.005, 0.005, dgl, 6)),
+    sondas:      cuenta(bosGroup, cil(0.004, 0.004, 0.09, 5)),
+    brazoAnt:    cuenta(bosGroup, caja(D.hsuAntArmL, 0.03, 0.03)),   // + el de la garita, mismo perfil
+    brazoPira:   cuenta(bosGroup, caja(0.7, 0.03, 0.03)),
+    latigoHsu:   cuenta(bosGroup, cil(0.005, 0.005, 0.34, 5)),       // el corto: el largo lo comparte con la NCU
+    pv:          cuenta(bosGroup, caja(D.hsuPvW + 0.02, D.hsuPvH + 0.02, 0.030)),
+    /* NCU: cuelgan de gwMasts, no de bosGroup, así que el instanciado ni las
+       roza; se cuentan igual por geometría para que valga el mismo criterio. */
+    armario:     ncu(caja(D.ncuCabW, D.ncuCabH, D.ncuCabD)),
+    carril:      ncu(caja(0.34, 0.05, 0.04)),
+    corrugado:   ncu(cil(0.024, 0.024, 1.05, 8)),
+  };
+  /* Las cotas, sobre un modelo recién construido: es el contrato de equipos.js,
+     no lo toca el instanciado, y no depende de qué planta se esté mirando. */
+  const modelo = tipo => {
+    const M = Equipos.materials(THREE);
+    const r = tipo === 'hsu'
+      ? Equipos.buildHSU(THREE, { materials: M, pv: true, giro: 0,
+          panelMaterial: new THREE.MeshStandardMaterial() })
+      : Equipos.buildNCU(THREE, { materials: M });
+    let n = 0; r.group.traverse(o => { if (o.isMesh) n++; });
+    return { mallas: n, bb: bb(r.group) };
+  };
   return {
-    equipos: Equipos.VERSION,
-    hsus, nMeteo: (LAYOUT.meteo || []).length,
-    ncus: gwMasts.map(g => ({ mallas: (() => { let n = 0; g.traverse(o => { if (o.isMesh) n++; }); return n; })(), bb: bb(g) })),
-    nGw: GWS.length,
+    equipos: Equipos.VERSION, piezas,
+    hsu: modelo('hsu'), ncu: modelo('ncu'),
+    nMeteo: (LAYOUT.meteo || []).length,
+    nNcu: gwMasts.length, nGw: GWS.length,
     antNcu: D.ncuAntY, antHsu: D.hsuAntY, mastNcu: D.ncuMastH, torreHsu: D.hsuTowerH,
     // el bosque tiene que llegar ENTERO: si buildBOS revienta a medias, esto se queda corto
     hijosBos: bosGroup.children.length,
@@ -103,32 +141,46 @@ for (const pl of PLANTAS) {
   check(pl.nom + ': el modelo viene de equipos.js', !!s.equipos, s.equipos);
 
   // --- el bosque llega entero (el fallo de `mP`) ---
+  const P = s.piezas, nH = s.nMeteo, nN = s.nNcu;
   check(pl.nom + ': buildBOS termina y planta TODAS las estaciones del layout',
-        s.hsus.length === s.nMeteo, s.hsus.length + ' de ' + s.nMeteo);
-  check(pl.nom + ': una NCU por cada una del layout', s.ncus.length === s.nGw,
-        s.ncus.length + ' de ' + s.nGw);
+        P.piranometro === nH, P.piranometro + ' de ' + nH);
+  check(pl.nom + ': una NCU por cada una del layout', nN === s.nGw, nN + ' de ' + s.nGw);
 
-  // --- NCU: cotas del plano DR_NCU_v0 ---
-  if (s.ncus.length) {
-    const n = s.ncus[0], alto = n.bb.max[1] - n.bb.min[1];
-    check(pl.nom + ': la NCU son 17 piezas', n.mallas === 17, n.mallas);
+  /* --- y cada estación está ENTERA. Se cuenta por geometría en todo el bosque
+         (ver cabecera): dentro del grupo ya no están, las instancia el visor. */
+  check(pl.nom + ': la celosía entera, 3 patas de 8 m por torre', P.patas === 3 * nH, P.patas + ' de ' + 3 * nH);
+  check(pl.nom + ': sus 48 travesaños por torre', P.travesanos === 48 * nH, P.travesanos + ' de ' + 48 * nH);
+  check(pl.nom + ': sus 48 diagonales por torre', P.diagonales === 48 * nH, P.diagonales + ' de ' + 48 * nH);
+  check(pl.nom + ': las 3 sondas del ultrasónico', P.sondas === 3 * nH, P.sondas + ' de ' + 3 * nH);
+  check(pl.nom + ': los 2 brazos de 45 cm (antenas y garita)', P.brazoAnt === 2 * nH, P.brazoAnt + ' de ' + 2 * nH);
+  check(pl.nom + ': el brazo del piranómetro', P.brazoPira === nH, P.brazoPira + ' de ' + nH);
+  check(pl.nom + ': los látigos en el brazo, uno corto por estación', P.latigoHsu === nH, P.latigoHsu + ' de ' + nH);
+  check(pl.nom + ': módulo FV ' + (pl.pv ? 'SÍ' : 'NO') + ' (lo dice el layout, no el nombre de la planta)',
+        P.pv === (pl.pv ? nH : 0), P.pv + ' de ' + (pl.pv ? nH : 0));
+  check(pl.nom + ': el armario de cada NCU', P.armario === nN, P.armario + ' de ' + nN);
+  check(pl.nom + ': sus 2 carriles y su corrugado',
+        P.carril === 2 * nN && P.corrugado === nN, P.carril + ' carriles, ' + P.corrugado + ' corrugados');
+
+  // --- NCU: cotas del plano DR_NCU_v0, sobre el modelo recién construido ---
+  {
+    const alto = s.ncu.bb.max[1];
+    check(pl.nom + ': la NCU son 17 piezas', s.ncu.mallas === 17, s.ncu.mallas);
     check(pl.nom + ': el poste de la NCU mide 2,95 m', near(s.mastNcu, 2.95, 1e-9), s.mastNcu);
     check(pl.nom + ': el látigo de la NCU corona el poste (3,15 m)',
-          near(s.antNcu, 3.15, 1e-9) && alto > 3.3 && alto < 3.5, s.antNcu + ' / alto ' + alto.toFixed(3));
+          near(s.antNcu, 3.15, 1e-9) && alto > 3.3 && alto < 3.5, s.antNcu + ' / cabeza ' + alto.toFixed(3));
   }
 
   // --- HSU: cotas del plano FTR.24.00145_5_C ---
-  if (s.hsus.length) {
-    const h = s.hsus[0], alto = h.bb.max[1] - h.bb.min[1];
+  {
+    /* La cota que importa es la CABEZA sobre su suelo (max), no el alto de la
+       caja: el modelo baja del cero (zapata y corrugado) y ese trozo enterrado
+       engordaba el alto hasta 9,29 m. */
+    const cabeza = s.hsu.bb.max[1];
+    check(pl.nom + ': la HSU son 123 piezas', s.hsu.mallas === 123, s.hsu.mallas);
     check(pl.nom + ': la torre de la HSU mide 8 m', near(s.torreHsu, 8.0, 1e-9), s.torreHsu);
-    check(pl.nom + ': la cabeza de la HSU queda sobre los 8 m', alto > 8.4 && alto < 8.7, alto.toFixed(3));
+    check(pl.nom + ': la cabeza de la HSU corona los 8 m de torre',
+          cabeza > 8.4 && cabeza < 8.7, cabeza.toFixed(3) + ' (base ' + s.hsu.bb.min[1].toFixed(3) + ')');
     check(pl.nom + ': los látigos de la HSU, en su brazo a 6,50 m', near(s.antHsu, 6.50, 1e-9), s.antHsu);
-    check(pl.nom + ': módulo FV ' + (pl.pv ? 'SÍ' : 'NO') + ' (lo dice el layout, no el nombre de la planta)',
-          h.pv === pl.pv, 'pv=' + h.pv);
-    check(pl.nom + ': la HSU son ' + (pl.pv ? 123 : 119) + ' piezas',   // +1: el brazo de las antenas
-          h.mallas === (pl.pv ? 123 : 119), h.mallas);
-    check(pl.nom + ': todas las estaciones se montan igual',
-          s.hsus.every(x => x.mallas === h.mallas), s.hsus.map(x => x.mallas).join(','));
   }
   await page.close();
 }
