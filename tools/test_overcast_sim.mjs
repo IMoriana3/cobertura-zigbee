@@ -122,6 +122,21 @@ t('pintar por NCU: la tira escribe en el DESTINO elegido, nunca directamente en 
   if (!/skyTargets\(\)/.test(clear) || !/new Array\(288\)/.test(clear)) throw new Error('«despejar» ignora el ámbito');
 });
 
+t('el nombre de la app es UNO: <title> y <h1> dicen lo mismo', () => {
+  // en una semana se renombró tres veces y el panel acabó llamándola de una
+  // manera y la página de otra; esto lo fija dentro del fichero
+  // sin comentarios: la propia nota de arriba menciona <title> y <h1>
+  const limpio = html.replace(/<!--[\s\S]*?-->/g, '');
+  const t1 = (limpio.match(/<title>([^<—]+)/) || [])[1];
+  const h1 = (limpio.match(/<h1>([^<]+)/) || [])[1];
+  if (!t1 || !h1) throw new Error('no encuentro el título o el h1');
+  const norm = x => x.trim().replace(/\s+/g, ' ');
+  if (norm(t1) !== norm(h1))
+    throw new Error('la pestaña dice «' + norm(t1) + '» y la página «' + norm(h1) + '»');
+  if (!/NOMBRE CANÓNICO DE LA APP/.test(html))
+    throw new Error('falta la nota que declara el nombre canónico y dónde más vive');
+});
+
 const i0 = html.indexOf('FÍSICA PURA');
 const i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA'); process.exit(1); }

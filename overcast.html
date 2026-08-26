@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Simulador de Overcast — Difusa en el navegador</title>
+<!-- NOMBRE CANÓNICO DE LA APP: «Simulador de radiación difusa».
+     Va en TRES sitios y los tres tienen que decir lo mismo: este <title>, el <h1> de
+     abajo y la tarjeta del panel (proyectos/index.html, docId «overcast-sim»). En una
+     semana se renombró tres veces —Overcast, cielo cubierto, radiación difusa— y el
+     panel acabó llamando a la app de una manera y la propia página de otra. Hay un
+     check en tools/test_overcast_sim.mjs que exige que <title> y <h1> coincidan.
+     Los identificadores TÉCNICOS no se tocan (overcast.html, overcast-sim, el test):
+     renombrarlos rompería la URL publicada y los enlaces de la doc. -->
+<title>Simulador de radiación difusa — las políticas del core en el navegador</title>
 <link rel="icon" href="favicon.svg">
 <style>
   :root{
@@ -80,7 +88,7 @@
 </head>
 <body>
 <header>
-  <h1>Simulador de Overcast <span class="chip">difusa en el navegador</span></h1>
+  <h1>Simulador de radiación difusa <span class="chip">las 4 políticas del core, en el navegador</span></h1>
   <div class="sub">Espejo JS del módulo canónico de tracking de SolarGPT (<code>solargpt_core/tracker.py</code>,
     schema 2.1.0): las <b>cuatro políticas de difusa del core</b> — <b>diffuse_flat · diffuse_limited ·
     diffuse_continuous · diffuse_poa_switch</b> — más la baseline pvlib, con la MISMA semántica: transposición
@@ -1823,7 +1831,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.16.0';
+const VER='v1.16.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
