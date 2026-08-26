@@ -1538,7 +1538,15 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
 function shadeRows(zen,az,T,rowAngles){
   const nR=T.pairs.length+1;
   const out=new Array(nR).fill(0);
-  if(!(isFinite(zen)&&zen<89.5))return out;           // el 3D llega hasta sol ~0,5°
+  if(!isFinite(zen)||zen>=90)return out;              // sol bajo el horizonte: sin haz no hay sombra de haz
+  // v1.36: entre 89,5° y 90° el ray-cast 3D deja de ser fiable, pero devolver
+  // CERO ahí era afirmar «no hay sombra» justo cuando la planta está tapada
+  // entera: a 0,35° de sol la sombra de una fila mide 6/tan(0,35°) ≈ 980 m.
+  // La tabla de consignas de Ayora lo publicaba como un salto de 76,6 % a
+  // 0,00 % en un paso de 10 min. Se CLAVA al borde de validez del modelo en
+  // vez de inventar un cero: conserva qué fila se tapa a cuál, y la energía en
+  // juego está acotada por la DNI de ese tramo (1,2 W/m² en ese caso).
+  if(zen>89.5)zen=89.5;                               // el 3D llega hasta sol ~0,5°
   // el CONTADOR es el ray-cast 3D multi-emisora A TODAS HORAS — la «vía
   // simétrica» que estuvo en estudio, ahora con cotas POR TRAMO y validada:
   // ray-cast completo ≡ contador al alba (0 discrepancias) y, fuera de la
@@ -2303,7 +2311,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.35.0';
+const VER='v1.36.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

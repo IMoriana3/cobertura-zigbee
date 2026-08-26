@@ -1070,6 +1070,119 @@ t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id'
   }
 });
 
+t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', () => {
+  // El contador 3D devolvía shade=0 en toda la banda zen≥89,5°, o sea que
+  // afirmaba «no hay sombra» con la planta tapada entera. En la tabla de
+  // Ayora del 21-jun salía un salto de 76,6 % a 0,00 % en un paso de 10 min.
+  if (!/if\(zen>89\.5\)zen=89\.5;/.test(html)) throw new Error('ya no se clava al borde de validez');
+  if (/if\(!\(isFinite\(zen\)&&zen<89\.5\)\)return out;/.test(html)) throw new Error('vuelve el cero falso');
+  const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), 500, null);
+  const pairs = [];
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    pairs.push({ slope: Math.atan2(P.pairDz[i], dx) * 180 / Math.PI, pitch: dx,
+                 axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+  }
+  const T = { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
+              nBypass: 2, iam: 0.05, rowTilt: P.tilt, groups: P.groups, drive: 'bifila',
+              segs: P.segs, real: P };
+  const day0 = Date.UTC(2026, 5, 21), doy = 172;
+  let prevMed = -1;
+  for (let mm = 21 * 60; mm <= 21 * 60 + 30; mm += 5) {
+    const g = F.solarPos(day0 + (mm - 120) * 60000, 39.1182081, -1.1598527);
+    if (g.elev <= 0) break;                              // pasado el ocaso ya no aplica
+    const irr = F.clearskyIneichen(g.zen, doy, 739, 3.5);
+    const ang = F.policyAngles('pairwise', g.zen, g.az, T, irr, doy, 0.20).angles;
+    const sh = F.poaPlant(g.zen, g.az, T, ang, irr, doy, 0.20).shade;
+    const a = [];
+    for (let i = 0; i < pairs.length + 1; i++) if (typeof sh[i] === 'number') a.push(sh[i]);
+    const med = a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+    if (med + 1e-9 < prevMed)
+      throw new Error(`la sombra BAJA con el sol cayendo (min ${mm}, elev ${g.elev.toFixed(2)}°): ` +
+        `${(100 * prevMed).toFixed(2)} % → ${(100 * med).toFixed(2)} %`);
+    prevMed = med;
+  }
+  if (prevMed < 0.5) throw new Error('al ocaso la planta debería estar mayormente tapada, y sale ' +
+    (100 * prevMed).toFixed(1) + ' %');
+});
+
+console.log('');
+console.log('control de entrada del relieve (tools/valida_relieve.mjs)');
+
+// Cotas SINTÉTICAS: la única forma de probar que el control distingue un bancal
+// (legítimo) de una línea suelta (imposible) es fabricar los dos casos. El
+// formato es el de <planta>_cotas.json: y = cota medida sobre el módulo.
+function cotasSinteticas(perfilZ, pitch = 6.0) {
+  const t = [];
+  perfilZ.forEach((z, i) => {
+    // 8 filas por línea, todas con el mismo tramo de norte para que solapen
+    for (let k = 0; k < 8; k++)
+      t.push({ f: [{ x: i * pitch, n: [k * 80, k * 80 + 74], y: [z, z], art: 0, pa: [0], nm: null, ym: null }] });
+  });
+  return { planta: 'zzsintetica', base: 0, gcr: 0.397, limite: 55, pitch, cuerda: 2.382,
+    n_trk: t.length, n_con: t.length, n_art: 0, n_inc: 0, nota: 'sintética de prueba', t };
+}
+function corrigeRelieve(perfilZ) {
+  const f = path.join(ROOT, 'zzsintetica_cotas.json');
+  fs.writeFileSync(f, JSON.stringify(cotasSinteticas(perfilZ)));
+  try {
+    const r = require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'zzsintetica'],
+      { encoding: 'utf-8' });
+    return { salida: r, codigo: 0 };
+  } catch (e) {
+    return { salida: (e.stdout || '') + (e.stderr || ''), codigo: e.status };
+  } finally { try { fs.unlinkSync(f); } catch { /* nada */ } }
+}
+
+t('bancal: un escalón que BAJA Y SE QUEDA no se rechaza (es terreno real)', () => {
+  // 12 líneas llanas, escalón de −2,5 m en la 6ª que persiste hasta el final.
+  // Esto se rompió una vez al revés: se rechazaba por «pendiente imposible»,
+  // y así se descartaban justo las plantas donde corregir el relieve más vale.
+  const z = [0, -.1, -.2, -.3, -.4, -.5, -3.0, -3.1, -3.2, -3.3, -3.4, -3.5];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 0) throw new Error('rechaza un bancal legítimo:\n' + r.salida);
+  if (!/VEREDICTO: APTA/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+  // y aun así lo INFORMA: el desnivel grande tiene que verse en el resumen
+  if (!/pareja\(s\) por encima de 8\.5°/.test(r.salida)) throw new Error('no informa del desnivel');
+});
+t('línea suelta: hundida de sus DOS vecinas más de medio vano → NO EVALUABLE', () => {
+  const z = [0, -.1, -.2, -.3, -.4, -4.9, -.6, -.7, -.8, -.9, -1.0, -1.1];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 1) throw new Error('no rechaza una línea imposible (código ' + r.codigo + '):\n' + r.salida);
+  if (!/VEREDICTO: NO EVALUABLE/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+  if (!/línea 5 /.test(r.salida)) throw new Error('no señala CUÁL es la línea:\n' + r.salida);
+});
+t('línea suelta pequeña (vaguada posible) → reserva, no rechazo', () => {
+  const z = [0, -.1, -.2, -.3, -.4, -2.0, -.6, -.7, -.8, -.9, -1.0, -1.1];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 0) throw new Error('rechaza lo que solo merece reserva:\n' + r.salida);
+  if (!/VEREDICTO: APTA CON RESERVAS/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+});
+t('llano perfecto → APTA sin hallazgos', () => {
+  const r = corrigeRelieve([0, -.1, -.2, -.3, -.4, -.5, -.6, -.7, -.8, -.9]);
+  if (r.codigo !== 0 || !/sin hallazgos/.test(r.salida)) throw new Error('el llano no sale limpio:\n' + r.salida);
+});
+t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
+  const corre = a => {
+    try { return { s: require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), ...a], { encoding: 'utf-8' }), c: 0 }; }
+    catch (e) { return { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+  };
+  if (fs.existsSync(path.join(ROOT, 'ayora_cotas.json'))) {
+    const r = corre(['--planta', 'ayora']);
+    if (r.c !== 0 || !/VEREDICTO: APTA/.test(r.s)) throw new Error('Ayora ya no pasa el control:\n' + r.s);
+  }
+  if (fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) {
+    const r = corre(['--planta', 'sanjose', '--bloque', '0']);
+    if (r.c !== 1) throw new Error('San José bloque 0 debería salir NO EVALUABLE');
+    // las tres líneas imposibles, nombradas: si el levantamiento se corrige,
+    // esta comprobación avisa de que hay que revisar el informe al cliente
+    for (const l of ['línea 129', 'línea 146', 'línea 159'])
+      if (!r.s.includes(l)) throw new Error('ya no señala la ' + l + ': ¿se corrigió el levantamiento?');
+  }
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
