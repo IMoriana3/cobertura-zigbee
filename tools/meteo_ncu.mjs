@@ -81,13 +81,16 @@ const NOTA_PLANTA = {
        + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
        + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
        + 'con HSU llevan una y esclavo 230.',
-  sanjose: 'El SCADA (24019-san-jose.json, del Excel «Direcciones IP») declara HSU en las NCU 1, 6, 8, '
-       + '11 y 21, una en cada una, y el DWG dibuja OCHO. No es un desacuerdo: su fichero NO trae las '
-       + 'NCU 7, 12, 16, 17 y 19, o sea está incompleto, y las tres HSU sin NCU caen justamente en esa '
-       + 'zona. Las cinco declaradas SÍ están resueltas, y cada una con una sola estación cerca (30-62 '
-       + 'm, la siguiente a más de 500). OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, '
-       + 'pero las tres que faltan aquí están puestas por «NCU más cercana» —lo dice el propio '
-       + 'manifiesto—, que es la regla que se equivoca. No tomarlas por dato.',
+  sanjose: 'Son OCHO HSU, las que dibuja el DWG y las que dice la cartera. El fichero del SCADA '
+       + '(24019-san-jose.json) solo declara CINCO —NCU 1, 6, 8, 11 y 21, una en cada una— y eso NO es '
+       + 'un desacuerdo, es un export viejo: se generó antes de arreglar `rangos()`, que solo entendía '
+       + 'UN tramo por NCU, así que toda NCU con varios tramos se cayó entera y en silencio. Se '
+       + 'comprueba: las cinco que faltan —7, 12, 16, 17 y 19— son EXACTAMENTE las cinco de San José '
+       + 'con varios tramos (de 4 a 7 por gateway), y las dieciséis que sí están son exactamente las de '
+       + 'un tramo. Sin excepciones. Está apuntado en el CONTRATO del SCADA (10/08): hay que '
+       + 're-exportarlo desde IPs. Mientras tanto, las tres HSU sin NCU caen justo en esa zona. '
+       + 'OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, pero esas tres están puestas por '
+       + '«NCU más cercana» —lo dice su manifiesto—, que es la regla que se equivoca. No son dato.',
 };
 
 const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
