@@ -1106,6 +1106,50 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
     (100 * prevMed).toFixed(1) + ' %');
 });
 
+t('v1.37: el mando «configuración de la TCU» existe y arranca en levantamiento', () => {
+  if (!/<select id="tcucfg"/.test(html)) throw new Error('no está el selector');
+  if (!/value="levantamiento"/.test(html) || !/value="cero"/.test(html))
+    throw new Error('faltan las dos opciones');
+  const sel = html.slice(html.indexOf('<select id="tcucfg"'), html.indexOf('</select>', html.indexOf('<select id="tcucfg"')));
+  if (/value="cero"[^>]*selected/.test(sel))
+    throw new Error('arranca «sin configurar»: cambiaría el resultado por defecto de todo el mundo');
+  if (!/tcucfg:\(\$\('tcucfg'\)\?\$\('tcucfg'\)\.value:'levantamiento'\)/.test(html))
+    throw new Error('cfg() no lee el mando (o no tiene defecto seguro)');
+});
+t('v1.37: cambiar el registro NO cambia el terreno — solo la creencia de la TCU', () => {
+  // SOLO el cuerpo de terrainTCU: hasta aquí la rebanada llegaba a ensureElev y
+  // se tragaba terrain() entera, así que el guard saltaba por el «pitch:» de otra
+  const ini = html.indexOf('function terrainTCU(');
+  if (ini < 0) throw new Error('no encuentro terrainTCU');
+  const sig = html.indexOf('\nfunction ', ini + 1);
+  const f = html.slice(ini, sig < 0 ? html.length : sig);
+  if (!/if\(c\.tcucfg!=='cero'\)return T;/.test(f))
+    throw new Error('no devuelve la MISMA planta cuando está configurada');
+  // solo puede tocar `slope`: si tocara pitch, tilt o segs estaría inventando terreno
+  for (const campo of ['pitch', 'axisTilt', 'segs', 'rowTilt', 'cw', 'maxAngle'])
+    if (new RegExp(campo + '\\s*:').test(f))
+      throw new Error('terrainTCU toca «' + campo + '»: eso es cambiar el terreno, no el registro');
+  if (!/slope:0/.test(f)) throw new Error('no pone la pendiente a cero');
+  // es un DATO, no física: nada de trigonometría aquí (misma regla que careoTerreno)
+  if (/Math\.(sin|cos|tan|asin|acos|atan)/.test(f))
+    throw new Error('terrainTCU hace trigonometría: eso es física, y la física ya existe');
+});
+t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría real', () => {
+  const f = html.slice(html.indexOf('function computeDay()'), html.indexOf('function kpisSerie('));
+  if (!/const Tcfg=terrainTCU\(c,T\);/.test(f)) throw new Error('computeDay no construye Tcfg');
+  if (!/policyAngles\(P\.key,g\.zen,g\.az,Tcfg,/.test(f))
+    throw new Error('el ángulo no usa la creencia de la TCU');
+  if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
+    throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
+  // y los caminos de instante (el slider entre pasos de malla) no pueden usar
+  // otra creencia que la del día, o el arrastre saltaría entre dos políticas
+  for (const sitio of ['CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T', 'key,g.zen,g.az,DAY.Tcfg||DAY.T'])
+    if (!html.includes('policyAngles(' + sitio))
+      throw new Error('un camino de instante sigue calculando el ángulo con la geometría real');
+  if (!/const c=cfg\(\), T=terrain\(c\), Tcfg=terrainTCU\(c,T\);/.test(html))
+    throw new Error('la tabla anual no separa creencia de geometría');
+});
+
 console.log('');
 console.log('careo por sombra (tools/careo_sombra.mjs)');
 

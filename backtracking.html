@@ -157,6 +157,12 @@
       <div class="f"><label>Subcadenas en la cuerda</label><input id="nbp" type="number" step="1" min="0" max="6" value="2" title="CUÁNTAS subcadenas de diodo atraviesa la sombra al subir por la cuerda — no es el nº de diodos del módulo, es cómo lo cruza la sombra fila-a-fila.&#10;· 1 = módulo en RETRATO de célula entera: las tres subcadenas corren A LO LARGO de la cuerda, así que la sombra las cruza TODAS a la vez y se lleva el módulo entero.&#10;· 2 = retrato de MEDIA CÉLULA (el caso de Ayora: mesa 1V, módulo 2,384 m sobre la cuerda): las dos mitades van en paralelo, la sombra mata la de abajo y la de arriba sigue produciendo hasta que cruza el centro.&#10;· 3 = módulo TUMBADO: las subcadenas se apilan atravesando la cuerda y la sombra las mata de una en una.&#10;Cambia el signo de la comparación entre backtracking y astronómico: verifícalo antes de fiarte."></div>
       <div class="f"><label>IAM b₀</label><input id="iam" type="number" step="0.01" min="0" max="0.5" value="0.05" title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz.&#10;b₀ = 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo DESACTIVA.&#10;OJO con el signo: este término juega A FAVOR del astronómico —que apunta al sol, AOI≈0— y en contra del backtracking, que se gira deliberadamente fuera. Es el único sesgo conocido que empuja hacia astro.&#10;Difusa isótropa y albedo: ángulos equivalentes de Duffie-Beckman. Circunsolar: el mismo IAM que el haz."></div>
     </div>
+    <div class="f"><label>Configuración de la TCU</label>
+      <select id="tcucfg" title="QUÉ LLEVA CONFIGURADO el seguidor, que no es lo mismo que qué terreno tiene debajo.&#10;El TERRENO no cambia con este mando: el contador de sombra mide SIEMPRE la geometría real. Lo único que cambia es la pendiente que la TCU cree tener delante para calcular su ángulo.&#10;· «según levantamiento» = los registros 41098/41100 (oeste) y 41102/41104 (este) llevan la pendiente MEDIDA hacia cada vecina. Es lo que escribe tools/export_config_tcu.mjs.&#10;· «sin configurar» = los registros a su valor de fábrica (0). El seguidor hace backtracking creyendo que el terreno es horizontal, y se come la sombra que eso deje. Es el estado REAL de Ayora hoy.&#10;La diferencia entre las dos es exactamente lo que vale configurar la planta.">
+        <option value="levantamiento">Según levantamiento — pendiente medida en los registros</option>
+        <option value="cero">Sin configurar — registros a 0 (fábrica)</option>
+      </select>
+    </div>
     <div class="f"><label>Accionamiento</label>
       <select id="drive">
         <option value="mono">Monofila — 1 motor por fila</option>
@@ -2311,7 +2317,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.36.0';
+const VER='v1.37.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2351,7 +2357,19 @@ function cfg(){
     drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value, iam:+$('iam').value,
     nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
     mods:Math.max(8,Math.min(32,Math.round(+$('mods').value))),
+    tcucfg:($('tcucfg')?$('tcucfg').value:'levantamiento'),
   };
+}
+/* LO QUE LA TCU CREE TENER DELANTE — que no es lo mismo que lo que tiene.
+   Devuelve la MISMA planta con la pendiente por pareja puesta a lo que lleve
+   el registro. El terreno no se toca: `terrain()` sigue siendo la geometría
+   real y es la que ve el contador de sombra. Aquí sólo se falsea la creencia
+   con la que el seguidor calcula su ángulo, que es justo lo que pasa en una
+   planta con los registros a cero — como Ayora hoy.
+   No es física nueva: es un DATO distinto para la misma física. */
+function terrainTCU(c,T){
+  if(c.tcucfg!=='cero')return T;
+  return Object.assign({},T,{pairs:T.pairs.map(p=>Object.assign({},p,{slope:0}))});
 }
 function nsProfile(c){
   // tilt N-S del eje POR FILA — el terreno a lo largo, fila a fila. Derivado
@@ -2707,6 +2725,10 @@ const STEP_MIN=5;
 function computeDay(){
   const c=cfg(); ensureElev(c.nrows); clampSlopes(c);
   const T=terrain(c), doy=doyOf(c.date);
+  // Tcfg = lo que la TCU CREE. El ángulo se calcula con ella; la sombra y el
+  // POA, SIEMPRE con T (la geometría real). Con «según levantamiento» las dos
+  // son el mismo objeto y no cambia nada de lo de antes.
+  const Tcfg=terrainTCU(c,T);
   const times=[], sun=[], irr=[];
   for(let m=0;m<1440;m+=STEP_MIN){
     const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
@@ -2724,7 +2746,7 @@ function computeDay(){
     let prev=null;
     for(let t=0;t<nT;t++){
       const g=sun[t];
-      const o=policyAngles(P.key,g.zen,g.az,T,irr[t],doy,c.albedo);
+      const o=policyAngles(P.key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
       fArr[t]=o.f;
       // lo que la planta HACE: la consigna limitada a la velocidad del tracker
       const lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
@@ -2739,14 +2761,14 @@ function computeDay(){
   // BT en la política astro, y en las demás marca exactamente las horas de BT
   const astroAng=new Array(nT); let prevA=null;
   for(let t2=0;t2<nT;t2++){
-    const limA=slewLimit(prevA,anglesAstro(sun[t2].zen,sun[t2].az,T),STEP_MIN*60);
+    const limA=slewLimit(prevA,anglesAstro(sun[t2].zen,sun[t2].az,Tcfg),STEP_MIN*60);
     // bifila: la referencia astro se ACOPLA como el accionamiento (la gemela
     // copia a la motora) — si no, el mero acoplamiento contaría como «BT»
     if(c.drive!=='mono'&&T.groups)
       for(const gr of T.groups)if(gr.length===2)limA[gr[1]]=limA[gr[0]];
     prevA=limA; astroAng[t2]=limA;
   }
-  DAY={c:c,T:T,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
+  DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
   return DAY;
 }
 /* La integral del día vive en UN solo sitio. `dayKpis` la llama con lo que
@@ -4290,7 +4312,7 @@ function fillDayTable(){
 
 /* ── estimación anual ── */
 $('yearbtn').onclick=()=>{
-  const c=cfg(), T=terrain(c);
+  const c=cfg(), T=terrain(c), Tcfg=terrainTCU(c,T);
   const days=['01-21','02-21','03-21','04-21','05-21','06-21','07-21','08-21','09-21','10-21','11-21','12-21'];
   const DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
   const year=c.date.slice(0,4);
@@ -4304,7 +4326,7 @@ $('yearbtn').onclick=()=>{
       const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
       for(const P of POLICIES){
         if(!P.on)continue;
-        const a=policyAngles(P.key,g.zen,g.az,T,irr,doy,c.albedo).angles;
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
         tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
       }
     }
@@ -4365,7 +4387,7 @@ function careoGhostInstant(){
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
-  const o=policyAngles(CAREO_A,g.zen,g.az,DAY.T,irr,DAY.doy,c.albedo);
+  const o=policyAngles(CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
   const ang=slewLimit(DAY.pol[CAREO_A].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
   GHOST={m:m,stamp:DAY,ang:ang,shade:pp.shade};
@@ -4385,7 +4407,7 @@ function sceneInstant(){
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
-  const o=policyAngles(key,g.zen,g.az,DAY.T,irr,DAY.doy,c.albedo);
+  const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
   const ang=slewLimit(DAY.pol[key].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
   INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,
