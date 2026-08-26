@@ -28,12 +28,16 @@ t('la apertura es ROBUSTA (p95−p5), no máx−mín: un seguidor en tope no pue
   /0\.95\)\]\s*-\s*v\[Math\.floor\(v\.length \* 0\.05\)\]/.test(html));
 t('el eje declara el huso del DATO, no un «local» inventado',
   /el huso que declara el propio dato/.test(html));
-t('la apertura se mide SOLO dentro del seguimiento, no en las maniobras',
-  /mejor\[1\] - mejor\[0\]/.test(html) && /Fuera del seguimiento/.test(html));
+// la firma vive en el BACKTRACKING, no en el seguimiento puro: sin sombra que
+// evitar todos apuntan igual, corrijan el relieve o no
+t('la apertura se mide en el BACKTRACKING, y el seguimiento puro es el control',
+  /BACKTRACKING\b/.test(html) && /seguimiento puro/.test(html) && /<b>Control:<\/b>/.test(html));
 t('con apertura cero avisa de que en terreno PLANO eso no prueba nada',
   /en terreno ` \+\s*`PLANO un backtracking correcto/.test(html) || /PLANO un backtracking correcto/.test(html));
-t('el veredicto se juzga por los EXTREMOS, no por el día entero',
-  /Math\.abs\(x\.med\) > 35/.test(html) && /no distingue/.test(html));
+// criterio viejo, retirado: «|θ|>35 = sol bajo» tragaba las maniobras Y medía
+// en el seguimiento puro, donde por definición no puede haber apertura
+t('el veredicto ya NO usa el criterio de |θ|>35, que medía donde no toca',
+  !/Math\.abs\(x\.med\) > 35/.test(html));
 t('el remuestreo descarta la muestra si cae fuera de media malla',
   /<= paso \/ 2/.test(html));
 t('se excluyen los seguidores en tope del cálculo de apertura',
@@ -152,8 +156,16 @@ const abriendo = (grados) => REAL.map((f, k) => ({
   }),
 }));
 
-for (const [nombre, filas, espera] of [['El Burgo REAL', REAL, 'err'],
-                                       ['el mismo día, abriendo 12°', abriendo(12), 'ok']]) {
+/* El Burgo REAL abre durante el backtracking: el veredicto tiene que salir OK.
+   El caso negativo se construye APLANANDO ese mismo día —el mismo backtracking
+   para todos— porque una planta que hace BT con ángulo único es justo lo que
+   hay que poder distinguir. */
+const aplanado = REAL.map((f) => ({ ...f, target_angle: f.target_angle.map((v, k) => {
+  const m = REAL.map(g => g.target_angle[k]).filter(x => x != null).sort((a, b) => a - b);
+  return v == null ? v : m[Math.floor(m.length / 2)];        // todos a la mediana
+}) }));
+for (const [nombre, filas, espera] of [['El Burgo REAL (abre en BT)', REAL, 'ok'],
+                                       ['el mismo día aplanado (BT único)', aplanado, 'err']]) {
   const pgR = await browser.newPage();
   const eR = []; pgR.on('pageerror', e => eR.push(e.message));
   await pgR.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
@@ -167,8 +179,8 @@ for (const [nombre, filas, espera] of [['El Burgo REAL', REAL, 'err'],
     `clase «${rR.clase}» · ${rR.txt.slice(0, 130)}`);
   t(`${nombre}: sin errores de consola`, eR.length === 0, eR.join(' · '));
   if (filas === REAL)
-    t('el REAL no cuela las maniobras como apertura (el fallo que costó el veredicto)',
-      /0[.,]\d\d°/.test(rR.txt.split('—')[0]), rR.txt.slice(0, 90));
+    t('el control del seguimiento puro sale ~0, como debe',
+      /Control:[\s\S]{0,160}?0[.,]\d\d°/.test(rR.txt), rR.txt.slice(0, 220));
   await pgR.close();
 }
 
