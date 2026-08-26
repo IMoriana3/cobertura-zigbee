@@ -1032,6 +1032,44 @@ t('v1.34 cruce: el diagnóstico REAL casa con el simulador, y lo dudoso se marca
     throw new Error('el cruce no usa xFrom + lineX para situar la línea');
 });
 
+t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id', () => {
+  const ep = path.join(ROOT, 'tools', 'export_consignas.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // el id NO codifica la NCU y su número no reinicia en 1: tomarlo del id
+  // mandaba la consigna de 157 seguidores de Ayora a OTRO seguidor
+  if (!/v\.sort\(\(a, b\) => a\.nnn - b\.nnn\)/.test(src) || !/s2\.tcu = i \+ 1/.test(src))
+    throw new Error('el export no numera el TCU por rango dentro de su NCU');
+  const out = path.join(ROOT, '.tmp_consignas_test.csv');
+  const { execFileSync } = require_child();
+  try {
+    execFileSync(process.execPath, [ep, '--planta', 'ayora', '--fecha', '2026-06-21',
+                                    '--pol', 'pairwise', '--paso', '120', '--salida', out],
+                 { cwd: ROOT, stdio: 'pipe' });
+    const L = fs.readFileSync(out, 'utf-8').trim().split('\n');
+    const cab = L[0].split(','), iN = cab.indexOf('ncu'), iT = cab.indexOf('tcu');
+    if (iN < 0 || iT < 0) throw new Error('el CSV perdió ncu/tcu');
+    const por = new Map();
+    for (let r = 1; r < L.length; r++) {
+      const f = L[r].split(',');
+      if (!por.has(f[iN])) por.set(f[iN], new Set());
+      por.get(f[iN]).add(+f[iT]);
+    }
+    // dentro de cada NCU los TCU tienen que ser 1..n sin huecos ni repeticiones
+    for (const [ncu, st] of por) {
+      const v = [...st].sort((a, b) => a - b);
+      if (v[0] !== 1) throw new Error(`NCU${ncu}: el TCU no empieza en 1 (empieza en ${v[0]})`);
+      if (v[v.length - 1] !== v.length)
+        throw new Error(`NCU${ncu}: ${v.length} seguidores pero el TCU llega a ${v[v.length - 1]}: hay huecos`);
+    }
+    if (por.size < 10) throw new Error('salieron muy pocas NCUs: ¿se exportó la planta entera?');
+  } finally {
+    // el exportador escribe TAMBIÉN un .meta.json al lado: si solo se borra el
+    // CSV, el temporal se cuela en el commit siguiente (pasó)
+    for (const f of [out, out.replace(/\.csv$/, '.meta.json')])
+      try { fs.unlinkSync(f); } catch { /* nada */ }
+  }
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

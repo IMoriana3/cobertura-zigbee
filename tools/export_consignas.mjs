@@ -23,10 +23,26 @@
       (planta, ncu, tcu, fecha) y sale el MODO SOMBRA: lo que mandaríamos
       nosotros contra lo que la planta hizo — sin tocar un solo motor.
 
-   DECLARADO Y PENDIENTE DE CONFIRMAR CON UNA LECTURA REAL:
-     · el nº de TCU se toma del prefijo del `id` del layout («TK 007-01» → 7);
-       el `ncu` es el campo explícito. La comprobación es trivial el día que
-       haya un volcado: todo (ncu,tcu) del CSV debe existir en `diagnostico_tcu`.
+   PARA QUÉ PLANTA. Hay dos arquitecturas y cada una tiene SU entregable:
+     · si la inteligencia vive en la TCU (cada seguidor calcula su ángulo con
+       la pendiente que lleva configurada), lo que hace falta es la FICHA de
+       registros — `tools/export_config_tcu.mjs`, que escribe 41098/41100/
+       41102/41104 y los vanos;
+     · si vive en la NCU (alguien calcula el ángulo por seguidor y lo manda),
+       lo que hace falta es ESTA tabla. Es el caso de El Burgo, cuya plantilla
+       de TCU lleva `slope = 0` justamente porque la TCU no calcula nada.
+   Confundirlas no es un matiz: escribir pendientes en una planta que no las
+   usa no hace nada, y mandar consignas a una que las calcula sola, tampoco.
+
+   CONFIRMADO CON EL PRIMER VOLCADO REAL (Ayora, 2026-08-26):
+     · el nº de TCU es el RANGO del seguidor dentro de su NCU. NO se toma del
+       número del `id` del layout: ese id no codifica la NCU («TK 045-06» tiene
+       ncu=9) y su número no reinicia en 1 en todas. Con el número del id se
+       apareaban 591 de 748; con el rango, 748.
+     · el SIGNO: **θ<0 = ESTE**, o sea que la columna que casa con `Objetivo`
+       es `theta_tcu_deg`. Medido sobre 743 seguidores: mediana 0,33° y máximo
+       0,55° contra el diagnóstico. Se siguen emitiendo las dos columnas por
+       trazabilidad. (Texto histórico, ya resuelto:)
      · el SIGNO. Se emiten DOS columnas: `theta_sim_deg` (marco interno del
        simulador) y `theta_tcu_deg` (convención de presentación TCU, θ<0 =
        este). Cuál de las dos casa con el registro `Objetivo` se decide con una
@@ -97,8 +113,22 @@ for (let i = 0; i < lay.trackers.length; i++) {
   }
   if (!mejor || dMin > (sonda.pitch || 6) / 2) { fuera++; continue; }   // misma tolerancia que el clúster
   const m = String(tk.id || '').match(/(\d+)/);
-  SEG.push({ id: tk.id, ncu: tk.ncu, tcu: m ? +m[1] : null, gw: tk.gw,
+  SEG.push({ id: tk.id, ncu: String(tk.ncu), nnn: m ? +m[1] : NaN, gw: tk.gw,
              bloque: mejor.B.b, fila: mejor.r });
+}
+/* El nº de TCU es el RANGO del seguidor dentro de su NCU, no el número del id.
+   El id NO codifica la NCU («TK 045-06» tiene ncu=9) y su número no reinicia
+   en 1 en todas ellas (en Ayora, NCU9 va de 45 a 85). Tomarlo del id apareja
+   mal 157 de 748 seguidores en cinco NCUs — y una consigna con el TCU
+   equivocado se le manda a OTRO seguidor. Cazado al cruzar el primer volcado
+   real de Ayora (2026-08-26); ver tools/cruce_diagnostico.mjs. */
+{
+  const porNcu = new Map();
+  for (const s2 of SEG) { if (!porNcu.has(s2.ncu)) porNcu.set(s2.ncu, []); porNcu.get(s2.ncu).push(s2); }
+  for (const [, v] of porNcu) {
+    v.sort((a, b) => a.nnn - b.nnn);
+    v.forEach((s2, i) => { s2.tcu = i + 1; });
+  }
 }
 const nLineasTot = BLOQUES.reduce((s2, B) => s2 + B.P.lineX.length, 0);
 
