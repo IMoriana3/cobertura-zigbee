@@ -98,6 +98,12 @@ const SONDA = `(() => {
   return {
     equipos: Equipos.VERSION, piezas,
     hsu: modelo('hsu'), ncu: modelo('ncu'),
+    /* La retícula de apoyos vivía escrita AQUÍ y el simulador de cobertura RF,
+       que no la tenía, se inventaba la suya. Ahora es de "seguidor.js" y la
+       comparten los dos: que esta página la lea de allí, y no vuelva a tener
+       una copia propia que se separe. */
+    zP: TC.zP, zPref: Seguidor.pilotesX(Seguidor.DIMS.modsPerStr),
+    mods: Seguidor.DIMS.modsPerStr,
     nMeteo: (LAYOUT.meteo || []).length,
     nNcu: gwMasts.length, nGw: GWS.length,
     antNcu: D.ncuAntY, antHsu: D.hsuAntY, mastNcu: D.ncuMastH, torreHsu: D.hsuTowerH,
@@ -160,6 +166,13 @@ for (const pl of PLANTAS) {
   check(pl.nom + ': el armario de cada NCU', P.armario === nN, P.armario + ' de ' + nN);
   check(pl.nom + ': sus 2 carriles y su corrugado',
         P.carril === 2 * nN && P.corrugado === nN, P.carril + ' carriles, ' + P.corrugado + ' corrugados');
+
+  // --- la retícula de apoyos, de seguidor.js y no de una copia local ---
+  check(pl.nom + ': la retícula de apoyos sale de seguidor.js',
+        JSON.stringify(s.zP) === JSON.stringify(s.zPref),
+        JSON.stringify(s.zP) + ' contra ' + JSON.stringify(s.zPref));
+  check(pl.nom + ': y es proporcional a los ' + s.mods + ' módulos por ala',
+        s.zP.length === 4 && Math.abs(s.zP[3] - 28 * s.mods / 28) < 1e-9, JSON.stringify(s.zP));
 
   // --- NCU: cotas del plano DR_NCU_v0, sobre el modelo recién construido ---
   {
