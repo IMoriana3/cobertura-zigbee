@@ -26,6 +26,8 @@ t('sin cargas remotas (la casa es offline salvo la propia consulta)',
   !/<(script|link)[^>]+(src|href)=["']https?:/.test(html));
 t('la apertura es ROBUSTA (p95−p5), no máx−mín: un seguidor en tope no puede mandar',
   /0\.95\)\]\s*-\s*v\[Math\.floor\(v\.length \* 0\.05\)\]/.test(html));
+t('el eje declara el huso del DATO, no un «local» inventado',
+  /el huso que declara el propio dato/.test(html));
 t('el veredicto se juzga por los EXTREMOS, no por el día entero',
   /Math\.abs\(x\.med\) > 35/.test(html) && /no distingue/.test(html));
 t('el remuestreo descarta la muestra si cae fuera de media malla',
@@ -62,6 +64,16 @@ t('hay entrada por GitHub, que es como se autentica la casa',
 // permisos deja sin respuesta una pregunta que no depende de permisos
 t('se puede analizar SIN conexión, desde fichero o pegando',
   /id="fich"/.test(html) && /id="pegado"/.test(html) && /function normaliza/.test(html));
+// el alias de la subconsulta NO puede ser «t»: hay una columna «t» y Postgres
+// resuelve esa, con «row_to_json(jsonb) does not exist». Pasó en el primer uso.
+t('la consulta de ejemplo no colisiona el alias con la columna «t»',
+  /\)\s*q;/.test(html) && !/\)\s*t;/.test(html));
+t('la plantilla NO trae valores inventados que parezcan buenos',
+  /PON_AQUI_LA_PLANTA/.test(html) && /AAAA-MM-DD/.test(html));
+t('se explica que json_agg NULL es «cero filas», no un error',
+  /json_agg<\/code> da NULL cuando/.test(html));
+t('la consulta de ejemplo avisa del límite de 100 filas del editor',
+  /No limit/.test(html));
 t('el fichero se NORMALIZA en vez de exigir un formato',
   /Array\.isArray\(j\.equipos\)/.test(html) && /x\.series \|\| \{ t: x\.t/.test(html));
 
@@ -139,6 +151,23 @@ for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'
   t(`${nombre}: acierta sin tocar la red`, r5.includes(espera), `clase «${r5}»`);
   t(`${nombre}: sin errores de consola`, e5.length === 0, e5.join(' · '));
   await pg5.close();
+}
+
+/* el CSV que da «Download CSV» del SQL Editor: cabecera + celda entrecomillada */
+{
+  const pg6 = await browser.newPage();
+  const e6 = []; pg6.on('pageerror', e => e6.push(e.message));
+  await pg6.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  const filas = planta(true).map(f => ({ ncu: f.ncu, equipo: f.equipo, tz: f.tz, paso_s: f.paso_s,
+    t: f.series.t, target_angle: f.series.v.target_angle }));
+  const csv = 'json_agg\n"' + JSON.stringify(filas).replace(/"/g, '""') + '"\n';
+  await pg6.fill('#pegado', csv);
+  await pg6.click('#bPegar');
+  await pg6.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const r6 = await pg6.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
+  t('traga el CSV del SQL Editor tal cual, sin convertirlo a mano', r6.includes('ok'), `clase «${r6}»`);
+  t('sin errores de consola con el CSV', e6.length === 0, e6.join(' · '));
+  await pg6.close();
 }
 
 /* GitHub: es una NAVEGACIÓN al authorize de Supabase, no un fetch */
