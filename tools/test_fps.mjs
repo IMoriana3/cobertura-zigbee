@@ -28,7 +28,12 @@ try {
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 console.log('planta        listo    objetos  mallas  instancias  triángulos   ms/frame   fps    ms/frame(cámara)  fps');
 for (const p of PLANTAS) {
-  const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
+  /* Ventana MINUSCULA en la pasada de escena: aqui se rasteriza por software, el coste va con los
+     pixeles y cada evaluate tiene que esperar a que el bucle suelte un fotograma. A 1280x720 eso
+     son 31 s por fotograma y medir cuesta minutos; a 320x200 son 7,5 veces menos pixeles. No
+     afecta a lo que se mide -mallas, instancias, triangulos del grafo-, que no depende del tamaño. */
+  const soloEscena0 = process.argv.includes('--solo-escena');
+  const ctx = await b.newContext({ viewport: soloEscena0 ? { width: 320, height: 200 } : { width: 1280, height: 720 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
   const pg = await ctx.newPage();
   const t0 = Date.now();
@@ -61,7 +66,12 @@ for (const p of PLANTAS) {
     };
     requestAnimationFrame(paso);
   }), mover);
-  const quieto = await mide(false), movido = await mide(true);
+  /* --solo-escena: sin las ventanas de rAF. Aqui un fotograma tarda 31 s por software, asi que
+     medirlos cuesta minutos y ademas no significan nada; para carear dos versiones del codigo lo
+     que sirve es la composicion de la escena, que se saca al instante. */
+  const soloEscena = process.argv.includes('--solo-escena');
+  const quieto = soloEscena ? { ms: '—', fps: '—' } : await mide(false);
+  const movido = soloEscena ? { ms: '—', fps: '—' } : await mide(true);
   console.log(`${p.padEnd(13)} ${listo.padStart(5)}s ${String(escena.obj).padStart(8)} ${String(escena.mallas).padStart(7)} ${String(escena.inst).padStart(11)} ${String(escena.tri).padStart(11)} ${String(quieto.ms).padStart(10)} ${String(quieto.fps).padStart(6)} ${String(movido.ms).padStart(17)} ${String(movido.fps).padStart(6)}`);
   await ctx.close();
 }
