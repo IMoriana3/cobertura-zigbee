@@ -118,4 +118,32 @@ intacto.
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
 - Documentación completa: `proyectos/docs/backtracking-sim.md` (botón Documentación de su ficha en el Panel).
 
+## Telemetría de planta — ¿corrige el relieve? (`telemetria.html`)
+
+Una página, un botón, una respuesta: **¿esta planta está corrigiendo el relieve o manda un ángulo
+único a todos sus seguidores?**
+
+Lee la tabla `telemetria` de Supabase —donde `factiun-cartera/importar-logs.html` deja los CSV
+diarios de las NCU— y mide **cuánto se abren entre sí los objetivos de los seguidores** a lo largo
+del día. No compara contra ningún modelo, así que no hace falta levantamiento ni geometría:
+
+* con eje N-S, el ángulo **astronómico es casi el mismo para toda la planta** a cualquier hora;
+* el **backtracking 3D abre** los ángulos, porque cada seguidor lleva la pendiente de su vecino.
+
+Medido sobre el levantamiento de Ayora, la separación entre las dos firmas es de **0,4° a mediodía
+pero ≈12° al ocaso**. Por eso la página juzga por los **extremos del día** y avisa de que al cenit
+las dos firmas coinciden y no distinguen nada — un control no es una prueba.
+
+Detalles que la hacen fiable y no un gráfico bonito: la apertura es **p95 − p5**, no máx − mín (un
+solo seguidor en tope falsearía el máximo todos los días); los que están **en posición segura** se
+excluyen; y el remuestreo a malla común **descarta** la muestra si cae a más de media malla, en vez
+de arrastrar un valor viejo — los logs de TCU pierden en torno al 7 % del día en decenas de huecos
+de radio, y rellenarlos en silencio inventaría apertura donde no la hay.
+
+El botón **Descargar remuestreado** deja un JSON pequeño con la malla ya calculada, que es lo que
+hay que compartir para analizarlo fuera.
+
+QA: `node tools/test_telemetria.mjs` — prueba la página con datos sintéticos **en las dos
+direcciones**, porque una que solo acertara con el caso bueno no distinguiría nada.
+
 *Factiun · proyecto interno.*

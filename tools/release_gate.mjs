@@ -68,6 +68,17 @@ try {
   await pg.waitForTimeout(2500);
   await pg.evaluate(() => document.getElementById('ayorabtn').click());
   await pg.waitForTimeout(4500);
+  // Desde v1.33 la página APAGA los optimizadores al cargar planta real (se
+  // llevan el 84% del cálculo y son de asesoría). El gate los quiere igual:
+  // aquí se validan invariantes, no se mira la pantalla, así que declara su
+  // precondición en vez de depender del default de la UI.
+  await pg.evaluate(() => {
+    for (const k of ['optimal', 'optfree']) {
+      const i = document.querySelector(`#polbox input[data-k="${k}"]`);
+      if (i && !i.checked) { i.checked = true; i.onchange(); }
+    }
+  });
+  await pg.waitForTimeout(9000);
   if (errs.length) die('errores de consola:\n' + errs.join('\n'));
 
   const inv = await pg.evaluate(() => {

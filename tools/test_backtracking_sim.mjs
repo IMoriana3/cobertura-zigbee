@@ -13,6 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+const require_child = () => ({ execFileSync });
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
@@ -932,6 +934,140 @@ t('v1.31 Perez: el desglose SUMA lo mismo que la fórmula agregada (clamp por co
     }
   }
   if (peor > 2e-3) throw new Error('el clamp por componente desvía ' + (100 * peor).toFixed(3) + '% (>0,2%)');
+});
+
+t('v1.33: al cargar planta real las políticas de ASESORÍA se apagan, y se DICE', () => {
+  // medido: a 80 líneas optimal+optfree son 4,6 s de los 5,5 s del día. Son
+  // justo las que la página marca como asesoría (evaluador provisional), así
+  // que con planta real arrancan apagadas — pero apagarlas en silencio sería
+  // peor que la lentitud: el usuario tiene que saber qué le falta y por qué
+  if (!/const caros=POLICIES\.filter\(P=>P\.brain==='ncu'&&P\.on&&P\.key!=='mgl'\)/.test(html))
+    throw new Error('no se seleccionan las políticas caras al cargar planta real');
+  if (!/OPT_AVISADO=true;/.test(html)) throw new Error('falta el testigo: las apagaría en CADA carga');
+  if (!/avisoCaras=/.test(html) || !/'\. Azimut ≈ 0 \(aprox declarada\)\. Cotas editables en el 2D\.'\+avisoCaras/.test(html))
+    throw new Error('se apagan sin decirlo en la nota de la planta');
+  // el aviso se arma ANTES de la nota: si no, la nota se pinta sin él
+  const iAviso = html.indexOf('avisoCaras=' + "'" + ' <b>');
+  const iNota = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
+  if (!(iAviso > 0 && iNota > 0 && iAviso < iNota))
+    throw new Error('el aviso se calcula DESPUÉS de pintar la nota: no se vería');
+  // y nunca puede dejar el día sin ninguna política
+  if (!/if\(!POLICIES\.some\(P=>P\.on\)\)POL\['pairwise'\]\.on=true;[\s\S]{0,80}buildPolicyBox\(\);/.test(html))
+    throw new Error('podría dejar CERO políticas encendidas');
+});
+t('v1.33: el GATE declara su precondición en vez de heredar el default de la UI', () => {
+  const gate = fs.readFileSync(path.join(ROOT, 'tools', 'release_gate.mjs'), 'utf-8');
+  if (!/for \(const k of \['optimal', 'optfree'\]\)/.test(gate))
+    throw new Error('el gate no reenciende las políticas que valida');
+  if (!/i\.checked = true; i\.onchange\(\);/.test(gate))
+    throw new Error('el gate marca la casilla pero no dispara el recálculo');
+});
+
+t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de casar', () => {
+  const ep = path.join(ROOT, 'tools', 'export_config_tcu.mjs');
+  if (!fs.existsSync(ep)) throw new Error('sin tools/export_config_tcu.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // no debe RECALCULAR pendientes: la configuración por TCU ya existe publicada
+  if (!/NO recalcula pendientes/.test(src))
+    throw new Error('el exportador no declara que une en vez de recalcular');
+  const { execFileSync } = require_child();
+  execFileSync(process.execPath, [ep, 'ayora'], { cwd: ROOT, stdio: 'pipe' });
+  const csv = fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.csv'), 'utf-8').trim().split('\n');
+  const cab = csv[0].split(',');
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  if (csv.length - 1 !== cotas.t.length)
+    throw new Error(`${csv.length - 1} filas para ${cotas.t.length} seguidores`);
+  const iV = cab.indexOf('este_vector_pct'), iR = cab.indexOf('r41102_east_grade_rad');
+  const iA = cab.indexOf('este_azimut_deg'), iRA = cab.indexOf('r41104_east_grade_azimuth_rad');
+  const iNcu = cab.indexOf('ncu'), iTcu = cab.indexOf('tcu');
+  for (const k of [iV, iR, iA, iRA, iNcu, iTcu]) if (k < 0) throw new Error('la cabecera perdió una columna');
+  let n = 0, sinId = 0;
+  for (let r = 1; r < csv.length; r++) {
+    const f = csv[r].split(',');
+    if (f[iNcu] === '' || f[iTcu] === '') sinId++;
+    if (f[iV] === '' || f[iR] === '') continue;
+    // % → rad del registro: atan(p/100). Y grados → rad para el azimut.
+    if (Math.abs(parseFloat(f[iR]) - Math.atan(parseFloat(f[iV]) / 100)) > 1e-6)
+      throw new Error(`fila ${r}: la pendiente no va en rad del registro`);
+    if (f[iA] !== '' && Math.abs(parseFloat(f[iRA]) - parseFloat(f[iA]) * Math.PI / 180) > 1e-6)
+      throw new Error(`fila ${r}: el azimut no va en rad del registro`);
+    n++;
+  }
+  if (sinId) throw new Error(`${sinId} seguidores sin NCU/TCU: no se podrían cruzar con el diagnóstico`);
+  if (n < cotas.t.length * 0.9) throw new Error('casi ninguna fila trae registro: ¿se está emitiendo?');
+  // el guard que importa: San José NO casa con su levantamiento (máximo 25,0%
+  // frente a 49,6%), y el exportador tiene que ABORTAR en vez de emparejar a ojo
+  let abortó = false;
+  try { execFileSync(process.execPath, [ep, 'sanjose'], { cwd: ROOT, stdio: 'pipe' }); }
+  catch (e) { abortó = true; }
+  if (!abortó) throw new Error('San José no casa con su levantamiento y el exportador NO abortó');
+  const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.meta.json'), 'utf-8'));
+  if (!meta.NO_DERIVADO || !meta.AVISO_41106 || !meta.autocomprobacion)
+    throw new Error('el .meta.json no declara lo que no deriva, el 41106 o la autocomprobación');
+  if (!/tcu_v6\.json/.test(JSON.stringify(meta.AVISO_41106)))
+    throw new Error('el aviso del 41106 dejó de citar el documento: vuelve a ser una corazonada');
+  if (meta.autocomprobacion.peor_desvio_pp > 0.05)
+    throw new Error('la relación vector/azimut ya no reproduce la transversal');
+});
+t('v1.34 cruce: el diagnóstico REAL casa con el simulador, y lo dudoso se marca', () => {
+  const ep = path.join(ROOT, 'tools', 'cruce_diagnostico.mjs');
+  if (!fs.existsSync(ep)) throw new Error('sin tools/cruce_diagnostico.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // el emparejado por el número del id apareaba 591 de 748 y NO se notaba con
+  // sol alto: el TCU del diagnóstico es el RANGO dentro de su NCU
+  if (!/v\.sort\(\(a, b\) => a\.nnn - b\.nnn\)/.test(src) || !/SEG\.set\(`\$\{ncu\}\|\$\{i \+ 1\}`/.test(src))
+    throw new Error('el cruce no aparea por rango dentro de la NCU');
+  // una NCU cuyo recuento no casa NO se aparea a ojo: se marca
+  if (!/SIN_VERIFICAR/.test(src)) throw new Error('no se marcan las NCUs cuyo recuento no casa');
+  // y el estado de batería se mira ANTES que el modo, o el peor caso se pierde
+  const iSeg = src.indexOf('if (enSeguro(x)) { seguro.push(x); continue; }');
+  const iAuto = src.indexOf("if (x.Modo !== 'AUTO' || x.Objetivo == null) { noAuto++; continue; }");
+  if (!(iSeg > 0 && iAuto > 0 && iSeg < iAuto))
+    throw new Error('el filtro de AUTO va antes que el de batería: un seguidor muerto en OFF desaparece del informe');
+  // un volcado de sol alto no puede venderse como prueba de política
+  if (!/NO DISCRIMINA la política/.test(src))
+    throw new Error('el informe no avisa de cuándo el volcado no discrimina');
+  // la x cruda es xFrom + lineX (el fallo que costó 500 seguidores en el export)
+  if (!/B\.P\.xFrom \+ B\.P\.lineX\[r\]/.test(src))
+    throw new Error('el cruce no usa xFrom + lineX para situar la línea');
+});
+
+t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id', () => {
+  const ep = path.join(ROOT, 'tools', 'export_consignas.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // el id NO codifica la NCU y su número no reinicia en 1: tomarlo del id
+  // mandaba la consigna de 157 seguidores de Ayora a OTRO seguidor
+  if (!/v\.sort\(\(a, b\) => a\.nnn - b\.nnn\)/.test(src) || !/s2\.tcu = i \+ 1/.test(src))
+    throw new Error('el export no numera el TCU por rango dentro de su NCU');
+  const out = path.join(ROOT, '.tmp_consignas_test.csv');
+  const { execFileSync } = require_child();
+  try {
+    execFileSync(process.execPath, [ep, '--planta', 'ayora', '--fecha', '2026-06-21',
+                                    '--pol', 'pairwise', '--paso', '120', '--salida', out],
+                 { cwd: ROOT, stdio: 'pipe' });
+    const L = fs.readFileSync(out, 'utf-8').trim().split('\n');
+    const cab = L[0].split(','), iN = cab.indexOf('ncu'), iT = cab.indexOf('tcu');
+    if (iN < 0 || iT < 0) throw new Error('el CSV perdió ncu/tcu');
+    const por = new Map();
+    for (let r = 1; r < L.length; r++) {
+      const f = L[r].split(',');
+      if (!por.has(f[iN])) por.set(f[iN], new Set());
+      por.get(f[iN]).add(+f[iT]);
+    }
+    // dentro de cada NCU los TCU tienen que ser 1..n sin huecos ni repeticiones
+    for (const [ncu, st] of por) {
+      const v = [...st].sort((a, b) => a - b);
+      if (v[0] !== 1) throw new Error(`NCU${ncu}: el TCU no empieza en 1 (empieza en ${v[0]})`);
+      if (v[v.length - 1] !== v.length)
+        throw new Error(`NCU${ncu}: ${v.length} seguidores pero el TCU llega a ${v[v.length - 1]}: hay huecos`);
+    }
+    if (por.size < 10) throw new Error('salieron muy pocas NCUs: ¿se exportó la planta entera?');
+  } finally {
+    // el exportador escribe TAMBIÉN un .meta.json al lado: si solo se borra el
+    // CSV, el temporal se cuela en el commit siguiente (pasó)
+    for (const f of [out, out.replace(/\.csv$/, '.meta.json')])
+      try { fs.unlinkSync(f); } catch { /* nada */ }
+  }
 });
 
 console.log('');
