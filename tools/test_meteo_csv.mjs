@@ -9,20 +9,30 @@
 
        node tools/test_meteo_csv.mjs
 
-   NO TODO CSV VALE IGUAL, y por eso aquí se mira el manifiesto de cada planta antes de exigir nada.
-   `hsus_asignadas_por` dice con qué regla se pusieron esas NCU:
+   ── QUÉ COMPRUEBA HOY, QUE NO ES LO MISMO QUE AYER ────────────────────────────────────────────
 
-     scada (cupo) + distancia mínima ...... del Excel. Es dato: si no cuadra, FALLA.
-     layout (ncu y gw declarada) .......... el CSV copió del layout. No es prueba de nada: se informa.
-     NCU más cercana ...................... la regla débil, la que se equivoca en 3 de 24 casos
-                                            conocidos. NO es dato: donde el layout calla, el CSV NO
-                                            rellena el hueco.
+   Cuando se escribió, la gracia era carear dos LECTURAS del mismo Excel. Eso se acabó: desde que los
+   layouts declaran la NCU de todas sus HSU, los diez manifiestos dicen «layout», o sea que el CSV
+   COPIA del layout y compararlos era preguntarle a uno si está de acuerdo consigo mismo. Un banco
+   que no puede ponerse rojo da falsa tranquilidad, que es peor que no tenerlo.
 
-   Ese último caso es real y conviene tenerlo a la vista: los CSV de San José traen las OCHO HSU con
-   NCU, pero tres están puestas por cercanía porque el fichero del SCADA de esa planta no declara las
-   NCU 7, 12, 16, 17 y 19. Quien las vea en el CSV se las puede creer. No son dato.
+   Así que ahora comprueba otra cosa, y sí tiene dientes: que el CSV NO ESTÉ VIEJO. Si alguien toca un
+   layout y no regenera, el CSV se queda con la NCU de antes y nadie lo ve — los ficheros de
+   `cobertura_coords/` son lo que se lleva al campo a lanzar la medida.
 
-   Devuelve 1 si algo que SÍ es dato no cuadra.                                                    */
+     el layout declara la NCU  ........ el CSV tiene que decir lo MISMO. Si no, está viejo: FALLA.
+     el layout la deja en blanco ...... el CSV la rellena por «NCU más cercana», que es la regla que
+                                        se equivoca en 3 de 24 casos conocidos. NO es dato y no
+                                        decide nada: se informa y ya.
+
+   El careo contra fuentes de verdad —la toolbox, el campo, el nombre del DWG— vive donde debe, en
+   `meteo_ncu.mjs --calibra`. Aquí se vigila la frescura.
+
+   El caso de arriba es real y conviene tenerlo a la vista: los CSV de San José traen las OCHO HSU
+   con NCU, pero tres están puestas por cercanía porque el fichero del SCADA de esa planta no declara
+   las NCU 7, 12, 16, 17 y 19. Quien las vea en el CSV se las puede creer. No son dato.
+
+   Devuelve 1 si algún CSV se ha quedado viejo.                                                    */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
@@ -53,7 +63,7 @@ for (const p of readdirSync(COORDS).sort()) {
 
   const regla = String(JSON.parse(readFileSync(man, 'utf8')).hsus_asignadas_por || '');
   const esDato = /^scada/.test(regla);
-  const esCopia = /^layout/.test(regla);
+  const esCopia = /^layout/.test(regla);      // el CSV copió del layout: sirve para ver si está fresco
   const L = JSON.parse(readFileSync(lay, 'utf8'));
   const csv = filas(readFileSync(csvf, 'utf8')).filter(c => c[4] === 'HSU');
 
@@ -71,20 +81,27 @@ for (const p of readdirSync(COORDS).sort()) {
     const der = `${cn ?? '—'}${ce != null ? '/' + ce : ''}`.padEnd(14);
 
     if (m.ncu == null) {
-      if (cn != null && !esDato) avisos.push(`${p} ${m.name}: el layout la deja sin NCU y el CSV pone la ${cn}, pero por «${regla.split(':')[0]}». No es dato`);
+      /* El layout calla: lo que ponga el CSV es su relleno por cercanía. Se dice y no decide. */
+      if (cn != null && !esDato) avisos.push(`${p} ${m.name}: el layout la deja sin NCU y el CSV pone la ${cn}, pero por «NCU más cercana». No es dato`);
       else if (cn != null) { malo++; console.log(`  FALLA ${p.padEnd(10)} ${nom}${izq}${der}el CSV la sabe del Excel y el layout no`); }
       continue;
     }
     if (cn == null) continue;
     const cuadra = m.ncu === cn && (m.esclavo == null || ce == null || m.esclavo === ce);
     if (cuadra) { ok++; continue; }
-    if (esDato) { malo++; console.log(`  FALLA ${p.padEnd(10)} ${nom}${izq}${der}los dos vienen del Excel y no dicen lo mismo`); }
-    else avisos.push(`${p} ${m.name}: layout ${m.ncu}, CSV ${cn}, pero el CSV va por «${regla.split(':')[0]}»${esCopia ? '' : ' (la regla débil)'}. No decide`);
+    /* EL LAYOUT LO DECLARA Y EL CSV DICE OTRA COSA. Si el CSV salió del layout —que es el caso de las
+       diez plantas hoy— eso solo puede ser que se generó con un layout anterior. FALLA: los ficheros
+       de cobertura_coords son los que se llevan al campo. */
+    if (esDato || esCopia) {
+      malo++;
+      console.log(`  FALLA ${p.padEnd(10)} ${nom}${izq}${der}` +
+        (esDato ? 'los dos vienen del Excel y no dicen lo mismo' : 'el CSV salió del layout y no coincide: está VIEJO, hay que regenerarlo'));
+    } else avisos.push(`${p} ${m.name}: layout ${m.ncu}, CSV ${cn}, pero el CSV va por la regla débil. No decide`);
   }
 }
 
-console.log(`\n${ok} HSU cuadran entre el layout y el CSV`);
+console.log(`\n${ok} HSU: el CSV dice lo mismo que el layout`);
 if (avisos.length) console.log(`\nno deciden (${avisos.length}):\n  ` + avisos.join('\n  '));
-console.log(`\n${malo ? malo + ' divergencia(s) entre dos lecturas del MISMO Excel: mirar cuál de los dos caminos está mal'
-  : 'ninguna divergencia donde las dos fuentes son dato'}`);
+console.log(`\n${malo ? malo + ' CSV desincronizado(s) con su layout: correr `python3 tools/gen_coords_cobertura.py`'
+  : 'ningún CSV se ha quedado atrás del layout'}`);
 process.exit(malo ? 1 : 0);
