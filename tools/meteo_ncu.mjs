@@ -46,9 +46,11 @@
        node tools/meteo_ncu.mjs --write          escribe meteo[].ncu y meteo[].ncu_origen
        node tools/meteo_ncu.mjs --calibra        vuelve a medir las reglas contra los casos conocidos
 
-   LO QUE NO SE ESCRIBE NUNCA AQUÍ: `gw` y `esclavo`. En El Burgo hay DOS estaciones por NCU, una por
-   gateway, y el reparto 230/231 se comprobó en campo. En las demás hay UNA por NCU: nada en el plano
-   distingue gateway, y sin gateway el esclavo sería inventarse el direccionamiento de la malla.    */
+   `gw` Y `esclavo` NO SE DERIVAN NUNCA. Nada en el plano distingue gateway, y sin gateway el esclavo
+   sería inventarse el direccionamiento de la malla. Se escriben solo cuando la casa los dice, y con
+   su propia procedencia: hoy, el GW1 de las dos HSU de la NCU 15 de Ayora. Los esclavos siguen sin
+   saberse en todas menos El Burgo, y ojo, porque el patrón de El Burgo NO generaliza: allí las dos
+   HSU de una NCU van una por gateway (230 y 231) y en Ayora las dos cuelgan del MISMO gateway.     */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
@@ -82,17 +84,20 @@ const ORIGEN_EXTERNO = {
 /* Y el hecho a nivel de PLANTA, que es el que le hará falta a quien configure el colector: cuántos
    huecos de meteo lee cada NCU y cómo se direccionan. Va en el layout, no solo en este comentario. */
 const NOTA_PLANTA = {
-  ayora: 'La NCU 15 tiene DOS HSU y en el MISMO gateway (confirmado por la casa, 2026-08-26). No es '
-       + 'el patrón de El Burgo, donde las dos HSU de una NCU van una por gateway con esclavos 230 y '
-       + '231. Aquí comparten gateway, así que ese reparto NO vale y sus esclavos están sin saber. '
-       + 'Cuando esta planta tenga colector, su NCU 15 lleva hsu_count 2 y hay que preguntar en campo '
-       + 'los dos esclavos. Qué gateway de los dos es, tampoco está dicho.',
+  ayora: 'La NCU 15 tiene DOS HSU y las dos en el GATEWAY 1 (confirmado por la casa, 2026-08-26). No '
+       + 'es el patrón de El Burgo, donde las dos HSU de una NCU van una por gateway con esclavos 230 '
+       + 'y 231. Aquí las dos cuelgan del GW1, así que ese reparto NO vale y sus esclavos siguen sin '
+       + 'saberse: son dos direcciones distintas dentro del mismo gateway y el DWG no las da. Cuando '
+       + 'esta planta tenga colector, su NCU 15 lleva hsu_count 2 y hay que preguntar en campo los '
+       + 'dos esclavos.',
 };
 
+/* `gw` va aquí y NO se deriva nunca: se escribe solo si la casa lo dice. Lo mismo `esclavo`, que
+   hoy no lo dice nadie para ninguna planta que no sea El Burgo. */
 const CAMPO = {
   ayora: {
-    'HSU 8 (US, snow)': 'la NCU 15 de Ayora tiene DOS HSU y en el MISMO gateway, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado',
-    'HSU 9 (US)': 'la NCU 15 de Ayora tiene DOS HSU y en el MISMO gateway, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado',
+    'HSU 8 (US, snow)': { gw: 1, nota: 'la NCU 15 de Ayora tiene DOS HSU y las dos en el GW1, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado' },
+    'HSU 9 (US)':       { gw: 1, nota: 'la NCU 15 de Ayora tiene DOS HSU y las dos en el GW1, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado' },
   },
 };
 
@@ -219,10 +224,11 @@ for (const n of nombres) {
     }
     const deCampo = (CAMPO[n] || {})[m.name];
     console.log(`  ok    ${nom} NCU ${String(s.gana).padStart(2)}  ·  seguidor suyo a ${Math.round(s.d1)} m, ` +
-      `el de la ${s.seg} a ${Math.round(s.d2)} m (${margen})` + (deCampo ? '   · con respaldo de campo' : ''));
+      `el de la ${s.seg} a ${Math.round(s.d2)} m (${margen})` +
+      (deCampo ? `   · con respaldo de campo${deCampo.gw != null ? `, y GW ${deCampo.gw}` : ''}` : ''));
     pon.push([m, s.gana, `DERIVADO, no medido: NCU del seguidor más cercano (a ${Math.round(s.d1)} m; ` +
       `el de la ${s.seg}, a ${Math.round(s.d2)} m, ${margen}). Regla validada ${VALIDADA} contra El Burgo, ` +
-      `Benante y Panbianco. ` + (deCampo ? deCampo : 'Confirmar en campo')]);
+      `Benante y Panbianco. ` + (deCampo ? deCampo.nota : 'Confirmar en campo'), deCampo]);
   }
 
   if (corta) { console.log(`  → el nombre y el plano no dicen lo mismo: NO se escribe nada de ${n}`); continue; }
@@ -244,7 +250,12 @@ for (const n of nombres) {
   console.log(`  → ${pon.length} de ${M.length}` + (pon.length < M.length ? `, el resto sin escribir` : ''));
   if (NOTA_PLANTA[n]) console.log(`  nota  ${NOTA_PLANTA[n].split('. ')[0]}.`);
   if (WRITE && (pon.length || NOTA_PLANTA[n])) {
-    for (const [m, ncu, origen] of pon) { m.ncu = ncu; m.ncu_origen = origen; }
+    for (const [m, ncu, origen, campo] of pon) {
+      m.ncu = ncu; m.ncu_origen = origen;
+      /* El gateway NUNCA se deriva: solo entra si la casa lo ha dicho, y con su propia procedencia
+         para que no se confunda con el `gw` medido de El Burgo. */
+      if (campo && campo.gw != null) { m.gw = campo.gw; m.gw_origen = 'campo · ' + campo.nota; }
+    }
     if (NOTA_PLANTA[n]) L.meteo_nota = NOTA_PLANTA[n];
     writeFileSync(ruta, JSON.stringify(L));
     escritas++;
