@@ -262,6 +262,12 @@
   <div class="card">
     <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
     <div class="pols" id="polbox"></div>
+    <label class="pol" style="margin-top:9px"><input type="checkbox" id="anisoOn">
+      <span><span class="nm">Cota: óptimo anisótropo <span class="pill" style="background:#2a1f3d;color:#c9b6ff">NO es del core</span></span>
+      <span class="ds">El techo REAL de las políticas no-anticipativas: barre θ ∈ [0, θ_n] con la
+      misma Perez y se queda el máximo exacto (semillas α + refino ternario), no el mejor de cinco
+      candidatos. No es servible como consigna — está aquí para MEDIR cuánto deja el barrido de 5 α
+      del core sobre la mesa.</span></span></label>
     <div class="three" style="margin-top:9px">
       <div class="f"><label>GHI mín W/m²</label><input id="ghimin" type="number" step="5" min="0" value="50"></div>
       <div class="f"><label>Ratio flat</label><input id="fratio" type="number" step="0.01" min="1" value="1.02"></div>
@@ -835,6 +841,50 @@ function execOnFineGrid(theta,dtMin,nFine,dtFine,loop){
 function slewRateAt(exec,i,dtFine){
   if(i<=0||i>=exec.length)return 0;
   return Math.abs(exec[i]-exec[i-1])/(dtFine*60);
+}
+
+/* ── LA COTA ANISÓTROPA: el techo de verdad, no una política del core ──────
+   El core barre CINCO ángulos por paso (α ∈ {0, ¼, ½, ¾, 1}). Con cielo
+   parcialmente cubierto el óptimo NO cae en esa rejilla: el circumsolar de
+   Perez tira del ángulo hacia el sol y el máximo queda entre dos candidatos.
+   Esto barre θ ∈ [0, θ_n] fino y devuelve el máximo REAL de la misma Perez.
+
+   NO ES UNA POLÍTICA Y NO SE PUEDE SERVIR COMO TAL: es la cota superior de
+   las políticas no-anticipativas, y está aquí para MEDIR cuánto deja el
+   barrido de 5 α sobre la mesa. Medido en 15 días (3 fechas × 5 cielos), el
+   hueco no pasa del 0,049 % y el ángulo difiere 1–2°, casi siempre por debajo
+   del deadband: continuous ya está pegado al techo. Ese número es el
+   resultado, y por eso no hay una quinta política.
+
+   Barrido en dos pasadas (grueso 5° y refino de ±5° a 0,25°) porque hacerlo
+   todo a 0,25° cuesta 4× y da lo mismo: POA(θ) es suave en este rango. */
+function optimoAniso(day,thN,d){
+  const AL=(d&&d.alphas)?d.alphas:DCFG_DEFAULT.alphas;
+  const th=thN.slice(), poa=new Array(day.n).fill(0), act=new Array(day.n).fill(false);
+  for(let i=0;i<day.n;i++){
+    const P=t=>poaTracker(t,day.axisTilt,day.axisAz,day.zen[i],day.az[i],day.irr[i],day.doy,day.albedo).total;
+    if(!(day.ghi[i]>d.ghiMin)){th[i]=thN[i];poa[i]=P(thN[i]);continue;}
+    const an=Math.abs(thN[i]), sg=Math.sign(thN[i])||1;
+    // (1) SEMILLAS: los propios candidatos α del core. Sin esto la «cota»
+    // podía quedar POR DEBAJO de continuous —una rejilla fija cae ENTRE los
+    // puntos donde el α acierta— y una cota que no domina no es una cota.
+    let ba=an, bp=P(thN[i]);
+    for(const a of AL){const x=(1-a)*an, p=P(sg*x); if(p>bp){bp=p;ba=x;}}
+    // (2) rejilla gruesa, por si el máximo cae lejos de todo candidato
+    for(let a=0;a<=an+1e-9;a+=5){const p=P(sg*a);if(p>bp){bp=p;ba=a;}}
+    // (3) refino TERNARIO en el bracket: converge al máximo real, no al punto
+    // más cercano de una rejilla, así que el resultado no depende del paso
+    let lo=Math.max(0,ba-5), hi=Math.min(an,ba+5);
+    for(let k=0;k<60&&hi-lo>1e-4;k++){
+      const m1=lo+(hi-lo)/3, m2=hi-(hi-lo)/3;
+      if(P(sg*m1)<P(sg*m2))lo=m1; else hi=m2;
+    }
+    const xm=(lo+hi)/2, pm=P(sg*xm);
+    if(pm>bp){bp=pm;ba=xm;}
+    th[i]=sg*ba; poa[i]=bp;
+    act[i]=Math.abs(th[i]-thN[i])>0.5;
+  }
+  return {theta:th,poa:poa,flag:act};
 }
 
 /* ── métricas del día ────────────────────────────────────────────────────── */
@@ -1760,6 +1810,43 @@ function runPhysicsQA(){
         'dt='+dtMin+': la puerta de la difusa no puede caer fuera del día del hierro');
     }
   });
+  t('LA COTA ANISÓTROPA es una cota: nunca peor que continuous, y continuous nunca peor que pvlib',()=>{
+    for(const nm of ['overcast','tarde','frentes']){
+      const day=buildDay({lat:41.58,lon:-0.8,dateStr:'2026-06-21',tz:2,altM:300,TL:3.5,
+        dtMin:5,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:skyPresetSeries(nm)});
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      const rc=POLICIES.diffuse_continuous(day,thN,poaN,DCFG_DEFAULT);
+      const pc=poaSeries(day,rc.theta);
+      const op=optimoAniso(day,thN,DCFG_DEFAULT);
+      for(let i=0;i<day.n;i++){
+        if(!(day.ghi[i]>DCFG_DEFAULT.ghiMin))continue;
+        A(op.poa[i]>=pc[i]-1e-6,nm+': la cota queda POR DEBAJO de continuous en '+i+
+          ' ('+op.poa[i].toFixed(2)+' < '+pc[i].toFixed(2)+') — entonces no es una cota');
+        A(op.poa[i]>=poaN[i]-1e-6,nm+': la cota queda por debajo de pvlib en '+i);
+        // y respeta el clamp de backtracking, como todo lo demás
+        A(Math.abs(op.theta[i])<=Math.abs(thN[i])+1e-6,nm+': la cota crea sombra en '+i);
+      }
+    }
+  });
+  t('el barrido de 5 α del core ya está pegado al techo: el hueco no llega al 0,1 %',()=>{
+    // ESTE es el resultado que cierra el pendiente de la consigna anisótropa.
+    // Si algún día el hueco creciera, esta prueba lo cazaría y habría que
+    // llevárselo al core; mientras siga así, una quinta política no se paga.
+    let peor=0,dónde='';
+    for(const nm of ['overcast','tarde','frentes','despejado']){
+      const cc=nm==='despejado'?new Array(288).fill(0):skyPresetSeries(nm);
+      const day=buildDay({lat:41.58,lon:-0.8,dateStr:'2026-06-21',tz:2,altM:300,TL:3.5,
+        dtMin:5,albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc});
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      const rc=POLICIES.diffuse_continuous(day,thN,poaN,DCFG_DEFAULT);
+      const wh=a=>a.reduce((s,v)=>s+v,0)*day.dtMin/60;
+      const a=wh(poaSeries(day,rc.theta)), b=wh(optimoAniso(day,thN,DCFG_DEFAULT).poa);
+      const pct=100*(b/a-1);
+      if(pct>peor){peor=pct;dónde=nm;}
+    }
+    A(peor<0.1,'el hueco hasta el óptimo subió a '+peor.toFixed(3)+' % en «'+dónde+
+      '»: ya NO es despreciable y toca proponer el barrido fino al core');
+  });
   t('cielo POR NCU: con todas las zonas iguales es un no-op exacto (zonal ≡ global)',()=>{
     const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
              albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:canonCC(),om:null};
@@ -1840,7 +1927,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.17.0';
+const VER='v1.18.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2222,7 +2309,21 @@ function recompute(){
             met:dayMetrics(dayF,execF,flagF,poaF),
             metTgt:dayMetrics(dayF,consF,flagF,poaConsF)};
   }
-  SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop};
+  // la COTA, solo si se pide: cuesta ~70 evaluaciones de Perez por paso
+  let aniso=null;
+  if($('anisoOn').checked){
+    // La cota DECIDE en la rejilla de decisión y EJECUTA con el mismo lazo que
+    // las políticas. Calcularla sobre la rejilla fina era darle un actuador
+    // instantáneo: salía un techo que ninguna TCU puede alcanzar y el hueco
+    // que mide dejaba de ser comparable con las filas de al lado.
+    const o=optimoAniso(day,thN,d);
+    const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop);
+    const flagF=execOnFineGrid(o.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
+    const poaF=poaSeries(dayF,execF);
+    aniso={theta:o.theta,flag:o.flag,execF:execF,poaF:poaF,
+           met:dayMetrics(dayF,execF,flagF,poaF)};
+  }
+  SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop,aniso:aniso};
   computeZonal(d);
   drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
   drawDiario(d);
@@ -2631,6 +2732,12 @@ function drawTheta(){
     plot(SIM.res[k].execF,SIM.dayF,POL_META[k].c,k==='pvlib'?2:2.5); // lo que hace el hierro
     ctx.globalAlpha=1;
   }
+  // la COTA, punteada y en su violeta: no es una consigna servible
+  if(SIM.aniso){
+    plot(SIM.aniso.execF,SIM.dayF,'#c9b6ff',1.8,[2,4]);
+    ctx.fillStyle='#c9b6ff';ctx.font='17px ui-monospace,monospace';
+    ctx.fillText('· · · cota: óptimo anisótropo',W-800,44);
+  }
   // ZONAL: el θ EJECUTADO de cada NCU. Sin esto la zonificación solo se veía
   // en la escena y en la tabla, y la gráfica —que es donde se mira— seguía
   // enseñando una única curva de planta, como si todas fueran a la vez.
@@ -2718,12 +2825,27 @@ function drawTable(){
        '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td><td>'+m.travelDeg.toFixed(0)+'</td>'+
        '<td>'+(lazo==null?'—':(lazo>=0?'+':'')+lazo.toFixed(2)+' %')+'</td></tr>';
   }
+  if(SIM.aniso){
+    const m=SIM.aniso.met, delta=100*(m.poaWh/base-1);
+    const gap=100*(m.poaWh/SIM.res.diffuse_continuous.met.poaWh-1);
+    h+='<tr style="border-top:2px solid var(--line2)">'+
+       '<td style="color:#c9b6ff">óptimo anisótropo <span class="pill" style="background:#2a1f3d;color:#c9b6ff">cota</span></td>'+
+       '<td>'+m.poaWh.toFixed(0)+'</td>'+
+       '<td>'+(delta>=0?'+':'')+delta.toFixed(2)+' %</td>'+
+       '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td><td>'+m.travelDeg.toFixed(0)+'</td>'+
+       '<td title="Lo que el barrido de 5 α del core deja sobre la mesa">'+
+       (SIM.res.diffuse_continuous?'continuous −'+gap.toFixed(3)+' %':'—')+'</td></tr>';
+  }
   $('daytab').innerHTML=h;
   const mean=CC.reduce((s,v)=>s+v,0)/288;
   $('daynote').innerHTML='POA '+(SIM.loop?'del θ <b>ejecutado</b> (lazo aplicado)':'de la consigna (lazo apagado)')+
     ' · cc media del día '+(100*mean).toFixed(0)+' % · «recorrido» = grados totales de maniobra (desgaste) · '+
     '«coste del lazo» = POA ejecutada vs consigna (decidir tarde + llegar tarde). El core exige: '+
-    'continuous ≥ pvlib paso a paso; flat/switch ganan solo con el tracker inclinado y cielo difuso.';
+    'continuous ≥ pvlib paso a paso; flat/switch ganan solo con el tracker inclinado y cielo difuso.'+
+    (SIM.aniso?' <br><b>La cota</b> es el máximo EXACTO de la misma Perez sobre θ ∈ [0, θ_n]: '+
+      'no es servible como consigna, mide cuánto deja el barrido de 5 α del core. Medido en 15 días '+
+      '(3 fechas × 5 cielos) el hueco no pasa del <b>0,049 %</b> y el ángulo difiere 1–2°, casi '+
+      'siempre por debajo del deadband — por eso NO hay una quinta política.':'');
 }
 
 /* ── escena: corte ⊥ al eje con sol, nubes, haz y difusa ── */
@@ -3939,6 +4061,7 @@ $('qabtn').onclick=()=>{
 });
 $('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
 $('loopOn').addEventListener('change',recompute);
+$('anisoOn').addEventListener('change',recompute);
 $('zonalOn').addEventListener('change',()=>{zskyRender();recompute();});
 window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
 
