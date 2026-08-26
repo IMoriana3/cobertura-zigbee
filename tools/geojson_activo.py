@@ -101,7 +101,8 @@ def activo(planta):
             # De dónde sale esa NCU. Va SIEMPRE que la haya: fuera de aquí, un `ncu` a secas se lee
             # como medido, y en cuatro plantas está derivado por cercanía (tools/meteo_ncu.mjs).
             "ncu_origen": m.get("ncu_origen"),
-            "gw": m.get("gw"), "esclavo": m.get("esclavo"),
+            "gw": m.get("gw"), "gw_origen": m.get("gw_origen"),
+            "esclavo": m.get("esclavo"), "esclavo_origen": m.get("esclavo_origen"),
         }))
 
     # ── caminos ───────────────────────────────────────────────────────────────────────────────
