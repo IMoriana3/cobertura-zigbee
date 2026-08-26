@@ -192,7 +192,7 @@ function leeToolbox(planta) {
   const ruta = DIR_TOOLBOX + TOOLBOX[planta];
   if (!existsSync(ruta)) return null;
   const d = JSON.parse(readFileSync(ruta, 'utf8'));
-  const porIndice = {}, maxNCU = {}, escNCU = {}, sinDeclarar = new Set();
+  const porIndice = {}, maxNCU = {}, escNCU = {}, gwNCU = {}, sinDeclarar = new Set();
   for (const p of d.plantas || []) {
     const mm = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
     if (!mm) continue;
@@ -207,6 +207,11 @@ function leeToolbox(planta) {
        distingue El Burgo —GW1 con el 230 y GW2 con el 231, cuatro HSU de verdad— de San José, que no
        trae esclavos y cuyas dos filas son la misma estación contada dos veces. */
     maxNCU[ncu] = Math.max(maxNCU[ncu] || 0, p.hsus);
+    /* `hsus_gw` dice cuántas van EN ESE gateway, que es lo que la columna de la hoja sabe y hasta
+       ahora se tiraba (SCADA/tools/tcu-toolbox/make_plantas.py, arreglado el 2026-08-26). Todavía no
+       aparece en ningún fichero —hace falta una pasada con --excel— así que esto se queda inerte
+       hasta que la haya, y entonces entra solo. */
+    if (p.hsus_gw) gwNCU[ncu] = (gwNCU[ncu] || []).concat([{ gw, n: p.hsus_gw }]);
     for (const e of p.hsu_esclavos || []) {
       if (!(escNCU[ncu] || []).includes(e)) (escNCU[ncu] = escNCU[ncu] || []).push(e);
     }
@@ -217,7 +222,16 @@ function leeToolbox(planta) {
   const porNCU = {};
   for (const k of Object.keys(maxNCU)) porNCU[k] = Math.max(maxNCU[k], (escNCU[k] || []).length);
   const total = Object.values(porNCU).reduce((a, b) => a + b, 0);
-  return { fichero: TOOLBOX[planta], porIndice, porNCU, total, declaradas: sinDeclarar };
+  /* EL GATEWAY DE UNA NCU, cuando no hay duda: si de sus dos filas SOLO UNA declara estaciones, la
+     estación cuelga de ese gateway y punto. Si las declaran las dos —El Burgo, una por gateway— el
+     recuento no basta para decir cuál es cuál, y aquí no se elige: eso lo dice el índice `rsu` o el
+     dato de campo. Mejor sin gateway que con el que no es. */
+  const gwUnico = {};
+  for (const k of Object.keys(gwNCU)) {
+    const con = gwNCU[k].filter(x => x.n > 0);
+    if (con.length === 1 && con[0].n === 1) gwUnico[k] = con[0].gw;
+  }
+  return { fichero: TOOLBOX[planta], porIndice, porNCU, total, gwUnico, declaradas: sinDeclarar };
 }
 
 const nombres = PLANTAS.length ? PLANTAS
@@ -363,8 +377,11 @@ for (const n of nombres) {
     if (dosFuentes) {
       console.log(`  ok    ${nom} NCU ${String(s.gana).padStart(2)}  ·  DOS FUENTES: la toolbox le pone HSU y ` +
         `es la única cerca (la siguiente, ${dosFuentes.otra}, a ${Math.round(dosFuentes.d2)} m contra ${Math.round(dosFuentes.d1)} m)`);
-      pon.push({ m, ncu: s.gana, origen: `dos fuentes · la toolbox (${tb.fichero}) dice que la NCU ${s.gana} tiene HSU, ` +
+      const gwTB = tb.gwUnico && tb.gwUnico[s.gana];
+      if (gwTB) console.log(`        ↳ y la columna RSU de la hoja dice que va en el GW ${gwTB}`);
+      pon.push({ m, ncu: s.gana, gw: gwTB, origen: `dos fuentes · la toolbox (${tb.fichero}) dice que la NCU ${s.gana} tiene HSU, ` +
         `y de las ${M.length} del DWG ésta es la única cerca: a ${Math.round(dosFuentes.d1)} m, la siguiente a ${Math.round(dosFuentes.d2)} m. ` +
+        (gwTB ? `El gateway (GW ${gwTB}) lo dice la columna RSU de la hoja: de las dos filas de esa NCU solo una declara estación. ` : '') +
         `El esclavo no lo da esa fuente` });
       continue;
     }
