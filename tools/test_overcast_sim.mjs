@@ -137,6 +137,27 @@ t('el nombre de la app es UNO: <title> y <h1> dicen lo mismo', () => {
     throw new Error('falta la nota que declara el nombre canónico y dónde más vive');
 });
 
+t('el CSV de auditoría es reproducible: lleva la configuración entera y saca la POA del θ EJECUTADO', () => {
+  const i = html.indexOf('function buildDayCSV()');
+  if (i < 0) throw new Error('no hay export CSV');
+  const fn = html.slice(i, html.indexOf('function descargar(', i));
+  // sin estos bloques, el que recibe el fichero no puede recalcular nada
+  for (const blq of ['[EMPLAZAMIENTO]', '[GEOMETRÍA]', '[LAZO DE CONTROL]',
+                     '[DIFFUSE CONFIG', '[METEO]', '[RESUMEN DEL DÍA'])
+    if (!fn.includes(blq)) throw new Error('la cabecera no declara ' + blq);
+  for (const k of ['slew_deg_s', 'deadband_deg', 'resolucion_decision_min', 'resolucion_actuador_min',
+                   'confirm_min', 'dwell_min', 'ghi_min_w_m2', 'gcr', 'theta_max_deg'])
+    if (!fn.includes(k)) throw new Error('falta el parámetro ' + k + ': el fichero no sería reproducible');
+  // la POA tiene que salir del EJECUTADO (poaF), no de la consigna
+  if (!/r\.poaF\[i\]/.test(fn)) throw new Error('la POA del CSV no sale del θ ejecutado');
+  // y los ángulos, en convención TCU, como todo lo que ve el usuario
+  if (!/tcuDeg\(r\.execF\[i\]\)/.test(fn) || !/tcuDeg\(r\.consF\[i\]\)/.test(fn))
+    throw new Error('los ángulos del CSV no van en convención TCU');
+  if (!/NEGATIVO = ESTE/.test(fn)) throw new Error('el CSV no declara la convención de signos');
+  // la rejilla exportada es la FINA: al minuto, no la de decisión
+  if (!/dayF\.n/.test(fn)) throw new Error('el CSV no se exporta en la rejilla del actuador');
+});
+
 const i0 = html.indexOf('FÍSICA PURA');
 const i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA'); process.exit(1); }
