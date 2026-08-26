@@ -225,6 +225,37 @@ if (SIN_VERIFICAR.size) {
                 ` · ${det.filter(d => d.ncu === n).length} cruzados y marcados como dudosos`);
 }
 
+/* ── FIRMA DE DISPERSIÓN: la prueba binaria de qué hace la planta ──────────
+   Con eje N-S, el ángulo ASTRONÓMICO es casi el mismo para toda la planta a
+   cualquier hora (solo lo mueve el tilt N-S del eje, y a sol bajo ni eso). El
+   bt3d, en cambio, ABRE los ángulos porque cada pareja tiene su pendiente: en
+   Ayora, 0,4° a mediodía pero ~12° al ocaso.
+   Así que basta contar cuántos ángulos DISTINTOS manda la planta y compararlo
+   con lo que predice cada política. No hace falta comparar medianas: si a sol
+   bajo la planta sigue mandando un valor único, está haciendo seguimiento
+   GLOBAL y se está dejando el relieve sin corregir. */
+{
+  const objs = [...new Set(det.map(d => d.obj))].sort((a, b) => a - b);
+  const rangoReal = objs.length ? objs[objs.length - 1] - objs[0] : 0;
+  const rango = (k) => {
+    const v = [];
+    for (const [, p] of ang) for (const k2 of [k]) v.push(...p[k2]);
+    v.sort((a, b) => a - b);
+    return v.length ? v[v.length - 1] - v[0] : 0;
+  };
+  const rAstro = rango('astro'), rBt3d = rango('true3d');
+  console.log(`\n  FIRMA: la planta manda ${objs.length} ángulo(s) distinto(s), rango ${rangoReal.toFixed(2)}°`);
+  console.log(`         el modelo predice, entre líneas:  astro ${rAstro.toFixed(2)}°  ·  bt3d ${rBt3d.toFixed(2)}°`);
+  if (rBt3d - rAstro < 1)
+    console.log('         ⇒ a esta hora las dos firmas son iguales: NO distingue. Hace falta sol bajo.');
+  else if (rangoReal < rAstro + (rBt3d - rAstro) * 0.25)
+    console.log(`         ⇒ la planta hace seguimiento GLOBAL (un ángulo para todos): NO corrige el relieve.`);
+  else if (rangoReal > rAstro + (rBt3d - rAstro) * 0.75)
+    console.log('         ⇒ la planta ABRE los ángulos como el bt3d: sí corrige el relieve.');
+  else
+    console.log('         ⇒ dispersión INTERMEDIA: ni global ni bt3d pleno. Mirar el detalle.');
+}
+
 const at = det.filter(d => Math.abs(d.astro) > 2).sort((a, b) => Math.abs(b.astro) - Math.abs(a.astro));
 console.log(`\n  atípicos |Δ|>2°: ${at.length} de ${det.length}`);
 for (const a of at.slice(0, 10))
