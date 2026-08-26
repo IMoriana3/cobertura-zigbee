@@ -56,12 +56,13 @@
    contenido lo confirma — un pitch por defecto de 0 y un máximo de π/4 ≈ 0,79
    no son una separación entre ejes (su gemelo trae 9 m).
 
-   Pero esto NO se puede cerrar desde el papel: dice qué hay escrito, no qué
-   lee el firmware. Se cierra con UNA lectura Modbus de 41106 en una TCU ya
-   comisionada con pitch este configurado — si vale ~6 son metros, si vale ~0,1
-   son radianes. Hasta entonces la ficha emite METROS (que es lo que mide) y lo
-   deja dicho, sin corregir el mapa: `modbus.html` reproduce el documento, y
-   ahí tiene que seguir tal cual está publicado.
+   CERRADO EN CAMPO, y no hizo falta ir a buscarlo: la TCU Toolbox ya lo tenía
+   resuelto por su cuenta (`scada/tools/tcu-toolbox/TCU_Toolbox.ps1`), con la
+   misma lectura del arrastre y una LECTURA REAL detrás — **Ayora lee 6** en ese
+   registro, y su levantamiento mide **6,002 m** de pitch. Como radianes serían
+   344°, imposible en un campo cuyo máximo declarado es 45°. Por eso la Toolbox
+   lo ofrece como `41106 east_pitch [m]` con rango de validación 0,5..30 m.
+   Dos inferencias independientes y una medida, de acuerdo: son METROS.
 */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -230,10 +231,13 @@ fs.writeFileSync(out.replace(/\.csv$/, '.meta.json'), JSON.stringify({
     causa_probable: 'arrastre de celdas: 41106 hereda unidad, defecto y rango IDÉNTICOS a los del ' +
       '41102 (East grade slope), cuatro direcciones más arriba. Su gemelo 41033 trae Meters y ' +
       'defecto 9; un pitch de 0 con máximo π/4≈0,79 no es una separación entre ejes.',
-    como_se_cierra: 'UNA lectura Modbus de 41106 en una TCU comisionada con pitch este ' +
-      'configurado: ~6 ⇒ metros, ~0,1 ⇒ radianes. El papel dice qué hay escrito, no qué lee el firmware.',
-    mientras_tanto: 'esta ficha emite METROS (que es lo que mide) y no corrige el mapa: ' +
-      'modbus.html reproduce el documento y ahí debe seguir tal cual.',
+    cerrado: 'SÍ, en campo. La TCU Toolbox (scada/tools/tcu-toolbox) ya lo tenía resuelto por su ' +
+      'cuenta: Ayora LEE 6 en ese registro y su levantamiento mide 6,002 m de pitch. Como radianes ' +
+      'serían 344°, imposible en un campo cuyo máximo declarado es 45°. La Toolbox lo expone como ' +
+      '«41106 east_pitch [m]» con rango de validación 0,5..30 m.',
+    en_el_mapa: 'modbus.html sigue reproduciendo el documento, pero la unidad del 41106 lleva ya la ' +
+      'anotación curada «m (doc: rad, errata)»: dice lo que el equipo usa Y lo que el documento ' +
+      'afirma, para que nadie escriba radianes en un seguidor.',
   },
   cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) — los mismos que export_consignas.mjs',
 }, null, 2) + '\n');
