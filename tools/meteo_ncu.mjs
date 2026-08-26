@@ -81,11 +81,13 @@ const NOTA_PLANTA = {
        + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
        + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
        + 'con HSU llevan una y esclavo 230.',
-  sanjose: 'CUIDADO al configurar el colector: la toolbox (24019-san-jose.json, del Excel «Direcciones '
-       + 'IP») suma 9 HSU —dos en cada una de las NCU 1, 6, 8 y 11, y una en la 21— y el DWG dibuja 8. '
-       + 'Además, de las NCU 1, 6, 8 y 11 el plano solo tiene UNA estación cerca de cada una, la '
-       + 'siguiente a 500 m o más. O el Excel pone una por gateway por plantilla, o el DWG no las '
-       + 'dibuja todas. Sin resolver: preguntar en campo.',
+  sanjose: 'El SCADA (24019-san-jose.json, del Excel «Direcciones IP») declara HSU en las NCU 1, 6, 8, '
+       + '11 y 21, una en cada una, y el DWG dibuja OCHO. No es un desacuerdo: su fichero NO trae las '
+       + 'NCU 7, 12, 16, 17 y 19, o sea está incompleto, y las tres HSU sin NCU caen justamente en esa '
+       + 'zona. Las cinco declaradas SÍ están resueltas, y cada una con una sola estación cerca (30-62 '
+       + 'm, la siguiente a más de 500). OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, '
+       + 'pero las tres que faltan aquí están puestas por «NCU más cercana» —lo dice el propio '
+       + 'manifiesto—, que es la regla que se equivoca. No tomarlas por dato.',
 };
 
 const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
@@ -136,19 +138,32 @@ function leeToolbox(planta) {
   const ruta = DIR_TOOLBOX + TOOLBOX[planta];
   if (!existsSync(ruta)) return null;
   const d = JSON.parse(readFileSync(ruta, 'utf8'));
-  const porIndice = {}, porNCU = {};
-  let total = 0;
+  const porIndice = {}, maxNCU = {}, escNCU = {}, sinDeclarar = new Set();
   for (const p of d.plantas || []) {
     const mm = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
-    if (!mm || !p.hsus) continue;
+    if (!mm) continue;
     const ncu = +mm[1], gw = p.puerto === 503 ? 1 : 2;
-    porNCU[ncu] = (porNCU[ncu] || 0) + p.hsus;
-    total += p.hsus;
+    sinDeclarar.add(ncu);                                   // luego se resta: aquí «declarada en el fichero»
+    if (!p.hsus) continue;
+    /* CUÁNTAS HSU TIENE UNA NCU, que no es sumar. `make_plantas.py` escribe el MISMO `hsus` en las
+       DOS filas de gateway de una NCU —la estación cuelga de un gateway, pero el Excel no dice de
+       cuál—, así que sumando salen el doble: San José daba 9 cuando son 5. Lo dice y lo resuelve ya
+       `gen_coords_cobertura.py`, y aquí se hace igual, con una vuelta más: si las filas traen
+       ESCLAVOS DISTINTOS, entonces sí son estaciones distintas y se cuentan todas. Es lo que
+       distingue El Burgo —GW1 con el 230 y GW2 con el 231, cuatro HSU de verdad— de San José, que no
+       trae esclavos y cuyas dos filas son la misma estación contada dos veces. */
+    maxNCU[ncu] = Math.max(maxNCU[ncu] || 0, p.hsus);
+    for (const e of p.hsu_esclavos || []) {
+      if (!(escNCU[ncu] || []).includes(e)) (escNCU[ncu] = escNCU[ncu] || []).push(e);
+    }
     (p.rsu || []).forEach((idx, i) => {
       porIndice[idx] = { ncu, gw, esclavo: (p.hsu_esclavos || [])[i] };
     });
   }
-  return { fichero: TOOLBOX[planta], porIndice, porNCU, total };
+  const porNCU = {};
+  for (const k of Object.keys(maxNCU)) porNCU[k] = Math.max(maxNCU[k], (escNCU[k] || []).length);
+  const total = Object.values(porNCU).reduce((a, b) => a + b, 0);
+  return { fichero: TOOLBOX[planta], porIndice, porNCU, total, declaradas: sinDeclarar };
 }
 
 const nombres = PLANTAS.length ? PLANTAS
@@ -218,9 +233,11 @@ for (const n of nombres) {
   let corta = false;
 
   /* La toolbox y el DWG no siempre cuentan lo mismo. Se dice y no se toca nada. */
-  if (tb && tb.total && tb.total !== M.length) avisos.push(
-    `${n}: la toolbox suma ${tb.total} HSU (${Object.entries(tb.porNCU).map(([k, v]) => `NCU${k}×${v}`).join(' ')})` +
-    ` y el DWG dibuja ${M.length}`);
+  if (tb && tb.total && tb.total !== M.length) {
+    const faltan = (L.trackers || []).reduce((s, t) => (t.ncu != null && !tb.declaradas.has(t.ncu) && !s.includes(t.ncu) ? s.concat(t.ncu) : s), []).sort((a, b) => a - b);
+    avisos.push(`${n}: el SCADA declara ${tb.total} HSU (${Object.entries(tb.porNCU).map(([k, v]) => `NCU${k}${v > 1 ? '×' + v : ''}`).join(' ')})` +
+      ` y el DWG dibuja ${M.length}` + (faltan.length ? `. Su fichero NO trae las NCU ${faltan.join(', ')}, así que puede ser un fichero incompleto y no un desacuerdo` : ''));
+  }
 
   for (const m of M) {
     const nom = String(m.name).padEnd(16);
