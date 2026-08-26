@@ -160,6 +160,7 @@
     <div class="f"><label>Configuración de la TCU</label>
       <select id="tcucfg" title="QUÉ LLEVA CONFIGURADO el seguidor, que no es lo mismo que qué terreno tiene debajo.&#10;El TERRENO no cambia con este mando: el contador de sombra mide SIEMPRE la geometría real. Lo único que cambia es la pendiente que la TCU cree tener delante para calcular su ángulo.&#10;· «por pareja de líneas» = la pendiente que ESTE simulador deduce de las cotas, emparejando líneas contiguas y promediando el tramo de norte que comparten. OJO: NO es la ficha que se escribe en la TCU — aquélla va por SEGUIDOR y a su VECINA CRÍTICA de cada lado, y en Ayora difiere ~1,8x en la mediana (1,76 % contra 0,98 %). Cargar la ficha de verdad está pendiente (ver <planta>_ficha.json).&#10;· «sin configurar» = los registros a su valor de fábrica (0). El seguidor hace backtracking creyendo que el terreno es horizontal, y se come la sombra que eso deje. Es el estado REAL de Ayora hoy.&#10;La diferencia entre las dos es exactamente lo que vale configurar la planta.">
         <option value="levantamiento">Pendiente por PAREJA DE LÍNEAS (la que deduce este simulador de las cotas)</option>
+        <option value="ficha">La FICHA que se escribe en la TCU (por seguidor, vecina crítica)</option>
         <option value="cero">Sin configurar — registros a 0 (fábrica)</option>
       </select>
     </div>
@@ -1101,6 +1102,12 @@ function plantFromCotas(data,maxLines,blockIdx){
   // posiciones x REALES de las líneas, recentradas
   const x0b=band[0].x;
   const lineX=band.map(L=>L.x-x0b);
+  // x ABSOLUTA en el marco del levantamiento: lineX va recentrada al bloque, y
+  // sin este ancla no hay forma de casar una ficha externa con estas líneas más
+  // que por el ÍNDICE — que es justo el emparejamiento que ya costó 157
+  // consignas mal dirigidas. Es una magnitud física: las dos partes la miden
+  // igual y no depende de qué bloque se cargue.
+  const lineXAbs=band.map(L=>L.x);
   // Δz por PAREJA medido en el SOLAPE norte de las dos líneas — la cota media
   // de línea engaña cuando las líneas van escalonadas y no comparten norte
   // (fabricaba pendientes absurdas y sombras del 85% en pairwise); sin solape,
@@ -1150,7 +1157,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   for(let li=0;li<band.length;li++)if(!usedLine.has(li))groups.push([li]);
   groups.sort((x,y)=>x[0]-y[0]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,lineX:lineX,pairDz:pairDz,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
@@ -2317,7 +2324,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.37.0';
+const VER='v1.38.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2368,8 +2375,58 @@ function cfg(){
    planta con los registros a cero — como Ayora hoy.
    No es física nueva: es un DATO distinto para la misma física. */
 function terrainTCU(c,T){
-  if(c.tcucfg!=='cero')return T;
-  return Object.assign({},T,{pairs:T.pairs.map(p=>Object.assign({},p,{slope:0}))});
+  if(c.tcucfg==='cero')
+    return Object.assign({},T,{pairs:T.pairs.map(p=>Object.assign({},p,{slope:0}))});
+  if(c.tcucfg==='ficha'&&PLANT_REAL&&PLANT_REAL.fichaSlope)
+    return Object.assign({},T,{pairs:T.pairs.map((p,i)=>{
+      const v=PLANT_REAL.fichaSlope[i];
+      return v==null?p:Object.assign({},p,{slope:v});
+    })});
+  return T;
+}
+/* EMPAREJAR LA FICHA CON LAS LÍNEAS DEL SIMULADOR — se hace UNA vez, al cargar
+   la planta, y no dentro de terrainTCU: allí sólo puede haber lectura de un
+   dato ya resuelto.
+
+   Dos rejillas distintas: la ficha agrupa con tolerancia pitch/4 sobre
+   TRACKERS (221 líneas en Ayora) y este simulador con pitch/2 sobre FILAS
+   (295). Así que NO son 1:1 y emparejar por índice sería inventar. Se empareja
+   por la **x medida** (`lineXAbs`), que es una magnitud física que las dos
+   partes calculan igual.
+
+   EL SIGNO no se supone, se DETERMINA y tiene que ganar con margen — la misma
+   regla que el huso horario en `cruce_diagnostico`. Medido sobre las 107
+   líneas de Ayora: el hueco entre la línea i y la i+1 lo describe el
+   `oeste_transv_pct` de la i+1 **con nuestro mismo signo** (acierta el 92 %,
+   error mediano 0,32°); el `este_transv_pct` de la i es el mismo hueco con el
+   signo cambiado (84 %). Las dos variantes invertidas caen al 8 % y al 16 %,
+   o sea que la elección no está reñida. Se usa el oeste y el este queda de
+   reserva cuando falta.
+
+   Las parejas que no casan se quedan con la pendiente de las cotas y se
+   CUENTAN: rellenarlas con cero sería fabricar un terreno llano donde sólo
+   falta un dato. */
+function aplicaFicha(P,ficha,pitch){
+  P.fichaSlope=null; P.fichaCobertura=null;
+  if(!ficha||!ficha.lineas||!ficha.lineas.length||!P.lineXAbs)return;
+  const TOL=Math.max(1,(pitch||6)/2);
+  const cerca=x=>{
+    let m=null,d=1/0;
+    for(const l of ficha.lineas){const e=Math.abs(l.x-x);if(e<d){d=e;m=l;}}
+    return d<=TOL?m:null;
+  };
+  const porLinea=P.lineXAbs.map(cerca);
+  const out=[]; let n=0;
+  for(let i=0;i<P.lineX.length-1;i++){
+    const oe=porLinea[i+1], es=porLinea[i];
+    let pct=null;
+    if(oe&&oe.oeste_transv_pct!=null)pct=oe.oeste_transv_pct;        // el que gana
+    else if(es&&es.este_transv_pct!=null)pct=-es.este_transv_pct;    // reserva, signo cambiado
+    if(pct==null){out.push(null);continue;}
+    out.push(Math.atan(pct/100)*DEG); n++;
+  }
+  P.fichaSlope=out;
+  P.fichaCobertura={con:n,total:out.length,lineas:porLinea.filter(Boolean).length,de:P.lineXAbs.length};
 }
 function nsProfile(c){
   // tilt N-S del eje POR FILA — el terreno a lo largo, fila a fila. Derivado
@@ -2460,6 +2517,7 @@ $('tpreset').onchange=()=>{
   $('tparam').value=P==='ondulado'?1.2:P==='valle'||P==='cresta'?2:P==='aleatorio'?7:6;
 };
 $('tapply').onclick=()=>{PLANT_REAL=null;$('realnote').style.display='none';applyPreset();};
+const FICHA_CACHE={};
 const COTAS_CACHE={}, LAYOUT_CACHE={};
 /* HUSO LOCAL DE LA PLANTA. El campo «UTC ±» arrancaba clavado en 2 —hora de verano peninsular— y
    al cargar una planta real no se tocaba, asi que la simulacion corria con la hora de Madrid:
@@ -2510,6 +2568,24 @@ async function loadRealPlant(name,blockIdx,ncuSel){
     // huecos de x); hasta 80 líneas — más ya no es una escena, es la planta
     const P=plantFromCotas(data,80,blockIdx);
     PLANT_REAL=P;
+    // la FICHA de configuración (lo que de verdad se escribe en cada TCU), si
+    // la planta la tiene publicada. Opcional: sin ella el selector se queda
+    // con las dos opciones de siempre en vez de ofrecer una vacía
+    if(FICHA_CACHE[name]===undefined){
+      try{
+        const r3=await fetch(name+'_ficha.json',{cache:'no-store'});
+        FICHA_CACHE[name]=r3.ok?await r3.json():null;
+      }catch(e){FICHA_CACHE[name]=null;}
+    }
+    aplicaFicha(P,FICHA_CACHE[name],COTAS_CACHE[name].pitch);
+    {
+      const opt=$('tcucfg')&&$('tcucfg').querySelector('option[value="ficha"]');
+      if(opt){
+        const hay=!!(P.fichaSlope&&P.fichaCobertura&&P.fichaCobertura.con);
+        opt.disabled=!hay;
+        if(!hay&&$('tcucfg').value==='ficha')$('tcucfg').value='levantamiento';
+      }
+    }
     ELEV=P.elev.slice();
     // el EMPLAZAMIENTO de la planta, no el que hubiera: sin esto «Ayora» se
     // simulaba con la lat/lon por defecto (el sol de otra provincia)
@@ -2533,6 +2609,21 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       ncuSelHtml=' · ámbito <select id="ncusel" class="btn small" title="Simular la planta entera (por bloques) o SOLO el parque de trackers que gobierna una NCU — la unidad real de control (y de la tabla de consignas). Las filas frontera con la NCU vecina se tratan como bordes.">'+
         '<option value=""'+(ncuSel==null?' selected':'')+'>planta (bloques)</option>'+opts+'</select>';
     }
+    // la COBERTURA de la ficha se declara: si sólo casan 79 de 107 líneas, las
+    // 28 restantes se quedan con la pendiente de las cotas y hay que decirlo,
+    // porque si no la opción «ficha» aparenta describir la planta entera
+    let avisoFicha='';
+    if(P.fichaCobertura&&P.fichaCobertura.con){
+      const F2=P.fichaCobertura;
+      avisoFicha=' <b>Ficha de TCU cargada</b>: casan <b>'+F2.lineas+' de '+F2.de+
+        '</b> líneas por su x medida ('+F2.con+' de '+F2.total+' parejas)'+
+        (F2.con<F2.total?'; el resto se queda con la pendiente de las cotas':'')+
+        '. Ojo: la ficha mide a la <b>vecina crítica</b> de cada lado y las cotas '+
+        'a la línea contigua — en Ayora difieren ~1,8× en la mediana.';
+    }else if(P.fichaCobertura===null||!P.fichaSlope){
+      avisoFicha=' Sin ficha de TCU publicada para esta planta ('+name+'_ficha.json): '+
+        'la opción «la FICHA que se escribe en la TCU» queda deshabilitada.';
+    }
     let avisoCaras='';
     // COSTE: con planta real los dos optimizadores se llevan el 84% del
     // cálculo del día (medido a 80 líneas: 1,6 s + 3,0 s frente a 0,43 + 0,46
@@ -2553,7 +2644,7 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
       Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+ncuSelHtml+
       (ncuSel!=null?'. Frontera con NCU vecinas = bordes (declarado)':'')+
-      '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.'+avisoCaras;
+      '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.'+avisoFicha+avisoCaras;
     const bs=document.getElementById('blksel');
     if(bs)bs.onchange=()=>loadRealPlant(name,+bs.value,ncuSel);
     const ns=document.getElementById('ncusel');

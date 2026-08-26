@@ -19,6 +19,21 @@ const require_child = () => ({ execFileSync });
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 
+/* El cuerpo EXACTO de una función del HTML, contando llaves. Buscar «hasta el
+   siguiente `function`» ya ha fallado dos veces: primero se tragaba terrain()
+   entera y saltaba por un `pitch:` ajeno, y luego el comentario de aplicaFicha.
+   Un test que analiza el trozo equivocado no protege nada. */
+function cuerpoFn(src, nombre) {
+  const i = src.indexOf('function ' + nombre + '(');
+  if (i < 0) return null;
+  let j = src.indexOf('{', i), n = 0;
+  for (let k = j; k < src.length; k++) {
+    if (src[k] === '{') n++;
+    else if (src[k] === '}') { n--; if (n === 0) return src.slice(i, k + 1); }
+  }
+  return null;
+}
+
 let N = 0, FAIL = 0;
 function t(name, fn) {
   N++;
@@ -944,8 +959,16 @@ t('v1.33: al cargar planta real las políticas de ASESORÍA se apagan, y se DICE
   if (!/const caros=POLICIES\.filter\(P=>P\.brain==='ncu'&&P\.on&&P\.key!=='mgl'\)/.test(html))
     throw new Error('no se seleccionan las políticas caras al cargar planta real');
   if (!/OPT_AVISADO=true;/.test(html)) throw new Error('falta el testigo: las apagaría en CADA carga');
-  if (!/avisoCaras=/.test(html) || !/'\. Azimut ≈ 0 \(aprox declarada\)\. Cotas editables en el 2D\.'\+avisoCaras/.test(html))
-    throw new Error('se apagan sin decirlo en la nota de la planta');
+  // se comprueba la PROPIEDAD —que el aviso acabe DENTRO de la nota— y no el
+  // texto que tiene al lado: fijar el vecino hacía fallar el test cada vez que
+  // se insertaba otro aviso, que es ruido, no una regresión
+  if (!/avisoCaras=/.test(html)) throw new Error('no se arma el aviso');
+  {
+    const i0n = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
+    const stmt = html.slice(i0n, html.indexOf(';', html.indexOf('avisoCaras', i0n)) + 1);
+    if (!/\+avisoCaras/.test(stmt))
+      throw new Error('se apagan sin decirlo en la nota de la planta');
+  }
   // el aviso se arma ANTES de la nota: si no, la nota se pinta sin él
   const iAviso = html.indexOf('avisoCaras=' + "'" + ' <b>');
   const iNota = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
@@ -1124,12 +1147,15 @@ t('v1.37: el mando «configuración de la TCU» existe y arranca en levantamient
 t('v1.37: cambiar el registro NO cambia el terreno — solo la creencia de la TCU', () => {
   // SOLO el cuerpo de terrainTCU: hasta aquí la rebanada llegaba a ensureElev y
   // se tragaba terrain() entera, así que el guard saltaba por el «pitch:» de otra
-  const ini = html.indexOf('function terrainTCU(');
-  if (ini < 0) throw new Error('no encuentro terrainTCU');
-  const sig = html.indexOf('\nfunction ', ini + 1);
-  const f = html.slice(ini, sig < 0 ? html.length : sig);
-  if (!/if\(c\.tcucfg!=='cero'\)return T;/.test(f))
-    throw new Error('no devuelve la MISMA planta cuando está configurada');
+  const f = cuerpoFn(html, 'terrainTCU');
+  if (!f) throw new Error('no encuentro terrainTCU');
+  // la propiedad: con la planta configurada por cotas devuelve el MISMO objeto,
+  // sin copiar ni recalcular nada (así «levantamiento» es exactamente lo de antes)
+  if (!/return T;\s*\}$/.test(f.trim()))
+    throw new Error('no devuelve la MISMA planta cuando está configurada por cotas');
+  // y la rama de la ficha sólo puede LEER un dato ya resuelto en carga
+  if (/lineXAbs|Math\.abs\(/.test(f))
+    throw new Error('terrainTCU empareja: eso se hace una vez al cargar, en aplicaFicha');
   // solo puede tocar `slope`: si tocara pitch, tilt o segs estaría inventando terreno
   for (const campo of ['pitch', 'axisTilt', 'segs', 'rowTilt', 'cw', 'maxAngle'])
     if (new RegExp(campo + '\\s*:').test(f))
@@ -1153,6 +1179,58 @@ t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría rea
       throw new Error('un camino de instante sigue calculando el ángulo con la geometría real');
   if (!/const c=cfg\(\), T=terrain\(c\), Tcfg=terrainTCU\(c,T\);/.test(html))
     throw new Error('la tabla anual no separa creencia de geometría');
+});
+
+t('v1.38: la FICHA de la TCU se empareja por la x MEDIDA, nunca por el índice', () => {
+  const f = cuerpoFn(html, 'aplicaFicha');
+  if (!f) throw new Error('no existe aplicaFicha');
+  if (!/P\.lineXAbs/.test(f))
+    throw new Error('no usa la x absoluta: sin ancla física sólo queda el índice');
+  if (!/ficha\.lineas\[i\]|lineas\[i\]/.test(f) === false)
+    throw new Error('empareja por índice: es el fallo que costó 157 consignas');
+  if (!/<=TOL/.test(f)) throw new Error('empareja sin tolerancia declarada');
+  // las parejas sin ficha NO pueden rellenarse con cero: eso fabrica un llano
+  if (!/out\.push\(null\);continue;/.test(f))
+    throw new Error('las parejas sin ficha no se dejan como «sin dato»');
+  if (!/<option value="ficha"/.test(html)) throw new Error('falta la opción en el selector');
+  if (!/opt\.disabled=!hay;/.test(html))
+    throw new Error('la opción no se deshabilita cuando la planta no tiene ficha publicada');
+});
+t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', () => {
+  const fFicha = path.join(ROOT, 'ayora_ficha.json');
+  if (!fs.existsSync(fFicha)) throw new Error('falta ayora_ficha.json (lo emite export_config_tcu.mjs)');
+  const src = cuerpoFn(html, 'aplicaFicha');
+  const aplicaFicha = new Function('DEG', 'return ' + src)(180 / Math.PI);
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 80, null);
+  if (!P.lineXAbs) throw new Error('plantFromCotas ya no devuelve lineXAbs');
+  aplicaFicha(P, JSON.parse(fs.readFileSync(fFicha, 'utf-8')), cotas.pitch);
+  const C = P.fichaCobertura;
+  if (!C || !C.con) throw new Error('la ficha no casó con ninguna pareja');
+  if (C.lineas < 0.6 * C.de)
+    throw new Error(`sólo casan ${C.lineas} de ${C.de} líneas: el emparejamiento por x se rompió`);
+  // el SIGNO: se eligió el convenio que gana con margen (oeste de la i+1).
+  // Si baja del 85 % es que la ficha cambió de convenio y hay que re-decidirlo,
+  // no seguir dibujando pendientes al revés.
+  let ok = 0, tot = 0;
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    if (P.fichaSlope[i] == null) continue;
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    const nuestro = Math.atan2(P.pairDz[i], dx) * 180 / Math.PI;
+    if (Math.abs(nuestro) < 0.05) continue;
+    tot++; if (Math.sign(P.fichaSlope[i]) === Math.sign(nuestro)) ok++;
+  }
+  if (tot < 20) throw new Error('muestra insuficiente para juzgar el signo');
+  if (ok / tot < 0.85)
+    throw new Error(`el signo de la ficha sólo coincide en ${(100 * ok / tot).toFixed(0)} %: ` +
+      'se eligió el convenio por margen y ese margen se ha perdido');
+  // y tiene que ser OTRA pendiente que la de las cotas, o la opción no aporta
+  const mag = a => { const v = a.filter(x => x != null).map(Math.abs).sort((x, y) => x - y); return v[Math.floor(v.length / 2)]; };
+  const nues = [];
+  for (let i = 0; i < P.lineX.length - 1; i++)
+    nues.push(Math.atan2(P.pairDz[i], Math.max(0.5, P.lineX[i + 1] - P.lineX[i])) * 180 / Math.PI);
+  if (Math.abs(mag(P.fichaSlope) - mag(nues)) < 0.05)
+    throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
 });
 
 console.log('');
