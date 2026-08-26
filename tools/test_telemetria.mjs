@@ -66,6 +66,10 @@ t('se puede analizar SIN conexión, desde fichero o pegando',
 // resuelve esa, con «row_to_json(jsonb) does not exist». Pasó en el primer uso.
 t('la consulta de ejemplo no colisiona el alias con la columna «t»',
   /\)\s*q;/.test(html) && !/\)\s*t;/.test(html));
+t('la plantilla NO trae valores inventados que parezcan buenos',
+  /PON_AQUI_LA_PLANTA/.test(html) && /AAAA-MM-DD/.test(html));
+t('se explica que json_agg NULL es «cero filas», no un error',
+  /json_agg<\/code> da NULL cuando/.test(html));
 t('la consulta de ejemplo avisa del límite de 100 filas del editor',
   /No limit/.test(html));
 t('el fichero se NORMALIZA en vez de exigir un formato',

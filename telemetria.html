@@ -114,8 +114,13 @@ select json_agg(q)::text from (
          series->'v'->'target_angle' as target_angle,
          series->'v'->'angle'        as angle
   from telemetria
-  where planta = 'elburgo' and clase = 'tcu' and dia = '2026-08-12'
+  where planta = 'PON_AQUI_LA_PLANTA'   -- tal cual salga en la consulta 1
+    and clase  = 'tcu'
+    and dia    = 'AAAA-MM-DD'            -- uno de los dias de la consulta 1
 ) q;</pre>
+  <div class="nota" style="margin-top:6px"><b>Si la 2 devuelve <code>NULL</code></b>, no es un error:
+    <code>json_agg</code> da NULL cuando <b>ninguna fila cumple los filtros</b>. Vuelve a la 1 y copia
+    de ahí el nombre exacto de la planta y un día que exista.</div>
   <div class="row">
     <div><label>Fichero JSON (o pega el resultado abajo)</label><input id="fich" type="file" accept=".json,.txt,.csv"></div>
     <button id="bPegar">Analizar lo pegado</button>
