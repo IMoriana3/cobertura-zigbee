@@ -111,13 +111,15 @@ t('pintar por NCU: la tira escribe en el DESTINO elegido, nunca directamente en 
   if (!/function skyTarget\(\)/.test(html)) throw new Error('falta skyTarget(): sin ámbito, la tira solo pinta la planta');
   if (!/id="skyscope"/.test(html)) throw new Error('falta el selector de a quién se pinta');
   if (/\bCC\[b\]\s*=/.test(html)) throw new Error('el pincel sigue escribiendo en CC directamente: pintaría la planta estando en una NCU');
+  if (!/for \(const T of skyTargets\(\)\)|for\(const T of skyTargets\(\)\)/.test(html))
+    throw new Error('el pincel no recorre los destinos seleccionados');
   if (!/T\.set\(ser\)/.test(html)) throw new Error('el pincel no pasa por el destino');
   if (!/v\.cc\?v\.cc\.slice\(\)/.test(html)) throw new Error('zskySeries no sabe leer una zona pintada a mano');
   // «aplicar preset» y «despejar» tienen que respetar el mismo destino
   const apply = html.slice(html.indexOf("$('skyapply').onclick"), html.indexOf("$('skyclear').onclick"));
-  if (!/skyTarget\(\)/.test(apply)) throw new Error('«aplicar preset» ignora el ámbito y toca siempre la planta');
+  if (!/skyTargets\(\)/.test(apply)) throw new Error('«aplicar preset» ignora el ámbito y toca siempre la planta');
   const clear = html.slice(html.indexOf("$('skyclear').onclick"), html.indexOf("$('skyclear').onclick") + 400);
-  if (!/T\.set\(new Array\(288\)/.test(clear)) throw new Error('«despejar» ignora el ámbito');
+  if (!/skyTargets\(\)/.test(clear) || !/new Array\(288\)/.test(clear)) throw new Error('«despejar» ignora el ámbito');
 });
 
 const i0 = html.indexOf('FÍSICA PURA');
