@@ -4678,6 +4678,16 @@ $('play').onclick=()=>{
 $('date2').addEventListener('change',()=>{$('date').value=$('date2').value;aplicaHuso(null);recompute();});
 $('date').addEventListener('change',()=>{$('date2').value=$('date').value;aplicaHuso(null);});   // cruzar el cambio de hora mueve el huso de la planta
 window.addEventListener('resize',()=>{drawScene();drawCurves();});
+/* Y tambien cuando cambia el HUECO, no solo la ventana. fitCanvas hace bien el devicePixelRatio,
+   pero se ejecuta UNA vez: si despues el lienzo se ensancha -se pliega un panel, entra una fuente,
+   se abre un <details>- el bufer se queda con la anchura vieja y el navegador amplia lo dibujado.
+   Medido en una pantalla de densidad 2: bufer 1.606 px para 1.053 de ancho, o sea x1,53 cuando
+   deberia ser x2. Un ResizeObserver lo cubre entero, que un listener de `resize` de ventana no. */
+if(window.ResizeObserver){
+  let _rq=null;
+  const _ro=new ResizeObserver(()=>{ if(_rq)cancelAnimationFrame(_rq); _rq=requestAnimationFrame(()=>{_rq=null;drawCurves();}); });
+  ['curves','poacv'].forEach(id=>{ const e=$(id); if(e)_ro.observe(e); });
+}
 
 /* arranque: restaurar config guardada si la hay */
 (function(){
