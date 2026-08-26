@@ -13,6 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+const require_child = () => ({ execFileSync });
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
@@ -961,6 +963,50 @@ t('v1.33: el GATE declara su precondición en vez de heredar el default de la UI
     throw new Error('el gate marca la casilla pero no dispara el recálculo');
 });
 
+t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de casar', () => {
+  const ep = path.join(ROOT, 'tools', 'export_config_tcu.mjs');
+  if (!fs.existsSync(ep)) throw new Error('sin tools/export_config_tcu.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // no debe RECALCULAR pendientes: la configuración por TCU ya existe publicada
+  if (!/NO recalcula pendientes/.test(src))
+    throw new Error('el exportador no declara que une en vez de recalcular');
+  const { execFileSync } = require_child();
+  execFileSync(process.execPath, [ep, 'ayora'], { cwd: ROOT, stdio: 'pipe' });
+  const csv = fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.csv'), 'utf-8').trim().split('\n');
+  const cab = csv[0].split(',');
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  if (csv.length - 1 !== cotas.t.length)
+    throw new Error(`${csv.length - 1} filas para ${cotas.t.length} seguidores`);
+  const iV = cab.indexOf('este_vector_pct'), iR = cab.indexOf('r41102_east_grade_rad');
+  const iA = cab.indexOf('este_azimut_deg'), iRA = cab.indexOf('r41104_east_grade_azimuth_rad');
+  const iNcu = cab.indexOf('ncu'), iTcu = cab.indexOf('tcu');
+  for (const k of [iV, iR, iA, iRA, iNcu, iTcu]) if (k < 0) throw new Error('la cabecera perdió una columna');
+  let n = 0, sinId = 0;
+  for (let r = 1; r < csv.length; r++) {
+    const f = csv[r].split(',');
+    if (f[iNcu] === '' || f[iTcu] === '') sinId++;
+    if (f[iV] === '' || f[iR] === '') continue;
+    // % → rad del registro: atan(p/100). Y grados → rad para el azimut.
+    if (Math.abs(parseFloat(f[iR]) - Math.atan(parseFloat(f[iV]) / 100)) > 1e-6)
+      throw new Error(`fila ${r}: la pendiente no va en rad del registro`);
+    if (f[iA] !== '' && Math.abs(parseFloat(f[iRA]) - parseFloat(f[iA]) * Math.PI / 180) > 1e-6)
+      throw new Error(`fila ${r}: el azimut no va en rad del registro`);
+    n++;
+  }
+  if (sinId) throw new Error(`${sinId} seguidores sin NCU/TCU: no se podrían cruzar con el diagnóstico`);
+  if (n < cotas.t.length * 0.9) throw new Error('casi ninguna fila trae registro: ¿se está emitiendo?');
+  // el guard que importa: San José NO casa con su levantamiento (máximo 25,0%
+  // frente a 49,6%), y el exportador tiene que ABORTAR en vez de emparejar a ojo
+  let abortó = false;
+  try { execFileSync(process.execPath, [ep, 'sanjose'], { cwd: ROOT, stdio: 'pipe' }); }
+  catch (e) { abortó = true; }
+  if (!abortó) throw new Error('San José no casa con su levantamiento y el exportador NO abortó');
+  const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.meta.json'), 'utf-8'));
+  if (!meta.NO_DERIVADO || !meta.AVISO_UNIDADES || !meta.autocomprobacion)
+    throw new Error('el .meta.json no declara lo que no deriva ni la autocomprobación');
+  if (meta.autocomprobacion.peor_desvio_pp > 0.05)
+    throw new Error('la relación vector/azimut ya no reproduce la transversal');
+});
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

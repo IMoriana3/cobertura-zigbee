@@ -1,0 +1,31 @@
+{
+  "planta": "ayora",
+  "generado_por": "tools/export_config_tcu.mjs",
+  "que_es": "unión de la configuración por TCU del levantamiento con la identidad NCU/TCU y los números de registro del mapa R7. NO recalcula pendientes.",
+  "fuente_pendientes": "config_tcu_sunner_ayora.csv (publicado como descarga en modbus.html)",
+  "fuente_identidad": "ayora_layout.json",
+  "fuente_vanos": "ayora_cotas.json (x medidas, agrupadas en líneas por contención)",
+  "union": {
+    "por": "terna medida (pend_long, transv_este, transv_oeste) redondeada a 3 decimales",
+    "unívocos": 754,
+    "empates": 0,
+    "sin_pareja": 0,
+    "nota": "si deja de ser unívoca el exportador ABORTA: emparejar a ojo escribiría la pendiente de un seguidor en otro"
+  },
+  "autocomprobacion": {
+    "relacion": "|transv| = |vector·cos(az−90°)|",
+    "peor_desvio_pp": 0.0068,
+    "nota": "confirma que vector+azimut es el par que piden 41098/41100 y 41102/41104"
+  },
+  "bordes_de_bloque": {
+    "oeste": 2,
+    "este": 0,
+    "nota": "vano vacío = no hay vecina a ese lado dentro del bloque"
+  },
+  "NO_DERIVADO": {
+    "r41037_r41038_en_pulsos": "los topes van en PULSOS de motor y aquí hay GRADOS; la constante pulsos/grado es del accionamiento y no está en estos ficheros.",
+    "r41014_axis_azimuth": "el simulador usa azimut de eje ≈0 como aproximación DECLARADA; el valor real de cada planta sale del replanteo, no de aquí."
+  },
+  "AVISO_UNIDADES": "en la ficha del R7 el 41106 (east_pitch) aparece en RAD y su gemelo 41033 en M. Probable errata del volcado, pero equivocarse ahí desconfigura medio parque: contrástalo con el documento original antes de escribir. Esta ficha emite METROS.",
+  "cruce": "CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) — los mismos que export_consignas.mjs"
+}
