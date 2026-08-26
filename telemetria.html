@@ -1,0 +1,331 @@
+<meta charset="utf-8">
+<title>Telemetría · ¿corrige el relieve?</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    --bg:#0b0f16; --panel:#101725; --line:#1e2a3a; --tx:#eaf4ff; --tx2:#9bb0c6;
+    --muted:#5c7189; --accent:#5aa9ff; --ok:#36d399; --warn:#fbbd23; --err:#f87272;
+    --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:16px 20px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:1.05rem;font-weight:600}
+  h1 span{color:var(--muted);font-weight:400;font-size:.8rem;margin-left:10px}
+  main{padding:16px 20px;max-width:1200px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .card h2{margin:0 0 10px;font-size:.82rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--tx2)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  label{display:block;font-size:.7rem;color:var(--muted);margin-bottom:3px}
+  input,select{background:#0b111c;color:var(--tx);border:1px solid var(--line);border-radius:8px;
+    padding:7px 9px;font:inherit;font-size:.86rem;min-width:150px}
+  input.wide{min-width:340px;font-family:var(--mono);font-size:.76rem}
+  button{background:#16233a;color:var(--tx);border:1px solid var(--line);border-radius:8px;
+    padding:8px 14px;font:inherit;font-size:.86rem;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.45;cursor:default}
+  button.p{background:#1d3a63;border-color:#2b5390}
+  .nota{font-size:.76rem;color:var(--muted);line-height:1.55}
+  .nota b{color:var(--tx2)}
+  table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:6px}
+  th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+  #log{font-family:var(--mono);font-size:.75rem;color:var(--tx2);white-space:pre-wrap;
+    max-height:190px;overflow:auto;line-height:1.6}
+  canvas{width:100%;height:280px;display:block;border-radius:8px;background:#0b111c;margin-top:8px}
+  .ver{font-size:1.05rem;font-weight:600;margin:10px 0 4px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .mut{color:var(--muted)}
+</style>
+
+<header>
+  <h1>Telemetría de planta · ¿corrige el relieve?<span>lee la tabla <code>telemetria</code> y mira si los seguidores se abren</span></h1>
+</header>
+
+<main>
+
+<div class="card">
+  <h2>Qué mide esta página</h2>
+  <div class="nota">
+    Con eje N-S, el ángulo <b>astronómico es casi el mismo para toda la planta</b> a cualquier hora: solo
+    lo mueve el tilt del eje, y a sol bajo ni eso. El <b>backtracking 3D</b>, en cambio, <b>abre</b> los
+    ángulos, porque cada seguidor tiene la pendiente de su vecino. Medido sobre el levantamiento de
+    Ayora: <b>0,4°</b> de apertura a mediodía pero <b>≈12°</b> al ocaso.<br><br>
+    Así que no hace falta comparar contra ningún modelo: basta ver <b>cuánto se abren entre sí los
+    objetivos de los seguidores a lo largo del día</b>. Si al orto y al ocaso la apertura se dispara,
+    la planta corrige el relieve. Si se queda plana, manda un ángulo único y no lo corrige.<br><br>
+    <b>Ojo con el mediodía:</b> ahí las dos firmas coinciden y no distingue nada. Por eso lo que
+    importa es la forma de la curva en los extremos, no su valor medio.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Conexión</h2>
+  <div class="row">
+    <div><label>URL de Supabase</label><input id="url" class="wide" value="https://icqiwmbbeoeswbcbgflc.supabase.co"></div>
+    <div><label>Clave publishable (la de importar-logs)</label><input id="key" class="wide" value="sb_publishable_lOmQfLA1rv7Jg0N3vjzcOA_qnbatn2p"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><label>Correo</label><input id="mail" type="email" autocomplete="username" placeholder="tu@correo"></div>
+    <div><label>Contraseña</label><input id="pass" type="password" autocomplete="current-password"></div>
+    <button id="bEntrar" class="p">Entrar</button>
+    <button id="bSalir" style="display:none">Salir</button>
+    <button id="bSondeo">Ver qué hay</button>
+    <div id="sesion" class="nota" style="align-self:center"></div>
+  </div>
+  <div class="nota" style="margin-top:9px"><b>Hace falta sesión.</b> La política de la tabla es
+    <code>for select to authenticated</code>: con la clave pública a secas la consulta responde
+    correctamente pero con <b>cero filas</b>, que es justo lo que despista. Las credenciales son las
+    mismas de <code>importar-logs.html</code>, van <b>solo</b> a tu Supabase y <b>no se guardan</b>:
+    en la pestaña queda el token de sesión, que caduca solo.</div>
+</div>
+
+<div class="card" id="cSondeo" style="display:none">
+  <h2>Qué hay cargado</h2>
+  <div id="tSondeo"></div>
+</div>
+
+<div class="card" id="cDia" style="display:none">
+  <h2>Analizar un día</h2>
+  <div class="row">
+    <div><label>Planta</label><select id="planta"></select></div>
+    <div><label>Día</label><select id="dia"></select></div>
+    <div><label>Malla</label><select id="malla">
+      <option value="300" selected>5 min</option><option value="600">10 min</option><option value="120">2 min</option>
+    </select></div>
+    <button id="bAnalizar" class="p">Analizar</button>
+    <button id="bDescargar" disabled>Descargar remuestreado (para Claude)</button>
+  </div>
+  <div id="ver"></div>
+  <canvas id="cv" width="1160" height="280"></canvas>
+  <div class="nota" id="pieCv"></div>
+</div>
+
+<div class="card">
+  <h2>Registro</h2>
+  <div id="log">listo.</div>
+</div>
+
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const log = (m, cls) => { const d = $('log');
+  d.innerHTML += (d.innerHTML ? '\n' : '') + (cls ? `<span class="${cls}">${m}</span>` : m);
+  d.scrollTop = d.scrollHeight; };
+
+/* La sesión vive en sessionStorage: se va al cerrar la pestaña y NUNCA guarda
+   la contraseña. Sin ella las consultas responden 200 con cero filas —la RLS
+   deja pasar la petición y filtra las filas—, que es el fallo que más despista
+   porque no parece un fallo. */
+const SES = () => { try { return JSON.parse(sessionStorage.getItem('tele_ses') || 'null'); } catch { return null; } };
+function pintaSesion() {
+  const s = SES();
+  $('sesion').innerHTML = s ? `<span class="ok">sesión activa · ${s.user || ''}</span>`
+                            : '<span class="mut">sin sesión: la tabla no dejará ver nada</span>';
+  $('bSalir').style.display = s ? '' : 'none';
+  $('bEntrar').style.display = s ? 'none' : '';
+}
+async function api(qs) {
+  const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
+  const s = SES();
+  const r = await fetch(`${url}/rest/v1/telemetria?${qs}`, {
+    headers: { apikey: key, Authorization: 'Bearer ' + ((s && s.token) || key) } });
+  if (r.status === 401) { sessionStorage.removeItem('tele_ses'); pintaSesion();
+    throw new Error('la sesión ha caducado: vuelve a entrar'); }
+  if (!r.ok) throw new Error(`HTTP ${r.status} · ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+$('bEntrar').onclick = async () => {
+  const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
+  const email = $('mail').value.trim(), password = $('pass').value;
+  if (!email || !password) { log('faltan correo o contraseña', 'warn'); return; }
+  $('bEntrar').disabled = true;
+  try {
+    const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { apikey: key, 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }) });
+    const j = await r.json();
+    if (!r.ok || !j.access_token) throw new Error(j.error_description || j.msg || `HTTP ${r.status}`);
+    sessionStorage.setItem('tele_ses', JSON.stringify({ token: j.access_token, user: (j.user && j.user.email) || email }));
+    $('pass').value = '';                     // la contraseña no se queda ni en el DOM
+    pintaSesion(); log('sesión iniciada', 'ok');
+  } catch (e) { log('no se pudo entrar: ' + e.message, 'err'); }
+  $('bEntrar').disabled = false;
+};
+$('bSalir').onclick = () => { sessionStorage.removeItem('tele_ses'); pintaSesion(); log('sesión cerrada'); };
+pintaSesion();
+
+/* ── sondeo: qué plantas, días y cobertura hay, sin bajar una sola serie ─── */
+let INDICE = [];
+$('bSondeo').onclick = async () => {
+  $('bSondeo').disabled = true;
+  try {
+    log('sondeando…');
+    INDICE = await api('select=planta,ncu,clase,dia,equipo,cobertura,paso_s&limit=5000');
+    log(`${INDICE.length} filas visibles`, 'ok');
+    const por = new Map();
+    for (const x of INDICE) {
+      const k = x.planta + '|' + x.clase;
+      if (!por.has(k)) por.set(k, { planta: x.planta, clase: x.clase, dias: new Set(), ncus: new Set(), n: 0, cob: [] });
+      const e = por.get(k); e.dias.add(x.dia); e.ncus.add(x.ncu); e.n++;
+      if (x.cobertura != null) e.cob.push(+x.cobertura);
+    }
+    let h = '<table><tr><th>Planta</th><th>Clase</th><th>Filas</th><th>NCU</th><th>Días</th><th>Rango</th><th>Cobertura</th></tr>';
+    for (const e of [...por.values()].sort((a, b) => (a.planta + a.clase).localeCompare(b.planta + b.clase))) {
+      const d = [...e.dias].sort();
+      const c = e.cob.length ? (e.cob.reduce((a, b) => a + b, 0) / e.cob.length).toFixed(1) + '%' : '—';
+      h += `<tr><td>${e.planta}</td><td>${e.clase}</td><td>${e.n}</td><td>${e.ncus.size}</td>` +
+           `<td>${d.length}</td><td class="mut">${d[0]} → ${d[d.length - 1]}</td><td>${c}</td></tr>`;
+    }
+    $('tSondeo').innerHTML = h + '</table>';
+    $('cSondeo').style.display = '';
+    const plantas = [...new Set(INDICE.filter(x => x.clase === 'tcu').map(x => x.planta))].sort();
+    $('planta').innerHTML = plantas.map(p => `<option>${p}</option>`).join('');
+    $('planta').onchange();
+    $('cDia').style.display = plantas.length ? '' : 'none';
+    if (!INDICE.length) log(SES()
+      ? 'cero filas CON sesión: o la tabla está vacía o tu usuario no tiene alcance sobre ella'
+      : 'cero filas SIN sesión: la política es «for select to authenticated». Entra con tus credenciales y repite.', 'warn');
+    else if (!plantas.length) log('hay filas pero ninguna de clase «tcu»: sin ellas no hay ángulos que mirar', 'warn');
+  } catch (e) { log('ERROR ' + e.message, 'err'); }
+  $('bSondeo').disabled = false;
+};
+$('planta').onchange = () => {
+  const p = $('planta').value;
+  const dias = [...new Set(INDICE.filter(x => x.clase === 'tcu' && x.planta === p).map(x => x.dia))].sort();
+  $('dia').innerHTML = dias.map(d => `<option>${d}</option>`).join('');
+};
+
+/* ── análisis de un día ──────────────────────────────────────────────────── */
+let REMU = null;
+$('bAnalizar').onclick = async () => {
+  const planta = $('planta').value, dia = $('dia').value, paso = +$('malla').value;
+  $('bAnalizar').disabled = true; $('bDescargar').disabled = true; REMU = null;
+  try {
+    log(`bajando ${planta} · ${dia}…`);
+    const filas = await api(`planta=eq.${encodeURIComponent(planta)}&clase=eq.tcu&dia=eq.${dia}` +
+                            `&select=ncu,equipo,tz,paso_s,cobertura,series`);
+    log(`${filas.length} equipos`, 'ok');
+    if (!filas.length) { log('sin datos ese día', 'warn'); $('bAnalizar').disabled = false; return; }
+
+    /* Remuestreo a malla común. Los equipos NO comparten eje de tiempos: el
+       enlace de radio pierde muestras (en El Burgo, ~7% del día en decenas de
+       huecos). Para cada punto de la malla se toma el valor cuyo t esté más
+       cerca, y solo si cae dentro de media malla — si no, ese equipo no
+       contribuye a ese instante en vez de arrastrar un valor viejo. */
+    const N = Math.floor(86400 / paso);
+    const malla = Array.from({ length: N }, (_, i) => i * paso);
+    const eq = [];
+    for (const f of filas) {
+      const t = (f.series && f.series.t) || [];
+      const v = (f.series && f.series.v && f.series.v.target_angle) || null;
+      const a = (f.series && f.series.v && f.series.v.angle) || null;
+      if (!t.length || !v) continue;
+      const obj = new Array(N).fill(null), real = new Array(N).fill(null);
+      let j = 0;
+      for (let i = 0; i < N; i++) {
+        while (j + 1 < t.length && Math.abs(t[j + 1] - malla[i]) <= Math.abs(t[j] - malla[i])) j++;
+        if (Math.abs(t[j] - malla[i]) <= paso / 2) {
+          if (v[j] != null && isFinite(v[j])) obj[i] = +v[j];
+          if (a && a[j] != null && isFinite(a[j])) real[i] = +a[j];
+        }
+      }
+      eq.push({ ncu: f.ncu, equipo: f.equipo, tz: f.tz, cobertura: f.cobertura, obj, real });
+    }
+    log(`${eq.length} equipos con objetivo · malla de ${paso / 60} min`);
+    if (eq.length < 5) { log('muy pocos equipos con target_angle: no se puede medir apertura', 'warn'); $('bAnalizar').disabled = false; return; }
+
+    /* apertura = dispersión ROBUSTA entre seguidores en cada instante.
+       p95−p5 y no máx−mín: un solo seguidor en tope o en posición segura
+       falsearía el máximo todos los días. */
+    const ap = [], nEq = [], med = [];
+    for (let i = 0; i < N; i++) {
+      const v = [];
+      for (const e of eq) if (e.obj[i] != null && Math.abs(e.obj[i]) < 54.9) v.push(e.obj[i]);
+      nEq.push(v.length);
+      if (v.length < 5) { ap.push(null); med.push(null); continue; }
+      v.sort((a, b) => a - b);
+      ap.push(v[Math.floor(v.length * 0.95)] - v[Math.floor(v.length * 0.05)]);
+      med.push(v[Math.floor(v.length / 2)]);
+    }
+    REMU = { planta, dia, paso_s: paso, tz: eq[0].tz || '?', equipos: eq.length,
+             malla, apertura: ap, mediana: med, n: nEq,
+             detalle: eq.map(e => ({ ncu: e.ncu, equipo: e.equipo, obj: e.obj })) };
+    pinta(ap, med, nEq, paso);
+    veredicto(ap, med, nEq, paso);
+    $('bDescargar').disabled = false;
+  } catch (e) { log('ERROR ' + e.message, 'err'); }
+  $('bAnalizar').disabled = false;
+};
+
+function veredicto(ap, med, nEq, paso) {
+  // el mediodía es donde las dos firmas coinciden: se juzga por los EXTREMOS,
+  // que es donde el backtracking existe
+  const idx = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
+  if (!idx.length) { $('ver').innerHTML = '<div class="ver warn">sin instantes con suficientes seguidores</div>'; return; }
+  const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados = sol bajo
+  const centro = idx.filter(x => Math.abs(x.med) < 10);          // cerca del cenit
+  const p90 = (a) => { if (!a.length) return null; const s = a.map(x => x.v).sort((p, q) => p - q); return s[Math.floor(s.length * 0.9)]; };
+  const aE = p90(extremos), aC = p90(centro);
+  const hh = (i) => String(Math.floor(i * paso / 3600)).padStart(2, '0') + ':' + String(Math.floor(i * paso % 3600 / 60)).padStart(2, '0');
+  const pico = idx.reduce((a, b) => b.v > a.v ? b : a);
+  let h = '';
+  if (aE == null) h = `<div class="ver warn">no hay instantes de sol bajo con datos suficientes</div>`;
+  else if (aE < 1.5) h = `<div class="ver err">Apertura al sol bajo: ${aE.toFixed(2)}° — la planta manda un ángulo ÚNICO</div>` +
+      `<div class="nota">No corrige el relieve: es seguimiento global. El bt3d abriría del orden de 10°.</div>`;
+  else if (aE > 5) h = `<div class="ver ok">Apertura al sol bajo: ${aE.toFixed(2)}° — la planta ABRE los ángulos</div>` +
+      `<div class="nota">Compatible con backtracking que sí usa la pendiente de cada seguidor.</div>`;
+  else h = `<div class="ver warn">Apertura al sol bajo: ${aE.toFixed(2)}° — intermedia</div>` +
+      `<div class="nota">Ni ángulo único ni bt3d pleno. Mirar el detalle antes de concluir.</div>`;
+  h += `<div class="nota">Al cenit: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
+       `Pico del día ${pico.v.toFixed(2)}° a las ${hh(pico.i)}. Seguidores contados: hasta ${Math.max(...nEq)}.</div>`;
+  $('ver').innerHTML = h;
+}
+
+function pinta(ap, med, nEq, paso) {
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 280;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const L = 44, R = 12, T = 12, B = 26, N = ap.length;
+  const maxAp = Math.max(2, ...ap.filter(v => v != null)) * 1.15;
+  const x = i => L + (i / (N - 1)) * (W - L - R);
+  const y = v => T + (1 - v / maxAp) * (H - T - B);
+  ctx.strokeStyle = '#1e2a3a'; ctx.fillStyle = '#5c7189'; ctx.font = '10px ui-monospace,monospace'; ctx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const v = maxAp * k / 4, yy = y(v);
+    ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(W - R, yy); ctx.stroke();
+    ctx.fillText(v.toFixed(1) + '°', 6, yy + 3);
+  }
+  for (let h = 0; h <= 24; h += 3) {
+    const i = Math.min(N - 1, Math.round(h * 3600 / paso)), xx = x(i);
+    ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, H - B); ctx.stroke();
+    ctx.fillText(String(h).padStart(2, '0') + 'h', xx - 9, H - 10);
+  }
+  // umbral de referencia: por debajo de ~1,5° es ángulo único
+  ctx.strokeStyle = '#f8727255'; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(L, y(1.5)); ctx.lineTo(W - R, y(1.5)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = '#5aa9ff'; ctx.lineWidth = 2; ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < N; i++) {
+    if (ap[i] == null || nEq[i] < 10) { started = false; continue; }
+    const xx = x(i), yy = y(ap[i]);
+    if (!started) { ctx.moveTo(xx, yy); started = true; } else ctx.lineTo(xx, yy);
+  }
+  ctx.stroke();
+  $('pieCv').innerHTML = 'Apertura entre seguidores (p95 − p5 del objetivo) a lo largo del día, hora local de la planta. ' +
+    'La raya roja marca 1,5°: por debajo, ángulo único. Los tramos sin línea son instantes con menos de 10 seguidores.';
+}
+
+$('bDescargar').onclick = () => {
+  if (!REMU) return;
+  const b = new Blob([JSON.stringify(REMU)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b);
+  a.download = `telemetria_${REMU.planta}_${REMU.dia}_remuestreada.json`.replace(/\s+/g, '_');
+  a.click(); URL.revokeObjectURL(a.href);
+  log('descargado el remuestreado: eso es lo que hay que subir', 'ok');
+};
+</script>

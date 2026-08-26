@@ -126,15 +126,33 @@ function agrupaPDF(filas) {
    ENCIMA de lo generado; si el documento trae unidad, gana la del documento salvo aquí. */
 const CURADO = {
   ncu: { 30506: { un: 'rad → °' }, 30510: { un: 'rad → °' } },
-  hsu: {}, tcu: {}
+  hsu: {},
+  // 41106: el manual v6.1 dice «Radians / def 0 / 0..π/4», pero es un ARRASTRE
+  // de celdas de la fila 41102 (East grade slope), cuatro direcciones arriba:
+  // su gemelo 41033 (West pitch) va en Meters con defecto 9, y un pitch de 0
+  // con máximo π/4≈0,79 no es una separación entre ejes. CERRADO EN CAMPO:
+  // Ayora lee 6 en ese registro y su levantamiento mide 6,002 m de pitch —
+  // como radianes serían 344°, imposible en un campo cuyo máximo declarado es
+  // 45°. La etiqueta lleva las DOS cosas: lo que el equipo usa y lo que el
+  // documento dice, para no dejar de reproducir el documento ni dejar que
+  // nadie escriba radianes en un seguidor.
+  tcu: { 41106: { un: 'm (doc: rad, errata)' } }
 };
+
+/* Qué documento se está construyendo. CURADO se consulta SOLO en su cubo:
+   ver la nota en `seccion`. */
+let DEV = 'ncu';
 
 /* ---------- construcción de una sección ---------- */
 function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null, max = null } = {}) {
   const f = regs.map(r => {
     const bits = {}, bdesc = {};
     for (const h of r.hijos) if (h.bits) { bits[h.nombre] = h.bits; if (h.desc) bdesc[h.nombre] = h.desc; }
-    const cur = (CURADO.ncu[r.addr] || CURADO.hsu[r.addr] || CURADO.tcu[r.addr] || {});
+    // por DISPOSITIVO, no solo por dirección: los tres mapas comparten rangos
+    // y consultar los tres cubos a la vez hacía que una curación de la TCU se
+    // aplicara al registro que la HSU tiene en esa misma dirección (pasó con
+    // el 41106: pisó el «meters/second» de la HSU)
+    const cur = (CURADO[DEV] || {})[r.addr] || {};
     const un = cur.un || UNI(r.unidad, r.escala);
     /* El valor por defecto y el rango van como CAMPOS, no metidos dentro del texto. Antes se
        concatenaban a la descripcion y ahi no servian para nada: son 361 valores por defecto y 440
@@ -161,6 +179,7 @@ const nTCU = agrupaXL(XL.ncu_r7['TCU']);
 const nHSU = agrupaXL(XL.ncu_r7['HSU']);
 const nHSUx = agrupaXL(XL.ncu_r7['HSU EXT']);
 
+DEV = 'ncu';
 const NCU = [
   seccion('Identidad', 'hoja «NCU Info» · el documento numera estas tres SIN el prefijo 3xxxx', 'ro', entre(nInfo, 0, 999)),
   seccion('Registros propios', 'hoja «NCU Info» · direcciones absolutas · una NCU por planta', 'ro', entre(nInfo, 30000, 30199)),
@@ -181,6 +200,7 @@ const NCU = [
 
 /* ================= TCU (PDF v6, FW 1.4.3) ================= */
 const t = agrupaPDF(PDF);
+DEV = 'tcu';
 const TCU = [
   seccion('Estado, alarmas y tiempo', 'PDF v6 · 30000–30006 estado y alarmas · 30010–30031 movimiento y red', 'ro', entre(t, 30000, 30075)),
   seccion('Medidas', 'PDF v6 · motor, bus, panel, batería y temperaturas', 'ro', entre(t, 30076, 30109)),
@@ -193,6 +213,7 @@ const TCU = [
 
 /* ================= HSU (mapa propio R23 + republicados del R7) ================= */
 const hR23 = agrupaXL(XL.hsu_r23['Sheet1'], { quitaSufijo: false });
+DEV = 'hsu';
 const HSU = [
   seccion('Identidad, estado y medidas', 'R23 · registros de entrada — producto, MSR, alarmas, viento, nieve, batería', 'ro', entre(hR23, 30000, 30999)),
   seccion('Bloque 31000', 'R23', 'ro', entre(hR23, 31000, 35999)),

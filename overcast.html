@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- NOMBRE CANÓNICO DE LA APP: «Simulador de radiación difusa».
+     Va en TRES sitios y los tres tienen que decir lo mismo: este <title>, el <h1> de
+     abajo y la tarjeta del panel (proyectos/index.html, docId «overcast-sim»). En una
+     semana se renombró tres veces —Overcast, cielo cubierto, radiación difusa— y el
+     panel acabó llamando a la app de una manera y la propia página de otra. Hay un
+     check en tools/test_overcast_sim.mjs que exige que <title> y <h1> coincidan.
+     Los identificadores TÉCNICOS no se tocan (overcast.html, overcast-sim, el test):
+     renombrarlos rompería la URL publicada y los enlaces de la doc. -->
 <title>Simulador de radiación difusa — Factiun</title>
 <link rel="icon" href="favicon.svg">
 <style>
@@ -80,7 +88,7 @@
 </head>
 <body>
 <header>
-  <h1>Simulador de Overcast <span class="chip">difusa en el navegador</span></h1>
+  <h1>Simulador de radiación difusa <span class="chip">las 4 políticas del core, en el navegador</span></h1>
   <div class="sub">Espejo JS del módulo canónico de tracking de SolarGPT (<code>solargpt_core/tracker.py</code>,
     schema 2.1.0): las <b>cuatro políticas de difusa del core</b> — <b>diffuse_flat · diffuse_limited ·
     diffuse_continuous · diffuse_poa_switch</b> — más la baseline pvlib, con la MISMA semántica: transposición
@@ -341,9 +349,18 @@
   </div>
 
   <div class="card">
-    <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span></h2>
+    <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span>
+      <span style="float:right">
+        <button class="btn small acc" id="csvbtn" title="Descarga el día MINUTO A MINUTO: meteo, θ de consigna, θ ejecutado y POA de cada política, con toda la configuración en la cabecera para que un tercero pueda reproducir los números fuera de este navegador.">⬇ CSV del día</button>
+      </span></h2>
     <div style="overflow-x:auto"><table id="daytab"></table></div>
     <div class="nota" id="daynote"></div>
+    <div class="nota">El <b>CSV</b> baja el día <b>al minuto</b> —la rejilla del actuador, no la de
+      decisión— con la meteo del paso, θ de consigna, θ EJECUTADO y POA de cada política, y con el
+      zonal activo también el θ y la POA de cada NCU. La cabecera lleva <b>toda</b> la configuración
+      (emplazamiento, geometría, lazo, DiffuseConfig, fuente de la meteo) y el resumen del día, para
+      que quien lo audite pueda recalcularlo y comparar. Separador coma y decimal punto; las líneas
+      de cabecera empiezan por <code>#</code> (en pandas, <code>comment='#'</code>).</div>
   </div>
 
   <div class="card">
@@ -1823,7 +1840,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.16.0';
+const VER='v1.17.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -3792,6 +3809,114 @@ function renderYear365(){
 }
 $('mwp').addEventListener('change',renderYear365);
 $('eurmwh').addEventListener('change',renderYear365);
+
+/* ── EXPORT CSV: el día al minuto, con todo lo necesario para reproducirlo ──
+   Un cliente no audita una captura de pantalla. Esto baja la rejilla FINA (la
+   del actuador, 1 min) con la meteo del paso, la consigna, el θ ejecutado y la
+   POA de cada política — y la cabecera lleva la configuración entera, para que
+   el que lo reciba pueda recalcular y comparar en su herramienta.
+   Formato: coma como separador y punto decimal (el estándar; en Excel español
+   hay que importarlo, no abrirlo de doble clic), cabecera en líneas «#». */
+function csvNum(v,d){return (v==null||!Number.isFinite(v))?'':v.toFixed(d);}
+function buildDayCSV(){
+  const c=cfgDay(),d=cfgDiffuse(),day=SIM.day,dayF=SIM.dayF;
+  const zc=zonalCfg(), zon=zc.on&&ZR&&ZR.zones.length>1;
+  const pv=polEfectiva($('polview').value);
+  const L=[];
+  const meta=(k,v)=>L.push('# '+k+','+String(v).replace(/,/g,' '));
+  L.push('# '+$('verlbl').textContent+' — export para auditoría');
+  L.push('# Espejo JS de solargpt_core/tracker.py (schema 2.1.0). Generador de escenarios, NO meteo bancable.');
+  L.push('#');
+  L.push('# [EMPLAZAMIENTO]');
+  meta('planta',PLANT_REAL?PLANT_REAL.title:'sintética');
+  meta('latitud_deg',c.lat); meta('longitud_deg',c.lon);
+  meta('fecha_local',c.dateStr); meta('utc_offset_min',c.tz*60);
+  meta('altitud_m',c.altM); meta('turbidez_linke',c.TL); meta('albedo',c.albedo);
+  L.push('# [GEOMETRÍA]');
+  meta('pitch_m',+$('pitch').value); meta('ancho_colector_m',+$('cw').value);
+  meta('gcr',c.gcr.toFixed(4)); meta('theta_max_deg',c.maxAngle);
+  meta('azimut_eje_deg',c.axisAz); meta('stow_nocturno_tcu_deg',+$('stow').value);
+  L.push('# [LAZO DE CONTROL]');
+  meta('resolucion_decision_min',c.dtMin);
+  meta('resolucion_actuador_min',DT_FINE);
+  meta('slew_deg_s',SIM.loop?SIM.loop.slewDegS:0);
+  meta('deadband_deg',SIM.loop?SIM.loop.deadbandDeg:0);
+  L.push('# [DIFFUSE CONFIG — DiffuseConfig del core]');
+  meta('ghi_min_w_m2',d.ghiMin); meta('flat_enter_ratio',d.flatEnterRatio);
+  meta('limited_hold_ratio',d.limitedHoldRatio);
+  meta('sw_enter_ratio',d.swEnterRatio); meta('sw_exit_ratio',d.swExitRatio);
+  meta('confirm_min',d.confirmMin); meta('dwell_min',d.dwellMin);
+  meta('alphas_continuous',DCFG_DEFAULT.alphas.join(' '));
+  L.push('# [METEO]');
+  meta('fuente',c.om?'Open-Meteo (medida, interpolada)':'sintética (cc pintada o preset)');
+  meta('cc_media_dia',(CC.reduce((a,v)=>a+v,0)/288).toFixed(3));
+  L.push('# [ZONAL]');
+  meta('activo',zon?'sí':'no');
+  if(zon){
+    meta('n_ncus',ZR.zones.length);
+    meta('politica_zonificada',pv);
+    meta('cielo_por_ncu',zskyOn()?'sí (cada NCU con su serie)':'no (un frente que cruza)');
+    meta('frente_cruza_min',zc.cross);
+    const nom=zskyNombres(ZR.zones.length);
+    ZR.zones.forEach((Z,z)=>meta('cc_media_'+nom[z].replace(/\s+/g,'_'),
+      (Z.day.cc.reduce((a,v)=>a+v,0)/288).toFixed(3)));
+  }
+  L.push('# [RESUMEN DEL DÍA — POA integrada sobre el θ EJECUTADO, al minuto]');
+  L.push('# politica,poa_wh_m2,delta_vs_pvlib_pct,pct_difusa_activa,conmutaciones,recorrido_deg');
+  const base=SIM.res.pvlib.met.poaWh;
+  for(const k of POL_ORDER){
+    const r=SIM.res[k]; if(!r)continue;
+    L.push('# '+k+','+r.met.poaWh.toFixed(1)+','+
+      (k==='pvlib'?'':(100*(r.met.poaWh/base-1)).toFixed(3))+','+
+      r.met.pctFlat.toFixed(1)+','+r.met.switches+','+r.met.travelDeg.toFixed(1));
+  }
+  L.push('#');
+  L.push('# CONVENCIÓN DE SIGNOS: TCU, NEGATIVO = ESTE (el core usa positivo = este).');
+  L.push('# theta_consigna = lo que decide la TCU en su ciclo · theta_ejecutado = lo que hace el');
+  L.push('# actuador al minuto con deadband y slew. La POA sale SIEMPRE del ejecutado.');
+  L.push('#');
+  // cabecera de columnas
+  const pols=POL_ORDER.filter(k=>SIM.res[k]);
+  let cab=['minuto_local','hora_local','zenit_deg','azimut_deg',
+           'ghi_w_m2','dni_w_m2','dhi_w_m2','cc','theta_n_tcu_deg'];
+  for(const k of pols)cab.push(k+'_theta_consigna_tcu_deg',k+'_theta_ejecutado_tcu_deg',
+                               k+'_poa_w_m2',k+'_difusa_activa');
+  let nomZ=[];
+  if(zon){
+    nomZ=zskyNombres(ZR.zones.length).map(t=>t.replace(/\s+/g,'_'));
+    for(const nz of nomZ)cab.push(nz+'_cc',nz+'_theta_ejecutado_tcu_deg',nz+'_difusa_activa');
+  }
+  L.push(cab.join(','));
+  for(let i=0;i<dayF.n;i++){
+    const m=dayF.tmin[i];
+    const f=[m,hhmm(m),csvNum(dayF.zen[i],3),csvNum(dayF.az[i],3),
+             csvNum(dayF.irr[i].ghi,1),csvNum(dayF.irr[i].dni,1),csvNum(dayF.irr[i].dhi,1),
+             csvNum(CC[Math.min(287,Math.floor(m/5))],3),csvNum(tcuDeg(SIM.thNF[i]),3)];
+    for(const k of pols){
+      const r=SIM.res[k];
+      f.push(csvNum(tcuDeg(r.consF[i]),3),csvNum(tcuDeg(r.execF[i]),3),
+             csvNum(r.poaF[i],2),r.flagF[i]?1:0);
+    }
+    if(zon)ZR.zones.forEach(Z=>{
+      f.push(csvNum(Z.day.cc[Math.min(287,Math.floor(m/5))],3),
+             csvNum(tcuDeg(Z.execF[i]),3),Z.flagF[i]?1:0);
+    });
+    L.push(f.join(','));
+  }
+  return L.join('\n')+'\n';
+}
+function descargar(nombre,texto,tipo){
+  const b=new Blob([texto],{type:(tipo||'text/csv')+';charset=utf-8'});
+  const u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=nombre;document.body.appendChild(a);a.click();
+  a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+$('csvbtn').onclick=()=>{
+  if(!SIM)return;
+  const c=cfgDay();
+  const pl=PLANT_REAL?PLANT_REAL.name:'sintetica';
+  descargar('difusa_'+pl+'_'+c.dateStr+'.csv',buildDayCSV());
+};
 
 /* ── QA ── */
 $('qabtn').onclick=()=>{

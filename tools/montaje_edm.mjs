@@ -25,6 +25,9 @@ const WRITE = process.argv.includes('--write');
 
 /* Canon del proyecto. NO son valores de planta: son los que el JS y el core comparten y usan por
    defecto cuando nadie dice otra cosa. Por eso salen marcados como `canon` y no como medidos. */
+/* max_angle: 55 en TODAS las plantas, dicho por la casa el 2026-08-21. No es una suposicion ni un
+   valor por defecto: es el recorrido mecanico del hierro, igual en toda la flota. Lo unico MEDIDO
+   -la plantilla TCU de El Burgo, west_sw_limit 55 / east_sw_limit -55- lo confirma. */
 const CANON = { gcr: 0.397, max_angle: 55, axis_azimuth: 0, axis_tilt: 0, night_stow_deg: 5 };
 
 /* La cuerda de la mesa: lo que tapa de ancho, perpendicular al tubo. En 1V es el lado largo del
@@ -123,7 +126,8 @@ function montajeDe(nombre, L) {
       axis_tilt: 'canon · el eje se genera horizontal; el terreno se aplica aparte (bt3d)',
       max_angle: nombre === 'elburgo'
         ? 'medido · plantilla del fabricante TCU_Template_V1.4: west_sw_limit 55 / east_sw_limit -55'
-        : 'canon · CANONICAL_MAX_ANGLE_DEG. NO medido en esta planta: hace falta su plantilla TCU',
+        : 'declarado por la casa · 55° en TODAS las plantas (2026-08-21). Coincide con el '
+          + 'CANONICAL_MAX_ANGLE_DEG del core y con lo unico medido, la plantilla TCU de El Burgo',
       backtrack: 'canon · CANONICAL_BACKTRACK, y es lo que ejecutan las fichas',
       cross_axis_tilt: 'canon · 0, que es lo que pasa el JS a singleaxis',
       module_height: 'null · no se ha medido la altura del tubo en ninguna planta',
