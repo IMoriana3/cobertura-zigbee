@@ -418,11 +418,31 @@ for (const n of nombres) {
 
   console.log(`  → ${pon.length} de ${M.length}` + (pon.length < M.length ? `, el resto sin escribir` : ''));
   if (NOTA_PLANTA[n]) console.log(`  nota  ${NOTA_PLANTA[n].split('. ')[0]}.`);
+  /* EL GATEWAY, CUANDO NO HAY OTRO. Si en toda la planta los seguidores solo usan UN gateway, la
+     estación cuelga de ése porque no existe otro al que colgarse. No es una deducción por cercanía
+     —eso aquí no se hace nunca con el gateway— es la misma constatación que la de la única NCU. Hoy
+     toca en Bagnarelli, Fayón y Túnez; en Ayora COINCIDE con lo que dice la toolbox, que sale gratis
+     de careo: los diez dan GW1 por las dos vías. */
+  const gwsPlanta = [...new Set((L.trackers || []).map(t => t.gw).filter(g => g != null))];
+  if (gwsPlanta.length === 1) {
+    const g = gwsPlanta[0];
+    const chocan = pon.filter(p => p.gw != null && p.gw !== g);
+    if (chocan.length) console.log(`  ojo   la planta solo usa el GW ${g} y ${chocan.length} HSU traen otro: no se toca ninguna`);
+    else {
+      const nuevas = pon.filter(p => p.gw == null).length;
+      if (nuevas) console.log(`  ok    las ${nuevas} sin gateway van al GW ${g}: es el único que usa la planta entera`);
+      for (const p of pon) if (p.gw == null) {
+        p.gw = g;
+        p.gwOrigen = `único gateway de la planta: sus ${(L.trackers || []).length} seguidores usan el GW ${g} y no hay otro. No se deduce, se constata`;
+      }
+    }
+  }
+
   if (WRITE && (pon.length || NOTA_PLANTA[n])) {
     if (NOTA_PLANTA[n]) L.meteo_nota = NOTA_PLANTA[n];
     for (const p of pon) {
       p.m.ncu = p.ncu; p.m.ncu_origen = p.origen;
-      if (p.gw != null) { p.m.gw = p.gw; p.m.gw_origen = p.origen; }
+      if (p.gw != null) { p.m.gw = p.gw; p.m.gw_origen = p.gwOrigen || p.origen; }
       if (p.esclavo != null) { p.m.esclavo = p.esclavo; p.m.esclavo_origen = p.origen; }
     }
     writeFileSync(ruta, JSON.stringify(L));
