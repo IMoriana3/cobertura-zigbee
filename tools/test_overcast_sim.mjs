@@ -158,6 +158,20 @@ t('el CSV de auditoría es reproducible: lleva la configuración entera y saca l
   if (!/dayF\.n/.test(fn)) throw new Error('el CSV no se exporta en la rejilla del actuador');
 });
 
+t('la cota anisótropa paga el actuador como las demás: decide en su ciclo y ejecuta con el lazo', () => {
+  const i = html.indexOf("if($('anisoOn').checked)");
+  if (i < 0) throw new Error('no hay cota anisótropa en la UI');
+  const blq = html.slice(i, i + 900);
+  if (!/optimoAniso\(day,\s*thN/.test(blq))
+    throw new Error('la cota decide en la rejilla FINA: sería un techo con actuador instantáneo, no comparable');
+  if (!/execOnFineGrid\(o\.theta[^)]*loop\)/.test(blq))
+    throw new Error('la cota no pasa por el lazo: su POA no sería comparable con las políticas');
+  if (!/poaSeries\(dayF,\s*execF\)/.test(blq))
+    throw new Error('la POA de la cota no sale del θ ejecutado');
+  if (!/NO es del core/.test(html))
+    throw new Error('la cota tiene que declarar que NO es una política del core');
+});
+
 const i0 = html.indexOf('FÍSICA PURA');
 const i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA'); process.exit(1); }
@@ -169,7 +183,7 @@ const sandbox = new Function(src + `
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           skyPresetSeries, skyNubeCorta };`);
+           skyPresetSeries, skyNubeCorta, optimoAniso };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
