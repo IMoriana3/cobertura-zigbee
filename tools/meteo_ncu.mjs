@@ -6,61 +6,62 @@
    falta el campo, y para que no MIENTA hace falta saber de dónde sale cada valor. Por eso cada HSU
    escrita lleva también `ncu_origen`.
 
-   TRES PROCEDENCIAS, de más a menos autoridad:
+   PROCEDENCIAS, de más a menos autoridad:
 
-     campo     El Burgo. Sale de los .bat de Sunner y del registro real de la malla, comprobado.
-               Este fichero NO lo toca; solo le pone la etiqueta.
+     toolbox   Lo que la casa ya tiene transcrito del Excel de coordenadas, en
+               SCADA/tools/tcu-toolbox/plantas/. Cuando trae el índice de HSU (`rsu`), da la NCU, el
+               esclavo Modbus y el gateway de cada estación. Hoy: Ayora, entera.
+     campo     El Burgo. De los .bat de Sunner y del registro real de la malla, comprobado.
      nombre    Benante y Panbianco. El DWG las llama «HSU 03-02», «HSU 12-06»…, y ese primer número
-               es la NCU. Se corrobora con la geometría antes de escribir (ver más abajo).
+               es la NCU. Se corrobora con la geometría antes de escribir.
      única     Bagnarelli, Fayón, Túnez. Una sola NCU en la planta: la estación cuelga de ella porque
-               no hay otra. No se deduce nada, se constata.
-     derivado  Ayora, San José, Páramo, El Polvorín. Sus HSU van numeradas seguidas —«HSU 1 (US)»…—
-               y el nombre no dice la NCU. Aquí SÍ se infiere, y con cuentas. Sigue leyendo.
+               no hay otra. No se deduce, se constata.
+     dos       Cuando la toolbox dice que una NCU tiene HSU y la geometría encuentra UNA sola
+               candidata cerca, con margen. Dos fuentes independientes diciendo lo mismo.
+     derivado  Lo que queda: se infiere por cercanía, y con cuentas. Sigue leyendo.
 
    ── POR QUÉ LA REGLA ES «EL SEGUIDOR MÁS CERCANO» Y NO «LA NCU MÁS CERCANA» ────────────────────
 
-   Lo obvio sería asignar cada HSU a la NCU que tenga más cerca. Se probó contra los 14 casos que ya
-   conocemos —los 4 de El Burgo por campo, los 10 de Benante y Panbianco por nombre— y FALLA UNO: la
-   HSU 3 de El Burgo está a 280 m de la NCU 1 y a 357 m de la NCU 2, y cuelga de la 2.
-
-   La regla que acierta las 14 es la NCU del SEGUIDOR más cercano, que además es la que tiene sentido
-   físico: la estación se asocia a la malla que la rodea, no al armario que le queda a tiro de regla.
-
-       NCU más cercana ................. 13/14
-       NCU del seguidor más cercano .... 14/14   ← ésta
-       mayoría de los 10 más cercanos .. 13/14   (falla el mismo caso)
+   Lo obvio sería asignar cada HSU a la NCU que tenga más cerca. Se probó contra los casos que ya
+   conocemos y FALLA UNO: la HSU 3 de El Burgo está a 280 m de la NCU 1 y a 357 m de la NCU 2, y
+   cuelga de la 2. La regla que los acierta todos es la NCU del SEGUIDOR más cercano, que además es
+   la que tiene sentido físico: la estación se asocia a la malla que la rodea, no al armario que le
+   queda a tiro de regla. Se vuelve a medir con `--calibra`.
 
    ── Y POR QUÉ NO SE ESCRIBE SIEMPRE ───────────────────────────────────────────────────────────
 
-   14 de 14 no autoriza a escribirla en cualquier sitio: autoriza a escribirla DONDE SE PARECE a los
-   casos con los que se validó. Los 14 tienen el seguidor de la segunda NCU candidata a más del doble
-   de distancia; el más justo es x2,51. Por debajo de ahí la regla no está probada, así que no se
-   escribe y se dice cuál queda pendiente. En Ayora eso deja fuera una —la HSU 1, con la NCU 2 a 71 m
-   y la NCU 1 a 74 m, que es cara o cruz— y en San José, cinco de ocho.
+   Acertar todos los conocidos no autoriza a escribirla en cualquier sitio: autoriza a escribirla
+   DONDE SE PARECE a los casos con los que se validó. El margen es a cuánto queda el seguidor de la
+   segunda NCU candidata respecto al de la primera; por debajo de MARGEN_MIN no se escribe y se dice
+   cuál queda pendiente.
 
-   Un umbral ajustado a los datos que lo justifican es un umbral honesto solo si se dice que lo es:
-   con 14 casos no hay para más, y si mañana aparece el dato de campo de otra planta, este número se
-   vuelve a mirar en vez de heredarse.
+   OJO CON BAJAR ESE UMBRAL. Ayora lo tienta: allí la toolbox confirmó las diez, incluida la HSU 1
+   con margen x1,04 —71 m contra 74 m— que este fichero se negó a escribir y que era correcta. Un
+   acierto a x1,04 no prueba que la regla funcione a x1,04; prueba que esa vez salió. El umbral se
+   mueve cuando haya casos que lo sostengan, no cuando apetezca.
 
        node tools/meteo_ncu.mjs                  informe con los márgenes
-       node tools/meteo_ncu.mjs --write          escribe meteo[].ncu y meteo[].ncu_origen
+       node tools/meteo_ncu.mjs --write          escribe meteo[].ncu, .gw, .esclavo y sus procedencias
        node tools/meteo_ncu.mjs --calibra        vuelve a medir las reglas contra los casos conocidos
 
    `gw` Y `esclavo` NO SE DERIVAN NUNCA. Nada en el plano distingue gateway, y sin gateway el esclavo
-   sería inventarse el direccionamiento de la malla. Se escriben solo cuando la casa los dice, y con
-   su propia procedencia: hoy, el GW1 de las dos HSU de la NCU 15 de Ayora. Los esclavos siguen sin
-   saberse en todas menos El Burgo, y ojo, porque el patrón de El Burgo NO generaliza: allí las dos
-   HSU de una NCU van una por gateway (230 y 231) y en Ayora las dos cuelgan del MISMO gateway.     */
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+   sería inventarse el direccionamiento de la malla. Entran solo de la toolbox o de lo que diga la
+   casa. Y ojo, porque el patrón de El Burgo NO generaliza: allí las dos HSU de una NCU van una por
+   gateway (230 y 231) y en la NCU 15 de Ayora las dos cuelgan del MISMO gateway, el GW1, con esas
+   dos mismas direcciones. Lo constante es el par 230/231 por NCU; el reparto entre gateways, no.  */
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
 const WRITE = process.argv.includes('--write');
 const CALIBRA = process.argv.includes('--calibra');
 const PLANTAS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 
-/* El margen del caso más justo de los 14 conocidos. Ver la cabecera: no es un número redondo
-   elegido a ojo, es el punto hasta donde la regla está comprobada. */
+/* El margen del caso más justo de los que validan la regla. Ver la cabecera: no es un número
+   redondo elegido a ojo, es el punto hasta donde está comprobada. */
 const MARGEN_MIN = 2.51;
+/* Cuánto más cerca tiene que estar la candidata única para que valga como corroboración de la
+   toolbox. Los casos reales van de x9 a x22, así que x3 es holgado y deja fuera los empates. */
+const MARGEN_UNICA = 3;
 
 /* Plantas cuya NCU por HSU viene de fuera de este fichero. Escrito a la vista, como el mapa de
    códigos de indice_plantas.mjs: es una DECISIÓN sobre la procedencia, no un dato del layout. */
@@ -68,43 +69,48 @@ const ORIGEN_EXTERNO = {
   elburgo: 'campo · .bat de Sunner y registro real de la malla, comprobado. Cada NCU tiene DOS HSU, una por gateway (230/231)',
 };
 
-/* HECHOS DE CAMPO SUELTOS, dichos por la casa, que confirman o corrigen lo que aquí se deduce. Van
-   escritos a la vista y con fecha, como el mapa de códigos de indice_plantas.mjs. Se aplican DESPUÉS
-   de derivar, así que el informe enseña las dos cosas y se ve si coinciden.
-
-   AYORA. El informe avisó de que dos HSU salían de la misma NCU 15 y la casa lo confirmó
-   (2026-08-26): esa NCU tiene DOS estaciones, y además EN EL MISMO GATEWAY. Ojo con lo segundo,
-   porque rompe el patrón de El Burgo —allí las dos HSU de una NCU son una por gateway, esclavos 230
-   y 231—. Aquí las dos comparten gateway, así que sus esclavos NO pueden repartirse por esa regla y
-   este fichero sigue sin escribir `gw` ni `esclavo`. Qué gateway de los dos es, no está dicho.
-
-   Lo que la casa confirmó es el HECHO —la NCU 15 con dos HSU—, que es justo lo que el informe puso
-   en duda. QUÉ DOS son sigue siendo derivación de este fichero: cae sobre la 8 y la 9, las dos con
-   margen holgado (x4,88 y x5,18), y la confirmación las respalda sin sustituirlas. */
-/* Y el hecho a nivel de PLANTA, que es el que le hará falta a quien configure el colector: cuántos
-   huecos de meteo lee cada NCU y cómo se direccionan. Va en el layout, no solo en este comentario. */
+/* Qué fichero de la toolbox del SCADA es cada planta. Emparejado a mano y revisado. */
+const TOOLBOX = {
+  ayora: '24025-ayora.json', sanjose: '24019-san-jose.json', fayon: '24007-fayon.json',
+  tunez: '24021-tunez.json', bagnarelli: '24030-bagnarelli.json', elburgo: 'elburgo.json',
+};
+/* Lo que hay que saber de las HSU de una planta y no cabe por estación. */
 const NOTA_PLANTA = {
-  ayora: 'La NCU 15 tiene DOS HSU y las dos en el GATEWAY 1 (confirmado por la casa, 2026-08-26). No '
-       + 'es el patrón de El Burgo, donde las dos HSU de una NCU van una por gateway con esclavos 230 '
-       + 'y 231. Aquí las dos cuelgan del GW1, así que ese reparto NO vale y sus esclavos siguen sin '
-       + 'saberse: son dos direcciones distintas dentro del mismo gateway y el DWG no las da. Cuando '
-       + 'esta planta tenga colector, su NCU 15 lleva hsu_count 2 y hay que preguntar en campo los '
-       + 'dos esclavos.',
+  ayora: 'La NCU 15 tiene DOS HSU, las dos en el GATEWAY 1, con esclavos 230 y 231 (toolbox, del '
+       + 'Excel de coordenadas; el GW1 confirmado además por la casa el 2026-08-26). NO es el patrón '
+       + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
+       + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
+       + 'con HSU llevan una y esclavo 230.',
+  sanjose: 'CUIDADO al configurar el colector: la toolbox (24019-san-jose.json, del Excel «Direcciones '
+       + 'IP») suma 9 HSU —dos en cada una de las NCU 1, 6, 8 y 11, y una en la 21— y el DWG dibuja 8. '
+       + 'Además, de las NCU 1, 6, 8 y 11 el plano solo tiene UNA estación cerca de cada una, la '
+       + 'siguiente a 500 m o más. O el Excel pone una por gateway por plantilla, o el DWG no las '
+       + 'dibuja todas. Sin resolver: preguntar en campo.',
 };
 
-/* `gw` va aquí y NO se deriva nunca: se escribe solo si la casa lo dice. Lo mismo `esclavo`, que
-   hoy no lo dice nadie para ninguna planta que no sea El Burgo. */
-const CAMPO = {
-  ayora: {
-    'HSU 8 (US, snow)': { gw: 1, nota: 'la NCU 15 de Ayora tiene DOS HSU y las dos en el GW1, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado' },
-    'HSU 9 (US)':       { gw: 1, nota: 'la NCU 15 de Ayora tiene DOS HSU y las dos en el GW1, confirmado por la casa (2026-08-26). Cuál de las dos es esta HSU sigue siendo derivado' },
-  },
-};
+const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
+  new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,
+  new URL('../../scada/tools/tcu-toolbox/plantas/', import.meta.url).pathname]
+  .find(p => { try { return existsSync(p); } catch (e) { return false; } });
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.n - b.n);
-const numNCU = c => { const m = /(\d+)/.exec(String(c.name || '')); return m ? +m[1] : null; };
 /* «HSU 03-02» -> 3. También traga «HSU3-2». Lo que no lleve los dos números se queda fuera. */
 const ncuDelNombre = s => { const m = /(\d+)\s*-\s*(\d+)/.exec(String(s || '')); return m ? +m[1] : null; };
+/* El índice de la estación dentro de la planta: «HSU 7 (US, snow)» -> 7. Es el que empareja con la
+   columna `rsu` de la toolbox. */
+const indiceHSU = s => { const m = /(\d+)/.exec(String(s || '')); return m ? +m[1] : null; };
+
+/* QUÉ NÚMERO DE NCU ES CADA ARMARIO DEL PLANO. No se saca del rótulo: en Ayora y San José el DWG los
+   llama «NCU MU-01_1-21», «NCU 15-10»…, que es la SEGUNDA numeración del proyecto —la de los
+   centros— y no el número de NCU. Leer un número de ahí acierta 4 de 16 en Ayora y 3 de 21 en San
+   José. Se saca de los seguidores que lo rodean, que sí traen `ncu`, y con eso siempre es el bueno. */
+function numNCU(c, L) {
+  const t = (L.trackers || []).filter(x => x.ncu != null)
+    .map(x => ({ n: x.ncu, d: dist(c, x) })).sort((a, b) => a.d - b.d)[0];
+  if (t) return t.n;
+  const m = /(\d+)/.exec(String(c.name || ''));      // sin seguidores con NCU, el rótulo es lo que hay
+  return m ? +m[1] : null;
+}
 
 /* La NCU del seguidor más cercano, y a qué distancia queda el seguidor de la siguiente candidata. */
 function porSeguidor(m, L) {
@@ -120,147 +126,213 @@ function porSeguidor(m, L) {
            margen: o[1] ? o[1].d / o[0].d : Infinity };
 }
 
+/* ── la toolbox del SCADA ──────────────────────────────────────────────────────────────────────
+   Sus entradas son POR GATEWAY —lo dice El Burgo, donde cada NCU tiene una fila por gateway con
+   `hsus: 1` y su esclavo—, así que las HSU de una NCU son la suma de sus filas. `rsu` es el índice
+   de la estación dentro de la planta, el mismo que numera «HSU 7 (US)»; solo Ayora lo trae, y es lo
+   que permite escribir NCU, esclavo y gateway de cada una sin deducir nada.                      */
+function leeToolbox(planta) {
+  if (!DIR_TOOLBOX || !TOOLBOX[planta]) return null;
+  const ruta = DIR_TOOLBOX + TOOLBOX[planta];
+  if (!existsSync(ruta)) return null;
+  const d = JSON.parse(readFileSync(ruta, 'utf8'));
+  const porIndice = {}, porNCU = {};
+  let total = 0;
+  for (const p of d.plantas || []) {
+    const mm = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
+    if (!mm || !p.hsus) continue;
+    const ncu = +mm[1], gw = p.puerto === 503 ? 1 : 2;
+    porNCU[ncu] = (porNCU[ncu] || 0) + p.hsus;
+    total += p.hsus;
+    (p.rsu || []).forEach((idx, i) => {
+      porIndice[idx] = { ncu, gw, esclavo: (p.hsu_esclavos || [])[i] };
+    });
+  }
+  return { fichero: TOOLBOX[planta], porIndice, porNCU, total };
+}
+
 const nombres = PLANTAS.length ? PLANTAS
   : readdirSync(RAIZ).filter(x => /_layout\.json$/.test(x)).sort().map(x => x.replace('_layout.json', ''));
 
 /* ── los casos con los que se valida, que NO pueden salir de aquí ──────────────────────────────
    En cuanto este fichero escribe, TODAS las plantas tienen `ncu`, y calibrar contra ellas es
    preguntarle a la regla si está de acuerdo consigo misma: daba 34/34, que no significa nada.
-   Valen los de campo y los que dice el nombre del DWG —que se reconocen por el nombre, así que
-   siguen valiendo aunque el layout aún no tenga `ncu_origen`—. Los de una sola NCU tampoco valen:
-   ahí cualquier regla acierta porque no hay dónde fallar.                                       */
-const casosValidos = () => {
+   Valen los de la toolbox, los de campo y los que dice el nombre del DWG —que se reconocen sin
+   mirar `ncu_origen`, así que siguen valiendo en un layout recién hecho—. Los de una sola NCU no:
+   ahí cualquier regla acierta porque no hay dónde fallar.                                        */
+function casosValidos() {
   const casos = [];
   for (const n of readdirSync(RAIZ).filter(x => /_layout\.json$/.test(x)).sort().map(x => x.replace('_layout.json', ''))) {
     const L = JSON.parse(readFileSync(RAIZ + n + '_layout.json', 'utf8'));
+    if ((L.ncus || []).length < 2) continue;
+    const tb = leeToolbox(n);
     for (const m of L.meteo || []) {
-      if (m.ncu == null || (L.ncus || []).length < 2) continue;
+      /* La toolbox va ANTES del `ncu == null`: conoce estaciones que el layout todavía no tiene
+         escritas, y ésas son justo las que mejor prueban la regla. */
+      const deTB = tb && tb.porIndice[indiceHSU(m.name)];
+      if (deTB) { casos.push({ n, L, m, real: deTB.ncu }); continue; }
+      if (m.ncu == null) continue;
       if (ORIGEN_EXTERNO[n] || ncuDelNombre(m.name) != null || /^(campo|nombre)/.test(String(m.ncu_origen || '')))
-        casos.push({ n, L, m });
+        casos.push({ n, L, m, real: m.ncu });
     }
   }
   return casos;
-};
+}
 const CASOS = casosValidos();
-const aciertos = CASOS.filter(c => { const s = porSeguidor(c.m, c.L); return s && s.gana === c.m.ncu; }).length;
+const aciertos = CASOS.filter(c => { const s = porSeguidor(c.m, c.L); return s && s.gana === c.real; }).length;
 const VALIDADA = `${aciertos}/${CASOS.length}`;
 
-/* ── --calibra: las reglas contra esos casos ───────────────────────────────────────────────────*/
+/* ── --calibra ─────────────────────────────────────────────────────────────────────────────────*/
 if (CALIBRA) {
-  const casos = CASOS;
   const reglas = {
     'NCU más cercana': (m, L) => {
-      const o = (L.ncus || []).map(c => ({ n: numNCU(c), d: dist(m, c) })).sort((a, b) => a.d - b.d);
+      const o = (L.ncus || []).map(c => ({ n: numNCU(c, L), d: dist(m, c) })).sort((a, b) => a.d - b.d);
       return o.length ? o[0].n : null;
     },
     'NCU del seguidor más cercano': (m, L) => (porSeguidor(m, L) || {}).gana ?? null,
   };
-  console.log(`calibración contra ${casos.length} caso(s) con NCU ya conocida\n`);
+  console.log(`calibración contra ${CASOS.length} caso(s) de fuente independiente\n`);
   for (const [nom, f] of Object.entries(reglas)) {
-    const mal = casos.filter(c => f(c.m, c.L) !== c.m.ncu);
-    console.log(`  ${nom.padEnd(30)} ${casos.length - mal.length}/${casos.length}   ` +
-      (mal.map(c => `${c.n} ${c.m.name}: dice ${f(c.m, c.L)} y es ${c.m.ncu}`).join('; ') || '—'));
+    const mal = CASOS.filter(c => f(c.m, c.L) !== c.real);
+    console.log(`  ${nom.padEnd(30)} ${CASOS.length - mal.length}/${CASOS.length}   ` +
+      (mal.map(c => `${c.n} ${c.m.name}: dice ${f(c.m, c.L)} y es ${c.real}`).join('; ') || '—'));
   }
-  const margenes = casos.map(c => (porSeguidor(c.m, c.L) || {}).margen).filter(x => isFinite(x));
+  const margenes = CASOS.map(c => (porSeguidor(c.m, c.L) || {}).margen).filter(x => isFinite(x));
   if (margenes.length) console.log(`\n  margen del caso más justo: x${Math.min(...margenes).toFixed(2)}` +
-    `   ·   el umbral de este fichero está en x${MARGEN_MIN}`);
+    `   ·   el umbral de este fichero está en x${MARGEN_MIN}` +
+    `\n  (acertar el más justo NO baja el umbral: un acierto suelto no prueba que la regla aguante ahí)`);
   process.exit(0);
 }
 
 /* ── el barrido ────────────────────────────────────────────────────────────────────────────────*/
-let escritas = 0, pendientes = [];
+let escritas = 0, pendientes = [], avisos = [];
 for (const n of nombres) {
   const ruta = RAIZ + n + '_layout.json';
   const L = JSON.parse(readFileSync(ruta, 'utf8'));
   const M = L.meteo || [], C = L.ncus || [];
   if (!M.length || !C.length) continue;
+  const tb = leeToolbox(n);
 
-  console.log(`\n· ${n} — ${M.length} HSU, ${C.length} NCU`);
-  const pon = [];                       // [meteo, ncu, origen] a escribir si la planta entera cuadra
+  console.log(`\n· ${n} — ${M.length} HSU, ${C.length} NCU` + (tb ? `   ·   toolbox: ${tb.fichero}` : ''));
+  const pon = [];                       // {m, ncu, origen, gw, esclavo} a escribir si la planta cuadra
   let corta = false;
+
+  /* La toolbox y el DWG no siempre cuentan lo mismo. Se dice y no se toca nada. */
+  if (tb && tb.total && tb.total !== M.length) avisos.push(
+    `${n}: la toolbox suma ${tb.total} HSU (${Object.entries(tb.porNCU).map(([k, v]) => `NCU${k}×${v}`).join(' ')})` +
+    ` y el DWG dibuja ${M.length}`);
 
   for (const m of M) {
     const nom = String(m.name).padEnd(16);
     const s = porSeguidor(m, L);
     const margen = s ? `margen x${s.margen === Infinity ? '∞' : s.margen.toFixed(2)}` : 'sin seguidores con NCU';
 
-    /* 1 · procedencia externa: no se toca el valor, solo se etiqueta */
-    if (ORIGEN_EXTERNO[n]) {
-      if (m.ncu == null) { console.log(`  ??    ${nom} ${n} está declarada de procedencia externa y esta HSU no trae ncu`); continue; }
-      const cuadra = s && s.gana === m.ncu;
-      console.log(`  ${cuadra ? 'ok   ' : '??   '} ${nom} NCU ${String(m.ncu).padStart(2)} de campo` +
-        (s ? `  ·  el seguidor más cercano es de la ${s.gana} (${margen})` : ''));
-      pon.push([m, m.ncu, ORIGEN_EXTERNO[n]]);
+    /* 1 · la toolbox, con índice: NCU, esclavo y gateway sin deducir nada */
+    const deTB = tb && tb.porIndice[indiceHSU(m.name)];
+    if (deTB) {
+      const cuadra = s && s.gana === deTB.ncu;
+      console.log(`  ${cuadra ? 'ok   ' : 'ojo  '} ${nom} NCU ${String(deTB.ncu).padStart(2)} · GW ${deTB.gw} · esclavo ${deTB.esclavo}` +
+        `  ·  de la toolbox` + (s ? `, y el seguidor más cercano es de la ${s.gana}${cuadra ? '' : ' ← NO cuadra'}` : ''));
+      pon.push({ m, ncu: deTB.ncu, gw: deTB.gw, esclavo: deTB.esclavo,
+        origen: `toolbox · SCADA/tools/tcu-toolbox/plantas/${tb.fichero}, del Excel de coordenadas de la planta` });
       continue;
     }
 
-    /* 2 · el nombre lo dice, y la geometría lo corrobora */
+    /* 2 · procedencia externa declarada: no se toca el valor, solo se etiqueta */
+    if (ORIGEN_EXTERNO[n]) {
+      if (m.ncu == null) { console.log(`  ??    ${nom} ${n} está declarada de procedencia externa y esta HSU no trae ncu`); continue; }
+      console.log(`  ok    ${nom} NCU ${String(m.ncu).padStart(2)} de campo` + (s ? `  ·  el seguidor más cercano es de la ${s.gana}` : ''));
+      pon.push({ m, ncu: m.ncu, origen: ORIGEN_EXTERNO[n] });
+      continue;
+    }
+
+    /* 3 · el nombre lo dice, y la geometría lo corrobora */
     const delNombre = ncuDelNombre(m.name);
     if (delNombre != null) {
-      const cerca = C.map(c => ({ n: numNCU(c), d: dist(m, c) })).sort((a, b) => a.d - b.d)[0];
+      const cerca = C.map(c => ({ n: numNCU(c, L), d: dist(m, c) })).sort((a, b) => a.d - b.d)[0];
       const ok = cerca && cerca.n === delNombre;
       console.log(`  ${ok ? 'ok   ' : 'FALLA'} ${nom} el nombre dice NCU ${String(delNombre).padStart(2)}` +
         `  ·  la NCU más cercana es la ${cerca.n} a ${Math.round(cerca.d)} m`);
       if (!ok) { corta = true; continue; }
-      pon.push([m, delNombre, `nombre del DWG «${m.name}», corroborado con la geometría: la NCU ${delNombre} es también la más cercana, a ${Math.round(cerca.d)} m`]);
+      pon.push({ m, ncu: delNombre, origen: `nombre del DWG «${m.name}», corroborado con la geometría: la NCU ${delNombre} es también la más cercana, a ${Math.round(cerca.d)} m` });
       continue;
     }
 
-    /* 3 · una sola NCU en la planta: no hay de dónde elegir */
+    /* 4 · una sola NCU en la planta: no hay de dónde elegir */
     if (C.length === 1) {
-      const u = numNCU(C[0]) ?? 1;
+      const u = numNCU(C[0], L) ?? 1;
       console.log(`  ok    ${nom} NCU ${String(u).padStart(2)}  ·  es la única de la planta`);
-      pon.push([m, u, `única NCU de la planta («${C[0].name}»): no se deduce, se constata`]);
+      pon.push({ m, ncu: u, origen: `única NCU de la planta («${C[0].name}»): no se deduce, se constata` });
       continue;
     }
 
-    /* 4 · derivado, y solo dentro del régimen donde la regla está validada */
     if (!s) { console.log(`  ??    ${nom} el layout no trae NCU por seguidor: no se puede derivar`); continue; }
+
+    /* 5 · DOS FUENTES. La toolbox dice que esa NCU tiene HSU y esta es la única candidata cerca, de
+       largo. No es la regla del margen: es que las dos fuentes, independientes, dicen lo mismo. */
+    const dosFuentes = tb && tb.porNCU[s.gana] && unicaCandidata(s.gana, m, L, M);
+    if (dosFuentes) {
+      console.log(`  ok    ${nom} NCU ${String(s.gana).padStart(2)}  ·  DOS FUENTES: la toolbox le pone HSU y ` +
+        `es la única cerca (la siguiente, ${dosFuentes.otra}, a ${Math.round(dosFuentes.d2)} m contra ${Math.round(dosFuentes.d1)} m)`);
+      pon.push({ m, ncu: s.gana, origen: `dos fuentes · la toolbox (${tb.fichero}) dice que la NCU ${s.gana} tiene HSU, ` +
+        `y de las ${M.length} del DWG ésta es la única cerca: a ${Math.round(dosFuentes.d1)} m, la siguiente a ${Math.round(dosFuentes.d2)} m. ` +
+        `El esclavo no lo da esa fuente` });
+      continue;
+    }
+
+    /* 6 · derivado, y solo dentro del régimen donde la regla está validada */
     if (s.margen < MARGEN_MIN) {
       console.log(`  ··    ${nom} NCU ${String(s.gana).padStart(2)}? a ${Math.round(s.d1)} m, pero la ${s.seg} está a ${Math.round(s.d2)} m` +
         ` (${margen} < x${MARGEN_MIN}): NO se escribe, queda para confirmar en campo`);
       pendientes.push(`${n} ${m.name} (¿${s.gana} o ${s.seg}?, ${margen})`);
       continue;
     }
-    const deCampo = (CAMPO[n] || {})[m.name];
     console.log(`  ok    ${nom} NCU ${String(s.gana).padStart(2)}  ·  seguidor suyo a ${Math.round(s.d1)} m, ` +
-      `el de la ${s.seg} a ${Math.round(s.d2)} m (${margen})` +
-      (deCampo ? `   · con respaldo de campo${deCampo.gw != null ? `, y GW ${deCampo.gw}` : ''}` : ''));
-    pon.push([m, s.gana, `DERIVADO, no medido: NCU del seguidor más cercano (a ${Math.round(s.d1)} m; ` +
-      `el de la ${s.seg}, a ${Math.round(s.d2)} m, ${margen}). Regla validada ${VALIDADA} contra El Burgo, ` +
-      `Benante y Panbianco. ` + (deCampo ? deCampo.nota : 'Confirmar en campo'), deCampo]);
+      `el de la ${s.seg} a ${Math.round(s.d2)} m (${margen})`);
+    pon.push({ m, ncu: s.gana, origen: `DERIVADO, no medido: NCU del seguidor más cercano (a ${Math.round(s.d1)} m; ` +
+      `el de la ${s.seg}, a ${Math.round(s.d2)} m, ${margen}). Regla validada ${VALIDADA} contra fuentes ` +
+      `independientes. Confirmar en campo` });
   }
 
   if (corta) { console.log(`  → el nombre y el plano no dicen lo mismo: NO se escribe nada de ${n}`); continue; }
 
-  /* DOS HSU EN LA MISMA NCU no es un error —El Burgo tiene dos por NCU, una por gateway, y en Ayora
-     la casa confirmó que la 15 también, ahí con las dos en el MISMO gateway— pero es una señal de
-     que la derivación PUEDE estar torcida, y se dice. Salvo donde ya está confirmado: un banco que
-     grita por algo ya sabido se acaba ignorando entero. */
-  const reparto = {};
-  for (const [, ncu] of pon) reparto[ncu] = (reparto[ncu] || 0) + 1;
-  const confirmados = new Set(pon.filter(([m]) => (CAMPO[n] || {})[m.name]).map(([, ncu]) => String(ncu)));
-  const repes = Object.keys(reparto).filter(k => reparto[k] > 1 && !confirmados.has(k));
-  const sabidos = Object.keys(reparto).filter(k => reparto[k] > 1 && confirmados.has(k));
-  if (sabidos.length && C.length > 1) console.log(`  ok    ${sabidos.map(k => `${reparto[k]} HSU en la NCU ${k}`).join('; ')}` +
-    `, y está confirmado por la casa`);
-  if (repes.length && !ORIGEN_EXTERNO[n] && C.length > 1) console.log(`  ojo   ${repes.map(k => `${reparto[k]} HSU salen de la NCU ${k}`).join('; ')}` +
-    `. En El Burgo eso es lo normal —una por gateway—, pero aquí conviene mirarlo`);
+  /* DOS HSU EN LA MISMA NCU no es un error —El Burgo tiene dos por NCU, una por gateway, y la 15 de
+     Ayora también, ahí las dos en el mismo— pero puede ser señal de derivación torcida, y se dice.
+     Salvo donde la fuente ya lo dice: un banco que grita por algo sabido se acaba ignorando entero. */
+  const reparto = {}, sabido = new Set();
+  for (const p of pon) {
+    reparto[p.ncu] = (reparto[p.ncu] || 0) + 1;
+    if (/^(toolbox|campo)/.test(p.origen)) sabido.add(String(p.ncu));
+  }
+  const repes = Object.keys(reparto).filter(k => reparto[k] > 1 && !sabido.has(k));
+  const yaSabidos = Object.keys(reparto).filter(k => reparto[k] > 1 && sabido.has(k));
+  if (yaSabidos.length && C.length > 1) console.log(`  ok    ${yaSabidos.map(k => `${reparto[k]} HSU en la NCU ${k}`).join('; ')}, y la fuente lo dice`);
+  if (repes.length && C.length > 1) console.log(`  ojo   ${repes.map(k => `${reparto[k]} HSU salen de la NCU ${k}`).join('; ')}` +
+    `. Puede ser bueno —pasa en El Burgo y en Ayora— pero conviene mirarlo`);
 
   console.log(`  → ${pon.length} de ${M.length}` + (pon.length < M.length ? `, el resto sin escribir` : ''));
   if (NOTA_PLANTA[n]) console.log(`  nota  ${NOTA_PLANTA[n].split('. ')[0]}.`);
   if (WRITE && (pon.length || NOTA_PLANTA[n])) {
-    for (const [m, ncu, origen, campo] of pon) {
-      m.ncu = ncu; m.ncu_origen = origen;
-      /* El gateway NUNCA se deriva: solo entra si la casa lo ha dicho, y con su propia procedencia
-         para que no se confunda con el `gw` medido de El Burgo. */
-      if (campo && campo.gw != null) { m.gw = campo.gw; m.gw_origen = 'campo · ' + campo.nota; }
-    }
     if (NOTA_PLANTA[n]) L.meteo_nota = NOTA_PLANTA[n];
+    for (const p of pon) {
+      p.m.ncu = p.ncu; p.m.ncu_origen = p.origen;
+      if (p.gw != null) { p.m.gw = p.gw; p.m.gw_origen = p.origen; }
+      if (p.esclavo != null) { p.m.esclavo = p.esclavo; p.m.esclavo_origen = p.origen; }
+    }
     writeFileSync(ruta, JSON.stringify(L));
     escritas++;
   }
 }
 
+/* De las HSU del DWG, ¿hay UNA sola cerca de los seguidores de esa NCU, y de largo? */
+function unicaCandidata(ncu, m, L, M) {
+  const T = (L.trackers || []).filter(t => t.ncu === ncu);
+  if (!T.length) return null;
+  const o = M.map(h => ({ h, d: Math.min.apply(null, T.map(t => dist(h, t))) })).sort((a, b) => a.d - b.d);
+  if (o[0].h !== m || !o[1] || o[1].d / o[0].d < MARGEN_UNICA) return null;
+  return { d1: o[0].d, d2: o[1].d, otra: o[1].h.name };
+}
+
+if (avisos.length) console.log(`\ncuentas que no cuadran entre fuentes (${avisos.length}):\n  ` + avisos.join('\n  '));
 if (pendientes.length) console.log(`\npor confirmar en campo (${pendientes.length}):\n  ` + pendientes.join('\n  '));
 console.log(WRITE ? `\n→ ${escritas} layout(s) escritos` : '\n(informe: nada escrito. Con --write se escribe)');
