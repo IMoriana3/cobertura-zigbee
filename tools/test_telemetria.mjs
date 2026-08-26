@@ -32,6 +32,19 @@ t('el remuestreo descarta la muestra si cae fuera de media malla',
   /<= paso \/ 2/.test(html));
 t('se excluyen los seguidores en tope del cálculo de apertura',
   /Math\.abs\(e\.obj\[i\]\) < 54\.9/.test(html));
+// la RLS es «for select to authenticated»: sin sesión la consulta responde 200
+// con CERO filas, que no parece un fallo. Pasó en la primera prueba real.
+t('hay login: sin sesión la tabla devuelve 200 y cero filas, y eso despista',
+  /grant_type=password/.test(html) && /access_token/.test(html));
+t('la contraseña no se guarda ni se queda en el DOM',
+  /sessionStorage\.setItem\('tele_ses'/.test(html) && /\$\('pass'\)\.value = ''/.test(html)
+  && !/sessionStorage\.setItem\([^)]*pass(word)?\b/i.test(html));
+t('las consultas usan el token de sesión cuando lo hay',
+  /Bearer ' \+ \(\(s && s\.token\) \|\| key\)/.test(html));
+t('cero filas se explica distinto con sesión y sin ella',
+  /cero filas SIN sesión/.test(html) && /cero filas CON sesión/.test(html));
+t('una sesión caducada (401) se dice, no se arrastra',
+  /r\.status === 401/.test(html));
 
 /* ── navegador, con la respuesta de Supabase sustituida ──────────────────── */
 const serie = (paso, fn) => {

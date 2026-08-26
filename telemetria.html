@@ -64,10 +64,20 @@
   <div class="row">
     <div><label>URL de Supabase</label><input id="url" class="wide" value="https://icqiwmbbeoeswbcbgflc.supabase.co"></div>
     <div><label>Clave publishable (la de importar-logs)</label><input id="key" class="wide" value="sb_publishable_lOmQfLA1rv7Jg0N3vjzcOA_qnbatn2p"></div>
-    <button id="bSondeo" class="p">Ver qué hay</button>
   </div>
-  <div class="nota" style="margin-top:9px">Es la misma clave pública que ya sirve la web de importación;
-    solo alcanza lo que la RLS le permita. Si la lista sale vacía o corta, hace falta sesión.</div>
+  <div class="row" style="margin-top:10px">
+    <div><label>Correo</label><input id="mail" type="email" autocomplete="username" placeholder="tu@correo"></div>
+    <div><label>Contraseña</label><input id="pass" type="password" autocomplete="current-password"></div>
+    <button id="bEntrar" class="p">Entrar</button>
+    <button id="bSalir" style="display:none">Salir</button>
+    <button id="bSondeo">Ver qué hay</button>
+    <div id="sesion" class="nota" style="align-self:center"></div>
+  </div>
+  <div class="nota" style="margin-top:9px"><b>Hace falta sesión.</b> La política de la tabla es
+    <code>for select to authenticated</code>: con la clave pública a secas la consulta responde
+    correctamente pero con <b>cero filas</b>, que es justo lo que despista. Las credenciales son las
+    mismas de <code>importar-logs.html</code>, van <b>solo</b> a tu Supabase y <b>no se guardan</b>:
+    en la pestaña queda el token de sesión, que caduca solo.</div>
 </div>
 
 <div class="card" id="cSondeo" style="display:none">
@@ -105,12 +115,47 @@ const log = (m, cls) => { const d = $('log');
   d.innerHTML += (d.innerHTML ? '\n' : '') + (cls ? `<span class="${cls}">${m}</span>` : m);
   d.scrollTop = d.scrollHeight; };
 
+/* La sesión vive en sessionStorage: se va al cerrar la pestaña y NUNCA guarda
+   la contraseña. Sin ella las consultas responden 200 con cero filas —la RLS
+   deja pasar la petición y filtra las filas—, que es el fallo que más despista
+   porque no parece un fallo. */
+const SES = () => { try { return JSON.parse(sessionStorage.getItem('tele_ses') || 'null'); } catch { return null; } };
+function pintaSesion() {
+  const s = SES();
+  $('sesion').innerHTML = s ? `<span class="ok">sesión activa · ${s.user || ''}</span>`
+                            : '<span class="mut">sin sesión: la tabla no dejará ver nada</span>';
+  $('bSalir').style.display = s ? '' : 'none';
+  $('bEntrar').style.display = s ? 'none' : '';
+}
 async function api(qs) {
   const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
-  const r = await fetch(`${url}/rest/v1/telemetria?${qs}`, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+  const s = SES();
+  const r = await fetch(`${url}/rest/v1/telemetria?${qs}`, {
+    headers: { apikey: key, Authorization: 'Bearer ' + ((s && s.token) || key) } });
+  if (r.status === 401) { sessionStorage.removeItem('tele_ses'); pintaSesion();
+    throw new Error('la sesión ha caducado: vuelve a entrar'); }
   if (!r.ok) throw new Error(`HTTP ${r.status} · ${(await r.text()).slice(0, 200)}`);
   return r.json();
 }
+$('bEntrar').onclick = async () => {
+  const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
+  const email = $('mail').value.trim(), password = $('pass').value;
+  if (!email || !password) { log('faltan correo o contraseña', 'warn'); return; }
+  $('bEntrar').disabled = true;
+  try {
+    const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { apikey: key, 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }) });
+    const j = await r.json();
+    if (!r.ok || !j.access_token) throw new Error(j.error_description || j.msg || `HTTP ${r.status}`);
+    sessionStorage.setItem('tele_ses', JSON.stringify({ token: j.access_token, user: (j.user && j.user.email) || email }));
+    $('pass').value = '';                     // la contraseña no se queda ni en el DOM
+    pintaSesion(); log('sesión iniciada', 'ok');
+  } catch (e) { log('no se pudo entrar: ' + e.message, 'err'); }
+  $('bEntrar').disabled = false;
+};
+$('bSalir').onclick = () => { sessionStorage.removeItem('tele_ses'); pintaSesion(); log('sesión cerrada'); };
+pintaSesion();
 
 /* ── sondeo: qué plantas, días y cobertura hay, sin bajar una sola serie ─── */
 let INDICE = [];
@@ -140,7 +185,10 @@ $('bSondeo').onclick = async () => {
     $('planta').innerHTML = plantas.map(p => `<option>${p}</option>`).join('');
     $('planta').onchange();
     $('cDia').style.display = plantas.length ? '' : 'none';
-    if (!plantas.length) log('no hay filas de clase «tcu» visibles: sin ellas no hay ángulos que mirar', 'warn');
+    if (!INDICE.length) log(SES()
+      ? 'cero filas CON sesión: o la tabla está vacía o tu usuario no tiene alcance sobre ella'
+      : 'cero filas SIN sesión: la política es «for select to authenticated». Entra con tus credenciales y repite.', 'warn');
+    else if (!plantas.length) log('hay filas pero ninguna de clase «tcu»: sin ellas no hay ángulos que mirar', 'warn');
   } catch (e) { log('ERROR ' + e.message, 'err'); }
   $('bSondeo').disabled = false;
 };
