@@ -1107,6 +1107,61 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
 });
 
 console.log('');
+console.log('careo por sombra (tools/careo_sombra.mjs)');
+
+const CAREO = fs.readFileSync(path.join(ROOT, 'tools', 'careo_sombra.mjs'), 'utf-8');
+t('careo sombra: A y B corren LA MISMA política — sólo cambia el registro', () => {
+  // El error que costó una conclusión al revés: usar bt2d como «configuración
+  // A» y pairwise como B mide DOS cosas a la vez (política + registro), y el
+  // 21-dic salía que configurar el levantamiento empeora la sombra.
+  const m = CAREO.match(/const CFG = \[([\s\S]*?)\];/);
+  if (!m) throw new Error('no encuentro CFG');
+  const filas = m[1].split('\n').filter(l => l.includes('pol:'));
+  const a = filas.find(l => l.includes("k: 'plana'")), b = filas.find(l => l.includes("k: 'levanta'"));
+  if (!a || !b) throw new Error('faltan las configuraciones A y B');
+  const pol = l => (l.match(/pol: '([a-z0-9]+)'/) || [])[1];
+  if (pol(a) !== pol(b))
+    throw new Error(`A usa «${pol(a)}» y B usa «${pol(b)}»: el careo mide política + registro, no el registro`);
+  if (!/T: T0/.test(a) || !/T: T,/.test(b))
+    throw new Error('A tiene que correr con la planta de pendiente CERO y B con la real');
+  if (!/planta\(true\), T0 = planta\(false\)/.test(CAREO))
+    throw new Error('las dos plantas ya no se construyen de la misma función');
+});
+t('careo sombra: el contador mide siempre la geometría REAL', () => {
+  // la planta tiene la pendiente que tiene, la crea o no la crea su TCU: si el
+  // contador usara T0 para A, la configuración A saldría sin sombra por magia
+  if (!/const sh = F\.poaPlant\(g\.zen, g\.az, T, ang, irr, doy, ALB\)\.shade;/.test(CAREO))
+    throw new Error('el contador no está atado a la geometría real');
+});
+t('careo sombra: configurar el registro nunca EMPEORA la sombra del día', () => {
+  let out;
+  try {
+    out = require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'careo_sombra.mjs'), '--planta', 'ayora',
+       '--dia', '2026-12-21', '--paso', '20'], { encoding: 'utf-8' });
+  } catch (e) { throw new Error('el careo aborta: ' + ((e.stdout || '') + (e.stderr || '')).slice(-300)); }
+  const g = k => {
+    const re = new RegExp(k + '[^\\n]*sombra media\\s+([\\d.]+) %[^\\n]*irradiancia ([\\d.]+) %');
+    const m = out.match(re);
+    if (!m) throw new Error('no encuentro la línea de ' + k);
+    return { med: +m[1], pond: +m[2] };
+  };
+  const A = g('A · SIN CONFIGURAR'), B = g('B · CONFIGURADA');
+  if (B.med > A.med + 1e-9)
+    throw new Error(`configurar empeora la sombra media: ${A.med} % → ${B.med} %`);
+  if (B.pond > A.pond + 1e-9)
+    throw new Error(`configurar empeora la sombra ponderada: ${A.pond} % → ${B.pond} %`);
+  // y la descomposición tiene que ser exhaustiva, o las columnas mienten
+  const suma = out.match(/evitable ([\d.]+) \+ inevitable \(tope\) ([\d.]+) \+ residual ([\d.]+) = ([\d.]+)/g);
+  if (!suma || suma.length < 2) throw new Error('no se publica la descomposición');
+  for (const s of suma) {
+    const n = s.match(/([\d.]+)/g).map(Number);
+    if (Math.abs(n[0] + n[1] + n[2] - n[3]) > 0.015)
+      throw new Error('evitable+inevitable+residual no suma la media: ' + s);
+  }
+});
+
+console.log('');
 console.log('control de entrada del relieve (tools/valida_relieve.mjs)');
 
 // Cotas SINTÉTICAS: la única forma de probar que el control distingue un bancal
