@@ -7,8 +7,9 @@
 //   1. que la geometría se MUEVA. Aquí se comprueban las cotas que importan
 //      contra el plano: el poste de la NCU (2,95 m, DR_NCU_v0) con su armario
 //      415×515×230 a la altura de servicio y el látigo en la CABEZA; la torre de
-//      la HSU (8 m, FTR.24.00145_5_C) con su ultrasónico, sus dos látigos y —si
-//      la planta lo lleva— su módulo FV. Y que haya UNA por cada NCU/HSU del
+//      la HSU (8 m, FTR.24.00145_5_C) con su ultrasónico, sus dos látigos —que
+//      van en su BRAZO a 6,50 m, no en la cabeza— y —si la planta lo lleva— su
+//      módulo FV. Y que haya UNA por cada NCU/HSU del
 //      layout, ni una más;
 //
 //   2. que al llevarse el bloque se lleve por delante algo de lo que dependía
@@ -121,11 +122,11 @@ for (const pl of PLANTAS) {
     const h = s.hsus[0], alto = h.bb.max[1] - h.bb.min[1];
     check(pl.nom + ': la torre de la HSU mide 8 m', near(s.torreHsu, 8.0, 1e-9), s.torreHsu);
     check(pl.nom + ': la cabeza de la HSU queda sobre los 8 m', alto > 8.4 && alto < 8.7, alto.toFixed(3));
-    check(pl.nom + ': los látigos de la HSU, a 8,33 m', near(s.antHsu, 8.33, 1e-9), s.antHsu);
+    check(pl.nom + ': los látigos de la HSU, en su brazo a 6,50 m', near(s.antHsu, 6.50, 1e-9), s.antHsu);
     check(pl.nom + ': módulo FV ' + (pl.pv ? 'SÍ' : 'NO') + ' (lo dice el layout, no el nombre de la planta)',
           h.pv === pl.pv, 'pv=' + h.pv);
-    check(pl.nom + ': la HSU son ' + (pl.pv ? 122 : 118) + ' piezas',
-          h.mallas === (pl.pv ? 122 : 118), h.mallas);
+    check(pl.nom + ': la HSU son ' + (pl.pv ? 123 : 119) + ' piezas',   // +1: el brazo de las antenas
+          h.mallas === (pl.pv ? 123 : 119), h.mallas);
     check(pl.nom + ': todas las estaciones se montan igual',
           s.hsus.every(x => x.mallas === h.mallas), s.hsus.map(x => x.mallas).join(','));
   }
