@@ -18,7 +18,11 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
 const src = html.slice(html.lastIndexOf('/*', i0), i1);
 if (src.length < 5000) throw new Error(`bloque FÍSICA PURA sospechoso: ${src.length} car.`);
-const F = new Function(src + ';return {solarPos,clearskyIneichen,plantFromCotas};')();
+/* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
+   igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const F = new Function(_sol + '\n' + src + ';return {solarPos,clearskyIneichen,plantFromCotas};')();
 
 // MISMAS constantes que banda_astro_bt.mjs — si allí cambian, aquí también.
 const LAT = 39.1182081, LON = -1.1598527, ALT = 739, TL = 3.5, STEP = 20;

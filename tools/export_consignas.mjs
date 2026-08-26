@@ -65,7 +65,11 @@ const GEOMETRICAS = new Set(['pairwise', 'true3d', 'row', 'mgl', 'astro', 'globa
 
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
-const F = new Function(html.slice(html.lastIndexOf('/*', i0), i1) + `
+/* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
+   igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `
   return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit };`)();
 const VER = (html.match(/const VER='([^']+)'/) || [, '?'])[1];
 

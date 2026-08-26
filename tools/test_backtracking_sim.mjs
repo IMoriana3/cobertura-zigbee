@@ -82,7 +82,12 @@ if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PU
 const j0 = html.lastIndexOf('/*', i0);
 const src = html.slice(j0, i1);
 
-const sandbox = new Function(src + `
+/* El bloque de FÍSICA PURA ya no lleva dentro el sol: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Aquí se antepone,
+   igual que hace el navegador, o el bloque extraído se quedaría sin `Sol`. */
+const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+
+const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, singleaxis, trueTrackAngle, shadeFracPair, shadeBrute,
            anglesPairwise, anglesTrue3d, anglesOptimal, anglesAstro, anglesGlobal, anglesRow,
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
@@ -97,6 +102,48 @@ for (const r of F.runPhysicsQA()) {
   if (r.ok) console.log('  ✓ ' + r.name);
   else { FAIL++; console.error('  ✗ ' + r.name + ' — ' + r.err); }
 }
+
+
+/* ── el sol, de `sol.js` y de ningún otro sitio ─────────────────────────────
+   Había TRES copias de la posición NOAA y del `singleaxis`: aquí, en la otra
+   página y en el módulo. Esto exige que no vuelva a haber una cuarta. */
+t('el sol se carga del módulo, no está escrito en la página', () => {
+  if (!/<script src="sol\.js/.test(html)) throw new Error('la página no carga sol.js');
+  const propias = (html.match(/\nfunction (solarPos|singleaxis|trueTrackAngle|refraction)\s*\(/g) || []);
+  if (propias.length) throw new Error('copia propia de: ' + propias.join(' ').replace(/\n/g, ''));
+});
+t('y la estética del 3D es la receta de la casa, con el cénit abriendo a elev/35', () => {
+  /* Al portar la receta al módulo se coló un `elev/60`: el cénit aclaraba más
+     despacio que en los 3D de la casa. Aquí se fija contra los coeficientes
+     literales que llevaba esta página, que son el original. */
+  const S = new Function(fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + ';return Sol;').call({});
+  for (const e of [40, 12, 4, 0.5, -2, -9]) {
+    const up = Math.min(1, Math.max(0, e / 35)), w = Math.max(0, Math.min(1, (12 - e) / 12));
+    const tw = Math.max(0, (e + 8) / 8);
+    const top = e > 0 ? [0.04 + 0.09 * up, 0.07 + 0.12 * up, 0.14 + 0.22 * up] : [0.028, 0.038, 0.065];
+    const hor = e > 0 ? [0.20 + 0.25 * up + 0.62 * w * (1 - 0.5 * up),
+                         0.28 + 0.30 * up + 0.20 * w * (1 - 0.5 * up), 0.42 + 0.35 * up - 0.20 * w]
+                      : [0.05 + 0.55 * tw, 0.055 + 0.19 * tw, 0.08 + 0.03 * tw];
+    const K = S.skyColors(e), L = S.sunLook(e);
+    const casa = (a2, b2) => a2.every((v, i) => Math.abs(v - b2[i]) < 1e-12);
+    if (!casa(K.top, top) || !casa(K.hor, hor)) throw new Error('cielo a ' + e + '°: ' + JSON.stringify([K.top, K.hor]));
+    if (Math.abs(L.color[1] - (0.93 - 0.38 * w)) > 1e-12 || Math.abs(L.intensity - (1.45 - 0.25 * w)) > 1e-12
+        || Math.abs(L.hemi - (0.55 + 0.15 * w)) > 1e-12) throw new Error('luz a ' + e + '°');
+  }
+});
+t('y da lo mismo que el módulo, con la refracción que esta página necesita', () => {
+  const S = new Function(fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + ';return Sol;').call({});
+  for (const [lat, lon] of [[41.58, -0.80], [-34.6, -58.4]])
+    for (const h of [4, 6, 12, 18, 21]) {
+      const ms = Date.UTC(2026, 5, 21, h, 0, 0);
+      const a = F.solarPos(ms, lat, lon), b = S.solarPos(ms, lat, lon, { refract: true });
+      if (Math.abs(a.elev - b.elev) > 1e-12 || Math.abs(a.az - b.az) > 1e-12 || Math.abs(a.zen - b.zen) > 1e-12)
+        throw new Error(lat + ' ' + h + 'h: ' + JSON.stringify([a.elev, b.elev]));
+      const p = { axisTilt: 2, axisAz: 180, maxAngle: 55, backtrack: true, gcr: 0.397, crossAxisTilt: 1.5 };
+      const x = F.singleaxis(a.zen, a.az, p), y = S.singleaxis(b.zen, b.az, p);
+      if (!(isNaN(x) && isNaN(y)) && Math.abs(x - y) > 1e-12) throw new Error('singleaxis ' + x + ' vs ' + y);
+    }
+});
 
 console.log('extra (solo tiene sentido en Node: reproducibilidad y aristas)');
 t('plantFromCotas sobre ayora_cotas.json REAL: banda coherente, tilts medidos y parejas bifila', () => {

@@ -55,7 +55,11 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
 const src = html.slice(html.lastIndexOf('/*', i0), i1);
 if (src.length < 5000) throw new Error(`bloque FÍSICA PURA sospechoso: ${src.length} car.`);
-const F = new Function(src + ';return {solarPos,clearskyIneichen,policyAngles,plantFromCotas};')();
+/* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
+   igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const F = new Function(_sol + '\n' + src + ';return {solarPos,clearskyIneichen,policyAngles,plantFromCotas};')();
 
 // el volcado de la toolbox viene con BOM
 const DIAG = JSON.parse(fs.readFileSync(DIAGP, 'utf-8').replace(/^﻿/, ''));

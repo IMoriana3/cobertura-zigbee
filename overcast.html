@@ -448,7 +448,8 @@
 
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que backtracking.html: offline -->
 <script src="lib/OrbitControls.js"></script>
-<script src="seguidor.js?v=0.4.19"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
+<script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
+<script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA y singleaxis (la misma que backtracking.html) -->
 <script>
 "use strict";
 /* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
@@ -489,43 +490,13 @@ const DCFG_DEFAULT={ghiMin:50, flatEnterRatio:1.02, limitedHoldRatio:1.0,
 
 /* ── posición solar NOAA (la misma de backtracking.html / sim-solar) ─────── */
 function julianDay(ms){return ms/86400000+2440587.5;}
-function refraction(elev){
-  if(elev>85)return 0; const te=Math.tan(elev*RAD); let r;
-  if(elev>5)r=58.1/te-0.07/(te*te*te)+0.000086/Math.pow(te,5);
-  else if(elev>-0.575)r=1735+elev*(-518.2+elev*(103.4+elev*(-12.79+elev*0.711)));
-  else r=-20.772/te;
-  return r/3600;
-}
-function solarPos(dateUTCms,lat,lon){
-  const jd=julianDay(dateUTCms),T=(jd-2451545)/36525;
-  let L0=(280.46646+T*(36000.76983+T*0.0003032))%360; if(L0<0)L0+=360;
-  const M=357.52911+T*(35999.05029-0.0001537*T);
-  const e=0.016708634-T*(0.000042037+0.0000001267*T);
-  const Mr=M*RAD;
-  const C=Math.sin(Mr)*(1.914602-T*(0.004817+0.000014*T))+Math.sin(2*Mr)*(0.019993-0.000101*T)+Math.sin(3*Mr)*0.000289;
-  const trueLong=L0+C, omega=125.04-1934.136*T;
-  const appLong=trueLong-0.00569-0.00478*Math.sin(omega*RAD);
-  const eps0=23+(26+((21.448-T*(46.815+T*(0.00059-T*0.001813))))/60)/60;
-  const eps=eps0+0.00256*Math.cos(omega*RAD);
-  const decl=Math.asin(Math.sin(eps*RAD)*Math.sin(appLong*RAD))/RAD;
-  let y=Math.tan(eps*RAD/2); y*=y;
-  const L0r=L0*RAD;
-  const Et=y*Math.sin(2*L0r)-2*e*Math.sin(Mr)+4*e*y*Math.sin(Mr)*Math.cos(2*L0r)-0.5*y*y*Math.sin(4*L0r)-1.25*e*e*Math.sin(2*Mr);
-  const eqTime=4*Et/RAD;
-  const d=new Date(dateUTCms);
-  const mins=d.getUTCHours()*60+d.getUTCMinutes()+d.getUTCSeconds()/60;
-  let tst=(mins+eqTime+4*lon)%1440; if(tst<0)tst+=1440;
-  const ha=tst/4-180;
-  const latr=lat*RAD,declr=decl*RAD,har=ha*RAD;
-  let cosZ=Math.sin(latr)*Math.sin(declr)+Math.cos(latr)*Math.cos(declr)*Math.cos(har);
-  cosZ=Math.max(-1,Math.min(1,cosZ));
-  const zen=Math.acos(cosZ)/RAD, elev=90-zen;
-  const azDen=Math.cos(latr)*Math.sin(zen*RAD); let az;
-  if(Math.abs(azDen)>1e-9){let azc=(Math.sin(latr)*Math.cos(zen*RAD)-Math.sin(declr))/azDen;azc=Math.max(-1,Math.min(1,azc));az=Math.acos(azc)/RAD;if(ha>0)az=(az+180)%360;else az=(540-az)%360;}
-  else az=(lat>decl)?180:0;
-  const elevAp=elev+refraction(elev);              // elevación APARENTE (con refracción)
-  return {zen:90-elevAp, az:az, elev:elevAp};
-}
+/* ── el sol y el seguimiento viven en `sol.js` ────────────────────────────
+   Esta página llevaba su propia copia de la posición NOAA y del `singleaxis`,
+   idéntica a la de `backtracking.html` salvo comentarios: tres copias de la
+   misma ecuación del tiempo. Elevación APARENTE (con refracción), que es lo que
+   devolvía la copia de aquí. */
+const refraction=Sol.refraction;
+const solarPos=(ms,lat,lon)=>Sol.solarPos(ms,lat,lon,{refract:true});
 function localToUTCms(dateStr,localMin,tzOff){
   const p=dateStr.split('-');
   return Date.UTC(+p[0],+p[1]-1,+p[2],0,0,0)+(localMin-tzOff*60)*60000;
@@ -602,25 +573,8 @@ function omInterp(om,t){
 }
 
 /* ── pvlib.tracking.singleaxis (Anderson & Mikofski 2020, Eq. 14) ────────── */
-function trueTrackAngle(zenDeg,azDeg,axisTilt,axisAz){
-  const sz=Math.sin(zenDeg*RAD);
-  const x=sz*Math.sin(azDeg*RAD), y=sz*Math.cos(azDeg*RAD), z=Math.cos(zenDeg*RAD);
-  const ca=Math.cos(axisAz*RAD), sa=Math.sin(axisAz*RAD);
-  const ct=Math.cos(axisTilt*RAD), st=Math.sin(axisTilt*RAD);
-  return Math.atan2(x*ca-y*sa, x*sa*st+y*ca*st+z*ct)*DEG;
-}
-function singleaxis(zenDeg,azDeg,p){
-  // p = {axisTilt, axisAz, maxAngle, backtrack, gcr, crossAxisTilt}
-  if(!(zenDeg<90))return NaN;                          // noche → NaN (pvlib); el caller hace nan→0
-  const wid=trueTrackAngle(zenDeg,azDeg,p.axisTilt,p.axisAz);
-  let th=wid;
-  if(p.backtrack){
-    const axesDist=1/(p.gcr*Math.cos(p.crossAxisTilt*RAD));
-    const temp=Math.abs(axesDist*Math.cos((wid-p.crossAxisTilt)*RAD));
-    if(temp<1) th=wid-Math.sign(wid)*Math.acos(temp)*DEG;
-  }
-  return Math.max(-p.maxAngle,Math.min(p.maxAngle,th));
-}
+const trueTrackAngle=Sol.trueTrackAngle;
+const singleaxis=Sol.singleaxis;
 function surfaceOrient(thetaDeg,axisTilt,axisAz){
   const tilt=Math.acos(Math.cos(thetaDeg*RAD)*Math.cos(axisTilt*RAD))*DEG;
   const sT=Math.sin(tilt*RAD); let azd;
@@ -3601,7 +3555,9 @@ function update3D(){
   const up=Math.min(1,Math.max(0,el/35));
   if(el>0){
     const warm=Math.max(0,Math.min(1,(12-el)/12));
-    TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
+    // el COLOR del sol es el de la casa (`sol.js`); la intensidad y el hemisférico
+    // NO, que aquí los manda la nube — es lo propio de este simulador
+    const _c=Sol.sunLook(el).color; TD.sun.color.setRGB(_c[0],_c[1],_c[2]);
     // …con lo que este simulador añade: las NUBES. El sol va con el DNI del
     // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
     TD.sun.intensity=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
