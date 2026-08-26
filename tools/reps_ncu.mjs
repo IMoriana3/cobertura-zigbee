@@ -36,7 +36,7 @@
    NO SE INVENTA NINGUNO DE LOS SEIS QUE FALTAN. Quedan en la nota de la planta, con su NCU, gateway
    y esclavo, para quien configure el colector o los busque en campo. Meterlos en `reps` sería
    dibujar en el layout puntos cuya COORDENADA no tenemos.                                        */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
 const WRITE = process.argv.includes('--write');
@@ -74,6 +74,31 @@ function constante(nombre) {
     else if (h[k] === '}' && !--p) { try { return JSON.parse(h.slice(j, k + 1)); } catch (e) { return null; } }
   }
   return null;
+}
+
+/* ── LOS REPETIDORES DE LAS DEMAS PLANTAS ──────────────────────────────────────────────────────
+   Panbianco y San Jose dibujan repetidores y no dicen de que NCU cuelgan. Se deriva igual que las
+   HSU —la NCU del SEGUIDOR mas cercano— y con el MISMO umbral, porque es la misma regla y el mismo
+   regimen: no hay motivo para ser mas laxo con un repetidor que con una estacion.
+
+   Y aqui la regla SI se puede validar para repetidores, porque Ayora trae los cinco suyos con NCU
+   del DWG: acierta los CINCO, con margenes de x2,14 a x14,8. Se vuelve a medir en cada pasada, y si
+   alguna vez fallara, no se escribe nada.
+
+   El umbral se queda en el de las HSU y no en el x2,14 de Ayora: bajarlo a la medida del caso mas
+   justo de CINCO seria ajustar el listón a un solo dato, que es justo lo que no se hace aqui.      */
+const MARGEN_MIN = 2.51;
+
+function derivaReps(L) {
+  const T = (L.trackers || []).filter(t => t.ncu != null);
+  return (L.reps || []).map(r => {
+    const mejor = {};
+    for (const t of T) { const x = Math.hypot(r.x - t.x, r.n - t.n); if (mejor[t.ncu] == null || x < mejor[t.ncu]) mejor[t.ncu] = x; }
+    const o = Object.keys(mejor).map(k => ({ n: +k, d: mejor[k] })).sort((a, b) => a.d - b.d);
+    if (!o.length) return { r, sin: 'el layout no trae NCU por seguidor' };
+    const margen = o[1] ? o[1].d / o[0].d : Infinity;
+    return { r, gana: o[0].n, d1: o[0].d, seg: o[1] ? o[1].n : null, d2: o[1] ? o[1].d : null, margen };
+  });
 }
 
 const ruta = RAIZ + 'ayora_layout.json';
@@ -117,6 +142,50 @@ const NOTA = `El Excel dice ${CONTRATO.length} repetidores y el DWG dibuja ${R.l
   + `gateways lo resuelve en dos lecturas.`;
 
 if (malo) { console.log(`\n${malo} repetidor(es) sin emparejar: NO se escribe nada`); process.exit(1); }
+
+/* ── la regla, medida contra los cinco de Ayora ───────────────────────────────────────────────*/
+const cal = derivaReps(L);
+let aciertos = 0, masJusto = Infinity;
+for (const [k, c] of cal.entries()) {
+  const real = R[k].ncu;
+  if (c.gana === real) { aciertos++; if (c.margen < masJusto) masJusto = c.margen; }
+}
+console.log(`\n· la regla del seguidor mas cercano contra los ${R.length} de Ayora: ${aciertos}/${R.length}` +
+  (aciertos === R.length ? `, el mas justo a x${masJusto.toFixed(2)}` : '   ← NO se deriva nada en las demas'));
+
+/* ── y aplicada donde falta ───────────────────────────────────────────────────────────────────*/
+const otras = [];
+if (aciertos === R.length) {
+  for (const f of readdirSync(RAIZ).filter(x => /_layout\.json$/.test(x)).sort()) {
+    const n = f.replace('_layout.json', '');
+    if (n === 'ayora') continue;
+    const Y = JSON.parse(readFileSync(RAIZ + f, 'utf8'));
+    const sinNcu = (Y.reps || []).filter(x => x.ncu == null);
+    if (!sinNcu.length) continue;
+    console.log(`\n· ${n} — ${sinNcu.length} repetidor(es) sin NCU`);
+    const pon2 = [];
+    for (const c of derivaReps(Y)) {
+      if (c.r.ncu != null) continue;
+      const m = c.margen === Infinity ? '∞' : c.margen.toFixed(2);
+      if (c.sin || c.margen < MARGEN_MIN) {
+        console.log(`  ··    ${String(c.r.name).padEnd(12)} NCU ${String(c.gana ?? '?').padStart(2)}? a ${Math.round(c.d1)} m, ` +
+          `pero la ${c.seg} a ${Math.round(c.d2)} m (margen x${m} < x${MARGEN_MIN}): NO se escribe`);
+        continue;
+      }
+      console.log(`  ok    ${String(c.r.name).padEnd(12)} NCU ${String(c.gana).padStart(2)}  ·  seguidor suyo a ${Math.round(c.d1)} m, ` +
+        `el de la ${c.seg} a ${Math.round(c.d2)} m (margen x${m})`);
+      pon2.push([c.r, c.gana, `DERIVADO, no medido: NCU del seguidor mas cercano (a ${Math.round(c.d1)} m; el de la ${c.seg}, ` +
+        `a ${Math.round(c.d2)} m, margen x${m}). La regla acierta los ${R.length} repetidores de Ayora, que si traen ` +
+        `NCU del DWG. Confirmar en campo`]);
+    }
+    console.log(`  → ${pon2.length} de ${sinNcu.length}`);
+    if (WRITE && pon2.length) {
+      for (const [r, ncu, origen] of pon2) { r.ncu = ncu; r.origen = origen; }
+      writeFileSync(RAIZ + f, JSON.stringify(Y));
+      otras.push(n);
+    }
+  }
+}
 console.log(`\nlos ${pon.length} cuadran a la vez en NCU y en esclavo con la tabla del CONTRATO`);
 if (WRITE) {
   for (const [r, f] of pon) {
@@ -126,4 +195,5 @@ if (WRITE) {
   L.reps_nota = NOTA;
   writeFileSync(ruta, JSON.stringify(L));
   console.log('→ ayora_layout.json');
+  if (otras.length) console.log('→ ' + otras.join(', '));
 } else console.log('(informe: nada escrito. Con --write se escribe)');

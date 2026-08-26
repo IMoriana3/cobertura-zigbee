@@ -70,26 +70,30 @@ def activo(planta):
                 ring.append(ring[0])
             feats.append(feature("Polygon", [ring], {"rol": "parcela", "origen": "vallado del DWG"}))
 
-    # ── los seguidores (o las mesas fijas) ────────────────────────────────────────────────────
-    if L.get("fija"):
-        for i, f in enumerate(L.get("fijas") or []):
-            feats.append(feature("Point", pt(f["x"], f["n"]), {
-                "rol": "mesa_fija", "id": f.get("nombre") or ("M%04d" % (i + 1)),
-                "surface_tilt": f.get("inclinacion"), "surface_azimuth": f.get("azimut"),
-                "modulos": f.get("mods"), "filas": f.get("rows"), "columnas": f.get("cols"),
-            }))
-    else:
-        for t in L.get("trackers") or []:
-            p = {"rol": "seguidor", "id": t.get("id"), "tipo": t.get("t"),
-                 "axis_azimuth": (t.get("rot") if t.get("rot") else montaje.get("axis_azimuth")),
-                 "punto": "eje de unidad (no el motor)"}
-            for k in ("ncu", "gw", "desig"):
-                if t.get(k) is not None:
-                    p[k] = t[k]
-            for k in ("axis_tilt", "max_angle", "backtrack", "gcr", "cross_axis_tilt"):
-                if montaje.get(k) is not None:
-                    p[k] = montaje[k]
-            feats.append(feature("Point", pt(t["x"], t["n"]), p))
+    # ── los seguidores Y las mesas fijas ──────────────────────────────────────────────────────
+    # LAS DOS COSAS, NO UNA U OTRA. Esto emitia `fijas` si la planta era fija y `trackers` si no, y
+    # Tunez es las dos: 19 seguidores y 14 mesas fijas. Sus 14 mesas se quedaban FUERA del export sin
+    # que nadie lo viera. Dicayagua es el caso contrario: es fija y repite las mismas mesas en los dos
+    # arrays, asi que ahi solo entran las `fijas` para no contarlas dos veces.
+    fijas = L.get("fijas") or []
+    trackers = [] if L.get("fija") else (L.get("trackers") or [])
+    for i, f in enumerate(fijas):
+        feats.append(feature("Point", pt(f["x"], f["n"]), {
+            "rol": "mesa_fija", "id": f.get("nombre") or ("M%04d" % (i + 1)),
+            "surface_tilt": f.get("inclinacion"), "surface_azimuth": f.get("azimut"),
+            "modulos": f.get("mods"), "filas": f.get("rows"), "columnas": f.get("cols"),
+        }))
+    for t in trackers:
+        p = {"rol": "seguidor", "id": t.get("id"), "tipo": t.get("t"),
+             "axis_azimuth": (t.get("rot") if t.get("rot") else montaje.get("axis_azimuth")),
+             "punto": "eje de unidad (no el motor)"}
+        for k in ("ncu", "gw", "desig"):
+            if t.get(k) is not None:
+                p[k] = t[k]
+        for k in ("axis_tilt", "max_angle", "backtrack", "gcr", "cross_axis_tilt"):
+            if montaje.get(k) is not None:
+                p[k] = montaje[k]
+        feats.append(feature("Point", pt(t["x"], t["n"]), p))
 
     # ── NCU y HSU ─────────────────────────────────────────────────────────────────────────────
     for c in L.get("ncus") or []:
