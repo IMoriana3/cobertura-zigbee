@@ -348,12 +348,19 @@ $('planta').onchange = () => {
    arrays ya sueltos. */
 function normaliza(txt) {
   txt = txt.trim();
-  /* El «Download CSV» del SQL Editor no da JSON: da una cabecera (json_agg) y
-     una única celda con el JSON entrecomillado y las comillas dobladas. Se
-     desenvuelve aquí en vez de pedirle a nadie que lo convierta a mano. */
-  if (/^"?json_agg"?\s*[\r\n]/.test(txt)) {
-    txt = txt.replace(/^[^\r\n]*[\r\n]+/, '').trim();
-    if (txt.startsWith('"')) txt = txt.slice(1, txt.lastIndexOf('"')).replace(/""/g, '"');
+  if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);           // BOM
+  /* El «Download CSV» del SQL Editor no da JSON: da una CABECERA con el nombre
+     de la columna y debajo una única celda con el JSON entrecomillado y las
+     comillas dobladas. Se desenvuelve aquí, en tres pasos legibles, en vez de
+     pedirle a nadie que lo convierta a mano. */
+  const empiezaJson = (x) => /^[[{]/.test(x);
+  if (!empiezaJson(txt) && !/^"[[{]/.test(txt)) {
+    const nl = txt.search(/[\r\n]/);
+    if (nl > 0 && nl < 60) txt = txt.slice(nl).trim();            // fuera la cabecera
+  }
+  if (txt.startsWith('"')) {                                      // celda entrecomillada
+    const fin = txt.lastIndexOf('"');
+    if (fin > 0) txt = txt.slice(1, fin).replace(/""/g, '"');
   }
   let j = JSON.parse(txt);
   // el SQL Editor puede devolver [{json_agg:"[…]"}] o el texto a secas
@@ -382,7 +389,13 @@ async function cargaTexto(txt, quien) {
     $('dia').innerHTML = '<option>(del fichero)</option>';
     $('cDia').style.display = '';
     analiza(f, '(del fichero)', '(del fichero)');
-  } catch (e) { log(`${quien}: no se pudo leer — ${e.message}`, 'err'); }
+  } catch (e) {
+    const pista = /^"?[a-z_?]+\s*[\r\n]/i.test(txt.trim())
+      ? ' — parece el CSV del SQL Editor, y esta página no sabe desenvolverlo:'
+        + ' es una versión anterior al arreglo. Recarga con Ctrl+F5 y reinténtalo.'
+      : '';
+    log(`${quien}: no se pudo leer — ${e.message}${pista}`, 'err');
+  }
 }
 let FICHERO = null;
 $('fich').onchange = async (e) => {
@@ -470,8 +483,16 @@ function veredicto(ap, med, nEq, paso) {
      logs de la NCU vienen en UTC— ni de acertar con el orto. */
   const idx = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
   if (!idx.length) { $('ver').innerHTML = '<div class="ver warn">sin instantes con suficientes seguidores</div>'; return; }
-  const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados = sol bajo
-  const centro = idx.filter(x => Math.abs(x.med) < 10);          // cerca del cenit
+  const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados
+  /* El «centro» NO puede definirse por |θ| pequeño: en una planta CON
+     backtracking los seguidores se aplanan justo al orto y al ocaso para no
+     sombrearse, así que |θ|<10° captura las dos jorobas además del mediodía y
+     el número sale alto y contradice a la gráfica. Se define por TIEMPO: la
+     hora central del tramo con datos, ±1 h. */
+  const conDato = idx.map(x => x.i);
+  const iMed = conDato[Math.floor(conDato.length / 2)];
+  const media_h = Math.round(3600 / paso);
+  const centro = idx.filter(x => Math.abs(x.i - iMed) <= media_h);
   const p90 = (a) => { if (!a.length) return null; const s = a.map(x => x.v).sort((p, q) => p - q); return s[Math.floor(s.length * 0.9)]; };
   const aE = p90(extremos), aC = p90(centro);
   const hh = (i) => String(Math.floor(i * paso / 3600)).padStart(2, '0') + ':' + String(Math.floor(i * paso % 3600 / 60)).padStart(2, '0');
@@ -484,7 +505,7 @@ function veredicto(ap, med, nEq, paso) {
       `<div class="nota">Compatible con backtracking que sí usa la pendiente de cada seguidor.</div>`;
   else h = `<div class="ver warn">Apertura al sol bajo: ${aE.toFixed(2)}° — intermedia</div>` +
       `<div class="nota">Ni ángulo único ni bt3d pleno. Mirar el detalle antes de concluir.</div>`;
-  h += `<div class="nota">Al cenit: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
+  h += `<div class="nota">En el centro del día: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
        `Pico del día ${pico.v.toFixed(2)}° a las ${hh(pico.i)}. Seguidores contados: hasta ${Math.max(...nEq)}.</div>`;
   $('ver').innerHTML = h;
 }

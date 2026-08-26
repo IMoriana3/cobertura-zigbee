@@ -68,6 +68,8 @@ t('se puede analizar SIN conexión, desde fichero o pegando',
 // resuelve esa, con «row_to_json(jsonb) does not exist». Pasó en el primer uso.
 t('la consulta de ejemplo no colisiona el alias con la columna «t»',
   /\)\s*q;/.test(html) && !/\)\s*t;/.test(html));
+t('un CSV sin desenvolver da una pista útil, no solo «token inesperado»',
+  /parece el CSV del SQL Editor/.test(html) && /Ctrl\+F5/.test(html));
 t('la plantilla NO trae valores inventados que parezcan buenos',
   /PON_AQUI_LA_PLANTA/.test(html) && /AAAA-MM-DD/.test(html));
 t('se explica que json_agg NULL es «cero filas», no un error',
@@ -166,6 +168,19 @@ for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'
   await pg6.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
   const r6 = await pg6.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
   t('traga el CSV del SQL Editor tal cual, sin convertirlo a mano', r6.includes('ok'), `clase «${r6}»`);
+  // variantes reales: BOM, cabecera entrecomillada, CRLF
+  for (const [nm, mk] of [
+    ['con BOM', (c) => '\uFEFF' + c],
+    ['cabecera entrecomillada', (c) => c.replace(/^json_agg/, '"json_agg"')],
+    ['con CRLF', (c) => c.replace(/\n/g, '\r\n')],
+  ]) {
+    await pg6.evaluate(() => { document.getElementById('ver').innerHTML = ''; });
+    await pg6.fill('#pegado', mk(csv));
+    await pg6.click('#bPegar');
+    await pg6.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'), null, { timeout: 8000 });
+    const rr = await pg6.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
+    t(`CSV ${nm}: también entra`, rr.includes('ok'), `clase «${rr}»`);
+  }
   t('sin errores de consola con el CSV', e6.length === 0, e6.join(' · '));
   await pg6.close();
 }
