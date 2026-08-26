@@ -934,6 +934,33 @@ t('v1.31 Perez: el desglose SUMA lo mismo que la fórmula agregada (clamp por co
   if (peor > 2e-3) throw new Error('el clamp por componente desvía ' + (100 * peor).toFixed(3) + '% (>0,2%)');
 });
 
+t('v1.33: al cargar planta real las políticas de ASESORÍA se apagan, y se DICE', () => {
+  // medido: a 80 líneas optimal+optfree son 4,6 s de los 5,5 s del día. Son
+  // justo las que la página marca como asesoría (evaluador provisional), así
+  // que con planta real arrancan apagadas — pero apagarlas en silencio sería
+  // peor que la lentitud: el usuario tiene que saber qué le falta y por qué
+  if (!/const caros=POLICIES\.filter\(P=>P\.brain==='ncu'&&P\.on&&P\.key!=='mgl'\)/.test(html))
+    throw new Error('no se seleccionan las políticas caras al cargar planta real');
+  if (!/OPT_AVISADO=true;/.test(html)) throw new Error('falta el testigo: las apagaría en CADA carga');
+  if (!/avisoCaras=/.test(html) || !/'\. Azimut ≈ 0 \(aprox declarada\)\. Cotas editables en el 2D\.'\+avisoCaras/.test(html))
+    throw new Error('se apagan sin decirlo en la nota de la planta');
+  // el aviso se arma ANTES de la nota: si no, la nota se pinta sin él
+  const iAviso = html.indexOf('avisoCaras=' + "'" + ' <b>');
+  const iNota = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
+  if (!(iAviso > 0 && iNota > 0 && iAviso < iNota))
+    throw new Error('el aviso se calcula DESPUÉS de pintar la nota: no se vería');
+  // y nunca puede dejar el día sin ninguna política
+  if (!/if\(!POLICIES\.some\(P=>P\.on\)\)POL\['pairwise'\]\.on=true;[\s\S]{0,80}buildPolicyBox\(\);/.test(html))
+    throw new Error('podría dejar CERO políticas encendidas');
+});
+t('v1.33: el GATE declara su precondición en vez de heredar el default de la UI', () => {
+  const gate = fs.readFileSync(path.join(ROOT, 'tools', 'release_gate.mjs'), 'utf-8');
+  if (!/for \(const k of \['optimal', 'optfree'\]\)/.test(gate))
+    throw new Error('el gate no reenciende las políticas que valida');
+  if (!/i\.checked = true; i\.onchange\(\);/.test(gate))
+    throw new Error('el gate marca la casilla pero no dispara el recálculo');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

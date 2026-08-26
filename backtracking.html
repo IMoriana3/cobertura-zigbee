@@ -2303,7 +2303,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.32.0';
+const VER='v1.33.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2355,6 +2355,10 @@ function nsProfile(c){
   return out;
 }
 let PLANT_REAL=null;   // planta cargada de cotas reales (Ayora/San José); null = presets
+/* Testigo de «ya te lo dije»: los optimizadores se apagan la PRIMERA vez que
+   se carga una planta real, no cada vez. Si el usuario los reenciende a
+   sabiendas del coste, la página no se lo vuelve a discutir. */
+let OPT_AVISADO=false;
 function terrain(c){
   if(PLANT_REAL){
     // terreno/implantación MEDIDOS: cotas y tilts de los extremos de mesa.
@@ -2503,12 +2507,27 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       ncuSelHtml=' · ámbito <select id="ncusel" class="btn small" title="Simular la planta entera (por bloques) o SOLO el parque de trackers que gobierna una NCU — la unidad real de control (y de la tabla de consignas). Las filas frontera con la NCU vecina se tratan como bordes.">'+
         '<option value=""'+(ncuSel==null?' selected':'')+'>planta (bloques)</option>'+opts+'</select>';
     }
+    let avisoCaras='';
+    // COSTE: con planta real los dos optimizadores se llevan el 84% del
+    // cálculo del día (medido a 80 líneas: 1,6 s + 3,0 s frente a 0,43 + 0,46
+    // de las geométricas) y son justo los que la página marca como ASESORÍA
+    // —dependen del evaluador provisional—. Se apagan al cargar y se dice; si
+    // el usuario los vuelve a encender, no se le llevan la contraria otra vez.
+    const caros=POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl');
+    if(caros.length&&!OPT_AVISADO){
+      OPT_AVISADO=true;
+      caros.forEach(P=>{P.on=false;});
+      if(!POLICIES.some(P=>P.on))POL['pairwise'].on=true;
+      buildPolicyBox();
+      avisoCaras=' <b>'+caros.map(P=>P.nm).join(' y ')+'</b> se han apagado: con planta real '+
+        'cuestan el grueso del cálculo y son de <b>asesoría</b>. Enciéndelos cuando quieras el número de energía.';
+    }
     note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
       P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
       Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+ncuSelHtml+
       (ncuSel!=null?'. Frontera con NCU vecinas = bordes (declarado)':'')+
-      '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.';
+      '. Azimut ≈ 0 (aprox declarada). Cotas editables en el 2D.'+avisoCaras;
     const bs=document.getElementById('blksel');
     if(bs)bs.onchange=()=>loadRealPlant(name,+bs.value,ncuSel);
     const ns=document.getElementById('ncusel');
