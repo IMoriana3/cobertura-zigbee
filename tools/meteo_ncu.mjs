@@ -81,6 +81,15 @@ const NOTA_PLANTA = {
        + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
        + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
        + 'con HSU llevan una y esclavo 230.',
+  polvorin: 'La HSU 2 se queda SIN NCU a propósito, y no por falta de mirar: cae justo en la COSTURA '
+       + 'de los dos campos. De los 3 seguidores más cercanos, dos son de la NCU 1 y uno de la 2; de '
+       + 'los 10, cinco y cinco; de los 20, diez y diez. El seguidor más cercano es de la NCU 2 a 24 m '
+       + 'y el de la 1 está a 27 m: tres metros. La HSU 1 en cambio es limpia —sus 5 más cercanos son '
+       + 'todos de la NCU 1—. Esta planta no tiene fichero en la toolbox del SCADA ni CSV de cobertura, '
+       + 'y su «GZ» del listado dice 1 y 2, que es indistinguible de un contador (en Bagnarelli ese '
+       + 'mismo campo da 1 y 2 con UNA sola NCU). Lo resolvería un export de la toolbox para 25082 o el '
+       + 'listado del cliente con su columna de NCU. Con la geometría no se puede, y no es opinable.',
+
   sanjose: 'Son OCHO HSU, las que dibuja el DWG y las que dice la cartera. El fichero del SCADA '
        + '(24019-san-jose.json) solo declara CINCO —NCU 1, 6, 8, 11 y 21, una en cada una— y eso NO es '
        + 'un desacuerdo, es un export viejo: se generó antes de arreglar `rangos()`, que solo entendía '
@@ -97,6 +106,48 @@ const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
   new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,
   new URL('../../scada/tools/tcu-toolbox/plantas/', import.meta.url).pathname]
   .find(p => { try { return existsSync(p); } catch (e) { return false; } });
+
+/* ── el «GZ» del listado del cliente, embebido en SCADA/index.html ─────────────────────────────
+   Cada planta lleva allí sus `hsus` como [id, gz, x, y, idnum]. El `gz` es la etiqueta del listado
+   del cliente y NO SIEMPRE ES LA NCU: en Ayora lo es, en Páramo también, pero en Benante dice
+   1,2,3,4 cuando sus NCU son la 3, la 1, la 6 y la 4 —es un simple contador— y en Bagnarelli dice
+   «1» y «2» cuando esa planta tiene UNA sola NCU. Fiarse del campo sin mirar es meter tres errores.
+
+   Se acepta como NCU solo si pasa las dos pruebas:
+
+     · todos sus valores son NCU que existen en la planta, y
+     · la secuencia NO es 1,2,3…n en el orden del array, que es indistinguible de un contador.
+
+   Con eso entra Páramo —dice 1, 2 y 4, y el 4 es justo lo que un contador no diría— y se quedan
+   fuera Benante, Panbianco, Bagnarelli, Túnez y El Polvorín. Los tres primeros porque SABEMOS que
+   se equivocan; los dos últimos porque no hay forma de distinguirlo, y en la duda no se escribe. */
+const SCADA_HTML = ['/home/user/SCADA/index.html', '/home/user/scada/index.html',
+  new URL('../../SCADA/index.html', import.meta.url).pathname,
+  new URL('../../scada/index.html', import.meta.url).pathname]
+  .find(p => { try { return existsSync(p); } catch (e) { return false; } });
+const NOMBRE_SCADA = { ayora: 'AYORA', paramo: 'PARAMO', sanjose: 'SANJOSE', bagnarelli: 'BAGNARELLI',
+  tunez: 'TUNEZ', benante: 'BENANTE', panbianco: 'PANBIANCO', polvorin: 'POLVORIN', elburgo: 'BURGO', fayon: 'FAYON' };
+let _html = null;
+function leeGZ(planta, L) {
+  if (!SCADA_HTML || !NOMBRE_SCADA[planta]) return null;
+  if (_html === null) _html = readFileSync(SCADA_HTML, 'utf8');
+  const i = _html.indexOf('const ' + NOMBRE_SCADA[planta] + '={');
+  if (i < 0) return null;
+  let j = _html.indexOf('{', i), p = 0, o = null;
+  for (let k = j; k < _html.length; k++) {
+    if (_html[k] === '{') p++;
+    else if (_html[k] === '}' && !--p) { try { o = JSON.parse(_html.slice(j, k + 1)); } catch (e) { } break; }
+  }
+  const H = o && o.hsus;
+  if (!H || H.length !== (L.meteo || []).length) return null;
+  const v = H.map(x => String(x[1] ?? '').trim());
+  if (v.some(x => !/^\d+$/.test(x))) return null;                 // vacíos o etiquetas de centros: aquí no
+  const nums = v.map(Number);
+  const existen = new Set((L.trackers || []).map(t => t.ncu));
+  if (!nums.every(x => existen.has(x))) return null;              // prueba 1
+  if (nums.every((x, k) => x === k + 1)) return null;             // prueba 2: es un contador
+  return nums;
+}
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.n - b.n);
 /* «HSU 03-02» -> 3. También traga «HSU3-2». Lo que no lleve los dos números se queda fuera. */
@@ -287,6 +338,24 @@ for (const n of nombres) {
     }
 
     if (!s) { console.log(`  ??    ${nom} el layout no trae NCU por seguidor: no se puede derivar`); continue; }
+
+    /* 5 · el GZ del listado del cliente, cuando pasa las pruebas de arriba Y dice lo mismo que la
+       geometría. Si dijera otra cosa NO se escribe: dos fuentes que discrepan no son una fuente
+       mejor, son un motivo para mirarlo. */
+    const gz = leeGZ(n, L);
+    if (gz && gz[M.indexOf(m)] != null) {
+      const g = gz[M.indexOf(m)];
+      if (g === s.gana) {
+        console.log(`  ok    ${nom} NCU ${String(g).padStart(2)}  ·  DOS FUENTES: el GZ del listado del cliente ` +
+          `(SCADA/index.html) y el seguidor más cercano, a ${Math.round(s.d1)} m`);
+        pon.push({ m, ncu: g, origen: `dos fuentes · el «GZ» del listado del cliente (SCADA/index.html) dice NCU ${g}, ` +
+          `y el seguidor más cercano también, a ${Math.round(s.d1)} m (${margen}). El GZ solo se usa donde no puede ` +
+          `confundirse con un contador; el esclavo no lo da esa fuente` });
+        continue;
+      }
+      avisos.push(`${n} ${m.name}: el GZ del listado dice NCU ${g} y la geometría la ${s.gana} (${margen}). No se escribe ninguna`);
+      continue;
+    }
 
     /* 5 · DOS FUENTES. La toolbox dice que esa NCU tiene HSU y esta es la única candidata cerca, de
        largo. No es la regla del margen: es que las dos fuentes, independientes, dicen lo mismo. */
