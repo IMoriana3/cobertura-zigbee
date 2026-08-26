@@ -88,13 +88,13 @@ const serie = (paso, fn) => {
 // θ astronómico de juguete: −55 al alba, 0 al mediodía, +55 al ocaso
 const astro = (s) => Math.max(-55, Math.min(55, (s - 43200) / 43200 * 90));
 
-function planta(abre) {
+function planta(abre, ncu = '1') {
   const filas = [];
   for (let i = 1; i <= 40; i++) {
     // «abre»: cada seguidor se desvía en proporción a su pendiente, y el
     // desvío CRECE con |θ|, que es como se comporta el backtracking real
     const pend = (i - 20) / 20;                       // −1 … +1
-    filas.push({ ncu: '1', equipo: 'TCU ' + i, tz: 'UTC', paso_s: 300, cobertura: 99,
+    filas.push({ ncu, equipo: 'TCU ' + i, tz: 'UTC', paso_s: 300, cobertura: 99,
       series: serie(300, (s) => { const a = astro(s);
         return a + (abre ? pend * 6 * Math.abs(a) / 55 : 0); }) });
   }
@@ -153,6 +153,33 @@ for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'
   t(`${nombre}: acierta sin tocar la red`, r5.includes(espera), `clase «${r5}»`);
   t(`${nombre}: sin errores de consola`, e5.length === 0, e5.join(' · '));
   await pg5.close();
+}
+
+/* ALCANCE: una sola NCU no es la planta, y el informe tiene que decirlo */
+{
+  const pg7 = await browser.newPage();
+  await pg7.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  const una = planta(true, '2').map(f => ({ ncu: f.ncu, equipo: f.equipo, tz: f.tz,
+    paso_s: f.paso_s, t: f.series.t, target_angle: f.series.v.target_angle }));
+  await pg7.fill('#pegado', JSON.stringify(una));
+  await pg7.click('#bPegar');
+  await pg7.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const t7 = await pg7.evaluate(() => document.getElementById('ver').textContent);
+  t('con UNA NCU avisa de que eso no es la planta entera',
+    /NO es la planta entera/.test(t7) && /NCU2/.test(t7), t7.slice(0, 140));
+
+  // dos NCUs, una que abre y otra que no: tiene que desglosar
+  const mez = [...planta(true, '2'), ...planta(false, '3')].map(f => ({ ncu: f.ncu,
+    equipo: f.ncu + '-' + f.equipo, tz: f.tz, paso_s: f.paso_s,
+    t: f.series.t, target_angle: f.series.v.target_angle }));
+  await pg7.evaluate(() => { document.getElementById('ver').innerHTML = ''; });
+  await pg7.fill('#pegado', JSON.stringify(mez));
+  await pg7.click('#bPegar');
+  await pg7.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const t8 = await pg7.evaluate(() => document.getElementById('ver').textContent);
+  t('con VARIAS NCUs desglosa la apertura de cada una',
+    /NCU2 \(40 seg\)/.test(t8) && /NCU3 \(40 seg\)/.test(t8), t8.slice(0, 200));
+  await pg7.close();
 }
 
 /* el CSV que da «Download CSV» del SQL Editor: cabecera + celda entrecomillada */
