@@ -69,10 +69,20 @@
     <div><label>Correo</label><input id="mail" type="email" autocomplete="username" placeholder="tu@correo"></div>
     <div><label>Contraseña</label><input id="pass" type="password" autocomplete="current-password"></div>
     <button id="bEntrar" class="p">Entrar</button>
+    <button id="bEnlace">Mandarme un enlace</button>
     <button id="bSalir" style="display:none">Salir</button>
     <button id="bSondeo">Ver qué hay</button>
     <div id="sesion" class="nota" style="align-self:center"></div>
   </div>
+  <div class="nota" style="margin-top:9px"><b>Sin contraseña:</b> pon solo el correo y pulsa
+    <b>Mandarme un enlace</b>. Te llega un correo, lo abres <b>en este mismo navegador</b> y entras.
+    Para que el enlace te devuelva aquí, esta dirección tiene que estar en las
+    <i>Redirect URLs</i> del proyecto de Supabase; si no lo está, el correo llega igual pero te deja
+    en la página de inicio configurada allí.</div>
+  <div class="nota" style="margin-top:9px"><b>Y puede que no necesites nada de esto:</b> si ya has
+    entrado alguna vez en <code>importar-logs.html</code>, tu sesión está guardada en este navegador
+    y esta página <b>la reutiliza sola</b> —mismo origen, tus datos, tu sesión— renovándola si hiciera
+    falta. Pulsa <b>Ver qué hay</b> y mira el registro: si dice «sesión reutilizada», ya estás dentro.</div>
   <div class="nota" style="margin-top:9px"><b>Hace falta sesión.</b> La política de la tabla es
     <code>for select to authenticated</code>: con la clave pública a secas la consulta responde
     correctamente pero con <b>cero filas</b>, que es justo lo que despista. Las credenciales son las
@@ -120,6 +130,48 @@ const log = (m, cls) => { const d = $('log');
    deja pasar la petición y filtra las filas—, que es el fallo que más despista
    porque no parece un fallo. */
 const SES = () => { try { return JSON.parse(sessionStorage.getItem('tele_ses') || 'null'); } catch { return null; } };
+
+/* ── sesión HEREDADA de la página hermana ─────────────────────────────────
+   `importar-logs.html` entra con supabase-js, que guarda la sesión en el
+   localStorage del origen bajo `sb-<ref>-auth-token` y la refresca sola. Esta
+   página vive en el MISMO origen, así que si ya has entrado ahí no hace falta
+   que vuelvas a teclear nada: se reutiliza tu propia sesión, en tu propio
+   navegador, para tus propios datos — igual que haría supabase-js.
+   Si el token ha caducado se renueva con su refresh_token. */
+function sesionHeredada() {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!/^sb-.+-auth-token$/.test(k)) continue;
+    let v; try { v = JSON.parse(localStorage.getItem(k)); } catch { continue; }
+    // supabase-js ha usado dos formas: plana y anidada en currentSession
+    const c = (v && v.currentSession) || v || {};
+    if (c.access_token) return { k, token: c.access_token, refresh: c.refresh_token,
+      exp: c.expires_at || 0, user: (c.user && c.user.email) || (v && v.user && v.user.email) || '' };
+  }
+  return null;
+}
+async function renueva(h) {
+  const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
+  if (!h.refresh) return null;
+  try {
+    const r = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST', headers: { apikey: key, 'content-type': 'application/json' },
+      body: JSON.stringify({ refresh_token: h.refresh }) });
+    const j = await r.json();
+    return (r.ok && j.access_token) ? { token: j.access_token, user: (j.user && j.user.email) || h.user } : null;
+  } catch { return null; }
+}
+async function adoptaSesion() {
+  if (SES()) return;
+  const h = sesionHeredada();
+  if (!h) return;
+  const caducado = h.exp && (h.exp * 1000 < Date.now() + 30000);
+  const s = caducado ? await renueva(h) : { token: h.token, user: h.user };
+  if (!s) { log(`hay sesión de otra página (${h.k}) pero caducada y no se pudo renovar: entra a mano`, 'warn'); return; }
+  sessionStorage.setItem('tele_ses', JSON.stringify({ token: s.token, user: s.user || 'heredada' }));
+  log(`sesión reutilizada de la página hermana${caducado ? ' (renovada)' : ''}: no hace falta que entres`, 'ok');
+  pintaSesion();
+}
 function pintaSesion() {
   const s = SES();
   $('sesion').innerHTML = s ? `<span class="ok">sesión activa · ${s.user || ''}</span>`
@@ -155,13 +207,52 @@ $('bEntrar').onclick = async () => {
   $('bEntrar').disabled = false;
 };
 $('bSalir').onclick = () => { sessionStorage.removeItem('tele_ses'); pintaSesion(); log('sesión cerrada'); };
-pintaSesion();
+
+/* ── magic link ───────────────────────────────────────────────────────────
+   Se pide a /auth/v1/otp con redirect_to a ESTA página. Supabase devuelve el
+   token en el FRAGMENTO de la url (#access_token=…), que no viaja al
+   servidor; se recoge al cargar y se limpia enseguida del historial, porque
+   un token en la barra se copia y se pega sin querer. */
+$('bEnlace').onclick = async () => {
+  const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
+  const email = $('mail').value.trim();
+  if (!email) { log('pon el correo primero', 'warn'); return; }
+  $('bEnlace').disabled = true;
+  try {
+    const vuelta = location.origin + location.pathname;
+    const r = await fetch(`${url}/auth/v1/otp?redirect_to=${encodeURIComponent(vuelta)}`, {
+      method: 'POST', headers: { apikey: key, 'content-type': 'application/json' },
+      // create_user:false — esto es para entrar, no para darse de alta
+      body: JSON.stringify({ email, create_user: false }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error_description || j.msg || `HTTP ${r.status}`);
+    log(`enlace enviado a ${email}: ábrelo EN ESTE navegador y volverás ya dentro`, 'ok');
+  } catch (e) { log('no se pudo enviar el enlace: ' + e.message, 'err'); }
+  $('bEnlace').disabled = false;
+};
+
+/* vuelta del enlace: el token llega en el fragmento */
+(function recogeEnlace() {
+  const h = location.hash.replace(/^#/, '');
+  if (!h) { pintaSesion(); return; }
+  const p = new URLSearchParams(h);
+  const tok = p.get('access_token'), err = p.get('error_description') || p.get('error');
+  if (tok) {
+    sessionStorage.setItem('tele_ses', JSON.stringify({ token: tok, user: p.get('email') || 'por enlace' }));
+    log('sesión iniciada con el enlace', 'ok');
+  } else if (err) log('el enlace no valió: ' + err, 'err');
+  // fuera del historial: un token en la barra se copia y se pega sin querer
+  history.replaceState(null, '', location.pathname + location.search);
+  pintaSesion();
+})();
+adoptaSesion();
 
 /* ── sondeo: qué plantas, días y cobertura hay, sin bajar una sola serie ─── */
 let INDICE = [];
 $('bSondeo').onclick = async () => {
   $('bSondeo').disabled = true;
   try {
+    await adoptaSesion();          // si ya entraste en el importador, vale esa
     log('sondeando…');
     INDICE = await api('select=planta,ncu,clase,dia,equipo,cobertura,paso_s&limit=5000');
     log(`${INDICE.length} filas visibles`, 'ok');

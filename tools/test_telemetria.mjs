@@ -45,6 +45,16 @@ t('cero filas se explica distinto con sesión y sin ella',
   /cero filas SIN sesión/.test(html) && /cero filas CON sesión/.test(html));
 t('una sesión caducada (401) se dice, no se arrastra',
   /r\.status === 401/.test(html));
+t('magic link: se pide a /auth/v1/otp y vuelve a ESTA página',
+  /auth\/v1\/otp\?redirect_to=/.test(html) && /location\.origin \+ location\.pathname/.test(html));
+t('el enlace no da de alta a nadie (create_user:false)',
+  /create_user: false/.test(html));
+t('el token del fragmento se limpia del historial',
+  /history\.replaceState/.test(html));
+t('reutiliza la sesión que la página hermana dejó en el MISMO origen',
+  /\^sb-\.\+-auth-token\$/.test(html) && /currentSession/.test(html));
+t('si esa sesión heredada ha caducado, la renueva con su refresh_token',
+  /grant_type=refresh_token/.test(html));
 
 /* ── navegador, con la respuesta de Supabase sustituida ──────────────────── */
 const serie = (paso, fn) => {
@@ -102,6 +112,47 @@ for (const [nombre, abre, espera] of [['ángulo único', false, 'err'], ['ángul
   }));
   t(`${nombre}: el veredicto acierta`, r.clase.includes(espera),
     `clase «${r.clase}» · ${r.html.replace(/<[^>]+>/g, ' ').slice(0, 110)}`);
+}
+
+/* sesión heredada: la que supabase-js dejó en localStorage vale, sin teclear */
+{
+  const pg3 = await browser.newPage();
+  const e3 = []; pg3.on('pageerror', e => e3.push(e.message));
+  await pg3.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await pg3.evaluate(() => {
+    localStorage.setItem('sb-abc123-auth-token', JSON.stringify({
+      access_token: 'TOKEN_HEREDADO', refresh_token: 'R',
+      expires_at: Math.floor(Date.now() / 1000) + 3600, user: { email: 'quien@factiun.com' } }));
+    window.fetch = async () => ({ ok: true, status: 200, json: async () => [] });
+  });
+  await pg3.click('#bSondeo');
+  await pg3.waitForFunction(() => document.getElementById('log').textContent.includes('sondeando'));
+  const r3 = await pg3.evaluate(() => ({
+    ses: JSON.parse(sessionStorage.getItem('tele_ses') || 'null'),
+    log: document.getElementById('log').textContent }));
+  t('adopta la sesión de la página hermana sin pedir credenciales',
+    !!(r3.ses && r3.ses.token === 'TOKEN_HEREDADO'), JSON.stringify(r3.ses));
+  t('y lo dice en el registro, en vez de entrar en silencio',
+    /reutilizada/.test(r3.log), r3.log.slice(-120));
+  t('sin errores de consola al heredar', e3.length === 0, e3.join(' · '));
+  await pg3.close();
+}
+
+/* vuelta del enlace: token en el fragmento ⇒ sesión activa y barra limpia */
+{
+  const pg2 = await browser.newPage();
+  const e2 = []; pg2.on('pageerror', e => e2.push(e.message));
+  await pg2.goto(`http://localhost:${port}/#access_token=TOKEN_DE_PRUEBA&token_type=bearer&expires_in=3600`,
+                 { waitUntil: 'load' });
+  const r = await pg2.evaluate(() => ({
+    ses: JSON.parse(sessionStorage.getItem('tele_ses') || 'null'),
+    hash: location.hash, txt: document.getElementById('sesion').textContent,
+  }));
+  t('volver con el token en el fragmento deja sesión iniciada',
+    !!(r.ses && r.ses.token === 'TOKEN_DE_PRUEBA') && /activa/.test(r.txt), JSON.stringify(r));
+  t('y el token NO se queda en la barra de direcciones', r.hash === '', `hash «${r.hash}»`);
+  t('sin errores de consola al volver del enlace', e2.length === 0, e2.join(' · '));
+  await pg2.close();
 }
 
 await browser.close(); srv.close();
