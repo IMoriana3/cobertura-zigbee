@@ -57,8 +57,13 @@ for (const p of readdirSync(COORDS).sort()) {
   const L = JSON.parse(readFileSync(lay, 'utf8'));
   const csv = filas(readFileSync(csvf, 'utf8')).filter(c => c[4] === 'HSU');
 
+  /* NO SE EMPAREJA POR POSICIÓN. El CSV sale ORDENADO POR NCU, así que su fila i no es la HSU i del
+     layout: en Benante las filas salen HSU_02, HSU_01, HSU_04, HSU_03 y comparar por índice inventa
+     cuatro divergencias que no existen. El `node_id` sí lo dice —«HSU_07» es la séptima del layout,
+     que es como lo numera gen_coords_cobertura.py— y por ahí se emparejan. */
+  const porId = new Map(csv.map(c => [String(c[0]).trim(), c]));
   for (const [i, m] of (L.meteo || []).entries()) {
-    const c = csv[i];
+    const c = porId.get('HSU_' + String(i + 1).padStart(2, '0'));
     if (!c) continue;
     const cn = +c[6] || null, ce = c[8] ? +c[8] : null;
     const nom = String(m.name).padEnd(18);

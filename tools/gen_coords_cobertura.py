@@ -38,10 +38,13 @@ marcada, para no apuntarle un fallo de cobertura que no existe.
 QUÉ NODOS ENTRAN — TCU, HSU y REPETIDORES. Los tres hablan por la misma malla, así que los
 tres se sondean. Antes las HSU y los repetidores iban a un fichero aparte y se quedaban fuera de
 la medida, que es tanto como no medir media red: el repetidor está puesto justo para sostenerla.
-Ni HSU ni repetidores llevan NCU en el layout salvo en Ayora, donde sale del GZ del listado del
-cliente; donde no la hay se asigna la NCU más cercana, y el GW, el del TCU más próximo DE esa NCU
-(un repetidor se planta para alargar el alcance de un gateway concreto). Las NCU siguen en su
-fichero aparte: son quien sondea, no lo sondeado.
+Desde 2026-08-26 las HSU y los repetidores SÍ llevan su NCU en el layout —la escribe
+tools/meteo_ncu.mjs, con su procedencia en `ncu_origen`, y tools/reps_ncu.mjs— así que esa rama es
+hoy la que se aplica casi siempre. Donde falte se sigue asignando la NCU más cercana, y el GW, el
+del TCU más próximo DE esa NCU (un repetidor se planta para alargar el alcance de un gateway
+concreto); pero eso ya solo pasa en la HSU 2 de El Polvorín y en tres de San José, y el manifiesto
+las NOMBRA una a una para que nadie se las crea. Las NCU siguen en su fichero aparte: son quien
+sondea, no lo sondeado.
 
 DÓNDE CAE EL PUNTO — por defecto, donde está la TCU de verdad: atornillada a la viga del
 MOTOR, la fila OESTE, a filaZ del eje (3 m). Es donde está la antena, que es lo que importa
@@ -63,16 +66,26 @@ SCADA: NCU9 GW1 llega a 48 y GW2 arranca en 50). El GW sale de esos rangos
 (tools/tcu-toolbox/plantas del repo scada), no del layout: es quien declara los gateways, y
 para El Burgo el layout ni los trae.
 
-DE QUÉ NCU CUELGA CADA HSU — lo declara el SCADA con su campo `hsus` por NCU, y de ahí sale
-también el esclavo Modbus de la HSU cuando el fichero lo trae (`hsu_esclavos`: en Ayora,
-230 y 231). Las HSU se reparten con esos cupos y distancia total mínima, no por simple
-cercanía, que se equivoca: en Ayora la HSU 2 está a 194 m de la NCU 6 y a 204 de la 3, y el
-SCADA dice que la 6 no tiene ninguna. Donde el SCADA no declara HSU se sigue usando la NCU
-más cercana, y queda dicho en el manifiesto (`hsus_asignadas_por`).
+DE QUÉ NCU CUELGA CADA HSU — por este orden, y el manifiesto dice cuál se aplicó
+(`hsus_asignadas_por`):
+
+  1. EL LAYOUT, si lo declara. Es lo normal desde que meteo_ncu.mjs lo escribe, y trae también el
+     gateway y el esclavo donde se saben (Ayora entera; El Burgo por campo).
+  2. EL CUPO DEL SCADA (`hsus` por NCU) repartido con distancia total mínima. La cercanía a secas
+     NO vale: en Ayora la HSU 2 está a 194 m de la NCU 6 y a 204 de la 3, y el SCADA dice que la 6
+     no tiene ninguna.
+  3. LA NCU MÁS CERCANA, que es la regla débil —falla 3 de los 24 casos conocidos— y por eso el
+     manifiesto nombra una a una las HSU que salieron así.
 """
 import json, csv, sys, math, os, re
 
-PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "paramo", "tunez"]
+# Benante, Panbianco y El Polvorin se anaden el 2026-08-26: tienen layout con NCU y gateway por
+# seguidor, que es todo lo que hace falta. NO tienen fichero en la toolbox del SCADA, asi que van sin
+# cupos ni esclavos —lo dice su manifiesto— pero medir su cobertura no depende de eso.
+# Dicayagua se queda fuera a proposito: es de mesas FIJAS y su layout no trae NCU ninguna, asi que no
+# hay malla que medir.
+PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "paramo", "tunez",
+           "benante", "panbianco", "polvorin"]
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SAL = os.path.join(RAIZ, "cobertura_coords")
 TOOLBOX = {"elburgo": "elburgo.json", "ayora": "24025-ayora.json", "sanjose": "24019-san-jose.json",
@@ -250,7 +263,13 @@ def puntos(planta, en_viga):
     elif hsu_ncu:
         origen = "scada (cupo de `hsus` por NCU) + distancia minima"
     elif any(o.get("ncu") is not None for o in met):
-        origen = "layout (solo en algunas)"
+        # LO IMPORTANTE AQUI ES LO QUE **NO** VIENE DEL LAYOUT. Decir solo "layout (solo en algunas)"
+        # deja al lector creyendo que el resto tambien, cuando el resto sale de la NCU mas cercana,
+        # que es la regla que se equivoca. San Jose es el caso: 5 declaradas y 3 por cercania.
+        # Se nombran las que caen fuera, porque son las que no hay que creerse.
+        sin = [o.get("name") or ("HSU%d" % (k + 1)) for k, o in enumerate(met) if o.get("ncu") is None]
+        origen = ("layout en %d de %d; las otras %d por NCU mas cercana, que NO es dato: %s"
+                  % (len(met) - len(sin), len(met), len(sin), ", ".join(sin)))
     elif sum(cupo.values()):
         origen = ("NCU mas cercana: el scada declara %d HSU y el layout tiene %d, no cuadran"
                   % (sum(cupo.values()), len(met)))
