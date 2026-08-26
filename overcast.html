@@ -175,17 +175,23 @@
         </select></div>
       <div class="f"><label id="skyparamlbl">Semilla</label><input id="skyparam" type="number" step="1" value="7"></div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
       <button class="btn small" id="skyapply">Aplicar preset</button>
       <button class="btn small" id="skyclear">Despejar</button>
       <span class="pill" id="skyinfo"></span>
     </div>
+    <div class="f" id="skyscopebox" style="display:none;margin-bottom:8px">
+      <label>Pintando el cielo de</label>
+      <select id="skyscope"></select></div>
     <canvas id="skyedit" class="viz skyedit" height="86"></canvas>
     <div class="nota">Arrastra para pintar la <b>cobertura nubosa</b> (arriba = 100 %). Modelo nube→irradiancia,
       declarado: GHI = GHI<sub>claro</sub>·(1 − 0,70·cc) — con cc = 1 queda el <b>30 %</b> del cielo claro,
       100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
       (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
-      DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.</div>
+      DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.
+      <br>Con el <b>cielo por NCU</b> activo, el selector de arriba dice a QUIÉN estás pintando: la
+      planta o una NCU concreta. Pintar una NCU no toca a las demás ni al cielo de planta, y los
+      botones de preset y «despejar» actúan sobre esa misma NCU.</div>
   </div>
 
   <div class="card">
@@ -1785,7 +1791,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.13.0';
+const VER='v1.14.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -1869,19 +1875,67 @@ function skyPresetApply(name,param){CC=skyPresetSeries(name,param);}
 $('skypreset').onchange=function(){
   $('skyparamlbl').textContent=this.value==='aleatorio'?'Semilla':'—';
 };
-$('skyapply').onclick=()=>{skyPresetApply($('skypreset').value,+$('skyparam').value);recompute();};
-$('skyclear').onclick=()=>{CC=new Array(288).fill(0);recompute();};
+$('skyapply').onclick=()=>{
+  const T=skyTarget(),nm=$('skypreset').value,sd=+$('skyparam').value;
+  if(T.z<0)skyPresetApply(nm,sd); else ZSKY[T.z]={preset:nm,semilla:sd};
+  zskyRender();recompute();
+};
+$('skyclear').onclick=()=>{
+  const T=skyTarget();
+  T.set(new Array(288).fill(0));
+  zskyRender();recompute();
+};
 
+/* ── a QUIÉN se pinta ─────────────────────────────────────────────────────
+   La tira era solo del cielo de planta, mientras que por NCU solo se podía
+   elegir preset: media asimetría tonta, porque el caso interesante (esta NCU
+   con una nube de 40 min a las 14:20 y la de al lado no) no se puede montar
+   con presets. SKYSCOPE = -1 planta · z ≥ 0 la zona z. Devuelve un accesor,
+   para que pintar, «aplicar preset» y «despejar» compartan destino. */
+let SKYSCOPE=-1;
+function skyTargetZ(){
+  if(!zskyOn()||SKYSCOPE<0)return -1;
+  const nZ=ZSKY.length;
+  return SKYSCOPE<nZ?SKYSCOPE:-1;
+}
+function skyTarget(){
+  const z=skyTargetZ();
+  if(z<0)return {z:-1,nombre:'la planta',
+    get:()=>CC, set:a=>{CC=a;}};
+  return {z:z,nombre:zskyNombres(ZSKY.length)[z],
+    // materializa la serie de la zona la primera vez que se toca: hasta
+    // entonces puede ser «igual que la planta» (null) o un preset
+    get:()=>{
+      const v=ZSKY[z];
+      if(v&&v.cc)return v.cc;
+      if(v)return skyPresetSeries(v.preset,v.semilla);
+      return CC;
+    },
+    set:a=>{ZSKY[z]={cc:a};}};
+}
 function drawSkyEdit(){
   const cv=$('skyedit');cv.width=cv.clientWidth*2;cv.height=172;
   const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#101722';ctx.fillRect(0,0,W,H);
-  // barras de cc
+  const T=skyTarget(), SER=T.get();
+  // barras de cc — las de una NCU van en su magenta, como en la gráfica de θ,
+  // para que no se confunda «estoy pintando la planta» con «estoy pintando la 3»
+  const zc0=T.z>=0;
   for(let i=0;i<288;i++){
-    const x=i/288*W,w=W/288+0.5,h=CC[i]*(H-18);
-    ctx.fillStyle='rgba(155,176,198,'+(0.25+0.55*CC[i])+')';
+    const x=i/288*W,w=W/288+0.5,h=SER[i]*(H-18);
+    ctx.fillStyle=zc0?'hsla(330,80%,62%,'+(0.3+0.55*SER[i])+')'
+                     :'rgba(155,176,198,'+(0.25+0.55*SER[i])+')';
     ctx.fillRect(x,H-18-h,w,h);
+  }
+  // con una NCU seleccionada, el cielo de PLANTA queda de fondo como referencia
+  if(zc0){
+    ctx.strokeStyle='rgba(155,176,198,.45)';ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<288;i++){
+      const x=i/288*W,y=H-18-CC[i]*(H-18);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.stroke();
   }
   // eje de horas
   ctx.font='18px ui-monospace,monospace';ctx.fillStyle='#5c7189';
@@ -1891,8 +1945,9 @@ function drawSkyEdit(){
     ctx.fillText((hh<10?'0':'')+hh+'h',Math.min(x+3,W-42),H-3);
   }
   // media del día
-  const mean=CC.reduce((s,v)=>s+v,0)/288;
-  $('skyinfo').innerHTML='cc media <b>'+(100*mean).toFixed(0)+'%</b>';
+  const mean=SER.reduce((a,v)=>a+v,0)/288;
+  $('skyinfo').innerHTML='cc media <b>'+(100*mean).toFixed(0)+'%</b>'+
+    (zc0?' <span style="color:var(--muted)">· '+T.nombre+'</span>':'');
 }
 (function(){
   const cv=$('skyedit');
@@ -1903,12 +1958,16 @@ function drawSkyEdit(){
     const cy=(ev.touches?ev.touches[0].clientY:ev.clientY)-r.top;
     const bin=Math.max(0,Math.min(287,Math.floor(cx/r.width*288)));
     const v=Math.max(0,Math.min(1,1-cy/(r.height-9)));
+    // se pinta sobre una COPIA del destino: si la zona venía de un preset o de
+    // «igual que la planta», el primer trazo la materializa sin tocar el resto
+    const T=skyTarget(), ser=T.get().slice();
     for(let k=-2;k<=2;k++){
       const b=bin+k;
       if(b<0||b>287)continue;
       const w=1-Math.abs(k)*0.3;
-      CC[b]=Math.max(0,Math.min(1,CC[b]*(1-w)+v*w));
+      ser[b]=Math.max(0,Math.min(1,ser[b]*(1-w)+v*w));
     }
+    T.set(ser);
     drawSkyEdit();
   };
   cv.addEventListener('pointerdown',ev=>{
@@ -1917,7 +1976,7 @@ function drawSkyEdit(){
     painting=true;cv.setPointerCapture(ev.pointerId);paint(ev);
   });
   cv.addEventListener('pointermove',ev=>{if(painting)paint(ev);});
-  cv.addEventListener('pointerup',()=>{painting=false;recompute();});
+  cv.addEventListener('pointerup',()=>{painting=false;zskyRender();recompute();});
 })();
 
 /* ── Open-Meteo: día real (histórico ERA5 / previsión) + modo EN VIVO ──────
@@ -2164,34 +2223,54 @@ function zskyNombres(nZ){
 function zskyRender(){
   const on=zskyOn(), zc0=$('zonalOn').checked;
   $('zskybox').style.display=(on&&zc0)?'':'none';
-  if(!(on&&zc0))return;
+  if(!(on&&zc0)){
+    SKYSCOPE=-1;$('skyscopebox').style.display='none';
+    if(SIM)drawSkyEdit();
+    return;
+  }
   const nZ=PLANT_REAL?PLANT_REAL.ncuIds.length:Math.max(2,Math.min(6,+$('nncu').value||4));
   while(ZSKY.length<nZ)ZSKY.push(null);
   ZSKY.length=nZ;
   const nom=zskyNombres(nZ);
   let h='';
   for(let z=0;z<nZ;z++){
-    const cur=ZSKY[z];
-    h+='<div class="f"><label>'+nom[z]+'</label><select data-z="'+z+'" class="zsky">'+
+    const cur=ZSKY[z], pintado=!!(cur&&cur.cc);
+    const sel=pintado?'@':(cur?cur.preset:'—');
+    h+='<div class="f"><label>'+nom[z]+(SKYSCOPE===z?' ✏':'')+'</label>'+
+       '<select data-z="'+z+'" class="zsky">'+
+       (pintado?'<option value="@" selected>pintado a mano</option>':'')+
        ZSKY_OPC.map(([v,t])=>'<option value="'+v+'"'+
-         ((cur?cur.preset:'—')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+         (sel===v?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
        (cur&&cur.preset==='aleatorio'
          ?'<input type="number" class="zseed" data-z="'+z+'" value="'+cur.semilla+'" step="1" min="1" title="semilla">'
-         :'')+'</div>';
+         :'')+
+       '<button class="btn small zpick" data-z="'+z+'" title="Pintar el cielo de esta NCU en la tira de arriba"'+
+       (SKYSCOPE===z?' style="border-color:hsl(330,80%,62%);color:hsl(330,80%,72%)"':'')+'>✏ pintar</button></div>';
   }
   $('zskygrid').innerHTML=h;
   $('zskygrid').querySelectorAll('select.zsky').forEach(el=>{
     el.onchange=()=>{
       const z=+el.dataset.z;
+      if(el.value==='@')return;              // «pintado a mano» no es elegible
       ZSKY[z]=el.value==='—'?null:{preset:el.value,semilla:z+1};
       zskyRender();recompute();
     };
   });
+  $('zskygrid').querySelectorAll('button.zpick').forEach(el=>{
+    el.onclick=()=>{SKYSCOPE=+el.dataset.z;zskyRender();drawSkyEdit();};
+  });
+  // el selector de ámbito de la tira, con los mismos nombres
+  const so=$('skyscope');
+  so.innerHTML='<option value="-1">la planta (todas las NCUs que no tengan cielo propio)</option>'+
+    nom.map((t,z)=>'<option value="'+z+'">'+t+'</option>').join('');
+  so.value=String(SKYSCOPE);
+  $('skyscopebox').style.display='';
   $('zskygrid').querySelectorAll('input.zseed').forEach(el=>{
     el.onchange=()=>{const z=+el.dataset.z;if(ZSKY[z])ZSKY[z].semilla=+el.value||1;recompute();};
   });
 }
-$('zskymode').onchange=()=>{zskyRender();recompute();};
+$('zskymode').onchange=()=>{SKYSCOPE=-1;zskyRender();recompute();};
+$('skyscope').onchange=function(){SKYSCOPE=+this.value;zskyRender();drawSkyEdit();};
 $('zskyalt').onclick=()=>{                       // el caso demostrativo: una sí y otra no
   const nZ=ZSKY.length||4;
   for(let z=0;z<nZ;z++)ZSKY[z]={preset:z%2?'overcast':'despejado',semilla:z+1};
@@ -2201,7 +2280,7 @@ $('zskyrnd').onclick=()=>{
   for(let z=0;z<ZSKY.length;z++)ZSKY[z]={preset:'aleatorio',semilla:z+1};
   zskyRender();recompute();
 };
-$('zskysame').onclick=()=>{ZSKY=ZSKY.map(()=>null);zskyRender();recompute();};
+$('zskysame').onclick=()=>{ZSKY=ZSKY.map(()=>null);SKYSCOPE=-1;zskyRender();drawSkyEdit();recompute();};
 
 function zonalCfg(){
   const cross=+$('crossmin').value;
@@ -2225,7 +2304,8 @@ function zskySeries(nZ){
   ZSKY.length=nZ;
   if(ZSKY.every(v=>v===null))return null;
   return ZSKY.map(v=>v===null?CC.slice()
-    :(v.preset==='despejado'?new Array(288).fill(0):skyPresetSeries(v.preset,v.semilla)));
+    :(v.cc?v.cc.slice()
+      :(v.preset==='despejado'?new Array(288).fill(0):skyPresetSeries(v.preset,v.semilla))));
 }
 function computeZonal(d){
   const zc=zonalCfg();
