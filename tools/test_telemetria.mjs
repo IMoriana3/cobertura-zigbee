@@ -57,6 +57,13 @@ t('si esa sesión heredada ha caducado, la renueva con su refresh_token',
   /grant_type=refresh_token/.test(html));
 t('hay entrada por GitHub, que es como se autentica la casa',
   /provider=github/.test(html) && /auth\/v1\/authorize/.test(html));
+// cuando la sesión no es viable (proveedor deshabilitado, RLS que no alcanza)
+// la página tiene que servir igual desde un fichero: si no, un problema de
+// permisos deja sin respuesta una pregunta que no depende de permisos
+t('se puede analizar SIN conexión, desde fichero o pegando',
+  /id="fich"/.test(html) && /id="pegado"/.test(html) && /function normaliza/.test(html));
+t('el fichero se NORMALIZA en vez de exigir un formato',
+  /Array\.isArray\(j\.equipos\)/.test(html) && /x\.series \|\| \{ t: x\.t/.test(html));
 
 /* ── navegador, con la respuesta de Supabase sustituida ──────────────────── */
 const serie = (paso, fn) => {
@@ -114,6 +121,24 @@ for (const [nombre, abre, espera] of [['ángulo único', false, 'err'], ['ángul
   }));
   t(`${nombre}: el veredicto acierta`, r.clase.includes(espera),
     `clase «${r.clase}» · ${r.html.replace(/<[^>]+>/g, ' ').slice(0, 110)}`);
+}
+
+/* fichero: la misma respuesta sin tocar la red ni los permisos */
+for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'],
+                                      ['fichero · ángulos abiertos', true, 'ok']]) {
+  const pg5 = await browser.newPage();
+  const e5 = []; pg5.on('pageerror', e => e5.push(e.message));
+  await pg5.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  // lo que saldría del SQL Editor: arrays sueltos, sin `series`
+  const filas = planta(abre).map(f => ({ ncu: f.ncu, equipo: f.equipo, tz: f.tz, paso_s: f.paso_s,
+    t: f.series.t, target_angle: f.series.v.target_angle, angle: f.series.v.angle }));
+  await pg5.fill('#pegado', JSON.stringify(filas));
+  await pg5.click('#bPegar');
+  await pg5.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const r5 = await pg5.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
+  t(`${nombre}: acierta sin tocar la red`, r5.includes(espera), `clase «${r5}»`);
+  t(`${nombre}: sin errores de consola`, e5.length === 0, e5.join(' · '));
+  await pg5.close();
 }
 
 /* GitHub: es una NAVEGACIÓN al authorize de Supabase, no un fetch */
