@@ -133,7 +133,7 @@ const sandbox = new Function(src + `
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           skyPresetSeries };`);
+           skyPresetSeries, skyNubeCorta };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');

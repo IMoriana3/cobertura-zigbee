@@ -233,6 +233,7 @@
       <div id="zskygrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));
            gap:6px;overflow-y:auto;padding-right:4px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn small" id="zskycorta" title="NCU 1 con una nube aislada MÁS CORTA que el confirm de la histéresis; el resto despejadas. Es el caso donde poa_switch la rechaza y flat conmuta dos veces por nada.">Nube corta en la NCU 1</button>
         <button class="btn small" id="zskyalt">Alternar despejado / overcast</button>
         <button class="btn small" id="zskyrnd">Aleatorio por NCU</button>
         <button class="btn small" id="zskysame">Todas igual que la planta</button>
@@ -1150,6 +1151,17 @@ function skyPresetSeries(name,param){
   }
   return cc;
 }
+/* Una nube CORTA y aislada: el caso donde la histéresis se gana el sueldo o se
+   la come. Si dura menos que el confirm, poa_switch la RECHAZA y no mueve un
+   grado, mientras flat conmuta dos veces por nada. */
+function skyNubeCorta(iniMin,durMin,cc){
+  const a=new Array(288).fill(0);
+  for(let m=iniMin;m<iniMin+durMin;m+=5){
+    const b=Math.floor(m/5);
+    if(b>=0&&b<288)a[b]=cc;
+  }
+  return a;
+}
 function canonCC(){
   const cc=new Array(288).fill(0);
   for(const [a,b] of TEST_SPANS)for(let m=a;m<b;m+=5)cc[m/5]=1;
@@ -1762,6 +1774,26 @@ function runPhysicsQA(){
     A(Math.abs(rf.plantZonal-rf.plantGlobal)<1e-6,
       'con cielo uniforme el frente debería dar zonal ≡ global (es la limitación que motiva esto)');
   });
+  t('NUBE CORTA sobre UNA NCU: por debajo del confirm, poa_switch no mueve un grado y flat conmuta por nada',()=>{
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:5,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:new Array(288).fill(0),om:null};
+    const dur=Math.round(0.8*DCFG_DEFAULT.confirmMin/5)*5;      // más corta que el confirm
+    A(dur<DCFG_DEFAULT.confirmMin,'la nube de la demo no es más corta que el confirm');
+    const ccz=[0,1,2,3].map(z=>z===0?skyNubeCorta(780,dur,0.95):new Array(288).fill(0));
+    const rs=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,ccz);
+    const rf=zonalRun(o,4,90,'diffuse_flat',DCFG_DEFAULT,null,null,null,ccz);
+    const conm=a=>{let n=0;for(let i=1;i<a.length;i++)if(!!a[i]!==!!a[i-1])n++;return n;};
+    // la de la nube, con histéresis: ni una conmutación, y su θ es el de las despejadas
+    A(conm(rs.zones[0].flag)===0,'poa_switch conmutó con una nube más corta que el confirm');
+    A(rs.zones[0].theta.join()===rs.zones[1].theta.join(),
+      'la NCU de la nube se desvió de las despejadas pese a no conmutar');
+    // sin memoria, en cambio, sí se mueve — y ese es el contraste de la demo
+    A(conm(rf.zones[0].flag)>0,'flat no reaccionó: la nube no llega a dar señal y la demo no enseña nada');
+    A(rf.zones[0].theta.join()!==rf.zones[1].theta.join(),'flat no separó la NCU de la nube');
+    // y las zonas despejadas no se enteran, con cualquiera de las dos
+    for(const r of [rs,rf])for(let z=2;z<4;z++)
+      A(r.zones[z].theta.join()===r.zones[1].theta.join(),'una zona despejada se movió por la nube de otra');
+  });
   t('skyPresetSeries es puro: 288 bines en [0,1], mismo resultado dos veces, y no toca nada global',()=>{
     for(const nm of ['despejado','overcast','manana','tarde','frentes','test','aleatorio']){
       const a=skyPresetSeries(nm,7), b2=skyPresetSeries(nm,7);
@@ -1791,7 +1823,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.15.0';
+const VER='v1.16.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2313,6 +2345,14 @@ $('skyscope').onchange=function(){
   if(v==='?')return;                                   // «varias» no es elegible: se compone con ✏
   SKYSEL=v==='-1'?[]:(v==='*'?ZSKY.map((_,z)=>z):[+v]);
   zskyRender();drawSkyEdit();
+};
+$('zskycorta').onclick=()=>{
+  // la duración sale del confirm CONFIGURADO, no de un número fijo: así el
+  // caso sigue siendo «más corta que el confirm» aunque se toquen los ajustes
+  const d=cfgDiffuse();
+  const dur=Math.max(10,Math.round(0.8*d.confirmMin/5)*5);
+  ZSKY=ZSKY.map((_,z)=>z===0?{cc:skyNubeCorta(780,dur,0.95)}:{preset:'despejado',semilla:1});
+  SKYSEL=[0];zskyRender();drawSkyEdit();recompute();
 };
 $('zskyalt').onclick=()=>{                       // el caso demostrativo: una sí y otra no
   const nZ=ZSKY.length||4;
