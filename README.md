@@ -148,9 +148,13 @@ es la forma más traicionera de fallar. Tres vías, en este orden:
    sesión en el `localStorage` de ese origen. Esta página vive en el mismo, así que **la reutiliza
    sola** —y la renueva con su `refresh_token` si ha caducado—. Lo dice en el registro en vez de
    entrar en silencio.
-2. **Un enlace por correo** (*magic link*): pones el correo y entras sin teclear contraseña. Para que
-   el enlace te devuelva aquí, esta dirección tiene que estar en las *Redirect URLs* del proyecto.
-3. **Correo y contraseña**, si prefieres. La página pide correo y contraseña (las mismas de
+2. **Entrar con GitHub**, que es como se autentica la casa en Supabase — ahí no hay contraseña que
+   teclear. Es una navegación al `authorize` del proyecto y vuelve con el token en el fragmento.
+3. **Un enlace por correo** (*magic link*), si el navegador donde miras no es el de la sesión.
+4. **Correo y contraseña**, si el proyecto las tuviera.
+
+Las vías 2 y 3 necesitan que esta dirección esté en las *Redirect URLs* del proyecto de Supabase; si
+no lo está, la autenticación funciona pero te devuelve al *Site URL* configurado allí. La página pide correo y contraseña (las mismas de
 `importar-logs.html`), las manda **solo** a tu Supabase y **no las guarda**: en la pestaña queda el
 token, que caduca solo. Y distingue en el registro entre «cero filas SIN sesión» y «cero filas CON
 sesión», que son dos problemas distintos.
@@ -158,7 +162,7 @@ sesión», que son dos problemas distintos.
 El botón **Descargar remuestreado** deja un JSON pequeño con la malla ya calculada, que es lo que
 hay que compartir para analizarlo fuera.
 
-QA: `node tools/test_telemetria.mjs` (24 comprobaciones) — prueba la página con datos sintéticos
+QA: `node tools/test_telemetria.mjs` (27 comprobaciones) — prueba la página con datos sintéticos
 **en las dos direcciones**, porque una que solo acertara con el caso bueno no distinguiría nada, y
 fija que la contraseña no se guarda y que el «cero filas» se explique según haya sesión o no.
 

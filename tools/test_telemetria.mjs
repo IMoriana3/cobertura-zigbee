@@ -55,6 +55,8 @@ t('reutiliza la sesión que la página hermana dejó en el MISMO origen',
   /\^sb-\.\+-auth-token\$/.test(html) && /currentSession/.test(html));
 t('si esa sesión heredada ha caducado, la renueva con su refresh_token',
   /grant_type=refresh_token/.test(html));
+t('hay entrada por GitHub, que es como se autentica la casa',
+  /provider=github/.test(html) && /auth\/v1\/authorize/.test(html));
 
 /* ── navegador, con la respuesta de Supabase sustituida ──────────────────── */
 const serie = (paso, fn) => {
@@ -112,6 +114,22 @@ for (const [nombre, abre, espera] of [['ángulo único', false, 'err'], ['ángul
   }));
   t(`${nombre}: el veredicto acierta`, r.clase.includes(espera),
     `clase «${r.clase}» · ${r.html.replace(/<[^>]+>/g, ' ').slice(0, 110)}`);
+}
+
+/* GitHub: es una NAVEGACIÓN al authorize de Supabase, no un fetch */
+{
+  const pg4 = await browser.newPage();
+  await pg4.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  // la navegación se intercepta y se aborta: interesa A DÓNDE iba, no llegar
+  let ido = null;
+  await pg4.route('**/auth/v1/authorize*', r => { ido = r.request().url(); r.abort(); });
+  await pg4.click('#bGithub');
+  await pg4.waitForTimeout(600);
+  t('«Entrar con GitHub» va al authorize con el proveedor y la vuelta',
+    /\/auth\/v1\/authorize\?provider=github&redirect_to=/.test(ido || ''), String(ido));
+  t('la vuelta apunta a ESTA página, no a otra',
+    decodeURIComponent(String(ido)).includes(`localhost:${port}/`), String(ido));
+  await pg4.close();
 }
 
 /* sesión heredada: la que supabase-js dejó en localStorage vale, sin teclear */
