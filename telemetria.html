@@ -348,12 +348,19 @@ $('planta').onchange = () => {
    arrays ya sueltos. */
 function normaliza(txt) {
   txt = txt.trim();
-  /* El «Download CSV» del SQL Editor no da JSON: da una cabecera (json_agg) y
-     una única celda con el JSON entrecomillado y las comillas dobladas. Se
-     desenvuelve aquí en vez de pedirle a nadie que lo convierta a mano. */
-  if (/^"?json_agg"?\s*[\r\n]/.test(txt)) {
-    txt = txt.replace(/^[^\r\n]*[\r\n]+/, '').trim();
-    if (txt.startsWith('"')) txt = txt.slice(1, txt.lastIndexOf('"')).replace(/""/g, '"');
+  if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);           // BOM
+  /* El «Download CSV» del SQL Editor no da JSON: da una CABECERA con el nombre
+     de la columna y debajo una única celda con el JSON entrecomillado y las
+     comillas dobladas. Se desenvuelve aquí, en tres pasos legibles, en vez de
+     pedirle a nadie que lo convierta a mano. */
+  const empiezaJson = (x) => /^[[{]/.test(x);
+  if (!empiezaJson(txt) && !/^"[[{]/.test(txt)) {
+    const nl = txt.search(/[\r\n]/);
+    if (nl > 0 && nl < 60) txt = txt.slice(nl).trim();            // fuera la cabecera
+  }
+  if (txt.startsWith('"')) {                                      // celda entrecomillada
+    const fin = txt.lastIndexOf('"');
+    if (fin > 0) txt = txt.slice(1, fin).replace(/""/g, '"');
   }
   let j = JSON.parse(txt);
   // el SQL Editor puede devolver [{json_agg:"[…]"}] o el texto a secas
@@ -382,7 +389,13 @@ async function cargaTexto(txt, quien) {
     $('dia').innerHTML = '<option>(del fichero)</option>';
     $('cDia').style.display = '';
     analiza(f, '(del fichero)', '(del fichero)');
-  } catch (e) { log(`${quien}: no se pudo leer — ${e.message}`, 'err'); }
+  } catch (e) {
+    const pista = /^"?[a-z_?]+\s*[\r\n]/i.test(txt.trim())
+      ? ' — parece el CSV del SQL Editor, y esta página no sabe desenvolverlo:'
+        + ' es una versión anterior al arreglo. Recarga con Ctrl+F5 y reinténtalo.'
+      : '';
+    log(`${quien}: no se pudo leer — ${e.message}${pista}`, 'err');
+  }
 }
 let FICHERO = null;
 $('fich').onchange = async (e) => {
@@ -445,6 +458,9 @@ function analiza(filas, planta, dia) {
        p95−p5 y no máx−mín: un solo seguidor en tope o en posición segura
        falsearía el máximo todos los días. */
     const ap = [], nEq = [], med = [];
+    const porNcu = new Map();
+    for (const e of eq) { const k = String(e.ncu == null ? '?' : e.ncu);
+      if (!porNcu.has(k)) porNcu.set(k, []); porNcu.get(k).push(e); }
     for (let i = 0; i < N; i++) {
       const v = [];
       for (const e of eq) if (e.obj[i] != null && Math.abs(e.obj[i]) < 54.9) v.push(e.obj[i]);
@@ -458,11 +474,27 @@ function analiza(filas, planta, dia) {
            malla, apertura: ap, mediana: med, n: nEq,
            detalle: eq.map(e => ({ ncu: e.ncu, equipo: e.equipo, obj: e.obj })) };
   pinta(ap, med, nEq, paso);
-  veredicto(ap, med, nEq, paso);
+  veredicto(ap, med, nEq, paso, porNcu, N);
   $('bDescargar').disabled = false;
 }
 
-function veredicto(ap, med, nEq, paso) {
+/* apertura al sol bajo de un subconjunto de equipos, con el MISMO criterio */
+function aperturaSolBajo(lista, N, paso) {
+  const v = [];
+  for (let i = 0; i < N; i++) {
+    const o = [];
+    for (const e of lista) if (e.obj[i] != null && Math.abs(e.obj[i]) < 54.9) o.push(e.obj[i]);
+    if (o.length < 5) continue;
+    o.sort((a, b) => a - b);
+    const m = o[Math.floor(o.length / 2)];
+    if (Math.abs(m) > 35) v.push(o[Math.floor(o.length * 0.95)] - o[Math.floor(o.length * 0.05)]);
+  }
+  if (!v.length) return null;
+  v.sort((a, b) => a - b);
+  return v[Math.floor(v.length * 0.9)];
+}
+
+function veredicto(ap, med, nEq, paso, porNcu, N) {
   // el mediodía es donde las dos firmas coinciden: se juzga por los EXTREMOS,
   // que es donde el backtracking existe
   /* «sol bajo» se decide por lo GIRADOS que están los seguidores (|θ|>35°), no
@@ -470,8 +502,16 @@ function veredicto(ap, med, nEq, paso) {
      logs de la NCU vienen en UTC— ni de acertar con el orto. */
   const idx = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
   if (!idx.length) { $('ver').innerHTML = '<div class="ver warn">sin instantes con suficientes seguidores</div>'; return; }
-  const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados = sol bajo
-  const centro = idx.filter(x => Math.abs(x.med) < 10);          // cerca del cenit
+  const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados
+  /* El «centro» NO puede definirse por |θ| pequeño: en una planta CON
+     backtracking los seguidores se aplanan justo al orto y al ocaso para no
+     sombrearse, así que |θ|<10° captura las dos jorobas además del mediodía y
+     el número sale alto y contradice a la gráfica. Se define por TIEMPO: la
+     hora central del tramo con datos, ±1 h. */
+  const conDato = idx.map(x => x.i);
+  const iMed = conDato[Math.floor(conDato.length / 2)];
+  const media_h = Math.round(3600 / paso);
+  const centro = idx.filter(x => Math.abs(x.i - iMed) <= media_h);
   const p90 = (a) => { if (!a.length) return null; const s = a.map(x => x.v).sort((p, q) => p - q); return s[Math.floor(s.length * 0.9)]; };
   const aE = p90(extremos), aC = p90(centro);
   const hh = (i) => String(Math.floor(i * paso / 3600)).padStart(2, '0') + ':' + String(Math.floor(i * paso % 3600 / 60)).padStart(2, '0');
@@ -484,8 +524,22 @@ function veredicto(ap, med, nEq, paso) {
       `<div class="nota">Compatible con backtracking que sí usa la pendiente de cada seguidor.</div>`;
   else h = `<div class="ver warn">Apertura al sol bajo: ${aE.toFixed(2)}° — intermedia</div>` +
       `<div class="nota">Ni ángulo único ni bt3d pleno. Mirar el detalle antes de concluir.</div>`;
-  h += `<div class="nota">Al cenit: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
+  h += `<div class="nota">En el centro del día: ${aC == null ? '—' : aC.toFixed(2) + '°'} <b>(ahí las dos firmas coinciden: no distingue)</b>. ` +
        `Pico del día ${pico.v.toFixed(2)}° a las ${hh(pico.i)}. Seguidores contados: hasta ${Math.max(...nEq)}.</div>`;
+  /* DE QUÉ se está hablando: si el fichero trae una sola NCU, esto NO es la
+     planta. Generalizar de una parte al todo es el error fácil aquí —lo cometí
+     yo al leer el primer resultado— y por eso lo dice el propio informe. */
+  if (porNcu && porNcu.size) {
+    const ncus = [...porNcu.keys()].sort((a, b) => (+a || 0) - (+b || 0));
+    h += '<div class="nota" style="margin-top:6px"><b>Alcance:</b> ' + (ncus.length === 1
+      ? `una sola NCU (<b>NCU${ncus[0]}</b>, ${porNcu.get(ncus[0]).length} seguidores). ` +
+        '<b class="warn">Esto NO es la planta entera</b>: quita el filtro de <code>ncu</code> ' +
+        'en la consulta para verla toda.'
+      : `${ncus.length} NCUs — ` + ncus.map(n => { const r = aperturaSolBajo(porNcu.get(n), N, paso);
+          return `NCU${n} (${porNcu.get(n).length} seg): <b>${r == null ? '—' : r.toFixed(2) + '°'}</b>`;
+        }).join(' · ') + '. Si una abre y otra no, están configuradas distinto y eso es un hallazgo por sí solo.'
+      ) + '</div>';
+  }
   $('ver').innerHTML = h;
 }
 
