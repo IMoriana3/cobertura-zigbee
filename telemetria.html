@@ -68,12 +68,17 @@
   <div class="row" style="margin-top:10px">
     <div><label>Correo</label><input id="mail" type="email" autocomplete="username" placeholder="tu@correo"></div>
     <div><label>Contraseña</label><input id="pass" type="password" autocomplete="current-password"></div>
-    <button id="bEntrar" class="p">Entrar</button>
+    <button id="bGithub" class="p">Entrar con GitHub</button>
+    <button id="bEntrar">Entrar</button>
     <button id="bEnlace">Mandarme un enlace</button>
     <button id="bSalir" style="display:none">Salir</button>
     <button id="bSondeo">Ver qué hay</button>
     <div id="sesion" class="nota" style="align-self:center"></div>
   </div>
+  <div class="nota" style="margin-top:9px"><b>Si entras en Supabase con GitHub</b> —que es lo
+    habitual aquí— pulsa <b>Entrar con GitHub</b> y vuelves ya dentro. Requiere que esta dirección
+    esté en las <i>Redirect URLs</i> del proyecto; si no, GitHub autentica pero Supabase te devuelve
+    a la página de inicio configurada allí, y el registro lo dirá.</div>
   <div class="nota" style="margin-top:9px"><b>Sin contraseña:</b> pon solo el correo y pulsa
     <b>Mandarme un enlace</b>. Te llega un correo, lo abres <b>en este mismo navegador</b> y entras.
     Para que el enlace te devuelva aquí, esta dirección tiene que estar en las
@@ -177,7 +182,7 @@ function pintaSesion() {
   $('sesion').innerHTML = s ? `<span class="ok">sesión activa · ${s.user || ''}</span>`
                             : '<span class="mut">sin sesión: la tabla no dejará ver nada</span>';
   $('bSalir').style.display = s ? '' : 'none';
-  $('bEntrar').style.display = s ? 'none' : '';
+  for (const b of ['bEntrar', 'bEnlace', 'bGithub']) $(b).style.display = s ? 'none' : '';
 }
 async function api(qs) {
   const url = $('url').value.replace(/\/+$/, ''), key = $('key').value.trim();
@@ -206,6 +211,18 @@ $('bEntrar').onclick = async () => {
   } catch (e) { log('no se pudo entrar: ' + e.message, 'err'); }
   $('bEntrar').disabled = false;
 };
+/* ── OAuth con GitHub ─────────────────────────────────────────────────────
+   Es lo que usa la casa para entrar en Supabase, así que no hay contraseña
+   que teclear. Va por NAVEGACIÓN, no por fetch: se sale de la página y se
+   vuelve con el token en el fragmento, que es el mismo camino de vuelta que
+   ya recoge el magic link. */
+$('bGithub').onclick = () => {
+  const url = $('url').value.replace(/\/+$/, '');
+  const vuelta = location.origin + location.pathname;
+  log('saliendo a GitHub para autenticar…');
+  location.href = `${url}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(vuelta)}`;
+};
+
 $('bSalir').onclick = () => { sessionStorage.removeItem('tele_ses'); pintaSesion(); log('sesión cerrada'); };
 
 /* ── magic link ───────────────────────────────────────────────────────────
