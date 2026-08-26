@@ -1,0 +1,182 @@
+{
+ "planta": "panbianco",
+ "titulo": "Panbianco 25004.2",
+ "crs": "EPSG:25833",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 1484,
+ "tcus": 1476,
+ "hsus": 6,
+ "reps": 2,
+ "cableados": 0,
+ "ncus": 12,
+ "gws": 12,
+ "una_fila": false,
+ "gateways_declarados_en_scada": false,
+ "hsus_asignadas_por": "layout (ncu declarada en `meteo`)",
+ "ncus_sin_declarar_en_scada": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12
+ ],
+ "ambitos": [
+  {
+   "fichero": "coords_panbianco.csv",
+   "tcus": 1484,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_panbianco_NCU01.csv",
+   "tcus": 141,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_panbianco_NCU02.csv",
+   "tcus": 141,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_panbianco_NCU03.csv",
+   "tcus": 54,
+   "ambito": "ncu",
+   "ncu": 3
+  },
+  {
+   "fichero": "coords_panbianco_NCU04.csv",
+   "tcus": 139,
+   "ambito": "ncu",
+   "ncu": 4
+  },
+  {
+   "fichero": "coords_panbianco_NCU05.csv",
+   "tcus": 157,
+   "ambito": "ncu",
+   "ncu": 5
+  },
+  {
+   "fichero": "coords_panbianco_NCU06.csv",
+   "tcus": 140,
+   "ambito": "ncu",
+   "ncu": 6
+  },
+  {
+   "fichero": "coords_panbianco_NCU07.csv",
+   "tcus": 127,
+   "ambito": "ncu",
+   "ncu": 7
+  },
+  {
+   "fichero": "coords_panbianco_NCU08.csv",
+   "tcus": 46,
+   "ambito": "ncu",
+   "ncu": 8
+  },
+  {
+   "fichero": "coords_panbianco_NCU09.csv",
+   "tcus": 119,
+   "ambito": "ncu",
+   "ncu": 9
+  },
+  {
+   "fichero": "coords_panbianco_NCU10.csv",
+   "tcus": 134,
+   "ambito": "ncu",
+   "ncu": 10
+  },
+  {
+   "fichero": "coords_panbianco_NCU11.csv",
+   "tcus": 139,
+   "ambito": "ncu",
+   "ncu": 11
+  },
+  {
+   "fichero": "coords_panbianco_NCU12.csv",
+   "tcus": 147,
+   "ambito": "ncu",
+   "ncu": 12
+  },
+  {
+   "fichero": "coords_panbianco_GW1.csv",
+   "tcus": 141,
+   "ambito": "gw",
+   "gw": 1
+  },
+  {
+   "fichero": "coords_panbianco_GW2.csv",
+   "tcus": 141,
+   "ambito": "gw",
+   "gw": 2
+  },
+  {
+   "fichero": "coords_panbianco_GW3.csv",
+   "tcus": 54,
+   "ambito": "gw",
+   "gw": 3
+  },
+  {
+   "fichero": "coords_panbianco_GW4.csv",
+   "tcus": 139,
+   "ambito": "gw",
+   "gw": 4
+  },
+  {
+   "fichero": "coords_panbianco_GW5.csv",
+   "tcus": 157,
+   "ambito": "gw",
+   "gw": 5
+  },
+  {
+   "fichero": "coords_panbianco_GW6.csv",
+   "tcus": 140,
+   "ambito": "gw",
+   "gw": 6
+  },
+  {
+   "fichero": "coords_panbianco_GW7.csv",
+   "tcus": 127,
+   "ambito": "gw",
+   "gw": 7
+  },
+  {
+   "fichero": "coords_panbianco_GW8.csv",
+   "tcus": 46,
+   "ambito": "gw",
+   "gw": 8
+  },
+  {
+   "fichero": "coords_panbianco_GW9.csv",
+   "tcus": 119,
+   "ambito": "gw",
+   "gw": 9
+  },
+  {
+   "fichero": "coords_panbianco_GW10.csv",
+   "tcus": 134,
+   "ambito": "gw",
+   "gw": 10
+  },
+  {
+   "fichero": "coords_panbianco_GW11.csv",
+   "tcus": 139,
+   "ambito": "gw",
+   "gw": 11
+  },
+  {
+   "fichero": "coords_panbianco_GW12.csv",
+   "tcus": 147,
+   "ambito": "gw",
+   "gw": 12
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv panbianco_real.geojson"
+}

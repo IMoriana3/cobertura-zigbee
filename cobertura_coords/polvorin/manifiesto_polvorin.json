@@ -1,0 +1,52 @@
+{
+ "planta": "polvorin",
+ "titulo": "El Polvorín 25082",
+ "crs": "EPSG:25829",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 121,
+ "tcus": 119,
+ "hsus": 2,
+ "reps": 0,
+ "cableados": 0,
+ "ncus": 2,
+ "gws": 2,
+ "una_fila": false,
+ "gateways_declarados_en_scada": false,
+ "hsus_asignadas_por": "layout en 1 de 2; las otras 1 por NCU mas cercana, que NO es dato: HSU 2",
+ "ncus_sin_declarar_en_scada": [
+  1,
+  2
+ ],
+ "ambitos": [
+  {
+   "fichero": "coords_polvorin.csv",
+   "tcus": 121,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_polvorin_NCU01.csv",
+   "tcus": 76,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_polvorin_NCU02.csv",
+   "tcus": 45,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_polvorin_GW1.csv",
+   "tcus": 76,
+   "ambito": "gw",
+   "gw": 1
+  },
+  {
+   "fichero": "coords_polvorin_GW2.csv",
+   "tcus": 45,
+   "ambito": "gw",
+   "gw": 2
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv polvorin_real.geojson"
+}
