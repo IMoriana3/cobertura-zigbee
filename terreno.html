@@ -3563,6 +3563,77 @@ function selectInv(i){FICHA={t:'inv',id:i};ensureNet().then(function(){if(!INVPT
 function selectCT(c){FICHA={t:'ct',id:c};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();highlightLine(CTMAIN[c].x,CTMAIN[c].n,SUBST.x,SUBST.n);updateFicha();});}
 function selectSub(){FICHA={t:'sub'};ensureNet().then(function(){if(!INVSTR.length){computeSinks();computeInvStrings();}invByCT();if(selLine){scene.remove(selLine);selLine=null;}updateFicha();});}
 function closeFicha(){FICHA=null;var f=$('invFicha');if(f)f.style.display='none';if(selLine){scene.remove(selLine);if(selLine.geometry)selLine.geometry.dispose();selLine=null;}}
+/* INSTANCIAR EL BOS. El campo va instanciado desde siempre, pero las instalaciones se montaban
+   pieza a pieza: en El Burgo son 3.214 mallas, de las que 3.149 NO estaban instanciadas y 2.833
+   cuelgan de aqui. Eso son ~3.150 llamadas de dibujo por fotograma, y como el bucle pinta sombras
+   la escena se recorre otra vez para el mapa de sombra: el doble. Los triangulos no son el
+   problema -son postes, cajas y cilindros de 12 a 32 triangulos-; el problema es el NUMERO.
+
+   Se hace en una PASADA AL FINAL y no reescribiendo las 56 llamadas a bosGroup.add() repartidas
+   por 700 lineas: mismo resultado y sin tocar la geometria de nada. Se agrupan las mallas por
+   geometria identica y material equivalente, y cada grupo pasa a ser un InstancedMesh con las
+   matrices de mundo de sus piezas. Lo que se ve es exactamente lo mismo.
+
+   QUE SE DEJA FUERA, y por que:
+     · lo que anima METEO_ANIM (las cazoletas, la veleta, el panel de referencia): un InstancedMesh
+       no se puede girar pieza a pieza con rotation.y. Hoy esa lista esta vacia -la meteo se quito-
+       pero la guarda se queda puesta por si vuelve.
+     · las etiquetas de HLBL, que se tocan despues por referencia.
+     · lo TRANSPARENTE: al instanciar se pierde el orden de pintado por objeto, y con transparencia
+       eso si se nota.
+     · lo que tenga hijos, y lo que no sea Mesh -lineas, sprites-.
+     · los grupos de menos de SEIS piezas: no compensa el objeto extra.
+
+   La clave del material va por sus PROPIEDADES y no por su uuid: muchas piezas se crean con un
+   `new THREE.MeshStandardMaterial({...})` dentro del bucle, asi que dos armarios identicos tienen
+   materiales distintos como objetos y el mismo aspecto. Agrupando por uuid no se juntaba ninguno. */
+function claveMat(m){
+  if(!m||Array.isArray(m))return null;
+  return [m.type,m.color&&m.color.getHexString(),m.roughness,m.metalness,m.opacity,m.side,
+          m.emissive&&m.emissive.getHexString(),m.flatShading,m.map?m.map.uuid:'-'].join('|');
+}
+function claveGeo(g){
+  if(!g)return null;
+  if(g.parameters)return g.type+'|'+JSON.stringify(g.parameters);
+  var p=g.attributes&&g.attributes.position;
+  return p?g.type+'|v'+p.count+'|i'+(g.index?g.index.count:0):null;   // sin parametros: se agrupa por tamaño, y se compara la caja
+}
+function instanciaBOS(){
+  if(!bosGroup||typeof THREE.InstancedMesh!=='function')return null;
+  var _t0i=performance.now();
+  var fuera=new Set();
+  try{ (METEO_ANIM||[]).forEach(function(m){ ['a','v','p'].forEach(function(k){ if(m&&m[k])m[k].traverse(function(o){fuera.add(o);}); }); }); }catch(e){}
+  try{ (HLBL||[]).forEach(function(l){ if(l)fuera.add(l); }); }catch(e){}
+
+  bosGroup.updateMatrixWorld(true);
+  var inv=new THREE.Matrix4().copy(bosGroup.matrixWorld).invert();
+  var grupos={}, antes=0;
+  bosGroup.traverse(function(o){
+    if(!o.isMesh||o.isInstancedMesh)return;
+    antes++;
+    if(fuera.has(o)||o.children.length||o.userData&&o.userData.noInst)return;
+    var m=o.material; if(!m||Array.isArray(m)||m.transparent||m.opacity<1)return;
+    var kg=claveGeo(o.geometry), km=claveMat(m); if(!kg||!km)return;
+    var k=kg+'||'+km; (grupos[k]||(grupos[k]=[])).push(o);
+  });
+  var creados=0, retirados=0;
+  Object.keys(grupos).forEach(function(k){
+    var lote=grupos[k]; if(lote.length<6)return;
+    var im=new THREE.InstancedMesh(lote[0].geometry,lote[0].material,lote.length);
+    var M=new THREE.Matrix4();
+    /* Sin updateMatrixWorld por pieza: bosGroup ya se actualizo entero arriba, y llamarlo aqui
+       recorria el subarbol una vez POR MALLA -unas 2.800-, que era lo que disparaba la carga. */
+    lote.forEach(function(o,i){ M.multiplyMatrices(inv,o.matrixWorld); im.setMatrixAt(i,M); });
+    im.instanceMatrix.needsUpdate=true;
+    im.castShadow=true; im.receiveShadow=true; im.name='bos-inst';
+    im.frustumCulled=false;                      // el conjunto abarca la planta entera: culearlo por su caja no ahorra y sí lo hace desaparecer al acercarse
+    lote.forEach(function(o,i){ if(o.parent)o.parent.remove(o); if(i&&o.geometry&&o.geometry.dispose)o.geometry.dispose(); retirados++; });
+    bosGroup.add(im); creados++;
+  });
+  var despues=0; bosGroup.traverse(function(o){ if(o.isMesh)despues++; });
+  var r={antes:antes,despues:despues,grupos:creados,retirados:retirados,ms:Math.round(performance.now()-_t0i)};
+  window.__instBOS=r; return r;
+}
 function buildBOS(){
   if(bosGroup)scene.remove(bosGroup);
   METEO_ANIM=[];
@@ -4290,6 +4361,7 @@ function buildBOS(){
        va con ella su brazo y su entrada en METEO_ANIM (era lo único que animaba ese grupo). */
     var lb=makeLabel(m.name,'poi');lb.position.set(X,y+h+1.7,Z);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
+  instanciaBOS();
   fijGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // y en las mesas fijas, que antes colgaban de bosGroup y heredaban esta misma pasada (herrajes: grapa, cartela, placa)
 }
 /* ---------- Punto 4: LOS / Fresnel TCU ↔ NCU sobre el terreno real ---------- */
