@@ -1110,6 +1110,11 @@ t('v1.37: el mando «configuración de la TCU» existe y arranca en levantamient
   if (!/<select id="tcucfg"/.test(html)) throw new Error('no está el selector');
   if (!/value="levantamiento"/.test(html) || !/value="cero"/.test(html))
     throw new Error('faltan las dos opciones');
+  // la etiqueta NO puede prometer «según levantamiento»: esa opción usa la
+  // pendiente que el simulador deduce por PAREJA DE LÍNEAS, que no es la ficha
+  // que se escribe en la TCU (por seguidor, a su vecina crítica: ~1,8x mayor)
+  if (/>Según levantamiento/.test(html))
+    throw new Error('la etiqueta promete la ficha de la TCU y entrega otra pendiente distinta');
   const sel = html.slice(html.indexOf('<select id="tcucfg"'), html.indexOf('</select>', html.indexOf('<select id="tcucfg"')));
   if (/value="cero"[^>]*selected/.test(sel))
     throw new Error('arranca «sin configurar»: cambiaría el resultado por defecto de todo el mundo');
