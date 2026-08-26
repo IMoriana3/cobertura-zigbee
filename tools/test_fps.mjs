@@ -13,6 +13,18 @@ const PUERTO = process.env.PUERTO || 8124;
 const PLANTAS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 if (!PLANTAS.length) { console.error('uso: node tools/test_fps.mjs <planta…>'); process.exit(2); }
 
+/* Que el servidor esté vivo se comprueba ANTES, y se dice. Si no, la primera planta falla con un
+   ERR_CONNECTION_REFUSED que no explica nada y se pierde la tanda entera —pasó, matando el
+   servidor con el banco a medias—. */
+try {
+  const r = await fetch(`http://localhost:${PUERTO}/terreno.html`, { method: 'HEAD' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+} catch (e) {
+  console.error(`no hay servidor en el puerto ${PUERTO}: ${e.message}\n`
+    + `  levántalo con:  python3 -m http.server ${PUERTO} --directory .`);
+  process.exit(2);
+}
+
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 console.log('planta        listo    objetos  mallas  instancias  triángulos   ms/frame   fps    ms/frame(cámara)  fps');
 for (const p of PLANTAS) {
