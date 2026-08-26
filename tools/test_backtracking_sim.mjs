@@ -1009,6 +1009,29 @@ t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de c
   if (meta.autocomprobacion.peor_desvio_pp > 0.05)
     throw new Error('la relación vector/azimut ya no reproduce la transversal');
 });
+t('v1.34 cruce: el diagnóstico REAL casa con el simulador, y lo dudoso se marca', () => {
+  const ep = path.join(ROOT, 'tools', 'cruce_diagnostico.mjs');
+  if (!fs.existsSync(ep)) throw new Error('sin tools/cruce_diagnostico.mjs');
+  const src = fs.readFileSync(ep, 'utf-8');
+  // el emparejado por el número del id apareaba 591 de 748 y NO se notaba con
+  // sol alto: el TCU del diagnóstico es el RANGO dentro de su NCU
+  if (!/v\.sort\(\(a, b\) => a\.nnn - b\.nnn\)/.test(src) || !/SEG\.set\(`\$\{ncu\}\|\$\{i \+ 1\}`/.test(src))
+    throw new Error('el cruce no aparea por rango dentro de la NCU');
+  // una NCU cuyo recuento no casa NO se aparea a ojo: se marca
+  if (!/SIN_VERIFICAR/.test(src)) throw new Error('no se marcan las NCUs cuyo recuento no casa');
+  // y el estado de batería se mira ANTES que el modo, o el peor caso se pierde
+  const iSeg = src.indexOf('if (enSeguro(x)) { seguro.push(x); continue; }');
+  const iAuto = src.indexOf("if (x.Modo !== 'AUTO' || x.Objetivo == null) { noAuto++; continue; }");
+  if (!(iSeg > 0 && iAuto > 0 && iSeg < iAuto))
+    throw new Error('el filtro de AUTO va antes que el de batería: un seguidor muerto en OFF desaparece del informe');
+  // un volcado de sol alto no puede venderse como prueba de política
+  if (!/NO DISCRIMINA la política/.test(src))
+    throw new Error('el informe no avisa de cuándo el volcado no discrimina');
+  // la x cruda es xFrom + lineX (el fallo que costó 500 seguidores en el export)
+  if (!/B\.P\.xFrom \+ B\.P\.lineX\[r\]/.test(src))
+    throw new Error('el cruce no usa xFrom + lineX para situar la línea');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
