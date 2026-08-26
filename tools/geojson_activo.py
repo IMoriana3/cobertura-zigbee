@@ -118,6 +118,9 @@ def activo(planta):
                   "No confundir con <planta>_real.geojson, que es la malla de radio medida.",
         "montaje": montaje or None,
         "montaje_origen": L.get("montaje_origen") or None,
+        # Lo que haya que saber de las HSU de ESTA planta y no cabe por estación. Hoy solo Ayora,
+        # cuya NCU 15 lleva dos y en el mismo gateway, que no es el patrón de El Burgo.
+        "meteo_nota": L.get("meteo_nota") or None,
         "features": feats,
     }
     return doc
