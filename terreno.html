@@ -1045,7 +1045,7 @@ function buildTrackers(elevAt){
   if(LAYOUT&&LAYOUT.filaZ!=null)D=Object.create(D),D.filaZ=LAYOUT.filaZ;            // planta de una sola fila: filaZ 0
   SEGO=new THREE.Matrix4().makeRotationY(Math.PI/2);                               // marco canónico (tubo X) → mundo (tubo Z, motor a -X)
   var off=D.off,filaZ=D.filaZ,postH=D.postH,span=D.span,mesaC=D.mesaC,modH=D.modH;
-  var zMul=D.modsPerStr/28,zP=[-28*zMul,-9*zMul,9*zMul,28*zMul];   // postes proporcionales al largo del tracker (San José 32 mód → postes más separados); medio oculta los exteriores (>16)
+  var zP=Seguidor.pilotesX(D.modsPerStr);   // retícula de la casa, en seguidor.js: proporcional al largo del tracker (San José 32 mód → postes más separados); medio oculta los exteriores (>16). Estaba escrita aquí y el simulador de cobertura RF, que no la tenía, se inventaba la suya
   // EL BURGO: trazado REAL de soportes por TIPO de seguidor — círculos de los bloques del Tierras.dwg
   // ("esos círculos son soportes... puedes ponerlos en el render bien"): Interior 8/tubo, Exterior 10/tubo, Medio 4/tubo
   var zPT=(PLANT==='elburgo')?{int:[-30.5,-22.9,-15.5,-7.7,7.7,15.5,22.9,30.5],ext:[-30.8,-24.7,-17.8,-11,-4.5,4.5,11,17.8,24.7,30.8],med:[-13.6,-6.5,6.5,13.6]}:null;
@@ -1099,9 +1099,9 @@ function buildTrackers(elevAt){
   var gSh=new THREE.CylinderGeometry(0.03,0.03,2*filaZ,10);gSh.rotateZ(Math.PI/2); // eje de transmisión entre las dos filas (Ø 60 mm; propio de cobertura)
   imShaft=new THREE.InstancedMesh(gSh,steelM,N);
   [imPost,imShaft,imBearing,imSaddle,imVirola,imBush].forEach(function(im){im.frustumCulled=false;im.castShadow=true;im.receiveShadow=true;im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);nodeGroup.add(im);});
-  var dampPosts=zPT?[-22.9,22.9]:[zP[1],zP[zP.length-2]];                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
+  var dampPosts=zPT?[-22.9,22.9]:Seguidor.damperPostX(zP);                           // amortiguadores al PENÚLTIMO poste (N y S) de la retícula (El Burgo: penúltimo REAL del tipo Interior)
   var zPm=zP.filter(function(z){return Math.abs(z)<=16.8;}).sort(function(a,b){return a-b;});
-  var dampPostsM=zPT?[-6.5,6.5]:(zPm.length>=4?[zPm[1],zPm[zPm.length-2]]:dampPosts);   // MEDIO: 2º poste desde fuera DE SU media fila — heredaba los ±26 del largo, más allá de su puntera, y el amortiguador quedaba FLOTANDO
+  var dampPostsM=zPT?[-6.5,6.5]:(zPm.length>=4?Seguidor.damperPostX(zPm):dampPosts);   // MEDIO: 2º poste desde fuera DE SU media fila — heredaba los ±26 del largo, más allá de su puntera, y el amortiguador quedaba FLOTANDO
   var DET=(NODES.length>1000)?'mass':'full';   // SOLO plantas muy grandes (San José 2289): "mesa" por ala (~15 piezas/fila); El Burgo (215) y Ayora (754) a detalle completo
   var planL=Seguidor.instancePlan(THREE,{detail:DET,size:'largo',damperX:dampPosts}),planM=Seguidor.instancePlan(THREE,{detail:DET,size:'medio',damperX:dampPostsM}),mM={},mMab={};
   planM.forEach(function(t){mM[t.key]=t.locals;mMab[t.key]={as:t.as,bs:t.bs};});   // cotas del plan MEDIO (incl. extremos a/b de amortiguadores)
