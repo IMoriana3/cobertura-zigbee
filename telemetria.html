@@ -95,6 +95,29 @@
     en la pestaña queda el token de sesión, que caduca solo.</div>
 </div>
 
+<div class="card">
+  <h2>O sin conexión: cargar un fichero</h2>
+  <div class="nota">Si la sesión da problemas —el proveedor no está habilitado, la RLS no te alcanza—
+    no hace falta pelearse con los permisos: <b>saca los datos del panel de Supabase</b> y súbelos aquí.
+    En el <b>SQL Editor</b>, esta consulta ya deja solo lo que hace falta (cambia planta y día):</div>
+  <pre id="sql" style="background:#0b111c;border:1px solid var(--line);border-radius:8px;padding:10px;
+    font-family:var(--mono);font-size:.74rem;overflow:auto;color:var(--tx2);margin:8px 0">select json_agg(row_to_json(t))::text from (
+  select ncu, equipo, tz, paso_s, cobertura,
+         series->'t'                        as t,
+         series->'v'->'target_angle'        as target_angle,
+         series->'v'->'angle'               as angle
+  from telemetria
+  where planta = 'elburgo' and clase = 'tcu' and dia = '2026-08-12'
+) t;</pre>
+  <div class="row">
+    <div><label>Fichero JSON (o pega el resultado abajo)</label><input id="fich" type="file" accept=".json,.txt,.csv"></div>
+    <button id="bPegar">Analizar lo pegado</button>
+  </div>
+  <textarea id="pegado" rows="3" placeholder="…o pega aquí el JSON del SQL Editor"
+    style="width:100%;margin-top:8px;background:#0b111c;color:var(--tx);border:1px solid var(--line);
+    border-radius:8px;padding:8px;font-family:var(--mono);font-size:.74rem"></textarea>
+</div>
+
 <div class="card" id="cSondeo" style="display:none">
   <h2>Qué hay cargado</h2>
   <div id="tSondeo"></div>
@@ -306,6 +329,52 @@ $('planta').onchange = () => {
   $('dia').innerHTML = dias.map(d => `<option>${d}</option>`).join('');
 };
 
+/* ── carga desde fichero ──────────────────────────────────────────────────
+   Sirve para cuando la sesión no es viable. Se acepta lo que salga del SQL
+   Editor y lo que produce esta misma página al descargar, sin obligar a nadie
+   a un formato: se NORMALIZA. Cada fila puede traer `series` entera o los
+   arrays ya sueltos. */
+function normaliza(txt) {
+  let j = JSON.parse(txt);
+  // el SQL Editor puede devolver [{json_agg:"[…]"}] o el texto a secas
+  if (Array.isArray(j) && j.length === 1 && j[0] && typeof j[0] === 'object') {
+    const k = Object.keys(j[0]);
+    if (k.length === 1 && typeof j[0][k[0]] === 'string') j = JSON.parse(j[0][k[0]]);
+  }
+  if (j && !Array.isArray(j) && Array.isArray(j.equipos)) return { filas: j.equipos, meta: j };
+  if (!Array.isArray(j)) throw new Error('no es una lista de filas');
+  return { filas: j, meta: null };
+}
+function aFilas(filas) {
+  return filas.map(x => ({
+    ncu: x.ncu, equipo: x.equipo, tz: x.tz, paso_s: x.paso_s, cobertura: x.cobertura,
+    series: x.series || { t: x.t || [], v: { target_angle: x.target_angle || null, angle: x.angle || null } },
+  })).filter(x => (x.series.t || []).length);
+}
+async function cargaTexto(txt, quien) {
+  try {
+    const { filas } = normaliza(txt);
+    const f = aFilas(filas);
+    if (!f.length) throw new Error('ninguna fila trae eje de tiempos');
+    log(`${quien}: ${f.length} equipos`, 'ok');
+    FICHERO = f;
+    $('planta').innerHTML = '<option>(del fichero)</option>';
+    $('dia').innerHTML = '<option>(del fichero)</option>';
+    $('cDia').style.display = '';
+    analiza(f, '(del fichero)', '(del fichero)');
+  } catch (e) { log(`${quien}: no se pudo leer — ${e.message}`, 'err'); }
+}
+let FICHERO = null;
+$('fich').onchange = async (e) => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  cargaTexto(await f.text(), f.name);
+};
+$('bPegar').onclick = () => {
+  const t2 = $('pegado').value.trim();
+  if (!t2) { log('no hay nada pegado', 'warn'); return; }
+  cargaTexto(t2, 'pegado');
+};
+
 /* ── análisis de un día ──────────────────────────────────────────────────── */
 let REMU = null;
 $('bAnalizar').onclick = async () => {
@@ -317,6 +386,13 @@ $('bAnalizar').onclick = async () => {
                             `&select=ncu,equipo,tz,paso_s,cobertura,series`);
     log(`${filas.length} equipos`, 'ok');
     if (!filas.length) { log('sin datos ese día', 'warn'); $('bAnalizar').disabled = false; return; }
+    analiza(filas, planta, dia);
+  } catch (e) { log('ERROR ' + e.message, 'err'); }
+  $('bAnalizar').disabled = false;
+};
+
+function analiza(filas, planta, dia) {
+  const paso = +$('malla').value;
 
     /* Remuestreo a malla común. Los equipos NO comparten eje de tiempos: el
        enlace de radio pierde muestras (en El Burgo, ~7% del día en decenas de
@@ -358,15 +434,13 @@ $('bAnalizar').onclick = async () => {
       ap.push(v[Math.floor(v.length * 0.95)] - v[Math.floor(v.length * 0.05)]);
       med.push(v[Math.floor(v.length / 2)]);
     }
-    REMU = { planta, dia, paso_s: paso, tz: eq[0].tz || '?', equipos: eq.length,
-             malla, apertura: ap, mediana: med, n: nEq,
-             detalle: eq.map(e => ({ ncu: e.ncu, equipo: e.equipo, obj: e.obj })) };
-    pinta(ap, med, nEq, paso);
-    veredicto(ap, med, nEq, paso);
-    $('bDescargar').disabled = false;
-  } catch (e) { log('ERROR ' + e.message, 'err'); }
-  $('bAnalizar').disabled = false;
-};
+  REMU = { planta, dia, paso_s: paso, tz: eq[0].tz || '?', equipos: eq.length,
+           malla, apertura: ap, mediana: med, n: nEq,
+           detalle: eq.map(e => ({ ncu: e.ncu, equipo: e.equipo, obj: e.obj })) };
+  pinta(ap, med, nEq, paso);
+  veredicto(ap, med, nEq, paso);
+  $('bDescargar').disabled = false;
+}
 
 function veredicto(ap, med, nEq, paso) {
   // el mediodía es donde las dos firmas coinciden: se juzga por los EXTREMOS,

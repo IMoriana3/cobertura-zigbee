@@ -154,7 +154,16 @@ es la forma más traicionera de fallar. Tres vías, en este orden:
 4. **Correo y contraseña**, si el proyecto las tuviera.
 
 Las vías 2 y 3 necesitan que esta dirección esté en las *Redirect URLs* del proyecto de Supabase; si
-no lo está, la autenticación funciona pero te devuelve al *Site URL* configurado allí. La página pide correo y contraseña (las mismas de
+no lo está, la autenticación funciona pero te devuelve al *Site URL* configurado allí. Y ojo con una
+confusión fácil: **entrar en supabase.com con GitHub es la cuenta del panel**, no un proveedor de auth
+del proyecto — si no está habilitado en *Authentication → Providers*, el `authorize` responde
+`Unsupported provider`.
+
+**Y una quinta vía que no depende de permisos: un fichero.** La página analiza igual desde un JSON
+subido o pegado, con la consulta lista para el *SQL Editor* del panel (que ya adelgaza a `t`,
+`target_angle` y `angle`). Se **normaliza** lo que llegue —fila con `series` entera o con los arrays
+sueltos, resultado envuelto en `json_agg` o a secas— en vez de exigir un formato. Un problema de
+permisos no debería dejar sin respuesta una pregunta que no depende de permisos. La página pide correo y contraseña (las mismas de
 `importar-logs.html`), las manda **solo** a tu Supabase y **no las guarda**: en la pestaña queda el
 token, que caduca solo. Y distingue en el registro entre «cero filas SIN sesión» y «cero filas CON
 sesión», que son dos problemas distintos.
@@ -162,7 +171,7 @@ sesión», que son dos problemas distintos.
 El botón **Descargar remuestreado** deja un JSON pequeño con la malla ya calculada, que es lo que
 hay que compartir para analizarlo fuera.
 
-QA: `node tools/test_telemetria.mjs` (27 comprobaciones) — prueba la página con datos sintéticos
+QA: `node tools/test_telemetria.mjs` (33 comprobaciones) — prueba la página con datos sintéticos
 **en las dos direcciones**, porque una que solo acertara con el caso bueno no distinguiría nada, y
 fija que la contraseña no se guarda y que el «cero filas» se explique según haya sesión o no.
 
