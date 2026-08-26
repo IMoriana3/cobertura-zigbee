@@ -37,11 +37,31 @@
    · 41014 (azimut del eje): el simulador usa ≈0 como aproximación DECLARADA;
      el valor real es de replanteo, no de aquí.
 
-   ── Y un aviso antes de escribir nada ─────────────────────────────────────
-   En la ficha del R7 el `41106` (east_pitch) aparece en RAD y su gemelo
-   `41033` (west_pitch) en M. Huele a errata del volcado, pero equivocarse de
-   unidad ahí desconfigura el backtracking de medio parque: contrástalo con el
-   documento original antes de escribir. Esta ficha emite METROS y marca la duda.
+   ── El 41106: la errata NO es nuestra, es del documento ───────────────────
+   `41106` (East pitch) aparece en RADIANES mientras su gemelo `41033` (West
+   pitch) está en METROS. Comprobado contra la extracción del documento de
+   fabricante (`tools/modbus_src/tcu_v6.json`, de SUNNER_TCU_ModbusMap v6): el
+   volcado es FIEL — el error viene de origen. Y se ve de dónde:
+
+     41098  Radians  def 0         0..π/4   West grade slope angle
+     41100  Radians  def 0         0..2π    West grade azimuth angle
+     41102  Radians  def 0         0..π/4   East grade slope angle
+     41104  Radians  def 0         0..2π    East grade azimuth angle
+     41106  Radians  def 0         0..π/4   East pitch (separation between axes)
+     ————— frente a su gemelo —————
+     41033  Meters   def 9         (sin rango)  West pitch (separation between axes)
+
+   El 41106 hereda unidad, defecto y rango IDÉNTICOS a los del 41102, cuatro
+   direcciones más arriba: es un arrastre de celdas al añadir la fila. Y el
+   contenido lo confirma — un pitch por defecto de 0 y un máximo de π/4 ≈ 0,79
+   no son una separación entre ejes (su gemelo trae 9 m).
+
+   Pero esto NO se puede cerrar desde el papel: dice qué hay escrito, no qué
+   lee el firmware. Se cierra con UNA lectura Modbus de 41106 en una TCU ya
+   comisionada con pitch este configurado — si vale ~6 son metros, si vale ~0,1
+   son radianes. Hasta entonces la ficha emite METROS (que es lo que mide) y lo
+   deja dicho, sin corregir el mapa: `modbus.html` reproduce el documento, y
+   ahí tiene que seguir tal cual está publicado.
 */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -202,9 +222,19 @@ fs.writeFileSync(out.replace(/\.csv$/, '.meta.json'), JSON.stringify({
     r41014_axis_azimuth: 'el simulador usa azimut de eje ≈0 como aproximación DECLARADA; el valor ' +
       'real de cada planta sale del replanteo, no de aquí.',
   },
-  AVISO_UNIDADES: 'en la ficha del R7 el 41106 (east_pitch) aparece en RAD y su gemelo 41033 en M. ' +
-    'Probable errata del volcado, pero equivocarse ahí desconfigura medio parque: contrástalo con ' +
-    'el documento original antes de escribir. Esta ficha emite METROS.',
+  AVISO_41106: {
+    que_pasa: 'el 41106 (East pitch) está documentado en RADIANES y su gemelo 41033 (West pitch) ' +
+      'en METROS.',
+    de_quien_es: 'del DOCUMENTO, no del volcado: comprobado contra tools/modbus_src/tcu_v6.json ' +
+      '(extracción de SUNNER_TCU_ModbusMap v6), que dice literalmente Radians / def 0 / 0..π/4.',
+    causa_probable: 'arrastre de celdas: 41106 hereda unidad, defecto y rango IDÉNTICOS a los del ' +
+      '41102 (East grade slope), cuatro direcciones más arriba. Su gemelo 41033 trae Meters y ' +
+      'defecto 9; un pitch de 0 con máximo π/4≈0,79 no es una separación entre ejes.',
+    como_se_cierra: 'UNA lectura Modbus de 41106 en una TCU comisionada con pitch este ' +
+      'configurado: ~6 ⇒ metros, ~0,1 ⇒ radianes. El papel dice qué hay escrito, no qué lee el firmware.',
+    mientras_tanto: 'esta ficha emite METROS (que es lo que mide) y no corrige el mapa: ' +
+      'modbus.html reproduce el documento y ahí debe seguir tal cual.',
+  },
   cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) — los mismos que export_consignas.mjs',
 }, null, 2) + '\n');
 

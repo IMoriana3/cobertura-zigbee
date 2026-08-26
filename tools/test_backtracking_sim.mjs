@@ -1002,8 +1002,10 @@ t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de c
   catch (e) { abortó = true; }
   if (!abortó) throw new Error('San José no casa con su levantamiento y el exportador NO abortó');
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.meta.json'), 'utf-8'));
-  if (!meta.NO_DERIVADO || !meta.AVISO_UNIDADES || !meta.autocomprobacion)
-    throw new Error('el .meta.json no declara lo que no deriva ni la autocomprobación');
+  if (!meta.NO_DERIVADO || !meta.AVISO_41106 || !meta.autocomprobacion)
+    throw new Error('el .meta.json no declara lo que no deriva, el 41106 o la autocomprobación');
+  if (!/tcu_v6\.json/.test(JSON.stringify(meta.AVISO_41106)))
+    throw new Error('el aviso del 41106 dejó de citar el documento: vuelve a ser una corazonada');
   if (meta.autocomprobacion.peor_desvio_pp > 0.05)
     throw new Error('la relación vector/azimut ya no reproduce la transversal');
 });
