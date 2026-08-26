@@ -246,6 +246,109 @@ t('métricas: un día overcast total tiene menos recorrido con poa_switch que la
 // ── fuzz determinista: 400 configuraciones del planeta entero ───────────────
 // Semilla fija (reproducible). Cada configuración exige TODOS los invariantes a
 // la vez. Así se cazó que el stow no obedecía al hard-stop mecánico.
+// ── GOLDEN DEL NÚCLEO ────────────────────────────────────────────────────────
+// La batería comprobaba que el espejo cumple el contrato TAL COMO SE TRANSCRIBIÓ.
+// Esto lo comprueba contra la FUENTE: tools/golden_core.csv sale de ejecutar
+// solargpt_core/tracker.py de verdad (ver tools/gen_golden_core.py).
+// Las columnas de entrada (zenit, azimut, GHI/DNI/DHI) se CONSUMEN, no se
+// regeneran: si el JS rehiciera su meteo, la prueba compararía dos modelos de
+// cielo y un fallo en cualquiera enmascararía al otro.
+console.log('golden del núcleo (solargpt_core/tracker.py ejecutado de verdad)');
+{
+  const gp = path.join(ROOT, 'tools', 'golden_core.csv');
+  if (!fs.existsSync(gp)) {
+    N++; FAIL++;
+    console.error('  ✗ falta tools/golden_core.csv — regenéralo con tools/gen_golden_core.py');
+  } else {
+    // csv.DictWriter escribe \r\n: sin el trim, el ÚLTIMO nombre de columna se
+    // queda con un \r pegado y esa columna sale undefined en todas las filas
+    const bruto = fs.readFileSync(gp, 'utf-8').split('\n')
+      .map(l => l.replace(/\r$/, '')).filter(l => l && !l.startsWith('#'));
+    const cab = bruto[0].split(',').map(c => c.trim());
+    const filas = bruto.slice(1).map(l => {
+      const v = l.split(','), o = {};
+      cab.forEach((c, i) => { o[c] = c === 'escenario' ? v[i].trim() : parseFloat(v[i]); });
+      return o;
+    });
+    for (const c of cab) if (filas.some(f => f[c] === undefined || (c !== 'escenario' && Number.isNaN(f[c]))))
+      throw new Error('columna ilegible en el golden: ' + JSON.stringify(c));
+    // el golden se generó con el albedo POR DEFECTO de pvlib, que es el que el
+    // core usa porque no lo expone; el espejo sí lo expone y por eso hay que
+    // fijarlo aquí para comparar contra el core tal cual es
+    const ALBEDO = 0.25;
+    const escenarios = [...new Set(filas.map(f => f.escenario))];
+
+    // un `day` construido con las ENTRADAS del golden, saltándose buildDay
+    const dayDe = fs2 => {
+      const irr = fs2.map(f => ({ ghi: f.ghi, dni: f.dni, dhi: f.dhi }));
+      return {
+        n: fs2.length, dtMin: fs2[0].dt_min, tmin: fs2.map(f => f.minuto_local),
+        zen: fs2.map(f => f.zenit), az: fs2.map(f => f.azimut),
+        clear: irr, irr, ghi: fs2.map(f => f.ghi),
+        doy: fs2[0].doy, albedo: ALBEDO, axisAz: fs2[0].axis_azimuth,
+        axisTilt: 0, maxAngle: fs2[0].theta_max, gcr: fs2[0].gcr,
+        cc: new Array(288).fill(0), nightStow: 0,
+      };
+    };
+
+    const peor = { poa: 0, th: 0, pol: {} };
+    const fallos = [];
+    for (const nm of escenarios) {
+      const fs2 = filas.filter(f => f.escenario === nm);
+      const day = dayDe(fs2);
+      const thN = F.thetaBaselineDay(day);
+      const poaN = F.poaSeries(day, thN);
+      for (let i = 0; i < day.n; i++) {
+        const dth = Math.abs(thN[i] - fs2[i].theta_n);
+        const dpoa = Math.abs(poaN[i] - fs2[i].poa_n);
+        if (dth > peor.th) peor.th = dth;
+        if (dpoa > peor.poa) peor.poa = dpoa;
+        if (dth > 1e-6) fallos.push(nm + ' paso ' + i + ': θ_n JS ' + thN[i].toFixed(6) + ' vs core ' + fs2[i].theta_n.toFixed(6));
+        if (dpoa > 0.05) fallos.push(nm + ' paso ' + i + ': POA_n JS ' + poaN[i].toFixed(3) + ' vs core ' + fs2[i].poa_n.toFixed(3));
+      }
+      // Se compara contra las columnas *_fix_*: el core CON el azimut del eje
+      // propagado a la transposición. Las cuatro políticas del core NO lo
+      // propagan (solo run_tracker), así que con eje girado deciden con otra
+      // orientación — bug del core, medido aparte abajo. El espejo sí lo
+      // propaga, y tiene que reproducir al core corregido, no al core roto.
+      for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
+        const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
+        peor.pol[k] = peor.pol[k] || { th: 0, flag: 0 };
+        for (let i = 0; i < day.n; i++) {
+          const dth = Math.abs(r.theta[i] - fs2[i][k + '_fix_theta']);
+          if (dth > peor.pol[k].th) peor.pol[k].th = dth;
+          if (dth > 1e-4) fallos.push(nm + ' ' + k + ' paso ' + i + ': θ JS ' + r.theta[i].toFixed(4) + ' vs core ' + fs2[i][k + '_fix_theta'].toFixed(4));
+          if ((r.flag[i] ? 1 : 0) !== fs2[i][k + '_fix_flag']) { peor.pol[k].flag++; fallos.push(nm + ' ' + k + ' paso ' + i + ': flag JS ' + (r.flag[i] ? 1 : 0) + ' vs core ' + fs2[i][k + '_fix_flag']); }
+        }
+      }
+    }
+    t('BUG DEL CORE, medido y fijado: las políticas no propagan el azimut del eje a la transposición', () => {
+      // Solo run_tracker pasa axis_azimuth a compute_poa_perez; las cuatro
+      // políticas lo dejan en 0. Con eje N-S da igual, pero con eje girado
+      // —Bagnarelli va a 23,7°— DECIDEN con la transposición de otra
+      // orientación. Esta prueba no lo arregla: lo deja medido, para que si el
+      // core lo corrige salte y haya que regenerar el golden.
+      let girado = 0, recto = 0;
+      for (const f of filas) {
+        let dif = 0;
+        for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch'])
+          if (Math.abs(f[k + '_theta'] - f[k + '_fix_theta']) > 1e-6 || f[k + '_flag'] !== f[k + '_fix_flag']) dif = 1;
+        if (f.axis_azimuth === 0) recto += dif; else girado += dif;
+      }
+      if (recto !== 0) throw new Error('con eje N-S el bug no debería notarse y afecta a ' + recto + ' pasos');
+      if (girado === 0) throw new Error('el core ya no tiene el bug del azimut del eje: regenera el golden y compara contra las columnas normales');
+      console.log('    · con eje girado el bug del core cambia la decisión en ' + girado + ' pasos; con eje N-S, en 0');
+    });
+    t('el espejo reproduce al CORE ejecutado: θ_n, POA de Perez y las 4 políticas, ' +
+      escenarios.length + ' escenarios · ' + filas.length + ' pasos', () => {
+      if (fallos.length) throw new Error(fallos.length + ' discrepancias · ' + fallos.slice(0, 4).join(' | '));
+    });
+    console.log('    peor desvío · θ_n ' + peor.th.toExponential(2) + '° · POA ' + peor.poa.toExponential(2) + ' W/m²');
+    for (const k in peor.pol)
+      console.log('      ' + k.padEnd(20) + ' θ ' + peor.pol[k].th.toExponential(2) + '° · flags distintos ' + peor.pol[k].flag);
+  }
+}
+
 console.log('fuzz (400 configuraciones deterministas, todos los invariantes a la vez)');
 t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni slew violado, ni diario discrepante', () => {
   let s = 20260814;
