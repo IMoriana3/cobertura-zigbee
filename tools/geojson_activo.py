@@ -98,6 +98,9 @@ def activo(planta):
     for m in L.get("meteo") or []:
         feats.append(feature("Point", pt(m["x"], m["n"]), {
             "rol": "HSU", "nombre": m.get("name"), "ncu": m.get("ncu"),
+            # De dónde sale esa NCU. Va SIEMPRE que la haya: fuera de aquí, un `ncu` a secas se lee
+            # como medido, y en cuatro plantas está derivado por cercanía (tools/meteo_ncu.mjs).
+            "ncu_origen": m.get("ncu_origen"),
             "gw": m.get("gw"), "esclavo": m.get("esclavo"),
         }))
 
