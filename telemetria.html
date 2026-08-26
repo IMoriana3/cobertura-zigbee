@@ -465,6 +465,9 @@ function analiza(filas, planta, dia) {
 function veredicto(ap, med, nEq, paso) {
   // el mediodía es donde las dos firmas coinciden: se juzga por los EXTREMOS,
   // que es donde el backtracking existe
+  /* «sol bajo» se decide por lo GIRADOS que están los seguidores (|θ|>35°), no
+     por la hora: así el veredicto no depende de en qué huso venga el dato —los
+     logs de la NCU vienen en UTC— ni de acertar con el orto. */
   const idx = ap.map((v, i) => ({ v, i, med: med[i] })).filter(x => x.v != null && nEq[x.i] >= 10);
   if (!idx.length) { $('ver').innerHTML = '<div class="ver warn">sin instantes con suficientes seguidores</div>'; return; }
   const extremos = idx.filter(x => Math.abs(x.med) > 35);        // seguidores muy girados = sol bajo
@@ -517,7 +520,8 @@ function pinta(ap, med, nEq, paso) {
     if (!started) { ctx.moveTo(xx, yy); started = true; } else ctx.lineTo(xx, yy);
   }
   ctx.stroke();
-  $('pieCv').innerHTML = 'Apertura entre seguidores (p95 − p5 del objetivo) a lo largo del día, hora local de la planta. ' +
+  $('pieCv').innerHTML = `Apertura entre seguidores (p95 − p5 del objetivo) a lo largo del día, en ` +
+    `<b>${(REMU && REMU.tz) || '?'}</b> —el huso que declara el propio dato, no el local—. ` +
     'La raya roja marca 1,5°: por debajo, ángulo único. Los tramos sin línea son instantes con menos de 10 seguidores.';
 }
 

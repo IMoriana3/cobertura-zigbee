@@ -26,6 +26,8 @@ t('sin cargas remotas (la casa es offline salvo la propia consulta)',
   !/<(script|link)[^>]+(src|href)=["']https?:/.test(html));
 t('la apertura es ROBUSTA (p95−p5), no máx−mín: un seguidor en tope no puede mandar',
   /0\.95\)\]\s*-\s*v\[Math\.floor\(v\.length \* 0\.05\)\]/.test(html));
+t('el eje declara el huso del DATO, no un «local» inventado',
+  /el huso que declara el propio dato/.test(html));
 t('el veredicto se juzga por los EXTREMOS, no por el día entero',
   /Math\.abs\(x\.med\) > 35/.test(html) && /no distingue/.test(html));
 t('el remuestreo descarta la muestra si cae fuera de media malla',
