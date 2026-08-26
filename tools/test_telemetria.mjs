@@ -151,6 +151,23 @@ for (const [nombre, abre, espera] of [['fichero · ángulo único', false, 'err'
   await pg5.close();
 }
 
+/* el CSV que da «Download CSV» del SQL Editor: cabecera + celda entrecomillada */
+{
+  const pg6 = await browser.newPage();
+  const e6 = []; pg6.on('pageerror', e => e6.push(e.message));
+  await pg6.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  const filas = planta(true).map(f => ({ ncu: f.ncu, equipo: f.equipo, tz: f.tz, paso_s: f.paso_s,
+    t: f.series.t, target_angle: f.series.v.target_angle }));
+  const csv = 'json_agg\n"' + JSON.stringify(filas).replace(/"/g, '""') + '"\n';
+  await pg6.fill('#pegado', csv);
+  await pg6.click('#bPegar');
+  await pg6.waitForFunction(() => document.getElementById('ver').innerHTML.includes('Apertura'));
+  const r6 = await pg6.evaluate(() => (document.querySelector('#ver .ver') || {}).className || '');
+  t('traga el CSV del SQL Editor tal cual, sin convertirlo a mano', r6.includes('ok'), `clase «${r6}»`);
+  t('sin errores de consola con el CSV', e6.length === 0, e6.join(' · '));
+  await pg6.close();
+}
+
 /* GitHub: es una NAVEGACIÓN al authorize de Supabase, no un fetch */
 {
   const pg4 = await browser.newPage();

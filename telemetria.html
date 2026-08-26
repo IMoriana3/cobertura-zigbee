@@ -347,6 +347,14 @@ $('planta').onchange = () => {
    a un formato: se NORMALIZA. Cada fila puede traer `series` entera o los
    arrays ya sueltos. */
 function normaliza(txt) {
+  txt = txt.trim();
+  /* El «Download CSV» del SQL Editor no da JSON: da una cabecera (json_agg) y
+     una única celda con el JSON entrecomillado y las comillas dobladas. Se
+     desenvuelve aquí en vez de pedirle a nadie que lo convierta a mano. */
+  if (/^"?json_agg"?\s*[\r\n]/.test(txt)) {
+    txt = txt.replace(/^[^\r\n]*[\r\n]+/, '').trim();
+    if (txt.startsWith('"')) txt = txt.slice(1, txt.lastIndexOf('"')).replace(/""/g, '"');
+  }
   let j = JSON.parse(txt);
   // el SQL Editor puede devolver [{json_agg:"[…]"}] o el texto a secas
   if (Array.isArray(j) && j.length === 1 && j[0] && typeof j[0] === 'object') {
