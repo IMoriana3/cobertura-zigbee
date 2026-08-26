@@ -314,6 +314,32 @@ function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
 
 var KEYS={},_CF=new THREE.Vector3(),_CR=new THREE.Vector3(),_CUP=new THREE.Vector3(0,1,0),_CM=new THREE.Vector3();
+/* NO SE BAJA DEL SUELO. Con la orbita hasta 165° y la camara de vuelo con Q, se acababa por
+   debajo del terreno: la planta vista desde el subsuelo, con el mapa de sombra al reves y sin
+   ninguna referencia de donde estas. Como en cobertura RF, hay suelo.
+
+   Se recorta la ALTURA, no el angulo. Recortando el angulo polar la camara se frena en seco al
+   llegar al horizonte y en una ladera sigues metiendote en el monte, porque el suelo no esta a
+   cota cero. Recortando la altura contra el terreno de VERDAD -terrainMeshY, la malla que se ve,
+   que ya viene con la exageracion vertical aplicada- la camara resbala sobre el terreno y puedes
+   seguir girando.
+
+   Va DESPUES de controls.update(): OrbitControls recalcula sus angulos a partir de la posicion al
+   principio de cada update, asi que subir la camara aqui se traduce en un angulo polar menor a la
+   vuelta siguiente y no hay pelea entre los dos.
+
+   El objetivo tambien se recorta: si no, con la camara de vuelo bajabas el objetivo bajo tierra y
+   la vista quedaba mirando al reverso de la malla. */
+var CAM_SOBRE_SUELO=1.6;                       // altura de los ojos, en metros
+function clampSuelo(){
+  if(!camera||typeof terrainMeshY!=='function')return;
+  var s=terrainMeshY(camera.position.x,-camera.position.z);
+  if(isFinite(s)&&camera.position.y<s+CAM_SOBRE_SUELO)camera.position.y=s+CAM_SOBRE_SUELO;
+  if(controls&&controls.target){
+    var st=terrainMeshY(controls.target.x,-controls.target.z);
+    if(isFinite(st)&&controls.target.y<st)controls.target.y=st;
+  }
+}
 function flyStep(dt){   // movimiento libre tipo vuelo: WASD desplaza, Q/E baja/sube, Shift acelera; mueve cámara+objetivo
   if(!camera||!controls)return;dt=Math.min(dt,0.05);
   var sp=(KEYS['ShiftLeft']||KEYS['ShiftRight']?300:100)*dt;_CM.set(0,0,0);
@@ -371,7 +397,7 @@ function initThree(){
   var lastT=performance.now();
   (function loop(now){requestAnimationFrame(loop);var dt=(now-lastT)/1000;lastT=now;
     if(playing){var _mx=tMax,_mn=tMin;curMin+=dt*PLAYSPEED;if(curMin>_mx)curMin=_mn;if(curMin<_mn)curMin=_mn;$('time').value=curMin;_pAcc+=dt;if(_pAcc>0.08){_pAcc=0;setTime(curMin);}if(fresOn){_fAcc+=dt;if(_fAcc>0.35){_fAcc=0;applyFresnel();}}}
-    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();viajeStep(dt);}updateSunShadow();solCamFrame();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
+    if(TOUR_ON)tourStep(dt);else if(freeCam){flyStep(dt);}else{flyStep(dt);controls.update();viajeStep(dt);}clampSuelo();updateSunShadow();solCamFrame();animateSky(dt);animateMeteo(dt);stowStep(dt);genPulse(dt);cloudShadowStep(dt);updateLabels();renderer.render(scene,camera);renderPost(dt);})(performance.now());
 }
 
 function hm2min(s){return (+s.slice(0,2))*60+(+s.slice(3,5));}
