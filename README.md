@@ -140,10 +140,18 @@ excluyen; y el remuestreo a malla común **descarta** la muestra si cae a más d
 de arrastrar un valor viejo — los logs de TCU pierden en torno al 7 % del día en decenas de huecos
 de radio, y rellenarlos en silencio inventaría apertura donde no la hay.
 
+**Hace falta sesión.** La política de la tabla es `for select to authenticated`, así que con la clave
+pública a secas la consulta responde **200 con cero filas** — no da error, simplemente no ve nada, que
+es la forma más traicionera de fallar. La página pide correo y contraseña (las mismas de
+`importar-logs.html`), las manda **solo** a tu Supabase y **no las guarda**: en la pestaña queda el
+token, que caduca solo. Y distingue en el registro entre «cero filas SIN sesión» y «cero filas CON
+sesión», que son dos problemas distintos.
+
 El botón **Descargar remuestreado** deja un JSON pequeño con la malla ya calculada, que es lo que
 hay que compartir para analizarlo fuera.
 
-QA: `node tools/test_telemetria.mjs` — prueba la página con datos sintéticos **en las dos
-direcciones**, porque una que solo acertara con el caso bueno no distinguiría nada.
+QA: `node tools/test_telemetria.mjs` (13 comprobaciones) — prueba la página con datos sintéticos
+**en las dos direcciones**, porque una que solo acertara con el caso bueno no distinguiría nada, y
+fija que la contraseña no se guarda y que el «cero filas» se explique según haya sesión o no.
 
 *Factiun · proyecto interno.*
