@@ -33,6 +33,7 @@ const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i > 0 &
 const PLANTA = arg('planta', 'ayora');
 const NCU = +arg('ncu', 12);
 const TCU = +arg('tcu', 26);
+const ID = arg('id', null);              // selección por id del levantamiento (obligada donde el nº TCU no esté verificado)
 const FECHA = arg('fecha', '2026-08-30');
 
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
@@ -48,8 +49,11 @@ const H = L[0].split(','); const ix = n => H.indexOf(n);
 let R = null;
 for (let i = 1; i < L.length; i++) {
   const c = L[i].split(',');
-  if (+c[ix('ncu')] === NCU && +c[ix('tcu')] === TCU) {
-    R = { id: c[ix('tracker')], linea: +c[ix('linea')],
+  // por ID si se da (en San José el nº de TCU NO está verificado contra un
+  // volcado: el id del levantamiento es la única identidad segura allí)
+  if (ID ? (c[ix('tracker')] === ID || c[ix('id_levantamiento')] === ID)
+         : (+c[ix('ncu')] === NCU && +c[ix('tcu')] === TCU)) {
+    R = { id: c[ix('tracker')], ncu: c[ix('ncu')], tcu: c[ix('tcu')], linea: +c[ix('linea')],
       r41098: c[ix('r41098_west_grade_rad')], r41100: c[ix('r41100_west_grade_azimuth_rad')],
       r41102: c[ix('r41102_east_grade_rad')], r41104: c[ix('r41104_east_grade_azimuth_rad')],
       vo: c[ix('r41033_west_pitch_m')], ve: c[ix('r41106_east_pitch_m')],
@@ -57,7 +61,9 @@ for (let i = 1; i < L.length; i++) {
     break;
   }
 }
-if (!R) { console.error('no encuentro NCU ' + NCU + ' TCU ' + TCU + ' en la ficha'); process.exit(2); }
+if (!R) { console.error('no encuentro ' + (ID ? ('id ' + ID) : ('NCU ' + NCU + ' TCU ' + TCU)) + ' en la ficha'); process.exit(2); }
+if (PLANTA !== 'ayora' && !ID)
+  console.log('  AVISO: en ' + PLANTA.toUpperCase() + ' el nº de TCU no está verificado contra ningún volcado — usa --id y da al operario el ID DEL LEVANTAMIENTO, no el número.');
 
 // predicción: objetivo del seguidor CON pendiente vs SIN, y el de una vecina
 const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, PLANTA + '_cotas.json'), 'utf-8'));
@@ -92,13 +98,14 @@ for (let m = 0; m < 1440; m += 10) {
 const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 
 console.log('PROTOCOLO · PRUEBA DEL TÉRMINO DE PENDIENTE EN UN SEGUIDOR');
-console.log('  planta ' + PLANTA.toUpperCase() + ' · NCU ' + NCU + ' · TCU ' + TCU + ' (' + R.id + ') · día previsto ' + FECHA + ' (horas en UTC, como el volcado)');
+const tcuTxt = PLANTA === 'ayora' ? ('TCU ' + R.tcu) : ('TCU ' + R.tcu + ' (nº SIN verificar: identifícalo por el ID)');
+console.log('  planta ' + PLANTA.toUpperCase() + ' · NCU ' + R.ncu + ' · ' + tcuTxt + ' · seguidor ' + R.id + ' · día previsto ' + FECHA + ' (horas en UTC, como el volcado)');
 console.log('');
 console.log('PASO 1 · ANTES DE TOCAR NADA (línea base)');
-console.log('  Volcado del día anterior completo de la NCU ' + NCU + ' (como el del 7-ago). Confirmar');
+console.log('  Volcado del día anterior completo de la NCU ' + R.ncu + ' (como el del 7-ago). Confirmar');
 console.log('  con tools/cruce_ncu_dia.mjs que la apertura sigue en el suelo (~0,1°).');
 console.log('');
-console.log('PASO 2 · ESCRIBIR (solo en TCU ' + TCU + '; anotar hora exacta)');
+console.log('PASO 2 · ESCRIBIR (solo en el seguidor ' + R.id + '; anotar hora exacta)');
 console.log('  41098 (west grade slope)   = ' + R.r41098 + '   rad   (= ' + R.po.toFixed(2) + ' % transversal oeste)');
 console.log('  41100 (west grade azimuth) = ' + R.r41100 + '   rad');
 console.log('  41102 (east grade slope)   = ' + R.r41102 + '   rad   (= ' + R.pe.toFixed(2) + ' % transversal este)');
@@ -107,8 +114,8 @@ console.log('  NO tocar 41033/41106 (vanos: ya verificados, ' + R.vo + ' / ' + R
 console.log('  Guardar/aplicar según procedimiento del fabricante y dejar el seguidor en AUTO.');
 console.log('');
 console.log('PASO 3 · OBSERVAR (un día completo con las dos ventanas de backtracking)');
-console.log('  La firma que confirma el modelo: el Objetivo del TCU ' + TCU + ' se separa del de sus');
-console.log('  vecinas (25 y 27) SOLO en las ventanas de backtracking, así:');
+console.log('  La firma que confirma el modelo: el Objetivo de ' + R.id + ' se separa del de sus');
+console.log('  DOS vecinas inmediatas SOLO en las ventanas de backtracking, así:');
 console.log('');
 console.log('  hora UTC  elev    Objetivo SIN pendiente   Objetivo CON pendiente   separación prevista');
 let enBT = 0;
@@ -127,7 +134,7 @@ console.log('  separación máxima prevista: ' + dmax.toFixed(2) + '° · pasos 
 console.log('  (la resolución del registro es 0,1°: la firma es ~' + Math.round(dmax / 0.1) + ' veces el ruido)');
 console.log('');
 console.log('PASO 4 · VEREDICTO');
-console.log('  Cruzar el volcado con tools/cruce_ncu_dia.mjs. El TCU ' + TCU + ' debe seguir la columna');
+console.log('  Cruzar el volcado con tools/cruce_ncu_dia.mjs. El seguidor ' + R.id + ' debe seguir la columna');
 console.log('  «CON pendiente» a <0,6° (la fidelidad ya medida del modelo) mientras las vecinas');
 console.log('  siguen la «SIN». Si sigue otra cosa, la desviación dice cómo interpreta el firmware');
 console.log('  los registros — que es exactamente lo que se quiere aprender.');
