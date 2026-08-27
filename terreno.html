@@ -78,7 +78,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.91</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.92</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -3342,12 +3342,32 @@ function computeInvStrings(){INVSTR=[];if(!INVPTS.length)return;
 function perStringKW(min){var g=genModel(min);var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,tcell=GENTAMB+g.poa/800*25,der=1+(-0.0035)*(tcell-25);return (g.poa/1000)*mods*wmod/1000*der*0.95;}   // kW por string
 function perInvKW(i,min){var ns=INVSTR[i]||0;return Math.max(0,Math.min(ns*perStringKW(min)*0.985,350));}   // AC por inversor (recorte 350 kW SG350HX)
 function genKwp(){var mods=(SPEC&&SPEC.mods)||28,wmod=(SPEC&&SPEC.wmod)||590,nStr=(NET&&NET.layers&&NET.layers.cable_pos&&NET.layers.cable_pos.length)||(NODES.length*4);return nStr*mods*wmod/1000;}   // kWp DC = nº strings reales (DWG) × mód/string × Wp
+/* cos(AOI) DE LA PLANTA con los RUMBOS que la planta tiene. `genModel` usaba el
+   tubo N-S del mundo para todo: con las filas giradas (Lodosa) la POA mostrada
+   era la de otro campo — medido, −8,5 % a rot 45° y −32 % a 90°, siempre a la
+   baja porque apuntaba el seguidor con el ángulo del tubo que no es. Se agrupa
+   por rumbo (redondeo 0,5°: en la práctica una planta tiene 1–2 rumbos) y se
+   pondera por número de trackers. Con rot 0 —los seis emplazamientos de
+   siempre— la media es un solo grupo con el ángulo de siempre: idéntico. La
+   CONSIGNA de stow no se transforma (va ya en el marco del tubo), pero su
+   coseno sí se evalúa contra cada rumbo, que es donde están los paneles. */
+function _rotFirma(){ if(!TRK||!TRK.length)return '0';var a=0;for(var i=0;i<TRK.length;i++)a+=(TRK[i].rot||0);return TRK.length+'|'+a.toFixed(3); }
+function _cosPlanta(min,sv,stow){
+  var g={},n=0;
+  if(TRK&&TRK.length)for(var i=0;i<TRK.length;i++){var k=Math.round((TRK[i].rot||0)/DEG*2)/2;g[k]=(g[k]||0)+1;n++;}
+  if(!n){g[0]=1;n=1;}
+  var acc=0;
+  for(var k in g){var r=(+k)*DEG,svT=r?afbtSol(sv,r):sv;
+    var th=(stow!=null?stow:panelAngle(min,r))*DEG;
+    acc+=Math.max(0,-Math.sin(th)*svT.E+Math.cos(th)*svT.U)*g[k];}
+  return acc/n;
+}
 function genModel(min){var sv=sunVec(min),U=sv.U;if(U<=0.005)return{U:U,poa:0,dcKW:0,acKW:0,ghi:0};
   var AM=1/Math.max(0.05,U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678))*(1-0.78*GENCLOUD),dhi=0.10*1361*U*(1-0.5*GENCLOUD),ghi=Math.max(0,dni*U+dhi);   // DNI cielo-claro Meinel + difusa, atenuadas por nubosidad
-  var th=((min===curMin&&_STOWANG!=null&&!_dayCalc)?_STOWANG:panelAngle(min))*DEG,cosAOI=Math.max(0,-Math.sin(th)*sv.E+Math.cos(th)*sv.U),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(−sinθ,cosθ): θ negativo=Este. ABANDERADO: el instante usa el ángulo real de bandera → cae el coseno (la integral del día NO, es de seguimiento)
+  var cosAOI=_cosPlanta(min,sv,(min===curMin&&_STOWANG!=null&&!_dayCalc)?_STOWANG:null),poa=Math.max(0,dni*cosAOI+dhi);   // normal del seguidor=(−sinθ,cosθ) EN EL MARCO DE CADA RUMBO. ABANDERADO: el instante usa el ángulo real de bandera → cae el coseno (la integral del día NO, es de seguimiento)
   var tcell=GENTAMB+poa/800*25,derate=1+(-0.0035)*(tcell-25),dc=GEN_KWP*(poa/1000)*derate*0.95,ac=Math.max(0,Math.min(dc*0.985,GEN_KWP/1.25));   // térmico (-0,35%/°C) + pérdidas 5% + recorte del inversor (ratio DC/AC 1,25)
   return{U:U,poa:poa,ghi:ghi,dcKW:dc,acKW:ac};}
-function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP);if(key===_dayKey)return _dayMWh;var e=0;_dayCalc=true;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayCalc=false;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado — SIN el ángulo de bandera (el stow es un transitorio, no debe quedar en la caché diaria)
+function genDayMWh(){var key=simDoy+'|'+GENCLOUD+'|'+GENTAMB+'|'+Math.round(GEN_KWP)+'|'+_rotFirma();if(key===_dayKey)return _dayMWh;var e=0;_dayCalc=true;for(var m=0;m<1440;m+=10)e+=genModel(m).acKW/6;_dayCalc=false;_dayMWh=e/1000;_dayKey=key;return _dayMWh;}   // integra el día (paso 10 min), cacheado — SIN el ángulo de bandera (el stow es un transitorio, no debe quedar en la caché diaria)
 // ===== ABANDERAMIENTO POR VIENTO (stow) — replicado del gemelo digital: histéresis Schmitt entrada/salida,
 // bandera HACIA EL LADO DEL SOL y actuador a 0,17 °/s reales ("el tracker mueve a unos 0,17º/segundo.
 // Abandera hacia el lado que está el sol cuando el viento supera los 60km/h")
