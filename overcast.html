@@ -733,11 +733,16 @@ function polPoaSwitch(day,thN,poaN,d){
   // meteo RESETEA el estado (mismo contrato que el core).
   const zeros=new Array(day.n).fill(0);
   const poaFlat=poaSeries(day,zeros);
-  const cs=Math.max(2,Math.round(d.confirmMin/day.dtMin));   // suelo 2: con UNA
+  const cs=Math.max(2,Math.ceil(d.confirmMin/day.dtMin));   // suelo 2: con UNA
   // muestra el sostenimiento real es 0′ y el confirm desaparece. El core dice
   // max(1) y a 5/10/15 min esto es idéntico (cs=6/3/2); solo cambia el caso
   // degenerado dtMin ≥ confirmMin, donde max(1) contradice al propio parámetro.
-  const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
+  // CEIL, no round (2026-08-27, coordinado con el core): una ventana de 30′ es
+  // una PROMESA, y redondear a la baja la incumple — a dtMin=7 round da 4 pasos
+  // = 28′ declarando 30, y a 12 da 2 = 24′. Pasarse es conservador sobre una
+  // histéresis; quedarse corto es mover el seguidor antes de lo prometido.
+  // No-op donde 30 y 90 dividen exacto (1,2,3,5,6,10,15,25,30,45,60).
+  const ds=Math.max(1,Math.ceil(d.dwellMin/day.dtMin));
   const flag=new Array(day.n).fill(false);
   let state=false,ec=0,xc=0,sc=999;
   for(let i=0;i<day.n;i++){
@@ -1088,11 +1093,16 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
 function explainPoaSwitch(day,thN,poaN,d){
   const zeros=new Array(day.n).fill(0);
   const poaFlat=poaSeries(day,zeros);
-  const cs=Math.max(2,Math.round(d.confirmMin/day.dtMin));   // suelo 2: con UNA
+  const cs=Math.max(2,Math.ceil(d.confirmMin/day.dtMin));   // suelo 2: con UNA
   // muestra el sostenimiento real es 0′ y el confirm desaparece. El core dice
   // max(1) y a 5/10/15 min esto es idéntico (cs=6/3/2); solo cambia el caso
   // degenerado dtMin ≥ confirmMin, donde max(1) contradice al propio parámetro.
-  const ds=Math.max(1,Math.round(d.dwellMin/day.dtMin));
+  // CEIL, no round (2026-08-27, coordinado con el core): una ventana de 30′ es
+  // una PROMESA, y redondear a la baja la incumple — a dtMin=7 round da 4 pasos
+  // = 28′ declarando 30, y a 12 da 2 = 24′. Pasarse es conservador sobre una
+  // histéresis; quedarse corto es mover el seguidor antes de lo prometido.
+  // No-op donde 30 y 90 dividen exacto (1,2,3,5,6,10,15,25,30,45,60).
+  const ds=Math.max(1,Math.ceil(d.dwellMin/day.dtMin));
   const flag=new Array(day.n).fill(false);
   const ev=[];
   // abanderado diario (stow de amanecer y anochecer): compartido con las demás

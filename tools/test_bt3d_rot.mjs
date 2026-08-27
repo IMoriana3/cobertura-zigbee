@@ -229,6 +229,43 @@ check('la CACHÉ diaria distingue plantas con rumbos distintos',
       Math.abs(r3.dia0 - r3.dia90) > 1e-9,
       `dia0=${r3.dia0?.toFixed(4)} dia90=${r3.dia90?.toFixed(4)} — la clave no lleva la firma de rumbos`);
 
+/* ── EL HUECO DE LOS CABLES, declarado y VIGILADO ─────────────────────────
+ * La capa de cableado entera asume tubos N-S; hoy no puede fallar porque los
+ * cables vienen del DWG (solo plantas rot 0) y los layouts importados no
+ * traen networks. La guarda existe para el día que ambas cosas coincidan:
+ * aquí se comprueba que GRITA — un hueco declarado que no avisa no está
+ * declarado, está escondido.                                              */
+const r4 = await pg2.evaluate(() => {
+  const DEG = Math.PI / 180;
+  const antes = { net: window.NET, trk: window.TRK, av: window._cabRotAvisado };
+  const avisos = [];
+  const w0 = console.warn; console.warn = m => avisos.push(String(m));
+  try {
+    window._cabRotAvisado = false;
+    window.NET = { fake: 1 };                       // planta CON capa de cables…
+    window.TRK = [{ rot: 45 * DEG }];               // …y CON rumbos girados
+    updateCableSpin(10);
+    var grita = avisos.some(m => /cable/i.test(m) && /N-S|rumbo/i.test(m));
+    avisos.length = 0;
+    window._cabRotAvisado = false;
+    window.TRK = [{ rot: 0 }];                      // rot 0: NO debe avisar
+    updateCableSpin(10);
+    var callaRot0 = avisos.length === 0;
+    avisos.length = 0;
+    window._cabRotAvisado = false;
+    window.NET = false; window.TRK = [{ rot: 45 * DEG }];   // sin cables: tampoco
+    updateCableSpin(10);
+    var callaSinNet = avisos.length === 0;
+  } finally {
+    console.warn = w0;
+    window.NET = antes.net; window.TRK = antes.trk; window._cabRotAvisado = antes.av;
+  }
+  return { grita, callaRot0, callaSinNet };
+});
+check('cables · el hueco declarado GRITA con rumbos girados + capa de cables', r4.grita);
+check('cables · con rot 0 (las seis plantas del DWG) no molesta', r4.callaRot0);
+check('cables · sin capa de cables (Lodosa importada) tampoco', r4.callaSinNet);
+
 await b.close();
 console.log('\n' + ok + ' OK · ' + ko + ' FALLOS');
 process.exit(ko ? 1 : 0);
