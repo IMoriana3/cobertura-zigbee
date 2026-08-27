@@ -19,6 +19,21 @@ const require_child = () => ({ execFileSync });
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 
+/* El cuerpo EXACTO de una función del HTML, contando llaves. Buscar «hasta el
+   siguiente `function`» ya ha fallado dos veces: primero se tragaba terrain()
+   entera y saltaba por un `pitch:` ajeno, y luego el comentario de aplicaFicha.
+   Un test que analiza el trozo equivocado no protege nada. */
+function cuerpoFn(src, nombre) {
+  const i = src.indexOf('function ' + nombre + '(');
+  if (i < 0) return null;
+  let j = src.indexOf('{', i), n = 0;
+  for (let k = j; k < src.length; k++) {
+    if (src[k] === '{') n++;
+    else if (src[k] === '}') { n--; if (n === 0) return src.slice(i, k + 1); }
+  }
+  return null;
+}
+
 let N = 0, FAIL = 0;
 function t(name, fn) {
   N++;
@@ -991,8 +1006,16 @@ t('v1.33: al cargar planta real las políticas de ASESORÍA se apagan, y se DICE
   if (!/const caros=POLICIES\.filter\(P=>P\.brain==='ncu'&&P\.on&&P\.key!=='mgl'\)/.test(html))
     throw new Error('no se seleccionan las políticas caras al cargar planta real');
   if (!/OPT_AVISADO=true;/.test(html)) throw new Error('falta el testigo: las apagaría en CADA carga');
-  if (!/avisoCaras=/.test(html) || !/'\. Azimut ≈ 0 \(aprox declarada\)\. Cotas editables en el 2D\.'\+avisoCaras/.test(html))
-    throw new Error('se apagan sin decirlo en la nota de la planta');
+  // se comprueba la PROPIEDAD —que el aviso acabe DENTRO de la nota— y no el
+  // texto que tiene al lado: fijar el vecino hacía fallar el test cada vez que
+  // se insertaba otro aviso, que es ruido, no una regresión
+  if (!/avisoCaras=/.test(html)) throw new Error('no se arma el aviso');
+  {
+    const i0n = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
+    const stmt = html.slice(i0n, html.indexOf(';', html.indexOf('avisoCaras', i0n)) + 1);
+    if (!/\+avisoCaras/.test(stmt))
+      throw new Error('se apagan sin decirlo en la nota de la planta');
+  }
   // el aviso se arma ANTES de la nota: si no, la nota se pinta sin él
   const iAviso = html.indexOf('avisoCaras=' + "'" + ' <b>');
   const iNota = html.indexOf("note.innerHTML='<b>'+name+'</b> (cotas reales");
@@ -1114,6 +1137,311 @@ t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id'
     // CSV, el temporal se cuela en el commit siguiente (pasó)
     for (const f of [out, out.replace(/\.csv$/, '.meta.json')])
       try { fs.unlinkSync(f); } catch { /* nada */ }
+  }
+});
+
+t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', () => {
+  // El contador 3D devolvía shade=0 en toda la banda zen≥89,5°, o sea que
+  // afirmaba «no hay sombra» con la planta tapada entera. En la tabla de
+  // Ayora del 21-jun salía un salto de 76,6 % a 0,00 % en un paso de 10 min.
+  if (!/if\(zen>89\.5\)zen=89\.5;/.test(html)) throw new Error('ya no se clava al borde de validez');
+  if (/if\(!\(isFinite\(zen\)&&zen<89\.5\)\)return out;/.test(html)) throw new Error('vuelve el cero falso');
+  const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), 500, null);
+  const pairs = [];
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    pairs.push({ slope: Math.atan2(P.pairDz[i], dx) * 180 / Math.PI, pitch: dx,
+                 axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+  }
+  const T = { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
+              nBypass: 2, iam: 0.05, rowTilt: P.tilt, groups: P.groups, drive: 'bifila',
+              segs: P.segs, real: P };
+  const day0 = Date.UTC(2026, 5, 21), doy = 172;
+  let prevMed = -1;
+  for (let mm = 21 * 60; mm <= 21 * 60 + 30; mm += 5) {
+    const g = F.solarPos(day0 + (mm - 120) * 60000, 39.1182081, -1.1598527);
+    if (g.elev <= 0) break;                              // pasado el ocaso ya no aplica
+    const irr = F.clearskyIneichen(g.zen, doy, 739, 3.5);
+    const ang = F.policyAngles('pairwise', g.zen, g.az, T, irr, doy, 0.20).angles;
+    const sh = F.poaPlant(g.zen, g.az, T, ang, irr, doy, 0.20).shade;
+    const a = [];
+    for (let i = 0; i < pairs.length + 1; i++) if (typeof sh[i] === 'number') a.push(sh[i]);
+    const med = a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+    if (med + 1e-9 < prevMed)
+      throw new Error(`la sombra BAJA con el sol cayendo (min ${mm}, elev ${g.elev.toFixed(2)}°): ` +
+        `${(100 * prevMed).toFixed(2)} % → ${(100 * med).toFixed(2)} %`);
+    prevMed = med;
+  }
+  if (prevMed < 0.5) throw new Error('al ocaso la planta debería estar mayormente tapada, y sale ' +
+    (100 * prevMed).toFixed(1) + ' %');
+});
+
+t('v1.37: el mando «configuración de la TCU» existe y arranca en levantamiento', () => {
+  if (!/<select id="tcucfg"/.test(html)) throw new Error('no está el selector');
+  if (!/value="levantamiento"/.test(html) || !/value="cero"/.test(html))
+    throw new Error('faltan las dos opciones');
+  // la etiqueta NO puede prometer «según levantamiento»: esa opción usa la
+  // pendiente que el simulador deduce por PAREJA DE LÍNEAS, que no es la ficha
+  // que se escribe en la TCU (por seguidor, a su vecina crítica: ~1,8x mayor)
+  if (/>Según levantamiento/.test(html))
+    throw new Error('la etiqueta promete la ficha de la TCU y entrega otra pendiente distinta');
+  const sel = html.slice(html.indexOf('<select id="tcucfg"'), html.indexOf('</select>', html.indexOf('<select id="tcucfg"')));
+  if (/value="cero"[^>]*selected/.test(sel))
+    throw new Error('arranca «sin configurar»: cambiaría el resultado por defecto de todo el mundo');
+  if (!/tcucfg:\(\$\('tcucfg'\)\?\$\('tcucfg'\)\.value:'levantamiento'\)/.test(html))
+    throw new Error('cfg() no lee el mando (o no tiene defecto seguro)');
+});
+t('v1.37: cambiar el registro NO cambia el terreno — solo la creencia de la TCU', () => {
+  // SOLO el cuerpo de terrainTCU: hasta aquí la rebanada llegaba a ensureElev y
+  // se tragaba terrain() entera, así que el guard saltaba por el «pitch:» de otra
+  const f = cuerpoFn(html, 'terrainTCU');
+  if (!f) throw new Error('no encuentro terrainTCU');
+  // la propiedad: con la planta configurada por cotas devuelve el MISMO objeto,
+  // sin copiar ni recalcular nada (así «levantamiento» es exactamente lo de antes)
+  if (!/return T;\s*\}$/.test(f.trim()))
+    throw new Error('no devuelve la MISMA planta cuando está configurada por cotas');
+  // y la rama de la ficha sólo puede LEER un dato ya resuelto en carga
+  if (/lineXAbs|Math\.abs\(/.test(f))
+    throw new Error('terrainTCU empareja: eso se hace una vez al cargar, en aplicaFicha');
+  // solo puede tocar `slope`: si tocara pitch, tilt o segs estaría inventando terreno
+  for (const campo of ['pitch', 'axisTilt', 'segs', 'rowTilt', 'cw', 'maxAngle'])
+    if (new RegExp(campo + '\\s*:').test(f))
+      throw new Error('terrainTCU toca «' + campo + '»: eso es cambiar el terreno, no el registro');
+  if (!/slope:0/.test(f)) throw new Error('no pone la pendiente a cero');
+  // es un DATO, no física: nada de trigonometría aquí (misma regla que careoTerreno)
+  if (/Math\.(sin|cos|tan|asin|acos|atan)/.test(f))
+    throw new Error('terrainTCU hace trigonometría: eso es física, y la física ya existe');
+});
+t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría real', () => {
+  const f = html.slice(html.indexOf('function computeDay()'), html.indexOf('function kpisSerie('));
+  if (!/const Tcfg=terrainTCU\(c,T\);/.test(f)) throw new Error('computeDay no construye Tcfg');
+  if (!/policyAngles\(P\.key,g\.zen,g\.az,Tcfg,/.test(f))
+    throw new Error('el ángulo no usa la creencia de la TCU');
+  if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
+    throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
+  // y los caminos de instante (el slider entre pasos de malla) no pueden usar
+  // otra creencia que la del día, o el arrastre saltaría entre dos políticas
+  for (const sitio of ['CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T', 'key,g.zen,g.az,DAY.Tcfg||DAY.T'])
+    if (!html.includes('policyAngles(' + sitio))
+      throw new Error('un camino de instante sigue calculando el ángulo con la geometría real');
+  if (!/const c=cfg\(\), T=terrain\(c\), Tcfg=terrainTCU\(c,T\);/.test(html))
+    throw new Error('la tabla anual no separa creencia de geometría');
+});
+
+t('v1.38: la FICHA de la TCU se empareja por la x MEDIDA, nunca por el índice', () => {
+  const f = cuerpoFn(html, 'aplicaFicha');
+  if (!f) throw new Error('no existe aplicaFicha');
+  if (!/P\.lineXAbs/.test(f))
+    throw new Error('no usa la x absoluta: sin ancla física sólo queda el índice');
+  if (!/ficha\.lineas\[i\]|lineas\[i\]/.test(f) === false)
+    throw new Error('empareja por índice: es el fallo que costó 157 consignas');
+  if (!/<=TOL/.test(f)) throw new Error('empareja sin tolerancia declarada');
+  // las parejas sin ficha NO pueden rellenarse con cero: eso fabrica un llano
+  if (!/out\.push\(null\);continue;/.test(f))
+    throw new Error('las parejas sin ficha no se dejan como «sin dato»');
+  if (!/<option value="ficha"/.test(html)) throw new Error('falta la opción en el selector');
+  if (!/opt\.disabled=!hay;/.test(html))
+    throw new Error('la opción no se deshabilita cuando la planta no tiene ficha publicada');
+});
+t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', () => {
+  const fFicha = path.join(ROOT, 'ayora_ficha.json');
+  if (!fs.existsSync(fFicha)) throw new Error('falta ayora_ficha.json (lo emite export_config_tcu.mjs)');
+  const src = cuerpoFn(html, 'aplicaFicha');
+  const aplicaFicha = new Function('DEG', 'return ' + src)(180 / Math.PI);
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 80, null);
+  if (!P.lineXAbs) throw new Error('plantFromCotas ya no devuelve lineXAbs');
+  aplicaFicha(P, JSON.parse(fs.readFileSync(fFicha, 'utf-8')), cotas.pitch);
+  const C = P.fichaCobertura;
+  if (!C || !C.con) throw new Error('la ficha no casó con ninguna pareja');
+  if (C.lineas < 0.6 * C.de)
+    throw new Error(`sólo casan ${C.lineas} de ${C.de} líneas: el emparejamiento por x se rompió`);
+  // el SIGNO: se eligió el convenio que gana con margen (oeste de la i+1).
+  // Si baja del 85 % es que la ficha cambió de convenio y hay que re-decidirlo,
+  // no seguir dibujando pendientes al revés.
+  let ok = 0, tot = 0;
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    if (P.fichaSlope[i] == null) continue;
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    const nuestro = Math.atan2(P.pairDz[i], dx) * 180 / Math.PI;
+    if (Math.abs(nuestro) < 0.05) continue;
+    tot++; if (Math.sign(P.fichaSlope[i]) === Math.sign(nuestro)) ok++;
+  }
+  if (tot < 20) throw new Error('muestra insuficiente para juzgar el signo');
+  if (ok / tot < 0.85)
+    throw new Error(`el signo de la ficha sólo coincide en ${(100 * ok / tot).toFixed(0)} %: ` +
+      'se eligió el convenio por margen y ese margen se ha perdido');
+  // y tiene que ser OTRA pendiente que la de las cotas, o la opción no aporta
+  const mag = a => { const v = a.filter(x => x != null).map(Math.abs).sort((x, y) => x - y); return v[Math.floor(v.length / 2)]; };
+  const nues = [];
+  for (let i = 0; i < P.lineX.length - 1; i++)
+    nues.push(Math.atan2(P.pairDz[i], Math.max(0.5, P.lineX[i + 1] - P.lineX[i])) * 180 / Math.PI);
+  if (Math.abs(mag(P.fichaSlope) - mag(nues)) < 0.05)
+    throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
+});
+
+console.log('');
+console.log('careo por sombra (tools/careo_sombra.mjs)');
+
+const CAREO = fs.readFileSync(path.join(ROOT, 'tools', 'careo_sombra.mjs'), 'utf-8');
+t('careo sombra: A y B corren LA MISMA política — sólo cambia el registro', () => {
+  // El error que costó una conclusión al revés: usar bt2d como «configuración
+  // A» y pairwise como B mide DOS cosas a la vez (política + registro), y el
+  // 21-dic salía que configurar el levantamiento empeora la sombra.
+  const m = CAREO.match(/const CFG = \[([\s\S]*?)\];/);
+  if (!m) throw new Error('no encuentro CFG');
+  const filas = m[1].split('\n').filter(l => l.includes('pol:'));
+  const a = filas.find(l => l.includes("k: 'plana'")), b = filas.find(l => l.includes("k: 'levanta'"));
+  if (!a || !b) throw new Error('faltan las configuraciones A y B');
+  const pol = l => (l.match(/pol: '([a-z0-9]+)'/) || [])[1];
+  if (pol(a) !== pol(b))
+    throw new Error(`A usa «${pol(a)}» y B usa «${pol(b)}»: el careo mide política + registro, no el registro`);
+  if (!/T: T0/.test(a) || !/T: T,/.test(b))
+    throw new Error('A tiene que correr con la planta de pendiente CERO y B con la real');
+  if (!/planta\(true\), T0 = planta\(false\)/.test(CAREO))
+    throw new Error('las dos plantas ya no se construyen de la misma función');
+});
+t('careo sombra: el contador mide siempre la geometría REAL', () => {
+  // la planta tiene la pendiente que tiene, la crea o no la crea su TCU: si el
+  // contador usara T0 para A, la configuración A saldría sin sombra por magia
+  if (!/const sh = F\.poaPlant\(g\.zen, g\.az, T, ang, irr, doy, ALB\)\.shade;/.test(CAREO))
+    throw new Error('el contador no está atado a la geometría real');
+});
+t('careo sombra: configurar el registro nunca EMPEORA la sombra del día', () => {
+  let out;
+  try {
+    out = require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'careo_sombra.mjs'), '--planta', 'ayora',
+       '--dia', '2026-12-21', '--paso', '20'], { encoding: 'utf-8' });
+  } catch (e) { throw new Error('el careo aborta: ' + ((e.stdout || '') + (e.stderr || '')).slice(-300)); }
+  const g = k => {
+    const re = new RegExp(k + '[^\\n]*sombra media\\s+([\\d.]+) %[^\\n]*irradiancia ([\\d.]+) %');
+    const m = out.match(re);
+    if (!m) throw new Error('no encuentro la línea de ' + k);
+    return { med: +m[1], pond: +m[2] };
+  };
+  const A = g('A · SIN CONFIGURAR'), B = g('B · CONFIGURADA');
+  if (B.med > A.med + 1e-9)
+    throw new Error(`configurar empeora la sombra media: ${A.med} % → ${B.med} %`);
+  if (B.pond > A.pond + 1e-9)
+    throw new Error(`configurar empeora la sombra ponderada: ${A.pond} % → ${B.pond} %`);
+  // y la descomposición tiene que ser exhaustiva, o las columnas mienten
+  const suma = out.match(/evitable ([\d.]+) \+ inevitable \(tope\) ([\d.]+) \+ residual ([\d.]+) = ([\d.]+)/g);
+  if (!suma || suma.length < 2) throw new Error('no se publica la descomposición');
+  for (const s of suma) {
+    const n = s.match(/([\d.]+)/g).map(Number);
+    if (Math.abs(n[0] + n[1] + n[2] - n[3]) > 0.015)
+      throw new Error('evitable+inevitable+residual no suma la media: ' + s);
+  }
+});
+
+console.log('');
+console.log('control de entrada del relieve (tools/valida_relieve.mjs)');
+
+// Cotas SINTÉTICAS: la única forma de probar que el control distingue un bancal
+// (legítimo) de una línea suelta (imposible) es fabricar los dos casos. El
+// formato es el de <planta>_cotas.json: y = cota medida sobre el módulo.
+function cotasSinteticas(perfilZ, pitch = 6.0) {
+  const t = [];
+  perfilZ.forEach((z, i) => {
+    // 8 filas por línea, todas con el mismo tramo de norte para que solapen
+    for (let k = 0; k < 8; k++)
+      t.push({ f: [{ x: i * pitch, n: [k * 80, k * 80 + 74], y: [z, z], art: 0, pa: [0], nm: null, ym: null }] });
+  });
+  return { planta: 'zzsintetica', base: 0, gcr: 0.397, limite: 55, pitch, cuerda: 2.382,
+    n_trk: t.length, n_con: t.length, n_art: 0, n_inc: 0, nota: 'sintética de prueba', t };
+}
+function corrigeRelieve(perfilZ) {
+  const f = path.join(ROOT, 'zzsintetica_cotas.json');
+  fs.writeFileSync(f, JSON.stringify(cotasSinteticas(perfilZ)));
+  try {
+    const r = require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'zzsintetica'],
+      { encoding: 'utf-8' });
+    return { salida: r, codigo: 0 };
+  } catch (e) {
+    return { salida: (e.stdout || '') + (e.stderr || ''), codigo: e.status };
+  } finally { try { fs.unlinkSync(f); } catch { /* nada */ } }
+}
+
+t('bancal: un escalón que BAJA Y SE QUEDA no se rechaza (es terreno real)', () => {
+  // 12 líneas llanas, escalón de −2,5 m en la 6ª que persiste hasta el final.
+  // Esto se rompió una vez al revés: se rechazaba por «pendiente imposible»,
+  // y así se descartaban justo las plantas donde corregir el relieve más vale.
+  const z = [0, -.1, -.2, -.3, -.4, -.5, -3.0, -3.1, -3.2, -3.3, -3.4, -3.5];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 0) throw new Error('rechaza un bancal legítimo:\n' + r.salida);
+  if (!/VEREDICTO: APTA/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+  // y aun así lo INFORMA: el desnivel grande tiene que verse en el resumen
+  if (!/pareja\(s\) por encima de 8\.5°/.test(r.salida)) throw new Error('no informa del desnivel');
+});
+t('línea suelta: hundida de sus DOS vecinas más de medio vano → NO EVALUABLE', () => {
+  const z = [0, -.1, -.2, -.3, -.4, -4.9, -.6, -.7, -.8, -.9, -1.0, -1.1];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 1) throw new Error('no rechaza una línea imposible (código ' + r.codigo + '):\n' + r.salida);
+  if (!/VEREDICTO: NO EVALUABLE/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+  if (!/línea 5 /.test(r.salida)) throw new Error('no señala CUÁL es la línea:\n' + r.salida);
+});
+t('línea suelta pequeña (vaguada posible) → reserva, no rechazo', () => {
+  const z = [0, -.1, -.2, -.3, -.4, -2.0, -.6, -.7, -.8, -.9, -1.0, -1.1];
+  const r = corrigeRelieve(z);
+  if (r.codigo !== 0) throw new Error('rechaza lo que solo merece reserva:\n' + r.salida);
+  if (!/VEREDICTO: APTA CON RESERVAS/.test(r.salida)) throw new Error('veredicto inesperado:\n' + r.salida);
+});
+t('llano perfecto → APTA sin hallazgos', () => {
+  const r = corrigeRelieve([0, -.1, -.2, -.3, -.4, -.5, -.6, -.7, -.8, -.9]);
+  if (r.codigo !== 0 || !/sin hallazgos/.test(r.salida)) throw new Error('el llano no sale limpio:\n' + r.salida);
+});
+t('fila anómala: una cota mala DENTRO de una línea buena no se escapa', () => {
+  // el control de línea la absorbía en la mediana: 4 casos cazados de 20 reales
+  const z = [0, -.1, -.2, -.3, -.4, -.5, -.6, -.7, -.8, -.9];
+  const c = cotasSinteticas(z);
+  // una línea de 8 filas con UNA fila 36,6 m arriba: la mediana de la línea ni
+  // se entera, pero la geometría de esa fila es imposible
+  c.t[5 * 8 + 3].f[0].y = [z[5] + 36.6, z[5] + 36.6];
+  const f = path.join(ROOT, 'zzsintetica_cotas.json');
+  fs.writeFileSync(f, JSON.stringify(c));
+  let r;
+  try {
+    r = { s: require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'zzsintetica'],
+      { encoding: 'utf-8' }), c: 0 };
+  } catch (e) { r = { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+  finally { try { fs.unlinkSync(f); } catch { /* nada */ } }
+  if (r.c !== 1) throw new Error('la fila anómala se escapa (código ' + r.c + '):\n' + r.s);
+  if (!/fila anómala/.test(r.s)) throw new Error('no la nombra:\n' + r.s);
+  if (!/VEREDICTO: NO EVALUABLE/.test(r.s)) throw new Error('veredicto inesperado:\n' + r.s);
+});
+t('San José: el desvío repetido se declara SISTEMÁTICO, no ruido', () => {
+  if (!fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) return;
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
+  catch (e) { r = (e.stdout || '') + (e.stderr || ''); }
+  if (!/error SISTEMÁTICO/.test(r))
+    throw new Error('ya no detecta que el desvío se repite: ¿se corrigió el levantamiento?');
+  const m = r.match(/repiten LA MISMA magnitud \(≈([\d.]+) m\)/);
+  if (!m) throw new Error('no publica la magnitud repetida');
+  if (Math.abs(+m[1] - 36.65) > 1)
+    throw new Error('la magnitud repetida cambió a ' + m[1] + ' m: revisar el informe al cliente');
+});
+t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
+  const corre = a => {
+    try { return { s: require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), ...a], { encoding: 'utf-8' }), c: 0 }; }
+    catch (e) { return { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+  };
+  if (fs.existsSync(path.join(ROOT, 'ayora_cotas.json'))) {
+    const r = corre(['--planta', 'ayora']);
+    if (r.c !== 0 || !/VEREDICTO: APTA/.test(r.s)) throw new Error('Ayora ya no pasa el control:\n' + r.s);
+  }
+  if (fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) {
+    const r = corre(['--planta', 'sanjose', '--bloque', '0']);
+    if (r.c !== 1) throw new Error('San José bloque 0 debería salir NO EVALUABLE');
+    // las tres líneas imposibles, nombradas: si el levantamiento se corrige,
+    // esta comprobación avisa de que hay que revisar el informe al cliente
+    for (const l of ['línea 129', 'línea 146', 'línea 159'])
+      if (!r.s.includes(l)) throw new Error('ya no señala la ' + l + ': ¿se corrigió el levantamiento?');
   }
 });
 

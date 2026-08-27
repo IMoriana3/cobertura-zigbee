@@ -242,7 +242,70 @@ fs.writeFileSync(out.replace(/\.csv$/, '.meta.json'), JSON.stringify({
   cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) — los mismos que export_consignas.mjs',
 }, null, 2) + '\n');
 
+/* ── LA FICHA, AGREGADA POR LÍNEA, PARA QUE EL SIMULADOR PUEDA CARGARLA ────
+   El simulador razona por LÍNEA y esta ficha va por SEGUIDOR: para meterla en
+   la página hay que agregar. Y hay que hacerlo con cuidado, porque emparejar
+   por ÍNDICE es exactamente el fallo que ya costó 157 consignas mal dirigidas:
+   la página carga un BLOQUE con un tope de líneas, así que su línea 0 no tiene
+   por qué ser la 0 de aquí.
+
+   Por eso la clave es la **x MEDIDA** de la línea, no su número: es una
+   magnitud física que las dos partes calculan igual y que no depende de qué
+   bloque se cargue. La página empareja por x con tolerancia y DECLARA cuántas
+   líneas casaron; si no casan, lo dice en vez de dibujar pendientes ajenas.
+
+   Se agrega por MEDIANA, no por media: un seguidor con la cota mal tomada
+   desplazaría la media de su línea entera. */
+const porLinea = new Map();
+for (let r = 1; r < L.length; r++) {
+  const f = L[r].split(';');
+  const i = par[r - 1], t = T[i];
+  const xr = (t.f || []).map(a => a.x).filter(v => isFinite(v));
+  const li = xr.length ? lineaDe(Math.min(...xr)) : -1;
+  if (li < 0) continue;
+  if (!porLinea.has(li)) porLinea.set(li, { o: [], e: [], ao: [], ae: [], lg: [] });
+  const g = porLinea.get(li);
+  const push = (arr, v) => { if (isFinite(v)) arr.push(v); };
+  push(g.o, num(f[iTO])); push(g.e, num(f[iTE]));
+  push(g.ao, num(f[iAO])); push(g.ae, num(f[iAE]));
+  push(g.lg, num(f[iLong]));
+}
+const mediana = a => {
+  if (!a.length) return null;
+  const v = a.slice().sort((x, y) => x - y);
+  return v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+};
+const fichaLineas = [];
+for (let li = 0; li < lineas.length; li++) {
+  const g = porLinea.get(li);
+  if (!g) continue;
+  fichaLineas.push({
+    linea: li + 1,
+    x: +lineas[li].x.toFixed(3),                 // LA CLAVE: x medida, no el índice
+    n: g.o.length,
+    oeste_transv_pct: mediana(g.o) == null ? null : +mediana(g.o).toFixed(3),
+    este_transv_pct: mediana(g.e) == null ? null : +mediana(g.e).toFixed(3),
+    oeste_azimut_deg: mediana(g.ao) == null ? null : +mediana(g.ao).toFixed(2),
+    este_azimut_deg: mediana(g.ae) == null ? null : +mediana(g.ae).toFixed(2),
+    long_pct: mediana(g.lg) == null ? null : +mediana(g.lg).toFixed(3),
+  });
+}
+const outF = path.join(ROOT, PLANTA + '_ficha.json');
+fs.writeFileSync(outF, JSON.stringify({
+  planta: PLANTA,
+  que_es: 'la ficha de configuración del levantamiento AGREGADA POR LÍNEA (mediana de sus ' +
+    'seguidores), para que backtracking.html pueda simular la planta con lo que de verdad se ' +
+    'escribe en las TCU. Las pendientes son las de la VECINA CRÍTICA de cada lado, que NO es la ' +
+    'misma regla que la del simulador (pareja de líneas promediando el solape norte): en Ayora ' +
+    'difieren ~1,8× en la mediana. Por eso se cargan aparte y se etiquetan aparte.',
+  emparejar_por: 'x (metros, marco del levantamiento) con tolerancia — NUNCA por el número de ' +
+    'línea: la página carga un bloque con tope de líneas y su índice 0 no es el de aquí.',
+  generado_por: 'tools/export_config_tcu.mjs',
+  lineas: fichaLineas,
+}, null, 1) + '\n');
+
 console.log(`${path.basename(out)} · ${filas.length} seguidores unidos 1:1 · ${lineas.length} líneas`);
+console.log(`${path.basename(outF)} · ${fichaLineas.length} líneas con ficha (clave: x medida)`);
 console.log(`  autocomprobación vector/azimut: peor desvío ${peorTrig.toFixed(4)} pp`);
 if (bordeO || bordeE) console.log(`  bordes de bloque: ${bordeO} al oeste · ${bordeE} al este`);
 console.log('  pulsos (41037/41038) y azimut de eje (41014) van SIN derivar, por diseño — ver .meta.json');
