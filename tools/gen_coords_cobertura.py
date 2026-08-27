@@ -18,6 +18,12 @@ Salida en cobertura_coords/<planta>/:
     ncus_<planta>.csv              solo las NCU (el coordinador, que no se sondea: es quien sondea)
     manifiesto_<planta>.json       los ámbitos que hay, con recuentos: qué se puede lanzar
 
+Y uno para todas, en cobertura_coords/:
+
+    indice.json                    QUÉ PLANTAS HAY y qué se puede bajar de cada una. Es lo que
+                                   lee la tarjeta del panel para armar el paquete de campo sin
+                                   llevar dentro una lista de plantas que se queda vieja sola.
+
 Columnas del CSV, las mismas que ya come el driver (diagnostico_elburgo.py autodetecta
 id/lat/lon) más dos de contexto:
 
@@ -325,19 +331,91 @@ def genera(planta, en_viga):
            "ncus_sin_declarar_en_scada": sin_tb,
            "ambitos": ambitos,
            "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv %s_real.geojson" % planta}
-    with open(os.path.join(d, "manifiesto_%s.json" % planta), "w", encoding="utf-8") as f:
+    """NO PISAR UN MANIFIESTO CON MENOS DE LO QUE YA TENÍA. La IP y el puerto de
+       cada gateway salen del repo del SCADA, que se clona AL LADO de este. Sin
+       ese clon la herramienta corre igual, sigue diciendo
+       `gateways_declarados_en_scada: true` y se deja las IP a null: San José
+       perdía 5 de sus 24 sin que nadie se enterara. Ahora se entera."""
+    fman = os.path.join(d, "manifiesto_%s.json" % planta)
+    if os.path.exists(fman):
+        previo = json.load(open(fman, encoding="utf-8"))
+        antes, ahora = ips_de(previo), ips_de(man)
+        if ahora < antes:
+            print("  !! %s: el manifiesto de disco trae %d gateways con IP y este solo %d — "
+                  "¿está clonado el repo del SCADA al lado? NO se pisa (--force para pisarlo)."
+                  % (planta, antes, ahora))
+            if "--force" not in sys.argv:
+                return previo
+    with open(fman, "w", encoding="utf-8") as f:
         json.dump(man, f, ensure_ascii=False, indent=1)
     return man
+
+
+def indice_de_disco():
+    """Los manifiestos que YA hay, sin regenerar nada."""
+    out = []
+    for p in PLANTAS:
+        f = os.path.join(SAL, p, "manifiesto_%s.json" % p)
+        if os.path.exists(f):
+            out.append(json.load(open(f, encoding="utf-8")))
+    return out
+
+
+def ips_de(man):
+    return sum(1 for a in man.get("ambitos", []) if a.get("ip"))
+
+
+def escribe_indice(mans):
+    """Índice de todo lo descargable. Sin esto, quien quiera ofrecer los ficheros
+       —la tarjeta del panel— tiene que llevar dentro la lista de plantas, y esa
+       lista se queda vieja el día que entre la siguiente."""
+    idx = {"generado_por": "tools/gen_coords_cobertura.py",
+           "que_es": "coordenadas de entrada para lanzar la medida de cobertura, por ámbito",
+           "ambito_que_se_lanza": "(NCU,GW) cuando la planta declara gateways; si no, la NCU",
+           "plantas": []}
+    for m in sorted(mans, key=lambda q: q["planta"]):
+        idx["plantas"].append({
+            "planta": m["planta"], "titulo": m.get("titulo") or m["planta"],
+            "nodos": m["nodos"], "tcus": m["tcus"], "hsus": m["hsus"], "reps": m["reps"],
+            "ncus": m["ncus"], "gws": m["gws"],
+            "gateways_declarados_en_scada": m["gateways_declarados_en_scada"],
+            "manifiesto": "manifiesto_%s.json" % m["planta"],
+            "ficheros": [{"fichero": a["fichero"], "ambito": a["ambito"],
+                          "tcus": a.get("tcus"), "ncu": a.get("ncu"), "gw": a.get("gw"),
+                          "ip": a.get("ip"), "puerto": a.get("puerto")}
+                         for a in m["ambitos"]] +
+                        [{"fichero": "ncus_%s.csv" % m["planta"], "ambito": "coordinadores",
+                          "tcus": None}],
+        })
+    with open(os.path.join(SAL, "indice.json"), "w", encoding="utf-8") as f:
+        json.dump(idx, f, ensure_ascii=False, indent=1)
+    return idx
 
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     en_viga = "--en-eje" not in sys.argv
+    if "--solo-indice" in sys.argv:
+        # Rehace SOLO el índice, desde los manifiestos que ya hay. Sirve para
+        # refrescarlo sin el repo del SCADA al lado, que es lo que hace falta
+        # para regenerar las coordenadas de verdad.
+        idx = escribe_indice(indice_de_disco())
+        print("indice.json: %d plantas, %d ficheros (desde los manifiestos de disco)" %
+              (len(idx["plantas"]), sum(len(q["ficheros"]) for q in idx["plantas"])))
+        raise SystemExit(0)
+    mans = []
     for p in (args or PLANTAS):
         m = genera(p, en_viga)
+        mans.append(m)
         aviso = ""
         if not m["gateways_declarados_en_scada"]: aviso = "  · sin gateways en el SCADA"
         elif m["ncus_sin_declarar_en_scada"]: aviso = "  · NCU sin declarar en el SCADA: %s" % m["ncus_sin_declarar_en_scada"]
         print("%-11s %4d nodos (%d TCU + %d HSU + %d REP) · %2d NCU · %d GW · %2d ámbitos%s%s" %
               (p, m["nodos"], m["tcus"], m["hsus"], m["reps"], m["ncus"], m["gws"], len(m["ambitos"]),
                ("  (una fila)" if m["una_fila"] else "") + (("  · %d por cable" % m["cableados"]) if m["cableados"] else ""), aviso))
+    # El índice solo se rehace cuando se han generado TODAS: con una planta suelta
+    # se quedaría con esa sola y la tarjeta dejaría de ver las demás.
+    if not args:
+        idx = escribe_indice(mans)
+        print("\nindice.json: %d plantas, %d ficheros" %
+              (len(idx["plantas"]), sum(len(q["ficheros"]) for q in idx["plantas"])))

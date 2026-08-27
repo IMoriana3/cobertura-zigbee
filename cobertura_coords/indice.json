@@ -1,0 +1,1493 @@
+{
+ "generado_por": "tools/gen_coords_cobertura.py",
+ "que_es": "coordenadas de entrada para lanzar la medida de cobertura, por ámbito",
+ "ambito_que_se_lanza": "(NCU,GW) cuando la planta declara gateways; si no, la NCU",
+ "plantas": [
+  {
+   "planta": "ayora",
+   "titulo": "Ayora 24025",
+   "nodos": 769,
+   "tcus": 754,
+   "hsus": 10,
+   "reps": 5,
+   "ncus": 16,
+   "gws": 1,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_ayora.json",
+   "ficheros": [
+    {
+     "fichero": "coords_ayora.csv",
+     "ambito": "planta",
+     "tcus": 769,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 63,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 70,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU03.csv",
+     "ambito": "ncu",
+     "tcus": 67,
+     "ncu": 3,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU04.csv",
+     "ambito": "ncu",
+     "tcus": 31,
+     "ncu": 4,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU05.csv",
+     "ambito": "ncu",
+     "tcus": 49,
+     "ncu": 5,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU06.csv",
+     "ambito": "ncu",
+     "tcus": 26,
+     "ncu": 6,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU07.csv",
+     "ambito": "ncu",
+     "tcus": 25,
+     "ncu": 7,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU08.csv",
+     "ambito": "ncu",
+     "tcus": 45,
+     "ncu": 8,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU09.csv",
+     "ambito": "ncu",
+     "tcus": 41,
+     "ncu": 9,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU10.csv",
+     "ambito": "ncu",
+     "tcus": 40,
+     "ncu": 10,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU11.csv",
+     "ambito": "ncu",
+     "tcus": 66,
+     "ncu": 11,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU12.csv",
+     "ambito": "ncu",
+     "tcus": 56,
+     "ncu": 12,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU13.csv",
+     "ambito": "ncu",
+     "tcus": 73,
+     "ncu": 13,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU14.csv",
+     "ambito": "ncu",
+     "tcus": 25,
+     "ncu": 14,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU15.csv",
+     "ambito": "ncu",
+     "tcus": 46,
+     "ncu": 15,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_ayora_NCU16.csv",
+     "ambito": "ncu",
+     "tcus": 46,
+     "ncu": 16,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_ayora.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "bagnarelli",
+   "titulo": "Bagnarelli 24030",
+   "nodos": 19,
+   "tcus": 17,
+   "hsus": 2,
+   "reps": 0,
+   "ncus": 1,
+   "gws": 1,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_bagnarelli.json",
+   "ficheros": [
+    {
+     "fichero": "coords_bagnarelli.csv",
+     "ambito": "planta",
+     "tcus": 19,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_bagnarelli_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 19,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_bagnarelli.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "benante",
+   "titulo": "Benante 25004",
+   "nodos": 734,
+   "tcus": 730,
+   "hsus": 4,
+   "reps": 0,
+   "ncus": 6,
+   "gws": 6,
+   "gateways_declarados_en_scada": false,
+   "manifiesto": "manifiesto_benante.json",
+   "ficheros": [
+    {
+     "fichero": "coords_benante.csv",
+     "ambito": "planta",
+     "tcus": 734,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 115,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 209,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU03.csv",
+     "ambito": "ncu",
+     "tcus": 134,
+     "ncu": 3,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU04.csv",
+     "ambito": "ncu",
+     "tcus": 56,
+     "ncu": 4,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU05.csv",
+     "ambito": "ncu",
+     "tcus": 76,
+     "ncu": 5,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_NCU06.csv",
+     "ambito": "ncu",
+     "tcus": 144,
+     "ncu": 6,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW1.csv",
+     "ambito": "gw",
+     "tcus": 115,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW2.csv",
+     "ambito": "gw",
+     "tcus": 209,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW3.csv",
+     "ambito": "gw",
+     "tcus": 134,
+     "ncu": null,
+     "gw": 3,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW4.csv",
+     "ambito": "gw",
+     "tcus": 56,
+     "ncu": null,
+     "gw": 4,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW5.csv",
+     "ambito": "gw",
+     "tcus": 76,
+     "ncu": null,
+     "gw": 5,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_benante_GW6.csv",
+     "ambito": "gw",
+     "tcus": 144,
+     "ncu": null,
+     "gw": 6,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_benante.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "elburgo",
+   "titulo": "elburgo",
+   "nodos": 219,
+   "tcus": 215,
+   "hsus": 4,
+   "reps": 0,
+   "ncus": 2,
+   "gws": 2,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_elburgo.json",
+   "ficheros": [
+    {
+     "fichero": "coords_elburgo.csv",
+     "ambito": "planta",
+     "tcus": 219,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_elburgo_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 110,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_elburgo_NCU01_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 57,
+     "ncu": 1,
+     "gw": 1,
+     "ip": "10.100.1.52",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_elburgo_NCU01_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 53,
+     "ncu": 1,
+     "gw": 2,
+     "ip": "10.100.1.52",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_elburgo_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 109,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_elburgo_NCU02_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 46,
+     "ncu": 2,
+     "gw": 1,
+     "ip": "10.100.1.56",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_elburgo_NCU02_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 63,
+     "ncu": 2,
+     "gw": 2,
+     "ip": "10.100.1.56",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_elburgo_GW1.csv",
+     "ambito": "gw",
+     "tcus": 103,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_elburgo_GW2.csv",
+     "ambito": "gw",
+     "tcus": 116,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_elburgo.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "fayon",
+   "titulo": "Fayón 24007",
+   "nodos": 25,
+   "tcus": 24,
+   "hsus": 1,
+   "reps": 0,
+   "ncus": 1,
+   "gws": 1,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_fayon.json",
+   "ficheros": [
+    {
+     "fichero": "coords_fayon.csv",
+     "ambito": "planta",
+     "tcus": 25,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_fayon_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 25,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_fayon.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "panbianco",
+   "titulo": "Panbianco 25004.2",
+   "nodos": 1484,
+   "tcus": 1476,
+   "hsus": 6,
+   "reps": 2,
+   "ncus": 12,
+   "gws": 12,
+   "gateways_declarados_en_scada": false,
+   "manifiesto": "manifiesto_panbianco.json",
+   "ficheros": [
+    {
+     "fichero": "coords_panbianco.csv",
+     "ambito": "planta",
+     "tcus": 1484,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 141,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 141,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU03.csv",
+     "ambito": "ncu",
+     "tcus": 54,
+     "ncu": 3,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU04.csv",
+     "ambito": "ncu",
+     "tcus": 139,
+     "ncu": 4,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU05.csv",
+     "ambito": "ncu",
+     "tcus": 157,
+     "ncu": 5,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU06.csv",
+     "ambito": "ncu",
+     "tcus": 140,
+     "ncu": 6,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU07.csv",
+     "ambito": "ncu",
+     "tcus": 127,
+     "ncu": 7,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU08.csv",
+     "ambito": "ncu",
+     "tcus": 46,
+     "ncu": 8,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU09.csv",
+     "ambito": "ncu",
+     "tcus": 119,
+     "ncu": 9,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU10.csv",
+     "ambito": "ncu",
+     "tcus": 134,
+     "ncu": 10,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU11.csv",
+     "ambito": "ncu",
+     "tcus": 139,
+     "ncu": 11,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_NCU12.csv",
+     "ambito": "ncu",
+     "tcus": 147,
+     "ncu": 12,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW1.csv",
+     "ambito": "gw",
+     "tcus": 141,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW2.csv",
+     "ambito": "gw",
+     "tcus": 141,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW3.csv",
+     "ambito": "gw",
+     "tcus": 54,
+     "ncu": null,
+     "gw": 3,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW4.csv",
+     "ambito": "gw",
+     "tcus": 139,
+     "ncu": null,
+     "gw": 4,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW5.csv",
+     "ambito": "gw",
+     "tcus": 157,
+     "ncu": null,
+     "gw": 5,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW6.csv",
+     "ambito": "gw",
+     "tcus": 140,
+     "ncu": null,
+     "gw": 6,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW7.csv",
+     "ambito": "gw",
+     "tcus": 127,
+     "ncu": null,
+     "gw": 7,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW8.csv",
+     "ambito": "gw",
+     "tcus": 46,
+     "ncu": null,
+     "gw": 8,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW9.csv",
+     "ambito": "gw",
+     "tcus": 119,
+     "ncu": null,
+     "gw": 9,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW10.csv",
+     "ambito": "gw",
+     "tcus": 134,
+     "ncu": null,
+     "gw": 10,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW11.csv",
+     "ambito": "gw",
+     "tcus": 139,
+     "ncu": null,
+     "gw": 11,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_panbianco_GW12.csv",
+     "ambito": "gw",
+     "tcus": 147,
+     "ncu": null,
+     "gw": 12,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_panbianco.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "paramo",
+   "titulo": "Páramo 25019",
+   "nodos": 399,
+   "tcus": 396,
+   "hsus": 3,
+   "reps": 0,
+   "ncus": 4,
+   "gws": 2,
+   "gateways_declarados_en_scada": false,
+   "manifiesto": "manifiesto_paramo.json",
+   "ficheros": [
+    {
+     "fichero": "coords_paramo.csv",
+     "ambito": "planta",
+     "tcus": 399,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 121,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU01_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 80,
+     "ncu": 1,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU01_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 41,
+     "ncu": 1,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 85,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU03.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 3,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU03_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 51,
+     "ncu": 3,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU03_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 69,
+     "ncu": 3,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_NCU04.csv",
+     "ambito": "ncu",
+     "tcus": 73,
+     "ncu": 4,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_GW1.csv",
+     "ambito": "gw",
+     "tcus": 289,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_paramo_GW2.csv",
+     "ambito": "gw",
+     "tcus": 110,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_paramo.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "polvorin",
+   "titulo": "El Polvorín 25082",
+   "nodos": 121,
+   "tcus": 119,
+   "hsus": 2,
+   "reps": 0,
+   "ncus": 2,
+   "gws": 2,
+   "gateways_declarados_en_scada": false,
+   "manifiesto": "manifiesto_polvorin.json",
+   "ficheros": [
+    {
+     "fichero": "coords_polvorin.csv",
+     "ambito": "planta",
+     "tcus": 121,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_polvorin_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 76,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_polvorin_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 45,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_polvorin_GW1.csv",
+     "ambito": "gw",
+     "tcus": 76,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_polvorin_GW2.csv",
+     "ambito": "gw",
+     "tcus": 45,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_polvorin.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "sanjose",
+   "titulo": "San José 24019",
+   "nodos": 2306,
+   "tcus": 2289,
+   "hsus": 8,
+   "reps": 9,
+   "ncus": 21,
+   "gws": 2,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_sanjose.json",
+   "ficheros": [
+    {
+     "fichero": "coords_sanjose.csv",
+     "ambito": "planta",
+     "tcus": 2306,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 121,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU01_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 68,
+     "ncu": 1,
+     "gw": 1,
+     "ip": "10.21.236.1",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU01_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 53,
+     "ncu": 1,
+     "gw": 2,
+     "ip": "10.21.236.1",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU02.csv",
+     "ambito": "ncu",
+     "tcus": 119,
+     "ncu": 2,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU02_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 47,
+     "ncu": 2,
+     "gw": 1,
+     "ip": "10.21.236.11",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU02_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 72,
+     "ncu": 2,
+     "gw": 2,
+     "ip": "10.21.236.11",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU03.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 3,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU03_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 45,
+     "ncu": 3,
+     "gw": 1,
+     "ip": "10.21.236.6",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU03_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 75,
+     "ncu": 3,
+     "gw": 2,
+     "ip": "10.21.236.6",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU04.csv",
+     "ambito": "ncu",
+     "tcus": 125,
+     "ncu": 4,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU04_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 90,
+     "ncu": 4,
+     "gw": 1,
+     "ip": "10.21.236.16",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU04_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 35,
+     "ncu": 4,
+     "gw": 2,
+     "ip": "10.21.236.16",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU05.csv",
+     "ambito": "ncu",
+     "tcus": 124,
+     "ncu": 5,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU05_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 56,
+     "ncu": 5,
+     "gw": 1,
+     "ip": "10.21.236.26",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU05_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 68,
+     "ncu": 5,
+     "gw": 2,
+     "ip": "10.21.236.26",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU06.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 6,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU06_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 68,
+     "ncu": 6,
+     "gw": 1,
+     "ip": "10.21.236.31",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU06_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 52,
+     "ncu": 6,
+     "gw": 2,
+     "ip": "10.21.236.31",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU07.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 7,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU07_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 59,
+     "ncu": 7,
+     "gw": 1,
+     "ip": "10.21.236.41",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU07_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 61,
+     "ncu": 7,
+     "gw": 2,
+     "ip": "10.21.236.41",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU08.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 8,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU08_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 70,
+     "ncu": 8,
+     "gw": 1,
+     "ip": "10.21.236.36",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU08_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 50,
+     "ncu": 8,
+     "gw": 2,
+     "ip": "10.21.236.36",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU09.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 9,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU09_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 48,
+     "ncu": 9,
+     "gw": 1,
+     "ip": "10.21.236.21",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU09_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 72,
+     "ncu": 9,
+     "gw": 2,
+     "ip": "10.21.236.21",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU10.csv",
+     "ambito": "ncu",
+     "tcus": 119,
+     "ncu": 10,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU10_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 62,
+     "ncu": 10,
+     "gw": 1,
+     "ip": "10.21.236.46",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU10_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 57,
+     "ncu": 10,
+     "gw": 2,
+     "ip": "10.21.236.46",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU11.csv",
+     "ambito": "ncu",
+     "tcus": 119,
+     "ncu": 11,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU11_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 39,
+     "ncu": 11,
+     "gw": 1,
+     "ip": "10.21.236.51",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU11_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 80,
+     "ncu": 11,
+     "gw": 2,
+     "ip": "10.21.236.51",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU12.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 12,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU12_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 67,
+     "ncu": 12,
+     "gw": 1,
+     "ip": "10.21.236.56",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU12_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 53,
+     "ncu": 12,
+     "gw": 2,
+     "ip": "10.21.236.56",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU13.csv",
+     "ambito": "ncu",
+     "tcus": 120,
+     "ncu": 13,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU13_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 50,
+     "ncu": 13,
+     "gw": 1,
+     "ip": "10.21.236.61",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU13_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 70,
+     "ncu": 13,
+     "gw": 2,
+     "ip": "10.21.236.61",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU14.csv",
+     "ambito": "ncu",
+     "tcus": 65,
+     "ncu": 14,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU15.csv",
+     "ambito": "ncu",
+     "tcus": 54,
+     "ncu": 15,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU16.csv",
+     "ambito": "ncu",
+     "tcus": 125,
+     "ncu": 16,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU16_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 43,
+     "ncu": 16,
+     "gw": 1,
+     "ip": "10.21.236.76",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU16_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 82,
+     "ncu": 16,
+     "gw": 2,
+     "ip": "10.21.236.76",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU17.csv",
+     "ambito": "ncu",
+     "tcus": 122,
+     "ncu": 17,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU17_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 70,
+     "ncu": 17,
+     "gw": 1,
+     "ip": "10.21.236.81",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU17_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 52,
+     "ncu": 17,
+     "gw": 2,
+     "ip": "10.21.236.81",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU18.csv",
+     "ambito": "ncu",
+     "tcus": 122,
+     "ncu": 18,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU18_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 38,
+     "ncu": 18,
+     "gw": 1,
+     "ip": "10.21.236.86",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU18_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 84,
+     "ncu": 18,
+     "gw": 2,
+     "ip": "10.21.236.86",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU19.csv",
+     "ambito": "ncu",
+     "tcus": 124,
+     "ncu": 19,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU19_GW1.csv",
+     "ambito": "gateway",
+     "tcus": 60,
+     "ncu": 19,
+     "gw": 1,
+     "ip": "10.21.236.91",
+     "puerto": 503
+    },
+    {
+     "fichero": "coords_sanjose_NCU19_GW2.csv",
+     "ambito": "gateway",
+     "tcus": 64,
+     "ncu": 19,
+     "gw": 2,
+     "ip": "10.21.236.91",
+     "puerto": 504
+    },
+    {
+     "fichero": "coords_sanjose_NCU20.csv",
+     "ambito": "ncu",
+     "tcus": 57,
+     "ncu": 20,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_NCU21.csv",
+     "ambito": "ncu",
+     "tcus": 70,
+     "ncu": 21,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_GW1.csv",
+     "ambito": "gw",
+     "tcus": 1226,
+     "ncu": null,
+     "gw": 1,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_sanjose_GW2.csv",
+     "ambito": "gw",
+     "tcus": 1080,
+     "ncu": null,
+     "gw": 2,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_sanjose.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  },
+  {
+   "planta": "tunez",
+   "titulo": "Túnez 24021",
+   "nodos": 20,
+   "tcus": 19,
+   "hsus": 1,
+   "reps": 0,
+   "ncus": 1,
+   "gws": 1,
+   "gateways_declarados_en_scada": true,
+   "manifiesto": "manifiesto_tunez.json",
+   "ficheros": [
+    {
+     "fichero": "coords_tunez.csv",
+     "ambito": "planta",
+     "tcus": 20,
+     "ncu": null,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "coords_tunez_NCU01.csv",
+     "ambito": "ncu",
+     "tcus": 20,
+     "ncu": 1,
+     "gw": null,
+     "ip": null,
+     "puerto": null
+    },
+    {
+     "fichero": "ncus_tunez.csv",
+     "ambito": "coordinadores",
+     "tcus": null
+    }
+   ]
+  }
+ ]
+}
