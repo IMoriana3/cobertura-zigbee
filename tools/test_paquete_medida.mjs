@@ -70,6 +70,18 @@ check('el de rutas apunta al primer gateway', /\$GwHost\s*=\s*"10\.100\.1\.53"/.
 check('sin gateways declarados, los recolectores se dejan INTACTOS',
       F.preparaLogger(LOGGER, []) === LOGGER && F.preparaRutas(RUTAS, []) === RUTAS);
 
+/* ---- AYORA: un gateway por NCU. Es el caso que se perdía: el ámbito de gateway
+   solo se emitía con MÁS de uno, así que sus 16 IP se leían del toolbox y se
+   tiraban. Ahora la IP va también en el ámbito de NCU. ---- */
+const MAN_AYORA = JSON.parse(fs.readFileSync(
+  path.join(RAIZ, 'cobertura_coords', 'ayora', 'manifiesto_ayora.json'), 'utf8'));
+const gwsA = F.gwsDe(F.paqueteDeManifiesto(MAN_AYORA));
+check('Ayora trae sus 16 NCU con IP, aunque cada una tenga un solo gateway',
+      gwsA.length === 16 && gwsA[0].ipNcu === '192.168.4.10', gwsA.length + ' con IP');
+check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
+      gwsA[0].ipGw === '192.168.4.11' && gwsA[1].ipGw === '192.168.4.21',
+      gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
+
 /* ---- el paquete y el léeme ---- */
 check('el paquete lleva los dos recolectores', JSON.stringify(paq.colectores) ===
       JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1']));

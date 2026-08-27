@@ -304,8 +304,18 @@ def genera(planta, en_viga):
     ncus = sorted({r["ncu"] for r in filas if r["ncu"] is not None})
     for n in ncus:
         sub = [r for r in filas if r["ncu"] == n]
-        emite("coords_%s_NCU%02d.csv" % (planta, n), sub, {"ambito": "ncu", "ncu": n})
         gsub = sorted({r["gw"] for r in sub if r["gw"] is not None})
+        # LA IP TAMBIÉN EN EL ÁMBITO DE NCU cuando esa NCU tiene UN solo gateway.
+        # Antes solo se escribía en el ámbito de gateway, y ese solo se emite si
+        # hay MÁS DE UNO: en Ayora, con un gateway por NCU, se leían las 16 IP del
+        # toolbox y se tiraban — el manifiesto salía sin una sola dirección y el
+        # paquete de campo no podía preparar los recolectores.
+        ext_ncu = {"ambito": "ncu", "ncu": n}
+        if len(gsub) == 1:
+            enl = next((x for (nn, gg), tr in gws.items() if nn == n and gg == gsub[0] for x in tr), {})
+            if enl.get("ip"):
+                ext_ncu.update({"gw": gsub[0], "ip": enl["ip"], "puerto": enl.get("puerto")})
+        emite("coords_%s_NCU%02d.csv" % (planta, n), sub, ext_ncu)
         if len(gsub) > 1:                                   # cada (NCU,GW) es una IP:puerto: es lo que se lanza
             for g in gsub:
                 s2 = [r for r in sub if r["gw"] == g]
