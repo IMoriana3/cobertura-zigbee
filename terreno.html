@@ -78,7 +78,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.89</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.90</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -1430,8 +1430,21 @@ function layoutTrackers(){
 var BT3D='plano';
 function bt3dAng(t){
   var mc=t.mc; if(!mc) return panelAngle(curMin);
-  var sv=(SUN&&SUN._dir)?SUN._dir:sunVec(curMin);
-  if(sv.U<=0.02) return -5;                                   // dormido, mirando al este
+  var sv0=(SUN&&SUN._dir)?SUN._dir:sunVec(curMin);
+  if(sv0.U<=0.02) return -5;                                  // dormido, mirando al este
+  /* EL SOL, EN EL MARCO DEL TUBO. Esta funcion usaba el Este del MUNDO, y el
+     render NO dibuja en ese marco: `trackerBase` gira cada seguidor por su
+     rumbo (`setFromAxisAngle(_UP,-t.rot)`) y `updateSpin` bascula dentro de
+     ese marco. Con el tubo a norte-sur da igual —y por eso llevaba anios sin
+     verse: El Burgo, Fayon, Tunez, Ayora, San Jose y Paramo tienen rot 0—,
+     pero con las filas giradas el angulo sale medido contra otra referencia
+     que la que se dibuja. Con rumbos de mas de ~90 grados sale con el SIGNO
+     CAMBIADO: el seguidor se va al oeste con el sol en el este.
+     Lo reporto el cliente al cargar LODOSA, el primer emplazamiento con las
+     filas giradas: «me hace el seguimiento al reves, de oeste a este».
+     `afbtSol` ya hacia justo esto para las tres funciones de sombra; esta se
+     habia quedado sin usarla. */
+  var sv=afbtSol(sv0,t.rot||0);
   var b=Math.atan(mc.gN||0);                                  // el eje no es horizontal: lleva la pendiente longitudinal medida
   var y=sv.N*Math.sin(b)+sv.U*Math.cos(b);
   var R=-Math.atan2(sv.E,y);
