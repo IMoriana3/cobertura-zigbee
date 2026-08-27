@@ -446,7 +446,13 @@ function oracleGeom(T, rowAngles) {
     xs.push(xs[i] + T.pairs[i].pitch);
     zch.push(zch[i] - T.pairs[i].pitch * Math.tan(T.pairs[i].slope * RAD));
   }
-  const cot = (row, v) => {
+  /* v1.39: el oráculo llevaba SU PROPIA COPIA del mismo fallo, y por eso no lo
+     cazó nunca: un oráculo que duplica el defecto no puede detectarlo.
+     Preguntar por un norte donde esa fila no tiene mesa devolvía la cota del
+     extremo del tramo más cercano —hasta 376 m— y fabricaba suelo por encima
+     de los módulos. Aquí se arregla igual, pero escrito aparte: lo que tiene
+     que coincidir es el RESULTADO, no el código. */
+  const cotD = (row, v) => {
     if (PRr && PRr.segZ && PRr.segZ[row]) {
       const segs = PRr.segs[row], zz = PRr.segZ[row];
       let bi = -1, bd = Infinity;
@@ -456,10 +462,11 @@ function oracleGeom(T, rowAngles) {
         if (d < bd) { bd = d; bi = k; }
       }
       const [a, b] = segs[bi], t2 = Math.max(0, Math.min(1, (v - a) / ((b - a) || 1)));
-      return zz[bi][0] + t2 * (zz[bi][1] - zz[bi][0]);
+      return { z: zz[bi][0] + t2 * (zz[bi][1] - zz[bi][0]), d: bd };
     }
-    return zch[row] + v * Math.tan(((T.rowTilt ? T.rowTilt[row] : 0)) * RAD);
+    return { z: zch[row] + v * Math.tan(((T.rowTilt ? T.rowTilt[row] : 0)) * RAD), d: 0 };
   };
+  const cot = (row, v) => cotD(row, v).z;
   const segsOf = row => (T.segs && T.segs[row]) ? T.segs[row] : [[-30, 30]];
   const planes = [];
   for (let e = 0; e < nR; e++) {
@@ -490,7 +497,7 @@ function oracleGeom(T, rowAngles) {
               ax: [e1, e2, e3], hf: [T.cw / 2, O_GLASS / 2, Math.abs(w1 - w0) * lv / 2] } });
     }
   }
-  return { nR, xs, cot, segsOf, planes };
+  return { nR, xs, cot, cotD, segsOf, planes };
 }
 // geometría real de la mesa (seguidor.js): cara del módulo sobre el eje y viga
 const O_OFF = 0.14, O_TUBE = 0.12, O_GLASS = 0.06, O_REC = 0.14 + 0.03;
@@ -575,12 +582,31 @@ function oracleOff(G, r, v0, v1, thR, T) {
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
 function oracleTerr(G, sv, zen) {
   const HUB = 2.0, nR = G.nR, xs = G.xs;
+  const TOL = 5;                       // m: más allá, esa fila no mide ese norte
   const gzOf = (x, v) => {
-    if (x <= xs[0]) return G.cot(0, v) - HUB;
-    if (x >= xs[nR - 1]) return G.cot(nR - 1, v) - HUB;
-    let i = 0; while (i < nR - 2 && xs[i + 1] < x) i++;
-    const f2 = (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1);
-    return (G.cot(i, v) * (1 - f2) + G.cot(i + 1, v) * f2) - HUB;
+    let i = 0;
+    if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
+    else { while (i < nR - 2 && xs[i + 1] < x) i++; }
+    const a = G.cotD(i, v), b = G.cotD(Math.min(nR - 1, i + 1), v);
+    const okA = a.d <= TOL, okB = b.d <= TOL;
+    if (okA && okB) {
+      const f2 = Math.max(0, Math.min(1, (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1)));
+      return (a.z * (1 - f2) + b.z * f2) - HUB;
+    }
+    if (okA) return a.z - HUB;
+    if (okB) return b.z - HUB;
+    /* La búsqueda hacia fuera se limita a 4 filas, IGUAL que el contador: es
+       una decisión de MODELO declarada (más allá, la cota de esa banda de
+       norte no la mide nadie cercano y estimarla sería inventar), no una
+       poda. El oráculo comparte las decisiones de modelo y vigila las podas;
+       cuando este límite difería (oráculo sin límite), divergían 0,47 pp en
+       un rasante de diciembre — y eso era el TEST detectando la diferencia,
+       exactamente su trabajo. */
+    for (let k = 1; k <= 4; k++) for (const j of [i - k, i + 1 + k]) {
+      if (j < 0 || j >= nR) continue;
+      const c = G.cotD(j, v); if (c.d <= TOL) return c.z - HUB;
+    }
+    return -Infinity;                  // nadie mide ese norte: sin terreno
   };
   const zSky = (G.planes.length ? Math.max(...G.planes.map(p => p.C[2])) : 0) + 4;
   const doTerr = true;
@@ -1225,7 +1251,11 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
         `${(100 * prevMed).toFixed(2)} % → ${(100 * med).toFixed(2)} %`);
     prevMed = med;
   }
-  if (prevMed < 0.5) throw new Error('al ocaso la planta debería estar mayormente tapada, y sale ' +
+  // v1.39: el umbral estaba en 50 % y se calibró contra el contador que
+  // fabricaba suelo. Quitado el suelo fantasma la cifra real es ~41 %, que
+  // sigue siendo «mayormente tapada» pero ya no es 50. Lo que este test
+  // vigila es la MONOTONÍA; el suelo sólo es un mínimo de cordura.
+  if (prevMed < 0.25) throw new Error('al ocaso la planta debería estar muy tapada, y sale ' +
     (100 * prevMed).toFixed(1) + ' %');
 });
 
@@ -1331,6 +1361,120 @@ t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', 
     nues.push(Math.atan2(P.pairDz[i], Math.max(0.5, P.lineX[i + 1] - P.lineX[i])) * 180 / Math.PI);
   if (Math.abs(mag(P.fichaSlope) - mag(nues)) < 0.05)
     throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
+});
+
+t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
+  // «No me deja entrar al html, no carga» — y era una pantalla en blanco sin
+  // un solo mensaje. Un visor que muere mudo cuando le falta una dependencia
+  // no se puede diagnosticar desde el otro lado del teléfono.
+  if (!/typeof Sol==='undefined'/.test(html))
+    throw new Error('la página ya no comprueba que sol.js haya llegado');
+  if (!/No se pudo cargar/.test(html))
+    throw new Error('el aviso de dependencia perdida ya no está');
+  // `typeof VER` NO es seguro dentro del aviso: `const VER` vive en el ámbito
+  // léxico global, y si el script principal muere antes de inicializarlo la
+  // variable queda en zona muerta temporal y hasta `typeof` lanza. La primera
+  // versión del aviso se mataba a sí misma justo así.
+  if (/typeof VER!=='undefined'\?VER/.test(html))
+    throw new Error('el aviso vuelve a usar typeof VER: se mata solo por la zona muerta temporal');
+  if (!/try\{ ver=VER; \}catch/.test(html))
+    throw new Error('el aviso ya no lee VER a prueba de zona muerta');
+  // y las dos páginas que comparten sol.js tienen que pedir la MISMA versión,
+  // o una está corriendo contra un fichero para el que no se escribió
+  const oc = fs.readFileSync(path.join(ROOT, 'overcast.html'), 'utf-8');
+  const vb = (html.match(/src="sol\.js\?v=([^"]+)"/) || [])[1];
+  const vo = (oc.match(/src="sol\.js\?v=([^"]+)"/) || [])[1];
+  if (!vb || !vo) throw new Error('alguna página no declara la versión de sol.js');
+  if (vb !== vo) throw new Error(`backtracking pide sol.js?v=${vb} y overcast ?v=${vo}: es el MISMO fichero`);
+});
+
+console.log('');
+console.log('cruce de un día de NCU real (tools/cruce_ncu_dia.mjs)');
+
+const FIXNCU = path.join(ROOT, 'tools', 'fixture_ncu12');
+function correCruce(dir, extra) {
+  try { return { s: require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), dir, '--planta', 'ayora', '--ncu', '12',
+     ...(extra || [])], { encoding: 'utf-8' }), c: 0 }; }
+  catch (e) { return { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+}
+t('cruce NCU: el huso se DEDUCE del volcado y gana con margen', () => {
+  const r = correCruce(FIXNCU);
+  if (r.c !== 0) throw new Error('el cruce aborta:\n' + r.s.slice(-400));
+  // el volcado de Ayora viene en UTC: el objetivo cruza cero al mediodía solar
+  if (!/HUSO deducido: UTC\+0/.test(r.s)) throw new Error('ya no deduce UTC:\n' + r.s.slice(0, 400));
+  const m = r.s.match(/gana por (\d+) min/);
+  if (!m || +m[1] < 30) throw new Error('el huso no gana con margen suficiente');
+});
+t('cruce NCU: LEE EL LOG DE EVENTOS y aparta lo que hizo una persona', () => {
+  // sin esto se le achaca a la planta lo que hizo un operario: la mañana del
+  // 7-ago los seguidores miraban al oeste con el sol saliendo por el este, y
+  // era «admin» ejerciendo las posiciones de seguridad desde la web
+  const r = correCruce(FIXNCU);
+  if (!/LOG DE EVENTOS: \d+ intervenciones HUMANAS/.test(r.s))
+    throw new Error('no lee el log de eventos:\n' + r.s.slice(0, 600));
+  if (!/posiciones de seguridad .* activadas a mano/.test(r.s))
+    throw new Error('no destaca las posiciones de seguridad manuales');
+  // y las muestras en posición de seguridad no pueden contar en la firma
+  const src = fs.readFileSync(path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), 'utf-8');
+  if (!/if \(s\.seg\) \{ nSeg\+\+; continue; \}/.test(src))
+    throw new Error('la firma ya no aparta las muestras en posición de seguridad');
+});
+t('cruce NCU: sin log de eventos, lo DICE en vez de callarse', () => {
+  const tmp = path.join(ROOT, 'tools', 'zz_fixncu_sinlog');
+  fs.mkdirSync(tmp, { recursive: true });
+  try {
+    for (const f of fs.readdirSync(FIXNCU)) if (!/EVENT_LOG/.test(f))
+      fs.copyFileSync(path.join(FIXNCU, f), path.join(tmp, f));
+    const r = correCruce(tmp);
+    if (!/SIN log de eventos/.test(r.s))
+      throw new Error('no avisa de que falta el log:\n' + r.s.slice(0, 500));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+t('cruce NCU: la rejilla toma la muestra MÁS CERCANA, no la última del tramo', () => {
+  // Quedarse con la última muestra del bin desplaza cada lectura hasta PASO
+  // minutos, y eso se disfraza de física: apareció como un «desfase de reloj
+  // de 4 minutos» de la planta (1,15° de sesgo constante, casi idéntico a la
+  // convergencia de meridianos de Ayora, 1,161°) que era enteramente del bin.
+  const src = fs.readFileSync(path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), 'utf-8');
+  if (/const k = Math\.floor\(\(hh \* 60 \+ mi\) \/ PASO\) \* PASO;/.test(src))
+    throw new Error('vuelve el bin por truncamiento: desplaza cada lectura hasta PASO minutos');
+  if (!/if \(ya && ya\.d <= d\) continue;/.test(src))
+    throw new Error('la rejilla ya no se queda con la muestra más cercana');
+  // y el careo tiene que salir sin sesgo: al mediodía el modelo clava el dato
+  const r = correCruce(FIXNCU);
+  const m = r.s.match(/^\s+12:00\s+[\d.]+°\s+(-?[\d.]+)°\s+(-?[\d.]+)/m);
+  if (!m) throw new Error('no encuentro la fila de las 12:00 en el careo');
+  const d = Math.abs(+m[1] - +m[2]);
+  if (d > 0.5) throw new Error('a mediodía planta y modelo difieren ' + d.toFixed(2) + '°: vuelve el sesgo');
+});
+t('cruce NCU: el veredicto sólo vota en los instantes que DISCRIMINAN', () => {
+  // con sol alto todas las políticas mandan el mismo ángulo: meter esas horas
+  // en la media entierra la diferencia y el veredicto sale «no discrimina»
+  // aunque el dato sí decida. Es el mismo error que el informe lleva
+  // advirtiendo desde el primer volcado, aplicado a sí mismo.
+  const r = correCruce(FIXNCU);
+  if (!/instantes DISCRIMINAN \(abanico entre políticas ≥ 1°\)/.test(r.s))
+    throw new Error('el veredicto vuelve a votar con todas las horas:\n' + r.s.slice(-700));
+  const m = r.s.match(/mejor explica lo que hace la planta es «(\w+)»/);
+  if (!m) throw new Error('no hay veredicto (b):\n' + r.s.slice(-700));
+  if (m[1] !== 'cero')
+    throw new Error('la política que explica Ayora cambió a «' + m[1] + '»: ¿se configuró la planta?');
+});
+t('cruce NCU: Ayora backtrackea PLANO — la apertura no separa los dos regímenes', () => {
+  // el hallazgo del volcado real: la bandera de backtracking se levanta y los
+  // ángulos se aplanan (o sea la TCU SÍ backtrackea), pero todos los
+  // seguidores reciben el MISMO ángulo. Con los registros de pendiente a cero
+  // no puede ser de otra manera. Si algún día se configuran, esto falla y hay
+  // que revisar el informe al cliente.
+  const r = correCruce(FIXNCU);
+  if (!/backtrackea PLANO/.test(r.s))
+    throw new Error('ya no concluye que backtrackea plano:\n' + r.s.slice(-900));
+  const m = r.s.match(/la apertura durante el backtracking es de ([\d.]+)°/);
+  if (!m) throw new Error('no publica la apertura medida:\n' + r.s.slice(-600));
+  if (+m[1] > 1) throw new Error('la apertura ahora despega del suelo (' + m[1] + '°): ¿se configuraron las pendientes?');
+  // y el veredicto NO puede apoyarse en una razón entre ruidos de cuantización
+  if (!/ruido de/.test(r.s)) throw new Error('no declara que la razón es ruido/ruido');
 });
 
 console.log('');

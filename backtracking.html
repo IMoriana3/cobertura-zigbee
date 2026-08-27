@@ -359,8 +359,50 @@
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
-<script src="sol.js?v=0.1.0"></script>
-<script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala --><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala -->
+<script>
+/* Si una dependencia no llega, la página se quedaba EN BLANCO y en silencio:
+   el primer uso reventaba y no se pintaba nada. Un visor que muere mudo
+   cuando le falta una pieza no se puede diagnosticar desde el otro lado del
+   teléfono, así que aquí lo DICE — con la causa y qué hacer. Vigila las DOS
+   externas de la física: sol.js e irradiancia.js. */
+(function(){
+  var falta=[];
+  if(typeof Sol==='undefined')falta.push('sol.js?v=0.2.0');
+  if(typeof Irr==='undefined'&&typeof Irradiancia==='undefined'){
+    // el nombre global lo define irradiancia.js; si ninguno existe, no llegó
+    var probe=document.querySelector('script[src^="irradiancia.js"]');
+    if(probe)falta.push('irradiancia.js?v=0.1.0');
+  }
+  if(!falta.length)return;
+  document.addEventListener('DOMContentLoaded',function(){
+    /* `typeof VER` NO es seguro aquí: el script principal declara `const VER`
+       en el ámbito léxico global, así que la ligadura EXISTE desde antes de
+       ejecutarse. Si ese script muere antes de inicializarla —que es
+       exactamente el caso que este aviso cubre— la variable queda en zona
+       muerta temporal y hasta `typeof` lanza ReferenceError. La primera
+       versión de este guard se mataba a sí misma por esto. */
+    var ver='(el script principal no llegó a arrancar)';
+    try{ ver=VER; }catch(e){}
+    var d=document.createElement('div');
+    d.setAttribute('role','alert');
+    d.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;'+
+      'justify-content:center;background:#101418;color:#e8eae7;font:15px/1.6 system-ui,sans-serif;padding:24px';
+    d.innerHTML='<div style="max-width:46em"><h1 style="font-size:1.3rem;margin:0 0 .6em">'+
+      'No se pudo cargar <code>'+falta.join('</code> ni <code>')+'</code></h1>'+
+      '<p style="margin:0 0 .8em">Sin ese fichero no hay física que calcular, así que la página '+
+      'no puede dibujar nada. Tiene que estar publicado junto a este HTML.</p>'+
+      '<p style="margin:0 0 .8em"><b>Qué probar, por orden:</b></p><ol style="margin:0 0 .8em;padding-left:1.2em">'+
+      '<li>Recarga forzando caché: <b>Ctrl+Shift+R</b> (⌘+Shift+R en Mac).</li>'+
+      '<li>Abre '+falta.map(function(f){return '<a style="color:#87b4d6" href="'+f+'">'+f.split('?')[0]+'</a>';}).join(' y ')+
+      ' directamente: si da 404, no está publicado.</li>'+
+      '<li>Si lo abriste con <code>file://</code>, sírvelo por HTTP: el navegador bloquea las cargas locales.</li>'+
+      '</ol><p style="margin:0;opacity:.7">Versión de la página: '+ver+'</p></div>';
+    document.body.appendChild(d);
+  });
+})();
+</script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1232,7 +1274,19 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     xs.push(xs[i]+T.pairs[i].pitch);
     zch.push(zch[i]-T.pairs[i].pitch*Math.tan(T.pairs[i].slope*RAD));
   }
-  const cot=(row,v)=>{
+  /* v1.39: `cot` devuelve TAMBIÉN a qué distancia de un tramo real está la
+     consulta. Sin eso, preguntar por un norte donde esa fila NO TIENE mesa
+     devolvía la cota del extremo del tramo más cercano —en Ayora, hasta 376 m
+     de distancia—, y con inclinación N-S real eso son METROS de cota
+     inventada. `gzOf` interpolaba entre una cota real y una fabricada y
+     levantaba un «suelo» fantasma 5,7 m por encima del módulo del que salía
+     el rayo: el marchador de terreno lo daba por bloqueado. Con el sol a 44°
+     —donde el rayo sube 97 cm por metro y el terreno de Ayora sube 0,6 cm—
+     seguía apareciendo sombra de terreno, que es geométricamente imposible.
+     La cota sigue saliendo igual para los PLANOS (allí el norte cae dentro
+     del tramo por construcción); lo que cambia es que el SUELO ya no se
+     inventa donde no hay mesa que lo mida. */
+  const cotD=(row,v)=>{
     if(PRr&&PRr.segZ&&PRr.segZ[row]){
       const segs=PRr.segs[row], zz=PRr.segZ[row];
       let bi=-1,bd=Infinity;
@@ -1242,21 +1296,52 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         if(d<bd){bd=d;bi=k;}
       }
       const [a2,b2]=segs[bi], t2=Math.max(0,Math.min(1,(v-a2)/((b2-a2)||1)));
-      return zz[bi][0]+t2*(zz[bi][1]-zz[bi][0]);
+      return {z:zz[bi][0]+t2*(zz[bi][1]-zz[bi][0]), d:bd};
     }
-    return zch[row]+v*Math.tan(((T.rowTilt?T.rowTilt[row]:0))*RAD);
+    return {z:zch[row]+v*Math.tan(((T.rowTilt?T.rowTilt[row]:0))*RAD), d:0};
   };
+  const cot=(row,v)=>cotD(row,v).z;
+  const COT_TOL=5;                       // m: más allá, esa fila no mide ese norte
+  /* v1.39.1: el marchador de terreno llama a `gzOf` miles de veces por paso, y
+     la mayoría de esas veces el rayo YA VA POR FUERA de la planta. La primera
+     versión de la búsqueda hacia fuera recorría TODAS las filas antes de
+     rendirse justo en ese caso — el más común — y dejaba la página inusable:
+     cambiar un valor de un menú relanza `computeDay()` y se quedaba colgada.
+     Con el rango de norte precalculado UNA vez, el caso común sale en O(1). */
+  let nMin=Infinity, nMax=-Infinity;
+  if(PRr&&PRr.segs)for(const sg of PRr.segs)if(sg)for(const s2 of sg){
+    if(s2[0]<nMin)nMin=s2[0]; if(s2[1]<nMin)nMin=s2[1];
+    if(s2[0]>nMax)nMax=s2[0]; if(s2[1]>nMax)nMax=s2[1];
+  }
+  const COT_BUSCA=4;                     // filas de búsqueda hacia fuera, no la planta entera
   const segsOf=row=>(T.segs&&T.segs[row])?T.segs[row]:[[-30,30]];
   // SUELO en el marco físico: cota del eje interpolada entre filas menos la
   // altura de buje (~2 m) — para la oclusión de TERRENO (lomas que sombrean
   // módulos con sol bajo: se veía en el render y el contador no lo contaba)
   const HUB=2.0;
   const gzOf=(x,v)=>{
-    if(x<=xs[0])return cot(0,v)-HUB;
-    if(x>=xs[nR-1])return cot(nR-1,v)-HUB;
-    let i=0; while(i<nR-2&&xs[i+1]<x)i++;
-    const f2=(x-xs[i])/((xs[i+1]-xs[i])||1);
-    return (cot(i,v)*(1-f2)+cot(i+1,v)*f2)-HUB;
+    // solo votan las filas que DE VERDAD miden ese norte; si ninguna de las
+    // dos que abrazan a x lo mide, se busca hacia fuera unas pocas, y si no
+    // hay ninguna no se inventa suelo: −Infinity y el rayo pasa
+    if(v<nMin-COT_TOL||v>nMax+COT_TOL)return -Infinity;   // fuera de la planta
+    let i=0;
+    if(x<=xs[0])i=0; else if(x>=xs[nR-1])i=nR-2;
+    else { while(i<nR-2&&xs[i+1]<x)i++; }
+    const a=cotD(i,v), b=cotD(Math.min(nR-1,i+1),v);
+    const okA=a.d<=COT_TOL, okB=b.d<=COT_TOL;
+    if(okA&&okB){
+      const f2=Math.max(0,Math.min(1,(x-xs[i])/((xs[i+1]-xs[i])||1)));
+      return (a.z*(1-f2)+b.z*f2)-HUB;
+    }
+    if(okA)return a.z-HUB;
+    if(okB)return b.z-HUB;
+    for(let k=1;k<=COT_BUSCA;k++){
+      for(const j of [i-k,i+1+k]){
+        if(j<0||j>=nR)continue;
+        const c=cotD(j,v); if(c.d<=COT_TOL)return c.z-HUB;
+      }
+    }
+    return -Infinity;                    // nadie mide ese norte: sin terreno
   };
   // TERRENO a TODA elevación (v1.26): el gate «solo sol<25°» costaba −0,34%
   // anual medido — en Ayora hay vanos al 36% y las lomas muerden hasta ~60°
@@ -2258,7 +2343,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.38.0';
+const VER='v1.39.2';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2564,14 +2649,22 @@ async function loadRealPlant(name,blockIdx,ncuSel){
     // de las geométricas) y son justo los que la página marca como ASESORÍA
     // —dependen del evaluador provisional—. Se apagan al cargar y se dice; si
     // el usuario los vuelve a encender, no se le llevan la contraria otra vez.
+    /* v1.39.1: el testigo silencia el AVISO, no el apagado. Antes hacía las dos
+       cosas, así que a la segunda planta —o al cambiar de NCU— los caros se
+       quedaban encendidos y CADA cambio de menú costaba ~5,5 s con la pestaña
+       congelada. «En cuanto cambio algún valor de los menús peta.» Apagar es
+       la protección; no repetir la charla es cortesía, y confundirlas dejaba
+       la página inusable. */
     const caros=POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl');
-    if(caros.length&&!OPT_AVISADO){
-      OPT_AVISADO=true;
+    if(caros.length){
       caros.forEach(P=>{P.on=false;});
       if(!POLICIES.some(P=>P.on))POL['pairwise'].on=true;
       buildPolicyBox();
-      avisoCaras=' <b>'+caros.map(P=>P.nm).join(' y ')+'</b> se han apagado: con planta real '+
-        'cuestan el grueso del cálculo y son de <b>asesoría</b>. Enciéndelos cuando quieras el número de energía.';
+      if(!OPT_AVISADO){
+        OPT_AVISADO=true;
+        avisoCaras=' <b>'+caros.map(P=>P.nm).join(' y ')+'</b> se han apagado: con planta real '+
+          'cuestan el grueso del cálculo y son de <b>asesoría</b>. Enciéndelos cuando quieras el número de energía.';
+      }
     }
     note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
       P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
@@ -4524,12 +4617,41 @@ function recompute(light){
   $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
+/* RECÁLCULO DIFERIDO — `computeDay()` es síncrono y con planta real cuesta
+   segundos: lanzarlo en el `change` de cada campo congelaba la pestaña entera
+   y parecía que la página se colgaba. Ahora se agrupa (los cambios seguidos
+   cuentan como uno) y se pinta ANTES un testigo de «calculando», con un frame
+   de por medio para que el navegador llegue a dibujarlo. La cuenta tarda lo
+   mismo; lo que cambia es que la página responde y DICE que está trabajando. */
+let _recT=null;
+function ocupado(si){
+  let d=document.getElementById('calcbusy');
+  if(!d){
+    d=document.createElement('div'); d.id='calcbusy';
+    d.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:7px 13px;'+
+      'border-radius:4px;background:#24455e;color:#fff;font:13px/1 system-ui,sans-serif;'+
+      'box-shadow:0 2px 10px rgba(0,0,0,.35);display:none';
+    d.textContent='calculando…';
+    document.body.appendChild(d);
+  }
+  d.style.display=si?'block':'none';
+}
+function recomputePronto(){
+  if(_recT)clearTimeout(_recT);
+  ocupado(true);
+  _recT=setTimeout(()=>{
+    _recT=null;
+    requestAnimationFrame(()=>{
+      try{ recompute(); } finally { ocupado(false); }
+    });
+  },120);
+}
 const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','iam','z0','nsl','ntrk','mods'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   // tocar la implantación por presets abandona la planta real cargada (nrows/
   // pitch cambiados a mano también: la banda ya no cuadraría con las cotas)
   if(PLANT_REAL&&['nsl','ntrk','mods','nspreset','nrows','pitch'].includes(id)){PLANT_REAL=null;$('realnote').style.display='none';}
-  ensureElev(cfg().nrows);recompute();}));
+  ensureElev(cfg().nrows);recomputePronto();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();updateBtUI();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
