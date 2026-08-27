@@ -2361,7 +2361,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.39.3';
+const VER='v1.39.4';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3392,6 +3392,9 @@ function init3D(){
     const camera=new THREE.PerspectiveCamera(45,1.8,0.1,6000);
     const controls=new THREE.OrbitControls(camera,renderer.domElement);
     controls.enableDamping=true;controls.dampingFactor=.08;
+    // cada gesto de camara pide frames; al soltar, media segundo mas para
+    // que el damping repose y la camara no se quede a medio frenar
+    controls.addEventListener('change',()=>{R3_DIRTY=true;R3_CALMA=performance.now()+500;});
     controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1500;
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
@@ -3780,6 +3783,7 @@ function setSky(top,hor){
   TD.skyTx.needsUpdate=true;
 }
 function update3D(){
+  pinta3D();
   if(!TD||!DAY)return;
   const inst=sceneInstant();  // paso minutal: física EXACTA del minuto pedido
   const tIdx=timeIndex(),g=inst?inst.g:DAY.sun[tIdx];
@@ -4280,6 +4284,15 @@ function drawCriticalRay(g,p,tIdx){
   spr2.position.set(mx2,gY(mx2)+1.5,zC);
   spr2.scale.set(6.4,1.55,1); spr2.renderOrder=8; grp.add(spr2);
 }
+/* v1.39.4: RENDER BAJO DEMANDA. El bucle renderizaba la escena entera en CADA
+   frame, incondicionalmente: 854 mesas con sombras suaves, sesenta veces por
+   segundo, aunque nadie tocara nada. En una gráfica integrada eso arrastra la
+   página COMPLETA —menús, teclado, todo— y era el «no va nada fluido»: no el
+   cálculo, el bucle. Ahora solo se renderiza cuando algo cambió (dirty), y
+   tras soltar la órbita se dejan ~0,5 s de frames para que el damping repose.
+   El rAF sigue girando (es baratísimo sin render) para vigilar el tamaño. */
+let R3_DIRTY=true, R3_CALMA=0;
+function pinta3D(){R3_DIRTY=true;}
 function loop3D(){
   requestAnimationFrame(loop3D);
   if(!TD||!VIEW3D)return;
@@ -4289,7 +4302,11 @@ function loop3D(){
     TD.w=w;TD.h=h;TD.renderer.setSize(w,h,false);
     TD.renderer.domElement.style.width='100%';TD.renderer.domElement.style.height='100%';
     TD.camera.aspect=w/h;TD.camera.updateProjectionMatrix();
+    R3_DIRTY=true;
   }
+  const ahora=performance.now();
+  if(!R3_DIRTY&&ahora>R3_CALMA)return;
+  R3_DIRTY=false;
   TD.controls.update();
   const cam=(TD.sunPov&&TD.orthoCam)?TD.orthoCam:TD.camera;
   // la cúpula de cielo viaja con la vista (en modo sol, con la planta)
@@ -4647,11 +4664,26 @@ function recompute(light){
   const g=computeDayGen();
   (function paso(){
     if(my!==RECOMP_TOKEN)return;                 // llegó un cambio más nuevo
-    const t0=performance.now(); let r;
-    do{ r=g.next(); }while(!r.done&&performance.now()-t0<40);
+    let r;
+    /* BLINDAJE: si el cálculo revienta a mitad, la página NO puede quedarse
+       con el testigo girando para siempre — eso es indistinguible de un
+       cuelgue y no se puede diagnosticar por teléfono. Se enseña el error EN
+       PANTALLA, con su mensaje, y se suelta el testigo. */
+    try{
+      const t0=performance.now();
+      do{ r=g.next(); }while(!r.done&&performance.now()-t0<40);
+    }catch(err){
+      ocupado(false);
+      let d=document.getElementById('calcerr');
+      if(!d){d=document.createElement('div');d.id='calcerr';
+        d.style.cssText='position:fixed;left:14px;right:14px;bottom:14px;z-index:9999;padding:12px 16px;'+
+          'border-radius:4px;background:#7a1f1a;color:#fff;font:13px/1.5 system-ui,sans-serif;'+
+          'box-shadow:0 2px 12px rgba(0,0,0,.4)';document.body.appendChild(d);}
+      d.textContent='El cálculo ha fallado: '+(err&&err.message||err)+' — haz una captura de esto y de la consola (F12).';
+      throw err;
+    }
     // setTimeout(0), NO requestAnimationFrame: rAF se pausa en pestañas en
-    // segundo plano (y en headless), y el cálculo se quedaría congelado hasta
-    // volver a la pestaña. El pintado ya se sincroniza solo al final.
+    // segundo plano (y en headless), y el cálculo se quedaría congelado.
     if(!r.done){ocupado(true,r.value);setTimeout(paso,0);return;}
     ocupado(false);
     recomputeTail(light);
