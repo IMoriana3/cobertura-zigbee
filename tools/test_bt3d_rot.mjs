@@ -95,6 +95,70 @@ const cero = r.find(f => f.rot === 0);
 check('CONTROL rot 0 (El Burgo, Fayón, Túnez, Ayora, San José, Páramo): sin cambio',
       Math.abs(cero.manana.ang - (-55)) < 0.05, `θ=${cero.manana.ang.toFixed(2)}°`);
 
+
+
+/* ── LA SEGUNDA PUERTA, la que Lodosa pisa de verdad ─────────────────────
+ * La primera cura se hizo solo en `bt3dAng` y el cliente respondió: «en el
+ * 5.90 sigue girando al revés». Tenía razón: `bt3dAng` exige levantamiento
+ * con cotas (solo El Burgo). Un layout IMPORTADO pasa por `updateSpin` con el
+ * `panelAngle` global — tubo N-S del mundo, rot ignorado. El banco de arriba
+ * daba 28 verdes sin proteger el caso del cliente: verde que no vigila.   */
+const pg2 = await ctx.newPage(); const t1 = Date.now();
+await pg2.goto(`http://localhost:${PUERTO}/terreno.html?planta=${process.argv[2] || 'elburgo'}`,
+               { waitUntil: 'domcontentloaded', timeout: 120000 });
+while (!(await pg2.evaluate(() => typeof panelAngle === 'function' && typeof afbtSol === 'function'))) {
+  if (Date.now() - t1 > 300000) throw new Error('la página no expuso panelAngle');
+  await pg2.waitForTimeout(400);
+}
+const r2 = await pg2.evaluate(() => {
+  const DEG = Math.PI / 180;
+  const antes = { sim: window.simOn, bt: (typeof btOn !== 'undefined' ? btOn : null) };
+  try { window.simOn = true; window.btOn = false; } catch (e) {}
+  // una mañana de verdad de la planta: el primer minuto con el sol alto al este
+  let m0 = null;
+  for (let m = 300; m < 800; m += 5) { const sv = sunVec(m); if (sv.U > 0.35 && sv.E > 0.35) { m0 = m; break; } }
+  const salida = { m0, filas: [] };
+  if (m0 !== null) {
+    for (const rotDeg of [0, 45, 120, 180, -120]) {
+      const rot = rotDeg * DEG;
+      const th = panelAngle(m0, rot) * DEG;         // COMO updateSpin lo llama: rot en rad
+      const svT = afbtSol(sunVec(m0), rot);
+      /* El invariante NO es «cos(AOI) alto»: con el sol casi a lo largo del
+         tubo (rot −120° por la mañana) ni el seguimiento perfecto pasa de
+         ~0,45. Es «el cos DEL ÓPTIMO ALCANZABLE»: θ* = −atan2(E,U) topado a
+         ±55°. La primera versión pedía >0,5 a secas y falló en −120° — mi
+         física, no el código. */
+      const thOpt = Math.max(-55 * DEG, Math.min(55 * DEG, -Math.atan2(svT.E, svT.U)));
+      salida.filas.push({ rot: rotDeg, ang: th / DEG,
+                          coseno: -Math.sin(th) * svT.E + Math.cos(th) * svT.U,
+                          optimo: -Math.sin(thOpt) * svT.E + Math.cos(thOpt) * svT.U,
+                          viejo: panelAngle(m0) * DEG / DEG });
+    }
+  }
+  window.simOn = antes.sim; if (antes.bt !== null) window.btOn = antes.bt;
+  return salida;
+});
+check('hay una mañana de prueba en la planta', r2.m0 !== null, 'sunVec no dio sol alto');
+for (const f of r2.filas) {
+  check(`panelAngle(rot ${f.rot}°): el panel alcanza el ÓPTIMO de su tubo`,
+        f.coseno > f.optimo - 1e-6,
+        `cos=${f.coseno.toFixed(3)} vs óptimo ${f.optimo.toFixed(3)} con θ=${f.ang.toFixed(1)}°`);
+}
+const f0 = r2.filas.find(f => f.rot === 0);
+check('CONTROL: panelAngle con rot 0 == panelAngle de siempre (los 6 emplazamientos)',
+      f0 && Math.abs(f0.ang - f0.viejo) < 1e-9, f0 && `${f0.ang} vs ${f0.viejo}`);
+const f180 = r2.filas.find(f => f.rot === 180);
+check('con el eje a 180° (Lodosa) el ángulo se INVIERTE respecto al tubo N-S',
+      f180 && Math.abs(f180.ang + f180.viejo) < 0.6,
+      f180 && `${f180.ang.toFixed(1)}° vs global ${f180.viejo.toFixed(1)}°`);
+/* Y que updateSpin USA esta puerta: sin esto, panelAngle sabría de rot y nadie
+ * se lo pediría — exactamente el agujero que tapó al cliente. */
+const src = await pg2.evaluate(() => updateSpin.toString());
+check('updateSpin pide el ángulo POR TRACKER cuando hay rumbo',
+      src.includes('panelAngle(curMin,t.rot)'), 'la rama de rot no está en updateSpin');
+check('…pero NO transforma la consigna de stow ni la telemetría (marco del tubo ya)',
+      src.includes('_STOWANG==null') && src.includes('simOn||!ANG'));
+
 await b.close();
 console.log('\n' + ok + ' OK · ' + ko + ' FALLOS');
 process.exit(ko ? 1 : 0);
