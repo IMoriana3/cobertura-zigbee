@@ -178,7 +178,12 @@ if (i0 < 0 || i1 < 0) { console.error('no encuentro los delimitadores FÍSICA PU
 const j0 = html.lastIndexOf('/*', i0);
 const src = html.slice(j0, i1);
 
-const sandbox = new Function(src + `
+/* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
+   igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
+const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+
+const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
@@ -192,6 +197,29 @@ for (const r of F.runPhysicsQA()) {
   if (r.ok) console.log('  ✓ ' + r.name);
   else { FAIL++; console.error('  ✗ ' + r.name + ' — ' + r.err); }
 }
+
+
+/* ── el sol, de `sol.js` y de ningún otro sitio ─────────────────────────────
+   Había TRES copias de la posición NOAA y del `singleaxis`: aquí, en la otra
+   página y en el módulo. Esto exige que no vuelva a haber una cuarta. */
+t('el sol se carga del módulo, no está escrito en la página', () => {
+  if (!/<script src="sol\.js/.test(html)) throw new Error('la página no carga sol.js');
+  const propias = (html.match(/\nfunction (solarPos|singleaxis|trueTrackAngle|refraction)\s*\(/g) || []);
+  if (propias.length) throw new Error('copia propia de: ' + propias.join(' ').replace(/\n/g, ''));
+});
+t('y da lo mismo que el módulo, con la refracción que esta página necesita', () => {
+  const S = new Function(fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + ';return Sol;').call({});
+  for (const [lat, lon] of [[41.58, -0.80], [-34.6, -58.4]])
+    for (const h of [4, 6, 12, 18, 21]) {
+      const ms = Date.UTC(2026, 5, 21, h, 0, 0);
+      const a = F.solarPos(ms, lat, lon), b = S.solarPos(ms, lat, lon, { refract: true });
+      if (Math.abs(a.elev - b.elev) > 1e-12 || Math.abs(a.az - b.az) > 1e-12 || Math.abs(a.zen - b.zen) > 1e-12)
+        throw new Error(lat + ' ' + h + 'h: ' + JSON.stringify([a.elev, b.elev]));
+      const p = { axisTilt: 2, axisAz: 180, maxAngle: 55, backtrack: true, gcr: 0.397, crossAxisTilt: 1.5 };
+      const x = F.singleaxis(a.zen, a.az, p), y = S.singleaxis(b.zen, b.az, p);
+      if (!(isNaN(x) && isNaN(y)) && Math.abs(x - y) > 1e-12) throw new Error('singleaxis ' + x + ' vs ' + y);
+    }
+});
 
 console.log('extra (solo tiene sentido en Node: coherencia con el core y aristas)');
 t('CANON espeja las constantes canónicas de tracker.py (salvo stow: dato de proyecto)', () => {
