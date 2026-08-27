@@ -62,7 +62,22 @@
       seguidor son 2,38 m. RECHAZO. Entre 1,0 m y medio vano, reserva: puede
       ser una vaguada real, pero hay que confirmarla.
 
-   5) SOLAPE NORTE. Δz se mide en el tramo de norte que las dos líneas
+   5) FILA ANÓMALA — el punto ciego que tenían los cuatro de arriba. Todos
+      miran LÍNEAS, y una fila con la cota mal tomada dentro de una línea que
+      tiene otras cuatro buenas queda absorbida por la mediana: no dispara nada
+      y contamina la geometría igual. Se añadió cuando, al preguntar «¿12
+      metros al sur o cota z?», hubo que ir al dato crudo: el control de línea
+      cazaba 4 casos en San José y barriendo fila a fila salen 20.
+      Cada fila se compara contra la mediana de las filas de sus líneas vecinas
+      (±2) que comparten banda de norte. Si el terreno es terreno, ahí no puede
+      haber metros de diferencia. RECHAZO por encima de 3 m.
+      Y si varias repiten LA MISMA magnitud, se DICE: en San José 8 de ellas
+      caen en ≈36,65 m (y otras en su mitad), lo que no es ruido de medición
+      sino un error SISTEMÁTICO — probablemente corregible en gabinete en vez
+      de volver a campo. Esa distinción cambia el presupuesto de la corrección,
+      así que el informe la hace en vez de dejarla al lector.
+
+   6) SOLAPE NORTE. Δz se mide en el tramo de norte que las dos líneas
       comparten (si no comparten, no se dan sombra y Δz=0 por diseño). Una
       pareja sin solape es legítima, pero si son muchas el bloque describe
       filas que no se ven entre sí, y la ganancia de corregir el relieve tiende
@@ -180,7 +195,62 @@ if (aisRaras.length)
     ' m y ' + umbralRech.toFixed(2) + ' m: puede ser vaguada real, confirmar en as-built',
     aisRaras.map(o => ({ aislada: o })));
 
-// 5) solape
+// 5) FILA ANÓMALA — el punto ciego que tenía el control hasta que alguien
+// preguntó «¿12 metros al sur o cota z?». Los controles de arriba miran
+// LÍNEAS, y una fila con la cota mal tomada dentro de una línea que tiene
+// otras cuatro buenas queda absorbida por la mediana: no dispara nada y
+// contamina igual la geometría. En San José el control de línea cazaba 4
+// casos; barriendo fila a fila salen 16.
+// Se compara cada fila contra la mediana de las filas de sus líneas vecinas
+// (±2) que comparten banda de norte: si el terreno es terreno, ahí no puede
+// haber metros de diferencia.
+const FILA_AVISO = 3.0;                       // m
+const filasAnom = [];
+{
+  const todas = [];
+  for (const trk of (cotas.t || [])) {
+    if (!trk || !trk.f) continue;
+    for (const f of trk.f) {
+      if (!f || !f.n || !f.y || f.n.length < 2 || f.y.length < 2) continue;
+      todas.push({ x: f.x, n: (f.n[0] + f.n[1]) / 2, y: (f.y[0] + f.y[1]) / 2 });
+    }
+  }
+  todas.sort((a, b) => a.x - b.x);
+  const cl = [];
+  for (const f of todas) {
+    const u = cl[cl.length - 1];
+    if (u && Math.abs(f.x - u.x) < pitchDecl / 2) { u.f.push(f); u.x = (u.x * (u.f.length - 1) + f.x) / u.f.length; }
+    else cl.push({ x: f.x, f: [f] });
+  }
+  for (let i = 0; i < cl.length; i++) for (const f of cl[i].f) {
+    const ref = [];
+    for (let j = Math.max(0, i - 2); j <= Math.min(cl.length - 1, i + 2); j++) {
+      if (j === i) continue;
+      for (const g of cl[j].f) if (Math.abs(g.n - f.n) < 40) ref.push(g.y);
+    }
+    if (ref.length < 2) continue;
+    const d = f.y - med(ref.slice().sort((a, b) => a - b));
+    if (Math.abs(d) > FILA_AVISO) filasAnom.push({ x: f.x, n: f.n, d });
+  }
+}
+if (filasAnom.length) {
+  // ¿la misma magnitud repetida? entonces no es ruido de medición: es un
+  // error SISTEMÁTICO, y eso normalmente se corrige en gabinete en vez de
+  // volver a campo. Decirlo cambia el presupuesto de la corrección.
+  const mag = filasAnom.map(o => Math.abs(o.d)).sort((a, b) => a - b);
+  const m50 = med(mag);
+  const cerca = mag.filter(v => Math.abs(v - m50) < 0.5).length;
+  const sist = cerca >= 3;
+  add('rechazo', 'fila anómala',
+    filasAnom.length + ' fila(s) de ' + (cotas.n_trk || '?') + ' seguidores con la cota separada más de ' +
+    FILA_AVISO.toFixed(1) + ' m de sus vecinas de la misma banda de norte' +
+    (sist ? '. Y ' + cerca + ' de ellas repiten LA MISMA magnitud (≈' + m50.toFixed(2) +
+      ' m): eso es un error SISTEMÁTICO, no ruido de medición — probablemente ' +
+      'corregible en gabinete sin volver a campo' : ''),
+    filasAnom.slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).map(o => ({ filaAnom: o })));
+}
+
+// 6) solape
 const sinSolape = pares.filter(p => Math.abs(p.dz) < 1e-12).length;
 if (sinSolape > pares.length * 0.10)
   add('reserva', 'solape',
@@ -214,7 +284,11 @@ if (!hallazgos.length) L.push('  sin hallazgos.');
 for (const h of hallazgos) {
   L.push('  [' + (h.nivel === 'rechazo' ? 'RECHAZO' : 'reserva') + '] ' + h.control + ' — ' + h.texto);
   for (const p of h.detalle.slice(0, 6)) {
-    if (p.aislada) {
+    if (p.filaAnom) {
+      const o = p.filaAnom;
+      L.push('        fila x=' + o.x.toFixed(1) + ' m · norte=' + o.n.toFixed(0) +
+        ' m: cota ' + (o.d > 0 ? '+' : '') + o.d.toFixed(2) + ' m respecto a sus vecinas');
+    } else if (p.aislada) {
       const o = p.aislada;
       L.push('        línea ' + o.j + ' (x=' + o.x.toFixed(1) + ' m): ' + o.sentido + ' ' +
         Math.abs(o.dzPrev).toFixed(2) + ' m respecto a la ' + (o.j - 1) + ' y ' +

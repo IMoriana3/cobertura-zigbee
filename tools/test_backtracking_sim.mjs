@@ -1345,6 +1345,39 @@ t('llano perfecto → APTA sin hallazgos', () => {
   const r = corrigeRelieve([0, -.1, -.2, -.3, -.4, -.5, -.6, -.7, -.8, -.9]);
   if (r.codigo !== 0 || !/sin hallazgos/.test(r.salida)) throw new Error('el llano no sale limpio:\n' + r.salida);
 });
+t('fila anómala: una cota mala DENTRO de una línea buena no se escapa', () => {
+  // el control de línea la absorbía en la mediana: 4 casos cazados de 20 reales
+  const z = [0, -.1, -.2, -.3, -.4, -.5, -.6, -.7, -.8, -.9];
+  const c = cotasSinteticas(z);
+  // una línea de 8 filas con UNA fila 36,6 m arriba: la mediana de la línea ni
+  // se entera, pero la geometría de esa fila es imposible
+  c.t[5 * 8 + 3].f[0].y = [z[5] + 36.6, z[5] + 36.6];
+  const f = path.join(ROOT, 'zzsintetica_cotas.json');
+  fs.writeFileSync(f, JSON.stringify(c));
+  let r;
+  try {
+    r = { s: require_child().execFileSync('node',
+      [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'zzsintetica'],
+      { encoding: 'utf-8' }), c: 0 };
+  } catch (e) { r = { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+  finally { try { fs.unlinkSync(f); } catch { /* nada */ } }
+  if (r.c !== 1) throw new Error('la fila anómala se escapa (código ' + r.c + '):\n' + r.s);
+  if (!/fila anómala/.test(r.s)) throw new Error('no la nombra:\n' + r.s);
+  if (!/VEREDICTO: NO EVALUABLE/.test(r.s)) throw new Error('veredicto inesperado:\n' + r.s);
+});
+t('San José: el desvío repetido se declara SISTEMÁTICO, no ruido', () => {
+  if (!fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) return;
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
+  catch (e) { r = (e.stdout || '') + (e.stderr || ''); }
+  if (!/error SISTEMÁTICO/.test(r))
+    throw new Error('ya no detecta que el desvío se repite: ¿se corrigió el levantamiento?');
+  const m = r.match(/repiten LA MISMA magnitud \(≈([\d.]+) m\)/);
+  if (!m) throw new Error('no publica la magnitud repetida');
+  if (Math.abs(+m[1] - 36.65) > 1)
+    throw new Error('la magnitud repetida cambió a ' + m[1] + ' m: revisar el informe al cliente');
+});
 t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
   const corre = a => {
     try { return { s: require_child().execFileSync('node',
