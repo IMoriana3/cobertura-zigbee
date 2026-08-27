@@ -55,7 +55,8 @@ if (!DIR || !fs.existsSync(DIR)) { console.error('falta el directorio con los CS
 /* ── física del simulador, sin duplicarla ────────────────────────────────── */
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
-const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
+             + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) +
   ';return {solarPos,clearskyIneichen,policyAngles,poaPlant,plantFromCotas,slewLimit};')();
 
