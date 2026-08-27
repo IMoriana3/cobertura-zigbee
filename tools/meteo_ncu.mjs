@@ -316,7 +316,8 @@ for (const n of nombres) {
     const deTB = tb && tb.porIndice[indiceHSU(m.name)];
     if (deTB) {
       const cuadra = s && s.gana === deTB.ncu;
-      console.log(`  ${cuadra ? 'ok   ' : 'ojo  '} ${nom} NCU ${String(deTB.ncu).padStart(2)} · GW ${deTB.gw} · esclavo ${deTB.esclavo}` +
+      console.log(`  ${cuadra ? 'ok   ' : 'ojo  '} ${nom} NCU ${String(deTB.ncu).padStart(2)} · GW ${deTB.gw}` +
+        (deTB.esclavo != null ? ` · esclavo ${deTB.esclavo}` : ' · sin esclavo en la hoja') +
         `  ·  de la toolbox` + (s ? `, y el seguidor más cercano es de la ${s.gana}${cuadra ? '' : ' ← NO cuadra'}` : ''));
       pon.push({ m, ncu: deTB.ncu, gw: deTB.gw, esclavo: deTB.esclavo,
         origen: `toolbox · SCADA/tools/tcu-toolbox/plantas/${tb.fichero}, del Excel de coordenadas de la planta` });

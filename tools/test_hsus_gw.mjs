@@ -34,6 +34,10 @@ if (!TB) { console.log('no encuentro el fichero de la toolbox de San José: no h
    el GW1 y otras en el GW2— porque es lo que dijo la casa que pasa en San José, y porque un reparto
    todo-a-un-lado no distinguiría una tubería que funciona de una que devuelve siempre lo mismo. */
 const FIXTURE = { 1: 2, 6: 2, 8: 1, 11: 1, 21: 1 };
+/* Y qué estación va en cada una: el número de la columna RSU. Los cinco son los que la geometría
+   ya daba por dos fuentes, así que si la tubería funciona tienen que salir IGUAL —pero con
+   procedencia «toolbox» en vez de «dos fuentes», que es justo lo que se comprueba abajo. */
+const RSU = { 1: 1, 6: 2, 8: 3, 11: 4, 21: 8 };
 
 const tbAntes = readFileSync(TB, 'utf8');
 const layAntes = readFileSync(LAY, 'utf8');
@@ -53,7 +57,13 @@ try {
   for (const p of d.plantas || []) {
     const m = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
     if (!m || !p.hsus) continue;
-    if (FIXTURE[+m[1]] === (p.puerto === 503 ? 1 : 2)) { p.hsus_gw = 1; inyectadas++; }
+    if (FIXTURE[+m[1]] === (p.puerto === 503 ? 1 : 2)) {
+      p.hsus_gw = 1;
+      /* Y el NÚMERO de la estación, que es lo que de verdad cierra la planta: un 5 en esa celda
+         dice «la HSU 5 cuelga de esta NCU». Con él, la HSU sale de la toolbox y no se deriva. */
+      p.rsu = [RSU[+m[1]]];
+      inyectadas++;
+    }
   }
   di(inyectadas === Object.keys(FIXTURE).length, `el fixture inyecta ${inyectadas} de ${Object.keys(FIXTURE).length} filas`);
   writeFileSync(TB, JSON.stringify(d, null, 1));
@@ -64,8 +74,10 @@ try {
     if (m.ncu == null) continue;
     const esperado = FIXTURE[m.ncu];
     di(m.gw === esperado, `${String(m.name).padEnd(13)} NCU ${String(m.ncu).padStart(2)} → GW ${m.gw ?? '—'} (el fixture dice ${esperado})`);
-    if (m.gw != null) di(/^campo|columna RSU/.test(String(m.gw_origen || '')) || /columna RSU/.test(String(m.ncu_origen || '')),
+    if (m.gw != null) di(/^toolbox|^campo|columna RSU/.test(String(m.gw_origen || '')) || /columna RSU/.test(String(m.ncu_origen || '')),
       `${String(m.name).padEnd(13)} y su procedencia dice de dónde sale el gateway`);
+    di(/^toolbox/.test(String(m.ncu_origen || '')),
+      `${String(m.name).padEnd(13)} sale de la TOOLBOX, no de una deducción`);
   }
   /* 3 · las que no tienen NCU tampoco pueden tener gateway */
   const sueltas = (L.meteo || []).filter(m => m.ncu == null && m.gw != null).length;
