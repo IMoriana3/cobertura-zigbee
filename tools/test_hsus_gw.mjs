@@ -1,84 +1,87 @@
-/* QUE EL GATEWAY DE LA HOJA LLEGUE HASTA EL LAYOUT, hoy que todavía no existe.
+/* CADA HSU DEL LAYOUT CONTRA LO QUE DICE LA HOJA.
 
-   La hoja «Direcciones IP» tiene DOS columnas `RSU`, una por gateway, así que sí dice de cuál cuelga
-   cada estación. `make_plantas.py` lo tiraba; desde el 2026-08-26 lo guarda en `hsus_gw` (repo
-   SCADA). Pero ese campo NO ESTÁ EN NINGÚN FICHERO todavía: hace falta una pasada con `--excel`, que
-   pide la hoja y no está en ningún repo.
+   La hoja «Direcciones IP» trae, por cada NCU, dos columnas `RSU` —una por gateway— y en la celda
+   va el NÚMERO de la estación: un 5 ahí significa «la HSU 5 cuelga de esta NCU, por este gateway».
+   `make_plantas.py --excel` lo vuelca a `rsu` en SCADA/tools/tcu-toolbox/plantas/, y
+   `tools/meteo_ncu.mjs` lo escribe en el layout. Aquí se comprueba que lo que acabó en el layout es
+   exactamente lo que dice la hoja, sin nada de por medio.
 
-   O sea que `tools/meteo_ncu.mjs` tiene una rama que hoy no ejecuta nadie. Eso es exactamente el
-   código que se pudre en silencio: el día de la pasada nos enteraríamos de que no va, con el Excel
-   delante y la prisa encima. Este banco la ejercita.
+   ANTES ESTO ERA OTRA COSA. Mientras el dato no existía, este banco INYECTABA un `hsus_gw` de
+   mentira para ejercitar una rama que no corría nadie. El 2026-08-27 llegó la hoja de verdad y esa
+   premisa se acabó: simular lo que ya está sería peor que no probar, porque un banco que se miente
+   a sí mismo no avisa de nada. Ahora carea el fichero real contra el layout real.
 
-   QUÉ HACE. Copia el fichero de la toolbox de San José, le inyecta `hsus_gw` como quedará tras la
-   pasada, corre `meteo_ncu.mjs --write` sobre esa planta, comprueba que el gateway ha llegado al
-   layout, y DEJA LOS DOS FICHEROS COMO ESTABAN — pase lo que pase, también si algo revienta.
+       node tools/test_hsus_gw.mjs
 
-   OJO: el reparto que se inyecta es un FIXTURE, no un dato. Dice qué gateway tendría cada NCU si la
-   hoja lo dijera así; cuál es de verdad lo dirá la pasada. Lo que se comprueba es la TUBERÍA, no el
-   valor.
+   QUÉ SE EXIGE, y solo esto:
 
-       node tools/test_hsus_gw.mjs                                                                 */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+     · si la hoja dice que la HSU n va en la NCU X por el gateway G, el layout tiene que decir lo
+       mismo — y con `ncu_origen` empezando por «toolbox», no por una deducción;
+     · si la hoja NO dice nada de una estación, el layout puede tener lo que sea (derivado, de campo,
+       o nada) y aquí no se opina;
+     · y una HSU nunca puede llevar gateway sin NCU, que es dirección sin destino.
+
+   Devuelve 1 si el layout se ha separado de la hoja.                                              */
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
-const TB = ['/home/user/SCADA/tools/tcu-toolbox/plantas/24019-san-jose.json',
-  new URL('../../SCADA/tools/tcu-toolbox/plantas/24019-san-jose.json', import.meta.url).pathname,
-  new URL('../../scada/tools/tcu-toolbox/plantas/24019-san-jose.json', import.meta.url).pathname]
+const DIR = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
+  new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,
+  new URL('../../scada/tools/tcu-toolbox/plantas/', import.meta.url).pathname]
   .find(p => { try { return existsSync(p); } catch (e) { return false; } });
-const LAY = RAIZ + 'sanjose_layout.json';
+const TOOLBOX = { ayora: '24025-ayora.json', sanjose: '24019-san-jose.json', fayon: '24007-fayon.json',
+  tunez: '24021-tunez.json', bagnarelli: '24030-bagnarelli.json', elburgo: 'elburgo.json' };
 
-if (!TB) { console.log('no encuentro el fichero de la toolbox de San José: no hay nada que ejercitar'); process.exit(0); }
+if (!DIR) { console.log('no encuentro plantas/ de la toolbox: no hay hoja contra la que carear'); process.exit(0); }
 
-/* El fixture: qué gateway declararía la estación de cada NCU. Inventado a propósito MIXTO —unas en
-   el GW1 y otras en el GW2— porque es lo que dijo la casa que pasa en San José, y porque un reparto
-   todo-a-un-lado no distinguiría una tubería que funciona de una que devuelve siempre lo mismo. */
-const FIXTURE = { 1: 2, 6: 2, 8: 1, 11: 1, 21: 1 };
+let malo = 0, ok = 0, sinHoja = [];
+const di = (bien, txt) => { if (!bien) malo++; console.log(`  ${bien ? 'ok   ' : 'FALLA'} ${txt}`); };
+const indice = s => { const m = /(\d+)/.exec(String(s || '')); return m ? +m[1] : null; };
 
-const tbAntes = readFileSync(TB, 'utf8');
-const layAntes = readFileSync(LAY, 'utf8');
-let malo = 0;
-const di = (ok, txt) => { if (!ok) malo++; console.log(`  ${ok ? 'ok   ' : 'FALLA'} ${txt}`); };
+for (const [planta, fichero] of Object.entries(TOOLBOX).sort()) {
+  const ruta = DIR + fichero, lay = `${RAIZ}${planta}_layout.json`;
+  if (!existsSync(ruta) || !existsSync(lay)) continue;
+  const L = JSON.parse(readFileSync(lay, 'utf8'));
+  const M = L.meteo || [];
 
-try {
-  /* 1 · sin `hsus_gw` —como está hoy— no se escribe gateway ninguno */
-  execFileSync(process.execPath, [RAIZ + 'tools/meteo_ncu.mjs', '--write', 'sanjose'], { stdio: 'pipe' });
-  let L = JSON.parse(readFileSync(LAY, 'utf8'));
-  const conGwAntes = (L.meteo || []).filter(m => m.gw != null).length;
-  di(conGwAntes === 0, `sin hsus_gw en la toolbox no se escribe gateway ninguno (hay ${conGwAntes})`);
-
-  /* 2 · con `hsus_gw`, el gateway llega al layout */
-  const d = JSON.parse(tbAntes);
-  let inyectadas = 0;
-  for (const p of d.plantas || []) {
+  /* Lo que la hoja dice: índice de estación → NCU y gateway. El gateway sale del puerto del
+     passthrough, 503 el GW1 y 504 el GW2, que es como lo escribe make_plantas. */
+  const dice = {};
+  for (const p of JSON.parse(readFileSync(ruta, 'utf8')).plantas || []) {
     const m = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
-    if (!m || !p.hsus) continue;
-    if (FIXTURE[+m[1]] === (p.puerto === 503 ? 1 : 2)) { p.hsus_gw = 1; inyectadas++; }
+    if (!m) continue;
+    for (const [k, n] of (p.rsu || []).entries()) {
+      dice[n] = { ncu: +m[1], gw: p.puerto === 503 ? 1 : 2, esclavo: (p.hsu_esclavos || [])[k] };
+    }
   }
-  di(inyectadas === Object.keys(FIXTURE).length, `el fixture inyecta ${inyectadas} de ${Object.keys(FIXTURE).length} filas`);
-  writeFileSync(TB, JSON.stringify(d, null, 1));
+  const cuantas = Object.keys(dice).length;
+  if (!cuantas) { sinHoja.push(`${planta} (${fichero} no trae ninguna \`rsu\`)`); continue; }
 
-  execFileSync(process.execPath, [RAIZ + 'tools/meteo_ncu.mjs', '--write', 'sanjose'], { stdio: 'pipe' });
-  L = JSON.parse(readFileSync(LAY, 'utf8'));
-  for (const m of L.meteo || []) {
-    if (m.ncu == null) continue;
-    const esperado = FIXTURE[m.ncu];
-    di(m.gw === esperado, `${String(m.name).padEnd(13)} NCU ${String(m.ncu).padStart(2)} → GW ${m.gw ?? '—'} (el fixture dice ${esperado})`);
-    if (m.gw != null) di(/^campo|columna RSU/.test(String(m.gw_origen || '')) || /columna RSU/.test(String(m.ncu_origen || '')),
-      `${String(m.name).padEnd(13)} y su procedencia dice de dónde sale el gateway`);
+  console.log(`\n· ${planta} — la hoja declara ${cuantas} de las ${M.length} del DWG`);
+  for (const [i, m] of M.entries()) {
+    const n = indice(m.name) ?? (i + 1);
+    const d = dice[n];
+    if (!d) continue;                                   // la hoja no habla de ésta: aquí no se opina
+    const bien = m.ncu === d.ncu && m.gw === d.gw && /^toolbox/.test(String(m.ncu_origen || ''));
+    if (bien) ok++;
+    di(bien, `${String(m.name).padEnd(16)} hoja: NCU ${String(d.ncu).padStart(2)} GW ${d.gw}` +
+      `   layout: NCU ${String(m.ncu ?? '—').padStart(2)} GW ${m.gw ?? '—'}` +
+      (bien ? '' : `   ← ${m.ncu !== d.ncu ? 'otra NCU' : m.gw !== d.gw ? 'otro gateway' : 'la procedencia no dice «toolbox»'}`));
+    if (d.esclavo != null) di(m.esclavo === d.esclavo,
+      `${String(m.name).padEnd(16)} y su esclavo Modbus: hoja ${d.esclavo}, layout ${m.esclavo ?? '—'}`);
   }
-  /* 3 · las que no tienen NCU tampoco pueden tener gateway */
-  const sueltas = (L.meteo || []).filter(m => m.ncu == null && m.gw != null).length;
-  di(sueltas === 0, `ninguna HSU sin NCU se lleva un gateway (hay ${sueltas})`);
-} finally {
-  /* PASE LO QUE PASE. Este banco toca dos ficheros de verdad, uno de ellos de OTRO repo: dejarlos
-     sucios sería peor que no probar nada. */
-  writeFileSync(TB, tbAntes);
-  writeFileSync(LAY, layAntes);
 }
 
-const tbIgual = readFileSync(TB, 'utf8') === tbAntes, layIgual = readFileSync(LAY, 'utf8') === layAntes;
-di(tbIgual && layIgual, 'los dos ficheros quedan como estaban');
+/* Y esto vale para todas, hable la hoja o no: un gateway sin NCU es dirección sin destino. */
+let sueltas = 0;
+for (const f of readdirSync(RAIZ).filter(x => /_layout\.json$/.test(x))) {
+  const L = JSON.parse(readFileSync(RAIZ + f, 'utf8'));
+  sueltas += (L.meteo || []).filter(m => m.gw != null && m.ncu == null).length;
+}
+console.log('');
+di(sueltas === 0, `ninguna HSU con gateway y sin NCU en los once layouts (hay ${sueltas})`);
 
-console.log(`\n${malo ? malo + ' fallo(s)' : 'la tubería del gateway funciona: el día de la pasada, `hsus_gw` entra solo'}`);
+if (sinHoja.length) console.log('\nsin `rsu` en su fichero, así que no se carean: ' + sinHoja.join(', '));
+console.log(`\n${malo ? malo + ' divergencia(s): el layout se ha separado de la hoja'
+  : `${ok} HSU dicen en el layout exactamente lo que dice la hoja`}`);
 process.exit(malo ? 1 : 0);

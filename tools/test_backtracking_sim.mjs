@@ -100,7 +100,8 @@ const src = html.slice(j0, i1);
 /* El bloque de FÍSICA PURA ya no lleva dentro el sol: la posición NOAA y el
    `singleaxis` viven en `sol.js`, que la página carga aparte. Aquí se antepone,
    igual que hace el navegador, o el bloque extraído se quedaría sin `Sol`. */
-const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
+            + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 
 const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, singleaxis, trueTrackAngle, shadeFracPair, shadeBrute,
@@ -158,6 +159,58 @@ t('y da lo mismo que el módulo, con la refracción que esta página necesita', 
       const x = F.singleaxis(a.zen, a.az, p), y = S.singleaxis(b.zen, b.az, p);
       if (!(isNaN(x) && isNaN(y)) && Math.abs(x - y) > 1e-12) throw new Error('singleaxis ' + x + ' vs ' + y);
     }
+});
+
+
+/* ── el cielo claro, de `irradiancia.js` y de ningún otro sitio ─────────────
+   `dniExtra`, `airmassKY`, `clearskyIneichen` y `surfaceOrient` estaban en las
+   DOS páginas, y no era solo duplicación: overcast había corregido `dniExtra` a
+   Spencer/pvlib y backtracking se quedó con la fórmula simple. Esto exige que no
+   vuelva a haber una copia local que se separe. */
+t('TODO el que extrae el bloque de física antepone los módulos', () => {
+  /* El bloque ya no se basta solo: necesita `sol.js` e `irradiancia.js`, que la
+     página carga aparte. Cada vez que alguien escribe una herramienta nueva que
+     lo extrae —han llegado tres de golpe con la v1.38— se queda sin ellos y
+     revienta. En vez de ir arreglándolas de una en una, esto las cuenta. */
+  const dir = path.join(ROOT, 'tools');
+  const malas = [];
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.mjs')) continue;
+    const src = fs.readFileSync(path.join(dir, f), 'utf-8');
+    if (!/FIN-FÍSICA/.test(src)) continue;                 // no extrae el bloque
+    const falta = ['sol.js', 'irradiancia.js'].filter(m2 => !src.includes(m2));
+    if (falta.length) malas.push(f + ' (sin ' + falta.join(' ni ') + ')');
+  }
+  if (malas.length) throw new Error(malas.join(', '));
+});
+t('el cielo claro se carga del módulo, no está escrito en la página', () => {
+  if (!/<script src="irradiancia\.js/.test(html)) throw new Error('la página no carga irradiancia.js');
+  const propias = (html.match(/\nfunction (dniExtra|airmassKY|clearskyIneichen|surfaceOrient)\s*\(/g) || []);
+  if (propias.length) throw new Error('copia propia de: ' + propias.join(' ').replace(/\n/g, ''));
+});
+t('y `dniExtra` es Spencer con 1366,1, que es lo que usa pvlib', () => {
+  const I = new Function(fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8') + ';return Irr;').call({});
+  /* Los tres días con los que se verificó contra pvlib al microvatio. La fórmula
+     simple que había en backtracking se desvía ~1 W/m², y eso entra en Perez por
+     delta = DHI·airmass/dni_extra. */
+  const esperado = { 1: 1413.981805, 172: 1321.623593, 355: 1412.708564 };
+  for (const [doy, v] of Object.entries(esperado)) {
+    const q = I.dniExtra(+doy);
+    if (Math.abs(q - v) > 1e-5) throw new Error('doy ' + doy + ': ' + q.toFixed(6) + ' vs ' + v);
+    const simple = 1367 * (1 + 0.033 * Math.cos(2 * Math.PI * doy / 365));
+    if (Math.abs(q - simple) < 0.2) throw new Error('doy ' + doy + ': coincide con la fórmula SIMPLE');
+  }
+  if (typeof F.dniExtra === 'function' && Math.abs(F.dniExtra(172) - I.dniExtra(172)) > 1e-9)
+    throw new Error('la página no usa la del módulo');
+});
+t('y la masa de aire es ABSOLUTA: lleva la presión de la altitud', () => {
+  const I = new Function(fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8') + ';return Irr;').call({});
+  /* Sin el factor de presión el GHI se va casi medio por ciento — se cayó al
+     transcribir el módulo y lo cazó la huella antes de entrar. */
+  const a = I.clearskyIneichen(30, 172, 0, 3.5).ghi, b = I.clearskyIneichen(30, 172, 1500, 3.5).ghi;
+  if (!(b > a)) throw new Error('la altitud no cambia el GHI: falta la presión');
+  const q = I.clearskyIneichen(30, 172, 300, 3.5).ghi;
+  if (Math.abs(q - 867.977998) > 1e-4) throw new Error('GHI(30°, doy 172, 300 m) = ' + q.toFixed(6));
 });
 
 console.log('extra (solo tiene sentido en Node: reproducibilidad y aristas)');

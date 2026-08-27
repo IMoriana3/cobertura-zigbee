@@ -360,12 +360,22 @@
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
 <script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala -->
 <script>
-/* Si `sol.js` no llega, la página se quedaba EN BLANCO y en silencio: el
-   primer uso de `Sol` reventaba y no se pintaba nada. Un visor que muere mudo
-   cuando le falta una dependencia no se puede diagnosticar desde el otro lado
-   del teléfono, así que aquí lo DICE — con la causa y qué hacer. */
-if(typeof Sol==='undefined'){
+/* Si una dependencia no llega, la página se quedaba EN BLANCO y en silencio:
+   el primer uso reventaba y no se pintaba nada. Un visor que muere mudo
+   cuando le falta una pieza no se puede diagnosticar desde el otro lado del
+   teléfono, así que aquí lo DICE — con la causa y qué hacer. Vigila las DOS
+   externas de la física: sol.js e irradiancia.js. */
+(function(){
+  var falta=[];
+  if(typeof Sol==='undefined')falta.push('sol.js?v=0.2.0');
+  if(typeof Irr==='undefined'&&typeof Irradiancia==='undefined'){
+    // el nombre global lo define irradiancia.js; si ninguno existe, no llegó
+    var probe=document.querySelector('script[src^="irradiancia.js"]');
+    if(probe)falta.push('irradiancia.js?v=0.1.0');
+  }
+  if(!falta.length)return;
   document.addEventListener('DOMContentLoaded',function(){
     /* `typeof VER` NO es seguro aquí: el script principal declara `const VER`
        en el ámbito léxico global, así que la ligadura EXISTE desde antes de
@@ -380,17 +390,18 @@ if(typeof Sol==='undefined'){
     d.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;'+
       'justify-content:center;background:#101418;color:#e8eae7;font:15px/1.6 system-ui,sans-serif;padding:24px';
     d.innerHTML='<div style="max-width:46em"><h1 style="font-size:1.3rem;margin:0 0 .6em">'+
-      'No se pudo cargar <code>sol.js</code></h1><p style="margin:0 0 .8em">Sin él no hay posición '+
-      'solar ni seguimiento, así que la página no puede dibujar nada. El fichero se pide como '+
-      '<code>sol.js?v=0.2.0</code> y tiene que estar junto a este HTML.</p>'+
+      'No se pudo cargar <code>'+falta.join('</code> ni <code>')+'</code></h1>'+
+      '<p style="margin:0 0 .8em">Sin ese fichero no hay física que calcular, así que la página '+
+      'no puede dibujar nada. Tiene que estar publicado junto a este HTML.</p>'+
       '<p style="margin:0 0 .8em"><b>Qué probar, por orden:</b></p><ol style="margin:0 0 .8em;padding-left:1.2em">'+
       '<li>Recarga forzando caché: <b>Ctrl+Shift+R</b> (⌘+Shift+R en Mac).</li>'+
-      '<li>Abre <a style="color:#87b4d6" href="sol.js?v=0.2.0">sol.js</a> directamente: si da 404, no está publicado.</li>'+
+      '<li>Abre '+falta.map(function(f){return '<a style="color:#87b4d6" href="'+f+'">'+f.split('?')[0]+'</a>';}).join(' y ')+
+      ' directamente: si da 404, no está publicado.</li>'+
       '<li>Si lo abriste con <code>file://</code>, sírvelo por HTTP: el navegador bloquea las cargas locales.</li>'+
       '</ol><p style="margin:0;opacity:.7">Versión de la página: '+ver+'</p></div>';
     document.body.appendChild(d);
   });
-}
+})();
 </script>
 <script>
 "use strict";
@@ -438,28 +449,15 @@ function doyOf(dateStr){
   return Math.round((Date.UTC(+p[0],+p[1]-1,+p[2])-Date.UTC(+p[0],0,1))/86400000)+1;
 }
 
-/* ── cielo claro Ineichen + masa de aire + extraterrestre ────────────────── */
-function dniExtra(doy){return 1367*(1+0.033*Math.cos(2*Math.PI*doy/365));}
-function airmassKY(zenDeg){                            // Kasten & Young 1989, relativa
-  if(zenDeg>=90)return NaN;
-  return 1/(Math.cos(zenDeg*RAD)+0.50572*Math.pow(96.07995-zenDeg,-1.6364));
-}
-function clearskyIneichen(zenDeg,doy,altM,TL){
-  if(!(zenDeg<90))return {ghi:0,dni:0,dhi:0};
-  const amR=airmassKY(zenDeg);
-  const press=Math.pow(1-2.25577e-5*altM,5.25588);     // atmósfera estándar
-  const am=amR*press;                                   // masa de aire absoluta
-  const I0=dniExtra(doy), cz=Math.cos(zenDeg*RAD);
-  const fh1=Math.exp(-altM/8000), fh2=Math.exp(-altM/1250);
-  const cg1=5.09e-5*altM+0.868, cg2=3.92e-5*altM+0.0387;
-  let ghi=cg1*I0*cz*Math.exp(-cg2*am*(fh1+fh2*(TL-1)))*Math.exp(0.01*Math.pow(am,1.8));
-  ghi=Math.max(0,ghi);
-  const b=0.664+0.163/fh1;
-  const bnci=b*I0*Math.exp(-0.09*am*(TL-1));
-  const bnci2=cz>1e-6? ghi*(1-(0.1-0.2*Math.exp(-TL))/(0.1+0.882/fh1))/cz : 0;
-  const dni=Math.max(0,Math.min(bnci,bnci2));
-  return {ghi:ghi,dni:dni,dhi:Math.max(0,ghi-dni*cz)};
-}
+/* ── cielo claro, masa de aire y orientación de pala: en `irradiancia.js` ───
+   Estaban escritas en las dos páginas. Y no era solo duplicación: `overcast.html`
+   había corregido `dniExtra` a Spencer/pvlib y esta página se quedó con la
+   fórmula simple, que se desvía ~1 W/m² y entra en Perez por
+   delta = DHI·airmass/dni_extra. Una sola copia, con el arreglo dentro. */
+const dniExtra=Irr.dniExtra;
+const airmassKY=Irr.airmassKY;
+const clearskyIneichen=Irr.clearskyIneichen;
+const surfaceOrient=Irr.surfaceOrient;
 
 /* ── pvlib.tracking.singleaxis (Eq. 14) — vive en `sol.js` ─────────────────
    El ángulo ideal firmado y el recorte por backtracking eran los mismos aquí y
@@ -467,16 +465,6 @@ function clearskyIneichen(zenDeg,doy,altM,TL){
    y son los que lee su QA. */
 const trueTrackAngle=Sol.trueTrackAngle;
 const singleaxis=Sol.singleaxis;
-function surfaceOrient(thetaDeg,axisTilt,axisAz){
-  const tilt=Math.acos(Math.cos(thetaDeg*RAD)*Math.cos(axisTilt*RAD))*DEG;
-  const sT=Math.sin(tilt*RAD); let azd;
-  if(Math.abs(sT)<1e-12)azd=90;
-  else{
-    azd=Math.asin(Math.max(-1,Math.min(1,Math.sin(thetaDeg*RAD)/sT)))*DEG;
-    if(Math.abs(thetaDeg)>=90)azd=-azd+Math.sign(thetaDeg)*180;
-  }
-  return {tilt:tilt,az:((axisAz+azd)%360+360)%360};
-}
 
 /* ── sombra entre filas: geometría exacta en el plano ⊥ eje ──────────────────
    Filas de la pareja en el frame proyectado: la de la IZQUIERDA en (0,0), la de
