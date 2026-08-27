@@ -1281,6 +1281,65 @@ t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', 
 });
 
 console.log('');
+console.log('cruce de un día de NCU real (tools/cruce_ncu_dia.mjs)');
+
+const FIXNCU = path.join(ROOT, 'tools', 'fixture_ncu12');
+function correCruce(dir, extra) {
+  try { return { s: require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), dir, '--planta', 'ayora', '--ncu', '12',
+     ...(extra || [])], { encoding: 'utf-8' }), c: 0 }; }
+  catch (e) { return { s: (e.stdout || '') + (e.stderr || ''), c: e.status }; }
+}
+t('cruce NCU: el huso se DEDUCE del volcado y gana con margen', () => {
+  const r = correCruce(FIXNCU);
+  if (r.c !== 0) throw new Error('el cruce aborta:\n' + r.s.slice(-400));
+  // el volcado de Ayora viene en UTC: el objetivo cruza cero al mediodía solar
+  if (!/HUSO deducido: UTC\+0/.test(r.s)) throw new Error('ya no deduce UTC:\n' + r.s.slice(0, 400));
+  const m = r.s.match(/gana por (\d+) min/);
+  if (!m || +m[1] < 30) throw new Error('el huso no gana con margen suficiente');
+});
+t('cruce NCU: LEE EL LOG DE EVENTOS y aparta lo que hizo una persona', () => {
+  // sin esto se le achaca a la planta lo que hizo un operario: la mañana del
+  // 7-ago los seguidores miraban al oeste con el sol saliendo por el este, y
+  // era «admin» ejerciendo las posiciones de seguridad desde la web
+  const r = correCruce(FIXNCU);
+  if (!/LOG DE EVENTOS: \d+ intervenciones HUMANAS/.test(r.s))
+    throw new Error('no lee el log de eventos:\n' + r.s.slice(0, 600));
+  if (!/posiciones de seguridad .* activadas a mano/.test(r.s))
+    throw new Error('no destaca las posiciones de seguridad manuales');
+  // y las muestras en posición de seguridad no pueden contar en la firma
+  const src = fs.readFileSync(path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), 'utf-8');
+  if (!/if \(s\.seg\) \{ nSeg\+\+; continue; \}/.test(src))
+    throw new Error('la firma ya no aparta las muestras en posición de seguridad');
+});
+t('cruce NCU: sin log de eventos, lo DICE en vez de callarse', () => {
+  const tmp = path.join(ROOT, 'tools', 'zz_fixncu_sinlog');
+  fs.mkdirSync(tmp, { recursive: true });
+  try {
+    for (const f of fs.readdirSync(FIXNCU)) if (!/EVENT_LOG/.test(f))
+      fs.copyFileSync(path.join(FIXNCU, f), path.join(tmp, f));
+    const r = correCruce(tmp);
+    if (!/SIN log de eventos/.test(r.s))
+      throw new Error('no avisa de que falta el log:\n' + r.s.slice(0, 500));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+t('cruce NCU: Ayora backtrackea PLANO — la apertura no separa los dos regímenes', () => {
+  // el hallazgo del volcado real: la bandera de backtracking se levanta y los
+  // ángulos se aplanan (o sea la TCU SÍ backtrackea), pero todos los
+  // seguidores reciben el MISMO ángulo. Con los registros de pendiente a cero
+  // no puede ser de otra manera. Si algún día se configuran, esto falla y hay
+  // que revisar el informe al cliente.
+  const r = correCruce(FIXNCU);
+  if (!/backtrackea PLANO/.test(r.s))
+    throw new Error('ya no concluye que backtrackea plano:\n' + r.s.slice(-900));
+  const m = r.s.match(/la apertura durante el backtracking es de ([\d.]+)°/);
+  if (!m) throw new Error('no publica la apertura medida:\n' + r.s.slice(-600));
+  if (+m[1] > 1) throw new Error('la apertura ahora despega del suelo (' + m[1] + '°): ¿se configuraron las pendientes?');
+  // y el veredicto NO puede apoyarse en una razón entre ruidos de cuantización
+  if (!/ruido de/.test(r.s)) throw new Error('no declara que la razón es ruido/ruido');
+});
+
+console.log('');
 console.log('careo por sombra (tools/careo_sombra.mjs)');
 
 const CAREO = fs.readFileSync(path.join(ROOT, 'tools', 'careo_sombra.mjs'), 'utf-8');
