@@ -90,17 +90,14 @@ const NOTA_PLANTA = {
        + 'mismo campo da 1 y 2 con UNA sola NCU). Lo resolvería un export de la toolbox para 25082 o el '
        + 'listado del cliente con su columna de NCU. Con la geometría no se puede, y no es opinable.',
 
-  sanjose: 'Son OCHO HSU, las que dibuja el DWG y las que dice la cartera. El fichero del SCADA '
-       + '(24019-san-jose.json) solo declara CINCO —NCU 1, 6, 8, 11 y 21, una en cada una— y eso NO es '
-       + 'un desacuerdo, es un export viejo: se generó antes de arreglar `rangos()`, que solo entendía '
-       + 'UN tramo por NCU, así que toda NCU con varios tramos se cayó entera y en silencio. Se '
-       + 'comprueba: las cinco que faltan —7, 12, 16, 17 y 19— son EXACTAMENTE las cinco de San José '
-       + 'con varios tramos (de 4 a 7 por gateway), y las dieciséis que sí están son exactamente las de '
-       + 'un tramo. Sin excepciones. Está apuntado en el CONTRATO del SCADA (10/08): hay que '
-       + 're-exportarlo desde IPs. Mientras tanto, las tres HSU sin NCU caen justo en esa zona. '
-       + 'OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, pero esas tres están puestas por '
-       + '«NCU más cercana» —lo dice su manifiesto—, que es la regla que se equivoca. No son dato.',
-};
+  sanjose: 'Las OCHO resueltas desde la hoja «Direcciones IP» (2026-08-27), con su NCU y su '
+       + 'gateway. Lo que faltaba no era el dato sino saber leerlo: la hoja trae una columna RSU '
+       + 'por gateway con el NÚMERO de la estación, y el exportador la contaba en vez de '
+       + 'guardarla. Además su fichero estaba viejo —16 NCU de 21— porque las celdas de «Esclavos» '
+       + 'de cinco NCU traen VARIOS TRAMOS en varias líneas y el parser solo entendía uno, así que '
+       + 'esas NCU se caían enteras: son justo las 7, 12, 16, 17 y 19. OJO CON LA NCU 16: lleva DOS '
+       + 'estaciones, la HSU 5 en el GW2 y la HSU 6 en el GW1. Eso es lo que la geometría veía como '
+       + 'un empate a 45 m, y por eso no se escribió: no era ruido, era que las dos son de la 16.'};
 
 const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
   new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,

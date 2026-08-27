@@ -12,14 +12,8 @@
  "gws": 2,
  "una_fila": false,
  "gateways_declarados_en_scada": true,
- "hsus_asignadas_por": "layout en 5 de 8; las otras 3 por NCU mas cercana, que NO es dato: HSU 5 (US), HSU 6 (US), HSU 7 (US)",
- "ncus_sin_declarar_en_scada": [
-  7,
-  12,
-  16,
-  17,
-  19
- ],
+ "hsus_asignadas_por": "layout (ncu y gw declarada en `meteo`)",
+ "ncus_sin_declarar_en_scada": [],
  "ambitos": [
   {
    "fichero": "coords_sanjose.csv",
@@ -182,8 +176,8 @@
    "ambito": "gateway",
    "ncu": 7,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.41",
+   "puerto": 503
   },
   {
    "fichero": "coords_sanjose_NCU07_GW2.csv",
@@ -191,8 +185,8 @@
    "ambito": "gateway",
    "ncu": 7,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.41",
+   "puerto": 504
   },
   {
    "fichero": "coords_sanjose_NCU08.csv",
@@ -302,8 +296,8 @@
    "ambito": "gateway",
    "ncu": 12,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.56",
+   "puerto": 503
   },
   {
    "fichero": "coords_sanjose_NCU12_GW2.csv",
@@ -311,8 +305,8 @@
    "ambito": "gateway",
    "ncu": 12,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.56",
+   "puerto": 504
   },
   {
    "fichero": "coords_sanjose_NCU13.csv",
@@ -346,13 +340,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU15.csv",
-   "tcus": 55,
+   "tcus": 54,
    "ambito": "ncu",
    "ncu": 15
   },
   {
    "fichero": "coords_sanjose_NCU16.csv",
-   "tcus": 124,
+   "tcus": 125,
    "ambito": "ncu",
    "ncu": 16
   },
@@ -362,17 +356,17 @@
    "ambito": "gateway",
    "ncu": 16,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.76",
+   "puerto": 503
   },
   {
    "fichero": "coords_sanjose_NCU16_GW2.csv",
-   "tcus": 81,
+   "tcus": 82,
    "ambito": "gateway",
    "ncu": 16,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.76",
+   "puerto": 504
   },
   {
    "fichero": "coords_sanjose_NCU17.csv",
@@ -386,8 +380,8 @@
    "ambito": "gateway",
    "ncu": 17,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.81",
+   "puerto": 503
   },
   {
    "fichero": "coords_sanjose_NCU17_GW2.csv",
@@ -395,8 +389,8 @@
    "ambito": "gateway",
    "ncu": 17,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.81",
+   "puerto": 504
   },
   {
    "fichero": "coords_sanjose_NCU18.csv",
@@ -434,8 +428,8 @@
    "ambito": "gateway",
    "ncu": 19,
    "gw": 1,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.91",
+   "puerto": 503
   },
   {
    "fichero": "coords_sanjose_NCU19_GW2.csv",
@@ -443,8 +437,8 @@
    "ambito": "gateway",
    "ncu": 19,
    "gw": 2,
-   "ip": null,
-   "puerto": null
+   "ip": "10.21.236.91",
+   "puerto": 504
   },
   {
    "fichero": "coords_sanjose_NCU20.csv",
@@ -460,13 +454,13 @@
   },
   {
    "fichero": "coords_sanjose_GW1.csv",
-   "tcus": 1227,
+   "tcus": 1226,
    "ambito": "gw",
    "gw": 1
   },
   {
    "fichero": "coords_sanjose_GW2.csv",
-   "tcus": 1079,
+   "tcus": 1080,
    "ambito": "gw",
    "gw": 2
   }
