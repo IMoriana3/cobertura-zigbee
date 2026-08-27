@@ -359,7 +359,39 @@
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
-<script src="sol.js?v=0.1.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script>
+/* Si `sol.js` no llega, la página se quedaba EN BLANCO y en silencio: el
+   primer uso de `Sol` reventaba y no se pintaba nada. Un visor que muere mudo
+   cuando le falta una dependencia no se puede diagnosticar desde el otro lado
+   del teléfono, así que aquí lo DICE — con la causa y qué hacer. */
+if(typeof Sol==='undefined'){
+  document.addEventListener('DOMContentLoaded',function(){
+    /* `typeof VER` NO es seguro aquí: el script principal declara `const VER`
+       en el ámbito léxico global, así que la ligadura EXISTE desde antes de
+       ejecutarse. Si ese script muere antes de inicializarla —que es
+       exactamente el caso que este aviso cubre— la variable queda en zona
+       muerta temporal y hasta `typeof` lanza ReferenceError. La primera
+       versión de este guard se mataba a sí misma por esto. */
+    var ver='(el script principal no llegó a arrancar)';
+    try{ ver=VER; }catch(e){}
+    var d=document.createElement('div');
+    d.setAttribute('role','alert');
+    d.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;'+
+      'justify-content:center;background:#101418;color:#e8eae7;font:15px/1.6 system-ui,sans-serif;padding:24px';
+    d.innerHTML='<div style="max-width:46em"><h1 style="font-size:1.3rem;margin:0 0 .6em">'+
+      'No se pudo cargar <code>sol.js</code></h1><p style="margin:0 0 .8em">Sin él no hay posición '+
+      'solar ni seguimiento, así que la página no puede dibujar nada. El fichero se pide como '+
+      '<code>sol.js?v=0.2.0</code> y tiene que estar junto a este HTML.</p>'+
+      '<p style="margin:0 0 .8em"><b>Qué probar, por orden:</b></p><ol style="margin:0 0 .8em;padding-left:1.2em">'+
+      '<li>Recarga forzando caché: <b>Ctrl+Shift+R</b> (⌘+Shift+R en Mac).</li>'+
+      '<li>Abre <a style="color:#87b4d6" href="sol.js?v=0.2.0">sol.js</a> directamente: si da 404, no está publicado.</li>'+
+      '<li>Si lo abriste con <code>file://</code>, sírvelo por HTTP: el navegador bloquea las cargas locales.</li>'+
+      '</ol><p style="margin:0;opacity:.7">Versión de la página: '+ver+'</p></div>';
+    document.body.appendChild(d);
+  });
+}
+</script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -1303,6 +1303,31 @@ t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', 
     throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
 });
 
+t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
+  // «No me deja entrar al html, no carga» — y era una pantalla en blanco sin
+  // un solo mensaje. Un visor que muere mudo cuando le falta una dependencia
+  // no se puede diagnosticar desde el otro lado del teléfono.
+  if (!/typeof Sol==='undefined'/.test(html))
+    throw new Error('la página ya no comprueba que sol.js haya llegado');
+  if (!/No se pudo cargar/.test(html))
+    throw new Error('el aviso de dependencia perdida ya no está');
+  // `typeof VER` NO es seguro dentro del aviso: `const VER` vive en el ámbito
+  // léxico global, y si el script principal muere antes de inicializarlo la
+  // variable queda en zona muerta temporal y hasta `typeof` lanza. La primera
+  // versión del aviso se mataba a sí misma justo así.
+  if (/typeof VER!=='undefined'\?VER/.test(html))
+    throw new Error('el aviso vuelve a usar typeof VER: se mata solo por la zona muerta temporal');
+  if (!/try\{ ver=VER; \}catch/.test(html))
+    throw new Error('el aviso ya no lee VER a prueba de zona muerta');
+  // y las dos páginas que comparten sol.js tienen que pedir la MISMA versión,
+  // o una está corriendo contra un fichero para el que no se escribió
+  const oc = fs.readFileSync(path.join(ROOT, 'overcast.html'), 'utf-8');
+  const vb = (html.match(/src="sol\.js\?v=([^"]+)"/) || [])[1];
+  const vo = (oc.match(/src="sol\.js\?v=([^"]+)"/) || [])[1];
+  if (!vb || !vo) throw new Error('alguna página no declara la versión de sol.js');
+  if (vb !== vo) throw new Error(`backtracking pide sol.js?v=${vb} y overcast ?v=${vo}: es el MISMO fichero`);
+});
+
 console.log('');
 console.log('cruce de un día de NCU real (tools/cruce_ncu_dia.mjs)');
 
