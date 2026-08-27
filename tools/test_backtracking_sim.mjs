@@ -1532,6 +1532,24 @@ t('careo sombra: configurar el registro nunca EMPEORA la sombra del día', () =>
   }
 });
 
+t('protocolo de prueba de UN seguidor: registros de la ficha y firma inconfundible', () => {
+  // la ultima verificacion pendiente del firmware (el termino de pendiente) se
+  // cierra en campo con este protocolo; si la ficha cambia o la prediccion se
+  // encoge hasta el ruido, el protocolo deja de servir y hay que regenerarlo
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'protocolo_prueba_pendiente.mjs'),
+     '--planta', 'ayora', '--ncu', '12', '--tcu', '26', '--fecha', '2026-08-30'],
+    { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('el protocolo aborta: ' + ((e.stdout || '') + (e.stderr || '')).slice(-300)); }
+  for (const reg of ['41098', '41100', '41102', '41104'])
+    if (!new RegExp(reg + ' \\(').test(r)) throw new Error('no imprime el registro ' + reg);
+  const m = r.match(/separación máxima prevista: ([\d.]+)°/);
+  if (!m) throw new Error('no publica la separación prevista');
+  if (+m[1] < 5) throw new Error('la firma prevista (' + m[1] + '°) se acerca al ruido: elegir otro TCU');
+  if (!/VUELTA ATRÁS/.test(r)) throw new Error('sin plan de vuelta atrás no hay protocolo');
+});
+
 console.log('');
 console.log('control de entrada del relieve (tools/valida_relieve.mjs)');
 
