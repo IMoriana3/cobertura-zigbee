@@ -1349,11 +1349,29 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   // 50–55°). La marcha sale barata con sol alto (el rayo supera zSky en
   // pocos pasos). Paso 4 m + 3 refinos: error medido ≤0,03% anual, declarado.
   const doTerr=true;
+  /* v1.39.3: cota EXACTA del terreno para no marchar de más. El suelo nunca
+     supera gMax (la cota medida más alta menos la altura de buje), así que un
+     rayo que ya vuela por encima de gMax no puede clavarse: se corta ahí.
+     No es una heurística — es un corte exacto: bloquear exige z<gz≤gMax.
+     Hacía falta porque el TERRENO FANTASMA (el bug que esto vino a arreglar)
+     actuaba por accidente de salida rápida: el marchador tropezaba con suelo
+     inventado en 2-3 pasos y paraba. Con el suelo real, el caso común pasó a
+     ser «caminar el rayo entero para concluir que no choca» — hasta 160 pasos
+     por muestra, miles de muestras por instante — y la página se arrastraba. */
+  let gMax=-Infinity;
+  if(PRr&&PRr.segZ){for(const line of PRr.segZ)if(line)for(const z2 of line){
+    if(z2[0]>gMax)gMax=z2[0]; if(z2[1]>gMax)gMax=z2[1];}}
+  else{for(let i2=0;i2<nR;i2++){const t2=Math.abs(T.rowTilt?T.rowTilt[i2]:0)*RAD;
+    const h=zch[i2]+30*Math.tan(t2); if(h>gMax)gMax=h;}}
+  gMax-=HUB;
   const terrBlocked=(P0,P1,P2)=>{
     // ¿el rayo hacia el sol se clava en el terreno antes de salir del parque?
+    if(sv[2]>0&&P2>=gMax)return false;          // nace por encima del suelo más alto
     const stepH=4, horizC=Math.hypot(sv[0],sv[1]);
     if(horizC<1e-6)return false;
-    const dt=stepH/horizC, tMax=Math.min(650/horizC,(xs[nR-1]-xs[0]+40)/Math.max(1e-6,Math.abs(sv[0])));
+    let tMax=Math.min(650/horizC,(xs[nR-1]-xs[0]+40)/Math.max(1e-6,Math.abs(sv[0])));
+    if(sv[2]>0)tMax=Math.min(tMax,(gMax-P2)/sv[2]);   // más allá vuela sobre gMax
+    const dt=stepH/horizC;
     for(let t=dt;t<tMax;t+=dt){
       const z=P2+t*sv[2];
       if(z>zSky)return false;                  // ya vuela por encima de todo
@@ -2343,7 +2361,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.39.2';
+const VER='v1.39.3';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2840,7 +2858,15 @@ function loadPlants(){
    288 pasos de 5 min. Por política: θ (t×filas), sombra, POA por fila y de
    planta. Se recalcula entero en cada cambio (decenas de ms).             */
 const STEP_MIN=5;
-function computeDay(){
+/* UN SOLO CUERPO, DOS FORMAS DE BEBERLO. `computeDayGen` es el cálculo del
+   día como GENERADOR: cede el control cada pocos pasos con su fracción de
+   avance. `computeDay()` lo drena en síncrono (arranque, tests, cualquier
+   llamador antiguo: semántica idéntica), y `recompute()` lo drena por
+   FRAGMENTOS con presupuesto de frame — así el DAY viejo sigue vivo y la
+   página sigue respondiendo mientras el nuevo se cocina. Duplicar el cuerpo
+   habría sido tener dos verdades; esto es una verdad con dos caudales. */
+function computeDay(){for(const _ of computeDayGen());return DAY;}
+function* computeDayGen(){
   const c=cfg(); ensureElev(c.nrows); clampSlopes(c);
   const T=terrain(c), doy=doyOf(c.date);
   // Tcfg = lo que la TCU CREE. El ángulo se calcula con ella; la sombra y el
@@ -2854,6 +2880,8 @@ function computeDay(){
     irr.push(clearskyIneichen(g.zen,doy,c.alt,c.tl));
   }
   const nT=times.length;
+  const __nAct=POLICIES.reduce((n,P)=>n+(P.on?1:0),0);
+  const __tot=(__nAct+1)*nT; let __done=0;
   const pol={};
   for(const P of POLICIES){
     if(!P.on)continue;
@@ -2871,6 +2899,7 @@ function computeDay(){
       const pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
       ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
       poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
+      if((++__done&15)===0)yield __done/__tot;
     }
     pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr};
   }
@@ -2885,6 +2914,7 @@ function computeDay(){
     if(c.drive!=='mono'&&T.groups)
       for(const gr of T.groups)if(gr.length===2)limA[gr[1]]=limA[gr[0]];
     prevA=limA; astroAng[t2]=limA;
+    if((++__done&31)===0)yield __done/__tot;
   }
   DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
   return DAY;
@@ -4600,11 +4630,34 @@ function buildPolicyBox(){
   });
 }
 let recompT=null;
+/* recompute DRENA el generador por fragmentos de ~40 ms y pinta al terminar.
+   Mientras calcula, el DAY ANTERIOR sigue vivo: la escena, el slider y los
+   globos responden con los datos de antes, y el testigo dice el avance. Si
+   llega otro cambio a mitad, el token invalida la pasada en curso y no se
+   pinta nada a medias — el último cambio gana, como en un editor. El PRIMER
+   cálculo (DAY aún vacío) va en síncrono: el arranque necesita un DAY antes
+   de que loop3D dé su primer frame. */
+let RECOMP_TOKEN=0;
 function recompute(light){
-  // light=true durante el drag: recalcula pero sin re-guardar config a cada frame
   $('gcr').value=(cfg().cw/cfg().pitch).toFixed(3);
   rebuildSelectors();
-  computeDay();
+  if(typeof DAY==='undefined'||!DAY){computeDay();recomputeTail(light);return;}
+  const my=++RECOMP_TOKEN;
+  ocupado(true,0);
+  const g=computeDayGen();
+  (function paso(){
+    if(my!==RECOMP_TOKEN)return;                 // llegó un cambio más nuevo
+    const t0=performance.now(); let r;
+    do{ r=g.next(); }while(!r.done&&performance.now()-t0<40);
+    // setTimeout(0), NO requestAnimationFrame: rAF se pausa en pestañas en
+    // segundo plano (y en headless), y el cálculo se quedaría congelado hasta
+    // volver a la pestaña. El pintado ya se sincroniza solo al final.
+    if(!r.done){ocupado(true,r.value);setTimeout(paso,0);return;}
+    ocupado(false);
+    recomputeTail(light);
+  })();
+}
+function recomputeTail(light){
   paintHourTrack();
   careoCompute();
   drawScene();drawCurves();fillDayTable();fillCareoBox();
@@ -4624,27 +4677,22 @@ function recompute(light){
    de por medio para que el navegador llegue a dibujarlo. La cuenta tarda lo
    mismo; lo que cambia es que la página responde y DICE que está trabajando. */
 let _recT=null;
-function ocupado(si){
+function ocupado(si,frac){
   let d=document.getElementById('calcbusy');
   if(!d){
     d=document.createElement('div'); d.id='calcbusy';
     d.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:7px 13px;'+
       'border-radius:4px;background:#24455e;color:#fff;font:13px/1 system-ui,sans-serif;'+
       'box-shadow:0 2px 10px rgba(0,0,0,.35);display:none';
-    d.textContent='calculando…';
     document.body.appendChild(d);
   }
+  d.textContent='calculando…'+(frac!=null?' '+Math.round(frac*100)+' %':'');
   d.style.display=si?'block':'none';
 }
 function recomputePronto(){
   if(_recT)clearTimeout(_recT);
-  ocupado(true);
-  _recT=setTimeout(()=>{
-    _recT=null;
-    requestAnimationFrame(()=>{
-      try{ recompute(); } finally { ocupado(false); }
-    });
-  },120);
+  ocupado(true,0);                     // feedback inmediato; recompute lo releva
+  _recT=setTimeout(()=>{_recT=null;recompute();},120);
 }
 const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','iam','z0','nsl','ntrk','mods'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
