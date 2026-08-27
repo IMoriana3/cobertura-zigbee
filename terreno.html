@@ -78,7 +78,7 @@ addEventListener('DOMContentLoaded',function(){
   <canvas id="cv"></canvas>
   <header>
     <a id="link2d" href="plano.html">▦ Plano 2D →</a>
-    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.92</div></div>
+    <div><h1 style="display:flex;align-items:baseline;gap:7px">Render 3D Cobertura<span style="opacity:.5">·</span><select id="plantSel" style="font:inherit;font-size:.8em;color:#eaf4ff;background:#1a2330;border:1px solid var(--line2);border-radius:8px;padding:2px 8px;cursor:pointer;pointer-events:auto"><option value="elburgo">El Burgo I</option><option value="ayora">Ayora 24025</option><option value="sanjose">San José 24019</option><option value="fayon">Fayón 24007</option></select></h1><div class="sub">v5.93</div></div>
     <button id="offBtn" title="Modo sin conexión: no descarga satélite ni relieve (cero llamadas externas)" style="pointer-events:auto;background:#1a2330;color:#9bb0c6;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;cursor:pointer"></button>
     <span class="brand">Factiun</span>
   </header>
@@ -3045,7 +3045,22 @@ function rowFoot(x,n){if(!TRK.length||!TC.np)return -1;                     // f
   for(var r=0;r<TRK.length;r++){var t=TRK[r],hl=/medio/i.test(t.tp||'')?16.8:33.2;
     if(Math.abs(x-t.gx)<4.2&&Math.abs(n+t.gz)<hl)return r;}return -1;}      // 4,2 m: los puntos de conexión del DWG van clavados a la VIGA (eje ±3 m, residuo del imán ≤1,2) — con 3,05 quedaban fuera la mitad y 164 filas se quedaban sin cable; la viga vecina más próxima está a ~8 m
 var _cbM=new THREE.Matrix4(),_cbP=new THREE.Vector3(),_cbQ=new THREE.Quaternion(),_cbS=new THREE.Vector3(),_cbU=new THREE.Vector3(0,1,0),_cbD=new THREE.Vector3();
+var _cabRotAvisado=false;
 function updateCableSpin(angDeg){   // el mazo va EMBRIDADO: su brida ORBITA el eje de la viga al bascular ("al estar pegado, embridado a la viga se mueve con esta")
+  /* HUECO DECLARADO (no arreglado, y por qué): TODA la capa de cableado está
+     escrita en coordenadas de tubo NORTE-SUR — z=−n, offsets al este, líneas
+     `tubeYL` a lo largo de N — así que con rumbos girados no basta girar este
+     ángulo: habría que reconstruir la geometría de la capa entera. Hoy el
+     caso NO puede darse: los cables salen de `<planta>_networks.json` (DWG)
+     y las seis plantas que lo tienen son todas de rot 0; un layout importado
+     (Lodosa) no trae networks y no dibuja ni un cable. Se deja esta guarda
+     para que el día que ambas cosas coincidan lo DIGA, en vez de dibujar un
+     mazo bonito y mal — la familia de fallo de v5.90/91/92, en su versión
+     silenciosa. Si esto salta, la tarea es la capa, no este ángulo. */
+  if(!_cabRotAvisado&&NET&&TRK&&TRK.some(function(t){return Math.abs(t.rot||0)>0.01;})){
+    _cabRotAvisado=true;
+    console.warn('[cobertura] planta con RUMBOS girados y capa de CABLES del DWG: la capa de cableado asume tubos N-S y aquí saldrá mal dibujada. Hueco declarado en updateCableSpin (v5.93).');
+  }
   var th=(angDeg||0)*DEG,c=Math.cos(th),sn=Math.sin(th);
   ['cable_pos','cable_neg'].forEach(function(k9){var G9=netG[k9];if(!G9||!G9.userData.cabs)return;
     G9.userData.cabs.forEach(function(cab){var SG=cab.segs,im=cab.im,r=cab.r,LP=cab.lg?cab.lg.attributes.position.array:null;
