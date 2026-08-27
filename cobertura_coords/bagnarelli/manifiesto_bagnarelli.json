@@ -24,7 +24,10 @@
    "fichero": "coords_bagnarelli_NCU01.csv",
    "tcus": 19,
    "ambito": "ncu",
-   "ncu": 1
+   "ncu": 1,
+   "gw": 1,
+   "ip": "192.168.5.21",
+   "puerto": 503
   }
  ],
  "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv bagnarelli_real.geojson"

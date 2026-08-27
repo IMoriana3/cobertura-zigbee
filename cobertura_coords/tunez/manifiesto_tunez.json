@@ -24,7 +24,10 @@
    "fichero": "coords_tunez_NCU01.csv",
    "tcus": 20,
    "ambito": "ncu",
-   "ncu": 1
+   "ncu": 1,
+   "gw": 1,
+   "ip": "192.168.1.111",
+   "puerto": 503
   }
  ],
  "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv tunez_real.geojson"
