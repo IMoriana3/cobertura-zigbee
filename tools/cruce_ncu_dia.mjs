@@ -88,9 +88,22 @@ for (const f of ficheros) {
     const dt = c[iT]; if (!dt) continue;
     if (!FECHA) FECHA = dt.slice(0, 10);
     const hh = +dt.slice(11, 13), mi = +dt.slice(14, 16);
-    const k = Math.floor((hh * 60 + mi) / PASO) * PASO;
+    /* La rejilla se queda con la muestra MÁS CERCANA al instante nominal, no
+       con la última del tramo. Quedarse con la última desplaza cada lectura
+       hasta PASO minutos, y eso se disfraza de física: con PASO=5 aparecía un
+       «desfase de reloj de 4 minutos» de la planta —1,15° de sesgo constante,
+       parecidísimo a la convergencia de meridianos de Ayora (1,161°)— que era
+       enteramente de este bin. Leyendo al instante exacto el residuo cae a
+       0,034° RMS y no queda desfase ninguno que explicar. */
+    const seg = +dt.slice(17, 19) || 0;
+    const tExacto = hh * 60 + mi + seg / 60;
+    const k = Math.round(tExacto / PASO) * PASO;
+    if (k < 0 || k >= 1440) continue;
+    const d = Math.abs(tExacto - k);
+    const ya = g.get(k);
+    if (ya && ya.d <= d) continue;                  // ya hay una más cercana
     g.set(k, { main: c[iM], bt: c[iB] === 'true', ang: +c[iA], tgt: +c[iG],
-               soc: +c[iS], seg: iP >= 0 ? +c[iP] : 0 });   // última muestra del tramo
+               soc: +c[iS], seg: iP >= 0 ? +c[iP] : 0, d });
     nFilas++;
   }
   serie.set(tcu, g);
@@ -288,6 +301,7 @@ else {
   const doy = Math.round((Date.UTC(+FECHA.slice(0, 4), +FECHA.slice(5, 7) - 1, +FECHA.slice(8, 10)) -
     Date.UTC(+FECHA.slice(0, 4), 0, 1)) / 86400000) + 1;
   const err = { astro: [], cero: [], cfg: [], tri: [] };
+  let nDiscrimina = 0;
   for (const f of filas) {
     const g = F.solarPos(Date.UTC(+FECHA.slice(0, 4), +FECHA.slice(5, 7) - 1, +FECHA.slice(8, 10), 0, f.m), LAT, LON);
     if (g.elev <= 0) continue;
@@ -301,7 +315,17 @@ else {
     const m2 = {};
     for (const k in pol) { const a = pol[k].filter(isFinite); m2[k] = a.length ? med(a) : NaN; }
     // el simulador va en θ interno; la TCU publica θ<0 = este -> mismo signo
-    for (const k in m2) if (isFinite(m2[k])) err[k].push(Math.abs(-m2[k] - f.tgt));
+    /* SOLO cuentan los instantes que DISCRIMINAN. Es el mismo principio que el
+       informe lleva advirtiendo desde el primer volcado: con sol alto todas
+       las políticas mandan el mismo ángulo, así que meter esas horas en la
+       media entierra la diferencia. Si el abanico entre políticas no llega a
+       1°, ese paso no tiene poder de decisión y no vota. */
+    const vals = Object.values(m2).filter(isFinite);
+    const abanico = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
+    if (abanico >= 1) {
+      nDiscrimina++;
+      for (const k in m2) if (isFinite(m2[k])) err[k].push(Math.abs(-m2[k] - f.tgt));
+    }
     if (f.m % 30) continue;
     const cand = Object.keys(m2).filter(k => isFinite(m2[k]));
     const mejor = cand.sort((a, b) => Math.abs(-m2[a] - f.tgt) - Math.abs(-m2[b] - f.tgt))[0];
@@ -311,12 +335,17 @@ else {
       '  |  ' + mejor);
   }
   L.push('');
-  L.push('  desviación mediana contra el objetivo real de la planta:');
+  L.push('  ' + nDiscrimina + ' instantes DISCRIMINAN (abanico entre políticas ≥ 1°); el resto no vota.');
+  L.push('  desviación mediana contra el objetivo real, SOLO en esos instantes:');
   for (const k of ['astro', 'cero', 'cfg', 'tri'])
     if (err[k].length) L.push('     ' + k.padEnd(6) + ' ' + med(err[k]).toFixed(2) + '°   (p90 ' + q(err[k], 0.9).toFixed(2) + '°)');
   const ganador = ['astro', 'cero', 'cfg', 'tri'].filter(k => err[k].length)
     .sort((a, b) => med(err[a]) - med(err[b]));
-  if (ganador.length >= 2) {
+  if (!nDiscrimina) {
+    L.push('');
+    L.push('  VEREDICTO (b): ningún instante del día discrimina. Este volcado NO decide');
+    L.push('  qué política corre la planta — hace falta uno con horas de sol bajo.');
+  } else if (ganador.length >= 2) {
     const d = med(err[ganador[1]]) - med(err[ganador[0]]);
     L.push('');
     L.push('  VEREDICTO (b): la política que mejor explica lo que hace la planta es ' +

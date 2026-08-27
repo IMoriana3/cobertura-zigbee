@@ -1323,6 +1323,36 @@ t('cruce NCU: sin log de eventos, lo DICE en vez de callarse', () => {
       throw new Error('no avisa de que falta el log:\n' + r.s.slice(0, 500));
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
+t('cruce NCU: la rejilla toma la muestra MÁS CERCANA, no la última del tramo', () => {
+  // Quedarse con la última muestra del bin desplaza cada lectura hasta PASO
+  // minutos, y eso se disfraza de física: apareció como un «desfase de reloj
+  // de 4 minutos» de la planta (1,15° de sesgo constante, casi idéntico a la
+  // convergencia de meridianos de Ayora, 1,161°) que era enteramente del bin.
+  const src = fs.readFileSync(path.join(ROOT, 'tools', 'cruce_ncu_dia.mjs'), 'utf-8');
+  if (/const k = Math\.floor\(\(hh \* 60 \+ mi\) \/ PASO\) \* PASO;/.test(src))
+    throw new Error('vuelve el bin por truncamiento: desplaza cada lectura hasta PASO minutos');
+  if (!/if \(ya && ya\.d <= d\) continue;/.test(src))
+    throw new Error('la rejilla ya no se queda con la muestra más cercana');
+  // y el careo tiene que salir sin sesgo: al mediodía el modelo clava el dato
+  const r = correCruce(FIXNCU);
+  const m = r.s.match(/^\s+12:00\s+[\d.]+°\s+(-?[\d.]+)°\s+(-?[\d.]+)/m);
+  if (!m) throw new Error('no encuentro la fila de las 12:00 en el careo');
+  const d = Math.abs(+m[1] - +m[2]);
+  if (d > 0.5) throw new Error('a mediodía planta y modelo difieren ' + d.toFixed(2) + '°: vuelve el sesgo');
+});
+t('cruce NCU: el veredicto sólo vota en los instantes que DISCRIMINAN', () => {
+  // con sol alto todas las políticas mandan el mismo ángulo: meter esas horas
+  // en la media entierra la diferencia y el veredicto sale «no discrimina»
+  // aunque el dato sí decida. Es el mismo error que el informe lleva
+  // advirtiendo desde el primer volcado, aplicado a sí mismo.
+  const r = correCruce(FIXNCU);
+  if (!/instantes DISCRIMINAN \(abanico entre políticas ≥ 1°\)/.test(r.s))
+    throw new Error('el veredicto vuelve a votar con todas las horas:\n' + r.s.slice(-700));
+  const m = r.s.match(/mejor explica lo que hace la planta es «(\w+)»/);
+  if (!m) throw new Error('no hay veredicto (b):\n' + r.s.slice(-700));
+  if (m[1] !== 'cero')
+    throw new Error('la política que explica Ayora cambió a «' + m[1] + '»: ¿se configuró la planta?');
+});
 t('cruce NCU: Ayora backtrackea PLANO — la apertura no separa los dos regímenes', () => {
   // el hallazgo del volcado real: la bandera de backtracking se levanta y los
   // ángulos se aplanan (o sea la TCU SÍ backtrackea), pero todos los
