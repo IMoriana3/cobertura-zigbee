@@ -58,7 +58,8 @@ if (src.length < 5000) throw new Error(`bloque FÍSICA PURA sospechoso: ${src.le
 /* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
    `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
    igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
-const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
+             + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + src + ';return {solarPos,clearskyIneichen,policyAngles,plantFromCotas};')();
 
 // el volcado de la toolbox viene con BOM

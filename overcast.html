@@ -449,7 +449,8 @@
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que backtracking.html: offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
-<script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA y singleaxis (la misma que backtracking.html) -->
+<script src="sol.js?v=0.2.0"></script>
+<script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala --><!-- FUENTE ÚNICA del sol: posición NOAA y singleaxis (la misma que backtracking.html) -->
 <script>
 "use strict";
 /* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
@@ -506,38 +507,15 @@ function doyOf(dateStr){
   return Math.round((Date.UTC(+p[0],+p[1]-1,+p[2])-Date.UTC(+p[0],0,1))/86400000)+1;
 }
 
-/* ── cielo claro Ineichen + masa de aire + extraterrestre ────────────────── */
-function dniExtra(doy){
-  // SPENCER (1971) con constante solar 1366,1 — es lo que usa por defecto
-  // pvlib.irradiance.get_extra_radiation, y por tanto el core. La fórmula
-  // simple 1367·(1+0,033·cos(2πd/365)) que había aquí se desviaba ~1 W/m²,
-  // y eso entra en Perez por delta = DHI·airmass/dni_extra y descuadra F1/F2:
-  // el golden del core lo cazó con 0,134 W/m² de POA. Verificado que reproduce
-  // a pvlib al microwatio en los días 1, 172 y 355.
-  const B=2*Math.PI*(doy-1)/365;
-  return 1366.1*(1.00011+0.034221*Math.cos(B)+0.00128*Math.sin(B)
-                 +0.000719*Math.cos(2*B)+0.000077*Math.sin(2*B));
-}
-function airmassKY(zenDeg){                            // Kasten & Young 1989, relativa
-  if(zenDeg>=90)return NaN;
-  return 1/(Math.cos(zenDeg*RAD)+0.50572*Math.pow(96.07995-zenDeg,-1.6364));
-}
-function clearskyIneichen(zenDeg,doy,altM,TL){
-  if(!(zenDeg<90))return {ghi:0,dni:0,dhi:0};
-  const amR=airmassKY(zenDeg);
-  const press=Math.pow(1-2.25577e-5*altM,5.25588);     // atmósfera estándar
-  const am=amR*press;                                   // masa de aire absoluta
-  const I0=dniExtra(doy), cz=Math.cos(zenDeg*RAD);
-  const fh1=Math.exp(-altM/8000), fh2=Math.exp(-altM/1250);
-  const cg1=5.09e-5*altM+0.868, cg2=3.92e-5*altM+0.0387;
-  let ghi=cg1*I0*cz*Math.exp(-cg2*am*(fh1+fh2*(TL-1)))*Math.exp(0.01*Math.pow(am,1.8));
-  ghi=Math.max(0,ghi);
-  const b=0.664+0.163/fh1;
-  const bnci=b*I0*Math.exp(-0.09*am*(TL-1));
-  const bnci2=cz>1e-6? ghi*(1-(0.1-0.2*Math.exp(-TL))/(0.1+0.882/fh1))/cz : 0;
-  const dni=Math.max(0,Math.min(bnci,bnci2));
-  return {ghi:ghi,dni:dni,dhi:Math.max(0,ghi-dni*cz)};
-}
+/* ── cielo claro, masa de aire y orientación de pala: en `irradiancia.js` ───
+   Estaban escritas en las dos páginas. Y no era solo duplicación: `overcast.html`
+   había corregido `dniExtra` a Spencer/pvlib y esta página se quedó con la
+   fórmula simple, que se desvía ~1 W/m² y entra en Perez por
+   delta = DHI·airmass/dni_extra. Una sola copia, con el arreglo dentro. */
+const dniExtra=Irr.dniExtra;
+const airmassKY=Irr.airmassKY;
+const clearskyIneichen=Irr.clearskyIneichen;
+const surfaceOrient=Irr.surfaceOrient;
 
 /* ── nube → irradiancia (generador de escenarios, DECLARADO) ──────────────
    cc ∈ [0,1]. GHI = claro·(1 − 0,70·cc): a cc=1 queda el 30 % del claro —
@@ -575,16 +553,6 @@ function omInterp(om,t){
 /* ── pvlib.tracking.singleaxis (Anderson & Mikofski 2020, Eq. 14) ────────── */
 const trueTrackAngle=Sol.trueTrackAngle;
 const singleaxis=Sol.singleaxis;
-function surfaceOrient(thetaDeg,axisTilt,axisAz){
-  const tilt=Math.acos(Math.cos(thetaDeg*RAD)*Math.cos(axisTilt*RAD))*DEG;
-  const sT=Math.sin(tilt*RAD); let azd;
-  if(Math.abs(sT)<1e-12)azd=90;
-  else{
-    azd=Math.asin(Math.max(-1,Math.min(1,Math.sin(thetaDeg*RAD)/sT)))*DEG;
-    if(Math.abs(thetaDeg)>=90)azd=-azd+Math.sign(thetaDeg)*180;
-  }
-  return {tilt:tilt,az:((axisAz+azd)%360+360)%360};
-}
 
 /* ── POA Perez 1990 (allsitescomposite1990) — espejo de compute_poa_perez ── */
 const PEREZ_BINS=[1.065,1.23,1.5,1.95,2.8,4.5,6.2];
