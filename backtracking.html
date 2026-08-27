@@ -2361,7 +2361,7 @@ function runPhysicsQA(){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.39.4';
+const VER='v1.39.5';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4957,12 +4957,25 @@ if(window.ResizeObserver){
 /* arranque: restaurar config guardada si la hay */
 (function(){
   buildPolicyBox();
+  /* v1.39.5: EL ARRANQUE YA NO RESTAURA NI TOPOGRAFÍA NI POLÍTICAS. La página
+     guardaba TODO el estado y lo restauraba al abrir — incluida una
+     implantación de 80 filas y los optimizadores encendidos, si así quedó la
+     última sesión. Resultado: el primer cálculo (síncrono, porque aún no hay
+     DAY) podía costar decenas de segundos ANTES de poder tocar nada, y desde
+     fuera era «la página no carga». Y era invisible para el diagnóstico:
+     dependía del localStorage de CADA navegador, así que a quien la probaba
+     en limpio le iba bien. Ahora el arranque parte SIEMPRE de la implantación
+     por defecto (8 filas) y las políticas de fábrica; solo se restauran las
+     preferencias ligeras (emplazamiento, fecha, atmósfera). La planta real se
+     carga con su botón, que ya apaga los optimizadores y calcula troceado.
+     `?limpio` en la URL borra el estado guardado del todo. */
+  if(new URLSearchParams(location.search).has('limpio')){
+    try{localStorage.removeItem(LS_KEY);}catch(e){}
+  }
   let saved=null; try{saved=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){}
+  const LIGERAS=new Set(['lat','lon','date','tz','alt','albedo','tl']);
   if(saved&&saved.ids&&saved.ids.length===INPUT_IDS.length){
-    INPUT_IDS.forEach((id,i)=>{$(id).value=saved.ids[i];});
-    if(Array.isArray(saved.elev))ELEV=saved.elev.map(Number);
-    if(Array.isArray(saved.pol))saved.pol.forEach((v,i)=>{POLICIES[i].on=!!v;});
-    buildPolicyBox();
+    INPUT_IDS.forEach((id,i)=>{if(LIGERAS.has(id))$(id).value=saved.ids[i];});
   }
   ensureElev(cfg().nrows);
   loadPlants();
