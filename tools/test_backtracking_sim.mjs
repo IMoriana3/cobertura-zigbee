@@ -542,7 +542,14 @@ function oracleTerr(G, sv, zen) {
     }
     if (okA) return a.z - HUB;
     if (okB) return b.z - HUB;
-    for (let k = 1; k < nR; k++) for (const j of [i - k, i + 1 + k]) {
+    /* La búsqueda hacia fuera se limita a 4 filas, IGUAL que el contador: es
+       una decisión de MODELO declarada (más allá, la cota de esa banda de
+       norte no la mide nadie cercano y estimarla sería inventar), no una
+       poda. El oráculo comparte las decisiones de modelo y vigila las podas;
+       cuando este límite difería (oráculo sin límite), divergían 0,47 pp en
+       un rasante de diciembre — y eso era el TEST detectando la diferencia,
+       exactamente su trabajo. */
+    for (let k = 1; k <= 4; k++) for (const j of [i - k, i + 1 + k]) {
       if (j < 0 || j >= nR) continue;
       const c = G.cotD(j, v); if (c.d <= TOL) return c.z - HUB;
     }
