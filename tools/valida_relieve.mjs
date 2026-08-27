@@ -52,9 +52,13 @@
    3) VANO por pareja, contra el `pitch` declarado. La separación entre líneas
       es una constante de replanteo, no del terreno. Un «vano» de 12,7 m en
       una planta de 6,20 m no es una fila más separada: entre esas dos líneas
-      hay un pasillo, un vial o un bloque distinto que el partidor por huecos
-      (> 2,5·pitch) no llegó a partir. Reserva fuera de [0,75 · 1,25]·pitch;
-      RECHAZO por encima de 1,5·pitch.
+      hay un pasillo o un vial que el partidor por huecos (> 2,5·pitch) no
+      llegó a partir. SIEMPRE reserva, nunca rechazo — esto también se afinó
+      equivocándose: la primera versión lo rechazaba, y es demasiado severo,
+      porque `pairwise` usa el vano REAL de cada pareja y un par al doble de
+      vano simula interacción casi nula, que es exactamente la verdad si en
+      medio hay un vial. La reserva queda para que el as-built confirme QUÉ
+      hay en ese hueco, pero no bloquea el número.
 
    4) LÍNEA AISLADA EN COTA — el control que decide. Una línea separada de sus
       dos vecinas a la vez, en el mismo sentido, por más de medio vano
@@ -168,9 +172,10 @@ const vanoMalo = pares.filter(p => p.vano > VANO_RECHAZO * pitchDecl);
 const vanoRaro = pares.filter(p => p.vano <= VANO_RECHAZO * pitchDecl &&
   (p.vano < VANO_AVISO[0] * pitchDecl || p.vano > VANO_AVISO[1] * pitchDecl));
 if (vanoMalo.length)
-  add('rechazo', 'vano',
+  add('reserva', 'vano',
     vanoMalo.length + ' pareja(s) con vano > ' + (VANO_RECHAZO * pitchDecl).toFixed(2) +
-    ' m (' + VANO_RECHAZO + '·pitch): entre esas líneas hay un hueco, no una fila vecina', vanoMalo);
+    ' m (' + VANO_RECHAZO + '·pitch): ahí hay un pasillo o un vial, no una fila vecina. El par ' +
+    'ancho simula interacción casi nula (vano real por pareja), que es lo correcto; confirmar en as-built', vanoMalo);
 if (vanoRaro.length)
   add('reserva', 'vano',
     vanoRaro.length + ' pareja(s) con vano fuera de [' + (VANO_AVISO[0] * pitchDecl).toFixed(2) +

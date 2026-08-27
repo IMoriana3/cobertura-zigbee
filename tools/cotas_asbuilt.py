@@ -39,6 +39,83 @@ def genera(planta):
     for f in A['f']:
         grupos[(f['zo'], f['tk'])].append(f)
 
+    # ── FILA CON OTRA REFERENCIA VERTICAL ────────────────────────────────────
+    # Las dos filas de una bifila comparten tubo: su desfase de cota son
+    # centimetros (mediana 0,2 m en Ayora). En San Jose aparecieron 8 seguidores
+    # cuyas dos filas difieren ~36,6 m — SEIS de ellos entre 36,59 y 36,70 m, en
+    # puntas del parque separadas kilometros. Una constante que se repite en
+    # sitios sin relacion no es terreno ni un error de campo puntual: es una
+    # fila procesada con OTRA referencia vertical (36,6 m es, ademas, la
+    # ondulacion del geoide en Arequipa: huele a cota elipsoidal WGS84 colada
+    # entre ortometricas). Sin este control, esa fila fabricaba en el simulador
+    # una linea imposible y tumbaba la planta entera a NO EVALUABLE.
+    #
+    # CORRECCION DECLARADA, no silenciosa: se descarta la fila que se aparta y
+    # se duplica la hermana (el mecanismo inc=1 que ya existia para filas sin
+    # medir), y cada caso se IMPRIME con su id de fila del proveedor para poder
+    # reclamarselo. ¿Cual de las dos es la mala? La que mas se aleja de la
+    # cota mediana de los seguidores vecinos (a menos de 3 vanos).
+    UMBRAL_HERMANAS = 3.0                       # m; la cuerda son 2,38
+    todas = [f for v in grupos.values() for f in v]
+    corregidas = []
+    for k, v in list(grupos.items()):
+        if len(v) != 2:
+            continue
+        y0 = (v[0]['ys'] + v[0]['yn']) / 2.0
+        y1 = (v[1]['ys'] + v[1]['yn']) / 2.0
+        if abs(y0 - y1) <= UMBRAL_HERMANAS:
+            continue
+        cx = (v[0]['x'] + v[1]['x']) / 2.0
+        cn = -(v[0]['zs'] + v[0]['zn'] + v[1]['zs'] + v[1]['zn']) / 4.0
+        vec = []
+        for f in todas:
+            if f in v:
+                continue
+            fn = -(f['zs'] + f['zn']) / 2.0
+            if abs(f['x'] - cx) <= 3 * (META.get('pitch') or 6) and abs(fn - cn) < 60:
+                vec.append((f['ys'] + f['yn']) / 2.0)
+        if len(vec) < 2:
+            continue                             # sin vecinos no se decide: se deja y el control de relieve avisara
+        vec.sort()
+        ref = vec[len(vec) // 2]
+        mala, buena = (v[0], v[1]) if abs(y0 - ref) > abs(y1 - ref) else (v[1], v[0])
+        corregidas.append((mala.get('id', '?'), (mala['ys'] + mala['yn']) / 2.0,
+                           (buena['ys'] + buena['yn']) / 2.0, ref))
+        grupos[k] = [buena]                      # inc=1: la hermana se duplica mas abajo
+    # Y los grupos de UNA fila con la misma pinta: ahi no hay hermana buena que
+    # duplicar, asi que si la unica fila se aparta metros de los vecinos, el
+    # seguidor se queda SIN MEDIR (mejor un hueco declarado que una cota con
+    # otra referencia duplicada dos veces). Tambien se imprimen.
+    for k, v in list(grupos.items()):
+        if len(v) != 1:
+            continue
+        f0 = v[0]
+        y0 = (f0['ys'] + f0['yn']) / 2.0
+        fn0 = -(f0['zs'] + f0['zn']) / 2.0
+        vec = []
+        for f in todas:
+            if f is f0:
+                continue
+            fn = -(f['zs'] + f['zn']) / 2.0
+            if abs(f['x'] - f0['x']) <= 3 * (META.get('pitch') or 6) and abs(fn - fn0) < 60:
+                vec.append((f['ys'] + f['yn']) / 2.0)
+        if len(vec) < 2:
+            continue
+        vec.sort()
+        ref = vec[len(vec) // 2]
+        if abs(y0 - ref) > UMBRAL_HERMANAS:
+            corregidas.append((f0.get('id', '?') + ' (SIN hermana: descartado)', y0, float('nan'), ref))
+            del grupos[k]
+    if corregidas:
+        print('%-8s %d fila(s) con OTRA REFERENCIA VERTICAL descartadas (hermana duplicada, inc=1):'
+              % (planta, len(corregidas)))
+        mags = sorted(abs(m - b) for _, m, b, _ in corregidas)
+        for fid, m, b, ref in corregidas:
+            print('           %-18s cota %8.2f  (hermana %8.2f · vecinos %8.2f · desvio %+.2f m)'
+                  % (fid, m, b, ref, m - ref))
+        print('           magnitudes: %s  <- si se repiten, es un cambio de referencia, no ruido'
+              % ', '.join('%.2f' % v for v in mags))
+
     # Grupos de 1 fila: son los trackers cuya fila hermana se descarto en la
     # asignacion del levantamiento (261 en San Jose). No son un error del
     # enganche, asi que no abortan: se emiten con la fila que hay, duplicada

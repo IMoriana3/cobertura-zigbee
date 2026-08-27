@@ -1609,18 +1609,31 @@ t('fila anómala: una cota mala DENTRO de una línea buena no se escapa', () => 
   if (!/fila anómala/.test(r.s)) throw new Error('no la nombra:\n' + r.s);
   if (!/VEREDICTO: NO EVALUABLE/.test(r.s)) throw new Error('veredicto inesperado:\n' + r.s);
 });
-t('San José: el desvío repetido se declara SISTEMÁTICO, no ruido', () => {
+t('San José SANEADA: sin filas con otra referencia vertical, y APTA CON RESERVAS', () => {
+  // Este test tenía la forma opuesta: exigía que el desvío sistemático de
+  // ~36,6 m SIGUIERA ahí, para forzar la revisión del informe al corregirlo.
+  // Ese momento llegó: cotas_asbuilt.py descarta las filas con otra
+  // referencia vertical (declarándolas con su id del proveedor), y ahora lo
+  // que se vigila es que la corrección NO se deshaga.
   if (!fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) return;
-  let r;
+  const C = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  // (a) ninguna bifila con sus dos filas (mismo tubo) a más de 3 m
+  for (const t2 of C.t) {
+    if (!t2 || !t2.f || t2.f.length !== 2 || t2.inc) continue;
+    const y0 = (t2.f[0].y[0] + t2.f[0].y[1]) / 2, y1 = (t2.f[1].y[0] + t2.f[1].y[1]) / 2;
+    if (Math.abs(y0 - y1) > 3)
+      throw new Error('vuelve una bifila con filas a ' + Math.abs(y0 - y1).toFixed(1) +
+        ' m (x=' + t2.f[0].x + '): ¿se regeneró sin la regla de referencia vertical?');
+  }
+  // (b) el control de entrada la da por evaluable
+  let r, code = 0;
   try { r = require_child().execFileSync('node',
     [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
-  catch (e) { r = (e.stdout || '') + (e.stderr || ''); }
-  if (!/error SISTEMÁTICO/.test(r))
-    throw new Error('ya no detecta que el desvío se repite: ¿se corrigió el levantamiento?');
-  const m = r.match(/repiten LA MISMA magnitud \(≈([\d.]+) m\)/);
-  if (!m) throw new Error('no publica la magnitud repetida');
-  if (Math.abs(+m[1] - 36.65) > 1)
-    throw new Error('la magnitud repetida cambió a ' + m[1] + ' m: revisar el informe al cliente');
+  catch (e) { r = (e.stdout || '') + (e.stderr || ''); code = e.status; }
+  if (code !== 0 || !/VEREDICTO: APTA CON RESERVAS/.test(r))
+    throw new Error('San José ya no es evaluable (código ' + code + '):\n' + r.slice(-500));
+  if (/fila anómala/.test(r))
+    throw new Error('reaparecen filas anómalas:\n' + r.slice(-500));
 });
 t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
   const corre = a => {
@@ -1633,12 +1646,11 @@ t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
     if (r.c !== 0 || !/VEREDICTO: APTA/.test(r.s)) throw new Error('Ayora ya no pasa el control:\n' + r.s);
   }
   if (fs.existsSync(path.join(ROOT, 'sanjose_cotas.json'))) {
+    // desde el saneado de la referencia vertical, San José pasa el control
+    // (con reservas: el vano-vial y la cobertura). El aviso que esta rama
+    // daba antes ya cumplió su función: el informe se revisó al corregir.
     const r = corre(['--planta', 'sanjose', '--bloque', '0']);
-    if (r.c !== 1) throw new Error('San José bloque 0 debería salir NO EVALUABLE');
-    // las tres líneas imposibles, nombradas: si el levantamiento se corrige,
-    // esta comprobación avisa de que hay que revisar el informe al cliente
-    for (const l of ['línea 129', 'línea 146', 'línea 159'])
-      if (!r.s.includes(l)) throw new Error('ya no señala la ' + l + ': ¿se corrigió el levantamiento?');
+    if (r.c !== 0) throw new Error('San José bloque 0 dejó de ser evaluable:\n' + r.s.slice(-400));
   }
 });
 
