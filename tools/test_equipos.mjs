@@ -32,6 +32,10 @@
 //   python3 -m http.server 8100        (en otra terminal)
 //   node tools/test_equipos.mjs
 import { chromium } from 'playwright';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const RAIZ = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8100';
 const EXEC = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
@@ -43,8 +47,13 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
 /* Dos perfiles distintos a propósito: El Burgo lleva PTZ y módulo FV en la HSU;
    Ayora no lleva módulo (`hsu.pv:false` en su layout) y trae 10 estaciones. */
 const PLANTAS = [
-  { q: 'planta=elburgo',                       nom: 'El Burgo', pv: true,  ptz: true },
-  { q: 'planta=ayora&cotas=levantamiento',     nom: 'Ayora',    pv: false, ptz: false },
+  /* `rejilla`: si esa planta TIENE retícula de apoyos medida en su layout. El
+     Burgo la tiene (Tierras.dwg); Ayora no. Va aquí y no se deduce de la página:
+     preguntándole a la página, quitarle la retícula a El Burgo pasaba en verde
+     —el banco se conformaba con que cayera en la genérica— y esa es justo la
+     regresión que hay que cazar. */
+  { q: 'planta=elburgo',                       nom: 'El Burgo', pv: true,  ptz: true,  rejilla: true },
+  { q: 'planta=ayora&cotas=levantamiento',     nom: 'Ayora',    pv: false, ptz: false, rejilla: false },
 ];
 
 const SONDA = `(() => {
@@ -104,6 +113,21 @@ const SONDA = `(() => {
        una copia propia que se separe. */
     zP: TC.zP, zPref: Seguidor.pilotesX(Seguidor.DIMS.modsPerStr),
     mods: Seguidor.DIMS.modsPerStr,
+    /* La retícula MEDIDA por tipo: tiene que venir del layout de la planta, no
+       de un literal con el nombre de la planta dentro de un "if". */
+    zPT: TC.zPT, np: TC.np,
+    pilLayout: (LAYOUT && LAYOUT.pilotes && LAYOUT.pilotes.porTipo) || null,
+    /* Lo que la página USA de verdad, no la aritmética rehecha aquí: con una X
+       inventada el banco pasaba en verde porque comprobaba la regla, no el uso. */
+    dampInt: TC.dampX || null, dampMed: TC.dampXM || null,
+    dampIntRegla: TC.zPT ? Seguidor.damperPostX(TC.zPT.int) : null,
+    dampMedRegla: TC.zPT ? Seguidor.damperPostX(TC.zPT.med) : null,
+    /* Reserva del InstancedMesh de postes (N x np) contra los apoyos que dicta la
+       retícula de cada tipo. "count" es la RESERVA, no lo dibujado: lo que hay
+       que exigir es que alcance — si "np" se queda corto, hay apoyos que no se
+       dibujan y nadie se entera. */
+    reservaPostes: (typeof imPost !== "undefined" && imPost) ? imPost.count : null,
+    postesDebidos: NODES.reduce(function (a, t) { return a + 2 * zPfor(t).length; }, 0),
     nMeteo: (LAYOUT.meteo || []).length,
     nNcu: gwMasts.length, nGw: GWS.length,
     antNcu: D.ncuAntY, antHsu: D.hsuAntY, mastNcu: D.ncuMastH, torreHsu: D.hsuTowerH,
@@ -115,6 +139,23 @@ const SONDA = `(() => {
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
   'base64');
+
+/* LA RETÍCULA NO PUEDE VOLVER A LA PÁGINA. Las comprobaciones de abajo miran lo
+   que la página HACE, y con las coordenadas escritas a mano hace exactamente lo
+   mismo —son los mismos números—: por eso devolverlas pasaba en verde. Esto mira
+   la FUENTE. El dato del levantamiento de una planta vive en su layout. */
+{
+  const src = fs.readFileSync(path.join(RAIZ, 'terreno.html'), 'utf-8');
+  const cotas = ['-30.5', '-22.9', '-15.5', '-7.7', '-30.8', '-24.7', '-17.8', '-13.6', '-6.5'];
+  const dentro = cotas.filter(c => src.includes(c + ',') || src.includes('[' + c));
+  check('la retícula de El Burgo NO está escrita en terreno.html',
+        dentro.length === 0, 'cotas encontradas: ' + dentro.join(' '));
+  const lay = JSON.parse(fs.readFileSync(path.join(RAIZ, 'elburgo_layout.json'), 'utf-8'));
+  check('y sí está en el layout de la planta, con su procedencia',
+        !!(lay.pilotes && lay.pilotes.porTipo && lay.pilotes.fuente &&
+           /Tierras/i.test(lay.pilotes.fuente)),
+        JSON.stringify(lay.pilotes && lay.pilotes.fuente));
+}
 
 const browser = await chromium.launch({ executablePath: EXEC,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -167,11 +208,43 @@ for (const pl of PLANTAS) {
   check(pl.nom + ': sus 2 carriles y su corrugado',
         P.carril === 2 * nN && P.corrugado === nN, P.carril + ' carriles, ' + P.corrugado + ' corrugados');
 
-  // --- la retícula de apoyos, de seguidor.js y no de una copia local ---
+  // --- la retícula MEDIDA, del layout de la planta y no de un literal ---
+  check(pl.nom + ': retícula de apoyos medida ' + (pl.rejilla ? 'SÍ' : 'NO') + ', como dice su layout',
+        !!s.zPT === pl.rejilla, 'zPT=' + (s.zPT ? Object.keys(s.zPT).join('/') : 'null'));
+  if (s.zPT) {
+    check(pl.nom + ': la retícula medida viene del LAYOUT, no escrita en la página',
+          !!s.pilLayout, 'LAYOUT.pilotes ausente');
+    check(pl.nom + ': y es la del Tierras.dwg (8 interior · 10 exterior · 4 medio)',
+          JSON.stringify(s.zPT.int) === JSON.stringify(s.pilLayout.interior) &&
+          JSON.stringify(s.zPT.ext) === JSON.stringify(s.pilLayout.exterior) &&
+          JSON.stringify(s.zPT.med) === JSON.stringify(s.pilLayout.medio) &&
+          s.zPT.int.length === 8 && s.zPT.ext.length === 10 && s.zPT.med.length === 4,
+          JSON.stringify(s.zPT));
+    /* `np` (tope de apoyos por seguidor) y la X del amortiguador colgaban de tres
+       números escritos a mano —20, ±22,9 y ±6,5—. Salen de la propia retícula. */
+    check(pl.nom + ': el tope de apoyos sale de la retícula, no de un 20 a mano',
+          s.np === 2 * Math.max(s.zPT.int.length, s.zPT.ext.length, s.zPT.med.length), s.np);
+    check(pl.nom + ': el pie del amortiguador, en el penúltimo poste REAL de su tipo',
+          JSON.stringify(s.dampInt) === JSON.stringify(s.dampIntRegla) &&
+          JSON.stringify(s.dampMed) === JSON.stringify(s.dampMedRegla) &&
+          JSON.stringify(s.dampInt) === JSON.stringify([-22.9, 22.9]) &&
+          JSON.stringify(s.dampMed) === JSON.stringify([-6.5, 6.5]),
+          'usa ' + JSON.stringify(s.dampInt) + ' / ' + JSON.stringify(s.dampMed) +
+          ', la regla dice ' + JSON.stringify(s.dampIntRegla) + ' / ' + JSON.stringify(s.dampMedRegla));
+  } else {
+    check(pl.nom + ': sin retícula medida, cae en la genérica de seguidor.js',
+          !s.pilLayout && JSON.stringify(s.zP) === JSON.stringify(s.zPref), JSON.stringify(s.zP));
+  }
+  if (s.reservaPostes !== null)
+    check(pl.nom + ': la reserva de postes alcanza para los apoyos de todos los tipos',
+          s.reservaPostes >= s.postesDebidos,
+          'reserva ' + s.reservaPostes + ' para ' + s.postesDebidos + ' apoyos');
+
+  // --- la retícula genérica, de seguidor.js y no de una copia local ---
   check(pl.nom + ': la retícula de apoyos sale de seguidor.js',
         JSON.stringify(s.zP) === JSON.stringify(s.zPref),
         JSON.stringify(s.zP) + ' contra ' + JSON.stringify(s.zPref));
-  check(pl.nom + ': y es proporcional a los ' + s.mods + ' módulos por ala',
+  check(pl.nom + ': y la genérica es proporcional a los ' + s.mods + ' módulos por ala',
         s.zP.length === 4 && Math.abs(s.zP[3] - 28 * s.mods / 28) < 1e-9, JSON.stringify(s.zP));
 
   // --- NCU: cotas del plano DR_NCU_v0, sobre el modelo recién construido ---
