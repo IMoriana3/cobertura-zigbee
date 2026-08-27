@@ -111,7 +111,11 @@ const PEND_INFO = 8.5;              // solo se informa
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro el bloque de física en backtracking.html'); process.exit(2); }
-const F = new Function(html.slice(html.lastIndexOf('/*', i0), i1) + ';return {plantFromCotas};')();
+/* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
+   `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
+   igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + ';return {plantFromCotas};')();
 
 const fCotas = path.join(ROOT, PLANTA + '_cotas.json');
 if (!fs.existsSync(fCotas)) { console.error('falta ' + path.basename(fCotas)); process.exit(2); }
