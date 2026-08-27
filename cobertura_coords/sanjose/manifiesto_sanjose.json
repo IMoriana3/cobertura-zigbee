@@ -12,7 +12,7 @@
  "gws": 2,
  "una_fila": false,
  "gateways_declarados_en_scada": true,
- "hsus_asignadas_por": "NCU mas cercana: el scada declara 5 HSU y el layout tiene 8, no cuadran",
+ "hsus_asignadas_por": "layout en 5 de 8; las otras 3 por NCU mas cercana, que NO es dato: HSU 5 (US), HSU 6 (US), HSU 7 (US)",
  "ncus_sin_declarar_en_scada": [
   7,
   12,
@@ -100,13 +100,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU04.csv",
-   "tcus": 124,
+   "tcus": 125,
    "ambito": "ncu",
    "ncu": 4
   },
   {
    "fichero": "coords_sanjose_NCU04_GW1.csv",
-   "tcus": 89,
+   "tcus": 90,
    "ambito": "gateway",
    "ncu": 4,
    "gw": 1,
@@ -124,13 +124,13 @@
   },
   {
    "fichero": "coords_sanjose_NCU05.csv",
-   "tcus": 125,
+   "tcus": 124,
    "ambito": "ncu",
    "ncu": 5
   },
   {
    "fichero": "coords_sanjose_NCU05_GW1.csv",
-   "tcus": 57,
+   "tcus": 56,
    "ambito": "gateway",
    "ncu": 5,
    "gw": 1,

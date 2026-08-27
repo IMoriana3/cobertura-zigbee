@@ -1,0 +1,104 @@
+{
+ "planta": "benante",
+ "titulo": "Benante 25004",
+ "crs": "EPSG:25833",
+ "punto": "viga del motor, fila oeste (donde está la TCU)",
+ "nodos": 734,
+ "tcus": 730,
+ "hsus": 4,
+ "reps": 0,
+ "cableados": 0,
+ "ncus": 6,
+ "gws": 6,
+ "una_fila": false,
+ "gateways_declarados_en_scada": false,
+ "hsus_asignadas_por": "layout (ncu declarada en `meteo`)",
+ "ncus_sin_declarar_en_scada": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6
+ ],
+ "ambitos": [
+  {
+   "fichero": "coords_benante.csv",
+   "tcus": 734,
+   "ambito": "planta"
+  },
+  {
+   "fichero": "coords_benante_NCU01.csv",
+   "tcus": 115,
+   "ambito": "ncu",
+   "ncu": 1
+  },
+  {
+   "fichero": "coords_benante_NCU02.csv",
+   "tcus": 209,
+   "ambito": "ncu",
+   "ncu": 2
+  },
+  {
+   "fichero": "coords_benante_NCU03.csv",
+   "tcus": 134,
+   "ambito": "ncu",
+   "ncu": 3
+  },
+  {
+   "fichero": "coords_benante_NCU04.csv",
+   "tcus": 56,
+   "ambito": "ncu",
+   "ncu": 4
+  },
+  {
+   "fichero": "coords_benante_NCU05.csv",
+   "tcus": 76,
+   "ambito": "ncu",
+   "ncu": 5
+  },
+  {
+   "fichero": "coords_benante_NCU06.csv",
+   "tcus": 144,
+   "ambito": "ncu",
+   "ncu": 6
+  },
+  {
+   "fichero": "coords_benante_GW1.csv",
+   "tcus": 115,
+   "ambito": "gw",
+   "gw": 1
+  },
+  {
+   "fichero": "coords_benante_GW2.csv",
+   "tcus": 209,
+   "ambito": "gw",
+   "gw": 2
+  },
+  {
+   "fichero": "coords_benante_GW3.csv",
+   "tcus": 134,
+   "ambito": "gw",
+   "gw": 3
+  },
+  {
+   "fichero": "coords_benante_GW4.csv",
+   "tcus": 56,
+   "ambito": "gw",
+   "gw": 4
+  },
+  {
+   "fichero": "coords_benante_GW5.csv",
+   "tcus": 76,
+   "ambito": "gw",
+   "gw": 5
+  },
+  {
+   "fichero": "coords_benante_GW6.csv",
+   "tcus": 144,
+   "ambito": "gw",
+   "gw": 6
+  }
+ ],
+ "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv benante_real.geojson"
+}

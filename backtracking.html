@@ -358,7 +358,8 @@
 
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
 <script src="lib/OrbitControls.js"></script>
-<script src="seguidor.js?v=0.4.16"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
+<script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
+<script src="sol.js?v=0.1.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -385,45 +386,17 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
-/* ── posición solar NOAA ─────────────────────────────────────────────────── */
-function julianDay(ms){return ms/86400000+2440587.5;}
-function refraction(elev){
-  if(elev>85)return 0; const te=Math.tan(elev*RAD); let r;
-  if(elev>5)r=58.1/te-0.07/(te*te*te)+0.000086/Math.pow(te,5);
-  else if(elev>-0.575)r=1735+elev*(-518.2+elev*(103.4+elev*(-12.79+elev*0.711)));
-  else r=-20.772/te;
-  return r/3600;
-}
-function solarPos(dateUTCms,lat,lon){
-  const jd=julianDay(dateUTCms),T=(jd-2451545)/36525;
-  let L0=(280.46646+T*(36000.76983+T*0.0003032))%360; if(L0<0)L0+=360;
-  const M=357.52911+T*(35999.05029-0.0001537*T);
-  const e=0.016708634-T*(0.000042037+0.0000001267*T);
-  const Mr=M*RAD;
-  const C=Math.sin(Mr)*(1.914602-T*(0.004817+0.000014*T))+Math.sin(2*Mr)*(0.019993-0.000101*T)+Math.sin(3*Mr)*0.000289;
-  const trueLong=L0+C, omega=125.04-1934.136*T;
-  const appLong=trueLong-0.00569-0.00478*Math.sin(omega*RAD);
-  const eps0=23+(26+((21.448-T*(46.815+T*(0.00059-T*0.001813))))/60)/60;
-  const eps=eps0+0.00256*Math.cos(omega*RAD);
-  const decl=Math.asin(Math.sin(eps*RAD)*Math.sin(appLong*RAD))/RAD;
-  let y=Math.tan(eps*RAD/2); y*=y;
-  const L0r=L0*RAD;
-  const Et=y*Math.sin(2*L0r)-2*e*Math.sin(Mr)+4*e*y*Math.sin(Mr)*Math.cos(2*L0r)-0.5*y*y*Math.sin(4*L0r)-1.25*e*e*Math.sin(2*Mr);
-  const eqTime=4*Et/RAD;
-  const d=new Date(dateUTCms);
-  const mins=d.getUTCHours()*60+d.getUTCMinutes()+d.getUTCSeconds()/60;
-  let tst=(mins+eqTime+4*lon)%1440; if(tst<0)tst+=1440;
-  const ha=tst/4-180;
-  const latr=lat*RAD,declr=decl*RAD,har=ha*RAD;
-  let cosZ=Math.sin(latr)*Math.sin(declr)+Math.cos(latr)*Math.cos(declr)*Math.cos(har);
-  cosZ=Math.max(-1,Math.min(1,cosZ));
-  const zen=Math.acos(cosZ)/RAD, elev=90-zen;
-  const azDen=Math.cos(latr)*Math.sin(zen*RAD); let az;
-  if(Math.abs(azDen)>1e-9){let azc=(Math.sin(latr)*Math.cos(zen*RAD)-Math.sin(declr))/azDen;azc=Math.max(-1,Math.min(1,azc));az=Math.acos(azc)/RAD;if(ha>0)az=(az+180)%360;else az=(540-az)%360;}
-  else az=(lat>decl)?180:0;
-  const elevAp=elev+refraction(elev);              // elevación APARENTE (con refracción)
-  return {zen:90-elevAp, az:az, elev:elevAp};
-}
+/* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
+   Estaba escrita aquí, y de aquí se portó al módulo cuando el simulador de
+   cobertura RF necesitó mover seguidores con el sol. Quedaron las dos copias,
+   con la nota de «el día que se toque una hay que tocar las dos». Se toca una.
+   Estos nombres se quedan porque los usa el bloque de FÍSICA PURA entero y son
+   los que lee su QA; lo que ya no hay es una segunda ecuación del tiempo. */
+const refraction=Sol.refraction;
+/* Elevación APARENTE (con refracción), que es lo que devolvía la copia de aquí
+   y lo que espera todo lo de abajo: pegado al horizonte decide si el sol ha
+   salido. `sol.js` la da geométrica por defecto. */
+const solarPos=(ms,lat,lon)=>Sol.solarPos(ms,lat,lon,{refract:true});
 function localToUTCms(dateStr,localMin,tzOff){
   const p=dateStr.split('-');
   return Date.UTC(+p[0],+p[1]-1,+p[2],0,0,0)+(localMin-tzOff*60)*60000;
@@ -456,29 +429,12 @@ function clearskyIneichen(zenDeg,doy,altM,TL){
   return {ghi:ghi,dni:dni,dhi:Math.max(0,ghi-dni*cz)};
 }
 
-/* ── pvlib.tracking.singleaxis (Eq. 14) ──────────────────────────────────── */
-function trueTrackAngle(zenDeg,azDeg,axisTilt,axisAz){
-  // Ángulo IDEAL firmado = cenit solar proyectado en el plano ⊥ eje (identidad
-  // conocida para eje horizontal — la misma wid de pvlib, sin recorte).
-  const sz=Math.sin(zenDeg*RAD);
-  const x=sz*Math.sin(azDeg*RAD), y=sz*Math.cos(azDeg*RAD), z=Math.cos(zenDeg*RAD);
-  const ca=Math.cos(axisAz*RAD), sa=Math.sin(axisAz*RAD);
-  const ct=Math.cos(axisTilt*RAD), st=Math.sin(axisTilt*RAD);
-  return Math.atan2(x*ca-y*sa, x*sa*st+y*ca*st+z*ct)*DEG;
-}
-function singleaxis(zenDeg,azDeg,p){
-  // p = {axisTilt, axisAz, maxAngle, backtrack, gcr, crossAxisTilt}
-  if(!(zenDeg<90))return NaN;                          // noche → NaN (pvlib); el caller hace nan→0
-  const wid=trueTrackAngle(zenDeg,azDeg,p.axisTilt,p.axisAz);
-  let th=wid;
-  if(p.backtrack){
-    const axesDist=1/(p.gcr*Math.cos(p.crossAxisTilt*RAD));
-    const temp=Math.abs(axesDist*Math.cos((wid-p.crossAxisTilt)*RAD));
-    // a mediodía temp ≥ 1: no hay sombra fila a fila que evitar y no se corrige
-    if(temp<1) th=wid-Math.sign(wid)*Math.acos(temp)*DEG;
-  }
-  return Math.max(-p.maxAngle,Math.min(p.maxAngle,th));
-}
+/* ── pvlib.tracking.singleaxis (Eq. 14) — vive en `sol.js` ─────────────────
+   El ángulo ideal firmado y el recorte por backtracking eran los mismos aquí y
+   en el módulo. Los nombres se quedan: los usa el bloque de FÍSICA PURA entero
+   y son los que lee su QA. */
+const trueTrackAngle=Sol.trueTrackAngle;
+const singleaxis=Sol.singleaxis;
 function surfaceOrient(thetaDeg,axisTilt,axisAz){
   const tilt=Math.acos(Math.cos(thetaDeg*RAD)*Math.cos(axisTilt*RAD))*DEG;
   const sT=Math.sin(tilt*RAD); let azd;
@@ -3718,16 +3674,8 @@ function setSky(top,hor){
   const k=css(top)+'|'+css(hor);
   if(TD.skyKey===k)return;
   TD.skyKey=k;
-  const cx=TD.skyCv.getContext('2d');
-  const mix=(a,b,t)=>css(a.map((x,i)=>x+(b[i]-x)*t));
-  // esfera: y=0 cénit · y≈mitad horizonte (resplandor concentrado) · abajo bruma oscura
-  const gr=cx.createLinearGradient(0,0,0,512);
-  gr.addColorStop(0,css(top));
-  gr.addColorStop(0.34,mix(top,hor,0.28));
-  gr.addColorStop(0.48,css(hor));
-  gr.addColorStop(0.54,mix(hor,[0.03,0.035,0.05],0.55));
-  gr.addColorStop(1,'rgb(8,9,13)');
-  cx.fillStyle=gr;cx.fillRect(0,0,4,512);
+  // el degradado (cénit · horizonte encendido · bruma oscura) también es de `sol.js`
+  Sol.paintSky(TD.skyCv,top,hor);
   TD.skyTx.needsUpdate=true;
 }
 function update3D(){
@@ -3812,17 +3760,14 @@ function update3D(){
       if(TD.hemi)TD.hemi.intensity=1.2;
       setSky([0.13,0.17,0.25],[0.30,0.37,0.50]);
     }else{
-      // luz REAL: el sol pierde altura ⇒ pierde fuerza y se va al rojo, como
-      // en los 3D de la casa (amanecer/ocaso rojizos)
-      const warm=Math.max(0,Math.min(1,(12-g.elev)/12));
-      TD.sun.color.setRGB(1,0.93-0.38*warm,0.80-0.62*warm);
-      TD.sun.intensity=1.45-0.25*warm;
-      if(TD.hemi)TD.hemi.intensity=0.55+0.15*warm;
-      // el CIELO vira a rojizo con el sol bajo, como en los 3D de las plantas:
-      // horizonte encendido (naranja al alba/ocaso, azul pálido a mediodía) y
-      // cénit oscuro — degradado, no color plano
-      setSky([0.04+0.09*up,0.07+0.12*up,0.14+0.22*up],
-             [0.20+0.25*up+0.62*warm*(1-0.5*up),0.28+0.30*up+0.20*warm*(1-0.5*up),0.42+0.35*up-0.20*warm]);
+      /* luz REAL: el sol pierde altura ⇒ pierde fuerza y se va al rojo, y el
+         cielo enciende el horizonte y deja el cénit oscuro. La receta es la de
+         los 3D de la casa y vive en `sol.js`; de aquí se sacó. */
+      const L=Sol.sunLook(g.elev), SK=Sol.skyColors(g.elev);
+      TD.sun.color.setRGB(L.color[0],L.color[1],L.color[2]);
+      TD.sun.intensity=L.intensity;
+      if(TD.hemi)TD.hemi.intensity=L.hemi;
+      setSky(SK.top,SK.hor);
     }
     TD.sunMesh.visible=!TD.sunPov;             // en modo «👁 sol» el disco taparía la planta
     TD.sunMesh.position.copy(TD.sun.position);
@@ -3830,9 +3775,9 @@ function update3D(){
   }else{
     TD.sun.intensity=0.02;TD.sunMesh.visible=false;
     // crepúsculo: el rescoldo naranja vive en el HORIZONTE y se apaga entre
-    // 0 y −8° de elevación; el cénit ya es noche
-    const tw=Math.max(0,(g.elev+8)/8);
-    setSky([0.028,0.038,0.065],[0.05+0.55*tw,0.055+0.19*tw,0.08+0.03*tw]);
+    // 0 y −8° de elevación; el cénit ya es noche. También en `sol.js`.
+    const SK=Sol.skyColors(g.elev);
+    setSky(SK.top,SK.hor);
   }
 }
 /* RAYO CRÍTICO en el MARCO DE LA FÍSICA: criticalRayPair vive junto a

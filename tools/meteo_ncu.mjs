@@ -81,19 +81,73 @@ const NOTA_PLANTA = {
        + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
        + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
        + 'con HSU llevan una y esclavo 230.',
-  sanjose: 'El SCADA (24019-san-jose.json, del Excel «Direcciones IP») declara HSU en las NCU 1, 6, 8, '
-       + '11 y 21, una en cada una, y el DWG dibuja OCHO. No es un desacuerdo: su fichero NO trae las '
-       + 'NCU 7, 12, 16, 17 y 19, o sea está incompleto, y las tres HSU sin NCU caen justamente en esa '
-       + 'zona. Las cinco declaradas SÍ están resueltas, y cada una con una sola estación cerca (30-62 '
-       + 'm, la siguiente a más de 500). OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, '
-       + 'pero las tres que faltan aquí están puestas por «NCU más cercana» —lo dice el propio '
-       + 'manifiesto—, que es la regla que se equivoca. No tomarlas por dato.',
+  polvorin: 'La HSU 2 se queda SIN NCU a propósito, y no por falta de mirar: cae justo en la COSTURA '
+       + 'de los dos campos. De los 3 seguidores más cercanos, dos son de la NCU 1 y uno de la 2; de '
+       + 'los 10, cinco y cinco; de los 20, diez y diez. El seguidor más cercano es de la NCU 2 a 24 m '
+       + 'y el de la 1 está a 27 m: tres metros. La HSU 1 en cambio es limpia —sus 5 más cercanos son '
+       + 'todos de la NCU 1—. Esta planta no tiene fichero en la toolbox del SCADA ni CSV de cobertura, '
+       + 'y su «GZ» del listado dice 1 y 2, que es indistinguible de un contador (en Bagnarelli ese '
+       + 'mismo campo da 1 y 2 con UNA sola NCU). Lo resolvería un export de la toolbox para 25082 o el '
+       + 'listado del cliente con su columna de NCU. Con la geometría no se puede, y no es opinable.',
+
+  sanjose: 'Son OCHO HSU, las que dibuja el DWG y las que dice la cartera. El fichero del SCADA '
+       + '(24019-san-jose.json) solo declara CINCO —NCU 1, 6, 8, 11 y 21, una en cada una— y eso NO es '
+       + 'un desacuerdo, es un export viejo: se generó antes de arreglar `rangos()`, que solo entendía '
+       + 'UN tramo por NCU, así que toda NCU con varios tramos se cayó entera y en silencio. Se '
+       + 'comprueba: las cinco que faltan —7, 12, 16, 17 y 19— son EXACTAMENTE las cinco de San José '
+       + 'con varios tramos (de 4 a 7 por gateway), y las dieciséis que sí están son exactamente las de '
+       + 'un tramo. Sin excepciones. Está apuntado en el CONTRATO del SCADA (10/08): hay que '
+       + 're-exportarlo desde IPs. Mientras tanto, las tres HSU sin NCU caen justo en esa zona. '
+       + 'OJO con los CSV de cobertura_coords: ahí las ocho traen NCU, pero esas tres están puestas por '
+       + '«NCU más cercana» —lo dice su manifiesto—, que es la regla que se equivoca. No son dato.',
 };
 
 const DIR_TOOLBOX = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
   new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,
   new URL('../../scada/tools/tcu-toolbox/plantas/', import.meta.url).pathname]
   .find(p => { try { return existsSync(p); } catch (e) { return false; } });
+
+/* ── el «GZ» del listado del cliente, embebido en SCADA/index.html ─────────────────────────────
+   Cada planta lleva allí sus `hsus` como [id, gz, x, y, idnum]. El `gz` es la etiqueta del listado
+   del cliente y NO SIEMPRE ES LA NCU: en Ayora lo es, en Páramo también, pero en Benante dice
+   1,2,3,4 cuando sus NCU son la 3, la 1, la 6 y la 4 —es un simple contador— y en Bagnarelli dice
+   «1» y «2» cuando esa planta tiene UNA sola NCU. Fiarse del campo sin mirar es meter tres errores.
+
+   Se acepta como NCU solo si pasa las dos pruebas:
+
+     · todos sus valores son NCU que existen en la planta, y
+     · la secuencia NO es 1,2,3…n en el orden del array, que es indistinguible de un contador.
+
+   Con eso entra Páramo —dice 1, 2 y 4, y el 4 es justo lo que un contador no diría— y se quedan
+   fuera Benante, Panbianco, Bagnarelli, Túnez y El Polvorín. Los tres primeros porque SABEMOS que
+   se equivocan; los dos últimos porque no hay forma de distinguirlo, y en la duda no se escribe. */
+const SCADA_HTML = ['/home/user/SCADA/index.html', '/home/user/scada/index.html',
+  new URL('../../SCADA/index.html', import.meta.url).pathname,
+  new URL('../../scada/index.html', import.meta.url).pathname]
+  .find(p => { try { return existsSync(p); } catch (e) { return false; } });
+const NOMBRE_SCADA = { ayora: 'AYORA', paramo: 'PARAMO', sanjose: 'SANJOSE', bagnarelli: 'BAGNARELLI',
+  tunez: 'TUNEZ', benante: 'BENANTE', panbianco: 'PANBIANCO', polvorin: 'POLVORIN', elburgo: 'BURGO', fayon: 'FAYON' };
+let _html = null;
+function leeGZ(planta, L) {
+  if (!SCADA_HTML || !NOMBRE_SCADA[planta]) return null;
+  if (_html === null) _html = readFileSync(SCADA_HTML, 'utf8');
+  const i = _html.indexOf('const ' + NOMBRE_SCADA[planta] + '={');
+  if (i < 0) return null;
+  let j = _html.indexOf('{', i), p = 0, o = null;
+  for (let k = j; k < _html.length; k++) {
+    if (_html[k] === '{') p++;
+    else if (_html[k] === '}' && !--p) { try { o = JSON.parse(_html.slice(j, k + 1)); } catch (e) { } break; }
+  }
+  const H = o && o.hsus;
+  if (!H || H.length !== (L.meteo || []).length) return null;
+  const v = H.map(x => String(x[1] ?? '').trim());
+  if (v.some(x => !/^\d+$/.test(x))) return null;                 // vacíos o etiquetas de centros: aquí no
+  const nums = v.map(Number);
+  const existen = new Set((L.trackers || []).map(t => t.ncu));
+  if (!nums.every(x => existen.has(x))) return null;              // prueba 1
+  if (nums.every((x, k) => x === k + 1)) return null;             // prueba 2: es un contador
+  return nums;
+}
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.n - b.n);
 /* «HSU 03-02» -> 3. También traga «HSU3-2». Lo que no lleve los dos números se queda fuera. */
@@ -138,7 +192,7 @@ function leeToolbox(planta) {
   const ruta = DIR_TOOLBOX + TOOLBOX[planta];
   if (!existsSync(ruta)) return null;
   const d = JSON.parse(readFileSync(ruta, 'utf8'));
-  const porIndice = {}, maxNCU = {}, escNCU = {}, sinDeclarar = new Set();
+  const porIndice = {}, maxNCU = {}, escNCU = {}, gwNCU = {}, sinDeclarar = new Set();
   for (const p of d.plantas || []) {
     const mm = /NCU\s*(\d+)/.exec(String(p.nombre || ''));
     if (!mm) continue;
@@ -153,6 +207,11 @@ function leeToolbox(planta) {
        distingue El Burgo —GW1 con el 230 y GW2 con el 231, cuatro HSU de verdad— de San José, que no
        trae esclavos y cuyas dos filas son la misma estación contada dos veces. */
     maxNCU[ncu] = Math.max(maxNCU[ncu] || 0, p.hsus);
+    /* `hsus_gw` dice cuántas van EN ESE gateway, que es lo que la columna de la hoja sabe y hasta
+       ahora se tiraba (SCADA/tools/tcu-toolbox/make_plantas.py, arreglado el 2026-08-26). Todavía no
+       aparece en ningún fichero —hace falta una pasada con --excel— así que esto se queda inerte
+       hasta que la haya, y entonces entra solo. */
+    if (p.hsus_gw) gwNCU[ncu] = (gwNCU[ncu] || []).concat([{ gw, n: p.hsus_gw }]);
     for (const e of p.hsu_esclavos || []) {
       if (!(escNCU[ncu] || []).includes(e)) (escNCU[ncu] = escNCU[ncu] || []).push(e);
     }
@@ -163,7 +222,16 @@ function leeToolbox(planta) {
   const porNCU = {};
   for (const k of Object.keys(maxNCU)) porNCU[k] = Math.max(maxNCU[k], (escNCU[k] || []).length);
   const total = Object.values(porNCU).reduce((a, b) => a + b, 0);
-  return { fichero: TOOLBOX[planta], porIndice, porNCU, total, declaradas: sinDeclarar };
+  /* EL GATEWAY DE UNA NCU, cuando no hay duda: si de sus dos filas SOLO UNA declara estaciones, la
+     estación cuelga de ese gateway y punto. Si las declaran las dos —El Burgo, una por gateway— el
+     recuento no basta para decir cuál es cuál, y aquí no se elige: eso lo dice el índice `rsu` o el
+     dato de campo. Mejor sin gateway que con el que no es. */
+  const gwUnico = {};
+  for (const k of Object.keys(gwNCU)) {
+    const con = gwNCU[k].filter(x => x.n > 0);
+    if (con.length === 1 && con[0].n === 1) gwUnico[k] = con[0].gw;
+  }
+  return { fichero: TOOLBOX[planta], porIndice, porNCU, total, gwUnico, declaradas: sinDeclarar };
 }
 
 const nombres = PLANTAS.length ? PLANTAS
@@ -285,14 +353,35 @@ for (const n of nombres) {
 
     if (!s) { console.log(`  ??    ${nom} el layout no trae NCU por seguidor: no se puede derivar`); continue; }
 
+    /* 5 · el GZ del listado del cliente, cuando pasa las pruebas de arriba Y dice lo mismo que la
+       geometría. Si dijera otra cosa NO se escribe: dos fuentes que discrepan no son una fuente
+       mejor, son un motivo para mirarlo. */
+    const gz = leeGZ(n, L);
+    if (gz && gz[M.indexOf(m)] != null) {
+      const g = gz[M.indexOf(m)];
+      if (g === s.gana) {
+        console.log(`  ok    ${nom} NCU ${String(g).padStart(2)}  ·  DOS FUENTES: el GZ del listado del cliente ` +
+          `(SCADA/index.html) y el seguidor más cercano, a ${Math.round(s.d1)} m`);
+        pon.push({ m, ncu: g, origen: `dos fuentes · el «GZ» del listado del cliente (SCADA/index.html) dice NCU ${g}, ` +
+          `y el seguidor más cercano también, a ${Math.round(s.d1)} m (${margen}). El GZ solo se usa donde no puede ` +
+          `confundirse con un contador; el esclavo no lo da esa fuente` });
+        continue;
+      }
+      avisos.push(`${n} ${m.name}: el GZ del listado dice NCU ${g} y la geometría la ${s.gana} (${margen}). No se escribe ninguna`);
+      continue;
+    }
+
     /* 5 · DOS FUENTES. La toolbox dice que esa NCU tiene HSU y esta es la única candidata cerca, de
        largo. No es la regla del margen: es que las dos fuentes, independientes, dicen lo mismo. */
     const dosFuentes = tb && tb.porNCU[s.gana] && unicaCandidata(s.gana, m, L, M);
     if (dosFuentes) {
       console.log(`  ok    ${nom} NCU ${String(s.gana).padStart(2)}  ·  DOS FUENTES: la toolbox le pone HSU y ` +
         `es la única cerca (la siguiente, ${dosFuentes.otra}, a ${Math.round(dosFuentes.d2)} m contra ${Math.round(dosFuentes.d1)} m)`);
-      pon.push({ m, ncu: s.gana, origen: `dos fuentes · la toolbox (${tb.fichero}) dice que la NCU ${s.gana} tiene HSU, ` +
+      const gwTB = tb.gwUnico && tb.gwUnico[s.gana];
+      if (gwTB) console.log(`        ↳ y la columna RSU de la hoja dice que va en el GW ${gwTB}`);
+      pon.push({ m, ncu: s.gana, gw: gwTB, origen: `dos fuentes · la toolbox (${tb.fichero}) dice que la NCU ${s.gana} tiene HSU, ` +
         `y de las ${M.length} del DWG ésta es la única cerca: a ${Math.round(dosFuentes.d1)} m, la siguiente a ${Math.round(dosFuentes.d2)} m. ` +
+        (gwTB ? `El gateway (GW ${gwTB}) lo dice la columna RSU de la hoja: de las dos filas de esa NCU solo una declara estación. ` : '') +
         `El esclavo no lo da esa fuente` });
       continue;
     }
@@ -329,11 +418,31 @@ for (const n of nombres) {
 
   console.log(`  → ${pon.length} de ${M.length}` + (pon.length < M.length ? `, el resto sin escribir` : ''));
   if (NOTA_PLANTA[n]) console.log(`  nota  ${NOTA_PLANTA[n].split('. ')[0]}.`);
+  /* EL GATEWAY, CUANDO NO HAY OTRO. Si en toda la planta los seguidores solo usan UN gateway, la
+     estación cuelga de ése porque no existe otro al que colgarse. No es una deducción por cercanía
+     —eso aquí no se hace nunca con el gateway— es la misma constatación que la de la única NCU. Hoy
+     toca en Bagnarelli, Fayón y Túnez; en Ayora COINCIDE con lo que dice la toolbox, que sale gratis
+     de careo: los diez dan GW1 por las dos vías. */
+  const gwsPlanta = [...new Set((L.trackers || []).map(t => t.gw).filter(g => g != null))];
+  if (gwsPlanta.length === 1) {
+    const g = gwsPlanta[0];
+    const chocan = pon.filter(p => p.gw != null && p.gw !== g);
+    if (chocan.length) console.log(`  ojo   la planta solo usa el GW ${g} y ${chocan.length} HSU traen otro: no se toca ninguna`);
+    else {
+      const nuevas = pon.filter(p => p.gw == null).length;
+      if (nuevas) console.log(`  ok    las ${nuevas} sin gateway van al GW ${g}: es el único que usa la planta entera`);
+      for (const p of pon) if (p.gw == null) {
+        p.gw = g;
+        p.gwOrigen = `único gateway de la planta: sus ${(L.trackers || []).length} seguidores usan el GW ${g} y no hay otro. No se deduce, se constata`;
+      }
+    }
+  }
+
   if (WRITE && (pon.length || NOTA_PLANTA[n])) {
     if (NOTA_PLANTA[n]) L.meteo_nota = NOTA_PLANTA[n];
     for (const p of pon) {
       p.m.ncu = p.ncu; p.m.ncu_origen = p.origen;
-      if (p.gw != null) { p.m.gw = p.gw; p.m.gw_origen = p.origen; }
+      if (p.gw != null) { p.m.gw = p.gw; p.m.gw_origen = p.gwOrigen || p.origen; }
       if (p.esclavo != null) { p.m.esclavo = p.esclavo; p.m.esclavo_origen = p.origen; }
     }
     writeFileSync(ruta, JSON.stringify(L));

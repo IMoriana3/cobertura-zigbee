@@ -70,26 +70,30 @@ def activo(planta):
                 ring.append(ring[0])
             feats.append(feature("Polygon", [ring], {"rol": "parcela", "origen": "vallado del DWG"}))
 
-    # ── los seguidores (o las mesas fijas) ────────────────────────────────────────────────────
-    if L.get("fija"):
-        for i, f in enumerate(L.get("fijas") or []):
-            feats.append(feature("Point", pt(f["x"], f["n"]), {
-                "rol": "mesa_fija", "id": f.get("nombre") or ("M%04d" % (i + 1)),
-                "surface_tilt": f.get("inclinacion"), "surface_azimuth": f.get("azimut"),
-                "modulos": f.get("mods"), "filas": f.get("rows"), "columnas": f.get("cols"),
-            }))
-    else:
-        for t in L.get("trackers") or []:
-            p = {"rol": "seguidor", "id": t.get("id"), "tipo": t.get("t"),
-                 "axis_azimuth": (t.get("rot") if t.get("rot") else montaje.get("axis_azimuth")),
-                 "punto": "eje de unidad (no el motor)"}
-            for k in ("ncu", "gw", "desig"):
-                if t.get(k) is not None:
-                    p[k] = t[k]
-            for k in ("axis_tilt", "max_angle", "backtrack", "gcr", "cross_axis_tilt"):
-                if montaje.get(k) is not None:
-                    p[k] = montaje[k]
-            feats.append(feature("Point", pt(t["x"], t["n"]), p))
+    # ── los seguidores Y las mesas fijas ──────────────────────────────────────────────────────
+    # LAS DOS COSAS, NO UNA U OTRA. Esto emitia `fijas` si la planta era fija y `trackers` si no, y
+    # Tunez es las dos: 19 seguidores y 14 mesas fijas. Sus 14 mesas se quedaban FUERA del export sin
+    # que nadie lo viera. Dicayagua es el caso contrario: es fija y repite las mismas mesas en los dos
+    # arrays, asi que ahi solo entran las `fijas` para no contarlas dos veces.
+    fijas = L.get("fijas") or []
+    trackers = [] if L.get("fija") else (L.get("trackers") or [])
+    for i, f in enumerate(fijas):
+        feats.append(feature("Point", pt(f["x"], f["n"]), {
+            "rol": "mesa_fija", "id": f.get("nombre") or ("M%04d" % (i + 1)),
+            "surface_tilt": f.get("inclinacion"), "surface_azimuth": f.get("azimut"),
+            "modulos": f.get("mods"), "filas": f.get("rows"), "columnas": f.get("cols"),
+        }))
+    for t in trackers:
+        p = {"rol": "seguidor", "id": t.get("id"), "tipo": t.get("t"),
+             "axis_azimuth": (t.get("rot") if t.get("rot") else montaje.get("axis_azimuth")),
+             "punto": "eje de unidad (no el motor)"}
+        for k in ("ncu", "gw", "desig"):
+            if t.get(k) is not None:
+                p[k] = t[k]
+        for k in ("axis_tilt", "max_angle", "backtrack", "gcr", "cross_axis_tilt"):
+            if montaje.get(k) is not None:
+                p[k] = montaje[k]
+        feats.append(feature("Point", pt(t["x"], t["n"]), p))
 
     # ── NCU y HSU ─────────────────────────────────────────────────────────────────────────────
     for c in L.get("ncus") or []:
@@ -105,6 +109,16 @@ def activo(planta):
             "esclavo": m.get("esclavo"), "esclavo_origen": m.get("esclavo_origen"),
         }))
 
+    # ── repetidores ───────────────────────────────────────────────────────────────────────────
+    # Faltaban, y son activo igual que una HSU: un nodo más de la malla, puesto justo para sostener
+    # el alcance de un gateway. En Ayora llevan ya gateway y esclavo (tools/reps_ncu.mjs); en las
+    # demás solo la NCU que traiga el layout.
+    for r in L.get("reps") or []:
+        feats.append(feature("Point", pt(r["x"], r["n"]), {
+            "rol": "repetidor", "nombre": r.get("name"), "ncu": r.get("ncu"),
+            "gw": r.get("gw"), "esclavo": r.get("esclavo"), "origen": r.get("origen"),
+        }))
+
     # ── caminos ───────────────────────────────────────────────────────────────────────────────
     for r in L.get("roads") or []:
         if isinstance(r, list) and len(r) >= 2 and isinstance(r[0], (list, tuple)):
@@ -115,13 +129,15 @@ def activo(planta):
         "name": planta,
         "crs_note": "EPSG:4326 (GeoJSON siempre en WGS84). El layout está en " + str(L.get("crs")),
         "generado_por": "tools/geojson_activo.py",
-        "que_es": "La planta como ACTIVO: parcela, seguidores con su montaje, NCU, HSU y caminos. "
-                  "No confundir con <planta>_real.geojson, que es la malla de radio medida.",
+        "que_es": "La planta como ACTIVO: parcela, seguidores con su montaje, NCU, HSU, repetidores "
+                  "y caminos. No confundir con <planta>_real.geojson, que es la malla de radio medida.",
         "montaje": montaje or None,
         "montaje_origen": L.get("montaje_origen") or None,
         # Lo que haya que saber de las HSU de ESTA planta y no cabe por estación. Hoy solo Ayora,
         # cuya NCU 15 lleva dos y en el mismo gateway, que no es el patrón de El Burgo.
         "meteo_nota": L.get("meteo_nota") or None,
+        # Lo mismo para los repetidores: en Ayora el Excel dice 11 y el DWG dibuja 5.
+        "reps_nota": L.get("reps_nota") or None,
         "features": feats,
     }
     return doc
@@ -129,7 +145,7 @@ def activo(planta):
 
 nombres = PLANTAS or sorted(f[:-len("_layout.json")] for f in os.listdir(RAIZ)
                             if f.endswith("_layout.json"))
-print("planta        elementos   parcela  unidades  NCU  HSU  caminos")
+print("planta        elementos   parcela  unidades  NCU  HSU  REP  caminos")
 for n in nombres:
     try:
         doc = activo(n)
@@ -139,10 +155,10 @@ for n in nombres:
     c = {}
     for f in doc["features"]:
         c[f["properties"]["rol"]] = c.get(f["properties"]["rol"], 0) + 1
-    print("%-13s %9d %8d %9d %4d %4d %8d" % (
+    print("%-13s %9d %8d %9d %4d %4d %4d %8d" % (
         n, len(doc["features"]), c.get("parcela", 0),
         c.get("seguidor", 0) + c.get("mesa_fija", 0), c.get("NCU", 0), c.get("HSU", 0),
-        c.get("camino", 0)))
+        c.get("repetidor", 0), c.get("camino", 0)))
     if WRITE:
         with open(os.path.join(RAIZ, n + "_activo.geojson"), "w", encoding="utf-8") as fh:
             json.dump(doc, fh, ensure_ascii=False)
