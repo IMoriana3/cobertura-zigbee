@@ -32,7 +32,8 @@ const src = html.slice(html.lastIndexOf('/*', i0), i1);
 /* El bloque de FÍSICA PURA ya no lleva el sol dentro: la posición NOAA y el
    `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
    igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
-const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8');
+const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
+             + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + src + ';return {solarPos,clearskyIneichen,policyAngles,poaPlant,plantFromCotas};')();
 
 const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
