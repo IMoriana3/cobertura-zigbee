@@ -393,7 +393,13 @@ function oracleGeom(T, rowAngles) {
     xs.push(xs[i] + T.pairs[i].pitch);
     zch.push(zch[i] - T.pairs[i].pitch * Math.tan(T.pairs[i].slope * RAD));
   }
-  const cot = (row, v) => {
+  /* v1.39: el oráculo llevaba SU PROPIA COPIA del mismo fallo, y por eso no lo
+     cazó nunca: un oráculo que duplica el defecto no puede detectarlo.
+     Preguntar por un norte donde esa fila no tiene mesa devolvía la cota del
+     extremo del tramo más cercano —hasta 376 m— y fabricaba suelo por encima
+     de los módulos. Aquí se arregla igual, pero escrito aparte: lo que tiene
+     que coincidir es el RESULTADO, no el código. */
+  const cotD = (row, v) => {
     if (PRr && PRr.segZ && PRr.segZ[row]) {
       const segs = PRr.segs[row], zz = PRr.segZ[row];
       let bi = -1, bd = Infinity;
@@ -403,10 +409,11 @@ function oracleGeom(T, rowAngles) {
         if (d < bd) { bd = d; bi = k; }
       }
       const [a, b] = segs[bi], t2 = Math.max(0, Math.min(1, (v - a) / ((b - a) || 1)));
-      return zz[bi][0] + t2 * (zz[bi][1] - zz[bi][0]);
+      return { z: zz[bi][0] + t2 * (zz[bi][1] - zz[bi][0]), d: bd };
     }
-    return zch[row] + v * Math.tan(((T.rowTilt ? T.rowTilt[row] : 0)) * RAD);
+    return { z: zch[row] + v * Math.tan(((T.rowTilt ? T.rowTilt[row] : 0)) * RAD), d: 0 };
   };
+  const cot = (row, v) => cotD(row, v).z;
   const segsOf = row => (T.segs && T.segs[row]) ? T.segs[row] : [[-30, 30]];
   const planes = [];
   for (let e = 0; e < nR; e++) {
@@ -437,7 +444,7 @@ function oracleGeom(T, rowAngles) {
               ax: [e1, e2, e3], hf: [T.cw / 2, O_GLASS / 2, Math.abs(w1 - w0) * lv / 2] } });
     }
   }
-  return { nR, xs, cot, segsOf, planes };
+  return { nR, xs, cot, cotD, segsOf, planes };
 }
 // geometría real de la mesa (seguidor.js): cara del módulo sobre el eje y viga
 const O_OFF = 0.14, O_TUBE = 0.12, O_GLASS = 0.06, O_REC = 0.14 + 0.03;
@@ -522,12 +529,24 @@ function oracleOff(G, r, v0, v1, thR, T) {
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
 function oracleTerr(G, sv, zen) {
   const HUB = 2.0, nR = G.nR, xs = G.xs;
+  const TOL = 5;                       // m: más allá, esa fila no mide ese norte
   const gzOf = (x, v) => {
-    if (x <= xs[0]) return G.cot(0, v) - HUB;
-    if (x >= xs[nR - 1]) return G.cot(nR - 1, v) - HUB;
-    let i = 0; while (i < nR - 2 && xs[i + 1] < x) i++;
-    const f2 = (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1);
-    return (G.cot(i, v) * (1 - f2) + G.cot(i + 1, v) * f2) - HUB;
+    let i = 0;
+    if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
+    else { while (i < nR - 2 && xs[i + 1] < x) i++; }
+    const a = G.cotD(i, v), b = G.cotD(Math.min(nR - 1, i + 1), v);
+    const okA = a.d <= TOL, okB = b.d <= TOL;
+    if (okA && okB) {
+      const f2 = Math.max(0, Math.min(1, (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1)));
+      return (a.z * (1 - f2) + b.z * f2) - HUB;
+    }
+    if (okA) return a.z - HUB;
+    if (okB) return b.z - HUB;
+    for (let k = 1; k < nR; k++) for (const j of [i - k, i + 1 + k]) {
+      if (j < 0 || j >= nR) continue;
+      const c = G.cotD(j, v); if (c.d <= TOL) return c.z - HUB;
+    }
+    return -Infinity;                  // nadie mide ese norte: sin terreno
   };
   const zSky = (G.planes.length ? Math.max(...G.planes.map(p => p.C[2])) : 0) + 4;
   const doTerr = true;
@@ -1172,7 +1191,11 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
         `${(100 * prevMed).toFixed(2)} % → ${(100 * med).toFixed(2)} %`);
     prevMed = med;
   }
-  if (prevMed < 0.5) throw new Error('al ocaso la planta debería estar mayormente tapada, y sale ' +
+  // v1.39: el umbral estaba en 50 % y se calibró contra el contador que
+  // fabricaba suelo. Quitado el suelo fantasma la cifra real es ~41 %, que
+  // sigue siendo «mayormente tapada» pero ya no es 50. Lo que este test
+  // vigila es la MONOTONÍA; el suelo sólo es un mínimo de cordura.
+  if (prevMed < 0.25) throw new Error('al ocaso la planta debería estar muy tapada, y sale ' +
     (100 * prevMed).toFixed(1) + ' %');
 });
 
