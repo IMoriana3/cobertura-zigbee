@@ -201,6 +201,11 @@ def genera(planta):
         g = v[0]
         T.append({
             'f': filas, 'inc': inc,
+            # identidad del levantamiento: en San Jose el id del sunner CSV es
+            # EXACTAMENTE este tk (2186/2186), asi que conservarlo permite unir
+            # la ficha por IDENTIDAD en vez de por terna medida. En Ayora no
+            # coincide con nada (las zonas HD-* van por su cuenta) y no estorba.
+            'tk': g.get('tk'), 'zo': g.get('zo'),
             'sl':  num(g.get('sl')),                        # pendiente longitudinal del tracker (%)
             'cse': num(g.get('cse')), 'cso': num(g.get('cso')),   # vector TCU conservador este/oeste (%)
             'ase': num(g.get('ase')), 'aso': num(g.get('aso')),   # vector TCU agresivo este/oeste (%)

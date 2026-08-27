@@ -1144,12 +1144,30 @@ t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de c
   }
   if (sinId) throw new Error(`${sinId} seguidores sin NCU/TCU: no se podrían cruzar con el diagnóstico`);
   if (n < cotas.t.length * 0.9) throw new Error('casi ninguna fila trae registro: ¿se está emitiendo?');
-  // el guard que importa: San José NO casa con su levantamiento (máximo 25,0%
-  // frente a 49,6%), y el exportador tiene que ABORTAR en vez de emparejar a ojo
-  let abortó = false;
-  try { execFileSync(process.execPath, [ep, 'sanjose'], { cwd: ROOT, stdio: 'pipe' }); }
-  catch (e) { abortó = true; }
-  if (!abortó) throw new Error('San José no casa con su levantamiento y el exportador NO abortó');
+  // Este guard exigía que San José ABORTARA («no casa con su levantamiento»),
+  // y cumplió su función: al investigar el no-casar aparecieron la unión por
+  // IDENTIDAD (id = tk, que Ayora no tiene) y la ficha del fabricante
+  // CONTAMINADA por la referencia vertical. Ahora San José tiene que CASAR por
+  // identidad, y el veto de rango tiene que estar vetando esas pendientes
+  // imposibles en vez de dejarlas pasar a los registros.
+  let sjOut = '';
+  try { sjOut = execFileSync(process.execPath, [ep, 'sanjose'], { cwd: ROOT, encoding: 'utf-8' }); }
+  catch (e) { throw new Error('San José dejó de casar: ' + ((e.stdout || '') + (e.stderr || '')).slice(-300)); }
+  if (!/unión por IDENTIDAD/.test(sjOut)) throw new Error('San José ya no une por identidad (id = tk)');
+  if (!/VETO DE RANGO: \d+ pendiente/.test(sjOut))
+    throw new Error('el veto de rango no está vetando las pendientes contaminadas de la ficha del fabricante');
+  const sjCsv = fs.readFileSync(path.join(ROOT, 'config_tcu_sanjose.csv'), 'utf-8');
+  const cab2 = sjCsv.slice(0, sjCsv.indexOf('\n')).split(',');
+  const i98 = cab2.indexOf('r41098_west_grade_rad'), i102 = cab2.indexOf('r41102_east_grade_rad');
+  for (const ln of sjCsv.split('\n').slice(1)) {
+    if (!ln) continue;
+    const c2 = ln.split(',');
+    for (const ii of [i98, i102]) {
+      const v = parseFloat(c2[ii]);
+      if (isFinite(v) && v > Math.PI / 4 + 1e-9)
+        throw new Error('un registro fuera de 0..π/4 llegó al CSV: ' + ln.slice(0, 60));
+    }
+  }
   const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.meta.json'), 'utf-8'));
   if (!meta.NO_DERIVADO || !meta.AVISO_41106 || !meta.autocomprobacion)
     throw new Error('el .meta.json no declara lo que no deriva, el 41106 o la autocomprobación');

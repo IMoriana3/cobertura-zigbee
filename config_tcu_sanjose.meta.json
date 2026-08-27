@@ -1,0 +1,37 @@
+{
+  "planta": "sanjose",
+  "generado_por": "tools/export_config_tcu.mjs",
+  "que_es": "unión de la configuración por TCU del levantamiento con la identidad NCU/TCU y los números de registro del mapa R7. NO recalcula pendientes.",
+  "fuente_pendientes": "config_tcu_sunner_sanjose.csv (publicado como descarga en modbus.html)",
+  "fuente_identidad": "sanjose_layout.json",
+  "fuente_vanos": "sanjose_cotas.json (x medidas, agrupadas en líneas por contención)",
+  "union": {
+    "por": "terna medida (pend_long, transv_este, transv_oeste) redondeada a 3 decimales",
+    "unívocos": 2182,
+    "empates": 0,
+    "sin_pareja": 4,
+    "nota": "si deja de ser unívoca el exportador ABORTA: emparejar a ojo escribiría la pendiente de un seguidor en otro"
+  },
+  "autocomprobacion": {
+    "relacion": "|transv| = |vector·cos(az−90°)|",
+    "peor_desvio_pp": 0.0171,
+    "nota": "confirma que vector+azimut es el par que piden 41098/41100 y 41102/41104"
+  },
+  "bordes_de_bloque": {
+    "oeste": 29,
+    "este": 24,
+    "nota": "vano vacío = no hay vecina a ese lado dentro del bloque"
+  },
+  "NO_DERIVADO": {
+    "r41037_r41038_en_pulsos": "los topes van en PULSOS de motor y aquí hay GRADOS; la constante pulsos/grado es del accionamiento y no está en estos ficheros.",
+    "r41014_axis_azimuth": "el simulador usa azimut de eje ≈0 como aproximación DECLARADA; el valor real de cada planta sale del replanteo, no de aquí."
+  },
+  "AVISO_41106": {
+    "que_pasa": "el 41106 (East pitch) está documentado en RADIANES y su gemelo 41033 (West pitch) en METROS.",
+    "de_quien_es": "del DOCUMENTO, no del volcado: comprobado contra tools/modbus_src/tcu_v6.json (extracción de SUNNER_TCU_ModbusMap v6), que dice literalmente Radians / def 0 / 0..π/4.",
+    "causa_probable": "arrastre de celdas: 41106 hereda unidad, defecto y rango IDÉNTICOS a los del 41102 (East grade slope), cuatro direcciones más arriba. Su gemelo 41033 trae Meters y defecto 9; un pitch de 0 con máximo π/4≈0,79 no es una separación entre ejes.",
+    "cerrado": "SÍ, en campo. La TCU Toolbox (scada/tools/tcu-toolbox) ya lo tenía resuelto por su cuenta: Ayora LEE 6 en ese registro y su levantamiento mide 6,002 m de pitch. Como radianes serían 344°, imposible en un campo cuyo máximo declarado es 45°. La Toolbox lo expone como «41106 east_pitch [m]» con rango de validación 0,5..30 m.",
+    "en_el_mapa": "modbus.html sigue reproduciendo el documento, pero la unidad del 41106 lleva ya la anotación curada «m (doc: rad, errata)»: dice lo que el equipo usa Y lo que el documento afirma, para que nadie escriba radianes en un seguidor."
+  },
+  "cruce": "CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) — los mismos que export_consignas.mjs"
+}

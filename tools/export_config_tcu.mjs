@@ -99,18 +99,60 @@ T.forEach((t, i) => {
 });
 const iLong = col('pend_long_pct'), iTE = col('este_pend_transv_pct'), iTO = col('oeste_pend_transv_pct');
 const par = new Array(L.length - 1).fill(-1);
+
+/* ── UNIÓN POR IDENTIDAD cuando existe, por TERNA cuando no ────────────────
+   San José enseñó que la terna medida no siempre es unívoca entre revisiones
+   del levantamiento (los valores difieren en centésimas y a 3 decimales caen
+   2066 de 2186)… y que ni falta que hace: su sunner CSV comparte el id EXACTO
+   con el asbuilt (`TR-01_1-001` = tk, 2186/2186). El fallo era nuestro: el
+   id se tiraba por el camino al generar cotas.json. Ahora cotas.json conserva
+   `tk`, y si el solape de ids entre ficha y cotas supera el 99 %, la unión va
+   POR IDENTIDAD — exacta por construcción. Ayora (ids HD-* sin relación) cae
+   a la terna de siempre, que allí resuelve 754/754 sin un empate. */
+const iId = col('id');
+const porTk = new Map();
+T.forEach((t, i) => { if (t && t.tk != null) porTk.set(String(t.tk), i); });
+let idsCasan = 0;
+for (let r = 1; r < L.length; r++) if (porTk.has(L[r].split(';')[iId])) idsCasan++;
+const porIdentidad = idsCasan >= (L.length - 1) * 0.99;
+
 let amb = 0, sin = 0;
-for (let r = 1; r < L.length; r++) {
-  const f = L[r].split(';');
-  const v = porTerna.get(clave(num(f[iLong]), num(f[iTE]), num(f[iTO])));
-  if (!v) sin++;
-  else if (v.length > 1) amb++;
-  else par[r - 1] = v[0];
+if (porIdentidad) {
+  const usados = new Set();
+  for (let r = 1; r < L.length; r++) {
+    const id = L[r].split(';')[iId];
+    const i = porTk.get(id);
+    if (i == null) { sin++; continue; }
+    if (usados.has(i)) { amb++; continue; }        // dos filas de ficha al mismo tracker
+    usados.add(i); par[r - 1] = i;
+  }
+  console.log(`unión por IDENTIDAD (id = tk): ${idsCasan}/${L.length - 1} ids casan`);
+} else {
+  for (let r = 1; r < L.length; r++) {
+    const f = L[r].split(';');
+    const v = porTerna.get(clave(num(f[iLong]), num(f[iTE]), num(f[iTO])));
+    if (!v) sin++;
+    else if (v.length > 1) amb++;
+    else par[r - 1] = v[0];
+  }
 }
-if (amb || sin) {
-  console.error(`la unión dejó de ser unívoca: ${amb} empates y ${sin} sin pareja de ${L.length - 1}. ` +
+if (amb) {
+  console.error(`la unión dejó de ser unívoca: ${amb} empates de ${L.length - 1}. ` +
                 `Emparejar a ojo escribiría la pendiente de un seguidor en otro: se aborta.`);
   process.exit(1);
+}
+if (sin) {
+  if (porIdentidad) {
+    // en la unión por identidad, «sin pareja» = el tracker fue DESCARTADO al
+    // sanear las cotas (p. ej. las filas con otra referencia vertical de San
+    // José). No es ambigüedad: es un hueco declarado — se nombra y se sigue.
+    const perdidos = [];
+    for (let r = 1; r < L.length; r++) if (par[r - 1] < 0) perdidos.push(L[r].split(';')[iId]);
+    console.log(`  ${sin} seguidor(es) de la ficha sin cotas (descartados en el saneo): ${perdidos.join(', ')} — quedan FUERA de la ficha de salida`);
+  } else {
+    console.error(`la unión dejó de ser unívoca: ${sin} sin pareja de ${L.length - 1}. Se aborta.`);
+    process.exit(1);
+  }
 }
 
 /* ── vanos MEDIDOS a cada vecina (el fichero de origen no los trae) ───────
@@ -160,13 +202,45 @@ const degARad = (d) => d == null ? null : d * Math.PI / 180;
 const r6 = (v) => v == null ? '' : Math.round(v * 1e6) / 1e6;
 const r3 = (v) => v == null ? '' : Math.round(v * 1e3) / 1e3;
 
-const iZona = col('zona'), iId = col('id'), iTipo = col('tipo');
+const iZona = col('zona'), iTipo = col('tipo');
 const iVCE = col('este_vecina_critica'), iVCO = col('oeste_vecina_critica');
+/* ── el TCU es el RANGO dentro de su NCU, no el número del id ──────────────
+   v1.35 lo estableció con el volcado real (591/748 con el número del id,
+   748/748 con el rango) y lo arregló en export_consignas… pero ESTA hoja
+   seguía sacando la columna `tcu` del número del plano. Con Ayora, «TCU 26»
+   apuntaba a TK 026-08, que en la numeración real de NCU12 es el TCU 1: un
+   técnico que escribiera «en el TCU 26» desde la NCU habría configurado OTRO
+   seguidor. El mismo fallo, en la otra herramienta — cazado al generalizar el
+   protocolo a San José, cuyos ids («TR-07_1-112») rompían el regex y
+   delataron la heurística. */
+const rango = new Map();
+{
+  const porNcu = new Map();
+  (lay && lay.trackers || []).forEach((t2, i2) => {
+    const k = t2.ncu; if (k == null) return;
+    if (!porNcu.has(k)) porNcu.set(k, []);
+    const m2 = String(t2.id || '').match(/(\d+)/);
+    porNcu.get(k).push({ i: i2, nnn: m2 ? +m2[1] : i2 });
+  });
+  for (const [, v] of porNcu) {
+    v.sort((a, b) => a.nnn - b.nnn);
+    v.forEach((e, j) => rango.set(e.i, j + 1));
+  }
+}
 const filas = [];
 let bordeO = 0, bordeE = 0;
+const RANGO_MAX_PCT = 100 * Math.tan(Math.PI / 4);   // pi/4 del documento = 100 %
+const vetados = [];
+const fueraRango = (pct, quien) => {
+  if (pct == null || Math.abs(pct) <= RANGO_MAX_PCT) return false;
+  vetados.push(quien + ' = ' + pct.toFixed(1) + ' %');
+  return true;
+};
 for (let r = 1; r < L.length; r++) {
   const f = L[r].split(';');
-  const i = par[r - 1], t = T[i];
+  const i = par[r - 1];
+  if (i < 0) continue;                    // descartado en el saneo: hueco declarado arriba
+  const t = T[i];
   const tk = (lay && lay.trackers && lay.trackers[i]) || null;
   const xr = (t.f || []).map(a => a.x).filter(v => isFinite(v));
   const li = xr.length ? lineaDe(Math.min(...xr)) : -1;
@@ -175,14 +249,23 @@ for (let r = 1; r < L.length; r++) {
   if (ve != null && ve > HUECO) ve = null;
   if (vo == null) bordeO++;
   if (ve == null) bordeE++;
-  const m = String((tk && tk.id) || '').match(/(\d+)/);
   filas.push([
-    PLANTA, tk ? (tk.ncu ?? '') : '', m ? +m[1] : '', tk ? (tk.id || '') : '',
+    PLANTA, tk ? (tk.ncu ?? '') : '', tk ? (rango.get(i) ?? '') : '', tk ? (tk.id || '') : '',
     f[iZona], f[iId], f[iTipo], li >= 0 ? li + 1 : '',
     r3(vo), r3(ve),                                               // 41033 / 41106
     r3(+cotas.cuerda), r3(+cotas.limite), r3(+cotas.limite),      // 41035 / 41037 / 41038
-    r6(pctARad(num(f[iVO]))), r6(degARad(num(f[iAO]))),           // 41098 / 41100
-    r6(pctARad(num(f[iVE]))), r6(degARad(num(f[iAE]))),           // 41102 / 41104
+    // v1.40: VETO DE RANGO. El documento del fabricante acota 41098/41102 a
+    // 0..pi/4 (45 grados). En San Jose aparecieron vectores de ~590 % en la
+    // ficha del PROPIO fabricante — son los seguidores envenenados por la
+    // referencia vertical: su hoja se calculo del mismo levantamiento
+    // contaminado. Un valor fuera de rango NO se escribe: la celda va VACIA,
+    // el caso se cuenta y se imprime, y las columnas pct crudas se conservan
+    // para poder reclamarlo. Escribir 1,40 rad en un registro de 0..0,785 es
+    // meter basura con nuestra firma.
+    fueraRango(num(f[iVO]), f[iId] + ' oeste') ? '' : r6(pctARad(num(f[iVO]))),
+    r6(degARad(num(f[iAO]))),                                     // 41098 / 41100
+    fueraRango(num(f[iVE]), f[iId] + ' este') ? '' : r6(pctARad(num(f[iVE]))),
+    r6(degARad(num(f[iAE]))),                                     // 41102 / 41104
     r3(num(f[iVO])), r3(num(f[iAO])), r3(num(f[iVE])), r3(num(f[iAE])),
     r3(num(f[iTO])), r3(num(f[iTE])), r3(num(f[iLong])),
     f[iVCO], f[iVCE],
@@ -259,7 +342,9 @@ fs.writeFileSync(out.replace(/\.csv$/, '.meta.json'), JSON.stringify({
 const porLinea = new Map();
 for (let r = 1; r < L.length; r++) {
   const f = L[r].split(';');
-  const i = par[r - 1], t = T[i];
+  const i = par[r - 1];
+  if (i < 0) continue;                    // descartado en el saneo
+  const t = T[i];
   const xr = (t.f || []).map(a => a.x).filter(v => isFinite(v));
   const li = xr.length ? lineaDe(Math.min(...xr)) : -1;
   if (li < 0) continue;
@@ -304,6 +389,10 @@ fs.writeFileSync(outF, JSON.stringify({
   lineas: fichaLineas,
 }, null, 1) + '\n');
 
+if (vetados.length) {
+  console.log(`  VETO DE RANGO: ${vetados.length} pendiente(s) de la ficha del fabricante fuera de 0..π/4 — la celda del registro va VACÍA:`);
+  for (const v of vetados) console.log('    ' + v + '  <- ficha contaminada (referencia vertical): reclamar, no escribir');
+}
 console.log(`${path.basename(out)} · ${filas.length} seguidores unidos 1:1 · ${lineas.length} líneas`);
 console.log(`${path.basename(outF)} · ${fichaLineas.length} líneas con ficha (clave: x medida)`);
 console.log(`  autocomprobación vector/azimut: peor desvío ${peorTrig.toFixed(4)} pp`);
