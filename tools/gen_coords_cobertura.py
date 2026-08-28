@@ -127,7 +127,10 @@ def gateways(planta):
         if not m: continue
         g = re.search(r"GW\s*(\d+)", p["nombre"] or "")
         out.setdefault((int(m.group(1)), int(g.group(1)) if g else 1), []).append(
-            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"), "puerto": p.get("puerto"),
+            # `ip` es el MODBUS de la NCU; `ip_gw`, el ConnectPort DIGI al que
+            # preguntan los recolectores. Son dos aparatos: ver make_plantas.py.
+            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"),
+             "ip_gw": p.get("ip_gw"), "puerto": p.get("puerto"),
              "hsus": p.get("hsus") or 0, "hsu_esclavos": p.get("hsu_esclavos") or []})
     return out
 
@@ -315,13 +318,16 @@ def genera(planta, en_viga):
             enl = next((x for (nn, gg), tr in gws.items() if nn == n and gg == gsub[0] for x in tr), {})
             if enl.get("ip"):
                 ext_ncu.update({"gw": gsub[0], "ip": enl["ip"], "puerto": enl.get("puerto")})
+                if enl.get("ip_gw"):
+                    ext_ncu["ip_gw"] = enl["ip_gw"]
         emite("coords_%s_NCU%02d.csv" % (planta, n), sub, ext_ncu)
         if len(gsub) > 1:                                   # cada (NCU,GW) es una IP:puerto: es lo que se lanza
             for g in gsub:
                 s2 = [r for r in sub if r["gw"] == g]
                 enl = next((x for (nn, gg), tr in gws.items() if nn == n and gg == g for x in tr), {})
                 emite("coords_%s_NCU%02d_GW%d.csv" % (planta, n, g), s2,
-                      {"ambito": "gateway", "ncu": n, "gw": g, "ip": enl.get("ip"), "puerto": enl.get("puerto")})
+                      {"ambito": "gateway", "ncu": n, "gw": g, "ip": enl.get("ip"),
+                       "ip_gw": enl.get("ip_gw"), "puerto": enl.get("puerto")})
     todos_gw = sorted({r["gw"] for r in filas if r["gw"] is not None})
     for g in (todos_gw if len(todos_gw) > 1 else []):
         sub = [r for r in filas if r["gw"] == g]

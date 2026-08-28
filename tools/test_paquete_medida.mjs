@@ -61,8 +61,29 @@ check('el recolector sale con los cuatro gateways puestos',
 check('y guarda debajo la línea que traía, para poder deshacerlo',
       /# --- lo que traia el fichero antes de prepararlo ---/.test(listo) &&
       /#\s+@\{ Name = "GW-01"; Host = "10\.100\.1\.54"/.test(listo));
-check('y dice de dónde sale la IP, para que se compruebe',
-      /IP de cada NCU mas su numero de gateway/.test(listo) && /COMPRUEBALO/.test(listo));
+/* DE DÓNDE SALE LA IP, dicho en el propio fichero. Hoy se DERIVA (la hoja
+   «Direcciones IP» trae la columna buena y el toolbox aún no la exporta); cuando
+   la exporte, la misma comprobación tiene que ver «DECLARADOS». Las dos ramas se
+   prueban, porque la segunda entra sola el día que se rehaga la pasada. */
+check('el recolector dice que la IP está DERIVADA, y que hay que comprobarla',
+      /DERIVADOS/.test(listo) && /[Ee]s una REGLA, no un dato/.test(listo) && /COMPRUEBALO/.test(listo),
+      listo.split('\n').slice(12,15).join(' | '));
+{
+  const conIp = gws.map(g => ({ ...g, ip_gw: '10.9.9.' + g.gw, declarada: true }));
+  const dec = F.preparaLogger(LOGGER, conIp);
+  check('y cuando la hoja la declare, lo dirá y usará ESA, no la derivada',
+        /DECLARADOS en la hoja/.test(dec) && !/DERIVADOS/.test(dec), dec.split('\n')[12]);
+}
+{
+  /* La preferencia, en el sitio donde se decide: si el manifiesto trae `ip_gw`,
+     manda el dato y no la regla. */
+  const man = JSON.parse(JSON.stringify(MAN_BURGO));
+  man.ambitos.filter(a => a.ip).forEach(a => { a.ip_gw = '10.9.9.' + a.gw; });
+  const g2 = F.gwsDe(F.paqueteDeManifiesto(man));
+  check('con `ip_gw` en el manifiesto, manda el dato y no la regla',
+        g2.every(g => g.declarada) && g2[0].ipGw === '10.9.9.1',
+        g2.map(g => g.ipGw).join(' '));
+}
 const RUTAS = fs.readFileSync(path.join(RAIZ, 'zigbee_routes_logger.ps1'), 'utf8');
 check('el de rutas apunta al primer gateway', /\$GwHost\s*=\s*"10\.100\.1\.53"/.test(F.preparaRutas(RUTAS, gws)));
 /* Sin IP declarada NO se toca: mejor el original con su «edita esto» que uno con
