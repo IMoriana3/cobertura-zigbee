@@ -976,13 +976,17 @@ function paqueteDeManifiesto(man){
    la IP:puerto de cada (NCU,GW): es el MODBUS TCP del SCADA —la NCU—, con un
    puerto por gateway (503 y 504). El recolector, en cambio, habla con el gateway
    DIGI por HTTP/RCI (80) y telnet (23), que tiene SU PROPIA dirección.
-   La relación, confirmada en El Burgo: el gateway es la IP de su NCU más el
-   número de gateway — NCU 1 en .52 con sus GW en .53 y .54, NCU 2 en .56 con
-   .57 y .58; por eso el recolector original apuntaba al .54, que es el GW2 de la
-   NCU 1, el que se escaneó. San José sigue el mismo plan de direcciones: cada
-   NCU con su bloque (.1, .6, .11, .16, .26) y hueco para sus gateways.
-   Se deriva, pero NO en silencio: va escrito en el propio .ps1, con la línea
-   original al lado en un comentario, para que quien lo abra vea de dónde sale. */
+   LA BUENA es `ip_gw`, que sale de la columna «IP GW» de la hoja «Direcciones
+   IP» del Excel maestro. Esa columna estaba y `make_plantas.py` no la leía —la
+   usaba solo como marcador para encontrar otra—, así que hasta que se rehaga la
+   pasada con la hoja real los JSON del toolbox no la traen.
+   Mientras no esté, se DERIVA: el gateway es la IP de su NCU más el número de
+   gateway. Confirmado en El Burgo —NCU 1 en .52 con sus GW en .53 y .54, NCU 2
+   en .56 con .57 y .58; por eso el recolector original apuntaba al .54, que es
+   el GW2 de la NCU 1, el que se escaneó—. Pero es una REGLA, no un dato: en
+   cuanto el toolbox traiga `ip_gw`, manda el dato.
+   Y en ninguno de los dos casos en silencio: el .ps1 dice si la IP es DECLARADA
+   o DERIVADA, con la línea original al lado en un comentario. */
 function gwsDe(paq){
   const v=new Map();
   for(const f of paq.resumen.ambitos){
@@ -990,8 +994,9 @@ function gwsDe(paq){
     const k=f.ncu+"/"+f.gw;
     if(v.has(k)) continue;
     const o=f.ip.split("."), ult=+o[3]+(+f.gw||1);
+    const derivada = ult<=254 ? o.slice(0,3).concat(ult).join(".") : null;
     v.set(k,{ncu:f.ncu, gw:f.gw, ipNcu:f.ip, puerto:f.puerto||503,
-             ipGw: ult<=254 ? o.slice(0,3).concat(ult).join(".") : null,
+             ipGw: f.ip_gw || derivada, declarada: !!f.ip_gw,
              nombre:"NCU"+String(f.ncu).padStart(2,"0")+"-GW"+f.gw});
   }
   return [...v.values()].filter(q=>q.ipGw);
@@ -1001,9 +1006,14 @@ function preparaLogger(txt,gws){
   if(!gws.length) return txt;
   const orig=(txt.match(/\$Gateways = @\([\s\S]*?\n\)/)||[""])[0]
     .split("\n").map(l=>"# "+l).join("\n");
+  const dec = gws.every(g=>g.declarada);
   return txt.replace(/\$Gateways = @\([\s\S]*?\n\)/,
-    "# Gateways DIGI de esta planta: la IP de cada NCU mas su numero de gateway\n"+
-    "# (NCU " + gws[0].ncu + " en " + gws[0].ipNcu + " -> GW" + gws[0].gw + " en " + gws[0].ipGw + ").\n"+
+    (dec
+      ? "# Gateways DIGI de esta planta, DECLARADOS en la hoja «Direcciones IP».\n"
+      : "# Gateways DIGI de esta planta, DERIVADOS: la IP de cada NCU mas su numero\n"+
+        "# de gateway (NCU " + gws[0].ncu + " en " + gws[0].ipNcu + " -> GW" + gws[0].gw + " en " + gws[0].ipGw + ").\n"+
+        "# Es una REGLA, no un dato: la hoja «Direcciones IP» trae la columna buena\n"+
+        "# y el toolbox aun no la exporta.\n")+
     "# COMPRUEBALO abriendo esa IP en el navegador: tiene que salir el ConnectPort.\n"+
     "$Gateways = @(\n"+gws.map(g=>'  @{ Name = "'+g.nombre+'"; Host = "'+g.ipGw+'"; User = ""; Pass = "" }').join("\n")+"\n)\n"+
     "# --- lo que traia el fichero antes de prepararlo ---\n"+orig);
@@ -1032,8 +1042,10 @@ function leemeDe(paq){
     "   El segundo, las rutas y los saltos (telnet, puerto 23).",
     "   Se paran con Ctrl+C. Dejan zigbee_log.csv y zigbee_routes.csv al lado.","",
     ...(gws.length
-      ? ["   LA IP DEL GATEWAY YA VA PUESTA. Son los ConnectPort DIGI de esta planta,",
-         "   derivados de la IP de cada NCU mas su numero de gateway:",
+      ? [gws.every(g=>g.declarada)
+          ? "   LA IP DEL GATEWAY YA VA PUESTA, declarada en la hoja «Direcciones IP»:"
+          : "   LA IP DEL GATEWAY YA VA PUESTA, DERIVADA de la IP de cada NCU mas su\n" +
+            "   numero de gateway (es una regla, no un dato de la hoja):",
          ...gws.map(g=>"     "+g.nombre+"  ->  "+g.ipGw+"   (su NCU esta en "+g.ipNcu+")"),
          "",
          "   COMPRUEBA una antes de empezar: abrela en el navegador y tiene que salir",
@@ -1846,7 +1858,9 @@ document.getElementById('demo').addEventListener('click',demo);
       a2.href=u; a2.download='medir_cobertura_'+paq.planta+'.zip';
       document.body.appendChild(a2); a2.click(); a2.remove();
       setTimeout(()=>URL.revokeObjectURL(u),4000);
-      di(partes.length+' ficheros'+(gws.length?' · IP de los gateways puesta':' · pon la IP del gateway en los .ps1'));
+      di(partes.length+' ficheros'+(gws.length
+        ? (gws.every(g=>g.declarada)?' · IP de los gateways declarada':' · IP de los gateways derivada')
+        : ' · pon la IP del gateway en los .ps1'));
     }catch(e){
       /* Decir QUÉ ha fallado. El caso normal es que esa planta no tenga todavía
          sus coordenadas generadas. */
