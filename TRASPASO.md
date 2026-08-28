@@ -59,6 +59,14 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    puerto de cada gateway. El ámbito que se lanza es el **(NCU,GW)**, porque cada uno es una IP:puerto
    del SCADA. Lo que sigue faltando es el volcado del coordinador; eso no se puede generar.
 
+   **TCUs retiradas.** El layout es el plano: trae el seguidor aunque le hayan quitado la TCU.
+   Sondearla no da un error claro, da un **timeout**, y un timeout en el mapa de cobertura se lee
+   como «aquí no llega la señal» — se mide mal una zona que está perfectamente cubierta. Se declaran
+   en el layout por número de esclavo (`"sin_tcu": {"7": [14, 24, 25]}` en Ayora, tres retiradas de
+   la NCU7) y se quitan **después** de numerar: al quitar una TCU las demás no se renumeran, queda el
+   hueco, igual que en la planta. Y en cada pasada el generador **compara lo que va a sondear con lo
+   que declara el SCADA** y canta las diferencias en los dos sentidos, para no descubrirlas en campo.
+
    **El nº de esclavo y la NCU de cada equipo ya están en el repo, no hay que pedirlos.** Cada fila
    de esos CSV lleva `ncu`, `gw` y `esclavo` (el unit id Modbus con el que la NCU habla con ese
    equipo), y las HSU llevan además el suyo (230/231 en Ayora) y cuelgan de la NCU que declara el

@@ -255,6 +255,37 @@ def puntos(planta, en_viga):
                           "ncu": n, "gw": o.get("gw") or gw_cerca(o, n), "esclavo": esc,
                           "idx": 900 + j, "x": o["x"], "n_": o["n"]})
 
+    # TCUs RETIRADAS. El layout es el plano: trae el seguidor aunque le hayan quitado la
+    # TCU. Sondearlas no da un error claro, da un TIMEOUT, y un timeout en el mapa de
+    # cobertura se lee como "aquí no llega la señal". En Ayora se retiraron tres de la
+    # NCU7 y el paquete de campo seguía llevándolas. Se declaran POR ESCLAVO y se quitan
+    # DESPUÉS de numerar, que es como pasa en la planta: al quitar una TCU las demás no
+    # se renumeran, queda el hueco. Va aquí abajo, con las HSU y los repetidores ya
+    # metidos, porque el nº de esclavo solo es único ENTRE TCUs: la HSU 230 de esa NCU no
+    # tiene nada que ver con la TCU 230, y quitarla por el número sería otro agujero.
+    sin = {int(k): set(v) for k, v in (L.get("sin_tcu") or {}).items()}
+    if sin:
+        filas = [r for r in filas
+                 if not (r["rol"] == "TCU" and r["esclavo"] in sin.get(r["ncu"], ()))]
+
+    # Y QUE NO HAYA QUE MIRARLO A OJO: lo que se va a sondear tiene que ser lo que el
+    # SCADA declara. Si no cuadra, o el layout trae seguidores que ya no tienen TCU, o
+    # al SCADA le faltan. Las dos cosas se pagan en campo, así que se cantan aquí.
+    if gws:
+        decl = {}
+        for (nn, _gg), tramos in gws.items():
+            for x in tramos:
+                if x["ini"] and x["fin"]:
+                    decl.setdefault(nn, set()).update(range(x["ini"], x["fin"] + 1))
+        for nn in sorted(set(decl) & {r["ncu"] for r in filas if r["rol"] == "TCU"}):
+            hay = {r["esclavo"] for r in filas if r["rol"] == "TCU" and r["ncu"] == nn}
+            sobra, falta = sorted(hay - decl[nn]), sorted(decl[nn] - hay)
+            if sobra or falta:
+                print("  aviso: %s NCU%d no cuadra con el SCADA%s%s" % (
+                    planta, nn,
+                    "; se sondearían y no existen %s" % (sobra,) if sobra else "",
+                    "; existen y no se sondearían %s" % (falta,) if falta else ""))
+
     filas.sort(key=lambda r: ((r["ncu"] is None, r["ncu"]), r["idx"]))
     ncus = []
     for j, o in enumerate(L.get("ncus") or [], 1):
