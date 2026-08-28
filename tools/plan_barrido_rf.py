@@ -71,6 +71,11 @@ def cotas(planta):
     d = json.load(open(f, encoding="utf-8"))
     filas = []
     for t in d.get("t", []):
+        # SEGUIDORES SIN LEVANTAR. San Jose trae 107 huecos de 2289: seguidores que
+        # el levantamiento no midio, y en el fichero van como `null`. Sin esto la
+        # planta entera reventaba y se quedaba sin hoja de barrido.
+        if not t:
+            continue
         for q in t.get("f", []):
             if q.get("y") and q.get("n"):
                 filas.append((q["x"], (q["n"][0] + q["n"][1]) / 2,
@@ -163,7 +168,17 @@ def main(argv):
             s = (max(xs) - min(xs)) * (max(ns) - min(ns))
             if s > bs:
                 bs, mejor = s, k
+        # PLANTAS PEQUENAS. Fayon (24), Tunez (19) y Bagnarelli (17) no llegan a 25
+        # seguidores en ninguna NCU, asi que no salia ninguna elegida y el programa
+        # moria con KeyError: 'None'. Se barren igual —con menos pares, que es lo
+        # que hay—, porque una planta pequena tambien se mide.
+        if mejor is None and porncu:
+            mejor = max(porncu, key=lambda k: len(porncu[k]))
+            print("aviso: ninguna NCU llega a 25 seguidores; se barre la mayor "
+                  "(NCU %s, %d nodos) con los pares que den de si" % (mejor, len(porncu[mejor])))
         ncu_sel = mejor
+    if ncu_sel is None or str(ncu_sel) not in porncu:
+        sys.exit("La planta %s no tiene ninguna NCU con seguidores en el layout." % planta)
     nodos = porncu[str(ncu_sel)]
 
     ncu_geo = None

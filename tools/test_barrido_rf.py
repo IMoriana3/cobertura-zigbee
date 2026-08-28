@@ -111,5 +111,38 @@ censo = {r2["node_id"] for r2 in csv.DictReader(
 falta = {q["destino"] for q in filas} - censo
 check("todo destino existe en el censo de la planta", not falta, sorted(falta)[:3])
 
+# ── LAS DIEZ PLANTAS, no solo Ayora ─────────────────────────────────────────
+# La herramienta moria en cuatro de las diez, y en silencio para quien no mirara
+# la consola: San Jose por los 107 seguidores que el levantamiento no midio (van
+# como `null` en el fichero de cotas), y Fayon, Tunez y Bagnarelli porque ninguna
+# de sus NCU llega a 25 seguidores y no se elegia ninguna. Una planta sin hoja de
+# barrido es una planta que no se puede calibrar.
+print("\n· la hoja sale para TODAS las plantas, no solo para las grandes")
+import subprocess
+PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "tunez",
+           "paramo", "benante", "panbianco", "polvorin"]
+malas = []
+for pl in PLANTAS:
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), pl],
+                       capture_output=True, text=True, cwd=RAIZ)
+    if r.returncode != 0 or "escrito:" not in r.stdout:
+        malas.append((pl, (r.stderr or r.stdout).strip().splitlines()[-1:] or [""]))
+check("las diez plantas producen su hoja", not malas, malas)
+
+# y las pequeñas la producen DICIENDOLO, no callando que van con menos nodos
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "bagnarelli"],
+                   capture_output=True, text=True, cwd=RAIZ)
+check("una planta pequeña avisa de que se barre la NCU mayor",
+      "ninguna NCU llega a 25" in r.stdout, r.stdout[:200])
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "ayora"],
+                   capture_output=True, text=True, cwd=RAIZ)
+check("y una grande no avisa de nada", "ninguna NCU llega a 25" not in r.stdout, r.stdout[:200])
+
+# el levantamiento incompleto no puede tirar la planta
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+from plan_barrido_rf import cotas                                      # noqa: E402
+cot = cotas("sanjose")
+check("San José tiene cotas pese a los 107 seguidores sin levantar", bool(cot), cot)
+
 print("\n%d OK, %d FAIL" % (ok, ko))
 sys.exit(1 if ko else 0)
