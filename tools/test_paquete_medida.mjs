@@ -119,10 +119,15 @@ check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
       gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
 
 /* ---- el paquete y el léeme ---- */
-check('el paquete lleva los CUATRO recolectores', JSON.stringify(paq.colectores) ===
+check('el paquete lleva los cuatro recolectores y el cruce', JSON.stringify(paq.colectores) ===
       JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1',
-                      'zigbee_angulos.ps1']),
+                      'zigbee_angulos.ps1','rellena_barrido.ps1']),
       JSON.stringify(paq.colectores));
+/* TODO LO DEL ZIP TIENE QUE PODER CORRERSE ALLI. En el PC de la planta hay
+   PowerShell y no hay Python: un paso del léeme que pida `python3` es un paso
+   que no se puede dar, y el que está allí no lo puede arreglar. */
+check('todo lo que se copia allí es PowerShell',
+      paq.colectores.every(f => f.endsWith('.ps1')), paq.colectores.join(','));
 /* EL DE ÁNGULOS VA AL REVÉS QUE LOS OTROS TRES: lee el registro 30111 del MODBUS
    de la NCU (503/504), no del ConnectPort. Escribirle la del gateway sería el
    mismo error caro de siempre, del otro lado. */
@@ -165,8 +170,13 @@ check('y el de ángulos, con su aviso de que va al Modbus y no al gateway',
       /ExecutionPolicy Bypass -File \.\\zigbee_angulos\.ps1/.test(leeme) &&
       /MODBUS de la NCU \(503\/504\), no contra el gateway/.test(leeme));
 check('el léeme manda cruzar los ángulos, no apuntarlos a mano',
-      /rellena_barrido\.py barrido_elburgo_NCU02\.csv angulos\.csv/.test(leeme) &&
-      /EL ANGULO NO SE APUNTA A MANO/.test(leeme));
+      /rellena_barrido\.ps1/.test(leeme) && /EL ANGULO NO SE APUNTA A MANO/.test(leeme));
+/* y ningún paso del léeme puede pedir Python, porque allí no lo hay. El
+   `adaptador_*.py` del final es lo único que se hace de vuelta, no en la planta. */
+const enPlanta = leeme.slice(0, leeme.indexOf('AL VOLVER'));
+check('ningún paso EN LA PLANTA pide python3',
+      !/python3?\s/i.test(enPlanta),
+      (enPlanta.match(/.*python.*/gi)||[]).join(' | '));
 check('y avisa de que lo que no case en el tiempo se deja vacío',
       /se deja VACIO/.test(leeme) && /angulo inventado/.test(leeme));
 /* El número de serie de un XBee ES su dirección de 64 bits. Decirlo evita que

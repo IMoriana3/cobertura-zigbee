@@ -67,7 +67,18 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    | `zigbee_routes_logger.ps1` | las rutas y los saltos, en bucle (telnet, 23) |
    | `zigbee_inventario.ps1` | **qué hay puesto**: una vez, una fila por módulo con su nº de serie, firmware, canal y PAN ID |
    | `zigbee_angulos.ps1` | el **ángulo** de cada seguidor del barrido, del Modbus de la NCU, en bucle |
+   | `rellena_barrido.ps1` | cruza los ángulos con la hoja, allí mismo al acabar |
    | `barrido_<planta>_NCU<nn>.csv` | la hoja del barrido de calibración |
+
+   **Todo lo que se copia allí es PowerShell.** En el PC de la planta hay PowerShell y no hay
+   Python: un paso del léeme que pida `python3` es un paso que no se puede dar, y el que está allí
+   no lo puede arreglar. `tools/rellena_barrido.py` hace lo mismo que el `.ps1` para trabajar aquí,
+   y una prueba compara las dos salidas **celda a celda** — dos implementaciones de lo mismo se
+   separan solas, y la que se separa es la que nadie corre hasta que hace falta.
+
+   Los bancos corren en **es-ES** a propósito: el PC de la planta es Windows en español y allí
+   PowerShell escribe «15,5», no «15.5». Bajo `en-US` no se prueba nada de eso — y lo que se rompía
+   era la lectura del CSV, en silencio y sin un solo ángulo.
 
    El **número de serie** de un módulo XBee es su dirección de 64 bits, la misma que va impresa en
    la etiqueta: no hay otro número que leer, y ya viene en el `discover`. El inventario además deja

@@ -52,8 +52,13 @@ def carga_angulos(ruta):
             # Un TCU que no contesto deja `tilt_deg` vacio, y ahi se queda: sin
             # angulo, no con un cero. `float("")` ya lo tira, asi que no hace
             # falta un guard aparte que ademas nadie podria comprobar.
+            # COMA DECIMAL. El CSV lo escribe PowerShell con la cultura de la
+            # maquina, y el PC de la planta es Windows en espanol: alli el angulo
+            # sale «15,5». `float("15,5")` no da un numero raro, da ValueError, y
+            # esta fila se caia — o sea que TODAS se caian, en silencio, y la hoja
+            # volvia sin un solo angulo sin que nadie supiera por que.
             try:
-                out.append((int(e), h, float(r.get("tilt_deg") or ""),
+                out.append((int(e), h, float((r.get("tilt_deg") or "").replace(",", ".")),
                             (r.get("modo") or "").strip()))
             except ValueError:
                 continue

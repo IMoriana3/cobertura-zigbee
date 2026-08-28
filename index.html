@@ -964,8 +964,12 @@ function zipStore(ficheros,fecha){
 }
 /* Los dos recolectores son lo que se EJECUTA en el PC de planta: con las
    coordenadas solas allí no se mide nada. */
+/* Lo que se copia en el PC de la planta. TODO en PowerShell: alli hay
+   PowerShell y no hay Python, asi que un paso que pida `python3` es un paso que
+   no se puede dar. `rellena_barrido.ps1` no recolecta, cruza — pero va aqui
+   porque se corre alli mismo, al acabar el barrido. */
 const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1",
-                  "zigbee_angulos.ps1"];
+                  "zigbee_angulos.ps1","rellena_barrido.ps1"];
 function paqueteDeManifiesto(man){
   if(!man||!man.ambitos) return null;
   /* LA HOJA DE BARRIDO. Los recolectores miden la malla COMO FUNCIONA, y esa es
@@ -1133,7 +1137,7 @@ function leemeDe(paq){
          "   Lee el registro 30111 de los TCU de la hoja cada 30 s y deja angulos.csv.",
          "   OJO: este va contra el MODBUS de la NCU (503/504), no contra el gateway.",
          "   Al volver se cruza por la hora y rellena `beta_grados` y `beta_destino`:","",
-         "     python3 rellena_barrido.py "+((paq.resumen.barridos||[])[0]||"barrido.csv")+" angulos.csv","",
+         "     powershell -ExecutionPolicy Bypass -File .\\rellena_barrido.ps1","",
          "   Lo que no case en el tiempo se deja VACIO. Un angulo inventado entra en",
          "   el ajuste sin que se note.",
          "   Los pares que el modelo da por perdidos son los mas valiosos: si llegan,",

@@ -120,8 +120,13 @@ txt = txt.replace("$IntervalSec = 30", "$IntervalSec = 1")
 ruta = os.path.join(tmp, "zigbee_angulos.ps1")
 open(ruta, "w", encoding="utf-8").write(txt)
 
-print("\n· se corre el recolector de ángulos contra una NCU Modbus de mentira")
-p = subprocess.Popen([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ruta],
+# TODO ESTO CORRE EN es-ES a proposito: el PC de la planta es Windows en español
+# y allí PowerShell escribe «15,5» y no «15.5». Bajo en-US no se prueba nada de
+# eso, y lo que se rompe es la lectura del CSV — en silencio, sin un solo ángulo.
+print("\n· se corre el recolector de ángulos contra una NCU Modbus de mentira (en es-ES)")
+ES = "[Globalization.CultureInfo]::CurrentCulture=[Globalization.CultureInfo]::new('es-ES'); "
+p = subprocess.Popen([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                      "-Command", ES + "& '%s'" % ruta],
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=tmp)
 csvp = os.path.join(tmp, "angulos.csv")
 import time
@@ -138,6 +143,9 @@ except Exception:
 
 di(os.path.exists(csvp), "escribe angulos.csv", salida[-300:])
 angs = list(csv.DictReader(open(csvp, encoding="utf-8-sig"))) if os.path.exists(csvp) else []
+di(any("," in (a.get("tilt_deg") or "") for a in angs),
+   "el CSV sale con COMA decimal, como en el PC de la planta",
+   [a.get("tilt_deg") for a in angs][:3])
 di(any((a.get("tilt_deg") or "") != "" for a in angs),
    "y con algún ángulo leído de verdad (si no, la trama no llegó a la NCU)",
    salida[-300:] or [a.get("error") for a in angs][:2])
@@ -158,9 +166,9 @@ di(30111 in dirs and 30001 in dirs,
 di(not ({110, 111, 0, 1} & dirs), "sin restarle 30001 ni 30000", sorted(dirs))
 
 print("\n· el signo, que es donde se rompe callando")
-di(prim.get("30", {}).get("tilt_deg") == "-30", "un seguidor a -30° sale a -30, no a 6528",
+di((prim.get("30", {}).get("tilt_deg") or "") == "-30", "un seguidor a -30° sale a -30, no a 6528",
    prim.get("30", {}).get("tilt_deg"))
-di(prim.get("31", {}).get("tilt_deg") == "15,5" or prim.get("31", {}).get("tilt_deg") == "15.5",
+di((prim.get("31", {}).get("tilt_deg") or "").replace(".", ",") == "15,5",
    "y uno positivo, con su décima", prim.get("31", {}).get("tilt_deg"))
 
 print("\n· solo los TCU de la hoja, y el modo de cada uno")
@@ -219,6 +227,39 @@ di((out[2].get("beta_grados") or "") == "", "la medida de otro día NO se lleva 
 di("no se inventan" in r.stdout, "y se dice cuántas se han quedado sin él", r.stdout)
 di("2 de 3 medidas con angulo" in r.stdout, "con la cuenta",
    (r.stdout.splitlines() or [""])[0] + " | " + r.stderr[-160:])
+
+# ── LAS DOS VERSIONES DEL CRUCE TIENEN QUE DAR LO MISMO ─────────────────────
+# El de la planta es el .ps1 (alli hay PowerShell y no hay Python); el .py es
+# para trabajar aqui. Dos implementaciones de lo mismo se separan solas, y la
+# que se separa es la que nadie corre hasta que hace falta. Se comparan sobre la
+# MISMA entrada, celda a celda.
+print("\n· el cruce en PowerShell da exactamente lo mismo que el de Python")
+import shutil as _sh
+hoja2 = os.path.join(tmp, "ps", "barrido_prueba_NCU01.csv")
+os.makedirs(os.path.join(tmp, "ps"), exist_ok=True)
+# la hoja SIN cruzar, tal y como la dejo el de campo, y los mismos angulos
+with open(hoja2, "w", newline="", encoding="utf-8") as f:
+    w = csv.DictWriter(f, fieldnames=list(filas[0].keys()))
+    w.writeheader()
+    w.writerows(filas)
+_sh.copy(csvp, os.path.join(tmp, "ps", "angulos.csv"))
+_sh.copy(os.path.join(RAIZ, "rellena_barrido.ps1"), os.path.join(tmp, "ps", "rellena_barrido.ps1"))
+rp = subprocess.run([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                     ES + "& '%s'" % os.path.join(tmp, "ps", "rellena_barrido.ps1")],
+                    capture_output=True, text=True, cwd=os.path.join(tmp, "ps"), timeout=180)
+di(rp.returncode == 0, "el cruce en PowerShell termina bien", (rp.stdout + rp.stderr)[-300:])
+outps = list(csv.DictReader(open(hoja2, encoding="utf-8-sig")))
+di(len(outps) == len(out), "mismas filas", (len(outps), len(out)))
+difs = []
+for a1, b1 in zip(out, outps):
+    for c in ("beta_grados", "beta_destino", "modo_origen", "llega", "hora_utc",
+              "esclavo_origen", "esclavo_destino"):
+        if (a1.get(c) or "") != (b1.get(c) or ""):
+            difs.append("%s: py=%r ps=%r" % (c, a1.get(c), b1.get(c)))
+di(not difs, "y el mismo valor en cada celda que importa", difs[:4])
+di("2 de 3 medidas con angulo" in rp.stdout, "y dice la misma cuenta",
+   (rp.stdout.splitlines() or [""])[0])
+di("fuera de AUTO" in rp.stdout, "y canta igual el seguidor que no seguia", rp.stdout)
 
 srv.close()
 print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
