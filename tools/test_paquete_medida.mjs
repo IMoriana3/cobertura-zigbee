@@ -26,7 +26,7 @@ const i0 = html.indexOf('/* PAQUETE-INI');
 const i1 = html.indexOf('/* PAQUETE-FIN');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro PAQUETE-INI / PAQUETE-FIN'); process.exit(1); }
 const F = new Function(html.slice(i0, html.indexOf('*/', i1) + 2) +
-  ';return {crc32,zipStore,dosFecha,paqueteDeManifiesto,gwsDe,preparaLogger,preparaRutas,leemeDe,COLECTORES};')();
+  ';return {crc32,zipStore,dosFecha,paqueteDeManifiesto,gwsDe,preparaLogger,preparaRutas,preparaInventario,preparaColector,leemeDe,COLECTORES};')();
 
 check('el CRC32 da el valor canónico de "123456789"',
       F.crc32(new TextEncoder().encode('123456789')) === 0xCBF43926,
@@ -86,6 +86,21 @@ check('el recolector dice que la IP está DERIVADA, y que hay que comprobarla',
 }
 const RUTAS = fs.readFileSync(path.join(RAIZ, 'zigbee_routes_logger.ps1'), 'utf8');
 check('el de rutas apunta al primer gateway', /\$GwHost\s*=\s*"10\.100\.1\.53"/.test(F.preparaRutas(RUTAS, gws)));
+/* EL INVENTARIO TAMBIÉN LLEVA LA IP PUESTA. Lee por HTTP/RCI como el logger, y
+   si sale con la IP de ejemplo el que está en la planta inventaría el gateway de
+   El Burgo desde Ayora — o nada. Es el mismo error caro de siempre. */
+const INV = fs.readFileSync(path.join(RAIZ, 'zigbee_inventario.ps1'), 'utf8');
+const invListo = F.preparaColector('zigbee_inventario.ps1', INV, gws);
+check('el inventario sale con los gateways de la planta escritos',
+      /Host = "10\.100\.1\.53"/.test(invListo) && /Host = "10\.100\.1\.57"/.test(invListo),
+      (invListo.match(/Host = "[^"]*"/g)||[]).slice(0,3).join(' '));
+check('y no se queda la IP de ejemplo del fichero',
+      !/^\s*@\{ Name = "GW-01"; Host = "10\.100\.1\.54"/m.test(invListo));
+check('el despachador manda cada recolector a su preparador',
+      F.preparaColector('zigbee_logger.ps1', LOGGER, gws) === F.preparaLogger(LOGGER, gws) &&
+      F.preparaColector('zigbee_routes_logger.ps1', RUTAS, gws) === F.preparaRutas(RUTAS, gws));
+check('y uno que no conozca lo deja TAL CUAL, sin inventarle una IP',
+      F.preparaColector('otro.ps1', LOGGER, gws) === LOGGER);
 /* Sin IP declarada NO se toca: mejor el original con su «edita esto» que uno con
    una IP inventada. */
 check('sin gateways declarados, los recolectores se dejan INTACTOS',
@@ -104,8 +119,44 @@ check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
       gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
 
 /* ---- el paquete y el léeme ---- */
-check('el paquete lleva los dos recolectores', JSON.stringify(paq.colectores) ===
-      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1']));
+check('el paquete lleva los cuatro recolectores y el cruce', JSON.stringify(paq.colectores) ===
+      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1',
+                      'zigbee_angulos.ps1','rellena_barrido.ps1']),
+      JSON.stringify(paq.colectores));
+/* TODO LO DEL ZIP TIENE QUE PODER CORRERSE ALLI. En el PC de la planta hay
+   PowerShell y no hay Python: un paso del léeme que pida `python3` es un paso
+   que no se puede dar, y el que está allí no lo puede arreglar. */
+check('todo lo que se copia allí es PowerShell',
+      paq.colectores.every(f => f.endsWith('.ps1')), paq.colectores.join(','));
+/* EL DE ÁNGULOS VA AL REVÉS QUE LOS OTROS TRES: lee el registro 30111 del MODBUS
+   de la NCU (503/504), no del ConnectPort. Escribirle la del gateway sería el
+   mismo error caro de siempre, del otro lado. */
+const ANG = fs.readFileSync(path.join(RAIZ, 'zigbee_angulos.ps1'), 'utf8');
+const angListo = F.preparaColector('zigbee_angulos.ps1', ANG, gws);
+check('el de ángulos sale con la IP del MODBUS de la NCU, no con la del gateway',
+      /Host = "10\.100\.1\.52"; Port = 503/.test(angListo) &&
+      !/Host = "10\.100\.1\.53"/.test(angListo),
+      (angListo.match(/Host = "[^"]*"; Port = \d+/g)||[]).slice(0,3).join(' '));
+check('y con los dos puertos, uno por gateway',
+      /Port = 503/.test(angListo) && /Port = 504/.test(angListo));
+/* y el de siempre sigue yendo al gateway: son direcciones distintas y no se
+   pueden cruzar */
+check('mientras el logger sigue apuntando al ConnectPort',
+      /Host = "10\.100\.1\.53"/.test(F.preparaColector('zigbee_logger.ps1', LOGGER, gws)));
+/* LA HOJA DE BARRIDO. Es la única medida que CALIBRA: los recolectores solo ven
+   los enlaces que la malla eligió —los que van bien—, y con esa muestra el ajuste
+   sale de r = +0,16. Si no viaja en el ZIP, el que va a la planta no la lleva, y
+   volver es otro viaje. */
+check('y la hoja de barrido, que es lo único que calibra',
+      paq.ficheros.includes('barrido_elburgo_NCU02.csv'),
+      paq.ficheros.filter(f=>f.startsWith('barrido')).join(','));
+check('la declara el manifiesto, no una lista escrita a mano aquí',
+      Array.isArray(MAN_BURGO.barridos) && MAN_BURGO.barridos.length > 0, MAN_BURGO.barridos);
+/* y una planta sin hoja no se rompe: se lleva lo demás */
+const sinB = F.paqueteDeManifiesto({...MAN_BURGO, barridos: undefined});
+check('una planta sin barrido sigue armando su paquete',
+      sinB.ficheros.length > 0 && !sinB.ficheros.some(f=>f.startsWith('barrido')),
+      sinB.ficheros.length);
 check('y las coordenadas de todos sus ámbitos, con el manifiesto',
       paq.ficheros.includes('coords_elburgo_NCU01_GW1.csv') &&
       paq.ficheros.includes('ncus_elburgo.csv') &&
@@ -113,6 +164,37 @@ check('y las coordenadas de todos sus ámbitos, con el manifiesto',
 const leeme = F.leemeDe(paq);
 check('el léeme empieza por lo que se teclea en el PC de planta',
       /ExecutionPolicy Bypass -File \.\\zigbee_logger\.ps1/.test(leeme));
+check('y dice cómo lanzar el inventario',
+      /ExecutionPolicy Bypass -File \.\\zigbee_inventario\.ps1/.test(leeme));
+check('y el de ángulos, con su aviso de que va al Modbus y no al gateway',
+      /ExecutionPolicy Bypass -File \.\\zigbee_angulos\.ps1/.test(leeme) &&
+      /MODBUS de la NCU \(503\/504\), no contra el gateway/.test(leeme));
+check('el léeme manda cruzar los ángulos, no apuntarlos a mano',
+      /rellena_barrido\.ps1/.test(leeme) && /EL ANGULO NO SE APUNTA A MANO/.test(leeme));
+/* y ningún paso del léeme puede pedir Python, porque allí no lo hay. El
+   `adaptador_*.py` del final es lo único que se hace de vuelta, no en la planta. */
+const enPlanta = leeme.slice(0, leeme.indexOf('AL VOLVER'));
+check('ningún paso EN LA PLANTA pide python3',
+      !/python3?\s/i.test(enPlanta),
+      (enPlanta.match(/.*python.*/gi)||[]).join(' | '));
+check('y avisa de que lo que no case en el tiempo se deja vacío',
+      /se deja VACIO/.test(leeme) && /angulo inventado/.test(leeme));
+/* El número de serie de un XBee ES su dirección de 64 bits. Decirlo evita que
+   alguien se ponga a buscar otro número por las cajas. */
+check('explica que el nº de serie es la dirección de 64 bits de la etiqueta',
+      /NUMERO DE SERIE/.test(leeme) && /64 bits/.test(leeme) && /etiqueta/.test(leeme));
+check('y que hay que mandar también el volcado en bruto',
+      /zigbee_inventario_crudo\.xml/.test(leeme) && /MANDA LOS DOS/.test(leeme));
+check('el léeme explica el barrido y por qué los recolectores no bastan',
+      /barrido_elburgo_NCU02\.csv/.test(leeme) && /r = \+0,16/.test(leeme) &&
+      /LOS CEROS SON LA MITAD/.test(leeme));
+check('y dice qué dos columnas se rellenan a mano',
+      /`llega`/.test(leeme) && /`beta_grados`/.test(leeme));
+check('que la malla cambia y hay que dejarlo días',
+      /DEJALOS DIAS, no horas/.test(leeme));
+const leemeSinB = F.leemeDe(sinB);
+check('sin hoja de barrido, el léeme no habla de un fichero que no está',
+      !/barrido/i.test(leemeSinB) && /AL VOLVER/.test(leemeSinB));
 check('separa las DOS direcciones: la del gateway y la del Modbus de la NCU',
       /10\.100\.1\.53   \(su NCU esta en 10\.100\.1\.52\)/.test(leeme) &&
       /NO es la dirección del recolector/.test(leeme),

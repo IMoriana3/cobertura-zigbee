@@ -83,6 +83,7 @@ DE QUÉ NCU CUELGA CADA HSU — por este orden, y el manifiesto dice cuál se ap
   3. LA NCU MÁS CERCANA, que es la regla débil —falla 3 de los 24 casos conocidos— y por eso el
      manifiesto nombra una a una las HSU que salieron así.
 """
+import glob
 import json, csv, sys, math, os, re
 
 # Benante, Panbianco y El Polvorin se anaden el 2026-08-26: tienen layout con NCU y gateway por
@@ -377,6 +378,12 @@ def genera(planta, en_viga):
            "hsus_asignadas_por": hsu_origen,
            "ncus_sin_declarar_en_scada": sin_tb,
            "ambitos": ambitos,
+           # Las HOJAS DE BARRIDO que haya en la carpeta (plan_barrido_rf.py). No las
+           # genera este script —son otra campana, a mano y pareja a pareja—, pero si
+           # las declara, para que el paquete de campo se las lleve. Sin ellas el viaje
+           # a la planta mide como funciona la malla pero no calibra el modelo.
+           "barridos": sorted(os.path.basename(q) for q in glob.glob(
+               os.path.join(d, "barrido_%s_*.csv" % planta))),
            "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv %s_real.geojson" % planta}
     """NO PISAR UN MANIFIESTO CON MENOS DE LO QUE YA TENÍA. La IP y el puerto de
        cada gateway salen del repo del SCADA, que se clona AL LADO de este. Sin

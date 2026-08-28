@@ -964,10 +964,23 @@ function zipStore(ficheros,fecha){
 }
 /* Los dos recolectores son lo que se EJECUTA en el PC de planta: con las
    coordenadas solas allí no se mide nada. */
-const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1"];
+/* Lo que se copia en el PC de la planta. TODO en PowerShell: alli hay
+   PowerShell y no hay Python, asi que un paso que pida `python3` es un paso que
+   no se puede dar. `rellena_barrido.ps1` no recolecta, cruza — pero va aqui
+   porque se corre alli mismo, al acabar el barrido. */
+const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1",
+                  "zigbee_angulos.ps1","rellena_barrido.ps1"];
 function paqueteDeManifiesto(man){
   if(!man||!man.ambitos) return null;
+  /* LA HOJA DE BARRIDO. Los recolectores miden la malla COMO FUNCIONA, y esa es
+     una muestra censurada: solo se ven los enlaces que la malla eligió, o sea
+     los que van bien. Los que no llegan no aparecen en ningún CSV, y sin ellos
+     no se calibra nada — las 49 medidas de El Burgo dieron r = +0,16 frente a
+     log(distancia) sobre un recorrido de ×14. La hoja trae pares elegidos por
+     GEOMETRÍA para anotarlos a mano, ceros incluidos. Va en el mismo ZIP para
+     que un solo viaje a la planta valga para las dos cosas. */
   const f=man.ambitos.map(q=>q.fichero)
+    .concat(man.barridos||[])
     .concat(["ncus_"+man.planta+".csv","manifiesto_"+man.planta+".json"]);
   return {planta:man.planta,titulo:man.titulo||man.planta,ficheros:[...new Set(f)],
           colectores:COLECTORES,resumen:man};
@@ -1018,6 +1031,33 @@ function preparaLogger(txt,gws){
     "$Gateways = @(\n"+gws.map(g=>'  @{ Name = "'+g.nombre+'"; Host = "'+g.ipGw+'"; User = ""; Pass = "" }').join("\n")+"\n)\n"+
     "# --- lo que traia el fichero antes de prepararlo ---\n"+orig);
 }
+/* El inventario lee por HTTP/RCI, igual que el logger: misma lista de gateways
+   y misma sustitución. */
+function preparaInventario(txt,gws){ return preparaLogger(txt,gws); }
+/* QUIEN PREPARA QUÉ. Va aquí, con nombre, y no enterrado en el handler del
+   botón: es la línea que decide si el que va a medir apunta al aparato bueno, y
+   ahí abajo no había forma de comprobarla. Un recolector que no reconozcamos
+   sale TAL CUAL — mejor sin IP que con la de otro. */
+/* EL DE ANGULOS VA AL REVES QUE LOS OTROS TRES. Los demas hablan con el
+   ConnectPort DIGI (HTTP/RCI 80, telnet 23) y por eso llevan `ip_gw`. Este lee
+   el angulo del seguidor del registro 30111, que esta en el MODBUS TCP de la
+   NCU: otra IP y otro puerto (503 el GW1, 504 el GW2), y esos SI salen del
+   manifiesto. Escribirle la del gateway seria el mismo error de siempre, del
+   otro lado. */
+function preparaAngulos(txt,gws){
+  if(!gws.length) return txt;
+  return txt.replace(/\$Ncus = @\([\s\S]*?\n\)/,
+    "# NCU de esta planta: el MODBUS TCP del SCADA, que NO es la IP del gateway.\n"+
+    "# El angulo del seguidor (registro 30111) se lee de aqui.\n"+
+    "$Ncus = @(\n"+gws.map(g=>'  @{ Name = "'+g.nombre+'"; Host = "'+g.ipNcu+'"; Port = '+g.puerto+' }').join("\n")+"\n)");
+}
+function preparaColector(nombre,txt,gws){
+  if(nombre==='zigbee_logger.ps1')        return preparaLogger(txt,gws);
+  if(nombre==='zigbee_inventario.ps1')    return preparaInventario(txt,gws);
+  if(nombre==='zigbee_routes_logger.ps1') return preparaRutas(txt,gws);
+  if(nombre==='zigbee_angulos.ps1')       return preparaAngulos(txt,gws);
+  return txt;
+}
 function preparaRutas(txt,gws){
   if(!gws.length) return txt;
   return txt.replace(/\$GwHost\s*=\s*"[^"]*"/,'$GwHost     = "'+gws[0].ipGw+'"');
@@ -1040,7 +1080,20 @@ function leemeDe(paq){
     "   powershell -ExecutionPolicy Bypass -File .\\zigbee_routes_logger.ps1","",
     "   El primero saca el RSSI y el estado de cada TCU (HTTP/RCI, puerto 80).",
     "   El segundo, las rutas y los saltos (telnet, puerto 23).",
-    "   Se paran con Ctrl+C. Dejan zigbee_log.csv y zigbee_routes.csv al lado.","",
+    "   Se paran con Ctrl+C. Dejan zigbee_log.csv y zigbee_routes.csv al lado.",
+    "   DEJALOS DIAS, no horas: la malla cambia con la temperatura, con el angulo",
+    "   de los seguidores a lo largo del dia y con el viento. Un rato bueno no dice",
+    "   nada.","",
+    "1b) Y UNA VEZ, en cualquier momento, el inventario:","",
+    "   powershell -ExecutionPolicy Bypass -File .\\zigbee_inventario.ps1","",
+    "   Este no mide: apunta QUE hay puesto. Una fila por modulo.",
+    "   El NUMERO DE SERIE de un modulo XBee es su direccion de 64 bits, la misma",
+    "   que va impresa en la etiqueta: no hay otro numero que leer, y ya sale aqui.",
+    "   Ademas: firmware, hardware, canal, PAN ID y todo lo que el gateway sepa",
+    "   decir. Termina solo. Deja zigbee_inventario.csv y ademas",
+    "   zigbee_inventario_crudo.xml, que son las respuestas tal cual: MANDA LOS DOS.",
+    "   Con el .xml se ve que mas sabe decir ese gateway y la proxima version ya lo",
+    "   pide por su nombre.","",
     ...(gws.length
       ? [gws.every(g=>g.declarada)
           ? "   LA IP DEL GATEWAY YA VA PUESTA, declarada en la hoja «Direcciones IP»:"
@@ -1065,7 +1118,33 @@ function leemeDe(paq){
       ?"   Esta planta declara sus gateways en el SCADA."
       :"   Esta planta NO los declara: el ámbito es la NCU (coords_*_NCU<nn>.csv).",
     "   ncus_*.csv son los COORDINADORES: no se sondean, son quien sondea.","",
-    "3) AL VOLVER, con los CSV que dejaron los recolectores:","",
+    ...((paq.resumen.barridos||[]).length
+      ? ["3) EL BARRIDO, si vas a calibrar el modelo. Esto es OTRA COSA y hay que",
+         "   andar la planta: "+paq.resumen.barridos.join(", "),"",
+         "   POR QUE. Los recolectores de arriba solo ven los enlaces que la malla",
+         "   ELIGIO, o sea los que funcionan. Los que no llegan no salen en ningun",
+         "   CSV. Con esa muestra no se calibra: las 49 medidas de El Burgo dieron",
+         "   r = +0,16 frente a log(distancia) sobre un recorrido de x14.",
+         "   La hoja trae pares elegidos por GEOMETRIA —a lo largo del eje, a traves",
+         "   de filas y en diagonal— para que distancia y mesas cruzadas dejen de ir",
+         "   pegadas y el ajuste pueda repartir la culpa.","",
+         "   SE APUNTAN dos cosas por par: `llega` (1 si hubo enlace, 0 si no) y la",
+         "   hora en `hora_utc`. LOS CEROS SON LA MITAD DEL DATO: un par que no llega",
+         "   vale tanto como uno que si.","",
+         "   EL ANGULO NO SE APUNTA A MANO. Esta en el Modbus. Deja corriendo, en otra",
+         "   ventana y mientras andas el barrido:","",
+         "     powershell -ExecutionPolicy Bypass -File .\\zigbee_angulos.ps1","",
+         "   Lee el registro 30111 de los TCU de la hoja cada 30 s y deja angulos.csv.",
+         "   OJO: este va contra el MODBUS de la NCU (503/504), no contra el gateway.",
+         "   Al volver se cruza por la hora y rellena `beta_grados` y `beta_destino`:","",
+         "     powershell -ExecutionPolicy Bypass -File .\\rellena_barrido.ps1","",
+         "   Lo que no case en el tiempo se deja VACIO. Un angulo inventado entra en",
+         "   el ajuste sin que se note.",
+         "   Los pares que el modelo da por perdidos son los mas valiosos: si llegan,",
+         "   el modelo sobra. Cada fila trae lat/lon de los dos extremos y el esclavo",
+         "   Modbus, para navegar y para saber a quien estas mirando.","",
+         "4) AL VOLVER, con los CSV que dejaron los recolectores:",""]
+      : ["3) AL VOLVER, con los CSV que dejaron los recolectores:",""]),
     "   python3 adaptador_elburgo.py coords.csv zigbee_routes.csv zigbee_log.csv "+paq.planta+"_real","",
     "   Eso deja "+paq.planta+"_real.geojson, y esta misma página lo coge sola.",
     "   Y los CSV se cargan aquí con «Cargar registro» y «Cargar rutas».",""].join("\n");
@@ -1846,7 +1925,7 @@ document.getElementById('demo').addEventListener('click',demo);
       const cols=await Promise.all(paq.colectores.map(async f=>{
         const t=await (await baja(f,f)).text();
         return {nombre:paq.planta+'/'+f,
-                datos:new TextEncoder().encode(f==='zigbee_logger.ps1'?preparaLogger(t,gws):preparaRutas(t,gws))};
+                datos:new TextEncoder().encode(preparaColector(f,t,gws))};
       }));
       const partes=await Promise.all(paq.ficheros.map(async f=>({
         nombre:paq.planta+'/'+f,
