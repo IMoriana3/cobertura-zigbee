@@ -119,9 +119,25 @@ check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
       gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
 
 /* ---- el paquete y el léeme ---- */
-check('el paquete lleva los TRES recolectores', JSON.stringify(paq.colectores) ===
-      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1']),
+check('el paquete lleva los CUATRO recolectores', JSON.stringify(paq.colectores) ===
+      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1',
+                      'zigbee_angulos.ps1']),
       JSON.stringify(paq.colectores));
+/* EL DE ÁNGULOS VA AL REVÉS QUE LOS OTROS TRES: lee el registro 30111 del MODBUS
+   de la NCU (503/504), no del ConnectPort. Escribirle la del gateway sería el
+   mismo error caro de siempre, del otro lado. */
+const ANG = fs.readFileSync(path.join(RAIZ, 'zigbee_angulos.ps1'), 'utf8');
+const angListo = F.preparaColector('zigbee_angulos.ps1', ANG, gws);
+check('el de ángulos sale con la IP del MODBUS de la NCU, no con la del gateway',
+      /Host = "10\.100\.1\.52"; Port = 503/.test(angListo) &&
+      !/Host = "10\.100\.1\.53"/.test(angListo),
+      (angListo.match(/Host = "[^"]*"; Port = \d+/g)||[]).slice(0,3).join(' '));
+check('y con los dos puertos, uno por gateway',
+      /Port = 503/.test(angListo) && /Port = 504/.test(angListo));
+/* y el de siempre sigue yendo al gateway: son direcciones distintas y no se
+   pueden cruzar */
+check('mientras el logger sigue apuntando al ConnectPort',
+      /Host = "10\.100\.1\.53"/.test(F.preparaColector('zigbee_logger.ps1', LOGGER, gws)));
 /* LA HOJA DE BARRIDO. Es la única medida que CALIBRA: los recolectores solo ven
    los enlaces que la malla eligió —los que van bien—, y con esa muestra el ajuste
    sale de r = +0,16. Si no viaja en el ZIP, el que va a la planta no la lleva, y
@@ -145,6 +161,14 @@ check('el léeme empieza por lo que se teclea en el PC de planta',
       /ExecutionPolicy Bypass -File \.\\zigbee_logger\.ps1/.test(leeme));
 check('y dice cómo lanzar el inventario',
       /ExecutionPolicy Bypass -File \.\\zigbee_inventario\.ps1/.test(leeme));
+check('y el de ángulos, con su aviso de que va al Modbus y no al gateway',
+      /ExecutionPolicy Bypass -File \.\\zigbee_angulos\.ps1/.test(leeme) &&
+      /MODBUS de la NCU \(503\/504\), no contra el gateway/.test(leeme));
+check('el léeme manda cruzar los ángulos, no apuntarlos a mano',
+      /rellena_barrido\.py barrido_elburgo_NCU02\.csv angulos\.csv/.test(leeme) &&
+      /EL ANGULO NO SE APUNTA A MANO/.test(leeme));
+check('y avisa de que lo que no case en el tiempo se deja vacío',
+      /se deja VACIO/.test(leeme) && /angulo inventado/.test(leeme));
 /* El número de serie de un XBee ES su dirección de 64 bits. Decirlo evita que
    alguien se ponga a buscar otro número por las cajas. */
 check('explica que el nº de serie es la dirección de 64 bits de la etiqueta',

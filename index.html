@@ -964,7 +964,8 @@ function zipStore(ficheros,fecha){
 }
 /* Los dos recolectores son lo que se EJECUTA en el PC de planta: con las
    coordenadas solas allí no se mide nada. */
-const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1"];
+const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1",
+                  "zigbee_angulos.ps1"];
 function paqueteDeManifiesto(man){
   if(!man||!man.ambitos) return null;
   /* LA HOJA DE BARRIDO. Los recolectores miden la malla COMO FUNCIONA, y esa es
@@ -1033,10 +1034,24 @@ function preparaInventario(txt,gws){ return preparaLogger(txt,gws); }
    botón: es la línea que decide si el que va a medir apunta al aparato bueno, y
    ahí abajo no había forma de comprobarla. Un recolector que no reconozcamos
    sale TAL CUAL — mejor sin IP que con la de otro. */
+/* EL DE ANGULOS VA AL REVES QUE LOS OTROS TRES. Los demas hablan con el
+   ConnectPort DIGI (HTTP/RCI 80, telnet 23) y por eso llevan `ip_gw`. Este lee
+   el angulo del seguidor del registro 30111, que esta en el MODBUS TCP de la
+   NCU: otra IP y otro puerto (503 el GW1, 504 el GW2), y esos SI salen del
+   manifiesto. Escribirle la del gateway seria el mismo error de siempre, del
+   otro lado. */
+function preparaAngulos(txt,gws){
+  if(!gws.length) return txt;
+  return txt.replace(/\$Ncus = @\([\s\S]*?\n\)/,
+    "# NCU de esta planta: el MODBUS TCP del SCADA, que NO es la IP del gateway.\n"+
+    "# El angulo del seguidor (registro 30111) se lee de aqui.\n"+
+    "$Ncus = @(\n"+gws.map(g=>'  @{ Name = "'+g.nombre+'"; Host = "'+g.ipNcu+'"; Port = '+g.puerto+' }').join("\n")+"\n)");
+}
 function preparaColector(nombre,txt,gws){
   if(nombre==='zigbee_logger.ps1')        return preparaLogger(txt,gws);
   if(nombre==='zigbee_inventario.ps1')    return preparaInventario(txt,gws);
   if(nombre==='zigbee_routes_logger.ps1') return preparaRutas(txt,gws);
+  if(nombre==='zigbee_angulos.ps1')       return preparaAngulos(txt,gws);
   return txt;
 }
 function preparaRutas(txt,gws){
@@ -1109,9 +1124,18 @@ function leemeDe(paq){
          "   La hoja trae pares elegidos por GEOMETRIA —a lo largo del eje, a traves",
          "   de filas y en diagonal— para que distancia y mesas cruzadas dejen de ir",
          "   pegadas y el ajuste pueda repartir la culpa.","",
-         "   SE RELLENAN A MANO dos columnas: `llega` (1 si hubo enlace, 0 si no) y",
-         "   `beta_grados` (el angulo del seguidor al medir). LOS CEROS SON LA MITAD",
-         "   DEL DATO: un par que no llega vale tanto como uno que si.",
+         "   SE APUNTAN dos cosas por par: `llega` (1 si hubo enlace, 0 si no) y la",
+         "   hora en `hora_utc`. LOS CEROS SON LA MITAD DEL DATO: un par que no llega",
+         "   vale tanto como uno que si.","",
+         "   EL ANGULO NO SE APUNTA A MANO. Esta en el Modbus. Deja corriendo, en otra",
+         "   ventana y mientras andas el barrido:","",
+         "     powershell -ExecutionPolicy Bypass -File .\\zigbee_angulos.ps1","",
+         "   Lee el registro 30111 de los TCU de la hoja cada 30 s y deja angulos.csv.",
+         "   OJO: este va contra el MODBUS de la NCU (503/504), no contra el gateway.",
+         "   Al volver se cruza por la hora y rellena `beta_grados` y `beta_destino`:","",
+         "     python3 rellena_barrido.py "+((paq.resumen.barridos||[])[0]||"barrido.csv")+" angulos.csv","",
+         "   Lo que no case en el tiempo se deja VACIO. Un angulo inventado entra en",
+         "   el ajuste sin que se note.",
          "   Los pares que el modelo da por perdidos son los mas valiosos: si llegan,",
          "   el modelo sobra. Cada fila trae lat/lon de los dos extremos y el esclavo",
          "   Modbus, para navegar y para saber a quien estas mirando.","",

@@ -66,7 +66,8 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    | `zigbee_logger.ps1` | RSSI, estado, ACK fallidos, tensión y temperatura de cada TCU, en bucle (HTTP/RCI, 80) |
    | `zigbee_routes_logger.ps1` | las rutas y los saltos, en bucle (telnet, 23) |
    | `zigbee_inventario.ps1` | **qué hay puesto**: una vez, una fila por módulo con su nº de serie, firmware, canal y PAN ID |
-   | `barrido_<planta>_NCU<nn>.csv` | la hoja del barrido de calibración, a rellenar a mano |
+   | `zigbee_angulos.ps1` | el **ángulo** de cada seguidor del barrido, del Modbus de la NCU, en bucle |
+   | `barrido_<planta>_NCU<nn>.csv` | la hoja del barrido de calibración |
 
    El **número de serie** de un módulo XBee es su dirección de 64 bits, la misma que va impresa en
    la etiqueta: no hay otro número que leer, y ya viene en el `discover`. El inventario además deja
@@ -80,7 +81,16 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    **r = +0,16** frente a log(distancia) sobre un recorrido de ×14. La hoja (`plan_barrido_rf.py`)
    trae pares elegidos por **geometría** —a lo largo del eje, a través de filas y en diagonal— para
    que distancia y mesas cruzadas dejen de ir pegadas y el ajuste pueda repartir la culpa. Se
-   rellenan `llega` (1/0) y `beta_grados` a mano, y **los ceros son la mitad del dato**.
+   apunta `llega` (1/0) y la hora, y **los ceros son la mitad del dato**.
+
+   **El ángulo no se apunta a mano.** Está en el Modbus (registro `30111 tilt_angle`, s16 /10) y
+   `zigbee_angulos.ps1` lo graba en bucle; al volver, `rellena_barrido.py` lo cruza con la hoja por
+   la hora y rellena `beta_grados`, `beta_destino` y `modo_origen`. Dos avisos que valen la tarde:
+   ese recolector es **el único que va contra el Modbus de la NCU** (503/504) y no contra el
+   ConnectPort — al revés que los otros tres; y la dirección `30111` viaja **tal cual** en la trama,
+   con **FC03**, como hace la TCU Toolbox: escribirla como `3xxxx` con offset y FC04 no falla aquí,
+   falla en la planta con `IllegalDataAddress`. Lo que no case en el tiempo (±2 min) se deja
+   **vacío**: un ángulo inventado entra en el ajuste sin que se note.
 
    **TCUs retiradas.** El layout es el plano: trae el seguidor aunque le hayan quitado la TCU.
    Sondearla no da un error claro, da un **timeout**, y un timeout en el mapa de cobertura se lee
