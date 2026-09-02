@@ -171,6 +171,11 @@ function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null,
 }
 const entre = (regs, a, b) => regs.filter(r => r.addr >= a && r.addr <= b);
 
+/* Los `eti:` de los tres equipos son los NOMBRES DEL FABRICANTE, puestos por Ignacio (31-08,
+   ediciones web sobre modbus.html): Network Control Unit, Tracker Control Unit y Hub Sensor Unit.
+   Van AQUI y no solo en el html porque este bloque se regenera y una edicion a mano alli no
+   sobrevive a la siguiente pasada — es justo lo que paso. */
+
 /* ================= NCU ================= */
 const nInfo = agrupaXL(XL.ncu_r7['NCU Info']);
 const nRW = agrupaXL(XL.ncu_r7['NCU RW registers']);
@@ -194,7 +199,11 @@ const NCU = [
     entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200, max: 10 }),
   seccion('HSU · marcas de tiempo', 'hoja «HSU» · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/HSU', 'ro',
     entre(nHSU, 29000, 29499)),
-  seccion('Bloque HSU extendido (republicado)', 'hoja «HSU EXT» · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
+  /* «EXT» = mapa EXTENDIDO, no «HSUs exteriores». Lo dice la propia hoja: repite los MISMOS
+     registros de la misma estación que el bloque básico —ProductId_hsu1, MSR_hsu1, WindLevel_hsu1,
+     Alarms1_hsu1…— en otra base y con MÁS campos (piranómetro, compensación de temperatura, racha,
+     errores RS485 por sensor). Si fueran otra clase de estación no repetiría los campos de _hsu1. */
+  seccion('Bloque HSU extendido (republicado)', 'hoja «HSU EXT» · mapa AMPLIADO de la misma estación, no otra clase de HSU: repite el básico y añade piranómetros · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
     nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
@@ -226,7 +235,7 @@ const HSU = [
     entre(nHSU, 30200, 30299), { base: 30200, stride: 10, offsetDe: 30200, max: 10 }),
   seccion('Marcas de tiempo vía NCU', 'en la NCU · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/HSU', 'ro',
     entre(nHSU, 29000, 29499)),
-  seccion('Bloque extendido vía NCU (piranómetros)', 'en la NCU · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
+  seccion('Bloque extendido vía NCU (piranómetros)', 'en la NCU · «HSU EXT»: mapa ampliado de la misma estación, no otra clase de HSU · base 28000 · 100 registros/HSU · solo con hsu_extended', 'ro',
     nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
@@ -256,15 +265,15 @@ const bloque =
    bloque) en vez de un «no existe» a secas. */
 var BLOQUES=${js(BLOQUES)};
 var DEV={
- ncu:{tab:'NCU',eti:'controlador de red',max:0,
+ ncu:{tab:'NCU',eti:'Network Control Unit',max:0,
   nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona.',
   secs:${js(NCU)}},
 
- tcu:{tab:'TCU',eti:'seguidor',max:0,idlab:'Nº TCU',
+ tcu:{tab:'TCU',eti:'Tracker Control Unit',max:0,idlab:'Nº TCU',
   nota:'El mapa <b>propio del seguidor</b> (SUNNER_TCU_ModbusMap v6, FW v1.4.3), por RTU a 19200 8E1, ID de fábrica 245. Funciones admitidas: 03/04 lectura, 06 escritura simple, 16 múltiple, 22 máscara — <b>no hay coils ni entradas discretas</b>. Las secciones de ESCRITURA mueven el seguidor: cuidado en planta.',
   secs:${js(TCU)}},
 
- hsu:{tab:'HSU',eti:'estación meteo',max:10,idlab:'Nº HSU',
+ hsu:{tab:'HSU',eti:'Hub Sensor Unit',max:10,idlab:'Nº HSU',
   nota:'El mapa <b>propio del dispositivo</b> (HSU_Modbus_Map_R23): identidad, estado, medidas, comandos, configuración y calibración. Al final, los dos bloques donde la NCU lo republica (con el selector de unidad). Las secciones de ESCRITURA cambian la estación: cuidado en planta.',
   secs:${js(HSU)}}
 };`;
