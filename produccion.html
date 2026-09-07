@@ -211,14 +211,14 @@ function elevPreset(preset,n,v,pitch){
    UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
    por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
    planta es especial: la genérica y las reales pasan por aquí igual. */
-function buildTX(F,c,xs,z,tilt){
+function buildTX(F,c,xs,z,tilt,segs){
   const n=xs.length;
   const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
   return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
           rowTilt:tilts,groups:null,drive:'mono',
-          segs:F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+          segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
 }
 /* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
 function buildT(F,c,elev){
@@ -279,6 +279,33 @@ function elburgoRows(strdb,minGap){
     if(s.n<r.n0)r.n0=s.n; if(s.n>r.n1)r.n1=s.n;
   }
   return rows;
+}
+
+/* tramos de mesa por columna para El Burgo: cada string del plano es un
+   segmento a lo largo de N (el paso mediano entre strings contiguos ES el
+   largo de mesa: 32,57 m en el plano); los CAMINOS de la planta son los
+   huecos grandes entre strings — el render y el solape axial de poaPlant
+   los respetan. Antes cada columna era una viga continua y la calle
+   central desaparecía (verificado contra terreno.html y el histograma de
+   huecos del propio plano: 626 pasos normales, ~37 cortes de 36–70 m). */
+function elburgoSegs(rows){
+  const gaps=[];
+  for(const r of rows){
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    for(let i=1;i<ns.length;i++)gaps.push(ns[i]-ns[i-1]);
+  }
+  gaps.sort((a,b)=>a-b);
+  const L=(gaps.length?gaps[Math.floor(gaps.length/2)]:32.57)*0.96;
+  return rows.map(r=>{
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    const out=[];
+    for(const nn of ns){
+      const a=nn-L/2, b=nn+L/2;
+      if(out.length&&a-out[out.length-1][1]<4)out[out.length-1][1]=b;   // junta normal: mesa seguida
+      else out.push([a,b]);                                            // hueco real: camino
+    }
+    return out;
+  });
 }
 
 /* agregado por inversor. POA (por m²) se agrega en MEDIA; la energía/potencia
@@ -412,10 +439,20 @@ function rebuildT(){
     const P=RP.P;
     T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
     T.obj=buildTReal(F,c,P);
+  }else if(c.plant==='elburgo'&&EB){
+    // tramos de mesa REALES por string, con sus caminos (verificado contra
+    // terreno.html): entran en la escena Y en el solape axial de poaPlant
+    const abs=elburgoSegs(EB.rows);
+    let mn=Infinity,mx=-Infinity;
+    for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
+    const nc=(mn+mx)/2;
+    const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
+    const z=new Array(c.nrows).fill(0);
+    T={elev:z,xs:EB.xs,tilt:null,segs:segs};
+    T.obj=buildTX(F,c,EB.xs,z,null,segs);
   }else{
-    const eb=(c.plant==='elburgo'&&EB);
-    const xs=eb?EB.xs:Array.from({length:c.nrows},(_,i)=>i*c.pitch);
-    const z=eb?new Array(c.nrows).fill(0):elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+    const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+    const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
     T={elev:z,xs:xs,tilt:null,segs:null};
     T.obj=buildTX(F,c,xs,z,null);
   }
@@ -429,13 +466,18 @@ function build3D(c){
   const cv=$('c3d');
   if(!R3.renderer){
     R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    // sombra REAL entre filas, con el mismo montaje que el simulador de BT 3D
+    R3.renderer.shadowMap.enabled=true;R3.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     R3.scene=new THREE.Scene();
-    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,2000);
+    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
     R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
     R3.ctrl.addEventListener('change',()=>R3.dirty=true);
     R3.amb=new THREE.AmbientLight(0xffffff,0.75);
-    R3.sun=new THREE.DirectionalLight(0xffffff,0.9);
-    R3.scene.add(R3.amb,R3.sun);
+    R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
+    R3.sun.castShadow=true;
+    R3.sun.shadow.mapSize.width=4096;R3.sun.shadow.mapSize.height=4096;
+    R3.sun.shadow.bias=-2e-4;R3.sun.shadow.normalBias=0.3;   // los del simulador
+    R3.scene.add(R3.amb,R3.sun,R3.sun.target);
     (function loop(){requestAnimationFrame(loop);
       if(R3.dirty){R3.dirty=false;R3.renderer.render(R3.scene,R3.cam);}})();
   }
@@ -443,17 +485,14 @@ function build3D(c){
   R3.renderer.setSize(W,H,false);R3.cam.aspect=W/H;R3.cam.updateProjectionMatrix();
   if(R3.world)R3.scene.remove(R3.world);
   R3.world=new THREE.Group();R3.scene.add(R3.world);
-  const n=c.nrows, eb=(c.plant==='elburgo'&&EB);
+  const n=c.nrows;
   // geometría por fila para la ESCENA: x (recentradas), z, tilt N-S y TRAMOS —
   // medidos cuando la planta los trae (cotas/plano), rejilla uniforme si no
   const xc=(T.xs[0]+T.xs[n-1])/2;
   const rx=T.xs.map(x=>x-xc);
-  let segsNS;
-  if(T.segs)segsNS=T.segs;                                    // tramos de mesa MEDIDOS (cotas)
-  else if(eb){
-    const nc=(Math.min.apply(null,EB.rows.map(r=>r.n0))+Math.max.apply(null,EB.rows.map(r=>r.n1)))/2;
-    segsNS=EB.rows.map(r=>[[r.n0-nc,r.n1-nc]]);
-  }else segsNS=Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
+  // tramos MEDIDOS cuando la planta los trae (cotas o strings del plano, con
+  // sus caminos); rejilla de una mesa continua para la genérica
+  const segsNS=T.segs||Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
@@ -468,7 +507,12 @@ function build3D(c){
    pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
   gnd.rotation.x=-Math.PI/2;
   gnd.position.z=-(sMin+sMax)/2;
+  gnd.receiveShadow=true;
   R3.world.add(gnd);
+  // sombra del sol acotada a la planta (como el simulador); el frustum vertical
+  // se ciñe por frame en repaint (sol rasante: texel en cm, no la «sierra»)
+  R3.shR=Math.max(span,maxLen)*0.75;
+  R3.sun.target.position.set(0,0,0);
   // ── los trackers: el MODELO del seguidor de la casa (seguidor.js — la misma
   // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
   // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
@@ -526,6 +570,7 @@ function build3D(c){
       for(const dn of [-len/3,0,len/3]){
         const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.0,8),postM);
         post.position.set(x,T.elev[r]+1.0,zc-dn);
+        post.castShadow=true;
         R3.world.add(post);
       }
     }

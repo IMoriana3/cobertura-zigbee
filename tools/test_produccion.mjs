@@ -40,7 +40,7 @@ const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, invTotals,
+          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, invTotals,
           tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
@@ -216,6 +216,24 @@ t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por van
   if (r.rows.length !== P.elev.length) throw new Error('rows ' + r.rows.length);
   for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita: ' + v);
   if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
+});
+
+t('El Burgo: los tramos de mesa respetan los CAMINOS del plano (la calle no desaparece)', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const segs = S.elburgoSegs(rows);
+  // cada string cae dentro de un tramo de SU columna…
+  rows.forEach((r, i) => {
+    for (const s of r.strs)
+      if (!segs[i].some(sg => s.n >= sg[0] - 0.5 && s.n <= sg[1] + 0.5))
+        throw new Error('string ' + s.id + ' fuera de todo tramo de su columna');
+  });
+  // …y los caminos parten columnas: el plano corta ~37 veces (huecos 36–70 m)
+  const cortes = segs.reduce((a, l) => a + l.length - 1, 0);
+  if (cortes < 20) throw new Error('solo ' + cortes + ' cortes: los caminos del plano no aparecen');
+  if (cortes > 120) throw new Error(cortes + ' cortes: las mesas se están troceando de más');
+  // ningún tramo más corto que media mesa ni más largo que la columna entera
+  for (const l of segs) for (const sg of l)
+    if (sg[1] - sg[0] < 12) throw new Error('tramo de ' + (sg[1] - sg[0]).toFixed(1) + ' m: demasiado corto para una mesa');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
