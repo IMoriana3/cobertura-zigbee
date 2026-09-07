@@ -49,7 +49,9 @@ h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
 .btn.acc{background:var(--live);border-color:var(--live);color:#08130D}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 input[type=range]{accent-color:var(--live)}
-#hour{flex:1;min-width:160px}
+#hour{flex:1;min-width:160px;-webkit-appearance:none;appearance:none;height:10px;border-radius:5px;outline:none;background:#0d1420}
+#hour::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:18px;border-radius:4px;background:var(--live);border:1px solid #0B0F14;cursor:pointer}
+#hour::-moz-range-thumb{width:13px;height:18px;border-radius:4px;background:var(--live);border:1px solid #0B0F14;cursor:pointer}
 .leg{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
 #legbar{width:90px;height:9px;border-radius:5px;display:inline-block}
 .pill{font-size:.62rem;font-weight:700;letter-spacing:.06em;border-radius:999px;padding:2px 9px}
@@ -151,7 +153,13 @@ input[type=range]{accent-color:var(--live)}
       <canvas id="c3d"></canvas>
       <div class="bar">
         <button class="btn" id="play">▶</button>
-        <input type="range" id="hour" min="0" max="1435" step="5" value="720">
+        <input type="date" id="date2" class="btn" title="La fecha (el mismo campo que en Emplazamiento)">
+        <select id="speed" class="btn" title="Velocidad de la animación (minutos simulados por segundo real)">
+          <option value="30">×½</option><option value="60" selected>×1</option>
+          <option value="150">×2,5</option><option value="360">×6</option>
+        </select>
+        <input type="range" id="hour" min="0" max="1439" step="1" value="720"
+          title="Paso MINUTAL, como los simuladores. Tramos ÁMBAR: horas de BACKTRACKING (consigna fuera de la astronómica >0,5° en alguna fila); oscuro = noche.">
         <span class="t" id="hourlbl">12:00</span>
         <span class="pill on" id="modepill">AUTO · backtracking</span>
         <label class="btn" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="manual"> 🎛 manual</label>
@@ -165,6 +173,7 @@ input[type=range]{accent-color:var(--live)}
         </select>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
+      <div class="nota" id="pick" style="display:none;border-top:1px solid var(--line);color:var(--text)"></div>
       <div class="strings" id="strings"></div>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
       El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles('pairwise') —
@@ -443,7 +452,7 @@ async function cargaFisica(){
     if(i0<0||i1<0)throw new Error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA');
     const src=html.slice(html.lastIndexOf('/*',i0),i1);
     F=new Function(src+`
-      return {poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
+      return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
@@ -566,6 +575,7 @@ function rebuildT(){
     T.obj=buildTX(F,c,xs,z,null);
   }
   DAYC=null;
+  if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
   build3D(c);
 }
 
@@ -574,14 +584,20 @@ let R3={};
 function build3D(c){
   const cv=$('c3d');
   if(!R3.renderer){
-    R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    // alpha: el CIELO va como degradado CSS bajo el lienzo (skyColors de
+    // sol.js — cénit oscuro, horizonte encendido al amanecer/ocaso, la misma
+    // receta que los 3D de la casa) sin textura de por medio
+    R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+    R3.renderer.setClearColor(0x000000,0);
     // sombra REAL entre filas, con el mismo montaje que el simulador de BT 3D
     R3.renderer.shadowMap.enabled=true;R3.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     R3.scene=new THREE.Scene();
     R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
     R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
     R3.ctrl.addEventListener('change',()=>R3.dirty=true);
-    R3.amb=new THREE.AmbientLight(0xffffff,0.75);
+    R3.amb=new THREE.AmbientLight(0xffffff,0.35);
+    R3.hemi=new THREE.HemisphereLight(0xbfd4e6,0x2a3324,0.5);
+    R3.scene.add(R3.hemi);
     R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
     R3.sun.castShadow=true;
     R3.sun.shadow.mapSize.width=4096;R3.sun.shadow.mapSize.height=4096;
@@ -605,14 +621,22 @@ function build3D(c){
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
-    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),2),
-    new THREE.MeshLambertMaterial({color:0x1c2b22,side:THREE.DoubleSide}));
-  // el suelo sigue el perfil E-O real (el mismo elev que come la física)
+    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),8),
+    new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
+  // el suelo sigue el perfil E-O real (el mismo elev que come la física) y se
+  // TIÑE por cota (bajo oscuro → alto claro), el relieve se lee de un vistazo
   {const pos=gnd.geometry.attributes.position;
+   const zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
+   const cols=new Float32Array(pos.count*3);
    for(let i=0;i<pos.count;i++){
      const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/Math.max(1e-6,span/(n-1))));
      const r0=Math.floor(r), fr=r-r0, z0=T.elev[r0], z1=T.elev[Math.min(n-1,r0+1)];
-     pos.setZ(i,z0+fr*(z1-z0));}
+     const z=z0+fr*(z1-z0);
+     pos.setZ(i,z);
+     const t2=zHi>zLo?(z-zLo)/(zHi-zLo):0.4;
+     cols[i*3]=0.086+0.10*t2;cols[i*3+1]=0.145+0.13*t2;cols[i*3+2]=0.105+0.09*t2;
+   }
+   gnd.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
    pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
   gnd.rotation.x=-Math.PI/2;
   gnd.position.z=-(sMin+sMax)/2;
@@ -626,7 +650,14 @@ function build3D(c){
   // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
   // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
   // simulador). Sin el modelo (fichero ausente), cajas de siempre.
-  const useModel=(typeof Seguidor!=='undefined');
+  // presupuesto de mallas: el modelo detallado son ~17 mallas por mesa — Ayora
+  // (~1.500 mesas) pasaba de 45.000 mallas y TUMBABA navegadores. Por encima
+  // de 600 mesas la escena va a cajas (tubo+pala+tinte: 3 mallas por mesa);
+  // el modelo entero queda para plantas del tamaño de El Burgo (430 mesas).
+  // Pendiente declarado: instancePlan de seguidor.js (como terreno.html) para
+  // tener el modelo también a escala de miles.
+  const totalTramos=segsNS.reduce((a,l)=>a+l.length,0);
+  const useModel=(typeof Seguidor!=='undefined')&&totalTramos<=600;
   const D0=useModel?Seguidor.DIMS:null;
   if(useModel&&!R3.mats)R3.mats=Seguidor.materials(THREE);
   const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
@@ -640,6 +671,7 @@ function build3D(c){
       const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
       const tiltG=new THREE.Group();
       tiltG.position.set(x,hubY,zc);
+      tiltG.userData={row:r,s0:sg[0],s1:sg[1]};               // para la SELECCIÓN con clic
       if(T.tilt)tiltG.rotation.x=-T.tilt[r]*D2R;              // tilt N-S MEDIDO de la línea
       let built=false;
       if(useModel){
@@ -809,13 +841,89 @@ function repaint(){
                  ramp(norm(vals[r],mn,mx))+'"></span>S'+(r+1)+' · '+fmt(vals[r])+'</span>');
   }
   $('strings').innerHTML=chips.join('');
-  // sol de la escena
-  const el2=inst.g.elev*D2R, az2=inst.az*D2R;
-  R3.sun.position.set(Math.sin(az2)*Math.cos(el2)*80,Math.max(2,Math.sin(el2)*80),-Math.cos(az2)*Math.cos(el2)*80);
-  R3.sun.intensity=inst.g.elev>0?0.95:0.15;
-  const sky=Sol.skyColors(inst.g.elev);
-  R3.renderer.setClearColor(new THREE.Color(sky.top[0],sky.top[1],sky.top[2]));
+  // sol y cielo con LUZ REAL: el sol pierde altura ⇒ pierde fuerza y se va al
+  // rojo, el horizonte enciende al amanecer/ocaso y el cénit oscurece — la
+  // receta de los 3D de la casa, que vive en sol.js (sunLook + skyColors)
+  const el2=inst.g.elev*D2R, az2=inst.az*D2R, D3=(R3.shR||60)*2;
+  R3.sun.position.set(Math.sin(az2)*Math.cos(el2)*D3,Math.max(2,Math.sin(el2)*D3),-Math.cos(az2)*Math.cos(el2)*D3);
+  const L=Sol.sunLook(inst.g.elev), sky=Sol.skyColors(inst.g.elev);
+  R3.sun.color.setRGB(L.color[0],L.color[1],L.color[2]);
+  R3.sun.intensity=inst.g.elev>0?L.intensity:0.02;
+  if(R3.hemi)R3.hemi.intensity=L.hemi!=null?L.hemi:0.5;
+  const css=v=>'rgb('+v.map(x=>Math.round(Math.max(0,Math.min(1,x))*255)).join(',')+')';
+  $('c3d').style.background='linear-gradient(rgb(0,0,0) -20%,'+css(sky.top)+' 30%,'+css(sky.hor||sky.bottom||sky.top)+' 100%)';
+  // frustum de sombra ceñido al sol rasante (la «sierra» del simulador)
+  if(R3.shR){
+    const sc=R3.sun.shadow.camera,Rs=R3.shR;
+    const vy=Math.max(20,Rs*Math.sin(Math.max(0.03,el2))+8*Math.cos(el2));
+    sc.left=-Rs;sc.right=Rs;sc.top=vy;sc.bottom=-vy;
+    const dLT=R3.sun.position.length();
+    sc.near=Math.max(1,dLT-Rs*3);sc.far=dLT+Rs*3;
+    sc.updateProjectionMatrix();
+  }
+  R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst};
+  repaintPick();
+  paintHourTrack();
   R3.dirty=true;
+}
+
+/* ── carril de horas pintado, como el del simulador: noche oscura, día azul,
+   ÁMBAR las horas de BACKTRACKING (consigna fuera de la astronómica >0,5°) ── */
+let TRACKC=null;
+function paintHourTrack(){
+  if(!F||!T)return;
+  const c=cfg();
+  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,$('ambito').value,c.nrows,c.maxang].join('|');
+  if(TRACKC===key)return;
+  TRACKC=key;
+  const colBT='#fbbd23',colDay='#2a3a50',colNight='#0d1420',STEPM=15;
+  const doy=doyOf(c.date), cols=[];
+  for(let m2=0;m2<1440;m2+=STEPM){
+    const g=Sol.solarPos(localToUTCms(c.date,m2,c.tz),c.lat,c.lon,{refract:true});
+    if(g.elev<=0){cols.push(colNight);continue;}
+    const zen=90-g.elev;
+    const ang=F.policyAngles('pairwise',zen,g.az,T.obj,{ghi:500,dni:500,dhi:100},doy,c.albedo).angles;
+    const ast=F.anglesAstro(zen,g.az,T.obj);
+    cols.push(ang.some((v,i)=>Math.abs(v-ast[i])>0.5)?colBT:colDay);
+  }
+  const stops=[];let cur=null,start=0;
+  for(let t2=0;t2<=cols.length;t2++){
+    const col=t2<cols.length?cols[t2]:null;
+    if(col!==cur){
+      if(cur!==null)stops.push(cur+' '+(start*STEPM/1440*100).toFixed(2)+'% '+(Math.min(t2*STEPM,1440)/1440*100).toFixed(2)+'%');
+      cur=col;start=t2;
+    }
+  }
+  $('hour').style.background='linear-gradient(90deg,'+stops.join(',')+')';
+}
+
+/* ── selección de string con clic (como el 3D de la casa) ── */
+let PICK=null,pickHelper=null,PICK_DOWN=null;
+function clearPick(){
+  PICK=null;
+  if(pickHelper){R3.scene.remove(pickHelper);pickHelper=null;}
+  const el=$('pick');if(el)el.style.display='none';
+  if(R3.renderer)R3.dirty=true;
+}
+function repaintPick(){
+  const el=$('pick');
+  if(!PICK||!R3.last){if(el)el.style.display='none';return;}
+  const d=R3.last, r=PICK.row;
+  let txt='<b>S'+(r+1)+'</b> · línea x='+T.xs[r].toFixed(1)+' m';
+  if(d.c.plant==='elburgo'&&EB){
+    const strs=EB.rows[r].strs.filter(s=>s.n>=PICK.s0+T_nOff-1&&s.n<=PICK.s1+T_nOff+1);
+    if(strs.length){
+      const ncu=EB.mapa.get(strs[0].id.split('.').slice(0,3).join('.'));
+      txt='<b>'+strs.map(s=>s.id).join(' · ')+'</b> · inversor I'+strs[0].inv+
+          (ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
+          ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m';
+    }
+  }else if(T.tilt){
+    txt+=' · tilt N-S '+T.tilt[r].toFixed(2)+'° · cota '+T.elev[r].toFixed(2)+' m';
+  }
+  txt+=' — <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · θ '+d.inst.ang[r].toFixed(1)+'° · sombra '+
+       (100*(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0)).toFixed(1)+' %';
+  el.innerHTML=txt;el.style.display='';
 }
 
 /* ── arranque + eventos ── */
@@ -881,14 +989,46 @@ function repaint(){
   $('manth').addEventListener('input',()=>{DAYC=null;repaint();});
   $('tpreset').addEventListener('change',()=>{
     $('tplbl').textContent=$('tpreset').value==='pendiente'?'Pendiente °':'Amplitud m';});
-  let anim=null;
+  // fecha también en la barra de tiempo (el mismo campo, como el simulador)
+  $('date2').value=$('date').value;
+  $('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
+  $('date2').addEventListener('change',()=>{
+    $('date').value=$('date2').value;DAYC=null;rebuildT();repaint();});
+  // play con VELOCIDAD real (minutos simulados por segundo, como el simulador)
+  let playing=false,playTimer=null,PLAYPOS=0,PLAYTS=0;
   $('play').addEventListener('click',()=>{
-    if(anim){clearInterval(anim);anim=null;$('play').textContent='▶';return;}
-    $('play').textContent='⏸';
-    anim=setInterval(()=>{
-      let m=+$('hour').value+10;if(m>1435)m=0;
-      $('hour').value=m;repaint();
-    },120);
+    playing=!playing;$('play').textContent=playing?'⏸':'▶';
+    if(playTimer)cancelAnimationFrame(playTimer);
+    if(playing){
+      PLAYPOS=+$('hour').value;PLAYTS=performance.now();
+      const step=(ts)=>{
+        if(!playing)return;
+        PLAYPOS+=(+$('speed').value)*(ts-PLAYTS)/1000;PLAYTS=ts;
+        if(PLAYPOS>1439)PLAYPOS=0;
+        const v=Math.round(PLAYPOS);
+        if(v!==+$('hour').value){$('hour').value=v;repaint();}
+        playTimer=requestAnimationFrame(step);
+      };
+      playTimer=requestAnimationFrame(step);
+    }
+  });
+  // clic = seleccionar string (orbitar no selecciona: umbral de arrastre)
+  $('c3d').addEventListener('pointerdown',e=>{if(e.button===0)PICK_DOWN={x:e.clientX,y:e.clientY};});
+  $('c3d').addEventListener('pointerup',e=>{
+    if(!PICK_DOWN)return;
+    const drag=Math.hypot(e.clientX-PICK_DOWN.x,e.clientY-PICK_DOWN.y);PICK_DOWN=null;
+    if(drag>5)return;
+    const rct=$('c3d').getBoundingClientRect();
+    const rc=new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2(((e.clientX-rct.left)/rct.width)*2-1,-((e.clientY-rct.top)/rct.height)*2+1),R3.cam);
+    const hits=rc.intersectObjects(R3.world.children,true);
+    let obj=null;
+    for(const h of hits){let o=h.object;while(o&&o.userData.row===undefined)o=o.parent;if(o&&o.userData.row!==undefined){obj=o;break;}}
+    if(!obj){clearPick();return;}
+    PICK={row:obj.userData.row,s0:obj.userData.s0,s1:obj.userData.s1};
+    if(pickHelper)R3.scene.remove(pickHelper);
+    pickHelper=new THREE.BoxHelper(obj,0x36d399);R3.scene.add(pickHelper);
+    R3.dirty=true;repaintPick();
   });
 })();
 </script>
