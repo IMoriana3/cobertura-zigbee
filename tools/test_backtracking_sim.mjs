@@ -109,8 +109,37 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
-           airmassKY, dniExtra, surfaceOrient };`);
+           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor };`);
 const F = sandbox();
+
+console.log('nubosidad · manual · colores (v1.40)');
+t('nubosidad a 0 es NO-OP EXACTO (mismo objeto, ===)', () => {
+  // mutante previsto: enrutar SIEMPRE por cloudToIrr (la DHI se recalcularía
+  // por cierre y ya no sería el objeto del cielo claro) — esto se pone rojo
+  const c = F.clearskyIneichen(30, 172, 300, 3.5);
+  if (F.skyWithClouds(c, 0, 30) !== c) throw new Error('cc=0 ya no devuelve el MISMO objeto del cielo claro');
+});
+t('con nubes, el haz muere antes que el global (cc=0,5)', () => {
+  const c = F.clearskyIneichen(30, 172, 300, 3.5);
+  const n = F.skyWithClouds(c, 0.5, 30);
+  const rG = n.ghi / c.ghi, rB = n.dni / c.dni;
+  if (Math.abs(rG - 0.65) > 1e-9) throw new Error(`GHI·(1−0,70·cc): esperaba 0,65 y salió ${rG}`);
+  if (Math.abs(rB - 0.125) > 1e-9) throw new Error(`DNI·(1−cc)³: esperaba 0,125 y salió ${rB}`);
+  if (n.dhi < 0) throw new Error('la difusa de cierre salió negativa');
+});
+t('anglesManual: θ común y recortado al tope mecánico', () => {
+  const a = F.anglesManual(6, 80, 55);
+  if (a.length !== 6) throw new Error('no da un θ por fila');
+  if (!a.every(v => v === 55)) throw new Error(`80° con tope 55 debe recortar a 55, salió ${a[0]}`);
+  const b = F.anglesManual(3, -80, 55);
+  if (!b.every(v => v === -55)) throw new Error('el recorte no funciona hacia el este');
+});
+t('prodColor: rampa válida y con extremos distintos', () => {
+  const lo = F.prodColor(0), hi = F.prodColor(1), mid = F.prodColor(0.5);
+  for (const v of [lo, hi, mid]) if (!/^rgb\(\d+,\d+,\d+\)$/.test(v)) throw new Error('color no rgb(): ' + v);
+  if (lo === hi) throw new Error('mínimo y máximo con el mismo color: la escala no escala');
+  if (F.prodColor(-5) !== lo || F.prodColor(9) !== hi) throw new Error('fuera de [0,1] no se recorta');
+});
 
 console.log('física (la misma QA que el botón de la página)');
 for (const r of F.runPhysicsQA()) {
