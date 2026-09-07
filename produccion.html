@@ -216,13 +216,13 @@ function elevPreset(preset,n,v,pitch){
    UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
    por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
    planta es especial: la genérica y las reales pasan por aquí igual. */
-function buildTX(F,c,xs,z,tilt,segs){
+function buildTX(F,c,xs,z,tilt,segs,groups,drive){
   const n=xs.length;
   const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
   return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
-          rowTilt:tilts,groups:null,drive:'mono',
+          rowTilt:tilts,groups:groups||null,drive:drive||'mono',
           segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
 }
 /* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
@@ -311,6 +311,30 @@ function elburgoSegs(rows){
     }
     return out;
   });
+}
+
+/* bifilo de El Burgo (layout.geometria): cada seguidor son DOS vigas a ±3 m de
+   su EJE DE UNIDAD con UN solo motor — «45 columnas de seguidores = 90 filas».
+   Las columnas se emparejan por unidad (viga oeste = x−3, este = x+3) y el θ
+   va ACOPLADO por accionamiento, como la bifila del simulador. Mayoritario sin
+   solapes, la misma protección que plantFromCotas. */
+function elburgoGroups(xs,trackers){
+  const idxNear=x=>{let b=-1,d=0.6;for(let i=0;i<xs.length;i++){const e=Math.abs(xs[i]-x);if(e<d){d=e;b=i;}}return b;};
+  const seen=new Set();
+  for(const t of (trackers||[])){
+    const a=idxNear(t.x-3),b=idxNear(t.x+3);
+    if(a<0||b<0||a===b)continue;
+    seen.add(Math.min(a,b)+'-'+Math.max(a,b));
+  }
+  const used=new Set(),out=[];
+  for(const key of [...seen]){
+    const [a,b]=key.split('-').map(Number);
+    if(used.has(a)||used.has(b))continue;
+    used.add(a);used.add(b);out.push([a,b]);
+  }
+  for(let i=0;i<xs.length;i++)if(!used.has(i))out.push([i]);
+  out.sort((p,q)=>p[0]-q[0]);
+  return out;
 }
 
 /* ámbito por NCU (como el del simulador): filtra el plano de strings a los del
@@ -433,7 +457,7 @@ async function cargaElburgo(){
   const porNCU={};let sinNCU=0;
   for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
     if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
-  EB={raw:sj,rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+  EB={raw:sj,trk:lj.trackers||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
       maxang:(lj.montaje&&lj.montaje.max_angle)||55,
       cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
       mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
@@ -487,8 +511,14 @@ function rebuildT(){
     const nc=(mn+mx)/2;
     const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
     const z=new Array(c.nrows).fill(0);
+    // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
+    // motor en la viga OESTE — «no todos los trackers son iguales, pero son
+    // bifilas todos» (los largos de mesa ya salen de los propios strings)
+    const groups=elburgoGroups(EB.xs,EB.trk);
     T={elev:z,xs:EB.xs,tilt:null,segs:segs};
-    T.obj=buildTX(F,c,EB.xs,z,null,segs);
+    T.west=new Array(c.nrows).fill(true);
+    for(const g of groups)if(g.length===2)T.west[g[1]]=false;
+    T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
   }else{
     const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
     const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
@@ -577,7 +607,8 @@ function build3D(c){
           const media=len<0.7*T.obj.filaLen;                  // tramo corto ⇒ mesa «media» real
           const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
           Seguidor.setModsPerStr(mods);
-          const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:media?'medio':'largo',
+          // bifila: motor/TCU solo en la viga OESTE de cada unidad (T.west)
+          const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
                                                materials:R3.mats,skip:{antena:1,antenatip:1}});
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
