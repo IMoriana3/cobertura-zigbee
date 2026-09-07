@@ -218,22 +218,39 @@ t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por van
   if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
 });
 
-t('El Burgo: los tramos de mesa respetan los CAMINOS del plano (la calle no desaparece)', () => {
-  const rows = S.elburgoRows(strdb, 3);
-  const segs = S.elburgoSegs(rows);
-  // cada string cae dentro de un tramo de SU columna…
+t('El Burgo: una MESA por tracker y viga del layout, con caminos y sin vanos fabricados', () => {
+  const vigasX = [];
+  for (const tk of layout.trackers) vigasX.push(tk.x - 3, tk.x + 3);
+  const rows = S.elburgoRows(strdb, 3, vigasX);
+  // columnas ancladas a las vigas del layout: TODOS los vanos a 6 m clavados
+  // (la media ponderada de las líneas partidas fabricaba un vano de 5,73 m y
+  // dos inversores «producían menos» al atardecer por un vano que no existe)
+  for (let i = 1; i < rows.length; i++) {
+    const d = rows[i].x - rows[i - 1].x;
+    if (Math.abs(d - 6) > 0.05) throw new Error(`vano ${i} de ${d.toFixed(2)} m ≠ 6,00: columnas sin anclar a las vigas del layout`);
+  }
+  const segs = S.elburgoSegs(rows, layout.trackers);
+  // una mesa por viga del layout (430) + las de los strings sin tracker (1.18.7)
+  const nTramos = segs.reduce((a, l) => a + l.length, 0);
+  if (nTramos < 428 || nTramos > 440)
+    throw new Error(nTramos + ' mesas: deberían ser ~430 vigas del layout (+huérfanas) — o desaparecen trackers o se fabrican');
+  // cada string casado cae dentro de un tramo de su columna
   rows.forEach((r, i) => {
     for (const s of r.strs)
       if (!segs[i].some(sg => s.n >= sg[0] - 0.5 && s.n <= sg[1] + 0.5))
         throw new Error('string ' + s.id + ' fuera de todo tramo de su columna');
   });
-  // …y los caminos parten columnas: el plano corta ~37 veces (huecos 36–70 m)
-  const cortes = segs.reduce((a, l) => a + l.length - 1, 0);
-  if (cortes < 20) throw new Error('solo ' + cortes + ' cortes: los caminos del plano no aparecen');
-  if (cortes > 120) throw new Error(cortes + ' cortes: las mesas se están troceando de más');
-  // ningún tramo más corto que media mesa ni más largo que la columna entera
-  for (const l of segs) for (const sg of l)
-    if (sg[1] - sg[0] < 12) throw new Error('tramo de ' + (sg[1] - sg[0]).toFixed(1) + ' m: demasiado corto para una mesa');
+  // los CAMINOS siguen: huecos > 8 m entre mesas consecutivas de una columna
+  let caminos = 0;
+  for (const l of segs) for (let k = 1; k < l.length; k++) if (l[k][0] - l[k - 1][1] > 8) caminos++;
+  if (caminos < 20) throw new Error('solo ' + caminos + ' huecos de camino: la calle vuelve a desaparecer');
+  // y en llano, a la caída del sol NINGUNA columna produce distinto (el
+  // artefacto daba 177 vs 185 W/m² a las 20:40)
+  const c = { ...C, nrows: rows.length };
+  const T = S.buildTX(S.F, c, rows.map(r => r.x), new Array(rows.length).fill(0), null, segs);
+  const r = S.instant(S.F, c, T, 1240);
+  const mn = Math.min(...r.rows), mx = Math.max(...r.rows);
+  if (mx - mn > 1) throw new Error(`a las 20:40 en llano hay ${(mx - mn).toFixed(2)} W/m² de dispersión: queda algún vano fabricado`);
 });
 
 t('El Burgo es BIFILA: 45 unidades de dos vigas, θ ACOPLADO y motor solo en la viga oeste', () => {
@@ -248,7 +265,7 @@ t('El Burgo es BIFILA: 45 unidades de dos vigas, θ ACOPLADO y motor solo en la 
     if (Math.abs(d - 6) > 1.2) throw new Error('vigas de una unidad a ' + d.toFixed(2) + ' m (≠6): el emparejado no es el bifilo del layout');
   }
   // θ común por unidad: con drive bifila, cada pareja comparte el θ EXACTO…
-  const segs = S.elburgoSegs(rows);
+  const segs = S.elburgoSegs(rows, layout.trackers);
   const c = { ...C, nrows: rows.length };
   const z = new Array(rows.length).fill(0);
   const T = S.buildTX(S.F, c, xs, z, null, segs, groups, 'bifila');
