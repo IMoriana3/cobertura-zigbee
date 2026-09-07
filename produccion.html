@@ -26,7 +26,7 @@ body{
   background-size:auto,34px 34px,34px 34px;background-attachment:fixed;
   min-height:100vh;line-height:1.45;-webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1500px;margin:0 auto;padding:16px 18px 40px}
+.wrap{max-width:min(2560px,96vw);margin:0 auto;padding:16px 18px 40px}   /* el --ancho del simulador: toda la pantalla, como el resto de tarjetas */
 h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
 .sub{color:var(--muted);font-size:.82rem;max-width:90ch;margin:4px 0 14px}
 .sub b{color:var(--text)}
@@ -41,7 +41,7 @@ h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
   border-radius:7px;padding:5px 8px;font:inherit;font-size:.85rem}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .scene-card{padding:0;overflow:hidden;display:flex;flex-direction:column}
-#c3d{width:100%;height:520px;display:block;cursor:grab;touch-action:none}
+#c3d{width:100%;height:min(66vh,760px);display:block;cursor:grab;touch-action:none}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
 .bar .t{font-family:var(--mono);font-size:.8rem}
 .btn{font:inherit;font-size:.78rem;font-weight:600;color:var(--text);background:var(--panel-hi);
@@ -81,16 +81,17 @@ input[type=range]{accent-color:var(--live)}
       <div class="card">
         <h2>⊙ Emplazamiento</h2>
         <div class="f"><label>Planta</label>
-          <select id="plant" title="Genérica: presets de abajo. El Burgo I: 823 strings del plano con su inversor (sin cotas levantadas: terreno plano, declarado). Ayora / San José: las cotas z REALES de cada extremo de mesa (⛰ <planta>_cotas.json, el mismo cargador que el simulador de BT 3D) — tilt N-S medido por línea, pitch por vano y Δz por pareja del solape norte.">
+          <select id="plant" title="Planta ENTERA o una NCU suelta — el parque de una NCU se carga y se dibuja SOLO, sin construir nunca la planta entera (San José entera son miles de mesas). La NCU de cada tracker viene del layout (Ayora/San José: alineado 1:1 con las cotas; El Burgo: casando g.i.t con idPrevio — 4 strings sin casar solo aparecen en planta entera, declarado). Las NCUs se listan al cargar los layouts.">
             <option value="generica">Genérica (presets)</option>
-            <option value="elburgo">El Burgo I — 823 strings · 36 inversores</option>
-            <option value="ayora">⛰ Ayora — cotas z reales de extremos</option>
-            <option value="sanjose">⛰ San José — cotas z reales de extremos</option>
-          </select></div>
-        <div class="f"><label>Ámbito</label>
-          <select id="ambito" disabled
-            title="Planta entera o el parque de UNA NCU — la unidad real de control, como el ámbito del simulador de BT 3D. En Ayora/San José la NCU de cada tracker viene del layout (alineado 1:1 con las cotas); en El Burgo, de casar la numeración g.i.t del string con el idPrevio del layout (819 de 823 casan; los 4 restantes solo aparecen en planta entera, declarado).">
-            <option value="">Planta entera</option>
+            <optgroup label="El Burgo I (strings del plano; terreno plano, declarado)" id="og-elburgo">
+              <option value="elburgo">Planta entera — 823 strings · 36 inversores</option>
+            </optgroup>
+            <optgroup label="⛰ Ayora (cotas z reales de extremos)" id="og-ayora">
+              <option value="ayora">Planta entera</option>
+            </optgroup>
+            <optgroup label="⛰ San José (cotas z reales de extremos)" id="og-sanjose">
+              <option value="sanjose">Planta entera</option>
+            </optgroup>
           </select></div>
         <div class="row2">
           <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
@@ -519,7 +520,8 @@ function aplicaAmbitoEB(v){
 }
 
 function cfg(){
-  const c={plant:$('plant').value,
+  const pv=$('plant').value.split('|');   // 'planta' o 'planta|ncu'
+  const c={plant:pv[0],ncu:pv[1]||'',
           lat:+$('lat').value,lon:+$('lon').value,date:$('date').value,tz:+$('tz').value,
           alt:+$('alt').value,albedo:+$('albedo').value,cc:Math.max(0,Math.min(1,(+$('cloud').value)/100)),
           pitch:+$('pitch').value,cw:+$('cw').value,maxang:+$('maxang').value,
@@ -873,7 +875,7 @@ let TRACKC=null;
 function paintHourTrack(){
   if(!F||!T)return;
   const c=cfg();
-  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,$('ambito').value,c.nrows,c.maxang].join('|');
+  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,c.ncu,c.nrows,c.maxang].join('|');
   if(TRACKC===key)return;
   TRACKC=key;
   const colBT='#fbbd23',colDay='#2a3a50',colNight='#0d1420',STEPM=15;
@@ -932,35 +934,42 @@ function repaintPick(){
   rebuildT();repaint();
   for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
     $(id).addEventListener('change',()=>{rebuildT();repaint();});
-  const fillAmbito=(lista,unidad)=>{   // lista: [[ncu, nº]] ordenada; null = sin NCUs
-    const sel=$('ambito');
-    sel.innerHTML='<option value="">Planta entera</option>'+
-      (lista||[]).map(([n,c2])=>'<option value="'+n+'">NCU '+n+' — '+c2+' '+unidad+'</option>').join('');
-    sel.value='';sel.disabled=!lista||!lista.length;
-  };
+  // el selector de planta lista PLANTA ENTERA o cada NCU suelta — las NCUs se
+  // pueblan al arrancar con los layouts (ligeros: solo trackers+ncu), y elegir
+  // una NCU carga y dibuja SOLO su parque, sin construir nunca la planta entera
+  (async()=>{
+    try{
+      const [lb,la,ls]=await Promise.all(['elburgo','ayora','sanjose'].map(k=>
+        fetch(k+'_layout.json',{cache:'no-store'}).then(r=>r.ok?r.json():null)));
+      const fill=(og,key,lay,unidad)=>{
+        if(!lay||!lay.trackers)return;
+        const cnt={};lay.trackers.forEach(t=>{if(t.ncu!=null)cnt[t.ncu]=(cnt[t.ncu]||0)+1;});
+        $(og).innerHTML+=Object.keys(cnt).map(Number).sort((a,b)=>a-b).map(n=>
+          '<option value="'+key+'|'+n+'">NCU '+n+' — '+cnt[n]+' '+unidad+'</option>').join('');
+      };
+      fill('og-elburgo','elburgo',lb,'trackers');
+      fill('og-ayora','ayora',la,'trackers');
+      fill('og-sanjose','sanjose',ls,'trackers');
+    }catch(e){/* sin red local el selector se queda con las plantas enteras */}
+  })();
   $('plant').addEventListener('change',async()=>{
-    const key=$('plant').value, real=key!=='generica';
+    const pv=$('plant').value.split('|'), key=pv[0], ncu=pv[1]||'', real=key!=='generica';
     try{
       if(key==='elburgo'){
         await cargaElburgo();
-        aplicaAmbitoEB('');
-        fillAmbito(Object.entries(EB.porNCU).sort((a,b)=>+a[0]-+b[0]),'strings');
+        aplicaAmbitoEB(ncu);
         $('lat').value=EB.lat.toFixed(4);$('lon').value=EB.lon.toFixed(4);
         $('alt').value=180;   // El Burgo de Ebro ~180 m (aprox declarada; editable)
         $('cw').value=EB.cw;$('maxang').value=EB.maxang;$('pitch').value=6;$('nrows').value=EB.rows.length;
       }else if(REALES[key]){
         await cargaCotas(key);
-        aplicaAmbitoCotas('');
-        if(RP.ncuOf){
-          const cnt={};RP.ncuOf.forEach(n2=>{if(n2!=null)cnt[n2]=(cnt[n2]||0)+1;});
-          fillAmbito(Object.entries(cnt).sort((a,b)=>+a[0]-+b[0]),'trackers');
-        }else fillAmbito(null);
+        aplicaAmbitoCotas(ncu);
         const P=RP.P;
         $('lat').value=RP.lat.toFixed(4);$('lon').value=RP.lon.toFixed(4);
         $('alt').value=RP.alt;$('tz').value=RP.tz;   // huso de la planta (San José es Perú)
         $('cw').value=P.cw;$('maxang').value=P.maxAngle;
         $('pitch').value=P.pitch.toFixed(2);$('nrows').value=P.elev.length;
-      }else fillAmbito(null);
+      }
     }catch(e){
       const a=$('aviso');a.style.display='block';
       a.innerHTML='⚠ <b>No puedo cargar la planta real</b> ('+e.message+'): necesita sus '+
@@ -969,15 +978,7 @@ function repaintPick(){
     }
     // la geometría/terreno reales vienen medidos: se bloquean (el resto sigue libre)
     for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
-    R3.camSet=false;   // planta nueva ⇒ reencuadre
-    rebuildT();repaint();
-  });
-  $('ambito').addEventListener('change',()=>{
-    const key=$('plant').value, v=$('ambito').value;
-    if(key==='elburgo'&&EB)aplicaAmbitoEB(v);
-    else if(REALES[key]&&RP)aplicaAmbitoCotas(v);
-    else return;
-    DAYC=null;R3.camSet=false;   // el ámbito cambia la extensión ⇒ reencuadre
+    R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
     rebuildT();repaint();
   });
   $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});
