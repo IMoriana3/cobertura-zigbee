@@ -66,16 +66,25 @@ input[type=range]{accent-color:var(--live)}
 <body>
 <div class="wrap">
   <h1>⚡ Producción 3D por string</h1>
-  <p class="sub">Cada string (fila) pintado con <b>su producción</b> — instante en W/m² o día acumulado en
-  kWh/m² — sobre el terreno, con seguimiento <b>AUTO</b> (backtracking pairwise, la política de planta) o
-  <b>MANUAL</b> con slider, y <b>nubosidad</b>. La física NO vive aquí: esta página extrae en caliente el
-  bloque FÍSICA PURA del simulador de backtracking — la misma que valida su QA contra pvlib y ray-cast, cero copias.</p>
+  <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
+  string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día del bloque FÍSICA PURA
+  del simulador (pvlib singleaxis + sombra exacta + Perez), y <b>potencia/energía DC según el Notebook</b>
+  (t_cell PVSyst-Faiman + PVWatts γ de solargpt_core, careado dígito a dígito en el QA). Seguimiento
+  <b>AUTO</b> (backtracking pairwise) o <b>MANUAL</b>, y <b>nubosidad</b>. Con <b>El Burgo I</b> carga los
+  823 strings reales del plano (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
   <div id="aviso"></div>
 
   <div class="grid">
     <div>
       <div class="card">
         <h2>⊙ Emplazamiento</h2>
+        <div class="f"><label>Planta</label>
+          <select id="plant" title="Genérica: presets de abajo. El Burgo I: 823 strings del plano con su inversor (sin cotas levantadas: terreno plano, declarado). Ayora / San José: las cotas z REALES de cada extremo de mesa (⛰ <planta>_cotas.json, el mismo cargador que el simulador de BT 3D) — tilt N-S medido por línea, pitch por vano y Δz por pareja del solape norte.">
+            <option value="generica">Genérica (presets)</option>
+            <option value="elburgo">El Burgo I — 823 strings · 36 inversores</option>
+            <option value="ayora">⛰ Ayora — cotas z reales de extremos</option>
+            <option value="sanjose">⛰ San José — cotas z reales de extremos</option>
+          </select></div>
         <div class="row2">
           <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
           <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
@@ -103,6 +112,22 @@ input[type=range]{accent-color:var(--live)}
         </div>
       </div>
       <div class="card" style="margin-top:12px">
+        <h2>🔌 Eléctrico (Notebook)</h2>
+        <div class="row2">
+          <div class="f"><label>Wp módulo</label><input id="wp" type="number" step="5" min="100" value="590"></div>
+          <div class="f"><label>Mód/string</label><input id="mods" type="number" step="1" min="1" value="28"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>γ %/°C</label><input id="gamma" type="number" step="0.01" value="-0.34"
+            title="Coeficiente térmico de Pmpp — el default canónico del core (ModuleSpecs.gamma_pdc_pct_per_c)."></div>
+          <div class="f"><label>T amb °C</label><input id="tamb" type="number" step="1" value="20"></div>
+        </div>
+        <div class="f"><label>Viento m/s</label><input id="wind" type="number" step="0.5" min="0" value="1"
+          title="t_cell = T + 0,9·POA/(u_c + u_v·v), la fórmula PVSyst-Faiman del core (u_c=29 free-standing, u_v=0: con u_v=0 el viento no entra, como el default canónico)."></div>
+        <p style="color:var(--muted-2);font-size:.68rem">La MISMA cadena DC que notebook y streamlit
+        (t_cell Faiman + PVWatts γ), careada dígito a dígito contra el core en el QA.</p>
+      </div>
+      <div class="card" style="margin-top:12px">
         <h2>⛰ Terreno</h2>
         <div class="f"><label>Perfil E-O</label>
           <select id="tpreset">
@@ -128,22 +153,30 @@ input[type=range]{accent-color:var(--live)}
         <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
         <span class="t" id="manthlbl">0°</span>
         <select id="cmode" class="btn">
-          <option value="inst">⚡ instante (W/m²)</option>
-          <option value="day">Σ día (kWh/m²)</option>
+          <option value="inst">☀ POA instante (W/m²)</option>
+          <option value="day">☀ POA Σ día (kWh/m²)</option>
+          <option value="pinst">⚡ P string (kW)</option>
+          <option value="pday">⚡ E string Σ día (kWh)</option>
         </select>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
       <div class="strings" id="strings"></div>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
-      El modo «Σ día» integra el día entero con el modo activo (AUTO usa backtracking pairwise en cada paso;
-      MANUAL mantiene tu θ todo el día). Motor: FÍSICA PURA de backtracking.html — pvlib singleaxis + sombra
-      exacta + eléctrico Martinez + Ineichen/Perez — extraída en caliente, no copiada. Arrastra para orbitar.</div>
+      El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles('pairwise') —
+      el MISMO punto de entrada del simulador de BT 3D, con el acople de accionamiento de la planta cuando
+      las cotas lo traen (Ayora/San José, bifila); MANUAL mantiene tu θ todo el día). Con El Burgo I los chips son por <b>inversor</b> (POA en media;
+      potencia/energía en SUMA de sus strings, del plano de numeración g.i.t.s) y el pitch es el medido por vano;
+      elevación plana — el relieve de El Burgo no está levantado en este repo, y no se finge. Motor POA: FÍSICA PURA
+      de backtracking.html — pvlib singleaxis + sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en
+      caliente, no copiada. Cadena DC: la del Notebook (t_cell PVSyst-Faiman + PVWatts γ, de solargpt_core),
+      careada dígito a dígito contra el core en el QA. Arrastra para orbitar.</div>
     </div>
   </div>
 </div>
 
 <script src="lib/three.min.js"></script>
 <script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking, terreno y el gemelo) -->
 <script src="sol.js?v=0.3.0"></script>
 <script src="irradiancia.js"></script>
 <script>
@@ -160,18 +193,102 @@ function elevPreset(preset,n,v,pitch){
   if(preset==='pendiente')for(let i=0;i<n;i++)z[i]=-i*pitch*Math.tan(v*D2R);
   else if(preset==='ondulado')for(let i=0;i<n;i++)z[i]=v*Math.sin(2*Math.PI*i/Math.max(3,Math.floor(n/2)));
   else if(preset==='valle')for(let i=0;i<n;i++)z[i]=v*Math.abs(i-(n-1)/2)/((n-1)/2);
+  // el MISMO capado del editor del simulador (clampSlopes, ±30° por vano): un
+  // preset no fabrica pendientes que ningún tracker real montaría — sin esto,
+  // «ondulado 4 m» daba parejas de 38° y el pairwise clavaba filas al tope de
+  // ±55°, que en pantalla se lee como «esto no está haciendo backtracking».
+  // Las cotas MEDIDAS nunca pasan por aquí (van por pairDz, como allí).
+  const lim=pitch*Math.tan(30*D2R);
+  for(let i=1;i<n;i++){
+    const dz=z[i-1]-z[i];
+    if(dz>lim)z[i]=z[i-1]-lim;
+    if(dz<-lim)z[i]=z[i-1]+lim;
+  }
   return z;
 }
 
-/* T mínimo con el MISMO contrato que terrain() del simulador (monofila,
-   alineadas, eje N-S plano): lo que poaPlant/anglesPairwise necesitan. */
-function buildT(F,c,elev){
-  const tilts=new Array(c.nrows).fill(0);
+/* T con el MISMO contrato que terrain() del simulador (monofila, alineadas):
+   UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
+   por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
+   planta es especial: la genérica y las reales pasan por aquí igual. */
+function buildTX(F,c,xs,z,tilt){
+  const n=xs.length;
+  const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
-  return {pairs:F.pairsFromElev(elev,c.pitch,tilts),cw:c.cw,axisAz:0,
+  return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
           rowTilt:tilts,groups:null,drive:'mono',
-          segs:F.nsSegments(c.nrows,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+          segs:F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+}
+/* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
+function buildT(F,c,elev){
+  const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+  return buildTX(F,c,xs,elev,null);
+}
+
+/* T desde una planta de COTAS REALES — P = plantFromCotas(<planta>_cotas.json),
+   el MISMO cargador del simulador de BT 3D (vive en su FÍSICA PURA): cotas z
+   de cada EXTREMO de mesa → tilt N-S medido por línea, pitch real por vano y
+   Δz por pareja medido en el SOLAPE norte (pairDz). Esta construcción es la
+   del ramo real de terrain() del simulador, sin los deltas del editor. */
+function buildTReal(F,c,P){
+  const pairs=[];
+  for(let i=0;i<P.lineX.length-1;i++){
+    const dx=Math.max(0.5,P.lineX[i+1]-P.lineX[i]);
+    pairs.push({slope:Math.atan2(P.pairDz?P.pairDz[i]||0:0,dx)*(180/Math.PI),pitch:dx,   // *DEG, la misma op que terrain()
+                axisTilt:(P.tilt[i]+P.tilt[i+1])/2});
+  }
+  // groups/drive REALES de las cotas: el simulador arranca la planta cargada
+  // con su accionamiento (P.drive, bifila/quebrado) y acopla el θ por grupo —
+  // aquí igual, para que el BT sea EL MISMO, no un pariente
+  return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
+          z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
+          segs:P.segs,filaLen:2*28*1.146+0.55,real:P};
+}
+
+/* ── cadena DC del Notebook (solargpt_core, la MISMA que notebook/streamlit):
+   t_cell PVSyst-Faiman (full_chain._t_cell_pvsyst_full, α=0,9, η=0 puro) y
+   Pdc PVWatts (electrical.dc_power_pvwatts). Portadas literalmente y careadas
+   dígito a dígito contra el golden que genera el propio core
+   (tools/gen_golden_energia_notebook.py → golden_energia_notebook.json). */
+function tCellPVSyst(poa,tair,wind,uc,uv){
+  return tair+0.9*poa*1.0/(uc+uv*wind);           // α=0,9 · (1−η)=1 (Faiman puro)
+}
+function pStringW(poa,tair,wind,e){                // e:{mods,wp,gamma,uc,uv}
+  const tc=tCellPVSyst(poa,tair,wind,e.uc,e.uv);
+  return Math.max(0,e.mods*e.wp*(poa/1000)*(1+(e.gamma/100)*(tc-25)));
+}
+
+/* El Burgo real: los strings del plano (elburgo_strings.json) → columnas E-O,
+   que son las filas del perfil de sombra. Las líneas partidas a <3 m (bifilo:
+   0,55 m entre vigas) se funden con su columna — a efectos de sombra entre
+   filas son la MISMA línea. Cada columna guarda sus strings con su inversor
+   (g.i de la numeración g.i.t.s) y su extensión N-S real. */
+function elburgoRows(strdb,minGap){
+  const g=minGap||3, xs=[...new Set(strdb.strings.map(s=>s.x))].sort((a,b)=>a-b);
+  const cl=[];
+  for(const x of xs){
+    if(cl.length&&x-cl[cl.length-1][cl[cl.length-1].length-1]<g)cl[cl.length-1].push(x);
+    else cl.push([x]);
+  }
+  const rows=cl.map(c=>({x:c.reduce((a,b)=>a+b,0)/c.length,strs:[],n0:Infinity,n1:-Infinity}));
+  const idx=new Map();cl.forEach((c,i)=>{for(const x of c)idx.set(x,i);});
+  for(const s of strdb.strings){
+    const r=rows[idx.get(s.x)];
+    r.strs.push({id:s.id,inv:s.g+'.'+s.i,n:s.n});
+    if(s.n<r.n0)r.n0=s.n; if(s.n>r.n1)r.n1=s.n;
+  }
+  return rows;
+}
+
+/* agregado por inversor. POA (por m²) se agrega en MEDIA; la energía/potencia
+   por string se agrega en SUMA (los strings de un inversor suman, no promedian). */
+function invTotals(rows,vals,modo){
+  const acc=new Map();
+  rows.forEach((r,i)=>{for(const s of r.strs){
+    const a=acc.get(s.inv)||{sum:0,n:0};a.sum+=vals[i];a.n++;acc.set(s.inv,a);}});
+  return [...acc.entries()].map(([inv,a])=>({inv:inv,val:modo==='suma'?a.sum:a.sum/a.n,nstr:a.n}))
+    .sort((a,b)=>a.inv.localeCompare(b.inv,undefined,{numeric:true}));
 }
 
 function localToUTCms(dateStr,localMin,tzOff){
@@ -183,23 +300,29 @@ function doyOf(dateStr){
   return Math.round((Date.UTC(y,mo-1,d)-Date.UTC(y,0,1))/86400000)+1;
 }
 
-/* un instante: sol → cielo (con nubes) → ángulos (auto BT | manual) → POA/fila */
+/* un instante: sol → cielo (con nubes) → ángulos (auto BT | manual) → POA/fila.
+   El AUTO entra por policyAngles('pairwise') — el MISMO punto de entrada que
+   usa el simulador de BT 3D: pairwise + el acople de accionamiento de la T
+   (con groups=null, driveCoupleSafe es la identidad y queda el pairwise puro;
+   con la bifila real de cotas, el θ común por grupo, como allí). El QA carea
+   los θ contra el simulador elemento a elemento y exige igualdad EXACTA. */
 function instant(F,c,T,m){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
   const irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
   const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
-                    :F.anglesPairwise(zen,az,T);
+                    :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
   return {g:g,zen:zen,az:az,irr:irr,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
 }
 
-/* día entero: Σ rows·Δt por string (kWh/m²), paso de 5 min con el modo activo */
-function dayTotals(F,c,T){
-  const n=c.nrows, out=new Array(n).fill(0);
+/* día entero, paso de 5 min con el modo activo. map: POA de fila → magnitud
+   (identidad para kWh/m²; pStringW para kWh eléctricos por string). */
+function dayTotals(F,c,T,map){
+  const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
   for(let m=0;m<1440;m+=5){
     const r=instant(F,c,T,m);
-    for(let k=0;k<n;k++)out[k]+=r.rows[k];
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k]);
   }
   for(let k=0;k<n;k++)out[k]*=5/60/1000;
   return out;
@@ -218,7 +341,7 @@ async function cargaFisica(){
     const src=html.slice(html.lastIndexOf('/*',i0),i1);
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
-              pairsFromElev,nsSegments};`)();
+              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -228,18 +351,74 @@ async function cargaFisica(){
   }
 }
 
+/* plantas de cotas reales (el mismo dato que carga el simulador de BT 3D) */
+const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2},
+              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5}};
+let RP=null;   // {key,P,lat,lon,alt} — planta de cotas cargada
+async function cargaCotas(key){
+  if(RP&&RP.key===key)return RP;
+  const cfg2=REALES[key];
+  const [cotas,lay]=await Promise.all([
+    fetch(cfg2.cotas,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.cotas+' '+r.status);return r.json();}),
+    fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
+  const P=F.plantFromCotas(cotas,80,null);   // el bloque mayor, como el simulador
+  RP={key:key,P:P,lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
+  return RP;
+}
+
+/* datos de la planta real (solo se piden al elegirla) */
+let EB=null;
+async function cargaElburgo(){
+  if(EB)return EB;
+  const [sj,lj]=await Promise.all([
+    fetch('elburgo_strings.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_strings.json '+r.status);return r.json();}),
+    fetch('elburgo_layout.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_layout.json '+r.status);return r.json();})]);
+  const rows=elburgoRows(sj,3);
+  EB={rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+      maxang:(lj.montaje&&lj.montaje.max_angle)||55,
+      cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count};
+  return EB;
+}
+
 function cfg(){
-  return {lat:+$('lat').value,lon:+$('lon').value,date:$('date').value,tz:+$('tz').value,
+  const c={plant:$('plant').value,
+          lat:+$('lat').value,lon:+$('lon').value,date:$('date').value,tz:+$('tz').value,
           alt:+$('alt').value,albedo:+$('albedo').value,cc:Math.max(0,Math.min(1,(+$('cloud').value)/100)),
           pitch:+$('pitch').value,cw:+$('cw').value,maxang:+$('maxang').value,
           nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
           manual:$('manual').checked,manth:+$('manth').value,
-          tpreset:$('tpreset').value,tparam:+$('tparam').value};
+          tpreset:$('tpreset').value,tparam:+$('tparam').value,
+          // eléctrico del Notebook: u_c=29/u_v=0 son los defaults canónicos del
+          // core (ThermalSpecs, free-standing); el resto se edita en su tarjeta
+          elec:{mods:Math.max(1,Math.round(+$('mods').value)),wp:+$('wp').value,
+                gamma:+$('gamma').value,tamb:+$('tamb').value,wind:Math.max(0,+$('wind').value),
+                uc:29,uv:0}};
+  if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant){
+    const P=RP.P;
+    c.nrows=P.elev.length;c.cw=P.cw;c.maxang=P.maxAngle;c.pitch=P.pitch;
+    c.lat=RP.lat;c.lon=RP.lon;
+  }
+  return c;
 }
 function rebuildT(){
   const c=cfg();
-  T={elev:elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch)};
-  T.obj=buildT(F,c,T.elev);
+  // MISMO camino para todas las plantas: posiciones x + elevación + tilt por
+  // fila → el motor. Cada planta solo aporta SUS datos: la genérica su rejilla,
+  // El Burgo las x del plano (z/tilt a 0: es lo que hay levantado), y Ayora /
+  // San José las cotas z de cada extremo de mesa vía plantFromCotas — el mismo
+  // cargador del simulador de BT 3D.
+  if(REALES[c.plant]&&RP&&RP.key===c.plant){
+    const P=RP.P;
+    T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
+    T.obj=buildTReal(F,c,P);
+  }else{
+    const eb=(c.plant==='elburgo'&&EB);
+    const xs=eb?EB.xs:Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+    const z=eb?new Array(c.nrows).fill(0):elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+    T={elev:z,xs:xs,tilt:null,segs:null};
+    T.obj=buildTX(F,c,xs,z,null);
+  }
   DAYC=null;
   build3D(c);
 }
@@ -264,39 +443,99 @@ function build3D(c){
   R3.renderer.setSize(W,H,false);R3.cam.aspect=W/H;R3.cam.updateProjectionMatrix();
   if(R3.world)R3.scene.remove(R3.world);
   R3.world=new THREE.Group();R3.scene.add(R3.world);
-  const n=c.nrows,len=T.obj.filaLen;
-  const span=(n-1)*c.pitch;
+  const n=c.nrows, eb=(c.plant==='elburgo'&&EB);
+  // geometría por fila para la ESCENA: x (recentradas), z, tilt N-S y TRAMOS —
+  // medidos cuando la planta los trae (cotas/plano), rejilla uniforme si no
+  const xc=(T.xs[0]+T.xs[n-1])/2;
+  const rx=T.xs.map(x=>x-xc);
+  let segsNS;
+  if(T.segs)segsNS=T.segs;                                    // tramos de mesa MEDIDOS (cotas)
+  else if(eb){
+    const nc=(Math.min.apply(null,EB.rows.map(r=>r.n0))+Math.max.apply(null,EB.rows.map(r=>r.n1)))/2;
+    segsNS=EB.rows.map(r=>[[r.n0-nc,r.n1-nc]]);
+  }else segsNS=Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
+  const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
+  const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
-    new THREE.PlaneGeometry(span+40,len+40,Math.max(2,n*2),2),
+    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),2),
     new THREE.MeshLambertMaterial({color:0x1c2b22,side:THREE.DoubleSide}));
   // el suelo sigue el perfil E-O real (el mismo elev que come la física)
   {const pos=gnd.geometry.attributes.position;
    for(let i=0;i<pos.count;i++){
-     const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/c.pitch));
+     const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/Math.max(1e-6,span/(n-1))));
      const r0=Math.floor(r), fr=r-r0, z0=T.elev[r0], z1=T.elev[Math.min(n-1,r0+1)];
      pos.setZ(i,z0+fr*(z1-z0));}
    pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
   gnd.rotation.x=-Math.PI/2;
+  gnd.position.z=-(sMin+sMax)/2;
   R3.world.add(gnd);
+  // ── los trackers: el MODELO del seguidor de la casa (seguidor.js — la misma
+  // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
+  // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
+  // simulador). Sin el modelo (fichero ausente), cajas de siempre.
+  const useModel=(typeof Seguidor!=='undefined');
+  const D0=useModel?Seguidor.DIMS:null;
+  if(useModel&&!R3.mats)R3.mats=Seguidor.materials(THREE);
+  const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
   R3.rows=[];
   for(let r=0;r<n;r++){
-    const x=r*c.pitch-span/2, y=T.elev[r]+2.1;
-    const spin=new THREE.Group();spin.position.set(x,y,0);
-    const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),
-      new THREE.MeshLambertMaterial({color:0x39424d}));
-    const pm=new THREE.MeshLambertMaterial({color:0x223344});
-    const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.04,len),pm);
-    panel.position.y=0.17;
-    spin.add(tube,panel);
-    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.1,8),
-      new THREE.MeshLambertMaterial({color:0x2a333d}));
-    post.position.set(x,T.elev[r]+1.05,0);
-    R3.world.add(spin,post);
-    R3.rows.push({spin:spin,mat:pm});
+    const x=rx[r], hubY=T.elev[r]+2.0;                        // postH canónico del modelo
+    const tintM=new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
+      side:THREE.DoubleSide,depthWrite:false});
+    const spins=[];
+    for(const sg of segsNS[r]){
+      const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
+      const tiltG=new THREE.Group();
+      tiltG.position.set(x,hubY,zc);
+      if(T.tilt)tiltG.rotation.x=-T.tilt[r]*D2R;              // tilt N-S MEDIDO de la línea
+      let built=false;
+      if(useModel){
+        try{
+          const media=len<0.7*T.obj.filaLen;                  // tramo corto ⇒ mesa «media» real
+          const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
+          Seguidor.setModsPerStr(mods);
+          const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:media?'medio':'largo',
+                                               materials:R3.mats,skip:{antena:1,antenatip:1}});
+          const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
+          beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
+          const bb=new THREE.Box3().setFromObject(beam.spin); // en el marco local del tubo, ANTES de colgar
+          const tint=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1,bb.max.x-bb.min.x),2.36),tintM);
+          tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.renderOrder=2;
+          beam.spin.add(tint);
+          yaw.add(beam.spin,beam.static);
+          tiltG.add(yaw);
+          spins.push({g:beam.spin,model:true});
+          built=true;
+        }catch(e){built=false;}
+      }
+      if(!built){                                             // camino clásico: cajas
+        const gRot=new THREE.Group();
+        const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),
+          new THREE.MeshLambertMaterial({color:0x39424d}));
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.04,len),
+          new THREE.MeshLambertMaterial({color:0x223344}));
+        panel.position.y=0.17;
+        const tint=new THREE.Mesh(new THREE.PlaneGeometry(len,c.cw*0.99),tintM);
+        tint.rotation.x=-Math.PI/2;tint.rotation.z=Math.PI/2;tint.position.y=0.20;tint.renderOrder=2;
+        gRot.add(tube,panel,tint);
+        tiltG.add(gRot);
+        spins.push({g:gRot,model:false});
+      }
+      R3.world.add(tiltG);
+      // postes a tercios del tramo, pie en el terreno (como el simulador)
+      for(const dn of [-len/3,0,len/3]){
+        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.0,8),postM);
+        post.position.set(x,T.elev[r]+1.0,zc-dn);
+        R3.world.add(post);
+      }
+    }
+    R3.rows.push({spins:spins,mat:tintM});
   }
-  if(!R3.camSet){
-    R3.cam.position.set(span*0.75,Math.max(18,span*0.55),len*0.95);
-    R3.ctrl.target.set(0,0,0);R3.ctrl.update();R3.camSet=true;
+  if(useModel)Seguidor.setModsPerStr(28);                     // restaurar el canónico compartido
+  if(!R3.camSet||R3.camPlant!==c.plant){
+    const D=Math.max(span,maxLen);   // encuadre por la dimensión mayor del campo
+    R3.cam.position.set(D*0.55,Math.max(18,D*0.45),D*0.80);
+    R3.ctrl.target.set(0,0,0);R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
   }
   R3.dirty=true;
 }
@@ -316,22 +555,40 @@ function repaint(){
   $('manthlbl').textContent=$('manth').value+'°';
   $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
   const inst=instant(F,c,T.obj,m);
-  let vals,unit,fmt;
-  if($('cmode').value==='day'){
-    if(!DAYC)DAYC=dayTotals(F,c,T.obj);
-    vals=DAYC;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  const mode=$('cmode').value, pw=v=>pStringW(v,c.elec.tamb,c.elec.wind,c.elec)/1000;
+  let vals,unit,fmt,agg='media';
+  if(mode==='day'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
+    vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  }else if(mode==='pday'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,v=>pw(v)*1000)};
+    vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
+  }else if(mode==='pinst'){
+    vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else{vals=inst.rows;unit='W/m²';fmt=v=>v.toFixed(0);}
   const mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
   paintLegend(mn,mx,unit,fmt);
-  const chips=[];
   for(let r=0;r<c.nrows;r++){
     const x01=mx>mn?(vals[r]-mn)/(mx-mn):0.5, col=ramp(x01);
     if(R3.rows&&R3.rows[r]){
-      R3.rows[r].spin.rotation.z=-inst.ang[r]*D2R;
+      const th=inst.ang[r]*D2R;
+      for(const sp of R3.rows[r].spins)                       // mismo convenio que el update3D del simulador
+        if(sp.model)sp.g.rotation.x=th; else sp.g.rotation.z=-th;
       R3.rows[r].mat.color.set(col);
     }
-    chips.push('<span class="s-chip"><span class="s-dot" style="background:'+col+'"></span>S'+(r+1)+
-               ' · '+fmt(vals[r])+'</span>');
+  }
+  const chips=[];
+  if(c.plant==='elburgo'&&EB){
+    // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
+    const iv=invTotals(EB.rows,vals,agg);
+    const im=Math.min.apply(null,iv.map(v=>v.val)),ix=Math.max.apply(null,iv.map(v=>v.val));
+    for(const v of iv)
+      chips.push('<span class="s-chip" title="'+v.nstr+' strings"><span class="s-dot" style="background:'+
+                 ramp(ix>im?(v.val-im)/(ix-im):0.5)+'"></span>I'+v.inv+' · '+fmt(v.val)+'</span>');
+  }else{
+    for(let r=0;r<c.nrows;r++)
+      chips.push('<span class="s-chip"><span class="s-dot" style="background:'+
+                 ramp(mx>mn?(vals[r]-mn)/(mx-mn):0.5)+'"></span>S'+(r+1)+' · '+fmt(vals[r])+'</span>');
   }
   $('strings').innerHTML=chips.join('');
   // sol de la escena
@@ -349,7 +606,35 @@ function repaint(){
   rebuildT();repaint();
   for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
     $(id).addEventListener('change',()=>{rebuildT();repaint();});
+  $('plant').addEventListener('change',async()=>{
+    const key=$('plant').value, real=key!=='generica';
+    try{
+      if(key==='elburgo'){
+        await cargaElburgo();
+        $('lat').value=EB.lat.toFixed(4);$('lon').value=EB.lon.toFixed(4);
+        $('alt').value=180;   // El Burgo de Ebro ~180 m (aprox declarada; editable)
+        $('cw').value=EB.cw;$('maxang').value=EB.maxang;$('pitch').value=6;$('nrows').value=EB.rows.length;
+      }else if(REALES[key]){
+        await cargaCotas(key);
+        const P=RP.P;
+        $('lat').value=RP.lat.toFixed(4);$('lon').value=RP.lon.toFixed(4);
+        $('alt').value=RP.alt;$('tz').value=RP.tz;   // huso de la planta (San José es Perú)
+        $('cw').value=P.cw;$('maxang').value=P.maxAngle;
+        $('pitch').value=P.pitch.toFixed(2);$('nrows').value=P.elev.length;
+      }
+    }catch(e){
+      const a=$('aviso');a.style.display='block';
+      a.innerHTML='⚠ <b>No puedo cargar la planta real</b> ('+e.message+'): necesita sus '+
+        'ficheros de datos desplegados junto a la página.';
+      $('plant').value='generica';return;
+    }
+    // la geometría/terreno reales vienen medidos: se bloquean (el resto sigue libre)
+    for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
+    rebuildT();repaint();
+  });
   $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});
+  for(const id of ['wp','mods','gamma','tamb','wind'])
+    $(id).addEventListener('change',()=>{DAYC=null;repaint();});
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;DAYC=null;repaint();});
