@@ -85,6 +85,11 @@ input[type=range]{accent-color:var(--live)}
             <option value="ayora">⛰ Ayora — cotas z reales de extremos</option>
             <option value="sanjose">⛰ San José — cotas z reales de extremos</option>
           </select></div>
+        <div class="f"><label>Ámbito</label>
+          <select id="ambito" disabled
+            title="Planta entera o el parque de UNA NCU — la unidad real de control, como el ámbito del simulador de BT 3D. En Ayora/San José la NCU de cada tracker viene del layout (alineado 1:1 con las cotas); en El Burgo, de casar la numeración g.i.t del string con el idPrevio del layout (819 de 823 casan; los 4 restantes solo aparecen en planta entera, declarado).">
+            <option value="">Planta entera</option>
+          </select></div>
         <div class="row2">
           <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
           <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
@@ -211,14 +216,14 @@ function elevPreset(preset,n,v,pitch){
    UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
    por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
    planta es especial: la genérica y las reales pasan por aquí igual. */
-function buildTX(F,c,xs,z,tilt){
+function buildTX(F,c,xs,z,tilt,segs,groups,drive){
   const n=xs.length;
   const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
   return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
-          rowTilt:tilts,groups:null,drive:'mono',
-          segs:F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+          rowTilt:tilts,groups:groups||null,drive:drive||'mono',
+          segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
 }
 /* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
 function buildT(F,c,elev){
@@ -279,6 +284,68 @@ function elburgoRows(strdb,minGap){
     if(s.n<r.n0)r.n0=s.n; if(s.n>r.n1)r.n1=s.n;
   }
   return rows;
+}
+
+/* tramos de mesa por columna para El Burgo: cada string del plano es un
+   segmento a lo largo de N (el paso mediano entre strings contiguos ES el
+   largo de mesa: 32,57 m en el plano); los CAMINOS de la planta son los
+   huecos grandes entre strings — el render y el solape axial de poaPlant
+   los respetan. Antes cada columna era una viga continua y la calle
+   central desaparecía (verificado contra terreno.html y el histograma de
+   huecos del propio plano: 626 pasos normales, ~37 cortes de 36–70 m). */
+function elburgoSegs(rows){
+  const gaps=[];
+  for(const r of rows){
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    for(let i=1;i<ns.length;i++)gaps.push(ns[i]-ns[i-1]);
+  }
+  gaps.sort((a,b)=>a-b);
+  const L=(gaps.length?gaps[Math.floor(gaps.length/2)]:32.57)*0.96;
+  return rows.map(r=>{
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    const out=[];
+    for(const nn of ns){
+      const a=nn-L/2, b=nn+L/2;
+      if(out.length&&a-out[out.length-1][1]<4)out[out.length-1][1]=b;   // junta normal: mesa seguida
+      else out.push([a,b]);                                            // hueco real: camino
+    }
+    return out;
+  });
+}
+
+/* bifilo de El Burgo (layout.geometria): cada seguidor son DOS vigas a ±3 m de
+   su EJE DE UNIDAD con UN solo motor — «45 columnas de seguidores = 90 filas».
+   Las columnas se emparejan por unidad (viga oeste = x−3, este = x+3) y el θ
+   va ACOPLADO por accionamiento, como la bifila del simulador. Mayoritario sin
+   solapes, la misma protección que plantFromCotas. */
+function elburgoGroups(xs,trackers){
+  const idxNear=x=>{let b=-1,d=0.6;for(let i=0;i<xs.length;i++){const e=Math.abs(xs[i]-x);if(e<d){d=e;b=i;}}return b;};
+  const seen=new Set();
+  for(const t of (trackers||[])){
+    const a=idxNear(t.x-3),b=idxNear(t.x+3);
+    if(a<0||b<0||a===b)continue;
+    seen.add(Math.min(a,b)+'-'+Math.max(a,b));
+  }
+  const used=new Set(),out=[];
+  for(const key of [...seen]){
+    const [a,b]=key.split('-').map(Number);
+    if(used.has(a)||used.has(b))continue;
+    used.add(a);used.add(b);out.push([a,b]);
+  }
+  for(let i=0;i<xs.length;i++)if(!used.has(i))out.push([i]);
+  out.sort((p,q)=>p[0]-q[0]);
+  return out;
+}
+
+/* ámbito por NCU (como el del simulador): filtra el plano de strings a los del
+   parque de UNA NCU, con el mapa g.i.t → ncu que sale del layout (idPrevio).
+   Los strings cuyo tracker no está en el layout solo aparecen en planta
+   entera — se declara, no se les inventa NCU. */
+function filtraStringsNCU(strdb,mapa,ncu){
+  const strings=strdb.strings.filter(s=>mapa.get(s.g+'.'+s.i+'.'+s.t)===ncu);
+  const byInv={};
+  for(const s of strings){const k=s.g+'.'+s.i;byInv[k]=(byInv[k]||0)+1;}
+  return {src:strdb.src,count:strings.length,byInv:byInv,strings:strings};
 }
 
 /* agregado por inversor. POA (por m²) se agrega en MEDIA; la energía/potencia
@@ -362,8 +429,18 @@ async function cargaCotas(key){
     fetch(cfg2.cotas,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.cotas+' '+r.status);return r.json();}),
     fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
   const P=F.plantFromCotas(cotas,80,null);   // el bloque mayor, como el simulador
-  RP={key:key,P:P,lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
+  // NCU por tracker: el layout alineado 1:1 con las cotas (la receta del simulador)
+  const ncuOf=(lay.trackers&&lay.trackers.length===cotas.t.length)?lay.trackers.map(t=>t.ncu):null;
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,
+      lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
+}
+/* re-corta la planta de cotas al ámbito elegido (''=entera, n=esa NCU) */
+function aplicaAmbitoCotas(v){
+  let data=RP.cotas;
+  if(v!==''&&RP.ncuOf)data=Object.assign({},RP.cotas,{t:RP.cotas.t.filter((_,i)=>RP.ncuOf[i]===+v)});
+  RP.P=F.plantFromCotas(data,80,null);
+  $('nrows').value=RP.P.elev.length;$('pitch').value=RP.P.pitch.toFixed(2);
 }
 
 /* datos de la planta real (solo se piden al elegirla) */
@@ -374,10 +451,23 @@ async function cargaElburgo(){
     fetch('elburgo_strings.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_strings.json '+r.status);return r.json();}),
     fetch('elburgo_layout.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_layout.json '+r.status);return r.json();})]);
   const rows=elburgoRows(sj,3);
-  EB={rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+  // NCU por string: g.i.t del plano casado con el idPrevio del layout
+  const mapa=new Map();
+  for(const t of (lj.trackers||[]))if(t.idPrevio!=null)mapa.set(String(t.idPrevio),t.ncu);
+  const porNCU={};let sinNCU=0;
+  for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
+    if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
+  EB={raw:sj,trk:lj.trackers||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
       maxang:(lj.montaje&&lj.montaje.max_angle)||55,
-      cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count};
+      cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
+      mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
   return EB;
+}
+/* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU) */
+function aplicaAmbitoEB(v){
+  const db=v===''?EB.raw:filtraStringsNCU(EB.raw,EB.mapa,+v);
+  EB.rows=elburgoRows(db,3);EB.xs=EB.rows.map(r=>r.x);
+  $('nrows').value=EB.rows.length;
 }
 
 function cfg(){
@@ -412,10 +502,26 @@ function rebuildT(){
     const P=RP.P;
     T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
     T.obj=buildTReal(F,c,P);
+  }else if(c.plant==='elburgo'&&EB){
+    // tramos de mesa REALES por string, con sus caminos (verificado contra
+    // terreno.html): entran en la escena Y en el solape axial de poaPlant
+    const abs=elburgoSegs(EB.rows);
+    let mn=Infinity,mx=-Infinity;
+    for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
+    const nc=(mn+mx)/2;
+    const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
+    const z=new Array(c.nrows).fill(0);
+    // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
+    // motor en la viga OESTE — «no todos los trackers son iguales, pero son
+    // bifilas todos» (los largos de mesa ya salen de los propios strings)
+    const groups=elburgoGroups(EB.xs,EB.trk);
+    T={elev:z,xs:EB.xs,tilt:null,segs:segs};
+    T.west=new Array(c.nrows).fill(true);
+    for(const g of groups)if(g.length===2)T.west[g[1]]=false;
+    T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
   }else{
-    const eb=(c.plant==='elburgo'&&EB);
-    const xs=eb?EB.xs:Array.from({length:c.nrows},(_,i)=>i*c.pitch);
-    const z=eb?new Array(c.nrows).fill(0):elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+    const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+    const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
     T={elev:z,xs:xs,tilt:null,segs:null};
     T.obj=buildTX(F,c,xs,z,null);
   }
@@ -429,13 +535,18 @@ function build3D(c){
   const cv=$('c3d');
   if(!R3.renderer){
     R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    // sombra REAL entre filas, con el mismo montaje que el simulador de BT 3D
+    R3.renderer.shadowMap.enabled=true;R3.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     R3.scene=new THREE.Scene();
-    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,2000);
+    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
     R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
     R3.ctrl.addEventListener('change',()=>R3.dirty=true);
     R3.amb=new THREE.AmbientLight(0xffffff,0.75);
-    R3.sun=new THREE.DirectionalLight(0xffffff,0.9);
-    R3.scene.add(R3.amb,R3.sun);
+    R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
+    R3.sun.castShadow=true;
+    R3.sun.shadow.mapSize.width=4096;R3.sun.shadow.mapSize.height=4096;
+    R3.sun.shadow.bias=-2e-4;R3.sun.shadow.normalBias=0.3;   // los del simulador
+    R3.scene.add(R3.amb,R3.sun,R3.sun.target);
     (function loop(){requestAnimationFrame(loop);
       if(R3.dirty){R3.dirty=false;R3.renderer.render(R3.scene,R3.cam);}})();
   }
@@ -443,17 +554,14 @@ function build3D(c){
   R3.renderer.setSize(W,H,false);R3.cam.aspect=W/H;R3.cam.updateProjectionMatrix();
   if(R3.world)R3.scene.remove(R3.world);
   R3.world=new THREE.Group();R3.scene.add(R3.world);
-  const n=c.nrows, eb=(c.plant==='elburgo'&&EB);
+  const n=c.nrows;
   // geometría por fila para la ESCENA: x (recentradas), z, tilt N-S y TRAMOS —
   // medidos cuando la planta los trae (cotas/plano), rejilla uniforme si no
   const xc=(T.xs[0]+T.xs[n-1])/2;
   const rx=T.xs.map(x=>x-xc);
-  let segsNS;
-  if(T.segs)segsNS=T.segs;                                    // tramos de mesa MEDIDOS (cotas)
-  else if(eb){
-    const nc=(Math.min.apply(null,EB.rows.map(r=>r.n0))+Math.max.apply(null,EB.rows.map(r=>r.n1)))/2;
-    segsNS=EB.rows.map(r=>[[r.n0-nc,r.n1-nc]]);
-  }else segsNS=Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
+  // tramos MEDIDOS cuando la planta los trae (cotas o strings del plano, con
+  // sus caminos); rejilla de una mesa continua para la genérica
+  const segsNS=T.segs||Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
@@ -468,7 +576,12 @@ function build3D(c){
    pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
   gnd.rotation.x=-Math.PI/2;
   gnd.position.z=-(sMin+sMax)/2;
+  gnd.receiveShadow=true;
   R3.world.add(gnd);
+  // sombra del sol acotada a la planta (como el simulador); el frustum vertical
+  // se ciñe por frame en repaint (sol rasante: texel en cm, no la «sierra»)
+  R3.shR=Math.max(span,maxLen)*0.75;
+  R3.sun.target.position.set(0,0,0);
   // ── los trackers: el MODELO del seguidor de la casa (seguidor.js — la misma
   // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
   // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
@@ -494,7 +607,8 @@ function build3D(c){
           const media=len<0.7*T.obj.filaLen;                  // tramo corto ⇒ mesa «media» real
           const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
           Seguidor.setModsPerStr(mods);
-          const beam=Seguidor.buildBeam(THREE,{west:true,detail:'mass',size:media?'medio':'largo',
+          // bifila: motor/TCU solo en la viga OESTE de cada unidad (T.west)
+          const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
                                                materials:R3.mats,skip:{antena:1,antenatip:1}});
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
@@ -526,6 +640,7 @@ function build3D(c){
       for(const dn of [-len/3,0,len/3]){
         const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.0,8),postM);
         post.position.set(x,T.elev[r]+1.0,zc-dn);
+        post.castShadow=true;
         R3.world.add(post);
       }
     }
@@ -533,9 +648,17 @@ function build3D(c){
   }
   if(useModel)Seguidor.setModsPerStr(28);                     // restaurar el canónico compartido
   if(!R3.camSet||R3.camPlant!==c.plant){
-    const D=Math.max(span,maxLen);   // encuadre por la dimensión mayor del campo
-    R3.cam.position.set(D*0.55,Math.max(18,D*0.45),D*0.80);
-    R3.ctrl.target.set(0,0,0);R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
+    // encuadre por la CAJA REAL de la escena — San José es 490 m de ancho por
+    // 2,4 km de largo, y el «máximo de dos números» a ojo lo dejaba en una
+    // esquina diminuta del lienzo
+    const bb=new THREE.Box3().setFromObject(R3.world);
+    const ctr=bb.getCenter(new THREE.Vector3()), sz=bb.getSize(new THREE.Vector3());
+    const asp=R3.cam.aspect||1.6, fov=R3.cam.fov*D2R;
+    const d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
+    R3.ctrl.target.copy(ctr);
+    R3.cam.position.set(ctr.x+d*0.42,ctr.y+d*0.55,ctr.z+d*0.62);
+    R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
+    R3.sun.target.position.copy(ctr);
   }
   R3.dirty=true;
 }
@@ -606,22 +729,35 @@ function repaint(){
   rebuildT();repaint();
   for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
     $(id).addEventListener('change',()=>{rebuildT();repaint();});
+  const fillAmbito=(lista,unidad)=>{   // lista: [[ncu, nº]] ordenada; null = sin NCUs
+    const sel=$('ambito');
+    sel.innerHTML='<option value="">Planta entera</option>'+
+      (lista||[]).map(([n,c2])=>'<option value="'+n+'">NCU '+n+' — '+c2+' '+unidad+'</option>').join('');
+    sel.value='';sel.disabled=!lista||!lista.length;
+  };
   $('plant').addEventListener('change',async()=>{
     const key=$('plant').value, real=key!=='generica';
     try{
       if(key==='elburgo'){
         await cargaElburgo();
+        aplicaAmbitoEB('');
+        fillAmbito(Object.entries(EB.porNCU).sort((a,b)=>+a[0]-+b[0]),'strings');
         $('lat').value=EB.lat.toFixed(4);$('lon').value=EB.lon.toFixed(4);
         $('alt').value=180;   // El Burgo de Ebro ~180 m (aprox declarada; editable)
         $('cw').value=EB.cw;$('maxang').value=EB.maxang;$('pitch').value=6;$('nrows').value=EB.rows.length;
       }else if(REALES[key]){
         await cargaCotas(key);
+        aplicaAmbitoCotas('');
+        if(RP.ncuOf){
+          const cnt={};RP.ncuOf.forEach(n2=>{if(n2!=null)cnt[n2]=(cnt[n2]||0)+1;});
+          fillAmbito(Object.entries(cnt).sort((a,b)=>+a[0]-+b[0]),'trackers');
+        }else fillAmbito(null);
         const P=RP.P;
         $('lat').value=RP.lat.toFixed(4);$('lon').value=RP.lon.toFixed(4);
         $('alt').value=RP.alt;$('tz').value=RP.tz;   // huso de la planta (San José es Perú)
         $('cw').value=P.cw;$('maxang').value=P.maxAngle;
         $('pitch').value=P.pitch.toFixed(2);$('nrows').value=P.elev.length;
-      }
+      }else fillAmbito(null);
     }catch(e){
       const a=$('aviso');a.style.display='block';
       a.innerHTML='⚠ <b>No puedo cargar la planta real</b> ('+e.message+'): necesita sus '+
@@ -630,6 +766,15 @@ function repaint(){
     }
     // la geometría/terreno reales vienen medidos: se bloquean (el resto sigue libre)
     for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
+    R3.camSet=false;   // planta nueva ⇒ reencuadre
+    rebuildT();repaint();
+  });
+  $('ambito').addEventListener('change',()=>{
+    const key=$('plant').value, v=$('ambito').value;
+    if(key==='elburgo'&&EB)aplicaAmbitoEB(v);
+    else if(REALES[key]&&RP)aplicaAmbitoCotas(v);
+    else return;
+    DAYC=null;R3.camSet=false;   // el ámbito cambia la extensión ⇒ reencuadre
     rebuildT();repaint();
   });
   $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});

@@ -40,8 +40,8 @@ const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, invTotals,
-          tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
+          invTotals, filtraStringsNCU, tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -216,6 +216,85 @@ t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por van
   if (r.rows.length !== P.elev.length) throw new Error('rows ' + r.rows.length);
   for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita: ' + v);
   if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
+});
+
+t('El Burgo: los tramos de mesa respetan los CAMINOS del plano (la calle no desaparece)', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const segs = S.elburgoSegs(rows);
+  // cada string cae dentro de un tramo de SU columna…
+  rows.forEach((r, i) => {
+    for (const s of r.strs)
+      if (!segs[i].some(sg => s.n >= sg[0] - 0.5 && s.n <= sg[1] + 0.5))
+        throw new Error('string ' + s.id + ' fuera de todo tramo de su columna');
+  });
+  // …y los caminos parten columnas: el plano corta ~37 veces (huecos 36–70 m)
+  const cortes = segs.reduce((a, l) => a + l.length - 1, 0);
+  if (cortes < 20) throw new Error('solo ' + cortes + ' cortes: los caminos del plano no aparecen');
+  if (cortes > 120) throw new Error(cortes + ' cortes: las mesas se están troceando de más');
+  // ningún tramo más corto que media mesa ni más largo que la columna entera
+  for (const l of segs) for (const sg of l)
+    if (sg[1] - sg[0] < 12) throw new Error('tramo de ' + (sg[1] - sg[0]).toFixed(1) + ' m: demasiado corto para una mesa');
+});
+
+t('El Burgo es BIFILA: 45 unidades de dos vigas, θ ACOPLADO y motor solo en la viga oeste', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const xs = rows.map(r => r.x);
+  const groups = S.elburgoGroups(xs, layout.trackers);
+  const pares = groups.filter(g => g.length === 2);
+  // «45 columnas de seguidores = 90 filas» (layout.geometria)
+  if (pares.length < 42) throw new Error('solo ' + pares.length + ' unidades bifila de ~45');
+  for (const g of pares) {
+    const d = xs[g[1]] - xs[g[0]];
+    if (Math.abs(d - 6) > 1.2) throw new Error('vigas de una unidad a ' + d.toFixed(2) + ' m (≠6): el emparejado no es el bifilo del layout');
+  }
+  // θ común por unidad: con drive bifila, cada pareja comparte el θ EXACTO…
+  const segs = S.elburgoSegs(rows);
+  const c = { ...C, nrows: rows.length };
+  const z = new Array(rows.length).fill(0);
+  const T = S.buildTX(S.F, c, xs, z, null, segs, groups, 'bifila');
+  const r = S.instant(S.F, c, T, 1140);   // 19:00 — donde el acople muerde
+  for (const g of pares)
+    if (r.ang[g[0]] !== r.ang[g[1]])
+      throw new Error(`unidad ${g[0]}-${g[1]}: θ ${r.ang[g[0]]} ≠ ${r.ang[g[1]]} — el accionamiento no acopla`);
+  // …y el acople se ejercita donde muerde: El Burgo es plano (en mono las
+  // vigas ya coinciden solas), así que un z sintético en escalón alterno las
+  // desiguala — SIN grupos difieren, CON los MISMOS grupos vuelven a compartir
+  const zPert = xs.map((_, i) => (i % 2) * 0.8);
+  const rSin = S.instant(S.F, c, S.buildTX(S.F, c, xs, zPert, null, segs), 1140);
+  if (!pares.some(g => rSin.ang[g[0]] !== rSin.ang[g[1]]))
+    throw new Error('el escalón sintético no desiguala ninguna pareja: el careo del acople es vacío');
+  const rCon = S.instant(S.F, c, S.buildTX(S.F, c, xs, zPert, null, segs, groups, 'bifila'), 1140);
+  for (const g of pares)
+    if (rCon.ang[g[0]] !== rCon.ang[g[1]])
+      throw new Error(`con escalón y grupos, la unidad ${g[0]}-${g[1]} no acopla (${rCon.ang[g[0]]} ≠ ${rCon.ang[g[1]]})`);
+});
+
+t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parque calcula', () => {
+  // El Burgo: g.i.t del string → idPrevio del layout → ncu (como terreno.html)
+  const mapa = new Map();
+  for (const tk of layout.trackers) if (tk.idPrevio != null) mapa.set(String(tk.idPrevio), tk.ncu);
+  const ncu1 = S.filtraStringsNCU(strdb, mapa, 1), ncu2 = S.filtraStringsNCU(strdb, mapa, 2);
+  const sinNCU = strdb.strings.filter(s => !mapa.has(s.g + '.' + s.i + '.' + s.t)).length;
+  if (ncu1.count + ncu2.count + sinNCU !== strdb.count)
+    throw new Error(`${ncu1.count}+${ncu2.count}+${sinNCU} ≠ ${strdb.count}: el ámbito pierde strings`);
+  if (sinNCU > 8) throw new Error(sinNCU + ' strings sin NCU: el casado g.i.t→idPrevio se ha roto');
+  for (const db of [ncu1, ncu2]) {
+    if (!(db.count > 300)) throw new Error('parque de NCU con solo ' + db.count + ' strings');
+    const rows = S.elburgoRows(db, 3);
+    const c = { ...C, nrows: rows.length };
+    const T = S.buildTX(S.F, c, rows.map(r => r.x), new Array(rows.length).fill(0), null);
+    const r = S.instant(S.F, c, T, 720);
+    if (!(r.plant > 300)) throw new Error('el parque de una NCU no calcula (' + r.plant + ' W/m²)');
+  }
+  // y en cotas (Ayora): el filtrado por ncuOf del layout deja una planta válida
+  const ncuOf = (layAyora.trackers && layAyora.trackers.length === cotasAyora.t.length)
+    ? layAyora.trackers.map(tk => tk.ncu) : null;
+  if (ncuOf) {
+    const primera = ncuOf.find(v => v != null);
+    const sub = { ...cotasAyora, t: cotasAyora.t.filter((_, i) => ncuOf[i] === primera) };
+    const P = S.F.plantFromCotas(sub, 80, null);
+    if (!(P.elev.length >= 2)) throw new Error('el parque de la NCU ' + primera + ' no forma planta');
+  }
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
