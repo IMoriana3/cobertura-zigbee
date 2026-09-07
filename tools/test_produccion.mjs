@@ -38,7 +38,8 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
-             pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,clearskyIneichen:clearskyIneichen},
+             pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
+             clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, invTotals,
           tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
@@ -215,6 +216,44 @@ t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por van
   if (r.rows.length !== P.elev.length) throw new Error('rows ' + r.rows.length);
   for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita: ' + v);
   if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
+});
+
+t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS, día entero', () => {
+  // La tarjeta y el BT 3D tienen que dar EL MISMO ángulo, no uno parecido.
+  // Dos plantas, barrido del día a paso de 30 min, igualdad === por fila:
+  // (a) genérica en pendiente (groups=null → driveCoupleSafe identidad
+  //     → pairwise puro), (b) Ayora real con sus grupos bifila de cotas
+  //     (el acople por accionamiento del simulador, aplicado aquí igual).
+  const P = S.F.plantFromCotas(cotasAyora, 80, null);
+  const cAy = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
+                nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch };
+  const TAy = S.buildTReal(S.F, cAy, P);
+  if (TAy.drive !== P.drive || TAy.groups !== P.groups)
+    throw new Error('la T de cotas no lleva el accionamiento real (' + P.drive + '): el acople del simulador no se aplicaría');
+  const elev = S.elevPreset('pendiente', C.nrows, 4, C.pitch);
+  const TGen = S.buildT(S.F, C, elev);
+  for (const [c, T] of [[C, TGen], [cAy, TAy]]) {
+    for (let m = 0; m < 1440; m += 30) {
+      const r = S.instant(S.F, c, T, m);
+      const g = S.Sol.solarPos(S.localToUTCms(c.date, m, c.tz), c.lat, c.lon, { refract: true });
+      const zen = 90 - g.elev, doy = S.doyOf(c.date);
+      const irr = S.F.clearskyIneichen(zen, doy, c.alt, C.tl);
+      const sim = S.F.policyAngles('pairwise', zen, g.az, T, irr, doy, c.albedo).angles;
+      for (let k = 0; k < c.nrows; k++)
+        if (r.ang[k] !== sim[k])
+          throw new Error(`min ${m}, fila ${k}: tarjeta ${r.ang[k]} ≠ simulador ${sim[k]} — el BT ya no es el mismo`);
+    }
+  }
+  // y la identidad que sostiene a las plantas mono: sin grupos, la política
+  // del simulador ES anglesPairwise a pelo (si esto rompe, el careo de arriba
+  // ya no justifica «pairwise puro» para genérica/El Burgo)
+  const g12 = S.Sol.solarPos(S.localToUTCms(C.date, 720, C.tz), C.lat, C.lon, { refract: true });
+  const zen12 = 90 - g12.elev, doy12 = S.doyOf(C.date);
+  const irr12 = S.F.clearskyIneichen(zen12, doy12, C.alt, C.tl);
+  const pol = S.F.policyAngles('pairwise', zen12, g12.az, TGen, irr12, doy12, C.albedo).angles;
+  const raw = S.F.anglesPairwise(zen12, g12.az, TGen);
+  for (let k = 0; k < C.nrows; k++)
+    if (pol[k] !== raw[k]) throw new Error('con groups=null policyAngles(pairwise) ya no es anglesPairwise puro');
 });
 
 console.log('');
