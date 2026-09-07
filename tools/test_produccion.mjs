@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, invTotals,
-          tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+          filtraStringsNCU, tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -234,6 +234,34 @@ t('El Burgo: los tramos de mesa respetan los CAMINOS del plano (la calle no desa
   // ningún tramo más corto que media mesa ni más largo que la columna entera
   for (const l of segs) for (const sg of l)
     if (sg[1] - sg[0] < 12) throw new Error('tramo de ' + (sg[1] - sg[0]).toFixed(1) + ' m: demasiado corto para una mesa');
+});
+
+t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parque calcula', () => {
+  // El Burgo: g.i.t del string → idPrevio del layout → ncu (como terreno.html)
+  const mapa = new Map();
+  for (const tk of layout.trackers) if (tk.idPrevio != null) mapa.set(String(tk.idPrevio), tk.ncu);
+  const ncu1 = S.filtraStringsNCU(strdb, mapa, 1), ncu2 = S.filtraStringsNCU(strdb, mapa, 2);
+  const sinNCU = strdb.strings.filter(s => !mapa.has(s.g + '.' + s.i + '.' + s.t)).length;
+  if (ncu1.count + ncu2.count + sinNCU !== strdb.count)
+    throw new Error(`${ncu1.count}+${ncu2.count}+${sinNCU} ≠ ${strdb.count}: el ámbito pierde strings`);
+  if (sinNCU > 8) throw new Error(sinNCU + ' strings sin NCU: el casado g.i.t→idPrevio se ha roto');
+  for (const db of [ncu1, ncu2]) {
+    if (!(db.count > 300)) throw new Error('parque de NCU con solo ' + db.count + ' strings');
+    const rows = S.elburgoRows(db, 3);
+    const c = { ...C, nrows: rows.length };
+    const T = S.buildTX(S.F, c, rows.map(r => r.x), new Array(rows.length).fill(0), null);
+    const r = S.instant(S.F, c, T, 720);
+    if (!(r.plant > 300)) throw new Error('el parque de una NCU no calcula (' + r.plant + ' W/m²)');
+  }
+  // y en cotas (Ayora): el filtrado por ncuOf del layout deja una planta válida
+  const ncuOf = (layAyora.trackers && layAyora.trackers.length === cotasAyora.t.length)
+    ? layAyora.trackers.map(tk => tk.ncu) : null;
+  if (ncuOf) {
+    const primera = ncuOf.find(v => v != null);
+    const sub = { ...cotasAyora, t: cotasAyora.t.filter((_, i) => ncuOf[i] === primera) };
+    const P = S.F.plantFromCotas(sub, 80, null);
+    if (!(P.elev.length >= 2)) throw new Error('el parque de la NCU ' + primera + ' no forma planta');
+  }
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
