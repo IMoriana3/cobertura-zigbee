@@ -38,8 +38,9 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
-             pairsFromElev,nsSegments,clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+             pairsFromElev,pairsFromElevX,nsSegments,clearskyIneichen:clearskyIneichen},
+          Sol:Sol, elevPreset, buildT, buildTX, elburgoRows, invTotals,
+          instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -110,6 +111,46 @@ t('Σ día por string: en AUTO el backtracking iguala; en MANUAL la sombra separ
   const man = S.dayTotals(S.F, { ...C, manual: true, manth: 50 }, T);
   const sepM = Math.max(...man) - Math.min(...man);
   if (!(sepM > sepA + 0.01)) throw new Error('MANUAL a 50° no separa más que AUTO (' + sepM.toFixed(3) + ' vs ' + sepA.toFixed(3) + '): la sombra no entra en los totales');
+});
+
+// ── El Burgo real: los 823 strings del plano, agregados por inversor ──
+const strdb = JSON.parse(fs.readFileSync(path.join(ROOT, 'elburgo_strings.json'), 'utf-8'));
+const layout = JSON.parse(fs.readFileSync(path.join(ROOT, 'elburgo_layout.json'), 'utf-8'));
+
+t('El Burgo: 823 strings → columnas E-O contiguas a ~6 m (el bifilo partido se funde)', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const total = rows.reduce((a, r) => a + r.strs.length, 0);
+  if (total !== strdb.count) throw new Error(`se pierden strings: ${total} ≠ ${strdb.count}`);
+  for (let i = 1; i < rows.length; i++) {
+    const d = rows[i].x - rows[i - 1].x;
+    if (d < 5 || d > 7) throw new Error(`vano ${i} de ${d.toFixed(2)} m: la fusión de columnas no casa con el plano (paso 6 m)`);
+  }
+  if (rows.length < 85 || rows.length > 94) throw new Error(rows.length + ' filas: fuera de lo que dibuja el plano');
+});
+
+t('El Burgo: buildTX (pitch por vano) + motor → POA por fila finita y de mediodía', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const c = { ...C, lat: layout.clat, lon: layout.clon, alt: 180, nrows: rows.length,
+              cw: layout.montaje.cuerda, maxang: layout.montaje.max_angle };
+  const T = S.buildTX(S.F, c, rows.map(r => r.x));
+  const r = S.instant(S.F, c, T, 720);
+  if (r.rows.length !== rows.length) throw new Error('rows ' + r.rows.length + ' ≠ ' + rows.length);
+  for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita/negativa: ' + v);
+  if (!(r.plant > 300)) throw new Error('mediodía de junio con ' + r.plant + ' W/m²: T real rota');
+});
+
+t('El Burgo: agregado por inversor — 36 inversores, 823 strings, medias acotadas', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const vals = rows.map((_, i) => 100 + i);            // valores distinguibles por fila
+  const iv = S.invTotals(rows, vals);
+  if (iv.length !== Object.keys(strdb.byInv).length)
+    throw new Error(iv.length + ' inversores ≠ ' + Object.keys(strdb.byInv).length + ' del plano');
+  const nsum = iv.reduce((a, v) => a + v.nstr, 0);
+  if (nsum !== strdb.count) throw new Error('los inversores reparten ' + nsum + ' strings, no ' + strdb.count);
+  for (const v of iv) {
+    if (strdb.byInv[v.inv] !== v.nstr) throw new Error('inversor ' + v.inv + ': ' + v.nstr + ' strings ≠ ' + strdb.byInv[v.inv] + ' del plano');
+    if (v.val < 100 || v.val > 100 + rows.length) throw new Error('media del inversor ' + v.inv + ' fuera de rango');
+  }
 });
 
 console.log('');
