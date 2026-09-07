@@ -135,6 +135,7 @@
     <div class="two">
       <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
       <div class="f"><label>Turbidez Linke</label><input id="tl" type="number" step="0.1" min="2" max="7" value="3.5"></div>
+      <div class="f"><label>Nubosidad %</label><input id="cloud" type="number" step="10" min="0" max="100" value="0" title="Cobertura nubosa del DÍA simulado, con el modelo nube→irradiancia DECLARADO de la casa (sol.js·cloudToIrr, el mismo overcast canónico de la QA de difusa del core): GHI·(1−0,70·cc), el haz muere antes —DNI·(1−cc)³— y la difusa cierra el balance.&#10;A 0 NO TOCA NADA: bypass exacto, los números de siempre.&#10;Afecta a curvas, escena, HUD y colores de producción. La tabla ANUAL sigue siendo cielo claro y lo declara."></div>
     </div>
   </div>
 
@@ -321,6 +322,11 @@
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
       <label class="btn small" title="Etiquetas por fila en el 3D: θ, % de sombra calculada y POA de la política de la ESCENA" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="lbl3d"> nº</label>
+      <label class="btn small" title="MANDO MANUAL de los seguidores: θ COMÚN a todas las filas con el slider, recortado al tope mecánico. Es una capa de VISTA — mueve escena, corte 2D, HUD y colores de producción al instante del slider de hora; las curvas y la tabla siguen siendo de las políticas (no se recalculan). Ideal con los colores de producción: se VE lo que cuesta separarse de la consigna." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manual"> 🎛 manual</label>
+      <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px" title="θ manual (− = este). Se recorta al θ máx configurado.">
+      <span class="t" id="manthlbl" style="min-width:3ch">0°</span>
+      <select id="colprod" class="btn small" title="PRODUCCIÓN POR FILA (string) EN COLORES, pintada sobre las palas: azul = la fila que menos produce, rojo = la que más (escala min→max de la planta, leyenda al lado).&#10;· instante: POA neta W/m² del momento del slider — responde en vivo al manual y a la nubosidad.&#10;· día: POA acumulada kWh/m² del día de la política de la ESCENA.&#10;La sombra calculada (silueta roja) se sigue pintando encima."><option value="off">sin color</option><option value="inst">⚡ producción · instante</option><option value="day">Σ producción · día</option></select>
+      <span id="prodleg" style="display:none;align-items:center;gap:4px;font-family:var(--mono);font-size:.62rem;color:var(--muted)"><span id="prodlo"></span><span id="prodbar" style="display:inline-block;width:70px;height:8px;border-radius:4px"></span><span id="prodhi"></span></span>
       <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
       <select id="light3d" class="btn small" title="Iluminación de la escena: LUZ REAL (intensidad y color según la altura del sol — amanecer y ocaso rojizos, como en los 3D de la casa) o LUZ A TOPE (plana y brillante para inspeccionar sombras a cualquier hora)"><option value="real">☀ luz real</option><option value="tope">🔦 a tope</option></select>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
@@ -359,7 +365,7 @@
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que terreno.html: offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que terreno.html y el gemelo) -->
-<script src="sol.js?v=0.2.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
+<script src="sol.js?v=0.3.0"></script><!-- FUENTE ÚNICA del sol: posición NOAA, singleaxis y la estética de los 3D -->
 <script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala -->
 <script>
 /* Si una dependencia no llega, la página se quedaba EN BLANCO y en silencio:
@@ -369,7 +375,7 @@
    externas de la física: sol.js e irradiancia.js. */
 (function(){
   var falta=[];
-  if(typeof Sol==='undefined')falta.push('sol.js?v=0.2.0');
+  if(typeof Sol==='undefined')falta.push('sol.js?v=0.3.0');
   if(typeof Irr==='undefined'&&typeof Irradiancia==='undefined'){
     // el nombre global lo define irradiancia.js; si ninguno existe, no llegó
     var probe=document.querySelector('script[src^="irradiancia.js"]');
@@ -2357,11 +2363,40 @@ function runPhysicsQA(){
   });
   return res;
 }
+/* ── NUBOSIDAD (v1.40) — cielo con nubes, DECLARADO ─────────────────────────
+   El modelo es Sol.cloudToIrr (sol.js v0.3.0): el MISMO overcast canónico del
+   core (GHI·(1−0,70·cc) · DNI·(1−cc)³ · DHI por cierre). A cc≤0 devuelve EL
+   MISMO objeto del cielo claro — no-op EXACTO: ni un decimal de los goldens
+   se mueve con el mando a cero, y hay QA que lo exige por identidad (===). */
+function skyWithClouds(clear,cc,zenDeg){
+  if(!(cc>0))return clear;
+  return Sol.cloudToIrr(clear,Math.min(1,cc),zenDeg);
+}
+
+/* ── MODO MANUAL (v1.40) — θ común a todas las filas, recortado al tope ─────
+   Mando directo de VISTA: mueve la escena, el corte 2D y el HUD; NO toca
+   computeDay ni las políticas (las curvas y la tabla siguen siendo suyas). */
+function anglesManual(n,thetaDeg,maxAng){
+  const th=Math.max(-Math.abs(maxAng),Math.min(Math.abs(maxAng),thetaDeg));
+  return new Array(n).fill(th);
+}
+
+/* ── PRODUCCIÓN POR FILA EN COLOR (v1.40) — rampa continua tipo turbo ───────
+   La misma familia que la carta solar de la casa (turbo): azul=mínimo de la
+   planta, rojo=máximo. x se normaliza FUERA (min→max de las filas). */
+const PROD_RAMP=[[48,18,59],[69,91,205],[62,155,254],[24,214,203],[72,248,130],
+                 [164,252,59],[226,220,56],[254,163,49],[239,89,17],[122,4,3]];
+function prodColor(x){
+  const v=Math.max(0,Math.min(1,x))*(PROD_RAMP.length-1);
+  const i=Math.floor(v), f=v-i, a=PROD_RAMP[i], b=PROD_RAMP[Math.min(i+1,PROD_RAMP.length-1)];
+  return 'rgb('+[0,1,2].map(k=>Math.round(a[k]+f*(b[k]-a[k]))).join(',')+')';
+}
+
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.39.5';
+const VER='v1.40.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2865,6 +2900,8 @@ const STEP_MIN=5;
    FRAGMENTOS con presupuesto de frame — así el DAY viejo sigue vivo y la
    página sigue respondiendo mientras el nuevo se cocina. Duplicar el cuerpo
    habría sido tener dos verdades; esto es una verdad con dos caudales. */
+/* cobertura nubosa del mando (0..1). Fuera del bloque de física: lee DOM. */
+function cloudCC(){const e=$('cloud');return Math.max(0,Math.min(1,(+((e&&e.value)||0))/100));}
 function computeDay(){for(const _ of computeDayGen());return DAY;}
 function* computeDayGen(){
   const c=cfg(); ensureElev(c.nrows); clampSlopes(c);
@@ -2877,7 +2914,7 @@ function* computeDayGen(){
   for(let m=0;m<1440;m+=STEP_MIN){
     const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
     times.push(m); sun.push(g);
-    irr.push(clearskyIneichen(g.zen,doy,c.alt,c.tl));
+    irr.push(skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen));
   }
   const nT=times.length;
   const __nAct=POLICIES.reduce((n,P)=>n+(P.on?1:0),0);
@@ -3782,6 +3819,28 @@ function setSky(top,hor){
   Sol.paintSky(TD.skyCv,top,hor);
   TD.skyTx.needsUpdate=true;
 }
+/* Σ POA del día por fila (kWh/m²) de una política — caché en el propio DAY */
+function eDayOf(key){
+  if(!DAY||!DAY.pol[key]||!DAY.pol[key].poaR)return null;
+  DAY.eDay=DAY.eDay||{};
+  if(DAY.eDay[key])return DAY.eDay[key];
+  const P=DAY.pol[key], nT=DAY.times.length, nR=(P.poaR[0]||[]).length;
+  const out=new Array(nR).fill(0);
+  for(let t=0;t<nT;t++){const rr=P.poaR[t];if(rr)for(let r2=0;r2<nR;r2++)out[r2]+=rr[r2];}
+  for(let r2=0;r2<nR;r2++)out[r2]*=STEP_MIN/60/1000;  // W/m²·paso → kWh/m²
+  DAY.eDay[key]=out; return out;
+}
+function paintProdLegend(mn,mx,unit){
+  const leg=$('prodleg');if(!leg)return;
+  if(mn===null){leg.style.display='none';return;}
+  leg.style.display='inline-flex';
+  const bar=$('prodbar');
+  const stops=[];for(let i=0;i<=8;i++)stops.push(prodColor(i/8)+' '+(i*12.5)+'%');
+  bar.style.background='linear-gradient(90deg,'+stops.join(',')+')';
+  const fmt=v=>unit.indexOf('kWh')>=0?v.toFixed(2):v.toFixed(0);
+  $('prodlo').textContent=fmt(mn);
+  $('prodhi').textContent=fmt(mx)+' '+unit;
+}
 function update3D(){
   pinta3D();
   if(!TD||!DAY)return;
@@ -3790,6 +3849,17 @@ function update3D(){
   const key=$('polview').value,p=inst?inst.pv:(DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]]);
   const sh=p?p.shade[tIdx]:null;
   const lblOn=$('lbl3d')&&$('lbl3d').checked;
+  // ── PRODUCCIÓN POR FILA EN COLORES (v1.40) ──────────────────────────────
+  // instante: poaR del estado de la ESCENA (política, minutal o manual) —
+  // responde en vivo al mando manual y a la nubosidad. día: Σ poaR·Δt de la
+  // política de la escena (el manual no genera día: es un mando de instante).
+  const cmode=($('colprod')&&$('colprod').value)||'off';
+  let pvals=null, punit='';
+  if(cmode==='inst'&&p&&p.poaR&&p.poaR[tIdx]){pvals=p.poaR[tIdx];punit='W/m²';}
+  else if(cmode==='day'){const e=eDayOf(key);if(e){pvals=e;punit='kWh/m²·d';}}
+  let pmin=0,pmax=0;
+  if(pvals){pmin=Math.min.apply(null,pvals);pmax=Math.max.apply(null,pvals);}
+  paintProdLegend(pvals?pmin:null,pmax,punit);
   TD.rows.forEach((row,r)=>{
     const th=(p?p.ang[tIdx][r]:0)*RAD;
     for(const sp of row.spins){
@@ -3809,6 +3879,28 @@ function update3D(){
       // sombra de TERRENO (lomas): franjas rojas por estación, del contador
       const stT=sh&&sh.st&&sh.st[r];
       if(stT&&g.elev>0)drawTerrainStrips(row,stT,(p.ang[tIdx][r]||0));
+      // tinte de producción: un plano translúcido por mesa, DEBAJO de la
+      // silueta de sombra (renderOrder 2 < 3) — la sombra se sigue viendo
+      if(pvals){
+        const x01=pmax>pmin?(pvals[r]-pmin)/(pmax-pmin):0.5;
+        for(const ov of row.ovls){
+          if(!ov.g)continue;
+          if(!ov.tint){
+            const ggeo=(ov.ax==='model')
+              ?new THREE.PlaneGeometry(ov.x1-ov.x0,2*ov.half)
+              :new THREE.PlaneGeometry(2*ov.half,ov.x1-ov.x0);
+            const mtint=new THREE.MeshBasicMaterial({transparent:true,opacity:0.45,
+              depthWrite:false,side:THREE.DoubleSide});
+            ov.tint=new THREE.Mesh(ggeo,mtint);
+            ov.tint.rotation.x=-Math.PI/2; ov.tint.renderOrder=2;
+            if(ov.ax==='model')ov.tint.position.x=(ov.x0+ov.x1)/2;
+            else ov.tint.position.z=(ov.x0+ov.x1)/2;
+            ov.tint.position.y=-0.004;               // bajo la silueta, sobre la pala
+          }
+          ov.tint.material.color.set(prodColor(x01));
+          ov.g.add(ov.tint);
+        }
+      }
     }
     // etiqueta: θ · sombra · POA de la fila
     if(row.lbl){
@@ -4540,7 +4632,7 @@ function careoGhostInstant(){
   if(GHOST&&GHOST.m===m&&GHOST.stamp===DAY)return GHOST;
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
-  const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
+  const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
   const o=policyAngles(CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
   const ang=slewLimit(DAY.pol[CAREO_A].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
@@ -4548,8 +4640,24 @@ function careoGhostInstant(){
   return GHOST;
 }
 
+function manualOn(){const e=$('manual');return !!(e&&e.checked);}
 function sceneInstant(){
   if(!DAY)return null;
+  if(manualOn()){
+    // MANDO MANUAL: física exacta del instante con θ común a todas las filas.
+    // Capa de VISTA: computeDay, curvas y tabla no se enteran (declarado).
+    const m=+$('hour').value, th=+($('manth')&&$('manth').value||0), cc=cloudCC();
+    if(INSTANT&&INSTANT.key==='manual'&&INSTANT.m===m&&INSTANT.th===th&&INSTANT.cc===cc&&INSTANT.stamp===DAY)return INSTANT;
+    const c=DAY.c, tIdx=timeIndex();
+    const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
+    const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cc,g.zen);
+    const nR=DAY.astroAng&&DAY.astroAng[0]?DAY.astroAng[0].length:(+c.nrows||8);
+    const ang=anglesManual(nR,th,+c.maxang||55);
+    const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+    INSTANT={m:m,key:'manual',th:th,cc:cc,stamp:DAY,g:g,irr:irr,
+             pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:0}}};
+    return INSTANT;
+  }
   const m=+$('hour').value;
   if(m%STEP_MIN===0)return null;                     // en la malla: DAY manda
   const key=$('polview').value;
@@ -4560,7 +4668,7 @@ function sceneInstant(){
   if(INSTANT&&INSTANT.m===m&&INSTANT.key===key&&INSTANT.stamp===DAY)return INSTANT;
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
-  const irr=clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl);
+  const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
   const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
   const ang=slewLimit(DAY.pol[key].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
@@ -4726,13 +4834,22 @@ function recomputePronto(){
   ocupado(true,0);                     // feedback inmediato; recompute lo releva
   _recT=setTimeout(()=>{_recT=null;recompute();},120);
 }
-const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','iam','z0','nsl','ntrk','mods'];
+const INPUT_IDS=['lat','lon','date','tz','alt','albedo','tl','cloud','pitch','cw','maxang','nrows','axaz','axtilt','nspreset','drive','nbp','iam','z0','nsl','ntrk','mods'];
 INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   // tocar la implantación por presets abandona la planta real cargada (nrows/
   // pitch cambiados a mano también: la banda ya no cuadraría con las cotas)
   if(PLANT_REAL&&['nsl','ntrk','mods','nspreset','nrows','pitch'].includes(id)){PLANT_REAL=null;$('realnote').style.display='none';}
   ensureElev(cfg().nrows);recomputePronto();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();updateBtUI();});
+$('manual').addEventListener('change',()=>{
+  $('manth').disabled=!$('manual').checked;
+  INSTANT=null;drawScene();update3D();updateBtUI();
+});
+$('manth').addEventListener('input',()=>{
+  $('manthlbl').textContent=(+$('manth').value)+'°';
+  INSTANT=null;drawScene();update3D();
+});
+$('colprod').addEventListener('change',()=>{update3D();});
 $('rowsel').onchange=()=>{drawScene();drawCurves();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
    su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
@@ -4973,7 +5090,7 @@ if(window.ResizeObserver){
     try{localStorage.removeItem(LS_KEY);}catch(e){}
   }
   let saved=null; try{saved=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){}
-  const LIGERAS=new Set(['lat','lon','date','tz','alt','albedo','tl']);
+  const LIGERAS=new Set(['lat','lon','date','tz','alt','albedo','tl','cloud']);
   if(saved&&saved.ids&&saved.ids.length===INPUT_IDS.length){
     INPUT_IDS.forEach((id,i)=>{if(LIGERAS.has(id))$(id).value=saved.ids[i];});
   }
