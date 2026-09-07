@@ -40,7 +40,7 @@ const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, elburgoRows, invTotals,
-          instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+          tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -132,7 +132,7 @@ t('El Burgo: buildTX (pitch por vano) + motor → POA por fila finita y de medio
   const rows = S.elburgoRows(strdb, 3);
   const c = { ...C, lat: layout.clat, lon: layout.clon, alt: 180, nrows: rows.length,
               cw: layout.montaje.cuerda, maxang: layout.montaje.max_angle };
-  const T = S.buildTX(S.F, c, rows.map(r => r.x));
+  const T = S.buildTX(S.F, c, rows.map(r => r.x), new Array(rows.length).fill(0), null);
   const r = S.instant(S.F, c, T, 720);
   if (r.rows.length !== rows.length) throw new Error('rows ' + r.rows.length + ' ≠ ' + rows.length);
   for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita/negativa: ' + v);
@@ -151,6 +151,41 @@ t('El Burgo: agregado por inversor — 36 inversores, 823 strings, medias acotad
     if (strdb.byInv[v.inv] !== v.nstr) throw new Error('inversor ' + v.inv + ': ' + v.nstr + ' strings ≠ ' + strdb.byInv[v.inv] + ' del plano');
     if (v.val < 100 || v.val > 100 + rows.length) throw new Error('media del inversor ' + v.inv + ' fuera de rango');
   }
+});
+
+// ── energía según el Notebook: la portación JS careada contra el CORE ──
+const gld = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'golden_energia_notebook.json'), 'utf-8'));
+
+t('NOTEBOOK: t_cell y P string clavan el golden del core (111 casos, ≤1e-9 rel.)', () => {
+  const K = gld.constantes;
+  const rel = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+  for (const cs of gld.casos) {
+    const tc = S.tCellPVSyst(cs.poa, cs.tair, cs.wind, K.u_c, K.u_v);
+    const pw = S.pStringW(cs.poa, cs.tair, cs.wind, { mods: K.mods, wp: K.wp, gamma: K.gamma, uc: K.u_c, uv: K.u_v });
+    if (rel(tc, cs.t_cell) > 1e-9) throw new Error(`t_cell(${cs.poa},${cs.tair}) = ${tc} ≠ core ${cs.t_cell}`);
+    if (rel(pw, cs.p_string_w) > 1e-9) throw new Error(`P(${cs.poa},${cs.tair}) = ${pw} ≠ core ${cs.p_string_w}`);
+  }
+  for (const cs of gld.casos_uc_uv) {   // la rama u_v·viento, con u_c/u_v no canónicos
+    const tc = S.tCellPVSyst(cs.poa, cs.tair, cs.wind, cs.u_c, cs.u_v);
+    const pw = S.pStringW(cs.poa, cs.tair, cs.wind, { mods: K.mods, wp: K.wp, gamma: K.gamma, uc: cs.u_c, uv: cs.u_v });
+    if (rel(tc, cs.t_cell) > 1e-9) throw new Error(`t_cell u_v: ${tc} ≠ core ${cs.t_cell}`);
+    if (rel(pw, cs.p_string_w) > 1e-9) throw new Error(`P u_v: ${pw} ≠ core ${cs.p_string_w}`);
+  }
+});
+
+t('E por string: día positivo, y por inversor la SUMA conserva la energía', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const c = { ...C, lat: layout.clat, lon: layout.clon, alt: 180, nrows: rows.length,
+              cw: layout.montaje.cuerda, maxang: layout.montaje.max_angle };
+  const T = S.buildTX(S.F, c, rows.map(r => r.x), new Array(rows.length).fill(0), null);
+  const e = { mods: 28, wp: 590, gamma: -0.34, uc: 29, uv: 0 };
+  const eDay = S.dayTotals(S.F, c, T, v => S.pStringW(v, 20, 1, e));   // kWh/string
+  for (const v of eDay) if (!(v > 50)) throw new Error('string de junio con ' + v + ' kWh: la cadena DC no convierte');
+  const iv = S.invTotals(rows, eDay, 'suma');
+  const total = iv.reduce((a, v) => a + v.val, 0);
+  const porFila = rows.reduce((a, r, i) => a + eDay[i] * r.strs.length, 0);
+  if (Math.abs(total - porFila) > 1e-6)
+    throw new Error(`la suma por inversores (${total.toFixed(3)}) pierde energía vs por filas (${porFila.toFixed(3)})`);
 });
 
 console.log('');

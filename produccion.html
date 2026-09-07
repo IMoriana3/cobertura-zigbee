@@ -66,12 +66,12 @@ input[type=range]{accent-color:var(--live)}
 <body>
 <div class="wrap">
   <h1>⚡ Producción 3D por string</h1>
-  <p class="sub">Cada string (fila) pintado con <b>su producción</b> — instante en W/m² o día acumulado en
-  kWh/m² — sobre el terreno, con seguimiento <b>AUTO</b> (backtracking pairwise, la política de planta) o
-  <b>MANUAL</b> con slider, y <b>nubosidad</b>. Con planta <b>El Burgo I</b> carga los 823 strings reales del
-  plano (numeración g.i.t.s) y agrega por sus 36 inversores. La física NO vive aquí: esta página extrae en
-  caliente el bloque FÍSICA PURA del simulador de backtracking — la misma que valida su QA contra pvlib y
-  ray-cast, cero copias.</p>
+  <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
+  string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día del bloque FÍSICA PURA
+  del simulador (pvlib singleaxis + sombra exacta + Perez), y <b>potencia/energía DC según el Notebook</b>
+  (t_cell PVSyst-Faiman + PVWatts γ de solargpt_core, careado dígito a dígito en el QA). Seguimiento
+  <b>AUTO</b> (backtracking pairwise) o <b>MANUAL</b>, y <b>nubosidad</b>. Con <b>El Burgo I</b> carga los
+  823 strings reales del plano (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
   <div id="aviso"></div>
 
   <div class="grid">
@@ -110,6 +110,22 @@ input[type=range]{accent-color:var(--live)}
         </div>
       </div>
       <div class="card" style="margin-top:12px">
+        <h2>🔌 Eléctrico (Notebook)</h2>
+        <div class="row2">
+          <div class="f"><label>Wp módulo</label><input id="wp" type="number" step="5" min="100" value="590"></div>
+          <div class="f"><label>Mód/string</label><input id="mods" type="number" step="1" min="1" value="28"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>γ %/°C</label><input id="gamma" type="number" step="0.01" value="-0.34"
+            title="Coeficiente térmico de Pmpp — el default canónico del core (ModuleSpecs.gamma_pdc_pct_per_c)."></div>
+          <div class="f"><label>T amb °C</label><input id="tamb" type="number" step="1" value="20"></div>
+        </div>
+        <div class="f"><label>Viento m/s</label><input id="wind" type="number" step="0.5" min="0" value="1"
+          title="t_cell = T + 0,9·POA/(u_c + u_v·v), la fórmula PVSyst-Faiman del core (u_c=29 free-standing, u_v=0: con u_v=0 el viento no entra, como el default canónico)."></div>
+        <p style="color:var(--muted-2);font-size:.68rem">La MISMA cadena DC que notebook y streamlit
+        (t_cell Faiman + PVWatts γ), careada dígito a dígito contra el core en el QA.</p>
+      </div>
+      <div class="card" style="margin-top:12px">
         <h2>⛰ Terreno</h2>
         <div class="f"><label>Perfil E-O</label>
           <select id="tpreset">
@@ -135,18 +151,22 @@ input[type=range]{accent-color:var(--live)}
         <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
         <span class="t" id="manthlbl">0°</span>
         <select id="cmode" class="btn">
-          <option value="inst">⚡ instante (W/m²)</option>
-          <option value="day">Σ día (kWh/m²)</option>
+          <option value="inst">☀ POA instante (W/m²)</option>
+          <option value="day">☀ POA Σ día (kWh/m²)</option>
+          <option value="pinst">⚡ P string (kW)</option>
+          <option value="pday">⚡ E string Σ día (kWh)</option>
         </select>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
       <div class="strings" id="strings"></div>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
       El modo «Σ día» integra el día entero con el modo activo (AUTO usa backtracking pairwise en cada paso;
-      MANUAL mantiene tu θ todo el día). Con El Burgo I los chips son por <b>inversor</b> (media de sus strings,
-      del plano de numeración g.i.t.s) y el pitch es el medido por vano; elevación plana — el relieve de El Burgo
-      no está levantado en este repo, y no se finge. Motor: FÍSICA PURA de backtracking.html — pvlib singleaxis +
-      sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en caliente, no copiada. Arrastra para orbitar.</div>
+      MANUAL mantiene tu θ todo el día). Con El Burgo I los chips son por <b>inversor</b> (POA en media;
+      potencia/energía en SUMA de sus strings, del plano de numeración g.i.t.s) y el pitch es el medido por vano;
+      elevación plana — el relieve de El Burgo no está levantado en este repo, y no se finge. Motor POA: FÍSICA PURA
+      de backtracking.html — pvlib singleaxis + sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en
+      caliente, no copiada. Cadena DC: la del Notebook (t_cell PVSyst-Faiman + PVWatts γ, de solargpt_core),
+      careada dígito a dígito contra el core en el QA. Arrastra para orbitar.</div>
     </div>
   </div>
 </div>
@@ -172,15 +192,36 @@ function elevPreset(preset,n,v,pitch){
   return z;
 }
 
-/* T mínimo con el MISMO contrato que terrain() del simulador (monofila,
-   alineadas, eje N-S plano): lo que poaPlant/anglesPairwise necesitan. */
-function buildT(F,c,elev){
-  const tilts=new Array(c.nrows).fill(0);
+/* T con el MISMO contrato que terrain() del simulador (monofila, alineadas):
+   UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
+   por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
+   planta es especial: la genérica y las reales pasan por aquí igual. */
+function buildTX(F,c,xs,z,tilt){
+  const n=xs.length;
+  const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
-  return {pairs:F.pairsFromElev(elev,c.pitch,tilts),cw:c.cw,axisAz:0,
+  return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
           rowTilt:tilts,groups:null,drive:'mono',
-          segs:F.nsSegments(c.nrows,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+          segs:F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+}
+/* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
+function buildT(F,c,elev){
+  const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+  return buildTX(F,c,xs,elev,null);
+}
+
+/* ── cadena DC del Notebook (solargpt_core, la MISMA que notebook/streamlit):
+   t_cell PVSyst-Faiman (full_chain._t_cell_pvsyst_full, α=0,9, η=0 puro) y
+   Pdc PVWatts (electrical.dc_power_pvwatts). Portadas literalmente y careadas
+   dígito a dígito contra el golden que genera el propio core
+   (tools/gen_golden_energia_notebook.py → golden_energia_notebook.json). */
+function tCellPVSyst(poa,tair,wind,uc,uv){
+  return tair+0.9*poa*1.0/(uc+uv*wind);           // α=0,9 · (1−η)=1 (Faiman puro)
+}
+function pStringW(poa,tair,wind,e){                // e:{mods,wp,gamma,uc,uv}
+  const tc=tCellPVSyst(poa,tair,wind,e.uc,e.uv);
+  return Math.max(0,e.mods*e.wp*(poa/1000)*(1+(e.gamma/100)*(tc-25)));
 }
 
 /* El Burgo real: los strings del plano (elburgo_strings.json) → columnas E-O,
@@ -205,25 +246,13 @@ function elburgoRows(strdb,minGap){
   return rows;
 }
 
-/* T para la planta real: pitch POR VANO medido (pairsFromElevX del motor) en
-   vez de asumirlo uniforme. Elevación plana: El Burgo no tiene relieve
-   levantado en este repo (dicayagua sí) — declarado, no fingido. */
-function buildTX(F,c,xs){
-  const n=xs.length, tilts=new Array(n).fill(0), z=new Array(n).fill(0);
-  const filaLen=2*28*1.146+0.55;
-  return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
-          maxAngle:c.maxang,gcr:c.cw/6,z0:0.17,nBypass:2,iam:0.05,
-          rowTilt:tilts,groups:null,drive:'mono',
-          segs:F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
-}
-
-/* agregado por inversor: media de los valores de fila de SUS strings (POA es
-   por m², la media pondera sola por nº de strings) */
-function invTotals(rows,vals){
+/* agregado por inversor. POA (por m²) se agrega en MEDIA; la energía/potencia
+   por string se agrega en SUMA (los strings de un inversor suman, no promedian). */
+function invTotals(rows,vals,modo){
   const acc=new Map();
   rows.forEach((r,i)=>{for(const s of r.strs){
     const a=acc.get(s.inv)||{sum:0,n:0};a.sum+=vals[i];a.n++;acc.set(s.inv,a);}});
-  return [...acc.entries()].map(([inv,a])=>({inv:inv,val:a.sum/a.n,nstr:a.n}))
+  return [...acc.entries()].map(([inv,a])=>({inv:inv,val:modo==='suma'?a.sum:a.sum/a.n,nstr:a.n}))
     .sort((a,b)=>a.inv.localeCompare(b.inv,undefined,{numeric:true}));
 }
 
@@ -247,12 +276,13 @@ function instant(F,c,T,m){
   return {g:g,zen:zen,az:az,irr:irr,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
 }
 
-/* día entero: Σ rows·Δt por string (kWh/m²), paso de 5 min con el modo activo */
-function dayTotals(F,c,T){
-  const n=c.nrows, out=new Array(n).fill(0);
+/* día entero, paso de 5 min con el modo activo. map: POA de fila → magnitud
+   (identidad para kWh/m²; pStringW para kWh eléctricos por string). */
+function dayTotals(F,c,T,map){
+  const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
   for(let m=0;m<1440;m+=5){
     const r=instant(F,c,T,m);
-    for(let k=0;k<n;k++)out[k]+=r.rows[k];
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k]);
   }
   for(let k=0;k<n;k++)out[k]*=5/60/1000;
   return out;
@@ -302,19 +332,25 @@ function cfg(){
           pitch:+$('pitch').value,cw:+$('cw').value,maxang:+$('maxang').value,
           nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
           manual:$('manual').checked,manth:+$('manth').value,
-          tpreset:$('tpreset').value,tparam:+$('tparam').value};
+          tpreset:$('tpreset').value,tparam:+$('tparam').value,
+          // eléctrico del Notebook: u_c=29/u_v=0 son los defaults canónicos del
+          // core (ThermalSpecs, free-standing); el resto se edita en su tarjeta
+          elec:{mods:Math.max(1,Math.round(+$('mods').value)),wp:+$('wp').value,
+                gamma:+$('gamma').value,tamb:+$('tamb').value,wind:Math.max(0,+$('wind').value),
+                uc:29,uv:0}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
   return c;
 }
 function rebuildT(){
   const c=cfg();
-  if(c.plant==='elburgo'&&EB){
-    T={elev:new Array(c.nrows).fill(0),xs:EB.xs};
-    T.obj=buildTX(F,c,EB.xs);
-  }else{
-    T={elev:elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch)};
-    T.obj=buildT(F,c,T.elev);
-  }
+  // MISMO camino para todas las plantas: posiciones x + elevación + tilt por
+  // fila → buildTX. El Burgo solo aporta sus datos (x del plano; z y tilt a 0
+  // porque es lo que hay levantado), no un cálculo distinto.
+  const eb=(c.plant==='elburgo'&&EB);
+  const xs=eb?EB.xs:Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+  const z=eb?new Array(c.nrows).fill(0):elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+  T={elev:z,xs:xs};
+  T.obj=buildTX(F,c,xs,z,null);
   DAYC=null;
   build3D(c);
 }
@@ -397,10 +433,16 @@ function repaint(){
   $('manthlbl').textContent=$('manth').value+'°';
   $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
   const inst=instant(F,c,T.obj,m);
-  let vals,unit,fmt;
-  if($('cmode').value==='day'){
-    if(!DAYC)DAYC=dayTotals(F,c,T.obj);
-    vals=DAYC;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  const mode=$('cmode').value, pw=v=>pStringW(v,c.elec.tamb,c.elec.wind,c.elec)/1000;
+  let vals,unit,fmt,agg='media';
+  if(mode==='day'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
+    vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  }else if(mode==='pday'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,v=>pw(v)*1000)};
+    vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
+  }else if(mode==='pinst'){
+    vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else{vals=inst.rows;unit='W/m²';fmt=v=>v.toFixed(0);}
   const mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
   paintLegend(mn,mx,unit,fmt);
@@ -413,8 +455,8 @@ function repaint(){
   }
   const chips=[];
   if(c.plant==='elburgo'&&EB){
-    // chips por INVERSOR (media de sus strings), que es como se mira la planta real
-    const iv=invTotals(EB.rows,vals);
+    // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
+    const iv=invTotals(EB.rows,vals,agg);
     const im=Math.min.apply(null,iv.map(v=>v.val)),ix=Math.max.apply(null,iv.map(v=>v.val));
     for(const v of iv)
       chips.push('<span class="s-chip" title="'+v.nstr+' strings"><span class="s-dot" style="background:'+
@@ -459,6 +501,8 @@ function repaint(){
     rebuildT();repaint();
   });
   $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});
+  for(const id of ['wp','mods','gamma','tamb','wind'])
+    $(id).addEventListener('change',()=>{DAYC=null;repaint();});
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;DAYC=null;repaint();});
