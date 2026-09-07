@@ -38,8 +38,8 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
-             pairsFromElev,pairsFromElevX,nsSegments,clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, buildTX, elburgoRows, invTotals,
+             pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,clearskyIneichen:clearskyIneichen},
+          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, invTotals,
           tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
@@ -186,6 +186,35 @@ t('E por string: día positivo, y por inversor la SUMA conserva la energía', ()
   const porFila = rows.reduce((a, r, i) => a + eDay[i] * r.strs.length, 0);
   if (Math.abs(total - porFila) > 1e-6)
     throw new Error(`la suma por inversores (${total.toFixed(3)}) pierde energía vs por filas (${porFila.toFixed(3)})`);
+});
+
+// ── cotas z REALES de extremos de mesa (el mismo cargador que el simulador) ──
+const cotasAyora = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+const layAyora = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_layout.json'), 'utf-8'));
+
+t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por vano y pairDz del solape', () => {
+  const P = S.F.plantFromCotas(cotasAyora, 80, null);
+  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
+              nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch };
+  const T = S.buildTReal(S.F, c, P);
+  if (T.pairs.length !== P.lineX.length - 1) throw new Error('parejas ' + T.pairs.length + ' ≠ líneas−1');
+  // las cotas MEDIDAS tienen que llegar a la T: tilts N-S no todos cero…
+  if (!T.rowTilt.some(v => Math.abs(v) > 0.05)) throw new Error('ningún tilt N-S medido llega a la T: cotas ignoradas');
+  // …pendiente por pareja desde el Δz del solape (la receta de terrain())…
+  let live = 0;
+  for (let i = 0; i < T.pairs.length; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    const esperado = Math.atan2(P.pairDz[i] || 0, dx) * (180 / Math.PI);   // *DEG, la op exacta de terrain()
+    if (T.pairs[i].slope !== esperado) throw new Error(`pareja ${i}: slope ${T.pairs[i].slope} ≠ ${esperado} (la receta de terrain() se ha separado)`);
+    if (Math.abs(T.pairs[i].slope) > 0.05) live++;
+  }
+  if (!live) throw new Error('todas las pendientes de pareja a cero: el pairDz medido no entra');
+  // …y los TRAMOS reales de mesa van en T.segs (poaPlant pondera el solape axial)
+  if (!T.segs || T.segs.length !== P.elev.length) throw new Error('sin tramos reales en la T');
+  const r = S.instant(S.F, c, T, 720);
+  if (r.rows.length !== P.elev.length) throw new Error('rows ' + r.rows.length);
+  for (const v of r.rows) if (!Number.isFinite(v) || v < 0) throw new Error('POA no finita: ' + v);
+  if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
 });
 
 console.log('');
