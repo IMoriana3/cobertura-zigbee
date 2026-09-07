@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0B0F14">
+<title>Producción 3D por string</title>
+<!-- sin fuentes de Google: offline (fallbacks del sistema, como el panel) -->
+<style>
+:root{
+  --void:#0B0F14; --panel:#121922; --panel-2:#0F151D; --panel-hi:#18222D;
+  --line:#23303D; --text:#E7EEF4; --muted:#8093A4; --muted-2:#5E6F7E;
+  --live:#36D399; --build:#F6A623; --demo:#54A6FF; --dead:#D0594F;
+  --radius:14px; --radius-sm:9px;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --display:'Space Grotesk','IBM Plex Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--sans);color:var(--text);background-color:var(--void);
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(54,211,153,.05), transparent 60%),
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size:auto,34px 34px,34px 34px;background-attachment:fixed;
+  min-height:100vh;line-height:1.45;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1500px;margin:0 auto;padding:16px 18px 40px}
+h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.82rem;max-width:90ch;margin:4px 0 14px}
+.sub b{color:var(--text)}
+.grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.card h2{font-family:var(--display);font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.f{margin-bottom:8px}
+.f label{display:block;font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted-2);margin-bottom:2px}
+.f input,.f select{width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+  border-radius:7px;padding:5px 8px;font:inherit;font-size:.85rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.scene-card{padding:0;overflow:hidden;display:flex;flex-direction:column}
+#c3d{width:100%;height:520px;display:block;cursor:grab;touch-action:none}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
+.bar .t{font-family:var(--mono);font-size:.8rem}
+.btn{font:inherit;font-size:.78rem;font-weight:600;color:var(--text);background:var(--panel-hi);
+  border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer}
+.btn.acc{background:var(--live);border-color:var(--live);color:#08130D}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+input[type=range]{accent-color:var(--live)}
+#hour{flex:1;min-width:160px}
+.leg{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+#legbar{width:90px;height:9px;border-radius:5px;display:inline-block}
+.pill{font-size:.62rem;font-weight:700;letter-spacing:.06em;border-radius:999px;padding:2px 9px}
+.pill.on{color:var(--live);background:rgba(54,211,153,.12)}
+.strings{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-top:1px solid var(--line)}
+.s-chip{font-family:var(--mono);font-size:.72rem;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;gap:6px}
+.s-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+#aviso{display:none;margin:10px 0;background:rgba(246,166,35,.12);color:var(--build);
+  border-radius:8px;padding:8px 12px;font-size:.8rem}
+.nota{color:var(--muted-2);font-size:.7rem;padding:8px 14px 12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚡ Producción 3D por string</h1>
+  <p class="sub">Cada string (fila) pintado con <b>su producción</b> — instante en W/m² o día acumulado en
+  kWh/m² — sobre el terreno, con seguimiento <b>AUTO</b> (backtracking pairwise, la política de planta) o
+  <b>MANUAL</b> con slider, y <b>nubosidad</b>. La física NO vive aquí: esta página extrae en caliente el
+  bloque FÍSICA PURA del simulador de backtracking — la misma que valida su QA contra pvlib y ray-cast, cero copias.</p>
+  <div id="aviso"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>⊙ Emplazamiento</h2>
+        <div class="row2">
+          <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
+          <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Fecha</label><input id="date" type="date" value="2026-06-21"></div>
+          <div class="f"><label>UTC ±</label><input id="tz" type="number" step="0.5" value="2"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Altitud m</label><input id="alt" type="number" step="10" value="300"></div>
+          <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
+        </div>
+        <div class="f"><label>Nubosidad %</label><input id="cloud" type="number" step="10" min="0" max="100" value="0"
+          title="Modelo nube→irradiancia de la casa (sol.js · cloudToIrr): GHI·(1−0,70·cc), el haz muere antes —DNI·(1−cc)³— y la difusa cierra. A 0, cielo claro exacto."></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>⚙ Geometría</h2>
+        <div class="row2">
+          <div class="f"><label>Pitch m</label><input id="pitch" type="number" step="0.05" min="2" value="6.00"></div>
+          <div class="f"><label>Ancho m</label><input id="cw" type="number" step="0.001" min="0.5" value="2.382"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
+          <div class="f"><label>Strings</label><input id="nrows" type="number" step="1" min="2" max="24" value="10"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>⛰ Terreno</h2>
+        <div class="f"><label>Perfil E-O</label>
+          <select id="tpreset">
+            <option value="llano">Llano</option>
+            <option value="pendiente" selected>Pendiente</option>
+            <option value="ondulado">Ondulado</option>
+            <option value="valle">Valle</option>
+          </select></div>
+        <div class="f"><label id="tplbl">Pendiente °</label><input id="tparam" type="number" step="0.5" value="4"></div>
+        <p style="color:var(--muted-2);font-size:.68rem">El terreno es lo que separa los strings: en llano
+        con backtracking todos producen lo mismo (y el color lo dice).</p>
+      </div>
+    </div>
+
+    <div class="card scene-card">
+      <canvas id="c3d"></canvas>
+      <div class="bar">
+        <button class="btn" id="play">▶</button>
+        <input type="range" id="hour" min="0" max="1435" step="5" value="720">
+        <span class="t" id="hourlbl">12:00</span>
+        <span class="pill on" id="modepill">AUTO · backtracking</span>
+        <label class="btn" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="manual"> 🎛 manual</label>
+        <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
+        <span class="t" id="manthlbl">0°</span>
+        <select id="cmode" class="btn">
+          <option value="inst">⚡ instante (W/m²)</option>
+          <option value="day">Σ día (kWh/m²)</option>
+        </select>
+        <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
+      </div>
+      <div class="strings" id="strings"></div>
+      <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
+      El modo «Σ día» integra el día entero con el modo activo (AUTO usa backtracking pairwise en cada paso;
+      MANUAL mantiene tu θ todo el día). Motor: FÍSICA PURA de backtracking.html — pvlib singleaxis + sombra
+      exacta + eléctrico Martinez + Ineichen/Perez — extraída en caliente, no copiada. Arrastra para orbitar.</div>
+    </div>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="sol.js?v=0.3.0"></script>
+<script src="irradiancia.js"></script>
+<script>
+"use strict";
+/* ═══ LÓGICA PURA — de aquí a FIN-LÓGICA no se toca el DOM ══════════════════
+   tools/test_produccion.mjs extrae este bloque (mismos delimitadores-contrato
+   que el FÍSICA PURA del simulador) y lo ejercita en Node con la física real. */
+const D2R=Math.PI/180;
+
+/* elevación por fila según preset — las MISMAS fórmulas que los presets del
+   simulador (son implantación/UI, no física; 4 líneas, con su test de paridad) */
+function elevPreset(preset,n,v,pitch){
+  const z=new Array(n).fill(0);
+  if(preset==='pendiente')for(let i=0;i<n;i++)z[i]=-i*pitch*Math.tan(v*D2R);
+  else if(preset==='ondulado')for(let i=0;i<n;i++)z[i]=v*Math.sin(2*Math.PI*i/Math.max(3,Math.floor(n/2)));
+  else if(preset==='valle')for(let i=0;i<n;i++)z[i]=v*Math.abs(i-(n-1)/2)/((n-1)/2);
+  return z;
+}
+
+/* T mínimo con el MISMO contrato que terrain() del simulador (monofila,
+   alineadas, eje N-S plano): lo que poaPlant/anglesPairwise necesitan. */
+function buildT(F,c,elev){
+  const tilts=new Array(c.nrows).fill(0);
+  const filaLen=2*28*1.146+0.55;
+  return {pairs:F.pairsFromElev(elev,c.pitch,tilts),cw:c.cw,axisAz:0,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
+          rowTilt:tilts,groups:null,drive:'mono',
+          segs:F.nsSegments(c.nrows,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+}
+
+function localToUTCms(dateStr,localMin,tzOff){
+  const [y,mo,d]=dateStr.split('-').map(Number);
+  return Date.UTC(y,mo-1,d)+localMin*60000-tzOff*3600000;
+}
+function doyOf(dateStr){
+  const [y,mo,d]=dateStr.split('-').map(Number);
+  return Math.round((Date.UTC(y,mo-1,d)-Date.UTC(y,0,1))/86400000)+1;
+}
+
+/* un instante: sol → cielo (con nubes) → ángulos (auto BT | manual) → POA/fila */
+function instant(F,c,T,m){
+  const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
+  const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
+  const irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
+  const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
+                    :F.anglesPairwise(zen,az,T);
+  const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
+  return {g:g,zen:zen,az:az,irr:irr,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
+}
+
+/* día entero: Σ rows·Δt por string (kWh/m²), paso de 5 min con el modo activo */
+function dayTotals(F,c,T){
+  const n=c.nrows, out=new Array(n).fill(0);
+  for(let m=0;m<1440;m+=5){
+    const r=instant(F,c,T,m);
+    for(let k=0;k<n;k++)out[k]+=r.rows[k];
+  }
+  for(let k=0;k<n;k++)out[k]*=5/60/1000;
+  return out;
+}
+/* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
+
+const $=id=>document.getElementById(id);
+let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
+
+/* ── la física del simulador, extraída en caliente (contrato FÍSICA PURA) ── */
+async function cargaFisica(){
+  try{
+    const html=await (await fetch('backtracking.html')).text();
+    const i0=html.indexOf('FÍSICA PURA'), i1=html.indexOf('/* FIN-FÍSICA');
+    if(i0<0||i1<0)throw new Error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA');
+    const src=html.slice(html.lastIndexOf('/*',i0),i1);
+    F=new Function(src+`
+      return {poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
+              pairsFromElev,nsSegments};`)();
+  }catch(e){
+    const a=$('aviso');a.style.display='block';
+    a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
+      'Esta página extrae el bloque FÍSICA PURA de <code>backtracking.html</code> para no duplicarla: '+
+      'comprueba que ese fichero está desplegado junto a éste y recarga (Ctrl+Shift+R).';
+    throw e;
+  }
+}
+
+function cfg(){
+  return {lat:+$('lat').value,lon:+$('lon').value,date:$('date').value,tz:+$('tz').value,
+          alt:+$('alt').value,albedo:+$('albedo').value,cc:Math.max(0,Math.min(1,(+$('cloud').value)/100)),
+          pitch:+$('pitch').value,cw:+$('cw').value,maxang:+$('maxang').value,
+          nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
+          manual:$('manual').checked,manth:+$('manth').value,
+          tpreset:$('tpreset').value,tparam:+$('tparam').value};
+}
+function rebuildT(){
+  const c=cfg();
+  T={elev:elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch)};
+  T.obj=buildT(F,c,T.elev);
+  DAYC=null;
+  build3D(c);
+}
+
+/* ── 3D: cajas por fila sobre el terreno, pala pintada por producción ── */
+let R3={};
+function build3D(c){
+  const cv=$('c3d');
+  if(!R3.renderer){
+    R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+    R3.scene=new THREE.Scene();
+    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,2000);
+    R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
+    R3.ctrl.addEventListener('change',()=>R3.dirty=true);
+    R3.amb=new THREE.AmbientLight(0xffffff,0.75);
+    R3.sun=new THREE.DirectionalLight(0xffffff,0.9);
+    R3.scene.add(R3.amb,R3.sun);
+    (function loop(){requestAnimationFrame(loop);
+      if(R3.dirty){R3.dirty=false;R3.renderer.render(R3.scene,R3.cam);}})();
+  }
+  const W=cv.clientWidth||900,H=cv.clientHeight||520;
+  R3.renderer.setSize(W,H,false);R3.cam.aspect=W/H;R3.cam.updateProjectionMatrix();
+  if(R3.world)R3.scene.remove(R3.world);
+  R3.world=new THREE.Group();R3.scene.add(R3.world);
+  const n=c.nrows,len=T.obj.filaLen;
+  const span=(n-1)*c.pitch;
+  const gnd=new THREE.Mesh(
+    new THREE.PlaneGeometry(span+40,len+40,Math.max(2,n*2),2),
+    new THREE.MeshLambertMaterial({color:0x1c2b22,side:THREE.DoubleSide}));
+  // el suelo sigue el perfil E-O real (el mismo elev que come la física)
+  {const pos=gnd.geometry.attributes.position;
+   for(let i=0;i<pos.count;i++){
+     const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/c.pitch));
+     const r0=Math.floor(r), fr=r-r0, z0=T.elev[r0], z1=T.elev[Math.min(n-1,r0+1)];
+     pos.setZ(i,z0+fr*(z1-z0));}
+   pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
+  gnd.rotation.x=-Math.PI/2;
+  R3.world.add(gnd);
+  R3.rows=[];
+  for(let r=0;r<n;r++){
+    const x=r*c.pitch-span/2, y=T.elev[r]+2.1;
+    const spin=new THREE.Group();spin.position.set(x,y,0);
+    const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),
+      new THREE.MeshLambertMaterial({color:0x39424d}));
+    const pm=new THREE.MeshLambertMaterial({color:0x223344});
+    const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.04,len),pm);
+    panel.position.y=0.17;
+    spin.add(tube,panel);
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.1,8),
+      new THREE.MeshLambertMaterial({color:0x2a333d}));
+    post.position.set(x,T.elev[r]+1.05,0);
+    R3.world.add(spin,post);
+    R3.rows.push({spin:spin,mat:pm});
+  }
+  if(!R3.camSet){
+    R3.cam.position.set(span*0.75,Math.max(18,span*0.55),len*0.95);
+    R3.ctrl.target.set(0,0,0);R3.ctrl.update();R3.camSet=true;
+  }
+  R3.dirty=true;
+}
+
+function ramp(x){return F.prodColor(x);}
+function paintLegend(mn,mx,unit,fmt){
+  const stops=[];for(let i=0;i<=8;i++)stops.push(ramp(i/8)+' '+(i*12.5)+'%');
+  $('legbar').style.background='linear-gradient(90deg,'+stops.join(',')+')';
+  $('leglo').textContent=fmt(mn);
+  $('leghi').textContent=fmt(mx)+' '+unit;
+}
+
+function repaint(){
+  if(!F||!T)return;
+  const c=cfg(), m=+$('hour').value;
+  $('hourlbl').textContent=String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+  $('manthlbl').textContent=$('manth').value+'°';
+  $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
+  const inst=instant(F,c,T.obj,m);
+  let vals,unit,fmt;
+  if($('cmode').value==='day'){
+    if(!DAYC)DAYC=dayTotals(F,c,T.obj);
+    vals=DAYC;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  }else{vals=inst.rows;unit='W/m²';fmt=v=>v.toFixed(0);}
+  const mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
+  paintLegend(mn,mx,unit,fmt);
+  const chips=[];
+  for(let r=0;r<c.nrows;r++){
+    const x01=mx>mn?(vals[r]-mn)/(mx-mn):0.5, col=ramp(x01);
+    if(R3.rows&&R3.rows[r]){
+      R3.rows[r].spin.rotation.z=-inst.ang[r]*D2R;
+      R3.rows[r].mat.color.set(col);
+    }
+    chips.push('<span class="s-chip"><span class="s-dot" style="background:'+col+'"></span>S'+(r+1)+
+               ' · '+fmt(vals[r])+'</span>');
+  }
+  $('strings').innerHTML=chips.join('');
+  // sol de la escena
+  const el2=inst.g.elev*D2R, az2=inst.az*D2R;
+  R3.sun.position.set(Math.sin(az2)*Math.cos(el2)*80,Math.max(2,Math.sin(el2)*80),-Math.cos(az2)*Math.cos(el2)*80);
+  R3.sun.intensity=inst.g.elev>0?0.95:0.15;
+  const sky=Sol.skyColors(inst.g.elev);
+  R3.renderer.setClearColor(new THREE.Color(sky.top[0],sky.top[1],sky.top[2]));
+  R3.dirty=true;
+}
+
+/* ── arranque + eventos ── */
+(async()=>{
+  await cargaFisica();
+  rebuildT();repaint();
+  for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
+    $(id).addEventListener('change',()=>{rebuildT();repaint();});
+  $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});
+  $('hour').addEventListener('input',repaint);
+  $('cmode').addEventListener('change',repaint);
+  $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;DAYC=null;repaint();});
+  $('manth').addEventListener('input',()=>{DAYC=null;repaint();});
+  $('tpreset').addEventListener('change',()=>{
+    $('tplbl').textContent=$('tpreset').value==='pendiente'?'Pendiente °':'Amplitud m';});
+  let anim=null;
+  $('play').addEventListener('click',()=>{
+    if(anim){clearInterval(anim);anim=null;$('play').textContent='▶';return;}
+    $('play').textContent='⏸';
+    anim=setInterval(()=>{
+      let m=+$('hour').value+10;if(m>1435)m=0;
+      $('hour').value=m;repaint();
+    },120);
+  });
+})();
+</script>
+</body>
+</html>
