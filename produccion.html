@@ -269,14 +269,25 @@ function pStringW(poa,tair,wind,e){                // e:{mods,wp,gamma,uc,uv}
    0,55 m entre vigas) se funden con su columna — a efectos de sombra entre
    filas son la MISMA línea. Cada columna guarda sus strings con su inversor
    (g.i de la numeración g.i.t.s) y su extensión N-S real. */
-function elburgoRows(strdb,minGap){
+function elburgoRows(strdb,minGap,vigasX){
   const g=minGap||3, xs=[...new Set(strdb.strings.map(s=>s.x))].sort((a,b)=>a-b);
   const cl=[];
   for(const x of xs){
     if(cl.length&&x-cl[cl.length-1][cl[cl.length-1].length-1]<g)cl[cl.length-1].push(x);
     else cl.push([x]);
   }
-  const rows=cl.map(c=>({x:c.reduce((a,b)=>a+b,0)/c.length,strs:[],n0:Infinity,n1:-Infinity}));
+  // la x de la columna se ANCLA a la viga del layout si la hay: el plano de
+  // strings trae dos valores de levantamiento alrededor de la misma viga
+  // física (−48,49/−47,94 ≈ viga −48,17) y la media ponderada fabricaba vanos
+  // de 5,73 m donde el layout dice «6 m clavados» — dos inversores salían
+  // produciendo menos al atardecer por un vano que NO existe.
+  const ancla=x=>{
+    if(!vigasX||!vigasX.length)return x;
+    let b=x,d=0.7;
+    for(const v of vigasX){const e=Math.abs(v-x);if(e<d){d=e;b=v;}}
+    return b;
+  };
+  const rows=cl.map(c=>({x:ancla(c.reduce((a,b)=>a+b,0)/c.length),strs:[],n0:Infinity,n1:-Infinity}));
   const idx=new Map();cl.forEach((c,i)=>{for(const x of c)idx.set(x,i);});
   for(const s of strdb.strings){
     const r=rows[idx.get(s.x)];
@@ -293,7 +304,31 @@ function elburgoRows(strdb,minGap){
    los respetan. Antes cada columna era una viga continua y la calle
    central desaparecía (verificado contra terreno.html y el histograma de
    huecos del propio plano: 626 pasos normales, ~37 cortes de 36–70 m). */
-function elburgoSegs(rows){
+function elburgoSegs(rows,trackers){
+  // Con el LAYOUT: una mesa por tracker y viga, centrada en su eje de unidad y
+  // con el largo por TIPO — 64,6 m la larga, 32,6 la media (layout.aLoLargo).
+  // Con solo los strings no se puede: dos largas consecutivas se tocan a 0,4 m
+  // y la fusión por paso las pegaba en vigas de 130 m («ha desaparecido un
+  // tracker»). Verificado: los 819 strings casados caen DENTRO de la mesa de
+  // su tracker (alas a ±16,3 del eje).
+  if(trackers&&trackers.length){
+    const xs=rows.map(r=>r.x);
+    const out=rows.map(()=>[]);
+    for(const t of trackers){
+      const L=/Medio/i.test(t.t||'')?32.6:64.6;
+      for(const dx of [-3,3]){
+        let ci=-1,best=0.7;
+        for(let i=0;i<xs.length;i++){const d=Math.abs(xs[i]-(t.x+dx));if(d<best){best=d;ci=i;}}
+        if(ci>=0)out[ci].push([t.n-L/2,t.n+L/2]);
+      }
+    }
+    // strings sin tracker en el layout (los 4 del 1.18.7): mesa media alrededor
+    for(let i=0;i<rows.length;i++)for(const s of rows[i].strs)
+      if(!out[i].some(sg=>s.n>=sg[0]-1&&s.n<=sg[1]+1))out[i].push([s.n-16.3,s.n+16.3]);
+    for(const l of out)l.sort((a,b)=>a[0]-b[0]);
+    return out;
+  }
+  // sin layout (fallback declarado): tramos por paso de strings
   const gaps=[];
   for(const r of rows){
     const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
@@ -398,6 +433,7 @@ function dayTotals(F,c,T,map){
 
 const $=id=>document.getElementById(id);
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
+let T_nOff=0;                    // desplazamiento N del marco de escena (El Burgo)
 
 /* ── la física del simulador, extraída en caliente (contrato FÍSICA PURA) ── */
 async function cargaFisica(){
@@ -450,14 +486,17 @@ async function cargaElburgo(){
   const [sj,lj]=await Promise.all([
     fetch('elburgo_strings.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_strings.json '+r.status);return r.json();}),
     fetch('elburgo_layout.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_layout.json '+r.status);return r.json();})]);
-  const rows=elburgoRows(sj,3);
+  // vigas físicas del layout (eje de unidad ±3 m): anclan la x de las columnas
+  const vigasX=[];
+  for(const t of (lj.trackers||[])){vigasX.push(t.x-3,t.x+3);}
+  const rows=elburgoRows(sj,3,vigasX);
   // NCU por string: g.i.t del plano casado con el idPrevio del layout
   const mapa=new Map();
   for(const t of (lj.trackers||[]))if(t.idPrevio!=null)mapa.set(String(t.idPrevio),t.ncu);
   const porNCU={};let sinNCU=0;
   for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
     if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
-  EB={raw:sj,trk:lj.trackers||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+  EB={raw:sj,trk:lj.trackers||[],vigasX:vigasX,rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
       maxang:(lj.montaje&&lj.montaje.max_angle)||55,
       cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
       mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
@@ -466,7 +505,7 @@ async function cargaElburgo(){
 /* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU) */
 function aplicaAmbitoEB(v){
   const db=v===''?EB.raw:filtraStringsNCU(EB.raw,EB.mapa,+v);
-  EB.rows=elburgoRows(db,3);EB.xs=EB.rows.map(r=>r.x);
+  EB.rows=elburgoRows(db,3,EB.vigasX);EB.xs=EB.rows.map(r=>r.x);
   $('nrows').value=EB.rows.length;
 }
 
@@ -505,12 +544,13 @@ function rebuildT(){
   }else if(c.plant==='elburgo'&&EB){
     // tramos de mesa REALES por string, con sus caminos (verificado contra
     // terreno.html): entran en la escena Y en el solape axial de poaPlant
-    const abs=elburgoSegs(EB.rows);
+    const abs=elburgoSegs(EB.rows,EB.trk);
     let mn=Infinity,mx=-Infinity;
     for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
     const nc=(mn+mx)/2;
     const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
     const z=new Array(c.nrows).fill(0);
+    T_nOff=nc;   // para colocar bielas y motores del layout en el marco de la escena
     // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
     // motor en la viga OESTE — «no todos los trackers son iguales, pero son
     // bifilas todos» (los largos de mesa ya salen de los propios strings)
@@ -647,6 +687,36 @@ function build3D(c){
     R3.rows.push({spins:spins,mat:tintM});
   }
   if(useModel)Seguidor.setModsPerStr(28);                     // restaurar el canónico compartido
+  // ── bielas del BIFILA de El Burgo: eje de transmisión entre las dos vigas
+  // de cada unidad a la altura del tubo, con sus copas y el motor en la viga
+  // oeste — la receta del linkBar del simulador, con las unidades del layout
+  if(c.plant==='elburgo'&&EB&&EB.trk.length){
+    const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
+    const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
+    const ejeG=new THREE.CylinderGeometry(0.045,0.045,6-0.36,10);ejeG.rotateZ(Math.PI/2);
+    const copaG=new THREE.CylinderGeometry(0.095,0.095,0.20,10);copaG.rotateZ(Math.PI/2);
+    const hubY=1.24;   // altura del eje de transmisión (hub·0,62, como el simulador)
+    for(const t of EB.trk){
+      const zc=-(t.n-T_nOff);
+      if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito visible
+      const ux=t.x-xc;
+      if(ux<rx[0]-4||ux>rx[n-1]+4)continue;
+      const eje=new THREE.Mesh(ejeG,bielM);eje.position.set(ux,hubY,zc);eje.castShadow=true;
+      const c1=new THREE.Mesh(copaG,bielM);c1.position.set(ux-2.84,hubY,zc);
+      const c2=new THREE.Mesh(copaG,bielM);c2.position.set(ux+2.84,hubY,zc);
+      const mot=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);
+      mot.position.set(ux-3,hubY,zc);mot.castShadow=true;     // motor en la viga OESTE
+      R3.world.add(eje,c1,c2,mot);
+    }
+    // los CTs de la planta (coordenadas del DWG, las mismas de terreno.html):
+    // el hueco sin trackers junto a (−6,2, 22) no es un error — es el CT Norte
+    const ctM=new THREE.MeshLambertMaterial({color:0x8c93a8});
+    for(const ct of [{x:-6.2,n:22.01},{x:9.92,n:-194.24}]){
+      const b=new THREE.Mesh(new THREE.BoxGeometry(6,2.6,3.2),ctM);
+      b.position.set(ct.x-xc,1.3,-(ct.n-T_nOff));b.castShadow=true;
+      R3.world.add(b);
+    }
+  }
   if(!R3.camSet||R3.camPlant!==c.plant){
     // encuadre por la CAJA REAL de la escena — San José es 490 m de ancho por
     // 2,4 km de largo, y el «máximo de dos números» a ojo lo dejaba en una
