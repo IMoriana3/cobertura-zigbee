@@ -218,6 +218,22 @@ t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por van
   if (!(r.plant > 300)) throw new Error('mediodía de junio en Ayora con ' + r.plant + ' W/m²');
 });
 
+t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
+  // «ondulado 4 m» fabricaba parejas de 38° y el pairwise clavaba filas a ±55°,
+  // que en pantalla se leía como «no está haciendo backtracking». El simulador
+  // capa su editor a tan(30°)·pitch; los presets de la tarjeta, igual.
+  const lim = 6 * Math.tan(30 * Math.PI / 180) + 1e-9;
+  for (const [pre, v] of [['ondulado', 4], ['valle', 6], ['pendiente', 35]]) {
+    const z = S.elevPreset(pre, 12, v, 6);
+    for (let i = 1; i < z.length; i++)
+      if (Math.abs(z[i - 1] - z[i]) > lim)
+        throw new Error(`${pre} ${v}: vano ${i} con Δz ${Math.abs(z[i - 1] - z[i]).toFixed(2)} m > tan(30°)·pitch`);
+  }
+  const T = S.buildT(S.F, { ...C, nrows: 12 }, S.elevPreset('ondulado', 12, 4, 6));
+  for (const p of T.pairs) if (Math.abs(p.slope) > 30.001)
+    throw new Error('pareja de ' + p.slope.toFixed(1) + '°: el capado no llega a la T');
+});
+
 t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS, día entero', () => {
   // La tarjeta y el BT 3D tienen que dar EL MISMO ángulo, no uno parecido.
   // Dos plantas, barrido del día a paso de 30 min, igualdad === por fila:
