@@ -41,7 +41,8 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, tCellPVSyst, pStringW, instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW,
+          instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -303,15 +304,22 @@ t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parq
     const r = S.instant(S.F, c, T, 720);
     if (!(r.plant > 300)) throw new Error('el parque de una NCU no calcula (' + r.plant + ' W/m²)');
   }
-  // y en cotas (Ayora): el filtrado por ncuOf del layout deja una planta válida
-  const ncuOf = (layAyora.trackers && layAyora.trackers.length === cotasAyora.t.length)
-    ? layAyora.trackers.map(tk => tk.ncu) : null;
-  if (ncuOf) {
-    const primera = ncuOf.find(v => v != null);
-    const sub = { ...cotasAyora, t: cotasAyora.t.filter((_, i) => ncuOf[i] === primera) };
-    const P = S.F.plantFromCotas(sub, 80, null);
-    if (!(P.elev.length >= 2)) throw new Error('el parque de la NCU ' + primera + ' no forma planta');
-  }
+  // y en cotas (Ayora): layout 751 ≠ cotas 754, así que el 1:1 NO vale — el
+  // casado va por COORDENADAS y tiene que cubrir la planta (el `if (ncuOf)`
+  // que aquí callaba cuando no alineaba es exactamente como se escapó el bug
+  // de «elijo NCU y me carga la planta entera»)
+  if (layAyora.trackers.length === cotasAyora.t.length)
+    throw new Error('Ayora ahora alinea 1:1 (' + layAyora.trackers.length + '): este careo vigila el camino por coordenadas — revísalo');
+  const m = S.ncuPorCoordenadas(cotasAyora, layAyora.trackers);
+  if (m.casados < cotasAyora.t.length * 0.9)
+    throw new Error('solo ' + m.casados + '/' + cotasAyora.t.length + ' trackers de Ayora casan con su NCU por coordenadas');
+  const primera = m.ncuOf.find(v => v != null);
+  const sub = { ...cotasAyora, t: cotasAyora.t.filter((_, i) => m.ncuOf[i] === primera) };
+  const Pn = S.F.plantFromCotas(sub, 80, null);
+  const Pf = S.F.plantFromCotas(cotasAyora, 80, null);
+  if (!(Pn.elev.length >= 2)) throw new Error('el parque de la NCU ' + primera + ' no forma planta');
+  if (!(Pn.elev.length < Pf.elev.length))
+    throw new Error(`NCU ${primera} con ${Pn.elev.length} líneas = planta entera (${Pf.elev.length}): el filtro no recorta`);
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {

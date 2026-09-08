@@ -382,6 +382,32 @@ function elburgoGroups(xs,trackers){
   return out;
 }
 
+/* NCU por tracker cuando layout y cotas NO van alineados 1:1 (Ayora: 751
+   trackers en el layout y 754 en las cotas — el mismo descuadre que tiene
+   anotado el QA del simulador): casado por COORDENADAS (x de la viga oeste y
+   centro N-S del tracker), nunca por índice — el emparejado por índice es
+   justo el que ya costó consignas mal dirigidas. Sin casar ⇒ sin NCU (solo
+   aparece en planta entera, declarado). */
+function ncuPorCoordenadas(cotas,trackers){
+  const out=new Array(cotas.t.length).fill(null);
+  let casados=0;
+  for(let i=0;i<cotas.t.length;i++){
+    const t=cotas.t[i];
+    if(!t||!t.f||!t.f.length)continue;
+    const f0=t.f[0];
+    const nc=(Math.min(f0.n[0],f0.n[1])+Math.max(f0.n[0],f0.n[1]))/2;
+    let best=null,bd=9;
+    for(const L of trackers){
+      if(Math.abs(L.x-f0.x)<3&&Math.abs(L.n-nc)<8){
+        const d=Math.abs(L.x-f0.x)+Math.abs(L.n-nc)*0.2;
+        if(d<bd){bd=d;best=L;}
+      }
+    }
+    if(best){out[i]=best.ncu;casados++;}
+  }
+  return {ncuOf:out,casados:casados};
+}
+
 /* ámbito por NCU (como el del simulador): filtra el plano de strings a los del
    parque de UNA NCU, con el mapa g.i.t → ncu que sale del layout (idPrevio).
    Los strings cuyo tracker no está en el layout solo aparecen en planta
@@ -475,8 +501,14 @@ async function cargaCotas(key){
     fetch(cfg2.cotas,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.cotas+' '+r.status);return r.json();}),
     fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
   const P=F.plantFromCotas(cotas,80,null);   // el bloque mayor, como el simulador
-  // NCU por tracker: el layout alineado 1:1 con las cotas (la receta del simulador)
-  const ncuOf=(lay.trackers&&lay.trackers.length===cotas.t.length)?lay.trackers.map(t=>t.ncu):null;
+  // NCU por tracker: layout alineado 1:1 con las cotas (la receta del
+  // simulador) y, si NO alinean (Ayora 751≠754), casado por coordenadas —
+  // solo si casa de verdad (>90 %); si no, sin NCUs antes que mal dirigidas
+  let ncuOf=(lay.trackers&&lay.trackers.length===cotas.t.length)?lay.trackers.map(t=>t.ncu):null;
+  if(!ncuOf&&lay.trackers&&lay.trackers.length){
+    const m=ncuPorCoordenadas(cotas,lay.trackers);
+    if(m.casados>cotas.t.length*0.9)ncuOf=m.ncuOf;
+  }
   RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
