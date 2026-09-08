@@ -768,6 +768,20 @@ function fechasPeriodo(dateStr,periodo){
   }
   return out;
 }
+/* QUÉ VIGA DE CADA UNIDAD BIFILA LLEVA EL MOTOR: la OESTE, y solo ella. `groups` empareja las
+   dos vigas de una unidad y viene medido —de las cotas por `plantFromCotas`, del plano por
+   `elburgoGroups`—, con el par ordenado por x, así que g[0] es la oeste y g[1] la este.
+
+   UNA SOLA REGLA PARA TODAS LAS PLANTAS, y por eso vive aquí. Antes solo la aplicaba la rama de
+   El Burgo: en Ayora y San José `T.west` se quedaba sin definir, o sea `west:true` en todas las
+   vigas, y cada una se dibujaba CON SU MOTOR —un seguidor monofila entero— cuando físicamente
+   son medias unidades bifila. En la NCU 9 de San José se veían 40 motores donde hay 20 unidades
+   («sigue habiendo monofilas», 2026-09-08). */
+function westDeGroups(n,groups){
+  const w=new Array(n).fill(true);
+  for(const g of (groups||[]))if(g&&g.length===2&&g[1]>=0&&g[1]<n)w[g[1]]=false;
+  return w;
+}
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
@@ -914,6 +928,14 @@ function rebuildT(){
   if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
     T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
+    /* BIFILA TAMBIÉN AQUÍ. `T.west` dice qué viga de cada unidad lleva el motor, y solo lo
+       rellenaba El Burgo: en Ayora y San José salía undefined, o sea `west:true` en TODAS, y
+       cada viga se dibujaba con su motor —un seguidor monofila entero— en vez de media unidad
+       bifila. Se veía en la NCU 9 de San José: 40 líneas con 40 motores donde hay 20 unidades.
+       Las parejas ya las trae `plantFromCotas` en `groups` (las mismas con las que el BT acopla
+       el θ), así que aquí solo se lee lo que ya está medido: el par va ordenado por x, luego
+       g[0] es la viga OESTE —la del motor— y g[1] la ESTE. */
+    T.west=westDeGroups(P.lineX.length,P.groups);
     T.obj=buildTReal(F,c,P);
   }else if(c.plant==='elburgo'&&EB){
     // tramos de mesa REALES por string, con sus caminos (verificado contra
@@ -930,8 +952,7 @@ function rebuildT(){
     // bifilas todos» (los largos de mesa ya salen de los propios strings)
     const groups=elburgoGroups(EB.xs,EB.trkA);
     T={elev:z,xs:EB.xs,tilt:null,segs:segs};
-    T.west=new Array(c.nrows).fill(true);
-    for(const g of groups)if(g.length===2)T.west[g[1]]=false;
+    T.west=westDeGroups(c.nrows,groups);          // la misma regla que las plantas de cotas
     T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
   }else{
     const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
