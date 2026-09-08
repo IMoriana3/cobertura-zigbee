@@ -1152,7 +1152,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   const segPairs=[];
   for(const v of byTrk.values())if(v.length===2&&v[0][0]!==v[1][0])segPairs.push(v);
   segPairs.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segTrk:segTrk,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
@@ -1828,6 +1828,21 @@ function segZAt(T,r,k,v){                   // cota del eje de la mesa (r,k) en 
 function segsBroadcast(T,rowVals){          // el valor de la línea en cada uno de sus tramos
   return (T.segs||[]).map((l,r)=>l.map(()=>rowVals[r]));
 }
+/* la LÍNEA como resumen de sus mesas: media ponderada por largo (la misma
+   regla que poaPlantSeg usa para la POA de fila). Con un valor por tramo
+   igual en todos, devuelve ese valor exacto. */
+function segLineMean(T,segVals){
+  return segVals.map((l,r)=>{
+    const line=T.segs&&T.segs[r];
+    let acc=0,wt=0;
+    for(let k=0;k<l.length;k++){const len=line&&line[k]?Math.max(1e-6,line[k][1]-line[k][0]):1;acc+=l[k]*len;wt+=len;}
+    return wt>0?acc/wt:0;
+  });
+}
+/* límite del actuador MESA a MESA: cada mesa es un seguidor con su motor */
+function slewLimitSeg(prevSeg,cmdSeg,dtSec,rate){
+  return cmdSeg.map((l,r)=>slewLimit(prevSeg?prevSeg[r]:null,l,dtSec,rate));
+}
 function anglesAstroSeg(zen,az,T){
   const rows=anglesAstro(zen,az,T);
   if(!T.segTilt||!T.segs)return segsBroadcast(T,rows);
@@ -1893,22 +1908,25 @@ function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
    ponderada por largo de sus mesas; planta = media por fila (como poaPlant). */
 function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
   const sh=shadeRows(zen,az,T,segAngles);
-  const rows=[],segs=[];let sum=0;
+  const rows=[],segs=[];let sum=0,sumHi=0,sumLo=0;
   for(let r=0;r<segAngles.length;r++){
     const line=T.segs?T.segs[r]:null, o=[];
-    let acc=0,wt=0;
+    let acc=0,wt=0,cOpt=0,cEle=0;
     for(let k=0;k<segAngles[r].length;k++){
       const p=poaRow(segAngles[r][k],segTiltAt(T,r,k),T.axisAz,zen,az,irr,doy,albedo,T.iam);
       const fo=Math.max(0,Math.min(1,(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:(sh[r]||0)));
       const se=(sh.segElec&&sh.segElec[r]&&sh.segElec[r][k]!=null)?sh.segElec[r][k]:elecLoss(fo,T.nBypass);
       const v=p.beam*(1-se)+p.circ*(1-fo)+p.sky+p.gnd;
       const len=line&&line[k]?Math.max(1e-6,line[k][1]-line[k][0]):1;
-      o.push(v);acc+=v*len;wt+=len;
+      o.push(v);acc+=v*len;wt+=len;cOpt+=p.circ*fo*len;cEle+=p.circ*se*len;
     }
     const rv=wt>0?acc/wt:0;
     rows.push(rv);segs.push(o);sum+=rv;
+    // la BANDA del circunsolar, la misma cuenta que poaPlant (por mesa, ponderada)
+    sumHi+=rv+(wt>0?cOpt/wt:0);sumLo+=rv-(wt>0?(cEle-cOpt)/wt:0);
   }
-  return {rows:rows,segs:segs,plant:segAngles.length?sum/segAngles.length:0,shade:sh};
+  const n=segAngles.length||1;
+  return {rows:rows,segs:segs,plant:segAngles.length?sum/n:0,plantHi:sumHi/n,plantLo:sumLo/n,shade:sh};
 }
 
 /* energy-optimal (Deeptrack): θ_c(f)=θ_bt+f·(θ_full−θ_bt), MISMA f para todas
@@ -2530,7 +2548,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.41.0';
+const VER='v1.42.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2666,7 +2684,8 @@ function terrain(c){
     return {pairs:pairs,cw:c.cw,axisAz:c.axaz,
             maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,iam:c.iam,
             rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
-            segs:P.segs,filaLen:2*c.mods*1.146+0.55,real:P};
+            segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // el tilt y la pareja de CADA mesa (v1.42: la UI manda por mesa)
+            filaLen:2*c.mods*1.146+0.55,real:P};
   }
   const groups=driveGroups(c.nrows,c.drive);
   const eff=effRowTilts(nsProfile(c),c.drive,groups);   // la rígida promedia el grupo
@@ -3036,6 +3055,30 @@ const STEP_MIN=5;
    habría sido tener dos verdades; esto es una verdad con dos caudales. */
 /* cobertura nubosa del mando (0..1). Fuera del bloque de física: lee DOM. */
 function cloudCC(){const e=$('cloud');return Math.max(0,Math.min(1,(+((e&&e.value)||0))/100));}
+/* ── MANDO POR MESA (v1.42) ────────────────────────────────────────────────
+   Con planta de cotas cada mesa es un seguidor con su tilt (T.segTilt) y su
+   pareja bifila exacta (T.segPairs). El día y el instante se calculan MESA A
+   MESA con el bloque POR MESA de la física: consigna por mesa (pairwise y
+   astro; el resto de políticas siguen mandando por línea, DECLARADO), slew
+   por mesa, POA y sombra por mesa. La LÍNEA queda como resumen: θ = media
+   ponderada por largo de sus mesas (curvas, tabla, 2D). SOLO cuando la TCU
+   conoce el levantamiento (Tcfg === T): con «cero» o «ficha» la TCU manda lo
+   que sabe —por línea— y la física evalúa igualmente cada mesa con su tilt.
+   Sin T.segTilt (presets, El Burgo) todo es el camino de siempre. */
+function segOn(T){return !!(T&&T.segTilt&&T.segs);}
+function segCmd(key,zen,az,Tcfg,T,o,irr,doy,alb){
+  if(Tcfg===T&&(key==='pairwise'||key==='astro'))return policyAnglesSeg(key,zen,az,T,irr,doy,alb);
+  return segsBroadcast(T,o.angles);
+}
+function angAt(p,t,r,k){const s=p&&p.segAng&&p.segAng[t];return (s&&s[r]&&s[r][k]!=null)?s[r][k]:p.ang[t][r];}
+function poaAt(p,t,r,k){const s=p&&p.poaS&&p.poaS[t];return (s&&s[r]&&s[r][k]!=null)?s[r][k]:((p.poaR&&p.poaR[t])?p.poaR[t][r]:0);}
+function segIdxAtN(T,r,v){
+  const L=T&&T.segs&&T.segs[r]; if(!L||!L.length)return -1;
+  let bi=0,bd=Infinity;
+  for(let k=0;k<L.length;k++){const lo=Math.min(L[k][0],L[k][1]),hi=Math.max(L[k][0],L[k][1]);const d=v<lo?lo-v:(v>hi?v-hi:0);if(d<bd){bd=d;bi=k;}}
+  return bi;
+}
+function angAtN(p,t,r,v){const k=segIdxAtN(DAY&&DAY.T,r,v);return k<0?p.ang[t][r]:angAt(p,t,r,k);}
 function computeDay(){for(const _ of computeDayGen());return DAY;}
 function* computeDayGen(){
   const c=cfg(); ensureElev(c.nrows); clampSlopes(c);
@@ -3060,19 +3103,28 @@ function* computeDayGen(){
     // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
     // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
     const poaHi=new Array(nT), poaLo=new Array(nT);
-    let prev=null;
+    const seg=segOn(T), segAng=seg?new Array(nT):null, poaS=seg?new Array(nT):null;
+    let prev=null, prevS=null;
     for(let t=0;t<nT;t++){
       const g=sun[t];
       const o=policyAngles(P.key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
       fArr[t]=o.f;
-      // lo que la planta HACE: la consigna limitada a la velocidad del tracker
-      const lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
-      const pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+      let lim,pp;
+      if(seg){
+        // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
+        const ls=slewLimitSeg(prevS,segCmd(P.key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60); prevS=ls;
+        lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
+        segAng[t]=ls; poaS[t]=pp.segs;
+      }else{
+        // lo que la planta HACE: la consigna limitada a la velocidad del tracker
+        lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
+        pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+      }
       ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
       poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
       if((++__done&15)===0)yield __done/__tot;
     }
-    pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr};
+    pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
   }
   // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
   // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
@@ -3988,20 +4040,22 @@ function update3D(){
   // responde en vivo al mando manual y a la nubosidad. día: Σ poaR·Δt de la
   // política de la escena (el manual no genera día: es un mando de instante).
   const cmode=($('colprod')&&$('colprod').value)||'off';
-  let pvals=null, punit='';
-  if(cmode==='inst'&&p&&p.poaR&&p.poaR[tIdx]){pvals=p.poaR[tIdx];punit='W/m²';}
+  let pvals=null, punit='', pS=null;
+  if(cmode==='inst'&&p&&p.poaR&&p.poaR[tIdx]){pvals=p.poaR[tIdx];punit='W/m²';pS=(p.poaS&&p.poaS[tIdx])||null;}   // por MESA si lo hay
   else if(cmode==='day'){const e=eDayOf(key);if(e){pvals=e;punit='kWh/m²·d';}}
   let pmin=0,pmax=0;
-  if(pvals){pmin=Math.min.apply(null,pvals);pmax=Math.max.apply(null,pvals);}
+  if(pS){pmin=Infinity;pmax=-Infinity;for(const l of pS)for(const v of l){if(v<pmin)pmin=v;if(v>pmax)pmax=v;}}
+  else if(pvals){pmin=Math.min.apply(null,pvals);pmax=Math.max.apply(null,pvals);}
   paintProdLegend(pvals?pmin:null,pmax,punit);
   TD.rows.forEach((row,r)=>{
-    const th=(p?p.ang[tIdx][r]:0)*RAD;
-    for(const sp of row.spins){
+    row.spins.forEach((sp,k)=>{
       // modelo Seguidor: spin gira sobre su X local (el tubo, que apunta al
       // norte tras el yaw) — θ>0 ⇒ borde +x de la escena abajo, como el 2D.
       // Camino de cajas: mismo convenio pero sobre Z local (el tubo va en Z).
+      // v1.42: CADA MESA con SU θ (spins van en el orden de T.segs[r])
+      const th=(p?angAt(p,tIdx,r,k):0)*RAD;
       if(row.model)sp.rotation.x=th; else sp.rotation.z=-th;
-    }
+    });
     // banda de sombra CALCULADA sobre la pala: fracción exacta desde el borde emisor
     // SILUETA de sombra calculada: el polígono REAL que el emisor proyecta
     // sobre la pala (sesgo axial incluido), recortado a cada mesa. El contador
@@ -4016,9 +4070,11 @@ function update3D(){
       // tinte de producción: un plano translúcido por mesa, DEBAJO de la
       // silueta de sombra (renderOrder 2 < 3) — la sombra se sigue viendo
       if(pvals){
-        const x01=pmax>pmin?(pvals[r]-pmin)/(pmax-pmin):0.5;
-        for(const ov of row.ovls){
+        for(let k=0;k<row.ovls.length;k++){
+          const ov=row.ovls[k];
           if(!ov.g)continue;
+          const val=(pS&&pS[r]&&pS[r][k]!=null)?pS[r][k]:pvals[r];   // el valor de ESTA mesa
+          const x01=pmax>pmin?(val-pmin)/(pmax-pmin):0.5;
           if(!ov.tint){
             const ggeo=(ov.ax==='model')
               ?new THREE.PlaneGeometry(ov.x1-ov.x0,2*ov.half)
@@ -4040,8 +4096,10 @@ function update3D(){
     if(row.lbl){
       row.lbl.visible=!!(lblOn&&p);
       if(lblOn&&p){
-        const poa=(p.poaR&&p.poaR[tIdx])?p.poaR[tIdx][r]:0;
-        const thD=TH_DISP*p.ang[tIdx][r];        // presentación: θ<0 = este
+        // la etiqueta cuelga de UNA mesa (la de la banda): sus números, no los de la línea
+        const kL=segIdxAtN(DAY.T,r,-row.lbl.position.z);
+        const poa=kL>=0?poaAt(p,tIdx,r,kL):((p.poaR&&p.poaR[tIdx])?p.poaR[tIdx][r]:0);
+        const thD=TH_DISP*(kL>=0?angAt(p,tIdx,r,kL):p.ang[tIdx][r]);        // presentación: θ<0 = este
         const key=thD.toFixed(0)+'|'+(sFrac*100).toFixed(1)+'|'+poa.toFixed(0);
         if(row.lbl.userData.txt!==key){
           row.lbl.userData.txt=key;
@@ -4164,15 +4222,16 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
     }
     return zch[rw]+v*Math.tan(((T.rowTilt?T.rowTilt[rw]:0))*RAD);
   };
-  const thR=ang[r]*RAD;
-  const uH=[Math.cos(thR),0,-Math.sin(thR)];
   const dsh=[-sv[0],-sv[1],-sv[2]];                  // la sombra viaja EN CONTRA del sol
   const horiz=Math.hypot(sv[0],sv[1]);
   const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
   const segsOf=rw=>(T.segs&&T.segs[rw])?T.segs[rw]:[[-30,30]];
-  for(const ov of row.ovls){
+  for(let kR=0;kR<row.ovls.length;kR++){
+    const ov=row.ovls[kR];
     if(!ov.g)continue;
+    const thR=angAt(p,tIdx,r,kR)*RAD;                // v1.42: el θ de ESTA mesa
+    const uH=[Math.cos(thR),0,-Math.sin(thR)];
     const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;            // rango axial REAL de la mesa
     // plano RECEPTOR de ESTA mesa: cuerda girada + pendiente axial del tramo,
     // a la ALTURA REAL de la cara (MOD_OFF sobre el eje) — igual que el contador
@@ -4189,8 +4248,9 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
       if(e===r)continue;
       const dx=xs[e]-xs[r];
       if(dx*sgn<=0||Math.abs(dx)>reach)continue;
-      const thE=ang[e]*RAD;
-      for(const sg of segsOf(e)){
+      const SE=segsOf(e);
+      for(let kE=0;kE<SE.length;kE++){
+        const sg=SE[kE], thE=angAt(p,tIdx,e,kE)*RAD;   // la emisora con SU θ
         const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
         // cuadrilátero EMISOR con cotas por tramo, recortado ANTES al
         // semiespacio que proyecta (con sol rasante una esquina suele quedar
@@ -4310,9 +4370,6 @@ function drawCriticalRay(g,p,tIdx){
   if(pi<0||pi>=T.pairs.length)return;
   const pr=T.pairs[pi];
   const pszP=trueTrackAngle(g.zen,g.az,pr.axisTilt,T.axisAz);
-  const CR=criticalRayPair(pszP,ang[pi],ang[pi+1],pr.pitch,T.cw,pr.slope,T.z0);
-  if(!CR)return;
-  const grp=new THREE.Group(); TD.rayGrp=grp; TD.scene.add(grp);
   // el corte del rayo sigue a la mesa que ESTÁS mirando (la más cercana al
   // target de la cámara): dibujado en otra banda parecía atravesar los módulos
   let yc=-TD.rows[r].lbl.position.z;
@@ -4325,6 +4382,10 @@ function drawCriticalRay(g,p,tIdx){
       for(const sg of L2){const c2=(sg[0]+sg[1])/2, d2=Math.abs(c2-nT); if(d2<bd){bd=d2;yc=c2;}}
     }
   }
+  // v1.42: el rayo se corta con el θ de las MESAS de esa banda, no el de sus líneas
+  const CR=criticalRayPair(pszP,angAtN(p,tIdx,pi,yc),angAtN(p,tIdx,pi+1,yc),pr.pitch,T.cw,pr.slope,T.z0);
+  if(!CR)return;
+  const grp=new THREE.Group(); TD.rayGrp=grp; TD.scene.add(grp);
   const zC=-yc, hw=T.cw/2;
   const axisW=(k)=>TD.hubAt(k,yc).add(new THREE.Vector3(0,0.76,0));   // hubAt da hub·0,62; el tubo, a 2,0
   const leftRow=pi, rightRow=pi+1;
@@ -4560,7 +4621,12 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte');
   card('GHI / DNI',Math.round(irrN.ghi)+' / '+Math.round(irrN.dni),'W/m²');
   if(p){
-    card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este');
+    {
+      const sa=p.segAng&&p.segAng[tIdx]&&p.segAng[tIdx][selRow];
+      let mes='';
+      if(sa&&sa.length>1){const a=Math.min(...sa),b=Math.max(...sa);if(b-a>0.005)mes=' · mesas '+(TH_DISP*(TH_DISP<0?b:a)).toFixed(1)+'…'+(TH_DISP*(TH_DISP<0?a:b)).toFixed(1)+'°';}
+      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes);
+    }
     if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
@@ -4787,9 +4853,12 @@ function sceneInstant(){
     const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cc,g.zen);
     const nR=DAY.astroAng&&DAY.astroAng[0]?DAY.astroAng[0].length:(+c.nrows||8);
     const ang=anglesManual(nR,th,+c.maxang||55);
-    const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+    // por mesa: el θ común en cada mesa, evaluada con SU tilt
+    const ls=segOn(DAY.T)?segsBroadcast(DAY.T,ang):null;
+    const pp=ls?poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo):poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
     INSTANT={m:m,key:'manual',th:th,cc:cc,stamp:DAY,g:g,irr:irr,
-             pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:0}}};
+             pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:0},
+                 segAng:ls?{[tIdx]:ls}:null,poaS:ls?{[tIdx]:pp.segs}:null}};
     return INSTANT;
   }
   const m=+$('hour').value;
@@ -4804,10 +4873,19 @@ function sceneInstant(){
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
   const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
-  const ang=slewLimit(DAY.pol[key].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
-  const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+  const dt=Math.max(60,(m-DAY.times[tIdx])*60), PK=DAY.pol[key];
+  let ang,pp,ls=null;
+  if(segOn(DAY.T)&&PK.segAng){
+    // POR MESA, desde la malla de 5 min de cada mesa (el mismo slew por mesa)
+    ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,o,irr,DAY.doy,c.albedo),dt);
+    ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);
+  }else{
+    ang=slewLimit(PK.ang[tIdx],o.angles,dt);
+    pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+  }
   INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,
-           pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:o.f}}};
+           pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:o.f},
+               segAng:ls?{[tIdx]:ls}:null,poaS:ls?{[tIdx]:pp.segs}:null}};
   return INSTANT;
 }
 /* ── HORAS DE BT: el slider se pinta por tramos (noche · seguimiento · BT) y
@@ -4988,7 +5066,7 @@ $('rowsel').onchange=()=>{drawScene();drawCurves();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
    su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
    fila con más sombra del instante o del día entero de la política animada ── */
-function rowInfoHTML(r){
+function rowInfoHTML(r,kSel){
   if(!DAY)return '';
   const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
   const t=timeIndex();
@@ -5027,14 +5105,24 @@ function rowInfoHTML(r){
         :'<br><b style="color:#f87272">inevitable</b> a este sol: pairwise también '+(shPW*100).toFixed(1)+'%';
     if(key==='true3d'&&isFinite(rmm)&&rmm>=-1)evit='<br><b style="color:#36d399">sin contacto 3D</b>: sombra 2.5D del contador (deflexión axial)';
   }
+  // v1.42: las MESAS de la línea, cada una con su tilt, su θ, su POA y su sombra
+  let mesas='';
+  if(p.segAng&&p.segAng[t]&&DAY.T.segs&&DAY.T.segs[r]&&DAY.T.segTilt){
+    const shT=p.shade[t];
+    mesas='<br><span style="color:#7a8aa0">mesas (n0…n1 · tilt · θ · POA · sombra)</span>'+DAY.T.segs[r].map((sg,kk)=>{
+      const sel=kk===kSel, shk=(shT&&shT.seg&&shT.seg[r]&&shT.seg[r][kk]!=null)?shT.seg[r][kk]:null;
+      return '<br>'+(sel?'<b>':'')+'#'+(kk+1)+' '+sg[0].toFixed(0)+'…'+sg[1].toFixed(0)+' m · '+DAY.T.segTilt[r][kk].toFixed(2)+'° · θ '+
+        (TH_DISP*angAt(p,t,r,kk)).toFixed(2)+'° · '+poaAt(p,t,r,kk).toFixed(0)+' W/m²'+(shk!=null?' · '+(shk*100).toFixed(1)+'%':'')+(sel?'</b>':'');
+    }).join('');
+  }
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
-    '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+
+    '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
     '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
     '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+
     '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b> · POA '+poa.toFixed(0)+' W/m²'+
     (isFinite(rmm)?' · residual '+(rmm>=0?'+':'')+rmm.toFixed(0)+' mm':'')+evit+
     (ws>1e-3?'<br>peor de esta fila: '+hhmm(DAY.times[wt])+' ('+(ws*100).toFixed(1)+'%) <button class="btn small" onclick="gotoT('+wt+','+r+')">ir</button>'
-            :'<br>sin sombra en todo el día');
+            :'<br>sin sombra en todo el día')+mesas;
 }
 window.gotoT=(t,r)=>{$('hour').value=DAY.times[t];$('hour').dispatchEvent(new Event('input'));if(r!=null)selectRow(r);showGlobo(rowInfoHTML(r),12,12);};
 function selectRow(r){
@@ -5069,7 +5157,7 @@ function pick3D(px,py){
       $('rowsel').value=r;$('rowsel').onchange();
       TD.rayYc=-h.point.z;                       // el rayo corta por DONDE pinchas
       update3D();
-      showGlobo(rowInfoHTML(r),px-rect.left,py-rect.top);
+      showGlobo(rowInfoHTML(r,o.userData.seg),px-rect.left,py-rect.top);
       return;
     }
   }
