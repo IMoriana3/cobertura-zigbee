@@ -1917,7 +1917,7 @@ const POL_META={
    decía violeta «plano» mientras su etiqueta decía DIFUSA). Un color por
    significado, todos distinguibles entre sí. */
 const ST_COL={girando:'#22d3ee', PLANO:'#a78bfa', RETENIDO:'#e07b39',
-              DIFUSA:'#5aa9ff', senal:'#fbbd23', track:'#9bb0c6'};
+              DIFUSA:'#5aa9ff', señal:'#fbbd23', track:'#9bb0c6'};
 /* la política EFECTIVA: con el zonal activo y pvlib en la escena, quien decide
    de verdad es el poa_switch (lo elige computeZonal) — rotular pvlib ahí sería
    otra contradicción */
@@ -1932,7 +1932,7 @@ function stateLabel(polKey,th,flag,sig,rate){
     const llegando=m.flat0&&Math.abs(th)>1.0;
     return {txt:m.mode+(llegando?' (llegando)':''),col:ST_COL[m.mode],estado:m.mode};
   }
-  if(sig)return {txt:'☁ retiene',col:ST_COL.senal,estado:'senal'};
+  if(sig)return {txt:'☁ retiene',col:ST_COL.señal,estado:'señal'};
   return {txt:'track',col:ST_COL.track,estado:'track'};
 }
 // el barrido α se rotula desde la FUENTE (DCFG_DEFAULT), no a mano: si el core
