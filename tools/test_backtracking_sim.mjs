@@ -111,7 +111,7 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX };`);
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -1246,12 +1246,30 @@ t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id'
     const L = fs.readFileSync(out, 'utf-8').trim().split('\n');
     const cab = L[0].split(','), iN = cab.indexOf('ncu'), iT = cab.indexOf('tcu');
     if (iN < 0 || iT < 0) throw new Error('el CSV perdió ncu/tcu');
+    // v1.42: la consigna es la de la MESA del seguidor (segTrk, identidad):
+    // columna mesa en todas las filas, y en el mundo real de Ayora las mesas
+    // de una misma línea NO comparten θ en la mayoría de los pasos diurnos
+    const iM = cab.indexOf('mesa'), iH = cab.indexOf('hora_local'), iB = cab.indexOf('bloque'),
+          iL = cab.indexOf('linea'), iTh = cab.indexOf('theta_sim_deg');
+    if (iM < 0) throw new Error('el CSV no lleva la columna mesa');
+    const grp = new Map();
+    let sinMesa = 0;
     const por = new Map();
     for (let r = 1; r < L.length; r++) {
       const f = L[r].split(',');
       if (!por.has(f[iN])) por.set(f[iN], new Set());
       por.get(f[iN]).add(+f[iT]);
+      if (f[iM] === '') sinMesa++;
+      const k = f[iH] + '|' + f[iB] + '|' + f[iL];
+      if (!grp.has(k)) grp.set(k, new Set());
+      grp.get(k).add(f[iTh]);
     }
+    if (sinMesa) throw new Error(sinMesa + ' filas sin mesa: seguidores casados por x en vez de por identidad (segTrk)');
+    let dist = 0;
+    for (const v of grp.values()) if (v.size > 1) dist++;
+    if (!(dist > grp.size * 0.5)) throw new Error('solo ' + dist + '/' + grp.size + ' (hora,bloque,línea) con θ distinto entre mesas: la consigna sigue siendo la de la línea');
+    const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+    if (meta.seguidores_por_identidad !== meta.seguidores) throw new Error(meta.seguidores_por_identidad + '/' + meta.seguidores + ' por identidad');
     // dentro de cada NCU los TCU tienen que ser 1..n sin huecos ni repeticiones
     for (const [ncu, st] of por) {
       const v = [...st].sort((a, b) => a - b);
@@ -1830,6 +1848,90 @@ console.log('v1.41 · tilt por mesa');
     let sep = 0;
     for (const [[r1, k1], [r2, k2]] of T.segPairs) if (raw[r1][k1] !== raw[r2][k2]) sep++;
     if (!(sep > 0)) throw new Error('sin acoplar ya coinciden todas: el careo del acople es vacío');
+  });
+}
+
+console.log('v1.42 · el mando por mesa en la UI y en las consignas');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P, conSeg) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs,
+             segTilt: conSeg ? P.segTilt : null, segPairs: conSeg ? P.segPairs : null, real: P };
+  };
+  const T = mkT(P, true), T0 = mkT(P, false);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('segTrk: cada mesa sabe de qué seguidor de cotas.t es (identidad), y las parejas bifila son las dos mesas de UN seguidor', () => {
+    if (!P.segTrk) throw new Error('plantFromCotas no publica segTrk');
+    const enCotas = new Set(cotas.t);
+    let n = 0;
+    P.segTrk.forEach(l => l.forEach(tk => { if (!enCotas.has(tk)) throw new Error('segTrk apunta a un objeto que no es de cotas.t'); n++; }));
+    if (n !== P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs)
+      if (P.segTrk[r1][k1] !== P.segTrk[r2][k2]) throw new Error('una pareja bifila junta mesas de seguidores distintos');
+    // y el seguidor de una pareja tiene exactamente esas dos filas
+    const [[r1, k1]] = P.segPairs[0];
+    const cnt = P.segTrk.flat().filter(tk => tk === P.segTrk[r1][k1]).length;
+    if (cnt !== 2) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas');
+  });
+
+  t('segLineMean y slewLimitSeg son la IDENTIDAD del camino por línea cuando todas las mesas llevan el valor de su línea', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const bc = F.segsBroadcast(T0, rows);
+    const mean = F.segLineMean(T0, bc);
+    for (let r = 0; r < rows.length; r++) if (Math.abs(mean[r] - rows[r]) > 1e-12) throw new Error('línea ' + r + ': media ' + mean[r] + ' ≠ ' + rows[r]);
+    const prev = rows.map(v => v - 3), prevS = F.segsBroadcast(T0, prev);
+    const a = F.slewLimit(prev, rows, 5), b = F.slewLimitSeg(prevS, bc, 5);
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (b[r][k] !== a[r]) throw new Error('slew por mesa ≠ slew por línea en ' + r + '/' + k);
+    // y el slew de verdad limita mesa a mesa: 5 s a 0,17 °/s son 0,85° como mucho
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (Math.abs(b[r][k] - prevS[r][k]) > 0.85 + 1e-9) throw new Error('el actuador de una mesa saltó ' + (b[r][k] - prevS[r][k]) + '°');
+  });
+
+  t('poaPlantSeg publica la banda plantHi/plantLo: sin segTilt es la de poaPlant, con segTilt encierra a plant', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const a = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2), b = F.poaPlantSeg(zen, az, T0, F.segsBroadcast(T0, rows), irr, doy, 0.2);
+    // sin segTilt cada mesa es su línea; la diferencia con poaPlant es SOLO la
+    // sombra por tramo (sh.seg) frente a la de fila — la banda se mueve con
+    // ella dentro del mismo orden de magnitud que plant
+    if (!(Math.abs(b.plant - a.plant) < 5) || !(Math.abs(b.plantHi - a.plantHi) < 5) || !(Math.abs(b.plantLo - a.plantLo) < 5))
+      throw new Error('banda por mesa lejos de la de poaPlant: ' + [a.plant, b.plant, a.plantHi, b.plantHi, a.plantLo, b.plantLo].map(v => v.toFixed(1)));
+    if (!(b.plantHi >= b.plant - 1e-9 && b.plantLo <= b.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto sin segTilt');
+    const s = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2), c = F.poaPlantSeg(zen, az, T, s, irr, doy, 0.2);
+    if (!(c.plantHi >= c.plant - 1e-9 && c.plantLo <= c.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto con segTilt');
+    if (!isFinite(c.plantHi) || !isFinite(c.plantLo)) throw new Error('banda no finita');
+  });
+
+  t('la UI manda por mesa: computeDayGen y sceneInstant van por policyAnglesSeg/poaPlantSeg cuando hay segTilt (y solo entonces)', () => {
+    // el camino de la página no corre en Node: se vigila su TEXTO, igual que
+    // el careo v1.19 vigila el literal de elecLoss. Lo que se exige es que el
+    // día y el instante pasen por segCmd + slewLimitSeg + poaPlantSeg y que
+    // la ficha (Tcfg) siga mandando por línea cuando la TCU no conoce el
+    // levantamiento
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const dayFn = ui.slice(ui.indexOf('function* computeDayGen'), ui.indexOf('function kpisSerie'));
+    for (const lit of ['segOn(T)', 'segCmd(P.key', 'slewLimitSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+      if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
+    const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
+    for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
+      if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
+    const cmd = ui.slice(ui.indexOf('function segCmd'), ui.indexOf('function angAt'));
+    if (!cmd.includes("Tcfg===T&&(key==='pairwise'||key==='astro')")) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    // el 3D gira cada mesa con SU θ, la silueta y el rayo también
+    const u3 = ui.slice(ui.indexOf('function update3D'), ui.indexOf('function clipPoly'));
+    if (!u3.includes('angAt(p,tIdx,r,k)')) throw new Error('update3D no gira cada mesa con su θ');
+    const sil = ui.slice(ui.indexOf('function drawShadowSilhouette'), ui.indexOf('function drawTerrainStrips'));
+    if (!sil.includes('angAt(p,tIdx,r,kR)') || !sil.includes('angAt(p,tIdx,e,kE)')) throw new Error('la silueta no usa el θ de cada mesa (receptora y emisora)');
+    const ray = ui.slice(ui.indexOf('function drawCriticalRay'), ui.indexOf('function pinta3D'));
+    if (!ray.includes('angAtN(p,tIdx,pi,yc),angAtN(p,tIdx,pi+1,yc)')) throw new Error('el rayo crítico no corta con el θ de las mesas de la banda');
   });
 }
 

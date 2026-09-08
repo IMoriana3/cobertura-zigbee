@@ -71,7 +71,8 @@ const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
 const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
              + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `
-  return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit };`)();
+  return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit,
+           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, segLineMean };`)();
 const VER = (html.match(/const VER='([^']+)'/) || [, '?'])[1];
 
 // ── planta real: cotas (geometría) + layout (identidad: NCU/TCU) ────────────
@@ -97,16 +98,36 @@ for (let b = 0; b < NBLOQUES; b++) {
   }
   BLOQUES.push({ b, P,
     T: { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
-         nBypass: 3, rowTilt: P.tilt, groups: P.groups, drive: P.drive || 'bifila', segs: P.segs, real: P } });
+         nBypass: 3, rowTilt: P.tilt, groups: P.groups, drive: P.drive || 'bifila', segs: P.segs,
+         segTilt: P.segTilt, segPairs: P.segPairs, real: P } });   // v1.42: cada mesa con su tilt y su pareja
 }
 if (!BLOQUES.length) throw new Error('la planta no produce ningún bloque modelable');
 
-// cada SEGUIDOR del layout ↔ (bloque, línea) por x: un tracker bifila ocupa DOS
-// líneas y la consigna es la de su MOTORA (la gemela va soldada al mismo eje)
+// cada SEGUIDOR del layout ↔ (bloque, línea, MESA) por IDENTIDAD: plantFromCotas
+// publica segTrk (el objeto de cotas.t de cada mesa), así que el seguidor i es
+// exactamente la(s) mesa(s) cuyo segTrk === cotas.t[i] — sin casar por x. Un
+// tracker bifila ocupa DOS mesas de líneas contiguas y applyDriveSeg ya las
+// deja al MISMO θ; la consigna sale de la primera (la motora, al oeste).
+// Reserva: el casado por x de siempre (línea, sin mesa) si un seguidor no
+// aparece en ningún bloque.
 const SEG = [];
-let fuera = 0;
+let fuera = 0, porIdentidad = 0;
+const mesaDe = new Map();                          // cotas.t[i] → [{B, r, k}...]
+for (const B of BLOQUES) if (B.P.segTrk) B.P.segTrk.forEach((l, r) => l.forEach((tk, k) => {
+  if (!mesaDe.has(tk)) mesaDe.set(tk, []);
+  mesaDe.get(tk).push({ B, r, k });
+}));
 for (let i = 0; i < lay.trackers.length; i++) {
   const tk = lay.trackers[i], f = cotas.t[i].f || [];
+  const m = String(tk.id || '').match(/(\d+)/);
+  const base = { id: tk.id, ncu: String(tk.ncu), nnn: m ? +m[1] : NaN, gw: tk.gw };
+  const mm = mesaDe.get(cotas.t[i]);
+  if (mm && mm.length) {
+    mm.sort((a, b) => (a.B.P.lineX[a.r] - b.B.P.lineX[b.r]) || (a.k - b.k));
+    SEG.push(Object.assign(base, { bloque: mm[0].B.b, fila: mm[0].r, mesa: mm[0].k }));
+    porIdentidad++;
+    continue;
+  }
   const xs = f.map(a => a.x).filter(v => isFinite(v));
   if (!xs.length) { fuera++; continue; }
   const x0 = Math.min(...xs);
@@ -117,9 +138,7 @@ for (let i = 0; i < lay.trackers.length; i++) {
     if (e < dMin) { dMin = e; mejor = { B, r }; }
   }
   if (!mejor || dMin > (sonda.pitch || 6) / 2) { fuera++; continue; }   // misma tolerancia que el clúster
-  const m = String(tk.id || '').match(/(\d+)/);
-  SEG.push({ id: tk.id, ncu: String(tk.ncu), nnn: m ? +m[1] : NaN, gw: tk.gw,
-             bloque: mejor.B.b, fila: mejor.r });
+  SEG.push(Object.assign(base, { bloque: mejor.B.b, fila: mejor.r, mesa: null }));
 }
 /* El nº de TCU es el RANGO del seguidor dentro de su NCU, no el número del id.
    El id NO codifica la NCU («TK 045-06» tiene ncu=9) y su número no reinicia
@@ -162,23 +181,31 @@ for (const pol of POLS) {
     const angDe = new Map(), shDe = new Map();
     for (const B of BLOQUES) {
       const o = F.policyAngles(pol, g.zen, g.az, B.T, irr, doy, ALB);
-      // la consigna que la planta puede EJECUTAR: limitada por el actuador
-      const ang = F.slewLimit(prev.get(B.b) || null, o.angles, PASO * 60);
+      // v1.42 POR MESA: pairwise y astro mandan a cada mesa con SU tilt y su
+      // pareja exacta; el resto de políticas siguen mandando por línea
+      // (difundido a sus mesas, declarado). El actuador limita MESA a MESA.
+      const cmd = (pol === 'pairwise' || pol === 'astro')
+        ? F.policyAnglesSeg(pol, g.zen, g.az, B.T, irr, doy, ALB)
+        : F.segsBroadcast(B.T, o.angles);
+      const ang = F.slewLimitSeg(prev.get(B.b) || null, cmd, PASO * 60);
       prev.set(B.b, ang);
       if (!diurno) continue;
-      angDe.set(B.b, ang);
-      shDe.set(B.b, F.poaPlant(g.zen, g.az, B.T, ang, irr, doy, ALB).shade);
+      angDe.set(B.b, { seg: ang, line: F.segLineMean(B.T, ang) });
+      shDe.set(B.b, F.poaPlantSeg(g.zen, g.az, B.T, ang, irr, doy, ALB).shade);
     }
     if (!diurno) continue;                           // de noche no se manda nada
     nPasos++;
     for (const s2 of SEG) {
-      const ang = angDe.get(s2.bloque), sh = shDe.get(s2.bloque);
-      if (!ang) continue;
-      const th = ang[s2.fila], sPl = sh.pl ? sh.pl[s2.fila] : null;
-      sombraAcum += sh[s2.fila]; nSombra++;
+      const A = angDe.get(s2.bloque), sh = shDe.get(s2.bloque);
+      if (!A) continue;
+      const conMesa = s2.mesa != null && A.seg[s2.fila] && A.seg[s2.fila][s2.mesa] != null;
+      const th = conMesa ? A.seg[s2.fila][s2.mesa] : A.line[s2.fila];
+      const sF = (conMesa && sh.seg && sh.seg[s2.fila] && sh.seg[s2.fila][s2.mesa] != null) ? sh.seg[s2.fila][s2.mesa] : sh[s2.fila];
+      const sPl = sh.pl ? sh.pl[s2.fila] : null;
+      sombraAcum += sF; nSombra++;
       filas.push([PLANTA, FECHA, `${hh}:${mi}`, s2.ncu, s2.tcu == null ? '' : s2.tcu, s2.id,
-        s2.bloque, s2.fila, pol, th.toFixed(3), (TH_DISP * th).toFixed(3),
-        (100 * sh[s2.fila]).toFixed(2), sPl != null ? (100 * Math.max(0, sh[s2.fila] - sPl)).toFixed(2) : '',
+        s2.bloque, s2.fila, conMesa ? s2.mesa + 1 : '', pol, th.toFixed(3), (TH_DISP * th).toFixed(3),
+        (100 * sF).toFixed(2), sPl != null ? (100 * Math.max(0, sF - sPl)).toFixed(2) : '',
         GEOMETRICAS.has(pol) ? 0 : 1].join(','));
     }
   }
@@ -186,7 +213,7 @@ for (const pol of POLS) {
                    asesoria: !GEOMETRICAS.has(pol) };
 }
 
-const cab = 'planta,fecha_local,hora_local,ncu,tcu,tracker,bloque,linea,politica,' +
+const cab = 'planta,fecha_local,hora_local,ncu,tcu,tracker,bloque,linea,mesa,politica,' +
             'theta_sim_deg,theta_tcu_deg,sombra_fila_pct,sombra_estructura_pct,asesoria';
 fs.writeFileSync(SALIDA, cab + '\n' + filas.join('\n') + '\n');
 const meta = {
@@ -194,9 +221,10 @@ const meta = {
   planta: PLANTA, fecha_local: FECHA, huso_utc: huso, paso_min: PASO,
   politicas: POLS, seguidores: SEG.length, seguidores_fuera_del_modelo: fuera,
   bloques: BLOQUES.length, lineas_modelo: nLineasTot, filas: filas.length,
+  seguidores_por_identidad: porIdentidad,          // casados a su MESA por segTrk (v1.42); el resto, por x a su línea
   claves_cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) + fecha',
   convenciones: {
-    theta_sim_deg: 'marco interno del simulador',
+    theta_sim_deg: 'marco interno del simulador — la consigna de la MESA del seguidor (columna mesa: índice 1..n dentro de su línea; vacío = casado por x, consigna de la línea)',
     theta_tcu_deg: 'presentación TCU: θ<0 = este (TH_DISP=-1). CUÁL casa con el registro Objetivo se confirma con una lectura real',
     consigna: 'ya limitada por la velocidad del actuador (slewLimit)',
     bifila: 'la consigna es la de la línea MOTORA; la gemela va soldada al mismo eje',

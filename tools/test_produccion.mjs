@@ -306,15 +306,21 @@ t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parq
     const r = S.instant(S.F, c, T, 720);
     if (!(r.plant > 300)) throw new Error('el parque de una NCU no calcula (' + r.plant + ' W/m²)');
   }
-  // y en cotas (Ayora): layout 751 ≠ cotas 754, así que el 1:1 NO vale — el
-  // casado va por COORDENADAS y tiene que cubrir la planta (el `if (ncuOf)`
-  // que aquí callaba cuando no alineaba es exactamente como se escapó el bug
-  // de «elijo NCU y me carga la planta entera»)
-  if (layAyora.trackers.length === cotasAyora.t.length)
-    throw new Error('Ayora ahora alinea 1:1 (' + layAyora.trackers.length + '): este careo vigila el camino por coordenadas — revísalo');
+  // y en cotas (Ayora): desde v1.13.1 layout y cotas van 1:1 (751, las cotas
+  // regeneradas con el as-built), que es el camino del simulador. El casado
+  // por COORDENADAS queda de RESERVA y tiene que decir LO MISMO que el 1:1:
+  // si un día discrepan, uno de los dos ficheros se ha re-exportado en otro
+  // orden y el `if (ncuOf)` callaría (así se escapó «elijo NCU y me carga la
+  // planta entera»)
+  if (layAyora.trackers.length !== cotasAyora.t.length)
+    throw new Error('Ayora ya no alinea 1:1: layout ' + layAyora.trackers.length + ' ≠ cotas ' + cotasAyora.t.length + ' — regenera las cotas con tools/cotas_asbuilt.py');
   const m = S.ncuPorCoordenadas(cotasAyora, layAyora.trackers);
   if (m.casados < cotasAyora.t.length * 0.9)
     throw new Error('solo ' + m.casados + '/' + cotasAyora.t.length + ' trackers de Ayora casan con su NCU por coordenadas');
+  let disc = 0;
+  for (let i = 0; i < cotasAyora.t.length; i++) if (m.ncuOf[i] != null && m.ncuOf[i] !== layAyora.trackers[i].ncu) disc++;
+  if (disc > cotasAyora.t.length * 0.01)
+    throw new Error(disc + ' trackers con NCU distinta por coordenadas y por índice: uno de los dos ficheros va en otro orden');
   const primera = m.ncuOf.find(v => v != null);
   const sub = { ...cotasAyora, t: cotasAyora.t.filter((_, i) => m.ncuOf[i] === primera) };
   const Pn = S.F.plantFromCotas(sub, 80, null);

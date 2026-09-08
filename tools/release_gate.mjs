@@ -67,7 +67,13 @@ try {
   await pg.goto(`http://localhost:${port}/backtracking.html`, { waitUntil: 'load' });
   await pg.waitForTimeout(2500);
   await pg.evaluate(() => document.getElementById('ayorabtn').click());
-  await pg.waitForTimeout(4500);
+  /* ESPERAR A LA CONDICIÓN, no un tiempo fijo (v1.42): los 4,5 s + 9 s de antes
+     valían en un portátil; en un contenedor lento Ayora tarda ~40 s y con los
+     optimizadores ~3 min, y el gate leía el DAY del PRESET de 8 filas (con
+     PLANT_REAL ya puesto) y moría en «sin instante de alba» sin que nada
+     estuviera roto. Ahora se espera al DAY de la planta real. */
+  await pg.waitForFunction(() => typeof DAY !== 'undefined' && DAY && DAY.T && DAY.T.real && DAY.pol && DAY.pol.pairwise,
+                           null, { timeout: 300000 });
   // Desde v1.33 la página APAGA los optimizadores al cargar planta real (se
   // llevan el 84% del cálculo y son de asesoría). El gate los quiere igual:
   // aquí se validan invariantes, no se mira la pantalla, así que declara su
@@ -78,7 +84,9 @@ try {
       if (i && !i.checked) { i.checked = true; i.onchange(); }
     }
   });
-  await pg.waitForTimeout(9000);
+  await pg.waitForFunction(() => DAY && DAY.T && DAY.T.real && DAY.pol.optimal && DAY.pol.optfree && DAY.pol.optfree.ang[DAY.times.length - 1],
+                           null, { timeout: 600000 });
+  await pg.waitForTimeout(1500);
   if (errs.length) die('errores de consola:\n' + errs.join('\n'));
 
   const inv = await pg.evaluate(() => {

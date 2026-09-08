@@ -586,12 +586,13 @@ function elburgoGroups(xs,trackers){
   return out;
 }
 
-/* NCU por tracker cuando layout y cotas NO van alineados 1:1 (Ayora: 751
-   trackers en el layout y 754 en las cotas — el mismo descuadre que tiene
-   anotado el QA del simulador): casado por COORDENADAS (x de la viga oeste y
-   centro N-S del tracker), nunca por índice — el emparejado por índice es
-   justo el que ya costó consignas mal dirigidas. Sin casar ⇒ sin NCU (solo
-   aparece en planta entera, declarado). */
+/* NCU por tracker cuando layout y cotas NO van alineados 1:1 (Ayora lo
+   estuvo: 751 trackers en el layout y 754 en las cotas hasta regenerar las
+   cotas con el as-built de 751 — v1.13.1): casado por COORDENADAS (x de la
+   viga oeste y centro N-S del tracker), nunca por índice — el emparejado por
+   índice es justo el que ya costó consignas mal dirigidas. Sin casar ⇒ sin
+   NCU (solo aparece en planta entera, declarado). Con las plantas alineadas
+   es el camino de RESERVA, y el QA exige que diga lo mismo que el 1:1. */
 function ncuPorCoordenadas(cotas,trackers){
   const out=new Array(cotas.t.length).fill(null);
   let casados=0;
@@ -745,8 +746,9 @@ async function cargaCotas(key){
     fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
   const P=F.plantFromCotas(cotas,80,null);   // el bloque mayor, como el simulador
   // NCU por tracker: layout alineado 1:1 con las cotas (la receta del
-  // simulador) y, si NO alinean (Ayora 751≠754), casado por coordenadas —
-  // solo si casa de verdad (>90 %); si no, sin NCUs antes que mal dirigidas
+  // simulador; Ayora y San José lo están) y, si NO alinean, casado por
+  // coordenadas — solo si casa de verdad (>90 %); si no, sin NCUs antes que
+  // mal dirigidas
   let ncuOf=(lay.trackers&&lay.trackers.length===cotas.t.length)?lay.trackers.map(t=>t.ncu):null;
   if(!ncuOf&&lay.trackers&&lay.trackers.length){
     const m=ncuPorCoordenadas(cotas,lay.trackers);

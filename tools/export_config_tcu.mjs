@@ -149,6 +149,15 @@ if (sin) {
     const perdidos = [];
     for (let r = 1; r < L.length; r++) if (par[r - 1] < 0) perdidos.push(L[r].split(';')[iId]);
     console.log(`  ${sin} seguidor(es) de la ficha sin cotas (descartados en el saneo): ${perdidos.join(', ')} — quedan FUERA de la ficha de salida`);
+  } else if (lay && lay.trackers && (L.length - 1) > T.length && sin <= (L.length - 1) - T.length) {
+    // La ficha del fabricante trae MÁS seguidores que el as-built: en Ayora
+    // 754 frente a 751 desde que el layout retiró TK 040-05, TK 050-05 y
+    // TK 051-05 (cotas regeneradas con tools/cotas_asbuilt.py, 751/751). Si
+    // los que no casan son COMO MUCHO los retirados, es un hueco declarado:
+    // se nombran y se sigue. Uno más que eso ya es ambigüedad y se aborta.
+    const perdidos = [];
+    for (let r = 1; r < L.length; r++) if (par[r - 1] < 0) perdidos.push(L[r].split(';')[iId]);
+    console.log(`  ${sin} seguidor(es) de la ficha sin cotas (retirados del as-built: ${L.length - 1} en la ficha, ${T.length} en cotas): ${perdidos.join(', ')} — quedan FUERA de la ficha de salida`);
   } else {
     console.error(`la unión dejó de ser unívoca: ${sin} sin pareja de ${L.length - 1}. Se aborta.`);
     process.exit(1);
