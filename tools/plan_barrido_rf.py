@@ -124,6 +124,36 @@ def margen(a, b, tabs):
     return r["margin_db"]
 
 
+def punto(coords, filas, x, n, h, et, rol):
+    c = coords.get(et, {})
+    return {"x": x, "n": n, "h": h, "y": cota_en(filas, x, n), "et": et, "rol": rol,
+            "id": c.get("node_id", ""), "lat": c.get("lat", ""), "lon": c.get("lon", ""),
+            "esclavo": c.get("esclavo", ""), "ncu": c.get("ncu", ""), "gw": c.get("gw", "")}
+
+
+def nodos_por_ncu(lay, coords, filas):
+    """Las TCU de la planta agrupadas por NCU, ya con cota y altura de antena."""
+    porncu = {}
+    for t in lay["trackers"]:
+        porncu.setdefault(str(t.get("ncu", 1)), []).append(
+            punto(coords, filas, t["x"], t["n"], H_TCU, t["id"], "TCU"))
+    return porncu
+
+
+def geo_ncu(lay, coords, filas, ncu_sel, nodos):
+    """La NCU donde la declara el layout; si no la declara, el centroide de sus TCU.
+
+    Lo usa el planificador para elegir pares y el ajuste para RECONSTRUIR la
+    geometria de la hoja ya medida. Tiene que ser la misma cuenta en los dos: si
+    el ajuste situara la NCU en otro sitio, estaria ajustando otra planta.
+    """
+    for c in lay.get("ncus", []):
+        if c.get("name", "").replace("NCU ", "").strip().lstrip("0") == str(ncu_sel):
+            return punto(coords, filas, c["x"], c["n"], H_NCU, c["name"], "COORD")
+    return punto(coords, filas, sum(p["x"] for p in nodos) / len(nodos),
+                 sum(p["n"] for p in nodos) / len(nodos), H_NCU, "NCU %s" % ncu_sel, "COORD")
+
+
 def clase(a, b):
     """A lo largo del eje, a través de las filas, o diagonal."""
     dx, dn = abs(b["x"] - a["x"]), abs(b["n"] - a["n"])
@@ -147,16 +177,7 @@ def main(argv):
     filas_x = sorted({round(t["x"], 1) for t in lay["trackers"]})
 
     # --- nodos de la NCU elegida, con su cota y su altura de antena ---
-    def punto(x, n, h, et, rol):
-        c = coords.get(et, {})
-        return {"x": x, "n": n, "h": h, "y": cota_en(filas, x, n), "et": et, "rol": rol,
-                "id": c.get("node_id", ""), "lat": c.get("lat", ""), "lon": c.get("lon", ""),
-                "esclavo": c.get("esclavo", ""), "ncu": c.get("ncu", ""), "gw": c.get("gw", "")}
-
-    porncu = {}
-    for t in lay["trackers"]:
-        porncu.setdefault(str(t.get("ncu", 1)), []).append(
-            punto(t["x"], t["n"], H_TCU, t["id"], "TCU"))
+    porncu = nodos_por_ncu(lay, coords, filas)
 
     # ¿qué NCU da el mejor reparto? La que más recorrido de distancia ofrece.
     if not ncu_sel:
@@ -181,13 +202,7 @@ def main(argv):
         sys.exit("La planta %s no tiene ninguna NCU con seguidores en el layout." % planta)
     nodos = porncu[str(ncu_sel)]
 
-    ncu_geo = None
-    for c in lay.get("ncus", []):
-        if c.get("name", "").replace("NCU ", "").strip().lstrip("0") == str(ncu_sel):
-            ncu_geo = punto(c["x"], c["n"], H_NCU, c["name"], "COORD")
-    if ncu_geo is None:                                   # sin coordenada declarada: el centroide
-        ncu_geo = punto(sum(p["x"] for p in nodos) / len(nodos),
-                        sum(p["n"] for p in nodos) / len(nodos), H_NCU, "NCU %s" % ncu_sel, "COORD")
+    ncu_geo = geo_ncu(lay, coords, filas, ncu_sel, nodos)
 
     # --- candidatos: cada TCU contra la NCU, y TCU contra TCU ---
     cand = []
