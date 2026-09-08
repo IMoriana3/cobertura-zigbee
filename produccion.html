@@ -958,8 +958,12 @@ function build3D(c){
         try{
           Seguidor.setModsPerStr(mods);
           // bifila: motor/TCU solo en la viga OESTE de cada unidad (T.west)
+          // el SOPORTE de la corona va aparte: es terrainScaled («la app lo
+          // estira desde la corona al terreno», seguidor.js) — dejarlo dentro
+          // del beam era el muñón de 1 m flotando bajo la corona («el soporte
+          // central no existe»). Se construye abajo, vertical y hasta el suelo.
           const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
-                                               materials:R3.mats,skip:{antena:1,antenatip:1}});
+                                               materials:R3.mats,skip:{antena:1,antenatip:1,soporte:1}});
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
           const bb=new THREE.Box3().setFromObject(beam.spin); // en el marco local del tubo, ANTES de colgar
@@ -968,6 +972,12 @@ function build3D(c){
           beam.spin.add(tint);
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
+          // soporte central de la corona, la receta de terreno.html: del punto
+          // bajo el bracket (eje −0,22) al terreno, VERTICAL en mundo
+          const sTop=hubY-0.22, sGnd=T.elev[r]-0.05, sL=Math.max(0.4,sTop-sGnd);
+          const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
+          sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
+          R3.world.add(sop);
           spins.push({g:beam.spin,model:true});
           built=true;
         }catch(e){built=false;}
@@ -1005,35 +1015,32 @@ function build3D(c){
   }
   }// fin del camino de mallas sueltas (modelo/cajas)
   if(hayModelo)Seguidor.setModsPerStr(28);                    // restaurar el canónico compartido
-  // ── bielas del BIFILA de El Burgo: eje de transmisión entre las dos vigas
-  // de cada unidad a la altura del tubo, con sus copas y el motor en la viga
-  // oeste — la receta del linkBar del simulador, con las unidades del layout
+  // ── eje de transmisión del BIFILA de El Burgo, con la receta de terreno.html:
+  // cilindro Ø60 mm entre las dos vigas de cada unidad A LA ALTURA DEL EJE DEL
+  // TUBO (makeTranslation(0, ph, 0) allí — a 1,24 «la biela está muy abajo»).
+  // El motor, la reductora y las coronas NO se fabrican aquí: ya vienen del
+  // modelo (slew completo en la viga oeste, corona+soporte twin en la gemela) —
+  // el cubo ámbar y las copas de antes eran inventos y se retiran.
   if(c.plant==='elburgo'&&EB&&EB.trk.length){
     const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
-    const motorM=new THREE.MeshLambertMaterial({color:0xfbbd23});
-    const ejeG=new THREE.CylinderGeometry(0.045,0.045,6-0.36,10);ejeG.rotateZ(Math.PI/2);
-    const copaG=new THREE.CylinderGeometry(0.095,0.095,0.20,10);copaG.rotateZ(Math.PI/2);
-    const hubY=1.24;   // altura del eje de transmisión (hub·0,62, como el simulador)
+    const ejeG=new THREE.CylinderGeometry(0.03,0.03,6-0.5,10);ejeG.rotateZ(Math.PI/2);
+    const hubY=2.0;   // la altura del eje del tubo (postH canónico), como terreno.html
     for(const t of EB.trk){
       const zc=-(t.n-T_nOff);
       if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito visible
       const ux=t.x-xc;
       if(ux<rx[0]-4||ux>rx[n-1]+4)continue;
       const eje=new THREE.Mesh(ejeG,bielM);eje.position.set(ux,hubY,zc);eje.castShadow=true;
-      const c1=new THREE.Mesh(copaG,bielM);c1.position.set(ux-2.84,hubY,zc);
-      const c2=new THREE.Mesh(copaG,bielM);c2.position.set(ux+2.84,hubY,zc);
-      const mot=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);
-      mot.position.set(ux-3,hubY,zc);mot.castShadow=true;     // motor en la viga OESTE
-      R3.world.add(eje,c1,c2,mot);
+      R3.world.add(eje);
     }
-    // a escala de PLANTA un eje de Ø9 cm es subpíxel: capa de LÍNEAS (1 px a
+    // a escala de PLANTA un eje de Ø6 cm es subpíxel: capa de LÍNEAS (1 px a
     // cualquier distancia) sobre la misma transmisión — la geometría real
     // sigue ahí para el zoom
     {
       const pts=[];
       for(const t of EB.trk){
         const zc=-(t.n-T_nOff), ux=t.x-xc;
-        pts.push(ux-3,hubY,zc, ux+3,hubY,zc);
+        pts.push(ux-2.75,hubY,zc, ux+2.75,hubY,zc);
       }
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
@@ -1113,6 +1120,20 @@ function buildInstanced(c,rx,segsNS,postM,D0){
     for(const p of plan){
       // mismos descartes que buildBeam en esta página: antena y enlaces por-frame
       if(p.motorLink||p.damperLink||p.key==='antena'||p.key==='antenatip')continue;
+      if(p.terrainScaled){
+        // el SOPORTE de la corona: terrainScaled — del punto bajo el bracket
+        // (eje −0,22) al terreno, vertical en mundo, como terreno.html
+        const im2=new THREE.InstancedMesh(p.geom(THREE),R3.mats[p.mat],g.idx.length);
+        im2.castShadow=true;im2.receiveShadow=true;
+        im2.userData.pickTramos=tramos;im2.userData.nLocals=1;im2.userData.tramoIdx=g.idx;
+        {let id=0;const mS3=new THREE.Matrix4();
+         for(const ti of g.idx){
+           const tr=tramos[ti], sTop=tr.hubY-0.22, sGnd=T.elev[tr.row]-0.05, sL=Math.max(0.4,sTop-sGnd);
+           tmpM.makeTranslation(tr.x,(sTop+sGnd)/2,tr.zc).multiply(mS3.makeScale(1,sL,1));
+           im2.setMatrixAt(id++,tmpM);
+         }}
+        R3.world.add(im2);continue;
+      }
       const im=new THREE.InstancedMesh(p.geom(THREE),R3.mats[p.mat],g.idx.length*p.locals.length);
       im.castShadow=!!p.cast;im.receiveShadow=true;
       im.userData.pickTramos=tramos;im.userData.nLocals=p.locals.length;im.userData.tramoIdx=g.idx;
