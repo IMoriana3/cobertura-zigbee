@@ -386,20 +386,19 @@ function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
    plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
 function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
-  // v1.16: con la FICHA de la planta (opt.mod: módulo real, hueco, strings por
-  // fila; opt.modsTrk: módulos por string del layout, por identidad de tracker)
-  // los strings son los de verdad. Contarlos por largo con el módulo de El
-  // Burgo daba en Ayora 65 módulos por fila repartidos 33 + 32 — dos strings
-  // de la misma mesa con distinta potencia y el mismo tilt — en vez de 28 + 28.
-  if(opt&&opt.mod){
-    const M=opt.mod, nS=M.strPerFila||2;
+  // v1.19: los strings de una planta levantada salen del DATO — opt.segMods
+  // trae los módulos por string de cada mesa (f[].md del levantamiento) y
+  // opt.mod la ficha del módulo medida (modW/gapMod/gapDrive). Cada fila son
+  // DOS strings, uno por ala. Solo si a una mesa le falta md se deducen del
+  // largo con ESE módulo, y se dice. Antes esto era una tabla escrita a mano
+  // en la página, y a San José se le aplicaba el módulo de Ayora.
+  if(opt&&opt.mod&&opt.segMods){
+    const M=opt.mod, w=M.modW, gm=M.gapMod||0, gd2=M.gapDrive==null?gd:M.gapDrive;
     return segs.map((l,r)=>l.flatMap((sg,k)=>{
-      const L=sg[1]-sg[0], trk=(opt.segTrk&&opt.segTrk[r])?opt.segTrk[r][k]:null;
-      const known=(opt.modsTrk&&trk!=null)?opt.modsTrk.get(trk):null;
-      const porLargo=Math.max(1,Math.round((L-M.drive+M.gap)/(nS*(M.w+M.gap))));
-      const mods=(known>0)?known:porLargo, src=(known>0)?'layout':'largo';
-      if(nS===2)return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
-      return [{inv:invRows[r],k:k,w:null,mods:mods,src:src}];
+      const md=opt.segMods[r]&&opt.segMods[r][k];
+      const porLargo=Math.max(1,Math.round(((sg[1]-sg[0])-gd2+2*gm)/(2*(w+gm))));
+      const mods=(md>0)?md:porLargo, src=(md>0)?'levantamiento':'largo';
+      return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
     }));
   }
   return segs.map((l,r)=>l.flatMap((sg,k)=>{
@@ -428,16 +427,6 @@ function rangoColor(mn,mx,modo){
   return {lo:Math.min(0,mn),hi:Math.max(mx,mn+1e-9),rel:false};
 }
 
-/* módulos por STRING de cada tracker según el layout (Ayora: «Interior 1V28»,
-   mods 28/21/14), por IDENTIDAD del objeto de cotas.t — solo cuando layout y
-   cotas van 1:1 (la misma condición que las NCU). Sin dato ⇒ null y el largo
-   manda (v1.16). */
-function modsPorTracker(cotas,lay){
-  const m=new Map();
-  if(!lay||!lay.trackers||!cotas||!cotas.t||lay.trackers.length!==cotas.t.length)return m;
-  cotas.t.forEach((tk,i)=>{const v=lay.trackers[i]&&lay.trackers[i].mods;if(tk&&v!=null&&isFinite(+v)&&+v>0)m.set(tk,+v);});
-  return m;
-}
 /* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
    dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
    LARGA (dos strings) el ala es el lado de n de su string respecto al centro
@@ -814,14 +803,14 @@ async function cargaFisica(){
 }
 
 /* plantas de cotas reales (el mismo dato que carga el simulador de BT 3D) */
-/* mod (v1.16): el MÓDULO real de la planta y sus strings por fila — Ayora y San
-   José llevan DOS strings por fila (uno por ala) de módulos de 1,303 m (Risen /
-   Luxen), no el de El Burgo (1,146): el largo medido lo confirma al centímetro
-   (Ayora: 74,65 m = 2·28·1,303 + 54·0,015 + 0,70; 56,18 = 2·21; 37,74 = 2·14;
-   San José 74,43 = 2·28). Los módulos por string salen del LAYOUT cuando lo
-   trae (Ayora: 645 de 751 trackers) y del largo cuando no. */
-const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}},
-              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}}};
+/* El MÓDULO y los módulos por string NO se suponen: vienen del levantamiento.
+   <planta>_cotas.json publica `mod` (modW / gapMod / gapDrive medidos) y, en
+   cada fila, `md` = módulos por STRING — cada fila lleva DOS, uno por ala.
+   Ayora: módulo 1,303 y md 28/21/14 según el tipo. San José: 1,134 y md 32 en
+   todas. En v1.16 esto era una tabla escrita a mano aquí y a San José se le
+   aplicó el módulo de Ayora: la única fuente es el dato (v1.19). */
+const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2},
+              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5}};
 let RP=null;   // {key,P,lat,lon,alt} — planta de cotas cargada
 async function cargaCotas(key){
   if(RP&&RP.key===key)return RP;
@@ -839,7 +828,13 @@ async function cargaCotas(key){
     const m=ncuPorCoordenadas(cotas,lay.trackers);
     if(m.casados>cotas.t.length*0.9)ncuOf=m.ncuOf;
   }
-  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,modsTrk:modsPorTracker(cotas,lay),
+  // CUÁNTO DE LA PLANTA ES ESTO (v1.19). El levantamiento no cubre todos los
+  // trackers del plano: en San José son 2.182 de 2.289 (los 107 que faltan son
+  // los cortos, que no se levantaron: ni cota ni largo, así que no se dibujan
+  // ni se simulan). Callarlo hacía que «planta entera» pareciera la planta.
+  const conCotas=cotas.t.filter(Boolean).length;
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,
+      trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -968,7 +963,7 @@ function rebuildT(){
   // el largo medido (la fila larga = dos strings, uno por ala)
   if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
   else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
-                                                                       {mod:REALES[c.plant].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk});
+                                                                       {mod:RP.P.mod,segMods:RP.P.segMods});
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -1601,6 +1596,12 @@ function paintACline(inst,c,acDay){
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
   if(c.ac.gridW>0)h+=' → red '+f1(a.redW)+' kW';
   if(c.meteo==='tmy'&&c.tmy)h+=' · <b>TMY</b> Tamb '+inst.met.tamb.toFixed(1)+' °C · v '+inst.met.wind.toFixed(1)+' m/s';
+  // lo que hay en el modelo, dicho: trackers levantados de los del plano
+  if(REALES[c.plant]&&RP&&RP.key===c.plant&&RP.trkLayout){
+    const fuera=RP.trkLayout-RP.trkCotas;
+    h+=' · <b>'+RP.trkCotas.toLocaleString('es')+'</b> de '+RP.trkLayout.toLocaleString('es')+' trackers del plano'+
+       (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'');
+  }
   if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
               (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
   $('acline').innerHTML=h;
@@ -1845,7 +1846,7 @@ function repaintPick(){
       $('ninv').value=ninv;$('ninv').disabled=true;
     }else if(REALES[key]){
       // módulos de los strings REALES de las filas medidas (layout + largo, v1.16)
-      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:REALES[key].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk}).flat().reduce((a,e2)=>a+e2.mods,0);
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:RP.P.mod,segMods:RP.P.segMods}).flat().reduce((a,e2)=>a+e2.mods,0);
       if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
       ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
       $('ninv').value=ninv;$('ninv').disabled=false;

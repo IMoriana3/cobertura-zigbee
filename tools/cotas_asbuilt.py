@@ -248,6 +248,12 @@ def genera(planta):
                 'n':  [num(-f['zs']), num(-f['zn'])],      # extremo sur, extremo norte
                 'y':  [num(f['ys']),  num(f['yn'])],       # cota medida SOBRE MODULO en cada extremo
                 'art': int(f.get('art') or 0),
+                # MODULOS POR STRING de esta fila, del levantamiento. Cada fila
+                # lleva DOS strings (un ala cada uno): en Ayora 28/21/14 segun
+                # el tipo, en San Jose 32 en todas. Sin este dato la tarjeta
+                # tenia que deducirlos del largo con un modulo SUPUESTO, y a
+                # San Jose se le aplico el de Ayora (1,303 en vez de 1,134).
+                'md': int(f['mods']) if f.get('mods') else None,
                 'pa': [num(p) for p in (f.get('pa') or [])],
                 'nm': num(-f['zm']) if f.get('zm') is not None else None,
                 'ym': num(f['ym']) if f.get('ym') is not None else None,
@@ -282,7 +288,11 @@ def genera(planta):
         'n_con':  ok,
         'n_art':  art,
         'n_inc':  inc,
-        'nota':   'y = cota MEDIDA sobre el modulo, relativa a base. El eje n es norte positivo.',
+        # ficha del MODULO, del propio levantamiento: con ella el largo de una
+        # fila es 2*md modulos + huecos, y no hay nada que suponer
+        'mod':    {k: META[k] for k in ('modW', 'gapMod', 'gapDrive') if META.get(k) is not None} or None,
+        'nota':   'y = cota MEDIDA sobre el modulo, relativa a base. El eje n es norte positivo. '
+                  'f[].md = modulos por STRING (cada fila lleva dos, uno por ala).',
         't': T,
     }
     dst = os.path.join(RAIZ, planta + '_cotas.json')

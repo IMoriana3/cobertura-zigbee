@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker, rangoColor,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -525,143 +525,55 @@ t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — A
   if (ms > 3000) throw new Error('el instante de la planta entera tarda ' + ms + ' ms');
 });
 
-t('MÓDULOS REALES (v1.16): en Ayora cada fila son DOS strings de 28/21/14 módulos de 1,303 m (layout, y el largo cuando falta); nunca 33 + 32', () => {
-  const MOD = { w: 1.303, gap: 0.015, drive: 0.70, strPerFila: 2 };
-  const P = S.plantaCotas(S.F, cotasAyora), inv = S.invMapUniforme(P.elev.length, 1);
-  const mt = S.modsPorTracker(cotasAyora, layAyora);
-  if (mt.size !== layAyora.trackers.filter(t => t.mods != null).length) throw new Error('modsPorTracker: ' + mt.size + ' trackers con módulos');
-  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6, { mod: MOD, segTrk: P.segTrk, modsTrk: mt });
-  let filas = 0, porLayout = 0, porLargo = 0; const vistos = new Set();
-  P.segs.forEach((l, r) => l.forEach((sg, k) => {
-    filas++;
-    const ent = si[r].filter(e => e.k === k);
-    if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k}: ${ent.length} strings`);
-    if (ent[0].mods !== ent[1].mods) throw new Error(`fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
-    if (![28, 21, 14].includes(ent[0].mods)) throw new Error(`fila ${r}/${k}: ${ent[0].mods} módulos por string (${(sg[1] - sg[0]).toFixed(1)} m)`);
-    const trk = P.segTrk[r][k], known = mt.get(trk);
-    if (known != null) { if (ent[0].mods !== known || ent[0].src !== 'layout') throw new Error(`fila ${r}/${k}: ${ent[0].mods} ≠ layout ${known}`); porLayout++; }
-    else { if (ent[0].src !== 'largo') throw new Error('sin layout debería ir por largo'); porLargo++; }
-    // el largo medido CUADRA con 2·mods módulos de 1,303 + huecos (±0,6 m)
-    const esp = 2 * ent[0].mods * MOD.w + (2 * ent[0].mods - 2) * MOD.gap + MOD.drive;
-    if (Math.abs(esp - (sg[1] - sg[0])) > 1.5) throw new Error(`fila ${r}/${k}: ${(sg[1] - sg[0]).toFixed(2)} m no son 2×${ent[0].mods} módulos (${esp.toFixed(2)} m)`);
-    vistos.add(trk);
-  }));
-  if (!(porLayout > filas * 0.8) || !(porLargo > 0)) throw new Error(porLayout + ' filas por layout y ' + porLargo + ' por largo de ' + filas);
-  // y la cadena vieja (por largo con el módulo de El Burgo) es la que daba 65 = 33 + 32: el careo distingue
-  const viejo = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6);
-  const par = viejo[0].filter(e => e.k === 0);
-  if (par.length === 2 && par[0].mods === par[1].mods) throw new Error('el camino viejo ya no reparte impar: el careo no distingue');
-  // San José: sin «mods» en el layout, todo por largo, y son 2×28 en (casi) todas
-  const Ps = S.plantaCotas(S.F, cotasSJ), sj = S.strInvCotas(Ps.segs, S.invMapUniforme(Ps.elev.length, 1), 1.146, 0.55, 64.6, { mod: MOD, segTrk: Ps.segTrk, modsTrk: S.modsPorTracker(cotasSJ, laySJ) });
-  const fl = sj.flat(); const n28 = fl.filter(e => e.mods === 28).length;
-  if (!(n28 > fl.length * 0.98)) throw new Error('San José: ' + n28 + '/' + fl.length + ' strings de 28');
-  if (fl.some(e => e.src !== 'largo')) throw new Error('San José no trae módulos en el layout: todo debería ir por largo');
-});
-
-t('ACCIONAMIENTO POR MESA (v1.17): un eje por TRACKER entre SUS dos mesas, y el motor en la oeste — nunca uniendo trackers distintos ni dejando mesas sin eje', () => {
-  for (const [cotas, nombre] of [[cotasAyora, 'Ayora'], [cotasSJ, 'San José']]) {
-    const P = S.plantaCotas(S.F, cotas);
-    const ejes = S.F.ejesPorMesa(P), west = S.F.westPorMesa(P);
-    // un eje por tracker bifila, ni uno más
-    if (ejes.length !== P.segPairs.length) throw new Error(`${nombre}: ${ejes.length} ejes para ${P.segPairs.length} trackers`);
-    const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
-    const conEje = new Set();
-    for (const e of ejes) {
-      if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error(`${nombre}: un eje une mesas que NO son el mismo tracker`);
-      if (e.r1 === e.r2) throw new Error(`${nombre}: eje dentro de una misma línea`);
-      conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
-      // el eje va donde las dos mesas se SOLAPAN (es perpendicular a las vigas)
-      const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
-      if (e.solape > 0 && !(e.n >= Math.max(a[0], b[0]) - 1e-9 && e.n <= Math.min(a[1], b[1]) + 1e-9))
-        throw new Error(`${nombre}: el eje cae fuera del solape de sus dos mesas`);
+t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la ficha del módulo), no de una tabla escrita a mano', () => {
+  for (const [cotas, nombre, mdEsperados, wEsperado] of [[cotasAyora, 'Ayora', [28, 21, 14], 1.303],
+                                                          [cotasSJ, 'San José', [32], 1.134]]) {
+    // (a) el fichero de cotas trae la ficha del módulo y los módulos por string
+    if (!cotas.mod || !(cotas.mod.modW > 0)) throw new Error(nombre + ': las cotas no publican la ficha del módulo');
+    if (Math.abs(cotas.mod.modW - wEsperado) > 1e-9) throw new Error(`${nombre}: módulo ${cotas.mod.modW} ≠ ${wEsperado} del levantamiento`);
+    const M = cotas.mod;
+    let sinMd = 0, n = 0, peor = 0;
+    for (const tk of cotas.t) {
+      if (!tk) continue;
+      for (const f of tk.f) {
+        n++;
+        if (!(f.md > 0)) { sinMd++; continue; }
+        if (!mdEsperados.includes(f.md)) throw new Error(`${nombre}: md ${f.md} fuera de ${mdEsperados}`);
+        // el largo MEDIDO tiene que cuadrar con 2 strings de md módulos
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+        peor = Math.max(peor, Math.abs(L - esp));
+      }
     }
-    // ninguna mesa emparejada se queda sin eje (eso es lo que parecía monofila)
-    let sin = 0;
-    P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
-    if (sin) throw new Error(`${nombre}: ${sin} mesas con gemela pero sin eje`);
-    // el motor: exactamente uno por tracker, y en la mesa OESTE (menor x)
-    for (const [[r1, k1], [r2, k2]] of P.segPairs) {
-      const w1 = west[r1][k1], w2 = west[r2][k2];
-      if (w1 === w2) throw new Error(`${nombre}: un tracker con ${w1 ? 'dos motores' : 'ningún motor'}`);
-      const oeste = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
-      if (!west[oeste[0]][oeste[1]]) throw new Error(`${nombre}: el motor no está en la viga oeste`);
-    }
-    // una mesa sin pareja lleva su motor
-    const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
-    let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; if (!enPareja.has(r + '|' + k) && !w) throw new Error(`${nombre}: mesa suelta sin motor`); }));
-    const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
-    if (motores !== P.segPairs.length + sueltas) throw new Error(`${nombre}: ${motores} motores para ${P.segPairs.length} trackers y ${sueltas} mesas sueltas`);
+    if (sinMd) throw new Error(`${nombre}: ${sinMd} de ${n} filas sin módulos en el levantamiento`);
+    if (peor > 1.5) throw new Error(`${nombre}: una fila se aparta ${peor.toFixed(2)} m de 2×md módulos`);
+    // (b) plantFromCotas los publica por mesa y strInvCotas los usa: dos strings iguales por fila
+    const P = S.plantaCotas(S.F, cotas), inv = S.invMapUniforme(P.elev.length, 1);
+    if (!P.segMods || !P.mod) throw new Error(nombre + ': plantFromCotas no publica segMods / mod');
+    const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, null, { mod: P.mod, segMods: P.segMods });
+    let porDato = 0, filas = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      filas++;
+      const ent = si[r].filter(e => e.k === k);
+      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`${nombre} fila ${r}/${k}: ${ent.length} strings`);
+      if (ent[0].mods !== ent[1].mods) throw new Error(`${nombre} fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
+      if (ent[0].mods !== P.segMods[r][k]) throw new Error(`${nombre} fila ${r}/${k}: ${ent[0].mods} ≠ ${P.segMods[r][k]} del levantamiento`);
+      if (ent[0].src === 'levantamiento') porDato++;
+    }));
+    if (porDato !== filas) throw new Error(`${nombre}: solo ${porDato} de ${filas} filas con módulos del levantamiento`);
+    // (c) MUTANTE: con el módulo de la otra planta, el largo deja de cuadrar
+    const otro = wEsperado === 1.303 ? 1.134 : 1.303;
+    const sg0 = P.segs[0][0], md0 = P.segMods[0][0];
+    const espOtro = 2 * md0 * otro + (2 * md0 - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+    if (Math.abs((sg0[1] - sg0[0]) - espOtro) < 1.5) throw new Error(nombre + ': el módulo de la otra planta también cuadra — el careo no distingue');
   }
-  // MUTANTE: el emparejado por LÍNEA (P.groups + «el tramo más próximo»), que es
-  // lo que se dibujaba antes, sí une trackers distintos y deja mesas sin eje
-  const P = S.plantaCotas(S.F, cotasAyora);
-  const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
-  let mal = 0;
-  for (const [a, b] of P.groups.filter(g => g.length === 2))
-    for (let ka = 0; ka < P.segs[a].length; ka++) {
-      const ca = (P.segs[a][ka][0] + P.segs[a][ka][1]) / 2;
-      const kb = P.segs[b].findIndex(s2 => ca >= s2[0] - 2 && ca <= s2[1] + 2);
-      if (kb >= 0 && !real.has([a, ka, b, kb].join('|'))) mal++;
-    }
-  if (!(mal > 0)) throw new Error('el camino por línea ya no une trackers distintos: el careo no distingue');
-});
-
-t('COTA POR MESA (v1.17): la escena lleva la z medida de cada mesa, no la media de su línea (en Ayora se apartan 15,8 m de media)', () => {
-  const P = S.plantaCotas(S.F, cotasAyora);
-  if (!P.segZ || P.segZ.length !== P.segs.length) throw new Error('sin segZ por línea');
-  let n = 0, acc = 0, mx = 0;
-  P.segs.forEach((l, r) => {
-    if (l.length !== P.segZ[r].length) throw new Error('segZ y segs no casan en la línea ' + r);
-    l.forEach((sg, k) => {
-      const z = P.segZ[r][k];
-      // la z va con el tramo: pendiente de la mesa = su segTilt, exacto
-      const tl = Math.atan2(z[1] - z[0], (sg[1] - sg[0]) || 1) * 180 / Math.PI;
-      if (Math.abs(tl - P.segTilt[r][k]) > 1e-9) throw new Error(`mesa ${r}/${k}: segZ no describe su segTilt`);
-    });
-    if (l.length < 2) return;
-    const cz = l.map((sg, k) => (P.segZ[r][k][0] + P.segZ[r][k][1]) / 2);
-    const d = Math.max(...cz) - Math.min(...cz); acc += d; n++; mx = Math.max(mx, d);
-  });
-  if (!(acc / n > 5)) throw new Error('las mesas de una línea ya no se apartan de su media: ' + (acc / n).toFixed(2) + ' m');
-  // y la página coloca cada mesa con SU cota (el render no corre en Node: se vigila el texto, como el careo del literal de elecLoss)
-  for (const lit of ['const hubY=cMesa(r,k)+2.0', 'hubY:G.cMesa(r,k)+2.0', 'G.zTubo(tr.row,tr.k,nn)+2.0', 'T.segZ=P.segZ'])
-    if (!pg.includes(lit)) throw new Error('produccion.html sin «' + lit + '»: el render volvió a la cota de línea');
-  if (/hubY=T\.elev\[r\]\+2\.0/.test(pg)) throw new Error('el render sigue colocando la mesa a la cota de su línea');
-});
-
-t('ESCALA DE COLOR (v1.18): la fiel se ancla a CERO — una planta sin sombra no puede salir en arcoíris por un 1,5 % de rango', () => {
-  // el caso real: Ayora entera a mediodía, sin una sola mesa sombreada
-  const P = S.plantaCotas(S.F, cotasAyora);
-  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base), nrows: P.elev.length,
-              cw: P.cw, maxang: P.maxAngle, pitch: P.pitch, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
-  const r = S.instant(S.F, c, S.buildTReal(S.F, c, P), 720);
-  const v = []; r.wings.forEach(l => l.forEach(w => { if (w) v.push(...w); }));
-  const mn = Math.min(...v), mx = Math.max(...v);
-  const spread = (mx - mn) / mx;
-  if (!(spread < 0.03)) throw new Error('a mediodía la POA ya no es plana (' + (100 * spread).toFixed(1) + ' %): el careo no mide lo que dice');
-  const sombra = Math.max(...r.shade.filter(x => typeof x === 'number'));
-  if (sombra > 1e-6) throw new Error('hay sombra a mediodía: ' + sombra);
-  const norm = (val, R) => { const s2 = R.hi - R.lo; return s2 > Math.max(1e-9, Math.abs(R.hi) * 1e-3) ? (val - R.lo) / s2 : 0.5; };
-  // FIEL: todas las mesas caen en un pañuelo de la rampa (< 5 %)
-  const A = S.rangoColor(mn, mx, 'abs');
-  if (A.lo !== 0) throw new Error('la escala fiel no arranca en 0: ' + A.lo);
-  const cA = v.map(x => norm(x, A));
-  if (!(Math.max(...cA) - Math.min(...cA) < 0.05)) throw new Error('la escala fiel reparte ' + (100 * (Math.max(...cA) - Math.min(...cA))).toFixed(0) + ' % de la rampa sobre un 1,5 % de POA');
-  if (!(Math.min(...cA) > 0.9)) throw new Error('con la escala fiel una planta al 99 % debería salir en el extremo alto');
-  // CONTRASTE: es la de siempre, mín→máx, y estira ese 1,5 % a la rampa entera
-  const R = S.rangoColor(mn, mx, 'rel');
-  if (R.lo !== mn || R.hi !== mx) throw new Error('contraste ya no es mín→máx');
-  const cR = v.map(x => norm(x, R));
-  if (!(Math.max(...cR) - Math.min(...cR) > 0.9)) throw new Error('contraste dejó de estirar: el careo no distingue las dos escalas');
-  // al ALBA, donde SÍ hay diferencias grandes, la fiel también las enseña
-  const r2 = S.instant(S.F, c, S.buildTReal(S.F, c, P), 7 * 60 + 30);
-  const v2 = []; r2.wings.forEach(l => l.forEach(w => { if (w) v2.push(...w); }));
-  const A2 = S.rangoColor(Math.min(...v2), Math.max(...v2), 'abs');
-  const c2 = v2.map(x => norm(x, A2));
-  if (!(Math.max(...c2) - Math.min(...c2) > 0.5)) throw new Error('la escala fiel aplana también el alba, donde el rango real es del 65 %');
-  // y la página la usa, con la fiel por defecto
-  if (!/id="cscale"[\s\S]{0,400}value="abs" selected/.test(pg)) throw new Error('el selector de escala no viene en fiel por defecto');
-  if (!pg.includes("rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs')")) throw new Error('repaint no aplica la escala elegida');
+  // y la página ya no lleva la tabla de módulos escrita a mano
+  if (/strPerFila/.test(pg)) throw new Error('produccion.html conserva la tabla de módulos inventada');
+  // ni se calla cuánto de la planta está en el modelo: San José son 2.182 de
+  // los 2.289 trackers del plano (los 107 cortos no se levantaron)
+  const laySJn = laySJ.trackers.length, conCotas = cotasSJ.t.filter(Boolean).length;
+  if (laySJn !== 2289 || conCotas !== 2182) throw new Error(`San José: ${conCotas} de ${laySJn} (esperado 2.182 de 2.289)`);
+  if (!pg.includes("trackers del plano")) throw new Error('la página no declara cuántos trackers del plano están en el modelo');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
