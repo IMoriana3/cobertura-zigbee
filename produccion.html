@@ -356,17 +356,19 @@ function invMapUniforme(nrows,ninv){
 /* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
    POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
    fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
-function strPdc(rowsPoa,strInv,met,e,segPoa){
+function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
   const out=[];
   for(let r=0;r<rowsPoa.length;r++){
     const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
     for(const s of strInv[r]){
-      // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k} (una FILA de
-      // cotas con sus módulos medidos y, si hay POA por mesa, la SUYA)
+      // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k,w} (un string
+      // de una mesa: con POA por mesa, la SUYA; con ala (w) y POA por ala, la de
+      // SU ala — v1.14: un string por ala en la mesa larga)
       if(typeof s==='string'){out.push({inv:s,row:r,pdcW:p});continue;}
-      const poa=(segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r];
-      const e2=s.mods===e.mods?e:Object.assign({},e,{mods:s.mods});
-      out.push({inv:s.inv,row:r,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
+      const wp=(wings&&s.w!=null&&s.k!=null&&wings[r]&&wings[r][s.k]&&wings[r][s.k][s.w]!=null)?wings[r][s.k][s.w]:null;
+      const poa=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
+      const e2=(s.mods==null||s.mods===e.mods)?e:Object.assign({},e,{mods:s.mods});
+      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
     }
   }
   return out;
@@ -378,9 +380,34 @@ function strPdc(rowsPoa,strInv,met,e,segPoa){
    paso de módulo canónico (1,146 m) y el hueco del motor — el mismo dato que
    dimensiona el render. Aproximación declarada: módulos por largo, no por
    plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
-function strInvCotas(segs,invRows,pitchMod,gapDrive){
+function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
-  return segs.map((l,r)=>l.map((sg,k)=>({inv:invRows[r],k:k,mods:Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm))})));
+  return segs.map((l,r)=>l.flatMap((sg,k)=>{
+    const mods=Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm));
+    // v1.14: la fila LARGA son DOS strings, uno por ALA (sur = 0 → «a», norte =
+    // 1 → «b»), cada uno con la POA de su ala; la media, un string entero.
+    // Solo si se declara el largo de fila del modelo (filaLen); sin él, la
+    // entrada por fila de siempre (los careos de v1.12.5 siguen valiendo)
+    if(filaLen&&(sg[1]-sg[0])>=0.7*filaLen&&mods>=2){
+      const a=Math.round(mods/2);
+      return [{inv:invRows[r],k:k,w:0,mods:a},{inv:invRows[r],k:k,w:1,mods:mods-a}];
+    }
+    return [{inv:invRows[r],k:k,w:null,mods:mods}];
+  }));
+}
+/* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
+   dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
+   LARGA (dos strings) el ala es el lado de n de su string respecto al centro
+   de la mesa (sur = 0, norte = 1); en la media (un string) no hay ala. Los
+   módulos son los del string del Notebook (mods). */
+function elburgoStrInv(rows,segs,nOff,filaLen,mods){
+  return rows.map((r,i)=>r.strs.map(s=>{
+    const n=s.n-nOff, l=segs[i]||[];
+    let k=-1,bd=Infinity;
+    for(let j=0;j<l.length;j++){const d=n<l[j][0]?l[j][0]-n:(n>l[j][1]?n-l[j][1]:0);if(d<bd){bd=d;k=j;}}
+    const sg=k>=0?l[k]:null, larga=!!sg&&(sg[1]-sg[0])>=0.7*filaLen;
+    return {inv:s.inv,id:s.id,k:k>=0?k:null,w:larga?(n<(sg[0]+sg[1])/2?0:1):null,mods:mods};
+  }));
 }
 /* la cadena entera de un instante, por INVERSOR: Σ Pdc de sus strings →
    pérdidas DC → curva del inversor (recorte incluido) → suma de planta →
@@ -404,7 +431,7 @@ function dayAC(F,c,T,strInv,a,stepMin){
   let edc=0,eac=0,ered=0;
   for(let m=0;m<1440;m+=st){
     const r=instant(F,c,T,m);
-    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs),a);
+    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings),a);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
   }
@@ -672,10 +699,11 @@ function instant(F,c,T,m){
                          :F.policyAnglesSeg('pairwise',zen,az,T,irr,doy,c.albedo);
     const ps=F.poaPlantSeg(zen,az,T,segAng,irr,doy,c.albedo);
     return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:segAng,rows:ps.rows,segs:ps.segs,
-            plant:ps.plant,shade:ps.shade};
+            plant:ps.plant,shade:ps.shade,wings:ps.wings||null};
   }
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
-  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:null,rows:pp.rows,segs:null,plant:pp.plant,shade:pp.shade};
+  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:null,rows:pp.rows,segs:null,plant:pp.plant,shade:pp.shade,
+          wings:pp.wings||null};   // v1.14: POA de cada ALA (la sombra por ala del contador 3D)
 }
 
 /* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
@@ -873,8 +901,10 @@ function rebuildT(){
   }
   // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
   // (g.i); el resto n bloques contiguos iguales (declarado en el input)
-  if(c.plant==='elburgo'&&EB)T.strInv=EB.rows.map(r=>r.strs.map(s=>s.inv));
-  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv));
+  // v1.14: cada string con su MESA y su ALA — El Burgo por su plano, cotas por
+  // el largo medido (la fila larga = dos strings, uno por ala)
+  if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen);
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -992,9 +1022,11 @@ function build3D(c){
     const spins=[];
     for(let k=0;k<segsNS[r].length;k++){
       const sg=segsNS[r][k];
-      // un material de tinte POR MESA (v1.13): la producción se pinta mesa a mesa
-      const tintM=new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
+      // un material de tinte POR ALA (v1.14; por mesa desde v1.13): la mesa larga
+      // lleva un string por ala y cada uno se pinta con lo suyo
+      const mkTint=()=>new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
         side:THREE.DoubleSide,depthWrite:false});
+      const tintM=mkTint(), tintM2=mkTint();
       const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
       const tiltG=new THREE.Group();
       tiltG.position.set(x,hubY,zc);
@@ -1021,7 +1053,7 @@ function build3D(c){
           // sin pintar — un plano corrido tapaba corona/reductora/motor
           const bbLen=Math.max(1,bb.max.x-bb.min.x), wAla=(bbLen-D0.gapDrive)/2;
           for(const s2 of (wAla>0.5?[-1,1]:[0])){
-            const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),tintM);
+            const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),s2>0?tintM2:tintM);   // ala norte (+X del tubo) = string b
             tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=s2*(D0.gapDrive/2+wAla/2);
             tint.renderOrder=2;
             beam.spin.add(tint);
@@ -1034,7 +1066,7 @@ function build3D(c){
           const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
           sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
           R3.world.add(sop);
-          spins.push({g:beam.spin,model:true,mat:tintM,k:k});
+          spins.push({g:beam.spin,model:true,mat:tintM,matW:[tintM,tintM2],k:k});
           built=true;
         }catch(e){built=false;}
       }
@@ -1049,7 +1081,7 @@ function build3D(c){
         tint.rotation.x=-Math.PI/2;tint.rotation.z=Math.PI/2;tint.position.y=0.20;tint.renderOrder=2;
         gRot.add(tube,panel,tint);
         tiltG.add(gRot);
-        spins.push({g:gRot,model:false,mat:tintM,k:k});
+        spins.push({g:gRot,model:false,mat:tintM,matW:null,k:k});
       }
       R3.world.add(tiltG);
       // postes: la retícula de la CASA (Seguidor.pilotesX, proporcional al
@@ -1287,7 +1319,7 @@ function buildInstanced(c,rx,segsNS,postM,D0){
            tmpC:new THREE.Color()};
 }
 /* repintado del instanciado: Q por tramo con el θ de SU fila, y color por tramo */
-function updateInstanced(c,vals,mn,mx,norm,inst,segVals){
+function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
   const I=R3.inst,k=c.cw/2.382;
   I.tmpS.makeScale(1,1,k);
   for(const tr of I.tramos){
@@ -1304,8 +1336,9 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals){
   for(let ti=0;ti<I.tramos.length;ti++){
     const tr=I.tramos[ti];
     const sv=(segVals&&segVals[tr.row]&&segVals[tr.row][tr.k]!=null)?segVals[tr.row][tr.k]:vals[tr.row];
-    I.tmpC.set(ramp(Math.max(0,Math.min(1,norm(sv,mn,mx)))));
+    const wv=(wingVals&&wingVals[tr.row]&&wingVals[tr.row][tr.k])||null;   // por ALA (v1.14): Ltint[0] = sur, [1] = norte
     for(let s2=0;s2<2;s2++){
+      I.tmpC.set(ramp(Math.max(0,Math.min(1,norm((wv&&wv[s2]!=null)?wv[s2]:sv,mn,mx)))));
       I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ti*2+s2,I.tmpM);
       I.tint.setColorAt(ti*2+s2,I.tmpC);
     }
@@ -1345,7 +1378,7 @@ function repaint(){
   }else if(mode==='pinst'){
     vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else if(mode==='acinst'){
-    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs),c.ac);
+    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
     const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
     vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
     invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
@@ -1366,24 +1399,30 @@ function repaint(){
     paintACline(inst,c,null);
     R3.dirty=true;return;
   }
-  const mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
+  // por MESA (v1.13) y por ALA (v1.14): en los modos de instante cada mesa lleva
+  // SU valor y cada ala el SUYO (la sombra por ala del contador 3D); la leyenda
+  // abarca las alas. Los agregados de día/período van por línea
+  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
+  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map(l=>l.map(w=>w?w.map(pw):null)):null)):null;
+  let mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
+  if(wingVals){mn=Infinity;mx=-Infinity;for(const l of wingVals)for(const w of l)if(w)for(const v of w){if(v<mn)mn=v;if(v>mx)mx=v;}}
   // normalizar SOLO si la dispersión es significativa: con la planta uniforme
   // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
   // colores de escala completa — «¿por qué esas producen menos?» sin producir
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
   const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
   paintLegend(mn,mx,unit,fmt);
-  // por MESA (v1.13): en los modos de instante cada mesa lleva SU valor (POA o
-  // P de la mesa) y SU θ; los agregados de día/período van por línea
-  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
-  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals);
+  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals);
   else for(let r=0;r<c.nrows;r++){
     if(R3.rows&&R3.rows[r]){
       for(const sp of R3.rows[r].spins){                      // mismo convenio que el update3D del simulador
         const th=(inst.segAng?inst.segAng[r][sp.k]:inst.ang[r])*D2R;
         if(sp.model)sp.g.rotation.x=th; else sp.g.rotation.z=-th;
         const sv=(segVals&&segVals[r]&&segVals[r][sp.k]!=null)?segVals[r][sp.k]:vals[r];
-        sp.mat.color.set(ramp(Math.max(0,Math.min(1,norm(sv,mn,mx)))));
+        const wv=(wingVals&&wingVals[r]&&wingVals[r][sp.k])||null;   // por ALA (v1.14)
+        const col=v=>ramp(Math.max(0,Math.min(1,norm(v,mn,mx))));
+        if(wv&&sp.matW){sp.matW[0].color.set(col(wv[0]));sp.matW[1].color.set(col(wv[1]));}
+        else{sp.mat.color.set(col(sv));if(sp.matW)sp.matW[1].color.set(col(sv));}
       }
     }
   }
@@ -1392,7 +1431,7 @@ function repaint(){
     // modos AC: chips con el valor REAL por inversor (recorte marcado con ✂)
     const im=Math.min.apply(null,invChips.map(v=>v.val)),ix=Math.max.apply(null,invChips.map(v=>v.val));
     for(const v of invChips)
-      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+(REALES[c.plant]?' filas (módulos por largo medido)':' strings')+'"':'')+'><span class="s-dot" style="background:'+
+      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+(REALES[c.plant]?' strings (uno por ala de cada fila medida)':' strings')+'"':'')+'><span class="s-dot" style="background:'+
                  ramp(norm(v.val,im,ix))+'"></span>I'+v.inv+' · '+fmt(v.val)+(v.clip?' ✂':'')+'</span>');
   }else if(c.plant==='elburgo'&&EB){
     // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
@@ -1437,7 +1476,7 @@ function repaint(){
 /* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
    (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
 function paintACline(inst,c,acDay){
-  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs),c.ac);
+  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
   const f1=v=>(v/1000).toFixed(1);
   let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
@@ -1518,7 +1557,7 @@ function exportCSV(){
       filas.push([id,T.xs[r],d.vals[r]]);
     }
   }
-  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs),c.ac);
+  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings),c.ac);
   filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
     ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
     ['AC_instante','red_kW',a.redW/1000]);
@@ -1589,27 +1628,39 @@ function clearPick(){
 function repaintPick(){
   const el=$('pick');
   if(!PICK||!R3.last){if(el)el.style.display='none';return;}
-  const d=R3.last, r=PICK.row;
-  let txt='<b>S'+(r+1)+'</b> · línea x='+T.xs[r].toFixed(1)+' m';
-  if(d.c.plant==='elburgo'&&EB){
-    const strs=EB.rows[r].strs.filter(s=>s.n>=PICK.s0+T_nOff-1&&s.n<=PICK.s1+T_nOff+1);
-    if(strs.length){
-      const ncu=EB.mapa.get(strs[0].id.split('.').slice(0,3).join('.'));
-      txt='<b>'+strs.map(s=>s.id).join(' · ')+'</b> · inversor I'+strs[0].inv+
-          (ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
-          ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m';
-    }
-  }else if(T.segTilt&&PICK.k!=null){
-    txt+=' · mesa '+(PICK.k+1)+'/'+T.segs[r].length+' · tilt N-S de la mesa '+T.segTilt[r][PICK.k].toFixed(2)+
-         '° (línea '+T.tilt[r].toFixed(2)+'°) · cota '+T.elev[r].toFixed(2)+' m';
-  }else if(T.tilt){
-    txt+=' · tilt N-S '+T.tilt[r].toFixed(2)+'° · cota '+T.elev[r].toFixed(2)+' m';
+  const d=R3.last, r=PICK.row, kk=PICK.k, w=PICK.w, c=d.c;
+  const ala=w==null?'':(w===0?' · ala SUR':' · ala NORTE');
+  // el STRING seleccionado (v1.14): la entrada de la cadena de esa mesa y esa
+  // ala — en El Burgo el string del plano que cae ahí; en cotas/genérica, «a»
+  // (sur) / «b» (norte) de la fila medida
+  let ent=null;
+  if(T.strInv&&T.strInv[r]){
+    const objs=T.strInv[r].filter(x=>typeof x==='object');
+    ent=objs.find(x=>x.k===kk&&(x.w==null?w==null:x.w===w))||objs.find(x=>x.k===kk)||null;
   }
-  const kk=PICK.k, seg=d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null;
-  const shSeg=(d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r]&&kk!=null)?d.inst.shade.seg[r][kk]:null;
-  txt+=' — <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b>'+(seg&&d.mode==='inst'?' (línea; la mesa: <b>'+d.inst.segs[r][kk].toFixed(0)+' W/m²</b>)':'')+
-       ' · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+'° · sombra '+
-       (100*(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0))).toFixed(1)+' %';
+  let txt;
+  if(c.plant==='elburgo'&&EB&&ent&&ent.id){
+    const ncu=EB.mapa.get(ent.id.split('.').slice(0,3).join('.'));
+    txt='<b>'+ent.id+'</b> · inversor I'+ent.inv+(ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
+        ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m'+ala;
+  }else{
+    txt='<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b> · línea x='+T.xs[r].toFixed(1)+' m'+
+        (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
+        (T.segTilt&&kk!=null?' · tilt N-S de la mesa '+T.segTilt[r][kk].toFixed(2)+'° (línea '+T.tilt[r].toFixed(2)+'°)'
+                            :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
+        ' · cota '+T.elev[r].toFixed(2)+' m'+(ent&&ent.inv!=null?' · inversor I'+ent.inv:'');
+  }
+  const segPoa=(d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null)?d.inst.segs[r][kk]:null;
+  const wPoa=(w!=null&&kk!=null&&d.inst.wings&&d.inst.wings[r]&&d.inst.wings[r][kk]&&d.inst.wings[r][kk][w]!=null)?d.inst.wings[r][kk][w]:null;
+  const poaStr=wPoa!=null?wPoa:(segPoa!=null?segPoa:d.inst.rows[r]);
+  const shW=(w!=null&&kk!=null&&d.inst.shade&&d.inst.shade.wing&&d.inst.shade.wing[r]&&d.inst.shade.wing[r][kk])?d.inst.shade.wing[r][kk][w]:null;
+  const shSeg=(kk!=null&&d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r])?d.inst.shade.seg[r][kk]:null;
+  const sh=shW!=null?shW:(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0));
+  const mods=(ent&&ent.mods)?ent.mods:c.elec.mods;
+  const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
+  txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
+       (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.) · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
+       '° · sombra '+(100*sh).toFixed(1)+' %';
   el.innerHTML=txt;el.style.display='';
 }
 
@@ -1760,29 +1811,38 @@ function repaintPick(){
     const rc=new THREE.Raycaster();
     rc.setFromCamera(new THREE.Vector2(((e.clientX-rct.left)/rct.width)*2-1,-((e.clientY-rct.top)/rct.height)*2+1),R3.cam);
     const hits=rc.intersectObjects(R3.world.children,true);
-    let obj=null,tramo=null;
+    let obj=null,tramo=null,hitP=null;
     for(const h of hits){
       // instanciado: el instanceId de la pieza lleva a SU tramo
       if(h.object.isInstancedMesh&&h.object.userData.pickTramos&&h.instanceId!=null){
         const ud=h.object.userData;
-        tramo=ud.pickTramos[ud.tramoIdx[Math.floor(h.instanceId/ud.nLocals)]];
+        tramo=ud.pickTramos[ud.tramoIdx[Math.floor(h.instanceId/ud.nLocals)]];hitP=h.point;
         break;
       }
       let o=h.object;while(o&&o.userData.row===undefined)o=o.parent;
-      if(o&&o.userData.row!==undefined){obj=o;break;}
+      if(o&&o.userData.row!==undefined){obj=o;hitP=h.point;break;}
     }
     if(!obj&&!tramo){clearPick();return;}
     if(pickHelper)R3.scene.remove(pickHelper);
+    // el ALA pinchada (v1.14): la mesa larga lleva un string por ala — sur
+    // (z mayor en la escena, n bajo) = 0, norte = 1; la media es un string
+    // entero y no se parte. «Selecciono un string y me selecciona la fila»
+    const wingOf=(zc,len)=>(hitP&&len>=0.7*T.obj.filaLen)?(hitP.z>zc?0:1):null;
+    const c2=cfg();
     if(tramo){
-      PICK={row:tramo.row,k:tramo.k,s0:tramo.s0,s1:tramo.s1};
-      const c2=cfg();
+      const w=wingOf(tramo.zc,tramo.len);
+      PICK={row:tramo.row,k:tramo.k,w:w,s0:tramo.s0,s1:tramo.s1};
+      const zA=w===0?tramo.zc:tramo.zc-tramo.len/2, zB=w===1?tramo.zc:tramo.zc+tramo.len/2;
       const box=new THREE.Box3(
-        new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,tramo.zc-tramo.len/2),
-        new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,tramo.zc+tramo.len/2));
+        new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,zA),
+        new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,zB));
       pickHelper=new THREE.Box3Helper(box,0x36d399);
     }else{
-      PICK={row:obj.userData.row,k:obj.userData.k,s0:obj.userData.s0,s1:obj.userData.s1};
-      pickHelper=new THREE.BoxHelper(obj,0x36d399);
+      const ud=obj.userData, zc=obj.position.z, w=wingOf(zc,ud.s1-ud.s0);
+      PICK={row:ud.row,k:ud.k,w:w,s0:ud.s0,s1:ud.s1};
+      const box=new THREE.Box3().setFromObject(obj);
+      if(w===0)box.min.z=Math.max(box.min.z,zc); else if(w===1)box.max.z=Math.min(box.max.z,zc);
+      pickHelper=new THREE.Box3Helper(box,0x36d399);
     }
     R3.scene.add(pickHelper);
     R3.dirty=true;repaintPick();
