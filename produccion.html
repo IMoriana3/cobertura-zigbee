@@ -209,6 +209,10 @@ input[type=range]{accent-color:var(--live)}
           <option value="pano">📅 E string Σ año (MWh)</option>
         </select>
         <button class="btn" id="csv" title="Descarga la vista actual en CSV (;, decimal coma): por string o por inversor según el modo, con la cadena AC del instante debajo.">⬇ CSV</button>
+        <select id="cscale" class="btn" title="Cómo se reparte la rampa de color. FIEL: de 0 al máximo — el color es proporcional a lo que produce cada string, así que una planta sin sombra sale de un color. CONTRASTE: estira el mínimo y el máximo de la vista para inspeccionar diferencias finas; la leyenda dice entonces qué porcentaje del máximo abarca.">
+          <option value="abs" selected>escala fiel (0 → máx)</option>
+          <option value="rel">contraste (mín → máx)</option>
+        </select>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
       <div class="nota" id="acline" style="border-top:1px solid var(--line);color:var(--text)"></div>
@@ -382,20 +386,19 @@ function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
    plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
 function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
-  // v1.16: con la FICHA de la planta (opt.mod: módulo real, hueco, strings por
-  // fila; opt.modsTrk: módulos por string del layout, por identidad de tracker)
-  // los strings son los de verdad. Contarlos por largo con el módulo de El
-  // Burgo daba en Ayora 65 módulos por fila repartidos 33 + 32 — dos strings
-  // de la misma mesa con distinta potencia y el mismo tilt — en vez de 28 + 28.
-  if(opt&&opt.mod){
-    const M=opt.mod, nS=M.strPerFila||2;
+  // v1.19: los strings de una planta levantada salen del DATO — opt.segMods
+  // trae los módulos por string de cada mesa (f[].md del levantamiento) y
+  // opt.mod la ficha del módulo medida (modW/gapMod/gapDrive). Cada fila son
+  // DOS strings, uno por ala. Solo si a una mesa le falta md se deducen del
+  // largo con ESE módulo, y se dice. Antes esto era una tabla escrita a mano
+  // en la página, y a San José se le aplicaba el módulo de Ayora.
+  if(opt&&opt.mod&&opt.segMods){
+    const M=opt.mod, w=M.modW, gm=M.gapMod||0, gd2=M.gapDrive==null?gd:M.gapDrive;
     return segs.map((l,r)=>l.flatMap((sg,k)=>{
-      const L=sg[1]-sg[0], trk=(opt.segTrk&&opt.segTrk[r])?opt.segTrk[r][k]:null;
-      const known=(opt.modsTrk&&trk!=null)?opt.modsTrk.get(trk):null;
-      const porLargo=Math.max(1,Math.round((L-M.drive+M.gap)/(nS*(M.w+M.gap))));
-      const mods=(known>0)?known:porLargo, src=(known>0)?'layout':'largo';
-      if(nS===2)return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
-      return [{inv:invRows[r],k:k,w:null,mods:mods,src:src}];
+      const md=opt.segMods[r]&&opt.segMods[r][k];
+      const porLargo=Math.max(1,Math.round(((sg[1]-sg[0])-gd2+2*gm)/(2*(w+gm))));
+      const mods=(md>0)?md:porLargo, src=(md>0)?'levantamiento':'largo';
+      return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
     }));
   }
   return segs.map((l,r)=>l.flatMap((sg,k)=>{
@@ -411,16 +414,19 @@ function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
     return [{inv:invRows[r],k:k,w:null,mods:mods}];
   }));
 }
-/* módulos por STRING de cada tracker según el layout (Ayora: «Interior 1V28»,
-   mods 28/21/14), por IDENTIDAD del objeto de cotas.t — solo cuando layout y
-   cotas van 1:1 (la misma condición que las NCU). Sin dato ⇒ null y el largo
-   manda (v1.16). */
-function modsPorTracker(cotas,lay){
-  const m=new Map();
-  if(!lay||!lay.trackers||!cotas||!cotas.t||lay.trackers.length!==cotas.t.length)return m;
-  cotas.t.forEach((tk,i)=>{const v=lay.trackers[i]&&lay.trackers[i].mods;if(tk&&v!=null&&isFinite(+v)&&+v>0)m.set(tk,+v);});
-  return m;
+/* ESCALA DE COLOR (v1.18). La rampa se estiraba SIEMPRE del mínimo al máximo
+   de la vista, así que a mediodía —cuando ninguna mesa tiene sombra, todas
+   están al 99 % y el rango entero son 15 W/m² sobre 1.009, un 1,5 %— la planta
+   salía en arcoíris, como si unas produjeran el doble que otras. Por defecto
+   la escala se ANCLA A CERO: el color es proporcional a lo que produce cada
+   string y una planta sin sombra sale de un color. «Contraste» mantiene el
+   mín→máx de siempre para mirar diferencias finas, y entonces la leyenda dice
+   qué porcentaje del máximo abarca ese tramo. */
+function rangoColor(mn,mx,modo){
+  if(modo==='rel')return {lo:mn,hi:mx,rel:true};
+  return {lo:Math.min(0,mn),hi:Math.max(mx,mn+1e-9),rel:false};
 }
+
 /* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
    dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
    LARGA (dos strings) el ala es el lado de n de su string respecto al centro
@@ -800,7 +806,7 @@ async function cargaFisica(){
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-              policyAnglesSeg,poaPlantSeg,anglesAstroSeg};`)();
+              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -811,14 +817,14 @@ async function cargaFisica(){
 }
 
 /* plantas de cotas reales (el mismo dato que carga el simulador de BT 3D) */
-/* mod (v1.16): el MÓDULO real de la planta y sus strings por fila — Ayora y San
-   José llevan DOS strings por fila (uno por ala) de módulos de 1,303 m (Risen /
-   Luxen), no el de El Burgo (1,146): el largo medido lo confirma al centímetro
-   (Ayora: 74,65 m = 2·28·1,303 + 54·0,015 + 0,70; 56,18 = 2·21; 37,74 = 2·14;
-   San José 74,43 = 2·28). Los módulos por string salen del LAYOUT cuando lo
-   trae (Ayora: 645 de 751 trackers) y del largo cuando no. */
-const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}},
-              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}}};
+/* El MÓDULO y los módulos por string NO se suponen: vienen del levantamiento.
+   <planta>_cotas.json publica `mod` (modW / gapMod / gapDrive medidos) y, en
+   cada fila, `md` = módulos por STRING — cada fila lleva DOS, uno por ala.
+   Ayora: módulo 1,303 y md 28/21/14 según el tipo. San José: 1,134 y md 32 en
+   todas. En v1.16 esto era una tabla escrita a mano aquí y a San José se le
+   aplicó el módulo de Ayora: la única fuente es el dato (v1.19). */
+const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2},
+              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5}};
 let RP=null;   // {key,P,lat,lon,alt} — planta de cotas cargada
 async function cargaCotas(key){
   if(RP&&RP.key===key)return RP;
@@ -836,7 +842,13 @@ async function cargaCotas(key){
     const m=ncuPorCoordenadas(cotas,lay.trackers);
     if(m.casados>cotas.t.length*0.9)ncuOf=m.ncuOf;
   }
-  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,modsTrk:modsPorTracker(cotas,lay),
+  // CUÁNTO DE LA PLANTA ES ESTO (v1.19). El levantamiento no cubre todos los
+  // trackers del plano: en San José son 2.182 de 2.289 (los 107 que faltan son
+  // los cortos, que no se levantaron: ni cota ni largo, así que no se dibujan
+  // ni se simulan). Callarlo hacía que «planta entera» pareciera la planta.
+  const conCotas=cotas.t.filter(Boolean).length, estim=cotas.t.filter(t=>t&&t.est).length;
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,
+      trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -928,14 +940,18 @@ function rebuildT(){
   if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
     T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
-    /* BIFILA TAMBIÉN AQUÍ. `T.west` dice qué viga de cada unidad lleva el motor, y solo lo
-       rellenaba El Burgo: en Ayora y San José salía undefined, o sea `west:true` en TODAS, y
-       cada viga se dibujaba con su motor —un seguidor monofila entero— en vez de media unidad
-       bifila. Se veía en la NCU 9 de San José: 40 líneas con 40 motores donde hay 20 unidades.
-       Las parejas ya las trae `plantFromCotas` en `groups` (las mismas con las que el BT acopla
-       el θ), así que aquí solo se lee lo que ya está medido: el par va ordenado por x, luego
-       g[0] es la viga OESTE —la del motor— y g[1] la ESTE. */
+    T.segZ=P.segZ;                       // cota MEDIDA de los dos extremos de cada mesa
+    T.segTilt=P.segTilt;
+    T.segPairs=P.segPairs;
+    /* BIFILA: el motor va en UNA viga de cada unidad, la oeste. `T.west` lo dice por LÍNEA
+       (`westDeGroups` sobre las parejas de `plantFromCotas`) y `T.westSeg` por MESA
+       (`westPorMesa` sobre `segPairs`, las parejas exactas por tracker). Manda la de mesa,
+       y por eso está: el emparejado por línea es el MAYORITARIO, y con el tresbolillo real
+       deja fuera al 13 % de los trackers de Ayora — esas mesas volverían a salir cada una
+       con su motor. La de línea se conserva para quien siga leyendo T.west. */
     T.west=westDeGroups(P.lineX.length,P.groups);
+    T.westSeg=F.westPorMesa(P);            // qué mesa lleva el motor (v1.17), la que manda
+    T.ejes=F.ejesPorMesa(P);               // el eje de transmisión de cada tracker
     T.obj=buildTReal(F,c,P);
   }else if(c.plant==='elburgo'&&EB){
     // tramos de mesa REALES por string, con sus caminos (verificado contra
@@ -953,6 +969,7 @@ function rebuildT(){
     const groups=elburgoGroups(EB.xs,EB.trkA);
     T={elev:z,xs:EB.xs,tilt:null,segs:segs};
     T.west=westDeGroups(c.nrows,groups);          // la misma regla que las plantas de cotas
+    T.westSeg=segs.map((l,r)=>l.map(()=>T.west[r]));   // en El Burgo las vigas van por línea
     T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
   }else{
     const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
@@ -966,7 +983,7 @@ function rebuildT(){
   // el largo medido (la fila larga = dos strings, uno por ala)
   if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
   else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
-                                                                       {mod:REALES[c.plant].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk});
+                                                                       {mod:RP.P.mod,segMods:RP.P.segMods});
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -1017,7 +1034,10 @@ function build3D(c){
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
-    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),T.tilt?96:8),
+    // malla del suelo proporcional a la planta: con 295 líneas sobre 2 km, 128
+    // segmentos daban celdas de 15 m y el relieve medido se aplanaba (v1.17)
+    new THREE.PlaneGeometry(span+40,maxLen+40,
+      Math.max(2,Math.min(2*n,320)),Math.max(8,Math.min(Math.round(maxLen/8),240))),
     new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
   // el suelo sigue el perfil E-O real (el mismo elev que come la física) y,
   // cuando la planta trae TILT N-S medido (cotas), también esa pendiente por
@@ -1026,7 +1046,34 @@ function build3D(c){
   // tilt «entraba en el terreno» y los postes asomaban sobre los módulos.
   // Se TIÑE por cota (bajo oscuro → alto claro): el relieve se lee de un vistazo.
   const gz=-(sMin+sMax)/2;
+  // COTA MEDIDA DE CADA MESA (v1.17): segZ[r][k] = [z del extremo sur, z del
+  // norte] de segs[r][k]. Antes el render colocaba todas las mesas de una
+  // línea a la cota MEDIA de la línea, y en Ayora dos mesas de la misma línea
+  // difieren 15,8 m de media (57,6 m la peor): las hundía o las hacía volar.
+  const hayZ=!!(T.segZ&&T.segZ.length);
+  const zTubo=(r,k,nn)=>{              // cota del EJE de la mesa (r,k) en el norte nn
+    if(!hayZ||!T.segZ[r]||!T.segZ[r][k])return T.elev[r];
+    const sg=segsNS[r][k], z=T.segZ[r][k];
+    const t2=(nn-sg[0])/((sg[1]-sg[0])||1);
+    return z[0]+t2*(z[1]-z[0]);
+  };
+  const cMesa=(r,k)=>zTubo(r,k,(segsNS[r][k][0]+segsNS[r][k][1])/2);
   const hLinea=(r,sceneZ)=>{           // cota del suelo bajo la línea r en esa N
+    const nn=-sceneZ;
+    if(hayZ&&T.segZ[r]&&T.segZ[r].length){
+      // POLIGONAL de las cotas medidas: dentro de una mesa, su recta; entre
+      // dos mesas (un camino), la recta que las une; fuera, el extremo
+      const L=segsNS[r], Z=T.segZ[r];
+      if(nn<=L[0][0])return Z[0][0];
+      for(let k=0;k<L.length;k++){
+        if(nn<=L[k][1]){
+          if(nn>=L[k][0])return zTubo(r,k,nn);
+          const t2=(nn-L[k-1][1])/((L[k][0]-L[k-1][1])||1);
+          return Z[k-1][1]+t2*(Z[k][0]-Z[k-1][1]);
+        }
+      }
+      return Z[L.length-1][1];
+    }
     if(!T.tilt&&!T.segTilt)return T.elev[r];
     let best=0,bd=Infinity;
     segsNS[r].forEach((sg,k)=>{
@@ -1037,11 +1084,25 @@ function build3D(c){
     });
     return T.elev[r]+best;
   };
+  // el motor va en la mesa OESTE de cada tracker (v1.17), no en toda la línea
+  const westK=(r,k)=>T.westSeg?T.westSeg[r][k]:(T.west?T.west[r]:true);
   {const pos=gnd.geometry.attributes.position;
-   const zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
+   let zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
+   if(hayZ){zLo=Infinity;zHi=-Infinity;for(const l of T.segZ)for(const z of l){zLo=Math.min(zLo,z[0],z[1]);zHi=Math.max(zHi,z[0],z[1]);}}
    const cols=new Float32Array(pos.count*3);
+   // el índice de línea sale de la x REAL, no de suponerlas equiespaciadas: los
+   // vanos de una planta medida no son iguales y entre bloques hay caminos de
+   // decenas de metros — con la regla uniforme el suelo se deslizaba respecto a
+   // las mesas (v1.17)
+   const idxDeX=(xv)=>{
+     if(xv<=rx[0])return 0;
+     if(xv>=rx[n-1])return n-1;
+     let a=0,b=n-1;
+     while(b-a>1){const mid=(a+b)>>1; if(rx[mid]<=xv)a=mid; else b=mid;}
+     return a+(xv-rx[a])/((rx[b]-rx[a])||1);
+   };
    for(let i=0;i<pos.count;i++){
-     const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/Math.max(1e-6,span/(n-1))));
+     const r=idxDeX(pos.getX(i));
      const r0=Math.floor(r), fr=r-r0, r1=Math.min(n-1,r0+1);
      const sceneZ=-pos.getY(i)+gz;      // el marco de escena de las mesas (z=−norte)
      const z=hLinea(r0,sceneZ)+fr*(hLinea(r1,sceneZ)-hLinea(r0,sceneZ));
@@ -1077,13 +1138,14 @@ function build3D(c){
   const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
   R3.rows=[];R3.inst=null;
   if(useInst){
-    buildInstanced(c,rx,segsNS,postM,D0);
+    buildInstanced(c,rx,segsNS,postM,D0,{cMesa:cMesa,zTubo:zTubo,hLinea:hLinea,westK:westK});
   }else{
   for(let r=0;r<n;r++){
-    const x=rx[r], hubY=T.elev[r]+2.0;                        // postH canónico del modelo
+    const x=rx[r];
     const spins=[];
     for(let k=0;k<segsNS[r].length;k++){
       const sg=segsNS[r][k];
+      const hubY=cMesa(r,k)+2.0;                              // postH canónico del modelo, sobre la cota de ESTA mesa
       // un material de tinte POR ALA (v1.14; por mesa desde v1.13): la mesa larga
       // lleva un string por ala y cada uno se pinta con lo suyo
       const mkTint=()=>new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
@@ -1106,7 +1168,7 @@ function build3D(c){
           // estira desde la corona al terreno», seguidor.js) — dejarlo dentro
           // del beam era el muñón de 1 m flotando bajo la corona («el soporte
           // central no existe»). Se construye abajo, vertical y hasta el suelo.
-          const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
+          const beam=Seguidor.buildBeam(THREE,{west:westK(r,k),detail:'mass',size:media?'medio':'largo',
                                                materials:R3.mats,skip:{antena:1,antenatip:1,soporte:1}});
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
@@ -1124,7 +1186,7 @@ function build3D(c){
           tiltG.add(yaw);
           // soporte central de la corona, la receta de terreno.html: del punto
           // bajo el bracket (eje −0,22) al terreno, VERTICAL en mundo
-          const sTop=hubY-0.22, sGnd=T.elev[r]-0.05, sL=Math.max(0.4,sTop-sGnd);
+          const sTop=hubY-0.22, sGnd=hLinea(r,zc)-0.05, sL=Math.max(0.4,sTop-sGnd);
           const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
           sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
           R3.world.add(sop);
@@ -1150,11 +1212,14 @@ function build3D(c){
       // largo — la regla de terreno.html; los tercios eran una retícula
       // inventada) y LONGITUD VARIABLE que absorbe el terreno: del suelo
       // drapeado bajo su punto al tubo, nunca por encima de los módulos
-      const tl=Math.sin(tiltK*D2R);
       const zPil=(hayModelo?Seguidor.pilotesX(mods):[-len/3,0,len/3])
         .filter(dn=>Math.abs(dn)<=len/2);   // el medio oculta los exteriores (la regla de terreno.html)
       for(const dn of zPil){
-        const gY=T.elev[r]-tl*dn-0.15, topY=hubY-tl*dn-0.08, L=Math.max(0.4,topY-gY);
+        // pie en el TERRENO bajo su punto y cabeza en el TUBO de su mesa: los
+        // dos MEDIDOS (antes salían de la cota media de la línea y el poste
+        // asomaba o se enterraba donde la mesa se aparta de ella)
+        const nn=(sg[0]+sg[1])/2+dn;
+        const gY=hLinea(r,-nn)-0.15, topY=zTubo(r,k,nn)+2.0-0.08, L=Math.max(0.4,topY-gY);
         const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,L,8),postM);
         post.position.set(x,(gY+topY)/2,zc-dn);
         post.castShadow=true;
@@ -1220,18 +1285,15 @@ function build3D(c){
   // a la altura del eje del tubo, con su capa de líneas 1 px como El Burgo.
   // «En Ayora ni motores ni bielas»: los motores ya venían del modelo (los
   // tapaba el tinte corrido); los ejes faltaban de verdad.
-  if(c.plant!=='elburgo'&&T.obj&&T.obj.groups){
-    const pares=T.obj.groups.filter(g2=>g2.length===2);
-    if(pares.length){
+  if(c.plant!=='elburgo'&&T.ejes&&T.ejes.length){
+    {
+      // UN eje por TRACKER, entre SUS dos mesas y a la cota MEDIDA de cada
+      // una en el centro del solape (v1.17). Antes salía del emparejado por
+      // LÍNEA y de «el tramo más próximo»: con el tresbolillo real unía mesas
+      // de trackers distintos y dejaba otras sin eje, con pinta de monofila.
       const ejes=[];
-      for(const [a,b] of pares){
-        for(const sa of (segsNS[a]||[])){
-          const ca=(sa[0]+sa[1])/2;
-          const sb=(segsNS[b]||[]).find(s2=>ca>=s2[0]-2&&ca<=s2[1]+2);
-          if(!sb)continue;
-          ejes.push([rx[a],T.elev[a]+2.0,rx[b],T.elev[b]+2.0,-ca]);
-        }
-      }
+      for(const e of T.ejes)
+        ejes.push([rx[e.r1],zTubo(e.r1,e.k1,e.n)+2.0,rx[e.r2],zTubo(e.r2,e.k2,e.n)+2.0,-e.n]);
       if(ejes.length){
         const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
         const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03,0.03,1,8),bielM,ejes.length);
@@ -1276,14 +1338,16 @@ function build3D(c){
    cuerda); las fijas se colocan una vez. El tinte de producción es UN
    InstancedMesh de planos con color POR INSTANCIA, y también sirve de blanco
    del picking (instanceId → tramo). */
-function buildInstanced(c,rx,segsNS,postM,D0){
+function buildInstanced(c,rx,segsNS,postM,D0,G){
   const tramos=[];
   for(let r=0;r<c.nrows;r++){
-    const x=rx[r], hubY=T.elev[r]+2.0;
+    const x=rx[r];
     for(let k=0;k<segsNS[r].length;k++){
       const sg=segsNS[r][k], len=Math.max(2,sg[1]-sg[0]);
       const tilt=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);   // tilt de ESTA mesa
-      tramos.push({row:r,k:k,x:x,hubY:hubY,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,s0:sg[0],s1:sg[1]});
+      // cota MEDIDA de esta mesa (v1.17) y su motor: la oeste de su tracker
+      tramos.push({row:r,k:k,x:x,hubY:G.cMesa(r,k)+2.0,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,
+                   s0:sg[0],s1:sg[1],west:G.westK(r,k)});
     }
   }
   // base por tramo (posición + tilt N-S medido + tubo del modelo a norte) y
@@ -1305,14 +1369,15 @@ function buildInstanced(c,rx,segsNS,postM,D0){
   tramos.forEach((tr,ti)=>{
     const media=tr.len<0.7*T.obj.filaLen;
     const mods=Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
-    const key=mods+(media?'|medio':'|largo');
-    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',idx:[]});
+    // la talla incluye si la mesa lleva MOTOR: la gemela del bifila va sin él
+    const key=mods+(media?'|medio':'|largo')+(tr.west?'|w':'|e');
+    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',west:tr.west,idx:[]});
     porTalla.get(key).idx.push(ti);
   });
   const spinMeshes=[],tmpM=new THREE.Matrix4();
   for(const g of porTalla.values()){
     Seguidor.setModsPerStr(g.mods);
-    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:true});
+    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:g.west});
     for(const p of plan){
       // mismos descartes que buildBeam en esta página: antena y enlaces por-frame
       if(p.motorLink||p.damperLink||p.key==='antena'||p.key==='antenatip')continue;
@@ -1324,7 +1389,7 @@ function buildInstanced(c,rx,segsNS,postM,D0){
         im2.userData.pickTramos=tramos;im2.userData.nLocals=1;im2.userData.tramoIdx=g.idx;
         {let id=0;const mS3=new THREE.Matrix4();
          for(const ti of g.idx){
-           const tr=tramos[ti], sTop=tr.hubY-0.22, sGnd=T.elev[tr.row]-0.05, sL=Math.max(0.4,sTop-sGnd);
+           const tr=tramos[ti], sTop=tr.hubY-0.22, sGnd=G.hLinea(tr.row,tr.zc)-0.05, sL=Math.max(0.4,sTop-sGnd);
            tmpM.makeTranslation(tr.x,(sTop+sGnd)/2,tr.zc).multiply(mS3.makeScale(1,sL,1));
            im2.setMatrixAt(id++,tmpM);
          }}
@@ -1359,11 +1424,12 @@ function buildInstanced(c,rx,segsNS,postM,D0){
   for(const g of porTalla.values()){
     const zPil=Seguidor.pilotesX(g.mods);
     for(const ti of g.idx){
-      const tr=tramos[ti], tl=Math.sin(tr.tilt*D2R);
+      const tr=tramos[ti];
       for(const dn of zPil){
         if(Math.abs(dn)>tr.len/2)continue;
-        const gY=T.elev[tr.row]-tl*dn-0.15, topY=tr.hubY-tl*dn-0.08;
-        postes.push([tr.x,gY,topY,tr.zc-dn]);
+        // pie en el terreno MEDIDO y cabeza en el tubo MEDIDO de su mesa
+        const nn=(tr.s0+tr.s1)/2+dn;
+        postes.push([tr.x,G.hLinea(tr.row,-nn)-0.15,G.zTubo(tr.row,tr.k,nn)+2.0-0.08,tr.zc-dn]);
       }
     }
   }
@@ -1410,11 +1476,16 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
 }
 
 function ramp(x){return F.prodColor(x);}
-function paintLegend(mn,mx,unit,fmt){
+function paintLegend(mn,mx,unit,fmt,esc){
   const stops=[];for(let i=0;i<=8;i++)stops.push(ramp(i/8)+' '+(i*12.5)+'%');
   $('legbar').style.background='linear-gradient(90deg,'+stops.join(',')+')';
-  $('leglo').textContent=fmt(mn);
-  $('leghi').textContent=fmt(mx)+' '+unit;
+  // la leyenda dice los EXTREMOS DE LA RAMPA (lo que el color significa) y,
+  // en contraste, cuánto abarca de verdad ese tramo: sin ese dato un arcoíris
+  // sobre el 1,5 % se lee como si unas mesas produjeran el doble que otras
+  const R=esc||{lo:mn,hi:mx,rel:true};
+  $('leglo').textContent=fmt(R.lo);
+  const d=mx>0?100*(mx-mn)/mx:0;
+  $('leghi').textContent=fmt(R.hi)+' '+unit+(R.rel?' · las de la vista se reparten '+(d<0.05?'<0,1':d.toFixed(d<10?1:0)).replace('.',',')+' %':'');
 }
 
 function repaint(){
@@ -1472,8 +1543,9 @@ function repaint(){
   // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
   // colores de escala completa — «¿por qué esas producen menos?» sin producir
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
-  const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
-  paintLegend(mn,mx,unit,fmt);
+  const esc=rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs');
+  const norm=(v,lo,hi)=>{const s=esc.hi-esc.lo;return s>Math.max(1e-9,Math.abs(esc.hi)*1e-3)?(v-esc.lo)/s:0.5;};
+  paintLegend(mn,mx,unit,fmt,esc);
   if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals);
   else for(let r=0;r<c.nrows;r++){
     if(R3.rows&&R3.rows[r]){
@@ -1544,6 +1616,13 @@ function paintACline(inst,c,acDay){
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
   if(c.ac.gridW>0)h+=' → red '+f1(a.redW)+' kW';
   if(c.meteo==='tmy'&&c.tmy)h+=' · <b>TMY</b> Tamb '+inst.met.tamb.toFixed(1)+' °C · v '+inst.met.wind.toFixed(1)+' m/s';
+  // lo que hay en el modelo, dicho: trackers levantados de los del plano
+  if(REALES[c.plant]&&RP&&RP.key===c.plant&&RP.trkLayout){
+    const fuera=RP.trkLayout-RP.trkCotas;
+    h+=' · <b>'+RP.trkCotas.toLocaleString('es')+'</b> de '+RP.trkLayout.toLocaleString('es')+' trackers del plano'+
+       (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'')+
+       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'');
+  }
   if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
               (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
   $('acline').innerHTML=h;
@@ -1710,7 +1789,10 @@ function repaintPick(){
         (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
         (T.segTilt&&kk!=null?' · tilt N-S de la mesa '+T.segTilt[r][kk].toFixed(2)+'° (línea '+T.tilt[r].toFixed(2)+'°)'
                             :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
-        ' · cota '+T.elev[r].toFixed(2)+' m'+(ent&&ent.inv!=null?' · inversor I'+ent.inv:'');
+        ' · cota '+((T.segZ&&kk!=null&&T.segZ[r]&&T.segZ[r][kk])?((T.segZ[r][kk][0]+T.segZ[r][kk][1])/2).toFixed(2)+' m (de la mesa)'
+                                                                :T.elev[r].toFixed(2)+' m')+
+        (T.westSeg&&kk!=null?(T.westSeg[r][kk]?' · con MOTOR':' · gemela (sin motor)'):'')+
+        (ent&&ent.inv!=null?' · inversor I'+ent.inv:'');
   }
   const segPoa=(d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null)?d.inst.segs[r][kk]:null;
   const wPoa=(w!=null&&kk!=null&&d.inst.wings&&d.inst.wings[r]&&d.inst.wings[r][kk]&&d.inst.wings[r][kk][w]!=null)?d.inst.wings[r][kk][w]:null;
@@ -1785,7 +1867,7 @@ function repaintPick(){
       $('ninv').value=ninv;$('ninv').disabled=true;
     }else if(REALES[key]){
       // módulos de los strings REALES de las filas medidas (layout + largo, v1.16)
-      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:REALES[key].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk}).flat().reduce((a,e2)=>a+e2.mods,0);
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:RP.P.mod,segMods:RP.P.segMods}).flat().reduce((a,e2)=>a+e2.mods,0);
       if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
       ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
       $('ninv').value=ninv;$('ninv').disabled=false;
@@ -1836,6 +1918,7 @@ function repaintPick(){
   $('btncareo').addEventListener('click',runCareo);
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
+  $('cscale').addEventListener('change',repaint);
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
   $('manth').addEventListener('input',()=>{invalida();repaint();});
   $('tpreset').addEventListener('change',()=>{

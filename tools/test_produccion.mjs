@@ -39,9 +39,9 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -525,37 +525,61 @@ t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — A
   if (ms > 3000) throw new Error('el instante de la planta entera tarda ' + ms + ' ms');
 });
 
-t('MÓDULOS REALES (v1.16): en Ayora cada fila son DOS strings de 28/21/14 módulos de 1,303 m (layout, y el largo cuando falta); nunca 33 + 32', () => {
-  const MOD = { w: 1.303, gap: 0.015, drive: 0.70, strPerFila: 2 };
-  const P = S.plantaCotas(S.F, cotasAyora), inv = S.invMapUniforme(P.elev.length, 1);
-  const mt = S.modsPorTracker(cotasAyora, layAyora);
-  if (mt.size !== layAyora.trackers.filter(t => t.mods != null).length) throw new Error('modsPorTracker: ' + mt.size + ' trackers con módulos');
-  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6, { mod: MOD, segTrk: P.segTrk, modsTrk: mt });
-  let filas = 0, porLayout = 0, porLargo = 0; const vistos = new Set();
-  P.segs.forEach((l, r) => l.forEach((sg, k) => {
-    filas++;
-    const ent = si[r].filter(e => e.k === k);
-    if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k}: ${ent.length} strings`);
-    if (ent[0].mods !== ent[1].mods) throw new Error(`fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
-    if (![28, 21, 14].includes(ent[0].mods)) throw new Error(`fila ${r}/${k}: ${ent[0].mods} módulos por string (${(sg[1] - sg[0]).toFixed(1)} m)`);
-    const trk = P.segTrk[r][k], known = mt.get(trk);
-    if (known != null) { if (ent[0].mods !== known || ent[0].src !== 'layout') throw new Error(`fila ${r}/${k}: ${ent[0].mods} ≠ layout ${known}`); porLayout++; }
-    else { if (ent[0].src !== 'largo') throw new Error('sin layout debería ir por largo'); porLargo++; }
-    // el largo medido CUADRA con 2·mods módulos de 1,303 + huecos (±0,6 m)
-    const esp = 2 * ent[0].mods * MOD.w + (2 * ent[0].mods - 2) * MOD.gap + MOD.drive;
-    if (Math.abs(esp - (sg[1] - sg[0])) > 1.5) throw new Error(`fila ${r}/${k}: ${(sg[1] - sg[0]).toFixed(2)} m no son 2×${ent[0].mods} módulos (${esp.toFixed(2)} m)`);
-    vistos.add(trk);
-  }));
-  if (!(porLayout > filas * 0.8) || !(porLargo > 0)) throw new Error(porLayout + ' filas por layout y ' + porLargo + ' por largo de ' + filas);
-  // y la cadena vieja (por largo con el módulo de El Burgo) es la que daba 65 = 33 + 32: el careo distingue
-  const viejo = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6);
-  const par = viejo[0].filter(e => e.k === 0);
-  if (par.length === 2 && par[0].mods === par[1].mods) throw new Error('el camino viejo ya no reparte impar: el careo no distingue');
-  // San José: sin «mods» en el layout, todo por largo, y son 2×28 en (casi) todas
-  const Ps = S.plantaCotas(S.F, cotasSJ), sj = S.strInvCotas(Ps.segs, S.invMapUniforme(Ps.elev.length, 1), 1.146, 0.55, 64.6, { mod: MOD, segTrk: Ps.segTrk, modsTrk: S.modsPorTracker(cotasSJ, laySJ) });
-  const fl = sj.flat(); const n28 = fl.filter(e => e.mods === 28).length;
-  if (!(n28 > fl.length * 0.98)) throw new Error('San José: ' + n28 + '/' + fl.length + ' strings de 28');
-  if (fl.some(e => e.src !== 'largo')) throw new Error('San José no trae módulos en el layout: todo debería ir por largo');
+t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la ficha del módulo), no de una tabla escrita a mano', () => {
+  for (const [cotas, nombre, mdEsperados, wEsperado] of [[cotasAyora, 'Ayora', [28, 21, 14], 1.303],
+                                                          [cotasSJ, 'San José', [32], 1.134]]) {
+    // (a) el fichero de cotas trae la ficha del módulo y los módulos por string
+    if (!cotas.mod || !(cotas.mod.modW > 0)) throw new Error(nombre + ': las cotas no publican la ficha del módulo');
+    if (Math.abs(cotas.mod.modW - wEsperado) > 1e-9) throw new Error(`${nombre}: módulo ${cotas.mod.modW} ≠ ${wEsperado} del levantamiento`);
+    const M = cotas.mod;
+    let sinMd = 0, n = 0, peor = 0;
+    for (const tk of cotas.t) {
+      if (!tk) continue;
+      for (const f of tk.f) {
+        n++;
+        if (!(f.md > 0)) { sinMd++; continue; }
+        // los trackers reconstruidos del plano (est) llevan el tamaño de SU
+        // tipo, que puede no estar entre los levantados: en San José los
+        // «medio» son justo los que no se levantaron (16 módulos por string)
+        if (!tk.est && !mdEsperados.includes(f.md)) throw new Error(`${nombre}: md ${f.md} fuera de ${mdEsperados}`);
+        // el largo MEDIDO tiene que cuadrar con 2 strings de md módulos
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+        peor = Math.max(peor, Math.abs(L - esp));
+      }
+    }
+    if (sinMd) throw new Error(`${nombre}: ${sinMd} de ${n} filas sin módulos en el levantamiento`);
+    if (peor > 1.5) throw new Error(`${nombre}: una fila se aparta ${peor.toFixed(2)} m de 2×md módulos`);
+    // (b) plantFromCotas los publica por mesa y strInvCotas los usa: dos strings iguales por fila
+    const P = S.plantaCotas(S.F, cotas), inv = S.invMapUniforme(P.elev.length, 1);
+    if (!P.segMods || !P.mod) throw new Error(nombre + ': plantFromCotas no publica segMods / mod');
+    const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, null, { mod: P.mod, segMods: P.segMods });
+    let porDato = 0, filas = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      filas++;
+      const ent = si[r].filter(e => e.k === k);
+      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`${nombre} fila ${r}/${k}: ${ent.length} strings`);
+      if (ent[0].mods !== ent[1].mods) throw new Error(`${nombre} fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
+      if (ent[0].mods !== P.segMods[r][k]) throw new Error(`${nombre} fila ${r}/${k}: ${ent[0].mods} ≠ ${P.segMods[r][k]} del levantamiento`);
+      if (ent[0].src === 'levantamiento') porDato++;
+    }));
+    if (porDato !== filas) throw new Error(`${nombre}: solo ${porDato} de ${filas} filas con módulos del levantamiento`);
+    // (c) MUTANTE: con el módulo de la otra planta, el largo deja de cuadrar
+    const otro = wEsperado === 1.303 ? 1.134 : 1.303;
+    const sg0 = P.segs[0][0], md0 = P.segMods[0][0];
+    const espOtro = 2 * md0 * otro + (2 * md0 - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+    if (Math.abs((sg0[1] - sg0[0]) - espOtro) < 1.5) throw new Error(nombre + ': el módulo de la otra planta también cuadra — el careo no distingue');
+  }
+  // y la página ya no lleva la tabla de módulos escrita a mano
+  if (/strPerFila/.test(pg)) throw new Error('produccion.html conserva la tabla de módulos inventada');
+  // ni se calla cuánto de la planta está en el modelo: San José son 2.182 de
+  // los 2.289 trackers del plano (los 107 cortos no se levantaron)
+  const laySJn = laySJ.trackers.length, conCotas = cotasSJ.t.filter(Boolean).length;
+  const est = cotasSJ.t.filter(t2 => t2 && t2.est).length;
+  if (laySJn !== 2289 || conCotas !== 2289 || est !== 107)
+    throw new Error(`San José: ${conCotas} de ${laySJn}, ${est} estimados (esperado 2.289 de 2.289, 107 estimados)`);
+  if (!pg.includes("trackers del plano")) throw new Error('la página no declara cuántos trackers del plano están en el modelo');
+  if (!pg.includes("con cota estimada del plano")) throw new Error('la página no declara los trackers con cota estimada');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
