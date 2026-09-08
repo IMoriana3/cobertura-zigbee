@@ -1691,5 +1691,166 @@ t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
 });
 
 console.log('');
+console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');
+
+// ORÁCULO INDEPENDIENTE del detector. No comparte una línea con la versión de
+// Python: allí se indexa por cubos en x, aquí se recorre una ventana sobre los
+// puntos ordenados por y. La lección del terreno fantasma fue justo esta — el
+// oráculo no cazó el fallo porque llevaba dentro una copia del código malo.
+function oraculoRefVertical(P, umbral = 3, dy = 3, dx = 60, minv = 6) {
+  const n = P.id.length;
+  const ord = Array.from({ length: n }, (_, i) => i).sort((a, b) => P.y[a] - P.y[b]);
+  const malos = new Map();                       // id de fila -> [[id de punto, desvío]]
+  for (let k = 0; k < n; k++) {
+    const i = ord[k], z = [];
+    for (let d = -1; d <= 1; d += 2)             // hacia atrás y hacia delante en y
+      for (let m = k + d; m >= 0 && m < n; m += d) {
+        const j = ord[m];
+        if (Math.abs(P.y[j] - P.y[i]) > dy) break;
+        if (Math.abs(P.x[j] - P.x[i]) <= dx) z.push(P.z[j]);
+      }
+    if (z.length < minv) continue;
+    z.sort((a, b) => a - b);
+    const r = P.z[i] - z[(z.length / 2) | 0];
+    if (Math.abs(r) > umbral) {
+      const f = P.filas[P.fi[i]];
+      if (!malos.has(f)) malos.set(f, []);
+      malos.get(f).push([P.id[i], r]);
+    }
+  }
+  return malos;
+}
+// nube sintética: LIN líneas de seguidores, EST estaciones de medida por línea
+function nubeSintetica(zDe, LIN = 12, EST = 6, pitch = 6) {
+  const P = { id: [], x: [], y: [], z: [], fi: [], filas: [] };
+  for (let l = 0; l < LIN; l++)
+    for (let e = 0; e < EST; e++) {
+      P.filas.push('L' + l + '-E' + e);
+      for (const off of [0, 0.9]) {              // los puntos van en pareja (junta entre mesas)
+        P.id.push(P.id.length + 1); P.x.push(l * pitch); P.y.push(e * 37 + off);
+        P.z.push(zDe(l, e)); P.fi.push(P.filas.length - 1);
+      }
+    }
+  return P;
+}
+
+t('relieve solidario (un talud) NO se marca: es terreno, no referencia', () => {
+  // Un escalón de −3,5 m a partir de la estación 2, IGUAL en todas las líneas.
+  // Con una bola de radio fijo la mediana mezcla los dos niveles y marca
+  // terreno bueno: en San José daba 7 falsos positivos en el borde de TR-07.
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const m = oraculoRefVertical(P);
+  if (m.size) throw new Error('marca un talud real como referencia vertical: ' + [...m.keys()].join(', '));
+});
+t('punto aislado con otra referencia SÍ se marca, y solo él', () => {
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const i = P.filas.indexOf('L5-E3') * 2;        // un solo punto de una sola fila
+  P.z[i] += 36.6;
+  const m = oraculoRefVertical(P);
+  if (m.size !== 1 || !m.has('L5-E3')) throw new Error('esperaba solo L5-E3, salió: ' + [...m.keys()].join(', '));
+  if (m.get('L5-E3').length !== 1) throw new Error('marca más puntos de la fila de los que están mal');
+});
+t('el umbral no es delicado: de 3 a 20 m marca lo mismo en San José', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const n = u => [...oraculoRefVertical(P, u).values()].reduce((a, v) => a + v.length, 0);
+  const a = n(3), b = n(20);
+  if (a !== b) throw new Error('la banda vacía entre familias se cerró: umbral 3 marca ' + a + ' y umbral 20 marca ' + b +
+    ' — hay algo entre 3 y 20 m que ya no es ni ruido ni geoide, mirarlo antes de tocar el umbral');
+  if (a < 50) throw new Error('el detector dejó de ver la familia del geoide (' + a + ' puntos)');
+});
+t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const esp = new Set([...oraculoRefVertical(P).keys()].filter(id =>
+    JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_asbuilt.json'), 'utf-8')).f.some(r => r.id === id)));
+  let r;
+  try { r = require_child().execFileSync('python3',
+    [path.join(ROOT, 'tools', 'cotas_asbuilt.py'), 'sanjose'], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('cotas_asbuilt.py falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-600)); }
+  const dicho = new Set([...r.matchAll(/^\s+(\S+)\s+cota .*\[por punto\]/gm)].map(m => m[1]));
+  const falta = [...esp].filter(x => !dicho.has(x)), sobra = [...dicho].filter(x => !esp.has(x));
+  if (falta.length || sobra.length)
+    throw new Error('discrepan: Python no condena ' + (falta.join(', ') || '—') +
+                    ' · condena de más ' + (sobra.join(', ') || '—'));
+  if (!esp.size) throw new Error('el oráculo no condena nada: el test se quedó sin dientes');
+});
+t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila', () => {
+  // Este es el motivo de todo el cambio, y el dato dice algo más preciso de lo
+  // que parecía: lo que cambia de referencia no es un punto suelto, es una
+  // MESA ENTERA (una sesión de campo). En TR-09_1-044-E la mesa sur está a
+  // 1531,7 m y la norte a 1568,7 — 36,7 m de salto EN EL MISMO TUBO, que es
+  // imposible; su hermana -W tiene las cuatro cotas a 1531,x. Como el as-built
+  // se queda con un extremo de cada mesa, la media de la fila sale a MITAD de
+  // camino (+18,2 m) y pasaba el umbral de 3 m por suerte, no por diseño.
+  const fp = path.join(ROOT, 'sanjose_puntos.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
+  if (!fs.existsSync(fp) || !fs.existsSync(fa)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const m = oraculoRefVertical(P).get('TR-09_1-044-E');
+  if (!m) throw new Error('TR-09_1-044-E dejó de detectarse por punto');
+  if (Math.min(...m.map(v => Math.abs(v[1]))) < 30)
+    throw new Error('por punto ya no se ve entero: ' + m.map(v => v[1].toFixed(1)).join(', '));
+  // los marcados son los DOS puntos de una misma mesa, no puntos sueltos
+  const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
+  if (m.length !== 2 || ys[1] - ys[0] > 40)
+    throw new Error('esperaba la mesa entera (2 puntos a <40 m), salieron ' + m.length + ' repartidos ' +
+      (ys.length > 1 ? (ys[ys.length - 1] - ys[0]).toFixed(1) + ' m' : ''));
+  // y por fila el salto se ve a la mitad: ésa es la dilución que justifica el cambio
+  const A = JSON.parse(fs.readFileSync(fa, 'utf-8')).f;
+  const R = A.find(r => r.id === 'TR-09_1-044-E'), S = A.find(r => r.id === 'TR-09_1-044-W');
+  const dFila = Math.abs((R.ys + R.yn) / 2 - (S.ys + S.yn) / 2);
+  if (!(dFila > 15 && dFila < 25))
+    throw new Error('la dilución a la mitad ya no es tal (' + dFila.toFixed(1) + ' m): revisar el ejemplo del test');
+});
+t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
+  // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
+  // mediana de su vecindario se apoyaba en su hermana TR-08_1-002-W, condenada
+  // dos líneas antes. TR-08_1-001-E, en cambio, sí está contaminada y su
+  // seguidor no tiene otra fila: ese tiene que quedarse SIN MEDIR.
+  const f = path.join(ROOT, 'sanjose_cotas.json');
+  if (!fs.existsSync(f)) return;
+  const C = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const tk = id => C.t.some(x => x && x.tk === id);
+  if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
+  if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
+});
+t('Ayora está limpia: ningún punto se aparta de sus laterales', () => {
+  const f = path.join(ROOT, 'ayora_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const m = oraculoRefVertical(P, 2);
+  if (m.size) throw new Error('aparece referencia vertical en Ayora: ' + [...m.keys()].slice(0, 5).join(', '));
+});
+t('la nube casa con el as-built: mesas enteras y z absoluta coherente', () => {
+  // Cuántos puntos toca por fila NO es el mismo número en las dos plantas, y
+  // eso es geometría, no un fallo: en Ayora la fila es UNA mesa (2 extremos) y
+  // en San José son DOS mesas por tubo (4 extremos). Lo que se vigila es que
+  // sea 2 ó 4 y que la planta sea consistente consigo misma.
+  for (const pl of ['ayora', 'sanjose']) {
+    const fp = path.join(ROOT, pl + '_puntos.json'), fa = path.join(ROOT, pl + '_asbuilt.json');
+    if (!fs.existsSync(fp) || !fs.existsSync(fa)) continue;
+    const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
+    const cnt = new Map();
+    for (const i of P.fi) cnt.set(i, (cnt.get(i) || 0) + 1);
+    const v = [...cnt.values()].sort((a, b) => a - b), med = v[(v.length / 2) | 0];
+    if (med !== 2 && med !== 4)
+      throw new Error(pl + ': la mediana de puntos por fila es ' + med + ', ni 2 (una mesa) ni 4 (dos mesas)');
+    const raros = v.filter(x => x !== med).length;
+    if (raros > v.length * 0.05)
+      throw new Error(pl + ': ' + raros + ' de ' + v.length + ' filas no traen ' + med + ' puntos (>5 %)');
+    const ids = new Set(A.f.map(r => r.id));
+    const casan = P.filas.filter(x => ids.has(x)).length;
+    if (casan < A.f.length * 0.95)
+      throw new Error(pl + ': solo ' + casan + ' de ' + A.f.length + ' filas del as-built tienen puntos');
+    const b = A.meta.base;
+    if (Math.min(...P.z) < b - 200 || Math.max(...P.z) > b + 200)
+      throw new Error(pl + ': z fuera de banda respecto a base=' + b + ' (¿se coló una cota relativa?)');
+  }
+});
+
+console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
