@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -195,6 +195,8 @@ t('E por string: día positivo, y por inversor la SUMA conserva la energía', ()
 // ── cotas z REALES de extremos de mesa (el mismo cargador que el simulador) ──
 const cotasAyora = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
 const layAyora = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_layout.json'), 'utf-8'));
+const cotasSJ = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+const laySJ = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
 
 t('Ayora: buildTReal usa las cotas z medidas — tilt N-S no nulo, pitch por vano y pairDz del solape', () => {
   const P = S.F.plantFromCotas(cotasAyora, 80, null);
@@ -521,6 +523,39 @@ t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — A
   const t0 = Date.now(); const r = S.instant(S.F, c, T, 7 * 60 + 30); const ms = Date.now() - t0;
   if (!(r.plant > 50)) throw new Error('la planta entera no calcula: ' + r.plant);
   if (ms > 3000) throw new Error('el instante de la planta entera tarda ' + ms + ' ms');
+});
+
+t('MÓDULOS REALES (v1.16): en Ayora cada fila son DOS strings de 28/21/14 módulos de 1,303 m (layout, y el largo cuando falta); nunca 33 + 32', () => {
+  const MOD = { w: 1.303, gap: 0.015, drive: 0.70, strPerFila: 2 };
+  const P = S.plantaCotas(S.F, cotasAyora), inv = S.invMapUniforme(P.elev.length, 1);
+  const mt = S.modsPorTracker(cotasAyora, layAyora);
+  if (mt.size !== layAyora.trackers.filter(t => t.mods != null).length) throw new Error('modsPorTracker: ' + mt.size + ' trackers con módulos');
+  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6, { mod: MOD, segTrk: P.segTrk, modsTrk: mt });
+  let filas = 0, porLayout = 0, porLargo = 0; const vistos = new Set();
+  P.segs.forEach((l, r) => l.forEach((sg, k) => {
+    filas++;
+    const ent = si[r].filter(e => e.k === k);
+    if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k}: ${ent.length} strings`);
+    if (ent[0].mods !== ent[1].mods) throw new Error(`fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
+    if (![28, 21, 14].includes(ent[0].mods)) throw new Error(`fila ${r}/${k}: ${ent[0].mods} módulos por string (${(sg[1] - sg[0]).toFixed(1)} m)`);
+    const trk = P.segTrk[r][k], known = mt.get(trk);
+    if (known != null) { if (ent[0].mods !== known || ent[0].src !== 'layout') throw new Error(`fila ${r}/${k}: ${ent[0].mods} ≠ layout ${known}`); porLayout++; }
+    else { if (ent[0].src !== 'largo') throw new Error('sin layout debería ir por largo'); porLargo++; }
+    // el largo medido CUADRA con 2·mods módulos de 1,303 + huecos (±0,6 m)
+    const esp = 2 * ent[0].mods * MOD.w + (2 * ent[0].mods - 2) * MOD.gap + MOD.drive;
+    if (Math.abs(esp - (sg[1] - sg[0])) > 1.5) throw new Error(`fila ${r}/${k}: ${(sg[1] - sg[0]).toFixed(2)} m no son 2×${ent[0].mods} módulos (${esp.toFixed(2)} m)`);
+    vistos.add(trk);
+  }));
+  if (!(porLayout > filas * 0.8) || !(porLargo > 0)) throw new Error(porLayout + ' filas por layout y ' + porLargo + ' por largo de ' + filas);
+  // y la cadena vieja (por largo con el módulo de El Burgo) es la que daba 65 = 33 + 32: el careo distingue
+  const viejo = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6);
+  const par = viejo[0].filter(e => e.k === 0);
+  if (par.length === 2 && par[0].mods === par[1].mods) throw new Error('el camino viejo ya no reparte impar: el careo no distingue');
+  // San José: sin «mods» en el layout, todo por largo, y son 2×28 en (casi) todas
+  const Ps = S.plantaCotas(S.F, cotasSJ), sj = S.strInvCotas(Ps.segs, S.invMapUniforme(Ps.elev.length, 1), 1.146, 0.55, 64.6, { mod: MOD, segTrk: Ps.segTrk, modsTrk: S.modsPorTracker(cotasSJ, laySJ) });
+  const fl = sj.flat(); const n28 = fl.filter(e => e.mods === 28).length;
+  if (!(n28 > fl.length * 0.98)) throw new Error('San José: ' + n28 + '/' + fl.length + ' strings de 28');
+  if (fl.some(e => e.src !== 'largo')) throw new Error('San José no trae módulos en el layout: todo debería ir por largo');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {

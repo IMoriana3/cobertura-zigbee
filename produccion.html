@@ -380,8 +380,24 @@ function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
    paso de módulo canónico (1,146 m) y el hueco del motor — el mismo dato que
    dimensiona el render. Aproximación declarada: módulos por largo, no por
    plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
-function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen){
+function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
+  // v1.16: con la FICHA de la planta (opt.mod: módulo real, hueco, strings por
+  // fila; opt.modsTrk: módulos por string del layout, por identidad de tracker)
+  // los strings son los de verdad. Contarlos por largo con el módulo de El
+  // Burgo daba en Ayora 65 módulos por fila repartidos 33 + 32 — dos strings
+  // de la misma mesa con distinta potencia y el mismo tilt — en vez de 28 + 28.
+  if(opt&&opt.mod){
+    const M=opt.mod, nS=M.strPerFila||2;
+    return segs.map((l,r)=>l.flatMap((sg,k)=>{
+      const L=sg[1]-sg[0], trk=(opt.segTrk&&opt.segTrk[r])?opt.segTrk[r][k]:null;
+      const known=(opt.modsTrk&&trk!=null)?opt.modsTrk.get(trk):null;
+      const porLargo=Math.max(1,Math.round((L-M.drive+M.gap)/(nS*(M.w+M.gap))));
+      const mods=(known>0)?known:porLargo, src=(known>0)?'layout':'largo';
+      if(nS===2)return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
+      return [{inv:invRows[r],k:k,w:null,mods:mods,src:src}];
+    }));
+  }
   return segs.map((l,r)=>l.flatMap((sg,k)=>{
     const mods=Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm));
     // v1.14: la fila LARGA son DOS strings, uno por ALA (sur = 0 → «a», norte =
@@ -394,6 +410,16 @@ function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen){
     }
     return [{inv:invRows[r],k:k,w:null,mods:mods}];
   }));
+}
+/* módulos por STRING de cada tracker según el layout (Ayora: «Interior 1V28»,
+   mods 28/21/14), por IDENTIDAD del objeto de cotas.t — solo cuando layout y
+   cotas van 1:1 (la misma condición que las NCU). Sin dato ⇒ null y el largo
+   manda (v1.16). */
+function modsPorTracker(cotas,lay){
+  const m=new Map();
+  if(!lay||!lay.trackers||!cotas||!cotas.t||lay.trackers.length!==cotas.t.length)return m;
+  cotas.t.forEach((tk,i)=>{const v=lay.trackers[i]&&lay.trackers[i].mods;if(tk&&v!=null&&isFinite(+v)&&+v>0)m.set(tk,+v);});
+  return m;
 }
 /* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
    dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
@@ -771,8 +797,14 @@ async function cargaFisica(){
 }
 
 /* plantas de cotas reales (el mismo dato que carga el simulador de BT 3D) */
-const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2},
-              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5}};
+/* mod (v1.16): el MÓDULO real de la planta y sus strings por fila — Ayora y San
+   José llevan DOS strings por fila (uno por ala) de módulos de 1,303 m (Risen /
+   Luxen), no el de El Burgo (1,146): el largo medido lo confirma al centímetro
+   (Ayora: 74,65 m = 2·28·1,303 + 54·0,015 + 0,70; 56,18 = 2·21; 37,74 = 2·14;
+   San José 74,43 = 2·28). Los módulos por string salen del LAYOUT cuando lo
+   trae (Ayora: 645 de 751 trackers) y del largo cuando no. */
+const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}},
+              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}}};
 let RP=null;   // {key,P,lat,lon,alt} — planta de cotas cargada
 async function cargaCotas(key){
   if(RP&&RP.key===key)return RP;
@@ -790,7 +822,7 @@ async function cargaCotas(key){
     const m=ncuPorCoordenadas(cotas,lay.trackers);
     if(m.casados>cotas.t.length*0.9)ncuOf=m.ncuOf;
   }
-  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,modsTrk:modsPorTracker(cotas,lay),
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -912,7 +944,8 @@ function rebuildT(){
   // v1.14: cada string con su MESA y su ALA — El Burgo por su plano, cotas por
   // el largo medido (la fila larga = dos strings, uno por ala)
   if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
-  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen);
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
+                                                                       {mod:REALES[c.plant].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk});
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -1667,7 +1700,7 @@ function repaintPick(){
   const mods=(ent&&ent.mods)?ent.mods:c.elec.mods;
   const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
   txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
-       (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.) · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
+       (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.'+(ent&&ent.src?', '+ent.src:'')+') · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
        '° · sombra '+(100*sh).toFixed(1)+' %';
   el.innerHTML=txt;el.style.display='';
 }
@@ -1730,8 +1763,8 @@ function repaintPick(){
       ninv=Object.keys(EB.rows.reduce((a,r)=>{for(const s of r.strs)a[s.inv]=1;return a;},{})).length;
       $('ninv').value=ninv;$('ninv').disabled=true;
     }else if(REALES[key]){
-      // módulos de las FILAS medidas (largo), no un string por línea
-      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1')).flat().reduce((a,e2)=>a+e2.mods,0);
+      // módulos de los strings REALES de las filas medidas (layout + largo, v1.16)
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:REALES[key].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk}).flat().reduce((a,e2)=>a+e2.mods,0);
       if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
       ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
       $('ninv').value=ninv;$('ninv').disabled=false;
@@ -1835,10 +1868,11 @@ function repaintPick(){
     // el ALA pinchada (v1.14): la mesa larga lleva un string por ala — sur
     // (z mayor en la escena, n bajo) = 0, norte = 1; la media es un string
     // entero y no se parte. «Selecciono un string y me selecciona la fila»
-    const wingOf=(zc,len)=>(hitP&&len>=0.7*T.obj.filaLen)?(hitP.z>zc?0:1):null;
+    const dosStr=(r,k)=>!!(T.strInv&&T.strInv[r]&&T.strInv[r].some(x=>typeof x==='object'&&x.k===k&&x.w!=null));
+    const wingOf=(r,k,zc)=>(hitP&&dosStr(r,k))?(hitP.z>zc?0:1):null;
     const c2=cfg();
     if(tramo){
-      const w=wingOf(tramo.zc,tramo.len);
+      const w=wingOf(tramo.row,tramo.k,tramo.zc);
       PICK={row:tramo.row,k:tramo.k,w:w,s0:tramo.s0,s1:tramo.s1};
       const zA=w===0?tramo.zc:tramo.zc-tramo.len/2, zB=w===1?tramo.zc:tramo.zc+tramo.len/2;
       const box=new THREE.Box3(
@@ -1846,7 +1880,7 @@ function repaintPick(){
         new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,zB));
       pickHelper=new THREE.Box3Helper(box,0x36d399);
     }else{
-      const ud=obj.userData, zc=obj.position.z, w=wingOf(zc,ud.s1-ud.s0);
+      const ud=obj.userData, zc=obj.position.z, w=wingOf(ud.row,ud.k,zc);
       PICK={row:ud.row,k:ud.k,w:w,s0:ud.s0,s1:ud.s1};
       const box=new THREE.Box3().setFromObject(obj);
       if(w===0)box.min.z=Math.max(box.min.z,zc); else if(w===1)box.max.z=Math.min(box.max.z,zc);
