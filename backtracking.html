@@ -1044,16 +1044,46 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   blocks.push(cur);
   const meta=blocks.map((b,i)=>({i:i,lines:b.length,filas:b.reduce((s2,l)=>s2+l.f.length,0)}));
-  let bi=(blockIdx!=null&&blocks[blockIdx])?blockIdx
+  // v1.44: blockIdx 'all' = la PLANTA ENTERA como una sola banda (los huecos
+  // entre bloques quedan como vanos grandes: sin solape ni sombra, y el
+  // pairwise de un vano de 60 m es el astro). La tarjeta de producción la usa;
+  // el simulador sigue por bloques y ventana (su día × políticas cuesta más).
+  let bi=blockIdx==='all'?'all'
+        :(blockIdx!=null&&blocks[blockIdx])?blockIdx
         :meta.reduce((m,e)=>e.filas>meta[m].filas?e.i:m,0);
-  let band=blocks[bi];
+  let band=bi==='all'?lines.slice():blocks[bi];
+  let huerfanas=0;
   if(band.length>maxLines){
-    let best=0,bestN=-1;
-    for(let a2=0;a2+maxLines<=band.length;a2+=2){
-      const cnt=band.slice(a2,a2+maxLines).reduce((s2,l)=>s2+l.f.length,0);
-      if(cnt>bestN){bestN=cnt;best=a2;}
+    const full=band;
+    // LA VENTANA NUNCA PARTE UN TRACKER (v1.44): las dos filas de un bifila
+    // están en líneas contiguas. Antes el corte «a pares» confiaba en la
+    // paridad y dejaba MONOFILAS en los bordes (2 en Ayora, 10 en San José).
+    // Ahora se elige, entre TODAS las ventanas de maxLines líneas, una cuyos
+    // dos bordes no corten ningún tracker (y de ellas, la más densa); solo si
+    // no existe ninguna se ENCOGE soltando la línea del borde que corta (hasta
+    // 2 por lado) y lo que aún quede huérfano se quita y se cuenta (P.huerfanas).
+    const cruza=(Li,Lo)=>{const st=new Set(Lo.f.map(f=>f.trk));return Li.f.some(f=>st.has(f.trk));};
+    const splitAt=(a2,b2)=>((a2>0&&cruza(full[a2],full[a2-1]))?1:0)+((b2<full.length&&cruza(full[b2-1],full[b2]))?1:0);
+    let best=0,bestN=-1,bestSplit=1e9;
+    for(let a2=0;a2+maxLines<=full.length;a2++){
+      const sp=splitAt(a2,a2+maxLines), cnt=full.slice(a2,a2+maxLines).reduce((s2,l)=>s2+l.f.length,0);
+      if(sp<bestSplit||(sp===bestSplit&&cnt>bestN)){bestSplit=sp;bestN=cnt;best=a2;}
     }
-    band=band.slice(best,best+maxLines);
+    let a=best,b=best+maxLines;
+    if(bestSplit>0){
+      // sin ventana limpia: se ENCOGE (nunca más de maxLines) soltando la línea
+      // del borde cuyas filas tienen la gemela fuera, hasta 2 por lado
+      for(let it=0;it<2&&a<b-2&&cruza(full[a],full[a-1]);it++)a++;
+      for(let it=0;it<2&&b>a+2&&cruza(full[b-1],full[b]);it++)b--;
+    }
+    band=full.slice(a,b);
+    const dentro=new Map();
+    for(const L of band)for(const f of L.f)dentro.set(f.trk,(dentro.get(f.trk)||0)+1);
+    band=band.map(L=>{
+      const keep=L.f.filter(f=>dentro.get(f.trk)===(f.trk.f||[]).filter(g=>g&&g.n&&g.y&&g.n.length>=2&&g.y.length>=2).length);
+      huerfanas+=L.f.length-keep.length;
+      return keep.length===L.f.length?L:Object.assign({},L,{f:keep});
+    }).filter(L=>L.f.length);
   }
   // por línea: cota media, tilt N-S medio (ponderado por largo) y tramos
   const elev=[],tilt=[],segs=[];
@@ -1157,7 +1187,7 @@ function plantFromCotas(data,maxLines,blockIdx){
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
           nFilas:band.reduce((s2,l)=>s2+l.f.length,0),
-          nArt:nArt,nPairs:nPairs,blocks:meta,block:bi};
+          nArt:nArt,nPairs:nPairs,blocks:meta,block:bi,huerfanas:huerfanas};
 }
 
 /* sombra por fila en un instante — semántica de compute_shade: la fila up-sun
@@ -2573,7 +2603,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.43.0';
+const VER='v1.44.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
