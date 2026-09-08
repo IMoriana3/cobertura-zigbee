@@ -449,7 +449,7 @@
 <script src="lib/three.min.js"></script><!-- librerías LOCALES (sin CDN), las mismas que backtracking.html: offline -->
 <script src="lib/OrbitControls.js"></script>
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
-<script src="sol.js?v=0.2.0"></script>
+<script src="sol.js?v=0.3.0"></script>
 <script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala --><!-- FUENTE ÚNICA del sol: posición NOAA y singleaxis (la misma que backtracking.html) -->
 <script>
 "use strict";
@@ -522,14 +522,10 @@ const surfaceOrient=Irr.surfaceOrient;
    el MISMO overcast canónico del escenario de test_diffuse_policies.py
    (ghi=0.30·claro, dhi=ghi, dni=0). El haz muere mucho antes que el global:
    DNI = claro·(1−cc)³. DHI cierra el balance: GHI − DNI·cos z ≥ 0.        */
-function cloudToIrr(clear,cc,zenDeg){
-  const c=Math.max(0,Math.min(1,cc));
-  const ghi=clear.ghi*(1-0.70*c);
-  const dni=clear.dni*Math.pow(1-c,3);
-  const cz=Math.max(0,Math.cos(zenDeg*RAD));
-  const dhi=Math.max(0,ghi-dni*cz);
-  return {ghi:ghi,dni:dni,dhi:dhi};
-}
+/* Desde v0.3.0 la función vive en sol.js (FUENTE ÚNICA): backtracking.html
+   también la necesita y dos copias de la misma física es como se pudren.
+   El nombre local se queda porque lo usa el bloque entero y su QA. */
+var cloudToIrr = Sol.cloudToIrr;
 
 /* ── meteo real (Open-Meteo u otra): interpolación horaria → paso del sim ──
    om = {tms:[ms UTC por hora], ghi:[], dni:[], dhi:[], cc:[] (0-1)}.
@@ -1921,7 +1917,7 @@ const POL_META={
    decía violeta «plano» mientras su etiqueta decía DIFUSA). Un color por
    significado, todos distinguibles entre sí. */
 const ST_COL={girando:'#22d3ee', PLANO:'#a78bfa', RETENIDO:'#e07b39',
-              DIFUSA:'#5aa9ff', senal:'#fbbd23', track:'#9bb0c6'};
+              DIFUSA:'#5aa9ff', señal:'#fbbd23', track:'#9bb0c6'};
 /* la política EFECTIVA: con el zonal activo y pvlib en la escena, quien decide
    de verdad es el poa_switch (lo elige computeZonal) — rotular pvlib ahí sería
    otra contradicción */
@@ -1936,7 +1932,7 @@ function stateLabel(polKey,th,flag,sig,rate){
     const llegando=m.flat0&&Math.abs(th)>1.0;
     return {txt:m.mode+(llegando?' (llegando)':''),col:ST_COL[m.mode],estado:m.mode};
   }
-  if(sig)return {txt:'☁ retiene',col:ST_COL.senal,estado:'senal'};
+  if(sig)return {txt:'☁ retiene',col:ST_COL.señal,estado:'señal'};
   return {txt:'track',col:ST_COL.track,estado:'track'};
 }
 // el barrido α se rotula desde la FUENTE (DCFG_DEFAULT), no a mano: si el core

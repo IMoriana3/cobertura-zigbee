@@ -270,8 +270,13 @@ def genera(planta):
 
     res.sort()
     ok = len(asign)
-    print('%-8s %d/%d trackers (%.1f%%) · %d sin medir · %d lejos · %d en choque · residuo mediana %.2f m p95 %.2f m'
-          % (planta, ok, len(TK), 100.0 * ok / len(TK), len(TK) - len(grupos), len(lejos), len(choque),
+    # «sin medir» son los trackers DEL LAYOUT que se quedan sin cota, no la
+    # resta de censos: desde que el layout de Ayora retiro tres seguidores hay
+    # mas grupos levantados que trackers, y la resta imprimia «-3 sin medir»
+    # — un numero imposible en pantalla. Los grupos sobrantes ya se cuentan
+    # aparte, en «lejos».
+    print('%-8s %d/%d trackers (%.1f%%) · %d sin medir · %d levantados sin tracker · %d en choque · residuo mediana %.2f m p95 %.2f m'
+          % (planta, ok, len(TK), 100.0 * ok / len(TK), len(TK) - ok, len(lejos), len(choque),
              res[len(res) // 2], res[int(len(res) * .95)]))
     if choque:
         print('%-8s ABORTA: %d grupos reclaman un tracker ya asignado' % (planta, len(choque)))

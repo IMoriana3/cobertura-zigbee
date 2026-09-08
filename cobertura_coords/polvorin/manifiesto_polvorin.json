@@ -12,7 +12,7 @@
  "gws": 2,
  "una_fila": false,
  "gateways_declarados_en_scada": false,
- "hsus_asignadas_por": "layout en 1 de 2; las otras 1 por NCU mas cercana, que NO es dato: HSU 2",
+ "hsus_asignadas_por": "layout (ncu declarada en `meteo`)",
  "ncus_sin_declarar_en_scada": [
   1,
   2
@@ -47,6 +47,9 @@
    "ambito": "gw",
    "gw": 2
   }
+ ],
+ "barridos": [
+  "barrido_polvorin_NCU01.csv"
  ],
  "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv polvorin_real.geojson"
 }

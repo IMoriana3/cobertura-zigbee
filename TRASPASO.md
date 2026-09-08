@@ -59,6 +59,78 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    puerto de cada gateway. El ámbito que se lanza es el **(NCU,GW)**, porque cada uno es una IP:puerto
    del SCADA. Lo que sigue faltando es el volcado del coordinador; eso no se puede generar.
 
+   **Qué se lleva el paquete de campo.** Tres recolectores y la hoja de barrido:
+
+   | | |
+   |---|---|
+   | `zigbee_logger.ps1` | RSSI, estado, ACK fallidos, tensión y temperatura de cada TCU, en bucle (HTTP/RCI, 80) |
+   | `zigbee_routes_logger.ps1` | las rutas y los saltos, en bucle (telnet, 23) |
+   | `zigbee_inventario.ps1` | **qué hay puesto**: una vez, una fila por módulo con su nº de serie, firmware, canal y PAN ID |
+   | `zigbee_angulos.ps1` | el **ángulo** de cada seguidor del barrido, del Modbus de la NCU, en bucle |
+   | `rellena_barrido.ps1` | cruza los ángulos con la hoja, allí mismo al acabar |
+   | `barrido_<planta>_NCU<nn>.csv` | la hoja del barrido de calibración |
+
+   **Todo lo que se copia allí es PowerShell.** En el PC de la planta hay PowerShell y no hay
+   Python: un paso del léeme que pida `python3` es un paso que no se puede dar, y el que está allí
+   no lo puede arreglar. `tools/rellena_barrido.py` hace lo mismo que el `.ps1` para trabajar aquí,
+   y una prueba compara las dos salidas **celda a celda** — dos implementaciones de lo mismo se
+   separan solas, y la que se separa es la que nadie corre hasta que hace falta.
+
+   Los bancos corren en **es-ES** a propósito: el PC de la planta es Windows en español y allí
+   PowerShell escribe «15,5», no «15.5». Bajo `en-US` no se prueba nada de eso — y lo que se rompía
+   era la lectura del CSV, en silencio y sin un solo ángulo.
+
+   El **número de serie** de un módulo XBee es su dirección de 64 bits, la misma que va impresa en
+   la etiqueta: no hay otro número que leer, y ya viene en el `discover`. El inventario además deja
+   `zigbee_inventario_crudo.xml` con las respuestas tal cual — cada firmware de ConnectPort contesta
+   un juego de campos distinto y no se puede saber cuál sin preguntárselo al de la planta, así que
+   recoge **todo lo que venga** y agrupa las columnas en la unión de lo que conteste cada nodo. Un
+   campo que solo trae un módulo (otro firmware) es justo el interesante y no se puede perder.
+
+   **Los recolectores no calibran, y por eso va la hoja de barrido.** Solo ven los enlaces que la
+   malla *eligió* —los que funcionan—: una muestra censurada. Las 49 medidas de El Burgo dieron
+   **r = +0,16** frente a log(distancia) sobre un recorrido de ×14. La hoja (`plan_barrido_rf.py`)
+   trae pares elegidos por **geometría** —a lo largo del eje, a través de filas y en diagonal— para
+   que distancia y mesas cruzadas dejen de ir pegadas y el ajuste pueda repartir la culpa. Se
+   apunta `llega` (1/0) y la hora, y **los ceros son la mitad del dato**.
+
+   **Y el ajuste ya está escrito y probado, antes del barrido.** `calibra_barrido.py` es un
+   **Tobit**: los pares que llegan entran por su densidad y los que **no** llegan por la
+   probabilidad de estar bajo el umbral — un cero no es una medida ausente, es la medida de que el
+   RSSI está por debajo. Ajusta cuatro números con significado, sin ningún *bias* de relleno:
+   `l_mod_db` (dB por mesa **atravesada**), `l_roce_db` (por mesa cruzada **por debajo**: tubo,
+   pilotes, canto), `offset_db` y `sigma_db`, estimada a la vez. La predicción se **recalcula al
+   `beta` anotado** en cada fila y la geometría se **importa** del planificador, no se reescribe.
+   Trae validación fuera de muestra (dejando una clase entera fuera, y k-fold), intervalos por
+   **perfil de verosimilitud** y diagnóstico de residuo; y dice en voz alta cuándo un número **no
+   está sostenido**: sin ceros, sin cruces por dentro (`l_mod_db` no identificado, hay que medir
+   también con las palas **de canto**), con el offset comiéndose el modelo, o con pares que no
+   llegaron y el modelo daba por seguros — que suelen ser un equipo apagado, no propagación.
+
+   Se prueba con **datos sintéticos sobre la hoja real de Ayora**: se generan medidas con un
+   `l_mod_db` conocido, se les mete censura y ruido, y se comprueba que el ajuste lo recupera
+   (`python3 tools/test_calibra_barrido.py`, 41 comprobaciones). Ahí se ve por qué hace falta:
+   con el umbral metido en el grueso de las medidas, **tirar los ceros** deja la pérdida por mesa
+   en 1,9 dB donde la verdad son 4,5. La hoja se puede simular antes de ir:
+   `python3 tools/calibra_barrido.py ayora --simula 4.5,2.0,-3,5 --hoja <hoja> --salida sim.csv`.
+
+   **El ángulo no se apunta a mano.** Está en el Modbus (registro `30111 tilt_angle`, s16 /10) y
+   `zigbee_angulos.ps1` lo graba en bucle; al volver, `rellena_barrido.py` lo cruza con la hoja por
+   la hora y rellena `beta_grados`, `beta_destino` y `modo_origen`. Dos avisos que valen la tarde:
+   ese recolector es **el único que va contra el Modbus de la NCU** (503/504) y no contra el
+   ConnectPort — al revés que los otros tres; y la dirección `30111` viaja **tal cual** en la trama,
+   con **FC03**, como hace la TCU Toolbox: escribirla como `3xxxx` con offset y FC04 no falla aquí,
+   falla en la planta con `IllegalDataAddress`. Lo que no case en el tiempo (±2 min) se deja
+   **vacío**: un ángulo inventado entra en el ajuste sin que se note.
+
+   **TCUs retiradas.** El layout es el plano: trae el seguidor aunque le hayan quitado la TCU.
+   Sondearla no da un error claro, da un **timeout**, y un timeout en el mapa de cobertura se lee
+   como «aquí no llega la señal» — se mide mal una zona que está perfectamente cubierta. Se declaran
+   en el layout por número de esclavo (`"sin_tcu": {"7": [14, 24, 25]}` en Ayora, tres retiradas de
+   la NCU7) y se quitan **después** de numerar: al quitar una TCU las demás no se renumeran, queda el
+   hueco, igual que en la planta. Y en cada pasada el generador **compara lo que va a sondear con lo
+   que declara el SCADA** y canta las diferencias en los dos sentidos, para no descubrirlas en campo.
+
    **El nº de esclavo y la NCU de cada equipo ya están en el repo, no hay que pedirlos.** Cada fila
    de esos CSV lleva `ncu`, `gw` y `esclavo` (el unit id Modbus con el que la NCU habla con ese
    equipo), y las HSU llevan además el suyo (230/231 en Ayora) y cuelgan de la NCU que declara el

@@ -161,6 +161,8 @@ for n in nombres:
         c.get("repetidor", 0), c.get("camino", 0)))
     if WRITE:
         with open(os.path.join(RAIZ, n + "_activo.geojson"), "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, ensure_ascii=False)
+            # separadores EXPLÍCITOS: los ficheros de la flota están escritos así, y sin fijarlos
+            # una regeneración cambia TODOS los bytes por formato y entierra el cambio de verdad
+            json.dump(doc, fh, ensure_ascii=False, separators=(",", ": "))
 print("\n%s" % ("escritos <planta>_activo.geojson" if WRITE
                 else "(informe: nada escrito. Con --write se generan los ficheros)"))

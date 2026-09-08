@@ -38,6 +38,7 @@
    "ncu": 1,
    "gw": 1,
    "ip": null,
+   "ip_gw": null,
    "puerto": null
   },
   {
@@ -47,6 +48,7 @@
    "ncu": 1,
    "gw": 2,
    "ip": null,
+   "ip_gw": null,
    "puerto": null
   },
   {
@@ -68,6 +70,7 @@
    "ncu": 3,
    "gw": 1,
    "ip": null,
+   "ip_gw": null,
    "puerto": null
   },
   {
@@ -77,6 +80,7 @@
    "ncu": 3,
    "gw": 2,
    "ip": null,
+   "ip_gw": null,
    "puerto": null
   },
   {
@@ -97,6 +101,9 @@
    "ambito": "gw",
    "gw": 2
   }
+ ],
+ "barridos": [
+  "barrido_paramo_NCU03.csv"
  ],
  "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv paramo_real.geojson"
 }

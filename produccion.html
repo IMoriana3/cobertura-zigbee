@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0B0F14">
+<title>Producción 3D por string</title>
+<!-- sin fuentes de Google: offline (fallbacks del sistema, como el panel) -->
+<style>
+:root{
+  --void:#0B0F14; --panel:#121922; --panel-2:#0F151D; --panel-hi:#18222D;
+  --line:#23303D; --text:#E7EEF4; --muted:#8093A4; --muted-2:#5E6F7E;
+  --live:#36D399; --build:#F6A623; --demo:#54A6FF; --dead:#D0594F;
+  --radius:14px; --radius-sm:9px;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --display:'Space Grotesk','IBM Plex Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--sans);color:var(--text);background-color:var(--void);
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(54,211,153,.05), transparent 60%),
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size:auto,34px 34px,34px 34px;background-attachment:fixed;
+  min-height:100vh;line-height:1.45;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:min(2560px,96vw);margin:0 auto;padding:16px 18px 40px}   /* el --ancho del simulador: toda la pantalla, como el resto de tarjetas */
+h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.82rem;max-width:90ch;margin:4px 0 14px}
+.sub b{color:var(--text)}
+.grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.card h2{font-family:var(--display);font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.f{margin-bottom:8px}
+.f label{display:block;font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted-2);margin-bottom:2px}
+.f input,.f select{width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+  border-radius:7px;padding:5px 8px;font:inherit;font-size:.85rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.scene-card{padding:0;overflow:hidden;display:flex;flex-direction:column}
+#c3d{width:100%;height:min(66vh,760px);display:block;cursor:grab;touch-action:none}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line)}
+.bar .t{font-family:var(--mono);font-size:.8rem}
+.btn{font:inherit;font-size:.78rem;font-weight:600;color:var(--text);background:var(--panel-hi);
+  border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer}
+.btn.acc{background:var(--live);border-color:var(--live);color:#08130D}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+input[type=range]{accent-color:var(--live)}
+#hour{flex:1;min-width:160px;-webkit-appearance:none;appearance:none;height:10px;border-radius:5px;outline:none;background:#0d1420}
+#hour::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:18px;border-radius:4px;background:var(--live);border:1px solid #0B0F14;cursor:pointer}
+#hour::-moz-range-thumb{width:13px;height:18px;border-radius:4px;background:var(--live);border:1px solid #0B0F14;cursor:pointer}
+.leg{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+#legbar{width:90px;height:9px;border-radius:5px;display:inline-block}
+.pill{font-size:.62rem;font-weight:700;letter-spacing:.06em;border-radius:999px;padding:2px 9px}
+.pill.on{color:var(--live);background:rgba(54,211,153,.12)}
+.strings{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-top:1px solid var(--line)}
+.s-chip{font-family:var(--mono);font-size:.72rem;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;gap:6px}
+.s-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+#aviso{display:none;margin:10px 0;background:rgba(246,166,35,.12);color:var(--build);
+  border-radius:8px;padding:8px 12px;font-size:.8rem}
+.nota{color:var(--muted-2);font-size:.7rem;padding:8px 14px 12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚡ Producción 3D por string</h1>
+  <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
+  string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día/mes/año del bloque
+  FÍSICA PURA del simulador (pvlib singleaxis + sombra exacta + Perez), <b>cadena DC y AC según el
+  Notebook</b> (t_cell PVSyst-Faiman + PVWatts γ + pérdidas DC + inversor con recorte + límite de red, de
+  solargpt_core, careado dígito a dígito en el QA), <b>meteo TMY real</b> (PVGIS) o cielo despejado con
+  nubosidad, careo contra la <b>medida real por inversor</b> y exportación CSV. Seguimiento <b>AUTO</b>
+  (backtracking pairwise) o <b>MANUAL</b>. Con <b>El Burgo I</b> carga los 823 strings reales del plano
+  (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
+  <div id="aviso"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>⊙ Emplazamiento</h2>
+        <div class="f"><label>Planta</label>
+          <select id="plant" title="Planta ENTERA o una NCU suelta — el parque de una NCU se carga y se dibuja SOLO, sin construir nunca la planta entera (San José entera son miles de mesas). La NCU de cada tracker viene del layout (Ayora/San José: alineado 1:1 con las cotas; El Burgo: casando g.i.t con idPrevio — 4 strings sin casar solo aparecen en planta entera, declarado). Las NCUs se listan al cargar los layouts.">
+            <option value="generica">Genérica (presets)</option>
+            <optgroup label="El Burgo I (strings del plano; terreno plano, declarado)" id="og-elburgo">
+              <option value="elburgo">Planta entera — 823 strings · 36 inversores</option>
+            </optgroup>
+            <optgroup label="⛰ Ayora (cotas z reales de extremos)" id="og-ayora">
+              <option value="ayora">Planta entera</option>
+            </optgroup>
+            <optgroup label="⛰ San José (cotas z reales de extremos)" id="og-sanjose">
+              <option value="sanjose">Planta entera</option>
+            </optgroup>
+          </select></div>
+        <div class="row2">
+          <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
+          <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Fecha</label><input id="date" type="date" value="2026-06-21"></div>
+          <div class="f"><label>UTC ±</label><input id="tz" type="number" step="0.5" value="2"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Altitud m</label><input id="alt" type="number" step="10" value="300"></div>
+          <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
+        </div>
+        <div class="f"><label>Meteo</label>
+          <select id="meteo" title="Cielo despejado (Ineichen + nubosidad manual) o TMY — año meteorológico típico REAL: primero busca <planta>_tmy.json desplegado junto a la página (lo hornea tools/gen_tmy_pvgis.py) y, si no está, pide el TMY a la API de PVGIS desde tu navegador. Con TMY la Tamb y el viento entran POR HORA a la t_cell y la nubosidad manual se apaga (el TMY ya trae sus nubes).">
+            <option value="cielo">Cielo despejado + nubosidad</option>
+            <option value="tmy">TMY real (PVGIS)</option>
+          </select></div>
+        <div class="f"><label>Nubosidad %</label><input id="cloud" type="number" step="10" min="0" max="100" value="0"
+          title="Modelo nube→irradiancia de la casa (sol.js · cloudToIrr): GHI·(1−0,70·cc), el haz muere antes —DNI·(1−cc)³— y la difusa cierra. A 0, cielo claro exacto."></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>⚙ Geometría</h2>
+        <div class="row2">
+          <div class="f"><label>Pitch m</label><input id="pitch" type="number" step="0.05" min="2" value="6.00"></div>
+          <div class="f"><label>Ancho m</label><input id="cw" type="number" step="0.001" min="0.5" value="2.382"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
+          <div class="f"><label>Strings</label><input id="nrows" type="number" step="1" min="2" max="24" value="10"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>🔌 Eléctrico (Notebook)</h2>
+        <div class="row2">
+          <div class="f"><label>Wp módulo</label><input id="wp" type="number" step="5" min="100" value="590"></div>
+          <div class="f"><label>Mód/string</label><input id="mods" type="number" step="1" min="1" value="28"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>γ %/°C</label><input id="gamma" type="number" step="0.01" value="-0.34"
+            title="Coeficiente térmico de Pmpp — el default canónico del core (ModuleSpecs.gamma_pdc_pct_per_c)."></div>
+          <div class="f"><label>T amb °C</label><input id="tamb" type="number" step="1" value="20"></div>
+        </div>
+        <div class="f"><label>Viento m/s</label><input id="wind" type="number" step="0.5" min="0" value="1"
+          title="t_cell = T + 0,9·POA/(u_c + u_v·v), la fórmula PVSyst-Faiman del core (u_c=29 free-standing, u_v=0: con u_v=0 el viento no entra, como el default canónico)."></div>
+        <p style="color:var(--muted-2);font-size:.68rem">La MISMA cadena DC que notebook y streamlit
+        (t_cell Faiman + PVWatts γ), careada dígito a dígito contra el core en el QA.</p>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>🔋 Cadena AC (Notebook)</h2>
+        <div class="row2">
+          <div class="f"><label>Soiling %</label><input id="lsoil" type="number" step="0.5" min="0" value="2.0"></div>
+          <div class="f"><label>Mismatch %</label><input id="lmis" type="number" step="0.5" min="0" value="2.0"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Cableado %</label><input id="lwir" type="number" step="0.5" min="0" value="1.5"></div>
+          <div class="f"><label>LID %</label><input id="llid" type="number" step="0.5" min="0" value="1.5"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Inversores</label><input id="ninv" type="number" step="1" min="1" value="1"
+            title="Sin mapeo medido, los strings se reparten en n bloques contiguos IGUALES (declarado). Con El Burgo manda el mapeo REAL del plano (36 inversores, g.i) y este campo se bloquea."></div>
+          <div class="f"><label>Pnom AC kW</label><input id="pnom" type="number" step="5" min="1" value="140"
+            title="Potencia AC nominal POR INVERSOR (el techo del recorte). Al elegir planta se sugiere Pdc0/n/1,2 (DC/AC 1,2 típico) — edítala con la real del proyecto."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>η máx inv</label><input id="etamax" type="number" step="0.005" min="0.5" max="1" value="0.985"></div>
+          <div class="f"><label>Red máx kW</label><input id="gridkw" type="number" step="100" min="0" value="0"
+            title="Límite de inyección en el punto de conexión (apply_grid_limit del core). 0 = sin límite."></div>
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">Pérdidas DC multiplicativas + inversor PVWatts con
+        recorte a Pnom + límite de red — <b>apply_dc_losses / inverter_efficiency_curve / apply_grid_limit</b>
+        de solargpt_core, careadas dígito a dígito en el QA. El trafo (Fe+Cu) no está portado: declarado.</p>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>⛰ Terreno</h2>
+        <div class="f"><label>Perfil E-O</label>
+          <select id="tpreset">
+            <option value="llano">Llano</option>
+            <option value="pendiente" selected>Pendiente</option>
+            <option value="ondulado">Ondulado</option>
+            <option value="valle">Valle</option>
+          </select></div>
+        <div class="f"><label id="tplbl">Pendiente °</label><input id="tparam" type="number" step="0.5" value="4"></div>
+        <p style="color:var(--muted-2);font-size:.68rem">El terreno es lo que separa los strings: en llano
+        con backtracking todos producen lo mismo (y el color lo dice).</p>
+      </div>
+    </div>
+
+    <div class="card scene-card">
+      <canvas id="c3d"></canvas>
+      <div class="bar">
+        <button class="btn" id="play">▶</button>
+        <input type="date" id="date2" class="btn" title="La fecha (el mismo campo que en Emplazamiento)">
+        <select id="speed" class="btn" title="Velocidad de la animación (minutos simulados por segundo real)">
+          <option value="30">×½</option><option value="60" selected>×1</option>
+          <option value="150">×2,5</option><option value="360">×6</option>
+        </select>
+        <input type="range" id="hour" min="0" max="1439" step="1" value="720"
+          title="Paso MINUTAL, como los simuladores. Tramos ÁMBAR: horas de BACKTRACKING (consigna fuera de la astronómica >0,5° en alguna fila); oscuro = noche.">
+        <span class="t" id="hourlbl">12:00</span>
+        <span class="pill on" id="modepill">AUTO · backtracking</span>
+        <label class="btn" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="manual"> 🎛 manual</label>
+        <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
+        <span class="t" id="manthlbl">0°</span>
+        <select id="cmode" class="btn">
+          <option value="inst">☀ POA instante (W/m²)</option>
+          <option value="day">☀ POA Σ día (kWh/m²)</option>
+          <option value="pinst">⚡ P string (kW)</option>
+          <option value="pday">⚡ E string Σ día (kWh)</option>
+          <option value="acinst">🔋 P AC inversor (kW)</option>
+          <option value="acday">🔋 E AC inversor Σ día (kWh)</option>
+          <option value="pmes">📅 E string Σ mes (kWh)</option>
+          <option value="pano">📅 E string Σ año (MWh)</option>
+        </select>
+        <button class="btn" id="csv" title="Descarga la vista actual en CSV (;, decimal coma): por string o por inversor según el modo, con la cadena AC del instante debajo.">⬇ CSV</button>
+        <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
+      </div>
+      <div class="nota" id="acline" style="border-top:1px solid var(--line);color:var(--text)"></div>
+      <div class="nota" id="pick" style="display:none;border-top:1px solid var(--line);color:var(--text)"></div>
+      <div class="strings" id="strings"></div>
+      <details class="nota" style="border-top:1px solid var(--line)">
+        <summary style="cursor:pointer;color:var(--text)">⚖ Careo con medida real (por inversor)</summary>
+        <p style="margin:6px 0">Pega la energía <b>medida</b> del día por inversor — una por línea,
+        «<code>1.1;1234,5</code>» o «<code>I1.1,1234.5</code>» (kWh) — y carea contra la
+        <b>E AC Σ día</b> que calcula la tarjeta (misma fecha, meteo y cadena AC de arriba). Los
+        inversores sin pareja se listan, no se callan. Con cielo despejado el calculado es el TECHO
+        de un día perfecto: para carear un día real usa la meteo TMY o espera desvíos negativos.</p>
+        <textarea id="medidas" rows="4" spellcheck="false" style="width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-family:var(--mono);font-size:.75rem"></textarea>
+        <button class="btn" id="btncareo" style="margin-top:6px">Carear</button>
+        <div id="careoout" style="margin-top:8px;font-family:var(--mono);font-size:.72rem"></div>
+      </details>
+      <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
+      El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles('pairwise') —
+      el MISMO punto de entrada del simulador de BT 3D, con el acople de accionamiento de la planta cuando
+      las cotas lo traen (Ayora/San José, bifila); MANUAL mantiene tu θ todo el día). Con El Burgo I los chips son por <b>inversor</b> (POA en media;
+      potencia/energía en SUMA de sus strings, del plano de numeración g.i.t.s) y el pitch es el medido por vano;
+      elevación plana — el relieve de El Burgo no está levantado en este repo, y no se finge. Motor POA: FÍSICA PURA
+      de backtracking.html — pvlib singleaxis + sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en
+      caliente, no copiada. Cadena DC y AC: las del Notebook (t_cell PVSyst-Faiman + PVWatts γ; apply_dc_losses +
+      inversor PVWatts con recorte + apply_grid_limit, de solargpt_core), careadas dígito a dígito contra el core
+      en el QA — el trafo no está portado, declarado. Σ mes/año a paso horario (declarado); por encima de 600 mesas
+      el modelo del seguidor va INSTANCIADO (instancePlan, como terreno.html) — el modelo detallado también a
+      escala de planta entera. Arrastra para orbitar; clic = string.</div>
+    </div>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking, terreno y el gemelo) -->
+<script src="sol.js?v=0.3.0"></script>
+<script src="irradiancia.js"></script>
+<script>
+"use strict";
+/* ═══ LÓGICA PURA — de aquí a FIN-LÓGICA no se toca el DOM ══════════════════
+   tools/test_produccion.mjs extrae este bloque (mismos delimitadores-contrato
+   que el FÍSICA PURA del simulador) y lo ejercita en Node con la física real. */
+const D2R=Math.PI/180;
+
+/* elevación por fila según preset — las MISMAS fórmulas que los presets del
+   simulador (son implantación/UI, no física; 4 líneas, con su test de paridad) */
+function elevPreset(preset,n,v,pitch){
+  const z=new Array(n).fill(0);
+  if(preset==='pendiente')for(let i=0;i<n;i++)z[i]=-i*pitch*Math.tan(v*D2R);
+  else if(preset==='ondulado')for(let i=0;i<n;i++)z[i]=v*Math.sin(2*Math.PI*i/Math.max(3,Math.floor(n/2)));
+  else if(preset==='valle')for(let i=0;i<n;i++)z[i]=v*Math.abs(i-(n-1)/2)/((n-1)/2);
+  // el MISMO capado del editor del simulador (clampSlopes, ±30° por vano): un
+  // preset no fabrica pendientes que ningún tracker real montaría — sin esto,
+  // «ondulado 4 m» daba parejas de 38° y el pairwise clavaba filas al tope de
+  // ±55°, que en pantalla se lee como «esto no está haciendo backtracking».
+  // Las cotas MEDIDAS nunca pasan por aquí (van por pairDz, como allí).
+  const lim=pitch*Math.tan(30*D2R);
+  for(let i=1;i<n;i++){
+    const dz=z[i-1]-z[i];
+    if(dz>lim)z[i]=z[i-1]-lim;
+    if(dz<-lim)z[i]=z[i-1]+lim;
+  }
+  return z;
+}
+
+/* T con el MISMO contrato que terrain() del simulador (monofila, alineadas):
+   UNA sola construcción para TODAS las plantas — posiciones x reales (pitch
+   por vano medido, pairsFromElevX), elevación z y tilt N-S POR FILA. Ninguna
+   planta es especial: la genérica y las reales pasan por aquí igual. */
+function buildTX(F,c,xs,z,tilt,segs,groups,drive){
+  const n=xs.length;
+  const tilts=tilt||new Array(n).fill(0);
+  const filaLen=2*28*1.146+0.55;
+  return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
+          rowTilt:tilts,groups:groups||null,drive:drive||'mono',
+          segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
+}
+/* la genérica solo aporta sus posiciones (rejilla uniforme) y entra al MISMO camino */
+function buildT(F,c,elev){
+  const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+  return buildTX(F,c,xs,elev,null);
+}
+
+/* T desde una planta de COTAS REALES — P = plantFromCotas(<planta>_cotas.json),
+   el MISMO cargador del simulador de BT 3D (vive en su FÍSICA PURA): cotas z
+   de cada EXTREMO de mesa → tilt N-S medido POR MESA (segTilt, v1.41 del
+   simulador; el de línea es la media ponderada por largo), parejas bifila
+   exactas (segPairs: dos mesas del mismo trk), pitch real por vano y Δz por
+   pareja medido en el SOLAPE norte (pairDz). Esta construcción es la del
+   ramo real de terrain() del simulador, sin los deltas del editor. */
+function buildTReal(F,c,P){
+  const pairs=[];
+  for(let i=0;i<P.lineX.length-1;i++){
+    const dx=Math.max(0.5,P.lineX[i+1]-P.lineX[i]);
+    pairs.push({slope:Math.atan2(P.pairDz?P.pairDz[i]||0:0,dx)*(180/Math.PI),pitch:dx,   // *DEG, la misma op que terrain()
+                axisTilt:(P.tilt[i]+P.tilt[i+1])/2});
+  }
+  // groups/drive REALES de las cotas: el simulador arranca la planta cargada
+  // con su accionamiento (P.drive, bifila/quebrado) y acopla el θ por grupo —
+  // aquí igual, para que el BT sea EL MISMO, no un pariente
+  return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
+          z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
+          segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // por MESA (v1.13): cada fila medida con su tilt y su pareja
+          filaLen:2*28*1.146+0.55,real:P};
+}
+
+/* ── cadena DC del Notebook (solargpt_core, la MISMA que notebook/streamlit):
+   t_cell PVSyst-Faiman (full_chain._t_cell_pvsyst_full, α=0,9, η=0 puro) y
+   Pdc PVWatts (electrical.dc_power_pvwatts). Portadas literalmente y careadas
+   dígito a dígito contra el golden que genera el propio core
+   (tools/gen_golden_energia_notebook.py → golden_energia_notebook.json). */
+function tCellPVSyst(poa,tair,wind,uc,uv){
+  return tair+0.9*poa*1.0/(uc+uv*wind);           // α=0,9 · (1−η)=1 (Faiman puro)
+}
+function pStringW(poa,tair,wind,e){                // e:{mods,wp,gamma,uc,uv}
+  const tc=tCellPVSyst(poa,tair,wind,e.uc,e.uv);
+  return Math.max(0,e.mods*e.wp*(poa/1000)*(1+(e.gamma/100)*(tc-25)));
+}
+
+/* ── cadena AC del Notebook (solargpt_core.electrical, la MISMA que notebook y
+   streamlit): pérdidas DC multiplicativas (apply_dc_losses), inversor PVWatts
+   legacy con recorte a Pnom (inverter_efficiency_curve, el default de todas
+   las superficies) y límite de red (apply_grid_limit). Portadas literalmente
+   y careadas dígito a dígito contra el golden que genera el propio core
+   (tools/gen_golden_ac_notebook.py → golden_ac_notebook.json). El TRAFO del
+   core (apply_transformer_losses) NO está portado — declarado, no callado. */
+function dcLossEta(l){                             // l:{soiling,mismatch,wiring,lid} en %
+  return (1-l.soiling/100)*(1-l.mismatch/100)*(1-l.wiring/100)*(1-l.lid/100);
+}
+function invAC(pdcW,pnomW,etaMax){                 // → {pac,eta} — PVWatts legacy + clip
+  const r=Math.min(1.5,Math.max(0,pdcW/Math.max(pnomW,1)));
+  const eta=Math.min(etaMax,Math.max(0,etaMax*(1-0.012/Math.max(r+0.05,0.01))));
+  return {pac:Math.min(pdcW*eta,pnomW),eta:eta};
+}
+function gridLimit(pacW,pmaxW){return (pmaxW!=null&&pmaxW>0)?Math.min(pacW,pmaxW):pacW;}
+
+/* reparto string→inversor cuando NO hay mapeo medido (todas menos El Burgo):
+   n bloques contiguos IGUALES — reparto declarado en pantalla, no medido. */
+function invMapUniforme(nrows,ninv){
+  const out=new Array(nrows);
+  for(let r=0;r<nrows;r++)out[r]=String(Math.floor(r*Math.max(1,ninv)/nrows)+1);
+  return out;
+}
+/* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
+   POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
+   fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
+function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
+  const out=[];
+  for(let r=0;r<rowsPoa.length;r++){
+    const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
+    for(const s of strInv[r]){
+      // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k,w} (un string
+      // de una mesa: con POA por mesa, la SUYA; con ala (w) y POA por ala, la de
+      // SU ala — v1.14: un string por ala en la mesa larga)
+      if(typeof s==='string'){out.push({inv:s,row:r,pdcW:p});continue;}
+      const wp=(wings&&s.w!=null&&s.k!=null&&wings[r]&&wings[r][s.k]&&wings[r][s.k][s.w]!=null)?wings[r][s.k][s.w]:null;
+      const poa=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
+      const e2=(s.mods==null||s.mods===e.mods)?e:Object.assign({},e,{mods:s.mods});
+      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
+    }
+  }
+  return out;
+}
+/* plantas de COTAS (Ayora/San José): cada segmento de línea es una FILA
+   medida (74 m = dos mesas), no un string. Contarla como un string de 28
+   módulos dejaba la Pdc de planta ~5× corta («Pdc 817 kW» para un parque de
+   69 trackers). Los módulos de cada fila salen de su largo medido con el
+   paso de módulo canónico (1,146 m) y el hueco del motor — el mismo dato que
+   dimensiona el render. Aproximación declarada: módulos por largo, no por
+   plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
+function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
+  const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
+  // v1.16: con la FICHA de la planta (opt.mod: módulo real, hueco, strings por
+  // fila; opt.modsTrk: módulos por string del layout, por identidad de tracker)
+  // los strings son los de verdad. Contarlos por largo con el módulo de El
+  // Burgo daba en Ayora 65 módulos por fila repartidos 33 + 32 — dos strings
+  // de la misma mesa con distinta potencia y el mismo tilt — en vez de 28 + 28.
+  if(opt&&opt.mod){
+    const M=opt.mod, nS=M.strPerFila||2;
+    return segs.map((l,r)=>l.flatMap((sg,k)=>{
+      const L=sg[1]-sg[0], trk=(opt.segTrk&&opt.segTrk[r])?opt.segTrk[r][k]:null;
+      const known=(opt.modsTrk&&trk!=null)?opt.modsTrk.get(trk):null;
+      const porLargo=Math.max(1,Math.round((L-M.drive+M.gap)/(nS*(M.w+M.gap))));
+      const mods=(known>0)?known:porLargo, src=(known>0)?'layout':'largo';
+      if(nS===2)return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
+      return [{inv:invRows[r],k:k,w:null,mods:mods,src:src}];
+    }));
+  }
+  return segs.map((l,r)=>l.flatMap((sg,k)=>{
+    const mods=Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm));
+    // v1.14: la fila LARGA son DOS strings, uno por ALA (sur = 0 → «a», norte =
+    // 1 → «b»), cada uno con la POA de su ala; la media, un string entero.
+    // Solo si se declara el largo de fila del modelo (filaLen); sin él, la
+    // entrada por fila de siempre (los careos de v1.12.5 siguen valiendo)
+    if(filaLen&&(sg[1]-sg[0])>=0.7*filaLen&&mods>=2){
+      const a=Math.round(mods/2);
+      return [{inv:invRows[r],k:k,w:0,mods:a},{inv:invRows[r],k:k,w:1,mods:mods-a}];
+    }
+    return [{inv:invRows[r],k:k,w:null,mods:mods}];
+  }));
+}
+/* módulos por STRING de cada tracker según el layout (Ayora: «Interior 1V28»,
+   mods 28/21/14), por IDENTIDAD del objeto de cotas.t — solo cuando layout y
+   cotas van 1:1 (la misma condición que las NCU). Sin dato ⇒ null y el largo
+   manda (v1.16). */
+function modsPorTracker(cotas,lay){
+  const m=new Map();
+  if(!lay||!lay.trackers||!cotas||!cotas.t||lay.trackers.length!==cotas.t.length)return m;
+  cotas.t.forEach((tk,i)=>{const v=lay.trackers[i]&&lay.trackers[i].mods;if(tk&&v!=null&&isFinite(+v)&&+v>0)m.set(tk,+v);});
+  return m;
+}
+/* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
+   dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
+   LARGA (dos strings) el ala es el lado de n de su string respecto al centro
+   de la mesa (sur = 0, norte = 1); en la media (un string) no hay ala. Los
+   módulos son los del string del Notebook (mods). */
+function elburgoStrInv(rows,segs,nOff,filaLen,mods){
+  return rows.map((r,i)=>r.strs.map(s=>{
+    const n=s.n-nOff, l=segs[i]||[];
+    let k=-1,bd=Infinity;
+    for(let j=0;j<l.length;j++){const d=n<l[j][0]?l[j][0]-n:(n>l[j][1]?n-l[j][1]:0);if(d<bd){bd=d;k=j;}}
+    const sg=k>=0?l[k]:null, larga=!!sg&&(sg[1]-sg[0])>=0.7*filaLen;
+    return {inv:s.inv,id:s.id,k:k>=0?k:null,w:larga?(n<(sg[0]+sg[1])/2?0:1):null,mods:mods};
+  }));
+}
+/* la cadena entera de un instante, por INVERSOR: Σ Pdc de sus strings →
+   pérdidas DC → curva del inversor (recorte incluido) → suma de planta →
+   límite de red. a:{loss,pnomW,etaMax,gridW} */
+function acPlant(porStr,a){
+  const eta=dcLossEta(a.loss), by=new Map();
+  for(const s of porStr){const v=by.get(s.inv)||{pdc:0,n:0};v.pdc+=s.pdcW;v.n++;by.set(s.inv,v);}
+  const invs=[...by.entries()].map(([inv,v])=>{
+    const net=v.pdc*eta, r=invAC(net,a.pnomW,a.etaMax);
+    return {inv:inv,nstr:v.n,pdcW:v.pdc,pdcNetW:net,pacW:r.pac,eta:r.eta,
+            clip:net>0&&r.pac>=a.pnomW-1e-9};
+  }).sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true}));
+  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pac=invs.reduce((s,v)=>s+v.pacW,0);
+  return {invs:invs,pdcW:pdc,dcEta:eta,pacW:pac,redW:gridLimit(pac,a.gridW),
+          clips:invs.reduce((s,v)=>s+(v.clip?1:0),0)};
+}
+/* E AC del día: el recorte es INSTANTÁNEO, así que la cadena se aplica paso a
+   paso y LUEGO se integra — aplicarla a la energía sumada regalaría el clipping. */
+function dayAC(F,c,T,strInv,a,stepMin){
+  const st=stepMin||5, acc=new Map();
+  let edc=0,eac=0,ered=0;
+  for(let m=0;m<1440;m+=st){
+    const r=instant(F,c,T,m);
+    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings),a);
+    for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
+    edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
+  }
+  const k=st/60/1000;
+  return {porInv:[...acc.entries()].map(([inv,s])=>({inv:inv,kwh:s*k}))
+            .sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true})),
+          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k};
+}
+
+/* ── meteo TMY (año meteorológico típico): 8760 horas UTC de
+   [GHI, DNI, DHI, Tamb, viento]. tmyAt interpola linealmente entre horas
+   (los valores horarios se tratan como instantáneos en HH:00 — aproximación
+   declarada) y convierte el minuto LOCAL a índice UTC con el huso; instant()
+   la consume en lugar del cielo Ineichen, y Tamb/viento POR INSTANTE entran
+   a la t_cell (los inputs fijos quedan para el modo cielo despejado). */
+// (un TMY no tiene 29-feb: en año bisiesto, del 1-mar en adelante el índice va
+//  un día corrido — climatológicamente irrelevante, y va dicho aquí)
+function tmyAt(tmy,doy,minLocal,tz){
+  const H=tmy.h.length, hUTC=(doy-1)*24+minLocal/60-tz;
+  let h0=Math.floor(hUTC);
+  const f=hUTC-h0;
+  h0=((h0%H)+H)%H;
+  const a=tmy.h[h0], b=tmy.h[(h0+1)%H], mix=i=>a[i]+f*(b[i]-a[i]);
+  return {ghi:mix(0),dni:mix(1),dhi:mix(2),tamb:mix(3),wind:mix(4)};
+}
+/* condensa la respuesta TMY de la API de PVGIS (v5_2: outputs.tmy_hourly con
+   time(UTC) / G(h) / Gb(n) / Gd(h) / T2m / WS10m) al formato de la página —
+   el MISMO formato que hornea tools/gen_tmy_pvgis.py en <planta>_tmy.json */
+function tmyFromPVGIS(j){
+  const rows=j&&j.outputs&&(j.outputs.tmy_hourly||j.outputs.hourly);
+  if(!rows||!rows.length)throw new Error('respuesta PVGIS sin tmy_hourly');
+  if(rows.length!==8760)throw new Error('TMY de '+rows.length+' horas (esperaba 8760)');
+  return {fuente:'PVGIS TMY (api v5_2)',
+          h:rows.map(r=>[+r['G(h)'],+r['Gb(n)'],+r['Gd(h)'],+r['T2m'],+r['WS10m']])};
+}
+
+/* ── careo con MEDIDA real, por inversor. numES entiende «1234.5», «1234,5» y
+   «1.234,5»; parseMedidas admite «1.1;123», «I1.1,123» o tabulado (una por
+   línea). El careo lista TAMBIÉN lo que no casa — un medido sin esperado o un
+   esperado sin medida no se calla. */
+function numES(s){
+  s=String(s).trim();
+  if(s.indexOf(',')>=0)return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  return parseFloat(s);
+}
+function parseMedidas(txt){
+  const out=new Map();
+  for(const ln of String(txt||'').split(/\n+/)){
+    const m=ln.trim().match(/^([^;,\t]+?)\s*[;,\t]\s*([-\d.,]+)\s*$/);
+    if(!m)continue;
+    const v=numES(m[2]);
+    if(Number.isFinite(v))out.set(m[1].trim().replace(/^I\s*/i,''),v);
+  }
+  return out;
+}
+function careoMedidas(esp,med){        // esp:[{inv,kwh}] · med:Map inv→kWh
+  const rows=[],vistos=new Set();
+  for(const e of esp){
+    const m=med.has(e.inv)?med.get(e.inv):null;
+    vistos.add(e.inv);
+    rows.push({inv:e.inv,esp:e.kwh,med:m,
+               dev:(m!=null&&e.kwh>0)?100*(m-e.kwh)/e.kwh:null});
+  }
+  for(const [k,v] of med)if(!vistos.has(k))rows.push({inv:k,esp:null,med:v,dev:null});
+  return rows;
+}
+
+/* CSV de la vista (separador ;, decimal coma — es lo que abre el Excel de obra) */
+function csvTabla(cab,filas){
+  const cell=v=>typeof v==='number'?String(v).replace('.',','):String(v==null?'':v);
+  return [cab.join(';')].concat(filas.map(f=>f.map(cell).join(';'))).join('\r\n');
+}
+
+/* El Burgo real: los strings del plano (elburgo_strings.json) → columnas E-O,
+   que son las filas del perfil de sombra. Las líneas partidas a <3 m (bifilo:
+   0,55 m entre vigas) se funden con su columna — a efectos de sombra entre
+   filas son la MISMA línea. Cada columna guarda sus strings con su inversor
+   (g.i de la numeración g.i.t.s) y su extensión N-S real. */
+function elburgoRows(strdb,minGap,vigasX){
+  const g=minGap||3, xs=[...new Set(strdb.strings.map(s=>s.x))].sort((a,b)=>a-b);
+  const cl=[];
+  for(const x of xs){
+    if(cl.length&&x-cl[cl.length-1][cl[cl.length-1].length-1]<g)cl[cl.length-1].push(x);
+    else cl.push([x]);
+  }
+  // la x de la columna se ANCLA a la viga del layout si la hay: el plano de
+  // strings trae dos valores de levantamiento alrededor de la misma viga
+  // física (−48,49/−47,94 ≈ viga −48,17) y la media ponderada fabricaba vanos
+  // de 5,73 m donde el layout dice «6 m clavados» — dos inversores salían
+  // produciendo menos al atardecer por un vano que NO existe.
+  const ancla=x=>{
+    if(!vigasX||!vigasX.length)return x;
+    let b=x,d=0.7;
+    for(const v of vigasX){const e=Math.abs(v-x);if(e<d){d=e;b=v;}}
+    return b;
+  };
+  const rows=cl.map(c=>({x:ancla(c.reduce((a,b)=>a+b,0)/c.length),strs:[],n0:Infinity,n1:-Infinity}));
+  const idx=new Map();cl.forEach((c,i)=>{for(const x of c)idx.set(x,i);});
+  for(const s of strdb.strings){
+    const r=rows[idx.get(s.x)];
+    r.strs.push({id:s.id,inv:s.g+'.'+s.i,n:s.n});
+    if(s.n<r.n0)r.n0=s.n; if(s.n>r.n1)r.n1=s.n;
+  }
+  return rows;
+}
+
+/* tramos de mesa por columna para El Burgo: cada string del plano es un
+   segmento a lo largo de N (el paso mediano entre strings contiguos ES el
+   largo de mesa: 32,57 m en el plano); los CAMINOS de la planta son los
+   huecos grandes entre strings — el render y el solape axial de poaPlant
+   los respetan. Antes cada columna era una viga continua y la calle
+   central desaparecía (verificado contra terreno.html y el histograma de
+   huecos del propio plano: 626 pasos normales, ~37 cortes de 36–70 m). */
+function elburgoSegs(rows,trackers){
+  // Con el LAYOUT: una mesa por tracker y viga, centrada en su eje de unidad y
+  // con el largo por TIPO — 64,6 m la larga, 32,6 la media (layout.aLoLargo).
+  // Con solo los strings no se puede: dos largas consecutivas se tocan a 0,4 m
+  // y la fusión por paso las pegaba en vigas de 130 m («ha desaparecido un
+  // tracker»). Verificado: los 819 strings casados caen DENTRO de la mesa de
+  // su tracker (alas a ±16,3 del eje).
+  if(trackers&&trackers.length){
+    const xs=rows.map(r=>r.x);
+    const out=rows.map(()=>[]);
+    for(const t of trackers){
+      const L=/Medio/i.test(t.t||'')?32.6:64.6;
+      for(const dx of [-3,3]){
+        let ci=-1,best=0.7;
+        for(let i=0;i<xs.length;i++){const d=Math.abs(xs[i]-(t.x+dx));if(d<best){best=d;ci=i;}}
+        if(ci>=0)out[ci].push([t.n-L/2,t.n+L/2]);
+      }
+    }
+    // strings sin tracker en el layout (los 4 del 1.18.7): mesa media alrededor
+    for(let i=0;i<rows.length;i++)for(const s of rows[i].strs)
+      if(!out[i].some(sg=>s.n>=sg[0]-1&&s.n<=sg[1]+1))out[i].push([s.n-16.3,s.n+16.3]);
+    for(const l of out)l.sort((a,b)=>a[0]-b[0]);
+    return out;
+  }
+  // sin layout (fallback declarado): tramos por paso de strings
+  const gaps=[];
+  for(const r of rows){
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    for(let i=1;i<ns.length;i++)gaps.push(ns[i]-ns[i-1]);
+  }
+  gaps.sort((a,b)=>a-b);
+  const L=(gaps.length?gaps[Math.floor(gaps.length/2)]:32.57)*0.96;
+  return rows.map(r=>{
+    const ns=r.strs.map(s=>s.n).sort((a,b)=>a-b);
+    const out=[];
+    for(const nn of ns){
+      const a=nn-L/2, b=nn+L/2;
+      if(out.length&&a-out[out.length-1][1]<4)out[out.length-1][1]=b;   // junta normal: mesa seguida
+      else out.push([a,b]);                                            // hueco real: camino
+    }
+    return out;
+  });
+}
+
+/* bifilo de El Burgo (layout.geometria): cada seguidor son DOS vigas a ±3 m de
+   su EJE DE UNIDAD con UN solo motor — «45 columnas de seguidores = 90 filas».
+   Las columnas se emparejan por unidad (viga oeste = x−3, este = x+3) y el θ
+   va ACOPLADO por accionamiento, como la bifila del simulador. Mayoritario sin
+   solapes, la misma protección que plantFromCotas. */
+function elburgoGroups(xs,trackers){
+  const idxNear=x=>{let b=-1,d=0.6;for(let i=0;i<xs.length;i++){const e=Math.abs(xs[i]-x);if(e<d){d=e;b=i;}}return b;};
+  const seen=new Set();
+  for(const t of (trackers||[])){
+    const a=idxNear(t.x-3),b=idxNear(t.x+3);
+    if(a<0||b<0||a===b)continue;
+    seen.add(Math.min(a,b)+'-'+Math.max(a,b));
+  }
+  const used=new Set(),out=[];
+  for(const key of [...seen]){
+    const [a,b]=key.split('-').map(Number);
+    if(used.has(a)||used.has(b))continue;
+    used.add(a);used.add(b);out.push([a,b]);
+  }
+  for(let i=0;i<xs.length;i++)if(!used.has(i))out.push([i]);
+  out.sort((p,q)=>p[0]-q[0]);
+  return out;
+}
+
+/* la planta de COTAS entera, sin ventana ni bloque (v1.15): el simulador carga
+   el bloque mayor recortado a 80 líneas porque su día × políticas lo pide;
+   esta tarjeta calcula un instante (0,5 s al alba con 80 líneas, ~1,2 s con las
+   295 de Ayora) y puede enseñar la planta de verdad — «Ayora entera» eran 402
+   de 751 trackers y el corte de la ventana dejaba monofilas en los bordes.
+   Vale también para el ámbito de una NCU (puede cruzar un camino). */
+function plantaCotas(F,cotas){return F.plantFromCotas(cotas,Infinity,'all');}
+
+/* NCU por tracker cuando layout y cotas NO van alineados 1:1 (Ayora lo
+   estuvo: 751 trackers en el layout y 754 en las cotas hasta regenerar las
+   cotas con el as-built de 751 — v1.13.1): casado por COORDENADAS (x de la
+   viga oeste y centro N-S del tracker), nunca por índice — el emparejado por
+   índice es justo el que ya costó consignas mal dirigidas. Sin casar ⇒ sin
+   NCU (solo aparece en planta entera, declarado). Con las plantas alineadas
+   es el camino de RESERVA, y el QA exige que diga lo mismo que el 1:1. */
+function ncuPorCoordenadas(cotas,trackers){
+  const out=new Array(cotas.t.length).fill(null);
+  let casados=0;
+  for(let i=0;i<cotas.t.length;i++){
+    const t=cotas.t[i];
+    if(!t||!t.f||!t.f.length)continue;
+    const f0=t.f[0];
+    const nc=(Math.min(f0.n[0],f0.n[1])+Math.max(f0.n[0],f0.n[1]))/2;
+    let best=null,bd=9;
+    for(const L of trackers){
+      if(Math.abs(L.x-f0.x)<3&&Math.abs(L.n-nc)<8){
+        const d=Math.abs(L.x-f0.x)+Math.abs(L.n-nc)*0.2;
+        if(d<bd){bd=d;best=L;}
+      }
+    }
+    if(best){out[i]=best.ncu;casados++;}
+  }
+  return {ncuOf:out,casados:casados};
+}
+
+/* ámbito por NCU (como el del simulador): filtra el plano de strings a los del
+   parque de UNA NCU, con el mapa g.i.t → ncu que sale del layout (idPrevio).
+   Los strings cuyo tracker no está en el layout solo aparecen en planta
+   entera — se declara, no se les inventa NCU. */
+function filtraStringsNCU(strdb,mapa,ncu){
+  const strings=strdb.strings.filter(s=>mapa.get(s.g+'.'+s.i+'.'+s.t)===ncu);
+  const byInv={};
+  for(const s of strings){const k=s.g+'.'+s.i;byInv[k]=(byInv[k]||0)+1;}
+  return {src:strdb.src,count:strings.length,byInv:byInv,strings:strings};
+}
+
+/* agregado por inversor. POA (por m²) se agrega en MEDIA; la energía/potencia
+   por string se agrega en SUMA (los strings de un inversor suman, no promedian). */
+function invTotals(rows,vals,modo){
+  const acc=new Map();
+  rows.forEach((r,i)=>{for(const s of r.strs){
+    const a=acc.get(s.inv)||{sum:0,n:0};a.sum+=vals[i];a.n++;acc.set(s.inv,a);}});
+  return [...acc.entries()].map(([inv,a])=>({inv:inv,val:modo==='suma'?a.sum:a.sum/a.n,nstr:a.n}))
+    .sort((a,b)=>a.inv.localeCompare(b.inv,undefined,{numeric:true}));
+}
+
+function localToUTCms(dateStr,localMin,tzOff){
+  const [y,mo,d]=dateStr.split('-').map(Number);
+  return Date.UTC(y,mo-1,d)+localMin*60000-tzOff*3600000;
+}
+function doyOf(dateStr){
+  const [y,mo,d]=dateStr.split('-').map(Number);
+  return Math.round((Date.UTC(y,mo-1,d)-Date.UTC(y,0,1))/86400000)+1;
+}
+
+/* un instante: sol → cielo (con nubes) → ángulos (auto BT | manual) → POA/fila.
+   El AUTO entra por policyAngles('pairwise') — el MISMO punto de entrada que
+   usa el simulador de BT 3D: pairwise + el acople de accionamiento de la T
+   (con groups=null, driveCoupleSafe es la identidad y queda el pairwise puro;
+   con la bifila real de cotas, el θ común por grupo, como allí). El QA carea
+   los θ contra el simulador elemento a elemento y exige igualdad EXACTA. */
+function instant(F,c,T,m){
+  const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
+  const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
+  // meteo: TMY real interpolada (con su Tamb/viento) o cielo Ineichen + nubes
+  let irr,met;
+  if(c.meteo==='tmy'&&c.tmy){
+    const w=tmyAt(c.tmy,doy,m,c.tz);
+    irr={ghi:Math.max(0,w.ghi),dni:Math.max(0,w.dni),dhi:Math.max(0,w.dhi)};
+    met={tamb:w.tamb,wind:Math.max(0,w.wind)};
+  }else{
+    irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
+    met={tamb:c.elec?c.elec.tamb:20,wind:c.elec?c.elec.wind:1};
+  }
+  const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
+                    :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
+  // POR MESA (v1.13): con tilt por mesa en la T (cotas), θ y POA se calculan
+  // mesa a mesa con policyAnglesSeg/poaPlantSeg del simulador; rows = media
+  // ponderada por largo de las mesas de cada línea. MANUAL difunde su θ.
+  if(T.segTilt&&T.segs&&F.poaPlantSeg){
+    const segAng=c.manual?T.segs.map((l,r)=>l.map(()=>ang[r]))
+                         :F.policyAnglesSeg('pairwise',zen,az,T,irr,doy,c.albedo);
+    const ps=F.poaPlantSeg(zen,az,T,segAng,irr,doy,c.albedo);
+    return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:segAng,rows:ps.rows,segs:ps.segs,
+            plant:ps.plant,shade:ps.shade,wings:ps.wings||null};
+  }
+  const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
+  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:null,rows:pp.rows,segs:null,plant:pp.plant,shade:pp.shade,
+          wings:pp.wings||null};   // v1.14: POA de cada ALA (la sombra por ala del contador 3D)
+}
+
+/* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
+   para kWh/m²; pStringW para kWh por string) — recibe también la meteo del
+   instante (Tamb/viento del TMY cuando lo hay, los inputs fijos si no). */
+function dayEnergy(F,c,T,dateStr,stepMin,map){
+  const c2=dateStr===c.date?c:Object.assign({},c,{date:dateStr});
+  const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
+  for(let m=0;m<1440;m+=stepMin){
+    const r=instant(F,c2,T,m);
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met);
+  }
+  for(let k=0;k<n;k++)out[k]*=stepMin/60/1000;
+  return out;
+}
+/* día entero, paso de 5 min con el modo activo (la fecha de la página) */
+function dayTotals(F,c,T,map){return dayEnergy(F,c,T,c.date,5,map);}
+/* fechas ISO de un período — 'mes' = el mes de la fecha activa, 'ano' = su
+   año entero. La UI las recorre día a día (progreso/cancelación); paso
+   HORARIO para los agregados largos, declarado en pantalla. */
+function fechasPeriodo(dateStr,periodo){
+  const [y,mo]=dateStr.split('-').map(Number), out=[];
+  const m0=periodo==='mes'?mo:1, m1=periodo==='mes'?mo:12;
+  for(let m=m0;m<=m1;m++){
+    const dias=new Date(Date.UTC(y,m,0)).getUTCDate();
+    for(let d=1;d<=dias;d++)
+      out.push(y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'));
+  }
+  return out;
+}
+/* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
+
+const $=id=>document.getElementById(id);
+let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
+let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
+let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)
+let T_nOff=0;                    // desplazamiento N del marco de escena (El Burgo)
+
+/* ── la física del simulador, extraída en caliente (contrato FÍSICA PURA) ── */
+async function cargaFisica(){
+  try{
+    const html=await (await fetch('backtracking.html')).text();
+    const i0=html.indexOf('FÍSICA PURA'), i1=html.indexOf('/* FIN-FÍSICA');
+    if(i0<0||i1<0)throw new Error('no encuentro los delimitadores FÍSICA PURA / FIN-FÍSICA');
+    const src=html.slice(html.lastIndexOf('/*',i0),i1);
+    F=new Function(src+`
+      return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
+              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
+              policyAnglesSeg,poaPlantSeg,anglesAstroSeg};`)();
+  }catch(e){
+    const a=$('aviso');a.style.display='block';
+    a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
+      'Esta página extrae el bloque FÍSICA PURA de <code>backtracking.html</code> para no duplicarla: '+
+      'comprueba que ese fichero está desplegado junto a éste y recarga (Ctrl+Shift+R).';
+    throw e;
+  }
+}
+
+/* plantas de cotas reales (el mismo dato que carga el simulador de BT 3D) */
+/* mod (v1.16): el MÓDULO real de la planta y sus strings por fila — Ayora y San
+   José llevan DOS strings por fila (uno por ala) de módulos de 1,303 m (Risen /
+   Luxen), no el de El Burgo (1,146): el largo medido lo confirma al centímetro
+   (Ayora: 74,65 m = 2·28·1,303 + 54·0,015 + 0,70; 56,18 = 2·21; 37,74 = 2·14;
+   San José 74,43 = 2·28). Los módulos por string salen del LAYOUT cuando lo
+   trae (Ayora: 645 de 751 trackers) y del largo cuando no. */
+const REALES={ayora:{cotas:'ayora_cotas.json',layout:'ayora_layout.json',tz:2,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}},
+              sanjose:{cotas:'sanjose_cotas.json',layout:'sanjose_layout.json',tz:-5,mod:{w:1.303,gap:0.015,drive:0.70,strPerFila:2}}};
+let RP=null;   // {key,P,lat,lon,alt} — planta de cotas cargada
+async function cargaCotas(key){
+  if(RP&&RP.key===key)return RP;
+  const cfg2=REALES[key];
+  const [cotas,lay]=await Promise.all([
+    fetch(cfg2.cotas,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.cotas+' '+r.status);return r.json();}),
+    fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
+  const P=plantaCotas(F,cotas);              // la planta ENTERA (v1.15), no el bloque mayor a 80 líneas
+  // NCU por tracker: layout alineado 1:1 con las cotas (la receta del
+  // simulador; Ayora y San José lo están) y, si NO alinean, casado por
+  // coordenadas — solo si casa de verdad (>90 %); si no, sin NCUs antes que
+  // mal dirigidas
+  let ncuOf=(lay.trackers&&lay.trackers.length===cotas.t.length)?lay.trackers.map(t=>t.ncu):null;
+  if(!ncuOf&&lay.trackers&&lay.trackers.length){
+    const m=ncuPorCoordenadas(cotas,lay.trackers);
+    if(m.casados>cotas.t.length*0.9)ncuOf=m.ncuOf;
+  }
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,modsTrk:modsPorTracker(cotas,lay),
+      lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
+  return RP;
+}
+/* re-corta la planta de cotas al ámbito elegido (''=entera, n=esa NCU) */
+function aplicaAmbitoCotas(v){
+  let data=RP.cotas;
+  if(v!==''&&RP.ncuOf)data=Object.assign({},RP.cotas,{t:RP.cotas.t.filter((_,i)=>RP.ncuOf[i]===+v)});
+  RP.P=plantaCotas(F,data);
+  $('nrows').value=RP.P.elev.length;$('pitch').value=RP.P.pitch.toFixed(2);
+}
+
+/* datos de la planta real (solo se piden al elegirla) */
+let EB=null;
+async function cargaElburgo(){
+  if(EB)return EB;
+  const [sj,lj]=await Promise.all([
+    fetch('elburgo_strings.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_strings.json '+r.status);return r.json();}),
+    fetch('elburgo_layout.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_layout.json '+r.status);return r.json();})]);
+  // vigas físicas del layout (eje de unidad ±3 m): anclan la x de las columnas
+  const vigasX=[];
+  for(const t of (lj.trackers||[])){vigasX.push(t.x-3,t.x+3);}
+  const rows=elburgoRows(sj,3,vigasX);
+  // NCU por string: g.i.t del plano casado con el idPrevio del layout
+  const mapa=new Map();
+  for(const t of (lj.trackers||[]))if(t.idPrevio!=null)mapa.set(String(t.idPrevio),t.ncu);
+  const porNCU={};let sinNCU=0;
+  for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
+    if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
+  EB={raw:sj,trk:lj.trackers||[],trkA:lj.trackers||[],vigasX:vigasX,inv:lj.invlab||[],invA:lj.invlab||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+      maxang:(lj.montaje&&lj.montaje.max_angle)||55,
+      cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
+      mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
+  return EB;
+}
+/* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU).
+   OJO: no basta con filtrar los STRINGS — las MESAS se levantan del layout de
+   trackers, y como las dos NCUs comparten 40 de 45 columnas E-O, un layout sin
+   filtrar ancla las mesas de la OTRA NCU en las filas del ámbito («selecciono
+   una NCU y me carga las dos»). El tracker lleva su ncu: se filtra él también,
+   y con él los inversores (los de los strings del ámbito). */
+function aplicaAmbitoEB(v){
+  const db=v===''?EB.raw:filtraStringsNCU(EB.raw,EB.mapa,+v);
+  EB.rows=elburgoRows(db,3,EB.vigasX);EB.xs=EB.rows.map(r=>r.x);
+  EB.trkA=v===''?EB.trk:EB.trk.filter(t=>t.ncu===+v);
+  const invs=new Set(db.strings.map(s=>'I-'+s.g+'.'+s.i));
+  EB.invA=v===''?EB.inv:EB.inv.filter(iv=>invs.has(iv.s));
+  $('nrows').value=EB.rows.length;
+}
+
+function cfg(){
+  const pv=$('plant').value.split('|');   // 'planta' o 'planta|ncu'
+  const c={plant:pv[0],ncu:pv[1]||'',
+          lat:+$('lat').value,lon:+$('lon').value,date:$('date').value,tz:+$('tz').value,
+          alt:+$('alt').value,albedo:+$('albedo').value,cc:Math.max(0,Math.min(1,(+$('cloud').value)/100)),
+          pitch:+$('pitch').value,cw:+$('cw').value,maxang:+$('maxang').value,
+          nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
+          manual:$('manual').checked,manth:+$('manth').value,
+          tpreset:$('tpreset').value,tparam:+$('tparam').value,
+          // meteo: TMY cargada (si el selector la pide y ya llegó) o cielo+nubes
+          meteo:$('meteo').value,
+          tmy:($('meteo').value==='tmy'&&TMY)?TMY.data:null,
+          // eléctrico del Notebook: u_c=29/u_v=0 son los defaults canónicos del
+          // core (ThermalSpecs, free-standing); el resto se edita en su tarjeta
+          elec:{mods:Math.max(1,Math.round(+$('mods').value)),wp:+$('wp').value,
+                gamma:+$('gamma').value,tamb:+$('tamb').value,wind:Math.max(0,+$('wind').value),
+                uc:29,uv:0},
+          // cadena AC del Notebook (apply_dc_losses + inversor pvwatts + red)
+          ac:{loss:{soiling:Math.max(0,+$('lsoil').value),mismatch:Math.max(0,+$('lmis').value),
+                    wiring:Math.max(0,+$('lwir').value),lid:Math.max(0,+$('llid').value)},
+              ninv:Math.max(1,Math.round(+$('ninv').value)),
+              pnomW:Math.max(1,+$('pnom').value)*1000,
+              etaMax:Math.max(0.5,Math.min(1,+$('etamax').value)),
+              gridW:Math.max(0,+$('gridkw').value)*1000}};
+  if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant){
+    const P=RP.P;
+    c.nrows=P.elev.length;c.cw=P.cw;c.maxang=P.maxAngle;c.pitch=P.pitch;
+    c.lat=RP.lat;c.lon=RP.lon;
+  }
+  return c;
+}
+function rebuildT(){
+  const c=cfg();
+  // MISMO camino para todas las plantas: posiciones x + elevación + tilt por
+  // fila → el motor. Cada planta solo aporta SUS datos: la genérica su rejilla,
+  // El Burgo las x del plano (z/tilt a 0: es lo que hay levantado), y Ayora /
+  // San José las cotas z de cada extremo de mesa vía plantFromCotas — el mismo
+  // cargador del simulador de BT 3D.
+  if(REALES[c.plant]&&RP&&RP.key===c.plant){
+    const P=RP.P;
+    T={elev:P.elev,xs:P.lineX,tilt:P.tilt,segs:P.segs};
+    T.obj=buildTReal(F,c,P);
+  }else if(c.plant==='elburgo'&&EB){
+    // tramos de mesa REALES por string, con sus caminos (verificado contra
+    // terreno.html): entran en la escena Y en el solape axial de poaPlant
+    const abs=elburgoSegs(EB.rows,EB.trkA);
+    let mn=Infinity,mx=-Infinity;
+    for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
+    const nc=(mn+mx)/2;
+    const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
+    const z=new Array(c.nrows).fill(0);
+    T_nOff=nc;   // para colocar bielas y motores del layout en el marco de la escena
+    // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
+    // motor en la viga OESTE — «no todos los trackers son iguales, pero son
+    // bifilas todos» (los largos de mesa ya salen de los propios strings)
+    const groups=elburgoGroups(EB.xs,EB.trkA);
+    T={elev:z,xs:EB.xs,tilt:null,segs:segs};
+    T.west=new Array(c.nrows).fill(true);
+    for(const g of groups)if(g.length===2)T.west[g[1]]=false;
+    T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
+  }else{
+    const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+    const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+    T={elev:z,xs:xs,tilt:null,segs:null};
+    T.obj=buildTX(F,c,xs,z,null);
+  }
+  // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
+  // (g.i); el resto n bloques contiguos iguales (declarado en el input)
+  // v1.14: cada string con su MESA y su ALA — El Burgo por su plano, cotas por
+  // el largo medido (la fila larga = dos strings, uno por ala)
+  if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
+                                                                       {mod:REALES[c.plant].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk});
+  else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
+  DAYC=null;PERIODC=null;PERIODRUN++;
+  if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
+  build3D(c);
+}
+
+/* ── 3D: cajas por fila sobre el terreno, pala pintada por producción ── */
+let R3={};
+function build3D(c){
+  const cv=$('c3d');
+  if(!R3.renderer){
+    // alpha: el CIELO va como degradado CSS bajo el lienzo (skyColors de
+    // sol.js — cénit oscuro, horizonte encendido al amanecer/ocaso, la misma
+    // receta que los 3D de la casa) sin textura de por medio
+    R3.renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+    R3.renderer.setClearColor(0x000000,0);
+    // sombra REAL entre filas, con el mismo montaje que el simulador de BT 3D
+    R3.renderer.shadowMap.enabled=true;R3.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    R3.scene=new THREE.Scene();
+    R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
+    R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
+    R3.ctrl.addEventListener('change',()=>R3.dirty=true);
+    // «poco relleno → sombras marcadas» (terreno.html, 0,08; backtracking ni
+    // lleva ambiente): con 0,35 la sombra de la mañana existía pero no se LEÍA
+    R3.amb=new THREE.AmbientLight(0xffffff,0.08);
+    R3.hemi=new THREE.HemisphereLight(0xbfd4e6,0x2a3324,0.5);
+    R3.scene.add(R3.hemi);
+    R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
+    R3.sun.castShadow=true;
+    R3.sun.shadow.mapSize.width=4096;R3.sun.shadow.mapSize.height=4096;
+    R3.sun.shadow.bias=-2e-4;R3.sun.shadow.normalBias=0.3;   // los del simulador
+    R3.scene.add(R3.amb,R3.sun,R3.sun.target);
+    (function loop(){requestAnimationFrame(loop);
+      if(R3.dirty){R3.dirty=false;R3.renderer.render(R3.scene,R3.cam);}})();
+  }
+  const W=cv.clientWidth||900,H=cv.clientHeight||520;
+  R3.renderer.setSize(W,H,false);R3.cam.aspect=W/H;R3.cam.updateProjectionMatrix();
+  if(R3.world)R3.scene.remove(R3.world);
+  R3.world=new THREE.Group();R3.scene.add(R3.world);
+  const n=c.nrows;
+  // geometría por fila para la ESCENA: x (recentradas), z, tilt N-S y TRAMOS —
+  // medidos cuando la planta los trae (cotas/plano), rejilla uniforme si no
+  const xc=(T.xs[0]+T.xs[n-1])/2;
+  const rx=T.xs.map(x=>x-xc);
+  // tramos MEDIDOS cuando la planta los trae (cotas o strings del plano, con
+  // sus caminos); rejilla de una mesa continua para la genérica
+  const segsNS=T.segs||Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
+  const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
+  const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
+  const gnd=new THREE.Mesh(
+    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),T.tilt?96:8),
+    new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
+  // el suelo sigue el perfil E-O real (el mismo elev que come la física) y,
+  // cuando la planta trae TILT N-S medido (cotas), también esa pendiente por
+  // línea: cada mesa pivota sobre su centro a cota de línea, así que el suelo
+  // se pone PARALELO a la mesa más cercana — sin esto, una línea larga con
+  // tilt «entraba en el terreno» y los postes asomaban sobre los módulos.
+  // Se TIÑE por cota (bajo oscuro → alto claro): el relieve se lee de un vistazo.
+  const gz=-(sMin+sMax)/2;
+  const hLinea=(r,sceneZ)=>{           // cota del suelo bajo la línea r en esa N
+    if(!T.tilt&&!T.segTilt)return T.elev[r];
+    let best=0,bd=Infinity;
+    segsNS[r].forEach((sg,k)=>{
+      const tl=Math.sin((T.segTilt?T.segTilt[r][k]:T.tilt[r])*D2R);   // el tilt de ESA mesa
+      const zc=-(sg[0]+sg[1])/2, h=Math.max(1,(sg[1]-sg[0])/2);
+      const d=Math.abs(sceneZ-zc);
+      if(d<bd){bd=d;best=Math.max(-h,Math.min(h,sceneZ-zc))*tl;}
+    });
+    return T.elev[r]+best;
+  };
+  {const pos=gnd.geometry.attributes.position;
+   const zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
+   const cols=new Float32Array(pos.count*3);
+   for(let i=0;i<pos.count;i++){
+     const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/Math.max(1e-6,span/(n-1))));
+     const r0=Math.floor(r), fr=r-r0, r1=Math.min(n-1,r0+1);
+     const sceneZ=-pos.getY(i)+gz;      // el marco de escena de las mesas (z=−norte)
+     const z=hLinea(r0,sceneZ)+fr*(hLinea(r1,sceneZ)-hLinea(r0,sceneZ));
+     pos.setZ(i,z);
+     const t2=zHi>zLo?(z-zLo)/(zHi-zLo):0.4;
+     cols[i*3]=0.086+0.10*Math.max(0,Math.min(1,t2));cols[i*3+1]=0.145+0.13*Math.max(0,Math.min(1,t2));cols[i*3+2]=0.105+0.09*Math.max(0,Math.min(1,t2));
+   }
+   gnd.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
+   pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
+  gnd.rotation.x=-Math.PI/2;
+  gnd.position.z=gz;
+  gnd.receiveShadow=true;
+  R3.world.add(gnd);
+  // sombra del sol acotada a la planta (como el simulador); el frustum vertical
+  // se ciñe por frame en repaint (sol rasante: texel en cm, no la «sierra»)
+  R3.shR=Math.max(span,maxLen)*0.75;
+  R3.sun.target.position.set(0,0,0);
+  // ── los trackers: el MODELO del seguidor de la casa (seguidor.js — la misma
+  // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
+  // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
+  // simulador). Sin el modelo (fichero ausente), cajas de siempre.
+  // presupuesto de mallas: el modelo detallado por mallas sueltas son ~17 por
+  // mesa — Ayora entera (4.813 tramos) TUMBABA navegadores. Hasta 600 mesas va
+  // el camino de mallas (permite pieza a pieza); por encima, INSTANCIADO con
+  // Seguidor.instancePlan (como terreno.html): un InstancedMesh por pieza y
+  // talla, el MISMO modelo también a escala de miles. Sin seguidor.js, cajas.
+  const totalTramos=segsNS.reduce((a,l)=>a+l.length,0);
+  const hayModelo=typeof Seguidor!=='undefined';
+  const useModel=hayModelo&&totalTramos<=600;
+  const useInst=hayModelo&&totalTramos>600;
+  const D0=hayModelo?Seguidor.DIMS:null;
+  if(hayModelo&&!R3.mats)R3.mats=Seguidor.materials(THREE);
+  const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
+  R3.rows=[];R3.inst=null;
+  if(useInst){
+    buildInstanced(c,rx,segsNS,postM,D0);
+  }else{
+  for(let r=0;r<n;r++){
+    const x=rx[r], hubY=T.elev[r]+2.0;                        // postH canónico del modelo
+    const spins=[];
+    for(let k=0;k<segsNS[r].length;k++){
+      const sg=segsNS[r][k];
+      // un material de tinte POR ALA (v1.14; por mesa desde v1.13): la mesa larga
+      // lleva un string por ala y cada uno se pinta con lo suyo
+      const mkTint=()=>new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
+        side:THREE.DoubleSide,depthWrite:false});
+      const tintM=mkTint(), tintM2=mkTint();
+      const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
+      const tiltG=new THREE.Group();
+      tiltG.position.set(x,hubY,zc);
+      tiltG.userData={row:r,k:k,s0:sg[0],s1:sg[1]};           // para la SELECCIÓN con clic
+      const tiltK=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);
+      if(tiltK)tiltG.rotation.x=-tiltK*D2R;                   // tilt N-S MEDIDO de ESTA mesa
+      let built=false;
+      const media=hayModelo&&len<0.7*T.obj.filaLen;           // tramo corto ⇒ mesa «media» real
+      const mods=hayModelo?Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch)):0;
+      if(useModel){
+        try{
+          Seguidor.setModsPerStr(mods);
+          // bifila: motor/TCU solo en la viga OESTE de cada unidad (T.west)
+          // el SOPORTE de la corona va aparte: es terrainScaled («la app lo
+          // estira desde la corona al terreno», seguidor.js) — dejarlo dentro
+          // del beam era el muñón de 1 m flotando bajo la corona («el soporte
+          // central no existe»). Se construye abajo, vertical y hasta el suelo.
+          const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
+                                               materials:R3.mats,skip:{antena:1,antenatip:1,soporte:1}});
+          const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
+          beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
+          const bb=new THREE.Box3().setFromObject(beam.spin); // en el marco local del tubo, ANTES de colgar
+          // el tinte va en DOS alas, dejando el hueco central del accionamiento
+          // sin pintar — un plano corrido tapaba corona/reductora/motor
+          const bbLen=Math.max(1,bb.max.x-bb.min.x), wAla=(bbLen-D0.gapDrive)/2;
+          for(const s2 of (wAla>0.5?[-1,1]:[0])){
+            const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),s2>0?tintM2:tintM);   // ala norte (+X del tubo) = string b
+            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=s2*(D0.gapDrive/2+wAla/2);
+            tint.renderOrder=2;
+            beam.spin.add(tint);
+          }
+          yaw.add(beam.spin,beam.static);
+          tiltG.add(yaw);
+          // soporte central de la corona, la receta de terreno.html: del punto
+          // bajo el bracket (eje −0,22) al terreno, VERTICAL en mundo
+          const sTop=hubY-0.22, sGnd=T.elev[r]-0.05, sL=Math.max(0.4,sTop-sGnd);
+          const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
+          sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
+          R3.world.add(sop);
+          spins.push({g:beam.spin,model:true,mat:tintM,matW:[tintM,tintM2],k:k});
+          built=true;
+        }catch(e){built=false;}
+      }
+      if(!built){                                             // camino clásico: cajas
+        const gRot=new THREE.Group();
+        const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),
+          new THREE.MeshLambertMaterial({color:0x39424d}));
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.04,len),
+          new THREE.MeshLambertMaterial({color:0x223344}));
+        panel.position.y=0.17;
+        const tint=new THREE.Mesh(new THREE.PlaneGeometry(len,c.cw*0.99),tintM);
+        tint.rotation.x=-Math.PI/2;tint.rotation.z=Math.PI/2;tint.position.y=0.20;tint.renderOrder=2;
+        gRot.add(tube,panel,tint);
+        tiltG.add(gRot);
+        spins.push({g:gRot,model:false,mat:tintM,matW:null,k:k});
+      }
+      R3.world.add(tiltG);
+      // postes: la retícula de la CASA (Seguidor.pilotesX, proporcional al
+      // largo — la regla de terreno.html; los tercios eran una retícula
+      // inventada) y LONGITUD VARIABLE que absorbe el terreno: del suelo
+      // drapeado bajo su punto al tubo, nunca por encima de los módulos
+      const tl=Math.sin(tiltK*D2R);
+      const zPil=(hayModelo?Seguidor.pilotesX(mods):[-len/3,0,len/3])
+        .filter(dn=>Math.abs(dn)<=len/2);   // el medio oculta los exteriores (la regla de terreno.html)
+      for(const dn of zPil){
+        const gY=T.elev[r]-tl*dn-0.15, topY=hubY-tl*dn-0.08, L=Math.max(0.4,topY-gY);
+        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,L,8),postM);
+        post.position.set(x,(gY+topY)/2,zc-dn);
+        post.castShadow=true;
+        R3.world.add(post);
+      }
+    }
+    R3.rows.push({spins:spins});
+  }
+  }// fin del camino de mallas sueltas (modelo/cajas)
+  if(hayModelo)Seguidor.setModsPerStr(28);                    // restaurar el canónico compartido
+  // ── eje de transmisión del BIFILA de El Burgo, con la receta de terreno.html:
+  // cilindro Ø60 mm entre las dos vigas de cada unidad A LA ALTURA DEL EJE DEL
+  // TUBO (makeTranslation(0, ph, 0) allí — a 1,24 «la biela está muy abajo»).
+  // El motor, la reductora y las coronas NO se fabrican aquí: ya vienen del
+  // modelo (slew completo en la viga oeste, corona+soporte twin en la gemela) —
+  // el cubo ámbar y las copas de antes eran inventos y se retiran.
+  if(c.plant==='elburgo'&&EB&&EB.trkA.length){
+    const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
+    const ejeG=new THREE.CylinderGeometry(0.03,0.03,6-0.5,10);ejeG.rotateZ(Math.PI/2);
+    const hubY=2.0;   // la altura del eje del tubo (postH canónico), como terreno.html
+    for(const t of EB.trkA){
+      const zc=-(t.n-T_nOff);
+      if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito visible
+      const ux=t.x-xc;
+      if(ux<rx[0]-4||ux>rx[n-1]+4)continue;
+      const eje=new THREE.Mesh(ejeG,bielM);eje.position.set(ux,hubY,zc);eje.castShadow=true;
+      R3.world.add(eje);
+    }
+    // a escala de PLANTA un eje de Ø6 cm es subpíxel: capa de LÍNEAS (1 px a
+    // cualquier distancia) sobre la misma transmisión — la geometría real
+    // sigue ahí para el zoom
+    {
+      const pts=[];
+      for(const t of EB.trkA){
+        const zc=-(t.n-T_nOff), ux=t.x-xc;
+        pts.push(ux-2.75,hubY,zc, ux+2.75,hubY,zc);
+      }
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+      R3.world.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xdde3ea})));
+    }
+    // los CTs de la planta (coordenadas del DWG, las mismas de terreno.html):
+    // el hueco sin trackers junto a (−6,2, 22) no es un error — es el CT Norte
+    const ctM=new THREE.MeshLambertMaterial({color:0x8c93a8});
+    for(const ct of [{x:-6.2,n:22.01},{x:9.92,n:-194.24}]){
+      const zc=-(ct.n-T_nOff);
+      if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito (una NCU): su CT no se dibuja flotando
+      const b=new THREE.Mesh(new THREE.BoxGeometry(6,2.6,3.2),ctM);
+      b.position.set(ct.x-xc,1.3,zc);b.castShadow=true;
+      R3.world.add(b);
+    }
+    // los 36 INVERSORES en su posición real del layout (invlab: x, n, nombre I-g.i)
+    const invM=new THREE.MeshLambertMaterial({color:0x54a6ff});
+    for(const iv of EB.invA){
+      const b=new THREE.Mesh(new THREE.BoxGeometry(1.6,1.3,1.0),invM);
+      b.position.set(iv.x-xc,0.65,-(iv.n-T_nOff));b.castShadow=true;
+      R3.world.add(b);
+    }
+  }
+  // ── ejes de transmisión de las BIFILAS de cotas (Ayora/San José): el
+  // accionamiento real de la T (P.groups, parejas de líneas acopladas por
+  // plantFromCotas) — un eje por UNIDAD (tramo solapado de las dos líneas),
+  // a la altura del eje del tubo, con su capa de líneas 1 px como El Burgo.
+  // «En Ayora ni motores ni bielas»: los motores ya venían del modelo (los
+  // tapaba el tinte corrido); los ejes faltaban de verdad.
+  if(c.plant!=='elburgo'&&T.obj&&T.obj.groups){
+    const pares=T.obj.groups.filter(g2=>g2.length===2);
+    if(pares.length){
+      const ejes=[];
+      for(const [a,b] of pares){
+        for(const sa of (segsNS[a]||[])){
+          const ca=(sa[0]+sa[1])/2;
+          const sb=(segsNS[b]||[]).find(s2=>ca>=s2[0]-2&&ca<=s2[1]+2);
+          if(!sb)continue;
+          ejes.push([rx[a],T.elev[a]+2.0,rx[b],T.elev[b]+2.0,-ca]);
+        }
+      }
+      if(ejes.length){
+        const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
+        const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03,0.03,1,8),bielM,ejes.length);
+        im.castShadow=true;
+        const mM=new THREE.Matrix4(),vP=new THREE.Vector3(),vD=new THREE.Vector3(),
+              qQ=new THREE.Quaternion(),vY=new THREE.Vector3(0,1,0),vS=new THREE.Vector3();
+        const pts=[];let id=0;
+        for(const e of ejes){
+          vD.set(e[2]-e[0],e[3]-e[1],0);
+          const L2=Math.max(0.5,vD.length()-0.5);
+          qQ.setFromUnitVectors(vY,vD.normalize());
+          vP.set((e[0]+e[2])/2,(e[1]+e[3])/2,e[4]);vS.set(1,L2,1);
+          mM.compose(vP,qQ,vS);im.setMatrixAt(id++,mM);
+          pts.push(e[0],e[1],e[4], e[2],e[3],e[4]);
+        }
+        R3.world.add(im);
+        const g2=new THREE.BufferGeometry();
+        g2.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+        R3.world.add(new THREE.LineSegments(g2,new THREE.LineBasicMaterial({color:0xdde3ea})));
+      }
+    }
+  }
+  if(!R3.camSet||R3.camPlant!==c.plant){
+    // encuadre por la CAJA REAL de la escena — San José es 490 m de ancho por
+    // 2,4 km de largo, y el «máximo de dos números» a ojo lo dejaba en una
+    // esquina diminuta del lienzo
+    const bb=new THREE.Box3().setFromObject(R3.world);
+    const ctr=bb.getCenter(new THREE.Vector3()), sz=bb.getSize(new THREE.Vector3());
+    const asp=R3.cam.aspect||1.6, fov=R3.cam.fov*D2R;
+    const d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
+    R3.ctrl.target.copy(ctr);
+    R3.cam.position.set(ctr.x+d*0.42,ctr.y+d*0.55,ctr.z+d*0.62);
+    R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
+    R3.sun.target.position.copy(ctr);
+  }
+  R3.dirty=true;
+}
+
+/* ── modelo INSTANCIADO a escala de planta entera (Seguidor.instancePlan,
+   como terreno.html): un InstancedMesh por pieza y por TALLA de mesa. Las
+   piezas del giro se rematrizan en cada repintado (Q = base·Rx(θ)·escala de
+   cuerda); las fijas se colocan una vez. El tinte de producción es UN
+   InstancedMesh de planos con color POR INSTANCIA, y también sirve de blanco
+   del picking (instanceId → tramo). */
+function buildInstanced(c,rx,segsNS,postM,D0){
+  const tramos=[];
+  for(let r=0;r<c.nrows;r++){
+    const x=rx[r], hubY=T.elev[r]+2.0;
+    for(let k=0;k<segsNS[r].length;k++){
+      const sg=segsNS[r][k], len=Math.max(2,sg[1]-sg[0]);
+      const tilt=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);   // tilt de ESTA mesa
+      tramos.push({row:r,k:k,x:x,hubY:hubY,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,s0:sg[0],s1:sg[1]});
+    }
+  }
+  // base por tramo (posición + tilt N-S medido + tubo del modelo a norte) y
+  // el local del tinte (plano unitario escalado al largo del tramo)
+  const mRx=new THREE.Matrix4(),mRy=new THREE.Matrix4().makeRotationY(Math.PI/2);
+  for(const tr of tramos){
+    tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.hubY,tr.zc)
+      .multiply(mRx.makeRotationX(-tr.tilt*D2R)).multiply(mRy);
+    tr.Q=new THREE.Matrix4();
+    // tinte en DOS alas por tramo, dejando el hueco central del accionamiento
+    // sin pintar (un plano corrido tapaba corona/reductora/motor)
+    const wAla=Math.max(0.5,(tr.len-D0.gapDrive)/2);
+    tr.Ltint=[-1,1].map(s2=>new THREE.Matrix4().makeTranslation(s2*(D0.gapDrive/2+wAla/2),0.175,0)
+      .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+      .multiply(new THREE.Matrix4().makeScale(wAla,2.36,1)));
+  }
+  // tallas: la MISMA receta de módulos-por-tramo que el camino de mallas
+  const porTalla=new Map();
+  tramos.forEach((tr,ti)=>{
+    const media=tr.len<0.7*T.obj.filaLen;
+    const mods=Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
+    const key=mods+(media?'|medio':'|largo');
+    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',idx:[]});
+    porTalla.get(key).idx.push(ti);
+  });
+  const spinMeshes=[],tmpM=new THREE.Matrix4();
+  for(const g of porTalla.values()){
+    Seguidor.setModsPerStr(g.mods);
+    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:true});
+    for(const p of plan){
+      // mismos descartes que buildBeam en esta página: antena y enlaces por-frame
+      if(p.motorLink||p.damperLink||p.key==='antena'||p.key==='antenatip')continue;
+      if(p.terrainScaled){
+        // el SOPORTE de la corona: terrainScaled — del punto bajo el bracket
+        // (eje −0,22) al terreno, vertical en mundo, como terreno.html
+        const im2=new THREE.InstancedMesh(p.geom(THREE),R3.mats[p.mat],g.idx.length);
+        im2.castShadow=true;im2.receiveShadow=true;
+        im2.userData.pickTramos=tramos;im2.userData.nLocals=1;im2.userData.tramoIdx=g.idx;
+        {let id=0;const mS3=new THREE.Matrix4();
+         for(const ti of g.idx){
+           const tr=tramos[ti], sTop=tr.hubY-0.22, sGnd=T.elev[tr.row]-0.05, sL=Math.max(0.4,sTop-sGnd);
+           tmpM.makeTranslation(tr.x,(sTop+sGnd)/2,tr.zc).multiply(mS3.makeScale(1,sL,1));
+           im2.setMatrixAt(id++,tmpM);
+         }}
+        R3.world.add(im2);continue;
+      }
+      const im=new THREE.InstancedMesh(p.geom(THREE),R3.mats[p.mat],g.idx.length*p.locals.length);
+      im.castShadow=!!p.cast;im.receiveShadow=true;
+      im.userData.pickTramos=tramos;im.userData.nLocals=p.locals.length;im.userData.tramoIdx=g.idx;
+      if(p.spin)spinMeshes.push({mesh:im,locals:p.locals,idx:g.idx});
+      else{
+        let id=0;
+        for(const ti of g.idx)for(const L of p.locals){
+          tmpM.multiplyMatrices(tramos[ti].pre,L);im.setMatrixAt(id++,tmpM);
+        }
+        im.instanceMatrix.needsUpdate=true;
+      }
+      R3.world.add(im);
+    }
+  }
+  // tinte de producción: dos alas por tramo, color por instancia
+  const tint=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),
+    new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.62,
+      side:THREE.DoubleSide,depthWrite:false}),tramos.length*2);
+  tint.renderOrder=2;
+  tint.userData.pickTramos=tramos;tint.userData.nLocals=2;tint.userData.tramoIdx=tramos.map((_,i)=>i);
+  for(let ti=0;ti<tramos.length*2;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
+  R3.world.add(tint);
+  // postes instanciados: la retícula de la casa (pilotesX por talla, el medio
+  // oculta exteriores) y longitud variable absorbiendo el terreno — cilindro
+  // unitario escalado, la misma regla que el camino de mallas
+  const postes=[];
+  for(const g of porTalla.values()){
+    const zPil=Seguidor.pilotesX(g.mods);
+    for(const ti of g.idx){
+      const tr=tramos[ti], tl=Math.sin(tr.tilt*D2R);
+      for(const dn of zPil){
+        if(Math.abs(dn)>tr.len/2)continue;
+        const gY=T.elev[tr.row]-tl*dn-0.15, topY=tr.hubY-tl*dn-0.08;
+        postes.push([tr.x,gY,topY,tr.zc-dn]);
+      }
+    }
+  }
+  const posts=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06,0.06,1.0,8),postM,postes.length);
+  posts.castShadow=true;
+  {let id=0;const mS=new THREE.Matrix4();
+   for(const p of postes){
+     const L=Math.max(0.4,p[2]-p[1]);
+     tmpM.makeTranslation(p[0],(p[1]+p[2])/2,p[3]).multiply(mS.makeScale(1,L,1));
+     posts.setMatrixAt(id++,tmpM);
+   }}
+  R3.world.add(posts);
+  R3.inst={tramos:tramos,spinMeshes:spinMeshes,tint:tint,
+           tmpR:new THREE.Matrix4(),tmpS:new THREE.Matrix4(),tmpM:new THREE.Matrix4(),
+           tmpC:new THREE.Color()};
+}
+/* repintado del instanciado: Q por tramo con el θ de SU fila, y color por tramo */
+function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
+  const I=R3.inst,k=c.cw/2.382;
+  I.tmpS.makeScale(1,1,k);
+  for(const tr of I.tramos){
+    I.tmpR.makeRotationX((inst.segAng?inst.segAng[tr.row][tr.k]:inst.ang[tr.row])*D2R);
+    tr.Q.copy(tr.pre).multiply(I.tmpR).multiply(I.tmpS);
+  }
+  for(const g of I.spinMeshes){
+    let id=0;
+    for(const ti of g.idx)for(const L of g.locals){
+      I.tmpM.multiplyMatrices(I.tramos[ti].Q,L);g.mesh.setMatrixAt(id++,I.tmpM);
+    }
+    g.mesh.instanceMatrix.needsUpdate=true;
+  }
+  for(let ti=0;ti<I.tramos.length;ti++){
+    const tr=I.tramos[ti];
+    const sv=(segVals&&segVals[tr.row]&&segVals[tr.row][tr.k]!=null)?segVals[tr.row][tr.k]:vals[tr.row];
+    const wv=(wingVals&&wingVals[tr.row]&&wingVals[tr.row][tr.k])||null;   // por ALA (v1.14): Ltint[0] = sur, [1] = norte
+    for(let s2=0;s2<2;s2++){
+      I.tmpC.set(ramp(Math.max(0,Math.min(1,norm((wv&&wv[s2]!=null)?wv[s2]:sv,mn,mx)))));
+      I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ti*2+s2,I.tmpM);
+      I.tint.setColorAt(ti*2+s2,I.tmpC);
+    }
+  }
+  I.tint.instanceMatrix.needsUpdate=true;
+  if(I.tint.instanceColor)I.tint.instanceColor.needsUpdate=true;
+}
+
+function ramp(x){return F.prodColor(x);}
+function paintLegend(mn,mx,unit,fmt){
+  const stops=[];for(let i=0;i<=8;i++)stops.push(ramp(i/8)+' '+(i*12.5)+'%');
+  $('legbar').style.background='linear-gradient(90deg,'+stops.join(',')+')';
+  $('leglo').textContent=fmt(mn);
+  $('leghi').textContent=fmt(mx)+' '+unit;
+}
+
+function repaint(){
+  if(!F||!T)return;
+  const c=cfg(), m=+$('hour').value;
+  $('hourlbl').textContent=String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+  $('manthlbl').textContent=$('manth').value+'°';
+  $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
+  const inst=instant(F,c,T.obj,m);
+  // Tamb/viento DEL INSTANTE (con TMY vienen de la meteo real; en cielo son los inputs)
+  const mode=$('cmode').value, pw=v=>pStringW(v,inst.met.tamb,inst.met.wind,c.elec)/1000;
+  // media por fila de un valor POR INVERSOR (una línea con strings de varios
+  // inversores promedia — los números exactos van en los chips y el careo)
+  const rowsFromInv=mp=>T.strInv.map(l=>{
+    if(!l.length)return 0;let s=0;for(const e2 of l)s+=(mp.get(typeof e2==='string'?e2:e2.inv)||0);return s/l.length;});
+  let vals,unit,fmt,agg='media',invChips=null;
+  if(mode==='day'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
+    vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
+  }else if(mode==='pday'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec))};
+    vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
+  }else if(mode==='pinst'){
+    vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
+  }else if(mode==='acinst'){
+    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+    const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
+    vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
+    invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
+  }else if(mode==='acday'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,ac:dayAC(F,c,T.obj,T.strInv,c.ac,5)};
+    const mp=new Map(DAYC.ac.porInv.map(v=>[v.inv,v.kwh]));
+    vals=rowsFromInv(mp);unit='kWh/d';fmt=v=>v.toFixed(0);
+    invChips=DAYC.ac.porInv.map(v=>({inv:v.inv,val:v.kwh}));
+  }else if(mode==='pmes'||mode==='pano'){
+    const per=mode==='pmes'?'mes':'ano';
+    const key=per+'|'+c.date.slice(0,per==='mes'?7:4);
+    if(PERIODC&&PERIODC.key===key){
+      vals=PERIODC.v.map(v=>mode==='pano'?v/1000:v);
+      unit=mode==='pano'?'MWh':'kWh';fmt=v=>mode==='pano'?v.toFixed(2):v.toFixed(0);agg='suma';
+    }else{computePeriod(c,per,key);vals=null;}
+  }else{vals=inst.rows;unit='W/m²';fmt=v=>v.toFixed(0);}
+  if(vals===null){   // Σ mes/año aún calculándose: se pinta el progreso y ya
+    paintACline(inst,c,null);
+    R3.dirty=true;return;
+  }
+  // por MESA (v1.13) y por ALA (v1.14): en los modos de instante cada mesa lleva
+  // SU valor y cada ala el SUYO (la sombra por ala del contador 3D); la leyenda
+  // abarca las alas. Los agregados de día/período van por línea
+  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
+  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map(l=>l.map(w=>w?w.map(pw):null)):null)):null;
+  let mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
+  if(wingVals){mn=Infinity;mx=-Infinity;for(const l of wingVals)for(const w of l)if(w)for(const v of w){if(v<mn)mn=v;if(v>mx)mx=v;}}
+  // normalizar SOLO si la dispersión es significativa: con la planta uniforme
+  // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
+  // colores de escala completa — «¿por qué esas producen menos?» sin producir
+  // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
+  const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
+  paintLegend(mn,mx,unit,fmt);
+  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals);
+  else for(let r=0;r<c.nrows;r++){
+    if(R3.rows&&R3.rows[r]){
+      for(const sp of R3.rows[r].spins){                      // mismo convenio que el update3D del simulador
+        const th=(inst.segAng?inst.segAng[r][sp.k]:inst.ang[r])*D2R;
+        if(sp.model)sp.g.rotation.x=th; else sp.g.rotation.z=-th;
+        const sv=(segVals&&segVals[r]&&segVals[r][sp.k]!=null)?segVals[r][sp.k]:vals[r];
+        const wv=(wingVals&&wingVals[r]&&wingVals[r][sp.k])||null;   // por ALA (v1.14)
+        const col=v=>ramp(Math.max(0,Math.min(1,norm(v,mn,mx))));
+        if(wv&&sp.matW){sp.matW[0].color.set(col(wv[0]));sp.matW[1].color.set(col(wv[1]));}
+        else{sp.mat.color.set(col(sv));if(sp.matW)sp.matW[1].color.set(col(sv));}
+      }
+    }
+  }
+  const chips=[];
+  if(invChips){
+    // modos AC: chips con el valor REAL por inversor (recorte marcado con ✂)
+    const im=Math.min.apply(null,invChips.map(v=>v.val)),ix=Math.max.apply(null,invChips.map(v=>v.val));
+    for(const v of invChips)
+      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+(REALES[c.plant]?' strings (uno por ala de cada fila medida)':' strings')+'"':'')+'><span class="s-dot" style="background:'+
+                 ramp(norm(v.val,im,ix))+'"></span>I'+v.inv+' · '+fmt(v.val)+(v.clip?' ✂':'')+'</span>');
+  }else if(c.plant==='elburgo'&&EB){
+    // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
+    const iv=invTotals(EB.rows,vals,agg);
+    const im=Math.min.apply(null,iv.map(v=>v.val)),ix=Math.max.apply(null,iv.map(v=>v.val));
+    for(const v of iv)
+      chips.push('<span class="s-chip" title="'+v.nstr+' strings"><span class="s-dot" style="background:'+
+                 ramp(norm(v.val,im,ix))+'"></span>I'+v.inv+' · '+fmt(v.val)+'</span>');
+  }else{
+    for(let r=0;r<c.nrows;r++)
+      chips.push('<span class="s-chip"><span class="s-dot" style="background:'+
+                 ramp(norm(vals[r],mn,mx))+'"></span>S'+(r+1)+' · '+fmt(vals[r])+'</span>');
+  }
+  $('strings').innerHTML=chips.join('');
+  // sol y cielo con LUZ REAL: el sol pierde altura ⇒ pierde fuerza y se va al
+  // rojo, el horizonte enciende al amanecer/ocaso y el cénit oscurece — la
+  // receta de los 3D de la casa, que vive en sol.js (sunLook + skyColors)
+  const el2=inst.g.elev*D2R, az2=inst.az*D2R, D3=(R3.shR||60)*2;
+  R3.sun.position.set(Math.sin(az2)*Math.cos(el2)*D3,Math.max(2,Math.sin(el2)*D3),-Math.cos(az2)*Math.cos(el2)*D3);
+  const L=Sol.sunLook(inst.g.elev), sky=Sol.skyColors(inst.g.elev);
+  R3.sun.color.setRGB(L.color[0],L.color[1],L.color[2]);
+  R3.sun.intensity=inst.g.elev>0?L.intensity:0.02;
+  if(R3.hemi)R3.hemi.intensity=L.hemi!=null?L.hemi:0.5;
+  const css=v=>'rgb('+v.map(x=>Math.round(Math.max(0,Math.min(1,x))*255)).join(',')+')';
+  $('c3d').style.background='linear-gradient(rgb(0,0,0) -20%,'+css(sky.top)+' 30%,'+css(sky.hor||sky.bottom||sky.top)+' 100%)';
+  // frustum de sombra ceñido al sol rasante (la «sierra» del simulador)
+  if(R3.shR){
+    const sc=R3.sun.shadow.camera,Rs=R3.shR;
+    const vy=Math.max(20,Rs*Math.sin(Math.max(0.03,el2))+8*Math.cos(el2));
+    sc.left=-Rs;sc.right=Rs;sc.top=vy;sc.bottom=-vy;
+    const dLT=R3.sun.position.length();
+    sc.near=Math.max(1,dLT-Rs*3);sc.far=dLT+Rs*3;
+    sc.updateProjectionMatrix();
+  }
+  R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst,mode:mode,invChips:invChips};
+  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null);
+  repaintPick();
+  paintHourTrack();
+  R3.dirty=true;
+}
+
+/* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
+   (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
+function paintACline(inst,c,acDay){
+  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+  const f1=v=>(v/1000).toFixed(1);
+  let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
+        f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
+  if(c.ac.gridW>0)h+=' → red '+f1(a.redW)+' kW';
+  if(c.meteo==='tmy'&&c.tmy)h+=' · <b>TMY</b> Tamb '+inst.met.tamb.toFixed(1)+' °C · v '+inst.met.wind.toFixed(1)+' m/s';
+  if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
+              (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
+  $('acline').innerHTML=h;
+}
+
+/* Σ mes / Σ año por string (kWh DC), paso HORARIO, troceado por días para no
+   congelar la página — con progreso en la zona de chips y cancelación si el
+   usuario cambia de planta/fecha/modo (el testigo PERIODRUN invalida el run). */
+function computePeriod(c,periodo,key){
+  if(PERIODC&&PERIODC.key===key)return;
+  if(computePeriod.running===key)return;
+  computePeriod.running=key;
+  const run=++PERIODRUN;
+  const fechas=fechasPeriodo(c.date,periodo);
+  const acc=new Array(c.nrows).fill(0);
+  let i=0;
+  const paso=()=>{
+    if(run!==PERIODRUN){computePeriod.running=null;return;}   // invalidado: planta/fecha/config cambió
+    const t0=performance.now();
+    while(i<fechas.length&&performance.now()-t0<120){
+      const d=dayEnergy(F,c,T.obj,fechas[i],60,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec));
+      for(let k=0;k<c.nrows;k++)acc[k]+=d[k];
+      i++;
+    }
+    if(i<fechas.length){
+      $('strings').innerHTML='<span class="s-chip">Σ '+(periodo==='mes'?'mes':'año')+
+        ' · día '+i+'/'+fechas.length+' (paso horario'+(c.meteo==='tmy'&&c.tmy?', TMY':', cielo despejado')+')…</span>';
+      setTimeout(paso,0);
+    }else{
+      PERIODC={key:key,v:acc};
+      computePeriod.running=null;
+      repaint();
+    }
+  };
+  paso();
+}
+
+/* careo con la medida pegada: E AC Σ día por inversor (calculada) vs kWh reales */
+function runCareo(){
+  const c=cfg();
+  const ac=(DAYC&&DAYC.mode==='acday')?DAYC.ac:dayAC(F,c,T.obj,T.strInv,c.ac,5);
+  const med=parseMedidas($('medidas').value);
+  if(!med.size){$('careoout').innerHTML='<span style="color:var(--muted)">Sin medidas que carear — pega «inversor;kWh», una por línea.</span>';return;}
+  const rows=careoMedidas(ac.porInv,med);
+  const f=v=>v==null?'—':v.toFixed(1);
+  let h='<table style="border-collapse:collapse">'+
+    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td>E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
+  for(const r of rows){
+    const col=r.dev==null?'var(--muted-2)':(Math.abs(r.dev)<=5?'var(--live)':(Math.abs(r.dev)<=12?'var(--build)':'var(--dead)'));
+    h+='<tr><td style="padding:2px 10px">I'+r.inv+'</td><td>'+f(r.esp)+'</td><td style="padding:2px 10px">'+f(r.med)+
+       '</td><td style="color:'+col+'">'+(r.dev==null?'—':(r.dev>0?'+':'')+r.dev.toFixed(1)+'%')+'</td></tr>';
+  }
+  const tE=rows.reduce((s,r)=>s+(r.esp||0),0), tM=rows.reduce((s,r)=>s+(r.med||0),0);
+  h+='<tr style="border-top:1px solid var(--line)"><td style="padding:2px 10px"><b>Σ</b></td><td><b>'+tE.toFixed(1)+
+     '</b></td><td style="padding:2px 10px"><b>'+tM.toFixed(1)+'</b></td><td>'+(tE>0?((100*(tM-tE)/tE)>0?'+':'')+(100*(tM-tE)/tE).toFixed(1)+'%':'—')+'</td></tr></table>'+
+     '<p style="color:var(--muted-2);margin-top:4px">Meteo del cálculo: '+(c.meteo==='tmy'&&c.tmy?'TMY real':'cielo despejado (TECHO teórico — desvíos negativos esperables)')+
+     ' · fecha '+c.date+' · paso 5 min.</p>';
+  $('careoout').innerHTML=h;
+}
+
+/* CSV de la vista actual (por string, o por inversor en los modos AC) */
+function exportCSV(){
+  if(!R3.last)return;
+  const d=R3.last, c=d.c, filas=[];
+  let cab;
+  if(d.invChips){
+    cab=['inversor','valor_'+d.unit.replace(/[^\w²·]/g,''),'strings'];
+    for(const v of d.invChips)filas.push(['I'+v.inv,v.val,v.nstr||'']);
+  }else{
+    cab=['string','x_m','valor_'+d.unit.replace(/[^\w²·]/g,'')];
+    for(let r=0;r<d.vals.length;r++){
+      const id=(c.plant==='elburgo'&&EB&&EB.rows[r])?EB.rows[r].strs.map(s=>s.id).join(' '):'S'+(r+1);
+      filas.push([id,T.xs[r],d.vals[r]]);
+    }
+  }
+  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings),c.ac);
+  filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
+    ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
+    ['AC_instante','red_kW',a.redW/1000]);
+  const blob=new Blob(['﻿'+csvTabla(cab,filas)],{type:'text/csv;charset=utf-8'});
+  const u=URL.createObjectURL(blob), el=document.createElement('a');
+  el.href=u;el.download='produccion_'+c.plant+(c.ncu?'_ncu'+c.ncu:'')+'_'+c.date+'_'+d.mode+'.csv';
+  document.body.appendChild(el);el.click();el.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),4000);
+}
+
+/* TMY de la planta activa: primero el fichero horneado junto a la página
+   (tools/gen_tmy_pvgis.py → <planta>_tmy.json), si no la API de PVGIS desde
+   el navegador. Sin ninguna de las dos, se declara y se vuelve a cielo. */
+async function cargaTMY(c){
+  const key=c.plant!=='generica'?c.plant:c.lat.toFixed(2)+','+c.lon.toFixed(2);
+  if(TMY&&TMY.key===key)return;
+  let data=null;
+  if(c.plant!=='generica'){
+    try{const r=await fetch(c.plant+'_tmy.json',{cache:'no-store'});if(r.ok)data=await r.json();}catch(e){}
+  }
+  if(data&&(!data.h||data.h.length!==8760))data=null;
+  if(!data){
+    const r=await fetch('https://re.jrc.ec.europa.eu/api/v5_2/tmy?lat='+c.lat.toFixed(4)+'&lon='+c.lon.toFixed(4)+'&outputformat=json');
+    if(!r.ok)throw new Error('PVGIS '+r.status);
+    data=tmyFromPVGIS(await r.json());
+  }
+  TMY={key:key,data:data};
+}
+
+/* ── carril de horas pintado, como el del simulador: noche oscura, día azul,
+   ÁMBAR las horas de BACKTRACKING (consigna fuera de la astronómica >0,5°) ── */
+let TRACKC=null;
+function paintHourTrack(){
+  if(!F||!T)return;
+  const c=cfg();
+  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,c.ncu,c.nrows,c.maxang].join('|');
+  if(TRACKC===key)return;
+  TRACKC=key;
+  const colBT='#fbbd23',colDay='#2a3a50',colNight='#0d1420',STEPM=15;
+  const doy=doyOf(c.date), cols=[];
+  for(let m2=0;m2<1440;m2+=STEPM){
+    const g=Sol.solarPos(localToUTCms(c.date,m2,c.tz),c.lat,c.lon,{refract:true});
+    if(g.elev<=0){cols.push(colNight);continue;}
+    const zen=90-g.elev;
+    const ang=F.policyAngles('pairwise',zen,g.az,T.obj,{ghi:500,dni:500,dhi:100},doy,c.albedo).angles;
+    const ast=F.anglesAstro(zen,g.az,T.obj);
+    cols.push(ang.some((v,i)=>Math.abs(v-ast[i])>0.5)?colBT:colDay);
+  }
+  const stops=[];let cur=null,start=0;
+  for(let t2=0;t2<=cols.length;t2++){
+    const col=t2<cols.length?cols[t2]:null;
+    if(col!==cur){
+      if(cur!==null)stops.push(cur+' '+(start*STEPM/1440*100).toFixed(2)+'% '+(Math.min(t2*STEPM,1440)/1440*100).toFixed(2)+'%');
+      cur=col;start=t2;
+    }
+  }
+  $('hour').style.background='linear-gradient(90deg,'+stops.join(',')+')';
+}
+
+/* ── selección de string con clic (como el 3D de la casa) ── */
+let PICK=null,pickHelper=null,PICK_DOWN=null;
+function clearPick(){
+  PICK=null;
+  if(pickHelper){R3.scene.remove(pickHelper);pickHelper=null;}
+  const el=$('pick');if(el)el.style.display='none';
+  if(R3.renderer)R3.dirty=true;
+}
+function repaintPick(){
+  const el=$('pick');
+  if(!PICK||!R3.last){if(el)el.style.display='none';return;}
+  const d=R3.last, r=PICK.row, kk=PICK.k, w=PICK.w, c=d.c;
+  const ala=w==null?'':(w===0?' · ala SUR':' · ala NORTE');
+  // el STRING seleccionado (v1.14): la entrada de la cadena de esa mesa y esa
+  // ala — en El Burgo el string del plano que cae ahí; en cotas/genérica, «a»
+  // (sur) / «b» (norte) de la fila medida
+  let ent=null;
+  if(T.strInv&&T.strInv[r]){
+    const objs=T.strInv[r].filter(x=>typeof x==='object');
+    ent=objs.find(x=>x.k===kk&&(x.w==null?w==null:x.w===w))||objs.find(x=>x.k===kk)||null;
+  }
+  let txt;
+  if(c.plant==='elburgo'&&EB&&ent&&ent.id){
+    const ncu=EB.mapa.get(ent.id.split('.').slice(0,3).join('.'));
+    txt='<b>'+ent.id+'</b> · inversor I'+ent.inv+(ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
+        ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m'+ala;
+  }else{
+    txt='<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b> · línea x='+T.xs[r].toFixed(1)+' m'+
+        (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
+        (T.segTilt&&kk!=null?' · tilt N-S de la mesa '+T.segTilt[r][kk].toFixed(2)+'° (línea '+T.tilt[r].toFixed(2)+'°)'
+                            :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
+        ' · cota '+T.elev[r].toFixed(2)+' m'+(ent&&ent.inv!=null?' · inversor I'+ent.inv:'');
+  }
+  const segPoa=(d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null)?d.inst.segs[r][kk]:null;
+  const wPoa=(w!=null&&kk!=null&&d.inst.wings&&d.inst.wings[r]&&d.inst.wings[r][kk]&&d.inst.wings[r][kk][w]!=null)?d.inst.wings[r][kk][w]:null;
+  const poaStr=wPoa!=null?wPoa:(segPoa!=null?segPoa:d.inst.rows[r]);
+  const shW=(w!=null&&kk!=null&&d.inst.shade&&d.inst.shade.wing&&d.inst.shade.wing[r]&&d.inst.shade.wing[r][kk])?d.inst.shade.wing[r][kk][w]:null;
+  const shSeg=(kk!=null&&d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r])?d.inst.shade.seg[r][kk]:null;
+  const sh=shW!=null?shW:(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0));
+  const mods=(ent&&ent.mods)?ent.mods:c.elec.mods;
+  const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
+  txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
+       (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.'+(ent&&ent.src?', '+ent.src:'')+') · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
+       '° · sombra '+(100*sh).toFixed(1)+' %';
+  el.innerHTML=txt;el.style.display='';
+}
+
+/* ── arranque + eventos ── */
+(async()=>{
+  await cargaFisica();
+  rebuildT();repaint();
+  for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
+    $(id).addEventListener('change',()=>{rebuildT();repaint();});
+  // el selector de planta lista PLANTA ENTERA o cada NCU suelta — las NCUs se
+  // pueblan al arrancar con los layouts (ligeros: solo trackers+ncu), y elegir
+  // una NCU carga y dibuja SOLO su parque, sin construir nunca la planta entera
+  (async()=>{
+    try{
+      const [lb,la,ls]=await Promise.all(['elburgo','ayora','sanjose'].map(k=>
+        fetch(k+'_layout.json',{cache:'no-store'}).then(r=>r.ok?r.json():null)));
+      const fill=(og,key,lay,unidad)=>{
+        if(!lay||!lay.trackers)return;
+        const cnt={};lay.trackers.forEach(t=>{if(t.ncu!=null)cnt[t.ncu]=(cnt[t.ncu]||0)+1;});
+        $(og).innerHTML+=Object.keys(cnt).map(Number).sort((a,b)=>a-b).map(n=>
+          '<option value="'+key+'|'+n+'">NCU '+n+' — '+cnt[n]+' '+unidad+'</option>').join('');
+      };
+      fill('og-elburgo','elburgo',lb,'trackers');
+      fill('og-ayora','ayora',la,'trackers');
+      fill('og-sanjose','sanjose',ls,'trackers');
+    }catch(e){/* sin red local el selector se queda con las plantas enteras */}
+  })();
+  $('plant').addEventListener('change',async()=>{
+    const pv=$('plant').value.split('|'), key=pv[0], ncu=pv[1]||'', real=key!=='generica';
+    try{
+      if(key==='elburgo'){
+        await cargaElburgo();
+        aplicaAmbitoEB(ncu);
+        $('lat').value=EB.lat.toFixed(4);$('lon').value=EB.lon.toFixed(4);
+        $('alt').value=180;   // El Burgo de Ebro ~180 m (aprox declarada; editable)
+        $('cw').value=EB.cw;$('maxang').value=EB.maxang;$('pitch').value=6;$('nrows').value=EB.rows.length;
+      }else if(REALES[key]){
+        await cargaCotas(key);
+        aplicaAmbitoCotas(ncu);
+        const P=RP.P;
+        $('lat').value=RP.lat.toFixed(4);$('lon').value=RP.lon.toFixed(4);
+        $('alt').value=RP.alt;$('tz').value=RP.tz;   // huso de la planta (San José es Perú)
+        $('cw').value=P.cw;$('maxang').value=P.maxAngle;
+        $('pitch').value=P.pitch.toFixed(2);$('nrows').value=P.elev.length;
+      }
+    }catch(e){
+      const a=$('aviso');a.style.display='block';
+      a.innerHTML='⚠ <b>No puedo cargar la planta real</b> ('+e.message+'): necesita sus '+
+        'ficheros de datos desplegados junto a la página.';
+      $('plant').value='generica';return;
+    }
+    // la geometría/terreno reales vienen medidos: se bloquean (el resto sigue libre)
+    for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
+    // inversores: El Burgo con el mapeo REAL del plano (36, g.i); resto editable.
+    // Pnom sugerida = Pdc0 del ámbito / n / 1,2 (DC/AC típico, declarado en el título)
+    let modsTot,ninv;
+    if(key==='elburgo'){
+      modsTot=EB.rows.reduce((a,r)=>a+r.strs.length,0)*(+$('mods').value);
+      ninv=Object.keys(EB.rows.reduce((a,r)=>{for(const s of r.strs)a[s.inv]=1;return a;},{})).length;
+      $('ninv').value=ninv;$('ninv').disabled=true;
+    }else if(REALES[key]){
+      // módulos de los strings REALES de las filas medidas (layout + largo, v1.16)
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:REALES[key].mod,segTrk:RP.P.segTrk,modsTrk:RP.modsTrk}).flat().reduce((a,e2)=>a+e2.mods,0);
+      if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
+      ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
+      $('ninv').value=ninv;$('ninv').disabled=false;
+    }else{
+      // de vuelta a la genérica: los inputs vuelven a ser suyos (el nº de
+      // strings tiene tope 24 y el 36 de inversores de El Burgo no es suyo)
+      if(+$('nrows').value>24)$('nrows').value=24;
+      if($('ninv').disabled)$('ninv').value=1;
+      modsTot=(+$('nrows').value)*(+$('mods').value);ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
+      $('ninv').value=ninv;$('ninv').disabled=false;
+    }
+    $('pnom').value=Math.max(5,Math.round(modsTot*(+$('wp').value)/ninv/1.2/1000/5)*5);
+    // TMY por planta: si está activa, recargar la de ESTA planta
+    if($('meteo').value==='tmy'){
+      try{await cargaTMY(cfg());}
+      catch(e2){$('meteo').value='cielo';$('cloud').disabled=false;}
+    }
+    R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
+    rebuildT();repaint();
+  });
+  const invalida=()=>{DAYC=null;PERIODC=null;PERIODRUN++;};
+  $('cloud').addEventListener('change',()=>{invalida();repaint();});
+  for(const id of ['wp','mods','gamma','tamb','wind'])
+    $(id).addEventListener('change',()=>{invalida();repaint();});
+  // cadena AC: pérdidas/inversor solo invalidan el día AC; el nº de inversores
+  // cambia el reparto string→inversor (T.strInv) y reconstruye
+  for(const id of ['lsoil','lmis','lwir','llid','pnom','etamax','gridkw'])
+    $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  $('ninv').addEventListener('change',()=>{rebuildT();repaint();});
+  // meteo: TMY se carga al pedirla (fichero horneado o PVGIS del navegador);
+  // si no hay ninguna, se declara y se vuelve al cielo despejado
+  $('meteo').addEventListener('change',async()=>{
+    const quiere=$('meteo').value==='tmy';
+    $('cloud').disabled=quiere;
+    if(quiere){
+      try{await cargaTMY(cfg());}
+      catch(e){
+        const a=$('aviso');a.style.display='block';
+        a.innerHTML='⚠ <b>Sin TMY para esta planta</b> ('+e.message+'): ni <code>'+cfg().plant+
+          '_tmy.json</code> desplegado ni PVGIS alcanzable desde tu navegador. Hornéala con '+
+          '<code>tools/gen_tmy_pvgis.py</code> o revisa la red. Sigo con cielo despejado.';
+        $('meteo').value='cielo';$('cloud').disabled=false;
+      }
+    }
+    invalida();TRACKC=null;repaint();
+  });
+  $('csv').addEventListener('click',exportCSV);
+  $('btncareo').addEventListener('click',runCareo);
+  $('hour').addEventListener('input',repaint);
+  $('cmode').addEventListener('change',repaint);
+  $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
+  $('manth').addEventListener('input',()=>{invalida();repaint();});
+  $('tpreset').addEventListener('change',()=>{
+    $('tplbl').textContent=$('tpreset').value==='pendiente'?'Pendiente °':'Amplitud m';});
+  // fecha también en la barra de tiempo (el mismo campo, como el simulador)
+  $('date2').value=$('date').value;
+  $('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
+  $('date2').addEventListener('change',()=>{
+    $('date').value=$('date2').value;DAYC=null;rebuildT();repaint();});
+  // play con VELOCIDAD real (minutos simulados por segundo, como el simulador)
+  let playing=false,playTimer=null,PLAYPOS=0,PLAYTS=0;
+  $('play').addEventListener('click',()=>{
+    playing=!playing;$('play').textContent=playing?'⏸':'▶';
+    if(playTimer)cancelAnimationFrame(playTimer);
+    if(playing){
+      PLAYPOS=+$('hour').value;PLAYTS=performance.now();
+      const step=(ts)=>{
+        if(!playing)return;
+        PLAYPOS+=(+$('speed').value)*(ts-PLAYTS)/1000;PLAYTS=ts;
+        if(PLAYPOS>1439)PLAYPOS=0;
+        const v=Math.round(PLAYPOS);
+        if(v!==+$('hour').value){$('hour').value=v;repaint();}
+        playTimer=requestAnimationFrame(step);
+      };
+      playTimer=requestAnimationFrame(step);
+    }
+  });
+  // clic = seleccionar string (orbitar no selecciona: umbral de arrastre)
+  $('c3d').addEventListener('pointerdown',e=>{if(e.button===0)PICK_DOWN={x:e.clientX,y:e.clientY};});
+  $('c3d').addEventListener('pointerup',e=>{
+    if(!PICK_DOWN)return;
+    const drag=Math.hypot(e.clientX-PICK_DOWN.x,e.clientY-PICK_DOWN.y);PICK_DOWN=null;
+    if(drag>5)return;
+    const rct=$('c3d').getBoundingClientRect();
+    const rc=new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2(((e.clientX-rct.left)/rct.width)*2-1,-((e.clientY-rct.top)/rct.height)*2+1),R3.cam);
+    const hits=rc.intersectObjects(R3.world.children,true);
+    let obj=null,tramo=null,hitP=null;
+    for(const h of hits){
+      // instanciado: el instanceId de la pieza lleva a SU tramo
+      if(h.object.isInstancedMesh&&h.object.userData.pickTramos&&h.instanceId!=null){
+        const ud=h.object.userData;
+        tramo=ud.pickTramos[ud.tramoIdx[Math.floor(h.instanceId/ud.nLocals)]];hitP=h.point;
+        break;
+      }
+      let o=h.object;while(o&&o.userData.row===undefined)o=o.parent;
+      if(o&&o.userData.row!==undefined){obj=o;hitP=h.point;break;}
+    }
+    if(!obj&&!tramo){clearPick();return;}
+    if(pickHelper)R3.scene.remove(pickHelper);
+    // el ALA pinchada (v1.14): la mesa larga lleva un string por ala — sur
+    // (z mayor en la escena, n bajo) = 0, norte = 1; la media es un string
+    // entero y no se parte. «Selecciono un string y me selecciona la fila»
+    const dosStr=(r,k)=>!!(T.strInv&&T.strInv[r]&&T.strInv[r].some(x=>typeof x==='object'&&x.k===k&&x.w!=null));
+    const wingOf=(r,k,zc)=>(hitP&&dosStr(r,k))?(hitP.z>zc?0:1):null;
+    const c2=cfg();
+    if(tramo){
+      const w=wingOf(tramo.row,tramo.k,tramo.zc);
+      PICK={row:tramo.row,k:tramo.k,w:w,s0:tramo.s0,s1:tramo.s1};
+      const zA=w===0?tramo.zc:tramo.zc-tramo.len/2, zB=w===1?tramo.zc:tramo.zc+tramo.len/2;
+      const box=new THREE.Box3(
+        new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,zA),
+        new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,zB));
+      pickHelper=new THREE.Box3Helper(box,0x36d399);
+    }else{
+      const ud=obj.userData, zc=obj.position.z, w=wingOf(ud.row,ud.k,zc);
+      PICK={row:ud.row,k:ud.k,w:w,s0:ud.s0,s1:ud.s1};
+      const box=new THREE.Box3().setFromObject(obj);
+      if(w===0)box.min.z=Math.max(box.min.z,zc); else if(w===1)box.max.z=Math.min(box.max.z,zc);
+      pickHelper=new THREE.Box3Helper(box,0x36d399);
+    }
+    R3.scene.add(pickHelper);
+    R3.dirty=true;repaintPick();
+  });
+})();
+</script>
+</body>
+</html>

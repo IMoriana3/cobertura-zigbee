@@ -24,8 +24,14 @@
    "fichero": "coords_fayon_NCU01.csv",
    "tcus": 25,
    "ambito": "ncu",
-   "ncu": 1
+   "ncu": 1,
+   "gw": 1,
+   "ip": "192.168.1.150",
+   "puerto": 503
   }
+ ],
+ "barridos": [
+  "barrido_fayon_NCU01.csv"
  ],
  "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv fayon_real.geojson"
 }

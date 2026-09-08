@@ -109,8 +109,39 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
-           airmassKY, dniExtra, surfaceOrient };`);
+           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
+           anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit };`);
 const F = sandbox();
+
+console.log('nubosidad · manual · colores (v1.40)');
+t('nubosidad a 0 es NO-OP EXACTO (mismo objeto, ===)', () => {
+  // mutante previsto: enrutar SIEMPRE por cloudToIrr (la DHI se recalcularía
+  // por cierre y ya no sería el objeto del cielo claro) — esto se pone rojo
+  const c = F.clearskyIneichen(30, 172, 300, 3.5);
+  if (F.skyWithClouds(c, 0, 30) !== c) throw new Error('cc=0 ya no devuelve el MISMO objeto del cielo claro');
+});
+t('con nubes, el haz muere antes que el global (cc=0,5)', () => {
+  const c = F.clearskyIneichen(30, 172, 300, 3.5);
+  const n = F.skyWithClouds(c, 0.5, 30);
+  const rG = n.ghi / c.ghi, rB = n.dni / c.dni;
+  if (Math.abs(rG - 0.65) > 1e-9) throw new Error(`GHI·(1−0,70·cc): esperaba 0,65 y salió ${rG}`);
+  if (Math.abs(rB - 0.125) > 1e-9) throw new Error(`DNI·(1−cc)³: esperaba 0,125 y salió ${rB}`);
+  if (n.dhi < 0) throw new Error('la difusa de cierre salió negativa');
+});
+t('anglesManual: θ común y recortado al tope mecánico', () => {
+  const a = F.anglesManual(6, 80, 55);
+  if (a.length !== 6) throw new Error('no da un θ por fila');
+  if (!a.every(v => v === 55)) throw new Error(`80° con tope 55 debe recortar a 55, salió ${a[0]}`);
+  const b = F.anglesManual(3, -80, 55);
+  if (!b.every(v => v === -55)) throw new Error('el recorte no funciona hacia el este');
+});
+t('prodColor: rampa válida y con extremos distintos', () => {
+  const lo = F.prodColor(0), hi = F.prodColor(1), mid = F.prodColor(0.5);
+  for (const v of [lo, hi, mid]) if (!/^rgb\(\d+,\d+,\d+\)$/.test(v)) throw new Error('color no rgb(): ' + v);
+  if (lo === hi) throw new Error('mínimo y máximo con el mismo color: la escala no escala');
+  if (F.prodColor(-5) !== lo || F.prodColor(9) !== hi) throw new Error('fuera de [0,1] no se recorta');
+});
 
 console.log('física (la misma QA que el botón de la página)');
 for (const r of F.runPhysicsQA()) {
@@ -1215,12 +1246,30 @@ t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id'
     const L = fs.readFileSync(out, 'utf-8').trim().split('\n');
     const cab = L[0].split(','), iN = cab.indexOf('ncu'), iT = cab.indexOf('tcu');
     if (iN < 0 || iT < 0) throw new Error('el CSV perdió ncu/tcu');
+    // v1.42: la consigna es la de la MESA del seguidor (segTrk, identidad):
+    // columna mesa en todas las filas, y en el mundo real de Ayora las mesas
+    // de una misma línea NO comparten θ en la mayoría de los pasos diurnos
+    const iM = cab.indexOf('mesa'), iH = cab.indexOf('hora_local'), iB = cab.indexOf('bloque'),
+          iL = cab.indexOf('linea'), iTh = cab.indexOf('theta_sim_deg');
+    if (iM < 0) throw new Error('el CSV no lleva la columna mesa');
+    const grp = new Map();
+    let sinMesa = 0;
     const por = new Map();
     for (let r = 1; r < L.length; r++) {
       const f = L[r].split(',');
       if (!por.has(f[iN])) por.set(f[iN], new Set());
       por.get(f[iN]).add(+f[iT]);
+      if (f[iM] === '') sinMesa++;
+      const k = f[iH] + '|' + f[iB] + '|' + f[iL];
+      if (!grp.has(k)) grp.set(k, new Set());
+      grp.get(k).add(f[iTh]);
     }
+    if (sinMesa) throw new Error(sinMesa + ' filas sin mesa: seguidores casados por x en vez de por identidad (segTrk)');
+    let dist = 0;
+    for (const v of grp.values()) if (v.size > 1) dist++;
+    if (!(dist > grp.size * 0.5)) throw new Error('solo ' + dist + '/' + grp.size + ' (hora,bloque,línea) con θ distinto entre mesas: la consigna sigue siendo la de la línea');
+    const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+    if (meta.seguidores_por_identidad !== meta.seguidores) throw new Error(meta.seguidores_por_identidad + '/' + meta.seguidores + ' por identidad');
     // dentro de cada NCU los TCU tienen que ser 1..n sin huecos ni repeticiones
     for (const [ncu, st] of por) {
       const v = [...st].sort((a, b) => a - b);
@@ -1689,6 +1738,314 @@ t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
     if (r.c !== 0) throw new Error('San José bloque 0 dejó de ser evaluable:\n' + r.s.slice(-400));
   }
 });
+
+// ── v1.41: el tilt POR MESA (fila medida), no por línea ─────────────────────
+console.log('v1.41 · tilt por mesa');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  };
+  const T = mkT(P);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);   // 12:00 local
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('plantFromCotas publica el tilt de CADA mesa (de sus dos cotas) y sus parejas bifila exactas', () => {
+    if (!P.segTilt || P.segTilt.length !== P.segs.length) throw new Error('sin segTilt por línea');
+    let n = 0, distintos = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      const z = P.segZ[r][k], esp = Math.atan2(z[1] - z[0], (sg[1] - sg[0]) || 1) * (180 / Math.PI);   // *DEG, la op exacta de plantFromCotas
+      // el tilt se mide ANTES de recentrar las cotas (z−eMean cambia el último bit): 1e-9° de tolerancia, declarada
+      if (Math.abs(P.segTilt[r][k] - esp) > 1e-9) throw new Error(`tilt de la mesa ${r}/${k}: ${P.segTilt[r][k]} ≠ ${esp} (sus cotas)`);
+      if (Math.abs(P.segTilt[r][k] - P.tilt[r]) > 0.05) distintos++;
+      n++;
+    }));
+    if (!(distintos > n * 0.2)) throw new Error('las mesas apenas se separan del tilt de su línea (' + distintos + '/' + n + '): el careo no distingue');
+    if (!(P.segPairs.length >= P.nPairs * 0.9)) throw new Error(P.segPairs.length + ' parejas por mesa vs ' + P.nPairs + ' trackers bifila');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+      if (Math.abs(r1 - r2) !== 1) throw new Error('pareja de mesas en líneas no contiguas: ' + r1 + '/' + r2);
+      const a = P.segs[r1][k1], b = P.segs[r2][k2];
+      if (Math.min(a[1], b[1]) - Math.max(a[0], b[0]) < 5) throw new Error('las dos mesas de un tracker no solapan en N');
+    }
+  });
+
+  t('IDENTIDAD: sin segTilt, el camino por mesa es el de la línea, bit a bit (θ y POA)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const segA = F.policyAnglesSeg('pairwise', zen, az, T0, irr, doy, 0.2);
+    // OJO: policyAngles lleva el refinado driveCoupleSafe por línea; el camino
+    // por mesa sin segTilt difunde el pairwise puro. Se carea contra ESE.
+    const raw = F.anglesPairwise(zen, az, T0);
+    segA.forEach((l, r) => l.forEach(v => { if (v !== raw[r]) throw new Error(`fila ${r}: θ por mesa ${v} ≠ pairwise de la línea ${raw[r]}`); }));
+    if (rows.length !== segA.length) throw new Error('líneas');
+  });
+
+  t('IDENTIDAD: el contador 3D con θ escalar no ha movido ni un bit (fila) y su suma por tramos es la fila', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const a = F.shadeBand3DAll(zen, az, T, rows);
+    const asArrays = rows.map((v, r) => T.segs[r].map(() => v));
+    const b = F.shadeBand3DAll(zen, az, T, asArrays);
+    for (let r = 0; r < rows.length; r++) {
+      if (a[r] !== b[r] || a.elec[r] !== b.elec[r]) throw new Error(`fila ${r}: escalar ${a[r]} ≠ array del mismo θ ${b[r]}`);
+      if (!a.seg || !a.seg[r] || a.seg[r].length !== T.segs[r].length) throw new Error('sin sombra por tramo');
+      // media por tramo ponderada por estaciones (MV fijo por tramo) == fila
+      const m = a.seg[r].reduce((s, v) => s + v, 0) / a.seg[r].length;
+      if (Math.abs(m - a[r]) > 1e-9) throw new Error(`fila ${r}: media de tramos ${m} ≠ fila ${a[r]}`);
+    }
+  });
+
+  t('sin segTilt, poaPlantSeg reproduce poaPlant bit a bit (rows y plant)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.anglesPairwise(zen, az, T0);
+    const pl = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T0, rows.map((v, r) => T0.segs[r].map(() => v)), irr, doy, 0.2);
+    // fila = media ponderada por largo de tramos IGUALES entre sí sólo si la
+    // sombra por tramo es uniforme; por eso se carea el POA SIN sombra (noche
+    // no vale: cielo despejado a mediodía con el ray-cast dando cero en llano
+    // no está garantizado) → se carea tramo a tramo contra poaRow+su sombra
+    for (let r = 0; r < rows.length; r++) {
+      for (let k = 0; k < ps.segs[r].length; k++) {
+        const p = F.poaRow(rows[r], T0.rowTilt[r], 0, zen, az, irr, doy, 0.2, T0.iam);
+        const fo = ps.shade.seg[r][k], se = ps.shade.segElec[r][k];
+        const esp = p.beam * (1 - se) + p.circ * (1 - fo) + p.sky + p.gnd;
+        if (ps.segs[r][k] !== esp) throw new Error(`tramo ${r}/${k}: ${ps.segs[r][k]} ≠ ${esp}`);
+      }
+    }
+    if (ps.rows.length !== pl.rows.length) throw new Error('filas');
+  });
+
+  t('CON segTilt: θ y POA cambian MESA A MESA dentro de una línea, y las parejas bifila comparten θ exacto', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    let lineasConDispersion = 0, n = 0;
+    seg.forEach((l, r) => { n++; if (l.length > 1 && Math.max(...l) - Math.min(...l) > 0.02) lineasConDispersion++; });
+    if (!(lineasConDispersion > n * 0.3)) throw new Error('solo ' + lineasConDispersion + '/' + n + ' líneas con θ distinto por mesa: el tilt por mesa no entra');
+    for (const [[r1, k1], [r2, k2]] of T.segPairs)
+      if (seg[r1][k1] !== seg[r2][k2]) throw new Error(`pareja ${r1}/${k1}-${r2}/${k2}: ${seg[r1][k1]} ≠ ${seg[r2][k2]} — el acople por mesa no manda`);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    for (const l of ps.segs) for (const v of l) if (!Number.isFinite(v) || v < 0) throw new Error('POA por mesa no finita');
+    if (!(ps.plant > 300)) throw new Error('mediodía de junio con ' + ps.plant);
+    // el astro por mesa sigue al tilt de la mesa: corr(tilt, θ_astro) alta
+    const ast = F.anglesAstroSeg(zen, az, T);
+    const xs = [], ys = [];
+    T.segTilt.forEach((l, r) => l.forEach((tl, k) => { xs.push(tl); ys.push(ast[r][k]); }));
+    const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    const corr = sxy / Math.sqrt(sxx * syy);
+    if (!(Math.abs(corr) > 0.9)) throw new Error('corr(tilt de mesa, θ astro de mesa) = ' + corr.toFixed(3));
+  });
+
+  t('el acople por mesa es un mutante vivo: sin segPairs, alguna pareja se separa', () => {
+    const raw = F.anglesPairwiseSeg(zen, az, T);
+    let sep = 0;
+    for (const [[r1, k1], [r2, k2]] of T.segPairs) if (raw[r1][k1] !== raw[r2][k2]) sep++;
+    if (!(sep > 0)) throw new Error('sin acoplar ya coinciden todas: el careo del acople es vacío');
+  });
+}
+
+console.log('v1.42 · el mando por mesa en la UI y en las consignas');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P, conSeg) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs,
+             segTilt: conSeg ? P.segTilt : null, segPairs: conSeg ? P.segPairs : null, real: P };
+  };
+  const T = mkT(P, true), T0 = mkT(P, false);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('segTrk: cada mesa sabe de qué seguidor de cotas.t es (identidad), y las parejas bifila son las dos mesas de UN seguidor', () => {
+    if (!P.segTrk) throw new Error('plantFromCotas no publica segTrk');
+    const enCotas = new Set(cotas.t);
+    let n = 0;
+    P.segTrk.forEach(l => l.forEach(tk => { if (!enCotas.has(tk)) throw new Error('segTrk apunta a un objeto que no es de cotas.t'); n++; }));
+    if (n !== P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs)
+      if (P.segTrk[r1][k1] !== P.segTrk[r2][k2]) throw new Error('una pareja bifila junta mesas de seguidores distintos');
+    // y el seguidor de una pareja tiene exactamente esas dos filas
+    const [[r1, k1]] = P.segPairs[0];
+    const cnt = P.segTrk.flat().filter(tk => tk === P.segTrk[r1][k1]).length;
+    if (cnt !== 2) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas');
+  });
+
+  t('segLineMean y slewLimitSeg son la IDENTIDAD del camino por línea cuando todas las mesas llevan el valor de su línea', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const bc = F.segsBroadcast(T0, rows);
+    const mean = F.segLineMean(T0, bc);
+    for (let r = 0; r < rows.length; r++) if (Math.abs(mean[r] - rows[r]) > 1e-12) throw new Error('línea ' + r + ': media ' + mean[r] + ' ≠ ' + rows[r]);
+    const prev = rows.map(v => v - 3), prevS = F.segsBroadcast(T0, prev);
+    const a = F.slewLimit(prev, rows, 5), b = F.slewLimitSeg(prevS, bc, 5);
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (b[r][k] !== a[r]) throw new Error('slew por mesa ≠ slew por línea en ' + r + '/' + k);
+    // y el slew de verdad limita mesa a mesa: 5 s a 0,17 °/s son 0,85° como mucho
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (Math.abs(b[r][k] - prevS[r][k]) > 0.85 + 1e-9) throw new Error('el actuador de una mesa saltó ' + (b[r][k] - prevS[r][k]) + '°');
+  });
+
+  t('poaPlantSeg publica la banda plantHi/plantLo: sin segTilt es la de poaPlant, con segTilt encierra a plant', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const a = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2), b = F.poaPlantSeg(zen, az, T0, F.segsBroadcast(T0, rows), irr, doy, 0.2);
+    // sin segTilt cada mesa es su línea; la diferencia con poaPlant es SOLO la
+    // sombra por tramo (sh.seg) frente a la de fila — la banda se mueve con
+    // ella dentro del mismo orden de magnitud que plant
+    if (!(Math.abs(b.plant - a.plant) < 5) || !(Math.abs(b.plantHi - a.plantHi) < 5) || !(Math.abs(b.plantLo - a.plantLo) < 5))
+      throw new Error('banda por mesa lejos de la de poaPlant: ' + [a.plant, b.plant, a.plantHi, b.plantHi, a.plantLo, b.plantLo].map(v => v.toFixed(1)));
+    if (!(b.plantHi >= b.plant - 1e-9 && b.plantLo <= b.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto sin segTilt');
+    const s = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2), c = F.poaPlantSeg(zen, az, T, s, irr, doy, 0.2);
+    if (!(c.plantHi >= c.plant - 1e-9 && c.plantLo <= c.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto con segTilt');
+    if (!isFinite(c.plantHi) || !isFinite(c.plantLo)) throw new Error('banda no finita');
+  });
+
+  t('la UI manda por mesa: computeDayGen y sceneInstant van por policyAnglesSeg/poaPlantSeg cuando hay segTilt (y solo entonces)', () => {
+    // el camino de la página no corre en Node: se vigila su TEXTO, igual que
+    // el careo v1.19 vigila el literal de elecLoss. Lo que se exige es que el
+    // día y el instante pasen por segCmd + slewLimitSeg + poaPlantSeg y que
+    // la ficha (Tcfg) siga mandando por línea cuando la TCU no conoce el
+    // levantamiento
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const dayFn = ui.slice(ui.indexOf('function* computeDayGen'), ui.indexOf('function kpisSerie'));
+    for (const lit of ['segOn(T)', 'segCmd(P.key', 'slewLimitSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+      if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
+    const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
+    for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
+      if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
+    const cmd = ui.slice(ui.indexOf('function segCmd'), ui.indexOf('function angAt'));
+    if (!cmd.includes("Tcfg===T&&(key==='pairwise'||key==='astro')")) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    // el 3D gira cada mesa con SU θ, la silueta y el rayo también
+    const u3 = ui.slice(ui.indexOf('function update3D'), ui.indexOf('function clipPoly'));
+    if (!u3.includes('angAt(p,tIdx,r,k)')) throw new Error('update3D no gira cada mesa con su θ');
+    const sil = ui.slice(ui.indexOf('function drawShadowSilhouette'), ui.indexOf('function drawTerrainStrips'));
+    if (!sil.includes('angAt(p,tIdx,r,kR)') || !sil.includes('angAt(p,tIdx,e,kE)')) throw new Error('la silueta no usa el θ de cada mesa (receptora y emisora)');
+    const ray = ui.slice(ui.indexOf('function drawCriticalRay'), ui.indexOf('function pinta3D'));
+    if (!ray.includes('angAtN(p,tIdx,pi,yc),angAtN(p,tIdx,pi+1,yc)')) throw new Error('el rayo crítico no corta con el θ de las mesas de la banda');
+  });
+}
+
+console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const pairs = [];
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+  }
+  const T = { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+              rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // 07:30 local: sol bajo del este (a las 06:40 aún no ha salido)
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('shadeBand3DAll publica la sombra por ALA de cada tramo y la media de las dos alas ES el tramo (8 estaciones, 4 por ala)', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const sh = F.shadeRows(zen, az, T, seg);
+    if (!sh.wing || !sh.wingElec) throw new Error('sin out.wing / out.wingElec');
+    let n = 0, dist = 0;
+    sh.seg.forEach((l, r) => l.forEach((v, k) => {
+      const w = sh.wing[r][k], we = sh.wingElec[r][k];
+      if (!w || w.length !== 2 || !we || we.length !== 2) throw new Error(`tramo ${r}/${k} sin sus dos alas`);
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-12) throw new Error(`tramo ${r}/${k}: alas ${w} ≠ tramo ${v}`);
+      if (Math.abs((we[0] + we[1]) / 2 - sh.segElec[r][k]) > 1e-12) throw new Error(`tramo ${r}/${k}: Martinez por ala ≠ tramo`);
+      for (const f of w) if (!(f >= 0 && f <= 1)) throw new Error('fracción por ala fuera de [0,1]');
+      n++; if (Math.abs(w[0] - w[1]) > 0.01) dist++;
+    }));
+    if (!(dist > 0)) throw new Error('al alba ninguna mesa tiene alas con sombra distinta (' + n + ' tramos): la cuenta por ala es vacía');
+  });
+
+  t('el ala 0 es el SUR (n bajo): un emisor que solo tapa el extremo sur de la receptora carga el ala 0', () => {
+    // dos líneas cortas y llanas; la emisora (oeste) SOLO existe en la mitad sur
+    // de la receptora, con el sol en el ESTE y bajo la sombra va hacia el oeste…
+    // así que se pone la emisora al ESTE de la receptora (sol del este ⇒ la
+    // sombra viaja al oeste, del emisor al receptor)
+    const T2 = { pairs: [{ slope: 0, pitch: 5, axisTilt: 0 }], cw: 2.38, axisAz: 0, maxAngle: 55, gcr: 2.38 / 5, z0: 0.17,
+                 nBypass: 2, iam: 0.05, rowTilt: [0, 0], groups: null, drive: 'mono',
+                 segs: [[[-30, 30]], [[-30, 0]]] };   // receptora = línea 0 (oeste, entera); emisora = línea 1 (este), solo en n<0 (SUR)
+    const g2 = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // sol del este, bajo (07:30 local)
+    const z2 = 90 - g2.elev;
+    if (!(g2.az > 45 && g2.az < 135)) throw new Error('el sol no está en el este: az ' + g2.az);
+    // las dos filas SIGUEN al sol (astro: de cara al este, sin backtracking):
+    // horizontales no se sombrean nunca — la sombra de un plano a la altura h
+    // sobre otro a la misma h es el propio borde
+    const ang = F.anglesAstro(z2, g2.az, T2);
+    if (!(Math.abs(ang[0]) > 20)) throw new Error('el astro no inclina las filas al alba: ' + ang);
+    const sh = F.shadeRows(z2, g2.az, T2, ang);
+    const w = sh.wing[0][0];
+    if (!(sh.seg[0][0] > 0.02)) throw new Error('la receptora no se sombrea: ' + sh.seg[0][0]);
+    if (!(w[0] > w[1] + 0.02)) throw new Error('el ala SUR (0) no es la sombreada: ' + w);
+  });
+
+  t('poaPlant y poaPlantSeg publican la POA por ala y la media de las alas es la POA de la mesa', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    if (!ps.wings) throw new Error('poaPlantSeg sin wings');
+    ps.segs.forEach((l, r) => l.forEach((v, k) => {
+      const w = ps.wings[r][k];
+      if (!w) throw new Error('mesa sin alas');
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-9 * Math.max(1, v)) throw new Error(`mesa ${r}/${k}: ${w} ≠ ${v}`);
+    }));
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const pp = F.poaPlant(zen, az, T, rows, irr, doy, 0.2);
+    if (!pp.wings || pp.wings.length !== rows.length) throw new Error('poaPlant sin wings por fila');
+    pp.wings.forEach((l, r) => { if (l.length !== T.segs[r].length) throw new Error('fila ' + r + ': alas para ' + l.length + ' mesas de ' + T.segs[r].length); });
+  });
+}
+
+console.log('v1.44 · la ventana no parte trackers · la planta entera');
+{
+  const cotasA = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const cotasS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  const monos = (P) => {
+    const cnt = new Map();
+    P.segTrk.forEach(l => l.forEach(tk => cnt.set(tk, (cnt.get(tk) || 0) + 1)));
+    let m = 0; for (const [tk, n] of cnt) if (n !== filasDe(tk)) m++;
+    return { m, trk: cnt.size };
+  };
+  t('la ventana de maxLines NUNCA deja un tracker con una sola fila (Ayora 80/30, San José 80) — antes 2 y 10 monofilas', () => {
+    for (const [cotas, ml, nombre] of [[cotasA, 80, 'Ayora 80'], [cotasA, 30, 'Ayora 30'], [cotasS, 80, 'San José 80'], [cotasS, 40, 'San José 40']]) {
+      const P = F.plantFromCotas(cotas, ml, null);
+      const r = monos(P);
+      if (r.m) throw new Error(nombre + ': ' + r.m + ' trackers partidos por la ventana (' + r.trk + ' trackers, ' + P.elev.length + ' líneas, huérfanas ' + P.huerfanas + ')');
+      // el contrato «hasta N líneas» se mantiene: la ventana limpia tiene N, y si
+      // no la hay se encoge (nunca amplía); lo que quede huérfano se quita y se cuenta
+      if (!(P.elev.length <= ml && P.elev.length >= ml - 4)) throw new Error(nombre + ': la ventana se fue a ' + P.elev.length + ' líneas');
+      if (P.huerfanas > 4) throw new Error(nombre + ': ' + P.huerfanas + ' filas huérfanas quitadas');
+    }
+  });
+  t("blockIdx 'all' es la PLANTA ENTERA: todas las líneas y todas las filas, sin ventana, y cada tracker con sus dos filas", () => {
+    const P = F.plantFromCotas(cotasA, Infinity, 'all');
+    const nT = cotasA.t.filter(Boolean).length, nF = cotasA.t.filter(Boolean).reduce((a, tk) => a + filasDe(tk), 0);
+    if (P.block !== 'all') throw new Error('block = ' + P.block);
+    if (P.nFilas !== nF) throw new Error(P.nFilas + ' filas de ' + nF);
+    const r = monos(P);
+    if (r.trk !== nT || r.m) throw new Error(r.trk + ' trackers de ' + nT + ', ' + r.m + ' partidos');
+    const total = P.blocks.reduce((a, b) => a + b.lines, 0);
+    if (P.elev.length !== total) throw new Error(P.elev.length + ' líneas ≠ Σ bloques ' + total);
+    // los huecos entre bloques quedan como VANOS grandes (sin solape ⇒ Δz 0), y el resto de vanos son el pitch
+    const grandes = P.pairs ? 0 : 0;
+    let big = 0; for (let i = 0; i < P.lineX.length - 1; i++) if (P.lineX[i + 1] - P.lineX[i] > 2.5 * P.pitch) big++;
+    if (big !== P.blocks.length - 1) throw new Error(big + ' vanos grandes para ' + P.blocks.length + ' bloques');
+    // y la ventana de 80 del simulador sigue siendo un SUBCONJUNTO exacto de la planta entera (misma geometría por línea)
+    const W = F.plantFromCotas(cotasA, 80, null);
+    const xs = new Set(P.lineXAbs.map(v => v.toFixed(3)));
+    for (const x of W.lineXAbs) if (!xs.has(x.toFixed(3))) throw new Error('la ventana tiene una línea que la planta entera no: x=' + x);
+    void grandes;
+  });
+}
 
 console.log('');
 console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');

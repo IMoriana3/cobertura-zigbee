@@ -4539,7 +4539,7 @@ function updateFres(cl,pa,bl){var e=$('fresStat'),lg=$('fresLeg');if(!e)return;
    Lo que este mapa NO es: dBm. Los 52 enlaces MEDIDOS de El Burgo
    (elburgo_real.geojson) dan RSSI de -58 a -87 dBm entre 12 y 158 m, y el
    ajuste log-distancia sale plano: n=0,38 · sigma 5,2 dB · R2=0,05. A esta
-   escala la distancia NO explica la senal, asi que pintar un modelo de
+   escala la distancia NO explica la señal, asi que pintar un modelo de
    perdidas sobre el terreno seria inventarse la planta.
    Lo que SI es: en cada punto del campo, cuantos vecinos de malla (NCUs y
    antenas de TCU) se ven con la 1a zona de Fresnel despejada a 2,4 GHz, sobre
@@ -4620,7 +4620,7 @@ function cobStat(r){var e=$('cobStat'),lg=$('cobLeg');if(!e)return;
   e.innerHTML='Vecinos con Fresnel despejado desde la ANTENA de cada TCU: <b style="color:#e2574c">'+p(r.hist[0])+'</b> aislado · <b style="color:#e3c149">'+p(r.hist[1])+'</b> uno · <b style="color:#36D399">'+p(r.hist[2]+r.hist[3])+'</b> dos o mas · '+p(r.ncud)+' ve NCU directa'
     +((r.hist[0]+r.hist[1])===0?'<br><span style="color:#36D399">✅ a esta hora ningun TCU cojo: con los paneles a '+r.ang.toFixed(1)+'° todos ven ≥2 caminos — mueve la hora (al mediodía, con los paneles tumbados, es cuando aprieta)</span>':'')
     +'<br><span style="opacity:.7">se tiñen los MODULOS de cada tracker por su clase · paneles a '+r.ang.toFixed(1)+'° ('+r.fuente+') · '+r.n+' TCUs · '+r.ms+' ms</span>'
-    +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la senal no depende de la distancia (R²=0,05)</span>';
+    +'<br><span style="opacity:.7">no es un mapa de dBm: en los 52 enlaces medidos la señal no depende de la distancia (R²=0,05)</span>';
 }
 function cobSchedule(){ if(!cobOn)return; if(_cobT)clearTimeout(_cobT); _cobT=setTimeout(function(){_cobT=null;cobCompute();},260); }
 

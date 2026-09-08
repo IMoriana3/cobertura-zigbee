@@ -18,6 +18,12 @@ Salida en cobertura_coords/<planta>/:
     ncus_<planta>.csv              solo las NCU (el coordinador, que no se sondea: es quien sondea)
     manifiesto_<planta>.json       los ámbitos que hay, con recuentos: qué se puede lanzar
 
+Y uno para todas, en cobertura_coords/:
+
+    indice.json                    QUÉ PLANTAS HAY y qué se puede bajar de cada una. Es lo que
+                                   lee la tarjeta del panel para armar el paquete de campo sin
+                                   llevar dentro una lista de plantas que se queda vieja sola.
+
 Columnas del CSV, las mismas que ya come el driver (diagnostico_elburgo.py autodetecta
 id/lat/lon) más dos de contexto:
 
@@ -77,6 +83,7 @@ DE QUÉ NCU CUELGA CADA HSU — por este orden, y el manifiesto dice cuál se ap
   3. LA NCU MÁS CERCANA, que es la regla débil —falla 3 de los 24 casos conocidos— y por eso el
      manifiesto nombra una a una las HSU que salieron así.
 """
+import glob
 import json, csv, sys, math, os, re
 
 # Benante, Panbianco y El Polvorin se anaden el 2026-08-26: tienen layout con NCU y gateway por
@@ -121,7 +128,10 @@ def gateways(planta):
         if not m: continue
         g = re.search(r"GW\s*(\d+)", p["nombre"] or "")
         out.setdefault((int(m.group(1)), int(g.group(1)) if g else 1), []).append(
-            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"), "puerto": p.get("puerto"),
+            # `ip` es el MODBUS de la NCU; `ip_gw`, el ConnectPort DIGI al que
+            # preguntan los recolectores. Son dos aparatos: ver make_plantas.py.
+            {"ini": p.get("tcu_ini"), "fin": p.get("tcu_fin"), "ip": p.get("ip"),
+             "ip_gw": p.get("ip_gw"), "puerto": p.get("puerto"),
              "hsus": p.get("hsus") or 0, "hsu_esclavos": p.get("hsu_esclavos") or []})
     return out
 
@@ -185,16 +195,36 @@ def puntos(planta, en_viga):
         n, g = ncu_gw(t, planta)
         filas.append({"lat": round(lat, 6), "lon": round(lon, 6), "etiqueta": t["id"],
                       "rol": "TCU", "enlace": "radio", "ncu": n, "gw": g, "x": t["x"], "n_": t["n"]})
-    # numeración 1..N DENTRO de cada NCU, por orden natural de etiqueta (así lo numera el SCADA)
+    # numeración 1..N DENTRO de cada NCU, por orden natural de etiqueta (así lo numera el SCADA).
+    # TCUs RETIRADAS: `sin_tcu` declara POR ESCLAVO las que se DESMONTARON ENTERAS —seguidor
+    # incluido, confirmado por la casa el 2026-09-08— y esos números se SALTAN al numerar: en la
+    # planta, al quitar una unidad las demás NO se renumeran, queda el hueco (la hoja dice 1-13 y
+    # 15-23, no 1-22). Antes el seguidor seguía dibujado y esto se hacía quitando la fila DESPUÉS
+    # de numerar; el as-built de Ayora (c12411b) los borró del plano y aquel filtro pasó a comerse
+    # al VECINO: el hueco del 14 caía en TK 041-05. El salto solo toca TCUs: la HSU 14 o el
+    # repetidor 24 de esa NCU no tienen nada que ver, el esclavo solo es único ENTRE TCUs.
+    sin = {int(k): set(v) for k, v in (L.get("sin_tcu") or {}).items()}
     for n in {r["ncu"] for r in filas}:
         sub = sorted([r for r in filas if r["ncu"] == n], key=lambda r: orden_natural(r["etiqueta"]))
-        for i, r in enumerate(sub, 1):
+        i = 0
+        for r in sub:
+            i += 1
+            while i in sin.get(n, ()):                              # el hueco de la retirada, como en la planta
+                i += 1
             r["idx"] = i
             r["esclavo"] = i                                        # unit id Modbus con el que la NCU le habla
             r["node_id"] = "TCU_SUNNER_ID_%03d" % i
-            for (nn, gg), tramos in gws.items():                    # el GW manda el rango de la toolbox
-                if nn == n and any(x["ini"] <= i <= x["fin"] for x in tramos if x["ini"] and x["fin"]):
-                    r["gw"] = gg
+            # el GW manda el rango de la toolbox. Si un esclavo cae en DOS tramos (la hoja solapa
+            # los bordes: San José NCU3 dice GW1 1-46 y GW2 46-120), decidirlo por orden de
+            # diccionario era una moneda al aire que ya movió una TCU de fichero: se queda el GW
+            # más bajo, SE CANTA, y no es dato.
+            cands = sorted({gg for (nn, gg), tramos in gws.items()
+                            if nn == n and any(x["ini"] <= i <= x["fin"] for x in tramos if x["ini"] and x["fin"])})
+            if cands:
+                r["gw"] = cands[0]
+                if len(cands) > 1:
+                    print("  aviso: %s NCU%s esclavo %d cae en %d tramos (GW %s): la hoja los solapa; va al GW %s y NO es dato"
+                          % (planta, n, i, len(cands), "/".join(str(g) for g in cands), cands[0]))
 
     # HSU y REPETIDORES: también son nodos de la malla, así que también se sondean
     def cerca_ncu(o):
@@ -245,6 +275,29 @@ def puntos(planta, en_viga):
                           "etiqueta": o.get("name") or ("%s%d" % (rol, j)), "rol": rol, "enlace": enlace,
                           "ncu": n, "gw": o.get("gw") or gw_cerca(o, n), "esclavo": esc,
                           "idx": 900 + j, "x": o["x"], "n_": o["n"]})
+
+    # Y QUE NO HAYA QUE MIRARLO A OJO: lo que se va a sondear tiene que ser lo que el
+    # SCADA declara. Si no cuadra, o el layout trae seguidores que ya no tienen TCU, o
+    # al SCADA le faltan. Las dos cosas se pagan en campo, así que se cantan aquí.
+    if gws:
+        decl = {}
+        for (nn, _gg), tramos in gws.items():
+            for x in tramos:
+                if x["ini"] and x["fin"]:
+                    decl.setdefault(nn, set()).update(range(x["ini"], x["fin"] + 1))
+        for nn in sorted(set(decl) & {r["ncu"] for r in filas if r["rol"] == "TCU"}):
+            hay = {r["esclavo"] for r in filas if r["rol"] == "TCU" and r["ncu"] == nn}
+            # lo desmontado (sin_tcu) no «existe y no se sondea»: es la hoja la que va atrasada
+            retiradas_decl = sorted(decl[nn] & sin.get(nn, set()))
+            sobra, falta = sorted(hay - decl[nn]), sorted(decl[nn] - hay - sin.get(nn, set()))
+            if retiradas_decl:
+                print("  aviso: %s NCU%d: la hoja aún declara las DESMONTADAS %s — actualizarla" % (
+                    planta, nn, retiradas_decl))
+            if sobra or falta:
+                print("  aviso: %s NCU%d no cuadra con el SCADA%s%s" % (
+                    planta, nn,
+                    "; se sondearían y no existen %s" % (sobra,) if sobra else "",
+                    "; existen y no se sondearían %s" % (falta,) if falta else ""))
 
     filas.sort(key=lambda r: ((r["ncu"] is None, r["ncu"]), r["idx"]))
     ncus = []
@@ -298,14 +351,27 @@ def genera(planta, en_viga):
     ncus = sorted({r["ncu"] for r in filas if r["ncu"] is not None})
     for n in ncus:
         sub = [r for r in filas if r["ncu"] == n]
-        emite("coords_%s_NCU%02d.csv" % (planta, n), sub, {"ambito": "ncu", "ncu": n})
         gsub = sorted({r["gw"] for r in sub if r["gw"] is not None})
+        # LA IP TAMBIÉN EN EL ÁMBITO DE NCU cuando esa NCU tiene UN solo gateway.
+        # Antes solo se escribía en el ámbito de gateway, y ese solo se emite si
+        # hay MÁS DE UNO: en Ayora, con un gateway por NCU, se leían las 16 IP del
+        # toolbox y se tiraban — el manifiesto salía sin una sola dirección y el
+        # paquete de campo no podía preparar los recolectores.
+        ext_ncu = {"ambito": "ncu", "ncu": n}
+        if len(gsub) == 1:
+            enl = next((x for (nn, gg), tr in gws.items() if nn == n and gg == gsub[0] for x in tr), {})
+            if enl.get("ip"):
+                ext_ncu.update({"gw": gsub[0], "ip": enl["ip"], "puerto": enl.get("puerto")})
+                if enl.get("ip_gw"):
+                    ext_ncu["ip_gw"] = enl["ip_gw"]
+        emite("coords_%s_NCU%02d.csv" % (planta, n), sub, ext_ncu)
         if len(gsub) > 1:                                   # cada (NCU,GW) es una IP:puerto: es lo que se lanza
             for g in gsub:
                 s2 = [r for r in sub if r["gw"] == g]
                 enl = next((x for (nn, gg), tr in gws.items() if nn == n and gg == g for x in tr), {})
                 emite("coords_%s_NCU%02d_GW%d.csv" % (planta, n, g), s2,
-                      {"ambito": "gateway", "ncu": n, "gw": g, "ip": enl.get("ip"), "puerto": enl.get("puerto")})
+                      {"ambito": "gateway", "ncu": n, "gw": g, "ip": enl.get("ip"),
+                       "ip_gw": enl.get("ip_gw"), "puerto": enl.get("puerto")})
     todos_gw = sorted({r["gw"] for r in filas if r["gw"] is not None})
     for g in (todos_gw if len(todos_gw) > 1 else []):
         sub = [r for r in filas if r["gw"] == g]
@@ -324,20 +390,98 @@ def genera(planta, en_viga):
            "hsus_asignadas_por": hsu_origen,
            "ncus_sin_declarar_en_scada": sin_tb,
            "ambitos": ambitos,
+           # Las HOJAS DE BARRIDO que haya en la carpeta (plan_barrido_rf.py). No las
+           # genera este script —son otra campana, a mano y pareja a pareja—, pero si
+           # las declara, para que el paquete de campo se las lleve. Sin ellas el viaje
+           # a la planta mide como funciona la malla pero no calibra el modelo.
+           "barridos": sorted(os.path.basename(q) for q in glob.glob(
+               os.path.join(d, "barrido_%s_*.csv" % planta))),
            "siguiente_paso": "python3 diagnostico_elburgo.py <coords>.csv <rssi>.csv %s_real.geojson" % planta}
-    with open(os.path.join(d, "manifiesto_%s.json" % planta), "w", encoding="utf-8") as f:
+    """NO PISAR UN MANIFIESTO CON MENOS DE LO QUE YA TENÍA. La IP y el puerto de
+       cada gateway salen del repo del SCADA, que se clona AL LADO de este. Sin
+       ese clon la herramienta corre igual, sigue diciendo
+       `gateways_declarados_en_scada: true` y se deja las IP a null: San José
+       perdía 5 de sus 24 sin que nadie se enterara. Ahora se entera."""
+    fman = os.path.join(d, "manifiesto_%s.json" % planta)
+    if os.path.exists(fman):
+        previo = json.load(open(fman, encoding="utf-8"))
+        antes, ahora = ips_de(previo), ips_de(man)
+        if ahora < antes:
+            print("  !! %s: el manifiesto de disco trae %d gateways con IP y este solo %d — "
+                  "¿está clonado el repo del SCADA al lado? NO se pisa (--force para pisarlo)."
+                  % (planta, antes, ahora))
+            if "--force" not in sys.argv:
+                return previo
+    with open(fman, "w", encoding="utf-8") as f:
         json.dump(man, f, ensure_ascii=False, indent=1)
     return man
+
+
+def indice_de_disco():
+    """Los manifiestos que YA hay, sin regenerar nada."""
+    out = []
+    for p in PLANTAS:
+        f = os.path.join(SAL, p, "manifiesto_%s.json" % p)
+        if os.path.exists(f):
+            out.append(json.load(open(f, encoding="utf-8")))
+    return out
+
+
+def ips_de(man):
+    return sum(1 for a in man.get("ambitos", []) if a.get("ip"))
+
+
+def escribe_indice(mans):
+    """Índice de todo lo descargable. Sin esto, quien quiera ofrecer los ficheros
+       —la tarjeta del panel— tiene que llevar dentro la lista de plantas, y esa
+       lista se queda vieja el día que entre la siguiente."""
+    idx = {"generado_por": "tools/gen_coords_cobertura.py",
+           "que_es": "coordenadas de entrada para lanzar la medida de cobertura, por ámbito",
+           "ambito_que_se_lanza": "(NCU,GW) cuando la planta declara gateways; si no, la NCU",
+           "plantas": []}
+    for m in sorted(mans, key=lambda q: q["planta"]):
+        idx["plantas"].append({
+            "planta": m["planta"], "titulo": m.get("titulo") or m["planta"],
+            "nodos": m["nodos"], "tcus": m["tcus"], "hsus": m["hsus"], "reps": m["reps"],
+            "ncus": m["ncus"], "gws": m["gws"],
+            "gateways_declarados_en_scada": m["gateways_declarados_en_scada"],
+            "manifiesto": "manifiesto_%s.json" % m["planta"],
+            "ficheros": [{"fichero": a["fichero"], "ambito": a["ambito"],
+                          "tcus": a.get("tcus"), "ncu": a.get("ncu"), "gw": a.get("gw"),
+                          "ip": a.get("ip"), "puerto": a.get("puerto")}
+                         for a in m["ambitos"]] +
+                        [{"fichero": "ncus_%s.csv" % m["planta"], "ambito": "coordinadores",
+                          "tcus": None}],
+        })
+    with open(os.path.join(SAL, "indice.json"), "w", encoding="utf-8") as f:
+        json.dump(idx, f, ensure_ascii=False, indent=1)
+    return idx
 
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     en_viga = "--en-eje" not in sys.argv
+    if "--solo-indice" in sys.argv:
+        # Rehace SOLO el índice, desde los manifiestos que ya hay. Sirve para
+        # refrescarlo sin el repo del SCADA al lado, que es lo que hace falta
+        # para regenerar las coordenadas de verdad.
+        idx = escribe_indice(indice_de_disco())
+        print("indice.json: %d plantas, %d ficheros (desde los manifiestos de disco)" %
+              (len(idx["plantas"]), sum(len(q["ficheros"]) for q in idx["plantas"])))
+        raise SystemExit(0)
+    mans = []
     for p in (args or PLANTAS):
         m = genera(p, en_viga)
+        mans.append(m)
         aviso = ""
         if not m["gateways_declarados_en_scada"]: aviso = "  · sin gateways en el SCADA"
         elif m["ncus_sin_declarar_en_scada"]: aviso = "  · NCU sin declarar en el SCADA: %s" % m["ncus_sin_declarar_en_scada"]
         print("%-11s %4d nodos (%d TCU + %d HSU + %d REP) · %2d NCU · %d GW · %2d ámbitos%s%s" %
               (p, m["nodos"], m["tcus"], m["hsus"], m["reps"], m["ncus"], m["gws"], len(m["ambitos"]),
                ("  (una fila)" if m["una_fila"] else "") + (("  · %d por cable" % m["cableados"]) if m["cableados"] else ""), aviso))
+    # El índice solo se rehace cuando se han generado TODAS: con una planta suelta
+    # se quedaría con esa sola y la tarjeta dejaría de ver las demás.
+    if not args:
+        idx = escribe_indice(mans)
+        print("\nindice.json: %d plantas, %d ficheros" %
+              (len(idx["plantas"]), sum(len(q["ficheros"]) for q in idx["plantas"])))
