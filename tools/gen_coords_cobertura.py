@@ -195,16 +195,36 @@ def puntos(planta, en_viga):
         n, g = ncu_gw(t, planta)
         filas.append({"lat": round(lat, 6), "lon": round(lon, 6), "etiqueta": t["id"],
                       "rol": "TCU", "enlace": "radio", "ncu": n, "gw": g, "x": t["x"], "n_": t["n"]})
-    # numeración 1..N DENTRO de cada NCU, por orden natural de etiqueta (así lo numera el SCADA)
+    # numeración 1..N DENTRO de cada NCU, por orden natural de etiqueta (así lo numera el SCADA).
+    # TCUs RETIRADAS: `sin_tcu` declara POR ESCLAVO las que se DESMONTARON ENTERAS —seguidor
+    # incluido, confirmado por la casa el 2026-09-08— y esos números se SALTAN al numerar: en la
+    # planta, al quitar una unidad las demás NO se renumeran, queda el hueco (la hoja dice 1-13 y
+    # 15-23, no 1-22). Antes el seguidor seguía dibujado y esto se hacía quitando la fila DESPUÉS
+    # de numerar; el as-built de Ayora (c12411b) los borró del plano y aquel filtro pasó a comerse
+    # al VECINO: el hueco del 14 caía en TK 041-05. El salto solo toca TCUs: la HSU 14 o el
+    # repetidor 24 de esa NCU no tienen nada que ver, el esclavo solo es único ENTRE TCUs.
+    sin = {int(k): set(v) for k, v in (L.get("sin_tcu") or {}).items()}
     for n in {r["ncu"] for r in filas}:
         sub = sorted([r for r in filas if r["ncu"] == n], key=lambda r: orden_natural(r["etiqueta"]))
-        for i, r in enumerate(sub, 1):
+        i = 0
+        for r in sub:
+            i += 1
+            while i in sin.get(n, ()):                              # el hueco de la retirada, como en la planta
+                i += 1
             r["idx"] = i
             r["esclavo"] = i                                        # unit id Modbus con el que la NCU le habla
             r["node_id"] = "TCU_SUNNER_ID_%03d" % i
-            for (nn, gg), tramos in gws.items():                    # el GW manda el rango de la toolbox
-                if nn == n and any(x["ini"] <= i <= x["fin"] for x in tramos if x["ini"] and x["fin"]):
-                    r["gw"] = gg
+            # el GW manda el rango de la toolbox. Si un esclavo cae en DOS tramos (la hoja solapa
+            # los bordes: San José NCU3 dice GW1 1-46 y GW2 46-120), decidirlo por orden de
+            # diccionario era una moneda al aire que ya movió una TCU de fichero: se queda el GW
+            # más bajo, SE CANTA, y no es dato.
+            cands = sorted({gg for (nn, gg), tramos in gws.items()
+                            if nn == n and any(x["ini"] <= i <= x["fin"] for x in tramos if x["ini"] and x["fin"])})
+            if cands:
+                r["gw"] = cands[0]
+                if len(cands) > 1:
+                    print("  aviso: %s NCU%s esclavo %d cae en %d tramos (GW %s): la hoja los solapa; va al GW %s y NO es dato"
+                          % (planta, n, i, len(cands), "/".join(str(g) for g in cands), cands[0]))
 
     # HSU y REPETIDORES: también son nodos de la malla, así que también se sondean
     def cerca_ncu(o):
@@ -256,19 +276,6 @@ def puntos(planta, en_viga):
                           "ncu": n, "gw": o.get("gw") or gw_cerca(o, n), "esclavo": esc,
                           "idx": 900 + j, "x": o["x"], "n_": o["n"]})
 
-    # TCUs RETIRADAS. El layout es el plano: trae el seguidor aunque le hayan quitado la
-    # TCU. Sondearlas no da un error claro, da un TIMEOUT, y un timeout en el mapa de
-    # cobertura se lee como "aquí no llega la señal". En Ayora se retiraron tres de la
-    # NCU7 y el paquete de campo seguía llevándolas. Se declaran POR ESCLAVO y se quitan
-    # DESPUÉS de numerar, que es como pasa en la planta: al quitar una TCU las demás no
-    # se renumeran, queda el hueco. Va aquí abajo, con las HSU y los repetidores ya
-    # metidos, porque el nº de esclavo solo es único ENTRE TCUs: la HSU 230 de esa NCU no
-    # tiene nada que ver con la TCU 230, y quitarla por el número sería otro agujero.
-    sin = {int(k): set(v) for k, v in (L.get("sin_tcu") or {}).items()}
-    if sin:
-        filas = [r for r in filas
-                 if not (r["rol"] == "TCU" and r["esclavo"] in sin.get(r["ncu"], ()))]
-
     # Y QUE NO HAYA QUE MIRARLO A OJO: lo que se va a sondear tiene que ser lo que el
     # SCADA declara. Si no cuadra, o el layout trae seguidores que ya no tienen TCU, o
     # al SCADA le faltan. Las dos cosas se pagan en campo, así que se cantan aquí.
@@ -280,7 +287,12 @@ def puntos(planta, en_viga):
                     decl.setdefault(nn, set()).update(range(x["ini"], x["fin"] + 1))
         for nn in sorted(set(decl) & {r["ncu"] for r in filas if r["rol"] == "TCU"}):
             hay = {r["esclavo"] for r in filas if r["rol"] == "TCU" and r["ncu"] == nn}
-            sobra, falta = sorted(hay - decl[nn]), sorted(decl[nn] - hay)
+            # lo desmontado (sin_tcu) no «existe y no se sondea»: es la hoja la que va atrasada
+            retiradas_decl = sorted(decl[nn] & sin.get(nn, set()))
+            sobra, falta = sorted(hay - decl[nn]), sorted(decl[nn] - hay - sin.get(nn, set()))
+            if retiradas_decl:
+                print("  aviso: %s NCU%d: la hoja aún declara las DESMONTADAS %s — actualizarla" % (
+                    planta, nn, retiradas_decl))
             if sobra or falta:
                 print("  aviso: %s NCU%d no cuadra con el SCADA%s%s" % (
                     planta, nn,
