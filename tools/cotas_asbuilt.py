@@ -181,13 +181,67 @@ def genera(planta):
     def num(v, d=3):
         return None if v is None else round(v, d)
 
+    # ── LA VIGA QUE FALTA VA EN SU SITIO, NO ENCIMA DE SU HERMANA ────────────
+    # Cuando de un tracker solo hay UNA fila medida (inc=1: sin levantar, o
+    # descartada por venir con otra referencia vertical), se duplica la hermana
+    # -- pero hasta ahora la copia se emitia con la MISMA x, asi que el bifila
+    # salia como dos vigas SUPERPUESTAS: el simulador las metia en la misma
+    # linea, no las reconocia como pareja y las pintaba como dos monofilas
+    # sueltas. En San Jose eso son 231 trackers de 2.182 (el 11%).
+    #
+    # La posicion de la que falta no se inventa: se DEDUCE del layout, y solo
+    # si el layout dice lo mismo en los trackers que SI tienen las dos filas.
+    # Se mide (a) el paso entre las dos vigas de un tracker y (b) que papel
+    # juega la x del layout: una de las dos vigas, o el eje de unidad (el
+    # centro). En San Jose: paso 6,177 m y la x del layout ES la viga este en
+    # los 1.951 completos (peor desvio 0,29 m). Si el layout no casa con
+    # ninguno de los dos patrones, no se toca nada y se dice.
+    dobles = [g for g in asign.values() if len(g) == 2]
+    paso_v, papel = None, 'ninguno'
+    if len(dobles) >= 20:
+        ds = sorted(abs(g[0]['x'] - g[1]['x']) for g in dobles)
+        paso_v = ds[len(ds) // 2]
+        if paso_v > 1:
+            d_viga, d_centro = [], []
+            for i, g in asign.items():
+                if len(g) != 2: continue
+                xs = sorted([g[0]['x'], g[1]['x']]); xl = TK[i]['x']
+                d_viga.append(min(abs(xl - xs[0]), abs(xl - xs[1])))
+                d_centro.append(abs(xl - (xs[0] + xs[1]) / 2))
+            tol = 0.1 * paso_v
+            if max(d_viga) < tol: papel = 'viga'
+            elif max(d_centro) < tol: papel = 'centro'
+    recolocadas, sin_regla = 0, 0
+
+    def hermana(i, f):
+        """La fila gemela de f: misma cota y mismo largo (no se midio), su x REAL."""
+        nonlocal recolocadas, sin_regla
+        g = dict(f)
+        if paso_v and papel != 'ninguno':
+            xl = TK[i]['x']
+            if papel == 'centro':
+                g['x'] = round(2 * xl - f['x'], 3); recolocadas += 1; return g
+            # El layout marca UNA de las dos vigas (en San Jose, la este). Solo
+            # hay dos casos y se distinguen midiendo, sin recorrer candidatos:
+            # si la medida ES la que marca el layout, la que falta esta un paso
+            # al otro lado; si la medida es esa otra, la que falta es la del
+            # layout. Cualquier otra cosa NO se coloca: no se inventa una viga.
+            if abs(f['x'] - xl) < paso_v * 0.5:
+                g['x'] = round(xl - paso_v, 3); recolocadas += 1; return g
+            if abs(f['x'] - (xl - paso_v)) < paso_v * 0.5:
+                g['x'] = round(xl, 3); recolocadas += 1; return g
+            if abs(f['x'] - (xl + paso_v)) < paso_v * 0.5:
+                g['x'] = round(xl, 3); recolocadas += 1; return g
+        sin_regla += 1
+        return g
+
     T = []
     for i in range(len(TK)):
         v = asign.get(i)
         if not v:
             T.append(None); continue
         filas, inc = [], 1 if len(v) == 1 else 0
-        for f in (v if len(v) == 2 else [v[0], v[0]]):
+        for f in (v if len(v) == 2 else [v[0], hermana(i, v[0])]):
             # n = norte positivo (el asbuilt lo da hacia el sur); y = cota sobre la base
             filas.append({
                 'x':  num(f['x']),
@@ -211,6 +265,10 @@ def genera(planta):
             'ase': num(g.get('ase')), 'aso': num(g.get('aso')),   # vector TCU agresivo este/oeste (%)
         })
 
+    if recolocadas or sin_regla:
+        print('%-8s hermana duplicada: %d colocada(s) en su x real (layout = %s, paso %.3f m)%s'
+              % (planta, recolocadas, papel, paso_v or 0,
+                 '' if not sin_regla else ', %d SIN REGLA (se quedan sobre su hermana)' % sin_regla))
     art = sum(1 for t in T if t and any(f['art'] for f in t['f']))
     inc = sum(1 for t in T if t and t['inc'])
     out = {

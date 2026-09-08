@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -627,6 +627,41 @@ t('COTA POR MESA (v1.17): la escena lleva la z medida de cada mesa, no la media 
   for (const lit of ['const hubY=cMesa(r,k)+2.0', 'hubY:G.cMesa(r,k)+2.0', 'G.zTubo(tr.row,tr.k,nn)+2.0', 'T.segZ=P.segZ'])
     if (!pg.includes(lit)) throw new Error('produccion.html sin «' + lit + '»: el render volvió a la cota de línea');
   if (/hubY=T\.elev\[r\]\+2\.0/.test(pg)) throw new Error('el render sigue colocando la mesa a la cota de su línea');
+});
+
+t('ESCALA DE COLOR (v1.18): la fiel se ancla a CERO — una planta sin sombra no puede salir en arcoíris por un 1,5 % de rango', () => {
+  // el caso real: Ayora entera a mediodía, sin una sola mesa sombreada
+  const P = S.plantaCotas(S.F, cotasAyora);
+  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base), nrows: P.elev.length,
+              cw: P.cw, maxang: P.maxAngle, pitch: P.pitch, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const r = S.instant(S.F, c, S.buildTReal(S.F, c, P), 720);
+  const v = []; r.wings.forEach(l => l.forEach(w => { if (w) v.push(...w); }));
+  const mn = Math.min(...v), mx = Math.max(...v);
+  const spread = (mx - mn) / mx;
+  if (!(spread < 0.03)) throw new Error('a mediodía la POA ya no es plana (' + (100 * spread).toFixed(1) + ' %): el careo no mide lo que dice');
+  const sombra = Math.max(...r.shade.filter(x => typeof x === 'number'));
+  if (sombra > 1e-6) throw new Error('hay sombra a mediodía: ' + sombra);
+  const norm = (val, R) => { const s2 = R.hi - R.lo; return s2 > Math.max(1e-9, Math.abs(R.hi) * 1e-3) ? (val - R.lo) / s2 : 0.5; };
+  // FIEL: todas las mesas caen en un pañuelo de la rampa (< 5 %)
+  const A = S.rangoColor(mn, mx, 'abs');
+  if (A.lo !== 0) throw new Error('la escala fiel no arranca en 0: ' + A.lo);
+  const cA = v.map(x => norm(x, A));
+  if (!(Math.max(...cA) - Math.min(...cA) < 0.05)) throw new Error('la escala fiel reparte ' + (100 * (Math.max(...cA) - Math.min(...cA))).toFixed(0) + ' % de la rampa sobre un 1,5 % de POA');
+  if (!(Math.min(...cA) > 0.9)) throw new Error('con la escala fiel una planta al 99 % debería salir en el extremo alto');
+  // CONTRASTE: es la de siempre, mín→máx, y estira ese 1,5 % a la rampa entera
+  const R = S.rangoColor(mn, mx, 'rel');
+  if (R.lo !== mn || R.hi !== mx) throw new Error('contraste ya no es mín→máx');
+  const cR = v.map(x => norm(x, R));
+  if (!(Math.max(...cR) - Math.min(...cR) > 0.9)) throw new Error('contraste dejó de estirar: el careo no distingue las dos escalas');
+  // al ALBA, donde SÍ hay diferencias grandes, la fiel también las enseña
+  const r2 = S.instant(S.F, c, S.buildTReal(S.F, c, P), 7 * 60 + 30);
+  const v2 = []; r2.wings.forEach(l => l.forEach(w => { if (w) v2.push(...w); }));
+  const A2 = S.rangoColor(Math.min(...v2), Math.max(...v2), 'abs');
+  const c2 = v2.map(x => norm(x, A2));
+  if (!(Math.max(...c2) - Math.min(...c2) > 0.5)) throw new Error('la escala fiel aplana también el alba, donde el rango real es del 65 %');
+  // y la página la usa, con la fiel por defecto
+  if (!/id="cscale"[\s\S]{0,400}value="abs" selected/.test(pg)) throw new Error('el selector de escala no viene en fiel por defecto');
+  if (!pg.includes("rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs')")) throw new Error('repaint no aplica la escala elegida');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {

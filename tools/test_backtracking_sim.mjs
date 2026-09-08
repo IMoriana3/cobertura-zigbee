@@ -1716,7 +1716,11 @@ t('San José SANEADA: sin filas con otra referencia vertical, y APTA CON RESERVA
   try { r = require_child().execFileSync('node',
     [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
   catch (e) { r = (e.stdout || '') + (e.stderr || ''); code = e.status; }
-  if (code !== 0 || !/VEREDICTO: APTA CON RESERVAS/.test(r))
+  // Desde v1.46 el veredicto es APTA a secas: al colocar en su x la viga
+  // duplicada de los 231 trackers con una sola fila medida desaparecieron los
+  // vanos de 0 m que las reservas señalaban. Se acepta APTA o APTA CON
+  // RESERVAS — lo que no vale es que deje de ser evaluable.
+  if (code !== 0 || !/VEREDICTO: APTA/.test(r))
     throw new Error('San José ya no es evaluable (código ' + code + '):\n' + r.slice(-500));
   if (/fila anómala/.test(r))
     throw new Error('reaparecen filas anómalas:\n' + r.slice(-500));
@@ -2046,6 +2050,65 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
     for (const x of W.lineXAbs) if (!xs.has(x.toFixed(3))) throw new Error('la ventana tiene una línea que la planta entera no: x=' + x);
     void grandes;
   });
+}
+
+console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas separadas');
+{
+  // Este careo NO mira nuestra propia salida: mide el fichero de cotas contra
+  // el LAYOUT (fuente independiente) y contra la geometría del bifila. Es el
+  // que faltaba: `cotas_asbuilt.py` duplicaba la hermana de un tracker con una
+  // sola fila medida CON LA MISMA x, así que 231 trackers de San José salían
+  // como dos vigas superpuestas — el clúster las metía en una línea, no eran
+  // pareja, y el 3D las pintaba como monofilas sueltas. Los careos de entonces
+  // no lo cazaron porque comprobaban que los ejes casaran con segPairs, y
+  // segPairs venía de esas mismas cotas.
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const lay = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_layout.json'), 'utf-8'));
+    const filasDe = tk => (tk && tk.f ? tk.f : []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2);
+    t(`${pl}: las dos vigas de cada tracker están separadas un paso y casan con el layout`, () => {
+      if (lay.trackers.length !== cotas.t.length) throw new Error('layout y cotas no van 1:1');
+      // el PASO entre las dos vigas se mide de los trackers levantados ENTEROS
+      const ds = cotas.t.filter(tk => tk && !tk.inc && filasDe(tk).length === 2)
+                        .map(tk => Math.abs(tk.f[0].x - tk.f[1].x)).sort((a, b) => a - b);
+      if (ds.length < 20) throw new Error('muy pocos trackers con las dos filas medidas: ' + ds.length);
+      const paso = ds[ds.length >> 1];
+      if (!(paso > 3 && paso < 12)) throw new Error('paso entre vigas irreal: ' + paso.toFixed(2) + ' m');
+      let n = 0, juntas = 0, pasoMal = 0, fueraLayout = 0;
+      cotas.t.forEach((tk, i) => {
+        const f = filasDe(tk);
+        if (f.length !== 2) return;
+        n++;
+        const dx = Math.abs(f[0].x - f[1].x);
+        if (dx < 1) juntas++;                                   // dos vigas SUPERPUESTAS: el fallo de v1.45
+        // el montaje real dispersa: en San José el vano medido va de 5,54 a
+        // 7,58 m (dos trackers levantados tienen sus vigas a 7,3). Lo que NO
+        // puede pasar es que estén superpuestas o a dos pasos
+        else if (Math.abs(dx - paso) > 0.25 * paso) pasoMal++;
+        const xl = lay.trackers[i].x;
+        if (Math.min(Math.abs(xl - f[0].x), Math.abs(xl - f[1].x), Math.abs(xl - (f[0].x + f[1].x) / 2)) > 0.4) fueraLayout++;
+      });
+      if (juntas) throw new Error(`${juntas} de ${n} trackers con sus DOS vigas en la misma x (hermana duplicada sin recolocar)`);
+      if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);
+      if (fueraLayout) throw new Error(`${fueraLayout} de ${n} trackers cuyas vigas no casan con la x del layout`);
+    });
+    t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
+      const P = F.plantFromCotas(cotas, Infinity, 'all');
+      const linea = new Map();
+      P.segTrk.forEach((l, r) => l.forEach(tk => { if (!linea.has(tk)) linea.set(tk, []); linea.get(tk).push(r); }));
+      let n = 0, sinPareja = 0, noContiguas = 0;
+      for (const tk of cotas.t) {
+        if (!tk || filasDe(tk).length !== 2) continue;
+        n++;
+        const v = linea.get(tk) || [];
+        if (v.length !== 2 || v[0] === v[1]) { sinPareja++; continue; }
+        if (Math.abs(v[0] - v[1]) !== 1) noContiguas++;
+      }
+      if (sinPareja) throw new Error(`${sinPareja} de ${n} trackers sin pareja (sus dos vigas caen en la misma línea)`);
+      if (noContiguas) throw new Error(`${noContiguas} de ${n} trackers con sus vigas en líneas NO contiguas`);
+      if (P.segPairs.length !== n) throw new Error(`${P.segPairs.length} parejas para ${n} trackers levantados`);
+    });
+  }
 }
 
 console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');

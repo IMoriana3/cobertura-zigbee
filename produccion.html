@@ -209,6 +209,10 @@ input[type=range]{accent-color:var(--live)}
           <option value="pano">📅 E string Σ año (MWh)</option>
         </select>
         <button class="btn" id="csv" title="Descarga la vista actual en CSV (;, decimal coma): por string o por inversor según el modo, con la cadena AC del instante debajo.">⬇ CSV</button>
+        <select id="cscale" class="btn" title="Cómo se reparte la rampa de color. FIEL: de 0 al máximo — el color es proporcional a lo que produce cada string, así que una planta sin sombra sale de un color. CONTRASTE: estira el mínimo y el máximo de la vista para inspeccionar diferencias finas; la leyenda dice entonces qué porcentaje del máximo abarca.">
+          <option value="abs" selected>escala fiel (0 → máx)</option>
+          <option value="rel">contraste (mín → máx)</option>
+        </select>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
       <div class="nota" id="acline" style="border-top:1px solid var(--line);color:var(--text)"></div>
@@ -411,6 +415,19 @@ function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
     return [{inv:invRows[r],k:k,w:null,mods:mods}];
   }));
 }
+/* ESCALA DE COLOR (v1.18). La rampa se estiraba SIEMPRE del mínimo al máximo
+   de la vista, así que a mediodía —cuando ninguna mesa tiene sombra, todas
+   están al 99 % y el rango entero son 15 W/m² sobre 1.009, un 1,5 %— la planta
+   salía en arcoíris, como si unas produjeran el doble que otras. Por defecto
+   la escala se ANCLA A CERO: el color es proporcional a lo que produce cada
+   string y una planta sin sombra sale de un color. «Contraste» mantiene el
+   mín→máx de siempre para mirar diferencias finas, y entonces la leyenda dice
+   qué porcentaje del máximo abarca ese tramo. */
+function rangoColor(mn,mx,modo){
+  if(modo==='rel')return {lo:mn,hi:mx,rel:true};
+  return {lo:Math.min(0,mn),hi:Math.max(mx,mn+1e-9),rel:false};
+}
+
 /* módulos por STRING de cada tracker según el layout (Ayora: «Interior 1V28»,
    mods 28/21/14), por IDENTIDAD del objeto de cotas.t — solo cuando layout y
    cotas van 1:1 (la misma condición que las NCU). Sin dato ⇒ null y el largo
@@ -1444,11 +1461,16 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
 }
 
 function ramp(x){return F.prodColor(x);}
-function paintLegend(mn,mx,unit,fmt){
+function paintLegend(mn,mx,unit,fmt,esc){
   const stops=[];for(let i=0;i<=8;i++)stops.push(ramp(i/8)+' '+(i*12.5)+'%');
   $('legbar').style.background='linear-gradient(90deg,'+stops.join(',')+')';
-  $('leglo').textContent=fmt(mn);
-  $('leghi').textContent=fmt(mx)+' '+unit;
+  // la leyenda dice los EXTREMOS DE LA RAMPA (lo que el color significa) y,
+  // en contraste, cuánto abarca de verdad ese tramo: sin ese dato un arcoíris
+  // sobre el 1,5 % se lee como si unas mesas produjeran el doble que otras
+  const R=esc||{lo:mn,hi:mx,rel:true};
+  $('leglo').textContent=fmt(R.lo);
+  const d=mx>0?100*(mx-mn)/mx:0;
+  $('leghi').textContent=fmt(R.hi)+' '+unit+(R.rel?' · las de la vista se reparten '+(d<0.05?'<0,1':d.toFixed(d<10?1:0)).replace('.',',')+' %':'');
 }
 
 function repaint(){
@@ -1506,8 +1528,9 @@ function repaint(){
   // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
   // colores de escala completa — «¿por qué esas producen menos?» sin producir
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
-  const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
-  paintLegend(mn,mx,unit,fmt);
+  const esc=rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs');
+  const norm=(v,lo,hi)=>{const s=esc.hi-esc.lo;return s>Math.max(1e-9,Math.abs(esc.hi)*1e-3)?(v-esc.lo)/s:0.5;};
+  paintLegend(mn,mx,unit,fmt,esc);
   if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals);
   else for(let r=0;r<c.nrows;r++){
     if(R3.rows&&R3.rows[r]){
@@ -1873,6 +1896,7 @@ function repaintPick(){
   $('btncareo').addEventListener('click',runCareo);
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
+  $('cscale').addEventListener('change',repaint);
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
   $('manth').addEventListener('input',()=>{invalida();repaint();});
   $('tpreset').addEventListener('change',()=>{
