@@ -97,6 +97,32 @@ decide = [q for q in filas
 check("hay pares donde el ángulo decide si hay enlace: son los que contrastan el modelo",
       len(decide) >= 3, len(decide))
 
+# ── LA PASADA DE CANTO ──────────────────────────────────────────────────────
+# Con las palas planas el rayo nunca entra en la mesa, asi que `l_mod_db` no
+# esta en los datos y el ajuste lo declara no identificado. Unos 20 pares se
+# miden dos veces, la segunda de canto: mismo par, distinta obstruccion.
+canto = [q for q in filas if q["pasada"] == "canto"]
+planos = [q for q in filas if q["pasada"] == "plano"]
+check("la hoja lleva una segunda pasada DE CANTO de 20 pares", len(canto) == 20, len(canto))
+check("que son pares de la primera pasada, no pares nuevos",
+      all((q["origen"], q["destino"]) in {(r["origen"], r["destino"]) for r in planos} for q in canto))
+check("todos cruzan mesas: sin mesas de por medio el angulo no cambia nada",
+      all(int(q["mesas"]) >= 1 for q in canto), sorted({q["mesas"] for q in canto}))
+check("y son los pares donde el angulo mas cambia la prediccion",
+      min(float(q["margen_previsto_planas_db"]) - float(q["margen_previsto_canto_db"]) for q in canto) > 5,
+      min(float(q["margen_previsto_planas_db"]) - float(q["margen_previsto_canto_db"]) for q in canto))
+check("repartidos entre clases, no todos de una", len({q["clase"] for q in canto}) >= 2,
+      sorted({q["clase"] for q in canto}))
+check("van al FINAL de la hoja: es otra vuelta a la planta",
+      all(q["pasada"] == "plano" for q in filas[:len(planos)]))
+check("y la hora va vacia tambien en ellas: se mide de nuevo",
+      all(q["hora_utc"] == "" and q["llega"] == "" for q in canto))
+r0 = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"),
+                     "ayora", "--salida", sal + ".sin", "--canto", "0"], capture_output=True, text=True, cwd=RAIZ)
+check("sin pasada de canto el planificador AVISA de que l_mod_db quedara sin identificar",
+      "SIN IDENTIFICAR" in r0.stdout, r0.stdout[-300:])
+check("y con ella lo dice en el informe", "DOS veces" in r.stdout, r.stdout[:400])
+
 # la hoja tiene que poder rellenarse, y los ceros son la mitad del dato
 cols = set(filas[0].keys())
 check("la hoja trae las columnas de medida vacías, `llega` incluida",

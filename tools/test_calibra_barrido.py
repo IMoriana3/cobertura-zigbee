@@ -224,6 +224,37 @@ ic55 = [C.perfil(d55, UMBRAL, th55, fv55, 0)]
 check("midiendo a varios ángulos, el mismo par de datos SÍ acota `l_mod_db`",
       ic55[0][0] is not None and ic55[0][1] is not None, ic55[0])
 
+# ── 6bis. LA CAMPAÑA TAL COMO SE PLANEA, DE PUNTA A PUNTA ───────────────────
+# La hoja real del planificador —65 pares planos y 20 repetidos de canto— se
+# simula honrando la pasada (plano 0°, canto 55°) y se ajusta. Es la pregunta
+# que hay que responder ANTES de ir: ¿con esos 20 pares se identifica l_mod_db?
+# Y la contraria: sin ellos, ¿se ve que no?
+def campaña(canto, semilla):
+    hoja = os.path.join(TMP, "campana_%d.csv" % canto)
+    subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"),
+                    "ayora", "--salida", hoja, "--canto", str(canto)],
+                   capture_output=True, text=True, cwd=RAIZ)
+    fs = C.simula(hoja, CEN, FILAS, FX, LP, VERDAD, UMBRAL, [0], semilla)
+    sim = os.path.join(TMP, "campana_%d_sim.csv" % canto)
+    escribe(sim, fs)
+    return datos_de(sim)
+
+d_con = campaña(20, 5)
+check("la hoja planeada trae los 20 pares de canto y se simulan a 55°",
+      sum(1 for q in d_con if q["beta"] == 55.0) == 20 and
+      sum(1 for q in d_con if q["beta"] == 0.0) == 65,
+      (sum(1 for q in d_con if q["beta"] == 55.0), len(d_con)))
+th_c, fv_c = C.ajusta(d_con, UMBRAL)
+ic_c = C.perfil(d_con, UMBRAL, th_c, fv_c, 0)
+check("con la campaña TAL COMO SE PLANEA, `l_mod_db` queda acotado (verdad %.1f, IC %s)" %
+      (VERDAD[0], ic_c), ic_c[0] is not None and ic_c[1] is not None and
+      ic_c[0] <= VERDAD[0] <= ic_c[1] and ic_c[1] - ic_c[0] < 8, (th_c[0], ic_c))
+d_sin = campaña(0, 5)
+th_s, fv_s = C.ajusta(d_sin, UMBRAL)
+ic_s = C.perfil(d_sin, UMBRAL, th_s, fv_s, 0)
+check("y sin la pasada de canto NO: el intervalo sale abierto",
+      ic_s[0] is None or ic_s[1] is None, ic_s)
+
 # ── 7. SI FALTA UN TÉRMINO, EL RESIDUO LO CANTA ─────────────────────────────
 # Se genera con una pérdida proporcional a la distancia que el modelo no tiene.
 dext = datos_de(hoja_simulada(VERDAD, 31, extra=lambda pre: -0.06 * pre["d"]))

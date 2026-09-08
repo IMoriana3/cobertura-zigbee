@@ -354,7 +354,11 @@ def simula(hoja, cen, filas, filas_x, lp, verdad, umbral, betas, semilla=1):
         a, b = cen.get(r.get("et_origen", "")), cen.get(r.get("et_destino", ""))
         if not a or not b:
             continue
-        beta = betas[i % len(betas)]
+        # Si la hoja trae la pasada, se simula la CAMPAÑA tal como se planeó:
+        # plano a 0 y de canto a 55. Así se comprueba antes de ir si ese diseño
+        # identifica los parámetros, que es para lo que existe esta opción.
+        pas = (r.get("pasada") or "").strip().lower()
+        beta = 55.0 if pas == "canto" else 0.0 if pas == "plano" else betas[i % len(betas)]
         pre = prepara(a, b, beta, filas, filas_x, lp)
         v = mu(pre, verdad) + rnd.gauss(0, verdad[3])
         r = dict(r)
