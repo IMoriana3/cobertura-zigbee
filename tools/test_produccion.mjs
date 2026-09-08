@@ -324,6 +324,31 @@ t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parq
     throw new Error(`NCU ${primera} con ${Pn.elev.length} líneas = planta entera (${Pf.elev.length}): el filtro no recorta`);
 });
 
+t('El Burgo por NCU: el ámbito recorta también las MESAS del layout, no solo los strings', () => {
+  // «Selecciono una NCU y me carga las dos»: las dos NCUs comparten 40 de 45
+  // columnas E-O, así que elburgoSegs con el layout SIN filtrar ancla las
+  // mesas de la otra NCU en las filas del ámbito. El careo exige el mundo
+  // donde la distinción existe: filtrado vs sin filtrar tienen que separarse.
+  const mapa = new Map();
+  for (const tk of layout.trackers) if (tk.idPrevio != null) mapa.set(String(tk.idPrevio), tk.ncu);
+  const db1 = S.filtraStringsNCU(strdb, mapa, 1);
+  const vigasX = [];
+  for (const tk of layout.trackers) vigasX.push(tk.x - 3, tk.x + 3);
+  const rows1 = S.elburgoRows(db1, 3, vigasX);
+  const trk1 = layout.trackers.filter(t => t.ncu === 1);
+  const segsF = S.elburgoSegs(rows1, trk1);
+  const segsSin = S.elburgoSegs(rows1, layout.trackers);
+  const nF = segsF.reduce((a, l) => a + l.length, 0), nSin = segsSin.reduce((a, l) => a + l.length, 0);
+  // filtrado: ~2 vigas por tracker de la NCU (+huérfanas de los 4 sin casar)
+  if (nF > trk1.length * 2 + 10 || nF < trk1.length * 2 - 10)
+    throw new Error(nF + ' mesas para ' + trk1.length + ' trackers de la NCU 1: el recorte no cuadra con el layout');
+  if (!(nSin > nF + 50))
+    throw new Error('el layout sin filtrar da ' + nSin + ' mesas vs ' + nF + ': la distinción que vigila este careo ya no existe — revísalo');
+  // y ninguna mesa del ámbito invade el rango N de la OTRA NCU (sur: n<0)
+  for (const l of segsF) for (const sg of l)
+    if (sg[1] < 0) throw new Error('mesa en n<0 (NCU 2) dentro del ámbito de la NCU 1: el filtro no recorta el layout');
+});
+
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
   // «ondulado 4 m» fabricaba parejas de 38° y el pairwise clavaba filas a ±55°,
   // que en pantalla se leía como «no está haciendo backtracking». El simulador

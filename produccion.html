@@ -747,16 +747,24 @@ async function cargaElburgo(){
   const porNCU={};let sinNCU=0;
   for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
     if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
-  EB={raw:sj,trk:lj.trackers||[],vigasX:vigasX,inv:lj.invlab||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
+  EB={raw:sj,trk:lj.trackers||[],trkA:lj.trackers||[],vigasX:vigasX,inv:lj.invlab||[],invA:lj.invlab||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
       maxang:(lj.montaje&&lj.montaje.max_angle)||55,
       cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
       mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
   return EB;
 }
-/* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU) */
+/* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU).
+   OJO: no basta con filtrar los STRINGS — las MESAS se levantan del layout de
+   trackers, y como las dos NCUs comparten 40 de 45 columnas E-O, un layout sin
+   filtrar ancla las mesas de la OTRA NCU en las filas del ámbito («selecciono
+   una NCU y me carga las dos»). El tracker lleva su ncu: se filtra él también,
+   y con él los inversores (los de los strings del ámbito). */
 function aplicaAmbitoEB(v){
   const db=v===''?EB.raw:filtraStringsNCU(EB.raw,EB.mapa,+v);
   EB.rows=elburgoRows(db,3,EB.vigasX);EB.xs=EB.rows.map(r=>r.x);
+  EB.trkA=v===''?EB.trk:EB.trk.filter(t=>t.ncu===+v);
+  const invs=new Set(db.strings.map(s=>'I-'+s.g+'.'+s.i));
+  EB.invA=v===''?EB.inv:EB.inv.filter(iv=>invs.has(iv.s));
   $('nrows').value=EB.rows.length;
 }
 
@@ -806,7 +814,7 @@ function rebuildT(){
   }else if(c.plant==='elburgo'&&EB){
     // tramos de mesa REALES por string, con sus caminos (verificado contra
     // terreno.html): entran en la escena Y en el solape axial de poaPlant
-    const abs=elburgoSegs(EB.rows,EB.trk);
+    const abs=elburgoSegs(EB.rows,EB.trkA);
     let mn=Infinity,mx=-Infinity;
     for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
     const nc=(mn+mx)/2;
@@ -816,7 +824,7 @@ function rebuildT(){
     // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
     // motor en la viga OESTE — «no todos los trackers son iguales, pero son
     // bifilas todos» (los largos de mesa ya salen de los propios strings)
-    const groups=elburgoGroups(EB.xs,EB.trk);
+    const groups=elburgoGroups(EB.xs,EB.trkA);
     T={elev:z,xs:EB.xs,tilt:null,segs:segs};
     T.west=new Array(c.nrows).fill(true);
     for(const g of groups)if(g.length===2)T.west[g[1]]=false;
@@ -967,9 +975,15 @@ function build3D(c){
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
           const bb=new THREE.Box3().setFromObject(beam.spin); // en el marco local del tubo, ANTES de colgar
-          const tint=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1,bb.max.x-bb.min.x),2.36),tintM);
-          tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.renderOrder=2;
-          beam.spin.add(tint);
+          // el tinte va en DOS alas, dejando el hueco central del accionamiento
+          // sin pintar — un plano corrido tapaba corona/reductora/motor
+          const bbLen=Math.max(1,bb.max.x-bb.min.x), wAla=(bbLen-D0.gapDrive)/2;
+          for(const s2 of (wAla>0.5?[-1,1]:[0])){
+            const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),tintM);
+            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=s2*(D0.gapDrive/2+wAla/2);
+            tint.renderOrder=2;
+            beam.spin.add(tint);
+          }
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
           // soporte central de la corona, la receta de terreno.html: del punto
@@ -1021,11 +1035,11 @@ function build3D(c){
   // El motor, la reductora y las coronas NO se fabrican aquí: ya vienen del
   // modelo (slew completo en la viga oeste, corona+soporte twin en la gemela) —
   // el cubo ámbar y las copas de antes eran inventos y se retiran.
-  if(c.plant==='elburgo'&&EB&&EB.trk.length){
+  if(c.plant==='elburgo'&&EB&&EB.trkA.length){
     const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
     const ejeG=new THREE.CylinderGeometry(0.03,0.03,6-0.5,10);ejeG.rotateZ(Math.PI/2);
     const hubY=2.0;   // la altura del eje del tubo (postH canónico), como terreno.html
-    for(const t of EB.trk){
+    for(const t of EB.trkA){
       const zc=-(t.n-T_nOff);
       if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito visible
       const ux=t.x-xc;
@@ -1038,7 +1052,7 @@ function build3D(c){
     // sigue ahí para el zoom
     {
       const pts=[];
-      for(const t of EB.trk){
+      for(const t of EB.trkA){
         const zc=-(t.n-T_nOff), ux=t.x-xc;
         pts.push(ux-2.75,hubY,zc, ux+2.75,hubY,zc);
       }
@@ -1050,16 +1064,58 @@ function build3D(c){
     // el hueco sin trackers junto a (−6,2, 22) no es un error — es el CT Norte
     const ctM=new THREE.MeshLambertMaterial({color:0x8c93a8});
     for(const ct of [{x:-6.2,n:22.01},{x:9.92,n:-194.24}]){
+      const zc=-(ct.n-T_nOff);
+      if(zc< -maxLen/2-30||zc>maxLen/2+30)continue;           // fuera del ámbito (una NCU): su CT no se dibuja flotando
       const b=new THREE.Mesh(new THREE.BoxGeometry(6,2.6,3.2),ctM);
-      b.position.set(ct.x-xc,1.3,-(ct.n-T_nOff));b.castShadow=true;
+      b.position.set(ct.x-xc,1.3,zc);b.castShadow=true;
       R3.world.add(b);
     }
     // los 36 INVERSORES en su posición real del layout (invlab: x, n, nombre I-g.i)
     const invM=new THREE.MeshLambertMaterial({color:0x54a6ff});
-    for(const iv of EB.inv){
+    for(const iv of EB.invA){
       const b=new THREE.Mesh(new THREE.BoxGeometry(1.6,1.3,1.0),invM);
       b.position.set(iv.x-xc,0.65,-(iv.n-T_nOff));b.castShadow=true;
       R3.world.add(b);
+    }
+  }
+  // ── ejes de transmisión de las BIFILAS de cotas (Ayora/San José): el
+  // accionamiento real de la T (P.groups, parejas de líneas acopladas por
+  // plantFromCotas) — un eje por UNIDAD (tramo solapado de las dos líneas),
+  // a la altura del eje del tubo, con su capa de líneas 1 px como El Burgo.
+  // «En Ayora ni motores ni bielas»: los motores ya venían del modelo (los
+  // tapaba el tinte corrido); los ejes faltaban de verdad.
+  if(c.plant!=='elburgo'&&T.obj&&T.obj.groups){
+    const pares=T.obj.groups.filter(g2=>g2.length===2);
+    if(pares.length){
+      const ejes=[];
+      for(const [a,b] of pares){
+        for(const sa of (segsNS[a]||[])){
+          const ca=(sa[0]+sa[1])/2;
+          const sb=(segsNS[b]||[]).find(s2=>ca>=s2[0]-2&&ca<=s2[1]+2);
+          if(!sb)continue;
+          ejes.push([rx[a],T.elev[a]+2.0,rx[b],T.elev[b]+2.0,-ca]);
+        }
+      }
+      if(ejes.length){
+        const bielM=new THREE.MeshStandardMaterial({color:0xb2bac2,roughness:0.55,metalness:0.15});
+        const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03,0.03,1,8),bielM,ejes.length);
+        im.castShadow=true;
+        const mM=new THREE.Matrix4(),vP=new THREE.Vector3(),vD=new THREE.Vector3(),
+              qQ=new THREE.Quaternion(),vY=new THREE.Vector3(0,1,0),vS=new THREE.Vector3();
+        const pts=[];let id=0;
+        for(const e of ejes){
+          vD.set(e[2]-e[0],e[3]-e[1],0);
+          const L2=Math.max(0.5,vD.length()-0.5);
+          qQ.setFromUnitVectors(vY,vD.normalize());
+          vP.set((e[0]+e[2])/2,(e[1]+e[3])/2,e[4]);vS.set(1,L2,1);
+          mM.compose(vP,qQ,vS);im.setMatrixAt(id++,mM);
+          pts.push(e[0],e[1],e[4], e[2],e[3],e[4]);
+        }
+        R3.world.add(im);
+        const g2=new THREE.BufferGeometry();
+        g2.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+        R3.world.add(new THREE.LineSegments(g2,new THREE.LineBasicMaterial({color:0xdde3ea})));
+      }
     }
   }
   if(!R3.camSet||R3.camPlant!==c.plant){
@@ -1100,9 +1156,12 @@ function buildInstanced(c,rx,segsNS,postM,D0){
     tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.hubY,tr.zc)
       .multiply(mRx.makeRotationX(-tr.tilt*D2R)).multiply(mRy);
     tr.Q=new THREE.Matrix4();
-    tr.Ltint=new THREE.Matrix4().makeTranslation(0,0.175,0)
+    // tinte en DOS alas por tramo, dejando el hueco central del accionamiento
+    // sin pintar (un plano corrido tapaba corona/reductora/motor)
+    const wAla=Math.max(0.5,(tr.len-D0.gapDrive)/2);
+    tr.Ltint=[-1,1].map(s2=>new THREE.Matrix4().makeTranslation(s2*(D0.gapDrive/2+wAla/2),0.175,0)
       .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
-      .multiply(new THREE.Matrix4().makeScale(tr.len,2.36,1));
+      .multiply(new THREE.Matrix4().makeScale(wAla,2.36,1)));
   }
   // tallas: la MISMA receta de módulos-por-tramo que el camino de mallas
   const porTalla=new Map();
@@ -1148,13 +1207,13 @@ function buildInstanced(c,rx,segsNS,postM,D0){
       R3.world.add(im);
     }
   }
-  // tinte de producción: un plano por tramo, color por instancia
+  // tinte de producción: dos alas por tramo, color por instancia
   const tint=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),
     new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.62,
-      side:THREE.DoubleSide,depthWrite:false}),tramos.length);
+      side:THREE.DoubleSide,depthWrite:false}),tramos.length*2);
   tint.renderOrder=2;
-  tint.userData.pickTramos=tramos;tint.userData.nLocals=1;tint.userData.tramoIdx=tramos.map((_,i)=>i);
-  for(let ti=0;ti<tramos.length;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
+  tint.userData.pickTramos=tramos;tint.userData.nLocals=2;tint.userData.tramoIdx=tramos.map((_,i)=>i);
+  for(let ti=0;ti<tramos.length*2;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
   R3.world.add(tint);
   // postes instanciados: la retícula de la casa (pilotesX por talla, el medio
   // oculta exteriores) y longitud variable absorbiendo el terreno — cilindro
@@ -1201,8 +1260,11 @@ function updateInstanced(c,vals,mn,mx,norm,inst){
   }
   for(let ti=0;ti<I.tramos.length;ti++){
     const tr=I.tramos[ti];
-    I.tmpM.multiplyMatrices(tr.Q,tr.Ltint);I.tint.setMatrixAt(ti,I.tmpM);
-    I.tmpC.set(ramp(norm(vals[tr.row],mn,mx)));I.tint.setColorAt(ti,I.tmpC);
+    I.tmpC.set(ramp(norm(vals[tr.row],mn,mx)));
+    for(let s2=0;s2<2;s2++){
+      I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ti*2+s2,I.tmpM);
+      I.tint.setColorAt(ti*2+s2,I.tmpC);
+    }
   }
   I.tint.instanceMatrix.needsUpdate=true;
   if(I.tint.instanceColor)I.tint.instanceColor.needsUpdate=true;
