@@ -832,9 +832,9 @@ async function cargaCotas(key){
   // trackers del plano: en San José son 2.182 de 2.289 (los 107 que faltan son
   // los cortos, que no se levantaron: ni cota ni largo, así que no se dibujan
   // ni se simulan). Callarlo hacía que «planta entera» pareciera la planta.
-  const conCotas=cotas.t.filter(Boolean).length;
+  const conCotas=cotas.t.filter(Boolean).length, estim=cotas.t.filter(t=>t&&t.est).length;
   RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,
-      trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,
+      trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -1600,7 +1600,8 @@ function paintACline(inst,c,acDay){
   if(REALES[c.plant]&&RP&&RP.key===c.plant&&RP.trkLayout){
     const fuera=RP.trkLayout-RP.trkCotas;
     h+=' · <b>'+RP.trkCotas.toLocaleString('es')+'</b> de '+RP.trkLayout.toLocaleString('es')+' trackers del plano'+
-       (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'');
+       (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'')+
+       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'');
   }
   if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
               (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');

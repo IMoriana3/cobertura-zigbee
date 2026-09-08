@@ -1022,7 +1022,7 @@ function plantFromCotas(data,maxLines,blockIdx){
     if(!trk||!trk.f)continue;
     for(const f of trk.f){
       if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
-      filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md});
+      filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md,est:!!trk.est});
     }
   }
   if(!filas.length)throw new Error('cotas sin filas');
@@ -1090,7 +1090,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   let nMid=0,nCnt=0;
   for(const L of band)for(const f of L.f){nMid+=(f.n0+f.n1)/2;nCnt++;}
   nMid/=Math.max(nCnt,1);
-  const segZ=[],segTilt=[],segTrk=[],segMods=[];
+  const segZ=[],segTilt=[],segTrk=[],segMods=[],segEst=[];
   for(const L of band){
     let e=0,tw=0,wt=0;
     const sg=[];
@@ -1100,7 +1100,7 @@ function plantFromCotas(data,maxLines,blockIdx){
       tw+=Math.atan2(f.y1-f.y0,f.n1-f.n0)*len; wt+=len;
       const asc=f.n0<=f.n1;
       sg.push({s:[Math.min(f.n0,f.n1)-nMid,Math.max(f.n0,f.n1)-nMid],
-               z:asc?[f.y0,f.y1]:[f.y1,f.y0],trk:f.trk,md:f.md});
+               z:asc?[f.y0,f.y1]:[f.y1,f.y0],trk:f.trk,md:f.md,est:f.est});
     }
     sg.sort((a,b)=>a.s[0]-b.s[0]);
     elev.push(e/L.f.length);
@@ -1113,6 +1113,7 @@ function plantFromCotas(data,maxLines,blockIdx){
     segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
     segTrk.push(sg.map(o=>o.trk));
     segMods.push(sg.map(o=>o.md!=null?o.md:null));   // módulos por STRING de cada mesa (del levantamiento)
+    segEst.push(sg.map(o=>!!o.est));                 // mesa RECONSTRUIDA del plano (cota no medida)
   }
   const eMean=elev.reduce((s,v)=>s+v,0)/elev.length;
   for(let i=0;i<elev.length;i++)elev[i]-=eMean;
@@ -1183,7 +1184,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   const segPairs=[];
   for(const v of byTrk.values())if(v.length===2&&v[0][0]!==v[1][0])segPairs.push(v);
   segPairs.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segTrk:segTrk,segMods:segMods,mod:data.mod||null,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segTrk:segTrk,segMods:segMods,segEst:segEst,mod:data.mod||null,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
@@ -2634,7 +2635,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.46.0';
+const VER='v1.47.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

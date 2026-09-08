@@ -2052,6 +2052,64 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
   });
 }
 
+console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y declarados');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
+  t('San José: la planta entera son los 2.289 trackers del plano, y los 107 sin levantar van MARCADOS', () => {
+    const dentro = cotas.t.filter(Boolean);
+    if (dentro.length !== lay.trackers.length) throw new Error(`${dentro.length} trackers de ${lay.trackers.length} del plano`);
+    const est = dentro.filter(t2 => t2.est);
+    if (!(est.length > 0 && est.length < dentro.length * 0.1))
+      throw new Error(`${est.length} estimados de ${dentro.length}: o no hay marca o son demasiados`);
+    if (cotas.n_est !== est.length) throw new Error('el meta no declara los estimados: ' + cotas.n_est);
+    // su geometría es la MEDIDA de la planta, no una invención: paso entre
+    // vigas, largo de uno de los tipos que existen, y módulos coherentes
+    const M = cotas.mod;
+    const pasos = dentro.filter(t2 => !t2.est).map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
+    const paso = pasos[pasos.length >> 1];
+    // el módulo es el de la planta y el largo cuadra con sus módulos; el número
+    // de módulos NO tiene por qué ser uno de los levantados (en San José los
+    // «medio» no se levantaron: son justo estos), pero sí uno de los pocos
+    // tamaños que la geometría resuelve, y las dos filas iguales
+    const tallas = new Set(est.flatMap(t2 => t2.f.map(f => f.md)));
+    if (tallas.size > 3) throw new Error('los estimados usan ' + tallas.size + ' tamaños distintos: eso no es resolver por tipo');
+    for (const t2 of est) {
+      if (Math.abs(Math.abs(t2.f[0].x - t2.f[1].x) - paso) > 0.1) throw new Error('un estimado con las vigas a otro paso');
+      if (t2.f[0].md !== t2.f[1].md) throw new Error('un estimado con sus dos vigas de distinto tamaño');
+      if (Math.abs((t2.f[0].y[0] + t2.f[0].y[1]) / 2 - (t2.f[1].y[0] + t2.f[1].y[1]) / 2) > 0.5)
+        throw new Error('un estimado con sus dos vigas a distinta cota: comparten tubo');
+      for (const f of t2.f) {
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * M.gapMod + M.gapDrive;
+        if (Math.abs(L - esp) > 1.5) throw new Error(`un estimado de ${L.toFixed(2)} m para ${f.md} módulos (${esp.toFixed(2)} m)`);
+      }
+      // la cota sale del terreno vecino: dentro del rango de la planta medida
+      const zs = dentro.filter(x => !x.est).flatMap(x => x.f.flatMap(f => f.y));
+      const lo = Math.min(...zs), hi = Math.max(...zs);
+      for (const f of t2.f) for (const y of f.y)
+        if (y < lo - 5 || y > hi + 5) throw new Error(`cota estimada ${y} fuera del terreno medido [${lo.toFixed(0)}, ${hi.toFixed(0)}]`);
+    }
+  });
+  t('a un tracker sin levantar NO se le manda consigna', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'tools', 'export_consignas.mjs'), 'utf-8');
+    if (!/cotas\.t\[i\]\.est\)\s*\{\s*estimados\+\+;\s*continue;/.test(src))
+      throw new Error('export_consignas no excluye los trackers con cota estimada');
+    const out = path.join(ROOT, '.tmp_est_test.csv');
+    try {
+      require_child().execFileSync(process.execPath, [path.join(ROOT, 'tools', 'export_consignas.mjs'),
+        '--planta', 'sanjose', '--fecha', '2026-06-21', '--pol', 'pairwise', '--paso', '360', '--salida', out], { stdio: 'pipe' });
+      const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+      const est = cotas.t.filter(t2 => t2 && t2.est).length;
+      if (meta.seguidores_sin_levantar !== est) throw new Error(`el meta dice ${meta.seguidores_sin_levantar} sin levantar, hay ${est}`);
+      if (meta.seguidores !== cotas.t.filter(Boolean).length - est)
+        throw new Error(`${meta.seguidores} seguidores con consigna: deberían ser los levantados`);
+    } finally {
+      for (const f of [out, out.replace(/\.csv$/, '.meta.json')]) try { fs.unlinkSync(f); } catch { /* nada */ }
+    }
+  });
+}
+
 console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas separadas');
 {
   // Este careo NO mira nuestra propia salida: mide el fichero de cotas contra
@@ -2087,6 +2145,7 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
         else if (Math.abs(dx - paso) > 0.25 * paso) pasoMal++;
         const xl = lay.trackers[i].x;
         if (Math.min(Math.abs(xl - f[0].x), Math.abs(xl - f[1].x), Math.abs(xl - (f[0].x + f[1].x) / 2)) > 0.4) fueraLayout++;
+        void tk;
       });
       if (juntas) throw new Error(`${juntas} de ${n} trackers con sus DOS vigas en la misma x (hermana duplicada sin recolocar)`);
       if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);

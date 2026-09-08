@@ -538,7 +538,10 @@ t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la f
       for (const f of tk.f) {
         n++;
         if (!(f.md > 0)) { sinMd++; continue; }
-        if (!mdEsperados.includes(f.md)) throw new Error(`${nombre}: md ${f.md} fuera de ${mdEsperados}`);
+        // los trackers reconstruidos del plano (est) llevan el tamaño de SU
+        // tipo, que puede no estar entre los levantados: en San José los
+        // «medio» son justo los que no se levantaron (16 módulos por string)
+        if (!tk.est && !mdEsperados.includes(f.md)) throw new Error(`${nombre}: md ${f.md} fuera de ${mdEsperados}`);
         // el largo MEDIDO tiene que cuadrar con 2 strings de md módulos
         const L = Math.abs(f.n[1] - f.n[0]);
         const esp = 2 * f.md * M.modW + (2 * f.md - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
@@ -572,8 +575,11 @@ t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la f
   // ni se calla cuánto de la planta está en el modelo: San José son 2.182 de
   // los 2.289 trackers del plano (los 107 cortos no se levantaron)
   const laySJn = laySJ.trackers.length, conCotas = cotasSJ.t.filter(Boolean).length;
-  if (laySJn !== 2289 || conCotas !== 2182) throw new Error(`San José: ${conCotas} de ${laySJn} (esperado 2.182 de 2.289)`);
+  const est = cotasSJ.t.filter(t2 => t2 && t2.est).length;
+  if (laySJn !== 2289 || conCotas !== 2289 || est !== 107)
+    throw new Error(`San José: ${conCotas} de ${laySJn}, ${est} estimados (esperado 2.289 de 2.289, 107 estimados)`);
   if (!pg.includes("trackers del plano")) throw new Error('la página no declara cuántos trackers del plano están en el modelo');
+  if (!pg.includes("con cota estimada del plano")) throw new Error('la página no declara los trackers con cota estimada');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
