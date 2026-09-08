@@ -860,7 +860,9 @@ function build3D(c){
     R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
     R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
     R3.ctrl.addEventListener('change',()=>R3.dirty=true);
-    R3.amb=new THREE.AmbientLight(0xffffff,0.35);
+    // «poco relleno → sombras marcadas» (terreno.html, 0,08; backtracking ni
+    // lleva ambiente): con 0,35 la sombra de la mañana existía pero no se LEÍA
+    R3.amb=new THREE.AmbientLight(0xffffff,0.08);
     R3.hemi=new THREE.HemisphereLight(0xbfd4e6,0x2a3324,0.5);
     R3.scene.add(R3.hemi);
     R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
