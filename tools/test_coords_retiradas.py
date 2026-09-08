@@ -5,7 +5,7 @@ test_coords_retiradas.py — TCUs retiradas, y que el paquete de campo cuadre co
 POR QUE EXISTE. El layout es el PLANO: trae el seguidor aunque le hayan quitado la TCU.
 El paquete que se lleva al PC de la planta se genera del layout, asi que seguia
 sondeando esas. Y eso no falla de forma visible: un esclavo sin TCU da TIMEOUT, y un
-timeout en el mapa de cobertura se lee como «aqui no llega la senal». Se mide mal una
+timeout en el mapa de cobertura se lee como «aqui no llega la señal». Se mide mal una
 zona que esta perfectamente cubierta.
 
 Paso en Ayora: se retiraron tres TCUs de la NCU7 —los esclavos 14, 24 y 25— y el
