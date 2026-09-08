@@ -42,7 +42,9 @@ const S = new Function(sol + fis + log + `
              clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW,
-          instant, dayTotals, doyOf, localToUTCms};`).call(globalThis);
+          dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, acPlant, dayAC,
+          tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
+          instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -374,6 +376,183 @@ t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS
   const raw = S.F.anglesPairwise(zen12, g12.az, TGen);
   for (let k = 0; k < C.nrows; k++)
     if (pol[k] !== raw[k]) throw new Error('con groups=null policyAngles(pairwise) ya no es anglesPairwise puro');
+});
+
+// ── cadena AC según el Notebook: la portación JS careada contra el CORE ──
+const gac = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'golden_ac_notebook.json'), 'utf-8'));
+
+t('AC NOTEBOOK: inversor, pérdidas DC y límite de red clavan el golden del core (≤1e-9 rel.)', () => {
+  const rel = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
+  // el barrido del golden CRUZA los límites: recorte (ratio>1), tope de ratio
+  // (1.5) y la zona de carga mínima — sin ellos, quitar el clip daría verde
+  if (!gac.inversor.some(cs => cs.p_dc_w > cs.p_ac_nom_w * 1.6))
+    throw new Error('el golden ya no cruza el tope de ratio 1.5: regenera con casos de recorte');
+  for (const cs of gac.inversor) {
+    const r = S.invAC(cs.p_dc_w, cs.p_ac_nom_w, cs.eta_max);
+    if (rel(r.pac, cs.p_ac_w) > 1e-9) throw new Error(`invAC(${cs.p_dc_w},${cs.p_ac_nom_w}): pac ${r.pac} ≠ core ${cs.p_ac_w}`);
+    if (rel(r.eta, cs.eta) > 1e-9) throw new Error(`invAC(${cs.p_dc_w},${cs.p_ac_nom_w}): η ${r.eta} ≠ core ${cs.eta}`);
+  }
+  for (const cs of gac.perdidas_dc) {
+    const eta = S.dcLossEta({ soiling: cs.soiling, mismatch: cs.mismatch, wiring: cs.wiring, lid: cs.lid });
+    if (rel(eta, cs.eta) > 1e-9) throw new Error(`dcLossEta(${cs.soiling},${cs.mismatch},${cs.wiring},${cs.lid}) = ${eta} ≠ core ${cs.eta}`);
+    if (rel(1000000 * eta, cs.p_out_w) > 1e-9) throw new Error('la pérdida DC aplicada se separa del core');
+  }
+  for (const cs of gac.limite_red) {
+    const out = S.gridLimit(cs.p_ac_w, cs.p_max_w);
+    if (rel(out, cs.p_out_w) > 1e-9) throw new Error(`gridLimit(${cs.p_ac_w},${cs.p_max_w}) = ${out} ≠ core ${cs.p_out_w}`);
+  }
+});
+
+t('acPlant conserva la energía DC, cuenta los recortes, y bajar Pnom nunca SUBE el AC', () => {
+  const rows = S.elburgoRows(strdb, 3);
+  const strInv = rows.map(r => r.strs.map(s => s.inv));
+  const poa = rows.map((_, i) => 700 + (i % 7) * 10);
+  const e = { mods: 28, wp: 590, gamma: -0.34, uc: 29, uv: 0 };
+  const por = S.strPdc(poa, strInv, { tamb: 20, wind: 1 }, e);
+  if (por.length !== strdb.count) throw new Error(por.length + ' strings en la cadena AC ≠ ' + strdb.count + ' del plano');
+  const ac = { loss: { soiling: 2, mismatch: 2, wiring: 1.5, lid: 1.5 }, pnomW: 330000, etaMax: 0.985, gridW: 0 };
+  const a = S.acPlant(por, ac);
+  if (a.invs.length !== Object.keys(strdb.byInv).length)
+    throw new Error(a.invs.length + ' inversores ≠ ' + Object.keys(strdb.byInv).length + ' del plano');
+  for (const v of a.invs)
+    if (strdb.byInv[v.inv] !== v.nstr) throw new Error('inversor ' + v.inv + ' con ' + v.nstr + ' strings ≠ plano');
+  const sumStr = por.reduce((s, v) => s + v.pdcW, 0);
+  if (Math.abs(a.pdcW - sumStr) / sumStr > 1e-12)
+    throw new Error('la suma DC por inversores pierde energía: ' + a.pdcW + ' ≠ ' + sumStr);
+  // recorte: con Pnom pequeña TODOS recortan y el AC de planta es n·Pnom exacto
+  const chico = S.acPlant(por, { ...ac, pnomW: 100000 });
+  if (chico.clips !== chico.invs.length) throw new Error('con Pnom 100 kW deberían recortar todos (' + chico.clips + ')');
+  if (Math.abs(chico.pacW - chico.invs.length * 100000) > 1e-6)
+    throw new Error('recortando todos, el AC de planta debe ser n·Pnom exacto');
+  // monotonía: bajar Pnom nunca sube el AC de ningún inversor
+  for (let i = 0; i < a.invs.length; i++)
+    if (chico.invs[i].pacW > a.invs[i].pacW + 1e-9)
+      throw new Error('bajar Pnom SUBE el AC del inversor ' + a.invs[i].inv);
+  // y el límite de red recorta la suma, no los inversores
+  const red = S.acPlant(por, { ...ac, gridW: 5000000 });
+  if (red.redW !== Math.min(red.pacW, 5000000)) throw new Error('el límite de red no es min(pac, límite)');
+});
+
+t('dayAC integra la cadena PASO A PASO (Σ por inversor ≡ Σ de planta) y el recorte muerde', () => {
+  const c = { ...C, nrows: 6, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildT(S.F, c, S.elevPreset('llano', 6, 0, C.pitch));
+  const strInv = S.invMapUniforme(6, 2).map(v => [v]);
+  const ac = { loss: { soiling: 2, mismatch: 2, wiring: 1.5, lid: 1.5 }, pnomW: 40000, etaMax: 0.985, gridW: 0 };
+  const d = S.dayAC(S.F, c, T, strInv, ac, 30);
+  const porInv = d.porInv.reduce((s, v) => s + v.kwh, 0);
+  if (Math.abs(porInv - d.eacKwh) / d.eacKwh > 1e-9)
+    throw new Error('Σ por inversor ' + porInv + ' ≠ E AC de planta ' + d.eacKwh);
+  if (!(d.eacKwh > 0 && d.eacKwh < d.edcKwh))
+    throw new Error('E AC (' + d.eacKwh + ') debe ser positiva y menor que la DC (' + d.edcKwh + ')');
+  // el recorte muerde a mediodía y la integral lo recoge PASO A PASO: con el
+  // MISMO Pnom, la suma sin clip (pdcNet·η, la curva sin el min) debe superar
+  // a la de dayAC. (Comparar contra un Pnom holgado NO vale: la curva η del
+  // PVWatts castiga la carga parcial y un inversor sobredimensionado pierde
+  // más por η que lo que el clip quita — medido: 858 vs 937 kWh.)
+  let sinClip = 0, clipVisto = false;
+  for (let m = 0; m < 1440; m += 30) {
+    const r = S.instant(S.F, c, T, m);
+    const x = S.acPlant(S.strPdc(r.rows, strInv, r.met, c.elec), ac);
+    if (x.clips > 0) clipVisto = true;
+    for (const v of x.invs) sinClip += v.pdcNetW * v.eta;
+  }
+  sinClip *= 30 / 60 / 1000;
+  if (!clipVisto) throw new Error('con Pnom 40 kW nadie recorta a mediodía: el caso no ejercita el clip');
+  if (!(sinClip > d.eacKwh + 1))
+    throw new Error('quitar el recorte no sube la E AC (' + sinClip.toFixed(1) + ' vs ' + d.eacKwh.toFixed(1) + '): el clipping no muerde en la integral');
+});
+
+t('invMapUniforme: bloques contiguos, todos los strings repartidos, n inversores exactos', () => {
+  const m = S.invMapUniforme(10, 3);
+  if (m.length !== 10) throw new Error('longitud');
+  if (new Set(m).size !== 3) throw new Error('deberían salir 3 inversores, salen ' + new Set(m).size);
+  for (let i = 1; i < m.length; i++)
+    if (m[i] < m[i - 1]) throw new Error('el reparto no es por bloques contiguos');
+});
+
+// ── meteo TMY: interpolación, huso y consumo por instant() ──
+t('TMY: en la hora exacta devuelve el dato clavado, interpola el punto medio y respeta el huso', () => {
+  const H = 8760, h = [];
+  for (let i = 0; i < H; i++) h.push([i % 1000, (i * 2) % 1000, (i * 3) % 500, 10 + (i % 30), i % 12]);
+  const tmy = { h: h };
+  // doy=2, 03:00 local, tz=2 → hora UTC 24+1=25
+  const a = S.tmyAt(tmy, 2, 180, 2);
+  if (a.ghi !== h[25][0] || a.tamb !== h[25][3]) throw new Error('hora exacta con huso: índice UTC mal (' + a.ghi + ')');
+  // punto medio entre 25 y 26
+  const b = S.tmyAt(tmy, 2, 210, 2);
+  const esp = (h[25][0] + h[26][0]) / 2;
+  if (Math.abs(b.ghi - esp) > 1e-9) throw new Error('interpolación del punto medio: ' + b.ghi + ' ≠ ' + esp);
+  // la madrugada del 1-ene con huso positivo cae en el 31-dic del TMY (envuelve, no revienta)
+  const w = S.tmyAt(tmy, 1, 0, 2);
+  if (w.ghi !== h[H - 2][0]) throw new Error('el envolvente de fin de año no cae donde toca');
+});
+
+t('TMY: instant() la CONSUME — mismos números que el cielo cuando el TMY trae el cielo', () => {
+  // TMY sintética que en la hora exacta lleva EXACTAMENTE el cielo Ineichen del
+  // instante (tz=0, minuto en punto): el camino TMY debe dar la MISMA POA bit a
+  // bit — si difiere, instant() no está leyendo la meteo que dice leer.
+  const c0 = { ...C, tz: 0, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildT(S.F, c0, S.elevPreset('pendiente', C.nrows, 4, C.pitch));
+  const doy = S.doyOf(c0.date), H = 8760, h = [];
+  for (let i = 0; i < H; i++) h.push([0, 0, 0, 20, 1]);
+  for (let hr = 0; hr < 24; hr++) {
+    const g = S.Sol.solarPos(S.localToUTCms(c0.date, hr * 60, 0), c0.lat, c0.lon, { refract: true });
+    const irr = S.F.clearskyIneichen(90 - g.elev, doy, c0.alt, C.tl);
+    h[(doy - 1) * 24 + hr] = [irr.ghi, irr.dni, irr.dhi, 20, 1];
+  }
+  const cT = { ...c0, meteo: 'tmy', tmy: { h: h } };
+  for (const m of [600, 720, 900]) {   // horas en punto: la interpolación es identidad
+    const rT = S.instant(S.F, cT, T, m), rC = S.instant(S.F, c0, T, m);
+    for (let k = 0; k < c0.nrows; k++)
+      if (rT.rows[k] !== rC.rows[k])
+        throw new Error(`min ${m} fila ${k}: TMY ${rT.rows[k]} ≠ cielo ${rC.rows[k]} — instant no come el TMY`);
+  }
+  // y la Tamb/viento del TMY llegan a la energía: con un TMY a 45 °C la E del
+  // día BAJA respecto a los inputs fijos de 20 °C (γ negativa)
+  const hHot = h.map(r => [r[0], r[1], r[2], 45, 0]);
+  const eHot = S.dayEnergy(S.F, { ...cT, tmy: { h: hHot } }, T, c0.date, 60, (v, met) => S.pStringW(v, met.tamb, met.wind, c0.elec));
+  const eStd = S.dayEnergy(S.F, cT, T, c0.date, 60, (v, met) => S.pStringW(v, met.tamb, met.wind, c0.elec));
+  if (!(eHot[0] < eStd[0] * 0.97))
+    throw new Error('a 45 °C la energía no baja (' + eHot[0] + ' vs ' + eStd[0] + '): la Tamb del TMY no llega a la t_cell');
+});
+
+t('tmyFromPVGIS: condensa la respuesta de la API y rechaza un TMY corto', () => {
+  const mk = n => ({ outputs: { tmy_hourly: Array.from({ length: n }, (_, i) => ({
+    'time(UTC)': '20090101:0000', 'T2m': 15.5, 'G(h)': 100 + i % 5, 'Gb(n)': 200, 'Gd(h)': 50, 'WS10m': 3.2, 'RH': 60 })) } });
+  const d = S.tmyFromPVGIS(mk(8760));
+  if (d.h.length !== 8760) throw new Error('longitud');
+  if (d.h[0][0] !== 100 || d.h[0][1] !== 200 || d.h[0][2] !== 50 || d.h[0][3] !== 15.5 || d.h[0][4] !== 3.2)
+    throw new Error('las columnas no casan con G(h)/Gb(n)/Gd(h)/T2m/WS10m');
+  let peto = false;
+  try { S.tmyFromPVGIS(mk(8000)); } catch (e) { peto = true; }
+  if (!peto) throw new Error('un TMY de 8000 horas debería rechazarse, no consumirse a medias');
+});
+
+// ── careo con medida + agregados ──
+t('parseMedidas/careoMedidas: formatos es/en, prefijo I, y lo que no casa se LISTA', () => {
+  const med = S.parseMedidas('1.1;1234,5\nI2.3, 987.6\n3.1\t1.234,5\nbasura\n');
+  if (med.size !== 3) throw new Error(med.size + ' medidas de 3');
+  if (med.get('1.1') !== 1234.5 || med.get('2.3') !== 987.6 || med.get('3.1') !== 1234.5)
+    throw new Error('los números es/en no se leen igual: ' + [...med.entries()].join(' '));
+  const rows = S.careoMedidas([{ inv: '1.1', kwh: 1200 }, { inv: '9.9', kwh: 500 }], med);
+  const r11 = rows.find(r => r.inv === '1.1');
+  if (Math.abs(r11.dev - 100 * (1234.5 - 1200) / 1200) > 1e-9) throw new Error('desvío mal: ' + r11.dev);
+  const r99 = rows.find(r => r.inv === '9.9');
+  if (r99.med !== null || r99.dev !== null) throw new Error('un esperado sin medida debe salir con med=null');
+  if (!rows.find(r => r.inv === '2.3' && r.esp === null)) throw new Error('una medida sin esperado debe LISTARSE');
+});
+
+t('fechasPeriodo y dayEnergy: el mes son sus días, el año 365/366, y dayTotals ≡ dayEnergy(5 min)', () => {
+  const feb = S.fechasPeriodo('2026-02-10', 'mes');
+  if (feb.length !== 28 || feb[0] !== '2026-02-01' || feb[27] !== '2026-02-28') throw new Error('feb 2026: ' + feb.length);
+  if (S.fechasPeriodo('2024-02-10', 'mes').length !== 29) throw new Error('feb 2024 bisiesto');
+  const ano = S.fechasPeriodo('2026-06-21', 'ano');
+  if (ano.length !== 365 || ano[0] !== '2026-01-01' || ano[364] !== '2026-12-31') throw new Error('año 2026: ' + ano.length);
+  // el refactor de dayTotals no puede mover NI UN BIT el Σ día existente
+  const T = S.buildT(S.F, C, S.elevPreset('pendiente', C.nrows, 4, C.pitch));
+  const a = S.dayTotals(S.F, C, T), b = S.dayEnergy(S.F, C, T, C.date, 5);
+  for (let k = 0; k < C.nrows; k++)
+    if (a[k] !== b[k]) throw new Error('dayTotals ya no es dayEnergy(fecha, 5 min) bit a bit');
 });
 
 console.log('');

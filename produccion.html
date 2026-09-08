@@ -69,11 +69,13 @@ input[type=range]{accent-color:var(--live)}
 <div class="wrap">
   <h1>⚡ Producción 3D por string</h1>
   <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
-  string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día del bloque FÍSICA PURA
-  del simulador (pvlib singleaxis + sombra exacta + Perez), y <b>potencia/energía DC según el Notebook</b>
-  (t_cell PVSyst-Faiman + PVWatts γ de solargpt_core, careado dígito a dígito en el QA). Seguimiento
-  <b>AUTO</b> (backtracking pairwise) o <b>MANUAL</b>, y <b>nubosidad</b>. Con <b>El Burgo I</b> carga los
-  823 strings reales del plano (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
+  string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día/mes/año del bloque
+  FÍSICA PURA del simulador (pvlib singleaxis + sombra exacta + Perez), <b>cadena DC y AC según el
+  Notebook</b> (t_cell PVSyst-Faiman + PVWatts γ + pérdidas DC + inversor con recorte + límite de red, de
+  solargpt_core, careado dígito a dígito en el QA), <b>meteo TMY real</b> (PVGIS) o cielo despejado con
+  nubosidad, careo contra la <b>medida real por inversor</b> y exportación CSV. Seguimiento <b>AUTO</b>
+  (backtracking pairwise) o <b>MANUAL</b>. Con <b>El Burgo I</b> carga los 823 strings reales del plano
+  (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
   <div id="aviso"></div>
 
   <div class="grid">
@@ -105,6 +107,11 @@ input[type=range]{accent-color:var(--live)}
           <div class="f"><label>Altitud m</label><input id="alt" type="number" step="10" value="300"></div>
           <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
         </div>
+        <div class="f"><label>Meteo</label>
+          <select id="meteo" title="Cielo despejado (Ineichen + nubosidad manual) o TMY — año meteorológico típico REAL: primero busca <planta>_tmy.json desplegado junto a la página (lo hornea tools/gen_tmy_pvgis.py) y, si no está, pide el TMY a la API de PVGIS desde tu navegador. Con TMY la Tamb y el viento entran POR HORA a la t_cell y la nubosidad manual se apaga (el TMY ya trae sus nubes).">
+            <option value="cielo">Cielo despejado + nubosidad</option>
+            <option value="tmy">TMY real (PVGIS)</option>
+          </select></div>
         <div class="f"><label>Nubosidad %</label><input id="cloud" type="number" step="10" min="0" max="100" value="0"
           title="Modelo nube→irradiancia de la casa (sol.js · cloudToIrr): GHI·(1−0,70·cc), el haz muere antes —DNI·(1−cc)³— y la difusa cierra. A 0, cielo claro exacto."></div>
       </div>
@@ -134,6 +141,31 @@ input[type=range]{accent-color:var(--live)}
           title="t_cell = T + 0,9·POA/(u_c + u_v·v), la fórmula PVSyst-Faiman del core (u_c=29 free-standing, u_v=0: con u_v=0 el viento no entra, como el default canónico)."></div>
         <p style="color:var(--muted-2);font-size:.68rem">La MISMA cadena DC que notebook y streamlit
         (t_cell Faiman + PVWatts γ), careada dígito a dígito contra el core en el QA.</p>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h2>🔋 Cadena AC (Notebook)</h2>
+        <div class="row2">
+          <div class="f"><label>Soiling %</label><input id="lsoil" type="number" step="0.5" min="0" value="2.0"></div>
+          <div class="f"><label>Mismatch %</label><input id="lmis" type="number" step="0.5" min="0" value="2.0"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Cableado %</label><input id="lwir" type="number" step="0.5" min="0" value="1.5"></div>
+          <div class="f"><label>LID %</label><input id="llid" type="number" step="0.5" min="0" value="1.5"></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Inversores</label><input id="ninv" type="number" step="1" min="1" value="1"
+            title="Sin mapeo medido, los strings se reparten en n bloques contiguos IGUALES (declarado). Con El Burgo manda el mapeo REAL del plano (36 inversores, g.i) y este campo se bloquea."></div>
+          <div class="f"><label>Pnom AC kW</label><input id="pnom" type="number" step="5" min="1" value="140"
+            title="Potencia AC nominal POR INVERSOR (el techo del recorte). Al elegir planta se sugiere Pdc0/n/1,2 (DC/AC 1,2 típico) — edítala con la real del proyecto."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>η máx inv</label><input id="etamax" type="number" step="0.005" min="0.5" max="1" value="0.985"></div>
+          <div class="f"><label>Red máx kW</label><input id="gridkw" type="number" step="100" min="0" value="0"
+            title="Límite de inyección en el punto de conexión (apply_grid_limit del core). 0 = sin límite."></div>
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">Pérdidas DC multiplicativas + inversor PVWatts con
+        recorte a Pnom + límite de red — <b>apply_dc_losses / inverter_efficiency_curve / apply_grid_limit</b>
+        de solargpt_core, careadas dígito a dígito en el QA. El trafo (Fe+Cu) no está portado: declarado.</p>
       </div>
       <div class="card" style="margin-top:12px">
         <h2>⛰ Terreno</h2>
@@ -171,11 +203,28 @@ input[type=range]{accent-color:var(--live)}
           <option value="day">☀ POA Σ día (kWh/m²)</option>
           <option value="pinst">⚡ P string (kW)</option>
           <option value="pday">⚡ E string Σ día (kWh)</option>
+          <option value="acinst">🔋 P AC inversor (kW)</option>
+          <option value="acday">🔋 E AC inversor Σ día (kWh)</option>
+          <option value="pmes">📅 E string Σ mes (kWh)</option>
+          <option value="pano">📅 E string Σ año (MWh)</option>
         </select>
+        <button class="btn" id="csv" title="Descarga la vista actual en CSV (;, decimal coma): por string o por inversor según el modo, con la cadena AC del instante debajo.">⬇ CSV</button>
         <span class="leg"><span id="leglo"></span><span id="legbar"></span><span id="leghi"></span></span>
       </div>
+      <div class="nota" id="acline" style="border-top:1px solid var(--line);color:var(--text)"></div>
       <div class="nota" id="pick" style="display:none;border-top:1px solid var(--line);color:var(--text)"></div>
       <div class="strings" id="strings"></div>
+      <details class="nota" style="border-top:1px solid var(--line)">
+        <summary style="cursor:pointer;color:var(--text)">⚖ Careo con medida real (por inversor)</summary>
+        <p style="margin:6px 0">Pega la energía <b>medida</b> del día por inversor — una por línea,
+        «<code>1.1;1234,5</code>» o «<code>I1.1,1234.5</code>» (kWh) — y carea contra la
+        <b>E AC Σ día</b> que calcula la tarjeta (misma fecha, meteo y cadena AC de arriba). Los
+        inversores sin pareja se listan, no se callan. Con cielo despejado el calculado es el TECHO
+        de un día perfecto: para carear un día real usa la meteo TMY o espera desvíos negativos.</p>
+        <textarea id="medidas" rows="4" spellcheck="false" style="width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-family:var(--mono);font-size:.75rem"></textarea>
+        <button class="btn" id="btncareo" style="margin-top:6px">Carear</button>
+        <div id="careoout" style="margin-top:8px;font-family:var(--mono);font-size:.72rem"></div>
+      </details>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
       El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles('pairwise') —
       el MISMO punto de entrada del simulador de BT 3D, con el acople de accionamiento de la planta cuando
@@ -183,8 +232,11 @@ input[type=range]{accent-color:var(--live)}
       potencia/energía en SUMA de sus strings, del plano de numeración g.i.t.s) y el pitch es el medido por vano;
       elevación plana — el relieve de El Burgo no está levantado en este repo, y no se finge. Motor POA: FÍSICA PURA
       de backtracking.html — pvlib singleaxis + sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en
-      caliente, no copiada. Cadena DC: la del Notebook (t_cell PVSyst-Faiman + PVWatts γ, de solargpt_core),
-      careada dígito a dígito contra el core en el QA. Arrastra para orbitar.</div>
+      caliente, no copiada. Cadena DC y AC: las del Notebook (t_cell PVSyst-Faiman + PVWatts γ; apply_dc_losses +
+      inversor PVWatts con recorte + apply_grid_limit, de solargpt_core), careadas dígito a dígito contra el core
+      en el QA — el trafo no está portado, declarado. Σ mes/año a paso horario (declarado); por encima de 600 mesas
+      el modelo del seguidor va INSTANCIADO (instancePlan, como terreno.html) — el modelo detallado también a
+      escala de planta entera. Arrastra para orbitar; clic = string.</div>
     </div>
   </div>
 </div>
@@ -272,6 +324,135 @@ function tCellPVSyst(poa,tair,wind,uc,uv){
 function pStringW(poa,tair,wind,e){                // e:{mods,wp,gamma,uc,uv}
   const tc=tCellPVSyst(poa,tair,wind,e.uc,e.uv);
   return Math.max(0,e.mods*e.wp*(poa/1000)*(1+(e.gamma/100)*(tc-25)));
+}
+
+/* ── cadena AC del Notebook (solargpt_core.electrical, la MISMA que notebook y
+   streamlit): pérdidas DC multiplicativas (apply_dc_losses), inversor PVWatts
+   legacy con recorte a Pnom (inverter_efficiency_curve, el default de todas
+   las superficies) y límite de red (apply_grid_limit). Portadas literalmente
+   y careadas dígito a dígito contra el golden que genera el propio core
+   (tools/gen_golden_ac_notebook.py → golden_ac_notebook.json). El TRAFO del
+   core (apply_transformer_losses) NO está portado — declarado, no callado. */
+function dcLossEta(l){                             // l:{soiling,mismatch,wiring,lid} en %
+  return (1-l.soiling/100)*(1-l.mismatch/100)*(1-l.wiring/100)*(1-l.lid/100);
+}
+function invAC(pdcW,pnomW,etaMax){                 // → {pac,eta} — PVWatts legacy + clip
+  const r=Math.min(1.5,Math.max(0,pdcW/Math.max(pnomW,1)));
+  const eta=Math.min(etaMax,Math.max(0,etaMax*(1-0.012/Math.max(r+0.05,0.01))));
+  return {pac:Math.min(pdcW*eta,pnomW),eta:eta};
+}
+function gridLimit(pacW,pmaxW){return (pmaxW!=null&&pmaxW>0)?Math.min(pacW,pmaxW):pacW;}
+
+/* reparto string→inversor cuando NO hay mapeo medido (todas menos El Burgo):
+   n bloques contiguos IGUALES — reparto declarado en pantalla, no medido. */
+function invMapUniforme(nrows,ninv){
+  const out=new Array(nrows);
+  for(let r=0;r<nrows;r++)out[r]=String(Math.floor(r*Math.max(1,ninv)/nrows)+1);
+  return out;
+}
+/* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
+   POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
+   fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
+function strPdc(rowsPoa,strInv,met,e){
+  const out=[];
+  for(let r=0;r<rowsPoa.length;r++){
+    const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
+    for(const inv of strInv[r])out.push({inv:inv,row:r,pdcW:p});
+  }
+  return out;
+}
+/* la cadena entera de un instante, por INVERSOR: Σ Pdc de sus strings →
+   pérdidas DC → curva del inversor (recorte incluido) → suma de planta →
+   límite de red. a:{loss,pnomW,etaMax,gridW} */
+function acPlant(porStr,a){
+  const eta=dcLossEta(a.loss), by=new Map();
+  for(const s of porStr){const v=by.get(s.inv)||{pdc:0,n:0};v.pdc+=s.pdcW;v.n++;by.set(s.inv,v);}
+  const invs=[...by.entries()].map(([inv,v])=>{
+    const net=v.pdc*eta, r=invAC(net,a.pnomW,a.etaMax);
+    return {inv:inv,nstr:v.n,pdcW:v.pdc,pdcNetW:net,pacW:r.pac,eta:r.eta,
+            clip:net>0&&r.pac>=a.pnomW-1e-9};
+  }).sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true}));
+  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pac=invs.reduce((s,v)=>s+v.pacW,0);
+  return {invs:invs,pdcW:pdc,dcEta:eta,pacW:pac,redW:gridLimit(pac,a.gridW),
+          clips:invs.reduce((s,v)=>s+(v.clip?1:0),0)};
+}
+/* E AC del día: el recorte es INSTANTÁNEO, así que la cadena se aplica paso a
+   paso y LUEGO se integra — aplicarla a la energía sumada regalaría el clipping. */
+function dayAC(F,c,T,strInv,a,stepMin){
+  const st=stepMin||5, acc=new Map();
+  let edc=0,eac=0,ered=0;
+  for(let m=0;m<1440;m+=st){
+    const r=instant(F,c,T,m);
+    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec),a);
+    for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
+    edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
+  }
+  const k=st/60/1000;
+  return {porInv:[...acc.entries()].map(([inv,s])=>({inv:inv,kwh:s*k}))
+            .sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true})),
+          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k};
+}
+
+/* ── meteo TMY (año meteorológico típico): 8760 horas UTC de
+   [GHI, DNI, DHI, Tamb, viento]. tmyAt interpola linealmente entre horas
+   (los valores horarios se tratan como instantáneos en HH:00 — aproximación
+   declarada) y convierte el minuto LOCAL a índice UTC con el huso; instant()
+   la consume en lugar del cielo Ineichen, y Tamb/viento POR INSTANTE entran
+   a la t_cell (los inputs fijos quedan para el modo cielo despejado). */
+function tmyAt(tmy,doy,minLocal,tz){
+  const H=tmy.h.length, hUTC=(doy-1)*24+minLocal/60-tz;
+  let h0=Math.floor(hUTC);
+  const f=hUTC-h0;
+  h0=((h0%H)+H)%H;
+  const a=tmy.h[h0], b=tmy.h[(h0+1)%H], mix=i=>a[i]+f*(b[i]-a[i]);
+  return {ghi:mix(0),dni:mix(1),dhi:mix(2),tamb:mix(3),wind:mix(4)};
+}
+/* condensa la respuesta TMY de la API de PVGIS (v5_2: outputs.tmy_hourly con
+   time(UTC) / G(h) / Gb(n) / Gd(h) / T2m / WS10m) al formato de la página —
+   el MISMO formato que hornea tools/gen_tmy_pvgis.py en <planta>_tmy.json */
+function tmyFromPVGIS(j){
+  const rows=j&&j.outputs&&(j.outputs.tmy_hourly||j.outputs.hourly);
+  if(!rows||!rows.length)throw new Error('respuesta PVGIS sin tmy_hourly');
+  if(rows.length!==8760)throw new Error('TMY de '+rows.length+' horas (esperaba 8760)');
+  return {fuente:'PVGIS TMY (api v5_2)',
+          h:rows.map(r=>[+r['G(h)'],+r['Gb(n)'],+r['Gd(h)'],+r['T2m'],+r['WS10m']])};
+}
+
+/* ── careo con MEDIDA real, por inversor. numES entiende «1234.5», «1234,5» y
+   «1.234,5»; parseMedidas admite «1.1;123», «I1.1,123» o tabulado (una por
+   línea). El careo lista TAMBIÉN lo que no casa — un medido sin esperado o un
+   esperado sin medida no se calla. */
+function numES(s){
+  s=String(s).trim();
+  if(s.indexOf(',')>=0)return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  return parseFloat(s);
+}
+function parseMedidas(txt){
+  const out=new Map();
+  for(const ln of String(txt||'').split(/\n+/)){
+    const m=ln.trim().match(/^([^;,\t]+?)\s*[;,\t]\s*([-\d.,]+)\s*$/);
+    if(!m)continue;
+    const v=numES(m[2]);
+    if(Number.isFinite(v))out.set(m[1].trim().replace(/^I\s*/i,''),v);
+  }
+  return out;
+}
+function careoMedidas(esp,med){        // esp:[{inv,kwh}] · med:Map inv→kWh
+  const rows=[],vistos=new Set();
+  for(const e of esp){
+    const m=med.has(e.inv)?med.get(e.inv):null;
+    vistos.add(e.inv);
+    rows.push({inv:e.inv,esp:e.kwh,med:m,
+               dev:(m!=null&&e.kwh>0)?100*(m-e.kwh)/e.kwh:null});
+  }
+  for(const [k,v] of med)if(!vistos.has(k))rows.push({inv:k,esp:null,med:v,dev:null});
+  return rows;
+}
+
+/* CSV de la vista (separador ;, decimal coma — es lo que abre el Excel de obra) */
+function csvTabla(cab,filas){
+  const cell=v=>typeof v==='number'?String(v).replace('.',','):String(v==null?'':v);
+  return [cab.join(';')].concat(filas.map(f=>f.map(cell).join(';'))).join('\r\n');
 }
 
 /* El Burgo real: los strings del plano (elburgo_strings.json) → columnas E-O,
@@ -447,28 +628,56 @@ function doyOf(dateStr){
 function instant(F,c,T,m){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
-  const irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
+  // meteo: TMY real interpolada (con su Tamb/viento) o cielo Ineichen + nubes
+  let irr,met;
+  if(c.meteo==='tmy'&&c.tmy){
+    const w=tmyAt(c.tmy,doy,m,c.tz);
+    irr={ghi:Math.max(0,w.ghi),dni:Math.max(0,w.dni),dhi:Math.max(0,w.dhi)};
+    met={tamb:w.tamb,wind:Math.max(0,w.wind)};
+  }else{
+    irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
+    met={tamb:c.elec?c.elec.tamb:20,wind:c.elec?c.elec.wind:1};
+  }
   const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
                     :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
-  return {g:g,zen:zen,az:az,irr:irr,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
+  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
 }
 
-/* día entero, paso de 5 min con el modo activo. map: POA de fila → magnitud
-   (identidad para kWh/m²; pStringW para kWh eléctricos por string). */
-function dayTotals(F,c,T,map){
+/* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
+   para kWh/m²; pStringW para kWh por string) — recibe también la meteo del
+   instante (Tamb/viento del TMY cuando lo hay, los inputs fijos si no). */
+function dayEnergy(F,c,T,dateStr,stepMin,map){
+  const c2=dateStr===c.date?c:Object.assign({},c,{date:dateStr});
   const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
-  for(let m=0;m<1440;m+=5){
-    const r=instant(F,c,T,m);
-    for(let k=0;k<n;k++)out[k]+=f(r.rows[k]);
+  for(let m=0;m<1440;m+=stepMin){
+    const r=instant(F,c2,T,m);
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met);
   }
-  for(let k=0;k<n;k++)out[k]*=5/60/1000;
+  for(let k=0;k<n;k++)out[k]*=stepMin/60/1000;
+  return out;
+}
+/* día entero, paso de 5 min con el modo activo (la fecha de la página) */
+function dayTotals(F,c,T,map){return dayEnergy(F,c,T,c.date,5,map);}
+/* fechas ISO de un período — 'mes' = el mes de la fecha activa, 'ano' = su
+   año entero. La UI las recorre día a día (progreso/cancelación); paso
+   HORARIO para los agregados largos, declarado en pantalla. */
+function fechasPeriodo(dateStr,periodo){
+  const [y,mo]=dateStr.split('-').map(Number), out=[];
+  const m0=periodo==='mes'?mo:1, m1=periodo==='mes'?mo:12;
+  for(let m=m0;m<=m1;m++){
+    const dias=new Date(Date.UTC(y,m,0)).getUTCDate();
+    for(let d=1;d<=dias;d++)
+      out.push(y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'));
+  }
   return out;
 }
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
+let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
+let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)
 let T_nOff=0;                    // desplazamiento N del marco de escena (El Burgo)
 
 /* ── la física del simulador, extraída en caliente (contrato FÍSICA PURA) ── */
@@ -560,11 +769,21 @@ function cfg(){
           nrows:Math.max(2,Math.min(24,Math.round(+$('nrows').value))),
           manual:$('manual').checked,manth:+$('manth').value,
           tpreset:$('tpreset').value,tparam:+$('tparam').value,
+          // meteo: TMY cargada (si el selector la pide y ya llegó) o cielo+nubes
+          meteo:$('meteo').value,
+          tmy:($('meteo').value==='tmy'&&TMY)?TMY.data:null,
           // eléctrico del Notebook: u_c=29/u_v=0 son los defaults canónicos del
           // core (ThermalSpecs, free-standing); el resto se edita en su tarjeta
           elec:{mods:Math.max(1,Math.round(+$('mods').value)),wp:+$('wp').value,
                 gamma:+$('gamma').value,tamb:+$('tamb').value,wind:Math.max(0,+$('wind').value),
-                uc:29,uv:0}};
+                uc:29,uv:0},
+          // cadena AC del Notebook (apply_dc_losses + inversor pvwatts + red)
+          ac:{loss:{soiling:Math.max(0,+$('lsoil').value),mismatch:Math.max(0,+$('lmis').value),
+                    wiring:Math.max(0,+$('lwir').value),lid:Math.max(0,+$('llid').value)},
+              ninv:Math.max(1,Math.round(+$('ninv').value)),
+              pnomW:Math.max(1,+$('pnom').value)*1000,
+              etaMax:Math.max(0.5,Math.min(1,+$('etamax').value)),
+              gridW:Math.max(0,+$('gridkw').value)*1000}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
@@ -608,7 +827,11 @@ function rebuildT(){
     T={elev:z,xs:xs,tilt:null,segs:null};
     T.obj=buildTX(F,c,xs,z,null);
   }
-  DAYC=null;
+  // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
+  // (g.i); el resto n bloques contiguos iguales (declarado en el input)
+  if(c.plant==='elburgo'&&EB)T.strInv=EB.rows.map(r=>r.strs.map(s=>s.inv));
+  else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
+  DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
   build3D(c);
 }
@@ -655,25 +878,42 @@ function build3D(c){
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
   const gnd=new THREE.Mesh(
-    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),8),
+    new THREE.PlaneGeometry(span+40,maxLen+40,Math.max(2,Math.min(n,64)*2),T.tilt?96:8),
     new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
-  // el suelo sigue el perfil E-O real (el mismo elev que come la física) y se
-  // TIÑE por cota (bajo oscuro → alto claro), el relieve se lee de un vistazo
+  // el suelo sigue el perfil E-O real (el mismo elev que come la física) y,
+  // cuando la planta trae TILT N-S medido (cotas), también esa pendiente por
+  // línea: cada mesa pivota sobre su centro a cota de línea, así que el suelo
+  // se pone PARALELO a la mesa más cercana — sin esto, una línea larga con
+  // tilt «entraba en el terreno» y los postes asomaban sobre los módulos.
+  // Se TIÑE por cota (bajo oscuro → alto claro): el relieve se lee de un vistazo.
+  const gz=-(sMin+sMax)/2;
+  const hLinea=(r,sceneZ)=>{           // cota del suelo bajo la línea r en esa N
+    const tl=T.tilt?Math.sin(T.tilt[r]*D2R):0;
+    if(!tl)return T.elev[r];
+    let best=0,bd=Infinity;
+    for(const sg of segsNS[r]){
+      const zc=-(sg[0]+sg[1])/2, h=Math.max(1,(sg[1]-sg[0])/2);
+      const d=Math.abs(sceneZ-zc);
+      if(d<bd){bd=d;best=Math.max(-h,Math.min(h,sceneZ-zc))*tl;}
+    }
+    return T.elev[r]+best;
+  };
   {const pos=gnd.geometry.attributes.position;
    const zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
    const cols=new Float32Array(pos.count*3);
    for(let i=0;i<pos.count;i++){
      const x=pos.getX(i)+span/2, r=Math.max(0,Math.min(n-1,x/Math.max(1e-6,span/(n-1))));
-     const r0=Math.floor(r), fr=r-r0, z0=T.elev[r0], z1=T.elev[Math.min(n-1,r0+1)];
-     const z=z0+fr*(z1-z0);
+     const r0=Math.floor(r), fr=r-r0, r1=Math.min(n-1,r0+1);
+     const sceneZ=-pos.getY(i)+gz;      // el marco de escena de las mesas (z=−norte)
+     const z=hLinea(r0,sceneZ)+fr*(hLinea(r1,sceneZ)-hLinea(r0,sceneZ));
      pos.setZ(i,z);
      const t2=zHi>zLo?(z-zLo)/(zHi-zLo):0.4;
-     cols[i*3]=0.086+0.10*t2;cols[i*3+1]=0.145+0.13*t2;cols[i*3+2]=0.105+0.09*t2;
+     cols[i*3]=0.086+0.10*Math.max(0,Math.min(1,t2));cols[i*3+1]=0.145+0.13*Math.max(0,Math.min(1,t2));cols[i*3+2]=0.105+0.09*Math.max(0,Math.min(1,t2));
    }
    gnd.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
    pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
   gnd.rotation.x=-Math.PI/2;
-  gnd.position.z=-(sMin+sMax)/2;
+  gnd.position.z=gz;
   gnd.receiveShadow=true;
   R3.world.add(gnd);
   // sombra del sol acotada a la planta (como el simulador); el frustum vertical
@@ -684,18 +924,22 @@ function build3D(c){
   // fuente que backtracking, terreno y el gemelo), una mesa por TRAMO real, con
   // la capa de PRODUCCIÓN como tinte sobre el cristal (los overlays del
   // simulador). Sin el modelo (fichero ausente), cajas de siempre.
-  // presupuesto de mallas: el modelo detallado son ~17 mallas por mesa — Ayora
-  // (~1.500 mesas) pasaba de 45.000 mallas y TUMBABA navegadores. Por encima
-  // de 600 mesas la escena va a cajas (tubo+pala+tinte: 3 mallas por mesa);
-  // el modelo entero queda para plantas del tamaño de El Burgo (430 mesas).
-  // Pendiente declarado: instancePlan de seguidor.js (como terreno.html) para
-  // tener el modelo también a escala de miles.
+  // presupuesto de mallas: el modelo detallado por mallas sueltas son ~17 por
+  // mesa — Ayora entera (4.813 tramos) TUMBABA navegadores. Hasta 600 mesas va
+  // el camino de mallas (permite pieza a pieza); por encima, INSTANCIADO con
+  // Seguidor.instancePlan (como terreno.html): un InstancedMesh por pieza y
+  // talla, el MISMO modelo también a escala de miles. Sin seguidor.js, cajas.
   const totalTramos=segsNS.reduce((a,l)=>a+l.length,0);
-  const useModel=(typeof Seguidor!=='undefined')&&totalTramos<=600;
-  const D0=useModel?Seguidor.DIMS:null;
-  if(useModel&&!R3.mats)R3.mats=Seguidor.materials(THREE);
+  const hayModelo=typeof Seguidor!=='undefined';
+  const useModel=hayModelo&&totalTramos<=600;
+  const useInst=hayModelo&&totalTramos>600;
+  const D0=hayModelo?Seguidor.DIMS:null;
+  if(hayModelo&&!R3.mats)R3.mats=Seguidor.materials(THREE);
   const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
-  R3.rows=[];
+  R3.rows=[];R3.inst=null;
+  if(useInst){
+    buildInstanced(c,rx,segsNS,postM,D0);
+  }else{
   for(let r=0;r<n;r++){
     const x=rx[r], hubY=T.elev[r]+2.0;                        // postH canónico del modelo
     const tintM=new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
@@ -708,10 +952,10 @@ function build3D(c){
       tiltG.userData={row:r,s0:sg[0],s1:sg[1]};               // para la SELECCIÓN con clic
       if(T.tilt)tiltG.rotation.x=-T.tilt[r]*D2R;              // tilt N-S MEDIDO de la línea
       let built=false;
+      const media=hayModelo&&len<0.7*T.obj.filaLen;           // tramo corto ⇒ mesa «media» real
+      const mods=hayModelo?Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch)):0;
       if(useModel){
         try{
-          const media=len<0.7*T.obj.filaLen;                  // tramo corto ⇒ mesa «media» real
-          const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
           Seguidor.setModsPerStr(mods);
           // bifila: motor/TCU solo en la viga OESTE de cada unidad (T.west)
           const beam=Seguidor.buildBeam(THREE,{west:(T.west?T.west[r]:true),detail:'mass',size:media?'medio':'largo',
@@ -742,17 +986,25 @@ function build3D(c){
         spins.push({g:gRot,model:false});
       }
       R3.world.add(tiltG);
-      // postes a tercios del tramo, pie en el terreno (como el simulador)
-      for(const dn of [-len/3,0,len/3]){
-        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,2.0,8),postM);
-        post.position.set(x,T.elev[r]+1.0,zc-dn);
+      // postes: la retícula de la CASA (Seguidor.pilotesX, proporcional al
+      // largo — la regla de terreno.html; los tercios eran una retícula
+      // inventada) y LONGITUD VARIABLE que absorbe el terreno: del suelo
+      // drapeado bajo su punto al tubo, nunca por encima de los módulos
+      const tl=T.tilt?Math.sin(T.tilt[r]*D2R):0;
+      const zPil=(hayModelo?Seguidor.pilotesX(mods):[-len/3,0,len/3])
+        .filter(dn=>Math.abs(dn)<=len/2);   // el medio oculta los exteriores (la regla de terreno.html)
+      for(const dn of zPil){
+        const gY=T.elev[r]-tl*dn-0.15, topY=hubY-tl*dn-0.08, L=Math.max(0.4,topY-gY);
+        const post=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,L,8),postM);
+        post.position.set(x,(gY+topY)/2,zc-dn);
         post.castShadow=true;
         R3.world.add(post);
       }
     }
     R3.rows.push({spins:spins,mat:tintM});
   }
-  if(useModel)Seguidor.setModsPerStr(28);                     // restaurar el canónico compartido
+  }// fin del camino de mallas sueltas (modelo/cajas)
+  if(hayModelo)Seguidor.setModsPerStr(28);                    // restaurar el canónico compartido
   // ── bielas del BIFILA de El Burgo: eje de transmisión entre las dos vigas
   // de cada unidad a la altura del tubo, con sus copas y el motor en la viga
   // oeste — la receta del linkBar del simulador, con las unidades del layout
@@ -819,6 +1071,122 @@ function build3D(c){
   R3.dirty=true;
 }
 
+/* ── modelo INSTANCIADO a escala de planta entera (Seguidor.instancePlan,
+   como terreno.html): un InstancedMesh por pieza y por TALLA de mesa. Las
+   piezas del giro se rematrizan en cada repintado (Q = base·Rx(θ)·escala de
+   cuerda); las fijas se colocan una vez. El tinte de producción es UN
+   InstancedMesh de planos con color POR INSTANCIA, y también sirve de blanco
+   del picking (instanceId → tramo). */
+function buildInstanced(c,rx,segsNS,postM,D0){
+  const tramos=[];
+  for(let r=0;r<c.nrows;r++){
+    const x=rx[r], hubY=T.elev[r]+2.0, tilt=T.tilt?T.tilt[r]:0;
+    for(const sg of segsNS[r]){
+      const len=Math.max(2,sg[1]-sg[0]);
+      tramos.push({row:r,x:x,hubY:hubY,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,s0:sg[0],s1:sg[1]});
+    }
+  }
+  // base por tramo (posición + tilt N-S medido + tubo del modelo a norte) y
+  // el local del tinte (plano unitario escalado al largo del tramo)
+  const mRx=new THREE.Matrix4(),mRy=new THREE.Matrix4().makeRotationY(Math.PI/2);
+  for(const tr of tramos){
+    tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.hubY,tr.zc)
+      .multiply(mRx.makeRotationX(-tr.tilt*D2R)).multiply(mRy);
+    tr.Q=new THREE.Matrix4();
+    tr.Ltint=new THREE.Matrix4().makeTranslation(0,0.175,0)
+      .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+      .multiply(new THREE.Matrix4().makeScale(tr.len,2.36,1));
+  }
+  // tallas: la MISMA receta de módulos-por-tramo que el camino de mallas
+  const porTalla=new Map();
+  tramos.forEach((tr,ti)=>{
+    const media=tr.len<0.7*T.obj.filaLen;
+    const mods=Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
+    const key=mods+(media?'|medio':'|largo');
+    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',idx:[]});
+    porTalla.get(key).idx.push(ti);
+  });
+  const spinMeshes=[],tmpM=new THREE.Matrix4();
+  for(const g of porTalla.values()){
+    Seguidor.setModsPerStr(g.mods);
+    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:true});
+    for(const p of plan){
+      // mismos descartes que buildBeam en esta página: antena y enlaces por-frame
+      if(p.motorLink||p.damperLink||p.key==='antena'||p.key==='antenatip')continue;
+      const im=new THREE.InstancedMesh(p.geom(THREE),R3.mats[p.mat],g.idx.length*p.locals.length);
+      im.castShadow=!!p.cast;im.receiveShadow=true;
+      im.userData.pickTramos=tramos;im.userData.nLocals=p.locals.length;im.userData.tramoIdx=g.idx;
+      if(p.spin)spinMeshes.push({mesh:im,locals:p.locals,idx:g.idx});
+      else{
+        let id=0;
+        for(const ti of g.idx)for(const L of p.locals){
+          tmpM.multiplyMatrices(tramos[ti].pre,L);im.setMatrixAt(id++,tmpM);
+        }
+        im.instanceMatrix.needsUpdate=true;
+      }
+      R3.world.add(im);
+    }
+  }
+  // tinte de producción: un plano por tramo, color por instancia
+  const tint=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),
+    new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.62,
+      side:THREE.DoubleSide,depthWrite:false}),tramos.length);
+  tint.renderOrder=2;
+  tint.userData.pickTramos=tramos;tint.userData.nLocals=1;tint.userData.tramoIdx=tramos.map((_,i)=>i);
+  for(let ti=0;ti<tramos.length;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
+  R3.world.add(tint);
+  // postes instanciados: la retícula de la casa (pilotesX por talla, el medio
+  // oculta exteriores) y longitud variable absorbiendo el terreno — cilindro
+  // unitario escalado, la misma regla que el camino de mallas
+  const postes=[];
+  for(const g of porTalla.values()){
+    const zPil=Seguidor.pilotesX(g.mods);
+    for(const ti of g.idx){
+      const tr=tramos[ti], tl=Math.sin(tr.tilt*D2R);
+      for(const dn of zPil){
+        if(Math.abs(dn)>tr.len/2)continue;
+        const gY=T.elev[tr.row]-tl*dn-0.15, topY=tr.hubY-tl*dn-0.08;
+        postes.push([tr.x,gY,topY,tr.zc-dn]);
+      }
+    }
+  }
+  const posts=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06,0.06,1.0,8),postM,postes.length);
+  posts.castShadow=true;
+  {let id=0;const mS=new THREE.Matrix4();
+   for(const p of postes){
+     const L=Math.max(0.4,p[2]-p[1]);
+     tmpM.makeTranslation(p[0],(p[1]+p[2])/2,p[3]).multiply(mS.makeScale(1,L,1));
+     posts.setMatrixAt(id++,tmpM);
+   }}
+  R3.world.add(posts);
+  R3.inst={tramos:tramos,spinMeshes:spinMeshes,tint:tint,
+           tmpR:new THREE.Matrix4(),tmpS:new THREE.Matrix4(),tmpM:new THREE.Matrix4(),
+           tmpC:new THREE.Color()};
+}
+/* repintado del instanciado: Q por tramo con el θ de SU fila, y color por tramo */
+function updateInstanced(c,vals,mn,mx,norm,inst){
+  const I=R3.inst,k=c.cw/2.382;
+  I.tmpS.makeScale(1,1,k);
+  for(const tr of I.tramos){
+    I.tmpR.makeRotationX(inst.ang[tr.row]*D2R);
+    tr.Q.copy(tr.pre).multiply(I.tmpR).multiply(I.tmpS);
+  }
+  for(const g of I.spinMeshes){
+    let id=0;
+    for(const ti of g.idx)for(const L of g.locals){
+      I.tmpM.multiplyMatrices(I.tramos[ti].Q,L);g.mesh.setMatrixAt(id++,I.tmpM);
+    }
+    g.mesh.instanceMatrix.needsUpdate=true;
+  }
+  for(let ti=0;ti<I.tramos.length;ti++){
+    const tr=I.tramos[ti];
+    I.tmpM.multiplyMatrices(tr.Q,tr.Ltint);I.tint.setMatrixAt(ti,I.tmpM);
+    I.tmpC.set(ramp(norm(vals[tr.row],mn,mx)));I.tint.setColorAt(ti,I.tmpC);
+  }
+  I.tint.instanceMatrix.needsUpdate=true;
+  if(I.tint.instanceColor)I.tint.instanceColor.needsUpdate=true;
+}
+
 function ramp(x){return F.prodColor(x);}
 function paintLegend(mn,mx,unit,fmt){
   const stops=[];for(let i=0;i<=8;i++)stops.push(ramp(i/8)+' '+(i*12.5)+'%');
@@ -834,17 +1202,43 @@ function repaint(){
   $('manthlbl').textContent=$('manth').value+'°';
   $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
   const inst=instant(F,c,T.obj,m);
-  const mode=$('cmode').value, pw=v=>pStringW(v,c.elec.tamb,c.elec.wind,c.elec)/1000;
-  let vals,unit,fmt,agg='media';
+  // Tamb/viento DEL INSTANTE (con TMY vienen de la meteo real; en cielo son los inputs)
+  const mode=$('cmode').value, pw=v=>pStringW(v,inst.met.tamb,inst.met.wind,c.elec)/1000;
+  // media por fila de un valor POR INVERSOR (una línea con strings de varios
+  // inversores promedia — los números exactos van en los chips y el careo)
+  const rowsFromInv=mp=>T.strInv.map(l=>{
+    if(!l.length)return 0;let s=0;for(const inv of l)s+=(mp.get(inv)||0);return s/l.length;});
+  let vals,unit,fmt,agg='media',invChips=null;
   if(mode==='day'){
     if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
     vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
   }else if(mode==='pday'){
-    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,v=>pw(v)*1000)};
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec))};
     vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
   }else if(mode==='pinst'){
     vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
+  }else if(mode==='acinst'){
+    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec),c.ac);
+    const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
+    vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
+    invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
+  }else if(mode==='acday'){
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,ac:dayAC(F,c,T.obj,T.strInv,c.ac,5)};
+    const mp=new Map(DAYC.ac.porInv.map(v=>[v.inv,v.kwh]));
+    vals=rowsFromInv(mp);unit='kWh/d';fmt=v=>v.toFixed(0);
+    invChips=DAYC.ac.porInv.map(v=>({inv:v.inv,val:v.kwh}));
+  }else if(mode==='pmes'||mode==='pano'){
+    const per=mode==='pmes'?'mes':'ano';
+    const key=per+'|'+c.date.slice(0,per==='mes'?7:4);
+    if(PERIODC&&PERIODC.key===key){
+      vals=PERIODC.v.map(v=>mode==='pano'?v/1000:v);
+      unit=mode==='pano'?'MWh':'kWh';fmt=v=>mode==='pano'?v.toFixed(2):v.toFixed(0);agg='suma';
+    }else{computePeriod(c,per,key);vals=null;}
   }else{vals=inst.rows;unit='W/m²';fmt=v=>v.toFixed(0);}
+  if(vals===null){   // Σ mes/año aún calculándose: se pinta el progreso y ya
+    paintACline(inst,c,null);
+    R3.dirty=true;return;
+  }
   const mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
   // normalizar SOLO si la dispersión es significativa: con la planta uniforme
   // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
@@ -852,7 +1246,8 @@ function repaint(){
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
   const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
   paintLegend(mn,mx,unit,fmt);
-  for(let r=0;r<c.nrows;r++){
+  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst);
+  else for(let r=0;r<c.nrows;r++){
     const x01=norm(vals[r],mn,mx), col=ramp(x01);
     if(R3.rows&&R3.rows[r]){
       const th=inst.ang[r]*D2R;
@@ -862,7 +1257,13 @@ function repaint(){
     }
   }
   const chips=[];
-  if(c.plant==='elburgo'&&EB){
+  if(invChips){
+    // modos AC: chips con el valor REAL por inversor (recorte marcado con ✂)
+    const im=Math.min.apply(null,invChips.map(v=>v.val)),ix=Math.max.apply(null,invChips.map(v=>v.val));
+    for(const v of invChips)
+      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+' strings"':'')+'><span class="s-dot" style="background:'+
+                 ramp(norm(v.val,im,ix))+'"></span>I'+v.inv+' · '+fmt(v.val)+(v.clip?' ✂':'')+'</span>');
+  }else if(c.plant==='elburgo'&&EB){
     // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
     const iv=invTotals(EB.rows,vals,agg);
     const im=Math.min.apply(null,iv.map(v=>v.val)),ix=Math.max.apply(null,iv.map(v=>v.val));
@@ -895,10 +1296,125 @@ function repaint(){
     sc.near=Math.max(1,dLT-Rs*3);sc.far=dLT+Rs*3;
     sc.updateProjectionMatrix();
   }
-  R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst};
+  R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst,mode:mode,invChips:invChips};
+  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null);
   repaintPick();
   paintHourTrack();
   R3.dirty=true;
+}
+
+/* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
+   (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
+function paintACline(inst,c,acDay){
+  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec),c.ac);
+  const f1=v=>(v/1000).toFixed(1);
+  let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
+        f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
+  if(c.ac.gridW>0)h+=' → red '+f1(a.redW)+' kW';
+  if(c.meteo==='tmy'&&c.tmy)h+=' · <b>TMY</b> Tamb '+inst.met.tamb.toFixed(1)+' °C · v '+inst.met.wind.toFixed(1)+' m/s';
+  if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
+              (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
+  $('acline').innerHTML=h;
+}
+
+/* Σ mes / Σ año por string (kWh DC), paso HORARIO, troceado por días para no
+   congelar la página — con progreso en la zona de chips y cancelación si el
+   usuario cambia de planta/fecha/modo (el testigo PERIODRUN invalida el run). */
+function computePeriod(c,periodo,key){
+  if(PERIODC&&PERIODC.key===key)return;
+  if(computePeriod.running===key)return;
+  computePeriod.running=key;
+  const run=++PERIODRUN;
+  const fechas=fechasPeriodo(c.date,periodo);
+  const acc=new Array(c.nrows).fill(0);
+  let i=0;
+  const paso=()=>{
+    if(run!==PERIODRUN){computePeriod.running=null;return;}   // invalidado: planta/fecha/config cambió
+    const t0=performance.now();
+    while(i<fechas.length&&performance.now()-t0<120){
+      const d=dayEnergy(F,c,T.obj,fechas[i],60,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec));
+      for(let k=0;k<c.nrows;k++)acc[k]+=d[k];
+      i++;
+    }
+    if(i<fechas.length){
+      $('strings').innerHTML='<span class="s-chip">Σ '+(periodo==='mes'?'mes':'año')+
+        ' · día '+i+'/'+fechas.length+' (paso horario'+(c.meteo==='tmy'&&c.tmy?', TMY':', cielo despejado')+')…</span>';
+      setTimeout(paso,0);
+    }else{
+      PERIODC={key:key,v:acc};
+      computePeriod.running=null;
+      repaint();
+    }
+  };
+  paso();
+}
+
+/* careo con la medida pegada: E AC Σ día por inversor (calculada) vs kWh reales */
+function runCareo(){
+  const c=cfg();
+  const ac=(DAYC&&DAYC.mode==='acday')?DAYC.ac:dayAC(F,c,T.obj,T.strInv,c.ac,5);
+  const med=parseMedidas($('medidas').value);
+  if(!med.size){$('careoout').innerHTML='<span style="color:var(--muted)">Sin medidas que carear — pega «inversor;kWh», una por línea.</span>';return;}
+  const rows=careoMedidas(ac.porInv,med);
+  const f=v=>v==null?'—':v.toFixed(1);
+  let h='<table style="border-collapse:collapse">'+
+    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td>E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
+  for(const r of rows){
+    const col=r.dev==null?'var(--muted-2)':(Math.abs(r.dev)<=5?'var(--live)':(Math.abs(r.dev)<=12?'var(--build)':'var(--dead)'));
+    h+='<tr><td style="padding:2px 10px">I'+r.inv+'</td><td>'+f(r.esp)+'</td><td style="padding:2px 10px">'+f(r.med)+
+       '</td><td style="color:'+col+'">'+(r.dev==null?'—':(r.dev>0?'+':'')+r.dev.toFixed(1)+'%')+'</td></tr>';
+  }
+  const tE=rows.reduce((s,r)=>s+(r.esp||0),0), tM=rows.reduce((s,r)=>s+(r.med||0),0);
+  h+='<tr style="border-top:1px solid var(--line)"><td style="padding:2px 10px"><b>Σ</b></td><td><b>'+tE.toFixed(1)+
+     '</b></td><td style="padding:2px 10px"><b>'+tM.toFixed(1)+'</b></td><td>'+(tE>0?((100*(tM-tE)/tE)>0?'+':'')+(100*(tM-tE)/tE).toFixed(1)+'%':'—')+'</td></tr></table>'+
+     '<p style="color:var(--muted-2);margin-top:4px">Meteo del cálculo: '+(c.meteo==='tmy'&&c.tmy?'TMY real':'cielo despejado (TECHO teórico — desvíos negativos esperables)')+
+     ' · fecha '+c.date+' · paso 5 min.</p>';
+  $('careoout').innerHTML=h;
+}
+
+/* CSV de la vista actual (por string, o por inversor en los modos AC) */
+function exportCSV(){
+  if(!R3.last)return;
+  const d=R3.last, c=d.c, filas=[];
+  let cab;
+  if(d.invChips){
+    cab=['inversor','valor_'+d.unit.replace(/[^\w²·]/g,''),'strings'];
+    for(const v of d.invChips)filas.push(['I'+v.inv,v.val,v.nstr||'']);
+  }else{
+    cab=['string','x_m','valor_'+d.unit.replace(/[^\w²·]/g,'')];
+    for(let r=0;r<d.vals.length;r++){
+      const id=(c.plant==='elburgo'&&EB&&EB.rows[r])?EB.rows[r].strs.map(s=>s.id).join(' '):'S'+(r+1);
+      filas.push([id,T.xs[r],d.vals[r]]);
+    }
+  }
+  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec),c.ac);
+  filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
+    ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
+    ['AC_instante','red_kW',a.redW/1000]);
+  const blob=new Blob(['﻿'+csvTabla(cab,filas)],{type:'text/csv;charset=utf-8'});
+  const u=URL.createObjectURL(blob), el=document.createElement('a');
+  el.href=u;el.download='produccion_'+c.plant+(c.ncu?'_ncu'+c.ncu:'')+'_'+c.date+'_'+d.mode+'.csv';
+  document.body.appendChild(el);el.click();el.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),4000);
+}
+
+/* TMY de la planta activa: primero el fichero horneado junto a la página
+   (tools/gen_tmy_pvgis.py → <planta>_tmy.json), si no la API de PVGIS desde
+   el navegador. Sin ninguna de las dos, se declara y se vuelve a cielo. */
+async function cargaTMY(c){
+  const key=c.plant!=='generica'?c.plant:c.lat.toFixed(2)+','+c.lon.toFixed(2);
+  if(TMY&&TMY.key===key)return;
+  let data=null;
+  if(c.plant!=='generica'){
+    try{const r=await fetch(c.plant+'_tmy.json',{cache:'no-store'});if(r.ok)data=await r.json();}catch(e){}
+  }
+  if(data&&(!data.h||data.h.length!==8760))data=null;
+  if(!data){
+    const r=await fetch('https://re.jrc.ec.europa.eu/api/v5_2/tmy?lat='+c.lat.toFixed(4)+'&lon='+c.lon.toFixed(4)+'&outputformat=json');
+    if(!r.ok)throw new Error('PVGIS '+r.status);
+    data=tmyFromPVGIS(await r.json());
+  }
+  TMY={key:key,data:data};
 }
 
 /* ── carril de horas pintado, como el del simulador: noche oscura, día azul,
@@ -1010,16 +1526,58 @@ function repaintPick(){
     }
     // la geometría/terreno reales vienen medidos: se bloquean (el resto sigue libre)
     for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
+    // inversores: El Burgo con el mapeo REAL del plano (36, g.i); resto editable.
+    // Pnom sugerida = Pdc0 del ámbito / n / 1,2 (DC/AC típico, declarado en el título)
+    let nstr,ninv;
+    if(key==='elburgo'){
+      nstr=EB.rows.reduce((a,r)=>a+r.strs.length,0);
+      ninv=Object.keys(EB.rows.reduce((a,r)=>{for(const s of r.strs)a[s.inv]=1;return a;},{})).length;
+      $('ninv').value=ninv;$('ninv').disabled=true;
+    }else{
+      nstr=+$('nrows').value;ninv=Math.min(+$('ninv').value,nstr)||1;
+      $('ninv').value=ninv;$('ninv').disabled=false;
+    }
+    $('pnom').value=Math.max(5,Math.round(nstr*(+$('mods').value)*(+$('wp').value)/ninv/1.2/1000/5)*5);
+    // TMY por planta: si está activa, recargar la de ESTA planta
+    if($('meteo').value==='tmy'){
+      try{await cargaTMY(cfg());}
+      catch(e2){$('meteo').value='cielo';$('cloud').disabled=false;}
+    }
     R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
     rebuildT();repaint();
   });
-  $('cloud').addEventListener('change',()=>{DAYC=null;repaint();});
+  const invalida=()=>{DAYC=null;PERIODC=null;PERIODRUN++;};
+  $('cloud').addEventListener('change',()=>{invalida();repaint();});
   for(const id of ['wp','mods','gamma','tamb','wind'])
+    $(id).addEventListener('change',()=>{invalida();repaint();});
+  // cadena AC: pérdidas/inversor solo invalidan el día AC; el nº de inversores
+  // cambia el reparto string→inversor (T.strInv) y reconstruye
+  for(const id of ['lsoil','lmis','lwir','llid','pnom','etamax','gridkw'])
     $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  $('ninv').addEventListener('change',()=>{rebuildT();repaint();});
+  // meteo: TMY se carga al pedirla (fichero horneado o PVGIS del navegador);
+  // si no hay ninguna, se declara y se vuelve al cielo despejado
+  $('meteo').addEventListener('change',async()=>{
+    const quiere=$('meteo').value==='tmy';
+    $('cloud').disabled=quiere;
+    if(quiere){
+      try{await cargaTMY(cfg());}
+      catch(e){
+        const a=$('aviso');a.style.display='block';
+        a.innerHTML='⚠ <b>Sin TMY para esta planta</b> ('+e.message+'): ni <code>'+cfg().plant+
+          '_tmy.json</code> desplegado ni PVGIS alcanzable desde tu navegador. Hornéala con '+
+          '<code>tools/gen_tmy_pvgis.py</code> o revisa la red. Sigo con cielo despejado.';
+        $('meteo').value='cielo';$('cloud').disabled=false;
+      }
+    }
+    invalida();TRACKC=null;repaint();
+  });
+  $('csv').addEventListener('click',exportCSV);
+  $('btncareo').addEventListener('click',runCareo);
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
-  $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;DAYC=null;repaint();});
-  $('manth').addEventListener('input',()=>{DAYC=null;repaint();});
+  $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
+  $('manth').addEventListener('input',()=>{invalida();repaint();});
   $('tpreset').addEventListener('change',()=>{
     $('tplbl').textContent=$('tpreset').value==='pendiente'?'Pendiente °':'Amplitud m';});
   // fecha también en la barra de tiempo (el mismo campo, como el simulador)
@@ -1055,12 +1613,31 @@ function repaintPick(){
     const rc=new THREE.Raycaster();
     rc.setFromCamera(new THREE.Vector2(((e.clientX-rct.left)/rct.width)*2-1,-((e.clientY-rct.top)/rct.height)*2+1),R3.cam);
     const hits=rc.intersectObjects(R3.world.children,true);
-    let obj=null;
-    for(const h of hits){let o=h.object;while(o&&o.userData.row===undefined)o=o.parent;if(o&&o.userData.row!==undefined){obj=o;break;}}
-    if(!obj){clearPick();return;}
-    PICK={row:obj.userData.row,s0:obj.userData.s0,s1:obj.userData.s1};
+    let obj=null,tramo=null;
+    for(const h of hits){
+      // instanciado: el instanceId de la pieza lleva a SU tramo
+      if(h.object.isInstancedMesh&&h.object.userData.pickTramos&&h.instanceId!=null){
+        const ud=h.object.userData;
+        tramo=ud.pickTramos[ud.tramoIdx[Math.floor(h.instanceId/ud.nLocals)]];
+        break;
+      }
+      let o=h.object;while(o&&o.userData.row===undefined)o=o.parent;
+      if(o&&o.userData.row!==undefined){obj=o;break;}
+    }
+    if(!obj&&!tramo){clearPick();return;}
     if(pickHelper)R3.scene.remove(pickHelper);
-    pickHelper=new THREE.BoxHelper(obj,0x36d399);R3.scene.add(pickHelper);
+    if(tramo){
+      PICK={row:tramo.row,s0:tramo.s0,s1:tramo.s1};
+      const c2=cfg();
+      const box=new THREE.Box3(
+        new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,tramo.zc-tramo.len/2),
+        new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,tramo.zc+tramo.len/2));
+      pickHelper=new THREE.Box3Helper(box,0x36d399);
+    }else{
+      PICK={row:obj.userData.row,s0:obj.userData.s0,s1:obj.userData.s1};
+      pickHelper=new THREE.BoxHelper(obj,0x36d399);
+    }
+    R3.scene.add(pickHelper);
     R3.dirty=true;repaintPick();
   });
 })();
