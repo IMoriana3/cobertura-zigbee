@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -504,6 +504,23 @@ t('POR ALA (v1.14): la mesa larga son DOS strings, cada uno con la POA de SU ala
   }
   if (!(conAla > sinAla)) throw new Error('El Burgo: ' + conAla + ' strings con ala frente a ' + sinAla + ' sin ala — las mesas largas no dominan');
   if (eb.flat().length !== strdb.count) throw new Error('El Burgo perdió strings: ' + eb.flat().length + ' de ' + strdb.count);
+});
+
+t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — Ayora son 751 trackers, no 402 — y calcula el instante en menos de 3 s', () => {
+  const P = S.plantaCotas(S.F, cotasAyora);
+  const trk = new Set(); P.segTrk.forEach(l => l.forEach(tk => trk.add(tk)));
+  if (trk.size !== cotasAyora.t.length) throw new Error(trk.size + ' trackers de ' + cotasAyora.t.length);
+  if (P.nFilas !== 2 * cotasAyora.t.length) throw new Error(P.nFilas + ' filas: hay trackers partidos');
+  const W = S.F.plantFromCotas(cotasAyora, 80, null);
+  if (!(P.elev.length > 2 * W.elev.length)) throw new Error('la planta entera (' + P.elev.length + ' líneas) no supera la ventana (' + W.elev.length + ')');
+  // y la página YA no pide la ventana de 80 del simulador
+  if (/plantFromCotas\(\s*(cotas|data)\s*,\s*80/.test(pg)) throw new Error('produccion.html sigue cargando la planta a 80 líneas');
+  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base), nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
+              elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildTReal(S.F, c, P);
+  const t0 = Date.now(); const r = S.instant(S.F, c, T, 7 * 60 + 30); const ms = Date.now() - t0;
+  if (!(r.plant > 50)) throw new Error('la planta entera no calcula: ' + r.plant);
+  if (ms > 3000) throw new Error('el instante de la planta entera tarda ' + ms + ' ms');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {

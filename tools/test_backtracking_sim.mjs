@@ -2004,6 +2004,49 @@ console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)'
   });
 }
 
+console.log('v1.44 · la ventana no parte trackers · la planta entera');
+{
+  const cotasA = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const cotasS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  const monos = (P) => {
+    const cnt = new Map();
+    P.segTrk.forEach(l => l.forEach(tk => cnt.set(tk, (cnt.get(tk) || 0) + 1)));
+    let m = 0; for (const [tk, n] of cnt) if (n !== filasDe(tk)) m++;
+    return { m, trk: cnt.size };
+  };
+  t('la ventana de maxLines NUNCA deja un tracker con una sola fila (Ayora 80/30, San José 80) — antes 2 y 10 monofilas', () => {
+    for (const [cotas, ml, nombre] of [[cotasA, 80, 'Ayora 80'], [cotasA, 30, 'Ayora 30'], [cotasS, 80, 'San José 80'], [cotasS, 40, 'San José 40']]) {
+      const P = F.plantFromCotas(cotas, ml, null);
+      const r = monos(P);
+      if (r.m) throw new Error(nombre + ': ' + r.m + ' trackers partidos por la ventana (' + r.trk + ' trackers, ' + P.elev.length + ' líneas, huérfanas ' + P.huerfanas + ')');
+      // el contrato «hasta N líneas» se mantiene: la ventana limpia tiene N, y si
+      // no la hay se encoge (nunca amplía); lo que quede huérfano se quita y se cuenta
+      if (!(P.elev.length <= ml && P.elev.length >= ml - 4)) throw new Error(nombre + ': la ventana se fue a ' + P.elev.length + ' líneas');
+      if (P.huerfanas > 4) throw new Error(nombre + ': ' + P.huerfanas + ' filas huérfanas quitadas');
+    }
+  });
+  t("blockIdx 'all' es la PLANTA ENTERA: todas las líneas y todas las filas, sin ventana, y cada tracker con sus dos filas", () => {
+    const P = F.plantFromCotas(cotasA, Infinity, 'all');
+    const nT = cotasA.t.filter(Boolean).length, nF = cotasA.t.filter(Boolean).reduce((a, tk) => a + filasDe(tk), 0);
+    if (P.block !== 'all') throw new Error('block = ' + P.block);
+    if (P.nFilas !== nF) throw new Error(P.nFilas + ' filas de ' + nF);
+    const r = monos(P);
+    if (r.trk !== nT || r.m) throw new Error(r.trk + ' trackers de ' + nT + ', ' + r.m + ' partidos');
+    const total = P.blocks.reduce((a, b) => a + b.lines, 0);
+    if (P.elev.length !== total) throw new Error(P.elev.length + ' líneas ≠ Σ bloques ' + total);
+    // los huecos entre bloques quedan como VANOS grandes (sin solape ⇒ Δz 0), y el resto de vanos son el pitch
+    const grandes = P.pairs ? 0 : 0;
+    let big = 0; for (let i = 0; i < P.lineX.length - 1; i++) if (P.lineX[i + 1] - P.lineX[i] > 2.5 * P.pitch) big++;
+    if (big !== P.blocks.length - 1) throw new Error(big + ' vanos grandes para ' + P.blocks.length + ' bloques');
+    // y la ventana de 80 del simulador sigue siendo un SUBCONJUNTO exacto de la planta entera (misma geometría por línea)
+    const W = F.plantFromCotas(cotasA, 80, null);
+    const xs = new Set(P.lineXAbs.map(v => v.toFixed(3)));
+    for (const x of W.lineXAbs) if (!xs.has(x.toFixed(3))) throw new Error('la ventana tiene una línea que la planta entera no: x=' + x);
+    void grandes;
+  });
+}
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

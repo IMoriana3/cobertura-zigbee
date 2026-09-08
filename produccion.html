@@ -613,6 +613,14 @@ function elburgoGroups(xs,trackers){
   return out;
 }
 
+/* la planta de COTAS entera, sin ventana ni bloque (v1.15): el simulador carga
+   el bloque mayor recortado a 80 líneas porque su día × políticas lo pide;
+   esta tarjeta calcula un instante (0,5 s al alba con 80 líneas, ~1,2 s con las
+   295 de Ayora) y puede enseñar la planta de verdad — «Ayora entera» eran 402
+   de 751 trackers y el corte de la ventana dejaba monofilas en los bordes.
+   Vale también para el ámbito de una NCU (puede cruzar un camino). */
+function plantaCotas(F,cotas){return F.plantFromCotas(cotas,Infinity,'all');}
+
 /* NCU por tracker cuando layout y cotas NO van alineados 1:1 (Ayora lo
    estuvo: 751 trackers en el layout y 754 en las cotas hasta regenerar las
    cotas con el as-built de 751 — v1.13.1): casado por COORDENADAS (x de la
@@ -772,7 +780,7 @@ async function cargaCotas(key){
   const [cotas,lay]=await Promise.all([
     fetch(cfg2.cotas,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.cotas+' '+r.status);return r.json();}),
     fetch(cfg2.layout,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(cfg2.layout+' '+r.status);return r.json();})]);
-  const P=F.plantFromCotas(cotas,80,null);   // el bloque mayor, como el simulador
+  const P=plantaCotas(F,cotas);              // la planta ENTERA (v1.15), no el bloque mayor a 80 líneas
   // NCU por tracker: layout alineado 1:1 con las cotas (la receta del
   // simulador; Ayora y San José lo están) y, si NO alinean, casado por
   // coordenadas — solo si casa de verdad (>90 %); si no, sin NCUs antes que
@@ -790,7 +798,7 @@ async function cargaCotas(key){
 function aplicaAmbitoCotas(v){
   let data=RP.cotas;
   if(v!==''&&RP.ncuOf)data=Object.assign({},RP.cotas,{t:RP.cotas.t.filter((_,i)=>RP.ncuOf[i]===+v)});
-  RP.P=F.plantFromCotas(data,80,null);
+  RP.P=plantaCotas(F,data);
   $('nrows').value=RP.P.elev.length;$('pitch').value=RP.P.pitch.toFixed(2);
 }
 
