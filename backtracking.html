@@ -1060,7 +1060,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   let nMid=0,nCnt=0;
   for(const L of band)for(const f of L.f){nMid+=(f.n0+f.n1)/2;nCnt++;}
   nMid/=Math.max(nCnt,1);
-  const segZ=[];
+  const segZ=[],segTilt=[],segTrk=[];
   for(const L of band){
     let e=0,tw=0,wt=0;
     const sg=[];
@@ -1070,13 +1070,18 @@ function plantFromCotas(data,maxLines,blockIdx){
       tw+=Math.atan2(f.y1-f.y0,f.n1-f.n0)*len; wt+=len;
       const asc=f.n0<=f.n1;
       sg.push({s:[Math.min(f.n0,f.n1)-nMid,Math.max(f.n0,f.n1)-nMid],
-               z:asc?[f.y0,f.y1]:[f.y1,f.y0]});
+               z:asc?[f.y0,f.y1]:[f.y1,f.y0],trk:f.trk});
     }
     sg.sort((a,b)=>a.s[0]-b.s[0]);
     elev.push(e/L.f.length);
     tilt.push(wt>0?(tw/wt)*DEG:0);
     segs.push(sg.map(o=>o.s));
     segZ.push(sg.map(o=>o.z));
+    // tilt N-S de CADA MESA (fila medida): la z de sus dos extremos, sin
+    // promediar por línea — es lo que su TCU ve y lo que la transposición
+    // necesita mesa a mesa (v1.41, «el tilt por mesa»)
+    segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
+    segTrk.push(sg.map(o=>o.trk));
   }
   const eMean=elev.reduce((s,v)=>s+v,0)/elev.length;
   for(let i=0;i<elev.length;i++)elev[i]-=eMean;
@@ -1139,7 +1144,15 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   for(let li=0;li<band.length;li++)if(!usedLine.has(li))groups.push([li]);
   groups.sort((x,y)=>x[0]-y[0]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
+  // parejas bifila EXACTAS por mesa: las dos filas de un mismo tracker, cada
+  // una con su (línea, tramo). Aquí no hace falta el «mayoritario por línea»:
+  // el acople por mesa respeta el tresbolillo real del emparejado
+  const byTrk=new Map();
+  segTrk.forEach((l,li)=>l.forEach((t,k)=>{if(!byTrk.has(t))byTrk.set(t,[]);byTrk.get(t).push([li,k]);}));
+  const segPairs=[];
+  for(const v of byTrk.values())if(v.length===2&&v[0][0]!==v[1][0])segPairs.push(v);
+  segPairs.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
@@ -1390,10 +1403,15 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   // visor del vano y shadeFracPair. Antes el contador 3D la llevaba a fuego y
   // había dos verdades para el mismo número.
   const zOff=(T.z0!=null&&isFinite(T.z0))?T.z0:REC_OFF;
+  // θ por TRAMO cuando la consigna viene por mesa (rowAngles[e] = array por
+  // tramo, v1.41); con el escalar de siempre, el mismo ángulo en cada tramo —
+  // y la misma aritmética: las cuentas por fila no cambian ni un bit
+  const thOf=(e,k)=>Array.isArray(rowAngles[e])?rowAngles[e][k]:rowAngles[e];
   const planes=[];
   for(let e=0;e<nR;e++){
-    const thE=rowAngles[e]*RAD;
-    for(const sg of segsOf(e)){
+    const sgE=segsOf(e);
+    for(let kE=0;kE<sgE.length;kE++){
+      const sg=sgE[kE], thE=thOf(e,kE)*RAD;
       const w0=Math.min(sg[0],sg[1]), w1=Math.max(sg[0],sg[1]);
       const z0e=cot(e,w0), z1e=cot(e,w1);
       const sE=(z1e-z0e)/((w1-w0)||1);
@@ -1449,11 +1467,13 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     return Math.min(1,(len+ch-cl)/T.cw);
   };
   const elec=new Array(nR).fill(0), plOnly=new Array(nR).fill(0);
+  const segOut=new Array(nR), segElec=new Array(nR);   // por TRAMO (v1.41)
   let elecSum=0,nCol=0;
   // precálculo del denominador por plano (no depende del receptor)
   for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
   for(let r=0;r<nR;r++){
-    const thR=rowAngles[r]*RAD;
+    let thR=thOf(r,0)*RAD;
+    segOut[r]=[];segElec[r]=[];
     // PODA por fila: solo los planos del lado del sol dentro del alcance,
     // ordenados por cercanía (la emisora más próxima suele impactar primero)
     // — sin esto el contador a todas horas costaba minutos, no segundos
@@ -1469,10 +1489,14 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02;
       cands.push({pl:pl,adx:Math.abs(dx),lo:pl.w0+shf-slack,hi:pl.w1+shf+slack});
     }
-    if(!cands.length){out[r]=0;elec[r]=0;plOnly[r]=0;continue;}
+    if(!cands.length){out[r]=0;elec[r]=0;plOnly[r]=0;segOut[r]=segsOf(r).map(()=>0);segElec[r]=segsOf(r).map(()=>0);continue;}
     cands.sort((a,b)=>a.adx-b.adx);
     let hit=0,N=0,hitP=0;
-    for(const sg of segsOf(r)){
+    const sgR=segsOf(r);
+    for(let kR=0;kR<sgR.length;kR++){
+      const sg=sgR[kR];
+      thR=thOf(r,kR)*RAD;
+      let hitS=0,NS=0,elecS=0;                        // la cuenta de ESTE tramo
       const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
       const cSeg=cands.filter(c=>c.hi>=v0&&c.lo<=v1).map(c=>c.pl);
       // por ESTACIÓN axial: la sombra 3D es parcheada — Martinez se aplica a
@@ -1580,7 +1604,10 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         }
         hit+=fCol; N++; hitP+=fPl;
         elecSum+=elecLoss(fCol,T.nBypass); nCol++;
+        hitS+=fCol; NS++; elecS+=elecLoss(fCol,T.nBypass);   // la cuenta de este tramo (v1.41)
       }
+      segOut[r].push(NS?hitS/NS:0);
+      segElec[r].push(NS?elecS/NS:0);
     }
     out[r]=N?hit/N:0;
     plOnly[r]=N?hitP/N:0;
@@ -1589,6 +1616,8 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   }
   out.elec=elec;
   out.pl=plOnly;            // sombra contando SOLO planos de módulo
+  out.seg=segOut;           // fracción óptica por TRAMO (mesa)
+  out.segElec=segElec;      // pérdida Martinez por TRAMO
   return out;
 }
 function shadeRows(zen,az,T,rowAngles){
@@ -1775,6 +1804,111 @@ function poaPlant(zen,az,T,rowAngles,irr,doy,albedo,fast){
   }
   const n=rowAngles.length;
   return {rows:rows,plant:sum/n,plantHi:(sum+cOpt)/n,plantLo:(sum-(cEle-cOpt))/n,shade:sh};
+}
+
+/* ═══ POR MESA (fila medida), no por línea — v1.41 ═══════════════════════════
+   Las cotas traen la z de los DOS extremos de CADA fila: cada mesa es un
+   seguidor con su propio tilt N-S (T.segTilt[r][k]) y su propia pareja bifila
+   (T.segPairs: las dos filas de un mismo tracker, exactas). Aquí θ y POA se
+   calculan por mesa; la LÍNEA sigue siendo la unidad de la geometría de
+   sombra (sus vecinas E-O y el ray-cast, que ya iba con cotas por tramo) y el
+   agregado por fila es la media ponderada por largo. Sin T.segTilt, todo esto
+   es la IDENTIDAD del modelo por línea (θ de la línea en cada tramo y POA
+   bit a bit) — el QA lo exige. */
+function segTiltAt(T,r,k){
+  return (T.segTilt&&T.segTilt[r]&&T.segTilt[r][k]!=null)?T.segTilt[r][k]:rowTiltAt(T,r);
+}
+function segZAt(T,r,k,v){                   // cota del eje de la mesa (r,k) en el norte v
+  const P=T.real;
+  if(!P||!P.segZ||!P.segZ[r]||!P.segZ[r][k]||!P.segs[r]||!P.segs[r][k])return null;
+  const s=P.segs[r][k], z=P.segZ[r][k];
+  const t=Math.max(0,Math.min(1,(v-s[0])/((s[1]-s[0])||1)));
+  return z[0]+t*(z[1]-z[0]);
+}
+function segsBroadcast(T,rowVals){          // el valor de la línea en cada uno de sus tramos
+  return (T.segs||[]).map((l,r)=>l.map(()=>rowVals[r]));
+}
+function anglesAstroSeg(zen,az,T){
+  const rows=anglesAstro(zen,az,T);
+  if(!T.segTilt||!T.segs)return segsBroadcast(T,rows);
+  return T.segs.map((l,r)=>l.map((sg,k)=>nan0(singleaxis(zen,az,{axisTilt:segTiltAt(T,r,k),
+    axisAz:T.axisAz,maxAngle:T.maxAngle,backtrack:false,gcr:T.gcr,crossAxisTilt:0}))));
+}
+/* pairwise por MESA: para cada mesa, sus vecinas de las líneas contiguas que
+   SOLAPAN en N; con cada una, el BT de pvlib con la pendiente E-O medida en el
+   solape (la misma regla de signo que pairsFromElevX: oeste→este) y el tilt
+   medio de las dos mesas; la mesa adopta el min|θ| de todas ellas (la regla
+   de la fila interior, llevada a la mesa). Sin vecina que solape, no hay a
+   quién sombrear: el BT de su línea. */
+function anglesPairwiseSeg(zen,az,T){
+  const rowsBT=anglesPairwise(zen,az,T);
+  if(!T.segTilt||!T.segs)return segsBroadcast(T,rowsBT);
+  const nR=T.pairs.length+1, out=[];
+  for(let r=0;r<nR;r++){
+    const line=T.segs[r]||[], o=[];
+    for(let k=0;k<line.length;k++){
+      const sg=line[k], tk=segTiltAt(T,r,k);
+      let best=null;
+      for(const [rn,p] of [[r-1,r-1],[r+1,r]]){
+        if(rn<0||rn>=nR||!T.segs[rn]||!T.pairs[p])continue;
+        const pr=T.pairs[p];
+        for(let kn=0;kn<T.segs[rn].length;kn++){
+          const sn=T.segs[rn][kn];
+          const lo=Math.max(sg[0],sn[0]),hi=Math.min(sg[1],sn[1]);
+          if(hi<=lo)continue;
+          const mid=(lo+hi)/2, za=segZAt(T,r,k,mid), zb=segZAt(T,rn,kn,mid);
+          const slope=(za!=null&&zb!=null)
+            ?Math.atan2(rn>r?za-zb:zb-za,pr.pitch)*DEG
+            :pr.slope;
+          const th=nan0(singleaxis(zen,az,{axisTilt:(tk+segTiltAt(T,rn,kn))/2,axisAz:T.axisAz,
+            maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/pr.pitch,crossAxisTilt:slope}));
+          if(best===null||Math.abs(th)<Math.abs(best))best=th;
+        }
+      }
+      o.push(best===null?rowsBT[r]:best);
+    }
+    out.push(o);
+  }
+  return out;
+}
+/* acople bifila por MESA: las dos filas de un tracker van al MISMO θ, el
+   min|θ| de las dos (reducir |θ| desde un backtracking nunca crea sombra) */
+function applyDriveSeg(segAngles,segPairs){
+  if(!segPairs||!segPairs.length)return segAngles;
+  const out=segAngles.map(l=>l.slice());
+  for(const [[r1,k1],[r2,k2]] of segPairs){
+    if(!out[r1]||!out[r2]||out[r1][k1]==null||out[r2][k2]==null)continue;
+    const a=out[r1][k1],b=out[r2][k2], m=Math.abs(a)<=Math.abs(b)?a:b;
+    out[r1][k1]=m;out[r2][k2]=m;
+  }
+  return out;
+}
+function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
+  if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),T.segPairs||null);
+  if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),T.segPairs||null);
+  return segsBroadcast(T,policyAngles(key,zen,az,T,irr,doy,albedo).angles);   // el resto sigue por línea
+}
+/* POA por MESA: transposición con el tilt y el θ de cada mesa, sombra del
+   contador 3D por tramo (Martinez por estación, como la fila). Fila = media
+   ponderada por largo de sus mesas; planta = media por fila (como poaPlant). */
+function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
+  const sh=shadeRows(zen,az,T,segAngles);
+  const rows=[],segs=[];let sum=0;
+  for(let r=0;r<segAngles.length;r++){
+    const line=T.segs?T.segs[r]:null, o=[];
+    let acc=0,wt=0;
+    for(let k=0;k<segAngles[r].length;k++){
+      const p=poaRow(segAngles[r][k],segTiltAt(T,r,k),T.axisAz,zen,az,irr,doy,albedo,T.iam);
+      const fo=Math.max(0,Math.min(1,(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:(sh[r]||0)));
+      const se=(sh.segElec&&sh.segElec[r]&&sh.segElec[r][k]!=null)?sh.segElec[r][k]:elecLoss(fo,T.nBypass);
+      const v=p.beam*(1-se)+p.circ*(1-fo)+p.sky+p.gnd;
+      const len=line&&line[k]?Math.max(1e-6,line[k][1]-line[k][0]):1;
+      o.push(v);acc+=v*len;wt+=len;
+    }
+    const rv=wt>0?acc/wt:0;
+    rows.push(rv);segs.push(o);sum+=rv;
+  }
+  return {rows:rows,segs:segs,plant:segAngles.length?sum/segAngles.length:0,shade:sh};
 }
 
 /* energy-optimal (Deeptrack): θ_c(f)=θ_bt+f·(θ_full−θ_bt), MISMA f para todas
@@ -2396,7 +2530,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.40.0';
+const VER='v1.41.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

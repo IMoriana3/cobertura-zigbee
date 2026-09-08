@@ -295,9 +295,11 @@ function buildT(F,c,elev){
 
 /* T desde una planta de COTAS REALES — P = plantFromCotas(<planta>_cotas.json),
    el MISMO cargador del simulador de BT 3D (vive en su FÍSICA PURA): cotas z
-   de cada EXTREMO de mesa → tilt N-S medido por línea, pitch real por vano y
-   Δz por pareja medido en el SOLAPE norte (pairDz). Esta construcción es la
-   del ramo real de terrain() del simulador, sin los deltas del editor. */
+   de cada EXTREMO de mesa → tilt N-S medido POR MESA (segTilt, v1.41 del
+   simulador; el de línea es la media ponderada por largo), parejas bifila
+   exactas (segPairs: dos mesas del mismo trk), pitch real por vano y Δz por
+   pareja medido en el SOLAPE norte (pairDz). Esta construcción es la del
+   ramo real de terrain() del simulador, sin los deltas del editor. */
 function buildTReal(F,c,P){
   const pairs=[];
   for(let i=0;i<P.lineX.length-1;i++){
@@ -310,7 +312,8 @@ function buildTReal(F,c,P){
   // aquí igual, para que el BT sea EL MISMO, no un pariente
   return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
           z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
-          segs:P.segs,filaLen:2*28*1.146+0.55,real:P};
+          segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // por MESA (v1.13): cada fila medida con su tilt y su pareja
+          filaLen:2*28*1.146+0.55,real:P};
 }
 
 /* ── cadena DC del Notebook (solargpt_core, la MISMA que notebook/streamlit):
@@ -353,15 +356,17 @@ function invMapUniforme(nrows,ninv){
 /* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
    POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
    fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
-function strPdc(rowsPoa,strInv,met,e){
+function strPdc(rowsPoa,strInv,met,e,segPoa){
   const out=[];
   for(let r=0;r<rowsPoa.length;r++){
     const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
     for(const s of strInv[r]){
-      // entrada 'inv' (un string de e.mods módulos) o {inv,mods} (una FILA de
-      // cotas con sus módulos medidos): la Pdc escala con los módulos reales
-      if(typeof s==='string')out.push({inv:s,row:r,pdcW:p});
-      else out.push({inv:s.inv,row:r,pdcW:s.mods===e.mods?p:pStringW(rowsPoa[r],met.tamb,met.wind,Object.assign({},e,{mods:s.mods}))});
+      // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k} (una FILA de
+      // cotas con sus módulos medidos y, si hay POA por mesa, la SUYA)
+      if(typeof s==='string'){out.push({inv:s,row:r,pdcW:p});continue;}
+      const poa=(segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r];
+      const e2=s.mods===e.mods?e:Object.assign({},e,{mods:s.mods});
+      out.push({inv:s.inv,row:r,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
     }
   }
   return out;
@@ -375,7 +380,7 @@ function strPdc(rowsPoa,strInv,met,e){
    plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
 function strInvCotas(segs,invRows,pitchMod,gapDrive){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
-  return segs.map((l,r)=>l.map(sg=>({inv:invRows[r],mods:Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm))})));
+  return segs.map((l,r)=>l.map((sg,k)=>({inv:invRows[r],k:k,mods:Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm))})));
 }
 /* la cadena entera de un instante, por INVERSOR: Σ Pdc de sus strings →
    pérdidas DC → curva del inversor (recorte incluido) → suma de planta →
@@ -399,7 +404,7 @@ function dayAC(F,c,T,strInv,a,stepMin){
   let edc=0,eac=0,ered=0;
   for(let m=0;m<1440;m+=st){
     const r=instant(F,c,T,m);
-    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec),a);
+    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs),a);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
   }
@@ -658,8 +663,18 @@ function instant(F,c,T,m){
   }
   const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
                     :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
+  // POR MESA (v1.13): con tilt por mesa en la T (cotas), θ y POA se calculan
+  // mesa a mesa con policyAnglesSeg/poaPlantSeg del simulador; rows = media
+  // ponderada por largo de las mesas de cada línea. MANUAL difunde su θ.
+  if(T.segTilt&&T.segs&&F.poaPlantSeg){
+    const segAng=c.manual?T.segs.map((l,r)=>l.map(()=>ang[r]))
+                         :F.policyAnglesSeg('pairwise',zen,az,T,irr,doy,c.albedo);
+    const ps=F.poaPlantSeg(zen,az,T,segAng,irr,doy,c.albedo);
+    return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:segAng,rows:ps.rows,segs:ps.segs,
+            plant:ps.plant,shade:ps.shade};
+  }
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
-  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,rows:pp.rows,plant:pp.plant,shade:pp.shade};
+  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:null,rows:pp.rows,segs:null,plant:pp.plant,shade:pp.shade};
 }
 
 /* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
@@ -707,7 +722,8 @@ async function cargaFisica(){
     const src=html.slice(html.lastIndexOf('/*',i0),i1);
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
-              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles};`)();
+              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
+              policyAnglesSeg,poaPlantSeg,anglesAstroSeg};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -917,14 +933,14 @@ function build3D(c){
   // Se TIÑE por cota (bajo oscuro → alto claro): el relieve se lee de un vistazo.
   const gz=-(sMin+sMax)/2;
   const hLinea=(r,sceneZ)=>{           // cota del suelo bajo la línea r en esa N
-    const tl=T.tilt?Math.sin(T.tilt[r]*D2R):0;
-    if(!tl)return T.elev[r];
+    if(!T.tilt&&!T.segTilt)return T.elev[r];
     let best=0,bd=Infinity;
-    for(const sg of segsNS[r]){
+    segsNS[r].forEach((sg,k)=>{
+      const tl=Math.sin((T.segTilt?T.segTilt[r][k]:T.tilt[r])*D2R);   // el tilt de ESA mesa
       const zc=-(sg[0]+sg[1])/2, h=Math.max(1,(sg[1]-sg[0])/2);
       const d=Math.abs(sceneZ-zc);
       if(d<bd){bd=d;best=Math.max(-h,Math.min(h,sceneZ-zc))*tl;}
-    }
+    });
     return T.elev[r]+best;
   };
   {const pos=gnd.geometry.attributes.position;
@@ -971,15 +987,18 @@ function build3D(c){
   }else{
   for(let r=0;r<n;r++){
     const x=rx[r], hubY=T.elev[r]+2.0;                        // postH canónico del modelo
-    const tintM=new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
-      side:THREE.DoubleSide,depthWrite:false});
     const spins=[];
-    for(const sg of segsNS[r]){
+    for(let k=0;k<segsNS[r].length;k++){
+      const sg=segsNS[r][k];
+      // un material de tinte POR MESA (v1.13): la producción se pinta mesa a mesa
+      const tintM=new THREE.MeshBasicMaterial({color:0x223344,transparent:true,opacity:0.62,
+        side:THREE.DoubleSide,depthWrite:false});
       const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
       const tiltG=new THREE.Group();
       tiltG.position.set(x,hubY,zc);
-      tiltG.userData={row:r,s0:sg[0],s1:sg[1]};               // para la SELECCIÓN con clic
-      if(T.tilt)tiltG.rotation.x=-T.tilt[r]*D2R;              // tilt N-S MEDIDO de la línea
+      tiltG.userData={row:r,k:k,s0:sg[0],s1:sg[1]};           // para la SELECCIÓN con clic
+      const tiltK=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);
+      if(tiltK)tiltG.rotation.x=-tiltK*D2R;                   // tilt N-S MEDIDO de ESTA mesa
       let built=false;
       const media=hayModelo&&len<0.7*T.obj.filaLen;           // tramo corto ⇒ mesa «media» real
       const mods=hayModelo?Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch)):0;
@@ -1013,7 +1032,7 @@ function build3D(c){
           const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
           sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
           R3.world.add(sop);
-          spins.push({g:beam.spin,model:true});
+          spins.push({g:beam.spin,model:true,mat:tintM,k:k});
           built=true;
         }catch(e){built=false;}
       }
@@ -1028,14 +1047,14 @@ function build3D(c){
         tint.rotation.x=-Math.PI/2;tint.rotation.z=Math.PI/2;tint.position.y=0.20;tint.renderOrder=2;
         gRot.add(tube,panel,tint);
         tiltG.add(gRot);
-        spins.push({g:gRot,model:false});
+        spins.push({g:gRot,model:false,mat:tintM,k:k});
       }
       R3.world.add(tiltG);
       // postes: la retícula de la CASA (Seguidor.pilotesX, proporcional al
       // largo — la regla de terreno.html; los tercios eran una retícula
       // inventada) y LONGITUD VARIABLE que absorbe el terreno: del suelo
       // drapeado bajo su punto al tubo, nunca por encima de los módulos
-      const tl=T.tilt?Math.sin(T.tilt[r]*D2R):0;
+      const tl=Math.sin(tiltK*D2R);
       const zPil=(hayModelo?Seguidor.pilotesX(mods):[-len/3,0,len/3])
         .filter(dn=>Math.abs(dn)<=len/2);   // el medio oculta los exteriores (la regla de terreno.html)
       for(const dn of zPil){
@@ -1046,7 +1065,7 @@ function build3D(c){
         R3.world.add(post);
       }
     }
-    R3.rows.push({spins:spins,mat:tintM});
+    R3.rows.push({spins:spins});
   }
   }// fin del camino de mallas sueltas (modelo/cajas)
   if(hayModelo)Seguidor.setModsPerStr(28);                    // restaurar el canónico compartido
@@ -1164,10 +1183,11 @@ function build3D(c){
 function buildInstanced(c,rx,segsNS,postM,D0){
   const tramos=[];
   for(let r=0;r<c.nrows;r++){
-    const x=rx[r], hubY=T.elev[r]+2.0, tilt=T.tilt?T.tilt[r]:0;
-    for(const sg of segsNS[r]){
-      const len=Math.max(2,sg[1]-sg[0]);
-      tramos.push({row:r,x:x,hubY:hubY,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,s0:sg[0],s1:sg[1]});
+    const x=rx[r], hubY=T.elev[r]+2.0;
+    for(let k=0;k<segsNS[r].length;k++){
+      const sg=segsNS[r][k], len=Math.max(2,sg[1]-sg[0]);
+      const tilt=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);   // tilt de ESTA mesa
+      tramos.push({row:r,k:k,x:x,hubY:hubY,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,s0:sg[0],s1:sg[1]});
     }
   }
   // base por tramo (posición + tilt N-S medido + tubo del modelo a norte) y
@@ -1265,11 +1285,11 @@ function buildInstanced(c,rx,segsNS,postM,D0){
            tmpC:new THREE.Color()};
 }
 /* repintado del instanciado: Q por tramo con el θ de SU fila, y color por tramo */
-function updateInstanced(c,vals,mn,mx,norm,inst){
+function updateInstanced(c,vals,mn,mx,norm,inst,segVals){
   const I=R3.inst,k=c.cw/2.382;
   I.tmpS.makeScale(1,1,k);
   for(const tr of I.tramos){
-    I.tmpR.makeRotationX(inst.ang[tr.row]*D2R);
+    I.tmpR.makeRotationX((inst.segAng?inst.segAng[tr.row][tr.k]:inst.ang[tr.row])*D2R);
     tr.Q.copy(tr.pre).multiply(I.tmpR).multiply(I.tmpS);
   }
   for(const g of I.spinMeshes){
@@ -1281,7 +1301,8 @@ function updateInstanced(c,vals,mn,mx,norm,inst){
   }
   for(let ti=0;ti<I.tramos.length;ti++){
     const tr=I.tramos[ti];
-    I.tmpC.set(ramp(norm(vals[tr.row],mn,mx)));
+    const sv=(segVals&&segVals[tr.row]&&segVals[tr.row][tr.k]!=null)?segVals[tr.row][tr.k]:vals[tr.row];
+    I.tmpC.set(ramp(Math.max(0,Math.min(1,norm(sv,mn,mx)))));
     for(let s2=0;s2<2;s2++){
       I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ti*2+s2,I.tmpM);
       I.tint.setColorAt(ti*2+s2,I.tmpC);
@@ -1322,7 +1343,7 @@ function repaint(){
   }else if(mode==='pinst'){
     vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else if(mode==='acinst'){
-    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec),c.ac);
+    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs),c.ac);
     const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
     vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
     invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
@@ -1350,14 +1371,18 @@ function repaint(){
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
   const norm=(v,lo,hi)=>{const s=hi-lo;return s>Math.max(1e-9,Math.abs(hi)*1e-3)?(v-lo)/s:0.5;};
   paintLegend(mn,mx,unit,fmt);
-  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst);
+  // por MESA (v1.13): en los modos de instante cada mesa lleva SU valor (POA o
+  // P de la mesa) y SU θ; los agregados de día/período van por línea
+  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
+  if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals);
   else for(let r=0;r<c.nrows;r++){
-    const x01=norm(vals[r],mn,mx), col=ramp(x01);
     if(R3.rows&&R3.rows[r]){
-      const th=inst.ang[r]*D2R;
-      for(const sp of R3.rows[r].spins)                       // mismo convenio que el update3D del simulador
+      for(const sp of R3.rows[r].spins){                      // mismo convenio que el update3D del simulador
+        const th=(inst.segAng?inst.segAng[r][sp.k]:inst.ang[r])*D2R;
         if(sp.model)sp.g.rotation.x=th; else sp.g.rotation.z=-th;
-      R3.rows[r].mat.color.set(col);
+        const sv=(segVals&&segVals[r]&&segVals[r][sp.k]!=null)?segVals[r][sp.k]:vals[r];
+        sp.mat.color.set(ramp(Math.max(0,Math.min(1,norm(sv,mn,mx)))));
+      }
     }
   }
   const chips=[];
@@ -1410,7 +1435,7 @@ function repaint(){
 /* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
    (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
 function paintACline(inst,c,acDay){
-  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec),c.ac);
+  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs),c.ac);
   const f1=v=>(v/1000).toFixed(1);
   let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
@@ -1491,7 +1516,7 @@ function exportCSV(){
       filas.push([id,T.xs[r],d.vals[r]]);
     }
   }
-  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec),c.ac);
+  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs),c.ac);
   filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
     ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
     ['AC_instante','red_kW',a.redW/1000]);
@@ -1572,11 +1597,17 @@ function repaintPick(){
           (ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
           ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m';
     }
+  }else if(T.segTilt&&PICK.k!=null){
+    txt+=' · mesa '+(PICK.k+1)+'/'+T.segs[r].length+' · tilt N-S de la mesa '+T.segTilt[r][PICK.k].toFixed(2)+
+         '° (línea '+T.tilt[r].toFixed(2)+'°) · cota '+T.elev[r].toFixed(2)+' m';
   }else if(T.tilt){
     txt+=' · tilt N-S '+T.tilt[r].toFixed(2)+'° · cota '+T.elev[r].toFixed(2)+' m';
   }
-  txt+=' — <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · θ '+d.inst.ang[r].toFixed(1)+'° · sombra '+
-       (100*(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0)).toFixed(1)+' %';
+  const kk=PICK.k, seg=d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null;
+  const shSeg=(d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r]&&kk!=null)?d.inst.shade.seg[r][kk]:null;
+  txt+=' — <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b>'+(seg&&d.mode==='inst'?' (línea; la mesa: <b>'+d.inst.segs[r][kk].toFixed(0)+' W/m²</b>)':'')+
+       ' · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+'° · sombra '+
+       (100*(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0))).toFixed(1)+' %';
   el.innerHTML=txt;el.style.display='';
 }
 
@@ -1741,14 +1772,14 @@ function repaintPick(){
     if(!obj&&!tramo){clearPick();return;}
     if(pickHelper)R3.scene.remove(pickHelper);
     if(tramo){
-      PICK={row:tramo.row,s0:tramo.s0,s1:tramo.s1};
+      PICK={row:tramo.row,k:tramo.k,s0:tramo.s0,s1:tramo.s1};
       const c2=cfg();
       const box=new THREE.Box3(
         new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,tramo.zc-tramo.len/2),
         new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,tramo.zc+tramo.len/2));
       pickHelper=new THREE.Box3Helper(box,0x36d399);
     }else{
-      PICK={row:obj.userData.row,s0:obj.userData.s0,s1:obj.userData.s1};
+      PICK={row:obj.userData.row,k:obj.userData.k,s0:obj.userData.s0,s1:obj.userData.s1};
       pickHelper=new THREE.BoxHelper(obj,0x36d399);
     }
     R3.scene.add(pickHelper);
