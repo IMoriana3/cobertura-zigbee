@@ -1935,6 +1935,75 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
   });
 }
 
+console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const pairs = [];
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+  }
+  const T = { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+              rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // 07:30 local: sol bajo del este (a las 06:40 aún no ha salido)
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('shadeBand3DAll publica la sombra por ALA de cada tramo y la media de las dos alas ES el tramo (8 estaciones, 4 por ala)', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const sh = F.shadeRows(zen, az, T, seg);
+    if (!sh.wing || !sh.wingElec) throw new Error('sin out.wing / out.wingElec');
+    let n = 0, dist = 0;
+    sh.seg.forEach((l, r) => l.forEach((v, k) => {
+      const w = sh.wing[r][k], we = sh.wingElec[r][k];
+      if (!w || w.length !== 2 || !we || we.length !== 2) throw new Error(`tramo ${r}/${k} sin sus dos alas`);
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-12) throw new Error(`tramo ${r}/${k}: alas ${w} ≠ tramo ${v}`);
+      if (Math.abs((we[0] + we[1]) / 2 - sh.segElec[r][k]) > 1e-12) throw new Error(`tramo ${r}/${k}: Martinez por ala ≠ tramo`);
+      for (const f of w) if (!(f >= 0 && f <= 1)) throw new Error('fracción por ala fuera de [0,1]');
+      n++; if (Math.abs(w[0] - w[1]) > 0.01) dist++;
+    }));
+    if (!(dist > 0)) throw new Error('al alba ninguna mesa tiene alas con sombra distinta (' + n + ' tramos): la cuenta por ala es vacía');
+  });
+
+  t('el ala 0 es el SUR (n bajo): un emisor que solo tapa el extremo sur de la receptora carga el ala 0', () => {
+    // dos líneas cortas y llanas; la emisora (oeste) SOLO existe en la mitad sur
+    // de la receptora, con el sol en el ESTE y bajo la sombra va hacia el oeste…
+    // así que se pone la emisora al ESTE de la receptora (sol del este ⇒ la
+    // sombra viaja al oeste, del emisor al receptor)
+    const T2 = { pairs: [{ slope: 0, pitch: 5, axisTilt: 0 }], cw: 2.38, axisAz: 0, maxAngle: 55, gcr: 2.38 / 5, z0: 0.17,
+                 nBypass: 2, iam: 0.05, rowTilt: [0, 0], groups: null, drive: 'mono',
+                 segs: [[[-30, 30]], [[-30, 0]]] };   // receptora = línea 0 (oeste, entera); emisora = línea 1 (este), solo en n<0 (SUR)
+    const g2 = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // sol del este, bajo (07:30 local)
+    const z2 = 90 - g2.elev;
+    if (!(g2.az > 45 && g2.az < 135)) throw new Error('el sol no está en el este: az ' + g2.az);
+    // las dos filas SIGUEN al sol (astro: de cara al este, sin backtracking):
+    // horizontales no se sombrean nunca — la sombra de un plano a la altura h
+    // sobre otro a la misma h es el propio borde
+    const ang = F.anglesAstro(z2, g2.az, T2);
+    if (!(Math.abs(ang[0]) > 20)) throw new Error('el astro no inclina las filas al alba: ' + ang);
+    const sh = F.shadeRows(z2, g2.az, T2, ang);
+    const w = sh.wing[0][0];
+    if (!(sh.seg[0][0] > 0.02)) throw new Error('la receptora no se sombrea: ' + sh.seg[0][0]);
+    if (!(w[0] > w[1] + 0.02)) throw new Error('el ala SUR (0) no es la sombreada: ' + w);
+  });
+
+  t('poaPlant y poaPlantSeg publican la POA por ala y la media de las alas es la POA de la mesa', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    if (!ps.wings) throw new Error('poaPlantSeg sin wings');
+    ps.segs.forEach((l, r) => l.forEach((v, k) => {
+      const w = ps.wings[r][k];
+      if (!w) throw new Error('mesa sin alas');
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-9 * Math.max(1, v)) throw new Error(`mesa ${r}/${k}: ${w} ≠ ${v}`);
+    }));
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const pp = F.poaPlant(zen, az, T, rows, irr, doy, 0.2);
+    if (!pp.wings || pp.wings.length !== rows.length) throw new Error('poaPlant sin wings por fila');
+    pp.wings.forEach((l, r) => { if (l.length !== T.segs[r].length) throw new Error('fila ' + r + ': alas para ' + l.length + ' mesas de ' + T.segs[r].length); });
+  });
+}
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

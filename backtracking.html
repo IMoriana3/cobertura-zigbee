@@ -1468,12 +1468,13 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   };
   const elec=new Array(nR).fill(0), plOnly=new Array(nR).fill(0);
   const segOut=new Array(nR), segElec=new Array(nR);   // por TRAMO (v1.41)
+  const wingOut=new Array(nR), wingElec=new Array(nR); // por ALA de cada tramo (v1.43): [sur (n bajo), norte]
   let elecSum=0,nCol=0;
   // precálculo del denominador por plano (no depende del receptor)
   for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
   for(let r=0;r<nR;r++){
     let thR=thOf(r,0)*RAD;
-    segOut[r]=[];segElec[r]=[];
+    segOut[r]=[];segElec[r]=[];wingOut[r]=[];wingElec[r]=[];
     // PODA por fila: solo los planos del lado del sol dentro del alcance,
     // ordenados por cercanía (la emisora más próxima suele impactar primero)
     // — sin esto el contador a todas horas costaba minutos, no segundos
@@ -1489,7 +1490,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02;
       cands.push({pl:pl,adx:Math.abs(dx),lo:pl.w0+shf-slack,hi:pl.w1+shf+slack});
     }
-    if(!cands.length){out[r]=0;elec[r]=0;plOnly[r]=0;segOut[r]=segsOf(r).map(()=>0);segElec[r]=segsOf(r).map(()=>0);continue;}
+    if(!cands.length){out[r]=0;elec[r]=0;plOnly[r]=0;segOut[r]=segsOf(r).map(()=>0);segElec[r]=segsOf(r).map(()=>0);wingOut[r]=segsOf(r).map(()=>[0,0]);wingElec[r]=segsOf(r).map(()=>[0,0]);continue;}
     cands.sort((a,b)=>a.adx-b.adx);
     let hit=0,N=0,hitP=0;
     const sgR=segsOf(r);
@@ -1497,6 +1498,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const sg=sgR[kR];
       thR=thOf(r,kR)*RAD;
       let hitS=0,NS=0,elecS=0;                        // la cuenta de ESTE tramo
+      const hitW=[0,0],NW=[0,0],elecW=[0,0];          // y la de cada ALA (v1.43): un string por ala en la mesa larga
       const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
       const cSeg=cands.filter(c=>c.hi>=v0&&c.lo<=v1).map(c=>c.pl);
       // por ESTACIÓN axial: la sombra 3D es parcheada — Martinez se aplica a
@@ -1605,9 +1607,12 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         hit+=fCol; N++; hitP+=fPl;
         elecSum+=elecLoss(fCol,T.nBypass); nCol++;
         hitS+=fCol; NS++; elecS+=elecLoss(fCol,T.nBypass);   // la cuenta de este tramo (v1.41)
+        {const wg=v<(v0+v1)/2?0:1;hitW[wg]+=fCol;NW[wg]++;elecW[wg]+=elecLoss(fCol,T.nBypass);}   // la estación cae en su ala
       }
       segOut[r].push(NS?hitS/NS:0);
       segElec[r].push(NS?elecS/NS:0);
+      wingOut[r].push([NW[0]?hitW[0]/NW[0]:0,NW[1]?hitW[1]/NW[1]:0]);
+      wingElec[r].push([NW[0]?elecW[0]/NW[0]:0,NW[1]?elecW[1]/NW[1]:0]);
     }
     out[r]=N?hit/N:0;
     plOnly[r]=N?hitP/N:0;
@@ -1618,6 +1623,8 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   out.pl=plOnly;            // sombra contando SOLO planos de módulo
   out.seg=segOut;           // fracción óptica por TRAMO (mesa)
   out.segElec=segElec;      // pérdida Martinez por TRAMO
+  out.wing=wingOut;         // fracción óptica por ALA de cada tramo (v1.43)
+  out.wingElec=wingElec;    // pérdida Martinez por ALA
   return out;
 }
 function shadeRows(zen,az,T,rowAngles){
@@ -1787,8 +1794,10 @@ function poaPlant(zen,az,T,rowAngles,irr,doy,albedo,fast){
   // fast=true: contador 2.5D rápido — SOLO para la búsqueda de optimizadores
   const sh=fast?shadeRows25(zen,az,T,rowAngles):shadeRows(zen,az,T,rowAngles);
   let sum=0, cOpt=0, cEle=0; const rows=[];
+  const wings=sh.wing?[]:null;                     // v1.43: POA de cada ALA de cada mesa (un string por ala)
   for(let r=0;r<rowAngles.length;r++){
     const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo,T.iam);
+    if(wings)wings.push(poaWings(p,sh,r,T.nBypass));
     // sombra parcheada 3D: Martinez por estación axial (sh.elec); banda 2.5D
     // uniforme: Martinez sobre la fracción de fila, como siempre
     const se=(sh.elec&&sh.elec[r]!=null)?sh.elec[r]:elecLoss(sh[r],T.nBypass);
@@ -1803,7 +1812,21 @@ function poaPlant(zen,az,T,rowAngles,irr,doy,albedo,fast){
     rows.push(v); sum+=v;
   }
   const n=rowAngles.length;
-  return {rows:rows,plant:sum/n,plantHi:(sum+cOpt)/n,plantLo:(sum-(cEle-cOpt))/n,shade:sh};
+  return {rows:rows,plant:sum/n,plantHi:(sum+cOpt)/n,plantLo:(sum-(cEle-cOpt))/n,shade:sh,wings:wings};
+}
+/* POA por ALA (v1.43): la misma cuenta que la fila/mesa (beam·(1−Martinez) +
+   circunsolar·(1−óptica) + difusa) con la sombra que el contador 3D midió en
+   CADA ala — la mesa larga lleva un string por ala y se sombrean distinto
+   (el desplazamiento axial de la sombra al alba, la torsión del terreno).
+   Con las estaciones repartidas a partes iguales, la media de las dos alas
+   es EXACTAMENTE la POA de la mesa. */
+function poaWings(p,sh,r,nBypass){
+  const wl=sh.wing[r]||[], el=(sh.wingElec&&sh.wingElec[r])||[];
+  return wl.map((w,k)=>{
+    const we=el[k]||[elecLoss(w[0],nBypass),elecLoss(w[1],nBypass)];
+    const f0=Math.max(0,Math.min(1,w[0])), f1=Math.max(0,Math.min(1,w[1]));
+    return [p.beam*(1-we[0])+p.circ*(1-f0)+p.sky+p.gnd, p.beam*(1-we[1])+p.circ*(1-f1)+p.sky+p.gnd];
+  });
 }
 
 /* ═══ POR MESA (fila medida), no por línea — v1.41 ═══════════════════════════
@@ -1909,11 +1932,13 @@ function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
 function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
   const sh=shadeRows(zen,az,T,segAngles);
   const rows=[],segs=[];let sum=0,sumHi=0,sumLo=0;
+  const wings=sh.wing?[]:null;                     // v1.43: POA de cada ALA de cada mesa
   for(let r=0;r<segAngles.length;r++){
-    const line=T.segs?T.segs[r]:null, o=[];
+    const line=T.segs?T.segs[r]:null, o=[], wo=[];
     let acc=0,wt=0,cOpt=0,cEle=0;
     for(let k=0;k<segAngles[r].length;k++){
       const p=poaRow(segAngles[r][k],segTiltAt(T,r,k),T.axisAz,zen,az,irr,doy,albedo,T.iam);
+      if(wings){const ww=poaWings(p,{wing:[sh.wing[r]&&sh.wing[r][k]?[sh.wing[r][k]]:[]],wingElec:[sh.wingElec&&sh.wingElec[r]&&sh.wingElec[r][k]?[sh.wingElec[r][k]]:[]]},0,T.nBypass);wo.push(ww.length?ww[0]:null);}
       const fo=Math.max(0,Math.min(1,(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:(sh[r]||0)));
       const se=(sh.segElec&&sh.segElec[r]&&sh.segElec[r][k]!=null)?sh.segElec[r][k]:elecLoss(fo,T.nBypass);
       const v=p.beam*(1-se)+p.circ*(1-fo)+p.sky+p.gnd;
@@ -1921,12 +1946,12 @@ function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
       o.push(v);acc+=v*len;wt+=len;cOpt+=p.circ*fo*len;cEle+=p.circ*se*len;
     }
     const rv=wt>0?acc/wt:0;
-    rows.push(rv);segs.push(o);sum+=rv;
+    rows.push(rv);segs.push(o);sum+=rv;if(wings)wings.push(wo);
     // la BANDA del circunsolar, la misma cuenta que poaPlant (por mesa, ponderada)
     sumHi+=rv+(wt>0?cOpt/wt:0);sumLo+=rv-(wt>0?(cEle-cOpt)/wt:0);
   }
   const n=segAngles.length||1;
-  return {rows:rows,segs:segs,plant:segAngles.length?sum/n:0,plantHi:sumHi/n,plantLo:sumLo/n,shade:sh};
+  return {rows:rows,segs:segs,plant:segAngles.length?sum/n:0,plantHi:sumHi/n,plantLo:sumLo/n,shade:sh,wings:wings};
 }
 
 /* energy-optimal (Deeptrack): θ_c(f)=θ_bt+f·(θ_full−θ_bt), MISMA f para todas
@@ -2548,7 +2573,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.42.0';
+const VER='v1.43.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

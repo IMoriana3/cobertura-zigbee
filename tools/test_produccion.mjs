@@ -41,7 +41,7 @@ const S = new Function(sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -425,6 +425,85 @@ t('POR MESA (v1.13): con cotas, instant() calcula θ y POA mesa a mesa con la f�
   const elev = S.elevPreset('pendiente', C.nrows, 4, C.pitch), Tg = S.buildT(S.F, C, elev);
   const rg = S.instant(S.F, C, Tg, 720);
   if (rg.segs !== null || rg.segAng !== null) throw new Error('la genérica se ha ido al camino por mesa sin tilt por mesa');
+});
+
+t('POR ALA (v1.14): la mesa larga son DOS strings, cada uno con la POA de SU ala (sombra por ala del contador 3D)', () => {
+  const P = S.F.plantFromCotas(cotasAyora, 40, null);
+  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
+              nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
+              elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildTReal(S.F, c, P), filaLen = T.filaLen;
+  if (!(filaLen > 60)) throw new Error('buildTReal sin filaLen: ' + filaLen);
+  // la cadena: largas → 2 strings (a: sur, b: norte) con los módulos de la fila repartidos; medias → 1
+  const inv = S.invMapUniforme(c.nrows, 1);
+  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, filaLen), si1 = S.strInvCotas(P.segs, inv);
+  let largas = 0, medias = 0;
+  P.segs.forEach((l, r) => l.forEach((sg, k) => {
+    const ent = si[r].filter(e => e.k === k), uno = si1[r].find(e => e.k === k);
+    if ((sg[1] - sg[0]) >= 0.7 * filaLen) {
+      largas++;
+      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k} larga sin sus dos alas`);
+      if (ent[0].mods + ent[1].mods !== uno.mods) throw new Error(`fila ${r}/${k}: ${ent[0].mods}+${ent[1].mods} ≠ ${uno.mods} módulos`);
+      if (Math.abs(ent[0].mods - ent[1].mods) > 1) throw new Error('alas desiguales');
+    } else { medias++; if (ent.length !== 1 || ent[0].w != null) throw new Error(`fila ${r}/${k} media partida`); }
+  }));
+  if (!(largas > 0)) throw new Error('sin filas largas en Ayora: el careo es vacío');
+  // al ALBA (sol bajo del este, sombra desplazada a lo largo del eje) el
+  // contador reparte la sombra por ala y la POA de cada ala sale de ahí
+  const r = S.instant(S.F, c, T, 7 * 60 + 30);   // 07:30 local: sol a ~7° del este (a las 06:40 aún no ha salido)
+  if (!r.wings || !r.shade.wing) throw new Error('instant() no trae POA/sombra por ala');
+  let n = 0, distintas = 0;
+  for (let i = 0; i < c.nrows; i++) for (let k = 0; k < r.segs[i].length; k++) {
+    const w = r.wings[i][k], sw = r.shade.wing[i][k], ss = r.shade.seg[i][k];
+    if (!w) throw new Error(`mesa ${i}/${k} sin POA por ala`);
+    // con 8 estaciones (4 por ala) la media de las alas ES la mesa, en sombra y en POA
+    if (Math.abs((sw[0] + sw[1]) / 2 - ss) > 1e-12) throw new Error(`mesa ${i}/${k}: sombra alas ${sw} ≠ mesa ${ss}`);
+    if (Math.abs((w[0] + w[1]) / 2 - r.segs[i][k]) > 1e-9 * Math.max(1, r.segs[i][k])) throw new Error(`mesa ${i}/${k}: POA alas ${w} ≠ mesa ${r.segs[i][k]}`);
+    n++; if (Math.abs(w[0] - w[1]) > 1) distintas++;
+  }
+  if (!(distintas > 0)) throw new Error('al alba ninguna mesa tiene alas con POA distinta: la sombra por ala no existe (' + n + ' mesas)');
+  // y la cadena: cada string con su ala; Σ de los dos ≈ la fila entera (la
+  // tcell hace a P ligeramente convexa en POA: <1 %), y en alguna fila los
+  // dos strings difieren de verdad
+  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs, r.wings), por1 = S.strPdc(r.rows, si1, r.met, c.elec, r.segs);
+  const sum = por.reduce((a, e) => a + e.pdcW, 0), sum1 = por1.reduce((a, e) => a + e.pdcW, 0);
+  if (Math.abs(sum - sum1) / sum1 > 0.01) throw new Error('Σ Pdc por alas ' + sum + ' vs por filas ' + sum1);
+  let dif = 0, usa = 0;
+  for (let i = 0; i < por.length - 1; i++) {
+    const a = por[i], b = por[i + 1];
+    if (a.row === b.row && a.k === b.k && a.w === 0 && b.w === 1) {
+      const pa = S.pStringW(r.wings[a.row][a.k][0], r.met.tamb, r.met.wind, { ...c.elec, mods: a.mods });
+      if (Math.abs(pa - a.pdcW) > 1e-9) throw new Error('el string a no come la POA de su ala');
+      usa++; if (Math.abs(a.pdcW - b.pdcW) / Math.max(1, b.pdcW) > 0.01) dif++;
+    }
+  }
+  if (!(usa > 0 && dif > 0)) throw new Error('ningún par de strings de una fila difiere (' + usa + ' pares)');
+  // mutante: sin las alas, los dos strings de cada fila salen iguales POR
+  // MÓDULO (33 y 32 módulos de una fila de 65 dan Pdc distinta sin ser el ala)
+  const sin = S.strPdc(r.rows, si, r.met, c.elec, r.segs, null);
+  let difSin = 0;
+  for (let i = 0; i < sin.length - 1; i++)
+    if (sin[i].row === sin[i + 1].row && sin[i].k === sin[i + 1].k && sin[i].w === 0 &&
+        Math.abs(sin[i].pdcW / sin[i].mods - sin[i + 1].pdcW / sin[i + 1].mods) > 1e-9) difSin++;
+  if (difSin) throw new Error('sin POA por ala los strings de una fila ya difieren por módulo: el careo no mide las alas');
+  // El Burgo: cada string del plano a su mesa y su ala; en la mesa larga, uno por ala
+  const rows = S.elburgoRows(strdb, 3), segsAbs = S.elburgoSegs(rows, layout.trackers);
+  let mn = Infinity, mx = -Infinity; for (const sg of segsAbs.flat()) { mn = Math.min(mn, sg[0]); mx = Math.max(mx, sg[1]); }
+  const nc = (mn + mx) / 2, segs = segsAbs.map(l => l.map(sg => [sg[0] - nc, sg[1] - nc]));
+  const eb = S.elburgoStrInv(rows, segs, nc, filaLen, 28);
+  const porMesa = new Map(); let sinK = 0, conAla = 0, sinAla = 0;
+  eb.forEach((l, i) => l.forEach(e => {
+    if (e.k == null) { sinK++; return; }
+    const key = i + '/' + e.k; if (!porMesa.has(key)) porMesa.set(key, []); porMesa.get(key).push(e.w);
+    if (e.w == null) sinAla++; else conAla++;
+  }));
+  if (sinK) throw new Error(sinK + ' strings de El Burgo sin mesa');
+  for (const [key, ws] of porMesa) {
+    if (ws.length === 2 && !(ws.includes(0) && ws.includes(1))) throw new Error('mesa ' + key + ': dos strings en la misma ala (' + ws + ')');
+    if (ws.length > 2) throw new Error('mesa ' + key + ' con ' + ws.length + ' strings');
+  }
+  if (!(conAla > sinAla)) throw new Error('El Burgo: ' + conAla + ' strings con ala frente a ' + sinAla + ' sin ala — las mesas largas no dominan');
+  if (eb.flat().length !== strdb.count) throw new Error('El Burgo perdió strings: ' + eb.flat().length + ' de ' + strdb.count);
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
