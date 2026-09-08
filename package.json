@@ -1,0 +1,8 @@
+{
+  "name": "cobertura-zigbee",
+  "private": true,
+  "description": "Bancos de pruebas del visor (Playwright). El repo ya versionaba el package-lock, pero no el manifiesto que lo genera: sin el, `npm ci` no arranca y npm reescribe el lock con la version que le apetezca.",
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}
