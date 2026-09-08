@@ -69,6 +69,14 @@ const ORIGEN_EXTERNO = {
   elburgo: 'campo · .bat de Sunner y registro real de la malla, comprobado. Cada NCU tiene DOS HSU, una por gateway (230/231)',
 };
 
+/* Datos de CAMPO por estación SUELTA, para lo que no trae la toolbox de su planta. Con quién lo
+   dijo y cuándo: la fuente manda, y sin fuente aquí no entra nada. */
+const CAMPO = {
+  polvorin: { 2: { ncu: 2, fuente: 'campo · la casa, 2026-09-08. La geometría veía la costura (el '
+    + 'seguidor más cercano es de la NCU 2 a 24 m y el de la 1 está a 27 m) y por orden expresa no '
+    + 'se adivinó; el dato llegó de campo y cayó del lado corto' } },
+};
+
 /* Qué fichero de la toolbox del SCADA es cada planta. Emparejado a mano y revisado. */
 const TOOLBOX = {
   ayora: '24025-ayora.json', sanjose: '24019-san-jose.json', fayon: '24007-fayon.json',
@@ -81,14 +89,14 @@ const NOTA_PLANTA = {
        + 'de El Burgo, donde las dos HSU de una NCU van una por gateway. Lo que se repite en las dos '
        + 'plantas es el PAR 230/231 por NCU; cómo se reparte entre gateways, no. Las otras ocho NCU '
        + 'con HSU llevan una y esclavo 230.',
-  polvorin: 'La HSU 2 se queda SIN NCU a propósito, y no por falta de mirar: cae justo en la COSTURA '
-       + 'de los dos campos. De los 3 seguidores más cercanos, dos son de la NCU 1 y uno de la 2; de '
-       + 'los 10, cinco y cinco; de los 20, diez y diez. El seguidor más cercano es de la NCU 2 a 24 m '
-       + 'y el de la 1 está a 27 m: tres metros. La HSU 1 en cambio es limpia —sus 5 más cercanos son '
-       + 'todos de la NCU 1—. Esta planta no tiene fichero en la toolbox del SCADA ni CSV de cobertura, '
-       + 'y su «GZ» del listado dice 1 y 2, que es indistinguible de un contador (en Bagnarelli ese '
-       + 'mismo campo da 1 y 2 con UNA sola NCU). Lo resolvería un export de la toolbox para 25082 o el '
-       + 'listado del cliente con su columna de NCU. Con la geometría no se puede, y no es opinable.',
+  polvorin: 'La HSU 2 es de la NCU 2 POR DATO DE CAMPO (la casa, 2026-09-08). Estuvo SIN NCU a '
+       + 'propósito: cae en la COSTURA de los dos campos (el seguidor más cercano es de la NCU 2 a '
+       + '24 m y el de la 1 está a 27 m; de los 10 más cercanos, cinco y cinco) y con esa geometría '
+       + 'no se decide — el dato llegó de campo y cayó del lado corto. La HSU 1 sigue DERIVADA (sus '
+       + '5 más cercanos son todos de la NCU 1). Lo que queda: confirmar la HSU 1 y los gateways y '
+       + 'esclavos de las dos, que pide lo mismo de siempre —el export de la toolbox para 25082 o '
+       + 'el listado del cliente—; el «GZ» del listado dice 1 y 2 pero es indistinguible de un '
+       + 'contador (en Bagnarelli da 1 y 2 con UNA sola NCU), así que de fuente no vale.',
 
   sanjose: 'Las OCHO resueltas desde la hoja «Direcciones IP» (2026-08-27), con su NCU y su '
        + 'gateway. Lo que faltaba no era el dato sino saber leerlo: la hoja trae una columna RSU '
@@ -321,7 +329,17 @@ for (const n of nombres) {
       continue;
     }
 
-    /* 2 · procedencia externa declarada: no se toca el valor, solo se etiqueta */
+    /* 2 · dato de campo por estación suelta: la casa lo dijo, con fecha */
+    const deCampo = (CAMPO[n] || {})[indiceHSU(m.name)];
+    if (deCampo) {
+      const cuadra = s && s.gana === deCampo.ncu;
+      console.log(`  ok    ${nom} NCU ${String(deCampo.ncu).padStart(2)}  ·  de campo` +
+        (s ? `, y el seguidor más cercano es de la ${s.gana}${cuadra ? '' : ' ← NO cuadra, mirarlo'}` : ''));
+      pon.push({ m, ncu: deCampo.ncu, origen: deCampo.fuente });
+      continue;
+    }
+
+    /* 2b · procedencia externa declarada: no se toca el valor, solo se etiqueta */
     if (ORIGEN_EXTERNO[n]) {
       if (m.ncu == null) { console.log(`  ??    ${nom} ${n} está declarada de procedencia externa y esta HSU no trae ncu`); continue; }
       console.log(`  ok    ${nom} NCU ${String(m.ncu).padStart(2)} de campo` + (s ? `  ·  el seguidor más cercano es de la ${s.gana}` : ''));
