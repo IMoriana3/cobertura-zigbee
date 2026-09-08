@@ -39,7 +39,7 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-             clearskyIneichen:clearskyIneichen},
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
@@ -380,6 +380,45 @@ t('cotas: la cadena AC cuenta las FILAS medidas con sus módulos, no un string p
   const rows = S.elburgoRows(strdb, 3);
   const eb = S.strPdc(rows.map(() => 800), rows.map(r => r.strs.map(s2 => s2.inv)), met, e);
   if (eb.length !== strdb.count) throw new Error('El Burgo dejó de contar sus ' + strdb.count + ' strings del plano');
+});
+
+t('POR MESA (v1.13): con cotas, instant() calcula θ y POA mesa a mesa con la física del simulador, exactos', () => {
+  const P = S.F.plantFromCotas(cotasAyora, 40, null);
+  const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
+              nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
+              elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildTReal(S.F, c, P);
+  if (!T.segTilt || !T.segPairs) throw new Error('buildTReal no lleva el tilt/parejas por mesa a la T');
+  const r = S.instant(S.F, c, T, 720);
+  if (!r.segs || !r.segAng) throw new Error('instant() no devuelve θ/POA por mesa con cotas');
+  // PARIDAD por mesa: lo que da llamar al simulador a mano, bit a bit
+  const g = S.Sol.solarPos(S.localToUTCms(c.date, 720, c.tz), c.lat, c.lon, { refract: true });
+  const zen = 90 - g.elev, doy = S.doyOf(c.date), irr = S.F.clearskyIneichen(zen, doy, c.alt, C.tl);
+  const seg = S.F.policyAnglesSeg('pairwise', zen, g.az, T, irr, doy, c.albedo);
+  const ps = S.F.poaPlantSeg(zen, g.az, T, seg, irr, doy, c.albedo);
+  for (let i = 0; i < c.nrows; i++) {
+    if (r.rows[i] !== ps.rows[i]) throw new Error(`línea ${i}: ${r.rows[i]} ≠ ${ps.rows[i]} — la tarjeta ya no es el motor por mesa`);
+    for (let k = 0; k < ps.segs[i].length; k++) {
+      if (r.segs[i][k] !== ps.segs[i][k] || r.segAng[i][k] !== seg[i][k]) throw new Error(`mesa ${i}/${k} distinta del motor`);
+    }
+  }
+  // el mundo donde la distinción existe: mesas de una misma línea con θ y POA distintos
+  let disp = 0;
+  r.segAng.forEach(l => { if (l.length > 1 && Math.max(...l) - Math.min(...l) > 0.02) disp++; });
+  if (!(disp > c.nrows * 0.3)) throw new Error('solo ' + disp + '/' + c.nrows + ' líneas con θ distinto por mesa');
+  // y la cadena AC come la POA de CADA mesa (strInvCotas lleva k)
+  const si = S.strInvCotas(P.segs, S.invMapUniforme(c.nrows, 1));
+  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs);
+  let usaSeg = false;
+  por.forEach(e => { const k = si[e.row].find(x => x.inv === e.inv).k; if (r.segs[e.row][k] !== r.rows[e.row]) usaSeg = true; });
+  const esp = por.reduce((a, e) => a + e.pdcW, 0);
+  const manual = si.flat().reduce((a, e, i) => a + S.pStringW(r.segs[por[i].row][e.k], r.met.tamb, r.met.wind, { ...c.elec, mods: e.mods }), 0);
+  if (Math.abs(esp - manual) / manual > 1e-12) throw new Error('la Pdc no sale de la POA de cada mesa: ' + esp + ' vs ' + manual);
+  if (!usaSeg) throw new Error('ninguna mesa difiere de su línea: el careo de la cadena por mesa es vacío');
+  // El Burgo y la genérica NO tienen tilt por mesa: el camino de siempre (segs=null, POA bit a bit como el motor por línea)
+  const elev = S.elevPreset('pendiente', C.nrows, 4, C.pitch), Tg = S.buildT(S.F, C, elev);
+  const rg = S.instant(S.F, C, Tg, 720);
+  if (rg.segs !== null || rg.segAng !== null) throw new Error('la genérica se ha ido al camino por mesa sin tilt por mesa');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {

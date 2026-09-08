@@ -109,7 +109,9 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
-           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor };`);
+           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
+           anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
+           segTiltAt, segZAt, pairsFromElevX };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -1718,6 +1720,118 @@ t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
     if (r.c !== 0) throw new Error('San José bloque 0 dejó de ser evaluable:\n' + r.s.slice(-400));
   }
 });
+
+// ── v1.41: el tilt POR MESA (fila medida), no por línea ─────────────────────
+console.log('v1.41 · tilt por mesa');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  };
+  const T = mkT(P);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);   // 12:00 local
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('plantFromCotas publica el tilt de CADA mesa (de sus dos cotas) y sus parejas bifila exactas', () => {
+    if (!P.segTilt || P.segTilt.length !== P.segs.length) throw new Error('sin segTilt por línea');
+    let n = 0, distintos = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      const z = P.segZ[r][k], esp = Math.atan2(z[1] - z[0], (sg[1] - sg[0]) || 1) * (180 / Math.PI);   // *DEG, la op exacta de plantFromCotas
+      // el tilt se mide ANTES de recentrar las cotas (z−eMean cambia el último bit): 1e-9° de tolerancia, declarada
+      if (Math.abs(P.segTilt[r][k] - esp) > 1e-9) throw new Error(`tilt de la mesa ${r}/${k}: ${P.segTilt[r][k]} ≠ ${esp} (sus cotas)`);
+      if (Math.abs(P.segTilt[r][k] - P.tilt[r]) > 0.05) distintos++;
+      n++;
+    }));
+    if (!(distintos > n * 0.2)) throw new Error('las mesas apenas se separan del tilt de su línea (' + distintos + '/' + n + '): el careo no distingue');
+    if (!(P.segPairs.length >= P.nPairs * 0.9)) throw new Error(P.segPairs.length + ' parejas por mesa vs ' + P.nPairs + ' trackers bifila');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+      if (Math.abs(r1 - r2) !== 1) throw new Error('pareja de mesas en líneas no contiguas: ' + r1 + '/' + r2);
+      const a = P.segs[r1][k1], b = P.segs[r2][k2];
+      if (Math.min(a[1], b[1]) - Math.max(a[0], b[0]) < 5) throw new Error('las dos mesas de un tracker no solapan en N');
+    }
+  });
+
+  t('IDENTIDAD: sin segTilt, el camino por mesa es el de la línea, bit a bit (θ y POA)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const segA = F.policyAnglesSeg('pairwise', zen, az, T0, irr, doy, 0.2);
+    // OJO: policyAngles lleva el refinado driveCoupleSafe por línea; el camino
+    // por mesa sin segTilt difunde el pairwise puro. Se carea contra ESE.
+    const raw = F.anglesPairwise(zen, az, T0);
+    segA.forEach((l, r) => l.forEach(v => { if (v !== raw[r]) throw new Error(`fila ${r}: θ por mesa ${v} ≠ pairwise de la línea ${raw[r]}`); }));
+    if (rows.length !== segA.length) throw new Error('líneas');
+  });
+
+  t('IDENTIDAD: el contador 3D con θ escalar no ha movido ni un bit (fila) y su suma por tramos es la fila', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const a = F.shadeBand3DAll(zen, az, T, rows);
+    const asArrays = rows.map((v, r) => T.segs[r].map(() => v));
+    const b = F.shadeBand3DAll(zen, az, T, asArrays);
+    for (let r = 0; r < rows.length; r++) {
+      if (a[r] !== b[r] || a.elec[r] !== b.elec[r]) throw new Error(`fila ${r}: escalar ${a[r]} ≠ array del mismo θ ${b[r]}`);
+      if (!a.seg || !a.seg[r] || a.seg[r].length !== T.segs[r].length) throw new Error('sin sombra por tramo');
+      // media por tramo ponderada por estaciones (MV fijo por tramo) == fila
+      const m = a.seg[r].reduce((s, v) => s + v, 0) / a.seg[r].length;
+      if (Math.abs(m - a[r]) > 1e-9) throw new Error(`fila ${r}: media de tramos ${m} ≠ fila ${a[r]}`);
+    }
+  });
+
+  t('sin segTilt, poaPlantSeg reproduce poaPlant bit a bit (rows y plant)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.anglesPairwise(zen, az, T0);
+    const pl = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T0, rows.map((v, r) => T0.segs[r].map(() => v)), irr, doy, 0.2);
+    // fila = media ponderada por largo de tramos IGUALES entre sí sólo si la
+    // sombra por tramo es uniforme; por eso se carea el POA SIN sombra (noche
+    // no vale: cielo despejado a mediodía con el ray-cast dando cero en llano
+    // no está garantizado) → se carea tramo a tramo contra poaRow+su sombra
+    for (let r = 0; r < rows.length; r++) {
+      for (let k = 0; k < ps.segs[r].length; k++) {
+        const p = F.poaRow(rows[r], T0.rowTilt[r], 0, zen, az, irr, doy, 0.2, T0.iam);
+        const fo = ps.shade.seg[r][k], se = ps.shade.segElec[r][k];
+        const esp = p.beam * (1 - se) + p.circ * (1 - fo) + p.sky + p.gnd;
+        if (ps.segs[r][k] !== esp) throw new Error(`tramo ${r}/${k}: ${ps.segs[r][k]} ≠ ${esp}`);
+      }
+    }
+    if (ps.rows.length !== pl.rows.length) throw new Error('filas');
+  });
+
+  t('CON segTilt: θ y POA cambian MESA A MESA dentro de una línea, y las parejas bifila comparten θ exacto', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    let lineasConDispersion = 0, n = 0;
+    seg.forEach((l, r) => { n++; if (l.length > 1 && Math.max(...l) - Math.min(...l) > 0.02) lineasConDispersion++; });
+    if (!(lineasConDispersion > n * 0.3)) throw new Error('solo ' + lineasConDispersion + '/' + n + ' líneas con θ distinto por mesa: el tilt por mesa no entra');
+    for (const [[r1, k1], [r2, k2]] of T.segPairs)
+      if (seg[r1][k1] !== seg[r2][k2]) throw new Error(`pareja ${r1}/${k1}-${r2}/${k2}: ${seg[r1][k1]} ≠ ${seg[r2][k2]} — el acople por mesa no manda`);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    for (const l of ps.segs) for (const v of l) if (!Number.isFinite(v) || v < 0) throw new Error('POA por mesa no finita');
+    if (!(ps.plant > 300)) throw new Error('mediodía de junio con ' + ps.plant);
+    // el astro por mesa sigue al tilt de la mesa: corr(tilt, θ_astro) alta
+    const ast = F.anglesAstroSeg(zen, az, T);
+    const xs = [], ys = [];
+    T.segTilt.forEach((l, r) => l.forEach((tl, k) => { xs.push(tl); ys.push(ast[r][k]); }));
+    const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    const corr = sxy / Math.sqrt(sxx * syy);
+    if (!(Math.abs(corr) > 0.9)) throw new Error('corr(tilt de mesa, θ astro de mesa) = ' + corr.toFixed(3));
+  });
+
+  t('el acople por mesa es un mutante vivo: sin segPairs, alguna pareja se separa', () => {
+    const raw = F.anglesPairwiseSeg(zen, az, T);
+    let sep = 0;
+    for (const [[r1, k1], [r2, k2]] of T.segPairs) if (raw[r1][k1] !== raw[r2][k2]) sep++;
+    if (!(sep > 0)) throw new Error('sin acoplar ya coinciden todas: el careo del acople es vacío');
+  });
+}
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
