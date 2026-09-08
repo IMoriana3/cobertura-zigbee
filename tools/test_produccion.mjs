@@ -555,6 +555,35 @@ t('fechasPeriodo y dayEnergy: el mes son sus días, el año 365/366, y dayTotals
     if (a[k] !== b[k]) throw new Error('dayTotals ya no es dayEnergy(fecha, 5 min) bit a bit');
 });
 
+t('TMY horneados: 8760 h, columnas sanas y GHI anual del sitio (si están desplegados)', () => {
+  // los <planta>_tmy.json los descarga el maintainer de PVGIS y los condensa
+  // el flujo de tools/gen_tmy_pvgis.py: si alguna regeneración los deja cortos,
+  // con columnas cambiadas o con un GHI de otro planeta, esto lo dice ANTES
+  // de que la tarjeta los sirva. Ausentes no es fallo: la página cae a la API
+  // del navegador y lo declara.
+  const rangos = { elburgo: [1400, 2000], ayora: [1400, 2000], sanjose: [2000, 2800] };
+  let vistos = 0;
+  for (const [k, [lo, hi]] of Object.entries(rangos)) {
+    const f = path.join(ROOT, k + '_tmy.json');
+    if (!fs.existsSync(f)) continue;
+    vistos++;
+    const tmy = JSON.parse(fs.readFileSync(f, 'utf-8'));
+    if (!tmy.h || tmy.h.length !== 8760) throw new Error(k + ': ' + (tmy.h ? tmy.h.length : 0) + ' horas (esperaba 8760)');
+    let ghi = 0;
+    for (const r of tmy.h) {
+      if (r.length !== 5 || r.some(v => !Number.isFinite(v))) throw new Error(k + ': fila con columnas malas: ' + JSON.stringify(r));
+      if (r[0] < 0 || r[0] > 1500 || r[3] < -40 || r[3] > 55) throw new Error(k + ': valor fuera de rango físico: ' + JSON.stringify(r));
+      ghi += r[0];
+    }
+    ghi /= 1000;
+    if (ghi < lo || ghi > hi) throw new Error(k + ': GHI anual ' + ghi.toFixed(0) + ' kWh/m² fuera de [' + lo + ',' + hi + ']');
+    // y el tmyAt de la página lo come tal cual (hora exacta = dato clavado)
+    const a = S.tmyAt(tmy, 100, 720, 0);
+    if (a.ghi !== tmy.h[99 * 24 + 12][0]) throw new Error(k + ': tmyAt no indexa el fichero horneado donde toca');
+  }
+  console.log('    (' + vistos + ' TMY horneados presentes)');
+});
+
 console.log('');
 console.log(ko === 0 ? `OK — ${ok} comprobaciones` : `${ko} FALLOS de ${ok + ko}`);
 process.exit(ko === 0 ? 0 : 1);
