@@ -357,9 +357,25 @@ function strPdc(rowsPoa,strInv,met,e){
   const out=[];
   for(let r=0;r<rowsPoa.length;r++){
     const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
-    for(const inv of strInv[r])out.push({inv:inv,row:r,pdcW:p});
+    for(const s of strInv[r]){
+      // entrada 'inv' (un string de e.mods módulos) o {inv,mods} (una FILA de
+      // cotas con sus módulos medidos): la Pdc escala con los módulos reales
+      if(typeof s==='string')out.push({inv:s,row:r,pdcW:p});
+      else out.push({inv:s.inv,row:r,pdcW:s.mods===e.mods?p:pStringW(rowsPoa[r],met.tamb,met.wind,Object.assign({},e,{mods:s.mods}))});
+    }
   }
   return out;
+}
+/* plantas de COTAS (Ayora/San José): cada segmento de línea es una FILA
+   medida (74 m = dos mesas), no un string. Contarla como un string de 28
+   módulos dejaba la Pdc de planta ~5× corta («Pdc 817 kW» para un parque de
+   69 trackers). Los módulos de cada fila salen de su largo medido con el
+   paso de módulo canónico (1,146 m) y el hueco del motor — el mismo dato que
+   dimensiona el render. Aproximación declarada: módulos por largo, no por
+   plano de strings (Ayora/SJ no traen plano; El Burgo sí y va por él). */
+function strInvCotas(segs,invRows,pitchMod,gapDrive){
+  const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
+  return segs.map((l,r)=>l.map(sg=>({inv:invRows[r],mods:Math.max(1,Math.round(((sg[1]-sg[0])-gd)/pm))})));
 }
 /* la cadena entera de un instante, por INVERSOR: Σ Pdc de sus strings →
    pérdidas DC → curva del inversor (recorte incluido) → suma de planta →
@@ -399,6 +415,8 @@ function dayAC(F,c,T,strInv,a,stepMin){
    declarada) y convierte el minuto LOCAL a índice UTC con el huso; instant()
    la consume en lugar del cielo Ineichen, y Tamb/viento POR INSTANTE entran
    a la t_cell (los inputs fijos quedan para el modo cielo despejado). */
+// (un TMY no tiene 29-feb: en año bisiesto, del 1-mar en adelante el índice va
+//  un día corrido — climatológicamente irrelevante, y va dicho aquí)
 function tmyAt(tmy,doy,minLocal,tz){
   const H=tmy.h.length, hUTC=(doy-1)*24+minLocal/60-tz;
   let h0=Math.floor(hUTC);
@@ -838,6 +856,7 @@ function rebuildT(){
   // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
   // (g.i); el resto n bloques contiguos iguales (declarado en el input)
   if(c.plant==='elburgo'&&EB)T.strInv=EB.rows.map(r=>r.strs.map(s=>s.inv));
+  else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv));
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -860,7 +879,9 @@ function build3D(c){
     R3.cam=new THREE.PerspectiveCamera(48,1,0.1,6000);
     R3.ctrl=new THREE.OrbitControls(R3.cam,cv);
     R3.ctrl.addEventListener('change',()=>R3.dirty=true);
-    R3.amb=new THREE.AmbientLight(0xffffff,0.35);
+    // «poco relleno → sombras marcadas» (terreno.html, 0,08; backtracking ni
+    // lleva ambiente): con 0,35 la sombra de la mañana existía pero no se LEÍA
+    R3.amb=new THREE.AmbientLight(0xffffff,0.08);
     R3.hemi=new THREE.HemisphereLight(0xbfd4e6,0x2a3324,0.5);
     R3.scene.add(R3.hemi);
     R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
@@ -1290,7 +1311,7 @@ function repaint(){
   // media por fila de un valor POR INVERSOR (una línea con strings de varios
   // inversores promedia — los números exactos van en los chips y el careo)
   const rowsFromInv=mp=>T.strInv.map(l=>{
-    if(!l.length)return 0;let s=0;for(const inv of l)s+=(mp.get(inv)||0);return s/l.length;});
+    if(!l.length)return 0;let s=0;for(const e2 of l)s+=(mp.get(typeof e2==='string'?e2:e2.inv)||0);return s/l.length;});
   let vals,unit,fmt,agg='media',invChips=null;
   if(mode==='day'){
     if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
@@ -1344,7 +1365,7 @@ function repaint(){
     // modos AC: chips con el valor REAL por inversor (recorte marcado con ✂)
     const im=Math.min.apply(null,invChips.map(v=>v.val)),ix=Math.max.apply(null,invChips.map(v=>v.val));
     for(const v of invChips)
-      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+' strings"':'')+'><span class="s-dot" style="background:'+
+      chips.push('<span class="s-chip"'+(v.nstr?' title="'+v.nstr+(REALES[c.plant]?' filas (módulos por largo medido)':' strings')+'"':'')+'><span class="s-dot" style="background:'+
                  ramp(norm(v.val,im,ix))+'"></span>I'+v.inv+' · '+fmt(v.val)+(v.clip?' ✂':'')+'</span>');
   }else if(c.plant==='elburgo'&&EB){
     // chips por INVERSOR: POA en media, potencia/energía en SUMA de sus strings
@@ -1611,16 +1632,26 @@ function repaintPick(){
     for(const id of ['lat','lon','pitch','cw','maxang','nrows','tpreset','tparam'])$(id).disabled=real;
     // inversores: El Burgo con el mapeo REAL del plano (36, g.i); resto editable.
     // Pnom sugerida = Pdc0 del ámbito / n / 1,2 (DC/AC típico, declarado en el título)
-    let nstr,ninv;
+    let modsTot,ninv;
     if(key==='elburgo'){
-      nstr=EB.rows.reduce((a,r)=>a+r.strs.length,0);
+      modsTot=EB.rows.reduce((a,r)=>a+r.strs.length,0)*(+$('mods').value);
       ninv=Object.keys(EB.rows.reduce((a,r)=>{for(const s of r.strs)a[s.inv]=1;return a;},{})).length;
       $('ninv').value=ninv;$('ninv').disabled=true;
+    }else if(REALES[key]){
+      // módulos de las FILAS medidas (largo), no un string por línea
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1')).flat().reduce((a,e2)=>a+e2.mods,0);
+      if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
+      ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
+      $('ninv').value=ninv;$('ninv').disabled=false;
     }else{
-      nstr=+$('nrows').value;ninv=Math.min(+$('ninv').value,nstr)||1;
+      // de vuelta a la genérica: los inputs vuelven a ser suyos (el nº de
+      // strings tiene tope 24 y el 36 de inversores de El Burgo no es suyo)
+      if(+$('nrows').value>24)$('nrows').value=24;
+      if($('ninv').disabled)$('ninv').value=1;
+      modsTot=(+$('nrows').value)*(+$('mods').value);ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
       $('ninv').value=ninv;$('ninv').disabled=false;
     }
-    $('pnom').value=Math.max(5,Math.round(nstr*(+$('mods').value)*(+$('wp').value)/ninv/1.2/1000/5)*5);
+    $('pnom').value=Math.max(5,Math.round(modsTot*(+$('wp').value)/ninv/1.2/1000/5)*5);
     // TMY por planta: si está activa, recargar la de ESTA planta
     if($('meteo').value==='tmy'){
       try{await cargaTMY(cfg());}

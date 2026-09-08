@@ -42,7 +42,7 @@ const S = new Function(sol + fis + log + `
              clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW,
-          dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, acPlant, dayAC,
+          dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
 
@@ -347,6 +347,39 @@ t('El Burgo por NCU: el ámbito recorta también las MESAS del layout, no solo l
   // y ninguna mesa del ámbito invade el rango N de la OTRA NCU (sur: n<0)
   for (const l of segsF) for (const sg of l)
     if (sg[1] < 0) throw new Error('mesa en n<0 (NCU 2) dentro del ámbito de la NCU 1: el filtro no recorta el layout');
+});
+
+t('cotas: la cadena AC cuenta las FILAS medidas con sus módulos, no un string por línea', () => {
+  // Ayora/San José no traen plano de strings: cada segmento de línea es una
+  // FILA medida (~74 m = dos mesas, ~65 módulos). Contarla como un string de
+  // 28 dejaba la Pdc de planta ~5× corta («Pdc 817 kW» para 69 trackers).
+  const P = S.F.plantFromCotas(cotasAyora, 80, null);
+  const inv = S.invMapUniforme(P.elev.length, 1);
+  const si = S.strInvCotas(P.segs, inv);
+  const nSeg = P.segs.reduce((a, l) => a + l.length, 0), nEnt = si.reduce((a, l) => a + l.length, 0);
+  if (nEnt !== nSeg) throw new Error(nEnt + ' entradas ≠ ' + nSeg + ' filas medidas');
+  // módulos por fila DERIVADOS del largo, con la misma cota que el render: si
+  // alguien vuelve a poner 28 fijos, esto lo dice
+  let modsTot = 0;
+  si.forEach((l, r) => l.forEach((e, k) => {
+    const sg = P.segs[r][k], esp = Math.max(1, Math.round(((sg[1] - sg[0]) - 0.55) / 1.146));
+    if (e.mods !== esp) throw new Error(`fila ${r}/${k}: ${e.mods} módulos ≠ ${esp} por su largo ${(sg[1] - sg[0]).toFixed(1)} m`);
+    if (e.mods < 8 || e.mods > 80) throw new Error('módulos por fila fuera de lo físico: ' + e.mods);
+    modsTot += e.mods;
+  }));
+  // y la Pdc de planta escala con esos módulos: contra «un string por línea»
+  // la diferencia tiene que ser la de verdad (>3×), no un redondeo
+  const poa = P.elev.map(() => 800), met = { tamb: 20, wind: 1 }, e = { mods: 28, wp: 590, gamma: -0.34, uc: 29, uv: 0 };
+  const ac = { loss: { soiling: 0, mismatch: 0, wiring: 0, lid: 0 }, pnomW: 1e9, etaMax: 0.985, gridW: 0 };
+  const conFilas = S.acPlant(S.strPdc(poa, si, met, e), ac).pdcW;
+  const unoPorLinea = S.acPlant(S.strPdc(poa, inv.map(v => [v]), met, e), ac).pdcW;
+  const esperado = modsTot * 590 * 0.8 * (1 + (-0.34 / 100) * (S.tCellPVSyst(800, 20, 1, 29, 0) - 25));
+  if (Math.abs(conFilas - esperado) / esperado > 1e-9) throw new Error('la Pdc por filas no es Σ módulos × Wp × PVWatts: ' + conFilas + ' vs ' + esperado);
+  if (!(conFilas > unoPorLinea * 3)) throw new Error(`por filas ${(conFilas / 1e6).toFixed(2)} MW vs un string por línea ${(unoPorLinea / 1e6).toFixed(2)} MW: la distinción no existe`);
+  // El Burgo NO pasa por aquí: sus strings son los del plano (entradas string)
+  const rows = S.elburgoRows(strdb, 3);
+  const eb = S.strPdc(rows.map(() => 800), rows.map(r => r.strs.map(s2 => s2.inv)), met, e);
+  if (eb.length !== strdb.count) throw new Error('El Burgo dejó de contar sus ' + strdb.count + ' strings del plano');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
