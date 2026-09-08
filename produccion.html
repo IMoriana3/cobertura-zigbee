@@ -774,6 +774,20 @@ function fechasPeriodo(dateStr,periodo){
   }
   return out;
 }
+/* QUÉ VIGA DE CADA UNIDAD BIFILA LLEVA EL MOTOR: la OESTE, y solo ella. `groups` empareja las
+   dos vigas de una unidad y viene medido —de las cotas por `plantFromCotas`, del plano por
+   `elburgoGroups`—, con el par ordenado por x, así que g[0] es la oeste y g[1] la este.
+
+   UNA SOLA REGLA PARA TODAS LAS PLANTAS, y por eso vive aquí. Antes solo la aplicaba la rama de
+   El Burgo: en Ayora y San José `T.west` se quedaba sin definir, o sea `west:true` en todas las
+   vigas, y cada una se dibujaba CON SU MOTOR —un seguidor monofila entero— cuando físicamente
+   son medias unidades bifila. En la NCU 9 de San José se veían 40 motores donde hay 20 unidades
+   («sigue habiendo monofilas», 2026-09-08). */
+function westDeGroups(n,groups){
+  const w=new Array(n).fill(true);
+  for(const g of (groups||[]))if(g&&g.length===2&&g[1]>=0&&g[1]<n)w[g[1]]=false;
+  return w;
+}
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
@@ -929,7 +943,14 @@ function rebuildT(){
     T.segZ=P.segZ;                       // cota MEDIDA de los dos extremos de cada mesa
     T.segTilt=P.segTilt;
     T.segPairs=P.segPairs;
-    T.westSeg=F.westPorMesa(P);            // qué mesa lleva el motor (v1.17)
+    /* BIFILA: el motor va en UNA viga de cada unidad, la oeste. `T.west` lo dice por LÍNEA
+       (`westDeGroups` sobre las parejas de `plantFromCotas`) y `T.westSeg` por MESA
+       (`westPorMesa` sobre `segPairs`, las parejas exactas por tracker). Manda la de mesa,
+       y por eso está: el emparejado por línea es el MAYORITARIO, y con el tresbolillo real
+       deja fuera al 13 % de los trackers de Ayora — esas mesas volverían a salir cada una
+       con su motor. La de línea se conserva para quien siga leyendo T.west. */
+    T.west=westDeGroups(P.lineX.length,P.groups);
+    T.westSeg=F.westPorMesa(P);            // qué mesa lleva el motor (v1.17), la que manda
     T.ejes=F.ejesPorMesa(P);               // el eje de transmisión de cada tracker
     T.obj=buildTReal(F,c,P);
   }else if(c.plant==='elburgo'&&EB){
@@ -947,8 +968,7 @@ function rebuildT(){
     // bifilas todos» (los largos de mesa ya salen de los propios strings)
     const groups=elburgoGroups(EB.xs,EB.trkA);
     T={elev:z,xs:EB.xs,tilt:null,segs:segs};
-    T.west=new Array(c.nrows).fill(true);
-    for(const g of groups)if(g.length===2)T.west[g[1]]=false;
+    T.west=westDeGroups(c.nrows,groups);          // la misma regla que las plantas de cotas
     T.westSeg=segs.map((l,r)=>l.map(()=>T.west[r]));   // en El Burgo las vigas van por línea
     T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
   }else{

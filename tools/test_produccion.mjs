@@ -40,7 +40,7 @@ const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
+          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
@@ -840,6 +840,34 @@ t('TMY horneados: 8760 h, columnas sanas y GHI anual del sitio (si están desple
     if (a.ghi !== tmy.h[99 * 24 + 12][0]) throw new Error(k + ': tmyAt no indexa el fichero horneado donde toca');
   }
   console.log('    (' + vistos + ' TMY horneados presentes)');
+});
+
+t('la bifila real: solo la viga OESTE lleva motor, y con las plantas de cotas también', () => {
+  // El motor de una unidad bifila va en UNA viga, la oeste. Antes esta regla solo la aplicaba
+  // la rama de El Burgo: en Ayora y San José `T.west` se quedaba sin definir, cada viga salía
+  // con su motor y se veían MONOFILAS donde hay medias unidades (NCU 9 de San José).
+  const w = S.westDeGroups(6, [[0, 1], [2, 3], [4, 5]]);
+  if (JSON.stringify(w) !== JSON.stringify([true, false, true, false, true, false]))
+    throw new Error('el par no deja el motor solo en la oeste: ' + JSON.stringify(w));
+  // una línea suelta (sin pareja) SÍ lleva el suyo: es un tracker entero, no media unidad
+  const w2 = S.westDeGroups(3, [[0, 1], [2]]);
+  if (JSON.stringify(w2) !== JSON.stringify([true, false, true]))
+    throw new Error('la línea sin pareja tiene que conservar su motor: ' + JSON.stringify(w2));
+  if (JSON.stringify(S.westDeGroups(2, null)) !== JSON.stringify([true, true]))
+    throw new Error('sin groups, cada línea es su propia unidad');
+  // Y EL CASO DE VERDAD: San José NCU 9, con sus cotas y su layout
+  const cot = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
+  const t9 = cot.t.filter((_, i) => lay.trackers[i] && lay.trackers[i].ncu === 9);
+  const P = S.F.plantFromCotas(Object.assign({}, cot, { t: t9 }), 80, null);
+  const west = S.westDeGroups(P.lineX.length, P.groups);
+  const motores = west.filter(Boolean).length;
+  const pares = P.groups.filter(g => g.length === 2).length;
+  if (motores !== P.lineX.length - pares)
+    throw new Error(`NCU9: ${motores} motores para ${P.lineX.length} vigas y ${pares} parejas`);
+  if (!(pares > 0 && motores < P.lineX.length))
+    throw new Error(`NCU9 sale sin bifila: ${pares} parejas de ${P.lineX.length} vigas`);
+  console.log(`    (San José NCU 9: ${P.lineX.length} vigas → ${pares} unidades bifila, ${motores} motores)`);
 });
 
 console.log('');
