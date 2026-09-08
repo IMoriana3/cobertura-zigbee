@@ -111,7 +111,8 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit };`);
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
+           westPorMesa, ejesPorMesa };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -2044,6 +2045,62 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
     const xs = new Set(P.lineXAbs.map(v => v.toFixed(3)));
     for (const x of W.lineXAbs) if (!xs.has(x.toFixed(3))) throw new Error('la ventana tiene una línea que la planta entera no: x=' + x);
     void grandes;
+  });
+}
+
+console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
+{
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const P = F.plantFromCotas(cotas, Infinity, 'all');
+    t(`${pl}: un eje por tracker entre SUS dos mesas, motor en la oeste, y ninguna mesa emparejada sin eje`, () => {
+      const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
+      if (ejes.length !== P.segPairs.length) throw new Error(ejes.length + ' ejes para ' + P.segPairs.length + ' trackers');
+      const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+      const conEje = new Set();
+      for (const e of ejes) {
+        if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error('un eje une mesas de trackers distintos');
+        conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
+        const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
+        if (e.solape > 0 && (e.n < Math.max(a[0], b[0]) - 1e-9 || e.n > Math.min(a[1], b[1]) + 1e-9))
+          throw new Error('el eje cae fuera del solape de sus mesas');
+      }
+      let sin = 0;
+      P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
+      if (sin) throw new Error(sin + ' mesas con gemela pero sin eje');
+      for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+        if (west[r1][k1] === west[r2][k2]) throw new Error('un tracker con dos motores o ninguno');
+        const o = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
+        if (!west[o[0]][o[1]]) throw new Error('el motor no va en la viga oeste');
+      }
+      const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
+      let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; else if (!enPareja.has(r + '|' + k)) throw new Error('mesa suelta sin motor'); }));
+      const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
+      if (motores !== P.segPairs.length + sueltas) throw new Error(motores + ' motores para ' + P.segPairs.length + ' trackers y ' + sueltas + ' sueltas');
+      void filasDe;
+    });
+  }
+  t('MUTANTE: el camino por LÍNEA (groups + «el tramo más próximo») sí une trackers distintos y deja mesas sin eje', () => {
+    const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), Infinity, 'all');
+    const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+    let mal = 0; const conEje = new Set();
+    for (const [a, b] of P.groups.filter(g => g.length === 2))
+      for (let ka = 0; ka < P.segs[a].length; ka++) {
+        const ca = (P.segs[a][ka][0] + P.segs[a][ka][1]) / 2;
+        const kb = P.segs[b].findIndex(s2 => ca >= s2[0] - 2 && ca <= s2[1] + 2);
+        if (kb < 0) continue;
+        if (real.has([a, ka, b, kb].join('|'))) { conEje.add(a + '|' + ka); conEje.add(b + '|' + kb); } else mal++;
+      }
+    let sin = 0;
+    P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
+    if (!(mal > 0 && sin > 0)) throw new Error(`el camino por línea ya no falla (${mal} ejes mal, ${sin} mesas sin eje): el careo no distingue`);
+  });
+  t('la UI del simulador dibuja el accionamiento con westPorMesa / ejesPorMesa cuando la planta es medida', () => {
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const b3 = ui.slice(ui.indexOf('function build3D'), ui.indexOf('function setSky'));
+    for (const lit of ['westPorMesa(PR)', 'ejesPorMesa(PR)', 'west:westAt(r,si)'])
+      if (!b3.includes(lit)) throw new Error('build3D sin «' + lit + '»');
   });
 }
 

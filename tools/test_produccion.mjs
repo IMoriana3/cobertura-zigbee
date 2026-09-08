@@ -39,7 +39,7 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
@@ -556,6 +556,77 @@ t('MÓDULOS REALES (v1.16): en Ayora cada fila son DOS strings de 28/21/14 módu
   const fl = sj.flat(); const n28 = fl.filter(e => e.mods === 28).length;
   if (!(n28 > fl.length * 0.98)) throw new Error('San José: ' + n28 + '/' + fl.length + ' strings de 28');
   if (fl.some(e => e.src !== 'largo')) throw new Error('San José no trae módulos en el layout: todo debería ir por largo');
+});
+
+t('ACCIONAMIENTO POR MESA (v1.17): un eje por TRACKER entre SUS dos mesas, y el motor en la oeste — nunca uniendo trackers distintos ni dejando mesas sin eje', () => {
+  for (const [cotas, nombre] of [[cotasAyora, 'Ayora'], [cotasSJ, 'San José']]) {
+    const P = S.plantaCotas(S.F, cotas);
+    const ejes = S.F.ejesPorMesa(P), west = S.F.westPorMesa(P);
+    // un eje por tracker bifila, ni uno más
+    if (ejes.length !== P.segPairs.length) throw new Error(`${nombre}: ${ejes.length} ejes para ${P.segPairs.length} trackers`);
+    const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+    const conEje = new Set();
+    for (const e of ejes) {
+      if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error(`${nombre}: un eje une mesas que NO son el mismo tracker`);
+      if (e.r1 === e.r2) throw new Error(`${nombre}: eje dentro de una misma línea`);
+      conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
+      // el eje va donde las dos mesas se SOLAPAN (es perpendicular a las vigas)
+      const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
+      if (e.solape > 0 && !(e.n >= Math.max(a[0], b[0]) - 1e-9 && e.n <= Math.min(a[1], b[1]) + 1e-9))
+        throw new Error(`${nombre}: el eje cae fuera del solape de sus dos mesas`);
+    }
+    // ninguna mesa emparejada se queda sin eje (eso es lo que parecía monofila)
+    let sin = 0;
+    P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
+    if (sin) throw new Error(`${nombre}: ${sin} mesas con gemela pero sin eje`);
+    // el motor: exactamente uno por tracker, y en la mesa OESTE (menor x)
+    for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+      const w1 = west[r1][k1], w2 = west[r2][k2];
+      if (w1 === w2) throw new Error(`${nombre}: un tracker con ${w1 ? 'dos motores' : 'ningún motor'}`);
+      const oeste = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
+      if (!west[oeste[0]][oeste[1]]) throw new Error(`${nombre}: el motor no está en la viga oeste`);
+    }
+    // una mesa sin pareja lleva su motor
+    const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
+    let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; if (!enPareja.has(r + '|' + k) && !w) throw new Error(`${nombre}: mesa suelta sin motor`); }));
+    const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
+    if (motores !== P.segPairs.length + sueltas) throw new Error(`${nombre}: ${motores} motores para ${P.segPairs.length} trackers y ${sueltas} mesas sueltas`);
+  }
+  // MUTANTE: el emparejado por LÍNEA (P.groups + «el tramo más próximo»), que es
+  // lo que se dibujaba antes, sí une trackers distintos y deja mesas sin eje
+  const P = S.plantaCotas(S.F, cotasAyora);
+  const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+  let mal = 0;
+  for (const [a, b] of P.groups.filter(g => g.length === 2))
+    for (let ka = 0; ka < P.segs[a].length; ka++) {
+      const ca = (P.segs[a][ka][0] + P.segs[a][ka][1]) / 2;
+      const kb = P.segs[b].findIndex(s2 => ca >= s2[0] - 2 && ca <= s2[1] + 2);
+      if (kb >= 0 && !real.has([a, ka, b, kb].join('|'))) mal++;
+    }
+  if (!(mal > 0)) throw new Error('el camino por línea ya no une trackers distintos: el careo no distingue');
+});
+
+t('COTA POR MESA (v1.17): la escena lleva la z medida de cada mesa, no la media de su línea (en Ayora se apartan 15,8 m de media)', () => {
+  const P = S.plantaCotas(S.F, cotasAyora);
+  if (!P.segZ || P.segZ.length !== P.segs.length) throw new Error('sin segZ por línea');
+  let n = 0, acc = 0, mx = 0;
+  P.segs.forEach((l, r) => {
+    if (l.length !== P.segZ[r].length) throw new Error('segZ y segs no casan en la línea ' + r);
+    l.forEach((sg, k) => {
+      const z = P.segZ[r][k];
+      // la z va con el tramo: pendiente de la mesa = su segTilt, exacto
+      const tl = Math.atan2(z[1] - z[0], (sg[1] - sg[0]) || 1) * 180 / Math.PI;
+      if (Math.abs(tl - P.segTilt[r][k]) > 1e-9) throw new Error(`mesa ${r}/${k}: segZ no describe su segTilt`);
+    });
+    if (l.length < 2) return;
+    const cz = l.map((sg, k) => (P.segZ[r][k][0] + P.segZ[r][k][1]) / 2);
+    const d = Math.max(...cz) - Math.min(...cz); acc += d; n++; mx = Math.max(mx, d);
+  });
+  if (!(acc / n > 5)) throw new Error('las mesas de una línea ya no se apartan de su media: ' + (acc / n).toFixed(2) + ' m');
+  // y la página coloca cada mesa con SU cota (el render no corre en Node: se vigila el texto, como el careo del literal de elecLoss)
+  for (const lit of ['const hubY=cMesa(r,k)+2.0', 'hubY:G.cMesa(r,k)+2.0', 'G.zTubo(tr.row,tr.k,nn)+2.0', 'T.segZ=P.segZ'])
+    if (!pg.includes(lit)) throw new Error('produccion.html sin «' + lit + '»: el render volvió a la cota de línea');
+  if (/hubY=T\.elev\[r\]\+2\.0/.test(pg)) throw new Error('el render sigue colocando la mesa a la cota de su línea');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
