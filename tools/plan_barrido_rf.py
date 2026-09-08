@@ -29,6 +29,11 @@ medida VACÍAS y dos nuevas que son las que hacen que la campaña valga:
 
     llega          1 si hubo enlace, 0 si no. LOS CEROS SON LA MITAD DEL DATO.
     beta_grados    ángulo del seguidor al medir.
+    pasada         plano / canto. Unos 20 pares van DOS veces: la segunda con el
+                   seguidor de canto (>= 40°). Es la única geometría en la que
+                   el rayo entra por dentro de la mesa y actúa `l_mod_db`; sin
+                   ella el ajuste lo declara no identificado. Mismo par, distinta
+                   obstrucción: palanca gratis.
 
 Y, para el que va a campo, lo que necesita para navegar y para saber qué
 esperar: lat/lon de los dos extremos, esclavo Modbus, distancia, mesas cruzadas
@@ -36,7 +41,7 @@ y el margen que predice el modelo con las palas planas y de canto. Los pares que
 el modelo da por perdidos son los MÁS valiosos: si llegan, el modelo sobra.
 
     python3 tools/plan_barrido_rf.py ayora
-    python3 tools/plan_barrido_rf.py ayora --ncu 13 --pares 80
+    python3 tools/plan_barrido_rf.py ayora --ncu 13 --pares 80 --canto 20
 """
 from __future__ import annotations
 import csv, json, math, os, sys
@@ -124,6 +129,36 @@ def margen(a, b, tabs):
     return r["margin_db"]
 
 
+def punto(coords, filas, x, n, h, et, rol):
+    c = coords.get(et, {})
+    return {"x": x, "n": n, "h": h, "y": cota_en(filas, x, n), "et": et, "rol": rol,
+            "id": c.get("node_id", ""), "lat": c.get("lat", ""), "lon": c.get("lon", ""),
+            "esclavo": c.get("esclavo", ""), "ncu": c.get("ncu", ""), "gw": c.get("gw", "")}
+
+
+def nodos_por_ncu(lay, coords, filas):
+    """Las TCU de la planta agrupadas por NCU, ya con cota y altura de antena."""
+    porncu = {}
+    for t in lay["trackers"]:
+        porncu.setdefault(str(t.get("ncu", 1)), []).append(
+            punto(coords, filas, t["x"], t["n"], H_TCU, t["id"], "TCU"))
+    return porncu
+
+
+def geo_ncu(lay, coords, filas, ncu_sel, nodos):
+    """La NCU donde la declara el layout; si no la declara, el centroide de sus TCU.
+
+    Lo usa el planificador para elegir pares y el ajuste para RECONSTRUIR la
+    geometria de la hoja ya medida. Tiene que ser la misma cuenta en los dos: si
+    el ajuste situara la NCU en otro sitio, estaria ajustando otra planta.
+    """
+    for c in lay.get("ncus", []):
+        if c.get("name", "").replace("NCU ", "").strip().lstrip("0") == str(ncu_sel):
+            return punto(coords, filas, c["x"], c["n"], H_NCU, c["name"], "COORD")
+    return punto(coords, filas, sum(p["x"] for p in nodos) / len(nodos),
+                 sum(p["n"] for p in nodos) / len(nodos), H_NCU, "NCU %s" % ncu_sel, "COORD")
+
+
 def clase(a, b):
     """A lo largo del eje, a través de las filas, o diagonal."""
     dx, dn = abs(b["x"] - a["x"]), abs(b["n"] - a["n"])
@@ -147,16 +182,7 @@ def main(argv):
     filas_x = sorted({round(t["x"], 1) for t in lay["trackers"]})
 
     # --- nodos de la NCU elegida, con su cota y su altura de antena ---
-    def punto(x, n, h, et, rol):
-        c = coords.get(et, {})
-        return {"x": x, "n": n, "h": h, "y": cota_en(filas, x, n), "et": et, "rol": rol,
-                "id": c.get("node_id", ""), "lat": c.get("lat", ""), "lon": c.get("lon", ""),
-                "esclavo": c.get("esclavo", ""), "ncu": c.get("ncu", ""), "gw": c.get("gw", "")}
-
-    porncu = {}
-    for t in lay["trackers"]:
-        porncu.setdefault(str(t.get("ncu", 1)), []).append(
-            punto(t["x"], t["n"], H_TCU, t["id"], "TCU"))
+    porncu = nodos_por_ncu(lay, coords, filas)
 
     # ¿qué NCU da el mejor reparto? La que más recorrido de distancia ofrece.
     if not ncu_sel:
@@ -181,13 +207,7 @@ def main(argv):
         sys.exit("La planta %s no tiene ninguna NCU con seguidores en el layout." % planta)
     nodos = porncu[str(ncu_sel)]
 
-    ncu_geo = None
-    for c in lay.get("ncus", []):
-        if c.get("name", "").replace("NCU ", "").strip().lstrip("0") == str(ncu_sel):
-            ncu_geo = punto(c["x"], c["n"], H_NCU, c["name"], "COORD")
-    if ncu_geo is None:                                   # sin coordenada declarada: el centroide
-        ncu_geo = punto(sum(p["x"] for p in nodos) / len(nodos),
-                        sum(p["n"] for p in nodos) / len(nodos), H_NCU, "NCU %s" % ncu_sel, "COORD")
+    ncu_geo = geo_ncu(lay, coords, filas, ncu_sel, nodos)
 
     # --- candidatos: cada TCU contra la NCU, y TCU contra TCU ---
     cand = []
@@ -240,17 +260,61 @@ def main(argv):
             "margen_previsto_canto_db": "" if m55 is None else round(m55, 1),
         })
 
+    # --- LA SEGUNDA PASADA: DE CANTO ---------------------------------------
+    # Con las palas planas la mesa es una placa a la altura del tubo y el rayo
+    # SIEMPRE pasa por debajo: solo actua la perdida por cruzar bajo la mesa.
+    # De canto la banda se abre dos metros y el rayo entra POR DENTRO de las
+    # placas: es la unica geometria en la que actua `l_mod_db`, y el ajuste lo
+    # declara NO IDENTIFICADO si no hay ni un par medido asi. De ahi que unos
+    # cuantos pares se midan DOS veces: una con el seguidor plano y otra de
+    # canto (al alba o al ocaso, o en MANUAL a tope). Misma geometria, distinta
+    # obstruccion: es palanca gratis sobre la perdida por modulo.
+    # Se eligen los pares en los que el angulo mas cambia la prediccion —los
+    # que cruzan mesas—, repartidos entre clases para que no salgan todos de
+    # una. Los "a lo largo del eje" no valen para esto: sin mesas de por medio
+    # el angulo no cambia nada, y medirlos dos veces es medir lo mismo.
+    n_canto = int(opt("canto", 20))
+    for q in filasout:
+        q["pasada"] = "plano"
+    cand_c = [q for q in filasout
+              if q["mesas"] >= 1 and q["margen_previsto_planas_db"] != ""]
+    cand_c.sort(key=lambda q: -(q["margen_previsto_planas_db"] - q["margen_previsto_canto_db"]))
+    por_clase = {}
+    for q in cand_c:
+        por_clase.setdefault(q["clase"], []).append(q)
+    canto = []
+    while len(canto) < n_canto and any(por_clase.values()):
+        for cl in sorted(por_clase):
+            if por_clase[cl] and len(canto) < n_canto:
+                canto.append(por_clase[cl].pop(0))
+    for q in canto:
+        r = dict(q)
+        r["pasada"] = "canto"
+        r["hora_utc"] = ""
+        filasout.append(r)
+
+    cols = list(filasout[0].keys())
+    cols.remove("pasada"); cols.insert(cols.index("clase") + 1, "pasada")
     sal = opt("salida", os.path.join(RAIZ, "cobertura_coords", planta,
                                      "barrido_%s_NCU%02d.csv" % (planta, int(ncu_sel))))
     with open(sal, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(filasout[0].keys()))
+        w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader(); w.writerows(filasout)
 
     # --- informe: lo que hay que mirar ANTES de ir a campo ---
-    ds = [q["distancia_m"] for q in filasout]
-    ms = [q["mesas"] for q in filasout]
+    planos = [q for q in filasout if q["pasada"] == "plano"]
+    ds = [q["distancia_m"] for q in planos]
+    ms = [q["mesas"] for q in planos]
     print("PLANTA %s · NCU %s · %d nodos" % (planta, ncu_sel, len(nodos)))
-    print("pares elegidos: %d   %s" % (len(filasout), resumen))
+    print("pares elegidos: %d   %s" % (len(planos), resumen))
+    if canto:
+        rc = {}
+        for q in canto:
+            rc[q["clase"]] = rc.get(q["clase"], 0) + 1
+        print("y %d de ellos se miden DOS veces, la segunda DE CANTO (>= 40 grados): %s" % (len(canto), rc))
+        print("   sin esa pasada `l_mod_db` no se puede ajustar: con las palas planas el rayo nunca entra en la mesa")
+    else:
+        print("!! sin pasada de canto: `l_mod_db` quedara SIN IDENTIFICAR (--canto N)")
     print("distancia: %.0f a %.0f m   mesas cruzadas: %d a %d" % (min(ds), max(ds), min(ms), max(ms)))
     if len(ds) > 2:
         mdd = sum(ds) / len(ds); mmm = sum(ms) / len(ms)
@@ -266,12 +330,14 @@ def main(argv):
             r, vif, "(separadas: el ajuste puede repartir la culpa)" if vif < 5
                     else "(PEGADAS: el ajuste no podra separarlas)"))
     if Z is not None:
-        prev = [q["margen_previsto_planas_db"] for q in filasout]
+        prev = [q["margen_previsto_planas_db"] for q in planos]
         caen = sum(1 for v in prev if v < 8)
         print("el modelo da por perdidos %d de %d con las palas planas — si llegan, el modelo sobra" %
               (caen, len(prev)))
     print("\nescrito: %s" % sal)
     print("Rellenar `llega` (1/0) y `beta_grados`. Los CEROS son la mitad del dato.")
+    if canto:
+        print("Las filas `pasada=canto` van al final: se repiten al alba/ocaso o con el seguidor en MANUAL a tope.")
     return 0
 
 

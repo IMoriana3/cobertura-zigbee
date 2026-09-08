@@ -94,6 +94,26 @@ Dos ficheros, ninguno de los cuales se puede inventar:
    que distancia y mesas cruzadas dejen de ir pegadas y el ajuste pueda repartir la culpa. Se
    apunta `llega` (1/0) y la hora, y **los ceros son la mitad del dato**.
 
+   **Y el ajuste ya está escrito y probado, antes del barrido.** `calibra_barrido.py` es un
+   **Tobit**: los pares que llegan entran por su densidad y los que **no** llegan por la
+   probabilidad de estar bajo el umbral — un cero no es una medida ausente, es la medida de que el
+   RSSI está por debajo. Ajusta cuatro números con significado, sin ningún *bias* de relleno:
+   `l_mod_db` (dB por mesa **atravesada**), `l_roce_db` (por mesa cruzada **por debajo**: tubo,
+   pilotes, canto), `offset_db` y `sigma_db`, estimada a la vez. La predicción se **recalcula al
+   `beta` anotado** en cada fila y la geometría se **importa** del planificador, no se reescribe.
+   Trae validación fuera de muestra (dejando una clase entera fuera, y k-fold), intervalos por
+   **perfil de verosimilitud** y diagnóstico de residuo; y dice en voz alta cuándo un número **no
+   está sostenido**: sin ceros, sin cruces por dentro (`l_mod_db` no identificado, hay que medir
+   también con las palas **de canto**), con el offset comiéndose el modelo, o con pares que no
+   llegaron y el modelo daba por seguros — que suelen ser un equipo apagado, no propagación.
+
+   Se prueba con **datos sintéticos sobre la hoja real de Ayora**: se generan medidas con un
+   `l_mod_db` conocido, se les mete censura y ruido, y se comprueba que el ajuste lo recupera
+   (`python3 tools/test_calibra_barrido.py`, 41 comprobaciones). Ahí se ve por qué hace falta:
+   con el umbral metido en el grueso de las medidas, **tirar los ceros** deja la pérdida por mesa
+   en 1,9 dB donde la verdad son 4,5. La hoja se puede simular antes de ir:
+   `python3 tools/calibra_barrido.py ayora --simula 4.5,2.0,-3,5 --hoja <hoja> --salida sim.csv`.
+
    **El ángulo no se apunta a mano.** Está en el Modbus (registro `30111 tilt_angle`, s16 /10) y
    `zigbee_angulos.ps1` lo graba en bucle; al volver, `rellena_barrido.py` lo cruza con la hoja por
    la hora y rellena `beta_grados`, `beta_destino` y `modo_origen`. Dos avisos que valen la tarde:
