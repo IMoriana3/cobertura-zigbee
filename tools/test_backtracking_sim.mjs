@@ -2047,6 +2047,33 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
   });
 }
 
+t('el censo de relieve cubre TODAS las plantas del índice, sin inventar veredictos', () => {
+  // El censo es el sitio donde es tentador rellenar el hueco: nueve plantas sin
+  // cotas y un DEM global a mano. Este test vigila las dos mitades — que no se
+  // deje ninguna planta fuera, y que no dé un veredicto donde no hay dato.
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'gate_relieve_cartera.mjs')], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('el censo falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-500)); }
+  const IDX = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas;
+  for (const p of IDX)
+    if (!new RegExp('^  ' + p.planta + ' ', 'm').test(r))
+      throw new Error('el censo se deja fuera a ' + p.planta);
+  // una planta sin cotas NO puede salir con veredicto de la puerta
+  for (const p of IDX) {
+    if (fs.existsSync(path.join(ROOT, p.planta + '_cotas.json'))) continue;
+    const l = (r.match(new RegExp('^  ' + p.planta + ' .*$', 'm')) || [''])[0];
+    if (/APTA|NO EVALUABLE/.test(l))
+      throw new Error(p.planta + ' no tiene cotas y el censo le da veredicto: «' + l.trim() + '»');
+  }
+  // y las dos que sí las tienen deben salir evaluadas
+  for (const pl of ['ayora', 'sanjose']) {
+    if (!fs.existsSync(path.join(ROOT, pl + '_cotas.json'))) continue;
+    if (!new RegExp('^  ' + pl + ' .*APTA', 'm').test(r))
+      throw new Error(pl + ' tiene cotas y el censo no la evalúa');
+  }
+});
+
 console.log('');
 console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');
 
