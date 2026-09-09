@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = 8123 + (process.pid % 500);
@@ -25,12 +26,11 @@ const check = (nombre, cond, detalle) => {
   else { ko++; console.log('  ✗ ' + nombre + (detalle ? ' — ' + detalle : '')); }
 };
 
-const { chromium } = await import(fs.existsSync('/home/user/proyectos/node_modules/playwright/index.mjs')
-  ? '/home/user/proyectos/node_modules/playwright/index.mjs' : 'playwright');
+const { chromium } = await import('playwright');
 
 const srv = spawn('python3', ['-m', 'http.server', String(PORT), '--directory', ROOT], { stdio: 'ignore' });
 await new Promise(r => setTimeout(r, 1200));
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || EXE });   // EXE sale de pw_navegador.mjs: undefined en CI = «usa el tuyo»
 try {
   const pg = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errs = [];

@@ -17,7 +17,7 @@
    Va en modo SIN CONEXIÓN (localStorage cobertura_offline=1): ni satélite ni DEM, cero llamadas
    externas. El levantamiento propio de la planta SÍ se carga, que es un fichero del repo.         */
 import { chromium } from 'playwright-core';
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 let malo = 0;
 for (const p of process.argv.slice(2)) {

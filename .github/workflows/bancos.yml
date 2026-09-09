@@ -1,0 +1,195 @@
+name: bancos
+
+# Los bancos se corrían a mano, y son veinticuatro. En la práctica eso significa
+# que un cambio se podía subir sin que nadie los hubiera pasado, y que los que
+# nadie recordaba no se pasaban nunca.
+#
+# Se reparten por lo que NECESITA cada uno, no por temas: los que solo leen
+# ficheros van juntos y tardan segundos; los que abren navegador van en matriz,
+# uno por job, para que un rojo diga cuál sin abrir el log; y los que ejecutan
+# los .ps1 de verdad van aparte, porque necesitan PowerShell — que aquí no hay
+# y en el runner sí, así que en CI se prueban por primera vez.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un empujón nuevo cancela la ejecución anterior de la misma rama: lo que
+# interesa es el estado de AHORA, no la cola.
+concurrency:
+  group: bancos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── lo que solo lee ficheros: física, calibración y reparto ───────────────
+  #
+  # OJO AL HERMANO. `plan_barrido_rf.py` y `calibra_barrido.py` importan la
+  # física RF de `../cobertura-rf-fv/python` — un repo HERMANO— y, si no está,
+  # se lo tragan en silencio (`Z = None`) y siguen: el planificador emite la
+  # hoja sin márgenes previstos ni pasada de canto. La hoja parece una hoja y
+  # está hueca. Montando este CI se vio en un checkout limpio, con un
+  # `ZeroDivisionError` que no decía nada; y lo grave no era el traceback, sino
+  # que las comprobaciones que de verdad importan (la correlación distancia vs
+  # mesas, y «las palas de canto tapan más») no comprueban NADA sin el núcleo.
+  #
+  # Los dos bancos ahora lo EXIGEN y dicen dónde lo buscan. Aquí se les da:
+  # los dos repos se sacan uno al lado del otro dentro del espacio de trabajo,
+  # que es la única forma de que `../cobertura-rf-fv` exista en el runner.
+  # `cobertura-rf-fv` es público, así que basta el token de serie.
+  nucleo:
+    name: núcleo (python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cobertura-zigbee
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: cobertura-zigbee }
+      - name: el núcleo RF, de hermano
+        uses: actions/checkout@v4
+        with:
+          repository: IMoriana3/cobertura-rf-fv
+          path: cobertura-rf-fv
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      # `gen_coords_cobertura.py` proyecta coordenadas con pyproj — la unica
+      # dependencia externa que necesita ninguno de estos bancos (rastreado
+      # import a import; los otros cuatro van con la biblioteca estandar). Va
+      # pinchada, por lo mismo que Playwright: que una version nueva no cambie
+      # el resultado sin que el repo haya cambiado.
+      - name: pyproj (lo pide gen_coords_cobertura)
+        run: python3 -m pip install --disable-pip-version-check pyproj==3.7.2
+      - name: barrido RF
+        run: python3 tools/test_barrido_rf.py
+      - name: ajuste censurado (Tobit) del barrido
+        run: python3 tools/test_calibra_barrido.py
+      - name: TCUs retiradas y huecos de esclavo
+        run: python3 tools/test_coords_retiradas.py
+
+      # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
+      # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo
+      # dentro del repo, en silencio; me apareceieron dos veces en `git status`
+      # y estuvieron a punto de colarse en un commit. Arreglado, y vigilado:
+      # si un banco vuelve a ensuciar el arbol, esto se pone rojo y dice cual.
+      - name: los bancos no han tocado el repo
+        run: |
+          if ! git diff --quiet; then
+            echo "Un banco ha modificado ficheros del repo:"; git diff --stat; exit 1
+          fi
+
+  # ── los .ps1, ejecutados de verdad ────────────────────────────────────────
+  # `pwsh` viene de serie en ubuntu-latest. Los dos bancos lo buscan en el PATH
+  # (o en $PWSH) y, si no está, se saltan diciéndolo — que es justo lo que pasa
+  # en la máquina de desarrollo. Aquí SÍ corren.
+  powershell:
+    name: scripts de campo (pwsh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: pwsh está
+        run: pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+      - name: ángulos del barrido (zigbee_angulos.ps1)
+        run: python3 tools/test_angulos_barrido.py
+      - name: inventario zigbee (zigbee_inventario.ps1)
+        run: python3 tools/test_inventario_zb.py
+
+  # ── node sin navegador: layouts, mapas, física y paquetes de campo ────────
+  datos:
+    name: datos y física (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # NO se instala nada: el repo versiona node_modules con playwright 1.62.1
+      # a propósito, y un `npm ci` aquí reescribiría un árbol que está
+      # versionado. Estos bancos ni siquiera abren navegador.
+
+      # De este módulo arranca toda la matriz de navegador: si resuelve mal la
+      # ruta no falla un banco, fallan los nueve a la vez y con un error que no
+      # señala ahí. Por eso se prueba, y se prueba aquí, que es lo barato.
+      - name: la ruta del navegador se resuelve bien
+        run: node tools/test_pw_navegador.mjs
+      - name: simulador de backtracking
+        run: node tools/test_backtracking_sim.mjs
+      - name: producción por string
+        run: node tools/test_produccion.mjs
+      - name: cableado
+        run: node tools/test_cableado_core.mjs
+      - name: sombras de nube
+        run: node tools/test_cloud_shadows.mjs
+      - name: cielo cubierto
+        run: node tools/test_overcast_sim.mjs
+      - name: mapa modbus
+        run: node tools/test_modbus_map.mjs
+      - name: paquete de medida
+        run: node tools/test_paquete_medida.mjs
+      - name: pilotes del DWG
+        run: node tools/test_pilotes_dwg.mjs
+      - name: CSV de meteo
+        run: node tools/test_meteo_csv.mjs
+      # Este se SALTA solo si no encuentra plantas/ de la toolbox del repo
+      # `scada`, que aquí no está: en CI pasa en verde SIN COMPROBAR NADA. Se
+      # deja porque el día que se monte el checkout cruzado empieza a servir,
+      # pero que conste que hoy no vigila nada.
+      - name: HSU contra la hoja (se salta sin la toolbox de scada)
+        run: node tools/test_hsus_gw.mjs
+
+      # Lo mismo aqui: ningun banco de datos debe dejar el arbol sucio.
+      - name: los bancos no han tocado el repo
+        run: |
+          if ! git diff --quiet; then
+            echo "Un banco ha modificado ficheros del repo:"; git diff --stat; exit 1
+          fi
+
+  # ── los que abren el visor: uno por job, para que el rojo diga cuál ───────
+  navegador:
+    name: visor · ${{ matrix.banco }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # si cae el del terreno se quiere saber igual si pasa el del huso
+      matrix:
+        banco:
+          - test_terreno_plantas.mjs
+          - test_relieve_plantas.mjs
+          - test_relieve_bos.mjs
+          - test_suelo.mjs
+          - test_equipos.mjs
+          - test_telemetria.mjs
+          - test_bt3d_rot.mjs
+          - test_huso_plantas.mjs
+          - test_panel_plegable.mjs
+          - test_produccion_3d.mjs   # se levanta su propio servidor
+    env:
+      PUERTO: 8124              # el convenio de todos los bancos; un servidor sirve a todos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # El binario del navegador NO está versionado (los .js de playwright sí).
+      # Se instala con el CLI que ya trae el repo, así que la versión del
+      # navegador la fija el playwright versionado y no una descarga suelta.
+      - name: caché del navegador
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-1.62.1
+      - name: Chromium
+        run: node_modules/.bin/playwright install --with-deps chromium
+
+      # Sin ruta clavada: `tools/pw_navegador.mjs` no encuentra /opt/pw-browsers
+      # aquí y devuelve undefined, que es como se le dice a Playwright «usa el
+      # que acabas de instalar».
+      - name: servidor estático
+        run: |
+          python3 -m http.server $PUERTO >/dev/null 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:$PUERTO/terreno.html && break; sleep 1; done
+          curl -sf -o /dev/null http://127.0.0.1:$PUERTO/terreno.html
+
+      - name: ${{ matrix.banco }}
+        run: node tools/${{ matrix.banco }}
