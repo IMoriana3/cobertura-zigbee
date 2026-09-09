@@ -1900,7 +1900,12 @@ function repaintPick(){
   const rigida=(T.segArt&&kk!=null&&T.segArt[r]&&!T.segArt[r][kk])?' <span style="color:var(--muted)">(viga rígida)</span>':'';
   // el nombre del seguidor EN LA PLANTA
   const idTrk=(RP&&RP.idDe&&T.segTrk&&kk!=null&&T.segTrk[r])?RP.idDe.get(T.segTrk[r][kk]):null;
-  const estim=(T.segEst&&kk!=null&&T.segEst[r]&&T.segEst[r][kk])?' <span style="color:var(--warn,#e2b23a)">(cota estimada del plano)</span>':'';
+  // segEst marca la mesa cuya cota NO se midió, y ya no es siempre por el mismo
+  // motivo: el tracker entero reconstruido del plano, o —desde v1.50— un tope
+  // que el saneador estimó porque su punto vino con otra referencia vertical.
+  // El aviso no dice de cuál de los dos, porque para leer la mesa da igual: no
+  // es medida.
+  const estim=(T.segEst&&kk!=null&&T.segEst[r]&&T.segEst[r][kk])?' <span style="color:var(--warn,#e2b23a)">(cota estimada)</span>':'';
   // el STRING seleccionado: su entrada en la cadena (en El Burgo, el string
   // del plano que cae en esa mesa)
   let ent=null;

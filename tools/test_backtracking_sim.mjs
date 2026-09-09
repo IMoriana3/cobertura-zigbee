@@ -2565,6 +2565,58 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   });
 }
 
+console.log('v1.50 · la cota estimada marca la MESA, no la fila');
+{
+  // El saneador de cotas salva la mitad limpia de una fila contaminada y deja
+  // marcado en `ey` QUE TOPE no es medida. Ese detalle tiene que llegar hasta
+  // la mesa: marcar la fila entera devolvería a la tarjeta el mismo bulto que
+  // se quería quitar —la mesa buena declarada como no medida— y marcar nada
+  // sería peor todavía.
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: un tope estimado (ey) marca SOLO su mesa; la otra mitad sigue siendo medida', () => {
+    const conEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+      if (f.ey && (f.ey[0] || f.ey[1])) conEy.push(f);
+    if (conEy.length < 5) throw new Error('sin filas con ey en el fichero: el careo no prueba nada');
+    // ninguna fila trae los DOS topes estimados: si los dos se pierden, la fila
+    // se cae entera y no llega hasta aquí
+    for (const f of conEy) if (f.ey[0] && f.ey[1]) throw new Error('fila con los dos topes estimados');
+    let mesasEst = 0, mesasMed = 0;
+    for (let r = 0; r < P.segs.length; r++) for (let k = 0; k < P.segs[r].length; k++) {
+      const fi = P.segFila[r][k];
+      // mesas de una fila con ey: la del lado marcado va estimada y la otra no
+      if (P.segEst[r][k]) mesasEst++;
+    }
+    // cada fila con un tope estimado aporta UNA mesa marcada, no dos
+    const trkEst = new Set();
+    for (const tk of cotas.t) if (tk && tk.est) trkEst.add(tk);
+    let mesasDeTrkEst = 0;
+    for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
+      if (P.segEst[r][k] && trkEst.has(P.segTrk[r][k])) mesasDeTrkEst++;
+    const soloEy = mesasEst - mesasDeTrkEst;
+    if (soloEy !== conEy.length)
+      throw new Error(`${conEy.length} filas con un tope estimado pero ${soloEy} mesas marcadas (una por fila y solo una)`);
+  });
+  t('MUTANTE: marcar la fila entera (o no marcar nada) rompe el careo', () => {
+    const conEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+      if (f.ey && (f.ey[0] || f.ey[1])) conEy.push(f);
+    // (a) sin ey en el fichero, plantFromCotas no marca ninguna de esas mesas
+    const sinEy = JSON.parse(JSON.stringify(cotas));
+    for (const tk of sinEy.t) if (tk) for (const f of tk.f) f.ey = null;
+    const P0 = F.plantFromCotas(sinEy, Infinity, 'all');
+    const cuenta = (Q) => { let c = 0; for (const fila of Q.segEst) for (const b of fila) if (b) c++; return c; };
+    if (cuenta(P0) >= cuenta(P)) throw new Error('quitar ey no cambia el marcado: no se está leyendo');
+    // (b) marcando los dos topes salen DOS mesas por fila en vez de una
+    const doble = JSON.parse(JSON.stringify(cotas));
+    for (const tk of doble.t) if (tk) for (const f of tk.f) if (f.ey && (f.ey[0] || f.ey[1])) f.ey = [1, 1];
+    const P2 = F.plantFromCotas(doble, Infinity, 'all');
+    if (cuenta(P2) !== cuenta(P) + conEy.length)
+      throw new Error('marcar los dos topes no dobla las mesas marcadas: el lado no se está respetando');
+  });
+}
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

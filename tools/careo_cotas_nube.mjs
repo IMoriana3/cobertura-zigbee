@@ -65,7 +65,15 @@ function cerca(x, n, r = 3) {
 }
 
 /* ── 1 · lo que SÍ es medida: extremos y cota contra la nube ─────────────── */
-const dN = [], dZ = [], sinPunto = [];
+// Se carea contra el punto SANO más cercano, y aparte se comprueba que ninguna
+// cota emitida venga de uno contaminado. No es lo mismo: donde el punto que
+// tocaba vino con otra referencia, el saneador toma el punto sano que hay a
+// menos de 1 m (el tope del tracker contiguo), así que ahí el punto MÁS
+// cercano sigue siendo el malo aunque el fichero esté bien. Si esa sustitución
+// se cayera, la cota emitida volvería a casar con el punto malo: eso es lo que
+// caza `deLoMalo`, y con ello el máximo de la fila de arriba pasa de 1,19 m a
+// los 36,7 de la contaminación.
+const dN = [], dZ = [], sinPunto = [], deLoMalo = [];
 let filasMedidas = 0;
 for (const t of C.t) {
   if (!t || t.est) continue;
@@ -73,9 +81,16 @@ for (const t of C.t) {
     filasMedidas++;
     for (const k of [0, 1]) {
       const v = cerca(f.x, f.n[k]);
-      if (!v.length) { sinPunto.push([f.x, f.n[k]]); continue; }
-      let mej = v[0];
-      for (const i of v) if (Math.abs(P.n[i] - f.n[k]) < Math.abs(P.n[mej] - f.n[k])) mej = i;
+      const estimada = f.ey && f.ey[k];           // esa cota no es medida, va marcada
+      const malCerca = v.filter(i => P.mal[i]);
+      if (!estimada && malCerca.length &&
+          malCerca.some(i => Math.abs(P.z[i] - f.y[k]) < 0.05))
+        deLoMalo.push(f.x.toFixed(1) + '/' + f.n[k].toFixed(0));
+      const w = v.filter(i => !P.mal[i]);
+      if (!w.length) { if (!estimada) sinPunto.push([f.x, f.n[k]]); continue; }
+      if (estimada) continue;                     // estimada: no hay nada que carear
+      let mej = w[0];
+      for (const i of w) if (Math.abs(P.n[i] - f.n[k]) < Math.abs(P.n[mej] - f.n[k])) mej = i;
       dN.push(Math.abs(P.n[mej] - f.n[k]));
       dZ.push(Math.abs(P.z[mej] - f.y[k]));
     }
@@ -137,6 +152,8 @@ console.log('1 · LO MEDIDO, CONTRA SU PROPIO PUNTO (' + filasMedidas + ' filas 
 console.log('    distancia al punto más cercano (m):  ' + fmt(dN));
 console.log('    diferencia de cota (m):              ' + fmt(dZ));
 console.log('    extremos sin ningún punto a 3 m:     ' + sinPunto.length);
+console.log('    cotas emitidas que salen de un punto CONTAMINADO (deberían ser 0): ' + deLoMalo.length +
+  (deLoMalo.length ? '  <- ' + deLoMalo.slice(0, 6).join(', ') : ''));
 console.log('');
 console.log('2 · LA HERMANA DUPLICADA — el error se ACOTA con los ' + dHermana.length + ' trackers de dos vigas medidas');
 console.log('    desfase de cota entre las dos vigas del MISMO tubo (m): ' + fmt(dHermana));

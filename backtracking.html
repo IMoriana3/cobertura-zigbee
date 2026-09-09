@@ -1023,6 +1023,11 @@ function plantFromCotas(data,maxLines,blockIdx){
     for(const f of trk.f){
       if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
       filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md,est:!!trk.est,
+                  // ey=[tope sur, tope norte]: qué cota de esta fila NO es medida
+                  // porque su punto vino con otra referencia vertical y el
+                  // saneador la estimó. Va por TOPE, así que marca UNA mesa, no
+                  // la fila: la otra mitad está medida de punta a punta.
+                  ey:(f.ey&&f.ey.length>1)?f.ey:null,
                   nm:(f.nm!=null&&f.ym!=null)?f.nm:null,ym:(f.nm!=null&&f.ym!=null)?f.ym:null});
     }
   }
@@ -1123,10 +1128,12 @@ function plantFromCotas(data,maxLines,blockIdx){
       const g=Math.min(gDrive/2,Math.max(0,(Math.min(nb-nS,nN-nb))/4));
       const pS=(zb-zS)/((nb-nS)||1), pN=(zN-zb)/((nN-nb)||1);
       const com={trk:f.trk,md:f.md,est:f.est,art:hinge,fila:fi};
+      // cada mesa se queda con la marca de SU tope (el morro es medido en las dos)
+      const eyS=f.ey?!!(asc?f.ey[0]:f.ey[1]):false, eyN=f.ey?!!(asc?f.ey[1]:f.ey[0]):false;
       // el MORRO va copiado en cada mesa (no compartido): las dos lo recentran
       // luego con eMean, y una referencia común lo restaría dos veces
-      sg.push(Object.assign({s:[nS-nMid,nb-g-nMid],z:[zS,zb-pS*g],side:0,morro:[nb-nMid,zb]},com));
-      sg.push(Object.assign({s:[nb+g-nMid,nN-nMid],z:[zb+pN*g,zN],side:1,morro:[nb-nMid,zb]},com));
+      sg.push(Object.assign({s:[nS-nMid,nb-g-nMid],z:[zS,zb-pS*g],side:0,morro:[nb-nMid,zb]},com,{est:f.est||eyS}));
+      sg.push(Object.assign({s:[nb+g-nMid,nN-nMid],z:[zb+pN*g,zN],side:1,morro:[nb-nMid,zb]},com,{est:f.est||eyN}));
       fi++;
     }
     sg.sort((a,b)=>a.s[0]-b.s[0]);
@@ -1140,7 +1147,8 @@ function plantFromCotas(data,maxLines,blockIdx){
     segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
     segTrk.push(sg.map(o=>o.trk));
     segMods.push(sg.map(o=>o.md!=null?o.md:null));   // módulos del STRING de esta mesa (del levantamiento)
-    segEst.push(sg.map(o=>!!o.est));                 // mesa RECONSTRUIDA del plano (cota no medida)
+    segEst.push(sg.map(o=>!!o.est));                 // cota de la mesa NO medida: tracker reconstruido
+                                                     // del plano, o tope estimado por el saneador (ey)
     segSide.push(sg.map(o=>o.side));                 // 0 = al SUR del morro, 1 = al NORTE
     segFila.push(sg.map(o=>o.fila));                 // fila (viga) de la que es mitad
     segArt.push(sg.map(o=>!!o.art));                 // el quiebro está MEDIDO (fila articulada)
@@ -2730,7 +2738,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.49.0';
+const VER='v1.50.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

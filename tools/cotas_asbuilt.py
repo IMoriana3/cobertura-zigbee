@@ -28,17 +28,22 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def puntos_con_otra_referencia(planta, umbral=3.0, dy=10.0, dx=30.0, minv=3):
     """Puntos del levantamiento cuya Z no cuadra con la de sus vecinos.
 
-    Devuelve (dict id_fila -> [(id_punto, desvio_m)], n_decidibles, n_puntos,
-    dict id_fila -> n_puntos_de_esa_fila), o None si la planta no tiene
-    <planta>_puntos.json.
+    Devuelve (dict id_fila -> [(id_punto, desvio_m, Y_utm)], n_decidibles,
+    n_puntos, dict id_fila -> n_puntos_de_esa_fila), o None si la planta no
+    tiene <planta>_puntos.json. La Y va porque QUE MITAD de la fila esta
+    contaminada decide si se salva una mesa (ver `mitad_limpia`).
 
     QUE SE CONTAMINA, EXACTAMENTE. No un punto suelto: una MESA ENTERA, que es
     tanto como decir una sesion de campo. En San Jose el tubo TR-09_1-044-E
     tiene la mesa sur a 1531,7 m y la norte a 1568,7 — 36,7 m de salto EN EL
-    MISMO TUBO, imposible; su hermana -W tiene las cuatro cotas a 1531,x. Por
-    eso la fila se descarta entera aunque solo la mitad este mal: el as-built
-    solo conserva un extremo de cada mesa, y con uno bueno y uno malo no se
-    reconstruye nada — se reclama.
+    MISMO TUBO, imposible; su hermana -W tiene las cuatro cotas a 1531,x.
+
+    LA FILA YA NO SE TIRA ENTERA. Se tiraba porque «el as-built solo conserva un
+    extremo de cada mesa, y con uno bueno y uno malo no se reconstruye nada».
+    Eso dejo de ser cierto cuando el reparto empezo a emitir tambien el MORRO
+    (zm/ym): con el punto del morro sano, media fila limpia ES UNA MESA ENTERA,
+    medida de punta a punta. Lo que se salva se salva y lo que no, se marca —
+    ver `mitad_limpia`. Se reclama igual: la reclamacion no cambia.
 
     CONTRA QUE SE COMPARA CADA PUNTO, Y POR QUE ASI. Contra los puntos de los
     seguidores de al lado A SU MISMA COORDENADA NORTE (|dy| <= 10 m, |dx| <= 30 m),
@@ -107,8 +112,178 @@ def puntos_con_otra_referencia(planta, umbral=3.0, dy=10.0, dx=30.0, minv=3):
         vec.sort()
         r = Z[i] - vec[len(vec) // 2]
         if abs(r) > umbral:
-            malos[FIL[FI[i]]].append((ID[i], round(r, 2)))
+            malos[FIL[FI[i]]].append((ID[i], round(r, 2), Y[i]))
     return malos, n_dec, len(ID), total
+
+
+def cota_del_punto_vecino(planta, ids_malos, base, cE, cN, r=1.0):
+    """Cota SANA para un sitio cuyo punto vino con otra referencia vertical.
+
+    UNA COTA MALA NO ES SIEMPRE UNA MESA PERDIDA. Los topes de dos trackers
+    contiguos de la misma linea estan a menos de un metro (el hueco entre
+    seguidores), y el morro son dos puntos a 0,9. Cuando el punto que uso el
+    reparto viene contaminado, casi siempre queda OTRO punto sano del
+    levantamiento a 0,6-1,0 m: no es el mismo hito medido dos veces —de los 30
+    que se recuperan en San Jose, 26 son del tracker de al lado—, es el terreno
+    medido un metro mas alla.
+
+    LO QUE CUESTA, MEDIDO. Sustituir un punto por su vecino sano a <= 1 m
+    desplaza la cota 0,048 m de mediana (p95 0,30 · p99 0,45 · maximo 2,07),
+    acotado sobre los 12.423 pares de puntos sanos que estan a esa distancia en
+    San Jose. Es MENOS de lo que ya se acepta y se declara en la hermana
+    duplicada (0,151 m de mediana, p95 0,383), y la alternativa no es una cota
+    mejor: es perder la mesa o rellenarla con la mediana del vecindario.
+
+    COMO SE RECONSTRUYE UN SITIO, Y POR QUE ASI. Igual que lo hizo el reparto,
+    que es lo unico que hace comparable el valor con el resto del fichero:
+
+      · un TOPE es el punto sano mas cercano al sitio (el reparto elige una
+        punta, no promedia: si promediara, el tope de TR-06_2-015-W saldria a
+        85,99 en vez de a 85,65);
+      · el MORRO es la MEDIA de los puntos sanos del sitio, porque son los dos
+        lados del hueco del accionamiento y el as-built los promedia.
+
+    Ese criterio esta CAREADO contra el propio as-built: reconstruyendo los tres
+    sitios de 600 filas limpias (1.800 sitios) reproduce el valor emitido con
+    0,5 mm de error maximo. No inventa una interpolacion nueva.
+
+    Devuelve una funcion cota(x_local, Y_utm, morro) -> cota local sana, o None
+    si en ese sitio no quedo ningun punto limpio; y None si la planta no trae
+    nube.
+    """
+    p = os.path.join(RAIZ, planta + '_puntos.json')
+    if not os.path.exists(p):
+        return None
+    D = json.load(open(p))
+    X, Y, Z, ID = D['x'], D['y'], D['z'], D['id']
+    G = defaultdict(list)
+    for i in range(len(ID)):
+        if ID[i] in ids_malos:
+            continue                             # los contaminados no cuentan
+        G[(int(X[i] // 5), int(Y[i] // 5))].append(i)
+
+    def cota(x, y, morro=False):
+        x += cE
+        v = []
+        for a in range(int((x - r) // 5), int((x + r) // 5) + 1):
+            for b in range(int((y - r) // 5), int((y + r) // 5) + 1):
+                for i in G.get((a, b), ()):
+                    if abs(X[i] - x) <= r and abs(Y[i] - y) <= r:
+                        v.append(i)
+        if not v:
+            return None
+        if morro:
+            return sum(Z[i] for i in v) / len(v) - base
+        j = min(v, key=lambda i: (X[i] - x) ** 2 + (Y[i] - y) ** 2)
+        return Z[j] - base
+
+    return cota
+
+
+def repara_con_el_vecino(f, malos, cota, cN, tol=1.5):
+    """Rehace los sitios contaminados de una fila con el punto sano de al lado.
+
+    Modifica f en el sitio y devuelve la lista de puntos malos que NO se han
+    podido recuperar: esos son los que deciden que mesa se pierde. Si la lista
+    sale vacia, la fila se sostiene ENTERA — se sigue reclamando el punto malo
+    al topografo, pero no cuesta ni una mesa.
+
+    `tol` es a que SITIO de la fila pertenece cada punto malo (tope sur, morro o
+    tope norte) por su coordenada norte, no la distancia a la que se busca el
+    sustituto: eso lo fija el radio de `cota_del_punto_vecino`. Los tres sitios
+    de una fila estan a decenas de metros unos de otros, asi que 1,5 m los
+    separa de sobra y aun asi coge los dos lados del morro.
+    """
+    if cota is None:
+        return list(malos)
+    pend, tocado = [], []
+    sitios = [('ys', 'zs', False), ('ym', 'zm', True), ('yn', 'zn', False)]
+    for t in malos:
+        yu = t[2] if len(t) > 2 else None
+        if yu is None:
+            pend.append(t)                       # sin saber donde, no se repara
+            continue
+        for cual, zk, morro in sitios:
+            if f.get(zk) is None or abs((cN - f[zk]) - yu) > tol:
+                continue
+            if cual not in tocado:
+                v = cota(f['x'], cN - f[zk], morro)
+                if v is None:
+                    break                        # ese sitio se quedo sin medida
+                f[cual] = v
+                tocado.append(cual)
+            break
+        else:
+            pend.append(t)                       # el punto no cae en ningun sitio
+            continue
+        if cual not in tocado:
+            pend.append(t)
+    if tocado:
+        recalcula_pendientes(f)
+    return pend
+
+
+def recalcula_pendientes(f):
+    """pa (por mesa) y sl (de la fila) salen de las cotas: si estas cambian,
+       ellas tambien. Sin esto TR-06_2-015-W seguiria declarando -47,8 % de
+       pendiente longitudinal, que es la contaminacion, no el terreno."""
+    def p(z0, y0, z1, y1):
+        d = abs(z0 - z1)
+        return None if d < 1e-6 else (y1 - y0) / d * 100.0
+    if f.get('ys') is not None and f.get('yn') is not None:
+        f['sl'] = p(f['zs'], f['ys'], f['zn'], f['yn'])
+    if f.get('zm') is not None and f.get('ym') is not None and \
+       f.get('ys') is not None and f.get('yn') is not None:
+        a = p(f['zs'], f['ys'], f['zm'], f['ym'])
+        b = p(f['zm'], f['ym'], f['zn'], f['yn'])
+        f['pa'] = [v for v in (a, b) if v is not None]
+
+
+def mitad_limpia(f, malos, cN):
+    """Que se salva de una fila con puntos contaminados.
+
+    La contaminacion es de COTA, no de posicion: el punto esta donde dice, pero
+    su Z viene de otra referencia. Asi que la geometria de la fila (sus dos
+    extremos y su morro en n) sigue valiendo entera; lo unico que se pierde es
+    la Z de los puntos marcados. Con el morro medido, cada mitad de la fila es
+    una MESA COMPLETA —tope + morro— y se puede salvar sola.
+
+    Devuelve (accion, detalle):
+      ('entera',  None)      no queda ningun punto sano util: se descarta
+      ('sur',     None)      la mesa SUR esta limpia: se estima la cota del
+                             tope norte y se marca
+      ('norte',   None)      idem con la mesa NORTE y el tope sur
+      ('morro',   None)      los dos topes limpios y el morro contaminado: la
+                             fila vale de punta a punta, pero SIN quiebro medido
+    """
+    if f.get('zm') is None:
+        return ('entera', None)                  # sin morro no hay mitades
+    nm = -f['zm']
+    ns, nn = -f['zs'], -f['zn']
+    lo, hi = min(ns, nn), max(ns, nn)
+    # cada punto contaminado, a su sitio: tope sur, morro o tope norte
+    TOL = 6.0                                    # m; el morro son dos puntos a ~0,9
+    malSur = malNorte = malMorro = False
+    for t in malos:
+        n = t[2] - cN if len(t) > 2 else None
+        if n is None:
+            return ('entera', None)              # sin saber donde, no se salva nada
+        if abs(n - nm) <= TOL:
+            malMorro = True
+        elif n < nm:
+            malSur = malSur or abs(n - lo) <= TOL
+        else:
+            malNorte = malNorte or abs(n - hi) <= TOL
+    if malMorro:
+        # el morro no vale; los topes deciden si la fila entera se sostiene
+        return ('morro', None) if not (malSur or malNorte) else ('entera', None)
+    if malSur and malNorte:
+        return ('entera', None)
+    if malSur:
+        return ('norte', None)                   # sobrevive la mesa NORTE
+    if malNorte:
+        return ('sur', None)                     # sobrevive la mesa SUR
+    return ('entera', None)
 
 
 def genera(planta):
@@ -152,6 +327,7 @@ def genera(planta):
     # viene de la nube, con los ids de PUNTO — para poder reclamarselo.
     UMBRAL_HERMANAS = 3.0                       # m; la cuerda son 2,38
     corregidas = []
+    n_vecino = n_filas_vec = 0                  # cotas rehechas con el punto de al lado
 
     # (a) por PUNTO, si hay nube cruda de la planta
     malos = puntos_con_otra_referencia(planta, UMBRAL_HERMANAS)
@@ -160,19 +336,72 @@ def genera(planta):
         print('%-8s nube del levantamiento: %d puntos, %d decidibles (%.1f%%) · %d con otra referencia en %d fila(s)'
               % (planta, n_pts, n_dec, 100.0 * n_dec / max(1, n_pts),
                  sum(len(v) for v in pmal.values()), len(pmal)))
+        # PRIMERO SE MIRA AL LADO, DESPUES SE DESCARTA. En casi todos estos
+        # sitios hay otro punto del levantamiento sano a menos de un metro —el
+        # tope del tracker contiguo, o el otro lado del morro—, y esa cota
+        # cuesta 0,05 m de mediana frente a perder la mesa entera. Va MEDIDO y
+        # declarado en `cota_del_punto_vecino`.
+        ids_malos = set(t[0] for w in pmal.values() for t in w)
+        cota_sana = cota_del_punto_vecino(planta, ids_malos, META['base'], META['cE'], META['cN'])
+        salvadas, remedidas = [], []
         for k, v in list(grupos.items()):
-            sanas = [f for f in v if f.get('id') not in pmal]
+            sanas = []
             for f in v:
-                if f.get('id') in pmal:
-                    m, n_t = pmal[f['id']], n_por_fila.get(f['id'], 0)
-                    alcance = 'la fila entera' if len(m) >= n_t else ('%d de %d puntos (media fila: una mesa)' % (len(m), n_t))
-                    corregidas.append((f['id'], (f['ys'] + f['yn']) / 2.0, float('nan'), float('nan'),
-                                       alcance + ' · ' + ', '.join('pt %d %+.1f m' % t for t in m)))
+                if f.get('id') not in pmal:
+                    sanas.append(f)
+                    continue
+                m, n_t = pmal[f['id']], n_por_fila.get(f['id'], 0)
+                alcance = 'la fila entera' if len(m) >= n_t else ('%d de %d puntos (media fila: una mesa)' % (len(m), n_t))
+                corregidas.append((f['id'], (f['ys'] + f['yn']) / 2.0, float('nan'), float('nan'),
+                                   alcance + ' · ' + ', '.join('pt %d %+.1f m' % (t[0], t[1]) for t in m)))
+                # la reclamacion NO cambia por esto: al topografo se le sigue
+                # senalando el punto malo aunque nos lo apanemos con su gemelo.
+                g = dict(f)
+                resto = repara_con_el_vecino(g, m, cota_sana, META['cN'])
+                if len(resto) < len(m):
+                    remedidas.append((f['id'], len(m) - len(resto), len(m)))
+                    n_vecino += len(m) - len(resto); n_filas_vec += 1
+                if not resto:
+                    sanas.append(g)              # fila ENTERA y medida: no cuesta nada
+                    continue
+                # LO QUE SE SALVA, SE SALVA. Con el morro medido, media fila
+                # limpia es una MESA ENTERA: se conserva su cota y se marca la
+                # mitad que se pierde (ey), que aguas abajo sale como mesa con
+                # cota estimada — la misma marca que ya llevan los seguidores
+                # reconstruidos del plano.
+                acc, _ = mitad_limpia(g, resto, META['cN'])
+                if acc == 'entera':
+                    continue                     # nada que salvar: la fila se cae
+                if acc == 'morro':
+                    g['zm'] = g['ym'] = None     # los topes valen; el quiebro no
+                    g['art'] = 0
+                    g['pa'] = []
+                    g['ey'] = [0, 0]
+                else:
+                    g['ey'] = [1, 0] if acc == 'norte' else [0, 1]
+                    g['_estima'] = 'ys' if acc == 'norte' else 'yn'
+                    g[g['_estima']] = None       # la cota mala se ANULA aqui: si
+                                                 # se dejara puesta, el control
+                                                 # por fila volveria a condenar
+                                                 # la fila por su propio +36 m
+                g['_salvada'] = acc
+                sanas.append(g)
+                salvadas.append((f['id'], acc))
             if len(sanas) != len(v):
                 if sanas:
                     grupos[k] = sanas            # inc=1: la hermana se duplica mas abajo
                 else:
                     del grupos[k]                # las dos sucias: el seguidor se queda SIN MEDIR
+            elif salvadas or remedidas:
+                grupos[k] = sanas                # con mitades salvadas o remedidas, el grupo se rehace
+        if remedidas:
+            print('%-8s %d fila(s) rehechas con el punto sano contiguo (< 1 m; %d punto(s) recuperados): %s'
+                  % (planta, len(remedidas), sum(t[1] for t in remedidas),
+                     ', '.join('%s (%d/%d)' % t for t in remedidas[:8]) + (' …' if len(remedidas) > 8 else '')))
+        if salvadas:
+            print('%-8s %d fila(s) con media contaminada SALVADAS por su mesa limpia: %s'
+                  % (planta, len(salvadas),
+                     ', '.join('%s (%s)' % t for t in salvadas[:8]) + (' …' if len(salvadas) > 8 else '')))
 
     # (b) por FILA, sobre lo que ha sobrevivido. `todas` se reconstruye AQUI y
     #     se va purgando: una fila ya condenada no puede seguir votando como
@@ -198,6 +427,8 @@ def genera(planta):
             for f in todas:
                 if f in excluir:
                     continue
+                if f.get('ys') is None or f.get('yn') is None:
+                    continue                     # cota pendiente de estimar: no vota
                 fn = -(f['zs'] + f['zn']) / 2.0
                 if abs(f['x'] - cx) <= radio * paso and abs(fn - cn) < 60:
                     vec.append((f['ys'] + f['yn']) / 2.0)
@@ -205,6 +436,44 @@ def genera(planta):
                 vec.sort()
                 return (vec[len(vec) // 2] if len(vec) % 2 else (vec[len(vec) // 2 - 1] + vec[len(vec) // 2]) / 2.0)
         return None
+
+    # LA COTA QUE FALTA, ANTES DE NADA MAS. Se pone aqui —con `todas` ya
+    # construida y `cota_vecina` disponible, y antes del control por fila— para
+    # que la fila salvada entre en el resto del proceso como una fila normal.
+    _est_ok, _est_ko = 0, 0
+    for v in list(grupos.values()):
+        for f in v:
+            cual = f.get('_estima')
+            if not cual or f.get(cual) is not None:
+                continue
+            cn = -f['zs'] if cual == 'ys' else -f['zn']
+            val = None
+            for h in v:                          # 1) la hermana, si la suya es medida
+                if h is not f and abs(h['x'] - f['x']) < 12 and h.get(cual) is not None:
+                    val = h[cual]; break
+            if val is None:                      # 2) la mediana de las vecinas
+                val = cota_vecina(f['x'], cn, [f] + [h for h in v if h is not f])
+            if val is None:
+                _est_ko += 1
+            else:
+                f[cual] = val; _est_ok += 1
+                # y con la cota nueva, sus pendientes: el pa/sl que la fila
+                # heredo del as-built es el de la cota CONTAMINADA. Sin esto San
+                # Jose emitia cuatro trackers al 98-99 % de pendiente
+                # longitudinal, que no es terreno sino los +36,7 m repartidos
+                # sobre media fila. Solo se recalcula la fila tocada: en Ayora
+                # `sl` es del TRACKER (la media de sus dos filas) y recalcularlo
+                # por fila la desviaria hasta 0,6 pp sin motivo.
+                recalcula_pendientes(f)
+    for k, v in list(grupos.items()):            # sin cota no hay fila
+        w = [f for f in v if f.get('ys') is not None and f.get('yn') is not None]
+        if len(w) != len(v):
+            if w: grupos[k] = w
+            else: del grupos[k]
+    if _est_ok or _est_ko:
+        print('%-8s cota estimada en %d tope(s) de fila salvada%s'
+              % (planta, _est_ok, ' · %d sin vecinos: la fila se cae' % _est_ko if _est_ko else ''))
+    todas = [f for v in grupos.values() for f in v]
 
     for k, v in list(grupos.items()):
         if len(v) != 2:
@@ -583,6 +852,10 @@ def genera(planta):
                 'pa': [num(p) for p in (f.get('pa') or [])],
                 'nm': num(-f['zm']) if f.get('zm') is not None else None,
                 'ym': num(f['ym']) if f.get('ym') is not None else None,
+                # que cota de esta fila NO es medida: [tope sur, tope norte].
+                # 1 = la puso el saneador porque su punto venia con otra
+                # referencia vertical (y va reclamada); 0 = medida.
+                'ey': [int(b) for b in f['ey']] if f.get('ey') else None,
             })
         g = v[0]
         T.append({
@@ -621,8 +894,17 @@ def genera(planta):
         # fila es 2*md modulos + huecos, y no hay nada que suponer
         'mod':    MOD or None,
         'n_est':  sum(1 for t in T if t and t.get('est')),
+        # cuantas cotas NO salen del punto que les tocaba, y de donde salen:
+        # el visor y los careos lo declaran sin tener que recalcularlo
+        'n_vec':  n_vecino,
         'nota':   'y = cota MEDIDA sobre el modulo, relativa a base. El eje n es norte positivo. '
                   'f[].md = modulos por STRING (cada fila lleva dos, uno por ala).',
+        'nota_vec': ('%d cota(s) de %d fila(s) NO son de su propio punto: el suyo vino con otra '
+                     'referencia vertical y se ha tomado el punto sano del levantamiento que hay a '
+                     'menos de 1 m (el tope del tracker contiguo o el otro lado del morro). Cuesta '
+                     '0,05 m de mediana (p95 0,30), menos que la hermana duplicada; la alternativa '
+                     'era perder la mesa. Los puntos malos van reclamados igual.') % (n_vecino, n_filas_vec)
+                    if n_vecino else None,
         't': T,
     }
     dst = os.path.join(RAIZ, planta + '_cotas.json')
