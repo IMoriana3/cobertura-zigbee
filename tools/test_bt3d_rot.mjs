@@ -103,6 +103,12 @@ check('CONTROL rot 0 (El Burgo, Fayón, Túnez, Ayora, San José, Páramo): sin 
  * con cotas (solo El Burgo). Un layout IMPORTADO pasa por `updateSpin` con el
  * `panelAngle` global — tubo N-S del mundo, rot ignorado. El banco de arriba
  * daba 28 verdes sin proteger el caso del cliente: verde que no vigila.   */
+/* La primera página ya no hace falta y NO puede seguir viva: sigue
+   renderizando El Burgo (escena entera, sombras) con swiftshader mientras la
+   segunda intenta cargar, y en el runner de CI las dos pestañas comparten
+   proceso: pg2 no llegó a domcontentloaded en 120 s con el test sin cambiar.
+   Cerrada, la segunda carga en lo que tarda el HTML.                        */
+await pg.close();
 const pg2 = await ctx.newPage(); const t1 = Date.now();
 await pg2.goto(`http://localhost:${PUERTO}/terreno.html?planta=${process.argv[2] || 'elburgo'}`,
                { waitUntil: 'domcontentloaded', timeout: 120000 });
