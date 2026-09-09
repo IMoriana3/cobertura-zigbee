@@ -205,7 +205,18 @@ def reparte(planta='sanjose'):
         cand = []
         for c in (b - 1, b, b + 1):
             cand += porEje.get(c, [])
-        cand = [k for k in cand if abs(P[k][1] - filas[ifilas[0]]['x']) <= TOL_X]
+        # EL BUCKET NO ES UNA SOLA X. Aqui se filtraba contra la x de la
+        # PRIMERA fila del bucket, y en un bucket caben filas de ejes que
+        # difieren medio metro: en el de las vigas W de x=31,60 y x=32,10
+        # conviven 25,426 y 25,926, y la primera que entra es la de 25,926. Los
+        # puntos de la W de TR-08_1-056 estan en x=24,322 —a 1,10 m de SU fila,
+        # dentro de tolerancia— pero a 1,60 m de esa otra, asi que se caian de
+        # candidatos y la viga entera se quedaba sin repartir con su tracker a
+        # media medida. Se filtra contra el RANGO del bucket, que es lo que el
+        # bucket significa.
+        _lo = min(filas[i]['x'] for i in ifilas) - TOL_X
+        _hi = max(filas[i]['x'] for i in ifilas) + TOL_X
+        cand = [k for k in cand if _lo <= P[k][1] <= _hi]
         if not cand:
             continue
         cand.sort(key=lambda k: P[k][2])
