@@ -164,7 +164,17 @@ const browser = await chromium.launch({ executablePath: EXEC,
 for (const pl of PLANTAS) {
   /* Una pestaña NUEVA por planta: la escena anterior sigue renderizando y con
      una sola pestaña la segunda carga se queda sin tiempo. */
-  const page = await browser.newPage({ viewport: { width: 900, height: 620 } });
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 620 } });
+  /* MODO OFFLINE, como los otros ocho bancos que tocan terreno.html.
+     Cortar la red no bastaba: la pagina montaba igualmente los mosaicos de
+     satelite y relieve —lienzos de cientos de teselas— y les pasaba
+     `getImageData`. Este banco era el UNICO lento de la matriz por eso: 24 min
+     en un runner, mas de 45 en otro. Con `cobertura_offline` la pagina no los
+     construye siquiera («cero llamadas externas», dice su propio comentario), y
+     lo que aqui se comprueba —equipos, estaciones, retícula de apoyos— no
+     depende de la ortofoto ni del DEM. */
+  await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
+  const page = await ctx.newPage();
   page.setDefaultTimeout(120000);
   /* Las teselas de satélite salen a internet; en CI no hay salida y el cargador
      se quedaría esperando. Se sirven en blanco: no entran en ninguna comprobación. */
