@@ -10,6 +10,19 @@ name: bancos
 # los .ps1 de verdad van aparte, porque necesitan PowerShell — que aquí no hay
 # y en el runner sí, así que en CI se prueban por primera vez.
 
+# TOPE DE TIEMPO POR JOB. Sin `timeout-minutes` GitHub deja correr SEIS HORAS.
+# El dia que un banco se cuelgue —y con un navegador es cuestion de tiempo— eso
+# es un runner atascado media jornada y un rojo que llega tardisimo. Los topes
+# de abajo salen de lo MEDIDO en el runner, no de una corazonada:
+#
+#   nucleo 36 s · pwsh 14 s · datos 5 min 29 s
+#   visor: ocho de los diez por debajo de 100 s, y los dos gordos
+#          (test_equipos 24 min 26 s, test_panel_plegable parecido) — aqui esos
+#          mismos tardan ~5 min, o sea que el runner iba 5 veces mas lento.
+#
+# Asi que el tope del visor va en 45 min: casi el doble del peor caso medido, y
+# aun asi ocho veces menos que las seis horas de fabrica.
+
 on:
   push:
     branches: [main]
@@ -39,6 +52,7 @@ jobs:
   # que es la única forma de que `../cobertura-rf-fv` exista en el runner.
   # `cobertura-rf-fv` es público, así que basta el token de serie.
   nucleo:
+    timeout-minutes: 15
     name: núcleo (python)
     runs-on: ubuntu-latest
     defaults:
@@ -84,6 +98,7 @@ jobs:
   # (o en $PWSH) y, si no está, se saltan diciéndolo — que es justo lo que pasa
   # en la máquina de desarrollo. Aquí SÍ corren.
   powershell:
+    timeout-minutes: 15
     name: scripts de campo (pwsh)
     runs-on: ubuntu-latest
     steps:
@@ -99,6 +114,7 @@ jobs:
 
   # ── node sin navegador: layouts, mapas, física y paquetes de campo ────────
   datos:
+    timeout-minutes: 30
     name: datos y física (node)
     runs-on: ubuntu-latest
     steps:
@@ -148,6 +164,7 @@ jobs:
 
   # ── los que abren el visor: uno por job, para que el rojo diga cuál ───────
   navegador:
+    timeout-minutes: 45
     name: visor · ${{ matrix.banco }}
     runs-on: ubuntu-latest
     strategy:

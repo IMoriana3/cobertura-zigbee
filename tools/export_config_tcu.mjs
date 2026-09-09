@@ -70,6 +70,15 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PLANTA = (process.argv[2] || 'ayora').toLowerCase();
+/* DONDE SE ESCRIBE. Por defecto, en el repo — que es lo que se quiere cuando
+   uno regenera la ficha a proposito. Pero los BANCOS tambien lo ejecutan, y
+   entonces reescribian `config_tcu_<planta>.csv`, su `.meta.json` y
+   `<planta>_ficha.json` dentro del repo sin que nadie lo pidiera: correr las
+   pruebas dejaba el arbol sucio y esos ficheros —que van al SCADA— se podian
+   colar en un commit que no iba de eso. Con `--dir` se manda la salida a otro
+   sitio, como `plan_barrido_rf.py` hace con `--salida`. */
+const iDir = process.argv.indexOf('--dir');
+const DIR = iDir > 0 && process.argv[iDir + 1] ? process.argv[iDir + 1] : ROOT;
 const leer = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf-8'));
 
 const cotas = leer(`${PLANTA}_cotas.json`);
@@ -290,7 +299,7 @@ const cab = ['planta', 'ncu', 'tcu', 'tracker', 'zona', 'id_levantamiento', 'tip
   'oeste_transv_pct', 'este_transv_pct', 'pendiente_longitudinal_pct',
   'oeste_vecina_critica', 'este_vecina_critica'].join(',');
 
-const out = path.join(ROOT, `config_tcu_${PLANTA}.csv`);
+const out = path.join(DIR, `config_tcu_${PLANTA}.csv`);
 fs.writeFileSync(out, cab + '\n' + filas.map(f => f.join(',')).join('\n') + '\n');
 fs.writeFileSync(out.replace(/\.csv$/, '.meta.json'), JSON.stringify({
   planta: PLANTA,
@@ -384,7 +393,7 @@ for (let li = 0; li < lineas.length; li++) {
     long_pct: mediana(g.lg) == null ? null : +mediana(g.lg).toFixed(3),
   });
 }
-const outF = path.join(ROOT, PLANTA + '_ficha.json');
+const outF = path.join(DIR, PLANTA + '_ficha.json');
 fs.writeFileSync(outF, JSON.stringify({
   planta: PLANTA,
   que_es: 'la ficha de configuración del levantamiento AGREGADA POR LÍNEA (mediana de sus ' +
