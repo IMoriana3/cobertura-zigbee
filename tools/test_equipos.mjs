@@ -296,6 +296,19 @@ for (const pl of PLANTAS) {
     check(pl.nom + ': los látigos de la HSU, en su brazo a 6,50 m', near(s.antHsu, 6.50, 1e-9), s.antHsu);
   }
   await page.close();
+  /* CERRAR LA PESTAÑA ANTES DE ABRIR LA SIGUIENTE.
+     Esto es lo que hacia que el banco tardara CUARENTA MINUTOS en CI. El
+     cronometro lo señalo sin lugar a dudas: entre la ultima comprobacion de El
+     Burgo y el `goto` de Ayora pasaban 38 minutos, y Ayora entera —cargar,
+     montar y sus 21 comprobaciones— son CINCO SEGUNDOS.
+     No estaba ni en las comprobaciones ni en montar la escena: estaba en el
+     HUECO. La pestaña de El Burgo no se cerraba nunca y seguia repintando su
+     escena por software, ahogando al segundo contexto. Lo dice el comentario
+     de arriba —«la escena anterior sigue renderizando»— y se resolvia abriendo
+     otra pestaña en vez de cerrar la primera.
+     Aqui apenas se nota (2 s de 98) porque esta maquina tiene aire de sobra;
+     en un runner de dos nucleos con SwiftShader, es todo. */
+  await ctx.close();
 }
 
 await browser.close();
