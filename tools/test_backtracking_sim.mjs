@@ -2301,22 +2301,46 @@ t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila'
   // camino (+18,2 m) y pasaba el umbral de 3 m por suerte, no por diseño.
   const fp = path.join(ROOT, 'sanjose_puntos.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
   if (!fs.existsSync(fp) || !fs.existsSync(fa)) return;
+  // EL CASO SE BUSCA POR EL FENÓMENO, NO POR SU NOMBRE. Este test llevaba el
+  // id TR-09_1-044-E a pelo y se rompió cuando el emparejamiento E/W pasó a
+  // decidirse por el borde del bloque: la viga es la MISMA (misma x, mismos
+  // extremos) pero ahora se llama -W. Un careo que se cae por un renombre no
+  // está comprobando lo que dice comprobar.
   const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  const m = oraculoRefVertical(P).get('TR-09_1-044-E');
-  if (!m) throw new Error('TR-09_1-044-E dejó de detectarse por punto');
-  if (Math.min(...m.map(v => Math.abs(v[1]))) < 30)
-    throw new Error('por punto ya no se ve entero: ' + m.map(v => v[1].toFixed(1)).join(', '));
-  // los marcados son los DOS puntos de una misma mesa, no puntos sueltos
-  const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
-  if (m.length !== 2 || ys[1] - ys[0] > 40)
-    throw new Error('esperaba la mesa entera (2 puntos a <40 m), salieron ' + m.length + ' repartidos ' +
-      (ys.length > 1 ? (ys[ys.length - 1] - ys[0]).toFixed(1) + ' m' : ''));
-  // y por fila el salto se ve a la mitad: ésa es la dilución que justifica el cambio
   const A = JSON.parse(fs.readFileSync(fa, 'utf-8')).f;
-  const R = A.find(r => r.id === 'TR-09_1-044-E'), S = A.find(r => r.id === 'TR-09_1-044-W');
-  const dFila = Math.abs((R.ys + R.yn) / 2 - (S.ys + S.yn) / 2);
-  if (!(dFila > 15 && dFila < 25))
-    throw new Error('la dilución a la mitad ya no es tal (' + dFila.toFixed(1) + ' m): revisar el ejemplo del test');
+  const porId = new Map(A.map(r => [r.id, r]));
+  const marc = oraculoRefVertical(P);
+  let caso = null;
+  for (const [fid, m] of marc) {
+    if (m.length !== 2) continue;                       // la MESA entera, no un punto suelto
+    if (Math.min(...m.map(v => Math.abs(v[1]))) < 30) continue;
+    const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
+    if (ys[1] - ys[0] > 40) continue;                   // los dos puntos, de la misma mesa
+    // Y LA MESA TIENE QUE SER UNA PUNTA, no la junta: el as-built guarda las
+    // dos PUNTAS de la fila, así que si lo contaminado son los dos puntos
+    // centrales los extremos salen limpios y no hay dilución ninguna que medir
+    // (pasa: son 6 filas en San José). El ejemplo del test necesita una punta.
+    const suyos = [];
+    for (let i = 0; i < P.n; i++) if (P.filas[P.fi[i]] === fid) suyos.push(P.y[i]);
+    if (suyos.length < 3) continue;
+    suyos.sort((a, b) => a - b);
+    const punta = ys.some(y => Math.abs(y - suyos[0]) < 0.5 || Math.abs(y - suyos[suyos.length - 1]) < 0.5);
+    if (!punta) continue;
+    const R = porId.get(fid);
+    const S = porId.get(fid.replace(/-([EW])$/, (_, s) => '-' + (s === 'E' ? 'W' : 'E')));
+    if (!R || !S) continue;
+    caso = { fid, m, R, S };
+    break;
+  }
+  if (!caso)
+    throw new Error('ya no hay ninguna fila con una MESA entera de otra referencia y su hermana sana: ' +
+      'o cambió el dato o el detector dejó de verlo por punto');
+  // y por fila el salto se ve a la MITAD: ésa es la dilución que justifica el cambio
+  const dPunto = Math.min(...caso.m.map(v => Math.abs(v[1])));
+  const dFila = Math.abs((caso.R.ys + caso.R.yn) / 2 - (caso.S.ys + caso.S.yn) / 2);
+  if (!(dFila > dPunto * 0.35 && dFila < dPunto * 0.75))
+    throw new Error('en ' + caso.fid + ' el salto por punto es ' + dPunto.toFixed(1) +
+      ' m y por fila ' + dFila.toFixed(1) + ' m: ya no se diluye a la mitad, revisar el ejemplo');
 });
 t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
   // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
