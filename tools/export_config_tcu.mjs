@@ -150,8 +150,30 @@ if (sin) {
     for (let r = 1; r < L.length; r++) if (par[r - 1] < 0) perdidos.push(L[r].split(';')[iId]);
     console.log(`  ${sin} seguidor(es) de la ficha sin cotas (descartados en el saneo): ${perdidos.join(', ')} — quedan FUERA de la ficha de salida`);
   } else {
-    console.error(`la unión dejó de ser unívoca: ${sin} sin pareja de ${L.length - 1}. Se aborta.`);
-    process.exit(1);
+    /* HUECO DECLARADO vs. UNION ROTA. Abortar a secas trataba igual dos cosas
+       muy distintas: que la terna deje de identificar (peligroso: escribiria la
+       pendiente de un seguidor en otro) y que el fichero de la casa traiga
+       TCUs que ya no estan en planta (inocuo: sobran, no confunden).
+       En Ayora se desmontaron tres unidades ENTERAS de la NCU7 —esclavos 14,
+       24 y 25, confirmado por la casa el 2026-09-08— y el as-built las borro
+       del layout; la ficha publicada por Sunner sigue trayendolas, asi que la
+       union se quedaba con 3 sin pareja de 754 y el exportador moria.
+       El layout ya DECLARA esas retiradas en `sin_tcu`. Si los que faltan son
+       exactamente los declarados, se nombran y se sigue —quedan fuera de la
+       ficha, que es lo correcto: no existen—. Cualquier otro descuadre sigue
+       abortando, que es de lo que protegia esta guarda. */
+    const retiradas = Object.values((lay && lay.sin_tcu) || {})
+                            .reduce((n, v) => n + v.length, 0);
+    const perdidos = [];
+    for (let r = 1; r < L.length; r++) if (par[r - 1] < 0) perdidos.push(L[r].split(';')[iId]);
+    if (retiradas && sin === retiradas) {
+      console.log(`  ${sin} TCU(s) de la ficha ya DESMONTADAS en planta ` +
+                  `(el layout las declara en sin_tcu): ${perdidos.join(', ')} — quedan FUERA de la ficha`);
+    } else {
+      console.error(`la unión dejó de ser unívoca: ${sin} sin pareja de ${L.length - 1} ` +
+                    `(${perdidos.join(', ')}), y el layout declara ${retiradas} desmontada(s). Se aborta.`);
+      process.exit(1);
+    }
   }
 }
 
