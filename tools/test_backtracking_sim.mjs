@@ -2617,6 +2617,50 @@ console.log('v1.50 · la cota estimada marca la MESA, no la fila');
   });
 }
 
+console.log('v1.51 · el levantamiento se reparte ENTERO');
+{
+  // El topógrafo mide DOS puntos por MESA: cada viga se lleva cuatro —una punta
+  // en cada extremo y las dos del morro—, así que puntos/4 son las filas que
+  // el fichero puede sostener. Esa división es el careo: si el reparto va a
+  // buscar los puntos a la línea equivocada, no encuentra un hueco vacío (hay
+  // una línea cada 6,2 m) sino los puntos del tubo de al lado, y lo que delata
+  // el desajuste son los BORDES de cada bloque, donde la cadena desplazada deja
+  // de cerrar: puntos que nadie reclama y filas armadas con topes ajenos.
+  const csv = fs.readFileSync(path.join(ROOT, 'sanjose_levantamiento.csv'), 'utf-8');
+  const nPts = csv.split('\n').filter(l => l.trim()).length;
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  t('sanjose: las filas medidas son las que dan los puntos del topógrafo (puntos/4)', () => {
+    let filas = 0;
+    for (const tk of cotas.t) if (tk && !tk.est) filas += tk.inc ? 1 : tk.f.length;
+    const esperadas = Math.floor(nPts / 4);
+    // con el lado bien, sobran 3 puntos de 18.289; con el lado al revés se
+    // quedaban 535 fuera y faltaban 123 filas
+    if (esperadas - filas > 30)
+      throw new Error(`${nPts} puntos dan para ${esperadas} filas y solo hay ${filas} medidas: ` +
+        `${esperadas - filas} filas con medida que no se usan`);
+  });
+  t('sanjose: casi ningún tracker se queda con una sola viga medida', () => {
+    // es la otra cara de lo mismo: con la segunda viga buscada al oeste eran
+    // 132-167 los tubos servidos a medias; con el lado bien son 7
+    if (cotas.n_inc > 30)
+      throw new Error(`${cotas.n_inc} trackers con una sola viga medida: el reparto está dejando ` +
+        `filas sin puntos (con el lado de la hermana bien resuelto son un puñado)`);
+  });
+  t('el reparto DECLARA a qué lado puso la segunda viga, y las cotas lo respetan', () => {
+    const asb = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_asbuilt.json'), 'utf-8'));
+    const dx = asb.meta.dx_hermana;
+    if (dx == null) throw new Error('el as-built no declara dx_hermana: quien reconstruya del plano no sabe dónde poner la hermana');
+    // los trackers reconstruidos del plano tienen que ir al MISMO lado
+    for (const tk of cotas.t) {
+      if (!tk || !tk.est || tk.f.length !== 2) continue;
+      const d = tk.f[1].x - tk.f[0].x;
+      if (Math.sign(d) !== Math.sign(dx))
+        throw new Error('un tracker reconstruido lleva la hermana al lado contrario del que declara el reparto: ' +
+          `dx de sus vigas ${d.toFixed(2)} m, dx_hermana ${dx}`);
+    }
+  });
+}
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

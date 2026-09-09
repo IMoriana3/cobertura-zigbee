@@ -27,9 +27,22 @@ body{
   min-height:100vh;line-height:1.45;-webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:min(2560px,96vw);margin:0 auto;padding:16px 18px 40px}   /* el --ancho del simulador: toda la pantalla, como el resto de tarjetas */
-h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
-.sub{color:var(--muted);font-size:.82rem;max-width:90ch;margin:4px 0 14px}
+/* CABECERA. El .wrap va a 96vw —la página es un visor 3D a pantalla completa—,
+   así que un título de 1,35rem y un párrafo cortado a 90ch dejaban medio ancho
+   en blanco. El título toma el tamaño que le corresponde a esa anchura y el
+   texto se reparte en COLUMNAS de ancho legible: `columns:3 54ch` deja que el
+   navegador ponga las que quepan sin pasar de tres, así que en un portátil son
+   dos y en el monitor grande tres, sin que ninguna línea se estire hasta ser
+   ilegible. */
+h1{font-family:var(--display);font-size:1.7rem;letter-spacing:-.015em;line-height:1.15;
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1 .chip{font-family:var(--mono);font-size:.62rem;font-weight:400;letter-spacing:.04em;
+  color:var(--demo);border:1px dashed var(--demo);border-radius:7px;padding:2px 8px;
+  position:relative;top:-2px}
+.sub{color:var(--muted);font-size:.82rem;margin:8px 0 16px;columns:3 54ch;column-gap:30px;
+  column-rule:1px solid var(--line);text-wrap:pretty}
 .sub b{color:var(--text)}
+@media(max-width:820px){h1{font-size:1.4rem}.sub{columns:1}}
 .grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
 @media(max-width:900px){.grid{grid-template-columns:1fr}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
@@ -67,7 +80,7 @@ input[type=range]{accent-color:var(--live)}
 </head>
 <body>
 <div class="wrap">
-  <h1>⚡ Producción 3D por string</h1>
+  <h1>⚡ Producción 3D por string <span class="chip">POA y energía, mesa a mesa</span></h1>
   <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
   string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día/mes/año del bloque
   FÍSICA PURA del simulador (pvlib singleaxis + sombra exacta + Perez), <b>cadena DC y AC según el
