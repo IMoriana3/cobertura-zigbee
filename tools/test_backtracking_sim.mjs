@@ -2056,6 +2056,251 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
   });
 }
 
+t('el censo de relieve cubre TODAS las plantas del índice, sin inventar veredictos', () => {
+  // El censo es el sitio donde es tentador rellenar el hueco: nueve plantas sin
+  // cotas y un DEM global a mano. Este test vigila las dos mitades — que no se
+  // deje ninguna planta fuera, y que no dé un veredicto donde no hay dato.
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'gate_relieve_cartera.mjs')], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('el censo falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-500)); }
+  const IDX = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas;
+  for (const p of IDX)
+    if (!new RegExp('^  ' + p.planta + ' ', 'm').test(r))
+      throw new Error('el censo se deja fuera a ' + p.planta);
+  // una planta sin cotas NO puede salir con veredicto de la puerta
+  for (const p of IDX) {
+    if (fs.existsSync(path.join(ROOT, p.planta + '_cotas.json'))) continue;
+    const l = (r.match(new RegExp('^  ' + p.planta + ' .*$', 'm')) || [''])[0];
+    if (/APTA|NO EVALUABLE/.test(l))
+      throw new Error(p.planta + ' no tiene cotas y el censo le da veredicto: «' + l.trim() + '»');
+  }
+  // y las dos que sí las tienen deben salir evaluadas
+  for (const pl of ['ayora', 'sanjose']) {
+    if (!fs.existsSync(path.join(ROOT, pl + '_cotas.json'))) continue;
+    if (!new RegExp('^  ' + pl + ' .*APTA', 'm').test(r))
+      throw new Error(pl + ' tiene cotas y el censo no la evalúa');
+  }
+});
+
+console.log('');
+console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');
+
+// ORÁCULO INDEPENDIENTE del detector. No comparte una línea con la versión de
+// Python: allí se indexa por cubos en x, aquí se recorre una ventana sobre los
+// puntos ordenados por y. La lección del terreno fantasma fue justo esta — el
+// oráculo no cazó el fallo porque llevaba dentro una copia del código malo.
+function oraculoRefVertical(P, umbral = 3, dy = 10, dx = 30, minv = 3) {
+  const n = P.id.length;
+  const ord = Array.from({ length: n }, (_, i) => i).sort((a, b) => P.y[a] - P.y[b]);
+  const malos = new Map();                       // id de fila -> [[id de punto, desvío]]
+  for (let k = 0; k < n; k++) {
+    const i = ord[k], z = [];
+    for (let d = -1; d <= 1; d += 2)             // hacia atrás y hacia delante en y
+      for (let m = k + d; m >= 0 && m < n; m += d) {
+        const j = ord[m];
+        if (Math.abs(P.y[j] - P.y[i]) > dy) break;
+        if (Math.abs(P.x[j] - P.x[i]) <= dx) z.push(P.z[j]);
+      }
+    if (z.length < minv) continue;
+    z.sort((a, b) => a - b);
+    const r = P.z[i] - z[(z.length / 2) | 0];
+    if (Math.abs(r) > umbral) {
+      const f = P.filas[P.fi[i]];
+      if (!malos.has(f)) malos.set(f, []);
+      malos.get(f).push([P.id[i], r]);
+    }
+  }
+  return malos;
+}
+// nube sintética: LIN líneas de seguidores, EST estaciones de medida por línea
+function nubeSintetica(zDe, LIN = 12, EST = 6, pitch = 6) {
+  const P = { id: [], x: [], y: [], z: [], fi: [], filas: [] };
+  for (let l = 0; l < LIN; l++)
+    for (let e = 0; e < EST; e++) {
+      P.filas.push('L' + l + '-E' + e);
+      for (const off of [0, 0.9]) {              // los puntos van en pareja (junta entre mesas)
+        P.id.push(P.id.length + 1); P.x.push(l * pitch); P.y.push(e * 37 + off);
+        P.z.push(zDe(l, e)); P.fi.push(P.filas.length - 1);
+      }
+    }
+  return P;
+}
+
+t('relieve solidario (un talud) NO se marca: es terreno, no referencia', () => {
+  // Un escalón de −3,5 m a partir de la estación 2, IGUAL en todas las líneas.
+  // Con una bola de radio fijo la mediana mezcla los dos niveles y marca
+  // terreno bueno: en San José daba 7 falsos positivos en el borde de TR-07.
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const m = oraculoRefVertical(P);
+  if (m.size) throw new Error('marca un talud real como referencia vertical: ' + [...m.keys()].join(', '));
+});
+t('punto aislado con otra referencia SÍ se marca, y solo él', () => {
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const i = P.filas.indexOf('L5-E3') * 2;        // un solo punto de una sola fila
+  P.z[i] += 36.6;
+  const m = oraculoRefVertical(P);
+  if (m.size !== 1 || !m.has('L5-E3')) throw new Error('esperaba solo L5-E3, salió: ' + [...m.keys()].join(', '));
+  if (m.get('L5-E3').length !== 1) throw new Error('marca más puntos de la fila de los que están mal');
+});
+t('el umbral no es delicado: de 3 a 20 m marca lo mismo en San José', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const n = u => [...oraculoRefVertical(P, u).values()].reduce((a, v) => a + v.length, 0);
+  const a = n(3), b = n(20);
+  if (a !== b) throw new Error('la banda vacía entre familias se cerró: umbral 3 marca ' + a + ' y umbral 20 marca ' + b +
+    ' — hay algo entre 3 y 20 m que ya no es ni ruido ni geoide, mirarlo antes de tocar el umbral');
+  if (a < 50) throw new Error('el detector dejó de ver la familia del geoide (' + a + ' puntos)');
+});
+t('la ventana está elegida por medida, y 30 m es el último dx seguro', () => {
+  // Documenta POR QUÉ la ventana es la que es, y falla si alguien la «mejora».
+  // dy y el cuórum se sueltan sin mover el veredicto (eso sube la cobertura de
+  // Ayora del 76,9 % al 96,5 % sin comprar nada). dx es el que tiene dos bordes:
+  // ampliarlo alcanza el otro nivel de un talud —a 100 m salen falsos positivos
+  // en TR-07, que es terreno real— y estrecharlo por debajo de 30 m empieza a
+  // perder contaminación de verdad (91 puntos en vez de 98).
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const filas = (dy, dx, mv) => new Set(oraculoRefVertical(P, 3, dy, dx, mv).keys());
+  const base = filas(10, 30, 3);
+  const igual = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
+  if (!igual(filas(3, 60, 6), base))
+    throw new Error('la ventana de hoy ya no da el mismo veredicto que la original (3/60/6): ' +
+      filas(3, 60, 6).size + ' vs ' + base.size + ' — el ajuste dejó de ser gratis, hay que volver a medirlo');
+  // y 30 es el ÚLTIMO valor seguro de dx: estrechar más sí pierde puntos
+  if (igual(filas(10, 24, 3), base))
+    throw new Error('estrechar dx a 24 m ya no pierde puntos: si de verdad da igual, 30 deja de estar justificado');
+  const ancha = oraculoRefVertical(P, 3, 10, 100, 3);
+  const t7 = [...ancha.keys()].filter(id => id.startsWith('TR-07')).length;
+  if (t7 === 0)
+    throw new Error('ampliar dx a 100 m ya no mete falsos positivos del talud de TR-07: ' +
+      'o cambió el dato o cambió el detector — si de verdad da igual, dx deja de estar justificado en 60');
+  if ([...base].some(id => id.startsWith('TR-07')))
+    throw new Error('la ventana buena marca el talud de TR-07, que es terreno real');
+});
+t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const esp = new Set([...oraculoRefVertical(P).keys()].filter(id =>
+    JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_asbuilt.json'), 'utf-8')).f.some(r => r.id === id)));
+  let r;
+  try { r = require_child().execFileSync('python3',
+    [path.join(ROOT, 'tools', 'cotas_asbuilt.py'), 'sanjose'], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('cotas_asbuilt.py falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-600)); }
+  const dicho = new Set([...r.matchAll(/^\s+(\S+)\s+cota .*\[por punto\]/gm)].map(m => m[1]));
+  const falta = [...esp].filter(x => !dicho.has(x)), sobra = [...dicho].filter(x => !esp.has(x));
+  if (falta.length || sobra.length)
+    throw new Error('discrepan: Python no condena ' + (falta.join(', ') || '—') +
+                    ' · condena de más ' + (sobra.join(', ') || '—'));
+  if (!esp.size) throw new Error('el oráculo no condena nada: el test se quedó sin dientes');
+});
+t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila', () => {
+  // Este es el motivo de todo el cambio, y el dato dice algo más preciso de lo
+  // que parecía: lo que cambia de referencia no es un punto suelto, es una
+  // MESA ENTERA (una sesión de campo). En TR-09_1-044-E la mesa sur está a
+  // 1531,7 m y la norte a 1568,7 — 36,7 m de salto EN EL MISMO TUBO, que es
+  // imposible; su hermana -W tiene las cuatro cotas a 1531,x. Como el as-built
+  // se queda con un extremo de cada mesa, la media de la fila sale a MITAD de
+  // camino (+18,2 m) y pasaba el umbral de 3 m por suerte, no por diseño.
+  const fp = path.join(ROOT, 'sanjose_puntos.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
+  if (!fs.existsSync(fp) || !fs.existsSync(fa)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const m = oraculoRefVertical(P).get('TR-09_1-044-E');
+  if (!m) throw new Error('TR-09_1-044-E dejó de detectarse por punto');
+  if (Math.min(...m.map(v => Math.abs(v[1]))) < 30)
+    throw new Error('por punto ya no se ve entero: ' + m.map(v => v[1].toFixed(1)).join(', '));
+  // los marcados son los DOS puntos de una misma mesa, no puntos sueltos
+  const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
+  if (m.length !== 2 || ys[1] - ys[0] > 40)
+    throw new Error('esperaba la mesa entera (2 puntos a <40 m), salieron ' + m.length + ' repartidos ' +
+      (ys.length > 1 ? (ys[ys.length - 1] - ys[0]).toFixed(1) + ' m' : ''));
+  // y por fila el salto se ve a la mitad: ésa es la dilución que justifica el cambio
+  const A = JSON.parse(fs.readFileSync(fa, 'utf-8')).f;
+  const R = A.find(r => r.id === 'TR-09_1-044-E'), S = A.find(r => r.id === 'TR-09_1-044-W');
+  const dFila = Math.abs((R.ys + R.yn) / 2 - (S.ys + S.yn) / 2);
+  if (!(dFila > 15 && dFila < 25))
+    throw new Error('la dilución a la mitad ya no es tal (' + dFila.toFixed(1) + ' m): revisar el ejemplo del test');
+});
+t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
+  // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
+  // mediana de su vecindario se apoyaba en su hermana TR-08_1-002-W, condenada
+  // dos líneas antes. TR-08_1-001-E, en cambio, sí está contaminada y su
+  // seguidor no tiene otra fila: ese tiene que quedarse SIN MEDIR.
+  const f = path.join(ROOT, 'sanjose_cotas.json');
+  if (!fs.existsSync(f)) return;
+  const C = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const tk = id => C.t.some(x => x && x.tk === id);
+  if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
+  if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
+});
+t('la reclamación dice EXACTAMENTE lo mismo que el detector', () => {
+  // reclama_referencia.py nació con su propia copia de la ventana (dy=3, dx=60)
+  // y se la pasaba al detector, pisando la buena. Salían los mismos 98 puntos
+  // pero con OTROS desvíos: el CSV decía min +35,01 m donde el visor decía
+  // +35,20 — dos entregables míos contradiciéndose por un valor por defecto
+  // duplicado. Aquí se vigila que sigan siendo el mismo número.
+  const f = path.join(ROOT, 'reclamacion_sanjose.csv'), fp = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f) || !fs.existsSync(fp)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const esp = new Map();
+  for (const [, v] of oraculoRefVertical(P)) for (const [pid, r] of v) esp.set(pid, r);
+  const filas = fs.readFileSync(f, 'utf-8').replace(/^\uFEFF/, '').trim().split('\n').slice(1);
+  if (filas.length !== esp.size)
+    throw new Error('la reclamación trae ' + filas.length + ' puntos y el detector ve ' + esp.size);
+  for (const l of filas) {
+    const c = l.split(';'), pid = +c[1], d = parseFloat(c[6]);
+    if (!esp.has(pid)) throw new Error('la reclamación trae el punto ' + pid + ', que el detector no marca');
+    if (Math.abs(esp.get(pid) - d) > 0.02)
+      throw new Error('el punto ' + pid + ' vale ' + d.toFixed(2) + ' m en la reclamación y ' +
+        esp.get(pid).toFixed(2) + ' m en el detector: ¿ventana duplicada otra vez?');
+  }
+});
+t('Ayora limpia, y con MARGEN: el suelo de ruido no se acerca al umbral', () => {
+  // No basta con «no se marca nada»: importa cuánto sobra. El suelo de ruido de
+  // este control es el relieve real — en una ladera, la propia pendiente lateral
+  // se lee como desvío. En Ayora el peor punto limpio está en 1,38 m contra un
+  // umbral de 3 m. Si ese suelo sube, el umbral empieza a estar en riesgo aunque
+  // todavía no marque nada, y eso hay que verlo ANTES del primer falso positivo.
+  const f = path.join(ROOT, 'ayora_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  if (oraculoRefVertical(P, 3).size)
+    throw new Error('aparece referencia vertical en Ayora: ' + [...oraculoRefVertical(P, 3).keys()].slice(0, 5).join(', '));
+  const suelo = oraculoRefVertical(P, 0).size ? Math.max(...[...oraculoRefVertical(P, 0).values()].flat().map(v => Math.abs(v[1]))) : 0;
+  if (suelo > 2)
+    throw new Error('el suelo de ruido de Ayora subió a ' + suelo.toFixed(2) + ' m, con el umbral en 3: ' +
+      'queda menos de 1,5× de margen — revisar la ventana antes de que aparezca un falso positivo');
+});
+t('la nube casa con el as-built: mesas enteras y z absoluta coherente', () => {
+  // Cuántos puntos toca por fila NO es el mismo número en las dos plantas, y
+  // eso es geometría, no un fallo: en Ayora la fila es UNA mesa (2 extremos) y
+  // en San José son DOS mesas por tubo (4 extremos). Lo que se vigila es que
+  // sea 2 ó 4 y que la planta sea consistente consigo misma.
+  for (const pl of ['ayora', 'sanjose']) {
+    const fp = path.join(ROOT, pl + '_puntos.json'), fa = path.join(ROOT, pl + '_asbuilt.json');
+    if (!fs.existsSync(fp) || !fs.existsSync(fa)) continue;
+    const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
+    const cnt = new Map();
+    for (const i of P.fi) cnt.set(i, (cnt.get(i) || 0) + 1);
+    const v = [...cnt.values()].sort((a, b) => a - b), med = v[(v.length / 2) | 0];
+    if (med !== 2 && med !== 4)
+      throw new Error(pl + ': la mediana de puntos por fila es ' + med + ', ni 2 (una mesa) ni 4 (dos mesas)');
+    const raros = v.filter(x => x !== med).length;
+    if (raros > v.length * 0.05)
+      throw new Error(pl + ': ' + raros + ' de ' + v.length + ' filas no traen ' + med + ' puntos (>5 %)');
+    const ids = new Set(A.f.map(r => r.id));
+    const casan = P.filas.filter(x => ids.has(x)).length;
+    if (casan < A.f.length * 0.95)
+      throw new Error(pl + ': solo ' + casan + ' de ' + A.f.length + ' filas del as-built tienen puntos');
+    const b = A.meta.base;
+    if (Math.min(...P.z) < b - 200 || Math.max(...P.z) > b + 200)
+      throw new Error(pl + ': z fuera de banda respecto a base=' + b + ' (¿se coló una cota relativa?)');
+  }
+});
 console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y declarados');
 {
   const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
