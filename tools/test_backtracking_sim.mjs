@@ -109,7 +109,10 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeRows, tangentResidualMm, elecLoss, clearskyIneichen, poaPlant, poaRow,
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
-           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor };`);
+           airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
+           anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
+           westPorMesa, ejesPorMesa };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -609,9 +612,14 @@ function oracleOff(G, r, v0, v1, thR, T) {
 }
 // terreno declarado: suelo = cota del eje interpolada − 2 m de buje;
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
-function oracleTerr(G, sv, zen) {
+function oracleTerr(G, sv, zen, T) {
   const HUB = 2.0, nR = G.nR, xs = G.xs;
   const TOL = 5;                       // m: más allá, esa fila no mide ese norte
+  /* v1.49: y una línea solo vota el suelo de un punto si está CERCA en x. Es
+     otra decisión de MODELO del contador —con plantas de varios bloques, la
+     línea de índice contiguo puede estar a cientos de metros y fabricaba un
+     escarpe— y el oráculo la comparte, como comparte el límite de 4 filas. */
+  const XMAX = Math.max(12, 3 * ((T && T.pitch) || (xs.length > 1 ? xs[1] - xs[0] : 6)));
   const gzOf = (x, v) => {
     let i = 0;
     if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
@@ -622,8 +630,8 @@ function oracleTerr(G, sv, zen) {
       const f2 = Math.max(0, Math.min(1, (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1)));
       return (a.z * (1 - f2) + b.z * f2) - HUB;
     }
-    if (okA) return a.z - HUB;
-    if (okB) return b.z - HUB;
+    if (okA && Math.abs(x - xs[i]) <= XMAX) return a.z - HUB;
+    if (okB && Math.abs(x - xs[Math.min(nR - 1, i + 1)]) <= XMAX) return b.z - HUB;
     /* La búsqueda hacia fuera se limita a 4 filas, IGUAL que el contador: es
        una decisión de MODELO declarada (más allá, la cota de esa banda de
        norte no la mide nadie cercano y estimarla sería inventar), no una
@@ -633,6 +641,7 @@ function oracleTerr(G, sv, zen) {
        exactamente su trabajo. */
     for (let k = 1; k <= 4; k++) for (const j of [i - k, i + 1 + k]) {
       if (j < 0 || j >= nR) continue;
+      if (Math.abs(x - xs[j]) > XMAX) continue;      // esa línea está en otro sitio
       const c = G.cotD(j, v); if (c.d <= TOL) return c.z - HUB;
     }
     return -Infinity;                  // nadie mide ese norte: sin terreno
@@ -682,7 +691,7 @@ function oracleExact(F2, zen, az, T, rowAngles) {
   const sv = [Math.sin(azR) * Math.cos(el), Math.cos(azR) * Math.cos(el), Math.sin(el)];
   const out = new Array(G.nR).fill(0);
   if (sv[2] <= 0) return out;
-  const terr = oracleTerr(G, sv, zen);
+  const terr = oracleTerr(G, sv, zen, T);
   const hw = T.cw / 2, MV = 8;
   const elec = new Array(G.nR).fill(0);
   for (let r = 0; r < G.nR; r++) {
@@ -753,7 +762,7 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
   const sv = [Math.sin(azR) * Math.cos(el), Math.cos(azR) * Math.cos(el), Math.sin(el)];
   const out = {};
   if (sv[2] <= 0) { for (const r of rowSet) out[r] = 0; return out; }
-  const terr = oracleTerr(G, sv, zen);
+  const terr = oracleTerr(G, sv, zen, T);
   const hw = T.cw / 2, MV = 8;
   for (const pl of G.planes) pl.den = pl.nE[0] * sv[0] + pl.nE[1] * sv[1] + pl.nE[2] * sv[2];
   for (const r of rowSet) {
@@ -1244,12 +1253,30 @@ t('v1.35: las consignas van al TCU REAL (rango en su NCU), no al número del id'
     const L = fs.readFileSync(out, 'utf-8').trim().split('\n');
     const cab = L[0].split(','), iN = cab.indexOf('ncu'), iT = cab.indexOf('tcu');
     if (iN < 0 || iT < 0) throw new Error('el CSV perdió ncu/tcu');
+    // v1.42: la consigna es la de la MESA del seguidor (segTrk, identidad):
+    // columna mesa en todas las filas, y en el mundo real de Ayora las mesas
+    // de una misma línea NO comparten θ en la mayoría de los pasos diurnos
+    const iM = cab.indexOf('mesa'), iH = cab.indexOf('hora_local'), iB = cab.indexOf('bloque'),
+          iL = cab.indexOf('linea'), iTh = cab.indexOf('theta_sim_deg');
+    if (iM < 0) throw new Error('el CSV no lleva la columna mesa');
+    const grp = new Map();
+    let sinMesa = 0;
     const por = new Map();
     for (let r = 1; r < L.length; r++) {
       const f = L[r].split(',');
       if (!por.has(f[iN])) por.set(f[iN], new Set());
       por.get(f[iN]).add(+f[iT]);
+      if (f[iM] === '') sinMesa++;
+      const k = f[iH] + '|' + f[iB] + '|' + f[iL];
+      if (!grp.has(k)) grp.set(k, new Set());
+      grp.get(k).add(f[iTh]);
     }
+    if (sinMesa) throw new Error(sinMesa + ' filas sin mesa: seguidores casados por x en vez de por identidad (segTrk)');
+    let dist = 0;
+    for (const v of grp.values()) if (v.size > 1) dist++;
+    if (!(dist > grp.size * 0.5)) throw new Error('solo ' + dist + '/' + grp.size + ' (hora,bloque,línea) con θ distinto entre mesas: la consigna sigue siendo la de la línea');
+    const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+    if (meta.seguidores_por_identidad !== meta.seguidores) throw new Error(meta.seguidores_por_identidad + '/' + meta.seguidores + ' por identidad');
     // dentro de cada NCU los TCU tienen que ser 1..n sin huecos ni repeticiones
     for (const [ncu, st] of por) {
       const v = [...st].sort((a, b) => a - b);
@@ -1695,7 +1722,11 @@ t('San José SANEADA: sin filas con otra referencia vertical, y APTA CON RESERVA
   try { r = require_child().execFileSync('node',
     [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
   catch (e) { r = (e.stdout || '') + (e.stderr || ''); code = e.status; }
-  if (code !== 0 || !/VEREDICTO: APTA CON RESERVAS/.test(r))
+  // Desde v1.46 el veredicto es APTA a secas: al colocar en su x la viga
+  // duplicada de los 231 trackers con una sola fila medida desaparecieron los
+  // vanos de 0 m que las reservas señalaban. Se acepta APTA o APTA CON
+  // RESERVAS — lo que no vale es que deje de ser evaluable.
+  if (code !== 0 || !/VEREDICTO: APTA/.test(r))
     throw new Error('San José ya no es evaluable (código ' + code + '):\n' + r.slice(-500));
   if (/fila anómala/.test(r))
     throw new Error('reaparecen filas anómalas:\n' + r.slice(-500));
@@ -1718,6 +1749,821 @@ t('plantas reales: Ayora pasa, San José (bloque 0) no', () => {
     if (r.c !== 0) throw new Error('San José bloque 0 dejó de ser evaluable:\n' + r.s.slice(-400));
   }
 });
+
+// ── v1.41: el tilt POR MESA (fila medida), no por línea ─────────────────────
+console.log('v1.41 · tilt por mesa');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  };
+  const T = mkT(P);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);   // 12:00 local
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('plantFromCotas publica el tilt de CADA mesa (de sus dos cotas) y sus parejas bifila exactas', () => {
+    if (!P.segTilt || P.segTilt.length !== P.segs.length) throw new Error('sin segTilt por línea');
+    let n = 0, distintos = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      const z = P.segZ[r][k], esp = Math.atan2(z[1] - z[0], (sg[1] - sg[0]) || 1) * (180 / Math.PI);   // *DEG, la op exacta de plantFromCotas
+      // el tilt se mide ANTES de recentrar las cotas (z−eMean cambia el último bit): 1e-9° de tolerancia, declarada
+      if (Math.abs(P.segTilt[r][k] - esp) > 1e-9) throw new Error(`tilt de la mesa ${r}/${k}: ${P.segTilt[r][k]} ≠ ${esp} (sus cotas)`);
+      if (Math.abs(P.segTilt[r][k] - P.tilt[r]) > 0.05) distintos++;
+      n++;
+    }));
+    if (!(distintos > n * 0.2)) throw new Error('las mesas apenas se separan del tilt de su línea (' + distintos + '/' + n + '): el careo no distingue');
+    if (!(P.segPairs.length >= P.nPairs * 0.9)) throw new Error(P.segPairs.length + ' parejas por mesa vs ' + P.nPairs + ' trackers bifila');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+      if (Math.abs(r1 - r2) !== 1) throw new Error('pareja de mesas en líneas no contiguas: ' + r1 + '/' + r2);
+      const a = P.segs[r1][k1], b = P.segs[r2][k2];
+      if (Math.min(a[1], b[1]) - Math.max(a[0], b[0]) < 5) throw new Error('las dos mesas de un tracker no solapan en N');
+    }
+  });
+
+  t('IDENTIDAD: sin segTilt, el camino por mesa es el de la línea, bit a bit (θ y POA)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const segA = F.policyAnglesSeg('pairwise', zen, az, T0, irr, doy, 0.2);
+    // OJO: policyAngles lleva el refinado driveCoupleSafe por línea; el camino
+    // por mesa sin segTilt difunde el pairwise puro. Se carea contra ESE.
+    const raw = F.anglesPairwise(zen, az, T0);
+    segA.forEach((l, r) => l.forEach(v => { if (v !== raw[r]) throw new Error(`fila ${r}: θ por mesa ${v} ≠ pairwise de la línea ${raw[r]}`); }));
+    if (rows.length !== segA.length) throw new Error('líneas');
+  });
+
+  t('IDENTIDAD: el contador 3D con θ escalar no ha movido ni un bit (fila) y su suma por tramos es la fila', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const a = F.shadeBand3DAll(zen, az, T, rows);
+    const asArrays = rows.map((v, r) => T.segs[r].map(() => v));
+    const b = F.shadeBand3DAll(zen, az, T, asArrays);
+    for (let r = 0; r < rows.length; r++) {
+      if (a[r] !== b[r] || a.elec[r] !== b.elec[r]) throw new Error(`fila ${r}: escalar ${a[r]} ≠ array del mismo θ ${b[r]}`);
+      if (!a.seg || !a.seg[r] || a.seg[r].length !== T.segs[r].length) throw new Error('sin sombra por tramo');
+      // media por tramo ponderada por estaciones (MV fijo por tramo) == fila
+      const m = a.seg[r].reduce((s, v) => s + v, 0) / a.seg[r].length;
+      if (Math.abs(m - a[r]) > 1e-9) throw new Error(`fila ${r}: media de tramos ${m} ≠ fila ${a[r]}`);
+    }
+  });
+
+  t('sin segTilt, poaPlantSeg reproduce poaPlant bit a bit (rows y plant)', () => {
+    const T0 = Object.assign({}, T, { segTilt: null, segPairs: null });
+    const rows = F.anglesPairwise(zen, az, T0);
+    const pl = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T0, rows.map((v, r) => T0.segs[r].map(() => v)), irr, doy, 0.2);
+    // fila = media ponderada por largo de tramos IGUALES entre sí sólo si la
+    // sombra por tramo es uniforme; por eso se carea el POA SIN sombra (noche
+    // no vale: cielo despejado a mediodía con el ray-cast dando cero en llano
+    // no está garantizado) → se carea tramo a tramo contra poaRow+su sombra
+    for (let r = 0; r < rows.length; r++) {
+      for (let k = 0; k < ps.segs[r].length; k++) {
+        const p = F.poaRow(rows[r], T0.rowTilt[r], 0, zen, az, irr, doy, 0.2, T0.iam);
+        const fo = ps.shade.seg[r][k], se = ps.shade.segElec[r][k];
+        const esp = p.beam * (1 - se) + p.circ * (1 - fo) + p.sky + p.gnd;
+        if (ps.segs[r][k] !== esp) throw new Error(`tramo ${r}/${k}: ${ps.segs[r][k]} ≠ ${esp}`);
+      }
+    }
+    if (ps.rows.length !== pl.rows.length) throw new Error('filas');
+  });
+
+  t('CON segTilt: θ y POA cambian MESA A MESA dentro de una línea, y las parejas bifila comparten θ exacto', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    let lineasConDispersion = 0, n = 0;
+    seg.forEach((l, r) => { n++; if (l.length > 1 && Math.max(...l) - Math.min(...l) > 0.02) lineasConDispersion++; });
+    if (!(lineasConDispersion > n * 0.3)) throw new Error('solo ' + lineasConDispersion + '/' + n + ' líneas con θ distinto por mesa: el tilt por mesa no entra');
+    for (const [[r1, k1], [r2, k2]] of T.segPairs)
+      if (seg[r1][k1] !== seg[r2][k2]) throw new Error(`pareja ${r1}/${k1}-${r2}/${k2}: ${seg[r1][k1]} ≠ ${seg[r2][k2]} — el acople por mesa no manda`);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    for (const l of ps.segs) for (const v of l) if (!Number.isFinite(v) || v < 0) throw new Error('POA por mesa no finita');
+    if (!(ps.plant > 300)) throw new Error('mediodía de junio con ' + ps.plant);
+    // el astro por mesa sigue al tilt de la mesa: corr(tilt, θ_astro) alta
+    const ast = F.anglesAstroSeg(zen, az, T);
+    const xs = [], ys = [];
+    T.segTilt.forEach((l, r) => l.forEach((tl, k) => { xs.push(tl); ys.push(ast[r][k]); }));
+    const mx = xs.reduce((s, v) => s + v, 0) / xs.length, my = ys.reduce((s, v) => s + v, 0) / ys.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < xs.length; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    const corr = sxy / Math.sqrt(sxx * syy);
+    if (!(Math.abs(corr) > 0.9)) throw new Error('corr(tilt de mesa, θ astro de mesa) = ' + corr.toFixed(3));
+  });
+
+  t('el acople por mesa es un mutante vivo: sin segPairs, alguna pareja se separa', () => {
+    const raw = F.anglesPairwiseSeg(zen, az, T);
+    let sep = 0;
+    for (const [[r1, k1], [r2, k2]] of T.segPairs) if (raw[r1][k1] !== raw[r2][k2]) sep++;
+    if (!(sep > 0)) throw new Error('sin acoplar ya coinciden todas: el careo del acople es vacío');
+  });
+}
+
+console.log('v1.42 · el mando por mesa en la UI y en las consignas');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const mkT = (P, conSeg) => {
+    const pairs = [];
+    for (let i = 0; i < P.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+      pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs,
+             segTilt: conSeg ? P.segTilt : null, segPairs: conSeg ? P.segPairs : null, real: P };
+  };
+  const T = mkT(P, true), T0 = mkT(P, false);
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 39.1182, -1.1599);
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('segTrk: cada mesa sabe de qué seguidor de cotas.t es (identidad), y las parejas bifila son las dos mesas de UN seguidor', () => {
+    if (!P.segTrk) throw new Error('plantFromCotas no publica segTrk');
+    const enCotas = new Set(cotas.t);
+    let n = 0;
+    P.segTrk.forEach(l => l.forEach(tk => { if (!enCotas.has(tk)) throw new Error('segTrk apunta a un objeto que no es de cotas.t'); n++; }));
+    // v1.48: cada fila levantada son DOS mesas (sur y norte del morro)
+    if (n !== 2 * P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas (esperadas ' + 2 * P.nFilas + ')');
+    if (P.nMesas !== n) throw new Error('nMesas (' + P.nMesas + ') no cuadra con segTrk (' + n + ')');
+    for (const [[r1, k1], [r2, k2]] of P.segPairs)
+      if (P.segTrk[r1][k1] !== P.segTrk[r2][k2]) throw new Error('una pareja bifila junta mesas de seguidores distintos');
+    // y el seguidor de una pareja tiene exactamente CUATRO mesas: dos por viga
+    const [[r1, k1]] = P.segPairs[0];
+    const cnt = P.segTrk.flat().filter(tk => tk === P.segTrk[r1][k1]).length;
+    if (cnt !== 4) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas (un bifila son cuatro)');
+  });
+
+  t('segLineMean y slewLimitSeg son la IDENTIDAD del camino por línea cuando todas las mesas llevan el valor de su línea', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const bc = F.segsBroadcast(T0, rows);
+    const mean = F.segLineMean(T0, bc);
+    for (let r = 0; r < rows.length; r++) if (Math.abs(mean[r] - rows[r]) > 1e-12) throw new Error('línea ' + r + ': media ' + mean[r] + ' ≠ ' + rows[r]);
+    const prev = rows.map(v => v - 3), prevS = F.segsBroadcast(T0, prev);
+    const a = F.slewLimit(prev, rows, 5), b = F.slewLimitSeg(prevS, bc, 5);
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (b[r][k] !== a[r]) throw new Error('slew por mesa ≠ slew por línea en ' + r + '/' + k);
+    // y el slew de verdad limita mesa a mesa: 5 s a 0,17 °/s son 0,85° como mucho
+    for (let r = 0; r < rows.length; r++) for (let k = 0; k < bc[r].length; k++) if (Math.abs(b[r][k] - prevS[r][k]) > 0.85 + 1e-9) throw new Error('el actuador de una mesa saltó ' + (b[r][k] - prevS[r][k]) + '°');
+  });
+
+  t('poaPlantSeg publica la banda plantHi/plantLo: sin segTilt es la de poaPlant, con segTilt encierra a plant', () => {
+    const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
+    const a = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2), b = F.poaPlantSeg(zen, az, T0, F.segsBroadcast(T0, rows), irr, doy, 0.2);
+    // sin segTilt cada mesa es su línea; la diferencia con poaPlant es SOLO la
+    // sombra por tramo (sh.seg) frente a la de fila — la banda se mueve con
+    // ella dentro del mismo orden de magnitud que plant
+    if (!(Math.abs(b.plant - a.plant) < 5) || !(Math.abs(b.plantHi - a.plantHi) < 5) || !(Math.abs(b.plantLo - a.plantLo) < 5))
+      throw new Error('banda por mesa lejos de la de poaPlant: ' + [a.plant, b.plant, a.plantHi, b.plantHi, a.plantLo, b.plantLo].map(v => v.toFixed(1)));
+    if (!(b.plantHi >= b.plant - 1e-9 && b.plantLo <= b.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto sin segTilt');
+    const s = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2), c = F.poaPlantSeg(zen, az, T, s, irr, doy, 0.2);
+    if (!(c.plantHi >= c.plant - 1e-9 && c.plantLo <= c.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto con segTilt');
+    if (!isFinite(c.plantHi) || !isFinite(c.plantLo)) throw new Error('banda no finita');
+  });
+
+  t('la UI manda por mesa: computeDayGen y sceneInstant van por policyAnglesSeg/poaPlantSeg cuando hay segTilt (y solo entonces)', () => {
+    // el camino de la página no corre en Node: se vigila su TEXTO, igual que
+    // el careo v1.19 vigila el literal de elecLoss. Lo que se exige es que el
+    // día y el instante pasen por segCmd + slewLimitSeg + poaPlantSeg y que
+    // la ficha (Tcfg) siga mandando por línea cuando la TCU no conoce el
+    // levantamiento
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const dayFn = ui.slice(ui.indexOf('function* computeDayGen'), ui.indexOf('function kpisSerie'));
+    for (const lit of ['segOn(T)', 'segCmd(P.key', 'slewLimitSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+      if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
+    const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
+    for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
+      if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
+    const cmd = ui.slice(ui.indexOf('function segCmd'), ui.indexOf('function angAt'));
+    if (!cmd.includes("Tcfg===T&&(key==='pairwise'||key==='astro')")) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    // el 3D gira cada mesa con SU θ, la silueta y el rayo también
+    const u3 = ui.slice(ui.indexOf('function update3D'), ui.indexOf('function clipPoly'));
+    if (!u3.includes('angAt(p,tIdx,r,k)')) throw new Error('update3D no gira cada mesa con su θ');
+    const sil = ui.slice(ui.indexOf('function drawShadowSilhouette'), ui.indexOf('function drawTerrainStrips'));
+    if (!sil.includes('angAt(p,tIdx,r,kR)') || !sil.includes('angAt(p,tIdx,e,kE)')) throw new Error('la silueta no usa el θ de cada mesa (receptora y emisora)');
+    const ray = ui.slice(ui.indexOf('function drawCriticalRay'), ui.indexOf('function pinta3D'));
+    if (!ray.includes('angAtN(p,tIdx,pi,yc),angAtN(p,tIdx,pi+1,yc)')) throw new Error('el rayo crítico no corta con el θ de las mesas de la banda');
+  });
+}
+
+console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, 30, null);
+  const pairs = [];
+  for (let i = 0; i < P.lineX.length - 1; i++) {
+    const dx = Math.max(0.5, P.lineX[i + 1] - P.lineX[i]);
+    pairs.push({ slope: Math.atan2(P.pairDz ? P.pairDz[i] || 0 : 0, dx) * (180 / Math.PI), pitch: dx, axisTilt: (P.tilt[i] + P.tilt[i + 1]) / 2 });
+  }
+  const T = { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+              rowTilt: P.tilt, groups: P.groups, drive: P.drive, segs: P.segs, segTilt: P.segTilt, segPairs: P.segPairs, real: P };
+  const sol = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // 07:30 local: sol bajo del este (a las 06:40 aún no ha salido)
+  const zen = 90 - sol.elev, az = sol.az, doy = 172;
+  const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
+
+  t('shadeBand3DAll publica la sombra por ALA de cada tramo y la media de las dos alas ES el tramo (8 estaciones, 4 por ala)', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const sh = F.shadeRows(zen, az, T, seg);
+    if (!sh.wing || !sh.wingElec) throw new Error('sin out.wing / out.wingElec');
+    let n = 0, dist = 0;
+    sh.seg.forEach((l, r) => l.forEach((v, k) => {
+      const w = sh.wing[r][k], we = sh.wingElec[r][k];
+      if (!w || w.length !== 2 || !we || we.length !== 2) throw new Error(`tramo ${r}/${k} sin sus dos alas`);
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-12) throw new Error(`tramo ${r}/${k}: alas ${w} ≠ tramo ${v}`);
+      if (Math.abs((we[0] + we[1]) / 2 - sh.segElec[r][k]) > 1e-12) throw new Error(`tramo ${r}/${k}: Martinez por ala ≠ tramo`);
+      for (const f of w) if (!(f >= 0 && f <= 1)) throw new Error('fracción por ala fuera de [0,1]');
+      n++; if (Math.abs(w[0] - w[1]) > 0.01) dist++;
+    }));
+    if (!(dist > 0)) throw new Error('al alba ninguna mesa tiene alas con sombra distinta (' + n + ' tramos): la cuenta por ala es vacía');
+  });
+
+  t('el ala 0 es el SUR (n bajo): un emisor que solo tapa el extremo sur de la receptora carga el ala 0', () => {
+    // dos líneas cortas y llanas; la emisora (oeste) SOLO existe en la mitad sur
+    // de la receptora, con el sol en el ESTE y bajo la sombra va hacia el oeste…
+    // así que se pone la emisora al ESTE de la receptora (sol del este ⇒ la
+    // sombra viaja al oeste, del emisor al receptor)
+    const T2 = { pairs: [{ slope: 0, pitch: 5, axisTilt: 0 }], cw: 2.38, axisAz: 0, maxAngle: 55, gcr: 2.38 / 5, z0: 0.17,
+                 nBypass: 2, iam: 0.05, rowTilt: [0, 0], groups: null, drive: 'mono',
+                 segs: [[[-30, 30]], [[-30, 0]]] };   // receptora = línea 0 (oeste, entera); emisora = línea 1 (este), solo en n<0 (SUR)
+    const g2 = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 39.1182, -1.1599);   // sol del este, bajo (07:30 local)
+    const z2 = 90 - g2.elev;
+    if (!(g2.az > 45 && g2.az < 135)) throw new Error('el sol no está en el este: az ' + g2.az);
+    // las dos filas SIGUEN al sol (astro: de cara al este, sin backtracking):
+    // horizontales no se sombrean nunca — la sombra de un plano a la altura h
+    // sobre otro a la misma h es el propio borde
+    const ang = F.anglesAstro(z2, g2.az, T2);
+    if (!(Math.abs(ang[0]) > 20)) throw new Error('el astro no inclina las filas al alba: ' + ang);
+    const sh = F.shadeRows(z2, g2.az, T2, ang);
+    const w = sh.wing[0][0];
+    if (!(sh.seg[0][0] > 0.02)) throw new Error('la receptora no se sombrea: ' + sh.seg[0][0]);
+    if (!(w[0] > w[1] + 0.02)) throw new Error('el ala SUR (0) no es la sombreada: ' + w);
+  });
+
+  t('poaPlant y poaPlantSeg publican la POA por ala y la media de las alas es la POA de la mesa', () => {
+    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    const ps = F.poaPlantSeg(zen, az, T, seg, irr, doy, 0.2);
+    if (!ps.wings) throw new Error('poaPlantSeg sin wings');
+    ps.segs.forEach((l, r) => l.forEach((v, k) => {
+      const w = ps.wings[r][k];
+      if (!w) throw new Error('mesa sin alas');
+      if (Math.abs((w[0] + w[1]) / 2 - v) > 1e-9 * Math.max(1, v)) throw new Error(`mesa ${r}/${k}: ${w} ≠ ${v}`);
+    }));
+    const rows = F.policyAngles('pairwise', zen, az, T, irr, doy, 0.2).angles;
+    const pp = F.poaPlant(zen, az, T, rows, irr, doy, 0.2);
+    if (!pp.wings || pp.wings.length !== rows.length) throw new Error('poaPlant sin wings por fila');
+    pp.wings.forEach((l, r) => { if (l.length !== T.segs[r].length) throw new Error('fila ' + r + ': alas para ' + l.length + ' mesas de ' + T.segs[r].length); });
+  });
+}
+
+console.log('v1.44 · la ventana no parte trackers · la planta entera');
+{
+  const cotasA = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const cotasS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  // v1.48: cada fila levantada entra como DOS mesas (sur y norte del morro),
+  // así que un tracker con sus dos vigas completas trae 2 × filas tramos
+  const monos = (P) => {
+    const cnt = new Map();
+    P.segTrk.forEach(l => l.forEach(tk => cnt.set(tk, (cnt.get(tk) || 0) + 1)));
+    let m = 0; for (const [tk, n] of cnt) if (n !== 2 * filasDe(tk)) m++;
+    return { m, trk: cnt.size };
+  };
+  t('la ventana de maxLines NUNCA deja un tracker con una sola fila (Ayora 80/30, San José 80) — antes 2 y 10 monofilas', () => {
+    for (const [cotas, ml, nombre] of [[cotasA, 80, 'Ayora 80'], [cotasA, 30, 'Ayora 30'], [cotasS, 80, 'San José 80'], [cotasS, 40, 'San José 40']]) {
+      const P = F.plantFromCotas(cotas, ml, null);
+      const r = monos(P);
+      if (r.m) throw new Error(nombre + ': ' + r.m + ' trackers partidos por la ventana (' + r.trk + ' trackers, ' + P.elev.length + ' líneas, huérfanas ' + P.huerfanas + ')');
+      // el contrato «hasta N líneas» se mantiene: la ventana limpia tiene N, y si
+      // no la hay se encoge (nunca amplía); lo que quede huérfano se quita y se cuenta
+      if (!(P.elev.length <= ml && P.elev.length >= ml - 4)) throw new Error(nombre + ': la ventana se fue a ' + P.elev.length + ' líneas');
+      if (P.huerfanas > 4) throw new Error(nombre + ': ' + P.huerfanas + ' filas huérfanas quitadas');
+    }
+  });
+  t("blockIdx 'all' es la PLANTA ENTERA: todas las líneas y todas las filas, sin ventana, y cada tracker con sus dos filas", () => {
+    const P = F.plantFromCotas(cotasA, Infinity, 'all');
+    const nT = cotasA.t.filter(Boolean).length, nF = cotasA.t.filter(Boolean).reduce((a, tk) => a + filasDe(tk), 0);
+    if (P.block !== 'all') throw new Error('block = ' + P.block);
+    if (P.nFilas !== nF) throw new Error(P.nFilas + ' filas de ' + nF);
+    const r = monos(P);
+    if (r.trk !== nT || r.m) throw new Error(r.trk + ' trackers de ' + nT + ', ' + r.m + ' partidos');
+    const total = P.blocks.reduce((a, b) => a + b.lines, 0);
+    if (P.elev.length !== total) throw new Error(P.elev.length + ' líneas ≠ Σ bloques ' + total);
+    // los huecos entre bloques quedan como VANOS grandes (sin solape ⇒ Δz 0), y el resto de vanos son el pitch
+    const grandes = P.pairs ? 0 : 0;
+    let big = 0; for (let i = 0; i < P.lineX.length - 1; i++) if (P.lineX[i + 1] - P.lineX[i] > 2.5 * P.pitch) big++;
+    if (big !== P.blocks.length - 1) throw new Error(big + ' vanos grandes para ' + P.blocks.length + ' bloques');
+    // y la ventana de 80 del simulador sigue siendo un SUBCONJUNTO exacto de la planta entera (misma geometría por línea)
+    const W = F.plantFromCotas(cotasA, 80, null);
+    const xs = new Set(P.lineXAbs.map(v => v.toFixed(3)));
+    for (const x of W.lineXAbs) if (!xs.has(x.toFixed(3))) throw new Error('la ventana tiene una línea que la planta entera no: x=' + x);
+    void grandes;
+  });
+}
+
+t('el censo de relieve cubre TODAS las plantas del índice, sin inventar veredictos', () => {
+  // El censo es el sitio donde es tentador rellenar el hueco: nueve plantas sin
+  // cotas y un DEM global a mano. Este test vigila las dos mitades — que no se
+  // deje ninguna planta fuera, y que no dé un veredicto donde no hay dato.
+  let r;
+  try { r = require_child().execFileSync('node',
+    [path.join(ROOT, 'tools', 'gate_relieve_cartera.mjs')], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('el censo falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-500)); }
+  const IDX = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas;
+  for (const p of IDX)
+    if (!new RegExp('^  ' + p.planta + ' ', 'm').test(r))
+      throw new Error('el censo se deja fuera a ' + p.planta);
+  // una planta sin cotas NO puede salir con veredicto de la puerta
+  for (const p of IDX) {
+    if (fs.existsSync(path.join(ROOT, p.planta + '_cotas.json'))) continue;
+    const l = (r.match(new RegExp('^  ' + p.planta + ' .*$', 'm')) || [''])[0];
+    if (/APTA|NO EVALUABLE/.test(l))
+      throw new Error(p.planta + ' no tiene cotas y el censo le da veredicto: «' + l.trim() + '»');
+  }
+  // y las dos que sí las tienen deben salir evaluadas
+  for (const pl of ['ayora', 'sanjose']) {
+    if (!fs.existsSync(path.join(ROOT, pl + '_cotas.json'))) continue;
+    if (!new RegExp('^  ' + pl + ' .*APTA', 'm').test(r))
+      throw new Error(pl + ' tiene cotas y el censo no la evalúa');
+  }
+});
+
+console.log('');
+console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');
+
+// ORÁCULO INDEPENDIENTE del detector. No comparte una línea con la versión de
+// Python: allí se indexa por cubos en x, aquí se recorre una ventana sobre los
+// puntos ordenados por y. La lección del terreno fantasma fue justo esta — el
+// oráculo no cazó el fallo porque llevaba dentro una copia del código malo.
+function oraculoRefVertical(P, umbral = 3, dy = 10, dx = 30, minv = 3) {
+  const n = P.id.length;
+  const ord = Array.from({ length: n }, (_, i) => i).sort((a, b) => P.y[a] - P.y[b]);
+  const malos = new Map();                       // id de fila -> [[id de punto, desvío]]
+  for (let k = 0; k < n; k++) {
+    const i = ord[k], z = [];
+    for (let d = -1; d <= 1; d += 2)             // hacia atrás y hacia delante en y
+      for (let m = k + d; m >= 0 && m < n; m += d) {
+        const j = ord[m];
+        if (Math.abs(P.y[j] - P.y[i]) > dy) break;
+        if (Math.abs(P.x[j] - P.x[i]) <= dx) z.push(P.z[j]);
+      }
+    if (z.length < minv) continue;
+    z.sort((a, b) => a - b);
+    const r = P.z[i] - z[(z.length / 2) | 0];
+    if (Math.abs(r) > umbral) {
+      const f = P.filas[P.fi[i]];
+      if (!malos.has(f)) malos.set(f, []);
+      malos.get(f).push([P.id[i], r]);
+    }
+  }
+  return malos;
+}
+// nube sintética: LIN líneas de seguidores, EST estaciones de medida por línea
+function nubeSintetica(zDe, LIN = 12, EST = 6, pitch = 6) {
+  const P = { id: [], x: [], y: [], z: [], fi: [], filas: [] };
+  for (let l = 0; l < LIN; l++)
+    for (let e = 0; e < EST; e++) {
+      P.filas.push('L' + l + '-E' + e);
+      for (const off of [0, 0.9]) {              // los puntos van en pareja (junta entre mesas)
+        P.id.push(P.id.length + 1); P.x.push(l * pitch); P.y.push(e * 37 + off);
+        P.z.push(zDe(l, e)); P.fi.push(P.filas.length - 1);
+      }
+    }
+  return P;
+}
+
+t('relieve solidario (un talud) NO se marca: es terreno, no referencia', () => {
+  // Un escalón de −3,5 m a partir de la estación 2, IGUAL en todas las líneas.
+  // Con una bola de radio fijo la mediana mezcla los dos niveles y marca
+  // terreno bueno: en San José daba 7 falsos positivos en el borde de TR-07.
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const m = oraculoRefVertical(P);
+  if (m.size) throw new Error('marca un talud real como referencia vertical: ' + [...m.keys()].join(', '));
+});
+t('punto aislado con otra referencia SÍ se marca, y solo él', () => {
+  const P = nubeSintetica((l, e) => 100 + 0.1 * l + (e >= 2 ? -3.5 : 0));
+  const i = P.filas.indexOf('L5-E3') * 2;        // un solo punto de una sola fila
+  P.z[i] += 36.6;
+  const m = oraculoRefVertical(P);
+  if (m.size !== 1 || !m.has('L5-E3')) throw new Error('esperaba solo L5-E3, salió: ' + [...m.keys()].join(', '));
+  if (m.get('L5-E3').length !== 1) throw new Error('marca más puntos de la fila de los que están mal');
+});
+t('el umbral no es delicado: de 3 a 20 m marca lo mismo en San José', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const n = u => [...oraculoRefVertical(P, u).values()].reduce((a, v) => a + v.length, 0);
+  const a = n(3), b = n(20);
+  if (a !== b) throw new Error('la banda vacía entre familias se cerró: umbral 3 marca ' + a + ' y umbral 20 marca ' + b +
+    ' — hay algo entre 3 y 20 m que ya no es ni ruido ni geoide, mirarlo antes de tocar el umbral');
+  if (a < 50) throw new Error('el detector dejó de ver la familia del geoide (' + a + ' puntos)');
+});
+t('la ventana está elegida por medida, y 30 m es el último dx seguro', () => {
+  // Documenta POR QUÉ la ventana es la que es, y falla si alguien la «mejora».
+  // dy y el cuórum se sueltan sin mover el veredicto (eso sube la cobertura de
+  // Ayora del 76,9 % al 96,5 % sin comprar nada). dx es el que tiene dos bordes:
+  // ampliarlo alcanza el otro nivel de un talud —a 100 m salen falsos positivos
+  // en TR-07, que es terreno real— y estrecharlo por debajo de 30 m empieza a
+  // perder contaminación de verdad (91 puntos en vez de 98).
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const filas = (dy, dx, mv) => new Set(oraculoRefVertical(P, 3, dy, dx, mv).keys());
+  const base = filas(10, 30, 3);
+  const igual = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
+  // La ventana ancha NO puede ver contaminación que la buena no vea. Lo que sí
+  // puede es marcar de más cerca del umbral: son los falsos positivos de ladera
+  // que motivaron estrechar dx (con el levantamiento completo, TR-08_1-068-W y
+  // TR-08_1-097-W dan +3,2 m con dx=60 y +0,8 m con dx=30). Así que lo que se
+  // exige no es igualdad —eso era una casualidad del muestreo viejo— sino que
+  // NO SE ESCAPE NADA de la familia del geoide.
+  const vieja = oraculoRefVertical(P, 3, 3, 60, 6);
+  for (const [fid, v] of vieja) {
+    const pico = Math.max(...v.map(t => Math.abs(t[1])));
+    if (pico > 20 && !base.has(fid))
+      throw new Error('la ventana buena se deja ' + fid + ' con ' + pico.toFixed(1) +
+        ' m: eso es la familia del geoide, no ruido de ladera');
+  }
+  // y 30 es el ÚLTIMO valor seguro de dx: estrechar más sí pierde puntos
+  if (igual(filas(10, 24, 3), base))
+    throw new Error('estrechar dx a 24 m ya no pierde puntos: si de verdad da igual, 30 deja de estar justificado');
+  const ancha = oraculoRefVertical(P, 3, 10, 100, 3);
+  const t7 = [...ancha.keys()].filter(id => id.startsWith('TR-07')).length;
+  if (t7 === 0)
+    throw new Error('ampliar dx a 100 m ya no mete falsos positivos del talud de TR-07: ' +
+      'o cambió el dato o cambió el detector — si de verdad da igual, dx deja de estar justificado en 60');
+  if ([...base].some(id => id.startsWith('TR-07')))
+    throw new Error('la ventana buena marca el talud de TR-07, que es terreno real');
+});
+t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const esp = new Set([...oraculoRefVertical(P).keys()].filter(id =>
+    JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_asbuilt.json'), 'utf-8')).f.some(r => r.id === id)));
+  let r;
+  try { r = require_child().execFileSync('python3',
+    [path.join(ROOT, 'tools', 'cotas_asbuilt.py'), 'sanjose'], { encoding: 'utf-8' }); }
+  catch (e) { throw new Error('cotas_asbuilt.py falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-600)); }
+  const dicho = new Set([...r.matchAll(/^\s+(\S+)\s+cota .*\[por punto\]/gm)].map(m => m[1]));
+  const falta = [...esp].filter(x => !dicho.has(x)), sobra = [...dicho].filter(x => !esp.has(x));
+  if (falta.length || sobra.length)
+    throw new Error('discrepan: Python no condena ' + (falta.join(', ') || '—') +
+                    ' · condena de más ' + (sobra.join(', ') || '—'));
+  if (!esp.size) throw new Error('el oráculo no condena nada: el test se quedó sin dientes');
+});
+t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila', () => {
+  // Este es el motivo de todo el cambio, y el dato dice algo más preciso de lo
+  // que parecía: lo que cambia de referencia no es un punto suelto, es una
+  // MESA ENTERA (una sesión de campo). En TR-09_1-044-E la mesa sur está a
+  // 1531,7 m y la norte a 1568,7 — 36,7 m de salto EN EL MISMO TUBO, que es
+  // imposible; su hermana -W tiene las cuatro cotas a 1531,x. Como el as-built
+  // se queda con un extremo de cada mesa, la media de la fila sale a MITAD de
+  // camino (+18,2 m) y pasaba el umbral de 3 m por suerte, no por diseño.
+  const fp = path.join(ROOT, 'sanjose_puntos.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
+  if (!fs.existsSync(fp) || !fs.existsSync(fa)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const m = oraculoRefVertical(P).get('TR-09_1-044-E');
+  if (!m) throw new Error('TR-09_1-044-E dejó de detectarse por punto');
+  if (Math.min(...m.map(v => Math.abs(v[1]))) < 30)
+    throw new Error('por punto ya no se ve entero: ' + m.map(v => v[1].toFixed(1)).join(', '));
+  // los marcados son los DOS puntos de una misma mesa, no puntos sueltos
+  const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
+  if (m.length !== 2 || ys[1] - ys[0] > 40)
+    throw new Error('esperaba la mesa entera (2 puntos a <40 m), salieron ' + m.length + ' repartidos ' +
+      (ys.length > 1 ? (ys[ys.length - 1] - ys[0]).toFixed(1) + ' m' : ''));
+  // y por fila el salto se ve a la mitad: ésa es la dilución que justifica el cambio
+  const A = JSON.parse(fs.readFileSync(fa, 'utf-8')).f;
+  const R = A.find(r => r.id === 'TR-09_1-044-E'), S = A.find(r => r.id === 'TR-09_1-044-W');
+  const dFila = Math.abs((R.ys + R.yn) / 2 - (S.ys + S.yn) / 2);
+  if (!(dFila > 15 && dFila < 25))
+    throw new Error('la dilución a la mitad ya no es tal (' + dFila.toFixed(1) + ' m): revisar el ejemplo del test');
+});
+t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
+  // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
+  // mediana de su vecindario se apoyaba en su hermana TR-08_1-002-W, condenada
+  // dos líneas antes. TR-08_1-001-E, en cambio, sí está contaminada y su
+  // seguidor no tiene otra fila: ese tiene que quedarse SIN MEDIR.
+  const f = path.join(ROOT, 'sanjose_cotas.json');
+  if (!fs.existsSync(f)) return;
+  const C = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const tk = id => C.t.some(x => x && x.tk === id);
+  if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
+  if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
+});
+t('la reclamación dice EXACTAMENTE lo mismo que el detector', () => {
+  // reclama_referencia.py nació con su propia copia de la ventana (dy=3, dx=60)
+  // y se la pasaba al detector, pisando la buena. Salían los mismos 98 puntos
+  // pero con OTROS desvíos: el CSV decía min +35,01 m donde el visor decía
+  // +35,20 — dos entregables míos contradiciéndose por un valor por defecto
+  // duplicado. Aquí se vigila que sigan siendo el mismo número.
+  const f = path.join(ROOT, 'reclamacion_sanjose.csv'), fp = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f) || !fs.existsSync(fp)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const esp = new Map();
+  for (const [, v] of oraculoRefVertical(P)) for (const [pid, r] of v) esp.set(pid, r);
+  const filas = fs.readFileSync(f, 'utf-8').replace(/^\uFEFF/, '').trim().split('\n').slice(1);
+  if (filas.length !== esp.size)
+    throw new Error('la reclamación trae ' + filas.length + ' puntos y el detector ve ' + esp.size);
+  for (const l of filas) {
+    const c = l.split(';'), pid = +c[1], d = parseFloat(c[6]);
+    if (!esp.has(pid)) throw new Error('la reclamación trae el punto ' + pid + ', que el detector no marca');
+    if (Math.abs(esp.get(pid) - d) > 0.02)
+      throw new Error('el punto ' + pid + ' vale ' + d.toFixed(2) + ' m en la reclamación y ' +
+        esp.get(pid).toFixed(2) + ' m en el detector: ¿ventana duplicada otra vez?');
+  }
+});
+t('Ayora limpia, y con MARGEN: el suelo de ruido no se acerca al umbral', () => {
+  // No basta con «no se marca nada»: importa cuánto sobra. El suelo de ruido de
+  // este control es el relieve real — en una ladera, la propia pendiente lateral
+  // se lee como desvío. En Ayora el peor punto limpio está en 1,38 m contra un
+  // umbral de 3 m. Si ese suelo sube, el umbral empieza a estar en riesgo aunque
+  // todavía no marque nada, y eso hay que verlo ANTES del primer falso positivo.
+  const f = path.join(ROOT, 'ayora_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  if (oraculoRefVertical(P, 3).size)
+    throw new Error('aparece referencia vertical en Ayora: ' + [...oraculoRefVertical(P, 3).keys()].slice(0, 5).join(', '));
+  const suelo = oraculoRefVertical(P, 0).size ? Math.max(...[...oraculoRefVertical(P, 0).values()].flat().map(v => Math.abs(v[1]))) : 0;
+  if (suelo > 2)
+    throw new Error('el suelo de ruido de Ayora subió a ' + suelo.toFixed(2) + ' m, con el umbral en 3: ' +
+      'queda menos de 1,5× de margen — revisar la ventana antes de que aparezca un falso positivo');
+});
+t('la nube casa con el as-built: mesas enteras y z absoluta coherente', () => {
+  // Cuántos puntos toca por fila NO es el mismo número en las dos plantas, y
+  // eso es geometría, no un fallo: en Ayora la fila es UNA mesa (2 extremos) y
+  // en San José son DOS mesas por tubo (4 extremos). Lo que se vigila es que
+  // sea 2 ó 4 y que la planta sea consistente consigo misma.
+  for (const pl of ['ayora', 'sanjose']) {
+    const fp = path.join(ROOT, pl + '_puntos.json'), fa = path.join(ROOT, pl + '_asbuilt.json');
+    if (!fs.existsSync(fp) || !fs.existsSync(fa)) continue;
+    const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
+    const cnt = new Map();
+    for (const i of P.fi) cnt.set(i, (cnt.get(i) || 0) + 1);
+    const v = [...cnt.values()].sort((a, b) => a - b), med = v[(v.length / 2) | 0];
+    if (med !== 2 && med !== 4)
+      throw new Error(pl + ': la mediana de puntos por fila es ' + med + ', ni 2 (una mesa) ni 4 (dos mesas)');
+    const raros = v.filter(x => x !== med).length;
+    if (raros > v.length * 0.05)
+      throw new Error(pl + ': ' + raros + ' de ' + v.length + ' filas no traen ' + med + ' puntos (>5 %)');
+    const ids = new Set(A.f.map(r => r.id));
+    const casan = P.filas.filter(x => ids.has(x)).length;
+    if (casan < A.f.length * 0.95)
+      throw new Error(pl + ': solo ' + casan + ' de ' + A.f.length + ' filas del as-built tienen puntos');
+    const b = A.meta.base;
+    if (Math.min(...P.z) < b - 200 || Math.max(...P.z) > b + 200)
+      throw new Error(pl + ': z fuera de banda respecto a base=' + b + ' (¿se coló una cota relativa?)');
+  }
+});
+console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y declarados');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
+  t('San José: la planta entera son los 2.289 trackers del plano, y los 107 sin levantar van MARCADOS', () => {
+    const dentro = cotas.t.filter(Boolean);
+    if (dentro.length !== lay.trackers.length) throw new Error(`${dentro.length} trackers de ${lay.trackers.length} del plano`);
+    const est = dentro.filter(t2 => t2.est);
+    if (!(est.length > 0 && est.length < dentro.length * 0.1))
+      throw new Error(`${est.length} estimados de ${dentro.length}: o no hay marca o son demasiados`);
+    if (cotas.n_est !== est.length) throw new Error('el meta no declara los estimados: ' + cotas.n_est);
+    // su geometría es la MEDIDA de la planta, no una invención: paso entre
+    // vigas, largo de uno de los tipos que existen, y módulos coherentes
+    const M = cotas.mod;
+    const pasos = dentro.filter(t2 => !t2.est).map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
+    const paso = pasos[pasos.length >> 1];
+    // el módulo es el de la planta y el largo cuadra con sus módulos; el número
+    // de módulos NO tiene por qué ser uno de los levantados (en San José los
+    // «medio» no se levantaron: son justo estos), pero sí uno de los pocos
+    // tamaños que la geometría resuelve, y las dos filas iguales
+    const tallas = new Set(est.flatMap(t2 => t2.f.map(f => f.md)));
+    if (tallas.size > 3) throw new Error('los estimados usan ' + tallas.size + ' tamaños distintos: eso no es resolver por tipo');
+    for (const t2 of est) {
+      if (Math.abs(Math.abs(t2.f[0].x - t2.f[1].x) - paso) > 0.1) throw new Error('un estimado con las vigas a otro paso');
+      if (t2.f[0].md !== t2.f[1].md) throw new Error('un estimado con sus dos vigas de distinto tamaño');
+      if (Math.abs((t2.f[0].y[0] + t2.f[0].y[1]) / 2 - (t2.f[1].y[0] + t2.f[1].y[1]) / 2) > 0.5)
+        throw new Error('un estimado con sus dos vigas a distinta cota: comparten tubo');
+      for (const f of t2.f) {
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * M.gapMod + M.gapDrive;
+        if (Math.abs(L - esp) > 1.5) throw new Error(`un estimado de ${L.toFixed(2)} m para ${f.md} módulos (${esp.toFixed(2)} m)`);
+      }
+      // la cota sale del terreno vecino: dentro del rango de la planta medida
+      const zs = dentro.filter(x => !x.est).flatMap(x => x.f.flatMap(f => f.y));
+      const lo = Math.min(...zs), hi = Math.max(...zs);
+      for (const f of t2.f) for (const y of f.y)
+        if (y < lo - 5 || y > hi + 5) throw new Error(`cota estimada ${y} fuera del terreno medido [${lo.toFixed(0)}, ${hi.toFixed(0)}]`);
+    }
+  });
+  t('a un tracker sin levantar NO se le manda consigna', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'tools', 'export_consignas.mjs'), 'utf-8');
+    if (!/cotas\.t\[i\]\.est\)\s*\{\s*estimados\+\+;\s*continue;/.test(src))
+      throw new Error('export_consignas no excluye los trackers con cota estimada');
+    const out = path.join(ROOT, '.tmp_est_test.csv');
+    try {
+      require_child().execFileSync(process.execPath, [path.join(ROOT, 'tools', 'export_consignas.mjs'),
+        '--planta', 'sanjose', '--fecha', '2026-06-21', '--pol', 'pairwise', '--paso', '360', '--salida', out], { stdio: 'pipe' });
+      const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+      const est = cotas.t.filter(t2 => t2 && t2.est).length;
+      if (meta.seguidores_sin_levantar !== est) throw new Error(`el meta dice ${meta.seguidores_sin_levantar} sin levantar, hay ${est}`);
+      if (meta.seguidores !== cotas.t.filter(Boolean).length - est)
+        throw new Error(`${meta.seguidores} seguidores con consigna: deberían ser los levantados`);
+    } finally {
+      for (const f of [out, out.replace(/\.csv$/, '.meta.json')]) try { fs.unlinkSync(f); } catch { /* nada */ }
+    }
+  });
+}
+
+console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas separadas');
+{
+  // Este careo NO mira nuestra propia salida: mide el fichero de cotas contra
+  // el LAYOUT (fuente independiente) y contra la geometría del bifila. Es el
+  // que faltaba: `cotas_asbuilt.py` duplicaba la hermana de un tracker con una
+  // sola fila medida CON LA MISMA x, así que 231 trackers de San José salían
+  // como dos vigas superpuestas — el clúster las metía en una línea, no eran
+  // pareja, y el 3D las pintaba como monofilas sueltas. Los careos de entonces
+  // no lo cazaron porque comprobaban que los ejes casaran con segPairs, y
+  // segPairs venía de esas mismas cotas.
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const lay = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_layout.json'), 'utf-8'));
+    const filasDe = tk => (tk && tk.f ? tk.f : []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2);
+    t(`${pl}: las dos vigas de cada tracker están separadas un paso y casan con el layout`, () => {
+      if (lay.trackers.length !== cotas.t.length) throw new Error('layout y cotas no van 1:1');
+      // el PASO entre las dos vigas se mide de los trackers levantados ENTEROS
+      const ds = cotas.t.filter(tk => tk && !tk.inc && filasDe(tk).length === 2)
+                        .map(tk => Math.abs(tk.f[0].x - tk.f[1].x)).sort((a, b) => a - b);
+      if (ds.length < 20) throw new Error('muy pocos trackers con las dos filas medidas: ' + ds.length);
+      const paso = ds[ds.length >> 1];
+      if (!(paso > 3 && paso < 12)) throw new Error('paso entre vigas irreal: ' + paso.toFixed(2) + ' m');
+      let n = 0, juntas = 0, pasoMal = 0, fueraLayout = 0;
+      cotas.t.forEach((tk, i) => {
+        const f = filasDe(tk);
+        if (f.length !== 2) return;
+        n++;
+        const dx = Math.abs(f[0].x - f[1].x);
+        if (dx < 1) juntas++;                                   // dos vigas SUPERPUESTAS: el fallo de v1.45
+        // el montaje real dispersa: en San José el vano medido va de 5,54 a
+        // 7,58 m (dos trackers levantados tienen sus vigas a 7,3). Lo que NO
+        // puede pasar es que estén superpuestas o a dos pasos
+        else if (Math.abs(dx - paso) > 0.25 * paso) pasoMal++;
+        const xl = lay.trackers[i].x;
+        if (Math.min(Math.abs(xl - f[0].x), Math.abs(xl - f[1].x), Math.abs(xl - (f[0].x + f[1].x) / 2)) > 0.4) fueraLayout++;
+        void tk;
+      });
+      if (juntas) throw new Error(`${juntas} de ${n} trackers con sus DOS vigas en la misma x (hermana duplicada sin recolocar)`);
+      if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);
+      if (fueraLayout) throw new Error(`${fueraLayout} de ${n} trackers cuyas vigas no casan con la x del layout`);
+    });
+    t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
+      const P = F.plantFromCotas(cotas, Infinity, 'all');
+      const linea = new Map();
+      P.segTrk.forEach((l, r) => l.forEach(tk => { if (!linea.has(tk)) linea.set(tk, new Set()); linea.get(tk).add(r); }));
+      let n = 0, sinPareja = 0, noContiguas = 0;
+      for (const tk of cotas.t) {
+        if (!tk || filasDe(tk).length !== 2) continue;
+        n++;
+        const v = [...(linea.get(tk) || [])].sort((a, b) => a - b);
+        if (v.length !== 2) { sinPareja++; continue; }
+        if (Math.abs(v[0] - v[1]) !== 1) noContiguas++;
+      }
+      if (sinPareja) throw new Error(`${sinPareja} de ${n} trackers sin pareja (sus dos vigas caen en la misma línea)`);
+      if (noContiguas) throw new Error(`${noContiguas} de ${n} trackers con sus vigas en líneas NO contiguas`);
+      // v1.48: la pareja es de MESAS GEMELAS (la misma mitad en las dos vigas),
+      // así que un tracker trae DOS: la del sur del morro y la del norte
+      if (P.segPairs.length !== 2 * n) throw new Error(`${P.segPairs.length} parejas gemelas para ${n} trackers levantados (esperadas ${2 * n})`);
+      if (P.segDrive.length !== n) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers`);
+      const de4 = P.segDrive.filter(g => g.length === 4).length;
+      if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
+    });
+  }
+}
+
+console.log('v1.49 · el suelo no se inventa con una línea de otro bloque');
+{
+  /* Una planta de VARIOS BLOQUES tiene saltos de índice enormes en x: en Ayora,
+     entre la línea 107 y la 108 hay 721 m de hueco y 12,8 m de desnivel. El
+     resolutor de cota del terreno tiraba de la línea de índice contiguo sin
+     mirar dónde está, así que fabricaba un escarpe de 7 m pegado a la primera
+     línea del segundo bloque y el contador lo veía tapar el sol al ocaso. */
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  const mkT = (Pp) => {
+    const pairs = [];
+    for (let i = 0; i < Pp.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, Pp.lineX[i + 1] - Pp.lineX[i]);
+      pairs.push({ slope: Math.atan2(Pp.pairDz[i], dx) * 180 / Math.PI, pitch: dx,
+                   axisTilt: (Pp.tilt[i] + Pp.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: Pp.cw, axisAz: 0, maxAngle: Pp.maxAngle, gcr: Pp.cw / Pp.pitch, z0: 0.17,
+             nBypass: 3, rowTilt: Pp.tilt, groups: Pp.groups, drive: Pp.drive, segs: Pp.segs,
+             segTilt: Pp.segTilt, segPairs: Pp.segPairs, segDrive: Pp.segDrive, pitch: Pp.pitch, real: Pp };
+  };
+  const T = mkT(P);
+  // 21-jun a las 19:20 locales de Ayora: sol al oeste y a 23° de elevación
+  const ZEN = 66.7, AZ = 282.1;
+  const ang = F.policyAnglesSeg('pairwise', ZEN, AZ, T);
+  const sh = F.shadeRows(ZEN, AZ, T, ang);
+  const peor = () => { let m = 0, d = null;
+    for (let r = 0; r < sh.seg.length; r++) for (let k = 0; k < sh.seg[r].length; k++)
+      if (sh.seg[r][k] > m) { m = sh.seg[r][k]; d = `línea ${r + 1} mesa ${k + 1}`; }
+    return { m, d }; };
+  const p0 = peor();
+  t('el suelo NO se inventa con la cota de una línea lejana (Ayora, dos bloques a 721 m)', () => {
+    if (!(p0.m < 0.25)) throw new Error(`${p0.d} con ${(100 * p0.m).toFixed(1)} % de sombra al ocaso: huele a escarpe inventado`);
+  });
+  t('MUTANTE: sin el límite de distancia, la línea del otro bloque fabrica el escarpe y la sombra vuelve', () => {
+    const mut = src.replace('if(Math.abs(x-xs[j])>COT_XMAX)continue;      // esa línea está en otro sitio', '')
+                   .replace('if(okA&&Math.abs(x-xs[i])<=COT_XMAX)return a.z-HUB;', 'if(okA)return a.z-HUB;')
+                   .replace('if(okB&&Math.abs(x-xs[Math.min(nR-1,i+1)])<=COT_XMAX)return b.z-HUB;', 'if(okB)return b.z-HUB;');
+    if (mut === src) throw new Error('el mutante no cambió nada: el límite ya no está donde se cree');
+    const G = new Function(sol + '\n' + mut + '; return { plantFromCotas, policyAnglesSeg, shadeRows };')();
+    const P2 = G.plantFromCotas(cotas, Infinity, 'all');
+    const T2 = mkT(P2);
+    const sh2 = G.shadeRows(ZEN, AZ, T2, G.policyAnglesSeg('pairwise', ZEN, AZ, T2));
+    let m2 = 0; for (const l of sh2.seg) for (const v of l) if (v > m2) m2 = v;
+    if (!(m2 > 0.4)) throw new Error(`sin el límite la peor sombra es ${(100 * m2).toFixed(1)} %: el careo no distingue`);
+  });
+}
+
+console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
+{
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const P = F.plantFromCotas(cotas, Infinity, 'all');
+    t(`${pl}: un eje por tracker entre SUS dos mesas, motor en la oeste, y ninguna mesa emparejada sin eje`, () => {
+      const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
+      // v1.48: UN eje por TRACKER (no por pareja de mesas gemelas), y cruza por
+      // el MORRO — el punto donde está el motor y donde la viga se articula
+      if (ejes.length !== P.segDrive.length) throw new Error(ejes.length + ' ejes para ' + P.segDrive.length + ' trackers');
+      const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+      const conEje = new Set();
+      for (const e of ejes) {
+        if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error('un eje une mesas de trackers distintos');
+        conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
+        const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
+        // el eje cruza por el MORRO: el punto medio de los morros de las dos
+        // vigas (que el tresbolillo real desplaza una de otra hasta ~4 m), y
+        // NUNCA por el centro de la mesa, que es donde caía antes
+        const mA = P.segMorro[e.r1][e.k1][0], mB = P.segMorro[e.r2][e.k2][0];
+        if (Math.abs(e.n - (mA + mB) / 2) > 1e-9)
+          throw new Error('el eje no cruza por el morro (n ' + e.n.toFixed(2) + ' vs ' + mA.toFixed(2) + ' / ' + mB.toFixed(2) + ')');
+        if (Math.abs(e.n - (a[0] + a[1]) / 2) < (a[1] - a[0]) / 4)
+          throw new Error('el eje cae en mitad de la mesa, no en su morro');
+        if (P.segSide[e.r1][e.k1] !== 0 || P.segSide[e.r2][e.k2] !== 0)
+          throw new Error('el eje no arranca de las mesas del sur del morro');
+      }
+      const trkConEje = new Set(ejes.map(e => P.segTrk[e.r1][e.k1]));
+      let sinEje = 0;
+      for (const g of P.segDrive) if (!trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
+      if (sinEje) throw new Error(sinEje + ' trackers con dos vigas pero sin eje');
+      // y todas las mesas del tracker van al MISMO θ: el motor es uno
+      for (const g of P.segDrive) {
+        const trks = new Set(g.map(([r, k]) => P.segTrk[r][k]));
+        if (trks.size !== 1) throw new Error('un accionamiento mueve mesas de trackers distintos');
+      }
+      let sin = 0;
+      P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) && P.segSide[r1][k1] === 0) sin++; });
+      if (sin) throw new Error(sin + ' mesas del sur con gemela pero sin eje');
+      for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+        if (west[r1][k1] === west[r2][k2]) throw new Error('un tracker con dos motores o ninguno');
+        const o = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
+        if (!west[o[0]][o[1]]) throw new Error('el motor no va en la viga oeste');
+      }
+      const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
+      let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; else if (!enPareja.has(r + '|' + k)) throw new Error('mesa suelta sin motor'); }));
+      const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
+      // westSeg marca la VIGA del motor: sus DOS mesas. El motor sigue siendo
+      // uno por tracker — va en el morro de esa viga, y quien dibuja lo pone
+      // una sola vez (las piezas del accionamiento caen en x≈0 del modelo).
+      if (motores !== P.segPairs.length + sueltas) throw new Error(motores + ' mesas de viga oeste para ' + P.segPairs.length + ' parejas y ' + sueltas + ' sueltas');
+      void filasDe;
+    });
+  }
+  t('MUTANTE: el camino por LÍNEA (groups + «el tramo más próximo») sí une trackers distintos y deja mesas sin eje', () => {
+    const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), Infinity, 'all');
+    const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+    let mal = 0; const conEje = new Set();
+    for (const [a, b] of P.groups.filter(g => g.length === 2))
+      for (let ka = 0; ka < P.segs[a].length; ka++) {
+        const ca = (P.segs[a][ka][0] + P.segs[a][ka][1]) / 2;
+        const kb = P.segs[b].findIndex(s2 => ca >= s2[0] - 2 && ca <= s2[1] + 2);
+        if (kb < 0) continue;
+        if (real.has([a, ka, b, kb].join('|'))) { conEje.add(a + '|' + ka); conEje.add(b + '|' + kb); } else mal++;
+      }
+    let sin = 0;
+    P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
+    if (!(mal > 0 && sin > 0)) throw new Error(`el camino por línea ya no falla (${mal} ejes mal, ${sin} mesas sin eje): el careo no distingue`);
+  });
+  t('la UI del simulador dibuja el accionamiento con westPorMesa / ejesPorMesa cuando la planta es medida', () => {
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const b3 = ui.slice(ui.indexOf('function build3D'), ui.indexOf('function setSky'));
+    for (const lit of ['westPorMesa(PR)', 'ejesPorMesa(PR)', 'west:westAt(r,si)'])
+      if (!b3.includes(lit)) throw new Error('build3D sin «' + lit + '»');
+  });
+}
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);

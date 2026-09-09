@@ -115,6 +115,7 @@ jobs:
           - test_bt3d_rot.mjs
           - test_huso_plantas.mjs
           - test_panel_plegable.mjs
+          - test_produccion_3d.mjs   # se levanta su propio servidor
     env:
       PUERTO: 8124              # el convenio de todos los bancos; un servidor sirve a todos
     steps:
