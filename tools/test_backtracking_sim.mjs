@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import os from 'node:os';
 const require_child = () => ({ execFileSync });
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -1158,8 +1159,10 @@ t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de c
   if (!/NO recalcula pendientes/.test(src))
     throw new Error('el exportador no declara que une en vez de recalcular');
   const { execFileSync } = require_child();
-  execFileSync(process.execPath, [ep, 'ayora'], { cwd: ROOT, stdio: 'pipe' });
-  const csv = fs.readFileSync(path.join(ROOT, 'config_tcu_ayora.csv'), 'utf-8').trim().split('\n');
+  /* A UN TEMPORAL: un banco no reescribe la ficha del SCADA. */
+  const dOut = fs.mkdtempSync(path.join(os.tmpdir(), 'ficha-'));
+  execFileSync(process.execPath, [ep, 'ayora', '--dir', dOut], { cwd: ROOT, stdio: 'pipe' });
+  const csv = fs.readFileSync(path.join(dOut, 'config_tcu_ayora.csv'), 'utf-8').trim().split('\n');
   const cab = csv[0].split(',');
   const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
   if (csv.length - 1 !== cotas.t.length)
@@ -1189,7 +1192,7 @@ t('v1.33 ficha TCU: UNE el levantamiento con la identidad, y aborta si deja de c
   // identidad, y el veto de rango tiene que estar vetando esas pendientes
   // imposibles en vez de dejarlas pasar a los registros.
   let sjOut = '';
-  try { sjOut = execFileSync(process.execPath, [ep, 'sanjose'], { cwd: ROOT, encoding: 'utf-8' }); }
+  try { sjOut = execFileSync(process.execPath, [ep, 'sanjose', '--dir', fs.mkdtempSync(path.join(os.tmpdir(), 'ficha-'))], { cwd: ROOT, encoding: 'utf-8' }); }
   catch (e) { throw new Error('San José dejó de casar: ' + ((e.stdout || '') + (e.stderr || '')).slice(-300)); }
   if (!/unión por IDENTIDAD/.test(sjOut)) throw new Error('San José ya no une por identidad (id = tk)');
   if (!/VETO DE RANGO: \d+ pendiente/.test(sjOut))
