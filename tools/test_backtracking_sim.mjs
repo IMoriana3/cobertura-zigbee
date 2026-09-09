@@ -2433,7 +2433,10 @@ console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y decla
     // su geometría es la MEDIDA de la planta, no una invención: paso entre
     // vigas, largo de uno de los tipos que existen, y módulos coherentes
     const M = cotas.mod;
-    const pasos = dentro.filter(t2 => !t2.est).map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
+    // solo los que tienen SUS DOS vigas: el seguidor al que no le cabe la
+    // hermana sin pisar una viga medida se emite con una sola, y no da paso
+    const pasos = dentro.filter(t2 => !t2.est && t2.f.length === 2)
+      .map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
     const paso = pasos[pasos.length >> 1];
     // el módulo es el de la planta y el largo cuadra con sus módulos; el número
     // de módulos NO tiene por qué ser uno de los levantados (en San José los
@@ -2535,9 +2538,15 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
       // v1.48: la pareja es de MESAS GEMELAS (la misma mitad en las dos vigas),
       // así que un tracker trae DOS: la del sur del morro y la del norte
       if (P.segPairs.length !== 2 * n) throw new Error(`${P.segPairs.length} parejas gemelas para ${n} trackers levantados (esperadas ${2 * n})`);
-      if (P.segDrive.length !== n) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers`);
+      // los seguidores de UNA sola viga (su hermana no cabe sin pisar una viga
+      // medida de otro seguidor) tambien se dibujan: dos mesas, sin eje. La
+      // planta los declara, asi que el numero no puede moverse en silencio.
+      const solo = cotas.n_solo || 0;
+      if (P.segDrive.length !== n + solo) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers de dos vigas y ${solo} de una`);
       const de4 = P.segDrive.filter(g => g.length === 4).length;
+      const de2 = P.segDrive.filter(g => g.length === 2).length;
       if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
+      if (de2 !== solo) throw new Error(`${de2} accionamientos de 2 mesas para ${solo} seguidores de una viga`);
     });
   }
 }
@@ -2599,7 +2608,11 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
       const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
       // v1.48: UN eje por TRACKER (no por pareja de mesas gemelas), y cruza por
       // el MORRO — el punto donde está el motor y donde la viga se articula
-      if (ejes.length !== P.segDrive.length) throw new Error(ejes.length + ' ejes para ' + P.segDrive.length + ' trackers');
+      // un eje une las DOS vigas de un seguidor: el que solo tiene una no
+      // lleva eje, y eso es lo que hay que ver — no un eje inventado hasta la
+      // viga del seguidor de al lado
+      const conPar = P.segDrive.filter(g => g.length === 4).length;
+      if (ejes.length !== conPar) throw new Error(ejes.length + ' ejes para ' + conPar + ' trackers de dos vigas (' + (P.segDrive.length - conPar) + ' de una viga, sin eje)');
       const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
       const conEje = new Set();
       for (const e of ejes) {
@@ -2619,7 +2632,9 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
       }
       const trkConEje = new Set(ejes.map(e => P.segTrk[e.r1][e.k1]));
       let sinEje = 0;
-      for (const g of P.segDrive) if (!trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
+      // un accionamiento de 2 mesas es un seguidor de UNA viga: no lleva eje,
+      // y exigirselo seria pedir un eje que une una viga consigo misma
+      for (const g of P.segDrive) if (g.length === 4 && !trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
       if (sinEje) throw new Error(sinEje + ' trackers con dos vigas pero sin eje');
       // y todas las mesas del tracker van al MISMO θ: el motor es uno
       for (const g of P.segDrive) {
