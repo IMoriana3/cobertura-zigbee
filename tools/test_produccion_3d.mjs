@@ -145,8 +145,12 @@ try {
       check(`${nombre}: cada mesa dibuja los módulos del levantamiento (${[...new Set(m.paneles.map(o => o.md))].filter(Boolean).sort((a, b) => a - b).join('/')})`,
             m.paneles.length > 0 && malMods === 0,
             `${malMods} de ${m.paneles.length} mesas con otro nº de módulos`);
+      // el panel se dibuja con los módulos del TIPO, así que su largo es el
+      // nominal; la mesa medida puede apartarse de él lo que el generador
+      // deja pasar (LARGO_FUERA de reparte_levantamiento.py son 3 m por FILA,
+      // o sea 1,5 por mesa) y esas pocas van nombradas en su aviso
       check(`${nombre}: y el panel mide lo que mide la mesa (desvío mediana ${dif.length ? dif[dif.length >> 1].toFixed(2) : '—'} m)`,
-            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.2 && Math.abs(dif[dif.length - 1]) < 1.2,
+            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.6 && Math.abs(dif[dif.length - 1]) < 1.6,
             `desvíos ${dif[0]?.toFixed(2)} … ${dif[dif.length - 1]?.toFixed(2)} m`);
     }
 
