@@ -323,13 +323,17 @@ def genera(planta):
             # antes daba igual porque la fila se tiraba entera, pero ahora se
             # queda, y sl=98,8 % con pa=[0,83 · 196,8] entraria al modelo tal
             # cual. Se recalculan con la misma formula que usa el reparto.
+            #
+            # LA FILA REPARADA VA RIGIDA: UNA PENDIENTE PARA SUS DOS MESAS.
+            # Ignacio: «deja la misma pendiente en esa mesa y en la otra de la
+            # misma fila». Con una cota repuesta, el quiebro de la junta ya no
+            # es medida —saldria de una punta estimada contra la junta medida,
+            # y eso es inventar una articulacion—; se quita la junta (nm/ym) y
+            # la fila entra como viga rigida: la pendiente entre sus dos puntas,
+            # igual para la mesa sur y la norte.
             Lf = f['zs'] - f['zn']                                  # el eje z apunta al SUR
             f['sl'] = round((f['yn'] - f['ys']) / Lf * 100, 3) if Lf > 5 else None
-            f['pa'] = []
-            if f.get('zm') is not None and f.get('ym') is not None:
-                Ls, Ln = f['zs'] - f['zm'], f['zm'] - f['zn']
-                if Ls > 5: f['pa'].append(round((f['ym'] - f['ys']) / Ls * 100, 3))
-                if Ln > 5: f['pa'].append(round((f['yn'] - f['ym']) / Ln * 100, 3))
+            f['zm'] = f['ym'] = None; f['pa'] = []; f['art'] = 0
             repuestas.append((f['id'], e, fuente, f[campo]))
     if repuestas:
         _una = sum(1 for r in repuestas if r[1] != 'amb')
