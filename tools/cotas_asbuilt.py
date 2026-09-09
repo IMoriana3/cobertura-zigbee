@@ -152,6 +152,7 @@ def genera(planta):
     # viene de la nube, con los ids de PUNTO — para poder reclamarselo.
     UMBRAL_HERMANAS = 3.0                       # m; la cuerda son 2,38
     corregidas = []
+    repone, pmal = {}, {}                        # filas a las que hay que reponer UNA cota
 
     # (a) por PUNTO, si hay nube cruda de la planta
     malos = puntos_con_otra_referencia(planta, UMBRAL_HERMANAS)
@@ -160,17 +161,65 @@ def genera(planta):
         print('%-8s nube del levantamiento: %d puntos, %d decidibles (%.1f%%) · %d con otra referencia en %d fila(s)'
               % (planta, n_pts, n_dec, 100.0 * n_dec / max(1, n_pts),
                  sum(len(v) for v in pmal.values()), len(pmal)))
+        # DONDE cae lo contaminado dentro de la fila, que no es lo mismo tirar
+        # media planta que una punta. La nube dice la n de cada punto: el
+        # primero es la punta SUR, el ultimo la NORTE y el resto la junta.
+        donde = {}
+        nb = os.path.join(RAIZ, planta + '_puntos.json')
+        if os.path.exists(nb):
+            NB = json.load(open(nb))
+            _p = defaultdict(list)
+            for _i in range(NB['n']):
+                _p[NB['filas'][NB['fi'][_i]]].append(_i)
+            for _fid, _ks in _p.items():
+                _ks.sort(key=lambda _k: NB['y'][_k])
+                d = {'sur': set(), 'nor': set(), 'cen': set()}
+                for _j, _k in enumerate(_ks):
+                    d['sur' if _j == 0 else 'nor' if _j == len(_ks) - 1 else 'cen'].add(NB['id'][_k])
+                donde[_fid] = d
+        estado = {}                              # id de fila -> que hay que hacer con ella
+        for _fid, _m in pmal.items():
+            d = donde.get(_fid)
+            ids = {t[0] for t in _m}
+            if not d:
+                estado[_fid] = 'fuera'; continue
+            # Lo que decide es cuantas PUNTAS se pierden: con las dos, la fila
+            # no tiene geometria de cota y se cae. La junta es aparte — vale por
+            # la articulacion, no por los extremos — asi que si la toca la
+            # contaminacion se pierde la junta, no la fila.
+            ext = [e for e in ('sur', 'nor') if ids & d[e]]
+            estado[_fid] = ('fuera' if len(ext) >= 2 else
+                            (ext[0] if ext else 'ok')) + ('+junta' if ids & d['cen'] else '')
+
         for k, v in list(grupos.items()):
-            sanas = [f for f in v if f.get('id') not in pmal]
             for f in v:
                 if f.get('id') in pmal:
                     m, n_t = pmal[f['id']], n_por_fila.get(f['id'], 0)
                     alcance = 'la fila entera' if len(m) >= n_t else ('%d de %d puntos (media fila: una mesa)' % (len(m), n_t))
                     corregidas.append((f['id'], (f['ys'] + f['yn']) / 2.0, float('nan'), float('nan'),
                                        alcance + ' · ' + ', '.join('pt %d %+.1f m' % t for t in m)))
-            if len(sanas) != len(v):
-                if sanas:
-                    grupos[k] = sanas            # inc=1: la hermana se duplica mas abajo
+            # LA X,Y NO SE CONTAMINA. Lo que cambia de referencia es la COTA: el
+            # punto sigue estando donde el topografo lo puso. Tirar la fila
+            # entera por una punta se llevaba por delante su posicion, su largo
+            # y las cotas SANAS que tuviera — y su tracker acababa reconstruido
+            # del plano, con todo estimado en vez de una sola cota. Asi que la
+            # fila se repara si lo sano la determina, y solo se cae si no.
+            #
+            #   · «+junta»: se pierde la junta y con ella la articulacion —
+            #     nm/ym a None y art a 0—, pero zs/zn/ys/yn siguen siendo suyos.
+            #     NADA se estima.
+            #   · una punta: la cota de ESA punta se repone mas abajo.
+            #   · las dos puntas: se cae como hasta ahora.
+            reparadas = [f for f in v if not estado.get(f.get('id'), '').startswith('fuera')]
+            for f in reparadas:
+                e = estado.get(f.get('id'), '')
+                if e.endswith('+junta'):
+                    f['zm'] = f['ym'] = None; f['pa'] = []; f['art'] = 0
+                if e.split('+')[0] in ('sur', 'nor'):
+                    repone[f['id']] = e.split('+')[0]
+            if len(reparadas) != len(v):
+                if reparadas:
+                    grupos[k] = reparadas        # inc=1: la hermana se duplica mas abajo
                 else:
                     del grupos[k]                # las dos sucias: el seguidor se queda SIN MEDIR
 
@@ -205,6 +254,61 @@ def genera(planta):
                 vec.sort()
                 return (vec[len(vec) // 2] if len(vec) % 2 else (vec[len(vec) // 2 - 1] + vec[len(vec) // 2]) / 2.0)
         return None
+
+    # ── REPONER LA COTA DE LA PUNTA CONTAMINADA ─────────────────────────────
+    # De donde sale, elegido MIDIENDO, no por gusto: prueba de dejar-uno-fuera
+    # sobre las 4.375 filas sanas de cuatro puntos de San Jose — se tapa la cota
+    # de cada punta y se estima con cada fuente posible (unos 8.400 casos cada
+    # una) para compararla con la que el topografo midio de verdad:
+    #
+    #     la HERMANA, misma punta      mediana 0,167 m · p95 0,474 · max 1,65
+    #     mediana del vecindario       mediana 0,418 m · p95 1,337 · max 2,76
+    #     el propio tubo, extrapolado  mediana 0,446 m · p95 2,201 · max 5,66
+    #
+    # La hermana gana por el doble, y no por casualidad: las dos vigas de un
+    # bifila comparten tubo. Extrapolar el propio tubo desde su junta es lo PEOR
+    # de los tres, porque el tubo articula justo ahi. Asi que: la hermana si
+    # tiene esa punta sana, y si no el vecindario; si tampoco hay vecinos, la
+    # fila se cae como antes.
+    sucias = [f for f in todas if f.get('id') in pmal]
+    repuestas = []
+    for k, v in list(grupos.items()):
+        for f in list(v):
+            e = repone.get(f.get('id'))
+            if not e:
+                continue
+            campo = 'ys' if e == 'sur' else 'yn'
+            herm = next((g for g in v if g is not f and repone.get(g.get('id')) != e), None)
+            if herm is not None:
+                f[campo] = herm[campo]; fuente = 'hermana ' + herm['id']
+            else:
+                z = cota_vecina(f['x'], -(f['zs'] + f['zn']) / 2.0, sucias)
+                if z is None:
+                    v.remove(f)                  # sin hermana ni vecinos: no se repone nada
+                    if f in todas: todas.remove(f)
+                    if not v: del grupos[k]
+                    continue
+                f[campo] = round(z, 3)           # es la cifra que mide el careo: 0,418 m de mediana
+                fuente = 'vecindario'
+            f['rv1'] = e                         # queda dicho: una punta es estimada
+            # Y LO DERIVADO SE REHACE. sl y pa salen de las dos cotas de la
+            # fila, asi que con la punta contaminada valian cualquier cosa:
+            # antes daba igual porque la fila se tiraba entera, pero ahora se
+            # queda, y sl=98,8 % con pa=[0,83 · 196,8] entraria al modelo tal
+            # cual. Se recalculan con la misma formula que usa el reparto.
+            Lf = f['zs'] - f['zn']                                  # el eje z apunta al SUR
+            f['sl'] = round((f['yn'] - f['ys']) / Lf * 100, 3) if Lf > 5 else None
+            f['pa'] = []
+            if f.get('zm') is not None and f.get('ym') is not None:
+                Ls, Ln = f['zs'] - f['zm'], f['zm'] - f['zn']
+                if Ls > 5: f['pa'].append(round((f['ym'] - f['ys']) / Ls * 100, 3))
+                if Ln > 5: f['pa'].append(round((f['yn'] - f['ym']) / Ln * 100, 3))
+            repuestas.append((f['id'], e, fuente, f[campo]))
+    if repuestas:
+        print('%-8s %d fila(s) con UNA punta de otra referencia: se repone esa cota y se conserva '
+              'el resto (posicion, largo y la otra punta son MEDIDOS)' % (planta, len(repuestas)))
+        for fid, e, fu, z in repuestas[:8]:
+            print('           %-18s punta %-4s <- %-22s cota %8.2f' % (fid, e, fu, z))
 
     for k, v in list(grupos.items()):
         if len(v) != 2:
@@ -243,14 +347,21 @@ def genera(planta):
             del grupos[k]
             todas.remove(f0)
     if corregidas:
-        print('%-8s %d fila(s) con OTRA REFERENCIA VERTICAL descartadas (hermana duplicada, inc=1):'
-              % (planta, len(corregidas)))
+        # Que se hizo con cada una, que no es lo mismo repararla que tirarla: la
+        # linea decia «descartadas» de las 52 cuando la mayoria conserva su
+        # posicion, su largo y al menos una cota medida.
+        rep = {t[0] for t in repuestas}
+        n_fuera = sum(1 for fid, _, _, _, d in corregidas if d != 'por fila' and fid not in rep)
+        print('%-8s %d fila(s) con OTRA REFERENCIA VERTICAL: %d reparadas (una punta repuesta) · '
+              '%d descartadas (la hermana se duplica, inc=1):'
+              % (planta, len(corregidas), len(rep), len(corregidas) - len(rep)))
         for fid, m, b, ref, det in corregidas:
             if det == 'por fila':
                 print('           %-18s cota %8.2f  (hermana %8.2f · vecinos %8.2f · desvio %+.2f m) [por fila]'
                       % (fid, m, b, ref, m - ref))
             else:
-                print('           %-18s cota %8.2f  [por punto] %s' % (fid, m, det))
+                print('           %-18s cota %8.2f  [%s] %s'
+                      % (fid, m, 'reparada' if fid in rep else 'descartada', det))
         mags = sorted(abs(m - b) for _, m, b, _, d in corregidas if d == 'por fila' and b == b)
         if mags:
             print('           magnitudes por fila: %s  <- si se repiten, es un cambio de referencia, no ruido'
@@ -562,7 +673,7 @@ def genera(planta):
             if not g: T.append(None); continue
             T.append({'f': [{'x': num(f['x']), 'n': [num(-f['zs']), num(-f['zn'])],
                              'y': [num(f['ys']), num(f['yn'])], 'art': 0, 'pa': [],
-                             'nm': None, 'ym': None, 'md': f['mods']} for f in g],
+                             'nm': None, 'ym': None, 'md': f['mods'], 'ye': 3} for f in g],
                       'inc': 0, 'est': 1, 'tk': None, 'zo': None,
                       'sl': None, 'cse': None, 'cso': None, 'ase': None, 'aso': None})
             continue
@@ -583,6 +694,10 @@ def genera(planta):
                 'pa': [num(p) for p in (f.get('pa') or [])],
                 'nm': num(-f['zm']) if f.get('zm') is not None else None,
                 'ym': num(f['ym']) if f.get('ym') is not None else None,
+                # QUE PUNTA NO ESTA MEDIDA. Una cota repuesta no puede viajar
+                # sin decirlo: 0 = las dos medidas, 1 = la SUR es repuesta,
+                # 2 = la NORTE. El error de esa cota va acotado en el meta.
+                'ye': {'sur': 1, 'nor': 2}.get(f.get('rv1'), 0),
             })
         g = v[0]
         T.append({
@@ -622,7 +737,15 @@ def genera(planta):
         'mod':    MOD or None,
         'n_est':  sum(1 for t in T if t and t.get('est')),
         'nota':   'y = cota MEDIDA sobre el modulo, relativa a base. El eje n es norte positivo. '
-                  'f[].md = modulos por STRING (cada fila lleva dos, uno por ala).',
+                  'f[].md = modulos por STRING (cada fila lleva dos, uno por ala). '
+                  'f[].ye dice que cotas NO son medida: 0 las dos medidas, 1 la SUR repuesta, '
+                  '2 la NORTE repuesta, 3 las dos del plano (tracker reconstruido, est=1). '
+                  'Una punta se repone cuando su punto vino con otra referencia vertical: la '
+                  'posicion, el largo y la otra punta siguen siendo medida. Sale de la hermana '
+                  'si tiene esa punta sana (error 0,167 m de mediana, p95 0,474, max 1,65 en la '
+                  'prueba de dejar-uno-fuera sobre 4.375 filas sanas de San Jose) y si no del '
+                  'vecindario (0,418 / 1,337 / 2,76).',
+        'n_ye':   sum(1 for t in T if t for f in t['f'] if f.get('ye')),
         't': T,
     }
     dst = os.path.join(RAIZ, planta + '_cotas.json')
