@@ -24,11 +24,34 @@ concurrency:
 jobs:
 
   # ── lo que solo lee ficheros: física, calibración y reparto ───────────────
+  #
+  # OJO AL HERMANO. `plan_barrido_rf.py` y `calibra_barrido.py` importan la
+  # física RF de `../cobertura-rf-fv/python` — un repo HERMANO— y, si no está,
+  # se lo tragan en silencio (`Z = None`) y siguen: el planificador emite la
+  # hoja sin márgenes previstos ni pasada de canto. La hoja parece una hoja y
+  # está hueca. Montando este CI se vio en un checkout limpio, con un
+  # `ZeroDivisionError` que no decía nada; y lo grave no era el traceback, sino
+  # que las comprobaciones que de verdad importan (la correlación distancia vs
+  # mesas, y «las palas de canto tapan más») no comprueban NADA sin el núcleo.
+  #
+  # Los dos bancos ahora lo EXIGEN y dicen dónde lo buscan. Aquí se les da:
+  # los dos repos se sacan uno al lado del otro dentro del espacio de trabajo,
+  # que es la única forma de que `../cobertura-rf-fv` exista en el runner.
+  # `cobertura-rf-fv` es público, así que basta el token de serie.
   nucleo:
     name: núcleo (python)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cobertura-zigbee
     steps:
       - uses: actions/checkout@v4
+        with: { path: cobertura-zigbee }
+      - name: el núcleo RF, de hermano
+        uses: actions/checkout@v4
+        with:
+          repository: IMoriana3/cobertura-rf-fv
+          path: cobertura-rf-fv
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - name: barrido RF

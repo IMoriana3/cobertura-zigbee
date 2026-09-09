@@ -18,6 +18,17 @@ import csv, math, os, random, statistics, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "tools"))
+
+# EL NUCLEO RF NO ES OPCIONAL. `calibra_barrido.py` importa la fisica de un
+# directorio HERMANO y, si no esta, se queda con `Z = None`. Aqui eso reventaba
+# en un checkout limpio con un «'NoneType' object has no attribute 'LinkParams'»
+# que no dice nada de lo que pasa. Se exige, y se dice donde se busca.
+NUCLEO = os.path.join(os.path.dirname(RAIZ), "cobertura-rf-fv", "python")
+if not os.path.isfile(os.path.join(NUCLEO, "zigbee_pv_model.py")):
+    print("FAIL falta el nucleo RF: sin el no hay fisica que ajustar.")
+    print("     se busca en: %s" % NUCLEO)
+    print("     hace falta el repo `cobertura-rf-fv` como directorio HERMANO de este.")
+    sys.exit(1)
 sys.dont_write_bytecode = True          # el .pyc invalida por (mtime, tamaño):
 import shutil                           # una mutación del mismo tamaño se colaba
 shutil.rmtree(os.path.join(RAIZ, "tools", "__pycache__"), ignore_errors=True)
