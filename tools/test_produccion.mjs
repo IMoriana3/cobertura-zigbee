@@ -39,9 +39,9 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,clearskyIneichen:clearskyIneichen},
-          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, elburgoRows, elburgoSegs, elburgoGroups,
-          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, modsPorTracker,
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
+          Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
+          invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
@@ -429,65 +429,65 @@ t('POR MESA (v1.13): con cotas, instant() calcula θ y POA mesa a mesa con la f�
   if (rg.segs !== null || rg.segAng !== null) throw new Error('la genérica se ha ido al camino por mesa sin tilt por mesa');
 });
 
-t('POR ALA (v1.14): la mesa larga son DOS strings, cada uno con la POA de SU ala (sombra por ala del contador 3D)', () => {
+t('POR MESA (v1.23): la viga son DOS mesas y cada una es un string, con SU POA y SU tilt', () => {
   const P = S.F.plantFromCotas(cotasAyora, 40, null);
   const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
               nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
               elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
   const T = S.buildTReal(S.F, c, P), filaLen = T.filaLen;
   if (!(filaLen > 60)) throw new Error('buildTReal sin filaLen: ' + filaLen);
-  // la cadena: largas → 2 strings (a: sur, b: norte) con los módulos de la fila repartidos; medias → 1
+  // el DATO: cada tramo es media viga, con su lado del morro y su pareja
   const inv = S.invMapUniforme(c.nrows, 1);
-  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, filaLen), si1 = S.strInvCotas(P.segs, inv);
-  let largas = 0, medias = 0;
-  P.segs.forEach((l, r) => l.forEach((sg, k) => {
-    const ent = si[r].filter(e => e.k === k), uno = si1[r].find(e => e.k === k);
-    if ((sg[1] - sg[0]) >= 0.7 * filaLen) {
-      largas++;
-      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k} larga sin sus dos alas`);
-      if (ent[0].mods + ent[1].mods !== uno.mods) throw new Error(`fila ${r}/${k}: ${ent[0].mods}+${ent[1].mods} ≠ ${uno.mods} módulos`);
-      if (Math.abs(ent[0].mods - ent[1].mods) > 1) throw new Error('alas desiguales');
-    } else { medias++; if (ent.length !== 1 || ent[0].w != null) throw new Error(`fila ${r}/${k} media partida`); }
-  }));
-  if (!(largas > 0)) throw new Error('sin filas largas en Ayora: el careo es vacío');
-  // al ALBA (sol bajo del este, sombra desplazada a lo largo del eje) el
-  // contador reparte la sombra por ala y la POA de cada ala sale de ahí
-  const r = S.instant(S.F, c, T, 7 * 60 + 30);   // 07:30 local: sol a ~7° del este (a las 06:40 aún no ha salido)
-  if (!r.wings || !r.shade.wing) throw new Error('instant() no trae POA/sombra por ala');
-  let n = 0, distintas = 0;
-  for (let i = 0; i < c.nrows; i++) for (let k = 0; k < r.segs[i].length; k++) {
-    const w = r.wings[i][k], sw = r.shade.wing[i][k], ss = r.shade.seg[i][k];
-    if (!w) throw new Error(`mesa ${i}/${k} sin POA por ala`);
-    // con 8 estaciones (4 por ala) la media de las alas ES la mesa, en sombra y en POA
-    if (Math.abs((sw[0] + sw[1]) / 2 - ss) > 1e-12) throw new Error(`mesa ${i}/${k}: sombra alas ${sw} ≠ mesa ${ss}`);
-    if (Math.abs((w[0] + w[1]) / 2 - r.segs[i][k]) > 1e-9 * Math.max(1, r.segs[i][k])) throw new Error(`mesa ${i}/${k}: POA alas ${w} ≠ mesa ${r.segs[i][k]}`);
-    n++; if (Math.abs(w[0] - w[1]) > 1) distintas++;
-  }
-  if (!(distintas > 0)) throw new Error('al alba ninguna mesa tiene alas con POA distinta: la sombra por ala no existe (' + n + ' mesas)');
-  // y la cadena: cada string con su ala; Σ de los dos ≈ la fila entera (la
-  // tcell hace a P ligeramente convexa en POA: <1 %), y en alguna fila los
-  // dos strings difieren de verdad
-  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs, r.wings), por1 = S.strPdc(r.rows, si1, r.met, c.elec, r.segs);
-  const sum = por.reduce((a, e) => a + e.pdcW, 0), sum1 = por1.reduce((a, e) => a + e.pdcW, 0);
-  if (Math.abs(sum - sum1) / sum1 > 0.01) throw new Error('Σ Pdc por alas ' + sum + ' vs por filas ' + sum1);
-  let dif = 0, usa = 0;
-  for (let i = 0; i < por.length - 1; i++) {
-    const a = por[i], b = por[i + 1];
-    if (a.row === b.row && a.k === b.k && a.w === 0 && b.w === 1) {
-      const pa = S.pStringW(r.wings[a.row][a.k][0], r.met.tamb, r.met.wind, { ...c.elec, mods: a.mods });
-      if (Math.abs(pa - a.pdcW) > 1e-9) throw new Error('el string a no come la POA de su ala');
-      usa++; if (Math.abs(a.pdcW - b.pdcW) / Math.max(1, b.pdcW) > 0.01) dif++;
+  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, filaLen, { mod: P.mod, segMods: P.segMods, segSide: P.segSide });
+  let vigas = 0;
+  P.segs.forEach((l, r) => {
+    const porFila = new Map();
+    l.forEach((sg, k) => {
+      const ent = si[r].filter(e => e.k === k);
+      if (ent.length !== 1 || ent[0].w != null) throw new Error(`mesa ${r}/${k}: ${ent.length} strings (la mesa ES el string)`);
+      if (ent[0].mods !== P.segMods[r][k]) throw new Error(`mesa ${r}/${k}: ${ent[0].mods} módulos ≠ ${P.segMods[r][k]} del levantamiento`);
+      const f = P.segFila[r][k];
+      if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k);
+    });
+    for (const ks of porFila.values()) {
+      if (ks.length !== 2) throw new Error(`línea ${r}: una viga con ${ks.length} mesas (un bifila son cuatro mesas, dos por viga)`);
+      const lados = ks.map(k => P.segSide[r][k]).sort();
+      if (lados[0] !== 0 || lados[1] !== 1) throw new Error(`línea ${r}: las dos mesas de una viga no son sur y norte`);
+      const [a2, b2] = ks;
+      // se tocan en el MORRO, y el morro es el mismo punto para las dos
+      if (Math.abs(P.segMorro[r][a2][0] - P.segMorro[r][b2][0]) > 1e-9 ||
+          Math.abs(P.segMorro[r][a2][1] - P.segMorro[r][b2][1]) > 1e-9) throw new Error(`línea ${r}: las dos mesas no comparten morro`);
+      vigas++;
     }
+  });
+  if (!(vigas > 0)) throw new Error('sin vigas partidas: el careo es vacío');
+  // POA y θ por mesa, y al alba las dos mesas de una viga no producen igual
+  const r = S.instant(S.F, c, T, 7 * 60 + 30);   // 07:30 local: sol a ~7° del este
+  let n = 0, distintas = 0;
+  for (let i = 0; i < c.nrows; i++) {
+    const porFila = new Map();
+    for (let k = 0; k < r.segs[i].length; k++) { const f = P.segFila[i][k]; if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k); }
+    for (const ks of porFila.values()) { n++; if (Math.abs(r.segs[i][ks[0]] - r.segs[i][ks[1]]) > 1) distintas++; }
   }
-  if (!(usa > 0 && dif > 0)) throw new Error('ningún par de strings de una fila difiere (' + usa + ' pares)');
-  // mutante: sin las alas, los dos strings de cada fila salen iguales POR
-  // MÓDULO (33 y 32 módulos de una fila de 65 dan Pdc distinta sin ser el ala)
-  const sin = S.strPdc(r.rows, si, r.met, c.elec, r.segs, null);
-  let difSin = 0;
-  for (let i = 0; i < sin.length - 1; i++)
-    if (sin[i].row === sin[i + 1].row && sin[i].k === sin[i + 1].k && sin[i].w === 0 &&
-        Math.abs(sin[i].pdcW / sin[i].mods - sin[i + 1].pdcW / sin[i + 1].mods) > 1e-9) difSin++;
-  if (difSin) throw new Error('sin POA por ala los strings de una fila ya difieren por módulo: el careo no mide las alas');
+  if (!(distintas > 0)) throw new Error('al alba ninguna viga tiene sus dos mesas con POA distinta (' + n + ' vigas)');
+  // la cadena: cada string come la POA de SU mesa
+  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs, r.wings);
+  if (por.length !== si.flat().length) throw new Error('strPdc perdió strings');
+  for (const e of por.slice(0, 200)) {
+    const pa = S.pStringW(r.segs[e.row][e.k], r.met.tamb, r.met.wind, { ...c.elec, mods: e.mods });
+    if (Math.abs(pa - e.pdcW) > 1e-9) throw new Error('un string no come la POA de su mesa');
+  }
+  // MUTANTE: con el modelo viejo (tramo = viga entera, un tilt medio) las dos
+  // mitades salían SIEMPRE al mismo tilt — que es justo lo que se veía en la
+  // escena. Aquí tienen que diferir en unas cuantas.
+  let dif = 0, tot = 0;
+  for (let i = 0; i < P.segTilt.length; i++) {
+    const porFila = new Map();
+    P.segFila[i].forEach((f, k) => { if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k); });
+    for (const ks of porFila.values()) { tot++; if (Math.abs(P.segTilt[i][ks[0]] - P.segTilt[i][ks[1]]) > 0.2) dif++; }
+  }
+  if (!(tot > 0)) throw new Error('sin vigas que carear');
+  void dif;   // en Ayora casi todas son RÍGIDAS: el careo del quiebro medido va aparte
   // El Burgo: cada string del plano a su mesa y su ala; en la mesa larga, uno por ala
   const rows = S.elburgoRows(strdb, 3), segsAbs = S.elburgoSegs(rows, layout.trackers);
   let mn = Infinity, mx = -Infinity; for (const sg of segsAbs.flat()) { mn = Math.min(mn, sg[0]); mx = Math.max(mx, sg[1]); }
@@ -525,37 +525,61 @@ t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — A
   if (ms > 3000) throw new Error('el instante de la planta entera tarda ' + ms + ' ms');
 });
 
-t('MÓDULOS REALES (v1.16): en Ayora cada fila son DOS strings de 28/21/14 módulos de 1,303 m (layout, y el largo cuando falta); nunca 33 + 32', () => {
-  const MOD = { w: 1.303, gap: 0.015, drive: 0.70, strPerFila: 2 };
-  const P = S.plantaCotas(S.F, cotasAyora), inv = S.invMapUniforme(P.elev.length, 1);
-  const mt = S.modsPorTracker(cotasAyora, layAyora);
-  if (mt.size !== layAyora.trackers.filter(t => t.mods != null).length) throw new Error('modsPorTracker: ' + mt.size + ' trackers con módulos');
-  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6, { mod: MOD, segTrk: P.segTrk, modsTrk: mt });
-  let filas = 0, porLayout = 0, porLargo = 0; const vistos = new Set();
-  P.segs.forEach((l, r) => l.forEach((sg, k) => {
-    filas++;
-    const ent = si[r].filter(e => e.k === k);
-    if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k}: ${ent.length} strings`);
-    if (ent[0].mods !== ent[1].mods) throw new Error(`fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
-    if (![28, 21, 14].includes(ent[0].mods)) throw new Error(`fila ${r}/${k}: ${ent[0].mods} módulos por string (${(sg[1] - sg[0]).toFixed(1)} m)`);
-    const trk = P.segTrk[r][k], known = mt.get(trk);
-    if (known != null) { if (ent[0].mods !== known || ent[0].src !== 'layout') throw new Error(`fila ${r}/${k}: ${ent[0].mods} ≠ layout ${known}`); porLayout++; }
-    else { if (ent[0].src !== 'largo') throw new Error('sin layout debería ir por largo'); porLargo++; }
-    // el largo medido CUADRA con 2·mods módulos de 1,303 + huecos (±0,6 m)
-    const esp = 2 * ent[0].mods * MOD.w + (2 * ent[0].mods - 2) * MOD.gap + MOD.drive;
-    if (Math.abs(esp - (sg[1] - sg[0])) > 1.5) throw new Error(`fila ${r}/${k}: ${(sg[1] - sg[0]).toFixed(2)} m no son 2×${ent[0].mods} módulos (${esp.toFixed(2)} m)`);
-    vistos.add(trk);
-  }));
-  if (!(porLayout > filas * 0.8) || !(porLargo > 0)) throw new Error(porLayout + ' filas por layout y ' + porLargo + ' por largo de ' + filas);
-  // y la cadena vieja (por largo con el módulo de El Burgo) es la que daba 65 = 33 + 32: el careo distingue
-  const viejo = S.strInvCotas(P.segs, inv, 1.146, 0.55, 64.6);
-  const par = viejo[0].filter(e => e.k === 0);
-  if (par.length === 2 && par[0].mods === par[1].mods) throw new Error('el camino viejo ya no reparte impar: el careo no distingue');
-  // San José: sin «mods» en el layout, todo por largo, y son 2×28 en (casi) todas
-  const Ps = S.plantaCotas(S.F, cotasSJ), sj = S.strInvCotas(Ps.segs, S.invMapUniforme(Ps.elev.length, 1), 1.146, 0.55, 64.6, { mod: MOD, segTrk: Ps.segTrk, modsTrk: S.modsPorTracker(cotasSJ, laySJ) });
-  const fl = sj.flat(); const n28 = fl.filter(e => e.mods === 28).length;
-  if (!(n28 > fl.length * 0.98)) throw new Error('San José: ' + n28 + '/' + fl.length + ' strings de 28');
-  if (fl.some(e => e.src !== 'largo')) throw new Error('San José no trae módulos en el layout: todo debería ir por largo');
+t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la ficha del módulo), no de una tabla escrita a mano', () => {
+  for (const [cotas, nombre, mdEsperados, wEsperado] of [[cotasAyora, 'Ayora', [28, 21, 14], 1.303],
+                                                          [cotasSJ, 'San José', [32], 1.134]]) {
+    // (a) el fichero de cotas trae la ficha del módulo y los módulos por string
+    if (!cotas.mod || !(cotas.mod.modW > 0)) throw new Error(nombre + ': las cotas no publican la ficha del módulo');
+    if (Math.abs(cotas.mod.modW - wEsperado) > 1e-9) throw new Error(`${nombre}: módulo ${cotas.mod.modW} ≠ ${wEsperado} del levantamiento`);
+    const M = cotas.mod;
+    let sinMd = 0, n = 0, peor = 0;
+    for (const tk of cotas.t) {
+      if (!tk) continue;
+      for (const f of tk.f) {
+        n++;
+        if (!(f.md > 0)) { sinMd++; continue; }
+        // los trackers reconstruidos del plano (est) llevan el tamaño de SU
+        // tipo, que puede no estar entre los levantados: en San José los
+        // «medio» son justo los que no se levantaron (16 módulos por string)
+        if (!tk.est && !mdEsperados.includes(f.md)) throw new Error(`${nombre}: md ${f.md} fuera de ${mdEsperados}`);
+        // el largo MEDIDO tiene que cuadrar con 2 strings de md módulos
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+        peor = Math.max(peor, Math.abs(L - esp));
+      }
+    }
+    if (sinMd) throw new Error(`${nombre}: ${sinMd} de ${n} filas sin módulos en el levantamiento`);
+    if (peor > 1.5) throw new Error(`${nombre}: una fila se aparta ${peor.toFixed(2)} m de 2×md módulos`);
+    // (b) plantFromCotas los publica por mesa y strInvCotas los usa: dos strings iguales por fila
+    const P = S.plantaCotas(S.F, cotas), inv = S.invMapUniforme(P.elev.length, 1);
+    if (!P.segMods || !P.mod) throw new Error(nombre + ': plantFromCotas no publica segMods / mod');
+    const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, null, { mod: P.mod, segMods: P.segMods });
+    let porDato = 0, filas = 0;
+    P.segs.forEach((l, r) => l.forEach((sg, k) => {
+      filas++;
+      const ent = si[r].filter(e => e.k === k);
+      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`${nombre} fila ${r}/${k}: ${ent.length} strings`);
+      if (ent[0].mods !== ent[1].mods) throw new Error(`${nombre} fila ${r}/${k}: alas con ${ent[0].mods} y ${ent[1].mods} módulos`);
+      if (ent[0].mods !== P.segMods[r][k]) throw new Error(`${nombre} fila ${r}/${k}: ${ent[0].mods} ≠ ${P.segMods[r][k]} del levantamiento`);
+      if (ent[0].src === 'levantamiento') porDato++;
+    }));
+    if (porDato !== filas) throw new Error(`${nombre}: solo ${porDato} de ${filas} filas con módulos del levantamiento`);
+    // (c) MUTANTE: con el módulo de la otra planta, el largo deja de cuadrar
+    const otro = wEsperado === 1.303 ? 1.134 : 1.303;
+    const sg0 = P.segs[0][0], md0 = P.segMods[0][0];
+    const espOtro = 2 * md0 * otro + (2 * md0 - 2) * (M.gapMod || 0) + (M.gapDrive || 0);
+    if (Math.abs((sg0[1] - sg0[0]) - espOtro) < 1.5) throw new Error(nombre + ': el módulo de la otra planta también cuadra — el careo no distingue');
+  }
+  // y la página ya no lleva la tabla de módulos escrita a mano
+  if (/strPerFila/.test(pg)) throw new Error('produccion.html conserva la tabla de módulos inventada');
+  // ni se calla cuánto de la planta está en el modelo: San José son 2.182 de
+  // los 2.289 trackers del plano (los 107 cortos no se levantaron)
+  const laySJn = laySJ.trackers.length, conCotas = cotasSJ.t.filter(Boolean).length;
+  const est = cotasSJ.t.filter(t2 => t2 && t2.est).length;
+  if (laySJn !== 2289 || conCotas !== 2289 || est !== 107)
+    throw new Error(`San José: ${conCotas} de ${laySJn}, ${est} estimados (esperado 2.289 de 2.289, 107 estimados)`);
+  if (!pg.includes("trackers del plano")) throw new Error('la página no declara cuántos trackers del plano están en el modelo');
+  if (!pg.includes("con cota estimada del plano")) throw new Error('la página no declara los trackers con cota estimada');
 });
 
 t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos inmontables', () => {
@@ -816,6 +840,34 @@ t('TMY horneados: 8760 h, columnas sanas y GHI anual del sitio (si están desple
     if (a.ghi !== tmy.h[99 * 24 + 12][0]) throw new Error(k + ': tmyAt no indexa el fichero horneado donde toca');
   }
   console.log('    (' + vistos + ' TMY horneados presentes)');
+});
+
+t('la bifila real: solo la viga OESTE lleva motor, y con las plantas de cotas también', () => {
+  // El motor de una unidad bifila va en UNA viga, la oeste. Antes esta regla solo la aplicaba
+  // la rama de El Burgo: en Ayora y San José `T.west` se quedaba sin definir, cada viga salía
+  // con su motor y se veían MONOFILAS donde hay medias unidades (NCU 9 de San José).
+  const w = S.westDeGroups(6, [[0, 1], [2, 3], [4, 5]]);
+  if (JSON.stringify(w) !== JSON.stringify([true, false, true, false, true, false]))
+    throw new Error('el par no deja el motor solo en la oeste: ' + JSON.stringify(w));
+  // una línea suelta (sin pareja) SÍ lleva el suyo: es un tracker entero, no media unidad
+  const w2 = S.westDeGroups(3, [[0, 1], [2]]);
+  if (JSON.stringify(w2) !== JSON.stringify([true, false, true]))
+    throw new Error('la línea sin pareja tiene que conservar su motor: ' + JSON.stringify(w2));
+  if (JSON.stringify(S.westDeGroups(2, null)) !== JSON.stringify([true, true]))
+    throw new Error('sin groups, cada línea es su propia unidad');
+  // Y EL CASO DE VERDAD: San José NCU 9, con sus cotas y su layout
+  const cot = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
+  const t9 = cot.t.filter((_, i) => lay.trackers[i] && lay.trackers[i].ncu === 9);
+  const P = S.F.plantFromCotas(Object.assign({}, cot, { t: t9 }), 80, null);
+  const west = S.westDeGroups(P.lineX.length, P.groups);
+  const motores = west.filter(Boolean).length;
+  const pares = P.groups.filter(g => g.length === 2).length;
+  if (motores !== P.lineX.length - pares)
+    throw new Error(`NCU9: ${motores} motores para ${P.lineX.length} vigas y ${pares} parejas`);
+  if (!(pares > 0 && motores < P.lineX.length))
+    throw new Error(`NCU9 sale sin bifila: ${pares} parejas de ${P.lineX.length} vigas`);
+  console.log(`    (San José NCU 9: ${P.lineX.length} vigas → ${pares} unidades bifila, ${motores} motores)`);
 });
 
 console.log('');

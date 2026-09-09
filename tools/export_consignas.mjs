@@ -99,7 +99,8 @@ for (let b = 0; b < NBLOQUES; b++) {
   BLOQUES.push({ b, P,
     T: { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
          nBypass: 3, rowTilt: P.tilt, groups: P.groups, drive: P.drive || 'bifila', segs: P.segs,
-         segTilt: P.segTilt, segPairs: P.segPairs, real: P } });   // v1.42: cada mesa con su tilt y su pareja
+         segTilt: P.segTilt, segPairs: P.segPairs, segDrive: P.segDrive,
+         segSide: P.segSide, segFila: P.segFila, real: P } });   // v1.42: cada mesa con su tilt y su pareja; v1.48: y su ACCIONAMIENTO (las 4 mesas del tracker, un motor)
 }
 if (!BLOQUES.length) throw new Error('la planta no produce ningún bloque modelable');
 
@@ -117,8 +118,14 @@ for (const B of BLOQUES) if (B.P.segTrk) B.P.segTrk.forEach((l, r) => l.forEach(
   if (!mesaDe.has(tk)) mesaDe.set(tk, []);
   mesaDe.get(tk).push({ B, r, k });
 }));
+let estimados = 0;
 for (let i = 0; i < lay.trackers.length; i++) {
-  const tk = lay.trackers[i], f = cotas.t[i].f || [];
+  const tk = lay.trackers[i], f = (cotas.t[i] && cotas.t[i].f) || [];
+  // A UN TRACKER SIN LEVANTAR NO SE LE MANDA CONSIGNA. Los marcados est=1
+  // llevan la geometría del plano y la cota INTERPOLADA de sus vecinos: sirven
+  // para que la planta esté completa en la escena y en la sombra, no para
+  // escribir un registro en su TCU.
+  if (cotas.t[i] && cotas.t[i].est) { estimados++; continue; }
   const m = String(tk.id || '').match(/(\d+)/);
   const base = { id: tk.id, ncu: String(tk.ncu), nnn: m ? +m[1] : NaN, gw: tk.gw };
   const mm = mesaDe.get(cotas.t[i]);
@@ -221,7 +228,8 @@ const meta = {
   planta: PLANTA, fecha_local: FECHA, huso_utc: huso, paso_min: PASO,
   politicas: POLS, seguidores: SEG.length, seguidores_fuera_del_modelo: fuera,
   bloques: BLOQUES.length, lineas_modelo: nLineasTot, filas: filas.length,
-  seguidores_por_identidad: porIdentidad,          // casados a su MESA por segTrk (v1.42); el resto, por x a su línea
+  seguidores_por_identidad: porIdentidad,
+  seguidores_sin_levantar: estimados,              // reconstruidos del plano: NO se les manda consigna          // casados a su MESA por segTrk (v1.42); el resto, por x a su línea
   claves_cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) + fecha',
   convenciones: {
     theta_sim_deg: 'marco interno del simulador — la consigna de la MESA del seguidor (columna mesa: índice 1..n dentro de su línea; vacío = casado por x, consigna de la línea)',

@@ -111,7 +111,8 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit };`);
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
+           westPorMesa, ejesPorMesa };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -1715,7 +1716,11 @@ t('San José SANEADA: sin filas con otra referencia vertical, y APTA CON RESERVA
   try { r = require_child().execFileSync('node',
     [path.join(ROOT, 'tools', 'valida_relieve.mjs'), '--planta', 'sanjose'], { encoding: 'utf-8' }); }
   catch (e) { r = (e.stdout || '') + (e.stderr || ''); code = e.status; }
-  if (code !== 0 || !/VEREDICTO: APTA CON RESERVAS/.test(r))
+  // Desde v1.46 el veredicto es APTA a secas: al colocar en su x la viga
+  // duplicada de los 231 trackers con una sola fila medida desaparecieron los
+  // vanos de 0 m que las reservas señalaban. Se acepta APTA o APTA CON
+  // RESERVAS — lo que no vale es que deje de ser evaluable.
+  if (code !== 0 || !/VEREDICTO: APTA/.test(r))
     throw new Error('San José ya no es evaluable (código ' + code + '):\n' + r.slice(-500));
   if (/fila anómala/.test(r))
     throw new Error('reaparecen filas anómalas:\n' + r.slice(-500));
@@ -1875,13 +1880,15 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     const enCotas = new Set(cotas.t);
     let n = 0;
     P.segTrk.forEach(l => l.forEach(tk => { if (!enCotas.has(tk)) throw new Error('segTrk apunta a un objeto que no es de cotas.t'); n++; }));
-    if (n !== P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas');
+    // v1.48: cada fila levantada son DOS mesas (sur y norte del morro)
+    if (n !== 2 * P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas (esperadas ' + 2 * P.nFilas + ')');
+    if (P.nMesas !== n) throw new Error('nMesas (' + P.nMesas + ') no cuadra con segTrk (' + n + ')');
     for (const [[r1, k1], [r2, k2]] of P.segPairs)
       if (P.segTrk[r1][k1] !== P.segTrk[r2][k2]) throw new Error('una pareja bifila junta mesas de seguidores distintos');
-    // y el seguidor de una pareja tiene exactamente esas dos filas
+    // y el seguidor de una pareja tiene exactamente CUATRO mesas: dos por viga
     const [[r1, k1]] = P.segPairs[0];
     const cnt = P.segTrk.flat().filter(tk => tk === P.segTrk[r1][k1]).length;
-    if (cnt !== 2) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas');
+    if (cnt !== 4) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas (un bifila son cuatro)');
   });
 
   t('segLineMean y slewLimitSeg son la IDENTIDAD del camino por línea cuando todas las mesas llevan el valor de su línea', () => {
@@ -2009,10 +2016,12 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
   const cotasA = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
   const cotasS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
   const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  // v1.48: cada fila levantada entra como DOS mesas (sur y norte del morro),
+  // así que un tracker con sus dos vigas completas trae 2 × filas tramos
   const monos = (P) => {
     const cnt = new Map();
     P.segTrk.forEach(l => l.forEach(tk => cnt.set(tk, (cnt.get(tk) || 0) + 1)));
-    let m = 0; for (const [tk, n] of cnt) if (n !== filasDe(tk)) m++;
+    let m = 0; for (const [tk, n] of cnt) if (n !== 2 * filasDe(tk)) m++;
     return { m, trk: cnt.size };
   };
   t('la ventana de maxLines NUNCA deja un tracker con una sola fila (Ayora 80/30, San José 80) — antes 2 y 10 monofilas', () => {
@@ -2292,6 +2301,206 @@ t('la nube casa con el as-built: mesas enteras y z absoluta coherente', () => {
       throw new Error(pl + ': z fuera de banda respecto a base=' + b + ' (¿se coló una cota relativa?)');
   }
 });
+console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y declarados');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_layout.json'), 'utf-8'));
+  t('San José: la planta entera son los 2.289 trackers del plano, y los 107 sin levantar van MARCADOS', () => {
+    const dentro = cotas.t.filter(Boolean);
+    if (dentro.length !== lay.trackers.length) throw new Error(`${dentro.length} trackers de ${lay.trackers.length} del plano`);
+    const est = dentro.filter(t2 => t2.est);
+    if (!(est.length > 0 && est.length < dentro.length * 0.1))
+      throw new Error(`${est.length} estimados de ${dentro.length}: o no hay marca o son demasiados`);
+    if (cotas.n_est !== est.length) throw new Error('el meta no declara los estimados: ' + cotas.n_est);
+    // su geometría es la MEDIDA de la planta, no una invención: paso entre
+    // vigas, largo de uno de los tipos que existen, y módulos coherentes
+    const M = cotas.mod;
+    const pasos = dentro.filter(t2 => !t2.est).map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
+    const paso = pasos[pasos.length >> 1];
+    // el módulo es el de la planta y el largo cuadra con sus módulos; el número
+    // de módulos NO tiene por qué ser uno de los levantados (en San José los
+    // «medio» no se levantaron: son justo estos), pero sí uno de los pocos
+    // tamaños que la geometría resuelve, y las dos filas iguales
+    const tallas = new Set(est.flatMap(t2 => t2.f.map(f => f.md)));
+    if (tallas.size > 3) throw new Error('los estimados usan ' + tallas.size + ' tamaños distintos: eso no es resolver por tipo');
+    for (const t2 of est) {
+      if (Math.abs(Math.abs(t2.f[0].x - t2.f[1].x) - paso) > 0.1) throw new Error('un estimado con las vigas a otro paso');
+      if (t2.f[0].md !== t2.f[1].md) throw new Error('un estimado con sus dos vigas de distinto tamaño');
+      if (Math.abs((t2.f[0].y[0] + t2.f[0].y[1]) / 2 - (t2.f[1].y[0] + t2.f[1].y[1]) / 2) > 0.5)
+        throw new Error('un estimado con sus dos vigas a distinta cota: comparten tubo');
+      for (const f of t2.f) {
+        const L = Math.abs(f.n[1] - f.n[0]);
+        const esp = 2 * f.md * M.modW + (2 * f.md - 2) * M.gapMod + M.gapDrive;
+        if (Math.abs(L - esp) > 1.5) throw new Error(`un estimado de ${L.toFixed(2)} m para ${f.md} módulos (${esp.toFixed(2)} m)`);
+      }
+      // la cota sale del terreno vecino: dentro del rango de la planta medida
+      const zs = dentro.filter(x => !x.est).flatMap(x => x.f.flatMap(f => f.y));
+      const lo = Math.min(...zs), hi = Math.max(...zs);
+      for (const f of t2.f) for (const y of f.y)
+        if (y < lo - 5 || y > hi + 5) throw new Error(`cota estimada ${y} fuera del terreno medido [${lo.toFixed(0)}, ${hi.toFixed(0)}]`);
+    }
+  });
+  t('a un tracker sin levantar NO se le manda consigna', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'tools', 'export_consignas.mjs'), 'utf-8');
+    if (!/cotas\.t\[i\]\.est\)\s*\{\s*estimados\+\+;\s*continue;/.test(src))
+      throw new Error('export_consignas no excluye los trackers con cota estimada');
+    const out = path.join(ROOT, '.tmp_est_test.csv');
+    try {
+      require_child().execFileSync(process.execPath, [path.join(ROOT, 'tools', 'export_consignas.mjs'),
+        '--planta', 'sanjose', '--fecha', '2026-06-21', '--pol', 'pairwise', '--paso', '360', '--salida', out], { stdio: 'pipe' });
+      const meta = JSON.parse(fs.readFileSync(out.replace(/\.csv$/, '.meta.json'), 'utf-8'));
+      const est = cotas.t.filter(t2 => t2 && t2.est).length;
+      if (meta.seguidores_sin_levantar !== est) throw new Error(`el meta dice ${meta.seguidores_sin_levantar} sin levantar, hay ${est}`);
+      if (meta.seguidores !== cotas.t.filter(Boolean).length - est)
+        throw new Error(`${meta.seguidores} seguidores con consigna: deberían ser los levantados`);
+    } finally {
+      for (const f of [out, out.replace(/\.csv$/, '.meta.json')]) try { fs.unlinkSync(f); } catch { /* nada */ }
+    }
+  });
+}
+
+console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas separadas');
+{
+  // Este careo NO mira nuestra propia salida: mide el fichero de cotas contra
+  // el LAYOUT (fuente independiente) y contra la geometría del bifila. Es el
+  // que faltaba: `cotas_asbuilt.py` duplicaba la hermana de un tracker con una
+  // sola fila medida CON LA MISMA x, así que 231 trackers de San José salían
+  // como dos vigas superpuestas — el clúster las metía en una línea, no eran
+  // pareja, y el 3D las pintaba como monofilas sueltas. Los careos de entonces
+  // no lo cazaron porque comprobaban que los ejes casaran con segPairs, y
+  // segPairs venía de esas mismas cotas.
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const lay = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_layout.json'), 'utf-8'));
+    const filasDe = tk => (tk && tk.f ? tk.f : []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2);
+    t(`${pl}: las dos vigas de cada tracker están separadas un paso y casan con el layout`, () => {
+      if (lay.trackers.length !== cotas.t.length) throw new Error('layout y cotas no van 1:1');
+      // el PASO entre las dos vigas se mide de los trackers levantados ENTEROS
+      const ds = cotas.t.filter(tk => tk && !tk.inc && filasDe(tk).length === 2)
+                        .map(tk => Math.abs(tk.f[0].x - tk.f[1].x)).sort((a, b) => a - b);
+      if (ds.length < 20) throw new Error('muy pocos trackers con las dos filas medidas: ' + ds.length);
+      const paso = ds[ds.length >> 1];
+      if (!(paso > 3 && paso < 12)) throw new Error('paso entre vigas irreal: ' + paso.toFixed(2) + ' m');
+      let n = 0, juntas = 0, pasoMal = 0, fueraLayout = 0;
+      cotas.t.forEach((tk, i) => {
+        const f = filasDe(tk);
+        if (f.length !== 2) return;
+        n++;
+        const dx = Math.abs(f[0].x - f[1].x);
+        if (dx < 1) juntas++;                                   // dos vigas SUPERPUESTAS: el fallo de v1.45
+        // el montaje real dispersa: en San José el vano medido va de 5,54 a
+        // 7,58 m (dos trackers levantados tienen sus vigas a 7,3). Lo que NO
+        // puede pasar es que estén superpuestas o a dos pasos
+        else if (Math.abs(dx - paso) > 0.25 * paso) pasoMal++;
+        const xl = lay.trackers[i].x;
+        if (Math.min(Math.abs(xl - f[0].x), Math.abs(xl - f[1].x), Math.abs(xl - (f[0].x + f[1].x) / 2)) > 0.4) fueraLayout++;
+        void tk;
+      });
+      if (juntas) throw new Error(`${juntas} de ${n} trackers con sus DOS vigas en la misma x (hermana duplicada sin recolocar)`);
+      if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);
+      if (fueraLayout) throw new Error(`${fueraLayout} de ${n} trackers cuyas vigas no casan con la x del layout`);
+    });
+    t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
+      const P = F.plantFromCotas(cotas, Infinity, 'all');
+      const linea = new Map();
+      P.segTrk.forEach((l, r) => l.forEach(tk => { if (!linea.has(tk)) linea.set(tk, new Set()); linea.get(tk).add(r); }));
+      let n = 0, sinPareja = 0, noContiguas = 0;
+      for (const tk of cotas.t) {
+        if (!tk || filasDe(tk).length !== 2) continue;
+        n++;
+        const v = [...(linea.get(tk) || [])].sort((a, b) => a - b);
+        if (v.length !== 2) { sinPareja++; continue; }
+        if (Math.abs(v[0] - v[1]) !== 1) noContiguas++;
+      }
+      if (sinPareja) throw new Error(`${sinPareja} de ${n} trackers sin pareja (sus dos vigas caen en la misma línea)`);
+      if (noContiguas) throw new Error(`${noContiguas} de ${n} trackers con sus vigas en líneas NO contiguas`);
+      // v1.48: la pareja es de MESAS GEMELAS (la misma mitad en las dos vigas),
+      // así que un tracker trae DOS: la del sur del morro y la del norte
+      if (P.segPairs.length !== 2 * n) throw new Error(`${P.segPairs.length} parejas gemelas para ${n} trackers levantados (esperadas ${2 * n})`);
+      if (P.segDrive.length !== n) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers`);
+      const de4 = P.segDrive.filter(g => g.length === 4).length;
+      if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
+    });
+  }
+}
+
+console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
+{
+  const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  for (const pl of ['ayora', 'sanjose']) {
+    const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, pl + '_cotas.json'), 'utf-8'));
+    const P = F.plantFromCotas(cotas, Infinity, 'all');
+    t(`${pl}: un eje por tracker entre SUS dos mesas, motor en la oeste, y ninguna mesa emparejada sin eje`, () => {
+      const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
+      // v1.48: UN eje por TRACKER (no por pareja de mesas gemelas), y cruza por
+      // el MORRO — el punto donde está el motor y donde la viga se articula
+      if (ejes.length !== P.segDrive.length) throw new Error(ejes.length + ' ejes para ' + P.segDrive.length + ' trackers');
+      const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+      const conEje = new Set();
+      for (const e of ejes) {
+        if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error('un eje une mesas de trackers distintos');
+        conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
+        const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
+        // el eje cruza por el MORRO: el punto medio de los morros de las dos
+        // vigas (que el tresbolillo real desplaza una de otra hasta ~4 m), y
+        // NUNCA por el centro de la mesa, que es donde caía antes
+        const mA = P.segMorro[e.r1][e.k1][0], mB = P.segMorro[e.r2][e.k2][0];
+        if (Math.abs(e.n - (mA + mB) / 2) > 1e-9)
+          throw new Error('el eje no cruza por el morro (n ' + e.n.toFixed(2) + ' vs ' + mA.toFixed(2) + ' / ' + mB.toFixed(2) + ')');
+        if (Math.abs(e.n - (a[0] + a[1]) / 2) < (a[1] - a[0]) / 4)
+          throw new Error('el eje cae en mitad de la mesa, no en su morro');
+        if (P.segSide[e.r1][e.k1] !== 0 || P.segSide[e.r2][e.k2] !== 0)
+          throw new Error('el eje no arranca de las mesas del sur del morro');
+      }
+      const trkConEje = new Set(ejes.map(e => P.segTrk[e.r1][e.k1]));
+      let sinEje = 0;
+      for (const g of P.segDrive) if (!trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
+      if (sinEje) throw new Error(sinEje + ' trackers con dos vigas pero sin eje');
+      // y todas las mesas del tracker van al MISMO θ: el motor es uno
+      for (const g of P.segDrive) {
+        const trks = new Set(g.map(([r, k]) => P.segTrk[r][k]));
+        if (trks.size !== 1) throw new Error('un accionamiento mueve mesas de trackers distintos');
+      }
+      let sin = 0;
+      P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) && P.segSide[r1][k1] === 0) sin++; });
+      if (sin) throw new Error(sin + ' mesas del sur con gemela pero sin eje');
+      for (const [[r1, k1], [r2, k2]] of P.segPairs) {
+        if (west[r1][k1] === west[r2][k2]) throw new Error('un tracker con dos motores o ninguno');
+        const o = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
+        if (!west[o[0]][o[1]]) throw new Error('el motor no va en la viga oeste');
+      }
+      const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
+      let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; else if (!enPareja.has(r + '|' + k)) throw new Error('mesa suelta sin motor'); }));
+      const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
+      // westSeg marca la VIGA del motor: sus DOS mesas. El motor sigue siendo
+      // uno por tracker — va en el morro de esa viga, y quien dibuja lo pone
+      // una sola vez (las piezas del accionamiento caen en x≈0 del modelo).
+      if (motores !== P.segPairs.length + sueltas) throw new Error(motores + ' mesas de viga oeste para ' + P.segPairs.length + ' parejas y ' + sueltas + ' sueltas');
+      void filasDe;
+    });
+  }
+  t('MUTANTE: el camino por LÍNEA (groups + «el tramo más próximo») sí une trackers distintos y deja mesas sin eje', () => {
+    const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), Infinity, 'all');
+    const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
+    let mal = 0; const conEje = new Set();
+    for (const [a, b] of P.groups.filter(g => g.length === 2))
+      for (let ka = 0; ka < P.segs[a].length; ka++) {
+        const ca = (P.segs[a][ka][0] + P.segs[a][ka][1]) / 2;
+        const kb = P.segs[b].findIndex(s2 => ca >= s2[0] - 2 && ca <= s2[1] + 2);
+        if (kb < 0) continue;
+        if (real.has([a, ka, b, kb].join('|'))) { conEje.add(a + '|' + ka); conEje.add(b + '|' + kb); } else mal++;
+      }
+    let sin = 0;
+    P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
+    if (!(mal > 0 && sin > 0)) throw new Error(`el camino por línea ya no falla (${mal} ejes mal, ${sin} mesas sin eje): el careo no distingue`);
+  });
+  t('la UI del simulador dibuja el accionamiento con westPorMesa / ejesPorMesa cuando la planta es medida', () => {
+    const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+    const b3 = ui.slice(ui.indexOf('function build3D'), ui.indexOf('function setSky'));
+    for (const lit of ['westPorMesa(PR)', 'ejesPorMesa(PR)', 'west:westAt(r,si)'])
+      if (!b3.includes(lit)) throw new Error('build3D sin «' + lit + '»');
+  });
+}
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);

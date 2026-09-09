@@ -1022,7 +1022,8 @@ function plantFromCotas(data,maxLines,blockIdx){
     if(!trk||!trk.f)continue;
     for(const f of trk.f){
       if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
-      filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk});
+      filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md,est:!!trk.est,
+                  nm:(f.nm!=null&&f.ym!=null)?f.nm:null,ym:(f.nm!=null&&f.ym!=null)?f.ym:null});
     }
   }
   if(!filas.length)throw new Error('cotas sin filas');
@@ -1090,32 +1091,65 @@ function plantFromCotas(data,maxLines,blockIdx){
   let nMid=0,nCnt=0;
   for(const L of band)for(const f of L.f){nMid+=(f.n0+f.n1)/2;nCnt++;}
   nMid/=Math.max(nCnt,1);
-  const segZ=[],segTilt=[],segTrk=[];
+  const segZ=[],segTilt=[],segTrk=[],segMods=[],segEst=[],segSide=[],segFila=[],segArt=[],segMorro=[];
+  // hueco del accionamiento (el MORRO): separa las dos mesas de una fila
+  const gDrive=(data.mod&&data.mod.gapDrive!=null)?data.mod.gapDrive:0.55;
   for(const L of band){
     let e=0,tw=0,wt=0;
     const sg=[];
+    let fi=0;
     for(const f of L.f){
       const len=Math.abs(f.n1-f.n0);
       e+=(f.y0+f.y1)/2;
       tw+=Math.atan2(f.y1-f.y0,f.n1-f.n0)*len; wt+=len;
       const asc=f.n0<=f.n1;
-      sg.push({s:[Math.min(f.n0,f.n1)-nMid,Math.max(f.n0,f.n1)-nMid],
-               z:asc?[f.y0,f.y1]:[f.y1,f.y0],trk:f.trk});
+      const nS=Math.min(f.n0,f.n1), nN=Math.max(f.n0,f.n1);
+      const zS=asc?f.y0:f.y1,       zN=asc?f.y1:f.y0;
+      // ── UNA FILA SON DOS MESAS, separadas por el MORRO (v1.48) ────────────
+      // «un bifila son cuatro mesas, dos por fila, una al norte del morro y
+      // otra al sur». El levantamiento lo trae: además de los dos extremos de
+      // la fila mide el punto del ACCIONAMIENTO (nm/ym) y marca la fila como
+      // ARTICULADA (art) cuando las dos mitades quiebran ahí — su propia
+      // pendiente por mesa (pa=[sur,norte]) casa exactamente con la que sale
+      // de esas cotas. San José: las 4.145 filas articuladas, pendiente sur vs
+      // norte 1,27 % de mediana y hasta 15,4 %. Ayora: 34 de 1.508 (el resto
+      // son tubo RÍGIDO, y ahí las dos mesas comparten pendiente de verdad).
+      // Hasta v1.47 la fila entraba como UNA sola mesa con la pendiente MEDIA
+      // de la viga, que es justo por lo que se veían «dos mesas de la misma
+      // fila con el mismo tilt» donde el levantamiento dice que no lo tienen.
+      const hinge=(f.nm!=null&&f.nm>nS+1&&f.nm<nN-1);
+      const nb=hinge?f.nm:(nS+nN)/2;
+      const zb=hinge?f.ym:zS+(zN-zS)*((nb-nS)/((nN-nS)||1));
+      const g=Math.min(gDrive/2,Math.max(0,(Math.min(nb-nS,nN-nb))/4));
+      const pS=(zb-zS)/((nb-nS)||1), pN=(zN-zb)/((nN-nb)||1);
+      const com={trk:f.trk,md:f.md,est:f.est,art:hinge,fila:fi};
+      // el MORRO va copiado en cada mesa (no compartido): las dos lo recentran
+      // luego con eMean, y una referencia común lo restaría dos veces
+      sg.push(Object.assign({s:[nS-nMid,nb-g-nMid],z:[zS,zb-pS*g],side:0,morro:[nb-nMid,zb]},com));
+      sg.push(Object.assign({s:[nb+g-nMid,nN-nMid],z:[zb+pN*g,zN],side:1,morro:[nb-nMid,zb]},com));
+      fi++;
     }
     sg.sort((a,b)=>a.s[0]-b.s[0]);
     elev.push(e/L.f.length);
     tilt.push(wt>0?(tw/wt)*DEG:0);
     segs.push(sg.map(o=>o.s));
     segZ.push(sg.map(o=>o.z));
-    // tilt N-S de CADA MESA (fila medida): la z de sus dos extremos, sin
-    // promediar por línea — es lo que su TCU ve y lo que la transposición
-    // necesita mesa a mesa (v1.41, «el tilt por mesa»)
+    // tilt N-S de CADA MESA: la z de sus dos extremos, sin promediar ni por
+    // línea ni por fila — es lo que su TCU ve y lo que la transposición
+    // necesita mesa a mesa (v1.41 «el tilt por mesa», v1.48 por MESA de verdad)
     segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
     segTrk.push(sg.map(o=>o.trk));
+    segMods.push(sg.map(o=>o.md!=null?o.md:null));   // módulos del STRING de esta mesa (del levantamiento)
+    segEst.push(sg.map(o=>!!o.est));                 // mesa RECONSTRUIDA del plano (cota no medida)
+    segSide.push(sg.map(o=>o.side));                 // 0 = al SUR del morro, 1 = al NORTE
+    segFila.push(sg.map(o=>o.fila));                 // fila (viga) de la que es mitad
+    segArt.push(sg.map(o=>!!o.art));                 // el quiebro está MEDIDO (fila articulada)
+    segMorro.push(sg.map(o=>o.morro));               // [n, cota] del MORRO: el pivote común de las dos mesas
   }
   const eMean=elev.reduce((s,v)=>s+v,0)/elev.length;
   for(let i=0;i<elev.length;i++)elev[i]-=eMean;
   for(const line of segZ)for(const z of line){z[0]-=eMean;z[1]-=eMean;}
+  for(const line of segMorro)for(const m of line)m[1]-=eMean;   // el morro va en la MISMA referencia que segZ
   // posiciones x REALES de las líneas, recentradas
   const x0b=band[0].x;
   const lineX=band.map(L=>L.x-x0b);
@@ -1174,19 +1208,30 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   for(let li=0;li<band.length;li++)if(!usedLine.has(li))groups.push([li]);
   groups.sort((x,y)=>x[0]-y[0]);
-  // parejas bifila EXACTAS por mesa: las dos filas de un mismo tracker, cada
-  // una con su (línea, tramo). Aquí no hace falta el «mayoritario por línea»:
-  // el acople por mesa respeta el tresbolillo real del emparejado
+  // ACCIONAMIENTO EXACTO por tracker (v1.48): un bifila son CUATRO mesas —dos
+  // por fila, a un lado y otro del morro— movidas por UN SOLO motor, el del
+  // morro de la viga oeste. segDrive junta las mesas que ese motor mueve (las
+  // 4, o las 2 de una monofila): todas van al mismo θ. segPairs se conserva
+  // con su forma de siempre (pareja de mesas GEMELAS, la misma mitad en las
+  // dos vigas) porque es lo que lee quien dibuja y quien reparte el motor.
   const byTrk=new Map();
   segTrk.forEach((l,li)=>l.forEach((t,k)=>{if(!byTrk.has(t))byTrk.set(t,[]);byTrk.get(t).push([li,k]);}));
-  const segPairs=[];
-  for(const v of byTrk.values())if(v.length===2&&v[0][0]!==v[1][0])segPairs.push(v);
+  const segDrive=[],segPairs=[];
+  for(const v of byTrk.values()){
+    if(v.length>1)segDrive.push(v.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]));
+    const porLado=new Map();
+    for(const [li,k] of v){const sd=segSide[li][k];if(!porLado.has(sd))porLado.set(sd,[]);porLado.get(sd).push([li,k]);}
+    for(const w of porLado.values())if(w.length===2&&w[0][0]!==w[1][0])segPairs.push(w);
+  }
+  segDrive.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
   segPairs.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segTrk:segTrk,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segDrive:segDrive,segTrk:segTrk,segMods:segMods,segEst:segEst,segSide:segSide,segFila:segFila,segArt:segArt,segMorro:segMorro,mod:data.mod||null,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
           nFilas:band.reduce((s2,l)=>s2+l.f.length,0),
+          nMesas:segs.reduce((s2,l)=>s2+l.length,0),      // 2 por fila: la del sur y la del norte del morro
+          nQueb:segArt.reduce((s2,l)=>s2+l.filter(Boolean).length,0)/2,   // filas con el quiebro MEDIDO
           nArt:nArt,nPairs:nPairs,blocks:meta,block:bi,huerfanas:huerfanas};
 }
 
@@ -1859,6 +1904,64 @@ function poaWings(p,sh,r,nBypass){
   });
 }
 
+/* ACCIONAMIENTO REAL MESA A MESA (v1.45, por mesa de verdad desde v1.48). Un
+   tracker bifila son CUATRO mesas —dos por viga, al sur y al norte del morro—
+   con UN SOLO motor, el del morro de la viga OESTE, y un eje de transmisión
+   que cruza ahí a la viga gemela. plantFromCotas publica esa unidad exacta
+   (segDrive, por identidad de tracker); lo que se dibujaba salía en cambio del
+   emparejado por LÍNEA (P.groups) y de «el tramo con el centro más próximo», y
+   con el tresbolillo real eso unía mesas de TRACKERS DISTINTOS (81 ejes de 731
+   en Ayora, 136 de 1.965 en San José) y dejaba 202 y 244 mesas sin eje:
+   parecían monofilas. Estas funciones son la fuente única del render. */
+function mesasPorMotor(P){
+  // grupos de mesas que mueve UN motor. Sin segDrive (planta antigua), las
+  // parejas gemelas siguen valiendo. (Ojo: `driveGroups(nRows,mode)` es otra
+  // cosa —el emparejado por LÍNEA de las plantas sintéticas— y el nombre ya
+  // estaba cogido.)
+  if(P.segDrive&&P.segDrive.length)return P.segDrive;
+  return (P.segPairs||[]).map(g=>g.slice());
+}
+function westPorMesa(P){
+  // true = mesa de la viga del motor/TCU (la OESTE de su tracker); las de la
+  // gemela, false. El motor es UNO por tracker y va en el morro de esa viga:
+  // aquí se marca la VIGA, y quien dibuja pone el motor una sola vez.
+  // Una mesa sin gemela (monofila de verdad) lleva su motor.
+  const w=P.segs.map(l=>l.map(()=>true));
+  for(const [[r1,k1],[r2,k2]] of (P.segPairs||[])){
+    const este=(P.lineX[r1]<=P.lineX[r2])?[r2,k2]:[r1,k1];
+    w[este[0]][este[1]]=false;
+  }
+  return w;
+}
+function ejesPorMesa(P){
+  // un eje por TRACKER, cruzando de viga a viga POR EL MORRO (donde está el
+  // motor y donde las dos mitades se articulan), no por el centro del solape:
+  // con la fila partida en dos mesas, el morro es el extremo que comparten.
+  const out=[];
+  for(const g of mesasPorMotor(P)){
+    const lineas=[...new Set(g.map(m=>m[0]))];
+    if(lineas.length!==2)continue;                     // monofila: no cruza nada
+    const mesa=(li)=>{
+      const ms=g.filter(m=>m[0]===li);
+      const sur=ms.find(m=>!P.segSide||P.segSide[m[0]][m[1]]===0);
+      return sur||ms[0];
+    };
+    const [a,b]=[mesa(lineas[0]),mesa(lineas[1])];
+    if(!a||!b)continue;
+    const A=P.segs[a[0]][a[1]], B=P.segs[b[0]][b[1]];
+    // el MORRO de cada viga (el punto de articulación medido); sin planta
+    // partida, el centro del tramo
+    const mA=P.segMorro&&P.segMorro[a[0]]?P.segMorro[a[0]][a[1]]:null;
+    const mB=P.segMorro&&P.segMorro[b[0]]?P.segMorro[b[0]][b[1]]:null;
+    const nA=mA?mA[0]:(A[0]+A[1])/2;
+    const nB=mB?mB[0]:(B[0]+B[1])/2;
+    const lo=Math.max(A[0],B[0]), hi=Math.min(A[1],B[1]);
+    out.push({r1:a[0],k1:a[1],r2:b[0],k2:b[1],n:(nA+nB)/2,solape:Math.max(0,hi-lo)});
+  }
+  out.sort((x,y)=>x.r1-y.r1||x.k1-y.k1);
+  return out;
+}
+
 /* ═══ POR MESA (fila medida), no por línea — v1.41 ═══════════════════════════
    Las cotas traen la z de los DOS extremos de CADA fila: cada mesa es un
    seguidor con su propio tilt N-S (T.segTilt[r][k]) y su propia pareja bifila
@@ -1939,21 +2042,27 @@ function anglesPairwiseSeg(zen,az,T){
   }
   return out;
 }
-/* acople bifila por MESA: las dos filas de un tracker van al MISMO θ, el
-   min|θ| de las dos (reducir |θ| desde un backtracking nunca crea sombra) */
-function applyDriveSeg(segAngles,segPairs){
-  if(!segPairs||!segPairs.length)return segAngles;
+/* acople por ACCIONAMIENTO: las mesas que mueve un mismo motor —las CUATRO de
+   un bifila, dos por viga a cada lado del morro— van al MISMO θ, el min|θ| del
+   grupo (reducir |θ| desde un backtracking nunca crea sombra) */
+function applyDriveSeg(segAngles,grupos){
+  if(!grupos||!grupos.length)return segAngles;
   const out=segAngles.map(l=>l.slice());
-  for(const [[r1,k1],[r2,k2]] of segPairs){
-    if(!out[r1]||!out[r2]||out[r1][k1]==null||out[r2][k2]==null)continue;
-    const a=out[r1][k1],b=out[r2][k2], m=Math.abs(a)<=Math.abs(b)?a:b;
-    out[r1][k1]=m;out[r2][k2]=m;
+  for(const g of grupos){
+    let m=null;
+    for(const [r,k] of g){
+      if(!out[r]||out[r][k]==null)continue;
+      if(m===null||Math.abs(out[r][k])<Math.abs(m))m=out[r][k];
+    }
+    if(m===null)continue;
+    for(const [r,k] of g)if(out[r]&&out[r][k]!=null)out[r][k]=m;
   }
   return out;
 }
 function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
-  if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),T.segPairs||null);
-  if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),T.segPairs||null);
+  const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
+  if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
+  if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
   return segsBroadcast(T,policyAngles(key,zen,az,T,irr,doy,albedo).angles);   // el resto sigue por línea
 }
 /* POA por MESA: transposición con el tilt y el θ de cada mesa, sombra del
@@ -2603,7 +2712,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.44.0';
+const VER='v1.48.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2928,7 +3037,8 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       }
     }
     note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
-      P.nFilas+' filas · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
+      P.nFilas+' filas · '+(P.nMesas||0)+' MESAS (dos por fila, a los lados del morro; '+
+      Math.round(P.nQueb||0)+' vigas con el quiebro MEDIDO) · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
       Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+ncuSelHtml+
       (ncuSel!=null?'. Frontera con NCU vecinas = bordes (declarado)':'')+
@@ -3789,6 +3899,11 @@ function build3D(){
   const pmFallback=()=>new THREE.MeshLambertMaterial({color:0x274b8f,side:THREE.DoubleSide});
   const twinOf={};                                   // línea gemela → true (viga sin motor)
   if(T.groups)for(const g2 of T.groups)if(g2.length===2)twinOf[g2[1]]=true;
+  // v1.45: con planta MEDIDA, el motor va en la mesa OESTE de CADA tracker
+  // (westPorMesa); por línea, con el tresbolillo real, se lo ponía a mesas
+  // que son la gemela y se lo quitaba a otras que sí lo llevan
+  const westSeg=(PR&&PR.segPairs)?westPorMesa(PR):null;
+  const westAt=(r,si)=>westSeg?westSeg[r][si]:!twinOf[r];
   const D0=useModel?Seguidor.DIMS:null;
   for(let r=0;r<n;r++){
     const effT=(T.rowTilt?T.rowTilt[r]:0);
@@ -3797,8 +3912,14 @@ function build3D(){
     for(let si=0;si<segs.length;si++){
       const sg=segs[si];
       const yc=(sg[0]+sg[1])/2, len=sg[1]-sg[0];
+      // v1.48: con planta medida el tramo es UNA MESA —media viga— y el modelo
+      // se pide por su lado del morro, anclado en el morro (el pivote que las
+      // dos mitades comparten). Sin esto la viga se dibujaba entera con un solo
+      // tilt y sus dos mesas salían siempre iguales.
+      const lado=(PR&&PR.segSide&&PR.segSide[r]&&PR.segSide[r][si]!=null)?(PR.segSide[r][si]===0?-1:1):null;
+      const mo=(PR&&PR.segMorro&&PR.segMorro[r])?PR.segMorro[r][si]:null;
       const tiltG=new THREE.Group();
-      let tiltR=effT*RAD, lift=0, cy, bad=false;
+      let tiltR=effT*RAD, lift=0, cy, bad=false, yAnc=yc;
       if(PR){
         // planta real: el tubo de cada mesa va de su cota z0 a su z1 MEDIDAS
         // (+delta del editor) — el montaje ya lo drapeó; postes = hub exacto
@@ -3807,6 +3928,7 @@ function build3D(){
         const z0=z[0]+dd, z1=z[1]+dd;
         tiltR=Math.atan2(z1-z0,len||1);
         cy=(z0+z1)/2+hub;
+        if(lado&&mo){yAnc=mo[0];cy=mo[1]+dd+hub;}     // el ancla es el MORRO
       }else{
         // presets: DRAPEADO — el tramo mantiene el tilt del accionamiento pero
         // se eleva hasta volar sobre el terreno en todo su largo
@@ -3823,15 +3945,17 @@ function build3D(){
       }
       LIFTS[r+'|'+yc.toFixed(2)]=lift;
       tiltG.rotation.x=tiltR;
-      tiltG.position.set(xof(r),cy,-yc);
+      tiltG.position.set(xof(r),cy,-yAnc);
       tiltG.userData.row=r; tiltG.userData.seg=si;   // para el picking (globo)
       let spin=null, built=false;
       if(useModel){
         try{
-          const media=T.filaLen&&len<0.7*T.filaLen;  // tramo corto ⇒ tamaño «medio» real
-          const mods=Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
+          const media=!lado&&T.filaLen&&len<0.7*T.filaLen;  // tramo corto ⇒ tamaño «medio» real
+          const mods=lado?Math.max(4,Math.round(len/D0.pitch))
+                         :Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
           Seguidor.setModsPerStr(mods);
-          const beam=Seguidor.buildBeam(THREE,{west:!twinOf[r],detail:'mass',size:media?'medio':'largo',
+          const beam=Seguidor.buildBeam(THREE,{west:westAt(r,si),detail:'mass',size:media?'medio':'largo',
+                                               lado:lado,
                                                materials:mats,skip:{antena:1,antenatip:1}});
           const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
@@ -3847,12 +3971,14 @@ function build3D(){
           // hacía visible esa altura desde el sol como una raya roja imposible
           const ovg=new THREE.Group(); ovg.position.y=0.170; ovg.renderOrder=3;
           beam.spin.add(ovg);
-          ovls.push({g:ovg,ax:'model',half:2.382/2,x0:bb.min.x,x1:bb.max.x,yc:yc});
+          ovls.push({g:ovg,ax:'model',half:2.382/2,x0:bb.min.x,x1:bb.max.x,yc:yAnc});
           spin=beam.spin; built=true;
         }catch(e){built=false;}
       }
       if(!built){                                    // camino clásico: cajas (sin modelo)
         const gRot=new THREE.Group();
+        // con el ancla en el morro, la caja de la mesa se corre a su mitad
+        if(lado)gRot.position.z=-lado*((D0?D0.gapDrive:0.55)/2+len/2);
         const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),tubeM);
         tube.castShadow=true;
         const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.02,len),pmFallback());
@@ -3939,7 +4065,30 @@ function build3D(){
   TD.hubAt=hubAt;
   const motorAt=(P)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),motorM);m.position.copy(P);m.castShadow=true;world.add(m);};
   const segCenters=r=>((T.segs&&T.segs[r])?T.segs[r]:[[-L/2,L/2]]).map(sg=>[(sg[0]+sg[1])/2,sg[1]-sg[0]]);
-  if(T.groups){
+  // v1.45: planta MEDIDA ⇒ un eje por TRACKER, entre SUS dos mesas y en el
+  // centro de su solape. El camino de abajo (pareja de líneas + «el tramo con
+  // el centro más próximo») unía mesas de trackers distintos en el tresbolillo
+  // real y dejaba otras sin biela, con pinta de monofila.
+  if(PR&&PR.segPairs&&PR.segPairs.length){
+    const up=new THREE.Vector3(0,hub*0.38,0);
+    for(const e of ejesPorMesa(PR)){
+      const pA=hubAt(e.r1,e.n).add(up), pB=hubAt(e.r2,e.n).add(up);
+      linkBar(pA,pB);
+      if(!useModel)motorAt((PR.lineX[e.r1]<=PR.lineX[e.r2])?pA:pB);
+      if(T.drive==='quebrado')for(const P2 of [pA,pB]){
+        const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
+        card.position.copy(P2);world.add(card);
+      }
+    }
+    // mesas sin pareja (monofila de verdad): su motor, si no lo trae el modelo
+    if(!useModel){
+      const enPareja=new Set();
+      PR.segPairs.forEach(([[r1,k1],[r2,k2]])=>{enPareja.add(r1+'|'+k1);enPareja.add(r2+'|'+k2);});
+      (T.segs||[]).forEach((l,r)=>l.forEach((sg,k)=>{
+        if(!enPareja.has(r+'|'+k))motorAt(hubAt(r,(sg[0]+sg[1])/2));
+      }));
+    }
+  }else if(T.groups){
     for(const g2 of T.groups){
       if(g2.length===2){
         for(const [ycA,lenA] of segCenters(g2[0])){
