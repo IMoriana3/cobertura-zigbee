@@ -521,7 +521,7 @@ function iamDe(c){const v=c&&c.iamb0;return (v==null||!isFinite(v))?0.05:Math.ma
    relieve —un cerro tapa cielo difuso, no solo el disco—, que es un efecto de
    segundo orden y queda declarado.                                          */
 function parseHorizonte(txt){
-  const v=String(txt||'').split(/[;\n]+/).map(p=>p.split(/[:,]/).map(x=>parseFloat(String(x).trim())))
+  const v=String(txt||'').split(/[;\n]+/).map(p=>p.split(':').map(x=>parseFloat(String(x).trim().replace(',','.'))))
           .filter(p=>p.length===2&&isFinite(p[0])&&isFinite(p[1]))
           .map(p=>[((p[0]%360)+360)%360, Math.max(0,p[1])]).sort((a,b)=>a[0]-b[0]);
   return v.length>=2?v:null;
@@ -650,7 +650,9 @@ function strPdc(rowsPoa,strInv,met,e,segPoa,wings,bif){
       const wp=(wings&&s.w!=null&&s.k!=null&&wings[r]&&wings[r][s.k]&&wings[r][s.k][s.w]!=null)?wings[r][s.k][s.w]:null;
       const poa0=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
       const e2=(s.mods==null||s.mods===e.mods)?e:Object.assign({},e,{mods:s.mods});
-      const mismo=(poa0===rowsPoa[r]&&e2===e);
+      // con bifacialidad y tilt por mesa la potencia de fila no vale: la mesa
+      // tiene su inclinación y la cara de atrás la ve distinta
+      const mismo=(poa0===rowsPoa[r]&&e2===e)&&!(bif&&bif.bifa>0&&s.k!=null&&bif.tiltSeg);
       out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,
                 pdcW:mismo?p:pStringW(bp(poa0,r,s.k),met.tamb,met.wind,e2)});
     }
@@ -764,9 +766,7 @@ function dayAC(F,c,T,strInv,a,stepMin){
   const gd=degradaEta(a.planta);
   for(let m=0;m<1440;m+=st){
     const r=instant(F,c,T,m);
-    let por=strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings,bifDe(F,c,T,r));
-    if(gd!==1)por=por.map(v=>Object.assign({},v,{pdcW:v.pdcW*gd}));
-    const x=acPlant(por,a2);
+    const x=acPlant(strPdcPlanta(F,c,T,r,strInv),a2);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
   }
@@ -869,7 +869,7 @@ function estadisticaCareo(rows,bandaPct){
   const n=v.length;
   const sEsp=v.reduce((s,r)=>s+r.esp,0), sMed=v.reduce((s,r)=>s+r.med,0);
   const mbe=100*(sMed-sEsp)/sEsp;                       // sesgo global, en % de lo estimado
-  const mae=100*v.reduce((s,r)=>s+Math.abs(r.med-r.esp),0)/sEsp;
+  const mae=100*v.reduce((s,r)=>s+Math.abs(r.med-r.esp)/r.esp,0)/n;   // por inversor, como el RMSE
   const rmse=100*Math.sqrt(v.reduce((s,r)=>s+Math.pow((r.med-r.esp)/r.esp,2),0)/n);
   const mm=sMed/n;
   const sst=v.reduce((s,r)=>s+Math.pow(r.med-mm,2),0);
@@ -1085,6 +1085,15 @@ function bifDe(F,c,T,r){
           tiltRow:r.ang.map((th,rr)=>so(th,rr,null)),
           tiltSeg:r.segAng?r.segAng.map((l,rr)=>l.map((th,kk)=>so(th,rr,kk))):null};
 }
+/* LA PDC POR STRING DEL INSTANTE, PARA LA CADENA AC: cara de atrás y módulo
+   degradado, igual que mapStringW para las vistas por string. Antes «AC ahora»
+   y el pick salían sin degradación mientras «Σ día AC» sí la llevaba: dos
+   cifras de la misma planta que no cuadraban entre sí. */
+function strPdcPlanta(F,c,T,r,strInv){
+  const por=strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings,bifDe(F,c,T,r));
+  const gd=degradaEta(c.ac&&c.ac.planta);
+  return gd===1?por:por.map(v=>Object.assign({},v,{pdcW:v.pdcW*gd}));
+}
 function instant(F,c,T,m){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
@@ -1126,13 +1135,35 @@ function dayEnergy(F,c,T,dateStr,stepMin,map){
   const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
   for(let m=0;m<1440;m+=stepMin){
     const r=instant(F,c2,T,m);
-    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met);
+    // el map recibe también el INSTANTE y la fila: la bifacialidad necesita la
+    // irradiancia y la inclinación de esa superficie, no solo su POA
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met,r,k);
   }
   for(let k=0;k<n;k++)out[k]*=stepMin/60/1000;
   return out;
 }
 /* día entero, paso de 5 min con el modo activo (la fecha de la página) */
 function dayTotals(F,c,T,map){return dayEnergy(F,c,T,c.date,5,map);}
+/* LA POTENCIA DC DE UN STRING, LA MISMA EN TODAS LAS VISTAS. «E string Σ día» y
+   «Σ mes/año» iban con pStringW sobre el POA de delante a pelo, así que la
+   bifacialidad y la degradación solo entraban por el camino AC: el número
+   ANUAL —justo el que califica un P90— no llevaba nada de lo nuevo. Este es el
+   único map que debe usarse para energía por string: POA efectiva (cara de
+   atrás incluida, con la inclinación de SU fila) × módulo degradado al año que
+   se estima. El soiling y la disponibilidad NO van aquí: son de la cadena y de
+   la planta, y la vista por string es DC bruta del módulo, como siempre fue. */
+function mapStringW(F,c,T){
+  const gd=degradaEta(c.ac&&c.ac.planta);
+  return (poa,met,r,k)=>{
+    let p=poa;
+    if(r&&c.bif&&c.bif.bifa>0){
+      if(r._bif===undefined)r._bif=bifDe(F,c,T,r);       // una vez por instante
+      const b=r._bif, t=(b&&b.tiltRow&&b.tiltRow[k]!=null)?b.tiltRow[k]:0;
+      if(b)p=poaBifacial(poa,t,r.irr,c.albedo,b);
+    }
+    return pStringW(p,met.tamb,met.wind,c.elec)*gd;
+  };
+}
 /* fechas ISO de un período — 'mes' = el mes de la fecha activa, 'ano' = su
    año entero. La UI las recorre día a día (progreso/cancelación); paso
    HORARIO para los agregados largos, declarado en pantalla. */
@@ -1170,7 +1201,9 @@ const $=id=>document.getElementById(id);
 function iamUI(){const e=$('iamb0');return e?Math.max(0,Math.min(0.5,+e.value||0)):0.05;}
 function soilMesUI(){
   if(!$('lsoilmes')||!$('lsoilmes').checked)return null;
-  const v=String($('lsoilv').value||'').split(/[;,]/).map(x=>parseFloat(String(x).trim().replace(',','.')));
+  // separa por ; (la coma es el decimal del Excel de obra) — con «0,5;0,5;…»
+  // partir por coma daba 24 trozos y el perfil se ignoraba en silencio
+  const v=String($('lsoilv').value||'').split(';').map(x=>parseFloat(String(x).trim().replace(',','.')));
   return (v.length===12&&v.every(x=>isFinite(x)&&x>=0))?v:null;
 }
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
@@ -1246,7 +1279,12 @@ async function cargaCotas(key){
   // ninguno se veía: el dato ya estaba en el fichero de cotas, solo había que
   // enseñarlo.
   const inc=cotas.t.filter(t=>t&&t.inc).length;
-  let ye=0; for(const t of cotas.t) if(t&&!t.est) for(const f of (t.f||[])) if(f.ye===1||f.ye===2)ye++;
+  // en un tracker inc=1 la segunda fila es COPIA de la primera y hereda su
+  // marca: se cuenta una vez, que es lo que se midió
+  let ye=0; for(const t of cotas.t) if(t&&!t.est){
+    const k=(t.f||[]).filter(f=>f.ye===1||f.ye===2).length;
+    ye+=t.inc?(k?1:0):k;
+  }
   RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,idDe:idDe,
       trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
       trkInc:inc,filasYe:ye,
@@ -1983,7 +2021,7 @@ function repaint(){
   $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
   const inst=instant(F,c,T.obj,m);
   // Tamb/viento DEL INSTANTE (con TMY vienen de la meteo real; en cielo son los inputs)
-  const mode=$('cmode').value, pw=v=>pStringW(v,inst.met.tamb,inst.met.wind,c.elec)/1000;
+  const mode=$('cmode').value;
   // media por fila de un valor POR INVERSOR (una línea con strings de varios
   // inversores promedia — los números exactos van en los chips y el careo)
   const rowsFromInv=mp=>T.strInv.map(l=>{
@@ -1993,12 +2031,14 @@ function repaint(){
     if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
     vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
   }else if(mode==='pday'){
-    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec))};
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,mapStringW(F,c,T.obj))};
     vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
   }else if(mode==='pinst'){
-    vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
+    // el mismo map que las Σ: con la cara de atrás y el módulo degradado
+    const mw=mapStringW(F,c,T.obj);
+    vals=inst.rows.map((v,k)=>mw(v,inst.met,inst,k)/1000);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else if(mode==='acinst'){
-    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings,bifDe(F,c,T,inst)),c.ac);
+    const a=acPlant(strPdcPlanta(F,c,T,inst,T.strInv),c.ac);
     const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
     vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
     invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
@@ -2022,8 +2062,11 @@ function repaint(){
   // por MESA (v1.13) y por ALA (v1.14): en los modos de instante cada mesa lleva
   // SU valor y cada ala el SUYO (la sombra por ala del contador 3D); la leyenda
   // abarca las alas. Los agregados de día/período van por línea
-  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
-  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map(l=>l.map(w=>w?w.map(pw):null)):null)):null;
+  // en pinst, mesas y alas van por el MISMO map que la fila (cara de atrás y
+  // degradación incluidas), con la inclinación de su fila
+  const mwp=mode==='pinst'?mapStringW(F,c,T.obj):null, pwr=(r)=>(v=>mwp(v,inst.met,inst,r)/1000);
+  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map((l,r)=>l.map(pwr(r))):null)):null;
+  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map((l,r)=>l.map(w=>w?w.map(pwr(r)):null)):null)):null;
   let mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
   if(wingVals){mn=Infinity;mx=-Infinity;for(const l of wingVals)for(const w of l)if(w)for(const v of w){if(v<mn)mn=v;if(v>mx)mx=v;}}
   // normalizar SOLO si la dispersión es significativa: con la planta uniforme
@@ -2088,7 +2131,11 @@ function repaint(){
     sc.updateProjectionMatrix();
   }
   R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst,mode:mode,invChips:invChips};
-  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null);
+  // en Σ mes/año, el total de planta va a la línea AC con su P90 (vals de
+  // pano vienen en MWh: se devuelven a kWh)
+  const per=((mode==='pmes'||mode==='pano')&&vals)?{label:mode==='pano'?'Σ año':'Σ mes',
+             kwh:vals.reduce((s,v)=>s+v,0)*(mode==='pano'?1000:1)}:null;
+  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null,per);
   repaintPick();
   paintHourTrack();
   R3.dirty=true;
@@ -2096,8 +2143,8 @@ function repaint(){
 
 /* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
    (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
-function paintACline(inst,c,acDay){
-  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings,bifDe(F,c,T,inst)),c.ac);
+function paintACline(inst,c,acDay,per){
+  const a=acPlant(strPdcPlanta(F,c,T,inst,T.strInv),c.ac);
   const f1=v=>(v/1000).toFixed(1);
   let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
@@ -2121,6 +2168,17 @@ function paintACline(inst,c,acDay){
     if(b.sigma>0)
       h+=' · <b title="P90: la energía que se supera nueve años de cada diez. σ compuesta en cuadratura de meteo, modelo, soiling, disponibilidad y degradación acumulada.">P90</b> '+
          b.p90.toFixed(0)+' kWh <span style="color:var(--muted-2)">(σ '+b.sigma.toFixed(1)+' %)</span>';
+  }
+  // EL P90 DONDE MÁS IMPORTA: en el agregado de mes/año, que es lo que se
+  // firma. Es DC bruta del módulo (cara de atrás y degradación dentro; soiling,
+  // cadena y disponibilidad fuera), y así se dice.
+  if(per&&per.kwh>0&&c.incert){
+    const b=bandaPXX(per.kwh,c.incert,c.ac.planta?c.ac.planta.anio:1);
+    const u=per.kwh>=1e6?[per.kwh/1e6,'GWh']:(per.kwh>=1e3?[per.kwh/1e3,'MWh']:[per.kwh,'kWh']);
+    const fx=v=>(v/per.kwh*u[0]).toFixed(u[1]==='kWh'?0:2)+' '+u[1];
+    h+=' · <b>'+per.label+' DC bruta</b> '+fx(per.kwh)+
+       (b.sigma>0?' · <b title="La energía que se supera nueve años de cada diez. σ compuesta en cuadratura; la de la degradación acumulada al año estimado.">P90</b> '+fx(b.p90)+
+       ' <span style="color:var(--muted-2)">(σ '+b.sigma.toFixed(1)+' % · año '+(c.ac.planta?c.ac.planta.anio:1)+')</span>':'');
   }
   // y de qué está hecha la cifra: cuánto de la planta es medida y cuánto no
   if(acDay&&RP&&RP.key===c.plant&&(RP.trkEst||RP.trkInc||RP.filasYe)){
@@ -2146,7 +2204,7 @@ function computePeriod(c,periodo,key){
     if(run!==PERIODRUN){computePeriod.running=null;return;}   // invalidado: planta/fecha/config cambió
     const t0=performance.now();
     while(i<fechas.length&&performance.now()-t0<120){
-      const d=dayEnergy(F,c,T.obj,fechas[i],60,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec));
+      const d=dayEnergy(F,c,T.obj,fechas[i],60,mapStringW(F,c,T.obj));
       for(let k=0;k<c.nrows;k++)acc[k]+=d[k];
       i++;
     }
@@ -2172,7 +2230,7 @@ function runCareo(){
   const rows=careoMedidas(ac.porInv,med);
   const f=v=>v==null?'—':v.toFixed(1);
   let h='<table style="border-collapse:collapse">'+
-    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td>E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
+    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td title="A BORNES del inversor, con la disponibilidad aplicada: trafo, cableado AC y auxiliares van aguas abajo y no entran aquí. Carea contra la medida del inversor, no con la del punto de conexión.">E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
   for(const r of rows){
     const col=r.dev==null?'var(--muted-2)':(Math.abs(r.dev)<=5?'var(--live)':(Math.abs(r.dev)<=12?'var(--build)':'var(--dead)'));
     h+='<tr><td style="padding:2px 10px">I'+r.inv+'</td><td>'+f(r.esp)+'</td><td style="padding:2px 10px">'+f(r.med)+
@@ -2220,7 +2278,7 @@ function exportCSV(){
       filas.push([id,T.xs[r],d.vals[r]]);
     }
   }
-  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings,bifDe(F,c,T,d.inst)),c.ac);
+  const a=acPlant(strPdcPlanta(F,c,T,d.inst,T.strInv),c.ac);
   filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
     ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
     ['AC_instante','red_kW',a.redW/1000]);
@@ -2366,7 +2424,8 @@ function repaintPick(){
   const shSeg=(kk!=null&&d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r])?d.inst.shade.seg[r][kk]:null;
   const sh=shW!=null?shW:(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0));
   const mods=(ent&&ent.mods)?ent.mods:c.elec.mods;
-  const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
+  // la misma potencia que pintan las vistas: cara de atrás y degradación dentro
+  const pW=mapStringW(F,Object.assign({},c,{elec:Object.assign({},c.elec,{mods:mods})}),T.obj)(poaStr,d.inst.met,d.inst,r);
   txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
        (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.'+(ent&&ent.src?', '+ent.src:'')+') · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
        '° · sombra '+(100*sh).toFixed(1)+' %'+inv;
@@ -2461,6 +2520,20 @@ function repaintPick(){
   // cambia el reparto string→inversor (T.strInv) y reconstruye
   for(const id of ['lsoil','lmis','lwir','llid','pnom','etamax','gridkw'])
     $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  // LO NUEVO TAMBIÉN REPINTA. Sin esto, tocar la bifacialidad o el año no
+  // movía «AC ahora» hasta que otra cosa disparase un repintado, y los Σ de
+  // día y período se quedaban con la cifra vieja en caché.
+  //   · vidrio, cara de atrás, horizonte, degradación y año cambian la
+  //     energía POR STRING: cae todo (día y período);
+  //   · trafo, cableado AC, auxiliares, disponibilidad y soiling mensual son de
+  //     la cadena AC: solo el día AC;
+  //   · la incertidumbre solo cambia la banda que se pinta.
+  for(const id of ['iamb0','bifa','bperd','horon','horv','ldeg','lanio'])
+    $(id).addEventListener('change',()=>{invalida();repaint();});
+  for(const id of ['ltrafo','lacw','laux','ldispo','lsoilmes','lsoilv'])
+    $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  for(const id of ['umeteo','umodelo','usoil','udisp','udeg'])
+    $(id).addEventListener('change',repaint);
   $('ninv').addEventListener('change',()=>{rebuildT();repaint();});
   // meteo: TMY se carga al pedirla (fichero horneado o PVGIS del navegador);
   // si no hay ninguna, se declara y se vuelve al cielo despejado
