@@ -3906,6 +3906,9 @@ function build3D(){
   const westSeg=(PR&&PR.segPairs)?westPorMesa(PR):null;
   const westAt=(r,si)=>westSeg?westSeg[r][si]:!twinOf[r];
   const D0=useModel?Seguidor.DIMS:null;
+  // el MÓDULO de la planta cargada (Ayora 1,303 · San José 1,134): sin él, una
+  // mesa de Ayora se dibuja con 32 módulos de 1,134 en vez de sus 28 de 1,303
+  if(useModel&&PR&&PR.mod)Seguidor.setModulo(PR.mod);
   for(let r=0;r<n;r++){
     const effT=(T.rowTilt?T.rowTilt[r]:0);
     const spins=[], ovls=[];
@@ -3952,7 +3955,8 @@ function build3D(){
       if(useModel){
         try{
           const media=!lado&&T.filaLen&&len<0.7*T.filaLen;  // tramo corto ⇒ tamaño «medio» real
-          const mods=lado?Math.max(4,Math.round(len/D0.pitch))
+          const mdSeg=(PR&&PR.segMods&&PR.segMods[r])?PR.segMods[r][si]:null;   // módulos del string de esta mesa
+          const mods=lado?Math.max(4,mdSeg>0?mdSeg:Math.round(len/D0.pitch))
                          :Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch));
           Seguidor.setModsPerStr(mods);
           const beam=Seguidor.buildBeam(THREE,{west:westAt(r,si),detail:'mass',size:media?'medio':'largo',
@@ -4009,7 +4013,7 @@ function build3D(){
     }
     TD.rows.push({spins:spins,ovls:ovls,model:useModel});
   }
-  if(useModel)Seguidor.setModsPerStr(28);            // restaurar el canónico compartido
+  if(useModel){Seguidor.setModulo({modW:1.134,gapMod:0.012,gapDrive:0.55});Seguidor.setModsPerStr(28);}   // restaurar el canónico compartido
   const w3=$('warn3d');
   if(infeasible>0){
     w3.style.display='';

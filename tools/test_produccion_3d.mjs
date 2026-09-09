@@ -81,9 +81,22 @@ try {
         const h = rc.intersectObject(gnd, true);
         alturas.push(h.length ? q.y - h[0].point.y : null);
       }
-      return { mesas, alturas, segTilt: T.segTilt, ejes: T.ejes ? T.ejes.length : 0,
+      // el PANEL dibujado de cada mesa: su ancho a lo largo del tubo y cuántos
+      // módulos implica con la ficha del módulo de esta planta
+      const paneles = [];
+      if (!R3.inst && T.mod) R3.world.traverse(g => {
+        if (g.userData && g.userData.row !== undefined && g.children.length) {
+          let ancho = null;
+          g.traverse(o => { const p = o.geometry && o.geometry.parameters;
+            if (p && p.width > 5 && p.depth > 2 && p.depth < 3 && (ancho == null || p.width > ancho)) ancho = p.width; });
+          if (ancho != null) paneles.push({ ancho, med: g.userData.s1 - g.userData.s0,
+            md: (T.segMods && T.segMods[g.userData.row]) ? T.segMods[g.userData.row][g.userData.k] : null,
+            mods: Math.round((ancho + T.mod.gapMod) / (T.mod.modW + T.mod.gapMod)) });
+        }
+      });
+      return { mesas, alturas, paneles, segTilt: T.segTilt, ejes: T.ejes ? T.ejes.length : 0,
                westSeg: T.westSeg, trackers: RP.P.segDrive.length, inst: !!R3.inst,
-               segFila: T.segFila, segSide: T.segSide, segArt: T.segArt };
+               segFila: T.segFila, segSide: T.segSide, segArt: T.segArt, mod: T.mod || null };
     });
 
     // 1) el TILT dibujado de cada mesa es el MEDIDO de esa mesa, con su signo
@@ -120,6 +133,22 @@ try {
     const lo = Math.min(...hs), hi = Math.max(...hs);
     check(`${nombre}: el tubo va a 2 m del suelo bajo cada mesa (${lo.toFixed(2)}–${hi.toFixed(2)} m)`,
           hs.length === m.mesas.length && lo > 1.5 && hi < 2.5, `${m.mesas.length - hs.length} sin suelo debajo`);
+
+    // 3bis) EL MÓDULO ES DE PROYECTO: cada mesa se dibuja con LOS MÓDULOS que
+    //       dice el levantamiento y con el ancho de módulo de SU planta (Ayora
+    //       1,303 m · San José 1,134). Con el ancho de la casa fijo, una mesa
+    //       de Ayora salía con 32 módulos de 1,134 donde hay 28 de 1,303: el
+    //       largo cuadraba y el conteo no.
+    if (!m.inst) {
+      const dif = m.paneles.map(o => o.ancho - o.med).sort((a, b) => a - b);
+      const malMods = m.paneles.filter(o => o.md > 0 && o.mods !== o.md).length;
+      check(`${nombre}: cada mesa dibuja los módulos del levantamiento (${[...new Set(m.paneles.map(o => o.md))].filter(Boolean).sort((a, b) => a - b).join('/')})`,
+            m.paneles.length > 0 && malMods === 0,
+            `${malMods} de ${m.paneles.length} mesas con otro nº de módulos`);
+      check(`${nombre}: y el panel mide lo que mide la mesa (desvío mediana ${dif.length ? dif[dif.length >> 1].toFixed(2) : '—'} m)`,
+            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.2 && Math.abs(dif[dif.length - 1]) < 1.2,
+            `desvíos ${dif[0]?.toFixed(2)} … ${dif[dif.length - 1]?.toFixed(2)} m`);
+    }
 
     // 4) accionamiento: un eje por tracker; el motor va en la viga OESTE (sus
     //    DOS mesas la llevan marcada, pero el motor se dibuja una vez, en el

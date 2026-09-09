@@ -965,6 +965,8 @@ function rebuildT(){
     T.segSide=P.segSide;T.segFila=P.segFila;T.segArt=P.segArt;T.segDrive=P.segDrive;
     T.segMorro=P.segMorro;              // [n, cota] del morro: el pivote de las dos mesas
     T.segTrk=P.segTrk;                  // el seguidor de cotas.t de cada mesa (para su nombre real)
+    T.mod=P.mod;                        // ficha del MÓDULO de la planta (modW/gapMod/gapDrive medidos)
+    T.segMods=P.segMods;                // módulos del STRING de cada mesa, del levantamiento
     /* BIFILA: el motor va en UNA viga de cada unidad, la oeste. `T.west` lo dice por LÍNEA
        (`westDeGroups` sobre las parejas de `plantFromCotas`) y `T.westSeg` por MESA
        (`westPorMesa` sobre `segPairs`, las parejas exactas por tracker). Manda la de mesa,
@@ -1156,6 +1158,11 @@ function build3D(c){
   const useModel=hayModelo&&totalTramos<=600;
   const useInst=hayModelo&&totalTramos>600;
   const D0=hayModelo?Seguidor.DIMS:null;
+  // EL MÓDULO DE ESTA PLANTA (v1.24): Ayora monta 1,303 m y San José/El Burgo
+  // 1,134. Sin esto una mesa de Ayora se dibujaba con 32 módulos de 1,134 en
+  // vez de sus 28 de 1,303 — el largo salía bien y el conteo no. Se restaura
+  // al final: el modelo del seguidor es COMPARTIDO.
+  if(hayModelo&&T.mod)Seguidor.setModulo(T.mod);
   if(hayModelo&&!R3.mats)R3.mats=Seguidor.materials(THREE);
   const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
   R3.rows=[];R3.inst=null;
@@ -1197,7 +1204,8 @@ function build3D(c){
       if(tiltK)tiltG.rotation.x=tiltK*D2R;                    // tilt N-S MEDIDO de ESTA mesa
       let built=false;
       const media=hayModelo&&!lado&&len<0.7*T.obj.filaLen;    // tramo corto ⇒ mesa «media» real
-      const mods=hayModelo?(lado?Math.max(4,Math.round(len/D0.pitch))
+      const mdSeg=(T.segMods&&T.segMods[r])?T.segMods[r][k]:null;   // módulos del STRING de esta mesa, del levantamiento
+      const mods=hayModelo?(lado?Math.max(4,mdSeg>0?mdSeg:Math.round(len/D0.pitch))
                                 :Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch))):0;
       if(useModel){
         try{
@@ -1280,7 +1288,7 @@ function build3D(c){
     R3.rows.push({spins:spins});
   }
   }// fin del camino de mallas sueltas (modelo/cajas)
-  if(hayModelo)Seguidor.setModsPerStr(28);                    // restaurar el canónico compartido
+  if(hayModelo){Seguidor.setModulo({modW:1.134,gapMod:0.012,gapDrive:0.55});Seguidor.setModsPerStr(28);}   // restaurar el canónico compartido
   // ── eje de transmisión del BIFILA de El Burgo, con la receta de terreno.html:
   // cilindro Ø60 mm entre las dos vigas de cada unidad A LA ALTURA DEL EJE DEL
   // TUBO (makeTranslation(0, ph, 0) allí — a 1,24 «la biela está muy abajo»).
@@ -1435,7 +1443,8 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
   const porTalla=new Map();
   tramos.forEach((tr,ti)=>{
     const media=!tr.lado&&tr.len<0.7*T.obj.filaLen;
-    const mods=tr.lado?Math.max(4,Math.round(tr.len/D0.pitch))
+    const mdSeg=(T.segMods&&T.segMods[tr.row])?T.segMods[tr.row][tr.k]:null;
+    const mods=tr.lado?Math.max(4,mdSeg>0?mdSeg:Math.round(tr.len/D0.pitch))
                       :Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
     // la talla incluye si la mesa lleva MOTOR (la viga gemela va sin él) y de
     // qué LADO del morro es: el modelo se pide media viga
