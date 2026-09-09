@@ -2054,7 +2054,7 @@ console.log('referencia vertical POR PUNTO (tools/cotas_asbuilt.py)');
 // Python: allí se indexa por cubos en x, aquí se recorre una ventana sobre los
 // puntos ordenados por y. La lección del terreno fantasma fue justo esta — el
 // oráculo no cazó el fallo porque llevaba dentro una copia del código malo.
-function oraculoRefVertical(P, umbral = 3, dy = 3, dx = 60, minv = 6) {
+function oraculoRefVertical(P, umbral = 3, dy = 10, dx = 30, minv = 3) {
   const n = P.id.length;
   const ord = Array.from({ length: n }, (_, i) => i).sort((a, b) => P.y[a] - P.y[b]);
   const malos = new Map();                       // id de fila -> [[id de punto, desvío]]
@@ -2117,6 +2117,33 @@ t('el umbral no es delicado: de 3 a 20 m marca lo mismo en San José', () => {
     ' — hay algo entre 3 y 20 m que ya no es ni ruido ni geoide, mirarlo antes de tocar el umbral');
   if (a < 50) throw new Error('el detector dejó de ver la familia del geoide (' + a + ' puntos)');
 });
+t('la ventana está elegida por medida, y 30 m es el último dx seguro', () => {
+  // Documenta POR QUÉ la ventana es la que es, y falla si alguien la «mejora».
+  // dy y el cuórum se sueltan sin mover el veredicto (eso sube la cobertura de
+  // Ayora del 76,9 % al 96,5 % sin comprar nada). dx es el que tiene dos bordes:
+  // ampliarlo alcanza el otro nivel de un talud —a 100 m salen falsos positivos
+  // en TR-07, que es terreno real— y estrecharlo por debajo de 30 m empieza a
+  // perder contaminación de verdad (91 puntos en vez de 98).
+  const f = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f)) return;
+  const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
+  const filas = (dy, dx, mv) => new Set(oraculoRefVertical(P, 3, dy, dx, mv).keys());
+  const base = filas(10, 30, 3);
+  const igual = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
+  if (!igual(filas(3, 60, 6), base))
+    throw new Error('la ventana de hoy ya no da el mismo veredicto que la original (3/60/6): ' +
+      filas(3, 60, 6).size + ' vs ' + base.size + ' — el ajuste dejó de ser gratis, hay que volver a medirlo');
+  // y 30 es el ÚLTIMO valor seguro de dx: estrechar más sí pierde puntos
+  if (igual(filas(10, 24, 3), base))
+    throw new Error('estrechar dx a 24 m ya no pierde puntos: si de verdad da igual, 30 deja de estar justificado');
+  const ancha = oraculoRefVertical(P, 3, 10, 100, 3);
+  const t7 = [...ancha.keys()].filter(id => id.startsWith('TR-07')).length;
+  if (t7 === 0)
+    throw new Error('ampliar dx a 100 m ya no mete falsos positivos del talud de TR-07: ' +
+      'o cambió el dato o cambió el detector — si de verdad da igual, dx deja de estar justificado en 60');
+  if ([...base].some(id => id.startsWith('TR-07')))
+    throw new Error('la ventana buena marca el talud de TR-07, que es terreno real');
+});
 t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
   const f = path.join(ROOT, 'sanjose_puntos.json');
   if (!fs.existsSync(f)) return;
@@ -2173,12 +2200,43 @@ t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () 
   if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
   if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
 });
-t('Ayora está limpia: ningún punto se aparta de sus laterales', () => {
+t('la reclamación dice EXACTAMENTE lo mismo que el detector', () => {
+  // reclama_referencia.py nació con su propia copia de la ventana (dy=3, dx=60)
+  // y se la pasaba al detector, pisando la buena. Salían los mismos 98 puntos
+  // pero con OTROS desvíos: el CSV decía min +35,01 m donde el visor decía
+  // +35,20 — dos entregables míos contradiciéndose por un valor por defecto
+  // duplicado. Aquí se vigila que sigan siendo el mismo número.
+  const f = path.join(ROOT, 'reclamacion_sanjose.csv'), fp = path.join(ROOT, 'sanjose_puntos.json');
+  if (!fs.existsSync(f) || !fs.existsSync(fp)) return;
+  const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  const esp = new Map();
+  for (const [, v] of oraculoRefVertical(P)) for (const [pid, r] of v) esp.set(pid, r);
+  const filas = fs.readFileSync(f, 'utf-8').replace(/^\uFEFF/, '').trim().split('\n').slice(1);
+  if (filas.length !== esp.size)
+    throw new Error('la reclamación trae ' + filas.length + ' puntos y el detector ve ' + esp.size);
+  for (const l of filas) {
+    const c = l.split(';'), pid = +c[1], d = parseFloat(c[6]);
+    if (!esp.has(pid)) throw new Error('la reclamación trae el punto ' + pid + ', que el detector no marca');
+    if (Math.abs(esp.get(pid) - d) > 0.02)
+      throw new Error('el punto ' + pid + ' vale ' + d.toFixed(2) + ' m en la reclamación y ' +
+        esp.get(pid).toFixed(2) + ' m en el detector: ¿ventana duplicada otra vez?');
+  }
+});
+t('Ayora limpia, y con MARGEN: el suelo de ruido no se acerca al umbral', () => {
+  // No basta con «no se marca nada»: importa cuánto sobra. El suelo de ruido de
+  // este control es el relieve real — en una ladera, la propia pendiente lateral
+  // se lee como desvío. En Ayora el peor punto limpio está en 1,38 m contra un
+  // umbral de 3 m. Si ese suelo sube, el umbral empieza a estar en riesgo aunque
+  // todavía no marque nada, y eso hay que verlo ANTES del primer falso positivo.
   const f = path.join(ROOT, 'ayora_puntos.json');
   if (!fs.existsSync(f)) return;
   const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
-  const m = oraculoRefVertical(P, 2);
-  if (m.size) throw new Error('aparece referencia vertical en Ayora: ' + [...m.keys()].slice(0, 5).join(', '));
+  if (oraculoRefVertical(P, 3).size)
+    throw new Error('aparece referencia vertical en Ayora: ' + [...oraculoRefVertical(P, 3).keys()].slice(0, 5).join(', '));
+  const suelo = oraculoRefVertical(P, 0).size ? Math.max(...[...oraculoRefVertical(P, 0).values()].flat().map(v => Math.abs(v[1]))) : 0;
+  if (suelo > 2)
+    throw new Error('el suelo de ruido de Ayora subió a ' + suelo.toFixed(2) + ' m, con el umbral en 3: ' +
+      'queda menos de 1,5× de margen — revisar la ventana antes de que aparezca un falso positivo');
 });
 t('la nube casa con el as-built: mesas enteras y z absoluta coherente', () => {
   // Cuántos puntos toca por fila NO es el mismo número en las dos plantas, y

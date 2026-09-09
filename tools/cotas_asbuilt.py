@@ -25,7 +25,7 @@ from collections import defaultdict
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def puntos_con_otra_referencia(planta, umbral=3.0, dy=3.0, dx=60.0, minv=6):
+def puntos_con_otra_referencia(planta, umbral=3.0, dy=10.0, dx=30.0, minv=3):
     """Puntos del levantamiento cuya Z no cuadra con la de sus vecinos.
 
     Devuelve (dict id_fila -> [(id_punto, desvio_m)], n_decidibles, n_puntos,
@@ -41,7 +41,7 @@ def puntos_con_otra_referencia(planta, umbral=3.0, dy=3.0, dx=60.0, minv=6):
     reconstruye nada — se reclama.
 
     CONTRA QUE SE COMPARA CADA PUNTO, Y POR QUE ASI. Contra los puntos de los
-    seguidores de al lado A SU MISMA COORDENADA NORTE (|dy| <= 3 m, |dx| <= 60 m),
+    seguidores de al lado A SU MISMA COORDENADA NORTE (|dy| <= 10 m, |dx| <= 30 m),
     no contra una bola de radio fijo. La diferencia no es cosmetica:
 
       · Un cambio de referencia vertical afecta a un PUNTO (o a una sesion de
@@ -57,6 +57,31 @@ def puntos_con_otra_referencia(planta, umbral=3.0, dy=3.0, dx=60.0, minv=6):
     VACIA entre 5 y 20 m: cualquier umbral de 3 a 20 m marca exactamente los
     mismos 98 puntos (todos positivos, +36,55 m de media, sigma 0,40 m — la
     firma de la ondulacion del geoide). En Ayora ningun punto pasa de 1,7 m.
+
+    LA VENTANA ESTA MEDIDA, NO ELEGIDA A OJO — y hay que mirar tambien lo que NO
+    se comprueba: con la primera version (dy=3, dx=60, minv=6) quedaba SIN
+    DECIDIR el 23 % de los puntos de Ayora, demasiado hueco para una planta que
+    luego se declara limpia. El barrido de los tres:
+
+      · dy se suelta de 3 a 10 m sin que San Jose se mueva UN PUNTO: el escalon
+        de TR-07 esta a 37 m —la distancia entre estaciones— y 10 m no lo
+        cruzan. A partir de 15 m deriva (101 en vez de 98), y ahi se para.
+      · minv de 6 a 3 tampoco lo mueve: un punto contaminado lo esta por +36 m,
+        no hace falta cuorum para verlo.
+      · dx fija el SUELO DE RUIDO, y lo quiere ESTRECHO, no ancho — al reves de
+        lo que parecia. Con 60 m la ventana abarca tanta ladera que la propia
+        pendiente lateral se lee como desvio: en Ayora habia tres puntos a
+        2,1-2,4 m que son terreno puro, demasiado cerca del umbral de 3 m. A
+        30 m el suelo baja a 1,38 m (Ayora) y 2,18 m (San Jose) sin mover el
+        veredicto; por debajo de 24 m si se mueve (91 en vez de 98). Y ampliarlo
+        a 100 m mete 11 falsos positivos del talud de TR-07.
+
+    Con dy=10 / dx=30 / minv=3 el veredicto de San Jose es IDENTICO (98 puntos
+    en 54 filas) y la cobertura sube: Ayora 76,9 % -> 96,5 %, San Jose 99,9 %.
+    El umbral queda sin sitio donde equivocarse: el desvio mayor de un punto
+    limpio es 2,18 m y el menor de uno contaminado, 35,01 m. Son los mismos
+    parametros que el visor de as-built (IMoriana3/visores,
+    asbuilt/tools/ref_vertical.py): la misma vara para las dos plantas.
     """
     p = os.path.join(RAIZ, planta + '_puntos.json')
     if not os.path.exists(p):

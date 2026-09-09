@@ -38,8 +38,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cotas_asbuilt import puntos_con_otra_referencia   # noqa: E402  (mismo criterio, una sola vez)
 
 
-def reclama(planta, umbral=3.0, dy=3.0, dx=60.0):
-    r = puntos_con_otra_referencia(planta, umbral, dy, dx)
+def reclama(planta):
+    # La ventana NO se repite aqui. Al nacer, esta funcion llevaba su propia
+    # copia (dy=3, dx=60) y se la pasaba a la de arriba, pisando la buena: los
+    # 98 puntos salian los mismos pero con desvios distintos, y el CSV decia
+    # min +35,01 m donde el visor decia +35,20 — dos entregables mios
+    # contradiciendose por un valor por defecto duplicado. Un solo sitio manda.
+    r = puntos_con_otra_referencia(planta)
     if r is None:
         print('%-8s sin nube de puntos (falta %s_puntos.json)' % (planta, planta))
         return
