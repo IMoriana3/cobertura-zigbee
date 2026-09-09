@@ -99,7 +99,8 @@ for (let b = 0; b < NBLOQUES; b++) {
   BLOQUES.push({ b, P,
     T: { pairs, cw: P.cw, axisAz: 0, maxAngle: P.maxAngle, gcr: P.cw / P.pitch, z0: 0.17,
          nBypass: 3, rowTilt: P.tilt, groups: P.groups, drive: P.drive || 'bifila', segs: P.segs,
-         segTilt: P.segTilt, segPairs: P.segPairs, real: P } });   // v1.42: cada mesa con su tilt y su pareja
+         segTilt: P.segTilt, segPairs: P.segPairs, segDrive: P.segDrive,
+         segSide: P.segSide, segFila: P.segFila, real: P } });   // v1.42: cada mesa con su tilt y su pareja; v1.48: y su ACCIONAMIENTO (las 4 mesas del tracker, un motor)
 }
 if (!BLOQUES.length) throw new Error('la planta no produce ningún bloque modelable');
 

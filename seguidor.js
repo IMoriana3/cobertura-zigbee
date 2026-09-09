@@ -385,6 +385,33 @@
     return !!(p.spin || p.twin);                        // del slew, en la gemela solo las twin
   }
   S.SOLO_OESTE = SOLO_OESTE;
+
+  /* ====================================================================
+   * LA VIGA SON DOS MESAS: el LADO del morro al que pertenece cada pieza
+   * ====================================================================
+   * `parts()` ya coloca todo respecto del ACTUADOR (x=0) y parte el tubo en
+   * dos medias-vigas «que se unen en el actuador — permite el tracker quebrado
+   * (cada mitad drapea con su pendiente, rótula en el centro)». Lo que faltaba
+   * era poder PEDIR una de las dos mitades: sin eso, quien dibuja una planta
+   * levantada tenía que dar a la viga entera UNA pendiente —la media de sus
+   * 74 m— y las dos mesas salían siempre iguales aunque el levantamiento
+   * midiera un quiebro de grados entre ellas.
+   *
+   *   lado = -1  ->  mesa del SUR del morro  (x < 0)  +  las piezas del propio
+   *                  morro (x = 0: corona, reductora, motor, bracket, soporte),
+   *                  que se dibujan UNA vez y con esta mitad.
+   *   lado = +1  ->  mesa del NORTE del morro (x > 0), con la TCU y el
+   *                  seccionador, que van atornillados al tubo pasado el morro.
+   *   sin lado   ->  la viga entera, como siempre.
+   * ==================================================================== */
+  var EPS_LADO = 0.02;
+  S.ladoDe = function (m) { var x = m.elements[12]; return x > EPS_LADO ? 1 : (x < -EPS_LADO ? -1 : 0); };
+  function esDeEsteLado(p, lado) {
+    if (lado == null) return true;
+    var l = S.ladoDe(p.m);
+    return lado < 0 ? l <= 0 : l > 0;
+  }
+  S.esDeEsteLado = esDeEsteLado;
   /* Y la regla, no solo la lista. `instancePlan` describe UNA viga; quien dibuja
      un campo entero instancia ese plan por FILA, y ahí vuelve a hacer falta
      saber qué pieza va en la gemela y cuál no —si no, cada fila se lleva su TCU,
@@ -435,6 +462,7 @@
       if (p.damperLink) { dampers.push({ a:p.a, b:p.b }); return; }   // amortiguadores: en AMBAS vigas; render per-frame en la app
       if (skip[p.key]) return;
       if (!esDeEstaViga(p, west)) return;
+      if (!esDeEsteLado(p, opts.lado)) return;     // una sola MESA de la viga (v1.48)
       var mesh = new THREE.Mesh(p.geom(THREE), mats[p.mat]);
       mesh.applyMatrix4(p.m);
       mesh.castShadow = !!p.cast; mesh.receiveShadow = true;
@@ -464,6 +492,7 @@
     var west = !opts || opts.west !== false;
     S.parts(THREE, opts).forEach(function (p) {
       if (!esDeEstaViga(p, west)) return;
+      if (!esDeEsteLado(p, opts && opts.lado)) return;   // una sola MESA de la viga (v1.48)
       if (!byType[p.key]) { byType[p.key] = { key:p.key, mat:p.mat, geom:p.geom, spin:p.spin, cast:p.cast, terrainScaled:!!p.terrainScaled, twin:!!p.twin, antenna:!!p.antenna, tip:!!p.tip, motorLink:!!p.motorLink, damperLink:!!p.damperLink, a:p.a, b:p.b, as:[], bs:[], locals:[] }; order.push(p.key); }
       byType[p.key].locals.push(p.m);
       if (p.a) byType[p.key].as.push(p.a);

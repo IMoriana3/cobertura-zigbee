@@ -388,16 +388,24 @@ function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
   const pm=pitchMod||1.146, gd=gapDrive==null?0.55:gapDrive;
   // v1.19: los strings de una planta levantada salen del DATO — opt.segMods
   // trae los módulos por string de cada mesa (f[].md del levantamiento) y
-  // opt.mod la ficha del módulo medida (modW/gapMod/gapDrive). Cada fila son
-  // DOS strings, uno por ala. Solo si a una mesa le falta md se deducen del
-  // largo con ESE módulo, y se dice. Antes esto era una tabla escrita a mano
-  // en la página, y a San José se le aplicaba el módulo de Ayora.
+  // opt.mod la ficha del módulo medida (modW/gapMod/gapDrive). Solo si a una
+  // mesa le falta md se deducen del largo con ESE módulo, y se dice. Antes
+  // esto era una tabla escrita a mano en la página, y a San José se le
+  // aplicaba el módulo de Ayora.
+  // v1.23: UN STRING POR MESA. Desde que la fila entra partida por el morro
+  // (backtracking v1.48) cada tramo YA es una mesa, con su tilt y su POA; el
+  // string es la mesa. Antes el tramo era la viga entera y el string se
+  // repartía «por ala» (w=0/1) sobre un POA que no distinguía las dos mesas.
   if(opt&&opt.mod&&opt.segMods){
     const M=opt.mod, w=M.modW, gm=M.gapMod||0, gd2=M.gapDrive==null?gd:M.gapDrive;
+    const porMesa=!!(opt.segSide);
     return segs.map((l,r)=>l.flatMap((sg,k)=>{
       const md=opt.segMods[r]&&opt.segMods[r][k];
-      const porLargo=Math.max(1,Math.round(((sg[1]-sg[0])-gd2+2*gm)/(2*(w+gm))));
+      const L=sg[1]-sg[0];
+      const porLargo=porMesa?Math.max(1,Math.round((L+gm)/(w+gm)))
+                            :Math.max(1,Math.round((L-gd2+2*gm)/(2*(w+gm))));
       const mods=(md>0)?md:porLargo, src=(md>0)?'levantamiento':'largo';
+      if(porMesa)return [{inv:invRows[r],k:k,w:null,mods:mods,src:src}];
       return [{inv:invRows[r],k:k,w:0,mods:mods,src:src},{inv:invRows[r],k:k,w:1,mods:mods,src:src}];
     }));
   }
@@ -943,6 +951,11 @@ function rebuildT(){
     T.segZ=P.segZ;                       // cota MEDIDA de los dos extremos de cada mesa
     T.segTilt=P.segTilt;
     T.segPairs=P.segPairs;
+    // v1.23: la fila viene PARTIDA por el morro — cada tramo es una mesa, con
+    // su lado (0 sur / 1 norte), la viga de la que es mitad y si su quiebro
+    // está medido (fila articulada del levantamiento)
+    T.segSide=P.segSide;T.segFila=P.segFila;T.segArt=P.segArt;T.segDrive=P.segDrive;
+    T.segMorro=P.segMorro;              // [n, cota] del morro: el pivote de las dos mesas
     /* BIFILA: el motor va en UNA viga de cada unidad, la oeste. `T.west` lo dice por LÍNEA
        (`westDeGroups` sobre las parejas de `plantFromCotas`) y `T.westSeg` por MESA
        (`westPorMesa` sobre `segPairs`, las parejas exactas por tracker). Manda la de mesa,
@@ -979,11 +992,11 @@ function rebuildT(){
   }
   // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
   // (g.i); el resto n bloques contiguos iguales (declarado en el input)
-  // v1.14: cada string con su MESA y su ALA — El Burgo por su plano, cotas por
-  // el largo medido (la fila larga = dos strings, uno por ala)
+  // v1.14: cada string con su MESA (y su ala en El Burgo, que sigue por plano);
+  // v1.23: en las plantas levantadas el tramo YA es una mesa ⇒ un string por mesa
   if(c.plant==='elburgo'&&EB)T.strInv=elburgoStrInv(EB.rows,T.segs,T_nOff,T.obj.filaLen,c.elec.mods);
   else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
-                                                                       {mod:RP.P.mod,segMods:RP.P.segMods});
+                                                                       {mod:RP.P.mod,segMods:RP.P.segMods,segSide:RP.P.segSide});
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
   DAYC=null;PERIODC=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
@@ -1033,11 +1046,20 @@ function build3D(c){
   const segsNS=T.segs||Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
-  const gnd=new THREE.Mesh(
-    // malla del suelo proporcional a la planta: con 295 líneas sobre 2 km, 128
-    // segmentos daban celdas de 15 m y el relieve medido se aplanaba (v1.17)
-    new THREE.PlaneGeometry(span+40,maxLen+40,
-      Math.max(2,Math.min(2*n,320)),Math.max(8,Math.min(Math.round(maxLen/8),240))),
+  // SUELO CON VÉRTICES EN LAS LÍNEAS (v1.21). Era una rejilla regular y, con la
+  // planta entera (295 líneas sobre 1,8 km), sus celdas medían ~6 m: el terreno
+  // medido se aplanaba entre vértices y el tubo acababa de −5,3 a +7,2 m del
+  // suelo, cuando bajo cada mesa tiene que ir a 2 m. Ahora las COLUMNAS caen
+  // exactamente en la x de cada línea (más un margen a cada lado) y en N se
+  // muestrea fino, así que el suelo pasa POR las cotas medidas.
+  const margX=Math.max(12,(span/Math.max(1,n-1))*2), margN=20;
+  const colX=[rx[0]-margX,...rx,rx[n-1]+margX];
+  const pasoN=Math.max(1.5,Math.min(6,(sMax-sMin+2*margN)/300));
+  const filN=[]; for(let v=sMin-margN;v<=sMax+margN+1e-9;v+=pasoN)filN.push(v);
+  const NC=colX.length, NF=filN.length;
+  const gpos=new Float32Array(NC*NF*3), gcol=new Float32Array(NC*NF*3);
+  const idxCol=i=>Math.max(0,Math.min(n-1,i-1));   // la línea de cada columna (los bordes copian la suya)
+  const gnd=new THREE.Mesh(new THREE.BufferGeometry(),
     new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
   // el suelo sigue el perfil E-O real (el mismo elev que come la física) y,
   // cuando la planta trae TILT N-S medido (cotas), también esa pendiente por
@@ -1086,35 +1108,26 @@ function build3D(c){
   };
   // el motor va en la mesa OESTE de cada tracker (v1.17), no en toda la línea
   const westK=(r,k)=>T.westSeg?T.westSeg[r][k]:(T.west?T.west[r]:true);
-  {const pos=gnd.geometry.attributes.position;
+  {
    let zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
    if(hayZ){zLo=Infinity;zHi=-Infinity;for(const l of T.segZ)for(const z of l){zLo=Math.min(zLo,z[0],z[1]);zHi=Math.max(zHi,z[0],z[1]);}}
-   const cols=new Float32Array(pos.count*3);
-   // el índice de línea sale de la x REAL, no de suponerlas equiespaciadas: los
-   // vanos de una planta medida no son iguales y entre bloques hay caminos de
-   // decenas de metros — con la regla uniforme el suelo se deslizaba respecto a
-   // las mesas (v1.17)
-   const idxDeX=(xv)=>{
-     if(xv<=rx[0])return 0;
-     if(xv>=rx[n-1])return n-1;
-     let a=0,b=n-1;
-     while(b-a>1){const mid=(a+b)>>1; if(rx[mid]<=xv)a=mid; else b=mid;}
-     return a+(xv-rx[a])/((rx[b]-rx[a])||1);
-   };
-   for(let i=0;i<pos.count;i++){
-     const r=idxDeX(pos.getX(i));
-     const r0=Math.floor(r), fr=r-r0, r1=Math.min(n-1,r0+1);
-     const sceneZ=-pos.getY(i)+gz;      // el marco de escena de las mesas (z=−norte)
-     const z=hLinea(r0,sceneZ)+fr*(hLinea(r1,sceneZ)-hLinea(r0,sceneZ));
-     pos.setZ(i,z);
-     const t2=zHi>zLo?(z-zLo)/(zHi-zLo):0.4;
-     cols[i*3]=0.086+0.10*Math.max(0,Math.min(1,t2));cols[i*3+1]=0.145+0.13*Math.max(0,Math.min(1,t2));cols[i*3+2]=0.105+0.09*Math.max(0,Math.min(1,t2));
+   for(let i=0;i<NC;i++)for(let j=0;j<NF;j++){
+     const p=(i*NF+j)*3, nn=filN[j];
+     const z=hLinea(idxCol(i),-nn);
+     gpos[p]=colX[i];gpos[p+1]=z;gpos[p+2]=-nn;
+     const t2=zHi>zLo?Math.max(0,Math.min(1,(z-zLo)/(zHi-zLo))):0.4;
+     gcol[p]=0.086+0.10*t2;gcol[p+1]=0.145+0.13*t2;gcol[p+2]=0.105+0.09*t2;
    }
-   gnd.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
-   pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
-  gnd.rotation.x=-Math.PI/2;
-  gnd.position.z=gz;
-  gnd.receiveShadow=true;
+  }
+  {const idx=[];
+   for(let i=0;i<NC-1;i++)for(let j=0;j<NF-1;j++){
+     const a=i*NF+j, b=a+1, c2=(i+1)*NF+j, d=c2+1;
+     idx.push(a,b,c2, b,d,c2);
+   }
+   gnd.geometry.setAttribute('position',new THREE.Float32BufferAttribute(gpos,3));
+   gnd.geometry.setAttribute('color',new THREE.Float32BufferAttribute(gcol,3));
+   gnd.geometry.setIndex(idx); gnd.geometry.computeVertexNormals();}
+  gnd.receiveShadow=true;    // se construye ya en el marco del mundo: ni rotación ni offset
   R3.world.add(gnd);
   // sombra del sol acotada a la planta (como el simulador); el frustum vertical
   // se ciñe por frame en repaint (sol rasante: texel en cm, no la «sierra»)
@@ -1152,14 +1165,31 @@ function build3D(c){
         side:THREE.DoubleSide,depthWrite:false});
       const tintM=mkTint(), tintM2=mkTint();
       const len=Math.max(2,sg[1]-sg[0]), zc=-(sg[0]+sg[1])/2;
+      // LADO DEL MORRO (v1.23): con la planta levantada el tramo es UNA MESA y
+      // el modelo se pide media viga, anclada en el MORRO — el pivote que las
+      // dos mitades comparten (ver buildInstanced)
+      const lado=(T.segSide&&T.segSide[r]&&T.segSide[r][k]!=null)?(T.segSide[r][k]===0?-1:1):null;
+      const mo=(T.segMorro&&T.segMorro[r])?T.segMorro[r][k]:null;
+      const nPiv=mo?mo[0]:(sg[0]+sg[1])/2, yPiv=(mo?mo[1]:cMesa(r,k))+2.0;
       const tiltG=new THREE.Group();
-      tiltG.position.set(x,hubY,zc);
+      tiltG.position.set(x,lado?yPiv:hubY,lado?-nPiv:zc);
       tiltG.userData={row:r,k:k,s0:sg[0],s1:sg[1]};           // para la SELECCIÓN con clic
       const tiltK=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);
-      if(tiltK)tiltG.rotation.x=-tiltK*D2R;                   // tilt N-S MEDIDO de ESTA mesa
+      // SIGNO DEL TILT (v1.21): el tubo va del extremo SUR (s0,z0) al NORTE
+      // (s1,z1), y segTilt = atan2(z1−z0, s1−s0) — positivo sube hacia el
+      // norte. En la escena el norte es −Z, y una rotación +X positiva baja el
+      // lado −Z: por eso la rotación es −tilt… en el marco del MODELO, cuyo
+      // tubo apunta a +X y se orienta al norte con el yaw de +90°, la
+      // composición deja el tubo cayendo al revés. Medido en la escena: el
+      // tilt dibujado salía EXACTAMENTE −segTilt en las 1.502 mesas de Ayora
+      // (error 0 al invertir), así que la mesa se inclinaba al contrario que
+      // su terreno y no casaba ni con sus propios postes. El simulador ya lo
+      // hacía bien (tiltG.rotation.x = atan2(z1−z0, len), sin signo).
+      if(tiltK)tiltG.rotation.x=tiltK*D2R;                    // tilt N-S MEDIDO de ESTA mesa
       let built=false;
-      const media=hayModelo&&len<0.7*T.obj.filaLen;           // tramo corto ⇒ mesa «media» real
-      const mods=hayModelo?Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch)):0;
+      const media=hayModelo&&!lado&&len<0.7*T.obj.filaLen;    // tramo corto ⇒ mesa «media» real
+      const mods=hayModelo?(lado?Math.max(4,Math.round(len/D0.pitch))
+                                :Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch))):0;
       if(useModel){
         try{
           Seguidor.setModsPerStr(mods);
@@ -1169,6 +1199,7 @@ function build3D(c){
           // del beam era el muñón de 1 m flotando bajo la corona («el soporte
           // central no existe»). Se construye abajo, vertical y hasta el suelo.
           const beam=Seguidor.buildBeam(THREE,{west:westK(r,k),detail:'mass',size:media?'medio':'largo',
+                                               lado:lado,
                                                materials:R3.mats,skip:{antena:1,antenatip:1,soporte:1}});
           const yaw=new THREE.Group();yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;                       // ancho de pala configurado sobre la cuerda del modelo
@@ -1176,7 +1207,13 @@ function build3D(c){
           // el tinte va en DOS alas, dejando el hueco central del accionamiento
           // sin pintar — un plano corrido tapaba corona/reductora/motor
           const bbLen=Math.max(1,bb.max.x-bb.min.x), wAla=(bbLen-D0.gapDrive)/2;
-          for(const s2 of (wAla>0.5?[-1,1]:[0])){
+          if(lado){
+            // UNA mesa = UN string = UN plano de tinte, del morro al extremo
+            const tint=new THREE.Mesh(new THREE.PlaneGeometry(len,2.36),tintM);
+            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=lado*(D0.gapDrive/2+len/2);
+            tint.renderOrder=2;
+            beam.spin.add(tint);
+          }else for(const s2 of (wAla>0.5?[-1,1]:[0])){
             const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),s2>0?tintM2:tintM);   // ala norte (+X del tubo) = string b
             tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=s2*(D0.gapDrive/2+wAla/2);
             tint.renderOrder=2;
@@ -1186,16 +1223,21 @@ function build3D(c){
           tiltG.add(yaw);
           // soporte central de la corona, la receta de terreno.html: del punto
           // bajo el bracket (eje −0,22) al terreno, VERTICAL en mundo
-          const sTop=hubY-0.22, sGnd=hLinea(r,zc)-0.05, sL=Math.max(0.4,sTop-sGnd);
-          const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
-          sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zc);sop.castShadow=true;
-          R3.world.add(sop);
-          spins.push({g:beam.spin,model:true,mat:tintM,matW:[tintM,tintM2],k:k});
+          if(lado!==1){   // el morro lleva UN soporte: lo pone la mesa del sur
+            const zS2=lado?-nPiv:zc, yT=lado?yPiv:hubY;
+            const sTop=yT-0.22, sGnd=hLinea(r,zS2)-0.05, sL=Math.max(0.4,sTop-sGnd);
+            const sop=new THREE.Mesh(new THREE.BoxGeometry(0.22,1,0.32),R3.mats.steel);
+            sop.scale.y=sL;sop.position.set(x,(sTop+sGnd)/2,zS2);sop.castShadow=true;
+            R3.world.add(sop);
+          }
+          spins.push({g:beam.spin,model:true,mat:tintM,matW:lado?null:[tintM,tintM2],k:k});
           built=true;
         }catch(e){built=false;}
       }
       if(!built){                                             // camino clásico: cajas
         const gRot=new THREE.Group();
+        // con el ancla en el morro, la caja de la mesa se corre a su mitad
+        if(lado)gRot.position.z=-lado*((D0?D0.gapDrive:0.55)/2+len/2);
         const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),
           new THREE.MeshLambertMaterial({color:0x39424d}));
         const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.04,len),
@@ -1345,39 +1387,57 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
     for(let k=0;k<segsNS[r].length;k++){
       const sg=segsNS[r][k], len=Math.max(2,sg[1]-sg[0]);
       const tilt=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);   // tilt de ESTA mesa
-      // cota MEDIDA de esta mesa (v1.17) y su motor: la oeste de su tracker
+      // LADO DEL MORRO (v1.23): con la planta levantada, el tramo es UNA MESA
+      // —la mitad sur o la norte de su viga— y el modelo del seguidor se pide
+      // por ese lado. El pivote de las dos es el MORRO, no el centro de la
+      // mesa: anclando ahí las dos mitades, la viga queda quebrada donde el
+      // levantamiento dice y sin junta abierta.
+      const lado=(T.segSide&&T.segSide[r]&&T.segSide[r][k]!=null)?(T.segSide[r][k]===0?-1:1):null;
+      const mo=(T.segMorro&&T.segMorro[r])?T.segMorro[r][k]:null;
       tramos.push({row:r,k:k,x:x,hubY:G.cMesa(r,k)+2.0,zc:-(sg[0]+sg[1])/2,len:len,tilt:tilt,
-                   s0:sg[0],s1:sg[1],west:G.westK(r,k)});
+                   s0:sg[0],s1:sg[1],west:G.westK(r,k),lado:lado,
+                   nPiv:mo?mo[0]:(sg[0]+sg[1])/2,yPiv:(mo?mo[1]:G.cMesa(r,k))+2.0});
     }
   }
   // base por tramo (posición + tilt N-S medido + tubo del modelo a norte) y
   // el local del tinte (plano unitario escalado al largo del tramo)
   const mRx=new THREE.Matrix4(),mRy=new THREE.Matrix4().makeRotationY(Math.PI/2);
   for(const tr of tramos){
-    tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.hubY,tr.zc)
-      .multiply(mRx.makeRotationX(-tr.tilt*D2R)).multiply(mRy);
+    // el ancla es el MORRO cuando la mesa es media viga (las piezas del modelo
+    // van referidas al actuador, x=0), y el centro del tramo cuando no lo es
+    tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.lado?tr.yPiv:tr.hubY,tr.lado?-tr.nPiv:tr.zc)
+      .multiply(mRx.makeRotationX(tr.tilt*D2R)).multiply(mRy);   // v1.21: el mismo signo que el camino de mallas y que el simulador
     tr.Q=new THREE.Matrix4();
-    // tinte en DOS alas por tramo, dejando el hueco central del accionamiento
-    // sin pintar (un plano corrido tapaba corona/reductora/motor)
-    const wAla=Math.max(0.5,(tr.len-D0.gapDrive)/2);
-    tr.Ltint=[-1,1].map(s2=>new THREE.Matrix4().makeTranslation(s2*(D0.gapDrive/2+wAla/2),0.175,0)
-      .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
-      .multiply(new THREE.Matrix4().makeScale(wAla,2.36,1)));
+    // tinte: UN plano por MESA (v1.23; antes dos «alas» por viga), del morro al
+    // extremo, dejando sin pintar el hueco del accionamiento
+    const g0=D0.gapDrive/2;
+    tr.Ltint=tr.lado
+      ?[new THREE.Matrix4().makeTranslation(tr.lado*(g0+tr.len/2),0.175,0)
+          .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+          .multiply(new THREE.Matrix4().makeScale(tr.len,2.36,1))]
+      :[-1,1].map(s2=>{const wAla=Math.max(0.5,(tr.len-D0.gapDrive)/2);
+          return new THREE.Matrix4().makeTranslation(s2*(g0+wAla/2),0.175,0)
+          .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+          .multiply(new THREE.Matrix4().makeScale(wAla,2.36,1));});
   }
-  // tallas: la MISMA receta de módulos-por-tramo que el camino de mallas
+  const nTint=tramos.reduce((a,tr)=>a+tr.Ltint.length,0);
+  // tallas: los módulos de la MESA salen de su largo medido con el paso del
+  // modelo (el dibujo tiene que medir lo que mide el levantamiento)
   const porTalla=new Map();
   tramos.forEach((tr,ti)=>{
-    const media=tr.len<0.7*T.obj.filaLen;
-    const mods=Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
-    // la talla incluye si la mesa lleva MOTOR: la gemela del bifila va sin él
-    const key=mods+(media?'|medio':'|largo')+(tr.west?'|w':'|e');
-    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',west:tr.west,idx:[]});
+    const media=!tr.lado&&tr.len<0.7*T.obj.filaLen;
+    const mods=tr.lado?Math.max(4,Math.round(tr.len/D0.pitch))
+                      :Math.max(4,Math.round(((media?tr.len/0.504:tr.len)-D0.gapDrive)/2/D0.pitch));
+    // la talla incluye si la mesa lleva MOTOR (la viga gemela va sin él) y de
+    // qué LADO del morro es: el modelo se pide media viga
+    const key=mods+(media?'|medio':'|largo')+(tr.west?'|w':'|e')+'|'+(tr.lado||0);
+    if(!porTalla.has(key))porTalla.set(key,{mods:mods,size:media?'medio':'largo',west:tr.west,lado:tr.lado,idx:[]});
     porTalla.get(key).idx.push(ti);
   });
   const spinMeshes=[],tmpM=new THREE.Matrix4();
   for(const g of porTalla.values()){
     Seguidor.setModsPerStr(g.mods);
-    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:g.west});
+    const plan=Seguidor.instancePlan(THREE,{detail:'mass',size:g.size,west:g.west,lado:g.lado});
     for(const p of plan){
       // mismos descartes que buildBeam en esta página: antena y enlaces por-frame
       if(p.motorLink||p.damperLink||p.key==='antena'||p.key==='antenatip')continue;
@@ -1389,8 +1449,11 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
         im2.userData.pickTramos=tramos;im2.userData.nLocals=1;im2.userData.tramoIdx=g.idx;
         {let id=0;const mS3=new THREE.Matrix4();
          for(const ti of g.idx){
-           const tr=tramos[ti], sTop=tr.hubY-0.22, sGnd=G.hLinea(tr.row,tr.zc)-0.05, sL=Math.max(0.4,sTop-sGnd);
-           tmpM.makeTranslation(tr.x,(sTop+sGnd)/2,tr.zc).multiply(mS3.makeScale(1,sL,1));
+           // el soporte de la corona va bajo el MORRO (donde está la corona),
+           // no bajo el centro de la mesa
+           const tr=tramos[ti], zS3=tr.lado?-tr.nPiv:tr.zc, yT=tr.lado?tr.yPiv:tr.hubY;
+           const sTop=yT-0.22, sGnd=G.hLinea(tr.row,zS3)-0.05, sL=Math.max(0.4,sTop-sGnd);
+           tmpM.makeTranslation(tr.x,(sTop+sGnd)/2,zS3).multiply(mS3.makeScale(1,sL,1));
            im2.setMatrixAt(id++,tmpM);
          }}
         R3.world.add(im2);continue;
@@ -1409,13 +1472,15 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
       R3.world.add(im);
     }
   }
-  // tinte de producción: dos alas por tramo, color por instancia
+  // tinte de producción: un plano por MESA (dos por tramo solo si el tramo es
+  // una viga entera, sin partir), color por instancia
+  const nL=tramos.length?tramos[0].Ltint.length:1;
   const tint=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),
     new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.62,
-      side:THREE.DoubleSide,depthWrite:false}),tramos.length*2);
+      side:THREE.DoubleSide,depthWrite:false}),nTint);
   tint.renderOrder=2;
-  tint.userData.pickTramos=tramos;tint.userData.nLocals=2;tint.userData.tramoIdx=tramos.map((_,i)=>i);
-  for(let ti=0;ti<tramos.length*2;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
+  tint.userData.pickTramos=tramos;tint.userData.nLocals=nL;tint.userData.tramoIdx=tramos.map((_,i)=>i);
+  for(let ti=0;ti<nTint;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
   R3.world.add(tint);
   // postes instanciados: la retícula de la casa (pilotesX por talla, el medio
   // oculta exteriores) y longitud variable absorbiendo el terreno — cilindro
@@ -1461,14 +1526,17 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
     }
     g.mesh.instanceMatrix.needsUpdate=true;
   }
+  let ip=0;
   for(let ti=0;ti<I.tramos.length;ti++){
     const tr=I.tramos[ti];
     const sv=(segVals&&segVals[tr.row]&&segVals[tr.row][tr.k]!=null)?segVals[tr.row][tr.k]:vals[tr.row];
-    const wv=(wingVals&&wingVals[tr.row]&&wingVals[tr.row][tr.k])||null;   // por ALA (v1.14): Ltint[0] = sur, [1] = norte
-    for(let s2=0;s2<2;s2++){
+    // con la viga partida (v1.23) el tramo YA es la mesa: su valor es el del
+    // string. wingVals solo pinta cuando el tramo sigue siendo una viga entera
+    const wv=(tr.Ltint.length>1&&wingVals&&wingVals[tr.row]&&wingVals[tr.row][tr.k])||null;
+    for(let s2=0;s2<tr.Ltint.length;s2++){
       I.tmpC.set(ramp(Math.max(0,Math.min(1,norm((wv&&wv[s2]!=null)?wv[s2]:sv,mn,mx)))));
-      I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ti*2+s2,I.tmpM);
-      I.tint.setColorAt(ti*2+s2,I.tmpC);
+      I.tmpM.multiplyMatrices(tr.Q,tr.Ltint[s2]);I.tint.setMatrixAt(ip,I.tmpM);
+      I.tint.setColorAt(ip,I.tmpC);ip++;
     }
   }
   I.tint.instanceMatrix.needsUpdate=true;
@@ -1770,7 +1838,28 @@ function repaintPick(){
   const el=$('pick');
   if(!PICK||!R3.last){if(el)el.style.display='none';return;}
   const d=R3.last, r=PICK.row, kk=PICK.k, w=PICK.w, c=d.c;
-  const ala=w==null?'':(w===0?' · ala SUR':' · ala NORTE');
+  /* UNA FILA SON DOS MESAS (v1.23). Hasta v1.22 el tramo era la VIGA entera y
+     sus dos mitades se llamaban «alas» de una misma mesa, con un tilt común:
+     de ahí que se vieran siempre iguales. El levantamiento dice otra cosa —la
+     fila articulada quiebra en el morro y cada mitad tiene su pendiente—, así
+     que ahora cada mesa es un tramo con su tilt, su cota y su string, y la
+     ficha enseña la OTRA mesa de su viga y si ese quiebro está medido. */
+  const lado=(T.segSide&&kk!=null&&T.segSide[r]&&T.segSide[r][kk]!=null)
+    ?' · mesa '+(T.segSide[r][kk]===0?'SUR':'NORTE')+' del morro'
+    :(w==null?'':(w===0?' · string a de 2 (ala SUR)':' · string b de 2 (ala NORTE)'));
+  const ala=lado;
+  // la otra mesa de LA MISMA VIGA (al otro lado del morro): es la comparación
+  // que pedía la vista — dos mesas de la misma fila con pendientes distintas
+  let hermana='';
+  if(T.segFila&&kk!=null&&T.segFila[r]){
+    const k2=T.segFila[r].findIndex((f,j)=>j!==kk&&f===T.segFila[r][kk]);
+    if(k2>=0&&T.segTilt){
+      const dif=Math.abs(T.segTilt[r][kk]-T.segTilt[r][k2]);
+      const med=T.segArt&&T.segArt[r]&&T.segArt[r][kk];
+      hermana=' <span style="color:var(--muted)">(la otra mesa de su viga, #'+(k2+1)+': '+T.segTilt[r][k2].toFixed(2)+'° · '+
+              (med?('quiebro MEDIDO, Δ '+dif.toFixed(2)+'°'):'viga rígida: sin quiebro medido')+')</span>';
+    }
+  }
   // el STRING seleccionado (v1.14): la entrada de la cadena de esa mesa y esa
   // ala — en El Burgo el string del plano que cae ahí; en cotas/genérica, «a»
   // (sur) / «b» (norte) de la fila medida
@@ -1787,7 +1876,11 @@ function repaintPick(){
   }else{
     txt='<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b> · línea x='+T.xs[r].toFixed(1)+' m'+
         (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
-        (T.segTilt&&kk!=null?' · tilt N-S de la mesa '+T.segTilt[r][kk].toFixed(2)+'° (línea '+T.tilt[r].toFixed(2)+'°)'
+        (T.segTilt&&kk!=null?' · tilt N-S <b>de la mesa</b> '+T.segTilt[r][kk].toFixed(2)+'°'+hermana+
+                              (T.segTilt[r].length>1?' <span style="color:var(--muted)">(las otras mesas de la línea: '+
+                                 T.segTilt[r].map((t2,j)=>j===kk?null:'#'+(j+1)+' '+t2.toFixed(2)+'°').filter(Boolean).slice(0,5).join(' · ')+
+                                 (T.segTilt[r].length>6?' …':'')+' · media de la línea '+T.tilt[r].toFixed(2)+'°)</span>'
+                                                     :' (línea '+T.tilt[r].toFixed(2)+'°)')
                             :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
         ' · cota '+((T.segZ&&kk!=null&&T.segZ[r]&&T.segZ[r][kk])?((T.segZ[r][kk][0]+T.segZ[r][kk][1])/2).toFixed(2)+' m (de la mesa)'
                                                                 :T.elev[r].toFixed(2)+' m')+
@@ -1867,7 +1960,7 @@ function repaintPick(){
       $('ninv').value=ninv;$('ninv').disabled=true;
     }else if(REALES[key]){
       // módulos de los strings REALES de las filas medidas (layout + largo, v1.16)
-      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:RP.P.mod,segMods:RP.P.segMods}).flat().reduce((a,e2)=>a+e2.mods,0);
+      modsTot=strInvCotas(RP.P.segs,RP.P.segs.map(()=>'1'),1.146,0.55,null,{mod:RP.P.mod,segMods:RP.P.segMods,segSide:RP.P.segSide}).flat().reduce((a,e2)=>a+e2.mods,0);
       if($('ninv').disabled)$('ninv').value=1;   // el 36 de El Burgo no es de esta planta
       ninv=Math.min(+$('ninv').value,+$('nrows').value)||1;
       $('ninv').value=ninv;$('ninv').disabled=false;
