@@ -1880,13 +1880,15 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     const enCotas = new Set(cotas.t);
     let n = 0;
     P.segTrk.forEach(l => l.forEach(tk => { if (!enCotas.has(tk)) throw new Error('segTrk apunta a un objeto que no es de cotas.t'); n++; }));
-    if (n !== P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas');
+    // v1.48: cada fila levantada son DOS mesas (sur y norte del morro)
+    if (n !== 2 * P.nFilas) throw new Error(n + ' mesas con segTrk para ' + P.nFilas + ' filas (esperadas ' + 2 * P.nFilas + ')');
+    if (P.nMesas !== n) throw new Error('nMesas (' + P.nMesas + ') no cuadra con segTrk (' + n + ')');
     for (const [[r1, k1], [r2, k2]] of P.segPairs)
       if (P.segTrk[r1][k1] !== P.segTrk[r2][k2]) throw new Error('una pareja bifila junta mesas de seguidores distintos');
-    // y el seguidor de una pareja tiene exactamente esas dos filas
+    // y el seguidor de una pareja tiene exactamente CUATRO mesas: dos por viga
     const [[r1, k1]] = P.segPairs[0];
     const cnt = P.segTrk.flat().filter(tk => tk === P.segTrk[r1][k1]).length;
-    if (cnt !== 2) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas');
+    if (cnt !== 4) throw new Error('el seguidor de la primera pareja aparece en ' + cnt + ' mesas (un bifila son cuatro)');
   });
 
   t('segLineMean y slewLimitSeg son la IDENTIDAD del camino por línea cuando todas las mesas llevan el valor de su línea', () => {
@@ -2014,10 +2016,12 @@ console.log('v1.44 · la ventana no parte trackers · la planta entera');
   const cotasA = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
   const cotasS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
   const filasDe = (tk) => (tk.f || []).filter(g => g && g.n && g.y && g.n.length >= 2 && g.y.length >= 2).length;
+  // v1.48: cada fila levantada entra como DOS mesas (sur y norte del morro),
+  // así que un tracker con sus dos vigas completas trae 2 × filas tramos
   const monos = (P) => {
     const cnt = new Map();
     P.segTrk.forEach(l => l.forEach(tk => cnt.set(tk, (cnt.get(tk) || 0) + 1)));
-    let m = 0; for (const [tk, n] of cnt) if (n !== filasDe(tk)) m++;
+    let m = 0; for (const [tk, n] of cnt) if (n !== 2 * filasDe(tk)) m++;
     return { m, trk: cnt.size };
   };
   t('la ventana de maxLines NUNCA deja un tracker con una sola fila (Ayora 80/30, San José 80) — antes 2 y 10 monofilas', () => {
@@ -2154,18 +2158,23 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
     t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
       const P = F.plantFromCotas(cotas, Infinity, 'all');
       const linea = new Map();
-      P.segTrk.forEach((l, r) => l.forEach(tk => { if (!linea.has(tk)) linea.set(tk, []); linea.get(tk).push(r); }));
+      P.segTrk.forEach((l, r) => l.forEach(tk => { if (!linea.has(tk)) linea.set(tk, new Set()); linea.get(tk).add(r); }));
       let n = 0, sinPareja = 0, noContiguas = 0;
       for (const tk of cotas.t) {
         if (!tk || filasDe(tk).length !== 2) continue;
         n++;
-        const v = linea.get(tk) || [];
-        if (v.length !== 2 || v[0] === v[1]) { sinPareja++; continue; }
+        const v = [...(linea.get(tk) || [])].sort((a, b) => a - b);
+        if (v.length !== 2) { sinPareja++; continue; }
         if (Math.abs(v[0] - v[1]) !== 1) noContiguas++;
       }
       if (sinPareja) throw new Error(`${sinPareja} de ${n} trackers sin pareja (sus dos vigas caen en la misma línea)`);
       if (noContiguas) throw new Error(`${noContiguas} de ${n} trackers con sus vigas en líneas NO contiguas`);
-      if (P.segPairs.length !== n) throw new Error(`${P.segPairs.length} parejas para ${n} trackers levantados`);
+      // v1.48: la pareja es de MESAS GEMELAS (la misma mitad en las dos vigas),
+      // así que un tracker trae DOS: la del sur del morro y la del norte
+      if (P.segPairs.length !== 2 * n) throw new Error(`${P.segPairs.length} parejas gemelas para ${n} trackers levantados (esperadas ${2 * n})`);
+      if (P.segDrive.length !== n) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers`);
+      const de4 = P.segDrive.filter(g => g.length === 4).length;
+      if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
     });
   }
 }
@@ -2178,19 +2187,38 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
     const P = F.plantFromCotas(cotas, Infinity, 'all');
     t(`${pl}: un eje por tracker entre SUS dos mesas, motor en la oeste, y ninguna mesa emparejada sin eje`, () => {
       const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
-      if (ejes.length !== P.segPairs.length) throw new Error(ejes.length + ' ejes para ' + P.segPairs.length + ' trackers');
+      // v1.48: UN eje por TRACKER (no por pareja de mesas gemelas), y cruza por
+      // el MORRO — el punto donde está el motor y donde la viga se articula
+      if (ejes.length !== P.segDrive.length) throw new Error(ejes.length + ' ejes para ' + P.segDrive.length + ' trackers');
       const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
       const conEje = new Set();
       for (const e of ejes) {
         if (!real.has([e.r1, e.k1, e.r2, e.k2].join('|'))) throw new Error('un eje une mesas de trackers distintos');
         conEje.add(e.r1 + '|' + e.k1); conEje.add(e.r2 + '|' + e.k2);
         const a = P.segs[e.r1][e.k1], b = P.segs[e.r2][e.k2];
-        if (e.solape > 0 && (e.n < Math.max(a[0], b[0]) - 1e-9 || e.n > Math.min(a[1], b[1]) + 1e-9))
-          throw new Error('el eje cae fuera del solape de sus mesas');
+        // el eje cruza por el MORRO: el punto medio de los morros de las dos
+        // vigas (que el tresbolillo real desplaza una de otra hasta ~4 m), y
+        // NUNCA por el centro de la mesa, que es donde caía antes
+        const mA = P.segMorro[e.r1][e.k1][0], mB = P.segMorro[e.r2][e.k2][0];
+        if (Math.abs(e.n - (mA + mB) / 2) > 1e-9)
+          throw new Error('el eje no cruza por el morro (n ' + e.n.toFixed(2) + ' vs ' + mA.toFixed(2) + ' / ' + mB.toFixed(2) + ')');
+        if (Math.abs(e.n - (a[0] + a[1]) / 2) < (a[1] - a[0]) / 4)
+          throw new Error('el eje cae en mitad de la mesa, no en su morro');
+        if (P.segSide[e.r1][e.k1] !== 0 || P.segSide[e.r2][e.k2] !== 0)
+          throw new Error('el eje no arranca de las mesas del sur del morro');
+      }
+      const trkConEje = new Set(ejes.map(e => P.segTrk[e.r1][e.k1]));
+      let sinEje = 0;
+      for (const g of P.segDrive) if (!trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
+      if (sinEje) throw new Error(sinEje + ' trackers con dos vigas pero sin eje');
+      // y todas las mesas del tracker van al MISMO θ: el motor es uno
+      for (const g of P.segDrive) {
+        const trks = new Set(g.map(([r, k]) => P.segTrk[r][k]));
+        if (trks.size !== 1) throw new Error('un accionamiento mueve mesas de trackers distintos');
       }
       let sin = 0;
-      P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) || !conEje.has(r2 + '|' + k2)) sin++; });
-      if (sin) throw new Error(sin + ' mesas con gemela pero sin eje');
+      P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { if (!conEje.has(r1 + '|' + k1) && P.segSide[r1][k1] === 0) sin++; });
+      if (sin) throw new Error(sin + ' mesas del sur con gemela pero sin eje');
       for (const [[r1, k1], [r2, k2]] of P.segPairs) {
         if (west[r1][k1] === west[r2][k2]) throw new Error('un tracker con dos motores o ninguno');
         const o = P.lineX[r1] <= P.lineX[r2] ? [r1, k1] : [r2, k2];
@@ -2199,7 +2227,10 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
       const enPareja = new Set(); P.segPairs.forEach(([[r1, k1], [r2, k2]]) => { enPareja.add(r1 + '|' + k1); enPareja.add(r2 + '|' + k2); });
       let motores = 0; west.forEach((l, r) => l.forEach((w, k) => { if (w) motores++; else if (!enPareja.has(r + '|' + k)) throw new Error('mesa suelta sin motor'); }));
       const sueltas = P.segs.reduce((a, l) => a + l.length, 0) - enPareja.size;
-      if (motores !== P.segPairs.length + sueltas) throw new Error(motores + ' motores para ' + P.segPairs.length + ' trackers y ' + sueltas + ' sueltas');
+      // westSeg marca la VIGA del motor: sus DOS mesas. El motor sigue siendo
+      // uno por tracker — va en el morro de esa viga, y quien dibuja lo pone
+      // una sola vez (las piezas del accionamiento caen en x≈0 del modelo).
+      if (motores !== P.segPairs.length + sueltas) throw new Error(motores + ' mesas de viga oeste para ' + P.segPairs.length + ' parejas y ' + sueltas + ' sueltas');
       void filasDe;
     });
   }

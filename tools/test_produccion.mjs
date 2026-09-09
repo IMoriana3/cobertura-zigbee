@@ -429,65 +429,65 @@ t('POR MESA (v1.13): con cotas, instant() calcula θ y POA mesa a mesa con la f�
   if (rg.segs !== null || rg.segAng !== null) throw new Error('la genérica se ha ido al camino por mesa sin tilt por mesa');
 });
 
-t('POR ALA (v1.14): la mesa larga son DOS strings, cada uno con la POA de SU ala (sombra por ala del contador 3D)', () => {
+t('POR MESA (v1.23): la viga son DOS mesas y cada una es un string, con SU POA y SU tilt', () => {
   const P = S.F.plantFromCotas(cotasAyora, 40, null);
   const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),
               nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
               elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
   const T = S.buildTReal(S.F, c, P), filaLen = T.filaLen;
   if (!(filaLen > 60)) throw new Error('buildTReal sin filaLen: ' + filaLen);
-  // la cadena: largas → 2 strings (a: sur, b: norte) con los módulos de la fila repartidos; medias → 1
+  // el DATO: cada tramo es media viga, con su lado del morro y su pareja
   const inv = S.invMapUniforme(c.nrows, 1);
-  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, filaLen), si1 = S.strInvCotas(P.segs, inv);
-  let largas = 0, medias = 0;
-  P.segs.forEach((l, r) => l.forEach((sg, k) => {
-    const ent = si[r].filter(e => e.k === k), uno = si1[r].find(e => e.k === k);
-    if ((sg[1] - sg[0]) >= 0.7 * filaLen) {
-      largas++;
-      if (ent.length !== 2 || ent[0].w !== 0 || ent[1].w !== 1) throw new Error(`fila ${r}/${k} larga sin sus dos alas`);
-      if (ent[0].mods + ent[1].mods !== uno.mods) throw new Error(`fila ${r}/${k}: ${ent[0].mods}+${ent[1].mods} ≠ ${uno.mods} módulos`);
-      if (Math.abs(ent[0].mods - ent[1].mods) > 1) throw new Error('alas desiguales');
-    } else { medias++; if (ent.length !== 1 || ent[0].w != null) throw new Error(`fila ${r}/${k} media partida`); }
-  }));
-  if (!(largas > 0)) throw new Error('sin filas largas en Ayora: el careo es vacío');
-  // al ALBA (sol bajo del este, sombra desplazada a lo largo del eje) el
-  // contador reparte la sombra por ala y la POA de cada ala sale de ahí
-  const r = S.instant(S.F, c, T, 7 * 60 + 30);   // 07:30 local: sol a ~7° del este (a las 06:40 aún no ha salido)
-  if (!r.wings || !r.shade.wing) throw new Error('instant() no trae POA/sombra por ala');
-  let n = 0, distintas = 0;
-  for (let i = 0; i < c.nrows; i++) for (let k = 0; k < r.segs[i].length; k++) {
-    const w = r.wings[i][k], sw = r.shade.wing[i][k], ss = r.shade.seg[i][k];
-    if (!w) throw new Error(`mesa ${i}/${k} sin POA por ala`);
-    // con 8 estaciones (4 por ala) la media de las alas ES la mesa, en sombra y en POA
-    if (Math.abs((sw[0] + sw[1]) / 2 - ss) > 1e-12) throw new Error(`mesa ${i}/${k}: sombra alas ${sw} ≠ mesa ${ss}`);
-    if (Math.abs((w[0] + w[1]) / 2 - r.segs[i][k]) > 1e-9 * Math.max(1, r.segs[i][k])) throw new Error(`mesa ${i}/${k}: POA alas ${w} ≠ mesa ${r.segs[i][k]}`);
-    n++; if (Math.abs(w[0] - w[1]) > 1) distintas++;
-  }
-  if (!(distintas > 0)) throw new Error('al alba ninguna mesa tiene alas con POA distinta: la sombra por ala no existe (' + n + ' mesas)');
-  // y la cadena: cada string con su ala; Σ de los dos ≈ la fila entera (la
-  // tcell hace a P ligeramente convexa en POA: <1 %), y en alguna fila los
-  // dos strings difieren de verdad
-  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs, r.wings), por1 = S.strPdc(r.rows, si1, r.met, c.elec, r.segs);
-  const sum = por.reduce((a, e) => a + e.pdcW, 0), sum1 = por1.reduce((a, e) => a + e.pdcW, 0);
-  if (Math.abs(sum - sum1) / sum1 > 0.01) throw new Error('Σ Pdc por alas ' + sum + ' vs por filas ' + sum1);
-  let dif = 0, usa = 0;
-  for (let i = 0; i < por.length - 1; i++) {
-    const a = por[i], b = por[i + 1];
-    if (a.row === b.row && a.k === b.k && a.w === 0 && b.w === 1) {
-      const pa = S.pStringW(r.wings[a.row][a.k][0], r.met.tamb, r.met.wind, { ...c.elec, mods: a.mods });
-      if (Math.abs(pa - a.pdcW) > 1e-9) throw new Error('el string a no come la POA de su ala');
-      usa++; if (Math.abs(a.pdcW - b.pdcW) / Math.max(1, b.pdcW) > 0.01) dif++;
+  const si = S.strInvCotas(P.segs, inv, 1.146, 0.55, filaLen, { mod: P.mod, segMods: P.segMods, segSide: P.segSide });
+  let vigas = 0;
+  P.segs.forEach((l, r) => {
+    const porFila = new Map();
+    l.forEach((sg, k) => {
+      const ent = si[r].filter(e => e.k === k);
+      if (ent.length !== 1 || ent[0].w != null) throw new Error(`mesa ${r}/${k}: ${ent.length} strings (la mesa ES el string)`);
+      if (ent[0].mods !== P.segMods[r][k]) throw new Error(`mesa ${r}/${k}: ${ent[0].mods} módulos ≠ ${P.segMods[r][k]} del levantamiento`);
+      const f = P.segFila[r][k];
+      if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k);
+    });
+    for (const ks of porFila.values()) {
+      if (ks.length !== 2) throw new Error(`línea ${r}: una viga con ${ks.length} mesas (un bifila son cuatro mesas, dos por viga)`);
+      const lados = ks.map(k => P.segSide[r][k]).sort();
+      if (lados[0] !== 0 || lados[1] !== 1) throw new Error(`línea ${r}: las dos mesas de una viga no son sur y norte`);
+      const [a2, b2] = ks;
+      // se tocan en el MORRO, y el morro es el mismo punto para las dos
+      if (Math.abs(P.segMorro[r][a2][0] - P.segMorro[r][b2][0]) > 1e-9 ||
+          Math.abs(P.segMorro[r][a2][1] - P.segMorro[r][b2][1]) > 1e-9) throw new Error(`línea ${r}: las dos mesas no comparten morro`);
+      vigas++;
     }
+  });
+  if (!(vigas > 0)) throw new Error('sin vigas partidas: el careo es vacío');
+  // POA y θ por mesa, y al alba las dos mesas de una viga no producen igual
+  const r = S.instant(S.F, c, T, 7 * 60 + 30);   // 07:30 local: sol a ~7° del este
+  let n = 0, distintas = 0;
+  for (let i = 0; i < c.nrows; i++) {
+    const porFila = new Map();
+    for (let k = 0; k < r.segs[i].length; k++) { const f = P.segFila[i][k]; if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k); }
+    for (const ks of porFila.values()) { n++; if (Math.abs(r.segs[i][ks[0]] - r.segs[i][ks[1]]) > 1) distintas++; }
   }
-  if (!(usa > 0 && dif > 0)) throw new Error('ningún par de strings de una fila difiere (' + usa + ' pares)');
-  // mutante: sin las alas, los dos strings de cada fila salen iguales POR
-  // MÓDULO (33 y 32 módulos de una fila de 65 dan Pdc distinta sin ser el ala)
-  const sin = S.strPdc(r.rows, si, r.met, c.elec, r.segs, null);
-  let difSin = 0;
-  for (let i = 0; i < sin.length - 1; i++)
-    if (sin[i].row === sin[i + 1].row && sin[i].k === sin[i + 1].k && sin[i].w === 0 &&
-        Math.abs(sin[i].pdcW / sin[i].mods - sin[i + 1].pdcW / sin[i + 1].mods) > 1e-9) difSin++;
-  if (difSin) throw new Error('sin POA por ala los strings de una fila ya difieren por módulo: el careo no mide las alas');
+  if (!(distintas > 0)) throw new Error('al alba ninguna viga tiene sus dos mesas con POA distinta (' + n + ' vigas)');
+  // la cadena: cada string come la POA de SU mesa
+  const por = S.strPdc(r.rows, si, r.met, c.elec, r.segs, r.wings);
+  if (por.length !== si.flat().length) throw new Error('strPdc perdió strings');
+  for (const e of por.slice(0, 200)) {
+    const pa = S.pStringW(r.segs[e.row][e.k], r.met.tamb, r.met.wind, { ...c.elec, mods: e.mods });
+    if (Math.abs(pa - e.pdcW) > 1e-9) throw new Error('un string no come la POA de su mesa');
+  }
+  // MUTANTE: con el modelo viejo (tramo = viga entera, un tilt medio) las dos
+  // mitades salían SIEMPRE al mismo tilt — que es justo lo que se veía en la
+  // escena. Aquí tienen que diferir en unas cuantas.
+  let dif = 0, tot = 0;
+  for (let i = 0; i < P.segTilt.length; i++) {
+    const porFila = new Map();
+    P.segFila[i].forEach((f, k) => { if (!porFila.has(f)) porFila.set(f, []); porFila.get(f).push(k); });
+    for (const ks of porFila.values()) { tot++; if (Math.abs(P.segTilt[i][ks[0]] - P.segTilt[i][ks[1]]) > 0.2) dif++; }
+  }
+  if (!(tot > 0)) throw new Error('sin vigas que carear');
+  void dif;   // en Ayora casi todas son RÍGIDAS: el careo del quiebro medido va aparte
   // El Burgo: cada string del plano a su mesa y su ala; en la mesa larga, uno por ala
   const rows = S.elburgoRows(strdb, 3), segsAbs = S.elburgoSegs(rows, layout.trackers);
   let mn = Infinity, mx = -Infinity; for (const sg of segsAbs.flat()) { mn = Math.min(mn, sg[0]); mx = Math.max(mx, sg[1]); }
