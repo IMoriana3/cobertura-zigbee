@@ -1,13 +1,16 @@
-import { chromium } from '/home/user/cobertura-zigbee/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
-const dem=readFileSync('/tmp/dem_pendiente.png');
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell',args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+const PUERTO = process.env.PUERTO || 8123;   // mismo convenio que el resto de bancos: un solo servidor sirve a todos
+
+const dem=readFileSync(new URL('./dem_pendiente_test.png', import.meta.url));   // el DEM sintetico VIVE EN EL REPO: en /tmp solo estaba en mi maquina
+const b=await chromium.launch({executablePath:EXE,args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
 const c=await b.newContext({viewport:{width:1000,height:700}});
 await c.route('**/elevation-tiles-prod/**', r=>r.fulfill({status:200,contentType:'image/png',body:dem}));
 await c.route('**/server.arcgisonline.com/**', r=>r.abort());
 await c.route('**/pnoa**', r=>r.abort());
 const p=await c.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message));
-await p.goto('http://127.0.0.1:8123/terreno.html?planta=fayon',{waitUntil:'load',timeout:150000});
+await p.goto(`http://127.0.0.1:${PUERTO}/terreno.html?planta=fayon`,{waitUntil:'load',timeout:150000});
 try{ await p.waitForFunction(()=>window.TRK&&window.TRK.length>0,{timeout:120000}); }catch(e){}
 await p.waitForTimeout(9000);
 console.log(JSON.stringify(await p.evaluate(()=>{

@@ -8,7 +8,7 @@
        python3 -m http.server 8124 --directory .   &
        node tools/test_fps.mjs elburgo ayora fayon                                                */
 import { chromium } from 'playwright-core';
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 const PLANTAS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 if (!PLANTAS.length) { console.error('uso: node tools/test_fps.mjs <planta…>'); process.exit(2); }

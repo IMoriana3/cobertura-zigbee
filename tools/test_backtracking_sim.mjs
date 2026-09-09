@@ -2196,7 +2196,11 @@ t('la ventana está elegida por medida, y 30 m es el último dx seguro', () => {
   if ([...base].some(id => id.startsWith('TR-07')))
     throw new Error('la ventana buena marca el talud de TR-07, que es terreno real');
 });
-t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
+t('Python y el oráculo señalan EXACTAMENTE las mismas filas', () => {
+  // Señalar no es lo mismo que tirar: una fila con UNA punta contaminada se
+  // REPARA (se le repone esa cota y conserva posición, largo y la otra punta) y
+  // solo se descarta la que pierde las dos puntas. Lo que este careo exige es
+  // que las dos implementaciones vean lo mismo, no qué se hace después.
   const f = path.join(ROOT, 'sanjose_puntos.json');
   if (!fs.existsSync(f)) return;
   const P = JSON.parse(fs.readFileSync(f, 'utf-8'));
@@ -2206,12 +2210,86 @@ t('Python y el oráculo condenan EXACTAMENTE las mismas filas', () => {
   try { r = require_child().execFileSync('python3',
     [path.join(ROOT, 'tools', 'cotas_asbuilt.py'), 'sanjose'], { encoding: 'utf-8' }); }
   catch (e) { throw new Error('cotas_asbuilt.py falla:\n' + ((e.stdout || '') + (e.stderr || '')).slice(-600)); }
-  const dicho = new Set([...r.matchAll(/^\s+(\S+)\s+cota .*\[por punto\]/gm)].map(m => m[1]));
+  const dicho = new Set([...r.matchAll(/^\s+(\S+)\s+cota .*\[(?:reparada|descartada)\]/gm)].map(m => m[1]));
   const falta = [...esp].filter(x => !dicho.has(x)), sobra = [...dicho].filter(x => !esp.has(x));
   if (falta.length || sobra.length)
-    throw new Error('discrepan: Python no condena ' + (falta.join(', ') || '—') +
-                    ' · condena de más ' + (sobra.join(', ') || '—'));
-  if (!esp.size) throw new Error('el oráculo no condena nada: el test se quedó sin dientes');
+    throw new Error('discrepan: Python no señala ' + (falta.join(', ') || '—') +
+                    ' · señala de más ' + (sobra.join(', ') || '—'));
+  if (!esp.size) throw new Error('el oráculo no señala nada: el test se quedó sin dientes');
+});
+t('una punta contaminada se REPONE y no se lleva por delante la fila entera', () => {
+  // La contaminación es de la COTA: la X,Y del punto sigue donde el topógrafo
+  // la puso. Tirar la fila entera por una punta se llevaba su posición, su
+  // largo y las cotas SANAS que tuviera, y su tracker acababa reconstruido del
+  // plano con TODO estimado en vez de una sola cota.
+  const fc = path.join(ROOT, 'sanjose_cotas.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
+  if (!fs.existsSync(fc) || !fs.existsSync(fa)) return;
+  const C = JSON.parse(fs.readFileSync(fc, 'utf-8'));
+  const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
+  const AB = new Map(A.f.map(r => [r.id, r]));
+  let rep = 0;
+  for (const t of C.t) {
+    if (!t || t.est) continue;
+    for (const g of t.f) {
+      if (!g.ye || g.ye === 3) continue;
+      rep++;
+      // la geometría tiene que seguir siendo la MEDIDA, al centímetro
+      const cand = A.f.filter(r => Math.abs(r.x - g.x) < 0.05 &&
+        Math.abs(-r.zs - g.n[0]) < 0.05 && Math.abs(-r.zn - g.n[1]) < 0.05);
+      if (!cand.length) {
+        // la única fila que puede no estar en el as-built es la HERMANA
+        // DUPLICADA de un tracker inc=1: no se midió, se copia de su gemela
+        // —y por eso hereda su marca—, pero su tracker tiene que decirlo.
+        if (!t.inc)
+          throw new Error('una fila reparada no cuadra con ninguna del as-built ' +
+            'y su tracker no es inc=1: x=' + g.x + ' n=' + g.n);
+        const gem = t.f.find(o => o !== g);
+        if (!gem || Math.abs(gem.y[0] - g.y[0]) > 1e-9 || Math.abs(gem.y[1] - g.y[1]) > 1e-9)
+          throw new Error('hermana duplicada de una fila reparada que NO copia a su gemela: x=' + g.x);
+        rep--;                                   // no cuenta como fila reparada medida
+        continue;
+      }
+      // y la punta repuesta NO puede ser la que traía el as-built contaminado
+      const y = g.ye === 1 ? g.y[0] : g.y[1];
+      const orig = g.ye === 1 ? cand[0].ys : cand[0].yn;
+      if (Math.abs(y - orig) < 1e-9)
+        throw new Error('la punta marcada como repuesta conserva la cota contaminada: ' + cand[0].id);
+      // la otra punta, en cambio, tiene que seguir siendo la medida
+      const otra = g.ye === 1 ? g.y[1] : g.y[0];
+      const otraOrig = g.ye === 1 ? cand[0].yn : cand[0].ys;
+      if (Math.abs(otra - otraOrig) > 1e-6)
+        throw new Error('la punta SANA de una fila reparada se ha tocado: ' + cand[0].id);
+      // y la repuesta tiene que caer en la banda de lo medido, no en el limbo
+      if (Math.abs(y - otra) > 40)
+        throw new Error('la cota repuesta de ' + cand[0].id + ' sigue a ' +
+          Math.abs(y - otra).toFixed(1) + ' m de la otra punta: eso es la otra referencia otra vez');
+    }
+  }
+  // Y LO DERIVADO TIENE QUE CUADRAR CON LO EMITIDO. pa son las dos medias
+  // pendientes de la fila y salen de sus propias cotas: si una punta se
+  // repone y pa se queda como estaba, entra al modelo una pendiente de la
+  // referencia vieja — pasó, y valía 196,8 %.
+  for (const t of C.t) {
+    if (!t) continue;
+    for (const g of t.f) {
+      if (!g.pa || !g.pa.length || g.nm === null || g.ym === null) continue;
+      const Ls = g.nm - g.n[0], Ln = g.n[1] - g.nm;
+      const esp = [];
+      if (Ls > 5) esp.push((g.ym - g.y[0]) / Ls * 100);
+      if (Ln > 5) esp.push((g.y[1] - g.ym) / Ln * 100);
+      if (esp.length !== g.pa.length)
+        throw new Error('pa tiene ' + g.pa.length + ' valores y sus cotas dan ' + esp.length + ' (x=' + g.x + ')');
+      for (let i = 0; i < esp.length; i++)
+        if (Math.abs(esp[i] - g.pa[i]) > 0.01)
+          throw new Error('pa[' + i + '] = ' + g.pa[i].toFixed(3) + ' % no sale de las cotas de su fila (' +
+            esp[i].toFixed(3) + ' %) en x=' + g.x + ': un derivado se quedó sin rehacer');
+    }
+  }
+  if (rep < 10) throw new Error('apenas ' + rep + ' filas reparadas: el test se quedó sin dientes');
+  if ((C.n_ye || 0) < rep) throw new Error('el meta no declara todas las cotas no medidas (n_ye)');
+  // y el reconstruido del plano lleva las DOS puntas marcadas
+  for (const t of C.t) if (t && t.est) for (const g of t.f)
+    if (g.ye !== 3) throw new Error('un tracker reconstruido no declara ye=3');
 });
 t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila', () => {
   // Este es el motivo de todo el cambio, y el dato dice algo más preciso de lo
@@ -2565,7 +2643,7 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   });
 }
 
-console.log('v1.50 · la cota estimada marca la MESA, no la fila');
+console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
 {
   // El saneador de cotas salva la mitad limpia de una fila contaminada y deja
   // marcado en `ey` QUE TOPE no es medida. Ese detalle tiene que llegar hasta
@@ -2577,18 +2655,13 @@ console.log('v1.50 · la cota estimada marca la MESA, no la fila');
   t('sanjose: un tope estimado (ey) marca SOLO su mesa; la otra mitad sigue siendo medida', () => {
     const conEy = [];
     for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
-      if (f.ey && (f.ey[0] || f.ey[1])) conEy.push(f);
-    if (conEy.length < 5) throw new Error('sin filas con ey en el fichero: el careo no prueba nada');
-    // ninguna fila trae los DOS topes estimados: si los dos se pierden, la fila
-    // se cae entera y no llega hasta aquí
-    for (const f of conEy) if (f.ey[0] && f.ey[1]) throw new Error('fila con los dos topes estimados');
-    let mesasEst = 0, mesasMed = 0;
-    for (let r = 0; r < P.segs.length; r++) for (let k = 0; k < P.segs[r].length; k++) {
-      const fi = P.segFila[r][k];
-      // mesas de una fila con ey: la del lado marcado va estimada y la otra no
+      if (f.ye === 1 || f.ye === 2) conEy.push(f);
+    if (conEy.length < 5) throw new Error('sin filas con punta repuesta (ye) en el fichero: el careo no prueba nada');
+    let mesasEst = 0;
+    for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
       if (P.segEst[r][k]) mesasEst++;
-    }
-    // cada fila con un tope estimado aporta UNA mesa marcada, no dos
+    // las mesas de los trackers reconstruidos del plano van marcadas enteras;
+    // lo que se comprueba aquí es que una punta repuesta marca UNA mesa y no dos
     const trkEst = new Set();
     for (const tk of cotas.t) if (tk && tk.est) trkEst.add(tk);
     let mesasDeTrkEst = 0;
@@ -2596,24 +2669,23 @@ console.log('v1.50 · la cota estimada marca la MESA, no la fila');
       if (P.segEst[r][k] && trkEst.has(P.segTrk[r][k])) mesasDeTrkEst++;
     const soloEy = mesasEst - mesasDeTrkEst;
     if (soloEy !== conEy.length)
-      throw new Error(`${conEy.length} filas con un tope estimado pero ${soloEy} mesas marcadas (una por fila y solo una)`);
+      throw new Error(`${conEy.length} filas con una punta repuesta pero ${soloEy} mesas marcadas (debe ser una por fila)`);
   });
   t('MUTANTE: marcar la fila entera (o no marcar nada) rompe el careo', () => {
     const conEy = [];
     for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
-      if (f.ey && (f.ey[0] || f.ey[1])) conEy.push(f);
-    // (a) sin ey en el fichero, plantFromCotas no marca ninguna de esas mesas
-    const sinEy = JSON.parse(JSON.stringify(cotas));
-    for (const tk of sinEy.t) if (tk) for (const f of tk.f) f.ey = null;
-    const P0 = F.plantFromCotas(sinEy, Infinity, 'all');
+      if (f.ye === 1 || f.ye === 2) conEy.push(f);
     const cuenta = (Q) => { let c = 0; for (const fila of Q.segEst) for (const b of fila) if (b) c++; return c; };
-    if (cuenta(P0) >= cuenta(P)) throw new Error('quitar ey no cambia el marcado: no se está leyendo');
-    // (b) marcando los dos topes salen DOS mesas por fila en vez de una
+    // (a) sin ye en el fichero, plantFromCotas no marca ninguna de esas mesas
+    const sinEy = JSON.parse(JSON.stringify(cotas));
+    for (const tk of sinEy.t) if (tk && !tk.est) for (const f of tk.f) f.ye = 0;
+    if (cuenta(F.plantFromCotas(sinEy, Infinity, 'all')) >= cuenta(P))
+      throw new Error('quitar ye no cambia el marcado: no se está leyendo');
+    // (b) marcando la fila entera (ye=3) salen DOS mesas por fila en vez de una
     const doble = JSON.parse(JSON.stringify(cotas));
-    for (const tk of doble.t) if (tk) for (const f of tk.f) if (f.ey && (f.ey[0] || f.ey[1])) f.ey = [1, 1];
-    const P2 = F.plantFromCotas(doble, Infinity, 'all');
-    if (cuenta(P2) !== cuenta(P) + conEy.length)
-      throw new Error('marcar los dos topes no dobla las mesas marcadas: el lado no se está respetando');
+    for (const tk of doble.t) if (tk && !tk.est) for (const f of tk.f) if (f.ye === 1 || f.ye === 2) f.ye = 3;
+    if (cuenta(F.plantFromCotas(doble, Infinity, 'all')) !== cuenta(P) + conEy.length)
+      throw new Error('marcar la fila entera no dobla las mesas marcadas: el lado no se está respetando');
   });
 }
 

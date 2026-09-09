@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let N = 0, FAIL = 0;
@@ -129,7 +130,7 @@ const srv = http.createServer((req, res) => {
 const port = srv.address().port;
 
 const { chromium } = await import('playwright');
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const browser = await chromium.launch({ executablePath: EXE });
 const pg = await browser.newPage();
 const errs = [];
 pg.on('pageerror', e => errs.push(e.message));

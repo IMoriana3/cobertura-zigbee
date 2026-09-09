@@ -4,14 +4,17 @@
    y se sirve un terrarium generado (tools/dem_sintetico.mjs): ondulado CONTINUO entre teselas, así que
    el relieve es real, medible y sin costuras falsas.
    Uso:  node tools/test_relieve_plantas.mjs <planta> [<planta> ...]                                */
-import pw from '/home/user/cobertura-zigbee/node_modules/playwright-core/index.js';
+import pw from 'playwright-core';
 const { chromium } = pw;
 import { teselaTerrarium, relieve, zxy } from './dem_sintetico.mjs';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+const PUERTO = process.env.PUERTO || 8123;   // mismo convenio que el resto de bancos: un solo servidor sirve a todos
+
 
 const COTA = relieve(25, 800, 300);          // ondulado continuo, pendiente máxima 20%
 const CACHE = new Map();
 const PLANTAS = process.argv.slice(2);
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell',
+const b = await chromium.launch({ executablePath: EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 1000, height: 700 } });
 await ctx.route('**/elevation-tiles-prod/**', r => {
@@ -27,7 +30,7 @@ await ctx.route('**/pnoa**', r => r.abort());
 for (const planta of PLANTAS) {
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('http://127.0.0.1:8123/terreno.html?planta=' + planta, { waitUntil: 'load', timeout: 150000 });
+  await p.goto(`http://127.0.0.1:${PUERTO}/terreno.html?planta=` + planta, { waitUntil: 'load', timeout: 150000 });
   try { await p.waitForFunction(() => window.TRK && window.TRK.length > 0, { timeout: 120000 }); } catch (e) {}
   await p.waitForTimeout(9000);
   const r = await p.evaluate(() => {

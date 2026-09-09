@@ -25,6 +25,27 @@ def check(n, cond, extra=None):
         ko += 1; print("FAIL " + n + ("" if extra is None else " -> %s" % (extra,)))
 
 
+# EL NUCLEO RF NO ES OPCIONAL PARA ESTE BANCO.
+# `plan_barrido_rf.py` importa la fisica de un directorio HERMANO
+# (`../cobertura-rf-fv/python`) y, si no esta, se lo traga en silencio (`Z =
+# None`) y emite la hoja igual: sin margenes previstos y, por tanto, sin pasada
+# de canto. La hoja sigue siendo una hoja, pero HUECA.
+#
+# Eso reventaba aqui en un checkout limpio con un `ZeroDivisionError` a pelo —
+# todas las parejas con 0 mesas, desviacion tipica cero— que no decia nada. Y lo
+# peor no era el traceback: es que la mitad de las comprobaciones de este banco
+# (la correlacion, y sobre todo «las palas de canto tapan mas») no comprueban
+# NADA sin el nucleo, y habrian pasado en verde el dia que dejaran de reventar.
+#
+# Asi que se exige, y se dice donde se busca.
+NUCLEO = os.path.join(os.path.dirname(RAIZ), "cobertura-rf-fv", "python")
+if not os.path.isfile(os.path.join(NUCLEO, "zigbee_pv_model.py")):
+    print("FAIL falta el nucleo RF: sin el, el planificador no calcula margenes "
+          "ni pasada de canto y este banco no comprueba lo que dice comprobar.")
+    print("     se busca en: %s" % NUCLEO)
+    print("     hace falta el repo `cobertura-rf-fv` como directorio HERMANO de este.")
+    sys.exit(1)
+
 sal = os.path.join(tempfile.mkdtemp(), "barrido.csv")
 r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"),
                     "ayora", "--salida", sal],
@@ -51,10 +72,17 @@ n = len(D); md, mm = sum(D) / n, sum(M) / n
 cov = sum((a - md) * (b - mm) for a, b in zip(D, M)) / n
 sd = math.sqrt(sum((a - md) ** 2 for a in D) / n)
 sm = math.sqrt(sum((b - mm) ** 2 for b in M) / n)
-rr = cov / (sd * sm)
-vif = 1 / (1 - rr * rr)
-# El dato de hoy no separa nada; una hoja que tampoco separase no serviría.
-check("distancia y mesas quedan SEPARADAS (VIF < 5)", vif < 5, "r=%+.2f VIF=%.1f" % (rr, vif))
+# Una desviación típica de cero es un dato, no una excepción: significa que la
+# hoja no varía en algo que el ajuste necesita que varíe. Se dice, no se revienta.
+if sd == 0 or sm == 0:
+    check("distancia y mesas quedan SEPARADAS (VIF < 5)", False,
+          "la hoja no varía: %d parejas, todas con %d mesas y distancias %s"
+          % (n, M[0], "iguales" if sd == 0 else "distintas"))
+else:
+    rr = cov / (sd * sm)
+    vif = 1 / (1 - rr * rr)
+    # El dato de hoy no separa nada; una hoja que tampoco separase no serviría.
+    check("distancia y mesas quedan SEPARADAS (VIF < 5)", vif < 5, "r=%+.2f VIF=%.1f" % (rr, vif))
 
 check("ningún par pasa de 500 m: más allá no es un enlace, es un hueco",
       max(D) <= 500, max(D))
@@ -143,24 +171,35 @@ check("todo destino existe en el censo de la planta", not falta, sorted(falta)[:
 # como `null` en el fichero de cotas), y Fayon, Tunez y Bagnarelli porque ninguna
 # de sus NCU llega a 25 seguidores y no se elegia ninguna. Una planta sin hoja de
 # barrido es una planta que no se puede calibrar.
+# UN BANCO NO ESCRIBE EN EL REPO. Estas tres llamadas iban SIN `--salida`, asi
+# que el planificador escribia en su ruta por defecto: `cobertura_coords/<pl>/
+# barrido_<pl>_NCU<nn>.csv`, dentro del repo. O sea que correr este banco
+# reescribia DIEZ hojas de barrido de campo, y lo hacia en silencio: el arbol se
+# quedaba sucio y esos ficheros se podian colar en un commit sin querer (a mi me
+# aparecio dos veces hoy). Lo que se comprueba —que la hoja sale y que la
+# consola lo dice— no necesita tocar el repo para nada.
+TMPD = tempfile.mkdtemp()
 print("\n· la hoja sale para TODAS las plantas, no solo para las grandes")
 import subprocess
 PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "tunez",
            "paramo", "benante", "panbianco", "polvorin"]
 malas = []
 for pl in PLANTAS:
-    r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), pl],
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), pl,
+                        "--salida", os.path.join(TMPD, "b_%s.csv" % pl)],
                        capture_output=True, text=True, cwd=RAIZ)
     if r.returncode != 0 or "escrito:" not in r.stdout:
         malas.append((pl, (r.stderr or r.stdout).strip().splitlines()[-1:] or [""]))
 check("las diez plantas producen su hoja", not malas, malas)
 
 # y las pequeñas la producen DICIENDOLO, no callando que van con menos nodos
-r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "bagnarelli"],
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "bagnarelli",
+                    "--salida", os.path.join(TMPD, "b_bagnarelli2.csv")],
                    capture_output=True, text=True, cwd=RAIZ)
 check("una planta pequeña avisa de que se barre la NCU mayor",
       "ninguna NCU llega a 25" in r.stdout, r.stdout[:200])
-r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "ayora"],
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "ayora",
+                    "--salida", os.path.join(TMPD, "b_ayora2.csv")],
                    capture_output=True, text=True, cwd=RAIZ)
 check("y una grande no avisa de nada", "ninguna NCU llega a 25" not in r.stdout, r.stdout[:200])
 

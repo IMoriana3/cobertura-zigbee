@@ -5,7 +5,7 @@
        python3 -m http.server 8124 --directory .   &
        node tools/test_panel_plegable.mjs                                                      */
 import { chromium } from 'playwright-core';
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 const MOVIL = { width: 390, height: 844 };          // iPhone 14 en vertical
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });

@@ -12,7 +12,7 @@
  *     node tools/test_bt3d_rot.mjs elburgo
  */
 import { chromium } from 'playwright-core';
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
