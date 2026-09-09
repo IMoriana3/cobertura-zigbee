@@ -306,13 +306,30 @@ t('ámbito por NCU: el plano se parte en parques SIN perder strings, y cada parq
     const r = S.instant(S.F, c, T, 720);
     if (!(r.plant > 300)) throw new Error('el parque de una NCU no calcula (' + r.plant + ' W/m²)');
   }
-  // y en cotas (Ayora): layout 751 ≠ cotas 754, así que el 1:1 NO vale — el
-  // casado va por COORDENADAS y tiene que cubrir la planta (el `if (ncuOf)`
-  // que aquí callaba cuando no alineaba es exactamente como se escapó el bug
-  // de «elijo NCU y me carga la planta entera»)
-  if (layAyora.trackers.length === cotasAyora.t.length)
-    throw new Error('Ayora ahora alinea 1:1 (' + layAyora.trackers.length + '): este careo vigila el camino por coordenadas — revísalo');
+  /* Y en cotas (Ayora). Esto llevaba un testigo: «si algún día alinean 1:1,
+     revísalo». Ya alinean —751 y 751—, porque el levantamiento seguía trayendo
+     las tres unidades de la NCU7 que se desmontaron y se ha vuelto a generar.
+     Revisado: el casado de producción SIGUE yendo por COORDENADAS y aquí se
+     sigue probando ese camino, que es por donde se escapó el bug de «elijo NCU
+     y me carga la planta entera» (el `if (ncuOf)` callaba cuando no alineaba).
+     El 1:1 no se adopta: alinear hoy no lo hace cierto mañana — basta que se
+     desmonte otra unidad.
+
+     Pero ahora que alinean, el testigo puede ser una COMPROBACIÓN de verdad en
+     vez de un aviso: si los dos caminos son correctos tienen que dar la MISMA
+     NCU para cada seguidor. Que discrepen significa que uno de los dos miente,
+     y hasta hoy no había forma de saberlo. */
   const m = S.ncuPorCoordenadas(cotasAyora, layAyora.trackers);
+  if (layAyora.trackers.length === cotasAyora.t.length) {
+    const discrepan = [];
+    for (let i = 0; i < cotasAyora.t.length; i++) {
+      const porCoord = m.ncuOf[i], porIndice = layAyora.trackers[i].ncu;
+      if (porCoord != null && porCoord !== porIndice) discrepan.push(`${i}: coord ${porCoord} ≠ índice ${porIndice}`);
+    }
+    if (discrepan.length)
+      throw new Error(`${discrepan.length} seguidores con NCU distinta segun el camino ` +
+                      `(${discrepan.slice(0, 3).join('; ')}): uno de los dos casados miente`);
+  }
   if (m.casados < cotasAyora.t.length * 0.9)
     throw new Error('solo ' + m.casados + '/' + cotasAyora.t.length + ' trackers de Ayora casan con su NCU por coordenadas');
   const primera = m.ncuOf.find(v => v != null);

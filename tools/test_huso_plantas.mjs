@@ -14,7 +14,7 @@
        python3 -m http.server 8124 &
        node tools/test_huso_plantas.mjs                                                          */
 import { chromium } from 'playwright-core';
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 /* Huso REAL de cada emplazamiento en el solsticio de junio, en minutos sobre UTC. Escritos aquí a
    propósito: son el oráculo, y vienen de la zona horaria del país, no del código que se prueba. */

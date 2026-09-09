@@ -35,10 +35,12 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+const PUERTO = process.env.PUERTO || 8100;   // mismo convenio que el resto de bancos: un solo servidor sirve a todos
+
 const RAIZ = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-const BASE = process.env.BASE || 'http://127.0.0.1:8100';
-const EXEC = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
+const BASE = process.env.BASE || `http://127.0.0.1:${PUERTO}`;
+import { EXEC } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 let ok = 0, ko = 0;
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
