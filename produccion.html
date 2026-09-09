@@ -182,6 +182,41 @@ input[type=range]{accent-color:var(--live)}
       </div>
 
       <div class="card" style="margin-top:12px">
+        <h2>⛰ Horizonte lejano</h2>
+        <div class="f">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="horon" type="checkbox" style="width:auto"> Perfil «azimut:elevación» (grados)</label>
+          <input id="horv" type="text" value="0:0; 90:0; 180:0; 270:0"
+            title="Pares azimut:elevación separados por ; — el mismo formato que exporta un estudio de sombras lejanas o PVGIS. Entre pares se interpola, y da la vuelta por el 0. Cuando el sol cae por debajo de su horizonte se apaga el HAZ y el circunsolar, y queda la difusa: el disco no se ve, el cielo sí."
+            style="font-family:var(--mono);font-size:.7rem">
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">La sombra entre filas ya va con geometría exacta;
+        esto es lo de FUERA de la planta. No reduce el factor de vista del cielo por el volumen del relieve
+        —un cerro tapa difusa, no solo el disco—: efecto de segundo orden, declarado.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>📉 Incertidumbre (P50/P90)</h2>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que se firma no es un número, es
+        un <b>P90</b>: la energía que se supera nueve años de cada diez. Se compone en <b>cuadratura</b> —sumarlas
+        supondría que todo sale mal a la vez, y eso no es un P90 sino un peor caso—.</p>
+        <div class="row2">
+          <div class="f"><label>Meteo σ %</label><input id="umeteo" type="number" step="0.5" min="0" value="4.0"
+            title="Variabilidad interanual del recurso: cuánto se aparta la irradiación de un año concreto del TMY. Típico 3-5 % en anual."></div>
+          <div class="f"><label>Modelo σ %</label><input id="umodelo" type="number" step="0.5" min="0" value="3.5"
+            title="Incertidumbre de la transposición y de la cadena eléctrica. Típico 3-4 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Soiling σ %</label><input id="usoil" type="number" step="0.5" min="0" value="1.0"
+            title="Cuánto puede desviarse el ensuciamiento real del supuesto."></div>
+          <div class="f"><label>Disponib. σ %</label><input id="udisp" type="number" step="0.5" min="0" value="0.5"
+            title="Incertidumbre de la disponibilidad de planta y red."></div>
+        </div>
+        <div class="f"><label>Degradación σ %/año</label><input id="udeg" type="number" step="0.05" min="0" value="0.15"
+          title="Incertidumbre de la tasa de degradación. Se ACUMULA con el año estimado: en el año 1 no pesa nada y en el 25 es la que más manda."></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
         <h2>🪟 Vidrio (IAM)</h2>
         <div class="f"><label>IAM b₀</label><input id="iamb0" type="number" step="0.01" min="0" max="0.5" value="0.05"
           title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz. 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo desactiva. Ya se aplicaba (fijo en 0,05) al haz, al circunsolar y —con ángulos equivalentes de Duffie-Beckman— a la difusa y al albedo; aquí se hace editable."></div>
@@ -467,6 +502,80 @@ function auxW(o){return Math.max(0,+(o&&o.aux)||0)*1000;}   // kW -> W, de día 
    viene, el 0,05 de siempre — que es lo que se aplicaba fijo hasta ahora. */
 function iamDe(c){const v=c&&c.iamb0;return (v==null||!isFinite(v))?0.05:Math.max(0,Math.min(0.5,v));}
 
+/* ── HORIZONTE LEJANO ───────────────────────────────────────────────────────
+   El modelo resuelve la sombra ENTRE FILAS con geometría exacta y el terreno de
+   la planta, pero el sol no sale por una línea recta: sale por detrás de lo que
+   haya alrededor. San José está en Arequipa, con relieve; una planta en un
+   valle puede perder media hora de sol por la mañana y otra media por la tarde,
+   y eso no aparecía por ningún lado.
+
+   CÓMO SE MODELA. Un perfil de altura de horizonte por azimut —el mismo formato
+   que exporta un estudio de sombras lejanas o PVGIS—: pares «azimut:elevación»
+   en grados, y entre ellos se interpola. Cuando el sol está por DEBAJO de su
+   horizonte, el HAZ y el circunsolar se apagan (no hay disco solar a la vista)
+   y queda la difusa del cielo: exactamente lo que hace PVsyst con su línea de
+   horizonte, y lo que se ve en campo cuando el sol se pone tras el cerro y la
+   planta sigue dando algo.
+
+   LO QUE NO HACE: no reduce el factor de vista del cielo por el volumen del
+   relieve —un cerro tapa cielo difuso, no solo el disco—, que es un efecto de
+   segundo orden y queda declarado.                                          */
+function parseHorizonte(txt){
+  const v=String(txt||'').split(/[;\n]+/).map(p=>p.split(/[:,]/).map(x=>parseFloat(String(x).trim())))
+          .filter(p=>p.length===2&&isFinite(p[0])&&isFinite(p[1]))
+          .map(p=>[((p[0]%360)+360)%360, Math.max(0,p[1])]).sort((a,b)=>a[0]-b[0]);
+  return v.length>=2?v:null;
+}
+function horizonteEn(perfil,azDeg){
+  if(!perfil||perfil.length<2)return 0;
+  const a=((azDeg%360)+360)%360;
+  let i=0; while(i<perfil.length&&perfil[i][0]<=a)i++;
+  const p0=perfil[(i-1+perfil.length)%perfil.length], p1=perfil[i%perfil.length];
+  let d=p1[0]-p0[0]; if(d<0)d+=360;
+  let t=a-p0[0]; if(t<0)t+=360;
+  return d<1e-9?p0[1]:p0[1]+(p1[1]-p0[1])*(t/d);
+}
+/* apaga el haz cuando el sol está tras el horizonte lejano; la difusa se queda */
+function irrTrasHorizonte(irr,elevDeg,azDeg,perfil){
+  if(!perfil||!irr)return irr;
+  if(elevDeg>horizonteEn(perfil,azDeg))return irr;
+  return {ghi:Math.max(0,irr.dhi),dni:0,dhi:Math.max(0,irr.dhi)};
+}
+
+/* ── P50 / P90: la cifra con su banda ───────────────────────────────────────
+   Una estimación de generación que da UN número no sirve para decidir. Lo que
+   se firma es un P90: la energía que se supera nueve años de cada diez.
+
+   DE DÓNDE SALE LA BANDA. De la incertidumbre de las cosas que la producen, en
+   cuadratura porque son independientes:
+
+     · la METEO de un año concreto contra el TMY (variabilidad interanual del
+       recurso, típico 3-5 % en irradiación anual);
+     · el MODELO de transposición y la cadena eléctrica (típico 3-4 %);
+     · la DEGRADACIÓN, cuya incertidumbre crece con el año que se estima —en el
+       año 1 no hay ninguna, en el 25 es la que más pesa—;
+     · el SOILING y la disponibilidad, que son estimaciones de operación.
+
+   POR QUÉ EN CUADRATURA Y NO SUMANDO. Sumar las incertidumbres supone que todo
+   sale mal a la vez, y eso no es un P90, es un peor caso. La raíz de la suma de
+   cuadrados es lo que se hace en la industria y lo que hace un banco.
+
+   EL P50 ES LA CIFRA QUE YA SE CALCULA: el TMY es, por construcción, un año
+   típico. Aquí solo se le pone la banda alrededor, con el cuantil normal
+   (z = 1,2816 para el 90 %).                                                */
+function sigmaTotal(u,anio){
+  const a=Math.max(1,+anio||1);
+  const q=[+u.meteo||0, +u.modelo||0, +u.soiling||0, +u.dispo||0,
+           (+u.degrada||0)*(a-1)];                 // la de la degradación se acumula con los años
+  return Math.sqrt(q.reduce((s,v)=>s+v*v,0));
+}
+const Z90=1.2815515655446004;                      // cuantil normal del 90 %
+function bandaPXX(e50,u,anio){
+  const s=sigmaTotal(u,anio)/100;
+  return {p50:e50, sigma:s*100, p90:e50*(1-Z90*s), p75:e50*(1-0.6744897501960817*s),
+          p95:e50*(1-1.6448536269514722*s)};
+}
+
 /* ── BIFACIALIDAD ──────────────────────────────────────────────────────────
    Un tracker de hoy lleva módulos bifaciales y la cara de atrás aporta entre un
    5 y un 15 %. Sin esto la cifra sale sistemáticamente baja, y era el hueco más
@@ -729,6 +838,51 @@ function careoMedidas(esp,med){        // esp:[{inv,kwh}] · med:Map inv→kWh
   return rows;
 }
 
+/* ── CALIBRACIÓN CONTRA LA MEDIDA ───────────────────────────────────────────
+   El careo de arriba dice, inversor a inversor, cuánto se desvía lo estimado de
+   lo medido. Eso está bien para cazar un inversor parado, pero no contesta la
+   pregunta que importa: ¿está el MODELO bien calibrado, o hay un sesgo que se
+   arrastra en toda la planta?
+
+   Es la única forma de saber si todo lo demás —bifacialidad, soiling, trafo,
+   disponibilidad— está puesto en su sitio: el modelo se afina contra medida, no
+   contra la intuición. Así que del careo se sacan los estadísticos con los que
+   se juzga un modelo de producción:
+
+     · MBE (sesgo): si es +3 %, el modelo produce de más SISTEMÁTICAMENTE, y eso
+       no se arregla mirando inversores sueltos sino tocando las pérdidas;
+     · MAE y RMSE: cuánto se equivoca en magnitud, con y sin castigar los
+       errores grandes. Un MBE ~0 con un RMSE alto es un modelo sin sesgo pero
+       con dispersión: el reparto por inversor no cuadra;
+     · R²: cuánto de la variación entre inversores explica el modelo;
+     · y los inversores FUERA DE BANDA, que son los que hay que ir a mirar a
+       campo en vez de meter en la estadística.
+
+   EL FACTOR SUGERIDO es lo que habría que multiplicar a la estimación para que
+   el sesgo se anule. No se aplica solo —eso sería tapar el problema con un
+   número—: se enseña para que quien calibra sepa cuánto le falta y dónde
+   buscarlo.                                                                 */
+function estadisticaCareo(rows,bandaPct){
+  const v=rows.filter(r=>r&&r.esp!=null&&r.med!=null&&isFinite(r.esp)&&isFinite(r.med)&&r.esp>0);
+  if(v.length<2)return null;
+  const b=Math.max(0,+bandaPct||0);
+  const n=v.length;
+  const sEsp=v.reduce((s,r)=>s+r.esp,0), sMed=v.reduce((s,r)=>s+r.med,0);
+  const mbe=100*(sMed-sEsp)/sEsp;                       // sesgo global, en % de lo estimado
+  const mae=100*v.reduce((s,r)=>s+Math.abs(r.med-r.esp),0)/sEsp;
+  const rmse=100*Math.sqrt(v.reduce((s,r)=>s+Math.pow((r.med-r.esp)/r.esp,2),0)/n);
+  const mm=sMed/n;
+  const sst=v.reduce((s,r)=>s+Math.pow(r.med-mm,2),0);
+  const sse=v.reduce((s,r)=>s+Math.pow(r.med-r.esp,2),0);
+  const r2=sst>0?1-sse/sst:null;
+  const fuera=b>0?v.filter(r=>Math.abs(100*(r.med-r.esp)/r.esp)>b)
+                   .map(r=>({inv:r.inv,dev:100*(r.med-r.esp)/r.esp}))
+                   .sort((x,y)=>Math.abs(y.dev)-Math.abs(x.dev)):[];
+  return {n:n,mbe:mbe,mae:mae,rmse:rmse,r2:r2,
+          factor:sEsp>0?sMed/sEsp:null,fuera:fuera,
+          espKwh:sEsp,medKwh:sMed};
+}
+
 /* CSV de la vista (separador ;, decimal coma — es lo que abre el Excel de obra) */
 function csvTabla(cab,filas){
   const cell=v=>typeof v==='number'?String(v).replace('.',','):String(v==null?'':v);
@@ -944,6 +1098,9 @@ function instant(F,c,T,m){
     irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
     met={tamb:c.elec?c.elec.tamb:20,wind:c.elec?c.elec.wind:1};
   }
+  // el sol no sale por una línea recta: si está tras el horizonte lejano, el
+  // haz se apaga y queda la difusa (el disco no se ve, el cielo sí)
+  if(c.horizonte)irr=irrTrasHorizonte(irr,90-zen,az,c.horizonte);
   const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
                     :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
   // POR MESA (v1.13): con tilt por mesa en la T (cotas), θ y POA se calculan
@@ -1080,8 +1237,19 @@ async function cargaCotas(key){
   const idDe=new Map();
   if(lay.trackers&&lay.trackers.length===cotas.t.length)
     cotas.t.forEach((t,i)=>{if(t&&lay.trackers[i]&&lay.trackers[i].id)idDe.set(t,lay.trackers[i].id);});
+  // QUÉ PARTE DE LA PLANTA ES MEDIDA Y QUÉ PARTE SUPUESTA. La página daba una
+  // cifra de producción sin decir sobre qué se apoya, y no todo el parque está
+  // medido igual: hay trackers reconstruidos del plano (est), otros con UNA
+  // sola viga levantada y la otra copiada de su hermana (inc, ±0,15 m de cota
+  // de mediana) y filas con una punta repuesta porque su punto vino con otra
+  // referencia vertical (ye). Son grados distintos de suposición y hasta ahora
+  // ninguno se veía: el dato ya estaba en el fichero de cotas, solo había que
+  // enseñarlo.
+  const inc=cotas.t.filter(t=>t&&t.inc).length;
+  let ye=0; for(const t of cotas.t) if(t&&!t.est) for(const f of (t.f||[])) if(f.ye===1||f.ye===2)ye++;
   RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,idDe:idDe,
       trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
+      trkInc:inc,filasYe:ye,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -1164,6 +1332,10 @@ function cfg(){
                       anio:Math.max(1,Math.round(+$('lanio').value)),
                       soilMes:soilMesUI()}},
           iamb0:iamUI(),
+          horizonte:($('horon')&&$('horon').checked)?parseHorizonte($('horv').value):null,
+          incert:{meteo:Math.max(0,+$('umeteo').value),modelo:Math.max(0,+$('umodelo').value),
+                  soiling:Math.max(0,+$('usoil').value),dispo:Math.max(0,+$('udisp').value),
+                  degrada:Math.max(0,+$('udeg').value)},
           bif:{bifa:Math.max(0,Math.min(95,+$('bifa').value)),
                perdTras:Math.max(0,Math.min(90,+$('bperd').value))}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
@@ -1936,10 +2108,26 @@ function paintACline(inst,c,acDay){
     const fuera=RP.trkLayout-RP.trkCotas;
     h+=' · <b>'+RP.trkCotas.toLocaleString('es')+'</b> de '+RP.trkLayout.toLocaleString('es')+' trackers del plano'+
        (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'')+
-       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'');
+       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'')+
+       (RP.trkInc?' · <span style="color:var(--build)" title="Solo se levantó UNA de las dos vigas del tubo; la otra se copia de su hermana, colocada en su x real. El error que se asume está acotado con los tubos de dos vigas medidas: 0,15 m de mediana, 0,38 m en p95.">'+RP.trkInc+' con una sola viga medida</span>':'')+
+       (RP.filasYe?' · <span style="color:var(--build)" title="Filas con UNA punta repuesta: su punto vino con otra referencia vertical (va reclamada al topógrafo) y esa cota se repone de la hermana o del vecindario. Marca UNA de las dos mesas de la viga; la otra sigue medida de punta a punta.">'+RP.filasYe+' con una punta repuesta</span>':'');
   }
   if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
               (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
+  // LA BANDA, al lado de la cifra: un P50 solo no dice cuánto se puede fiar uno
+  if(acDay&&c.incert){
+    const e=c.ac.gridW>0?acDay.eredKwh:acDay.eacKwh;
+    const b=bandaPXX(e,c.incert,c.ac.planta?c.ac.planta.anio:1);
+    if(b.sigma>0)
+      h+=' · <b title="P90: la energía que se supera nueve años de cada diez. σ compuesta en cuadratura de meteo, modelo, soiling, disponibilidad y degradación acumulada.">P90</b> '+
+         b.p90.toFixed(0)+' kWh <span style="color:var(--muted-2)">(σ '+b.sigma.toFixed(1)+' %)</span>';
+  }
+  // y de qué está hecha la cifra: cuánto de la planta es medida y cuánto no
+  if(acDay&&RP&&RP.key===c.plant&&(RP.trkEst||RP.trkInc||RP.filasYe)){
+    const sup=(RP.trkEst||0)+(RP.trkInc||0), tot=RP.trkCotas||1;
+    h+=' · <span style="color:var(--muted-2)" title="Trackers cuya cota NO se midió entera: reconstruidos del plano o con una sola viga levantada. La cifra de arriba se apoya en ellos igual que en los medidos.">'+
+       (100*sup/tot).toFixed(1)+' % del parque con cota supuesta</span>';
+  }
   $('acline').innerHTML=h;
 }
 
@@ -1995,6 +2183,25 @@ function runCareo(){
      '</b></td><td style="padding:2px 10px"><b>'+tM.toFixed(1)+'</b></td><td>'+(tE>0?((100*(tM-tE)/tE)>0?'+':'')+(100*(tM-tE)/tE).toFixed(1)+'%':'—')+'</td></tr></table>'+
      '<p style="color:var(--muted-2);margin-top:4px">Meteo del cálculo: '+(c.meteo==='tmy'&&c.tmy?'TMY real':'cielo despejado (TECHO teórico — desvíos negativos esperables)')+
      ' · fecha '+c.date+' · paso 5 min.</p>';
+  // LA CALIBRACIÓN: lo que dice si el MODELO está en su sitio, que es distinto
+  // de si un inversor concreto va mal
+  const st=estadisticaCareo(rows,12);
+  if(st){
+    const sg=v=>(v>0?'+':'')+v.toFixed(1);
+    h+='<div style="margin-top:8px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px">'+
+       '<b>Calibración del modelo</b> <span style="color:var(--muted-2)">('+st.n+' inversores careados)</span><br>'+
+       '<span title="Sesgo: si es positivo, la planta produce MÁS de lo que dice el modelo. Un sesgo sistemático no se arregla mirando inversores sueltos, sino tocando las pérdidas.">MBE '+sg(st.mbe)+' %</span> · '+
+       '<span title="Error medio absoluto, en % de lo estimado.">MAE '+st.mae.toFixed(1)+' %</span> · '+
+       '<span title="Raíz del error cuadrático medio: castiga los errores grandes. MBE≈0 con RMSE alto = sin sesgo pero con dispersión, o sea que el reparto por inversor no cuadra.">RMSE '+st.rmse.toFixed(1)+' %</span>'+
+       (st.r2!=null?' · <span title="Cuánto de la variación entre inversores explica el modelo.">R² '+st.r2.toFixed(3)+'</span>':'')+
+       '<br><span style="color:var(--muted-2)">Para anular el sesgo habría que multiplicar la estimación por <b>'+
+       (st.factor!=null?st.factor.toFixed(3):'—')+'</b> — no se aplica solo: es dónde buscar, no un parche.</span>'+
+       (st.fuera.length?'<br><span style="color:var(--build)">Fuera de banda (±12 %): '+
+          st.fuera.slice(0,6).map(x=>'I'+x.inv+' '+sg(x.dev)+'%').join(' · ')+
+          (st.fuera.length>6?' … y '+(st.fuera.length-6)+' más':'')+
+          '</span> <span style="color:var(--muted-2)">— a mirar en campo, no a promediar.</span>':'')+
+       '</div>';
+  }
   $('careoout').innerHTML=h;
 }
 

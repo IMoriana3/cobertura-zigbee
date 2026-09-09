@@ -45,7 +45,9 @@ const S = new Function(sol + fis + log + `
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
-          degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe};`).call(globalThis);
+          degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
+          sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
+          estadisticaCareo};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -987,6 +989,82 @@ t('el b0 del IAM sale de la CONFIG, no del DOM (contrato LÓGICA PURA)', () => {
   if (S.iamDe({iamb0:0}) !== 0) throw new Error('0 tiene que poder desactivarlo');
   if (S.iamDe({iamb0:0.2}) !== 0.2) throw new Error('no respeta el valor dado');
   if (S.iamDe({iamb0:99}) !== 0.5) throw new Error('debe acotarse');
+});
+
+t('P50/P90: la banda se compone en CUADRATURA y crece con el año estimado', () => {
+  const u = {meteo:4,modelo:3.5,soiling:1,dispo:0.5,degrada:0.15};
+  const s1 = S.sigmaTotal(u, 1);
+  if (Math.abs(s1 - Math.hypot(4, 3.5, 1, 0.5)) > 1e-9) throw new Error('no es cuadratura: ' + s1);
+  if (!(s1 < 4 + 3.5 + 1 + 0.5)) throw new Error('la cuadratura tiene que dar MENOS que la suma');
+  // la de la degradación se acumula: el año 25 no puede tener la misma banda que el 1
+  if (!(S.sigmaTotal(u, 25) > s1)) throw new Error('la banda debe crecer con los años');
+  if (S.sigmaTotal(u, 1) !== S.sigmaTotal(Object.assign({}, u, {degrada:99}), 1))
+    throw new Error('en el año 1 la degradación no puede pesar');
+  const b = S.bandaPXX(1000, u, 1);
+  if (!(b.p95 < b.p90 && b.p90 < b.p75 && b.p75 < b.p50))
+    throw new Error(`los cuantiles salen desordenados: ${JSON.stringify(b)}`);
+  if (b.p50 !== 1000) throw new Error('el P50 es la cifra que ya se calculaba');
+  if (S.bandaPXX(1000, {}, 1).p90 !== 1000) throw new Error('sin incertidumbre P90 = P50');
+});
+
+t('MUTANTE: sumar las incertidumbres en vez de componerlas rompe el careo', () => {
+  const u = {meteo:4,modelo:3.5,soiling:1,dispo:0.5,degrada:0};
+  const cuad = S.sigmaTotal(u, 1), suma = 4 + 3.5 + 1 + 0.5;
+  if (Math.abs(cuad - suma) < 1) throw new Error('el careo no distingue cuadratura de suma');
+  // y con la suma el P90 sería mucho más bajo: eso no es un P90, es un peor caso
+  if (!(1000 * (1 - 1.2816 * suma / 100) < S.bandaPXX(1000, u, 1).p90 - 20))
+    throw new Error('el careo no ve la diferencia en el P90');
+});
+
+t('horizonte lejano: apaga el HAZ tras el cerro y deja la difusa', () => {
+  const p = S.parseHorizonte('0:10; 90:5; 180:0; 270:5');
+  if (!p || p.length !== 4) throw new Error('no parsea el perfil');
+  if (Math.abs(S.horizonteEn(p, 0) - 10) > 1e-9) throw new Error('el azimut 0 mal');
+  if (Math.abs(S.horizonteEn(p, 45) - 7.5) > 1e-9) throw new Error('no interpola: ' + S.horizonteEn(p, 45));
+  // y da la vuelta por el 0: entre 270 (5°) y 360=0 (10°)
+  if (!(S.horizonteEn(p, 315) > 5 && S.horizonteEn(p, 315) < 10))
+    throw new Error('no cierra el círculo: ' + S.horizonteEn(p, 315));
+  const irr = {ghi:600,dni:700,dhi:90};
+  const tapado = S.irrTrasHorizonte(irr, 3, 0, p);      // sol a 3°, horizonte a 10°
+  if (tapado.dni !== 0) throw new Error('tras el cerro no puede quedar haz');
+  if (tapado.dhi !== 90) throw new Error('la difusa del cielo se queda: el cerro tapa el disco, no el cielo');
+  const libre = S.irrTrasHorizonte(irr, 30, 0, p);
+  if (libre !== irr) throw new Error('con el sol alto no se toca nada');
+  if (S.irrTrasHorizonte(irr, 3, 0, null) !== irr) throw new Error('sin perfil, no-op');
+});
+
+t('la calidad de las entradas se DECLARA: est, inc y ye salen del fichero de cotas', () => {
+  // el dato tiene que estar en las cotas para poder enseñarlo
+  const f = 'sanjose_cotas.json';
+  if (!fs.existsSync(path.join(ROOT, f))) return;
+  const C = JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf-8'));
+  const est = C.t.filter(t => t && t.est).length;
+  const inc = C.t.filter(t => t && t.inc).length;
+  let ye = 0; for (const t of C.t) if (t && !t.est) for (const g of (t.f || [])) if (g.ye === 1 || g.ye === 2) ye++;
+  if (!(est >= 0 && inc > 0)) throw new Error('las cotas no traen el marcado de suposición');
+  if (C.n_inc !== inc) throw new Error(`n_inc dice ${C.n_inc} y hay ${inc}`);
+  // y la página tiene que enseñarlo, no solo saberlo
+  for (const lit of ['con una sola viga medida', 'con una punta repuesta', 'del parque con cota supuesta'])
+    if (!pg.includes(lit)) throw new Error('la página no declara «' + lit + '»');
+  console.log(`    (San José: ${est} reconstruidos · ${inc} con una viga · ${ye} filas con punta repuesta)`);
+});
+
+t('calibración: MBE, RMSE y el factor que anula el sesgo', () => {
+  // un modelo que produce un 5 % MENOS que la planta, sin dispersión
+  const rows = [1,2,3,4].map(i => ({inv:String(i), esp:100, med:105}));
+  const st = S.estadisticaCareo(rows, 12);
+  if (Math.abs(st.mbe - 5) > 1e-9) throw new Error('MBE mal: ' + st.mbe);
+  if (Math.abs(st.factor - 1.05) > 1e-9) throw new Error('el factor tiene que anular el sesgo');
+  if (st.fuera.length) throw new Error('un 5 % no está fuera de una banda del 12 %');
+  // sin sesgo pero con dispersión: MBE ≈ 0 y RMSE alto — el caso que hay que distinguir
+  const disp = [{inv:'1',esp:100,med:120},{inv:'2',esp:100,med:80}];
+  const sd = S.estadisticaCareo(disp, 12);
+  if (Math.abs(sd.mbe) > 1e-9) throw new Error('ese caso no tiene sesgo: ' + sd.mbe);
+  if (!(sd.rmse > 15)) throw new Error('y sí tiene dispersión, que el RMSE debe ver: ' + sd.rmse);
+  if (sd.fuera.length !== 2) throw new Error('los dos están fuera de banda');
+  // lo que no se puede carear no entra en la estadística
+  if (S.estadisticaCareo([{inv:'1',esp:100,med:null},{inv:'2',esp:null,med:50}], 12) !== null)
+    throw new Error('sin pares completos no hay estadística que valga');
 });
 
 console.log('');
