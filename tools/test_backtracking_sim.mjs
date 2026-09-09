@@ -2705,6 +2705,31 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   });
 }
 
+console.log('origen por mesa · «del plano» es del tracker, no de la cota repuesta');
+{
+  // segOrig 4 (reconstruido del plano) solo puede salir en mesas de un tracker
+  // est=1. La marca por tope (eyS/eyN) que deja segEst en la mesa reparada NO
+  // es «del plano»: es una cota repuesta con geometria medida. Se mezclaron
+  // en un merge y el 3D pintaba naranja 39 filas levantadas.
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: las mesas con origen «del plano» son exactamente las de los trackers est', () => {
+    let del = 0, mal = 0, estSinMarca = 0;
+    for (let r = 0; r < P.segOrig.length; r++) for (let k = 0; k < P.segOrig[r].length; k++) {
+      const o = P.segOrig[r][k], e = !!(P.segTrk[r][k] && P.segTrk[r][k].est);
+      if (o === 4) { del++; if (!e) mal++; }
+      else if (e) estSinMarca++;
+    }
+    const esperadas = cotas.t.filter(x => x && x.est).reduce((a, x) => a + 2 * x.f.length, 0);
+    if (mal) throw new Error(mal + ' mesas marcadas «del plano» en trackers levantados');
+    if (estSinMarca) throw new Error(estSinMarca + ' mesas de trackers est sin la marca');
+    if (del !== esperadas) throw new Error(del + ' mesas «del plano» para ' + esperadas + ' esperadas');
+    // y las reparadas siguen siendo lo que son: 1 (una cota), 2 (las dos) o 3 (copia)
+    const c = {}; for (const l of P.segOrig) for (const v of l) c[v] = (c[v] || 0) + 1;
+    if (!(c[1] > 0 && c[2] > 0 && c[3] > 0)) throw new Error('faltan categorias de cota repuesta: ' + JSON.stringify(c));
+  });
+}
+
 console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
 {
   // El saneador de cotas salva la mitad limpia de una fila contaminada y deja
