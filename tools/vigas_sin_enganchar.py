@@ -55,8 +55,12 @@ def grupos_huerfanos(planta):
     out = []
     for v in lin.values():
         v.sort()
-        # una viga son cuatro puntas seguidas; un salto de mas de 45 m ya es
-        # otro tubo, porque la mesa mas larga del plano mide 36,8
+        # una viga son CUATRO puntas: tope, las dos del morro y tope. Un salto
+        # de mas de 45 m ya es otro tubo (la mesa mas larga mide 36,8), pero
+        # dentro de una tira de vigas huerfanas CONTIGUAS no hay tal salto: se
+        # tocan en la junta, a 0,7 m. Si no se parte, dos vigas seguidas salen
+        # como una de 149 m y tres como una de 224, y el listado dice que «no
+        # cuadran con su tipo» cuando lo que pasa es que son varias.
         g, cur = [], [v[0]]
         for p in v[1:]:
             if p[0] - cur[-1][0] < 45:
@@ -64,7 +68,9 @@ def grupos_huerfanos(planta):
             else:
                 g.append(cur); cur = [p]
         g.append(cur)
-        out += [gg for gg in g if len(gg) >= 4]
+        for gg in g:
+            for k in range(0, len(gg) - 3, 4):     # de cuatro en cuatro
+                out.append(gg[k:k + 4])
     return out, cE, cN
 
 
