@@ -1033,11 +1033,20 @@ function build3D(c){
   const segsNS=T.segs||Array.from({length:n},()=>[[-T.obj.filaLen/2,T.obj.filaLen/2]]);
   const sAll=segsNS.flat(), sMin=Math.min.apply(null,sAll.map(s=>s[0])), sMax=Math.max.apply(null,sAll.map(s=>s[1]));
   const span=rx[n-1]-rx[0], maxLen=Math.max(20,sMax-sMin);
-  const gnd=new THREE.Mesh(
-    // malla del suelo proporcional a la planta: con 295 líneas sobre 2 km, 128
-    // segmentos daban celdas de 15 m y el relieve medido se aplanaba (v1.17)
-    new THREE.PlaneGeometry(span+40,maxLen+40,
-      Math.max(2,Math.min(2*n,320)),Math.max(8,Math.min(Math.round(maxLen/8),240))),
+  // SUELO CON VÉRTICES EN LAS LÍNEAS (v1.21). Era una rejilla regular y, con la
+  // planta entera (295 líneas sobre 1,8 km), sus celdas medían ~6 m: el terreno
+  // medido se aplanaba entre vértices y el tubo acababa de −5,3 a +7,2 m del
+  // suelo, cuando bajo cada mesa tiene que ir a 2 m. Ahora las COLUMNAS caen
+  // exactamente en la x de cada línea (más un margen a cada lado) y en N se
+  // muestrea fino, así que el suelo pasa POR las cotas medidas.
+  const margX=Math.max(12,(span/Math.max(1,n-1))*2), margN=20;
+  const colX=[rx[0]-margX,...rx,rx[n-1]+margX];
+  const pasoN=Math.max(1.5,Math.min(6,(sMax-sMin+2*margN)/300));
+  const filN=[]; for(let v=sMin-margN;v<=sMax+margN+1e-9;v+=pasoN)filN.push(v);
+  const NC=colX.length, NF=filN.length;
+  const gpos=new Float32Array(NC*NF*3), gcol=new Float32Array(NC*NF*3);
+  const idxCol=i=>Math.max(0,Math.min(n-1,i-1));   // la línea de cada columna (los bordes copian la suya)
+  const gnd=new THREE.Mesh(new THREE.BufferGeometry(),
     new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));
   // el suelo sigue el perfil E-O real (el mismo elev que come la física) y,
   // cuando la planta trae TILT N-S medido (cotas), también esa pendiente por
@@ -1086,35 +1095,26 @@ function build3D(c){
   };
   // el motor va en la mesa OESTE de cada tracker (v1.17), no en toda la línea
   const westK=(r,k)=>T.westSeg?T.westSeg[r][k]:(T.west?T.west[r]:true);
-  {const pos=gnd.geometry.attributes.position;
+  {
    let zLo=Math.min.apply(null,T.elev), zHi=Math.max.apply(null,T.elev);
    if(hayZ){zLo=Infinity;zHi=-Infinity;for(const l of T.segZ)for(const z of l){zLo=Math.min(zLo,z[0],z[1]);zHi=Math.max(zHi,z[0],z[1]);}}
-   const cols=new Float32Array(pos.count*3);
-   // el índice de línea sale de la x REAL, no de suponerlas equiespaciadas: los
-   // vanos de una planta medida no son iguales y entre bloques hay caminos de
-   // decenas de metros — con la regla uniforme el suelo se deslizaba respecto a
-   // las mesas (v1.17)
-   const idxDeX=(xv)=>{
-     if(xv<=rx[0])return 0;
-     if(xv>=rx[n-1])return n-1;
-     let a=0,b=n-1;
-     while(b-a>1){const mid=(a+b)>>1; if(rx[mid]<=xv)a=mid; else b=mid;}
-     return a+(xv-rx[a])/((rx[b]-rx[a])||1);
-   };
-   for(let i=0;i<pos.count;i++){
-     const r=idxDeX(pos.getX(i));
-     const r0=Math.floor(r), fr=r-r0, r1=Math.min(n-1,r0+1);
-     const sceneZ=-pos.getY(i)+gz;      // el marco de escena de las mesas (z=−norte)
-     const z=hLinea(r0,sceneZ)+fr*(hLinea(r1,sceneZ)-hLinea(r0,sceneZ));
-     pos.setZ(i,z);
-     const t2=zHi>zLo?(z-zLo)/(zHi-zLo):0.4;
-     cols[i*3]=0.086+0.10*Math.max(0,Math.min(1,t2));cols[i*3+1]=0.145+0.13*Math.max(0,Math.min(1,t2));cols[i*3+2]=0.105+0.09*Math.max(0,Math.min(1,t2));
+   for(let i=0;i<NC;i++)for(let j=0;j<NF;j++){
+     const p=(i*NF+j)*3, nn=filN[j];
+     const z=hLinea(idxCol(i),-nn);
+     gpos[p]=colX[i];gpos[p+1]=z;gpos[p+2]=-nn;
+     const t2=zHi>zLo?Math.max(0,Math.min(1,(z-zLo)/(zHi-zLo))):0.4;
+     gcol[p]=0.086+0.10*t2;gcol[p+1]=0.145+0.13*t2;gcol[p+2]=0.105+0.09*t2;
    }
-   gnd.geometry.setAttribute('color',new THREE.BufferAttribute(cols,3));
-   pos.needsUpdate=true;gnd.geometry.computeVertexNormals();}
-  gnd.rotation.x=-Math.PI/2;
-  gnd.position.z=gz;
-  gnd.receiveShadow=true;
+  }
+  {const idx=[];
+   for(let i=0;i<NC-1;i++)for(let j=0;j<NF-1;j++){
+     const a=i*NF+j, b=a+1, c2=(i+1)*NF+j, d=c2+1;
+     idx.push(a,b,c2, b,d,c2);
+   }
+   gnd.geometry.setAttribute('position',new THREE.Float32BufferAttribute(gpos,3));
+   gnd.geometry.setAttribute('color',new THREE.Float32BufferAttribute(gcol,3));
+   gnd.geometry.setIndex(idx); gnd.geometry.computeVertexNormals();}
+  gnd.receiveShadow=true;    // se construye ya en el marco del mundo: ni rotación ni offset
   R3.world.add(gnd);
   // sombra del sol acotada a la planta (como el simulador); el frustum vertical
   // se ciñe por frame en repaint (sol rasante: texel en cm, no la «sierra»)
@@ -1156,7 +1156,17 @@ function build3D(c){
       tiltG.position.set(x,hubY,zc);
       tiltG.userData={row:r,k:k,s0:sg[0],s1:sg[1]};           // para la SELECCIÓN con clic
       const tiltK=T.segTilt?T.segTilt[r][k]:(T.tilt?T.tilt[r]:0);
-      if(tiltK)tiltG.rotation.x=-tiltK*D2R;                   // tilt N-S MEDIDO de ESTA mesa
+      // SIGNO DEL TILT (v1.21): el tubo va del extremo SUR (s0,z0) al NORTE
+      // (s1,z1), y segTilt = atan2(z1−z0, s1−s0) — positivo sube hacia el
+      // norte. En la escena el norte es −Z, y una rotación +X positiva baja el
+      // lado −Z: por eso la rotación es −tilt… en el marco del MODELO, cuyo
+      // tubo apunta a +X y se orienta al norte con el yaw de +90°, la
+      // composición deja el tubo cayendo al revés. Medido en la escena: el
+      // tilt dibujado salía EXACTAMENTE −segTilt en las 1.502 mesas de Ayora
+      // (error 0 al invertir), así que la mesa se inclinaba al contrario que
+      // su terreno y no casaba ni con sus propios postes. El simulador ya lo
+      // hacía bien (tiltG.rotation.x = atan2(z1−z0, len), sin signo).
+      if(tiltK)tiltG.rotation.x=tiltK*D2R;                    // tilt N-S MEDIDO de ESTA mesa
       let built=false;
       const media=hayModelo&&len<0.7*T.obj.filaLen;           // tramo corto ⇒ mesa «media» real
       const mods=hayModelo?Math.max(4,Math.round(((media?len/0.504:len)-D0.gapDrive)/2/D0.pitch)):0;
@@ -1355,7 +1365,7 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
   const mRx=new THREE.Matrix4(),mRy=new THREE.Matrix4().makeRotationY(Math.PI/2);
   for(const tr of tramos){
     tr.pre=new THREE.Matrix4().makeTranslation(tr.x,tr.hubY,tr.zc)
-      .multiply(mRx.makeRotationX(-tr.tilt*D2R)).multiply(mRy);
+      .multiply(mRx.makeRotationX(tr.tilt*D2R)).multiply(mRy);   // v1.21: el mismo signo que el camino de mallas y que el simulador
     tr.Q=new THREE.Matrix4();
     // tinte en DOS alas por tramo, dejando el hueco central del accionamiento
     // sin pintar (un plano corrido tapaba corona/reductora/motor)
