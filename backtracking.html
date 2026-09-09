@@ -2712,7 +2712,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.48.0';
+const VER='v1.48.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -2849,6 +2849,7 @@ function terrain(c){
             maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,iam:c.iam,
             rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
             segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // el tilt y la pareja de CADA mesa (v1.42: la UI manda por mesa)
+            segDrive:P.segDrive,                                 // v1.48: el ACCIONAMIENTO — las cuatro mesas de un tracker, un motor, un θ
             filaLen:2*c.mods*1.146+0.55,real:P};
   }
   const groups=driveGroups(c.nrows,c.drive);

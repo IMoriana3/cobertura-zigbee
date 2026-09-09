@@ -195,14 +195,24 @@ try {
     });
     const fichas = [];
     if (pts) for (const pt of pts) { await pg.mouse.click(pt.x, pt.y); await pg.waitForTimeout(400); fichas.push((await pg.textContent('#pick')).replace(/\s+/g, ' ')); }
-    const ks = fichas.map(f => (f.match(/mesa (\d+)\/\d+/) || [])[1]);
-    check('a un lado y otro del morro hay DOS mesas distintas, la del sur y la del norte',
-          fichas.length === 2 && ks[0] && ks[1] && ks[0] !== ks[1] &&
-          /mesa SUR del morro/.test(fichas[0]) && /mesa NORTE del morro/.test(fichas[1]),
+    // v1.24: la ficha nombra la mesa por su CUADRANTE (sur/norte del morro ×
+    // viga este/oeste) y da las dos nomenclaturas — la del tracker en la
+    // planta y la nuestra — más el tilt de ESA mesa
+    const cuad = fichas.map(f => (f.match(/mesa (SUROESTE|SURESTE|NOROESTE|NORESTE)/) || [])[1]);
+    const nuestro = fichas.map(f => (f.match(/\bS(\d+\.\d+)\b/) || [])[1]);
+    const trk = fichas.map(f => (f.match(/^([A-Z][^·]*?)\s*·/) || [])[1]);
+    check('la mesa se nombra por su CUADRANTE: las dos del morro son SUR… y NOR… de la MISMA viga',
+          fichas.length === 2 && cuad[0] && cuad[1] && cuad[0] !== cuad[1] &&
+          /^SUR/.test(cuad[0]) && /^NOR/.test(cuad[1]) &&
+          cuad[0].replace(/^SUR/, '') === cuad[1].replace(/^NOR/, ''),
           fichas.map(f => f.slice(0, 110)).join(' || '));
-    check('la ficha enseña el tilt de la OTRA mesa de su viga y si el quiebro está medido',
-          fichas.length === 2 && fichas.every(f => /la otra mesa de su viga, #\d+: -?\d/.test(f) &&
-                                                   /(quiebro MEDIDO|viga rígida)/.test(f)),
+    check('la ficha da la nomenclatura del TRACKER y la nuestra, y el tilt de esa mesa',
+          fichas.length === 2 && trk[0] && trk[0] === trk[1] &&
+          nuestro[0] && nuestro[1] && nuestro[0] !== nuestro[1] &&
+          fichas.every(f => /tilt N-S -?\d+\.\d+°/.test(f)),
+          fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
+    check('y NO enseña la contabilidad interna (x de la línea, ordinal de la mesa, cota)',
+          fichas.length === 2 && fichas.every(f => !/línea x=/.test(f) && !/mesa \d+\/\d+/.test(f) && !/· cota /.test(f)),
           fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
   }
 

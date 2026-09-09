@@ -317,6 +317,7 @@ function buildTReal(F,c,P){
   return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
           z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
           segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // por MESA (v1.13): cada fila medida con su tilt y su pareja
+          segDrive:P.segDrive,                                 // v1.24: y su ACCIONAMIENTO — las CUATRO mesas que mueve un motor van al MISMO θ
           filaLen:2*28*1.146+0.55,real:P};
 }
 
@@ -855,7 +856,14 @@ async function cargaCotas(key){
   // los cortos, que no se levantaron: ni cota ni largo, así que no se dibujan
   // ni se simulan). Callarlo hacía que «planta entera» pareciera la planta.
   const conCotas=cotas.t.filter(Boolean).length, estim=cotas.t.filter(t=>t&&t.est).length;
-  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,
+  // NOMENCLATURA REAL de cada tracker (v1.24): el id del plano —«TK 045-06» en
+  // Ayora, «TR-08_2-014» en San José—, indexado por el OBJETO de cotas.t y no
+  // por el índice, que el ámbito por NCU rompe al filtrar. Es como se llama el
+  // seguidor en la planta: sin él la ficha solo sabía decir el nombre interno.
+  const idDe=new Map();
+  if(lay.trackers&&lay.trackers.length===cotas.t.length)
+    cotas.t.forEach((t,i)=>{if(t&&lay.trackers[i]&&lay.trackers[i].id)idDe.set(t,lay.trackers[i].id);});
+  RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,idDe:idDe,
       trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
@@ -956,6 +964,7 @@ function rebuildT(){
     // está medido (fila articulada del levantamiento)
     T.segSide=P.segSide;T.segFila=P.segFila;T.segArt=P.segArt;T.segDrive=P.segDrive;
     T.segMorro=P.segMorro;              // [n, cota] del morro: el pivote de las dos mesas
+    T.segTrk=P.segTrk;                  // el seguidor de cotas.t de cada mesa (para su nombre real)
     /* BIFILA: el motor va en UNA viga de cada unidad, la oeste. `T.west` lo dice por LÍNEA
        (`westDeGroups` sobre las parejas de `plantFromCotas`) y `T.westSeg` por MESA
        (`westPorMesa` sobre `segPairs`, las parejas exactas por tracker). Manda la de mesa,
@@ -1838,54 +1847,42 @@ function repaintPick(){
   const el=$('pick');
   if(!PICK||!R3.last){if(el)el.style.display='none';return;}
   const d=R3.last, r=PICK.row, kk=PICK.k, w=PICK.w, c=d.c;
-  /* UNA FILA SON DOS MESAS (v1.23). Hasta v1.22 el tramo era la VIGA entera y
-     sus dos mitades se llamaban «alas» de una misma mesa, con un tilt común:
-     de ahí que se vieran siempre iguales. El levantamiento dice otra cosa —la
-     fila articulada quiebra en el morro y cada mitad tiene su pendiente—, así
-     que ahora cada mesa es un tramo con su tilt, su cota y su string, y la
-     ficha enseña la OTRA mesa de su viga y si ese quiebro está medido. */
-  const lado=(T.segSide&&kk!=null&&T.segSide[r]&&T.segSide[r][kk]!=null)
-    ?' · mesa '+(T.segSide[r][kk]===0?'SUR':'NORTE')+' del morro'
+  /* LA FICHA DICE CÓMO SE LLAMA LA COSA (v1.24). Un bifila son CUATRO mesas y
+     cada una tiene sitio propio: al sur o al norte del morro, y en la viga
+     este u oeste. Así que la mesa se nombra por su CUADRANTE —SUROESTE,
+     SURESTE, NOROESTE, NORESTE— y la ficha enseña las dos nomenclaturas que
+     importan: la del TRACKER en la planta (el id del plano, «TK 045-06» /
+     «TR-08_2-014») y la NUESTRA (S<línea>.<mesa>). Lo demás —la x de la
+     línea, el ordinal de la mesa dentro de ella, la cota, quién lleva el
+     motor— era contabilidad interna y sobraba en la ficha. */
+  const oeste=(T.westSeg&&kk!=null&&T.westSeg[r])?T.westSeg[r][kk]:null;
+  const sur=(T.segSide&&kk!=null&&T.segSide[r]&&T.segSide[r][kk]!=null)?(T.segSide[r][kk]===0):null;
+  const cuad=(sur==null)?null:((sur?'SUR':'NOR')+(oeste==null?'':(oeste?'OESTE':'ESTE')));
+  const ala=(cuad!=null)?(' · mesa <b>'+cuad+'</b>')
     :(w==null?'':(w===0?' · string a de 2 (ala SUR)':' · string b de 2 (ala NORTE)'));
-  const ala=lado;
-  // la otra mesa de LA MISMA VIGA (al otro lado del morro): es la comparación
-  // que pedía la vista — dos mesas de la misma fila con pendientes distintas
-  let hermana='';
-  if(T.segFila&&kk!=null&&T.segFila[r]){
-    const k2=T.segFila[r].findIndex((f,j)=>j!==kk&&f===T.segFila[r][kk]);
-    if(k2>=0&&T.segTilt){
-      const dif=Math.abs(T.segTilt[r][kk]-T.segTilt[r][k2]);
-      const med=T.segArt&&T.segArt[r]&&T.segArt[r][kk];
-      hermana=' <span style="color:var(--muted)">(la otra mesa de su viga, #'+(k2+1)+': '+T.segTilt[r][k2].toFixed(2)+'° · '+
-              (med?('quiebro MEDIDO, Δ '+dif.toFixed(2)+'°'):'viga rígida: sin quiebro medido')+')</span>';
-    }
-  }
-  // el STRING seleccionado (v1.14): la entrada de la cadena de esa mesa y esa
-  // ala — en El Burgo el string del plano que cae ahí; en cotas/genérica, «a»
-  // (sur) / «b» (norte) de la fila medida
+  // la viga RÍGIDA no tiene quiebro medido: sus dos mesas comparten pendiente
+  // por construcción, y decirlo evita leer eso como un fallo del dibujo
+  const rigida=(T.segArt&&kk!=null&&T.segArt[r]&&!T.segArt[r][kk])?' <span style="color:var(--muted)">(viga rígida)</span>':'';
+  // el nombre del seguidor EN LA PLANTA
+  const idTrk=(RP&&RP.idDe&&T.segTrk&&kk!=null&&T.segTrk[r])?RP.idDe.get(T.segTrk[r][kk]):null;
+  const estim=(T.segEst&&kk!=null&&T.segEst[r]&&T.segEst[r][kk])?' <span style="color:var(--warn,#e2b23a)">(cota estimada del plano)</span>':'';
+  // el STRING seleccionado: su entrada en la cadena (en El Burgo, el string
+  // del plano que cae en esa mesa)
   let ent=null;
   if(T.strInv&&T.strInv[r]){
     const objs=T.strInv[r].filter(x=>typeof x==='object');
     ent=objs.find(x=>x.k===kk&&(x.w==null?w==null:x.w===w))||objs.find(x=>x.k===kk)||null;
   }
+  const inv=(ent&&ent.inv!=null)?' · inversor I'+ent.inv:'';
   let txt;
   if(c.plant==='elburgo'&&EB&&ent&&ent.id){
     const ncu=EB.mapa.get(ent.id.split('.').slice(0,3).join('.'));
-    txt='<b>'+ent.id+'</b> · inversor I'+ent.inv+(ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+
-        ' · mesa '+(PICK.s1-PICK.s0).toFixed(1)+' m'+ala;
+    txt='<b>'+ent.id+'</b>'+(ncu!=null?' · NCU '+ncu:' · sin NCU en el layout')+ala;
   }else{
-    txt='<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b> · línea x='+T.xs[r].toFixed(1)+' m'+
-        (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
-        (T.segTilt&&kk!=null?' · tilt N-S <b>de la mesa</b> '+T.segTilt[r][kk].toFixed(2)+'°'+hermana+
-                              (T.segTilt[r].length>1?' <span style="color:var(--muted)">(las otras mesas de la línea: '+
-                                 T.segTilt[r].map((t2,j)=>j===kk?null:'#'+(j+1)+' '+t2.toFixed(2)+'°').filter(Boolean).slice(0,5).join(' · ')+
-                                 (T.segTilt[r].length>6?' …':'')+' · media de la línea '+T.tilt[r].toFixed(2)+'°)</span>'
-                                                     :' (línea '+T.tilt[r].toFixed(2)+'°)')
-                            :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
-        ' · cota '+((T.segZ&&kk!=null&&T.segZ[r]&&T.segZ[r][kk])?((T.segZ[r][kk][0]+T.segZ[r][kk][1])/2).toFixed(2)+' m (de la mesa)'
-                                                                :T.elev[r].toFixed(2)+' m')+
-        (T.westSeg&&kk!=null?(T.westSeg[r][kk]?' · con MOTOR':' · gemela (sin motor)'):'')+
-        (ent&&ent.inv!=null?' · inversor I'+ent.inv:'');
+    txt=(idTrk?'<b>'+idTrk+'</b> · ':'')+
+        '<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b>'+ala+estim+
+        (T.segTilt&&kk!=null?' · tilt N-S <b>'+T.segTilt[r][kk].toFixed(2)+'°</b>'+rigida
+                            :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''));
   }
   const segPoa=(d.inst.segs&&kk!=null&&d.inst.segs[r]&&d.inst.segs[r][kk]!=null)?d.inst.segs[r][kk]:null;
   const wPoa=(w!=null&&kk!=null&&d.inst.wings&&d.inst.wings[r]&&d.inst.wings[r][kk]&&d.inst.wings[r][kk][w]!=null)?d.inst.wings[r][kk][w]:null;
@@ -1897,7 +1894,7 @@ function repaintPick(){
   const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
   txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
        (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.'+(ent&&ent.src?', '+ent.src:'')+') · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
-       '° · sombra '+(100*sh).toFixed(1)+' %';
+       '° · sombra '+(100*sh).toFixed(1)+' %'+inv;
   el.innerHTML=txt;el.style.display='';
 }
 
