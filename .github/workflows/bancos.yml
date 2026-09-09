@@ -54,6 +54,13 @@ jobs:
           path: cobertura-rf-fv
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      # `gen_coords_cobertura.py` proyecta coordenadas con pyproj — la unica
+      # dependencia externa que necesita ninguno de estos bancos (rastreado
+      # import a import; los otros cuatro van con la biblioteca estandar). Va
+      # pinchada, por lo mismo que Playwright: que una version nueva no cambie
+      # el resultado sin que el repo haya cambiado.
+      - name: pyproj (lo pide gen_coords_cobertura)
+        run: python3 -m pip install --disable-pip-version-check pyproj==3.7.2
       - name: barrido RF
         run: python3 tools/test_barrido_rf.py
       - name: ajuste censurado (Tobit) del barrido
