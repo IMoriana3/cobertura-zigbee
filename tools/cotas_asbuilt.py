@@ -468,12 +468,43 @@ def genera(planta):
         val = z[0] + z[1] * px + z[2] * pn
         return val if lo - 0.5 <= val <= hi + 0.5 else idw()
 
-    md_ref = None
-    for v in asign.values():
-        if v[0].get('mods'): md_ref = int(v[0]['mods']); break
+    # SESGO DE MONTAJE, fila a fila. Los largos medidos se apartan del nominal
+    # lo mismo en toda la planta, pero el sesgo hay que sacarlo COMPARANDO CADA
+    # FILA CON SU PROPIO NOMINAL. Antes se restaba el nominal de UN tipo (el
+    # primero que apareciera) a la mediana de TODOS los largos, y eso solo
+    # funciona si la planta tiene un unico tipo: en San Jose, con 2.191
+    # seguidores «completo» de 74 m y 98 «medio» de 37, la mediana era la de
+    # los largos y el nominal el de los cortos — un reconstruido salio de
+    # 111,10 m para 32 modulos.
+    sesgo_med = 0.0
+    if MOD.get('modW'):
+        _w, _gm, _gd = MOD['modW'], MOD.get('gapMod', 0.0), MOD.get('gapDrive', 0.0)
+        _nom = lambda m: 2 * m * _w + (2 * m - 2) * _gm + _gd
+        _d = [abs(f['zn'] - f['zs']) - _nom(int(f['mods']))
+              for v in asign.values() for f in v if f.get('mods')]
+        if _d:
+            _d.sort()
+            sesgo_med = _d[len(_d) // 2]
     estimados, sin_geom = 0, 0
-    # largo tipico POR TIPO del layout, resuelto de los que si tienen vecino
+    # LARGO TIPICO POR TIPO. Primero, de lo MEDIDO: cada fila del levantamiento
+    # trae sus modulos por string, asi que el tipo del plano se resuelve
+    # leyendolos, no estimando distancias. En San Jose sale unanime —«completo»
+    # 32 modulos y «medio» 16, con p25 = p75 en los cuatro grupos—, y ademas
+    # cubre los tipos raros: los 98 seguidores «medio» se quedaban sin largo
+    # cuando apenas hay sin medir de los que aprender, y sus trackers caian a
+    # None. Se exigen 3 casos y acuerdo, como abajo.
     md_tipo = {}
+    _med = defaultdict(list)
+    for i, v in asign.items():
+        for f in v:
+            if f.get('mods'):
+                _med[TK[i].get('t')].append(int(f['mods']))
+    for _t, _v in _med.items():
+        _v.sort()
+        if len(_v) >= 3 and _v[3 * len(_v) // 4] - _v[len(_v) // 4] <= 1:
+            md_tipo[_t] = _v[len(_v) // 2]
+    # y si algun tipo sigue sin resolver, la via anterior: la separacion a un
+    # vecino entre los NO levantados
     if MOD.get('modW'):
         _w, _gm, _gd = MOD['modW'], MOD.get('gapMod', 0.0), MOD.get('gapDrive', 0.0)
         _acc = {}
@@ -486,7 +517,7 @@ def genera(planta):
             _v.sort()
             # solo se acepta el tipo si sus casos CONCUERDAN (la mitad central
             # dentro de un modulo): si no, no hay largo tipico y no se emite
-            if len(_v) >= 5 and _v[3 * len(_v) // 4] - _v[len(_v) // 4] <= 1:
+            if _t not in md_tipo and len(_v) >= 5 and _v[3 * len(_v) // 4] - _v[len(_v) // 4] <= 1:
                 md_tipo[_t] = _v[len(_v) // 2]
 
     def del_plano(i):
@@ -505,8 +536,7 @@ def genera(planta):
         # en toda la planta (San Jose +0,56 m); se aplica para que las mesas
         # estimadas casen con sus vecinas en vez de dejar una junta falsa
         nom = lambda m: 2 * m * w + (2 * m - 2) * gm + gd
-        sesgo = (sorted(largo_med.values())[len(largo_med) // 2] - nom(md_ref)) if md_ref else 0.0
-        L2 = nom(md) + sesgo
+        L2 = nom(md) + sesgo_med
         xc, nc = TK[i]['x'], TK[i]['n']
         ns, nn = nc - L2 / 2, nc + L2 / 2
         # LAS DOS VIGAS DE UN BIFILA COMPARTEN TUBO: su desfase de cota son
