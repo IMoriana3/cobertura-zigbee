@@ -1159,7 +1159,11 @@ function plantFromCotas(data,maxLines,blockIdx){
     // medias: ésta no tiene ni una punta medida) · 4 = seguidor RECONSTRUIDO
     // del plano. Se pinta: una viga que no se midió no puede parecer igual que
     // una medida.
-    segOrig.push(sg.map(o=>o.est?4:(o.hm?3:(o.ye===3?2:(o.ye?1:0)))));
+    // «del plano» es cosa del TRACKER (trk.est), no de la mesa: o.est lleva
+    // además la marca por tope (eyS/eyN) de una cota repuesta, y leerla aquí
+    // pintaba de naranja las 39 filas reparadas como si no se hubieran
+    // levantado. Se vio contando bielas: 14 «del plano» con 2 reconstruidos.
+    segOrig.push(sg.map(o=>(o.trk&&o.trk.est)?4:(o.hm?3:(o.ye===3?2:(o.ye?1:0)))));
     segSide.push(sg.map(o=>o.side));                 // 0 = al SUR del morro, 1 = al NORTE
     segFila.push(sg.map(o=>o.fila));                 // fila (viga) de la que es mitad
     segArt.push(sg.map(o=>!!o.art));                 // el quiebro está MEDIDO (fila articulada)
