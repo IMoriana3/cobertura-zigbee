@@ -68,6 +68,17 @@ jobs:
       - name: TCUs retiradas y huecos de esclavo
         run: python3 tools/test_coords_retiradas.py
 
+      # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
+      # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo
+      # dentro del repo, en silencio; me apareceieron dos veces en `git status`
+      # y estuvieron a punto de colarse en un commit. Arreglado, y vigilado:
+      # si un banco vuelve a ensuciar el arbol, esto se pone rojo y dice cual.
+      - name: los bancos no han tocado el repo
+        run: |
+          if ! git diff --quiet; then
+            echo "Un banco ha modificado ficheros del repo:"; git diff --stat; exit 1
+          fi
+
   # ── los .ps1, ejecutados de verdad ────────────────────────────────────────
   # `pwsh` viene de serie en ubuntu-latest. Los dos bancos lo buscan en el PATH
   # (o en $PWSH) y, si no está, se saltan diciéndolo — que es justo lo que pasa
@@ -127,6 +138,13 @@ jobs:
       # pero que conste que hoy no vigila nada.
       - name: HSU contra la hoja (se salta sin la toolbox de scada)
         run: node tools/test_hsus_gw.mjs
+
+      # Lo mismo aqui: ningun banco de datos debe dejar el arbol sucio.
+      - name: los bancos no han tocado el repo
+        run: |
+          if ! git diff --quiet; then
+            echo "Un banco ha modificado ficheros del repo:"; git diff --stat; exit 1
+          fi
 
   # ── los que abren el visor: uno por job, para que el rojo diga cuál ───────
   navegador:

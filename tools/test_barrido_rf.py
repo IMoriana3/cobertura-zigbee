@@ -171,24 +171,35 @@ check("todo destino existe en el censo de la planta", not falta, sorted(falta)[:
 # como `null` en el fichero de cotas), y Fayon, Tunez y Bagnarelli porque ninguna
 # de sus NCU llega a 25 seguidores y no se elegia ninguna. Una planta sin hoja de
 # barrido es una planta que no se puede calibrar.
+# UN BANCO NO ESCRIBE EN EL REPO. Estas tres llamadas iban SIN `--salida`, asi
+# que el planificador escribia en su ruta por defecto: `cobertura_coords/<pl>/
+# barrido_<pl>_NCU<nn>.csv`, dentro del repo. O sea que correr este banco
+# reescribia DIEZ hojas de barrido de campo, y lo hacia en silencio: el arbol se
+# quedaba sucio y esos ficheros se podian colar en un commit sin querer (a mi me
+# aparecio dos veces hoy). Lo que se comprueba —que la hoja sale y que la
+# consola lo dice— no necesita tocar el repo para nada.
+TMPD = tempfile.mkdtemp()
 print("\n· la hoja sale para TODAS las plantas, no solo para las grandes")
 import subprocess
 PLANTAS = ["elburgo", "ayora", "sanjose", "fayon", "bagnarelli", "tunez",
            "paramo", "benante", "panbianco", "polvorin"]
 malas = []
 for pl in PLANTAS:
-    r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), pl],
+    r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), pl,
+                        "--salida", os.path.join(TMPD, "b_%s.csv" % pl)],
                        capture_output=True, text=True, cwd=RAIZ)
     if r.returncode != 0 or "escrito:" not in r.stdout:
         malas.append((pl, (r.stderr or r.stdout).strip().splitlines()[-1:] or [""]))
 check("las diez plantas producen su hoja", not malas, malas)
 
 # y las pequeñas la producen DICIENDOLO, no callando que van con menos nodos
-r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "bagnarelli"],
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "bagnarelli",
+                    "--salida", os.path.join(TMPD, "b_bagnarelli2.csv")],
                    capture_output=True, text=True, cwd=RAIZ)
 check("una planta pequeña avisa de que se barre la NCU mayor",
       "ninguna NCU llega a 25" in r.stdout, r.stdout[:200])
-r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "ayora"],
+r = subprocess.run([sys.executable, os.path.join(RAIZ, "tools", "plan_barrido_rf.py"), "ayora",
+                    "--salida", os.path.join(TMPD, "b_ayora2.csv")],
                    capture_output=True, text=True, cwd=RAIZ)
 check("y una grande no avisa de nada", "ninguna NCU llega a 25" not in r.stdout, r.stdout[:200])
 
