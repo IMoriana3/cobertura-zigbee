@@ -1023,7 +1023,13 @@ function plantFromCotas(data,maxLines,blockIdx){
     for(const f of trk.f){
       if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
       filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md,est:!!trk.est,
-                  hm:!!f.hm,ye:f.ye|0,
+                  hm:!!f.hm,
+                  // ye: qué cota de esta fila NO es medida porque su punto vino
+                  // con otra referencia vertical y el saneador la repuso —
+                  // 0 = las dos medidas, 1 = la SUR repuesta, 2 = la NORTE,
+                  // 3 = la fila entera del plano. Va por TOPE, así que marca UNA
+                  // mesa, no la fila: la otra mitad sigue medida de punta a punta.
+                  ye:f.ye|0,
                   nm:(f.nm!=null&&f.ym!=null)?f.nm:null,ym:(f.nm!=null&&f.ym!=null)?f.ym:null});
     }
   }
@@ -1124,10 +1130,14 @@ function plantFromCotas(data,maxLines,blockIdx){
       const g=Math.min(gDrive/2,Math.max(0,(Math.min(nb-nS,nN-nb))/4));
       const pS=(zb-zS)/((nb-nS)||1), pN=(zN-zb)/((nN-nb)||1);
       const com={trk:f.trk,md:f.md,est:f.est,hm:f.hm,ye:f.ye,art:hinge,fila:fi};
+      // cada mesa se queda con la marca de SU tope (el morro es medido en las dos).
+      // ye habla en SUR/NORTE geográficos, igual que nS/nN, así que no depende
+      // del orden en que la fila traiga sus dos extremos.
+      const eyS=(f.ye===1||f.ye===3), eyN=(f.ye===2||f.ye===3);
       // el MORRO va copiado en cada mesa (no compartido): las dos lo recentran
       // luego con eMean, y una referencia común lo restaría dos veces
-      sg.push(Object.assign({s:[nS-nMid,nb-g-nMid],z:[zS,zb-pS*g],side:0,morro:[nb-nMid,zb]},com));
-      sg.push(Object.assign({s:[nb+g-nMid,nN-nMid],z:[zb+pN*g,zN],side:1,morro:[nb-nMid,zb]},com));
+      sg.push(Object.assign({s:[nS-nMid,nb-g-nMid],z:[zS,zb-pS*g],side:0,morro:[nb-nMid,zb]},com,{est:f.est||eyS}));
+      sg.push(Object.assign({s:[nb+g-nMid,nN-nMid],z:[zb+pN*g,zN],side:1,morro:[nb-nMid,zb]},com,{est:f.est||eyN}));
       fi++;
     }
     sg.sort((a,b)=>a.s[0]-b.s[0]);
@@ -2739,7 +2749,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.49.0';
+const VER='v1.51.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

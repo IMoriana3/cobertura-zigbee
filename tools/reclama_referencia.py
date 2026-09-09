@@ -67,7 +67,9 @@ def reclama(planta):
     for fid in sorted(pmal):
         m = pmal[fid]
         alcance = 'fila entera' if len(m) >= n_por_fila.get(fid, 0) else 'media fila (una mesa)'
-        for pid, des in sorted(m):
+        # el detector devuelve (id, desvio, Y_utm): la Y la usa el saneador
+        # para saber QUE MITAD de la fila esta contaminada, aqui no hace falta
+        for pid, des in sorted((t[0], t[1]) for t in m):
             i = pos[pid]
             filas.append({
                 'fila': fid,

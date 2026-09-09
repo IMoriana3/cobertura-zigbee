@@ -27,9 +27,22 @@ body{
   min-height:100vh;line-height:1.45;-webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:min(2560px,96vw);margin:0 auto;padding:16px 18px 40px}   /* el --ancho del simulador: toda la pantalla, como el resto de tarjetas */
-h1{font-family:var(--display);font-size:1.35rem;letter-spacing:-.01em}
-.sub{color:var(--muted);font-size:.82rem;max-width:90ch;margin:4px 0 14px}
+/* CABECERA. El .wrap va a 96vw —la página es un visor 3D a pantalla completa—,
+   así que un título de 1,35rem y un párrafo cortado a 90ch dejaban medio ancho
+   en blanco. El título toma el tamaño que le corresponde a esa anchura y el
+   texto se reparte en COLUMNAS de ancho legible: `columns:3 54ch` deja que el
+   navegador ponga las que quepan sin pasar de tres, así que en un portátil son
+   dos y en el monitor grande tres, sin que ninguna línea se estire hasta ser
+   ilegible. */
+h1{font-family:var(--display);font-size:1.7rem;letter-spacing:-.015em;line-height:1.15;
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1 .chip{font-family:var(--mono);font-size:.62rem;font-weight:400;letter-spacing:.04em;
+  color:var(--demo);border:1px dashed var(--demo);border-radius:7px;padding:2px 8px;
+  position:relative;top:-2px}
+.sub{color:var(--muted);font-size:.82rem;margin:8px 0 16px;columns:3 54ch;column-gap:30px;
+  column-rule:1px solid var(--line);text-wrap:pretty}
 .sub b{color:var(--text)}
+@media(max-width:820px){h1{font-size:1.4rem}.sub{columns:1}}
 .grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
 @media(max-width:900px){.grid{grid-template-columns:1fr}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
@@ -67,7 +80,7 @@ input[type=range]{accent-color:var(--live)}
 </head>
 <body>
 <div class="wrap">
-  <h1>⚡ Producción 3D por string</h1>
+  <h1>⚡ Producción 3D por string <span class="chip">POA y energía, mesa a mesa</span></h1>
   <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
   string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día/mes/año del bloque
   FÍSICA PURA del simulador (pvlib singleaxis + sombra exacta + Perez), <b>cadena DC y AC según el
@@ -165,7 +178,98 @@ input[type=range]{accent-color:var(--live)}
         </div>
         <p style="color:var(--muted-2);font-size:.68rem">Pérdidas DC multiplicativas + inversor PVWatts con
         recorte a Pnom + límite de red — <b>apply_dc_losses / inverter_efficiency_curve / apply_grid_limit</b>
-        de solargpt_core, careadas dígito a dígito en el QA. El trafo (Fe+Cu) no está portado: declarado.</p>
+        de solargpt_core, careadas dígito a dígito en el QA.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>⛰ Horizonte lejano</h2>
+        <div class="f">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="horon" type="checkbox" style="width:auto"> Perfil «azimut:elevación» (grados)</label>
+          <input id="horv" type="text" value="0:0; 90:0; 180:0; 270:0"
+            title="Pares azimut:elevación separados por ; — el mismo formato que exporta un estudio de sombras lejanas o PVGIS. Entre pares se interpola, y da la vuelta por el 0. Cuando el sol cae por debajo de su horizonte se apaga el HAZ y el circunsolar, y queda la difusa: el disco no se ve, el cielo sí."
+            style="font-family:var(--mono);font-size:.7rem">
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">La sombra entre filas ya va con geometría exacta;
+        esto es lo de FUERA de la planta. No reduce el factor de vista del cielo por el volumen del relieve
+        —un cerro tapa difusa, no solo el disco—: efecto de segundo orden, declarado.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>📉 Incertidumbre (P50/P90)</h2>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que se firma no es un número, es
+        un <b>P90</b>: la energía que se supera nueve años de cada diez. Se compone en <b>cuadratura</b> —sumarlas
+        supondría que todo sale mal a la vez, y eso no es un P90 sino un peor caso—.</p>
+        <div class="row2">
+          <div class="f"><label>Meteo σ %</label><input id="umeteo" type="number" step="0.5" min="0" value="4.0"
+            title="Variabilidad interanual del recurso: cuánto se aparta la irradiación de un año concreto del TMY. Típico 3-5 % en anual."></div>
+          <div class="f"><label>Modelo σ %</label><input id="umodelo" type="number" step="0.5" min="0" value="3.5"
+            title="Incertidumbre de la transposición y de la cadena eléctrica. Típico 3-4 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Soiling σ %</label><input id="usoil" type="number" step="0.5" min="0" value="1.0"
+            title="Cuánto puede desviarse el ensuciamiento real del supuesto."></div>
+          <div class="f"><label>Disponib. σ %</label><input id="udisp" type="number" step="0.5" min="0" value="0.5"
+            title="Incertidumbre de la disponibilidad de planta y red."></div>
+        </div>
+        <div class="f"><label>Degradación σ %/año</label><input id="udeg" type="number" step="0.05" min="0" value="0.15"
+          title="Incertidumbre de la tasa de degradación. Se ACUMULA con el año estimado: en el año 1 no pesa nada y en el 25 es la que más manda."></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🪟 Vidrio (IAM)</h2>
+        <div class="f"><label>IAM b₀</label><input id="iamb0" type="number" step="0.01" min="0" max="0.5" value="0.05"
+          title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz. 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo desactiva. Ya se aplicaba (fijo en 0,05) al haz, al circunsolar y —con ángulos equivalentes de Duffie-Beckman— a la difusa y al albedo; aquí se hace editable."></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🔆 Bifacialidad</h2>
+        <div class="row2">
+          <div class="f"><label>Bifacialidad φ %</label><input id="bifa" type="number" step="1" min="0" max="95" value="0"
+            title="Cuánto rinde la cara de atrás respecto de la de delante, del datasheet del módulo. 0 = monofacial (y entonces esto no toca nada). Un bifacial de hoy va en 70-85 %."></div>
+          <div class="f"><label>Pérdida trasera %</label><input id="bperd" type="number" step="1" min="0" max="90" value="10"
+            title="Lo que se pierde por detrás y este modelo no resuelve: estructura, tubo y cableado que tapan, y el mismatch de una irradiancia trasera muy desigual. Típico 8-15 %."></div>
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">La cara trasera es la misma superficie girada 180°:
+        ve el suelo con factor de vista (1+cos β)/2 y el cielo con (1−cos β)/2, con la inclinación REAL de
+        cada mesa. Transposición <b>isótropa</b>, no Perez — lo que ve por detrás es sobre todo suelo, que
+        reemite difuso (es lo que hace PVsyst en su modelo simplificado). El suelo va corregido por la
+        fracción iluminada (1−GCR). <b>No es trazado de rayos</b>: no resuelve el patrón de luz en el suelo
+        ni el bloqueo de la fila de atrás — eso se recoge en la pérdida trasera, y se carea contra la medida
+        real por inversor.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🏭 Pérdidas de planta</h2>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que la cadena del Notebook no
+        modela y sin lo cual esto no es una estimación de generación, sino la de un día del año 1 con la
+        planta impecable. Todo a cero = exactamente la cifra de antes.</p>
+        <div class="row2">
+          <div class="f"><label>Trafo %</label><input id="ltrafo" type="number" step="0.1" min="0" value="0"
+            title="Pérdidas del transformador (Fe + Cu). apply_transformer_losses del core, que no estaba portado. Típico 1,0-1,5 %."></div>
+          <div class="f"><label>Cableado AC %</label><input id="lacw" type="number" step="0.1" min="0" value="0"
+            title="Caída en la red AC de la planta, del inversor al punto de conexión. Típico 0,5-1,0 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Auxiliares kW</label><input id="laux" type="number" step="1" min="0" value="0"
+            title="Consumo de los servicios de la planta (seguidores, SCADA, alumbrado, refrigeración). Es potencia NEGATIVA constante: resta también de NOCHE, y por eso pesa más cuanto menos produce la planta."></div>
+          <div class="f"><label>Disponibilidad %</label><input id="ldispo" type="number" step="0.1" min="0" max="100" value="100"
+            title="Fracción del tiempo con planta y red disponibles. Factor plano sobre la ENERGÍA, no sobre la potencia: no cambia el recorte del inversor. Típico 99-99,5 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Degradación %/año</label><input id="ldeg" type="number" step="0.05" min="0" value="0"
+            title="Degradación anual del módulo a partir del año 2 — el LID del primer año ya va en la cadena DC. Típico 0,45-0,55 %/año."></div>
+          <div class="f"><label>Año de operación</label><input id="lanio" type="number" step="1" min="1" value="1"
+            title="Año que se estima. 1 = puesta en marcha (sin degradación acumulada); 25 = fin de la vida útil típica."></div>
+        </div>
+        <div class="f" style="margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="lsoilmes" type="checkbox" style="width:auto">
+            Soiling por MES (%) — manda sobre el único de arriba</label>
+          <input id="lsoilv" type="text" value="0.5;0.5;0.8;1.5;2.2;2.8;3.2;3.4;3.2;2.6;1.6;0.8"
+            title="Doce valores separados por ; — enero a diciembre. Con estación seca larga el ensuciamiento no es plano: un único % se come la estacionalidad entera. El de ejemplo es un perfil de secano (lluvia de verano austral)."
+            style="font-family:var(--mono);font-size:.7rem">
+        </div>
       </div>
       <div class="card" style="margin-top:12px">
         <h2>⛰ Terreno</h2>
@@ -287,7 +391,7 @@ function buildTX(F,c,xs,z,tilt,segs,groups,drive){
   const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
   return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
-          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:iamDe(c),
           rowTilt:tilts,groups:groups||null,drive:drive||'mono',
           segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
 }
@@ -315,7 +419,7 @@ function buildTReal(F,c,P){
   // con su accionamiento (P.drive, bifila/quebrado) y acopla el θ por grupo —
   // aquí igual, para que el BT sea EL MISMO, no un pariente
   return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
-          z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
+          z0:0.17,nBypass:2,iam:iamDe(c),rowTilt:P.tilt,groups:P.groups,drive:P.drive,
           segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // por MESA (v1.13): cada fila medida con su tilt y su pareja
           segDrive:P.segDrive,                                 // v1.24: y su ACCIONAMIENTO — las CUATRO mesas que mueve un motor van al MISMO θ
           filaLen:2*28*1.146+0.55,real:P};
@@ -351,6 +455,169 @@ function invAC(pdcW,pnomW,etaMax){                 // → {pac,eta} — PVWatts 
 }
 function gridLimit(pacW,pmaxW){return (pmaxW!=null&&pmaxW>0)?Math.min(pacW,pmaxW):pacW;}
 
+/* ── PÉRDIDAS DE PLANTA: lo que hay antes y después del contrato con el core ─
+   La cadena de arriba es la del Notebook, portada literalmente y careada dígito
+   a dígito contra el golden; no se toca. Lo que va aquí es lo que esa cadena NO
+   modela y sin lo cual la cifra no es una estimación de generación, sino la de
+   un día del año 1 con la planta impecable:
+
+     · DEGRADACIÓN. El módulo del año 12 no es el del año 1. Primer año aparte
+       (LID ya va en la cadena DC, así que aquí el año 1 no degrada) y después
+       lineal: (1-d)^(año-1).
+     · DISPONIBILIDAD. Ni la planta ni la red están el 100 % del tiempo. Es un
+       factor plano sobre la energía, no sobre la potencia: no cambia el
+       recorte, y por eso va DESPUÉS del inversor.
+     · SOILING POR MES. La cadena DC lleva un soiling único, y en una planta con
+       estación seca larga eso se come la estacionalidad entera: en Arequipa
+       llueve de enero a marzo y el resto del año el polvo se acumula. Si hay
+       perfil mensual, manda él y el campo único queda de reserva.
+     · TRAFO y CABLEADO AC. `apply_transformer_losses` del core no estaba
+       portado —el comentario de arriba lo declaraba— y el cableado AC no
+       existía. Van en cascada sobre la potencia, antes del límite de red,
+       porque el límite se mide en el punto de conexión.
+     · AUXILIARES. Los servicios de la planta consumen de día y de NOCHE
+       (seguidores, SCADA, alumbrado, refrigeración). Es potencia NEGATIVA
+       constante, así que su efecto es tanto mayor cuanto menos produce la
+       planta, y en el balance anual se nota.
+
+   Todo va con su interruptor y a cero por defecto salvo lo que ya tenía valor,
+   así que quien no los toque obtiene EXACTAMENTE la cifra de antes.          */
+function degradaEta(o){                            // año 1 = 1 (el LID ya está en la cadena DC)
+  const a=Math.max(1,+(o&&o.anio)||1), d=Math.max(0,+(o&&o.degrada)||0)/100;
+  return Math.pow(1-d,a-1);
+}
+function soilingDelMes(o,dateStr){                 // % del mes, o el único si no hay perfil
+  const p=o&&o.soilMes;
+  if(!p||p.length!==12)return null;
+  const m=+String(dateStr||'').slice(5,7);
+  return (m>=1&&m<=12&&p[m-1]!=null)?Math.max(0,+p[m-1]):null;
+}
+function plantaEtaAC(o){                           // trafo y cableado AC, en cascada
+  const t=Math.max(0,+(o&&o.trafo)||0)/100, c=Math.max(0,+(o&&o.acWire)||0)/100;
+  return (1-t)*(1-c);
+}
+function auxW(o){return Math.max(0,+(o&&o.aux)||0)*1000;}   // kW -> W, de día y de noche
+/* el b0 del IAM sale de la CONFIG, no del DOM: aquí dentro no se toca la
+   página (contrato LÓGICA PURA), y el QA arma su propia c sin navegador. Si no
+   viene, el 0,05 de siempre — que es lo que se aplicaba fijo hasta ahora. */
+function iamDe(c){const v=c&&c.iamb0;return (v==null||!isFinite(v))?0.05:Math.max(0,Math.min(0.5,v));}
+
+/* ── HORIZONTE LEJANO ───────────────────────────────────────────────────────
+   El modelo resuelve la sombra ENTRE FILAS con geometría exacta y el terreno de
+   la planta, pero el sol no sale por una línea recta: sale por detrás de lo que
+   haya alrededor. San José está en Arequipa, con relieve; una planta en un
+   valle puede perder media hora de sol por la mañana y otra media por la tarde,
+   y eso no aparecía por ningún lado.
+
+   CÓMO SE MODELA. Un perfil de altura de horizonte por azimut —el mismo formato
+   que exporta un estudio de sombras lejanas o PVGIS—: pares «azimut:elevación»
+   en grados, y entre ellos se interpola. Cuando el sol está por DEBAJO de su
+   horizonte, el HAZ y el circunsolar se apagan (no hay disco solar a la vista)
+   y queda la difusa del cielo: exactamente lo que hace PVsyst con su línea de
+   horizonte, y lo que se ve en campo cuando el sol se pone tras el cerro y la
+   planta sigue dando algo.
+
+   LO QUE NO HACE: no reduce el factor de vista del cielo por el volumen del
+   relieve —un cerro tapa cielo difuso, no solo el disco—, que es un efecto de
+   segundo orden y queda declarado.                                          */
+function parseHorizonte(txt){
+  const v=String(txt||'').split(/[;\n]+/).map(p=>p.split(':').map(x=>parseFloat(String(x).trim().replace(',','.'))))
+          .filter(p=>p.length===2&&isFinite(p[0])&&isFinite(p[1]))
+          .map(p=>[((p[0]%360)+360)%360, Math.max(0,p[1])]).sort((a,b)=>a[0]-b[0]);
+  return v.length>=2?v:null;
+}
+function horizonteEn(perfil,azDeg){
+  if(!perfil||perfil.length<2)return 0;
+  const a=((azDeg%360)+360)%360;
+  let i=0; while(i<perfil.length&&perfil[i][0]<=a)i++;
+  const p0=perfil[(i-1+perfil.length)%perfil.length], p1=perfil[i%perfil.length];
+  let d=p1[0]-p0[0]; if(d<0)d+=360;
+  let t=a-p0[0]; if(t<0)t+=360;
+  return d<1e-9?p0[1]:p0[1]+(p1[1]-p0[1])*(t/d);
+}
+/* apaga el haz cuando el sol está tras el horizonte lejano; la difusa se queda */
+function irrTrasHorizonte(irr,elevDeg,azDeg,perfil){
+  if(!perfil||!irr)return irr;
+  if(elevDeg>horizonteEn(perfil,azDeg))return irr;
+  return {ghi:Math.max(0,irr.dhi),dni:0,dhi:Math.max(0,irr.dhi)};
+}
+
+/* ── P50 / P90: la cifra con su banda ───────────────────────────────────────
+   Una estimación de generación que da UN número no sirve para decidir. Lo que
+   se firma es un P90: la energía que se supera nueve años de cada diez.
+
+   DE DÓNDE SALE LA BANDA. De la incertidumbre de las cosas que la producen, en
+   cuadratura porque son independientes:
+
+     · la METEO de un año concreto contra el TMY (variabilidad interanual del
+       recurso, típico 3-5 % en irradiación anual);
+     · el MODELO de transposición y la cadena eléctrica (típico 3-4 %);
+     · la DEGRADACIÓN, cuya incertidumbre crece con el año que se estima —en el
+       año 1 no hay ninguna, en el 25 es la que más pesa—;
+     · el SOILING y la disponibilidad, que son estimaciones de operación.
+
+   POR QUÉ EN CUADRATURA Y NO SUMANDO. Sumar las incertidumbres supone que todo
+   sale mal a la vez, y eso no es un P90, es un peor caso. La raíz de la suma de
+   cuadrados es lo que se hace en la industria y lo que hace un banco.
+
+   EL P50 ES LA CIFRA QUE YA SE CALCULA: el TMY es, por construcción, un año
+   típico. Aquí solo se le pone la banda alrededor, con el cuantil normal
+   (z = 1,2816 para el 90 %).                                                */
+function sigmaTotal(u,anio){
+  const a=Math.max(1,+anio||1);
+  const q=[+u.meteo||0, +u.modelo||0, +u.soiling||0, +u.dispo||0,
+           (+u.degrada||0)*(a-1)];                 // la de la degradación se acumula con los años
+  return Math.sqrt(q.reduce((s,v)=>s+v*v,0));
+}
+const Z90=1.2815515655446004;                      // cuantil normal del 90 %
+function bandaPXX(e50,u,anio){
+  const s=sigmaTotal(u,anio)/100;
+  return {p50:e50, sigma:s*100, p90:e50*(1-Z90*s), p75:e50*(1-0.6744897501960817*s),
+          p95:e50*(1-1.6448536269514722*s)};
+}
+
+/* ── BIFACIALIDAD ──────────────────────────────────────────────────────────
+   Un tracker de hoy lleva módulos bifaciales y la cara de atrás aporta entre un
+   5 y un 15 %. Sin esto la cifra sale sistemáticamente baja, y era el hueco más
+   grande del modelo: toda la geometría que hace falta —el terreno, la altura
+   del buje, el tilt de cada mesa, el albedo— ya estaba calculada para la cara
+   de delante.
+
+   QUÉ SE MODELA, Y CON QUÉ APROXIMACIÓN. La cara trasera es la misma superficie
+   girada 180°: su inclinación es 180−β, así que ve el SUELO con factor de vista
+   (1+cos β)/2 y el CIELO con (1−cos β)/2. Con el panel horizontal mira al suelo
+   entero y no ve cielo; puesto de canto, mitad y mitad.
+
+   La transposición de atrás va con modelo ISÓTROPO, no con Perez. No es
+   descuido: Perez describe la anisotropía del CIELO —el circunsolar y la banda
+   del horizonte— y lo que ve la cara trasera es sobre todo suelo, que reemite
+   difuso. Es lo que hace PVsyst en su modelo simplificado, y es la aproximación
+   que se declara aquí.
+
+   LO QUE ESTE MODELO NO ES. No es un trazado de rayos (bifacial_radiance): no
+   resuelve el patrón de luz en el suelo mesa a mesa ni el bloqueo de la fila de
+   atrás. Por eso el suelo que ve la cara trasera se corrige con la fracción
+   ILUMINADA —de primer orden, 1−GCR: la parte del suelo que los módulos no
+   tapan— y por eso hay una pérdida trasera aparte (estructura, tubo, cableado y
+   el mismatch de una irradiancia muy desigual), que es donde se recoge lo que
+   el modelo no resuelve. Un bifacial serio se carea contra medida: para eso
+   está el careo por inversor de esta misma página.                          */
+function poaRear(tiltDeg,irr,albedo,o){
+  if(!o||!(o.bifa>0)||!irr||irr.ghi<=0)return 0;
+  const b=Math.max(0,Math.min(90,Math.abs(+tiltDeg||0)))*Math.PI/180;
+  const vfGnd=(1+Math.cos(b))/2, vfSky=(1-Math.cos(b))/2;
+  const ilum=(o.gcr>0&&o.gcr<1)?(1-o.gcr):1;      // fracción de suelo que los módulos no tapan
+  const gnd=Math.max(0,irr.ghi)*Math.max(0,albedo||0)*vfGnd*ilum;
+  const sky=Math.max(0,irr.dhi)*vfSky;
+  return (gnd+sky)*(1-Math.max(0,Math.min(90,+o.perdTras||0))/100);
+}
+/* POA efectiva de una superficie: la de delante más lo que entra por detrás
+   pesado por la bifacialidad del módulo (φ: 0 = monofacial, 0,70-0,85 típico). */
+function poaBifacial(poaFront,tiltDeg,irr,albedo,o){
+  if(!o||!(o.bifa>0))return poaFront;
+  return poaFront+(o.bifa/100)*poaRear(tiltDeg,irr,albedo,o);
+}
+
 /* reparto string→inversor cuando NO hay mapeo medido (todas menos El Burgo):
    n bloques contiguos IGUALES — reparto declarado en pantalla, no medido. */
 function invMapUniforme(nrows,ninv){
@@ -361,19 +628,33 @@ function invMapUniforme(nrows,ninv){
 /* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
    POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
    fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
-function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
+function strPdc(rowsPoa,strInv,met,e,segPoa,wings,bif){
   const out=[];
+  // LA CARA DE ATRÁS SE SUMA AQUÍ, sobre el POA de cada superficie y con SU
+  // inclinación: la de la mesa cuando la hay (bif.tiltSeg) y la de la fila si
+  // no. Va antes de pStringW porque es irradiancia, no potencia: entra a la
+  // t_cell y al γ como cualquier otro vatio que llega al módulo.
+  const bp=(poa,r,k)=>{
+    if(!bif||!(bif.bifa>0))return poa;
+    const t=(k!=null&&bif.tiltSeg&&bif.tiltSeg[r]&&bif.tiltSeg[r][k]!=null)?bif.tiltSeg[r][k]
+           :((bif.tiltRow&&bif.tiltRow[r]!=null)?bif.tiltRow[r]:0);
+    return poaBifacial(poa,t,bif.irr,bif.albedo,bif);
+  };
   for(let r=0;r<rowsPoa.length;r++){
-    const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
+    const p=pStringW(bp(rowsPoa[r],r,null),met.tamb,met.wind,e);
     for(const s of strInv[r]){
       // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k,w} (un string
       // de una mesa: con POA por mesa, la SUYA; con ala (w) y POA por ala, la de
       // SU ala — v1.14: un string por ala en la mesa larga)
       if(typeof s==='string'){out.push({inv:s,row:r,pdcW:p});continue;}
       const wp=(wings&&s.w!=null&&s.k!=null&&wings[r]&&wings[r][s.k]&&wings[r][s.k][s.w]!=null)?wings[r][s.k][s.w]:null;
-      const poa=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
+      const poa0=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
       const e2=(s.mods==null||s.mods===e.mods)?e:Object.assign({},e,{mods:s.mods});
-      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
+      // con bifacialidad y tilt por mesa la potencia de fila no vale: la mesa
+      // tiene su inclinación y la cara de atrás la ve distinta
+      const mismo=(poa0===rowsPoa[r]&&e2===e)&&!(bif&&bif.bifa>0&&s.k!=null&&bif.tiltSeg);
+      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,
+                pdcW:mismo?p:pStringW(bp(poa0,r,s.k),met.tamb,met.wind,e2)});
     }
   }
   return out;
@@ -461,8 +742,14 @@ function acPlant(porStr,a){
     return {inv:inv,nstr:v.n,pdcW:v.pdc,pdcNetW:net,pacW:r.pac,eta:r.eta,
             clip:net>0&&r.pac>=a.pnomW-1e-9};
   }).sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true}));
-  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pac=invs.reduce((s,v)=>s+v.pacW,0);
-  return {invs:invs,pdcW:pdc,dcEta:eta,pacW:pac,redW:gridLimit(pac,a.gridW),
+  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pacInv=invs.reduce((s,v)=>s+v.pacW,0);
+  // de los bornes del inversor al punto de conexión: trafo y cableado AC en
+  // cascada, luego los auxiliares (que restan también de noche, con pac=0) y
+  // solo entonces el límite de red, que es lo que se mide en el punto
+  const pac=pacInv*plantaEtaAC(a.planta)-auxW(a.planta);
+  return {invs:invs,pdcW:pdc,dcEta:eta,pacInvW:pacInv,pacW:pac,
+          redW:gridLimit(Math.max(0,pac),a.gridW),
+          acEta:plantaEtaAC(a.planta),auxW:auxW(a.planta),
           clips:invs.reduce((s,v)=>s+(v.clip?1:0),0)};
 }
 /* E AC del día: el recorte es INSTANTÁNEO, así que la cadena se aplica paso a
@@ -470,16 +757,27 @@ function acPlant(porStr,a){
 function dayAC(F,c,T,strInv,a,stepMin){
   const st=stepMin||5, acc=new Map();
   let edc=0,eac=0,ered=0;
+  // EL SOILING DEL MES manda sobre el único cuando hay perfil, y la DEGRADACIÓN
+  // multiplica la Pdc antes del inversor: las dos afectan a la potencia, así
+  // que entran ANTES del recorte —una planta degradada recorta menos— y por eso
+  // no se pueden aplicar a la energía ya sumada.
+  const sm=soilingDelMes(a.planta,c.date);
+  const a2=(sm==null)?a:Object.assign({},a,{loss:Object.assign({},a.loss,{soiling:sm})});
+  const gd=degradaEta(a.planta);
   for(let m=0;m<1440;m+=st){
     const r=instant(F,c,T,m);
-    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings),a);
+    const x=acPlant(strPdcPlanta(F,c,T,r,strInv),a2);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
   }
-  const k=st/60/1000;
+  // la DISPONIBILIDAD es lo único que va sobre la energía: es tiempo perdido,
+  // no potencia perdida, así que no cambia cuánto recorta el inversor
+  const dv=(a.planta&&a.planta.dispo!=null)?Math.min(100,Math.max(0,+a.planta.dispo))/100:1;
+  const k=st/60/1000*dv;
   return {porInv:[...acc.entries()].map(([inv,s])=>({inv:inv,kwh:s*k}))
             .sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true})),
-          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k};
+          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k,
+          soilMes:sm,degradaEta:gd,dispo:dv};
 }
 
 /* ── meteo TMY (año meteorológico típico): 8760 horas UTC de
@@ -538,6 +836,51 @@ function careoMedidas(esp,med){        // esp:[{inv,kwh}] · med:Map inv→kWh
   }
   for(const [k,v] of med)if(!vistos.has(k))rows.push({inv:k,esp:null,med:v,dev:null});
   return rows;
+}
+
+/* ── CALIBRACIÓN CONTRA LA MEDIDA ───────────────────────────────────────────
+   El careo de arriba dice, inversor a inversor, cuánto se desvía lo estimado de
+   lo medido. Eso está bien para cazar un inversor parado, pero no contesta la
+   pregunta que importa: ¿está el MODELO bien calibrado, o hay un sesgo que se
+   arrastra en toda la planta?
+
+   Es la única forma de saber si todo lo demás —bifacialidad, soiling, trafo,
+   disponibilidad— está puesto en su sitio: el modelo se afina contra medida, no
+   contra la intuición. Así que del careo se sacan los estadísticos con los que
+   se juzga un modelo de producción:
+
+     · MBE (sesgo): si es +3 %, el modelo produce de más SISTEMÁTICAMENTE, y eso
+       no se arregla mirando inversores sueltos sino tocando las pérdidas;
+     · MAE y RMSE: cuánto se equivoca en magnitud, con y sin castigar los
+       errores grandes. Un MBE ~0 con un RMSE alto es un modelo sin sesgo pero
+       con dispersión: el reparto por inversor no cuadra;
+     · R²: cuánto de la variación entre inversores explica el modelo;
+     · y los inversores FUERA DE BANDA, que son los que hay que ir a mirar a
+       campo en vez de meter en la estadística.
+
+   EL FACTOR SUGERIDO es lo que habría que multiplicar a la estimación para que
+   el sesgo se anule. No se aplica solo —eso sería tapar el problema con un
+   número—: se enseña para que quien calibra sepa cuánto le falta y dónde
+   buscarlo.                                                                 */
+function estadisticaCareo(rows,bandaPct){
+  const v=rows.filter(r=>r&&r.esp!=null&&r.med!=null&&isFinite(r.esp)&&isFinite(r.med)&&r.esp>0);
+  if(v.length<2)return null;
+  const b=Math.max(0,+bandaPct||0);
+  const n=v.length;
+  const sEsp=v.reduce((s,r)=>s+r.esp,0), sMed=v.reduce((s,r)=>s+r.med,0);
+  const mbe=100*(sMed-sEsp)/sEsp;                       // sesgo global, en % de lo estimado
+  const mae=100*v.reduce((s,r)=>s+Math.abs(r.med-r.esp)/r.esp,0)/n;   // por inversor, como el RMSE
+  const rmse=100*Math.sqrt(v.reduce((s,r)=>s+Math.pow((r.med-r.esp)/r.esp,2),0)/n);
+  const mm=sMed/n;
+  const sst=v.reduce((s,r)=>s+Math.pow(r.med-mm,2),0);
+  const sse=v.reduce((s,r)=>s+Math.pow(r.med-r.esp,2),0);
+  const r2=sst>0?1-sse/sst:null;
+  const fuera=b>0?v.filter(r=>Math.abs(100*(r.med-r.esp)/r.esp)>b)
+                   .map(r=>({inv:r.inv,dev:100*(r.med-r.esp)/r.esp}))
+                   .sort((x,y)=>Math.abs(y.dev)-Math.abs(x.dev)):[];
+  return {n:n,mbe:mbe,mae:mae,rmse:rmse,r2:r2,
+          factor:sEsp>0?sMed/sEsp:null,fuera:fuera,
+          espKwh:sEsp,medKwh:sMed};
 }
 
 /* CSV de la vista (separador ;, decimal coma — es lo que abre el Excel de obra) */
@@ -725,6 +1068,32 @@ function doyOf(dateStr){
    (con groups=null, driveCoupleSafe es la identidad y queda el pairwise puro;
    con la bifila real de cotas, el θ común por grupo, como allí). El QA carea
    los θ contra el simulador elemento a elemento y exige igualdad EXACTA. */
+/* el paquete que la bifacialidad necesita de CADA instante: la irradiancia, el
+   albedo, el GCR y la inclinación real de cada superficie (la de la mesa cuando
+   la hay). El tilt sale de surfaceOrient, la misma que orienta la cara de
+   delante, así que las dos caras hablan de la misma superficie. */
+function bifDe(F,c,T,r){
+  const o=c.bif||{};
+  if(!(o.bifa>0))return null;
+  const so=(th,rr,kk)=>{
+    if(!F.surfaceOrient)return Math.abs(th||0);
+    const at=(T.segTilt&&kk!=null&&T.segTilt[rr]&&T.segTilt[rr][kk]!=null)?T.segTilt[rr][kk]
+            :((T.rowTilt&&T.rowTilt[rr]!=null)?T.rowTilt[rr]:0);
+    return Math.abs(F.surfaceOrient(th,at,T.axisAz).tilt);
+  };
+  return {bifa:o.bifa,perdTras:o.perdTras,gcr:c.cw/c.pitch,irr:r.irr,albedo:c.albedo,
+          tiltRow:r.ang.map((th,rr)=>so(th,rr,null)),
+          tiltSeg:r.segAng?r.segAng.map((l,rr)=>l.map((th,kk)=>so(th,rr,kk))):null};
+}
+/* LA PDC POR STRING DEL INSTANTE, PARA LA CADENA AC: cara de atrás y módulo
+   degradado, igual que mapStringW para las vistas por string. Antes «AC ahora»
+   y el pick salían sin degradación mientras «Σ día AC» sí la llevaba: dos
+   cifras de la misma planta que no cuadraban entre sí. */
+function strPdcPlanta(F,c,T,r,strInv){
+  const por=strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings,bifDe(F,c,T,r));
+  const gd=degradaEta(c.ac&&c.ac.planta);
+  return gd===1?por:por.map(v=>Object.assign({},v,{pdcW:v.pdcW*gd}));
+}
 function instant(F,c,T,m){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
@@ -738,6 +1107,9 @@ function instant(F,c,T,m){
     irr=F.skyWithClouds(Irr.clearskyIneichen(zen,doy,c.alt,c.tl||3.5),c.cc,zen);
     met={tamb:c.elec?c.elec.tamb:20,wind:c.elec?c.elec.wind:1};
   }
+  // el sol no sale por una línea recta: si está tras el horizonte lejano, el
+  // haz se apaga y queda la difusa (el disco no se ve, el cielo sí)
+  if(c.horizonte)irr=irrTrasHorizonte(irr,90-zen,az,c.horizonte);
   const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
                     :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
   // POR MESA (v1.13): con tilt por mesa en la T (cotas), θ y POA se calculan
@@ -763,13 +1135,35 @@ function dayEnergy(F,c,T,dateStr,stepMin,map){
   const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
   for(let m=0;m<1440;m+=stepMin){
     const r=instant(F,c2,T,m);
-    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met);
+    // el map recibe también el INSTANTE y la fila: la bifacialidad necesita la
+    // irradiancia y la inclinación de esa superficie, no solo su POA
+    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met,r,k);
   }
   for(let k=0;k<n;k++)out[k]*=stepMin/60/1000;
   return out;
 }
 /* día entero, paso de 5 min con el modo activo (la fecha de la página) */
 function dayTotals(F,c,T,map){return dayEnergy(F,c,T,c.date,5,map);}
+/* LA POTENCIA DC DE UN STRING, LA MISMA EN TODAS LAS VISTAS. «E string Σ día» y
+   «Σ mes/año» iban con pStringW sobre el POA de delante a pelo, así que la
+   bifacialidad y la degradación solo entraban por el camino AC: el número
+   ANUAL —justo el que califica un P90— no llevaba nada de lo nuevo. Este es el
+   único map que debe usarse para energía por string: POA efectiva (cara de
+   atrás incluida, con la inclinación de SU fila) × módulo degradado al año que
+   se estima. El soiling y la disponibilidad NO van aquí: son de la cadena y de
+   la planta, y la vista por string es DC bruta del módulo, como siempre fue. */
+function mapStringW(F,c,T){
+  const gd=degradaEta(c.ac&&c.ac.planta);
+  return (poa,met,r,k)=>{
+    let p=poa;
+    if(r&&c.bif&&c.bif.bifa>0){
+      if(r._bif===undefined)r._bif=bifDe(F,c,T,r);       // una vez por instante
+      const b=r._bif, t=(b&&b.tiltRow&&b.tiltRow[k]!=null)?b.tiltRow[k]:0;
+      if(b)p=poaBifacial(poa,t,r.irr,c.albedo,b);
+    }
+    return pStringW(p,met.tamb,met.wind,c.elec)*gd;
+  };
+}
 /* fechas ISO de un período — 'mes' = el mes de la fecha activa, 'ano' = su
    año entero. La UI las recorre día a día (progreso/cancelación); paso
    HORARIO para los agregados largos, declarado en pantalla. */
@@ -800,6 +1194,18 @@ function westDeGroups(n,groups){
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
+/* el perfil mensual de soiling, leído de la caja de texto: doce números
+   separados por ; (enero a diciembre). Si el interruptor está apagado o el
+   texto no trae doce, devuelve null y manda el soiling único de la cadena DC. */
+/* el b0 del IAM: ya se aplicaba, pero fijo en 0,05 y sin decirlo en pantalla */
+function iamUI(){const e=$('iamb0');return e?Math.max(0,Math.min(0.5,+e.value||0)):0.05;}
+function soilMesUI(){
+  if(!$('lsoilmes')||!$('lsoilmes').checked)return null;
+  // separa por ; (la coma es el decimal del Excel de obra) — con «0,5;0,5;…»
+  // partir por coma daba 24 trozos y el perfil se ignoraba en silencio
+  const v=String($('lsoilv').value||'').split(';').map(x=>parseFloat(String(x).trim().replace(',','.')));
+  return (v.length===12&&v.every(x=>isFinite(x)&&x>=0))?v:null;
+}
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
 let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
 let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)
@@ -815,7 +1221,8 @@ async function cargaFisica(){
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa};`)();
+              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,
+              surfaceOrient};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -863,8 +1270,24 @@ async function cargaCotas(key){
   const idDe=new Map();
   if(lay.trackers&&lay.trackers.length===cotas.t.length)
     cotas.t.forEach((t,i)=>{if(t&&lay.trackers[i]&&lay.trackers[i].id)idDe.set(t,lay.trackers[i].id);});
+  // QUÉ PARTE DE LA PLANTA ES MEDIDA Y QUÉ PARTE SUPUESTA. La página daba una
+  // cifra de producción sin decir sobre qué se apoya, y no todo el parque está
+  // medido igual: hay trackers reconstruidos del plano (est), otros con UNA
+  // sola viga levantada y la otra copiada de su hermana (inc, ±0,15 m de cota
+  // de mediana) y filas con una punta repuesta porque su punto vino con otra
+  // referencia vertical (ye). Son grados distintos de suposición y hasta ahora
+  // ninguno se veía: el dato ya estaba en el fichero de cotas, solo había que
+  // enseñarlo.
+  const inc=cotas.t.filter(t=>t&&t.inc).length;
+  // en un tracker inc=1 la segunda fila es COPIA de la primera y hereda su
+  // marca: se cuenta una vez, que es lo que se midió
+  let ye=0; for(const t of cotas.t) if(t&&!t.est){
+    const k=(t.f||[]).filter(f=>f.ye===1||f.ye===2).length;
+    ye+=t.inc?(k?1:0):k;
+  }
   RP={key:key,P:P,cotas:cotas,ncuOf:ncuOf,lay:lay,idDe:idDe,
       trkLayout:(lay.trackers||[]).length,trkCotas:conCotas,trkEst:estim,
+      trkInc:inc,filasYe:ye,
       lat:+lay.clat,lon:+lay.clon,alt:Math.round(cotas.base||300),tz:cfg2.tz};
   return RP;
 }
@@ -937,7 +1360,22 @@ function cfg(){
               ninv:Math.max(1,Math.round(+$('ninv').value)),
               pnomW:Math.max(1,+$('pnom').value)*1000,
               etaMax:Math.max(0.5,Math.min(1,+$('etamax').value)),
-              gridW:Math.max(0,+$('gridkw').value)*1000}};
+              gridW:Math.max(0,+$('gridkw').value)*1000,
+              // pérdidas de PLANTA: lo que la cadena del Notebook no modela
+              planta:{trafo:Math.max(0,+$('ltrafo').value),
+                      acWire:Math.max(0,+$('lacw').value),
+                      aux:Math.max(0,+$('laux').value),
+                      dispo:Math.min(100,Math.max(0,+$('ldispo').value)),
+                      degrada:Math.max(0,+$('ldeg').value),
+                      anio:Math.max(1,Math.round(+$('lanio').value)),
+                      soilMes:soilMesUI()}},
+          iamb0:iamUI(),
+          horizonte:($('horon')&&$('horon').checked)?parseHorizonte($('horv').value):null,
+          incert:{meteo:Math.max(0,+$('umeteo').value),modelo:Math.max(0,+$('umodelo').value),
+                  soiling:Math.max(0,+$('usoil').value),dispo:Math.max(0,+$('udisp').value),
+                  degrada:Math.max(0,+$('udeg').value)},
+          bif:{bifa:Math.max(0,Math.min(95,+$('bifa').value)),
+               perdTras:Math.max(0,Math.min(90,+$('bperd').value))}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
@@ -1583,7 +2021,7 @@ function repaint(){
   $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
   const inst=instant(F,c,T.obj,m);
   // Tamb/viento DEL INSTANTE (con TMY vienen de la meteo real; en cielo son los inputs)
-  const mode=$('cmode').value, pw=v=>pStringW(v,inst.met.tamb,inst.met.wind,c.elec)/1000;
+  const mode=$('cmode').value;
   // media por fila de un valor POR INVERSOR (una línea con strings de varios
   // inversores promedia — los números exactos van en los chips y el careo)
   const rowsFromInv=mp=>T.strInv.map(l=>{
@@ -1593,12 +2031,14 @@ function repaint(){
     if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj)};
     vals=DAYC.v;unit='kWh/m²·d';fmt=v=>v.toFixed(2);
   }else if(mode==='pday'){
-    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec))};
+    if(!DAYC||DAYC.mode!==mode)DAYC={mode:mode,v:dayTotals(F,c,T.obj,mapStringW(F,c,T.obj))};
     vals=DAYC.v;unit='kWh/d';fmt=v=>v.toFixed(1);agg='suma';
   }else if(mode==='pinst'){
-    vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
+    // el mismo map que las Σ: con la cara de atrás y el módulo degradado
+    const mw=mapStringW(F,c,T.obj);
+    vals=inst.rows.map((v,k)=>mw(v,inst.met,inst,k)/1000);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else if(mode==='acinst'){
-    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+    const a=acPlant(strPdcPlanta(F,c,T,inst,T.strInv),c.ac);
     const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
     vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
     invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
@@ -1622,8 +2062,11 @@ function repaint(){
   // por MESA (v1.13) y por ALA (v1.14): en los modos de instante cada mesa lleva
   // SU valor y cada ala el SUYO (la sombra por ala del contador 3D); la leyenda
   // abarca las alas. Los agregados de día/período van por línea
-  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map(l=>l.map(pw)):null)):null;
-  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map(l=>l.map(w=>w?w.map(pw):null)):null)):null;
+  // en pinst, mesas y alas van por el MISMO map que la fila (cara de atrás y
+  // degradación incluidas), con la inclinación de su fila
+  const mwp=mode==='pinst'?mapStringW(F,c,T.obj):null, pwr=(r)=>(v=>mwp(v,inst.met,inst,r)/1000);
+  const segVals=inst.segs?(mode==='inst'?inst.segs:(mode==='pinst'?inst.segs.map((l,r)=>l.map(pwr(r))):null)):null;
+  const wingVals=inst.wings?(mode==='inst'?inst.wings:(mode==='pinst'?inst.wings.map((l,r)=>l.map(w=>w?w.map(pwr(r)):null)):null)):null;
   let mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
   if(wingVals){mn=Infinity;mx=-Infinity;for(const l of wingVals)for(const w of l)if(w)for(const v of w){if(v<mn)mn=v;if(v>mx)mx=v;}}
   // normalizar SOLO si la dispersión es significativa: con la planta uniforme
@@ -1688,7 +2131,11 @@ function repaint(){
     sc.updateProjectionMatrix();
   }
   R3.last={vals:vals,unit:unit,fmt:fmt,c:c,inst:inst,mode:mode,invChips:invChips};
-  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null);
+  // en Σ mes/año, el total de planta va a la línea AC con su P90 (vals de
+  // pano vienen en MWh: se devuelven a kWh)
+  const per=((mode==='pmes'||mode==='pano')&&vals)?{label:mode==='pano'?'Σ año':'Σ mes',
+             kwh:vals.reduce((s,v)=>s+v,0)*(mode==='pano'?1000:1)}:null;
+  paintACline(inst,c,DAYC&&DAYC.mode==='acday'?DAYC.ac:null,per);
   repaintPick();
   paintHourTrack();
   R3.dirty=true;
@@ -1696,8 +2143,8 @@ function repaint(){
 
 /* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
    (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
-function paintACline(inst,c,acDay){
-  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+function paintACline(inst,c,acDay,per){
+  const a=acPlant(strPdcPlanta(F,c,T,inst,T.strInv),c.ac);
   const f1=v=>(v/1000).toFixed(1);
   let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
@@ -1708,10 +2155,37 @@ function paintACline(inst,c,acDay){
     const fuera=RP.trkLayout-RP.trkCotas;
     h+=' · <b>'+RP.trkCotas.toLocaleString('es')+'</b> de '+RP.trkLayout.toLocaleString('es')+' trackers del plano'+
        (fuera?' <span title="Sin cota ni largo levantados: no se dibujan ni entran en la sombra.">('+fuera+' sin levantar, fuera del modelo)</span>':'')+
-       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'');
+       (RP.trkEst?' <span title="Sin levantamiento: geometría del plano (x del layout, largo por tipo) y cota interpolada del terreno vecino. Entran en la escena y en la sombra; NO se les manda consigna.">('+RP.trkEst+' con cota estimada del plano)</span>':'')+
+       (RP.trkInc?' · <span style="color:var(--build)" title="Solo se levantó UNA de las dos vigas del tubo; la otra se copia de su hermana, colocada en su x real. El error que se asume está acotado con los tubos de dos vigas medidas: 0,15 m de mediana, 0,38 m en p95.">'+RP.trkInc+' con una sola viga medida</span>':'')+
+       (RP.filasYe?' · <span style="color:var(--build)" title="Filas con UNA punta repuesta: su punto vino con otra referencia vertical (va reclamada al topógrafo) y esa cota se repone de la hermana o del vecindario. Marca UNA de las dos mesas de la viga; la otra sigue medida de punta a punta.">'+RP.filasYe+' con una punta repuesta</span>':'');
   }
   if(acDay)h+=' · <b>Σ día</b>: DC '+acDay.edcKwh.toFixed(0)+' kWh → AC '+acDay.eacKwh.toFixed(0)+' kWh'+
               (c.ac.gridW>0?' → red '+acDay.eredKwh.toFixed(0)+' kWh':'');
+  // LA BANDA, al lado de la cifra: un P50 solo no dice cuánto se puede fiar uno
+  if(acDay&&c.incert){
+    const e=c.ac.gridW>0?acDay.eredKwh:acDay.eacKwh;
+    const b=bandaPXX(e,c.incert,c.ac.planta?c.ac.planta.anio:1);
+    if(b.sigma>0)
+      h+=' · <b title="P90: la energía que se supera nueve años de cada diez. σ compuesta en cuadratura de meteo, modelo, soiling, disponibilidad y degradación acumulada.">P90</b> '+
+         b.p90.toFixed(0)+' kWh <span style="color:var(--muted-2)">(σ '+b.sigma.toFixed(1)+' %)</span>';
+  }
+  // EL P90 DONDE MÁS IMPORTA: en el agregado de mes/año, que es lo que se
+  // firma. Es DC bruta del módulo (cara de atrás y degradación dentro; soiling,
+  // cadena y disponibilidad fuera), y así se dice.
+  if(per&&per.kwh>0&&c.incert){
+    const b=bandaPXX(per.kwh,c.incert,c.ac.planta?c.ac.planta.anio:1);
+    const u=per.kwh>=1e6?[per.kwh/1e6,'GWh']:(per.kwh>=1e3?[per.kwh/1e3,'MWh']:[per.kwh,'kWh']);
+    const fx=v=>(v/per.kwh*u[0]).toFixed(u[1]==='kWh'?0:2)+' '+u[1];
+    h+=' · <b>'+per.label+' DC bruta</b> '+fx(per.kwh)+
+       (b.sigma>0?' · <b title="La energía que se supera nueve años de cada diez. σ compuesta en cuadratura; la de la degradación acumulada al año estimado.">P90</b> '+fx(b.p90)+
+       ' <span style="color:var(--muted-2)">(σ '+b.sigma.toFixed(1)+' % · año '+(c.ac.planta?c.ac.planta.anio:1)+')</span>':'');
+  }
+  // y de qué está hecha la cifra: cuánto de la planta es medida y cuánto no
+  if(acDay&&RP&&RP.key===c.plant&&(RP.trkEst||RP.trkInc||RP.filasYe)){
+    const sup=(RP.trkEst||0)+(RP.trkInc||0), tot=RP.trkCotas||1;
+    h+=' · <span style="color:var(--muted-2)" title="Trackers cuya cota NO se midió entera: reconstruidos del plano o con una sola viga levantada. La cifra de arriba se apoya en ellos igual que en los medidos.">'+
+       (100*sup/tot).toFixed(1)+' % del parque con cota supuesta</span>';
+  }
   $('acline').innerHTML=h;
 }
 
@@ -1730,7 +2204,7 @@ function computePeriod(c,periodo,key){
     if(run!==PERIODRUN){computePeriod.running=null;return;}   // invalidado: planta/fecha/config cambió
     const t0=performance.now();
     while(i<fechas.length&&performance.now()-t0<120){
-      const d=dayEnergy(F,c,T.obj,fechas[i],60,(v,met)=>pStringW(v,met.tamb,met.wind,c.elec));
+      const d=dayEnergy(F,c,T.obj,fechas[i],60,mapStringW(F,c,T.obj));
       for(let k=0;k<c.nrows;k++)acc[k]+=d[k];
       i++;
     }
@@ -1756,7 +2230,7 @@ function runCareo(){
   const rows=careoMedidas(ac.porInv,med);
   const f=v=>v==null?'—':v.toFixed(1);
   let h='<table style="border-collapse:collapse">'+
-    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td>E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
+    '<tr style="color:var(--muted)"><td style="padding:2px 10px">Inv</td><td title="A BORNES del inversor, con la disponibilidad aplicada: trafo, cableado AC y auxiliares van aguas abajo y no entran aquí. Carea contra la medida del inversor, no con la del punto de conexión.">E calc (kWh)</td><td style="padding:2px 10px">E medida</td><td>Δ %</td></tr>';
   for(const r of rows){
     const col=r.dev==null?'var(--muted-2)':(Math.abs(r.dev)<=5?'var(--live)':(Math.abs(r.dev)<=12?'var(--build)':'var(--dead)'));
     h+='<tr><td style="padding:2px 10px">I'+r.inv+'</td><td>'+f(r.esp)+'</td><td style="padding:2px 10px">'+f(r.med)+
@@ -1767,6 +2241,25 @@ function runCareo(){
      '</b></td><td style="padding:2px 10px"><b>'+tM.toFixed(1)+'</b></td><td>'+(tE>0?((100*(tM-tE)/tE)>0?'+':'')+(100*(tM-tE)/tE).toFixed(1)+'%':'—')+'</td></tr></table>'+
      '<p style="color:var(--muted-2);margin-top:4px">Meteo del cálculo: '+(c.meteo==='tmy'&&c.tmy?'TMY real':'cielo despejado (TECHO teórico — desvíos negativos esperables)')+
      ' · fecha '+c.date+' · paso 5 min.</p>';
+  // LA CALIBRACIÓN: lo que dice si el MODELO está en su sitio, que es distinto
+  // de si un inversor concreto va mal
+  const st=estadisticaCareo(rows,12);
+  if(st){
+    const sg=v=>(v>0?'+':'')+v.toFixed(1);
+    h+='<div style="margin-top:8px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px">'+
+       '<b>Calibración del modelo</b> <span style="color:var(--muted-2)">('+st.n+' inversores careados)</span><br>'+
+       '<span title="Sesgo: si es positivo, la planta produce MÁS de lo que dice el modelo. Un sesgo sistemático no se arregla mirando inversores sueltos, sino tocando las pérdidas.">MBE '+sg(st.mbe)+' %</span> · '+
+       '<span title="Error medio absoluto, en % de lo estimado.">MAE '+st.mae.toFixed(1)+' %</span> · '+
+       '<span title="Raíz del error cuadrático medio: castiga los errores grandes. MBE≈0 con RMSE alto = sin sesgo pero con dispersión, o sea que el reparto por inversor no cuadra.">RMSE '+st.rmse.toFixed(1)+' %</span>'+
+       (st.r2!=null?' · <span title="Cuánto de la variación entre inversores explica el modelo.">R² '+st.r2.toFixed(3)+'</span>':'')+
+       '<br><span style="color:var(--muted-2)">Para anular el sesgo habría que multiplicar la estimación por <b>'+
+       (st.factor!=null?st.factor.toFixed(3):'—')+'</b> — no se aplica solo: es dónde buscar, no un parche.</span>'+
+       (st.fuera.length?'<br><span style="color:var(--build)">Fuera de banda (±12 %): '+
+          st.fuera.slice(0,6).map(x=>'I'+x.inv+' '+sg(x.dev)+'%').join(' · ')+
+          (st.fuera.length>6?' … y '+(st.fuera.length-6)+' más':'')+
+          '</span> <span style="color:var(--muted-2)">— a mirar en campo, no a promediar.</span>':'')+
+       '</div>';
+  }
   $('careoout').innerHTML=h;
 }
 
@@ -1785,7 +2278,7 @@ function exportCSV(){
       filas.push([id,T.xs[r],d.vals[r]]);
     }
   }
-  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings),c.ac);
+  const a=acPlant(strPdcPlanta(F,c,T,d.inst,T.strInv),c.ac);
   filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
     ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
     ['AC_instante','red_kW',a.redW/1000]);
@@ -1900,7 +2393,12 @@ function repaintPick(){
   const rigida=(T.segArt&&kk!=null&&T.segArt[r]&&!T.segArt[r][kk])?' <span style="color:var(--muted)">(viga rígida)</span>':'';
   // el nombre del seguidor EN LA PLANTA
   const idTrk=(RP&&RP.idDe&&T.segTrk&&kk!=null&&T.segTrk[r])?RP.idDe.get(T.segTrk[r][kk]):null;
-  const estim=(T.segEst&&kk!=null&&T.segEst[r]&&T.segEst[r][kk])?' <span style="color:var(--warn,#e2b23a)">(cota estimada del plano)</span>':'';
+  // segEst marca la mesa cuya cota NO se midió, y ya no es siempre por el mismo
+  // motivo: el tracker entero reconstruido del plano, o —desde v1.50— un tope
+  // que el saneador estimó porque su punto vino con otra referencia vertical.
+  // El aviso no dice de cuál de los dos, porque para leer la mesa da igual: no
+  // es medida.
+  const estim=(T.segEst&&kk!=null&&T.segEst[r]&&T.segEst[r][kk])?' <span style="color:var(--warn,#e2b23a)">(cota estimada)</span>':'';
   // el STRING seleccionado: su entrada en la cadena (en El Burgo, el string
   // del plano que cae en esa mesa)
   let ent=null;
@@ -1926,7 +2424,8 @@ function repaintPick(){
   const shSeg=(kk!=null&&d.inst.shade&&d.inst.shade.seg&&d.inst.shade.seg[r])?d.inst.shade.seg[r][kk]:null;
   const sh=shW!=null?shW:(shSeg!=null?shSeg:(d.inst.shade&&typeof d.inst.shade[r]==='number'?d.inst.shade[r]:0));
   const mods=(ent&&ent.mods)?ent.mods:c.elec.mods;
-  const pW=pStringW(poaStr,d.inst.met.tamb,d.inst.met.wind,Object.assign({},c.elec,{mods:mods}));
+  // la misma potencia que pintan las vistas: cara de atrás y degradación dentro
+  const pW=mapStringW(F,Object.assign({},c,{elec:Object.assign({},c.elec,{mods:mods})}),T.obj)(poaStr,d.inst.met,d.inst,r);
   txt+=' — línea <b>'+d.fmt(d.vals[r])+' '+d.unit+'</b> · este string: <b>'+poaStr.toFixed(0)+' W/m² · '+
        (pW/1000).toFixed(2)+' kW</b> ('+mods+' mód.'+(ent&&ent.src?', '+ent.src:'')+') · θ '+((d.inst.segAng&&kk!=null)?d.inst.segAng[r][kk]:d.inst.ang[r]).toFixed(1)+
        '° · sombra '+(100*sh).toFixed(1)+' %'+inv;
@@ -2021,6 +2520,20 @@ function repaintPick(){
   // cambia el reparto string→inversor (T.strInv) y reconstruye
   for(const id of ['lsoil','lmis','lwir','llid','pnom','etamax','gridkw'])
     $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  // LO NUEVO TAMBIÉN REPINTA. Sin esto, tocar la bifacialidad o el año no
+  // movía «AC ahora» hasta que otra cosa disparase un repintado, y los Σ de
+  // día y período se quedaban con la cifra vieja en caché.
+  //   · vidrio, cara de atrás, horizonte, degradación y año cambian la
+  //     energía POR STRING: cae todo (día y período);
+  //   · trafo, cableado AC, auxiliares, disponibilidad y soiling mensual son de
+  //     la cadena AC: solo el día AC;
+  //   · la incertidumbre solo cambia la banda que se pinta.
+  for(const id of ['iamb0','bifa','bperd','horon','horv','ldeg','lanio'])
+    $(id).addEventListener('change',()=>{invalida();repaint();});
+  for(const id of ['ltrafo','lacw','laux','ldispo','lsoilmes','lsoilv'])
+    $(id).addEventListener('change',()=>{DAYC=null;repaint();});
+  for(const id of ['umeteo','umodelo','usoil','udisp','udeg'])
+    $(id).addEventListener('change',repaint);
   $('ninv').addEventListener('change',()=>{rebuildT();repaint();});
   // meteo: TMY se carga al pedirla (fichero horneado o PVGIS del navegador);
   // si no hay ninguna, se declara y se vuelve al cielo despejado
