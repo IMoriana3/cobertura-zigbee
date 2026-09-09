@@ -40,6 +40,56 @@ La clave es que los puntos no estan sueltos: van en NODOS de dos, y el tipo de
 nodo se ve en su separacion (junta ~0,9 m dentro del tubo, tope ~0,2 m entre
 tubos). El nodo de junta cae en la n declarada del tracker y da la FASE.
 
+LA FASE SE RESUELVE POR LINEA, NO TRACKER A TRACKER. Anclando cada tracker a su
+nodo mas cercano con una ventana de 5 m se caian 125 filas enteras, y con ellas
+153 trackers se quedaban con una sola viga. No era que faltara el levantamiento:
+es que HAY LINEAS DESPLAZADAS respecto de lo que el plano declara para ese
+tracker. Medido en el bloque norte de x 1162-1206:
+
+    linea x=1186,95   nodos -1052,1 -1014,6 -977,1 -939,5 ...
+    linea x=1193,15   nodos -1045,2 -1007,6 -970,0 -932,6 ...   (7,0 m al norte)
+
+Las ocho lineas de ese bloque cuadran con las vigas del plano en X hasta 2 cm
+(paso 6,20 medido contra 6,174 nominal), asi que el emparejamiento E/W es bueno;
+lo que cambia es donde empiezan los tubos. La frontera del subbloque cae en
+campo entre las lineas 1186,95 y 1193,15, y en el plano entre los trackers
+1180,7 y 1193,1: una viga de diferencia. La viga W del tracker 1193,1 esta,
+fisicamente, con los tubos del subbloque de al lado.
+
+Asi que el desfase se estima POR LINEA y en local: la mediana del desvio
+nodo-centro de las filas del plano que caen a menos de 150 m sobre esa misma
+linea. Una fila sola no puede decidirlo —si le falta su nodo de junta, su nodo
+mas cercano es un tope y miente en 18,7 o 37,5 m—; el vecindario si.
+
+Y EL SEMIPASO LO DA EL PLANO, NO LA LINEA. Un intento anterior ajustaba una
+reticula unica por linea (paso 37,5) y hundia el resultado a 4.228 filas: San
+Jose tiene 98 seguidores «medio», de 37,2 m, cuyos topes estan a 18,6 m del
+centro y no a 37,2. El tipo del tracker ya dice cuanto mide, asi que los topes
+se buscan donde tienen que estar: en centro +- L/2 del tipo declarado.
+
+Y UN TOPE CON UN SOLO PUNTO ES DE LOS DOS TUBOS. Con la fase ya resuelta se
+caian 18 filas SANAS de 74,4 m: en su tope solo se habia medido UN punto, y la
+exclusividad se lo daba al primero que pasara, dejando al vecino con 3 puntas y
+37 m. Ese punto es la FRONTERA entre los dos tubos, o sea el extremo de los dos.
+Se comparte solo en ese caso (1 punto de 17.755 en San Jose).
+
+    filas del as-built              4.421 -> 4.449
+    trackers con las dos vigas      2.134 -> 2.162
+    trackers con una sola viga        153 ->   125
+    filas emitidas a media longitud     4 ->     0
+    filas preexistentes que cambian           3, y las tres a mejor:
+        TR-05_2-060-W  37,74 m -> 74,61      TR-08_1-094-W  37,65 -> 75,17
+        TR-10_2-002-W  55,93 m -> 75,06
+
+BARRIDO DE LAS CUATRO VENTANAS (D_MAX 8/12/16, radio 80/150/300 m, TOL_J/TOL_T
+4-6/5-6/6-8, 27 combinaciones): el as-built sale entre 4.444 y 4.460 filas, un
+0,4 % de recorrido, y las tres filas que cambian son las mismas en todas. D_MAX
+se deja en 12 y no en 16 —que da 8 filas mas— porque 18,7 m es media mesa: por
+encima de eso un TOPE puede hacerse pasar por junta y envenenar la mediana de la
+linea, y a 20 m el resultado ya se da la vuelta (4.451). El limite se pone
+dentro de la banda donde el discriminante no puede equivocarse, no donde sale el
+numero mas alto.
+
 LO QUE ESTE GENERADOR NO SABE HACER, Y NO FINGE. Los vectores transversales
 cse/cso/ase/aso del as-built vienen de una derivacion que no esta en este
 repositorio: ni la pendiente a la fila de al lado a un vano, ni a dos, ni el
@@ -61,9 +111,11 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DX_FILA = 6.174        # m; la fila W va al oeste de la x del tracker
 TOL_X = 1.5            # m; ruido de campo contra un eje (las filas van a 6,17)
-TOL_N = 45.0           # m; medio tubo (37,2) con margen
-CUPO = 4               # puntas por fila: 2 mesas x 2 extremos
-LARGO_MIN = 30.0       # m; por debajo de eso no es una fila, es un fragmento
+D_MAX = 12.0           # m; desvio nodo-centro que aun puede ser desfase de linea
+R_VEC = 150.0          # m; vecindario sobre la linea que vota el desfase (~2 tubos)
+TOL_J = 5.0            # m; ventana del nodo de junta, ya en el marco corregido
+TOL_T = 6.0            # m; ventana de cada tope alrededor de centro +- L/2
+FRAC_MIN = 0.8         # fraccion del largo nominal por debajo de la cual es fragmento
 
 
 def lee_puntos(planta, cE, cN, base):
@@ -92,13 +144,19 @@ def reparte(planta='sanjose'):
     TK = lay['trackers']
 
     # ── ejes de fila, del plano ──────────────────────────────────────────────
+    # El LARGO NOMINAL sale del tipo declarado, con la misma formula que usa
+    # cotas_asbuilt.py. Es lo que dice donde tienen que estar los topes: a L/2
+    # del centro. Sin el, los 98 seguidores «medio» (37,2 m) se buscan los topes
+    # a 37 m y no los encuentran.
+    w, gm, gd = M.get('modW') or 0.0, M.get('gapMod', 0.0), M.get('gapDrive', 0.0)
+    nom = lambda m: 2 * m * w + (2 * m - 2) * gm + gd
+    LARGO = {'completo': nom(32), 'medio': nom(16)} if w else {}
+    LARGO_DEF = LARGO.get('completo', 74.4)
     filas = []
     for t in TK:
-        filas.append({'x': t['x'], 'n': t['n'], 'tk': t['id'], 'lado': 'E'})
-        filas.append({'x': t['x'] - DX_FILA, 'n': t['n'], 'tk': t['id'], 'lado': 'W'})
-    G = collections.defaultdict(list)
-    for i, f in enumerate(filas):
-        G[int(f['x'] // 5)].append(i)
+        L0 = LARGO.get(t.get('t'), LARGO_DEF)
+        for lado, x in (('E', t['x']), ('W', t['x'] - DX_FILA)):
+            filas.append({'x': x, 'n': t['n'], 'tk': t['id'], 'lado': lado, 'L0': L0})
 
     # ── reparto POR NODOS ────────────────────────────────────────────────────
     # Los puntos no estan sueltos: van en NODOS de dos, y el tipo de nodo se ve
@@ -121,6 +179,9 @@ def reparte(planta='sanjose'):
     # 38 m en vez de 74,8 (paso en 17 filas sanas). Y una particion de Voronoi
     # entre centros tampoco vale: la frontera cae a 0,2 m del par del tope y no
     # sabe cual de los dos puntos es de quien.
+    #
+    # Y la fase es de la LINEA (ver cabecera): antes de anclar nada se mide el
+    # desfase de cada linea contra el plano, votado por el vecindario.
     ejes = collections.defaultdict(list)                # x redondeado -> filas
     for i, f in enumerate(filas):
         ejes[round(f['x'] / TOL_X)].append(i)
@@ -130,7 +191,8 @@ def reparte(planta='sanjose'):
 
     pts = collections.defaultdict(list)
     usados = set()
-    for b, ifilas in ejes.items():
+    desfase = {}
+    for b, ifilas in sorted(ejes.items()):
         cand = []
         for c in (b - 1, b, b + 1):
             cand += porEje.get(c, [])
@@ -147,23 +209,51 @@ def reparte(planta='sanjose'):
                 nodos.append(act); act = [k]
         nodos.append(act)
         cn = [statistics.fmean(P[k][2] for k in nd) for nd in nodos]
-        for i in ifilas:
-            c = filas[i]['n']
-            j = min(range(len(nodos)), key=lambda j: abs(cn[j] - c))
-            if abs(cn[j] - c) > 5.0:
-                continue                               # sin nodo de junta: no es su fila
-            toma = list(nodos[j])                      # la junta entera
-            for j2 in (j - 1, j + 1):                  # de cada tope, el mas cercano
-                if 0 <= j2 < len(nodos):
-                    if abs(cn[j2] - c) > 50:
-                        continue
-                    toma.append(min(nodos[j2], key=lambda k: abs(P[k][2] - c)))
+        cerca = lambda v: min(range(len(nodos)), key=lambda j: abs(cn[j] - v))
+
+        # (a) DESFASE DE LA LINEA. De cada fila del plano, el desvio a su nodo
+        # mas cercano; los que pasan de D_MAX no son desfase, son otro tubo.
+        ifilas = sorted(ifilas, key=lambda i: filas[i]['n'])
+        cs = [filas[i]['n'] for i in ifilas]
+        d0 = []
+        for c in cs:
+            d = cn[cerca(c)] - c
+            d0.append(d if abs(d) <= D_MAX else None)
+
+        # (b) ANCLAJE, ya en el marco corregido de la linea
+        for a, i in enumerate(ifilas):
+            c, L0 = filas[i]['n'], filas[i]['L0']
+            v = [d0[q] for q in range(len(cs)) if d0[q] is not None and abs(cs[q] - c) <= R_VEC]
+            if not v:                                  # linea sin ningun ancla fiable
+                v = [d for d in d0 if d is not None]
+            dl = statistics.median(v) if v else 0.0
+            desfase[i] = dl
+            cc = c + dl
+            toma, comparte = [], set()
+            j = cerca(cc)
+            if abs(cn[j] - cc) <= TOL_J:
+                toma += nodos[j]                       # la junta entera
+            for s in (-1, 1):                          # cada tope, donde dice el tipo
+                j2 = cerca(cc + s * L0 / 2.0)
+                if abs(cn[j2] - (cc + s * L0 / 2.0)) <= TOL_T:
+                    k = min(nodos[j2], key=lambda k: abs(P[k][2] - cc))
+                    toma.append(k)
+                    # UN TOPE CON UN SOLO PUNTO ES DE LOS DOS TUBOS. Lo normal
+                    # es que el tope tenga dos puntos y cada tubo se lleve el
+                    # suyo. Cuando solo se midio uno, la exclusividad se lo daba
+                    # al primero que pasara y al vecino le quedaban 3 puntas y
+                    # 37 m: 18 filas SANAS de 74,4 m se caian por «fragmento».
+                    # Pero ese punto es la FRONTERA, y la frontera es de los
+                    # dos: es el extremo de uno y el del otro a la vez.
+                    if len(nodos[j2]) == 1:
+                        comparte.add(k)
             for k in toma:
-                if k in usados:
+                if k in usados and k not in comparte:
                     continue
                 usados.add(k)
                 pts[i].append(P[k])
     sinRepartir = len(P) - len(usados)
+    conDesf = sum(1 for d in desfase.values() if abs(d) > 1.0)
 
     # ── emision ──────────────────────────────────────────────────────────────
     ant = {r['id']: r for r in A['f']}
@@ -175,13 +265,15 @@ def reparte(planta='sanjose'):
         v = sorted(f, key=lambda p: p[1 + 1])              # por n
         if len(v) < 2:
             continue                                       # una punta sola no es una fila
-        # LARGO MINIMO. San Jose solo tiene dos tamanos reales: 74,4 m
-        # («completo», 32 modulos por string) y 37,5 m («medio», 16). Salian 20
-        # filas de 18,3 m con solo dos puntas: son FRAGMENTOS —media mesa—, no
-        # seguidores, y aguas abajo el accionamiento les colocaba el eje en
-        # mitad de la mesa en vez de en su morro. Mejor un punto sin repartir
-        # que una fila que no existe.
-        if v[-1][2] - v[0][2] < LARGO_MIN:
+        # LARGO MINIMO, CONTRA SU PROPIO TIPO. Salian 20 filas de 18,3 m con
+        # solo dos puntas: son FRAGMENTOS —media mesa—, no seguidores, y aguas
+        # abajo el accionamiento les colocaba el eje en mitad de la mesa en vez
+        # de en su morro. El corte no puede ser un numero fijo: 30 m deja pasar
+        # un «completo» medido a medias (37 m de 74,4) y a la vez roza a los
+        # «medio», que miden 37,2 de verdad. Se compara con SU largo nominal.
+        # Mejor un punto sin repartir —y una fila reconstruida con razon aguas
+        # abajo— que media fila haciendose pasar por entera.
+        if v[-1][2] - v[0][2] < FRAC_MIN * filas[i]['L0']:
             continue
         fid = filas[i]['tk'] + '-' + filas[i]['lado']
         ns = [p[2] for p in v]
@@ -237,13 +329,23 @@ def reparte(planta='sanjose'):
             'npt': len(v),
         })
 
-    sin = sinRepartir
+    # Un punto asignado a una fila que luego NO se emite (fragmento, punta
+    # suelta) tampoco esta repartido: no tiene fila donde vivir. Antes se
+    # contaba como repartido y ademas viajaba a la nube, que salia con 64 filas
+    # que el as-built no tiene. Un reparto, dos ficheros.
+    emitidas = {r['id'] for r in out}
+    pts = {i: v for i, v in pts.items()
+           if filas[i]['tk'] + '-' + filas[i]['lado'] in emitidas}
+    sin = len(P) - len({p[0] for v in pts.values() for p in v})   # el tope compartido cuenta 1
     M['n_filas'] = len(out)
     M['n_trk'] = len({r['tk'] for r in out})
     M['descartadas'] = sin
     M['fuente'] = planta + '_levantamiento.csv (' + str(len(P)) + ' puntos del topografo)'
-    M['reparto'] = ('tools/reparte_levantamiento.py · cupo de %d puntas por fila, fila E en la x '
-                    'del tracker y W a %.3f m al oeste' % (CUPO, DX_FILA))
+    M['reparto'] = ('tools/reparte_levantamiento.py · fila E en la x del tracker y W a %.3f m al '
+                    'oeste; fase resuelta POR LINEA (desfase = mediana del desvio nodo-centro de '
+                    'las filas del plano a menos de %.0f m sobre la misma linea; %d filas con '
+                    'desfase > 1 m) y topes buscados a L/2 del tipo declarado'
+                    % (DX_FILA, R_VEC, conDesf))
     M['nota_tcu'] = ('cse/cso/ase/aso NO se derivan aqui: se heredan del as-built anterior por id '
                      'de fila y van a null en las filas recuperadas (%d de %d). Su regla de '
                      'calculo no esta en este repositorio.' % (nulos, len(out)))
@@ -255,11 +357,7 @@ def reparte(planta='sanjose'):
     # punto es de una fila y <planta>_puntos.json dice que es de otra, el
     # control de referencia vertical condena la fila equivocada. Un reparto,
     # dos ficheros.
-    idFila = {i: r['id'] for i, r in zip(sorted(pts), out)} if len(pts) == len(out) else None
     orden = [i for i in sorted(pts, key=lambda i: (filas[i]['tk'], filas[i]['lado']))]
-    idDe = {}
-    for r in out:
-        idDe[r['id']] = r['id']
     nube = {'planta': planta, 'origen': planta + '_levantamiento.csv (topografo) · reparto de '
             'tools/reparte_levantamiento.py',
             'nota': ('Nube CRUDA del levantamiento con el reparto de este repositorio. x/y son UTM '
