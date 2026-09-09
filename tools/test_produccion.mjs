@@ -390,6 +390,34 @@ t('cotas: la cadena AC cuenta las FILAS medidas con sus módulos, no un string p
   if (eb.length !== strdb.count) throw new Error('El Burgo dejó de contar sus ' + strdb.count + ' strings del plano');
 });
 
+t('UN TRACKER, UN θ (v1.24): las CUATRO mesas que mueve un motor van al mismo ángulo, y la tarjeta las mueve así', () => {
+  const P = S.F.plantFromCotas(cotasSJ, 40, null);
+  const c = { ...C, lat: laySJ.clat, lon: laySJ.clon, alt: Math.round(cotasSJ.base),
+              nrows: P.elev.length, cw: P.cw, maxang: P.maxAngle, pitch: P.pitch,
+              elec: { mods: 32, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+  const T = S.buildTReal(S.F, c, P);
+  if (!T.segDrive || !T.segDrive.length) throw new Error('buildTReal no lleva el accionamiento (segDrive)');
+  const HORAS = [7 * 60, 9 * 60, 12 * 60, 15 * 60, 17 * 60];
+  const sueltosDe = (Tx) => {
+    let n = 0, peor = 0;
+    for (const m of HORAS) {
+      const r = S.instant(S.F, c, Tx, m);
+      for (const g of P.segDrive) {
+        const th = g.map(([ri, k]) => r.segAng[ri][k]);
+        const d = Math.max(...th) - Math.min(...th);
+        if (d > 1e-9) { n++; if (d > peor) peor = d; }
+      }
+    }
+    return { n, peor };
+  };
+  const con = sueltosDe(T);
+  if (con.n) throw new Error(`${con.n} trackers·instante con sus mesas a θ distinto (peor ${con.peor.toFixed(2)}°): un motor no puede hacer eso`);
+  // MUTANTE: acoplando solo por parejas GEMELAS (lo de v1.23) las mesas del
+  // sur y del norte de un tracker SÍ se separan — el careo distingue
+  const sin = sueltosDe({ ...T, segDrive: null });
+  if (!sin.n) throw new Error('sin segDrive los θ ya salen iguales: el careo no mide el accionamiento');
+});
+
 t('POR MESA (v1.13): con cotas, instant() calcula θ y POA mesa a mesa con la física del simulador, exactos', () => {
   const P = S.F.plantFromCotas(cotasAyora, 40, null);
   const c = { ...C, lat: layAyora.clat, lon: layAyora.clon, alt: Math.round(cotasAyora.base),

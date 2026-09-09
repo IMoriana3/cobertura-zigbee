@@ -81,9 +81,22 @@ try {
         const h = rc.intersectObject(gnd, true);
         alturas.push(h.length ? q.y - h[0].point.y : null);
       }
-      return { mesas, alturas, segTilt: T.segTilt, ejes: T.ejes ? T.ejes.length : 0,
+      // el PANEL dibujado de cada mesa: su ancho a lo largo del tubo y cuántos
+      // módulos implica con la ficha del módulo de esta planta
+      const paneles = [];
+      if (!R3.inst && T.mod) R3.world.traverse(g => {
+        if (g.userData && g.userData.row !== undefined && g.children.length) {
+          let ancho = null;
+          g.traverse(o => { const p = o.geometry && o.geometry.parameters;
+            if (p && p.width > 5 && p.depth > 2 && p.depth < 3 && (ancho == null || p.width > ancho)) ancho = p.width; });
+          if (ancho != null) paneles.push({ ancho, med: g.userData.s1 - g.userData.s0,
+            md: (T.segMods && T.segMods[g.userData.row]) ? T.segMods[g.userData.row][g.userData.k] : null,
+            mods: Math.round((ancho + T.mod.gapMod) / (T.mod.modW + T.mod.gapMod)) });
+        }
+      });
+      return { mesas, alturas, paneles, segTilt: T.segTilt, ejes: T.ejes ? T.ejes.length : 0,
                westSeg: T.westSeg, trackers: RP.P.segDrive.length, inst: !!R3.inst,
-               segFila: T.segFila, segSide: T.segSide, segArt: T.segArt };
+               segFila: T.segFila, segSide: T.segSide, segArt: T.segArt, mod: T.mod || null };
     });
 
     // 1) el TILT dibujado de cada mesa es el MEDIDO de esa mesa, con su signo
@@ -120,6 +133,22 @@ try {
     const lo = Math.min(...hs), hi = Math.max(...hs);
     check(`${nombre}: el tubo va a 2 m del suelo bajo cada mesa (${lo.toFixed(2)}–${hi.toFixed(2)} m)`,
           hs.length === m.mesas.length && lo > 1.5 && hi < 2.5, `${m.mesas.length - hs.length} sin suelo debajo`);
+
+    // 3bis) EL MÓDULO ES DE PROYECTO: cada mesa se dibuja con LOS MÓDULOS que
+    //       dice el levantamiento y con el ancho de módulo de SU planta (Ayora
+    //       1,303 m · San José 1,134). Con el ancho de la casa fijo, una mesa
+    //       de Ayora salía con 32 módulos de 1,134 donde hay 28 de 1,303: el
+    //       largo cuadraba y el conteo no.
+    if (!m.inst) {
+      const dif = m.paneles.map(o => o.ancho - o.med).sort((a, b) => a - b);
+      const malMods = m.paneles.filter(o => o.md > 0 && o.mods !== o.md).length;
+      check(`${nombre}: cada mesa dibuja los módulos del levantamiento (${[...new Set(m.paneles.map(o => o.md))].filter(Boolean).sort((a, b) => a - b).join('/')})`,
+            m.paneles.length > 0 && malMods === 0,
+            `${malMods} de ${m.paneles.length} mesas con otro nº de módulos`);
+      check(`${nombre}: y el panel mide lo que mide la mesa (desvío mediana ${dif.length ? dif[dif.length >> 1].toFixed(2) : '—'} m)`,
+            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.2 && Math.abs(dif[dif.length - 1]) < 1.2,
+            `desvíos ${dif[0]?.toFixed(2)} … ${dif[dif.length - 1]?.toFixed(2)} m`);
+    }
 
     // 4) accionamiento: un eje por tracker; el motor va en la viga OESTE (sus
     //    DOS mesas la llevan marcada, pero el motor se dibuja una vez, en el
@@ -195,14 +224,24 @@ try {
     });
     const fichas = [];
     if (pts) for (const pt of pts) { await pg.mouse.click(pt.x, pt.y); await pg.waitForTimeout(400); fichas.push((await pg.textContent('#pick')).replace(/\s+/g, ' ')); }
-    const ks = fichas.map(f => (f.match(/mesa (\d+)\/\d+/) || [])[1]);
-    check('a un lado y otro del morro hay DOS mesas distintas, la del sur y la del norte',
-          fichas.length === 2 && ks[0] && ks[1] && ks[0] !== ks[1] &&
-          /mesa SUR del morro/.test(fichas[0]) && /mesa NORTE del morro/.test(fichas[1]),
+    // v1.24: la ficha nombra la mesa por su CUADRANTE (sur/norte del morro ×
+    // viga este/oeste) y da las dos nomenclaturas — la del tracker en la
+    // planta y la nuestra — más el tilt de ESA mesa
+    const cuad = fichas.map(f => (f.match(/mesa (SUROESTE|SURESTE|NOROESTE|NORESTE)/) || [])[1]);
+    const nuestro = fichas.map(f => (f.match(/\bS(\d+\.\d+)\b/) || [])[1]);
+    const trk = fichas.map(f => (f.match(/^([A-Z][^·]*?)\s*·/) || [])[1]);
+    check('la mesa se nombra por su CUADRANTE: las dos del morro son SUR… y NOR… de la MISMA viga',
+          fichas.length === 2 && cuad[0] && cuad[1] && cuad[0] !== cuad[1] &&
+          /^SUR/.test(cuad[0]) && /^NOR/.test(cuad[1]) &&
+          cuad[0].replace(/^SUR/, '') === cuad[1].replace(/^NOR/, ''),
           fichas.map(f => f.slice(0, 110)).join(' || '));
-    check('la ficha enseña el tilt de la OTRA mesa de su viga y si el quiebro está medido',
-          fichas.length === 2 && fichas.every(f => /la otra mesa de su viga, #\d+: -?\d/.test(f) &&
-                                                   /(quiebro MEDIDO|viga rígida)/.test(f)),
+    check('la ficha da la nomenclatura del TRACKER y la nuestra, y el tilt de esa mesa',
+          fichas.length === 2 && trk[0] && trk[0] === trk[1] &&
+          nuestro[0] && nuestro[1] && nuestro[0] !== nuestro[1] &&
+          fichas.every(f => /tilt N-S -?\d+\.\d+°/.test(f)),
+          fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
+    check('y NO enseña la contabilidad interna (x de la línea, ordinal de la mesa, cota)',
+          fichas.length === 2 && fichas.every(f => !/línea x=/.test(f) && !/mesa \d+\/\d+/.test(f) && !/· cota /.test(f)),
           fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
   }
 

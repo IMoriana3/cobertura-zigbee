@@ -48,6 +48,26 @@
   S.DIMS = D;
   // nº de módulos por ALA según la planta (El Burgo/Ayora = 28 → 64,7 m; San José = 32 → 74 m, su "medio" 2x32 ≈ 37 m). Recalcula los derivados.
   S.setModsPerStr = function (n) { D.modsPerStr = n; D.strLen = n * D.modW + (n - 1) * D.gapMod; D.span = 2 * D.strLen + D.gapDrive; D.mesaC = D.gapDrive / 2 + D.strLen / 2; };
+  /* EL MÓDULO DE LA PLANTA. Las cotas canónicas son las de la casa (1.134 ×
+     2.382), pero el módulo es de PROYECTO: Ayora monta 1,303 m —lo dicen su
+     DWG y su levantamiento— y El Burgo y San José 1,134. Con el ancho fijo,
+     quien dibujaba una mesa de Ayora tenía que elegir entre el LARGO correcto
+     (32 módulos de 1,134, que es lo que hacía: los 37,06 m medidos salían
+     bien y el conteo no) o el conteo correcto con la mesa corta. Con la ficha
+     del módulo de la planta salen las dos cosas: 28 × 1,303 + 27 × 0,021 =
+     37,05 m contra 37,06 medidos. Devuelve la ficha anterior para restaurarla:
+     el modelo es COMPARTIDO y quien lo cambia tiene que dejarlo como estaba. */
+  S.setModulo = function (o) {
+    var prev = { modW:D.modW, gapMod:D.gapMod, gapDrive:D.gapDrive, modsPerStr:D.modsPerStr };
+    if (o) {
+      if (o.modW > 0) D.modW = o.modW;
+      if (o.gapMod != null) D.gapMod = o.gapMod;
+      if (o.gapDrive != null) D.gapDrive = o.gapDrive;
+    }
+    D.pitch = D.modW + D.gapMod;
+    S.setModsPerStr(D.modsPerStr);
+    return prev;
+  };
 
   /* ---------- MATERIALES (cada app crea los suyos con su THREE) ---------- */
   /* Células FV para la cara del módulo. Vive AQUÍ, con el modelo, y no en cada página:
