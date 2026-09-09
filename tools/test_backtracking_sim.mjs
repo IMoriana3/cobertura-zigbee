@@ -2715,9 +2715,15 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
   const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
   const P = F.plantFromCotas(cotas, Infinity, 'all');
   t('sanjose: un tope estimado (ey) marca SOLO su mesa; la otra mitad sigue siendo medida', () => {
-    const conEy = [];
-    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+    const conEy = [], dosEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f) {
       if (f.ye === 1 || f.ye === 2) conEy.push(f);
+      // ye=3 en un tracker MEDIDO: sus cuatro puntas vinieron en otra
+      // referencia, se reponen las dos cotas del terreno vecino y se conserva
+      // la geometría medida. Esa fila marca sus DOS mesas, no una — y no es lo
+      // mismo que un tracker reconstruido del plano, que no tiene geometría.
+      else if (f.ye === 3) dosEy.push(f);
+    }
     if (conEy.length < 5) throw new Error('sin filas con punta repuesta (ye) en el fichero: el careo no prueba nada');
     let mesasEst = 0;
     for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
@@ -2730,8 +2736,10 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
     for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
       if (P.segEst[r][k] && trkEst.has(P.segTrk[r][k])) mesasDeTrkEst++;
     const soloEy = mesasEst - mesasDeTrkEst;
-    if (soloEy !== conEy.length)
-      throw new Error(`${conEy.length} filas con una punta repuesta pero ${soloEy} mesas marcadas (debe ser una por fila)`);
+    const esperadas = conEy.length + 2 * dosEy.length;
+    if (soloEy !== esperadas)
+      throw new Error(`${conEy.length} filas con UNA punta repuesta y ${dosEy.length} con las dos, ` +
+        `pero ${soloEy} mesas marcadas (esperadas ${esperadas}: una por punta repuesta)`);
   });
   t('MUTANTE: marcar la fila entera (o no marcar nada) rompe el careo', () => {
     const conEy = [];

@@ -199,12 +199,32 @@ def reparte(planta='sanjose'):
         G3[round(_x / 3.0)].append((_x, _n))
 
     def cuantos(x, n, L):
+        """Puntos de una viga de largo L centrada en (x, n) — y 0 si no estan
+        sus DOS PUNTAS.
+
+        Contar todo lo que cae en la ventana no vale, y esto costo tres
+        seguidores. En la misma linea de x puede haber un tracker «medio»
+        (37,6 m) cuyo tramo solapa en n con el arranque de un «completo»
+        (74,4 m): sus puntos entran en la ventana del completo y hacen creer
+        que hay viga a ese lado. Con eso, el borde de la tirada se lee al
+        reves y TODO el emparejamiento de la tirada se corre un paso — a un
+        seguidor le falta la hermana y al de al lado le sobra.
+
+        Lo que distingue a una viga de este largo de la intrusa es su punta
+        NORTE: la del medio esta a 37 m de donde estaria la del completo. Asi
+        que se exige punto en las dos puntas; si falta una, ahi no hay viga de
+        este tipo."""
         c = 0
+        ps = pn_ = False
         for b in (round(x / 3.0) - 1, round(x / 3.0), round(x / 3.0) + 1):
-            for px, pn in G3.get(b, ()):
-                if abs(px - x) <= 0.6 and abs(pn - n) <= L / 2 + 4:
+            for px, pnt in G3.get(b, ()):
+                if abs(px - x) > 0.6:
+                    continue
+                if abs(pnt - (n - L / 2)) <= 5.0: ps = True
+                if abs(pnt - (n + L / 2)) <= 5.0: pn_ = True
+                if abs(pnt - n) <= L / 2 + 4:
                     c += 1
-        return c
+        return c if (ps and pn_) else 0
 
     bandas = collections.defaultdict(list)
     for t in TK:
