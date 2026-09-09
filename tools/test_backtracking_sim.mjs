@@ -2692,50 +2692,16 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
   });
 }
 
-console.log('v1.51 · cada fila cae donde el PROVEEDOR la midió');
-{
-  // EL REPARTO NO PUEDE DECIDIR DÓNDE ESTÁ UNA VIGA: eso ya está medido. El
-  // as-built que vino del SQL del proveedor trae la x de cada fila con su
-  // nombre, y ahí la -E está en el eje del plano (mediana -0,004 m) y la -W a
-  // 6,174 m al OESTE. Son 4.143 filas diciendo lo mismo, y ninguna al revés.
-  //
-  // POR QUÉ HACE FALTA ESTE CAREO. Un reparto puede encajar muy bien y estar
-  // equivocado: desplazar TODAS las filas -W dos líneas al este deja casi
-  // todas las líneas servidas —la retícula es regular, hay una cada 6,2 m— y
-  // sale mejor en todo lo que se mire por dentro: 4.572 filas en vez de 4.449,
-  // 3 puntos sin repartir en vez de 535, los 98 tubos «medio» al 100 %. Y sin
-  // embargo cada tracker se estaría quedando con las cotas de su vecino. La
-  // consistencia interna no distingue las dos soluciones; la x del proveedor,
-  // sí.
-  const fa = path.join(ROOT, 'sanjose_asbuilt.json');
-  const f0 = path.join(ROOT, 'tools', 'fixtures', 'sanjose_asbuilt_proveedor_x.json');
-  if (fs.existsSync(fa) && fs.existsSync(f0)) {
-    const X0 = JSON.parse(fs.readFileSync(f0, 'utf-8'));
-    const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
-    t('cada fila del reparto cae en la x que midió el proveedor', () => {
-      let n = 0, mal = 0, peor = 0, ej = '';
-      for (const f of A.f) {
-        const x0 = X0.x[f.id];
-        if (x0 == null || f.x == null) continue;
-        n++;
-        const d = Math.abs(f.x - x0);
-        if (d > 0.5) { mal++; if (d > peor) { peor = d; ej = f.id; } }
-      }
-      if (n < 3000) throw new Error('la referencia del proveedor no trae filas suficientes: ' + n);
-      if (mal) throw new Error(`${mal} de ${n} filas fuera de la x del proveedor (peor ${peor.toFixed(2)} m en ${ej}); ` +
-        `un desvío de 6,17 o 12,35 m es una línea entera: el reparto le está dando a esa fila los puntos del tubo de al lado`);
-    });
-    t('MUTANTE: mover las -W una línea rompe el careo', () => {
-      let mal = 0;
-      for (const f of A.f) {
-        const x0 = X0.x[f.id];
-        if (x0 == null || f.x == null || !f.id.endsWith('-W')) continue;
-        if (Math.abs((f.x + 6.174) - x0) > 0.5) mal++;
-      }
-      if (!mal) throw new Error('mover las -W 6,17 m no rompe nada: el careo no distingue');
-    });
-  }
-}
+// RETIRADO el careo «cada fila cae donde el PROVEEDOR la midió» (y su fixture
+// sanjose_asbuilt_proveedor_x.json). Era CIRCULAR: la x de cada fila -W en ese
+// as-built es exactamente x_tracker − 6,174 (mediana −6,174, no una medida),
+// o sea que ya traía dentro la convención «la hermana va al oeste» que se
+// quería comprobar. Lo que sí decide es el BORDE de cada tirada de trackers
+// contiguos, con la nube cruda y sin ningún reparto: con la hermana al oeste
+// tiene que haber una viga en x_primero−6,17 y ninguna en x_último+6,17; al
+// este, al revés. Medido en San José: 97 tiradas al ESTE, 6 al oeste, y en
+// todas las largas 0 puntos en x_primero−6,17 y 5-6 en x_último+6,17. Ese
+// careo, y el reparto que lo aplica, van en #626.
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
