@@ -4353,9 +4353,20 @@ function update3D(){
   const up=Math.min(1,Math.max(0,g.elev/35));
   if(g.elev>0){
     TD.sun.position.set(cx+Math.sin(azRel)*Math.cos(el)*R,Math.sin(el)*R,-Math.cos(azRel)*Math.cos(el)*R);
-    // sombras NÍTIDAS: el frustum de sombra se ciñe a 140 m alrededor de la
-    // vista (4096 px sobre 4 km daban texels de 2 m: la sierra) y sigue a la
-    // cámara — lejos de la vista el shadow-map no pinta, y no importa
+    // EL FRUSTUM DE SOMBRA CUBRE LO QUE SE VE, NO UN CUADRADO FIJO. Estaba
+    // clavado en 140 m alrededor de la mira, con el trato explícito de que
+    // «lejos de la vista el shadow-map no pinta, y no importa». Sí importa: El
+    // Burgo mide 528 × 470 m, Ayora 2,5 km y San José 3 km, así que al alejar
+    // la cámara para ver la planta entera —que es como se enseña— casi todo
+    // quedaba fuera del mapa y el suelo dejaba de recibir sombras.
+    //
+    // El radio sale ahora de lo que la cámara ABARCA en el suelo: la distancia
+    // a su mira por la tangente del medio campo de visión, por el aspecto, con
+    // un 20 % de margen. Zoom cerca ⇒ radio pequeño y texel de centímetros,
+    // igual de nítido que antes; zoom lejos ⇒ el radio crece hasta la planta
+    // entera y el texel se agranda, que es el precio honesto de ver 3 km de
+    // una vez. Se acota por arriba a la planta (TD.R) para no gastar mapa en
+    // vacío y por abajo a 60 m para que no colapse pegando la cámara al suelo.
     TD.sun.target.position.copy(TD.controls.target);
     // frustum ANISÓTROPO: con sol rasante cada texel del mapa se proyecta
     // 1/sin(elev) por el suelo — con el cuadrado fijo de 140 m, a 2° de
@@ -4363,11 +4374,27 @@ function update3D(){
     // (clavada hasta cruzar un texel). El alto del frustum se ciñe a lo que la
     // escena ocupa vista desde el sol (patch·sin(el) + alturas·cos(el)) y el
     // texel proyectado vuelve a centímetros a cualquier hora.
-    const sc2=TD.sun.shadow.camera, R2=140;
+    const sc2=TD.sun.shadow.camera;
+    const dCam=TD.camera.position.distanceTo(TD.controls.target);
+    const media=THREE.MathUtils.degToRad(TD.camera.fov)/2;
+    const abarca=dCam*Math.tan(media)*Math.max(1,TD.camera.aspect)*1.2;
+    const R2=Math.min(Math.max(60,abarca),Math.max(140,(TD.R||140)*1.15));
     const vy=Math.max(20,R2*Math.sin(el)+15*Math.cos(el));
     sc2.left=-R2;sc2.right=R2;sc2.top=vy;sc2.bottom=-vy;
     const dLT=TD.sun.position.distanceTo(TD.sun.target.position);
-    sc2.near=Math.max(1,dLT-450);sc2.far=dLT+450;
+    // EL CUADRADO NEGRO ERA EL NEAR, NO EL ANCHO. Fuera del frustum a lo ancho
+    // three.js deja el fragmento ILUMINADO —no pinta sombra y ya está—, pero
+    // por DELANTE del near la comparación de profundidad da «tapado» y el suelo
+    // sale NEGRO. Con near = dLT − 450 y el sol a 925 m, todo lo que estuviera
+    // a menos de esa distancia de la luz caía en negro: el cuadrado que se veía
+    // en El Burgo. Y no bastaba con ensanchar el frustum, que solo lo curaba de
+    // rebote cuando el margen crecía tanto que el near se iba a 1.
+    //
+    // Así que en profundidad NO se recorta: el near se pega al 1 y el far cubre
+    // el sol más la planta entera con holgura. Recortar a lo ancho es gratis
+    // —lejos simplemente no hay sombra— pero recortar en profundidad pinta
+    // negro, y eso no se puede enseñar.
+    sc2.near=1;sc2.far=dLT+Math.max(600,(TD.R||140)*2.5);
     sc2.updateProjectionMatrix();
     const lmode=$('light3d')?$('light3d').value:'real';
     if(lmode==='tope'){
