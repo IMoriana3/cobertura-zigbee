@@ -34,9 +34,22 @@ const cE = A.meta.cE, cN = A.meta.cN, base = C.base;
 const q = (a, f) => { const v = a.slice().sort((x, y) => x - y); return v[Math.min(v.length - 1, Math.max(0, Math.round(f * (v.length - 1))))]; };
 const fmt = (a) => a.length ? `mediana ${q(a, .5).toFixed(3)} · p95 ${q(a, .95).toFixed(3)} · máx ${q(a, 1).toFixed(3)}` : '—';
 
+/* Los puntos CONTAMINADOS no cuentan como «medida disponible»: si una fila se
+   descarta por referencia vertical, su tracker se reconstruye con razon y sus
+   puntos no son una medida que nos hayamos dejado. Se leen de la reclamacion,
+   que es donde viven. */
+const fRec = path.join(ROOT, 'reclamacion_' + PLANTA + '.csv');
+const MALOS = new Set();
+if (fs.existsSync(fRec))
+  for (const l of fs.readFileSync(fRec, 'utf-8').replace(/^\uFEFF/, '').trim().split('\n').slice(1))
+    MALOS.add(+l.split(';')[1]);
+
 /* nube indexada en rejilla de 10 m, en el sistema LOCAL de las cotas */
-const P = { x: [], n: [], z: [] };
-for (let i = 0; i < N.n; i++) { P.x.push(N.x[i] - cE); P.n.push(N.y[i] - cN); P.z.push(N.z[i] - base); }
+const P = { x: [], n: [], z: [], mal: [] };
+for (let i = 0; i < N.n; i++) {
+  P.x.push(N.x[i] - cE); P.n.push(N.y[i] - cN); P.z.push(N.z[i] - base);
+  P.mal.push(MALOS.has(N.id[i]));
+}
 const G = new Map();
 for (let i = 0; i < P.x.length; i++) {
   const k = Math.floor(P.x[i] / 10) + ':' + Math.floor(P.n[i] / 10);
@@ -91,7 +104,7 @@ for (const t of est) for (const f of t.f) {
   for (const y of f.y) if (y < loZ || y > hiZ) fueraZ.push(y);
   // un reconstruido NO debería tener nube justo encima: si la tiene, es que se
   // pudo medir y no se enganchó
-  const v = cerca(f.x, (f.n[0] + f.n[1]) / 2, 4);
+  const v = cerca(f.x, (f.n[0] + f.n[1]) / 2, 4).filter(i => !P.mal[i]);
   if (v.length) conPuntos.push(f.x.toFixed(1));
 }
 
@@ -133,7 +146,7 @@ console.log('');
 console.log('3 · LOS ' + est.length + ' RECONSTRUIDOS (est=1)');
 console.log('    banda de cota de lo medido: ' + loZ.toFixed(2) + ' a ' + hiZ.toFixed(2) + ' m');
 console.log('    reconstruidos fuera de esa banda: ' + fueraZ.length);
-console.log('    reconstruidos CON nube encima (deberían ser 0): ' + conPuntos.length +
+console.log('    reconstruidos con nube SANA encima (deberían ser 0): ' + conPuntos.length +
   (conPuntos.length ? '  <- se pudieron medir y no se engancharon: ' + conPuntos.slice(0, 6).join(', ') : ''));
 console.log('');
 console.log('4 · PASO ENTRE LAS DOS VIGAS DEL TRACKER (m)');

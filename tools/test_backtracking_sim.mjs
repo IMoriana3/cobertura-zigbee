@@ -2166,9 +2166,19 @@ t('la ventana está elegida por medida, y 30 m es el último dx seguro', () => {
   const filas = (dy, dx, mv) => new Set(oraculoRefVertical(P, 3, dy, dx, mv).keys());
   const base = filas(10, 30, 3);
   const igual = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
-  if (!igual(filas(3, 60, 6), base))
-    throw new Error('la ventana de hoy ya no da el mismo veredicto que la original (3/60/6): ' +
-      filas(3, 60, 6).size + ' vs ' + base.size + ' — el ajuste dejó de ser gratis, hay que volver a medirlo');
+  // La ventana ancha NO puede ver contaminación que la buena no vea. Lo que sí
+  // puede es marcar de más cerca del umbral: son los falsos positivos de ladera
+  // que motivaron estrechar dx (con el levantamiento completo, TR-08_1-068-W y
+  // TR-08_1-097-W dan +3,2 m con dx=60 y +0,8 m con dx=30). Así que lo que se
+  // exige no es igualdad —eso era una casualidad del muestreo viejo— sino que
+  // NO SE ESCAPE NADA de la familia del geoide.
+  const vieja = oraculoRefVertical(P, 3, 3, 60, 6);
+  for (const [fid, v] of vieja) {
+    const pico = Math.max(...v.map(t => Math.abs(t[1])));
+    if (pico > 20 && !base.has(fid))
+      throw new Error('la ventana buena se deja ' + fid + ' con ' + pico.toFixed(1) +
+        ' m: eso es la familia del geoide, no ruido de ladera');
+  }
   // y 30 es el ÚLTIMO valor seguro de dx: estrechar más sí pierde puntos
   if (igual(filas(10, 24, 3), base))
     throw new Error('estrechar dx a 24 m ya no pierde puntos: si de verdad da igual, 30 deja de estar justificado');
