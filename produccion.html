@@ -1559,6 +1559,7 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
   }
   I.tint.instanceMatrix.needsUpdate=true;
   if(I.tint.instanceColor)I.tint.instanceColor.needsUpdate=true;
+  actualizaPick();          // el contorno de la selección bascula con su mesa
 }
 
 function ramp(x){return F.prodColor(x);}
@@ -1846,9 +1847,34 @@ function paintHourTrack(){
 
 /* ── selección de string con clic (como el 3D de la casa) ── */
 let PICK=null,pickHelper=null,PICK_DOWN=null;
+/* el contorno de la mesa seleccionada: un rectángulo UNIDAD que se coloca con
+   la misma matriz local que el tinte de su panel, así que hereda el θ, el tilt
+   N-S y la cuerda sin cuentas propias */
+function mkPickOutline(){
+  const g=new THREE.EdgesGeometry(new THREE.PlaneGeometry(1,1));
+  const m=new THREE.LineBasicMaterial({color:0x36d399,depthTest:false,transparent:true});
+  const o=new THREE.LineSegments(g,m);
+  o.renderOrder=6;o.matrixAutoUpdate=false;
+  return o;
+}
+/* colocación LOCAL del panel de una mesa dentro del grupo que bascula: la
+   misma receta que su tinte (plano tumbado sobre el tubo, a 0,18 del eje) */
+function localPanel(xc,largo,cuerda){
+  return new THREE.Matrix4().makeTranslation(xc,0.185,0)
+    .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+    .multiply(new THREE.Matrix4().makeScale(largo*1.01,(cuerda||2.36)*1.04,1));
+}
+/* en el instanciado no hay grupo del que colgarse: el contorno se recoloca en
+   cada repintado con la Q de su mesa (posición + tilt + θ + cuerda) */
+function actualizaPick(){
+  if(!pickHelper||!pickHelper.userData.inst||!R3.inst)return;
+  const {tr,w}=pickHelper.userData.inst;
+  const L=tr.Ltint[(w!=null&&tr.Ltint.length>1)?w:0];
+  pickHelper.matrix.multiplyMatrices(tr.Q,L).scale(new THREE.Vector3(1.01,1.04,1));
+}
 function clearPick(){
   PICK=null;
-  if(pickHelper){R3.scene.remove(pickHelper);pickHelper=null;}
+  if(pickHelper){if(pickHelper.parent)pickHelper.parent.remove(pickHelper);pickHelper=null;}
   const el=$('pick');if(el)el.style.display='none';
   if(R3.renderer)R3.dirty=true;
 }
@@ -2067,29 +2093,42 @@ function repaintPick(){
       if(o&&o.userData.row!==undefined){obj=o;hitP=h.point;break;}
     }
     if(!obj&&!tramo){clearPick();return;}
-    if(pickHelper)R3.scene.remove(pickHelper);
+    if(pickHelper&&pickHelper.parent)pickHelper.parent.remove(pickHelper);
     // el ALA pinchada (v1.14): la mesa larga lleva un string por ala — sur
     // (z mayor en la escena, n bajo) = 0, norte = 1; la media es un string
     // entero y no se parte. «Selecciono un string y me selecciona la fila»
     const dosStr=(r,k)=>!!(T.strInv&&T.strInv[r]&&T.strInv[r].some(x=>typeof x==='object'&&x.k===k&&x.w!=null));
     const wingOf=(r,k,zc)=>(hitP&&dosStr(r,k))?(hitP.z>zc?0:1):null;
     const c2=cfg();
+    /* EL CONTORNO VA EN EL MARCO DE LA MESA (v1.26). Era un Box3Helper: una
+       caja alineada con los EJES DEL MUNDO, que no gira ni con el θ ni con el
+       tilt N-S. Con el seguidor plano casi coincidía, pero al bascular —y a
+       primera y última hora el θ se va a ±50°— la caja dejaba de abrazar el
+       string y se veía un rectángulo cruzado, «no paralelo al string». Ahora
+       es el CONTORNO del propio panel: el mismo sitio local que su tinte, así
+       que lleva el θ, el tilt y la cuerda de la mesa por construcción, y se
+       repinta con ella. */
     if(tramo){
       const w=wingOf(tramo.row,tramo.k,tramo.zc);
       PICK={row:tramo.row,k:tramo.k,w:w,s0:tramo.s0,s1:tramo.s1};
-      const zA=w===0?tramo.zc:tramo.zc-tramo.len/2, zB=w===1?tramo.zc:tramo.zc+tramo.len/2;
-      const box=new THREE.Box3(
-        new THREE.Vector3(tramo.x-c2.cw/2-0.3,tramo.hubY-1.6,zA),
-        new THREE.Vector3(tramo.x+c2.cw/2+0.3,tramo.hubY+0.8,zB));
-      pickHelper=new THREE.Box3Helper(box,0x36d399);
+      pickHelper=mkPickOutline();
+      pickHelper.userData.inst={tr:tramo,w:w};
+      R3.world.add(pickHelper);
+      actualizaPick();
     }else{
       const ud=obj.userData, zc=obj.position.z, w=wingOf(ud.row,ud.k,zc);
       PICK={row:ud.row,k:ud.k,w:w,s0:ud.s0,s1:ud.s1};
-      const box=new THREE.Box3().setFromObject(obj);
-      if(w===0)box.min.z=Math.max(box.min.z,zc); else if(w===1)box.max.z=Math.min(box.max.z,zc);
-      pickHelper=new THREE.Box3Helper(box,0x36d399);
+      // camino de mallas: se cuelga del grupo que BASCULA (el mismo que el
+      // tinte), con la colocación local de su panel — así lo sigue solo
+      const fila=R3.rows[ud.row], sp=fila&&fila.spins.find(x=>x.k===ud.k);
+      pickHelper=mkPickOutline();
+      const len=Math.max(2,ud.s1-ud.s0), lado=(T.segSide&&T.segSide[ud.row])?(T.segSide[ud.row][ud.k]===0?-1:1):0;
+      const gd=(typeof Seguidor!=='undefined')?Seguidor.DIMS.gapDrive:0.55;
+      const xc=lado?lado*(gd/2+len/2):0, wPl=lado?len:(w==null?len:len/2), xw=(lado||w==null)?xc:(w?1:-1)*(gd/2+len/4);
+      pickHelper.matrixAutoUpdate=false;
+      pickHelper.matrix.copy(localPanel(lado?xc:xw,lado?len:wPl,c2.cw));
+      (sp&&sp.g?sp.g:R3.world).add(pickHelper);
     }
-    R3.scene.add(pickHelper);
     R3.dirty=true;repaintPick();
   });
 })();

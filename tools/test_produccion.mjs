@@ -554,8 +554,15 @@ t('PLANTA ENTERA (v1.15): la tarjeta carga las cotas sin ventana ni bloque — A
 });
 
 t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la ficha del módulo), no de una tabla escrita a mano', () => {
+  /* Los tamaños que valen son los TIPOS DEL PLANO, y solo esos: San José monta
+     el «largo» (32 módulos por string, 74,2 m del DWG) y el «corto» (16,
+     37,4 m); Ayora, 28/21/14. Cuando el reparto del levantamiento deducía los
+     módulos del largo de CADA fila, una fila mal repartida se llevaba el
+     redondeo por delante y salían tamaños que la planta no tiene: 11 filas de
+     17 módulos, 2 de 33 y 1 de 24. Ahora el tamaño lo decide el tipo y el
+     largo es el árbitro, así que esto vigila las dos cosas. */
   for (const [cotas, nombre, mdEsperados, wEsperado] of [[cotasAyora, 'Ayora', [28, 21, 14], 1.303],
-                                                          [cotasSJ, 'San José', [32], 1.134]]) {
+                                                          [cotasSJ, 'San José', [32, 16], 1.134]]) {
     // (a) el fichero de cotas trae la ficha del módulo y los módulos por string
     if (!cotas.mod || !(cotas.mod.modW > 0)) throw new Error(nombre + ': las cotas no publican la ficha del módulo');
     if (Math.abs(cotas.mod.modW - wEsperado) > 1e-9) throw new Error(`${nombre}: módulo ${cotas.mod.modW} ≠ ${wEsperado} del levantamiento`);
@@ -577,7 +584,10 @@ t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la f
       }
     }
     if (sinMd) throw new Error(`${nombre}: ${sinMd} de ${n} filas sin módulos en el levantamiento`);
-    if (peor > 1.5) throw new Error(`${nombre}: una fila se aparta ${peor.toFixed(2)} m de 2×md módulos`);
+    // el mismo umbral que aplica el generador (LARGO_FUERA de
+    // reparte_levantamiento.py): más de DOS MÓDULOS de más o de menos y esa
+    // fila no describe a su tracker — se descarta y se reconstruye del plano
+    if (peor > 3.0) throw new Error(`${nombre}: una fila se aparta ${peor.toFixed(2)} m de 2×md módulos`);
     // (b) plantFromCotas los publica por mesa y strInvCotas los usa: dos strings iguales por fila
     const P = S.plantaCotas(S.F, cotas), inv = S.invMapUniforme(P.elev.length, 1);
     if (!P.segMods || !P.mod) throw new Error(nombre + ': plantFromCotas no publica segMods / mod');
@@ -600,12 +610,20 @@ t('MÓDULOS DEL LEVANTAMIENTO (v1.19): los strings salen del dato (f[].md y la f
   }
   // y la página ya no lleva la tabla de módulos escrita a mano
   if (/strPerFila/.test(pg)) throw new Error('produccion.html conserva la tabla de módulos inventada');
-  // ni se calla cuánto de la planta está en el modelo: San José son 2.182 de
-  // los 2.289 trackers del plano (los 107 cortos no se levantaron)
+  // ni se calla cuánto de la planta está en el modelo: la planta entera son
+  // los 2.289 trackers del plano, y los que el levantamiento no cubre van
+  // RECONSTRUIDOS del plano y marcados (est=1). Cuántos son es dato del
+  // reparto —eran 107 y el reparto por nodos los dejó en 11—, así que lo que
+  // se vigila es el INVARIANTE: la planta está entera, los estimados son unos
+  // pocos, y el número lo dice el propio fichero en su meta.
   const laySJn = laySJ.trackers.length, conCotas = cotasSJ.t.filter(Boolean).length;
   const est = cotasSJ.t.filter(t2 => t2 && t2.est).length;
-  if (laySJn !== 2289 || conCotas !== 2289 || est !== 107)
-    throw new Error(`San José: ${conCotas} de ${laySJn}, ${est} estimados (esperado 2.289 de 2.289, 107 estimados)`);
+  if (laySJn !== 2289 || conCotas !== 2289)
+    throw new Error(`San José: ${conCotas} de ${laySJn} trackers del plano con cotas`);
+  if (!(est >= 0 && est < 0.05 * laySJn))
+    throw new Error(`San José: ${est} trackers con cota estimada de ${laySJn} — más del 5 % de la planta sin levantar`);
+  if (cotasSJ.n_est != null && cotasSJ.n_est !== est)
+    throw new Error(`San José: el meta dice ${cotasSJ.n_est} estimados y hay ${est}`);
   if (!pg.includes("trackers del plano")) throw new Error('la página no declara cuántos trackers del plano están en el modelo');
   if (!pg.includes("con cota estimada del plano")) throw new Error('la página no declara los trackers con cota estimada');
 });

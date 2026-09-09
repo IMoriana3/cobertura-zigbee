@@ -612,9 +612,14 @@ function oracleOff(G, r, v0, v1, thR, T) {
 }
 // terreno declarado: suelo = cota del eje interpolada − 2 m de buje;
 // marcha de 4 m; bisección de 3 refinos desde el borde bajo. Sol < 25°.
-function oracleTerr(G, sv, zen) {
+function oracleTerr(G, sv, zen, T) {
   const HUB = 2.0, nR = G.nR, xs = G.xs;
   const TOL = 5;                       // m: más allá, esa fila no mide ese norte
+  /* v1.49: y una línea solo vota el suelo de un punto si está CERCA en x. Es
+     otra decisión de MODELO del contador —con plantas de varios bloques, la
+     línea de índice contiguo puede estar a cientos de metros y fabricaba un
+     escarpe— y el oráculo la comparte, como comparte el límite de 4 filas. */
+  const XMAX = Math.max(12, 3 * ((T && T.pitch) || (xs.length > 1 ? xs[1] - xs[0] : 6)));
   const gzOf = (x, v) => {
     let i = 0;
     if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
@@ -625,8 +630,8 @@ function oracleTerr(G, sv, zen) {
       const f2 = Math.max(0, Math.min(1, (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1)));
       return (a.z * (1 - f2) + b.z * f2) - HUB;
     }
-    if (okA) return a.z - HUB;
-    if (okB) return b.z - HUB;
+    if (okA && Math.abs(x - xs[i]) <= XMAX) return a.z - HUB;
+    if (okB && Math.abs(x - xs[Math.min(nR - 1, i + 1)]) <= XMAX) return b.z - HUB;
     /* La búsqueda hacia fuera se limita a 4 filas, IGUAL que el contador: es
        una decisión de MODELO declarada (más allá, la cota de esa banda de
        norte no la mide nadie cercano y estimarla sería inventar), no una
@@ -636,6 +641,7 @@ function oracleTerr(G, sv, zen) {
        exactamente su trabajo. */
     for (let k = 1; k <= 4; k++) for (const j of [i - k, i + 1 + k]) {
       if (j < 0 || j >= nR) continue;
+      if (Math.abs(x - xs[j]) > XMAX) continue;      // esa línea está en otro sitio
       const c = G.cotD(j, v); if (c.d <= TOL) return c.z - HUB;
     }
     return -Infinity;                  // nadie mide ese norte: sin terreno
@@ -685,7 +691,7 @@ function oracleExact(F2, zen, az, T, rowAngles) {
   const sv = [Math.sin(azR) * Math.cos(el), Math.cos(azR) * Math.cos(el), Math.sin(el)];
   const out = new Array(G.nR).fill(0);
   if (sv[2] <= 0) return out;
-  const terr = oracleTerr(G, sv, zen);
+  const terr = oracleTerr(G, sv, zen, T);
   const hw = T.cw / 2, MV = 8;
   const elec = new Array(G.nR).fill(0);
   for (let r = 0; r < G.nR; r++) {
@@ -756,7 +762,7 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
   const sv = [Math.sin(azR) * Math.cos(el), Math.cos(azR) * Math.cos(el), Math.sin(el)];
   const out = {};
   if (sv[2] <= 0) { for (const r of rowSet) out[r] = 0; return out; }
-  const terr = oracleTerr(G, sv, zen);
+  const terr = oracleTerr(G, sv, zen, T);
   const hw = T.cw / 2, MV = 8;
   for (const pl of G.planes) pl.den = pl.nE[0] * sv[0] + pl.nE[1] * sv[1] + pl.nE[2] * sv[2];
   for (const r of rowSet) {
@@ -2432,6 +2438,53 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
       if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
     });
   }
+}
+
+console.log('v1.49 · el suelo no se inventa con una línea de otro bloque');
+{
+  /* Una planta de VARIOS BLOQUES tiene saltos de índice enormes en x: en Ayora,
+     entre la línea 107 y la 108 hay 721 m de hueco y 12,8 m de desnivel. El
+     resolutor de cota del terreno tiraba de la línea de índice contiguo sin
+     mirar dónde está, así que fabricaba un escarpe de 7 m pegado a la primera
+     línea del segundo bloque y el contador lo veía tapar el sol al ocaso. */
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  const mkT = (Pp) => {
+    const pairs = [];
+    for (let i = 0; i < Pp.lineX.length - 1; i++) {
+      const dx = Math.max(0.5, Pp.lineX[i + 1] - Pp.lineX[i]);
+      pairs.push({ slope: Math.atan2(Pp.pairDz[i], dx) * 180 / Math.PI, pitch: dx,
+                   axisTilt: (Pp.tilt[i] + Pp.tilt[i + 1]) / 2 });
+    }
+    return { pairs, cw: Pp.cw, axisAz: 0, maxAngle: Pp.maxAngle, gcr: Pp.cw / Pp.pitch, z0: 0.17,
+             nBypass: 3, rowTilt: Pp.tilt, groups: Pp.groups, drive: Pp.drive, segs: Pp.segs,
+             segTilt: Pp.segTilt, segPairs: Pp.segPairs, segDrive: Pp.segDrive, pitch: Pp.pitch, real: Pp };
+  };
+  const T = mkT(P);
+  // 21-jun a las 19:20 locales de Ayora: sol al oeste y a 23° de elevación
+  const ZEN = 66.7, AZ = 282.1;
+  const ang = F.policyAnglesSeg('pairwise', ZEN, AZ, T);
+  const sh = F.shadeRows(ZEN, AZ, T, ang);
+  const peor = () => { let m = 0, d = null;
+    for (let r = 0; r < sh.seg.length; r++) for (let k = 0; k < sh.seg[r].length; k++)
+      if (sh.seg[r][k] > m) { m = sh.seg[r][k]; d = `línea ${r + 1} mesa ${k + 1}`; }
+    return { m, d }; };
+  const p0 = peor();
+  t('el suelo NO se inventa con la cota de una línea lejana (Ayora, dos bloques a 721 m)', () => {
+    if (!(p0.m < 0.25)) throw new Error(`${p0.d} con ${(100 * p0.m).toFixed(1)} % de sombra al ocaso: huele a escarpe inventado`);
+  });
+  t('MUTANTE: sin el límite de distancia, la línea del otro bloque fabrica el escarpe y la sombra vuelve', () => {
+    const mut = src.replace('if(Math.abs(x-xs[j])>COT_XMAX)continue;      // esa línea está en otro sitio', '')
+                   .replace('if(okA&&Math.abs(x-xs[i])<=COT_XMAX)return a.z-HUB;', 'if(okA)return a.z-HUB;')
+                   .replace('if(okB&&Math.abs(x-xs[Math.min(nR-1,i+1)])<=COT_XMAX)return b.z-HUB;', 'if(okB)return b.z-HUB;');
+    if (mut === src) throw new Error('el mutante no cambió nada: el límite ya no está donde se cree');
+    const G = new Function(sol + '\n' + mut + '; return { plantFromCotas, policyAnglesSeg, shadeRows };')();
+    const P2 = G.plantFromCotas(cotas, Infinity, 'all');
+    const T2 = mkT(P2);
+    const sh2 = G.shadeRows(ZEN, AZ, T2, G.policyAnglesSeg('pairwise', ZEN, AZ, T2));
+    let m2 = 0; for (const l of sh2.seg) for (const v of l) if (v > m2) m2 = v;
+    if (!(m2 > 0.4)) throw new Error(`sin el límite la peor sombra es ${(100 * m2).toFixed(1)} %: el careo no distingue`);
+  });
 }
 
 console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');

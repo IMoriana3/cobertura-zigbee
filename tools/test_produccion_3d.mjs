@@ -145,8 +145,12 @@ try {
       check(`${nombre}: cada mesa dibuja los módulos del levantamiento (${[...new Set(m.paneles.map(o => o.md))].filter(Boolean).sort((a, b) => a - b).join('/')})`,
             m.paneles.length > 0 && malMods === 0,
             `${malMods} de ${m.paneles.length} mesas con otro nº de módulos`);
+      // el panel se dibuja con los módulos del TIPO, así que su largo es el
+      // nominal; la mesa medida puede apartarse de él lo que el generador
+      // deja pasar (LARGO_FUERA de reparte_levantamiento.py son 3 m por FILA,
+      // o sea 1,5 por mesa) y esas pocas van nombradas en su aviso
       check(`${nombre}: y el panel mide lo que mide la mesa (desvío mediana ${dif.length ? dif[dif.length >> 1].toFixed(2) : '—'} m)`,
-            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.2 && Math.abs(dif[dif.length - 1]) < 1.2,
+            dif.length > 0 && Math.abs(dif[dif.length >> 1]) < 0.5 && Math.abs(dif[0]) < 1.6 && Math.abs(dif[dif.length - 1]) < 1.6,
             `desvíos ${dif[0]?.toFixed(2)} … ${dif[dif.length - 1]?.toFixed(2)} m`);
     }
 
@@ -243,6 +247,54 @@ try {
     check('y NO enseña la contabilidad interna (x de la línea, ordinal de la mesa, cota)',
           fichas.length === 2 && fichas.every(f => !/línea x=/.test(f) && !/mesa \d+\/\d+/.test(f) && !/· cota /.test(f)),
           fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
+  }
+
+  // 7) EL CONTORNO DE LA SELECCIÓN VA EN EL MARCO DE LA MESA. Era una caja
+  //    alineada con los ejes del mundo: con el seguidor basculado a −53° dejaba
+  //    de abrazar el string («¿por qué el rectángulo no es paralelo al
+  //    string?»). Ahora es el contorno del panel, así que su normal se separa
+  //    de la vertical EXACTAMENTE lo que dice el θ de esa mesa.
+  {
+    await pg.selectOption('#plant', 'ayora|2');
+    await pg.waitForFunction(() => typeof RP !== 'undefined' && RP && RP.key === 'ayora' && R3.last && cfg().nrows === RP.P.elev.length,
+                             null, { timeout: 300000 });
+    await pg.waitForTimeout(1500);
+    await pg.fill('#hour', '1160'); await pg.dispatchEvent('#hour', 'input');   // 19:20, θ ≈ −50°
+    await pg.waitForTimeout(1200);
+    const pt = await pg.evaluate(() => {
+      const rct = document.getElementById('c3d').getBoundingClientRect();
+      const cand = [];
+      R3.world.traverse(g => { if (g.userData && g.userData.row !== undefined && g.children.length) {
+        const sg = T.segs[g.userData.row][g.userData.k];
+        cand.push({ x: g.position.x, y: g.position.y, zc: -(sg[0] + sg[1]) / 2, len: sg[1] - sg[0] }); } });
+      const m = cand.find(o => o.len > 30) || cand[0];
+      R3.cam.fov = 45; R3.cam.updateProjectionMatrix();
+      R3.cam.position.set(m.x, m.y + 55, m.zc + 0.01); R3.ctrl.target.set(m.x, m.y, m.zc);
+      R3.ctrl.update(); R3.cam.updateMatrixWorld(true); R3.dirty = true;
+      const p = new THREE.Vector3(m.x, m.y + 0.3, m.zc).project(R3.cam);
+      return { x: rct.left + (p.x + 1) / 2 * rct.width, y: rct.top + (1 - p.y) / 2 * rct.height };
+    });
+    await pg.waitForTimeout(900);
+    await pg.mouse.click(pt.x, pt.y);
+    await pg.waitForTimeout(700);
+    const g = await pg.evaluate(() => {
+      if (!pickHelper || !PICK) return null;
+      pickHelper.updateWorldMatrix(true, false);
+      const M = pickHelper.matrixWorld;
+      const o = new THREE.Vector3(0, 0, 0).applyMatrix4(M);
+      const ex = new THREE.Vector3(0.5, 0, 0).applyMatrix4(M).sub(o).normalize();   // a lo LARGO del tubo
+      const n = new THREE.Vector3(0, 0, 1).applyMatrix4(M).sub(o).normalize();      // normal del panel
+      const th = (R3.last.inst.segAng ? R3.last.inst.segAng[PICK.row][PICK.k] : R3.last.inst.ang[PICK.row]);
+      const tilt = T.segTilt ? T.segTilt[PICK.row][PICK.k] : 0;
+      return { incl: Math.acos(Math.min(1, Math.abs(n.y))) * 180 / Math.PI,
+               ejeY: Math.asin(Math.max(-1, Math.min(1, ex.y))) * 180 / Math.PI, th, tilt };
+    });
+    check('el contorno de la selección va en el marco de la MESA: su normal se inclina lo que dice el θ',
+          !!g && Math.abs(Math.abs(g.th) - g.incl) < 1.5 && Math.abs(g.th) > 20,
+          g ? `θ ${g.th.toFixed(1)}° · normal del contorno a ${g.incl.toFixed(1)}° de la vertical` : 'sin selección');
+    check('y su eje largo sigue el TILT N-S de la mesa, no la horizontal del mundo',
+          !!g && Math.abs(g.ejeY - g.tilt) < 1.0,
+          g ? `eje a ${g.ejeY.toFixed(2)}° · tilt ${g.tilt.toFixed(2)}°` : 'sin selección');
   }
 
   check('sin errores de consola', errs.length === 0, errs.slice(0, 3).join(' · '));

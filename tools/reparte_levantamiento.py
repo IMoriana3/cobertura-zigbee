@@ -73,13 +73,14 @@ exclusividad se lo daba al primero que pasara, dejando al vecino con 3 puntas y
 37 m. Ese punto es la FRONTERA entre los dos tubos, o sea el extremo de los dos.
 Se comparte solo en ese caso (1 punto de 17.755 en San Jose).
 
-    filas del as-built              4.421 -> 4.449
-    trackers con las dos vigas      2.134 -> 2.162
-    trackers con una sola viga        153 ->   125
-    filas emitidas a media longitud     4 ->     0
-    filas preexistentes que cambian           3, y las tres a mejor:
-        TR-05_2-060-W  37,74 m -> 74,61      TR-08_1-094-W  37,65 -> 75,17
-        TR-10_2-002-W  55,93 m -> 75,06
+    filas del as-built              4.415 -> 4.449
+    trackers con las dos vigas      2.128 -> 2.162
+    trackers con una sola viga        159 ->   125
+    filas preexistentes que cambian           0 de 4.415
+
+Tres filas que el control de largo tiraba por medir la mitad vuelven enteras:
+TR-05_2-060-W de 37,74 m a 74,61, TR-08_1-094-W de 37,65 a 75,17 y
+TR-10_2-002-W de 55,93 a 75,06 — el «los trackers no llegan a sus extremos».
 
 BARRIDO DE LAS CUATRO VENTANAS (D_MAX 8/12/16, radio 80/150/300 m, TOL_J/TOL_T
 4-6/5-6/6-8, 27 combinaciones): el as-built sale entre 4.444 y 4.460 filas, un
@@ -115,7 +116,14 @@ D_MAX = 12.0           # m; desvio nodo-centro que aun puede ser desfase de line
 R_VEC = 150.0          # m; vecindario sobre la linea que vota el desfase (~2 tubos)
 TOL_J = 5.0            # m; ventana del nodo de junta, ya en el marco corregido
 TOL_T = 6.0            # m; ventana de cada tope alrededor de centro +- L/2
-FRAC_MIN = 0.8         # fraccion del largo nominal por debajo de la cual es fragmento
+LARGO_AVISO = 1.5      # m; se aparta de su tipo mas de esto: se avisa
+# Mas de DOS MODULOS de mas o de menos y esa fila ya no describe a su tracker:
+# emitirla mete en el modelo una mesa estirada o encogida —el render le cuelga
+# 32 modulos en 33 m, y el string sale con otro largo—, y para eso ya esta la
+# reconstruccion del plano, que es geometria correcta y va MARCADA (est=1).
+# Este control sustituye al corte por FRACCION del largo nominal: es el mismo
+# criterio, mas fino y con nombre y apellidos de cada fila que se cae.
+LARGO_FUERA = 3.0
 
 
 def lee_puntos(planta, cE, cN, base):
@@ -156,7 +164,8 @@ def reparte(planta='sanjose'):
     for t in TK:
         L0 = LARGO.get(t.get('t'), LARGO_DEF)
         for lado, x in (('E', t['x']), ('W', t['x'] - DX_FILA)):
-            filas.append({'x': x, 'n': t['n'], 'tk': t['id'], 'lado': lado, 'L0': L0})
+            filas.append({'x': x, 'n': t['n'], 'tk': t['id'], 'lado': lado,
+                          't': t.get('t'), 'L0': L0})
 
     # ── reparto POR NODOS ────────────────────────────────────────────────────
     # Los puntos no estan sueltos: van en NODOS de dos, y el tipo de nodo se ve
@@ -258,6 +267,29 @@ def reparte(planta='sanjose'):
     # ── emision ──────────────────────────────────────────────────────────────
     ant = {r['id']: r for r in A['f']}
     tpDe = {r['tk']: (r['tp'], r['mods']) for r in A['f']}
+    # LARGO NOMINAL de m modulos por string (la misma formula que usa
+    # cotas_asbuilt.py para reconstruir): L = 2*m*modW + (2m-2)*gapMod + gapDrive
+    _w, _gm, _gd = M.get('modW') or 0, M.get('gapMod', 0.0), M.get('gapDrive', 0.0)
+    nomL = lambda m: 2 * m * _w + (2 * m - 2) * _gm + _gd
+    # consenso de tamano POR TIPO del plano: la mediana de lo que da el largo
+    # medido en TODAS las filas de ese tipo
+    _pt = collections.defaultdict(list)
+    if _w:
+        for i, f in pts.items():
+            v = sorted(f, key=lambda p: p[2])
+            if len(v) < 2:
+                continue
+            L = v[-1][2] - v[0][2]
+            if L < 0.5 * filas[i]['L0']:      # media fila: no vota el tamano de su tipo
+                continue
+            m = int(round((L - _gd + 2 * _gm) / (2 * (_w + _gm))))
+            if m >= 4:
+                _pt[filas[i]['t']].append(m)
+    md_tipo = {}
+    for _t, _v in _pt.items():
+        _v.sort()
+        md_tipo[_t] = _v[len(_v) // 2]
+    fuera, avisos = [], []
     tpMayor = collections.Counter((r['tp'], r['mods']) for r in A['f']).most_common(1)[0][0]
     num = lambda v, d=3: None if v is None else round(v, d)
     out, heredados, nulos = [], 0, 0
@@ -265,16 +297,10 @@ def reparte(planta='sanjose'):
         v = sorted(f, key=lambda p: p[1 + 1])              # por n
         if len(v) < 2:
             continue                                       # una punta sola no es una fila
-        # LARGO MINIMO, CONTRA SU PROPIO TIPO. Salian 20 filas de 18,3 m con
-        # solo dos puntas: son FRAGMENTOS —media mesa—, no seguidores, y aguas
-        # abajo el accionamiento les colocaba el eje en mitad de la mesa en vez
-        # de en su morro. El corte no puede ser un numero fijo: 30 m deja pasar
-        # un «completo» medido a medias (37 m de 74,4) y a la vez roza a los
-        # «medio», que miden 37,2 de verdad. Se compara con SU largo nominal.
-        # Mejor un punto sin repartir —y una fila reconstruida con razon aguas
-        # abajo— que media fila haciendose pasar por entera.
-        if v[-1][2] - v[0][2] < FRAC_MIN * filas[i]['L0']:
-            continue
+        # El corte por largo va mas abajo, contra el nominal de SU TIPO
+        # (LARGO_FUERA): un numero fijo no vale, porque 30 m deja pasar un
+        # «completo» medido a medias (37 m de 74,4) y a la vez roza a los
+        # «medio», que miden 37,2 de verdad.
         fid = filas[i]['tk'] + '-' + filas[i]['lado']
         ns = [p[2] for p in v]
         ys = [p[3] for p in v]
@@ -295,26 +321,36 @@ def reparte(planta='sanjose'):
             if Ln > 5:
                 pa.append(round((ys[-1] - ym) / Ln * 100, 3))
         a = ant.get(fid)
-        if a:
-            heredados += 1
-        else:
-            nulos += 1
-        # MODULOS DEL LARGO MEDIDO, no heredados. San Jose tiene 98 seguidores
-        # «corto» de ~37,5 m entre 2.191 de ~74,4: heredar el tipo del fichero
-        # viejo (o el mayoritario) le colgaba 32 modulos a una fila de media
-        # longitud. Se invierte la formula del largo nominal, que es la misma
-        # que usa cotas_asbuilt.py para reconstruir:
-        #     L = 2*m*modW + (2m-2)*gapMod + gapDrive
-        mods = None
-        if M.get('modW'):
-            w, gm, gd = M['modW'], M.get('gapMod', 0.0), M.get('gapDrive', 0.0)
-            mods = int(round((L - gd + 2 * gm) / (2 * (w + gm))))
-            if mods < 4:
-                mods = None
+        # MODULOS DEL TIPO DECLARADO, con el largo medido de ARBITRO. San Jose
+        # tiene 98 seguidores «corto» de ~37,5 m entre 2.191 de ~74,4: heredar
+        # el tipo del fichero viejo (o el mayoritario) le colgaba 32 modulos a
+        # una fila de media longitud. Pero invertir la formula del largo FILA A
+        # FILA tampoco vale: donde el reparto deja la fila 1-2 m larga (una
+        # punta de la vecina) o 18 m corta (le faltan puntos), el redondeo se
+        # inventa un tamano que la planta no tiene — salieron 11 filas de 17
+        # modulos, 2 de 33 y 1 de 24, y ninguno de esos tres es un tipo del
+        # DWG. El tamano se decide POR TIPO del plano ('completo' / 'medio'),
+        # con la MEDIANA de lo que mide cada tipo: 4.353 filas dicen 32 y 179
+        # dicen 16, y un pufo suelto no mueve una mediana.
+        mods = md_tipo.get(filas[i]['t'])
         if mods is None:
             tp, mods = tpDe.get(filas[i]['tk'], tpMayor)
         else:
             tp = '2TTx%d' % (2 * mods)
+        # y el LARGO es ahora un control, no la fuente: si se aparta de lo que
+        # mide su tipo, esa fila esta mal repartida y se dice
+        if M.get('modW'):
+            dif = L - nomL(mods)
+            if abs(dif) > LARGO_FUERA:
+                fuera.append((fid, round(L, 2), mods, round(dif, 2)))
+                continue                      # se cae: la reconstruye cotas_asbuilt del plano
+            if abs(dif) > LARGO_AVISO:
+                avisos.append((fid, round(L, 2), mods, round(dif, 2)))
+        # se cuenta cuando la fila ENTRA de verdad, no antes del control
+        if a:
+            heredados += 1
+        else:
+            nulos += 1
         out.append({
             'id': fid, 'zo': 'SJ', 'tk': filas[i]['tk'], 'fl': 0, 'tp': tp, 'mods': mods,
             'x': num(statistics.fmean(p[1] for p in v)),
@@ -384,6 +420,16 @@ def reparte(planta='sanjose'):
     print('         trackers con las dos filas: %d de %d'
           % (sum(1 for v in collections.Counter(r['tk'] for r in out).values() if v == 2), len(TK)))
     print('         vectores TCU: %d heredados · %d a null (filas nuevas)' % (heredados, nulos))
+    print('         modulos por string, del TIPO del plano: %s'
+          % ' · '.join('%s %d' % (k, v) for k, v in sorted(md_tipo.items(), key=lambda kv: -kv[1])))
+    if avisos:
+        print('         AVISO · %d filas se apartan mas de %.1f m del largo de su tipo:' % (len(avisos), LARGO_AVISO))
+        for fid, L, m, d in sorted(avisos, key=lambda r: -abs(r[3]))[:12]:
+            print('           %-16s %6.2f m con %d modulos (%+.2f m)' % (fid, L, m, d))
+    if fuera:
+        print('         FUERA · %d filas descartadas por apartarse mas de %.1f m (su tracker se reconstruye del plano):' % (len(fuera), LARGO_FUERA))
+        for fid, L, m, d in fuera:
+            print('           %-16s %6.2f m con %d modulos (%+.2f m)' % (fid, L, m, d))
     return A, out
 
 
