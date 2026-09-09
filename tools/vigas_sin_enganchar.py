@@ -71,21 +71,36 @@ def grupos_huerfanos(planta):
 def emite(planta='sanjose'):
     G, cE, cN = grupos_huerfanos(planta)
     TK = json.load(open(os.path.join(RAIZ, planta + '_layout.json')))['trackers']
+    A = json.load(open(os.path.join(RAIZ, planta + '_asbuilt.json')))
+    emit = defaultdict(list)
+    for f in A['f']:
+        if f.get('zs') is not None:
+            emit[f.get('tk')].append(f['id'])
     filas = []
     for gg in G:
         xm = sum(p[2] for p in gg) / len(gg)
         n0, n1 = gg[0][0], gg[-1][0]
         nm, largo = (n0 + n1) / 2, n1 - n0
         medido = 'medio' if largo < CORTE_TIPO else 'completo'
-        t = min(TK, key=lambda t: min(abs(t['x'] - xm), abs(t['x'] - DX_FILA - xm)) + abs(t['n'] - nm) / 8)
-        dx = min(abs(t['x'] - xm), abs(t['x'] - DX_FILA - xm))
-        dn = abs(t['n'] - nm)
-        if dx > TOL_X or dn > TOL_N:
-            caso, plano = 'SIN TRACKER EN EL PLANO', ''
-        elif t.get('t') != medido:
-            caso, plano = 'TIPO DISTINTO DEL PLANO', t.get('t')
+        # QUIEN LA RECLAMA no es «el tracker mas cercano»: es aquel para el que
+        # esa linea seria su viga E (su propia x) o su viga W (6,174 m al
+        # oeste). Buscarlo por distancia mezclando x y n lleva al vecino de al
+        # lado y hace pensar que el tipo no cuadra cuando lo que pasa es otra
+        # cosa.
+        due = [(t, 'E') for t in TK if abs(t['x'] - xm) <= TOL_X] + \
+              [(t, 'W') for t in TK if abs(t['x'] - DX_FILA - xm) <= TOL_X]
+        due = [(t, l) for t, l in due if abs(t['n'] - nm) <= TOL_N]
+        if not due:
+            t, lado, caso, plano = None, '', 'SIN TRACKER QUE LA RECLAME', ''
         else:
-            caso, plano = 'cuadra con su tracker', t.get('t')
+            t, lado = min(due, key=lambda p: abs(p[0]['n'] - nm))
+            plano = t.get('t')
+            if plano != medido:
+                caso = 'EL PLANO LA DECLARA %s Y MIDE %s' % (plano.upper(), medido.upper())
+            elif len(emit.get(t['id'], [])) >= 2:
+                caso = 'su tracker ya tiene sus dos vigas'
+            else:
+                caso = 'cuadra con su tracker'
         filas.append({
             'caso': caso,
             'X_utm': '%.3f' % (xm + cE),
@@ -95,10 +110,12 @@ def emite(planta='sanjose'):
             'largo_m': '%.2f' % largo,
             'n_puntos': len(gg),
             'tipo_medido': medido,
-            'tracker_mas_cercano': t['id'],
+            'tracker_que_la_reclama': t['id'] if t else '',
+            'seria_su_viga': lado,
             'tipo_en_el_plano': plano,
-            'dx_al_tracker_m': '%.2f' % dx,
-            'dn_al_tracker_m': '%.2f' % dn,
+            'filas_que_ya_tiene': len(emit.get(t['id'], [])) if t else 0,
+            'dx_m': '%.2f' % ((xm - t['x']) if t else 0),
+            'dn_m': '%.2f' % ((nm - t['n']) if t else 0),
             'puntos': ' '.join(str(p[1]) for p in gg),
         })
     filas.sort(key=lambda f: (f['caso'], f['X_utm']))
