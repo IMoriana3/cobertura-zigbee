@@ -2685,6 +2685,63 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   });
 }
 
+console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
+{
+  // El saneador de cotas salva la mitad limpia de una fila contaminada y deja
+  // marcado en `ey` QUE TOPE no es medida. Ese detalle tiene que llegar hasta
+  // la mesa: marcar la fila entera devolvería a la tarjeta el mismo bulto que
+  // se quería quitar —la mesa buena declarada como no medida— y marcar nada
+  // sería peor todavía.
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: un tope estimado (ey) marca SOLO su mesa; la otra mitad sigue siendo medida', () => {
+    const conEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+      if (f.ye === 1 || f.ye === 2) conEy.push(f);
+    if (conEy.length < 5) throw new Error('sin filas con punta repuesta (ye) en el fichero: el careo no prueba nada');
+    let mesasEst = 0;
+    for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
+      if (P.segEst[r][k]) mesasEst++;
+    // las mesas de los trackers reconstruidos del plano van marcadas enteras;
+    // lo que se comprueba aquí es que una punta repuesta marca UNA mesa y no dos
+    const trkEst = new Set();
+    for (const tk of cotas.t) if (tk && tk.est) trkEst.add(tk);
+    let mesasDeTrkEst = 0;
+    for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
+      if (P.segEst[r][k] && trkEst.has(P.segTrk[r][k])) mesasDeTrkEst++;
+    const soloEy = mesasEst - mesasDeTrkEst;
+    if (soloEy !== conEy.length)
+      throw new Error(`${conEy.length} filas con una punta repuesta pero ${soloEy} mesas marcadas (debe ser una por fila)`);
+  });
+  t('MUTANTE: marcar la fila entera (o no marcar nada) rompe el careo', () => {
+    const conEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+      if (f.ye === 1 || f.ye === 2) conEy.push(f);
+    const cuenta = (Q) => { let c = 0; for (const fila of Q.segEst) for (const b of fila) if (b) c++; return c; };
+    // (a) sin ye en el fichero, plantFromCotas no marca ninguna de esas mesas
+    const sinEy = JSON.parse(JSON.stringify(cotas));
+    for (const tk of sinEy.t) if (tk && !tk.est) for (const f of tk.f) f.ye = 0;
+    if (cuenta(F.plantFromCotas(sinEy, Infinity, 'all')) >= cuenta(P))
+      throw new Error('quitar ye no cambia el marcado: no se está leyendo');
+    // (b) marcando la fila entera (ye=3) salen DOS mesas por fila en vez de una
+    const doble = JSON.parse(JSON.stringify(cotas));
+    for (const tk of doble.t) if (tk && !tk.est) for (const f of tk.f) if (f.ye === 1 || f.ye === 2) f.ye = 3;
+    if (cuenta(F.plantFromCotas(doble, Infinity, 'all')) !== cuenta(P) + conEy.length)
+      throw new Error('marcar la fila entera no dobla las mesas marcadas: el lado no se está respetando');
+  });
+}
+
+// RETIRADO el careo «cada fila cae donde el PROVEEDOR la midió» (y su fixture
+// sanjose_asbuilt_proveedor_x.json). Era CIRCULAR: la x de cada fila -W en ese
+// as-built es exactamente x_tracker − 6,174 (mediana −6,174, no una medida),
+// o sea que ya traía dentro la convención «la hermana va al oeste» que se
+// quería comprobar. Lo que sí decide es el BORDE de cada tirada de trackers
+// contiguos, con la nube cruda y sin ningún reparto: con la hermana al oeste
+// tiene que haber una viga en x_primero−6,17 y ninguna en x_último+6,17; al
+// este, al revés. Medido en San José: 97 tiradas al ESTE, 6 al oeste, y en
+// todas las largas 0 puntos en x_primero−6,17 y 5-6 en x_último+6,17. Ese
+// careo, y el reparto que lo aplica, van en #626.
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

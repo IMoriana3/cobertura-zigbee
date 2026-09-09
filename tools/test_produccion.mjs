@@ -39,12 +39,15 @@ const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,clearskyIneichen:clearskyIneichen},
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
-          instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
+          instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
+          degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
+          sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
+          estadisticaCareo, mapStringW, bifDe};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -914,6 +917,200 @@ t('la bifila real: solo la viga OESTE lleva motor, y con las plantas de cotas ta
   if (!(pares > 0 && motores < P.lineX.length))
     throw new Error(`NCU9 sale sin bifila: ${pares} parejas de ${P.lineX.length} vigas`);
   console.log(`    (San José NCU 9: ${P.lineX.length} vigas → ${pares} unidades bifila, ${motores} motores)`);
+});
+
+console.log('');
+console.log('v1.29 · lo que la cadena del Notebook no modelaba');
+
+t('a cero, las pérdidas de planta no tocan NADA (la cifra de antes, al vatio)', () => {
+  const str = [{inv:'1',pdcW:1e5},{inv:'1',pdcW:1e5},{inv:'2',pdcW:1.5e5}];
+  const a = {loss:{soiling:2,mismatch:2,wiring:1.5,lid:1.5},pnomW:2e5,etaMax:0.98,gridW:0};
+  const r0 = S.acPlant(str, a);
+  const r1 = S.acPlant(str, Object.assign({}, a, {planta:{}}));
+  if (Math.abs(r0.pacW - r1.pacW) > 1e-9 || Math.abs(r0.redW - r1.redW) > 1e-9)
+    throw new Error(`con planta:{} vacía la cifra cambia: ${r0.pacW} vs ${r1.pacW}`);
+  // y el trafo/cableado/aux sí la mueven, en cascada y con los auxiliares restando
+  const r2 = S.acPlant(str, Object.assign({}, a, {planta:{trafo:1.2,acWire:0.6,aux:5}}));
+  const esp = r0.pacW * (1 - 0.012) * (1 - 0.006) - 5000;
+  if (Math.abs(r2.pacW - esp) > 1e-6)
+    throw new Error(`trafo+AC+aux da ${r2.pacW.toFixed(1)} y debería dar ${esp.toFixed(1)}`);
+});
+
+t('los auxiliares restan también de NOCHE, cuando no hay nada que producir', () => {
+  const a = {loss:{soiling:0,mismatch:0,wiring:0,lid:0},pnomW:2e5,etaMax:0.98,gridW:0,planta:{aux:5}};
+  const r = S.acPlant([{inv:'1',pdcW:0}], a);
+  if (Math.abs(r.pacW + 5000) > 1e-9)
+    throw new Error(`de noche debería salir −5000 W y sale ${r.pacW}`);
+  if (r.redW !== 0) throw new Error('lo que se INYECTA no puede ser negativo: ' + r.redW);
+});
+
+t('degradación: el año 1 no degrada (el LID ya va en la cadena DC) y luego compone', () => {
+  if (S.degradaEta({degrada:0.5,anio:1}) !== 1) throw new Error('el año 1 no debe degradar');
+  const y12 = S.degradaEta({degrada:0.5,anio:12});
+  if (Math.abs(y12 - Math.pow(0.995, 11)) > 1e-12) throw new Error('no compone: ' + y12);
+  if (!(S.degradaEta({degrada:0.5,anio:25}) < y12)) throw new Error('el año 25 debe degradar más que el 12');
+});
+
+t('el soiling del MES manda sobre el único, y sin perfil no se inventa', () => {
+  const p = [0.5,0.5,0.8,1.5,2.2,2.8,3.2,3.4,3.2,2.6,1.6,0.8];
+  if (S.soilingDelMes({soilMes:p}, '2026-01-15') !== 0.5) throw new Error('enero mal');
+  if (S.soilingDelMes({soilMes:p}, '2026-07-15') !== 3.2) throw new Error('julio mal');
+  if (S.soilingDelMes({}, '2026-07-15') !== null) throw new Error('sin perfil debe devolver null');
+  if (S.soilingDelMes({soilMes:[1,2,3]}, '2026-07-15') !== null)
+    throw new Error('un perfil que no trae doce meses no vale');
+});
+
+t('bifacialidad: φ=0 es no-op, de noche no inventa, y la ganancia va donde debe', () => {
+  const irr = {ghi:900,dni:800,dhi:120};
+  if (S.poaBifacial(950, 25, irr, 0.25, {bifa:0}) !== 950) throw new Error('φ=0 tiene que ser no-op');
+  if (S.poaRear(25, {ghi:0,dni:0,dhi:0}, 0.25, {bifa:75,gcr:0.38}) !== 0)
+    throw new Error('sin sol no puede haber luz por detrás');
+  const g = S.poaBifacial(950, 25, irr, 0.25, {bifa:75,perdTras:10,gcr:0.38}) / 950 - 1;
+  if (!(g > 0.03 && g < 0.20)) throw new Error(`ganancia bifacial fuera de rango físico: ${(100*g).toFixed(1)} %`);
+  // el factor de vista al SUELO cae con la inclinación, y el del cielo sube
+  const llano = S.poaRear(0, irr, 0.25, {bifa:75,gcr:0.38});
+  const canto = S.poaRear(60, irr, 0.25, {bifa:75,gcr:0.38});
+  if (!(llano > canto)) throw new Error('tumbado tiene que ver MÁS suelo que de canto');
+  // más albedo, más ganancia
+  if (!(S.poaRear(25, irr, 0.40, {bifa:75,gcr:0.38}) > S.poaRear(25, irr, 0.15, {bifa:75,gcr:0.38})))
+    throw new Error('la cara trasera tiene que crecer con el albedo');
+});
+
+t('MUTANTE: si la cara trasera usara el factor de vista del CIELO, se cae', () => {
+  const irr = {ghi:900,dni:800,dhi:120};
+  const b = 25 * Math.PI / 180;
+  const bien = S.poaRear(25, irr, 0.25, {bifa:75,perdTras:0,gcr:0.38});
+  const mal = 900 * 0.25 * ((1 - Math.cos(b)) / 2) * (1 - 0.38) + 120 * ((1 + Math.cos(b)) / 2);
+  if (Math.abs(bien - mal) < 1) throw new Error('el careo no distingue las dos orientaciones');
+});
+
+t('el b0 del IAM sale de la CONFIG, no del DOM (contrato LÓGICA PURA)', () => {
+  if (S.iamDe({}) !== 0.05) throw new Error('sin b0 debe quedar el 0,05 de siempre');
+  if (S.iamDe({iamb0:0}) !== 0) throw new Error('0 tiene que poder desactivarlo');
+  if (S.iamDe({iamb0:0.2}) !== 0.2) throw new Error('no respeta el valor dado');
+  if (S.iamDe({iamb0:99}) !== 0.5) throw new Error('debe acotarse');
+});
+
+t('P50/P90: la banda se compone en CUADRATURA y crece con el año estimado', () => {
+  const u = {meteo:4,modelo:3.5,soiling:1,dispo:0.5,degrada:0.15};
+  const s1 = S.sigmaTotal(u, 1);
+  if (Math.abs(s1 - Math.hypot(4, 3.5, 1, 0.5)) > 1e-9) throw new Error('no es cuadratura: ' + s1);
+  if (!(s1 < 4 + 3.5 + 1 + 0.5)) throw new Error('la cuadratura tiene que dar MENOS que la suma');
+  // la de la degradación se acumula: el año 25 no puede tener la misma banda que el 1
+  if (!(S.sigmaTotal(u, 25) > s1)) throw new Error('la banda debe crecer con los años');
+  if (S.sigmaTotal(u, 1) !== S.sigmaTotal(Object.assign({}, u, {degrada:99}), 1))
+    throw new Error('en el año 1 la degradación no puede pesar');
+  const b = S.bandaPXX(1000, u, 1);
+  if (!(b.p95 < b.p90 && b.p90 < b.p75 && b.p75 < b.p50))
+    throw new Error(`los cuantiles salen desordenados: ${JSON.stringify(b)}`);
+  if (b.p50 !== 1000) throw new Error('el P50 es la cifra que ya se calculaba');
+  if (S.bandaPXX(1000, {}, 1).p90 !== 1000) throw new Error('sin incertidumbre P90 = P50');
+});
+
+t('MUTANTE: sumar las incertidumbres en vez de componerlas rompe el careo', () => {
+  const u = {meteo:4,modelo:3.5,soiling:1,dispo:0.5,degrada:0};
+  const cuad = S.sigmaTotal(u, 1), suma = 4 + 3.5 + 1 + 0.5;
+  if (Math.abs(cuad - suma) < 1) throw new Error('el careo no distingue cuadratura de suma');
+  // y con la suma el P90 sería mucho más bajo: eso no es un P90, es un peor caso
+  if (!(1000 * (1 - 1.2816 * suma / 100) < S.bandaPXX(1000, u, 1).p90 - 20))
+    throw new Error('el careo no ve la diferencia en el P90');
+});
+
+t('horizonte lejano: apaga el HAZ tras el cerro y deja la difusa', () => {
+  const p = S.parseHorizonte('0:10; 90:5; 180:0; 270:5');
+  if (!p || p.length !== 4) throw new Error('no parsea el perfil');
+  if (Math.abs(S.horizonteEn(p, 0) - 10) > 1e-9) throw new Error('el azimut 0 mal');
+  if (Math.abs(S.horizonteEn(p, 45) - 7.5) > 1e-9) throw new Error('no interpola: ' + S.horizonteEn(p, 45));
+  // y da la vuelta por el 0: entre 270 (5°) y 360=0 (10°)
+  if (!(S.horizonteEn(p, 315) > 5 && S.horizonteEn(p, 315) < 10))
+    throw new Error('no cierra el círculo: ' + S.horizonteEn(p, 315));
+  const irr = {ghi:600,dni:700,dhi:90};
+  const tapado = S.irrTrasHorizonte(irr, 3, 0, p);      // sol a 3°, horizonte a 10°
+  if (tapado.dni !== 0) throw new Error('tras el cerro no puede quedar haz');
+  if (tapado.dhi !== 90) throw new Error('la difusa del cielo se queda: el cerro tapa el disco, no el cielo');
+  const libre = S.irrTrasHorizonte(irr, 30, 0, p);
+  if (libre !== irr) throw new Error('con el sol alto no se toca nada');
+  if (S.irrTrasHorizonte(irr, 3, 0, null) !== irr) throw new Error('sin perfil, no-op');
+});
+
+t('la calidad de las entradas se DECLARA: est, inc y ye salen del fichero de cotas', () => {
+  // el dato tiene que estar en las cotas para poder enseñarlo
+  const f = 'sanjose_cotas.json';
+  if (!fs.existsSync(path.join(ROOT, f))) return;
+  const C = JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf-8'));
+  const est = C.t.filter(t => t && t.est).length;
+  const inc = C.t.filter(t => t && t.inc).length;
+  let ye = 0; for (const t of C.t) if (t && !t.est) for (const g of (t.f || [])) if (g.ye === 1 || g.ye === 2) ye++;
+  if (!(est >= 0 && inc > 0)) throw new Error('las cotas no traen el marcado de suposición');
+  if (C.n_inc !== inc) throw new Error(`n_inc dice ${C.n_inc} y hay ${inc}`);
+  // y la página tiene que enseñarlo, no solo saberlo
+  for (const lit of ['con una sola viga medida', 'con una punta repuesta', 'del parque con cota supuesta'])
+    if (!pg.includes(lit)) throw new Error('la página no declara «' + lit + '»');
+  console.log(`    (San José: ${est} reconstruidos · ${inc} con una viga · ${ye} filas con punta repuesta)`);
+});
+
+t('calibración: MBE, RMSE y el factor que anula el sesgo', () => {
+  // un modelo que produce un 5 % MENOS que la planta, sin dispersión
+  const rows = [1,2,3,4].map(i => ({inv:String(i), esp:100, med:105}));
+  const st = S.estadisticaCareo(rows, 12);
+  if (Math.abs(st.mbe - 5) > 1e-9) throw new Error('MBE mal: ' + st.mbe);
+  if (Math.abs(st.factor - 1.05) > 1e-9) throw new Error('el factor tiene que anular el sesgo');
+  if (st.fuera.length) throw new Error('un 5 % no está fuera de una banda del 12 %');
+  // sin sesgo pero con dispersión: MBE ≈ 0 y RMSE alto — el caso que hay que distinguir
+  const disp = [{inv:'1',esp:100,med:120},{inv:'2',esp:100,med:80}];
+  const sd = S.estadisticaCareo(disp, 12);
+  if (Math.abs(sd.mbe) > 1e-9) throw new Error('ese caso no tiene sesgo: ' + sd.mbe);
+  if (!(sd.rmse > 15)) throw new Error('y sí tiene dispersión, que el RMSE debe ver: ' + sd.rmse);
+  if (sd.fuera.length !== 2) throw new Error('los dos están fuera de banda');
+  // lo que no se puede carear no entra en la estadística
+  if (S.estadisticaCareo([{inv:'1',esp:100,med:null},{inv:'2',esp:null,med:50}], 12) !== null)
+    throw new Error('sin pares completos no hay estadística que valga');
+});
+
+console.log('v1.29.1 · una sola potencia de string en todas las vistas');
+// el C sintético no trae ficha eléctrica: la de siempre (el Burgo, 590 Wp)
+const CE = { ...C, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
+
+t('mapStringW: monofacial y año 1 es EXACTAMENTE pStringW (la cifra de antes)', () => {
+  const elev = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
+  const T = S.buildT(S.F, CE, elev);
+  const c0 = { ...CE, bif:{bifa:0,perdTras:10}, ac:{ ...(C.ac||{}), planta:{degrada:0.5,anio:1} } };
+  const viejo = S.dayTotals(S.F, c0, T, (v, met) => S.pStringW(v, met.tamb, met.wind, c0.elec));
+  const nuevo = S.dayTotals(S.F, c0, T, S.mapStringW(S.F, c0, T));
+  for (let k = 0; k < viejo.length; k++)
+    if (Math.abs(viejo[k] - nuevo[k]) > 1e-9) throw new Error(`fila ${k}: ${viejo[k]} vs ${nuevo[k]}`);
+});
+
+t('mapStringW: la cara de atrás sube la Σ día por string, y el año 25 la baja lo que dice la degradación', () => {
+  const elev = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
+  const T = S.buildT(S.F, CE, elev);
+  const base = { ...CE, albedo:0.25, bif:{bifa:0}, ac:{ ...(C.ac||{}), planta:{} } };
+  const e0 = S.dayTotals(S.F, base, T, S.mapStringW(S.F, base, T)).reduce((a, b) => a + b, 0);
+  const cb = { ...base, bif:{bifa:75,perdTras:10} };
+  const eb = S.dayTotals(S.F, cb, T, S.mapStringW(S.F, cb, T)).reduce((a, b) => a + b, 0);
+  const g = eb / e0 - 1;
+  if (!(g > 0.03 && g < 0.20)) throw new Error(`ganancia bifacial en la Σ día por string fuera de rango: ${(100*g).toFixed(1)} %`);
+  const cd = { ...base, ac:{ ...(C.ac||{}), planta:{degrada:0.5,anio:25} } };
+  const ed = S.dayTotals(S.F, cd, T, S.mapStringW(S.F, cd, T)).reduce((a, b) => a + b, 0);
+  if (Math.abs(ed / e0 - Math.pow(0.995, 24)) > 1e-9) throw new Error(`el año 25 no lleva su degradación: ${ed/e0}`);
+});
+
+t('MUTANTE: si la Σ día por string volviera a pStringW a pelo, la bifacialidad no se vería', () => {
+  const elev = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
+  const T = S.buildT(S.F, CE, elev);
+  const cb = { ...CE, albedo:0.25, bif:{bifa:75,perdTras:10}, ac:{ ...(C.ac||{}), planta:{} } };
+  const pelo = S.dayTotals(S.F, cb, T, (v, met) => S.pStringW(v, met.tamb, met.wind, cb.elec)).reduce((a, b) => a + b, 0);
+  const bien = S.dayTotals(S.F, cb, T, S.mapStringW(S.F, cb, T)).reduce((a, b) => a + b, 0);
+  if (!(bien > pelo * 1.02)) throw new Error('el careo no distingue el map viejo del nuevo');
+});
+
+t('el perfil de horizonte admite decimal con coma, y el MAE es por inversor como el RMSE', () => {
+  const p = S.parseHorizonte('0:10,5; 90:5; 180:0; 270:5');
+  if (!p || Math.abs(p[0][1] - 10.5) > 1e-9) throw new Error('«10,5» tiene que leerse como 10,5');
+  const rows = [1,2,3,4].map(i => ({inv:String(i), esp:100, med:105}));
+  const st = S.estadisticaCareo(rows, 12);
+  if (Math.abs(st.mae - 5) > 1e-9 || Math.abs(st.rmse - 5) > 1e-9)
+    throw new Error(`con el mismo +5 % en todos, MAE y RMSE tienen que ser 5 y 5: ${st.mae} / ${st.rmse}`);
 });
 
 console.log('');

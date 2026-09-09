@@ -7,6 +7,13 @@
 import { chromium } from 'playwright-core';
 import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
+// El Burgo tarda en construirse, y por eso su goto se da 120 s. El
+// waitForSelector que viene detras se quedaba en los 30 s por defecto —el
+// segundo, ademas, sin ponerlo—, asi que en un runner lento la pagina llegaba
+// pero fuera de plazo: el propio log de CI dice «locator resolved to visible»
+// junto al timeout. No se comprueba menos, se le da el mismo plazo que a la
+// carga de la que depende.
+const ESPERA = 120000;
 const MOVIL = { width: 390, height: 844 };          // iPhone 14 en vertical
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 let malo = 0;
@@ -18,7 +25,7 @@ async function abre(ctx) {
   pg.on('pageerror', e => errs.push(String(e).slice(0, 140)));
   pg.on('console', m => { if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errs.push(m.text().slice(0, 140)); });
   await pg.goto(`http://localhost:${PUERTO}/terreno.html?planta=elburgo`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await pg.waitForSelector('.panel', { timeout: 30000 });
+  await pg.waitForSelector('.panel', { timeout: ESPERA });
   return { pg, errs };
 }
 const mide = pg => pg.evaluate(() => {
@@ -58,7 +65,7 @@ console.log('=== móvil 390×844, primera visita (sin nada guardado) ===');
   di(g === '0', 'guarda la elección (abierto = 0)');
   const p2 = await ctx.newPage();
   await p2.goto(`http://localhost:${PUERTO}/terreno.html?planta=elburgo`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await p2.waitForSelector('.panel');
+  await p2.waitForSelector('.panel', { timeout: ESPERA });
   di(!(await mide(p2)).plegado, 'al volver sigue abierto, como se dejó');
   await ctx.close();
 }
