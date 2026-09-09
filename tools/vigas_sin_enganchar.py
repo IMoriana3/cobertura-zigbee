@@ -101,6 +101,26 @@ def emite(planta='sanjose'):
                 caso = 'su tracker ya tiene sus dos vigas'
             else:
                 caso = 'cuadra con su tracker'
+        # SU PAREJA: la viga que hay a 6,174 m a un lado u otro, a su misma
+        # altura. Si ya esta asignada, el bifila real puede estar desplazado una
+        # linea respecto del plano: el plano empareja (A,B) y el campo (B,C).
+        par = ''
+        for g in A['f']:
+            if g.get('zs') is None or g.get('x') is None:
+                continue
+            if abs(abs(g['x'] - xm) - DX_FILA) < 1.5 and abs((-g['zs'] + -g['zn']) / 2 - nm) < 6:
+                par = g['id']
+                break
+        # y donde cae respecto de los trackers que el plano SI pone en su linea
+        enl = [t['n'] for t in TK if abs(t['x'] - xm) < 1.5 or abs(t['x'] - DX_FILA - xm) < 1.5]
+        if not enl:
+            sitio = 'su linea no existe en el plano'
+        elif nm < min(enl) - TOL_N:
+            sitio = 'mas al SUR del ultimo del plano'
+        elif nm > max(enl) + TOL_N:
+            sitio = 'mas al NORTE del ultimo del plano'
+        else:
+            sitio = 'en un hueco de su linea'
         filas.append({
             'caso': caso,
             'X_utm': '%.3f' % (xm + cE),
@@ -116,6 +136,8 @@ def emite(planta='sanjose'):
             'filas_que_ya_tiene': len(emit.get(t['id'], [])) if t else 0,
             'dx_m': '%.2f' % ((xm - t['x']) if t else 0),
             'dn_m': '%.2f' % ((nm - t['n']) if t else 0),
+            'pareja_a_6m_ya_asignada': par,
+            'sitio_en_su_linea': sitio,
             'puntos': ' '.join(str(p[1]) for p in gg),
         })
     filas.sort(key=lambda f: (f['caso'], f['X_utm']))
