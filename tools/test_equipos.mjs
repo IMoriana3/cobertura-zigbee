@@ -164,7 +164,23 @@ const browser = await chromium.launch({ executablePath: EXEC,
 for (const pl of PLANTAS) {
   /* Una pestaña NUEVA por planta: la escena anterior sigue renderizando y con
      una sola pestaña la segunda carga se queda sin tiempo. */
-  const page = await browser.newPage({ viewport: { width: 900, height: 620 } });
+  /* VENTANA PEQUEÑA. Este banco no mira PIXELES: mira posiciones, cuentas y
+     procedencias, todas del grafo de escena. Pero renderiza las dos escenas mas
+     pesadas del repo —El Burgo y Ayora con su levantamiento— y en CI eso lo
+     rasteriza SwiftShader por software, donde el coste va con el area. 900x620
+     son nueve veces mas pixeles que los 320x200 que usa test_suelo, que tarda
+     28 s. Nada de lo que se comprueba aqui depende del tamaño de la ventana. */
+  const ctx = await browser.newContext({ viewport: { width: 320, height: 200 } });
+  /* MODO OFFLINE, como los otros ocho bancos que tocan terreno.html.
+     Cortar la red no bastaba: la pagina montaba igualmente los mosaicos de
+     satelite y relieve —lienzos de cientos de teselas— y les pasaba
+     `getImageData`. Este banco era el UNICO lento de la matriz por eso: 24 min
+     en un runner, mas de 45 en otro. Con `cobertura_offline` la pagina no los
+     construye siquiera («cero llamadas externas», dice su propio comentario), y
+     lo que aqui se comprueba —equipos, estaciones, retícula de apoyos— no
+     depende de la ortofoto ni del DEM. */
+  await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
+  const page = await ctx.newPage();
   page.setDefaultTimeout(120000);
   /* Las teselas de satélite salen a internet; en CI no hay salida y el cargador
      se quedaría esperando. Se sirven en blanco: no entran en ninguna comprobación. */
@@ -176,13 +192,22 @@ for (const pl of PLANTAS) {
   });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
+  /* CRONOMETRO POR TRAMO. Este banco tarda 103 s aqui y entre 24 y mas de 45
+     MINUTOS en el runner — un factor 20, cuando los demas van a 5. Dos
+     hipotesis mias (la red, el tamaño de ventana) no lo explican: ninguna se
+     confirma midiendo en local. Asi que en vez de seguir adivinando, que lo
+     diga el log: si el tiempo se va en `goto`, es la carga; si en la espera, es
+     que la escena tarda en montarse; si en las comprobaciones, es el sondeo. */
+  const t0 = Date.now(); const marca = (q) => console.log(`   [${pl.nom}] ${q}: ${((Date.now()-t0)/1000).toFixed(1)} s`);
   await page.goto(BASE + '/terreno.html?' + pl.q, { waitUntil: 'load', timeout: 120000 });
+  marca('goto');
   let listo = false;
   for (let i = 0; i < 90 && !listo; i++) {
     listo = await page.evaluate(() => typeof gwMasts !== 'undefined' && gwMasts && gwMasts.length > 0 && !!bosGroup);
     if (!listo) await page.waitForTimeout(1000);
   }
   if (!listo) { check(pl.nom + ': la escena se monta', false, 'no llegó a montarse'); await page.close(); continue; }
+  marca('escena montada');
   await page.waitForTimeout(1200);
   const s = await page.evaluate(SONDA);
 
@@ -271,6 +296,19 @@ for (const pl of PLANTAS) {
     check(pl.nom + ': los látigos de la HSU, en su brazo a 6,50 m', near(s.antHsu, 6.50, 1e-9), s.antHsu);
   }
   await page.close();
+  /* CERRAR LA PESTAÑA ANTES DE ABRIR LA SIGUIENTE.
+     Esto es lo que hacia que el banco tardara CUARENTA MINUTOS en CI. El
+     cronometro lo señalo sin lugar a dudas: entre la ultima comprobacion de El
+     Burgo y el `goto` de Ayora pasaban 38 minutos, y Ayora entera —cargar,
+     montar y sus 21 comprobaciones— son CINCO SEGUNDOS.
+     No estaba ni en las comprobaciones ni en montar la escena: estaba en el
+     HUECO. La pestaña de El Burgo no se cerraba nunca y seguia repintando su
+     escena por software, ahogando al segundo contexto. Lo dice el comentario
+     de arriba —«la escena anterior sigue renderizando»— y se resolvia abriendo
+     otra pestaña en vez de cerrar la primera.
+     Aqui apenas se nota (2 s de 98) porque esta maquina tiene aire de sobra;
+     en un runner de dos nucleos con SwiftShader, es todo. */
+  await ctx.close();
 }
 
 await browser.close();

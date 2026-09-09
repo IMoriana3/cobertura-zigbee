@@ -210,3 +210,39 @@ jobs:
 
       - name: ${{ matrix.banco }}
         run: node tools/${{ matrix.banco }}
+
+  # ── LA PUERTA ─────────────────────────────────────────────────────────────
+  # Un solo check que resume a los trece, para que la proteccion de rama tenga
+  # UNA casilla que marcar.
+  #
+  # Marcarlos a mano parece equivalente y no lo es: el dia que se renombre una
+  # entrada de la matriz, el check con el nombre viejo deja de reportar y una PR
+  # se queda bloqueada PARA SIEMPRE esperando algo que ya no existe. Con la
+  # puerta, la matriz puede crecer o cambiar sin tocar los ajustes del repo.
+  #
+  # `if: always()` es imprescindible: sin el, la puerta se SALTA cuando algo
+  # falla, y un check saltado no es un check rojo — la proteccion lo dejaria
+  # pasar. Asi corre siempre y falla diciendo quien cayo.
+  #
+  # `result` de un job de matriz es success solo si TODAS sus entradas pasaron.
+  puerta:
+    name: bancos en verde
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [nucleo, powershell, datos, navegador]
+    if: always()
+    steps:
+      - name: ninguno ha fallado
+        run: |
+          for j in "nucleo ${{ needs.nucleo.result }}" \
+                   "powershell ${{ needs.powershell.result }}" \
+                   "datos ${{ needs.datos.result }}" \
+                   "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
+          if [ "${{ needs.nucleo.result }}"    != "success" ] || \
+             [ "${{ needs.powershell.result }}" != "success" ] || \
+             [ "${{ needs.datos.result }}"     != "success" ] || \
+             [ "${{ needs.navegador.result }}" != "success" ]; then
+            echo "::error::hay bancos que no han pasado"
+            exit 1
+          fi
+          echo "todos los bancos en verde"
