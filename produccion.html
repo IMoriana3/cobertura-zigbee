@@ -1780,7 +1780,14 @@ function repaintPick(){
   const el=$('pick');
   if(!PICK||!R3.last){if(el)el.style.display='none';return;}
   const d=R3.last, r=PICK.row, kk=PICK.k, w=PICK.w, c=d.c;
-  const ala=w==null?'':(w===0?' · ala SUR':' · ala NORTE');
+  /* LAS DOS ALAS SON LA MISMA MESA (v1.22). Una mesa larga lleva DOS strings,
+     uno por ala, sobre la MISMA viga: comparten tubo, cota y tilt, y por eso
+     los dos salen con el mismo tilt — no son dos mesas. Leerlo como «dos
+     mesas de la fila con el mismo tilt» era fácil con el texto de antes, así
+     que ahora se dice cuál de los dos strings de la mesa es, y se enseñan los
+     tilts de las mesas VECINAS de esa línea, que sí difieren (en Ayora y San
+     José no hay UNA sola pareja de mesas distintas con el mismo tilt). */
+  const ala=w==null?'':(w===0?' · string a de 2 (ala SUR)':' · string b de 2 (ala NORTE)');
   // el STRING seleccionado (v1.14): la entrada de la cadena de esa mesa y esa
   // ala — en El Burgo el string del plano que cae ahí; en cotas/genérica, «a»
   // (sur) / «b» (norte) de la fila medida
@@ -1797,7 +1804,11 @@ function repaintPick(){
   }else{
     txt='<b>S'+(r+1)+(kk!=null&&T.segs?'.'+(kk+1):'')+(w!=null?(w?'b':'a'):'')+'</b> · línea x='+T.xs[r].toFixed(1)+' m'+
         (kk!=null&&T.segs?' · mesa '+(kk+1)+'/'+T.segs[r].length:'')+ala+
-        (T.segTilt&&kk!=null?' · tilt N-S de la mesa '+T.segTilt[r][kk].toFixed(2)+'° (línea '+T.tilt[r].toFixed(2)+'°)'
+        (T.segTilt&&kk!=null?' · tilt N-S <b>de la mesa</b> '+T.segTilt[r][kk].toFixed(2)+'°'+
+                              (T.segTilt[r].length>1?' <span style="color:var(--muted)">(las otras mesas de la línea: '+
+                                 T.segTilt[r].map((t2,j)=>j===kk?null:'#'+(j+1)+' '+t2.toFixed(2)+'°').filter(Boolean).slice(0,5).join(' · ')+
+                                 (T.segTilt[r].length>6?' …':'')+' · media de la línea '+T.tilt[r].toFixed(2)+'°)</span>'
+                                                     :' (línea '+T.tilt[r].toFixed(2)+'°)')
                             :(T.tilt?' · tilt N-S '+T.tilt[r].toFixed(2)+'°':''))+
         ' · cota '+((T.segZ&&kk!=null&&T.segZ[r]&&T.segZ[r][kk])?((T.segZ[r][kk][0]+T.segZ[r][kk][1])/2).toFixed(2)+' m (de la mesa)'
                                                                 :T.elev[r].toFixed(2)+' m')+

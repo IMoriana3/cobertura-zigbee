@@ -110,6 +110,33 @@ try {
     check(`${nombre}: un eje y un motor por tracker (${m.trackers})`, m.ejes === m.trackers && motores === m.trackers,
           `${m.ejes} ejes y ${motores} motores`);
   }
+  // 5) LA FICHA no puede leerse como «dos mesas con el mismo tilt»: las dos
+  //    alas de una mesa comparten viga, y el texto tiene que decirlo y enseñar
+  //    los tilts de las OTRAS mesas de la línea, que sí difieren
+  {
+    const pts = await pg.evaluate(() => {
+      const rct = document.getElementById('c3d').getBoundingClientRect();
+      let t = null;
+      const cand = R3.inst ? R3.inst.tramos : [];
+      for (const tr of cand) if (T.segs[tr.row].length > 2 && tr.len > 60) { t = tr; break; }
+      if (!t) return null;
+      return [t.len / 4, -t.len / 4].map(dz => {
+        const p = new THREE.Vector3(t.x, t.hubY + 0.3, t.zc + dz).project(R3.cam);
+        return { x: rct.left + (p.x + 1) / 2 * rct.width, y: rct.top + (1 - p.y) / 2 * rct.height };
+      });
+    });
+    const fichas = [];
+    if (pts) for (const pt of pts) { await pg.mouse.click(pt.x, pt.y); await pg.waitForTimeout(400); fichas.push((await pg.textContent('#pick')).replace(/\s+/g, ' ')); }
+    const mesa = fichas.every(f => /mesa (\d+)\/\d+/.test(f)) && fichas.length === 2 &&
+                 fichas[0].match(/mesa (\d+)\//)[1] === fichas[1].match(/mesa (\d+)\//)[1];
+    check('las dos alas de una mesa se declaran como los DOS strings de la MISMA mesa',
+          fichas.length === 2 && mesa && /string a de 2 \(ala SUR\)/.test(fichas[0]) && /string b de 2 \(ala NORTE\)/.test(fichas[1]),
+          fichas.map(f => f.slice(0, 90)).join(' || '));
+    check('la ficha enseña el tilt de las OTRAS mesas de la línea (que sí difieren)',
+          fichas.length === 2 && fichas.every(f => /las otras mesas de la línea: #\d+ /.test(f)),
+          fichas[0] ? fichas[0].slice(0, 140) : 'sin ficha');
+  }
+
   check('sin errores de consola', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
 } finally {
