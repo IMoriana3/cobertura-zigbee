@@ -44,7 +44,8 @@ const S = new Function(sol + fis + log + `
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
-          instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms};`).call(globalThis);
+          instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
+          degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -914,6 +915,78 @@ t('la bifila real: solo la viga OESTE lleva motor, y con las plantas de cotas ta
   if (!(pares > 0 && motores < P.lineX.length))
     throw new Error(`NCU9 sale sin bifila: ${pares} parejas de ${P.lineX.length} vigas`);
   console.log(`    (San José NCU 9: ${P.lineX.length} vigas → ${pares} unidades bifila, ${motores} motores)`);
+});
+
+console.log('');
+console.log('v1.29 · lo que la cadena del Notebook no modelaba');
+
+t('a cero, las pérdidas de planta no tocan NADA (la cifra de antes, al vatio)', () => {
+  const str = [{inv:'1',pdcW:1e5},{inv:'1',pdcW:1e5},{inv:'2',pdcW:1.5e5}];
+  const a = {loss:{soiling:2,mismatch:2,wiring:1.5,lid:1.5},pnomW:2e5,etaMax:0.98,gridW:0};
+  const r0 = S.acPlant(str, a);
+  const r1 = S.acPlant(str, Object.assign({}, a, {planta:{}}));
+  if (Math.abs(r0.pacW - r1.pacW) > 1e-9 || Math.abs(r0.redW - r1.redW) > 1e-9)
+    throw new Error(`con planta:{} vacía la cifra cambia: ${r0.pacW} vs ${r1.pacW}`);
+  // y el trafo/cableado/aux sí la mueven, en cascada y con los auxiliares restando
+  const r2 = S.acPlant(str, Object.assign({}, a, {planta:{trafo:1.2,acWire:0.6,aux:5}}));
+  const esp = r0.pacW * (1 - 0.012) * (1 - 0.006) - 5000;
+  if (Math.abs(r2.pacW - esp) > 1e-6)
+    throw new Error(`trafo+AC+aux da ${r2.pacW.toFixed(1)} y debería dar ${esp.toFixed(1)}`);
+});
+
+t('los auxiliares restan también de NOCHE, cuando no hay nada que producir', () => {
+  const a = {loss:{soiling:0,mismatch:0,wiring:0,lid:0},pnomW:2e5,etaMax:0.98,gridW:0,planta:{aux:5}};
+  const r = S.acPlant([{inv:'1',pdcW:0}], a);
+  if (Math.abs(r.pacW + 5000) > 1e-9)
+    throw new Error(`de noche debería salir −5000 W y sale ${r.pacW}`);
+  if (r.redW !== 0) throw new Error('lo que se INYECTA no puede ser negativo: ' + r.redW);
+});
+
+t('degradación: el año 1 no degrada (el LID ya va en la cadena DC) y luego compone', () => {
+  if (S.degradaEta({degrada:0.5,anio:1}) !== 1) throw new Error('el año 1 no debe degradar');
+  const y12 = S.degradaEta({degrada:0.5,anio:12});
+  if (Math.abs(y12 - Math.pow(0.995, 11)) > 1e-12) throw new Error('no compone: ' + y12);
+  if (!(S.degradaEta({degrada:0.5,anio:25}) < y12)) throw new Error('el año 25 debe degradar más que el 12');
+});
+
+t('el soiling del MES manda sobre el único, y sin perfil no se inventa', () => {
+  const p = [0.5,0.5,0.8,1.5,2.2,2.8,3.2,3.4,3.2,2.6,1.6,0.8];
+  if (S.soilingDelMes({soilMes:p}, '2026-01-15') !== 0.5) throw new Error('enero mal');
+  if (S.soilingDelMes({soilMes:p}, '2026-07-15') !== 3.2) throw new Error('julio mal');
+  if (S.soilingDelMes({}, '2026-07-15') !== null) throw new Error('sin perfil debe devolver null');
+  if (S.soilingDelMes({soilMes:[1,2,3]}, '2026-07-15') !== null)
+    throw new Error('un perfil que no trae doce meses no vale');
+});
+
+t('bifacialidad: φ=0 es no-op, de noche no inventa, y la ganancia va donde debe', () => {
+  const irr = {ghi:900,dni:800,dhi:120};
+  if (S.poaBifacial(950, 25, irr, 0.25, {bifa:0}) !== 950) throw new Error('φ=0 tiene que ser no-op');
+  if (S.poaRear(25, {ghi:0,dni:0,dhi:0}, 0.25, {bifa:75,gcr:0.38}) !== 0)
+    throw new Error('sin sol no puede haber luz por detrás');
+  const g = S.poaBifacial(950, 25, irr, 0.25, {bifa:75,perdTras:10,gcr:0.38}) / 950 - 1;
+  if (!(g > 0.03 && g < 0.20)) throw new Error(`ganancia bifacial fuera de rango físico: ${(100*g).toFixed(1)} %`);
+  // el factor de vista al SUELO cae con la inclinación, y el del cielo sube
+  const llano = S.poaRear(0, irr, 0.25, {bifa:75,gcr:0.38});
+  const canto = S.poaRear(60, irr, 0.25, {bifa:75,gcr:0.38});
+  if (!(llano > canto)) throw new Error('tumbado tiene que ver MÁS suelo que de canto');
+  // más albedo, más ganancia
+  if (!(S.poaRear(25, irr, 0.40, {bifa:75,gcr:0.38}) > S.poaRear(25, irr, 0.15, {bifa:75,gcr:0.38})))
+    throw new Error('la cara trasera tiene que crecer con el albedo');
+});
+
+t('MUTANTE: si la cara trasera usara el factor de vista del CIELO, se cae', () => {
+  const irr = {ghi:900,dni:800,dhi:120};
+  const b = 25 * Math.PI / 180;
+  const bien = S.poaRear(25, irr, 0.25, {bifa:75,perdTras:0,gcr:0.38});
+  const mal = 900 * 0.25 * ((1 - Math.cos(b)) / 2) * (1 - 0.38) + 120 * ((1 + Math.cos(b)) / 2);
+  if (Math.abs(bien - mal) < 1) throw new Error('el careo no distingue las dos orientaciones');
+});
+
+t('el b0 del IAM sale de la CONFIG, no del DOM (contrato LÓGICA PURA)', () => {
+  if (S.iamDe({}) !== 0.05) throw new Error('sin b0 debe quedar el 0,05 de siempre');
+  if (S.iamDe({iamb0:0}) !== 0) throw new Error('0 tiene que poder desactivarlo');
+  if (S.iamDe({iamb0:0.2}) !== 0.2) throw new Error('no respeta el valor dado');
+  if (S.iamDe({iamb0:99}) !== 0.5) throw new Error('debe acotarse');
 });
 
 console.log('');

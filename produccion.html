@@ -178,7 +178,63 @@ input[type=range]{accent-color:var(--live)}
         </div>
         <p style="color:var(--muted-2);font-size:.68rem">Pérdidas DC multiplicativas + inversor PVWatts con
         recorte a Pnom + límite de red — <b>apply_dc_losses / inverter_efficiency_curve / apply_grid_limit</b>
-        de solargpt_core, careadas dígito a dígito en el QA. El trafo (Fe+Cu) no está portado: declarado.</p>
+        de solargpt_core, careadas dígito a dígito en el QA.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🪟 Vidrio (IAM)</h2>
+        <div class="f"><label>IAM b₀</label><input id="iamb0" type="number" step="0.01" min="0" max="0.5" value="0.05"
+          title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz. 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo desactiva. Ya se aplicaba (fijo en 0,05) al haz, al circunsolar y —con ángulos equivalentes de Duffie-Beckman— a la difusa y al albedo; aquí se hace editable."></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🔆 Bifacialidad</h2>
+        <div class="row2">
+          <div class="f"><label>Bifacialidad φ %</label><input id="bifa" type="number" step="1" min="0" max="95" value="0"
+            title="Cuánto rinde la cara de atrás respecto de la de delante, del datasheet del módulo. 0 = monofacial (y entonces esto no toca nada). Un bifacial de hoy va en 70-85 %."></div>
+          <div class="f"><label>Pérdida trasera %</label><input id="bperd" type="number" step="1" min="0" max="90" value="10"
+            title="Lo que se pierde por detrás y este modelo no resuelve: estructura, tubo y cableado que tapan, y el mismatch de una irradiancia trasera muy desigual. Típico 8-15 %."></div>
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">La cara trasera es la misma superficie girada 180°:
+        ve el suelo con factor de vista (1+cos β)/2 y el cielo con (1−cos β)/2, con la inclinación REAL de
+        cada mesa. Transposición <b>isótropa</b>, no Perez — lo que ve por detrás es sobre todo suelo, que
+        reemite difuso (es lo que hace PVsyst en su modelo simplificado). El suelo va corregido por la
+        fracción iluminada (1−GCR). <b>No es trazado de rayos</b>: no resuelve el patrón de luz en el suelo
+        ni el bloqueo de la fila de atrás — eso se recoge en la pérdida trasera, y se carea contra la medida
+        real por inversor.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>🏭 Pérdidas de planta</h2>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que la cadena del Notebook no
+        modela y sin lo cual esto no es una estimación de generación, sino la de un día del año 1 con la
+        planta impecable. Todo a cero = exactamente la cifra de antes.</p>
+        <div class="row2">
+          <div class="f"><label>Trafo %</label><input id="ltrafo" type="number" step="0.1" min="0" value="0"
+            title="Pérdidas del transformador (Fe + Cu). apply_transformer_losses del core, que no estaba portado. Típico 1,0-1,5 %."></div>
+          <div class="f"><label>Cableado AC %</label><input id="lacw" type="number" step="0.1" min="0" value="0"
+            title="Caída en la red AC de la planta, del inversor al punto de conexión. Típico 0,5-1,0 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Auxiliares kW</label><input id="laux" type="number" step="1" min="0" value="0"
+            title="Consumo de los servicios de la planta (seguidores, SCADA, alumbrado, refrigeración). Es potencia NEGATIVA constante: resta también de NOCHE, y por eso pesa más cuanto menos produce la planta."></div>
+          <div class="f"><label>Disponibilidad %</label><input id="ldispo" type="number" step="0.1" min="0" max="100" value="100"
+            title="Fracción del tiempo con planta y red disponibles. Factor plano sobre la ENERGÍA, no sobre la potencia: no cambia el recorte del inversor. Típico 99-99,5 %."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Degradación %/año</label><input id="ldeg" type="number" step="0.05" min="0" value="0"
+            title="Degradación anual del módulo a partir del año 2 — el LID del primer año ya va en la cadena DC. Típico 0,45-0,55 %/año."></div>
+          <div class="f"><label>Año de operación</label><input id="lanio" type="number" step="1" min="1" value="1"
+            title="Año que se estima. 1 = puesta en marcha (sin degradación acumulada); 25 = fin de la vida útil típica."></div>
+        </div>
+        <div class="f" style="margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="lsoilmes" type="checkbox" style="width:auto">
+            Soiling por MES (%) — manda sobre el único de arriba</label>
+          <input id="lsoilv" type="text" value="0.5;0.5;0.8;1.5;2.2;2.8;3.2;3.4;3.2;2.6;1.6;0.8"
+            title="Doce valores separados por ; — enero a diciembre. Con estación seca larga el ensuciamiento no es plano: un único % se come la estacionalidad entera. El de ejemplo es un perfil de secano (lluvia de verano austral)."
+            style="font-family:var(--mono);font-size:.7rem">
+        </div>
       </div>
       <div class="card" style="margin-top:12px">
         <h2>⛰ Terreno</h2>
@@ -300,7 +356,7 @@ function buildTX(F,c,xs,z,tilt,segs,groups,drive){
   const tilts=tilt||new Array(n).fill(0);
   const filaLen=2*28*1.146+0.55;
   return {pairs:F.pairsFromElevX(z,xs,tilts),cw:c.cw,axisAz:0,
-          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:0.05,
+          maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:0.17,nBypass:2,iam:iamDe(c),
           rowTilt:tilts,groups:groups||null,drive:drive||'mono',
           segs:segs||F.nsSegments(n,'alineadas',1,filaLen,1.0,1),filaLen:filaLen};
 }
@@ -328,7 +384,7 @@ function buildTReal(F,c,P){
   // con su accionamiento (P.drive, bifila/quebrado) y acopla el θ por grupo —
   // aquí igual, para que el BT sea EL MISMO, no un pariente
   return {pairs:pairs,cw:P.cw,axisAz:0,maxAngle:P.maxAngle,gcr:P.cw/P.pitch,
-          z0:0.17,nBypass:2,iam:0.05,rowTilt:P.tilt,groups:P.groups,drive:P.drive,
+          z0:0.17,nBypass:2,iam:iamDe(c),rowTilt:P.tilt,groups:P.groups,drive:P.drive,
           segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // por MESA (v1.13): cada fila medida con su tilt y su pareja
           segDrive:P.segDrive,                                 // v1.24: y su ACCIONAMIENTO — las CUATRO mesas que mueve un motor van al MISMO θ
           filaLen:2*28*1.146+0.55,real:P};
@@ -364,6 +420,95 @@ function invAC(pdcW,pnomW,etaMax){                 // → {pac,eta} — PVWatts 
 }
 function gridLimit(pacW,pmaxW){return (pmaxW!=null&&pmaxW>0)?Math.min(pacW,pmaxW):pacW;}
 
+/* ── PÉRDIDAS DE PLANTA: lo que hay antes y después del contrato con el core ─
+   La cadena de arriba es la del Notebook, portada literalmente y careada dígito
+   a dígito contra el golden; no se toca. Lo que va aquí es lo que esa cadena NO
+   modela y sin lo cual la cifra no es una estimación de generación, sino la de
+   un día del año 1 con la planta impecable:
+
+     · DEGRADACIÓN. El módulo del año 12 no es el del año 1. Primer año aparte
+       (LID ya va en la cadena DC, así que aquí el año 1 no degrada) y después
+       lineal: (1-d)^(año-1).
+     · DISPONIBILIDAD. Ni la planta ni la red están el 100 % del tiempo. Es un
+       factor plano sobre la energía, no sobre la potencia: no cambia el
+       recorte, y por eso va DESPUÉS del inversor.
+     · SOILING POR MES. La cadena DC lleva un soiling único, y en una planta con
+       estación seca larga eso se come la estacionalidad entera: en Arequipa
+       llueve de enero a marzo y el resto del año el polvo se acumula. Si hay
+       perfil mensual, manda él y el campo único queda de reserva.
+     · TRAFO y CABLEADO AC. `apply_transformer_losses` del core no estaba
+       portado —el comentario de arriba lo declaraba— y el cableado AC no
+       existía. Van en cascada sobre la potencia, antes del límite de red,
+       porque el límite se mide en el punto de conexión.
+     · AUXILIARES. Los servicios de la planta consumen de día y de NOCHE
+       (seguidores, SCADA, alumbrado, refrigeración). Es potencia NEGATIVA
+       constante, así que su efecto es tanto mayor cuanto menos produce la
+       planta, y en el balance anual se nota.
+
+   Todo va con su interruptor y a cero por defecto salvo lo que ya tenía valor,
+   así que quien no los toque obtiene EXACTAMENTE la cifra de antes.          */
+function degradaEta(o){                            // año 1 = 1 (el LID ya está en la cadena DC)
+  const a=Math.max(1,+(o&&o.anio)||1), d=Math.max(0,+(o&&o.degrada)||0)/100;
+  return Math.pow(1-d,a-1);
+}
+function soilingDelMes(o,dateStr){                 // % del mes, o el único si no hay perfil
+  const p=o&&o.soilMes;
+  if(!p||p.length!==12)return null;
+  const m=+String(dateStr||'').slice(5,7);
+  return (m>=1&&m<=12&&p[m-1]!=null)?Math.max(0,+p[m-1]):null;
+}
+function plantaEtaAC(o){                           // trafo y cableado AC, en cascada
+  const t=Math.max(0,+(o&&o.trafo)||0)/100, c=Math.max(0,+(o&&o.acWire)||0)/100;
+  return (1-t)*(1-c);
+}
+function auxW(o){return Math.max(0,+(o&&o.aux)||0)*1000;}   // kW -> W, de día y de noche
+/* el b0 del IAM sale de la CONFIG, no del DOM: aquí dentro no se toca la
+   página (contrato LÓGICA PURA), y el QA arma su propia c sin navegador. Si no
+   viene, el 0,05 de siempre — que es lo que se aplicaba fijo hasta ahora. */
+function iamDe(c){const v=c&&c.iamb0;return (v==null||!isFinite(v))?0.05:Math.max(0,Math.min(0.5,v));}
+
+/* ── BIFACIALIDAD ──────────────────────────────────────────────────────────
+   Un tracker de hoy lleva módulos bifaciales y la cara de atrás aporta entre un
+   5 y un 15 %. Sin esto la cifra sale sistemáticamente baja, y era el hueco más
+   grande del modelo: toda la geometría que hace falta —el terreno, la altura
+   del buje, el tilt de cada mesa, el albedo— ya estaba calculada para la cara
+   de delante.
+
+   QUÉ SE MODELA, Y CON QUÉ APROXIMACIÓN. La cara trasera es la misma superficie
+   girada 180°: su inclinación es 180−β, así que ve el SUELO con factor de vista
+   (1+cos β)/2 y el CIELO con (1−cos β)/2. Con el panel horizontal mira al suelo
+   entero y no ve cielo; puesto de canto, mitad y mitad.
+
+   La transposición de atrás va con modelo ISÓTROPO, no con Perez. No es
+   descuido: Perez describe la anisotropía del CIELO —el circunsolar y la banda
+   del horizonte— y lo que ve la cara trasera es sobre todo suelo, que reemite
+   difuso. Es lo que hace PVsyst en su modelo simplificado, y es la aproximación
+   que se declara aquí.
+
+   LO QUE ESTE MODELO NO ES. No es un trazado de rayos (bifacial_radiance): no
+   resuelve el patrón de luz en el suelo mesa a mesa ni el bloqueo de la fila de
+   atrás. Por eso el suelo que ve la cara trasera se corrige con la fracción
+   ILUMINADA —de primer orden, 1−GCR: la parte del suelo que los módulos no
+   tapan— y por eso hay una pérdida trasera aparte (estructura, tubo, cableado y
+   el mismatch de una irradiancia muy desigual), que es donde se recoge lo que
+   el modelo no resuelve. Un bifacial serio se carea contra medida: para eso
+   está el careo por inversor de esta misma página.                          */
+function poaRear(tiltDeg,irr,albedo,o){
+  if(!o||!(o.bifa>0)||!irr||irr.ghi<=0)return 0;
+  const b=Math.max(0,Math.min(90,Math.abs(+tiltDeg||0)))*Math.PI/180;
+  const vfGnd=(1+Math.cos(b))/2, vfSky=(1-Math.cos(b))/2;
+  const ilum=(o.gcr>0&&o.gcr<1)?(1-o.gcr):1;      // fracción de suelo que los módulos no tapan
+  const gnd=Math.max(0,irr.ghi)*Math.max(0,albedo||0)*vfGnd*ilum;
+  const sky=Math.max(0,irr.dhi)*vfSky;
+  return (gnd+sky)*(1-Math.max(0,Math.min(90,+o.perdTras||0))/100);
+}
+/* POA efectiva de una superficie: la de delante más lo que entra por detrás
+   pesado por la bifacialidad del módulo (φ: 0 = monofacial, 0,70-0,85 típico). */
+function poaBifacial(poaFront,tiltDeg,irr,albedo,o){
+  if(!o||!(o.bifa>0))return poaFront;
+  return poaFront+(o.bifa/100)*poaRear(tiltDeg,irr,albedo,o);
+}
+
 /* reparto string→inversor cuando NO hay mapeo medido (todas menos El Burgo):
    n bloques contiguos IGUALES — reparto declarado en pantalla, no medido. */
 function invMapUniforme(nrows,ninv){
@@ -374,19 +519,31 @@ function invMapUniforme(nrows,ninv){
 /* Pdc por STRING desde el POA de su fila (los strings de una línea comparten
    POA): lista plana {inv,row,pdcW}. strInv[r] = inversor de CADA string de la
    fila r (El Burgo: los g.i reales del plano; resto: 1 string por fila). */
-function strPdc(rowsPoa,strInv,met,e,segPoa,wings){
+function strPdc(rowsPoa,strInv,met,e,segPoa,wings,bif){
   const out=[];
+  // LA CARA DE ATRÁS SE SUMA AQUÍ, sobre el POA de cada superficie y con SU
+  // inclinación: la de la mesa cuando la hay (bif.tiltSeg) y la de la fila si
+  // no. Va antes de pStringW porque es irradiancia, no potencia: entra a la
+  // t_cell y al γ como cualquier otro vatio que llega al módulo.
+  const bp=(poa,r,k)=>{
+    if(!bif||!(bif.bifa>0))return poa;
+    const t=(k!=null&&bif.tiltSeg&&bif.tiltSeg[r]&&bif.tiltSeg[r][k]!=null)?bif.tiltSeg[r][k]
+           :((bif.tiltRow&&bif.tiltRow[r]!=null)?bif.tiltRow[r]:0);
+    return poaBifacial(poa,t,bif.irr,bif.albedo,bif);
+  };
   for(let r=0;r<rowsPoa.length;r++){
-    const p=pStringW(rowsPoa[r],met.tamb,met.wind,e);
+    const p=pStringW(bp(rowsPoa[r],r,null),met.tamb,met.wind,e);
     for(const s of strInv[r]){
       // entrada 'inv' (un string de e.mods módulos) o {inv,mods,k,w} (un string
       // de una mesa: con POA por mesa, la SUYA; con ala (w) y POA por ala, la de
       // SU ala — v1.14: un string por ala en la mesa larga)
       if(typeof s==='string'){out.push({inv:s,row:r,pdcW:p});continue;}
       const wp=(wings&&s.w!=null&&s.k!=null&&wings[r]&&wings[r][s.k]&&wings[r][s.k][s.w]!=null)?wings[r][s.k][s.w]:null;
-      const poa=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
+      const poa0=wp!=null?wp:((segPoa&&segPoa[r]&&s.k!=null&&segPoa[r][s.k]!=null)?segPoa[r][s.k]:rowsPoa[r]);
       const e2=(s.mods==null||s.mods===e.mods)?e:Object.assign({},e,{mods:s.mods});
-      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,pdcW:(poa===rowsPoa[r]&&e2===e)?p:pStringW(poa,met.tamb,met.wind,e2)});
+      const mismo=(poa0===rowsPoa[r]&&e2===e);
+      out.push({inv:s.inv,row:r,k:s.k,w:s.w,mods:e2.mods,
+                pdcW:mismo?p:pStringW(bp(poa0,r,s.k),met.tamb,met.wind,e2)});
     }
   }
   return out;
@@ -474,8 +631,14 @@ function acPlant(porStr,a){
     return {inv:inv,nstr:v.n,pdcW:v.pdc,pdcNetW:net,pacW:r.pac,eta:r.eta,
             clip:net>0&&r.pac>=a.pnomW-1e-9};
   }).sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true}));
-  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pac=invs.reduce((s,v)=>s+v.pacW,0);
-  return {invs:invs,pdcW:pdc,dcEta:eta,pacW:pac,redW:gridLimit(pac,a.gridW),
+  const pdc=invs.reduce((s,v)=>s+v.pdcW,0), pacInv=invs.reduce((s,v)=>s+v.pacW,0);
+  // de los bornes del inversor al punto de conexión: trafo y cableado AC en
+  // cascada, luego los auxiliares (que restan también de noche, con pac=0) y
+  // solo entonces el límite de red, que es lo que se mide en el punto
+  const pac=pacInv*plantaEtaAC(a.planta)-auxW(a.planta);
+  return {invs:invs,pdcW:pdc,dcEta:eta,pacInvW:pacInv,pacW:pac,
+          redW:gridLimit(Math.max(0,pac),a.gridW),
+          acEta:plantaEtaAC(a.planta),auxW:auxW(a.planta),
           clips:invs.reduce((s,v)=>s+(v.clip?1:0),0)};
 }
 /* E AC del día: el recorte es INSTANTÁNEO, así que la cadena se aplica paso a
@@ -483,16 +646,29 @@ function acPlant(porStr,a){
 function dayAC(F,c,T,strInv,a,stepMin){
   const st=stepMin||5, acc=new Map();
   let edc=0,eac=0,ered=0;
+  // EL SOILING DEL MES manda sobre el único cuando hay perfil, y la DEGRADACIÓN
+  // multiplica la Pdc antes del inversor: las dos afectan a la potencia, así
+  // que entran ANTES del recorte —una planta degradada recorta menos— y por eso
+  // no se pueden aplicar a la energía ya sumada.
+  const sm=soilingDelMes(a.planta,c.date);
+  const a2=(sm==null)?a:Object.assign({},a,{loss:Object.assign({},a.loss,{soiling:sm})});
+  const gd=degradaEta(a.planta);
   for(let m=0;m<1440;m+=st){
     const r=instant(F,c,T,m);
-    const x=acPlant(strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings),a);
+    let por=strPdc(r.rows,strInv,r.met,c.elec,r.segs,r.wings,bifDe(F,c,T,r));
+    if(gd!==1)por=por.map(v=>Object.assign({},v,{pdcW:v.pdcW*gd}));
+    const x=acPlant(por,a2);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
   }
-  const k=st/60/1000;
+  // la DISPONIBILIDAD es lo único que va sobre la energía: es tiempo perdido,
+  // no potencia perdida, así que no cambia cuánto recorta el inversor
+  const dv=(a.planta&&a.planta.dispo!=null)?Math.min(100,Math.max(0,+a.planta.dispo))/100:1;
+  const k=st/60/1000*dv;
   return {porInv:[...acc.entries()].map(([inv,s])=>({inv:inv,kwh:s*k}))
             .sort((x,y)=>x.inv.localeCompare(y.inv,undefined,{numeric:true})),
-          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k};
+          edcKwh:edc*k,eacKwh:eac*k,eredKwh:ered*k,
+          soilMes:sm,degradaEta:gd,dispo:dv};
 }
 
 /* ── meteo TMY (año meteorológico típico): 8760 horas UTC de
@@ -738,6 +914,23 @@ function doyOf(dateStr){
    (con groups=null, driveCoupleSafe es la identidad y queda el pairwise puro;
    con la bifila real de cotas, el θ común por grupo, como allí). El QA carea
    los θ contra el simulador elemento a elemento y exige igualdad EXACTA. */
+/* el paquete que la bifacialidad necesita de CADA instante: la irradiancia, el
+   albedo, el GCR y la inclinación real de cada superficie (la de la mesa cuando
+   la hay). El tilt sale de surfaceOrient, la misma que orienta la cara de
+   delante, así que las dos caras hablan de la misma superficie. */
+function bifDe(F,c,T,r){
+  const o=c.bif||{};
+  if(!(o.bifa>0))return null;
+  const so=(th,rr,kk)=>{
+    if(!F.surfaceOrient)return Math.abs(th||0);
+    const at=(T.segTilt&&kk!=null&&T.segTilt[rr]&&T.segTilt[rr][kk]!=null)?T.segTilt[rr][kk]
+            :((T.rowTilt&&T.rowTilt[rr]!=null)?T.rowTilt[rr]:0);
+    return Math.abs(F.surfaceOrient(th,at,T.axisAz).tilt);
+  };
+  return {bifa:o.bifa,perdTras:o.perdTras,gcr:c.cw/c.pitch,irr:r.irr,albedo:c.albedo,
+          tiltRow:r.ang.map((th,rr)=>so(th,rr,null)),
+          tiltSeg:r.segAng?r.segAng.map((l,rr)=>l.map((th,kk)=>so(th,rr,kk))):null};
+}
 function instant(F,c,T,m){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
@@ -813,6 +1006,16 @@ function westDeGroups(n,groups){
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
+/* el perfil mensual de soiling, leído de la caja de texto: doce números
+   separados por ; (enero a diciembre). Si el interruptor está apagado o el
+   texto no trae doce, devuelve null y manda el soiling único de la cadena DC. */
+/* el b0 del IAM: ya se aplicaba, pero fijo en 0,05 y sin decirlo en pantalla */
+function iamUI(){const e=$('iamb0');return e?Math.max(0,Math.min(0.5,+e.value||0)):0.05;}
+function soilMesUI(){
+  if(!$('lsoilmes')||!$('lsoilmes').checked)return null;
+  const v=String($('lsoilv').value||'').split(/[;,]/).map(x=>parseFloat(String(x).trim().replace(',','.')));
+  return (v.length===12&&v.every(x=>isFinite(x)&&x>=0))?v:null;
+}
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
 let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
 let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)
@@ -828,7 +1031,8 @@ async function cargaFisica(){
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
-              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa};`)();
+              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,
+              surfaceOrient};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -950,7 +1154,18 @@ function cfg(){
               ninv:Math.max(1,Math.round(+$('ninv').value)),
               pnomW:Math.max(1,+$('pnom').value)*1000,
               etaMax:Math.max(0.5,Math.min(1,+$('etamax').value)),
-              gridW:Math.max(0,+$('gridkw').value)*1000}};
+              gridW:Math.max(0,+$('gridkw').value)*1000,
+              // pérdidas de PLANTA: lo que la cadena del Notebook no modela
+              planta:{trafo:Math.max(0,+$('ltrafo').value),
+                      acWire:Math.max(0,+$('lacw').value),
+                      aux:Math.max(0,+$('laux').value),
+                      dispo:Math.min(100,Math.max(0,+$('ldispo').value)),
+                      degrada:Math.max(0,+$('ldeg').value),
+                      anio:Math.max(1,Math.round(+$('lanio').value)),
+                      soilMes:soilMesUI()}},
+          iamb0:iamUI(),
+          bif:{bifa:Math.max(0,Math.min(95,+$('bifa').value)),
+               perdTras:Math.max(0,Math.min(90,+$('bperd').value))}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
@@ -1611,7 +1826,7 @@ function repaint(){
   }else if(mode==='pinst'){
     vals=inst.rows.map(pw);unit='kW';fmt=v=>v.toFixed(2);agg='suma';
   }else if(mode==='acinst'){
-    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+    const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings,bifDe(F,c,T,inst)),c.ac);
     const mp=new Map(a.invs.map(v=>[v.inv,v.pacW/1000]));
     vals=rowsFromInv(mp);unit='kW';fmt=v=>v.toFixed(1);
     invChips=a.invs.map(v=>({inv:v.inv,val:v.pacW/1000,nstr:v.nstr,clip:v.clip}));
@@ -1710,7 +1925,7 @@ function repaint(){
 /* la cadena AC del INSTANTE, siempre a la vista: Pdc → pérdidas DC → inversor
    (con cuántos recortan) → red. Con la E AC del día calculada, se añade. */
 function paintACline(inst,c,acDay){
-  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings),c.ac);
+  const a=acPlant(strPdc(inst.rows,T.strInv,inst.met,c.elec,inst.segs,inst.wings,bifDe(F,c,T,inst)),c.ac);
   const f1=v=>(v/1000).toFixed(1);
   let h='🔋 AC ahora: Pdc '+f1(a.pdcW)+' kW → −'+((1-a.dcEta)*100).toFixed(2)+'% DC → inversores '+
         f1(a.pacW)+' kW ('+a.clips+'/'+a.invs.length+' recortando)';
@@ -1798,7 +2013,7 @@ function exportCSV(){
       filas.push([id,T.xs[r],d.vals[r]]);
     }
   }
-  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings),c.ac);
+  const a=acPlant(strPdc(d.inst.rows,T.strInv,d.inst.met,c.elec,d.inst.segs,d.inst.wings,bifDe(F,c,T,d.inst)),c.ac);
   filas.push([],['AC_instante','Pdc_kW',a.pdcW/1000],['AC_instante','perdidas_DC_pct',(1-a.dcEta)*100],
     ['AC_instante','Pac_kW',a.pacW/1000],['AC_instante','inversores_recortando',a.clips],
     ['AC_instante','red_kW',a.redW/1000]);
