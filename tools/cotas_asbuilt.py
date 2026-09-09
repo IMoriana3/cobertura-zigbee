@@ -209,7 +209,17 @@ def genera(planta):
             #     nm/ym a None y art a 0—, pero zs/zn/ys/yn siguen siendo suyos.
             #     NADA se estima.
             #   · una punta: la cota de ESA punta se repone mas abajo.
-            #   · las dos puntas: se cae como hasta ahora.
+            #   · las dos puntas, teniendo hermana sana: la fila se cae y la
+            #     hermana se duplica (0,167 m de error, la mejor fuente).
+            #   · las dos puntas de las DOS vigas: NO se tira el seguidor. Su
+            #     posicion y su largo SIGUEN SIENDO MEDIDA — lo que cambio de
+            #     referencia es la cota— y tirarlo entero lo mandaba a
+            #     reconstruirse del plano, con la geometria estimada tambien.
+            #     En San Jose eran TR-06_1-005 y TR-08_1-001: dos seguidores
+            #     levantados enteros, sus 8 puntos, que salian «reconstruidos
+            #     del plano» y colocados donde el layout, no donde estan. Se
+            #     reponen las dos cotas de cada punta del terreno vecino (ye=3)
+            #     y se conserva todo lo demas.
             reparadas = [f for f in v if not estado.get(f.get('id'), '').startswith('fuera')]
             for f in reparadas:
                 e = estado.get(f.get('id'), '')
@@ -221,7 +231,10 @@ def genera(planta):
                 if reparadas:
                     grupos[k] = reparadas        # inc=1: la hermana se duplica mas abajo
                 else:
-                    del grupos[k]                # las dos sucias: el seguidor se queda SIN MEDIR
+                    for f in v:                  # ninguna hermana sana: al vecindario
+                        if estado.get(f.get('id'), '').endswith('+junta'):
+                            f['zm'] = f['ym'] = None; f['pa'] = []; f['art'] = 0
+                        repone[f['id']] = 'amb'
 
     # (b) por FILA, sobre lo que ha sobrevivido. `todas` se reconstruye AQUI y
     #     se va purgando: una fila ya condenada no puede seguir votando como
@@ -277,11 +290,25 @@ def genera(planta):
             e = repone.get(f.get('id'))
             if not e:
                 continue
-            campo = 'ys' if e == 'sur' else 'yn'
-            herm = next((g for g in v if g is not f and repone.get(g.get('id')) != e), None)
-            if herm is not None:
-                f[campo] = herm[campo]; fuente = 'hermana ' + herm['id']
+            if e == 'amb':
+                # LAS DOS PUNTAS. Cada una con la cota del terreno en SU n, no
+                # una sola para las dos: asi la pendiente sale del terreno
+                # vecino y no de suponer la fila plana.
+                zs = cota_vecina(f['x'], -f['zs'], sucias)
+                zn = cota_vecina(f['x'], -f['zn'], sucias)
+                if zs is None or zn is None:
+                    v.remove(f)
+                    if f in todas: todas.remove(f)
+                    if not v: del grupos[k]
+                    continue
+                f['ys'], f['yn'] = round(zs, 3), round(zn, 3)
+                campo, fuente = 'ys', 'vecindario (las dos puntas)'
             else:
+              campo = 'ys' if e == 'sur' else 'yn'
+              herm = next((g for g in v if g is not f and repone.get(g.get('id')) != e), None)
+              if herm is not None:
+                f[campo] = herm[campo]; fuente = 'hermana ' + herm['id']
+              else:
                 z = cota_vecina(f['x'], -(f['zs'] + f['zn']) / 2.0, sucias)
                 if z is None:
                     v.remove(f)                  # sin hermana ni vecinos: no se repone nada
@@ -305,10 +332,13 @@ def genera(planta):
                 if Ln > 5: f['pa'].append(round((f['yn'] - f['ym']) / Ln * 100, 3))
             repuestas.append((f['id'], e, fuente, f[campo]))
     if repuestas:
-        print('%-8s %d fila(s) con UNA punta de otra referencia: se repone esa cota y se conserva '
-              'el resto (posicion, largo y la otra punta son MEDIDOS)' % (planta, len(repuestas)))
+        _una = sum(1 for r in repuestas if r[1] != 'amb')
+        _amb = len(repuestas) - _una
+        print('%-8s %d fila(s) con la cota de otra referencia REPUESTA: %d de una punta (la otra punta, '
+              'la posicion y el largo son MEDIDOS) y %d de las dos (posicion y largo MEDIDOS, las dos '
+              'cotas del terreno vecino)' % (planta, len(repuestas), _una, _amb))
         for fid, e, fu, z in repuestas[:8]:
-            print('           %-18s punta %-4s <- %-22s cota %8.2f' % (fid, e, fu, z))
+            print('           %-18s punta %-4s <- %-26s cota %8.2f' % (fid, e, fu, z))
 
     for k, v in list(grupos.items()):
         if len(v) != 2:
@@ -755,7 +785,7 @@ def genera(planta):
                 # QUE PUNTA NO ESTA MEDIDA. Una cota repuesta no puede viajar
                 # sin decirlo: 0 = las dos medidas, 1 = la SUR es repuesta,
                 # 2 = la NORTE. El error de esa cota va acotado en el meta.
-                'ye': {'sur': 1, 'nor': 2}.get(f.get('rv1'), 0),
+                'ye': {'sur': 1, 'nor': 2, 'amb': 3}.get(f.get('rv1'), 0),
                 # CUAL DE LAS DOS VIGAS ES LA COPIA. `inc` ya decia que el
                 # tracker se levanto a medias, pero no cual de sus dos vigas
                 # se midio: para pintarlas hay que saberlo por VIGA, porque la

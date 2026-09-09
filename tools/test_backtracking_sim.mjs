@@ -2345,17 +2345,37 @@ t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila'
     throw new Error('en ' + caso.fid + ' el salto por punto es ' + dPunto.toFixed(1) +
       ' m y por fila ' + dFila.toFixed(1) + ' m: ya no se diluye a la mitad, revisar el ejemplo');
 });
-t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
+t('una fila condenada NO vota como vecina, y la que se queda entra REPUESTA', () => {
   // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
   // mediana de su vecindario se apoyaba en su hermana TR-08_1-002-W, condenada
-  // dos líneas antes. TR-08_1-001-E, en cambio, sí está contaminada y su
-  // seguidor no tiene otra fila: ese tiene que quedarse SIN MEDIR.
+  // dos líneas antes: ése tiene que entrar.
+  //
+  // TR-08_1-001 tiene sus DOS filas contaminadas (las cuatro puntas, +36,6 m).
+  // Antes se tiraba entero y acababa RECONSTRUIDO DEL PLANO — perdiendo su
+  // posición y su largo, que son medida, para acabar colocado donde dice el
+  // layout y no donde está. Ahora se queda con su geometría MEDIDA y las dos
+  // cotas repuestas del terreno vecino, marcado ye=3. Lo que no puede pasar,
+  // ni antes ni ahora, es que entre con la cota contaminada: eso se comprueba
+  // contra la nube, no de palabra.
   const f = path.join(ROOT, 'sanjose_cotas.json');
   if (!fs.existsSync(f)) return;
   const C = JSON.parse(fs.readFileSync(f, 'utf-8'));
-  const tk = id => C.t.some(x => x && x.tk === id);
-  if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
-  if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
+  const de = id => C.t.find(x => x && x.tk === id);
+  if (!de('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
+  const t1 = de('TR-08_1-001');
+  if (!t1) throw new Error('TR-08_1-001 se cae: su posición y su largo son MEDIDA, solo la cota se repone');
+  if (t1.est) throw new Error('TR-08_1-001 sale reconstruido del plano teniendo su geometría medida');
+  for (const g of t1.f) {
+    if (g.ye !== 3) throw new Error('TR-08_1-001 entra con una cota que no se declara repuesta (ye ' + g.ye + ')');
+    // y la cota repuesta es la del terreno de al lado, no la contaminada: sus
+    // vecinas de la misma línea están a menos de 5 m, no a +36,6
+    const cerca = C.t.filter(x => x && x !== t1).flatMap(x => x.f)
+      .filter(g2 => Math.abs(g2.x - g.x) < 20 && Math.abs((g2.n[0] + g2.n[1]) / 2 - (g.n[0] + g.n[1]) / 2) < 120)
+      .map(g2 => (g2.y[0] + g2.y[1]) / 2).sort((a, b) => a - b);
+    if (!cerca.length) continue;
+    const d = Math.abs((g.y[0] + g.y[1]) / 2 - cerca[cerca.length >> 1]);
+    if (d > 5) throw new Error('la cota repuesta de ' + (g.id || 'TR-08_1-001') + ' se aparta ' + d.toFixed(1) + ' m de su vecindario: eso es la contaminada');
+  }
 });
 t('la reclamación dice EXACTAMENTE lo mismo que el detector', () => {
   // reclama_referencia.py nació con su propia copia de la ventana (dy=3, dx=60)

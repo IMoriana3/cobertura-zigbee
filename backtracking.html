@@ -1143,11 +1143,13 @@ function plantFromCotas(data,maxLines,blockIdx){
     segMods.push(sg.map(o=>o.md!=null?o.md:null));   // módulos del STRING de esta mesa (del levantamiento)
     segEst.push(sg.map(o=>!!o.est));                 // mesa RECONSTRUIDA del plano (cota no medida)
     // DE DÓNDE SALE ESTA VIGA, por mesa. 0 = medida entera · 1 = una punta
-    // repuesta (la otra y el largo son medida) · 2 = viga DUPLICADA de su
-    // hermana (el seguidor se levantó a medias: esta no tiene ni una punta
-    // medida) · 3 = seguidor RECONSTRUIDO del plano. Se pinta: una viga que no
-    // se midió no puede parecer igual que una medida.
-    segOrig.push(sg.map(o=>o.est?3:(o.hm?2:(o.ye?1:0))));
+    // repuesta (la otra punta, la posición y el largo son medida) · 2 = las DOS
+    // cotas repuestas del terreno vecino (posición y largo siguen siendo
+    // medida) · 3 = viga DUPLICADA de su hermana (el seguidor se levantó a
+    // medias: ésta no tiene ni una punta medida) · 4 = seguidor RECONSTRUIDO
+    // del plano. Se pinta: una viga que no se midió no puede parecer igual que
+    // una medida.
+    segOrig.push(sg.map(o=>o.est?4:(o.hm?3:(o.ye===3?2:(o.ye?1:0)))));
     segSide.push(sg.map(o=>o.side));                 // 0 = al SUR del morro, 1 = al NORTE
     segFila.push(sg.map(o=>o.fila));                 // fila (viga) de la que es mitad
     segArt.push(sg.map(o=>!!o.art));                 // el quiebro está MEDIDO (fila articulada)
@@ -3916,7 +3918,7 @@ function build3D(){
   // pala y el marco (el resto del modelo es el mismo) para que se localicen de
   // un vistazo y el globo diga cuál es cuál. En San José: 9 vigas duplicadas y
   // 3 seguidores del plano, de 4.576.
-  const ORIG_COL=[null,0xffb02e,0xff3ea5,0xf5762a];   // 1 punta repuesta · 2 duplicada · 3 del plano
+  const ORIG_COL=[null,0xffb02e,0xe8d44d,0xff3ea5,0xf5762a];   // 1 una punta · 2 las dos cotas · 3 duplicada · 4 del plano
   const matsOrig=mats?ORIG_COL.map(c=>{
     if(c===null)return mats;
     const m=Object.assign({},mats);
@@ -5400,9 +5402,10 @@ function rowInfoHTML(r,kSel){
   // el mismo color con el que se ha teñido en la escena.
   const og=(DAY.T.segOrig&&DAY.T.segOrig[r]&&kSel!=null)?(DAY.T.segOrig[r][kSel]|0):0;
   const ogTxt=['','una punta con OTRA REFERENCIA vertical: esa cota es del terreno vecino, el largo y la otra punta son medida',
+               'las DOS cotas del terreno vecino: sus cuatro puntas vinieron con otra referencia vertical — la posición y el largo siguen siendo medida',
                'viga DUPLICADA de su hermana: este seguidor se levantó a medias y esta viga no tiene ni una punta medida',
                'seguidor RECONSTRUIDO del plano: no se levantó, la geometría sale del layout y la cota del terreno vecino'];
-  const ogCol=['','#ffb02e','#ff3ea5','#f5762a'];
+  const ogCol=['','#ffb02e','#e8d44d','#ff3ea5','#f5762a'];
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
     (og?'<br><b style="color:'+ogCol[og]+'">⚑ '+ogTxt[og]+'</b>':'')+
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
