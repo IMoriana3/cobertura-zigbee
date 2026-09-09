@@ -7,9 +7,9 @@
   "fuente_vanos": "sanjose_cotas.json (x medidas, agrupadas en líneas por contención)",
   "union": {
     "por": "terna medida (pend_long, transv_este, transv_oeste) redondeada a 3 decimales",
-    "unívocos": 2183,
+    "unívocos": 2184,
     "empates": 0,
-    "sin_pareja": 3,
+    "sin_pareja": 2,
     "nota": "si deja de ser unívoca el exportador ABORTA: emparejar a ojo escribiría la pendiente de un seguidor en otro"
   },
   "autocomprobacion": {
@@ -18,7 +18,7 @@
     "nota": "confirma que vector+azimut es el par que piden 41098/41100 y 41102/41104"
   },
   "bordes_de_bloque": {
-    "oeste": 7,
+    "oeste": 6,
     "este": 0,
     "nota": "vano vacío = no hay vecina a ese lado dentro del bloque"
   },

@@ -19,35 +19,9 @@ LA GEOMETRIA NO SE SUPONE, SE MIDE. Sobre los trackers cuya asignacion vieja SI
 era sana sale, muy apretada:
 
     fila E : en la x del tracker            (mediana -0,004 m, p5/p95 +-0,11)
-    fila W : 6,174 m al ESTE en San Jose    (el LADO no es fijo: ver abajo)
+    fila W : 6,174 m al oeste               (mediana -6,174, p5/p95 +-0,08)
     centro de la fila = n del tracker       (mediana -0,038 m)
     largo de fila                           74,43 m (p5 74,30 · p95 74,63)
-
-EL LADO DE LA SEGUNDA VIGA ERA UNA SUPOSICION, Y ESTABA AL REVES. Iba fija al
-oeste, y en San Jose la x del plano es la viga OESTE del bifila: la pareja cae
-al ESTE. Buscarla al otro lado no da con un hueco vacio —hay una linea cada
-6,2 m—, da con los puntos del tubo de al lado, asi que cada fila -W se armaba
-con la linea del vecino. Se veia en los bordes de cada bloque, que es donde la
-cadena desplazada deja de cerrar: 535 puntos que nadie reclamaba y 29 filas de
-largo imposible (37,5 m declarando 32 modulos; TR-09_2-036-W media 0,80 m, que
-son los dos lados de una junta tomados por los dos extremos de una viga).
-
-Ahora lo deciden los MORROS, que es el rasgo que distingue una linea de su
-vecina: las dos vigas de un tubo lo tienen a la misma n, la que el plano
-declara como centro, asi que se cuenta a cuantos centros les corresponde un
-morro a cada lado. Y se decide PARA LA PLANTA ENTERA, porque el lado esta
-encadenado —la linea que un eje deja libre es la que necesita su vecino—: las
-dos respuestas coherentes son todas al este o todas al oeste, y mezclar es
-peor que cualquiera de las dos. Medido en San Jose:
-
-                              lado fijo al oeste   por eje    todas al ESTE
-    filas emitidas                     4.449         4.059         4.572
-    puntos sin repartir                  535         2.174             3
-    trackers con las dos vigas         2.162         1.771         2.285
-    filas fuera por largo                 29             5             0
-
-    4.572 es exactamente 18.289/4: cada fila se lleva sus cuatro puntas y
-    quedan tres puntos sueltos en toda la planta.
 
 REPARTO POR NODOS, y hubo que llegar hasta ahi. Tres intentos, medidos:
 
@@ -127,7 +101,6 @@ maneja (el as-built viejo ya tenia 247 filas asi). Queda declarado en el meta.
 Emitir esos cuatro numeros con una regla adivinada cambiaria en silencio la
 ficha de registros TCU, que es lo que se le entrega al cliente.
 """
-import bisect
 import collections
 import csv
 import json
@@ -166,109 +139,6 @@ def lee_puntos(planta, cE, cN, base):
     return P
 
 
-def lado_de_la_hermana(P, TK, dx=DX_FILA):
-    """A que lado del eje del plano esta la SEGUNDA viga de cada tubo.
-
-    Iba fija al oeste (`t['x'] - DX_FILA`), y en San Jose eso es falso en 90 de
-    los 307 ejes: alli la x del plano es la viga OESTE del bifila y su pareja
-    esta al ESTE. Buscarla en la linea equivocada no encuentra un hueco vacio
-    —la implantacion tiene una linea cada 6,2 m—, encuentra los puntos de OTROS
-    tubos, y de ahi salen las filas imposibles que luego tira el control de
-    largo: 37,5 m declarando 32 modulos (media fila), o los 0,80 m de
-    TR-09_2-036-W, que son los dos lados de una junta tomados por los dos
-    extremos de una viga. Con la fila se va su tracker a reconstruido.
-
-    LO QUE LO DELATA, Y POR QUE SE VOTA POR EJE. El MORRO: las dos vigas de un
-    tubo lo tienen a la misma n, la que el plano declara como centro. Asi que la
-    linea hermana es la que trae un nodo de dos puntos en la n de cada tracker.
-    Tracker a tracker eso no decide —en una linea de tubos alineados las dos
-    vecinas tienen nodos en esas mismas n—, pero un EJE lleva varios tubos y la
-    pregunta se contesta a la vez para todos: se cuenta en cada lado a cuantos
-    de sus centros les corresponde un morro, y gana el que mas acierte. Con 4 o
-    20 tubos votando, la respuesta es firme donde la hay.
-
-    Ejemplo medido: la linea x=-360,03 tiene 16 puntos cuyos morros caen en
-    779,57 · 854,62 · 929,68 · 1004,87, que son los cuatro centros que el plano
-    declara en x=-366,20 (779,50 · 854,60 · 929,70 · 1004,80). Es su viga este,
-    y el reparto no la miraba: 16 puntos sin dueño y 4 tubos a medias.
-
-    EL EMPATE SE QUEDA COMO ESTA. Donde los dos lados aciertan lo mismo (213
-    ejes) no hay evidencia para mover nada, y la convencion de la planta es el
-    oeste: esto solo mueve al eje que tiene una razon medida para moverse.
-    """
-    lin = agrupa_lineas([(x, n) for _, x, n, _ in P])
-    LX = [sum(q[0] for q in g) / len(g) for g in lin]
-    MOR = []
-    for g in lin:
-        v, nd, j = sorted(q[1] for q in g), [], 0
-        while j < len(v):
-            if j + 1 < len(v) and v[j + 1] - v[j] <= 1.5:
-                nd.append((v[j] + v[j + 1]) / 2); j += 2
-            else:
-                j += 1
-        MOR.append(nd)
-
-    def linea_de(x):
-        j = bisect.bisect_left(LX, x)
-        c = [k for k in (j - 1, j) if 0 <= k < len(LX) and abs(LX[k] - x) <= TOL_X]
-        return min(c, key=lambda k: abs(LX[k] - x)) if c else None
-
-    def aciertos(li, ns):
-        if li is None or not MOR[li]:
-            return 0
-        v, c = MOR[li], 0
-        for n0 in ns:
-            j = bisect.bisect_left(v, n0 - 1.5)
-            if j < len(v) and v[j] <= n0 + 1.5:
-                c += 1
-        return c
-
-    ejes = collections.defaultdict(list)
-    for t in TK:
-        ejes[round(t['x'], 2)].append(t)
-    ks = sorted(ejes)
-    grupos, cur = [], [ks[0]]
-    for k in ks[1:]:
-        if k - cur[-1] <= TOL_X:
-            cur.append(k)
-        else:
-            grupos.append(cur); cur = [k]
-    grupos.append(cur)
-
-    # Y LA DECISION ES DE LA PLANTA ENTERA, no de cada eje. El lado esta
-    # ENCADENADO: si un eje se lleva su hermana al este, la linea que deja
-    # libre al oeste es justo la que su vecino necesita, asi que las dos
-    # respuestas coherentes son «todas al oeste» o «todas al este», y mezclar
-    # es lo peor de los dos mundos. Medido en San Jose, decidiendo eje a eje:
-    # 4.059 filas y 2.174 puntos sin repartir, contra 4.449 dejandolo como
-    # estaba. Con la planta entera al este: 4.572 filas y 3 puntos sin
-    # repartir. Asi que se suman los votos de todos los ejes y se elige un
-    # solo lado, y el empate se queda al oeste, que es como estaba.
-    vo = ve = 0
-    for g in grupos:
-        ts = [t for k in g for t in ejes[k]]
-        x0 = statistics.fmean([t['x'] for t in ts])
-        ns = [t['n'] for t in ts]
-        vo += aciertos(linea_de(x0 - dx), ns)
-        ve += aciertos(linea_de(x0 + dx), ns)
-    al_este = ve > vo
-    lado = {t['id']: (+dx if al_este else -dx) for t in TK}
-    return lado, (vo, ve)
-
-
-def agrupa_lineas(pts, tol=TOL_X):
-    """Los puntos, en LINEAS: cada eje de viga de la implantacion."""
-    v = sorted(pts)
-    out, cur = [], [v[0]]
-    for p in v[1:]:
-        if p[0] - cur[-1][0] <= tol:
-            cur.append(p)
-        else:
-            out.append(cur); cur = [p]
-    out.append(cur)
-    return out
-
-
 def reparte(planta='sanjose'):
     lay = json.load(open(os.path.join(RAIZ, planta + '_layout.json')))
     viejo = os.path.join(RAIZ, planta + '_asbuilt.json')
@@ -290,21 +160,12 @@ def reparte(planta='sanjose'):
     nom = lambda m: 2 * m * w + (2 * m - 2) * gm + gd
     LARGO = {'completo': nom(32), 'medio': nom(16)} if w else {}
     LARGO_DEF = LARGO.get('completo', 74.4)
-    # EL LADO DE LA SEGUNDA VIGA LO DICEN LOS PUNTOS, no una constante. El
-    # sufijo -E/-W del id de fila NO cambia de significado ni de sitio: es la
-    # CLAVE con la que se heredan los vectores TCU del as-built anterior, no una
-    # brujula. Lo que cambia es donde se van a buscar sus puntos.
-    dxLado, (_vo, _ve) = lado_de_la_hermana(P, TK)
-    alEste = [t['id'] for t in TK if dxLado[t['id']] > 0]
     filas = []
     for t in TK:
         L0 = LARGO.get(t.get('t'), LARGO_DEF)
-        for lado, x in (('E', t['x']), ('W', t['x'] + dxLado[t['id']])):
+        for lado, x in (('E', t['x']), ('W', t['x'] - DX_FILA)):
             filas.append({'x': x, 'n': t['n'], 'tk': t['id'], 'lado': lado,
                           't': t.get('t'), 'L0': L0})
-    print('%-8s la segunda viga va al %s (morros que casan: %d al este contra %d al oeste)'
-          % (planta, 'ESTE — el eje del plano es la viga OESTE del bifila' if alEste else 'oeste',
-             _ve, _vo))
 
     # ── reparto POR NODOS ────────────────────────────────────────────────────
     # Los puntos no estan sueltos: van en NODOS de dos, y el tipo de nodo se ve
@@ -516,18 +377,11 @@ def reparte(planta='sanjose'):
     M['n_trk'] = len({r['tk'] for r in out})
     M['descartadas'] = sin
     M['fuente'] = planta + '_levantamiento.csv (' + str(len(P)) + ' puntos del topografo)'
-    # EL LADO DE LA SEGUNDA VIGA VIAJA CON EL FICHERO. Lo decide el reparto
-    # mirando los puntos, asi que quien reconstruya un tracker sin levantar
-    # (cotas_asbuilt.del_plano) tiene que colocarlo del mismo lado o lo pone
-    # encima de la linea del vecino.
-    M['dx_hermana'] = round(dxLado[TK[0]['id']], 3)
     M['reparto'] = ('tools/reparte_levantamiento.py · fila E en la x del tracker y W a %.3f m al '
-                    '%s (el lado lo deciden los MORROS del levantamiento: %d casan a ese lado '
-                    'contra %d al otro); fase resuelta POR LINEA (desfase = mediana del desvio '
-                    'nodo-centro de las filas del plano a menos de %.0f m sobre la misma linea; '
-                    '%d filas con desfase > 1 m) y topes buscados a L/2 del tipo declarado'
-                    % (DX_FILA, 'este' if alEste else 'oeste',
-                       max(_vo, _ve), min(_vo, _ve), R_VEC, conDesf))
+                    'oeste; fase resuelta POR LINEA (desfase = mediana del desvio nodo-centro de '
+                    'las filas del plano a menos de %.0f m sobre la misma linea; %d filas con '
+                    'desfase > 1 m) y topes buscados a L/2 del tipo declarado'
+                    % (DX_FILA, R_VEC, conDesf))
     M['nota_tcu'] = ('cse/cso/ase/aso NO se derivan aqui: se heredan del as-built anterior por id '
                      'de fila y van a null en las filas recuperadas (%d de %d). Su regla de '
                      'calculo no esta en este repositorio.' % (nulos, len(out)))

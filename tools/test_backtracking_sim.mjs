@@ -2689,48 +2689,49 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
   });
 }
 
-console.log('v1.51 · el levantamiento se reparte ENTERO');
+console.log('v1.51 · cada fila cae donde el PROVEEDOR la midió');
 {
-  // El topógrafo mide DOS puntos por MESA: cada viga se lleva cuatro —una punta
-  // en cada extremo y las dos del morro—, así que puntos/4 son las filas que
-  // el fichero puede sostener. Esa división es el careo: si el reparto va a
-  // buscar los puntos a la línea equivocada, no encuentra un hueco vacío (hay
-  // una línea cada 6,2 m) sino los puntos del tubo de al lado, y lo que delata
-  // el desajuste son los BORDES de cada bloque, donde la cadena desplazada deja
-  // de cerrar: puntos que nadie reclama y filas armadas con topes ajenos.
-  const csv = fs.readFileSync(path.join(ROOT, 'sanjose_levantamiento.csv'), 'utf-8');
-  const nPts = csv.split('\n').filter(l => l.trim()).length;
-  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
-  t('sanjose: las filas medidas son las que dan los puntos del topógrafo (puntos/4)', () => {
-    let filas = 0;
-    for (const tk of cotas.t) if (tk && !tk.est) filas += tk.inc ? 1 : tk.f.length;
-    const esperadas = Math.floor(nPts / 4);
-    // con el lado bien, sobran 3 puntos de 18.289; con el lado al revés se
-    // quedaban 535 fuera y faltaban 123 filas
-    if (esperadas - filas > 30)
-      throw new Error(`${nPts} puntos dan para ${esperadas} filas y solo hay ${filas} medidas: ` +
-        `${esperadas - filas} filas con medida que no se usan`);
-  });
-  t('sanjose: casi ningún tracker se queda con una sola viga medida', () => {
-    // es la otra cara de lo mismo: con la segunda viga buscada al oeste eran
-    // 132-167 los tubos servidos a medias; con el lado bien son 7
-    if (cotas.n_inc > 30)
-      throw new Error(`${cotas.n_inc} trackers con una sola viga medida: el reparto está dejando ` +
-        `filas sin puntos (con el lado de la hermana bien resuelto son un puñado)`);
-  });
-  t('el reparto DECLARA a qué lado puso la segunda viga, y las cotas lo respetan', () => {
-    const asb = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_asbuilt.json'), 'utf-8'));
-    const dx = asb.meta.dx_hermana;
-    if (dx == null) throw new Error('el as-built no declara dx_hermana: quien reconstruya del plano no sabe dónde poner la hermana');
-    // los trackers reconstruidos del plano tienen que ir al MISMO lado
-    for (const tk of cotas.t) {
-      if (!tk || !tk.est || tk.f.length !== 2) continue;
-      const d = tk.f[1].x - tk.f[0].x;
-      if (Math.sign(d) !== Math.sign(dx))
-        throw new Error('un tracker reconstruido lleva la hermana al lado contrario del que declara el reparto: ' +
-          `dx de sus vigas ${d.toFixed(2)} m, dx_hermana ${dx}`);
-    }
-  });
+  // EL REPARTO NO PUEDE DECIDIR DÓNDE ESTÁ UNA VIGA: eso ya está medido. El
+  // as-built que vino del SQL del proveedor trae la x de cada fila con su
+  // nombre, y ahí la -E está en el eje del plano (mediana -0,004 m) y la -W a
+  // 6,174 m al OESTE. Son 4.143 filas diciendo lo mismo, y ninguna al revés.
+  //
+  // POR QUÉ HACE FALTA ESTE CAREO. Un reparto puede encajar muy bien y estar
+  // equivocado: desplazar TODAS las filas -W dos líneas al este deja casi
+  // todas las líneas servidas —la retícula es regular, hay una cada 6,2 m— y
+  // sale mejor en todo lo que se mire por dentro: 4.572 filas en vez de 4.449,
+  // 3 puntos sin repartir en vez de 535, los 98 tubos «medio» al 100 %. Y sin
+  // embargo cada tracker se estaría quedando con las cotas de su vecino. La
+  // consistencia interna no distingue las dos soluciones; la x del proveedor,
+  // sí.
+  const fa = path.join(ROOT, 'sanjose_asbuilt.json');
+  const f0 = path.join(ROOT, 'tools', 'fixtures', 'sanjose_asbuilt_proveedor_x.json');
+  if (fs.existsSync(fa) && fs.existsSync(f0)) {
+    const X0 = JSON.parse(fs.readFileSync(f0, 'utf-8'));
+    const A = JSON.parse(fs.readFileSync(fa, 'utf-8'));
+    t('cada fila del reparto cae en la x que midió el proveedor', () => {
+      let n = 0, mal = 0, peor = 0, ej = '';
+      for (const f of A.f) {
+        const x0 = X0.x[f.id];
+        if (x0 == null || f.x == null) continue;
+        n++;
+        const d = Math.abs(f.x - x0);
+        if (d > 0.5) { mal++; if (d > peor) { peor = d; ej = f.id; } }
+      }
+      if (n < 3000) throw new Error('la referencia del proveedor no trae filas suficientes: ' + n);
+      if (mal) throw new Error(`${mal} de ${n} filas fuera de la x del proveedor (peor ${peor.toFixed(2)} m en ${ej}); ` +
+        `un desvío de 6,17 o 12,35 m es una línea entera: el reparto le está dando a esa fila los puntos del tubo de al lado`);
+    });
+    t('MUTANTE: mover las -W una línea rompe el careo', () => {
+      let mal = 0;
+      for (const f of A.f) {
+        const x0 = X0.x[f.id];
+        if (x0 == null || f.x == null || !f.id.endsWith('-W')) continue;
+        if (Math.abs((f.x + 6.174) - x0) > 0.5) mal++;
+      }
+      if (!mal) throw new Error('mover las -W 6,17 m no rompe nada: el careo no distingue');
+    });
+  }
 }
 
 console.log('');

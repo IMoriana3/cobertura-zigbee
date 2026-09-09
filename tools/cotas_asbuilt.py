@@ -656,16 +656,10 @@ def genera(planta):
         # viga: el plano local, ajustado con pocos puntos y terreno roto, podia
         # separarlas 4 m en los 6,18 m que hay entre ellas — una bifila
         # imposible que el propio control de entrada del relieve cazaba.
-        # LA HERMANA VA DONDE DIGA EL REPARTO, no siempre al oeste: en San Jose
-        # la segunda viga de cada tubo cae al ESTE, y reconstruir un tracker
-        # sin levantar al otro lado lo planta encima de la linea del vecino
-        # —dos de los reconstruidos aparecian con nube medida justo encima—.
-        dxh = META.get('dx_hermana')
-        dxh = -paso_v if dxh is None else (paso_v if dxh > 0 else -paso_v)
-        xm = xc + dxh / 2
+        xm = xc - paso_v / 2
         ys, yn = plano_en(xm, ns), plano_en(xm, nn)
         out = []
-        for xv in (xc, round(xc + dxh, 3)):
+        for xv in (xc, round(xc - paso_v, 3)):
             out.append({'x': xv, 'zs': -ns, 'zn': -nn, 'ys': ys, 'yn': yn,
                         'art': 0, 'pa': [], 'zm': None, 'ym': None, 'mods': md, 'tk': None})
         estimados += 1
