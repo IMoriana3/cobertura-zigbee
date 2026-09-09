@@ -160,10 +160,108 @@ def reparte(planta='sanjose'):
     nom = lambda m: 2 * m * w + (2 * m - 2) * gm + gd
     LARGO = {'completo': nom(32), 'medio': nom(16)} if w else {}
     LARGO_DEF = LARGO.get('completo', 74.4)
+    # ── DE QUE LADO ESTA LA HERMANA: LO DICE EL BORDE DEL BLOQUE ─────────────
+    # La regla era «el plano marca la viga ESTE y la hermana va un paso al
+    # OESTE». Medido contra la nube, es al reves en la mayor parte de San Jose.
+    #
+    # POR QUE NO SE VEIA. La medida que la sostenia («fila W a -6,174 m,
+    # mediana -6,174») se hizo sobre la asignacion VIEJA del proveedor, que ya
+    # traia esa convencion dentro: circular. Y no se puede arbitrar mirando
+    # cotas —dos vigas vecinas sobre el mismo terreno se parecen compartan tubo
+    # o no: 0,166 m de desfase con la del oeste contra 0,160 con la del este,
+    # 1.125 trackers a favor de una y 1.032 de la otra— ni contando puntos a
+    # cada lado, porque en mitad de un bloque HAY PUNTOS A LOS DOS LADOS: las
+    # vigas embaldosan el terreno cada 6,17 m.
+    #
+    # LO UNICO QUE DECIDE ES EL BORDE. Una tirada de k trackers contiguos
+    # (paso 12,35 = dos vigas) ocupa 2k vigas: con la hermana al oeste van de
+    # x_primero-6,17 a x_ultimo; con la hermana al este, de x_primero a
+    # x_ultimo+6,17. Las dos ocupan lo mismo, y sola se distinguen por las
+    # PUNTAS. Asi que se mira si hay puntos justo fuera:
+    #
+    #     no hay nada en x_primero-6,17  ->  esa viga no existe  ->  ESTE
+    #     no hay nada en x_ultimo +6,17  ->  esa viga no existe  ->  OESTE
+    #
+    # En San Jose sale ESTE en 82 tiradas (1.618 trackers) y OESTE en 2 (34).
+    # Comprobado a mano en la banda mas larga (102 trackers, n=-737,6): cero
+    # puntos en x_primero-6,2 y cinco en x_ultimo+6,2. Y la prediccion que se
+    # deriva se cumple entera: si la regla vieja inventa una viga fantasma al
+    # oeste de cada bloque, las vigas vacias tienen que estar TODAS ahi — son
+    # 57, y las 57 son el primer tracker de su tirada, ninguna en el interior.
+    #
+    #     vigas con >=3 puntos   4.489 -> 4.574 de 4.578
+    #     vigas vacias                60 ->     1
+    #     trackers con las dos     2.202 -> 2.286 de 2.289
+    #
+    # que es justo el techo que da el topografo: no pudo tomar 3 trackers.
+    G3 = collections.defaultdict(list)
+    for _pid, _x, _n, _y in P:
+        G3[round(_x / 3.0)].append((_x, _n))
+
+    def cuantos(x, n, L):
+        """Puntos de una viga de largo L centrada en (x, n) — y 0 si no estan
+        sus DOS PUNTAS.
+
+        Contar todo lo que cae en la ventana no vale, y esto costo tres
+        seguidores. En la misma linea de x puede haber un tracker «medio»
+        (37,6 m) cuyo tramo solapa en n con el arranque de un «completo»
+        (74,4 m): sus puntos entran en la ventana del completo y hacen creer
+        que hay viga a ese lado. Con eso, el borde de la tirada se lee al
+        reves y TODO el emparejamiento de la tirada se corre un paso — a un
+        seguidor le falta la hermana y al de al lado le sobra.
+
+        Lo que distingue a una viga de este largo de la intrusa es su punta
+        NORTE: la del medio esta a 37 m de donde estaria la del completo. Asi
+        que se exige punto en las dos puntas; si falta una, ahi no hay viga de
+        este tipo."""
+        c = 0
+        ps = pn_ = False
+        for b in (round(x / 3.0) - 1, round(x / 3.0), round(x / 3.0) + 1):
+            for px, pnt in G3.get(b, ()):
+                if abs(px - x) > 0.6:
+                    continue
+                if abs(pnt - (n - L / 2)) <= 5.0: ps = True
+                if abs(pnt - (n + L / 2)) <= 5.0: pn_ = True
+                if abs(pnt - n) <= L / 2 + 4:
+                    c += 1
+        return c if (ps and pn_) else 0
+
+    bandas = collections.defaultdict(list)
+    for t in TK:
+        bandas[round(t['n'] / 2)].append(t)
+    ladoDe, nE, nW, nAmb = {}, 0, 0, 0
+    for _b, v in bandas.items():
+        v.sort(key=lambda t: t['x'])
+        ini = 0
+        for k in range(len(v)):
+            if k < len(v) - 1 and 11.0 < v[k + 1]['x'] - v[k]['x'] < 13.5:
+                continue
+            run = v[ini:k + 1]; ini = k + 1
+            Lo = LARGO.get(run[0].get('t'), LARGO_DEF)
+            Le = LARGO.get(run[-1].get('t'), LARGO_DEF)
+            o = cuantos(run[0]['x'] - DX_FILA, run[0]['n'], Lo)
+            e = cuantos(run[-1]['x'] + DX_FILA, run[-1]['n'], Le)
+            if o >= 3 and e < 3:
+                lado = 'W'; nW += len(run)
+            elif e >= 3 and o < 3:
+                lado = 'E'; nE += len(run)
+            else:
+                # los dos bordes con puntos: el bloque sigue mas alla de la
+                # tirada. Se aplica la convencion dominante de la planta, que
+                # es la que dicen las tiradas que SI tienen borde limpio.
+                lado = 'E'; nAmb += len(run)
+            for t in run:
+                ladoDe[t['id']] = lado
+
+    # Y LA ETIQUETA DICE EL LADO DE VERDAD. Si la hermana va al este, la viga
+    # que marca el plano es la OESTE del par: llamarla «-E» seria mentir en el
+    # id de la fila, que es justo lo que se usa para unir la ficha de TCU.
     filas = []
     for t in TK:
         L0 = LARGO.get(t.get('t'), LARGO_DEF)
-        for lado, x in (('E', t['x']), ('W', t['x'] - DX_FILA)):
+        par = ((('W', t['x']), ('E', t['x'] + DX_FILA)) if ladoDe.get(t['id'], 'E') == 'E'
+               else (('E', t['x']), ('W', t['x'] - DX_FILA)))
+        for lado, x in par:
             filas.append({'x': x, 'n': t['n'], 'tk': t['id'], 'lado': lado,
                           't': t.get('t'), 'L0': L0})
 

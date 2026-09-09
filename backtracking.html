@@ -1023,6 +1023,7 @@ function plantFromCotas(data,maxLines,blockIdx){
     for(const f of trk.f){
       if(!f||!f.n||!f.y||f.n.length<2||f.y.length<2)continue;
       filas.push({x:f.x,n0:f.n[0],n1:f.n[1],y0:f.y[0],y1:f.y[1],art:!!f.art,trk:trk,md:f.md,est:!!trk.est,
+                  hm:!!f.hm,
                   // ye: qué cota de esta fila NO es medida porque su punto vino
                   // con otra referencia vertical y el saneador la repuso —
                   // 0 = las dos medidas, 1 = la SUR repuesta, 2 = la NORTE,
@@ -1097,7 +1098,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   let nMid=0,nCnt=0;
   for(const L of band)for(const f of L.f){nMid+=(f.n0+f.n1)/2;nCnt++;}
   nMid/=Math.max(nCnt,1);
-  const segZ=[],segTilt=[],segTrk=[],segMods=[],segEst=[],segSide=[],segFila=[],segArt=[],segMorro=[];
+  const segZ=[],segTilt=[],segTrk=[],segMods=[],segEst=[],segOrig=[],segSide=[],segFila=[],segArt=[],segMorro=[];
   // hueco del accionamiento (el MORRO): separa las dos mesas de una fila
   const gDrive=(data.mod&&data.mod.gapDrive!=null)?data.mod.gapDrive:0.55;
   for(const L of band){
@@ -1128,7 +1129,7 @@ function plantFromCotas(data,maxLines,blockIdx){
       const zb=hinge?f.ym:zS+(zN-zS)*((nb-nS)/((nN-nS)||1));
       const g=Math.min(gDrive/2,Math.max(0,(Math.min(nb-nS,nN-nb))/4));
       const pS=(zb-zS)/((nb-nS)||1), pN=(zN-zb)/((nN-nb)||1);
-      const com={trk:f.trk,md:f.md,est:f.est,art:hinge,fila:fi};
+      const com={trk:f.trk,md:f.md,est:f.est,hm:f.hm,ye:f.ye,art:hinge,fila:fi};
       // cada mesa se queda con la marca de SU tope (el morro es medido en las dos).
       // ye habla en SUR/NORTE geográficos, igual que nS/nN, así que no depende
       // del orden en que la fila traiga sus dos extremos.
@@ -1150,8 +1151,15 @@ function plantFromCotas(data,maxLines,blockIdx){
     segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
     segTrk.push(sg.map(o=>o.trk));
     segMods.push(sg.map(o=>o.md!=null?o.md:null));   // módulos del STRING de esta mesa (del levantamiento)
-    segEst.push(sg.map(o=>!!o.est));                 // cota de la mesa NO medida: tracker reconstruido
-                                                     // del plano, o tope estimado por el saneador (ey)
+    segEst.push(sg.map(o=>!!o.est));                 // mesa RECONSTRUIDA del plano (cota no medida)
+    // DE DÓNDE SALE ESTA VIGA, por mesa. 0 = medida entera · 1 = una punta
+    // repuesta (la otra punta, la posición y el largo son medida) · 2 = las DOS
+    // cotas repuestas del terreno vecino (posición y largo siguen siendo
+    // medida) · 3 = viga DUPLICADA de su hermana (el seguidor se levantó a
+    // medias: ésta no tiene ni una punta medida) · 4 = seguidor RECONSTRUIDO
+    // del plano. Se pinta: una viga que no se midió no puede parecer igual que
+    // una medida.
+    segOrig.push(sg.map(o=>o.est?4:(o.hm?3:(o.ye===3?2:(o.ye?1:0)))));
     segSide.push(sg.map(o=>o.side));                 // 0 = al SUR del morro, 1 = al NORTE
     segFila.push(sg.map(o=>o.fila));                 // fila (viga) de la que es mitad
     segArt.push(sg.map(o=>!!o.art));                 // el quiebro está MEDIDO (fila articulada)
@@ -1236,7 +1244,7 @@ function plantFromCotas(data,maxLines,blockIdx){
   }
   segDrive.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
   segPairs.sort((a,b)=>a[0][0]-b[0][0]||a[0][1]-b[0][1]);
-  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segDrive:segDrive,segTrk:segTrk,segMods:segMods,segEst:segEst,segSide:segSide,segFila:segFila,segArt:segArt,segMorro:segMorro,mod:data.mod||null,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
+  return {elev:elev,tilt:tilt,segs:segs,segZ:segZ,segTilt:segTilt,segPairs:segPairs,segDrive:segDrive,segTrk:segTrk,segMods:segMods,segEst:segEst,segOrig:segOrig,segSide:segSide,segFila:segFila,segArt:segArt,segMorro:segMorro,mod:data.mod||null,groups:groups,lineX:lineX,lineXAbs:lineXAbs,pairDz:pairDz,
           pitch:pitch,cw:data.cuerda||2.382,maxAngle:data.limite||55,
           drive:(nArt>nPairs/2)?'quebrado':'bifila',
           xFrom:band[0].x,xTo:band[band.length-1].x,
@@ -3914,6 +3922,20 @@ function build3D(){
   const useModel=(typeof Seguidor!=='undefined');
   const mats=useModel?Seguidor.materials(THREE):null;
   if(mats){mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;}   // pala azulada, no blanco quirófano
+  // LO QUE NO SE MIDIÓ, PINTADO. Una viga duplicada de su hermana o un
+  // seguidor reconstruido del plano NO pueden verse igual que una medida: la
+  // escena es la prueba de lo que hay, y ahí hay una suposición. Se tiñen la
+  // pala y el marco (el resto del modelo es el mismo) para que se localicen de
+  // un vistazo y el globo diga cuál es cuál. En San José: 9 vigas duplicadas y
+  // 3 seguidores del plano, de 4.576.
+  const ORIG_COL=[null,0xffb02e,0xe8d44d,0xff3ea5,0xf5762a];   // 1 una punta · 2 las dos cotas · 3 duplicada · 4 del plano
+  const matsOrig=mats?ORIG_COL.map(c=>{
+    if(c===null)return mats;
+    const m=Object.assign({},mats);
+    m.glass=mats.glass.clone(); m.glass.color.set(c); m.glass.emissive.set(c); m.glass.emissiveIntensity=0.18;
+    m.frame=mats.frame.clone(); m.frame.color.set(c);
+    return m;
+  }):null;
   const postM=new THREE.MeshLambertMaterial({color:0x3a4a5f});
   const postBadM=new THREE.MeshLambertMaterial({color:0xf87272});
   const tubeM=new THREE.MeshLambertMaterial({color:0x4a5a6a});
@@ -3981,6 +4003,10 @@ function build3D(){
       tiltG.position.set(xof(r),cy,-yAnc);
       tiltG.userData.row=r; tiltG.userData.seg=si;   // para el picking (globo)
       let spin=null, built=false;
+      // de dónde sale esta mesa (0 medida · 1 punta repuesta · 2 viga duplicada
+      // de su hermana · 3 seguidor del plano): tiñe el modelo y va al globo
+      const orig=(PR&&PR.segOrig&&PR.segOrig[r])?(PR.segOrig[r][si]|0):0;
+      tiltG.userData.orig=orig;
       if(useModel){
         try{
           const media=!lado&&T.filaLen&&len<0.7*T.filaLen;  // tramo corto ⇒ tamaño «medio» real
@@ -3990,7 +4016,7 @@ function build3D(){
           Seguidor.setModsPerStr(mods);
           const beam=Seguidor.buildBeam(THREE,{west:westAt(r,si),detail:'mass',size:media?'medio':'largo',
                                                lado:lado,
-                                               materials:mats,skip:{antena:1,antenatip:1}});
+                                               materials:matsOrig?matsOrig[orig]:mats,skip:{antena:1,antenatip:1}});
           const yaw=new THREE.Group(); yaw.rotation.y=Math.PI/2;   // tubo del modelo: +X → norte de la escena
           beam.spin.scale.z=c.cw/2.382;              // el ancho de pala configurado, sobre la cuerda del modelo
           // SILUETA de sombra: el bb se toma con el spin AÚN SUELTO (marco local
@@ -4015,7 +4041,9 @@ function build3D(){
         if(lado)gRot.position.z=-lado*((D0?D0.gapDrive:0.55)/2+len/2);
         const tube=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,len),tubeM);
         tube.castShadow=true;
-        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.02,len),pmFallback());
+        const pmF=pmFallback();
+        if(orig)pmF.color.set(ORIG_COL[orig]);      // sin modelo, la caja también lo dice
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(c.cw,0.02,len),pmF);
         panel.position.y=0.10+c.z0;
         panel.castShadow=true;panel.receiveShadow=true;
         gRot.add(tube,panel);
@@ -5380,7 +5408,16 @@ function rowInfoHTML(r,kSel){
         (TH_DISP*angAt(p,t,r,kk)).toFixed(2)+'° · '+poaAt(p,t,r,kk).toFixed(0)+' W/m²'+(shk!=null?' · '+(shk*100).toFixed(1)+'%':'')+(sel?'</b>':'');
     }).join('');
   }
+  // DE DÓNDE SALE ESTA MESA. Si no es medida entera hay que decirlo aquí, con
+  // el mismo color con el que se ha teñido en la escena.
+  const og=(DAY.T.segOrig&&DAY.T.segOrig[r]&&kSel!=null)?(DAY.T.segOrig[r][kSel]|0):0;
+  const ogTxt=['','una punta con OTRA REFERENCIA vertical: esa cota es del terreno vecino, el largo y la otra punta son medida',
+               'las DOS cotas del terreno vecino: sus cuatro puntas vinieron con otra referencia vertical — la posición y el largo siguen siendo medida',
+               'viga DUPLICADA de su hermana: este seguidor se levantó a medias y esta viga no tiene ni una punta medida',
+               'seguidor RECONSTRUIDO del plano: no se levantó, la geometría sale del layout y la cota del terreno vecino'];
+  const ogCol=['','#ffb02e','#e8d44d','#ff3ea5','#f5762a'];
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
+    (og?'<br><b style="color:'+ogCol[og]+'">⚑ '+ogTxt[og]+'</b>':'')+
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
     '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
     '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+

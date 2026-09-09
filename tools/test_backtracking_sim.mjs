@@ -2304,34 +2304,78 @@ t('media MESA contaminada: entera por punto, a la MITAD por la media de la fila'
   // camino (+18,2 m) y pasaba el umbral de 3 m por suerte, no por diseño.
   const fp = path.join(ROOT, 'sanjose_puntos.json'), fa = path.join(ROOT, 'sanjose_asbuilt.json');
   if (!fs.existsSync(fp) || !fs.existsSync(fa)) return;
+  // EL CASO SE BUSCA POR EL FENÓMENO, NO POR SU NOMBRE. Este test llevaba el
+  // id TR-09_1-044-E a pelo y se rompió cuando el emparejamiento E/W pasó a
+  // decidirse por el borde del bloque: la viga es la MISMA (misma x, mismos
+  // extremos) pero ahora se llama -W. Un careo que se cae por un renombre no
+  // está comprobando lo que dice comprobar.
   const P = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  const m = oraculoRefVertical(P).get('TR-09_1-044-E');
-  if (!m) throw new Error('TR-09_1-044-E dejó de detectarse por punto');
-  if (Math.min(...m.map(v => Math.abs(v[1]))) < 30)
-    throw new Error('por punto ya no se ve entero: ' + m.map(v => v[1].toFixed(1)).join(', '));
-  // los marcados son los DOS puntos de una misma mesa, no puntos sueltos
-  const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
-  if (m.length !== 2 || ys[1] - ys[0] > 40)
-    throw new Error('esperaba la mesa entera (2 puntos a <40 m), salieron ' + m.length + ' repartidos ' +
-      (ys.length > 1 ? (ys[ys.length - 1] - ys[0]).toFixed(1) + ' m' : ''));
-  // y por fila el salto se ve a la mitad: ésa es la dilución que justifica el cambio
   const A = JSON.parse(fs.readFileSync(fa, 'utf-8')).f;
-  const R = A.find(r => r.id === 'TR-09_1-044-E'), S = A.find(r => r.id === 'TR-09_1-044-W');
-  const dFila = Math.abs((R.ys + R.yn) / 2 - (S.ys + S.yn) / 2);
-  if (!(dFila > 15 && dFila < 25))
-    throw new Error('la dilución a la mitad ya no es tal (' + dFila.toFixed(1) + ' m): revisar el ejemplo del test');
+  const porId = new Map(A.map(r => [r.id, r]));
+  const marc = oraculoRefVertical(P);
+  let caso = null;
+  for (const [fid, m] of marc) {
+    if (m.length !== 2) continue;                       // la MESA entera, no un punto suelto
+    if (Math.min(...m.map(v => Math.abs(v[1]))) < 30) continue;
+    const ys = m.map(v => P.y[P.id.indexOf(v[0])]).sort((a, b) => a - b);
+    if (ys[1] - ys[0] > 40) continue;                   // los dos puntos, de la misma mesa
+    // Y LA MESA TIENE QUE SER UNA PUNTA, no la junta: el as-built guarda las
+    // dos PUNTAS de la fila, así que si lo contaminado son los dos puntos
+    // centrales los extremos salen limpios y no hay dilución ninguna que medir
+    // (pasa: son 6 filas en San José). El ejemplo del test necesita una punta.
+    const suyos = [];
+    for (let i = 0; i < P.n; i++) if (P.filas[P.fi[i]] === fid) suyos.push(P.y[i]);
+    if (suyos.length < 3) continue;
+    suyos.sort((a, b) => a - b);
+    const punta = ys.some(y => Math.abs(y - suyos[0]) < 0.5 || Math.abs(y - suyos[suyos.length - 1]) < 0.5);
+    if (!punta) continue;
+    const R = porId.get(fid);
+    const S = porId.get(fid.replace(/-([EW])$/, (_, s) => '-' + (s === 'E' ? 'W' : 'E')));
+    if (!R || !S) continue;
+    caso = { fid, m, R, S };
+    break;
+  }
+  if (!caso)
+    throw new Error('ya no hay ninguna fila con una MESA entera de otra referencia y su hermana sana: ' +
+      'o cambió el dato o el detector dejó de verlo por punto');
+  // y por fila el salto se ve a la MITAD: ésa es la dilución que justifica el cambio
+  const dPunto = Math.min(...caso.m.map(v => Math.abs(v[1])));
+  const dFila = Math.abs((caso.R.ys + caso.R.yn) / 2 - (caso.S.ys + caso.S.yn) / 2);
+  if (!(dFila > dPunto * 0.35 && dFila < dPunto * 0.75))
+    throw new Error('en ' + caso.fid + ' el salto por punto es ' + dPunto.toFixed(1) +
+      ' m y por fila ' + dFila.toFixed(1) + ' m: ya no se diluye a la mitad, revisar el ejemplo');
 });
-t('una fila condenada NO vota como vecina (el filtro no se muerde la cola)', () => {
+t('una fila condenada NO vota como vecina, y la que se queda entra REPUESTA', () => {
   // TR-08_1-002-E es buena (cero puntos marcados) y se descartaba porque la
   // mediana de su vecindario se apoyaba en su hermana TR-08_1-002-W, condenada
-  // dos líneas antes. TR-08_1-001-E, en cambio, sí está contaminada y su
-  // seguidor no tiene otra fila: ese tiene que quedarse SIN MEDIR.
+  // dos líneas antes: ése tiene que entrar.
+  //
+  // TR-08_1-001 tiene sus DOS filas contaminadas (las cuatro puntas, +36,6 m).
+  // Antes se tiraba entero y acababa RECONSTRUIDO DEL PLANO — perdiendo su
+  // posición y su largo, que son medida, para acabar colocado donde dice el
+  // layout y no donde está. Ahora se queda con su geometría MEDIDA y las dos
+  // cotas repuestas del terreno vecino, marcado ye=3. Lo que no puede pasar,
+  // ni antes ni ahora, es que entre con la cota contaminada: eso se comprueba
+  // contra la nube, no de palabra.
   const f = path.join(ROOT, 'sanjose_cotas.json');
   if (!fs.existsSync(f)) return;
   const C = JSON.parse(fs.readFileSync(f, 'utf-8'));
-  const tk = id => C.t.some(x => x && x.tk === id);
-  if (!tk('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
-  if (tk('TR-08_1-001')) throw new Error('TR-08_1-001 entra con su única fila contaminada (+36,6 m)');
+  const de = id => C.t.find(x => x && x.tk === id);
+  if (!de('TR-08_1-002')) throw new Error('TR-08_1-002 vuelve a perderse: tiene una fila buena (E), no puede quedarse sin medir');
+  const t1 = de('TR-08_1-001');
+  if (!t1) throw new Error('TR-08_1-001 se cae: su posición y su largo son MEDIDA, solo la cota se repone');
+  if (t1.est) throw new Error('TR-08_1-001 sale reconstruido del plano teniendo su geometría medida');
+  for (const g of t1.f) {
+    if (g.ye !== 3) throw new Error('TR-08_1-001 entra con una cota que no se declara repuesta (ye ' + g.ye + ')');
+    // y la cota repuesta es la del terreno de al lado, no la contaminada: sus
+    // vecinas de la misma línea están a menos de 5 m, no a +36,6
+    const cerca = C.t.filter(x => x && x !== t1).flatMap(x => x.f)
+      .filter(g2 => Math.abs(g2.x - g.x) < 20 && Math.abs((g2.n[0] + g2.n[1]) / 2 - (g.n[0] + g.n[1]) / 2) < 120)
+      .map(g2 => (g2.y[0] + g2.y[1]) / 2).sort((a, b) => a - b);
+    if (!cerca.length) continue;
+    const d = Math.abs((g.y[0] + g.y[1]) / 2 - cerca[cerca.length >> 1]);
+    if (d > 5) throw new Error('la cota repuesta de ' + (g.id || 'TR-08_1-001') + ' se aparta ' + d.toFixed(1) + ' m de su vecindario: eso es la contaminada');
+  }
 });
 t('la reclamación dice EXACTAMENTE lo mismo que el detector', () => {
   // reclama_referencia.py nació con su propia copia de la ventana (dy=3, dx=60)
@@ -2412,7 +2456,10 @@ console.log('v1.47 · los trackers sin levantar, reconstruidos del plano y decla
     // su geometría es la MEDIDA de la planta, no una invención: paso entre
     // vigas, largo de uno de los tipos que existen, y módulos coherentes
     const M = cotas.mod;
-    const pasos = dentro.filter(t2 => !t2.est).map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
+    // solo los que tienen SUS DOS vigas: el seguidor al que no le cabe la
+    // hermana sin pisar una viga medida se emite con una sola, y no da paso
+    const pasos = dentro.filter(t2 => !t2.est && t2.f.length === 2)
+      .map(t2 => Math.abs(t2.f[0].x - t2.f[1].x)).sort((a, b) => a - b);
     const paso = pasos[pasos.length >> 1];
     // el módulo es el de la planta y el largo cuadra con sus módulos; el número
     // de módulos NO tiene por qué ser uno de los levantados (en San José los
@@ -2514,9 +2561,15 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
       // v1.48: la pareja es de MESAS GEMELAS (la misma mitad en las dos vigas),
       // así que un tracker trae DOS: la del sur del morro y la del norte
       if (P.segPairs.length !== 2 * n) throw new Error(`${P.segPairs.length} parejas gemelas para ${n} trackers levantados (esperadas ${2 * n})`);
-      if (P.segDrive.length !== n) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers`);
+      // los seguidores de UNA sola viga (su hermana no cabe sin pisar una viga
+      // medida de otro seguidor) tambien se dibujan: dos mesas, sin eje. La
+      // planta los declara, asi que el numero no puede moverse en silencio.
+      const solo = cotas.n_solo || 0;
+      if (P.segDrive.length !== n + solo) throw new Error(`${P.segDrive.length} accionamientos para ${n} trackers de dos vigas y ${solo} de una`);
       const de4 = P.segDrive.filter(g => g.length === 4).length;
+      const de2 = P.segDrive.filter(g => g.length === 2).length;
       if (de4 !== n) throw new Error(`${de4} accionamientos de 4 mesas de ${n} (un bifila son cuatro mesas)`);
+      if (de2 !== solo) throw new Error(`${de2} accionamientos de 2 mesas para ${solo} seguidores de una viga`);
     });
   }
 }
@@ -2578,7 +2631,11 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
       const ejes = F.ejesPorMesa(P), west = F.westPorMesa(P);
       // v1.48: UN eje por TRACKER (no por pareja de mesas gemelas), y cruza por
       // el MORRO — el punto donde está el motor y donde la viga se articula
-      if (ejes.length !== P.segDrive.length) throw new Error(ejes.length + ' ejes para ' + P.segDrive.length + ' trackers');
+      // un eje une las DOS vigas de un seguidor: el que solo tiene una no
+      // lleva eje, y eso es lo que hay que ver — no un eje inventado hasta la
+      // viga del seguidor de al lado
+      const conPar = P.segDrive.filter(g => g.length === 4).length;
+      if (ejes.length !== conPar) throw new Error(ejes.length + ' ejes para ' + conPar + ' trackers de dos vigas (' + (P.segDrive.length - conPar) + ' de una viga, sin eje)');
       const real = new Set(P.segPairs.map(([[r1, k1], [r2, k2]]) => [r1, k1, r2, k2].join('|')));
       const conEje = new Set();
       for (const e of ejes) {
@@ -2598,7 +2655,9 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
       }
       const trkConEje = new Set(ejes.map(e => P.segTrk[e.r1][e.k1]));
       let sinEje = 0;
-      for (const g of P.segDrive) if (!trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
+      // un accionamiento de 2 mesas es un seguidor de UNA viga: no lleva eje,
+      // y exigirselo seria pedir un eje que une una viga consigo misma
+      for (const g of P.segDrive) if (g.length === 4 && !trkConEje.has(P.segTrk[g[0][0]][g[0][1]])) sinEje++;
       if (sinEje) throw new Error(sinEje + ' trackers con dos vigas pero sin eje');
       // y todas las mesas del tracker van al MISMO θ: el motor es uno
       for (const g of P.segDrive) {
@@ -2656,9 +2715,15 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
   const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
   const P = F.plantFromCotas(cotas, Infinity, 'all');
   t('sanjose: un tope estimado (ey) marca SOLO su mesa; la otra mitad sigue siendo medida', () => {
-    const conEy = [];
-    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f)
+    const conEy = [], dosEy = [];
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f) {
       if (f.ye === 1 || f.ye === 2) conEy.push(f);
+      // ye=3 en un tracker MEDIDO: sus cuatro puntas vinieron en otra
+      // referencia, se reponen las dos cotas del terreno vecino y se conserva
+      // la geometría medida. Esa fila marca sus DOS mesas, no una — y no es lo
+      // mismo que un tracker reconstruido del plano, que no tiene geometría.
+      else if (f.ye === 3) dosEy.push(f);
+    }
     if (conEy.length < 5) throw new Error('sin filas con punta repuesta (ye) en el fichero: el careo no prueba nada');
     let mesasEst = 0;
     for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
@@ -2671,8 +2736,10 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
     for (let r = 0; r < P.segEst.length; r++) for (let k = 0; k < P.segEst[r].length; k++)
       if (P.segEst[r][k] && trkEst.has(P.segTrk[r][k])) mesasDeTrkEst++;
     const soloEy = mesasEst - mesasDeTrkEst;
-    if (soloEy !== conEy.length)
-      throw new Error(`${conEy.length} filas con una punta repuesta pero ${soloEy} mesas marcadas (debe ser una por fila)`);
+    const esperadas = conEy.length + 2 * dosEy.length;
+    if (soloEy !== esperadas)
+      throw new Error(`${conEy.length} filas con UNA punta repuesta y ${dosEy.length} con las dos, ` +
+        `pero ${soloEy} mesas marcadas (esperadas ${esperadas}: una por punta repuesta)`);
   });
   t('MUTANTE: marcar la fila entera (o no marcar nada) rompe el careo', () => {
     const conEy = [];

@@ -148,6 +148,18 @@ def emite(planta='sanjose'):
         })
     filas.sort(key=lambda f: (f['caso'], f['X_utm']))
     dst = os.path.join(RAIZ, 'vigas_sin_enganchar_' + planta + '.csv')
+    if not filas:
+        # el caso bueno: con el reparto por el borde de la tirada (#626) San
+        # Jose se queda con UN punto suelto en toda la planta, que no da para
+        # una viga. Se dice, y se deja un CSV vacio para que nadie lea uno viejo.
+        with open(dst, 'w', newline='', encoding='utf-8-sig') as fh:
+            fh.write('caso;X_utm;Y_utm_centro;Y_utm_sur;Y_utm_norte;largo_m;n_puntos;tipo_medido;'
+                     'tracker_que_la_reclama;seria_su_viga;tipo_en_el_plano;filas_que_ya_tiene;dx_m;dn_m;'
+                     'pareja_a_6m_ya_asignada;sitio_en_su_linea;puntos\r\n')
+        print('%-8s ninguna viga levantada sin enganchar (los puntos sueltos no llegan a cuatro seguidos)'
+              % planta)
+        print('         -> %s (vacio)' % os.path.basename(dst))
+        return 0
     with open(dst, 'w', newline='', encoding='utf-8-sig') as fh:
         w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), delimiter=';')
         w.writeheader()
