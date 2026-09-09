@@ -199,7 +199,13 @@ for (const pl of PLANTAS) {
      diga el log: si el tiempo se va en `goto`, es la carga; si en la espera, es
      que la escena tarda en montarse; si en las comprobaciones, es el sondeo. */
   const t0 = Date.now(); const marca = (q) => console.log(`   [${pl.nom}] ${q}: ${((Date.now()-t0)/1000).toFixed(1)} s`);
-  await page.goto(BASE + '/terreno.html?' + pl.q, { waitUntil: 'load', timeout: 120000 });
+  /* `domcontentloaded`, NO `load`. Este banco ya tiene su propia condicion de
+     listo —el bucle de abajo espera a que existan `gwMasts` y `bosGroup`—, asi
+     que `load` era una segunda barrera, mas debil y mas lenta: espera a TODOS
+     los recursos de una pagina 3D pesada. En `main` se paso de los 120 s
+     cargando Ayora con su levantamiento y tumbo el CI.
+     La condicion de verdad es la de abajo, que ademas dice QUE espera. */
+  await page.goto(BASE + '/terreno.html?' + pl.q, { waitUntil: 'domcontentloaded', timeout: 120000 });
   marca('goto');
   let listo = false;
   for (let i = 0; i < 90 && !listo; i++) {
