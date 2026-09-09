@@ -796,6 +796,14 @@ def genera(planta):
                 # copia no tiene ni una punta medida. 1 = duplicada de su
                 # hermana (misma cota y mismo largo, x del layout).
                 'hm': int(f.get('hm') or 0),
+                # LOS PUNTOS QUE LO CAUSAN, CON SU DESVIO. Una cota repuesta o
+                # copiada tiene detras puntos concretos del levantamiento con la
+                # Z en otra referencia: [id, desvio_m] de cada uno, para que el
+                # globo de la escena diga lo mismo que el mapa y que la
+                # reclamacion. La copia (hm) lleva el id de la fila que se
+                # descarto, que es donde estan sus puntos.
+                'rp': [[int(q), float(d)] for q, d in pmal.get(f.get('id'), [])]
+                      if (f.get('rv1') or f.get('hm')) else [],
             })
         g = v[0]
         T.append({
