@@ -4382,11 +4382,19 @@ function update3D(){
     const vy=Math.max(20,R2*Math.sin(el)+15*Math.cos(el));
     sc2.left=-R2;sc2.right=R2;sc2.top=vy;sc2.bottom=-vy;
     const dLT=TD.sun.position.distanceTo(TD.sun.target.position);
-    // el margen en PROFUNDIDAD tiene que crecer con el radio: con 450 m fijos y
-    // un frustum de 1,4 km, media planta caía por delante del near y quedaba
-    // sin proyectar — el mismo agujero, por el otro lado
-    const marg=Math.max(450,R2*1.6);
-    sc2.near=Math.max(1,dLT-marg);sc2.far=dLT+marg;
+    // EL CUADRADO NEGRO ERA EL NEAR, NO EL ANCHO. Fuera del frustum a lo ancho
+    // three.js deja el fragmento ILUMINADO —no pinta sombra y ya está—, pero
+    // por DELANTE del near la comparación de profundidad da «tapado» y el suelo
+    // sale NEGRO. Con near = dLT − 450 y el sol a 925 m, todo lo que estuviera
+    // a menos de esa distancia de la luz caía en negro: el cuadrado que se veía
+    // en El Burgo. Y no bastaba con ensanchar el frustum, que solo lo curaba de
+    // rebote cuando el margen crecía tanto que el near se iba a 1.
+    //
+    // Así que en profundidad NO se recorta: el near se pega al 1 y el far cubre
+    // el sol más la planta entera con holgura. Recortar a lo ancho es gratis
+    // —lejos simplemente no hay sombra— pero recortar en profundidad pinta
+    // negro, y eso no se puede enseñar.
+    sc2.near=1;sc2.far=dLT+Math.max(600,(TD.R||140)*2.5);
     sc2.updateProjectionMatrix();
     const lmode=$('light3d')?$('light3d').value:'real';
     if(lmode==='tope'){
