@@ -4527,7 +4527,26 @@ function applyFresnel(){
   TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,tp[1]-t.rel*vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
   (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado // estación meteo: antena a 8 m (mástil 8,5 m)
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55})));
+  /* OPACIDAD .20, NO .55. En El Burgo son 215 enlaces y 154 salen «sin vision»
+     (rojo): a .55 se superponen hasta parecer bandas solidas que tapan la planta.
+     El grosor NO es la palanca —en WebGL `linewidth` se ignora y una linea es
+     siempre 1 px—, asi que lo gordo no era el trazo sino la ACUMULACION de
+     translucidos. Medido pintando la misma vista con la casilla apagada y
+     encendida y contando pixeles que cambian:
+
+         opacidad   huella   de ellos con cambio FUERTE
+           .55       4,17 %          2,02 %
+           .30       4,17 %          0,78 %
+           .20       3,69 %          0,38 %
+           .12       3,16 %          0,14 %      (ya casi no se leen)
+
+     Ese barrido llevaba ademas `depthWrite:false`, que aqui NO se pone. Medido
+     ya sobre este fichero, tal cual queda: huella 3,63 % y cambio fuerte 0,15 %.
+     O sea TRECE veces menos que .55, no cinco.
+
+     La huella apenas baja, porque las lineas pasan por donde pasan; lo que cae
+     es el cambio fuerte, que es la sensacion de «me tapan». */
+  linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.20})));
   updateFres(cl,pa,bl);
 }
 function updateFres(cl,pa,bl){var e=$('fresStat'),lg=$('fresLeg');if(!e)return;
