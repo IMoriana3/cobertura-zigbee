@@ -269,6 +269,16 @@ for (const pl of PLANTAS) {
   });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
+  /* LOS SHADERS, QUE NADIE ESCUCHABA. Este banco paga 200 s en el runner
+     compilando los programas de WebGL —`Jr` de three.min.js, medido— y hasta hoy
+     no comprobaba NADA con ellos: saboteando `shaderSource` para que NINGUN
+     shader compilase, el banco pasaba 31 de 31 y decia «sin errores de pagina».
+     El fallo no llega como error de pagina: three.js lo escribe por consola,
+     «THREE.WebGLProgram: shader error». Se escucha, y asi esos 200 s compran
+     algo. */
+  const errsGL = [];
+  page.on('console', m => { if (m.type() === 'error' && /shader error|WebGLProgram/i.test(m.text()))
+    errsGL.push(m.text().slice(0, 120).replace(/\s+/g, ' ')); });
   /* CRONOMETRO POR TRAMO. Este banco tarda 103 s aqui y entre 24 y mas de 45
      MINUTOS en el runner — un factor 20, cuando los demas van a 5. Dos
      hipotesis mias (la red, el tamaño de ventana) no lo explican: ninguna se
@@ -368,6 +378,8 @@ for (const pl of PLANTAS) {
   } catch (e) { }
 
   check(pl.nom + ': sin errores de página', errs.length === 0, errs.slice(0, 2).join(' | '));
+  check(pl.nom + ': los shaders del visor compilan', errsGL.length === 0,
+        errsGL.length + ' programa(s) fallaron, el primero: ' + (errsGL[0] || ''));
   check(pl.nom + ': el modelo viene de equipos.js', !!s.equipos, s.equipos);
 
   // --- el bosque llega entero (el fallo de `mP`) ---
