@@ -316,11 +316,25 @@ for (const pl of PLANTAS) {
       top: window.__largas.slice().sort((a, b2) => b2[1] - a[1]).slice(0, 6),
       f: window.__f, fMed: window.__f ? Math.round(window.__fTot / window.__f) : 0,
       fMax: Math.round(window.__fMax), reloj: Math.round(performance.now()), err: window.__obsErr || null,
+      /* Y A QUE ESPERA, que es la pregunta que queda. En el runner, montar la
+         escena de Ayora tarda 54 s y de esos solo 5,3 son tareas largas de JS:
+         el hilo esta LIBRE —el evaluate vacio contesta en 1,3 s— asi que esos
+         49 s no se calculan, se esperan. O es la red o son temporizadores, y
+         esto lo distingue. */
+      red: (() => { try {
+        const r = performance.getEntriesByType('resource');
+        const suma = Math.round(r.reduce((a2, e) => a2 + e.duration, 0));
+        const top = r.slice().sort((a2, b2) => b2.duration - a2.duration).slice(0, 4)
+          .map(e => [e.name.split('/').pop().split('?')[0].slice(0, 28), Math.round(e.duration)]);
+        return { n: r.length, suma, top };
+      } catch (e) { return null; } })(),
     }));
     console.log(`   [${pl.nom}] el hilo: ${h.n} tareas largas que suman ${(h.suma / 1000).toFixed(1)} s`
       + ` · ${h.f} frames (media ${h.fMed} ms, el peor ${h.fMax} ms) · reloj de la pagina ${(h.reloj / 1000).toFixed(1)} s`);
     console.log(`   [${pl.nom}] las mas largas [empieza s, dura ms]: `
       + JSON.stringify(h.top.map(([q, d]) => [+(q / 1000).toFixed(1), d])) + (h.err ? ` (observador: ${h.err})` : ''));
+    if (h.red) console.log(`   [${pl.nom}] la red: ${h.red.n} peticiones que suman ${(h.red.suma / 1000).toFixed(1)} s`
+      + ` · las mas lentas ${JSON.stringify(h.red.top)}`);
   } catch (e) { console.log(`   [${pl.nom}] el hilo: no se pudo preguntar (${String(e).split('\n')[0].slice(0, 80)})`); }
   const UMBRAL = Number(process.env.UMBRAL_PERFIL || 20) * 1000;
   if (perfil) try {
