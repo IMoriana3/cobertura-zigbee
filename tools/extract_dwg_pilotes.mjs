@@ -98,7 +98,7 @@ export function reticulaDesdeCirculos(trackers, circulos, opts = {}) {
     for (const e of ejes) {
       const dx = c.x - e.t.x, dn = c.n - e.t.n;
       const along = dx * e.ux + dn * e.un;        // a lo largo del tubo
-      const trans = dx * e.un - dn * e.ux;        // perpendicular (la otra viga del bifilo)
+      const trans = dx * e.un - dn * e.ux;        // perpendicular (la otra viga de la bifila)
       const at = Math.abs(trans);
       if (at > maxTrans || Math.abs(along) > e.half) continue;
       if (at < bt) { bt = at; best = e.t; ba = along; }

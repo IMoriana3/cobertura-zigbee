@@ -124,7 +124,7 @@ t('Σ día por string: en AUTO el backtracking iguala; en MANUAL la sombra separ
 const strdb = JSON.parse(fs.readFileSync(path.join(ROOT, 'elburgo_strings.json'), 'utf-8'));
 const layout = JSON.parse(fs.readFileSync(path.join(ROOT, 'elburgo_layout.json'), 'utf-8'));
 
-t('El Burgo: 823 strings → columnas E-O contiguas a ~6 m (el bifilo partido se funde)', () => {
+t('El Burgo: 823 strings → columnas E-O contiguas a ~6 m (la bifila partida se funde)', () => {
   const rows = S.elburgoRows(strdb, 3);
   const total = rows.reduce((a, r) => a + r.strs.length, 0);
   if (total !== strdb.count) throw new Error(`se pierden strings: ${total} ≠ ${strdb.count}`);
@@ -270,7 +270,7 @@ t('El Burgo es BIFILA: 45 unidades de dos vigas, θ ACOPLADO y motor solo en la 
   if (pares.length < 42) throw new Error('solo ' + pares.length + ' unidades bifila de ~45');
   for (const g of pares) {
     const d = xs[g[1]] - xs[g[0]];
-    if (Math.abs(d - 6) > 1.2) throw new Error('vigas de una unidad a ' + d.toFixed(2) + ' m (≠6): el emparejado no es el bifilo del layout');
+    if (Math.abs(d - 6) > 1.2) throw new Error('vigas de una unidad a ' + d.toFixed(2) + ' m (≠6): el emparejado no es la bifila del layout');
   }
   // θ común por unidad: con drive bifila, cada pareja comparte el θ EXACTO…
   const segs = S.elburgoSegs(rows, layout.trackers);

@@ -24,7 +24,7 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
 const layout = JSON.parse(readFileSync(path.join(RAIZ, 'elburgo_layout.json'), 'utf8'));
 const REJ = layout.pilotes.porTipo;
 const TRK = layout.trackers;
-const FILAZ = 3.0;                        // El Burgo es BIFILO: dos vigas a ±3 m del eje
+const FILAZ = 3.0;                        // El Burgo es BIFILA: dos vigas a ±3 m del eje
 
 /* Círculos como los dibujaría el plano: por cada seguidor, los apoyos de su tipo
    en LAS DOS vigas. Con `ruido` se les mete dispersión de replanteo. */
@@ -56,9 +56,9 @@ const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
         informe.tipos.medio.apoyos === 4,
         Object.entries(informe.tipos).map(([k, v]) => k + ':' + v.apoyos).join(' '));
   check('sin círculos huérfanos', informe.huerfanos === 0, informe.huerfanos);
-  /* El BIFILO no debe duplicar la retícula: las dos vigas comparten las mismas X
+  /* La BIFILA no debe duplicar la retícula: las dos vigas comparten las mismas X
      a lo largo del tubo, así que colapsan en las mismas posiciones. */
-  check('las dos vigas del bifilo colapsan en las mismas X, no las duplican',
+  check('las dos vigas de la bifila colapsan en las mismas X, no las duplican',
         informe.tipos.interior.circulos === informe.tipos.interior.seguidores * 8 * 2 &&
         informe.tipos.interior.porPosicion.every(n => n === informe.tipos.interior.seguidores * 2),
         JSON.stringify(informe.tipos.interior));
