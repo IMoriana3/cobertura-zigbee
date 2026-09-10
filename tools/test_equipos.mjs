@@ -393,8 +393,33 @@ for (const pl of PLANTAS) {
   marca('ctx.close');
 }
 
+/* Y como no se espera al cierre, hay que llevarse el Chromium a mano: medido,
+   sobrevive al proceso —seguia vivo 80 s despues de salir, y no iba a morirse—,
+   asi que en una maquina de trabajo se acumularia uno por ejecucion. En CI no
+   se notaba porque el runner limpia huerfanos al acabar el job.
+   Se recorre /proc porque es donde corre esto (CI y contenedor Linux); en otro
+   sistema no hay /proc, no se toca nada, y el peor caso es el de siempre. */
+function criasDe(pid) {
+  let padres;
+  try { padres = fs.readdirSync('/proc').filter(d => /^\d+$/.test(d)).map(d => {
+    try { const st = fs.readFileSync(`/proc/${d}/stat`, 'utf8');
+      /* `pid (comm) estado ppid ...`, y `comm` puede llevar espacios y parentesis:
+         se corta por el ULTIMO `)`, que es el unico sitio fiable. */
+      return [+d, +st.slice(st.lastIndexOf(')') + 2).split(' ')[1]]; } catch (e) { return null; }
+  }).filter(Boolean); } catch (e) { return []; }          // sin /proc no se hace nada
+  const out = [], cola = [pid];
+  while (cola.length) { const q = cola.shift();
+    for (const [hijo, padre] of padres) if (padre === q && hijo !== pid) { out.push(hijo); cola.push(hijo); } }
+  return out;
+}
+
 const tCierre = Date.now();
+const crias = criasDe(process.pid);
 await conPrisa(browser.close(), 5000, 'browser.close');
-console.log(`   browser.close: +${desde(tCierre)} s  (total ${desde(T0)} s)`);
+/* De dentro hacia fuera, para que nadie reparente a un huerfano por el camino. */
+let matados = 0;
+for (const pid of crias.reverse()) { try { process.kill(pid, 'SIGKILL'); matados++; } catch (e) { } }
+console.log(`   browser.close: +${desde(tCierre)} s  (total ${desde(T0)} s)` +
+            (matados ? `  [${matados} proceso(s) del navegador rematados]` : ''));
 console.log('\n' + ok + ' OK, ' + ko + ' FAIL');
 process.exit(ko ? 1 : 0);
