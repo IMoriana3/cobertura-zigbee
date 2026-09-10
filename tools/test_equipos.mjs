@@ -75,6 +75,13 @@ if (SOLO && !TODAS.some(p => p.nom.toLowerCase().replace(/\s+/g, '') === SOLO.to
 const PLANTAS = SOLO ? TODAS.filter(p => p.nom.toLowerCase().replace(/\s+/g, '') === SOLO.toLowerCase()) : TODAS;
 
 const SONDA = `(() => {
+  /* La sonda se cronometra a si misma. Hace falta porque en CI tardo 261,7 s y
+     AQUI su trabajo propio son 1 y 5 milisegundos (careado en las dos plantas
+     recontando pieza por pieza). Con un solo numero desde fuera no se distingue
+     "la sonda es cara" de "la sonda hace cola detras de una pagina ocupada", y
+     esa diferencia decide donde hay que mirar. Aqui dentro no puede haber
+     acentos graves: esto es una plantilla. */
+  const _t0 = performance.now();
   const D = Equipos.DIMS;
   /* Caja envolvente SOLO de mallas: la etiqueta del equipo es un sprite y
      setFromObject la mete dentro, así que el alto salía con 1,7 m de aire. */
@@ -123,6 +130,7 @@ const SONDA = `(() => {
     return { mallas: n, bb: bb(r.group) };
   };
   return {
+    _ms: Math.round(performance.now() - _t0),
     equipos: Equipos.VERSION, piezas,
     hsu: modelo('hsu'), ncu: modelo('ncu'),
     /* La retícula de apoyos vivía escrita AQUÍ y el simulador de cobertura RF,
@@ -256,8 +264,15 @@ for (const pl of PLANTAS) {
   if (!listo) { check(pl.nom + ': la escena se monta', false, 'no llegó a montarse'); await page.close(); continue; }
   marca('escena montada');
   await page.waitForTimeout(1200);
+  /* UN EVALUATE VACIO ANTES DE LA SONDA. No comprueba nada: mide la COLA. Si
+     este tarda tanto como la sonda, el tiempo no es de la sonda sino de la
+     pagina, que sigue ocupada; si tarda nada y la sonda tarda, es la sonda.
+     Esa distincion es la que faltaba para saber donde mirar, y sale gratis. */
+  const tVacio = Date.now();
+  await page.evaluate(() => 1);
+  marca(`evaluate VACIO (la cola)`);
   const s = await page.evaluate(SONDA);
-  marca('sonda');
+  marca(`sonda (de los cuales ${s._ms / 1000} s son suyos, el resto es cola)`);
 
   check(pl.nom + ': sin errores de página', errs.length === 0, errs.slice(0, 2).join(' | '));
   check(pl.nom + ': el modelo viene de equipos.js', !!s.equipos, s.equipos);
