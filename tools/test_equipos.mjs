@@ -177,6 +177,19 @@ const PNG = Buffer.from(
 
 const browser = await chromium.launch({ executablePath: EXEC,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+/* CRONOMETRO GLOBAL. El de cada planta arrancaba y moria dentro del bucle, y
+   por eso NO vio lo que se cuenta abajo: el tiempo no estaba en ningun tramo
+   que midiera, estaba DESPUES del ultimo. */
+const T0 = Date.now();
+const desde = t => ((Date.now() - t) / 1000).toFixed(1);
+/* Un cierre que tarda mas de la cuenta NO para el banco: se dice y se sigue. Si
+   algun dia deja de tardar, el aviso desaparece solo y nadie tiene que acordarse
+   de quitar nada. */
+const conPrisa = (prom, ms, que) => Promise.race([
+  prom.then(() => true).catch(() => true),
+  new Promise(r => setTimeout(() => { console.log(`   (${que} no cerro en ${ms / 1000} s; se sigue)`); r(false); }, ms)),
+]);
+
 for (const pl of PLANTAS) {
   /* Una pestaña NUEVA por planta: la escena anterior sigue renderizando y con
      una sola pestaña la segunda carga se queda sin tiempo. */
@@ -186,6 +199,14 @@ for (const pl of PLANTAS) {
      rasteriza SwiftShader por software, donde el coste va con el area. 900x620
      son nueve veces mas pixeles que los 320x200 que usa test_suelo, que tarda
      28 s. Nada de lo que se comprueba aqui depende del tamaño de la ventana. */
+  /* El cronometro arranca AQUI, no despues de montar el contexto. Montarlo no
+     es gratis: con el contexto anterior todavia cerrandose por detras, abrir el
+     siguiente costaba 75 s que NO caian dentro de ninguna marca. Un hueco entre
+     marcas es justo lo que escondio media hora de cierre durante toda una
+     noche; no se deja ninguno. */
+  let t0 = Date.now(), tPrev = t0;
+  const marca = (q) => { const d = desde(tPrev); tPrev = Date.now();
+    console.log(`   [${pl.nom}] ${q}: +${d} s  (acumulado ${desde(t0)} s)`); };
   const ctx = await browser.newContext({ viewport: { width: 320, height: 200 } });
   /* MODO OFFLINE, como los otros ocho bancos que tocan terreno.html.
      Cortar la red no bastaba: la pagina montaba igualmente los mosaicos de
@@ -214,7 +235,11 @@ for (const pl of PLANTAS) {
      confirma midiendo en local. Asi que en vez de seguir adivinando, que lo
      diga el log: si el tiempo se va en `goto`, es la carga; si en la espera, es
      que la escena tarda en montarse; si en las comprobaciones, es el sondeo. */
-  const t0 = Date.now(); const marca = (q) => console.log(`   [${pl.nom}] ${q}: ${((Date.now()-t0)/1000).toFixed(1)} s`);
+  /* Se imprime el ACUMULADO y, sobre todo, LO QUE HA COSTADO ESTE TRAMO. El
+     acumulado a solas fue lo que me despisto: un hueco de media hora entre dos
+     marcas se lee de un vistazo en la columna de tramos, y en la de acumulados
+     hay que restar a mano. */
+  marca('contexto');
   /* `domcontentloaded`, NO `load`. Este banco ya tiene su propia condicion de
      listo —el bucle de abajo espera a que existan `gwMasts` y `bosGroup`—, asi
      que `load` era una segunda barrera, mas debil y mas lenta: espera a TODOS
@@ -232,6 +257,7 @@ for (const pl of PLANTAS) {
   marca('escena montada');
   await page.waitForTimeout(1200);
   const s = await page.evaluate(SONDA);
+  marca('sonda');
 
   check(pl.nom + ': sin errores de página', errs.length === 0, errs.slice(0, 2).join(' | '));
   check(pl.nom + ': el modelo viene de equipos.js', !!s.equipos, s.equipos);
@@ -317,7 +343,20 @@ for (const pl of PLANTAS) {
           cabeza > 8.4 && cabeza < 8.7, cabeza.toFixed(3) + ' (base ' + s.hsu.bb.min[1].toFixed(3) + ')');
     check(pl.nom + ': los látigos de la HSU, en su brazo a 6,50 m', near(s.antHsu, 6.50, 1e-9), s.antHsu);
   }
+  /* AQUI FALTABA LA MARCA, y aqui estaba todo el tiempo. En CI, con el banco ya
+     terminado y sus comprobaciones impresas:
+
+         El Burgo   ultima comprobacion 01:57:17 · fin del proceso 02:32:17
+         Ayora      ultima comprobacion 05:58:15 · fin del proceso 06:13:47
+
+     35 minutos y 15 minutos, CERRANDO. El trabajo entero —cargar, montar la
+     escena, sondear y comprobar— cabe en menos de un minuto en los dos casos.
+     El cronometro no lo vio porque su ultima marca era «escena montada»: medi
+     los tres tramos donde yo suponia que estaba el tiempo, y estaba despues del
+     ultimo que medi. */
+  marca('comprobaciones');
   await page.close();
+  marca('page.close');
   /* CERRAR LA PESTAÑA ANTES DE ABRIR LA SIGUIENTE.
      Esto es lo que hacia que el banco tardara CUARENTA MINUTOS en CI. El
      cronometro lo señalo sin lugar a dudas: entre la ultima comprobacion de El
@@ -330,9 +369,57 @@ for (const pl of PLANTAS) {
      otra pestaña en vez de cerrar la primera.
      Aqui apenas se nota (2 s de 98) porque esta maquina tiene aire de sobra;
      en un runner de dos nucleos con SwiftShader, es todo. */
-  await ctx.close();
+  /* NO se espera a `ctx.close()`. Ahi estaba TODO el tiempo de este banco:
+
+         El Burgo   ctx.close  96,0 s de 107 totales
+         Ayora      ctx.close 157,9 s de 162
+
+     El trabajo son 15 segundos entre las dos plantas; el resto es cerrar. Y no
+     se arregla soltando el WebGL a mano: medido, `renderer.dispose()` mas
+     `loseContext()` deja el `ctx.close` en 0,2 s... pero el propio `dispose`
+     tarda 83 s y 172. El coste no desaparece, se mueve. La pagina sigue
+     trabajando un par de minutos despues de que el banco la de por lista, y
+     cualquier cosa que espere al hilo principal paga esa cuenta.
+
+     Lo que hay que dejar de hacer es ESPERARLA. La pestaña si se cierra —eso es
+     instantaneo y es lo que evita que una planta ahogue a la siguiente—, pero
+     al contexto se le da un plazo corto y se sigue. Al terminar, el navegador
+     se cierra con el mismo plazo y el proceso sale; Playwright se lleva por
+     delante el Chromium hijo.
+
+     Esto NO comprueba menos: las comprobaciones ya han terminado y estan
+     impresas cuando se llega aqui. */
+  await conPrisa(ctx.close(), 5000, `ctx.close de ${pl.nom}`);
+  marca('ctx.close');
 }
 
-await browser.close();
+/* Y como no se espera al cierre, hay que llevarse el Chromium a mano: medido,
+   sobrevive al proceso —seguia vivo 80 s despues de salir, y no iba a morirse—,
+   asi que en una maquina de trabajo se acumularia uno por ejecucion. En CI no
+   se notaba porque el runner limpia huerfanos al acabar el job.
+   Se recorre /proc porque es donde corre esto (CI y contenedor Linux); en otro
+   sistema no hay /proc, no se toca nada, y el peor caso es el de siempre. */
+function criasDe(pid) {
+  let padres;
+  try { padres = fs.readdirSync('/proc').filter(d => /^\d+$/.test(d)).map(d => {
+    try { const st = fs.readFileSync(`/proc/${d}/stat`, 'utf8');
+      /* `pid (comm) estado ppid ...`, y `comm` puede llevar espacios y parentesis:
+         se corta por el ULTIMO `)`, que es el unico sitio fiable. */
+      return [+d, +st.slice(st.lastIndexOf(')') + 2).split(' ')[1]]; } catch (e) { return null; }
+  }).filter(Boolean); } catch (e) { return []; }          // sin /proc no se hace nada
+  const out = [], cola = [pid];
+  while (cola.length) { const q = cola.shift();
+    for (const [hijo, padre] of padres) if (padre === q && hijo !== pid) { out.push(hijo); cola.push(hijo); } }
+  return out;
+}
+
+const tCierre = Date.now();
+const crias = criasDe(process.pid);
+await conPrisa(browser.close(), 5000, 'browser.close');
+/* De dentro hacia fuera, para que nadie reparente a un huerfano por el camino. */
+let matados = 0;
+for (const pid of crias.reverse()) { try { process.kill(pid, 'SIGKILL'); matados++; } catch (e) { } }
+console.log(`   browser.close: +${desde(tCierre)} s  (total ${desde(T0)} s)` +
+            (matados ? `  [${matados} proceso(s) del navegador rematados]` : ''));
 console.log('\n' + ok + ' OK, ' + ko + ' FAIL');
 process.exit(ko ? 1 : 0);
