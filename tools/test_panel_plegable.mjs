@@ -14,21 +14,31 @@ const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swift
 let malo = 0;
 const di = (ok, t) => { if (!ok) malo++; console.log((ok ? '  ok    ' : '  FALLA ') + t); };
 
-/* POR QUÉ NO SE USA waitForSelector. Su sondeo corre DENTRO de la página. En CI
-   se plantó a los 120 s diciendo, en su propio log:
+/* NADA DE ESTE BANCO ESPERA NI PULSA CON PLAYWRIGHT. Su maquinaria corre DENTRO
+   de la página, y en esta página se cuelga. Dos veces, en su propio log:
 
-       waiting for locator('.panel') to be visible
-         locator resolved to visible <div class="panel">…</div>
+       waitForSelector: Timeout 120000ms exceeded
+         - locator resolved to visible <div class="panel">…</div>
 
-   Encontró el panel, dijo que lo veía, y aun así agotó el plazo. NO he logrado
-   reproducirlo aquí ni frenando la CPU cuarenta veces, así que no sé cuál es el
-   mecanismo y no voy a fingir que lo sé. Lo que sí está medido, con ese freno y
-   esta misma página: preguntarlo desde node —un `evaluate` por vuelta, y la
-   decisión fuera de la página— contesta en 1,1 s donde el sondeo de dentro
-   tarda 7,6, y no puede quedarse esperando algo que ya ha visto.
+       page.click: Timeout 30000ms exceeded
+         - element is visible, enabled and stable
+         - scrolling into view if needed              <-- y ahí se queda
 
-   El arreglo anterior fue subir el plazo de 30 s a 120. Se ha vuelto a plantar
-   en 120: el plazo no era el problema. */
+   Las dos encontraron lo que buscaban, las dos dijeron que lo veían, y las dos
+   agotaron el plazo después de decirlo. NO he logrado reproducirlo aquí ni
+   frenando la CPU cuarenta veces con CDP, así que no sé cuál es el mecanismo y
+   no voy a fingir que lo sé.
+
+   Lo que sí sé es dónde NO está: no está en el plazo. El arreglo de la primera
+   fue subirlo de 30 s a 120, y se volvió a plantar en 120. Y no está en el
+   elemento, que las dos lo encuentran.
+
+   Así que cambia QUIÉN decide, que es lo único que queda: la pregunta se hace
+   desde node, un `evaluate` por vuelta, y la respuesta es un booleano. Medido
+   con la CPU frenada 40 veces en esta misma página, el sondeo de dentro tarda
+   7,6 s y este 1,1. Y sobre todo: no puede quedarse esperando algo que ya ha
+   visto. Es lo que arregló los veinte `page.click` del repo hermano, que
+   fallaban con este mismo síntoma. */
 async function esperaPanel(pg, tope = ESPERA) {
   const t0 = Date.now();
   for (;;) {
@@ -45,6 +55,17 @@ async function esperaPanel(pg, tope = ESPERA) {
     if (Date.now() - t0 > tope) throw new Error(`.panel no llegó a verse en ${tope / 1000} s`);
     await new Promise(r => setTimeout(r, 100));
   }
+}
+
+/* Y por lo mismo, el clic. `page.click` se colgó en «scrolling into view if
+   needed» con la cabecera ya visible, estable y pulsable. Esto es UNA tarea
+   encolada en la página: no sondea, no negocia, no espera a nada. */
+async function pulsa(pg, sel) {
+  await pg.evaluate(s => {
+    const e = document.querySelector(s);
+    if (!e) throw new Error('no existe el elemento ' + JSON.stringify(s));
+    e.click();
+  }, sel);
 }
 
 async function abre(ctx) {
@@ -79,12 +100,12 @@ console.log('=== móvil 390×844, primera visita (sin nada guardado) ===');
   di(m.visibles === 1, 'plegado solo deja la cabecera');
   di(m.tgl === '☰', 'el botón invita a abrir (☰)');
 
-  await pg.click('#panelHdr');
+  await pulsa(pg, '#panelHdr');
   const a = await mide(pg);
   console.log(`  abierto ${a.w}×${a.h} px, ${a.visibles} de ${a.hijos} hijos visibles`);
   di(!a.plegado && a.visibles > 1, 'al abrirlo vuelve el contenido');
   di(a.h > m.h && a.w > m.w, 'abierto es mayor que plegado');
-  await pg.click('#panelHdr'); await pg.click('#panelHdr');
+  await pulsa(pg, '#panelHdr'); await pulsa(pg, '#panelHdr');
   di((await mide(pg)).huella === a.huella, 'plegar y abrir deja EXACTAMENTE las mismas filas visibles');
   di(!errs.length, 'sin errores de consola' + (errs.length ? ': ' + errs[0] : ''));
 
@@ -106,10 +127,10 @@ console.log('=== escritorio 1440×900, primera visita ===');
   console.log(`  panel ${m.w}×${m.h} px, ${m.visibles} de ${m.hijos} hijos visibles`);
   di(!m.plegado, 'en escritorio arranca abierto, como siempre');
   di(m.visibles > 20, 'con su contenido dentro (' + m.visibles + ' filas)');
-  await pg.click('#panelHdr');
+  await pulsa(pg, '#panelHdr');
   const c = await mide(pg);
   di(c.plegado && c.visibles === 1, 'y también se puede plegar a mano');
-  await pg.click('#panelHdr');
+  await pulsa(pg, '#panelHdr');
   di((await mide(pg)).huella === m.huella, 'y al volver a abrirlo queda igual que estaba');
   di(!errs.length, 'sin errores de consola' + (errs.length ? ': ' + errs[0] : ''));
   await ctx.close();
