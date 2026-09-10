@@ -48,7 +48,17 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
 
 /* Dos perfiles distintos a propósito: El Burgo lleva PTZ y módulo FV en la HSU;
    Ayora no lleva módulo (`hsu.pv:false` en su layout) y trae 10 estaciones. */
-const PLANTAS = [
+/* UNA PLANTA POR EJECUCION, si se pide por argumento.
+   Este banco monta DOS escenas 3D pesadas y en los runners compartidos su
+   tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en la
+   siguiente, con el mismo codigo. La variacion no esta aqui, esta en que
+   maquina toque — y con las dos plantas en un solo job, un runner malo se
+   lleva por delante la comprobacion de las dos.
+   Partido, cada planta corre en su propio runner: la mala suerte de una no
+   tumba a la otra, y el rojo dice cual. Sin argumento corre las dos, que es lo
+   que uno quiere en su maquina. Un nombre que no existe aborta, en vez de
+   pasar en verde sin comprobar nada. */
+const TODAS = [
   /* `rejilla`: si esa planta TIENE retícula de apoyos medida en su layout. El
      Burgo la tiene (Tierras.dwg); Ayora no. Va aquí y no se deduce de la página:
      preguntándole a la página, quitarle la retícula a El Burgo pasaba en verde
@@ -57,6 +67,12 @@ const PLANTAS = [
   { q: 'planta=elburgo',                       nom: 'El Burgo', pv: true,  ptz: true,  rejilla: true },
   { q: 'planta=ayora&cotas=levantamiento',     nom: 'Ayora',    pv: false, ptz: false, rejilla: false },
 ];
+const SOLO = process.argv[2];
+if (SOLO && !TODAS.some(p => p.nom.toLowerCase().replace(/\s+/g, '') === SOLO.toLowerCase())) {
+  console.error(`planta desconocida: ${JSON.stringify(SOLO)}\nlas que hay: ${TODAS.map(p => p.nom).join(' · ')} (o nada para las dos)`);
+  process.exit(2);
+}
+const PLANTAS = SOLO ? TODAS.filter(p => p.nom.toLowerCase().replace(/\s+/g, '') === SOLO.toLowerCase()) : TODAS;
 
 const SONDA = `(() => {
   const D = Equipos.DIMS;

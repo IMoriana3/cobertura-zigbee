@@ -165,22 +165,30 @@ jobs:
   # ── los que abren el visor: uno por job, para que el rojo diga cuál ───────
   navegador:
     timeout-minutes: 45
-    name: visor · ${{ matrix.banco }}
+    name: visor · ${{ matrix.nombre || matrix.banco }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false          # si cae el del terreno se quiere saber igual si pasa el del huso
       matrix:
-        banco:
-          - test_terreno_plantas.mjs
-          - test_relieve_plantas.mjs
-          - test_relieve_bos.mjs
-          - test_suelo.mjs
-          - test_equipos.mjs
-          - test_telemetria.mjs
-          - test_bt3d_rot.mjs
-          - test_huso_plantas.mjs
-          - test_panel_plegable.mjs
-          - test_produccion_3d.mjs   # se levanta su propio servidor
+        include:
+          - { banco: test_terreno_plantas.mjs }
+          - { banco: test_relieve_plantas.mjs }
+          - { banco: test_relieve_bos.mjs }
+          - { banco: test_suelo.mjs }
+          - { banco: test_telemetria.mjs }
+          - { banco: test_bt3d_rot.mjs }
+          - { banco: test_huso_plantas.mjs }
+          - { banco: test_panel_plegable.mjs }
+          - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
+          # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
+          # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
+          # la siguiente, con el mismo codigo. La variacion no esta en el banco,
+          # esta en que maquina toque — y con las dos plantas juntas, un runner
+          # malo se llevaba por delante la comprobacion de las dos. Partido, cada
+          # planta corre en su propio runner y el rojo dice cual.
+          # Aqui: El Burgo 95 s · Ayora 118 s.
+          - { banco: test_equipos.mjs, arg: elburgo, nombre: 'test_equipos.mjs · El Burgo' }
+          - { banco: test_equipos.mjs, arg: ayora,   nombre: 'test_equipos.mjs · Ayora' }
     env:
       PUERTO: 8124              # el convenio de todos los bancos; un servidor sirve a todos
     steps:
@@ -209,7 +217,9 @@ jobs:
           curl -sf -o /dev/null http://127.0.0.1:$PUERTO/terreno.html
 
       - name: ${{ matrix.banco }}
-        run: node tools/${{ matrix.banco }}
+        # `matrix.arg` va vacio en los bancos que no se parten. Una planta que no
+        # exista NO pasa en verde: el banco aborta con la lista de las que hay.
+        run: node tools/${{ matrix.banco }} ${{ matrix.arg }}
 
   # ── LA PUERTA ─────────────────────────────────────────────────────────────
   # Un solo check que resume a los trece, para que la proteccion de rama tenga
