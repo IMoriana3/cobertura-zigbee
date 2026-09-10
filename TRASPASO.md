@@ -311,7 +311,7 @@ contra el listado del cliente (`Coordenadas_01C`, UTM 31N):
 Y queda comprobado que **la mesa va CENTRADA en el punto del listado** (residuo transversal de 1 cm
 en los 24). Longitudinalmente el plano la corre hasta 2,1 m (mediana 0,2); no se ha reproducido.
 
-### Bífilo y biela
+### Bífila y biela
 
 Las plantas de dos filas se dibujan como **dos bandas de `cuerda` a ±filaZ**, no como una mesa
 maciza: de la envolvente de 8,4 m solo hay módulos en 2 × 2,382 y el resto es el pasillo, que es por
@@ -332,7 +332,7 @@ que no está confirmado de qué lado cae.
 
 ### Dónde está arreglado
 
-- `siting/index.html` — ✅ cotas medidas, bífilo, biela, punto de TCU, obstáculos RF por filas reales
+- `siting/index.html` — ✅ cotas medidas, bífila, biela, punto de TCU, obstáculos RF por filas reales
 - `cobertura-zigbee/plano.html` (Layout 2D) — ✅ v2.1, cotas derivadas del layout, giro del DWG, las 6 plantas
 - `cobertura-zigbee/index.html` (Cobertura) — ✅ mapa de planta con las mismas cotas, las 6 plantas
 - `cobertura-zigbee/terreno.html` (3D) — ✅ ya estaba bien

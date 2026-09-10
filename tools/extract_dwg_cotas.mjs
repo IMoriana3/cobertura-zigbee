@@ -11,7 +11,7 @@
  *   · el rectángulo del módulo (cuerda x ancho a lo largo del tubo)
  *   · el hueco entre módulos consecutivos, uno a uno
  *   · el hueco del motor, que es el único grande de la columna
- *   · el paso entre las dos filas del bífilo
+ *   · el paso entre las dos filas de la bífila
  *   · los módulos por ala
  *
  * MODELO, que sale de la propia medida y cuadra al milímetro en las dos plantas:
@@ -70,7 +70,7 @@ function mide(b) {
   const a0 = m => ejeY ? m.y0 : m.x0, a1 = m => ejeY ? m.y1 : m.x1;   // a lo largo del tubo
   const t0 = m => ejeY ? m.x0 : m.y0;                                  // a lo ancho (columna)
   const largoMod = ejeY ? mh : mw, cuerda = ejeY ? mw : mh;
-  /* columnas = filas del bífilo */
+  /* columnas = filas de la bífila */
   const cols = {};
   for (const m of mods) { const k = t0(m).toFixed(4); (cols[k] = cols[k] || []).push(m); }
   const claves = Object.keys(cols).sort((a, b2) => +a - +b2);
