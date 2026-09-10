@@ -164,7 +164,12 @@ jobs:
 
   # ── los que abren el visor: uno por job, para que el rojo diga cuál ───────
   navegador:
-    timeout-minutes: 45
+    # El tope NO es una previsión de lo que tarda: es el freno para un banco
+    # colgado. Se pone por entrada porque `test_equipos` no juega en la misma
+    # liga —35 min 17 s medidos en un runner malo, contra 95 s aquí— y un tope
+    # ajustado a los demás lo que corta es una ejecución LENTA, no una colgada:
+    # eso pone `main` en rojo sin que haya ningún defecto que arreglar.
+    timeout-minutes: ${{ matrix.tope || 45 }}
     name: visor · ${{ matrix.nombre || matrix.banco }}
     runs-on: ubuntu-latest
     strategy:
@@ -186,9 +191,14 @@ jobs:
           # esta en que maquina toque — y con las dos plantas juntas, un runner
           # malo se llevaba por delante la comprobacion de las dos. Partido, cada
           # planta corre en su propio runner y el rojo dice cual.
-          # Aqui: El Burgo 95 s · Ayora 118 s.
-          - { banco: test_equipos.mjs, arg: elburgo, nombre: 'test_equipos.mjs · El Burgo' }
-          - { banco: test_equipos.mjs, arg: ayora,   nombre: 'test_equipos.mjs · Ayora' }
+          #
+          #   aqui        El Burgo   95 s  ·  Ayora  118 s
+          #   en CI       El Burgo  35:17  ·  Ayora   13:09
+          #
+          # De ahi el `tope: 90`: con 45 el peor de los dos pasó por 9 minutos,
+          # y ese margen no cubre una maquina peor todavia.
+          - { banco: test_equipos.mjs, arg: elburgo, nombre: 'test_equipos.mjs · El Burgo', tope: 90 }
+          - { banco: test_equipos.mjs, arg: ayora,   nombre: 'test_equipos.mjs · Ayora',    tope: 90 }
     env:
       PUERTO: 8124              # el convenio de todos los bancos; un servidor sirve a todos
     steps:
