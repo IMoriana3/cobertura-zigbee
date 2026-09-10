@@ -98,6 +98,16 @@ const PLANTAS = {
       '1P58': { largo: 67.312, ancho: 2.382, desde: -33.656, hasta: 33.656, mods: 58, mono: true },
       '1P29': { largo: 33.306, ancho: 2.382, desde: -16.653, hasta: 16.653, mods: 29, mono: true },
     },
+    /* EL MÓDULO no está en el DWG: lo da el proyectista (2026-09-10, «Astroenergy 630 W»). Se
+       escribe «Astronergy», que es como ya viaja esta marca en la cartera (Dicayagua, CHSM66N-685);
+       si fuese otro fabricante, se corrige aquí. El modelo exacto NO se pone: dio la potencia, no
+       la referencia, y ponerle un código sería inventarlo.
+       CUADRA CON LA MEDIDA: 630 W en los 2,382 x 1,134 m medidos en el propio DWG son 233 W/m²,
+       o sea un 23,3 % de rendimiento — lo normal en un módulo de esa talla y esa potencia. Si no
+       cuadrara, sería señal de que el módulo no es el de este plano. */
+    modulo: { marca: 'Astronergy', wp: 630, ancho: 1.134, alto: 2.382,
+              fuente: 'potencia dada por el proyectista; medida del módulo, del propio DWG',
+              nota: 'dado como «Astroenergy 630 W»; sin referencia de modelo' },
     bifilo: { filas: 2, pasoFilas: 5,
                nota: 'Bífilo confirmado por el proyectista (2026-09-10). Cada entrada de `trackers` '
                    + 'es UNA FILA (un tubo): 3.314 filas = 1.657 seguidores. El emparejamiento fila '
@@ -340,6 +350,11 @@ const L = {
      quien lea el layout cuenta 3.314 seguidores donde hay 1.657. No se llama `montaje` porque
      ese campo ya es la ficha de montaje de pvlib y la escribe otra herramienta. */
   ...(C.bifilo ? { bifilo: C.bifilo } : {}),
+  /* el módulo y la potencia que sale de él: módulos x Wp, con las dos partes a la vista para que
+     se pueda rehacer la cuenta sin fiarse del resultado */
+  ...(C.modulo ? { modulo: C.modulo,
+                   pdc_kwp: +((TRK.reduce((a, t) => a + (((C.tipos || {})[t.tipo] || {}).mods || 0), 0)
+                               * C.modulo.wp) / 1000).toFixed(3) } : {}),
   crs: C.crs, clat: +clat.toFixed(7), clon: +clon.toFixed(7), cE: r3(cE), cN: r3(cN),
   mods: C.mods, filaZ: C.mesa.filaZ,
   /* `tipos` con la envolvente MEDIDA por bloque. Lo lee calcTDIM del Layout 2D para dibujar cada
