@@ -225,6 +225,27 @@ for (const pl of PLANTAS) {
      lo que aqui se comprueba —equipos, estaciones, retícula de apoyos— no
      depende de la ortofoto ni del DEM. */
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
+  /* QUIEN OCUPA EL HILO. Medido en CI, un `page.evaluate(() => 1)` —devolver el
+     numero uno— tarda 211 s en Ayora. La pagina esta ocupada; falta saber en
+     que. Esto lo pregunta desde dentro y no cuesta nada: un observador de
+     tareas largas y un contador de frames.
+     Aqui no se reproduce: ni frenando la CPU veinte veces con CDP paso de 8 s.
+     Asi que lo contesta el runner, que es donde ocurre. */
+  await ctx.addInitScript(() => {
+    window.__largas = [];
+    try {
+      new PerformanceObserver(l => { for (const e of l.getEntries())
+        window.__largas.push([Math.round(e.startTime), Math.round(e.duration)]); })
+        .observe({ entryTypes: ['longtask'] });
+    } catch (e) { window.__obsErr = String(e).slice(0, 80); }
+    window.__f = 0; window.__fTot = 0; window.__fMax = 0;
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = cb => raf(t => {
+      const a = performance.now();
+      try { cb(t); } finally { const d = performance.now() - a;
+        window.__f++; window.__fTot += d; if (d > window.__fMax) window.__fMax = d; }
+    });
+  });
   const page = await ctx.newPage();
   page.setDefaultTimeout(120000);
   /* Las teselas de satélite salen a internet; en CI no hay salida y el cargador
@@ -254,6 +275,17 @@ for (const pl of PLANTAS) {
      los recursos de una pagina 3D pesada. En `main` se paso de los 120 s
      cargando Ayora con su levantamiento y tumbo el CI.
      La condicion de verdad es la de abajo, que ademas dice QUE espera. */
+  /* PERFILADOR DE CPU, siempre encendido y CALLADO salvo que haga falta. Se
+     imprime solo si la cola pasa del umbral, que es justo el caso raro que hay
+     que cazar y que aqui no se reproduce: en una maquina sana no dice nada y no
+     estorba. Muestrea cada 10 ms, que para tareas de minutos sobra. */
+  let perfil = null;
+  try {
+    perfil = await ctx.newCDPSession(page);
+    await perfil.send('Profiler.enable');
+    await perfil.send('Profiler.setSamplingInterval', { interval: 10000 });
+    await perfil.send('Profiler.start');
+  } catch (e) { perfil = null; }
   await page.goto(BASE + '/terreno.html?' + pl.q, { waitUntil: 'domcontentloaded', timeout: 120000 });
   marca('goto');
   let listo = false;
@@ -270,9 +302,59 @@ for (const pl of PLANTAS) {
      Esa distincion es la que faltaba para saber donde mirar, y sale gratis. */
   const tVacio = Date.now();
   await page.evaluate(() => 1);
+  const colaMs = Date.now() - tVacio;
   marca(`evaluate VACIO (la cola)`);
   const s = await page.evaluate(SONDA);
   marca(`sonda (de los cuales ${s._ms / 1000} s son suyos, el resto es cola)`);
+  /* El parte de quien ocupaba el hilo. Se pide DESPUES de las medidas para no
+     falsearlas, y se imprime aunque no haya nada raro: un banco que solo habla
+     cuando falla no deja aprender nada del que pasa. */
+  try {
+    const h = await page.evaluate(() => ({
+      n: window.__largas.length,
+      suma: Math.round(window.__largas.reduce((a, e) => a + e[1], 0)),
+      top: window.__largas.slice().sort((a, b2) => b2[1] - a[1]).slice(0, 6),
+      f: window.__f, fMed: window.__f ? Math.round(window.__fTot / window.__f) : 0,
+      fMax: Math.round(window.__fMax), reloj: Math.round(performance.now()), err: window.__obsErr || null,
+      /* Y A QUE ESPERA, que es la pregunta que queda. En el runner, montar la
+         escena de Ayora tarda 54 s y de esos solo 5,3 son tareas largas de JS:
+         el hilo esta LIBRE —el evaluate vacio contesta en 1,3 s— asi que esos
+         49 s no se calculan, se esperan. O es la red o son temporizadores, y
+         esto lo distingue. */
+      red: (() => { try {
+        const r = performance.getEntriesByType('resource');
+        const suma = Math.round(r.reduce((a2, e) => a2 + e.duration, 0));
+        const top = r.slice().sort((a2, b2) => b2.duration - a2.duration).slice(0, 4)
+          .map(e => [e.name.split('/').pop().split('?')[0].slice(0, 28), Math.round(e.duration)]);
+        return { n: r.length, suma, top };
+      } catch (e) { return null; } })(),
+    }));
+    console.log(`   [${pl.nom}] el hilo: ${h.n} tareas largas que suman ${(h.suma / 1000).toFixed(1)} s`
+      + ` · ${h.f} frames (media ${h.fMed} ms, el peor ${h.fMax} ms) · reloj de la pagina ${(h.reloj / 1000).toFixed(1)} s`);
+    console.log(`   [${pl.nom}] las mas largas [empieza s, dura ms]: `
+      + JSON.stringify(h.top.map(([q, d]) => [+(q / 1000).toFixed(1), d])) + (h.err ? ` (observador: ${h.err})` : ''));
+    if (h.red) console.log(`   [${pl.nom}] la red: ${h.red.n} peticiones que suman ${(h.red.suma / 1000).toFixed(1)} s`
+      + ` · las mas lentas ${JSON.stringify(h.red.top)}`);
+  } catch (e) { console.log(`   [${pl.nom}] el hilo: no se pudo preguntar (${String(e).split('\n')[0].slice(0, 80)})`); }
+  const UMBRAL = Number(process.env.UMBRAL_PERFIL || 20) * 1000;
+  if (perfil) try {
+    const { profile } = await perfil.send('Profiler.stop');
+    if (colaMs >= UMBRAL) {
+      const cuenta = new Map();
+      for (const id of profile.samples || []) cuenta.set(id, (cuenta.get(id) || 0) + 1);
+      const total = (profile.samples || []).length || 1;
+      const dur = (profile.endTime - profile.startTime) / 1e6;
+      const nodos = new Map(profile.nodes.map(n => [n.id, n]));
+      console.log(`   [${pl.nom}] la cola fueron ${(colaMs / 1000).toFixed(0)} s, asi que va el perfil`
+        + ` (${dur.toFixed(0)} s, ${total} muestras). «(program)» es codigo NATIVO del navegador, no de la pagina:`);
+      [...cuenta.entries()].sort((a, b2) => b2[1] - a[1]).slice(0, 8).forEach(([id, n]) => {
+        const f = (nodos.get(id) || {}).callFrame || {};
+        const u = (f.url || '').replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+        console.log(`      ${(n / total * 100).toFixed(1).padStart(5)} %  ${(n / total * dur).toFixed(0).padStart(4)} s  `
+          + `${f.functionName || '(anonima)'}  ${u ? u + ':' + (f.lineNumber + 1) : '(nativo)'}`);
+      });
+    }
+  } catch (e) { }
 
   check(pl.nom + ': sin errores de página', errs.length === 0, errs.slice(0, 2).join(' | '));
   check(pl.nom + ': el modelo viene de equipos.js', !!s.equipos, s.equipos);
