@@ -185,6 +185,7 @@ jobs:
           - { banco: test_huso_plantas.mjs }
           - { banco: test_panel_plegable.mjs }
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
+          - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en

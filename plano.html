@@ -45,7 +45,8 @@
   <div class="row"><label><input type="checkbox" id="cbElec"> ⚡ Color eléctrico (NCU)</label></div>
   <div class="row"><label title="Pile reveal: cuánto se hinca cada pilote (del suelo al tubo), calculado del relieve real. Rojo = más hincado. Como en el 3D y en S.P.A.C.E."><input type="checkbox" id="cbPile"> ⛰️ Pile reveal (hincado)</label></div>
   <div class="row"><label title="Capa de inversores (DC): colorea por inversor, dibuja el cableado string→inversor y el símbolo del DWG. Clic en un inversor → ficha (SG350HX · MPPT · BoM). El Burgo (por id de seguidor) y Fayón (campo inv del layout, del P06)."><input type="checkbox" id="cbInv"> 🔌 Inversor (DC)</label></div>
-  <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda</span></div>
+  <div class="row" style="margin-top:6px"><button class="btn" id="fit">◎ Encajar</button><button class="btn" id="zOut" title="Alejar" style="padding:5px 11px">−</button><button class="btn" id="zIn" title="Acercar" style="padding:5px 11px">＋</button></div>
+  <div class="row" style="margin:-2px 0 0"><span style="color:var(--tx2);font-size:11.5px">arrastra · rueda · pinza</span></div>
   <div class="leg" id="legStatic" style="margin-top:7px"><span class="dot" style="background:#3a78d6"></span>seguidor &nbsp; <span class="dot" style="background:#36D399;border-radius:50%"></span>NCU &nbsp; <span class="dot" style="background:#e3c149;border-radius:50%"></span>meteo</div>
   <div class="leg" id="legElec" style="margin-top:7px;display:none;max-height:210px;overflow:auto"></div>
   <div class="leg" id="legPile" style="margin-top:7px;display:none"></div>
@@ -131,10 +132,16 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayor
   /* CATANIA (Sicilia) — EN OFERTA, sin firmar, y de BÍFILAS. Sale del DWG de altura de
      torque tube: 3.314 filas (2.796 de 58 módulos y 518 de 29), 177.190 módulos, paso de 5,00 m y
      giro 0 en todas —filas norte-sur—. OJO AL RECUENTO: cada INSERT del plano es UNA FILA, un tubo,
-     así que 3.314 filas son 1.657 seguidores. Qué fila va con cuál NO está en este DWG (ver la nota
-     `bifila` del layout), así que se dibujan fila a fila en vez de emparejarlas a ojo. Sin NCU ni
-     comunicaciones: ese plano no es de comunicaciones y no se inventa lo que no trae. */
-  catania:{file:'catania_layout.json',title:'Catania · oferta'}, custom:{file:null,title:'Planta nueva'} };
+     así que 3.314 filas son 1.657 seguidores. Qué fila va con cuál sale de la capa «PVcase Multiple
+     Rows Center Line» del propio DWG y está MEDIDO, no supuesto: 2.680 filas llevan `par` (1.340
+     parejas) y las 634 que esa capa no determina se pintan aparte. Sin NCU ni comunicaciones: ese
+     plano no es de comunicaciones y no se inventa lo que no trae. */
+  catania:{file:'catania_layout.json',title:'Catania · oferta',
+    /* `sin3d` = esta planta NO existe en terreno.html. Sin él, la pestaña de la escena 3D llevaba
+       a `terreno.html?planta=catania`, que allí no está en el registro y CAÍA EN EL BURGO sin
+       avisar: se salía de Catania creyendo seguir en ella. */
+    sin3d:'Catania no tiene escena 3D: su DWG no trae curvas de nivel, así que no hay terreno que levantar. Solo Layout 2D.'},
+  custom:{file:null,title:'Planta nueva'} };
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
@@ -467,14 +474,61 @@ function fit(){
 }
 
 // interacción
-var drag=null,_downX=0,_downY=0;
-cv.addEventListener('pointerdown',function(e){drag={sx:e.clientX,sy:e.clientY,vx:view.x,vn:view.n};_downX=e.clientX;_downY=e.clientY;cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
+/* AMPLIAR EN TÁCTIL. La página se declara `user-scalable=no` y el lienzo `touch-action:none`, que es
+   lo que hay que hacer para que el gesto llegue aquí en vez de mover la interfaz entera... pero aquí
+   solo estaba escrita la RUEDA. Resultado: con ratón se ampliaba y en tableta o móvil no había forma
+   —ni la pinza del navegador, desactivada, ni la del programa, inexistente—. El 3D no lo sufría
+   porque OrbitControls trae la pinza puesta. Se añade con los mismos punteros que ya se usan para
+   arrastrar, más dos botones ＋/− para quien no tenga ni rueda ni pantalla táctil. */
+var drag=null,_downX=0,_downY=0,PTR={},nPTR=0,pinza=null;
+
+function zoomA(k,cx,cy){          // deja la escala en k manteniendo quieto el punto (cx,cy) de pantalla
+  var wx=s2wx(cx),wn=s2wn(cy);
+  view.scale=Math.max(0.02,Math.min(20,k));
+  view.x=wx-(cx-W/2)/view.scale;view.n=wn+(cy-H/2)/view.scale;
+  draw();
+}
+function dosDedos(){              // distancia y punto medio entre los dos punteros vivos
+  var a=[],k;for(k in PTR)a.push(PTR[k]);
+  return {d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),cx:(a[0].x+a[1].x)/2,cy:(a[0].y+a[1].y)/2};
+}
+function agarra(x,y){drag={sx:x,sy:y,vx:view.x,vn:view.n};cv.classList.add('drag');}
+
+cv.addEventListener('pointerdown',function(e){
+  if(!PTR[e.pointerId]){PTR[e.pointerId]={x:e.clientX,y:e.clientY};nPTR++;}
+  /* La pinza se ancla al punto del MUNDO que había bajo los dedos al empezar, no al punto de
+     pantalla de cada momento. Los dos dedos no llegan en el mismo evento —el navegador manda uno
+     por puntero—, así que con el punto medio vivo el plano se iba escapando un poco en cada paso
+     intermedio: medido, 13,9 m de deriva en un gesto que no debía mover nada. */
+  if(nPTR===2){drag=null;cv.classList.remove('drag');var m=dosDedos();
+    pinza={d:m.d,s:view.scale,wx:s2wx(m.cx),wn:s2wn(m.cy)};return;}
+  if(nPTR>2)return;
+  _downX=e.clientX;_downY=e.clientY;agarra(e.clientX,e.clientY);cv.setPointerCapture(e.pointerId);
+});
 cv.addEventListener('pointermove',function(e){
+  if(PTR[e.pointerId]){PTR[e.pointerId].x=e.clientX;PTR[e.pointerId].y=e.clientY;}
+  if(nPTR>=2){                    // pinza: la escala va con la razón de distancias desde que empezó
+    if(pinza&&nPTR===2){var m=dosDedos();
+      if(m.d>0&&pinza.d>0){
+        view.scale=Math.max(0.02,Math.min(20,pinza.s*m.d/pinza.d));
+        view.x=pinza.wx-(m.cx-W/2)/view.scale;view.n=pinza.wn+(m.cy-H/2)/view.scale;
+        draw();
+      }}
+    return;
+  }
   if(drag){view.x=drag.vx-(e.clientX-drag.sx)/view.scale;view.n=drag.vn+(e.clientY-drag.sy)/view.scale;draw();return;}
   hover(e);
 });
-cv.addEventListener('pointerup',function(e){drag=null;cv.classList.remove('drag');});
-cv.addEventListener('pointercancel',function(){drag=null;cv.classList.remove('drag');});
+function suelta(e){
+  if(PTR[e.pointerId]){delete PTR[e.pointerId];nPTR--;}
+  if(nPTR<2)pinza=null;
+  /* Al levantar UN dedo de la pinza queda el otro apoyado: si no se reengancha el arrastre desde
+     donde está AHORA, el plano pega un salto con el siguiente movimiento. */
+  if(nPTR===1){var k,p=null;for(k in PTR)p=PTR[k];if(p)agarra(p.x,p.y);}
+  if(nPTR<=0){nPTR=0;PTR={};drag=null;cv.classList.remove('drag');}
+}
+cv.addEventListener('pointerup',suelta);
+cv.addEventListener('pointercancel',suelta);
 cv.addEventListener('click',function(e){   // modo inversor: clic (sin arrastrar) en un inversor o seguidor → ficha
   if(!$('cbInv').checked||!hasInv()||!L)return;
   if(Math.hypot(e.clientX-_downX,e.clientY-_downY)>6)return;   // fue un arrastre, no un clic
@@ -484,10 +538,7 @@ cv.addEventListener('click',function(e){   // modo inversor: clic (sin arrastrar
   if(best)openFicha(best); else closeFicha();
 });
 cv.addEventListener('wheel',function(e){e.preventDefault();
-  var wx=s2wx(e.clientX),wn=s2wn(e.clientY);   // mundo bajo el cursor
-  var f=Math.exp(-e.deltaY*0.0014);view.scale=Math.max(0.02,Math.min(20,view.scale*f));
-  view.x=wx-(e.clientX-W/2)/view.scale;view.n=wn+(e.clientY-H/2)/view.scale;   // mantener el punto bajo el cursor
-  draw();
+  zoomA(view.scale*Math.exp(-e.deltaY*0.0014),e.clientX,e.clientY);   // mantener el punto bajo el cursor
 },{passive:false});
 function hover(e){
   if(!L){return;}
@@ -514,6 +565,9 @@ $('cbElec').onchange=function(){ if(this.checked){$('cbPile').checked=false;$('c
 $('cbPile').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbInv').checked=false;closeFicha();ensureDem();} syncLayerLegends();draw(); };
 $('cbInv').onchange=function(){ if(this.checked){$('cbElec').checked=false;$('cbPile').checked=false;} else closeFicha(); syncLayerLegends();draw(); };
 $('fit').onclick=fit;
+/* Los botones amplían por el CENTRO del lienzo, que es el punto que el que mira tiene delante. */
+$('zIn').onclick =function(){zoomA(view.scale*1.4,W/2,H/2);};
+$('zOut').onclick=function(){zoomA(view.scale/1.4,W/2,H/2);};
 /* El desplegable se construye desde PLANTS. Estaba escrito a mano con tres opciones, así que Fayón,
    Bagnarelli y Páramo cargaban bien por ?planta= pero el selector salía EN BLANCO (value sin option)
    y no había forma de saltar a ellas desde el 2D. */
@@ -615,10 +669,16 @@ addEventListener('DOMContentLoaded', function(){
     if(v.t!=='Layout 2D')e.setAttribute('data-cob','1');   // pestañas de COBERTURA: se retiran luego si la planta no tiene radio (aquí aún no hay layout)
     w.appendChild(e);
   });
-  var t3=chip('Escena 3D \u2197',true);
-  t3.href='terreno.html'+q;
-  t3.title='Terreno y estructuras en 3D, con la capa de cobertura apagada.';
-  t3.style.cssText+='border:1px solid #2c3a49;color:#9fb2c4;margin-left:8px';
+  /* terreno.html tiene SU PROPIO registro de plantas y la que no est\u00e9 en \u00e9l no da error: cae en
+     El Burgo. Esta pesta\u00f1a llevaba ah\u00ed siempre, as\u00ed que desde Catania se sal\u00eda a otra planta
+     creyendo seguir en la misma. Si el registro de aqu\u00ed declara `sin3d`, la pesta\u00f1a se apaga con
+     el motivo escrito, que es lo que hay. */
+  var razon3d=(PLANTS[pl]&&PLANTS[pl].sin3d)||'';
+  var t3=chip('Escena 3D \u2197',!razon3d);
+  t3.style.cssText+= razon3d ? 'border:1px dashed #2c3a49;color:#59616c;cursor:not-allowed;margin-left:8px'
+                             : 'border:1px solid #2c3a49;color:#9fb2c4;margin-left:8px';
+  if(razon3d) t3.title=razon3d;
+  else{ t3.href='terreno.html'+q; t3.title='Terreno y estructuras en 3D, con la capa de cobertura apagada.'; }
   w.appendChild(t3);
 
   if(hueco && hueco.parentNode===h) h.insertBefore(w,hueco);
