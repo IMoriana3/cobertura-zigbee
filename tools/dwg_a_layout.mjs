@@ -52,16 +52,23 @@ const PLANTAS = {
      HSU, ni Power Stations, ni repetidores, ni vallado de obra. Todos esos campos van VACÍOS y se
      dice; no se rellenan con nada.
 
-     LOS SEGUIDORES son los INSERT de las capas SO.01_TRX1 y SO.01_TRX2, cuyos bloques nombran la
-     talla: «1P58@55DEG F TR ID*» (58 módulos por columna) y «1P29@55DEG F TR ID*» (29). Son 2.796
-     y 518 = 3.314 filas, 177.190 módulos. Giro 0 en todas: filas N-S. El paso entre filas contiguas
-     mide 5,00 m uniforme (medido: 13 de 15 saltos en una banda de 16 filas).
+     LOS SEGUIDORES son BÍFILOS (confirmado por el proyectista, 2026-09-10), y cada INSERT de las
+     capas SO.01_TRX1 y SO.01_TRX2 es UNA FILA —un tubo—, no un seguidor entero. Su bloque nombra
+     la talla: «1P58@55DEG F TR ID*» (58 módulos) y «1P29@55DEG F TR ID*» (29). Son 2.796 y 518 =
+     3.314 filas y 177.190 módulos, o sea 1.657 seguidores bífilos. Giro 0 en todas: filas N-S. El
+     paso entre filas contiguas mide 5,00 m uniforme (13 de 15 saltos en una banda de 16 filas), y
+     es también la separación entre los dos tubos de un bífilo: por eso `filaZ` va a 2,5.
 
-     LO QUE NO SE RESUELVE CON ESTE PLANO, y por eso se declara en vez de inventarse: las capas
-     FS.0x_TRXx (1.568 INSERT de «TRX01 2TTx58» y «29-500-2382x1134», con variantes _+500 y _+1000)
-     NO caen encima de las filas —la mediana de distancia a la fila más próxima es 22,5 m— así que
-     su relación con ellas no sale de aquí. Son la cota de altura de tubo, que es de lo que va el
-     plano. Se cuentan y se dicen, y nada más.
+     QUÉ FILA VA CON CUÁL NO ESTÁ EN ESTE PLANO, y por eso se guarda fila a fila en vez de
+     publicarse un emparejamiento inventado. Se intentó por tres caminos y ninguno cierra:
+       · por el ID del bloque (ID1..ID6, que vienen en parejas de cuenta exacta: 565/565, 350/350,
+         483/483): 423 de 565 filas se quedan sin pareja;
+       · por geometría, la fila de 5 m al lado con la Y más próxima: 152 filas sueltas y 13 parejas
+         de talla distinta (una de 58 con una de 29), que no puede ser;
+       · por las capas FS.0x_TRXx, que SÍ son las estructuras bífilas («TRX01 2TTx58», una cada
+         10 m): solo explican el 25,3 % de las filas. Son la cota de altura de tubo —de lo que va
+         este plano— y no cubren el campo entero.
+     Con el DWG de comunicaciones o el de strings sale solo; con este, no.
 
      EL RECINTO es «00 - Recinzione» (7 anillos, 157,08 ha). «PVcase PV Area» son las 23 áreas de
      implantación (138,09 ha) y viajan aparte: no son un vallado. */
@@ -84,10 +91,17 @@ const PLANTAS = {
        geometría, así que el largo es del modelo, no de la cinta métrica. El motor cae en el centro
        en las dos (alas iguales), así que desde/hasta son simétricos. */
     largo: { '1P58': 67.312, '1P29': 33.306 }, largoDerivado: ['1P29'],
+    /* `mono: true` es cómo se DIBUJA —una sola banda—, y es lo correcto: cada entrada es un tubo.
+       No quiere decir que la planta sea monofila: es bífila, y lo que falta es qué tubo va con
+       cuál, no el hecho. */
     tipos: {
       '1P58': { largo: 67.312, ancho: 2.382, desde: -33.656, hasta: 33.656, mods: 58, mono: true },
       '1P29': { largo: 33.306, ancho: 2.382, desde: -16.653, hasta: 16.653, mods: 29, mono: true },
     },
+    bifilo: { filas: 2, pasoFilas: 5,
+               nota: 'Bífilo confirmado por el proyectista (2026-09-10). Cada entrada de `trackers` '
+                   + 'es UNA FILA (un tubo): 3.314 filas = 1.657 seguidores. El emparejamiento fila '
+                   + 'a fila NO está en este DWG y no se inventa.' },
   },
   panbianco: {
     title: 'Panbianco 25004.2', num: '25004.2', pais: 'Italia',
@@ -322,6 +336,10 @@ const L = {
   /* `estado` solo viaja si la ficha lo declara: una planta EN OFERTA no es lo mismo que una
      firmada, y quien lea el layout tiene que poder distinguirlo sin ir a preguntar. */
   ...(C.estado ? { estado: C.estado } : {}),
+  /* `bifilo` cuando cada entrada de `trackers` es UNA FILA de un seguidor de dos: sin esto,
+     quien lea el layout cuenta 3.314 seguidores donde hay 1.657. No se llama `montaje` porque
+     ese campo ya es la ficha de montaje de pvlib y la escribe otra herramienta. */
+  ...(C.bifilo ? { bifilo: C.bifilo } : {}),
   crs: C.crs, clat: +clat.toFixed(7), clon: +clon.toFixed(7), cE: r3(cE), cN: r3(cN),
   mods: C.mods, filaZ: C.mesa.filaZ,
   /* `tipos` con la envolvente MEDIDA por bloque. Lo lee calcTDIM del Layout 2D para dibujar cada
