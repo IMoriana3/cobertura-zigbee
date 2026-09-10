@@ -7,17 +7,45 @@
 import { chromium } from 'playwright-core';
 import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
-// El Burgo tarda en construirse, y por eso su goto se da 120 s. El
-// waitForSelector que viene detras se quedaba en los 30 s por defecto —el
-// segundo, ademas, sin ponerlo—, asi que en un runner lento la pagina llegaba
-// pero fuera de plazo: el propio log de CI dice «locator resolved to visible»
-// junto al timeout. No se comprueba menos, se le da el mismo plazo que a la
-// carga de la que depende.
+// El Burgo tarda en construirse, y por eso su goto se da 120 s.
 const ESPERA = 120000;
 const MOVIL = { width: 390, height: 844 };          // iPhone 14 en vertical
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 let malo = 0;
 const di = (ok, t) => { if (!ok) malo++; console.log((ok ? '  ok    ' : '  FALLA ') + t); };
+
+/* POR QUÉ NO SE USA waitForSelector. Su sondeo corre DENTRO de la página. En CI
+   se plantó a los 120 s diciendo, en su propio log:
+
+       waiting for locator('.panel') to be visible
+         locator resolved to visible <div class="panel">…</div>
+
+   Encontró el panel, dijo que lo veía, y aun así agotó el plazo. NO he logrado
+   reproducirlo aquí ni frenando la CPU cuarenta veces, así que no sé cuál es el
+   mecanismo y no voy a fingir que lo sé. Lo que sí está medido, con ese freno y
+   esta misma página: preguntarlo desde node —un `evaluate` por vuelta, y la
+   decisión fuera de la página— contesta en 1,1 s donde el sondeo de dentro
+   tarda 7,6, y no puede quedarse esperando algo que ya ha visto.
+
+   El arreglo anterior fue subir el plazo de 30 s a 120. Se ha vuelto a plantar
+   en 120: el plazo no era el problema. */
+async function esperaPanel(pg, tope = ESPERA) {
+  const t0 = Date.now();
+  for (;;) {
+    let hay = false;
+    try {
+      hay = await pg.evaluate(() => {
+        const p = document.querySelector('.panel');
+        if (!p) return false;
+        const r = p.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(p).visibility !== 'hidden';
+      });
+    } catch (e) { /* la página está navegando; se vuelve a preguntar */ }
+    if (hay) return;
+    if (Date.now() - t0 > tope) throw new Error(`.panel no llegó a verse en ${tope / 1000} s`);
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
 
 async function abre(ctx) {
   const pg = await ctx.newPage();
@@ -25,7 +53,7 @@ async function abre(ctx) {
   pg.on('pageerror', e => errs.push(String(e).slice(0, 140)));
   pg.on('console', m => { if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errs.push(m.text().slice(0, 140)); });
   await pg.goto(`http://localhost:${PUERTO}/terreno.html?planta=elburgo`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await pg.waitForSelector('.panel', { timeout: ESPERA });
+  await esperaPanel(pg);
   return { pg, errs };
 }
 const mide = pg => pg.evaluate(() => {
@@ -65,7 +93,7 @@ console.log('=== móvil 390×844, primera visita (sin nada guardado) ===');
   di(g === '0', 'guarda la elección (abierto = 0)');
   const p2 = await ctx.newPage();
   await p2.goto(`http://localhost:${PUERTO}/terreno.html?planta=elburgo`, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await p2.waitForSelector('.panel', { timeout: ESPERA });
+  await esperaPanel(p2);
   di(!(await mide(p2)).plegado, 'al volver sigue abierto, como se dejó');
   await ctx.close();
 }
