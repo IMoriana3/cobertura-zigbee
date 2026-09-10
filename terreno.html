@@ -4537,11 +4537,15 @@ function applyFresnel(){
          opacidad   huella   de ellos con cambio FUERTE
            .55       4,17 %          2,02 %
            .30       4,17 %          0,78 %
-           .20       3,69 %          0,38 %      <- aqui
+           .20       3,69 %          0,38 %
            .12       3,16 %          0,14 %      (ya casi no se leen)
 
+     Ese barrido llevaba ademas `depthWrite:false`, que aqui NO se pone. Medido
+     ya sobre este fichero, tal cual queda: huella 3,63 % y cambio fuerte 0,15 %.
+     O sea TRECE veces menos que .55, no cinco.
+
      La huella apenas baja, porque las lineas pasan por donde pasan; lo que cae
-     cinco veces es el cambio fuerte, que es la sensacion de «me tapan». */
+     es el cambio fuerte, que es la sensacion de «me tapan». */
   linkGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.20})));
   updateFres(cl,pa,bl);
 }
