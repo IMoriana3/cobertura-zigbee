@@ -250,6 +250,17 @@ for (const pl of PLANTAS) {
   page.setDefaultTimeout(120000);
   /* Las teselas de satélite salen a internet; en CI no hay salida y el cargador
      se quedaría esperando. Se sirven en blanco: no entran en ninguna comprobación. */
+  /* EL MODELO DE LA TCU NO SE DESCARGA. `tcu.glb` son 4,4 MB y en el runner
+     tardo 50,058 s el solo —lo dijo el parte de red de este mismo banco, y son
+     casi todos los 50,5 s que costaba «montar la escena»—.
+     Este banco no mira la TCU: ni la nombra. Cuenta la HSU y la NCU por
+     GEOMETRIA (BoxGeometry, CylinderGeometry...), y las mallas que vienen de un
+     .glb son BufferGeometry sin `parameters`, asi que nunca entraron en ninguna
+     cuenta. Y la pagina sabe vivir sin el: `loadTCU` tiene su rama de error
+     —`TCUGLB=null`— que es justo lo que ya hace hoy en San Jose, donde no se
+     carga por peso. Se corta la peticion y se sigue; no se deja de comprobar
+     nada. */
+  await page.route('**/tcu.glb', route => route.abort());
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, route => {
     const u = route.request().url();
     if (/\.(png|jpg|jpeg|webp)|GetTile|MapServer|wmts/i.test(u))
