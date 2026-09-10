@@ -91,6 +91,8 @@ const PLANTAS = {
        geometría, así que el largo es del modelo, no de la cinta métrica. El motor cae en el centro
        en las dos (alas iguales), así que desde/hasta son simétricos. */
     largo: { '1P58': 67.312, '1P29': 33.306 }, largoDerivado: ['1P29'],
+    /* la capa que dice qué tubo va con cuál (ver pareaTubos) */
+    pareaCon: 'PVcase Multiple Rows Center Line', pasoFilas: 5,
     /* `mono: true` es cómo se DIBUJA —una sola banda—, y es lo correcto: cada entrada es un tubo.
        No quiere decir que la planta sea monofila: es bífila, y lo que falta es qué tubo va con
        cuál, no el hecho. */
@@ -109,9 +111,10 @@ const PLANTAS = {
               fuente: 'potencia dada por el proyectista; medida del módulo, del propio DWG',
               nota: 'dado como «Astroenergy 630 W»; sin referencia de modelo' },
     bifila: { filas: 2, pasoFilas: 5,
-               nota: 'Bífila confirmado por el proyectista (2026-09-10). Cada entrada de `trackers` '
-                   + 'es UNA FILA (un tubo): 3.314 filas = 1.657 seguidores. El emparejamiento fila '
-                   + 'a fila NO está en este DWG y no se inventa.' },
+               nota: 'Bífila confirmada por el proyectista (2026-09-10). Cada entrada de `trackers` '
+                   + 'es UNA FILA (un tubo): 3.314 filas = 1.657 seguidores. El campo `par` de cada '
+                   + 'fila dice con cuál va, MEDIDO de la capa «PVcase Multiple Rows Center Line» '
+                   + 'del propio DWG; las filas sin `par` son las que ese plano no determina.' },
   },
   panbianco: {
     title: 'Panbianco 25004.2', num: '25004.2', pais: 'Italia',
@@ -201,6 +204,85 @@ for (const e of G) {
 }
 console.log(`  seguidores ${TRK.length}  (` + Object.entries(TRK.reduce((a, t) => (a[t.tipo] = (a[t.tipo] || 0) + 1, a), {})).map(([k, v]) => k + '×' + v).join(', ') + ')');
 if (!TRK.length) { console.error('  sin seguidores: revisa las capas'); process.exit(1); }
+
+/* ---------- EMPAREJAR LOS DOS TUBOS DE CADA BÍFILA ----------------------------------------
+   Cuando el plano dibuja UNA FILA por INSERT, saber qué fila va con cuál no es cosmético: sin
+   ello se cuentan el doble de seguidores y no hay a quién colgarle el motor.
+
+   NO SE ADIVINA. La capa `PVcase Multiple Rows Center Line` es la línea que une los dos tubos
+   de un seguidor (confirmado por el proyectista, 2026-09-10): segmentos de dos vértices, de
+   5,00 m —el paso entre filas— y ancho 0. Cada segmento ELIGE una pareja de filas contiguas;
+   no se le pide más que eso.
+
+   Y COMO NO CUBRE EL CAMPO ENTERO (1.712 segmentos para 1.657 seguidores, pero repartidos), se
+   usan en dos pasos:
+     1) cada segmento resuelve la pareja que tiene debajo → parejas SEGURAS;
+     2) las filas forman CADENAS al paso de 5,00 m, y en una cadena el emparejamiento solo tiene
+        dos fases posibles. Cada pareja segura fija la fase de SU cadena entera.
+   La coherencia es la prueba: si dos parejas seguras de la misma cadena pidieran fases
+   distintas, el modelo estaría mal y se aborta. Medido en Catania: 1.956 evidencias sobre 228
+   cadenas y CERO incoherencias.
+
+   Lo que queda sin fase —cadenas sin ningún segmento encima— NO se empareja: se cuenta y se
+   dice. Antes que rellenar el 19 % a ojo, se deja el hueco marcado. */
+function pareaTubos(cfg, ents, TRK) {
+  const CL = ents.filter(e => e.layer === cfg.pareaCon && /POLYLINE/.test(e.type))
+    .map(e => (e.vertices || e.points || []).map(v => [+v.x.toFixed(2), +v.y.toFixed(2)]))
+    .filter(v => v.length === 2 && Math.abs(v[0][1] - v[1][1]) < 0.05)
+    .map(([A, B]) => ({ mx: (A[0] + B[0]) / 2, y: A[1], largo: Math.abs(A[0] - B[0]) }));
+  const paso = cfg.pasoFilas, med = t => (((cfg.tipos || {})[t] || {}).largo || 0) / 2;
+  const enX = new Map();
+  TRK.forEach((t, i) => { const k = t.E.toFixed(2); (enX.get(k) || enX.set(k, []).get(k)).push(i); });
+  /* candidatas: dos filas al paso exacto y de la MISMA talla (una bífila no mezcla tallas) */
+  const cand = [];
+  TRK.forEach((a, i) => { for (const j of (enX.get((a.E + paso).toFixed(2)) || [])) {
+    const b = TRK[j]; if (b.tipo !== a.tipo || Math.abs(b.N - a.N) > 8) continue;
+    cand.push({ i, j, mx: (a.E + b.E) / 2, my: (a.N + b.N) / 2, t: a.tipo }); } });
+  /* 1) cada segmento se queda con la candidata que tiene justo debajo */
+  const seguro = new Map(); const usada = new Set();
+  for (const s of CL) {
+    if (Math.abs(s.largo - paso) > 0.06) continue;
+    let m = null, md = 1e9;
+    for (const c of cand) {
+      if (Math.abs(c.mx - s.mx) > 3) continue;
+      const dy = Math.min(Math.abs(c.my - s.y - med(c.t)), Math.abs(c.my - s.y + med(c.t)));
+      if (dy > 4) continue;
+      const d = Math.hypot(c.mx - s.mx, dy); if (d < md) { md = d; m = c; }
+    }
+    if (!m || usada.has(m.i) || usada.has(m.j)) continue;
+    usada.add(m.i); usada.add(m.j); seguro.set(m.i, m.j); seguro.set(m.j, m.i);
+  }
+  /* 2) cadenas al paso, y la fase que cada pareja segura les impone */
+  const der = new Map(), izq = new Map();
+  TRK.forEach((a, i) => { let m = null, md = 1e9;
+    for (const j of (enX.get((a.E + paso).toFixed(2)) || [])) { const b = TRK[j];
+      if (b.tipo !== a.tipo) continue; const d = Math.abs(b.N - a.N); if (d < md && d < 8) { md = d; m = j; } }
+    if (m != null) { der.set(i, m); (izq.get(m) || izq.set(m, []).get(m)).push(i); } });
+  const vis = new Set(), cadenas = [];
+  TRK.forEach((a, i) => { if (vis.has(i) || (izq.get(i) || []).length) return;
+    const c = []; let k = i; while (k != null && !vis.has(k)) { vis.add(k); c.push(k); k = der.has(k) ? der.get(k) : null; }
+    cadenas.push(c); });
+  TRK.forEach((a, i) => { if (!vis.has(i)) { vis.add(i); cadenas.push([i]); } });
+  const par = new Map(); let conFase = 0, sinFase = 0, evid = 0, incoh = 0;
+  for (const c of cadenas) {
+    const pos = new Map(c.map((id, k) => [id, k])), fases = new Set();
+    c.forEach((id, k) => { const j = seguro.get(id); if (j != null && pos.has(j)) { evid++; fases.add(Math.min(k, pos.get(j)) % 2); } });
+    if (fases.size > 1) { incoh++; continue; }
+    if (!fases.size) { sinFase++; continue; }
+    conFase++;
+    for (let k = [...fases][0]; k + 1 < c.length; k += 2) { par.set(c[k], c[k + 1]); par.set(c[k + 1], c[k]); }
+  }
+  /* si el plano se contradice, no se publica un emparejamiento a medias: se para */
+  if (incoh) { console.error(`  ${incoh} cadenas con fases CONTRADICTORIAS: el modelo no vale, no se empareja`); process.exit(1); }
+  return { par, cadenas: cadenas.length, conFase, sinFase, evid, seguras: seguro.size / 2 };
+}
+let PAREJAS = null;
+if (C.pareaCon) {
+  PAREJAS = pareaTubos(C, G, TRK);
+  const n = PAREJAS.par.size / 2, sueltas = TRK.length - PAREJAS.par.size;
+  console.log(`  bífilas: ${n} parejas · ${sueltas} filas sin pareja (${(100 * sueltas / TRK.length).toFixed(1)} %)`);
+  console.log(`  cadenas ${PAREJAS.cadenas}: ${PAREJAS.conFase} con fase del plano (${PAREJAS.evid} evidencias, 0 incoherencias) · ${PAREJAS.sinFase} sin evidencia`);
+}
 const giros = [...new Set(TRK.map(t => t.rot))];
 console.log(`  giros distintos: ${giros.slice(0, 6).join(', ')}${giros.length > 6 ? ' …(' + giros.length + ')' : ''} · espejados ${TRK.filter(t => t.esp).length}`);
 
@@ -350,6 +432,12 @@ const L = {
      quien lea el layout cuenta 3.314 seguidores donde hay 1.657. No se llama `montaje` porque
      ese campo ya es la ficha de montaje de pvlib y la escribe otra herramienta. */
   ...(C.bifila ? { bifila: C.bifila } : {}),
+  /* cuánto del emparejamiento sale del plano y cuánto no, con la prueba que lo respalda */
+  ...(PAREJAS ? { emparejado: { parejas: PAREJAS.par.size / 2, sin_pareja: TRK.length - PAREJAS.par.size,
+      cadenas: PAREJAS.cadenas, con_fase_del_plano: PAREJAS.conFase, sin_evidencia: PAREJAS.sinFase,
+      evidencias: PAREJAS.evid, incoherencias: 0,
+      fuente: 'capa «' + C.pareaCon + '» del DWG; cada segmento fija la fase de su cadena',
+      ojo: 'las filas sin `par` son las que el plano no determina: no se emparejan a ojo' } } : {}),
   /* el módulo y la potencia que sale de él: módulos x Wp, con las dos partes a la vista para que
      se pueda rehacer la cuenta sin fiarse del resultado */
   ...(C.modulo ? { modulo: C.modulo,
@@ -388,6 +476,9 @@ const L = {
       return { x, n, rot: t.rot, t: corto ? 'Medio' : 'completo', id: 'TK' + String(i + 1).padStart(4, '0'),
                /* sin NCUs dibujadas no hay reparto que valga: va a null y no a 0, que es un
                   número de NCU y aquí no hay ninguna */
+               /* `par` es el id de la OTRA fila del mismo seguidor. Sin él, quien lea el
+                  layout cuenta el doble de seguidores y no sabe a cuál colgarle el motor. */
+               ...(PAREJAS && PAREJAS.par.has(i) ? { par: 'TK' + String(PAREJAS.par.get(i) + 1).padStart(4, '0') } : {}),
                tp: t.tipo, mods: T.mods != null ? T.mods : C.mods,
                ncu: NCUS.length ? t.ncu : null, gw: NCUS.length ? t.ncu : null,
                ...(corto ? { mr: +(lg(t.tipo) / LMAX).toFixed(5) } : {}),
