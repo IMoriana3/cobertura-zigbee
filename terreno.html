@@ -623,7 +623,7 @@ var PLANTS={
      MONOFILARES (filaZ 0 en su tracker). Sus 12.896 módulos son EXACTAMENTE los de la cartera. */
   polvorin:{file:'polvorin_layout.json', title:'El Polvorín 25082', angles:null, mods:31, cod:25082},
   panbianco:{file:'panbianco_layout.json', title:'Panbianco 25004.2', angles:null, mods:31, cod:'25004.2'},   // 1.476 seguidores (1.084 + 392 medios) · 12 NCU · 2 repetidores
-  tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífilo, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
+  tunez:{file:'tunez_layout.json', title:'Túnez 24021', angles:null, mods:14, cod:24021},   // 19 seguidores 2V14 (bífila, filas a 6,25 m -> filaZ 3,125) con módulo de 1,30 m. 19 x 2 alas x 14 x 2 filas = 1.064 mód, los de la cartera. El DWG ya viene en UTM 32N y el datum es WGS84 (EPSG:32632), confirmado contra un punto de la planta: 58 m frente a los 510 m que daría Carthage
   custom:{file:null, title:'Planta nueva', angles:null}   // mapa generado en "Nuevo mapa de cobertura": el layout viene de localStorage, no de un fichero
 };
 /* ENCUADRE INICIAL. Antes salía del tamaño del TERRENO, que se dimensiona por la distancia al
@@ -1035,7 +1035,7 @@ function buildTrackers(elevAt){
   if(LAYOUT&&LAYOUT.fija){ ELEV=elevAt; nodeGroup.clear(); labelGroup.clear(); TRK=[]; SEG=[]; SEGO=null; return; }
   ELEV=elevAt;                                                                    // disponible YA (layoutTrackers->updateSpin se llama aquí dentro y muestrea el terreno para el pie del amortiguador)
   nodeGroup.clear();labelGroup.clear();TRK=[];
-  /* El seguidor canónico es el de El Burgo: BÍFILO (dos filas a ±filaZ) y módulo de 1,134 m. No
+  /* El seguidor canónico es el de El Burgo: BÍFILA (dos filas a ±filaZ) y módulo de 1,134 m. No
      todas las plantas son así — Bagnarelli es de UNA fila con módulo Risen de 1,303 m — así que el
      layout puede anular las dos cotas. Con filaZ:0 las dos filas coinciden y sale una sola. */
   /* COTAS MEDIDAS EN EL DWG (campo `mesa` del layout, de tools/extract_dwg_cotas.mjs). Manda sobre
@@ -2741,7 +2741,7 @@ function buildInvLayer(){
   paintInvModules(invOn);   // pinta los módulos por inversor (como el 2D)
 }
 // ===== REALISMO: AO de contacto, microrrelieve, vegetación, sombras de nube y toque de cámara =====
-// (1) AO de contacto: penumbra suave DRAPEADA bajo cada línea de módulos (bífilo: a t.gx±filaZ) y bajo
+// (1) AO de contacto: penumbra suave DRAPEADA bajo cada línea de módulos (bífila: a t.gx±filaZ) y bajo
 // equipos. Ancla las cosas al suelo; alfa baja para SUMARSE a la sombra real sin ennegrecer.
 var aoGroup=null,CELLNRM=null;
 function _aoTex(){var c=document.createElement('canvas');c.width=128;c.height=64;var x=c.getContext('2d');
@@ -3426,7 +3426,7 @@ function stowStep(dt){ if(!SEG)return;
 var PITCH=12,_shdKey='',_shdBT=0,_shdNBT=0;
 function profileAlpha(min){var sv=sunVec(min);if(sv.U<=0.005)return 0;return Math.atan2(sv.U,Math.abs(sv.E));}
 function shadeFracAt(min,thetaDeg){var a=profileAlpha(min);if(a<=0)return 0;var W=(TC&&TC.modH)||2.38,th=Math.abs(thetaDeg)*DEG;
-  var p=(TC&&TC.filaZ)?Math.min(2*TC.filaZ,Math.max(2,PITCH-2*TC.filaZ)):PITCH;   // seguidor BÍFILO: la sombra es FILA-a-FILA (6 m uniformes: 2·filaZ dentro de la unidad = 12−2·filaZ entre unidades), no unidad-a-unidad
+  var p=(TC&&TC.filaZ)?Math.min(2*TC.filaZ,Math.max(2,PITCH-2*TC.filaZ)):PITCH;   // BÍFILA: la sombra es FILA-a-FILA (6 m uniformes: 2·filaZ dentro de la unidad = 12−2·filaZ entre unidades), no unidad-a-unidad
   var fs=1-(p/W)*Math.sin(a)/Math.sin(a+th);return Math.max(0,Math.min(1,fs));}
 function dayShade(useBT){var s=0,w=0;for(var m=280;m<=1220;m+=10){var sv=sunVec(m);if(sv.U<=0.01)continue;
   var AM=1/Math.max(0.05,sv.U),dni=1361*Math.pow(0.7,Math.pow(AM,0.678));
