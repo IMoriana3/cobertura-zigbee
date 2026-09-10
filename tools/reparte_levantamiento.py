@@ -5,8 +5,13 @@
     python3 tools/reparte_levantamiento.py [planta]        (por defecto sanjose)
 
     entra:  <planta>_levantamiento.csv   (id,X,Y,Z del topografo, sin tocar)
-            <planta>_layout.json         (el plano: x, n e id de cada tracker)
-    sale:   <planta>_asbuilt.json
+            <planta>_layout.json         (el plano: x, n e id de cada tracker,
+                                          y en mesa/montaje la ficha del modulo)
+            <planta>_asbuilt.json        OPCIONAL: si existe, se heredan su meta
+                                          y los vectores TCU por id de fila; si
+                                          no, la meta sale del layout y del
+                                          levantamiento (ver meta_del_plano)
+    sale:   <planta>_asbuilt.json, <planta>_puntos.json
 
 POR QUE SE REHACE. La asignacion que veniamos usando venia de fuera y tenia 93
 trackers con puntos IMPOSIBLES: hasta 1.575 m de dispersion, y uno con 44
@@ -105,6 +110,7 @@ import collections
 import csv
 import json
 import os
+import re
 import statistics
 import sys
 
@@ -126,30 +132,84 @@ LARGO_AVISO = 1.5      # m; se aparta de su tipo mas de esto: se avisa
 LARGO_FUERA = 3.0
 
 
-def lee_puntos(planta, cE, cN, base):
+def lee_crudo(planta):
+    """El CSV del topografo tal cual: (id, E, N, Z) absolutos."""
     f = os.path.join(RAIZ, planta + '_levantamiento.csv')
     P = []
     for r in csv.reader(open(f, encoding='utf-8-sig')):
         if not r or not r[0].strip():
             continue
         try:
-            P.append((int(float(r[0])), float(r[1]) - cE, float(r[2]) - cN, float(r[3]) - base))
+            P.append((int(float(r[0])), float(r[1]), float(r[2]), float(r[3])))
         except (ValueError, IndexError):
             continue
     return P
 
 
+def huso_de(crs):
+    """'EPSG:32719' -> '19S', 'EPSG:25830' / 'EPSG:32630' -> '30N'. None si no es UTM."""
+    m = re.match(r'EPSG:(326|327|258)(\d\d)$', str(crs or ''))
+    if not m:
+        return None
+    return m.group(2) + ('S' if m.group(1) == '327' else 'N')
+
+
+def meta_del_plano(planta, lay, crudo):
+    """La meta del as-built cuando NO hay uno anterior del que heredarla: todo
+    lo que se puede LEER del plano y del propio levantamiento, y nada mas.
+
+    Hasta aqui el reparto exigia un <planta>_asbuilt.json previo, y para una
+    planta nueva no lo hay: habia que sembrar uno a mano. Lo que se heredaba de
+    verdad eran tres cosas, y las tres tienen fuente propia:
+      · el marco local (cE, cN) -> el layout; la base de cotas -> la MEDIANA de
+        la Z del levantamiento, redondeada al metro (es un origen, da igual cual
+        sea mientras quede declarado);
+      · la ficha del modulo (modW, gapMod, gapDrive) -> layout.mesa, que es lo
+        medido en el DWG; pitch, cuerda, gcr y limite -> layout.montaje;
+      · los vectores TCU (cse/cso/ase/aso) -> NO tienen fuente aqui y van a
+        null, como ya pasaba con toda fila nueva (ver nota_tcu).
+    Lo que el layout no trae se deja a None, no se inventa."""
+    mesa, mon = lay.get('mesa') or {}, lay.get('montaje') or {}
+    tit = str(lay.get('title') or planta)
+    m = re.match(r'^(.*?)\s+(\d{5})$', tit)
+    zs = sorted(q[3] for q in crudo)
+    return {
+        'planta': (m.group(1) if m else tit).strip(),
+        'codigo': m.group(2) if m else None,
+        'cE': lay['cE'], 'cN': lay['cN'],
+        'base': float(round(zs[len(zs) // 2])) if zs else 0.0,
+        'lat': lay.get('clat'), 'lon': lay.get('clon'),
+        'tz': lay.get('tz'), 'huso': huso_de(lay.get('crs')),
+        'modW': mesa.get('modW'), 'gapMod': mesa.get('gapMod'), 'gapDrive': mesa.get('gapDrive'),
+        'pitch': mon.get('pitch') or mesa.get('pasoFila'), 'cuerda': mon.get('cuerda') or mesa.get('modH'),
+        'gcr': mon.get('gcr'), 'limite': mon.get('max_angle'),
+        'mesa_L': None, 'n_art': 0,
+        'meta_origen': 'sin as-built previo: marco y ficha del modulo del layout, base = mediana de la Z del levantamiento',
+    }
+
+
 def reparte(planta='sanjose'):
     lay = json.load(open(os.path.join(RAIZ, planta + '_layout.json')))
     viejo = os.path.join(RAIZ, planta + '_asbuilt.json')
-    if not os.path.exists(viejo):
-        print('hace falta %s_asbuilt.json para heredar meta y vectores TCU' % planta)
-        return 1
-    A = json.load(open(viejo))
-    M = dict(A['meta'])
+    crudo = lee_crudo(planta)
+    if os.path.exists(viejo):
+        A = json.load(open(viejo))
+        M = dict(A['meta'])
+    else:
+        # PLANTA NUEVA: no hay de quien heredar. La meta sale del plano y del
+        # levantamiento (ver meta_del_plano) y los vectores TCU van a null.
+        A = {'meta': {}, 'f': []}
+        M = meta_del_plano(planta, lay, crudo)
+        print('%-8s sin as-built previo: meta del layout (%s, base %.0f m, modulo %s)'
+              % (planta, M.get('huso') or 'sin huso', M['base'], M.get('modW') or 'sin ficha'))
+    if not M.get('huso'):
+        M['huso'] = huso_de(lay.get('crs'))
     cE, cN, base = M['cE'], M['cN'], M['base']
-    P = lee_puntos(planta, cE, cN, base)
+    P = [(q[0], q[1] - cE, q[2] - cN, q[3] - base) for q in crudo]
     TK = lay['trackers']
+    # la zona va en cada fila (cotas_asbuilt agrupa por (zo, tk)): la que ya
+    # tuviera el as-built, y si no un codigo corto de la planta
+    ZO = (A['f'][0].get('zo') if A['f'] else None) or (lay.get('plant') or planta)[:2].upper()
 
     # ── ejes de fila, del plano ──────────────────────────────────────────────
     # El LARGO NOMINAL sale del tipo declarado, con la misma formula que usa
@@ -399,7 +459,14 @@ def reparte(planta='sanjose'):
         _v.sort()
         md_tipo[_t] = _v[len(_v) // 2]
     fuera, avisos = [], []
-    tpMayor = collections.Counter((r['tp'], r['mods']) for r in A['f']).most_common(1)[0][0]
+    # el tipo mayoritario, del as-built viejo si lo hay; si no, del plano (mesa.tipos)
+    if A['f']:
+        tpMayor = collections.Counter((r['tp'], r['mods']) for r in A['f']).most_common(1)[0][0]
+    else:
+        _tipos = (lay.get('mesa') or {}).get('tipos') or {}
+        _ma = collections.Counter(int(v['modsAla']) for v in _tipos.values()
+                                  if isinstance(v.get('modsAla'), (int, float)) and float(v['modsAla']).is_integer())
+        tpMayor = ('2TTx%d' % (2 * _ma.most_common(1)[0][0]), _ma.most_common(1)[0][0]) if _ma else (None, None)
     num = lambda v, d=3: None if v is None else round(v, d)
     out, heredados, nulos = [], 0, 0
     for i, f in sorted(pts.items(), key=lambda t: (filas[t[0]]['tk'], filas[t[0]]['lado'])):
@@ -461,7 +528,7 @@ def reparte(planta='sanjose'):
         else:
             nulos += 1
         out.append({
-            'id': fid, 'zo': 'SJ', 'tk': filas[i]['tk'], 'fl': 0, 'tp': tp, 'mods': mods,
+            'id': fid, 'zo': ZO, 'tk': filas[i]['tk'], 'fl': 0, 'tp': tp, 'mods': mods,
             'x': num(statistics.fmean(p[1] for p in v)),
             'zs': num(-ns[0]), 'zn': num(-ns[-1]),          # el eje z del as-built apunta al SUR
             'ys': num(ys[0]), 'yn': num(ys[-1]),
