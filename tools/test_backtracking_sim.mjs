@@ -2544,6 +2544,28 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
       if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);
       if (fueraLayout) throw new Error(`${fueraLayout} de ${n} trackers cuyas vigas no casan con la x del layout`);
     });
+    t(`${pl}: el cizallado E/W viene medido de las dos vigas y la planta declara cuántas van corridas`, () => {
+      // el cizallado es el corrimiento del centro de una viga respecto del de
+      // su hermana a lo largo del eje: tiene que salir de las MISMAS puntas
+      // que se dibujan, y solo en los seguidores de dos vigas
+      let n = 0, mal = 0, corr = 0;
+      for (const tk of cotas.t) {
+        if (!tk) continue;
+        const f = filasDe(tk);
+        if (f.length !== 2) { if (tk.sh != null) mal++; continue; }
+        n++;
+        const c = f.map(x => (x.n[0] + x.n[1]) / 2);
+        if (tk.sh == null || Math.abs(tk.sh - Math.abs(c[0] - c[1])) > 0.002) mal++;
+        if (tk.sh > 0.5) corr++;
+      }
+      if (!n) throw new Error('ningún tracker de dos vigas');
+      if (mal) throw new Error(`${mal} de ${n} trackers con un cizallado que no sale de sus puntas`);
+      if ((cotas.n_sh || 0) !== corr) throw new Error(`la planta declara ${cotas.n_sh} seguidores con vigas corridas y hay ${corr}`);
+      if (!(cotas.sh_max >= 0) || cotas.sh_max < (cotas.sh_p50 || 0)) throw new Error('reparto del cizallado incoherente: ' + JSON.stringify([cotas.sh_p50, cotas.sh_p95, cotas.sh_max]));
+      // San José: los mismos 10 que el visor 2D mide de la geometría dibujada
+      if (pl === 'sanjose' && corr !== 10) throw new Error(`San José: ${corr} seguidores con vigas corridas (el mapa mide 10)`);
+      if (pl === 'ayora' && corr !== 0) throw new Error(`Ayora: ${corr} seguidores con vigas corridas (el mapa no mide ninguno)`);
+    });
     t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
       const P = F.plantFromCotas(cotas, Infinity, 'all');
       const linea = new Map();

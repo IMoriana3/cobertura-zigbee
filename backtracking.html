@@ -5426,8 +5426,15 @@ function rowInfoHTML(r,kSel){
   const rp=(og&&DAY.T.segRp&&DAY.T.segRp[r]&&kSel!=null)?(DAY.T.segRp[r][kSel]||[]):[];
   const rpTxt=rp.length?'<br><span style="color:'+ogCol[og]+'">puntos con la Z en otra referencia: '+
     rp.map(q=>'<b>'+q[0]+'</b> ('+(q[1]>=0?'+':'')+q[1].toFixed(1)+' m)').join(' · ')+'</span>':'';
+  // CIZALLADO E/W del seguidor: cuánto se corre esta viga a lo largo del eje
+  // respecto de su hermana (comparten tubo: debería ser ~0). Viene medido en
+  // las cotas, de la misma geometría que se dibuja, y por encima de 0,5 m
+  // las vigas están corridas. Lo mismo que dice la ficha del mapa.
+  const trkR=(DAY.T.segTrk&&DAY.T.segTrk[r]&&DAY.T.segTrk[r].length)?DAY.T.segTrk[r][kSel!=null?kSel:0]:null;
+  const shv=(trkR&&trkR.sh!=null)?trkR.sh:null;
+  const shTxt=shv==null?'':'<br>cizallado E/W '+(shv>0.5?'<b style="color:#ff3ea5">'+shv.toFixed(3)+' m · vigas corridas</b>':shv.toFixed(3)+' m');
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
-    (og?'<br><b style="color:'+ogCol[og]+'">⚑ '+ogTxt[og]+'</b>'+rpTxt:'')+
+    (og?'<br><b style="color:'+ogCol[og]+'">⚑ '+ogTxt[og]+'</b>'+rpTxt:'')+shTxt+
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
     '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
     '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+
