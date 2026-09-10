@@ -115,11 +115,11 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayor
      este-oeste (20,48 m) y estrechas norte-sur (7,25). Se dibujan con rot 90 y una sola banda
      (filaZ 0), que es lo que son. Del KML de layout, no de DWG. */
   dicayagua:{file:'dicayagua_layout.json',title:'El Naranjo Dicayagua · oferta'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'},
-  /* CATANIA (Sicilia) — EN OFERTA, sin firmar, y de SEGUIDORES BÍFILOS. Sale del DWG de altura de
+  /* CATANIA (Sicilia) — EN OFERTA, sin firmar, y de BÍFILAS. Sale del DWG de altura de
      torque tube: 3.314 filas (2.796 de 58 módulos y 518 de 29), 177.190 módulos, paso de 5,00 m y
      giro 0 en todas —filas norte-sur—. OJO AL RECUENTO: cada INSERT del plano es UNA FILA, un tubo,
      así que 3.314 filas son 1.657 seguidores. Qué fila va con cuál NO está en este DWG (ver la nota
-     `bifilo` del layout), así que se dibujan fila a fila en vez de emparejarlas a ojo. Sin NCU ni
+     `bifila` del layout), así que se dibujan fila a fila en vez de emparejarlas a ojo. Sin NCU ni
      comunicaciones: ese plano no es de comunicaciones y no se inventa lo que no trae. */
   catania:{file:'catania_layout.json',title:'Catania · oferta'}, custom:{file:null,title:'Planta nueva'} };
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
@@ -385,7 +385,7 @@ function draw(){
       var cxp=w2sx(t.x),cyp=w2sy(t.n),lp=halfL*s;
       if(cxp<-50||cxp>W+50||cyp<-50||cyp>H+50)continue;
       ctx.fillStyle=(inv&&t._inv&&INVH[t._inv])?INVH[t._inv].color:(pile&&t._revMax!=null)?reliefCss((t._revMax-REVMIN)/rng):(($('cbElec').checked&&t._g!=null&&ECOL[t._g])?ECOL[t._g]:'#3a78d6');   // prioridad: inversor → pile reveal → eléctrico (NCU) → azul
-      /* BÍFILO: las DOS filas de módulos con su pasillo, no una mesa maciza. Antes se pintaba un
+      /* BÍFILA: las DOS filas de módulos con su pasillo, no una mesa maciza. Antes se pintaba un
          rectángulo de 6,4 m de ancho y de eso solo hay módulos en 2 x cuerda; el pasillo del medio
          es por donde pasa todo. Y la BIELA (eje de transmisión) las une a la altura del motor: sin
          ella las bandas se leen como mesas sueltas, porque el pasillo interior y el hueco hasta el
@@ -401,7 +401,7 @@ function draw(){
       if(rotd){ctx.save();ctx.translate(cxp,cyp);ctx.rotate(rotd*DEG);ctx.translate(-cxp,-cyp);}
       if(bif){ ctx.fillRect(cxp-off-wp,cyp-lp,2*wp,2*lp); ctx.fillRect(cxp+off-wp,cyp-lp,2*wp,2*lp);
         ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=Math.max(1,Math.min(3,s*1.6));ctx.beginPath();ctx.moveTo(cxp-off,cyp);ctx.lineTo(cxp+off,cyp);ctx.stroke(); }
-      else ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);   // Páramo: UNA fila, sin pasillo ni biela (Bagnarelli SÍ es bífilo: filaZ 2,75)
+      else ctx.fillRect(cxp-wp,cyp-lp,2*wp,2*lp);   // Páramo: UNA fila, sin pasillo ni biela (Bagnarelli SÍ es bífila: filaZ 2,75)
       if(pile){ if(t._rev&&s>1.2){var dr=Math.max(1.6,s*0.9);for(var k=0;k<t._zs.length;k++){var dyk=w2sy(t.n+t._zs[k]);ctx.fillStyle=reliefCss((t._rev[k]-REVMIN)/rng);ctx.lineWidth=1;ctx.strokeStyle='rgba(8,12,18,.7)';
         ctx.beginPath();ctx.arc(cxp-off,dyk,dr,0,7);ctx.fill();ctx.stroke();if(bif){ctx.beginPath();ctx.arc(cxp+off,dyk,dr,0,7);ctx.fill();ctx.stroke();}} } }   // de cerca: un punto por pilote y por viga, coloreado por su propio hincado
       else if(!inv && s>0.9){ctx.strokeStyle='rgba(10,16,24,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cxp-off,cyp-lp);ctx.lineTo(cxp-off,cyp+lp);if(bif){ctx.moveTo(cxp+off,cyp-lp);ctx.lineTo(cxp+off,cyp+lp);}ctx.stroke();}   // eje de cada viga

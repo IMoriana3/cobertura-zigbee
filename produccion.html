@@ -890,7 +890,7 @@ function csvTabla(cab,filas){
 }
 
 /* El Burgo real: los strings del plano (elburgo_strings.json) → columnas E-O,
-   que son las filas del perfil de sombra. Las líneas partidas a <3 m (bifilo:
+   que son las filas del perfil de sombra. Las líneas partidas a <3 m (bifila:
    0,55 m entre vigas) se funden con su columna — a efectos de sombra entre
    filas son la MISMA línea. Cada columna guarda sus strings con su inversor
    (g.i de la numeración g.i.t.s) y su extensión N-S real. */
@@ -973,7 +973,7 @@ function elburgoSegs(rows,trackers){
   });
 }
 
-/* bifilo de El Burgo (layout.geometria): cada seguidor son DOS vigas a ±3 m de
+/* bifila de El Burgo (layout.geometria): cada seguidor son DOS vigas a ±3 m de
    su EJE DE UNIDAD con UN solo motor — «45 columnas de seguidores = 90 filas».
    Las columnas se emparejan por unidad (viga oeste = x−3, este = x+3) y el θ
    va ACOPLADO por accionamiento, como la bifila del simulador. Mayoritario sin
@@ -1727,7 +1727,7 @@ function build3D(c){
   }
   }// fin del camino de mallas sueltas (modelo/cajas)
   if(hayModelo){Seguidor.setModulo({modW:1.134,gapMod:0.012,gapDrive:0.55});Seguidor.setModsPerStr(28);}   // restaurar el canónico compartido
-  // ── eje de transmisión del BIFILA de El Burgo, con la receta de terreno.html:
+  // ── eje de transmisión de la BIFILA de El Burgo, con la receta de terreno.html:
   // cilindro Ø60 mm entre las dos vigas de cada unidad A LA ALTURA DEL EJE DEL
   // TUBO (makeTranslation(0, ph, 0) allí — a 1,24 «la biela está muy abajo»).
   // El motor, la reductora y las coronas NO se fabrican aquí: ya vienen del

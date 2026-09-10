@@ -41,7 +41,7 @@ const POLVORIN = { modW: 1.303, modH: 2.384, gapMod: 0.015, gapDrive: 0.70, fila
    módulo 1,134 x 2,382, hueco entre módulos 0,015, hueco de motor 0,70 y las DOS filas a 5 m.
    El modelo cuadra al milímetro:  2·(29·1,134 + 28·0,015) + 0,70 = 67,312  (el DWG mide 67,312).
    `filaZ` es la mitad del paso entre filas: 2,5. DERIVADO, no medido — el DWG da el paso, no la
-   distancia de cada fila al eje; en un bífilo simétrico son la mitad. */
+   distancia de cada fila al eje; en una bífila simétrico son la mitad. */
 const CATANIA = { modW: 1.134, modH: 2.382, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.5,
                   fuente: 'medido en el propio DWG con tools/extract_dwg_cotas.mjs' };
 
@@ -52,12 +52,12 @@ const PLANTAS = {
      HSU, ni Power Stations, ni repetidores, ni vallado de obra. Todos esos campos van VACÍOS y se
      dice; no se rellenan con nada.
 
-     LOS SEGUIDORES son BÍFILOS (confirmado por el proyectista, 2026-09-10), y cada INSERT de las
+     LOS SEGUIDORES son BÍFILAS (confirmado por el proyectista, 2026-09-10), y cada INSERT de las
      capas SO.01_TRX1 y SO.01_TRX2 es UNA FILA —un tubo—, no un seguidor entero. Su bloque nombra
      la talla: «1P58@55DEG F TR ID*» (58 módulos) y «1P29@55DEG F TR ID*» (29). Son 2.796 y 518 =
-     3.314 filas y 177.190 módulos, o sea 1.657 seguidores bífilos. Giro 0 en todas: filas N-S. El
+     3.314 filas y 177.190 módulos, o sea 1.657 bífilas. Giro 0 en todas: filas N-S. El
      paso entre filas contiguas mide 5,00 m uniforme (13 de 15 saltos en una banda de 16 filas), y
-     es también la separación entre los dos tubos de un bífilo: por eso `filaZ` va a 2,5.
+     es también la separación entre los dos tubos de una bífila: por eso `filaZ` va a 2,5.
 
      QUÉ FILA VA CON CUÁL NO ESTÁ EN ESTE PLANO, y por eso se guarda fila a fila en vez de
      publicarse un emparejamiento inventado. Se intentó por tres caminos y ninguno cierra:
@@ -108,8 +108,8 @@ const PLANTAS = {
     modulo: { marca: 'Astronergy', wp: 630, ancho: 1.134, alto: 2.382,
               fuente: 'potencia dada por el proyectista; medida del módulo, del propio DWG',
               nota: 'dado como «Astroenergy 630 W»; sin referencia de modelo' },
-    bifilo: { filas: 2, pasoFilas: 5,
-               nota: 'Bífilo confirmado por el proyectista (2026-09-10). Cada entrada de `trackers` '
+    bifila: { filas: 2, pasoFilas: 5,
+               nota: 'Bífila confirmado por el proyectista (2026-09-10). Cada entrada de `trackers` '
                    + 'es UNA FILA (un tubo): 3.314 filas = 1.657 seguidores. El emparejamiento fila '
                    + 'a fila NO está en este DWG y no se inventa.' },
   },
@@ -346,10 +346,10 @@ const L = {
   /* `estado` solo viaja si la ficha lo declara: una planta EN OFERTA no es lo mismo que una
      firmada, y quien lea el layout tiene que poder distinguirlo sin ir a preguntar. */
   ...(C.estado ? { estado: C.estado } : {}),
-  /* `bifilo` cuando cada entrada de `trackers` es UNA FILA de un seguidor de dos: sin esto,
+  /* `bifila` cuando cada entrada de `trackers` es UNA FILA de un seguidor de dos: sin esto,
      quien lea el layout cuenta 3.314 seguidores donde hay 1.657. No se llama `montaje` porque
      ese campo ya es la ficha de montaje de pvlib y la escribe otra herramienta. */
-  ...(C.bifilo ? { bifilo: C.bifilo } : {}),
+  ...(C.bifila ? { bifila: C.bifila } : {}),
   /* el módulo y la potencia que sale de él: módulos x Wp, con las dos partes a la vista para que
      se pueda rehacer la cuenta sin fiarse del resultado */
   ...(C.modulo ? { modulo: C.modulo,
