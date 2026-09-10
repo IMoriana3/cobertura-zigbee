@@ -184,6 +184,7 @@ jobs:
           - { banco: test_bt3d_rot.mjs }
           - { banco: test_huso_plantas.mjs }
           - { banco: test_panel_plegable.mjs }
+          - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
@@ -232,7 +233,7 @@ jobs:
         run: node tools/${{ matrix.banco }} ${{ matrix.arg }}
 
   # ── LA PUERTA ─────────────────────────────────────────────────────────────
-  # Un solo check que resume a los trece, para que la proteccion de rama tenga
+  # Un solo check que resume a TODOS, para que la proteccion de rama tenga
   # UNA casilla que marcar.
   #
   # Marcarlos a mano parece equivalente y no lo es: el dia que se renombre una
