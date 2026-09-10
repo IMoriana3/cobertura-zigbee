@@ -188,6 +188,35 @@ def meta_del_plano(planta, lay, crudo):
     }
 
 
+def largo_por_tipo(lay, w=0.0, gm=0.0, gd=0.0):
+    """Largo nominal de la viga por TIPO de tracker del plano (m), de donde
+    lo haya, en este orden:
+      1. `tipos_largo` del layout: el largo declarado por tipo, medido en el
+         DWG (El Burgo: 64,6 m las mesas y 32,6 la media; sus tipos son
+         «Interior/Exterior con/sin rotula» y «Medio», no completo/medio);
+      2. `mesa.tipos[<tipo>].largo`, si el bloque del DWG se llama como el tipo;
+      3. la ficha del modulo, si la hay: completo = 32 modulos por string,
+         medio = 16, con L = 2*m*modW + (2m-2)*gapMod + gapDrive (San Jose).
+    Sin ninguna de las tres, {} y el reparto usa el largo por defecto."""
+    out = {}
+    if w:
+        out.update({'completo': 2 * 32 * w + 62 * gm + gd, 'medio': 2 * 16 * w + 30 * gm + gd})
+    for t, v in ((lay.get('mesa') or {}).get('tipos') or {}).items():
+        if isinstance(v, dict) and v.get('largo'):
+            out[t] = float(v['largo'])
+    for t, v in (lay.get('tipos_largo') or {}).items():
+        if v:
+            out[t] = float(v)
+    return out
+
+
+def largo_def(LARGO, TK):
+    """El largo por defecto: el del tipo mas frecuente del plano que tenga
+    largo; si ninguno lo tiene, 74,4 m (el completo de San Jose)."""
+    c = collections.Counter(t.get('t') for t in TK if t.get('t') in LARGO)
+    return LARGO[c.most_common(1)[0][0]] if c else LARGO.get('completo', 74.4)
+
+
 def reparte(planta='sanjose'):
     lay = json.load(open(os.path.join(RAIZ, planta + '_layout.json')))
     viejo = os.path.join(RAIZ, planta + '_asbuilt.json')
@@ -218,8 +247,8 @@ def reparte(planta='sanjose'):
     # a 37 m y no los encuentran.
     w, gm, gd = M.get('modW') or 0.0, M.get('gapMod', 0.0), M.get('gapDrive', 0.0)
     nom = lambda m: 2 * m * w + (2 * m - 2) * gm + gd
-    LARGO = {'completo': nom(32), 'medio': nom(16)} if w else {}
-    LARGO_DEF = LARGO.get('completo', 74.4)
+    LARGO = largo_por_tipo(lay, w, gm, gd)
+    LARGO_DEF = largo_def(LARGO, TK)
     # ── DE QUE LADO ESTA LA HERMANA: LO DICE EL BORDE DEL BLOQUE ─────────────
     # La regla era «el plano marca la viga ESTE y la hermana va un paso al
     # OESTE». Medido contra la nube, es al reves en la mayor parte de San Jose.

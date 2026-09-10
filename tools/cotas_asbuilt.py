@@ -722,7 +722,20 @@ def genera(planta):
         """Las dos filas de un tracker NO levantado, con la geometria del plano
            y la cota del terreno vecino. None si no se puede resolver."""
         nonlocal estimados, sin_geom
-        if not (paso_v and papel == 'viga' and MOD.get('modW')): return None
+        # SIN FICHA DE MODULO (El Burgo), el largo sale del tipo del plano
+        # (layout.tipos_largo, medido en el DWG) y no se cuentan modulos
+        TL = L.get('tipos_largo') or {}
+        if not (paso_v and papel == 'viga' and (MOD.get('modW') or TK[i].get('t') in TL)): return None
+        if not MOD.get('modW'):
+            L2 = float(TL[TK[i].get('t')]) + sesgo_med
+            xc, nc = TK[i]['x'], TK[i]['n']
+            ns, nn = nc - L2 / 2, nc + L2 / 2
+            sg = lado_layout(i) * paso_v
+            xm = xc + sg / 2
+            ys, yn = plano_en(xm, ns), plano_en(xm, nn)
+            estimados += 1
+            return [{'x': xv, 'zs': -ns, 'zn': -nn, 'ys': ys, 'yn': yn, 'art': 0, 'pa': [],
+                     'zm': None, 'ym': None, 'mods': None, 'tk': None} for xv in (xc, round(xc + sg, 3))]
         w, gm, gd = MOD['modW'], MOD.get('gapMod', 0.0), MOD.get('gapDrive', 0.0)
         # El largo se resuelve POR TIPO, no tracker a tracker: la separacion a
         # un vecino suelto lleva ruido (algun caso daba 25 o 36 modulos), pero
