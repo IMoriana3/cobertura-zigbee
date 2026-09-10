@@ -2705,6 +2705,33 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   });
 }
 
+console.log('el globo dice QUÉ puntos: id y desvío de la cota repuesta o copiada');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: toda fila con cota repuesta trae sus puntos [id, desvío]; ninguna limpia los trae', () => {
+    let con = 0, sin = 0, limpiasCon = 0, fuera = 0;
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f) {
+      const rp = f.rp || [];
+      // la copia (hm) de una viga que el topógrafo NO midió no tiene puntos que
+      // reclamar: solo se exige en las repuestas (ye) y en las copias de una
+      // fila descartada por contaminación
+      if (f.ye) { if (rp.length) con++; else sin++; }
+      else if (!f.hm && rp.length) limpiasCon++;
+      for (const [id, d] of rp) if (!(Number.isInteger(id) && Math.abs(d) > 3)) fuera++;
+    }
+    if (!con) throw new Error('ninguna fila repuesta trae sus puntos');
+    if (sin) throw new Error(sin + ' filas repuestas sin sus puntos');
+    if (limpiasCon) throw new Error(limpiasCon + ' filas limpias con puntos de reclamación');
+    if (fuera) throw new Error(fuera + ' puntos con desvío <= 3 m o id no entero');
+    // y llegan a la mesa: segRp alineado con segOrig
+    let mesas = 0;
+    for (let r = 0; r < P.segRp.length; r++) for (let k = 0; k < P.segRp[r].length; k++)
+      if (P.segRp[r][k].length) { mesas++; if (!P.segOrig[r][k]) throw new Error('mesa con puntos de reclamación y origen «medida»'); }
+    if (!mesas) throw new Error('segRp vacío');
+  });
+}
+
 console.log('origen por mesa · «del plano» es del tracker, no de la cota repuesta');
 {
   // segOrig 4 (reconstruido del plano) solo puede salir en mesas de un tracker
