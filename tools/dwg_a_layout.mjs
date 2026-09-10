@@ -37,9 +37,58 @@ const SICILIA = { modW: 1.134, modH: 2.382, gapMod: 0.015, gapDrive: 0.70, filaZ
 const POLVORIN = { modW: 1.303, modH: 2.384, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.25,
                    fuente: 'medido en el propio DWG con tools/_blq.mjs (bloques anidados)' };
 
+/* CATANIA. Medida con tools/extract_dwg_cotas.mjs sobre su propio DWG, bloque «TRX01 2TTx58»:
+   módulo 1,134 x 2,382, hueco entre módulos 0,015, hueco de motor 0,70 y las DOS filas a 5 m.
+   El modelo cuadra al milímetro:  2·(29·1,134 + 28·0,015) + 0,70 = 67,312  (el DWG mide 67,312).
+   `filaZ` es la mitad del paso entre filas: 2,5. DERIVADO, no medido — el DWG da el paso, no la
+   distancia de cada fila al eje; en un bífilo simétrico son la mitad. */
+const CATANIA = { modW: 1.134, modH: 2.382, gapMod: 0.015, gapDrive: 0.70, filaZ: 2.5,
+                  fuente: 'medido en el propio DWG con tools/extract_dwg_cotas.mjs' };
+
 /* Cada DWG nombra sus capas a su manera; aquí se declara la equivalencia, plano a plano, en vez de
    adivinarla con expresiones regulares que un día casan otra cosa. */
 const PLANTAS = {
+  /* CATANIA — EN OFERTA. El DWG es de ALTURA DE TORQUE TUBE, no de comunicaciones: no hay NCU, ni
+     HSU, ni Power Stations, ni repetidores, ni vallado de obra. Todos esos campos van VACÍOS y se
+     dice; no se rellenan con nada.
+
+     LOS SEGUIDORES son los INSERT de las capas SO.01_TRX1 y SO.01_TRX2, cuyos bloques nombran la
+     talla: «1P58@55DEG F TR ID*» (58 módulos por columna) y «1P29@55DEG F TR ID*» (29). Son 2.796
+     y 518 = 3.314 filas, 177.190 módulos. Giro 0 en todas: filas N-S. El paso entre filas contiguas
+     mide 5,00 m uniforme (medido: 13 de 15 saltos en una banda de 16 filas).
+
+     LO QUE NO SE RESUELVE CON ESTE PLANO, y por eso se declara en vez de inventarse: las capas
+     FS.0x_TRXx (1.568 INSERT de «TRX01 2TTx58» y «29-500-2382x1134», con variantes _+500 y _+1000)
+     NO caen encima de las filas —la mediana de distancia a la fila más próxima es 22,5 m— así que
+     su relación con ellas no sale de aquí. Son la cota de altura de tubo, que es de lo que va el
+     plano. Se cuentan y se dicen, y nada más.
+
+     EL RECINTO es «00 - Recinzione» (7 anillos, 157,08 ha). «PVcase PV Area» son las 23 áreas de
+     implantación (138,09 ha) y viajan aparte: no son un vallado. */
+  catania: {
+    title: 'Catania', num: '', pais: 'Italia', estado: 'oferta',
+    zona: 33, sur: false, crs: 'EPSG:25833', tzFijo: null,      // Italia: CET/CEST, la regla peninsular vale
+    geo: SUBIDAS + '2a19e262-PR.26.203_R02C__TRX___Layout_Catania_ALTURA_TORQUE_TUBE_TRACKERS.dwg',
+    com: null,
+    /* Se nombran como los nombra su propio bloque —1P58 / 1P29, «1 fila Portrait de N módulos»—
+       y NO como las bifilas del resto de la cartera (1V62, 31+31): aquí cada INSERT es UNA FILA.
+       La estructura que agrupa dos de ellas existe (TRX01 2TTx58) pero está en otra capa y su
+       correspondencia con las filas no sale de este plano. */
+    trk: { 'SO.01_TRX1': '1P58', 'SO.01_TRX2': '1P29' },
+    capaNCU: null, capaNCUtxt: null, capaNCUsop: null,
+    capaHSU: null, capaHSUtxt: null, capaTorre: null,
+    capaPS: null, capaVallado: '00 - Recinzione', capaRep: null, capaPira: null,
+    mesa: CATANIA, mods: 58,
+    /* 1V58 MEDIDO (67,312 m, el bloque TRX01 2TTx58). 1V29 DERIVADO con el mismo modelo de una
+       sola ala —29·1,134 + 28·0,015 = 33,306—: su bloque va en 3DSOLID y este lector no le saca
+       geometría, así que el largo es del modelo, no de la cinta métrica. El motor cae en el centro
+       en las dos (alas iguales), así que desde/hasta son simétricos. */
+    largo: { '1P58': 67.312, '1P29': 33.306 }, largoDerivado: ['1P29'],
+    tipos: {
+      '1P58': { largo: 67.312, ancho: 2.382, desde: -33.656, hasta: 33.656, mods: 58, mono: true },
+      '1P29': { largo: 33.306, ancho: 2.382, desde: -16.653, hasta: 16.653, mods: 29, mono: true },
+    },
+  },
   panbianco: {
     title: 'Panbianco 25004.2', num: '25004.2', pais: 'Italia',
     zona: 33, sur: false, crs: 'EPSG:25833', tzFijo: null,      // Italia: CET/CEST, la regla peninsular vale
@@ -270,6 +319,9 @@ console.log('   ' + NCUS.map((o, i) => o.name + ':' + (porNCU[i + 1] || 0)).join
 /* ---------- salida ---------- */
 const L = {
   plant: planta, title: C.title, num: C.num, pais: C.pais,
+  /* `estado` solo viaja si la ficha lo declara: una planta EN OFERTA no es lo mismo que una
+     firmada, y quien lea el layout tiene que poder distinguirlo sin ir a preguntar. */
+  ...(C.estado ? { estado: C.estado } : {}),
   crs: C.crs, clat: +clat.toFixed(7), clon: +clon.toFixed(7), cE: r3(cE), cN: r3(cN),
   mods: C.mods, filaZ: C.mesa.filaZ,
   /* `tipos` con la envolvente MEDIDA por bloque. Lo lee calcTDIM del Layout 2D para dibujar cada
@@ -301,10 +353,13 @@ const L = {
     return TRK.map((t, i) => { const [x, n] = loc(t.E, t.N);
       const T = (C.tipos || {})[t.tipo] || {}, corto = lg(t.tipo) < LMAX - 0.01;
       return { x, n, rot: t.rot, t: corto ? 'Medio' : 'completo', id: 'TK' + String(i + 1).padStart(4, '0'),
-               tp: t.tipo, mods: T.mods != null ? T.mods : C.mods, ncu: t.ncu, gw: t.ncu,
+               /* sin NCUs dibujadas no hay reparto que valga: va a null y no a 0, que es un
+                  número de NCU y aquí no hay ninguna */
+               tp: t.tipo, mods: T.mods != null ? T.mods : C.mods,
+               ncu: NCUS.length ? t.ncu : null, gw: NCUS.length ? t.ncu : null,
                ...(corto ? { mr: +(lg(t.tipo) / LMAX).toFixed(5) } : {}),
                ...(T.mono ? { filaZ: 0 } : {}),                      // monofilar: sus dos filas son una
-               ...(t.esp ? { esp: 1 } : {}), ...(t.zona ? {} : { ncuCerca: 1 }) }; });
+               ...(t.esp ? { esp: 1 } : {}), ...(NCUS.length && !t.zona ? { ncuCerca: 1 } : {}) }; });
   })(),
   ncus: NCUS.map(o => ({ x: o.x, n: o.n, name: o.name, enlace: o.enlace })),
   meteo: METEO, reps: REPS, ps: PS, piranometros: PIRA, fence: FENCE,

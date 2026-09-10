@@ -114,7 +114,13 @@ var PLANTS={ elburgo:{file:'elburgo_layout.json',title:'El Burgo I 23003'}, ayor
      de seguidores. Es estructura FIJA a 10°, «Generic 3V», así que sus 5.493 mesas son largas
      este-oeste (20,48 m) y estrechas norte-sur (7,25). Se dibujan con rot 90 y una sola banda
      (filaZ 0), que es lo que son. Del KML de layout, no de DWG. */
-  dicayagua:{file:'dicayagua_layout.json',title:'El Naranjo Dicayagua · oferta'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'}, custom:{file:null,title:'Planta nueva'} };
+  dicayagua:{file:'dicayagua_layout.json',title:'El Naranjo Dicayagua · oferta'}, tunez:{file:'tunez_layout.json',title:'Túnez 24021'},
+  /* CATANIA (Sicilia) — EN OFERTA, sin firmar, y de SEGUIDORES. Sale del DWG de altura de torque
+     tube: 3.314 filas (2.796 de 58 módulos y 518 de 29), 177.190 módulos, paso de 5,00 m y giro 0
+     en todas —filas norte-sur—. Cada INSERT del plano es UNA FILA, no una bifila: por eso el tipo
+     se llama 1P58/1P29 y no 1V62 como en las italianas firmadas. Sin NCU ni comunicaciones: ese
+     plano no es de comunicaciones y no se inventa lo que no trae. */
+  catania:{file:'catania_layout.json',title:'Catania · oferta'}, custom:{file:null,title:'Planta nueva'} };
 /* Dimensiones del seguidor por planta, para dibujarlo a escala en el plano:
    modPitch = paso entre modulos a lo largo del tubo; halfL = semilargo del
    completo; halfW = semiancho (numero de filas de modulos x su ancho / 2). */
