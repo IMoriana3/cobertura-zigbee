@@ -72,7 +72,8 @@ const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
              + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `
   return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit,
-           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, segLineMean };`)();
+           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, segLineMean,
+           surfaceOrient, pvTilt, segTiltAt };`)();
 const VER = (html.match(/const VER='([^']+)'/) || [, '?'])[1];
 
 // ── planta real: cotas (geometría) + layout (identidad: NCU/TCU) ────────────
@@ -176,6 +177,7 @@ const LON = cotas.lon != null ? cotas.lon : (lay.clon != null ? lay.clon : -1.15
 const ALT = 739, TL = 3.5, ALB = 0.20, TH_DISP = -1;
 
 const filas = [];
+const tDe = new Map(BLOQUES.map(B => [B.b, B.T]));   // bloque → su T (para la marca de fila sacrificada)
 const resumen = {};
 for (const pol of POLS) {
   let nPasos = 0, sombraAcum = 0, nSombra = 0;
@@ -209,11 +211,24 @@ for (const pol of POLS) {
       const th = conMesa ? A.seg[s2.fila][s2.mesa] : A.line[s2.fila];
       const sF = (conMesa && sh.seg && sh.seg[s2.fila] && sh.seg[s2.fila][s2.mesa] != null) ? sh.seg[s2.fila][s2.mesa] : sh[s2.fila];
       const sPl = sh.pl ? sh.pl[s2.fila] : null;
+      /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
+         mandar una mesa de espaldas al sol —AOI > 90°, cero haz— porque la
+         planta gana más con sus vecinas despejadas. Es legítimo bajo el modelo
+         y es lo que un optimizador libre debe poder hacer, pero el operador que
+         recibe la consigna tiene que saberlo: sale marcado, como `asesoria`. */
+      let sac = 0;
+      if (irr.dni > 100) {
+        const TB = tDe.get(s2.bloque), RAD = Math.PI / 180, DEG = 180 / Math.PI;
+        const tlt = TB ? F.segTiltAt(TB, s2.fila, conMesa ? s2.mesa : 0) : 0;
+        const o = F.surfaceOrient(th, F.pvTilt(tlt), TB ? TB.axisAz : 0), b = o.tilt * RAD, z = g.zen * RAD;
+        const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g.az - o.az) * RAD)))) * DEG;
+        if (aoi > 90) sac = 1;
+      }
       sombraAcum += sF; nSombra++;
       filas.push([PLANTA, FECHA, `${hh}:${mi}`, s2.ncu, s2.tcu == null ? '' : s2.tcu, s2.id,
         s2.bloque, s2.fila, conMesa ? s2.mesa + 1 : '', pol, th.toFixed(3), (TH_DISP * th).toFixed(3),
         (100 * sF).toFixed(2), sPl != null ? (100 * Math.max(0, sF - sPl)).toFixed(2) : '',
-        GEOMETRICAS.has(pol) ? 0 : 1].join(','));
+        GEOMETRICAS.has(pol) ? 0 : 1, sac].join(','));
     }
   }
   resumen[pol] = { pasos: nPasos, sombraMediaPct: nSombra ? 100 * sombraAcum / nSombra : 0,
@@ -221,7 +236,7 @@ for (const pol of POLS) {
 }
 
 const cab = 'planta,fecha_local,hora_local,ncu,tcu,tracker,bloque,linea,mesa,politica,' +
-            'theta_sim_deg,theta_tcu_deg,sombra_fila_pct,sombra_estructura_pct,asesoria';
+            'theta_sim_deg,theta_tcu_deg,sombra_fila_pct,sombra_estructura_pct,asesoria,sacrificada';
 fs.writeFileSync(SALIDA, cab + '\n' + filas.join('\n') + '\n');
 const meta = {
   generado_por: `backtracking.html ${VER} · tools/export_consignas.mjs`,
@@ -238,6 +253,7 @@ const meta = {
     bifila: 'la consigna es la de la línea MOTORA; la gemela va soldada al mismo eje',
   },
   declarado: {
+    sacrificada: 'la mesa queda de espaldas al sol (ángulo de incidencia > 90°: cero haz) porque la PLANTA gana más con sus vecinas despejadas. Sólo lo hacen los optimizadores libres, y sólo se marca con DNI > 100 W/m²',
     asesoria: 'las políticas de optimización dependen del evaluador POA/eléctrico PROVISIONAL: son propuesta, no consigna, hasta que exista el módulo energético y la validación contra SCADA',
     meteo: 'cielo claro (Ineichen), sin TMY ni pérdidas de planta',
   },

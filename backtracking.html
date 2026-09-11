@@ -835,7 +835,35 @@ function rangoHaz(zen,az,T,axisTilt,slopeDeg){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
   const tt=(slopeDeg==null)?0:slopeDeg;               // paralela al terreno (signo de cross_axis_tilt: θ>0 = borde este abajo)
-  return [Math.max(-T.maxAngle,Math.min(psz,tt,0)-2),Math.min(T.maxAngle,Math.max(psz,tt,0)+2)];
+  let lo=Math.max(-T.maxAngle,Math.min(psz,tt,0)-2), hi=Math.min(T.maxAngle,Math.max(psz,tt,0)+2);
+  /* …y SIEMPRE recibiendo haz. Cuando el terreno cae en contra del sol, la
+     paralela al terreno ya está de espaldas: al atardecer del caso de la
+     auditoría, con ψ = −80,6° y pendiente +8°, el tope daba θ = +10° con un
+     ángulo de incidencia de 90,5° (la horizontal, 81,4°). Para un seguidor de
+     un eje el AOI se separa en la desviación transversal y la componente
+     axial: cos AOI = cos(θ − ψ)·cos λ, con sin λ = s·a. De ahí, AOI ≤ 88°
+     equivale a |θ − ψ| ≤ acos( cos 88° / cos λ ), exacto y sin barrer. */
+  const co=conoHaz(zen,az,T,axisTilt);
+  if(co){
+    lo=Math.max(lo,co[0]);hi=Math.min(hi,co[1]);
+    if(hi<lo){const m=Math.max(-T.maxAngle,Math.min(T.maxAngle,psz));lo=m;hi=m;}
+  }
+  return [lo,hi];
+}
+/* el CONO de ángulos que reciben haz, para el tilt de eje que se le pase:
+   [ψ−d, ψ+d] con d = acos(cos 88° / cos λ). Devuelve null cuando NINGÚN θ baja
+   de 88° (el sol casi a lo largo del eje: es geometría, no decisión). */
+function conoHaz(zen,az,T,axisTilt){
+  const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
+  if(!isFinite(psz))return null;
+  const atr=(axisTilt||0)*RAD, dA=(az-T.axisAz)*RAD, Z=zen*RAD;
+  const sa=Math.sin(Z)*Math.cos(dA)*Math.sin(atr)+Math.cos(Z)*Math.cos(atr);   // s·a (eje inclinado)
+  const cosL=Math.sqrt(Math.max(0,1-sa*sa));
+  if(!(cosL>1e-9))return null;
+  const q=Math.cos(88*RAD)/cosL;
+  if(!(q<1))return null;
+  const d=Math.acos(Math.max(-1,q))*DEG;
+  return [psz-d,psz+d];
 }
 /* el rango legítimo de cada FILA: la unión de los de sus dos parejas (una fila
    interior vive entre dos vanos con pendientes distintas) */
@@ -845,6 +873,12 @@ function rangosFila(zen,az,T){
     let lo=Infinity,hi=-Infinity;
     for(const p of [r-1,r])if(p>=0&&p<nP){const pr=T.pairs[p];const [a,b]=rangoHaz(zen,az,T,pr.axisTilt,pr.slope);lo=Math.min(lo,a);hi=Math.max(hi,b);}
     if(!isFinite(lo)){lo=-T.maxAngle;hi=T.maxAngle;}
+    /* la unión ensancha, y el cono de haz NO es de la pareja sino de la FILA
+       (su propio tilt de eje): con el quiebro, una fila entre dos vanos de
+       pendiente distinta se llevaba el tope del vano vecino y salía a θ=+11,5
+       con el sol a 9,3° (AOI 90,4°). Se interseca con su propio cono. */
+    const co=conoHaz(zen,az,T,(T.rowTilt&&T.rowTilt[r]!=null)?T.rowTilt[r]:0);
+    if(co){const l2=Math.max(lo,co[0]),h2=Math.min(hi,co[1]);if(h2>=l2){lo=l2;hi=h2;}}
     out.push([lo,hi]);
   }
   return out;
@@ -2739,14 +2773,53 @@ function repairNoShade(zen,az,T,ang,irr,doy,albedo){
   // θ uniforme, para decidir con números si algún día compensa.)
   const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
     for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
-  let cur=ang.slice(), E=evalua(cur);
-  if(E.mx<=0.02)return ang;
-  const mx0=E.mx;                                        // sombra de partida (para la guardia de energía)                              // nada (serio) que reparar: ni un bit
   // v1.57: todo candidato dentro del rango legítimo de SU fila (entre el
   // seguimiento verdadero y la paralela al terreno de sus vanos)
   const RF=rangosUnidad(zen,az,T);
   const hLo=Math.min(...RF.map(q=>q[0])), hHi=Math.max(...RF.map(q=>q[1]));
   const clampR=(r,t)=>Math.max(RF[r][0],Math.min(RF[r][1],t));
+  /* v1.57.1: y la CONSIGNA DE PARTIDA también. Hasta aquí el rango sólo acotaba
+     los candidatos de la búsqueda, así que una política que llegaba con su θ
+     fuera del rango salía por la puerta de arriba con él intacto: el barrido
+     pilló seis instantes de sol rasante con la pala publicada a AOI > 90°
+     (θ = +11,5 con el sol a 9,3° y ψ = −79°, de espaldas). Y el árbitro para
+     aceptar el recorte es la ENERGÍA, no la fracción de sombra: en esos
+     instantes la postura de espaldas «sombreaba menos» —38,8 % frente a
+     43,2 %— porque a AOI 90° no hay haz que sombrear, que es exactamente el
+     vicio que el rango viene a cerrar. POA de planta: 20 W/m² en las dos. */
+  const deEspaldas=(r,th)=>{
+    const o=surfaceOrient(th,pvTilt((T.rowTilt&&T.rowTilt[r]!=null)?T.rowTilt[r]:0),T.axisAz);
+    const b=o.tilt*RAD,z=zen*RAD;
+    return Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD)<=0;   // cos AOI ≤ 0
+  };
+  const fuera=(r,th)=>th<RF[r][0]-1e-9||th>RF[r][1]+1e-9;
+  if(ang.some((v,r)=>fuera(r,v))){
+    /* el acople rígido empuja fuera del rango: en el caso que reportó el tercer
+       auditor (Arequipa · valle 2 · senoidal 2° · quebrado · 21-jun 20:40Z,
+       sol 20,9°) el acoplado manda las filas 0-3 a +9,5° y las dos últimas a
+       −41,3°; las filas 2 y 3 tienen su rango en …+2. Recortarlas deja la
+       MISMA sombra (cero) y sube el POA de planta de 315 a 335 W/m². Se recorta
+       el grupo entero, para no romper el θ común, y se acepta sólo si no
+       empeora ni la sombra ni la energía: recortar una fila que ya recibe haz
+       PUEDE meterle sombra, y eso rompería el contrato de las políticas sin
+       sombra (lo cazó el caso bifila de la batería). La excepción es la fila
+       DE ESPALDAS al sol: ahí la sombra no significa nada —no hay haz que
+       sombrear— y manda la energía sola. */
+    const recorta=(pred)=>{const rec=ang.slice(),tocar=new Set();
+      for(let r=0;r<nR;r++)if(pred(r))for(const q of grupoDe(r))tocar.add(q);
+      for(const r of tocar)rec[r]=clampR(r,ang[r]);return rec;};
+    const poa=(a2)=>(!irr||irr.ghi<=0)?0:poaPlant(zen,az,T,a2,irr,doy,albedo).plant;
+    const E0=evalua(ang), p0=poa(ang);
+    const rec=recorta(r=>fuera(r,ang[r]));
+    if(rec.some((v,i)=>v!==ang[i])&&evalua(rec).mx<=E0.mx+1e-9&&poa(rec)>=p0-1e-9)ang=rec;
+    else{
+      const recE=recorta(r=>fuera(r,ang[r])&&deEspaldas(r,ang[r]));
+      if(recE.some((v,i)=>v!==ang[i])&&poa(recE)>=p0-1e-9)ang=recE;
+    }
+  }
+  let cur=ang.slice(), E=evalua(cur);
+  if(E.mx<=0.02)return ang;
+  const mx0=E.mx;                                        // sombra de partida (para la guardia de energía)
   const clamp=(t)=>Math.max(hLo,Math.min(hHi,t));
   const uni=(th)=>{const a=new Array(nR);for(let r=0;r<nR;r++)a[r]=clampR(r,th);return a;};
   // 1) ARRANQUE: el mejor θ UNIFORME del instante (barrido de 5° y refino de
@@ -3276,7 +3349,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.57.0';
+const VER='v1.57.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -5609,6 +5682,22 @@ function updateHud(tIdx,g,irrN,key,p,sh){
     // v1.56: la sombra POR MESA (mitad sur / mitad norte de cada tramo, del contador), no solo por fila («debería ser por mesa»)
     const irre=(['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'';   // v1.57 (auditoría H2)
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+sombraPorMesaTxt(sh,selRow,' · '));
+    /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
+       aparcar una fila de espaldas al sol —AOI > 90°, producción de haz cero—
+       para que sus vecinas lo vean: bajo el modelo es legítimo y gana energía
+       de planta (224 frente a 186 W/m² en el caso que reportó), pero es una
+       consigna que sale por el export hacia una TCU y que nadie espera. Se
+       declara aquí, igual que «irreducible». */
+    if(p.ang[tIdx]&&irrN.dni>100&&g.elev>0){
+      const sac=[];
+      for(let r=0;r<p.ang[tIdx].length;r++){
+        const o=surfaceOrient(p.ang[tIdx][r],pvTilt(DAY.T.rowTilt?DAY.T.rowTilt[r]||0:0),DAY.T.axisAz);
+        const b=o.tilt*RAD,z=g.zen*RAD;
+        const aoi=Math.acos(Math.max(-1,Math.min(1,Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((g.az-o.az)*RAD))))*DEG;
+        if(aoi>90)sac.push({r:r,aoi:aoi});
+      }
+      if(sac.length)card('Filas sacrificadas',sac.map(q=>q.r+1).join(', '),'de espaldas al sol (AOI '+sac.map(q=>q.aoi.toFixed(0)+'°').join(', ')+'): cero haz, para que las vecinas lo vean');
+    }
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
     if(g.elev>0&&p.ang[tIdx]){let gl=0;const nn=p.ang[tIdx].length;for(let r=0;r<nn;r++)gl+=groundLightFrac(p.ang[tIdx][r],g.zen,g.az,DAY.T.gcr,DAY.T.axisAz);
       card('Luz al suelo',(gl/nn*100).toFixed(0)+'%','del haz, entre filas');}

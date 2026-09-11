@@ -19,7 +19,7 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA'); const j0 = html.lastIndexOf('/*', i0);
 const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(sol + '\n' + html.slice(j0, i1) + `return { policyAngles, poaPlant, shadeRows, shadeBand3DAll, pairsFromElev, nsSegments,
-  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss, rotulaMesas, mvPara, trueTrackAngle, pvTilt, rangosFila, rangosUnidad };`)();
+  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss, rotulaMesas, mvPara, trueTrackAngle, pvTilt, rangosFila, rangosUnidad, surfaceOrient };`)();
 const test = fs.readFileSync(path.join(ROOT, 'tools', 'test_backtracking_sim.mjs'), 'utf-8');
 const o0 = test.indexOf('function oracleGeom'), o1 = test.indexOf('function ayoraPlantT');
 const ORA = new Function('F', test.slice(o0, o1) + '\nreturn { oracleExact };')(F);
@@ -76,7 +76,7 @@ function randomCfg() {
 const nombre = (c) => `${c.sitio.nm} · ${c.tpreset}${c.tparam ? ' ' + c.tparam : ''} · N-S ${c.nspreset} ${c.axtilt}° · ${c.drive} · ${c.nsl} ×${c.ntrk} · ${c.nrows} filas · az ${c.axaz}°`;
 const DIAS = [['21-jun', Date.UTC(2026, 5, 21), 172], ['21-mar', Date.UTC(2026, 2, 21), 80], ['21-dic', Date.UTC(2026, 11, 21), 355]];
 
-const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] }, F: { n: 0, peor: 0, perdidas: [], casos: [] }, G: { n: 0, casos: [] } };
+const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] }, F: { n: 0, peor: 0, perdidas: [], casos: [] }, G: { n: 0, casos: [] }, H: { n: 0, peor: 0, espaldas: [], espaldas10: [], casos: [] } };
 const t0 = Date.now();
 for (let ci = 0; ci < NCFG; ci++) {
   const c = randomCfg(), T = mkT(c), nm = nombre(c), nR = c.nrows;
@@ -151,6 +151,21 @@ for (let ci = 0; ci < NCFG; ci++) {
           if (ang[key][r] < RG[r][0] - 5 || ang[key][r] > RG[r][1] + 5) { res.G.casos.push({ tag, key, fila: r, th: +ang[key][r].toFixed(1), rango: [+RG[r][0].toFixed(1), +RG[r][1].toFixed(1)], elev: +g.elev.toFixed(1) }); break; }
         }
       }
+      // H (v1.57.1, reauditoría): NINGUNA MESA DE ESPALDAS AL SOL — el ángulo de
+      // incidencia del haz sobre la pala publicada, que es el invariante FÍSICO
+      // detrás de G: un θ fuera del rango legítimo sólo importa si deja de
+      // recibir haz. Se mide con el sol por encima de 5°, donde el haz cuenta
+      for (const key of ['pairwise', 'true3d', 'mgl']) {
+        if (g.elev < 5) break;
+        res.H.n++;
+        for (let r = 0; r < nR; r++) {
+          const o = F.surfaceOrient(ang[key][r], F.pvTilt(T.rowTilt[r]), T.axisAz), b = o.tilt * RAD, z = g.zen * RAD;
+          const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g.az - o.az) * RAD)))) * DEG;
+          if (aoi > res.H.peor) { res.H.peor = aoi; res.H.casos = [{ tag, key, fila: r, th: +ang[key][r].toFixed(1), aoi: +aoi.toFixed(1), elev: +g.elev.toFixed(1) }]; }
+          if (aoi > 90) { const q = { tag, key, fila: r, th: +ang[key][r].toFixed(1), aoi: +aoi.toFixed(1), elev: +g.elev.toFixed(1) };
+            res.H.espaldas.push(q); if (g.elev > 10) res.H.espaldas10.push(q); break; }
+        }
+      }
       // B2 (v1.55.1): lo mismo con la sombra PUBLICADA (estructura incluida, 32
       // estaciones): ¿había un θ uniforme que dejara menos sombra de la que se
       // publica? Es el objetivo de la reparación desde v1.55.1
@@ -205,6 +220,9 @@ console.log(`F  convergencia de la malla publicada (pairwise, cada hora): ${res.
 if (res.F.casos.length) { const w = res.F.casos[0]; console.log(`   F peor: fila ${w.fila} publicado ${w.pub} % (MV ${w.mv}) frente a ${w.ref} % · ${w.tag}`); }
 if (res.F.perdidas.length) console.log('   F pérdidas: ' + res.F.perdidas.slice(0, 5).map(q => `${q.tag} fila ${q.fila} ${q.pub} % vs ${q.ref} %`).join(' · '));
 console.log(`G  nunca de canto (θ dentro del rango legítimo de su accionamiento): ${res.G.n} instantes-política · violaciones: ${res.G.casos.length}`);
+console.log(`H  ninguna mesa de espaldas al sol (AOI del haz sobre la pala publicada, sol > 5°): ${res.H.n} instantes-política · peor AOI ${res.H.peor.toFixed(1)}° · con AOI > 90°: ${res.H.espaldas.length} (con sol > 10°, que es donde BLOQUEA: ${res.H.espaldas10.length})`);
+if (res.H.casos.length) console.log(`   H peor: ${res.H.casos[0].key} fila ${res.H.casos[0].fila} θ ${res.H.casos[0].th} AOI ${res.H.casos[0].aoi}° sol ${res.H.casos[0].elev}° · ${res.H.casos[0].tag}`);
+if (res.H.espaldas.length) console.log('   H de espaldas: ' + res.H.espaldas.slice(0, 5).map(q => `${q.key} fila ${q.fila} θ ${q.th} AOI ${q.aoi}° sol ${q.elev}° · ${q.tag}`).join(' · '));
 if (res.G.casos.length) console.log('   G casos: ' + res.G.casos.slice(0, 5).map(q => `${q.key} fila ${q.fila} θ ${q.th} fuera de ${q.rango[0]}…${q.rango[1]} sol ${q.elev}° · ${q.tag}`).join(' · '));
 const porPol = {}; for (const k of res.B.casos) porPol[k.key] = (porPol[k.key] || 0) + 1; console.log('   B por política:', JSON.stringify(porPol));
 const porTerr = {}; for (const k of res.B.casos) { const t = k.c.tpreset + '/' + k.c.nspreset + (k.c.nspreset === 'constante' && k.c.axtilt === 0 ? '0' : ''); porTerr[t] = (porTerr[t] || 0) + 1; } console.log('   B por terreno/perfil:', JSON.stringify(porTerr));
@@ -216,3 +234,23 @@ for (const k of res.C.casos.slice(0, 5)) console.log('   C:', k.que, k.v.map(v =
 for (const k of res.D.casos.slice(0, 3)) console.log('   D:', k.key, k.gr, k.a, k.tag);
 for (const k of res.E.casos.slice(0, 3)) console.log('   E:', k.key, k.ang, k.tag);
 if (JSONOUT) fs.writeFileSync(JSONOUT, JSON.stringify(res, null, 1));
+
+/* v1.57.1: el barrido BLOQUEA. Hasta aquí imprimía las violaciones y salía con
+   0, así que un invariante roto llegaba a publicarse con el gate en verde (el
+   tercer auditor lo dijo con estas palabras: «G no es un gate, es un informe»).
+   Los que rompen son los que tienen que valer SIEMPRE: A (contador ≡ oráculo),
+   C (garantía de los optimizadores), D (acople), E (θ finitos y en rango),
+   B (había un θ mejor y la política no lo cogió) y G (θ fuera del rango
+   legítimo de su accionamiento) y H CON EL SOL POR ENCIMA DE 10°, que es donde
+   se juega la energía; por debajo, H informa su residuo (recortar ahí cuesta
+   energía de planta y la fila produce difusa sola). B2 y F se INFORMAN con su
+   cifra. Y de B2 conviene saber POR QUÉ es cota optimista: mide contra el mejor
+   θ uniforme sin exigirle recibir haz, así que hereda el mismo sesgo que
+   destapó R1 — un árbitro que mide sombra ÓPTICA premia estructuralmente no
+   recibir luz, porque lo que no recibe haz no se puede sombrear. */
+const duros = [['A', res.A.casos.length], ['B', res.B.casos.length], ['C', res.C.casos.length],
+               ['D', res.D.casos.length], ['E', res.E.casos.length], ['G', res.G.casos.length],
+               ['H(sol>10°)', res.H.espaldas10.length]];
+const rotos = duros.filter(q => q[1] > 0);
+if (rotos.length) { console.log('\nINVARIANTES ROTOS: ' + rotos.map(q => `${q[0]} (${q[1]})`).join(' · ')); process.exit(1); }
+console.log('\ninvariantes duros (A, B, C, D, E, G) en verde');
