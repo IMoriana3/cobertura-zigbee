@@ -116,6 +116,12 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Informe del emplazamiento** (botón «📄 Informe» en la tabla del día): una página imprimible con el sitio, el
+  terreno, la geometría y el accionamiento, y cada política con cómo decide, qué optimiza y sus cálculos del
+  día (POA y Δ vs astro y vs pairwise con la banda del circunsolar, sombra ponderada por energía, minutos con
+  sombra, pico y peor fila, horas de backtracking, pérdida Martinez con la parte de estructura, |θ| máx, f
+  media), la tabla horaria, el año y la QA si están calculados, y el método con sus límites declarados. Todo
+  sale de lo ya calculado para las curvas (misma integral `dayKpis`): ni una física nueva.
 - **Careo con la producción por string** (`node tools/careo_produccion.mjs [fecha] [paso min]`): produccion.html come
   la misma física pero carga la planta entera y el simulador una ventana de 80 líneas; la herramienta casa las
   líneas por su x medida y las mesas por tramo y compara θ y POA de cada mesa instante a instante. Ayora,

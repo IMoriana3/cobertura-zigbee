@@ -3057,6 +3057,35 @@ console.log('v1.53 · torsión entre vigas vecinas: el backtracking mira toda la
   });
 }
 
+console.log('v1.55 · informe del emplazamiento');
+t('v1.55 estático: el informe existe, explica TODAS las políticas del inventario y publica sus cálculos del día', () => {
+  // «Debemos generar un informe, del emplazamiento, donde aparezca cada
+  // algoritmo, justificando su funcionamiento y lo que optimiza con cálculos»
+  if (!/id="informebtn"/.test(html)) throw new Error('falta el botón «Informe»');
+  if (!/function informeHTML\(\)/.test(html) || !/function abrirInforme\(\)/.test(html)) throw new Error('falta el generador del informe');
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const ex = ui.slice(ui.indexOf('const EXPLICA={'), ui.indexOf('function informeHTML'));
+  const keys = [...html.matchAll(/\{key:'([a-z0-9]+)',\s*nm:/g)].map(m => m[1]);
+  if (keys.length < 8) throw new Error('inventario de políticas no encontrado: ' + keys.join(','));
+  for (const k of keys) if (!new RegExp('\\n\\s*' + k + ':\\{como:').test(ex)) throw new Error('la política «' + k + '» no tiene explicación en el informe');
+  for (const k of keys) { const m = ex.match(new RegExp(k + ':\\{como:\'([^]*?)\',\\s*optimiza:\'([^]*?)\',')); if (!m || m[1].length < 80 || m[2].length < 40) throw new Error('explicación de «' + k + '» demasiado corta'); }
+  for (const lit of ['POA de planta', 'Δ vs astronómico', 'Δ vs pairwise', 'Sombra ponderada por energía', 'Minutos con sombra relevante', 'Peor fila del día', 'Horas de backtracking', 'Pérdida eléctrica Martinez', 'Tabla horaria', 'Método y límites declarados'])
+    if (!ui.includes(lit)) throw new Error('el informe no publica «' + lit + '»');
+  // ni una física nueva: el informe come dayKpis (la MISMA integral que la tabla del día)
+  const inf = ui.slice(ui.indexOf('function informeHTML'), ui.indexOf('function abrirInforme'));
+  if (!/dayKpis\(P\.key\)/.test(inf)) throw new Error('el informe no usa dayKpis: estaría calculando por su cuenta');
+  if (/poaPlant\(|shadeRows\(|policyAngles\(/.test(inf)) throw new Error('el informe recalcula física en vez de leer DAY');
+});
+
+t('v1.55 estático: el manual por FILA existe, arranca en la consigna de la escena y el slider escribe solo en la fila elegida', () => {
+  // «Manual es para modificar la posición de todos a la vez, si queremos hacer row a row???»
+  if (!/id="manrow"/.test(html)) throw new Error('falta la casilla «por fila»');
+  if (!/function manualRowsInit\(\)/.test(html) || !/function manualRowsOn\(\)/.test(html)) throw new Error('falta el estado del manual por fila');
+  if (!/MANUAL_ROWS\[\+\$\('rowsel'\)\.value\|\|0\]=\+\$\('manth'\)\.value/.test(html)) throw new Error('el slider no escribe en la fila elegida');
+  if (!/porFila\?Array\.from\(\{length:nR\}/.test(html)) throw new Error('sceneInstant no usa los θ por fila');
+  if (!/MANUAL_ROWS=Array\.from\(\{length:nR\},\(_,r\)=>Math\.round\(a\[r\]/.test(html)) throw new Error('el manual por fila no arranca en la consigna de la política de la escena');
+});
+
 console.log('v1.54 · quiebro en la rótula: el tracker quebrado se puede simular en presets');
 {
   // «Debemos poder simular también tracker quebrado, que aparece en el

@@ -76,7 +76,7 @@ function randomCfg() {
 const nombre = (c) => `${c.sitio.nm} · ${c.tpreset}${c.tparam ? ' ' + c.tparam : ''} · N-S ${c.nspreset} ${c.axtilt}° · ${c.drive} · ${c.nsl} ×${c.ntrk} · ${c.nrows} filas · az ${c.axaz}°`;
 const DIAS = [['21-jun', Date.UTC(2026, 5, 21), 172], ['21-mar', Date.UTC(2026, 2, 21), 80], ['21-dic', Date.UTC(2026, 11, 21), 355]];
 
-const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] } };
+const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] } };
 const t0 = Date.now();
 for (let ci = 0; ci < NCFG; ci++) {
   const c = randomCfg(), T = mkT(c), nm = nombre(c), nR = c.nrows;
@@ -122,6 +122,27 @@ for (let ci = 0; ci < NCFG; ci++) {
           (fallo ? res.B.casos : res.B.fisica).push({ tag, key, fila, sombra: +(peor * 100).toFixed(1), alcanzable: +(alc * 100).toFixed(1), elev: +g.elev.toFixed(1), ang: ang[key].map(a => +a.toFixed(1)), de: sh.de[fila].map(q => [q[0], +(q[1] * 100).toFixed(1)]), c });
         }
       }
+      // B2 (v1.55.1): lo mismo con la sombra PUBLICADA (estructura incluida, 32
+      // estaciones): ¿había un θ uniforme que dejara menos sombra de la que se
+      // publica? Es el objetivo de la reparación desde v1.55.1
+      for (const key of ['pairwise', 'true3d', 'mgl']) {
+        const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { MV: 32 });
+        let peor = 0, fila = -1;
+        for (let r = 0; r < nR; r++) { const de = sh.de && sh.de[r] ? sh.de[r] : []; const filas = Math.min(sh[r], de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0)); if (filas > peor) { peor = filas; fila = r; } }
+        res.B2.n++;
+        const tope = g.elev >= 10 ? 0.02 : 0.05;
+        if (peor > tope) {
+          let alc = 1;
+          for (let th = -c.maxang; th <= c.maxang; th += 2.5) {
+            const s2 = F.shadeBand3DAll(g.zen, g.az, T, new Array(nR).fill(th), { MV: 32 });
+            let mx = 0;
+            for (let r = 0; r < nR; r++) { const de = s2.de && s2.de[r] ? s2.de[r] : []; mx = Math.max(mx, Math.min(s2[r], de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0))); }
+            if (mx < alc) alc = mx;
+          }
+          const fallo = alc <= Math.max(0.01, 0.5 * peor);
+          (fallo ? res.B2.casos : res.B2.fisica).push({ tag, key, fila, sombra: +(peor * 100).toFixed(1), alcanzable: +(alc * 100).toFixed(1), elev: +g.elev.toFixed(1) });
+        }
+      }
       // C: energía
       if (irr.ghi > 5) {
         const P = {}; for (const key of ['pairwise', 'optimal', 'optfree']) P[key] = F.poaPlant(g.zen, g.az, T, ang[key], irr, doy, 0.2).plant;
@@ -145,6 +166,8 @@ console.log(`barrido: ${NCFG} configuraciones × 3 fechas × cada 20 min · ${se
 console.log(`A  contador ≡ oráculo: ${res.A.n} instantes · peor |Δ| ${(res.A.peor * 100).toFixed(3)} pp · fuera de 0,1 pp: ${res.A.casos.length}`);
 if (res.A.peorCaso) console.log(`   A peor: fila ${res.A.peorCaso.fila} contador ${res.A.peorCaso.contador} % · oráculo ${res.A.peorCaso.oraculo} % · ${res.A.peorCaso.tag}`);
 console.log(`B  sombra de planos con pairwise/true3d/mgl: ${res.B.n} instantes-política · FALLOS de política (había un θ mejor): ${res.B.casos.length} · sombra física (ningún θ la evita): ${res.B.fisica.length}`);
+console.log(`B2 sombra PUBLICADA (estructura, 32 estaciones): ${res.B2.n} instantes-política · FALLOS (había un θ uniforme mejor): ${res.B2.casos.length} · física (ningún θ la evita): ${res.B2.fisica.length}`);
+if (res.B2.casos.length) { const w = res.B2.casos.slice().sort((a, b) => b.sombra - a.sombra)[0]; console.log(`   B2 peor: ${w.sombra} % (alcanzable ${w.alcanzable} %) fila ${w.fila} ${w.key} sol ${w.elev}° · ${w.tag}`); }
 console.log(`C  energía optimal ≥ pairwise, optfree ≥ optimal: ${res.C.n} instantes · violaciones: ${res.C.casos.length}`);
 console.log(`D  acople por accionamiento: ${res.D.n} · violaciones: ${res.D.casos.length}`);
 console.log(`E  θ finitos y en rango: ${res.E.n} · violaciones: ${res.E.casos.length}`);
