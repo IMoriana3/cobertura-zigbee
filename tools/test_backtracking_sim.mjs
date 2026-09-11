@@ -1464,6 +1464,22 @@ t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', 
     throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
 });
 
+t('v1.53.3: los optimizadores enseñan la FÍSICA del minuto pedido con la consigna de la malla', () => {
+  // «¿Cómo puede ser que energy-optimal tenga una posición diferente a true3d
+  // sin BT?» — dos capturas a las 15:23, θ 55° en ambas, pero sol 24,2° en una
+  // y 24,8° en la otra. sceneInstant devolvía null para optimal/optfree (su
+  // búsqueda por instante haría lento el slider) y la escena y el HUD enseñaban
+  // la muestra ENTERA de la malla de 5 min: sol, cielo, sombra y POA de las
+  // 15:20 bajo el rótulo «15:23». Ahora mantienen la consigna de la malla (lo
+  // que hace un TCU con consigna cada 5 min) y la física es la del minuto.
+  if (/if\(key==='optimal'\|\|key==='optfree'\)return null;/.test(html))
+    throw new Error('sceneInstant vuelve a devolver null para los optimizadores: el HUD miente la hora');
+  if (!/held:held\?DAY\.times\[tIdx\]:null/.test(html))
+    throw new Error('el instante no declara la consigna mantenida (held)');
+  if (!/consigna de las '\+hhmm\(INSTANT\.held\)/.test(html))
+    throw new Error('el HUD ya no dice de qué muestra de la malla es la consigna');
+});
+
 t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
   // «No me deja entrar al html, no carga» — y era una pantalla en blanco sin
   // un solo mensaje. Un visor que muere mudo cuando le falta una dependencia

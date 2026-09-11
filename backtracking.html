@@ -3008,7 +3008,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.53.2';
+const VER='v1.53.3';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -5205,7 +5205,8 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       const sa=p.segAng&&p.segAng[tIdx]&&p.segAng[tIdx][selRow];
       let mes='';
       if(sa&&sa.length>1){const a=Math.min(...sa),b=Math.max(...sa);if(b-a>0.005)mes=' · mesas '+(TH_DISP*(TH_DISP<0?b:a)).toFixed(1)+'…'+(TH_DISP*(TH_DISP<0?a:b)).toFixed(1)+'°';}
-      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes);
+      const held=(INSTANT&&INSTANT.stamp===DAY&&INSTANT.key===key&&INSTANT.held!=null&&INSTANT.m===+$('hour').value)?' · consigna de las '+hhmm(INSTANT.held):'';
+      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes+held);
     }
     if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
@@ -5445,26 +5446,37 @@ function sceneInstant(){
   if(m%STEP_MIN===0)return null;                     // en la malla: DAY manda
   const key=$('polview').value;
   if(!DAY.pol[key])return null;
-  // optimizadores: su búsqueda por instante (ascenso + reparación exacta)
-  // haría lento el arrastre del slider — muestran la malla de 5 min, declarado
-  if(key==='optimal'||key==='optfree')return null;
   if(INSTANT&&INSTANT.m===m&&INSTANT.key===key&&INSTANT.stamp===DAY)return INSTANT;
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
-  const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
   const dt=Math.max(60,(m-DAY.times[tIdx])*60), PK=DAY.pol[key];
-  let ang,pp,ls=null;
-  if(segOn(DAY.T)&&PK.segAng){
-    // POR MESA, desde la malla de 5 min de cada mesa (el mismo slew por mesa)
-    ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,o,irr,DAY.doy,c.albedo),dt);
-    ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);
+  // v1.53.3: los OPTIMIZADORES (búsqueda por instante: ascenso + reparación
+  // exacta) harían lento el arrastre del slider, y hasta aquí devolvían null:
+  // la escena y el HUD enseñaban la muestra de la malla de 5 min ENTERA —sol,
+  // irradiancia y sombra de las 15:20 bajo el rótulo «15:23»— mientras el
+  // resto de políticas calculaba el minuto exacto. Ahora mantienen la CONSIGNA
+  // de la malla (lo que hace un TCU que recibe consigna cada 5 min) y la
+  // física —sol, cielo, sombra, POA— es la del minuto pedido, como en todas.
+  const held=(key==='optimal'||key==='optfree');
+  let ang,pp,ls=null,f=null;
+  if(held){
+    f=PK.f?PK.f[tIdx]:null;
+    if(segOn(DAY.T)&&PK.segAng){ls=PK.segAng[tIdx];ang=segLineMean(DAY.T,ls);pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);}
+    else{ang=PK.ang[tIdx];pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);}
   }else{
-    ang=slewLimit(PK.ang[tIdx],o.angles,dt);
-    pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+    const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo); f=o.f;
+    if(segOn(DAY.T)&&PK.segAng){
+      // POR MESA, desde la malla de 5 min de cada mesa (el mismo slew por mesa)
+      ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,o,irr,DAY.doy,c.albedo),dt);
+      ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);
+    }else{
+      ang=slewLimit(PK.ang[tIdx],o.angles,dt);
+      pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+    }
   }
-  INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,
-           pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:o.f},
+  INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,held:held?DAY.times[tIdx]:null,
+           pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:f},
                segAng:ls?{[tIdx]:ls}:null,poaS:ls?{[tIdx]:pp.segs}:null}};
   return INSTANT;
 }
