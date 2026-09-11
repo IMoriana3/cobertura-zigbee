@@ -73,7 +73,7 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <li><a href="#dia">Comparativa del día</a></li>
 <li><a href="#verif">Verificación: lo que se prueba y con qué cifras</a></li>
 <li><a href="#limites">Límites conocidos</a></li>
-<li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a><ul><li><a href="#reauditoria">Segunda vuelta (v1.57.1)</a></li><li><a href="#tercera">Tercera vuelta (v1.57.1)</a></li></ul></li>
+<li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a><ul><li><a href="#reauditoria">Segunda vuelta (v1.57.1)</a></li><li><a href="#tercera">Tercera vuelta (v1.57.1)</a></li><li><a href="#cuarta">Cuarta vuelta: el residuo irreducible del accionamiento (v1.57.2)</a></li></ul></li>
 </ol>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
@@ -387,6 +387,36 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <p><b>R3 · fila sacrificada.</b> El óptimo libre puede aparcar una fila de espaldas al sol para que sus vecinas lo vean: bajo el modelo es legítimo y gana energía de planta (224 frente a 186 W/m² en el caso que reportó), pero es una consigna que sale hacia una TCU y que nadie espera. Se declara en el HUD («Filas sacrificadas», con su ángulo de incidencia) y sale marcada en el CSV de consignas, columna <code>sacrificada</code>, con DNI &gt; 100 W/m².</p>
 
 <p><b>Lo que queda declarado, con su alcance.</b> El oráculo exacto de la batería construye su geometría a través del oráculo de podas, así que comparte esa construcción: <b>el careo A valida las podas y el álgebra de intervalos, no la geometría del modelo</b>; la corrección geométrica descansa hoy en la métrica F (contra una malla 128) y en la auditoría externa. Y la pala del contador sigue siendo un paralelogramo con la cuerda en el plano transversal en vez de un rectángulo perpendicular al tubo: el revisor midió la desviación de la normal en 0,07° con 4° de tilt y 0,41° con 10°, que no mueve ninguna cifra publicada.</p>
+
+
+<h3 id="cuarta">8.3 Cuarta vuelta: el árbitro óptico con permiso escrito, y una propiedad del sistema que no estaba contada (v1.57.2)</h3>
+
+<p>La cuarta pasada del revisor encontró el mismo vicio por quinta vez, y esta vez la lección es distinta de las cuatro anteriores. En <code>repairNoShade</code> la guardia de energía existía desde v1.57.0, pero con dos excepciones, y la primera decía —literalmente— <em>«se acepta siempre que LOGRE la garantía (≤2 % en la fila peor)»</em>. Es decir: <b>cuando el árbitro óptico gane, que gane a cualquier precio</b>. Los cuatro casos anteriores eran el vicio actuando por omisión, porque nadie había puesto un término de haz; éste actuaba <b>por autorización expresa</b>, y por eso sobrevivió a las cuatro correcciones: cada una añadía una guardia y esta cláusula la desactivaba.</p>
+
+<p>Medido sobre v1.57.1 (<code>09b25da</code>), bifila y quebrado, N-S a dos aguas ±8°, sol 12° al oeste: la reparación publicaba <b>2,5D cero con 64,4 W/m² de planta</b> cuando su propia consigna de partida daba <b>137,7 con 50 % de sombra</b>. Conseguía la garantía escondiéndose en el borde del cono, casi de canto, donde no hay haz que sombrear. Compraba su promesa con <b>el 53 % de la producción</b>. La guardia es ahora incondicional: si la reparación pierde energía de planta, no se publica.</p>
+
+<p class="nota"><b>La regla que queda, y que vale para revisar código futuro:</b> toda <em>excepción</em> a una guardia de energía es una puerta al mismo vicio. No es «falta un término de energía» —eso ya se sabía—, es que una guardia con excepciones no es una guardia.</p>
+
+<h4>El residuo irreducible del accionamiento rígido</h4>
+<p>Al quitar esa cláusula salió a la luz algo que el simulador nunca había contado y que es una <b>propiedad del sistema</b>, no de ninguna política: en ese mismo instante, <b>la fórmula acoplada ya traía 50,50 % de sombra 2.5D</b>. No es un fallo de pairwise ni de la reparación. El accionamiento rígido impone <b>un θ común a dos filas que pvlib pondría a ángulos distintos</b>, porque sus vigas tienen tilts distintos; con esa restricción, la ausencia de sombra <b>no es alcanzable por construcción</b>, y nunca lo fue.</p>
+
+<p>Dicho como propiedad: <b>con accionamiento bifila rígido (o quebrado) y torsión entre las dos filas del tracker, existe un residuo de sombra irreducible cuyo tamaño crece con la torsión, y la política sólo puede elegir dónde ponerlo.</b> La QA de la página llevaba versiones pidiéndole cuentas a la política por una limitación del motor.</p>
+
+<p>Esto es información de diseño, no una nota al pie: quien esté decidiendo entre <b>monofila y bifila</b> en un terreno con relieve a lo largo de fila tiene aquí un argumento cuantificado. El simulador existe para eso, y hasta ahora esa cifra no se publicaba en ningún sitio. La métrica <b>I</b> del barrido la publica ahora: cuántos instantes-política pasan del 2 % de 2.5D, repartidos por elevación solar, y cuánta energía compra cada excepción.</p>
+
+<p><b>Qué exige la QA desde v1.57.2</b>, después de esto: θ común por grupo (lo que el accionamiento promete), que todo θ elegido <b>reciba haz</b> (lo que evita el vicio), y que lo publicado <b>no pierda energía de planta</b> frente a la fórmula (lo que la reparación promete). La sombra 2.5D dejó de ser un contrato y pasó a ser una métrica, que es lo que siempre fue.</p>
+
+
+<h4>El sexto sitio estaba en el banco que juzga, y eso cambia cómo leer el pasado</h4>
+<p>Los cinco casos anteriores estaban en el código <em>juzgado</em>; el sexto, en el que <em>juzga</em>. La métrica <b>B</b> del barrido —y su gemela en la batería— preguntaba «¿había un θ uniforme con menos sombra?» midiendo <b>sombra óptica a secas</b>. Medido sobre esta misma versión: en «valle 1 · quebrado · sol 25°», el θ uniforme que baja la sombra del 32,9 % al 15,2 % publica <b>298,7 W/m² de planta frente a los 662,1</b> de la consigna publicada. El banco exigía tirar más de la mitad de la producción para enseñar menos sombra.</p>
+
+<p>La diferencia con los otros cinco no es de grado: un defecto en <code>repairNoShade</code> produce consignas malas <em>y el banco lo caza</em>; un defecto en el criterio de B marca como fallo consignas buenas y —si el signo cae del otro lado— bendice consignas malas. Un banco con el vicio dentro <b>empuja el código hacia el defecto</b>, porque quien corrige, corrige hacia lo que el test pide.</p>
+
+<p class="nota"><b>Cómo hay que releer el pasado:</b> los ceros de la métrica B desde v1.53 hasta v1.57.1 <b>no eran evidencia de que las políticas estuvieran sanas</b>. B medía sombra óptica, que es precisamente el árbitro que premia no recibir luz. <b>B mide lo que dice medir desde v1.57.2</b>, y sólo desde entonces sus ceros son información.</p>
+
+<p>El criterio nuevo: es fallo sólo si el candidato alternativo es <b>mejor en sombra Y no peor en energía</b>, con la tolerancia escrita (0,05 W/m² de planta, el mismo empate técnico que en H). Y para que el arreglo no vacíe la métrica —el riesgo simétrico: un invariante que no puede fallar no protege nada, y un cero se lee siempre como buena noticia—, el barrido publica ahora <b>su poder de discriminación</b>: cuántos candidatos alternativos eran mejores en sombra, y cuántos de ésos sobreviven al filtro de energía. Si el primero es grande y el segundo cero, el filtro trabaja; si los dos son cero, B ya no discrimina y hay que rehacerla.</p>
+
+<p><b>Lo demás de esta vuelta.</b> El evaluador rápido 2.5D guiaba la búsqueda de los optimizadores y el criterio del propio <code>anglesPairwise</code>: lee cero donde la mesa mira casi de canto —211 de 430 candidatos del caso B difieren más de 5 pp del contador exacto—. La búsqueda pasa a ir con el contador exacto (+19 % de tiempo, la misma energía: era el veto quien sostenía la corrección, no la búsqueda), y el criterio de pairwise con torsión se acota al <b>cono de haz</b>, aplicado donde nace la consigna en vez de tres capas más arriba. El cono vive en una sola constante, <code>AOI_HAZ = 88°</code>, que antes era el mismo número escrito en dos sitios. Y el barrido <b>entró en la CI</b>: existía desde v1.53 y no lo corría nadie, porque ya había un paso llamado «barrido» —el de RF— y leyendo el log aparecía en verde.</p>
 
 <p><b>Lo que sigue pendiente de su lista:</b> el barrido publica ahora una métrica de convergencia (F) y otra de mesas de canto (G), pero el criterio de «alcanzable» de la métrica B sigue comparando contra un barrido de θ uniforme, que es una cota inferior optimista; y los tests estáticos que buscan cadenas en el fuente siguen ahí, con el valor limitado que el revisor les atribuye. Ninguno de los dos afecta a las cifras que publica la página.</p>
 

@@ -372,6 +372,20 @@ t('H2 (reauditoría): ninguna política sin sombra manda la mesa DE ESPALDAS al 
   if (!(aoiTope(hi) < 89)) throw new Error('el tope recortado sigue sin recibir haz: AOI ' + aoiTope(hi).toFixed(1));
 });
 
+t('sin cielo, la consigna sale MARCADA como no reparada (el guardarraíl no es silencioso)', () => {
+  /* El recorte al rango lo arbitra la energía; sin irradiancia no hay nada que
+     comparar, así que no se recorta. Pero quien llame a las políticas sin cielo
+     tiene que saber que lo que recibe no está reparado: sale con `sinReparar`.
+     La página, el barrido y el export siempre traen cielo. */
+  const T = casoB(6, true);
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 7, 30), 41.5763, -0.7981);
+  const sinCielo = F.policyAngles('pairwise', g.zen, g.az, T).angles;
+  if (sinCielo.sinReparar !== true) throw new Error('sin cielo, la consigna sale sin marcar: nadie sabría que no está reparada');
+  const irr = F.clearskyIneichen(g.zen, 172, 300, 3.5);
+  const conCielo = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  if (conCielo.sinReparar) throw new Error('con cielo la consigna se marca como no reparada, y sí lo está');
+});
+
 t('H2 (reauditoría): la ENERGÍA del día no se hunde — ninguna política sin sombra baja del 80 % del astronómico en el caso B', () => {
   // la reauditoría midió true-3D en 7,37 Wh/m² frente a 10,73 del astronómico: un 31 % del día perdido
   const T = casoB(6, true), doy = 172; const E = {};
@@ -446,6 +460,35 @@ t('R1 (tercera auditoría): el rango legítimo sobrevive al accionamiento QUEBRA
   }
 });
 
+t('H (ancla del extremo): la postura que hundía la POA en v1.56 —fila de espaldas al sol a las 09:30— sigue clasificada como BLOQUEANTE por la regla de coste', () => {
+  /* Un invariante basado en coste necesita un ancla en el extremo, o dentro de
+     seis versiones nadie sabrá dónde estaba la línea. Ésta es la que lo fija:
+     en v1.56, true-3D publicaba a las 09:30 del caso B una fila de espaldas al
+     sol con POA de planta 65 W/m² cuando recortarla al rango daba 716. Aquel
+     desastre NO era un recorte «que cuesta energía»: era +651 W/m² regalados.
+     La regla nueva (H bloquea cuando recortar no cuesta) lo habría parado, y
+     este test lo exige con su número. */
+  const T = casoB(6, true), doy = 172, RAD = Math.PI / 180;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 7, 30), 41.5763, -0.7981);     // 09:30 local
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  if (!(g.elev > 20)) throw new Error('el instante ya no es el de las 09:30: sol ' + g.elev.toFixed(1));
+  const RU = F.rangosUnidad(g.zen, g.az, T);
+  // la consigna MALA de v1.56: la fila 2 mandada al lado contrario del sol
+  const malo = F.policyAngles('true3d', g.zen, g.az, T, irr, doy, 0.2).angles.slice();
+  malo[2] = -45;
+  const o = F.surfaceOrient(malo[2], F.pvTilt(T.rowTilt[2]), T.axisAz), b = o.tilt * RAD, z = g.zen * RAD;
+  const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g.az - o.az) * RAD)))) / RAD;
+  if (!(aoi > 90)) throw new Error('el ancla ya no es una fila de espaldas: AOI ' + aoi.toFixed(1));
+  const rec = malo.map((v, r) => Math.max(RU[r][0], Math.min(RU[r][1], v)));
+  const dP = F.poaPlant(g.zen, g.az, T, rec, irr, doy, 0.2).plant - F.poaPlant(g.zen, g.az, T, malo, irr, doy, 0.2).plant;
+  if (!(dP >= -0.05)) throw new Error(`la regla de coste ya NO bloquearía aquel desastre: recortar cuesta ${(-dP).toFixed(2)} W/m²`);
+  /* el +651 de v1.56 era sobre SU vector publicado, que ya no existe; aquí el
+     ancla se construye metiendo la fila 2 de espaldas en el vector de hoy y lo
+     que se exige es lo que importa: que recortarla siga siendo una GANANCIA
+     grande, no un empate que la tolerancia de «gratis» pudiera tragarse. */
+  if (!(dP > 20)) throw new Error(`el ancla ha perdido su extremo: recortar sólo gana ${dP.toFixed(1)} W/m² (v1.56, sobre su propio vector, eran +651)`);
+});
+
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
   const T = casoB(6, true), doy = 172; let dif = 0;
   for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
@@ -460,7 +503,12 @@ t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por con
   }
   if (!(dif >= 5)) throw new Error('el caso no discrimina: base = publicado en casi todos los instantes (' + dif + ')');
   // y el veto lo lleva escrito: el pairwise reparado es candidato
-  if (!/for\(const \[f2,ang2\] of \[\[0,base\],\[1,full\],\[0,pub\]\]\)/.test(html)) throw new Error('el veto de energy-optimal no incluye el pairwise publicado');
+  // v1.57.2: el veto ya no repesca sólo los extremos — mide la REJILLA ENTERA
+  // con el contador exacto, más el pairwise publicado. Es estrictamente más
+  // fuerte que lo que este test pedía, y lo que lo vigila de verdad es el
+  // invariante J del barrido (el óptimo publicado es el mejor de su rejilla).
+  if (!/cands\.push\(\[0,pub\]\)/.test(html)) throw new Error('el veto de energy-optimal no incluye el pairwise publicado');
+  if (!/OPT_FRACTIONS\.map\(f2=>\[f2,base\.map/.test(html)) throw new Error('el veto ya no mide la rejilla entera con el contador exacto');
 });
 t('H4: cielo claro Ineichen ≡ pvlib por defecto (sin realce de Perez) — Zaragoza 21-jun 07:30, TL 3,5, 300 m: 80,1 / 300,2 / 31,7 W/m²', () => {
   const c = F.clearskyIneichen(gB.zen, 172, 300, 3.5);
@@ -612,7 +660,8 @@ t('v1.29: energy-optimal ≥ pairwise BAJO EL CONTADOR EXACTO (lo cazó el barri
   // f>0 que bajo el contador publicado rendía MENOS que la base (−0,27% el
   // 21-jun). El core garantiza optimal ≥ pairwise porque f=0 ES pairwise.
   if (!/VETO con el contador EXACTO/.test(html)) throw new Error('energy-optimal sin veto exacto');
-  if (!/\[\[0,base\],\[1,full\],\[0,pub\]\]/.test(html)) throw new Error('el veto no mira los DOS extremos de la rejilla (y el pairwise publicado, v1.57)');
+  if (!/OPT_FRACTIONS\.map\(f2=>\[f2,base\.map/.test(html) || !/cands\.push\(\[0,pub\]\)/.test(html))
+    throw new Error('el veto no mide la rejilla entera con el contador exacto (v1.57.2) más el pairwise publicado');
   const T = { pairs: [0, 0, 0, 0].map(s => ({ slope: s, pitch: 6, axisTilt: 0 })),
               cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 3 };
   for (const [zen, az] of [[80, 100], [75, 260], [70, 95], [65, 265], [60, 100]]) {
@@ -3561,7 +3610,7 @@ console.log('v1.53 · barrido de terrenos REDUCIDO (el grande es tools/barrido_t
   const filasDe = (sh, r) => { const de = sh.de && sh.de[r] ? sh.de[r] : []; return Math.min(sh[r] || 0, de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0)); };
   for (const c of CFGS) {
     const T = mk(c), st = sitios[c.s];
-    t(`barrido · ${c.nm}: contador ≡ oráculo, sin-sombra ≤ 5 % de filas (o lo que ningún θ evita), energía y acople`, () => {
+    t(`barrido · ${c.nm}: contador ≡ oráculo, sin-sombra ≤ 5 % de filas (o lo que ningún θ evita SIN perder energía), energía y acople`, () => {
       let peorA = 0, peorB = null, nB = 0;
       for (const [dia, doy] of DIAS) for (let m = 0; m < 1440; m += 40) {
         const g = F.solarPos(dia + m * 60000, st.lat, st.lon);
@@ -3582,10 +3631,25 @@ console.log('v1.53 · barrido de terrenos REDUCIDO (el grande es tools/barrido_t
           let mx = 0; for (let r = 0; r < c.n; r++) mx = Math.max(mx, filasDe(sh, r));
           nB++;
           if (mx > 0.05) {
-            let alc = 1;
+            /* v1.57.2 (cuarta auditoría): el candidato alternativo tiene que ser
+               mejor en sombra Y NO PEOR EN ENERGÍA. Medir sólo sombra óptica es
+               el vicio de toda esta auditoría metido en el banco que juzga: en
+               «valle 1 · quebrado · sol 25°», el θ uniforme que baja la sombra
+               del 32,9 % al 15,2 % publica 298,7 W/m² de planta frente a los
+               662,1 de la consigna publicada. Un banco no puede pedir que se
+               tire más de la mitad de la producción para enseñar menos sombra. */
+            let alc = 1, mejorReal = null;
+            const pPub = F.poaPlant(g.zen, g.az, T, ang[key], irr, doy, 0.2).plant;
             const RF = F.rangosUnidad(g.zen, g.az, T);   // v1.57: lo alcanzable, dentro del rango legítimo de cada unidad de accionamiento y con la malla publicada
-            for (let th = -55; th <= 55; th += 5) { const s2 = F.shadeBand3DAll(g.zen, g.az, T, RF.map(q => Math.max(q[0], Math.min(q[1], th))), { noStruct: true }); let m2 = 0; for (let r = 0; r < c.n; r++) m2 = Math.max(m2, filasDe(s2, r)); alc = Math.min(alc, m2); }
-            if (alc <= Math.max(0.01, 0.5 * mx) && (!peorB || mx > peorB.mx)) peorB = { mx, alc, key, elev: g.elev, m, ang: ang[key].map(a => +a.toFixed(0)) };
+            for (let th = -55; th <= 55; th += 5) {
+              const cand = RF.map(q => Math.max(q[0], Math.min(q[1], th)));
+              const s2 = F.shadeBand3DAll(g.zen, g.az, T, cand, { noStruct: true }); let m2 = 0;
+              for (let r = 0; r < c.n; r++) m2 = Math.max(m2, filasDe(s2, r));
+              alc = Math.min(alc, m2);
+              if (m2 <= Math.max(0.01, 0.5 * mx) && F.poaPlant(g.zen, g.az, T, cand, irr, doy, 0.2).plant >= pPub - 0.05   // 0,05 W/m²: empate técnico, la misma tolerancia escrita que en H y en el barrido
+                  && (mejorReal === null || m2 < mejorReal.m2)) mejorReal = { m2, th };
+            }
+            if (mejorReal && (!peorB || mx > peorB.mx)) peorB = { mx, alc: mejorReal.m2, key, elev: g.elev, m, ang: ang[key].map(a => +a.toFixed(0)) };
           }
         }
         // C
