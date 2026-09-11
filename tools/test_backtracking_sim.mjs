@@ -113,7 +113,7 @@ const sandbox = new Function(sol + '\n' + src + `
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
-           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts };`);
+           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -474,7 +474,7 @@ function oracleGeom(T, rowAngles) {
   const RAD = Math.PI / 180;
   const zOff = (T.z0 != null && isFinite(T.z0)) ? T.z0 : O_REC;
   const nR = T.pairs.length + 1;
-  const PRr = T.real, xs = [0], zch = [0];
+  const PRr = T.real, SZ = T.segZ || (PRr && PRr.segZ) || null, xs = [0], zch = [0];   // v1.54: cota por mesa en T (medida o del quiebro en la rótula)
   for (let i = 0; i < T.pairs.length; i++) {
     xs.push(xs[i] + T.pairs[i].pitch);
     zch.push(zch[i] - T.pairs[i].pitch * Math.tan(T.pairs[i].slope * RAD));
@@ -486,8 +486,8 @@ function oracleGeom(T, rowAngles) {
      de los módulos. Aquí se arregla igual, pero escrito aparte: lo que tiene
      que coincidir es el RESULTADO, no el código. */
   const cotD = (row, v) => {
-    if (PRr && PRr.segZ && PRr.segZ[row]) {
-      const segs = PRr.segs[row], zz = PRr.segZ[row];
+    if (SZ && SZ[row]) {
+      const segs = T.segs[row], zz = SZ[row];
       let bi = -1, bd = Infinity;
       for (let k = 0; k < segs.length; k++) {
         const lo = Math.min(segs[k][0], segs[k][1]), hi = Math.max(segs[k][0], segs[k][1]);
@@ -2765,7 +2765,8 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   t('la UI del simulador dibuja el accionamiento con westPorMesa / ejesPorMesa cuando la planta es medida', () => {
     const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
     const b3 = ui.slice(ui.indexOf('function build3D'), ui.indexOf('function setSky'));
-    for (const lit of ['westPorMesa(PR)', 'ejesPorMesa(PR)', 'west:westAt(r,si)'])
+    // v1.54: PM es «la planta con mesas» — la medida (PR) o el preset con quiebro en la rótula (T)
+    for (const lit of ['westPorMesa(PM)', 'ejesPorMesa(PM)', 'west:westAt(r,si)', '(PR&&PR.segPairs)?PR:null'])
       if (!b3.includes(lit)) throw new Error('build3D sin «' + lit + '»');
   });
 }
@@ -3053,6 +3054,82 @@ console.log('v1.53 · torsión entre vigas vecinas: el backtracking mira toda la
       for (const q of l) { if (q[0] === 'terreno') conTerreno++; else if (!(Number.isInteger(q[0]) && q[0] !== r)) throw new Error('emisora rara: ' + q[0]); }
     });
     if (!conTerreno) throw new Error('al ocaso con la loma al oeste ninguna fila atribuye sombra al terreno');
+  });
+}
+
+console.log('v1.54 · quiebro en la rótula: el tracker quebrado se puede simular en presets');
+{
+  // «Debemos poder simular también tracker quebrado, que aparece en el
+  // desplegable pero la realidad es que para poder simularlo necesitamos un
+  // terreno donde las dos mesas tengan diferente inclinación». Los presets
+  // daban un tilt por VIGA; ahora el perfil «rotula» parte cada viga en sus
+  // dos mesas (sur +v, norte −v) con la misma estructura por mesa que una
+  // planta medida, y solo la QUEBRADA lo sigue.
+  const mkRot = (drive, v, nrows = 6, nsl = 'alineadas') => {
+    const groups = F.driveGroups(nrows, drive);
+    const filaLen = 2 * 28 * 1.146 + 0.55;
+    const segs = F.nsSegments(nrows, nsl, 1, filaLen, 1.0, drive === 'mono' ? 1 : 2);
+    if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
+    const ELEV = new Array(nrows).fill(0);
+    const RM = F.rotulaMesas('rotula', v, drive, segs, ELEV, groups, 0.55);
+    const rowTilt = new Array(nrows).fill(0);
+    const T = { pairs: F.pairsFromElev(ELEV, 6, rowTilt), cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 2, iam: 0.05,
+                rowTilt, groups, drive, segs: RM ? RM.segs : segs, filaLen };
+    if (RM) Object.assign(T, { segTilt: RM.segTilt, segZ: RM.segZ, segSide: RM.segSide, segMorro: RM.segMorro, segPairs: RM.segPairs, segDrive: RM.segDrive });
+    return { T, RM };
+  };
+  t('v1.54: con QUEBRADA cada viga son dos mesas a ±v, continuas en la rótula, con gemela y accionamiento; rígida, monofila y v=0 no cambian nada', () => {
+    const { T, RM } = mkRot('quebrado', 4);
+    if (!RM) throw new Error('la quebrada no recibe el perfil por mesa');
+    for (let r = 0; r < 6; r++) {
+      if (T.segs[r].length !== 2) throw new Error('la viga ' + r + ' no se parte en dos mesas: ' + T.segs[r].length);
+      if (Math.abs(T.segTilt[r][0] - 4) > 1e-9 || Math.abs(T.segTilt[r][1] + 4) > 1e-9) throw new Error('tilts por mesa ' + T.segTilt[r]);
+      // la cota de cada mesa es SU tilt (la misma regla que plantFromCotas: atan2(Δz, Δs))
+      for (let k = 0; k < 2; k++) {
+        const sg = T.segs[r][k], z = T.segZ[r][k], esp = Math.atan2(z[1] - z[0], sg[1] - sg[0]) * 180 / Math.PI;
+        if (Math.abs(esp - T.segTilt[r][k]) > 1e-9) throw new Error(`mesa ${r}/${k}: tilt ${T.segTilt[r][k]} ≠ ${esp} de sus cotas`);
+      }
+      // continuidad en la rótula: los dos extremos interiores están a la misma cota (loma: por debajo de la rótula medio hueco)
+      if (Math.abs(T.segZ[r][0][1] - T.segZ[r][1][0]) > 1e-9) throw new Error('la viga ' + r + ' no es continua en la rótula');
+      if (!(T.segZ[r][0][1] < T.segMorro[r][0][1])) throw new Error('con v>0 la rótula tiene que ser el punto alto (loma)');
+      if (T.segSide[r][0] !== 0 || T.segSide[r][1] !== 1) throw new Error('lados sur/norte mal');
+    }
+    // gemelas mesa a mesa y UN motor por tracker con sus cuatro mesas
+    if (T.segPairs.length !== 3 * 2) throw new Error('parejas gemelas: ' + T.segPairs.length);
+    if (T.segDrive.length !== 3 || T.segDrive.some(g => g.length !== 4)) throw new Error('accionamiento: ' + JSON.stringify(T.segDrive));
+    for (const drive of ['bifila', 'mono']) if (mkRot(drive, 4).RM) throw new Error(drive + ' no puede seguir el quiebro (tubo recto)');
+    if (mkRot('quebrado', 0).RM) throw new Error('con v=0 no hay quiebro que seguir');
+    // vaguada: v<0 ⇒ la rótula es el punto bajo
+    const { T: Tv } = mkRot('quebrado', -4);
+    if (!(Tv.segZ[0][0][1] > Tv.segMorro[0][0][1])) throw new Error('con v<0 la rótula tiene que ser el punto bajo (vaguada)');
+  });
+  t('v1.54: con el quiebro, contador ≡ oráculo (planos y estructura) y las políticas por mesa dan θ COMÚN a las cuatro mesas del tracker', () => {
+    const { T } = mkRot('quebrado', 4);
+    const doy = 172, lat = 41.5763, lon = -0.7981;
+    let peor = 0, nEval = 0;
+    for (const m of [6 * 60 + 30, 8 * 60, 12 * 60, 16 * 60, 19 * 60]) {
+      const g = F.solarPos(Date.UTC(2026, 5, 21) + (m - 120) * 60000, lat, lon);
+      if (g.elev <= 0) continue;
+      const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+      const seg = F.policyAnglesSeg('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+      for (const grp of T.segDrive) { const v0 = seg[grp[0][0]][grp[0][1]]; for (const [r, k] of grp) if (Math.abs(seg[r][k] - v0) > 1e-9) throw new Error('las mesas de un tracker no van al mismo θ a las ' + m); }
+      // las mesas sur y norte tienen tilts opuestos: su θ ASTRO difiere (a mediodía, lejos del tope), el de accionamiento no
+      const ast = F.anglesAstroSeg(g.zen, g.az, T);
+      if (m === 12 * 60 && Math.abs(ast[0][0] - ast[0][1]) < 1e-6) throw new Error('astro por mesa no ve los tilts opuestos a mediodía: ' + ast[0]);
+      const ang = F.segLineMean(T, seg);
+      const sh = F.shadeRows(g.zen, g.az, T, seg), ora = oracleExact(F, g.zen, g.az, T, ang);
+      for (let r = 0; r < 6; r++) { peor = Math.max(peor, Math.abs(sh[r] - ora[r])); nEval++; }
+      // con sol alto la quebrada backtrackea sin sombra de planos
+      if (g.elev > 25) { const ns = F.shadeBand3DAll(g.zen, g.az, T, seg, { noStruct: true }); if (Math.max(...ns) > 2e-3) throw new Error('sombra de planos con sol alto: ' + Math.max(...ns) + ' a las ' + m); }
+    }
+    if (!(nEval > 0)) throw new Error('sin instantes');
+    if (peor > 1e-3) throw new Error('contador ≠ oráculo con el quiebro: ' + (peor * 100).toFixed(3) + ' pp');
+  });
+  t('v1.54 estático: el preset existe en la UI, terrain() lo reparte, y la página dice cuándo el tubo NO lo sigue', () => {
+    if (!/<option value="rotula">/.test(html)) throw new Error('falta el preset «rotula» en el desplegable');
+    if (!/rotulaMesas\(c\.nspreset,c\.axtilt,c\.drive,segs,ELEV,groups,0\.55\)/.test(html)) throw new Error('terrain() no reparte el quiebro por mesa');
+    if (!/quiebro en la rótula NO seguido/.test(html)) throw new Error('el pill no avisa de que rígida/monofila no siguen el quiebro');
+    if (/a los lados del morro/.test(html)) throw new Error('queda un «morro» visible: se llama rótula');
   });
 }
 
