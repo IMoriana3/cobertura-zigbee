@@ -3144,7 +3144,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.56.0';
+const VER='v1.56.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -6447,6 +6447,16 @@ if(window.ResizeObserver){
     INPUT_IDS.forEach((id,i)=>{if(LIGERAS.has(id))$(id).value=saved.ids[i];});
   }
   ensureElev(cfg().nrows);
+  // v1.56.1: el huso guardado tiene que casar con el sitio guardado. Se
+  // restauraba «tz 2» junto a Arequipa (lat/lon del guardado anterior al huso
+  // por sitio) y, como nada cambiaba lat/lon, nadie llamaba a aplicaHuso: a las
+  // 12:51 «bajo horizonte» y la tarjeta en rojo («¿hora local? ¿12:51 amanecen
+  // los trackers?»). Si el huso guardado se aleja más de 1,5 h del del sitio,
+  // manda el sitio; si está cerca (verano/invierno elegido a mano), se respeta
+  {
+    const tzSitio=husoPlanta(null,$('date').value,+$('lon').value,+$('lat').value);
+    if(Math.abs((+$('tz').value)-tzSitio)>1.5){_huso=null;aplicaHuso(null);}
+  }
   loadPlants();
   $('hourlbl').textContent=hhmm(+$('hour').value);
   $('date2').value=$('date').value;
