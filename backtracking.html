@@ -2793,7 +2793,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.52.0';
+const VER='v1.52.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3873,7 +3873,7 @@ function init3D(){
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
       new THREE.MeshBasicMaterial({color:0xfbbd23}));
     scene3.add(hemi,sun,sun.target,sunMesh);
-    const hint=document.createElement('div');hint.className='hint';
+    const hint=document.createElement('div');hint.className='hint';hint.id='hint3d';
     hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · el terreno se edita en «Corte 2D»';
     holder.appendChild(hint);
     // globo de mesa: aparece al PINCHAR una mesa (pick3D) o con «⚠»
@@ -5552,8 +5552,16 @@ function snapSunPov(){
   if(!TD||!DAY)return;
   const inst=sceneInstant(), tIdx=timeIndex();
   const g=inst?inst.g:DAY.sun[tIdx];
-  const el=Math.max(1.5,g.elev)*RAD;
+  // hasta donde el contador es válido (sol ≥ 0,5°, zen ≤ 89,5°): por debajo la
+  // cámara se queda en 0,5° y ya NO es el sol — el pie lo dice, porque lo que
+  // se vea en rojo desde ahí no es un hallazgo (se veía a 0,2° con el sol
+  // clavado en 1,5°: sombra real del ocaso vista desde otro sitio)
+  const EL_MIN=0.5;
+  const el=Math.max(EL_MIN,g.elev)*RAD;
   const azR=(g.az-DAY.c.axaz)*RAD;
+  const hint=document.getElementById('hint3d');
+  if(hint)hint.textContent='👁 SOL a '+g.elev.toFixed(1)+'° · az '+g.az.toFixed(0)+'° — lo que no ves desde aquí es lo que está en sombra · rueda: zoom · arrastrar: pan'+
+    (g.elev<EL_MIN?' · ⚠ sol bajo '+EL_MIN+'°: la cámara mira desde '+EL_MIN+'°, NO es el sol':'');
   const dir=new THREE.Vector3(Math.sin(azR)*Math.cos(el),Math.sin(el),-Math.cos(azR)*Math.cos(el));
   const t=TD.controls.target;
   // el sol está en el INFINITO: con la cámara cerca hay paralaje y se ve
@@ -5570,6 +5578,7 @@ function snapSunPov(){
   oc.left=-h*asp;oc.right=h*asp;oc.top=h;oc.bottom=-h;
   oc.near=1;oc.far=dist*2+500;
   oc.updateProjectionMatrix();
+  pinta3D();
 }
 // ZOOM en el modo sol: en ortográfica es escala de encuadre (los rayos siguen
 // exactamente paralelos — el teorema «desde el sol sin sombras» se conserva)
@@ -5579,6 +5588,7 @@ $('view3d').addEventListener('wheel',(e)=>{
   const z=TD.orthoCam.zoom*(e.deltaY<0?1.12:0.89);
   TD.orthoCam.zoom=Math.max(0.25,Math.min(12,z));
   TD.orthoCam.updateProjectionMatrix();
+  pinta3D();          // sin esto la cámara cambiaba y la escena no se repintaba: «no puedo hacer zoom»
 },{passive:false,capture:true});
 // PAN en modo sol: arrastrar mueve el TARGET en el plano de la vista — la
 // dirección al sol no cambia (sigues siendo el sol, apuntando a otro sitio)
@@ -5612,6 +5622,8 @@ $('sunpov').onclick=()=>{
   }else{
     TD.controls.enabled=true;
     TD.camera.up.set(0,1,0);
+    const hint=document.getElementById('hint3d');
+    if(hint)hint.textContent='arrastrar: orbitar · rueda: zoom · botón dcho: pan · el terreno se edita en «Corte 2D»';
     TD.controls.update();update3D();
   }
 };
