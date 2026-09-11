@@ -116,6 +116,13 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Careo con la producción por string** (`node tools/careo_produccion.mjs [fecha] [paso min]`): produccion.html come
+  la misma física pero carga la planta entera y el simulador una ventana de 80 líneas; la herramienta casa las
+  líneas por su x medida y las mesas por tramo y compara θ y POA de cada mesa instante a instante. Ayora,
+  21-jun, cada 30 min: 1.600 mesas, 48.000 comparaciones, **idénticos bit a bit en las mesas interiores**;
+  solo difieren las dos líneas de borde de la ventana y sus gemelas de accionamiento (sin vecina por un lado
+  en el simulador): hasta 20° de θ al ocaso y un 1,4 % de energía del día, declarado. Vive en la batería de
+  producción (reducido a cada 120 min).
 - **Barrido de terrenos** (`node tools/barrido_terrenos.mjs [nConfigs] [semilla] --oraculo=N`): terrenos E-O ×
   perfiles N-S × accionamientos × implantaciones × latitudes × fechas × políticas, con los invariantes que
   tienen que cumplirse siempre (contador ≡ oráculo, políticas sin-sombra → sombra de filas ~0 salvo lo que

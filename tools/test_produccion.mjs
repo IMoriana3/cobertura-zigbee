@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let ok = 0, ko = 0;
@@ -920,6 +921,18 @@ t('la bifila real: solo la viga OESTE lleva motor, y con las plantas de cotas ta
 });
 
 console.log('');
+t('CAREO con el simulador (tools/careo_produccion.mjs): la herramienta existe, corre sobre Ayora y su veredicto es IDÉNTICOS', () => {
+  // «Carea con el programa de generación por string que calculáis igual». La
+  // herramienta casa la ventana del simulador con la planta entera de esta
+  // página (líneas por x medida, mesas por tramo) y compara θ y POA de cada
+  // mesa, instante a instante. Aquí se ejecuta reducida (cada 120 min) para
+  // que el veredicto viva en el CI y no solo en una tirada a mano.
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'tools', 'careo_produccion.mjs'), '2026-06-21', '120'], { encoding: 'utf-8', timeout: 600000 });
+  if (!/mesas casadas por tramo: (\d+)/.test(out) || +RegExp.$1 < 1000) throw new Error('el careo no casa las mesas: ' + out.split('\n').slice(1, 4).join(' | '));
+  if (!/veredicto: IDÉNTICOS/.test(out)) throw new Error('el veredicto del careo no es IDÉNTICOS:\n' + out);
+  if (!/peor \|Δθ\| interior: 0\.0000°/.test(out) || !/peor \|ΔPOA\| interior: 0\.0000 W/.test(out)) throw new Error('las mesas interiores no son idénticas:\n' + out);
+});
+
 console.log('v1.29 · lo que la cadena del Notebook no modelaba');
 
 t('a cero, las pérdidas de planta no tocan NADA (la cifra de antes, al vatio)', () => {
