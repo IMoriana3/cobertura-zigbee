@@ -116,6 +116,14 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Documento teórico de los algoritmos** (botón «📚 Teoría», `docs/algoritmos_backtracking.html`): la base de
+  cada política, la fórmula o el procedimiento que la calcula, qué optimiza y su criterio de sombra, un cálculo
+  paso a paso sobre un caso reproducible (Zaragoza, 21-jun 07:30, pendiente 8°: pvlib ideal 79,9° → BT plano
+  16,1° → BT con pendiente 42,1°; desglose de POA y pérdida Martinez; rejilla f del energy-optimal) y renders
+  del simulador (corte 2D, 3D y cámara desde el sol) por política, más las cifras de verificación.
+- **Render ≡ física, medido** (`node tools/test_render_sol.mjs`, en CI): desde la cámara del sol no se ve ningún
+  píxel de sombra pintada; en el corte 2D el borde por el que entra la sombra coincide con un ray-cast 2D
+  independiente (mesa de cara y de espaldas al sol); el θ manual cruza el signo de ida y vuelta.
 - **Informe del emplazamiento** (botón «📄 Informe» en la tabla del día): una página imprimible con el sitio, el
   terreno, la geometría y el accionamiento, y cada política con cómo decide, qué optimiza y sus cálculos del
   día (POA y Δ vs astro y vs pairwise con la banda del circunsolar, sombra ponderada por energía, minutos con

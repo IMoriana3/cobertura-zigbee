@@ -187,6 +187,7 @@ jobs:
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
+          - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,

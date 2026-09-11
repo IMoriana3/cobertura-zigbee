@@ -3083,7 +3083,73 @@ t('v1.55 estático: el manual por FILA existe, arranca en la consigna de la esce
   if (!/function manualRowsInit\(\)/.test(html) || !/function manualRowsOn\(\)/.test(html)) throw new Error('falta el estado del manual por fila');
   if (!/MANUAL_ROWS\[\+\$\('rowsel'\)\.value\|\|0\]=\+\$\('manth'\)\.value/.test(html)) throw new Error('el slider no escribe en la fila elegida');
   if (!/porFila\?Array\.from\(\{length:nR\}/.test(html)) throw new Error('sceneInstant no usa los θ por fila');
-  if (!/MANUAL_ROWS=Array\.from\(\{length:nR\},\(_,r\)=>Math\.round\(a\[r\]/.test(html)) throw new Error('el manual por fila no arranca en la consigna de la política de la escena');
+  // v1.56: el slider habla en convención TCU (− = este) y la física al revés — se cruza por TH_DISP en los DOS sentidos
+  if (!/MANUAL_ROWS=Array\.from\(\{length:nR\},\(_,r\)=>Math\.round\(TH_DISP\*\(a\[r\]/.test(html)) throw new Error('el manual por fila no arranca en la consigna de la política de la escena (con el signo del slider)');
+});
+
+t('v1.56: el θ MANUAL cruza el signo (slider «− = este» → física θ>0 = este) en el común y en el por fila', () => {
+  // reportado con captura: slider −22°, HUD +22° y la mesa mirando al oeste
+  const sc = cuerpoFn(html, 'sceneInstant');
+  if (!sc) throw new Error('sin sceneInstant');
+  if (!/anglesManual\(nR,TH_DISP\*th,mx\)/.test(sc)) throw new Error('el θ común del slider entra a la física sin cruzar el signo');
+  if (!/TH_DISP\*\(\+\(MANUAL_ROWS\[r\]\|\|0\)\)/.test(sc)) throw new Error('el θ por fila entra a la física sin cruzar el signo');
+  // y con el cruce, de ida y vuelta: slider s ⇒ física TH_DISP·s ⇒ HUD TH_DISP·(TH_DISP·s) = s
+  const TH_DISP = -1;
+  for (const s2 of [-22, 0, 60]) if (TH_DISP * (TH_DISP * s2) !== s2) throw new Error('el cruce no es involutivo');
+});
+
+t('v1.56 render≡física: la silueta 3D toma el largo de la mesa del VIDRIO, no de todo el spin (motor/TCU asomaban 2,6 m por el morro)', () => {
+  // diagnóstico por ray-cast desde el sol: rojo visible en las mesas sur de las filas motoras, y la física decía LUZ ahí
+  const b3 = cuerpoFn(html, 'build3D');
+  if (!b3) throw new Error('sin build3D');
+  if (!/mm\.isMesh&&mm\.material===glassM\)bbG\.expandByObject\(mm\)/.test(b3)) throw new Error('el bb de la silueta no se limita al vidrio');
+  if (!/const bb=bbG\.isEmpty\(\)\?new THREE\.Box3\(\)\.setFromObject\(beam\.spin\):bbG;/.test(b3)) throw new Error('sin bb del vidrio con respaldo al spin');
+});
+
+t('v1.56 render≡física: en el corte 2D la sombra al suelo cae SOBRE el terreno y el borde de entrada lo decide la geometría', () => {
+  // «Hay sombras en el aire» · «Esas sombras en los paneles son incoherentes con la del suelo y con la posición solar»
+  const ds = cuerpoFn(html, 'drawScene');
+  if (!ds) throw new Error('sin drawScene');
+  if (!/const caeAlSuelo=\(x,z\)=>/.test(ds) || !/const sombraSuelo=\(ex,ez,col,off\)=>/.test(ds)) throw new Error('la sombra al suelo no busca el terreno');
+  if (/fillRect\(Math\.min\(X\(gx\[0\]\)/.test(ds)) throw new Error('sigue la sombra a la cota del poste emisor');
+  if (!/const bordeEntrada=\(i,angs\)=>/.test(ds)) throw new Error('sin regla geométrica del borde');
+  if (/fromRight=psz>=0/.test(ds)) throw new Error('el borde sigue siendo «el lado del sol»');
+  // la regla, ejecutada: mesa de ESPALDAS al sol (sol rasante al oeste, mesa mirando al este) ⇒ entra por el borde BAJO, que es el DERECHO
+  const S = (psz) => (x, z) => x * Math.cos(psz * RAD) - z * Math.sin(psz * RAD);
+  const RAD = Math.PI / 180, hw = 1.191, psz = -87, s = S(psz);
+  const mesa = (cx, cz, th) => ({ ex: [cx - hw * Math.cos(th), cx + hw * Math.cos(th)], ez: [cz + hw * Math.sin(th), cz - hw * Math.sin(th)] });
+  const E = mesa(0, 1.6, 55 * RAD), R = mesa(6, 1.6, 55 * RAD);          // θ>0 = borde derecho ABAJO = mira al este, sol al oeste
+  const sE = [s(E.ex[0], E.ez[0]), s(E.ex[1], E.ez[1])], lo = Math.min(...sE), hi = Math.max(...sE);
+  const inL = s(R.ex[0], R.ez[0]) >= lo && s(R.ex[0], R.ez[0]) <= hi, inR = s(R.ex[1], R.ez[1]) >= lo && s(R.ex[1], R.ez[1]) <= hi;
+  if (!(inR && !inL)) throw new Error('de espaldas al sol la sombra debe entrar por el borde derecho (bajo), no por el de cara al sol');
+  const E2 = mesa(0, 1.6, -55 * RAD), R2 = mesa(6, 1.6, -55 * RAD);      // de cara al sol: entra por el izquierdo (bajo)
+  const sE2 = [s(E2.ex[0], E2.ez[0]), s(E2.ex[1], E2.ez[1])], lo2 = Math.min(...sE2), hi2 = Math.max(...sE2);
+  const inL2 = s(R2.ex[0], R2.ez[0]) >= lo2 && s(R2.ex[0], R2.ez[0]) <= hi2;
+  if (!inL2) throw new Error('de cara al sol la sombra debe entrar por el borde izquierdo (bajo)');
+});
+
+t('v1.56 estático: la cámara desde el sol y el haz son del 3D — en el corte 2D se esconden', () => {
+  const st = cuerpoFn(html, 'setTab');
+  if (!st || !/\$\('sunpov'\)\.style\.display=VIEW3D\?'':'none'/.test(st)) throw new Error('el botón «sol» sigue visible en 2D');
+});
+
+t('v1.55: el huso sigue al sitio — regla peninsular en su sitio, estándar de la longitud fuera («debe estar en hora local»)', () => {
+  // con Arequipa y 21-dic el cambio de fecha ponía +1 (la regla de Madrid) y a
+  // las 10:56 el sol salía «bajo horizonte»: eran las 04:56 reales
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  // tzDeLongitud vive junto a localToUTCms (bloque de física); husoPlanta, en la UI
+  const src = html.slice(html.indexOf('function tzDeLongitud'), html.indexOf('function localToUTCms')) + ui.slice(ui.indexOf('function husoPlanta'), ui.indexOf('let _huso='));
+  const H = new Function(src + 'return {tzDeLongitud, husoPlanta};')();
+  if (H.tzDeLongitud(-71.80644) !== -5) throw new Error('Arequipa: ' + H.tzDeLongitud(-71.80644));
+  if (H.tzDeLongitud(-0.7981) !== 0) throw new Error('Zaragoza estándar: ' + H.tzDeLongitud(-0.7981));
+  if (H.husoPlanta(null, '2026-12-21', -71.80644, -16.6) !== -5) throw new Error('Arequipa en diciembre: ' + H.husoPlanta(null, '2026-12-21', -71.80644, -16.6));
+  if (H.husoPlanta(null, '2026-06-21', -71.80644, -16.6) !== -5) throw new Error('Arequipa en junio: sin horario de verano');
+  if (H.husoPlanta(null, '2026-06-21', -0.7981, 41.58) !== 2) throw new Error('Zaragoza en junio: CEST +2');
+  if (H.husoPlanta(null, '2026-12-21', -0.7981, 41.58) !== 1) throw new Error('Zaragoza en diciembre: CET +1');
+  if (H.husoPlanta(null, '2026-06-21', 9.6, 45.3) !== 2) throw new Error('Italia en junio: +2');
+  if (H.husoPlanta({ tzFijo: -300 }, '2026-06-21', -71.8, -16.6) !== -5) throw new Error('tzFijo del layout manda');
+  if (!/if\(id==='lon'\|\|id==='lat'\)\{_huso=null;aplicaHuso\(null\);\}/.test(ui)) throw new Error('cambiar lat/lon no arrastra el huso');
+  if (!/no casa con la longitud/.test(ui)) throw new Error('la tarjeta del sol no avisa del huso incoherente');
 });
 
 console.log('v1.54 · quiebro en la rótula: el tracker quebrado se puede simular en presets');
