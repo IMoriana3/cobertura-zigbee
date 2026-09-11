@@ -116,6 +116,16 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Auditoría externa incorporada** (v1.57): un revisor independiente recalculó el caso de referencia con pvlib
+  y escribió su propio ray-cast; de ahí salen cuatro correcciones de fondo. (1) Las **estaciones axiales** del
+  contador son adaptativas (una cada 4 m, cada 2 m con torsión, el doble con el sol bajo 6°): con 8 fijas una
+  mesa de 65 m perdía manchas enteras de sombra. (2) Las políticas sin sombra tienen un **rango legítimo**
+  —entre el seguimiento verdadero y la paralela al terreno—: antes podían acabar casi de canto al sol, con
+  «sombra cero» porque no había haz, y la sombra que no se puede evitar se publica como **irreducible**.
+  (3) El **veto** de energy-optimal y óptimo libre incluye el pairwise publicado, no solo la base sin reparar.
+  (4) El cielo claro Ineichen va **sin el realce de Perez**, como pvlib por defecto. Y un **oráculo geométrico
+  independiente** (rotación exacta, 200×400 muestras, sin código común) en la batería, más dos métricas nuevas
+  en el barrido: convergencia de la malla y «nunca de canto».
 - **Documento teórico de los algoritmos** (botón «📚 Teoría», `docs/algoritmos_backtracking.html`): la base de
   cada política, la fórmula o el procedimiento que la calcula, qué optimiza y su criterio de sombra, un cálculo
   paso a paso sobre un caso reproducible (Zaragoza, 21-jun 07:30, pendiente 8°: pvlib ideal 79,9° → BT plano

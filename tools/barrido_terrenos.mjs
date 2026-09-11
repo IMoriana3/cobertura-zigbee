@@ -19,7 +19,7 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA'); const j0 = html.lastIndexOf('/*', i0);
 const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(sol + '\n' + html.slice(j0, i1) + `return { policyAngles, poaPlant, shadeRows, shadeBand3DAll, pairsFromElev, nsSegments,
-  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss, rotulaMesas };`)();
+  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss, rotulaMesas, mvPara, trueTrackAngle, pvTilt, rangosFila, rangosUnidad };`)();
 const test = fs.readFileSync(path.join(ROOT, 'tools', 'test_backtracking_sim.mjs'), 'utf-8');
 const o0 = test.indexOf('function oracleGeom'), o1 = test.indexOf('function ayoraPlantT');
 const ORA = new Function('F', test.slice(o0, o1) + '\nreturn { oracleExact };')(F);
@@ -76,7 +76,7 @@ function randomCfg() {
 const nombre = (c) => `${c.sitio.nm} · ${c.tpreset}${c.tparam ? ' ' + c.tparam : ''} · N-S ${c.nspreset} ${c.axtilt}° · ${c.drive} · ${c.nsl} ×${c.ntrk} · ${c.nrows} filas · az ${c.axaz}°`;
 const DIAS = [['21-jun', Date.UTC(2026, 5, 21), 172], ['21-mar', Date.UTC(2026, 2, 21), 80], ['21-dic', Date.UTC(2026, 11, 21), 355]];
 
-const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] } };
+const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [] }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] }, F: { n: 0, peor: 0, perdidas: [], casos: [] }, G: { n: 0, casos: [] } };
 const t0 = Date.now();
 for (let ci = 0; ci < NCFG; ci++) {
   const c = randomCfg(), T = mkT(c), nm = nombre(c), nR = c.nrows;
@@ -98,7 +98,7 @@ for (let ci = 0; ci < NCFG; ci++) {
       }
       // B: sombra de planos por FILAS (sin estructura, sin terreno) en las políticas sin-sombra
       for (const key of ['pairwise', 'true3d', 'mgl']) {
-        const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { noStruct: true, MV: 16 });
+        const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { noStruct: true });   // v1.57: la resolución publicada (mvPara), antes 16
         let peor = 0, fila = -1;
         for (let r = 0; r < nR; r++) {
           const de = sh.de && sh.de[r] ? sh.de[r] : [];
@@ -112,14 +112,43 @@ for (let ci = 0; ci < NCFG; ci++) {
           // 2,5°): si ningún θ baja de la mitad de lo que dejó la política, es física
           // (terreno, geometría), no política — se apunta pero no cuenta como fallo
           let alc = 1;
+          const RF = F.rangosUnidad(g.zen, g.az, T);   // v1.57: lo alcanzable dentro del rango legítimo de cada unidad de accionamiento
           for (let th = -c.maxang; th <= c.maxang; th += 2.5) {
-            const s2 = F.shadeBand3DAll(g.zen, g.az, T, new Array(nR).fill(th), { noStruct: true, MV: 8 });
+            const s2 = F.shadeBand3DAll(g.zen, g.az, T, RF.map(q => Math.max(q[0], Math.min(q[1], th))), { noStruct: true });   // v1.57: misma resolución que la política (antes 8 frente a 16: mezclaba dos mallas)
             let mx = 0;
             for (let r = 0; r < nR; r++) { const de = s2.de && s2.de[r] ? s2.de[r] : []; mx = Math.max(mx, Math.min(s2[r], de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0))); }
             if (mx < alc) alc = mx;
           }
           const fallo = alc <= Math.max(0.01, 0.5 * peor);
           (fallo ? res.B.casos : res.B.fisica).push({ tag, key, fila, sombra: +(peor * 100).toFixed(1), alcanzable: +(alc * 100).toFixed(1), elev: +g.elev.toFixed(1), ang: ang[key].map(a => +a.toFixed(1)), de: sh.de[fila].map(q => [q[0], +(q[1] * 100).toFixed(1)]), c });
+        }
+      }
+      // F (v1.57, auditoría H1): CONVERGENCIA de la malla publicada — cada hora en
+      // punto, |sh(mvPara) − sh(128)| por fila con la política pairwise, y las
+      // «pérdidas»: filas con >2 % convergido y menos de la mitad publicado
+      if (m % 60 === 0) {
+        const pubS = F.shadeBand3DAll(g.zen, g.az, T, ang.pairwise, { noStruct: true });
+        const refS = F.shadeBand3DAll(g.zen, g.az, T, ang.pairwise, { noStruct: true, MV: 128 });
+        res.F.n++;
+        for (let r = 0; r < nR; r++) {
+          const d = Math.abs(pubS[r] - refS[r]);
+          if (d > res.F.peor) { res.F.peor = d; res.F.casos = [{ tag, fila: r, pub: +(pubS[r] * 100).toFixed(1), ref: +(refS[r] * 100).toFixed(1), mv: F.mvPara(T) }]; }
+          if (refS[r] > 0.02 && pubS[r] < 0.5 * refS[r]) res.F.perdidas.push({ tag, fila: r, pub: +(pubS[r] * 100).toFixed(1), ref: +(refS[r] * 100).toFixed(1) });
+        }
+      }
+      // G (v1.57, auditoría H2): NUNCA DE CANTO — ningún θ más allá de la paralela
+      // al terreno en contra del sol (el rango legítimo de su unidad de
+      // accionamiento). Medir |θ−ψ| a secas marcaba la HORIZONTAL a sol de 5°,
+      // que no es estar de canto: es donde converge el propio backtracking
+      // el rango de la FILA (no el de su accionamiento, que es la intersección y
+      // puede ser más estrecho que el propio candidato de pvlib), con 5° de
+      // holgura: lo que se busca es la postura de CANTO, que se sale decenas de
+      // grados, no las décimas que separan dos vanos vecinos
+      const RG = F.rangosFila(g.zen, g.az, T);
+      for (const key of ['pairwise', 'true3d', 'mgl']) {
+        res.G.n++;
+        for (let r = 0; r < nR; r++) {
+          if (ang[key][r] < RG[r][0] - 5 || ang[key][r] > RG[r][1] + 5) { res.G.casos.push({ tag, key, fila: r, th: +ang[key][r].toFixed(1), rango: [+RG[r][0].toFixed(1), +RG[r][1].toFixed(1)], elev: +g.elev.toFixed(1) }); break; }
         }
       }
       // B2 (v1.55.1): lo mismo con la sombra PUBLICADA (estructura incluida, 32
@@ -133,8 +162,9 @@ for (let ci = 0; ci < NCFG; ci++) {
         const tope = g.elev >= 10 ? 0.02 : 0.05;
         if (peor > tope) {
           let alc = 1;
+          const RF2 = F.rangosUnidad(g.zen, g.az, T);
           for (let th = -c.maxang; th <= c.maxang; th += 2.5) {
-            const s2 = F.shadeBand3DAll(g.zen, g.az, T, new Array(nR).fill(th), { MV: 32 });
+            const s2 = F.shadeBand3DAll(g.zen, g.az, T, RF2.map(q => Math.max(q[0], Math.min(q[1], th))), { MV: 32 });
             let mx = 0;
             for (let r = 0; r < nR; r++) { const de = s2.de && s2.de[r] ? s2.de[r] : []; mx = Math.max(mx, Math.min(s2[r], de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0))); }
             if (mx < alc) alc = mx;
@@ -171,6 +201,11 @@ if (res.B2.casos.length) { const w = res.B2.casos.slice().sort((a, b) => b.sombr
 console.log(`C  energía optimal ≥ pairwise, optfree ≥ optimal: ${res.C.n} instantes · violaciones: ${res.C.casos.length}`);
 console.log(`D  acople por accionamiento: ${res.D.n} · violaciones: ${res.D.casos.length}`);
 console.log(`E  θ finitos y en rango: ${res.E.n} · violaciones: ${res.E.casos.length}`);
+console.log(`F  convergencia de la malla publicada (pairwise, cada hora): ${res.F.n} instantes · peor |Δ| frente a MV 128: ${(res.F.peor * 100).toFixed(2)} pp · filas con >2 % convergido y menos de la mitad publicado: ${res.F.perdidas.length}`);
+if (res.F.casos.length) { const w = res.F.casos[0]; console.log(`   F peor: fila ${w.fila} publicado ${w.pub} % (MV ${w.mv}) frente a ${w.ref} % · ${w.tag}`); }
+if (res.F.perdidas.length) console.log('   F pérdidas: ' + res.F.perdidas.slice(0, 5).map(q => `${q.tag} fila ${q.fila} ${q.pub} % vs ${q.ref} %`).join(' · '));
+console.log(`G  nunca de canto (θ dentro del rango legítimo de su accionamiento): ${res.G.n} instantes-política · violaciones: ${res.G.casos.length}`);
+if (res.G.casos.length) console.log('   G casos: ' + res.G.casos.slice(0, 5).map(q => `${q.key} fila ${q.fila} θ ${q.th} fuera de ${q.rango[0]}…${q.rango[1]} sol ${q.elev}° · ${q.tag}`).join(' · '));
 const porPol = {}; for (const k of res.B.casos) porPol[k.key] = (porPol[k.key] || 0) + 1; console.log('   B por política:', JSON.stringify(porPol));
 const porTerr = {}; for (const k of res.B.casos) { const t = k.c.tpreset + '/' + k.c.nspreset + (k.c.nspreset === 'constante' && k.c.axtilt === 0 ? '0' : ''); porTerr[t] = (porTerr[t] || 0) + 1; } console.log('   B por terreno/perfil:', JSON.stringify(porTerr));
 res.B.casos.sort((a, b) => b.sombra - a.sombra);

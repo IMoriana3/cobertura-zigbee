@@ -726,7 +726,8 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
           if(g2.includes(q)||g2.includes(q+1))touch.push(q);
         let cur=0;for(const q of touch)cur=Math.max(cur,pairViol(q,a));
         let best=null,bestV=cur,bestVc=null;
-        for(let cand=-T.maxAngle;cand<=T.maxAngle+1e-9;cand+=paso){
+        const [hLo,hHi]=rangoHaz(zen,az,T,pr.axisTilt,pr.slope);   // v1.57: nunca de canto
+        for(let cand=Math.ceil(hLo/paso)*paso;cand<=hHi+1e-9;cand+=paso){
           const trial=a.slice(); for(const r of g2)trial[r]=cand;
           let v=0;
           for(const q of touch){v=Math.max(v,pairViol(q,trial));if(v>=bestV&&v>0)break;}
@@ -793,6 +794,76 @@ function nan0(v){return isFinite(v)?v:0;}
    solape), no por el objeto T — los tests mutan T in situ. Sobre Ayora entera
    (294 parejas) el instante llamaba a esto decenas de miles de veces. */
 const _PST=new WeakMap();
+/* v1.57 (auditoría H1): estaciones axiales ADAPTATIVAS. Con 8 fijas, una mesa
+   de 65 m se muestreaba cada 8 m: con torsión N-S entre vecinas la mancha de
+   un extremo (6,3 % convergido, caso B fila 4) salía 3,3 % o CERO, y sin
+   torsión los 2,6 m del extremo que el desplazamiento axial deja libres nunca
+   caían en una estación (12,9 % frente a 12,5 %). Ahora cada ≤4 m, y cada
+   ≤2 m si dos vecinas difieren ≥0,5° de tilt; entre 8 y 64. Las plantas
+   MEDIDAS se quedan en 8: allí MV 8 vs 32 está medido (≤0,7 pp, +0,007 %
+   anual) y el instante de Ayora entera tiene un tope de 3 s. `T.mv` lo fija
+   a mano (barrido, estudios de convergencia). */
+function mvPara(T,zen){
+  if(!T)return 8;
+  if(T.mv)return T.mv;
+  if(T.real)return 8;
+  // sol muy rasante (<6°): la sombra barre la mesa entera en pocos metros y el
+  // barrido de terrenos midió hasta 3,7 pp de diferencia contra la malla fina
+  // justo ahí — se dobla la densidad, que son pocos instantes del día
+  const rasante=(zen!=null&&zen>84)?2:1;
+  let L=0;
+  if(T.segs)for(const sg of T.segs)for(const s2 of (sg||[]))L=Math.max(L,Math.abs(s2[1]-s2[0]));
+  if(!(L>0))L=60;
+  let tor=0;
+  if(T.rowTilt)for(let r=0;r+1<T.rowTilt.length;r++)tor=Math.max(tor,Math.abs((T.rowTilt[r]||0)-(T.rowTilt[r+1]||0)));
+  if(T.segTilt)for(const st of T.segTilt)if(st)for(let k=0;k+1<st.length;k++)tor=Math.max(tor,Math.abs(st[k]-st[k+1]));
+  return Math.max(8,Math.min(64,Math.ceil(rasante*L/(tor>=0.5?2:4))));
+}
+/* v1.57 (auditoría H2): SEMIESPACIO SOLAR. Sin él, el barrido de torsión de
+   pairwise y la reparación podían dejar mesas DE CANTO al sol (|θ−ψ| ≈ 90°:
+   rayo paralelo al plano, haz cero y «sombra cero» por vacuidad) — medido en
+   el caso B con el sol a 23° y a 36°, POA 54 frente a 713. Ningún motor recibe
+   esa consigna. Girar más allá de la horizontal en contra del sol levanta el
+   borde bajo fuera de la sombra de la vecina, y por eso el barrido iba hacia
+   allí; pero el propio backtracking de pvlib nunca pasa de la posición
+   PARALELA AL TERRENO (a sol rasante converge a θ = pendiente transversal).
+   Ese es el rango legítimo de toda política sin sombra: entre el seguimiento
+   verdadero ψ y la paralela al terreno θ_t (la horizontal siempre dentro),
+   con 2° de margen. Un primer intento con |θ−ψ| ≤ 85° a secas dejaba fuera la
+   horizontal a sol de 4° (ψ ≈ −86°) y el barrido de terrenos lo cazó. */
+function rangoHaz(zen,az,T,axisTilt,slopeDeg){
+  const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
+  if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
+  const tt=(slopeDeg==null)?0:slopeDeg;               // paralela al terreno (signo de cross_axis_tilt: θ>0 = borde este abajo)
+  return [Math.max(-T.maxAngle,Math.min(psz,tt,0)-2),Math.min(T.maxAngle,Math.max(psz,tt,0)+2)];
+}
+/* el rango legítimo de cada FILA: la unión de los de sus dos parejas (una fila
+   interior vive entre dos vanos con pendientes distintas) */
+function rangosFila(zen,az,T){
+  const nP=T.pairs.length, out=[];
+  for(let r=0;r<=nP;r++){
+    let lo=Infinity,hi=-Infinity;
+    for(const p of [r-1,r])if(p>=0&&p<nP){const pr=T.pairs[p];const [a,b]=rangoHaz(zen,az,T,pr.axisTilt,pr.slope);lo=Math.min(lo,a);hi=Math.max(hi,b);}
+    if(!isFinite(lo)){lo=-T.maxAngle;hi=T.maxAngle;}
+    out.push([lo,hi]);
+  }
+  return out;
+}
+/* …y el de cada UNIDAD DE ACCIONAMIENTO: la intersección de los de sus filas.
+   Es el que manda, porque las dos filas de una bifila giran con un solo motor:
+   recortar fila a fila rompía el θ común, que es un invariante del acople. Lo
+   usan la reparación, la batería y el barrido, para que «lo alcanzable» sea lo
+   que la planta puede ejecutar de verdad. */
+function rangosUnidad(zen,az,T){
+  const RF=rangosFila(zen,az,T);
+  return RF.map((q,r)=>{
+    let g=[r]; if(T.groups)for(const gr of T.groups)if(gr.includes(r)){g=gr;break;}
+    let lo=-Infinity,hi=Infinity;
+    for(const q2 of g){lo=Math.max(lo,RF[q2][0]);hi=Math.min(hi,RF[q2][1]);}
+    if(hi<lo){const m=(RF[g[0]][0]+RF[g[0]][1])/2;return [m,m];}
+    return [lo,hi];
+  });
+}
 function pairStations(T,p){
   const pr=T.pairs[p];
   if(!T.rowTilt)return [{v:0,slope:pr.slope}];
@@ -839,7 +910,7 @@ function pairEval3D(zen,az,T,cache){
   return (p,ta,tb)=>{
     const key=p+'|'+ta+'|'+tb;
     let f=cache.get(key);
-    if(f===undefined){const a=[];a[p]=ta;a[p+1]=tb;f=shadePair3DBand(zen,az,T,a,p,{MU:8,MV:12}).f;cache.set(key,f);}
+    if(f===undefined){const a=[];a[p]=ta;a[p+1]=tb;f=shadePair3DBand(zen,az,T,a,p,{MU:8,MV:Math.max(12,mvPara(T,zen))}).f;cache.set(key,f);}
     return f;
   };
 }
@@ -855,8 +926,11 @@ function pairThetaTorsion(zen,az,T,p,t0,ev){
   let bv=viol(t0);
   if(bv<=1e-3)return t0;
   const psz=trueTrackAngle(zen,az,pvTilt(T.pairs[p].axisTilt),T.axisAz), sg=psz>=0?1:-1;
+  // v1.57: el barrido no pasa del semiespacio solar (antes seguía hasta la
+  // posición de canto, donde la sombra es cero porque el haz es cero)
+  const [hLo,hHi]=rangoHaz(zen,az,T,T.pairs[p].axisTilt,T.pairs[p].slope);
   let best=t0;
-  for(let t=t0-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){
+  for(let t=t0-sg*0.5;sg*t>=-T.maxAngle-1e-9&&t>=hLo-1e-9&&t<=hHi+1e-9;t-=sg*0.5){
     const v=viol(t);
     if(v<=1e-3)return t;
     if(v<bv){bv=v;best=t;}
@@ -911,7 +985,9 @@ function anglesPairwiseRaw(zen,az,T){
         if(ev(p,out[p],out[p+1])<=1e-3)continue;
         let t=sg*out[p]<sg*out[p+1]?out[p]:out[p+1];
         if(out[p]===out[p+1])t=t-sg*0.5;
-        t=Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
+        // v1.57: dentro del semiespacio solar de la pareja (antes bajaba hasta la posición de canto)
+        const [hLo,hHi]=rangoHaz(zen,az,T,T.pairs[p].axisTilt,T.pairs[p].slope);
+        t=Math.max(hLo,Math.min(hHi,t));
         if(out[p]!==t||out[p+1]!==t){out[p]=t;out[p+1]=t;dirty=true;}
       }
       if(!dirty)break;
@@ -1537,7 +1613,7 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
     const lnE=Math.hypot(nE[0],nE[1],nE[2])||1;
     planes.push({w0:w0,w1:w1,C:[xe+zOff*nE[0]/lnE,(w0+w1)/2+zOff*nE[1]/lnE,(z0e+z1e)/2+zOff*nE[2]/lnE],nE:nE,uD:uD,vD:vD,len:w1-w0});
   }
-  const MU=(res&&res.MU)||8, MV=(res&&res.MV)||8;
+  const MU=(res&&res.MU)||8, MV=(res&&res.MV)||Math.max(12,mvPara(T,zen));
   let hit=0,N=0;
   for(const sg of segR){
     const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
@@ -1833,7 +1909,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     return (horiz>1e-6?Math.max(9,dz+T.cw+1)*horiz/Math.max(sv[2],1e-4):1e9)+T.cw;
   };
   const sgn=sv[0]>=0?1:-1;
-  const MV=(res&&res.MV)||8, noStruct=!!(res&&res.noStruct);
+  const MV=(res&&res.MV)||mvPara(T,zen), noStruct=!!(res&&res.noStruct);   // v1.57: MV adaptativo (largo de mesa, torsión y sol rasante)
   // unión de intervalos de cuerda (fuera del bucle: se llama ~1.700 veces por
   // fila y crear el cierre por estación costaba más que el propio cálculo)
   const unir=(iv)=>{
@@ -2115,6 +2191,9 @@ function anglesMinGroundLight(zen,az,T){
                      :anglesPairwise(zen,az,T);
   if(!(isFinite(zen)&&zen<87))return base;
   const a=base.slice(), maxA=T.maxAngle;
+  // v1.57 (auditoría H2): empinar para tapar suelo tampoco pasa del rango
+  // legítimo — más allá del seguimiento verdadero se pierde haz sin ganar nada
+  const RG=rangosUnidad(zen,az,T);
   const units=T.groups?T.groups:a.map((_,r)=>[r]);
   const glSum=ang=>ang.reduce((s,th)=>s+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
   for(let it=0;it<3;it++){
@@ -2122,7 +2201,7 @@ function anglesMinGroundLight(zen,az,T){
     for(const u of units){
       const r0=u[0];
       const sgn=Math.sign(a[r0])||1;
-      let lo=Math.abs(a[r0]), hi=maxA;
+      let lo=Math.abs(a[r0]), hi=Math.min(maxA,sgn>0?RG[r0][1]:-RG[r0][0]);
       if(hi-lo<0.25)continue;
       for(let b=0;b<14;b++){
         const mid=(lo+hi)/2, trial=a.slice();
@@ -2479,10 +2558,14 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   // −0,47% por debajo de pairwise (en v1.30 daba +0,21%). Se evalúan solo los
   // extremos que NO son el candidato: 2 evaluaciones exactas extra, 3 si la f
   // ganadora es interior.
+  // v1.57 (auditoría H3): el pairwise PUBLICADO (reparado) también es candidato
+  // del veto. La garantía «≥ pairwise» se construía contra la base sin reparar
+  // (26 de 90 instantes del caso B difieren) y solo el barrido la sostenía.
+  const pub=repairNoShade(zen,az,T,base,irr,doy,albedo);
   {
     let eBest=null;
-    for(const [f2,ang2] of [[0,base],[1,full]]){
-      if(f2===bestF)continue;
+    for(const [f2,ang2] of [[0,base],[1,full],[0,pub]]){
+      if(f2===bestF&&ang2!==pub)continue;
       if(eBest===null)eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
       const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;
       if(e2>eBest+1e-9){eBest=e2;bestAng=ang2;bestF=f2;}
@@ -2581,6 +2664,9 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   let ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
   const evc=poaPlant(zen,az,T,com,irr,doy,albedo);
   if(evc.plant>ev.plant+1e-9){cand=com;ev=evc;}
+  // v1.57: y nunca por debajo del pairwise PUBLICADO (auditoría H3)
+  { const pub=repairNoShade(zen,az,T,base,irr,doy,albedo); const evp=poaPlant(zen,az,T,pub,irr,doy,albedo);
+    if(evp.plant>ev.plant+1e-9){cand=pub;ev=evp;} }
   // v1.54: la fracción elegida se PUBLICA como en energy-optimal — un número si
   // ganó el óptimo común, y si no el rango por accionamiento (la tarjeta del
   // HUD las enseña igual: «¿por qué tienen diferentes cajas?»)
@@ -2631,7 +2717,7 @@ function slewLimit(prev,cmd,dtSec,rate){
    Se devuelve el mejor juego visto; sin sombra de filas no entra (0 pasos:
    ni un bit cambia en llano). El terreno no se repara: ninguna consigna
    levanta una loma. */
-function repairNoShade(zen,az,T,ang){
+function repairNoShade(zen,az,T,ang,irr,doy,albedo){
   if(!(isFinite(zen)&&zen<90))return ang;
   // en las plantas REALES no entra: allí la consigna va por MESA (policyAnglesSeg,
   // con las cotas de cada tramo) y una reparación por fila la pisaría; además
@@ -2651,25 +2737,33 @@ function repairNoShade(zen,az,T,ang){
   // reducido la reparación salía PEOR en planos. Se queda el criterio de
   // planos, y el barrido mide aparte (B2) cuánta sombra publicada evitaría un
   // θ uniforme, para decidir con números si algún día compensa.)
-  const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:8});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
+  const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
     for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
   let cur=ang.slice(), E=evalua(cur);
-  if(E.mx<=0.02)return ang;                              // nada (serio) que reparar: ni un bit
-  const clamp=(t)=>Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
+  if(E.mx<=0.02)return ang;
+  const mx0=E.mx;                                        // sombra de partida (para la guardia de energía)                              // nada (serio) que reparar: ni un bit
+  // v1.57: todo candidato dentro del rango legítimo de SU fila (entre el
+  // seguimiento verdadero y la paralela al terreno de sus vanos)
+  const RF=rangosUnidad(zen,az,T);
+  const hLo=Math.min(...RF.map(q=>q[0])), hHi=Math.max(...RF.map(q=>q[1]));
+  const clampR=(r,t)=>Math.max(RF[r][0],Math.min(RF[r][1],t));
+  const clamp=(t)=>Math.max(hLo,Math.min(hHi,t));
+  const uni=(th)=>{const a=new Array(nR);for(let r=0;r<nR;r++)a[r]=clampR(r,th);return a;};
   // 1) ARRANQUE: el mejor θ UNIFORME del instante (barrido de 5° y refino de
-  //    2,5°), memorizado por instante — las tres políticas lo comparten. Es lo
-  //    que el barrido de terrenos llamó «alcanzable»: casi siempre es 0.
-  const key=zen.toFixed(4)+'|'+az.toFixed(4);
+  //    2,5°), recortado al rango de cada fila y memorizado por instante — las
+  //    tres políticas lo comparten. Es lo que el barrido de terrenos llamó
+  //    «alcanzable»: casi siempre es 0.
+  const key=zen.toFixed(4)+'|'+az.toFixed(4)+'|'+hLo.toFixed(2)+'|'+hHi.toFixed(2);
   const M=repairNoShade._memo;
   if(!M||M.key!==key||M.T!==T){
-    let bt=0,bv=Infinity;
-    for(let th=-T.maxAngle;th<=T.maxAngle+1e-9;th+=5){const v=evalua(new Array(nR).fill(th)).tot;if(v<bv-1e-9){bv=v;bt=th;}}
-    for(const paso of [2.5,1.25,0.625])for(const d of [-paso,paso]){const t2=clamp(bt+d);const v=evalua(new Array(nR).fill(t2)).tot;if(v<bv-1e-9){bv=v;bt=t2;}}
+    let bt=clamp(0),bv=Infinity;
+    for(let th=Math.ceil(hLo/5)*5;th<=hHi+1e-9;th+=5){const v=evalua(uni(th)).tot;if(v<bv-1e-9){bv=v;bt=th;}}
+    for(const paso of [2.5,1.25,0.625])for(const d of [-paso,paso]){const t2=clamp(bt+d);const v=evalua(uni(t2)).tot;if(v<bv-1e-9){bv=v;bt=t2;}}
     repairNoShade._memo={key:key,T:T,th:bt,tot:bv};
   }
   const mem=repairNoShade._memo;
   let best=cur, bestV=E.tot;
-  if(mem.tot<bestV-1e-9){cur=new Array(nR).fill(mem.th);E=evalua(cur);best=cur.slice();bestV=E.tot;}
+  if(mem.tot<bestV-1e-9){cur=uni(mem.th);E=evalua(cur);best=cur.slice();bestV=E.tot;}
   // 2) DESCENSO: para cada fila con sombra de filas, mover 2° su emisora
   //    principal (con su accionamiento) o la propia fila, en las dos
   //    direcciones; se aplica el movimiento que más baja la sombra total
@@ -2682,7 +2776,7 @@ function repairNoShade(zen,az,T,ang){
     let mv=null,mvE=null,mvV=E.tot;
     for(const g of cands.slice(0,5))for(const d of [-2*sg,2*sg]){
       const a=cur.slice();let movio=false;
-      for(const e of g){const t=clamp(a[e]+d);if(t!==a[e]){a[e]=t;movio=true;}}
+      for(const e of g){const t=clampR(e,a[e]+d);if(t!==a[e]){a[e]=t;movio=true;}}
       if(!movio)continue;
       const E2=evalua(a);
       if(E2.tot<mvV-1e-9){mvV=E2.tot;mv=a;mvE=E2;}
@@ -2690,6 +2784,43 @@ function repairNoShade(zen,az,T,ang){
     if(!mv)break;
     cur=mv;E=mvE;
     if(E.tot<bestV-1e-9){bestV=E.tot;best=cur.slice();}
+  }
+  // 3) RESTITUCIÓN (v1.57, auditoría H2): el arranque uniforme movía TODAS las
+  //    filas, también las que no sombreaban ni eran sombreadas (en el caso B la
+  //    fila 6 pasaba de 39° a −2° sin ganar nada de sombra y perdiendo la mitad
+  //    de su POA). Cada unidad vuelve a su consigna de partida si con ello ni
+  //    la fila peor ni la suma empeoran: sombra mínima, sin tirar energía.
+  if(best!==ang){
+    let Eb=evalua(best);
+    const vistos=new Set();
+    for(let r=0;r<nR;r++){
+      const g=grupoDe(r); const k=g.join(','); if(vistos.has(k))continue; vistos.add(k);
+      if(g.every(q=>best[q]===ang[q]))continue;
+      const a=best.slice(); for(const q of g)a[q]=ang[q];
+      const E2=evalua(a);
+      if(E2.mx<=Eb.mx+1e-9&&E2.tot<=Eb.tot+1e-9){best=a;Eb=E2;}
+    }
+  }
+  // 4) GUARDIA DE ENERGÍA (v1.57, auditoría H2). La reparación minimiza sombra
+  //    ÓPTICA, y cuando la sombra es IRREDUCIBLE ese mínimo vive pegado a la
+  //    paralela al terreno: en el caso B de la auditoría publicaba 51 W/m²
+  //    donde su propia consigna de partida daba 108, a cambio de 1 pp de
+  //    sombra. Una política «sin sombra» que no puede cumplir su promesa no
+  //    debe además tirar la mitad de la producción: con la irradiancia a mano,
+  //    el candidato solo se publica si LOGRA la garantía (≤2 % en la fila
+  //    peor) o si no rinde menos POA que lo que repara. Lo que quede se
+  //    publica como irreducible, con el Martinez cobrándolo — no se maquilla.
+  if(irr&&best!==ang&&best.some((v,i)=>v!==ang[i])){
+    const Eb=evalua(best);
+    // se acepta siempre que LOGRE la garantía (≤2 %) o que la mejora sea
+    // sustancial (deja menos de la mitad de la sombra de partida): ahí la
+    // reparación está haciendo su trabajo y el coste en POA es el precio. Solo
+    // cuando la mejora es marginal Y además pierde energía se descarta
+    if(Eb.mx>0.02&&Eb.mx>0.5*mx0){
+      const pB=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
+      const pA=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
+      if(pB<pA-1e-9)return ang;
+    }
   }
   return best;
 }
@@ -2704,9 +2835,9 @@ function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
-  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true)),f:undefined};
-  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T)),f:undefined};   // ya acoplado y sin sombra por construcción (de planos vecinos)
-  return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false)),f:undefined};
+  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado y sin sombra por construcción (de planos vecinos)
+  return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
 }
 
 /* ray-cast BRUTO para el QA: muestrea M puntos del panel sombreado y lanza el
@@ -3056,6 +3187,7 @@ function runPhysicsQA(){
     const shInf=shadeRows(zen,az,T,aA);
     assert(shInf[0]>0.05,'el caso base debe tener sombra para poder medir');
     T.segs=[[[-30,30]],[[-15,15]],[[-30,30]]]; // receptora larga, emisora a mitad
+    T.mv=16;                                    // v1.57: malla axial explícita y PAR (16 de 60 m: 8 estaciones dentro de ±15) — con la adaptativa (15) la mitad no cae en estación entera
     const shSeg=shadeRows(zen,az,T,aA);
     assert(Math.abs(shSeg[0]-shInf[0]*0.5)<1e-6,
       'esperaba la mitad: '+shSeg[0].toFixed(4)+' vs '+(shInf[0]*0.5).toFixed(4));
@@ -3144,7 +3276,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.56.1';
+const VER='v1.57.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -5475,7 +5607,8 @@ function updateHud(tIdx,g,irrN,key,p,sh){
     if((DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))||DAY.T.rotula)
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.T.rotula?(DAY.T.rotula.sigue?'quebrada: mesas ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° en la rótula':'tubo recto: el quiebro de ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° no se sigue'):DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     // v1.56: la sombra POR MESA (mitad sur / mitad norte de cada tramo, del contador), no solo por fila («debería ser por mesa»)
-    card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+sombraPorMesaTxt(sh,selRow,' · '));
+    const irre=(['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'';   // v1.57 (auditoría H2)
+    card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+sombraPorMesaTxt(sh,selRow,' · '));
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
     if(g.elev>0&&p.ang[tIdx]){let gl=0;const nn=p.ang[tIdx].length;for(let r=0;r<nn;r++)gl+=groundLightFrac(p.ang[tIdx][r],g.zen,g.az,DAY.T.gcr,DAY.T.axisAz);
       card('Luz al suelo',(gl/nn*100).toFixed(0)+'%','del haz, entre filas');}
@@ -6179,8 +6312,11 @@ function rowInfoHTML(r,kSel){
       // a sol bajo) — «inevitables son las que a 0° no se pueden evitar»
       const nR=DAY.T.pairs.length+1;
       let best={v:Infinity,th:0}, s0=null;
-      for(let th=-DAY.T.maxAngle;th<=DAY.T.maxAngle+1e-9;th+=5){
-        const sv2=shadeRows(g2.zen,g2.az,DAY.T,new Array(nR).fill(th))[r]||0;
+      // v1.57: solo θ dentro del semiespacio solar (una mesa de canto «no sombrea» porque no recibe haz)
+      const RF2=rangosFila(g2.zen,g2.az,DAY.T), hLo=Math.min(...RF2.map(q=>q[0])), hHi=Math.max(...RF2.map(q=>q[1]));
+      const uni2=(th)=>RF2.map(q=>Math.max(q[0],Math.min(q[1],th)));
+      for(let th=Math.ceil(hLo/5)*5;th<=hHi+1e-9;th+=5){
+        const sv2=shadeRows(g2.zen,g2.az,DAY.T,uni2(th))[r]||0;
         if(Math.abs(th)<1e-9)s0=sv2;
         if(sv2<best.v)best={v:sv2,th:th};
       }
@@ -6191,7 +6327,7 @@ function rowInfoHTML(r,kSel){
         ?'<br><b style="color:#fbbd23">evitable</b>: con todas las filas a '+best.th.toFixed(0)+'° quedaría 0,0 %'+(Math.abs(best.th)>1e-9?' (a 0°: '+(s0*100).toFixed(1)+' %)':'')+acepta
         :(best.v<sh*0.9
           ?'<br><b style="color:#fbbd23">evitable en su mayor parte</b>: con todas las filas a '+best.th.toFixed(0)+'° quedaría '+(best.v*100).toFixed(1)+' %'+(Math.abs(best.th)>1e-9?' (a 0°: '+(s0*100).toFixed(1)+' %)':'')+'; ese resto no lo evita ningún θ uniforme'+acepta
-          :'<br><b style="color:#f87272">inevitable</b> a este sol: ni a 0° ('+(s0*100).toFixed(1)+' %) ni con ningún θ uniforme (mínimo '+(best.v*100).toFixed(1)+' % a '+best.th.toFixed(0)+'°)');
+          :'<br><b style="color:#f87272">irreducible</b> a este sol: ni a 0° ('+(s0*100).toFixed(1)+' %) ni con ningún θ uniforme que reciba haz (mínimo '+(best.v*100).toFixed(1)+' % a '+best.th.toFixed(0)+'°; semiespacio solar '+hLo.toFixed(0)+'…'+hHi.toFixed(0)+'°)');
     }else{
       // planta medida: el barrido del θ uniforme costaría segundos por globo — se dice lo que hace pairwise, sin llamarlo inevitable
       const shPW=shadeRows(g2.zen,g2.az,DAY.T,driveCoupleSafe(g2.zen,g2.az,DAY.T,anglesPairwise(g2.zen,g2.az,DAY.T),false))[r]||0;
