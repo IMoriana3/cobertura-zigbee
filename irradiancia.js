@@ -41,8 +41,16 @@
 
   /* Cielo claro Ineichen-Perrin. zen [grados], doy, altitud [m], turbiedad Linke.
      Devuelve {ghi, dni, dhi} en W/m². */
-  I.clearskyIneichen = function (zenDeg, doy, altM, TL) {
+  /* v1.57 (auditoría H4): el «realce de Perez» exp(0,01·am^1,8) iba SIEMPRE
+     activo y el comentario decía «el de pvlib»; pvlib lo trae APAGADO por
+     defecto (`perez_enhancement=False`) porque sobreestima con masa de aire
+     alta. A 9° de sol la DHI salía un 67 % alta y la GHI un 27 % (101/300/53
+     frente a 80/300/32 W/m² en Zaragoza 21-jun 07:30, TL 3,5, 300 m); a
+     mediodía, un 1 %. Ahora va apagado, como pvlib; `opts.perezEnhancement`
+     lo enciende a sabiendas. */
+  I.clearskyIneichen = function (zenDeg, doy, altM, TL, opts) {
     if (!(zenDeg < 90)) return { ghi: 0, dni: 0, dhi: 0 };
+    var realce = !!(opts && opts.perezEnhancement);
     var amR = I.airmassKY(zenDeg);
     /* Masa de aire ABSOLUTA: la relativa por la presión de la atmósfera estándar
        a esa altitud. Sin este factor el GHI se va casi medio por ciento. */
@@ -51,7 +59,7 @@
     var I0 = I.dniExtra(doy), cz = Math.cos(zenDeg * RAD);
     var fh1 = Math.exp(-altM / 8000), fh2 = Math.exp(-altM / 1250);
     var cg1 = 5.09e-5 * altM + 0.868, cg2 = 3.92e-5 * altM + 0.0387;
-    var ghi = cg1 * I0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (TL - 1))) * Math.exp(0.01 * Math.pow(am, 1.8));
+    var ghi = cg1 * I0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (TL - 1))) * (realce ? Math.exp(0.01 * Math.pow(am, 1.8)) : 1);
     ghi = Math.max(0, ghi);
     var b = 0.664 + 0.163 / fh1;
     var bnci = b * I0 * Math.exp(-0.09 * am * (TL - 1));

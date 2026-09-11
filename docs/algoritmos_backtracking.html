@@ -52,6 +52,10 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <b>Doctrina del simulador.</b> (1) Lo que se pinta es lo que la física calcula: no hay una sombra «para dibujar» y otra «para contar». (2) Ningún número se fabrica: cada cifra es el resultado de un cálculo declarado. (3) Todo es demostrable: el contador de sombra se compara con un oráculo independiente, cada invariante de las políticas se mide en un barrido de terrenos y el propio render se comprueba contra la física en el navegador (desde el sol no debe verse ninguna sombra pintada).
 </div>
 
+<div class="box warn">
+<b>Esta versión incorpora una auditoría externa</b> (v1.57). Un revisor independiente recalculó el caso de referencia con pvlib y escribió su propio ray-cast en numpy. Encontró cuatro cosas que estaban mal y que aquí ya están corregidas: el muestreo axial del contador perdía manchas de sombra con torsión; las políticas «sin sombra» podían acabar con la mesa casi de canto al sol (sombra cero porque no hay haz que sombrear); la garantía de los optimizadores se construía contra un pairwise distinto del publicado; y el cielo claro llevaba activado el realce de Perez, que pvlib trae apagado. Lo que cambió y lo que se midió está en <a href="#auditoria">§8</a>; las cifras de este documento son las de después.
+</div>
+
 <h4>Contenido</h4>
 <ol class="toc">
 <li><a href="#marco">Marco común: geometría, sol, irradiancia, POA y sombra</a></li>
@@ -69,6 +73,7 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <li><a href="#dia">Comparativa del día</a></li>
 <li><a href="#verif">Verificación: lo que se prueba y con qué cifras</a></li>
 <li><a href="#limites">Límites conocidos</a></li>
+<li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a></li>
 </ol>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
@@ -81,7 +86,7 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <p>Cada tramo (tracker) se describe por su intervalo a lo largo del eje [<i>n<sub>0</sub></i>, <i>n<sub>1</sub></i>]; con quiebro en la rótula o planta medida, cada <b>mesa</b> (media viga) lleva además su tilt y sus dos cotas extremas.</p>
 
 <h3>1.2 Sol e irradiancia</h3>
-<p>Posición solar por el algoritmo NOAA (<code>sol.js</code>), con refracción, en hora local del sitio (el huso se deduce de la longitud y, en la península, con la regla de verano/invierno). Cielo claro por <b>Ineichen–Perez</b> con turbidez de Linke <i>T<sub>L</sub></i> y masa de aire absoluta (presión de la altitud); la nubosidad reduce GHI y DNI de forma declarada y cierra la DHI por balance.</p>
+<p>Posición solar por el algoritmo NOAA (<code>sol.js</code>), con refracción, en hora local del sitio (el huso se deduce de la longitud y, en la península, con la regla de verano/invierno). Cielo claro por <b>Ineichen–Perez</b> con turbidez de Linke <i>T<sub>L</sub></i> y masa de aire absoluta (presión de la altitud), <b>sin el realce de Perez</b> —el factor exp(0,01·<i>am</i><sup>1,8</sup>), que pvlib trae desactivado por defecto y que a sol bajo inflaba la difusa un 67 %—; se puede pedir a sabiendas con <code>perezEnhancement</code>. La nubosidad reduce GHI y DNI de forma declarada y cierra la DHI por balance.</p>
 <p>La irradiancia sobre el plano de cada fila (POA) se compone de haz, circunsolar (Perez), difusa de cielo y albedo, con ángulo de incidencia <i>AOI</i> y el modificador ASHRAE <i>K(AOI)</i> = 1 − <i>b<sub>0</sub></i>(1/cos AOI − 1), <i>b<sub>0</sub></i> = 0,05:</p>
 <div class="f">
 POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>·<i>a/b</i>·<i>K</i> &nbsp;+&nbsp; DHI·[ (1−<i>F<sub>1</sub></i>)(1+cos β)/2 + <i>F<sub>2</sub></i> sin β ]·<i>K<sub>cielo</sub></i> &nbsp;+&nbsp; GHI·ρ·(1−cos β)/2·<i>K<sub>suelo</sub></i>
@@ -93,7 +98,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="f">
 <i>u</i>(<i>Q</i>) = <i>Q<sub>x</sub></i>·cos ψ − <i>Q<sub>z</sub></i>·sin ψ &nbsp;&nbsp;&nbsp; <i>f<sub>s</sub></i> = | [<i>u</i><sub>1</sub>,<i>u</i><sub>2</sub>]<sub>emisora</sub> ∩ [<i>v</i><sub>1</sub>,<i>v</i><sub>2</sub>]<sub>receptora</sub> | / (<i>v</i><sub>2</sub> − <i>v</i><sub>1</sub>)
 </div>
-<p>con ψ el ángulo del rayo en el plano transversal (el «ángulo de seguimiento verdadero»). Con solape axial parcial (tracker corto delante de uno largo, tresbolillo, huecos) la sombra se pondera por las estaciones realmente cubiertas. El contador separa la sombra de <b>planos</b> de la de <b>estructura</b> (viga + canto) y dice de <b>quién</b> viene cada sombra (fila emisora o terreno).</p>
+<p>con ψ el ángulo del rayo en el plano transversal (el «ángulo de seguimiento verdadero»). Con solape axial parcial (tracker corto delante de uno largo, tresbolillo, huecos) la sombra se pondera por las estaciones realmente cubiertas.</p>
+<p><b>Cuántas estaciones</b> (v1.57): una cada 4 m a lo largo de la mesa, y una cada 2 m si dos filas vecinas difieren más de 0,5° de tilt N-S, entre 8 y 64. Con 8 fijas —lo anterior— una mesa de 65 m se muestreaba cada 8 m y con torsión perdía manchas enteras: en el caso B, 0 % publicado donde el cálculo convergido da 4,5 %. Las plantas <em>medidas</em> se quedan en 8, donde está medido que basta (≤ 0,7 pp frente a 32, +0,007 % anual) y manda el tiempo de cálculo de la planta entera. El contador separa la sombra de <b>planos</b> de la de <b>estructura</b> (viga + canto) y dice de <b>quién</b> viene cada sombra (fila emisora o terreno).</p>
 <p>La sombra óptica se convierte en pérdida eléctrica con el modelo <b>Martinez</b> por subcadenas de diodos de bypass (<i>n<sub>b</sub></i> = 2 por mesa):</p>
 <div class="f">pérdida(<i>f<sub>s</sub></i>) = ⌈ <i>n<sub>b</sub></i>·<i>f<sub>s</sub></i> ⌉ / <i>n<sub>b</sub></i> &nbsp;&nbsp;&nbsp; ⇒ &nbsp; POA<sub>neta</sub> = haz·(1 − pérdida) + circunsolar·(1 − <i>f<sub>s</sub></i>) + difusa + albedo</div>
 <p>El <b>residual de tangencia</b> (mm) mide, para una pareja y unos θ dados, cuánto entra el rayo del borde alto de la emisora en el interior de la receptora (negativo) o cuánto hueco queda (positivo): es el árbitro geométrico 3D con el que true-3D y el acople deciden.</p>
@@ -105,9 +111,9 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="tw"><table>
 <tr><th>Dato</th><th>Valor</th><th>Dato</th><th>Valor</th></tr>
 <tr><td>Sitio</td><td>Zaragoza · 41,5763° N · 0,7981° O · 300 m</td><td>Fecha y hora</td><td>21-jun-2026 · 07:30 local (05:30 UTC)</td></tr>
-<tr><td>Sol (NOAA)</td><td>elevación 9,28° · azimut 66,7° (E-NE) · cénit 80,72°</td><td>Cielo claro (Ineichen, <i>T<sub>L</sub></i> 3,5)</td><td>GHI 101 · DNI 300 · DHI 53 W/m²</td></tr>
+<tr><td>Sol (NOAA)</td><td>elevación 9,28° · azimut 66,7° (E-NE) · cénit 80,72°</td><td>Cielo claro (Ineichen, <i>T<sub>L</sub></i> 3,5)</td><td>GHI 80 · DNI 300 · DHI 32 W/m² (≡ pvlib)</td></tr>
 <tr><td>Filas</td><td>6 · pitch 6,00 m · cuerda 2,382 m · GCR 0,397</td><td>Terreno (escenario <b>A</b>)</td><td>preset «Pendiente 8°»: la cota cae 0,843 m por fila hacia el este; tilt N-S 0</td></tr>
-<tr><td>Límite mecánico</td><td>±55°</td><td>Escenario <b>B</b></td><td>el mismo, con tilt N-S «aleatorio 4°» por fila: −3,41 · +1,63 · +3,22 · +3,76 · −3,67 · −3,06 °</td></tr>
+<tr><td>Límite mecánico</td><td>±55°</td><td>Escenario <b>B</b></td><td>el mismo, con tilt N-S «aleatorio 4°» por fila: −3,41 · +1,63 · +3,22 · +3,76 · −3,67 · −3,06 °; mesas de 64,7 m</td></tr>
 </table></div>
 
 <h3>2.1 El seguimiento astronómico y el backtracking de pvlib, paso a paso</h3>
@@ -130,15 +136,15 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="tw"><table>
 <tr><th>Componente</th><th>W/m²</th><th>Comentario</th></tr>
 <tr><td>Haz: DNI·cos AOI·K</td><td>248,4</td><td>a 55° el AOI aún es grande (el ideal era 79,9°)</td></tr>
-<tr><td>Circunsolar (Perez, F<sub>1</sub>)</td><td>73,0</td><td>viaja con el haz: lo tapa la sombra en proporción al área</td></tr>
-<tr><td>Difusa de cielo</td><td>34,1</td><td>(1−F<sub>1</sub>)(1+cos β)/2 + F<sub>2</sub> sin β</td></tr>
-<tr><td>Albedo (ρ = 0,20)</td><td>4,0</td><td>GHI·ρ·(1−cos β)/2</td></tr>
-<tr><td><b>POA sin sombra</b></td><td><b>359,5</b></td><td>la fila 6 (última al este) recibe exactamente esto: no tiene emisora</td></tr>
-<tr><td>Sombra del contador</td><td>12,9 %</td><td>la fila 4 (más baja) le tapa el 12,9 % de la cuerda por el borde bajo</td></tr>
-<tr><td>Pérdida Martinez (2 bypass)</td><td>50 %</td><td>⌈2·0,129⌉/2 = 0,5: media mesa eléctricamente fuera</td></tr>
-<tr><td><b>POA neta de la fila</b></td><td><b>225,9</b></td><td>248,4·0,5 + 73·0,871 + 34,1 + 4,0</td></tr>
+<tr><td>Circunsolar (Perez, F<sub>1</sub>)</td><td>60,8</td><td>viaja con el haz: lo tapa la sombra en proporción al área</td></tr>
+<tr><td>Difusa de cielo</td><td>21,2</td><td>(1−F<sub>1</sub>)(1+cos β)/2 + F<sub>2</sub> sin β</td></tr>
+<tr><td>Albedo (ρ = 0,20)</td><td>3,2</td><td>GHI·ρ·(1−cos β)/2</td></tr>
+<tr><td><b>POA sin sombra</b></td><td><b>333,5</b></td><td>la fila 6 (última al este) recibe exactamente esto: no tiene emisora</td></tr>
+<tr><td>Sombra del contador</td><td>12,2 %</td><td>la fila 4 (más baja) le tapa el 12,2 % de la cuerda por el borde bajo</td></tr>
+<tr><td>Pérdida Martinez (2 bypass)</td><td>47,1 %</td><td>por estación axial: donde la sombra llega, ⌈2·<i>f</i>⌉/2 = 0,5; el extremo de mesa al que no llega entra a 0</td></tr>
+<tr><td><b>POA neta de la fila</b></td><td><b>209,3</b></td><td>248,4·0,529 + 60,8·0,878 + 21,2 + 3,2</td></tr>
 </table></div>
-<p>Aquí está la razón de ser del backtracking: un 12,9 % de sombra óptica cuesta un 50 % del haz. Cualquier política que deje esa sombra tiene que pagarla con ese multiplicador.</p>
+<p>Aquí está la razón de ser del backtracking: un 12,2 % de sombra óptica cuesta un 47 % del haz. Cualquier política que deje esa sombra tiene que pagarla con ese multiplicador.</p>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
 <h2 id="politicas">3. Las políticas</h2>
@@ -150,7 +156,7 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dt>Base</dt><dd><code>singleaxis</code> de pvlib sin backtracking: θ = ω limitado a ±θ<sub>máx</sub>, con el tilt N-S del eje y el azimut de eje configurados. Es el seguimiento «puro».</dd>
 <dt>Qué optimiza</dt><dd>La irradiancia sobre cada módulo <em>como si estuviera solo</em>. No mira a la vecina.</dd>
 <dt>Criterio de sombra</dt><dd>Ninguno. A sol bajo se auto-sombrea; es la referencia contra la que se mide lo que cuesta y lo que vale el backtracking.</dd>
-<dt>En el caso A</dt><dd>θ = 55° en las seis filas (el ideal de 79,9° excede el tope). Sombra 12,9 % en las filas 1–5, 0 en la 6. POA de planta <b>248,1 W/m²</b>.</dd>
+<dt>En el caso A</dt><dd>θ = 55° en las seis filas (el ideal de 79,9° excede el tope). Sombra 12,2 % en las filas 1–5, 0 en la 6. POA de planta <b>230,0 W/m²</b>.</dd>
 </dl>
 <div class="grid2">
 <figure><img src="img/algoritmos/A_2d_astro.png" alt="Corte 2D, astronómico"><figcaption>Corte transversal. Rojo: la porción de cuerda que el contador da como sombreada (entra por el borde bajo, el de cara a la emisora). La sombra al suelo cae sobre el terreno del corte.</figcaption></figure>
@@ -163,8 +169,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dl class="dl">
 <dt>Base</dt><dd>El backtracking de pvlib con <code>cross_axis_tilt = 0</code> y tilt de eje 0: el controlador de fábrica sin configurar, que cree que el terreno es plano. Un único ángulo para toda la planta.</dd>
 <dt>Qué optimiza</dt><dd>La ausencia de sombra <em>en un terreno plano imaginario</em>. Sobre terreno real es un error de registro, no una política: sombrea donde el terreno sube hacia el sol y desperdicia ángulo donde baja.</dd>
-<dt>En el caso A</dt><dd>θ = 16,10° (la fila del cálculo de la tabla 2.1). Sombra 0 (aquí el terreno le favorece), pero POA <b>184,6 W/m²</b>: un 42 % menos que las políticas que sí conocen la pendiente.</dd>
-<dt>En el caso B</dt><dd>Con torsión N-S ya sombrea: 20,4 % en la fila 1 y 18,4 % en la 4, con POA 170.</dd>
+<dt>En el caso A</dt><dd>θ = 16,10° (la fila del cálculo de la tabla 2.1). Sombra 0 (aquí el terreno le favorece), pero POA <b>161,8 W/m²</b>: un 44 % menos que las políticas que sí conocen la pendiente.</dd>
+<dt>En el caso B</dt><dd>Con torsión N-S ya sombrea: 20,8 % en la fila 1 y 18,6 % en la 4, con POA 148.</dd>
 </dl>
 <figure><img src="img/algoritmos/A_2d_bt2d.png" alt="Corte 2D, BT2D plano"><figcaption>Las filas casi planas (16°) con el sol a 9° al este: sin sombra, pero mirando muy lejos del sol.</figcaption></figure>
 </div>
@@ -174,8 +180,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dl class="dl">
 <dt>Base</dt><dd>«Un motor, un ángulo»: pvlib con backtracking sobre la <b>pendiente media</b> de la planta (y el pitch y tilt medios).</dd>
 <dt>Qué optimiza</dt><dd>Sombra cero si el terreno es uniforme; con relieve variable acierta en la media y falla en los extremos.</dd>
-<dt>En el caso A</dt><dd>La pendiente es uniforme (8° en todas las parejas), así que coincide con Row y Pairwise: θ = 42,08°, sombra 0, POA <b>316,1 W/m²</b>. Es la degeneración exacta que la batería comprueba (terreno uniforme ⇒ global = row = pairwise).</dd>
-<dt>En el caso B</dt><dd>θ = 41,7° para todas: 30,5 % de sombra en la fila 1 y 33 % en la 4; POA 241.</dd>
+<dt>En el caso A</dt><dd>La pendiente es uniforme (8° en todas las parejas), así que coincide con Row y Pairwise: θ = 42,08°, sombra 0, POA <b>290,4 W/m²</b>. Es la degeneración exacta que la batería comprueba (terreno uniforme ⇒ global = row = pairwise).</dd>
+<dt>En el caso B</dt><dd>θ = 41,7° para todas: 29,3 % de sombra en la fila 1 y 33,3 % en la 4; POA 221.</dd>
 </dl>
 </div>
 
@@ -185,8 +191,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dt>Base</dt><dd>Cada fila calcula pvlib con backtracking sobre <em>su</em> terreno local: la media de las pendientes de sus dos parejas, su tilt N-S y el pitch medio a sus vecinas (regla <code>compute_bt_angles_rowwise</code>). Es lo que puede hacer una TCU con su registro y sin comunicación.</dd>
 <dt>Qué optimiza</dt><dd>Sombra cero en el modelo 2.5D de cada fila, <em>sin coordinarse</em>: no sabe a qué ángulo va la vecina.</dd>
 <dt>Criterio de sombra</dt><dd>El de pvlib por fila. No mira al contador ni repara: cuando dos vecinas deciden ángulos distintos sobre el mismo vano, una de las dos sombrea.</dd>
-<dt>En el caso A</dt><dd>θ = 42,08° (idéntico a Global por la uniformidad), sombra 0, POA 316,1.</dd>
-<dt>En el caso B</dt><dd>θ por fila 46,6 · 40,1 · 38,3 · 37,7 · 46,9 · 46,1°. Sombra 29,9 % (fila 1), 13,2, 14,3, 34,9, 4,5, 0. POA 244. El globo del simulador lo marca como «evitable» cuando existe un θ uniforme con 0 %: Row no lo evita por diseño.</dd>
+<dt>En el caso A</dt><dd>θ = 42,08° (idéntico a Global por la uniformidad), sombra 0, POA 290,4.</dd>
+<dt>En el caso B</dt><dd>θ por fila 46,6 · 40,1 · 38,3 · 37,7 · 46,9 · 46,1°. Sombra 29,0 % (fila 1), 11,7, 14,0, 35,1, 4,0, 0. POA 224. El globo del simulador lo marca como «evitable» cuando existe un θ uniforme con menos sombra: Row no lo evita por diseño.</dd>
 </dl>
 <figure><img src="img/algoritmos/A_2d_row.png" alt="Corte 2D, Row"><figcaption>En terreno uniforme Row acierta: 42° sin sombra.</figcaption></figure>
 </div>
@@ -199,9 +205,11 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="f">θ<sub>r</sub> = arg min<sub>θ ∈ {θ<sub>p(r−1)</sub>, θ<sub>p(r)</sub>}</sub> ( sg · θ ) &nbsp;&nbsp;&nbsp; sg = signo del lado del sol</div>
 <dl class="dl">
 <dt>Torsión</dt><dd>Si las dos vigas de una pareja no son paralelas (tilts N-S distintos), el candidato 2.5D ya no garantiza nada: se comprueba con el ray-cast 3D en varias estaciones a lo largo de la mesa y se barre el ángulo, en pasos de 0,5°, hasta el primer θ sin sombra. Después entran el <a href="#acople">acople por accionamiento</a> y la reparación global.</dd>
+<dt>El rango legítimo (v1.57)</dt><dd>Todo ese barrido vive entre el seguimiento verdadero ψ y la <b>paralela al terreno</b> (con la horizontal siempre dentro, y 2° de margen). Girar más allá de la horizontal en contra del sol también «quita sombra» —levanta el borde bajo fuera de la sombra de la vecina— y el barrido se iba allí: en el caso B la auditoría midió mesas casi de canto al sol (ángulo de incidencia 90°), con sombra cero porque no había haz que sombrear y POA 54 donde el astronómico daba 713. El backtracking de pvlib nunca pasa de la paralela al terreno; ese es el límite.</dd>
 <dt>Qué optimiza</dt><dd>Sombra de <b>planos cero garantizada</b> con el mínimo giro necesario para ello. La estructura (viga y canto) deja un residuo pequeño y declarado, sobre todo en tangencia a sol rasante.</dd>
-<dt>En el caso A</dt><dd>Candidatos de pareja 42,08° en las cinco parejas ⇒ θ = 42,08° en todas; <i>f<sub>s</sub></i> analítica de cada pareja = 0,00 %; POA <b>316,1 W/m²</b> (+27 % sobre el astronómico, que pierde medio haz por el Martinez).</dd>
-<dt>En el caso B</dt><dd>Con tilts de hasta 3,8° entre vecinas y el sol a 9°, evitar toda sombra de planos obliga a aplanar: la reparación deja las seis filas a −10° (el mejor θ uniforme del instante). Sombra 0, pero POA <b>38 W/m²</b>. Es el precio de la garantía a sol rasante, y por eso existen las políticas energéticas.</dd>
+<dt>En el caso A</dt><dd>Candidatos de pareja 42,08° en las cinco parejas ⇒ θ = 42,08° en todas; <i>f<sub>s</sub></i> analítica de cada pareja = 0,00 %; POA <b>290,4 W/m²</b> (+26 % sobre el astronómico, que pierde casi medio haz por el Martinez).</dd>
+<dt>En el caso B</dt><dd>Con tilts de hasta 3,8° entre vecinas y el sol a 9°, <b>no existe</b> ningún θ del rango legítimo que deje las seis filas sin sombra. La política publica θ −2 · −2 · 15,7 · −2 · −2 · 38° con <b>13,4 % en la peor fila</b> y POA 105, y el HUD lo marca como <b>irreducible</b>: se cobra en el Martinez, no se maquilla. Antes de la auditoría esto se publicaba como «sombra 0 %» con POA 38 —una postura de canto— y era falso por partida doble.</dd>
+<dt>Guardia de energía (v1.57)</dt><dd>Cuando la reparación no logra la garantía (más del 2 % en la fila peor), solo publica su candidato si no rinde <em>menos</em> POA que la consigna que repara. Una política que no puede cumplir su promesa no debe además tirar producción: en el caso B a las 07:30 esto son 108 W/m² en vez de 53.</dd>
 </dl>
 <div class="grid2">
 <figure><img src="img/algoritmos/A_2d_pairwise.png" alt="Corte 2D, pairwise"><figcaption>Caso A: 42° sin sombra en todas las filas.</figcaption></figure>
@@ -219,8 +227,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <p>y se resuelve la intersección del rayo desde el borde alto <i>P<sub>h</sub></i> con el plano de la receptora (normal <i>n</i> = c × a): sombrea si la coordenada de impacto a lo largo de la cuerda queda dentro de la pala. La fila toma el mínimo de sus dos parejas menos un margen de 0,5°, nunca por debajo de la baseline pvlib donde esta es 3D-segura, y con «deferral» exacto a la baseline con el sol por debajo de 8° (cénit ≥ 82°). Sin tilt N-S el resultado <em>es</em> pairwise (guard 2.5D, comprobado en la batería).</p>
 <dl class="dl">
 <dt>Qué optimiza</dt><dd>La misma garantía de no sombra que pairwise, pero decidida con la geometría 3D completa: más empinado que el 2.5D donde el 2.5D es conservador, y detecta contactos que el 2.5D no ve (deflexión axial de la sombra).</dd>
-<dt>En el caso A</dt><dd>Sin tilt N-S ⇒ idéntico a pairwise: 42,08°, sombra 0, POA 316,1. La magnitud máxima 3D por pareja es también 42,08°.</dd>
-<dt>En el caso B</dt><dd>A 9° de sol el deferral a la baseline manda: −10° como pairwise, sombra 0, POA 38.</dd>
+<dt>En el caso A</dt><dd>Sin tilt N-S ⇒ idéntico a pairwise: 42,08°, sombra 0, POA 290,4. La magnitud máxima 3D por pareja es también 42,08°.</dd>
+<dt>En el caso B</dt><dd>θ 0 · 0 · 12,3 · 0 · 0 · 32,8°, sombra 13,8 % en la peor fila (irreducible), POA 105. El cénit es 80,7°, por debajo del umbral de deferral (82°), así que la bisección 3D sí actúa; lo que fija el resultado es la reparación. <em>El documento anterior lo atribuía al deferral: era incorrecto.</em></dd>
 </dl>
 <div class="grid2">
 <figure><img src="img/algoritmos/B_3d_true3d.png" alt="Escena 3D, true-3D con tilt N-S"><figcaption>Caso B (tilt N-S aleatorio hasta 4°): la torsión entre vecinas.</figcaption></figure>
@@ -233,8 +241,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dl class="dl">
 <dt>Base</dt><dd>Port de <code>compute_bt_angles_min_ground_light</code>: parte del pairwise ya acoplado y <b>empina</b> cada unidad de accionamiento por ascenso coordinado (bisección de 14 pasos por unidad, hasta 3 pasadas) mientras (a) la sombra física del contador siga en cero y (b) la luz al suelo total <em>baje</em>.</dd>
 <dt>Qué optimiza</dt><dd>La <b>mínima luz directa al suelo</b> entre filas (agrivoltaica inversa: máxima cobertura del terreno) sin aceptar sombra en los módulos. Nunca rinde menos que pairwise porque parte de él y solo empina si no sombrea.</dd>
-<dt>En el caso A</dt><dd>Pairwise ya está en tangencia (residual ≈ 0 mm): no puede empinar sin sombrear ⇒ igual que pairwise: 42,08°, POA 316,1, luz al suelo 0 %.</dd>
-<dt>En el caso B</dt><dd>Igual que pairwise (−10°) por la misma razón; la luz al suelo la publica el HUD («Luz al suelo», ponderada por DNI en el KPI del día).</dd>
+<dt>En el caso A</dt><dd>Pairwise ya está en tangencia (residual ≈ 0 mm): no puede empinar sin sombrear ⇒ igual que pairwise: 42,08°, POA 290,4, luz al suelo 0 %.</dd>
+<dt>En el caso B</dt><dd>Igual que pairwise por la misma razón (no hay margen para empinar sin sombrear más); la luz al suelo la publica el HUD («Luz al suelo», ponderada por DNI en el KPI del día): aquí 45,6 %, frente a 0 % del astronómico.</dd>
 </dl>
 </div>
 
@@ -244,7 +252,7 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dt>Base</dt><dd>Deeptrack: entre la posición pairwise (sin sombra, θ<sub>0</sub>) y la astronómica (máximo haz, θ<sub>1</sub>) hay un segmento; se elige la fracción común <i>f</i> ∈ {0, ¼, ½, ¾, 1} que maximiza la POA de planta <b>neta</b> del modelo Martinez:</dd>
 </dl>
 <div class="f">θ<sub>r</sub>(<i>f</i>) = θ<sub>0,r</sub> + <i>f</i> · ( θ<sub>1,r</sub> − θ<sub>0,r</sub> ) &nbsp;&nbsp;&nbsp; <i>f</i>* = arg max<sub><i>f</i></sub> POA<sub>planta</sub>( θ(<i>f</i>) )</div>
-<p>La búsqueda usa el evaluador rápido 2.5D; el candidato ganador se <b>veta</b> con el contador exacto contra los dos extremos (<i>f</i> = 0 y <i>f</i> = 1), que también son candidatos: por construcción nunca rinde menos que pairwise ni que astro bajo la métrica publicada. El acople por accionamiento se aplica a los dos extremos antes de interpolar, así toda candidata es ejecutable por los motores.</p>
+<p>La búsqueda usa el evaluador rápido 2.5D; el candidato ganador se <b>veta</b> con el contador exacto contra los dos extremos (<i>f</i> = 0 y <i>f</i> = 1) y, desde v1.57, contra el <b>pairwise publicado</b> (el reparado): los tres son candidatos, así que por construcción nunca rinde menos que ninguno bajo la métrica publicada. Antes el veto solo miraba la base sin reparar, que difiere de lo publicado en 17 de los 90 instantes del día del caso B: la garantía se cumplía en la práctica (barrido: 0 violaciones) pero no estaba construida. El acople por accionamiento se aplica a los dos extremos antes de interpolar, así toda candidata es ejecutable por los motores.</p>
 <dl class="dl">
 <dt>Qué optimiza</dt><dd>Energía de planta en el instante, aceptando sombra cuando apuntar mejor la paga. Trabaja sobre la rejilla de 5 fracciones (fiel al core).</dd>
 <dt>En el caso A</dt><dd>La rejilla completa, evaluada con el contador exacto:</dd>
@@ -252,12 +260,12 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="tw"><table>
 <tr><th><i>f</i></th><th>0 (pairwise)</th><th>¼</th><th>½</th><th>¾</th><th>1 (astro)</th></tr>
 <tr><td>θ (todas las filas)</td><td>42,08°</td><td>45,31°</td><td>48,54°</td><td>51,77°</td><td>55,00°</td></tr>
-<tr><td>Sombra máxima</td><td>0 %</td><td>4,0 %</td><td>7,5 %</td><td>10,4 %</td><td>12,9 %</td></tr>
-<tr><td>POA planta neta</td><td><b>316,1</b></td><td>232,9</td><td>238,5</td><td>243,6</td><td>248,1</td></tr>
+<tr><td>Sombra máxima</td><td>0 %</td><td>4,0 %</td><td>7,1 %</td><td>9,8 %</td><td>12,2 %</td></tr>
+<tr><td>POA planta neta</td><td><b>290,4</b></td><td>207,5</td><td>219,3</td><td>224,9</td><td>230,0</td></tr>
 </table></div>
 <p>Gana <i>f</i> = 0: la primera sombra, por pequeña que sea (4 %), ya cuesta media mesa por el Martinez (⌈2·0,04⌉/2 = 0,5) y la ganancia de haz de 3° de giro no lo compensa. En este terreno el óptimo energético coincide con no sombrear.</p>
 <dl class="dl">
-<dt>En el caso B</dt><dd>La situación contraria: pairwise cuesta la POA entera (38 W/m² por aplanar a −10°) y el astronómico rinde 251 con un 33 % de sombra. Gana <i>f</i> = 1: energy-optimal se va al astronómico (POA <b>251</b>, +560 % sobre pairwise). El HUD lo muestra en la tarjeta <i>f</i>.</dd>
+<dt>En el caso B</dt><dd>La situación contraria: la sombra es irreducible, así que renunciar a ella no compra nada y aplanarse cuesta casi toda la POA (105 W/m²) mientras el astronómico rinde 231 con un 38 % de sombra. Gana <i>f</i> = 1: energy-optimal se va al astronómico (POA <b>231</b>, +121 % sobre pairwise). El HUD lo muestra en la tarjeta <i>f</i>.</dd>
 </dl>
 <figure><img src="img/algoritmos/A_2d_optimal.png" alt="Corte 2D, energy-optimal"><figcaption>Caso A: f = 0, energy-optimal es pairwise.</figcaption></figure>
 </div>
@@ -267,8 +275,8 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <dl class="dl">
 <dt>Base</dt><dd>Como energy-optimal, pero cada <b>unidad de accionamiento</b> (fila en monofila, pareja de filas en bifila) lleva <em>su propia</em> fracción <i>f<sub>g</sub></i>, en una rejilla de 13 valores que baja hasta −0,5 (más plano que pairwise: con torsión el óptimo real puede vivir fuera del segmento). Ascenso coordinado: cada unidad escanea su rejilla mirando solo sus filas y las vecinas inmediatas, en barridos alternos hasta converger (máximo 8). Arranca en la mejor <i>f</i> común con el mismo evaluador que energy-optimal, así que nunca rinde menos que él en el instante de decisión.</dd>
 <dt>Qué optimiza</dt><dd>La POA de planta neta con tantos grados de libertad como accionamientos (427 en Ayora). En Ayora real: pairwise +0,71 % con la <i>f</i> común, +1,03 % libre.</dd>
-<dt>En el caso A</dt><dd>Todas las unidades en <i>f</i> = 0 (la tarjeta muestra el rango 0…0 de las 6 unidades): 42,08°, POA 316,1.</dd>
-<dt>En el caso B</dt><dd>Todas en <i>f</i> = 1: 55°, POA 251, como energy-optimal.</dd>
+<dt>En el caso A</dt><dd>Todas las unidades en <i>f</i> = 0 (la tarjeta muestra el rango 0…0 de las 6 unidades): 42,08°, POA 290,4.</dd>
+<dt>En el caso B</dt><dd>Todas en <i>f</i> = 1: 55°, POA 231, como energy-optimal.</dd>
 <dt>Consignas retenidas</dt><dd>Los optimizadores deciden en la rejilla de 5 min; entre dos decisiones la escena evalúa la <b>consigna retenida</b> (con el límite de giro del actuador) al sol del minuto pedido. Por eso, en un minuto intermedio y con nubes, el óptimo libre puede marcar 1 W/m² menos que energy-optimal: cada uno mantiene una consigna distinta y se comparan fuera del instante en que se decidieron. La garantía «óptimo libre ≥ energy-optimal ≥ pairwise» se cumple en los instantes de decisión y el barrido la mide: 0 violaciones en 4.224 instantes.</dd>
 </dl>
 </div>
@@ -281,7 +289,7 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <!-- ───────────────────────────────────────────────────────────────────── -->
 <h2 id="acople">4. Acople por accionamiento y reparación global</h2>
 <p><b>Acople.</b> En bifila (rígida o quebrada) las dos filas de un grupo giran con el mismo motor: la consigna es un θ común. Para las políticas que garantizan no sombra se toma el candidato del grupo con menor |θ| y se refina por bisección hasta la tangencia (medida por la fracción sombreada 2.5D de cada pareja o, en true-3D, por el residual en mm), buscando el ángulo sin sombra más cercano al actual. Con terreno uniforme monofila = bifila = quebrada (degeneración comprobada).</p>
-<p><b>Reparación global (presets).</b> Tras el acople, si el contador de planos (8 estaciones, las mismas que se publican) deja alguna fila con más del 2 % de sombra de otra fila, se arranca del mejor θ uniforme del instante (barrido de 5° y refino de 2,5°) y se mueven las emisoras implicadas. El objetivo es primero la fila peor y después la suma. La reparación no entra en plantas medidas: allí la consigna va por mesa con las cotas de cada tramo.</p>
+<p><b>Reparación global (presets).</b> Tras el acople, si el contador de planos (con las mismas estaciones que se publican) deja alguna fila con más del 2 % de sombra de otra fila, se arranca del mejor θ uniforme del instante (barrido de 5° y refino de 2,5°) y se mueven las emisoras implicadas. El objetivo es primero la fila peor y después la suma. Desde v1.57 lleva además tres salvaguardas que salieron de la auditoría: cada candidato vive en el <b>rango legítimo</b> de su unidad de accionamiento (entre el seguimiento verdadero y la paralela al terreno, con la horizontal dentro); una <b>restitución</b> devuelve a su consigna de partida las unidades que el arranque uniforme movió sin ganar nada de sombra; y una <b>guardia de energía</b> impide publicar un candidato que no logra la garantía y además rinde menos POA que lo que repara. La reparación no entra en plantas medidas: allí la consigna va por mesa con las cotas de cada tramo.</p>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
 <h2 id="dia">5. Comparativa del día</h2>
@@ -290,23 +298,24 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <div class="tw"><table>
 <tr><th>Política</th><th colspan="3">Caso A (pendiente 8°, sin torsión)</th><th colspan="3">Caso B (con tilt N-S aleatorio 4°)</th></tr>
 <tr><th></th><th>θ</th><th>sombra máx</th><th>POA W/m²</th><th>θ</th><th>sombra máx</th><th>POA W/m²</th></tr>
-<tr><td>Astronómico</td><td>55,0</td><td>12,9 %</td><td>248,1</td><td>55,0</td><td>38,2 %</td><td>251</td></tr>
-<tr><td>BT2D plano</td><td>16,1</td><td>0</td><td>184,6</td><td>16,1</td><td>20,4 %</td><td>170</td></tr>
-<tr><td>Global</td><td>42,1</td><td>0</td><td>316,1</td><td>41,7</td><td>33,0 %</td><td>241</td></tr>
-<tr><td>Row</td><td>42,1</td><td>0</td><td>316,1</td><td>37,7…46,9</td><td>34,9 %</td><td>244</td></tr>
-<tr><td>Pairwise</td><td>42,1</td><td>0</td><td>316,1</td><td>−10,0</td><td>0</td><td>38</td></tr>
-<tr><td>True-3D</td><td>42,1</td><td>0</td><td>316,1</td><td>−10,0</td><td>0</td><td>38</td></tr>
-<tr><td>Min ground light</td><td>42,1</td><td>0</td><td>316,1</td><td>−10,0</td><td>0</td><td>38</td></tr>
-<tr><td>Energy-optimal</td><td>42,1 (f=0)</td><td>0</td><td>316,1</td><td>55,0 (f=1)</td><td>38,2 %</td><td>251</td></tr>
-<tr><td>Óptimo libre</td><td>42,1</td><td>0</td><td>316,1</td><td>55,0</td><td>38,2 %</td><td>251</td></tr>
+<tr><td>Astronómico</td><td>55,0</td><td>12,2 %</td><td>230,0</td><td>55,0</td><td>38,2 %</td><td>231</td></tr>
+<tr><td>BT2D plano</td><td>16,1</td><td>0</td><td>161,8</td><td>16,1</td><td>20,8 %</td><td>148</td></tr>
+<tr><td>Global</td><td>42,1</td><td>0</td><td>290,4</td><td>41,7</td><td>33,3 %</td><td>221</td></tr>
+<tr><td>Row</td><td>42,1</td><td>0</td><td>290,4</td><td>37,7…46,9</td><td>35,1 %</td><td>224</td></tr>
+<tr><td>Pairwise</td><td>42,1</td><td>0</td><td>290,4</td><td>−2…38</td><td>13,4 % (irreducible)</td><td>105</td></tr>
+<tr><td>True-3D</td><td>42,1</td><td>0</td><td>290,4</td><td>0…32,8</td><td>13,8 % (irreducible)</td><td>105</td></tr>
+<tr><td>Min ground light</td><td>42,1</td><td>0</td><td>290,4</td><td>−2…38</td><td>13,4 % (irreducible)</td><td>105</td></tr>
+<tr><td>Energy-optimal</td><td>42,1 (f=0)</td><td>0</td><td>290,4</td><td>55,0 (f=1)</td><td>38,2 %</td><td>231</td></tr>
+<tr><td>Óptimo libre</td><td>42,1</td><td>0</td><td>290,4</td><td>55,0</td><td>38,2 %</td><td>231</td></tr>
 </table></div>
-<p>Las dos columnas resumen el argumento del documento: con relieve transversal uniforme, conocer la pendiente vale un 27 % de POA a esa hora frente al astronómico y un 71 % frente a un controlador sin configurar; con torsión N-S entre vecinas y sol rasante, la garantía de no sombra cuesta casi toda la POA y el criterio energético es el que decide bien. Ninguna política domina a todas horas: por eso el informe del emplazamiento y los KPI del día (sombra ponderada por energía, minutos con sombra relevante, horas de backtracking, pérdida Martinez, peor momento) están para cada una.</p>
+<p>Las dos columnas resumen el argumento del documento: con relieve transversal uniforme, conocer la pendiente vale un 26 % de POA a esa hora frente al astronómico y un 79 % frente a un controlador sin configurar; con torsión N-S entre vecinas y sol rasante, la sombra ya no se puede evitar —y una política que lo prometa está mintiendo o tirando energía—, así que el criterio energético es el que decide bien. Ninguna política domina a todas horas: por eso el informe del emplazamiento y los KPI del día (sombra ponderada por energía, minutos con sombra relevante, horas de backtracking, pérdida Martinez, peor momento) están para cada una.</p>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
 <h2 id="verif">6. Verificación: lo que se prueba y con qué cifras</h2>
 <dl class="dl">
-<dt>Batería del simulador (<code>tools/test_backtracking_sim.mjs</code>, en CI)</dt><dd>177 comprobaciones. Entre ellas: pvlib <code>singleaxis</code> ≡ fórmula cerrada en llano; pairwise ⇒ sombra de planos cero en llano, ±8° y ondulado; la fracción analítica ≡ ray-cast bruto en 200 casos aleatorios (±1/300); true-3D nunca más plano que la baseline donde ella es 3D-segura y ≡ baseline sin tilt N-S; energy-optimal ≥ pairwise y óptimo libre ≥ energy-optimal bajo el contador exacto; terreno uniforme ⇒ global = row = pairwise y monofila = bifila = quebrada; el contador ≡ oráculo sin podas sobre Ayora en 4 regímenes (≤ 0,1 pp); convergencia MV 8 vs 32 (≤ 0,7 pp, +0,007 % anual); rótula: contador ≡ oráculo con quiebro.</dd>
-<dt>Barrido de terrenos (<code>tools/barrido_terrenos.mjs</code>, 40 configuraciones × 3 fechas × cada 20 min)</dt><dd><b>A</b> contador ≡ oráculo: 1.424 instantes, peor |Δ| 0,000 pp. <b>B</b> sombra de planos con pairwise/true-3D/mgl: 12.672 instantes-política, 654 con un θ uniforme mejor (casi todos a sol bajo con torsión) y 530 con sombra física que ningún θ evita. <b>B2</b> sombra publicada con estructura y 32 estaciones: 180 fallos de política y 2.787 físicos. <b>C</b> energía: 4.224 instantes, 0 violaciones. <b>D</b> acople por accionamiento: 11.105, 0 violaciones. <b>E</b> θ finitos y en rango: 21.120, 0 violaciones.</dd>
+<dt>Batería del simulador (<code>tools/test_backtracking_sim.mjs</code>, en CI)</dt><dd>186 comprobaciones. Entre ellas: pvlib <code>singleaxis</code> ≡ fórmula cerrada en llano; pairwise ⇒ sombra de planos cero en llano, ±8° y ondulado; la fracción analítica ≡ ray-cast bruto en 200 casos aleatorios (±1/300); true-3D nunca más plano que la baseline donde ella es 3D-segura y ≡ baseline sin tilt N-S; energy-optimal ≥ pairwise y óptimo libre ≥ energy-optimal bajo el contador exacto; terreno uniforme ⇒ global = row = pairwise y monofila = bifila = quebrada; el contador ≡ oráculo sin podas sobre Ayora en 4 regímenes (≤ 0,1 pp); convergencia MV 8 vs 32 (≤ 0,7 pp, +0,007 % anual); rótula: contador ≡ oráculo con quiebro.</dd>
+<dt>Barrido de terrenos (<code>tools/barrido_terrenos.mjs</code>, 40 configuraciones × 3 fechas × cada 20 min)</dt><dd><b>A</b> contador ≡ oráculo: 1.424 instantes, peor |Δ| 0,000 pp. <b>B</b> sombra de planos con pairwise/true-3D/mgl: 12.672 instantes-política, <b>2</b> con un θ ejecutable mejor (eran 654 antes de la auditoría) y 3.116 con sombra que ningún θ evita —esa es la cifra que creció al dejar de llamar «sin sombra» a lo que no lo era—. <b>B2</b> sombra publicada con estructura y 32 estaciones: 65 fallos de política. <b>C</b> energía: 4.152 instantes, 0 violaciones. <b>D</b> acople por accionamiento: 11.105, 0 violaciones. <b>E</b> θ finitos y en rango: 21.120, 0 violaciones. <b>F</b> (v1.57) convergencia de la malla publicada frente a 128 estaciones: peor |Δ| 2,43 pp y <b>ninguna</b> mancha de más del 2 % publicada por debajo de su mitad. <b>G</b> (v1.57) ninguna mesa fuera de su rango legítimo.</dd>
+<dt>Oráculo geométrico independiente (v1.57, en la batería)</dt><dd>Rectángulos con la rotación exacta sobre el eje inclinado —<i>c</i> = (cos θ, sin θ·sin τ, −sin θ·cos τ), <i>a</i> = (0, cos τ, sin τ)— y 200×400 muestras por mesa, escrito sin compartir una línea con el contador. Coincide con el contador convergido en ≤ 0,5 pp en los casos A y B a cuatro ángulos. El oráculo anterior comparte geometría y estaciones con el contador: vale para las podas y el álgebra de intervalos, no para el modelo ni la convergencia.</dd>
 <dt>Render ≡ física (<code>tools/test_render_sol.mjs</code>, navegador, en CI)</dt><dd>Desde la cámara del sol no se ve ningún píxel rojo (la silueta pintada nunca queda donde el sol llega) con quiebro en la rótula a sol de 10° y con cresta a sol de 14°; en el corte 2D el borde por el que entra la sombra coincide con un ray-cast 2D independiente, con la mesa de cara y de espaldas al sol; el θ manual cruza el signo de ida y vuelta (slider ≡ HUD).</dd>
 <dt>Careo con producción</dt><dd>El contador del simulador y el del programa de producción por string son idénticos bit a bit en el interior de la planta (<code>tools/careo_produccion.mjs</code>, cada 120 min).</dd>
 </dl>
@@ -316,10 +325,29 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <ul>
 <li><b>Hueco del motor en presets.</b> La física de los presets sin quiebro modela cada tramo como vidrio continuo; el modelo 3D lleva el hueco de 0,55 m entre mesas. Desde el sol se ve una tira de sombra pintada de ~0,5 m por fila a través de ese hueco (la física cobra un 0,85 % del largo de más). Con quiebro en la rótula y en plantas medidas las mesas ya van partidas. Pendiente: partir todas las mesas en presets.</li>
 <li><b>Estructura en tangencia.</b> Las políticas de no sombra garantizan cero en planos; la viga y el canto dejan un residuo medido (B2) y declarado, no corregido: se probó una reparación consciente de la estructura y no mejoraba en el barrido.</li>
-<li><b>Sol rasante con torsión.</b> Con tilts N-S distintos entre vecinas, evitar toda sombra a sol de pocos grados obliga a aplanar (caso B); es correcto para la garantía y malo para la energía, y por eso conviven ambas familias de políticas.</li>
+<li><b>Torsión: la garantía de no sombra deja de existir.</b> Con tilts N-S distintos entre vecinas y mesas largas, no hay ningún ángulo del rango legítimo que deje las filas sin sombra, y esto no pasa solo «a sol rasante»: en el caso B ocurre buena parte de la mañana y de la tarde. Las políticas de la familia sin sombra publican entonces el mínimo que alcanzan y lo marcan como <b>irreducible</b>; el KPI del día lo cobra por Martinez. Para decidir consignas en un terreno así, la referencia son las políticas energéticas, no ellas.</li>
 <li><b>Enmascaramiento de difusa.</b> Energy-optimal y óptimo libre no descuentan la difusa de cielo que tapa la fila vecina (solo haz y circunsolar): sesgo pequeño a favor de empinar.</li>
+<li><b>Malla axial en plantas medidas.</b> Ayora y San José siguen con 8 estaciones por mesa, donde está medido que basta (vigas casi paralelas, ≤ 0,7 pp frente a 32) y donde el tiempo de cálculo de la planta entera es el límite. Si alguna vez se carga una planta medida con torsión apreciable entre vigas vecinas, habrá que subirla también allí.</li>
+<li><b>El tercer decimal de la POA.</b> El modificador de ángulo se aplica a la difusa isótropa y al albedo con el ángulo equivalente de Duffie-Beckman, que no es lo que hace pvlib: el revisor midió 21,2 frente a 22,6 W/m² en la difusa de cielo y 3,2 frente a 3,4 en el albedo del caso A. Es una diferencia declarada y del mismo signo para todas las políticas.</li>
 <li><b>Perfil «quebrado (dos aguas)».</b> Es un perfil por filas (mitad a +v, mitad a −v); con líneas largas el terreno entre las dos filas centrales salta 2·v a lo largo y en 3D aparece como una cresta real. El terreno «a dos aguas» a lo largo de la fila es el preset «quiebro en la rótula».</li>
 </ul>
+
+<h2 id="auditoria">8. Auditoría externa: qué cambió y qué se midió</h2>
+<p>En septiembre de 2026 un revisor independiente auditó esta plataforma: clonó el repositorio, extrajo el bloque de física y lo ejecutó en Node con su propio arnés, recalculó el caso de referencia con pvlib 0.15.2 y escribió un ray-cast 3D en numpy con la rotación exacta para carearlo contra el contador. Lo que sigue es su lista de hallazgos y lo que se hizo con cada uno. Las cifras de «después» están medidas con la física de esta versión.</p>
+
+<div class="tw"><table>
+<tr><th>Hallazgo</th><th>Qué pasaba</th><th>Qué se hizo</th><th>Medido</th></tr>
+<tr><td><b>H1</b> · muestreo axial</td><td>8 estaciones fijas por mesa: en una mesa de 65 m con torsión, una mancha de 6,3 % convergido salía 3,3 %, y a −20° una de 4,5 % salía <b>0,0 %</b>. El oráculo de la batería usaba las mismas 8 estaciones, así que no podía verlo.</td><td>Estaciones adaptativas: una cada 4 m, cada 2 m con torsión ≥ 0,5°, entre 8 y 64. También en la reparación, en el evaluador por pareja y en el oráculo.</td><td>|Δ| frente a 256 estaciones ≤ 1,5 pp en el caso B a cuatro ángulos, y ninguna mancha de más del 2 % se publica por debajo de su mitad. Coste: un día de 8 filas con torsión pasa de 0,2 a 1,1 s.</td></tr>
+<tr><td><b>H2</b> · mesas de canto</td><td>El barrido de las políticas sin sombra no tenía tope: giraba más allá de la horizontal en contra del sol hasta dejar la mesa casi paralela al rayo. La sombra salía cero porque no había haz que sombrear. Con el sol a 23°, POA 54 frente a 713 del astronómico.</td><td>Rango legítimo por unidad de accionamiento: entre el seguimiento verdadero y la paralela al terreno, con la horizontal dentro. Más restitución de las unidades movidas en balde y guardia de energía cuando la sombra es irreducible. El HUD publica «irreducible».</td><td>En el caso B, el ángulo de incidencia peor con el sol por encima de 15° baja de 91° a 70°; la POA de pairwise a las 08:50 pasa de 54 a 468 W/m², y a las 18:10 de 67 a 598.</td></tr>
+<tr><td><b>H3</b> · garantía del optimizador</td><td>El veto de energy-optimal comparaba con el pairwise <em>sin reparar</em>, que difiere del publicado en 17 de 90 instantes del caso B. La garantía se cumplía en el barrido, pero no estaba construida.</td><td>El pairwise publicado entra como tercer candidato del veto, en energy-optimal y en óptimo libre.</td><td>0 violaciones en el día del caso B y en el barrido; ahora por construcción.</td></tr>
+<tr><td><b>H4</b> · cielo claro</td><td>El realce de Perez iba siempre activo y el comentario decía «el de pvlib»; pvlib lo trae apagado. A 9° de sol, DHI un 67 % alta y GHI un 27 %.</td><td>Apagado por defecto, opcional con <code>perezEnhancement</code>. Goldens de la batería y del banco de producción actualizados.</td><td>Zaragoza 21-jun 07:30: 80,2 / 300,3 / 31,7 W/m², frente a los 80,1 / 300,2 / 31,7 de pvlib.</td></tr>
+<tr><td><b>H5</b> · texto del documento</td><td>Se atribuía al «deferral» el resultado de true-3D en el caso B (el cénit era 80,7°, por debajo del umbral de 82°), y se presentaba como «sombra 0» lo que era muestreo insuficiente más postura de canto.</td><td>Corregido en §3.5, §3.6 y en la tabla de §5.</td><td>—</td></tr>
+<tr><td><b>H7</b> · el oráculo</td><td>El «oráculo independiente» comparte con el contador la geometría, las estaciones y el álgebra: valida las podas, no el modelo.</td><td>Oráculo nuevo de rotación exacta y muestreo denso, sin código común, en la batería.</td><td>≤ 0,5 pp frente al contador convergido en los casos A y B.</td></tr>
+</table></div>
+
+<p><b>Lo que el revisor confirmó recalculándolo:</b> la posición solar NOAA frente a pvlib (9,283° / 66,726°); el backtracking de pvlib paso a paso (79,91° → 16,10° → 42,07°, con los signos correctos); el haz con el modificador de ángulo (248,4 W/m², clavado); el reparto de Perez; el Martinez; las degeneraciones (terreno uniforme ⇒ todas las políticas coinciden; sin tilt N-S true-3D ≡ pairwise); la fracción analítica de cuerda; y que el contador <em>convergido</em> coincide con su ray-cast independiente en ≤ 0,1 pp. Su conclusión sobre la física de fondo fue que es sólida; lo que falló fue la discretización, el rango de búsqueda de la reparación, la construcción de una garantía y un parámetro de cielo claro.</p>
+
+<p><b>Lo que sigue pendiente de su lista:</b> el barrido publica ahora una métrica de convergencia (F) y otra de mesas de canto (G), pero el criterio de «alcanzable» de la métrica B sigue comparando contra un barrido de θ uniforme, que es una cota inferior optimista; y los tests estáticos que buscan cadenas en el fuente siguen ahí, con el valor limitado que el revisor les atribuye. Ninguno de los dos afecta a las cifras que publica la página.</p>
 
 <p class="sub" style="margin-top:40px"><small class="src">Generado a partir de backtracking.html (física extraída del bloque «FÍSICA PURA»), sol.js e irradiancia.js. Figuras: docs/img/algoritmos, capturas del propio simulador. Ejemplo numérico: docs/img/algoritmos/ejemplo.json.</small></p>
 </main>

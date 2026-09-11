@@ -745,7 +745,8 @@ t('dayAC integra la cadena PASO A PASO (Σ por inversor ≡ Σ de planta) y el r
   const c = { ...C, nrows: 6, elec: { mods: 28, wp: 590, gamma: -0.34, tamb: 20, wind: 1, uc: 29, uv: 0 } };
   const T = S.buildT(S.F, c, S.elevPreset('llano', 6, 0, C.pitch));
   const strInv = S.invMapUniforme(6, 2).map(v => [v]);
-  const ac = { loss: { soiling: 2, mismatch: 2, wiring: 1.5, lid: 1.5 }, pnomW: 40000, etaMax: 0.985, gridW: 0 };
+  // v1.57: Pnom 38 kW — con el cielo claro de pvlib (sin el realce de Perez) el pico DC queda justo bajo los 40 kW y el caso dejaba de recortar
+  const ac = { loss: { soiling: 2, mismatch: 2, wiring: 1.5, lid: 1.5 }, pnomW: 38000, etaMax: 0.985, gridW: 0 };
   const d = S.dayAC(S.F, c, T, strInv, ac, 30);
   const porInv = d.porInv.reduce((s, v) => s + v.kwh, 0);
   if (Math.abs(porInv - d.eacKwh) / d.eacKwh > 1e-9)
@@ -765,7 +766,7 @@ t('dayAC integra la cadena PASO A PASO (Σ por inversor ≡ Σ de planta) y el r
     for (const v of x.invs) sinClip += v.pdcNetW * v.eta;
   }
   sinClip *= 30 / 60 / 1000;
-  if (!clipVisto) throw new Error('con Pnom 40 kW nadie recorta a mediodía: el caso no ejercita el clip');
+  if (!clipVisto) throw new Error('con Pnom 38 kW nadie recorta a mediodía: el caso no ejercita el clip');
   if (!(sinClip > d.eacKwh + 1))
     throw new Error('quitar el recorte no sube la E AC (' + sinClip.toFixed(1) + ' vs ' + d.eacKwh.toFixed(1) + '): el clipping no muerde en la integral');
 });
