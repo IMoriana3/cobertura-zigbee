@@ -73,7 +73,7 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <li><a href="#dia">Comparativa del día</a></li>
 <li><a href="#verif">Verificación: lo que se prueba y con qué cifras</a></li>
 <li><a href="#limites">Límites conocidos</a></li>
-<li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a></li>
+<li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a><ul><li><a href="#reauditoria">Segunda vuelta (v1.57.1)</a></li><li><a href="#tercera">Tercera vuelta (v1.57.1)</a></li></ul></li>
 </ol>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
@@ -346,6 +346,47 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 </table></div>
 
 <p><b>Lo que el revisor confirmó recalculándolo:</b> la posición solar NOAA frente a pvlib (9,283° / 66,726°); el backtracking de pvlib paso a paso (79,91° → 16,10° → 42,07°, con los signos correctos); el haz con el modificador de ángulo (248,4 W/m², clavado); el reparto de Perez; el Martinez; las degeneraciones (terreno uniforme ⇒ todas las políticas coinciden; sin tilt N-S true-3D ≡ pairwise); la fracción analítica de cuerda; y que el contador <em>convergido</em> coincide con su ray-cast independiente en ≤ 0,1 pp. Su conclusión sobre la física de fondo fue que es sólida; lo que falló fue la discretización, el rango de búsqueda de la reparación, la construcción de una garantía y un parámetro de cielo claro.</p>
+
+
+<h3 id="reauditoria">8.1 Segunda vuelta: lo que el revisor volvió a encontrar (v1.57.1)</h3>
+<p>Con v1.57.0 publicada, el mismo revisor repitió la auditoría <b>sobre el commit anterior</b> (v1.56.0) y elevó H2 a crítico con cifras de día entero: en su caso de torsión N-S aleatoria de 4°, true-3D perdía el <b>31 % de la energía del día</b> frente al astronómico, 27 instantes acababan con una fila con el ángulo de incidencia por encima de 90° (la pala mirando al lado contrario del sol) y a las 09:30 una fila publicaba 65 W/m² de POA. Todo eso es real y es exactamente lo que el rango legítimo de v1.57.0 cierra. Medido con la física publicada, en su mismo caso y su mismo día:</p>
+
+<div class="tw"><table>
+<tr><th>Lo que midió</th><th>v1.56.0 (lo que auditó)</th><th>v1.57.0</th><th>v1.57.1</th></tr>
+<tr><td>Energía del día, true-3D, frente al astronómico</td><td>7,37 de 10,73 Wh/m² — <b>−31 %</b></td><td colspan="2">9,10 de 10,51 — <b>−13 %</b></td></tr>
+<tr><td>Instantes con una fila de espaldas al sol (AOI &gt; 90°)</td><td>19 pairwise · 27 true-3D · 30 mgl</td><td>4 en total</td><td><b>0</b></td></tr>
+<tr><td>Colapsos de POA con el sol por encima de 20°</td><td>20</td><td colspan="2"><b>0</b></td></tr>
+<tr><td>Su instante de las 09:30 (fila con POA hundida)</td><td>65 W/m²</td><td colspan="2"><b>586 W/m²</b></td></tr>
+</table></div>
+
+<p>Los cuatro casos que quedaban en v1.57.0 eran todos de crepúsculo, y el motivo era el propio tope del rango: cuando el terreno cae en contra del sol, <em>la paralela al terreno ya está de espaldas</em>. Con el sol a 9,3° y ψ = −83,4°, el tope daba θ = +10°, que es un ángulo de incidencia de 93,1°. v1.57.1 añade el recorte que faltaba, y lo hace en cerrado en vez de barriendo: para un seguidor de un eje, el ángulo de incidencia se separa en la desviación transversal y la componente axial,</p>
+<p class="eq">cos AOI = cos(θ − ψ) · cos λ,&nbsp;&nbsp;&nbsp; sin λ = <b>s</b>·<b>a</b></p>
+<p>(<b>s</b> el vector al sol, <b>a</b> el del eje), de donde «AOI ≤ 88°» es exactamente |θ − ψ| ≤ acos(cos 88° / cos λ). Ese intervalo se interseca con el rango legítimo antes de buscar. En el instante de arriba el tope pasa de +10° a +4,6°, con AOI 88,1°.</p>
+
+<p><b>Lo que no se ha adoptado, y por qué.</b> El revisor proponía además un invariante duro de coherencia entre filas vecinas (|Δθ| ≤ 30°). No se ha adoptado como invariante: en el caso B hay 33 instantes de 86 donde dos filas vecinas difieren más de 30° (por ejemplo 3,7 / 3,7 / 55 / 0 / 0 / 55), y en todos ellos el contador valida <b>0 % de sombra</b> — es lo que hace la torsión: dos mesas con vigas a distinta pendiente no tienen por qué compartir consigna para no estorbarse. Convertirlo en invariante pondría rojo un comportamiento correcto. Se publica como <b>métrica medida</b> del barrido, no como tope. El invariante que sí se ha añadido al barrido es el físico, que es el que él perseguía: <b>métrica H</b>, el ángulo de incidencia del haz sobre la pala publicada con el sol por encima de 5°.</p>
+
+
+<h3 id="tercera">8.2 Tercera vuelta: el rango frente al acoplamiento, y la lección del árbitro (v1.57.1)</h3>
+<p>El mismo revisor auditó v1.57.0 y confirmó recalculándolo que los cuatro hallazgos graves estaban cerrados. Dejó tres vivos. Los tres están corregidos aquí, y uno de ellos deja una <b>lección que vale para todo el simulador</b>.</p>
+
+<p><b>R1 · el rango legítimo no sobrevivía al accionamiento quebrado.</b> Su métrica G del barrido marcaba 22 violaciones de 3.159 instantes-política, todas con accionamiento quebrado y con el sol hasta a 30°. Su diagnóstico —«el acople arrastra la fila fuera de su rango y nadie vuelve a comprobarlo»— era la mitad. Las dos causas reales:</p>
+<ol>
+<li>El rango de la fila era la <b>unión</b> de los de sus dos parejas, y el cono de ángulos que reciben haz no es de la pareja sino <b>de la fila</b> (su propio tilt de eje): una fila entre dos vanos de pendiente distinta heredaba el tope del vecino. Ahora la unión se interseca con el cono propio.</li>
+<li>La reparación devolvía la consigna entrante <b>intacta</b> cuando no había sombra seria, y cuando sí recortaba, el árbitro era la fracción de sombra.</li>
+</ol>
+<p>En su caso (Arequipa · valle 2 · senoidal 2° · quebrado · 21-jun 20:40Z, sol 20,9°) el acoplamiento rígido manda las cuatro primeras filas a +9,5°, y las filas 2 y 3 tienen su rango en …+2°. Recortarlas deja <b>la misma sombra —cero— y sube el POA de planta de 315 a 335 W/m²</b>: no era sólo una postura ilegítima, era energía perdida. La regla que se aplica ahora: se recorta el grupo de accionamiento entero (para no romper el θ común) y se acepta sólo si no empeora ni la sombra ni la energía de planta —recortar una fila que ya recibe haz <em>puede</em> meterle sombra, y eso rompería el contrato de las políticas sin sombra—, con una excepción: la fila de espaldas al sol, donde manda la energía sola.</p>
+
+<p class="nota"><b>La lección.</b> En el instante que destapó el vicio, la postura de espaldas <em>sombreaba menos</em> —38,8 % frente a 43,2 %— porque a 90° de incidencia no hay haz que sombrear. Dicho en general: <b>un árbitro que mide sombra óptica premia estructuralmente no recibir luz</b>. Por eso el objetivo de la reparación es hoy la energía y no la sombra, y por eso la métrica B2 del barrido —que compara contra el mejor θ uniforme sin exigirle recibir haz— hereda el mismo sesgo y es una <b>cota optimista</b>: no es una cautela de estilo, es la misma raíz.</p>
+
+<p><b>El barrido bloquea.</b> Hasta v1.57.0 imprimía las violaciones y salía con código 0: un invariante roto llegaba a publicarse con el gate en verde. Ahora rompe con los invariantes duros —A (contador ≡ oráculo), B, C, D, E, G— y con la métrica nueva <b>H</b> cuando el sol está por encima de 10°.</p>
+
+<p><b>Métrica H</b> es el invariante físico que hay detrás de G: el ángulo de incidencia del haz sobre la pala <em>publicada</em>. Bloquea con el sol por encima de 10°, que es donde se juega la energía; por debajo informa su residuo, que está medido y declarado: con el sol entre 5° y 10° quedan instantes sueltos por encima de 90° en los que recortar cuesta energía de planta y la fila produce difusa sola (menos de 15 W/m²).</p>
+
+<p><b>R2 · la etiqueta del test de convergencia.</b> El test de ≤0,7 pp es de Ayora, media de planta y 8 estaciones por diseño; su título se leía como una promesa general que la malla adaptativa no da. Ahora se llama por su alcance, y otro test fija la cota donde el revisor la mide: por fila, en presets con torsión, |publicado − MV 128| ≤ 3 pp, y ninguna mancha de más del 2 % publicada por debajo de su mitad. La consecuencia operativa, que es lo que un lector hará con el número: <b>la sombra publicada por fila no sirve para umbrales de decisión más finos que ±3 pp</b>. Apretar la malla a una estación cada 1,5 m es posible y se ha dejado sin hacer por coste medido (un día de 8 filas con torsión pasa de 0,2 a 1,1 s con la malla actual).</p>
+
+<p><b>R3 · fila sacrificada.</b> El óptimo libre puede aparcar una fila de espaldas al sol para que sus vecinas lo vean: bajo el modelo es legítimo y gana energía de planta (224 frente a 186 W/m² en el caso que reportó), pero es una consigna que sale hacia una TCU y que nadie espera. Se declara en el HUD («Filas sacrificadas», con su ángulo de incidencia) y sale marcada en el CSV de consignas, columna <code>sacrificada</code>, con DNI &gt; 100 W/m².</p>
+
+<p><b>Lo que queda declarado, con su alcance.</b> El oráculo exacto de la batería construye su geometría a través del oráculo de podas, así que comparte esa construcción: <b>el careo A valida las podas y el álgebra de intervalos, no la geometría del modelo</b>; la corrección geométrica descansa hoy en la métrica F (contra una malla 128) y en la auditoría externa. Y la pala del contador sigue siendo un paralelogramo con la cuerda en el plano transversal en vez de un rectángulo perpendicular al tubo: el revisor midió la desviación de la normal en 0,07° con 4° de tilt y 0,41° con 10°, que no mueve ninguna cifra publicada.</p>
 
 <p><b>Lo que sigue pendiente de su lista:</b> el barrido publica ahora una métrica de convergencia (F) y otra de mesas de canto (G), pero el criterio de «alcanzable» de la métrica B sigue comparando contra un barrido de θ uniforme, que es una cota inferior optimista; y los tests estáticos que buscan cadenas en el fuente siguen ahí, con el valor limitado que el revisor les atribuye. Ninguno de los dos afecta a las cifras que publica la página.</p>
 
