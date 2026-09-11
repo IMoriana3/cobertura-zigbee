@@ -3150,6 +3150,20 @@ t('v1.56: el manual por fila mueve las DOS filas del tracker en bifila y una sol
   if (mono.join() !== '0,30,0,0') throw new Error('monofila: se movió otra fila: ' + mono.join());
 });
 
+t('v1.56.1: al arrancar, el huso GUARDADO se corrige si no casa con el sitio guardado (Arequipa con tz 2 ⇒ −5)', () => {
+  // «¿hora local? ¿12:51 amanecen los trackers?»: el guardado traía tz 2 de antes del huso por sitio
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = ui.indexOf("const tzSitio=husoPlanta(null,$('date').value,+$('lon').value,+$('lat').value);");
+  if (i < 0) throw new Error('el arranque no compara el huso guardado con el del sitio');
+  if (!/if\(Math\.abs\(\(\+\$\('tz'\)\.value\)-tzSitio\)>1\.5\)\{_huso=null;aplicaHuso\(null\);\}/.test(ui.slice(i, i + 400))) throw new Error('no manda el sitio cuando el huso guardado se aleja más de 1,5 h');
+  // y la regla, ejecutada: Arequipa ⇒ −5 (estándar de la longitud), Zaragoza en junio ⇒ 2 (peninsular)
+  const src2 = html.slice(html.indexOf('function tzDeLongitud'), html.indexOf('function tzDeLongitud') + 200).split('\n')[0] + '\n' + cuerpoFn(ui, 'husoPlanta');
+  const H = new Function(src2 + '\nreturn husoPlanta;')();
+  if (H(null, '2026-06-21', -71.80644, -16.59577) !== -5) throw new Error('Arequipa no da −5');
+  if (H(null, '2026-06-21', -0.7981, 41.5763) !== 2) throw new Error('Zaragoza en junio no da +2');
+  if (Math.abs(2 - H(null, '2026-06-21', -71.80644, -16.59577)) <= 1.5) throw new Error('el caso reportado no dispara la corrección');
+});
+
 t('v1.56 estático: la cámara desde el sol y el haz son del 3D — en el corte 2D se esconden', () => {
   const st = cuerpoFn(html, 'setTab');
   if (!st || !/\$\('sunpov'\)\.style\.display=VIEW3D\?'':'none'/.test(st)) throw new Error('el botón «sol» sigue visible en 2D');
