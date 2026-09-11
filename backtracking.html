@@ -333,6 +333,7 @@
       <label class="btn small" title="MANDO MANUAL de los seguidores: θ COMÚN a todas las filas con el slider, recortado al tope mecánico. Es una capa de VISTA — mueve escena, corte 2D, HUD y colores de producción al instante del slider de hora; las curvas y la tabla siguen siendo de las políticas (no se recalculan). Ideal con los colores de producción: se VE lo que cuesta separarse de la consigna." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manual"> 🎛 manual</label>
       <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px" title="θ manual (− = este). Se recorta al θ máx configurado.">
       <span class="t" id="manthlbl" style="min-width:3ch">0°</span>
+      <label class="btn small" title="MANUAL POR FILA (v1.55): con esta casilla el slider mueve SOLO la fila seleccionada en «fila N»; las demás conservan su ángulo. Al activarla, cada fila arranca en la consigna que tenía la política de la escena en este instante — así se puede corregir una fila y ver, con el contador, qué le hace a las vecinas." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manrow" disabled> por fila</label>
       <select id="colprod" class="btn small" title="PRODUCCIÓN POR FILA (string) EN COLORES, pintada sobre las palas: azul = la fila que menos produce, rojo = la que más (escala min→max de la planta, leyenda al lado).&#10;· instante: POA neta W/m² del momento del slider — responde en vivo al manual y a la nubosidad.&#10;· día: POA acumulada kWh/m² del día de la política de la ESCENA.&#10;La sombra calculada (silueta roja) se sigue pintando encima."><option value="off">sin color</option><option value="inst">⚡ producción · instante</option><option value="day">Σ producción · día</option></select>
       <span id="prodleg" style="display:none;align-items:center;gap:4px;font-family:var(--mono);font-size:.62rem;color:var(--muted)"><span id="prodlo"></span><span id="prodbar" style="display:inline-block;width:70px;height:8px;border-radius:4px"></span><span id="prodhi"></span></span>
       <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
@@ -354,7 +355,8 @@
   </div>
 
   <div class="card">
-    <h2>El día, política a política <span class="sn">POA de planta = media por fila (agregación energética del core)</span></h2>
+    <h2>El día, política a política <span class="sn">POA de planta = media por fila (agregación energética del core)</span>
+      <button class="btn small" id="informebtn" style="float:right" title="Informe del emplazamiento: sitio, terreno, geometría y accionamiento, y cada política con cómo decide, qué optimiza y sus cálculos del día (POA, Δ, sombra ponderada, minutos, horas de BT, pérdida Martinez, peor momento), la tabla horaria, el año y la QA si están calculados. Se abre en una pestaña, lista para imprimir o guardar en PDF.">📄 Informe</button></h2>
     <div style="overflow-x:auto"><table id="daytab"></table></div>
     <div class="nota" id="daynote"></div>
   </div>
@@ -2636,6 +2638,14 @@ function repairNoShade(zen,az,T,ang){
   const filasDe=(sh,r)=>{const de=sh.de&&sh.de[r]?sh.de[r]:[];return Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((a,q)=>a+q[1],0));};
   // objetivo: primero la fila PEOR (que ninguna quede sombreada), después la
   // suma — minimizar solo la suma dejaba una fila al 12 % a cambio de repartir
+  // (v1.55: se probó el contador COMPLETO —estructura, 32 estaciones— como
+  // objetivo, por el 31,7 % de Arequipa a las 16:38 con sol a 9°. No mejoraba:
+  // con 32 estaciones ningún θ uniforme baja del 12 % ahí (el 2,5 % que
+  // parecía alcanzable era el muestreo de 8 estaciones), rompía la
+  // equivalencia contador ≡ oráculo de la batería y en un caso del barrido
+  // reducido la reparación salía PEOR en planos. Se queda el criterio de
+  // planos, y el barrido mide aparte (B2) cuánta sombra publicada evitaría un
+  // θ uniforme, para decidir con números si algún día compensa.)
   const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:8});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
     for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
   let cur=ang.slice(), E=evalua(cur);
@@ -3129,7 +3139,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.54.0';
+const VER='v1.55.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4977,7 +4987,10 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
           // sobre el plano receptor (Hs). Del marco de la física al de la
           // escena por el eje de cada fila (hubAt + 0,76 = tubo), igual que
           // el rayo crítico. Solo para la cara del módulo (una vez por emisora).
-          if(conHaz&&TD.hazGrp&&TD.hubAt&&$('haz3d')&&$('haz3d').checked){
+          // v1.55: sin haz con el sol por debajo de 1° ni sobre una fila ya tapada
+          // entera — al ocaso, siete prismas al 100 % no explicaban nada («es un
+          // poco locura esta imagen»); la silueta roja, que es el dato, se queda
+          if(conHaz&&g.elev>1&&((p.shade[tIdx]&&p.shade[tIdx][r])||0)<0.999&&TD.hazGrp&&TD.hubAt&&$('haz3d')&&$('haz3d').checked){
             const W=(row,P)=>{const A=TD.hubAt(row,P[1]);return [A.x+(P[0]-xs[row]),A.y+0.76+(P[2]-cot(row,P[1])),-P[1]];};
             const vs=[], n2=cut.length;
             for(let i2=0;i2<n2;i2++){
@@ -5527,6 +5540,136 @@ $('yearbtn').onclick=()=>{
   $('yeartab').innerHTML=rows.join('');
 };
 
+/* ══ INFORME DEL EMPLAZAMIENTO (v1.55) ═══════════════════════════════════════
+   «Debemos generar un informe, del emplazamiento, donde aparezca cada
+   algoritmo, justificando su funcionamiento y lo que optimiza (sombras,
+   energía…) con cálculos». Todo lo que va aquí SALE DE DAY (lo que ya se ha
+   calculado para las curvas y la tabla del día): ni una física nueva ni un
+   número que no esté ya en pantalla. Las explicaciones de cada política son
+   las del código que las ejecuta (policyAngles), no un folleto. */
+const EXPLICA={
+  astro:{como:'Sigue al sol: <code>singleaxis</code> de pvlib (Anderson & Mikofski 2020) sin backtracking, con el tilt N-S del eje y el azimut configurados; θ es el giro que minimiza el ángulo de incidencia, recortado al tope mecánico. No mira a las vecinas.',
+         optimiza:'La irradiancia sobre cada módulo <b>como si estuviera solo</b>. A sol bajo se auto-sombrea: es la referencia contra la que se mide lo que cuesta y lo que vale el backtracking.',
+         criterio:'ninguno de sombra'},
+  global:{como:'Un solo ángulo para toda la planta, calculado con la pendiente transversal <b>media</b> y el tilt N-S medio (un motor, un registro). Es el backtracking de pvlib con la planta reducida a un terreno uniforme.',
+         optimiza:'Sombra cero entre planos <b>si el terreno es uniforme</b>; donde la pendiente local se aparta de la media, deja sombra o backtrackea de más.',
+         criterio:'sombra cero de planos con la pendiente media'},
+  row:{como:'Cada fila decide sola con la pendiente media de sus dos vanos y su tilt N-S (backtracking de pvlib por fila, regla <code>compute_bt_angles_rowwise</code> del core), sin acoplar con la vecina.',
+       optimiza:'Sombra cero entre planos <b>si el terreno de sus vanos es el que cree</b>; como no se coordina, dos filas vecinas pueden decidir distinto y sombrearse por el otro lado.',
+       criterio:'sombra cero de planos por fila'},
+  bt2d:{como:'pvlib <b>sin pendiente</b>: el backtracking de una planta llana. Es lo que hace un tracker con los registros de terreno a cero (sin configurar).',
+        optimiza:'Sombra cero entre planos en llano. En pendiente sombrea o desperdicia ángulo: es la referencia de lo que cuesta <b>no configurar la TCU</b>.',
+        criterio:'sombra cero de planos en llano'},
+  pairwise:{como:'Por <b>pareja de filas</b>: pvlib con la pendiente transversal y el tilt medio de la pareja; la fila interior toma el más backtrackeado de sus dos parejas (min sg·θ). Si las dos vigas no son paralelas (torsión: tilts distintos), el candidato se comprueba con el ray-cast 3D de la pareja en varias estaciones a lo largo de la mesa y se barre el ángulo hasta el primer θ sin sombra. Después, el <b>acople por accionamiento</b> (θ común a las filas de un motor, refinado por bisección hasta la tangencia) y, en presets, la <b>reparación global</b> con el contador: si una fila sigue sombreada por una emisora no adyacente (Bagnarelli, tresbolillo, ondulado), se mueven las emisoras implicadas.',
+            optimiza:'<b>Sombra cero entre planos de módulo</b> con el mínimo backtracking (criterio canónico de pvlib / SolarGPT). pvlib busca el θ más empinado con sombra cero de planos, y justo en esa tangencia la viga de torsión y el canto del laminado del vecino (12-18 cm bajo el vidrio) entran en el rayo a sol rasante: el contador los cobra como <b>residuo declarado</b>; la política no los esquiva (medido: donde aparece, ningún θ uniforme lo baja del 12 %).',
+            criterio:'sombra cero de planos, pareja a pareja'},
+  true3d:{como:'Bisección 3D por pareja con el azimut del eje y el tilt N-S: busca el θ más empinado <b>sin contacto 3D</b> (residual de tangencia en mm entre el borde de la emisora y el plano de la receptora), y con torsión toma el peor de varias estaciones a lo largo de la mesa. Con tilt N-S 0 es exactamente pairwise (guard 2.5D, como el core). Acople y reparación, como pairwise.',
+          optimiza:'<b>Sombra cero 3D con el mínimo backtracking</b>: donde el 2.5D es conservador (la sombra se deflecta a lo largo del eje) empina más y gana POA.',
+          criterio:'contacto 3D nulo'},
+  mgl:{como:'Parte de pairwise (sin sombra) y abre décimas de grado por los bordes de la planta mientras el contador no vea sombra, para que al suelo llegue la mínima luz (agrivoltaica inversa: pastoreo, evaporación).',
+       optimiza:'<b>Mínima luz al suelo con sombra cero</b>. Nunca más plano que pairwise.',
+       criterio:'sombra cero de planos + mínima luz al suelo'},
+  optimal:{como:'Deeptrack: θ(f)=θ<sub>pairwise</sub>+f·(θ<sub>astro</sub>−θ<sub>pairwise</sub>), la <b>misma f para toda la planta</b>, f∈{0,¼,½,¾,1}. Para cada f se evalúa la POA de planta con el contador y el modelo eléctrico Martinez (la sombra mata subcadenas enteras) y gana la f de mayor POA neta; en empate, la conservadora (f=0).',
+           optimiza:'<b>Energía</b> (POA de planta neta), no sombra: tolera sombra cuando apuntar mejor la paga. Por construcción nunca rinde menos que pairwise bajo la misma métrica.',
+           criterio:'argmax de la POA neta de planta'},
+  optfree:{como:'Como energy-optimal pero con <b>una fracción por accionamiento</b>: arranca en la mejor f común y hace un ascenso coordinado unidad a unidad mirando también a sus vecinas; por instante se elige, con el ray-cast, entre el resultado libre y el común, y si el contador ve sombra en el ganador se prueba el mismo juego aplanado medio paso.',
+           optimiza:'<b>Energía</b> con más libertad que el óptimo común: nunca menos que energy-optimal bajo la métrica publicada.',
+           criterio:'argmax de la POA neta por accionamiento'},
+  manual:{como:'θ común a todas las filas, el que marca el mando; recortado al tope.',optimiza:'Nada: es un mando para mirar.',criterio:'—'}
+};
+function informeHTML(){
+  if(!DAY)return '';
+  const d=DAY, c=d.c, T=d.T, n=T.pairs.length+1, dtH=STEP_MIN/60;
+  const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const f1=v=>(Math.round(v*10)/10).toFixed(1), f2=v=>v.toFixed(2), f3=v=>v.toFixed(3);
+  const sgn=v=>(v>=0?'+':'')+v.toFixed(2);
+  // ── sol y cielo ──
+  let t0=-1,t1=-1,elMax=0,ghi=0,dni=0,dhi=0;
+  for(let t=0;t<d.times.length;t++){const g=d.sun[t];if(g.elev>0){if(t0<0)t0=t;t1=t;if(g.elev>elMax)elMax=g.elev;}ghi+=d.irr[t].ghi*dtH/1000;dni+=d.irr[t].dni*dtH/1000;dhi+=d.irr[t].dhi*dtH/1000;}
+  // ── terreno ──
+  const slopes=T.pairs.map(p=>p.slope), zmin=Math.min(...ELEV), zmax=Math.max(...ELEV);
+  const pend=(a)=>(Math.min(...a)).toFixed(2)+'° … '+(Math.max(...a)).toFixed(2)+'°';
+  const uni=terrainIsUniform(T);
+  const nsp={constante:'constante',quebrado:'quebrado (dos aguas)',senoidal:'senoidal',aleatorio:'aleatorio',rotula:'quiebro en la rótula (mesa sur +v · norte −v)'}[c.nspreset]||c.nspreset;
+  const drvNm=c.drive==='mono'?'monofila (1 motor por fila)':c.drive==='bifila'?'bifila rígida (1 motor por 2 filas, tubo sin quebrar: tilt N-S medio del grupo)':'bifila quebrada (1 motor por 2 filas, cardan: cada fila y cada mesa con su tilt)';
+  const plantSel=$('plant')&&$('plant').selectedOptions[0]?$('plant').selectedOptions[0].textContent:'— manual —';
+  const realTxt=(T.real&&$('realnote')&&$('realnote').style.display!=='none')?$('realnote').textContent.trim():'';
+  const tcu={levantamiento:'pendiente por pareja de líneas (la que este simulador deduce de las cotas)',ficha:'la ficha escrita en la TCU (por seguidor, vecina crítica)',cero:'sin configurar — registros a 0 (fábrica): el tracker cree que el terreno es llano'}[c.tcucfg]||c.tcucfg;
+  // ── políticas ──
+  const pols=POLICIES.filter(P=>d.pol[P.key]);
+  const K={}; for(const P of pols)K[P.key]=dayKpis(P.key);
+  const refA=K['astro']||null, refP=K['pairwise']||null;
+  const btH=(key)=>{const p=d.pol[key];let m=0;for(let t=0;t<d.times.length;t++){if(!(d.irr[t].dni>25))continue;const a=p.ang[t],ref=d.astroAng[t];for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>0.5){m+=STEP_MIN;break;}}return m/60;};
+  const peorFila=(key)=>{const p=d.pol[key];let b={v:0,t:-1,r:-1};for(let t=0;t<d.times.length;t++){if(!(d.irr[t].dni>25))continue;const sh=p.shade[t];for(let r=0;r<sh.length;r++)if((sh[r]||0)>b.v)b={v:sh[r],t:t,r:r};}return b;};
+  const fMedia=(key)=>{const p=d.pol[key];let s=0,k=0;for(let t=0;t<d.times.length;t++){const v=p.f[t];if(v==null||!(d.irr[t].dni>25))continue;const x=typeof v==='number'?v:(v.min+v.max)/2;s+=x;k++;}return k?s/k:null;};
+  let secs='';
+  for(const P of pols){
+    const k=K[P.key], E=EXPLICA[P.key]||{como:P.ds,optimiza:'',criterio:'—'}, w=peorFila(P.key), fm=fMedia(P.key);
+    const dA=refA?100*(k.kwh/refA.kwh-1):null, dP=refP?100*(k.kwh/refP.kwh-1):null;
+    secs+='<section class="pol"><h3><span class="dot" style="background:'+P.col+'"></span>'+esc(P.nm)+' <span class="chip">'+P.brain.toUpperCase()+'</span> <span class="sn">'+esc(P.ds)+'</span></h3>'+
+      '<p><b>Cómo decide.</b> '+E.como+'</p><p><b>Qué optimiza.</b> '+E.optimiza+' <span class="mut">Criterio: '+E.criterio+'.</span></p>'+
+      '<table class="kpi"><tr><th>POA de planta</th><td>'+f3(k.kwh)+' kWh/m²·día <span class="mut">[banda circunsolar '+f3(k.kwhLo)+' … '+f3(k.kwhHi)+']</span></td></tr>'+
+      (dA!=null?'<tr><th>Δ vs astronómico</th><td>'+sgn(dA)+' %</td></tr>':'')+(dP!=null&&P.key!=='pairwise'?'<tr><th>Δ vs pairwise</th><td>'+sgn(dP)+' %</td></tr>':'')+
+      '<tr><th>Sombra ponderada por energía</th><td>'+f2(k.shW*100)+' % <span class="mut">(media de planta pesada por la DNI de cada instante)</span></td></tr>'+
+      '<tr><th>Minutos con sombra relevante</th><td>'+k.minSh+' min <span class="mut">(media de planta &gt;1 % con DNI &gt;25 W/m²)</span></td></tr>'+
+      '<tr><th>Pico de sombra media de planta</th><td>'+f1(k.shPeak*100)+' %'+(k.worstT>=0?' a las '+hhmm(d.times[k.worstT])+' (sol '+f1(d.sun[k.worstT].elev)+'°)':'')+'</td></tr>'+
+      '<tr><th>Peor fila del día</th><td>'+(w.t>=0?'fila '+(w.r+1)+' con '+f1(w.v*100)+' % a las '+hhmm(d.times[w.t])+' (sol '+f1(d.sun[w.t].elev)+'°, DNI '+Math.round(d.irr[w.t].dni)+' W/m²)':'sin sombra con sol útil')+'</td></tr>'+
+      '<tr><th>Horas de backtracking</th><td>'+f1(btH(P.key))+' h <span class="mut">(consigna a más de 0,5° de la astronómica, con DNI &gt;25)</span></td></tr>'+
+      '<tr><th>Pérdida eléctrica Martinez</th><td>'+f3(k.elecKwh)+' kWh/m² del haz <span class="mut">('+f3(k.elecStr)+' de la estructura: viga y canto, que ninguna consigna evita)</span></td></tr>'+
+      '<tr><th>|θ| máximo</th><td>'+f1(k.thMax)+'°</td></tr>'+
+      (fm!=null?'<tr><th>f media elegida</th><td>'+f2(fm)+' <span class="mut">(0 = pairwise · 1 = astro, con sol útil)</span></td></tr>':'')+
+      '</table></section>';
+  }
+  // ── resumen ──
+  let best=-Infinity;for(const P of pols)best=Math.max(best,K[P.key].kwh);
+  let res='<table class="tab"><tr><th>Política</th><th>POA kWh/m²·d</th><th>Δ vs astro</th><th>Δ vs pairwise</th><th>Sombra pond.</th><th>Min &gt;1 %</th><th>Horas BT</th><th>Pérdida Martinez (estructura)</th><th>|θ| máx</th></tr>';
+  for(const P of pols){const k=K[P.key];res+='<tr><td style="color:'+P.col+'"><b>'+esc(P.nm)+'</b></td><td'+(Math.abs(k.kwh-best)<1e-9?' class="best"':'')+'>'+f3(k.kwh)+'</td><td>'+(refA?sgn(100*(k.kwh/refA.kwh-1))+' %':'—')+'</td><td>'+(refP?sgn(100*(k.kwh/refP.kwh-1))+' %':'—')+'</td><td>'+f2(k.shW*100)+' %</td><td>'+k.minSh+'</td><td>'+f1(btH(P.key))+'</td><td>'+f3(k.elecKwh)+' ('+f3(k.elecStr)+')</td><td>'+f1(k.thMax)+'°</td></tr>';}
+  res+='</table>';
+  // ── tabla horaria ──
+  const rMid=Math.floor(n/2);
+  let hor='<table class="tab small"><tr><th>Hora</th><th>Sol elev / az</th><th>DNI</th>'+pols.map(P=>'<th style="color:'+P.col+'">'+esc(P.nm)+'<br><span class="mut">θ fila '+(rMid+1)+' · sombra planta</span></th>').join('')+'</tr>';
+  for(let t=0;t<d.times.length;t++){
+    if(d.times[t]%60!==0||d.sun[t].elev<=0)continue;
+    hor+='<tr><td>'+hhmm(d.times[t])+'</td><td>'+f1(d.sun[t].elev)+'° / '+Math.round(d.sun[t].az)+'°</td><td>'+Math.round(d.irr[t].dni)+'</td>'+
+      pols.map(P=>{const p=d.pol[P.key];const med=p.shade[t].reduce((a,v)=>a+(v||0),0)/n;return '<td>'+(TH_DISP*p.ang[t][rMid]).toFixed(1)+'° · '+f1(med*100)+' %</td>';}).join('')+'</tr>';
+  }
+  hor+='</table>';
+  const yearHtml=$('yeartab')&&$('yeartab').innerHTML.trim()?'<h2>Estimación anual <span class="sn">12 días representativos · cielo claro · comparativa, no un P50</span></h2><table class="tab">'+$('yeartab').innerHTML+'</table>':'<h2>Estimación anual</h2><p class="mut">No calculada en esta sesión (botón «Calcular año»).</p>';
+  const qaTxt=$('qaout')&&$('qaout').textContent.trim()&&$('qaout').textContent.trim()!=='corriendo…'?'<pre class="qa">'+esc($('qaout').textContent.trim())+'</pre>':'<p class="mut">No ejecutada en esta sesión (botón «Verificar contra ray-cast bruto»). La batería del repositorio (tools/test_backtracking_sim.mjs) y el barrido de terrenos (tools/barrido_terrenos.mjs) verifican contador ≡ oráculo y los invariantes de las políticas en cada versión.</p>';
+  const fecha=new Date();
+  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe del emplazamiento · '+esc(plantSel)+' · '+esc(c.date)+'</title>'+
+  '<style>body{font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b2430;background:#fff;margin:0;padding:28px 34px;max-width:1100px}h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:26px 0 8px;border-bottom:2px solid #1b2430;padding-bottom:4px}h3{font-size:1rem;margin:18px 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}'+
+  '.sub{color:#5a6b7e;font-size:.85rem}.mut{color:#6a7a8c;font-size:.85em}.sn{color:#6a7a8c;font-weight:400;font-size:.8rem}.dot{width:11px;height:11px;border-radius:3px;display:inline-block}.chip{font-family:ui-monospace,monospace;font-size:.66rem;border:1px dashed #6a7a8c;border-radius:6px;padding:1px 6px;color:#6a7a8c}'+
+  'table{border-collapse:collapse;margin:6px 0 10px}th,td{border:1px solid #cfd8e3;padding:4px 8px;text-align:right;vertical-align:top}th{background:#eef2f7;text-align:left;font-weight:600}.kpi th{width:240px}.kpi td{text-align:left}.tab td:first-child,.tab th:first-child{text-align:left}.best{font-weight:700;background:#e9f7ee}.small{font-size:.8rem}'+
+  '.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px}.grid div{padding:2px 0;border-bottom:1px dotted #dfe5ec}.grid b{display:inline-block;min-width:150px;margin-right:10px;color:#3b4a5c}section.pol{page-break-inside:avoid;margin-bottom:10px}pre.qa{font-size:.78rem;white-space:pre-wrap;background:#f6f8fb;padding:8px;border-radius:6px}code{font-family:ui-monospace,monospace;font-size:.9em}@media print{body{padding:10mm}h2{page-break-after:avoid}}</style></head><body>'+
+  '<h1>Informe del emplazamiento — simulador de backtracking</h1><div class="sub">'+esc(plantSel)+' · día simulado '+esc(c.date)+' · generado el '+fecha.toLocaleString('es-ES')+' · '+esc(VER)+' · cielo claro (Ineichen, Linke '+c.tl+(c.cloud?', nubosidad '+c.cloud+' %':'')+')</div>'+
+  '<h2>1. Emplazamiento y planta</h2><div class="grid">'+
+  '<div><b>Latitud / longitud</b>'+c.lat+'° / '+c.lon+'°</div><div><b>Altitud · huso</b>'+c.alt+' m · UTC'+(c.tz>=0?'+':'')+c.tz+'</div>'+
+  '<div><b>Albedo</b>'+c.albedo+'</div><div><b>Sol del día</b>'+(t0>=0?'de '+hhmm(d.times[t0])+' a '+hhmm(d.times[t1])+', máx '+f1(elMax)+'°':'no sale')+'</div>'+
+  '<div><b>GHI / DNI / DHI del día</b>'+f2(ghi)+' / '+f2(dni)+' / '+f2(dhi)+' kWh/m²</div><div><b>Planta</b>'+esc(plantSel)+(realTxt?' — '+esc(realTxt):'')+'</div>'+
+  '<div><b>Filas · pitch · cuerda · GCR</b>'+n+' · '+c.pitch+' m · '+c.cw+' m · '+(c.cw/c.pitch).toFixed(3)+'</div><div><b>θ máx · cara sobre eje · subcadenas · IAM b₀</b>±'+c.maxang+'° · '+c.z0+' m · '+c.nbp+' · '+c.iam+'</div>'+
+  '<div><b>Azimut del eje</b>'+c.axaz+'°</div><div><b>Accionamiento</b>'+drvNm+' — '+nMotorsSegs(T)+' motores</div>'+
+  '<div><b>Terreno transversal (E-O)</b>'+(uni?'uniforme':'irregular')+': cotas de '+zmin.toFixed(2)+' a '+zmax.toFixed(2)+' m, pendiente por vano '+pend(slopes)+'</div><div><b>Perfil longitudinal (N-S)</b>'+nsp+', valor '+c.axtilt+'°'+(T.rotula?(T.rotula.sigue?' — cada mesa sigue su terreno':' — tubo recto al tilt medio (no lo sigue)'):'')+'; tilt por fila '+pend(T.rowTilt||[0])+'</div>'+
+  '<div><b>Implantación a lo largo</b>'+esc(c.nsl)+' × '+c.ntrk+' tracker/línea · '+c.mods+' módulos por ala ('+(T.filaLen||0).toFixed(1)+' m por tracker)</div><div><b>Lo que la TCU cree tener delante</b>'+tcu+'</div>'+
+  '</div><p class="mut">El contador de sombra mide siempre la geometría real (ray-cast 3D multi-emisora con la cota de cada tramo, la viga de torsión y el canto del laminado, Martinez por estación axial); las políticas deciden con lo que la TCU cree. La POA de planta es la media por fila (agregación energética del core); la banda del circunsolar acota la parte del haz de cielo que la sombra tapa.</p>'+
+  '<h2>2. Resumen del día, política a política</h2>'+res+
+  '<p class="mut"><b>Cómo leer.</b> «Sombra ponderada» es la sombra media de planta pesada por la DNI de cada instante: cuánta sombra te comes donde hay energía. «Min &gt;1 %» son los minutos con sombra media de planta mayor del 1 % con sol útil. «Pérdida Martinez» es el haz que el modelo eléctrico por subcadenas descuenta (una franja de sombra mata la subcadena entera), y entre paréntesis la parte debida a la estructura de la mesa, que ninguna consigna evita. Las Δ son de POA de planta.</p>'+
+  '<h2>3. Cada algoritmo: cómo decide, qué optimiza y sus cálculos</h2>'+secs+
+  '<h2>4. Tabla horaria</h2>'+hor+
+  yearHtml+
+  '<h2>Validación</h2>'+qaTxt+
+  '<h2>Método y límites declarados</h2><ul class="mut"><li>Seguimiento: pvlib <code>singleaxis</code> (Anderson & Mikofski 2020) con tilt N-S y azimut del eje; sombra 2.5D analítica (≡ Anderson 2023) como referencia de QA; contador publicado: ray-cast 3D multi-emisora con la cota de cada tramo, viga (120 mm) y canto (60 mm), '+(T.real?8:8)+' estaciones por tramo.</li><li>Cielo claro Ineichen con turbidez Linke '+c.tl+'; transposición Perez con circunsolar e IAM ASHRAE (b₀='+c.iam+'); sin meteo real: comparativa de políticas, no un P50.</li><li>Eléctrico: pérdida Martinez por subcadenas ('+c.nbp+' en la cuerda) sobre el haz; sin mismatch en serie ni temperatura.</li><li>Fuera del modelo: el bloqueo de bóveda por la fila de delante (difusa enmascarada), el cono real del circunsolar, y la estructura en el criterio de las políticas sin-sombra (el contador la cobra; pvlib no la esquiva).</li><li>Con planta medida las consignas van por mesa (tilt y cota de cada tramo) y el careo con la producción por string es idéntico en las mesas interiores (tools/careo_produccion.mjs).</li></ul>'+
+  '</body></html>';
+}
+function abrirInforme(){
+  if(!DAY){alert('Calcula primero el día');return;}
+  const html=informeHTML();
+  const w=window.open('','_blank');
+  if(!w){alert('El navegador ha bloqueado la pestaña del informe');return;}
+  w.document.open();w.document.write(html);w.document.close();
+}
+$('informebtn').onclick=abrirInforme;
+
 /* ── QA ── */
 $('qabtn').onclick=()=>{
   $('qaout').textContent='corriendo…';
@@ -5564,18 +5707,34 @@ function careoGhostInstant(){
 }
 
 function manualOn(){const e=$('manual');return !!(e&&e.checked);}
+/* MANUAL POR FILA (v1.55): «manual es para modificar la posición de todos a
+   la vez; si queremos hacer row a row…». MANUAL_ROWS guarda el θ de cada fila
+   (convención del slider, − = este); el slider escribe en la fila de «fila N».
+   Al activarlo arranca en la consigna de la política de la escena. */
+let MANUAL_ROWS=null;
+function manualRowsOn(){const e=$('manrow');return manualOn()&&!!(e&&e.checked)&&!!MANUAL_ROWS;}
+function manualRowsInit(){
+  if(!DAY)return;
+  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]], t=timeIndex();
+  const nR=DAY.T.pairs.length+1, a=p&&p.ang[t]?p.ang[t]:new Array(nR).fill(+$('manth').value);
+  MANUAL_ROWS=Array.from({length:nR},(_,r)=>Math.round(a[r]!=null?a[r]:0));
+  const r0=+$('rowsel').value||0; $('manth').value=MANUAL_ROWS[r0]; $('manthlbl').textContent=MANUAL_ROWS[r0]+'°';
+}
 function sceneInstant(){
   if(!DAY)return null;
   if(manualOn()){
     // MANDO MANUAL: física exacta del instante con θ común a todas las filas.
     // Capa de VISTA: computeDay, curvas y tabla no se enteran (declarado).
-    const m=+$('hour').value, th=+($('manth')&&$('manth').value||0), cc=cloudCC();
+    const m=+$('hour').value, cc=cloudCC();
+    const porFila=manualRowsOn();
+    const th=porFila?MANUAL_ROWS.join(','):+($('manth')&&$('manth').value||0);
     if(INSTANT&&INSTANT.key==='manual'&&INSTANT.m===m&&INSTANT.th===th&&INSTANT.cc===cc&&INSTANT.stamp===DAY)return INSTANT;
     const c=DAY.c, tIdx=timeIndex();
     const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
     const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cc,g.zen);
     const nR=DAY.astroAng&&DAY.astroAng[0]?DAY.astroAng[0].length:(+c.nrows||8);
-    const ang=anglesManual(nR,th,+c.maxang||55);
+    const mx=+c.maxang||55;
+    const ang=porFila?Array.from({length:nR},(_,r)=>Math.max(-mx,Math.min(mx,+(MANUAL_ROWS[r]||0)))):anglesManual(nR,th,mx);
     // por mesa: el θ común en cada mesa, evaluada con SU tilt
     const ls=segOn(DAY.T)?segsBroadcast(DAY.T,ang):null;
     const pp=ls?poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo):poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
@@ -5790,14 +5949,24 @@ INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();updateBtUI();});
 $('manual').addEventListener('change',()=>{
   $('manth').disabled=!$('manual').checked;
+  $('manrow').disabled=!$('manual').checked;
+  if($('manual').checked&&$('manrow').checked)manualRowsInit();
   INSTANT=null;drawScene();update3D();updateBtUI();
+});
+$('manrow').addEventListener('change',()=>{
+  if($('manrow').checked)manualRowsInit(); else MANUAL_ROWS=null;
+  INSTANT=null;drawScene();update3D();
 });
 $('manth').addEventListener('input',()=>{
   $('manthlbl').textContent=(+$('manth').value)+'°';
+  if(manualRowsOn())MANUAL_ROWS[+$('rowsel').value||0]=+$('manth').value;
   INSTANT=null;drawScene();update3D();
 });
 $('colprod').addEventListener('change',()=>{update3D();});
-$('rowsel').onchange=()=>{drawScene();drawCurves();};
+$('rowsel').onchange=()=>{
+  // manual por fila: el slider pasa a enseñar (y a mover) la fila elegida
+  if(manualRowsOn()){const r=+$('rowsel').value||0;$('manth').value=MANUAL_ROWS[r];$('manthlbl').textContent=MANUAL_ROWS[r]+'°';}
+  drawScene();drawCurves();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
    su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
    fila con más sombra del instante o del día entero de la política animada ── */
