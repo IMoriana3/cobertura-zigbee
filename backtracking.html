@@ -2505,6 +2505,11 @@ function slewLimit(prev,cmd,dtSec,rate){
    levanta una loma. */
 function repairNoShade(zen,az,T,ang){
   if(!(isFinite(zen)&&zen<90))return ang;
+  // en las plantas REALES no entra: allí la consigna va por MESA (policyAnglesSeg,
+  // con las cotas de cada tramo) y una reparación por fila la pisaría; además
+  // cuantizaba a la rejilla los ángulos con los que se carea la telemetría
+  // (el cruce NCU de Ayora cambiaba de veredicto por eso). Es de los presets.
+  if(T.real)return ang;
   const nR=T.pairs.length+1, sg=trueTrackAngle(zen,az,0,T.axisAz)>=0?1:-1;
   const grupoDe=(r)=>{if(T.groups)for(const g of T.groups)if(g.includes(r))return g;return [r];};
   const filasDe=(sh,r)=>{const de=sh.de&&sh.de[r]?sh.de[r]:[];return Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((a,q)=>a+q[1],0));};
@@ -2513,7 +2518,7 @@ function repairNoShade(zen,az,T,ang){
   const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:8});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
     for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
   let cur=ang.slice(), E=evalua(cur);
-  if(E.mx<=1e-3)return ang;                              // nada que reparar: ni un bit
+  if(E.mx<=0.02)return ang;                              // nada (serio) que reparar: ni un bit
   const clamp=(t)=>Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
   // 1) ARRANQUE: el mejor θ UNIFORME del instante (barrido de 5° y refino de
   //    2,5°), memorizado por instante — las tres políticas lo comparten. Es lo
@@ -2523,7 +2528,7 @@ function repairNoShade(zen,az,T,ang){
   if(!M||M.key!==key||M.T!==T){
     let bt=0,bv=Infinity;
     for(let th=-T.maxAngle;th<=T.maxAngle+1e-9;th+=5){const v=evalua(new Array(nR).fill(th)).tot;if(v<bv-1e-9){bv=v;bt=th;}}
-    for(const d of [-2.5,2.5]){const t2=clamp(bt+d);const v=evalua(new Array(nR).fill(t2)).tot;if(v<bv-1e-9){bv=v;bt=t2;}}
+    for(const paso of [2.5,1.25,0.625])for(const d of [-paso,paso]){const t2=clamp(bt+d);const v=evalua(new Array(nR).fill(t2)).tot;if(v<bv-1e-9){bv=v;bt=t2;}}
     repairNoShade._memo={key:key,T:T,th:bt,tot:bv};
   }
   const mem=repairNoShade._memo;
@@ -3003,7 +3008,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.53.1';
+const VER='v1.53.2';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
