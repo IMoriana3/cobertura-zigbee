@@ -5805,8 +5805,14 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   const card=(k,v,s)=>cards.push('<div class="ro"><div class="k">'+k+'</div><div class="v">'+v+(s?' <small>'+s+'</small>':'')+'</div></div>');
   // huso que no casa con la longitud (más de 1,5 h del estándar): se avisa aquí,
   // que es donde se nota — «el sol bajo horizonte a las 10:56»
-  const tzStd=tzDeLongitud(c.lon), tzMal=Math.abs((+c.tz)-(c.lon/15))>1.5;
-  card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',(g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte')+(tzMal?' · <b style="color:#f87272">⚠ huso UTC'+(c.tz>=0?'+':'')+c.tz+' no casa con la longitud (≈UTC'+(tzStd>=0?'+':'')+tzStd+')</b>':''));
+  /* v1.57.2: se compara con el huso que LA PROPIA PÁGINA asignaría aquí y en
+     esta fecha (husoPlanta: tzFijo del layout, regla peninsular donde vale, y
+     huso estándar de la longitud fuera), no con la longitud cruda. Zaragoza
+     está a −0,8° y España va en UTC+2 en verano: el aviso saltaba en el sitio
+     por defecto, en verano, diciendo que +2 no casa con ≈UTC+0. Casa: lo que
+     no casaba era el criterio del aviso con el criterio que pone el huso. */
+  const tzEsp=husoPlanta(_husoLay,c.date,c.lon,c.lat), tzMal=Math.abs((+c.tz)-tzEsp)>1.5;
+  card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',(g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte')+(tzMal?' · <b style="color:#f87272">⚠ huso UTC'+(c.tz>=0?'+':'')+c.tz+': aquí y en esta fecha toca UTC'+(tzEsp>=0?'+':'')+tzEsp+'</b>':''));
   card('GHI / DNI',Math.round(irrN.ghi)+' / '+Math.round(irrN.dni),'W/m²');
   if(p){
     {

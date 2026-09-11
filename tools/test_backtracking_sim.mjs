@@ -3488,7 +3488,16 @@ t('v1.55: el huso sigue al sitio — regla peninsular en su sitio, estándar de 
   if (H.husoPlanta(null, '2026-06-21', 9.6, 45.3) !== 2) throw new Error('Italia en junio: +2');
   if (H.husoPlanta({ tzFijo: -300 }, '2026-06-21', -71.8, -16.6) !== -5) throw new Error('tzFijo del layout manda');
   if (!/if\(id==='lon'\|\|id==='lat'\)\{_huso=null;aplicaHuso\(null\);\}/.test(ui)) throw new Error('cambiar lat/lon no arrastra el huso');
-  if (!/no casa con la longitud/.test(ui)) throw new Error('la tarjeta del sol no avisa del huso incoherente');
+  /* v1.57.2: el aviso comparaba con la LONGITUD CRUDA y saltaba en el sitio por
+     defecto —Zaragoza, −0,8°, España en UTC+2 en verano: «+2 no casa con
+     ≈UTC+0»—. Lo que no casaba era el criterio del aviso con el que pone el
+     huso. Ahora se compara con husoPlanta, y esto lo fija: mismo criterio en
+     los dos sitios, y el aviso sigue existiendo para el caso que sí lo merece. */
+  if (!/const tzEsp=husoPlanta\(_husoLay,c\.date,c\.lon,c\.lat\)/.test(ui)) throw new Error('el aviso del huso no usa el mismo criterio que lo asigna');
+  if (!/aquí y en esta fecha toca UTC/.test(ui)) throw new Error('la tarjeta del sol no avisa del huso incoherente');
+  // Zaragoza 21-jun con +2 NO debe avisar; con +2 en Arequipa, sí
+  if (Math.abs(2 - H.husoPlanta(null, '2026-06-21', -0.7981, 41.58)) > 1.5) throw new Error('Zaragoza en verano con UTC+2 dispara el aviso, y es el huso correcto');
+  if (Math.abs(2 - H.husoPlanta(null, '2026-06-21', -71.80644, -16.6)) <= 1.5) throw new Error('Arequipa con UTC+2 debería avisar');
 });
 
 console.log('v1.54 · quiebro en la rótula: el tracker quebrado se puede simular en presets');
