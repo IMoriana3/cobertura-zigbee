@@ -29,10 +29,21 @@ const NCFG = +(args.find(a => /^\d+$/.test(a)) || 200), SEED = +(args.filter(a =
 const NORA = +((args.find(a => a.startsWith('--oraculo=')) || '--oraculo=40').split('=')[1]);
 const JSONOUT = (args.find(a => a.startsWith('--json=')) || '').split('=')[1];
 const RAD = Math.PI / 180, DEG = 180 / Math.PI;
+/* DOS constantes, no una, aunque hoy valgan lo mismo. Significan cosas
+   distintas y pueden moverse por separado:
+     H_GRATIS  — «recortar al rango no CUESTA energía», y por eso H bloquea. Es
+                 un umbral de DECISIÓN: por debajo de él, el arreglo es gratis y
+                 no hay excusa para no cogerlo.
+     E_EMPATE  — «dos candidatos EMPATAN en energía», y por eso B no puede
+                 declarar fallo. Es un umbral de COMPARACIÓN entre alternativas.
+   Si algún día se afina el primero (bloquear con menos holgura) o se relaja el
+   segundo (considerar empate un margen mayor), el otro no tiene por qué
+   seguirle. Unificarlas «porque están duplicadas» se llevaría por delante uno
+   de los dos criterios. */
 const H_GRATIS = 0.05;   // W/m² de planta: por debajo de esto, recortar es GRATIS (métrica H)
 const E_EMPATE = 0.05;   // W/m² de planta: empate técnico en energía (métricas B y B2). Con 662 frente
                          // a 298 no hay duda, pero el signo de una diferencia de 0,1 W/m² no puede
-                         // decidir si algo es fallo — la misma tolerancia escrita que en H
+                         // decidir si algo es fallo
 const rnd = F.mulberry32(SEED);
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 
