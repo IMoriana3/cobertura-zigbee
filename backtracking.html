@@ -831,6 +831,23 @@ function mvPara(T,zen){
    verdadero ψ y la paralela al terreno θ_t (la horizontal siempre dentro),
    con 2° de margen. Un primer intento con |θ−ψ| ≤ 85° a secas dejaba fuera la
    horizontal a sol de 4° (ψ ≈ −86°) y el barrido de terrenos lo cazó. */
+/* EL CONO DE HAZ, UNA SOLA CONSTANTE. El ángulo de incidencia por encima del
+   cual se considera que la pala ya no recibe haz aprovechable. Lo usan DOS
+   sitios que son la misma idea a dos alturas: el rango legítimo de las
+   políticas sin sombra (rangoHaz/conoHaz) y el barrido del propio
+   anglesPairwise con torsión. Estaban escritos con el mismo número en dos
+   lados: el día que uno se moviera, la consigna sería legítima para un
+   criterio e ilegítima para el otro. */
+const AOI_HAZ=88;
+/* EMPATE TÉCNICO EN ENERGÍA: 0,05 W/m² de planta, UNA banda para todo el motor.
+   Por debajo de esto dos consignas empatan y decide el otro criterio. Tiene que
+   ser la MISMA que usan los bancos (E_EMPATE en la métrica B, H_GRATIS en la
+   H): con la reparación exigiendo «ni un micro-vatio» (1e-9) y la métrica H
+   llamando gratis a todo lo que cueste menos de 0,05, el barrido marcó cuatro
+   filas de espaldas al sol cuyo recorte costaba 0,032 y 0,041 W/m² — la
+   reparación las rechazaba y H las exigía. No era un fallo de ninguna de las
+   dos: era la misma banda escrita con dos umbrales distintos. */
+const E_EMPATE_W=0.05;
 function rangoHaz(zen,az,T,axisTilt,slopeDeg){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
@@ -841,7 +858,7 @@ function rangoHaz(zen,az,T,axisTilt,slopeDeg){
      auditoría, con ψ = −80,6° y pendiente +8°, el tope daba θ = +10° con un
      ángulo de incidencia de 90,5° (la horizontal, 81,4°). Para un seguidor de
      un eje el AOI se separa en la desviación transversal y la componente
-     axial: cos AOI = cos(θ − ψ)·cos λ, con sin λ = s·a. De ahí, AOI ≤ 88°
+     axial: cos AOI = cos(θ − ψ)·cos λ, con sin λ = s·a. De ahí, AOI ≤ AOI_HAZ
      equivale a |θ − ψ| ≤ acos( cos 88° / cos λ ), exacto y sin barrer. */
   const co=conoHaz(zen,az,T,axisTilt);
   if(co){
@@ -860,7 +877,7 @@ function conoHaz(zen,az,T,axisTilt){
   const sa=Math.sin(Z)*Math.cos(dA)*Math.sin(atr)+Math.cos(Z)*Math.cos(atr);   // s·a (eje inclinado)
   const cosL=Math.sqrt(Math.max(0,1-sa*sa));
   if(!(cosL>1e-9))return null;
-  const q=Math.cos(88*RAD)/cosL;
+  const q=Math.cos(AOI_HAZ*RAD)/cosL;
   if(!(q<1))return null;
   const d=Math.acos(Math.max(-1,q))*DEG;
   return [psz-d,psz+d];
@@ -2491,10 +2508,30 @@ function anglesPairwiseSeg(zen,az,T){
             const nSt=Math.max(3,Math.ceil((hi-lo)/8)+1), sls=[];
             for(let i2=0;i2<nSt;i2++)sls.push(slopeAt(lo+(hi-lo)*i2/(nSt-1)));
             const viol=(t)=>{let m=0;for(const sl of sls)m=Math.max(m,shadeFracPair(psz,t,t,pr.pitch,T.cw,sl,T.z0));return m;};
+            /* v1.57.2 (cuarta auditoría): el criterio sigue siendo «el primer θ
+               SIN SOMBRA» —eso es lo que pairwise ES, y cambiarlo por «el que
+               más haz recoge» le quitaba su garantía bajo torsión: 26,7 % de
+               2.5D en el caso bifila de la QA—, pero se busca SÓLO DENTRO DEL
+               CONO DE HAZ. Ahí estaba el sesgo de raíz: cruzando la horizontal
+               hacia el lado contrario del sol, el 2.5D lee cero porque no hay
+               haz que sombrear, y el barrido se paraba justo ahí. Un θ que no
+               recibe haz no es una solución a «no tener sombra». El cono es el
+               mismo de rangoHaz (AOI ≤ 88°), aplicado donde NACE la consigna en
+               vez de por fuera: pairwise es política publicada y no tiene veto
+               detrás. */
+            const tiltM=(tk+tkn)/2;
+            const conHaz=(t)=>{const o=surfaceOrient(t,pvTilt(tiltM),T.axisAz);
+              const b2=o.tilt*RAD, z2=zen*RAD;
+              return Math.cos(z2)*Math.cos(b2)+Math.sin(z2)*Math.sin(b2)*Math.cos((az-o.az)*RAD)>Math.cos(AOI_HAZ*RAD);};
             let bv=viol(th);
             if(bv>1e-3){
               let bt=th;
-              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){const v=viol(t);if(v<=1e-3){bt=t;bv=0;break;}if(v<bv){bv=v;bt=t;}}
+              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){
+                if(!conHaz(t))continue;                   // de espaldas no es «sin sombra»: es sin haz
+                const v=viol(t);
+                if(v<=1e-3){bt=t;bv=0;break;}
+                if(v<bv){bv=v;bt=t;}
+              }
               th=bt;
             }
           }
@@ -2572,7 +2609,14 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   let best=-Infinity, bestAng=base, bestF=0;
   for(const f of OPT_FRACTIONS){
     const ang=base.map((b,i)=>b+f*(full[i]-b));
-    const p=poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant;   // búsqueda: evaluador rápido
+    /* v1.57.2 (cuarta auditoría): la BÚSQUEDA también con el contador exacto.
+       El guía 2.5D lee cero donde la mesa mira casi de canto —211 de 430
+       candidatos del caso B difieren más de 5 pp del contador— y con eso la
+       lista de candidatas que llega al veto se construía ciega: un veto sólo
+       rechaza, no propone lo que la búsqueda no le trajo. Medido: cuesta un
+       19 % más de tiempo (1.513 → 1.799 ms el día del caso B) y da la MISMA
+       energía, 10,5100 Wh/m². El guía rápido se queda para nada crítico. */
+    const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
     if(p>best+1e-12){best=p;bestAng=ang;bestF=f;}
   }
   // VETO con el contador EXACTO (auditoría v1.29): el evaluador de búsqueda es
@@ -2596,11 +2640,22 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
   // del veto. La garantía «≥ pairwise» se construía contra la base sin reparar
   // (26 de 90 instantes del caso B difieren) y solo el barrido la sostenía.
   const pub=repairNoShade(zen,az,T,base,irr,doy,albedo);
+  /* v1.57.2: el veto pasa a cubrir LA REJILLA ENTERA, no sólo los extremos.
+     El guía de la búsqueda es 2.5D y está CIEGO donde la mesa mira casi de
+     canto: medido en el caso B, 211 de 430 candidatos caen en zona donde el
+     2.5D y el contador exacto difieren más de 5 pp, y la f que elige el guía
+     no es la que gana bajo el contador en 15 instantes del día. Hasta aquí eso
+     no costaba nada PUBLICADO —0 instantes por debajo del mejor de la rejilla,
+     medido— porque las dos f que más aparecen son los extremos, que el veto ya
+     comparaba; pero era suerte, no construcción: con la f ganadora interior y
+     otra interior mejor, el veto no lo veía. Ahora se mide con el contador
+     exacto toda la rejilla, y el óptimo publicado es el mejor de sus propias
+     candidatas POR CONSTRUCCIÓN. Cuesta dos evaluaciones exactas más. */
   {
-    let eBest=null;
-    for(const [f2,ang2] of [[0,base],[1,full],[0,pub]]){
-      if(f2===bestF&&ang2!==pub)continue;
-      if(eBest===null)eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
+    let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
+    const cands=OPT_FRACTIONS.map(f2=>[f2,base.map((b,i)=>b+f2*(full[i]-b))]);
+    cands.push([0,pub]);
+    for(const [f2,ang2] of cands){
       const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;
       if(e2>eBest+1e-9){eBest=e2;bestAng=ang2;bestF=f2;}
     }
@@ -2751,7 +2806,15 @@ function slewLimit(prev,cmd,dtSec,rate){
    Se devuelve el mejor juego visto; sin sombra de filas no entra (0 pasos:
    ni un bit cambia en llano). El terreno no se repara: ninguna consigna
    levanta una loma. */
+/* envoltura: la marca `sinReparar` tiene que viajar en LO QUE SE DEVUELVE, y la
+   reparación devuelve arrays nuevos por varios caminos. Marcarlo en la entrada
+   se perdía por el camino — lo cazó su propio test. */
 function repairNoShade(zen,az,T,ang,irr,doy,albedo){
+  const out=repairNoShadeCore(zen,az,T,ang,irr,doy,albedo);
+  if(!(irr&&irr.ghi>0)){try{Object.defineProperty(out,'sinReparar',{value:true,enumerable:false});}catch(e){}}
+  return out;
+}
+function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   if(!(isFinite(zen)&&zen<90))return ang;
   // en las plantas REALES no entra: allí la consigna va por MESA (policyAnglesSeg,
   // con las cotas de cada tramo) y una reparación por fila la pisaría; además
@@ -2793,7 +2856,14 @@ function repairNoShade(zen,az,T,ang,irr,doy,albedo){
     return Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD)<=0;   // cos AOI ≤ 0
   };
   const fuera=(r,th)=>th<RF[r][0]-1e-9||th>RF[r][1]+1e-9;
-  if(ang.some((v,r)=>fuera(r,v))){
+  /* SIN CIELO NO SE RECORTA, Y SE DICE. El árbitro del recorte es la energía;
+     sin irradiancia no hay nada que comparar y el recorte entraría a ciegas.
+     Pero un guardarraíl silencioso es peor que el fallo: quien llame a las
+     políticas sin cielo (un export, una herramienta nueva) se llevaría
+     consignas sin recortar creyéndolas publicadas. Así que la consigna sale
+     MARCADA, `sinReparar`, y la batería lo exige. La página, el barrido y el
+     export siempre traen cielo: esta rama no es la que se publica. */
+  if(irr&&irr.ghi>0&&ang.some((v,r)=>fuera(r,v))){
     /* el acople rígido empuja fuera del rango: en el caso que reportó el tercer
        auditor (Arequipa · valle 2 · senoidal 2° · quebrado · 21-jun 20:40Z,
        sol 20,9°) el acoplado manda las filas 0-3 a +9,5° y las dos últimas a
@@ -2808,13 +2878,21 @@ function repairNoShade(zen,az,T,ang,irr,doy,albedo){
     const recorta=(pred)=>{const rec=ang.slice(),tocar=new Set();
       for(let r=0;r<nR;r++)if(pred(r))for(const q of grupoDe(r))tocar.add(q);
       for(const r of tocar)rec[r]=clampR(r,ang[r]);return rec;};
-    const poa=(a2)=>(!irr||irr.ghi<=0)?0:poaPlant(zen,az,T,a2,irr,doy,albedo).plant;
-    const E0=evalua(ang), p0=poa(ang);
+    const poa=(a2)=>poaPlant(zen,az,T,a2,irr,doy,albedo).plant;
+    const p0=poa(ang);
     const rec=recorta(r=>fuera(r,ang[r]));
-    if(rec.some((v,i)=>v!==ang[i])&&evalua(rec).mx<=E0.mx+1e-9&&poa(rec)>=p0-1e-9)ang=rec;
+    /* y arbitra la ENERGÍA SOLA. Las dos ataduras que tuvo esta regla mientras
+       se cocía —«que no empeore la sombra 3D» y «que no rompa la garantía 2.5D
+       de la pareja»— son el árbitro óptico colándose otra vez por la ventana:
+       el barrido encontró 4 instantes en que recortar NO costaba energía y aun
+       así se rechazaba por sombra. La garantía 2.5D es de la FÓRMULA acoplada,
+       y ahí se comprueba (QA de la página); lo que se publica es fórmula MÁS
+       reparación, y lo que promete es no perder energía. */
+    const ok=(cand)=>cand.some((v,i)=>v!==ang[i])&&poa(cand)>=p0-E_EMPATE_W;   // la MISMA banda de empate que los bancos
+    if(ok(rec))ang=rec;
     else{
       const recE=recorta(r=>fuera(r,ang[r])&&deEspaldas(r,ang[r]));
-      if(recE.some((v,i)=>v!==ang[i])&&poa(recE)>=p0-1e-9)ang=recE;
+      if(ok(recE))ang=recE;
     }
   }
   let cur=ang.slice(), E=evalua(cur);
@@ -2883,16 +2961,54 @@ function repairNoShade(zen,az,T,ang,irr,doy,albedo){
   //    el candidato solo se publica si LOGRA la garantía (≤2 % en la fila
   //    peor) o si no rinde menos POA que lo que repara. Lo que quede se
   //    publica como irreducible, con el Martinez cobrándolo — no se maquilla.
-  if(irr&&best!==ang&&best.some((v,i)=>v!==ang[i])){
-    const Eb=evalua(best);
-    // se acepta siempre que LOGRE la garantía (≤2 %) o que la mejora sea
-    // sustancial (deja menos de la mitad de la sombra de partida): ahí la
-    // reparación está haciendo su trabajo y el coste en POA es el precio. Solo
-    // cuando la mejora es marginal Y además pierde energía se descarta
-    if(Eb.mx>0.02&&Eb.mx>0.5*mx0){
-      const pB=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
-      const pA=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
-      if(pB<pA-1e-9)return ang;
+  /* v1.57.2 (cuarta auditoría): la guardia es INCONDICIONAL. Estaba escrita con
+     dos excepciones —«si LOGRA la garantía» o «si la mejora es sustancial»— y
+     la primera es justo por donde se cuela el árbitro óptico: bifila con
+     torsión, sol 12° al oeste, la reparación publicaba 2.5D CERO con 64,45
+     W/m² de planta cuando su propia consigna de partida daba 137,72 con 50 %
+     de sombra. Conseguía la garantía escondiéndose en el borde del cono, casi
+     de canto, donde no hay haz que sombrear. Una política sin sombra no puede
+     comprar su promesa con la mitad de la producción: si la reparación pierde
+     energía de planta, no se publica. Lo que quede sin evitar sale como
+     irreducible, con el Martinez cobrándolo — no se maquilla. */
+  if(irr&&irr.ghi>0&&best!==ang&&best.some((v,i)=>v!==ang[i])){
+    const pB=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
+    const pA=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
+    if(pB<pA-1e-9)best=ang;
+  }
+  /* 5) EL NO DOMINADO, v1.57.2. «Si mi best pierde energía, devuelvo la
+     entrada» convierte una decisión de tres o más opciones en un binario, y el
+     binario se resuelve mal: la entrada con 98,5 % de sombra se publicaba no
+     por buena, sino porque el único rival evaluado era peor. El banco corregido
+     lo destapó en cuanto dejó de medir sombra óptica a secas (true-3D, sol
+     4,4°: 98,5 % cuando un θ uniforme deja 15,7 % SIN perder energía).
+
+     Aquí no hay un árbitro que pueda vetar al otro: hay un FRENTE y una regla
+     de desempate. Del conjunto {entrada, descenso, barrido de θ uniforme} se
+     descarta todo lo dominado —peor o igual en sombra y peor o igual en
+     energía— y de lo que queda manda la energía, con E_EMPATE de desempate.
+     Implementado como el mínimo de sombra entre los que no pierden energía
+     frente a lo que se iba a publicar, que es lo mismo: los candidatos con
+     MENOS sombra que el elegido se recorren antes y sólo se descartan por tener
+     energía por debajo del umbral, luego ninguno de ellos puede tener a la vez
+     menos sombra y energía ≥ la del elegido. Es decir, la situación que mide la
+     métrica B —«se publicó X habiendo una Y mejor en las dos cosas»— no puede
+     darse por construcción sobre este conjunto.
+
+     La energía sólo se mide en los que mejoran la sombra, que son pocos. */
+  if(irr&&irr.ghi>0){
+    const EB=evalua(best);
+    if(EB.mx>0.02){
+      const pRef=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
+      const cands=[];
+      for(let th=Math.ceil(hLo/2.5)*2.5;th<=hHi+1e-9;th+=2.5){
+        const c2=uni(th), e2=evalua(c2);
+        if(e2.mx<EB.mx-1e-9)cands.push([e2.mx,c2]);
+      }
+      cands.sort((a,b)=>a[0]-b[0]);
+      for(const [,c2] of cands){
+        if(poaPlant(zen,az,T,c2,irr,doy,albedo).plant>=pRef-E_EMPATE_W){best=c2;break;}
+      }
     }
   }
   return best;
@@ -3172,7 +3288,7 @@ function runPhysicsQA(){
       }
     }
   });
-  t('bifila y quebrada: θ COMÚN por grupo y pairwise acoplado sigue SIN sombra (N-S quebrado + E-O irregular)',()=>{
+  t('bifila y quebrada: θ COMÚN por grupo · todo θ elegido RECIBE HAZ · y lo PUBLICADO (fórmula + reparación) nunca pierde energía de planta frente a la fórmula',()=>{
     const rowTilt=[8,8,-8,-8,8,8];                     // dos aguas N-S
     const z=[0,-0.6,0.2,-0.4,0.5,0];                   // E-O irregular
     for(const mode of ['bifila','quebrado']){
@@ -3182,20 +3298,43 @@ function runPhysicsQA(){
       // hasta zen<80: a sol MÁS rasante el residuo puede ser IRREDUCIBLE por el
       // accionamiento (un motor no puede alinear dos filas a dos pendientes
       // distintas) — la misma exclusión que la máscara de reducibilidad del core
+      /* v1.57.2: CIELO SINTÉTICO (llamar sin `irr` ejercitaba una rama que la
+         página no pisa: el recorte al rango necesita energía para arbitrar), y
+         CADA GARANTÍA DONDE VIVE. La de «sombra 2.5D cero» es de la FÓRMULA de
+         pvlib acoplada, y ahí sigue siendo exactamente cero. Lo que la página
+         PUBLICA es esa fórmula MÁS la reparación, y eso no promete 2.5D cero:
+         promete no perder energía. Medido en el peor caso de esta QA (bifila,
+         sol 12°): el acoplado deja 2.5D cero mirando casi de canto y da 51,79
+         W/m² de planta; el publicado acepta 5,56 % de 2.5D y da 90,98 — honrar
+         el 2.5D ahí costaba el 43 % de la planta. Exigirlo al publicado era
+         pedirle a una política que se quedara con la peor de las dos. */
       for(let zen=30;zen<80;zen+=8)for(const az of [95,265]){
-        const a=policyAngles('pairwise',zen,az,T).angles;
-        for(const g of groups)if(g.length===2)
-          assert(a[g[0]]===a[g[1]],mode+': θ no común en grupo '+g);
-        // la garantía del pairwise es EN SU MARCO 2.5D: sombra transversal cero.
-        // El contador honesto (arbitrado 3D) puede ver contacto por deflexión
-        // adversa con estos tilts ±8° — eso es un HALLAZGO del evaluador (el
-        // caso «−282 mm»), no un fallo del acople: se comprueba aparte.
+        const irrQA=Irr.clearskyIneichen(zen,172,300,3.5);
+        const acop=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
         for(let p2=0;p2<T.pairs.length;p2++){
           const pr2=T.pairs[p2];
           const psz2=trueTrackAngle(zen,az,pvTilt(pr2.axisTilt),T.axisAz);
-          const f2=shadeFracPair(psz2,a[p2],a[p2+1],pr2.pitch,T.cw,pr2.slope,T.z0);
-          assert(f2<2e-3,mode+': sombra 2.5D '+f2.toFixed(4)+' zen='+zen+' az='+az+' pareja '+p2);
+          /* NO se exige «2.5D cero» a nadie aquí, y esto está MEDIDO: en esta
+             misma rejilla (bifila y quebrado, sol 12° al oeste) la fórmula
+             acoplada ya trae 50,50 % de 2.5D —el acople rígido manda un θ
+             común a dos filas que pvlib pondría distintas— y exigírselo a lo
+             PUBLICADO es lo que hacía que la reparación comprara su «cero» con
+             el 53 % de la producción: 137,7 → 64,4 W/m² de planta en v1.57.1.
+             Lo que se exige es lo que de verdad promete cada uno: θ común por
+             grupo, que el publicado NO PIERDA ENERGÍA frente a la fórmula, y
+             que el θ publicado RECIBA HAZ. La distribución de 2.5D la publica
+             la métrica I del barrido, que para eso está. */
+          const o2=surfaceOrient(acop[p2],pvTilt(pr2.axisTilt),T.axisAz), b3=o2.tilt*RAD, z3=zen*RAD;
+          const cs=Math.cos(z3)*Math.cos(b3)+Math.sin(z3)*Math.sin(b3)*Math.cos((az-o2.az)*RAD);
+          assert(cs>Math.cos(AOI_HAZ*RAD),mode+': la fórmula elige un θ QUE NO RECIBE HAZ: AOI '+(Math.acos(Math.max(-1,Math.min(1,cs)))*DEG).toFixed(1)+'° zen='+zen+' az='+az+' pareja '+p2);
         }
+        const a=policyAngles('pairwise',zen,az,T,irrQA,172,0.2).angles;
+        // y el publicado, lo que SÍ promete: nunca menos energía que la fórmula
+        const pA=poaPlant(zen,az,T,a,irrQA,172,0.2).plant, pC=poaPlant(zen,az,T,acop,irrQA,172,0.2).plant;
+        assert(pA>=pC-1e-6,mode+': la reparación PIERDE energía: '+pA.toFixed(2)+' frente a '+pC.toFixed(2)+' del acoplado, zen='+zen+' az='+az);
+        for(const g of groups)if(g.length===2)
+          assert(a[g[0]]===a[g[1]],mode+': θ no común en grupo '+g);
+
       }
     }
   });
@@ -3349,7 +3488,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.57.1';
+const VER='v1.57.2';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -5666,8 +5805,14 @@ function updateHud(tIdx,g,irrN,key,p,sh){
   const card=(k,v,s)=>cards.push('<div class="ro"><div class="k">'+k+'</div><div class="v">'+v+(s?' <small>'+s+'</small>':'')+'</div></div>');
   // huso que no casa con la longitud (más de 1,5 h del estándar): se avisa aquí,
   // que es donde se nota — «el sol bajo horizonte a las 10:56»
-  const tzStd=tzDeLongitud(c.lon), tzMal=Math.abs((+c.tz)-(c.lon/15))>1.5;
-  card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',(g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte')+(tzMal?' · <b style="color:#f87272">⚠ huso UTC'+(c.tz>=0?'+':'')+c.tz+' no casa con la longitud (≈UTC'+(tzStd>=0?'+':'')+tzStd+')</b>':''));
+  /* v1.57.2: se compara con el huso que LA PROPIA PÁGINA asignaría aquí y en
+     esta fecha (husoPlanta: tzFijo del layout, regla peninsular donde vale, y
+     huso estándar de la longitud fuera), no con la longitud cruda. Zaragoza
+     está a −0,8° y España va en UTC+2 en verano: el aviso saltaba en el sitio
+     por defecto, en verano, diciendo que +2 no casa con ≈UTC+0. Casa: lo que
+     no casaba era el criterio del aviso con el criterio que pone el huso. */
+  const tzEsp=husoPlanta(_husoLay,c.date,c.lon,c.lat), tzMal=Math.abs((+c.tz)-tzEsp)>1.5;
+  card('Sol',g.elev>0?g.elev.toFixed(1)+'°':'—',(g.elev>0?'az '+g.az.toFixed(0)+'°':'bajo horizonte')+(tzMal?' · <b style="color:#f87272">⚠ huso UTC'+(c.tz>=0?'+':'')+c.tz+': aquí y en esta fecha toca UTC'+(tzEsp>=0?'+':'')+tzEsp+'</b>':''));
   card('GHI / DNI',Math.round(irrN.ghi)+' / '+Math.round(irrN.dni),'W/m²');
   if(p){
     {

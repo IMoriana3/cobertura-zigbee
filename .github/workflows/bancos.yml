@@ -155,6 +155,51 @@ jobs:
       - name: HSU contra la hoja (se salta sin la toolbox de scada)
         run: node tools/test_hsus_gw.mjs
 
+  # ── el barrido de terrenos, que es el que BLOQUEA ─────────────────────────
+  #
+  # v1.57.2: el barrido existia desde v1.53 y NO LO CORRIA NADIE en CI. Se
+  # construyo un gate (A, B, C, D, E, G, H con sol > 10°) que rompe con
+  # `exit 1`, se publico v1.57.1 con las 18 comprobaciones en verde… y el
+  # barrido sobre esa misma rama salia en rojo. Lo dijo el auditor externo con
+  # todas las letras: «la CI no corre el barrido que bloquea, y eso es mas
+  # importante que el propio θ, porque es el mecanismo que deja pasar todo lo
+  # demas».
+  #
+  # DOS SEMILLAS, no una. La leccion de esa tanda es que el barrido de 8
+  # configuraciones dio un verde falso y el de 40 lo destapo: con una sola
+  # semilla se sigue muestreando, solo que mas. Van en matriz para que el rojo
+  # diga cual sin abrir el log.
+  #
+  # Tiempo medido aqui: 40 configuraciones × 3 fechas × cada 20 min son ~16 min
+  # con la maquina libre. El tope va en 45, como el visor.
+  barrido:
+    name: barrido de terrenos (semilla ${{ matrix.semilla }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        semilla: [1, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # el codigo de salida es el gate: `run:` ya falla con != 0, pero se deja
+      # escrito para que nadie lo envuelva en un pipe y lo pierda por el camino
+      # el numero de configuraciones va FIJADO aqui, no heredado del default del
+      # script: si alguien cambia ese default, el gate se encogeria en silencio
+      - name: invariantes sobre 40 configuraciones
+        run: |
+          set +e
+          node tools/barrido_terrenos.mjs 40 ${{ matrix.semilla }}
+          EXIT=$?
+          set -e
+          echo "barrido de terrenos · 40 configuraciones · semilla ${{ matrix.semilla }} · exit=$EXIT"
+          if [ "$EXIT" -ne 0 ]; then
+            echo "::error::el barrido de terrenos ha roto un invariante (exit $EXIT)"
+            exit 1
+          fi
+
       # Lo mismo aqui: ningun banco de datos debe dejar el arbol sucio.
       - name: los bancos no han tocado el repo
         run: |
@@ -252,7 +297,7 @@ jobs:
     name: bancos en verde
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [nucleo, powershell, datos, navegador]
+    needs: [nucleo, powershell, datos, barrido, navegador]
     if: always()
     steps:
       - name: ninguno ha fallado
@@ -260,10 +305,12 @@ jobs:
           for j in "nucleo ${{ needs.nucleo.result }}" \
                    "powershell ${{ needs.powershell.result }}" \
                    "datos ${{ needs.datos.result }}" \
+                   "barrido ${{ needs.barrido.result }}" \
                    "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
           if [ "${{ needs.nucleo.result }}"    != "success" ] || \
              [ "${{ needs.powershell.result }}" != "success" ] || \
              [ "${{ needs.datos.result }}"     != "success" ] || \
+             [ "${{ needs.barrido.result }}"   != "success" ] || \
              [ "${{ needs.navegador.result }}" != "success" ]; then
             echo "::error::hay bancos que no han pasado"
             exit 1
