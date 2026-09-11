@@ -839,6 +839,15 @@ function mvPara(T,zen){
    lados: el día que uno se moviera, la consigna sería legítima para un
    criterio e ilegítima para el otro. */
 const AOI_HAZ=88;
+/* EMPATE TÉCNICO EN ENERGÍA: 0,05 W/m² de planta, UNA banda para todo el motor.
+   Por debajo de esto dos consignas empatan y decide el otro criterio. Tiene que
+   ser la MISMA que usan los bancos (E_EMPATE en la métrica B, H_GRATIS en la
+   H): con la reparación exigiendo «ni un micro-vatio» (1e-9) y la métrica H
+   llamando gratis a todo lo que cueste menos de 0,05, el barrido marcó cuatro
+   filas de espaldas al sol cuyo recorte costaba 0,032 y 0,041 W/m² — la
+   reparación las rechazaba y H las exigía. No era un fallo de ninguna de las
+   dos: era la misma banda escrita con dos umbrales distintos. */
+const E_EMPATE_W=0.05;
 function rangoHaz(zen,az,T,axisTilt,slopeDeg){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
@@ -2872,14 +2881,6 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
     const poa=(a2)=>poaPlant(zen,az,T,a2,irr,doy,albedo).plant;
     const p0=poa(ang);
     const rec=recorta(r=>fuera(r,ang[r]));
-    /* manda la ENERGÍA, con una sola atadura: no romper el contrato de las
-       políticas sin sombra. Si la consigna entrante YA pasa del 2 % la sombra
-       es irreducible ahí y el contrato es papel mojado, asi que decide la
-       energía sola; si lo cumple, el recorte tiene que seguir cumpliéndolo.
-       Exigir las dos cosas a la vez —ni más sombra ni menos energía— era el
-       mismo vicio en pequeño: en Arequipa a 10,9° de sol, 2,4 pp de sombra de
-       más vetaban pasar de 27 a 105 W/m², y a 27° de sol la fila publicaba
-       θ=+9,6 con POA 303 teniendo 400 a θ=+2 con la MISMA sombra (cero). */
     /* y arbitra la ENERGÍA SOLA. Las dos ataduras que tuvo esta regla mientras
        se cocía —«que no empeore la sombra 3D» y «que no rompa la garantía 2.5D
        de la pareja»— son el árbitro óptico colándose otra vez por la ventana:
@@ -2887,7 +2888,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
        así se rechazaba por sombra. La garantía 2.5D es de la FÓRMULA acoplada,
        y ahí se comprueba (QA de la página); lo que se publica es fórmula MÁS
        reparación, y lo que promete es no perder energía. */
-    const ok=(cand)=>cand.some((v,i)=>v!==ang[i])&&poa(cand)>=p0-1e-9;
+    const ok=(cand)=>cand.some((v,i)=>v!==ang[i])&&poa(cand)>=p0-E_EMPATE_W;   // la MISMA banda de empate que los bancos
     if(ok(rec))ang=rec;
     else{
       const recE=recorta(r=>fuera(r,ang[r])&&deEspaldas(r,ang[r]));
@@ -3006,7 +3007,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
       }
       cands.sort((a,b)=>a[0]-b[0]);
       for(const [,c2] of cands){
-        if(poaPlant(zen,az,T,c2,irr,doy,albedo).plant>=pRef-0.05){best=c2;break;}   // 0,05 W/m²: el mismo empate técnico que el banco
+        if(poaPlant(zen,az,T,c2,irr,doy,albedo).plant>=pRef-E_EMPATE_W){best=c2;break;}
       }
     }
   }
