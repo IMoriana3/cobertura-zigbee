@@ -14,6 +14,7 @@
      E  todos los θ finitos y dentro de ±θmáx
    Sale el resumen por invariante y los 15 peores casos de B con su configuración. */
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
+import crypto from 'crypto'; import { execFileSync } from 'child_process';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA'); const j0 = html.lastIndexOf('/*', i0);
@@ -23,6 +24,19 @@ const F = new Function(sol + '\n' + html.slice(j0, i1) + `return { policyAngles,
 const test = fs.readFileSync(path.join(ROOT, 'tools', 'test_backtracking_sim.mjs'), 'utf-8');
 const o0 = test.indexOf('function oracleGeom'), o1 = test.indexOf('function ayoraPlantT');
 const ORA = new Function('F', test.slice(o0, o1) + '\nreturn { oracleExact };')(F);
+
+/* v1.57.2: el log dice SOBRE QUÉ FÍSICA se obtuvo. Esta sesión ha tenido dos
+   reinicios de contenedor, un merge de la versión equivocada y una atribución
+   errónea entre dos commits; con el hash del bloque extraído y el SHA del árbol
+   en la primera línea, «¿sigue valiendo esta corrida?» se responde mirando el
+   log en vez de comparando a mano. Un cambio de interfaz no mueve el hash: eso
+   es lo que permite no relanzar los barridos por una tarjeta del HUD. */
+const FIS_SHA = crypto.createHash('sha256').update(html.slice(j0, i1)).digest('hex').slice(0, 12);
+let TREE_SHA = '?';
+try { TREE_SHA = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT }).toString().trim(); } catch (e) { }
+let TREE_SUCIO = '';
+try { if (execFileSync('git', ['status', '--porcelain'], { cwd: ROOT }).toString().trim()) TREE_SUCIO = ' + cambios sin commitear'; } catch (e) { }
+console.log(`barrido de terrenos · física ${FIS_SHA} · árbol ${TREE_SHA}${TREE_SUCIO}`);
 
 const args = process.argv.slice(2);
 const NCFG = +(args.find(a => /^\d+$/.test(a)) || 200), SEED = +(args.filter(a => /^\d+$/.test(a))[1] || 1);
