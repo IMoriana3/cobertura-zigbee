@@ -3003,7 +3003,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.53.0';
+const VER='v1.53.1';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4776,13 +4776,15 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   };
   const dsh=[-sv[0],-sv[1],-sv[2]];                  // la sombra viaja EN CONTRA del sol
   const horiz=Math.hypot(sv[0],sv[1]);
+  const segsOf=rw=>(T.segs&&T.segs[rw])?T.segs[rw]:[[-30,30]];
   // mismo alcance que el contador: desnivel real entre extremos de mesa + cuerda
+  // (segsOf va ANTES: usarlo antes de declararlo tiraba la silueta entera —
+  // «Cannot access segsOf before initialization»— y la escena se quedaba sin rojo)
   let zLo=Infinity,zHi=-Infinity;
   for(let e2=0;e2<nR&&e2<xs.length;e2++)for(const sg of segsOf(e2))for(const w of [sg[0],sg[1]]){const z=cot(e2,w);if(z<zLo)zLo=z;if(z>zHi)zHi=z;}
   const hUtil=Math.max(9,(isFinite(zHi-zLo)?zHi-zLo:0)+T.cw+1);
   const reach=horiz>1e-6?hUtil*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
-  const segsOf=rw=>(T.segs&&T.segs[rw])?T.segs[rw]:[[-30,30]];
   for(let kR=0;kR<row.ovls.length;kR++){
     const ov=row.ovls[kR];
     if(!ov.g)continue;
