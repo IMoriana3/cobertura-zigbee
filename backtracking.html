@@ -333,7 +333,7 @@
       <label class="btn small" title="MANDO MANUAL de los seguidores: θ COMÚN a todas las filas con el slider, recortado al tope mecánico. Es una capa de VISTA — mueve escena, corte 2D, HUD y colores de producción al instante del slider de hora; las curvas y la tabla siguen siendo de las políticas (no se recalculan). Ideal con los colores de producción: se VE lo que cuesta separarse de la consigna." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manual"> 🎛 manual</label>
       <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px" title="θ manual (− = este). Se recorta al θ máx configurado.">
       <span class="t" id="manthlbl" style="min-width:3ch">0°</span>
-      <label class="btn small" title="MANUAL POR FILA (v1.55): con esta casilla el slider mueve SOLO la fila seleccionada en «fila N»; las demás conservan su ángulo. Al activarla, cada fila arranca en la consigna que tenía la política de la escena en este instante — así se puede corregir una fila y ver, con el contador, qué le hace a las vecinas." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manrow" disabled> por fila</label>
+      <label class="btn small" title="MANUAL POR FILA (v1.55): con esta casilla el slider mueve SOLO la fila seleccionada en «fila N» (en bifila, las dos filas de su tracker: giran con el mismo motor); las demás conservan su ángulo. Al activarla, cada fila arranca en la consigna que tenía la política de la escena en este instante — así se puede corregir una fila y ver, con el contador, qué le hace a las vecinas." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manrow" disabled> por fila</label>
       <select id="colprod" class="btn small" title="PRODUCCIÓN POR FILA (string) EN COLORES, pintada sobre las palas: azul = la fila que menos produce, rojo = la que más (escala min→max de la planta, leyenda al lado).&#10;· instante: POA neta W/m² del momento del slider — responde en vivo al manual y a la nubosidad.&#10;· día: POA acumulada kWh/m² del día de la política de la ESCENA.&#10;La sombra calculada (silueta roja) se sigue pintando encima."><option value="off">sin color</option><option value="inst">⚡ producción · instante</option><option value="day">Σ producción · día</option></select>
       <span id="prodleg" style="display:none;align-items:center;gap:4px;font-family:var(--mono);font-size:.62rem;color:var(--muted)"><span id="prodlo"></span><span id="prodbar" style="display:inline-block;width:70px;height:8px;border-radius:4px"></span><span id="prodhi"></span></span>
       <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
@@ -3340,11 +3340,29 @@ function clampSlopes(c){
     if(dz<-lim)ELEV[i]=ELEV[i-1]+lim;
   }
 }
+/* v1.56: el parámetro del preset en metros lleva al lado los GRADOS que
+   produce por vano («no son 2°, son 2 m de desnivel: hay que poner ahí también
+   grados»). Valle y cresta reparten el desnivel en (n−1)/2 vanos; el ondulado
+   es un seno de periodo K filas y su vano más empinado es 2·A·sin(π/K). */
+function tparamLabel(){
+  const P=$('tpreset').value, v=+$('tparam').value, n=+$('nrows').value||8, pitch=+$('pitch').value||6;
+  let base=P==='ondulado'?'Amplitud m':P==='valle'||P==='cresta'?'Desnivel m':P==='aleatorio'?'Semilla':'Pendiente °';
+  let deg=null;
+  if(P==='valle'||P==='cresta')deg=Math.atan2(Math.abs(v),Math.max(1,(n-1)/2)*pitch)*DEG;
+  else if(P==='ondulado')deg=Math.atan2(2*Math.abs(v)*Math.sin(Math.PI/Math.max(3,Math.floor(n/2))),pitch)*DEG;
+  else if(P==='pendiente')base='Pendiente ° ('+(100*Math.tan(v*RAD)).toFixed(0)+' %)';
+  if(deg!=null)base+=' (≈ '+deg.toFixed(1)+'° por vano)';
+  $('tparamlbl').textContent=base;
+}
 $('tpreset').onchange=()=>{
   const P=$('tpreset').value;
-  $('tparamlbl').textContent=P==='ondulado'?'Amplitud m':P==='valle'||P==='cresta'?'Desnivel m':P==='aleatorio'?'Semilla':'Pendiente °';
   $('tparam').value=P==='ondulado'?1.2:P==='valle'||P==='cresta'?2:P==='aleatorio'?7:6;
+  tparamLabel();
 };
+$('tparam').addEventListener('input',tparamLabel);
+$('nrows').addEventListener('change',tparamLabel);
+$('pitch').addEventListener('change',tparamLabel);
+tparamLabel();
 $('tapply').onclick=()=>{PLANT_REAL=null;$('realnote').style.display='none';applyPreset();};
 const FICHA_CACHE={};
 const COTAS_CACHE={}, LAYOUT_CACHE={};
@@ -4347,15 +4365,25 @@ function build3D(){
         }
         return pts[pts.length-1][1]+dd;
       });
-    }else if(T.rotula){
-      // v1.54: quiebro en la rótula — loma (v>0) o vaguada (v<0) en la rótula de
-      // cada tramo, siga o no el tubo (la rígida vuela recta sobre él, drapeada)
-      const rr=r0, tv=Math.tan(T.rotula.v*RAD);
-      const mids=(T.segMorro&&T.segMorro[rr])?[...new Set(T.segMorro[rr].map(m=>m[0]))]:((T.segs&&T.segs[rr])?T.segs[rr].map(sg=>(sg[0]+sg[1])/2):[0]);
-      lineProf.push(no=>{let best=mids[0];for(const m of mids)if(Math.abs(no-m)<Math.abs(no-best))best=m;return ELEV[rr]-Math.abs(no-best)*tv;});
     }else{
-      const rr=r0;
-      lineProf.push(no=>ELEV[rr]+no*Math.tan(raw[rr]*RAD));
+      // v1.56: el perfil N-S de cada línea vale DENTRO de sus mesas; más allá de
+      // los extremos la cota se mantiene. Antes la recta cota+norte·tan(tilt)
+      // seguía creciendo por el margen del terreno (30 m o más) y entre dos
+      // líneas con tilts distintos (quebrado ±2°) el desnivel se disparaba
+      // fuera de las filas: una montaña que no estaba configurada («con 2° de
+      // pendientes me sale esa pendiente entre dos filas a 6 m»)
+      const rr=r0, sgr=(T.segs&&T.segs[rr]&&T.segs[rr].length)?T.segs[rr]:[[-L/2,L/2]];
+      const nLo=Math.min(...sgr.map(sg=>Math.min(sg[0],sg[1]))), nHi=Math.max(...sgr.map(sg=>Math.max(sg[0],sg[1])));
+      const dentro=no=>clampi(no,nLo,nHi);
+      if(T.rotula){
+        // v1.54: quiebro en la rótula — loma (v>0) o vaguada (v<0) en la rótula de
+        // cada tramo, siga o no el tubo (la rígida vuela recta sobre él, drapeada)
+        const tv=Math.tan(T.rotula.v*RAD);
+        const mids=(T.segMorro&&T.segMorro[rr])?[...new Set(T.segMorro[rr].map(m=>m[0]))]:sgr.map(sg=>(sg[0]+sg[1])/2);
+        lineProf.push(no=>{const n2=dentro(no);let best=mids[0];for(const m of mids)if(Math.abs(n2-m)<Math.abs(n2-best))best=m;return ELEV[rr]-Math.abs(n2-best)*tv;});
+      }else{
+        lineProf.push(no=>ELEV[rr]+dentro(no)*Math.tan(raw[rr]*RAD));
+      }
     }
   }
   const terrY=(x,no)=>{
@@ -6002,7 +6030,27 @@ function recomputeTail(light){
   drawScene();drawCurves();fillDayTable();fillCareoBox();
   if(VIEW3D){build3D();update3D();}
   const slopes=DAY.T.pairs.map(p=>p.slope);
-  $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
+  // v1.56: la pendiente E-O en los EXTREMOS de fila. El chip medía solo en el eje
+  // (norte = 0); con tilts N-S distintos entre líneas vecinas (quebrado «dos
+  // aguas», aleatorio) y líneas largas, en los extremos el desnivel entre
+  // vecinas es Δtilt·L/2 y sale una cuña real que el 3D enseña («las
+  // inclinaciones del 3D son exageradas»: +6° y −6° a 97 m son 20 m en 6 m)
+  let ext='';
+  if(!PLANT_REAL&&DAY.T.segs&&!DAY.T.rotula){
+    const raw=nsProfile(cfg()); let mx=0;
+    for(let p=0;p<DAY.T.pairs.length;p++){
+      const ns=[...(DAY.T.segs[p]||[]),...(DAY.T.segs[p+1]||[])].flat();
+      if(!ns.length)continue;
+      for(const no of [Math.min(...ns),Math.max(...ns)]){
+        const dz=(ELEV[p]+no*Math.tan((raw[p]||0)*RAD))-(ELEV[p+1]+no*Math.tan((raw[p+1]||0)*RAD));
+        mx=Math.max(mx,Math.abs(Math.atan2(dz,DAY.T.pairs[p].pitch)*DEG));
+      }
+    }
+    if(mx>Math.max(...slopes.map(Math.abs))+1)ext=' · en extremos de fila hasta ±'+mx.toFixed(0)+'° (tilt N-S distinto entre líneas vecinas)';
+  }
+  $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°'+ext;
+  $('tinfo').style.color=ext?'#f87272':'';
+  $('tinfo').title=ext?'El terreno 3D interpola entre líneas la cota + tilt N-S de cada una: donde dos vecinas llevan tilts distintos, en los extremos de fila aparece una pendiente E-O mucho mayor que la del eje. Es lo configurado, no una exageración del render.':'';
   const c2=cfg();
   $('motorsinfo').textContent='motores: '+nMotorsSegs(DAY.T)+' ('+
     (c2.drive==='mono'?'monofila':c2.drive==='bifila'?'bifila rígida':'bifila quebrada')+')'+
@@ -6056,9 +6104,21 @@ $('manrow').addEventListener('change',()=>{
 });
 $('manth').addEventListener('input',()=>{
   $('manthlbl').textContent=(+$('manth').value)+'°';
-  if(manualRowsOn())MANUAL_ROWS[+$('rowsel').value||0]=+$('manth').value;
+  if(manualRowsOn())manualRowSet(+$('rowsel').value||0,+$('manth').value);
   INSTANT=null;drawScene();update3D();
 });
+/* v1.56: el manual por fila respeta el ACCIONAMIENTO. En bifila (rígida o
+   quebrada) las dos filas de un tracker giran con el mismo motor: mover una es
+   mover las dos («cuando es bifila y movemos en manual por fila, las dos filas
+   del tracker giran solidariamente»); en monofila (quebrada o no) cada fila
+   lleva su motor y va sola. Los grupos son los de la física (T.groups). */
+function manualRowSet(r,v){
+  if(!MANUAL_ROWS)return;
+  const gs=DAY&&DAY.T&&DAY.T.groups;
+  let filas=[r];
+  if(gs)for(const g of gs)if(g.includes(r)){filas=g.slice();break;}
+  for(const q of filas)MANUAL_ROWS[q]=v;
+}
 $('colprod').addEventListener('change',()=>{update3D();});
 $('rowsel').onchange=()=>{
   // manual por fila: el slider pasa a enseñar (y a mover) la fila elegida

@@ -3081,7 +3081,7 @@ t('v1.55 estático: el manual por FILA existe, arranca en la consigna de la esce
   // «Manual es para modificar la posición de todos a la vez, si queremos hacer row a row???»
   if (!/id="manrow"/.test(html)) throw new Error('falta la casilla «por fila»');
   if (!/function manualRowsInit\(\)/.test(html) || !/function manualRowsOn\(\)/.test(html)) throw new Error('falta el estado del manual por fila');
-  if (!/MANUAL_ROWS\[\+\$\('rowsel'\)\.value\|\|0\]=\+\$\('manth'\)\.value/.test(html)) throw new Error('el slider no escribe en la fila elegida');
+  if (!/manualRowSet\(\+\$\('rowsel'\)\.value\|\|0,\+\$\('manth'\)\.value\)/.test(html)) throw new Error('el slider no escribe en la fila elegida');   // v1.56: por manualRowSet (solidario con el accionamiento)
   if (!/porFila\?Array\.from\(\{length:nR\}/.test(html)) throw new Error('sceneInstant no usa los θ por fila');
   // v1.56: el slider habla en convención TCU (− = este) y la física al revés — se cruza por TH_DISP en los DOS sentidos
   if (!/MANUAL_ROWS=Array\.from\(\{length:nR\},\(_,r\)=>Math\.round\(TH_DISP\*\(a\[r\]/.test(html)) throw new Error('el manual por fila no arranca en la consigna de la política de la escena (con el signo del slider)');
@@ -3126,6 +3126,28 @@ t('v1.56 render≡física: en el corte 2D la sombra al suelo cae SOBRE el terren
   const sE2 = [s(E2.ex[0], E2.ez[0]), s(E2.ex[1], E2.ez[1])], lo2 = Math.min(...sE2), hi2 = Math.max(...sE2);
   const inL2 = s(R2.ex[0], R2.ez[0]) >= lo2 && s(R2.ex[0], R2.ez[0]) <= hi2;
   if (!inL2) throw new Error('de cara al sol la sombra debe entrar por el borde izquierdo (bajo)');
+});
+
+t('v1.56: el chip de pendientes avisa de la pendiente E-O en los EXTREMOS de fila que dispara el perfil N-S («las inclinaciones del 3D son exageradas»)', () => {
+  const rt = cuerpoFn(html, 'recomputeTail');
+  if (!rt || !/en extremos de fila hasta/.test(rt)) throw new Error('el chip sigue midiendo solo en el eje');
+  // la cuña, con la fórmula del terreno 3D (cota + norte·tan(tilt) por línea, interpolado en x):
+  // +6° y −6° a 97 m del centro con pitch 6 ⇒ Δz = 2·97·tan 6° = 20,4 m ⇒ 73,6° E-O
+  const RAD = Math.PI / 180, dz = 97 * Math.tan(6 * RAD) - 97 * Math.tan(-6 * RAD);
+  const pend = Math.atan2(dz, 6) / RAD;
+  if (Math.abs(pend - 73.6) > 0.2) throw new Error('la cuña de los extremos no sale de la geometría declarada: ' + pend.toFixed(1));
+});
+
+t('v1.56: el manual por fila mueve las DOS filas del tracker en bifila y una sola en monofila', () => {
+  const f = cuerpoFn(html, 'manualRowSet');
+  if (!f) throw new Error('sin manualRowSet');
+  if (!/manualRowSet\(\+\$\('rowsel'\)\.value\|\|0,\+\$\('manth'\)\.value\)/.test(html)) throw new Error('el slider no pasa por manualRowSet');
+  // la regla, ejecutada con grupos de bifila y sin ellos
+  const run = new Function('MANUAL_ROWS', 'DAY', f + '\nreturn function(r,v){manualRowSet(r,v);return MANUAL_ROWS;};');
+  const bif = run([0, 0, 0, 0], { T: { groups: [[0, 1], [2, 3]] } })(1, 30);
+  if (bif.join() !== '30,30,0,0') throw new Error('bifila: la gemela no gira con su motora: ' + bif.join());
+  const mono = run([0, 0, 0, 0], { T: { groups: null } })(1, 30);
+  if (mono.join() !== '0,30,0,0') throw new Error('monofila: se movió otra fila: ' + mono.join());
 });
 
 t('v1.56 estático: la cámara desde el sol y el haz son del 3D — en el corte 2D se esconden', () => {
