@@ -464,6 +464,21 @@ const dniExtra=Irr.dniExtra;
 const airmassKY=Irr.airmassKY;
 const clearskyIneichen=Irr.clearskyIneichen;
 const surfaceOrient=Irr.surfaceOrient;
+/* CONVENIO DEL TILT N-S — LA FRONTERA CON pvlib. En toda la app el tilt del
+   eje es POSITIVO cuando el extremo que apunta al azimut del eje (el norte,
+   con axaz=0) está MÁS ALTO: así lo miden las cotas (segTilt = atan2(Δz,
+   Δnorte)), así lo dibuja el 3D, así lo usan el contador y el oráculo, y así
+   lo escribe el usuario en «Tilt N-S». pvlib —y sol.js/irradiancia.js, que
+   son su port 1:1— lo definen AL REVÉS: axis_tilt positivo inclina el eje
+   HACIA ABAJO en la dirección de axis_azimuth. Se le pasaba el tilt de la app
+   sin cambiar el signo, y la política calculaba el backtracking para el
+   terreno ESPEJO: con tilt +5° y el sol en el NE decidía como si la vecina
+   estuviese más baja cuando estaba más alta, y una planta LLANA de este a
+   oeste amanecía con un 64 % de sombra real que el contador y el 3D sí veían
+   («desde el sol veía sombras»). Con −5° salía bien por casualidad. Se
+   convierte AQUÍ, en cada llamada a singleaxis / trueTrackAngle /
+   surfaceOrient, y en ningún otro sitio: sol.js sigue siendo pvlib. */
+const pvTilt=t=>-(t||0);
 
 /* ── pvlib.tracking.singleaxis (Eq. 14) — vive en `sol.js` ─────────────────
    El ángulo ideal firmado y el recorte por backtracking eran los mismos aquí y
@@ -654,7 +669,7 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
       return isFinite(r)?Math.max(0,-(r+1)):0;         // mm por debajo de −1 (core)
     }
     const pr=T.pairs[p];
-    const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+    const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
     const f=shadeFracPair(psz,ang[p],ang[p+1],pr.pitch,T.cw,pr.slope,T.z0);
     return f>1e-3?f:0;
   };
@@ -668,7 +683,7 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
     for(let p=0;p<T.pairs.length;p++){
       if(!shadedPair(p,a))continue;
       const pr=T.pairs[p];
-      const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+      const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
       const emit=psz>=0?p+1:p;                         // la fila up-sun emite
       const g=groups.find(gr=>gr.includes(emit));
       const paso=T.pairs.length>30?1.0:0.25;   // con 80 vanos reales, el fino no paga
@@ -734,7 +749,7 @@ function nan0(v){return isFinite(v)?v:0;}
 function anglesPairwise(zen,az,T){
   // por pareja; filas interiores adoptan min(|θ|) de sus dos parejas
   const nR=T.pairs.length+1, out=new Array(nR);
-  const th=T.pairs.map(p=>nan0(singleaxis(zen,az,{axisTilt:p.axisTilt,axisAz:T.axisAz,
+  const th=T.pairs.map(p=>nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
     maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})));
   out[0]=th[0]; out[nR-1]=th[th.length-1];
   for(let r=1;r<nR-1;r++)out[r]=Math.abs(th[r-1])<Math.abs(th[r])?th[r-1]:th[r];
@@ -753,7 +768,7 @@ function anglesRow(zen,az,T){
   const nR=T.pairs.length+1, nP=T.pairs.length, out=new Array(nR);
   for(let r=0;r<nR;r++){
     const lo=T.pairs[Math.max(r-1,0)], hi=T.pairs[Math.min(r,nP-1)];
-    out[r]=nan0(singleaxis(zen,az,{axisTilt:rowTiltAt(T,r),axisAz:T.axisAz,
+    out[r]=nan0(singleaxis(zen,az,{axisTilt:pvTilt(rowTiltAt(T,r)),axisAz:T.axisAz,
       maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/((lo.pitch+hi.pitch)/2),
       crossAxisTilt:(lo.slope+hi.slope)/2}));
   }
@@ -762,7 +777,7 @@ function anglesRow(zen,az,T){
 function anglesGlobal(zen,az,T){
   // "un motor, un ángulo": pendiente media de la planta para todas las filas
   const m=meanPair(T);
-  const th=nan0(singleaxis(zen,az,{axisTilt:m.axisTilt,axisAz:T.axisAz,maxAngle:T.maxAngle,
+  const th=nan0(singleaxis(zen,az,{axisTilt:pvTilt(m.axisTilt),axisAz:T.axisAz,maxAngle:T.maxAngle,
     backtrack:true,gcr:T.cw/m.pitch,crossAxisTilt:m.slope}));
   return new Array(T.pairs.length+1).fill(th);
 }
@@ -771,7 +786,7 @@ function anglesAstro(zen,az,T){
   const nR=T.pairs.length+1, nP=Math.max(T.pairs.length,1), out=new Array(nR);
   for(let r=0;r<nR;r++){
     const p=T.pairs[Math.min(r,nP-1)];
-    out[r]=nan0(singleaxis(zen,az,{axisTilt:rowTiltAt(T,r),axisAz:T.axisAz,maxAngle:T.maxAngle,
+    out[r]=nan0(singleaxis(zen,az,{axisTilt:pvTilt(rowTiltAt(T,r)),axisAz:T.axisAz,maxAngle:T.maxAngle,
       backtrack:false,gcr:T.gcr,crossAxisTilt:p.slope}));
   }
   return out;
@@ -820,7 +835,7 @@ function anglesTrue3d(zen,az,T){
   const pm=[],pc=[],ps=[];
   for(const p of T.pairs){
     const b=bt3dPairMaxMag(zen,az,p.slope,p.axisTilt,p.pitch,T.cw,T.axisAz,T.maxAngle);
-    const full=Math.abs(nan0(singleaxis(zen,az,{axisTilt:p.axisTilt,axisAz:T.axisAz,
+    const full=Math.abs(nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
       maxAngle:T.maxAngle,backtrack:false,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})));
     pm.push(Math.min(full,Math.max(0,Math.min(b.mag-MARGIN,T.maxAngle))));
     pc.push(Math.max(0,Math.min(b.mag,T.maxAngle)));
@@ -1271,7 +1286,7 @@ function plantFromCotas(data,maxLines,blockIdx){
    pvlib); cambia el CONTADOR, que ya no puede mentir. */
 function shadePair3DBand(zen,az,T,rowAngles,p,res){
   const pr=T.pairs[p];
-  const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+  const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
   if(!isFinite(psz))return {f:0,recv:p};
   const recv=psz>=0?p:p+1, emit=psz>=0?p+1:p;
   const azR=(az-T.axisAz)*RAD, el=(90-zen)*RAD;
@@ -1442,10 +1457,16 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
      cambiar un valor de un menú relanza `computeDay()` y se quedaba colgada.
      Con el rango de norte precalculado UNA vez, el caso común sale en O(1). */
   let nMin=Infinity, nMax=-Infinity;
-  if(PRr&&PRr.segs)for(const sg of PRr.segs)if(sg)for(const s2 of sg){
+  // ...y en los PRESETS el rango sale de T.segs: solo se miraba PRr.segs, así
+  // que sin planta real nMin se quedaba en +∞, «v<nMin» era siempre cierto y
+  // el suelo devolvía −∞ SIEMPRE — el contador no veía terreno en ningún
+  // preset (el oráculo sí: 38 % en la fila del este al alba con tilt N-S 5°)
+  const _segsN=(PRr&&PRr.segs)?PRr.segs:(T.segs||null);
+  if(_segsN)for(const sg of _segsN)if(sg)for(const s2 of sg){
     if(s2[0]<nMin)nMin=s2[0]; if(s2[1]<nMin)nMin=s2[1];
     if(s2[0]>nMax)nMax=s2[0]; if(s2[1]>nMax)nMax=s2[1];
   }
+  if(!(nMin<=nMax)){nMin=-Infinity;nMax=Infinity;}   // sin tramos declarados: no se filtra
   const COT_BUSCA=4;                     // filas de búsqueda hacia fuera, no la planta entera
   const segsOf=row=>(T.segs&&T.segs[row])?T.segs[row]:[[-30,30]];
   // SUELO en el marco físico: cota del eje interpolada entre filas menos la
@@ -1497,8 +1518,13 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   let gMax=-Infinity;
   if(PRr&&PRr.segZ){for(const line of PRr.segZ)if(line)for(const z2 of line){
     if(z2[0]>gMax)gMax=z2[0]; if(z2[1]>gMax)gMax=z2[1];}}
-  else{for(let i2=0;i2<nR;i2++){const t2=Math.abs(T.rowTilt?T.rowTilt[i2]:0)*RAD;
-    const h=zch[i2]+30*Math.tan(t2); if(h>gMax)gMax=h;}}
+  else{
+    // presets: la cota más alta está en el EXTREMO real de la mesa (±32,4 m con
+    // 28 módulos), no a 30 m a fuego: con tilt 5° esos 2,4 m son 0,2 m de cota
+    // y el corte por gMax paraba el rayo justo antes de clavarse
+    const ext=((isFinite(nMin)&&isFinite(nMax))?Math.max(Math.abs(nMin),Math.abs(nMax)):30)+COT_TOL;   // el suelo se extiende COT_TOL más allá del tramo
+    for(let i2=0;i2<nR;i2++){const t2=Math.abs(T.rowTilt?T.rowTilt[i2]:0)*RAD;
+      const h=zch[i2]+ext*Math.tan(t2); if(h>gMax)gMax=h;}}
   gMax-=HUB;
   const terrBlocked=(P0,P1,P2)=>{
     // ¿el rayo hacia el sol se clava en el terreno antes de salir del parque?
@@ -1551,7 +1577,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const l1=Math.hypot(e1r[0],e1r[1],e1r[2])||1;
       const e1=[e1r[0]/l1,e1r[1]/l1,e1r[2]/l1];
       const e2=[e3[1]*e1[2]-e3[2]*e1[1],e3[2]*e1[0]-e3[0]*e1[2],e3[0]*e1[1]-e3[1]*e1[0]];
-      planes.push({e:e,x:xs[e],w0:w0,w1:w1,nE:nE,uD:uD,
+      planes.push({e:e,x:xs[e],w0:w0,w1:w1,nE:nE,uD:uD,vD:vD,kuv:uD[0]*vD[0]+uD[1]*vD[1]+uD[2]*vD[2],
         C:[axC[0]+zOff*nu[0],axC[1]+zOff*nu[1],axC[2]+zOff*nu[2]],
         // VIGA de torsión (cuadrada, 120 mm — seguidor.js D.tube): caja sobre
         // el eje. Con el módulo casi de canto al sol (backtracking rasante) es
@@ -1607,7 +1633,10 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02;
       cands.push({pl:pl,adx:Math.abs(dx),lo:pl.w0+shf-slack,hi:pl.w1+shf+slack});
     }
-    if(!cands.length){out[r]=0;elec[r]=0;plOnly[r]=0;segOut[r]=segsOf(r).map(()=>0);segElec[r]=segsOf(r).map(()=>0);wingOut[r]=segsOf(r).map(()=>[0,0]);wingElec[r]=segsOf(r).map(()=>[0,0]);continue;}
+    // SIN emisoras del lado del sol NO se salta la fila: el TERRENO sigue
+    // pudiendo taparla. La fila de más al este al alba (y la del oeste al
+    // ocaso) salía siempre a 0 % —el oráculo daba 16 % en un preset con tilt
+    // N-S 5°— porque el atajo se iba antes de llegar al marchador de terreno.
     cands.sort((a,b)=>a.adx-b.adx);
     let hit=0,N=0,hitP=0;
     const sgR=segsOf(r);
@@ -1671,7 +1700,17 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
           const a0=(px0-pl.C[0])*pl.uD[0]+(py0-pl.C[1])*pl.uD[1]+(pz0-pl.C[2])*pl.uD[2];
           const a1=cR*pl.uD[0]+s2*pl.uD[2];
           const a2=sv[0]*pl.uD[0]+sv[1]*pl.uD[1]+sv[2]*pl.uD[2];
-          const d0=a0+a2*t0/pl.den, dc=a1-a2*tc/pl.den;                       // |du|≤hw
+          let d0=a0+a2*t0/pl.den, dc=a1-a2*tc/pl.den;                         // (H−C)·uD, lineal en u
+          /* LA BASE DE LA PALA ES OBLICUA. El punto de impacto H sobre la
+             emisora es C + uE·uD + w·vD, y con el eje inclinado (vD = [0,1,sE])
+             uD·vD = −sin θE·sE ≠ 0: proyectar (H−C) sobre uD NO da uE, da
+             uE + w·(uD·vD). A 32 m del centro de la mesa y θ=44° sobre un
+             tilt N-S de 5° son 1,9 m de error —casi la cuerda entera—: en un
+             plano UNIFORME a 5°, donde el backtracking de pvlib es exacto,
+             el contador cobraba un 19 % de sombra a 22° de sol, y crecía con
+             θ. Como w = H1 − C1 es lineal en u, se corrige en cerrado. */
+          const wq=py0-pl.C[1]+q*t0;                                          // w(u) = wq − q·tc·u
+          d0-=pl.kuv*wq; dc+=pl.kuv*q*tc;                                     // |uE|≤hw
           lin(dc,hw-d0); lin(-dc,hw+d0);
           if(ok&&hi-lo>1e-12){(ivs=ivs||[]).push([lo,hi]);(ivP=ivP||[]).push([lo,hi]);}
           // VIGA de torsión de esa misma emisora (caja convexa, exacta).
@@ -1775,7 +1814,7 @@ function shadeRows25(zen,az,T,rowAngles){
   if(!(isFinite(zen)&&zen<87))return out;
   for(let p=0;p<T.pairs.length;p++){
     const pr=T.pairs[p];
-    const psz=trueTrackAngle(zen,az,pr.axisTilt,T.axisAz);
+    const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
     let f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0)
             *axialCoverage(zen,az,T,p);
     if(f>1e-6){
@@ -1883,7 +1922,7 @@ const iamGndEq=(bDeg,b0)=>iamAshrae(90-0.5788*bDeg+0.002693*bDeg*bDeg,b0);
    está DECLARADO como pendiente. */
 function poaRow(thetaDeg,axisTilt,axisAz,zen,az,irr,doy,albedo,b0){
   if(!(zen<90)||irr.ghi<=0)return {total:0,beam:0,circ:0,sky:0,gnd:0,diff:0};
-  const o=surfaceOrient(thetaDeg,axisTilt,axisAz);
+  const o=surfaceOrient(thetaDeg,pvTilt(axisTilt),axisAz);   // pvlib: signo contrario al de la app
   const b=o.tilt*RAD, z=zen*RAD, bDeg=o.tilt;
   const cosAoi=Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD);
   const aoi=Math.acos(Math.max(-1,Math.min(1,cosAoi)))/RAD;
@@ -2044,7 +2083,7 @@ function slewLimitSeg(prevSeg,cmdSeg,dtSec,rate){
 function anglesAstroSeg(zen,az,T){
   const rows=anglesAstro(zen,az,T);
   if(!T.segTilt||!T.segs)return segsBroadcast(T,rows);
-  return T.segs.map((l,r)=>l.map((sg,k)=>nan0(singleaxis(zen,az,{axisTilt:segTiltAt(T,r,k),
+  return T.segs.map((l,r)=>l.map((sg,k)=>nan0(singleaxis(zen,az,{axisTilt:pvTilt(segTiltAt(T,r,k)),
     axisAz:T.axisAz,maxAngle:T.maxAngle,backtrack:false,gcr:T.gcr,crossAxisTilt:0}))));
 }
 /* pairwise por MESA: para cada mesa, sus vecinas de las líneas contiguas que
@@ -2073,7 +2112,7 @@ function anglesPairwiseSeg(zen,az,T){
           const slope=(za!=null&&zb!=null)
             ?Math.atan2(rn>r?za-zb:zb-za,pr.pitch)*DEG
             :pr.slope;
-          const th=nan0(singleaxis(zen,az,{axisTilt:(tk+segTiltAt(T,rn,kn))/2,axisAz:T.axisAz,
+          const th=nan0(singleaxis(zen,az,{axisTilt:pvTilt((tk+segTiltAt(T,rn,kn))/2),axisAz:T.axisAz,
             maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/pr.pitch,crossAxisTilt:slope}));
           if(best===null||Math.abs(th)<Math.abs(best))best=th;
         }
@@ -2214,7 +2253,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
     angs.push(GRID.map(f=>Math.max(-T.maxAngle,Math.min(T.maxAngle,base[r]+f*(full[r]-base[r])))));
     val.push(angs[r].map(a=>poaRow(a,rowTiltAt(T,r),T.axisAz,zen,az,irr,doy,albedo,T.iam)));
   }
-  const psz=T.pairs.map(pr=>trueTrackAngle(zen,az,pr.axisTilt,T.axisAz));
+  const psz=T.pairs.map(pr=>trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz));
   const axc=T.pairs.map((_,p)=>axialCoverage(zen,az,T,p));
   const noShade=!(isFinite(zen)&&zen<87);
   const k=new Array(units.length).fill(0);
@@ -2490,7 +2529,7 @@ function runPhysicsQA(){
     T2.axisAz=23.7; T2.rowTilt=[2,2,2,2];
     T2.segs=[[[-13,13]],[[-13,13]],[[-13,13]],[[-13,13]]];
     const zen2=88.5, az2=60;                       // sol a 1,5°: ceguera TOTAL del 2.5D
-    const psz2=trueTrackAngle(zen2,az2,2,23.7);
+    const psz2=trueTrackAngle(zen2,az2,pvTilt(2),23.7);
     const f25b=shadeFracPair(psz2,30,30,11,2.382,2.5,0);
     const r3b=shadePair3DBand(zen2,az2,T2,[30,30,30,30],0);
     assert(f25b<0.01,'el 2.5D debería estar ~ciego aquí: '+f25b);
@@ -2504,7 +2543,7 @@ function runPhysicsQA(){
     const zen=70, az=115;
     let th=null;
     for(let cand=20;cand<=55;cand+=0.5){
-      const psz=trueTrackAngle(zen,az,8,0);
+      const psz=trueTrackAngle(zen,az,pvTilt(8),0);
       const f=shadeFracPair(psz,cand,cand,6,2.382,6,0);
       const r2=tangentResidualPairMm(zen,az,T3,[cand,cand],0);
       if(f>0.02&&isFinite(r2)&&r2>=-1){th=cand;break;}
@@ -2598,7 +2637,7 @@ function runPhysicsQA(){
         // caso «−282 mm»), no un fallo del acople: se comprueba aparte.
         for(let p2=0;p2<T.pairs.length;p2++){
           const pr2=T.pairs[p2];
-          const psz2=trueTrackAngle(zen,az,pr2.axisTilt,T.axisAz);
+          const psz2=trueTrackAngle(zen,az,pvTilt(pr2.axisTilt),T.axisAz);
           const f2=shadeFracPair(psz2,a[p2],a[p2+1],pr2.pitch,T.cw,pr2.slope,T.z0);
           assert(f2<2e-3,mode+': sombra 2.5D '+f2.toFixed(4)+' zen='+zen+' az='+az+' pareja '+p2);
         }
@@ -2754,7 +2793,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.51.0';
+const VER='v1.52.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3607,7 +3646,7 @@ function drawScene(){
   SCENE_MAP={X:X,Y:Y,mScale:mScale,zMin:zMin};
 
   // sol + rayos (psz de la pendiente media, solo para dibujar)
-  const psz=trueTrackAngle(g.zen,g.az,c.axtilt,c.axaz);
+  const psz=trueTrackAngle(g.zen,g.az,pvTilt(c.axtilt),c.axaz);
   if(elev>0){
     const sx=W/2+Math.sin(psz*RAD)*(W*0.42), sy=54-Math.min(30,elev*0.5);
     ctx.beginPath();ctx.arc(sx,sy,10,0,7);
@@ -4561,7 +4600,8 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
             const t=Math.max(EPS,tOf(P));
             const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
             const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
-            return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2], A0[1]+d0[1]];
+            // misma corrección oblicua que el contador: u = (H−A0)·uH − w·(uH·vHp)
+            return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2]-d0[1]*(uH[0]*vHp[0]+uH[1]*vHp[1]+uH[2]*vHp[2]), A0[1]+d0[1]];
           });
           let poly=corners.slice();
           for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
@@ -4663,11 +4703,11 @@ function drawCriticalRay(g,p,tIdx){
   const r=+$('rowsel').value||0, T=DAY.T, nR=TD.rows.length;
   if(!TD.rows[r]||!TD.rows[r].lbl)return;
   const ang=p.ang[tIdx], sh=p.shade[tIdx]||[];
-  const pszRow=trueTrackAngle(g.zen,g.az,T.rowTilt?T.rowTilt[r]:0,DAY.c.axaz);
+  const pszRow=trueTrackAngle(g.zen,g.az,pvTilt(T.rowTilt?T.rowTilt[r]:0),DAY.c.axaz);
   const pi=pszRow>=0?r:r-1;                    // la pareja por la que le entra la sombra a r
   if(pi<0||pi>=T.pairs.length)return;
   const pr=T.pairs[pi];
-  const pszP=trueTrackAngle(g.zen,g.az,pr.axisTilt,T.axisAz);
+  const pszP=trueTrackAngle(g.zen,g.az,pvTilt(pr.axisTilt),T.axisAz);
   // el corte del rayo sigue a la mesa que ESTÁS mirando (la más cercana al
   // target de la cámara): dibujado en otra banda parecía atravesar los módulos
   let yc=-TD.rows[r].lbl.position.z;

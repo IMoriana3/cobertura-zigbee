@@ -113,7 +113,7 @@ const sandbox = new Function(sol + '\n' + src + `
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
-           westPorMesa, ejesPorMesa };`);
+           westPorMesa, ejesPorMesa, pvTilt };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -523,7 +523,7 @@ function oracleGeom(T, rowAngles) {
       const l1 = Math.hypot(e1r[0], e1r[1], e1r[2]) || 1;
       const e1 = [e1r[0] / l1, e1r[1] / l1, e1r[2] / l1];
       const e2 = [e3[1] * e1[2] - e3[2] * e1[1], e3[2] * e1[0] - e3[0] * e1[2], e3[0] * e1[1] - e3[1] * e1[0]];
-      planes.push({ e, w0, w1, nE, uD,
+      planes.push({ e, w0, w1, nE, uD, vD,
         C: [axC[0] + zOff * nu[0], axC[1] + zOff * nu[1], axC[2] + zOff * nu[2]],
         tb: { C: axC, ax: [e1, e2, e3], hf: [O_TUBE / 2, O_TUBE / 2, Math.abs(w1 - w0) * lv / 2] },
         sl: { C: [axC[0] + (zOff - O_GLASS / 2) * nu[0], axC[1] + (zOff - O_GLASS / 2) * nu[1], axC[2] + (zOff - O_GLASS / 2) * nu[2]],
@@ -621,7 +621,18 @@ function oracleTerr(G, sv, zen, T) {
      línea de índice contiguo puede estar a cientos de metros y fabricaba un
      escarpe— y el oráculo la comparte, como comparte el límite de 4 filas. */
   const XMAX = Math.max(12, 3 * ((T && T.pitch) || (xs.length > 1 ? xs[1] - xs[0] : 6)));
+  // el rango de norte que mide la planta (decisión de modelo compartida con el
+  // contador): fuera de él, más allá de TOL, no hay suelo que se invente. En
+  // los presets `cotD` devuelve d=0 siempre (la cota es analítica), así que sin
+  // esta puerta el oráculo extendía el suelo hasta el infinito y el contador no
+  const _sg = (T && T.real && T.real.segs) ? T.real.segs : (T && T.segs) || null;
+  let nMin = Infinity, nMax = -Infinity;
+  if (_sg) for (const line of _sg) if (line) for (const s2 of line) {
+    nMin = Math.min(nMin, s2[0], s2[1]); nMax = Math.max(nMax, s2[0], s2[1]);
+  }
+  if (!(nMin <= nMax)) { nMin = -Infinity; nMax = Infinity; }
   const gzOf = (x, v) => {
+    if (v < nMin - TOL || v > nMax + TOL) return -Infinity;
     let i = 0;
     if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
     else { while (i < nR - 2 && xs[i + 1] < x) i++; }
@@ -725,7 +736,18 @@ function oracleExact(F2, zen, az, T, rowAngles) {
           const a1 = cR * pl.uD[0] + s2 * pl.uD[2];
           const a2 = sv[0] * pl.uD[0] + sv[1] * pl.uD[1] + sv[2] * pl.uD[2];
           const d0 = a0 + a2 * t0 / den, dc = a1 - a2 * tc / den;
-          lin(dc, hw - d0); lin(-dc, hw + d0);
+          /* la base (uD, vD) de la pala es OBLICUA con el eje inclinado
+             (uD·vD = −sin θE·sE): la coordenada de cuerda del impacto es
+             (H−C)·uD − w·(uD·vD), con w = H1 − C1. Aquí se resuelve el 2×2
+             (uE, w) por eliminación, distinto del contador, que corrige en
+             cerrado el término lineal. Tenía el MISMO defecto que el
+             contador (proyección oblicua tomada por ortogonal) y por eso
+             nunca lo cazó: 19 % de sombra en un plano uniforme a 5°. */
+          const kuv = pl.uD[0] * pl.vD[0] + pl.uD[1] * pl.vD[1] + pl.uD[2] * pl.vD[2];
+          const wAt = (u) => (py0 - pl.C[1]) + q * (t0 - tc * u);           // w del impacto, lineal en u
+          const uE = (u) => (d0 + dc * u) - kuv * wAt(u);                    // cuerda real del impacto
+          const dcE = uE(1) - uE(0), d0E = uE(0);
+          lin(dcE, hw - d0E); lin(-dcE, hw + d0E);
           if (ok && hi - lo > 1e-12) ivs.push([lo, hi]);
           // VIGA por MÉTODO DISTINTO al del contador (sección de la caja
           // con el plano de los rayos, exacta — ver oracleBoxIv)
@@ -788,7 +810,9 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
             const H1 = P1 + t2 * sv[1];
             if (H1 < pl.w0 || H1 > pl.w1) continue;
             const H0 = P0 + t2 * sv[0], H2 = P2 + t2 * sv[2];
-            const du = (H0 - pl.C[0]) * pl.uD[0] + (H1 - pl.C[1]) * pl.uD[1] + (H2 - pl.C[2]) * pl.uD[2];
+            const kuv = pl.uD[0] * pl.vD[0] + pl.uD[1] * pl.vD[1] + pl.uD[2] * pl.vD[2];
+            const du = (H0 - pl.C[0]) * pl.uD[0] + (H1 - pl.C[1]) * pl.uD[1] + (H2 - pl.C[2]) * pl.uD[2]
+                     - (H1 - pl.C[1]) * kuv;                                   // base oblicua: ver oracleExact
             if (Math.abs(du) <= hw) { sh = true; break; }
           }
           if (sh) colHit++;
@@ -2843,6 +2867,100 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
 // este, al revés. Medido en San José: 97 tiradas al ESTE, 6 al oeste, y en
 // todas las largas 0 puntos en x_primero−6,17 y 5-6 en x_último+6,17. Ese
 // careo, y el reparto que lo aplica, van en #626.
+
+console.log('v1.52 · el tilt N-S entra en pvlib con el signo de pvlib, y la pala se mide en su base oblicua');
+{
+  /* Reportado con una planta sintética (onda senoidal E-O + pendiente
+     constante N-S): «me ponía en la posición del sol y veía sombras». Dos
+     fallos, los dos con tilt N-S y ninguno con tilt 0:
+     (1) la app mide el tilt norte-arriba-positivo y pvlib al revés (axis_tilt
+         positivo baja hacia axis_azimuth): la política backtrackeaba para el
+         terreno ESPEJO. Plano LLANO E-O a +5°: 64 % de sombra real al alba.
+     (2) el contador —y su oráculo, que copiaba el mismo álgebra— proyectaba
+         el impacto sobre la cuerda con una base oblicua (uD·vD = −sin θ·sE):
+         a 32 m del centro y θ=44° son 1,9 m de error. Plano uniforme a 5°,
+         donde pvlib es exacto: 19 % de sombra a 22° de sol, creciendo con θ.
+     Y de propina, el terreno en presets: nMin se quedaba en +∞ (solo miraba
+     PRr.segs) y el suelo era −∞ siempre; y la fila sin emisoras se saltaba
+     el marchador de terreno. */
+  const LL = [41.5763, -0.7981], DIA = Date.UTC(2026, 5, 21);
+  const mkPlano = (n, amp, tilt) => {
+    const ELEV = []; for (let i = 0; i < n; i++) ELEV.push(amp * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2))));
+    const rowTilt = new Array(n).fill(tilt), filaLen = 2 * 28 * 1.146 + 0.55;
+    return { pairs: F.pairsFromElev(ELEV, 6, rowTilt), cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17,
+             nBypass: 2, iam: 0, rowTilt, groups: null, drive: 'mono', segs: F.nsSegments(n, 'alineadas', 1, filaLen, 1.0, 1), filaLen };
+  };
+  t('pvlib recibe el tilt con SU signo: toda llamada a singleaxis/trueTrackAngle pasa por pvTilt', () => {
+    if (typeof F.pvTilt !== 'function' || F.pvTilt(5) !== -5) throw new Error('pvTilt no es la negación');
+    const fis = html.slice(html.indexOf('FÍSICA PURA'), html.indexOf('/* FIN-FÍSICA'));
+    const malos = [];
+    for (const m of fis.matchAll(/singleaxis\([^;]*?axisTilt:([^,}]+)/g)) if (!/^(pvTilt\(|0\b)/.test(m[1].trim())) malos.push(m[0].slice(0, 80));
+    for (const m of fis.matchAll(/trueTrackAngle\(([^()]*(?:\([^()]*\))?[^()]*)\)/g)) {
+      const args = m[1].split(',').map(x => x.trim());
+      if (args.length >= 3 && !/^(pvTilt\(|0$)/.test(args[2])) malos.push(m[0].slice(0, 80));
+    }
+    if (malos.length) throw new Error('llamadas a pvlib sin convertir el tilt: ' + malos.join(' | '));
+    // el mismo signo en irradiancia: la pala a θ=0 sobre eje norte-arriba mira al SUR
+    const az = F.surfaceOrient(0, F.pvTilt(5), 0).az;
+    if (Math.abs(az - 180) > 1e-6) throw new Error('pala a θ=0 con el norte arriba mira al ' + az.toFixed(1) + '°, no al sur');
+    if (Math.abs(F.surfaceOrient(0, F.pvTilt(-5), 0).az) > 1e-6) throw new Error('con el norte abajo debería mirar al norte');
+    if (Math.abs(F.surfaceOrient(30, 0, 0).az - 90) > 1e-6) throw new Error('sin tilt, θ=30 mira al este: ' + F.surfaceOrient(30, 0, 0).az);
+    // y el POA lo nota: a mediodía en el hemisferio norte la pala norte-arriba (mira al sur) recibe MÁS haz
+    const g = F.solarPos(DIA + 12 * 3600000, LL[0], LL[1]);
+    const irr = F.clearskyIneichen(g.zen, 172, 300, 3.5);
+    const bN = F.poaRow(0, 5, 0, g.zen, g.az, irr, 172, 0.2, 0.05).beam, bS = F.poaRow(0, -5, 0, g.zen, g.az, irr, 172, 0.2, 0.05).beam;
+    if (!(bN > bS * 1.02)) throw new Error(`haz a mediodía: norte-arriba ${bN.toFixed(0)} vs norte-abajo ${bS.toFixed(0)} W/m² — el signo del tilt no llega al POA`);
+  });
+  t('plano UNIFORME con tilt N-S ±5°: el backtracking de pvlib es exacto y el contador lo confirma (0 sombra, ≡ oráculo)', () => {
+    for (const tilt of [5, -5, 8]) {
+      const T = mkPlano(8, 0, tilt);
+      let n = 0;
+      for (let m = 270; m < 1440; m += 20) {
+        const g = F.solarPos(DIA + m * 60000, LL[0], LL[1]);
+        if (g.elev < 3 || g.elev > 60) continue;
+        const ang = F.anglesPairwise(g.zen, g.az, T);
+        const sh = F.shadeRows(g.zen, g.az, T, ang), ora = oracleExact(F, g.zen, g.az, T, ang);
+        for (let r = 0; r < 8; r++) {
+          if (sh[r] > 1e-3) throw new Error(`tilt ${tilt}: sombra ${(sh[r] * 100).toFixed(1)} % en la fila ${r} a ${g.elev.toFixed(1)}° de sol (θ ${ang[r].toFixed(1)}°) — pvlib es exacto aquí`);
+          if (Math.abs(sh[r] - ora[r]) > 1e-3) throw new Error(`tilt ${tilt}: contador ${sh[r]} ≠ oráculo ${ora[r]} (fila ${r}, ${g.elev.toFixed(1)}°)`);
+        }
+        n++;
+      }
+      if (n < 20) throw new Error('pocos instantes: ' + n);
+    }
+    // y el signo va en la dirección física: con el sol en el NE, el plano que
+    // SUBE hacia el norte (+5) ve el sol más bajo y backtrackea MÁS que el llano
+    const g = F.solarPos(DIA + 330 * 60000, LL[0], LL[1]);          // 05:30 UTC, sol NE a ~9°
+    const th = tl => Math.abs(F.anglesPairwise(g.zen, g.az, mkPlano(8, 0, tl))[3]);
+    if (!(th(5) < th(0) && th(0) < th(-5))) throw new Error(`θ(+5)=${th(5).toFixed(1)} θ(0)=${th(0).toFixed(1)} θ(−5)=${th(-5).toFixed(1)}: el tilt entra con el signo cambiado`);
+  });
+  t('base OBLICUA de la pala: a θ=44° sobre tilt 5° el impacto se mide bien (contador ≡ bruto MU=64 ≡ 0)', () => {
+    const T = mkPlano(8, 0, 5);
+    const g = F.solarPos(DIA + 400 * 60000, LL[0], LL[1]);          // ~21,7° de sol, az 77°
+    const ang = F.anglesPairwise(g.zen, g.az, T);
+    if (!(Math.abs(ang[3]) > 35)) throw new Error('el caso quería θ grande: ' + ang[3].toFixed(1));
+    const sh = F.shadeRows(g.zen, g.az, T, ang), br = oracleBrute(F, g.zen, g.az, T, ang, 64, [3]);
+    if (sh[3] > 1e-3 || br[3] > 1e-3) throw new Error(`fila 3: contador ${(sh[3] * 100).toFixed(1)} % · bruto ${(br[3] * 100).toFixed(1)} % (era 19 % con la proyección oblicua)`);
+    if (!/d0-=pl\.kuv\*wq/.test(html)) throw new Error('el contador perdió la corrección oblicua');
+    if (!/uH\[0\]\*vHp\[0\]\+uH\[1\]\*vHp\[1\]\+uH\[2\]\*vHp\[2\]/.test(html)) throw new Error('la silueta roja perdió la corrección oblicua');
+  });
+  t('preset senoidal E-O + tilt N-S 5°: contador ≡ oráculo TODO el día, terreno y filas de borde incluidos', () => {
+    for (const [amp, tilt] of [[1.2, 5], [1.2, -5], [0.6, 3]]) {
+      const T = mkPlano(8, amp, tilt);
+      let peor = 0, borde = 0;
+      for (let m = 270; m < 1440; m += 10) {
+        const g = F.solarPos(DIA + m * 60000, LL[0], LL[1]);
+        if (g.elev <= 0.5) continue;
+        const ang = F.anglesPairwise(g.zen, g.az, T);
+        const sh = F.shadeRows(g.zen, g.az, T, ang), ora = oracleExact(F, g.zen, g.az, T, ang);
+        for (let r = 0; r < 8; r++) peor = Math.max(peor, Math.abs(sh[r] - ora[r]));
+        if (g.elev < 2 && tilt > 0) borde = Math.max(borde, sh[7], sh[0]);   // la fila de borde, tapada por la loma
+      }
+      if (peor > 1e-3) throw new Error(`amp ${amp} tilt ${tilt}: contador y oráculo difieren ${(peor * 100).toFixed(2)} pp`);
+      if (tilt > 0 && borde < 0.05) throw new Error(`amp ${amp} tilt ${tilt}: la fila de borde al alba no ve el terreno (${(borde * 100).toFixed(1)} %)`);
+    }
+  });
+}
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);

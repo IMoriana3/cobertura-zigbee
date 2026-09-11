@@ -64,12 +64,16 @@
      {tilt, az} en grados, azimut en compás (0 = norte, + al este). */
   I.surfaceOrient = function (thetaDeg, axisTilt, axisAz) {
     var tilt = Math.acos(Math.cos(thetaDeg * RAD) * Math.cos(axisTilt * RAD)) * DEG;
-    var sT = Math.sin(tilt * RAD), azd;
-    if (Math.abs(sT) < 1e-12) azd = 90;
-    else {
-      azd = Math.asin(Math.max(-1, Math.min(1, Math.sin(thetaDeg * RAD) / sT))) * DEG;
-      if (Math.abs(thetaDeg) >= 90) azd = -azd + Math.sign(thetaDeg) * 180;
-    }
+    /* pvlib calc_surface_orientation, tal cual: azimut = axis_azimuth +
+       atan2(sin θ, cos θ · sin axis_tilt). La version anterior lo sacaba con
+       asin(sin θ / sin tilt), que solo vale con axis_tilt >= 0 (cos del delta
+       siempre positivo): con el eje inclinado hacia ARRIBA en la direccion
+       del azimut (axis_tilt < 0 en el convenio de pvlib) la pala a θ=0 tiene
+       que mirar al lado contrario, y salia mirando cuesta arriba. Con
+       axis_tilt >= 0 los dos calculos coinciden bit a bit. */
+    var azd;
+    if (Math.abs(thetaDeg) < 1e-12 && Math.abs(axisTilt) < 1e-12) azd = 90;
+    else azd = Math.atan2(Math.sin(thetaDeg * RAD), Math.cos(thetaDeg * RAD) * Math.sin(axisTilt * RAD)) * DEG;
     return { tilt: tilt, az: ((axisAz + azd) % 360 + 360) % 360 };
   };
 
