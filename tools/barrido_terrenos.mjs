@@ -19,7 +19,7 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA'); const j0 = html.lastIndexOf('/*', i0);
 const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(sol + '\n' + html.slice(j0, i1) + `return { policyAngles, poaPlant, shadeRows, shadeBand3DAll, pairsFromElev, nsSegments,
-  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss };`)();
+  solarPos, clearskyIneichen, mulberry32, driveGroups, effRowTilts, anglesPairwise, elecLoss, rotulaMesas };`)();
 const test = fs.readFileSync(path.join(ROOT, 'tools', 'test_backtracking_sim.mjs'), 'utf-8');
 const o0 = test.indexOf('function oracleGeom'), o1 = test.indexOf('function ayoraPlantT');
 const ORA = new Function('F', test.slice(o0, o1) + '\nreturn { oracleExact };')(F);
@@ -48,6 +48,7 @@ function nsProfile(preset, v, n) {
   if (preset === 'quebrado') for (let i = 0; i < n; i++) out[i] = i < n / 2 ? v : -v;
   else if (preset === 'senoidal') for (let i = 0; i < n; i++) out[i] = v * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2)));
   else if (preset === 'aleatorio') { const r = F.mulberry32(1234); for (let i = 0; i < n; i++) out[i] = (r() * 2 - 1) * v; }
+  else if (preset === 'rotula') out.fill(0);   // v1.54: el quiebro va por mesa (rotulaMesas)
   return out;
 }
 function mkT(c) {
@@ -57,13 +58,16 @@ function mkT(c) {
   const filaLen = 2 * c.mods * 1.146 + 0.55;
   const segs = F.nsSegments(c.nrows, c.nsl, c.ntrk, filaLen, 1.0, c.drive === 'mono' ? 1 : 2);
   if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
-  return { pairs: F.pairsFromElev(ELEV, c.pitch, eff), cw: c.cw, axisAz: c.axaz, maxAngle: c.maxang, gcr: c.cw / c.pitch, z0: c.z0,
-           nBypass: c.nbp, iam: c.iam, rowTilt: eff, groups, drive: c.drive, segs, filaLen };
+  const RM = F.rotulaMesas(c.nspreset, c.axtilt, c.drive, segs, ELEV, groups, 0.55);   // v1.54: quiebro en la rótula (solo la quebrada lo sigue)
+  const T = { pairs: F.pairsFromElev(ELEV, c.pitch, eff), cw: c.cw, axisAz: c.axaz, maxAngle: c.maxang, gcr: c.cw / c.pitch, z0: c.z0,
+              nBypass: c.nbp, iam: c.iam, rowTilt: eff, groups, drive: c.drive, segs: RM ? RM.segs : segs, filaLen };
+  if (RM) Object.assign(T, { segTilt: RM.segTilt, segZ: RM.segZ, segSide: RM.segSide, segMorro: RM.segMorro, segPairs: RM.segPairs, segDrive: RM.segDrive });
+  return T;
 }
 function randomCfg() {
   const tp = pick(['llano', 'pendiente', 'pendiente', 'ondulado', 'valle', 'cresta', 'aleatorio']);
   const tparam = tp === 'pendiente' ? pick([-10, -6, -3, 3, 6, 10]) : tp === 'ondulado' ? pick([0.6, 1.2, 2]) : (tp === 'valle' || tp === 'cresta') ? pick([1, 2, 3]) : tp === 'aleatorio' ? pick([7, 13, 42]) : 0;
-  const nsp = pick(['constante', 'constante', 'quebrado', 'senoidal', 'aleatorio']);
+  const nsp = pick(['constante', 'constante', 'quebrado', 'senoidal', 'aleatorio', 'rotula']);
   const axtilt = nsp === 'constante' ? pick([0, 0, 3, -3, 6, -6]) : pick([2, 3, 4, 6]);
   const sitio = pick([{ nm: 'Zaragoza', lat: 41.5763, lon: -0.7981, alt: 300 }, { nm: 'Arequipa', lat: -16.59577, lon: -71.80644, alt: 1563 }]);
   return { tpreset: tp, tparam, nspreset: nsp, axtilt, drive: pick(['mono', 'bifila', 'quebrado']), nsl: pick(['alineadas', 'alineadas', 'tresbolillo', 'medios', 'bagnarelli']),

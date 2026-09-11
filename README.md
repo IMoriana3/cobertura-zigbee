@@ -60,7 +60,7 @@ Publicado como página estática en GitHub Pages: **https://imoriana3.github.io/
 Este repo aloja también el **Simulador de Backtracking**: un espejo JS del motor BT3D de SolarGPT
 (`tracker3d.py`) con el inventario COMPLETO de políticas de backtracking del core —astronómico ·
 BT2D plano · global · row · pairwise · true-3D · min-ground-light · energy-optimal (Deeptrack)— sobre
-terreno 3D editable (pendiente E-O por pareja + tilt N-S por fila), los tres accionamientos
+terreno 3D editable (pendiente E-O por pareja + tilt N-S por fila, o por MESA con el «quiebro en la rótula», que es lo que hace falta para simular la bifila quebrada), los tres accionamientos
 (**monofila, bifila rígida y bifila quebrada**, backtracking resuelto a nivel de accionamiento) y la
 implantación real a lo largo del eje (cortos delante de largos, tresbolillo — con el solape axial en
 la física). La escena 3D usa el **modelo del seguidor de la casa** (`seguidor.js`, tamaño medio real

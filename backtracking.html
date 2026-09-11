@@ -63,8 +63,12 @@
   #btflag{font-family:var(--mono);font-size:.64rem;letter-spacing:.09em;font-weight:700;color:var(--muted);background:var(--bg2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;cursor:help;white-space:nowrap;min-width:52px;text-align:center}
   #btflag.on{color:#12100a;background:var(--warn);border-color:var(--warn)}
   .timerow .t{font-family:var(--mono);font-size:.95rem;color:var(--accent);min-width:52px;text-align:right}
-  .pols{display:flex;flex-direction:column;gap:6px}
-  .pol{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer}
+  .polhead{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .polhead h2{margin:0}
+  .polhead .f{margin:0;min-width:280px;flex:0 1 420px}
+  .pols{display:flex;flex-wrap:wrap;gap:6px}
+  .pol{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;flex:1 1 170px;max-width:260px}
+  @media(max-width:980px){.pol{max-width:none}}
   .pol input{accent-color:var(--accent)}
   .pol .dot{width:10px;height:10px;border-radius:3px;flex:none}
   .pol .nm{font-size:.85rem;font-weight:600}
@@ -116,6 +120,22 @@
 </header>
 
 <div class="wrap">
+<!-- v1.54: el selector de políticas va ARRIBA, en horizontal («ponlo arriba en horizontal») -->
+<div class="card" id="polcard">
+  <div class="polhead">
+    <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
+    <div class="f"><label>¿Dónde vive la inteligencia?</label>
+      <select id="brainsel">
+        <option value="all">— sin filtro —</option>
+        <option value="tcu">TCU (distribuida): cada tracker decide con SUS vanos y su tilt</option>
+        <option value="ncu">NCU (central): la planta entera coordina — puede ejecutarlas todas</option>
+      </select></div>
+  </div>
+  <div class="pols" id="polbox"></div>
+  <div class="nota">En terreno <b>uniforme</b> global = row = pairwise (degeneración exacta, como en el
+    core). <b>true-3D</b> solo gana con tilt N-S del eje ≠ 0. <b>energy-optimal</b> tolera sombra
+    cuando apuntar mejor la paga (argmax del POA de planta neto del modelo Martinez, f∈{0,¼,½,¾,1}).</div>
+</div>
 <div class="cols">
 <div><!-- columna izquierda: configuración -->
 
@@ -176,10 +196,11 @@
         <select id="nspreset">
           <option value="constante">Constante</option>
           <option value="quebrado">Quebrado (dos aguas)</option>
+          <option value="rotula">Quiebro en la rótula (mesa sur +v · norte −v)</option>
           <option value="senoidal">Senoidal</option>
           <option value="aleatorio">Aleatorio</option>
         </select></div>
-      <div class="f"><label>Tilt N-S ° (valor)</label><input id="axtilt" type="number" step="0.5" value="0" title="Inclinación del eje a lo largo (terreno N-S): valor del perfil (constante/amplitud). Es lo que separa true-3D del 2.5D."></div>
+      <div class="f"><label>Tilt N-S ° (valor)</label><input id="axtilt" type="number" step="0.5" value="0" title="Inclinación del eje a lo largo (terreno N-S): valor del perfil (constante/amplitud). Es lo que separa true-3D del 2.5D.&#10;Con «quiebro en la rótula» es el quiebro entre las dos mesas de cada viga: la mesa sur a +v y la norte a −v (loma en la rótula si v>0, vaguada si v<0). Solo la bifila QUEBRADA lo sigue (cardan); rígida y monofila llevan el tubo recto al tilt medio y la página lo dice."></div>
     </div>
     <span class="pill" id="motorsinfo"></span>
     <div class="nota">En <b>bifila</b> las dos filas del grupo giran con el MISMO θ: se adopta el
@@ -274,19 +295,6 @@
       string, los puntos calientes y la garantía, y que todo esto es <b>cielo claro</b>.</div>
   </div>
 
-  <div class="card">
-    <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
-    <div class="f"><label>¿Dónde vive la inteligencia?</label>
-      <select id="brainsel">
-        <option value="all">— sin filtro —</option>
-        <option value="tcu">TCU (distribuida): cada tracker decide con SUS vanos y su tilt</option>
-        <option value="ncu">NCU (central): la planta entera coordina — puede ejecutarlas todas</option>
-      </select></div>
-    <div class="pols" id="polbox"></div>
-    <div class="nota">En terreno <b>uniforme</b> global = row = pairwise (degeneración exacta, como en el
-      core). <b>true-3D</b> solo gana con tilt N-S del eje ≠ 0. <b>energy-optimal</b> tolera sombra
-      cuando apuntar mejor la paga (argmax del POA de planta neto del modelo Martinez, f∈{0,¼,½,¾,1}).</div>
-  </div>
 
   <div class="card">
     <h2>🧪 QA de la física</h2>
@@ -638,6 +646,13 @@ function nMotorsSegs(T){
   // bifila = un motor por fila de la línea MOTORA del grupo (la gemela va
   // por transmisión); líneas sueltas, motor propio por tramo
   if(!T.segs)return nMotors(T.pairs.length+1,T.drive||'mono');
+  // v1.54: presets con quiebro en la rótula — un motor por accionamiento
+  // (las mesas de un tracker) y uno por mesa suelta
+  if(!T.real&&T.segDrive&&T.segDrive.length){
+    const inD=new Set();T.segDrive.forEach(g=>g.forEach(m=>inD.add(m[0]+'|'+m[1])));
+    let m=T.segDrive.length;T.segs.forEach((l,r)=>l.forEach((sg,k)=>{if(!inD.has(r+'|'+k))m++;}));
+    return m;
+  }
   const segsOf=r=>(T.segs[r]||[]).length||1;
   if(!T.groups){let m=0;for(let r=0;r<T.pairs.length+1;r++)m+=segsOf(r);return m;}
   let m=0;
@@ -1122,6 +1137,43 @@ const BAGN_PITCH=11.0, BAGN_AXAZ=23.7;
 /* tramos por línea según el preset de implantación. filaLen = fila LARGA
    (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
    San José). Determinista (semilla fija): reproducible siempre. */
+/* QUIEBRO EN LA RÓTULA (v1.54): perfil N-S por MESA para los presets. Cada
+   viga son dos mesas a los lados de la rótula (el punto de accionamiento, en
+   el centro del tramo, con el hueco del motor entre ellas): con el perfil
+   «rotula» la mesa sur va a +v y la norte a −v — loma en la rótula si v>0,
+   vaguada si v<0. Solo la BIFILA QUEBRADA sigue ese terreno (el cardan deja
+   que cada mesa lleve su tilt): devuelve los tramos partidos y, por mesa, su
+   tilt, la cota de sus dos extremos (en la referencia de ELEV, continua en la
+   rótula), su lado, su rótula, la pareja gemela y el accionamiento (las
+   cuatro mesas de un tracker, un motor, un θ — como en las plantas medidas).
+   Rígida y monofila llevan el tubo recto al tilt medio (0): devuelven null y
+   el camino por línea sigue tal cual, bit a bit — igual que con v=0. Es la
+   misma estructura que plantFromCotas publica de una planta medida, así que
+   contador, políticas por mesa, 3D y silueta la comen sin distinguirla. */
+function rotulaMesas(preset,v,drive,segs,elev,groups,gap){
+  if(preset!=='rotula'||!(Math.abs(v)>1e-9)||drive!=='quebrado'||!segs)return null;
+  const g=gap||0.55, tv=Math.tan(v*RAD);
+  const out={segs:[],segTilt:[],segZ:[],segSide:[],segMorro:[],segPairs:[],segDrive:[]};
+  for(let r=0;r<segs.length;r++){
+    const S=[],TT=[],Z=[],SD=[],RO=[]; const z0=(elev&&elev[r])||0;
+    for(const [a,b] of segs[r]){
+      const mid=(a+b)/2;
+      // sur: de a a la rótula con +v (sube hacia el norte); norte: de la rótula a b con −v (baja)
+      S.push([a,mid-g/2]);TT.push(v); Z.push([z0+(a-mid)*tv,z0-(g/2)*tv]);SD.push(0);RO.push([mid,z0]);
+      S.push([mid+g/2,b]);TT.push(-v);Z.push([z0-(g/2)*tv,z0-(b-mid)*tv]);SD.push(1);RO.push([mid,z0]);
+    }
+    out.segs.push(S);out.segTilt.push(TT);out.segZ.push(Z);out.segSide.push(SD);out.segMorro.push(RO);
+  }
+  // gemelas (la gemela copia los tramos de la motora: mesa k con mesa k) y
+  // accionamiento: un motor por tracker mueve sus dos mesas y las dos de la gemela
+  const grs=groups||segs.map((_,r)=>[r]);
+  for(const gr of grs){
+    const ra=gr[0], rb=gr.length===2?gr[1]:null;
+    if(rb!=null)for(let k=0;k<out.segs[ra].length;k++)out.segPairs.push([[ra,k],[rb,k]]);
+    for(let k=0;k+1<out.segs[ra].length;k+=2)out.segDrive.push(rb!=null?[[ra,k],[ra,k+1],[rb,k],[rb,k+1]]:[[ra,k],[ra,k+1]]);
+  }
+  return out;
+}
 function nsSegments(nRows,preset,nPer,filaLen,gapNS,pairStep){
   // pairStep=2 en bifila: el tresbolillo alterna por PAREJA — con r%2 a secas,
   // la gemela copiaba a la motora (siempre fila PAR ⇒ desplazamiento 0) y el
@@ -1446,11 +1498,11 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
   // (segZ por tramo — extrapolar el tilt medio a una línea de km ponía mesas
   // fantasma decenas de metros bajo tierra y fabricaba contacto masivo); con
   // presets, el plano lineal de siempre
-  const PRr=T.real;
+  const PRr=T.real, SZ=T.segZ||(PRr&&PRr.segZ)||null;   // v1.54: la cota por mesa viaja en T (medida o del quiebro en la rótula)
   const zLin=(row,v)=>((row===p)?0:-pr.pitch*Math.tan(pr.slope*RAD))+v*Math.tan(((T.rowTilt?T.rowTilt[row]:pr.axisTilt))*RAD);
   const cotOf=(row,v)=>{
-    if(!PRr||!PRr.segZ||!PRr.segZ[row])return zLin(row,v);
-    const segs=PRr.segs[row], zz=PRr.segZ[row];
+    if(!SZ||!SZ[row])return zLin(row,v);
+    const segs=T.segs[row], zz=SZ[row];
     let bi=-1,bd=Infinity;
     for(let k=0;k<segs.length;k++){
       const lo=Math.min(segs[k][0],segs[k][1]), hi=Math.max(segs[k][0],segs[k][1]);
@@ -1560,7 +1612,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   const azR=(az-T.axisAz)*RAD, el=(90-zen)*RAD;
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return out;
-  const hw=T.cw/2, PRr=T.real;
+  const hw=T.cw/2, PRr=T.real, SZ=T.segZ||(PRr&&PRr.segZ)||null;   // v1.54: cota por mesa en T
   const xs=[0], zch=[0];
   for(let i=0;i<T.pairs.length;i++){
     xs.push(xs[i]+T.pairs[i].pitch);
@@ -1579,8 +1631,8 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
      del tramo por construcción); lo que cambia es que el SUELO ya no se
      inventa donde no hay mesa que lo mida. */
   const cotD=(row,v)=>{
-    if(PRr&&PRr.segZ&&PRr.segZ[row]){
-      const segs=PRr.segs[row], zz=PRr.segZ[row];
+    if(SZ&&SZ[row]){
+      const segs=T.segs[row], zz=SZ[row];
       let bi=-1,bd=Infinity;
       for(let k=0;k<segs.length;k++){
         const lo=Math.min(segs[k][0],segs[k][1]), hi=Math.max(segs[k][0],segs[k][1]);
@@ -1675,7 +1727,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
      ser «caminar el rayo entero para concluir que no choca» — hasta 160 pasos
      por muestra, miles de muestras por instante — y la página se arrastraba. */
   let gMax=-Infinity;
-  if(PRr&&PRr.segZ){for(const line of PRr.segZ)if(line)for(const z2 of line){
+  if(SZ){for(const line of SZ)if(line)for(const z2 of line){
     if(z2[0]>gMax)gMax=z2[0]; if(z2[1]>gMax)gMax=z2[1];}}
   else{
     // presets: la cota más alta está en el EXTREMO real de la mesa (±32,4 m con
@@ -2203,8 +2255,9 @@ function westPorMesa(P){
   // aquí se marca la VIGA, y quien dibuja pone el motor una sola vez.
   // Una mesa sin gemela (monofila de verdad) lleva su motor.
   const w=P.segs.map(l=>l.map(()=>true));
+  const xr=r=>P.lineX?P.lineX[r]:r;          // v1.54: los presets no traen lineX — el índice es la x
   for(const [[r1,k1],[r2,k2]] of (P.segPairs||[])){
-    const este=(P.lineX[r1]<=P.lineX[r2])?[r2,k2]:[r1,k1];
+    const este=(xr(r1)<=xr(r2))?[r2,k2]:[r1,k1];
     w[este[0]][este[1]]=false;
   }
   return w;
@@ -2251,9 +2304,9 @@ function segTiltAt(T,r,k){
   return (T.segTilt&&T.segTilt[r]&&T.segTilt[r][k]!=null)?T.segTilt[r][k]:rowTiltAt(T,r);
 }
 function segZAt(T,r,k,v){                   // cota del eje de la mesa (r,k) en el norte v
-  const P=T.real;
-  if(!P||!P.segZ||!P.segZ[r]||!P.segZ[r][k]||!P.segs[r]||!P.segs[r][k])return null;
-  const s=P.segs[r][k], z=P.segZ[r][k];
+  const SZ=T.segZ||(T.real&&T.real.segZ);    // v1.54: medida o del quiebro en la rótula
+  if(!SZ||!SZ[r]||!SZ[r][k]||!T.segs||!T.segs[r]||!T.segs[r][k])return null;
+  const s=T.segs[r][k], z=SZ[r][k];
   const t=Math.max(0,Math.min(1,(v-s[0])/((s[1]-s[0])||1)));
   return z[0]+t*(z[1]-z[0]);
 }
@@ -2517,16 +2570,21 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   // óptimo común (medido: −0,01% anual). Se elige por instante, con el
   // ray-cast, entre el resultado libre y el común — libre ≥ común por
   // CONSTRUCCIÓN bajo la métrica publicada (+0,07% anual medido).
-  const com=anglesOptimal(zen,az,T,irr,doy,albedo).angles;
+  const co=anglesOptimal(zen,az,T,irr,doy,albedo), com=co.angles;
   let ev=poaPlant(zen,az,T,cand,irr,doy,albedo);
   const evc=poaPlant(zen,az,T,com,irr,doy,albedo);
   if(evc.plant>ev.plant+1e-9){cand=com;ev=evc;}
+  // v1.54: la fracción elegida se PUBLICA como en energy-optimal — un número si
+  // ganó el óptimo común, y si no el rango por accionamiento (la tarjeta del
+  // HUD las enseña igual: «¿por qué tienen diferentes cajas?»)
+  const fU=units.map((_,ui)=>OPTFREE_F0+(cand===startAng?bestK:k[ui])*(1-OPTFREE_F0)/(OPTFREE_NF-1));
+  const fOut=(cand===com)?co.f:{min:Math.min(...fU),max:Math.max(...fU),n:fU.length};
   // REPARACIÓN con el contador EXACTO: si el ray-cast ve sombra en el
   // ganador, se prueba el mismo juego APLANADO medio paso de rejilla en las
   // unidades afectadas y gana quien prefiera el contador exacto. Solo sol
   // <40° (la torsión muerde ahí; con sol alto era coste sin hallazgo —
   // barrido de sensibilidad: 0,0000%)
-  if((90-zen)>=40)return {angles:cand,f:undefined};
+  if((90-zen)>=40)return {angles:cand,f:fOut};
   if(ev.shade.some(v=>v>1e-3)){
     const df=(1-OPTFREE_F0)/(OPTFREE_NF-1)/2;
     const alt=cand.slice();
@@ -2535,7 +2593,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
         alt[rr]=Math.max(-T.maxAngle,Math.min(T.maxAngle,alt[rr]-df*(full[rr]-base[rr])));
     if(poaPlant(zen,az,T,alt,irr,doy,albedo).plant>ev.plant+1e-9)cand=alt;
   }
-  return {angles:cand,f:undefined};
+  return {angles:cand,f:fOut};
 }
 
 /* velocidad del actuador (Sunner: 0,17 °/s) — la consigna no teletransporta:
@@ -3071,7 +3129,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.53.4';
+const VER='v1.54.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3179,7 +3237,8 @@ function nsProfile(c){
   // tilt N-S del eje POR FILA — el terreno a lo largo, fila a fila. Derivado
   // SIEMPRE de (preset, valor, nº filas): no hay estado que se pueda desfasar.
   const n=c.nrows, v=c.axtilt, out=new Array(n).fill(v);
-  if(c.nspreset==='quebrado')for(let i=0;i<n;i++)out[i]=i<n/2?v:-v;
+  if(c.nspreset==='rotula')for(let i=0;i<n;i++)out[i]=0;   // v1.54: el quiebro va por MESA (rotulaMesas); la línea queda al tilt medio, 0
+  else if(c.nspreset==='quebrado')for(let i=0;i<n;i++)out[i]=i<n/2?v:-v;
   else if(c.nspreset==='senoidal')for(let i=0;i<n;i++)out[i]=v*Math.sin(2*Math.PI*i/Math.max(3,Math.floor(n/2)));
   else if(c.nspreset==='aleatorio'){const r=mulberry32(1234);for(let i=0;i<n;i++)out[i]=(r()*2-1)*v;}
   return out;
@@ -3209,6 +3268,7 @@ function terrain(c){
             rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
             segs:P.segs,segTilt:P.segTilt,segPairs:P.segPairs,   // el tilt y la pareja de CADA mesa (v1.42: la UI manda por mesa)
             segDrive:P.segDrive,                                 // v1.48: el ACCIONAMIENTO — las cuatro mesas de un tracker, un motor, un θ
+            segZ:P.segZ,segSide:P.segSide,segMorro:P.segMorro,  // v1.54: la cota, el lado y la rótula de cada mesa viajan en T (los presets con quiebro traen los suyos)
             filaLen:2*c.mods*1.146+0.55,real:P};
   }
   const groups=driveGroups(c.nrows,c.drive);
@@ -3220,10 +3280,15 @@ function terrain(c){
   // copia los tramos de la motora (tresbolillo/aleatorio desplazan GRUPOS,
   // no filas dentro de un grupo). En las plantas reales ya vienen alineadas.
   if(groups)for(const g of groups)if(g.length===2)segs[g[1]]=segs[g[0]].map(sg=>sg.slice());
-  return {pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
+  // v1.54: QUIEBRO EN LA RÓTULA — perfil por mesa; solo la quebrada lo sigue
+  const RM=rotulaMesas(c.nspreset,c.axtilt,c.drive,segs,ELEV,groups,0.55);
+  const rot=(c.nspreset==='rotula'&&Math.abs(c.axtilt)>1e-9)?{v:c.axtilt,sigue:!!RM}:null;
+  const T={pairs:pairsFromElev(ELEV,c.pitch,eff),cw:c.cw,axisAz:c.axaz,
           maxAngle:c.maxang,gcr:c.cw/c.pitch,z0:c.z0,nBypass:c.nbp,iam:c.iam,
           rowTilt:eff,groups:groups,drive:c.drive,
-          segs:segs,filaLen:filaLen};
+          segs:RM?RM.segs:segs,filaLen:filaLen,rotula:rot};
+  if(RM){T.segTilt=RM.segTilt;T.segZ=RM.segZ;T.segSide=RM.segSide;T.segMorro=RM.segMorro;T.segPairs=RM.segPairs;T.segDrive=RM.segDrive;}
+  return T;
 }
 function ensureElev(n){
   while(ELEV.length<n)ELEV.push(ELEV.length?ELEV[ELEV.length-1]:0);
@@ -3397,7 +3462,7 @@ async function loadRealPlant(name,blockIdx,ncuSel){
       }
     }
     note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
-      P.nFilas+' filas · '+(P.nMesas||0)+' MESAS (dos por fila, a los lados del morro; '+
+      P.nFilas+' filas · '+(P.nMesas||0)+' MESAS (dos por fila, a los lados de la rótula; '+
       Math.round(P.nQueb||0)+' vigas con el quiebro MEDIDO) · '+P.nPairs+' parejas bifila ('+P.nArt+' articuladas ⇒ '+
       (P.drive==='quebrado'?'quebrada':'rígida')+' por mayoría) · tilts N-S medidos '+
       Math.min(...P.tilt).toFixed(1)+'…'+Math.max(...P.tilt).toFixed(1)+'°'+blkSel+ncuSelHtml+
@@ -4209,6 +4274,12 @@ function build3D(){
         }
         return pts[pts.length-1][1]+dd;
       });
+    }else if(T.rotula){
+      // v1.54: quiebro en la rótula — loma (v>0) o vaguada (v<0) en la rótula de
+      // cada tramo, siga o no el tubo (la rígida vuela recta sobre él, drapeada)
+      const rr=r0, tv=Math.tan(T.rotula.v*RAD);
+      const mids=(T.segMorro&&T.segMorro[rr])?[...new Set(T.segMorro[rr].map(m=>m[0]))]:((T.segs&&T.segs[rr])?T.segs[rr].map(sg=>(sg[0]+sg[1])/2):[0]);
+      lineProf.push(no=>{let best=mids[0];for(const m of mids)if(Math.abs(no-m)<Math.abs(no-best))best=m;return ELEV[rr]-Math.abs(no-best)*tv;});
     }else{
       const rr=r0;
       lineProf.push(no=>ELEV[rr]+no*Math.tan(raw[rr]*RAD));
@@ -4276,7 +4347,11 @@ function build3D(){
   // v1.45: con planta MEDIDA, el motor va en la mesa OESTE de CADA tracker
   // (westPorMesa); por línea, con el tresbolillo real, se lo ponía a mesas
   // que son la gemela y se lo quitaba a otras que sí lo llevan
-  const westSeg=(PR&&PR.segPairs)?westPorMesa(PR):null;
+  // v1.54: las mesas con tilt, cota, lado, rótula y pareja viajan en T — de la
+  // planta medida o del quiebro en la rótula de los presets; el render no distingue
+  const PM=(T.segPairs&&T.segPairs.length)?T:((PR&&PR.segPairs)?PR:null);
+  const SZ3=T.segZ||(PR&&PR.segZ)||null, SS=T.segSide||(PR&&PR.segSide)||null, SM=T.segMorro||(PR&&PR.segMorro)||null;
+  const westSeg=PM?westPorMesa(PM):null;
   const westAt=(r,si)=>westSeg?westSeg[r][si]:!twinOf[r];
   const D0=useModel?Seguidor.DIMS:null;
   // el MÓDULO de la planta cargada (Ayora 1,303 · San José 1,134): sin él, una
@@ -4293,15 +4368,15 @@ function build3D(){
       // se pide por su lado del morro, anclado en el morro (el pivote que las
       // dos mitades comparten). Sin esto la viga se dibujaba entera con un solo
       // tilt y sus dos mesas salían siempre iguales.
-      const lado=(PR&&PR.segSide&&PR.segSide[r]&&PR.segSide[r][si]!=null)?(PR.segSide[r][si]===0?-1:1):null;
-      const mo=(PR&&PR.segMorro&&PR.segMorro[r])?PR.segMorro[r][si]:null;
+      const lado=(SS&&SS[r]&&SS[r][si]!=null)?(SS[r][si]===0?-1:1):null;
+      const mo=(SM&&SM[r])?SM[r][si]:null;
       const tiltG=new THREE.Group();
       let tiltR=effT*RAD, lift=0, cy, bad=false, yAnc=yc;
-      if(PR){
-        // planta real: el tubo de cada mesa va de su cota z0 a su z1 MEDIDAS
-        // (+delta del editor) — el montaje ya lo drapeó; postes = hub exacto
-        const dd=ELEV[r]-PR.elev[r];
-        const z=PR.segZ[r][si]||[0,0];
+      if(SZ3&&SZ3[r]){
+        // planta real (o preset con quiebro): el tubo de cada mesa va de su cota z0
+        // a su z1 (+delta del editor) — el montaje ya lo drapeó; postes = hub exacto
+        const dd=PR?ELEV[r]-PR.elev[r]:0;
+        const z=SZ3[r][si]||[0,0];
         const z0=z[0]+dd, z1=z[1]+dd;
         tiltR=Math.atan2(z1-z0,len||1);
         cy=(z0+z1)/2+hub;
@@ -4428,9 +4503,9 @@ function build3D(){
     // en ese punto (la misma que usa la mesa) — el plano cota-media+tilt de los
     // presets dejaba motores y bielas volando donde el terreno se aparta de él
     let base;
-    if(PR){
-      const dd=ELEV[r]-PR.elev[r];
-      const segs=PR.segs[r]||[], zz=PR.segZ[r]||[];
+    if(SZ3&&SZ3[r]){
+      const dd=PR?ELEV[r]-PR.elev[r]:0;
+      const segs=T.segs[r]||[], zz=SZ3[r]||[];
       let bi=-1,bd=Infinity;
       for(let k=0;k<segs.length;k++){
         const lo=Math.min(segs[k][0],segs[k][1]), hi=Math.max(segs[k][0],segs[k][1]);
@@ -4453,12 +4528,12 @@ function build3D(){
   // centro de su solape. El camino de abajo (pareja de líneas + «el tramo con
   // el centro más próximo») unía mesas de trackers distintos en el tresbolillo
   // real y dejaba otras sin biela, con pinta de monofila.
-  if(PR&&PR.segPairs&&PR.segPairs.length){
+  if(PM&&PM.segPairs&&PM.segPairs.length){
     const up=new THREE.Vector3(0,hub*0.38,0);
-    for(const e of ejesPorMesa(PR)){
+    for(const e of ejesPorMesa(PM)){
       const pA=hubAt(e.r1,e.n).add(up), pB=hubAt(e.r2,e.n).add(up);
       linkBar(pA,pB);
-      if(!useModel)motorAt((PR.lineX[e.r1]<=PR.lineX[e.r2])?pA:pB);
+      if(!useModel)motorAt((xof(e.r1)<=xof(e.r2))?pA:pB);
       if(T.drive==='quebrado')for(const P2 of [pA,pB]){
         const card=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10),cardM);
         card.position.copy(P2);world.add(card);
@@ -4467,7 +4542,7 @@ function build3D(){
     // mesas sin pareja (monofila de verdad): su motor, si no lo trae el modelo
     if(!useModel){
       const enPareja=new Set();
-      PR.segPairs.forEach(([[r1,k1],[r2,k2]])=>{enPareja.add(r1+'|'+k1);enPareja.add(r2+'|'+k2);});
+      PM.segPairs.forEach(([[r1,k1],[r2,k2]])=>{enPareja.add(r1+'|'+k1);enPareja.add(r2+'|'+k2);});
       (T.segs||[]).forEach((l,r)=>l.forEach((sg,k)=>{
         if(!enPareja.has(r+'|'+k))motorAt(hubAt(r,(sg[0]+sg[1])/2));
       }));
@@ -4822,15 +4897,15 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return;
-  const hw=T.cw/2, PRr=T.real;
+  const hw=T.cw/2, PRr=T.real, SZ=T.segZ||(PRr&&PRr.segZ)||null;   // v1.54: cota por mesa en T
   const xs=[0], zch=[0];
   for(let i=0;i<T.pairs.length;i++){
     xs.push(xs[i]+T.pairs[i].pitch);
     zch.push(zch[i]-T.pairs[i].pitch*Math.tan(T.pairs[i].slope*RAD));
   }
   const cot=(rw,v)=>{
-    if(PRr&&PRr.segZ&&PRr.segZ[rw]){
-      const sg2=PRr.segs[rw], zz=PRr.segZ[rw];
+    if(SZ&&SZ[rw]){
+      const sg2=T.segs[rw], zz=SZ[rw];
       let bi=-1,bd=Infinity;
       for(let k=0;k<sg2.length;k++){
         const lo=Math.min(sg2[k][0],sg2[k][1]), hi=Math.max(sg2[k][0],sg2[k][1]);
@@ -5271,11 +5346,15 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       const held=(INSTANT&&INSTANT.stamp===DAY&&INSTANT.key===key&&INSTANT.held!=null&&INSTANT.m===+$('hour').value)?' · consigna de las '+hhmm(INSTANT.held):'';
       card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes+held);
     }
-    if(DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))
-      card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
+    if((DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))||DAY.T.rotula)
+      card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.T.rotula?(DAY.T.rotula.sigue?'quebrada: mesas ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° en la rótula':'tubo recto: el quiebro de ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° no se sigue'):DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%');
     card('POA planta',Math.round(p.poaP[tIdx]),'W/m²');
-    if(key==='optimal')card('f elegida',p.f[tIdx]!=null?p.f[tIdx].toFixed(2):'—','0 = pairwise · 1 = astro');
+    if(key==='optimal'||key==='optfree'){
+      const fv=p.f[tIdx];
+      const txt=fv==null?'—':(typeof fv==='number'?fv.toFixed(2):(Math.abs(fv.max-fv.min)<1e-9?fv.min.toFixed(2):fv.min.toFixed(2)+'…'+fv.max.toFixed(2)));
+      card('f elegida',txt,'0 = pairwise · 1 = astro'+(key==='optfree'?(fv!=null&&typeof fv!=='number'?' · por accionamiento ('+fv.n+')':' · ganó el óptimo común'):''));
+    }
     // solo parejas que INTERACTÚAN ahora mismo (cobertura axial > 0): en una
     // planta real hay vecinas sin solape norte cuyo residual es ruido.
     // La tarjeta existe SIEMPRE (con «—» si no aplica): el HUD no baila
@@ -5597,7 +5676,7 @@ function buildPolicyBox(){
   const brainMode=$('brainsel')?$('brainsel').value:'all';
   $('polbox').innerHTML=POLICIES.map(P=>{
     const blocked=brainMode==='tcu'&&P.brain==='ncu';
-    return '<label class="pol"'+(blocked?' style="opacity:.38" title="Necesita inteligencia central (NCU): la TCU no conoce la planta"':'')+'>'+
+    return '<label class="pol"'+(blocked?' style="opacity:.38" title="Necesita inteligencia central (NCU): la TCU no conoce la planta"':' title="'+P.ds.replace(/"/g,'&quot;')+'"')+'>'+
     '<input type="checkbox" data-k="'+P.key+'"'+((P.on&&!blocked)?' checked':'')+(blocked?' disabled':'')+'>'+
     '<span class="dot" style="background:'+P.col+'"></span>'+
     '<span><span class="nm">'+P.nm+' <span class="chip" style="border-color:'+(P.brain==='tcu'?'var(--ok)':'var(--accent)')+';color:'+(P.brain==='tcu'?'var(--ok)':'var(--accent)')+'">'+P.brain.toUpperCase()+'</span></span><div class="ds">'+P.ds+'</div></span></label>';
@@ -5673,7 +5752,8 @@ function recomputeTail(light){
   $('tinfo').textContent='pendientes '+Math.min(...slopes).toFixed(1)+'…'+Math.max(...slopes).toFixed(1)+'°';
   const c2=cfg();
   $('motorsinfo').textContent='motores: '+nMotorsSegs(DAY.T)+' ('+
-    (c2.drive==='mono'?'monofila':c2.drive==='bifila'?'bifila rígida':'bifila quebrada')+')';
+    (c2.drive==='mono'?'monofila':c2.drive==='bifila'?'bifila rígida':'bifila quebrada')+')'+
+    (DAY.T.rotula?(DAY.T.rotula.sigue?' · quiebro en la rótula: cada mesa sigue su terreno':' · quiebro en la rótula NO seguido: tubo recto al tilt medio (prueba la quebrada)'):'');
   $('sidelbl').textContent='+x = azimut '+(((c2.axaz+90)%360+360)%360)+'°';
   if(!light){try{localStorage.setItem(LS_KEY,JSON.stringify({elev:ELEV,ids:INPUT_IDS.map(id=>$(id).value),pol:POLICIES.map(P=>P.on)}));}catch(e){}}
 }
@@ -5755,10 +5835,32 @@ function rowInfoHTML(r,kSel){
                   :'<br><b style="color:#f87272">⚠ contacto 3D que el 2.5D no ve</b> ('+rmm.toFixed(0)+' mm) — true-3D lo evitaría';
   }
   if(sh>1e-3){
-    const shPW=shadeRows(g2.zen,g2.az,DAY.T,driveCoupleSafe(g2.zen,g2.az,DAY.T,anglesPairwise(g2.zen,g2.az,DAY.T),false))[r]||0;
-    evit=shPW<=1e-3?'<br><b style="color:#fbbd23">evitable</b>: pairwise la deja en 0,0%'
-        :'<br><b style="color:#f87272">inevitable</b> a este sol: pairwise también '+(shPW*100).toFixed(1)+'%';
     if(key==='true3d'&&isFinite(rmm)&&rmm>=-1)evit='<br><b style="color:#36d399">sin contacto 3D</b>: sombra 2.5D del contador (deflexión axial)';
+    else if(!DAY.T.real){
+      // v1.54: EVITABLE = algún θ uniforme para toda la planta (el 0° incluido)
+      // deja esta fila a 0 % con el contador publicado. Antes decía
+      // «inevitable» cuando pairwise también dejaba sombra, y eso no es
+      // inevitable: es un fallo de pairwise (torsión, emisoras no adyacentes
+      // a sol bajo) — «inevitables son las que a 0° no se pueden evitar»
+      const nR=DAY.T.pairs.length+1;
+      let best={v:Infinity,th:0}, s0=null;
+      for(let th=-DAY.T.maxAngle;th<=DAY.T.maxAngle+1e-9;th+=5){
+        const sv2=shadeRows(g2.zen,g2.az,DAY.T,new Array(nR).fill(th))[r]||0;
+        if(Math.abs(th)<1e-9)s0=sv2;
+        if(sv2<best.v)best={v:sv2,th:th};
+      }
+      if(s0===null)s0=shadeRows(g2.zen,g2.az,DAY.T,new Array(nR).fill(0))[r]||0;
+      const acepta=(key==='optimal'||key==='optfree')?' · esta política acepta sombra cuando la POA de planta lo paga':'';
+      evit=best.v<=1e-3
+        ?'<br><b style="color:#fbbd23">evitable</b>: con todas las filas a '+best.th.toFixed(0)+'° quedaría 0,0 %'+(Math.abs(best.th)>1e-9?' (a 0°: '+(s0*100).toFixed(1)+' %)':'')+acepta
+        :(best.v<sh*0.9
+          ?'<br><b style="color:#fbbd23">evitable en su mayor parte</b>: con todas las filas a '+best.th.toFixed(0)+'° quedaría '+(best.v*100).toFixed(1)+' %'+(Math.abs(best.th)>1e-9?' (a 0°: '+(s0*100).toFixed(1)+' %)':'')+'; ese resto no lo evita ningún θ uniforme'+acepta
+          :'<br><b style="color:#f87272">inevitable</b> a este sol: ni a 0° ('+(s0*100).toFixed(1)+' %) ni con ningún θ uniforme (mínimo '+(best.v*100).toFixed(1)+' % a '+best.th.toFixed(0)+'°)');
+    }else{
+      // planta medida: el barrido del θ uniforme costaría segundos por globo — se dice lo que hace pairwise, sin llamarlo inevitable
+      const shPW=shadeRows(g2.zen,g2.az,DAY.T,driveCoupleSafe(g2.zen,g2.az,DAY.T,anglesPairwise(g2.zen,g2.az,DAY.T),false))[r]||0;
+      evit=shPW<=1e-3?'<br><b style="color:#fbbd23">evitable</b>: pairwise la deja en 0,0 %':'<br>pairwise también deja '+(shPW*100).toFixed(1)+' % (planta medida: no se barre el θ uniforme)';
+    }
   }
   // v1.42: las MESAS de la línea, cada una con su tilt, su θ, su POA y su sombra
   let mesas='';
