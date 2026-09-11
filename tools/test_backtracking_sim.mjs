@@ -113,7 +113,7 @@ const sandbox = new Function(sol + '\n' + src + `
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
-           westPorMesa, ejesPorMesa, pvTilt };`);
+           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -1991,7 +1991,10 @@ console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)'
   const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
 
   t('shadeBand3DAll publica la sombra por ALA de cada tramo y la media de las dos alas ES el tramo (8 estaciones, 4 por ala)', () => {
-    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    // con ASTRO: el pairwise con torsión (v1.53) ya evita al alba la sombra de
+    // ala que este test usaba de testigo, y el testigo tiene que ser algo que
+    // sombree seguro
+    const seg = F.policyAnglesSeg('astro', zen, az, T, irr, doy, 0.2);
     const sh = F.shadeRows(zen, az, T, seg);
     if (!sh.wing || !sh.wingElec) throw new Error('sin out.wing / out.wingElec');
     let n = 0, dist = 0;
@@ -2960,6 +2963,162 @@ console.log('v1.52 · el tilt N-S entra en pvlib con el signo de pvlib, y la pal
       if (tilt > 0 && borde < 0.05) throw new Error(`amp ${amp} tilt ${tilt}: la fila de borde al alba no ve el terreno (${(borde * 100).toFixed(1)} %)`);
     }
   });
+}
+
+console.log('v1.53 · torsión entre vigas vecinas: el backtracking mira toda la mesa, y la sombra dice de quién viene');
+{
+  /* Ignacio, Arequipa (−16,6°, UTC −5), 21-jun, bifila quebrada, perfil N-S
+     senoidal de 3° y pendiente constante 5,14°: «los algoritmos funcionan mal,
+     ¿qué sentido tiene que el primer tracker no se tumbe?». Con tilts 0°/3°
+     alternos las vigas vecinas NO son paralelas: la vecina está 1,7 m más
+     alta en un extremo que en el centro y el pairwise, que decidía con la
+     pendiente del centro y un tilt medio, dejaba un 22-30 % de sombra a
+     07:00-07:20. Ahora el candidato de pvlib se comprueba con el ray-cast 3D
+     de la pareja y, si sombrea, se barre el ángulo con signo (pasando de
+     cero) hasta el primer θ sin sombra, con una pasada de reparación entre
+     parejas. Sin torsión no cambia ni un bit. */
+  const LL = [-16.59577, -71.80644], DIA = Date.UTC(2026, 5, 21);
+  const mkAreq = (amp, drive) => {
+    const n = 8, pitch = 6, cw = 2.382, pend = 5.14;
+    const ELEV = []; for (let i = 0; i < n; i++) ELEV.push(-i * pitch * Math.tan(pend * Math.PI / 180));
+    const rowTilt = []; for (let i = 0; i < n; i++) rowTilt.push(amp * Math.sin(2 * Math.PI * i / 4));
+    const groups = drive === 'mono' ? null : [[0, 1], [2, 3], [4, 5], [6, 7]], filaLen = 2 * 28 * 1.146 + 0.55;
+    return { pairs: F.pairsFromElev(ELEV, pitch, rowTilt), cw, axisAz: 0, maxAngle: 55, gcr: cw / pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt, groups, drive, segs: F.nsSegments(n, 'alineadas', 1, filaLen, 1.0, drive === 'mono' ? 1 : 2), filaLen };
+  };
+  const sol = (hLoc) => F.solarPos(DIA + (hLoc * 60 + 300) * 60000, LL[0], LL[1]);
+  t('sin torsión, pairwise es bit a bit el de siempre (pvlib en el centro y min|θ| entre parejas)', () => {
+    const T = mkAreq(0, 'quebrado');
+    for (const h of [7, 8, 10, 14, 17]) {
+      const g = sol(h);
+      const a = F.anglesPairwise(g.zen, g.az, T);
+      const th = T.pairs.map(p => F.singleaxis(g.zen, g.az, { axisTilt: F.pvTilt(p.axisTilt), axisAz: 0, maxAngle: 55, backtrack: true, gcr: T.cw / p.pitch, crossAxisTilt: p.slope }));
+      const esp = [th[0]]; for (let r = 1; r < 7; r++) esp.push(Math.abs(th[r - 1]) < Math.abs(th[r]) ? th[r - 1] : th[r]); esp.push(th[6]);
+      for (let r = 0; r < 8; r++) if (a[r] !== esp[r]) throw new Error(`${h}h fila ${r}: ${a[r]} ≠ ${esp[r]} — sin torsión el pairwise ha cambiado`);
+    }
+  });
+  t('Arequipa con torsión (senoidal 3°): el pairwise se tumba y la sombra de planos baja del 22-30 % a ≤ 3 %', () => {
+    for (const drive of ['quebrado', 'mono']) {
+      const T = mkAreq(3, drive);
+      for (const [h, tope] of [[7, 0.04], [7 + 20 / 60, 0.03], [7 + 40 / 60, 0.02], [8, 0.02], [8.5, 0.02]]) {
+        const g = sol(h);
+        const ang = F.policyAngles('pairwise', g.zen, g.az, T, { ghi: 500, dni: 600, dhi: 80 }, 172, 0.2).angles;
+        const sh = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true, MV: 32 });
+        const mx = Math.max(...sh);
+        if (mx > tope) throw new Error(`${drive} ${h.toFixed(2)}h (sol ${g.elev.toFixed(1)}°): sombra de planos ${(mx * 100).toFixed(1)} % > ${tope * 100} % con θ ${ang.map(a => a.toFixed(0)).join('/')}`);
+      }
+      // y a las 07:20 se tumba de verdad: antes 43° con 22 %, ahora cerca de 0
+      const g = sol(7 + 20 / 60);
+      const ang = F.anglesPairwise(g.zen, g.az, T);
+      if (Math.max(...ang.map(Math.abs)) > 25) throw new Error(`${drive} 07:20: sigue sin tumbarse: θ ${ang.map(a => a.toFixed(0)).join('/')}`);
+    }
+  });
+  t('el evaluador 3D por pareja (shadePair3DBand) cuenta como el contador: cara a zOff y base oblicua', () => {
+    const T = mkAreq(3, 'mono'), g = sol(7);
+    const ang = new Array(8).fill(40);
+    const ct = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true, MV: 32 });
+    for (let p = 0; p < 7; p++) {
+      const b = F.shadePair3DBand(g.zen, g.az, T, ang, p, { MU: 32, MV: 32 });
+      const r = b.recv;
+      if (Math.abs(b.f - ct[r]) > 0.03) throw new Error(`pareja ${p}: evaluador ${(b.f * 100).toFixed(1)} % vs contador ${(ct[r] * 100).toFixed(1)} % en la fila ${r}`);
+    }
+  });
+  t('el contador dice DE QUIÉN viene la sombra de cada fila (out.de): emisoras y terreno, y cubre lo que cobra', () => {
+    const T = mkAreq(3, 'quebrado'), g = sol(16 + 55 / 60);           // ocaso: sol a 5° del WNW, el terreno sube al oeste
+    const ang = F.policyAngles('global', g.zen, g.az, T, { ghi: 60, dni: 200, dhi: 30 }, 172, 0.2).angles;
+    const sh = F.shadeRows(g.zen, g.az, T, ang);
+    if (!sh.de || sh.de.length !== 8) throw new Error('sin out.de');
+    let conTerreno = 0;
+    sh.de.forEach((l, r) => {
+      const suma = l.reduce((a, q) => a + q[1], 0);
+      if (sh[r] > 1e-3 && !(suma >= sh[r] - 1e-6)) throw new Error(`fila ${r}: las contribuciones (${(suma * 100).toFixed(1)} %) no cubren la sombra (${(sh[r] * 100).toFixed(1)} %)`);
+      if (sh[r] <= 1e-3 && l.length) throw new Error(`fila ${r}: atribución sin sombra`);
+      for (let i = 1; i < l.length; i++) if (l[i][1] > l[i - 1][1]) throw new Error('no va de mayor a menor');
+      for (const q of l) { if (q[0] === 'terreno') conTerreno++; else if (!(Number.isInteger(q[0]) && q[0] !== r)) throw new Error('emisora rara: ' + q[0]); }
+    });
+    if (!conTerreno) throw new Error('al ocaso con la loma al oeste ninguna fila atribuye sombra al terreno');
+  });
+}
+
+console.log('v1.53 · barrido de terrenos REDUCIDO (el grande es tools/barrido_terrenos.mjs)');
+{
+  /* «Haz un millón de pruebas con los diferentes terrenos, trackers y algoritmos».
+     El barrido grande (tools/barrido_terrenos.mjs, 40 configuraciones × 3 fechas ×
+     cada 20 min) encontró: (A) el contador podaba emisoras por alcance con 9 m
+     de altura útil a fuego y con torsión hay 13,6 m (5,5 pp contra el oráculo);
+     (B) 2.520 instantes en que pairwise/true3d/mgl dejaban sombra que un θ
+     uniforme evitaba —filas NO adyacentes (Bagnarelli, tresbolillo, ondulado) y
+     torsión— y de ahí la reparación global `repairNoShade`. Aquí, seis
+     configuraciones fijas que cubren esas familias, con los mismos invariantes. */
+  const sitios = { Z: { lat: 41.5763, lon: -0.7981, alt: 300 }, A: { lat: -16.59577, lon: -71.80644, alt: 1563 } };
+  const elevPreset = (P, v, n, pitch) => {
+    const z = new Array(n).fill(0), RAD = Math.PI / 180;
+    if (P === 'pendiente') for (let i = 0; i < n; i++) z[i] = -i * pitch * Math.tan(v * RAD);
+    else if (P === 'ondulado') for (let i = 0; i < n; i++) z[i] = v * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2)));
+    else if (P === 'valle') for (let i = 0; i < n; i++) z[i] = v * Math.abs(i - (n - 1) / 2) / ((n - 1) / 2);
+    else if (P === 'cresta') for (let i = 0; i < n; i++) z[i] = -v * Math.abs(i - (n - 1) / 2) / ((n - 1) / 2) + v;
+    return z;
+  };
+  const nsProfile = (preset, v, n) => { const out = new Array(n).fill(v);
+    if (preset === 'quebrado') for (let i = 0; i < n; i++) out[i] = i < n / 2 ? v : -v;
+    else if (preset === 'senoidal') for (let i = 0; i < n; i++) out[i] = v * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2)));
+    return out; };
+  const mk = (c) => {
+    const ELEV = elevPreset(c.tp, c.tv, c.n, 6), groups = F.driveGroups(c.n, c.drive);
+    const eff = F.effRowTilts(nsProfile(c.ns, c.nv, c.n), c.drive, groups), filaLen = 2 * 28 * 1.146 + 0.55;
+    const segs = F.nsSegments(c.n, c.nsl, c.ntrk || 1, filaLen, 1.0, c.drive === 'mono' ? 1 : 2);
+    if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
+    return { pairs: F.pairsFromElev(ELEV, 6, eff), cw: 2.382, axisAz: c.az || 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: eff, groups, drive: c.drive, segs, filaLen };
+  };
+  const CFGS = [
+    { nm: 'ondulado 2 · N-S 6 · bifila · alineadas · Arequipa', tp: 'ondulado', tv: 2, ns: 'constante', nv: 6, drive: 'bifila', nsl: 'alineadas', n: 8, s: 'A' },
+    { nm: 'cresta 3 · llano N-S · mono · bagnarelli · az 15 · Arequipa', tp: 'cresta', tv: 3, ns: 'constante', nv: 0, drive: 'mono', nsl: 'bagnarelli', n: 10, az: 15, s: 'A' },
+    { nm: 'pendiente 10 · senoidal 4 · mono · medios · az 15 · Zaragoza', tp: 'pendiente', tv: 10, ns: 'senoidal', nv: 4, drive: 'mono', nsl: 'medios', n: 6, az: 15, s: 'Z' },
+    { nm: 'llano · quebrado 6 · quebrado · bagnarelli · az 15 · Zaragoza', tp: 'llano', tv: 0, ns: 'quebrado', nv: 6, drive: 'quebrado', nsl: 'bagnarelli', n: 6, az: 15, s: 'Z' },
+    { nm: 'valle 1 · quebrado 6 · mono · medios ×2 · az −20 · Arequipa', tp: 'valle', tv: 1, ns: 'quebrado', nv: 6, drive: 'mono', nsl: 'medios', ntrk: 2, n: 8, az: -20, s: 'A' },
+    { nm: 'ondulado 1.2 · N-S 3 · mono · tresbolillo · az 15 · Zaragoza', tp: 'ondulado', tv: 1.2, ns: 'constante', nv: 3, drive: 'mono', nsl: 'tresbolillo', n: 8, az: 15, s: 'Z' },
+  ];
+  const DIAS = [[Date.UTC(2026, 5, 21), 172], [Date.UTC(2026, 11, 21), 355]];
+  const filasDe = (sh, r) => { const de = sh.de && sh.de[r] ? sh.de[r] : []; return Math.min(sh[r] || 0, de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0)); };
+  for (const c of CFGS) {
+    const T = mk(c), st = sitios[c.s];
+    t(`barrido · ${c.nm}: contador ≡ oráculo, sin-sombra ≤ 5 % de filas (o lo que ningún θ evita), energía y acople`, () => {
+      let peorA = 0, peorB = null, nB = 0;
+      for (const [dia, doy] of DIAS) for (let m = 0; m < 1440; m += 40) {
+        const g = F.solarPos(dia + m * 60000, st.lat, st.lon);
+        if (g.elev <= 3) continue;
+        const irr = F.clearskyIneichen(g.zen, doy, st.alt, 3.5);
+        const ang = {};
+        for (const key of ['pairwise', 'true3d', 'mgl', 'optimal', 'optfree']) {
+          ang[key] = F.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles;
+          if (ang[key].some(a => !isFinite(a) || Math.abs(a) > 55 + 1e-6)) throw new Error(`${key}: θ fuera de rango ${ang[key]}`);
+          if (T.groups) for (const gr of T.groups) if (gr.length === 2 && Math.abs(ang[key][gr[0]] - ang[key][gr[1]]) > 1e-9) throw new Error(`${key}: el accionamiento ${gr} no va acoplado`);
+        }
+        // A
+        if (m % 120 === 0) { const sh = F.shadeRows(g.zen, g.az, T, ang.pairwise), ora = oracleExact(F, g.zen, g.az, T, ang.pairwise);
+          for (let r = 0; r < c.n; r++) peorA = Math.max(peorA, Math.abs(sh[r] - ora[r])); }
+        // B: sombra de filas con las políticas sin-sombra, contra lo alcanzable con θ uniforme
+        for (const key of ['pairwise', 'true3d', 'mgl']) {
+          const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { noStruct: true, MV: 8 });
+          let mx = 0; for (let r = 0; r < c.n; r++) mx = Math.max(mx, filasDe(sh, r));
+          nB++;
+          if (mx > 0.05) {
+            let alc = 1;
+            for (let th = -55; th <= 55; th += 5) { const s2 = F.shadeBand3DAll(g.zen, g.az, T, new Array(c.n).fill(th), { noStruct: true, MV: 8 }); let m2 = 0; for (let r = 0; r < c.n; r++) m2 = Math.max(m2, filasDe(s2, r)); alc = Math.min(alc, m2); }
+            if (alc <= Math.max(0.01, 0.5 * mx) && (!peorB || mx > peorB.mx)) peorB = { mx, alc, key, elev: g.elev, m, ang: ang[key].map(a => +a.toFixed(0)) };
+          }
+        }
+        // C
+        if (irr.ghi > 5) { const P = {}; for (const key of ['pairwise', 'optimal', 'optfree']) P[key] = F.poaPlant(g.zen, g.az, T, ang[key], irr, doy, 0.2).plant;
+          if (P.optimal < P.pairwise * (1 - 1e-3) - 1e-6) throw new Error(`optimal ${P.optimal.toFixed(1)} < pairwise ${P.pairwise.toFixed(1)} a ${m} min`);
+          if (P.optfree < P.optimal * (1 - 1e-3) - 1e-6) throw new Error(`optfree ${P.optfree.toFixed(1)} < optimal ${P.optimal.toFixed(1)} a ${m} min`); }
+      }
+      if (peorA > 1e-3) throw new Error(`contador vs oráculo: ${(peorA * 100).toFixed(2)} pp`);
+      if (peorB) throw new Error(`${peorB.key} deja ${(peorB.mx * 100).toFixed(1)} % de sombra de filas a ${peorB.elev.toFixed(1)}° (min ${peorB.m}) cuando un θ uniforme baja a ${(peorB.alc * 100).toFixed(1)} % · θ ${peorB.ang.join('/')}`);
+      if (nB < 30) throw new Error('pocos instantes: ' + nB);
+    });
+  }
 }
 
 console.log('');

@@ -116,6 +116,11 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Barrido de terrenos** (`node tools/barrido_terrenos.mjs [nConfigs] [semilla] --oraculo=N`): terrenos E-O ×
+  perfiles N-S × accionamientos × implantaciones × latitudes × fechas × políticas, con los invariantes que
+  tienen que cumplirse siempre (contador ≡ oráculo, políticas sin-sombra → sombra de filas ~0 salvo lo que
+  ningún θ evita, optimal ≥ pairwise ≥ …, acople por motor, θ en rango) y la lista de los peores casos.
+  Una versión reducida (seis configuraciones) va en la batería.
 - Documentación completa: `proyectos/docs/backtracking-sim.md` (botón Documentación de su ficha en el Panel).
 
 ## Telemetría de planta — ¿corrige el relieve? (`telemetria.html`)

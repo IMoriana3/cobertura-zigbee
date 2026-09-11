@@ -328,6 +328,7 @@
       <select id="colprod" class="btn small" title="PRODUCCIÓN POR FILA (string) EN COLORES, pintada sobre las palas: azul = la fila que menos produce, rojo = la que más (escala min→max de la planta, leyenda al lado).&#10;· instante: POA neta W/m² del momento del slider — responde en vivo al manual y a la nubosidad.&#10;· día: POA acumulada kWh/m² del día de la política de la ESCENA.&#10;La sombra calculada (silueta roja) se sigue pintando encima."><option value="off">sin color</option><option value="inst">⚡ producción · instante</option><option value="day">Σ producción · día</option></select>
       <span id="prodleg" style="display:none;align-items:center;gap:4px;font-family:var(--mono);font-size:.62rem;color:var(--muted)"><span id="prodlo"></span><span id="prodbar" style="display:inline-block;width:70px;height:8px;border-radius:4px"></span><span id="prodhi"></span></span>
       <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
+      <label class="btn small" title="HAZ DE SOMBRA: el volumen tenue que va desde el objeto que sombrea (la pala vecina) hasta su mancha roja sobre la mesa sombreada — para ver DE DÓNDE viene cada sombra. El globo de la fila dice de quién es (fila emisora o terreno) y cuánto." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="haz3d" checked> ▤ haz</label>
       <select id="light3d" class="btn small" title="Iluminación de la escena: LUZ REAL (intensidad y color según la altura del sol — amanecer y ocaso rojizos, como en los 3D de la casa) o LUZ A TOPE (plana y brillante para inspeccionar sombras a cualquier hora)"><option value="real">☀ luz real</option><option value="tope">🔦 a tope</option></select>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
       <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
@@ -668,9 +669,7 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
       const r=tangentResidualPairMm(zen,az,T,ang,p);
       return isFinite(r)?Math.max(0,-(r+1)):0;         // mm por debajo de −1 (core)
     }
-    const pr=T.pairs[p];
-    const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
-    const f=shadeFracPair(psz,ang[p],ang[p+1],pr.pitch,T.cw,pr.slope,T.z0);
+    const f=pairShade25(zen,az,T,p,ang[p],ang[p+1]);        // con torsión: la peor estación
     return f>1e-3?f:0;
   };
   const shadedPair=(p,ang)=>pairViol(p,ang)>0;
@@ -746,13 +745,104 @@ function meanPair(T){
 
 /* ── políticas de ángulo — mismas semánticas que tracker3d.py ────────────── */
 function nan0(v){return isFinite(v)?v:0;}
+/* TORSIÓN ENTRE VIGAS VECINAS. pvlib supone las dos vigas de una pareja
+   PARALELAS: una pendiente transversal y un tilt. Con perfil N-S por fila
+   (bifila quebrada, senoidal, cotas reales) no lo son: con 0° y 3° la vecina
+   está 1,7 m más alta en un extremo que en el centro, la pendiente entre
+   ejes cambia a lo largo de la mesa y la sombra la manda el PEOR extremo.
+   Decidir con la pendiente del centro dejaba un 22-30 % de sombra en
+   pairwise (Arequipa, 21-jun 07:00-07:20, senoidal 3° + pendiente 5,14°)
+   —«¿qué sentido tiene que el primer tracker no se tumbe?»—. Se evalúa en
+   las estaciones del solape (extremos y centro: la pendiente es lineal en
+   v) y gana el menor |θ|: reducir |θ| desde un backtracking nunca crea
+   sombra. Con vigas paralelas es UNA estación y sale lo de siempre, bit a
+   bit. Solo con perfil por fila declarado (T.rowTilt): sin él el contador
+   dibuja las filas horizontales y no hay torsión que mirar. */
+function pairStations(T,p){
+  const pr=T.pairs[p];
+  if(!T.rowTilt)return [{v:0,slope:pr.slope}];
+  const ta=T.rowTilt[p]||0, tb=T.rowTilt[p+1]||0;
+  if(Math.abs(ta-tb)<1e-9)return [{v:0,slope:pr.slope}];
+  const rango=(r)=>{const sg=(T.segs&&T.segs[r])?T.segs[r]:[[-30,30]];
+    let lo=Infinity,hi=-Infinity;for(const s2 of sg){lo=Math.min(lo,s2[0],s2[1]);hi=Math.max(hi,s2[0],s2[1]);}return [lo,hi];};
+  const [a0,a1]=rango(p), [b0,b1]=rango(p+1);
+  const lo=Math.max(a0,b0), hi=Math.min(a1,b1);
+  if(!(hi>lo))return [{v:0,slope:pr.slope}];
+  const dz0=-pr.pitch*Math.tan(pr.slope*RAD);            // z(p+1)−z(p) en v=0
+  const dt=Math.tan(tb*RAD)-Math.tan(ta*RAD);
+  // cada ~8 m: el peor punto NO está en el extremo (allí el rayo suele pasar
+  // por delante del final de la vecina) sino a media mesa — en Arequipa a
+  // 20 m del centro, donde el θ sin sombra era −5° y en el extremo +11°
+  const n=Math.max(3,Math.ceil((hi-lo)/8)+1), out=[];
+  for(let i=0;i<n;i++){const v=lo+(hi-lo)*i/(n-1);out.push({v:v,slope:Math.atan2(-(dz0+v*dt),pr.pitch)*DEG});}
+  return out;
+}
+/* sombra 2.5D de una pareja CON torsión: la peor de sus estaciones (con vigas
+   paralelas, la de siempre). Es el evaluador rápido que usan pairwise, el
+   acople por accionamiento, shadeRows25 y el óptimo libre. */
+function pairShade25(zen,az,T,p,thA,thB){
+  const pr=T.pairs[p];
+  const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
+  let m=0;
+  for(const st of pairStations(T,p))m=Math.max(m,shadeFracPair(psz,thA,thB,pr.pitch,T.cw,st.slope,T.z0));
+  return m;
+}
+/* θ sin sombra de una pareja con torsión a partir del candidato de pvlib t0:
+   si en alguna estación queda sombra, se barre el ángulo CON SIGNO desde t0
+   hacia el otro lado (pvlib ya pasa de cero cuando toca: «over-backtracking»)
+   y gana el primer θ sin sombra, el más cercano al original; si no existe,
+   el de mínima violación. Sin torsión devuelve t0 tal cual. */
+function pairThetaTorsion(zen,az,T,p,t0){
+  if(pairStations(T,p).length===1)return t0;
+  // la violación se mide con el ray-cast 3D DE LA PAREJA (shadePair3DBand:
+  // tilt de cada fila, desplazamiento axial del impacto, mesas finitas), no
+  // con la cuerda 2.5D por estaciones: a sol rasante el 2.5D daba −3° por
+  // bueno y el contador 3D veía un 13 % (el impacto cae 3 m más al norte,
+  // donde la vecina a 3° ya es 15 cm más alta)
+  const nR=T.pairs.length+1;
+  const viol=(t)=>{const a=new Array(nR).fill(t);return shadePair3DBand(zen,az,T,a,p,{MU:8,MV:12}).f;};
+  let bv=viol(t0);
+  if(bv<=1e-3)return t0;
+  const psz=trueTrackAngle(zen,az,pvTilt(T.pairs[p].axisTilt),T.axisAz), sg=psz>=0?1:-1;
+  let best=t0;
+  for(let t=t0-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){
+    const v=viol(t);
+    if(v<=1e-3)return t;
+    if(v<bv){bv=v;best=t;}
+  }
+  return best;
+}
 function anglesPairwise(zen,az,T){
   // por pareja; filas interiores adoptan min(|θ|) de sus dos parejas
   const nR=T.pairs.length+1, out=new Array(nR);
-  const th=T.pairs.map(p=>nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
-    maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})));
+  const th=T.pairs.map((p,i)=>pairThetaTorsion(zen,az,T,i,nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
+    maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/p.pitch,crossAxisTilt:p.slope}))));
   out[0]=th[0]; out[nR-1]=th[th.length-1];
-  for(let r=1;r<nR-1;r++)out[r]=Math.abs(th[r-1])<Math.abs(th[r])?th[r-1]:th[r];
+  // la fila interior toma el de sus dos parejas MÁS backtrackeado: min(sg·θ)
+  // con sg el lado del sol — con candidatos del lado del sol es min|θ|, lo de
+  // siempre; con torsión un candidato puede haber pasado de cero (−5°) y
+  // min|θ| lo habría descartado frente a un +3° que sí sombrea
+  const sg=trueTrackAngle(zen,az,0,T.axisAz)>=0?1:-1;
+  for(let r=1;r<nR-1;r++)out[r]=sg*th[r-1]<sg*th[r]?th[r-1]:th[r];
+  // REPARACIÓN con torsión: pasada de cero, la sombra de una pareja ya no es
+  // monótona en cada fila por separado (la receptora a −11° y la emisora a
+  // −6° sombrean donde las dos a −11° no). Se comprueba cada pareja con el
+  // ray-cast 3D y, si sombrea, las dos filas van al más backtrackeado de los
+  // dos (o medio grado más allá si ya iban iguales), hasta que ninguna
+  // sombree o se agote el tope. Sin torsión no entra nunca.
+  if(T.rowTilt&&isFinite(zen)&&zen<90&&T.pairs.some((_,i)=>pairStations(T,i).length>1)){
+    for(let it=0;it<12;it++){
+      let dirty=false;
+      for(let p=0;p<T.pairs.length;p++){
+        if(shadePair3DBand(zen,az,T,out,p,{MU:8,MV:12}).f<=1e-3)continue;
+        let t=sg*out[p]<sg*out[p+1]?out[p]:out[p+1];
+        if(out[p]===out[p+1])t=t-sg*0.5;
+        t=Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
+        if(out[p]!==t||out[p+1]!==t){out[p]=t;out[p+1]=t;dirty=true;}
+      }
+      if(!dirty)break;
+    }
+  }
   return out;
 }
 function rowTiltAt(T,r){
@@ -833,14 +923,19 @@ function anglesTrue3d(zen,az,T){
   // lado en un momento distinto — un signo global (bug: el de la ÚLTIMA pareja
   // pisaba a todas) ponía filas a −θ con la vecina a +θ ⇒ sombra masiva
   const pm=[],pc=[],ps=[];
-  for(const p of T.pairs){
-    const b=bt3dPairMaxMag(zen,az,p.slope,p.axisTilt,p.pitch,T.cw,T.axisAz,T.maxAngle);
+  T.pairs.forEach((p,pi)=>{
+    // con torsión, el tope 3D es el de la PEOR estación de la pareja
+    let b=null;
+    for(const st of pairStations(T,pi)){
+      const bb=bt3dPairMaxMag(zen,az,st.slope,p.axisTilt,p.pitch,T.cw,T.axisAz,T.maxAngle);
+      if(b===null||bb.mag<b.mag)b=bb;
+    }
     const full=Math.abs(nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
       maxAngle:T.maxAngle,backtrack:false,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})));
     pm.push(Math.min(full,Math.max(0,Math.min(b.mag-MARGIN,T.maxAngle))));
     pc.push(Math.max(0,Math.min(b.mag,T.maxAngle)));
     ps.push(b.sgn);
-  }
+  });
   const mag=new Array(nR), ceil=new Array(nR);
   mag[0]=pm[0]; mag[nR-1]=pm[pm.length-1];
   ceil[0]=pc[0]; ceil[nR-1]=pc[pc.length-1];
@@ -1292,7 +1387,7 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
   const azR=(az-T.axisAz)*RAD, el=(90-zen)*RAD;
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return {f:0,recv:recv};
-  const hw=T.cw/2;
+  const hw=T.cw/2, zOff=(T.z0!=null&&isFinite(T.z0))?T.z0:REC_OFF;
   const xr=recv===p?0:pr.pitch, xe=emit===p?0:pr.pitch;
   const thR=rowAngles[recv]*RAD, thE=rowAngles[emit]*RAD;
   // cota del EJE de cada fila en el norte v: con planta REAL, la de sus mesas
@@ -1325,15 +1420,23 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
     const uD=[Math.cos(thE),0,-Math.sin(thE)];       // cuerda
     const vD=[0,1,sE];                               // eje del tramo (pendiente real)
     const nE=[uD[1]*vD[2]-uD[2]*vD[1],uD[2]*vD[0]-uD[0]*vD[2],uD[0]*vD[1]-uD[1]*vD[0]];
-    planes.push({w0:w0,w1:w1,C:[xe,(w0+w1)/2,(z0e+z1e)/2],nE:nE,uD:uD,vD:vD,len:w1-w0});
+    // la CARA del módulo emisor va zOff sobre el eje, por su normal — como en
+    // el contador. Con la emisora en el eje y la receptora subida 0,17 m en
+    // vertical este evaluador daba 0 % donde el contador veía un 9 %
+    const lnE=Math.hypot(nE[0],nE[1],nE[2])||1;
+    planes.push({w0:w0,w1:w1,C:[xe+zOff*nE[0]/lnE,(w0+w1)/2+zOff*nE[1]/lnE,(z0e+z1e)/2+zOff*nE[2]/lnE],nE:nE,uD:uD,vD:vD,len:w1-w0});
   }
   const MU=(res&&res.MU)||8, MV=(res&&res.MV)||8;
   let hit=0,N=0;
   for(const sg of segR){
     const v0=Math.min(sg[0],sg[1]), v1=Math.max(sg[0],sg[1]);
+    // cara receptora zOff sobre su eje por SU normal (cuerda girada + pendiente axial del tramo)
+    const sRr=(cotOf(recv,v1)-cotOf(recv,v0))/((v1-v0)||1);
+    const nrv=[Math.sin(thR),-Math.cos(thR)*sRr,Math.cos(thR)], lnr=Math.hypot(nrv[0],nrv[1],nrv[2])||1;
+    const of0=zOff*nrv[0]/lnr, of1=zOff*nrv[1]/lnr, of2=zOff*nrv[2]/lnr;
     for(let i=0;i<MU;i++)for(let j=0;j<MV;j++){
       const u=-hw+T.cw*(i+0.5)/MU, v=v0+(v1-v0)*(j+0.5)/MV;
-      const P=[xr+u*Math.cos(thR), v, cotOf(recv,v)-u*Math.sin(thR)+T.z0];
+      const P=[xr+u*Math.cos(thR)+of0, v+of1, cotOf(recv,v)-u*Math.sin(thR)+of2];
       N++;
       let sh=false;
       for(const pl of planes){
@@ -1343,7 +1446,11 @@ function shadePair3DBand(zen,az,T,rowAngles,p,res){
         if(t<=1e-6)continue;
         const H=[P[0]+t*sv[0],P[1]+t*sv[1],P[2]+t*sv[2]];
         const d0=[H[0]-pl.C[0],H[1]-pl.C[1],H[2]-pl.C[2]];
-        const du=d0[0]*pl.uD[0]+d0[1]*pl.uD[1]+d0[2]*pl.uD[2];
+        // base OBLICUA (uD·vD = −sin θE·sE): la cuerda del impacto es (H−C)·uD − w·(uD·vD),
+        // con w = H1 − C1 — la misma corrección que el contador (v1.52); este
+        // evaluador arrastraba el mismo defecto y daba «sin sombra» a −6° donde
+        // el contador veía un 13 %
+        const du=d0[0]*pl.uD[0]+d0[1]*pl.uD[1]+d0[2]*pl.uD[2]-d0[1]*(pl.uD[0]*pl.vD[0]+pl.uD[1]*pl.vD[1]+pl.uD[2]*pl.vD[2]);
         const dv=d0[1];
         if(Math.abs(du)<=hw&&Math.abs(dv)<=pl.len/2){sh=true;break;}
       }
@@ -1592,9 +1699,17 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     }
   }
   const zSky=(planes.length?Math.max(...planes.map(p=>p.C[2])):0)+4;
-  // alcance de la sombra: altura útil ~9 m (cuerda + desniveles) / tan(elev)
+  // alcance de la sombra: altura útil / tan(elev). Eran 9 m a fuego («cuerda +
+  // desniveles») y con torsión no llega: con perfil quebrado ±6° sobre mesas
+  // de 65 m, la fila 5 está 13,6 m por encima de la fila 1 en el extremo sur
+  // y la sombreaba desde 24 m (el oráculo sin podas lo veía: 7 %, el
+  // contador 0). La altura útil es el DESNIVEL REAL entre extremos de mesa
+  // de toda la planta, más la cuerda
+  let zLo=Infinity,zHi=-Infinity;
+  for(let e2=0;e2<nR;e2++)for(const sg of segsOf(e2))for(const w of [sg[0],sg[1]]){const z=cot(e2,w);if(z<zLo)zLo=z;if(z>zHi)zHi=z;}
+  const hUtil=Math.max(9,(isFinite(zHi-zLo)?zHi-zLo:0)+T.cw+1);
   const horiz=Math.hypot(sv[0],sv[1]);
-  const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
+  const reach=horiz>1e-6?hUtil*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
   const MV=(res&&res.MV)||8, noStruct=!!(res&&res.noStruct);
   // unión de intervalos de cuerda (fuera del bucle: se llama ~1.700 veces por
@@ -1610,6 +1725,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     return Math.min(1,(len+ch-cl)/T.cw);
   };
   const elec=new Array(nR).fill(0), plOnly=new Array(nR).fill(0);
+  const atr=new Array(nR), nSt=new Array(nR).fill(0);   // DE QUIÉN viene la sombra de cada fila: {fila emisora|terreno: fracción}
   const segOut=new Array(nR), segElec=new Array(nR);   // por TRAMO (v1.41)
   const wingOut=new Array(nR), wingElec=new Array(nR); // por ALA de cada tramo (v1.43): [sur (n bajo), norte]
   let elecSum=0,nCol=0;
@@ -1617,7 +1733,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   for(const pl of planes)pl.den=pl.nE[0]*sv[0]+pl.nE[1]*sv[1]+pl.nE[2]*sv[2];
   for(let r=0;r<nR;r++){
     let thR=thOf(r,0)*RAD;
-    segOut[r]=[];segElec[r]=[];wingOut[r]=[];wingElec[r]=[];
+    segOut[r]=[];segElec[r]=[];wingOut[r]=[];wingElec[r]=[];atr[r]={};
     // PODA por fila: solo los planos del lado del sol dentro del alcance,
     // ordenados por cercanía (la emisora más próxima suele impactar primero)
     // — sin esto el contador a todas horas costaba minutos, no segundos
@@ -1630,7 +1746,15 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       const dx=pl.x-xs[r];
       if(dx*sgn<=0||Math.abs(dx)>reach||Math.abs(pl.den)<1e-9)continue;
       const shf=ratio===null?0:-dx*ratio;
-      const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02;
+      // ...y el desplazamiento axial por DESNIVEL: un rayo que baja Δz recorre
+      // Δz·sv_y/sv_z a lo largo del eje. Con torsión (perfil quebrado ±6°) la
+      // emisora está hasta 7 m por encima de la receptora en un extremo y su
+      // sombra cae 11 m más allá de donde la poda la esperaba: el contador
+      // perdía sombra que el oráculo sin podas veía (5,5 pp, barrido de
+      // terrenos). Se ensancha la ventana con el desnivel máximo entre las dos
+      const dzMax=Math.max(Math.abs(pl.C[2]-cot(r,pl.w0)),Math.abs(pl.C[2]-cot(r,pl.w1)))+T.cw;
+      const axial=Math.abs(sv[1])/Math.max(sv[2],1e-3);
+      const slack=ratio===null?1e9:4+hw*Math.abs(ratio)+Math.abs(dx)*0.02+dzMax*axial;
       cands.push({pl:pl,adx:Math.abs(dx),lo:pl.w0+shf-slack,hi:pl.w1+shf+slack});
     }
     // SIN emisoras del lado del sol NO se salta la fila: el TERRENO sigue
@@ -1684,6 +1808,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
         const zR=cot(r,v);
         const px0=xs[r]+of0, py0=v+of1, pz0=zR+of2;      // cara del módulo receptor
         let ivs=null, ivP=null, hayStr=false;            // todo · solo PLANOS
+        const porE={};                                   // intervalos de esta estación POR EMISORA
         for(const pl of cSeg){
           const t0=(pl.C[0]-px0)*pl.nE[0]+(pl.C[1]-py0)*pl.nE[1]+(pl.C[2]-pz0)*pl.nE[2];
           const tc=cR*pl.nE[0]+s2*pl.nE[2];
@@ -1712,22 +1837,23 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
           const wq=py0-pl.C[1]+q*t0;                                          // w(u) = wq − q·tc·u
           d0-=pl.kuv*wq; dc+=pl.kuv*q*tc;                                     // |uE|≤hw
           lin(dc,hw-d0); lin(-dc,hw+d0);
-          if(ok&&hi-lo>1e-12){(ivs=ivs||[]).push([lo,hi]);(ivP=ivP||[]).push([lo,hi]);}
+          if(ok&&hi-lo>1e-12){(ivs=ivs||[]).push([lo,hi]);(ivP=ivP||[]).push([lo,hi]);(porE[pl.e]=porE[pl.e]||[]).push([lo,hi]);}
           // VIGA de torsión de esa misma emisora (caja convexa, exacta).
           // res.noStruct la apaga: sirve para AISLAR el invariante clásico
           // «backtracking de planos ⇒ sombra cero», que se sigue cumpliendo
           if(!noStruct){
             if(pl.verTb){
               const ivT=boxChordIv([px0,py0,pz0],[cR,0,s2],sv,pl.tb,-hw,hw);
-              if(ivT){(ivs=ivs||[]).push(ivT);hayStr=true;}
+              if(ivT){(ivs=ivs||[]).push(ivT);hayStr=true;(porE[pl.e]=porE[pl.e]||[]).push(ivT);}
             }
             if(pl.verSl){
               const ivS=boxChordIv([px0,py0,pz0],[cR,0,s2],sv,pl.sl,-hw,hw);
-              if(ivS){(ivs=ivs||[]).push(ivS);hayStr=true;}
+              if(ivS){(ivs=ivs||[]).push(ivS);hayStr=true;(porE[pl.e]=porE[pl.e]||[]).push(ivS);}
             }
           }
         }
         let fCol=unir(ivs);
+        const fColSinTerr=fCol;                           // lo que NO es terreno (para atribuir)
         // la MISMA cuenta SIN la estructura de la mesa (el terreno se le suma
         // igual, más abajo): así la diferencia out−pl es exactamente el hierro
         // —viga y canto—, que ninguna consigna puede evitar
@@ -1760,6 +1886,10 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
             fPl=Math.max(fPl,tf);            // la loma tapa igual sin estructura
           }
         }
+        // atribución: cuánto de esta estación tapa cada emisora (unión de sus
+        // propios intervalos: pueden solaparse entre emisoras, es CONTRIBUCIÓN)
+        for(const e in porE)atr[r][e]=(atr[r][e]||0)+unir(porE[e]);
+        if(fCol>fColSinTerr+1e-9)atr[r].terreno=(atr[r].terreno||0)+(fCol-fColSinTerr);
         hit+=fCol; N++; hitP+=fPl;
         elecSum+=elecLoss(fCol,T.nBypass); nCol++;
         hitS+=fCol; NS++; elecS+=elecLoss(fCol,T.nBypass);   // la cuenta de este tramo (v1.41)
@@ -1770,13 +1900,15 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
       wingOut[r].push([NW[0]?hitW[0]/NW[0]:0,NW[1]?hitW[1]/NW[1]:0]);
       wingElec[r].push([NW[0]?elecW[0]/NW[0]:0,NW[1]?elecW[1]/NW[1]:0]);
     }
-    out[r]=N?hit/N:0;
+    out[r]=N?hit/N:0; nSt[r]=N;
     plOnly[r]=N?hitP/N:0;
     elec[r]=nCol?elecSum/nCol:0;
     elecSum=0;nCol=0;
   }
   out.elec=elec;
   out.pl=plOnly;            // sombra contando SOLO planos de módulo
+  // de quién viene la sombra de cada fila: [[fila emisora | 'terreno', fracción], …] de mayor a menor
+  out.de=atr.map((m,r)=>Object.keys(m||{}).map(k=>[k==='terreno'?'terreno':+k,m[k]/(nSt[r]||1)]).filter(x=>x[1]>1e-4).sort((a,b)=>b[1]-a[1]));
   out.seg=segOut;           // fracción óptica por TRAMO (mesa)
   out.segElec=segElec;      // pérdida Martinez por TRAMO
   out.wing=wingOut;         // fracción óptica por ALA de cada tramo (v1.43)
@@ -1815,7 +1947,7 @@ function shadeRows25(zen,az,T,rowAngles){
   for(let p=0;p<T.pairs.length;p++){
     const pr=T.pairs[p];
     const psz=trueTrackAngle(zen,az,pvTilt(pr.axisTilt),T.axisAz);
-    let f=shadeFracPair(psz,rowAngles[p],rowAngles[p+1],pr.pitch,T.cw,pr.slope,T.z0)
+    let f=pairShade25(zen,az,T,p,rowAngles[p],rowAngles[p+1])
             *axialCoverage(zen,az,T,p);
     if(f>1e-6){
       const rmm=tangentResidualPairMm(zen,az,T,rowAngles,p);
@@ -2108,12 +2240,28 @@ function anglesPairwiseSeg(zen,az,T){
           const sn=T.segs[rn][kn];
           const lo=Math.max(sg[0],sn[0]),hi=Math.min(sg[1],sn[1]);
           if(hi<=lo)continue;
-          const mid=(lo+hi)/2, za=segZAt(T,r,k,mid), zb=segZAt(T,rn,kn,mid);
-          const slope=(za!=null&&zb!=null)
-            ?Math.atan2(rn>r?za-zb:zb-za,pr.pitch)*DEG
-            :pr.slope;
-          const th=nan0(singleaxis(zen,az,{axisTilt:pvTilt((tk+segTiltAt(T,rn,kn))/2),axisAz:T.axisAz,
-            maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/pr.pitch,crossAxisTilt:slope}));
+          const tkn=segTiltAt(T,rn,kn);
+          const mid=(lo+hi)/2;
+          const slopeAt=(vv)=>{const za=segZAt(T,r,k,vv), zb=segZAt(T,rn,kn,vv);
+            return (za!=null&&zb!=null)?Math.atan2(rn>r?za-zb:zb-za,pr.pitch)*DEG:pr.slope;};
+          let th=nan0(singleaxis(zen,az,{axisTilt:pvTilt((tk+tkn)/2),axisAz:T.axisAz,
+            maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/pr.pitch,crossAxisTilt:slopeAt(mid)}));
+          // con torsión entre las dos mesas (tilts distintos) la pendiente entre
+          // ejes cambia a lo largo del solape: se comprueba la sombra 2.5D en
+          // estaciones con las cotas reales y, si queda, se barre el ángulo con
+          // signo hasta el primer θ sin sombra (mismo criterio que pairThetaTorsion)
+          if(Math.abs(tk-tkn)>1e-9){
+            const psz=trueTrackAngle(zen,az,pvTilt((tk+tkn)/2),T.axisAz), sg=psz>=0?1:-1;
+            const nSt=Math.max(3,Math.ceil((hi-lo)/8)+1), sls=[];
+            for(let i2=0;i2<nSt;i2++)sls.push(slopeAt(lo+(hi-lo)*i2/(nSt-1)));
+            const viol=(t)=>{let m=0;for(const sl of sls)m=Math.max(m,shadeFracPair(psz,t,t,pr.pitch,T.cw,sl,T.z0));return m;};
+            let bv=viol(th);
+            if(bv>1e-3){
+              let bt=th;
+              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){const v=viol(t);if(v<=1e-3){bt=t;bv=0;break;}if(v<bv){bv=v;bt=t;}}
+              th=bt;
+            }
+          }
           if(best===null||Math.abs(th)<Math.abs(best))best=th;
         }
       }
@@ -2259,7 +2407,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
   const k=new Array(units.length).fill(0);
   const angAt=r=>angs[r][k[unitOf[r]]];
   const pairContrib=p=>noShade?0:
-    shadeFracPair(psz[p],angAt(p),angAt(p+1),T.pairs[p].pitch,T.cw,T.pairs[p].slope,T.z0)*axc[p];
+    pairShade25(zen,az,T,p,angAt(p),angAt(p+1))*axc[p];
   const shadeOf=r=>{
     let s=0;
     if(r>0&&psz[r-1]<0)s=Math.max(s,pairContrib(r-1));
@@ -2342,6 +2490,68 @@ function slewLimit(prev,cmd,dtSec,rate){
 
 /* punto de entrada ÚNICO por política: calcula θ por fila y aplica el
    accionamiento — computeDay y la estimación anual pasan por aquí */
+/* REPARACIÓN GLOBAL de las políticas SIN SOMBRA (pairwise, true-3D, mgl).
+   El pairwise vigila a la VECINA, y la sombra real viene de donde viene: con
+   Bagnarelli o tresbolillo la emisora que solapa está dos, tres o cuatro
+   filas más allá; con ondulado la cresta tapa el valle por encima de la fila
+   de en medio; con torsión ya lo vimos. El barrido de terrenos (40
+   configuraciones × 3 fechas × cada 20 min) dio 2.520 instantes en que estas
+   políticas dejaban sombra que un θ uniforme evitaba. Aquí el contador —el
+   mismo que se publica, solo planos— dice DE QUIÉN viene la sombra de cada
+   fila (`de`), y se backtrackea un grado a esa emisora (a su accionamiento
+   entero), hasta que ninguna fila tenga sombra de filas o se agote el paso.
+   Se devuelve el mejor juego visto; sin sombra de filas no entra (0 pasos:
+   ni un bit cambia en llano). El terreno no se repara: ninguna consigna
+   levanta una loma. */
+function repairNoShade(zen,az,T,ang){
+  if(!(isFinite(zen)&&zen<90))return ang;
+  const nR=T.pairs.length+1, sg=trueTrackAngle(zen,az,0,T.axisAz)>=0?1:-1;
+  const grupoDe=(r)=>{if(T.groups)for(const g of T.groups)if(g.includes(r))return g;return [r];};
+  const filasDe=(sh,r)=>{const de=sh.de&&sh.de[r]?sh.de[r]:[];return Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((a,q)=>a+q[1],0));};
+  // objetivo: primero la fila PEOR (que ninguna quede sombreada), después la
+  // suma — minimizar solo la suma dejaba una fila al 12 % a cambio de repartir
+  const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:8});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
+    for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
+  let cur=ang.slice(), E=evalua(cur);
+  if(E.mx<=1e-3)return ang;                              // nada que reparar: ni un bit
+  const clamp=(t)=>Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
+  // 1) ARRANQUE: el mejor θ UNIFORME del instante (barrido de 5° y refino de
+  //    2,5°), memorizado por instante — las tres políticas lo comparten. Es lo
+  //    que el barrido de terrenos llamó «alcanzable»: casi siempre es 0.
+  const key=zen.toFixed(4)+'|'+az.toFixed(4);
+  const M=repairNoShade._memo;
+  if(!M||M.key!==key||M.T!==T){
+    let bt=0,bv=Infinity;
+    for(let th=-T.maxAngle;th<=T.maxAngle+1e-9;th+=5){const v=evalua(new Array(nR).fill(th)).tot;if(v<bv-1e-9){bv=v;bt=th;}}
+    for(const d of [-2.5,2.5]){const t2=clamp(bt+d);const v=evalua(new Array(nR).fill(t2)).tot;if(v<bv-1e-9){bv=v;bt=t2;}}
+    repairNoShade._memo={key:key,T:T,th:bt,tot:bv};
+  }
+  const mem=repairNoShade._memo;
+  let best=cur, bestV=E.tot;
+  if(mem.tot<bestV-1e-9){cur=new Array(nR).fill(mem.th);E=evalua(cur);best=cur.slice();bestV=E.tot;}
+  // 2) DESCENSO: para cada fila con sombra de filas, mover 2° su emisora
+  //    principal (con su accionamiento) o la propia fila, en las dos
+  //    direcciones; se aplica el movimiento que más baja la sombra total
+  for(let it=0;it<12&&E.mx>1e-3;it++){
+    const cands=[]; const vis=new Set();
+    const add=(g)=>{const k=g.join(',');if(!vis.has(k)){vis.add(k);cands.push(g);}};
+    const filas=[];for(let r=0;r<nR;r++){const f=filasDe(E.sh,r);if(f>1e-3)filas.push([f,r]);}
+    filas.sort((x,y)=>y[0]-x[0]);
+    for(const [,r] of filas.slice(0,3)){const emi=E.sh.de[r].filter(q=>q[0]!=='terreno')[0];if(emi)add(grupoDe(emi[0]));add(grupoDe(r));}
+    let mv=null,mvE=null,mvV=E.tot;
+    for(const g of cands.slice(0,5))for(const d of [-2*sg,2*sg]){
+      const a=cur.slice();let movio=false;
+      for(const e of g){const t=clamp(a[e]+d);if(t!==a[e]){a[e]=t;movio=true;}}
+      if(!movio)continue;
+      const E2=evalua(a);
+      if(E2.tot<mvV-1e-9){mvV=E2.tot;mv=a;mvE=E2;}
+    }
+    if(!mv)break;
+    cur=mv;E=mvE;
+    if(E.tot<bestV-1e-9){bestV=E.tot;best=cur.slice();}
+  }
+  return best;
+}
 function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
   if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo);
@@ -2353,9 +2563,9 @@ function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
-  if(key==='true3d')return {angles:driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),f:undefined};
-  if(key==='mgl')return {angles:anglesMinGroundLight(zen,az,T),f:undefined};   // ya acoplado y sin sombra por construcción
-  return {angles:driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),f:undefined};
+  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true)),f:undefined};
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T)),f:undefined};   // ya acoplado y sin sombra por construcción (de planos vecinos)
+  return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false)),f:undefined};
 }
 
 /* ray-cast BRUTO para el QA: muestrea M puntos del panel sombreado y lanza el
@@ -2793,7 +3003,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.52.1';
+const VER='v1.53.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4340,6 +4550,9 @@ function paintProdLegend(mn,mx,unit){
 function update3D(){
   pinta3D();
   if(!TD||!DAY)return;
+  // el haz de sombra se reconstruye entero en cada instante
+  if(TD.hazGrp){TD.scene.remove(TD.hazGrp);disposeGroup(TD.hazGrp);}
+  TD.hazGrp=new THREE.Group(); TD.scene.add(TD.hazGrp);
   const inst=sceneInstant();  // paso minutal: física EXACTA del minuto pedido
   const tIdx=timeIndex(),g=inst?inst.g:DAY.sun[tIdx];
   const key=$('polview').value,p=inst?inst.pv:(DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]]);
@@ -4516,6 +4729,8 @@ function update3D(){
    recorta el paralelogramo a cada mesa (Sutherland–Hodgman). Es la sombra de
    verdad, deflexión axial incluida — no una franja media. */
 const ovM_sil=new THREE.MeshBasicMaterial({color:0xe34948,side:THREE.DoubleSide,transparent:true,opacity:0.9,depthWrite:false});
+// HAZ DE SOMBRA: el volumen que va del objeto que sombrea a su mancha sobre la mesa — muy tenue, para ver DE DÓNDE viene cada sombra
+const ovM_haz=new THREE.MeshBasicMaterial({color:0xe34948,side:THREE.DoubleSide,transparent:true,opacity:0.09,depthWrite:false});
 function clipPoly(poly,edge){                        // edge [a,b,c]: a·u+b·v ≤ c
   const out=[];
   for(let i=0;i<poly.length;i++){
@@ -4561,7 +4776,11 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   };
   const dsh=[-sv[0],-sv[1],-sv[2]];                  // la sombra viaja EN CONTRA del sol
   const horiz=Math.hypot(sv[0],sv[1]);
-  const reach=horiz>1e-6?9*horiz/Math.max(sv[2],1e-4):1e9;
+  // mismo alcance que el contador: desnivel real entre extremos de mesa + cuerda
+  let zLo=Infinity,zHi=-Infinity;
+  for(let e2=0;e2<nR&&e2<xs.length;e2++)for(const sg of segsOf(e2))for(const w of [sg[0],sg[1]]){const z=cot(e2,w);if(z<zLo)zLo=z;if(z>zHi)zHi=z;}
+  const hUtil=Math.max(9,(isFinite(zHi-zLo)?zHi-zLo:0)+T.cw+1);
+  const reach=horiz>1e-6?hUtil*horiz/Math.max(sv[2],1e-4):1e9;
   const sgn=sv[0]>=0?1:-1;
   const segsOf=rw=>(T.segs&&T.segs[rw])?T.segs[rw]:[[-30,30]];
   for(let kR=0;kR<row.ovls.length;kR++){
@@ -4594,11 +4813,13 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
         // del lado del sol y sin recorte se perdía la silueta entera)
         const EPS=1e-6;
         // proyecta un CONTORNO 3D (ya ordenado) y lo pinta sobre esta mesa
-        const pinta=(cut)=>{
+        const pinta=(cut,conHaz)=>{
           if(cut.length<3)return;
+          const Hs=[];
           const corners=cut.map(P=>{
             const t=Math.max(EPS,tOf(P));
             const H=[P[0]+t*dsh[0],P[1]+t*dsh[1],P[2]+t*dsh[2]];
+            Hs.push(H);
             const d0=[H[0]-A0[0],H[1]-A0[1],H[2]-A0[2]];
             // misma corrección oblicua que el contador: u = (H−A0)·uH − w·(uH·vHp)
             return [d0[0]*uH[0]+d0[1]*uH[1]+d0[2]*uH[2]-d0[1]*(uH[0]*vHp[0]+uH[1]*vHp[1]+uH[2]*vHp[2]), A0[1]+d0[1]];
@@ -4607,6 +4828,20 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
           for(const edge of [[1,0,hw],[-1,0,hw],[0,1,vB],[0,-1,-vA]])
             poly=clipPoly(poly,edge);
           if(poly.length<3)return;
+          // HAZ: prisma entre el contorno emisor (cut, en 3D) y su proyección
+          // sobre el plano receptor (Hs). Del marco de la física al de la
+          // escena por el eje de cada fila (hubAt + 0,76 = tubo), igual que
+          // el rayo crítico. Solo para la cara del módulo (una vez por emisora).
+          if(conHaz&&TD.hazGrp&&TD.hubAt&&$('haz3d')&&$('haz3d').checked){
+            const W=(row,P)=>{const A=TD.hubAt(row,P[1]);return [A.x+(P[0]-xs[row]),A.y+0.76+(P[2]-cot(row,P[1])),-P[1]];};
+            const vs=[], n2=cut.length;
+            for(let i2=0;i2<n2;i2++){
+              const j2=(i2+1)%n2, a=W(e,cut[i2]), b=W(e,cut[j2]), c2=W(r,Hs[j2]), d2=W(r,Hs[i2]);
+              vs.push(...a,...b,...c2, ...a,...c2,...d2);
+            }
+            const gh=new THREE.BufferGeometry(); gh.setAttribute('position',new THREE.Float32BufferAttribute(vs,3));
+            const mh=new THREE.Mesh(gh,ovM_haz); mh.renderOrder=2; TD.hazGrp.add(mh);
+          }
           const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
           const verts=[];
           for(let i2=1;i2<poly.length-1;i2++)
@@ -4644,7 +4879,7 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
         for(const dOf of [REC_OFF,REC_OFF-GLASS])           // cara del vidrio y cara inferior
           pinta(clipT([[-hw,w0],[hw,w0],[hw,w1],[-hw,w1]].map(([u2,v2])=>
             [xs[e]+u2*Math.cos(thE)+dOf*ne[0], v2+dOf*ne[1],
-             cot(e,v2)-u2*Math.sin(thE)+dOf*ne[2]])));
+             cot(e,v2)-u2*Math.sin(thE)+dOf*ne[2]])), dOf===REC_OFF);
         // 2) VIGA de torsión: la sombra de una caja convexa es la envolvente de
         //    sus 8 esquinas proyectadas — se pinta su silueta (4 caras vistas)
         const lvE=Math.hypot(vDe[0],vDe[1],vDe[2])||1;
@@ -5473,12 +5708,15 @@ function rowInfoHTML(r,kSel){
   const trkR=(DAY.T.segTrk&&DAY.T.segTrk[r]&&DAY.T.segTrk[r].length)?DAY.T.segTrk[r][kSel!=null?kSel:0]:null;
   const shv=(trkR&&trkR.sh!=null)?trkR.sh:null;
   const shTxt=shv==null?'':'<br>cizallado E/W '+(shv>0.5?'<b style="color:#ff3ea5">'+shv.toFixed(3)+' m · vigas corridas</b>':shv.toFixed(3)+' m');
+  // DE QUIÉN viene la sombra: contribución de cada emisora (y del terreno) según el contador
+  const deL=(p.shade[t]&&p.shade[t].de&&p.shade[t].de[r])?p.shade[t].de[r]:null;
+  const deTxt=(deL&&deL.length)?' <span style="color:#7a8aa0">de</span> '+deL.slice(0,4).map(q=>(q[0]==='terreno'?'terreno':'fila '+(q[0]+1))+' '+(q[1]*100).toFixed(0)+'%').join(', '):'';
   return '<b>fila '+(r+1)+'</b> · '+(POL[key]?POL[key].nm:key)+
     (og?'<br><b style="color:'+ogCol[og]+'">⚑ '+ogTxt[og]+'</b>'+rpTxt:'')+shTxt+
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
     '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
     '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+
-    '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b> · POA '+poa.toFixed(0)+' W/m²'+
+    '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b>'+deTxt+' · POA '+poa.toFixed(0)+' W/m²'+
     (isFinite(rmm)?' · residual '+(rmm>=0?'+':'')+rmm.toFixed(0)+' mm':'')+evit+
     (ws>1e-3?'<br>peor de esta fila: '+hhmm(DAY.times[wt])+' ('+(ws*100).toFixed(1)+'%) <button class="btn small" onclick="gotoT('+wt+','+r+')">ir</button>'
             :'<br>sin sombra en todo el día')+mesas;
@@ -5545,6 +5783,7 @@ $('polview').onchange=()=>{drawScene();update3D();paintHourTrack();};
 $('lbl3d').onchange=()=>update3D();
 $('light3d').onchange=()=>update3D();
 $('ray3d').onchange=()=>update3D();     // sin esto, desmarcar «☀ rayo» no borraba
+$('haz3d').onchange=()=>update3D();
 // cámara desde el SOL: lo oculto desde aquí ES la sombra — prueba visual.
 // Es un MODO (toggle): al mover el slider o animar, la vista SIGUE al sol,
 // siempre bocarriba (up fijo al cielo) y nunca bajo el horizonte (elev ≥1,5°)
