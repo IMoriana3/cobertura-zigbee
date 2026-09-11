@@ -664,13 +664,22 @@ function driveCoupleSafe(zen,az,T,angles,crit3d){
   // (3D). El refinado la MINIMIZA cuando no puede anularla — a sol rasante los
   // umbrales duros rechazaban todo candidato por lascas del 2% y dejaban un
   // 67% real sin tocar (lo cazó la curva del día sobre Ayora)
+  // v1.53.4: memorizada por (pareja, θp, θp+1) dentro de esta llamada — el
+  // barrido de candidatos repite las mismas evaluaciones en cada iteración
+  const _pvc=new Map();
   const pairViol=(p,ang)=>{
+    const key=p+'|'+ang[p]+'|'+ang[p+1];
+    const c0=_pvc.get(key); if(c0!==undefined)return c0;
+    let out;
     if(crit3d){
       const r=tangentResidualPairMm(zen,az,T,ang,p);
-      return isFinite(r)?Math.max(0,-(r+1)):0;         // mm por debajo de −1 (core)
+      out=isFinite(r)?Math.max(0,-(r+1)):0;         // mm por debajo de −1 (core)
+    }else{
+      const f=pairShade25(zen,az,T,p,ang[p],ang[p+1]);        // con torsión: la peor estación
+      out=f>1e-3?f:0;
     }
-    const f=pairShade25(zen,az,T,p,ang[p],ang[p+1]);        // con torsión: la peor estación
-    return f>1e-3?f:0;
+    _pvc.set(key,out);
+    return out;
   };
   const shadedPair=(p,ang)=>pairViol(p,ang)>0;
   // OJO: la tangencia a sol rasante vive en θ ≈ pendiente del par (CON signo:
@@ -758,6 +767,10 @@ function nan0(v){return isFinite(v)?v:0;}
    sombra. Con vigas paralelas es UNA estación y sale lo de siempre, bit a
    bit. Solo con perfil por fila declarado (T.rowTilt): sin él el contador
    dibuja las filas horizontales y no hay torsión que mirar. */
+/* v1.53.4: memorizado por sus ENTRADAS numéricas (pendiente, pitch, tilts y
+   solape), no por el objeto T — los tests mutan T in situ. Sobre Ayora entera
+   (294 parejas) el instante llamaba a esto decenas de miles de veces. */
+const _PST=new WeakMap();
 function pairStations(T,p){
   const pr=T.pairs[p];
   if(!T.rowTilt)return [{v:0,slope:pr.slope}];
@@ -768,6 +781,9 @@ function pairStations(T,p){
   const [a0,a1]=rango(p), [b0,b1]=rango(p+1);
   const lo=Math.max(a0,b0), hi=Math.min(a1,b1);
   if(!(hi>lo))return [{v:0,slope:pr.slope}];
+  let memo=_PST.get(T); if(!memo){memo=new Map();_PST.set(T,memo);}
+  const key=p+'|'+pr.slope+'|'+pr.pitch+'|'+ta+'|'+tb+'|'+lo+'|'+hi;
+  const hitM=memo.get(key); if(hitM)return hitM;
   const dz0=-pr.pitch*Math.tan(pr.slope*RAD);            // z(p+1)−z(p) en v=0
   const dt=Math.tan(tb*RAD)-Math.tan(ta*RAD);
   // cada ~8 m: el peor punto NO está en el extremo (allí el rayo suele pasar
@@ -775,6 +791,7 @@ function pairStations(T,p){
   // 20 m del centro, donde el θ sin sombra era −5° y en el extremo +11°
   const n=Math.max(3,Math.ceil((hi-lo)/8)+1), out=[];
   for(let i=0;i<n;i++){const v=lo+(hi-lo)*i/(n-1);out.push({v:v,slope:Math.atan2(-(dz0+v*dt),pr.pitch)*DEG});}
+  memo.set(key,out);
   return out;
 }
 /* sombra 2.5D de una pareja CON torsión: la peor de sus estaciones (con vigas
@@ -792,15 +809,27 @@ function pairShade25(zen,az,T,p,thA,thB){
    hacia el otro lado (pvlib ya pasa de cero cuando toca: «over-backtracking»)
    y gana el primer θ sin sombra, el más cercano al original; si no existe,
    el de mínima violación. Sin torsión devuelve t0 tal cual. */
-function pairThetaTorsion(zen,az,T,p,t0){
+/* v1.53.4: shadePair3DBand de la pareja p solo lee rowAngles[p] y
+   rowAngles[p+1] — se memoriza por (p, θp, θp+1) dentro de UNA llamada a
+   anglesPairwise (el barrido de cada pareja y la pasada de reparación lo
+   repetían: Ayora entera pasó de 1 ms a 1 s por instante) */
+function pairEval3D(zen,az,T,cache){
+  return (p,ta,tb)=>{
+    const key=p+'|'+ta+'|'+tb;
+    let f=cache.get(key);
+    if(f===undefined){const a=[];a[p]=ta;a[p+1]=tb;f=shadePair3DBand(zen,az,T,a,p,{MU:8,MV:12}).f;cache.set(key,f);}
+    return f;
+  };
+}
+function pairThetaTorsion(zen,az,T,p,t0,ev){
   if(pairStations(T,p).length===1)return t0;
   // la violación se mide con el ray-cast 3D DE LA PAREJA (shadePair3DBand:
   // tilt de cada fila, desplazamiento axial del impacto, mesas finitas), no
   // con la cuerda 2.5D por estaciones: a sol rasante el 2.5D daba −3° por
   // bueno y el contador 3D veía un 13 % (el impacto cae 3 m más al norte,
   // donde la vecina a 3° ya es 15 cm más alta)
-  const nR=T.pairs.length+1;
-  const viol=(t)=>{const a=new Array(nR).fill(t);return shadePair3DBand(zen,az,T,a,p,{MU:8,MV:12}).f;};
+  const pv=ev||pairEval3D(zen,az,T,new Map());
+  const viol=(t)=>pv(p,t,t);
   let bv=viol(t0);
   if(bv<=1e-3)return t0;
   const psz=trueTrackAngle(zen,az,pvTilt(T.pairs[p].axisTilt),T.axisAz), sg=psz>=0?1:-1;
@@ -812,11 +841,34 @@ function pairThetaTorsion(zen,az,T,p,t0){
   }
   return best;
 }
+/* v1.53.4: el resultado se memoriza por (T, firma numérica de T, zen, az):
+   un instante de Ayora entera lo pedía tres veces (política, acople por mesa
+   y referencia de los optimizadores) y computeDay lo repite por política. La
+   firma va por VALORES (los tests mutan T in situ) y se devuelve una copia. */
+const _APW=new WeakMap();
+function sigT(T){
+  let s2=(T.cw||0)+'|'+(T.maxAngle||0)+'|'+(T.z0||0)+'|'+(T.axisAz||0)+'|'+(T.gcr||0)+'|'+(T.rowTilt?T.rowTilt.join(','):'')+'|'+(T.segs?T.segs.length:'');
+  for(const p of T.pairs)s2+=';'+p.slope+','+p.pitch+','+p.axisTilt;
+  return s2;
+}
 function anglesPairwise(zen,az,T){
+  let memo=_APW.get(T);
+  const sig=sigT(T);
+  if(!memo||memo.sig!==sig){memo={sig:sig,map:new Map()};_APW.set(T,memo);}
+  const mk=zen+'|'+az;
+  const hitA=memo.map.get(mk);
+  if(hitA)return hitA.slice();
+  const out=anglesPairwiseRaw(zen,az,T);
+  if(memo.map.size>64)memo.map.clear();
+  memo.map.set(mk,out);
+  return out.slice();
+}
+function anglesPairwiseRaw(zen,az,T){
   // por pareja; filas interiores adoptan min(|θ|) de sus dos parejas
   const nR=T.pairs.length+1, out=new Array(nR);
+  const ev=pairEval3D(zen,az,T,new Map());
   const th=T.pairs.map((p,i)=>pairThetaTorsion(zen,az,T,i,nan0(singleaxis(zen,az,{axisTilt:pvTilt(p.axisTilt),axisAz:T.axisAz,
-    maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/p.pitch,crossAxisTilt:p.slope}))));
+    maxAngle:T.maxAngle,backtrack:true,gcr:T.cw/p.pitch,crossAxisTilt:p.slope})),ev));
   out[0]=th[0]; out[nR-1]=th[th.length-1];
   // la fila interior toma el de sus dos parejas MÁS backtrackeado: min(sg·θ)
   // con sg el lado del sol — con candidatos del lado del sol es min|θ|, lo de
@@ -834,7 +886,7 @@ function anglesPairwise(zen,az,T){
     for(let it=0;it<12;it++){
       let dirty=false;
       for(let p=0;p<T.pairs.length;p++){
-        if(shadePair3DBand(zen,az,T,out,p,{MU:8,MV:12}).f<=1e-3)continue;
+        if(ev(p,out[p],out[p+1])<=1e-3)continue;
         let t=sg*out[p]<sg*out[p+1]?out[p]:out[p+1];
         if(out[p]===out[p+1])t=t-sg*0.5;
         t=Math.max(-T.maxAngle,Math.min(T.maxAngle,t));
@@ -1705,11 +1757,22 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   // y la sombreaba desde 24 m (el oráculo sin podas lo veía: 7 %, el
   // contador 0). La altura útil es el DESNIVEL REAL entre extremos de mesa
   // de toda la planta, más la cuerda
-  let zLo=Infinity,zHi=-Infinity;
-  for(let e2=0;e2<nR;e2++)for(const sg of segsOf(e2))for(const w of [sg[0],sg[1]]){const z=cot(e2,w);if(z<zLo)zLo=z;if(z>zHi)zHi=z;}
-  const hUtil=Math.max(9,(isFinite(zHi-zLo)?zHi-zLo:0)+T.cw+1);
+  // v1.53.4: el alcance es POR PAREJA emisora-receptora (la cota más alta de
+  // la emisora sobre la más baja de la receptora), no el desnivel de toda la
+  // planta: con Ayora entera (1,8 km, decenas de metros de desnivel) el
+  // alcance global a sol rasante metía cientos de filas como candidatas y el
+  // instante pasó de 1,2 s a 5 s. Mismo suelo de 9 m que siempre.
+  const zMinR=new Array(nR).fill(Infinity), zMaxR=new Array(nR).fill(-Infinity);
+  for(let e2=0;e2<nR;e2++)for(const sg of segsOf(e2))for(const w of [sg[0],sg[1]]){const z=cot(e2,w);if(z<zMinR[e2])zMinR[e2]=z;if(z>zMaxR[e2])zMaxR[e2]=z;}
   const horiz=Math.hypot(sv[0],sv[1]);
-  const reach=horiz>1e-6?hUtil*horiz/Math.max(sv[2],1e-4):1e9;
+  // el rayo puede salir del borde de la receptora más próximo a la emisora y
+  // tocarla en su borde más lejano: el recorrido horizontal es dx menos una
+  // cuerda, no la distancia entre ejes (lo cazó el careo viejo/nuevo: 2,33 %
+  // de la fila 4 a sol de 71° con quebrado ±6° y mesas de 133 m)
+  const reachDe=(e,r)=>{
+    const dz=(isFinite(zMaxR[e])&&isFinite(zMinR[r]))?zMaxR[e]-zMinR[r]:0;
+    return (horiz>1e-6?Math.max(9,dz+T.cw+1)*horiz/Math.max(sv[2],1e-4):1e9)+T.cw;
+  };
   const sgn=sv[0]>=0?1:-1;
   const MV=(res&&res.MV)||8, noStruct=!!(res&&res.noStruct);
   // unión de intervalos de cuerda (fuera del bucle: se llama ~1.700 veces por
@@ -1744,7 +1807,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
     for(const pl of planes){
       if(pl.e===r)continue;
       const dx=pl.x-xs[r];
-      if(dx*sgn<=0||Math.abs(dx)>reach||Math.abs(pl.den)<1e-9)continue;
+      if(dx*sgn<=0||Math.abs(dx)>reachDe(pl.e,r)||Math.abs(pl.den)<1e-9)continue;
       const shf=ratio===null?0:-dx*ratio;
       // ...y el desplazamiento axial por DESNIVEL: un rayo que baja Δz recorre
       // Δz·sv_y/sv_z a lo largo del eje. Con torsión (perfil quebrado ±6°) la
@@ -3008,7 +3071,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.53.3';
+const VER='v1.53.4';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,

@@ -128,8 +128,8 @@ for (let ci = 0; ci < NCFG; ci++) {
       // A: oráculo (subconjunto: cada 60 min)
       if (hazOra && m % 60 === 0) {
         const sh = F.shadeRows(g.zen, g.az, T, ang.pairwise), ora = ORA.oracleExact(F, g.zen, g.az, T, ang.pairwise);
-        let d = 0; for (let r = 0; r < nR; r++) d = Math.max(d, Math.abs(sh[r] - ora[r]));
-        res.A.n++; if (d > res.A.peor) res.A.peor = d;
+        let d = 0, rd = -1; for (let r = 0; r < nR; r++) { const e = Math.abs(sh[r] - ora[r]); if (e > d) { d = e; rd = r; } }
+        res.A.n++; if (d > res.A.peor) { res.A.peor = d; res.A.peorCaso = { tag, fila: rd, contador: +(sh[rd] * 100).toFixed(3), oraculo: +(ora[rd] * 100).toFixed(3) }; }
         if (d > 1e-3) res.A.casos.push({ tag, d: +(d * 100).toFixed(2), c });
       }
     }
@@ -139,6 +139,7 @@ for (let ci = 0; ci < NCFG; ci++) {
 const seg = ((Date.now() - t0) / 1000).toFixed(0);
 console.log(`barrido: ${NCFG} configuraciones × 3 fechas × cada 20 min · ${seg} s`);
 console.log(`A  contador ≡ oráculo: ${res.A.n} instantes · peor |Δ| ${(res.A.peor * 100).toFixed(3)} pp · fuera de 0,1 pp: ${res.A.casos.length}`);
+if (res.A.peorCaso) console.log(`   A peor: fila ${res.A.peorCaso.fila} contador ${res.A.peorCaso.contador} % · oráculo ${res.A.peorCaso.oraculo} % · ${res.A.peorCaso.tag}`);
 console.log(`B  sombra de planos con pairwise/true3d/mgl: ${res.B.n} instantes-política · FALLOS de política (había un θ mejor): ${res.B.casos.length} · sombra física (ningún θ la evita): ${res.B.fisica.length}`);
 console.log(`C  energía optimal ≥ pairwise, optfree ≥ optimal: ${res.C.n} instantes · violaciones: ${res.C.casos.length}`);
 console.log(`D  acople por accionamiento: ${res.D.n} · violaciones: ${res.D.casos.length}`);
