@@ -2973,7 +2973,31 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   if(irr&&irr.ghi>0&&best!==ang&&best.some((v,i)=>v!==ang[i])){
     const pB=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
     const pA=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
-    if(pB<pA-1e-9)return ang;
+    if(pB<pA-1e-9)best=ang;
+  }
+  /* 5) …Y UN TERCER CANDIDATO, v1.57.2. Devolver la consigna de entrada cuando
+     el descenso pierde energía dejaba fuera el caso que el banco corregido
+     encontró en cuanto dejó de medir sombra óptica a secas: true-3D publicando
+     98,5 % de sombra con el sol a 4,4° cuando un θ uniforme la baja al 15,7 %
+     SIN perder energía. No era que no existiera arreglo: es que se elegía entre
+     dos candidatos y el bueno era un tercero. Aquí se barre el θ uniforme del
+     rango y se publica el de MENOS SOMBRA entre los que no pierden energía
+     frente a lo que se iba a publicar. La energía se mide sólo en los que
+     mejoran la sombra, que son pocos: no cambia el coste de forma apreciable. */
+  if(irr&&irr.ghi>0){
+    const EB=evalua(best);
+    if(EB.mx>0.02){
+      const pRef=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
+      const cands=[];
+      for(let th=Math.ceil(hLo/2.5)*2.5;th<=hHi+1e-9;th+=2.5){
+        const c2=uni(th), e2=evalua(c2);
+        if(e2.mx<EB.mx-1e-9)cands.push([e2.mx,c2]);
+      }
+      cands.sort((a,b)=>a[0]-b[0]);
+      for(const [,c2] of cands){
+        if(poaPlant(zen,az,T,c2,irr,doy,albedo).plant>=pRef-0.05){best=c2;break;}   // 0,05 W/m²: el mismo empate técnico que el banco
+      }
+    }
   }
   return best;
 }
