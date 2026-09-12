@@ -2527,15 +2527,18 @@ function anglesPairwiseSeg(zen,az,T){
                mismo de rangoHaz (AOI ≤ 88°), aplicado donde NACE la consigna en
                vez de por fuera: pairwise es política publicada y no tiene veto
                detrás. */
+            /* v1.57.3 (autoauditoría): el tope lo decide rangoHaz, LA MISMA
+               función que acota el barrido gemelo de pairThetaTorsion. Aquí
+               había una copia que sólo comprobaba el cono de haz y se dejaba
+               fuera el rango legítimo —podía pasarse de la paralela al terreno,
+               justo lo que v1.57 cerró en todo lo demás—. Dos barridos con el
+               mismo propósito y dos topes distintos es la costura de siempre. */
             const tiltM=(tk+tkn)/2;
-            const conHaz=(t)=>{const o=surfaceOrient(t,pvTilt(tiltM),T.axisAz);
-              const b2=o.tilt*RAD, z2=zen*RAD;
-              return Math.cos(z2)*Math.cos(b2)+Math.sin(z2)*Math.sin(b2)*Math.cos((az-o.az)*RAD)>Math.cos(AOI_HAZ*RAD);};
+            const [hLo2,hHi2]=rangoHaz(zen,az,T,tiltM,slopeAt((lo+hi)/2));
             let bv=viol(th);
             if(bv>1e-3){
               let bt=th;
-              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){
-                if(!conHaz(t))continue;                   // de espaldas no es «sin sombra»: es sin haz
+              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9&&t>=hLo2-1e-9&&t<=hHi2+1e-9;t-=sg*0.5){
                 const v=viol(t);
                 if(v<=1e-3){bt=t;bv=0;break;}
                 if(v<bv){bv=v;bt=t;}
@@ -4384,7 +4387,7 @@ function drawScene(){
   SCENE_MAP={X:X,Y:Y,mScale:mScale,zMin:zMin};
 
   // sol + rayos (psz de la pendiente media, solo para dibujar)
-  const psz=trueTrackAngle(g.zen,g.az,pvTilt(c.axtilt),c.axaz);
+  const psz=trueTrackAngle(90-elFisica(g),g.az,pvTilt(c.axtilt),c.axaz);   // v1.57.3: el sol QUE VE LA FÍSICA (clavado en EL_MIN_FIS), no el crudo
   if(elev>0){
     const sx=W/2+Math.sin(psz*RAD)*(W*0.42), sy=54-Math.min(30,elev*0.5);
     ctx.beginPath();ctx.arc(sx,sy,10,0,7);
@@ -6699,8 +6702,8 @@ function snapSunPov(){
   // cámara se queda en 0,5° y ya NO es el sol — el pie lo dice, porque lo que
   // se vea en rojo desde ahí no es un hallazgo (se veía a 0,2° con el sol
   // clavado en 1,5°: sombra real del ocaso vista desde otro sitio)
-  const EL_MIN=0.5;
-  const el=Math.max(EL_MIN,g.elev)*RAD;
+  const EL_MIN=EL_MIN_FIS;                       // v1.57.3: la MISMA constante que la física y el resto del render, no una copia con su valor
+  const el=elFisica(g)*RAD;
   const azR=(g.az-DAY.c.axaz)*RAD;
   const hint=document.getElementById('hint3d');
   if(hint)hint.textContent='👁 SOL a '+g.elev.toFixed(1)+'° · az '+g.az.toFixed(0)+'° — lo que no ves desde aquí es lo que está en sombra · rueda: zoom · arrastrar: pan'+
