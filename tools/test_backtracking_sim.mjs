@@ -112,7 +112,7 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica,
            westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
 const F = sandbox();
 
@@ -487,6 +487,73 @@ t('H (ancla del extremo): la postura que hundía la POA en v1.56 —fila de espa
      que se exige es lo que importa: que recortarla siga siendo una GANANCIA
      grande, no un empate que la tolerancia de «gratis» pudiera tragarse. */
   if (!(dP > 20)) throw new Error(`el ancla ha perdido su extremo: recortar sólo gana ${dP.toFixed(1)} W/m² (v1.56, sobre su propio vector, eran +651)`);
+});
+
+t('v1.57.3 · sol RASANTE: el render dibuja con el MISMO sol que ve la física (reportado: «esa sombra es sospechosa»)', () => {
+  /* Captura de Ignacio: El Burgo, 21-jun, 06:33 local, sol 0,28°, DNI 2 W/m².
+     El contador se clava en EL_MIN_FIS = 0,5° desde v1.36 porque por debajo el
+     ray-cast no es fiable; la silueta roja del 3D, la luz que proyecta el
+     sombreado gris y el rayo crítico seguían usando la elevación CRUDA. A 0,28°
+     la sombra de una fila mide 1.213 m en vez de 688: 1,76 veces más larga, y
+     aparecía rojo en filas que el contador da al 2,5 %. No era un fallo de la
+     física ni del render: es que no compartían el mismo sol. */
+  if (!/const EL_MIN_FIS=0\.5;/.test(html)) throw new Error('el suelo de validez del contador ya no es una constante con nombre');
+  if (!/if\(zen>90-EL_MIN_FIS\)zen=90-EL_MIN_FIS;/.test(html)) throw new Error('el contador no se clava con EL_MIN_FIS');
+  if (!/function elFisica\(g\)\{return Math\.max\(EL_MIN_FIS,g\.elev\);\}/.test(html)) throw new Error('sin el helper que da el sol de la física');
+  /* lo que importa no es CUÁNTOS sitios lo usan —la autoauditoría de v1.57.3
+     encontró tres más: el corte 2D, la cámara del sol y el barrido gemelo—,
+     sino que NINGUNO dibuje con el sol crudo. La cuenta sube cuando se añade
+     una vista; el cero de abajo es el invariante. */
+  const usos = (html.match(/elFisica\(g\)/g) || []).length;
+  if (!(usos >= 4)) throw new Error(`sólo ${usos} sitios del render usan el sol de la física: la luz, la silueta, el rayo crítico y la cámara del sol son cuatro`);
+  if (/el=g\.elev\*RAD/.test(html)) throw new Error('queda algún sitio del render dibujando con la elevación CRUDA');
+  if (/const psz=trueTrackAngle\(g\.zen,/.test(html)) throw new Error('el corte 2D vuelve a calcular su rayo con el zen CRUDO');
+  if (/const EL_MIN=0\.5;/.test(html)) throw new Error('la cámara del sol tiene otra vez su propia copia del suelo de validez');
+  // y que la diferencia sea real, para que el test no pase por vacío
+  /* la configuración de la captura: cresta de 3 m y ejes a 25°, que es donde el
+     efecto es grande. Con el caso B la diferencia es de 0,3 pp y el test no
+     probaría nada — lo dijo su propia guarda. */
+  const nR = 8, pitch = 6, RADl = Math.PI / 180, filaLen = 2 * 28 * 1.146 + 0.55;
+  const ELEV = new Array(nR).fill(0).map((_, i) => -3 * Math.abs(i - (nR - 1) / 2) / ((nR - 1) / 2) + 3);
+  const T = { pairs: F.pairsFromElev(ELEV, pitch, new Array(nR).fill(0)), cw: 2.382, axisAz: 25, maxAngle: 55,
+              gcr: 2.382 / pitch, z0: 0.17, nBypass: 2, iam: 0.05, rowTilt: new Array(nR).fill(0),
+              groups: null, drive: 'mono', segs: F.nsSegments(nR, 'alineadas', 1, filaLen, 1.0, 1), filaLen };
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 4, 33), 41.57634, -0.79814);
+  if (!(g.elev > 0 && g.elev < 0.5)) throw new Error('el instante ya no es rasante: sol ' + g.elev.toFixed(2));
+  const irr = F.clearskyIneichen(g.zen, 172, 1563, 3.5);
+  const ang = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  const clav = F.shadeBand3DAll(89.5, g.az, T, ang, { noStruct: true });
+  const crudo = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
+  let dmax = 0; for (let r = 0; r < nR; r++) dmax = Math.max(dmax, Math.abs(crudo[r] - clav[r]));
+  if (!(dmax > 0.05)) throw new Error(`dibujar con el sol crudo ya no cambia nada (${(100 * dmax).toFixed(2)} pp): el test no prueba lo que dice`);
+});
+
+t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede decir que NO, y da los DOS números', () => {
+  /* Las tres condiciones que el auditor marcó como invalidantes. Si alguna se
+     pierde, el probador deja de valer aunque siga compilando. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis.slice(fis.indexOf('function certifica('), fis.indexOf('\n}', fis.indexOf('function certifica(')));
+  // 1) NO comparte la búsqueda: no puede llamar a las que deciden
+  for (const prohibida of ['anglesPairwise', 'anglesTrue3d', 'anglesMinGroundLight', 'anglesOptimal', 'repairNoShade', 'driveCoupleSafe'])
+    if (new RegExp('[^A-Za-z]' + prohibida + '\\s*\\(').test(cuerpo))
+      throw new Error(`el probador llama a ${prohibida}: sería el juez y el juzgado, como el oráculo de podas`);
+  if (!/policyAngles\(key,zen,az,T,irr,doy,albedo\)\.angles/.test(cuerpo)) throw new Error('el probador no pide la consigna PUBLICADA');
+  // 2) puede decir que no
+  if (!/'mejorable'/.test(cuerpo)) throw new Error('el probador no tiene veredicto «mejorable»: uno que siempre dice óptimo no vale');
+  // 3) dos números con estatus de no dominado, nunca una puntuación única
+  if (!/sombraPct/.test(cuerpo) || !/poa:/.test(cuerpo)) throw new Error('el certificado no lleva los DOS números');
+  if (!/costeDeLaEleccion/.test(cuerpo)) throw new Error('sin el precio de la elección, un canje mal hecho pasa desapercibido');
+  if (!/alcance:/.test(cuerpo)) throw new Error('el probador no declara su discretización: certifica «el mejor de su barrido», no «el óptimo»');
+
+  // y que funcione: en el caso A, pairwise a mediodía debe salir óptimo o empatado
+  const T = casoB(6, false), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+  if (['óptimo', 'empatado'].indexOf(ce.veredicto) < 0)
+    throw new Error(`en llano a mediodía pairwise sale «${ce.veredicto}»: publica ${ce.elegido.sombraPct.toFixed(1)} % y hay ${ce.mejorHallado ? ce.mejorHallado.sombraPct.toFixed(1) : '—'} %`);
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos: ' + ce.candidatos.evaluados);
+  if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
@@ -1620,7 +1687,10 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
   // El contador 3D devolvía shade=0 en toda la banda zen≥89,5°, o sea que
   // afirmaba «no hay sombra» con la planta tapada entera. En la tabla de
   // Ayora del 21-jun salía un salto de 76,6 % a 0,00 % en un paso de 10 min.
-  if (!/if\(zen>89\.5\)zen=89\.5;/.test(html)) throw new Error('ya no se clava al borde de validez');
+  /* v1.57.3: el clavado se escribe con la constante única que comparten la
+     física y el render (antes era el literal 89,5 aquí y un 0,5 suelto allí). */
+  if (!/const EL_MIN_FIS=0\.5;/.test(html)) throw new Error('sin la constante del suelo de validez');
+  if (!/if\(zen>90-EL_MIN_FIS\)zen=90-EL_MIN_FIS;/.test(html)) throw new Error('ya no se clava al borde de validez');
   if (/if\(!\(isFinite\(zen\)&&zen<89\.5\)\)return out;/.test(html)) throw new Error('vuelve el cero falso');
   const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), 500, null);
   const pairs = [];

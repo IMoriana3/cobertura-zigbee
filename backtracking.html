@@ -341,6 +341,7 @@
       <select id="light3d" class="btn small" title="Iluminación de la escena: LUZ REAL (intensidad y color según la altura del sol — amanecer y ocaso rojizos, como en los 3D de la casa) o LUZ A TOPE (plana y brillante para inspeccionar sombras a cualquier hora)"><option value="real">☀ luz real</option><option value="tope">🔦 a tope</option></select>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
       <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
+      <button class="btn small" id="certbtn" title="CERTIFICA este instante y esta política: barre por fuerza bruta el conjunto de consignas ejecutables, las mide con el contador exacto y dice si la publicada es la mejor que encuentra, si empata, o si hay otra mejor. No usa la búsqueda de la política: la juzga desde fuera. Enseña siempre los DOS números —sombra y energía— y el precio de la elección.">✓ certificar</button>
       <button class="btn small" id="sunpov" title="Cámara desde el SOL: lo que no ves desde aquí es EXACTAMENTE lo que está en sombra — la prueba visual del contador">👁 sol</button>
     </div>
     <div class="hud" id="hud"></div>
@@ -839,6 +840,14 @@ function mvPara(T,zen){
    lados: el día que uno se moviera, la consigna sería legítima para un
    criterio e ilegítima para el otro. */
 const AOI_HAZ=88;
+/* EL SUELO DE VALIDEZ DEL CONTADOR: 0,5° de elevación solar (zen 89,5°). Por
+   debajo, el ray-cast 3D deja de ser fiable —a 0,35° la sombra de una fila mide
+   980 m— y el contador se CLAVA aquí en vez de inventar un cero. Tiene que ser
+   la MISMA para la física y para lo que se dibuja: con el render usando el sol
+   crudo y la física el clavado, a 0,28° de sol la silueta roja se pintaba con
+   sombras 1,76 veces más largas (1.213 m frente a 688) y aparecía rojo en filas
+   que el contador da al 2,5 % — reportado como «esa sombra es sospechosa». */
+const EL_MIN_FIS=0.5;
 /* EMPATE TÉCNICO EN ENERGÍA: 0,05 W/m² de planta, UNA banda para todo el motor.
    Por debajo de esto dos consignas empatan y decide el otro criterio. Tiene que
    ser la MISMA que usan los bancos (E_EMPATE en la métrica B, H_GRATIS en la
@@ -2175,7 +2184,7 @@ function shadeRows(zen,az,T,rowAngles){
   // 0,00 % en un paso de 10 min. Se CLAVA al borde de validez del modelo en
   // vez de inventar un cero: conserva qué fila se tapa a cuál, y la energía en
   // juego está acotada por la DNI de ese tramo (1,2 W/m² en ese caso).
-  if(zen>89.5)zen=89.5;                               // el 3D llega hasta sol ~0,5°
+  if(zen>90-EL_MIN_FIS)zen=90-EL_MIN_FIS;             // el 3D llega hasta sol ~0,5°: la MISMA cota que dibuja el render
   // el CONTADOR es el ray-cast 3D multi-emisora A TODAS HORAS — la «vía
   // simétrica» que estuvo en estudio, ahora con cotas POR TRAMO y validada:
   // ray-cast completo ≡ contador al alba (0 discrepancias) y, fuera de la
@@ -2519,15 +2528,18 @@ function anglesPairwiseSeg(zen,az,T){
                mismo de rangoHaz (AOI ≤ 88°), aplicado donde NACE la consigna en
                vez de por fuera: pairwise es política publicada y no tiene veto
                detrás. */
+            /* v1.57.3 (autoauditoría): el tope lo decide rangoHaz, LA MISMA
+               función que acota el barrido gemelo de pairThetaTorsion. Aquí
+               había una copia que sólo comprobaba el cono de haz y se dejaba
+               fuera el rango legítimo —podía pasarse de la paralela al terreno,
+               justo lo que v1.57 cerró en todo lo demás—. Dos barridos con el
+               mismo propósito y dos topes distintos es la costura de siempre. */
             const tiltM=(tk+tkn)/2;
-            const conHaz=(t)=>{const o=surfaceOrient(t,pvTilt(tiltM),T.axisAz);
-              const b2=o.tilt*RAD, z2=zen*RAD;
-              return Math.cos(z2)*Math.cos(b2)+Math.sin(z2)*Math.sin(b2)*Math.cos((az-o.az)*RAD)>Math.cos(AOI_HAZ*RAD);};
+            const [hLo2,hHi2]=rangoHaz(zen,az,T,tiltM,slopeAt((lo+hi)/2));
             let bv=viol(th);
             if(bv>1e-3){
               let bt=th;
-              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9;t-=sg*0.5){
-                if(!conHaz(t))continue;                   // de espaldas no es «sin sombra»: es sin haz
+              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9&&t>=hLo2-1e-9&&t<=hHi2+1e-9;t-=sg*0.5){
                 const v=viol(t);
                 if(v<=1e-3){bt=t;bv=0;break;}
                 if(v<bv){bv=v;bt=t;}
@@ -3484,11 +3496,123 @@ function prodColor(x){
   return 'rgb('+[0,1,2].map(k=>Math.round(a[k]+f*(b[k]-a[k]))).join(',')+')';
 }
 
+/* ── EL PROBADOR (v1.58) ─────────────────────────────────────────────────────
+   Un CERTIFICADO por instante y por política, para que la comprobación no viva
+   sólo en los bancos —que corre el que desarrolla— sino delante del que decide.
+
+   Tres condiciones de diseño, y las tres pueden invalidarlo si se pierden:
+
+   1. NO COMPARTE la búsqueda con la política. Genera sus propios candidatos por
+      fuerza bruta sobre el conjunto factible y los mide con el contador exacto,
+      ignorando cómo llegó la política a su respuesta. Si llamara a la misma
+      búsqueda no probaría nada: sería el juez y el juzgado, que es lo que ya
+      pasa con el oráculo de podas y está declarado.
+   2. PUEDE DECIR QUE NO. El veredicto «mejorable» existe y es el que vale: un
+      probador que siempre dice «óptimo» es la métrica B con el criterio roto.
+   3. Para las políticas SIN SOMBRA lleva DOS NÚMEROS —sombra y energía— con
+      estatus de no dominado, nunca una puntuación única. Un certificado de
+      «mínima sombra óptica» certificaría la postura de canto: sería meter el
+      vicio de esta auditoría dentro de la propia prueba.
+
+   Y declara su discretización: certifica «el mejor de lo que ha barrido», no
+   «el óptimo». El mismo matiz que el invariante J, por la misma razón. */
+const CERT_PASO=0.5;          // grados del barrido del probador
+const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
+const SIN_SOMBRA=['pairwise','true3d','mgl'];
+const OPTIMIZAN=['optimal','optfree'];
+
+function certifica(key,zen,az,T,irr,doy,albedo){
+  const nR=T.pairs.length+1;
+  const unidades=T.groups?T.groups:Array.from({length:nR},(_,r)=>[r]);
+  const pub=policyAngles(key,zen,az,T,irr,doy,albedo).angles;
+  const conCielo=!!(irr&&irr.ghi>0);
+  const sombraDe=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});
+    let mx=0;for(let r=0;r<nR;r++){const de=sh.de&&sh.de[r]?sh.de[r]:[];
+      mx=Math.max(mx,Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((x,q)=>x+q[1],0)));}
+    return mx;};
+  const poaDe=(a)=>conCielo?poaPlant(zen,az,T,a,irr,doy,albedo).plant:NaN;
+
+  // ── el conjunto FACTIBLE, con el motivo de cada límite ────────────────────
+  const esSinSombra=SIN_SOMBRA.indexOf(key)>=0, esOpt=OPTIMIZAN.indexOf(key)>=0;
+  const RU=rangosUnidad(zen,az,T);
+  const factible=esSinSombra?RU:RU.map(()=>[-T.maxAngle,T.maxAngle]);
+  const motivos=esSinSombra
+    ?['tope mecánico ±'+T.maxAngle+'°','entre el seguimiento verdadero y la paralela al terreno','cono de haz (AOI ≤ '+AOI_HAZ+'°)','θ común por unidad de accionamiento']
+    :['tope mecánico ±'+T.maxAngle+'°','θ común por unidad de accionamiento','sin acotar por sombra: esta política PUEDE sacrificar una fila'];
+
+  // ── CANDIDATOS, generados sin mirar a la política ─────────────────────────
+  const clampU=(a)=>a.map((v,r)=>Math.max(factible[r][0],Math.min(factible[r][1],v)));
+  const cands=[];
+  const lo=Math.min(...factible.map(q=>q[0])), hi=Math.max(...factible.map(q=>q[1]));
+  for(let th=Math.ceil(lo/CERT_PASO)*CERT_PASO;th<=hi+1e-9;th+=CERT_PASO)      // a) barrido uniforme
+    cands.push(clampU(new Array(nR).fill(th)));
+  for(const u of unidades)for(let k=-CERT_VECINOS;k<=CERT_VECINOS;k++){        // b) cada unidad SOLA
+    if(!k)continue;
+    const a=pub.slice(); for(const r of u)a[r]=pub[r]+k*CERT_PASO;
+    cands.push(clampU(a));
+  }
+
+  // ── medir y buscar quién DOMINA a lo publicado ────────────────────────────
+  const sPub=sombraDe(pub), pPub=poaDe(pub);
+  let mejor=null, nDom=0;
+  for(const a of cands){
+    if(a.every((v,i)=>Math.abs(v-pub[i])<1e-9))continue;
+    let domina=false, s=null, e=null;
+    if(esSinSombra){
+      s=sombraDe(a);
+      if(s<sPub-1e-9){ e=poaDe(a); domina=!conCielo||e>=pPub-E_EMPATE_W; }      // los DOS números
+    }else if(esOpt){
+      e=poaDe(a); domina=conCielo&&e>pPub+E_EMPATE_W; s=sombraDe(a);
+    }
+    if(!domina)continue;
+    nDom++;
+    if(!mejor||(esSinSombra?s<mejor.sombra:e>mejor.poa))mejor={ang:a,sombra:s,poa:e};
+  }
+
+  /* ── EL PRECIO DE LA ELECCIÓN ───────────────────────────────────────────
+     La dominancia sola no basta, y esto lo destapó la prueba de fuego. El
+     defecto de v1.57.1 era publicar 64,4 W/m² con sombra CERO teniendo 137,7
+     disponibles: menos sombra y menos energía, así que NINGUNO domina al otro
+     —es un canje, no una dominancia— y un probador que sólo mire dominancia lo
+     deja pasar. Así que el certificado enseña además, siempre, cuánta energía
+     cuesta la consigna elegida frente al mejor candidato energético del
+     factible, y con cuánta sombra se paga. Quien decide ve el canje. */
+  let mejorE=null;
+  if(conCielo)for(const a of cands){const e=poaDe(a);if(!mejorE||e>mejorE.poa)mejorE={ang:a,poa:e,sombra:sombraDe(a)};}
+  const coste=(conCielo&&mejorE)?{poa:mejorE.poa-pPub,pct:pPub>1e-9?100*(mejorE.poa-pPub)/pPub:0,
+                                  sombraPct:100*mejorE.sombra,ang:mejorE.ang}:null;
+
+  // ── veredicto ─────────────────────────────────────────────────────────────
+  let veredicto='óptimo', margen=null;
+  if(mejor){
+    margen=esSinSombra?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
+    const dS=esSinSombra?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
+    veredicto=(esSinSombra?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
+  }
+  if(!esSinSombra&&!esOpt)veredicto='sin objetivo';
+
+  return {
+    politica:key,
+    objetivo:esSinSombra?'evitar la sombra de planos donde sea posible, sin perder energía de planta'
+            :esOpt?'maximizar la POA de planta neta (puede sacrificar una fila)'
+            :'seguir su regla: no promete optimalidad',
+    veredicto:veredicto,
+    elegido:{ang:pub.slice(),sombraPct:100*sPub,poa:pPub},
+    mejorHallado:mejor?{ang:mejor.ang,sombraPct:100*mejor.sombra,poa:mejor.poa}:null,
+    margen:margen,
+    factible:{porUnidad:factible,motivos:motivos},
+    candidatos:{evaluados:cands.length,dominan:nDom},
+    costeDeLaEleccion:coste,
+    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo',
+    sellos:{version:'v1.58',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
+  };
+}
+
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.57.2';
+const VER='v1.58.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4376,7 +4500,7 @@ function drawScene(){
   SCENE_MAP={X:X,Y:Y,mScale:mScale,zMin:zMin};
 
   // sol + rayos (psz de la pendiente media, solo para dibujar)
-  const psz=trueTrackAngle(g.zen,g.az,pvTilt(c.axtilt),c.axaz);
+  const psz=trueTrackAngle(90-elFisica(g),g.az,pvTilt(c.axtilt),c.axaz);   // v1.57.3: el sol QUE VE LA FÍSICA (clavado en EL_MIN_FIS), no el crudo
   if(elev>0){
     const sx=W/2+Math.sin(psz*RAD)*(W*0.42), sy=54-Math.min(30,elev*0.5);
     ctx.beginPath();ctx.arc(sx,sy,10,0,7);
@@ -5244,7 +5368,7 @@ function update3D(){
     }
   });
   drawCriticalRay(g,p,tIdx);
-  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const cx=TD.cx!=null?TD.cx:(DAY.c.nrows-1)*DAY.c.pitch/2;
   const R=TD.R||Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
   const up=Math.min(1,Math.max(0,g.elev/35));
@@ -5352,7 +5476,7 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
      desplazaba el rojo respecto al gris del shadow-map en terreno curvado
      (reportado: «sombra gris y roja en los mismos módulos»). */
   const T=DAY.T, ang=p.ang[tIdx], nR=TD.rows.length;
-  const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azR=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return;
   const hw=T.cw/2, PRr=T.real, SZ=T.segZ||(PRr&&PRr.segZ)||null;   // v1.54: cota por mesa en T
@@ -5576,7 +5700,7 @@ function drawCriticalRay(g,p,tIdx){
     return new THREE.Vector3(A.x+(pt[0]-anchorL[k][0]),A.y+(pt[1]-anchorL[k][1]),zC);};
   const emRow=CR.upIsRight?rightRow:leftRow;
   const edgeW=toWorld(emRow,CR.edge);
-  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const d=new THREE.Vector3(-Math.sin(azRel)*Math.cos(el),-Math.sin(el),Math.cos(azRel)*Math.cos(el)).normalize();
   const gY=(x)=>{const X=T.lineX||null; if(!X)return 0;
     let i=0; while(i<X.length-2&&X[i+1]<x)i++;
@@ -5797,6 +5921,12 @@ function setTab(three){
 }
 $('tab3d').onclick=()=>setTab(true);
 $('tab2d').onclick=()=>setTab(false);
+
+/* el sol con el que se DIBUJA es el que ve la física: por debajo de EL_MIN_FIS
+   el contador se clava ahí, y si el render siguiera al sol real pintaría
+   sombras hasta 1,8 veces más largas que las que se publican. Lo usan la luz
+   que proyecta el sombreado gris, la silueta roja y el rayo crítico. */
+function elFisica(g){return Math.max(EL_MIN_FIS,g.elev);}
 
 /* ── HUD ── */
 function updateHud(tIdx,g,irrN,key,p,sh){
@@ -6155,6 +6285,65 @@ function abrirInforme(){
   w.document.open();w.document.write(html);w.document.close();
 }
 $('informebtn').onclick=abrirInforme;
+
+/* ── EL PROBADOR EN PANTALLA (v1.58) ─────────────────────────────────────────
+   El certificado del instante y la política que se están viendo. BAJO DEMANDA,
+   no para el día entero: barrer el factible con el contador exacto es caro. */
+function pintaCertificado(){
+  if(!DAY)return;
+  const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
+  let pan=document.getElementById('certpanel');
+  if(!pan){pan=document.createElement('div');pan.id='certpanel';
+    pan.style.cssText='position:fixed;right:14px;bottom:14px;width:min(460px,92vw);max-height:72vh;overflow:auto;'+
+      'background:rgba(10,15,22,.97);border:1px solid #2a3a4f;border-radius:10px;padding:12px 14px;'+
+      'font-size:.8rem;line-height:1.5;color:#dfe5ea;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(pan);}
+  const tIdx=timeIndex(), key=$('scene').value||'pairwise';
+  const inst=sceneInstant(), g=inst?inst.g:DAY.sun[tIdx], c=DAY.c;
+  if(!(g.elev>0)){pan.innerHTML='<b>Certificado</b><br>El sol está bajo el horizonte: no hay nada que certificar.'+cerrar;return;}
+  pan.innerHTML='<b>Certificando…</b><br><span style="color:#9fb0c2">barriendo el conjunto factible con el contador exacto</span>';
+  setTimeout(()=>{
+    const doy=doyOf(c.date);
+    const irr=skyWithClouds(Irr.clearskyIneichen(g.zen,doy,c.alt,c.tl||3.5),c.cc,g.zen);
+    let ce;
+    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo);}
+    catch(e){pan.innerHTML='<b>Certificado</b><br>no se pudo calcular: '+e.message+cerrar;return;}
+    const col={'óptimo':'#1a8a5a','empatado':'#b7791f','mejorable':'#c0392b','sin objetivo':'#5b6a7c'}[ce.veredicto]||'#5b6a7c';
+    const th=a=>a.map(v=>(TH_DISP*v).toFixed(1)).join(' / ');
+    const sep='<div style="margin-top:8px;padding-top:8px;border-top:1px solid #223">';
+    const co=ce.costeDeLaEleccion, H=[];
+    H.push('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">',
+           '<b>Certificado · ',(POL[key]?POL[key].nm:key),'</b>',
+           '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
+           '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
+    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
+    if(isFinite(ce.elegido.poa))H.push(' · POA de planta <b>',ce.elegido.poa.toFixed(1),'</b> W/m²');
+    if(ce.mejorHallado){
+      H.push(sep,'<b>Hay una consigna mejor</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
+      if(isFinite(ce.mejorHallado.poa))H.push(' · POA <b>',ce.mejorHallado.poa.toFixed(1),'</b> W/m²');
+      if(ce.margen){
+        H.push('<br><span style="color:#9fb0c2">');
+        if(ce.margen.sombra!=null)H.push(ce.margen.sombra.toFixed(1),' pp menos de sombra');
+        if(ce.margen.poa!=null)H.push(ce.margen.sombra!=null?' · ':'',(ce.margen.poa>=0?'+':''),ce.margen.poa.toFixed(1),' W/m² de energía');
+        H.push('</span>');
+      }
+      H.push('</div>');
+    }
+    if(co){
+      H.push(sep,'<b>El precio de esta elección</b><br>el mejor candidato ENERGÉTICO del factible da <b>',
+             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
+             '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
+             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+    }
+    H.push(sep,'<span style="color:#9fb0c2"><b style="color:#dfe5ea">Conjunto factible</b><br>',
+           ce.factible.motivos.map(m=>'· '+m).join('<br>'),
+           '<br><b style="color:#dfe5ea">Alcance</b><br>',ce.alcance,'<br>',
+           ce.candidatos.evaluados,' candidatos medidos · ',ce.candidatos.dominan,' mejores que el publicado',
+           '<br>malla ',ce.sellos.mv,' estaciones · empate ',ce.sellos.empate,' W/m² · ',VER,'</span></div>',cerrar);
+    pan.innerHTML=H.join('');
+  },30);
+}
+$('certbtn').onclick=pintaCertificado;
 
 /* ── QA ── */
 $('qabtn').onclick=()=>{
@@ -6685,8 +6874,8 @@ function snapSunPov(){
   // cámara se queda en 0,5° y ya NO es el sol — el pie lo dice, porque lo que
   // se vea en rojo desde ahí no es un hallazgo (se veía a 0,2° con el sol
   // clavado en 1,5°: sombra real del ocaso vista desde otro sitio)
-  const EL_MIN=0.5;
-  const el=Math.max(EL_MIN,g.elev)*RAD;
+  const EL_MIN=EL_MIN_FIS;                       // v1.57.3: la MISMA constante que la física y el resto del render, no una copia con su valor
+  const el=elFisica(g)*RAD;
   const azR=(g.az-DAY.c.axaz)*RAD;
   const hint=document.getElementById('hint3d');
   if(hint)hint.textContent='👁 SOL a '+g.elev.toFixed(1)+'° · az '+g.az.toFixed(0)+'° — lo que no ves desde aquí es lo que está en sombra · rueda: zoom · arrastrar: pan'+
