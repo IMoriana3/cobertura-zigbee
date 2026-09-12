@@ -112,7 +112,7 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica,
            westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
 const F = sandbox();
 
@@ -513,6 +513,34 @@ t('v1.57.3 · sol RASANTE: el render dibuja con el MISMO sol que ve la física (
   const crudo = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
   let dmax = 0; for (let r = 0; r < 6; r++) dmax = Math.max(dmax, Math.abs(crudo[r] - clav[r]));
   if (!(dmax > 0.05)) throw new Error(`dibujar con el sol crudo ya no cambia nada (${(100 * dmax).toFixed(2)} pp): el test no prueba lo que dice`);
+});
+
+t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede decir que NO, y da los DOS números', () => {
+  /* Las tres condiciones que el auditor marcó como invalidantes. Si alguna se
+     pierde, el probador deja de valer aunque siga compilando. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis.slice(fis.indexOf('function certifica('), fis.indexOf('\n}', fis.indexOf('function certifica(')));
+  // 1) NO comparte la búsqueda: no puede llamar a las que deciden
+  for (const prohibida of ['anglesPairwise', 'anglesTrue3d', 'anglesMinGroundLight', 'anglesOptimal', 'repairNoShade', 'driveCoupleSafe'])
+    if (new RegExp('[^A-Za-z]' + prohibida + '\\s*\\(').test(cuerpo))
+      throw new Error(`el probador llama a ${prohibida}: sería el juez y el juzgado, como el oráculo de podas`);
+  if (!/policyAngles\(key,zen,az,T,irr,doy,albedo\)\.angles/.test(cuerpo)) throw new Error('el probador no pide la consigna PUBLICADA');
+  // 2) puede decir que no
+  if (!/'mejorable'/.test(cuerpo)) throw new Error('el probador no tiene veredicto «mejorable»: uno que siempre dice óptimo no vale');
+  // 3) dos números con estatus de no dominado, nunca una puntuación única
+  if (!/sombraPct/.test(cuerpo) || !/poa:/.test(cuerpo)) throw new Error('el certificado no lleva los DOS números');
+  if (!/costeDeLaEleccion/.test(cuerpo)) throw new Error('sin el precio de la elección, un canje mal hecho pasa desapercibido');
+  if (!/alcance:/.test(cuerpo)) throw new Error('el probador no declara su discretización: certifica «el mejor de su barrido», no «el óptimo»');
+
+  // y que funcione: en el caso A, pairwise a mediodía debe salir óptimo o empatado
+  const T = casoB(6, false), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+  if (['óptimo', 'empatado'].indexOf(ce.veredicto) < 0)
+    throw new Error(`en llano a mediodía pairwise sale «${ce.veredicto}»: publica ${ce.elegido.sombraPct.toFixed(1)} % y hay ${ce.mejorHallado ? ce.mejorHallado.sombraPct.toFixed(1) : '—'} %`);
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos: ' + ce.candidatos.evaluados);
+  if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {

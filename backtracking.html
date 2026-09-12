@@ -341,6 +341,7 @@
       <select id="light3d" class="btn small" title="Iluminación de la escena: LUZ REAL (intensidad y color según la altura del sol — amanecer y ocaso rojizos, como en los 3D de la casa) o LUZ A TOPE (plana y brillante para inspeccionar sombras a cualquier hora)"><option value="real">☀ luz real</option><option value="tope">🔦 a tope</option></select>
       <button class="btn small" id="worstnow" title="Va a la fila con MÁS sombra en ESTE instante (política de la ESCENA): la selecciona, encuadra la cámara y abre su globo">⚠ ahora</button>
       <button class="btn small" id="worstday" title="Va al PEOR momento del día: la fila y la hora con más sombra de la política de la ESCENA">⚠ día</button>
+      <button class="btn small" id="certbtn" title="CERTIFICA este instante y esta política: barre por fuerza bruta el conjunto de consignas ejecutables, las mide con el contador exacto y dice si la publicada es la mejor que encuentra, si empata, o si hay otra mejor. No usa la búsqueda de la política: la juzga desde fuera. Enseña siempre los DOS números —sombra y energía— y el precio de la elección.">✓ certificar</button>
       <button class="btn small" id="sunpov" title="Cámara desde el SOL: lo que no ves desde aquí es EXACTAMENTE lo que está en sombra — la prueba visual del contador">👁 sol</button>
     </div>
     <div class="hud" id="hud"></div>
@@ -3611,7 +3612,7 @@ function certifica(key,zen,az,T,irr,doy,albedo){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.57.3';
+const VER='v1.58.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -6284,6 +6285,65 @@ function abrirInforme(){
   w.document.open();w.document.write(html);w.document.close();
 }
 $('informebtn').onclick=abrirInforme;
+
+/* ── EL PROBADOR EN PANTALLA (v1.58) ─────────────────────────────────────────
+   El certificado del instante y la política que se están viendo. BAJO DEMANDA,
+   no para el día entero: barrer el factible con el contador exacto es caro. */
+function pintaCertificado(){
+  if(!DAY)return;
+  const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
+  let pan=document.getElementById('certpanel');
+  if(!pan){pan=document.createElement('div');pan.id='certpanel';
+    pan.style.cssText='position:fixed;right:14px;bottom:14px;width:min(460px,92vw);max-height:72vh;overflow:auto;'+
+      'background:rgba(10,15,22,.97);border:1px solid #2a3a4f;border-radius:10px;padding:12px 14px;'+
+      'font-size:.8rem;line-height:1.5;color:#dfe5ea;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(pan);}
+  const tIdx=timeIndex(), key=$('scene').value||'pairwise';
+  const inst=sceneInstant(), g=inst?inst.g:DAY.sun[tIdx], c=DAY.c;
+  if(!(g.elev>0)){pan.innerHTML='<b>Certificado</b><br>El sol está bajo el horizonte: no hay nada que certificar.'+cerrar;return;}
+  pan.innerHTML='<b>Certificando…</b><br><span style="color:#9fb0c2">barriendo el conjunto factible con el contador exacto</span>';
+  setTimeout(()=>{
+    const doy=doyOf(c.date);
+    const irr=skyWithClouds(Irr.clearskyIneichen(g.zen,doy,c.alt,c.tl||3.5),c.cc,g.zen);
+    let ce;
+    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo);}
+    catch(e){pan.innerHTML='<b>Certificado</b><br>no se pudo calcular: '+e.message+cerrar;return;}
+    const col={'óptimo':'#1a8a5a','empatado':'#b7791f','mejorable':'#c0392b','sin objetivo':'#5b6a7c'}[ce.veredicto]||'#5b6a7c';
+    const th=a=>a.map(v=>(TH_DISP*v).toFixed(1)).join(' / ');
+    const sep='<div style="margin-top:8px;padding-top:8px;border-top:1px solid #223">';
+    const co=ce.costeDeLaEleccion, H=[];
+    H.push('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">',
+           '<b>Certificado · ',(POL[key]?POL[key].nm:key),'</b>',
+           '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
+           '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
+    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
+    if(isFinite(ce.elegido.poa))H.push(' · POA de planta <b>',ce.elegido.poa.toFixed(1),'</b> W/m²');
+    if(ce.mejorHallado){
+      H.push(sep,'<b>Hay una consigna mejor</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
+      if(isFinite(ce.mejorHallado.poa))H.push(' · POA <b>',ce.mejorHallado.poa.toFixed(1),'</b> W/m²');
+      if(ce.margen){
+        H.push('<br><span style="color:#9fb0c2">');
+        if(ce.margen.sombra!=null)H.push(ce.margen.sombra.toFixed(1),' pp menos de sombra');
+        if(ce.margen.poa!=null)H.push(ce.margen.sombra!=null?' · ':'',(ce.margen.poa>=0?'+':''),ce.margen.poa.toFixed(1),' W/m² de energía');
+        H.push('</span>');
+      }
+      H.push('</div>');
+    }
+    if(co){
+      H.push(sep,'<b>El precio de esta elección</b><br>el mejor candidato ENERGÉTICO del factible da <b>',
+             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
+             '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
+             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+    }
+    H.push(sep,'<span style="color:#9fb0c2"><b style="color:#dfe5ea">Conjunto factible</b><br>',
+           ce.factible.motivos.map(m=>'· '+m).join('<br>'),
+           '<br><b style="color:#dfe5ea">Alcance</b><br>',ce.alcance,'<br>',
+           ce.candidatos.evaluados,' candidatos medidos · ',ce.candidatos.dominan,' mejores que el publicado',
+           '<br>malla ',ce.sellos.mv,' estaciones · empate ',ce.sellos.empate,' W/m² · ',VER,'</span></div>',cerrar);
+    pan.innerHTML=H.join('');
+  },30);
+}
+$('certbtn').onclick=pintaCertificado;
 
 /* ── QA ── */
 $('qabtn').onclick=()=>{
