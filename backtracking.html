@@ -3495,6 +3495,118 @@ function prodColor(x){
   return 'rgb('+[0,1,2].map(k=>Math.round(a[k]+f*(b[k]-a[k]))).join(',')+')';
 }
 
+/* ── EL PROBADOR (v1.58) ─────────────────────────────────────────────────────
+   Un CERTIFICADO por instante y por política, para que la comprobación no viva
+   sólo en los bancos —que corre el que desarrolla— sino delante del que decide.
+
+   Tres condiciones de diseño, y las tres pueden invalidarlo si se pierden:
+
+   1. NO COMPARTE la búsqueda con la política. Genera sus propios candidatos por
+      fuerza bruta sobre el conjunto factible y los mide con el contador exacto,
+      ignorando cómo llegó la política a su respuesta. Si llamara a la misma
+      búsqueda no probaría nada: sería el juez y el juzgado, que es lo que ya
+      pasa con el oráculo de podas y está declarado.
+   2. PUEDE DECIR QUE NO. El veredicto «mejorable» existe y es el que vale: un
+      probador que siempre dice «óptimo» es la métrica B con el criterio roto.
+   3. Para las políticas SIN SOMBRA lleva DOS NÚMEROS —sombra y energía— con
+      estatus de no dominado, nunca una puntuación única. Un certificado de
+      «mínima sombra óptica» certificaría la postura de canto: sería meter el
+      vicio de esta auditoría dentro de la propia prueba.
+
+   Y declara su discretización: certifica «el mejor de lo que ha barrido», no
+   «el óptimo». El mismo matiz que el invariante J, por la misma razón. */
+const CERT_PASO=0.5;          // grados del barrido del probador
+const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
+const SIN_SOMBRA=['pairwise','true3d','mgl'];
+const OPTIMIZAN=['optimal','optfree'];
+
+function certifica(key,zen,az,T,irr,doy,albedo){
+  const nR=T.pairs.length+1;
+  const unidades=T.groups?T.groups:Array.from({length:nR},(_,r)=>[r]);
+  const pub=policyAngles(key,zen,az,T,irr,doy,albedo).angles;
+  const conCielo=!!(irr&&irr.ghi>0);
+  const sombraDe=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});
+    let mx=0;for(let r=0;r<nR;r++){const de=sh.de&&sh.de[r]?sh.de[r]:[];
+      mx=Math.max(mx,Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((x,q)=>x+q[1],0)));}
+    return mx;};
+  const poaDe=(a)=>conCielo?poaPlant(zen,az,T,a,irr,doy,albedo).plant:NaN;
+
+  // ── el conjunto FACTIBLE, con el motivo de cada límite ────────────────────
+  const esSinSombra=SIN_SOMBRA.indexOf(key)>=0, esOpt=OPTIMIZAN.indexOf(key)>=0;
+  const RU=rangosUnidad(zen,az,T);
+  const factible=esSinSombra?RU:RU.map(()=>[-T.maxAngle,T.maxAngle]);
+  const motivos=esSinSombra
+    ?['tope mecánico ±'+T.maxAngle+'°','entre el seguimiento verdadero y la paralela al terreno','cono de haz (AOI ≤ '+AOI_HAZ+'°)','θ común por unidad de accionamiento']
+    :['tope mecánico ±'+T.maxAngle+'°','θ común por unidad de accionamiento','sin acotar por sombra: esta política PUEDE sacrificar una fila'];
+
+  // ── CANDIDATOS, generados sin mirar a la política ─────────────────────────
+  const clampU=(a)=>a.map((v,r)=>Math.max(factible[r][0],Math.min(factible[r][1],v)));
+  const cands=[];
+  const lo=Math.min(...factible.map(q=>q[0])), hi=Math.max(...factible.map(q=>q[1]));
+  for(let th=Math.ceil(lo/CERT_PASO)*CERT_PASO;th<=hi+1e-9;th+=CERT_PASO)      // a) barrido uniforme
+    cands.push(clampU(new Array(nR).fill(th)));
+  for(const u of unidades)for(let k=-CERT_VECINOS;k<=CERT_VECINOS;k++){        // b) cada unidad SOLA
+    if(!k)continue;
+    const a=pub.slice(); for(const r of u)a[r]=pub[r]+k*CERT_PASO;
+    cands.push(clampU(a));
+  }
+
+  // ── medir y buscar quién DOMINA a lo publicado ────────────────────────────
+  const sPub=sombraDe(pub), pPub=poaDe(pub);
+  let mejor=null, nDom=0;
+  for(const a of cands){
+    if(a.every((v,i)=>Math.abs(v-pub[i])<1e-9))continue;
+    let domina=false, s=null, e=null;
+    if(esSinSombra){
+      s=sombraDe(a);
+      if(s<sPub-1e-9){ e=poaDe(a); domina=!conCielo||e>=pPub-E_EMPATE_W; }      // los DOS números
+    }else if(esOpt){
+      e=poaDe(a); domina=conCielo&&e>pPub+E_EMPATE_W; s=sombraDe(a);
+    }
+    if(!domina)continue;
+    nDom++;
+    if(!mejor||(esSinSombra?s<mejor.sombra:e>mejor.poa))mejor={ang:a,sombra:s,poa:e};
+  }
+
+  /* ── EL PRECIO DE LA ELECCIÓN ───────────────────────────────────────────
+     La dominancia sola no basta, y esto lo destapó la prueba de fuego. El
+     defecto de v1.57.1 era publicar 64,4 W/m² con sombra CERO teniendo 137,7
+     disponibles: menos sombra y menos energía, así que NINGUNO domina al otro
+     —es un canje, no una dominancia— y un probador que sólo mire dominancia lo
+     deja pasar. Así que el certificado enseña además, siempre, cuánta energía
+     cuesta la consigna elegida frente al mejor candidato energético del
+     factible, y con cuánta sombra se paga. Quien decide ve el canje. */
+  let mejorE=null;
+  if(conCielo)for(const a of cands){const e=poaDe(a);if(!mejorE||e>mejorE.poa)mejorE={ang:a,poa:e,sombra:sombraDe(a)};}
+  const coste=(conCielo&&mejorE)?{poa:mejorE.poa-pPub,pct:pPub>1e-9?100*(mejorE.poa-pPub)/pPub:0,
+                                  sombraPct:100*mejorE.sombra,ang:mejorE.ang}:null;
+
+  // ── veredicto ─────────────────────────────────────────────────────────────
+  let veredicto='óptimo', margen=null;
+  if(mejor){
+    margen=esSinSombra?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
+    const dS=esSinSombra?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
+    veredicto=(esSinSombra?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
+  }
+  if(!esSinSombra&&!esOpt)veredicto='sin objetivo';
+
+  return {
+    politica:key,
+    objetivo:esSinSombra?'evitar la sombra de planos donde sea posible, sin perder energía de planta'
+            :esOpt?'maximizar la POA de planta neta (puede sacrificar una fila)'
+            :'seguir su regla: no promete optimalidad',
+    veredicto:veredicto,
+    elegido:{ang:pub.slice(),sombraPct:100*sPub,poa:pPub},
+    mejorHallado:mejor?{ang:mejor.ang,sombraPct:100*mejor.sombra,poa:mejor.poa}:null,
+    margen:margen,
+    factible:{porUnidad:factible,motivos:motivos},
+    candidatos:{evaluados:cands.length,dominan:nDom},
+    costeDeLaEleccion:coste,
+    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo',
+    sellos:{version:'v1.58',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
+  };
+}
+
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
