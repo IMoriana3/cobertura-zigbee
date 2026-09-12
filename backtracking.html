@@ -839,6 +839,14 @@ function mvPara(T,zen){
    lados: el día que uno se moviera, la consigna sería legítima para un
    criterio e ilegítima para el otro. */
 const AOI_HAZ=88;
+/* EL SUELO DE VALIDEZ DEL CONTADOR: 0,5° de elevación solar (zen 89,5°). Por
+   debajo, el ray-cast 3D deja de ser fiable —a 0,35° la sombra de una fila mide
+   980 m— y el contador se CLAVA aquí en vez de inventar un cero. Tiene que ser
+   la MISMA para la física y para lo que se dibuja: con el render usando el sol
+   crudo y la física el clavado, a 0,28° de sol la silueta roja se pintaba con
+   sombras 1,76 veces más largas (1.213 m frente a 688) y aparecía rojo en filas
+   que el contador da al 2,5 % — reportado como «esa sombra es sospechosa». */
+const EL_MIN_FIS=0.5;
 /* EMPATE TÉCNICO EN ENERGÍA: 0,05 W/m² de planta, UNA banda para todo el motor.
    Por debajo de esto dos consignas empatan y decide el otro criterio. Tiene que
    ser la MISMA que usan los bancos (E_EMPATE en la métrica B, H_GRATIS en la
@@ -2175,7 +2183,7 @@ function shadeRows(zen,az,T,rowAngles){
   // 0,00 % en un paso de 10 min. Se CLAVA al borde de validez del modelo en
   // vez de inventar un cero: conserva qué fila se tapa a cuál, y la energía en
   // juego está acotada por la DNI de ese tramo (1,2 W/m² en ese caso).
-  if(zen>89.5)zen=89.5;                               // el 3D llega hasta sol ~0,5°
+  if(zen>90-EL_MIN_FIS)zen=90-EL_MIN_FIS;             // el 3D llega hasta sol ~0,5°: la MISMA cota que dibuja el render
   // el CONTADOR es el ray-cast 3D multi-emisora A TODAS HORAS — la «vía
   // simétrica» que estuvo en estudio, ahora con cotas POR TRAMO y validada:
   // ray-cast completo ≡ contador al alba (0 discrepancias) y, fuera de la
@@ -3488,7 +3496,7 @@ function prodColor(x){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.57.2';
+const VER='v1.57.3';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -5244,7 +5252,7 @@ function update3D(){
     }
   });
   drawCriticalRay(g,p,tIdx);
-  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const cx=TD.cx!=null?TD.cx:(DAY.c.nrows-1)*DAY.c.pitch/2;
   const R=TD.R||Math.max(DAY.c.nrows*DAY.c.pitch,60)*1.6;
   const up=Math.min(1,Math.max(0,g.elev/35));
@@ -5352,7 +5360,7 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
      desplazaba el rojo respecto al gris del shadow-map en terreno curvado
      (reportado: «sombra gris y roja en los mismos módulos»). */
   const T=DAY.T, ang=p.ang[tIdx], nR=TD.rows.length;
-  const azR=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azR=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const sv=[Math.sin(azR)*Math.cos(el),Math.cos(azR)*Math.cos(el),Math.sin(el)];
   if(sv[2]<=0)return;
   const hw=T.cw/2, PRr=T.real, SZ=T.segZ||(PRr&&PRr.segZ)||null;   // v1.54: cota por mesa en T
@@ -5576,7 +5584,7 @@ function drawCriticalRay(g,p,tIdx){
     return new THREE.Vector3(A.x+(pt[0]-anchorL[k][0]),A.y+(pt[1]-anchorL[k][1]),zC);};
   const emRow=CR.upIsRight?rightRow:leftRow;
   const edgeW=toWorld(emRow,CR.edge);
-  const azRel=(g.az-DAY.c.axaz)*RAD, el=g.elev*RAD;
+  const azRel=(g.az-DAY.c.axaz)*RAD, el=elFisica(g)*RAD;   // v1.57.3: el sol QUE VE LA FÍSICA, no el crudo
   const d=new THREE.Vector3(-Math.sin(azRel)*Math.cos(el),-Math.sin(el),Math.cos(azRel)*Math.cos(el)).normalize();
   const gY=(x)=>{const X=T.lineX||null; if(!X)return 0;
     let i=0; while(i<X.length-2&&X[i+1]<x)i++;
@@ -5797,6 +5805,12 @@ function setTab(three){
 }
 $('tab3d').onclick=()=>setTab(true);
 $('tab2d').onclick=()=>setTab(false);
+
+/* el sol con el que se DIBUJA es el que ve la física: por debajo de EL_MIN_FIS
+   el contador se clava ahí, y si el render siguiera al sol real pintaría
+   sombras hasta 1,8 veces más largas que las que se publican. Lo usan la luz
+   que proyecta el sombreado gris, la silueta roja y el rayo crítico. */
+function elFisica(g){return Math.max(EL_MIN_FIS,g.elev);}
 
 /* ── HUD ── */
 function updateHud(tIdx,g,irrN,key,p,sh){

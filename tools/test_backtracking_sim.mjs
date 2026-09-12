@@ -489,6 +489,32 @@ t('H (ancla del extremo): la postura que hundía la POA en v1.56 —fila de espa
   if (!(dP > 20)) throw new Error(`el ancla ha perdido su extremo: recortar sólo gana ${dP.toFixed(1)} W/m² (v1.56, sobre su propio vector, eran +651)`);
 });
 
+t('v1.57.3 · sol RASANTE: el render dibuja con el MISMO sol que ve la física (reportado: «esa sombra es sospechosa»)', () => {
+  /* Captura de Ignacio: El Burgo, 21-jun, 06:33 local, sol 0,28°, DNI 2 W/m².
+     El contador se clava en EL_MIN_FIS = 0,5° desde v1.36 porque por debajo el
+     ray-cast no es fiable; la silueta roja del 3D, la luz que proyecta el
+     sombreado gris y el rayo crítico seguían usando la elevación CRUDA. A 0,28°
+     la sombra de una fila mide 1.213 m en vez de 688: 1,76 veces más larga, y
+     aparecía rojo en filas que el contador da al 2,5 %. No era un fallo de la
+     física ni del render: es que no compartían el mismo sol. */
+  if (!/const EL_MIN_FIS=0\.5;/.test(html)) throw new Error('el suelo de validez del contador ya no es una constante con nombre');
+  if (!/if\(zen>90-EL_MIN_FIS\)zen=90-EL_MIN_FIS;/.test(html)) throw new Error('el contador no se clava con EL_MIN_FIS');
+  if (!/function elFisica\(g\)\{return Math\.max\(EL_MIN_FIS,g\.elev\);\}/.test(html)) throw new Error('sin el helper que da el sol de la física');
+  const usos = (html.match(/el=elFisica\(g\)\*RAD/g) || []).length;
+  if (usos !== 3) throw new Error(`el render usa el sol de la física en ${usos} sitios, y son 3: la luz, la silueta y el rayo crítico`);
+  if (/el=g\.elev\*RAD/.test(html)) throw new Error('queda algún sitio del render dibujando con la elevación CRUDA');
+  // y que la diferencia sea real, para que el test no pase por vacío
+  const T = casoB(6, true);
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 4, 33), 41.57634, -0.79814);
+  if (!(g.elev > 0 && g.elev < 0.5)) throw new Error('el instante ya no es rasante: sol ' + g.elev.toFixed(2));
+  const irr = F.clearskyIneichen(g.zen, 172, 1563, 3.5);
+  const ang = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  const clav = F.shadeBand3DAll(89.5, g.az, T, ang, { noStruct: true });
+  const crudo = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
+  let dmax = 0; for (let r = 0; r < 6; r++) dmax = Math.max(dmax, Math.abs(crudo[r] - clav[r]));
+  if (!(dmax > 0.05)) throw new Error(`dibujar con el sol crudo ya no cambia nada (${(100 * dmax).toFixed(2)} pp): el test no prueba lo que dice`);
+});
+
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
   const T = casoB(6, true), doy = 172; let dif = 0;
   for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
