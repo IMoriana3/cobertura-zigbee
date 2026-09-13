@@ -556,6 +556,29 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muestra de la malla', () => {
+  /* Fuera de la malla de 5 min la escena es el MINUTO EXACTO (para eso existe
+     sceneInstant). manualRowsInit leía DAY.pol[key].ang[timeIndex()] —la muestra
+     más cercana— así que al marcar «por fila» a las 21:01 las filas arrancaban
+     en la consigna de las 21:00 y la planta saltaba a una postura que no era de
+     nadie, con el HUD atribuyéndosela a la escena. Dos piezas, dos fuentes: la
+     misma forma de fallo que el render y la física con dos soles. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function manualRowsInit');
+  if (i < 0) throw new Error('no se encuentra manualRowsInit');
+  const cuerpo = app.slice(i, app.indexOf('\n}', i));
+  if (/DAY\.pol\[[^\]]*\]\.ang\[/.test(cuerpo) || /p\.ang\[t\]/.test(cuerpo))
+    throw new Error('el manual por fila vuelve a leer la malla en vez de la consigna de la escena');
+  if (!/consignaEscena\(/.test(cuerpo))
+    throw new Error('el manual por fila no pide la consigna de la ESCENA');
+  const j = app.indexOf('function consignaEscena');
+  if (j < 0) throw new Error('no existe consignaEscena');
+  const ce = app.slice(j, app.indexOf('\n}', j));
+  if (!/m%STEP_MIN===0/.test(ce)) throw new Error('consignaEscena no distingue la malla del minuto exacto');
+  if (!/policyAngles\(/.test(ce)) throw new Error('consignaEscena no recalcula la política en el minuto pedido');
+  if (!/slewLimit\(/.test(ce)) throw new Error('consignaEscena no aplica el límite de giro, como hace la escena');
+});
+
 t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
   /* Iñaki, con el mando manual puesto a −7°: «¿por qué en los boxes de debajo
      pone pairwise cuando es manual?». El valor salía del mando y el rótulo del

@@ -6469,10 +6469,29 @@ function manualOn(){const e=$('manual');return !!(e&&e.checked);}
    Al activarlo arranca en la consigna de la política de la escena. */
 let MANUAL_ROWS=null;
 function manualRowsOn(){const e=$('manrow');return manualOn()&&!!(e&&e.checked)&&!!MANUAL_ROWS;}
+/* v1.59: la consigna que la ESCENA enseña para una política en el minuto
+   pedido. Fuera de la malla de 5 min el simulador calcula el minuto exacto
+   (por eso existe sceneInstant), y quien quiera «lo que se está viendo» tiene
+   que pedir ESTO y no DAY.pol[key].ang[timeIndex()], que es la muestra de la
+   malla más cercana. Lo cazó una captura de Iñaki a las 21:01: al marcar «por
+   fila» las filas arrancaban en la consigna de las 21:00 y la planta saltaba a
+   una postura que no era la de nadie, con el HUD atribuyéndosela a la escena. */
+function consignaEscena(key){
+  if(!DAY)return null;
+  const m=+$('hour').value, c=DAY.c, tIdx=timeIndex();
+  const p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  if(m%STEP_MIN===0||!p)return p&&p.ang[tIdx]?p.ang[tIdx]:null;
+  try{
+    const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
+    const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
+    const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
+    return slewLimit(p.ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  }catch(e){return p.ang[tIdx]||null;}
+}
 function manualRowsInit(){
   if(!DAY)return;
-  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]], t=timeIndex();
-  const nR=DAY.T.pairs.length+1, a=p&&p.ang[t]?p.ang[t]:new Array(nR).fill(+$('manth').value);
+  const key=$('polview').value;
+  const nR=DAY.T.pairs.length+1, a=consignaEscena(key)||new Array(nR).fill(+$('manth').value);
   // el slider habla en convención TCU (− = este) y la física al revés: se cruza por TH_DISP
   MANUAL_ROWS=Array.from({length:nR},(_,r)=>Math.round(TH_DISP*(a[r]!=null?a[r]:0)));
   const r0=+$('rowsel').value||0; $('manth').value=MANUAL_ROWS[r0]; $('manthlbl').textContent=MANUAL_ROWS[r0]+'°';
