@@ -49,7 +49,7 @@ const S = new Function(ctrl + sol + fis + log + `
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
           degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
           sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
-          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs,
+          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto,
           CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
@@ -1157,12 +1157,15 @@ t('y llega a la cadena AC, no solo a la DC', () => {
   if (!(con < sin)) throw new Error(`la AC del día no ve el lazo: ${con} vs ${sin}`);
 });
 
-t('LA BANDA ACOTA EL DESALINEO: ninguna fila se separa de su consigna más que eso', () => {
+t('LA BANDA ACOTA EL DESALINEO en toda la planta (a paso de 5 min el actuador siempre llega)', () => {
   // El TAMAÑO del paso se mide en el banco del núcleo, no aquí: a paso de 5 min
   // el tracker ya ha dado su paso (la banda se alcanza cada ~4 min con el sol
   // derivando 0,25°/min), así que entre muestras se ve la deriva, no el paso.
   // Lo que sí se comprueba aquí, sobre la planta entera y el día entero, es la
-  // COTA: la banda es el desalineo máximo que la TCU tolera.
+  // COTA. Y va con su letra pequeña: a 5 min el actuador recorre hasta 51°, así
+  // que SIEMPRE alcanza la consigna dentro del tramo. A paso de 1 min no es
+  // cierto —la inversión de la mañana se mueve más rápido que el actuador— y eso
+  // se comprueba aparte, en el test de la tabla por minuto.
   const c = { ...base, ctrl:LAZO };
   let prev = null, peor = 0;
   for (let m = 0; m < 1440; m += 5) {
@@ -1246,6 +1249,67 @@ t('cada política da una POA finita y distinta, y el astronómico rinde MENOS (s
 t('una clave de política que no existe cae al pairwise (y por eso el careo de claves importa)', () => {
   if (Math.abs(sumDia({ ...base, pol:'noexiste' }) - sumDia({ ...base, pol:'pairwise' })) > 0)
     throw new Error('el fallback silencioso ha cambiado: revisar policyAngles');
+});
+
+t('LA TABLA POR MINUTO CUADRA con «E string Σ día» al mismo paso', () => {
+  // Si dejan de cuadrar, la tabla y la cifra de la página cuentan cosas distintas.
+  for (const ctrl of [undefined, LAZO]) {
+    const c = { ...base, ctrl }, map = S.mapStringW(S.F, c, TL), rIdx = 3, paso = 5;
+    let prev = null, eWh = 0, n = 0;
+    for (let m = 0; m < 1440; m += paso) {
+      const x = S.filaMinuto(S.F, c, TL, rIdx, m, paso, prev, eWh, map);
+      prev = x.prev; eWh = x.eWh; n++;
+    }
+    const dia = S.dayEnergy(S.F, c, TL, c.date, paso, map)[rIdx];
+    if (n !== 1440 / paso) throw new Error(`filas de la tabla: ${n}`);
+    if (Math.abs(eWh / 1000 - dia) > 1e-9)
+      throw new Error(`lazo ${!!ctrl}: tabla ${(eWh/1000).toFixed(6)} kWh ≠ Σ día ${dia.toFixed(6)} kWh`);
+  }
+});
+
+t('la tabla enseña el ESCALÓN, y el desalineo lo acota la banda salvo cuando manda el ACTUADOR', () => {
+  // MEDIDO en el día entero a paso de 1 min: solo DOS minutos pasan de la banda,
+  // el primero y el último de sol (06:31 y 21:40 en este caso), donde la consigna
+  // de backtracking se mueve 15,4°/min contra los 10,2°/min que da el actuador —
+  // y la POA ahí es 1 y 0 W/m². O sea que la banda acota el desalineo SIEMPRE que
+  // el actuador pueda seguir a la consigna; cuando no puede, el que manda es él.
+  // La primera versión de este test pedía la cota a secas y falló con razón.
+  const c = { ...base, ctrl:LAZO }, map = S.mapStringW(S.F, c, TL), rIdx = 3, paso = 1;
+  const alcance = LAZO.slew * 60 * paso;        // lo que recorre el actuador en un paso
+  let prev = null, eWh = 0, ant = null, excep = 0, poaExc = 0;
+  const th = [], des = [];
+  for (let m = 0; m < 1440; m += paso) {
+    const x = S.filaMinuto(S.F, c, TL, rIdx, m, paso, prev, eWh, map);
+    prev = x.prev; eWh = x.eWh;
+    const thT = x.f[2], d = Math.abs(x.f[4]), poa = x.f[6];
+    const dTgt = (ant == null) ? 0 : Math.abs(thT - ant); ant = thT;
+    if (d > LAZO.db + 1e-9) {
+      excep++; poaExc = Math.max(poaExc, poa);
+      if (dTgt <= alcance + 1e-9)
+        throw new Error(`desalineo ${d.toFixed(2)}° sin explicación: la consigna se movió ${dTgt.toFixed(2)}°, ` +
+                        `menos que los ${alcance.toFixed(1)}° del actuador`);
+    }
+    if (poa > 50) { th.push(+x.f[3].toFixed(6)); des.push(d); }
+  }
+  if (excep > 4) throw new Error(`${excep} minutos por encima de la banda: son demasiados para ser la inversión`);
+  if (poaExc > 10) throw new Error(`el desalineo grande cae con POA ${poaExc.toFixed(0)} W/m²: ya no es irrelevante`);
+  const peor = Math.max(...des);
+  if (!(peor > 1e-6)) throw new Error('la columna de desalineo sale a cero: el lazo no entra en la tabla');
+  if (peor > LAZO.db + 1e-9) throw new Error(`con sol (POA>50) el desalineo pasa de la banda: ${peor}°`);
+  // a paso de 1 min con banda de 1° el tracker aguanta varios minutos en el mismo θ
+  const distintos = new Set(th).size;
+  if (!(distintos < 0.6 * th.length))
+    throw new Error(`θ no sale a escalones: ${distintos} valores distintos en ${th.length} minutos`);
+});
+
+t('sin lazo la columna de desalineo es CERO en todo el día', () => {
+  const c = base, map = S.mapStringW(S.F, c, TL);
+  let prev = null, eWh = 0, peor = 0;
+  for (let m = 0; m < 1440; m += 10) {
+    const x = S.filaMinuto(S.F, c, TL, 2, m, 10, prev, eWh, map);
+    prev = x.prev; eWh = x.eWh; peor = Math.max(peor, Math.abs(x.f[4]));
+  }
+  if (peor !== 0) throw new Error(`sin lazo el desalineo tendría que ser 0 y es ${peor}`);
 });
 
 console.log('');

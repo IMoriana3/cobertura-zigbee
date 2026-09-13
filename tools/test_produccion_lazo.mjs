@@ -157,6 +157,53 @@ t('encender el lazo en la UI repinta y el pill dice el PASO', () => {
 t('cambiar de política repinta y el pill dice cuál', () => {
   if (!/Astronómico/.test(tras.pill2)) throw new Error(`el pill no dice la política: «${tras.pill2}»`);
 });
+/* LA TABLA POR MINUTO. Lo que solo se ve en la página: que el botón calcule, que la tabla se pinte
+   con sus filas y que el CSV aparezca. El cuadre con «E string Σ día» lo exige el banco Node. */
+const tabla = await pg.evaluate(async () => {
+  document.getElementById('ctrlOn').checked = true;
+  document.getElementById('ctrlDb').value = '2';
+  document.getElementById('ctrlOn').dispatchEvent(new Event('change'));
+  document.getElementById('minpaso').value = '5';           // 5 min para que el banco no tarde
+  document.getElementById('minbtn').click();
+  for (let i = 0; i < 400; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (MINT) break;
+  }
+  const out = document.getElementById('minout');
+  return { hecha: !!MINT, filas: MINT ? MINT.filas.length : 0, paso: MINT ? MINT.paso : null,
+           lazo: MINT ? MINT.lazo : null, trs: out.querySelectorAll('tbody tr').length,
+           cab: [...out.querySelectorAll('thead th')].map(t => t.textContent),
+           txt: out.textContent.slice(0, 160),
+           csvVisible: document.getElementById('mincsv').style.display !== 'none' };
+});
+
+t('la tabla por minuto se calcula y se pinta', () => {
+  if (!tabla.hecha) throw new Error('MINT vacío: la tabla no llegó a calcularse');
+  if (tabla.filas !== 288) throw new Error(`${tabla.filas} filas a paso de 5 min (esperadas 288)`);
+  if (!(tabla.trs > 50)) throw new Error(`solo ${tabla.trs} filas pintadas: la tabla sale vacía`);
+  if (tabla.trs >= tabla.filas) throw new Error('se pintan también las filas de noche: la tabla no filtra');
+  if (!tabla.lazo) throw new Error('la tabla no se ha enterado de que el lazo está encendido');
+});
+t('la tabla lleva las columnas que dice llevar, con el θ ejecutado y el desalineo', () => {
+  for (const h of ['hora', 'θ* °', 'θ °', 'desal. °', 'sombra %', 'POA W/m²', 'P DC W', 'E acum Wh'])
+    if (!tabla.cab.includes(h)) throw new Error(`falta la columna «${h}»: ${tabla.cab.join(' · ')}`);
+  if (!/con lazo de control/.test(tabla.txt)) throw new Error('la cabecera no declara el lazo');
+  if (!tabla.csvVisible) throw new Error('el botón de CSV no ha aparecido');
+});
+
+const tras2 = await pg.evaluate(async () => {
+  document.getElementById('ctrlDb').value = '3';
+  document.getElementById('ctrlDb').dispatchEvent(new Event('change'));
+  await new Promise(r => setTimeout(r, 300));
+  return { mint: !!MINT, txt: document.getElementById('minout').textContent,
+           csv: document.getElementById('mincsv').style.display };
+});
+t('cambiar la configuración TIRA la tabla en vez de dejarla mintiendo', () => {
+  if (tras2.mint) throw new Error('la tabla sigue viva tras cambiar la banda');
+  if (!/vuelve a calcular/.test(tras2.txt)) throw new Error(`no avisa: «${tras2.txt.slice(0,80)}»`);
+  if (tras2.csv === '') throw new Error('el botón de CSV sigue ofreciendo una tabla que ya no existe');
+});
+
 t('no han aparecido errores de página en todo el recorrido', () => {
   if (errs.length) throw new Error(errs.slice(0, 3).join(' | '));
 });

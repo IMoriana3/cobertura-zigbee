@@ -373,6 +373,28 @@ input[type=range]{accent-color:var(--live)}
         <button class="btn" id="btncareo" style="margin-top:6px">Carear</button>
         <div id="careoout" style="margin-top:8px;font-family:var(--mono);font-size:.72rem"></div>
       </details>
+      <details class="nota" style="border-top:1px solid var(--line)">
+        <summary style="cursor:pointer;color:var(--text)">📋 Tabla por minuto de un string</summary>
+        <p style="margin:6px 0">El día minuto a minuto para <b>un</b> string: la consigna de la
+        política, el θ que el tracker <b>ejecuta</b>, el desalineo, la sombra, la POA y la potencia DC,
+        con la energía acumulada. Es donde el <b>lazo de control</b> se ve: el θ a escalones y el
+        desalineo subiendo hasta la banda y volviendo a cero. El string es la <b>fila</b> —lo que esta
+        página llama string en sus vistas de energía—, así que el último valor de <b>E acum</b> cuadra
+        con «E string Σ día» al mismo paso, y hay un careo que lo exige.</p>
+        <p style="margin:6px 0;color:var(--muted-2);font-size:.68rem">Un minuto de tabla es un instante
+        de <b>planta entera</b>: 1.440 de ellos. Va troceado con progreso y se cancela si cambias la
+        configuración, pero en una planta grande cuesta — con San José entera son minutos, así que para
+        eso elige una <b>NCU</b> arriba. Clic en una mesa del 3D para elegir el string; si no hay
+        ninguno elegido, va el primero.</p>
+        <div class="row2">
+          <div class="f"><label>Paso min</label><select id="minpaso" class="btn" style="width:100%">
+            <option value="1" selected>1</option><option value="2">2</option>
+            <option value="5">5</option><option value="10">10</option></select></div>
+          <div class="f"><label>&nbsp;</label><button class="btn" id="minbtn" style="width:100%">Calcular</button></div>
+        </div>
+        <div id="minout" style="margin-top:8px;font-family:var(--mono);font-size:.68rem;max-height:340px;overflow:auto"></div>
+        <button class="btn" id="mincsv" style="margin-top:6px;display:none">⬇ CSV de la tabla</button>
+      </details>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
       El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles con la
       POLÍTICA elegida en la barra —las nueve del simulador de BT 3D, mismo punto de entrada y misma
@@ -1242,6 +1264,26 @@ function instant(F,c,T,m,prev,soloAng){
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
   return Object.assign(base,{segAng:null,segAngT:null,rows:pp.rows,segs:null,plant:pp.plant,
                              shade:pp.shade,wings:pp.wings||null});   // v1.14: POA de cada ALA
+}
+
+/* UNA FILA DE LA TABLA POR MINUTO de un string. Pura: recibe el instante
+   anterior y la energía acumulada, y devuelve la fila más el estado para
+   seguir. Se hace así, paso a paso y no de golpe, por dos razones: el lazo de
+   control tiene MEMORIA (el día va en orden) y la UI necesita trocear para no
+   congelarse — un minuto de tabla es un instante de PLANTA entera.
+   El string es la FILA, que es lo que la página llama string en sus vistas de
+   energía, y por eso la energía acumulada de la última fila de la tabla CUADRA
+   con «E string Σ día» al mismo paso. Hay un careo que lo exige: si algún día
+   dejan de cuadrar, es que la tabla y la cifra cuentan cosas distintas. */
+function filaMinuto(F,c,T,rIdx,m,paso,prev,eWh,map){
+  const r=instant(F,c,T,m,prev);
+  const poa=r.rows[rIdx], w=map(poa,r.met,r,rIdx);
+  const e2=eWh+w*paso/60;
+  const thT=r.angT?r.angT[rIdx]:r.ang[rIdx], th=r.ang[rIdx];
+  return {f:[m,String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'),
+             thT,th,th-thT,(r.shade&&r.shade[rIdx]!=null)?r.shade[rIdx]*100:0,
+             poa,w,e2],
+          prev:r,eWh:e2};
 }
 
 /* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
@@ -2396,6 +2438,66 @@ function computePeriod(c,periodo,key){
   paso();
 }
 
+/* LA TABLA POR MINUTO. Trocea el día en tandas de 120 ms como el Σ mes, con su
+   propio testigo: cualquier cambio de configuración (o pulsar otra vez) cancela
+   el run en curso. El string es la FILA del pick, o la primera si no hay pick. */
+let MINT=null, MINRUN=0;
+const MINCAB=['min','hora','consigna_theta_deg','theta_ejecutado_deg','desalineo_deg',
+              'sombra_pct','POA_W_m2','P_DC_W','E_acum_Wh'];
+function calcMinuto(){
+  if(!F||!T)return;
+  const c=cfg(), paso=Math.max(1,Math.round(+$('minpaso').value||1));
+  const rIdx=(PICK&&PICK.row!=null&&PICK.row<c.nrows)?PICK.row:0;
+  const map=mapStringW(F,c,T.obj);
+  const run=++MINRUN, filas=[];
+  let prev=null, eWh=0, m=0;
+  $('mincsv').style.display='none';
+  const tanda=()=>{
+    if(run!==MINRUN)return;                      // cancelado: otro run o config nueva
+    const t0=performance.now();
+    while(m<1440&&performance.now()-t0<120){
+      const x=filaMinuto(F,c,T.obj,rIdx,m,paso,prev,eWh,map);
+      filas.push(x.f);prev=x.prev;eWh=x.eWh;m+=paso;
+    }
+    if(m<1440){
+      $('minout').innerHTML='<span class="s-chip">minuto '+m+'/1440…</span>';
+      setTimeout(tanda,0);
+    }else{
+      MINT={filas:filas,rIdx:rIdx,paso:paso,c:c,lazo:!!ctrlDe(c)};
+      pintaMinuto();
+    }
+  };
+  tanda();
+}
+function pintaMinuto(){
+  if(!MINT){$('minout').innerHTML='';return;}
+  const {filas,rIdx,paso,c,lazo}=MINT;
+  const n1=v=>(v==null||!isFinite(v))?'':v.toFixed(1), n2=v=>(v==null||!isFinite(v))?'':v.toFixed(2);
+  // solo se pintan las filas con sol o con el tracker moviéndose: 1.440 filas de
+  // noche a cero no son información, y el CSV las lleva todas igual
+  const vis=filas.filter(f=>f[6]>0.5||Math.abs(f[4])>1e-6);
+  const cab=['hora','θ* °','θ °','desal. °','sombra %','POA W/m²','P DC W','E acum Wh'];
+  const th=cab.map(h=>'<th style="text-align:right;padding:1px 5px;position:sticky;top:0;background:var(--panel-2)">'+h+'</th>').join('');
+  const tr=vis.map(f=>'<tr>'+[f[1],n2(f[2]),n2(f[3]),n2(f[4]),n1(f[5]),n1(f[6]),n1(f[7]),n1(f[8])]
+      .map((v,i)=>'<td style="text-align:right;padding:0 5px'+(i===3&&Math.abs(f[4])>1e-6?';color:var(--build)':'')+'">'+v+'</td>').join('')+'</tr>').join('');
+  const tot=filas.length?filas[filas.length-1][8]:0;
+  $('minout').innerHTML='<div style="margin-bottom:4px;color:var(--muted-2)">string <b>S'+(rIdx+1)+
+    '</b> · paso '+paso+' min · '+(lazo?'con lazo de control':'sin lazo (consigna ideal)')+
+    ' · E día <b>'+(tot/1000).toFixed(2)+' kWh</b> · '+vis.length+' filas con sol de '+filas.length+
+    '</div><table style="border-collapse:collapse;width:100%"><thead><tr>'+th+'</tr></thead><tbody>'+tr+'</tbody></table>';
+  $('mincsv').style.display='';
+}
+function csvMinuto(){
+  if(!MINT)return;
+  const c=MINT.c;
+  const blob=new Blob(['\ufeff'+csvTabla(MINCAB,MINT.filas)],{type:'text/csv;charset=utf-8'});
+  const u=URL.createObjectURL(blob), el=document.createElement('a');
+  el.href=u;el.download='minuto_'+c.plant+(c.ncu?'_ncu'+c.ncu:'')+'_S'+(MINT.rIdx+1)+'_'+c.date+
+    '_paso'+MINT.paso+'min'+(MINT.lazo?'_lazo':'')+'.csv';
+  document.body.appendChild(el);el.click();el.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),4000);
+}
+
 /* careo con la medida pegada: E AC Σ día por inversor (calculada) vs kWh reales */
 function runCareo(){
   const c=cfg();
@@ -2687,7 +2789,12 @@ function repaintPick(){
     R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
     rebuildT();repaint();
   });
-  const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;};
+  // la tabla por minuto también caduca: MINRUN++ cancela el run en curso y la
+  // tabla pintada deja de corresponder a la configuración de la página
+  const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;MINRUN++;
+    if(MINT){MINT=null;if($('minout'))$('minout').innerHTML=
+      '<span style="color:var(--muted-2)">La configuración ha cambiado: vuelve a calcular.</span>';
+      if($('mincsv'))$('mincsv').style.display='none';}};
   $('cloud').addEventListener('change',()=>{invalida();repaint();});
   for(const id of ['wp','mods','gamma','tamb','wind'])
     $(id).addEventListener('change',()=>{invalida();repaint();});
@@ -2728,6 +2835,8 @@ function repaintPick(){
     invalida();TRACKC=null;repaint();
   });
   $('csv').addEventListener('click',exportCSV);
+  $('minbtn').addEventListener('click',calcMinuto);
+  $('mincsv').addEventListener('click',csvMinuto);
   $('btncareo').addEventListener('click',runCareo);
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
