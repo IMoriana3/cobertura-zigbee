@@ -871,6 +871,7 @@ const E_EMPATE_W=0.05;
    es uno, que es la regla de la casa desde AOI_HAZ. */
 const PASO_BUSQ=0.1;          // grados: resolución de mando, la que busca la política
 const PASO_GRUESO=0.5;        // grados: el paso del tramo, que luego se afina a PASO_BUSQ
+const PASO_GRUESO_UNI=2.5;    // grados: el tramo del barrido UNIFORME (recorre todo el rango)
 function rangoHaz(zen,az,T,axisTilt,slopeDeg){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
@@ -3051,10 +3052,31 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
     const EB=evalua(best);
     if(EB.mx>0.02){
       const pRef=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
-      const cands=[];
-      for(let th=Math.ceil(hLo/PASO_BUSQ)*PASO_BUSQ;th<=hHi+1e-9;th+=PASO_BUSQ){
+      /* v1.60: EN DOS TRAMOS, igual que el de torsión y por la misma razón de
+         coste. Este barrido pasó de 2,5° a PASO_BUSQ (0,1°) —un factor 25— y es
+         el que se come el tiempo: medido sobre 4 configuraciones del barrido de
+         terrenos, 9 min 21 s con todo fino frente a 2 min 24 s con éste grueso,
+         o sea el 75 % del coste. Sin dos tramos el banco de 40 configuraciones
+         no cabe en su tope de 45 min de CI y la puerta requerida se cancela.
+         Se recorre a PASO_GRUESO_UNI y se REFINA a PASO_BUSQ alrededor de los
+         CERT_REFINA mejores en sombra: la respuesta conserva la resolución de
+         mando, que es lo que se pidió. */
+      const cands=[], gruesos=[];
+      for(let th=Math.ceil(hLo/PASO_GRUESO_UNI)*PASO_GRUESO_UNI;th<=hHi+1e-9;th+=PASO_GRUESO_UNI){
         const c2=uni(th), e2=evalua(c2);
+        gruesos.push([e2.mx,th]);
         if(e2.mx<EB.mx-1e-9)cands.push([e2.mx,c2]);
+      }
+      gruesos.sort((a,b)=>a[0]-b[0]);
+      const vistos=new Set(gruesos.map(q=>q[1].toFixed(3)));
+      for(const [,th0] of gruesos.slice(0,3)){
+        for(let d=-PASO_GRUESO_UNI+PASO_BUSQ;d<=PASO_GRUESO_UNI-1e-9;d+=PASO_BUSQ){
+          const th=+(th0+d).toFixed(3);
+          if(th<hLo-1e-9||th>hHi+1e-9||vistos.has(th.toFixed(3)))continue;
+          vistos.add(th.toFixed(3));
+          const c2=uni(th), e2=evalua(c2);
+          if(e2.mx<EB.mx-1e-9)cands.push([e2.mx,c2]);
+        }
       }
       cands.sort((a,b)=>a[0]-b[0]);
       for(const [,c2] of cands){
