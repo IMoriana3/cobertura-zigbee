@@ -3528,10 +3528,15 @@ const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
 const SIN_SOMBRA=['pairwise','true3d','mgl'];
 const OPTIMIZAN=['optimal','optfree'];
 
-function certifica(key,zen,az,T,irr,doy,albedo){
+/* v1.59: certifica una CONSIGNA, no el nombre de una política. Con angPub se
+   juzga lo que se le pase —el mando manual, una consigna de una TCU, lo que
+   sea— y entonces no hay objetivo declarado que cumplir: sólo el factible y los
+   dos ejes. Lo pidió una captura de Iñaki: con el manual puesto, el botón
+   certificaba la consigna de pairwise en vez de la que estaba en pantalla. */
+function certifica(key,zen,az,T,irr,doy,albedo,angPub){
   const nR=T.pairs.length+1;
   const unidades=T.groups?T.groups:Array.from({length:nR},(_,r)=>[r]);
-  const pub=policyAngles(key,zen,az,T,irr,doy,albedo).angles;
+  const pub=angPub?angPub.slice():policyAngles(key,zen,az,T,irr,doy,albedo).angles;
   const conCielo=!!(irr&&irr.ghi>0);
   const sombraDe=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});
     let mx=0;for(let r=0;r<nR;r++){const de=sh.de&&sh.de[r]?sh.de[r]:[];
@@ -3540,11 +3545,14 @@ function certifica(key,zen,az,T,irr,doy,albedo){
   const poaDe=(a)=>conCielo?poaPlant(zen,az,T,a,irr,doy,albedo).plant:NaN;
 
   // ── el conjunto FACTIBLE, con el motivo de cada límite ────────────────────
-  const esSinSombra=SIN_SOMBRA.indexOf(key)>=0, esOpt=OPTIMIZAN.indexOf(key)>=0;
+  const esMando=!!angPub;
+  const esSinSombra=!esMando&&SIN_SOMBRA.indexOf(key)>=0, esOpt=!esMando&&OPTIMIZAN.indexOf(key)>=0;
   const RU=rangosUnidad(zen,az,T);
   const factible=esSinSombra?RU:RU.map(()=>[-T.maxAngle,T.maxAngle]);
   const motivos=esSinSombra
     ?['tope mecánico ±'+T.maxAngle+'°','entre el seguimiento verdadero y la paralela al terreno','cono de haz (AOI ≤ '+AOI_HAZ+'°)','θ común por unidad de accionamiento']
+    :esMando
+    ?['tope mecánico ±'+T.maxAngle+'°','nada más: un mando no tiene que respetar el rango de ninguna política']
     :['tope mecánico ±'+T.maxAngle+'°','θ común por unidad de accionamiento','sin acotar por sombra: esta política PUEDE sacrificar una fila'];
 
   // ── CANDIDATOS, generados sin mirar a la política ─────────────────────────
@@ -3570,6 +3578,15 @@ function certifica(key,zen,az,T,irr,doy,albedo){
       if(s<sPub-1e-9){ e=poaDe(a); domina=!conCielo||e>=pPub-E_EMPATE_W; }      // los DOS números
     }else if(esOpt){
       e=poaDe(a); domina=conCielo&&e>pPub+E_EMPATE_W; s=sombraDe(a);
+    }else if(esMando){
+      /* un mando no promete nada, así que el único juicio honesto es la
+         dominancia de Pareto: mejor o igual en los dos ejes y estrictamente
+         mejor en uno. Ni «sombra a cualquier precio» ni «energía a cualquier
+         precio»: los dos números, como manda la casa. */
+      s=sombraDe(a); e=poaDe(a);
+      const mejorS=s<sPub-1e-9, igualS=Math.abs(s-sPub)<=1e-9;
+      const mejorE=conCielo&&e>pPub+E_EMPATE_W, igualE=!conCielo||e>=pPub-E_EMPATE_W;
+      domina=(mejorS&&igualE)||(mejorE&&(mejorS||igualS));
     }
     if(!domina)continue;
     nDom++;
@@ -3610,15 +3627,16 @@ function certifica(key,zen,az,T,irr,doy,albedo){
   // ── veredicto ─────────────────────────────────────────────────────────────
   let veredicto='óptimo', margen=null;
   if(mejor){
-    margen=esSinSombra?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
-    const dS=esSinSombra?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
-    veredicto=(esSinSombra?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
+    margen=(esSinSombra||esMando)?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
+    const dS=(esSinSombra||esMando)?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
+    veredicto=((esSinSombra||esMando)?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
   }
-  if(!esSinSombra&&!esOpt)veredicto='sin objetivo';
+  if(!esSinSombra&&!esOpt&&!esMando)veredicto='sin objetivo';
 
   return {
-    politica:key,
-    objetivo:esSinSombra?'evitar la sombra de planos SALVO cuando evitarla cuesta energía de planta (guardia incondicional desde v1.57.2) — BUSCA no-sombra, no la GARANTIZA'
+    politica:esMando?'mando manual':key,
+    objetivo:esMando?'ninguno declarado: es un mando, no una política. Se juzga contra el factible en los DOS ejes (sombra y energía), sin promesa que cumplir'
+            :esSinSombra?'evitar la sombra de planos SALVO cuando evitarla cuesta energía de planta (guardia incondicional desde v1.57.2) — BUSCA no-sombra, no la GARANTIZA'
             :esOpt?'maximizar la POA de planta neta (puede sacrificar una fila)'
             :'seguir su regla: no promete optimalidad',
     veredicto:veredicto,
@@ -5976,12 +5994,27 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       let mes='';
       if(sa&&sa.length>1){const a=Math.min(...sa),b=Math.max(...sa);if(b-a>0.005)mes=' · mesas '+(TH_DISP*(TH_DISP<0?b:a)).toFixed(1)+'…'+(TH_DISP*(TH_DISP<0?a:b)).toFixed(1)+'°';}
       const held=(INSTANT&&INSTANT.stamp===DAY&&INSTANT.key===key&&INSTANT.held!=null&&INSTANT.m===+$('hour').value)?' · consigna de las '+hhmm(INSTANT.held):'';
-      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes+held);
+      /* v1.59: el rótulo dice DE DÓNDE sale el ángulo, no qué hay en el
+         selector. Con el mando puesto el valor es manual y el rótulo ponía
+         «Pairwise»: el número y su etiqueta, dos piezas mirando a sitios
+         distintos. Lo vio Iñaki en una captura —«¿por qué pone pairwise cuando
+         es manual?»— y me había engañado también a mí al leerla. */
+      const fuente=manualOn()?('🎛 Manual'+(manualRowsOn()?' · por fila':' · θ común')):(POL[key]?POL[key].nm:'');
+      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',fuente+' · θ<0 = este'+mes+held);
     }
     if((DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))||DAY.T.rotula)
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.T.rotula?(DAY.T.rotula.sigue?'quebrada: mesas ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° en la rótula':'tubo recto: el quiebro de ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° no se sigue'):DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     // v1.56: la sombra POR MESA (mitad sur / mitad norte de cada tramo, del contador), no solo por fila («debería ser por mesa»)
-    const irre=(['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'';   // v1.57 (auditoría H2)
+    /* v1.57 (auditoría H2) · v1.59: «irreducible» es el resultado de una
+       BÚSQUEDA —«he barrido el rango legítimo y no hay nada que lo evite»—, así
+       que sólo puede decirse de una consigna que salga de una política que
+       busca. Colgaba de «key», el selector, y con el mando manual puesto la
+       pantalla llamaba irreducible a un ángulo escrito a mano que nadie había
+       barrido. Afirmar eso de un número que no se ha calculado es justo lo que
+       esta casa no hace. Con el mando, se dice lo que es: no se ha buscado. */
+    const irre=manualOn()
+      ?(Math.max(...sh)>0.02?' · mando manual: NADIE ha barrido esto — para saber si es evitable, «✓ certificar»':'')
+      :((['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+sombraPorMesaTxt(sh,selRow,' · '));
     /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
        aparcar una fila de espaldas al sol —AOI > 90°, producción de haz cero—
@@ -6335,15 +6368,19 @@ function pintaCertificado(){
   setTimeout(()=>{
     const doy=doyOf(c.date);
     const irr=skyWithClouds(Irr.clearskyIneichen(g.zen,doy,c.alt,c.tl||3.5),c.cc,g.zen);
+    /* v1.59: con el mando puesto se certifica LO QUE HAY EN PANTALLA, no la
+       consigna de la política del selector. El botón promete «toma lo que estás
+       viendo» y con el manual activo estaba juzgando otra cosa. */
+    const manAng=(manualOn()&&inst&&inst.pv&&inst.pv.ang&&inst.pv.ang[tIdx])?inst.pv.ang[tIdx]:null;
     let ce;
-    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo);}
+    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo,manAng);}
     catch(e){pan.innerHTML='<b>Certificado</b><br>no se pudo calcular: '+e.message+cerrar;return;}
     const col={'óptimo':'#1a8a5a','empatado':'#b7791f','mejorable':'#c0392b','sin objetivo':'#5b6a7c'}[ce.veredicto]||'#5b6a7c';
     const th=a=>a.map(v=>(TH_DISP*v).toFixed(1)).join(' / ');
     const sep='<div style="margin-top:8px;padding-top:8px;border-top:1px solid #223">';
     const co=ce.costeDeLaEleccion, H=[];
     H.push('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">',
-           '<b>Certificado · ',(POL[key]?POL[key].nm:key),'</b>',
+           '<b>Certificado · ',(manAng?'🎛 mando manual':(POL[key]?POL[key].nm:key)),'</b>',
            '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
            '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
     H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');

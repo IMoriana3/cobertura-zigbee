@@ -556,6 +556,42 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
+  /* Iñaki, con el mando manual puesto a −7°: «¿por qué en los boxes de debajo
+     pone pairwise cuando es manual?». El valor salía del mando y el rótulo del
+     selector de políticas. Y colgado del mismo selector iba el sufijo
+     «irreducible: ningún θ que reciba haz la evita», que la pantalla estampaba
+     sobre un ángulo escrito a mano: «irreducible» es el resultado de una
+     BÚSQUEDA, y a un ángulo manual no lo ha barrido nadie. Afirmarlo es
+     fabricar un número. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const iIrre = app.indexOf('const irre=');
+  if (iIrre < 0) throw new Error('no se encuentra el sufijo de irreducibilidad del HUD');
+  const bloqueIrre = app.slice(iIrre, iIrre + 700);
+  if (!/manualOn\(\)/.test(bloqueIrre))
+    throw new Error('«irreducible» no mira si el mando manual está puesto: la pantalla se lo estampa a un ángulo escrito a mano');
+  const iTh = app.indexOf("card('θ fila '");
+  if (!/manualOn\(\)/.test(app.slice(Math.max(0, iTh - 400), iTh + 200)))
+    throw new Error('la tarjeta de θ rotula con el selector de políticas aunque el ángulo venga del mando');
+
+  // y el probador: pasada una consigna, juzga ESA consigna
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const nR = T.pairs.length + 1;
+  const mando = new Array(nR).fill(-7 * -1);                      // un mando cualquiera, en marco físico
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, mando);
+  for (let r = 0; r < nR; r++)
+    if (Math.abs(ce.elegido.ang[r] - mando[r]) > 1e-9)
+      throw new Error('el probador ha certificado la consigna de la política en vez de la que se le pasó');
+  if (ce.politica !== 'mando manual') throw new Error('el certificado no dice que juzga un mando: ' + ce.politica);
+  if (!/ninguno declarado/.test(ce.objetivo)) throw new Error('un mando no tiene objetivo que cumplir, y el certificado debe decirlo');
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos con un mando: ' + ce.candidatos.evaluados);
+  // un mando arbitrario en un terreno con torsión tiene que ser MEJORABLE: si sale óptimo, el juez no juzga
+  if (ce.veredicto === 'óptimo' && !ce.mejorHallado)
+    throw new Error('un mando plano a −7° con torsión sale «óptimo»: un juez que nunca dice que no no vale');
+});
+
 t('v1.59 · LA PROMESA VIEJA NO SOBREVIVE A SU CORRECCIÓN: ninguna política dice GARANTIZAR sombra cero', () => {
   /* Desde v1.57.2 la guardia de energía es incondicional, así que pairwise BUSCA
      no-sombra y no la garantiza: medido en el barrido, 6 instantes con sol ≥ 20°
