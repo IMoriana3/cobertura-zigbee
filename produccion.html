@@ -182,6 +182,42 @@ input[type=range]{accent-color:var(--live)}
       </div>
 
       <div class="card" style="margin-top:12px">
+        <h2>⚙ Lazo de control del tracker</h2>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Un tracker no está en su consigna:
+        está donde lo deja su TCU. <b>La banda muerta es el PASO del tracker</b>: no arranca hasta que el
+        error la alcanza, y entonces avanza una banda. Medido en el núcleo: con banda de 1°, 60 movimientos
+        de 1,000° exactos para 60° de recorrido.</p>
+        <div class="f">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="ctrlOn" type="checkbox" style="width:auto"> Estimar con el θ <b>EJECUTADO</b></label>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Banda muerta °</label><input id="ctrlDb" type="number" step="0.1" min="0" max="10" value="1.0"
+            title="El paso del tracker. Mientras |consigna − actual| no la alcanza, el motor NI ARRANCA; al alcanzarla, avanza una banda. Típico 0,5-2°. Con 0 el tracker sigue la consigna y solo actúa la velocidad del actuador."></div>
+          <div class="f"><label>Velocidad °/s</label><input id="ctrlSlew" type="number" step="0.01" min="0" max="5" value="0.17"
+            title="Velocidad del actuador. 0,17 °/s es el canónico de la casa (el mismo que el simulador de difusa): 10,2°/min, de sobra para el sol —que deriva 0,25°/min— pero NO para la inversión de la mañana, que son 110° y tarda minutos. Un 0 tecleado aquí sería un tracker que se teletransporta: cae al canónico."></div>
+        </div>
+        <div class="row2">
+          <div class="f"><label>Ciclo TCU min</label><input id="ctrlCiclo" type="number" step="0.5" min="0.1" max="15" value="1"
+            title="Cada cuánto DECIDE la TCU. No es el paso de integración de la página: el lazo corre en ESTA rejilla con la consigna interpolada, y la integración solo lee el θ al final del tramo. Evaluarlo en la rejilla de integración hace invisible la banda —a paso horario el techo de velocidad son 612°, más que el recorrido entero del tracker— y ese fallo ya se pagó una vez en el simulador de difusa."></div>
+          <div class="f"><label>Modo</label><select id="ctrlModo" class="btn" style="width:100%"
+            title="BANDA A SECAS: la TCU solo mira el error, es lo que hace la mayoría — y por la tarde, en backtracking, deja al tracker más inclinado que el límite de sombra. NO SOMBREAR: la TCU sabe que está backtrackeando y solo se permite aguantar hacia el lado que no sombrea; ahorra la sombra a costa de más arranques.">
+            <option value="libre">banda a secas</option>
+            <option value="seguro">no sombrear</option></select></div>
+        </div>
+        <p style="color:var(--muted-2);font-size:.68rem">Apagado, la estimación es <b>exactamente</b> la de
+        antes, al vatio, y hay un careo que lo exige. Encendido cuesta tiempo, porque la banda muerta tiene
+        MEMORIA: el θ de un minuto depende de la mañana entera, así que el día se recorre en orden. Medido en
+        San José entera (9.156 mesas): avanzar el reloj cuesta lo mismo que antes (0,5 s, que es lo que ya
+        costaba un instante), pero mover el tiempo <b>hacia atrás</b> rehace la mañana y son ~7 s; en Ayora,
+        0,15 s. Lo que se paga en energía no es el coseno (1° de banda son 0,004 %) sino la <b>sombra</b>: en
+        backtracking de tarde la consigna baja hacia plano y aguantar deja al tracker sobreinclinado sobre el
+        vecino. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
+        banda se muestrea más grueso que en el día: la pérdida sale del mismo lazo, pero con menos
+        resolución — declarado, como el propio paso horario.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
         <h2>⛰ Horizonte lejano</h2>
         <div class="f">
           <label style="display:flex;align-items:center;gap:6px">
@@ -298,7 +334,8 @@ input[type=range]{accent-color:var(--live)}
         <input type="range" id="hour" min="0" max="1439" step="1" value="720"
           title="Paso MINUTAL, como los simuladores. Tramos ÁMBAR: horas de BACKTRACKING (consigna fuera de la astronómica >0,5° en alguna fila); oscuro = noche.">
         <span class="t" id="hourlbl">12:00</span>
-        <span class="pill on" id="modepill">AUTO · backtracking</span>
+        <span class="pill on" id="modepill">AUTO · Pairwise</span>
+        <select id="pol" class="btn" title="EL ALGORITMO DE BACKTRACKING. Es el mismo motor que el simulador de BT 3D —bloque FÍSICA PURA, extraído en caliente, cero copias—: aquí se elige con cuál se ESTIMA la energía. Pairwise es el canónico y el que la página usó siempre."></select>
         <label class="btn" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="manual"> 🎛 manual</label>
         <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
         <span class="t" id="manthlbl">0°</span>
@@ -334,9 +371,11 @@ input[type=range]{accent-color:var(--live)}
         <div id="careoout" style="margin-top:8px;font-family:var(--mono);font-size:.72rem"></div>
       </details>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
-      El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles('pairwise') —
-      el MISMO punto de entrada del simulador de BT 3D, con el acople de accionamiento de la planta cuando
-      las cotas lo traen (Ayora/San José, bifila); MANUAL mantiene tu θ todo el día). Con El Burgo I los chips son por <b>inversor</b> (POA en media;
+      El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles con la
+      POLÍTICA elegida en la barra —las nueve del simulador de BT 3D, mismo punto de entrada y misma
+      física, con el acople de accionamiento de la planta cuando las cotas lo traen (Ayora/San José,
+      bifila); MANUAL mantiene tu θ todo el día). Si el <b>lazo de control</b> está encendido, todo
+      —POA, sombra, potencia y energía— sale del θ que el tracker EJECUTA, no de la consigna. Con El Burgo I los chips son por <b>inversor</b> (POA en media;
       potencia/energía en SUMA de sus strings, del plano de numeración g.i.t.s) y el pitch es el medido por vano;
       elevación plana — el relieve de El Burgo no está levantado en este repo, y no se finge. Motor POA: FÍSICA PURA
       de backtracking.html — pvlib singleaxis + sombra exacta + eléctrico Martinez + Ineichen/Perez — extraída en
@@ -354,6 +393,7 @@ input[type=range]{accent-color:var(--live)}
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking, terreno y el gemelo) -->
 <script src="sol.js?v=0.3.0"></script>
 <script src="irradiancia.js"></script>
+<script src="js/control_core.js"></script><!-- núcleo del lazo de control del tracker (deadband+slew): lo testea en Node tools/test_control_core.mjs -->
 <script>
 "use strict";
 /* ═══ LÓGICA PURA — de aquí a FIN-LÓGICA no se toca el DOM ══════════════════
@@ -764,8 +804,9 @@ function dayAC(F,c,T,strInv,a,stepMin){
   const sm=soilingDelMes(a.planta,c.date);
   const a2=(sm==null)?a:Object.assign({},a,{loss:Object.assign({},a.loss,{soiling:sm})});
   const gd=degradaEta(a.planta);
+  let prev=null;
   for(let m=0;m<1440;m+=st){
-    const r=instant(F,c,T,m);
+    const r=instant(F,c,T,m,prev);prev=r;   // el lazo tiene memoria (ver dayEnergy)
     const x=acPlant(strPdcPlanta(F,c,T,r,strInv),a2);
     for(const v of x.invs)acc.set(v.inv,(acc.get(v.inv)||0)+v.pacW);
     edc+=x.pdcW;eac+=x.pacW;ered+=x.redW;
@@ -1063,7 +1104,7 @@ function doyOf(dateStr){
 }
 
 /* un instante: sol → cielo (con nubes) → ángulos (auto BT | manual) → POA/fila.
-   El AUTO entra por policyAngles('pairwise') — el MISMO punto de entrada que
+   El AUTO entra por policyAngles con la política elegida — el MISMO punto de entrada que
    usa el simulador de BT 3D: pairwise + el acople de accionamiento de la T
    (con groups=null, driveCoupleSafe es la identidad y queda el pairwise puro;
    con la bifila real de cotas, el θ común por grupo, como allí). El QA carea
@@ -1094,7 +1135,45 @@ function strPdcPlanta(F,c,T,r,strInv){
   const gd=degradaEta(c.ac&&c.ac.planta);
   return gd===1?por:por.map(v=>Object.assign({},v,{pdcW:v.pdcW*gd}));
 }
-function instant(F,c,T,m){
+/* ── EL LAZO DE CONTROL DEL TRACKER (banda muerta + velocidad del actuador) ──
+   Hasta aquí la página estimaba con la CONSIGNA: el θ que pide la política. Un
+   tracker real no está ahí, está donde su TCU lo deja. El núcleo del lazo es
+   js/control_core.js —pieza compartida, con su propio banco— y aquí solo se
+   decide CUÁNDO se aplica y con qué parámetros, siempre desde la config (el
+   contrato de LÓGICA PURA: aquí no entra un $ ).
+   APAGADO ⇒ null ⇒ la estimación es EXACTAMENTE la de antes, al vatio, y hay un
+   careo que lo exige. Encendido con banda 0 sigue habiendo lazo: el actuador
+   tiene velocidad finita, y eso ya recorta la inversión de la mañana. */
+function ctrlDe(c){
+  const o=c&&c.ctrl;
+  if(!o||!o.on)return null;
+  if(typeof CTRLCORE==='undefined'||!CTRLCORE)return null;   // el núcleo no cargó: la página lo dice
+  return {deadbandDeg:Math.max(0,+o.db||0),slewDegS:Math.max(0,+o.slew||0),
+          cicloMin:Math.max(0,+o.cicloMin||0),maxAngle:c.maxang,
+          modo:(o.modo==='seguro')?'seguro':'libre'};
+}
+/* ¿la consigna de esta fila/mesa viene RECORTADA por sombra? Es la única
+   pregunta que el modo 'seguro' necesita: solo cuando el backtracking manda
+   puede aguantar la banda costar una sombra. Se responde comparando con el
+   seguimiento astronómico puro, que es la referencia sin recortar — no con un
+   umbral inventado. Solo se calcula en modo 'seguro': en 'libre' no se lee. */
+function btRows(F,zen,az,T,ang){
+  const a=F.anglesAstro(zen,az,T);
+  return ang.map((th,r)=>Math.abs(th)<Math.abs(a[r])-1e-6);
+}
+function btSegs(F,zen,az,T,segAng){
+  const a=F.anglesAstroSeg(zen,az,T);
+  return segAng.map((l,r)=>l.map((th,k)=>{
+    const ref=(a&&a[r]&&a[r][k]!=null)?a[r][k]:th;
+    return Math.abs(th)<Math.abs(ref)-1e-6;}));
+}
+/* `prev` = el instante ANTERIOR de este mismo día (el que devolvió esta misma
+   función), o null para el primer paso. Sin él no hay lazo posible: la banda
+   muerta tiene memoria y θ(m) depende de la mañana entera.
+   `soloAng` salta la POA: lo usa el cursor del instante pintado para avanzar
+   barato. Los ángulos NO dependen de la POA, así que la traza sale idéntica —
+   y el careo lo exige. */
+function instant(F,c,T,m,prev,soloAng){
   const g=Sol.solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon,{refract:true});
   const zen=90-g.elev, az=g.az, doy=doyOf(c.date);
   // meteo: TMY real interpolada (con su Tamb/viento) o cielo Ineichen + nubes
@@ -1110,21 +1189,56 @@ function instant(F,c,T,m){
   // el sol no sale por una línea recta: si está tras el horizonte lejano, el
   // haz se apaga y queda la difusa (el disco no se ve, el cielo sí)
   if(c.horizonte)irr=irrTrasHorizonte(irr,90-zen,az,c.horizonte);
-  const ang=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
-                    :F.policyAngles('pairwise',zen,az,T,irr,doy,c.albedo).angles;
   // POR MESA (v1.13): con tilt por mesa en la T (cotas), θ y POA se calculan
   // mesa a mesa con policyAnglesSeg/poaPlantSeg del simulador; rows = media
   // ponderada por largo de las mesas de cada línea. MANUAL difunde su θ.
-  if(T.segTilt&&T.segs&&F.poaPlantSeg){
-    const segAng=c.manual?T.segs.map((l,r)=>l.map(()=>ang[r]))
-                         :F.policyAnglesSeg('pairwise',zen,az,T,irr,doy,c.albedo);
+  const porMesa=!!(T.segTilt&&T.segs&&F.poaPlantSeg);
+  // CONSIGNA de la política — el θ ideal, con el que la página estimó siempre
+  const pol=c.pol||'pairwise';
+  const angT=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
+                     :F.policyAngles(pol,zen,az,T,irr,doy,c.albedo).angles;
+  const segAngT=!porMesa?null
+       :(c.manual?T.segs.map((l,r)=>l.map(()=>angT[r]))
+                 :F.policyAnglesSeg(pol,zen,az,T,irr,doy,c.albedo));
+  // EJECUTADO por la TCU. Sin lazo —o en el primer paso del día, sin estado
+  // previo— el tracker está EN su consigna, que es la página de siempre.
+  const loop=ctrlDe(c);
+  let ang=angT, segAng=segAngT, angMov=null, segMov=null, dt=0;
+  // dt>=0 y no >0: si NO ha pasado tiempo, el tracker no se ha movido y su θ es
+  // el de antes — NO la consigna. Con >0 el instante pintado que caía justo en
+  // un paso de la rejilla se saltaba el lazo y pintaba el ideal: el θ de la
+  // escena daba un salto cada 5 minutos. Lo cazó el banco de Chromium.
+  if(loop&&prev&&prev.m!=null&&(dt=m-prev.m)>=0&&prev.angT){
+    const seg=loop.modo==='seguro';
+    // el estado que cruza el paso son DOS cosas: el θ y el «me estoy moviendo».
+    // Sin lo segundo, un arranque que cae al final del paso se trunca y el
+    // tracker se queda a medio camino (medido en el banco del núcleo).
+    const ev=CTRLCORE.execVector(prev.ang,prev.angT,angT,dt,loop,
+                                 seg?btRows(F,zen,az,T,angT):null,prev.angMov);
+    ang=ev.theta;angMov=ev.moving;
+    if(porMesa&&prev.segAng&&prev.segAngT){
+      const bt=seg?btSegs(F,zen,az,T,segAngT):null;
+      segAng=[];segMov=[];
+      for(let r=0;r<segAngT.length;r++){
+        const e=CTRLCORE.execVector(prev.segAng[r],prev.segAngT[r],segAngT[r],dt,loop,
+                                    bt?bt[r]:null,prev.segAngMov?prev.segAngMov[r]:null);
+        segAng.push(e.theta);segMov.push(e.moving);
+      }
+    }
+  }
+  const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angMov:angMov,
+              segAng:segAng,segAngT:segAngT,segAngMov:segMov,lazo:!!loop};
+  // el cursor del instante pintado solo necesita el ESTADO para el paso
+  // siguiente; la POA es lo caro y aquí no hace falta
+  if(soloAng)return Object.assign(base,{rows:null,segs:null,plant:null,shade:null,wings:null});
+  if(porMesa){
     const ps=F.poaPlantSeg(zen,az,T,segAng,irr,doy,c.albedo);
-    return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:segAng,rows:ps.rows,segs:ps.segs,
-            plant:ps.plant,shade:ps.shade,wings:ps.wings||null};
+    return Object.assign(base,{rows:ps.rows,segs:ps.segs,
+                               plant:ps.plant,shade:ps.shade,wings:ps.wings||null});
   }
   const pp=F.poaPlant(zen,az,T,ang,irr,doy,c.albedo);
-  return {g:g,zen:zen,az:az,irr:irr,met:met,ang:ang,segAng:null,rows:pp.rows,segs:null,plant:pp.plant,shade:pp.shade,
-          wings:pp.wings||null};   // v1.14: POA de cada ALA (la sombra por ala del contador 3D)
+  return Object.assign(base,{segAng:null,segAngT:null,rows:pp.rows,segs:null,plant:pp.plant,
+                             shade:pp.shade,wings:pp.wings||null});   // v1.14: POA de cada ALA
 }
 
 /* un día CONCRETO a paso configurable. map: POA de fila → magnitud (identidad
@@ -1133,8 +1247,11 @@ function instant(F,c,T,m){
 function dayEnergy(F,c,T,dateStr,stepMin,map){
   const c2=dateStr===c.date?c:Object.assign({},c,{date:dateStr});
   const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
+  // EN ORDEN y arrastrando el instante anterior: con lazo de control θ(m)
+  // depende de la mañana entera, así que el día no se puede trocear ni paralelizar
+  let prev=null;
   for(let m=0;m<1440;m+=stepMin){
-    const r=instant(F,c2,T,m);
+    const r=instant(F,c2,T,m,prev);prev=r;
     // el map recibe también el INSTANTE y la fila: la bifacialidad necesita la
     // irradiancia y la inclinación de esa superficie, no solo su POA
     for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met,r,k);
@@ -1206,7 +1323,57 @@ function soilMesUI(){
   const v=String($('lsoilv').value||'').split(';').map(x=>parseFloat(String(x).trim().replace(',','.')));
   return (v.length===12&&v.every(x=>isFinite(x)&&x>=0))?v:null;
 }
+/* LAS POLÍTICAS DEL BT3D, aquí. La física es la MISMA (policyAngles del bloque
+   FÍSICA PURA, extraído en caliente): esto son solo los nombres para el selector.
+   La tabla POLICIES del simulador vive FUERA de su bloque de física —es metadato
+   de su UI— así que no se puede extraer; las CLAVES sí tienen que coincidir, y
+   hay un careo que lee las dos páginas y lo exige, porque una clave que no
+   entienda policyAngles cae en silencio al pairwise. */
+const POLS=[
+  {key:'pairwise',nm:'Pairwise',        ds:'por pareja; interiores min(|θ|) — sombra de PLANOS cero garantizada (canónica, y la que esta página usó siempre)'},
+  {key:'true3d',  nm:'True-3D',         ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador'},
+  {key:'row',     nm:'Row',             ds:'cada fila con su terreno local, sin acoplar (A&M 2020)'},
+  {key:'global',  nm:'Global',          ds:'un motor, un ángulo: pendiente media de la planta'},
+  {key:'bt2d',    nm:'BT2D plano',      ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea'},
+  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa)'},
+  {key:'optimal', nm:'Energy-optimal',  ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto) — BUSCA el ángulo: cuesta mucho más'},
+  {key:'optfree', nm:'Óptimo libre',    ds:'cada accionamiento con SU fracción — nunca menos que energy-optimal; el más caro de calcular'},
+  {key:'astro',   nm:'Astronómico',     ds:'SIN backtracking: el que se auto-sombrea. Es la referencia contra la que se mide lo que el BT salva'},
+];
+const POLNM=Object.fromEntries(POLS.map(P=>[P.key,P.nm]));
+(function(){const el=document.getElementById('pol');if(!el)return;
+  el.innerHTML=POLS.map(P=>'<option value="'+P.key+'" title="'+P.ds.replace(/"/g,'&quot;')+'">'+P.nm+'</option>').join('');
+  el.value='pairwise';})();
+
 let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del día
+/* CURSOR DEL LAZO DE CONTROL. La banda muerta tiene memoria: θ(m) depende de la
+   mañana entera, así que un minuto suelto no se puede pintar. Guardar la
+   trayectoria del día entero serían medio millón de números en San José (9.156
+   mesas × 288 pasos), así que se guarda solo el ESTADO en el último minuto
+   pintado y se avanza desde ahí: mover el tiempo hacia DELANTE —el slider y el
+   ▶— cuesta un paso; hacia atrás rehace la mañana, que es lo que ya cuesta
+   «Σ día». Los pasos intermedios van con soloAng: los ángulos no dependen de la
+   POA, que es lo caro. */
+let CTRLCUR=null;
+const PASO_LAZO=5;               // el MISMO paso que «Σ día»: una sola física en pantalla
+function instantConLazo(c,m){
+  if(!ctrlDe(c)){CTRLCUR=null;return instant(F,c,T.obj,m);}
+  // PERIODRUN entra en la clave a propósito: lo bumpea invalida(), que es lo que
+  // llaman TODOS los cambios que mueven el θ (geometría, terreno, sol, nubes,
+  // horizonte…). Así el cursor caduca sin tener que enumerar campo por campo;
+  // lo que solo toca la cadena AC no lo bumpea y el cursor sigue siendo válido.
+  const key=[PERIODRUN,c.date,c.plant,c.ncu,c.pol,c.manual,c.manth,c.meteo,c.maxang,
+             JSON.stringify(c.ctrl)].join('|');
+  const mk=Math.floor(m/PASO_LAZO)*PASO_LAZO;
+  if(!CTRLCUR||CTRLCUR.key!==key||CTRLCUR.m>mk)
+    CTRLCUR={key:key,m:0,r:instant(F,c,T.obj,0,null,true)};
+  while(CTRLCUR.m<mk){
+    const t=CTRLCUR.m+PASO_LAZO;
+    CTRLCUR={key:key,m:t,r:instant(F,c,T.obj,t,CTRLCUR.r,true)};
+  }
+  // el minuto pedido puede caer entre pasos: el último tramo va parcial
+  return instant(F,c,T.obj,m,CTRLCUR.r);
+}
 let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
 let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)
 let T_nOff=0;                    // desplazamiento N del marco de escena (El Burgo)
@@ -1375,7 +1542,11 @@ function cfg(){
                   soiling:Math.max(0,+$('usoil').value),dispo:Math.max(0,+$('udisp').value),
                   degrada:Math.max(0,+$('udeg').value)},
           bif:{bifa:Math.max(0,Math.min(95,+$('bifa').value)),
-               perdTras:Math.max(0,Math.min(90,+$('bperd').value))}};
+               perdTras:Math.max(0,Math.min(90,+$('bperd').value))},
+          // EL ALGORITMO con el que se estima (los del bt3d) y el LAZO de la TCU
+          pol:$('pol').value||'pairwise',
+          ctrl:{on:$('ctrlOn').checked,db:+$('ctrlDb').value,slew:+$('ctrlSlew').value,
+                cicloMin:+$('ctrlCiclo').value,modo:$('ctrlModo').value}};
   if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
@@ -1447,7 +1618,7 @@ function rebuildT(){
   else if(REALES[c.plant]&&RP&&RP.key===c.plant)T.strInv=strInvCotas(RP.P.segs,invMapUniforme(c.nrows,c.ac.ninv),1.146,0.55,T.obj.filaLen,
                                                                        {mod:RP.P.mod,segMods:RP.P.segMods,segSide:RP.P.segSide});
   else T.strInv=invMapUniforme(c.nrows,c.ac.ninv).map(v=>[v]);
-  DAYC=null;PERIODC=null;PERIODRUN++;
+  DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;
   if(typeof clearPick==='function')clearPick();   // la escena se reconstruye: la selección vieja apunta a mallas muertas
   build3D(c);
 }
@@ -2018,8 +2189,9 @@ function repaint(){
   const c=cfg(), m=+$('hour').value;
   $('hourlbl').textContent=String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
   $('manthlbl').textContent=$('manth').value+'°';
-  $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°':'AUTO · backtracking';
-  const inst=instant(F,c,T.obj,m);
+  $('modepill').textContent=c.manual?'MANUAL · θ '+c.manth+'°'
+    :'AUTO · '+(POLNM[c.pol]||c.pol)+(c.ctrl&&c.ctrl.on?' · paso '+c.ctrl.db+'°':'');
+  const inst=instantConLazo(c,m);
   // Tamb/viento DEL INSTANTE (con TMY vienen de la meteo real; en cielo son los inputs)
   const mode=$('cmode').value;
   // media por fila de un valor POR INVERSOR (una línea con strings de varios
@@ -2314,7 +2486,7 @@ let TRACKC=null;
 function paintHourTrack(){
   if(!F||!T)return;
   const c=cfg();
-  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,c.ncu,c.nrows,c.maxang].join('|');
+  const key=[c.date,c.tz,c.lat.toFixed(3),c.plant,c.ncu,c.nrows,c.maxang,c.pol].join('|');
   if(TRACKC===key)return;
   TRACKC=key;
   const colBT='#fbbd23',colDay='#2a3a50',colNight='#0d1420',STEPM=15;
@@ -2323,7 +2495,7 @@ function paintHourTrack(){
     const g=Sol.solarPos(localToUTCms(c.date,m2,c.tz),c.lat,c.lon,{refract:true});
     if(g.elev<=0){cols.push(colNight);continue;}
     const zen=90-g.elev;
-    const ang=F.policyAngles('pairwise',zen,g.az,T.obj,{ghi:500,dni:500,dhi:100},doy,c.albedo).angles;
+    const ang=F.policyAngles(c.pol||'pairwise',zen,g.az,T.obj,{ghi:500,dni:500,dhi:100},doy,c.albedo).angles;
     const ast=F.anglesAstro(zen,g.az,T.obj);
     cols.push(ang.some((v,i)=>Math.abs(v-ast[i])>0.5)?colBT:colDay);
   }
@@ -2437,7 +2609,7 @@ function repaintPick(){
   await cargaFisica();
   rebuildT();repaint();
   for(const id of ['lat','lon','date','tz','alt','albedo','pitch','cw','maxang','nrows','tpreset','tparam'])
-    $(id).addEventListener('change',()=>{rebuildT();repaint();});
+    $(id).addEventListener('change',()=>{CTRLCUR=null;rebuildT();repaint();});
   // el selector de planta lista PLANTA ENTERA o cada NCU suelta — las NCUs se
   // pueblan al arrancar con los layouts (ligeros: solo trackers+ncu), y elegir
   // una NCU carga y dibuja SOLO su parque, sin construir nunca la planta entera
@@ -2512,7 +2684,7 @@ function repaintPick(){
     R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
     rebuildT();repaint();
   });
-  const invalida=()=>{DAYC=null;PERIODC=null;PERIODRUN++;};
+  const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;};
   $('cloud').addEventListener('change',()=>{invalida();repaint();});
   for(const id of ['wp','mods','gamma','tamb','wind'])
     $(id).addEventListener('change',()=>{invalida();repaint();});
@@ -2557,6 +2729,10 @@ function repaintPick(){
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
   $('cscale').addEventListener('change',repaint);
+  // la POLÍTICA y el LAZO cambian el θ, y con el θ cambia todo: POA, sombra,
+  // potencia y el carril de horas de backtracking
+  for(const id of ['pol','ctrlOn','ctrlDb','ctrlSlew','ctrlCiclo','ctrlModo'])
+    $(id).addEventListener('change',()=>{invalida();TRACKC=null;repaint();});
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
   $('manth').addEventListener('input',()=>{invalida();repaint();});
   $('tpreset').addEventListener('change',()=>{
@@ -2565,7 +2741,7 @@ function repaintPick(){
   $('date2').value=$('date').value;
   $('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
   $('date2').addEventListener('change',()=>{
-    $('date').value=$('date2').value;DAYC=null;rebuildT();repaint();});
+    $('date').value=$('date2').value;DAYC=null;CTRLCUR=null;rebuildT();repaint();});
   // play con VELOCIDAD real (minutos simulados por segundo, como el simulador)
   let playing=false,playTimer=null,PLAYPOS=0,PLAYTS=0;
   $('play').addEventListener('click',()=>{

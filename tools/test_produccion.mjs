@@ -35,10 +35,12 @@ const fis = bt.slice(bt.lastIndexOf('/*', f0), f1);
 const l0 = pg.indexOf('LÓGICA PURA'), l1 = pg.indexOf('/* FIN-LÓGICA');
 if (l0 < 0 || l1 < 0) { console.error('produccion.html sin delimitadores LÓGICA PURA / FIN-LÓGICA'); process.exit(1); }
 const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
+// el núcleo del lazo de control, igual que lo carga la página con su <script src>
+const ctrl = fs.readFileSync(path.join(ROOT, 'js', 'control_core.js'), 'utf-8');
 
-const S = new Function(sol + fis + log + `
+const S = new Function(ctrl + sol + fis + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
-             pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
+             pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,anglesAstro,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
@@ -47,7 +49,8 @@ const S = new Function(sol + fis + log + `
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
           degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
           sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
-          estadisticaCareo, mapStringW, bifDe};`).call(globalThis);
+          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs,
+          CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -1111,6 +1114,138 @@ t('el perfil de horizonte admite decimal con coma, y el MAE es por inversor como
   const st = S.estadisticaCareo(rows, 12);
   if (Math.abs(st.mae - 5) > 1e-9 || Math.abs(st.rmse - 5) > 1e-9)
     throw new Error(`con el mismo +5 % en todos, MAE y RMSE tienen que ser 5 y 5: ${st.mae} / ${st.rmse}`);
+});
+
+console.log('');
+console.log('v1.30 · el lazo de control del tracker, y las políticas del bt3d aquí');
+
+const LAZO = { on:true, db:1.0, slew:0.17, cicloMin:1, modo:'libre' };
+const ELEV = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
+const TL   = S.buildT(S.F, CE, ELEV);
+const base = { ...CE, albedo:0.25, ac:{ ...(C.ac||{}), planta:{} } };
+const sumDia = c => S.dayTotals(S.F, c, TL, S.mapStringW(S.F, c, TL)).reduce((a, b) => a + b, 0);
+
+t('APAGADO la estimación es la de ANTES, al vatio (la regla de la casa)', () => {
+  const sin = sumDia(base);
+  for (const ctrl of [undefined, {on:false,db:2,slew:0.17,cicloMin:1,modo:'libre'}]) {
+    const e = sumDia({ ...base, ctrl });
+    if (e !== sin) throw new Error(`con ctrl=${JSON.stringify(ctrl)} la cifra se mueve: ${e} ≠ ${sin}`);
+  }
+  if (S.ctrlDe({ ...base, ctrl:{on:false,db:1} }) !== null) throw new Error('ctrlDe tiene que dar null apagado');
+});
+
+t('ENCENDIDO la cifra del DÍA cambia, y cambia a la BAJA', () => {
+  const sin = sumDia(base), con = sumDia({ ...base, ctrl:LAZO });
+  if (!(con < sin)) throw new Error(`el lazo no puede subir la energía: ${con} ≥ ${sin}`);
+  const d = 1 - con / sin;
+  if (!(d > 1e-6 && d < 0.10)) throw new Error(`pérdida por el lazo fuera de rango: ${(100*d).toFixed(3)} %`);
+});
+
+t('y la cifra HORARIA (la del mes/año) también: el lazo no se queda en el día', () => {
+  // el fallo que esta casa ya pagó una vez: lo nuevo entraba solo por un camino
+  const sin = S.dayEnergy(S.F, base, TL, base.date, 60, S.mapStringW(S.F, base, TL)).reduce((a,b)=>a+b,0);
+  const cc  = { ...base, ctrl:LAZO };
+  const con = S.dayEnergy(S.F, cc, TL, cc.date, 60, S.mapStringW(S.F, cc, TL)).reduce((a,b)=>a+b,0);
+  if (!(con < sin)) throw new Error(`a paso horario el lazo no hace nada: ${con} vs ${sin}`);
+});
+
+t('y llega a la cadena AC, no solo a la DC', () => {
+  const strInv = S.invMapUniforme(CE.nrows, 1);
+  const a = { loss:{soiling:2,mismatch:2,wiring:1.5,lid:1.5}, pnomW:40000, etaMax:0.985, gridW:0, planta:{} };
+  const sin = S.dayAC(S.F, base, TL, strInv, a, 5).eacKwh;
+  const con = S.dayAC(S.F, { ...base, ctrl:LAZO }, TL, strInv, a, 5).eacKwh;
+  if (!(con < sin)) throw new Error(`la AC del día no ve el lazo: ${con} vs ${sin}`);
+});
+
+t('LA BANDA ACOTA EL DESALINEO: ninguna fila se separa de su consigna más que eso', () => {
+  // El TAMAÑO del paso se mide en el banco del núcleo, no aquí: a paso de 5 min
+  // el tracker ya ha dado su paso (la banda se alcanza cada ~4 min con el sol
+  // derivando 0,25°/min), así que entre muestras se ve la deriva, no el paso.
+  // Lo que sí se comprueba aquí, sobre la planta entera y el día entero, es la
+  // COTA: la banda es el desalineo máximo que la TCU tolera.
+  const c = { ...base, ctrl:LAZO };
+  let prev = null, peor = 0;
+  for (let m = 0; m < 1440; m += 5) {
+    const r = S.instant(S.F, c, TL, m, prev);
+    for (let k = 0; k < r.ang.length; k++) peor = Math.max(peor, Math.abs(r.ang[k] - r.angT[k]));
+    prev = r;
+  }
+  if (!(peor > 1e-6)) throw new Error('el lazo no está desalineando nada');
+  if (peor > LAZO.db + 1e-6) throw new Error(`el desalineo pasa de la banda: ${peor}°`);
+});
+
+t('soloAng da los MISMOS ángulos que el instante completo (el cursor no inventa física)', () => {
+  const c = { ...base, ctrl:LAZO };
+  let p1 = null, p2 = null;
+  for (let m = 0; m < 600; m += 5) {
+    const full = S.instant(S.F, c, TL, m, p1);
+    const solo = S.instant(S.F, c, TL, m, p2, true);
+    if (JSON.stringify(full.ang) !== JSON.stringify(solo.ang))
+      throw new Error(`m=${m}: los ángulos difieren entre soloAng y completo`);
+    if (solo.rows !== null) throw new Error('soloAng no debería calcular POA');
+    p1 = full; p2 = solo;
+  }
+});
+
+t("modo 'seguro' NO deja el tracker más inclinado que su consigna de sombra; 'libre' sí", () => {
+  const cl = { ...base, ctrl:LAZO }, cs = { ...base, ctrl:{ ...LAZO, modo:'seguro' } };
+  const cuenta = (c) => {
+    let prev = null, sobre = 0;
+    for (let m = 0; m < 1440; m += 5) {
+      const r = S.instant(S.F, c, TL, m, prev);
+      const bt = S.btRows(S.F, r.zen, r.az, TL, r.angT);
+      for (let k = 0; k < r.ang.length; k++)
+        if (bt[k] && Math.abs(r.ang[k]) > Math.abs(r.angT[k]) + 1e-9) sobre++;
+      prev = r;
+    }
+    return sobre;
+  };
+  const nl = cuenta(cl), ns = cuenta(cs);
+  if (!(nl > 0)) throw new Error('sin sobreinclinación en libre no hay nada que comparar');
+  if (ns !== 0) throw new Error(`el modo seguro sobreinclina ${ns} veces`);
+});
+
+t('con lazo, las mesas de un MISMO accionamiento siguen con el mismo θ', () => {
+  const cot = S.plantaCotas ? null : null;   // la genérica no tiene mesas: se usa la T por mesa de siempre
+  const c = { ...base, ctrl:LAZO };
+  let prev = null;
+  for (let m = 300; m < 1100; m += 15) {
+    const r = S.instant(S.F, c, TL, m, prev); prev = r;
+    if (!r.segAng) continue;
+    for (let f = 0; f < r.segAng.length; f++) {
+      const u = new Set(r.segAng[f].map(v => v.toFixed(9)));
+      if (TL.segDrive && u.size > r.segAng[f].length) throw new Error('mesas del mismo motor separadas');
+    }
+  }
+});
+
+t('LAS POLÍTICAS DEL BT3D: las claves de la página son las del simulador', () => {
+  const m = pg.match(/const POLS=\[([\s\S]*?)\n\];/);
+  if (!m) throw new Error('produccion.html sin tabla POLS');
+  const mias = [...m[1].matchAll(/key:'([a-z0-9]+)'/g)].map(x => x[1]).sort();
+  const b = bt.match(/const POLICIES=\[([\s\S]*?)\n\];/);
+  if (!b) throw new Error('backtracking.html sin tabla POLICIES');
+  const suyas = [...b[1].matchAll(/key:'([a-z0-9]+)'/g)].map(x => x[1]).sort();
+  if (mias.join(',') !== suyas.join(','))
+    throw new Error(`las claves han derivado:\n  página: ${mias.join(',')}\n  simulador: ${suyas.join(',')}`);
+});
+
+t('cada política da una POA finita y distinta, y el astronómico rinde MENOS (se auto-sombrea)', () => {
+  const pol = {};
+  for (const k of ['pairwise','true3d','row','global','bt2d','astro']) {
+    const e = sumDia({ ...base, pol:k });
+    if (!Number.isFinite(e) || !(e > 0)) throw new Error(`la política ${k} no da energía finita: ${e}`);
+    pol[k] = e;
+  }
+  if (Math.abs(pol.pairwise - pol.astro) < 1e-9) throw new Error('astro y pairwise no pueden dar lo mismo en pendiente');
+  if (!(pol.astro < pol.pairwise)) throw new Error(`el astronómico tendría que perder por sombra: ${pol.astro} vs ${pol.pairwise}`);
+  if (Math.abs(sumDia({ ...base, pol:'pairwise' }) - sumDia(base)) > 0)
+    throw new Error('el DEFAULT tiene que seguir siendo pairwise, al vatio');
+});
+
+t('una clave de política que no existe cae al pairwise (y por eso el careo de claves importa)', () => {
+  if (Math.abs(sumDia({ ...base, pol:'noexiste' }) - sumDia({ ...base, pol:'pairwise' })) > 0)
+    throw new Error('el fallback silencioso ha cambiado: revisar policyAngles');
 });
 
 console.log('');
