@@ -894,6 +894,27 @@ function rangoHaz(zen,az,T,axisTilt,slopeDeg){
 /* el CONO de ángulos que reciben haz, para el tilt de eje que se le pase:
    [ψ−d, ψ+d] con d = acos(cos 88° / cos λ). Devuelve null cuando NINGÚN θ baja
    de 88° (el sol casi a lo largo del eje: es geometría, no decisión). */
+/* EL TECHO DEL HAZ, Y POR QUÉ CON EL SOL RASANTE MANDA ÉL Y NO EL BACKTRACKING.
+   Esto acota θ al cono donde el módulo aún recibe haz (AOI ≤ AOI_HAZ). Es un
+   tope de APROVECHAMIENTO, y con el sol alto no estorba: 1,17 filas de 8 tocan
+   el tope por encima de 20° de elevación. Pero el tope CAE MÁS DEPRISA QUE EL
+   SOL —en el terreno de semilla 1234 la fila 3 pasa de 2,75° a 1,81° en cinco
+   minutos— mientras el backtracking, con sombras cada vez más largas, pide
+   SUBIR. Van en direcciones opuestas, y a las 19:05Z (sol 5,1°) las OCHO filas
+   salen pegadas al tope: la consigna no la decide ya el backtracking, la decide
+   este recorte.
+
+   De ahí una trampa que costó encontrar. Al meter el deadband del lazo, la
+   sombra MEJORABA con el sol rasante —parecía contradictorio—: el deadband
+   congela la consigna de cinco minutos antes, cuyo tope era más alto, y la deja
+   POR ENCIMA del tope de ahora (2,77 filas de 8 de media, en 17 de los 22
+   instantes en que «mejoraba»). Apuntando fuera del haz sombrea menos, claro.
+   Pero NO es una mejora: de esos 22 instantes gana energía en 11 y la pierde en
+   11, con −0,57 W/m² de media, y todos juntos valen el 0,136 % de la POA del
+   día. Es el caso de libro de que sombra cero tiene dos soluciones —apuntar
+   bien o no apuntar— y de que, fuera de su régimen, la sombra deja de medir
+   calidad. Por eso el recorte se queda como está y el banco B juzga cualquier
+   alternativa por sombra Y por energía, nunca por sombra sola. */
 function conoHaz(zen,az,T,axisTilt){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return null;
@@ -2837,6 +2858,35 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo){
    del energy-optimal). En la estimación anual (paso 20 min ⇒ 204°) no llega a
    morder y se omite, declarado. */
 const TRACKER_SLEW=0.17;                             // °/s (spec del actuador)
+/* v1.61: LA OTRA MITAD DEL LAZO. El core tiene un lazo de control canónico con
+   DOS mitades —deadband y slew— y este fichero implementaba sólo la segunda:
+   el comentario de computeDay decía «lo que la planta HACE: la consigna
+   limitada a la velocidad del tracker», y la velocidad es la mitad. overcast.html
+   ya espeja las dos («Canónicos del core: deadband 1,0° · slew 0,17°/s»), así
+   que eran dos simuladores de la misma casa con lazos distintos.
+   EL VALOR NO ES MÍO: 1,0° es el canónico del core. La TCU lo lleva en el
+   registro 41061 con 45 PULSOS por defecto (90 con alarma de baja capacidad,
+   41063), y la constante pulsos/grado es del accionamiento y no vive en este
+   repo — el propio export_config_tcu lo declara y deja esos registros sin
+   derivar. Por eso el deadband va en GRADOS y configurable.
+   Medido sobre un día entero, tres terrenos, paso de control de 5 min:
+     deadband 0,0°   POA 333.984   sombra 4,733 %   arranques 3.473 / 4.344
+     deadband 1,0°   POA 334.029   sombra 4,553 %   arranques 3.015
+   No cuesta energía, baja la sombra 0,18 pp y quita el 13 % de los arranques
+   de motor — que es desgaste que el simulador estaba ignorando. */
+const DEADBAND_DEG=1.0;                              // ° (canónico del core; TCU 41061 = 45 pulsos)
+/* El lazo entero, en un sitio: por debajo del umbral el motor NI ARRANCA, y lo
+   que arranca va limitado a la velocidad del actuador. Misma regla y mismo
+   orden que apply_control_loop del core (y que overcast.html). */
+function lazoControl(prev,cmd,dtSec,deadband,rate){
+  if(!prev)return slewLimit(prev,cmd,dtSec,rate);
+  const db=(deadband==null?DEADBAND_DEG:deadband);
+  const des=cmd.map((v,i)=>(db>0&&Math.abs(v-prev[i])<db)?prev[i]:v);
+  return slewLimit(prev,des,dtSec,rate);
+}
+function lazoControlSeg(prevSeg,cmdSeg,dtSec,deadband,rate){
+  return cmdSeg.map((l,r)=>lazoControl(prevSeg?prevSeg[r]:null,l,dtSec,deadband,rate));
+}
 function slewLimit(prev,cmd,dtSec,rate){
   const r=(rate==null?TRACKER_SLEW:rate)*dtSec;
   if(!prev)return cmd.slice();
@@ -2967,24 +3017,49 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   const mem=repairNoShade._memo;
   let best=cur, bestV=E.tot;
   if(mem.tot<bestV-1e-9){cur=uni(mem.th);E=evalua(cur);best=cur.slice();bestV=E.tot;}
-  // 2) DESCENSO: para cada fila con sombra de filas, mover 2° su emisora
-  //    principal (con su accionamiento) o la propia fila, en las dos
-  //    direcciones; se aplica el movimiento que más baja la sombra total
-  for(let it=0;it<12&&E.mx>1e-3;it++){
+  /* 2) DESCENSO: para cada fila con sombra de filas, mover su emisora principal
+        (con su accionamiento) o la propia fila, en las dos direcciones; se
+        aplica el movimiento que más baja la sombra total.
+
+     v1.61 — EL PASO, EN ESCALERA. Este descenso avanzaba a 2° FIJOS y se rendía
+     cuando ningún movimiento de 2° mejoraba. Es la única pieza que ve la sombra
+     de las filas NO adyacentes (usa el contador de banda con todas las
+     emisoras), y con el sol bajo es justo donde hace falta: medido sobre tres
+     terrenos, con el sol entre 5° y 10° el 52,7 % de la sombra que queda viene
+     de filas no adyacentes, frente al 8,1 % con el sol por encima de 20°. Y las
+     correcciones que hacen falta ahí son de décimas de grado, POR DEBAJO DE SU
+     PROPIO PASO: no podía hacerlas por construcción.
+
+     Ahora, cuando ningún movimiento del paso actual mejora, el paso BAJA en vez
+     de rendirse: 2° → 0,5° → PASO_BUSQ. El grueso se comporta exactamente como
+     antes; lo que se añade es lo que antes no se podía ni intentar. Medido
+     sobre 540 instantes (3 semillas × 2 tamaños, día completo): cambia el 12 %
+     de las consignas, baja la sombra de la peor fila en 24 instantes y la sube
+     en 2 (peor caso +0,4 pp), y la energía del día sube un 0,0875 %.
+
+     Cómo se destapó, y qué NO era. Al meter el deadband del lazo la sombra
+     MEJORABA, lo cual parecía contradictorio. La escalera salió de investigarlo
+     pero NO es su explicación: con y sin escalera la consigna de las 19:05Z es
+     la misma. La causa de aquello es otra y está en rangoHaz, no aquí — véase
+     la nota del techo del haz en conoHaz. */
+  const ESCALERA=[2,0.5,PASO_BUSQ];
+  let nivel=0;
+  for(let it=0;it<36&&E.mx>1e-3;it++){
     const cands=[]; const vis=new Set();
     const add=(g)=>{const k=g.join(',');if(!vis.has(k)){vis.add(k);cands.push(g);}};
     const filas=[];for(let r=0;r<nR;r++){const f=filasDe(E.sh,r);if(f>1e-3)filas.push([f,r]);}
     filas.sort((x,y)=>y[0]-x[0]);
     for(const [,r] of filas.slice(0,3)){const emi=E.sh.de[r].filter(q=>q[0]!=='terreno')[0];if(emi)add(grupoDe(emi[0]));add(grupoDe(r));}
     let mv=null,mvE=null,mvV=E.tot;
-    for(const g of cands.slice(0,5))for(const d of [-2*sg,2*sg]){
+    const paso=ESCALERA[nivel];
+    for(const g of cands.slice(0,5))for(const d of [-paso*sg,paso*sg]){
       const a=cur.slice();let movio=false;
       for(const e of g){const t=clampR(e,a[e]+d);if(t!==a[e]){a[e]=t;movio=true;}}
       if(!movio)continue;
       const E2=evalua(a);
       if(E2.tot<mvV-1e-9){mvV=E2.tot;mv=a;mvE=E2;}
     }
-    if(!mv)break;
+    if(!mv){ if(++nivel>=ESCALERA.length)break; continue; }   // no mejora: afina el paso
     cur=mv;E=mvE;
     if(E.tot<bestV-1e-9){bestV=E.tot;best=cur.slice();}
   }
@@ -3737,9 +3812,9 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
     precioDeLaPromesa:promesa,
     alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo. '+
             'NUNCA prueba dos unidades movidas a la vez en direcciones distintas: si dice «óptimo», es «no he encontrado nada mejor entre lo que sé mirar». '+
-            'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s; NO modela el DESGASTE ni el número de maniobras: una consigna que gane unos W/m² yendo y viniendo cada minuto sale «mejor» aquí y es peor en la planta.',
-    sellos:{version:'v1.60',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
-            slew:TRACKER_SLEW+' °/s',pasoControl:dt+' s'}
+            'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s. Lo publicado ya lleva el LAZO del core (deadband '+DEADBAND_DEG+'° + slew), así que un candidato que diste menos del deadband de lo publicado NO se ejecutaría aunque aquí gane; y el DESGASTE sigue sin modelarse más allá de eso.',
+    sellos:{version:'v1.61',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
+            slew:TRACKER_SLEW+' °/s',deadband:DEADBAND_DEG+'°',pasoControl:dt+' s'}
   };
 }
 
@@ -3747,7 +3822,7 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.60.0';
+const VER='v1.61.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -4343,12 +4418,13 @@ function* computeDayGen(){
       let lim,pp;
       if(seg){
         // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
-        const ls=slewLimitSeg(prevS,segCmd(P.key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60); prevS=ls;
+        const ls=lazoControlSeg(prevS,segCmd(P.key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60); prevS=ls;
         lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
         segAng[t]=ls; poaS[t]=pp.segs;
       }else{
-        // lo que la planta HACE: la consigna limitada a la velocidad del tracker
-        lim=slewLimit(prev,o.angles,STEP_MIN*60); prev=lim;
+        // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
+        // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
+        lim=lazoControl(prev,o.angles,STEP_MIN*60); prev=lim;
         pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
       }
       ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
@@ -4362,7 +4438,7 @@ function* computeDayGen(){
   // BT en la política astro, y en las demás marca exactamente las horas de BT
   const astroAng=new Array(nT); let prevA=null;
   for(let t2=0;t2<nT;t2++){
-    const limA=slewLimit(prevA,anglesAstro(sun[t2].zen,sun[t2].az,Tcfg),STEP_MIN*60);
+    const limA=lazoControl(prevA,anglesAstro(sun[t2].zen,sun[t2].az,Tcfg),STEP_MIN*60);
     // bifila: la referencia astro se ACOPLA como el accionamiento (la gemela
     // copia a la motora) — si no, el mero acoplamiento contaría como «BT»
     if(c.drive!=='mono'&&T.groups)
@@ -6103,6 +6179,9 @@ function updateHud(tIdx,g,irrN,key,p,sh){
        pantalla llamaba irreducible a un ángulo escrito a mano que nadie había
        barrido. Afirmar eso de un número que no se ha calculado es justo lo que
        esta casa no hace. Con el mando, se dice lo que es: no se ha buscado. */
+    /* v1.61: lo que se publica lleva el LAZO del core (deadband 1,0° + slew
+       0,17 °/s), no la consigna cruda de la política. Se dice aquí porque es
+       donde el usuario lee el θ y podría no cuadrarle con la política. */
     const irre=manualOn()
       ?(Math.max(...sh)>0.02?' · mando manual: NADIE ha barrido esto — para saber si es evitable, «✓ certificar»':'')
       :((['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'');
@@ -6555,7 +6634,7 @@ function careoGhostInstant(){
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
   const o=policyAngles(CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
-  const ang=slewLimit(DAY.pol[CAREO_A].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  const ang=lazoControl(DAY.pol[CAREO_A].ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
   GHOST={m:m,stamp:DAY,ang:ang,shade:pp.shade};
   return GHOST;
@@ -6584,7 +6663,7 @@ function consignaEscena(key){
     const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
     const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
     const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
-    return slewLimit(p.ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+    return lazoControl(p.ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
   }catch(e){return p.ang[tIdx]||null;}
 }
 function manualRowsInit(){
