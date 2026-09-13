@@ -136,6 +136,8 @@ jobs:
         run: node tools/test_produccion.mjs
       - name: cableado
         run: node tools/test_cableado_core.mjs
+      - name: lazo de control del tracker
+        run: node tools/test_control_core.mjs
       - name: sombras de nube
         run: node tools/test_cloud_shadows.mjs
       - name: cielo cubierto
@@ -232,6 +234,7 @@ jobs:
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
+          - { banco: test_produccion_lazo.mjs } # idem — el lazo de control, las políticas y la tabla por minuto
           - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
