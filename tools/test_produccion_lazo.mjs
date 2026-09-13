@@ -10,11 +10,16 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// La ruta del navegador va en UN solo sitio. Este banco nació con ella clavada
+// —'/opt/pw-browsers/chromium_headless_shell-1194/...'— y en CI no existe: el
+// job murió con «Failed to launch chromium», que se lee como banco roto y era
+// banco mal instalado. Es exactamente el fallo por el que pw_navegador.mjs
+// existe (once bancos antes que este), y aquí se hacía el doce. En CI devuelve
+// undefined, que es como se le dice a Playwright «usa el que te instalaste».
+import { EXE } from './pw_navegador.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUERTO = process.env.PUERTO || 8127;
-const EXE = process.env.PW_EXE ||
-  '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
 const BASE = `http://127.0.0.1:${PUERTO}`;
 
 let ok = 0, ko = 0;
@@ -31,7 +36,7 @@ if (!(await vivo())) {
   for (let i = 0; i < 40 && !(await vivo()); i++) await new Promise(r => setTimeout(r, 250));
 }
 
-const b = await chromium.launch({ executablePath: EXE,
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } });
 await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
