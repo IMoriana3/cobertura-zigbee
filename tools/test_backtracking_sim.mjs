@@ -556,6 +556,38 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.59 · EL PROBADOR CERTIFICA UNA POSTURA ALCANZABLE: lo que el actuador no alcanza no puede dominar', () => {
+  /* «¿La velocidad se tiene en cuenta?» — no lo estaba. El probador proponía
+     consignas a 18° de donde está la planta sin saber si el actuador llega en
+     el paso. Certificaba una POSTURA como si fuera un MOVIMIENTO. Ahora cada
+     candidato pasa por el MISMO slewLimit que usa la escena, con TRACKER_SLEW
+     (0,17 °/s, spec del actuador) — no un número inventado. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/slewLimit\(/.test(cuerpo)) throw new Error('el probador no comprueba si el actuador llega: certifica un deseo');
+  if (!/TRACKER_SLEW/.test(fis59.slice(fis59.indexOf('const CERT_DT'), fis59.indexOf('const CERT_DT') + 900)) && !/TRACKER_SLEW/.test(cuerpo))
+    throw new Error('el paso de control no se ata a la spec del actuador');
+  if (!/DESGASTE/.test(cuerpo)) throw new Error('el alcance no declara que el desgaste no se modela');
+  if (!/dos unidades movidas a la vez/.test(cuerpo))
+    throw new Error('el alcance no declara que el repertorio de candidatos no cubre dos unidades en direcciones distintas');
+
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  // con un paso de control RIDÍCULO (1 s) no se llega a ninguna parte: nadie puede dominar
+  const cortito = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 1);
+  if (cortito.candidatos.dominan !== 0)
+    throw new Error('con 1 s de paso el actuador no se mueve y sin embargo ' + cortito.candidatos.dominan + ' candidatos «dominan»');
+  if (cortito.veredicto === 'mejorable')
+    throw new Error('«mejorable» proponiendo algo inalcanzable en 1 s: eso es un deseo, no una alternativa');
+  // y con un paso largo vuelve a haber alternativas reales (si las había)
+  const largo = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 3600);
+  if (largo.candidatos.dominan < cortito.candidatos.dominan)
+    throw new Error('con más tiempo el actuador alcanza MENOS sitios: el límite de giro está al revés');
+  if (!largo.sellos.slew || !largo.sellos.pasoControl)
+    throw new Error('el certificado no sella con qué velocidad y qué paso de control juzgó el alcance');
+});
+
 t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muestra de la malla', () => {
   /* Fuera de la malla de 5 min la escena es el MINUTO EXACTO (para eso existe
      sceneInstant). manualRowsInit leía DAY.pol[key].ang[timeIndex()] —la muestra

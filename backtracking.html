@@ -3524,6 +3524,14 @@ function prodColor(x){
    Y declara su discretización: certifica «el mejor de lo que ha barrido», no
    «el óptimo». El mismo matiz que el invariante J, por la misma razón. */
 const CERT_PASO=0.5;          // grados del barrido del probador
+/* v1.59: EL PASO DE CONTROL con el que se juzga si un candidato es ALCANZABLE.
+   «¿La velocidad se tiene en cuenta?» — no lo estaba, y es un agujero: el
+   probador certificaba una POSTURA como si fuera un MOVIMIENTO. Podía proponer
+   una consigna a 18° de donde está la planta sin saber si el actuador llega.
+   Ahora cada candidato se pasa por el MISMO slewLimit que usa la escena, con
+   TRACKER_SLEW (0,17 °/s, spec del actuador) — no un número inventado — y el
+   que no llega no puede dominar: se cuenta aparte y se dice. */
+const CERT_DT=300;            // s: el paso de control con el que se juzga alcanzable
 const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
 const SIN_SOMBRA=['pairwise','true3d','mgl'];
 const OPTIMIZAN=['optimal','optfree'];
@@ -3533,7 +3541,7 @@ const OPTIMIZAN=['optimal','optfree'];
    sea— y entonces no hay objetivo declarado que cumplir: sólo el factible y los
    dos ejes. Lo pidió una captura de Iñaki: con el manual puesto, el botón
    certificaba la consigna de pairwise en vez de la que estaba en pantalla. */
-function certifica(key,zen,az,T,irr,doy,albedo,angPub){
+function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
   const nR=T.pairs.length+1;
   const unidades=T.groups?T.groups:Array.from({length:nR},(_,r)=>[r]);
   const pub=angPub?angPub.slice():policyAngles(key,zen,az,T,irr,doy,albedo).angles;
@@ -3567,9 +3575,13 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub){
     cands.push(clampU(a));
   }
 
+  // ── ¿es ALCANZABLE desde donde está la planta, en un paso de control? ─────
+  const dt=(dtSec==null?CERT_DT:dtSec);
+  const llega=(a)=>{const l=slewLimit(pub,a,dt);return a.every((v,i)=>Math.abs(v-l[i])<1e-6);};
+
   // ── medir y buscar quién DOMINA a lo publicado ────────────────────────────
   const sPub=sombraDe(pub), pPub=poaDe(pub);
-  let mejor=null, nDom=0;
+  let mejor=null, nDom=0, nLejos=0, mejorLejos=null;
   for(const a of cands){
     if(a.every((v,i)=>Math.abs(v-pub[i])<1e-9))continue;
     let domina=false, s=null, e=null;
@@ -3589,6 +3601,11 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub){
       domina=(mejorS&&igualE)||(mejorE&&(mejorS||igualS));
     }
     if(!domina)continue;
+    /* domina en los números, pero ¿puede el actuador ponerse ahí? Si no llega,
+       no es una alternativa: es un deseo. Se cuenta y se enseña aparte. */
+    if(!llega(a)){ nLejos++;
+      if(!mejorLejos||(esSinSombra?s<mejorLejos.sombra:e>mejorLejos.poa))mejorLejos={ang:a,sombra:s,poa:e};
+      continue; }
     nDom++;
     if(!mejor||(esSinSombra?s<mejor.sombra:e>mejor.poa))mejor={ang:a,sombra:s,poa:e};
   }
@@ -3644,11 +3661,15 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub){
     mejorHallado:mejor?{ang:mejor.ang,sombraPct:100*mejor.sombra,poa:mejor.poa}:null,
     margen:margen,
     factible:{porUnidad:factible,motivos:motivos},
-    candidatos:{evaluados:cands.length,dominan:nDom},
+    candidatos:{evaluados:cands.length,dominan:nDom,fueraDeAlcance:nLejos},
+    mejorFueraDeAlcance:mejorLejos?{ang:mejorLejos.ang,sombraPct:100*mejorLejos.sombra,poa:mejorLejos.poa}:null,
     costeDeLaEleccion:coste,
     precioDeLaPromesa:promesa,
-    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo',
-    sellos:{version:'v1.59',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
+    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo. '+
+            'NUNCA prueba dos unidades movidas a la vez en direcciones distintas: si dice «óptimo», es «no he encontrado nada mejor entre lo que sé mirar». '+
+            'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s; NO modela el DESGASTE ni el número de maniobras: una consigna que gane unos W/m² yendo y viniendo cada minuto sale «mejor» aquí y es peor en la planta.',
+    sellos:{version:'v1.59',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
+            slew:TRACKER_SLEW+' °/s',pasoControl:dt+' s'}
   };
 }
 
@@ -6401,6 +6422,14 @@ function pintaCertificado(){
              (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
              '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
              ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+    }
+    const fl=ce.mejorFueraDeAlcance;
+    if(fl){
+      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',fl.sombraPct.toFixed(1),' %</b>');
+      if(isFinite(fl.poa))H.push(' · POA <b>',fl.poa.toFixed(1),'</b> W/m²');
+      H.push('<br><span style="color:#9fb0c2">gana en los números, pero no se puede llegar ahí en un paso de ',
+             ce.sellos.pasoControl,' a ',ce.sellos.slew,'. No es una alternativa: es un deseo. (',
+             ce.candidatos.fueraDeAlcance,' candidatos así)</span></div>');
     }
     const pr=ce.precioDeLaPromesa;
     if(pr){
