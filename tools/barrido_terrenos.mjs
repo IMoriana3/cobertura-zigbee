@@ -106,7 +106,18 @@ const nombre = (c) => `${c.sitio.nm} · ${c.tpreset}${c.tparam ? ' ' + c.tparam 
 const DIAS = [['21-jun', Date.UTC(2026, 5, 21), 172], ['21-mar', Date.UTC(2026, 2, 21), 80], ['21-dic', Date.UTC(2026, 11, 21), 355]];
 
 const res = { A: { n: 0, peor: 0, casos: [] }, B: { n: 0, casos: [], fisica: [], mejoresEnSombra: 0 }, B2: { n: 0, casos: [], fisica: [] }, C: { n: 0, casos: [] }, D: { n: 0, casos: [] }, E: { n: 0, casos: [] }, F: { n: 0, peor: 0, perdidas: [], casos: [] }, G: { n: 0, casos: [] }, H: { n: 0, peor: 0, espaldas: [], espaldas10: [], gratis: [], peorCoste: 0, casos: [] },
-  I: { n: 0, rompe: [], peor: 0, compra: 0, total: 0 },
+  /* v1.59: I se parte en DOS, porque sumaba dos fenómenos que significan lo
+     CONTRARIO. Medido sobre los 13 instantes con sol ≥ 20° de la semilla 1:
+       residuo — la fórmula acoplada trae YA el mismo 2.5D (7 de 13). El
+                 accionamiento rígido impone un θ común a filas que pvlib
+                 pondría distintas: no es de la política, no se puede evitar.
+       canje   — la fórmula llega a 2.5D CERO y lo publicado se aparta (6 de
+                 13), porque apartarse gana energía: hasta +91,1 W/m² de planta,
+                 YA netos del Martinez de esa sombra. Es una ELECCIÓN, y legítima
+                 desde que la guardia de energía es incondicional (v1.57.2).
+     Un solo número los mezclaba y el titular decía «la política incumple su
+     garantía» tanto cuando no podía como cuando no quería. */
+  I: { n: 0, rompe: [], peor: 0, compra: 0, total: 0, residuo: [], canje: [] },
   J: { n: 0, casos: [], peor: 0 } };
 const t0 = Date.now();
 for (let ci = 0; ci < NCFG; ci++) {
@@ -270,7 +281,11 @@ for (let ci = 0; ci < NCFG; ci++) {
         if (m25 > 0.02) {
           const pP = F.poaPlant(g.zen, g.az, T, ang.pairwise, irr, doy, 0.2).plant;
           const pC = F.poaPlant(g.zen, g.az, T, acop, irr, doy, 0.2).plant;
-          res.I.rompe.push({ tag, m25: +(100 * m25).toFixed(1), elev: +g.elev.toFixed(1), compra: +(pP - pC).toFixed(1), poa: +pP.toFixed(1) });
+          const m25acop = p25(acop);
+          const q = { tag, m25: +(100 * m25).toFixed(1), m25acop: +(100 * m25acop).toFixed(1), elev: +g.elev.toFixed(1), compra: +(pP - pC).toFixed(1), poa: +pP.toFixed(1) };
+          // el reparto: ¿la fórmula trae ya esta sombra (residuo) o la política se apartó de una postura limpia (canje)?
+          (Math.abs(m25 - m25acop) <= 0.001 ? res.I.residuo : res.I.canje).push(q);
+          res.I.rompe.push(q);
           res.I.compra += pP - pC; res.I.total += pP;
           if (m25 > res.I.peor) res.I.peor = m25;
         }
@@ -339,6 +354,15 @@ if (res.J.casos.length) console.log('   J casos: ' + res.J.casos.slice(0, 5).map
 {
   const alt = res.I.rompe.filter(q => q.elev >= 20).length, baj = res.I.rompe.length - alt;
   console.log(`I  el pairwise PUBLICADO frente a su garantía 2.5D: ${res.I.n} instantes · pasa del 2 %: ${res.I.rompe.length} (${res.I.n ? (100 * res.I.rompe.length / res.I.n).toFixed(1) : 0} %) · de ellos con sol ≥ 20°: ${alt}, con sol < 20°: ${baj} · peor ${(100 * res.I.peor).toFixed(1)} % · energía que compra la excepción: ${res.I.compra.toFixed(0)} de ${res.I.total.toFixed(0)} W/m² (${res.I.total > 0 ? (100 * res.I.compra / res.I.total).toFixed(1) : 0} %)`);
+  {
+    const cA = res.I.canje.filter(q => q.elev >= 20), rA = res.I.residuo.filter(q => q.elev >= 20);
+    const cpr = cA.reduce((x, q) => x + q.compra, 0), peorC = cA.reduce((x, q) => Math.max(x, q.compra), 0);
+    console.log(`   I RESIDUO (la fórmula acoplada trae YA el mismo 2.5D — del accionamiento, no de la política): ${res.I.residuo.length} · con sol ≥ 20°: ${rA.length}`);
+    console.log(`   I CANJE (la fórmula llega a 2.5D cero y la política se aparta porque GANA energía neta): ${res.I.canje.length} · con sol ≥ 20°: ${cA.length} · energía que gana el canje con sol ≥ 20°: ${cpr.toFixed(1)} W/m² · el mayor: ${peorC.toFixed(1)}`);
+    const malos = res.I.canje.filter(q => q.compra < -E_EMPATE);
+    console.log(`   I canjes que PIERDEN energía (serían fallo: apartarse de la postura limpia sin ganar nada): ${malos.length}`);
+    if (malos.length) console.log('   I CANJE MALO: ' + malos.slice(0, 3).map(q => `2.5D ${q.m25} % · sol ${q.elev}° · pierde ${(-q.compra).toFixed(1)} W/m² de ${q.poa} · ${q.tag}`).join(' · '));
+  }
   if (res.I.rompe.length) { const peores = res.I.rompe.slice().sort((a, b) => b.m25 - a.m25).slice(0, 3);
     console.log('   I peores: ' + peores.map(q => `2.5D ${q.m25} % · sol ${q.elev}° · compra ${q.compra} W/m² de ${q.poa} · ${q.tag}`).join(' · ')); }
 }

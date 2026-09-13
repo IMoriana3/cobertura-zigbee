@@ -556,6 +556,55 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.59 · LA PROMESA VIEJA NO SOBREVIVE A SU CORRECCIÓN: ninguna política dice GARANTIZAR sombra cero', () => {
+  /* Desde v1.57.2 la guardia de energía es incondicional, así que pairwise BUSCA
+     no-sombra y no la garantiza: medido en el barrido, 6 instantes con sol ≥ 20°
+     en que la fórmula acoplada llega a 2.5D cero y lo publicado se aparta hasta
+     el 65 % porque apartarse gana hasta 91 W/m² netos. La etiqueta del selector
+     seguía diciendo «sombra de PLANOS cero garantizada». El código y su etiqueta
+     son dos piezas que tienen que mirar lo mismo — la misma forma de fallo que
+     el render y la física con dos soles distintos. */
+  const pol = html.slice(html.indexOf('const POLICIES=['), html.indexOf('];', html.indexOf('const POLICIES=[')));
+  for (const mal of ['cero garantizada', 'sombra cero garantizada'])
+    if (pol.indexOf(mal) >= 0) throw new Error(`el selector sigue prometiendo «${mal}»: la guardia de energía puede publicar sombra y lo hace`);
+  if (!/CUESTA energía de planta/.test(pol)) throw new Error('la etiqueta de pairwise no dice de qué depende que evite la sombra');
+});
+
+t('v1.59 · EL PRECIO DE LA PROMESA: una postura limpia que cuesta energía NO es «mejorable», y una que rinde más SÍ', () => {
+  /* El número simétrico del precio de la elección. Sin él, quien ve una política
+     «sin sombra» publicando un 19 % no sabe si es que no podía o que no quería.
+     Y su criterio es el que sostiene toda la corrección de v1.57: una postura con
+     MENOS sombra sólo domina si además no pierde energía. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/precioDeLaPromesa/.test(cuerpo)) throw new Error('el certificado no publica el precio de la promesa');
+
+  const T = casoB(8, true), doy = 172;
+  let cara = null, gratis = null;
+  for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (!(irr.ghi > 0)) continue;
+    const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+    const pr = ce.precioDeLaPromesa; if (!pr || pr.cuesta == null) continue;
+    // (1) una postura MENOS sombreada que CUESTA energía nunca puede ser el motivo de «mejorable»
+    if (pr.cuesta > 0.05) {
+      if (!cara || pr.cuesta > cara.pr.cuesta) cara = { mm, ce, pr };
+      if (ce.veredicto === 'mejorable' && ce.mejorHallado && ce.mejorHallado.sombraPct <= pr.sombraPct + 1e-9
+          && ce.mejorHallado.poa < ce.elegido.poa - 0.05)
+        throw new Error(`«mejorable» por una postura que PIERDE ${(ce.elegido.poa - ce.mejorHallado.poa).toFixed(1)} W/m²: el árbitro óptico mandando otra vez sobre la energía`);
+    }
+    // (2) una postura con menos sombra Y más energía SÍ tiene que salir como mejorable
+    if (pr.cuesta < -0.05 && pr.sombraPct < ce.elegido.sombraPct - 1e-9) {
+      if (!gratis) gratis = { mm, ce, pr };
+      if (ce.veredicto !== 'mejorable')
+        throw new Error(`hay una consigna con menos sombra Y +${(-pr.cuesta).toFixed(1)} W/m² y el probador dice «${ce.veredicto}»: un juez que no puede decir que no no vale`);
+    }
+  }
+  if (!cara) throw new Error('el día no produjo ninguna promesa CON precio: el test no probaría nada');
+  if (!gratis) throw new Error('el día no produjo ninguna postura mejor en los dos ejes: el test no probaría nada');
+  if (!(cara.pr.cuesta > 50)) throw new Error('la promesa más cara del día cuesta sólo ' + cara.pr.cuesta.toFixed(1) + ' W/m²: el caso no es representativo');
+});
+
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
   const T = casoB(6, true), doy = 172; let dif = 0;
   for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {

@@ -3028,16 +3028,23 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
 function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
   if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo);
-  // el acoplado según la semántica de cada política: las que GARANTIZAN
-  // no-sombra (pairwise 2.5D, true-3D con su residual) refinan a nivel de
-  // accionamiento; astro/row toleran sombra por diseño (min|θ| simple) y
+  /* el acoplado según la semántica de cada política: las que BUSCAN no-sombra
+     (pairwise 2.5D, true-3D con su residual) refinan a nivel de accionamiento.
+     BUSCAN, no GARANTIZAN: desde v1.57 la guardia de energía es incondicional,
+     así que cuando la postura sin sombra cuesta producción no se publica.
+     Medido en el barrido (semilla 1, sol ≥ 20°): 6 instantes en que la fórmula
+     acoplada llega a 2.5D CERO y lo publicado se aparta hasta el 65 % porque
+     apartarse gana hasta 91 W/m² de planta, YA netos del Martinez de esa
+     sombra. Decir «garantizan» era la promesa vieja sobreviviendo a su
+     corrección. */
+  // astro/row toleran sombra por diseño (min|θ| simple) y
   // global ya es un único ángulo (el acoplado es un no-op)
   if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
   if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
-  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado y sin sombra por construcción (de planos vecinos)
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
   return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
 }
 
@@ -3582,6 +3589,24 @@ function certifica(key,zen,az,T,irr,doy,albedo){
   const coste=(conCielo&&mejorE)?{poa:mejorE.poa-pPub,pct:pPub>1e-9?100*(mejorE.poa-pPub)/pPub:0,
                                   sombraPct:100*mejorE.sombra,ang:mejorE.ang}:null;
 
+  /* ── EL PRECIO DE LA PROMESA ────────────────────────────────────────────
+     Simétrico del anterior, y lo pidió el barrido. «El precio de la elección»
+     contesta «¿cuánta energía dejas sobre la mesa?». Falta la pregunta que se
+     hace quien mira una política SIN SOMBRA y la ve publicando un 19 %: «tenías
+     una postura limpia, ¿por qué no la has cogido?». Medido en el barrido
+     (semilla 1, sol ≥ 20°): 6 instantes en que la fórmula acoplada llega a 2.5D
+     CERO y lo publicado se aparta; en uno, quedarse en la postura limpia costaba
+     91,1 W/m² de planta —27 % de la producción del instante— ya netos del
+     Martinez de la sombra que se evita. Sin este número, el usuario ve una
+     promesa incumplida; con él, ve el canje y decide. */
+  let promesa=null;
+  if(sPub>1e-9){ let lim=null;
+    for(const a of cands){const sa=sombraDe(a); if(!lim||sa<lim.sombra)lim={ang:a,sombra:sa};}
+    if(lim&&lim.sombra<sPub-1e-9){ const pL=poaDe(lim.ang);
+      promesa={ang:lim.ang,sombraPct:100*lim.sombra,poa:pL,
+               cuesta:conCielo?(pPub-pL):null,
+               pct:(conCielo&&pPub>1e-9)?100*(pPub-pL)/pPub:null}; } }
+
   // ── veredicto ─────────────────────────────────────────────────────────────
   let veredicto='óptimo', margen=null;
   if(mejor){
@@ -3593,7 +3618,7 @@ function certifica(key,zen,az,T,irr,doy,albedo){
 
   return {
     politica:key,
-    objetivo:esSinSombra?'evitar la sombra de planos donde sea posible, sin perder energía de planta'
+    objetivo:esSinSombra?'evitar la sombra de planos SALVO cuando evitarla cuesta energía de planta (guardia incondicional desde v1.57.2) — BUSCA no-sombra, no la GARANTIZA'
             :esOpt?'maximizar la POA de planta neta (puede sacrificar una fila)'
             :'seguir su regla: no promete optimalidad',
     veredicto:veredicto,
@@ -3603,8 +3628,9 @@ function certifica(key,zen,az,T,irr,doy,albedo){
     factible:{porUnidad:factible,motivos:motivos},
     candidatos:{evaluados:cands.length,dominan:nDom},
     costeDeLaEleccion:coste,
+    precioDeLaPromesa:promesa,
     alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo',
-    sellos:{version:'v1.58',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
+    sellos:{version:'v1.59',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
   };
 }
 
@@ -3612,7 +3638,7 @@ function certifica(key,zen,az,T,irr,doy,albedo){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.58.0';
+const VER='v1.59.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3626,9 +3652,9 @@ const POLICIES=[
   {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false, brain:'ncu'},
   {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false, brain:'tcu'},
   {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false, brain:'tcu'},
-  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — sombra de PLANOS cero garantizada; la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
+  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — evita la sombra de PLANOS salvo cuando evitarla CUESTA energía de planta (guardia de v1.57); la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
   {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true, brain:'tcu'},
-  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false, brain:'ncu'},
+  {key:'mgl',     nm:'Min ground light',ds:'mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes, con su misma guardia de energía', col:'#2dd4bf', on:false, brain:'ncu'},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
   {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
 ];
@@ -6298,7 +6324,11 @@ function pintaCertificado(){
       'background:rgba(10,15,22,.97);border:1px solid #2a3a4f;border-radius:10px;padding:12px 14px;'+
       'font-size:.8rem;line-height:1.5;color:#dfe5ea;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.5)';
     document.body.appendChild(pan);}
-  const tIdx=timeIndex(), key=$('scene').value||'pairwise';
+  /* v1.59: era $('scene').value — y «scene» es el CANVAS, no el selector de
+     políticas (ése es «polview»). Un canvas no tiene .value, así que caía
+     siempre en el ||'pairwise' y el botón certificaba pairwise tuvieras lo que
+     tuvieras en pantalla. Lo cazó Iñaki preguntando por otra cosa. */
+  const tIdx=timeIndex(), key=($('polview')&&$('polview').value)||'pairwise';
   const inst=sceneInstant(), g=inst?inst.g:DAY.sun[tIdx], c=DAY.c;
   if(!(g.elev>0)){pan.innerHTML='<b>Certificado</b><br>El sol está bajo el horizonte: no hay nada que certificar.'+cerrar;return;}
   pan.innerHTML='<b>Certificando…</b><br><span style="color:#9fb0c2">barriendo el conjunto factible con el contador exacto</span>';
@@ -6334,6 +6364,20 @@ function pintaCertificado(){
              (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
              '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
              ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+    }
+    const pr=ce.precioDeLaPromesa;
+    if(pr){
+      H.push(sep,'<b>El precio de la promesa</b><br>la postura MENOS sombreada del factible deja <b>',
+             pr.sombraPct.toFixed(1),' %</b> de sombra');
+      if(isFinite(pr.poa))H.push(' con <b>',pr.poa.toFixed(1),'</b> W/m²');
+      H.push('.<br><span style="color:#9fb0c2">');
+      if(pr.cuesta==null)H.push('sin cielo: no se puede poner precio');
+      else if(pr.cuesta>0.05)H.push('quedarse en ella costaría <b>',pr.cuesta.toFixed(1),
+             '</b> W/m² (',pr.pct.toFixed(0),' %) — por eso no se publica: la guardia de energía es incondicional');
+      else if(pr.cuesta<-0.05)H.push('y además RINDE MÁS: +',(-pr.cuesta).toFixed(1),
+             ' W/m². No hay canje que justificarla — es la consigna mejor de ahí arriba');
+      else H.push('no cuesta energía: empata con la publicada');
+      H.push('</span></div>');
     }
     H.push(sep,'<span style="color:#9fb0c2"><b style="color:#dfe5ea">Conjunto factible</b><br>',
            ce.factible.motivos.map(m=>'· '+m).join('<br>'),
