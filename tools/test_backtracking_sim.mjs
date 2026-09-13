@@ -556,6 +556,68 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.60 · LA POLÍTICA BUSCA A 0,1° — «si no busca, no va a mandar a esa posición»', () => {
+  /* El paso de búsqueda estaba escrito aparte en TRES sitios (0,5° en los dos
+     barridos de torsión, 2,5° en el uniforme de repairNoShade). Medido sobre
+     270 instantes de tres terrenos al bajarlo a 0,1°: 123 consignas (46 %)
+     cambian, la sombra media de la peor fila baja de 4,781 % a 4,737 % y la POA
+     de planta sube 0,16 W/m² — MEJOR EN LOS DOS EJES.
+     El barrido de torsión va en DOS TRAMOS por coste medido: a 0,1° puro el
+     instante de Ayora entera pasaba de 2,x s a 4.073 ms y rompía el tope de 3 s
+     del banco de producción. Camina a PASO_GRUESO y retrocede dentro del tramo
+     a PASO_BUSQ. APROXIMACIÓN DECLARADA: difiere del barrido exacto en 7 de 450
+     consignas (1,56 %), como mucho 0,227° en una fila, con +0,016 pp de sombra
+     y +0,289 W/m² acumulados — es decir, nada y sin sesgo. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  if (!/const PASO_BUSQ=0\.1;/.test(fis)) throw new Error('la política no busca a la resolución de mando');
+  if (!/const PASO_GRUESO=/.test(fis)) throw new Error('no existe el paso del tramo');
+  // los TRES barridos tienen que usar la constante, no un literal
+  for (const lit of ['sg*0.5', 'th+=2.5', '/2.5)*2.5'])
+    if (fis.indexOf(lit) >= 0) throw new Error(`queda un paso de búsqueda escrito aparte: «${lit}»`);
+  const pt = fis.slice(fis.indexOf('function pairThetaTorsion'), fis.indexOf('\n}', fis.indexOf('function pairThetaTorsion')));
+  if (!/PASO_GRUESO/.test(pt) || !/PASO_BUSQ/.test(pt))
+    throw new Error('el barrido de torsión no va en dos tramos: o no camina grueso o no afina');
+  if (!/ventana limpia más corta/.test(pt))
+    throw new Error('la aproximación de los dos tramos no viaja declarada');
+
+  // y que el resultado siga siendo un θ LIMPIO cuando existe
+  const T = casoB(6, true), doy = 172;
+  for (let mm = 6 * 60; mm <= 18 * 60; mm += 30) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (!(irr.ghi > 0)) continue;
+    const a = F.policyAngles('pairwise', g.zen, g.az, T, irr, doy, 0.2).angles;
+    for (const v of a) if (!isFinite(v) || Math.abs(v) > T.maxAngle + 1e-9)
+      throw new Error('el barrido en dos tramos devuelve un θ fuera de rango: ' + v);
+  }
+});
+
+t('v1.60 · EL BARRIDO DEL PROBADOR VA A 0,1°: la resolución de mando, no media rejilla', () => {
+  /* «El barrido debe hacerse cada 0,1°». A 0,5° el probador sólo encontraba
+     mejoras en saltos de medio grado: la ventana que dejaba limpia la fila 3 de
+     la escena de Iñaki medía 1,1°, DOS puntos de aquella rejilla. Una ventana
+     algo más estrecha se salta entera y el certificado dice «óptimo» sobre algo
+     que no lo es. Medido antes de bajarlo: 158 ms a 0,5° frente a 287 ms a
+     0,1°, así que se barre limpio, sin refinado en dos fases. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  if (!/const CERT_PASO=0\.1;/.test(fis)) throw new Error('el barrido del probador no va a 0,1°');
+  if (!/const CERT_VECINOS=40;/.test(fis)) throw new Error('la vecindad por unidad ya no cubre ±4°');
+
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const t0 = Date.now();
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+  const ms = Date.now() - t0;
+  if (ce.sellos.paso !== 0.1) throw new Error('el certificado no sella el paso real: ' + ce.sellos.paso);
+  // el barrido fino tiene que producir candidatos FUERA de la rejilla de 0,5°
+  const lo = Math.min(...ce.factible.porUnidad.map(q => q[0]));
+  const nUni = Math.floor((Math.max(...ce.factible.porUnidad.map(q => q[1])) - lo) / 0.1);
+  if (!(ce.candidatos.evaluados > nUni * 0.8))
+    throw new Error('el barrido no cubre el factible a 0,1°: ' + ce.candidatos.evaluados + ' candidatos para ' + nUni + ' pasos');
+  // y el coste tiene que seguir siendo el de un botón, no el de un banco
+  if (ms > 4000) throw new Error('certificar tarda ' + ms + ' ms: deja de ser un botón');
+});
+
 t('v1.59 · EL PROBADOR CERTIFICA UNA POSTURA ALCANZABLE: lo que el actuador no alcanza no puede dominar', () => {
   /* «¿La velocidad se tiene en cuenta?» — no lo estaba. El probador proponía
      consignas a 18° de donde está la planta sin saber si el actuador llega en
