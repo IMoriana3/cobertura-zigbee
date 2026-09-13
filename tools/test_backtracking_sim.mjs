@@ -593,6 +593,75 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
     throw new Error('el camino por mesa sigue sin el deadband');
 });
 
+t('v1.61 · EL TECHO DEL HAZ manda con el sol rasante — y por eso el deadband «mejoraba» la sombra', () => {
+  /* La contradicción que paró este trabajo: al meter el deadband, con el sol
+     rasante la sombra BAJABA. La causa no está en el lazo ni en la reparación,
+     está en el recorte por cono de haz: con el sol muy bajo el tope de AOI cae
+     más deprisa que el sol y la consigna sale PEGADA a él en todas las filas.
+     El deadband congela la de cinco minutos antes, que ya supera ese tope, y
+     apuntando fuera del haz se sombrea menos. Este banco fija las dos mitades
+     del hallazgo: (1) con el sol rasante la consigna se pega al tope; (2) una
+     consigna que lo supera baja la sombra SIN ganar energía — que es lo que la
+     convierte en un espejismo y no en una mejora. */
+  const RD = Math.PI / 180, pitch = 6, cw = 2.382, L = 2 * 28 * 1.146 + 0.55;
+  const rnd = F.mulberry32(1234), tilts = [], ELEV = [], segs = [];
+  for (let i = 0; i < 8; i++) { tilts.push((rnd() * 2 - 1) * 4); ELEV.push(-i * pitch * Math.tan(8 * RD)); segs.push([[-L / 2, L / 2]]); }
+  const T = { pairs: F.pairsFromElev(ELEV, pitch, tilts), cw, axisAz: 0, maxAngle: 55, gcr: cw / pitch, z0: 0.17, nBypass: 2, iam: 0.05, rowTilt: tilts, groups: null, drive: 'mono', segs };
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 0, 19 * 60 + 5), 41.5763, -0.7981);
+  if (!(g.elev > 0 && g.elev < 8)) throw new Error('el instante elegido ya no es de sol rasante: ' + g.elev);
+  const irr = F.clearskyIneichen(g.zen, 172, 300, 3.5);
+  const pub = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  const RU = F.rangosUnidad(g.zen, g.az, T);
+
+  // (1) con el sol rasante manda el recorte, no el backtracking
+  const pegadas = pub.filter((v, r) => Math.abs(v - RU[r][1]) < 1e-6).length;
+  if (pegadas < 6) throw new Error(`con el sol a ${g.elev.toFixed(1)}° sólo ${pegadas}/8 filas tocan el techo del haz: el recorte ya no es quien manda y esta demostración ha dejado de valer`);
+
+  // y el techo BAJA mientras el backtracking pide subir
+  const g0 = F.solarPos(Date.UTC(2026, 5, 21, 0, 19 * 60), 41.5763, -0.7981);
+  const RU0 = F.rangosUnidad(g0.zen, g0.az, T);
+  if (!(RU[3][1] < RU0[3][1] - 0.5)) throw new Error(`el techo de la fila 3 no cae entre las 19:00 y las 19:05 (${RU0[3][1].toFixed(2)} → ${RU[3][1].toFixed(2)})`);
+
+  // (2) la consigna de las 19:00, ya ilegal a las 19:05, baja la sombra y NO gana energía
+  const vieja = F.policyAngles('pairwise', g0.zen, g0.az, T, F.clearskyIneichen(g0.zen, 172, 300, 3.5), 172, 0.2).angles;
+  const fuera = vieja.filter((v, r) => v > RU[r][1] + 1e-6).length;
+  if (fuera < 4) throw new Error(`la consigna congelada ya no sale del techo (${fuera}/8): el mecanismo del espejismo ha cambiado`);
+  // la SOMBRA DE FILAS, descontando terreno y estructura: es la que el backtracking controla
+  const mx = (a) => { const sh = F.shadeBand3DAll(g.zen, g.az, T, a, { noStruct: true }); let m = 0;
+    for (let r = 0; r < 8; r++) { const de = sh.de && sh.de[r] ? sh.de[r] : [];
+      m = Math.max(m, Math.min(sh[r] || 0, de.filter(q => q[0] !== 'terreno').reduce((x, q) => x + q[1], 0))); }
+    return m; };
+  const poa = (a) => F.poaPlant(g.zen, g.az, T, a, irr, 172, 0.2).plant;
+  if (!(mx(vieja) < mx(pub) - 0.02)) throw new Error('la consigna fuera del haz ya no enseña menos sombra: revisar el hallazgo entero');
+  if (poa(vieja) > poa(pub) + 0.05) throw new Error(`apuntar fuera del haz estaría GANANDO energía (${poa(vieja).toFixed(2)} > ${poa(pub).toFixed(2)}): entonces no es un espejismo y el recorte sí es un defecto`);
+
+  // la nota tiene que estar escrita donde vive la causa
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const ic = fis.indexOf('function conoHaz(');
+  if (!/EL TECHO DEL HAZ/.test(fis.slice(Math.max(0, ic - 2000), ic))) throw new Error('el hallazgo no está documentado junto a conoHaz');
+});
+
+t('v1.61 · EL DESCENSO AFINA EL PASO en vez de rendirse', () => {
+  /* El descenso de repairNoShade avanzaba a 2° fijos y se rendía cuando ningún
+     movimiento de 2° mejoraba; con el sol bajo las correcciones que hacen falta
+     son de décimas. Ahora el paso baja: 2° → 0,5° → PASO_BUSQ. Medido sobre 540
+     instantes (3 semillas × 2 tamaños, día completo) contra la versión de 2°
+     fijos: cambia el 12 % de las consignas, baja la sombra de la peor fila en
+     24 instantes y la sube en 2 (peor caso +0,4 pp), y la POA del día sube un
+     0,0875 %. NO es la explicación de lo del deadband: eso es el techo del haz. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis.slice(fis.indexOf('function repairNoShadeCore('));
+  const m = cuerpo.match(/const ESCALERA=\[([^\]]+)\]/);
+  if (!m) throw new Error('el descenso ya no declara su escalera de paso');
+  const niveles = m[1].split(',').map(x => x.trim());
+  if (niveles.length < 3) throw new Error('la escalera tiene menos de tres peldaños: ' + m[1]);
+  if (niveles[niveles.length - 1] !== 'PASO_BUSQ') throw new Error('el último peldaño no es PASO_BUSQ: ' + m[1]);
+  if (!/\[-paso\*sg,paso\*sg\]/.test(cuerpo)) throw new Error('el descenso sigue moviéndose con un paso escrito a mano');
+  if (/if\(!mv\)break;/.test(cuerpo)) throw new Error('el descenso se sigue rindiendo al primer paso que no mejora');
+  if (!/if\(!mv\)\{ *if\(\+\+nivel>=ESCALERA\.length\)break; *continue; *\}/.test(cuerpo))
+    throw new Error('el descenso no baja de peldaño cuando el paso actual no mejora');
+});
+
 t('v1.60 · LA POLÍTICA BUSCA A 0,1° — «si no busca, no va a mandar a esa posición»', () => {
   /* El paso de búsqueda estaba escrito aparte en TRES sitios (0,5° en los dos
      barridos de torsión, 2,5° en el uniforme de repairNoShade). Medido sobre

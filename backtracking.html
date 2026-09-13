@@ -894,6 +894,27 @@ function rangoHaz(zen,az,T,axisTilt,slopeDeg){
 /* el CONO de ángulos que reciben haz, para el tilt de eje que se le pase:
    [ψ−d, ψ+d] con d = acos(cos 88° / cos λ). Devuelve null cuando NINGÚN θ baja
    de 88° (el sol casi a lo largo del eje: es geometría, no decisión). */
+/* EL TECHO DEL HAZ, Y POR QUÉ CON EL SOL RASANTE MANDA ÉL Y NO EL BACKTRACKING.
+   Esto acota θ al cono donde el módulo aún recibe haz (AOI ≤ AOI_HAZ). Es un
+   tope de APROVECHAMIENTO, y con el sol alto no estorba: 1,17 filas de 8 tocan
+   el tope por encima de 20° de elevación. Pero el tope CAE MÁS DEPRISA QUE EL
+   SOL —en el terreno de semilla 1234 la fila 3 pasa de 2,75° a 1,81° en cinco
+   minutos— mientras el backtracking, con sombras cada vez más largas, pide
+   SUBIR. Van en direcciones opuestas, y a las 19:05Z (sol 5,1°) las OCHO filas
+   salen pegadas al tope: la consigna no la decide ya el backtracking, la decide
+   este recorte.
+
+   De ahí una trampa que costó encontrar. Al meter el deadband del lazo, la
+   sombra MEJORABA con el sol rasante —parecía contradictorio—: el deadband
+   congela la consigna de cinco minutos antes, cuyo tope era más alto, y la deja
+   POR ENCIMA del tope de ahora (2,77 filas de 8 de media, en 17 de los 22
+   instantes en que «mejoraba»). Apuntando fuera del haz sombrea menos, claro.
+   Pero NO es una mejora: de esos 22 instantes gana energía en 11 y la pierde en
+   11, con −0,57 W/m² de media, y todos juntos valen el 0,136 % de la POA del
+   día. Es el caso de libro de que sombra cero tiene dos soluciones —apuntar
+   bien o no apuntar— y de que, fuera de su régimen, la sombra deja de medir
+   calidad. Por eso el recorte se queda como está y el banco B juzga cualquier
+   alternativa por sombra Y por energía, nunca por sombra sola. */
 function conoHaz(zen,az,T,axisTilt){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return null;
@@ -2996,24 +3017,49 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   const mem=repairNoShade._memo;
   let best=cur, bestV=E.tot;
   if(mem.tot<bestV-1e-9){cur=uni(mem.th);E=evalua(cur);best=cur.slice();bestV=E.tot;}
-  // 2) DESCENSO: para cada fila con sombra de filas, mover 2° su emisora
-  //    principal (con su accionamiento) o la propia fila, en las dos
-  //    direcciones; se aplica el movimiento que más baja la sombra total
-  for(let it=0;it<12&&E.mx>1e-3;it++){
+  /* 2) DESCENSO: para cada fila con sombra de filas, mover su emisora principal
+        (con su accionamiento) o la propia fila, en las dos direcciones; se
+        aplica el movimiento que más baja la sombra total.
+
+     v1.61 — EL PASO, EN ESCALERA. Este descenso avanzaba a 2° FIJOS y se rendía
+     cuando ningún movimiento de 2° mejoraba. Es la única pieza que ve la sombra
+     de las filas NO adyacentes (usa el contador de banda con todas las
+     emisoras), y con el sol bajo es justo donde hace falta: medido sobre tres
+     terrenos, con el sol entre 5° y 10° el 52,7 % de la sombra que queda viene
+     de filas no adyacentes, frente al 8,1 % con el sol por encima de 20°. Y las
+     correcciones que hacen falta ahí son de décimas de grado, POR DEBAJO DE SU
+     PROPIO PASO: no podía hacerlas por construcción.
+
+     Ahora, cuando ningún movimiento del paso actual mejora, el paso BAJA en vez
+     de rendirse: 2° → 0,5° → PASO_BUSQ. El grueso se comporta exactamente como
+     antes; lo que se añade es lo que antes no se podía ni intentar. Medido
+     sobre 540 instantes (3 semillas × 2 tamaños, día completo): cambia el 12 %
+     de las consignas, baja la sombra de la peor fila en 24 instantes y la sube
+     en 2 (peor caso +0,4 pp), y la energía del día sube un 0,0875 %.
+
+     Cómo se destapó, y qué NO era. Al meter el deadband del lazo la sombra
+     MEJORABA, lo cual parecía contradictorio. La escalera salió de investigarlo
+     pero NO es su explicación: con y sin escalera la consigna de las 19:05Z es
+     la misma. La causa de aquello es otra y está en rangoHaz, no aquí — véase
+     la nota del techo del haz en conoHaz. */
+  const ESCALERA=[2,0.5,PASO_BUSQ];
+  let nivel=0;
+  for(let it=0;it<36&&E.mx>1e-3;it++){
     const cands=[]; const vis=new Set();
     const add=(g)=>{const k=g.join(',');if(!vis.has(k)){vis.add(k);cands.push(g);}};
     const filas=[];for(let r=0;r<nR;r++){const f=filasDe(E.sh,r);if(f>1e-3)filas.push([f,r]);}
     filas.sort((x,y)=>y[0]-x[0]);
     for(const [,r] of filas.slice(0,3)){const emi=E.sh.de[r].filter(q=>q[0]!=='terreno')[0];if(emi)add(grupoDe(emi[0]));add(grupoDe(r));}
     let mv=null,mvE=null,mvV=E.tot;
-    for(const g of cands.slice(0,5))for(const d of [-2*sg,2*sg]){
+    const paso=ESCALERA[nivel];
+    for(const g of cands.slice(0,5))for(const d of [-paso*sg,paso*sg]){
       const a=cur.slice();let movio=false;
       for(const e of g){const t=clampR(e,a[e]+d);if(t!==a[e]){a[e]=t;movio=true;}}
       if(!movio)continue;
       const E2=evalua(a);
       if(E2.tot<mvV-1e-9){mvV=E2.tot;mv=a;mvE=E2;}
     }
-    if(!mv)break;
+    if(!mv){ if(++nivel>=ESCALERA.length)break; continue; }   // no mejora: afina el paso
     cur=mv;E=mvE;
     if(E.tot<bestV-1e-9){bestV=E.tot;best=cur.slice();}
   }
