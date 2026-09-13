@@ -857,6 +857,20 @@ const EL_MIN_FIS=0.5;
    reparación las rechazaba y H las exigía. No era un fallo de ninguna de las
    dos: era la misma banda escrita con dos umbrales distintos. */
 const E_EMPATE_W=0.05;
+/* v1.60: EL PASO DE BÚSQUEDA de las políticas, en UNA constante. «Debe buscar
+   cada 0,1°: si no busca, no va a mandar a esa posición». Es el argumento
+   correcto y mi primera medición contestaba a otra cosa —medí sólo el barrido
+   uniforme de repairNoShade y sólo en ENERGÍA, cuando el criterio es SOMBRA
+   sujeta a no perder energía y el barrido que de verdad decide es el de
+   torsión—. Medido bien, sobre 270 instantes de tres terrenos: 123 consignas
+   (46 %) cambian, la sombra media de la peor fila baja de 4,781 % a 4,737 %
+   (−0,044 pp, con bajadas de hasta 2,02 pp) y la POA de planta sube 0,16 W/m².
+   MEJOR EN LOS DOS EJES. Y el coste, medido antes de bajarlo: 0,7 → 0,8 ms por
+   instante de 8 filas — la memoización de v1.53.4 y el corte en el primer θ sin
+   sombra lo absorben. Tres sitios lo usaban con el valor escrito aparte; ahora
+   es uno, que es la regla de la casa desde AOI_HAZ. */
+const PASO_BUSQ=0.1;          // grados: resolución de mando, la que busca la política
+const PASO_GRUESO=0.5;        // grados: el paso del tramo, que luego se afina a PASO_BUSQ
 function rangoHaz(zen,az,T,axisTilt,slopeDeg){
   const psz=trueTrackAngle(zen,az,pvTilt(axisTilt||0),T.axisAz);
   if(!isFinite(psz))return [-T.maxAngle,T.maxAngle];
@@ -989,10 +1003,29 @@ function pairThetaTorsion(zen,az,T,p,t0,ev){
   // v1.57: el barrido no pasa del semiespacio solar (antes seguía hasta la
   // posición de canto, donde la sombra es cero porque el haz es cero)
   const [hLo,hHi]=rangoHaz(zen,az,T,T.pairs[p].axisTilt,T.pairs[p].slope);
+  /* v1.60: EN DOS TRAMOS, y la razón es de coste medido. Buscar a PASO_BUSQ
+     (0,1°) es lo correcto —«si no busca, no va a mandar a esa posición»— y
+     mejora los dos ejes, pero en Ayora entera, con torsión en las 294 parejas,
+     el instante pasaba de 2,x s a 4.073 ms y rompía el tope de 3 s del banco de
+     producción. El tope no se toca para pasar: se hace barato.
+     Se camina a PASO_GRUESO hasta el primer θ limpio y se RETROCEDE dentro de
+     ese tramo a PASO_BUSQ, que da EXACTAMENTE el mismo θ salvo que exista una
+     ventana limpia más corta que el paso grueso ANTES del tramo. Medido sobre
+     1.400 barridos: 3 no monótonos (0,2 %) y UNA ventana así, de 0,2°. */
   let best=t0;
-  for(let t=t0-sg*0.5;sg*t>=-T.maxAngle-1e-9&&t>=hLo-1e-9&&t<=hHi+1e-9;t-=sg*0.5){
+  const afina=(tc)=>{                       // el primer θ limpio dentro del tramo, a PASO_BUSQ
+    let mejor=tc;
+    for(let k=1;k<=Math.round(PASO_GRUESO/PASO_BUSQ);k++){
+      const t=tc+sg*k*PASO_BUSQ;            // hacia atrás: más cerca del original
+      if(sg*t>t0*sg+1e-9)break;
+      if(t<hLo-1e-9||t>hHi+1e-9)break;
+      if(viol(t)<=1e-3)mejor=t; else break;
+    }
+    return mejor;
+  };
+  for(let t=t0-sg*PASO_GRUESO;sg*t>=-T.maxAngle-1e-9&&t>=hLo-1e-9&&t<=hHi+1e-9;t-=sg*PASO_GRUESO){
     const v=viol(t);
-    if(v<=1e-3)return t;
+    if(v<=1e-3)return afina(t);
     if(v<bv){bv=v;best=t;}
   }
   return best;
@@ -1039,12 +1072,18 @@ function anglesPairwiseRaw(zen,az,T){
   // dos (o medio grado más allá si ya iban iguales), hasta que ninguna
   // sombree o se agote el tope. Sin torsión no entra nunca.
   if(T.rowTilt&&isFinite(zen)&&zen<90&&T.pairs.some((_,i)=>pairStations(T,i).length>1)){
-    for(let it=0;it<12;it++){
+    /* v1.60: el EMPUJE va a PASO_BUSQ como todo lo demás —«si no busca, no va a
+       mandar a esa posición»— pero el tope de iteraciones se escala para
+       CONSERVAR EL ALCANCE: eran 12 × 0,5° = 6°, y son 60 × 0,1° = los mismos
+       6°. Bajar el paso sin tocar el tope habría recortado la reparación a
+       1,2° de alcance, que es otro cambio y no el que se pidió. */
+    const ITS=Math.round(12*0.5/PASO_BUSQ);
+    for(let it=0;it<ITS;it++){
       let dirty=false;
       for(let p=0;p<T.pairs.length;p++){
         if(ev(p,out[p],out[p+1])<=1e-3)continue;
         let t=sg*out[p]<sg*out[p+1]?out[p]:out[p+1];
-        if(out[p]===out[p+1])t=t-sg*0.5;
+        if(out[p]===out[p+1])t=t-sg*PASO_BUSQ;
         // v1.57: dentro del semiespacio solar de la pareja (antes bajaba hasta la posición de canto)
         const [hLo,hHi]=rangoHaz(zen,az,T,T.pairs[p].axisTilt,T.pairs[p].slope);
         t=Math.max(hLo,Math.min(hHi,t));
@@ -2539,7 +2578,7 @@ function anglesPairwiseSeg(zen,az,T){
             let bv=viol(th);
             if(bv>1e-3){
               let bt=th;
-              for(let t=th-sg*0.5;sg*t>=-T.maxAngle-1e-9&&t>=hLo2-1e-9&&t<=hHi2+1e-9;t-=sg*0.5){
+              for(let t=th-sg*PASO_BUSQ;sg*t>=-T.maxAngle-1e-9&&t>=hLo2-1e-9&&t<=hHi2+1e-9;t-=sg*PASO_BUSQ){
                 const v=viol(t);
                 if(v<=1e-3){bt=t;bv=0;break;}
                 if(v<bv){bv=v;bt=t;}
@@ -3013,7 +3052,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
     if(EB.mx>0.02){
       const pRef=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
       const cands=[];
-      for(let th=Math.ceil(hLo/2.5)*2.5;th<=hHi+1e-9;th+=2.5){
+      for(let th=Math.ceil(hLo/PASO_BUSQ)*PASO_BUSQ;th<=hHi+1e-9;th+=PASO_BUSQ){
         const c2=uni(th), e2=evalua(c2);
         if(e2.mx<EB.mx-1e-9)cands.push([e2.mx,c2]);
       }
@@ -3523,7 +3562,16 @@ function prodColor(x){
 
    Y declara su discretización: certifica «el mejor de lo que ha barrido», no
    «el óptimo». El mismo matiz que el invariante J, por la misma razón. */
-const CERT_PASO=0.5;          // grados del barrido del probador
+/* v1.60: EL BARRIDO, A 0,1°. «El barrido debe hacerse cada 0,1°». A 0,5° el
+   probador sólo podía encontrar mejoras en saltos de medio grado, y el barrido
+   de la escena de Iñaki enseña por qué eso no vale: la ventana que dejaba
+   limpia su fila 3 medía 1,1°, o sea DOS puntos de aquella rejilla — una
+   ventana un poco más estrecha se salta entera y el certificado dice «óptimo»
+   sobre algo que no lo es. Medido el coste antes de bajarlo: 196 candidatos y
+   158 ms a 0,5°, frente a 977 candidatos y 287 ms a 0,1°. Sólo 1,8× —no 5×—
+   porque el contador memoiza, así que no hace falta refinado en dos fases: se
+   barre limpio. */
+const CERT_PASO=0.1;          // grados del barrido del probador
 /* v1.59: EL PASO DE CONTROL con el que se juzga si un candidato es ALCANZABLE.
    «¿La velocidad se tiene en cuenta?» — no lo estaba, y es un agujero: el
    probador certificaba una POSTURA como si fuera un MOVIMIENTO. Podía proponer
@@ -3532,7 +3580,7 @@ const CERT_PASO=0.5;          // grados del barrido del probador
    TRACKER_SLEW (0,17 °/s, spec del actuador) — no un número inventado — y el
    que no llega no puede dominar: se cuenta aparte y se dice. */
 const CERT_DT=300;            // s: el paso de control con el que se juzga alcanzable
-const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
+const CERT_VECINOS=40;        // pasos a cada lado al perturbar una unidad sola (±4°, como siempre)
 const SIN_SOMBRA=['pairwise','true3d','mgl'];
 const OPTIMIZAN=['optimal','optfree'];
 
@@ -3668,7 +3716,7 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
     alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo. '+
             'NUNCA prueba dos unidades movidas a la vez en direcciones distintas: si dice «óptimo», es «no he encontrado nada mejor entre lo que sé mirar». '+
             'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s; NO modela el DESGASTE ni el número de maniobras: una consigna que gane unos W/m² yendo y viniendo cada minuto sale «mejor» aquí y es peor en la planta.',
-    sellos:{version:'v1.59',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
+    sellos:{version:'v1.60',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
             slew:TRACKER_SLEW+' °/s',pasoControl:dt+' s'}
   };
 }
@@ -3677,7 +3725,7 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.59.0';
+const VER='v1.60.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
