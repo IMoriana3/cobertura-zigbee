@@ -9,6 +9,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // La ruta del navegador va en UN solo sitio. Este banco nació con ella clavada
@@ -39,7 +40,7 @@ if (!(await vivo())) {
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
-const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } });
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
 await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
 const pg = await ctx.newPage();
 const errs = [];
@@ -260,6 +261,146 @@ t('y su cifra por string es EXACTAMENTE la del canario (la página y Node, una s
       throw new Error(`string ${k}: la página ${eb.kwh[k].toFixed(6)} kWh contra ${CEB.kwh[k].toFixed(6)} ` +
                       `del golden (${(d * 100).toFixed(6)} %)`);
   }
+});
+
+/* ── LA CONFIGURACIÓN, IDA Y VUELTA DE VERDAD ────────────────────────────────
+   El banco Node ya comprueba que la lista CAMPOS esté completa y que confDe /
+   confAplica sean inversas. Lo que solo se puede comprobar aquí es el camino
+   entero: pulsar ⬇ config y que baje un fichero, mover la página a OTRA planta
+   y otros valores, cargar el fichero con ⬆ config y que vuelva TODO — y, lo que
+   de verdad importa, que la estimación vuelva a dar el MISMO número. Una
+   configuración que se restaura «casi» es peor que ninguna: el informe sale con
+   una cifra que no se puede volver a montar. */
+const RARA = { plant:'generica', lat:'40.1234', lon:'-3.4321', date:'2026-09-13', tz:'1',
+               alt:'555', albedo:'0.33', cloud:'15', pitch:'5.5', cw:'2.1', maxang:'45',
+               nrows:'7', tpreset:'valle', tparam:'2.5', mods:'26', wp:'615', gamma:'-0.29',
+               tamb:'24', wind:'2.5', iamb0:'0.08', bifa:'40', bperd:'12', lsoil:'3',
+               lmis:'1.2', lwir:'2.1', llid:'0.8', ninv:'2', pnom:'90', etamax:'0.982',
+               gridkw:'120', ltrafo:'1.1', lacw:'0.4', laux:'0.6', ldispo:'98',
+               ldeg:'0.45', lanio:'12', lsoilv:'1;1;1;2;2;3;3;3;2;2;1;1',
+               horv:'0:3; 90:1; 180:0; 270:2', umeteo:'5', umodelo:'3', usoil:'1.5',
+               udisp:'0.8', udeg:'0.2', pol:'row', ctrlDb:'2.5', ctrlSlew:'0.12',
+               ctrlCiclo:'2', ctrlModo:'seguro', medidas:'I-1.1 123,4' };
+const RARACHK = { manual:false, ctrlOn:true, horon:true, lsoilmes:true };
+const RARAVISTA = { cmode:'pday', cscale:'rel', hour:'505', minpaso:'5', speed:'150' };
+
+const antes = await pg.evaluate(async (r) => {
+  document.getElementById('plant').value = 'generica';
+  document.getElementById('plant').dispatchEvent(new Event('change'));
+  await new Promise(res => setTimeout(res, 600));
+  for (const [id, v] of Object.entries({ ...r.RARA, ...r.RARAVISTA })) {
+    const e = document.getElementById(id); e.value = v;
+  }
+  for (const [id, v] of Object.entries(r.RARACHK)) document.getElementById(id).checked = v;
+  document.getElementById('meteo').dispatchEvent(new Event('change'));
+  await new Promise(res => setTimeout(res, 400));
+  // la T se reconstruye A MANO porque aquí los campos se han puesto a pelo, sin
+  // sus eventos: sin esto la medida «antes» iría con una c de 7 filas contra una
+  // T de 10 —el pitch y el terreno de la configuración anterior—, y el careo
+  // contra la vuelta acusaría a la importación de un 1,95 % que era del test
+  rebuildT();
+  await new Promise(res => setTimeout(res, 200));
+  const c = cfg();
+  const v = dayEnergy(F, c, T.obj, c.date, 60, mapStringW(F, c, T.obj));
+  return { total: v.reduce((a, b) => a + b, 0), kwh: v, nrows: c.nrows };
+}, { RARA, RARACHK, RARAVISTA });
+
+const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#cfgexp')]);
+const fich = await dl.path();
+const guardado = JSON.parse(fs.readFileSync(fich, 'utf-8'));
+
+t('⬇ config baja un fichero que se marca, con la configuración y la vista aparte', () => {
+  if (!/^config_generica_2026-09-13\.json$/.test(dl.suggestedFilename()))
+    throw new Error('el fichero se llama «' + dl.suggestedFilename() + '»');
+  if (guardado.app !== 'produccion.html') throw new Error('el fichero no dice de qué página es');
+  if (!guardado.v || !guardado.guardado) throw new Error('sin versión o sin fecha de guardado');
+  for (const [id, v] of Object.entries(RARA))
+    if (guardado.campos[id] !== v) throw new Error(`campos.${id} = ${guardado.campos[id]} y era ${v}`);
+  for (const [id, v] of Object.entries(RARACHK))
+    if (guardado.campos[id] !== v) throw new Error(`campos.${id} = ${guardado.campos[id]} y era ${v}`);
+  for (const [id, v] of Object.entries(RARAVISTA))
+    if (guardado.vista[id] !== v) throw new Error(`vista.${id} = ${guardado.vista[id]} y era ${v}`);
+  if ('cmode' in guardado.campos) throw new Error('la vista se ha colado en los campos');
+});
+
+// se mueve la página TODO lo que se puede: otra planta (que además bloquea la
+// geometría), otro día, otra política, el lazo apagado y la meteo al cielo
+await pg.evaluate(async () => {
+  document.getElementById('plant').value = 'elburgo';
+  document.getElementById('plant').dispatchEvent(new Event('change'));
+  for (let i = 0; i < 100; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    if (cfg().plant === 'elburgo' && T && T.xs && T.xs.length > 50) break;
+  }
+  for (const [id, v] of [['date', '2026-01-15'], ['pol', 'global'], ['albedo', '0.1'],
+                         ['mods', '20'], ['lanio', '1'], ['medidas', ''], ['cmode', 'pinst'],
+                         ['hour', '900'], ['ctrlDb', '9'], ['horv', '0:0']]) {
+    const e = document.getElementById(id); e.value = v;
+  }
+  for (const id of ['ctrlOn', 'horon', 'lsoilmes']) document.getElementById(id).checked = false;
+});
+
+await pg.setInputFiles('#cfgfile', fich);
+const parte = await pg.evaluate(async () => {
+  for (let i = 0; i < 150; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    const a = document.getElementById('aviso');
+    if (a && /Configuración cargada|No puedo cargar/.test(a.textContent)) break;
+  }
+  const c = cfg();
+  const v = dayEnergy(F, c, T.obj, c.date, 60, mapStringW(F, c, T.obj));
+  const lee = id => { const e = document.getElementById(id);
+                      return e.type === 'checkbox' ? e.checked : String(e.value); };
+  const estado = {};
+  for (const [id] of [...CAMPOS, ...CAMPOS_VISTA]) estado[id] = lee(id);
+  return { aviso: document.getElementById('aviso').textContent,
+           estado, plant: c.plant, nrows: c.nrows,
+           total: v.reduce((a, b) => a + b, 0), kwh: v };
+});
+
+t('⬆ config vuelve a poner la planta, los 54 campos y la vista', () => {
+  if (!/Configuración cargada/.test(parte.aviso))
+    throw new Error('el parte no dice que se cargó: «' + parte.aviso.slice(0, 140) + '»');
+  if (parte.plant !== 'generica') throw new Error('la planta no ha vuelto: ' + parte.plant);
+  const mal = [];
+  for (const [id, v] of Object.entries({ ...RARA, ...RARACHK, ...RARAVISTA }))
+    if (parte.estado[id] !== v) mal.push(`${id}=${parte.estado[id]}≠${v}`);
+  if (mal.length) throw new Error(mal.slice(0, 6).join(' · '));
+});
+
+t('y la cifra por string vuelve a ser EXACTAMENTE la de antes de guardar', () => {
+  if (parte.nrows !== antes.nrows) throw new Error(`${parte.nrows} filas contra ${antes.nrows}`);
+  for (let k = 0; k < antes.kwh.length; k++) {
+    const d = Math.abs(parte.kwh[k] - antes.kwh[k]) / Math.max(1e-12, Math.abs(antes.kwh[k]));
+    if (d > 1e-12)
+      throw new Error(`string ${k}: ${parte.kwh[k]} tras la vuelta contra ${antes.kwh[k]} antes ` +
+                      `(${(d * 100).toExponential(2)} %) — la configuración no se restaura entera`);
+  }
+  if (parte.total !== antes.total)
+    throw new Error(`Σ ${parte.total} contra ${antes.total}: algo no volvió`);
+});
+
+// un fichero que NO es una configuración de esta página: por el mismo botón
+const ajeno = path.join(os.tmpdir(), 'no_es_una_config_' + process.pid + '.json');
+fs.writeFileSync(ajeno, JSON.stringify({ app: 'otra_pagina.html', campos: { albedo: '0.99' } }));
+await pg.setInputFiles('#cfgfile', ajeno);
+const rechazo = await pg.evaluate(async () => {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (/No puedo cargar/.test(document.getElementById('aviso').textContent)) break;
+  }
+  return { aviso: document.getElementById('aviso').textContent,
+           albedo: document.getElementById('albedo').value };
+});
+fs.unlinkSync(ajeno);
+
+t('un fichero que no es de esta página se rechaza DICIÉNDOLO, y no toca nada', () => {
+  if (!/No puedo cargar/.test(rechazo.aviso))
+    throw new Error('lo ha aceptado o no avisa: «' + rechazo.aviso.slice(0, 140) + '»');
+  if (!/otra_pagina\.html/.test(rechazo.aviso))
+    throw new Error('el aviso no dice de qué era el fichero: «' + rechazo.aviso.slice(0, 140) + '»');
+  if (rechazo.albedo !== '0.33')
+    throw new Error(`ha tocado el albedo (${rechazo.albedo}) con un fichero que rechazó`);
 });
 
 t('no han aparecido errores de página en todo el recorrido', () => {

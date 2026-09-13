@@ -353,6 +353,9 @@ input[type=range]{accent-color:var(--live)}
           <option value="pano">📅 E string Σ año (MWh)</option>
         </select>
         <button class="btn" id="csv" title="Descarga la vista actual en CSV (;, decimal coma): por string o por inversor según el modo, con la cadena AC del instante debajo.">⬇ CSV</button>
+        <button class="btn" id="cfgexp" title="Guarda TODA la configuración en un fichero JSON: planta y ámbito, geometría, terreno, módulo, cadena AC, pérdidas de planta, bifacialidad, horizonte, incertidumbre, política de backtracking, lazo de la TCU y la medida pegada del careo — más la vista (modo de color, hora del reloj). La página no guarda nada por su cuenta: sin esto, cerrar la pestaña pierde la estimación y no se puede volver a montar igual.">⬇ config</button>
+        <button class="btn" id="cfgimp" title="Carga una configuración guardada y la aplica entera. Dice cuántos campos puso y cuáles no pudo (los que impone una planta levantada, como el nº de filas o la cuerda, no se tocan).">⬆ config</button>
+        <input type="file" id="cfgfile" accept=".json,application/json" style="display:none">
         <select id="cscale" class="btn" title="Cómo se reparte la rampa de color. FIEL: de 0 al máximo — el color es proporcional a lo que produce cada string, así que una planta sin sombra sale de un color. CONTRASTE: estira el mínimo y el máximo de la vista para inspeccionar diferencias finas; la leyenda dice entonces qué porcentaje del máximo abarca.">
           <option value="abs" selected>escala fiel (0 → máx)</option>
           <option value="rel">contraste (mín → máx)</option>
@@ -1410,6 +1413,81 @@ function tElburgo(F,c,rows,trk){
   T.westSeg=segs.map((l,r)=>l.map(()=>T.west[r]));   // en El Burgo las vigas van por línea
   T.obj=buildTX(F,c,xs,z,null,segs,groups,'bifila');
   return T;
+}
+/* ── LA CONFIGURACIÓN, ENTERA Y EN UN FICHERO ───────────────────────────────
+   La página no guardaba NADA: ni un localStorage. Son cincuenta y cinco campos
+   —la planta y su ámbito, el terreno, el eléctrico del módulo, la cadena AC,
+   las pérdidas de planta, la bifacialidad, el horizonte lejano, la
+   incertidumbre, la política de backtracking, el lazo de la TCU y la medida
+   pegada del careo— y cerrar la pestaña los perdía todos. Lo grave no es la
+   comodidad: una estimación que no se puede volver a montar EXACTAMENTE no es
+   reproducible, y estos números acaban en un informe con un P90 debajo.
+
+   POR QUÉ LA LISTA VIVE AQUÍ Y NO EN EL BOTÓN. Porque lo que hay que vigilar es
+   que esté COMPLETA. Un campo que `cfg()` lee y la lista no guarda es una
+   configuración que se exporta a medias y se importa MINTIENDO —el fichero dice
+   una cosa y la página estima otra—, y sin decirlo. Estando aquí, el banco
+   saca del propio HTML los ids que lee `cfg()` y exige que estén todos; si
+   mañana se añade un campo a la tarjeta y no a esta lista, el banco lo canta.
+
+   LA VISTA VA APARTE. `cmode`/`cscale`/`hour`/`minpaso`/`speed` no cambian la
+   estimación, solo lo que se está mirando: se guardan, se restauran y se
+   declaran como lo que son, para que un fichero de configuración no se confunda
+   con un marcador de página. `date2` no va: es el MISMO campo que `date`, en la
+   barra de tiempo. */
+const CONFV=1;
+const CAMPOS=[
+  ['plant','v'],                                                   // planta y ámbito (NCU)
+  ['lat','v'],['lon','v'],['date','v'],['tz','v'],['alt','v'],['albedo','v'],['cloud','v'],
+  ['pitch','v'],['cw','v'],['maxang','v'],['nrows','v'],           // geometría
+  ['tpreset','v'],['tparam','v'],                                  // terreno de la genérica
+  ['manual','c'],['manth','v'],                                    // θ a mano
+  ['meteo','v'],                                                   // cielo despejado o TMY
+  ['mods','v'],['wp','v'],['gamma','v'],['tamb','v'],['wind','v'], // módulo y string
+  ['iamb0','v'],                                                   // IAM del vidrio
+  ['bifa','v'],['bperd','v'],                                      // cara de atrás
+  ['lsoil','v'],['lmis','v'],['lwir','v'],['llid','v'],            // pérdidas DC del Notebook
+  ['ninv','v'],['pnom','v'],['etamax','v'],['gridkw','v'],         // inversor y red
+  ['ltrafo','v'],['lacw','v'],['laux','v'],['ldispo','v'],         // pérdidas de planta
+  ['ldeg','v'],['lanio','v'],                                      // degradación y año
+  ['lsoilmes','c'],['lsoilv','v'],                                 // perfil mensual de soiling
+  ['horon','c'],['horv','v'],                                      // horizonte lejano
+  ['umeteo','v'],['umodelo','v'],['usoil','v'],['udisp','v'],['udeg','v'],   // incertidumbre
+  ['pol','v'],                                                     // algoritmo de backtracking
+  ['ctrlOn','c'],['ctrlDb','v'],['ctrlSlew','v'],['ctrlCiclo','v'],['ctrlModo','v'],  // lazo de la TCU
+  ['medidas','v'],                                                 // la medida pegada del careo
+];
+const CAMPOS_VISTA=[['cmode','v'],['cscale','v'],['hour','v'],['minpaso','v'],['speed','v']];
+
+/* LEE la configuración. `lee(id,tipo)` devuelve el valor del campo, o null si
+   ese campo no existe en la página (versiones viejas del HTML): los que faltan
+   NO se escriben, para que el fichero no invente campos vacíos. */
+function confDe(lee){
+  const o={app:'produccion.html',v:CONFV,campos:{},vista:{}};
+  for(const [id,t] of CAMPOS){const v=lee(id,t);if(v!==null&&v!==undefined)o.campos[id]=v;}
+  for(const [id,t] of CAMPOS_VISTA){const v=lee(id,t);if(v!==null&&v!==undefined)o.vista[id]=v;}
+  return o;
+}
+/* APLICA la configuración. `pon(id,tipo,valor)` devuelve true si de verdad la
+   puso. Devuelve el parte de lo que pasó, y el parte se ENSEÑA: importar en
+   silencio un fichero al que le faltan campos deja la página mezclando la
+   configuración nueva con la que había, que es la peor de las dos. */
+function confAplica(o,pon){
+  if(!o||typeof o!=='object')throw new Error('el fichero no es un objeto JSON');
+  if(o.app!=='produccion.html')
+    throw new Error('esto no es una configuración de esta página (app: '+(o.app||'sin marcar')+')');
+  if(!o.campos||typeof o.campos!=='object')throw new Error('el fichero no trae campos');
+  const puestos=[],rechazados=[],faltan=[],sobran=[];
+  const conocidos=new Set();
+  for(const lista of [CAMPOS,CAMPOS_VISTA])for(const [id,t] of lista){
+    conocidos.add(id);
+    const fuente=lista===CAMPOS?o.campos:(o.vista||{});
+    if(!(id in fuente)){if(lista===CAMPOS)faltan.push(id);continue;}
+    (pon(id,t,fuente[id])?puestos:rechazados).push(id);
+  }
+  for(const id of Object.keys(o.campos))if(!conocidos.has(id))sobran.push(id);
+  return {puestos:puestos,rechazados:rechazados,faltan:faltan,sobran:sobran,
+          futuro:+o.v>CONFV?+o.v:0};
 }
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
@@ -2770,7 +2848,13 @@ function repaintPick(){
       fill('og-sanjose','sanjose',ls,'trackers');
     }catch(e){/* sin red local el selector se queda con las plantas enteras */}
   })();
-  $('plant').addEventListener('change',async()=>{
+  /* CAMBIAR DE PLANTA, ESPERABLE. Esto era el cuerpo del listener, y el listener
+     no se puede esperar: dispatchEvent sobre un handler async vuelve al momento.
+     Importar una configuración TIENE que esperar aquí —la planta real se carga
+     de sus ficheros con fetch— antes de poner el resto de los campos, porque
+     esta función pisa a propósito lat/lon/cuerda/tope/nº de filas con lo que
+     dice el levantamiento. */
+  async function cambiaPlanta(){
     const pv=$('plant').value.split('|'), key=pv[0], ncu=pv[1]||'', real=key!=='generica';
     try{
       if(key==='elburgo'){
@@ -2825,7 +2909,8 @@ function repaintPick(){
     }
     R3.camSet=false;   // planta o ámbito nuevos ⇒ reencuadre
     rebuildT();repaint();
-  });
+  }
+  $('plant').addEventListener('change',cambiaPlanta);
   // la tabla por minuto también caduca: MINRUN++ cancela el run en curso y la
   // tabla pintada deja de corresponder a la configuración de la página
   const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;MINRUN++;
@@ -2870,6 +2955,81 @@ function repaintPick(){
       }
     }
     invalida();TRACKC=null;repaint();
+  });
+  /* ── GUARDAR Y CARGAR LA CONFIGURACIÓN ───────────────────────────────────
+     La lista de campos y el qué-hacer-con-ellos están en LÓGICA PURA (CAMPOS,
+     confDe, confAplica); aquí solo está el DOM: leer, escribir y el fichero. */
+  const leeCampo=(id,t)=>{const e=$(id);return !e?null:(t==='c'?!!e.checked:String(e.value));};
+  function exportaConf(){
+    const o=confDe(leeCampo), c=cfg();
+    o.guardado=new Date().toISOString();
+    const blob=new Blob([JSON.stringify(o,null,1)],{type:'application/json;charset=utf-8'});
+    const u=URL.createObjectURL(blob), el=document.createElement('a');
+    el.href=u;el.download='config_'+c.plant+(c.ncu?'_ncu'+c.ncu:'')+'_'+c.date+'.json';
+    document.body.appendChild(el);el.click();el.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+  }
+  async function importaConf(txt){
+    let o;
+    try{o=JSON.parse(txt);}catch(e){throw new Error('no es un JSON válido ('+e.message+')');}
+    // LA PLANTA PRIMERO, Y SE ESPERA. Al cargarla, la página habilita o bloquea
+    // los campos que el levantamiento impone y los rellena con lo medido; solo
+    // después tiene sentido poner el resto. Al revés, cambiar de planta pisaría
+    // lo que acabamos de importar.
+    if(o&&o.campos&&o.campos.plant!=null&&$('plant').value!==String(o.campos.plant)){
+      const hay=[...$('plant').options].some(op=>op.value===String(o.campos.plant));
+      if(!hay)throw new Error('la configuración es de la planta «'+o.campos.plant+
+                              '», que este selector no tiene');
+      $('plant').value=String(o.campos.plant);
+      await cambiaPlanta();
+    }
+    // un campo BLOQUEADO lo impone la planta (nº de filas, cuerda, tope, x del
+    // plano): no es del usuario y no se sobreescribe — se declara en el parte
+    const r=confAplica(o,(id,t,v)=>{
+      const e=$(id);
+      if(!e||e.disabled)return false;
+      if(t==='c')e.checked=(v===true||v==='true'||v===1||v==='1');
+      else e.value=String(v);
+      return true;
+    });
+    // los campos tienen efectos laterales que viven en sus listeners: se
+    // reproducen los que importan en vez de disparar cincuenta eventos
+    $('manth').disabled=!$('manual').checked;
+    $('tplbl').textContent=$('tpreset').value==='pendiente'?'Pendiente °':'Amplitud m';
+    $('date2').value=$('date').value;
+    $('cloud').disabled=($('meteo').value==='tmy');
+    if($('meteo').value==='tmy'){
+      try{await cargaTMY(cfg());}
+      catch(e){$('meteo').value='cielo';$('cloud').disabled=false;
+               r.rechazados.push('meteo (sin TMY para esta planta)');}
+    }
+    TRACKC=null;invalida();rebuildT();repaint();
+    return r;
+  }
+  function parteConf(r,nombre){
+    const a=$('aviso');a.style.display='block';
+    const trozos=['⬆ <b>Configuración cargada</b> de <code>'+nombre+'</code>: '+
+                  r.puestos.length+' campos puestos'];
+    if(r.faltan.length)trozos.push('<br>· <b>'+r.faltan.length+' no venían en el fichero</b> y se '+
+      'quedan como estaban: <code>'+r.faltan.join('</code> <code>')+'</code>');
+    if(r.rechazados.length)trozos.push('<br>· <b>'+r.rechazados.length+' no se han tocado</b> '+
+      '(los impone la planta levantada o no se pudieron poner): <code>'+
+      r.rechazados.join('</code> <code>')+'</code>');
+    if(r.sobran.length)trozos.push('<br>· '+r.sobran.length+' campos del fichero que esta página '+
+      'ya no tiene, ignorados: <code>'+r.sobran.join('</code> <code>')+'</code>');
+    if(r.futuro)trozos.push('<br>· ⚠ el fichero es de una versión más nueva (v'+r.futuro+
+      ' contra v'+CONFV+'): puede que traiga campos que aquí no existen todavía');
+    a.innerHTML=trozos.join('');
+  }
+  $('cfgexp').addEventListener('click',exportaConf);
+  $('cfgimp').addEventListener('click',()=>$('cfgfile').click());
+  $('cfgfile').addEventListener('change',async()=>{
+    const f=$('cfgfile').files&&$('cfgfile').files[0];
+    if(!f)return;
+    try{parteConf(await importaConf(await f.text()),f.name);}
+    catch(e){const a=$('aviso');a.style.display='block';
+      a.innerHTML='⚠ <b>No puedo cargar esa configuración</b>: '+e.message;}
+    $('cfgfile').value='';        // el mismo fichero otra vez tiene que volver a disparar
   });
   $('csv').addEventListener('click',exportCSV);
   $('minbtn').addEventListener('click',calcMinuto);

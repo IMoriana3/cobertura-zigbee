@@ -47,7 +47,7 @@ const S = new Function(ctrl + sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,anglesAstro,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
-          tGenerica, tElburgo, ebDe, cfgEB,
+          tGenerica, tElburgo, ebDe, cfgEB, CAMPOS, CAMPOS_VISTA, confDe, confAplica, CONFV,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
@@ -1425,6 +1425,85 @@ t('el cfg del canario es el de ARRANQUE de la página: ningún valor por defecto
   // la política en pairwise, que es con lo que el golden estimó
   if (CFG0.ctrl.on || CFG0.manual) throw new Error('CFG0 ya no es el arranque: el lazo o el manual vienen puestos');
   if (!/el\.value='pairwise'/.test(pg)) throw new Error('el selector de política ya no arranca en pairwise');
+});
+
+/* ── v1.31 · LA CONFIGURACIÓN EN UN FICHERO ──────────────────────────────────
+   La lista CAMPOS es la que se exporta y se importa. Lo único que de verdad hay
+   que vigilar de ella es que esté COMPLETA: un campo que cfg() lee y la lista
+   no guarda produce un fichero que se importa MINTIENDO —la página estima con
+   algo que el fichero no dice— y sin avisar. Así que los ids se sacan del
+   propio cfg() del HTML, siguiendo también a los ayudantes que lee (iamUI,
+   soilMesUI), y se exige que estén todos. */
+const CFGSRC = (() => {
+  const i = pg.indexOf('function cfg(){'), j = pg.indexOf('\nfunction rebuildT()', i);
+  if (i < 0 || j < 0) throw new Error('no encuentro cfg() en produccion.html');
+  let src = pg.slice(i, j);
+  // los ayudantes que cfg() llama también leen campos (el IAM del vidrio, el
+  // perfil mensual de soiling): entran en el mismo saco
+  for (const fn of [...new Set([...src.matchAll(/\b(\w+UI)\(\)/g)].map(m => m[1]))]) {
+    const a = pg.indexOf('function ' + fn + '('), b = a < 0 ? -1 : pg.indexOf('\n}', a);
+    if (a >= 0 && b > a) src += pg.slice(a, b);
+  }
+  return src;
+})();
+const LEIDOS = [...new Set([...CFGSRC.matchAll(/\$\('([A-Za-z0-9_]+)'\)/g)].map(m => m[1]))];
+
+t(`la lista de configuración está COMPLETA: los ${LEIDOS.length} campos que lee cfg() se guardan`, () => {
+  const enLista = new Set([...S.CAMPOS, ...S.CAMPOS_VISTA].map(x => x[0]));
+  const fuera = LEIDOS.filter(id => !enLista.has(id));
+  if (fuera.length)
+    throw new Error(`cfg() lee campos que la configuración NO guarda: ${fuera.join(', ')} — ` +
+                    'un fichero exportado los perdería y al importarlo la página estimaría otra cosa');
+});
+
+t('y no guarda campos que no existen, ni confunde una casilla con un valor', () => {
+  for (const [id, t2] of [...S.CAMPOS, ...S.CAMPOS_VISTA]) {
+    const m = new RegExp(`<(input|select|textarea)[^>]*\\bid="${id}"[^>]*>`).exec(pg);
+    if (!m) throw new Error(`la lista guarda «${id}», que no es un campo de la página`);
+    const esChk = /type="checkbox"/.test(m[0]);
+    if (esChk !== (t2 === 'c'))
+      throw new Error(`«${id}» está declarado como ${t2 === 'c' ? 'casilla' : 'valor'} y en el HTML es ` +
+                      (esChk ? 'una casilla' : 'un valor'));
+  }
+  // la vista NO puede llevar nada que cambie la estimación
+  const vista = new Set(S.CAMPOS_VISTA.map(x => x[0]));
+  const cuela = LEIDOS.filter(id => vista.has(id));
+  if (cuela.length)
+    throw new Error(`${cuela.join(', ')} está en la VISTA y sin embargo cfg() lo lee: ` +
+                    'eso cambia la estimación y no es vista');
+});
+
+t('ida y vuelta: lo que escribe confDe lo pone confAplica, campo por campo', () => {
+  // un DOM de mentira: un mapa. La pieza es pura justo para poder hacer esto.
+  const dom = {};
+  for (const [id, t2] of [...S.CAMPOS, ...S.CAMPOS_VISTA]) dom[id] = t2 === 'c' ? true : 'x' + id;
+  const o = S.confDe((id, t2) => (id in dom) ? dom[id] : null);
+  if (o.app !== 'produccion.html' || o.v !== S.CONFV) throw new Error('el fichero no se marca');
+  if (Object.keys(o.campos).length !== S.CAMPOS.length)
+    throw new Error(`${Object.keys(o.campos).length} campos escritos de ${S.CAMPOS.length}`);
+  const puesto = {};
+  const r = S.confAplica(o, (id, t2, v) => { puesto[id] = v; return true; });
+  if (r.faltan.length || r.rechazados.length || r.sobran.length)
+    throw new Error(`parte sucio: faltan ${r.faltan} · rechazados ${r.rechazados} · sobran ${r.sobran}`);
+  for (const [id, t2] of [...S.CAMPOS, ...S.CAMPOS_VISTA])
+    if (puesto[id] !== dom[id]) throw new Error(`${id}: vuelve ${puesto[id]} y era ${dom[id]}`);
+});
+
+t('un fichero a medias se DECLARA, y uno que no es nuestro no se carga', () => {
+  const o = S.confDe((id, t2) => t2 === 'c' ? false : '1');
+  delete o.campos.albedo; delete o.campos.pol; o.campos.inventado = 7;
+  const r = S.confAplica(o, () => true);
+  if (!(r.faltan.includes('albedo') && r.faltan.includes('pol') && r.faltan.length === 2))
+    throw new Error('no declara los campos que el fichero no trae: ' + r.faltan.join(','));
+  if (!r.sobran.includes('inventado')) throw new Error('no declara los campos de más');
+  // un campo que la página no deja poner (lo impone la planta) sale en el parte
+  const r2 = S.confAplica(S.confDe(() => '1'), id => id !== 'nrows');
+  if (!r2.rechazados.includes('nrows')) throw new Error('un campo no puesto no se declara');
+  for (const malo of [null, {}, { app: 'otra.html', campos: {} }, { app: 'produccion.html' }]) {
+    let saltó = false;
+    try { S.confAplica(malo, () => true); } catch (e) { saltó = true; }
+    if (!saltó) throw new Error('acepta un fichero que no es una configuración: ' + JSON.stringify(malo));
+  }
 });
 
 console.log('');
