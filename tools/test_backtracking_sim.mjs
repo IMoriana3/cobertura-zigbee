@@ -112,7 +112,7 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, lazoControl, lazoControlSeg,
            westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
 const F = sandbox();
 
@@ -556,6 +556,43 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
+  /* El core tiene un lazo canónico con DOS mitades —deadband y slew— y este
+     fichero implementaba sólo la segunda: computeDay decía «lo que la planta
+     HACE: la consigna limitada a la velocidad del tracker», y la velocidad es la
+     mitad. overcast.html ya espejaba las dos («Canónicos del core: deadband 1,0°
+     · slew 0,17°/s»): dos simuladores de la misma casa con lazos distintos.
+     El valor no es nuestro: 1,0° es el canónico del core, y la TCU lo lleva en
+     el registro 41061 con 45 PULSOS por defecto — la constante pulsos/grado es
+     del accionamiento y no vive en este repo, como declara export_config_tcu.
+     Medido sobre un día, tres terrenos: la energía no cae (333.984 → 334.029),
+     la sombra baja 0,18 pp y los arranques de motor caen un 13 %. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  if (!/const DEADBAND_DEG=1\.0;/.test(fis)) throw new Error('el deadband no es el canónico del core (1,0°)');
+  if (!/41061/.test(fis)) throw new Error('no se declara de dónde sale el valor (registro de la TCU)');
+  if (!/function lazoControl\(/.test(fis)) throw new Error('no existe el lazo entero');
+
+  // el orden importa: deadband ANTES del slew, como apply_control_loop
+  const cuerpo = fis.slice(fis.indexOf('function lazoControl('), fis.indexOf('\n}', fis.indexOf('function lazoControl(')));
+  if (cuerpo.indexOf('deadband') > cuerpo.indexOf('slewLimit(prev,des'))
+    throw new Error('el lazo aplica el slew antes que el deadband: no es el orden del core');
+
+  // comportamiento
+  if (F.lazoControl([10], [10.4], 300)[0] !== 10) throw new Error('un salto MENOR que el deadband arranca el motor');
+  if (Math.abs(F.lazoControl([10], [12.0], 300)[0] - 12) > 1e-9) throw new Error('un salto MAYOR que el deadband no pasa');
+  if (Math.abs(F.lazoControl(null, [33], 300)[0] - 33) > 1e-9) throw new Error('sin consigna previa el arranque debe ser directo');
+  // y el deadband no puede saltarse el tope del actuador
+  const lento = F.lazoControl([0], [50], 60);
+  if (lento[0] >= 50) throw new Error('el lazo deja teletransportarse: el slew no se aplica tras el deadband');
+
+  // lo que la planta HACE lo usa computeDay, no sólo el slew
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  if (!/lazoControl\(prev,o\.angles,STEP_MIN\*60\)/.test(app))
+    throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
+  if (!/lazoControlSeg\(prevS,/.test(app))
+    throw new Error('el camino por mesa sigue sin el deadband');
+});
+
 t('v1.60 · LA POLÍTICA BUSCA A 0,1° — «si no busca, no va a mandar a esa posición»', () => {
   /* El paso de búsqueda estaba escrito aparte en TRES sitios (0,5° en los dos
      barridos de torsión, 2,5° en el uniforme de repairNoShade). Medido sobre
@@ -670,7 +707,11 @@ t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muest
   const ce = app.slice(j, app.indexOf('\n}', j));
   if (!/m%STEP_MIN===0/.test(ce)) throw new Error('consignaEscena no distingue la malla del minuto exacto');
   if (!/policyAngles\(/.test(ce)) throw new Error('consignaEscena no recalcula la política en el minuto pedido');
-  if (!/slewLimit\(/.test(ce)) throw new Error('consignaEscena no aplica el límite de giro, como hace la escena');
+  /* v1.61: era /slewLimit\(/ y se quedó viejo cuando el lazo paso a ser entero —
+     lazoControl APLICA el slew dentro, así que la exigencia se cumple mejor que
+     antes. Lo que hay que pedir es el LAZO, no una de sus mitades por su nombre. */
+  if (!/lazoControl\(|slewLimit\(/.test(ce))
+    throw new Error('consignaEscena no aplica el lazo del actuador, como hace la escena');
 });
 
 t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
@@ -2542,7 +2583,12 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     // levantamiento
     const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
     const dayFn = ui.slice(ui.indexOf('function* computeDayGen'), ui.indexOf('function kpisSerie'));
-    for (const lit of ['segOn(T)', 'segCmd(P.key', 'slewLimitSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    /* v1.61: era 'slewLimitSeg(prevS' y se quedó viejo al completar el lazo —
+       lazoControlSeg APLICA el slew dentro, así que la exigencia se cumple
+       mejor. Tercer test por CADENA que salta en este cambio: los que se atan
+       al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
+       ata a lo que la pieza HACE, no. */
+    for (const lit of ['segOn(T)', 'segCmd(P.key', 'lazoControlSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
     for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])

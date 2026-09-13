@@ -72,7 +72,7 @@ const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
              + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `
   return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit,
-           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, segLineMean,
+           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, lazoControlSeg, segLineMean,
            surfaceOrient, pvTilt, segTiltAt };`)();
 const VER = (html.match(/const VER='([^']+)'/) || [, '?'])[1];
 
@@ -196,7 +196,9 @@ for (const pol of POLS) {
       const cmd = (pol === 'pairwise' || pol === 'astro')
         ? F.policyAnglesSeg(pol, g.zen, g.az, B.T, irr, doy, ALB)
         : F.segsBroadcast(B.T, o.angles);
-      const ang = F.slewLimitSeg(prev.get(B.b) || null, cmd, PASO * 60);
+      // v1.61: el LAZO ENTERO (deadband + slew), como en computeDay: lo que sale por
+      // el CSV es lo que la planta HACE. El slew ya estaba; faltaba el deadband.
+      const ang = F.lazoControlSeg(prev.get(B.b) || null, cmd, PASO * 60);
       prev.set(B.b, ang);
       if (!diurno) continue;
       angDe.set(B.b, { seg: ang, line: F.segLineMean(B.T, ang) });
