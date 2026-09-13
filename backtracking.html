@@ -3028,16 +3028,23 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
 function policyAngles(key,zen,az,T,irr,doy,albedo){
   if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
   if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo);
-  // el acoplado según la semántica de cada política: las que GARANTIZAN
-  // no-sombra (pairwise 2.5D, true-3D con su residual) refinan a nivel de
-  // accionamiento; astro/row toleran sombra por diseño (min|θ| simple) y
+  /* el acoplado según la semántica de cada política: las que BUSCAN no-sombra
+     (pairwise 2.5D, true-3D con su residual) refinan a nivel de accionamiento.
+     BUSCAN, no GARANTIZAN: desde v1.57 la guardia de energía es incondicional,
+     así que cuando la postura sin sombra cuesta producción no se publica.
+     Medido en el barrido (semilla 1, sol ≥ 20°): 6 instantes en que la fórmula
+     acoplada llega a 2.5D CERO y lo publicado se aparta hasta el 65 % porque
+     apartarse gana hasta 91 W/m² de planta, YA netos del Martinez de esa
+     sombra. Decir «garantizan» era la promesa vieja sobreviviendo a su
+     corrección. */
+  // astro/row toleran sombra por diseño (min|θ| simple) y
   // global ya es un único ángulo (el acoplado es un no-op)
   if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
   if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
-  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado y sin sombra por construcción (de planos vecinos)
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
   return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
 }
 
@@ -3517,14 +3524,27 @@ function prodColor(x){
    Y declara su discretización: certifica «el mejor de lo que ha barrido», no
    «el óptimo». El mismo matiz que el invariante J, por la misma razón. */
 const CERT_PASO=0.5;          // grados del barrido del probador
+/* v1.59: EL PASO DE CONTROL con el que se juzga si un candidato es ALCANZABLE.
+   «¿La velocidad se tiene en cuenta?» — no lo estaba, y es un agujero: el
+   probador certificaba una POSTURA como si fuera un MOVIMIENTO. Podía proponer
+   una consigna a 18° de donde está la planta sin saber si el actuador llega.
+   Ahora cada candidato se pasa por el MISMO slewLimit que usa la escena, con
+   TRACKER_SLEW (0,17 °/s, spec del actuador) — no un número inventado — y el
+   que no llega no puede dominar: se cuenta aparte y se dice. */
+const CERT_DT=300;            // s: el paso de control con el que se juzga alcanzable
 const CERT_VECINOS=8;         // pasos a cada lado al perturbar una unidad sola
 const SIN_SOMBRA=['pairwise','true3d','mgl'];
 const OPTIMIZAN=['optimal','optfree'];
 
-function certifica(key,zen,az,T,irr,doy,albedo){
+/* v1.59: certifica una CONSIGNA, no el nombre de una política. Con angPub se
+   juzga lo que se le pase —el mando manual, una consigna de una TCU, lo que
+   sea— y entonces no hay objetivo declarado que cumplir: sólo el factible y los
+   dos ejes. Lo pidió una captura de Iñaki: con el manual puesto, el botón
+   certificaba la consigna de pairwise en vez de la que estaba en pantalla. */
+function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
   const nR=T.pairs.length+1;
   const unidades=T.groups?T.groups:Array.from({length:nR},(_,r)=>[r]);
-  const pub=policyAngles(key,zen,az,T,irr,doy,albedo).angles;
+  const pub=angPub?angPub.slice():policyAngles(key,zen,az,T,irr,doy,albedo).angles;
   const conCielo=!!(irr&&irr.ghi>0);
   const sombraDe=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});
     let mx=0;for(let r=0;r<nR;r++){const de=sh.de&&sh.de[r]?sh.de[r]:[];
@@ -3533,11 +3553,14 @@ function certifica(key,zen,az,T,irr,doy,albedo){
   const poaDe=(a)=>conCielo?poaPlant(zen,az,T,a,irr,doy,albedo).plant:NaN;
 
   // ── el conjunto FACTIBLE, con el motivo de cada límite ────────────────────
-  const esSinSombra=SIN_SOMBRA.indexOf(key)>=0, esOpt=OPTIMIZAN.indexOf(key)>=0;
+  const esMando=!!angPub;
+  const esSinSombra=!esMando&&SIN_SOMBRA.indexOf(key)>=0, esOpt=!esMando&&OPTIMIZAN.indexOf(key)>=0;
   const RU=rangosUnidad(zen,az,T);
   const factible=esSinSombra?RU:RU.map(()=>[-T.maxAngle,T.maxAngle]);
   const motivos=esSinSombra
     ?['tope mecánico ±'+T.maxAngle+'°','entre el seguimiento verdadero y la paralela al terreno','cono de haz (AOI ≤ '+AOI_HAZ+'°)','θ común por unidad de accionamiento']
+    :esMando
+    ?['tope mecánico ±'+T.maxAngle+'°','nada más: un mando no tiene que respetar el rango de ninguna política']
     :['tope mecánico ±'+T.maxAngle+'°','θ común por unidad de accionamiento','sin acotar por sombra: esta política PUEDE sacrificar una fila'];
 
   // ── CANDIDATOS, generados sin mirar a la política ─────────────────────────
@@ -3552,9 +3575,13 @@ function certifica(key,zen,az,T,irr,doy,albedo){
     cands.push(clampU(a));
   }
 
+  // ── ¿es ALCANZABLE desde donde está la planta, en un paso de control? ─────
+  const dt=(dtSec==null?CERT_DT:dtSec);
+  const llega=(a)=>{const l=slewLimit(pub,a,dt);return a.every((v,i)=>Math.abs(v-l[i])<1e-6);};
+
   // ── medir y buscar quién DOMINA a lo publicado ────────────────────────────
   const sPub=sombraDe(pub), pPub=poaDe(pub);
-  let mejor=null, nDom=0;
+  let mejor=null, nDom=0, nLejos=0, mejorLejos=null;
   for(const a of cands){
     if(a.every((v,i)=>Math.abs(v-pub[i])<1e-9))continue;
     let domina=false, s=null, e=null;
@@ -3563,8 +3590,22 @@ function certifica(key,zen,az,T,irr,doy,albedo){
       if(s<sPub-1e-9){ e=poaDe(a); domina=!conCielo||e>=pPub-E_EMPATE_W; }      // los DOS números
     }else if(esOpt){
       e=poaDe(a); domina=conCielo&&e>pPub+E_EMPATE_W; s=sombraDe(a);
+    }else if(esMando){
+      /* un mando no promete nada, así que el único juicio honesto es la
+         dominancia de Pareto: mejor o igual en los dos ejes y estrictamente
+         mejor en uno. Ni «sombra a cualquier precio» ni «energía a cualquier
+         precio»: los dos números, como manda la casa. */
+      s=sombraDe(a); e=poaDe(a);
+      const mejorS=s<sPub-1e-9, igualS=Math.abs(s-sPub)<=1e-9;
+      const mejorE=conCielo&&e>pPub+E_EMPATE_W, igualE=!conCielo||e>=pPub-E_EMPATE_W;
+      domina=(mejorS&&igualE)||(mejorE&&(mejorS||igualS));
     }
     if(!domina)continue;
+    /* domina en los números, pero ¿puede el actuador ponerse ahí? Si no llega,
+       no es una alternativa: es un deseo. Se cuenta y se enseña aparte. */
+    if(!llega(a)){ nLejos++;
+      if(!mejorLejos||(esSinSombra?s<mejorLejos.sombra:e>mejorLejos.poa))mejorLejos={ang:a,sombra:s,poa:e};
+      continue; }
     nDom++;
     if(!mejor||(esSinSombra?s<mejor.sombra:e>mejor.poa))mejor={ang:a,sombra:s,poa:e};
   }
@@ -3582,18 +3623,37 @@ function certifica(key,zen,az,T,irr,doy,albedo){
   const coste=(conCielo&&mejorE)?{poa:mejorE.poa-pPub,pct:pPub>1e-9?100*(mejorE.poa-pPub)/pPub:0,
                                   sombraPct:100*mejorE.sombra,ang:mejorE.ang}:null;
 
+  /* ── EL PRECIO DE LA PROMESA ────────────────────────────────────────────
+     Simétrico del anterior, y lo pidió el barrido. «El precio de la elección»
+     contesta «¿cuánta energía dejas sobre la mesa?». Falta la pregunta que se
+     hace quien mira una política SIN SOMBRA y la ve publicando un 19 %: «tenías
+     una postura limpia, ¿por qué no la has cogido?». Medido en el barrido
+     (semilla 1, sol ≥ 20°): 6 instantes en que la fórmula acoplada llega a 2.5D
+     CERO y lo publicado se aparta; en uno, quedarse en la postura limpia costaba
+     91,1 W/m² de planta —27 % de la producción del instante— ya netos del
+     Martinez de la sombra que se evita. Sin este número, el usuario ve una
+     promesa incumplida; con él, ve el canje y decide. */
+  let promesa=null;
+  if(sPub>1e-9){ let lim=null;
+    for(const a of cands){const sa=sombraDe(a); if(!lim||sa<lim.sombra)lim={ang:a,sombra:sa};}
+    if(lim&&lim.sombra<sPub-1e-9){ const pL=poaDe(lim.ang);
+      promesa={ang:lim.ang,sombraPct:100*lim.sombra,poa:pL,
+               cuesta:conCielo?(pPub-pL):null,
+               pct:(conCielo&&pPub>1e-9)?100*(pPub-pL)/pPub:null}; } }
+
   // ── veredicto ─────────────────────────────────────────────────────────────
   let veredicto='óptimo', margen=null;
   if(mejor){
-    margen=esSinSombra?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
-    const dS=esSinSombra?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
-    veredicto=(esSinSombra?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
+    margen=(esSinSombra||esMando)?{sombra:100*(sPub-mejor.sombra),poa:(mejor.poa-pPub)}:{poa:mejor.poa-pPub};
+    const dS=(esSinSombra||esMando)?100*(sPub-mejor.sombra):0, dP=conCielo?(mejor.poa-pPub):0;
+    veredicto=((esSinSombra||esMando)?dS<=0.1&&Math.abs(dP)<=E_EMPATE_W:Math.abs(dP)<=E_EMPATE_W)?'empatado':'mejorable';
   }
-  if(!esSinSombra&&!esOpt)veredicto='sin objetivo';
+  if(!esSinSombra&&!esOpt&&!esMando)veredicto='sin objetivo';
 
   return {
-    politica:key,
-    objetivo:esSinSombra?'evitar la sombra de planos donde sea posible, sin perder energía de planta'
+    politica:esMando?'mando manual':key,
+    objetivo:esMando?'ninguno declarado: es un mando, no una política. Se juzga contra el factible en los DOS ejes (sombra y energía), sin promesa que cumplir'
+            :esSinSombra?'evitar la sombra de planos SALVO cuando evitarla cuesta energía de planta (guardia incondicional desde v1.57.2) — BUSCA no-sombra, no la GARANTIZA'
             :esOpt?'maximizar la POA de planta neta (puede sacrificar una fila)'
             :'seguir su regla: no promete optimalidad',
     veredicto:veredicto,
@@ -3601,10 +3661,15 @@ function certifica(key,zen,az,T,irr,doy,albedo){
     mejorHallado:mejor?{ang:mejor.ang,sombraPct:100*mejor.sombra,poa:mejor.poa}:null,
     margen:margen,
     factible:{porUnidad:factible,motivos:motivos},
-    candidatos:{evaluados:cands.length,dominan:nDom},
+    candidatos:{evaluados:cands.length,dominan:nDom,fueraDeAlcance:nLejos},
+    mejorFueraDeAlcance:mejorLejos?{ang:mejorLejos.ang,sombraPct:100*mejorLejos.sombra,poa:mejorLejos.poa}:null,
     costeDeLaEleccion:coste,
-    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo',
-    sellos:{version:'v1.58',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W}
+    precioDeLaPromesa:promesa,
+    alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo. '+
+            'NUNCA prueba dos unidades movidas a la vez en direcciones distintas: si dice «óptimo», es «no he encontrado nada mejor entre lo que sé mirar». '+
+            'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s; NO modela el DESGASTE ni el número de maniobras: una consigna que gane unos W/m² yendo y viniendo cada minuto sale «mejor» aquí y es peor en la planta.',
+    sellos:{version:'v1.59',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
+            slew:TRACKER_SLEW+' °/s',pasoControl:dt+' s'}
   };
 }
 
@@ -3612,7 +3677,7 @@ function certifica(key,zen,az,T,irr,doy,albedo){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.58.0';
+const VER='v1.59.0';
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
@@ -3626,9 +3691,9 @@ const POLICIES=[
   {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false, brain:'ncu'},
   {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false, brain:'tcu'},
   {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false, brain:'tcu'},
-  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — sombra de PLANOS cero garantizada; la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
+  {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — evita la sombra de PLANOS salvo cuando evitarla CUESTA energía de planta (guardia de v1.57); la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
   {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true, brain:'tcu'},
-  {key:'mgl',     nm:'Min ground light',ds:'sin sombra + mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes', col:'#2dd4bf', on:false, brain:'ncu'},
+  {key:'mgl',     nm:'Min ground light',ds:'mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes, con su misma guardia de energía', col:'#2dd4bf', on:false, brain:'ncu'},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
   {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
 ];
@@ -5950,12 +6015,27 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       let mes='';
       if(sa&&sa.length>1){const a=Math.min(...sa),b=Math.max(...sa);if(b-a>0.005)mes=' · mesas '+(TH_DISP*(TH_DISP<0?b:a)).toFixed(1)+'…'+(TH_DISP*(TH_DISP<0?a:b)).toFixed(1)+'°';}
       const held=(INSTANT&&INSTANT.stamp===DAY&&INSTANT.key===key&&INSTANT.held!=null&&INSTANT.m===+$('hour').value)?' · consigna de las '+hhmm(INSTANT.held):'';
-      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',(POL[key]?POL[key].nm:'')+' · θ<0 = este'+mes+held);
+      /* v1.59: el rótulo dice DE DÓNDE sale el ángulo, no qué hay en el
+         selector. Con el mando puesto el valor es manual y el rótulo ponía
+         «Pairwise»: el número y su etiqueta, dos piezas mirando a sitios
+         distintos. Lo vio Iñaki en una captura —«¿por qué pone pairwise cuando
+         es manual?»— y me había engañado también a mí al leerla. */
+      const fuente=manualOn()?('🎛 Manual'+(manualRowsOn()?' · por fila':' · θ común')):(POL[key]?POL[key].nm:'');
+      card('θ fila '+(selRow+1),(TH_DISP*p.ang[tIdx][selRow]).toFixed(1)+'°',fuente+' · θ<0 = este'+mes+held);
     }
     if((DAY.T.rowTilt&&DAY.T.rowTilt.some(v=>Math.abs(v)>0.01))||DAY.T.rotula)
       card('Tilt N-S fila',DAY.T.rowTilt[selRow].toFixed(1)+'°',DAY.T.real?'medido (cotas reales)':DAY.T.rotula?(DAY.T.rotula.sigue?'quebrada: mesas ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° en la rótula':'tubo recto: el quiebro de ±'+Math.abs(DAY.T.rotula.v).toFixed(1)+'° no se sigue'):DAY.c.drive==='bifila'?'rígida: medio del grupo':'local');
     // v1.56: la sombra POR MESA (mitad sur / mitad norte de cada tramo, del contador), no solo por fila («debería ser por mesa»)
-    const irre=(['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'';   // v1.57 (auditoría H2)
+    /* v1.57 (auditoría H2) · v1.59: «irreducible» es el resultado de una
+       BÚSQUEDA —«he barrido el rango legítimo y no hay nada que lo evite»—, así
+       que sólo puede decirse de una consigna que salga de una política que
+       busca. Colgaba de «key», el selector, y con el mando manual puesto la
+       pantalla llamaba irreducible a un ángulo escrito a mano que nadie había
+       barrido. Afirmar eso de un número que no se ha calculado es justo lo que
+       esta casa no hace. Con el mando, se dice lo que es: no se ha buscado. */
+    const irre=manualOn()
+      ?(Math.max(...sh)>0.02?' · mando manual: NADIE ha barrido esto — para saber si es evitable, «✓ certificar»':'')
+      :((['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'');
     card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+sombraPorMesaTxt(sh,selRow,' · '));
     /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
        aparcar una fila de espaldas al sol —AOI > 90°, producción de haz cero—
@@ -6298,22 +6378,30 @@ function pintaCertificado(){
       'background:rgba(10,15,22,.97);border:1px solid #2a3a4f;border-radius:10px;padding:12px 14px;'+
       'font-size:.8rem;line-height:1.5;color:#dfe5ea;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.5)';
     document.body.appendChild(pan);}
-  const tIdx=timeIndex(), key=$('scene').value||'pairwise';
+  /* v1.59: era $('scene').value — y «scene» es el CANVAS, no el selector de
+     políticas (ése es «polview»). Un canvas no tiene .value, así que caía
+     siempre en el ||'pairwise' y el botón certificaba pairwise tuvieras lo que
+     tuvieras en pantalla. Lo cazó Iñaki preguntando por otra cosa. */
+  const tIdx=timeIndex(), key=($('polview')&&$('polview').value)||'pairwise';
   const inst=sceneInstant(), g=inst?inst.g:DAY.sun[tIdx], c=DAY.c;
   if(!(g.elev>0)){pan.innerHTML='<b>Certificado</b><br>El sol está bajo el horizonte: no hay nada que certificar.'+cerrar;return;}
   pan.innerHTML='<b>Certificando…</b><br><span style="color:#9fb0c2">barriendo el conjunto factible con el contador exacto</span>';
   setTimeout(()=>{
     const doy=doyOf(c.date);
     const irr=skyWithClouds(Irr.clearskyIneichen(g.zen,doy,c.alt,c.tl||3.5),c.cc,g.zen);
+    /* v1.59: con el mando puesto se certifica LO QUE HAY EN PANTALLA, no la
+       consigna de la política del selector. El botón promete «toma lo que estás
+       viendo» y con el manual activo estaba juzgando otra cosa. */
+    const manAng=(manualOn()&&inst&&inst.pv&&inst.pv.ang&&inst.pv.ang[tIdx])?inst.pv.ang[tIdx]:null;
     let ce;
-    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo);}
+    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo,manAng);}
     catch(e){pan.innerHTML='<b>Certificado</b><br>no se pudo calcular: '+e.message+cerrar;return;}
     const col={'óptimo':'#1a8a5a','empatado':'#b7791f','mejorable':'#c0392b','sin objetivo':'#5b6a7c'}[ce.veredicto]||'#5b6a7c';
     const th=a=>a.map(v=>(TH_DISP*v).toFixed(1)).join(' / ');
     const sep='<div style="margin-top:8px;padding-top:8px;border-top:1px solid #223">';
     const co=ce.costeDeLaEleccion, H=[];
     H.push('<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">',
-           '<b>Certificado · ',(POL[key]?POL[key].nm:key),'</b>',
+           '<b>Certificado · ',(manAng?'🎛 mando manual':(POL[key]?POL[key].nm:key)),'</b>',
            '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
            '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
     H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
@@ -6334,6 +6422,28 @@ function pintaCertificado(){
              (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
              '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
              ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+    }
+    const fl=ce.mejorFueraDeAlcance;
+    if(fl){
+      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',fl.sombraPct.toFixed(1),' %</b>');
+      if(isFinite(fl.poa))H.push(' · POA <b>',fl.poa.toFixed(1),'</b> W/m²');
+      H.push('<br><span style="color:#9fb0c2">gana en los números, pero no se puede llegar ahí en un paso de ',
+             ce.sellos.pasoControl,' a ',ce.sellos.slew,'. No es una alternativa: es un deseo. (',
+             ce.candidatos.fueraDeAlcance,' candidatos así)</span></div>');
+    }
+    const pr=ce.precioDeLaPromesa;
+    if(pr){
+      H.push(sep,'<b>El precio de la promesa</b><br>la postura MENOS sombreada del factible deja <b>',
+             pr.sombraPct.toFixed(1),' %</b> de sombra');
+      if(isFinite(pr.poa))H.push(' con <b>',pr.poa.toFixed(1),'</b> W/m²');
+      H.push('.<br><span style="color:#9fb0c2">');
+      if(pr.cuesta==null)H.push('sin cielo: no se puede poner precio');
+      else if(pr.cuesta>0.05)H.push('quedarse en ella costaría <b>',pr.cuesta.toFixed(1),
+             '</b> W/m² (',pr.pct.toFixed(0),' %) — por eso no se publica: la guardia de energía es incondicional');
+      else if(pr.cuesta<-0.05)H.push('y además RINDE MÁS: +',(-pr.cuesta).toFixed(1),
+             ' W/m². No hay canje que justificarla — es la consigna mejor de ahí arriba');
+      else H.push('no cuesta energía: empata con la publicada');
+      H.push('</span></div>');
     }
     H.push(sep,'<span style="color:#9fb0c2"><b style="color:#dfe5ea">Conjunto factible</b><br>',
            ce.factible.motivos.map(m=>'· '+m).join('<br>'),
@@ -6388,10 +6498,29 @@ function manualOn(){const e=$('manual');return !!(e&&e.checked);}
    Al activarlo arranca en la consigna de la política de la escena. */
 let MANUAL_ROWS=null;
 function manualRowsOn(){const e=$('manrow');return manualOn()&&!!(e&&e.checked)&&!!MANUAL_ROWS;}
+/* v1.59: la consigna que la ESCENA enseña para una política en el minuto
+   pedido. Fuera de la malla de 5 min el simulador calcula el minuto exacto
+   (por eso existe sceneInstant), y quien quiera «lo que se está viendo» tiene
+   que pedir ESTO y no DAY.pol[key].ang[timeIndex()], que es la muestra de la
+   malla más cercana. Lo cazó una captura de Iñaki a las 21:01: al marcar «por
+   fila» las filas arrancaban en la consigna de las 21:00 y la planta saltaba a
+   una postura que no era la de nadie, con el HUD atribuyéndosela a la escena. */
+function consignaEscena(key){
+  if(!DAY)return null;
+  const m=+$('hour').value, c=DAY.c, tIdx=timeIndex();
+  const p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  if(m%STEP_MIN===0||!p)return p&&p.ang[tIdx]?p.ang[tIdx]:null;
+  try{
+    const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
+    const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
+    const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
+    return slewLimit(p.ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  }catch(e){return p.ang[tIdx]||null;}
+}
 function manualRowsInit(){
   if(!DAY)return;
-  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]], t=timeIndex();
-  const nR=DAY.T.pairs.length+1, a=p&&p.ang[t]?p.ang[t]:new Array(nR).fill(+$('manth').value);
+  const key=$('polview').value;
+  const nR=DAY.T.pairs.length+1, a=consignaEscena(key)||new Array(nR).fill(+$('manth').value);
   // el slider habla en convención TCU (− = este) y la física al revés: se cruza por TH_DISP
   MANUAL_ROWS=Array.from({length:nR},(_,r)=>Math.round(TH_DISP*(a[r]!=null?a[r]:0)));
   const r0=+$('rowsel').value||0; $('manth').value=MANUAL_ROWS[r0]; $('manthlbl').textContent=MANUAL_ROWS[r0]+'°';

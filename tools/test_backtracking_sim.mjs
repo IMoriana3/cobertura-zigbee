@@ -556,6 +556,146 @@ t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede 
   if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
 });
 
+t('v1.59 · EL PROBADOR CERTIFICA UNA POSTURA ALCANZABLE: lo que el actuador no alcanza no puede dominar', () => {
+  /* «¿La velocidad se tiene en cuenta?» — no lo estaba. El probador proponía
+     consignas a 18° de donde está la planta sin saber si el actuador llega en
+     el paso. Certificaba una POSTURA como si fuera un MOVIMIENTO. Ahora cada
+     candidato pasa por el MISMO slewLimit que usa la escena, con TRACKER_SLEW
+     (0,17 °/s, spec del actuador) — no un número inventado. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/slewLimit\(/.test(cuerpo)) throw new Error('el probador no comprueba si el actuador llega: certifica un deseo');
+  if (!/TRACKER_SLEW/.test(fis59.slice(fis59.indexOf('const CERT_DT'), fis59.indexOf('const CERT_DT') + 900)) && !/TRACKER_SLEW/.test(cuerpo))
+    throw new Error('el paso de control no se ata a la spec del actuador');
+  if (!/DESGASTE/.test(cuerpo)) throw new Error('el alcance no declara que el desgaste no se modela');
+  if (!/dos unidades movidas a la vez/.test(cuerpo))
+    throw new Error('el alcance no declara que el repertorio de candidatos no cubre dos unidades en direcciones distintas');
+
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  // con un paso de control RIDÍCULO (1 s) no se llega a ninguna parte: nadie puede dominar
+  const cortito = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 1);
+  if (cortito.candidatos.dominan !== 0)
+    throw new Error('con 1 s de paso el actuador no se mueve y sin embargo ' + cortito.candidatos.dominan + ' candidatos «dominan»');
+  if (cortito.veredicto === 'mejorable')
+    throw new Error('«mejorable» proponiendo algo inalcanzable en 1 s: eso es un deseo, no una alternativa');
+  // y con un paso largo vuelve a haber alternativas reales (si las había)
+  const largo = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 3600);
+  if (largo.candidatos.dominan < cortito.candidatos.dominan)
+    throw new Error('con más tiempo el actuador alcanza MENOS sitios: el límite de giro está al revés');
+  if (!largo.sellos.slew || !largo.sellos.pasoControl)
+    throw new Error('el certificado no sella con qué velocidad y qué paso de control juzgó el alcance');
+});
+
+t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muestra de la malla', () => {
+  /* Fuera de la malla de 5 min la escena es el MINUTO EXACTO (para eso existe
+     sceneInstant). manualRowsInit leía DAY.pol[key].ang[timeIndex()] —la muestra
+     más cercana— así que al marcar «por fila» a las 21:01 las filas arrancaban
+     en la consigna de las 21:00 y la planta saltaba a una postura que no era de
+     nadie, con el HUD atribuyéndosela a la escena. Dos piezas, dos fuentes: la
+     misma forma de fallo que el render y la física con dos soles. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function manualRowsInit');
+  if (i < 0) throw new Error('no se encuentra manualRowsInit');
+  const cuerpo = app.slice(i, app.indexOf('\n}', i));
+  if (/DAY\.pol\[[^\]]*\]\.ang\[/.test(cuerpo) || /p\.ang\[t\]/.test(cuerpo))
+    throw new Error('el manual por fila vuelve a leer la malla en vez de la consigna de la escena');
+  if (!/consignaEscena\(/.test(cuerpo))
+    throw new Error('el manual por fila no pide la consigna de la ESCENA');
+  const j = app.indexOf('function consignaEscena');
+  if (j < 0) throw new Error('no existe consignaEscena');
+  const ce = app.slice(j, app.indexOf('\n}', j));
+  if (!/m%STEP_MIN===0/.test(ce)) throw new Error('consignaEscena no distingue la malla del minuto exacto');
+  if (!/policyAngles\(/.test(ce)) throw new Error('consignaEscena no recalcula la política en el minuto pedido');
+  if (!/slewLimit\(/.test(ce)) throw new Error('consignaEscena no aplica el límite de giro, como hace la escena');
+});
+
+t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
+  /* Iñaki, con el mando manual puesto a −7°: «¿por qué en los boxes de debajo
+     pone pairwise cuando es manual?». El valor salía del mando y el rótulo del
+     selector de políticas. Y colgado del mismo selector iba el sufijo
+     «irreducible: ningún θ que reciba haz la evita», que la pantalla estampaba
+     sobre un ángulo escrito a mano: «irreducible» es el resultado de una
+     BÚSQUEDA, y a un ángulo manual no lo ha barrido nadie. Afirmarlo es
+     fabricar un número. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const iIrre = app.indexOf('const irre=');
+  if (iIrre < 0) throw new Error('no se encuentra el sufijo de irreducibilidad del HUD');
+  const bloqueIrre = app.slice(iIrre, iIrre + 700);
+  if (!/manualOn\(\)/.test(bloqueIrre))
+    throw new Error('«irreducible» no mira si el mando manual está puesto: la pantalla se lo estampa a un ángulo escrito a mano');
+  const iTh = app.indexOf("card('θ fila '");
+  if (!/manualOn\(\)/.test(app.slice(Math.max(0, iTh - 400), iTh + 200)))
+    throw new Error('la tarjeta de θ rotula con el selector de políticas aunque el ángulo venga del mando');
+
+  // y el probador: pasada una consigna, juzga ESA consigna
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const nR = T.pairs.length + 1;
+  const mando = new Array(nR).fill(-7 * -1);                      // un mando cualquiera, en marco físico
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, mando);
+  for (let r = 0; r < nR; r++)
+    if (Math.abs(ce.elegido.ang[r] - mando[r]) > 1e-9)
+      throw new Error('el probador ha certificado la consigna de la política en vez de la que se le pasó');
+  if (ce.politica !== 'mando manual') throw new Error('el certificado no dice que juzga un mando: ' + ce.politica);
+  if (!/ninguno declarado/.test(ce.objetivo)) throw new Error('un mando no tiene objetivo que cumplir, y el certificado debe decirlo');
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos con un mando: ' + ce.candidatos.evaluados);
+  // un mando arbitrario en un terreno con torsión tiene que ser MEJORABLE: si sale óptimo, el juez no juzga
+  if (ce.veredicto === 'óptimo' && !ce.mejorHallado)
+    throw new Error('un mando plano a −7° con torsión sale «óptimo»: un juez que nunca dice que no no vale');
+});
+
+t('v1.59 · LA PROMESA VIEJA NO SOBREVIVE A SU CORRECCIÓN: ninguna política dice GARANTIZAR sombra cero', () => {
+  /* Desde v1.57.2 la guardia de energía es incondicional, así que pairwise BUSCA
+     no-sombra y no la garantiza: medido en el barrido, 6 instantes con sol ≥ 20°
+     en que la fórmula acoplada llega a 2.5D cero y lo publicado se aparta hasta
+     el 65 % porque apartarse gana hasta 91 W/m² netos. La etiqueta del selector
+     seguía diciendo «sombra de PLANOS cero garantizada». El código y su etiqueta
+     son dos piezas que tienen que mirar lo mismo — la misma forma de fallo que
+     el render y la física con dos soles distintos. */
+  const pol = html.slice(html.indexOf('const POLICIES=['), html.indexOf('];', html.indexOf('const POLICIES=[')));
+  for (const mal of ['cero garantizada', 'sombra cero garantizada'])
+    if (pol.indexOf(mal) >= 0) throw new Error(`el selector sigue prometiendo «${mal}»: la guardia de energía puede publicar sombra y lo hace`);
+  if (!/CUESTA energía de planta/.test(pol)) throw new Error('la etiqueta de pairwise no dice de qué depende que evite la sombra');
+});
+
+t('v1.59 · EL PRECIO DE LA PROMESA: una postura limpia que cuesta energía NO es «mejorable», y una que rinde más SÍ', () => {
+  /* El número simétrico del precio de la elección. Sin él, quien ve una política
+     «sin sombra» publicando un 19 % no sabe si es que no podía o que no quería.
+     Y su criterio es el que sostiene toda la corrección de v1.57: una postura con
+     MENOS sombra sólo domina si además no pierde energía. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/precioDeLaPromesa/.test(cuerpo)) throw new Error('el certificado no publica el precio de la promesa');
+
+  const T = casoB(8, true), doy = 172;
+  let cara = null, gratis = null;
+  for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (!(irr.ghi > 0)) continue;
+    const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+    const pr = ce.precioDeLaPromesa; if (!pr || pr.cuesta == null) continue;
+    // (1) una postura MENOS sombreada que CUESTA energía nunca puede ser el motivo de «mejorable»
+    if (pr.cuesta > 0.05) {
+      if (!cara || pr.cuesta > cara.pr.cuesta) cara = { mm, ce, pr };
+      if (ce.veredicto === 'mejorable' && ce.mejorHallado && ce.mejorHallado.sombraPct <= pr.sombraPct + 1e-9
+          && ce.mejorHallado.poa < ce.elegido.poa - 0.05)
+        throw new Error(`«mejorable» por una postura que PIERDE ${(ce.elegido.poa - ce.mejorHallado.poa).toFixed(1)} W/m²: el árbitro óptico mandando otra vez sobre la energía`);
+    }
+    // (2) una postura con menos sombra Y más energía SÍ tiene que salir como mejorable
+    if (pr.cuesta < -0.05 && pr.sombraPct < ce.elegido.sombraPct - 1e-9) {
+      if (!gratis) gratis = { mm, ce, pr };
+      if (ce.veredicto !== 'mejorable')
+        throw new Error(`hay una consigna con menos sombra Y +${(-pr.cuesta).toFixed(1)} W/m² y el probador dice «${ce.veredicto}»: un juez que no puede decir que no no vale`);
+    }
+  }
+  if (!cara) throw new Error('el día no produjo ninguna promesa CON precio: el test no probaría nada');
+  if (!gratis) throw new Error('el día no produjo ninguna postura mejor en los dos ejes: el test no probaría nada');
+  if (!(cara.pr.cuesta > 50)) throw new Error('la promesa más cara del día cuesta sólo ' + cara.pr.cuesta.toFixed(1) + ' W/m²: el caso no es representativo');
+});
+
 t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
   const T = casoB(6, true), doy = 172; let dif = 0;
   for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
