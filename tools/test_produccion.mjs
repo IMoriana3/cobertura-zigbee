@@ -16,6 +16,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+// el canario de la cifra: sus casos y su recorrido viven en el generador, para
+// que banco y golden no puedan describir cosas distintas (cero copias)
+import { CASOS, CFG0, arma, corre } from './gen_golden_anual.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let ok = 0, ko = 0;
@@ -44,6 +47,7 @@ const S = new Function(ctrl + sol + fis + log + `
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,anglesAstro,
              policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
+          tGenerica, tElburgo, ebDe, cfgEB,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
           dcLossEta, invAC, gridLimit, invMapUniforme, strPdc, strInvCotas, acPlant, dayAC,
           tmyAt, tmyFromPVGIS, numES, parseMedidas, careoMedidas,
@@ -1333,6 +1337,94 @@ t('sin lazo la columna de desalineo es CERO en todo el día', () => {
     prev = x.prev; eWh = x.eWh; peor = Math.max(peor, Math.abs(x.f[4]));
   }
   if (peor !== 0) throw new Error(`sin lazo el desalineo tendría que ser 0 y es ${peor}`);
+});
+
+/* ── v1.31 · EL CANARIO DE LA CIFRA ──────────────────────────────────────────
+   tools/golden_anual.json guarda la energía por string de ocho casos (el año
+   completo de la genérica, los solsticios, el lazo en sus dos modos, la
+   bifacialidad al año 25, el astro sin BT y El Burgo del plano). No es
+   validación —la cifra no la produce nadie más que esta página, así que no hay
+   autoridad de fuera contra la que carearla—: es un CANARIO. Si esto se pone
+   rojo, la cifra que la página le da al usuario ha CAMBIADO, y hay dos salidas:
+   era un fallo y se arregla, o era a propósito y se regenera el fichero DICIENDO
+   en el commit cuánto se movió y por qué. La tolerancia es 1e-9 relativo como
+   los otros dos goldens, no un 1 %: un canario con holgura es ruido. */
+const GA = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'golden_anual.json'), 'utf-8'));
+
+t(`el canario de la cifra: ${GA.casos.length} casos cuadran a 1e-9 relativo, por string y en total`, () => {
+  // se recomputa con ESTE S —el que arma el banco con su propia extracción—, no
+  // con el del generador: así el careo también exige que la página siga
+  // exportando lo que el golden necesita para reproducirse
+  for (const g of GA.casos) {
+    const caso = { periodo: g.periodo, dias: g.dias_iso, paso: g.paso_min, via: g.via, cfg: g.cfg };
+    const r = corre(S, caso, ROOT);
+    if (r.kwh.length !== g.kwh.length)
+      throw new Error(`${g.id}: ${r.kwh.length} strings contra los ${g.kwh.length} del golden`);
+    for (let k = 0; k < g.kwh.length; k++) {
+      const d = Math.abs(r.kwh[k] - g.kwh[k]) / Math.max(1e-12, Math.abs(g.kwh[k]));
+      if (d > 1e-9)
+        throw new Error(`${g.id} string ${k}: ${r.kwh[k].toFixed(6)} kWh contra ${g.kwh[k].toFixed(6)} ` +
+                        `del golden (${(d * 100).toFixed(6)} % · total ${r.total.toFixed(3)} contra ${g.total_kwh.toFixed(3)})`);
+    }
+    const dt = Math.abs(r.total - g.total_kwh) / Math.max(1e-12, Math.abs(g.total_kwh));
+    if (dt > 1e-9) throw new Error(`${g.id}: Σ ${r.total.toFixed(6)} contra ${g.total_kwh.toFixed(6)}`);
+  }
+});
+
+t('el canario no se ha descolgado: los casos del golden son los del generador, con su cfg RESUELTO', () => {
+  const ids = CASOS.map(k => k.id).join(','), gids = GA.casos.map(g => g.id).join(',');
+  if (ids !== gids)
+    throw new Error(`el golden lleva otros casos que gen_golden_anual.mjs:\n  golden: ${gids}\n  generador: ${ids}\n` +
+                    'si los casos cambiaron a propósito, hay que regenerar el fichero');
+  // EL PASO DEL AÑO lo pone computePeriod, que es UI y no se puede llamar desde
+  // aquí: el caso anual del golden REPLICA su receta (dayEnergy día a día a
+  // paso horario). Lo único que se puede vigilar es que la receta siga siendo
+  // esa, y se vigila —si alguien afloja el paso del Σ año, la cifra que ve el
+  // usuario se mueve y el canario, que recorre el año por su cuenta, no se
+  // enteraría.
+  if (!/dayEnergy\(F,c,T\.obj,fechas\[i\],60,mapStringW\(/.test(pg))
+    throw new Error('computePeriod ya no recorre el año con dayEnergy a paso 60: ' +
+                    'el caso anual del golden estima otra cosa que la página');
+  // el cfg de El Burgo lo RESUELVEN sus dos JSON (nrows/cw/maxang/lat/lon): si el
+  // plano se regenera, el golden pinta otra planta y el careo de arriba diría
+  // «la cifra cambió» cuando lo que cambió es la geometría. Esto lo dice claro.
+  for (const k of CASOS) {
+    const g = GA.casos.find(x => x.id === k.id);
+    const { c } = arma(S, k, ROOT);
+    if (JSON.stringify(c) !== JSON.stringify(g.cfg))
+      throw new Error(`${k.id}: la configuración resuelta ya no es la del golden\n  ahora:  ${JSON.stringify(c)}\n  golden: ${JSON.stringify(g.cfg)}`);
+  }
+});
+
+t('el cfg del canario es el de ARRANQUE de la página: ningún valor por defecto se ha movido', () => {
+  // CFG0 es la traducción a mano de los `value=` de produccion.html, y si un
+  // default se mueve sin tocar CFG0 el canario sigue verde vigilando una
+  // configuración que ya no es la que ve el usuario. Se lee del HTML.
+  const val = id => {
+    const m = new RegExp(`<(?:input|select)[^>]*\\bid="${id}"[^>]*>`).exec(pg);
+    if (!m) throw new Error(`produccion.html ya no tiene el campo ${id}`);
+    const v = /value="([^"]*)"/.exec(m[0]);
+    return v ? v[1] : null;
+  };
+  const pares = [['lat', CFG0.lat], ['lon', CFG0.lon], ['tz', CFG0.tz], ['alt', CFG0.alt],
+                 ['albedo', CFG0.albedo], ['cloud', CFG0.cc * 100], ['pitch', CFG0.pitch],
+                 ['cw', CFG0.cw], ['maxang', CFG0.maxang], ['nrows', CFG0.nrows],
+                 ['tparam', CFG0.tparam], ['mods', CFG0.elec.mods], ['wp', CFG0.elec.wp],
+                 ['gamma', CFG0.elec.gamma], ['tamb', CFG0.elec.tamb], ['wind', CFG0.elec.wind],
+                 ['ldispo', CFG0.ac.planta.dispo], ['ldeg', CFG0.ac.planta.degrada],
+                 ['lanio', CFG0.ac.planta.anio], ['bifa', CFG0.bif.bifa], ['bperd', CFG0.bif.perdTras],
+                 ['iamb0', CFG0.iamb0], ['ctrlDb', CFG0.ctrl.db], ['ctrlSlew', CFG0.ctrl.slew],
+                 ['ctrlCiclo', CFG0.ctrl.cicloMin]];
+  for (const [id, esperado] of pares) {
+    const v = +val(id);
+    if (!(Math.abs(v - esperado) < 1e-12))
+      throw new Error(`${id} arranca en ${v} y el canario estima con ${esperado}: ` +
+                      'o se arregla CFG0 en gen_golden_anual.mjs (y se regenera el golden) o se deshace el cambio del default');
+  }
+  // los que no son números: la casilla del lazo y el manual arrancan APAGADOS y
+  // la política en pairwise, que es con lo que el golden estimó
+  if (CFG0.ctrl.on || CFG0.manual) throw new Error('CFG0 ya no es el arranque: el lazo o el manual vienen puestos');
+  if (!/el\.value='pairwise'/.test(pg)) throw new Error('el selector de política ya no arranca en pairwise');
 });
 
 console.log('');

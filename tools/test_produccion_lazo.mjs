@@ -8,6 +8,7 @@
    reloj hacia atrás, que es el precio declarado de que la banda muerta tenga memoria. */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // La ruta del navegador va en UN solo sitio. Este banco nació con ella clavada
@@ -207,6 +208,58 @@ t('cambiar la configuración TIRA la tabla en vez de dejarla mintiendo', () => {
   if (tras2.mint) throw new Error('la tabla sigue viva tras cambiar la banda');
   if (!/vuelve a calcular/.test(tras2.txt)) throw new Error(`no avisa: «${tras2.txt.slice(0,80)}»`);
   if (tras2.csv === '') throw new Error('el botón de CSV sigue ofreciendo una tabla que ya no existe');
+});
+
+/* EL BURGO EN LA PÁGINA, CONTRA EL CANARIO. La rama de El Burgo de produccion.html
+   —cargar los dos ficheros del plano, fundir las columnas, armar la T— no la tocaba
+   ningún banco de navegador, y es la que arma la planta REAL. Ahora que su geometría
+   vive en LÓGICA PURA (tGenerica/tElburgo/ebDe/cfgEB) y el canario de la cifra la
+   estima llamando a esas mismas funciones desde Node, esto cierra el círculo: la
+   PÁGINA, con sus fetch de verdad y su cfg() leyendo el DOM, tiene que dar el mismo
+   número que hay en tools/golden_anual.json. Si alguien cambia el cargador y el
+   generador no se entera —o al revés—, salta aquí. */
+const GOLDEN = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'golden_anual.json'), 'utf-8'));
+const CEB = GOLDEN.casos.find(k => k.id === 'elburgo_21jun_horario');
+const eb = await pg.evaluate(async (esp) => {
+  document.getElementById('ctrlOn').checked = false;
+  document.getElementById('ctrlOn').dispatchEvent(new Event('change'));
+  document.getElementById('pol').value = 'pairwise';
+  document.getElementById('pol').dispatchEvent(new Event('change'));
+  document.getElementById('date').value = esp.cfg.date;
+  document.getElementById('date').dispatchEvent(new Event('change'));
+  document.getElementById('plant').value = 'elburgo';
+  document.getElementById('plant').dispatchEvent(new Event('change'));
+  // la planta se carga con fetch: se espera a que la T tenga las filas del plano
+  for (let i = 0; i < 200; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    const c0 = cfg();
+    if (c0.plant === 'elburgo' && T && T.obj && T.xs && T.xs.length === esp.cfg.nrows) break;
+  }
+  const c = cfg();
+  // alt no lo impone la planta: el caso del golden lo pone a 180 (El Burgo)
+  document.getElementById('alt').value = String(esp.cfg.alt);
+  const c2 = cfg();
+  const v = dayEnergy(F, c2, T.obj, c2.date, esp.paso_min, mapStringW(F, c2, T.obj));
+  return { nrows: c2.nrows, cw: c2.cw, maxang: c2.maxang, lat: c2.lat, lon: c2.lon,
+           kwh: v, total: v.reduce((a, b) => a + b, 0) };
+}, CEB);
+
+t('El Burgo se levanta del plano en la PÁGINA con la geometría que dice el golden', () => {
+  for (const [k, esp] of [['nrows', CEB.cfg.nrows], ['cw', CEB.cfg.cw], ['maxang', CEB.cfg.maxang],
+                          ['lat', CEB.cfg.lat], ['lon', CEB.cfg.lon]])
+    if (Math.abs(eb[k] - esp) > 1e-12)
+      throw new Error(`${k}: la página dice ${eb[k]} y el golden ${esp}`);
+});
+
+t('y su cifra por string es EXACTAMENTE la del canario (la página y Node, una sola planta)', () => {
+  if (eb.kwh.length !== CEB.kwh.length)
+    throw new Error(`${eb.kwh.length} strings contra los ${CEB.kwh.length} del golden`);
+  for (let k = 0; k < CEB.kwh.length; k++) {
+    const d = Math.abs(eb.kwh[k] - CEB.kwh[k]) / Math.max(1e-12, Math.abs(CEB.kwh[k]));
+    if (d > 1e-9)
+      throw new Error(`string ${k}: la página ${eb.kwh[k].toFixed(6)} kWh contra ${CEB.kwh[k].toFixed(6)} ` +
+                      `del golden (${(d * 100).toFixed(6)} %)`);
+  }
 });
 
 t('no han aparecido errores de página en todo el recorrido', () => {

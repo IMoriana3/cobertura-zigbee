@@ -1353,6 +1353,64 @@ function westDeGroups(n,groups){
   for(const g of (groups||[]))if(g&&g.length===2&&g[1]>=0&&g[1]<n)w[g[1]]=false;
   return w;
 }
+/* ── LA T DEL MOTOR, ARMADA APARTE ──────────────────────────────────────────
+   Estas tres piezas las hacía `rebuildT()` a mano, y `rebuildT()` es UI: lee
+   `cfg()` y escribe los globales de la escena. El problema de tenerlas ahí es
+   que el canario de la cifra (tools/gen_golden_anual.mjs) tiene que armar LA
+   MISMA T sin navegador, y armarla por su cuenta era una COPIA — con copia, el
+   canario vigila la cadena de energía pero NO la geometría: se midió
+   desplazando un metro las x impares de El Burgo y el canario no se enteró,
+   porque el generador seguía usando las suyas. Así que la geometría baja aquí,
+   a lo puro, y arriba solo queda asignar. Cero copias, como la física. */
+function tGenerica(F,c){
+  const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
+  const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
+  const T={elev:z,xs:xs,tilt:null,segs:null};
+  T.obj=buildTX(F,c,xs,z,null);
+  return T;
+}
+/* EL BURGO desde sus dos ficheros del plano, sin fetch: `sj` son los strings y
+   `lj` el layout. Devuelve lo mismo que guardaba `cargaElburgo()` en EB de la
+   parte geométrica — las vigas físicas (eje de unidad ±3 m) anclan la x de las
+   columnas, que es lo que hace que el vano salga a 6 m del plano. */
+function ebDe(sj,lj){
+  const vigasX=[];
+  for(const t of (lj.trackers||[]))vigasX.push(t.x-3,t.x+3);
+  const rows=elburgoRows(sj,3,vigasX);
+  return {rows:rows,xs:rows.map(r=>r.x),vigasX:vigasX,trk:lj.trackers||[],
+          lat:lj.clat,lon:lj.clon,count:sj.count,
+          cw:(lj.montaje&&lj.montaje.cuerda)||2.382,
+          maxang:(lj.montaje&&lj.montaje.max_angle)||55};
+}
+/* lo que El Burgo IMPONE sobre la configuración: la planta está levantada, así
+   que su número de filas, su cuerda, su tope y sus coordenadas no se teclean. */
+function cfgEB(c,eb){
+  c.nrows=eb.rows.length;c.cw=eb.cw;c.maxang=eb.maxang;c.lat=eb.lat;c.lon=eb.lon;
+  return c;
+}
+/* la T de El Burgo: `rows`/`trk` ya recortados al ámbito (planta entera o una
+   NCU). `nOff` es el centro N-S de las mesas, que arriba coloca bielas y
+   motores del layout en el marco de la escena. */
+function tElburgo(F,c,rows,trk){
+  const xs=rows.map(r=>r.x);
+  // tramos de mesa REALES por string, con sus caminos (verificado contra
+  // terreno.html): entran en la escena Y en el solape axial de poaPlant
+  const abs=elburgoSegs(rows,trk);
+  let mn=Infinity,mx=-Infinity;
+  for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
+  const nc=(mn+mx)/2;
+  const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
+  const z=new Array(xs.length).fill(0);
+  // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
+  // motor en la viga OESTE — «no todos los trackers son iguales, pero son
+  // bifilas todos» (los largos de mesa ya salen de los propios strings)
+  const groups=elburgoGroups(xs,trk);
+  const T={elev:z,xs:xs,tilt:null,segs:segs,nOff:nc};
+  T.west=westDeGroups(xs.length,groups);        // la misma regla que las plantas de cotas
+  T.westSeg=segs.map((l,r)=>l.map(()=>T.west[r]));   // en El Burgo las vigas van por línea
+  T.obj=buildTX(F,c,xs,z,null,segs,groups,'bifila');
+  return T;
+}
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
@@ -1518,20 +1576,17 @@ async function cargaElburgo(){
   const [sj,lj]=await Promise.all([
     fetch('elburgo_strings.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_strings.json '+r.status);return r.json();}),
     fetch('elburgo_layout.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('elburgo_layout.json '+r.status);return r.json();})]);
-  // vigas físicas del layout (eje de unidad ±3 m): anclan la x de las columnas
-  const vigasX=[];
-  for(const t of (lj.trackers||[])){vigasX.push(t.x-3,t.x+3);}
-  const rows=elburgoRows(sj,3,vigasX);
+  // la geometría del plano la levanta ebDe (LÓGICA PURA): el canario de la
+  // cifra la necesita igual, y sin navegador
+  const eb=ebDe(sj,lj), vigasX=eb.vigasX, rows=eb.rows;
   // NCU por string: g.i.t del plano casado con el idPrevio del layout
   const mapa=new Map();
   for(const t of (lj.trackers||[]))if(t.idPrevio!=null)mapa.set(String(t.idPrevio),t.ncu);
   const porNCU={};let sinNCU=0;
   for(const s of sj.strings){const n=mapa.get(s.g+'.'+s.i+'.'+s.t);
     if(n==null)sinNCU++;else porNCU[n]=(porNCU[n]||0)+1;}
-  EB={raw:sj,trk:lj.trackers||[],trkA:lj.trackers||[],vigasX:vigasX,inv:lj.invlab||[],invA:lj.invlab||[],rows:rows,xs:rows.map(r=>r.x),lat:lj.clat,lon:lj.clon,
-      maxang:(lj.montaje&&lj.montaje.max_angle)||55,
-      cw:(lj.montaje&&lj.montaje.cuerda)||2.382,count:sj.count,
-      mapa:mapa,porNCU:porNCU,sinNCU:sinNCU};
+  EB=Object.assign({},eb,{raw:sj,trkA:eb.trk,inv:lj.invlab||[],invA:lj.invlab||[],
+      mapa:mapa,porNCU:porNCU,sinNCU:sinNCU});
   return EB;
 }
 /* re-corta El Burgo al ámbito elegido (''=planta entera, n=esa NCU).
@@ -1592,7 +1647,7 @@ function cfg(){
           pol:$('pol').value||'pairwise',
           ctrl:{on:$('ctrlOn').checked,db:+$('ctrlDb').value,slew:+$('ctrlSlew').value,
                 cicloMin:+$('ctrlCiclo').value,modo:$('ctrlModo').value}};
-  if(c.plant==='elburgo'&&EB){c.nrows=EB.rows.length;c.cw=EB.cw;c.maxang=EB.maxang;c.lat=EB.lat;c.lon=EB.lon;}
+  if(c.plant==='elburgo'&&EB)cfgEB(c,EB);
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
     c.nrows=P.elev.length;c.cw=P.cw;c.maxang=P.maxAngle;c.pitch=P.pitch;
@@ -1632,28 +1687,10 @@ function rebuildT(){
     T.ejes=F.ejesPorMesa(P);               // el eje de transmisión de cada tracker
     T.obj=buildTReal(F,c,P);
   }else if(c.plant==='elburgo'&&EB){
-    // tramos de mesa REALES por string, con sus caminos (verificado contra
-    // terreno.html): entran en la escena Y en el solape axial de poaPlant
-    const abs=elburgoSegs(EB.rows,EB.trkA);
-    let mn=Infinity,mx=-Infinity;
-    for(const sg of abs.flat()){if(sg[0]<mn)mn=sg[0];if(sg[1]>mx)mx=sg[1];}
-    const nc=(mn+mx)/2;
-    const segs=abs.map(list=>list.map(sg=>[sg[0]-nc,sg[1]-nc]));
-    const z=new Array(c.nrows).fill(0);
-    T_nOff=nc;   // para colocar bielas y motores del layout en el marco de la escena
-    // BIFILA real: vigas emparejadas por unidad (θ acoplado, un motor) y el
-    // motor en la viga OESTE — «no todos los trackers son iguales, pero son
-    // bifilas todos» (los largos de mesa ya salen de los propios strings)
-    const groups=elburgoGroups(EB.xs,EB.trkA);
-    T={elev:z,xs:EB.xs,tilt:null,segs:segs};
-    T.west=westDeGroups(c.nrows,groups);          // la misma regla que las plantas de cotas
-    T.westSeg=segs.map((l,r)=>l.map(()=>T.west[r]));   // en El Burgo las vigas van por línea
-    T.obj=buildTX(F,c,EB.xs,z,null,segs,groups,'bifila');
+    T=tElburgo(F,c,EB.rows,EB.trkA);
+    T_nOff=T.nOff;   // para colocar bielas y motores del layout en el marco de la escena
   }else{
-    const xs=Array.from({length:c.nrows},(_,i)=>i*c.pitch);
-    const z=elevPreset(c.tpreset,c.nrows,c.tparam,c.pitch);
-    T={elev:z,xs:xs,tilt:null,segs:null};
-    T.obj=buildTX(F,c,xs,z,null);
+    T=tGenerica(F,c);
   }
   // mapa string→inversor para la cadena AC: El Burgo con el REAL del plano
   // (g.i); el resto n bloques contiguos iguales (declarado en el input)
