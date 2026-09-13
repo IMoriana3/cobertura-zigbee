@@ -722,7 +722,20 @@ def genera(planta):
         """Las dos filas de un tracker NO levantado, con la geometria del plano
            y la cota del terreno vecino. None si no se puede resolver."""
         nonlocal estimados, sin_geom
-        if not (paso_v and papel == 'viga' and MOD.get('modW')): return None
+        # SIN FICHA DE MODULO (El Burgo), el largo sale del tipo del plano
+        # (layout.tipos_largo, medido en el DWG) y no se cuentan modulos
+        TL = L.get('tipos_largo') or {}
+        if not (paso_v and papel == 'viga' and (MOD.get('modW') or TK[i].get('t') in TL)): return None
+        if not MOD.get('modW'):
+            L2 = float(TL[TK[i].get('t')]) + sesgo_med
+            xc, nc = TK[i]['x'], TK[i]['n']
+            ns, nn = nc - L2 / 2, nc + L2 / 2
+            sg = lado_layout(i) * paso_v
+            xm = xc + sg / 2
+            ys, yn = plano_en(xm, ns), plano_en(xm, nn)
+            estimados += 1
+            return [{'x': xv, 'zs': -ns, 'zn': -nn, 'ys': ys, 'yn': yn, 'art': 0, 'pa': [],
+                     'zm': None, 'ym': None, 'mods': None, 'tk': None} for xv in (xc, round(xc + sg, 3))]
         w, gm, gd = MOD['modW'], MOD.get('gapMod', 0.0), MOD.get('gapDrive', 0.0)
         # El largo se resuelve POR TIPO, no tracker a tracker: la separacion a
         # un vecino suelto lleva ruido (algun caso daba 25 o 36 modulos), pero
@@ -764,6 +777,7 @@ def genera(planta):
                              'nm': None, 'ym': None, 'md': f['mods'], 'ye': 3, 'hm': 0} for f in g],
                       'inc': 0, 'est': 1, 'tk': None, 'zo': None,
                       'sl': None, 'cse': None, 'cso': None, 'ase': None, 'aso': None})
+            T[-1]['sh'] = _cizalla(T[-1]['f'])     # del plano sale 0, y se declara igual
             continue
         filas, inc = [], 1 if len(v) == 1 else 0
         par = v if len(v) == 2 else [x for x in (v[0], hermana(i, v[0])) if x is not None]
@@ -796,10 +810,23 @@ def genera(planta):
                 # copia no tiene ni una punta medida. 1 = duplicada de su
                 # hermana (misma cota y mismo largo, x del layout).
                 'hm': int(f.get('hm') or 0),
+                # LOS PUNTOS QUE LO CAUSAN, CON SU DESVIO. Una cota repuesta o
+                # copiada tiene detras puntos concretos del levantamiento con la
+                # Z en otra referencia: [id, desvio_m] de cada uno, para que el
+                # globo de la escena diga lo mismo que el mapa y que la
+                # reclamacion. La copia (hm) lleva el id de la fila que se
+                # descarto, que es donde estan sus puntos.
+                'rp': [[int(q), float(d)] for q, d in pmal.get(f.get('id'), [])]
+                      if (f.get('rv1') or f.get('hm')) else [],
             })
         g = v[0]
+        # CIZALLADO E/W: cuanto se corre a lo largo del eje el centro de una
+        # viga respecto del de su hermana. Las dos comparten tubo de
+        # transmision, asi que deberia ser ~0; por encima de 0,5 m las vigas
+        # estan corridas. Medido de la geometria que se dibuja (la misma que
+        # el visor 2D), no de una asignacion ajena.
         T.append({
-            'f': filas, 'inc': inc,
+            'f': filas, 'inc': inc, 'sh': _cizalla(filas),
             # identidad del levantamiento: en San Jose el id del sunner CSV es
             # EXACTAMENTE este tk (2186/2186), asi que conservarlo permite unir
             # la ficha por IDENTIDAD en vez de por terna medida. En Ayora no
@@ -853,14 +880,36 @@ def genera(planta):
         # de los dos lados sin pisar una viga MEDIDA de otro seguidor. Un
         # seguidor con una viga no tiene eje de transmision, y asi se dibuja.
         'n_solo': sum(1 for t in T if t and len(t['f']) == 1),
+        # seguidores con las vigas corridas (cizallado E/W > 0,5 m) y el
+        # reparto del cizallado, para que la escena diga lo mismo que el mapa
+        'n_sh':   sum(1 for t in T if t and (t.get('sh') or 0) > 0.5),
+        'sh_p50': _pct([t['sh'] for t in T if t and t.get('sh') is not None], 0.50),
+        'sh_p95': _pct([t['sh'] for t in T if t and t.get('sh') is not None], 0.95),
+        'sh_max': max([t['sh'] for t in T if t and t.get('sh') is not None] or [None]),
         't': T,
     }
+    print('%-8s cizallado E/W (m): p50 %s · p95 %s · max %s · vigas corridas (> 0,5 m): %d seguidor(es)%s'
+          % (planta, out['sh_p50'], out['sh_p95'], out['sh_max'], out['n_sh'],
+             (': ' + ' '.join(t['tk'] or '?' for t in T if t and (t.get('sh') or 0) > 0.5)) if out['n_sh'] else ''))
     dst = os.path.join(RAIZ, planta + '_cotas.json')
     with open(dst, 'w') as fh:
         json.dump(out, fh, separators=(',', ':'))
     print('%-8s -> %s  (%d KB · %d trackers con cotas · %d articulados · %d con una sola fila)'
           % (planta, os.path.basename(dst), os.path.getsize(dst) // 1024, ok, art, inc))
     return out
+
+
+def _cizalla(filas):
+    """Cizallado E/W de un seguidor de dos vigas: |centro de una - centro de la otra| a lo largo del eje."""
+    if len(filas) != 2:
+        return None
+    c = [(f['n'][0] + f['n'][1]) / 2.0 for f in filas]
+    return round(abs(c[0] - c[1]), 3)
+
+
+def _pct(v, q):
+    v = sorted(v)
+    return round(v[min(len(v) - 1, int(len(v) * q))], 3) if v else None
 
 
 if __name__ == '__main__':

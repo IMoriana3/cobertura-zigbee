@@ -255,7 +255,8 @@ t('y la masa de aire es ABSOLUTA: lleva la presión de la altitud', () => {
   const a = I.clearskyIneichen(30, 172, 0, 3.5).ghi, b = I.clearskyIneichen(30, 172, 1500, 3.5).ghi;
   if (!(b > a)) throw new Error('la altitud no cambia el GHI: falta la presión');
   const q = I.clearskyIneichen(30, 172, 300, 3.5).ghi;
-  if (Math.abs(q - 867.977998) > 1e-4) throw new Error('GHI(30°, doy 172, 300 m) = ' + q.toFixed(6));
+  // v1.57 (auditoría H4): sin el realce de Perez, como pvlib por defecto — antes 867,977998 con el realce siempre activo
+  if (Math.abs(q - 857.508108) > 1e-4) throw new Error('GHI(30°, doy 172, 300 m) = ' + q.toFixed(6));
 });
 
 console.log('extra (solo tiene sentido en Node: coherencia con el core y aristas)');

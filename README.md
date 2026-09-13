@@ -60,7 +60,7 @@ Publicado como página estática en GitHub Pages: **https://imoriana3.github.io/
 Este repo aloja también el **Simulador de Backtracking**: un espejo JS del motor BT3D de SolarGPT
 (`tracker3d.py`) con el inventario COMPLETO de políticas de backtracking del core —astronómico ·
 BT2D plano · global · row · pairwise · true-3D · min-ground-light · energy-optimal (Deeptrack)— sobre
-terreno 3D editable (pendiente E-O por pareja + tilt N-S por fila), los tres accionamientos
+terreno 3D editable (pendiente E-O por pareja + tilt N-S por fila, o por MESA con el «quiebro en la rótula», que es lo que hace falta para simular la bifila quebrada), los tres accionamientos
 (**monofila, bifila rígida y bifila quebrada**, backtracking resuelto a nivel de accionamiento) y la
 implantación real a lo largo del eje (cortos delante de largos, tresbolillo — con el solape axial en
 la física). La escena 3D usa el **modelo del seguidor de la casa** (`seguidor.js`, tamaño medio real
@@ -116,6 +116,42 @@ intacto.
 - Física portada 1:1 (pvlib `singleaxis` A&M 2020, sombra ≡ Anderson 2023, bisección 3D, residual de
   tangencia) y **QA integrada**: botón en la página y `node tools/test_backtracking_sim.mjs` corren la
   misma batería (25 comprobaciones, incluida sombra analítica vs ray-cast bruto).
+- **Auditoría externa incorporada** (v1.57): un revisor independiente recalculó el caso de referencia con pvlib
+  y escribió su propio ray-cast; de ahí salen cuatro correcciones de fondo. (1) Las **estaciones axiales** del
+  contador son adaptativas (una cada 4 m, cada 2 m con torsión, el doble con el sol bajo 6°): con 8 fijas una
+  mesa de 65 m perdía manchas enteras de sombra. (2) Las políticas sin sombra tienen un **rango legítimo**
+  —entre el seguimiento verdadero y la paralela al terreno—: antes podían acabar casi de canto al sol, con
+  «sombra cero» porque no había haz, y la sombra que no se puede evitar se publica como **irreducible**.
+  (3) El **veto** de energy-optimal y óptimo libre incluye el pairwise publicado, no solo la base sin reparar.
+  (4) El cielo claro Ineichen va **sin el realce de Perez**, como pvlib por defecto. Y un **oráculo geométrico
+  independiente** (rotación exacta, 200×400 muestras, sin código común) en la batería, más dos métricas nuevas
+  en el barrido: convergencia de la malla y «nunca de canto».
+- **Documento teórico de los algoritmos** (botón «📚 Teoría», `docs/algoritmos_backtracking.html`): la base de
+  cada política, la fórmula o el procedimiento que la calcula, qué optimiza y su criterio de sombra, un cálculo
+  paso a paso sobre un caso reproducible (Zaragoza, 21-jun 07:30, pendiente 8°: pvlib ideal 79,9° → BT plano
+  16,1° → BT con pendiente 42,1°; desglose de POA y pérdida Martinez; rejilla f del energy-optimal) y renders
+  del simulador (corte 2D, 3D y cámara desde el sol) por política, más las cifras de verificación.
+- **Render ≡ física, medido** (`node tools/test_render_sol.mjs`, en CI): desde la cámara del sol no se ve ningún
+  píxel de sombra pintada; en el corte 2D el borde por el que entra la sombra coincide con un ray-cast 2D
+  independiente (mesa de cara y de espaldas al sol); el θ manual cruza el signo de ida y vuelta.
+- **Informe del emplazamiento** (botón «📄 Informe» en la tabla del día): una página imprimible con el sitio, el
+  terreno, la geometría y el accionamiento, y cada política con cómo decide, qué optimiza y sus cálculos del
+  día (POA y Δ vs astro y vs pairwise con la banda del circunsolar, sombra ponderada por energía, minutos con
+  sombra, pico y peor fila, horas de backtracking, pérdida Martinez con la parte de estructura, |θ| máx, f
+  media), la tabla horaria, el año y la QA si están calculados, y el método con sus límites declarados. Todo
+  sale de lo ya calculado para las curvas (misma integral `dayKpis`): ni una física nueva.
+- **Careo con la producción por string** (`node tools/careo_produccion.mjs [fecha] [paso min]`): produccion.html come
+  la misma física pero carga la planta entera y el simulador una ventana de 80 líneas; la herramienta casa las
+  líneas por su x medida y las mesas por tramo y compara θ y POA de cada mesa instante a instante. Ayora,
+  21-jun, cada 30 min: 1.600 mesas, 48.000 comparaciones, **idénticos bit a bit en las mesas interiores**;
+  solo difieren las dos líneas de borde de la ventana y sus gemelas de accionamiento (sin vecina por un lado
+  en el simulador): hasta 20° de θ al ocaso y un 1,4 % de energía del día, declarado. Vive en la batería de
+  producción (reducido a cada 120 min).
+- **Barrido de terrenos** (`node tools/barrido_terrenos.mjs [nConfigs] [semilla] --oraculo=N`): terrenos E-O ×
+  perfiles N-S × accionamientos × implantaciones × latitudes × fechas × políticas, con los invariantes que
+  tienen que cumplirse siempre (contador ≡ oráculo, políticas sin-sombra → sombra de filas ~0 salvo lo que
+  ningún θ evita, optimal ≥ pairwise ≥ …, acople por motor, θ en rango) y la lista de los peores casos.
+  Una versión reducida (seis configuraciones) va en la batería.
 - Documentación completa: `proyectos/docs/backtracking-sim.md` (botón Documentación de su ficha en el Panel).
 
 ## Telemetría de planta — ¿corrige el relieve? (`telemetria.html`)

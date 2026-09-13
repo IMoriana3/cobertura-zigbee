@@ -112,8 +112,8 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit,
-           westPorMesa, ejesPorMesa };`);
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica,
+           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -243,7 +243,486 @@ t('y la masa de aire es ABSOLUTA: lleva la presión de la altitud', () => {
   const a = I.clearskyIneichen(30, 172, 0, 3.5).ghi, b = I.clearskyIneichen(30, 172, 1500, 3.5).ghi;
   if (!(b > a)) throw new Error('la altitud no cambia el GHI: falta la presión');
   const q = I.clearskyIneichen(30, 172, 300, 3.5).ghi;
-  if (Math.abs(q - 867.977998) > 1e-4) throw new Error('GHI(30°, doy 172, 300 m) = ' + q.toFixed(6));
+  // v1.57 (auditoría H4): sin el realce de Perez, como pvlib por defecto — antes 867,977998 con el realce siempre activo
+  if (Math.abs(q - 857.508108) > 1e-4) throw new Error('GHI(30°, doy 172, 300 m) = ' + q.toFixed(6));
+});
+
+console.log('v1.57 · auditoría externa (H1 estaciones · H2 semiespacio · H3 veto · H4 Ineichen · H7 oráculo independiente)');
+/* El caso B del documento: Zaragoza 21-jun 07:30, pendiente 8°, 6 filas de 64,7 m, tilt N-S «aleatorio 4°» */
+function casoB(nR, conTorsion) {
+  const RAD = Math.PI / 180, pitch = 6, cw = 2.382, L = 2 * 28 * 1.146 + 0.55;
+  const r = F.mulberry32(1234); const tilts = []; for (let i = 0; i < nR; i++) tilts.push(conTorsion ? (r() * 2 - 1) * 4 : 0);
+  const ELEV = []; for (let i = 0; i < nR; i++) ELEV.push(-i * pitch * Math.tan(8 * RAD));
+  const segs = []; for (let i = 0; i < nR; i++) segs.push([[-L / 2, L / 2]]);
+  return { pairs: F.pairsFromElev(ELEV, pitch, tilts), cw, axisAz: 0, maxAngle: 55, gcr: cw / pitch, z0: 0.17, nBypass: 2, iam: 0.05, rowTilt: tilts, groups: null, drive: 'mono', segs };
+}
+const gB = F.solarPos(Date.UTC(2026, 5, 21, 5, 30), 41.5763, -0.7981);
+
+t('H1: las estaciones son adaptativas — 8 en planta medida, cada ≤4 m sin torsión, cada ≤2 m con torsión, tope 64', () => {
+  if (F.mvPara({ real: {}, segs: [[[-32, 32]]], rowTilt: [3, -3] }) !== 8) throw new Error('la planta medida debe quedarse en 8 (medido ≤0,7 pp, tope de 3 s)');
+  if (F.mvPara(casoB(6, false)) !== 17) throw new Error('sin torsión, 64,7 m ⇒ 17 estaciones (cada ≤4 m): ' + F.mvPara(casoB(6, false)));
+  if (F.mvPara(casoB(6, true)) !== 33) throw new Error('con torsión, 64,7 m ⇒ 33 estaciones (cada ≤2 m): ' + F.mvPara(casoB(6, true)));
+  if (F.mvPara({ segs: [[[-100, 100]]], rowTilt: [4, -4] }) !== 64) throw new Error('tope 64');
+});
+t('H1: CONVERGENCIA con torsión — el contador publicado no pierde la mancha del extremo (la auditoría vio 0 % donde había 6,6 %)', () => {
+  const T = casoB(6, true), nR = 6;
+  for (const th of [0, -20, 25, 55]) {
+    const ang = new Array(nR).fill(th);
+    const pub = F.shadeBand3DAll(gB.zen, gB.az, T, ang, { noStruct: true });
+    const ref = F.shadeBand3DAll(gB.zen, gB.az, T, ang, { noStruct: true, MV: 256 });
+    for (let r = 0; r < nR; r++) {
+      if (ref[r] > 0.02 && pub[r] < 0.5 * ref[r]) throw new Error(`θ ${th} fila ${r}: publicado ${(pub[r] * 100).toFixed(1)} % con ${(ref[r] * 100).toFixed(1)} % convergido`);
+      if (Math.abs(pub[r] - ref[r]) > 0.015) throw new Error(`θ ${th} fila ${r}: |Δ| ${(Math.abs(pub[r] - ref[r]) * 100).toFixed(2)} pp > 1,5 pp`);
+    }
+  }
+  // y el MUTANTE de la auditoría: con 8 estaciones fijas la fila 3 a −20° sale 0 % con 4,5 % real
+  const m8 = F.shadeBand3DAll(gB.zen, gB.az, T, new Array(nR).fill(-20), { noStruct: true, MV: 8 });
+  const m256 = F.shadeBand3DAll(gB.zen, gB.az, T, new Array(nR).fill(-20), { noStruct: true, MV: 256 });
+  if (!(m8[3] < 0.005 && m256[3] > 0.04)) throw new Error('el caso que motivó el cambio ya no reproduce el defecto de MV 8: ' + m8[3] + ' / ' + m256[3]);
+});
+t('H7: ORÁCULO INDEPENDIENTE — rectángulos con rotación exacta sobre el eje inclinado y muestreo denso ≡ contador convergido (≤0,5 pp)', () => {
+  // c = (cos θ, sin θ·sin τ, −sin θ·cos τ), a = (0, cos τ, sin τ): base ortonormal de la pala; 200×400 muestras; sin código del contador
+  const RAD = Math.PI / 180;
+  const oracleRot = (zen, az, T, ang, NU, NV) => {
+    const nR = T.pairs.length + 1, hw = T.cw / 2, z0 = T.z0 || 0;
+    const azR = (az - T.axisAz) * RAD, el = (90 - zen) * RAD, sv = [Math.sin(azR) * Math.cos(el), Math.cos(azR) * Math.cos(el), Math.sin(el)];
+    const xs = [0], zch = [0]; for (let i = 0; i < T.pairs.length; i++) { xs.push(xs[i] + T.pairs[i].pitch); zch.push(zch[i] - T.pairs[i].pitch * Math.tan(T.pairs[i].slope * RAD)); }
+    const segsOf = r => (T.segs && T.segs[r]) ? T.segs[r] : [[-30, 30]];
+    const G = []; for (let r = 0; r < nR; r++) { const th = ang[r] * RAD, tau = ((T.rowTilt ? T.rowTilt[r] : 0) || 0) * RAD;
+      const a = [0, Math.cos(tau), Math.sin(tau)], c = [Math.cos(th), Math.sin(th) * Math.sin(tau), -Math.sin(th) * Math.cos(tau)];
+      G.push({ a, c, n: [c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2], c[0] * a[1] - c[1] * a[0]], O: [xs[r], 0, zch[r]] }); }
+    const P = (g, u, v) => [g.O[0] + u * g.c[0] + v * g.a[0] + z0 * g.n[0], g.O[1] + u * g.c[1] + v * g.a[1] + z0 * g.n[1], g.O[2] + u * g.c[2] + v * g.a[2] + z0 * g.n[2]];
+    const out = [];
+    for (let r = 0; r < nR; r++) { let hit = 0, N = 0;
+      for (const sg of segsOf(r)) { const v0 = Math.min(sg[0], sg[1]), v1 = Math.max(sg[0], sg[1]);
+        for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) { const Pt = P(G[r], -hw + T.cw * (i + 0.5) / NU, v0 + (v1 - v0) * (j + 0.5) / NV); N++; let blocked = false;
+          for (let e = 0; e < nR && !blocked; e++) { if (e === r) continue; const ge = G[e], E0 = P(ge, 0, 0);
+            const den = ge.n[0] * sv[0] + ge.n[1] * sv[1] + ge.n[2] * sv[2]; if (Math.abs(den) < 1e-12) continue;
+            const s = ((E0[0] - Pt[0]) * ge.n[0] + (E0[1] - Pt[1]) * ge.n[1] + (E0[2] - Pt[2]) * ge.n[2]) / den; if (s <= 1e-9) continue;
+            const Q = [Pt[0] + s * sv[0] - E0[0], Pt[1] + s * sv[1] - E0[1], Pt[2] + s * sv[2] - E0[2]];
+            const ue = Q[0] * ge.c[0] + Q[1] * ge.c[1] + Q[2] * ge.c[2], ve = Q[0] * ge.a[0] + Q[1] * ge.a[1] + Q[2] * ge.a[2];
+            if (Math.abs(ue) <= hw) for (const se of segsOf(e)) if (ve >= Math.min(se[0], se[1]) && ve <= Math.max(se[0], se[1])) { blocked = true; break; } }
+          if (blocked) hit++; } }
+      out.push(N ? hit / N : 0); }
+    return out;
+  };
+  for (const [nm, T] of [['A', casoB(6, false)], ['B', casoB(6, true)]]) for (const th of [-20, 0, 25, 55]) {
+    const ang = new Array(6).fill(th);
+    const o = oracleRot(gB.zen, gB.az, T, ang, 200, 400), c = F.shadeBand3DAll(gB.zen, gB.az, T, ang, { noStruct: true, MV: 128 });
+    for (let r = 0; r < 6; r++) if (Math.abs(o[r] - c[r]) > 0.005) throw new Error(`caso ${nm} θ ${th} fila ${r}: oráculo ${(o[r] * 100).toFixed(2)} % vs contador ${(c[r] * 100).toFixed(2)} %`);
+  }
+});
+t('H2: NUNCA DE CANTO — las políticas sin sombra se quedan entre el seguimiento verdadero y la paralela al terreno (la horizontal dentro) todo el día del caso B', () => {
+  // la auditoría midió mesas a AOI 90–91° con el sol a 23° y 36°: giradas más allá de la horizontal en contra del sol
+  const T = casoB(6, true), doy = 172; let n = 0, peorAOI = 0;
+  const RAD = Math.PI / 180, sMax = Math.max(...T.pairs.map(p => Math.abs(p.slope)));
+  for (let mm = 5 * 60; mm <= 19 * 60; mm += 20) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 89)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+    for (const key of ['pairwise', 'true3d', 'mgl']) { const ang = F.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles; n++;
+      for (let r = 0; r < 6; r++) {
+        const psz = F.trueTrackAngle(g.zen, g.az, F.pvTilt(T.rowTilt[r]), 0);
+        // nunca más allá de la paralela al terreno en contra del sol (2° de margen)
+        if (psz > 0 && ang[r] < -sMax - 2.01) throw new Error(`${key} minuto ${mm} fila ${r}: θ ${ang[r].toFixed(1)} en contra del sol (ψ ${psz.toFixed(1)})`);
+        if (psz < 0 && ang[r] > sMax + 2.01) throw new Error(`${key} minuto ${mm} fila ${r}: θ ${ang[r].toFixed(1)} en contra del sol (ψ ${psz.toFixed(1)})`);
+        const o = F.surfaceOrient(ang[r], F.pvTilt(T.rowTilt[r]), 0), b = o.tilt * RAD, z = g.zen * RAD;
+        const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g.az - o.az) * RAD)))) / RAD;
+        if (g.elev > 15) peorAOI = Math.max(peorAOI, aoi);
+      } }
+  }
+  if (!(n > 30)) throw new Error('pocos instantes');
+  if (peorAOI > 88) throw new Error(`con el sol por encima de 15° hay filas a AOI ${peorAOI.toFixed(1)}° (de canto)`);   // el AOI lleva también la componente AXIAL del sol (a primera hora es grande aun en horizontal); lo transversal ya está acotado arriba
+  // el rango legítimo, ejecutado: a las 08:50 (sol 23,5°, ψ ≈ 66°, pendiente 8°) va de −2° a ψ+2°
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 6, 50), 41.5763, -0.7981);
+  const [lo, hi] = F.rangoHaz(g.zen, g.az, T, 0, 8);
+  if (!(Math.abs(lo + 2) < 1e-9 && Math.abs(hi - 55) < 1e-9)) throw new Error('rangoHaz: ' + lo + '…' + hi + ' (esperaba −2…55: la paralela al terreno con margen y el tope mecánico)');
+  // y con el sol a 4° por el oeste (ψ ≈ −86°) la horizontal sigue dentro (el primer intento con ±85° la dejaba fuera y el barrido lo cazó)
+  const g2 = F.solarPos(Date.UTC(2026, 5, 21, 17, 50), 41.5763, -0.7981);
+  const [lo2, hi2] = F.rangoHaz(g2.zen, g2.az, T, 0, 0);
+  if (!(lo2 <= -50 && hi2 >= 2 - 1e-9)) throw new Error('rangoHaz a sol rasante: ' + lo2 + '…' + hi2);
+});
+t('H2 (reauditoría): ninguna política sin sombra manda la mesa DE ESPALDAS al sol — AOI ≤ 90° todo el día con DNI > 50', () => {
+  // la reauditoría midió 27 instantes con AOI > 90° en true-3D (y 19 en pairwise, 30 en mgl) sobre un solo día
+  const T = casoB(6, true), doy = 172, RAD = Math.PI / 180;
+  let n = 0, peor = 0, caso = null;
+  for (let mm = 0; mm < 1440; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (irr.dni <= 50) continue;
+    n++;
+    for (const key of ['pairwise', 'true3d', 'mgl']) {
+      const ang = F.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles;
+      for (let r = 0; r < 6; r++) {
+        const o = F.surfaceOrient(ang[r], F.pvTilt(T.rowTilt[r]), 0), b2 = o.tilt * RAD, z = g.zen * RAD;
+        const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b2) + Math.sin(z) * Math.sin(b2) * Math.cos((g.az - o.az) * RAD)))) / RAD;
+        if (aoi > peor) { peor = aoi; caso = `${key} ${(mm / 60).toFixed(2)}h sol ${g.elev.toFixed(1)}° fila ${r} θ ${ang[r].toFixed(1)} AOI ${aoi.toFixed(1)}°`; }
+      }
+    }
+  }
+  if (!(n > 60)) throw new Error('pocos instantes: ' + n);
+  if (peor > 90) throw new Error('hay filas de espaldas al sol: ' + caso);
+  // y la regla, en cerrado: cos AOI = cos(θ−ψ)·cos λ ⇒ el rango se recorta a |θ−ψ| ≤ acos(cos 88° / cos λ)
+  const g2 = F.solarPos(Date.UTC(2026, 5, 21, 18, 40), 41.5763, -0.7981);          // sol a 9,3°, ψ = −83,4°: ahí la paralela al terreno YA está de espaldas
+  const [lo, hi] = F.rangoHaz(g2.zen, g2.az, { maxAngle: 55, axisAz: 0 }, 8, 8);
+  const psz = F.trueTrackAngle(g2.zen, g2.az, F.pvTilt(8), 0);
+  if (!(hi <= psz + 88.01 && lo >= psz - 88.01)) throw new Error(`el rango ${lo.toFixed(1)}…${hi.toFixed(1)} se sale de ψ ${psz.toFixed(1)} ± 88°`);
+  const aoiTope = (th) => { const o = F.surfaceOrient(th, F.pvTilt(8), 0), b = o.tilt * RAD, z = g2.zen * RAD;
+    return Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g2.az - o.az) * RAD)))) / RAD; };
+  if (!(aoiTope(10) > 90)) throw new Error('el caso ya no es el que era: la paralela al terreno ahí debería estar de espaldas');
+  if (!(hi < 10)) throw new Error('el tope sigue en la paralela al terreno (+10), que ahí está de espaldas: ' + hi.toFixed(1));
+  if (!(aoiTope(hi) < 89)) throw new Error('el tope recortado sigue sin recibir haz: AOI ' + aoiTope(hi).toFixed(1));
+});
+
+t('sin cielo, la consigna sale MARCADA como no reparada (el guardarraíl no es silencioso)', () => {
+  /* El recorte al rango lo arbitra la energía; sin irradiancia no hay nada que
+     comparar, así que no se recorta. Pero quien llame a las políticas sin cielo
+     tiene que saber que lo que recibe no está reparado: sale con `sinReparar`.
+     La página, el barrido y el export siempre traen cielo. */
+  const T = casoB(6, true);
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 7, 30), 41.5763, -0.7981);
+  const sinCielo = F.policyAngles('pairwise', g.zen, g.az, T).angles;
+  if (sinCielo.sinReparar !== true) throw new Error('sin cielo, la consigna sale sin marcar: nadie sabría que no está reparada');
+  const irr = F.clearskyIneichen(g.zen, 172, 300, 3.5);
+  const conCielo = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  if (conCielo.sinReparar) throw new Error('con cielo la consigna se marca como no reparada, y sí lo está');
+});
+
+t('H2 (reauditoría): la ENERGÍA del día no se hunde — ninguna política sin sombra baja del 80 % del astronómico en el caso B', () => {
+  // la reauditoría midió true-3D en 7,37 Wh/m² frente a 10,73 del astronómico: un 31 % del día perdido
+  const T = casoB(6, true), doy = 172; const E = {};
+  for (const k of ['astro', 'pairwise', 'true3d', 'mgl']) E[k] = 0;
+  for (let mm = 0; mm < 1440; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (irr.dni <= 50) continue;
+    for (const k of ['astro', 'pairwise', 'true3d', 'mgl'])
+      E[k] += F.poaPlant(g.zen, g.az, T, F.policyAngles(k, g.zen, g.az, T, irr, doy, 0.2).angles, irr, doy, 0.2).plant / 6;
+  }
+  for (const k of ['pairwise', 'true3d', 'mgl'])
+    if (E[k] < 0.8 * E.astro) throw new Error(`${k} ${(E[k] / 1000).toFixed(2)} Wh/m² frente a astro ${(E.astro / 1000).toFixed(2)}: ${(100 - 100 * E[k] / E.astro).toFixed(0)} % del día perdido`);
+});
+
+t('R1 (tercera auditoría): el rango legítimo sobrevive al accionamiento QUEBRADO — su caso de Arequipa, y el barrido entero de los cuatro accionamientos', () => {
+  /* Su reproducción exacta: Arequipa · valle 2 · N-S senoidal 2° · quebrado ·
+     alineadas ×1 · 6 filas · az −20° · 21-jun 20:40Z, sol 20,9°. La fila 3
+     recibía θ = +9,5° con su rango en [−55, +2]: 7,5° pasada la paralela, con
+     la cara colectora al lado contrario del sol. El test H2 de la batería no
+     lo veía porque el caso B es monofila. */
+  const RAD = Math.PI / 180, pitch = 6, cw = 2.382, nR = 6;
+  const mkT = (drive) => {
+    const ELEV = []; for (let i = 0; i < nR; i++) ELEV.push(2 * Math.abs(i - (nR - 1) / 2) / ((nR - 1) / 2));
+    const groups = F.driveGroups(nR, drive);
+    const perfil = []; for (let i = 0; i < nR; i++) perfil.push(2 * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(nR / 2))));
+    const eff = F.effRowTilts(perfil, drive, groups);
+    const filaLen = 2 * 28 * 1.146 + 0.55;
+    const segs = F.nsSegments(nR, 'alineadas', 1, filaLen, 1.0, drive === 'mono' ? 1 : 2);
+    if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(q => q.slice());
+    const RM = F.rotulaMesas('senoidal', 2, drive, segs, ELEV, groups, 0.55);
+    const T = { pairs: F.pairsFromElev(ELEV, pitch, eff), cw, axisAz: -20, maxAngle: 55, gcr: cw / pitch, z0: 0.17,
+                nBypass: 2, iam: 0.05, rowTilt: eff, groups, drive, segs: RM ? RM.segs : segs, filaLen };
+    if (RM) Object.assign(T, { segTilt: RM.segTilt, segZ: RM.segZ, segSide: RM.segSide, segMorro: RM.segMorro, segPairs: RM.segPairs, segDrive: RM.segDrive });
+    return T;
+  };
+  // 1) su instante, en el accionamiento donde falla
+  {
+    const T = mkT('quebrado'), g = F.solarPos(Date.UTC(2026, 5, 21, 20, 40), -16.59577, -71.80644);
+    const irr = F.clearskyIneichen(g.zen, 172, 1563, 3.5);
+    const RU = F.rangosUnidad(g.zen, g.az, T);
+    for (const key of ['pairwise', 'true3d', 'mgl']) {
+      const ang = F.policyAngles(key, g.zen, g.az, T, irr, 172, 0.2).angles;
+      for (let r = 0; r < nR; r++)
+        if (ang[r] < RU[r][0] - 1e-6 || ang[r] > RU[r][1] + 1e-6)
+          throw new Error(`${key} fila ${r} θ ${ang[r].toFixed(1)} fuera de ${RU[r][0].toFixed(1)}…${RU[r][1].toFixed(1)} con el sol a ${g.elev.toFixed(1)}°`);
+    }
+  }
+  // 2) y el día entero en los CUATRO accionamientos, que es donde se escapó
+  for (const drive of ['mono', 'bifila', 'quebrado']) {
+    const T = mkT(drive);
+    for (let mm = 0; mm < 1440; mm += 20) {
+      const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), -16.59577, -71.80644);
+      if (!(g.elev > 5)) continue;
+      const irr = F.clearskyIneichen(g.zen, 172, 1563, 3.5); if (irr.dni <= 50) continue;
+      const RU = F.rangosUnidad(g.zen, g.az, T);
+      const sombraMax = (a) => { const sh = F.shadeBand3DAll(g.zen, g.az, T, a, { noStruct: true }); let m = 0; for (let r = 0; r < nR; r++) m = Math.max(m, sh[r]); return m; };
+      for (const key of ['pairwise', 'true3d', 'mgl']) {
+        const ang = F.policyAngles(key, g.zen, g.az, T, irr, 172, 0.2).angles;
+        const fuera = [];
+        for (let r = 0; r < nR; r++) if (ang[r] < RU[r][0] - 1 || ang[r] > RU[r][1] + 1) fuera.push(r);
+        if (!fuera.length) continue;
+        /* salirse más de 1° sólo está permitido por la ÚNICA puerta que deja la
+           regla: que recortar empeore la sombra o pierda energía de planta. Se
+           comprueba midiéndolo, no se tolera por umbral. */
+        const rec = ang.map((v, r) => Math.max(RU[r][0], Math.min(RU[r][1], v)));
+        const peorSombra = sombraMax(rec) > sombraMax(ang) + 1e-9;
+        const peorEnergia = F.poaPlant(g.zen, g.az, T, rec, irr, 172, 0.2).plant < F.poaPlant(g.zen, g.az, T, ang, irr, 172, 0.2).plant - 1e-9;
+        if (!peorSombra && !peorEnergia)
+          throw new Error(`${drive}/${key} filas ${fuera.join(',')} fuera de su rango y recortarlas NO cuesta nada (sombra ${(100 * sombraMax(ang)).toFixed(1)} → ${(100 * sombraMax(rec)).toFixed(1)} %) · ${(mm / 60).toFixed(1)}h sol ${g.elev.toFixed(1)}° · θ ${ang.map(v => v.toFixed(1)).join('/')}`);
+      }
+    }
+  }
+});
+
+t('H (ancla del extremo): la postura que hundía la POA en v1.56 —fila de espaldas al sol a las 09:30— sigue clasificada como BLOQUEANTE por la regla de coste', () => {
+  /* Un invariante basado en coste necesita un ancla en el extremo, o dentro de
+     seis versiones nadie sabrá dónde estaba la línea. Ésta es la que lo fija:
+     en v1.56, true-3D publicaba a las 09:30 del caso B una fila de espaldas al
+     sol con POA de planta 65 W/m² cuando recortarla al rango daba 716. Aquel
+     desastre NO era un recorte «que cuesta energía»: era +651 W/m² regalados.
+     La regla nueva (H bloquea cuando recortar no cuesta) lo habría parado, y
+     este test lo exige con su número. */
+  const T = casoB(6, true), doy = 172, RAD = Math.PI / 180;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 7, 30), 41.5763, -0.7981);     // 09:30 local
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  if (!(g.elev > 20)) throw new Error('el instante ya no es el de las 09:30: sol ' + g.elev.toFixed(1));
+  const RU = F.rangosUnidad(g.zen, g.az, T);
+  // la consigna MALA de v1.56: la fila 2 mandada al lado contrario del sol
+  const malo = F.policyAngles('true3d', g.zen, g.az, T, irr, doy, 0.2).angles.slice();
+  malo[2] = -45;
+  const o = F.surfaceOrient(malo[2], F.pvTilt(T.rowTilt[2]), T.axisAz), b = o.tilt * RAD, z = g.zen * RAD;
+  const aoi = Math.acos(Math.max(-1, Math.min(1, Math.cos(z) * Math.cos(b) + Math.sin(z) * Math.sin(b) * Math.cos((g.az - o.az) * RAD)))) / RAD;
+  if (!(aoi > 90)) throw new Error('el ancla ya no es una fila de espaldas: AOI ' + aoi.toFixed(1));
+  const rec = malo.map((v, r) => Math.max(RU[r][0], Math.min(RU[r][1], v)));
+  const dP = F.poaPlant(g.zen, g.az, T, rec, irr, doy, 0.2).plant - F.poaPlant(g.zen, g.az, T, malo, irr, doy, 0.2).plant;
+  if (!(dP >= -0.05)) throw new Error(`la regla de coste ya NO bloquearía aquel desastre: recortar cuesta ${(-dP).toFixed(2)} W/m²`);
+  /* el +651 de v1.56 era sobre SU vector publicado, que ya no existe; aquí el
+     ancla se construye metiendo la fila 2 de espaldas en el vector de hoy y lo
+     que se exige es lo que importa: que recortarla siga siendo una GANANCIA
+     grande, no un empate que la tolerancia de «gratis» pudiera tragarse. */
+  if (!(dP > 20)) throw new Error(`el ancla ha perdido su extremo: recortar sólo gana ${dP.toFixed(1)} W/m² (v1.56, sobre su propio vector, eran +651)`);
+});
+
+t('v1.57.3 · sol RASANTE: el render dibuja con el MISMO sol que ve la física (reportado: «esa sombra es sospechosa»)', () => {
+  /* Captura de Ignacio: El Burgo, 21-jun, 06:33 local, sol 0,28°, DNI 2 W/m².
+     El contador se clava en EL_MIN_FIS = 0,5° desde v1.36 porque por debajo el
+     ray-cast no es fiable; la silueta roja del 3D, la luz que proyecta el
+     sombreado gris y el rayo crítico seguían usando la elevación CRUDA. A 0,28°
+     la sombra de una fila mide 1.213 m en vez de 688: 1,76 veces más larga, y
+     aparecía rojo en filas que el contador da al 2,5 %. No era un fallo de la
+     física ni del render: es que no compartían el mismo sol. */
+  if (!/const EL_MIN_FIS=0\.5;/.test(html)) throw new Error('el suelo de validez del contador ya no es una constante con nombre');
+  if (!/if\(zen>90-EL_MIN_FIS\)zen=90-EL_MIN_FIS;/.test(html)) throw new Error('el contador no se clava con EL_MIN_FIS');
+  if (!/function elFisica\(g\)\{return Math\.max\(EL_MIN_FIS,g\.elev\);\}/.test(html)) throw new Error('sin el helper que da el sol de la física');
+  /* lo que importa no es CUÁNTOS sitios lo usan —la autoauditoría de v1.57.3
+     encontró tres más: el corte 2D, la cámara del sol y el barrido gemelo—,
+     sino que NINGUNO dibuje con el sol crudo. La cuenta sube cuando se añade
+     una vista; el cero de abajo es el invariante. */
+  const usos = (html.match(/elFisica\(g\)/g) || []).length;
+  if (!(usos >= 4)) throw new Error(`sólo ${usos} sitios del render usan el sol de la física: la luz, la silueta, el rayo crítico y la cámara del sol son cuatro`);
+  if (/el=g\.elev\*RAD/.test(html)) throw new Error('queda algún sitio del render dibujando con la elevación CRUDA');
+  if (/const psz=trueTrackAngle\(g\.zen,/.test(html)) throw new Error('el corte 2D vuelve a calcular su rayo con el zen CRUDO');
+  if (/const EL_MIN=0\.5;/.test(html)) throw new Error('la cámara del sol tiene otra vez su propia copia del suelo de validez');
+  // y que la diferencia sea real, para que el test no pase por vacío
+  /* la configuración de la captura: cresta de 3 m y ejes a 25°, que es donde el
+     efecto es grande. Con el caso B la diferencia es de 0,3 pp y el test no
+     probaría nada — lo dijo su propia guarda. */
+  const nR = 8, pitch = 6, RADl = Math.PI / 180, filaLen = 2 * 28 * 1.146 + 0.55;
+  const ELEV = new Array(nR).fill(0).map((_, i) => -3 * Math.abs(i - (nR - 1) / 2) / ((nR - 1) / 2) + 3);
+  const T = { pairs: F.pairsFromElev(ELEV, pitch, new Array(nR).fill(0)), cw: 2.382, axisAz: 25, maxAngle: 55,
+              gcr: 2.382 / pitch, z0: 0.17, nBypass: 2, iam: 0.05, rowTilt: new Array(nR).fill(0),
+              groups: null, drive: 'mono', segs: F.nsSegments(nR, 'alineadas', 1, filaLen, 1.0, 1), filaLen };
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 4, 33), 41.57634, -0.79814);
+  if (!(g.elev > 0 && g.elev < 0.5)) throw new Error('el instante ya no es rasante: sol ' + g.elev.toFixed(2));
+  const irr = F.clearskyIneichen(g.zen, 172, 1563, 3.5);
+  const ang = F.policyAngles('pairwise', g.zen, g.az, T, irr, 172, 0.2).angles;
+  const clav = F.shadeBand3DAll(89.5, g.az, T, ang, { noStruct: true });
+  const crudo = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
+  let dmax = 0; for (let r = 0; r < nR; r++) dmax = Math.max(dmax, Math.abs(crudo[r] - clav[r]));
+  if (!(dmax > 0.05)) throw new Error(`dibujar con el sol crudo ya no cambia nada (${(100 * dmax).toFixed(2)} pp): el test no prueba lo que dice`);
+});
+
+t('v1.58 · EL PROBADOR: certifica sin usar la búsqueda de la política, puede decir que NO, y da los DOS números', () => {
+  /* Las tres condiciones que el auditor marcó como invalidantes. Si alguna se
+     pierde, el probador deja de valer aunque siga compilando. */
+  const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis.slice(fis.indexOf('function certifica('), fis.indexOf('\n}', fis.indexOf('function certifica(')));
+  // 1) NO comparte la búsqueda: no puede llamar a las que deciden
+  for (const prohibida of ['anglesPairwise', 'anglesTrue3d', 'anglesMinGroundLight', 'anglesOptimal', 'repairNoShade', 'driveCoupleSafe'])
+    if (new RegExp('[^A-Za-z]' + prohibida + '\\s*\\(').test(cuerpo))
+      throw new Error(`el probador llama a ${prohibida}: sería el juez y el juzgado, como el oráculo de podas`);
+  if (!/policyAngles\(key,zen,az,T,irr,doy,albedo\)\.angles/.test(cuerpo)) throw new Error('el probador no pide la consigna PUBLICADA');
+  // 2) puede decir que no
+  if (!/'mejorable'/.test(cuerpo)) throw new Error('el probador no tiene veredicto «mejorable»: uno que siempre dice óptimo no vale');
+  // 3) dos números con estatus de no dominado, nunca una puntuación única
+  if (!/sombraPct/.test(cuerpo) || !/poa:/.test(cuerpo)) throw new Error('el certificado no lleva los DOS números');
+  if (!/costeDeLaEleccion/.test(cuerpo)) throw new Error('sin el precio de la elección, un canje mal hecho pasa desapercibido');
+  if (!/alcance:/.test(cuerpo)) throw new Error('el probador no declara su discretización: certifica «el mejor de su barrido», no «el óptimo»');
+
+  // y que funcione: en el caso A, pairwise a mediodía debe salir óptimo o empatado
+  const T = casoB(6, false), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+  if (['óptimo', 'empatado'].indexOf(ce.veredicto) < 0)
+    throw new Error(`en llano a mediodía pairwise sale «${ce.veredicto}»: publica ${ce.elegido.sombraPct.toFixed(1)} % y hay ${ce.mejorHallado ? ce.mejorHallado.sombraPct.toFixed(1) : '—'} %`);
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos: ' + ce.candidatos.evaluados);
+  if (!(ce.sellos.mv > 0) || !(ce.sellos.paso > 0)) throw new Error('el certificado no sella con qué malla y qué paso se obtuvo');
+});
+
+t('v1.59 · EL PROBADOR CERTIFICA UNA POSTURA ALCANZABLE: lo que el actuador no alcanza no puede dominar', () => {
+  /* «¿La velocidad se tiene en cuenta?» — no lo estaba. El probador proponía
+     consignas a 18° de donde está la planta sin saber si el actuador llega en
+     el paso. Certificaba una POSTURA como si fuera un MOVIMIENTO. Ahora cada
+     candidato pasa por el MISMO slewLimit que usa la escena, con TRACKER_SLEW
+     (0,17 °/s, spec del actuador) — no un número inventado. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/slewLimit\(/.test(cuerpo)) throw new Error('el probador no comprueba si el actuador llega: certifica un deseo');
+  if (!/TRACKER_SLEW/.test(fis59.slice(fis59.indexOf('const CERT_DT'), fis59.indexOf('const CERT_DT') + 900)) && !/TRACKER_SLEW/.test(cuerpo))
+    throw new Error('el paso de control no se ata a la spec del actuador');
+  if (!/DESGASTE/.test(cuerpo)) throw new Error('el alcance no declara que el desgaste no se modela');
+  if (!/dos unidades movidas a la vez/.test(cuerpo))
+    throw new Error('el alcance no declara que el repertorio de candidatos no cubre dos unidades en direcciones distintas');
+
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  // con un paso de control RIDÍCULO (1 s) no se llega a ninguna parte: nadie puede dominar
+  const cortito = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 1);
+  if (cortito.candidatos.dominan !== 0)
+    throw new Error('con 1 s de paso el actuador no se mueve y sin embargo ' + cortito.candidatos.dominan + ' candidatos «dominan»');
+  if (cortito.veredicto === 'mejorable')
+    throw new Error('«mejorable» proponiendo algo inalcanzable en 1 s: eso es un deseo, no una alternativa');
+  // y con un paso largo vuelve a haber alternativas reales (si las había)
+  const largo = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, null, 3600);
+  if (largo.candidatos.dominan < cortito.candidatos.dominan)
+    throw new Error('con más tiempo el actuador alcanza MENOS sitios: el límite de giro está al revés');
+  if (!largo.sellos.slew || !largo.sellos.pasoControl)
+    throw new Error('el certificado no sella con qué velocidad y qué paso de control juzgó el alcance');
+});
+
+t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muestra de la malla', () => {
+  /* Fuera de la malla de 5 min la escena es el MINUTO EXACTO (para eso existe
+     sceneInstant). manualRowsInit leía DAY.pol[key].ang[timeIndex()] —la muestra
+     más cercana— así que al marcar «por fila» a las 21:01 las filas arrancaban
+     en la consigna de las 21:00 y la planta saltaba a una postura que no era de
+     nadie, con el HUD atribuyéndosela a la escena. Dos piezas, dos fuentes: la
+     misma forma de fallo que el render y la física con dos soles. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function manualRowsInit');
+  if (i < 0) throw new Error('no se encuentra manualRowsInit');
+  const cuerpo = app.slice(i, app.indexOf('\n}', i));
+  if (/DAY\.pol\[[^\]]*\]\.ang\[/.test(cuerpo) || /p\.ang\[t\]/.test(cuerpo))
+    throw new Error('el manual por fila vuelve a leer la malla en vez de la consigna de la escena');
+  if (!/consignaEscena\(/.test(cuerpo))
+    throw new Error('el manual por fila no pide la consigna de la ESCENA');
+  const j = app.indexOf('function consignaEscena');
+  if (j < 0) throw new Error('no existe consignaEscena');
+  const ce = app.slice(j, app.indexOf('\n}', j));
+  if (!/m%STEP_MIN===0/.test(ce)) throw new Error('consignaEscena no distingue la malla del minuto exacto');
+  if (!/policyAngles\(/.test(ce)) throw new Error('consignaEscena no recalcula la política en el minuto pedido');
+  if (!/slewLimit\(/.test(ce)) throw new Error('consignaEscena no aplica el límite de giro, como hace la escena');
+});
+
+t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
+  /* Iñaki, con el mando manual puesto a −7°: «¿por qué en los boxes de debajo
+     pone pairwise cuando es manual?». El valor salía del mando y el rótulo del
+     selector de políticas. Y colgado del mismo selector iba el sufijo
+     «irreducible: ningún θ que reciba haz la evita», que la pantalla estampaba
+     sobre un ángulo escrito a mano: «irreducible» es el resultado de una
+     BÚSQUEDA, y a un ángulo manual no lo ha barrido nadie. Afirmarlo es
+     fabricar un número. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const iIrre = app.indexOf('const irre=');
+  if (iIrre < 0) throw new Error('no se encuentra el sufijo de irreducibilidad del HUD');
+  const bloqueIrre = app.slice(iIrre, iIrre + 700);
+  if (!/manualOn\(\)/.test(bloqueIrre))
+    throw new Error('«irreducible» no mira si el mando manual está puesto: la pantalla se lo estampa a un ángulo escrito a mano');
+  const iTh = app.indexOf("card('θ fila '");
+  if (!/manualOn\(\)/.test(app.slice(Math.max(0, iTh - 400), iTh + 200)))
+    throw new Error('la tarjeta de θ rotula con el selector de políticas aunque el ángulo venga del mando');
+
+  // y el probador: pasada una consigna, juzga ESA consigna
+  const T = casoB(6, true), doy = 172;
+  const g = F.solarPos(Date.UTC(2026, 5, 21, 10, 0), 41.5763, -0.7981);
+  const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+  const nR = T.pairs.length + 1;
+  const mando = new Array(nR).fill(-7 * -1);                      // un mando cualquiera, en marco físico
+  const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2, mando);
+  for (let r = 0; r < nR; r++)
+    if (Math.abs(ce.elegido.ang[r] - mando[r]) > 1e-9)
+      throw new Error('el probador ha certificado la consigna de la política en vez de la que se le pasó');
+  if (ce.politica !== 'mando manual') throw new Error('el certificado no dice que juzga un mando: ' + ce.politica);
+  if (!/ninguno declarado/.test(ce.objetivo)) throw new Error('un mando no tiene objetivo que cumplir, y el certificado debe decirlo');
+  if (!(ce.candidatos.evaluados > 50)) throw new Error('el probador apenas mide candidatos con un mando: ' + ce.candidatos.evaluados);
+  // un mando arbitrario en un terreno con torsión tiene que ser MEJORABLE: si sale óptimo, el juez no juzga
+  if (ce.veredicto === 'óptimo' && !ce.mejorHallado)
+    throw new Error('un mando plano a −7° con torsión sale «óptimo»: un juez que nunca dice que no no vale');
+});
+
+t('v1.59 · LA PROMESA VIEJA NO SOBREVIVE A SU CORRECCIÓN: ninguna política dice GARANTIZAR sombra cero', () => {
+  /* Desde v1.57.2 la guardia de energía es incondicional, así que pairwise BUSCA
+     no-sombra y no la garantiza: medido en el barrido, 6 instantes con sol ≥ 20°
+     en que la fórmula acoplada llega a 2.5D cero y lo publicado se aparta hasta
+     el 65 % porque apartarse gana hasta 91 W/m² netos. La etiqueta del selector
+     seguía diciendo «sombra de PLANOS cero garantizada». El código y su etiqueta
+     son dos piezas que tienen que mirar lo mismo — la misma forma de fallo que
+     el render y la física con dos soles distintos. */
+  const pol = html.slice(html.indexOf('const POLICIES=['), html.indexOf('];', html.indexOf('const POLICIES=[')));
+  for (const mal of ['cero garantizada', 'sombra cero garantizada'])
+    if (pol.indexOf(mal) >= 0) throw new Error(`el selector sigue prometiendo «${mal}»: la guardia de energía puede publicar sombra y lo hace`);
+  if (!/CUESTA energía de planta/.test(pol)) throw new Error('la etiqueta de pairwise no dice de qué depende que evite la sombra');
+});
+
+t('v1.59 · EL PRECIO DE LA PROMESA: una postura limpia que cuesta energía NO es «mejorable», y una que rinde más SÍ', () => {
+  /* El número simétrico del precio de la elección. Sin él, quien ve una política
+     «sin sombra» publicando un 19 % no sabe si es que no podía o que no quería.
+     Y su criterio es el que sostiene toda la corrección de v1.57: una postura con
+     MENOS sombra sólo domina si además no pierde energía. */
+  const fis59 = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
+  const cuerpo = fis59.slice(fis59.indexOf('function certifica('), fis59.indexOf('\n}', fis59.indexOf('function certifica(')));
+  if (!/precioDeLaPromesa/.test(cuerpo)) throw new Error('el certificado no publica el precio de la promesa');
+
+  const T = casoB(8, true), doy = 172;
+  let cara = null, gratis = null;
+  for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5); if (!(irr.ghi > 0)) continue;
+    const ce = F.certifica('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+    const pr = ce.precioDeLaPromesa; if (!pr || pr.cuesta == null) continue;
+    // (1) una postura MENOS sombreada que CUESTA energía nunca puede ser el motivo de «mejorable»
+    if (pr.cuesta > 0.05) {
+      if (!cara || pr.cuesta > cara.pr.cuesta) cara = { mm, ce, pr };
+      if (ce.veredicto === 'mejorable' && ce.mejorHallado && ce.mejorHallado.sombraPct <= pr.sombraPct + 1e-9
+          && ce.mejorHallado.poa < ce.elegido.poa - 0.05)
+        throw new Error(`«mejorable» por una postura que PIERDE ${(ce.elegido.poa - ce.mejorHallado.poa).toFixed(1)} W/m²: el árbitro óptico mandando otra vez sobre la energía`);
+    }
+    // (2) una postura con menos sombra Y más energía SÍ tiene que salir como mejorable
+    if (pr.cuesta < -0.05 && pr.sombraPct < ce.elegido.sombraPct - 1e-9) {
+      if (!gratis) gratis = { mm, ce, pr };
+      if (ce.veredicto !== 'mejorable')
+        throw new Error(`hay una consigna con menos sombra Y +${(-pr.cuesta).toFixed(1)} W/m² y el probador dice «${ce.veredicto}»: un juez que no puede decir que no no vale`);
+    }
+  }
+  if (!cara) throw new Error('el día no produjo ninguna promesa CON precio: el test no probaría nada');
+  if (!gratis) throw new Error('el día no produjo ninguna postura mejor en los dos ejes: el test no probaría nada');
+  if (!(cara.pr.cuesta > 50)) throw new Error('la promesa más cara del día cuesta sólo ' + cara.pr.cuesta.toFixed(1) + ' W/m²: el caso no es representativo');
+});
+
+t('H3: energy-optimal y óptimo libre ≥ pairwise PUBLICADO (reparado), por construcción — en los instantes donde base ≠ publicado', () => {
+  const T = casoB(6, true), doy = 172; let dif = 0;
+  for (let mm = 5 * 60; mm <= 19 * 60; mm += 10) {
+    const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 90)) continue;
+    const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+    const pub = F.policyAngles('pairwise', g.zen, g.az, T, irr, doy, 0.2).angles;
+    const base = F.driveCoupleSafe(g.zen, g.az, T, F.anglesPairwise(g.zen, g.az, T), false);
+    if (pub.some((v, i) => Math.abs(v - base[i]) > 1e-9)) dif++;
+    const pp = F.poaPlant(g.zen, g.az, T, pub, irr, doy, 0.2).plant;
+    for (const key of ['optimal', 'optfree']) { const po = F.poaPlant(g.zen, g.az, T, F.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles, irr, doy, 0.2).plant;
+      if (po < pp - 1e-6) throw new Error(`${key} ${po.toFixed(2)} < pairwise publicado ${pp.toFixed(2)} (minuto ${mm})`); }
+  }
+  if (!(dif >= 5)) throw new Error('el caso no discrimina: base = publicado en casi todos los instantes (' + dif + ')');
+  // y el veto lo lleva escrito: el pairwise reparado es candidato
+  // v1.57.2: el veto ya no repesca sólo los extremos — mide la REJILLA ENTERA
+  // con el contador exacto, más el pairwise publicado. Es estrictamente más
+  // fuerte que lo que este test pedía, y lo que lo vigila de verdad es el
+  // invariante J del barrido (el óptimo publicado es el mejor de su rejilla).
+  if (!/cands\.push\(\[0,pub\]\)/.test(html)) throw new Error('el veto de energy-optimal no incluye el pairwise publicado');
+  if (!/OPT_FRACTIONS\.map\(f2=>\[f2,base\.map/.test(html)) throw new Error('el veto ya no mide la rejilla entera con el contador exacto');
+});
+t('H4: cielo claro Ineichen ≡ pvlib por defecto (sin realce de Perez) — Zaragoza 21-jun 07:30, TL 3,5, 300 m: 80,1 / 300,2 / 31,7 W/m²', () => {
+  const c = F.clearskyIneichen(gB.zen, 172, 300, 3.5);
+  const ok = (v, ref) => Math.abs(v - ref) <= 0.5;
+  if (!(ok(c.ghi, 80.1) && ok(c.dni, 300.2) && ok(c.dhi, 31.7))) throw new Error(`sale ${c.ghi.toFixed(1)} / ${c.dni.toFixed(1)} / ${c.dhi.toFixed(1)} (pvlib 0.15, perez_enhancement=False: 80,1 / 300,2 / 31,7)`);
+  const e = F.clearskyIneichen(gB.zen, 172, 300, 3.5, { perezEnhancement: true });
+  if (!(ok(e.ghi, 101.4) && ok(e.dhi, 53.0))) throw new Error('con el realce pedido a sabiendas debe dar lo de pvlib con perez_enhancement=True (101,4 / 53,0): ' + e.ghi.toFixed(1) + ' / ' + e.dhi.toFixed(1));
 });
 
 console.log('extra (solo tiene sentido en Node: reproducibilidad y aristas)');
@@ -388,7 +867,8 @@ t('v1.29: energy-optimal ≥ pairwise BAJO EL CONTADOR EXACTO (lo cazó el barri
   // f>0 que bajo el contador publicado rendía MENOS que la base (−0,27% el
   // 21-jun). El core garantiza optimal ≥ pairwise porque f=0 ES pairwise.
   if (!/VETO con el contador EXACTO/.test(html)) throw new Error('energy-optimal sin veto exacto');
-  if (!/\[\[0,base\],\[1,full\]\]/.test(html)) throw new Error('el veto no mira los DOS extremos de la rejilla');
+  if (!/OPT_FRACTIONS\.map\(f2=>\[f2,base\.map/.test(html) || !/cands\.push\(\[0,pub\]\)/.test(html))
+    throw new Error('el veto no mide la rejilla entera con el contador exacto (v1.57.2) más el pairwise publicado');
   const T = { pairs: [0, 0, 0, 0].map(s => ({ slope: s, pitch: 6, axisTilt: 0 })),
               cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 3 };
   for (const [zen, az] of [[80, 100], [75, 260], [70, 95], [65, 265], [60, 100]]) {
@@ -416,7 +896,7 @@ t('EXPORT de consignas: claves del CONTRATO de scada y marco de coordenadas corr
   const ep = path.join(ROOT, 'tools', 'export_consignas.mjs');
   if (!fs.existsSync(ep)) throw new Error('sin tools/export_consignas.mjs');
   const e = fs.readFileSync(ep, 'utf-8');
-  for (const k of ['ncu', 'tcu', 'theta_sim_deg', 'theta_tcu_deg', 'asesoria'])
+  for (const k of ['ncu', 'tcu', 'theta_sim_deg', 'theta_tcu_deg', 'asesoria', 'sacrificada'])
     if (!e.includes(k)) throw new Error('la cabecera del CSV pierde la clave ' + k);
   // el fallo que costó 500 seguidores: lineX va RECENTRADO por bloque y la x
   // cruda es xFrom + lineX. Si alguien vuelve a comparar lineX con la x del
@@ -474,7 +954,7 @@ function oracleGeom(T, rowAngles) {
   const RAD = Math.PI / 180;
   const zOff = (T.z0 != null && isFinite(T.z0)) ? T.z0 : O_REC;
   const nR = T.pairs.length + 1;
-  const PRr = T.real, xs = [0], zch = [0];
+  const PRr = T.real, SZ = T.segZ || (PRr && PRr.segZ) || null, xs = [0], zch = [0];   // v1.54: cota por mesa en T (medida o del quiebro en la rótula)
   for (let i = 0; i < T.pairs.length; i++) {
     xs.push(xs[i] + T.pairs[i].pitch);
     zch.push(zch[i] - T.pairs[i].pitch * Math.tan(T.pairs[i].slope * RAD));
@@ -486,8 +966,8 @@ function oracleGeom(T, rowAngles) {
      de los módulos. Aquí se arregla igual, pero escrito aparte: lo que tiene
      que coincidir es el RESULTADO, no el código. */
   const cotD = (row, v) => {
-    if (PRr && PRr.segZ && PRr.segZ[row]) {
-      const segs = PRr.segs[row], zz = PRr.segZ[row];
+    if (SZ && SZ[row]) {
+      const segs = T.segs[row], zz = SZ[row];
       let bi = -1, bd = Infinity;
       for (let k = 0; k < segs.length; k++) {
         const lo = Math.min(segs[k][0], segs[k][1]), hi = Math.max(segs[k][0], segs[k][1]);
@@ -523,7 +1003,7 @@ function oracleGeom(T, rowAngles) {
       const l1 = Math.hypot(e1r[0], e1r[1], e1r[2]) || 1;
       const e1 = [e1r[0] / l1, e1r[1] / l1, e1r[2] / l1];
       const e2 = [e3[1] * e1[2] - e3[2] * e1[1], e3[2] * e1[0] - e3[0] * e1[2], e3[0] * e1[1] - e3[1] * e1[0]];
-      planes.push({ e, w0, w1, nE, uD,
+      planes.push({ e, w0, w1, nE, uD, vD,
         C: [axC[0] + zOff * nu[0], axC[1] + zOff * nu[1], axC[2] + zOff * nu[2]],
         tb: { C: axC, ax: [e1, e2, e3], hf: [O_TUBE / 2, O_TUBE / 2, Math.abs(w1 - w0) * lv / 2] },
         sl: { C: [axC[0] + (zOff - O_GLASS / 2) * nu[0], axC[1] + (zOff - O_GLASS / 2) * nu[1], axC[2] + (zOff - O_GLASS / 2) * nu[2]],
@@ -621,7 +1101,18 @@ function oracleTerr(G, sv, zen, T) {
      línea de índice contiguo puede estar a cientos de metros y fabricaba un
      escarpe— y el oráculo la comparte, como comparte el límite de 4 filas. */
   const XMAX = Math.max(12, 3 * ((T && T.pitch) || (xs.length > 1 ? xs[1] - xs[0] : 6)));
+  // el rango de norte que mide la planta (decisión de modelo compartida con el
+  // contador): fuera de él, más allá de TOL, no hay suelo que se invente. En
+  // los presets `cotD` devuelve d=0 siempre (la cota es analítica), así que sin
+  // esta puerta el oráculo extendía el suelo hasta el infinito y el contador no
+  const _sg = (T && T.real && T.real.segs) ? T.real.segs : (T && T.segs) || null;
+  let nMin = Infinity, nMax = -Infinity;
+  if (_sg) for (const line of _sg) if (line) for (const s2 of line) {
+    nMin = Math.min(nMin, s2[0], s2[1]); nMax = Math.max(nMax, s2[0], s2[1]);
+  }
+  if (!(nMin <= nMax)) { nMin = -Infinity; nMax = Infinity; }
   const gzOf = (x, v) => {
+    if (v < nMin - TOL || v > nMax + TOL) return -Infinity;
     let i = 0;
     if (x <= xs[0]) i = 0; else if (x >= xs[nR - 1]) i = nR - 2;
     else { while (i < nR - 2 && xs[i + 1] < x) i++; }
@@ -693,7 +1184,7 @@ function oracleExact(F2, zen, az, T, rowAngles) {
   const out = new Array(G.nR).fill(0);
   if (sv[2] <= 0) return out;
   const terr = oracleTerr(G, sv, zen, T);
-  const hw = T.cw / 2, MV = 8;
+  const hw = T.cw / 2, MV = F2.mvPara(T, zen);   // v1.57: las MISMAS estaciones que publica el contador (adaptativas, con el sol)
   const elec = new Array(G.nR).fill(0);
   for (let r = 0; r < G.nR; r++) {
     const thR = rowAngles[r] * RAD, cR = Math.cos(thR), s2 = -Math.sin(thR);
@@ -725,7 +1216,18 @@ function oracleExact(F2, zen, az, T, rowAngles) {
           const a1 = cR * pl.uD[0] + s2 * pl.uD[2];
           const a2 = sv[0] * pl.uD[0] + sv[1] * pl.uD[1] + sv[2] * pl.uD[2];
           const d0 = a0 + a2 * t0 / den, dc = a1 - a2 * tc / den;
-          lin(dc, hw - d0); lin(-dc, hw + d0);
+          /* la base (uD, vD) de la pala es OBLICUA con el eje inclinado
+             (uD·vD = −sin θE·sE): la coordenada de cuerda del impacto es
+             (H−C)·uD − w·(uD·vD), con w = H1 − C1. Aquí se resuelve el 2×2
+             (uE, w) por eliminación, distinto del contador, que corrige en
+             cerrado el término lineal. Tenía el MISMO defecto que el
+             contador (proyección oblicua tomada por ortogonal) y por eso
+             nunca lo cazó: 19 % de sombra en un plano uniforme a 5°. */
+          const kuv = pl.uD[0] * pl.vD[0] + pl.uD[1] * pl.vD[1] + pl.uD[2] * pl.vD[2];
+          const wAt = (u) => (py0 - pl.C[1]) + q * (t0 - tc * u);           // w del impacto, lineal en u
+          const uE = (u) => (d0 + dc * u) - kuv * wAt(u);                    // cuerda real del impacto
+          const dcE = uE(1) - uE(0), d0E = uE(0);
+          lin(dcE, hw - d0E); lin(-dcE, hw + d0E);
           if (ok && hi - lo > 1e-12) ivs.push([lo, hi]);
           // VIGA por MÉTODO DISTINTO al del contador (sección de la caja
           // con el plano de los rayos, exacta — ver oracleBoxIv)
@@ -764,7 +1266,7 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
   const out = {};
   if (sv[2] <= 0) { for (const r of rowSet) out[r] = 0; return out; }
   const terr = oracleTerr(G, sv, zen, T);
-  const hw = T.cw / 2, MV = 8;
+  const hw = T.cw / 2, MV = F2.mvPara(T, zen);
   for (const pl of G.planes) pl.den = pl.nE[0] * sv[0] + pl.nE[1] * sv[1] + pl.nE[2] * sv[2];
   for (const r of rowSet) {
     const thR = rowAngles[r] * RAD;
@@ -788,7 +1290,9 @@ function oracleBrute(F2, zen, az, T, rowAngles, MU, rowSet) {
             const H1 = P1 + t2 * sv[1];
             if (H1 < pl.w0 || H1 > pl.w1) continue;
             const H0 = P0 + t2 * sv[0], H2 = P2 + t2 * sv[2];
-            const du = (H0 - pl.C[0]) * pl.uD[0] + (H1 - pl.C[1]) * pl.uD[1] + (H2 - pl.C[2]) * pl.uD[2];
+            const kuv = pl.uD[0] * pl.vD[0] + pl.uD[1] * pl.vD[1] + pl.uD[2] * pl.vD[2];
+            const du = (H0 - pl.C[0]) * pl.uD[0] + (H1 - pl.C[1]) * pl.uD[1] + (H2 - pl.C[2]) * pl.uD[2]
+                     - (H1 - pl.C[1]) * kuv;                                   // base oblicua: ver oracleExact
             if (Math.abs(du) <= hw) { sh = true; break; }
           }
           if (sh) colHit++;
@@ -840,7 +1344,7 @@ t('ORÁCULO de podas: contador ≡ cuerda analítica SIN podas (Ayora, 4 regíme
     }
   }
 });
-t('CONVERGENCIA: MV=8 vs MV=32 en rasante ≤0,7 pp de media de planta (estudio: anual +0,007%)', () => {
+t('CONVERGENCIA en la PLANTA MEDIDA (Ayora, MV=8 por diseño): MV=8 vs MV=32 en rasante ≤0,7 pp de MEDIA DE PLANTA (estudio: anual +0,007%)', () => {
   // punto 1 de la auditoría: con la cuerda analítica solo queda MV como
   // discretización; el estudio (Ayora, 12 días) midió MV=8 a +0,007% del
   // refinado MV=64 en el anual y ≤0,52 pp de media de planta en el peor
@@ -854,6 +1358,29 @@ t('CONVERGENCIA: MV=8 vs MV=32 en rasante ≤0,7 pp de media de planta (estudio:
   const m32 = f32.reduce((s, v) => s + v, 0) / f32.length;
   if (Math.abs(m8 - m32) > 7e-3)
     throw new Error(`media de planta MV=8 ${(m8 * 100).toFixed(2)}% vs MV=32 ${(m32 * 100).toFixed(2)}% — la malla axial por defecto ya no converge`);
+});
+t('CONVERGENCIA POR FILA en PRESETS con torsión: |publicado − MV 128| ≤ 3 pp, y ninguna mancha de más del 2 % publicada por debajo de su mitad', () => {
+  /* la cota de arriba es de Ayora, media de planta y vigas casi paralelas; NO
+     describe el error por fila de un preset con torsión, que es lo que el
+     tercer auditor midió (2,03 pp en el caso A y 2,63 pp en el B) y lo que la
+     métrica F del barrido publica (peor 2,5 pp en 40 configuraciones). Esta
+     guarda fija esa cota donde se mide, para que el título de la de arriba no
+     se lea como una promesa que no da. */
+  const casos = [['A', casoB(6, false)], ['B', casoB(6, true)]];
+  let peor = 0, quien = null;
+  for (const [nm, T] of casos)
+    for (let mm = 0; mm < 1440; mm += 30) {
+      const g = F.solarPos(Date.UTC(2026, 5, 21, 0, mm), 41.5763, -0.7981); if (!(g.zen < 89)) continue;
+      const ang = F.anglesPairwise(g.zen, g.az, T);
+      const pub = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true });
+      const ref = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true, MV: 128 });
+      for (let r = 0; r < 6; r++) {
+        const d = Math.abs(pub[r] - ref[r]);
+        if (d > peor) { peor = d; quien = `${nm} ${(mm / 60).toFixed(1)}h sol ${g.elev.toFixed(1)}° fila ${r}: ${(100 * pub[r]).toFixed(1)} % frente a ${(100 * ref[r]).toFixed(1)} %`; }
+        if (ref[r] > 0.02 && pub[r] < 0.5 * ref[r]) throw new Error(`mancha perdida: ${nm} fila ${r} publica ${(100 * pub[r]).toFixed(1)} % con ${(100 * ref[r]).toFixed(1)} % convergido`);
+      }
+    }
+  if (peor > 0.03) throw new Error(`la malla publicada se separa ${(100 * peor).toFixed(2)} pp de MV 128 — ${quien}`);
 });
 t('ORÁCULO de método: cuerda analítica ≡ muestreo bruto MU=192 (Ayora, ≤0,3 pp)', () => {
   const T = ayoraPlantT();
@@ -1300,7 +1827,10 @@ t('v1.36: la sombra al ocaso es MONÓTONA — cero solo cuando el sol se pone', 
   // El contador 3D devolvía shade=0 en toda la banda zen≥89,5°, o sea que
   // afirmaba «no hay sombra» con la planta tapada entera. En la tabla de
   // Ayora del 21-jun salía un salto de 76,6 % a 0,00 % en un paso de 10 min.
-  if (!/if\(zen>89\.5\)zen=89\.5;/.test(html)) throw new Error('ya no se clava al borde de validez');
+  /* v1.57.3: el clavado se escribe con la constante única que comparten la
+     física y el render (antes era el literal 89,5 aquí y un 0,5 suelto allí). */
+  if (!/const EL_MIN_FIS=0\.5;/.test(html)) throw new Error('sin la constante del suelo de validez');
+  if (!/if\(zen>90-EL_MIN_FIS\)zen=90-EL_MIN_FIS;/.test(html)) throw new Error('ya no se clava al borde de validez');
   if (/if\(!\(isFinite\(zen\)&&zen<89\.5\)\)return out;/.test(html)) throw new Error('vuelve el cero falso');
   const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), 500, null);
   const pairs = [];
@@ -1438,6 +1968,22 @@ t('v1.38: sobre Ayora la ficha casa, conserva el signo y declara su cobertura', 
     nues.push(Math.atan2(P.pairDz[i], Math.max(0.5, P.lineX[i + 1] - P.lineX[i])) * 180 / Math.PI);
   if (Math.abs(mag(P.fichaSlope) - mag(nues)) < 0.05)
     throw new Error('la ficha da la MISMA pendiente que las cotas: o no se cargó, o se está leyendo la columna equivocada');
+});
+
+t('v1.53.3: los optimizadores enseñan la FÍSICA del minuto pedido con la consigna de la malla', () => {
+  // «¿Cómo puede ser que energy-optimal tenga una posición diferente a true3d
+  // sin BT?» — dos capturas a las 15:23, θ 55° en ambas, pero sol 24,2° en una
+  // y 24,8° en la otra. sceneInstant devolvía null para optimal/optfree (su
+  // búsqueda por instante haría lento el slider) y la escena y el HUD enseñaban
+  // la muestra ENTERA de la malla de 5 min: sol, cielo, sombra y POA de las
+  // 15:20 bajo el rótulo «15:23». Ahora mantienen la consigna de la malla (lo
+  // que hace un TCU con consigna cada 5 min) y la física es la del minuto.
+  if (/if\(key==='optimal'\|\|key==='optfree'\)return null;/.test(html))
+    throw new Error('sceneInstant vuelve a devolver null para los optimizadores: el HUD miente la hora');
+  if (!/held:held\?DAY\.times\[tIdx\]:null/.test(html))
+    throw new Error('el instante no declara la consigna mantenida (held)');
+  if (!/consigna de las '\+hhmm\(INSTANT\.held\)/.test(html))
+    throw new Error('el HUD ya no dice de qué muestra de la malla es la consigna');
 });
 
 t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
@@ -1967,7 +2513,10 @@ console.log('v1.43 · sombra y POA por ALA (un string por ala en la mesa larga)'
   const irr = F.clearskyIneichen(zen, doy, 739, 3.5);
 
   t('shadeBand3DAll publica la sombra por ALA de cada tramo y la media de las dos alas ES el tramo (8 estaciones, 4 por ala)', () => {
-    const seg = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2);
+    // con ASTRO: el pairwise con torsión (v1.53) ya evita al alba la sombra de
+    // ala que este test usaba de testigo, y el testigo tiene que ser algo que
+    // sombree seguro
+    const seg = F.policyAnglesSeg('astro', zen, az, T, irr, doy, 0.2);
     const sh = F.shadeRows(zen, az, T, seg);
     if (!sh.wing || !sh.wingElec) throw new Error('sin out.wing / out.wingElec');
     let n = 0, dist = 0;
@@ -2544,6 +3093,28 @@ console.log('v1.46 · el DATO: cada tracker levantado es un bifila de dos vigas 
       if (pasoMal) throw new Error(`${pasoMal} de ${n} trackers con las vigas a una distancia que no es el paso (${paso.toFixed(2)} m)`);
       if (fueraLayout) throw new Error(`${fueraLayout} de ${n} trackers cuyas vigas no casan con la x del layout`);
     });
+    t(`${pl}: el cizallado E/W viene medido de las dos vigas y la planta declara cuántas van corridas`, () => {
+      // el cizallado es el corrimiento del centro de una viga respecto del de
+      // su hermana a lo largo del eje: tiene que salir de las MISMAS puntas
+      // que se dibujan, y solo en los seguidores de dos vigas
+      let n = 0, mal = 0, corr = 0;
+      for (const tk of cotas.t) {
+        if (!tk) continue;
+        const f = filasDe(tk);
+        if (f.length !== 2) { if (tk.sh != null) mal++; continue; }
+        n++;
+        const c = f.map(x => (x.n[0] + x.n[1]) / 2);
+        if (tk.sh == null || Math.abs(tk.sh - Math.abs(c[0] - c[1])) > 0.002) mal++;
+        if (tk.sh > 0.5) corr++;
+      }
+      if (!n) throw new Error('ningún tracker de dos vigas');
+      if (mal) throw new Error(`${mal} de ${n} trackers con un cizallado que no sale de sus puntas`);
+      if ((cotas.n_sh || 0) !== corr) throw new Error(`la planta declara ${cotas.n_sh} seguidores con vigas corridas y hay ${corr}`);
+      if (!(cotas.sh_max >= 0) || cotas.sh_max < (cotas.sh_p50 || 0)) throw new Error('reparto del cizallado incoherente: ' + JSON.stringify([cotas.sh_p50, cotas.sh_p95, cotas.sh_max]));
+      // San José: los mismos 10 que el visor 2D mide de la geometría dibujada
+      if (pl === 'sanjose' && corr !== 10) throw new Error(`San José: ${corr} seguidores con vigas corridas (el mapa mide 10)`);
+      if (pl === 'ayora' && corr !== 0) throw new Error(`Ayora: ${corr} seguidores con vigas corridas (el mapa no mide ninguno)`);
+    });
     t(`${pl}: plantFromCotas los reconoce a TODOS como pareja, en líneas contiguas`, () => {
       const P = F.plantFromCotas(cotas, Infinity, 'all');
       const linea = new Map();
@@ -2700,8 +3271,61 @@ console.log('v1.45 · el accionamiento se dibuja por TRACKER, no por línea');
   t('la UI del simulador dibuja el accionamiento con westPorMesa / ejesPorMesa cuando la planta es medida', () => {
     const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
     const b3 = ui.slice(ui.indexOf('function build3D'), ui.indexOf('function setSky'));
-    for (const lit of ['westPorMesa(PR)', 'ejesPorMesa(PR)', 'west:westAt(r,si)'])
+    // v1.54: PM es «la planta con mesas» — la medida (PR) o el preset con quiebro en la rótula (T)
+    for (const lit of ['westPorMesa(PM)', 'ejesPorMesa(PM)', 'west:westAt(r,si)', '(PR&&PR.segPairs)?PR:null'])
       if (!b3.includes(lit)) throw new Error('build3D sin «' + lit + '»');
+  });
+}
+
+console.log('el globo dice QUÉ puntos: id y desvío de la cota repuesta o copiada');
+{
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: toda fila con cota repuesta trae sus puntos [id, desvío]; ninguna limpia los trae', () => {
+    let con = 0, sin = 0, limpiasCon = 0, fuera = 0;
+    for (const tk of cotas.t) if (tk && !tk.est) for (const f of tk.f) {
+      const rp = f.rp || [];
+      // la copia (hm) de una viga que el topógrafo NO midió no tiene puntos que
+      // reclamar: solo se exige en las repuestas (ye) y en las copias de una
+      // fila descartada por contaminación
+      if (f.ye) { if (rp.length) con++; else sin++; }
+      else if (!f.hm && rp.length) limpiasCon++;
+      for (const [id, d] of rp) if (!(Number.isInteger(id) && Math.abs(d) > 3)) fuera++;
+    }
+    if (!con) throw new Error('ninguna fila repuesta trae sus puntos');
+    if (sin) throw new Error(sin + ' filas repuestas sin sus puntos');
+    if (limpiasCon) throw new Error(limpiasCon + ' filas limpias con puntos de reclamación');
+    if (fuera) throw new Error(fuera + ' puntos con desvío <= 3 m o id no entero');
+    // y llegan a la mesa: segRp alineado con segOrig
+    let mesas = 0;
+    for (let r = 0; r < P.segRp.length; r++) for (let k = 0; k < P.segRp[r].length; k++)
+      if (P.segRp[r][k].length) { mesas++; if (!P.segOrig[r][k]) throw new Error('mesa con puntos de reclamación y origen «medida»'); }
+    if (!mesas) throw new Error('segRp vacío');
+  });
+}
+
+console.log('origen por mesa · «del plano» es del tracker, no de la cota repuesta');
+{
+  // segOrig 4 (reconstruido del plano) solo puede salir en mesas de un tracker
+  // est=1. La marca por tope (eyS/eyN) que deja segEst en la mesa reparada NO
+  // es «del plano»: es una cota repuesta con geometria medida. Se mezclaron
+  // en un merge y el 3D pintaba naranja 39 filas levantadas.
+  const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'sanjose_cotas.json'), 'utf-8'));
+  const P = F.plantFromCotas(cotas, Infinity, 'all');
+  t('sanjose: las mesas con origen «del plano» son exactamente las de los trackers est', () => {
+    let del = 0, mal = 0, estSinMarca = 0;
+    for (let r = 0; r < P.segOrig.length; r++) for (let k = 0; k < P.segOrig[r].length; k++) {
+      const o = P.segOrig[r][k], e = !!(P.segTrk[r][k] && P.segTrk[r][k].est);
+      if (o === 4) { del++; if (!e) mal++; }
+      else if (e) estSinMarca++;
+    }
+    const esperadas = cotas.t.filter(x => x && x.est).reduce((a, x) => a + 2 * x.f.length, 0);
+    if (mal) throw new Error(mal + ' mesas marcadas «del plano» en trackers levantados');
+    if (estSinMarca) throw new Error(estSinMarca + ' mesas de trackers est sin la marca');
+    if (del !== esperadas) throw new Error(del + ' mesas «del plano» para ' + esperadas + ' esperadas');
+    // y las reparadas siguen siendo lo que son: 1 (una cota), 2 (las dos) o 3 (copia)
+    const c = {}; for (const l of P.segOrig) for (const v of l) c[v] = (c[v] || 0) + 1;
+    if (!(c[1] > 0 && c[2] > 0 && c[3] > 0)) throw new Error('faltan categorias de cota repuesta: ' + JSON.stringify(c));
   });
 }
 
@@ -2769,6 +3393,495 @@ console.log('v1.50 · la cota repuesta marca la MESA, no la fila');
 // este, al revés. Medido en San José: 97 tiradas al ESTE, 6 al oeste, y en
 // todas las largas 0 puntos en x_primero−6,17 y 5-6 en x_último+6,17. Ese
 // careo, y el reparto que lo aplica, van en #626.
+
+console.log('v1.52 · el tilt N-S entra en pvlib con el signo de pvlib, y la pala se mide en su base oblicua');
+{
+  /* Reportado con una planta sintética (onda senoidal E-O + pendiente
+     constante N-S): «me ponía en la posición del sol y veía sombras». Dos
+     fallos, los dos con tilt N-S y ninguno con tilt 0:
+     (1) la app mide el tilt norte-arriba-positivo y pvlib al revés (axis_tilt
+         positivo baja hacia axis_azimuth): la política backtrackeaba para el
+         terreno ESPEJO. Plano LLANO E-O a +5°: 64 % de sombra real al alba.
+     (2) el contador —y su oráculo, que copiaba el mismo álgebra— proyectaba
+         el impacto sobre la cuerda con una base oblicua (uD·vD = −sin θ·sE):
+         a 32 m del centro y θ=44° son 1,9 m de error. Plano uniforme a 5°,
+         donde pvlib es exacto: 19 % de sombra a 22° de sol, creciendo con θ.
+     Y de propina, el terreno en presets: nMin se quedaba en +∞ (solo miraba
+     PRr.segs) y el suelo era −∞ siempre; y la fila sin emisoras se saltaba
+     el marchador de terreno. */
+  const LL = [41.5763, -0.7981], DIA = Date.UTC(2026, 5, 21);
+  const mkPlano = (n, amp, tilt) => {
+    const ELEV = []; for (let i = 0; i < n; i++) ELEV.push(amp * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2))));
+    const rowTilt = new Array(n).fill(tilt), filaLen = 2 * 28 * 1.146 + 0.55;
+    return { pairs: F.pairsFromElev(ELEV, 6, rowTilt), cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17,
+             nBypass: 2, iam: 0, rowTilt, groups: null, drive: 'mono', segs: F.nsSegments(n, 'alineadas', 1, filaLen, 1.0, 1), filaLen };
+  };
+  t('pvlib recibe el tilt con SU signo: toda llamada a singleaxis/trueTrackAngle pasa por pvTilt', () => {
+    if (typeof F.pvTilt !== 'function' || F.pvTilt(5) !== -5) throw new Error('pvTilt no es la negación');
+    const fis = html.slice(html.indexOf('FÍSICA PURA'), html.indexOf('/* FIN-FÍSICA'));
+    const malos = [];
+    for (const m of fis.matchAll(/singleaxis\([^;]*?axisTilt:([^,}]+)/g)) if (!/^(pvTilt\(|0\b)/.test(m[1].trim())) malos.push(m[0].slice(0, 80));
+    for (const m of fis.matchAll(/trueTrackAngle\(([^()]*(?:\([^()]*\))?[^()]*)\)/g)) {
+      const args = m[1].split(',').map(x => x.trim());
+      if (args.length >= 3 && !/^(pvTilt\(|0$)/.test(args[2])) malos.push(m[0].slice(0, 80));
+    }
+    if (malos.length) throw new Error('llamadas a pvlib sin convertir el tilt: ' + malos.join(' | '));
+    // el mismo signo en irradiancia: la pala a θ=0 sobre eje norte-arriba mira al SUR
+    const az = F.surfaceOrient(0, F.pvTilt(5), 0).az;
+    if (Math.abs(az - 180) > 1e-6) throw new Error('pala a θ=0 con el norte arriba mira al ' + az.toFixed(1) + '°, no al sur');
+    if (Math.abs(F.surfaceOrient(0, F.pvTilt(-5), 0).az) > 1e-6) throw new Error('con el norte abajo debería mirar al norte');
+    if (Math.abs(F.surfaceOrient(30, 0, 0).az - 90) > 1e-6) throw new Error('sin tilt, θ=30 mira al este: ' + F.surfaceOrient(30, 0, 0).az);
+    // y el POA lo nota: a mediodía en el hemisferio norte la pala norte-arriba (mira al sur) recibe MÁS haz
+    const g = F.solarPos(DIA + 12 * 3600000, LL[0], LL[1]);
+    const irr = F.clearskyIneichen(g.zen, 172, 300, 3.5);
+    const bN = F.poaRow(0, 5, 0, g.zen, g.az, irr, 172, 0.2, 0.05).beam, bS = F.poaRow(0, -5, 0, g.zen, g.az, irr, 172, 0.2, 0.05).beam;
+    if (!(bN > bS * 1.02)) throw new Error(`haz a mediodía: norte-arriba ${bN.toFixed(0)} vs norte-abajo ${bS.toFixed(0)} W/m² — el signo del tilt no llega al POA`);
+  });
+  t('plano UNIFORME con tilt N-S ±5°: el backtracking de pvlib es exacto y el contador lo confirma (0 sombra, ≡ oráculo)', () => {
+    for (const tilt of [5, -5, 8]) {
+      const T = mkPlano(8, 0, tilt);
+      let n = 0;
+      for (let m = 270; m < 1440; m += 20) {
+        const g = F.solarPos(DIA + m * 60000, LL[0], LL[1]);
+        if (g.elev < 3 || g.elev > 60) continue;
+        const ang = F.anglesPairwise(g.zen, g.az, T);
+        const sh = F.shadeRows(g.zen, g.az, T, ang), ora = oracleExact(F, g.zen, g.az, T, ang);
+        for (let r = 0; r < 8; r++) {
+          if (sh[r] > 1e-3) throw new Error(`tilt ${tilt}: sombra ${(sh[r] * 100).toFixed(1)} % en la fila ${r} a ${g.elev.toFixed(1)}° de sol (θ ${ang[r].toFixed(1)}°) — pvlib es exacto aquí`);
+          if (Math.abs(sh[r] - ora[r]) > 1e-3) throw new Error(`tilt ${tilt}: contador ${sh[r]} ≠ oráculo ${ora[r]} (fila ${r}, ${g.elev.toFixed(1)}°)`);
+        }
+        n++;
+      }
+      if (n < 20) throw new Error('pocos instantes: ' + n);
+    }
+    // y el signo va en la dirección física: con el sol en el NE, el plano que
+    // SUBE hacia el norte (+5) ve el sol más bajo y backtrackea MÁS que el llano
+    const g = F.solarPos(DIA + 330 * 60000, LL[0], LL[1]);          // 05:30 UTC, sol NE a ~9°
+    const th = tl => Math.abs(F.anglesPairwise(g.zen, g.az, mkPlano(8, 0, tl))[3]);
+    if (!(th(5) < th(0) && th(0) < th(-5))) throw new Error(`θ(+5)=${th(5).toFixed(1)} θ(0)=${th(0).toFixed(1)} θ(−5)=${th(-5).toFixed(1)}: el tilt entra con el signo cambiado`);
+  });
+  t('base OBLICUA de la pala: a θ=44° sobre tilt 5° el impacto se mide bien (contador ≡ bruto MU=64 ≡ 0)', () => {
+    const T = mkPlano(8, 0, 5);
+    const g = F.solarPos(DIA + 400 * 60000, LL[0], LL[1]);          // ~21,7° de sol, az 77°
+    const ang = F.anglesPairwise(g.zen, g.az, T);
+    if (!(Math.abs(ang[3]) > 35)) throw new Error('el caso quería θ grande: ' + ang[3].toFixed(1));
+    const sh = F.shadeRows(g.zen, g.az, T, ang), br = oracleBrute(F, g.zen, g.az, T, ang, 64, [3]);
+    if (sh[3] > 1e-3 || br[3] > 1e-3) throw new Error(`fila 3: contador ${(sh[3] * 100).toFixed(1)} % · bruto ${(br[3] * 100).toFixed(1)} % (era 19 % con la proyección oblicua)`);
+    if (!/d0-=pl\.kuv\*wq/.test(html)) throw new Error('el contador perdió la corrección oblicua');
+    if (!/uH\[0\]\*vHp\[0\]\+uH\[1\]\*vHp\[1\]\+uH\[2\]\*vHp\[2\]/.test(html)) throw new Error('la silueta roja perdió la corrección oblicua');
+  });
+  t('preset senoidal E-O + tilt N-S 5°: contador ≡ oráculo TODO el día, terreno y filas de borde incluidos', () => {
+    for (const [amp, tilt] of [[1.2, 5], [1.2, -5], [0.6, 3]]) {
+      const T = mkPlano(8, amp, tilt);
+      let peor = 0, borde = 0;
+      for (let m = 270; m < 1440; m += 10) {
+        const g = F.solarPos(DIA + m * 60000, LL[0], LL[1]);
+        if (g.elev <= 0.5) continue;
+        const ang = F.anglesPairwise(g.zen, g.az, T);
+        const sh = F.shadeRows(g.zen, g.az, T, ang), ora = oracleExact(F, g.zen, g.az, T, ang);
+        for (let r = 0; r < 8; r++) peor = Math.max(peor, Math.abs(sh[r] - ora[r]));
+        if (g.elev < 2 && tilt > 0) borde = Math.max(borde, sh[7], sh[0]);   // la fila de borde, tapada por la loma
+      }
+      if (peor > 1e-3) throw new Error(`amp ${amp} tilt ${tilt}: contador y oráculo difieren ${(peor * 100).toFixed(2)} pp`);
+      if (tilt > 0 && borde < 0.05) throw new Error(`amp ${amp} tilt ${tilt}: la fila de borde al alba no ve el terreno (${(borde * 100).toFixed(1)} %)`);
+    }
+  });
+}
+
+console.log('v1.53 · torsión entre vigas vecinas: el backtracking mira toda la mesa, y la sombra dice de quién viene');
+{
+  /* Ignacio, Arequipa (−16,6°, UTC −5), 21-jun, bifila quebrada, perfil N-S
+     senoidal de 3° y pendiente constante 5,14°: «los algoritmos funcionan mal,
+     ¿qué sentido tiene que el primer tracker no se tumbe?». Con tilts 0°/3°
+     alternos las vigas vecinas NO son paralelas: la vecina está 1,7 m más
+     alta en un extremo que en el centro y el pairwise, que decidía con la
+     pendiente del centro y un tilt medio, dejaba un 22-30 % de sombra a
+     07:00-07:20. Ahora el candidato de pvlib se comprueba con el ray-cast 3D
+     de la pareja y, si sombrea, se barre el ángulo con signo (pasando de
+     cero) hasta el primer θ sin sombra, con una pasada de reparación entre
+     parejas. Sin torsión no cambia ni un bit. */
+  const LL = [-16.59577, -71.80644], DIA = Date.UTC(2026, 5, 21);
+  const mkAreq = (amp, drive) => {
+    const n = 8, pitch = 6, cw = 2.382, pend = 5.14;
+    const ELEV = []; for (let i = 0; i < n; i++) ELEV.push(-i * pitch * Math.tan(pend * Math.PI / 180));
+    const rowTilt = []; for (let i = 0; i < n; i++) rowTilt.push(amp * Math.sin(2 * Math.PI * i / 4));
+    const groups = drive === 'mono' ? null : [[0, 1], [2, 3], [4, 5], [6, 7]], filaLen = 2 * 28 * 1.146 + 0.55;
+    return { pairs: F.pairsFromElev(ELEV, pitch, rowTilt), cw, axisAz: 0, maxAngle: 55, gcr: cw / pitch, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt, groups, drive, segs: F.nsSegments(n, 'alineadas', 1, filaLen, 1.0, drive === 'mono' ? 1 : 2), filaLen };
+  };
+  const sol = (hLoc) => F.solarPos(DIA + (hLoc * 60 + 300) * 60000, LL[0], LL[1]);
+  t('sin torsión, pairwise es bit a bit el de siempre (pvlib en el centro y min|θ| entre parejas)', () => {
+    const T = mkAreq(0, 'quebrado');
+    for (const h of [7, 8, 10, 14, 17]) {
+      const g = sol(h);
+      const a = F.anglesPairwise(g.zen, g.az, T);
+      const th = T.pairs.map(p => F.singleaxis(g.zen, g.az, { axisTilt: F.pvTilt(p.axisTilt), axisAz: 0, maxAngle: 55, backtrack: true, gcr: T.cw / p.pitch, crossAxisTilt: p.slope }));
+      const esp = [th[0]]; for (let r = 1; r < 7; r++) esp.push(Math.abs(th[r - 1]) < Math.abs(th[r]) ? th[r - 1] : th[r]); esp.push(th[6]);
+      for (let r = 0; r < 8; r++) if (a[r] !== esp[r]) throw new Error(`${h}h fila ${r}: ${a[r]} ≠ ${esp[r]} — sin torsión el pairwise ha cambiado`);
+    }
+  });
+  t('Arequipa con torsión (senoidal 3°): el pairwise se tumba y la sombra de planos baja del 22-30 % a ≤ 3 %', () => {
+    for (const drive of ['quebrado', 'mono']) {
+      const T = mkAreq(3, drive);
+      // v1.57 (auditoría H2): el pairwise ya no pasa de la paralela al terreno en
+      // contra del sol (antes bajaba a −6° para dejar 2–3 %); ahora se queda en
+      // −2° y lo que no puede evitar dentro del rango legítimo se publica. La
+      // cota: nunca más de lo que el mejor θ UNIFORME del rango deja +1 pp
+      for (const h of [7, 7 + 20 / 60, 7 + 40 / 60, 8, 8.5]) {
+        const g = sol(h);
+        const ang = F.policyAngles('pairwise', g.zen, g.az, T, { ghi: 500, dni: 600, dhi: 80 }, 172, 0.2).angles;
+        const sh = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true, MV: 32 });
+        const mx = Math.max(...sh);
+        const [lo, hi] = F.rangoHaz(g.zen, g.az, T, 0, 0);
+        let alc = 1; for (let th = Math.ceil(lo); th <= hi; th += 1) alc = Math.min(alc, Math.max(...F.shadeBand3DAll(g.zen, g.az, T, new Array(8).fill(th), { noStruct: true, MV: 32 })));
+        if (mx > Math.max(0.03, alc + 0.01)) throw new Error(`${drive} ${h.toFixed(2)}h (sol ${g.elev.toFixed(1)}°): sombra de planos ${(mx * 100).toFixed(1)} % con θ ${ang.map(a => a.toFixed(0)).join('/')} — el mejor uniforme del rango deja ${(alc * 100).toFixed(1)} %`);
+        for (const a of ang) if (a < lo - 1e-9 || a > hi + 1e-9) throw new Error(`${drive} ${h.toFixed(2)}h: θ ${a.toFixed(1)} fuera del rango legítimo ${lo.toFixed(1)}…${hi.toFixed(1)}`);
+      }
+      // y a las 07:20 se tumba de verdad: antes 43° con 22 %, ahora cerca de 0
+      const g = sol(7 + 20 / 60);
+      const ang = F.anglesPairwise(g.zen, g.az, T);
+      if (Math.max(...ang.map(Math.abs)) > 25) throw new Error(`${drive} 07:20: sigue sin tumbarse: θ ${ang.map(a => a.toFixed(0)).join('/')}`);
+    }
+  });
+  t('el evaluador 3D por pareja (shadePair3DBand) cuenta como el contador: cara a zOff y base oblicua', () => {
+    const T = mkAreq(3, 'mono'), g = sol(7);
+    const ang = new Array(8).fill(40);
+    const ct = F.shadeBand3DAll(g.zen, g.az, T, ang, { noStruct: true, MV: 32 });
+    for (let p = 0; p < 7; p++) {
+      const b = F.shadePair3DBand(g.zen, g.az, T, ang, p, { MU: 32, MV: 32 });
+      const r = b.recv;
+      if (Math.abs(b.f - ct[r]) > 0.03) throw new Error(`pareja ${p}: evaluador ${(b.f * 100).toFixed(1)} % vs contador ${(ct[r] * 100).toFixed(1)} % en la fila ${r}`);
+    }
+  });
+  t('el contador dice DE QUIÉN viene la sombra de cada fila (out.de): emisoras y terreno, y cubre lo que cobra', () => {
+    const T = mkAreq(3, 'quebrado'), g = sol(16 + 55 / 60);           // ocaso: sol a 5° del WNW, el terreno sube al oeste
+    const ang = F.policyAngles('global', g.zen, g.az, T, { ghi: 60, dni: 200, dhi: 30 }, 172, 0.2).angles;
+    const sh = F.shadeRows(g.zen, g.az, T, ang);
+    if (!sh.de || sh.de.length !== 8) throw new Error('sin out.de');
+    let conTerreno = 0;
+    sh.de.forEach((l, r) => {
+      const suma = l.reduce((a, q) => a + q[1], 0);
+      if (sh[r] > 1e-3 && !(suma >= sh[r] - 1e-6)) throw new Error(`fila ${r}: las contribuciones (${(suma * 100).toFixed(1)} %) no cubren la sombra (${(sh[r] * 100).toFixed(1)} %)`);
+      if (sh[r] <= 1e-3 && l.length) throw new Error(`fila ${r}: atribución sin sombra`);
+      for (let i = 1; i < l.length; i++) if (l[i][1] > l[i - 1][1]) throw new Error('no va de mayor a menor');
+      for (const q of l) { if (q[0] === 'terreno') conTerreno++; else if (!(Number.isInteger(q[0]) && q[0] !== r)) throw new Error('emisora rara: ' + q[0]); }
+    });
+    if (!conTerreno) throw new Error('al ocaso con la loma al oeste ninguna fila atribuye sombra al terreno');
+  });
+}
+
+console.log('v1.55 · informe del emplazamiento');
+t('v1.55 estático: el informe existe, explica TODAS las políticas del inventario y publica sus cálculos del día', () => {
+  // «Debemos generar un informe, del emplazamiento, donde aparezca cada
+  // algoritmo, justificando su funcionamiento y lo que optimiza con cálculos»
+  if (!/id="informebtn"/.test(html)) throw new Error('falta el botón «Informe»');
+  if (!/function informeHTML\(\)/.test(html) || !/function abrirInforme\(\)/.test(html)) throw new Error('falta el generador del informe');
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const ex = ui.slice(ui.indexOf('const EXPLICA={'), ui.indexOf('function informeHTML'));
+  const keys = [...html.matchAll(/\{key:'([a-z0-9]+)',\s*nm:/g)].map(m => m[1]);
+  if (keys.length < 8) throw new Error('inventario de políticas no encontrado: ' + keys.join(','));
+  for (const k of keys) if (!new RegExp('\\n\\s*' + k + ':\\{como:').test(ex)) throw new Error('la política «' + k + '» no tiene explicación en el informe');
+  for (const k of keys) { const m = ex.match(new RegExp(k + ':\\{como:\'([^]*?)\',\\s*optimiza:\'([^]*?)\',')); if (!m || m[1].length < 80 || m[2].length < 40) throw new Error('explicación de «' + k + '» demasiado corta'); }
+  for (const lit of ['POA de planta', 'Δ vs astronómico', 'Δ vs pairwise', 'Sombra ponderada por energía', 'Minutos con sombra relevante', 'Peor fila del día', 'Horas de backtracking', 'Pérdida eléctrica Martinez', 'Tabla horaria', 'Método y límites declarados'])
+    if (!ui.includes(lit)) throw new Error('el informe no publica «' + lit + '»');
+  // ni una física nueva: el informe come dayKpis (la MISMA integral que la tabla del día)
+  const inf = ui.slice(ui.indexOf('function informeHTML'), ui.indexOf('function abrirInforme'));
+  if (!/dayKpis\(P\.key\)/.test(inf)) throw new Error('el informe no usa dayKpis: estaría calculando por su cuenta');
+  if (/poaPlant\(|shadeRows\(|policyAngles\(/.test(inf)) throw new Error('el informe recalcula física en vez de leer DAY');
+});
+
+t('v1.55 estático: el manual por FILA existe, arranca en la consigna de la escena y el slider escribe solo en la fila elegida', () => {
+  // «Manual es para modificar la posición de todos a la vez, si queremos hacer row a row???»
+  if (!/id="manrow"/.test(html)) throw new Error('falta la casilla «por fila»');
+  if (!/function manualRowsInit\(\)/.test(html) || !/function manualRowsOn\(\)/.test(html)) throw new Error('falta el estado del manual por fila');
+  if (!/manualRowSet\(\+\$\('rowsel'\)\.value\|\|0,\+\$\('manth'\)\.value\)/.test(html)) throw new Error('el slider no escribe en la fila elegida');   // v1.56: por manualRowSet (solidario con el accionamiento)
+  if (!/porFila\?Array\.from\(\{length:nR\}/.test(html)) throw new Error('sceneInstant no usa los θ por fila');
+  // v1.56: el slider habla en convención TCU (− = este) y la física al revés — se cruza por TH_DISP en los DOS sentidos
+  if (!/MANUAL_ROWS=Array\.from\(\{length:nR\},\(_,r\)=>Math\.round\(TH_DISP\*\(a\[r\]/.test(html)) throw new Error('el manual por fila no arranca en la consigna de la política de la escena (con el signo del slider)');
+});
+
+t('v1.56: el θ MANUAL cruza el signo (slider «− = este» → física θ>0 = este) en el común y en el por fila', () => {
+  // reportado con captura: slider −22°, HUD +22° y la mesa mirando al oeste
+  const sc = cuerpoFn(html, 'sceneInstant');
+  if (!sc) throw new Error('sin sceneInstant');
+  if (!/anglesManual\(nR,TH_DISP\*th,mx\)/.test(sc)) throw new Error('el θ común del slider entra a la física sin cruzar el signo');
+  if (!/TH_DISP\*\(\+\(MANUAL_ROWS\[r\]\|\|0\)\)/.test(sc)) throw new Error('el θ por fila entra a la física sin cruzar el signo');
+  // y con el cruce, de ida y vuelta: slider s ⇒ física TH_DISP·s ⇒ HUD TH_DISP·(TH_DISP·s) = s
+  const TH_DISP = -1;
+  for (const s2 of [-22, 0, 60]) if (TH_DISP * (TH_DISP * s2) !== s2) throw new Error('el cruce no es involutivo');
+});
+
+t('v1.56 render≡física: la silueta 3D toma el largo de la mesa del VIDRIO, no de todo el spin (motor/TCU asomaban 2,6 m por el morro)', () => {
+  // diagnóstico por ray-cast desde el sol: rojo visible en las mesas sur de las filas motoras, y la física decía LUZ ahí
+  const b3 = cuerpoFn(html, 'build3D');
+  if (!b3) throw new Error('sin build3D');
+  if (!/mm\.isMesh&&mm\.material===glassM\)bbG\.expandByObject\(mm\)/.test(b3)) throw new Error('el bb de la silueta no se limita al vidrio');
+  if (!/const bb=bbG\.isEmpty\(\)\?new THREE\.Box3\(\)\.setFromObject\(beam\.spin\):bbG;/.test(b3)) throw new Error('sin bb del vidrio con respaldo al spin');
+});
+
+t('v1.56 render≡física: en el corte 2D la sombra al suelo cae SOBRE el terreno y el borde de entrada lo decide la geometría', () => {
+  // «Hay sombras en el aire» · «Esas sombras en los paneles son incoherentes con la del suelo y con la posición solar»
+  const ds = cuerpoFn(html, 'drawScene');
+  if (!ds) throw new Error('sin drawScene');
+  if (!/const caeAlSuelo=\(x,z\)=>/.test(ds) || !/const sombraSuelo=\(ex,ez,col,off\)=>/.test(ds)) throw new Error('la sombra al suelo no busca el terreno');
+  if (/fillRect\(Math\.min\(X\(gx\[0\]\)/.test(ds)) throw new Error('sigue la sombra a la cota del poste emisor');
+  if (!/const bordeEntrada=\(i,angs\)=>/.test(ds)) throw new Error('sin regla geométrica del borde');
+  if (/fromRight=psz>=0/.test(ds)) throw new Error('el borde sigue siendo «el lado del sol»');
+  // la regla, ejecutada: mesa de ESPALDAS al sol (sol rasante al oeste, mesa mirando al este) ⇒ entra por el borde BAJO, que es el DERECHO
+  const S = (psz) => (x, z) => x * Math.cos(psz * RAD) - z * Math.sin(psz * RAD);
+  const RAD = Math.PI / 180, hw = 1.191, psz = -87, s = S(psz);
+  const mesa = (cx, cz, th) => ({ ex: [cx - hw * Math.cos(th), cx + hw * Math.cos(th)], ez: [cz + hw * Math.sin(th), cz - hw * Math.sin(th)] });
+  const E = mesa(0, 1.6, 55 * RAD), R = mesa(6, 1.6, 55 * RAD);          // θ>0 = borde derecho ABAJO = mira al este, sol al oeste
+  const sE = [s(E.ex[0], E.ez[0]), s(E.ex[1], E.ez[1])], lo = Math.min(...sE), hi = Math.max(...sE);
+  const inL = s(R.ex[0], R.ez[0]) >= lo && s(R.ex[0], R.ez[0]) <= hi, inR = s(R.ex[1], R.ez[1]) >= lo && s(R.ex[1], R.ez[1]) <= hi;
+  if (!(inR && !inL)) throw new Error('de espaldas al sol la sombra debe entrar por el borde derecho (bajo), no por el de cara al sol');
+  const E2 = mesa(0, 1.6, -55 * RAD), R2 = mesa(6, 1.6, -55 * RAD);      // de cara al sol: entra por el izquierdo (bajo)
+  const sE2 = [s(E2.ex[0], E2.ez[0]), s(E2.ex[1], E2.ez[1])], lo2 = Math.min(...sE2), hi2 = Math.max(...sE2);
+  const inL2 = s(R2.ex[0], R2.ez[0]) >= lo2 && s(R2.ex[0], R2.ez[0]) <= hi2;
+  if (!inL2) throw new Error('de cara al sol la sombra debe entrar por el borde izquierdo (bajo)');
+});
+
+t('v1.56: el chip de pendientes avisa de la pendiente E-O en los EXTREMOS de fila que dispara el perfil N-S («las inclinaciones del 3D son exageradas»)', () => {
+  const rt = cuerpoFn(html, 'recomputeTail');
+  if (!rt || !/en extremos de fila hasta/.test(rt)) throw new Error('el chip sigue midiendo solo en el eje');
+  // la cuña, con la fórmula del terreno 3D (cota + norte·tan(tilt) por línea, interpolado en x):
+  // +6° y −6° a 97 m del centro con pitch 6 ⇒ Δz = 2·97·tan 6° = 20,4 m ⇒ 73,6° E-O
+  const RAD = Math.PI / 180, dz = 97 * Math.tan(6 * RAD) - 97 * Math.tan(-6 * RAD);
+  const pend = Math.atan2(dz, 6) / RAD;
+  if (Math.abs(pend - 73.6) > 0.2) throw new Error('la cuña de los extremos no sale de la geometría declarada: ' + pend.toFixed(1));
+});
+
+t('v1.56: el manual por fila mueve las DOS filas del tracker en bifila y una sola en monofila', () => {
+  const f = cuerpoFn(html, 'manualRowSet');
+  if (!f) throw new Error('sin manualRowSet');
+  if (!/manualRowSet\(\+\$\('rowsel'\)\.value\|\|0,\+\$\('manth'\)\.value\)/.test(html)) throw new Error('el slider no pasa por manualRowSet');
+  // la regla, ejecutada con grupos de bifila y sin ellos
+  const run = new Function('MANUAL_ROWS', 'DAY', f + '\nreturn function(r,v){manualRowSet(r,v);return MANUAL_ROWS;};');
+  const bif = run([0, 0, 0, 0], { T: { groups: [[0, 1], [2, 3]] } })(1, 30);
+  if (bif.join() !== '30,30,0,0') throw new Error('bifila: la gemela no gira con su motora: ' + bif.join());
+  const mono = run([0, 0, 0, 0], { T: { groups: null } })(1, 30);
+  if (mono.join() !== '0,30,0,0') throw new Error('monofila: se movió otra fila: ' + mono.join());
+});
+
+t('v1.56.1: al arrancar, el huso GUARDADO se corrige si no casa con el sitio guardado (Arequipa con tz 2 ⇒ −5)', () => {
+  // «¿hora local? ¿12:51 amanecen los trackers?»: el guardado traía tz 2 de antes del huso por sitio
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = ui.indexOf("const tzSitio=husoPlanta(null,$('date').value,+$('lon').value,+$('lat').value);");
+  if (i < 0) throw new Error('el arranque no compara el huso guardado con el del sitio');
+  if (!/if\(Math\.abs\(\(\+\$\('tz'\)\.value\)-tzSitio\)>1\.5\)\{_huso=null;aplicaHuso\(null\);\}/.test(ui.slice(i, i + 400))) throw new Error('no manda el sitio cuando el huso guardado se aleja más de 1,5 h');
+  // y la regla, ejecutada: Arequipa ⇒ −5 (estándar de la longitud), Zaragoza en junio ⇒ 2 (peninsular)
+  const src2 = html.slice(html.indexOf('function tzDeLongitud'), html.indexOf('function tzDeLongitud') + 200).split('\n')[0] + '\n' + cuerpoFn(ui, 'husoPlanta');
+  const H = new Function(src2 + '\nreturn husoPlanta;')();
+  if (H(null, '2026-06-21', -71.80644, -16.59577) !== -5) throw new Error('Arequipa no da −5');
+  if (H(null, '2026-06-21', -0.7981, 41.5763) !== 2) throw new Error('Zaragoza en junio no da +2');
+  if (Math.abs(2 - H(null, '2026-06-21', -71.80644, -16.59577)) <= 1.5) throw new Error('el caso reportado no dispara la corrección');
+});
+
+t('v1.56 estático: la cámara desde el sol y el haz son del 3D — en el corte 2D se esconden', () => {
+  const st = cuerpoFn(html, 'setTab');
+  if (!st || !/\$\('sunpov'\)\.style\.display=VIEW3D\?'':'none'/.test(st)) throw new Error('el botón «sol» sigue visible en 2D');
+});
+
+t('v1.55: el huso sigue al sitio — regla peninsular en su sitio, estándar de la longitud fuera («debe estar en hora local»)', () => {
+  // con Arequipa y 21-dic el cambio de fecha ponía +1 (la regla de Madrid) y a
+  // las 10:56 el sol salía «bajo horizonte»: eran las 04:56 reales
+  const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  // tzDeLongitud vive junto a localToUTCms (bloque de física); husoPlanta, en la UI
+  const src = html.slice(html.indexOf('function tzDeLongitud'), html.indexOf('function localToUTCms')) + ui.slice(ui.indexOf('function husoPlanta'), ui.indexOf('let _huso='));
+  const H = new Function(src + 'return {tzDeLongitud, husoPlanta};')();
+  if (H.tzDeLongitud(-71.80644) !== -5) throw new Error('Arequipa: ' + H.tzDeLongitud(-71.80644));
+  if (H.tzDeLongitud(-0.7981) !== 0) throw new Error('Zaragoza estándar: ' + H.tzDeLongitud(-0.7981));
+  if (H.husoPlanta(null, '2026-12-21', -71.80644, -16.6) !== -5) throw new Error('Arequipa en diciembre: ' + H.husoPlanta(null, '2026-12-21', -71.80644, -16.6));
+  if (H.husoPlanta(null, '2026-06-21', -71.80644, -16.6) !== -5) throw new Error('Arequipa en junio: sin horario de verano');
+  if (H.husoPlanta(null, '2026-06-21', -0.7981, 41.58) !== 2) throw new Error('Zaragoza en junio: CEST +2');
+  if (H.husoPlanta(null, '2026-12-21', -0.7981, 41.58) !== 1) throw new Error('Zaragoza en diciembre: CET +1');
+  if (H.husoPlanta(null, '2026-06-21', 9.6, 45.3) !== 2) throw new Error('Italia en junio: +2');
+  if (H.husoPlanta({ tzFijo: -300 }, '2026-06-21', -71.8, -16.6) !== -5) throw new Error('tzFijo del layout manda');
+  if (!/if\(id==='lon'\|\|id==='lat'\)\{_huso=null;aplicaHuso\(null\);\}/.test(ui)) throw new Error('cambiar lat/lon no arrastra el huso');
+  /* v1.57.2: el aviso comparaba con la LONGITUD CRUDA y saltaba en el sitio por
+     defecto —Zaragoza, −0,8°, España en UTC+2 en verano: «+2 no casa con
+     ≈UTC+0»—. Lo que no casaba era el criterio del aviso con el que pone el
+     huso. Ahora se compara con husoPlanta, y esto lo fija: mismo criterio en
+     los dos sitios, y el aviso sigue existiendo para el caso que sí lo merece. */
+  if (!/const tzEsp=husoPlanta\(_husoLay,c\.date,c\.lon,c\.lat\)/.test(ui)) throw new Error('el aviso del huso no usa el mismo criterio que lo asigna');
+  if (!/aquí y en esta fecha toca UTC/.test(ui)) throw new Error('la tarjeta del sol no avisa del huso incoherente');
+  // Zaragoza 21-jun con +2 NO debe avisar; con +2 en Arequipa, sí
+  if (Math.abs(2 - H.husoPlanta(null, '2026-06-21', -0.7981, 41.58)) > 1.5) throw new Error('Zaragoza en verano con UTC+2 dispara el aviso, y es el huso correcto');
+  if (Math.abs(2 - H.husoPlanta(null, '2026-06-21', -71.80644, -16.6)) <= 1.5) throw new Error('Arequipa con UTC+2 debería avisar');
+});
+
+console.log('v1.54 · quiebro en la rótula: el tracker quebrado se puede simular en presets');
+{
+  // «Debemos poder simular también tracker quebrado, que aparece en el
+  // desplegable pero la realidad es que para poder simularlo necesitamos un
+  // terreno donde las dos mesas tengan diferente inclinación». Los presets
+  // daban un tilt por VIGA; ahora el perfil «rotula» parte cada viga en sus
+  // dos mesas (sur +v, norte −v) con la misma estructura por mesa que una
+  // planta medida, y solo la QUEBRADA lo sigue.
+  const mkRot = (drive, v, nrows = 6, nsl = 'alineadas') => {
+    const groups = F.driveGroups(nrows, drive);
+    const filaLen = 2 * 28 * 1.146 + 0.55;
+    const segs = F.nsSegments(nrows, nsl, 1, filaLen, 1.0, drive === 'mono' ? 1 : 2);
+    if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
+    const ELEV = new Array(nrows).fill(0);
+    const RM = F.rotulaMesas('rotula', v, drive, segs, ELEV, groups, 0.55);
+    const rowTilt = new Array(nrows).fill(0);
+    const T = { pairs: F.pairsFromElev(ELEV, 6, rowTilt), cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 2, iam: 0.05,
+                rowTilt, groups, drive, segs: RM ? RM.segs : segs, filaLen };
+    if (RM) Object.assign(T, { segTilt: RM.segTilt, segZ: RM.segZ, segSide: RM.segSide, segMorro: RM.segMorro, segPairs: RM.segPairs, segDrive: RM.segDrive });
+    return { T, RM };
+  };
+  t('v1.54: con QUEBRADA cada viga son dos mesas a ±v, continuas en la rótula, con gemela y accionamiento; rígida, monofila y v=0 no cambian nada', () => {
+    const { T, RM } = mkRot('quebrado', 4);
+    if (!RM) throw new Error('la quebrada no recibe el perfil por mesa');
+    for (let r = 0; r < 6; r++) {
+      if (T.segs[r].length !== 2) throw new Error('la viga ' + r + ' no se parte en dos mesas: ' + T.segs[r].length);
+      if (Math.abs(T.segTilt[r][0] - 4) > 1e-9 || Math.abs(T.segTilt[r][1] + 4) > 1e-9) throw new Error('tilts por mesa ' + T.segTilt[r]);
+      // la cota de cada mesa es SU tilt (la misma regla que plantFromCotas: atan2(Δz, Δs))
+      for (let k = 0; k < 2; k++) {
+        const sg = T.segs[r][k], z = T.segZ[r][k], esp = Math.atan2(z[1] - z[0], sg[1] - sg[0]) * 180 / Math.PI;
+        if (Math.abs(esp - T.segTilt[r][k]) > 1e-9) throw new Error(`mesa ${r}/${k}: tilt ${T.segTilt[r][k]} ≠ ${esp} de sus cotas`);
+      }
+      // continuidad en la rótula: los dos extremos interiores están a la misma cota (loma: por debajo de la rótula medio hueco)
+      if (Math.abs(T.segZ[r][0][1] - T.segZ[r][1][0]) > 1e-9) throw new Error('la viga ' + r + ' no es continua en la rótula');
+      if (!(T.segZ[r][0][1] < T.segMorro[r][0][1])) throw new Error('con v>0 la rótula tiene que ser el punto alto (loma)');
+      if (T.segSide[r][0] !== 0 || T.segSide[r][1] !== 1) throw new Error('lados sur/norte mal');
+    }
+    // gemelas mesa a mesa y UN motor por tracker con sus cuatro mesas
+    if (T.segPairs.length !== 3 * 2) throw new Error('parejas gemelas: ' + T.segPairs.length);
+    if (T.segDrive.length !== 3 || T.segDrive.some(g => g.length !== 4)) throw new Error('accionamiento: ' + JSON.stringify(T.segDrive));
+    for (const drive of ['bifila', 'mono']) if (mkRot(drive, 4).RM) throw new Error(drive + ' no puede seguir el quiebro (tubo recto)');
+    if (mkRot('quebrado', 0).RM) throw new Error('con v=0 no hay quiebro que seguir');
+    // vaguada: v<0 ⇒ la rótula es el punto bajo
+    const { T: Tv } = mkRot('quebrado', -4);
+    if (!(Tv.segZ[0][0][1] > Tv.segMorro[0][0][1])) throw new Error('con v<0 la rótula tiene que ser el punto bajo (vaguada)');
+  });
+  t('v1.54: con el quiebro, contador ≡ oráculo (planos y estructura) y las políticas por mesa dan θ COMÚN a las cuatro mesas del tracker', () => {
+    const { T } = mkRot('quebrado', 4);
+    const doy = 172, lat = 41.5763, lon = -0.7981;
+    let peor = 0, nEval = 0;
+    for (const m of [6 * 60 + 30, 8 * 60, 12 * 60, 16 * 60, 19 * 60]) {
+      const g = F.solarPos(Date.UTC(2026, 5, 21) + (m - 120) * 60000, lat, lon);
+      if (g.elev <= 0) continue;
+      const irr = F.clearskyIneichen(g.zen, doy, 300, 3.5);
+      const seg = F.policyAnglesSeg('pairwise', g.zen, g.az, T, irr, doy, 0.2);
+      for (const grp of T.segDrive) { const v0 = seg[grp[0][0]][grp[0][1]]; for (const [r, k] of grp) if (Math.abs(seg[r][k] - v0) > 1e-9) throw new Error('las mesas de un tracker no van al mismo θ a las ' + m); }
+      // las mesas sur y norte tienen tilts opuestos: su θ ASTRO difiere (a mediodía, lejos del tope), el de accionamiento no
+      const ast = F.anglesAstroSeg(g.zen, g.az, T);
+      if (m === 12 * 60 && Math.abs(ast[0][0] - ast[0][1]) < 1e-6) throw new Error('astro por mesa no ve los tilts opuestos a mediodía: ' + ast[0]);
+      const ang = F.segLineMean(T, seg);
+      const sh = F.shadeRows(g.zen, g.az, T, seg), ora = oracleExact(F, g.zen, g.az, T, ang);
+      for (let r = 0; r < 6; r++) { peor = Math.max(peor, Math.abs(sh[r] - ora[r])); nEval++; }
+      // con sol alto la quebrada backtrackea sin sombra de planos
+      if (g.elev > 25) { const ns = F.shadeBand3DAll(g.zen, g.az, T, seg, { noStruct: true }); if (Math.max(...ns) > 2e-3) throw new Error('sombra de planos con sol alto: ' + Math.max(...ns) + ' a las ' + m); }
+    }
+    if (!(nEval > 0)) throw new Error('sin instantes');
+    if (peor > 1e-3) throw new Error('contador ≠ oráculo con el quiebro: ' + (peor * 100).toFixed(3) + ' pp');
+  });
+  t('v1.54 estático: el preset existe en la UI, terrain() lo reparte, y la página dice cuándo el tubo NO lo sigue', () => {
+    if (!/<option value="rotula">/.test(html)) throw new Error('falta el preset «rotula» en el desplegable');
+    if (!/rotulaMesas\(c\.nspreset,c\.axtilt,c\.drive,segs,ELEV,groups,0\.55\)/.test(html)) throw new Error('terrain() no reparte el quiebro por mesa');
+    if (!/quiebro en la rótula NO seguido/.test(html)) throw new Error('el pill no avisa de que rígida/monofila no siguen el quiebro');
+    if (/a los lados del morro/.test(html)) throw new Error('queda un «morro» visible: se llama rótula');
+  });
+}
+
+console.log('v1.53 · barrido de terrenos REDUCIDO (el grande es tools/barrido_terrenos.mjs)');
+{
+  /* «Haz un millón de pruebas con los diferentes terrenos, trackers y algoritmos».
+     El barrido grande (tools/barrido_terrenos.mjs, 40 configuraciones × 3 fechas ×
+     cada 20 min) encontró: (A) el contador podaba emisoras por alcance con 9 m
+     de altura útil a fuego y con torsión hay 13,6 m (5,5 pp contra el oráculo);
+     (B) 2.520 instantes en que pairwise/true3d/mgl dejaban sombra que un θ
+     uniforme evitaba —filas NO adyacentes (Bagnarelli, tresbolillo, ondulado) y
+     torsión— y de ahí la reparación global `repairNoShade`. Aquí, seis
+     configuraciones fijas que cubren esas familias, con los mismos invariantes. */
+  const sitios = { Z: { lat: 41.5763, lon: -0.7981, alt: 300 }, A: { lat: -16.59577, lon: -71.80644, alt: 1563 } };
+  const elevPreset = (P, v, n, pitch) => {
+    const z = new Array(n).fill(0), RAD = Math.PI / 180;
+    if (P === 'pendiente') for (let i = 0; i < n; i++) z[i] = -i * pitch * Math.tan(v * RAD);
+    else if (P === 'ondulado') for (let i = 0; i < n; i++) z[i] = v * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2)));
+    else if (P === 'valle') for (let i = 0; i < n; i++) z[i] = v * Math.abs(i - (n - 1) / 2) / ((n - 1) / 2);
+    else if (P === 'cresta') for (let i = 0; i < n; i++) z[i] = -v * Math.abs(i - (n - 1) / 2) / ((n - 1) / 2) + v;
+    return z;
+  };
+  const nsProfile = (preset, v, n) => { const out = new Array(n).fill(v);
+    if (preset === 'quebrado') for (let i = 0; i < n; i++) out[i] = i < n / 2 ? v : -v;
+    else if (preset === 'senoidal') for (let i = 0; i < n; i++) out[i] = v * Math.sin(2 * Math.PI * i / Math.max(3, Math.floor(n / 2)));
+    return out; };
+  const mk = (c) => {
+    const ELEV = elevPreset(c.tp, c.tv, c.n, 6), groups = F.driveGroups(c.n, c.drive);
+    const eff = F.effRowTilts(nsProfile(c.ns, c.nv, c.n), c.drive, groups), filaLen = 2 * 28 * 1.146 + 0.55;
+    const segs = F.nsSegments(c.n, c.nsl, c.ntrk || 1, filaLen, 1.0, c.drive === 'mono' ? 1 : 2);
+    if (groups) for (const g of groups) if (g.length === 2) segs[g[1]] = segs[g[0]].map(sg => sg.slice());
+    return { pairs: F.pairsFromElev(ELEV, 6, eff), cw: 2.382, axisAz: c.az || 0, maxAngle: 55, gcr: 2.382 / 6, z0: 0.17, nBypass: 2, iam: 0.05,
+             rowTilt: eff, groups, drive: c.drive, segs, filaLen };
+  };
+  const CFGS = [
+    { nm: 'ondulado 2 · N-S 6 · bifila · alineadas · Arequipa', tp: 'ondulado', tv: 2, ns: 'constante', nv: 6, drive: 'bifila', nsl: 'alineadas', n: 8, s: 'A' },
+    { nm: 'cresta 3 · llano N-S · mono · bagnarelli · az 15 · Arequipa', tp: 'cresta', tv: 3, ns: 'constante', nv: 0, drive: 'mono', nsl: 'bagnarelli', n: 10, az: 15, s: 'A' },
+    { nm: 'pendiente 10 · senoidal 4 · mono · medios · az 15 · Zaragoza', tp: 'pendiente', tv: 10, ns: 'senoidal', nv: 4, drive: 'mono', nsl: 'medios', n: 6, az: 15, s: 'Z' },
+    { nm: 'llano · quebrado 6 · quebrado · bagnarelli · az 15 · Zaragoza', tp: 'llano', tv: 0, ns: 'quebrado', nv: 6, drive: 'quebrado', nsl: 'bagnarelli', n: 6, az: 15, s: 'Z' },
+    { nm: 'valle 1 · quebrado 6 · mono · medios ×2 · az −20 · Arequipa', tp: 'valle', tv: 1, ns: 'quebrado', nv: 6, drive: 'mono', nsl: 'medios', ntrk: 2, n: 8, az: -20, s: 'A' },
+    { nm: 'ondulado 1.2 · N-S 3 · mono · tresbolillo · az 15 · Zaragoza', tp: 'ondulado', tv: 1.2, ns: 'constante', nv: 3, drive: 'mono', nsl: 'tresbolillo', n: 8, az: 15, s: 'Z' },
+  ];
+  const DIAS = [[Date.UTC(2026, 5, 21), 172], [Date.UTC(2026, 11, 21), 355]];
+  const filasDe = (sh, r) => { const de = sh.de && sh.de[r] ? sh.de[r] : []; return Math.min(sh[r] || 0, de.filter(q => q[0] !== 'terreno').reduce((a, q) => a + q[1], 0)); };
+  for (const c of CFGS) {
+    const T = mk(c), st = sitios[c.s];
+    t(`barrido · ${c.nm}: contador ≡ oráculo, sin-sombra ≤ 5 % de filas (o lo que ningún θ evita SIN perder energía), energía y acople`, () => {
+      let peorA = 0, peorB = null, nB = 0;
+      for (const [dia, doy] of DIAS) for (let m = 0; m < 1440; m += 40) {
+        const g = F.solarPos(dia + m * 60000, st.lat, st.lon);
+        if (g.elev <= 3) continue;
+        const irr = F.clearskyIneichen(g.zen, doy, st.alt, 3.5);
+        const ang = {};
+        for (const key of ['pairwise', 'true3d', 'mgl', 'optimal', 'optfree']) {
+          ang[key] = F.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles;
+          if (ang[key].some(a => !isFinite(a) || Math.abs(a) > 55 + 1e-6)) throw new Error(`${key}: θ fuera de rango ${ang[key]}`);
+          if (T.groups) for (const gr of T.groups) if (gr.length === 2 && Math.abs(ang[key][gr[0]] - ang[key][gr[1]]) > 1e-9) throw new Error(`${key}: el accionamiento ${gr} no va acoplado`);
+        }
+        // A
+        if (m % 120 === 0) { const sh = F.shadeRows(g.zen, g.az, T, ang.pairwise), ora = oracleExact(F, g.zen, g.az, T, ang.pairwise);
+          for (let r = 0; r < c.n; r++) peorA = Math.max(peorA, Math.abs(sh[r] - ora[r])); }
+        // B: sombra de filas con las políticas sin-sombra, contra lo alcanzable con θ uniforme
+        for (const key of ['pairwise', 'true3d', 'mgl']) {
+          const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { noStruct: true });
+          let mx = 0; for (let r = 0; r < c.n; r++) mx = Math.max(mx, filasDe(sh, r));
+          nB++;
+          if (mx > 0.05) {
+            /* v1.57.2 (cuarta auditoría): el candidato alternativo tiene que ser
+               mejor en sombra Y NO PEOR EN ENERGÍA. Medir sólo sombra óptica es
+               el vicio de toda esta auditoría metido en el banco que juzga: en
+               «valle 1 · quebrado · sol 25°», el θ uniforme que baja la sombra
+               del 32,9 % al 15,2 % publica 298,7 W/m² de planta frente a los
+               662,1 de la consigna publicada. Un banco no puede pedir que se
+               tire más de la mitad de la producción para enseñar menos sombra. */
+            let alc = 1, mejorReal = null;
+            const pPub = F.poaPlant(g.zen, g.az, T, ang[key], irr, doy, 0.2).plant;
+            const RF = F.rangosUnidad(g.zen, g.az, T);   // v1.57: lo alcanzable, dentro del rango legítimo de cada unidad de accionamiento y con la malla publicada
+            for (let th = -55; th <= 55; th += 5) {
+              const cand = RF.map(q => Math.max(q[0], Math.min(q[1], th)));
+              const s2 = F.shadeBand3DAll(g.zen, g.az, T, cand, { noStruct: true }); let m2 = 0;
+              for (let r = 0; r < c.n; r++) m2 = Math.max(m2, filasDe(s2, r));
+              alc = Math.min(alc, m2);
+              if (m2 <= Math.max(0.01, 0.5 * mx) && F.poaPlant(g.zen, g.az, T, cand, irr, doy, 0.2).plant >= pPub - 0.05   // 0,05 W/m²: empate técnico, la misma tolerancia escrita que en H y en el barrido
+                  && (mejorReal === null || m2 < mejorReal.m2)) mejorReal = { m2, th };
+            }
+            if (mejorReal && (!peorB || mx > peorB.mx)) peorB = { mx, alc: mejorReal.m2, key, elev: g.elev, m, ang: ang[key].map(a => +a.toFixed(0)) };
+          }
+        }
+        // C
+        if (irr.ghi > 5) { const P = {}; for (const key of ['pairwise', 'optimal', 'optfree']) P[key] = F.poaPlant(g.zen, g.az, T, ang[key], irr, doy, 0.2).plant;
+          if (P.optimal < P.pairwise * (1 - 1e-3) - 1e-6) throw new Error(`optimal ${P.optimal.toFixed(1)} < pairwise ${P.pairwise.toFixed(1)} a ${m} min`);
+          if (P.optfree < P.optimal * (1 - 1e-3) - 1e-6) throw new Error(`optfree ${P.optfree.toFixed(1)} < optimal ${P.optimal.toFixed(1)} a ${m} min`); }
+      }
+      if (peorA > 1e-3) throw new Error(`contador vs oráculo: ${(peorA * 100).toFixed(2)} pp`);
+      if (peorB) throw new Error(`${peorB.key} deja ${(peorB.mx * 100).toFixed(1)} % de sombra de filas a ${peorB.elev.toFixed(1)}° (min ${peorB.m}) cuando un θ uniforme baja a ${(peorB.alc * 100).toFixed(1)} % · θ ${peorB.ang.join('/')}`);
+      if (nB < 30) throw new Error('pocos instantes: ' + nB);
+    });
+  }
+}
 
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);

@@ -41,8 +41,16 @@
 
   /* Cielo claro Ineichen-Perrin. zen [grados], doy, altitud [m], turbiedad Linke.
      Devuelve {ghi, dni, dhi} en W/m². */
-  I.clearskyIneichen = function (zenDeg, doy, altM, TL) {
+  /* v1.57 (auditoría H4): el «realce de Perez» exp(0,01·am^1,8) iba SIEMPRE
+     activo y el comentario decía «el de pvlib»; pvlib lo trae APAGADO por
+     defecto (`perez_enhancement=False`) porque sobreestima con masa de aire
+     alta. A 9° de sol la DHI salía un 67 % alta y la GHI un 27 % (101/300/53
+     frente a 80/300/32 W/m² en Zaragoza 21-jun 07:30, TL 3,5, 300 m); a
+     mediodía, un 1 %. Ahora va apagado, como pvlib; `opts.perezEnhancement`
+     lo enciende a sabiendas. */
+  I.clearskyIneichen = function (zenDeg, doy, altM, TL, opts) {
     if (!(zenDeg < 90)) return { ghi: 0, dni: 0, dhi: 0 };
+    var realce = !!(opts && opts.perezEnhancement);
     var amR = I.airmassKY(zenDeg);
     /* Masa de aire ABSOLUTA: la relativa por la presión de la atmósfera estándar
        a esa altitud. Sin este factor el GHI se va casi medio por ciento. */
@@ -51,7 +59,7 @@
     var I0 = I.dniExtra(doy), cz = Math.cos(zenDeg * RAD);
     var fh1 = Math.exp(-altM / 8000), fh2 = Math.exp(-altM / 1250);
     var cg1 = 5.09e-5 * altM + 0.868, cg2 = 3.92e-5 * altM + 0.0387;
-    var ghi = cg1 * I0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (TL - 1))) * Math.exp(0.01 * Math.pow(am, 1.8));
+    var ghi = cg1 * I0 * cz * Math.exp(-cg2 * am * (fh1 + fh2 * (TL - 1))) * (realce ? Math.exp(0.01 * Math.pow(am, 1.8)) : 1);
     ghi = Math.max(0, ghi);
     var b = 0.664 + 0.163 / fh1;
     var bnci = b * I0 * Math.exp(-0.09 * am * (TL - 1));
@@ -64,12 +72,16 @@
      {tilt, az} en grados, azimut en compás (0 = norte, + al este). */
   I.surfaceOrient = function (thetaDeg, axisTilt, axisAz) {
     var tilt = Math.acos(Math.cos(thetaDeg * RAD) * Math.cos(axisTilt * RAD)) * DEG;
-    var sT = Math.sin(tilt * RAD), azd;
-    if (Math.abs(sT) < 1e-12) azd = 90;
-    else {
-      azd = Math.asin(Math.max(-1, Math.min(1, Math.sin(thetaDeg * RAD) / sT))) * DEG;
-      if (Math.abs(thetaDeg) >= 90) azd = -azd + Math.sign(thetaDeg) * 180;
-    }
+    /* pvlib calc_surface_orientation, tal cual: azimut = axis_azimuth +
+       atan2(sin θ, cos θ · sin axis_tilt). La version anterior lo sacaba con
+       asin(sin θ / sin tilt), que solo vale con axis_tilt >= 0 (cos del delta
+       siempre positivo): con el eje inclinado hacia ARRIBA en la direccion
+       del azimut (axis_tilt < 0 en el convenio de pvlib) la pala a θ=0 tiene
+       que mirar al lado contrario, y salia mirando cuesta arriba. Con
+       axis_tilt >= 0 los dos calculos coinciden bit a bit. */
+    var azd;
+    if (Math.abs(thetaDeg) < 1e-12 && Math.abs(axisTilt) < 1e-12) azd = 90;
+    else azd = Math.atan2(Math.sin(thetaDeg * RAD), Math.cos(thetaDeg * RAD) * Math.sin(axisTilt * RAD)) * DEG;
     return { tilt: tilt, az: ((axisAz + azd) % 360 + 360) % 360 };
   };
 

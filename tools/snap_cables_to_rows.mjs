@@ -1,5 +1,5 @@
 // Imanta el cableado DC (cable_pos/cable_neg) a SU VIGA DE TORSIÓN y los colectores E-W a SU ZANJA. v5
-// El seguidor es BÍFILO: cada unidad tiene DOS vigas a ±filaZ (±3 m) de su eje. La v3 imantaba al eje
+// El seguidor es una BÍFILA: cada unidad tiene DOS vigas a ±filaZ (±3 m) de su eje. La v3 imantaba al eje
 // de la unidad = el pasillo interior entre las dos filas (error señalado por el usuario). Ahora:
 //   1) cada cable se casa con SU string por proximidad de su extremo a la etiqueta Strings_numeración
 //      (elburgo_strings.json; las etiquetas están SOBRE su fila),
@@ -18,7 +18,7 @@ const STRP = new URL('../elburgo_strings.json', import.meta.url).pathname;
 const NET = JSON.parse(readFileSync(existsSync(RAWP) ? RAWP : NETP, 'utf8'));
 const LAY = JSON.parse(readFileSync(LAYP, 'utf8'));
 const STR = existsSync(STRP) ? JSON.parse(readFileSync(STRP, 'utf8')) : null;
-const FILAZ = 3.0;                                        // seguidor.js DIMS.filaZ (bífilo: vigas a ±3 m del eje de unidad)
+const FILAZ = 3.0;                                        // seguidor.js DIMS.filaZ (bífila: vigas a ±3 m del eje de unidad)
 const ROWS = LAY.trackers.map(t => ({ x: t.x, n: t.n, hl: /medio/i.test(t.t || '') ? 16 : 31 }));
 
 function nearestFila(x, n0, n1) {                          // viga más cercana con solape en N (fallback sin etiqueta)
