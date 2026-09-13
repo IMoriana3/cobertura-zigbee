@@ -132,10 +132,26 @@ t('sin banda el motor arranca en TODOS los pasos (el mutante del ahorro de desga
   // supuesto — la primera versión de este test pedía 10× y falló con razón.
   close(r.arranques / rSol.arranques, LIBRE.deadbandDeg / SOL_DEG_MIN, 0.3, 'factor de ahorro');
 });
-t('LA AFIRMACIÓN DEL COSENO: 1° de banda cuesta menos de 1e-4 de la POA directa', () => {
-  const perd = rSol.errs.reduce((s, e) => s + (1 - Math.cos(e * Math.PI / 180)), 0) / rSol.errs.length;
-  ok(perd < 1e-4, `pérdida relativa media ${perd.toExponential(2)}`);
-  ok(perd > 1e-6, 'si sale cero, el desalineo no se está aplicando a nada');
+t('LA AFIRMACIÓN DEL COSENO, contra la fórmula: la pérdida media es b²/6 (radianes)', () => {
+  // Con el error repartido uniforme en [0, banda] —que es lo que deja la sierra cuando el ciclo es
+  // fino— la media de 1−cos(e) vale b²/6. Se muestrea A NIVEL DE CICLO: muestrear al paso de
+  // integración da una sierra aliased (con banda 1° y paso 1 min solo salen las fases 0,25/0,5/0,75
+  // y la media se queda un 35 % corta).
+  // Y ojo con la cuenta fácil: 1−cos es CONVEXO, así que evaluarlo en el error MEDIO subestima
+  // (0,0038 % contra 0,0051 % con banda de 1°). Es el error que había en la tarjeta de la página.
+  for (const b of [0.5, 1, 2]) {
+    const loop = { deadbandDeg: b, slewDegS: 0.17, maxAngle: 55, modo: 'libre', cicloMin: 0.02 };
+    let th = -30, tPrev = -30, mov = false, s = 0, n = 0;
+    for (let i = 1; i <= 6000; i++) {                      // 120 min a 0,02 min por ciclo
+      const tNow = -30 + SOL_DEG_MIN * i * 0.02;
+      const r = C.execTramo(th, tPrev, tNow, 0.02, loop, false, mov);
+      th = r.theta; mov = r.moving; tPrev = tNow;
+      s += 1 - Math.cos(Math.abs(th - tNow) * Math.PI / 180); n++;
+    }
+    const media = s / n, formula = Math.pow(b * Math.PI / 180, 2) / 6;
+    if (!(Math.abs(media / formula - 1) < 0.06))
+      throw new Error(`banda ${b}°: medido ${(media*100).toFixed(4)} % contra b²/6 ${(formula*100).toFixed(4)} %`);
+  }
 });
 t('el slew no se supera en ningún paso de la traza', () => {
   let th = sol[0], tPrev = sol[0], mov = false;

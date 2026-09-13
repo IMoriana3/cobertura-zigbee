@@ -186,7 +186,9 @@ input[type=range]{accent-color:var(--live)}
         <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Un tracker no está en su consigna:
         está donde lo deja su TCU. <b>La banda muerta es el PASO del tracker</b>: no arranca hasta que el
         error la alcanza, y entonces avanza una banda. Medido en el núcleo: con banda de 1°, 60 movimientos
-        de 1,000° exactos para 60° de recorrido.</p>
+        de 1,000° exactos para 60° de recorrido. En seguimiento normal eso <b>no cuesta</b>: la pérdida
+        por coseno es b²/6 (0,005 % con banda de 1°, 0,02 % con 2°), y lo que ahorra son arranques de
+        motor. Todo el coste está en el backtracking, aquí abajo.</p>
         <div class="f">
           <label style="display:flex;align-items:center;gap:6px">
             <input id="ctrlOn" type="checkbox" style="width:auto"> Estimar con el θ <b>EJECUTADO</b></label>
@@ -210,9 +212,10 @@ input[type=range]{accent-color:var(--live)}
         MEMORIA: el θ de un minuto depende de la mañana entera, así que el día se recorre en orden. Medido en
         San José entera (9.156 mesas): avanzar el reloj cuesta lo mismo que antes (0,5 s, que es lo que ya
         costaba un instante), pero mover el tiempo <b>hacia atrás</b> rehace la mañana y son ~7 s; en Ayora,
-        0,15 s. Lo que se paga en energía no es el coseno (1° de banda son 0,004 %) sino la <b>sombra</b>: en
+        0,15 s. Lo que se paga en energía no es el coseno (1° de banda son 0,005 %) sino la <b>sombra</b>: en
         backtracking de tarde la consigna baja hacia plano y aguantar deja al tracker sobreinclinado sobre el
-        vecino. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
+        vecino. Medido en el día entero: con banda de 1°, de 1,24 % de pérdida, 1,20 % cae en horas de
+        backtracking y 0,04 % en horas de seguimiento limpio. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
         banda se muestrea más grueso que en el día: la pérdida sale del mismo lazo, pero con menos
         resolución — declarado, como el propio paso horario.</p>
       </div>

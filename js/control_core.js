@@ -5,8 +5,12 @@
    y los tests Node (tools/test_control_core.mjs).
 
    POR QUÉ IMPORTA, Y POR QUÉ NO IMPORTA POR DONDE PARECE. El deadband desalinea el panel del óptimo,
-   pero eso se paga por COSENO y es de segundo orden: con 1° de banda el desalineo medio es 0,5° y
-   cos(0,5°) = 0,99996, o sea 0,004 %. Lo que de verdad cuesta es la SOMBRA. En backtracking la
+   pero eso se paga por COSENO y es de segundo orden. La cuenta buena es la MEDIA DE LA PÉRDIDA, no la
+   pérdida del error medio: 1−cos es convexo, así que evaluarlo en el error medio se queda corto (con
+   banda de 1°, 0,0038 % contra 0,0051 % — Jensen). Con el error repartido uniforme en [0, banda] la
+   media de 1−cos(e) es b²/6 en radianes: 0,0013 % a 0,5°, 0,0051 % a 1°, 0,020 % a 2°, 0,127 % a 5°,
+   y el banco lo exige contra la fórmula, no contra una cota holgada. Lo que de verdad cuesta es la
+   SOMBRA. En backtracking la
    consigna baja hacia plano por la tarde (el ángulo que deja la sombra justo en el borde del vecino);
    si el motor no arranca, el tracker se queda MÁS inclinado que ese límite y sombrea a la fila de al
    lado, que en un string en serie es pérdida de primer orden. Por la mañana la banda juega al lado
