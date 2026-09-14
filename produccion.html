@@ -43,11 +43,47 @@ h1 .chip{font-family:var(--mono);font-size:.62rem;font-weight:400;letter-spacing
   column-rule:1px solid var(--line);text-wrap:pretty}
 .sub b{color:var(--text)}
 @media(max-width:820px){h1{font-size:1.4rem}.sub{columns:1}}
-.grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
+.grid{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start}
 @media(max-width:900px){.grid{grid-template-columns:1fr}}
+/* EL PANEL NO ARRASTRA LA PÁGINA. Once tarjetas de ajustes en una columna de 250
+   px son unos 2.500 px de alto: la escena se iba fuera de pantalla y para tocar
+   el terreno había que perder de vista lo que se estaba mirando. Ahora la columna
+   se pega arriba y hace SU propio scroll, así que el 3D no se mueve nunca. */
+.panel{position:sticky;top:10px;max-height:calc(100vh - 20px);overflow-y:auto;
+  overscroll-behavior:contain;padding-right:4px}
+.panel::-webkit-scrollbar{width:8px}
+.panel::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+@media(max-width:900px){.panel{position:static;max-height:none;overflow:visible}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
 .card h2{font-family:var(--display);font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);margin-bottom:8px}
+/* TARJETAS PLEGABLES: solo emplazamiento y geometría abiertas al entrar. Los
+   campos siguen en el DOM cerrados —cfg() los lee igual—, así que plegar no
+   cambia NI UN NÚMERO de la estimación; solo deja de pedir scroll para llegar
+   al terreno. */
+details.card{padding:0}
+details.card>summary{font-family:var(--display);font-size:.82rem;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);padding:10px 14px;cursor:pointer;
+  list-style:none;display:flex;align-items:center;gap:6px;user-select:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:'▸';margin-left:auto;font-size:.7rem;color:var(--muted-2);
+  transition:transform .12s}
+details.card[open]>summary{color:var(--text);border-bottom:1px solid var(--line)}
+details.card[open]>summary::after{transform:rotate(90deg)}
+details.card>summary:hover{color:var(--text);background:var(--panel-hi)}
+details.card>*:not(summary){margin-left:14px;margin-right:14px}
+details.card>summary+*{margin-top:10px}
+details.card>*:last-child{margin-bottom:12px}
+/* la prosa larga de la cabecera y del pie, plegada: el sitio de arriba es para
+   la planta, no para el manual */
+.plegable{border:1px solid var(--line);border-radius:8px;margin:8px 0 12px;background:var(--panel)}
+.plegable>summary{cursor:pointer;padding:7px 12px;font-size:.76rem;color:var(--muted);
+  list-style:none;user-select:none}
+.plegable>summary::-webkit-details-marker{display:none}
+.plegable>summary::before{content:'▸ ';color:var(--muted-2)}
+.plegable[open]>summary::before{content:'▾ '}
+.plegable>summary:hover{color:var(--text)}
+.plegable .sub,.plegable .nota{margin:0;padding:0 12px 10px}
 .f{margin-bottom:8px}
 .f label{display:block;font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted-2);margin-bottom:2px}
 .f input,.f select{width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);
@@ -81,6 +117,7 @@ input[type=range]{accent-color:var(--live)}
 <body>
 <div class="wrap">
   <h1>⚡ Producción 3D por string <span class="chip">POA y energía, mesa a mesa</span></h1>
+  <details class="plegable"><summary>qué es esta página, y de dónde sale cada número</summary>
   <p class="sub"><b>POA y energía por string</b>, igual para todas las plantas — ninguna es especial: cada
   string con su posición, inclinación y tilt entra al mismo motor. POA instante/Σ día/mes/año del bloque
   FÍSICA PURA del simulador (pvlib singleaxis + sombra exacta + Perez), <b>cadena DC y AC según el
@@ -89,12 +126,13 @@ input[type=range]{accent-color:var(--live)}
   nubosidad, careo contra la <b>medida real por inversor</b> y exportación CSV. Seguimiento <b>AUTO</b>
   (backtracking pairwise) o <b>MANUAL</b>. Con <b>El Burgo I</b> carga los 823 strings reales del plano
   (numeración g.i.t.s) y agrega por sus 36 inversores.</p>
+  </details>
   <div id="aviso"></div>
 
   <div class="grid">
-    <div>
-      <div class="card">
-        <h2>⊙ Emplazamiento</h2>
+    <div class="panel">
+      <details class="card" open>
+        <summary>⊙ Emplazamiento</summary>
         <div class="f"><label>Planta</label>
           <select id="plant" title="Planta ENTERA o una NCU suelta — el parque de una NCU se carga y se dibuja SOLO, sin construir nunca la planta entera (San José entera son miles de mesas). La NCU de cada tracker viene del layout (Ayora/San José: alineado 1:1 con las cotas; El Burgo: casando g.i.t con idPrevio — 4 strings sin casar solo aparecen en planta entera, declarado). Las NCUs se listan al cargar los layouts.">
             <option value="generica">Genérica (presets)</option>
@@ -127,9 +165,9 @@ input[type=range]{accent-color:var(--live)}
           </select></div>
         <div class="f"><label>Nubosidad %</label><input id="cloud" type="number" step="10" min="0" max="100" value="0"
           title="Modelo nube→irradiancia de la casa (sol.js · cloudToIrr): GHI·(1−0,70·cc), el haz muere antes —DNI·(1−cc)³— y la difusa cierra. A 0, cielo claro exacto."></div>
-      </div>
-      <div class="card" style="margin-top:12px">
-        <h2>⚙ Geometría</h2>
+            </details>
+      <details class="card" open>
+        <summary>⚙ Geometría</summary>
         <div class="row2">
           <div class="f"><label>Pitch m</label><input id="pitch" type="number" step="0.05" min="2" value="6.00"></div>
           <div class="f"><label>Ancho m</label><input id="cw" type="number" step="0.001" min="0.5" value="2.382"></div>
@@ -138,9 +176,9 @@ input[type=range]{accent-color:var(--live)}
           <div class="f"><label>θ máx °</label><input id="maxang" type="number" step="1" min="10" max="90" value="55"></div>
           <div class="f"><label>Strings</label><input id="nrows" type="number" step="1" min="2" max="24" value="10"></div>
         </div>
-      </div>
-      <div class="card" style="margin-top:12px">
-        <h2>🔌 Eléctrico (Notebook)</h2>
+            </details>
+      <details class="card">
+        <summary>🔌 Eléctrico (Notebook)</summary>
         <div class="row2">
           <div class="f"><label>Wp módulo</label><input id="wp" type="number" step="5" min="100" value="590"></div>
           <div class="f"><label>Mód/string</label><input id="mods" type="number" step="1" min="1" value="28"></div>
@@ -154,9 +192,9 @@ input[type=range]{accent-color:var(--live)}
           title="t_cell = T + 0,9·POA/(u_c + u_v·v), la fórmula PVSyst-Faiman del core (u_c=29 free-standing, u_v=0: con u_v=0 el viento no entra, como el default canónico)."></div>
         <p style="color:var(--muted-2);font-size:.68rem">La MISMA cadena DC que notebook y streamlit
         (t_cell Faiman + PVWatts γ), careada dígito a dígito contra el core en el QA.</p>
-      </div>
-      <div class="card" style="margin-top:12px">
-        <h2>🔋 Cadena AC (Notebook)</h2>
+            </details>
+      <details class="card">
+        <summary>🔋 Cadena AC (Notebook)</summary>
         <div class="row2">
           <div class="f"><label>Soiling %</label><input id="lsoil" type="number" step="0.5" min="0" value="2.0"></div>
           <div class="f"><label>Mismatch %</label><input id="lmis" type="number" step="0.5" min="0" value="2.0"></div>
@@ -179,10 +217,10 @@ input[type=range]{accent-color:var(--live)}
         <p style="color:var(--muted-2);font-size:.68rem">Pérdidas DC multiplicativas + inversor PVWatts con
         recorte a Pnom + límite de red — <b>apply_dc_losses / inverter_efficiency_curve / apply_grid_limit</b>
         de solargpt_core, careadas dígito a dígito en el QA.</p>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>⚙ Lazo de control del tracker</h2>
+      <details class="card">
+        <summary>⚙ Lazo de control del tracker</summary>
         <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Un tracker no está en su consigna:
         está donde lo deja su TCU. <b>La banda muerta es el PASO del tracker</b>: no arranca hasta que el
         error la alcanza, y entonces avanza una banda. Medido en el núcleo: con banda de 1°, 60 movimientos
@@ -200,8 +238,8 @@ input[type=range]{accent-color:var(--live)}
             title="Velocidad del actuador. 0,17 °/s es el canónico de la casa (el mismo que el simulador de difusa): 10,2°/min, de sobra para el sol —que deriva 0,25°/min— pero NO para la inversión de la mañana, que son 110° y tarda minutos. Un 0 tecleado aquí sería un tracker que se teletransporta: cae al canónico."></div>
         </div>
         <div class="row2">
-          <div class="f"><label>Ciclo TCU min</label><input id="ctrlCiclo" type="number" step="0.5" min="0.1" max="15" value="1"
-            title="Cada cuánto DECIDE la TCU. No es el paso de integración de la página: el lazo corre en ESTA rejilla con la consigna interpolada, y la integración solo lee el θ al final del tramo. Evaluarlo en la rejilla de integración hace invisible la banda —a paso horario el techo de velocidad son 612°, más que el recorrido entero del tracker— y ese fallo ya se pagó una vez en el simulador de difusa."></div>
+          <div class="f"><label>Ciclo TCU s</label><input id="ctrlCiclo" type="number" step="1" min="0.1" max="600" value="1"
+            title="Cada cuánto DECIDE la TCU, EN SEGUNDOS. La TCU real calcula cada segundo, y ese es el valor de arranque. No es el paso de integración de la página: el lazo corre en ESTA rejilla con la consigna interpolada, y la integración solo lee el θ al final del tramo. Evaluarlo en la rejilla de integración hace invisible la banda —a paso horario el techo de velocidad son 612°, más que el recorrido entero del tracker— y ese fallo ya se pagó una vez en el simulador de difusa. Y el ciclo decide si el enclavamiento ata: a 0,17°/s, en 60 s el actuador recorre 10,2° y cualquier paso cabe en un ciclo; en 1 s recorre 0,17°, así que un paso de 1° son SEIS ciclos con el motor en marcha."></div>
           <div class="f"><label>Modo</label><select id="ctrlModo" class="btn" style="width:100%"
             title="BANDA A SECAS: la TCU solo mira el error, es lo que hace la mayoría — y por la tarde, en backtracking, deja al tracker más inclinado que el límite de sombra. NO SOMBREAR: la TCU sabe que está backtrackeando y solo se permite aguantar hacia el lado que no sombrea; ahorra la sombra a costa de más arranques.">
             <option value="libre">banda a secas</option>
@@ -218,10 +256,10 @@ input[type=range]{accent-color:var(--live)}
         backtracking y 0,04 % en horas de seguimiento limpio. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
         banda se muestrea más grueso que en el día: la pérdida sale del mismo lazo, pero con menos
         resolución — declarado, como el propio paso horario.</p>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>⛰ Horizonte lejano</h2>
+      <details class="card">
+        <summary>⛰ Horizonte lejano</summary>
         <div class="f">
           <label style="display:flex;align-items:center;gap:6px">
             <input id="horon" type="checkbox" style="width:auto"> Perfil «azimut:elevación» (grados)</label>
@@ -232,10 +270,10 @@ input[type=range]{accent-color:var(--live)}
         <p style="color:var(--muted-2);font-size:.68rem">La sombra entre filas ya va con geometría exacta;
         esto es lo de FUERA de la planta. No reduce el factor de vista del cielo por el volumen del relieve
         —un cerro tapa difusa, no solo el disco—: efecto de segundo orden, declarado.</p>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>📉 Incertidumbre (P50/P90)</h2>
+      <details class="card">
+        <summary>📉 Incertidumbre (P50/P90)</summary>
         <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que se firma no es un número, es
         un <b>P90</b>: la energía que se supera nueve años de cada diez. Se compone en <b>cuadratura</b> —sumarlas
         supondría que todo sale mal a la vez, y eso no es un P90 sino un peor caso—.</p>
@@ -253,16 +291,16 @@ input[type=range]{accent-color:var(--live)}
         </div>
         <div class="f"><label>Degradación σ %/año</label><input id="udeg" type="number" step="0.05" min="0" value="0.15"
           title="Incertidumbre de la tasa de degradación. Se ACUMULA con el año estimado: en el año 1 no pesa nada y en el 25 es la que más manda."></div>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>🪟 Vidrio (IAM)</h2>
+      <details class="card">
+        <summary>🪟 Vidrio (IAM)</summary>
         <div class="f"><label>IAM b₀</label><input id="iamb0" type="number" step="0.01" min="0" max="0.5" value="0.05"
           title="Modificador de ángulo de incidencia (ASHRAE): 1 − b₀·(1/cos AOI − 1). El vidrio refleja más cuanto más oblicua entra la luz. 0,05 es el valor de libro para vidrio limpio sin texturar; 0 lo desactiva. Ya se aplicaba (fijo en 0,05) al haz, al circunsolar y —con ángulos equivalentes de Duffie-Beckman— a la difusa y al albedo; aquí se hace editable."></div>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>🔆 Bifacialidad</h2>
+      <details class="card">
+        <summary>🔆 Bifacialidad</summary>
         <div class="row2">
           <div class="f"><label>Bifacialidad φ %</label><input id="bifa" type="number" step="1" min="0" max="95" value="0"
             title="Cuánto rinde la cara de atrás respecto de la de delante, del datasheet del módulo. 0 = monofacial (y entonces esto no toca nada). Un bifacial de hoy va en 70-85 %."></div>
@@ -276,10 +314,10 @@ input[type=range]{accent-color:var(--live)}
         fracción iluminada (1−GCR). <b>No es trazado de rayos</b>: no resuelve el patrón de luz en el suelo
         ni el bloqueo de la fila de atrás — eso se recoge en la pérdida trasera, y se carea contra la medida
         real por inversor.</p>
-      </div>
+            </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>🏭 Pérdidas de planta</h2>
+      <details class="card">
+        <summary>🏭 Pérdidas de planta</summary>
         <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Lo que la cadena del Notebook no
         modela y sin lo cual esto no es una estimación de generación, sino la de un día del año 1 con la
         planta impecable. Todo a cero = exactamente la cifra de antes.</p>
@@ -309,9 +347,9 @@ input[type=range]{accent-color:var(--live)}
             title="Doce valores separados por ; — enero a diciembre. Con estación seca larga el ensuciamiento no es plano: un único % se come la estacionalidad entera. El de ejemplo es un perfil de secano (lluvia de verano austral)."
             style="font-family:var(--mono);font-size:.7rem">
         </div>
-      </div>
-      <div class="card" style="margin-top:12px">
-        <h2>⛰ Terreno</h2>
+            </details>
+      <details class="card">
+        <summary>⛰ Terreno</summary>
         <div class="f"><label>Perfil E-O</label>
           <select id="tpreset">
             <option value="llano">Llano</option>
@@ -322,7 +360,7 @@ input[type=range]{accent-color:var(--live)}
         <div class="f"><label id="tplbl">Pendiente °</label><input id="tparam" type="number" step="0.5" value="4"></div>
         <p style="color:var(--muted-2);font-size:.68rem">El terreno es lo que separa los strings: en llano
         con backtracking todos producen lo mismo (y el color lo dice).</p>
-      </div>
+            </details>
     </div>
 
     <div class="card scene-card">
@@ -394,6 +432,18 @@ input[type=range]{accent-color:var(--live)}
             <option value="1" selected>1</option><option value="2">2</option>
             <option value="5">5</option><option value="10">10</option></select></div>
           <div class="f"><label>&nbsp;</label><button class="btn" id="minbtn" style="width:100%">Calcular</button></div>
+        </div>
+        <div id="mingraf" style="margin-top:8px"></div>
+        <div id="minzoom" style="display:none;margin-top:6px;display:none">
+          <label style="font-size:.68rem;color:var(--muted-2)">ventana</label>
+          <select id="minvent" class="btn" style="margin-left:6px"
+            title="El adelanto son ±1° sobre un recorrido de 110°: en el día entero no se ve. Acércate a una ventana y aparece la sierra — el eje cruzando la consigna, por delante y por detrás.">
+            <option value="0">día entero</option>
+            <option value="120">2 h</option>
+            <option value="30" selected>30 min</option>
+            <option value="10">10 min</option>
+          </select>
+          <span id="minventc" style="font-size:.68rem;color:var(--muted-2);margin-left:8px"></span>
         </div>
         <div id="minout" style="margin-top:8px;font-family:var(--mono);font-size:.68rem;max-height:340px;overflow:auto"></div>
         <button class="btn" id="mincsv" style="margin-top:6px;display:none">⬇ CSV de la tabla</button>
@@ -1177,7 +1227,7 @@ function ctrlDe(c){
   if(!o||!o.on)return null;
   if(typeof CTRLCORE==='undefined'||!CTRLCORE)return null;   // el núcleo no cargó: la página lo dice
   return {deadbandDeg:Math.max(0,+o.db||0),slewDegS:Math.max(0,+o.slew||0),
-          cicloMin:Math.max(0,+o.cicloMin||0),maxAngle:c.maxang,
+          cicloSeg:Math.max(0,+o.cicloSeg||0),maxAngle:c.maxang,
           modo:(o.modo==='seguro')?'seguro':'libre'};
 }
 /* ¿la consigna de esta fila/mesa viene RECORTADA por sombra? Es la única
@@ -1231,31 +1281,34 @@ function instant(F,c,T,m,prev,soloAng){
   // EJECUTADO por la TCU. Sin lazo —o en el primer paso del día, sin estado
   // previo— el tracker está EN su consigna, que es la página de siempre.
   const loop=ctrlDe(c);
-  let ang=angT, segAng=segAngT, angMov=null, segMov=null, dt=0;
+  let ang=angT, segAng=segAngT, angDir=null, segDir=null, angPark=null, segPark=null, dt=0;
   // dt>=0 y no >0: si NO ha pasado tiempo, el tracker no se ha movido y su θ es
   // el de antes — NO la consigna. Con >0 el instante pintado que caía justo en
   // un paso de la rejilla se saltaba el lazo y pintaba el ideal: el θ de la
   // escena daba un salto cada 5 minutos. Lo cazó el banco de Chromium.
   if(loop&&prev&&prev.m!=null&&(dt=m-prev.m)>=0&&prev.angT){
     const seg=loop.modo==='seguro';
-    // el estado que cruza el paso son DOS cosas: el θ y el «me estoy moviendo».
+    // el estado que cruza el paso son DOS cosas: el θ y el SENTIDO en que va.
     // Sin lo segundo, un arranque que cae al final del paso se trunca y el
-    // tracker se queda a medio camino (medido en el banco del núcleo).
+    // tracker se queda a medio camino (medido en el banco del núcleo) — y el
+    // adelanto de la TCU no se podría hacer, porque al cruzar la consigna el
+    // error cambia de signo y el destino se daría la vuelta.
     const ev=CTRLCORE.execVector(prev.ang,prev.angT,angT,dt,loop,
-                                 seg?btRows(F,zen,az,T,angT):null,prev.angMov);
-    ang=ev.theta;angMov=ev.moving;
+                                 seg?btRows(F,zen,az,T,angT):null,prev.angDir,prev.angPark);
+    ang=ev.theta;angDir=ev.dir;angPark=ev.park;
     if(porMesa&&prev.segAng&&prev.segAngT){
       const bt=seg?btSegs(F,zen,az,T,segAngT):null;
-      segAng=[];segMov=[];
+      segAng=[];segDir=[];segPark=[];
       for(let r=0;r<segAngT.length;r++){
         const e=CTRLCORE.execVector(prev.segAng[r],prev.segAngT[r],segAngT[r],dt,loop,
-                                    bt?bt[r]:null,prev.segAngMov?prev.segAngMov[r]:null);
-        segAng.push(e.theta);segMov.push(e.moving);
+                                    bt?bt[r]:null,prev.segAngDir?prev.segAngDir[r]:null,
+                                    prev.segAngPark?prev.segAngPark[r]:null);
+        segAng.push(e.theta);segDir.push(e.dir);segPark.push(e.park);
       }
     }
   }
-  const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angMov:angMov,
-              segAng:segAng,segAngT:segAngT,segAngMov:segMov,lazo:!!loop};
+  const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angDir:angDir,angPark:angPark,
+              segAng:segAng,segAngT:segAngT,segAngDir:segDir,segAngPark:segPark,lazo:!!loop};
   // el cursor del instante pintado solo necesita el ESTADO para el paso
   // siguiente; la POA es lo caro y aquí no hace falta
   if(soloAng)return Object.assign(base,{rows:null,segs:null,plant:null,shade:null,wings:null});
@@ -1724,7 +1777,7 @@ function cfg(){
           // EL ALGORITMO con el que se estima (los del bt3d) y el LAZO de la TCU
           pol:$('pol').value||'pairwise',
           ctrl:{on:$('ctrlOn').checked,db:+$('ctrlDb').value,slew:+$('ctrlSlew').value,
-                cicloMin:+$('ctrlCiclo').value,modo:$('ctrlModo').value}};
+                cicloSeg:+$('ctrlCiclo').value,modo:$('ctrlModo').value}};
   if(c.plant==='elburgo'&&EB)cfgEB(c,EB);
   else if(REALES[c.plant]&&RP&&RP.key===c.plant){
     const P=RP.P;
@@ -2151,9 +2204,42 @@ function build3D(c){
     const bb=new THREE.Box3().setFromObject(R3.world);
     const ctr=bb.getCenter(new THREE.Vector3()), sz=bb.getSize(new THREE.Vector3());
     const asp=R3.cam.aspect||1.6, fov=R3.cam.fov*D2R;
-    const d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
+    let d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
     R3.ctrl.target.copy(ctr);
-    R3.cam.position.set(ctr.x+d*0.42,ctr.y+d*0.55,ctr.z+d*0.62);
+    const coloca=dd=>{R3.cam.position.set(ctr.x+dd*0.42,ctr.y+dd*0.55,ctr.z+dd*0.62);
+                      R3.cam.updateMatrixWorld();R3.cam.updateProjectionMatrix();};
+    /* AJUSTE POR PROYECCIÓN, y por eso se hace dos veces. La cuenta de arriba
+       encuadra la caja como si se mirase de frente, pero la cámara mira desde
+       arriba y de lado: la planta se proyecta APLASTADA y sobra medio lienzo de
+       cielo. Se midió en pantalla: «la pantalla es difícilmente utilizable,
+       demasiado scroll… y espacio desaprovechado arriba». Así que después de
+       colocarla se proyectan las OCHO esquinas de la caja, se mira cuánto del
+       lienzo ocupan de verdad y se acerca hasta que llenen el 88 %. Dos
+       iteraciones bastan —la proyección es casi lineal en la distancia— y se
+       ACERCA solamente: alejar por este camino podría sacar la planta del plano
+       cercano. */
+    const lleno=()=>{
+      let mx=0,my=0;
+      for(let i=0;i<8;i++){
+        const v=new THREE.Vector3(i&1?bb.min.x:bb.max.x,i&2?bb.min.y:bb.max.y,i&4?bb.min.z:bb.max.z)
+          .project(R3.cam);
+        if(!isFinite(v.x)||!isFinite(v.y))return 1;
+        mx=Math.max(mx,Math.abs(v.x));my=Math.max(my,Math.abs(v.y));
+      }
+      return Math.max(mx,my);
+    };
+    coloca(d);
+    // se itera hacia el objetivo por los DOS lados: acercando cuando sobra cielo y
+    // alejando cuando la planta se sale. La primera versión solo acercaba y se
+    // pasaba —106 % del lienzo, la planta recortada—, lo cazó el banco de Chromium.
+    const OBJ=0.86;
+    for(let it=0;it<8;it++){
+      const f=lleno();
+      if(!(f>0.02))break;                          // proyección degenerada: se deja
+      if(Math.abs(f-OBJ)<0.03)break;               // ya está
+      d=Math.max(12,d*Math.max(0.6,Math.min(1.7,f/OBJ)));
+      coloca(d);
+    }
     R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
     R3.sun.target.position.copy(ctr);
   }
@@ -2593,14 +2679,131 @@ function pintaMinuto(){
   const vis=filas.filter(f=>f[6]>0.5||Math.abs(f[4])>1e-6);
   const cab=['hora','θ* °','θ °','desal. °','sombra %','POA W/m²','P DC W','E acum Wh'];
   const th=cab.map(h=>'<th style="text-align:right;padding:1px 5px;position:sticky;top:0;background:var(--panel-2)">'+h+'</th>').join('');
+  /* EL COLOR VA EN LA SOMBRA, NO EN EL DESALINEO. Estaba al revés: se teñía la
+     columna de desalineo —que es de segundo orden, se paga por coseno y con
+     banda de 1° vale 0,0051 %— y la de sombra se quedaba en gris. La sombra es
+     de PRIMER orden en un string en serie, y está medido lo bruto que es: en
+     horas de backtracking (elevación 14,5°) desviarse +0,46° hacia el lado
+     inclinado cuesta un 35 % de la POA de la planta, mientras que el mismo
+     desvío hacia plano cuesta un 0,54 %. O sea que el desalineo no dice nada
+     por sí solo y la sombra lo dice todo: se tiñe por intensidad. */
+  const som=v=>{
+    if(!(v>0.05))return '';
+    const a=Math.min(1,v/60);                    // 60 % de sombra ya es rojo pleno
+    return ';color:'+(v>=20?'var(--bad,#f85149)':'var(--build)')+';font-weight:600'+
+           ';background:rgba(248,81,73,'+(0.06+0.20*a).toFixed(3)+')';
+  };
   const tr=vis.map(f=>'<tr>'+[f[1],n2(f[2]),n2(f[3]),n2(f[4]),n1(f[5]),n1(f[6]),n1(f[7]),n1(f[8])]
-      .map((v,i)=>'<td style="text-align:right;padding:0 5px'+(i===3&&Math.abs(f[4])>1e-6?';color:var(--build)':'')+'">'+v+'</td>').join('')+'</tr>').join('');
+      .map((v,i)=>'<td style="text-align:right;padding:0 5px'+
+        (i===4?som(f[5]):(i===3&&Math.abs(f[4])>1e-6?';color:var(--muted)':''))+'">'+v+'</td>').join('')+'</tr>').join('');
   const tot=filas.length?filas[filas.length-1][8]:0;
   $('minout').innerHTML='<div style="margin-bottom:4px;color:var(--muted-2)">string <b>S'+(rIdx+1)+
     '</b> · paso '+paso+' min · '+(lazo?'con lazo de control':'sin lazo (consigna ideal)')+
     ' · E día <b>'+(tot/1000).toFixed(2)+' kWh</b> · '+vis.length+' filas con sol de '+filas.length+
     '</div><table style="border-collapse:collapse;width:100%"><thead><tr>'+th+'</tr></thead><tbody>'+tr+'</tbody></table>';
   $('mincsv').style.display='';
+  grafMinuto();
+}
+/* ── LA GRÁFICA DEL LAZO ─────────────────────────────────────────────────────
+   «Que se vea cómo adelantamos al sol». Dos paneles con el MISMO eje de tiempo,
+   dibujados de los datos que ya calcula la tabla por minuto (MINT.filas), así
+   que no hay una segunda física: si la tabla y la gráfica no cuadran, es que una
+   de las dos está leyendo mal, y leen lo mismo.
+
+     arriba  θ CONSIGNA (línea fina) · θ EJECUTADO (escalera) · P DC del string
+     abajo   θ − θ* CON SIGNO, y las dos líneas de ±banda
+
+   EL PANEL DE ABAJO ES EL QUE CONTESTA LA PREGUNTA. El adelanto es ±1° sobre un
+   recorrido de 110°: en el eje absoluto los dos trazos son la misma línea. En el
+   residuo se ve la sierra cruzando el cero —por delante y por detrás—, que es
+   justo lo que el modelo anterior no hacía: ahí el residuo era una banda entera
+   siempre del mismo signo, y por eso la columna de desalineo salía siempre
+   negativa en pantalla. La ventana (día / 2 h / 30 / 10 min) es porque a escala
+   de día la sierra tiene miles de dientes y se ve como una mancha. */
+function grafMinuto(){
+  const g=$('mingraf'); if(!g)return;
+  if(!MINT){g.innerHTML='';$('minzoom').style.display='none';return;}
+  const {filas,rIdx,paso,lazo,c}=MINT;
+  $('minzoom').style.display='';
+  const banda=(c.ctrl&&c.ctrl.on)?Math.max(0,+c.ctrl.db||0):0;
+  // ventana centrada en la hora del reloj, o el día entero
+  const vent=+($('minvent')?$('minvent').value:0)||0;
+  const centro=+$('hour').value;
+  let sub=filas.filter(f=>f[6]>0.5||Math.abs(f[4])>1e-6);        // con sol o moviéndose
+  if(!sub.length){g.innerHTML='<div class="nota">el día no tiene sol que dibujar</div>';return;}
+  if(vent>0){
+    const lo=centro-vent/2, hi=centro+vent/2;
+    const z=sub.filter(f=>f[0]>=lo&&f[0]<=hi);
+    if(z.length>2)sub=z;
+  }
+  $('minventc').textContent=vent>0
+    ? 'centrada en '+String(Math.floor(centro/60)).padStart(2,'0')+':'+String(centro%60).padStart(2,'0')+
+      ' (mueve el reloj de la barra) · '+sub.length+' puntos'
+    : sub.length+' puntos · acércate para ver la sierra';
+  // escalas
+  const W=760, H1=150, H2=92, ML=44, MR=52, MT=8, MB=18, GAP=22;
+  const H=MT+H1+GAP+H2+MB;
+  const x0=sub[0][0], x1=sub[sub.length-1][0];
+  const X=m=>ML+(x1===x0?0:(m-x0)/(x1-x0))*(W-ML-MR);
+  const ths=sub.flatMap(f=>[f[2],f[3]]);
+  let tLo=Math.min(...ths), tHi=Math.max(...ths);
+  if(tHi-tLo<0.5){const c0=(tHi+tLo)/2;tLo=c0-0.5;tHi=c0+0.5;}
+  const mg=(tHi-tLo)*0.08; tLo-=mg; tHi+=mg;
+  const Y1=v=>MT+H1-((v-tLo)/(tHi-tLo))*H1;
+  const pHi=Math.max(1,...sub.map(f=>f[7]));
+  const YP=v=>MT+H1-(v/pHi)*H1;
+  const rLo=Math.min(-banda*1.3,...sub.map(f=>f[4]))*1.05||-1;
+  const rHi=Math.max( banda*1.3,...sub.map(f=>f[4]))*1.05|| 1;
+  const Y2=v=>MT+H1+GAP+H2-((v-rLo)/(rHi-rLo))*H2;
+  const P=(sel,y)=>sub.map((f,i)=>(i?'L':'M')+X(f[0]).toFixed(1)+' '+y(sel(f)).toFixed(1)).join(' ');
+  // el EJECUTADO en escalera: es lo que hace el hierro entre decisión y decisión
+  let esc='';
+  sub.forEach((f,i)=>{const xx=X(f[0]).toFixed(1),yy=Y1(f[3]).toFixed(1);
+    esc+= i?(' L'+xx+' '+(Y1(sub[i-1][3]).toFixed(1))+' L'+xx+' '+yy):('M'+xx+' '+yy);});
+  const rej=[], nT=5;
+  for(let i=0;i<=nT;i++){const v=tLo+(tHi-tLo)*i/nT;
+    rej.push('<line x1="'+ML+'" y1="'+Y1(v).toFixed(1)+'" x2="'+(W-MR)+'" y2="'+Y1(v).toFixed(1)+
+      '" stroke="var(--line)" stroke-width="0.5"/><text x="'+(ML-5)+'" y="'+(Y1(v)+3).toFixed(1)+
+      '" text-anchor="end" font-size="8" fill="var(--muted-2)">'+v.toFixed(1)+'</text>');}
+  const marcas=[];
+  for(let i=0;i<=4;i++){const m=x0+(x1-x0)*i/4;
+    marcas.push('<text x="'+X(m).toFixed(1)+'" y="'+(H-4)+'" text-anchor="middle" font-size="8" '+
+      'fill="var(--muted-2)">'+String(Math.floor(m/60)).padStart(2,'0')+':'+
+      String(Math.round(m)%60).padStart(2,'0')+'</text>');}
+  const bandas = banda>0
+    ? ['<line x1="'+ML+'" y1="'+Y2(banda).toFixed(1)+'" x2="'+(W-MR)+'" y2="'+Y2(banda).toFixed(1)+
+       '" stroke="var(--build)" stroke-width="0.7" stroke-dasharray="3 3"/>',
+       '<line x1="'+ML+'" y1="'+Y2(-banda).toFixed(1)+'" x2="'+(W-MR)+'" y2="'+Y2(-banda).toFixed(1)+
+       '" stroke="var(--build)" stroke-width="0.7" stroke-dasharray="3 3"/>',
+       '<text x="'+(W-MR+4)+'" y="'+(Y2(banda)+3).toFixed(1)+'" font-size="8" fill="var(--build)">+banda</text>',
+       '<text x="'+(W-MR+4)+'" y="'+(Y2(-banda)+3).toFixed(1)+'" font-size="8" fill="var(--build)">−banda</text>'].join('')
+    : '';
+  const delante=sub.filter(f=>f[4]>1e-9).length, detras=sub.filter(f=>f[4]<-1e-9).length;
+  g.innerHTML=
+    '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+
+    rej.join('')+
+    '<path d="'+P(f=>f[7],YP)+'" fill="none" stroke="var(--ok,#3fb950)" stroke-width="1" opacity="0.55"/>'+
+    '<path d="'+P(f=>f[2],Y1)+'" fill="none" stroke="#9bb0c6" stroke-width="1"/>'+
+    '<path d="'+esc+'" fill="none" stroke="var(--text)" stroke-width="1.4"/>'+
+    '<text x="'+ML+'" y="'+(MT+9)+'" font-size="9" fill="var(--muted-2)">θ °</text>'+
+    '<text x="'+(W-MR+4)+'" y="'+(MT+9)+'" font-size="9" fill="var(--ok,#3fb950)">P DC '+pHi.toFixed(0)+' W</text>'+
+    '<line x1="'+ML+'" y1="'+Y2(0).toFixed(1)+'" x2="'+(W-MR)+'" y2="'+Y2(0).toFixed(1)+
+      '" stroke="var(--line)" stroke-width="0.8"/>'+bandas+
+    '<path d="'+P(f=>f[4],Y2)+'" fill="none" stroke="var(--build)" stroke-width="1.2"/>'+
+    '<text x="'+ML+'" y="'+(MT+H1+GAP+9)+'" font-size="9" fill="var(--muted-2)">θ − θ* °</text>'+
+    marcas.join('')+
+    '</svg>'+
+    '<div class="nota" style="padding:4px 0 0">'+
+      '<b>θ*</b> consigna de la política (fina) · <b>θ</b> lo que ejecuta el tracker (escalera) · '+
+      '<b>P DC</b> del string S'+(rIdx+1)+' (verde, eje derecho) · abajo el <b>desalineo con signo</b>. '+
+      (lazo
+        ? 'Por delante <b>'+delante+'</b> puntos y por detrás <b>'+detras+'</b>: la TCU arranca cuando se '+
+          'ha quedado una banda atrás y aparca una banda MÁS ALLÁ de la consigna, así que el paso son '+
+          '2×'+banda.toFixed(2)+'° y el residuo cruza el cero. Si saliera todo de un signo, el eje estaría '+
+          'parando EN la consigna, que es lo que hacía esta página antes y lo que sigue haciendo el core.'
+        : 'El lazo está APAGADO: θ = θ* por definición y el residuo es plano a cero. Enciéndelo en la '+
+          'tarjeta «lazo de control del tracker» para ver el adelanto.')+
+    '</div>';
 }
 function csvMinuto(){
   if(!MINT)return;
@@ -2916,6 +3119,8 @@ function repaintPick(){
   const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;MINRUN++;
     if(MINT){MINT=null;if($('minout'))$('minout').innerHTML=
       '<span style="color:var(--muted-2)">La configuración ha cambiado: vuelve a calcular.</span>';
+      if($('mingraf'))$('mingraf').innerHTML='';
+      if($('minzoom'))$('minzoom').style.display='none';
       if($('mincsv'))$('mincsv').style.display='none';}};
   $('cloud').addEventListener('change',()=>{invalida();repaint();});
   for(const id of ['wp','mods','gamma','tamb','wind'])
@@ -3034,6 +3239,10 @@ function repaintPick(){
   $('csv').addEventListener('click',exportCSV);
   $('minbtn').addEventListener('click',calcMinuto);
   $('mincsv').addEventListener('click',csvMinuto);
+  // la ventana y el reloj solo REDIBUJAN: los datos son los de MINT, no se
+  // recalcula el día (mover el reloj con la tabla puesta sería carísimo)
+  if($('minvent'))$('minvent').addEventListener('change',grafMinuto);
+  $('hour').addEventListener('input',()=>{if(MINT)grafMinuto();});
   $('btncareo').addEventListener('click',runCareo);
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
