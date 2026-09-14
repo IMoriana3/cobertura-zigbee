@@ -403,6 +403,38 @@ t('un fichero que no es de esta página se rechaza DICIÉNDOLO, y no toca nada',
     throw new Error(`ha tocado el albedo (${rechazo.albedo}) con un fichero que rechazó`);
 });
 
+/* ── EL ENCUADRE: QUE LA PLANTA LLENE EL LIENZO ──────────────────────────────
+   «Espacio desaprovechado arriba.» El encuadre se calculaba como si la cámara
+   mirase de frente, y mira desde arriba y de lado: la planta se proyecta
+   aplastada y sobraba medio lienzo de cielo. Ahora se ajusta proyectando las
+   ocho esquinas de la caja. Esto lo mide EN LA PÁGINA, que es donde se veía. */
+const enc = await pg.evaluate(async () => {
+  document.getElementById('plant').value = 'generica';
+  document.getElementById('plant').dispatchEvent(new Event('change'));
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 150));
+    if (cfg().plant === 'generica' && R3 && R3.camSet) break;
+  }
+  R3.cam.updateMatrixWorld(); R3.cam.updateProjectionMatrix();
+  const bb = new THREE.Box3().setFromObject(R3.world);
+  let mx = 0, my = 0;
+  for (let i = 0; i < 8; i++) {
+    const v = new THREE.Vector3(i & 1 ? bb.min.x : bb.max.x, i & 2 ? bb.min.y : bb.max.y,
+                                i & 4 ? bb.min.z : bb.max.z).project(R3.cam);
+    mx = Math.max(mx, Math.abs(v.x)); my = Math.max(my, Math.abs(v.y));
+  }
+  return { mx, my };
+});
+
+t('la planta LLENA el lienzo: no se queda medio cielo vacío', () => {
+  const lleno = Math.max(enc.mx, enc.my);
+  if (!(lleno > 0.7))
+    throw new Error(`la escena solo ocupa el ${(lleno * 100).toFixed(0)} % del lienzo: ` +
+                    'el encuadre por proyección no está apretando');
+  if (!(lleno <= 1.02))
+    throw new Error(`la escena se sale del lienzo (${(lleno * 100).toFixed(0)} %): recorta la planta`);
+});
+
 t('no han aparecido errores de página en todo el recorrido', () => {
   if (errs.length) throw new Error(errs.slice(0, 3).join(' | '));
 });

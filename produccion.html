@@ -2203,9 +2203,42 @@ function build3D(c){
     const bb=new THREE.Box3().setFromObject(R3.world);
     const ctr=bb.getCenter(new THREE.Vector3()), sz=bb.getSize(new THREE.Vector3());
     const asp=R3.cam.aspect||1.6, fov=R3.cam.fov*D2R;
-    const d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
+    let d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
     R3.ctrl.target.copy(ctr);
-    R3.cam.position.set(ctr.x+d*0.42,ctr.y+d*0.55,ctr.z+d*0.62);
+    const coloca=dd=>{R3.cam.position.set(ctr.x+dd*0.42,ctr.y+dd*0.55,ctr.z+dd*0.62);
+                      R3.cam.updateMatrixWorld();R3.cam.updateProjectionMatrix();};
+    /* AJUSTE POR PROYECCIÓN, y por eso se hace dos veces. La cuenta de arriba
+       encuadra la caja como si se mirase de frente, pero la cámara mira desde
+       arriba y de lado: la planta se proyecta APLASTADA y sobra medio lienzo de
+       cielo. Se midió en pantalla: «la pantalla es difícilmente utilizable,
+       demasiado scroll… y espacio desaprovechado arriba». Así que después de
+       colocarla se proyectan las OCHO esquinas de la caja, se mira cuánto del
+       lienzo ocupan de verdad y se acerca hasta que llenen el 88 %. Dos
+       iteraciones bastan —la proyección es casi lineal en la distancia— y se
+       ACERCA solamente: alejar por este camino podría sacar la planta del plano
+       cercano. */
+    const lleno=()=>{
+      let mx=0,my=0;
+      for(let i=0;i<8;i++){
+        const v=new THREE.Vector3(i&1?bb.min.x:bb.max.x,i&2?bb.min.y:bb.max.y,i&4?bb.min.z:bb.max.z)
+          .project(R3.cam);
+        if(!isFinite(v.x)||!isFinite(v.y))return 1;
+        mx=Math.max(mx,Math.abs(v.x));my=Math.max(my,Math.abs(v.y));
+      }
+      return Math.max(mx,my);
+    };
+    coloca(d);
+    // se itera hacia el objetivo por los DOS lados: acercando cuando sobra cielo y
+    // alejando cuando la planta se sale. La primera versión solo acercaba y se
+    // pasaba —106 % del lienzo, la planta recortada—, lo cazó el banco de Chromium.
+    const OBJ=0.86;
+    for(let it=0;it<8;it++){
+      const f=lleno();
+      if(!(f>0.02))break;                          // proyección degenerada: se deja
+      if(Math.abs(f-OBJ)<0.03)break;               // ya está
+      d=Math.max(12,d*Math.max(0.6,Math.min(1.7,f/OBJ)));
+      coloca(d);
+    }
     R3.ctrl.update();R3.camSet=true;R3.camPlant=c.plant;
     R3.sun.target.position.copy(ctr);
   }
