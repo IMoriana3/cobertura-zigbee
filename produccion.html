@@ -1281,7 +1281,7 @@ function instant(F,c,T,m,prev,soloAng){
   // EJECUTADO por la TCU. Sin lazo —o en el primer paso del día, sin estado
   // previo— el tracker está EN su consigna, que es la página de siempre.
   const loop=ctrlDe(c);
-  let ang=angT, segAng=segAngT, angDir=null, segDir=null, dt=0;
+  let ang=angT, segAng=segAngT, angDir=null, segDir=null, angPark=null, segPark=null, dt=0;
   // dt>=0 y no >0: si NO ha pasado tiempo, el tracker no se ha movido y su θ es
   // el de antes — NO la consigna. Con >0 el instante pintado que caía justo en
   // un paso de la rejilla se saltaba el lazo y pintaba el ideal: el θ de la
@@ -1294,20 +1294,21 @@ function instant(F,c,T,m,prev,soloAng){
     // adelanto de la TCU no se podría hacer, porque al cruzar la consigna el
     // error cambia de signo y el destino se daría la vuelta.
     const ev=CTRLCORE.execVector(prev.ang,prev.angT,angT,dt,loop,
-                                 seg?btRows(F,zen,az,T,angT):null,prev.angDir);
-    ang=ev.theta;angDir=ev.dir;
+                                 seg?btRows(F,zen,az,T,angT):null,prev.angDir,prev.angPark);
+    ang=ev.theta;angDir=ev.dir;angPark=ev.park;
     if(porMesa&&prev.segAng&&prev.segAngT){
       const bt=seg?btSegs(F,zen,az,T,segAngT):null;
-      segAng=[];segDir=[];
+      segAng=[];segDir=[];segPark=[];
       for(let r=0;r<segAngT.length;r++){
         const e=CTRLCORE.execVector(prev.segAng[r],prev.segAngT[r],segAngT[r],dt,loop,
-                                    bt?bt[r]:null,prev.segAngDir?prev.segAngDir[r]:null);
-        segAng.push(e.theta);segDir.push(e.dir);
+                                    bt?bt[r]:null,prev.segAngDir?prev.segAngDir[r]:null,
+                                    prev.segAngPark?prev.segAngPark[r]:null);
+        segAng.push(e.theta);segDir.push(e.dir);segPark.push(e.park);
       }
     }
   }
-  const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angDir:angDir,
-              segAng:segAng,segAngT:segAngT,segAngDir:segDir,lazo:!!loop};
+  const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angDir:angDir,angPark:angPark,
+              segAng:segAng,segAngT:segAngT,segAngDir:segDir,segAngPark:segPark,lazo:!!loop};
   // el cursor del instante pintado solo necesita el ESTADO para el paso
   // siguiente; la POA es lo caro y aquí no hace falta
   if(soloAng)return Object.assign(base,{rows:null,segs:null,plant:null,shade:null,wings:null});

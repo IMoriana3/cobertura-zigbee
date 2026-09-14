@@ -35,11 +35,11 @@ const SOL_DEG_MIN = 0.25;                    // el sol deriva 15°/h: la escala 
 /* Recorre un día sintético con la consigna que se le pase y devuelve la traza. */
 function corre(target, loop, bt, dtMin) {
   const dt = dtMin ?? 1, exec = [], errs = [], firmados = [];
-  let th = target[0], tPrev = target[0], dir = 0, arranques = 0;
+  let th = target[0], tPrev = target[0], dir = 0, park = null, arranques = 0;
   for (let i = 1; i < target.length; i++) {
     const antes = th;
-    const r = C.execTramo(th, tPrev, target[i], dt, loop, bt ? (bt[i] ?? bt) : false, dir);
-    th = r.theta; dir = r.dir;
+    const r = C.execTramo(th, tPrev, target[i], dt, loop, bt ? (bt[i] ?? bt) : false, dir, park);
+    th = r.theta; dir = r.dir; park = r.park;
     if (Math.abs(th - antes) > 1e-9) arranques++;
     exec.push(th); errs.push(Math.abs(th - target[i]));
     firmados.push(th - target[i]);               // CON signo: el adelanto vive aquí
@@ -102,11 +102,11 @@ t('EL PASO DEL TRACKER ES DOS BANDAS, porque la TCU ADELANTA al sol', () => {
   // banda atrás y lleva el eje una banda MÁS ALLÁ de la consigna, así que cada
   // movimiento son 2·banda y hay la MITAD de arranques. La versión anterior paraba
   // en la consigna: pasos de una banda, y el error siempre del mismo signo.
-  let th = sol[0], tPrev = sol[0], dir = 0, saltos = [];
+  let th = sol[0], tPrev = sol[0], dir = 0, park = null, saltos = [];
   for (let i = 1; i < sol.length; i++) {
     const antes = th;
-    const r = C.execTramo(th, tPrev, sol[i], 1, LIBRE, false, dir);
-    th = r.theta; dir = r.dir; tPrev = sol[i];
+    const r = C.execTramo(th, tPrev, sol[i], 1, LIBRE, false, dir, park);
+    th = r.theta; dir = r.dir; park = r.park; tPrev = sol[i];
     if (Math.abs(th - antes) > 1e-9) saltos.push(Math.abs(th - antes));
   }
   eq(saltos.length, 30, 'un paso por DOS bandas recorridas');
@@ -133,13 +133,13 @@ t('con OTRA banda, el paso es la OTRA banda (no hay 1° escondido)', () => {
   // parte entre dos tramos —con estos números, SIEMPRE, porque 2,5 = 10 × 0,25— y se medía 1,02°,
   // que es la velocidad del actuador. El paso se cierra cuando el motor SE PARA.
   const L2 = { ...LIBRE, deadbandDeg: 2.5, cicloSeg: 6 };
-  let th = -30, tPrev = -30, dir = 0, pasos = [], acc = 0;
+  let th = -30, tPrev = -30, dir = 0, park = null, pasos = [], acc = 0;
   for (let i = 1; i <= 2400; i++) {
     const tNow = -30 + SOL_DEG_MIN * i * 0.1;
-    const r = C.execTramo(th, tPrev, tNow, 0.1, L2, false, dir);
+    const r = C.execTramo(th, tPrev, tNow, 0.1, L2, false, dir, park);
     acc += Math.abs(r.theta - th); th = r.theta; tPrev = tNow;
     if (dir && !r.dir && acc > 1e-9) { pasos.push(acc); acc = 0; }
-    dir = r.dir;
+    dir = r.dir; park = r.park;
   }
   ok(pasos.length > 7, `pocos pasos cerrados: ${pasos.length}`);
   for (const d of pasos) close(d, 2 * L2.deadbandDeg, 0.3, 'el paso tiene que seguir a DOS bandas');
@@ -170,11 +170,11 @@ t('LA AFIRMACIÓN DEL COSENO, contra la fórmula: la pérdida media es b²/6 (ra
   // (0,0038 % contra 0,0051 % con banda de 1°). Es el error que había en la tarjeta de la página.
   for (const b of [0.5, 1, 2]) {
     const loop = { deadbandDeg: b, slewDegS: 0.17, maxAngle: 55, modo: 'libre', cicloSeg: 1.2 };
-    let th = -30, tPrev = -30, dir = 0, s = 0, n = 0;
+    let th = -30, tPrev = -30, dir = 0, park = null, s = 0, n = 0;
     for (let i = 1; i <= 6000; i++) {                      // 120 min a 0,02 min por ciclo
       const tNow = -30 + SOL_DEG_MIN * i * 0.02;
-      const r = C.execTramo(th, tPrev, tNow, 0.02, loop, false, dir);
-      th = r.theta; dir = r.dir; tPrev = tNow;
+      const r = C.execTramo(th, tPrev, tNow, 0.02, loop, false, dir, park);
+      th = r.theta; dir = r.dir; park = r.park; tPrev = tNow;
       s += 1 - Math.cos(Math.abs(th - tNow) * Math.PI / 180); n++;
     }
     const media = s / n, formula = Math.pow(b * Math.PI / 180, 2) / 6;
@@ -183,10 +183,10 @@ t('LA AFIRMACIÓN DEL COSENO, contra la fórmula: la pérdida media es b²/6 (ra
   }
 });
 t('el slew no se supera en ningún paso de la traza', () => {
-  let th = sol[0], tPrev = sol[0], dir = 0;
+  let th = sol[0], tPrev = sol[0], dir = 0, park = null;
   for (let i = 1; i < sol.length; i++) {
     const antes = th;
-    const r = C.execTramo(th, tPrev, sol[i], 1, LIBRE, false, dir); th = r.theta; dir = r.dir;
+    const r = C.execTramo(th, tPrev, sol[i], 1, LIBRE, false, dir, park); th = r.theta; dir = r.dir; park = r.park;
     tPrev = sol[i];
     ok(Math.abs(th - antes) <= LIBRE.slewDegS * 60 + 1e-9, `paso ${i}: ${Math.abs(th - antes)}°/min`);
   }
@@ -321,14 +321,14 @@ t('EL CICLO DECIDE SI EL ENCLAVAMIENTO ATA, y por eso importa que sea 1 s', () =
   // cabe en uno solo. Con la banda de 1° y 0,17°/s: 1/0,17 = 5,88 → 6 ciclos.
   const dtMin = 5, subida = 6;                       // consigna que sube 6° en 5 min
   const ciclos = (cicloSeg) => {
-    let th = 0, mov = 0, arranques = 0, marchando = 0;
+    let th = 0, mov = 0, pk = null, arranques = 0, marchando = 0;
     const n = Math.round(dtMin * 60 / cicloSeg);
     for (let i = 1; i <= n; i++) {
       const antes = mov;
-      const r = C.step(th, subida * (i / n), cicloSeg, { ...LIBRE, cicloSeg }, false, mov);
+      const r = C.step(th, subida * (i / n), cicloSeg, { ...LIBRE, cicloSeg }, false, mov, pk);
       if (r.dir && !antes) arranques++;
       if (r.dir) marchando++;
-      th = r.theta; mov = r.dir;
+      th = r.theta; mov = r.dir; pk = r.park;
     }
     return { arranques, marchando, n };
   };

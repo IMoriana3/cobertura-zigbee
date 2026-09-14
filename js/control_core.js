@@ -63,7 +63,8 @@
        loop     {deadbandDeg, slewDegS, cicloSeg, maxAngle, modo}
        btLimita ¿la consigna está recortada por backtracking? — solo lo mira el modo 'seguro'
        dir      sentido en VUELO del ciclo anterior: +1, −1 o 0 (parado). Es el enclavamiento.
-     Devuelve {theta, dir}.
+       park     destino ENCLAVADO del movimiento en curso (null = parado).
+     Devuelve {theta, dir, park}.
 
      LA BANDA ARRANCA EL MOTOR, PERO NO LO PARA. Un deadband sin condición de parada no es un
      deadband: arranca al alcanzar la banda y, en cuanto el actuador recorta el error por debajo de
@@ -90,45 +91,55 @@
      cruza el error cambia de signo; recalcular el sentido en cada ciclo daría destino nuevo hacia
      atrás y el motor se pararía justo al llegar a la consigna —el adelanto no se haría nunca—. Por
      eso el estado que cruza el ciclo y el tramo es el SENTIDO (+1/−1/0), no un booleano. */
-  C.step=function(prev,target,dtSec,loop,btLimita,dir){
+  C.step=function(prev,target,dtSec,loop,btLimita,dir,park){
     var db=(loop&&loop.deadbandDeg>0)?loop.deadbandDeg:0;
     var max=(loop&&loop.maxAngle>0)?loop.maxAngle:90;
     var d=(dir>0?1:(dir<0?-1:0));
-    var err=target-prev;
+    var err=target-prev, destino;
+    if(d&&park!=null){
+      // EN VUELO hacia el destino ENCLAVADO al arrancar. No se recalcula: la TCU decide UNA vez
+      // —«vete a la consigna de ahora más una banda»— y conduce hasta ahí. Recalculándolo, con la
+      // consigna derivando el eje se queda de SEGUIDOR perpetuo una banda por delante y el paso de
+      // dos bandas no se hace nunca: medido en el core (media firmada +0,925° y ni una parada en
+      // una hora) y visible en cuanto el ciclo es largo.
+      if((park-prev)*d<=1e-12)d=0;                 // ha llegado: se para
+      else destino=park;
+    }
     if(!d){                                        // parado: ¿arranca?
       var arranca=db<=0||Math.abs(err)>=db;
       // modo 'seguro': si la consigna viene recortada por sombra y el tracker está MÁS inclinado que
       // ella, arranca aunque no llegue a la banda (aguantar ahí sombrearía al vecino)
       if(!arranca&&loop&&loop.modo==='seguro'&&btLimita&&Math.abs(prev)>Math.abs(target))arranca=true;
-      if(!arranca)return {theta:prev,dir:0};
+      if(!arranca)return {theta:prev,dir:0,park:null};
       d=err>0?1:(err<0?-1:0);
-      if(!d)return {theta:prev,dir:0};             // ya está clavado en la consigna
+      if(!d)return {theta:prev,dir:0,park:null};    // ya está clavado en la consigna
+      // EL DESTINO: la consigna adelantada una banda en el sentido de la marcha
+      destino=target+db*d;
+      // …PERO EL ADELANTO NO VALE HACIA EL LADO QUE SOMBREA. Si la consigna viene recortada por
+      // backtracking, pasarse de ella hacia MÁS inclinado sombrea al vecino por definición: el
+      // límite es el límite. En modo 'seguro' el adelanto se conserva solo cuando va hacia PLANO.
+      // Sin esto, 'seguro' dejaba de servir en cuanto la TCU adelanta: con el eje parando en la
+      // consigna la mañana se salvaba sola —el aguante caía siempre del lado plano—, y con adelanto
+      // sobreinclinaba 59 de 120 pasos. Lo cazó el banco del núcleo al cambiar la ley.
+      if(loop&&loop.modo==='seguro'&&btLimita&&Math.abs(destino)>Math.abs(target))destino=target;
     }
-    // EL DESTINO: la consigna adelantada una banda en el sentido de la marcha
-    var destino=target+db*d;
-    // …PERO EL ADELANTO NO VALE HACIA EL LADO QUE SOMBREA. Si la consigna viene recortada por
-    // backtracking, pasarse de ella hacia MÁS inclinado sombrea al vecino por definición: el
-    // límite es el límite. En modo 'seguro' el adelanto se conserva solo cuando va hacia PLANO.
-    // Sin esto, 'seguro' dejaba de servir en cuanto la TCU adelanta: con el eje parando en la
-    // consigna la mañana se salvaba sola —el aguante caía siempre del lado plano—, y con adelanto
-    // sobreinclinaba 59 de 120 pasos. Lo cazó el banco del núcleo al cambiar la ley.
-    if(loop&&loop.modo==='seguro'&&btLimita&&Math.abs(destino)>Math.abs(target))destino=target;
     // Un slew de 0 tecleado en la UI sería un actuador de velocidad infinita: el tracker se
     // teletransportaría y el deadband dejaría de tener forma de escalón. Cae al canónico.
     var th=C.slewLimit(prev,destino,dtSec,(loop&&loop.slewDegS>0)?loop.slewDegS:C.CANON.slewDegS);
     th=Math.max(-max,Math.min(max,th));
     // sigue en vuelo mientras no haya llegado a SU destino; en el tope mecánico se para
     var sigue=(destino-th)*d>1e-9&&Math.abs(th)<max-1e-9;
-    return {theta:th,dir:sigue?d:0};
+    return {theta:th,dir:sigue?d:0,park:sigue?destino:null};
   };
 
   /* Un TRAMO de integración completo: la consigna pasa de tPrev a tNow en dtMin minutos y el lazo
      corre dentro, en la rejilla del ciclo de la TCU, con la consigna interpolada linealmente (el sol
      va suave; el codo del paso backtracking→seguimiento se suaviza, y eso va declarado).
      Devuelve el θ ejecutado al FINAL del tramo, que es el que ve la integración. */
-  C.execTramo=function(prev,tPrev,tNow,dtMin,loop,btLimita,dir){
+  C.execTramo=function(prev,tPrev,tNow,dtMin,loop,btLimita,dir,park){
     var ciclo=(loop&&loop.cicloSeg>0)?loop.cicloSeg:C.CANON.cicloSeg;   // segundos
     var n=Math.max(1,Math.round(dtMin*60/ciclo)), dtS=(dtMin/n)*60, th=prev, d=(dir>0?1:(dir<0?-1:0));
+    var pk=(park==null?null:+park);
     // EL ENCLAVAMIENTO CRUZA LA FRONTERA DEL TRAMO. La primera versión lo reiniciaba en cada tramo
     // pensando que solo importaría en un movimiento que no cupiera en uno; es falso, y se midió:
     // si el arranque cae en los ÚLTIMOS ciclos del tramo, el movimiento se trunca en la frontera y
@@ -137,24 +148,24 @@
     // velocidad del actuador— en TODOS los movimientos. Así que el estado que arrastra la app son
     // dos cosas: el θ y el SENTIDO en que va (que además es lo que hace posible el adelanto).
     for(var i=1;i<=n;i++){
-      var r=C.step(th,tPrev+(tNow-tPrev)*(i/n),dtS,loop,btLimita,d);
-      th=r.theta; d=r.dir;
+      var r=C.step(th,tPrev+(tNow-tPrev)*(i/n),dtS,loop,btLimita,d,pk);
+      th=r.theta; d=r.dir; pk=r.park;
     }
-    return {theta:th,dir:d};
+    return {theta:th,dir:d,park:pk};
   };
 
   /* Lo mismo sobre un VECTOR de trackers (una consigna por fila o por mesa). Las cuatro mesas de un
      seguidor comparten motor y por tanto consigna: aplicar el lazo elemento a elemento las deja con
      el mismo θ por construcción, y la QA lo exige. prev/tPrev/tNow del mismo largo. */
-  C.execVector=function(prev,tPrev,tNow,dtMin,loop,bt,dir){
-    var th=new Array(tNow.length), dd=new Array(tNow.length);
+  C.execVector=function(prev,tPrev,tNow,dtMin,loop,bt,dir,park){
+    var th=new Array(tNow.length), dd=new Array(tNow.length), pp=new Array(tNow.length);
     for(var i=0;i<tNow.length;i++){
       var r=C.execTramo(prev[i]==null?tNow[i]:prev[i],
                         tPrev[i]==null?tNow[i]:tPrev[i],tNow[i],dtMin,loop,
-                        bt?!!bt[i]:false,dir?dir[i]:0);
-      th[i]=r.theta; dd[i]=r.dir;
+                        bt?!!bt[i]:false,dir?dir[i]:0,park?park[i]:null);
+      th[i]=r.theta; dd[i]=r.dir; pp[i]=r.park;
     }
-    return {theta:th,dir:dd};
+    return {theta:th,dir:dd,park:pp};
   };
 
   /* Desalineo del paso: lo que separa al panel de su consigna. Es la magnitud que explica la pérdida
