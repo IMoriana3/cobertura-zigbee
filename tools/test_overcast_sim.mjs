@@ -37,6 +37,19 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
   if (!/id="gcr"[^>]*value="0\.397"/.test(html)) throw new Error('GCR ≠ 0.397');
   if (!/id="maxang"[^>]*value="55"/.test(html)) throw new Error('θmáx ≠ 55');
 });
+t('el coste de maniobra está en la tabla del día, con sus tres columnas y la batería', () => {
+  for (const col of ['movimientos', 'recorrido °', 'motor Wh/día', '% batería'])
+    if (!html.includes('>' + col + '<')) throw new Error('falta la columna «' + col + '» en la tabla del día');
+  // el selector por defecto son las BANDAS: la curva no tiene término de arranque
+  // y con ella la columna de movimientos no cambiaría la factura
+  if (!/id="motmod"[\s\S]{0,120}value="bandas" selected/.test(html))
+    throw new Error('el modelo de motor por defecto no son las bandas de flota');
+  if (!/id="battwh"[\s\S]{0,120}value="153\.6" selected/.test(html))
+    throw new Error('la batería por defecto no es 153,6 Wh (6 Ah × 25,6 V)');
+  // y el CSV tiene que bajar lo mismo que enseña la pantalla, o no es auditable
+  for (const c of ['movimientos', 'motor_wh', 'motor_min', 'pct_bateria'])
+    if (!html.includes(c)) throw new Error('el CSV no exporta ' + c);
+});
 t('el GCR es readonly (derivado = ancho/pitch, regla del core: no es un input)', () => {
   if (!/id="gcr"[^>]*readonly/.test(html)) throw new Error('GCR editable');
 });
@@ -189,7 +202,9 @@ const sandbox = new Function(sol + '\n' + src + `
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           skyPresetSeries, skyNubeCorta, optimoAniso };`);
+           skyPresetSeries, skyNubeCorta, optimoAniso,
+           motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, MOTOR_MA, MOTOR_ANG,
+           TCU_IDLE_W, BATT_WH_DEF, MOVE_EPS };`);
 const F = sandbox();
 
 console.log('física (la misma QA que el botón de la página)');
@@ -307,6 +322,146 @@ t('métricas: un día overcast total tiene menos recorrido con poa_switch que la
   const mS = F.dayMetrics(day, r.theta, r.flag, F.poaSeries(day, r.theta));
   if (!(mS.travelDeg < mB.travelDeg)) throw new Error('flat no ahorra maniobra: ' + mS.travelDeg + ' vs ' + mB.travelDeg);
   if (!(mS.poaWh > mB.poaWh)) throw new Error('flat no gana POA en overcast total');
+});
+
+// ── COSTE DE MANIOBRA: movimientos, grados y batería ────────────────────────
+// El modelo de motor NO se inventa en el simulador: es medida de campo espejada
+// de solargpt_core/motor_energy.py y de gemelo-digital/sim/fisica.js. Estas
+// pruebas fijan las constantes (si el core las mueve, aquí se ve) y los dos
+// invariantes que hacen que la columna signifique algo: qué cuenta como UN
+// movimiento, y que trocear el mismo recorrido salga MÁS caro.
+console.log('coste de maniobra (motor y batería)');
+t('constantes del motor: espejan la medida de campo, no un número redondeado', () => {
+  const b = F.MOTOR_BANDAS.map(x => x.whDeg);
+  const esp = [0.2262, 0.0880, 0.0701, 0.0653];      // 14.759 maniobras, El Burgo
+  if (b.length !== 4) throw new Error('bandas: ' + b.length + ' ≠ 4');
+  b.forEach((v, i) => { if (Math.abs(v - esp[i]) > 1e-9) throw new Error('banda ' + i + ': ' + v + ' ≠ ' + esp[i]); });
+  // la curva I(θ) del ensayo, en sus dos extremos, y su tensión
+  if (F.MOTOR_MA[0] !== 1500 || F.MOTOR_MA[F.MOTOR_MA.length - 1] !== 2800)
+    throw new Error('curva I(θ): extremos ' + F.MOTOR_MA[0] + '/' + F.MOTOR_MA[F.MOTOR_MA.length - 1] + ' ≠ 1500/2800 mA');
+  if (F.MOTOR_ANG.length !== F.MOTOR_MA.length) throw new Error('curva I(θ): ángulos y corrientes descuadran');
+  if (Math.abs(F.motorW(55) - 2.8 * 24) > 1e-9) throw new Error('motorW(55°) ≠ 2800 mA × 24 V');
+  if (Math.abs(F.motorW(0) - 1.5 * 24) > 1e-9) throw new Error('motorW(0°) ≠ 1500 mA × 24 V');
+  // reposo medido (tcu.py: ni los 5 W viejos ni los 0,45 del otro módulo)
+  if (F.TCU_IDLE_W !== 0.64) throw new Error('reposo ' + F.TCU_IDLE_W + ' ≠ 0,64 W');
+  if (Math.abs(F.BATT_WH_DEF - 153.6) > 1e-9) throw new Error('batería ≠ 6 Ah × 25,6 V');
+  if (F.MOVE_EPS !== 0.05) throw new Error('ε de movimiento ' + F.MOVE_EPS + ' ≠ 0,05° (el _EPS_DEG del core)');
+});
+t('UNA RAMPA CONTIGUA ES UN MOVIMIENTO, no uno por paso de rejilla', () => {
+  // 55° a 1°/paso: el core lo dice explícito — «una rampa de 55° en pasos de 1°
+  // es UNA maniobra de 55°, no 55 maniobras de 1°». Contarlo paso a paso metería
+  // toda rampa larga en la banda cara y triplicaría la factura.
+  const th = [];
+  for (let i = 0; i <= 55; i++) th.push(i);
+  const m = F.motorMetrics(th, { slewDegS: 0.17, modelo: 'bandas' });
+  if (m.moves !== 1) throw new Error('rampa de 55°: ' + m.moves + ' movimientos, debía ser 1');
+  if (Math.abs(m.travelDeg - 55) > 1e-9) throw new Error('recorrido ' + m.travelDeg + ' ≠ 55°');
+  // y al ser UNA maniobra de 55° cae en la banda ancha, la barata
+  if (Math.abs(m.motorWh - 55 * 0.0653) > 1e-9)
+    throw new Error('no cobró la banda >5°: ' + m.motorWh + ' ≠ ' + (55 * 0.0653));
+});
+t('parar entre medias SÍ separa movimientos, y el hueco no inventa recorrido', () => {
+  const th = [0, 10, 10, 10, 20, 20, 30];      // tres tramos, dos paradas
+  const m = F.motorMetrics(th, { slewDegS: 0.17, modelo: 'bandas' });
+  if (m.moves !== 3) throw new Error('tres tramos → ' + m.moves + ' movimientos');
+  if (Math.abs(m.travelDeg - 30) > 1e-9) throw new Error('recorrido ' + m.travelDeg + ' ≠ 30°');
+});
+t('por debajo de ε (0,05°) es ruido de encoder, no una maniobra', () => {
+  const th = [0];
+  for (let i = 0; i < 200; i++) th.push(th[th.length - 1] + 0.04);   // deriva bajo ε
+  const m = F.motorMetrics(th, { slewDegS: 0.17, modelo: 'bandas' });
+  if (m.moves !== 0) throw new Error('el ruido cuenta como ' + m.moves + ' maniobras');
+  if (m.motorWh !== 0) throw new Error('el ruido consume ' + m.motorWh + ' Wh');
+});
+t('TROCEAR EL MISMO RECORRIDO CUESTA MÁS: es lo que hace que «movimientos» signifique algo', () => {
+  // mismo recorrido total (40°), repartido de dos maneras. Si el coste dependiera
+  // solo de los grados, las dos filas de la tabla saldrían iguales y la columna
+  // de movimientos sería decorativa.
+  const gordo = [0]; for (let i = 0; i < 40; i++) gordo.push(gordo[gordo.length - 1] + 1);
+  const fino = [0];
+  for (let i = 0; i < 80; i++) { const p = fino[fino.length - 1]; fino.push(p + 0.5); fino.push(p + 0.5); }
+  const a = F.motorMetrics(gordo, { slewDegS: 0.17, modelo: 'bandas' });
+  const b = F.motorMetrics(fino, { slewDegS: 0.17, modelo: 'bandas' });
+  if (Math.abs(a.travelDeg - b.travelDeg) > 1e-6)
+    throw new Error('el ensayo no compara el mismo recorrido: ' + a.travelDeg + ' vs ' + b.travelDeg);
+  if (!(b.moves > a.moves)) throw new Error('trocear no aumenta los movimientos');
+  if (!(b.motorWh > a.motorWh * 2))
+    throw new Error('trocear no encarece: ' + b.motorWh.toFixed(2) + ' vs ' + a.motorWh.toFixed(2) + ' Wh');
+  // y con la CURVA no encarece, porque no tiene término de arranque: por eso la
+  // curva está para carear con el gemelo y las bandas son las que deciden
+  const ac = F.motorMetrics(gordo, { slewDegS: 0.17, modelo: 'curva' });
+  const bc = F.motorMetrics(fino, { slewDegS: 0.17, modelo: 'curva' });
+  if (!(Math.abs(bc.motorWh - ac.motorWh) < 0.05 * ac.motorWh))
+    throw new Error('la curva I(θ) sí distingue trocear, y no debería: ' + ac.motorWh + ' vs ' + bc.motorWh);
+});
+t('las tres columnas cuadran entre sí: la energía se cobra sobre ESOS grados y ESOS arranques', () => {
+  const day = F.buildDay({ lat: 41.5763, lon: -0.7981, dateStr: '2026-06-21', tz: 2, altM: 300, TL: 3.5,
+    dtMin: 10, albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5,
+    cc: new Array(288).fill(0.95) });
+  const dayF = F.buildDay({ lat: 41.5763, lon: -0.7981, dateStr: '2026-06-21', tz: 2, altM: 300, TL: 3.5,
+    dtMin: 1, albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5,
+    cc: new Array(288).fill(0.95) });
+  const thN = F.thetaBaselineDay(day), poaN = F.poaSeries(day, thN);
+  const mp = { slewDegS: 0.17, modelo: 'bandas' };
+  for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
+    const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
+    const ex = F.execOnFineGrid(r.theta, day.dtMin, dayF.n, 1, { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 });
+    const met = F.dayMetrics(dayF, ex, r.flag.map(v => !!v), F.poaSeries(dayF, ex), mp);
+    const mm = F.motorMetrics(ex, mp);
+    // dayMetrics no puede llevar su propio bucle: si divergiera, la tabla
+    // enseñaría unos grados y cobraría otros
+    if (met.moves !== mm.moves || Math.abs(met.travelDeg - mm.travelDeg) > 1e-12 ||
+        Math.abs(met.motorWh - mm.motorWh) > 1e-12)
+      throw new Error(k + ': dayMetrics y motorMetrics discrepan');
+    // el tiempo de motor es el recorrido a la velocidad del actuador, no otra cosa
+    if (Math.abs(met.runMin - met.travelDeg / 0.17 / 60) > 1e-9)
+      throw new Error(k + ': los minutos de motor no salen del recorrido y el slew');
+    if (!(met.motorWh > 0) || !Number.isFinite(met.motorWh))
+      throw new Error(k + ': energía de motor ' + met.motorWh);
+  }
+});
+t('día despejado: ninguna política toca el motor (la primera comprobación que exige el gemelo)', () => {
+  const base = { lat: 42.82, lon: -1.60, dateStr: '2026-06-21', tz: 2, altM: 450, TL: 3.5,
+    albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, cc: new Array(288).fill(0) };
+  const day = F.buildDay({ ...base, dtMin: 10 }), dayF = F.buildDay({ ...base, dtMin: 1 });
+  const thN = F.thetaBaselineDay(day), poaN = F.poaSeries(day, thN);
+  const mp = { slewDegS: 0.17, modelo: 'bandas' }, loop = { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 };
+  const ref = F.motorMetrics(F.execOnFineGrid(thN, day.dtMin, dayF.n, 1, loop), mp);
+  for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
+    const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
+    const m = F.motorMetrics(F.execOnFineGrid(r.theta, day.dtMin, dayF.n, 1, loop), mp);
+    if (m.moves !== ref.moves || Math.abs(m.motorWh - ref.motorWh) > 1e-9)
+      throw new Error(k + ' mueve el motor con el cielo limpio: ' + m.moves + '/' + m.motorWh.toFixed(2) +
+                      ' vs ' + ref.moves + '/' + ref.motorWh.toFixed(2));
+  }
+});
+t('overcast total: TODAS las políticas de difusa ahorran motor frente a la baseline', () => {
+  const base = { lat: 42.82, lon: -1.60, dateStr: '2026-06-21', tz: 2, altM: 450, TL: 3.5,
+    albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, cc: new Array(288).fill(0.95) };
+  const day = F.buildDay({ ...base, dtMin: 10 }), dayF = F.buildDay({ ...base, dtMin: 1 });
+  const thN = F.thetaBaselineDay(day), poaN = F.poaSeries(day, thN);
+  const mp = { slewDegS: 0.17, modelo: 'bandas' }, loop = { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 };
+  const ref = F.motorMetrics(F.execOnFineGrid(thN, day.dtMin, dayF.n, 1, loop), mp);
+  for (const k of ['diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch']) {
+    const r = F.POLICIES[k](day, thN, poaN, F.DCFG_DEFAULT);
+    const m = F.motorMetrics(F.execOnFineGrid(r.theta, day.dtMin, dayF.n, 1, loop), mp);
+    if (!(m.motorWh < ref.motorWh))
+      throw new Error(k + ' gasta MÁS que no hacer nada: ' + m.motorWh.toFixed(2) + ' vs ' + ref.motorWh.toFixed(2));
+    if (!(m.travelDeg < ref.travelDeg)) throw new Error(k + ' no ahorra recorrido');
+  }
+});
+t('el modelo del ENSAYO (E₀+k·|Δθ|) no se ha copiado: aquí sería NaN, no un número', () => {
+  // solargpt_core/motor_energy.py lanza por debajo de |Δθ| = 20° y
+  // daily_motor_energy_wh devuelve NaN, porque extrapolar su término fijo a
+  // micro-maniobras se equivoca ×27. Las maniobras de este simulador son de
+  // 1-2°: si alguien trae esas constantes «para completar», esto lo caza.
+  const fis = html.slice(html.indexOf('FÍSICA PURA'), html.indexOf('/* FIN-FÍSICA'));
+  for (const c of ['2.425', '1.222', '0.0615', '0.0489']) {
+    const re = new RegExp('[^\\d.]' + c.replace('.', '\\.') + '[^\\d]');
+    if (re.test(fis)) throw new Error('constante del ensayo ' + c + ' dentro de la física: su dominio es |Δθ| ≥ 20°');
+  }
+  if (!/DOMINIO|dominio es \|Δθ\| ≥ 20°|NaN/.test(fis))
+    throw new Error('la física no declara por qué NO usa el modelo del ensayo');
 });
 
 // ── fuzz determinista: 400 configuraciones del planeta entero ───────────────
