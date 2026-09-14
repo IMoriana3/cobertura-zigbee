@@ -349,7 +349,16 @@
       de números bonitos y falsos.<br>
       <b>Reposo</b> 0,64 W = <b>15,4 Wh/día</b>, igual de día que de noche y <b>el mismo para todas las
       políticas</b>: por eso no se suma a las filas (aguaría justo la columna que las separa) pero sí
-      cuenta para dimensionar batería — es del orden del propio motor.</div>
+      cuenta para dimensionar batería — es del orden del propio motor.<br>
+      <b>Contra campo, y hasta dónde llega el aval.</b> El único careo válido es por el <b>total del
+      día</b>: en el análisis de flota la energía se integra sin máscara (19,2 Wh/día, mediana de 106
+      TCUs) pero el recorrido va enmascarado por <code>motor_state</code>, y sus 112,9° quedan
+      <b>por debajo del suelo geométrico</b> del propio día (217,3°: barrido ±55° más las dos idas al
+      stow) — o sea que no son el recorrido del seguidor, y el «0,1699 Wh/°» que sale de dividir por
+      ellos está inflado ~2×. Sobre el mismo sitio y la misma fecha, este modelo da <b>16,7 Wh a 10′ de
+      ciclo de decisión frente a 19,2 medidos (−13 %)</b>, y el día real cae dentro del abanico del
+      modelo entre 5′ (23,1) y 30′ (12,4). <b>Lo auditable es el total y la comparación entre filas;
+      el valor absoluto arrastra ±30 % según el ciclo de decisión que se suponga.</b></div>
   </div>
 
   <div class="card">
@@ -2058,7 +2067,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.20.1';
+const VER='v1.20.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -3026,7 +3035,11 @@ function drawTable(){
       '(nº de movimientos × 0,0901 Wh) + <b>giro</b> (grados × 0,0447 Wh). En la baseline de este día, '+
       mR.arranqueWh.toFixed(2)+' Wh de arranque y '+mR.giroWh.toFixed(2)+' Wh de giro. Esa es la razón de '+
       'que «movimientos» sea una columna: dos políticas del mismo recorrido se separan EXACTAMENTE en la '+
-      'parte de arranque.')+
+      'parte de arranque. <b>Pero ese reparto es del MODELO, no está validado en campo</b>: el intercepto '+
+      'se ajustó contando maniobras como rachas de <code>motor_state</code> a 11 s (145/día) y aquí se '+
+      'cuentan episodios de movimiento (decenas). Sobre el mismo día de El Burgo el campo reparte 72 % '+
+      'arranque / 28 % giro y el modelo 39 % / 61 % — <b>el total cuadra, el reparto está invertido</b>. '+
+      'Úsese el total; el desglose es para entender, no para citar.')+
     '<br><b>Ojo al leer «movimientos»</b>: no es una constante del tracker sino del <b>ciclo de control</b>. '+
     'Con este mismo día y el mismo recorrido, bajar la decisión de 30′ a 1′ lleva de <b>28 a 178 arranques</b> '+
     'y la factura de <b>12,8 a 26,2 Wh</b> — y el desglose enseña por qué: el término de giro se queda clavado '+

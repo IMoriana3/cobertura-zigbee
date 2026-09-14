@@ -437,12 +437,53 @@ t('el reparto arranque/giro cuadra con el total, y solo lo publica el modelo que
       throw new Error(modelo + ' publica un reparto arranque/giro que no tiene');
   }
 });
-t('el ajuste de flota reproduce el día que midió la flota (145 maniobras, 112,9°, 19,2 Wh)', () => {
-  // El careo que importa: el modelo por defecto contra el día REAL del que sale.
-  // 145 × 0,0901 + 112,9 × 0,0447 = 18,11 Wh frente a 19,2 medidos.
-  const wh = 145 * 0.0901 + 112.9 * 0.0447;
-  const err = Math.abs(wh / 19.2 - 1);
-  if (!(err < 0.10)) throw new Error('el ajuste se va un ' + (100 * err).toFixed(1) + ' % del día de flota');
+t('SUELO GEOMÉTRICO: el recorrido del día no puede bajar del barrido + las dos idas al stow', () => {
+  /* La comprobación que faltaba, y la que destapó que los 112,9°/día del careo
+     de flota NO son el recorrido del seguidor: están por DEBAJO de este suelo.
+     No depende de ningún modelo de motor ni de cómo se defina una maniobra —
+     es geometría: si el seguidor llega a θmín y a θmáx y aparca en el stow,
+     tiene que recorrer al menos (θmáx−θmín) + |stow−θmáx| + |θmín−stow|.
+     Sirve de red contra cualquier regresión que silenciosamente parta el
+     recorrido por la mitad, que es el error más caro de esta tabla. */
+  const B = { lat: 41.57634, lon: -0.79814, dateStr: '2026-08-16', tz: 2, altM: 250, TL: 3.5,
+    albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, dtMin: 1,
+    cc: new Array(288).fill(0) };
+  const day = F.buildDay(B);
+  const th = F.execOnFineGrid(F.thetaBaselineDay(day), 1, day.n, 1,
+                              { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 });
+  const dia = th.filter((v, i) => day.zen[i] < 90);
+  const min = Math.min(...dia), max = Math.max(...dia), stow = 5;
+  const suelo = (max - min) + Math.abs(stow - max) + Math.abs(min - stow);
+  const rec = F.motorMetrics(th, { slewDegS: 0.17 }).travelDeg;
+  if (!(rec >= suelo - 1e-6))
+    throw new Error('recorrido ' + rec.toFixed(1) + '° por debajo del suelo geométrico ' +
+                    suelo.toFixed(1) + '° (θ de ' + min.toFixed(1) + ' a ' + max.toFixed(1) + ', stow ' + stow + ')');
+  if (!(suelo > 200)) throw new Error('el suelo salió ' + suelo.toFixed(1) + '°: el día no es de seguimiento pleno');
+});
+t('careo contra el día de flota POR EL TOTAL, que es lo único no enmascarado', () => {
+  /* El careo bueno es contra los 19,2 Wh/día: en careo_motor_flota.py la energía
+     se integra sobre TODO el día (V·I·dt sin máscara), mientras que el recorrido
+     va enmascarado por motor_state — y por eso 112,9° cae bajo el suelo de
+     arriba. Comparar Wh/° contra el campo sería comparar contra un cociente con
+     el denominador incompleto. El total, mismo sitio y misma fecha, sí vale. */
+  const B = { lat: 41.57634, lon: -0.79814, dateStr: '2026-08-16', tz: 2, altM: 250, TL: 3.5,
+    albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, cc: new Array(288).fill(0) };
+  const dayF = F.buildDay({ ...B, dtMin: 1 });
+  const wh = dt => {
+    const day = F.buildDay({ ...B, dtMin: dt });
+    const ex = F.execOnFineGrid(F.thetaBaselineDay(day), dt, dayF.n, 1,
+                                { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 });
+    return F.motorMetrics(ex, { slewDegS: 0.17 }).motorWh;
+  };
+  // el día medido tiene que quedar DENTRO del abanico de ciclos de decisión
+  // plausibles de una TCU (5-30 min). Si el modelo se saliera por completo del
+  // abanico, dejaría de describir la máquina y habría que ir a buscarlo.
+  const lo = wh(30), hi = wh(5);
+  if (!(lo < 19.2 && 19.2 < hi))
+    throw new Error('19,2 Wh/día de campo fuera del abanico del modelo: ' +
+                    lo.toFixed(2) + ' (30′) … ' + hi.toFixed(2) + ' (5′)');
+  if (!(Math.abs(wh(10) / 19.2 - 1) < 0.25))
+    throw new Error('a 10′ el modelo se va un ' + (100 * Math.abs(wh(10) / 19.2 - 1)).toFixed(0) + ' % del día medido');
 });
 t('las tres columnas cuadran entre sí: la energía se cobra sobre ESOS grados y ESOS arranques', () => {
   const day = F.buildDay({ lat: 41.5763, lon: -0.7981, dateStr: '2026-06-21', tz: 2, altM: 300, TL: 3.5,
