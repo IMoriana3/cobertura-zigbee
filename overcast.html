@@ -98,7 +98,7 @@
     trae <b>días reales de Open-Meteo</b> (histórico, previsión o EN VIVO: GHI/DNI/DHI y nubosidad medidas)
     y mira qué hace cada política y cuánto POA gana o pierde — y <b>cuánto cuesta conseguirlo</b>:
     arranques de motor, grados de maniobra y vatios-hora de batería, con el modelo de motor
-    <b>medido en campo</b> (14.759 maniobras reales). La física corre offline; Open-Meteo es el
+    <b>medido en campo</b> (14.759 maniobras reales), y la factura repartida entre arrancar y girar. La física corre offline; Open-Meteo es el
     único extra online, opcional.</div>
   <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
     QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
@@ -319,7 +319,8 @@
     <div class="two">
       <div class="f"><label>Modelo de motor</label>
         <select id="motmod">
-          <option value="bandas" selected>bandas de flota (Wh/° por amplitud)</option>
+          <option value="ajuste" selected>ajuste de flota (E₀ + k·|Δθ|)</option>
+          <option value="bandas">bandas de flota (Wh/° por amplitud)</option>
           <option value="curva">curva I(θ) medida (24 V)</option>
         </select></div>
       <div class="f"><label>Batería Wh</label>
@@ -329,15 +330,19 @@
         </select></div>
     </div>
     <div class="nota">Nada de esto se estima aquí: es <b>medida de campo</b> espejada de
-      <code>solargpt_core/motor_energy.py</code> y del gemelo.
-      <b>Bandas</b> = Wh/° según la <b>amplitud</b> de cada maniobra, de <b>14.759 maniobras reales</b>
-      (El Burgo, 106 TCUs): 0,2262 Wh/° por debajo de 1° · 0,0880 de 1–2° · 0,0701 de 2–5° ·
-      0,0653 por encima. El coste por grado se <b>multiplica por 3,5</b> al achicarse la maniobra
-      —cada arranque se paga— y por eso «movimientos» es una columna y no un adorno.
+      <code>solargpt_core/motor_energy.py</code> y del gemelo. Los tres modelos salen del mismo sitio
+      —<b>14.759 maniobras reales</b>, El Burgo, 106 TCUs— pero solo uno sirve para comparar políticas.
+      <b>Ajuste de flota</b> (el que manda) = <b>E = 0,0901 + 0,0447·|Δθ|</b>, el
+      <code>AJUSTE_FLOTA</code> del core: <b>cada arranque cuesta 0,0901 Wh explícitamente</b>, así que
+      dos políticas del mismo recorrido se separan exactamente en (arranques)×0,0901 — que es lo que
+      hace que «movimientos» sea una columna y no un adorno.
+      <b>Bandas</b> = Wh/° según la amplitud (0,2262 por debajo de 1° · 0,0880 de 1–2° · 0,0701 de
+      2–5° · 0,0653 por encima). Es la <b>medida en bruto</b> y reproduce el día de flota por
+      construcción, pero es una <b>función escalón</b>: dentro de una banda el coste es proporcional a
+      los grados y <b>duplicar los arranques no cuesta nada</b> (240° en maniobras de 20° y de 10° dan
+      15,67 Wh los dos). Sirve para carear, no para decidir.
       <b>Curva</b> = I(θ) del ensayo (1.500 mA a 0° → 2.800 mA a 55°, 24 V) × tiempo de motor; vale a
-      cualquier amplitud pero <b>no tiene término de arranque</b>, así que con ella dos políticas del
-      mismo recorrido cuestan igual aunque una se mueva el triple de veces. Está para carear con el
-      gemelo, no para decidir.<br>
+      cualquier amplitud pero <b>no tiene término de arranque</b> en absoluto.<br>
       <b>El modelo del ensayo (E₀ + k·|Δθ|) NO se usa</b>, a propósito: su dominio es |Δθ| ≥ 20° y el
       core <b>devuelve NaN</b> por debajo, porque extrapolar su término fijo a micro-maniobras se
       equivoca <b>×27</b>. Las maniobras de aquí son de 1–2°: copiarlo habría dado una columna entera
@@ -921,13 +926,27 @@ function optimoAniso(day,thN,d){
    lleno fuera de ese dominio: copiarlo habría dado una columna entera de
    números bonitos y falsos. Se usa el modelo que SÍ cubre este régimen.
 
-   (a) BANDAS DE FLOTA — Wh/° según la AMPLITUD de la maniobra, de las 14.759
-   maniobras reales. Es el modelo bueno aquí, y además es el único que hace que
-   CONTAR MOVIMIENTOS signifique algo: el coste por grado se multiplica por 3,5
-   al bajar de 5° a menos de 1°, porque cada arranque se paga. Ahí está, medida,
-   la diferencia entre una política que chatea y otra con histéresis. En la
-   banda ancha converge al k del ensayo con un 6 % de diferencia, que es lo que
-   da confianza en que las dos mediciones describen la misma máquina. */
+   (a) AJUSTE DE FLOTA (el que manda) — el MISMO modelo de dos términos del
+   ensayo, pero ajustado sobre las 14.759 maniobras REALES: E = 0,0901 +
+   0,0447·|Δθ|. El core lo publica como AJUSTE_FLOTA. Su intercepto es 27 veces
+   menor que el del ensayo, que es justo la medida de cuánto se separan los dos
+   regímenes — y por eso es este y no aquel el que vale a 1-2°.
+   Cada arranque cuesta 0,0901 Wh EXPLÍCITAMENTE, y eso es lo que hace que la
+   columna «movimientos» signifique algo: dos políticas del mismo recorrido se
+   separan exactamente en (nº de arranques) × 0,0901.
+
+   (b) BANDAS DE FLOTA — Wh/° según la AMPLITUD, del mismo conjunto de 14.759
+   maniobras agrupadas por tamaño. Es la MEDIDA EN BRUTO y reproduce el día de
+   flota por construcción (19,2 Wh en 112,9°), así que sirve para carear… pero
+   NO puede ser el modelo por defecto, y esto costó un error: es una FUNCIÓN
+   ESCALÓN, y DENTRO de una banda el coste es estrictamente proporcional a los
+   grados. Medido: 240° troceados en maniobras de 20° y de 10° dan 15,67 Wh los
+   DOS —el doble de arranques, cero coste extra—, y 0,8° frente a 0,5° dan 54,29
+   los dos. O sea que con las bandas la columna de movimientos puede doblarse sin
+   que la de energía mueva un dígito, que era exactamente lo que esta tabla
+   existía para evitar. Solo «nota» el troceo cuando la amplitud cruza un
+   escalón. Se queda como contraste declarado, no como consigna. */
+const AJUSTE_FLOTA={interceptoWh:0.0901, kWhDeg:0.0447, nManiobras:14759};
 const MOTOR_BANDAS=[{max:1,whDeg:0.2262,n:8335},{max:2,whDeg:0.0880,n:5171},
                     {max:5,whDeg:0.0701,n:1177},{max:Infinity,whDeg:0.0653,n:76}];
 /* (b) CURVA I(θ) MEDIDA — Consumos_motor_02.xlsx, TCU 33, media de barridos
@@ -957,7 +976,7 @@ function whPorGrado(amp){
 }
 function motorMetrics(theta,mp){
   const slew=(mp&&mp.slewDegS>0)?mp.slewDegS:CANON.slewDegS;
-  const modelo=(mp&&mp.modelo)||'bandas';
+  const modelo=(mp&&mp.modelo)||'ajuste';
   let moves=0,travel=0,wh=0,i=1;
   while(i<theta.length){
     if(!(Math.abs(theta[i]-theta[i-1])>MOVE_EPS)){i++;continue;}
@@ -970,11 +989,23 @@ function motorMetrics(theta,mp){
       amp+=Math.abs(theta[i]-theta[i-1]); sumPos+=Math.abs(theta[i]); k++; i++;
     }
     moves++; travel+=amp;
-    // la amplitud de LA MANIOBRA elige la banda; la curva se evalúa en el
-    // ángulo medio del tramo, que es donde estuvo el motor mientras giraba
-    wh+=(modelo==='curva')?motorW(sumPos/k)*(amp/slew)/3600:amp*whPorGrado(amp);
+    // cada modelo cobra la maniobra a su manera: el ajuste con su término fijo
+    // POR ARRANQUE (lo que separa a dos políticas del mismo recorrido), las
+    // bandas por la amplitud del tramo, y la curva en el ángulo medio del
+    // tramo —donde estuvo el motor mientras giraba— por el tiempo de giro
+    if(modelo==='curva')      wh+=motorW(sumPos/k)*(amp/slew)/3600;
+    else if(modelo==='bandas')wh+=amp*whPorGrado(amp);
+    else                      wh+=AJUSTE_FLOTA.interceptoWh+AJUSTE_FLOTA.kWhDeg*amp;
   }
-  return {moves:moves,travelDeg:travel,runMin:travel/slew/60,motorWh:wh};
+  /* el reparto ARRANQUE vs RECORRIDO, separado, que es la información que este
+     modelo aporta y la que el escalón de bandas escondía: dos políticas con el
+     mismo recorrido se diferencian EXACTAMENTE en la parte de arranque. Solo
+     tiene sentido en el ajuste de dos términos; en los otros dos no hay tal
+     reparto y se declara null en vez de inventarlo. */
+  const arranqueWh=(modelo==='ajuste')?moves*AJUSTE_FLOTA.interceptoWh:null;
+  return {moves:moves,travelDeg:travel,runMin:travel/slew/60,motorWh:wh,
+          arranqueWh:arranqueWh,
+          giroWh:arranqueWh==null?null:wh-arranqueWh};
 }
 
 /* ── métricas del día ────────────────────────────────────────────────────── */
@@ -2027,7 +2058,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.20.0';
+const VER='v1.20.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2937,7 +2968,7 @@ function drawTable(){
         '<th title="Cambios del FLAG de la política: entrar o salir del modo difusa. NO son arranques del motor.">conmut.</th>'+
         '<th title="ARRANQUES DEL MOTOR: tramos contiguos de movimiento sobre la rejilla del actuador (1 min). Una rampa de 55° es UN movimiento, no 55. Depende del ciclo de decisión y del deadband, que son los que deciden cuándo arranca el motor.">movimientos</th>'+
         '<th title="Grados totales de maniobra en el día (proxy de desgaste), sobre el θ ejecutado.">recorrido °</th>'+
-        '<th title="Energía de motor del día. Bandas de flota: Wh/° según la amplitud de cada maniobra, medido sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas.">motor Wh/día</th>'+
+        '<th title="Energía de motor del día, con su reparto arranque/giro al pasar el ratón. Ajuste de flota E = 0,0901 + 0,0447·|Δθ| sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas.">motor Wh/día</th>'+
         '<th title="Consumo de motor del día como fracción de la batería del tracker. El reposo de la TCU va aparte, en la nota.">% batería</th>'+
         '<th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
@@ -2951,7 +2982,10 @@ function drawTable(){
       '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td>'+
       '<td>'+m.moves+(ref?deltaCoste(m.moves,mB.moves,0,''):'')+'</td>'+
       '<td>'+m.travelDeg.toFixed(0)+(ref?deltaCoste(m.travelDeg,mB.travelDeg,0,'°'):'')+'</td>'+
-      '<td>'+m.motorWh.toFixed(2)+(ref?deltaCoste(m.motorWh,mB.motorWh,2,' Wh'):'')+'</td>'+
+      '<td'+(m.arranqueWh==null?'':' title="'+m.moves+' arranques × 0,0901 = '+
+        m.arranqueWh.toFixed(2)+' Wh · '+m.travelDeg.toFixed(0)+'° × 0,0447 = '+
+        m.giroWh.toFixed(2)+' Wh de giro"')+'>'+
+      m.motorWh.toFixed(2)+(ref?deltaCoste(m.motorWh,mB.motorWh,2,' Wh'):'')+'</td>'+
       '<td>'+(100*m.motorWh/bat).toFixed(1)+' %</td>'+
       '<td>'+ultima+'</td></tr>';
   };
@@ -2970,7 +3004,10 @@ function drawTable(){
   }
   $('daytab').innerHTML=h;
   const mean=CC.reduce((s,v)=>s+v,0)/288;
-  const modelo=SIM.mp.modelo==='curva'?'curva I(θ) medida (24 V)':'bandas de flota (14.759 maniobras)';
+  const modelo=SIM.mp.modelo==='curva'?'curva I(θ) medida (24 V)':
+               SIM.mp.modelo==='bandas'?'bandas de flota (escalón: ojo al trocear)':
+               'ajuste de flota E = 0,0901 + 0,0447·|Δθ| (14.759 maniobras)';
+  const mR=SIM.res.pvlib.met;
   $('daynote').innerHTML='POA '+(SIM.loop?'del θ <b>ejecutado</b> (lazo aplicado)':'de la consigna (lazo apagado)')+
     ' · cc media del día '+(100*mean).toFixed(0)+' % · '+
     '«coste del lazo» = POA ejecutada vs consigna (decidir tarde + llegar tarde). El core exige: '+
@@ -2984,11 +3021,17 @@ function drawTable(){
     '<b>Reposo de la TCU aparte</b>: 0,64 W = <b>'+idleWh.toFixed(1)+' Wh/día</b> ('+
     (100*idleWh/bat).toFixed(1)+' % de la batería de '+bat.toFixed(1)+' Wh), igual para todas las filas — '+
     'para dimensionar hay que sumarlo; para comparar políticas, no.'+
+    (mR.arranqueWh==null?'':
+      '<br><b>La factura se parte en dos</b>, y pasando el ratón por la celda se ve: <b>arranque</b> '+
+      '(nº de movimientos × 0,0901 Wh) + <b>giro</b> (grados × 0,0447 Wh). En la baseline de este día, '+
+      mR.arranqueWh.toFixed(2)+' Wh de arranque y '+mR.giroWh.toFixed(2)+' Wh de giro. Esa es la razón de '+
+      'que «movimientos» sea una columna: dos políticas del mismo recorrido se separan EXACTAMENTE en la '+
+      'parte de arranque.')+
     '<br><b>Ojo al leer «movimientos»</b>: no es una constante del tracker sino del <b>ciclo de control</b>. '+
-    'Con este mismo día y el mismo recorrido, bajar la decisión de 30′ a 1′ lleva de ~28 a ~178 arranques '+
-    'y la factura de 15 a 20 Wh, porque troceando el mismo giro en pulsos más pequeños se paga más veces el '+
-    'arranque. El <b>recorrido</b> sí es robusto (±2 % en todo ese barrido): es el número que hay que citar '+
-    'fuera de aquí.'+
+    'Con este mismo día y el mismo recorrido, bajar la decisión de 30′ a 1′ lleva de <b>28 a 178 arranques</b> '+
+    'y la factura de <b>12,8 a 26,2 Wh</b> — y el desglose enseña por qué: el término de giro se queda clavado '+
+    'en 10,25 Wh (el recorrido no cambia) y TODA la diferencia está en el de arranque, que va de 2,5 a 16,0 Wh. '+
+    'El <b>recorrido</b> sí es robusto (±2 % en todo ese barrido): es el número que hay que citar fuera de aquí.'+
     (SIM.aniso?' <br><b>La cota</b> es el máximo EXACTO de la misma Perez sobre θ ∈ [0, θ_n]: '+
       'no es servible como consigna, mide cuánto deja el barrido de 5 α del core. Medido en 15 días '+
       '(3 fechas × 5 cielos) el hueco no pasa del <b>0,049 %</b> y el ángulo difiere 1–2°, casi '+
@@ -3986,7 +4029,7 @@ $('yearbtn').onclick=()=>{
      pantalla. */
   YR365=null;
   $('yearnote').innerHTML='<b>Coste de maniobra</b> · modelo <b>'+
-    (mp.modelo==='curva'?'curva I(θ) medida':'bandas de flota')+'</b> · verde = <b>ahorro</b> frente a pvlib. '+
+    (mp.modelo==='curva'?'curva I(θ) medida':mp.modelo==='bandas'?'bandas de flota (escalón)':'ajuste de flota')+'</b> · verde = <b>ahorro</b> frente a pvlib. '+
     'Estas tres columnas se ponderan y escalan igual que la POA: <b>doce días tipo × 30,4</b>, no un año '+
     'recorrido día a día. Sirven para comparar filas entre sí, no como cifra absoluta de O&amp;M — para eso, '+
     'el año con ERA5 medido. El <b>reposo</b> de la TCU (5,61 kWh/año) va aparte: es el mismo para todas.';
@@ -4116,7 +4159,7 @@ function renderYear365(){
   $('yeartab').innerHTML=hh2;
   const idleY=TCU_IDLE_W*24*nd/1000;
   $('yearnote').innerHTML='<b>Coste de maniobra del año</b> · modelo <b>'+
-    (YR365.modelo==='curva'?'curva I(θ) medida':'bandas de flota')+'</b> · verde = <b>ahorro</b> frente a '+
+    (YR365.modelo==='curva'?'curva I(θ) medida':YR365.modelo==='bandas'?'bandas de flota (escalón)':'ajuste de flota')+'</b> · verde = <b>ahorro</b> frente a '+
     'pvlib. Estos son los números de O&amp;M: el <b>recorrido</b> es el proxy de desgaste del core y el '+
     '<b>motor kWh/año</b> lo que la batería del tracker ('+bat.toFixed(1)+' Wh) tiene que reponer cada día. '+
     'A esto hay que sumarle el <b>reposo de la TCU</b>, '+idleY.toFixed(2)+' kWh/año (0,64 W constantes), que no '+
@@ -4180,7 +4223,11 @@ function buildDayCSV(){
   L.push('# [COSTE DE MANIOBRA — modelo de motor MEDIDO, espejo de solargpt_core/motor_energy.py]');
   meta('modelo_motor',SIM.mp.modelo==='curva'
        ?'curva I(theta) medida (Consumos_motor_02.xlsx, TCU 33, 24 V)'
-       :'bandas de flota por amplitud (El Burgo, 106 TCUs, 14759 maniobras)');
+       :SIM.mp.modelo==='bandas'
+       ?'bandas de flota por amplitud (FUNCION ESCALON: dentro de una banda trocear no cuesta)'
+       :'ajuste de flota E = 0.0901 + 0.0447*|dtheta| (El Burgo, 106 TCUs, 14759 maniobras)');
+  meta('ajuste_flota_intercepto_wh',AJUSTE_FLOTA.interceptoWh);
+  meta('ajuste_flota_k_wh_por_grado',AJUSTE_FLOTA.kWhDeg);
   meta('bandas_wh_por_grado',MOTOR_BANDAS.map(b=>
        (b.max===Infinity?'>5':'<'+b.max)+'deg:'+b.whDeg).join(' '));
   meta('epsilon_movimiento_deg',MOVE_EPS);
@@ -4193,7 +4240,7 @@ function buildDayCSV(){
   L.push('# El reposo de la TCU NO esta en las filas: es el mismo para todas las politicas.');
   L.push('# [RESUMEN DEL DÍA — POA integrada sobre el θ EJECUTADO, al minuto]');
   L.push('# politica,poa_wh_m2,delta_vs_pvlib_pct,pct_difusa_activa,conmutaciones,movimientos,'+
-         'recorrido_deg,motor_wh,motor_min,pct_bateria');
+         'recorrido_deg,motor_wh,motor_arranque_wh,motor_giro_wh,motor_min,pct_bateria');
   const base=SIM.res.pvlib.met.poaWh, bat=battWh();
   for(const k of POL_ORDER){
     const r=SIM.res[k]; if(!r)continue;
@@ -4201,6 +4248,7 @@ function buildDayCSV(){
       (k==='pvlib'?'':(100*(r.met.poaWh/base-1)).toFixed(3))+','+
       r.met.pctFlat.toFixed(1)+','+r.met.switches+','+r.met.moves+','+
       r.met.travelDeg.toFixed(1)+','+r.met.motorWh.toFixed(3)+','+
+      csvNum(r.met.arranqueWh,3)+','+csvNum(r.met.giroWh,3)+','+
       r.met.runMin.toFixed(1)+','+(100*r.met.motorWh/bat).toFixed(2));
   }
   L.push('#');

@@ -40,10 +40,11 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
 t('el coste de maniobra está en la tabla del día, con sus tres columnas y la batería', () => {
   for (const col of ['movimientos', 'recorrido °', 'motor Wh/día', '% batería'])
     if (!html.includes('>' + col + '<')) throw new Error('falta la columna «' + col + '» en la tabla del día');
-  // el selector por defecto son las BANDAS: la curva no tiene término de arranque
-  // y con ella la columna de movimientos no cambiaría la factura
-  if (!/id="motmod"[\s\S]{0,120}value="bandas" selected/.test(html))
-    throw new Error('el modelo de motor por defecto no son las bandas de flota');
+  // el selector por defecto es el AJUSTE DE FLOTA, el único de los tres que cobra
+  // cada arranque: con las bandas (escalón) o con la curva (sin término fijo), la
+  // columna de movimientos podría doblarse sin mover la factura
+  if (!/id="motmod"[\s\S]{0,120}value="ajuste" selected/.test(html))
+    throw new Error('el modelo de motor por defecto no es el ajuste de flota');
   if (!/id="battwh"[\s\S]{0,120}value="153\.6" selected/.test(html))
     throw new Error('la batería por defecto no es 153,6 Wh (6 Ah × 25,6 V)');
   // y el CSV tiene que bajar lo mismo que enseña la pantalla, o no es auditable
@@ -203,7 +204,7 @@ const sandbox = new Function(sol + '\n' + src + `
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
            skyPresetSeries, skyNubeCorta, optimoAniso,
-           motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, MOTOR_MA, MOTOR_ANG,
+           motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, AJUSTE_FLOTA, MOTOR_MA, MOTOR_ANG,
            TCU_IDLE_W, BATT_WH_DEF, MOVE_EPS };`);
 const F = sandbox();
 
@@ -373,26 +374,75 @@ t('por debajo de ε (0,05°) es ruido de encoder, no una maniobra', () => {
   if (m.moves !== 0) throw new Error('el ruido cuenta como ' + m.moves + ' maniobras');
   if (m.motorWh !== 0) throw new Error('el ruido consume ' + m.motorWh + ' Wh');
 });
-t('TROCEAR EL MISMO RECORRIDO CUESTA MÁS: es lo que hace que «movimientos» signifique algo', () => {
-  // mismo recorrido total (40°), repartido de dos maneras. Si el coste dependiera
-  // solo de los grados, las dos filas de la tabla saldrían iguales y la columna
-  // de movimientos sería decorativa.
-  const gordo = [0]; for (let i = 0; i < 40; i++) gordo.push(gordo[gordo.length - 1] + 1);
-  const fino = [0];
-  for (let i = 0; i < 80; i++) { const p = fino[fino.length - 1]; fino.push(p + 0.5); fino.push(p + 0.5); }
-  const a = F.motorMetrics(gordo, { slewDegS: 0.17, modelo: 'bandas' });
-  const b = F.motorMetrics(fino, { slewDegS: 0.17, modelo: 'bandas' });
-  if (Math.abs(a.travelDeg - b.travelDeg) > 1e-6)
-    throw new Error('el ensayo no compara el mismo recorrido: ' + a.travelDeg + ' vs ' + b.travelDeg);
-  if (!(b.moves > a.moves)) throw new Error('trocear no aumenta los movimientos');
-  if (!(b.motorWh > a.motorWh * 2))
-    throw new Error('trocear no encarece: ' + b.motorWh.toFixed(2) + ' vs ' + a.motorWh.toFixed(2) + ' Wh');
-  // y con la CURVA no encarece, porque no tiene término de arranque: por eso la
-  // curva está para carear con el gemelo y las bandas son las que deciden
-  const ac = F.motorMetrics(gordo, { slewDegS: 0.17, modelo: 'curva' });
-  const bc = F.motorMetrics(fino, { slewDegS: 0.17, modelo: 'curva' });
-  if (!(Math.abs(bc.motorWh - ac.motorWh) < 0.05 * ac.motorWh))
-    throw new Error('la curva I(θ) sí distingue trocear, y no debería: ' + ac.motorWh + ' vs ' + bc.motorWh);
+// Construye una trayectoria de `n` maniobras de amplitud `amp`, separadas por
+// una parada (un paso quieto), para un recorrido total de n·amp.
+function tramos(n, amp) {
+  const th = [0];
+  for (let i = 0; i < n; i++) { th.push(th[th.length - 1] + amp); th.push(th[th.length - 1]); }
+  return th;
+}
+t('TROCEAR EL MISMO RECORRIDO CUESTA MÁS — y SIEMPRE, no solo al cruzar un escalón', () => {
+  // ESTA PRUEBA NACIÓ MAL Y POR ESO ESTÁ ESCRITA ASÍ. La primera versión comparaba
+  // maniobras de 1° contra 0,5°, que caen en BANDAS DISTINTAS: pasaba en verde con
+  // un modelo de bandas que, DENTRO de una banda, no cobra nada por trocear (240°
+  // en maniobras de 20° y de 10° daban 15,67 Wh los dos). O sea que confirmaba lo
+  // que yo quería en vez de sondear el modelo. Ahora barre amplitudes que caen
+  // DENTRO de la misma banda —que es donde el escalón fallaba— y exige monotonía
+  // estricta en todo el barrido.
+  const REC = 240;                       // todas las amplitudes lo dividen EXACTO,
+  const amps = [20, 10, 6, 4, 3, 2.5, 2, 1.5, 1.2, 0.8, 0.6, 0.5];   // o el barrido
+  let prev = null;                       // compararía recorridos distintos
+  for (const amp of amps) {
+    if (Math.abs(REC / amp - Math.round(REC / amp)) > 1e-9)
+      throw new Error('amp ' + amp + ' no divide ' + REC + ': el barrido sería injusto');
+    const m = F.motorMetrics(tramos(Math.round(REC / amp), amp), { slewDegS: 0.17 });
+    if (Math.abs(m.travelDeg - REC) > 1e-6)
+      throw new Error('amp ' + amp + ': el barrido no compara el mismo recorrido (' + m.travelDeg + ')');
+    if (prev && !(m.motorWh > prev.wh * 1.0001))
+      throw new Error('trocear de ' + prev.amp + '° a ' + amp + '° NO encarece: ' +
+                      prev.wh.toFixed(2) + ' → ' + m.motorWh.toFixed(2) + ' Wh con ' +
+                      prev.moves + ' → ' + m.moves + ' arranques');
+    prev = { amp: amp, wh: m.motorWh, moves: m.moves };
+  }
+  // y el caso que destapó el fallo, explícito: DOBLE de arranques dentro de la
+  // misma banda tiene que costar ~un intercepto más por arranque
+  const a = F.motorMetrics(tramos(12, 20), { slewDegS: 0.17 });
+  const b = F.motorMetrics(tramos(24, 10), { slewDegS: 0.17 });
+  if (b.moves !== 2 * a.moves) throw new Error('el caso no dobla los arranques');
+  const esperado = (b.moves - a.moves) * 0.0901;
+  if (Math.abs((b.motorWh - a.motorWh) - esperado) > 1e-9)
+    throw new Error('doblar arranques debía costar ' + esperado.toFixed(3) + ' Wh y cuesta ' +
+                    (b.motorWh - a.motorWh).toFixed(3));
+});
+t('las BANDAS son escalón y por eso no son el modelo por defecto — queda medido, no escondido', () => {
+  // No es un fallo del modelo de bandas: es lo que es, la medida en bruto agrupada.
+  // Se fija aquí para que nadie lo vuelva a poner por defecto sin enterarse.
+  const a = F.motorMetrics(tramos(12, 20), { slewDegS: 0.17, modelo: 'bandas' });
+  const b = F.motorMetrics(tramos(24, 10), { slewDegS: 0.17, modelo: 'bandas' });
+  if (Math.abs(a.motorWh - b.motorWh) > 1e-9)
+    throw new Error('las bandas ya distinguen trocear dentro de una banda: revisar cuál manda');
+  if (!/value="ajuste" selected/.test(html))
+    throw new Error('el modelo por defecto no es el ajuste de flota, y el escalón volvería a mandar');
+});
+t('el reparto arranque/giro cuadra con el total, y solo lo publica el modelo que lo tiene', () => {
+  const m = F.motorMetrics(tramos(30, 3), { slewDegS: 0.17 });
+  if (Math.abs(m.arranqueWh + m.giroWh - m.motorWh) > 1e-12)
+    throw new Error('arranque + giro ≠ total');
+  if (Math.abs(m.arranqueWh - 30 * 0.0901) > 1e-12) throw new Error('el arranque no son 30 × 0,0901');
+  if (Math.abs(m.giroWh - 90 * 0.0447) > 1e-12) throw new Error('el giro no son 90° × 0,0447');
+  // los otros dos modelos NO tienen ese reparto: declararlo sería inventarlo
+  for (const modelo of ['bandas', 'curva']) {
+    const o = F.motorMetrics(tramos(30, 3), { slewDegS: 0.17, modelo: modelo });
+    if (o.arranqueWh !== null || o.giroWh !== null)
+      throw new Error(modelo + ' publica un reparto arranque/giro que no tiene');
+  }
+});
+t('el ajuste de flota reproduce el día que midió la flota (145 maniobras, 112,9°, 19,2 Wh)', () => {
+  // El careo que importa: el modelo por defecto contra el día REAL del que sale.
+  // 145 × 0,0901 + 112,9 × 0,0447 = 18,11 Wh frente a 19,2 medidos.
+  const wh = 145 * 0.0901 + 112.9 * 0.0447;
+  const err = Math.abs(wh / 19.2 - 1);
+  if (!(err < 0.10)) throw new Error('el ajuste se va un ' + (100 * err).toFixed(1) + ' % del día de flota');
 });
 t('las tres columnas cuadran entre sí: la energía se cobra sobre ESOS grados y ESOS arranques', () => {
   const day = F.buildDay({ lat: 41.5763, lon: -0.7981, dateStr: '2026-06-21', tz: 2, altM: 300, TL: 3.5,
