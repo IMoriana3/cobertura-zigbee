@@ -96,7 +96,7 @@ t('la tarjeta del lazo tiene sus cinco campos, con los canónicos de la casa', (
    la escena y la energía cuentan dos físicas distintas — el pecado que esta casa ya conoce. */
 const cur = await pg.evaluate(() => {
   const c = cfg();
-  c.ctrl = { on:true, db:1.0, slew:0.17, cicloMin:1, modo:'libre' };
+  c.ctrl = { on:true, db:1.0, slew:0.17, cicloSeg:1, modo:'libre' };
   document.getElementById('ctrlOn').checked = true;
   const paso = PASO_LAZO, M = 615;
   // a mano, recorriendo el día en orden

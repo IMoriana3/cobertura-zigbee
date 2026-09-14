@@ -1146,7 +1146,7 @@ t('el perfil de horizonte admite decimal con coma, y el MAE es por inversor como
 console.log('');
 console.log('v1.30 · el lazo de control del tracker, y las políticas del bt3d aquí');
 
-const LAZO = { on:true, db:1.0, slew:0.17, cicloMin:1, modo:'libre' };
+const LAZO = { on:true, db:1.0, slew:0.17, cicloSeg:1, modo:'libre' };
 const ELEV = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
 const TL   = S.buildT(S.F, CE, ELEV);
 const base = { ...CE, albedo:0.25, ac:{ ...(C.ac||{}), planta:{} } };
@@ -1154,7 +1154,7 @@ const sumDia = c => S.dayTotals(S.F, c, TL, S.mapStringW(S.F, c, TL)).reduce((a,
 
 t('APAGADO la estimación es la de ANTES, al vatio (la regla de la casa)', () => {
   const sin = sumDia(base);
-  for (const ctrl of [undefined, {on:false,db:2,slew:0.17,cicloMin:1,modo:'libre'}]) {
+  for (const ctrl of [undefined, {on:false,db:2,slew:0.17,cicloSeg:1,modo:'libre'}]) {
     const e = sumDia({ ...base, ctrl });
     if (e !== sin) throw new Error(`con ctrl=${JSON.stringify(ctrl)} la cifra se mueve: ${e} ≠ ${sin}`);
   }
@@ -1414,7 +1414,7 @@ t('el cfg del canario es el de ARRANQUE de la página: ningún valor por defecto
                  ['ldispo', CFG0.ac.planta.dispo], ['ldeg', CFG0.ac.planta.degrada],
                  ['lanio', CFG0.ac.planta.anio], ['bifa', CFG0.bif.bifa], ['bperd', CFG0.bif.perdTras],
                  ['iamb0', CFG0.iamb0], ['ctrlDb', CFG0.ctrl.db], ['ctrlSlew', CFG0.ctrl.slew],
-                 ['ctrlCiclo', CFG0.ctrl.cicloMin]];
+                 ['ctrlCiclo', CFG0.ctrl.cicloSeg]];
   for (const [id, esperado] of pares) {
     const v = +val(id);
     if (!(Math.abs(v - esperado) < 1e-12))
