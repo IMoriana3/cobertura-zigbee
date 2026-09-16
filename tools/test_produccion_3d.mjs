@@ -378,6 +378,48 @@ try {
   }
 
 
+  /* 9) EL ACUSE DE RECIBO DEL CLIC. «Cuando voy a marcar el check no me lo coge»
+        era esto: el manejador de la casilla del lazo recalculaba todo DENTRO del
+        `change`, síncrono, y el navegador no podía repintar la casilla hasta que
+        acabara — 10.709 ms medidos en esta misma NCU. El clic entraba y parecía
+        perdido, y el segundo lo desmarcaba.
+        Lo que se vigila no es que sea rápido —no puede serlo: son tres millones
+        de pasos de lazo, y es física— sino que la página ACUSE el clic antes de
+        ponerse a trabajar. Si alguien quita el `conAcuse`, esto se pone rojo. */
+  {
+    await pg.evaluate(() => { for (const d of document.querySelectorAll('details.card'))
+      if (/Lazo de control/.test(d.querySelector('summary')?.textContent || '')) d.open = true; });
+    await pg.waitForTimeout(300);
+    const t0 = Date.now();
+    await pg.locator('#ctrlOn').click({ noWaitAfter: true });
+    let acuse = null;
+    for (let k = 0; k < 60 && !acuse; k++) {
+      const p = await pg.evaluate(() => ({ pill: document.getElementById('modepill').textContent,
+                                           marcada: document.getElementById('ctrlOn').checked })).catch(() => null);
+      if (p && /calculando/.test(p.pill)) acuse = { ms: Date.now() - t0, marcada: p.marcada };
+      else await pg.waitForTimeout(50);
+    }
+    check('el clic en el lazo se ACUSA antes de ponerse a calcular',
+          !!acuse && acuse.ms < 2000 && acuse.marcada === true,
+          acuse ? `avisó en ${acuse.ms} ms con la casilla ya marcada` :
+                  'nunca apareció el acuse: el trabajo corre dentro del change y el clic parece perdido');
+    await pg.waitForFunction(() => !/calculando/.test(document.getElementById('modepill').textContent),
+                             null, { timeout: 180000 });
+    const fin = await pg.evaluate(() => ({ pill: document.getElementById('modepill').textContent,
+                                           marcada: document.getElementById('ctrlOn').checked }));
+    check('y al acabar la casilla queda marcada y el chip vuelve a su estado',
+          fin.marcada === true && /paso/.test(fin.pill), `chip «${fin.pill}»`);
+    // y la prosa larga de la tarjeta viene PLEGADA: el motivo de la queja gemela
+    const pros = await pg.evaluate(() => {
+      const det = [...document.querySelectorAll('details')]
+        .find(d => /los números, y de dónde salen/.test(d.querySelector('summary')?.textContent || ''));
+      return det ? { abierto: det.open, palabras: det.textContent.trim().split(/\s+/).length } : null;
+    });
+    check('los números del lazo van PLEGADOS, no en un muro de texto',
+          !!pros && pros.abierto === false && pros.palabras > 100,
+          pros ? `${pros.palabras} palabras detrás del resumen` : 'no hay plegable');
+  }
+
   check('sin errores de consola', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
 } finally {

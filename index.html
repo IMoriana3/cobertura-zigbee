@@ -821,6 +821,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <label class="btn" id="lblRoutes" tabindex="0">Cargar rutas <span class="k">zigbee_routes.csv (saltos)</span><input type="file" id="fRoutes" accept=".csv"></label>
       <button class="btn" id="demo">Datos de ejemplo <span class="k">malla simulada evolucionando en el tiempo</span></button>
       <button class="btn" id="paqBtn" title="Baja el ZIP que se copia en el PC de la planta: los dos recolectores con la IP del gateway ya puesta, las coordenadas de todos los ámbitos, el manifiesto y un léeme con los comandos">↓ Medir en planta <span class="k" id="paqK">recolectores + coordenadas de esta planta</span></button>
+      <button class="btn" id="mallaBtn" disabled title="Con los tres CSV cargados, escribe el &lt;planta&gt;_real.geojson: la malla medida (SPOF crónicos, dominadores, RSSI y saltos) que esta misma página dibuja al abrirse. Es el paso de vuelta del viaje a la planta.">↓ Exportar malla real <span class="k" id="mallaK">faltan CSV por cargar</span></button>
     </div>
 
     <div class="block">
@@ -1014,9 +1015,31 @@ function gwsDe(paq){
   }
   return [...v.values()].filter(q=>q.ipGw);
 }
+/* SIN IP NO SE DEJA LA DE OTRO. Este bloque ya decía «mejor sin IP que con la de
+   otro», y sin embargo cuando la planta no traía gateways el .ps1 salía TAL CUAL —o
+   sea, con la IP de ejemplo del fichero, que es la de EL BURGO (10.100.1.54)—. El
+   que baja el paquete de Páramo se llevaba un recolector con aspecto de estar
+   configurado, apuntando a otra planta. Cuatro de las diez están así: Benante,
+   Panbianco, Páramo y El Polvorín no traen ni la IP de la NCU.
+   Ahora se sustituye por un MARCADOR que no es una IP: falla al instante y con un
+   mensaje que se entiende, en vez de agotar el tiempo de espera contra un aparato
+   que no es el suyo —o, peor, contra uno que sí responde y no es el de esta planta. */
+var MARCA_IP='PON-LA-IP-DEL-GATEWAY';
+function sinIP(txt,re,bloque,que){
+  var orig=(txt.match(re)||[""])[0].split("\n").map(function(l){return "# "+l;}).join("\n");
+  return txt.replace(re,
+    "# SIN IP. El manifiesto de esta planta no trae la direccion de "+que+", asi que\n"+
+    "# aqui va un MARCADOR y no una IP. La del fichero de ejemplo se ha quitado a\n"+
+    "# proposito: era la de EL BURGO, y un recolector que apunta a otra planta es peor\n"+
+    "# que uno que no arranca.\n"+
+    "# PON LA IP BUENA y borra el marcador. Es la del ConnectPort DIGI: la que abres en\n"+
+    "# el navegador y te saca su pagina.\n"+bloque+"\n"+
+    "# --- lo que traia el fichero antes de prepararlo ---\n"+orig);
+}
 /* La IP del gateway, escrita en el recolector y DICIENDO de dónde sale. */
 function preparaLogger(txt,gws){
-  if(!gws.length) return txt;
+  if(!gws.length) return sinIP(txt,/\$Gateways = @\([\s\S]*?\n\)/,
+    '$Gateways = @(\n  @{ Name = "GW-01"; Host = "'+MARCA_IP+'"; User = ""; Pass = "" }\n)','sus gateways');
   const orig=(txt.match(/\$Gateways = @\([\s\S]*?\n\)/)||[""])[0]
     .split("\n").map(l=>"# "+l).join("\n");
   const dec = gws.every(g=>g.declarada);
@@ -1045,7 +1068,11 @@ function preparaInventario(txt,gws){ return preparaLogger(txt,gws); }
    manifiesto. Escribirle la del gateway seria el mismo error de siempre, del
    otro lado. */
 function preparaAngulos(txt,gws){
-  if(!gws.length) return txt;
+  /* El de angulos va al MODBUS de la NCU, no al gateway: su marcador lo dice, para
+     que nadie le meta ahi la del ConnectPort. */
+  if(!gws.length) return sinIP(txt,/\$Ncus = @\([\s\S]*?\n\)/,
+    '$Ncus = @(\n  @{ Name = "NCU01-GW1"; Host = "PON-LA-IP-MODBUS-DE-LA-NCU"; Port = 503 }\n)',
+    'sus NCU (el MODBUS del SCADA, NO el gateway)');
   return txt.replace(/\$Ncus = @\([\s\S]*?\n\)/,
     "# NCU de esta planta: el MODBUS TCP del SCADA, que NO es la IP del gateway.\n"+
     "# El angulo del seguidor (registro 30111) se lee de aqui.\n"+
@@ -1059,7 +1086,8 @@ function preparaColector(nombre,txt,gws){
   return txt;
 }
 function preparaRutas(txt,gws){
-  if(!gws.length) return txt;
+  if(!gws.length) return sinIP(txt,/\$GwHost\s*=\s*"[^"]*"/,
+    '$GwHost     = "'+MARCA_IP+'"','sus gateways');
   return txt.replace(/\$GwHost\s*=\s*"[^"]*"/,'$GwHost     = "'+gws[0].ipGw+'"');
 }
 /* NO SE TOCA LA IP DE LOS RECOLECTORES, y es importante. El manifiesto trae una
@@ -1104,9 +1132,18 @@ function leemeDe(paq){
          "   COMPRUEBA una antes de empezar: abrela en el navegador y tiene que salir",
          "   el ConnectPort. Si no, corrigela en el CONFIG de los dos .ps1 — dentro",
          "   esta la linea original comentada.",""]
-      : ["   ANTES DE LANZARLOS: pon la IP del gateway DIGI arriba del todo de cada",
-         "   uno, donde pone CONFIG. Es el ConnectPort al que se entra por navegador,",
-         "   el que habla HTTP/RCI (80) y telnet (23).",""]),
+      : ["   ANTES DE LANZARLOS HAY QUE PONER LA IP. Esta planta no la trae en su",
+         "   manifiesto, asi que los .ps1 llevan un MARCADOR donde va la direccion:",
+         "",
+         "     Host = \"PON-LA-IP-DEL-GATEWAY\"",
+         "",
+         "   No es un descuido: se ha quitado la IP de ejemplo del fichero a proposito,",
+         "   porque era la de OTRA PLANTA y un recolector que apunta donde no debe es",
+         "   peor que uno que no arranca. Con el marcador falla al instante y se ve.",
+         "",
+         "   La buena es la del ConnectPort DIGI: la que abres en el navegador y te",
+         "   saca su pagina. Habla HTTP/RCI (80) y telnet (23). OJO: el de angulos va",
+         "   al MODBUS de la NCU (503/504), que es otra direccion; su marcador lo dice.",""]),
     "2) LAS COORDENADAS de este ZIP dicen qué equipo es cada nodo. Van por ámbito,",
     "   y el que se lanza es el (NCU,GW): los coords_*_NCU<nn>_GW<n>.csv.",
     ...(gws.length
@@ -1152,9 +1189,15 @@ function leemeDe(paq){
          "   Modbus, para navegar y para saber a quien estas mirando.","",
          "4) AL VOLVER, con los CSV que dejaron los recolectores:",""]
       : ["3) AL VOLVER, con los CSV que dejaron los recolectores:",""]),
-    "   python3 adaptador_elburgo.py coords.csv zigbee_routes.csv zigbee_log.csv "+paq.planta+"_real","",
-    "   Eso deja "+paq.planta+"_real.geojson, y esta misma página lo coge sola.",
-    "   Y los CSV se cargan aquí con «Cargar registro» y «Cargar rutas».",""].join("\n");
+    "   Se abre ESTA MISMA PAGINA y se cargan los tres, arriba a la izquierda:","",
+    "     «Cargar registro»      zigbee_log.csv",
+    "     «Cargar rutas»         zigbee_routes.csv",
+    "     «Cargar coordenadas»   el coords_*.csv que venia en este ZIP","",
+    "   Con los tres puestos se enciende «Exportar malla real», que deja el fichero",
+    "   "+paq.planta+"_real.geojson. Ese se sube al repo al lado de la pagina y desde",
+    "   entonces esta planta abre YA con su malla medida: SPOF cronicos, dominadores,",
+    "   RSSI y saltos, sin tener que cargar nada a mano.","",
+    "   NO HACE FALTA PYTHON en ningun paso, ni en la planta ni al volver.",""].join("\n");
 }
 /* PAQUETE-FIN ───────────────────────────────────────────────────────────── */
 
@@ -1318,6 +1361,28 @@ const LEGENDS={
 };
 const LEGTITLE={rssi:'Leyenda — RSSI (dBm)',estado:'Leyenda — estado',ack:'Leyenda — ACK fallos (Δ)',saltos:'Leyenda — saltos al coordinador',crit:'Leyenda — criticidad (nodos que dependen)',spof:'Leyenda — SPOF por instante (artic. menos COORD)',spofp:'Leyenda — SPOF crónico (% de instantes como punto único)',predicho:'Leyenda — malla real (descendientes / SPOF)'};
 
+/* MALLA-INI ──────────────────────────────────────────────────────────────────
+   DEL CSV AL GEOJSON DE MALLA REAL, SIN SALIR DE LA PAGINA.
+
+   El leeme del paquete de medida terminaba mandando `python3 adaptador_elburgo.py`.
+   Ese fichero NO EXISTE: no esta en el repo, no viaja en el ZIP y no se ha borrado
+   nunca —el unico commit que menciona ese nombre es el que escribio el leeme—.
+   Vivio en el portatil de alguien. Por eso El Burgo tiene su `elburgo_real.geojson`
+   y NINGUNA otra planta puede tenerlo: se vuelve de medir con los CSV y no hay con
+   que cerrar el circulo.
+
+   Y no hacia falta ningun programa nuevo. Esta pagina YA carga esos mismos tres CSV
+   y YA calcula los puntos de articulacion, los saltos y la persistencia del SPOF
+   para la maquina del tiempo. Lo unico que faltaba era escribirlo a fichero.
+
+   ADEMAS QUITA UN PASO IMPOSIBLE. En el PC de la planta hay PowerShell y no hay
+   Python —el propio banco del paquete lo comprueba—, asi que el ultimo paso del
+   leeme pedia algo que alli no se puede dar.
+
+   ESTAS FUNCIONES SON PURAS a proposito: no tocan `S` ni el DOM. Asi el banco las
+   extrae de aqui y las corre en Node, que es la unica forma de probar esto sin
+   navegador. Las que si tocan estado quedan FUERA del bloque, debajo.
+   ────────────────────────────────────────────────────────────────────────────── */
 /* ---------- CSV ---------- */
 function parseCSV(t){const R=[];let f='',row=[],q=false,i=0;while(i<t.length){const c=t[i];
   if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i+=2;continue;}q=false;i++;continue;}f+=c;i++;continue;}
@@ -1328,6 +1393,165 @@ function objs(t){const r=parseCSV(t).filter(x=>x.length>1||(x.length===1&&x[0]!=
   const h=r[0].map(s=>s.trim().toLowerCase());return r.slice(1).map(row=>{const o={};h.forEach((k,j)=>o[k]=(row[j]??'').trim());return o;});}
 const digits=s=>{const m=(s||'').match(/(\d+)/g);return m?String(parseInt(m[m.length-1],10)):null;};
 
+// Puntos de articulación (Tarjan). Grafo no dirigido como {nodo: Set(vecinos)}.
+function articulationPoints(adj){
+  const visited=new Set(), disc={}, low={}, ap=new Set(); let timer=0;
+  function dfs(u,parent){
+    visited.add(u); disc[u]=low[u]=++timer; let children=0;
+    for(const v of (adj[u]||[])){
+      if(!visited.has(v)){
+        children++; dfs(v,u); low[u]=Math.min(low[u],low[v]);
+        if(parent!==null && low[v]>=disc[u]) ap.add(u);
+      } else if(v!==parent){ low[u]=Math.min(low[u],disc[v]); }
+    }
+    if(parent===null && children>1) ap.add(u);
+  }
+  for(const n in adj){ if(!visited.has(n)) dfs(n,null); }
+  return ap;
+}
+
+/* Mediana ENTERA: con un numero par de lecturas el promedio de las dos centrales
+   se redondea, porque un RSSI de -80,5 dBm no significa nada y el fichero de El
+   Burgo trae enteros. */
+function medianaDe(a){ if(!a||!a.length)return null;
+  const b=a.slice().sort((x,y)=>x-y), m=b.length>>1;
+  return b.length%2 ? b[m] : Math.round((b[m-1]+b[m])/2); }
+/* Distancia en metros por la aproximacion equirectangular: a las decenas de metros
+   de un vano entre seguidores el error contra la haversine es de milimetros, y aqui
+   se redondea a metros enteros. */
+function distM(a,b){ if(!a||!b)return null; const R=6371000,D=Math.PI/180;
+  const dla=(b[0]-a[0])*D, dlo=(b[1]-a[1])*D, la=(a[0]+b[0])/2*D;
+  return Math.round(Math.hypot(dla,dlo*Math.cos(la))*R); }
+
+/* ---------- los tres CSV, cada uno a su estructura (sin tocar estado) ---------- */
+function filasDeLog(text){
+  const rows=objs(text), out=[];
+  for(const o of rows){const id=o.node_id||o.ext_addr; if(!id||!o.timestamp) continue;
+    out.push({ts:o.timestamp, id, role:o.role||'', gw:o.gateway||'',
+      online:String(o.online)==='1',
+      rssi:o.rssi_dbm===''||o.rssi_dbm==null?null:parseInt(o.rssi_dbm,10),
+      ack:o.ack_failures===''||o.ack_failures==null?null:parseInt(o.ack_failures,10),
+      mv:o.supply_mv===''?null:parseInt(o.supply_mv,10), temp:o.temp_c===''?null:parseInt(o.temp_c,10)});}
+  return out;
+}
+function coordsDe(text){
+  const rows=objs(text), c={};
+  for(const o of rows){const idc=o.node_id||o.id||o.tracker||o.name||'';
+    const lat=parseFloat(o.lat??o.latitude??o.y), lon=parseFloat(o.lon??o.lng??o.longitude??o.x);
+    if(isNaN(lat)||isNaN(lon))continue; if(idc){c[idc.trim()]=[lat,lon]; const d=digits(idc); if(d)c['#'+d]=[lat,lon];}}
+  return c;
+}
+/* Las rutas, en UNA pasada: los instantes que ya usaba la maquina del tiempo y, de
+   camino, los acumulados de todo el periodo que necesita la malla. Se agregan aqui
+   y no despues para no tener que guardar los cientos de miles de caminos: El Burgo
+   son 406.457 filas. */
+function snapsDeRutas(text){
+  const rows=objs(text); const byTs={}; const nodeIds=new Set(); let filas=0;
+  const agr={}, aristas={};
+  const par=n=>agr[n]||(agr[n]={rutas:0,padres:{},hops:[],pasan:new Set()});
+  for(const o of rows){ if(!o.timestamp||!o.path_ids) continue;
+    const ids=o.path_ids.split('>').map(s=>s.trim()).filter(Boolean);
+    if(ids.length<2) continue;
+    filas++;
+    for(const n of ids){ if(n!=='COORD') nodeIds.add(n); }
+    /* del NODO DESTINO de esta fila: una ruta mas, su profundidad y quien le hizo
+       de padre EN ESTA captura (de ahi salen `padres_distintos` y el dominante) */
+    const dest=ids[ids.length-1], a=par(dest);
+    a.rutas++; a.hops.push(ids.length-1);
+    const padre=ids[ids.length-2]; a.padres[padre]=(a.padres[padre]||0)+1;
+    for(let k=0;k<ids.length-1;k++){ const e=ids[k]+'>'+ids[k+1]; aristas[e]=(aristas[e]||0)+1; }
+    /* por cada salto INTERMEDIO, el destino pasa a depender de el: `descendientes`
+       son nodos DISTINTOS, no veces —lo que se quiere saber es a cuantos deja sin
+       ruta si se cae, y contar veces solo dice cuanto se le sondeo— */
+    for(let k=1;k<ids.length-1;k++){ const n=ids[k]; if(n==='COORD')continue; par(n).pasan.add(dest); }
+    (byTs[o.timestamp]=byTs[o.timestamp]||[]).push(ids);
+  }
+  // un snapshot por timestamp de captura, con criticidad y profundidad precalculadas
+  const snaps=Object.keys(byTs).sort().map(ts=>{
+    const depth={}, crit={}, pathByTarget={}, adj={};
+    const addEdge=(a,b)=>{ if(a===b)return; (adj[a]=adj[a]||new Set()).add(b); (adj[b]=adj[b]||new Set()).add(a); };
+    for(const ids of byTs[ts]){
+      const target=ids[ids.length-1];
+      depth[target]=ids.length-1; pathByTarget[target]=ids;
+      for(let k=0;k<ids.length-1;k++) addEdge(ids[k],ids[k+1]);
+      for(let k=1;k<ids.length-1;k++){ const n=ids[k]; if(n==='COORD')continue; crit[n]=(crit[n]||0)+1; }
+    }
+    // SPOF de ESTE instante: puntos de articulación menos COORD (que solo une los GW,
+    // que no se comunican entre sí). Un nodo aquí = su caída deja sin ruta a los de detrás.
+    const apset=articulationPoints(adj); apset.delete('COORD');
+    const spof={}; apset.forEach(n=>{ spof[n]=1; });
+    return {ts, depth, crit, pathByTarget, spof};
+  });
+  return {nodeIds:[...nodeIds], snaps, filas, agr, aristas};
+}
+
+/* ---------- la malla real ---------- */
+/* UN ENLACE POR NODO: el que va a su PADRE DOMINANTE. No es una simplificacion
+   nuestra, es lo que trae el fichero de El Burgo —53 puntos y 52 lineas, o sea un
+   arbol— y es lo que la pagina dibuja. `freq` no es cuantas veces ese padre fue su
+   padre, sino cuantas filas de ruta contienen ese salto: cerca del coordinador eso
+   cuenta todos los caminos que pasan por ahi, que es lo que mide si un vano esta
+   cargado.
+   EL RSSI ES DEL NODO, NO DEL VANO. El recolector da un RSSI por nodo (el de su
+   ultimo salto), asi que se cuelga del enlace al padre dominante y en ningun otro,
+   donde va a null. Inventar un RSSI por vano seria dar por medido lo que no se
+   midio. */
+function mallaReal(rows,rutas,coords,meta){
+  meta=meta||{};
+  const UMBRAL=meta.umbralSpof!=null?meta.umbralSpof:0.5;   // SPOF CRONICO: articulacion en al menos la mitad de los instantes. Uno esporadico es la malla reconfigurandose, no un punto unico de fallo
+  const agr=rutas.agr||{}, snaps=rutas.snaps||[], aristas=rutas.aristas||{}, N=snaps.length||1;
+  const apc={}; for(const sn of snaps){ for(const k in sn.spof) apc[k]=(apc[k]||0)+1; }
+  /* del registro: RSSI mediano del periodo, ULTIMO acumulado de ACK (el contador del
+     XBee es acumulativo: el ultimo valor es el total del periodo) y papel/gateway */
+  const log={};
+  for(const r of (rows||[])){ const e=log[r.id]||(log[r.id]={rssi:[],ack:null,role:'',gw:''});
+    if(r.rssi!=null)e.rssi.push(r.rssi); if(r.ack!=null)e.ack=r.ack;
+    if(r.role)e.role=r.role; if(r.gw)e.gw=r.gw; log[r.id]=e; }
+  const cs=coords||{};
+  const coordDe=id=>cs[id]||(digits(id)&&cs['#'+digits(id)])||null;
+  /* el COORDINADOR no es destino de ninguna ruta ni sale en el registro, asi que no
+     aparece por ninguno de los dos caminos: se añade si alguna ruta arranca en el y
+     tiene coordenada puesta */
+  const ids=[...new Set(Object.keys(agr).concat(Object.keys(log)))];
+  if(Object.keys(aristas).some(k=>k.indexOf('COORD>')===0) && ids.indexOf('COORD')<0) ids.push('COORD');
+  const puntos=[], lineas=[], sinCoord=[];
+  for(const id of ids){
+    const c=coordDe(id);
+    if(!c){ sinCoord.push(id); continue; }   // sin coordenada no hay geometria; se DECLARAN abajo en vez de desaparecer en silencio
+    const a=agr[id]||{rutas:0,padres:{},hops:[],pasan:new Set()};
+    const l=log[id]||{rssi:[],ack:null,role:'',gw:''};
+    const padres=Object.keys(a.padres);
+    let dom=null,mx=-1; for(const p of padres){ if(a.padres[p]>mx){mx=a.padres[p];dom=p;} }
+    puntos.push({type:'Feature',geometry:{type:'Point',coordinates:[+c[1],+c[0]]},properties:{
+      id, etiqueta:(digits(id)!=null?String(digits(id)):''),
+      role:l.role||(id==='COORD'?'COORD':'TCU'),
+      is_spof:(apc[id]||0)/N>=UMBRAL, spof_frac:+((apc[id]||0)/N).toFixed(3),
+      descendientes:a.pasan?a.pasan.size:0, rutas:a.rutas,
+      rssi_med_dbm:medianaDe(l.rssi), ack_failures:l.ack,
+      hop_tipico:medianaDe(a.hops), padres_distintos:padres.length, padre_dominante:dom,
+      gw:l.gw||null}});
+  }
+  for(const f of puntos){ const p=f.properties; if(!p.padre_dominante)continue;
+    const a=coordDe(p.padre_dominante), b=coordDe(p.id); if(!a||!b)continue;
+    lineas.push({type:'Feature',geometry:{type:'LineString',
+      coordinates:[[+a[1],+a[0]],[+b[1],+b[0]]]},properties:{
+      origen:p.padre_dominante, destino:p.id, distancia_m:distM(a,b),
+      rssi_medido_dbm:p.rssi_med_dbm, freq:aristas[p.padre_dominante+'>'+p.id]||0, gw:p.gw}});
+  }
+  return {type:'FeatureCollection', crs_note:'EPSG:4326',
+    periodo_filas_routes:rutas.filas||0, snapshots:snaps.length,
+    /* LO QUE ESTE FICHERO NO TRAE, dicho aqui y no callado: `calibracion` (bias,
+       sigma, n) sale del AJUSTE del barrido, no de estos tres CSV. El de El Burgo la
+       trae porque se la puso el ajuste; esta pagina no la puede deducir y por eso no
+       se la inventa. */
+    calibracion:null,
+    generado:{planta:meta.planta||null, por:'cobertura/index.html',
+              fecha:new Date().toISOString().slice(0,19)+'Z', umbral_spof:UMBRAL},
+    nodos_sin_coordenada:sinCoord,
+    features:puntos.concat(lineas)};
+}
+/* MALLA-FIN ─────────────────────────────────────────────────────────────────── */
+
 /* ---------- estado ---------- */
 const S={rows:[],coords:{},frames:[],byFrame:{},ackDelta:{},idx:0,mode:'rssi',markers:{},
          routeSnaps:[], gw:null, placingGw:false, sel:null,
@@ -1336,14 +1560,7 @@ let map,layer,routeLayer,gwMarker,didFit=false;
 let predLayer=null,PRED=null,predLoaded=false,predFit=false;   // Tarea D: malla predicha (GeoJSON del driver)
 
 function loadLog(text){
-  const rows=objs(text), out=[];
-  for(const o of rows){const id=o.node_id||o.ext_addr; if(!id||!o.timestamp) continue;
-    out.push({ts:o.timestamp, id, role:o.role||'', gw:o.gateway||'',
-      online:String(o.online)==='1',
-      rssi:o.rssi_dbm===''||o.rssi_dbm==null?null:parseInt(o.rssi_dbm,10),
-      ack:o.ack_failures===''||o.ack_failures==null?null:parseInt(o.ack_failures,10),
-      mv:o.supply_mv===''?null:parseInt(o.supply_mv,10), temp:o.temp_c===''?null:parseInt(o.temp_c,10)});}
-  S.rows=out; buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
+  S.rows=filasDeLog(text); buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
 }
 function buildFrames(){
   const bf={}, series={};
@@ -1368,57 +1585,13 @@ function rebuildTimeline(){
 function readingAt(id,ts){ const arr=S.series&&S.series[id]; if(!arr||!arr.length)return null;
   let lo=0,hi=arr.length-1,res=null; while(lo<=hi){const m=(lo+hi)>>1; if(arr[m].ts<=ts){res=arr[m];lo=m+1;}else hi=m-1;} return res; }
 function ackAt(id,ts){ const r=readingAt(id,ts); return r?r._dack:null; }
-function loadCoords(text){
-  const rows=objs(text); S.coords={};
-  for(const o of rows){const idc=o.node_id||o.id||o.tracker||o.name||'';
-    const lat=parseFloat(o.lat??o.latitude??o.y), lon=parseFloat(o.lon??o.lng??o.longitude??o.x);
-    if(isNaN(lat)||isNaN(lon))continue; if(idc){S.coords[idc.trim()]=[lat,lon]; const d=digits(idc); if(d)S.coords['#'+d]=[lat,lon];}}
-  render();
-}
+function loadCoords(text){ S.coords=coordsDe(text); render(); }
 const coordFor=id=>S.coords[id]||(digits(id)&&S.coords['#'+digits(id)])||null;
 
 /* ---------- rutas / saltos / criticidad / SPOF ---------- */
-// Puntos de articulación (Tarjan). Grafo no dirigido como {nodo: Set(vecinos)}.
-function articulationPoints(adj){
-  const visited=new Set(), disc={}, low={}, ap=new Set(); let timer=0;
-  function dfs(u,parent){
-    visited.add(u); disc[u]=low[u]=++timer; let children=0;
-    for(const v of (adj[u]||[])){
-      if(!visited.has(v)){
-        children++; dfs(v,u); low[u]=Math.min(low[u],low[v]);
-        if(parent!==null && low[v]>=disc[u]) ap.add(u);
-      } else if(v!==parent){ low[u]=Math.min(low[u],disc[v]); }
-    }
-    if(parent===null && children>1) ap.add(u);
-  }
-  for(const n in adj){ if(!visited.has(n)) dfs(n,null); }
-  return ap;
-}
 function loadRoutes(text){
-  const rows=objs(text); const byTs={}; const nodeIds=new Set();
-  for(const o of rows){ if(!o.timestamp||!o.path_ids) continue;
-    const ids=o.path_ids.split('>').map(s=>s.trim()).filter(Boolean);
-    if(ids.length<2) continue;
-    for(const n of ids){ if(n!=='COORD') nodeIds.add(n); }
-    (byTs[o.timestamp]=byTs[o.timestamp]||[]).push(ids);
-  }
-  S.routeNodeIds=[...nodeIds];
-  // un snapshot por timestamp de captura, con criticidad y profundidad precalculadas
-  S.routeSnaps=Object.keys(byTs).sort().map(ts=>{
-    const depth={}, crit={}, pathByTarget={}, adj={};
-    const addEdge=(a,b)=>{ if(a===b)return; (adj[a]=adj[a]||new Set()).add(b); (adj[b]=adj[b]||new Set()).add(a); };
-    for(const ids of byTs[ts]){
-      const target=ids[ids.length-1];
-      depth[target]=ids.length-1; pathByTarget[target]=ids;
-      for(let k=0;k<ids.length-1;k++) addEdge(ids[k],ids[k+1]);
-      for(let k=1;k<ids.length-1;k++){ const n=ids[k]; if(n==='COORD')continue; crit[n]=(crit[n]||0)+1; }
-    }
-    // SPOF de ESTE instante: puntos de articulación menos COORD (que solo une los GW,
-    // que no se comunican entre sí). Un nodo aquí = su caída deja sin ruta a los de detrás.
-    const apset=articulationPoints(adj); apset.delete('COORD');
-    const spof={}; apset.forEach(n=>{ spof[n]=1; });
-    return {ts, depth, crit, pathByTarget, spof};
-  });
+  const r=snapsDeRutas(text);
+  S.routeNodeIds=r.nodeIds; S.routeSnaps=r.snaps; S.rutas=r;   // `S.rutas` guarda los acumulados del periodo: es lo que exporta la malla real
   // Persistencia del SPOF: en qué fracción de los instantes cada nodo es punto de
   // articulación (crónico vs esporádico). Candidatos a repetidor = los crónicos.
   const N=S.routeSnaps.length||1, cnt={};
@@ -1902,11 +2075,42 @@ function demo(){
 }
 
 /* ---------- eventos ---------- */
-function rf(inp,cb,lbl){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{cb(e.target.result);document.getElementById(lbl).classList.add('loaded');drawStrip();legend();};r.readAsText(f);}
+function rf(inp,cb,lbl){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{cb(e.target.result);document.getElementById(lbl).classList.add('loaded');drawStrip();legend();sincronizaMalla();};r.readAsText(f);}
+/* EL PASO DE VUELTA. Los recolectores dejan los CSV en el PC de la planta; esto los
+   convierte en el <planta>_real.geojson que la pagina coge sola al abrirse. Antes
+   este paso era un `python3 adaptador_elburgo.py` que NO EXISTE en ningun sitio.
+   SE DICE QUE FALTA, y cual: un boton gris sin motivo se lee como una pagina rota. */
+function faltaParaMalla(){
+  const f=[];
+  if(!(S.rows&&S.rows.length)) f.push('registro');
+  if(!(S.coords&&Object.keys(S.coords).length)) f.push('coordenadas');
+  if(!(S.rutas&&S.rutas.snaps&&S.rutas.snaps.length)) f.push('rutas');
+  return f;
+}
+function sincronizaMalla(){
+  const b=document.getElementById('mallaBtn'), k=document.getElementById('mallaK');
+  if(!b)return; const f=faltaParaMalla();
+  b.disabled=f.length>0;
+  k.textContent=f.length?('falta '+f.join(' y ')):(PLANT==='custom'?'malla.geojson':(PLANT+'_real.geojson'));
+}
+function exportaMalla(){
+  const k=document.getElementById('mallaK');
+  const f=faltaParaMalla(); if(f.length){ k.textContent='falta '+f.join(' y '); return; }
+  const g=mallaReal(S.rows,S.rutas,S.coords,{planta:(PLANT==='custom'?null:PLANT)});
+  const nom=(PLANT==='custom'?'malla':PLANT+'_real')+'.geojson';
+  const u=URL.createObjectURL(new Blob([JSON.stringify(g)],{type:'application/geo+json'}));
+  const a=document.createElement('a'); a.href=u; a.download=nom;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000);
+  const pts=g.features.filter(x=>x.geometry.type==='Point').length;
+  k.textContent=pts+' nodos · '+(g.features.length-pts)+' enlaces · '+g.snapshots+' capturas'+
+    (g.nodos_sin_coordenada.length?(' · '+g.nodos_sin_coordenada.length+' sin coordenada'):'');
+}
 document.getElementById('fLog').addEventListener('change',e=>rf(e.target,loadLog,'lblLog'));
 document.getElementById('fCoords').addEventListener('change',e=>rf(e.target,loadCoords,'lblCoords'));
 document.getElementById('fRoutes').addEventListener('change',e=>rf(e.target,loadRoutes,'lblRoutes'));
-document.getElementById('demo').addEventListener('click',demo);
+document.getElementById('demo').addEventListener('click',()=>{demo();sincronizaMalla();});
+document.getElementById('mallaBtn').addEventListener('click',exportaMalla);
+sincronizaMalla();
 
 /* El paquete para ir a medir. Se arma con el manifiesto de ESTA planta, que es
    quien sabe los ámbitos y la IP:puerto de cada gateway. Todo relativo: esta
