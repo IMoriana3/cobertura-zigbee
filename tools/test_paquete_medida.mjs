@@ -26,7 +26,7 @@ const i0 = html.indexOf('/* PAQUETE-INI');
 const i1 = html.indexOf('/* PAQUETE-FIN');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro PAQUETE-INI / PAQUETE-FIN'); process.exit(1); }
 const F = new Function(html.slice(i0, html.indexOf('*/', i1) + 2) +
-  ';return {crc32,zipStore,dosFecha,paqueteDeManifiesto,gwsDe,preparaLogger,preparaRutas,preparaInventario,preparaColector,leemeDe,COLECTORES};')();
+  ';return {crc32,zipStore,dosFecha,paqueteDeManifiesto,gwsDe,preparaLogger,preparaRutas,preparaInventario,preparaAngulos,preparaColector,leemeDe,COLECTORES};')();
 
 check('el CRC32 da el valor canónico de "123456789"',
       F.crc32(new TextEncoder().encode('123456789')) === 0xCBF43926,
@@ -101,10 +101,75 @@ check('el despachador manda cada recolector a su preparador',
       F.preparaColector('zigbee_routes_logger.ps1', RUTAS, gws) === F.preparaRutas(RUTAS, gws));
 check('y uno que no conozca lo deja TAL CUAL, sin inventarle una IP',
       F.preparaColector('otro.ps1', LOGGER, gws) === LOGGER);
-/* Sin IP declarada NO se toca: mejor el original con su «edita esto» que uno con
-   una IP inventada. */
-check('sin gateways declarados, los recolectores se dejan INTACTOS',
-      F.preparaLogger(LOGGER, []) === LOGGER && F.preparaRutas(RUTAS, []) === RUTAS);
+/* ───────────────────────────────────────────────────────────────────────────────
+   SIN IP, MARCADOR — NUNCA LA DE OTRA PLANTA.
+
+   Aqui habia una comprobacion que exigia lo contrario: «sin gateways declarados, los
+   recolectores se dejan INTACTOS». Sonaba prudente y era lo peor de los dos mundos,
+   porque el fichero de ejemplo NO esta vacio: trae la IP de EL BURGO (10.100.1.54 el
+   ConnectPort, 10.100.1.52 el Modbus). O sea que quien bajaba el paquete de una
+   planta sin IP se llevaba un recolector con aspecto de estar configurado, apuntando
+   a otro emplazamiento. Y son CUATRO de las diez: Benante, Panbianco, Paramo y El
+   Polvorin no traen ni la IP de la NCU en su manifiesto.
+
+   El propio bloque del paquete ya decia «mejor sin IP que con la de otro». Ahora eso
+   es verdad: va un marcador que NO es una IP, falla al instante con un mensaje que se
+   entiende, y la linea original queda comentada debajo para no perder nada.
+   ─────────────────────────────────────────────────────────────────────────────── */
+{
+  const _ANG = fs.readFileSync(path.join(RAIZ, 'zigbee_angulos.ps1'), 'utf8');
+  const _INV = fs.readFileSync(path.join(RAIZ, 'zigbee_inventario.ps1'), 'utf8');
+  const sinLog = F.preparaLogger(LOGGER, []), sinRut = F.preparaRutas(RUTAS, []);
+  const sinAng = F.preparaAngulos(_ANG, []), sinInv = F.preparaInventario(_INV, []);
+  /* lo que se mira es la parte VIVA del fichero: debajo va la original comentada, y
+     ahi la IP de ejemplo tiene que seguir (es el «por si acaso» de quien lo deshaga) */
+  const vivo = t => t.split('--- lo que traia el fichero antes de prepararlo ---')[0];
+  check('sin IP, el recolector NO sale con la de El Burgo',
+        [sinLog, sinRut, sinInv].every(t => !/10\.100\.1\.5[0-9]/.test(vivo(t))),
+        [sinLog, sinRut, sinInv].map(t => (vivo(t).match(/10\.100\.1\.\d+/) || ['—'])[0]).join(' '));
+  check('sino con un marcador que no es una IP y no puede confundirse',
+        [sinLog, sinRut, sinInv].every(t => /PON-LA-IP-DEL-GATEWAY/.test(t)));
+  /* el de angulos va al MODBUS, no al gateway: su marcador tiene que decirlo, o
+     alguien le mete la del ConnectPort y mide contra el aparato equivocado */
+  check('y el de ángulos pide la del MODBUS de la NCU, que es otra cosa',
+        /PON-LA-IP-MODBUS-DE-LA-NCU/.test(sinAng) && !/PON-LA-IP-DEL-GATEWAY/.test(sinAng) &&
+        !/10\.100\.1\.5[0-9]/.test(vivo(sinAng)),
+        (vivo(sinAng).match(/Host = "[^"]*"/) || ['—'])[0]);
+  check('y debajo queda la línea original, comentada, para poder deshacerlo',
+        [sinLog, sinRut, sinAng, sinInv].every(t =>
+          /# --- lo que traia el fichero antes de prepararlo ---/.test(t) &&
+          /#.*10\.100\.1\.5[0-9]/.test(t)));
+  check('el léeme lo explica en vez de dejar al de planta adivinando',
+        (() => { const l = F.leemeDe(F.paqueteDeManifiesto(
+                   { ...MAN_BURGO, ambitos: MAN_BURGO.ambitos.map(a => ({ ...a, ip: undefined })) }));
+                 return /PON-LA-IP-DEL-GATEWAY/.test(l) && /de OTRA PLANTA/.test(l); })());
+}
+/* ── Y NINGUNA PLANTA REPARTE LA IP DE OTRA. Es la comprobacion general: se arma el
+   paquete de las DIEZ y se mira que en la parte viva de cada .ps1 no aparezca una IP
+   que no sea de esa planta. Es lo que no existia, y por eso cuatro plantas llevaban
+   meses repartiendo la de El Burgo. ── */
+{
+  const _ANG2 = fs.readFileSync(path.join(RAIZ, 'zigbee_angulos.ps1'), 'utf8');
+  const _INV2 = fs.readFileSync(path.join(RAIZ, 'zigbee_inventario.ps1'), 'utf8');
+  const raiz = path.join(RAIZ, 'cobertura_coords');
+  const plantas = fs.readdirSync(raiz).filter(d => fs.statSync(path.join(raiz, d)).isDirectory());
+  const vivo = t => t.split('--- lo que traia el fichero antes de prepararlo ---')[0];
+  const malas = [];
+  for (const pl of plantas) {
+    const man = JSON.parse(fs.readFileSync(path.join(raiz, pl, 'manifiesto_' + pl + '.json'), 'utf8'));
+    const paq = F.paqueteDeManifiesto(man); if (!paq) continue;
+    const g = F.gwsDe(paq);
+    const suyas = new Set([...g.map(x => x.ipGw), ...g.map(x => x.ipNcu)]);
+    for (const [nom, txt] of [['zigbee_logger.ps1', LOGGER], ['zigbee_routes_logger.ps1', RUTAS],
+                              ['zigbee_inventario.ps1', _INV2], ['zigbee_angulos.ps1', _ANG2]]) {
+      const v = vivo(F.preparaColector(nom, txt, g));
+      for (const ip of (v.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) || []))
+        if (!suyas.has(ip)) malas.push(pl + '/' + nom + ': ' + ip);
+    }
+  }
+  check('ninguna de las diez plantas reparte una IP que no sea suya',
+        malas.length === 0, malas.slice(0, 6).join(' · ') + (malas.length > 6 ? ' …' : ''));
+}
 
 /* ---- AYORA: un gateway por NCU. Es el caso que se perdía: el ámbito de gateway
    solo se emitía con MÁS de uno, así que sus 16 IP se leían del toolbox y se
