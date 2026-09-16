@@ -257,7 +257,7 @@
       <div class="f"><label>Módulos por ala</label><input id="mods" type="number" min="8" max="32" step="1" value="28"></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 tal cual: 6 líneas a pitch 11,0 m, eje a 23,7°, 17 trackers escalonados con sus medios (patrón medido de bagnarelli_layout.json). El preset «Bagnarelli ×N» del selector sigue permitiendo ciclarlo a más líneas.">⛳ Bagnarelli</button>
+      <button class="btn small" id="bagnbtn" title="Carga la implantación REAL de Bagnarelli 24030 tal cual: 17 seguidores BIFILA escalonados con sus medios, en 6 líneas a 11,0 m — o sea 12 filas a 5,50 m emparejadas por accionamiento — con el eje a 23,7° (patrón medido de bagnarelli_layout.json; el accionamiento lo declara geometria.bifila del layout). El preset «Bagnarelli ×N» del selector sigue permitiendo ciclarlo a más líneas.">⛳ Bagnarelli</button>
       <button class="btn small" id="ayorabtn" title="Cotas X,Y,Z reales de los extremos de mesa (ayora_cotas.json): la banda de líneas con más filas, con sus tilts N-S medidos y las parejas bifila reales">⛰ Ayora real</button>
       <button class="btn small" id="sjbtn" title="Cotas X,Y,Z reales de los extremos de mesa (sanjose_cotas.json)">⛰ San José real</button>
       <button class="btn small" id="burgoplbtn" title="Implantación REAL del layout (líneas, mesas y huecos del DWG) — SIN cotas de levantamiento: terreno PLANO, declarado">⛰ El Burgo</button>
@@ -1336,7 +1336,14 @@ const BAGN_PATTERN=[
   [[-47.0,0],[9.8,0],[66.5,0]],
   [[-42.2,0],[14.6,0],[71.4,0]],
 ];
-const BAGN_PITCH=11.0, BAGN_AXAZ=23.7;
+/* DOS SEPARACIONES DISTINTAS, y confundirlas costaba la mitad del GCR: los
+   SEGUIDORES van a 11,0 m y las FILAS a 5,50 m, agrupadas de dos en dos por
+   accionamiento (layout: «las mesas forman 8 líneas a 5,50 m, agrupadas de dos
+   en dos por seguidor, y los seguidores van a 11,00 m … la cartera lo dice
+   también: trk_bi 17, trk_mono 0»). El backtracking se juega entre FILAS, así
+   que el pitch que manda es 5,50: con 11,0 el GCR salía 0,217 en vez de 0,433 y
+   el modelo apenas necesitaba backtrackear. */
+const BAGN_PITCH_TRACKER=11.0, BAGN_PITCH=5.50, BAGN_AXAZ=23.7;
 
 /* tramos por línea según el preset de implantación. filaLen = fila LARGA
    (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
@@ -1385,10 +1392,16 @@ function nsSegments(nRows,preset,nPer,filaLen,gapNS,pairStep){
   const PS=pairStep||1;
   if(preset==='bagnarelli'){
     // patrón real en ciclo de 6, centrado (el layout va de −89,5 a 99,4 m)
+    /* EL PATRÓN ESTÁ INDEXADO POR SEGUIDOR, no por fila: sus 6 entradas son las
+       6 LÍNEAS de trackers a 11 m. Con bifila cada seguidor son DOS filas a
+       ±2,75 m que comparten estructura y, por tanto, implantación — así que las
+       dos toman la MISMA entrada del ciclo. Con `r%6` a secas, la gemela cogía
+       la entrada del seguidor siguiente y la pareja salía desparejada en el eje.
+       Con PS=1 (monofila) esto es idéntico a lo de antes. */
     const shift=-4.95;
     const out=[];
     for(let r=0;r<nRows;r++)
-      out.push(BAGN_PATTERN[r%6].map(([v,m])=>{
+      out.push(BAGN_PATTERN[Math.floor(r/PS)%6].map(([v,m])=>{
         const L=m?BAGN_LM:BAGN_LC;
         return [v+shift-L/2,v+shift+L/2];
       }));
@@ -4277,11 +4290,22 @@ $('ayorabtn').onclick=()=>loadRealPlant('ayora');
 $('sjbtn').onclick=()=>loadRealPlant('sanjose');
 $('bagnbtn').onclick=()=>{
   PLANT_REAL=null;$('realnote').style.display='none';
-  // la implantación real trae su geometría: pitch y azimut de eje MEDIDOS.
-  // Sin multiplicar (antes ×3): las 6 líneas del patrón medido, tal cual.
-  $('nrows').value=6;$('pitch').value='11.00';$('axaz').value=BAGN_AXAZ;
-  $('nsl').value='bagnarelli';$('drive').value='mono';   // Bagnarelli es monofila
-  ensureElev(6);recompute();
+  /* BAGNARELLI ES BIFILA, y el preset la corría monofila con el pitch de los
+     SEGUIDORES. Tres errores que empujaban en la misma dirección —menos sombra y
+     más POA de las que la planta puede dar—: (a) el pitch de 11,0 m modelaba
+     filas al doble de separación real, o sea GCR 0,217 en vez de 0,433, y el GCR
+     es justo el parámetro que manda en el backtracking; (b) con `mono` no se
+     aplicaba el ACOPLE POR ACCIONAMIENTO, así que cada fila elegía su ángulo
+     libre cuando en campo dos filas van soldadas a un motor; (c) tampoco se
+     promediaba el tilt N-S de la pareja, que es lo que hace la rígida.
+     El dato es del layout: geometria.bifila = «SI … trk_bi 17, trk_mono 0».
+     6 líneas de seguidores = 12 filas a 5,50 m, emparejadas por motor. */
+  const nF=2*BAGN_PATTERN.length;
+  $('nrows').value=nF;$('pitch').value=BAGN_PITCH.toFixed(2);$('axaz').value=BAGN_AXAZ;
+  // rígida y no quebrada: el layout declara bifila pero NO declara cardán, y la
+  // rígida es la que menos libertad da — el supuesto conservador
+  $('nsl').value='bagnarelli';$('drive').value='bifila';
+  ensureElev(nF);recompute();
 };
 $('tflat').onclick=()=>{ELEV=new Array(cfg().nrows).fill(0);CAREO_TERR='aplanado';recompute();};
 

@@ -66,6 +66,37 @@ t('careo: publica la BANDA del circunsolar con la misma convención que la tabla
   if (!/cruza:bl<-1e-9&&bh>1e-9/.test(f)) throw new Error('el careo no marca el cruce del cero');
   if (!/careoBandaHtml\(b\)/.test(html)) throw new Error('la cajita no pinta la banda');
 });
+t('BAGNARELLI ES BIFILA: el preset usa el pitch de FILA y acopla por accionamiento', () => {
+  /* El preset corría la planta como monofila con el pitch de los SEGUIDORES
+     (11,0 m), y los tres efectos empujaban en la misma dirección: el GCR salía
+     0,217 en vez de 0,433 —y el GCR es el parámetro que manda en el
+     backtracking—, no se aplicaba el acople por accionamiento, y no se
+     promediaba el tilt N-S de la pareja. Medido, la POA salía un 3,4 % alta y la
+     sombra de las políticas de energía 7 veces baja (0,252 % frente a 1,652 %).
+     El dato es del layout, así que esto lo carea contra él y no contra un
+     literal: si mañana se remide, la prueba lo dice. */
+  const lay = JSON.parse(fs.readFileSync(path.join(ROOT, 'bagnarelli_layout.json'), 'utf-8'));
+  const decl = lay.geometria && lay.geometria.bifila;
+  if (decl === undefined) throw new Error('el layout ya no declara geometria.bifila: el careo se queda sin fuente');
+  const esBifila = decl === true || /^s[ií]/i.test(String(decl));
+  if (!esBifila) throw new Error('el layout dice que Bagnarelli NO es bifila: revisar el preset');
+  const btn = html.slice(html.indexOf("$('bagnbtn').onclick"), html.indexOf("$('bagnbtn').onclick") + 1800);
+  if (!/drive'\)\.value='bifila'|drive'\)\.value='quebrado'/.test(btn))
+    throw new Error('el preset de Bagnarelli no pone un accionamiento bifila');
+  // el pitch de FILA es la mitad del de seguidores, y es el que manda
+  const mT = /BAGN_PITCH_TRACKER=([\d.]+)\s*,\s*BAGN_PITCH=([\d.]+)/.exec(html);
+  if (!mT) throw new Error('faltan las dos separaciones declaradas por separado');
+  const [pt, pf] = [parseFloat(mT[1]), parseFloat(mT[2])];
+  if (Math.abs(pf - pt / 2) > 1e-9)
+    throw new Error('el pitch de fila (' + pf + ') no es la mitad del de seguidores (' + pt + ')');
+  if (Math.abs(pf - 2 * (lay.filaZ || 0)) > 1e-9)
+    throw new Error('el pitch de fila no cuadra con el filaZ del layout (' + lay.filaZ + ')');
+  if (!/pitch'\)\.value=BAGN_PITCH/.test(btn))
+    throw new Error('el preset no usa el pitch de FILA');
+  // y el patrón N-S se indexa por SEGUIDOR: las dos filas de una pareja lo comparten
+  if (!/BAGN_PATTERN\[Math\.floor\(r\/PS\)%6\]/.test(html))
+    throw new Error('el patrón de implantación no respeta el emparejamiento: la gemela cogería otra entrada');
+});
 t('sin dependencias externas (offline): ni http(s) en <script src>/<link href> de CDN', () => {
   const m = html.match(/<script[^>]+src=["']https?:|<link[^>]+href=["']https?:/g);
   if (m) throw new Error('carga remota: ' + m.join(' · '));
