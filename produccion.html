@@ -383,6 +383,8 @@ input[type=range]{accent-color:var(--live)}
         <span class="pill on" id="modepill">AUTO · Pairwise</span>
         <select id="pol" class="btn" title="EL ALGORITMO DE BACKTRACKING. Es el mismo motor que el simulador de BT 3D —bloque FÍSICA PURA, extraído en caliente, cero copias—: aquí se elige con cuál se ESTIMA la energía. Pairwise es el canónico y el que la página usó siempre."></select>
         <label class="btn" style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="manual"> 🎛 manual</label>
+        <label class="btn" style="display:inline-flex;align-items:center;gap:5px"
+          title="Marca el LÍMITE de cada mesa con un listón claro en sus dos extremos. Con el color de producción por mesa, cuatro mesas seguidas del mismo tracker pueden salir del mismo color y la fila se lee como una viga continua de 65 m — y no lo es: son cuatro strings, cada uno con su sombra. El listón bascula con su mesa, así que también dice dónde está el quiebro del morro."><input type="checkbox" id="bordes" checked> ▦ límites de mesa</label>
         <input type="range" id="manth" min="-60" max="60" step="1" value="0" disabled style="width:110px">
         <span class="t" id="manthlbl">0°</span>
         <select id="cmode" class="btn">
@@ -452,6 +454,25 @@ input[type=range]{accent-color:var(--live)}
         </div>
         <div id="minout" style="margin-top:8px;font-family:var(--mono);font-size:.68rem;max-height:340px;overflow:auto"></div>
         <button class="btn" id="mincsv" style="margin-top:6px;display:none">⬇ CSV de la tabla</button>
+      </details>
+      <details class="nota" style="border-top:1px solid var(--line)">
+        <summary style="cursor:pointer;color:var(--text)">⛰ Careo: terreno real frente a considerarlo todo plano</summary>
+        <p style="margin:6px 0">La simplificación que casi todo el mundo hace: <b>considerar la planta
+        toda plana</b> —eje horizontal, filas a la misma cota, backtracking uniforme—. Esto la carea
+        contra el terreno <b>medido</b>, el mismo día y con todo lo demás idéntico: las mismas
+        posiciones, el mismo pitch por vano, las mismas mesas, el mismo accionamiento y la misma cadena
+        eléctrica. La diferencia solo puede venir del terreno.</p>
+        <p style="margin:6px 0;color:var(--muted-2);font-size:.68rem">Lo que se pone a cero es TODO lo
+        que trae el terreno: la pendiente por pareja (la que hace el backtracking por parejas en vez de
+        uniforme), el tilt del eje (el que mueve la consigna astronómica) y las cotas por mesa (las que
+        usa la sombra para saber qué mesa tapa a cuál). Cuesta DOS días, así que con planta entera son
+        minutos: elige una <b>NCU</b> arriba. Medido en San José NCU 14, 21-jun: el total sale
+        <b>+0,28 %</b> y sin embargo hay un string que pierde <b>2,83 %</b> y otro que gana 2,22 % —
+        considerarlo plano acierta la cifra de planta y no dice nada del reparto, que es justo para lo
+        que sirve esta página. Con El Burgo I el careo sale <b>0,00 %</b> y tiene que salir: su relieve no
+        está levantado en este repo y su terreno ya es plano — el careo no finge un terreno que no hay.</p>
+        <button class="btn" id="btnplano">Carear</button>
+        <div id="planoout" style="margin-top:8px;font-family:var(--mono);font-size:.72rem"></div>
       </details>
       <div class="nota">Color por string normalizado min→máx de la planta (azul = el que menos, rojo = el que más).
       El modo «Σ día» integra el día entero con el modo activo (AUTO entra por policyAngles con la
@@ -1355,19 +1376,34 @@ function filaMinuto(F,c,T,rIdx,m,paso,prev,eWh,map){
    para kWh/m²; pStringW para kWh por string) — recibe también la meteo del
    instante (Tamb/viento del TMY cuando lo hay, los inputs fijos si no). */
 function dayEnergy(F,c,T,dateStr,stepMin,map){
-  const c2=dateStr===c.date?c:Object.assign({},c,{date:dateStr});
-  const n=c.nrows, f=map||(v=>v), out=new Array(n).fill(0);
-  // EN ORDEN y arrastrando el instante anterior: con lazo de control θ(m)
-  // depende de la mañana entera, así que el día no se puede trocear ni paralelizar
-  let prev=null;
-  for(let m=0;m<1440;m+=stepMin){
-    const r=instant(F,c2,T,m,prev);prev=r;
-    // el map recibe también el INSTANTE y la fila: la bifacialidad necesita la
-    // irradiancia y la inclinación de esa superficie, no solo su POA
-    for(let k=0;k<n;k++)out[k]+=f(r.rows[k],r.met,r,k);
-  }
-  for(let k=0;k<n;k++)out[k]*=stepMin/60/1000;
-  return out;
+  const st=dayInit(F,c,T,dateStr,stepMin,map);
+  while(dayAvanza(F,T,st));
+  return dayCierra(st);
+}
+/* …y el día PASO A PASO, con el estado fuera. No es un bucle alternativo: es el
+   MISMO que usa dayEnergy, partido en tres para que la UI pueda trocearlo sin
+   copiarlo. Lo pide el careo de terreno: dos días enteros de planta seguidos
+   congelan la pestaña, y el troceo necesita poder parar entre dos minutos y
+   seguir. El estado que cruza el corte es el instante anterior (prev), porque
+   con lazo de control el θ de un minuto depende de la mañana entera. */
+function dayInit(F,c,T,dateStr,stepMin,map){
+  return {c2:dateStr===c.date?c:Object.assign({},c,{date:dateStr}),
+          n:c.nrows, f:map||(v=>v), out:new Array(c.nrows).fill(0),
+          m:0, prev:null, paso:stepMin};
+}
+function dayAvanza(F,T,st){
+  if(st.m>=1440)return false;
+  const r=instant(F,st.c2,T,st.m,st.prev);st.prev=r;
+  // el map recibe también el INSTANTE y la fila: la bifacialidad necesita la
+  // irradiancia y la inclinación de esa superficie, no solo su POA
+  for(let k=0;k<st.n;k++)st.out[k]+=st.f(r.rows[k],r.met,r,k);
+  st.m+=st.paso;
+  return true;
+}
+function dayCierra(st){
+  const o=st.out.slice();
+  for(let k=0;k<st.n;k++)o[k]*=st.paso/60/1000;
+  return o;
 }
 /* día entero, paso de 5 min con el modo activo (la fecha de la página) */
 function dayTotals(F,c,T,map){return dayEnergy(F,c,T,c.date,5,map);}
@@ -1519,7 +1555,8 @@ const CAMPOS=[
   ['ctrlOn','c'],['ctrlDb','v'],['ctrlSlew','v'],['ctrlCiclo','v'],['ctrlModo','v'],  // lazo de la TCU
   ['medidas','v'],                                                 // la medida pegada del careo
 ];
-const CAMPOS_VISTA=[['cmode','v'],['cscale','v'],['hour','v'],['minpaso','v'],['speed','v']];
+const CAMPOS_VISTA=[['cmode','v'],['cscale','v'],['hour','v'],['minpaso','v'],['speed','v'],
+                    ['bordes','c']];   // los límites de mesa son VISTA: no cambian ni un vatio
 
 /* LEE la configuración. `lee(id,tipo)` devuelve el valor del campo, o null si
    ese campo no existe en la página (versiones viejas del HTML): los que faltan
@@ -1570,6 +1607,68 @@ function cursorLazo(F,c,T,m,cur,paso){
   for(let t=mk+1;t<m;t++)base=instant(F,c,T,t,base,true);
   return {cur:k,r:instant(F,c,T,m,base)};
 }
+
+/* ── LA MISMA PLANTA «CONSIDERADA TODA PLANA» ───────────────────────────────
+   El careo que pide el parte: cuánto cambia la cifra por MODELAR el terreno.
+   No es otra planta ni otro modelo: es la MISMA T con el terreno a cero, así
+   que todo lo demás —posiciones x, pitch por vano, cw, tope, strings, mesas,
+   accionamiento, la cadena eléctrica entera— es idéntico por construcción y la
+   diferencia solo puede venir del terreno. Fabricarla como una planta aparte
+   (cotas planas → plantFromCotas) habría sido otra cosa: cambiarían los pitch
+   medidos y el careo mediría dos cosas a la vez.
+   Lo que se pone a cero es TODO lo que trae el terreno, y hay una razón por
+   cada cosa: la pendiente por pareja (slope, pairDz) es la que hace que el
+   backtracking sea por parejas y no uniforme; el tilt del eje (axisTilt,
+   rowTilt, tilt) es el que inclina el eje N-S y mueve el ángulo astro; y las
+   cotas por mesa (segZ, segMorro) son las que usa la sombra para saber qué
+   mesa está más alta que su vecina. Dejarse una sola fuera daría un «plano»
+   que sigue teniendo terreno por otro lado. */
+function tPlano(T){
+  const cero=a=>a?a.map(()=>0):a;
+  const o=Object.assign({},T,{
+    pairs:T.pairs.map(p=>Object.assign({},p,{slope:0,axisTilt:0})),
+    rowTilt:cero(T.rowTilt),
+    segTilt:T.segTilt?T.segTilt.map(l=>cero(l)):T.segTilt,
+    segZ:T.segZ?T.segZ.map(l=>l.map(()=>[0,0])):T.segZ});
+  // T.real no se quita: es el TESTIGO de que la planta es medida (la física
+  // ramifica con él) y quitarlo cambiaría de modelo, que es justo lo que este
+  // careo no quiere. Se le vacía el terreno, igual que arriba.
+  if(T.real)o.real=Object.assign({},T.real,{
+    pairDz:cero(T.real.pairDz), tilt:cero(T.real.tilt), elev:cero(T.real.elev),
+    segTilt:T.real.segTilt?T.real.segTilt.map(l=>cero(l)):T.real.segTilt,
+    segZ:T.real.segZ?T.real.segZ.map(l=>l.map(()=>[0,0])):T.real.segZ,
+    segMorro:T.real.segMorro?T.real.segMorro.map(l=>l.map(m=>[m[0],0])):T.real.segMorro});
+  return o;
+}
+
+/* el careo en sí: el MISMO día, el MISMO paso y el MISMO map por los dos
+   caminos. Devuelve kWh por string en los dos y el reparto, que es lo que
+   interesa: el total puede salir casi igual y haber strings que pierdan el
+   10 % —el terreno no reparte igual—. */
+/* ojo al mapDe: recibe una FÁBRICA de map, no un map. mapStringW se cierra
+   sobre su T porque la bifacialidad necesita la inclinación de la superficie
+   —que es terreno—, así que pasar el mismo map a las dos plantas le daría a la
+   plana la ganancia trasera de la real y el careo mediría medio terreno. */
+function careoPlano(F,c,T,dateStr,stepMin,mapDe){
+  const mk=mapDe||(()=>null), TP=tPlano(T);
+  return careoStats(dayEnergy(F,c,T,dateStr,stepMin,mk(T)),
+                    dayEnergy(F,c,TP,dateStr,stepMin,mk(TP)));
+}
+/* la estadística del careo, aparte: la usan el careo de un tirón y el troceado
+   de la UI, que recorren el día por caminos distintos y tienen que DECIR lo
+   mismo. El reparto es lo que interesa: el total puede salir casi igual y haber
+   strings que pierdan el 3 % —el terreno no reparte igual—. */
+function careoStats(re,pl){
+  const n=re.length, d=new Array(n);
+  let sre=0,spl=0;
+  for(let k=0;k<n;k++){sre+=re[k];spl+=pl[k];d[k]=pl[k]>0?100*(re[k]-pl[k])/pl[k]:0;}
+  const ord=d.map((v,k)=>[v,k]).sort((a,b)=>a[0]-b[0]);
+  return {real:re,plano:pl,sumReal:sre,sumPlano:spl,
+          difPct:spl>0?100*(sre-spl)/spl:0, porString:d,
+          peor:ord[0]||null, mejor:ord[ord.length-1]||null,
+          mediana:ord.length?ord[Math.floor(ord.length/2)][0]:0};
+}
+
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
@@ -2021,7 +2120,13 @@ function build3D(c){
   if(hayModelo&&T.mod)Seguidor.setModulo(T.mod);
   if(hayModelo&&!R3.mats)R3.mats=Seguidor.materials(THREE);
   const postM=new THREE.MeshLambertMaterial({color:0x2a333d});
-  R3.rows=[];R3.inst=null;
+  R3.rows=[];R3.inst=null;R3.bordesMesh=[];
+  // el material de los límites es UNO compartido: así la casilla puede
+  // apagarlos por visibilidad sin tocar miles de mallas, y el color se cambia
+  // en un sitio. Blanco porque tiene que leerse sobre la rampa entera, que va
+  // de morado oscuro a rojo pasando por amarillo.
+  if(!R3.borM)R3.borM=new THREE.MeshBasicMaterial({color:0xf2f7fc,transparent:true,
+    opacity:0.85,side:THREE.DoubleSide,depthWrite:false});
   if(useInst){
     buildInstanced(c,rx,segsNS,postM,D0,{cMesa:cMesa,zTubo:zTubo,hLinea:hLinea,westK:westK});
   }else{
@@ -2080,17 +2185,34 @@ function build3D(c){
           // el tinte va en DOS alas, dejando el hueco central del accionamiento
           // sin pintar — un plano corrido tapaba corona/reductora/motor
           const bbLen=Math.max(1,bb.max.x-bb.min.x), wAla=(bbLen-D0.gapDrive)/2;
+          /* LÍMITES DE MESA: dos listones en los extremos del paño de tinte.
+             Aquí cuelgan del MISMO grupo que bascula, así que no hay nada que
+             recolocar por fotograma — en el camino instanciado sí, y por eso
+             allí van en su propia InstancedMesh. Se apuntan en R3.bordesMesh
+             para que la casilla los apague. */
+          const marca=(xc,largo)=>{
+            for(const e of [-1,1]){
+              const b=new THREE.Mesh(new THREE.PlaneGeometry(BORDE_M,2.36*1.02),R3.borM);
+              b.rotation.x=-Math.PI/2;b.position.y=0.176;b.position.x=xc+e*largo/2;
+              b.renderOrder=3;b.visible=bordesOn();
+              beam.spin.add(b);R3.bordesMesh.push(b);
+            }
+          };
           if(lado){
             // UNA mesa = UN string = UN plano de tinte, del morro al extremo
+            const xc=lado*(D0.gapDrive/2+len/2);
             const tint=new THREE.Mesh(new THREE.PlaneGeometry(len,2.36),tintM);
-            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=lado*(D0.gapDrive/2+len/2);
+            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=xc;
             tint.renderOrder=2;
             beam.spin.add(tint);
+            marca(xc,len);
           }else for(const s2 of (wAla>0.5?[-1,1]:[0])){
-            const tint=new THREE.Mesh(new THREE.PlaneGeometry(s2?wAla:bbLen,2.36),s2>0?tintM2:tintM);   // ala norte (+X del tubo) = string b
-            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=s2*(D0.gapDrive/2+wAla/2);
+            const largo=s2?wAla:bbLen, xc=s2*(D0.gapDrive/2+wAla/2);
+            const tint=new THREE.Mesh(new THREE.PlaneGeometry(largo,2.36),s2>0?tintM2:tintM);   // ala norte (+X del tubo) = string b
+            tint.rotation.x=-Math.PI/2;tint.position.y=0.175;tint.position.x=xc;
             tint.renderOrder=2;
             beam.spin.add(tint);
+            marca(xc,largo);
           }
           yaw.add(beam.spin,beam.static);
           tiltG.add(yaw);
@@ -2280,6 +2402,11 @@ function build3D(c){
   R3.dirty=true;
 }
 
+const BORDE_M=0.16;   // ancho del listón que marca el límite de mesa, en metros
+/* la casilla de los límites. Vive aquí porque la leen los DOS caminos de
+   render (mallas e instanciado) y el repintado, y ninguno tiene por qué saber
+   cómo se llama el input. */
+function bordesOn(){const e=$('bordes');return e?e.checked:true;}
 /* ── modelo INSTANCIADO a escala de planta entera (Seguidor.instancePlan,
    como terreno.html): un InstancedMesh por pieza y por TALLA de mesa. Las
    piezas del giro se rematrizan en cada repintado (Q = base·Rx(θ)·escala de
@@ -2317,14 +2444,29 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
     // tinte: UN plano por MESA (v1.23; antes dos «alas» por viga), del morro al
     // extremo, dejando sin pintar el hueco del accionamiento
     const g0=D0.gapDrive/2;
-    tr.Ltint=tr.lado
-      ?[new THREE.Matrix4().makeTranslation(tr.lado*(g0+tr.len/2),0.175,0)
-          .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
-          .multiply(new THREE.Matrix4().makeScale(tr.len,2.36,1))]
+    // los paños del tinte se describen con NÚMEROS (centro y largo) y la matriz
+    // se fabrica una sola vez, porque los LÍMITES de la mesa salen de los mismos
+    // números: si cada uno llevara su receta, un cambio en el tinte dejaría los
+    // límites en otro sitio y nadie se enteraría
+    const panes=tr.lado
+      ?[{xc:tr.lado*(g0+tr.len/2),largo:tr.len}]
       :[-1,1].map(s2=>{const wAla=Math.max(0.5,(tr.len-D0.gapDrive)/2);
-          return new THREE.Matrix4().makeTranslation(s2*(g0+wAla/2),0.175,0)
-          .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
-          .multiply(new THREE.Matrix4().makeScale(wAla,2.36,1));});
+                       return {xc:s2*(g0+wAla/2),largo:wAla};});
+    const pano=(xc,largo,cuerda,y)=>new THREE.Matrix4().makeTranslation(xc,y,0)
+      .multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))
+      .multiply(new THREE.Matrix4().makeScale(largo,cuerda,1));
+    tr.Ltint=panes.map(q=>pano(q.xc,q.largo,2.36,0.175));
+    /* LÍMITES DE MESA. Con el color de producción por mesa, cuatro mesas
+       seguidas del mismo tracker pueden salir del mismo color y la fila se lee
+       como una viga continua de 65 m — que es justo lo que NO es: son cuatro
+       strings distintos, cada uno con su sombra. Un listón en cada extremo del
+       paño lo corta a la vista. Va con la MISMA receta que el tinte (mismo
+       centro, mismo largo, misma cuerda), así que hereda el θ, el tilt N-S y la
+       cuerda sin cuentas propias; solo se levanta un milímetro para no pelearse
+       con él en el z-buffer. */
+    tr.Lbor=[];
+    for(const q of panes)for(const s2 of [-1,1])
+      tr.Lbor.push(pano(q.xc+s2*q.largo/2,BORDE_M,2.36*1.02,0.176));
   }
   const nTint=tramos.reduce((a,tr)=>a+tr.Ltint.length,0);
   // tallas: los módulos de la MESA salen de su largo medido con el paso del
@@ -2389,6 +2531,16 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
   tint.userData.pickTramos=tramos;tint.userData.nLocals=nL;tint.userData.tramoIdx=tramos.map((_,i)=>i);
   for(let ti=0;ti<nTint;ti++)tint.setColorAt(ti,new THREE.Color(0x223344));
   R3.world.add(tint);
+  // los límites: color FIJO (no por instancia), así que basta el del material.
+  // Blanco porque tiene que leerse sobre la rampa entera, que va de morado
+  // oscuro a rojo pasando por amarillo — ningún color oscuro vale para las dos
+  // puntas. Se pintan DESPUÉS del tinte (renderOrder 3) y sin escribir en el
+  // z-buffer, como él.
+  const nBor=tramos.reduce((a,tr)=>a+tr.Lbor.length,0);
+  const bordes=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),R3.borM,nBor);
+  bordes.renderOrder=3;
+  bordes.visible=bordesOn();
+  R3.world.add(bordes);
   // postes instanciados: la retícula de la casa (pilotesX por talla, el medio
   // oculta exteriores) y longitud variable absorbiendo el terreno — cilindro
   // unitario escalado, la misma regla que el camino de mallas
@@ -2414,7 +2566,7 @@ function buildInstanced(c,rx,segsNS,postM,D0,G){
      posts.setMatrixAt(id++,tmpM);
    }}
   R3.world.add(posts);
-  R3.inst={tramos:tramos,spinMeshes:spinMeshes,tint:tint,
+  R3.inst={tramos:tramos,spinMeshes:spinMeshes,tint:tint,bordes:bordes,
            tmpR:new THREE.Matrix4(),tmpS:new THREE.Matrix4(),tmpM:new THREE.Matrix4(),
            tmpC:new THREE.Color()};
 }
@@ -2448,6 +2600,15 @@ function updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals){
   }
   I.tint.instanceMatrix.needsUpdate=true;
   if(I.tint.instanceColor)I.tint.instanceColor.needsUpdate=true;
+  // los límites basculan con su mesa igual que el tinte; si están apagados no
+  // se recolocan (es la mitad de matrices de la escena)
+  if(I.bordes&&I.bordes.visible){
+    let ib=0;
+    for(const tr of I.tramos)for(const L of tr.Lbor){
+      I.tmpM.multiplyMatrices(tr.Q,L);I.bordes.setMatrixAt(ib++,I.tmpM);
+    }
+    I.bordes.instanceMatrix.needsUpdate=true;
+  }
   actualizaPick();          // el contorno de la selección bascula con su mesa
 }
 
@@ -2850,6 +3011,67 @@ function csvMinuto(){
   setTimeout(()=>URL.revokeObjectURL(u),4000);
 }
 
+/* CAREO TERRENO REAL / TODO PLANO. Recorre los DOS días a la vez y troceado: el
+   estado de cada uno va en su dayInit y se avanzan alternándolos con presupuesto
+   de tiempo, como la tabla por minuto. Alternarlos no es cosmética — así el
+   progreso es honesto (los dos van por el mismo minuto) y un cambio de
+   configuración cancela los dos a la vez. */
+let PLANORUN=0;
+function calcPlano(){
+  if(!F||!T)return;
+  const c=cfg(), paso=5;
+  const run=++PLANORUN;
+  // la planta plana se construye UNA vez: hacerlo dentro del bucle daría una T
+  // nueva cada minuto y tiraría la memorización de la física por el desagüe.
+  // Y cada una lleva SU map: la bifacialidad depende de la inclinación de la
+  // superficie, que es justo lo que este careo quita
+  const TP=tPlano(T.obj);
+  const a=dayInit(F,c,T.obj,c.date,paso,mapStringW(F,c,T.obj)),
+        b=dayInit(F,c,TP,c.date,paso,mapStringW(F,c,TP));
+  const tanda=()=>{
+    if(run!==PLANORUN)return;                    // cancelado: otro run o config nueva
+    const t0=performance.now();
+    let vivo=true;
+    // los DOS se avanzan siempre (sin cortocircuito): que acaben juntos no es
+    // algo que deba depender de que && evalúe el segundo
+    while(vivo&&performance.now()-t0<120){
+      const va=dayAvanza(F,T.obj,a), vb=dayAvanza(F,TP,b);
+      vivo=va||vb;
+    }
+    if(vivo){
+      $('planoout').innerHTML='<span class="s-chip">minuto '+a.m+'/1440…</span>';
+      setTimeout(tanda,0);
+    }else pintaPlano(careoStats(dayCierra(a),dayCierra(b)),c,paso);
+  };
+  tanda();
+}
+function pintaPlano(r,c,paso){
+  const sg=v=>(v>0?'+':'')+v.toFixed(2)+'%';
+  const col=v=>Math.abs(v)<0.5?'var(--muted-2)':(v>0?'var(--live)':'var(--dead)');
+  // los strings ORDENADOS por desvío: los cinco que más pierden y los cinco que
+  // más ganan. La lista entera no cabe (San José tiene 9.156) y la mediana ya
+  // dice dónde está el bulto
+  const ord=r.porString.map((v,k)=>[v,k]).sort((x,y)=>x[0]-y[0]);
+  const fila=([v,k])=>'<tr><td style="padding:1px 10px">S'+(k+1)+'</td><td style="text-align:right">'+
+    r.real[k].toFixed(1)+'</td><td style="text-align:right;padding:0 10px">'+r.plano[k].toFixed(1)+
+    '</td><td style="text-align:right;color:'+col(v)+'">'+sg(v)+'</td></tr>';
+  const bajos=ord.slice(0,5), altos=ord.slice(-5).reverse();
+  $('planoout').innerHTML=
+    '<div style="padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px">'+
+    '<b>Planta</b> (Σ de los '+r.real.length+' strings, kWh DC del día '+c.date+', paso '+paso+' min)<br>'+
+    'terreno medido <b>'+r.sumReal.toFixed(1)+'</b> · todo plano <b>'+r.sumPlano.toFixed(1)+
+    '</b> · <span style="color:'+col(r.difPct)+'"><b>'+sg(r.difPct)+'</b></span><br>'+
+    '<span style="color:var(--muted-2)">Por string: mediana '+sg(r.mediana)+
+    ', peor '+sg(r.peor[0])+' (S'+(r.peor[1]+1)+'), mejor '+sg(r.mejor[0])+' (S'+(r.mejor[1]+1)+'). '+
+    'El total de planta se compensa entre strings; el reparto no.</span></div>'+
+    '<table style="border-collapse:collapse;margin-top:8px">'+
+    '<tr style="color:var(--muted)"><td style="padding:2px 10px">String</td><td>real</td>'+
+    '<td style="padding:2px 10px">plano</td><td>Δ</td></tr>'+
+    bajos.map(fila).join('')+
+    '<tr><td colspan="4" style="color:var(--muted-2);padding:3px 10px">…</td></tr>'+
+    altos.map(fila).join('')+'</table>';
+}
+
 /* careo con la medida pegada: E AC Σ día por inversor (calculada) vs kWh reales */
 function runCareo(){
   const c=cfg();
@@ -3149,8 +3371,12 @@ function repaintPick(){
   }
   $('plant').addEventListener('change',cambiaPlanta);
   // la tabla por minuto también caduca: MINRUN++ cancela el run en curso y la
-  // tabla pintada deja de corresponder a la configuración de la página
-  const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;MINRUN++;
+  // tabla pintada deja de corresponder a la configuración de la página. El
+  // careo de terreno igual: PLANORUN++ corta el troceo y se borra lo pintado,
+  // porque un careo de OTRA configuración no es un careo, es un número suelto
+  const invalida=()=>{DAYC=null;PERIODC=null;CTRLCUR=null;PERIODRUN++;MINRUN++;PLANORUN++;
+    if($('planoout')&&$('planoout').innerHTML)$('planoout').innerHTML=
+      '<span style="color:var(--muted-2)">La configuración ha cambiado: vuelve a carear.</span>';
     if(MINT){MINT=null;if($('minout'))$('minout').innerHTML=
       '<span style="color:var(--muted-2)">La configuración ha cambiado: vuelve a calcular.</span>';
       if($('mingraf'))$('mingraf').innerHTML='';
@@ -3278,6 +3504,15 @@ function repaintPick(){
   if($('minvent'))$('minvent').addEventListener('change',grafMinuto);
   $('hour').addEventListener('input',()=>{if(MINT)grafMinuto();});
   $('btncareo').addEventListener('click',runCareo);
+  $('btnplano').addEventListener('click',calcPlano);
+  // los límites solo cambian de VISIBILIDAD: ni se reconstruye la escena ni se
+  // recalcula nada, así que no pasa por invalida()
+  $('bordes').addEventListener('change',()=>{
+    const on=bordesOn();
+    if(R3.inst&&R3.inst.bordes)R3.inst.bordes.visible=on;
+    for(const b of (R3.bordesMesh||[]))b.visible=on;
+    repaint();
+  });
   $('hour').addEventListener('input',repaint);
   $('cmode').addEventListener('change',repaint);
   $('cscale').addEventListener('change',repaint);

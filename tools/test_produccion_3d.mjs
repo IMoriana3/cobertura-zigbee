@@ -39,6 +39,64 @@ try {
   await pg.goto(`http://localhost:${PORT}/produccion.html`, { waitUntil: 'load' });
   await pg.waitForTimeout(2000);
 
+  /* 8) LOS LÍMITES DE MESA. Un listón claro en cada extremo del paño de tinte,
+        porque con el color de producción por mesa cuatro mesas seguidas del
+        mismo tracker se leen como una viga continua de 65 m. Lo que se mide no
+        es que existan: es que estén DONDE está el paño (mismo centro, la misma
+        separación que su largo) y que basculen con él (misma normal). Si
+        alguien cambia la receta del tinte y no la de los límites, esto se pone
+        rojo — que es el fallo que pueden tener.
+        Se mide en LOS DOS caminos de render, porque son dos códigos distintos:
+        el de mallas cuelga los listones del grupo que bascula y el instanciado
+        los recoloca por fotograma en su propia InstancedMesh. */
+  const mideBordes = () => {
+    const I = R3.inst;
+    const Z = new THREE.Vector3(0, 0, 1);
+    let peorMid = 0, peorLargo = 0, peorNorm = 0, pares = 0, n = 0, nTint = 0, vis = null;
+    if (I && I.bordes) {                       // camino INSTANCIADO
+      const Mt = new THREE.Matrix4(), Mb = new THREE.Matrix4();
+      let ib = 0, it = 0;
+      n = I.bordes.count; nTint = I.tint.count; vis = I.bordes.visible;
+      for (const tr of I.tramos) for (let q = 0; q < tr.Ltint.length; q++) {
+        I.tint.getMatrixAt(it++, Mt);
+        const ct = new THREE.Vector3().setFromMatrixPosition(Mt);
+        const largo = new THREE.Vector3().setFromMatrixColumn(Mt, 0).length();
+        const nt = Z.clone().transformDirection(Mt);
+        I.bordes.getMatrixAt(ib++, Mb);
+        const a = new THREE.Vector3().setFromMatrixPosition(Mb);
+        const nb = Z.clone().transformDirection(Mb);
+        I.bordes.getMatrixAt(ib++, Mb);
+        const c2 = new THREE.Vector3().setFromMatrixPosition(Mb);
+        peorMid = Math.max(peorMid, a.clone().add(c2).multiplyScalar(0.5).distanceTo(ct));
+        peorLargo = Math.max(peorLargo, Math.abs(a.distanceTo(c2) - largo));
+        peorNorm = Math.max(peorNorm, nt.angleTo(nb) * 180 / Math.PI);
+        pares++;
+      }
+      return { via: 'instanciado', n, nTint, pares, peorMid, peorLargo, peorNorm, vis };
+    }
+    const bors = R3.bordesMesh || [];          // camino de MALLAS
+    n = bors.length; vis = bors.length ? bors[0].visible : null;
+    const porPadre = new Map();
+    for (const b of bors) { if (!porPadre.has(b.parent)) porPadre.set(b.parent, []); porPadre.get(b.parent).push(b); }
+    for (const [par, bs] of porPadre) {
+      const ts = par.children.filter(o => o.isMesh && o.material && o.material.opacity === 0.62);
+      nTint += ts.length;
+      for (const t of ts) {
+        const largo = t.geometry.parameters.width;
+        const mios = bs.filter(b => Math.abs(Math.abs(b.position.x - t.position.x) - largo / 2) < 0.03);
+        if (mios.length !== 2) continue;
+        pares++;
+        par.updateWorldMatrix(true, false);
+        const ct = t.getWorldPosition(new THREE.Vector3());
+        const a = mios[0].getWorldPosition(new THREE.Vector3()), c2 = mios[1].getWorldPosition(new THREE.Vector3());
+        peorMid = Math.max(peorMid, a.clone().add(c2).multiplyScalar(0.5).distanceTo(ct));
+        peorLargo = Math.max(peorLargo, Math.abs(a.distanceTo(c2) - largo));
+        peorNorm = Math.max(peorNorm, Z.clone().transformDirection(t.matrixWorld)
+                                       .angleTo(Z.clone().transformDirection(mios[0].matrixWorld)) * 180 / Math.PI);
+      }
+    }
+    return { via: 'mallas', n, nTint, pares, peorMid, peorLargo, peorNorm, vis };
+  };
   for (const [sel, nombre, camino] of [['ayora|2', 'Ayora NCU 2', 'mallas'],
                                       ['sanjose|9', 'San José NCU 9', 'mallas'],
                                       ['ayora', 'Ayora entera', 'instanciado']]) {
@@ -195,7 +253,28 @@ try {
       check(`${nombre}: de las ${art} vigas con quiebro MEDIDO, ${quebradas} se dibujan con sus dos mesas a tilt distinto (peor Δ ${peorQ.toFixed(2)}°)`,
             art === 0 || quebradas > art * 0.5, `solo ${quebradas} de ${art}`);
     }
-  }
+
+    // los LÍMITES DE MESA de este camino de render (ver la nota de mideBordes)
+    {
+      const b = await pg.evaluate(mideBordes);
+      check(`${nombre}: límites de mesa, DOS por paño de tinte y pintados (${b ? b.via : '?'})`,
+            !!b && b.via === camino && b.n === 2 * b.nTint && b.pares === b.nTint && b.nTint > 100 && b.vis === true,
+            b ? `${b.n} límites para ${b.nTint} paños · ${b.pares} pareados · visible ${b.vis}` : 'sin escena');
+      check(`${nombre}: cada límite en el EXTREMO de su paño, basculando con él`,
+            !!b && b.peorMid < 0.02 && b.peorLargo < 0.02 && b.peorNorm < 0.05,
+            b ? `centro ${b.peorMid.toFixed(4)} m · separación ${b.peorLargo.toFixed(4)} m · normal ${b.peorNorm.toFixed(3)}°` : '');
+      await pg.uncheck('#bordes');
+      await pg.waitForTimeout(300);
+      const off = await pg.evaluate(() => {
+        const I = R3.inst;
+        if (I && I.bordes) return I.bordes.visible === false;
+        const bs = R3.bordesMesh || [];
+        return bs.length > 0 && bs.every(x => !x.visible);
+      });
+      check(`${nombre}: la casilla los apaga (son VISTA: no cambian ni un vatio)`, off === true, 'apagados: ' + off);
+      await pg.check('#bordes');
+      await pg.waitForTimeout(300);
+    }  }
   // 6) LA FICHA: al pinchar a un lado y otro del morro de la MISMA viga tienen
   //    que salir DOS mesas distintas —la del sur y la del norte—, cada una con
   //    su tilt y diciendo el de su hermana. Antes las dos eran «la misma mesa»
@@ -247,6 +326,7 @@ try {
     check('y NO enseña la contabilidad interna (x de la línea, ordinal de la mesa, cota)',
           fichas.length === 2 && fichas.every(f => !/línea x=/.test(f) && !/mesa \d+\/\d+/.test(f) && !/· cota /.test(f)),
           fichas[0] ? fichas[0].slice(0, 200) : 'sin ficha');
+
   }
 
   // 7) EL CONTORNO DE LA SELECCIÓN VA EN EL MARCO DE LA MESA. Era una caja
@@ -296,6 +376,7 @@ try {
           !!g && Math.abs(g.ejeY - g.tilt) < 1.0,
           g ? `eje a ${g.ejeY.toFixed(2)}° · tilt ${g.tilt.toFixed(2)}°` : 'sin selección');
   }
+
 
   check('sin errores de consola', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
