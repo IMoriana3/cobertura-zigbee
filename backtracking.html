@@ -445,6 +445,17 @@
      · IAM:            ASHRAE b₀ al haz y al circunsolar; ángulos equivalentes de
                        Duffie-Beckman a la isótropa y al albedo (v1.31)
    ═══════════════════════════════════════════════════════════════════════════ */
+/* LA VERSIÓN, EN UN SITIO. Vivía DOS VECES y las dos se quedaron atrás: el
+   `const VER` de la aplicación y un literal 'v1.61' dentro del sello del
+   certificador. Ninguna subió en la v1.62 ni en la v1.63, así que la etiqueta
+   de la página y el informe del emplazamiento anunciaban v1.61 con dos
+   arreglos dentro — el vicio de siempre, dos piezas correctas mirando a
+   fuentes distintas.
+   Vive AQUÍ, y no junto a `$('verlbl')`, por una razón mecánica: el sello lo
+   publica el certificador, que está dentro de este bloque, y la QA lo extrae y
+   lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
+   leerla y volvería al literal. */
+const VER='v1.63.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -3830,7 +3841,7 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
     alcance:'el mejor de un barrido de '+CERT_PASO+'° sobre el factible más cada unidad movida sola ±'+(CERT_VECINOS*CERT_PASO)+'°; NO es el óptimo continuo. '+
             'NUNCA prueba dos unidades movidas a la vez en direcciones distintas: si dice «óptimo», es «no he encontrado nada mejor entre lo que sé mirar». '+
             'Certifica una POSTURA alcanzable en un paso de '+dt+' s a '+TRACKER_SLEW+' °/s. Lo publicado ya lleva el LAZO del core (deadband '+DEADBAND_DEG+'° + slew), así que un candidato que diste menos del deadband de lo publicado NO se ejecutaría aunque aquí gane; y el DESGASTE sigue sin modelarse más allá de eso.',
-    sellos:{version:'v1.61',mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
+    sellos:{version:VER,mv:mvPara(T,zen),paso:CERT_PASO,contador:'ray-cast 3D exacto, sin estructura',empate:E_EMPATE_W,
             slew:TRACKER_SLEW+' °/s',deadband:DEADBAND_DEG+'°',pasoControl:dt+' s'}
   };
 }
@@ -3839,7 +3850,8 @@ function certifica(key,zen,az,T,irr,doy,albedo,angPub,dtSec){
 
 /* ═══════════════════ APLICACIÓN (DOM, escena, curvas) ═══════════════════ */
 const $=id=>document.getElementById(id);
-const VER='v1.61.0';
+/* VER ya no se declara aquí: vive dentro de FÍSICA PURA para que el sello del
+   certificador pueda leerla. Ver el comentario de su declaración. */
 /* CONVENCIÓN DE SIGNOS DE PRESENTACIÓN (como la TCU): θ NEGATIVO = cara al
    ESTE, positivo = oeste. La física interna mantiene su marco (+x = azimut
    del eje + 90°, θ>0 cara a +x) con toda su QA — el volteo es SOLO al mostrar,
