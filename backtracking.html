@@ -456,7 +456,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.65.0';
+const VER='v1.66.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -493,6 +493,29 @@ const dniExtra=Irr.dniExtra;
 const airmassKY=Irr.airmassKY;
 const clearskyIneichen=Irr.clearskyIneichen;
 const surfaceOrient=Irr.surfaceOrient;
+/* ¿ESTA MESA ESTÁ DE ESPALDAS AL SOL? cos AOI ≤ 0 sobre la cara activa: el haz
+   entra por detrás, así que esa cara no recibe NADA de directa. Importa en dos
+   sitios muy distintos y por eso vive aquí, en una sola función:
+
+   · el RANGO legítimo de cada unidad la usa para cerrar el vicio de «sombrear
+     menos» poniéndose de espaldas —a AOI ≥ 90° no hay haz que sombrear— y el
+     comentario de ese recorte lleva sus números;
+   · la ESCENA la necesita para no pintar sombra de haz sobre una cara donde no
+     hay haz. Medido en el navegador (San José, bifila quebrada, 21-jun 07:20,
+     mando manual a +45° con ψ = +78,3°, AOI 123,3°): la página publicaba
+     45,2 % de sombra en tres filas y la POA de fila era 33,7 W/m² en las OCHO,
+     sombreadas y sin sombrear. Ese rojo no costaba un vatio.
+
+   Duplicar la fórmula en los dos sitios es exactamente el defecto que esta
+   auditoría lleva corrigiendo —dos piezas correctas mirando a fuentes
+   distintas—, así que no se duplica. */
+function aoiMesa(zen,az,T,r,th){
+  const o=surfaceOrient(th,pvTilt((T.rowTilt&&T.rowTilt[r]!=null)?T.rowTilt[r]:0),T.axisAz);
+  const b=o.tilt*RAD, z=zen*RAD;
+  const cosA=Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD);
+  return Math.acos(Math.max(-1,Math.min(1,cosA)))/RAD;
+}
+function caraSinDirecta(zen,az,T,r,th){return aoiMesa(zen,az,T,r,th)>=90;}
 /* CONVENIO DEL TILT N-S — LA FRONTERA CON pvlib. En toda la app el tilt del
    eje es POSITIVO cuando el extremo que apunta al azimut del eje (el norte,
    con axaz=0) está MÁS ALTO: así lo miden las cotas (segTilt = atan2(Δz,
@@ -2981,11 +3004,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
      instantes la postura de espaldas «sombreaba menos» —38,8 % frente a
      43,2 %— porque a AOI 90° no hay haz que sombrear, que es exactamente el
      vicio que el rango viene a cerrar. POA de planta: 20 W/m² en las dos. */
-  const deEspaldas=(r,th)=>{
-    const o=surfaceOrient(th,pvTilt((T.rowTilt&&T.rowTilt[r]!=null)?T.rowTilt[r]:0),T.axisAz);
-    const b=o.tilt*RAD,z=zen*RAD;
-    return Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((az-o.az)*RAD)<=0;   // cos AOI ≤ 0
-  };
+  const deEspaldas=(r,th)=>caraSinDirecta(zen,az,T,r,th);
   const fuera=(r,th)=>th<RF[r][0]-1e-9||th>RF[r][1]+1e-9;
   /* SIN CIELO NO SE RECORTA, Y SE DICE. El árbitro del recorte es la energía;
      sin irradiancia no hay nada que comparar y el recorte entraría a ciegas.
@@ -5697,7 +5716,11 @@ function update3D(){
     const sFrac=sh?sh[r]:0;
     if(row.ovls){
       for(const ov of row.ovls)if(ov.g)ov.g.clear();
-      if(sFrac>1e-3&&g.elev>0)drawShadowSilhouette(g,p,tIdx,r,row);
+      /* v1.66: la silueta se dibuja si HAY sombra; la marca de «sin directa» no
+         depende de que un vecino tape nada —una mesa de espaldas al sol está sin
+         directa aunque no la sombree nadie—, así que con el sol arriba se entra
+         igual y la propia función decide, mesa a mesa, qué pinta. */
+      if(g.elev>0&&(sFrac>1e-3||filaDeEspaldas(g,p,tIdx,r)))drawShadowSilhouette(g,p,tIdx,r,row);
       // sombra de TERRENO (lomas): franjas rojas por estación, del contador
       const stT=sh&&sh.st&&sh.st[r];
       if(stT&&g.elev>0)drawTerrainStrips(row,stT,(p.ang[tIdx][r]||0));
@@ -5840,6 +5863,29 @@ function update3D(){
    recorta el paralelogramo a cada mesa (Sutherland–Hodgman). Es la sombra de
    verdad, deflexión axial incluida — no una franja media. */
 const ovM_sil=new THREE.MeshBasicMaterial({color:0xe34948,side:THREE.DoubleSide,transparent:true,opacity:0.9,depthWrite:false});
+/* v1.66 — LA MESA DE ESPALDAS AL SOL NO LLEVA SOMBRA ROJA: LLEVA «SIN DIRECTA».
+   Reportado en la revisión del 3D: «módulos de espaldas con sombra roja».
+   Medido en el navegador con la escena real (San José, bifila quebrada, rótula
+   6°, 21-jun 07:20, mando manual a +45° con ψ = +78,3°, AOI 123,3°):
+
+     sombra %  : 45,2  0  0  45,2  45,2  0  0  0
+     POA fila  : 33,7 33,7 33,7 33,7 33,7 33,7 33,7 33,7   ← las OCHO, iguales
+
+   La página publicaba 45,2 % de sombra en tres filas y la POA de fila era la
+   misma en las ocho, sombreadas y sin sombrear: con el haz entrando por detrás
+   no hay directa que sombrear, así que ese rojo no cuesta un vatio.
+
+   Y el rojo parcial dice algo peor que «de más»: dice que el 54,8 % restante SÍ
+   está produciendo con haz. Es falso — la cara no recibe directa en NINGÚN
+   punto—, así que lo honesto no es quitar el rojo sino marcar la mesa ENTERA.
+   Se marca, no se esconde: color propio (gris azulado, no rojo, que es sombra
+   de un vecino) y el HUD lo dice con su AOI.
+
+   Alcance, medido antes de tocar: esto sólo pasa con el MANDO MANUAL. Barrido
+   de un día, tres terrenos, ocho políticas: de 1.739 filas con sombra publicada
+   CERO tienen la cara de espaldas — el rango legítimo de cada unidad ya cierra
+   ese vicio (ver el comentario de `deEspaldas`, con sus números). */
+const ovM_nodir=new THREE.MeshBasicMaterial({color:0x6b7a8c,side:THREE.DoubleSide,transparent:true,opacity:0.72,depthWrite:false});
 // HAZ DE SOMBRA: el volumen que va del objeto que sombrea a su mancha sobre la mesa — muy tenue, para ver DE DÓNDE viene cada sombra
 const ovM_haz=new THREE.MeshBasicMaterial({color:0xe34948,side:THREE.DoubleSide,transparent:true,opacity:0.09,depthWrite:false});
 function clipPoly(poly,edge){                        // edge [a,b,c]: a·u+b·v ≤ c
@@ -5854,6 +5900,30 @@ function clipPoly(poly,edge){                        // edge [a,b,c]: a·u+b·v 
     }
   }
   return out;
+}
+/* v1.66: pintar un polígono (u = cuerda, v = eje) en el marco local de UNA
+   mesa. La conversión ya vivía dentro de `pinta`, dentro de dos bucles; sacarla
+   aquí es lo que permite que la marca de «sin directa» use exactamente la misma
+   que la silueta roja, en vez de una copia que se desalinee con ella. */
+function filaDeEspaldas(g,p,tIdx,r){
+  const T=DAY.T, zenF=90-elFisica(g);
+  const nS=(T.segs&&T.segs[r])?T.segs[r].length:1;
+  for(let k=0;k<nS;k++)if(caraSinDirecta(zenF,g.az,T,r,angAt(p,tIdx,r,k)))return true;
+  return false;
+}
+function pintaCaraLocal(ov,poly,mat,T){
+  if(!ov.g||poly.length<3)return;
+  const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
+  const verts=[];
+  for(let i=1;i<poly.length-1;i++)
+    for(const q of [poly[0],poly[i],poly[i+1]]){
+      if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
+      else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
+    }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  const m=new THREE.Mesh(geo,mat); m.renderOrder=3;
+  ov.g.add(m);
 }
 function drawShadowSilhouette(g,p,tIdx,r,row){
   /* SILUETA con la MISMA geometría por tramos que el contador: cota del eje
@@ -5899,9 +5969,18 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
   for(let kR=0;kR<row.ovls.length;kR++){
     const ov=row.ovls[kR];
     if(!ov.g)continue;
-    const thR=angAt(p,tIdx,r,kR)*RAD;                // v1.42: el θ de ESTA mesa
+    const thDeg=angAt(p,tIdx,r,kR);
+    const thR=thDeg*RAD;                             // v1.42: el θ de ESTA mesa
     const uH=[Math.cos(thR),0,-Math.sin(thR)];
     const vA=ov.yc+ov.x0, vB=ov.yc+ov.x1;            // rango axial REAL de la mesa
+    /* v1.66: ¿esta mesa está de espaldas? Con la MISMA prueba que usa el rango
+       legítimo (una sola función, `caraSinDirecta`) y con el sol QUE VE LA
+       FÍSICA, no el crudo. Si lo está, la cara entera queda sin directa: se
+       marca completa y no se le proyecta ninguna silueta encima. */
+    if(caraSinDirecta(90-elFisica(g),g.az,T,r,thDeg)){
+      pintaCaraLocal(ov,[[-hw,vA],[hw,vA],[hw,vB],[-hw,vB]],ovM_nodir,T);
+      continue;
+    }
     // plano RECEPTOR de ESTA mesa: cuerda girada + pendiente axial del tramo,
     // a la ALTURA REAL de la cara (MOD_OFF sobre el eje) — igual que el contador
     const zA=cot(r,vA), zB=cot(r,vB);
@@ -5961,17 +6040,7 @@ function drawShadowSilhouette(g,p,tIdx,r,row){
             const gh=new THREE.BufferGeometry(); gh.setAttribute('position',new THREE.Float32BufferAttribute(vs,3));
             const mh=new THREE.Mesh(gh,ovM_haz); mh.renderOrder=2; TD.hazGrp.add(mh);
           }
-          const zS=(ov.ax==='model')?(2.382/T.cw):1;   // la escala de pala vive en el padre
-          const verts=[];
-          for(let i2=1;i2<poly.length-1;i2++)
-            for(const q of [poly[0],poly[i2],poly[i2+1]]){
-              if(ov.ax==='model')verts.push(q[1]-ov.yc,0,q[0]*zS);   // modelo: eje=X · cuerda=Z
-              else verts.push(q[0],0,q[1]-ov.yc);                    // cajas: cuerda=X · eje=Z
-            }
-          const geo=new THREE.BufferGeometry();
-          geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
-          const m=new THREE.Mesh(geo,ovM_sil); m.renderOrder=3;
-          ov.g.add(m);
+          pintaCaraLocal(ov,poly,ovM_sil,T);
         };
         // recorte al semiespacio que proyecta (con sol rasante una esquina
         // suele quedar del lado del sol y sin recorte se perdía la silueta)
@@ -6360,7 +6429,13 @@ function updateHud(tIdx,g,irrN,key,p,sh){
     const irre=manualOn()
       ?(Math.max(...sh)>0.02?' · mando manual: NADIE ha barrido esto — para saber si es evitable, «✓ certificar»':'')
       :((['pairwise','true3d','mgl'].includes(key)&&Math.max(...sh)>0.02)?' · irreducible: ningún θ que reciba haz la evita (se publica, no se maquilla)':'');
-    card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+sombraPorMesaTxt(sh,selRow,' · '));
+    /* v1.66: si la fila elegida está de espaldas, su sombra NO cuesta un vatio
+       —no hay directa que sombrear— y decirlo aquí es la mitad hablada de lo
+       que la escena marca en gris. Medido: 45,2 % de sombra publicada con la
+       POA de fila idéntica a la de las filas sin sombra. */
+    const aoiSel=aoiMesa(90-elFisica(g),g.az,DAY.T,selRow,angAt(p,tIdx,selRow,0));
+    const espaldas=(g.elev>0&&aoiSel>=90)?' · de espaldas al sol (AOI '+aoiSel.toFixed(0)+'°): sin directa, esta sombra no cuesta energía':'';
+    card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+espaldas+sombraPorMesaTxt(sh,selRow,' · '));
     /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
        aparcar una fila de espaldas al sol —AOI > 90°, producción de haz cero—
        para que sus vecinas lo vean: bajo el modelo es legítimo y gana energía
@@ -6368,11 +6443,13 @@ function updateHud(tIdx,g,irrN,key,p,sh){
        consigna que sale por el export hacia una TCU y que nadie espera. Se
        declara aquí, igual que «irreducible». */
     if(p.ang[tIdx]&&irrN.dni>100&&g.elev>0){
+      /* v1.66: el AOI sale de `aoiMesa`, la MISMA función que usan el rango
+         legítimo y la escena. Esta fórmula estaba escrita aquí por TERCERA vez
+         —el defecto que recorre esta auditoría— y las tres copias podían
+         desalinearse sin que nada lo cazara. */
       const sac=[];
       for(let r=0;r<p.ang[tIdx].length;r++){
-        const o=surfaceOrient(p.ang[tIdx][r],pvTilt(DAY.T.rowTilt?DAY.T.rowTilt[r]||0:0),DAY.T.axisAz);
-        const b=o.tilt*RAD,z=g.zen*RAD;
-        const aoi=Math.acos(Math.max(-1,Math.min(1,Math.cos(z)*Math.cos(b)+Math.sin(z)*Math.sin(b)*Math.cos((g.az-o.az)*RAD))))*DEG;
+        const aoi=aoiMesa(g.zen,g.az,DAY.T,r,p.ang[tIdx][r]);
         if(aoi>90)sac.push({r:r,aoi:aoi});
       }
       if(sac.length)card('Filas sacrificadas',sac.map(q=>q.r+1).join(', '),'de espaldas al sol (AOI '+sac.map(q=>q.aoi.toFixed(0)+'°').join(', ')+'): cero haz, para que las vecinas lo vean');
