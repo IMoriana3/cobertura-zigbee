@@ -66,6 +66,58 @@ t('careo: publica la BANDA del circunsolar con la misma convención que la tabla
   if (!/cruza:bl<-1e-9&&bh>1e-9/.test(f)) throw new Error('el careo no marca el cruce del cero');
   if (!/careoBandaHtml\(b\)/.test(html)) throw new Error('la cajita no pinta la banda');
 });
+t('REJILLAS MEZCLADAS: ninguna planta puede simularse con filas más juntas que el colector', () => {
+  /* Páramo trae cinco sub-plantas con el mismo paso (7 m) y orígenes distintos.
+     Proyectarlas todas sobre el eje transversal daba «líneas» a 1 m —que no son
+     filas vecinas, son filas de bloques distintos— con pitch mediano 3 m y GCR
+     0,794: imposible con un colector de 2,382 m, porque las filas se solaparían.
+     Peor que la cifra: parejas de 1 m de vano llevan al backtracking a ángulos
+     absurdos. Esto fija las dos mitades — que el dato lo exige (Páramo proyectado
+     entero viola la cota física) y que quedarse con la rejilla dominante la
+     respeta— más que el código lleve el disparador FÍSICO y no un umbral a ojo. */
+  const CW = 2.382;
+  const lineas = arr => {
+    const L = [];
+    for (const t of arr) { let q = L.find(l => Math.abs(l.x - t.x) <= 0.8); if (!q) { q = { x: t.x, n: 0 }; L.push(q); } q.n++; }
+    L.sort((a, b) => a.x - b.x);
+    return L;
+  };
+  const vanoMin = L => { let m = Infinity; for (let i = 1; i < L.length; i++) m = Math.min(m, L[i].x - L[i - 1].x); return m; };
+  const dominante = tks => {
+    const porN = {};
+    for (const t of tks) { const k = t.n.toFixed(2); (porN[k] = porN[k] || []).push(t.x); }
+    const h = {};
+    for (const k in porN) { const xs = porN[k].sort((a, b) => a - b);
+      for (let i = 1; i < xs.length; i++) { const d = +(xs[i] - xs[i - 1]).toFixed(2); if (d > CW) h[d] = (h[d] || 0) + 1; } }
+    const ent = Object.entries(h).sort((a, b) => b[1] - a[1]);
+    if (!ent.length) return null;
+    const P = +ent[0][0], cls = {};
+    for (const t of tks) { const r = (((t.x % P) + P) % P).toFixed(2); (cls[r] = cls[r] || []).push(t); }
+    return Object.entries(cls).sort((a, b) => b[1].length - a[1].length)[0][1];
+  };
+  let disparado = 0;
+  for (const pl of ['elburgo', 'fayon', 'paramo']) {
+    const f = path.join(ROOT, pl + '_layout.json');
+    if (!fs.existsSync(f)) continue;
+    const tks = (JSON.parse(fs.readFileSync(f, 'utf-8')).trackers || []).filter(t => isFinite(t.x) && isFinite(t.n));
+    const L = lineas(tks);
+    if (vanoMin(L) >= CW) continue;                   // rejilla coherente: nada que hacer
+    disparado++;
+    const dom = dominante(tks);
+    if (!dom) throw new Error(pl + ': rejillas mezcladas y no se puede deducir el paso intra-banda');
+    const L2 = lineas(dom);
+    if (!(vanoMin(L2) >= CW))
+      throw new Error(pl + ': ni la rejilla dominante respeta el ancho de colector (vano mín ' +
+                      vanoMin(L2).toFixed(2) + ' m < ' + CW + ')');
+    if (!(L2.length >= 2)) throw new Error(pl + ': la rejilla dominante se queda sin filas');
+  }
+  if (disparado === 0) throw new Error('ninguna planta dispara el caso: el banco dejó de probar nada');
+  // y el código tiene que llevar la cota FÍSICA, no un umbral elegido a ojo
+  if (!/const CW_CANON=2\.382/.test(html)) throw new Error('falta la cota física CW_CANON');
+  if (!/vanoMin\(lines\)<CW_CANON/.test(html)) throw new Error('el disparador no es el ancho de colector');
+  if (!/vanoMin\(L2\)>=CW_CANON/.test(html))
+    throw new Error('se sustituye la rejilla sin comprobar que la nueva respeta la cota');
+});
 t('BAGNARELLI ES BIFILA: el preset usa el pitch de FILA y acopla por accionamiento', () => {
   /* El preset corría la planta como monofila con el pitch de los SEGUIDORES
      (11,0 m), y los tres efectos empujaban en la misma dirección: el GCR salía

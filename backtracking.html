@@ -1344,6 +1344,10 @@ const BAGN_PATTERN=[
    que el pitch que manda es 5,50: con 11,0 el GCR salía 0,217 en vez de 0,433 y
    el modelo apenas necesitaba backtrackear. */
 const BAGN_PITCH_TRACKER=11.0, BAGN_PITCH=5.50, BAGN_AXAZ=23.7;
+/* ancho de colector canónico. Aquí se usa como COTA FÍSICA: dos filas no pueden
+   estar más cerca que esto sin solaparse, así que un vano menor delata que la
+   proyección está mezclando rejillas y no que las filas estén juntas. */
+const CW_CANON=2.382;
 
 /* tramos por línea según el preset de implantación. filaLen = fila LARGA
    (2 alas + hueco de motor); la MEDIA es el tipo real de catálogo (~0,504·larga,
@@ -4226,15 +4230,59 @@ async function loadLayoutPlant(name){
     const lay=LAYOUT_CACHE[name];
     const tks=(lay.trackers||[]).filter(t=>isFinite(t.x)&&isFinite(t.n));
     if(!tks.length)throw new Error('layout sin trackers');
-    const lines=[];
-    for(const t of tks){
-      let L=null;
-      for(const l of lines)if(Math.abs(l.x-t.x)<=0.8){L=l;break;}
-      if(!L){L={x:t.x,tks:[]};lines.push(L);}
-      L.tks.push(t);
-    }
-    lines.sort((a,b)=>a.x-b.x);
+    const enLineas=arr=>{
+      const L=[];
+      for(const t of arr){
+        let q=null;
+        for(const l of L)if(Math.abs(l.x-t.x)<=0.8){q=l;break;}
+        if(!q){q={x:t.x,tks:[]};L.push(q);}
+        q.tks.push(t);
+      }
+      L.sort((a,b)=>a.x-b.x);
+      return L;
+    };
+    const vanoMin=L=>{let m=Infinity;for(let i=1;i<L.length;i++)m=Math.min(m,L[i].x-L[i-1].x);return m;};
+    let lines=enLineas(tks), gridNota='';
     if(lines.length<2)throw new Error('menos de 2 líneas');
+    /* ══ REJILLAS MEZCLADAS ═══════════════════════════════════════════════════
+       Proyectar TODA la planta sobre el eje transversal solo vale si hay UNA
+       rejilla. Páramo tiene cinco sub-plantas con el mismo paso (7 m) pero
+       ORÍGENES distintos, y al juntarlas aparecían «líneas» a 1 m: no son filas
+       vecinas, son filas de bloques distintos que caen cerca en x. Salía pitch
+       mediano 3 m y GCR 0,794 — imposible con un colector de 2,382 m, porque
+       las filas se solaparían— y, peor, parejas de 1 m de vano que obligaban al
+       backtracking a ángulos absurdos.
+       EL DISPARADOR ES FÍSICO, no un umbral a ojo: si dos líneas quedan más
+       cerca que el ancho del colector, la proyección está mezclando rejillas.
+       Solo entonces se selecciona la rejilla DOMINANTE (la clase de resto
+       módulo el paso intra-banda con más trackers), que es la mayor porción
+       coherente de la planta. Las plantas de una sola rejilla no se tocan: El
+       Burgo (vano mín 12 m) y Fayón (11,74) pasan de largo, comprobado. */
+    if(vanoMin(lines)<CW_CANON){
+      // paso REAL entre filas: el salto dominante DENTRO de una banda (mismo n),
+      // que no puede contaminarse con los desplazamientos entre bloques
+      const porN={};
+      for(const t of tks){const k=t.n.toFixed(2);(porN[k]=porN[k]||[]).push(t.x);}
+      const h={};
+      for(const k in porN){
+        const xs=porN[k].sort((a,b)=>a-b);
+        for(let i=1;i<xs.length;i++){const d=+(xs[i]-xs[i-1]).toFixed(2); if(d>CW_CANON)h[d]=(h[d]||0)+1;}
+      }
+      const ent=Object.entries(h).sort((a,b)=>b[1]-a[1]);
+      if(ent.length){
+        const P=+ent[0][0], cls={};
+        for(const t of tks){const r=(((t.x%P)+P)%P).toFixed(2);(cls[r]=cls[r]||[]).push(t);}
+        const dom=Object.entries(cls).sort((a,b)=>b[1].length-a[1].length)[0][1];
+        const L2=enLineas(dom);
+        if(L2.length>=2&&vanoMin(L2)>=CW_CANON){
+          gridNota=' · <b>rejillas mezcladas</b>: la planta trae varias sub-plantas con el mismo paso ('+
+            P.toFixed(2)+' m) y orígenes distintos, así que se simula la <b>dominante</b> ('+
+            Math.round(100*dom.length/tks.length)+' % de los seguidores). Proyectarlas todas daba filas a '+
+            vanoMin(lines).toFixed(2)+' m, imposible con un colector de '+CW_CANON+' m';
+          lines=L2;
+        }
+      }
+    }
     // largo de mesa: mediana del salto entre trackers de línea menos 1 m de
     // hueco (aproximación declarada; los «medio» miden la mitad)
     const diffs=[];
@@ -4315,7 +4363,7 @@ async function loadLayoutPlant(name){
       (declBifila?(nR/2)+' seguidores <b>BIFILA</b> = '+nR+' filas a '+pitch.toFixed(2)+
         ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja — accionamiento DECLARADO por el layout'
        :nR+' líneas · pitch '+pitch.toFixed(1)+' m · <b>accionamiento NO declarado</b> en el layout: se corre como monofila')+
-      ' · '+nFilas+' mesas) · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
+      ' · '+nFilas+' mesas'+gridNota+') · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
     recompute();
   }catch(e){note.textContent='error cargando '+name+': '+e.message;}
 }
