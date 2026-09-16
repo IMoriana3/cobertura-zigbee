@@ -465,7 +465,28 @@ t('careo contra el día de flota POR EL TOTAL, que es lo único no enmascarado',
      se integra sobre TODO el día (V·I·dt sin máscara), mientras que el recorrido
      va enmascarado por motor_state — y por eso 112,9° cae bajo el suelo de
      arriba. Comparar Wh/° contra el campo sería comparar contra un cociente con
-     el denominador incompleto. El total, mismo sitio y misma fecha, sí vale. */
+     el denominador incompleto. El total, mismo sitio y misma fecha, sí vale.
+
+     EL EXTREMO FINO DEL ABANICO ES 1 MINUTO, y antes era 5. No es una holgura:
+     el 5-30 min con el que se escribió este careo era una CONJETURA sobre cada
+     cuánto decide la TCU, y la máquina ya está medida — decide cada SEGUNDO
+     (dato de campo). Así que el extremo fino tiene que ser lo más fino que
+     sostiene esta rejilla, que es el minuto.
+     Lo que movió el corte fue portar el ADELANTO AL SOL (la TCU aparca una banda
+     más allá de la consigna, así que el paso son dos bandas y hay la mitad de
+     arranques). Medido en este mismo día, banda de 1°:
+
+       paso    ley vieja (parar en la consigna)   con adelanto
+       30′     12,36 Wh ·  27 arranques           12,49 Wh ·  27
+       10′     16,71 Wh ·  73                     17,05 Wh ·  73
+        5′     23,13 Wh · 143                     17,94 Wh ·  82
+        1′     26,09 Wh · 177                     19,50 Wh · 101
+
+     O sea que el campo (19,2 Wh) lo explicaban DOS combinaciones: la ley vieja
+     con un ciclo de 5 min, o el adelanto con el ciclo real. La segunda es la que
+     además cuadra con lo que hace la máquina, y al minuto se queda a un 1,6 %.
+     El giro apenas se mueve (10,1-10,6 Wh): lo que cambia es el arranque, que es
+     donde el número de maniobras se paga. */
   const B = { lat: 41.57634, lon: -0.79814, dateStr: '2026-08-16', tz: 2, altM: 250, TL: 3.5,
     albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, cc: new Array(288).fill(0) };
   const dayF = F.buildDay({ ...B, dtMin: 1 });
@@ -475,13 +496,19 @@ t('careo contra el día de flota POR EL TOTAL, que es lo único no enmascarado',
                                 { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55 });
     return F.motorMetrics(ex, { slewDegS: 0.17 }).motorWh;
   };
-  // el día medido tiene que quedar DENTRO del abanico de ciclos de decisión
-  // plausibles de una TCU (5-30 min). Si el modelo se saliera por completo del
-  // abanico, dejaría de describir la máquina y habría que ir a buscarlo.
-  const lo = wh(30), hi = wh(5);
+  // el día medido tiene que quedar DENTRO del abanico de rejillas de decisión,
+  // del ciclo grueso (30 min) al real (el minuto). Si el modelo se saliera por
+  // completo del abanico, dejaría de describir la máquina y habría que ir a
+  // buscarlo.
+  const lo = wh(30), hi = wh(1);
   if (!(lo < 19.2 && 19.2 < hi))
     throw new Error('19,2 Wh/día de campo fuera del abanico del modelo: ' +
-                    lo.toFixed(2) + ' (30′) … ' + hi.toFixed(2) + ' (5′)');
+                    lo.toFixed(2) + ' (30′) … ' + hi.toFixed(2) + ' (1′)');
+  // y en el extremo REAL la exigencia es más dura que un abanico: el modelo
+  // tiene que acertar el día medido, no solo abrazarlo
+  if (!(Math.abs(hi / 19.2 - 1) < 0.10))
+    throw new Error('al minuto —el ciclo real— el modelo se va un ' +
+                    (100 * Math.abs(hi / 19.2 - 1)).toFixed(1) + ' % del día medido (' + hi.toFixed(2) + ' Wh)');
   if (!(Math.abs(wh(10) / 19.2 - 1) < 0.25))
     throw new Error('a 10′ el modelo se va un ' + (100 * Math.abs(wh(10) / 19.2 - 1)).toFixed(0) + ' % del día medido');
 });
