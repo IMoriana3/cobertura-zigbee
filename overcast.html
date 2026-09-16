@@ -2183,7 +2183,16 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.23.0';
+/* LA VERSION, EN UN SITIO — y que no se quede atras. En backtracking.html vivia
+   DOS veces (el `const VER` y un literal en el sello del certificador) y las dos
+   se quedaron en v1.61 con dos arreglos dentro: la etiqueta de la pagina y el
+   informe que exporta el usuario anunciaban lo que ya no era. Aqui hay una sola
+   declaracion y el informe la lee de ella; el banco lo exige.
+   LO QUE NINGUN BANCO DE ESTE REPO PUEDE COMPROBAR es que la TARJETA del Panel
+   diga lo mismo, porque vive en otro repositorio. Es la via por la que la
+   version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
+   `version` en proyectos/index.html (docId «overcast-sim»). */
+const VER='v1.24.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
