@@ -6714,6 +6714,28 @@ function tipoDeMargen(margen){
   if((gS&&pP)||(gP&&pS))return 'canje';
   return (gS||gP)?'mejor':'empate';
 }
+/* v1.64 — UN CERO ESCRITO TIENE QUE SER UN CERO. Los porcentajes de sombra del
+   certificado se imprimían con toFixed(1), así que un 0,04 % salía como «0.0 %».
+   Y eso no es un decimal de más: el certificado decía «la postura MENOS
+   sombreada del factible deja 0.0 % de sombra» y se leía como que existía una
+   consigna SIN sombra que la política no publicaba. Se midió persiguiéndola:
+   de 344 instantes, 104 con sombra publicada, y en NINGUNO existe una postura
+   sin sombra —ni moviendo una unidad sola, que es lo que el probador barre, ni
+   moviendo varias—. La postura no existía; el redondeo la inventaba.
+
+   Misma familia que «0.0 pp menos de sombra · -0.0 W/m²» de la sección de
+   arriba: un número redondeado afirmando más de lo que es. Aquí un valor no
+   nulo nunca se escribe como cero: por debajo de 0,05 se dice «<0,05», y el
+   cero de verdad se escribe 0. */
+function pctSombra(x){
+  if(!(x>0))return '0';
+  return x<0.05?'&lt;0,05':x.toFixed(1);
+}
+function ppSombra(d){
+  if(!isFinite(d))return '—';
+  if(d===0)return '0';
+  return Math.abs(d)<0.05?(d>0?'&lt;+0,05':'&lt;−0,05'):((d>0?'+':'')+d.toFixed(1));
+}
 function pintaCertificado(){
   if(!DAY)return;
   const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
@@ -6749,7 +6771,7 @@ function pintaCertificado(){
            '<b>Certificado · ',(manAng?'🎛 mando manual':(POL[key]?POL[key].nm:key)),'</b>',
            '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
            '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
-    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
+    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',pctSombra(ce.elegido.sombraPct),' %</b>');
     if(isFinite(ce.elegido.poa))H.push(' · POA de planta <b>',ce.elegido.poa.toFixed(1),'</b> W/m²');
     if(ce.mejorHallado){
       /* v1.62 — EL RÓTULO TIENE QUE DECIR LO QUE ES. Esto ponía «Hay una
@@ -6770,7 +6792,7 @@ function pintaCertificado(){
       const mS=(ce.margen&&ce.margen.sombra!=null)?ce.margen.sombra:null;
       const mP=(ce.margen&&ce.margen.poa!=null)?ce.margen.poa:null;
       const cif=(x)=>Math.abs(x)<0.05?(x>0?'menos de +0,05':(x<0?'menos de −0,05':'0,0')):((x>0?'+':'')+x.toFixed(2));
-      H.push(sep,'<b>',rot,'</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
+      H.push(sep,'<b>',rot,'</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',pctSombra(ce.mejorHallado.sombraPct),' %</b>');
       if(isFinite(ce.mejorHallado.poa))H.push(' · POA <b>',ce.mejorHallado.poa.toFixed(1),'</b> W/m²');
       if(ce.margen){
         H.push('<br><span style="color:#9fb0c2">');
@@ -6784,13 +6806,13 @@ function pintaCertificado(){
     }
     if(co){
       H.push(sep,'<b>El precio de esta elección</b><br>el mejor candidato ENERGÉTICO del factible da <b>',
-             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
+             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',pctSombra(co.sombraPct),' %</b> de sombra.<br>',
              '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
-             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',ppSombra(co.sombraPct-ce.elegido.sombraPct),' pp de sombra</span></div>');
     }
     const fl=ce.mejorFueraDeAlcance;
     if(fl){
-      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',fl.sombraPct.toFixed(1),' %</b>');
+      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',pctSombra(fl.sombraPct),' %</b>');
       if(isFinite(fl.poa))H.push(' · POA <b>',fl.poa.toFixed(1),'</b> W/m²');
       H.push('<br><span style="color:#9fb0c2">gana en los números, pero no se puede llegar ahí en un paso de ',
              ce.sellos.pasoControl,' a ',ce.sellos.slew,'. No es una alternativa: es un deseo. (',
@@ -6799,7 +6821,7 @@ function pintaCertificado(){
     const pr=ce.precioDeLaPromesa;
     if(pr){
       H.push(sep,'<b>El precio de la promesa</b><br>la postura MENOS sombreada del factible deja <b>',
-             pr.sombraPct.toFixed(1),' %</b> de sombra');
+             pctSombra(pr.sombraPct),' %</b> de sombra');
       if(isFinite(pr.poa))H.push(' con <b>',pr.poa.toFixed(1),'</b> W/m²');
       H.push('.<br><span style="color:#9fb0c2">');
       if(pr.cuesta==null)H.push('sin cielo: no se puede poner precio');

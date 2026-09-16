@@ -767,6 +767,42 @@ t('v1.62 · EL CERTIFICADO NO LLAMA «MEJOR» A LO QUE NO LO ES', () => {
     throw new Error('la pintura no usa tipoDeMargen: la decisión volvería a vivir en dos sitios');
 });
 
+t('v1.64 · UN CERO ESCRITO EN EL CERTIFICADO TIENE QUE SER UN CERO', () => {
+  /* El certificado decía «la postura MENOS sombreada del factible deja 0.0 % de
+     sombra», y eso se lee como que EXISTE una consigna sin sombra que la
+     política no publica. Se persiguió esa consigna durante una tarde: 344
+     instantes, 104 con sombra publicada, y en NINGUNO existe una postura sin
+     sombra —ni moviendo una unidad de accionamiento sola (que es lo que barre
+     el probador) ni moviendo varias a la vez—. La postura no existía: la
+     inventaba `toFixed(1)` al redondear un 0,04 % a «0.0».
+
+     Misma familia que el «0.0 pp · -0.0 W/m²» de los márgenes, que ya se
+     arregló con cif(). Este banco no mira cómo está escrito: coge el formateador
+     que usa el certificado y exige la propiedad — un valor NO NULO nunca se
+     escribe como cero, y el cero de verdad sí. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function pctSombra(');
+  if (i < 0) throw new Error('el certificado no tiene un formateador de sombra propio: vuelve a redondear a mano');
+  const fuente = app.slice(i, app.indexOf('\n}', i) + 2);
+  const fmt = new Function(fuente + '\nreturn pctSombra;')();
+
+  const leeCero = (s) => /^[\s0,.\u2212-]*$/.test(String(s).replace(/&lt;/g, '<').replace(/</g, '')) && !/[1-9]/.test(String(s));
+  for (const x of [0.04, 0.001, 0.049, 1e-6, 0.0499999]) {
+    const out = fmt(x);
+    if (leeCero(out)) throw new Error(`${x} % de sombra se escribe «${out}», que se lee como cero`);
+  }
+  if (!leeCero(fmt(0))) throw new Error('el cero de verdad ya no se escribe como cero: ' + fmt(0));
+  // y por encima de la banda sigue siendo el número de siempre, con su decimal
+  if (fmt(7.94) !== '7.9') throw new Error('cambió el formato normal: ' + fmt(7.94));
+
+  // la pintura tiene que PASAR por él: si algún porcentaje de sombra se
+  // sigue redondeando a mano, el defecto vuelve por la puerta de al lado
+  const pin = app.slice(app.indexOf('function pintaCertificado'));
+  const cuerpo = pin.slice(0, pin.indexOf('\nfunction ', 10) + 1 || 12000);
+  const aMano = cuerpo.match(/sombraPct[^,;)]*\.toFixed\(/g);
+  if (aMano) throw new Error('quedan ' + aMano.length + ' porcentajes de sombra redondeados a mano en el certificado');
+});
+
 t('v1.62 · LA ESCENA NO PUEDE MOVER LA PLANTA MÁS RÁPIDO QUE EL MOTOR', () => {
   /* El render enseñaba 20° en un minuto (reportado con capturas: 21:14 θ 34,9°,
      21:15 θ 55,0°). Con 0,17 °/s el máximo por minuto son 10,2°. La causa: la
