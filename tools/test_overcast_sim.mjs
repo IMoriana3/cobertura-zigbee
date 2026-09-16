@@ -56,6 +56,37 @@ t('el coste de maniobra está en la tabla del día, con sus tres columnas y la b
   for (const c of ['movimientos', 'motor_wh', 'motor_min', 'pct_bateria'])
     if (!html.includes(c)) throw new Error('el CSV no exporta ' + c);
 });
+t('INFORME DEL EMPLAZAMIENTO: existe, sale de lo ya calculado y termina en los límites declarados', () => {
+  /* Mismo patrón que el informe de backtracking.html. Lo que esto fija no es el
+     texto sino la ESTRUCTURA y, sobre todo, que el documento siga llevando sus
+     límites: un informe que se enseña a un tercero sin decir dónde deja de valer
+     es peor que no tener informe. Y que no invente física: todo sale de SIM. */
+  if (!/id="informebtn"/.test(html)) throw new Error('falta el botón del informe');
+  if (!/function informeHTML\(\)/.test(html)) throw new Error('falta informeHTML()');
+  const inf = html.slice(html.indexOf('function informeHTML'), html.indexOf('function abrirInforme'));
+  for (const sec of ['Emplazamiento, planta y configuración', 'El cielo del día',
+                     'Resumen del día, política a política', 'Cada política: cómo decide',
+                     'Coste de maniobra', 'Diario de decisiones', 'Validación',
+                     'Método y límites declarados'])
+    if (!inf.includes(sec)) throw new Error('el informe no lleva la sección «' + sec + '»');
+  // los límites que la auditoría obligó a declarar, y que no pueden caerse
+  for (const [lim, porque] of [['cota superior', 'los Wh absolutos no están calibrados'],
+                               ['no es comparable entre filas', 'el % activa cuenta cosas distintas'],
+                               ['desgaste', 'no hay modelo que lo convierta en intervalo de servicio'],
+                               ['no es el motor bancable', 'la POA no es energía AC']])
+    if (!new RegExp(lim, 'i').test(inf)) throw new Error('el informe ya no declara: ' + porque);
+  // y las cinco políticas más la cota tienen que tener ficha propia
+  const ex = html.slice(html.indexOf('const EXPLICA_POL'), html.indexOf('function informeHTML'));
+  for (const k of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch', '__aniso'])
+    if (!new RegExp('\\b' + k + '\\s*:\\s*\\{').test(ex)) throw new Error('EXPLICA_POL sin ficha para ' + k);
+  for (const campo of ['como:', 'optimiza:', 'criterio:'])
+    if ((ex.match(new RegExp(campo, 'g')) || []).length < 6)
+      throw new Error('alguna ficha de EXPLICA_POL no declara «' + campo + '»');
+  // el diario del informe y el de pantalla salen de la MISMA pieza
+  if (!/function diarioRows\(/.test(html)) throw new Error('el diario no está factorizado: pantalla e informe pueden divergir');
+  if ((html.match(/diarioRows\(/g) || []).length < 3)
+    throw new Error('diarioRows no lo usan las dos vistas');
+});
 t('el GCR es readonly (derivado = ancho/pitch, regla del core: no es un input)', () => {
   if (!/id="gcr"[^>]*readonly/.test(html)) throw new Error('GCR editable');
 });
