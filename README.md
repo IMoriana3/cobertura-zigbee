@@ -17,7 +17,7 @@ zigbee_routes_logger.ps1 ─telnet(23)─┘
 
 ## Funcionalidades
 
-- **Recolector RSSI/estado** (`zigbee_logger.ps1`, HTTP/RCI): RSSI, online/offline, fallos de ACK. Autodescubre nodos; vigila varios gateways a la vez.
+- **Recolector RSSI/estado** (`zigbee_logger.ps1`, HTTP/RCI): RSSI, online/offline, fallos de ACK. Autodescubre nodos; vigila varios gateways a la vez. Y la **CPU y memoria del propio gateway** (`query_state/device_stats`) cada ciclo, en `gateway_stats.csv`: un coordinador saturado se ve como TCUs que no contestan sin que ninguna radio esté mal. No está verificado contra un Digi real: si no reconoce la CPU, vuelca la respuesta cruda (con *todo* el estado) en `gateway_stats_crudo_<gw>.xml`, una vez, para ajustar el patrón con ella.
 - **Recolector de rutas** (`zigbee_routes_logger.ps1`, telnet): saltos y topología (`xbee source_route`). Autodescubre nodos.
 - **Visor** (`index.html`): mapa satélite Leaflet + línea de tiempo (play, paso a paso, scrub, velocidad 1–8×, bucle, tira roja de incidencias).
 - **Modos de color**: RSSI, Estado (cobertura real), ACK fallos, Saltos (profundidad al coordinador) y Criticidad (puntos únicos de fallo).
@@ -40,7 +40,7 @@ zigbee_routes_logger.ps1 ─telnet(23)─┘
 - Visor: **HTML + JavaScript + Leaflet** (teselas satélite), un único fichero `index.html`, sin build.
 - Recolectores: **PowerShell** (incluido en Windows; no requiere instalación ni administrador).
 - Gateway: Digi **ConnectPort X2**, XBee ZB **2,4 GHz canal 14**; RSSI/estado por **RCI** (HTTP), rutas por **CLI telnet**.
-- Datos: CSV (`zigbee_log.csv`, `zigbee_routes.csv`, `coords_ElBurgo_NCU1.csv` con `node_id, lat, lon`).
+- Datos: CSV (`zigbee_log.csv`, `zigbee_routes.csv`, `gateway_stats.csv` con `timestamp, gateway, host, ok, cpu_pct, mem_total_kb, mem_usada_kb, mem_libre_kb, uptime_s`, `coords_ElBurgo_NCU1.csv` con `node_id, lat, lon`).
 
 ## Despliegue
 
