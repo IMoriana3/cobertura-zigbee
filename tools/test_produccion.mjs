@@ -55,6 +55,7 @@ const S = new Function(ctrl + sol + fis + log + `
           degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
           sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
           estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto, cursorLazo,
+          stowNocheDe, esNoche, STOW_NOCHE, barridoTheta, Irr:globalThis.Irr,
           tPlano, careoPlano, careoStats, dayInit, dayAvanza, dayCierra,
           CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
@@ -665,8 +666,13 @@ t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos
     throw new Error('pareja de ' + p.slope.toFixed(1) + '°: el capado no llega a la T');
 });
 
-t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS, día entero', () => {
+t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS, con sol', () => {
   // La tarjeta y el BT 3D tienen que dar EL MISMO ángulo, no uno parecido.
+  // CON SOL, y esa condición no es una rebaja: de noche la página añade el
+  // REPOSO NOCTURNO (5° al este, dato de proyecto) y el simulador no lo modela
+  // —su `policyAngles` es la política de seguimiento, y con el sol bajo el
+  // horizonte `nan0` la deja en 0—. Así que de noche los dos NO pueden dar lo
+  // mismo, y el careo de la noche va en su propio candado, ahí abajo.
   // Dos plantas, barrido del día a paso de 30 min, igualdad === por fila:
   // (a) genérica en pendiente (groups=null → driveCoupleSafe identidad
   //     → pairwise puro), (b) Ayora real con sus grupos bifila de cotas
@@ -686,6 +692,7 @@ t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS
       const zen = 90 - g.elev, doy = S.doyOf(c.date);
       const irr = S.F.clearskyIneichen(zen, doy, c.alt, C.tl);
       const sim = S.F.policyAngles('pairwise', zen, g.az, T, irr, doy, c.albedo).angles;
+      if (!(zen < 90)) continue;                      // de noche manda el reposo, no la política
       for (let k = 0; k < c.nrows; k++)
         if (r.ang[k] !== sim[k])
           throw new Error(`min ${m}, fila ${k}: tarjeta ${r.ang[k]} ≠ simulador ${sim[k]} — el BT ya no es el mismo`);
@@ -1409,6 +1416,170 @@ t('sin lazo la columna de desalineo es CERO en todo el día', () => {
   if (peor !== 0) throw new Error(`sin lazo el desalineo tendría que ser 0 y es ${peor}`);
 });
 
+/* ── DÓNDE DUERME LA MESA, Y QUÉ CUESTA CADA POSICIÓN ───────────────────────*/
+console.log('');
+console.log('reposo nocturno y generación frente a posición');
+
+t('el reposo canónico son 5° al ESTE, y el signo se comprueba con la propia física', () => {
+  if (S.STOW_NOCHE !== 5)
+    throw new Error(`el reposo canónico ya no es 5: ${S.STOW_NOCHE} (dato de proyecto, usuario 2026-08)`);
+  // que +5 sea ESTE no es una convención escrita en un comentario: se mide con
+  // surfaceOrient, que es el calc_surface_orientation de pvlib que usa la página
+  const e = S.F.surfaceOrient(5, 0, 0), o = S.F.surfaceOrient(-5, 0, 0);
+  if (Math.abs(e.az - 90) > 1e-9)
+    throw new Error(`+5° tendría que mirar al ESTE (az 90) y mira a ${e.az.toFixed(3)}`);
+  if (Math.abs(o.az - 270) > 1e-9)
+    throw new Error(`−5° tendría que mirar al OESTE (az 270) y mira a ${o.az.toFixed(3)}`);
+  // y el mutante: escribir el número de la TCU (−5) deja la planta durmiendo al
+  // oeste, que es la mitad del cielo equivocada
+  if (S.F.surfaceOrient(-5, 0, 0).az === e.az)
+    throw new Error('el signo no cambia el azimut: el careo del signo no vigila nada');
+  if (Math.abs(e.tilt - 5) > 1e-9 || Math.abs(o.tilt - 5) > 1e-9)
+    throw new Error('la inclinación tendría que ser 5° en los dos sentidos');
+});
+
+t('con el sol bajo el horizonte la consigna es el REPOSO, fila a fila y mesa a mesa', () => {
+  const c = { ...base, stowNoche: 5 };
+  let noches = 0;
+  for (let m = 0; m < 1440; m += 10) {
+    const r = S.instant(S.F, c, TL, m, null, true);
+    if (r.zen < 90) continue;
+    noches++;
+    for (let k = 0; k < r.angT.length; k++)
+      if (r.angT[k] !== 5)
+        throw new Error(`m=${m} (zen ${r.zen.toFixed(1)}) fila ${k}: consigna ${r.angT[k]} y no el reposo 5`);
+    if (r.segAngT) for (const l of r.segAngT) for (const th of l)
+      if (th !== 5) throw new Error(`m=${m}: una MESA duerme a ${th} en vez de 5`);
+  }
+  if (noches < 20) throw new Error(`solo ${noches} minutos de noche en el barrido: el careo no mira nada`);
+  // y con el reposo a 0 se recupera EXACTAMENTE la página de antes
+  const c0 = { ...base, stowNoche: 0 };
+  for (let m = 0; m < 1440; m += 10) {
+    const r = S.instant(S.F, c0, TL, m, null, true);
+    if (r.zen < 90) continue;
+    for (const th of r.angT) if (th !== 0) throw new Error(`con reposo 0 la noche tendría que ser plana y es ${th}`);
+  }
+});
+
+t('el reposo es MECÁNICO: obedece al tope del actuador', () => {
+  if (S.stowNocheDe({ stowNoche: 50, maxang: 8 }) !== 8)
+    throw new Error(`un reposo de 50° con θmáx 8° tendría que recortarse a 8 y da ${S.stowNocheDe({ stowNoche: 50, maxang: 8 })}`);
+  if (S.stowNocheDe({ stowNoche: -50, maxang: 8 }) !== -8)
+    throw new Error('el recorte no vale para el lado este');
+  if (S.stowNocheDe({ maxang: 55 }) !== 5)
+    throw new Error('sin campo en la config tendría que valer el canónico 5');
+  if (S.stowNocheDe({ stowNoche: 'ni idea', maxang: 55 }) !== 5)
+    throw new Error('un valor que no es número tendría que caer al canónico, no a NaN');
+});
+
+t('el θ a mano NO se tapa de noche: manda el ángulo del usuario', () => {
+  const c = { ...base, manual: true, manth: 30, stowNoche: 5 };
+  const r = S.instant(S.F, c, TL, 0, null, true);      // medianoche
+  if (!(r.zen >= 90)) throw new Error('el minuto 0 tendría que ser de noche');
+  for (const th of r.angT)
+    if (th !== 30) throw new Error(`en manual la noche tendría que respetar los 30° del usuario y da ${th}`);
+});
+
+t('el reposo NO inventa energía nocturna: sin lazo el día es el MISMO al vatio', () => {
+  const map = S.mapStringW(S.F, base, TL);
+  const con = S.dayEnergy(S.F, { ...base, stowNoche: 5 }, TL, base.date, 5, map);
+  const sin = S.dayEnergy(S.F, { ...base, stowNoche: 0 }, TL, base.date, 5, map);
+  for (let k = 0; k < con.length; k++)
+    if (Math.abs(con[k] - sin[k]) > 1e-12)
+      throw new Error(`string ${k}: con reposo ${con[k]} y sin él ${sin[k]} — de noche la POA es 0 a cualquier θ`);
+});
+
+/* CON LAZO SÍ CAMBIA, y es lo que se quiere: el eje sale de la noche desde
+   donde durmió, y la banda muerta tiene MEMORIA, así que el diente de sierra
+   entra al día con otra fase. En la genérica del canario (21-jun, paso 5 min,
+   lazo libre con banda 1°, terreno «pendiente» 4): 248 de 288 minutos de la
+   rejilla llevan otro θ y el peor desvío es 6,04° en la puesta, pero la energía
+   solo se mueve donde el backtracking manda — 07h +17,69 %, 08h +3,26 %, de 10h
+   a 18h ±0,01 % — y el día de planta sube 0,492 %.
+
+   Y EL SIGNO NO ES PREDECIBLE, que es lo que este candado descubrió: con la
+   planta de este banco (la misma genérica con terreno «pendiente» 6 y albedo
+   0,25) las 07h no suben un 17,69 % — BAJAN un 11,20 %. Así que el reposo
+   nocturno no «mejora» la cifra medio por ciento: la fase con la que el diente
+   de sierra entra en la mañana cae donde cae, y a sol bajo un grado decide si
+   te metes en la sombra de la fila de al lado o no. Lo que se puede afirmar, y
+   es lo que se exige aquí, es que la mañana se mueve MUCHO y el mediodía nada.
+   Cualquier lectura del tipo «el modelo ha ganado un 0,5 %» está mal leída. */
+t('con lazo, salir del reposo mueve la MAÑANA (en un sentido o en otro) y no el mediodía', () => {
+  const cl = { ...base, ctrl: { on: true, db: 1.0, slew: 0.17, cicloSeg: 1, modo: 'libre' } };
+  const map = S.mapStringW(S.F, cl, TL);
+  const hora = stow => {
+    const c = { ...cl, stowNoche: stow }, wh = new Array(24).fill(0);
+    let prev = null;
+    for (let m = 0; m < 1440; m += 5) {
+      const r = S.instant(S.F, c, TL, m, prev);
+      let w = 0; for (let k = 0; k < r.rows.length; k++) w += map(r.rows[k], r.met, r, k);
+      wh[Math.floor(m / 60)] += w * 5 / 60 / 1000; prev = r;
+    }
+    return wh;
+  };
+  const a = hora(0), b = hora(5);
+  const pc = h => (b[h] - a[h]) / Math.max(1e-9, a[h]) * 100;
+  if (!(Math.abs(pc(7)) > 5))
+    throw new Error(`las 07h tendrían que moverse de largo al salir del reposo y se mueven ${pc(7).toFixed(2)} %`);
+  for (const h of [11, 12, 13, 14, 15]) {
+    if (Math.abs(pc(h)) > 0.1)
+      throw new Error(`las ${h}h se mueven ${pc(h).toFixed(3)} %: el reposo no puede tocar el mediodía`);
+    if (!(a[h] > 100))
+      throw new Error(`las ${h}h del caso de careo tendrían que ser la parte gorda del día y son ${a[h].toFixed(1)} kWh`);
+  }
+});
+
+t('barrido de posición: el óptimo sale del barrido y las marcas del instante REAL', () => {
+  const B = S.barridoTheta(S.F, base, TL, 720, 1, null);       // mediodía, planta entera
+  if (B.pts.length !== 2 * base.maxang + 1)
+    throw new Error(`${B.pts.length} puntos y tendrían que ser ${2 * base.maxang + 1} (de −θmáx a +θmáx a 1°)`);
+  if (Math.abs(B.pts[0].th + base.maxang) > 1e-9 || Math.abs(B.pts[B.pts.length - 1].th - base.maxang) > 1e-9)
+    throw new Error('el barrido no llega a los topes');
+  for (const p of B.pts) if (!(p.w >= 0) || !isFinite(p.w)) throw new Error(`un punto sin vatios: ${p.w}`);
+  // el óptimo es el máximo de verdad, y la curva tiene forma (no es plana)
+  const maxw = Math.max(...B.pts.map(p => p.w));
+  if (Math.abs(B.opt.w - maxw) > 1e-12) throw new Error('opt no es el máximo del barrido');
+  if (!(B.opt.w > B.pts[0].w * 1.5))
+    throw new Error('la curva sale plana: apuntar al sol tendría que dar bastante más que el tope');
+  // el punto de la política lleva su W REAL, que es el del instante, no el del barrido
+  const r = S.instant(S.F, base, TL, 720, null);
+  const map = S.mapStringW(S.F, base, TL);
+  let w = 0; for (let k = 0; k < r.rows.length; k++) w += map(r.rows[k], r.met, r, k);
+  if (Math.abs(B.marcas.pol.w - w) > 1e-9)
+    throw new Error(`la marca de la política (${B.marcas.pol.w}) no es la generación real del instante (${w})`);
+});
+
+t('el barrido NO es una física aparte: cada punto es el θ a mano de la página', () => {
+  const B = S.barridoTheta(S.F, base, TL, 600, 5, 3);          // 10:00, un string
+  const map = S.mapStringW(S.F, base, TL);
+  for (const p of B.pts) {
+    const r = S.instant(S.F, { ...base, manual: true, manth: p.th }, TL, 600, null);
+    const w = map(r.rows[3], r.met, r, 3);
+    if (Math.abs(w - p.w) > 1e-12)
+      throw new Error(`θ=${p.th}: el barrido dice ${p.w} y el θ a mano de la página ${w}`);
+  }
+});
+
+t('a sol BAJO la curva es asimétrica, y a sol alto casi no: eso es la sombra', () => {
+  const asim = m => {
+    const B = S.barridoTheta(S.F, base, TL, m, 1, null);
+    const o = B.opt.th, en = t => B.pts.reduce((a, b) => Math.abs(b.th - t) < Math.abs(a.th - t) ? b : a, B.pts[0]);
+    const w0 = en(o).w;
+    return Math.abs((en(o + 2).w - w0) / w0 - (en(o - 2).w - w0) / w0) * 100;
+  };
+  const bajo = asim(420), alto = asim(780);               // 07:00 y 13:00
+  if (!(bajo > alto * 3))
+    throw new Error(`a las 07:00 la asimetría (${bajo.toFixed(2)} %) tendría que ser muy mayor que a las 13:00 (${alto.toFixed(2)} %)`);
+});
+
+t('de noche no hay nada que barrer: la POA es 0 a CUALQUIER ángulo', () => {
+  const B = S.barridoTheta(S.F, base, TL, 0, 5, null);
+  if (!B.noche) throw new Error('el minuto 0 tendría que venir marcado como noche');
+  for (const p of B.pts) if (p.w !== 0) throw new Error(`de noche un θ da ${p.w} W`);
+  if (B.stow !== 5) throw new Error('el barrido nocturno no dice dónde duerme la mesa');
+});
+
 /* ── v1.31 · EL CANARIO DE LA CIFRA ──────────────────────────────────────────
    tools/golden_anual.json guarda la energía por string de ocho casos (el año
    completo de la genérica, los solsticios, el lazo en sus dos modos, la
@@ -1483,7 +1654,8 @@ t('el cfg del canario es el de ARRANQUE de la página: ningún valor por defecto
                  ['gamma', CFG0.elec.gamma], ['tamb', CFG0.elec.tamb], ['wind', CFG0.elec.wind],
                  ['ldispo', CFG0.ac.planta.dispo], ['ldeg', CFG0.ac.planta.degrada],
                  ['lanio', CFG0.ac.planta.anio], ['bifa', CFG0.bif.bifa], ['bperd', CFG0.bif.perdTras],
-                 ['iamb0', CFG0.iamb0], ['ctrlDb', CFG0.ctrl.db], ['ctrlSlew', CFG0.ctrl.slew],
+                 ['iamb0', CFG0.iamb0], ['stowNoche', CFG0.stowNoche],
+                 ['ctrlDb', CFG0.ctrl.db], ['ctrlSlew', CFG0.ctrl.slew],
                  ['ctrlCiclo', CFG0.ctrl.cicloSeg]];
   for (const [id, esperado] of pares) {
     const v = +val(id);
