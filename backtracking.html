@@ -4260,26 +4260,62 @@ async function loadLayoutPlant(name){
       const half=(String(t.t||t.tp||'').toLowerCase().indexOf('medio')>=0?mesaL/2:mesaL)/2;
       return [t.n-half,t.n+half];
     }));
-    const segZ=segs.map(sg=>sg.map(()=>[0,0]));
-    const nR=band.length;
+    const segZ0=segs.map(sg=>sg.map(()=>[0,0]));
+    let nR=band.length;
     const dxs=[];for(let i=1;i<nR;i++)dxs.push(lineX[i]-lineX[i-1]);
     dxs.sort((a,b)=>a-b);
-    const pitch=dxs.length?dxs[Math.floor(dxs.length/2)]:6;
-    const nFilas=segs.reduce((s2,l)=>s2+l.length,0);
+    let pitch=dxs.length?dxs[Math.floor(dxs.length/2)]:6;
+    /* ══ LOS PUNTOS DEL LAYOUT SON SEGUIDORES, NO FILAS ═══════════════════════
+       En una planta BIFILA cada punto del layout es un seguidor con DOS filas de
+       módulos a ±filaZ y UN SOLO MOTOR, así que la separación entre puntos es el
+       paso entre MOTORES y no entre filas. El layout de El Burgo lo dice con
+       todas las letras, y hasta anticipa el error: «12 m es el paso ENTRE
+       SEGUIDORES, no entre filas … los ejes de fila caen a −3, +3, +9, +15, o sea
+       6 m clavados. 45 columnas de seguidores = 90 filas de módulos».
+       Cargándolo como monofila salían 45 filas a 12 m: GCR 0,199 en vez de 0,397
+       —justo el canónico de la casa, y el parámetro que manda en el backtracking—,
+       y además sin acople por accionamiento, que es lo que obliga a las dos filas
+       de un motor a compartir θ.
+       EL DATO ES DEL LAYOUT Y NO SE INFIERE: solo se expande cuando la planta
+       declara `geometria.bifila`. Las que no lo declaran se quedan como estaban y
+       la nota dice que el accionamiento NO está confirmado, en vez de suponerlo. */
+    const G=lay.geometria||{};
+    const declBifila=G.bifila===true||/^s[ií]/i.test(String(G.bifila||''));
+    const fz=Number.isFinite(G.filaZ)&&G.filaZ>0?G.filaZ:pitch/4;
+    let segs2=segs, segZ=segZ0, lineX2=lineX, groups=null, drive='mono';
+    if(declBifila){
+      const lx=[],sg=[],sz=[],gp=[];
+      for(let i=0;i<nR;i++){
+        // las dos vigas del seguidor, a ±filaZ de su eje; comparten implantación
+        // a lo largo (misma estructura) y motor, de ahí el grupo
+        lx.push(lineX[i]-fz,lineX[i]+fz);
+        sg.push(segs[i].map(v=>v.slice()),segs[i].map(v=>v.slice()));
+        sz.push(segZ0[i].map(v=>v.slice()),segZ0[i].map(v=>v.slice()));
+        gp.push([2*i,2*i+1]);
+      }
+      lineX2=lx; segs2=sg; segZ=sz; groups=gp; drive='bifila';
+      nR=lineX2.length;
+      pitch=Number.isFinite(G.pasoEntreFilas)&&G.pasoEntreFilas>0?G.pasoEntreFilas:2*fz;
+    }
+    const nFilas=segs2.reduce((s2,l)=>s2+l.length,0);
     const P={elev:new Array(nR).fill(0),tilt:new Array(nR).fill(0),
-             segs:segs,segZ:segZ,groups:null,lineX:lineX,
+             segs:segs2,segZ:segZ,groups:groups,lineX:lineX2,
              pairDz:new Array(Math.max(0,nR-1)).fill(0),
-             pitch:pitch,cw:2.382,maxAngle:55,drive:'mono',
-             xFrom:lineX[0],xTo:lineX[nR-1],
-             nFilas:nFilas,nPairs:0,
+             pitch:pitch,cw:2.382,maxAngle:55,drive:drive,
+             xFrom:lineX2[0],xTo:lineX2[nR-1],
+             nFilas:nFilas,nPairs:groups?groups.length:0,
              blocks:[{i:0,lines:nR,filas:nFilas}],block:0};
     PLANT_REAL=P;
     ELEV=P.elev.slice();
     if(isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
     aplicaHuso(lay);
-    $('nrows').value=nR;$('nrows').max=200;$('pitch').value=pitch.toFixed(2);
-    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value='mono';
-    note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+nR+' líneas · '+nFilas+' mesas · pitch '+pitch.toFixed(1)+' m) · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
+    $('nrows').value=nR;$('nrows').max=400;$('pitch').value=pitch.toFixed(2);
+    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value=drive;
+    note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+
+      (declBifila?(nR/2)+' seguidores <b>BIFILA</b> = '+nR+' filas a '+pitch.toFixed(2)+
+        ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja — accionamiento DECLARADO por el layout'
+       :nR+' líneas · pitch '+pitch.toFixed(1)+' m · <b>accionamiento NO declarado</b> en el layout: se corre como monofila')+
+      ' · '+nFilas+' mesas) · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
     recompute();
   }catch(e){note.textContent='error cargando '+name+': '+e.message;}
 }
