@@ -3236,7 +3236,7 @@ function drawTable(){
         '<th title="Grados totales de maniobra en el día (proxy de desgaste del core), sobre el θ ejecutado.">recorrido °</th>'+
         '<th title="AMPLITUD MEDIA de cada maniobra = recorrido ÷ movimientos. Es la relación entre las dos columnas de al lado, y la que fija el precio: medido en flota, el coste por grado se multiplica por 3,5 al bajar de 5° a menos de 1°, porque cada arranque se paga. Dos políticas con el mismo recorrido cuestan distinto si una lo trocea más.">°/mov</th>'+
         '<th title="Energía de motor del día, con su reparto arranque/giro al pasar el ratón. Ajuste de flota E = 0,0901 + 0,0447·|Δθ| sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas. El Δ en verde es AHORRO frente a pvlib, no consumo.">motor Wh/día</th>'+
-        '<th title="Consumo de motor del día como fracción de la batería del tracker: cuánta batería se GASTA, no cuánta se ahorra. El reposo de la TCU va aparte, en la nota.">% batería gastada</th>'+
+        '<th title="SOC que se lleva el MOTOR en el día: energía de motor ÷ capacidad de la batería del tracker. Dos cosas que el nombre anterior («% batería gastada») no decía: es SOLO el motor —el reposo de la TCU, 15,4 Wh/día, va aparte y es del mismo orden— y es CONSUMO, no balance: no descuenta lo que el panel repone, así que no es la caída de SOC del día.">% SOC consumo motor</th>'+
         '<th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
   for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
@@ -4739,7 +4739,8 @@ function informeHTML(){
   '<h2>3. Resumen del día, política a política</h2>'+tabDia+
   '<p class="mut"><b>Cómo leer.</b> «% del día activa» <b>no es comparable entre filas</b>: cada política activa con su '+
   'propio criterio, y el modo al lado dice qué se está contando. «Movimientos» son arranques del motor, no '+
-  'conmutaciones. «% batería gastada» es consumo, no ahorro; los Δ en verde sí son ahorro frente a pvlib.</p>'+
+  'conmutaciones. «% SOC consumo motor» es el SOC que se lleva el MOTOR —el reposo de la TCU va aparte y es del '+
+  'mismo orden— y es consumo, no balance ni ahorro; los Δ en verde sí son ahorro frente a pvlib.</p>'+
 
   '<h2>4. Cada política: cómo decide, qué optimiza y sus cálculos</h2>'+secs+
 

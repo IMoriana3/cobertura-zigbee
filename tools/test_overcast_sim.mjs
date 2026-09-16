@@ -38,13 +38,17 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
   if (!/id="maxang"[^>]*value="55"/.test(html)) throw new Error('θmáx ≠ 55');
 });
 t('el coste de maniobra está en la tabla del día, con sus tres columnas y la batería', () => {
-  for (const col of ['movimientos', 'recorrido °', '°/mov', 'motor Wh/día', '% batería gastada'])
+  for (const col of ['movimientos', 'recorrido °', '°/mov', 'motor Wh/día', '% SOC consumo motor'])
     if (!html.includes('>' + col + '<')) throw new Error('falta la columna «' + col + '» en la tabla del día');
   // «% batería» a secas no decía si se gasta o se ahorra, y «% difusa activa»
   // contaba cosas distintas en cada fila sin avisar: las dos cabeceras llevan
-  // ahora el sentido dentro, y esto impide que vuelvan a quedarse a medias
-  if (/>% batería<|>% difusa activa</.test(html))
-    throw new Error('cabecera ambigua: hay que decir si el % se gasta o se ahorra, y qué se cuenta como «activa»');
+  // ahora el sentido dentro, y esto impide que vuelvan a quedarse a medias.
+  // «% batería gastada» arreglaba lo de gastar/ahorrar pero seguía callando LAS
+  // OTRAS DOS: que es solo el MOTOR (el reposo de la TCU, 15,4 Wh/día, es del
+  // mismo orden y va aparte) y que es CONSUMO y no balance —no descuenta la
+  // recarga—, así que no es la caída de SOC del día. El nombre lo dice ya.
+  if (/>% batería<|>% batería gastada<|>% difusa activa</.test(html))
+    throw new Error('cabecera ambigua: el % de batería tiene que decir que es SOC, que es del motor y que es consumo');
   // el selector por defecto es el AJUSTE DE FLOTA, el único de los tres que cobra
   // cada arranque: con las bandas (escalón) o con la curva (sin término fijo), la
   // columna de movimientos podría doblarse sin mover la factura
