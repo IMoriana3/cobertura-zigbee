@@ -207,6 +207,14 @@
       100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
       (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
       DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.
+      <br><b>Y los presets son ESCALONES</b>, en rejilla de 5 min: «Tarde nublada» salta cc 0 → 0,40 a las
+      13h00 y 0,40 → 0,90 a las 14h30, de golpe y <b>a la vez en toda la planta</b>. Un frente real tarda
+      minutos en barrer el emplazamiento, así que la media de planta sube y baja en <b>rampa</b>. La
+      dirección del sesgo se sabe: un escalón es el caso <b>FAVORABLE</b> para las políticas que conmutan
+      —transición instantánea, inequívoca y sostenida, justo lo que el confirm/dwell necesita para
+      acertar— mientras que una rampa se pasa minutos en la zona ambigua, que es donde la histéresis
+      decide mal. <b>El año de 365 días reales tiene el sesgo CONTRARIO</b> (ERA5 es media horaria: alisa
+      los tránsitos ⇒ infraestima el modo difuso), así que la verdad queda <b>acotada entre los dos</b>.
       <br>Con el <b>cielo por NCU</b> activo, el selector de arriba dice a QUIÉN estás pintando: la
       planta o una NCU concreta. Pintar una NCU no toca a las demás ni al cielo de planta, y los
       botones de preset y «despejar» actúan sobre esa misma NCU.</div>

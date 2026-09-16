@@ -864,6 +864,34 @@ t('los DOS rellenos de la gráfica de θ están en la leyenda, y con su color', 
     throw new Error('vuelve a haber una copia abierta de la condición del zonal');
 });
 
+t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () => {
+  // El día sintético entra como onda cuadrada, y eso no era neutral: un escalón
+  // es el caso FAVORABLE para las políticas que conmutan (transición
+  // instantánea, inequívoca y sostenida — lo que el confirm/dwell necesita para
+  // acertar), mientras que una rampa se pasa minutos en la zona ambigua. La
+  // página ya declaraba el sesgo CONTRARIO del año real (ERA5 horario alisa los
+  // tránsitos ⇒ infraestima el difuso) y no este, así que el lector tenía media
+  // cota y se la podía tomar por la verdad.
+  const nota = html.slice(html.indexOf('id="skyedit"'), html.indexOf('id="skyedit"') + 3000);
+  if (!/presets son ESCALONES/i.test(nota))
+    throw new Error('la nota del cielo no declara que los presets son escalones');
+  if (!/ERA5/.test(nota) || !/acotada entre los dos/.test(nota))
+    throw new Error('la nota no cierra la cota: sin el sesgo contrario del año real, declara media verdad');
+  // LAS CIFRAS SE CAREAN CONTRA EL CÓDIGO, no se fijan a mano en las dos
+  // puntas: si alguien mueve el preset, la nota deja de mentir en silencio.
+  const linea = (html.match(/name==='tarde'\)\{([^}]*)\}/) || [])[1];
+  if (!linea) throw new Error('no encuentro el preset «tarde» en skyPresetSeries');
+  const spans = [...linea.matchAll(/span\((\d+),(\d+),([\d.]+)\)/g)]
+    .map(m => ({ ini: +m[1], val: +m[3] }));
+  if (spans.length !== 2) throw new Error(`el preset «tarde» ya no tiene 2 tramos, tiene ${spans.length}`);
+  for (const s of spans) {
+    const hh = String(Math.floor(s.ini / 60)).padStart(2, '0') + 'h' + String(s.ini % 60).padStart(2, '0');
+    const cc = s.val.toFixed(2).replace('.', ',');
+    if (!nota.includes(hh)) throw new Error(`la nota no dice ${hh}, que es donde el preset salta`);
+    if (!nota.includes(cc)) throw new Error(`la nota no dice cc ${cc}, que es a lo que salta el preset`);
+  }
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
