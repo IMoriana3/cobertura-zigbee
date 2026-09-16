@@ -426,6 +426,7 @@
     <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
+      <input type="date" id="date2" class="btn small" title="La fecha — el MISMO campo que en Emplazamiento, aquí al lado de la hora. Cambiar uno cambia el otro.">
       <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
         <option value="30">×½</option>
         <option value="60" selected>×1</option>
@@ -4826,6 +4827,22 @@ $('qabtn').onclick=()=>{
   $(id).addEventListener('change',id==='nncu'?()=>{zskyRender();recompute();}:recompute);
 });
 $('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
+/* LA FECHA, TAMBIÉN JUNTO AL SLIDER (el patrón de produccion.html). Mirar un
+   día y cambiar de día son la misma tarea, y la fecha estaba arriba del todo en
+   Emplazamiento mientras el tiempo se maneja abajo, en la barra de la escena.
+   `date2` NO es un segundo campo: es el MISMO, replicado donde hace falta.
+   Y no se replica el CABLEADO, que es donde esto se pudre: el espejo se limita
+   a copiar el valor y RELANZAR el change del campo de verdad, así que recompute,
+   aplicaHuso y lo que se cuelgue mañana de `date` salen solos y por un único
+   camino. Copiar los handlers —que es lo que hace la otra página— es tener dos
+   sitios que tienen que acordarse de hacer lo mismo. */
+$('date2').value=$('date').value;
+$('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
+$('date2').addEventListener('change',()=>{
+  if($('date2').value===$('date').value)return;                 // sin rebote
+  $('date').value=$('date2').value;
+  $('date').dispatchEvent(new Event('change'));
+});
 $('loopOn').addEventListener('change',recompute);
 $('anisoOn').addEventListener('change',()=>{fillPolview();recompute();});
 /* la capacidad NO entra en la física: solo cambia el denominador del «% batería».

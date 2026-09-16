@@ -955,6 +955,31 @@ t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ell
     throw new Error(`la cabecera dice ${nm} maniobras y el ajuste se hizo con ${F.AJUSTE_FLOTA.nManiobras}`);
 });
 
+t('la fecha está TAMBIÉN junto al slider, y es el mismo campo, no un segundo', () => {
+  // Mirar un día y cambiar de día son la misma tarea, pero la fecha vivía arriba
+  // del todo en Emplazamiento mientras el tiempo se maneja abajo, en la barra de
+  // la escena. Se replica el patrón de produccion.html: el campo aparece también
+  // ahí. Lo que NO se replica es el cableado.
+  const barra = html.slice(html.indexOf('<div class="timerow">'), html.indexOf('</div>', html.indexOf('<div class="timerow">')) + 6);
+  if (!/id="date2"/.test(barra))
+    throw new Error('la fecha no está en la barra de tiempo, junto al slider');
+  if (!/id="date"/.test(html)) throw new Error('falta el campo de fecha de Emplazamiento');
+  // UN SOLO CAMINO. El espejo copia el valor y RELANZA el change del campo de
+  // verdad; si en su lugar llama a recompute/aplicaHuso por su cuenta, hay dos
+  // sitios que tienen que acordarse de hacer lo mismo y lo que se cuelgue mañana
+  // de `date` solo se enterará por uno de ellos. Es el defecto que esta auditoría
+  // lleva corrigiendo, esta vez en el cableado de la interfaz.
+  const i = html.indexOf("$('date2').addEventListener('change'");
+  if (i < 0) throw new Error('el espejo de la fecha no está cableado');
+  const h = html.slice(i, html.indexOf('});', i) + 3);
+  if (!/dispatchEvent\(new Event\('change'\)\)/.test(h))
+    throw new Error('el espejo no relanza el change de `date`: el resto del cableado no se enteraría');
+  if (/\brecompute\s*\(|\baplicaHuso\s*\(/.test(h))
+    throw new Error('el espejo se ha copiado el cableado de `date` en vez de relanzarlo: dos caminos que se van a separar');
+  if (!/\$\('date2'\)\.value\s*===?\s*\$\('date'\)\.value/.test(h))
+    throw new Error('el espejo no corta el rebote entre los dos campos');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
