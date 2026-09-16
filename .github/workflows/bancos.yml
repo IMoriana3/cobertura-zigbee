@@ -146,6 +146,11 @@ jobs:
         run: node tools/test_modbus_map.mjs
       - name: paquete de medida
         run: node tools/test_paquete_medida.mjs
+      # El PASO DE VUELTA del viaje a la planta: de los tres CSV al
+      # <planta>_real.geojson. Antes lo hacia un `adaptador_elburgo.py` que no
+      # existe en el repo, y por eso solo El Burgo tenia su malla.
+      - name: la malla real, del CSV al GeoJSON
+        run: node tools/test_malla_real.mjs
       - name: pilotes del DWG
         run: node tools/test_pilotes_dwg.mjs
       - name: CSV de meteo
@@ -233,6 +238,7 @@ jobs:
           - { banco: test_panel_plegable.mjs }
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
+          - { banco: test_malla_pagina.mjs }     # el boton que exporta la malla medida: los tres cargadores, el estado y la ida y vuelta del GeoJSON
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           - { banco: test_produccion_lazo.mjs } # idem — el lazo de control, las políticas y la tabla por minuto
           - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)

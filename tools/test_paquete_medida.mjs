@@ -199,7 +199,41 @@ check('separa las DOS direcciones: la del gateway y la del Modbus de la NCU',
       /10\.100\.1\.53   \(su NCU esta en 10\.100\.1\.52\)/.test(leeme) &&
       /NO es la dirección del recolector/.test(leeme),
       leeme.split('\n').find(l => /10\.100\.1\.53/.test(l)));
-check('y dice qué hacer al volver', /adaptador_elburgo\.py/.test(leeme) && /elburgo_real/.test(leeme));
+check('y dice qué hacer al volver, con la página y no con un programa aparte',
+      /Exportar malla real/.test(leeme) && /elburgo_real\.geojson/.test(leeme) &&
+      /Cargar registro/.test(leeme) && /Cargar rutas/.test(leeme) && /Cargar coordenadas/.test(leeme),
+      leeme.split('\n').filter(l => /malla|Cargar/.test(l)).join(' | ').slice(0, 120));
+
+/* ───────────────────────────────────────────────────────────────────────────────
+   TODO FICHERO QUE EL LEEME NOMBRE TIENE QUE EXISTIR.
+
+   Aqui habia una comprobacion que decia «el leeme nombra adaptador_elburgo.py», y
+   pasaba en verde. El fichero NO EXISTE: no esta en el repo, no viaja en el ZIP y
+   no se borro nunca —el unico commit que menciona ese nombre es el que escribio el
+   leeme—. O sea que treinta y tantas comprobaciones vigilaban que no se confundiera
+   la IP del gateway con la del Modbus, que es el error caro, y el ultimo paso del
+   viaje apuntaba al vacio desde el primer dia. El Burgo tiene su malla porque
+   alguien corrio ese programa en su casa; ninguna otra planta podia tenerla.
+
+   Comprobar que el texto NOMBRA algo no comprueba nada. Esto comprueba que ESTA.
+   ─────────────────────────────────────────────────────────────────────────────── */
+{
+  /* Lo que DEJAN los recolectores al correr: se nombran en el leeme y es correcto
+     que no existan todavia, porque se crean alli. */
+  const SALIDAS = /^(zigbee_log\.csv|zigbee_routes\.csv|zigbee_inventario\.csv|angulos\.csv|zigbee_inventario_crudo\.xml|[a-z0-9_]+_real\.geojson)$/i;
+  const viajan = new Set([...paq.ficheros, ...paq.colectores, 'LEEME.txt']);
+  const nombrados = [...new Set(leeme.match(/[A-Za-z0-9_.-]+\.(py|ps1|csv|json|geojson|xml|txt)/g) || [])];
+  const huerfanos = nombrados.filter(n => !SALIDAS.test(n) && !viajan.has(n) &&
+                                          !fs.existsSync(path.join(RAIZ, n)));
+  check('todo fichero que el léeme nombra existe: viaja en el ZIP, lo crea un recolector, o está en el repo',
+        huerfanos.length === 0, huerfanos.join(', ') + '  (nombrados: ' + nombrados.length + ')');
+  /* y que la comprobacion sirve: si se cuela un nombre inventado, tiene que verlo */
+  const conBasura = leeme + '\n   python3 adaptador_que_no_existe.py\n';
+  const h2 = [...new Set(conBasura.match(/[A-Za-z0-9_.-]+\.(py|ps1|csv|json|geojson|xml|txt)/g) || [])]
+    .filter(n => !SALIDAS.test(n) && !viajan.has(n) && !fs.existsSync(path.join(RAIZ, n)));
+  check('y esa comprobación caza un nombre inventado, que si no no comprueba nada',
+        h2.length === 1 && h2[0] === 'adaptador_que_no_existe.py', h2.join(','));
+}
 
 /* ---- el ZIP, abierto por otro programa ---- */
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paq-'));
