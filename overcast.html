@@ -230,7 +230,7 @@
         <option value="sanjose">24019 · San José, Perú (2.289 uds · 21 NCUs)</option>
         <option value="tunez">24021 · Túnez (19 uds)</option>
         <option value="ayora">24025 · Ayora (754 uds · 16 NCUs)</option>
-        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · monofila · eje 23,7°)</option>
+        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · bifila · eje 23,7°)</option>
         <option value="paramo">Páramo, León (396 uds · 4 NCUs)</option>
       </select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
@@ -2088,7 +2088,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.21.0';
+const VER='v1.22.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2110,7 +2110,16 @@ const POL_META={
   diffuse_continuous: {c:'#5aa9ff',nm:'diffuse_continuous',mode:'DIFUSA',flat0:false,
                        ds:'barrido α∈{0,¼,½,¾,1} de θ=(1−α)·θ_n, argmax POA. El techo no-anticipativo; su óptimo suele ser un ángulo INTERMEDIO, no 0°.'},
   diffuse_poa_switch: {c:'#a78bfa',nm:'diffuse_poa_switch',mode:'PLANO',flat0:true,
-                       ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'}
+                       ds:'máquina de estados: confirm 30 min + dwell 90 min. La ejecutable en campo.'},
+  /* LA COTA TAMBIÉN SE PUEDE MIRAR. Estaba en la tabla pero no en el desplegable
+     de la escena, así que se podía calcular y no VER: ni su curva de θ, ni su
+     estado en el HUD, ni por qué eligió cada ángulo. Sigue sin ser una política
+     —no se puede servir como consigna y el panel lo rotula «NO es del core»—,
+     pero mirarla no es servirla, y es justo lo que hace falta para enseñar que
+     continuous está pegada al techo. Va la última en POL_ORDER_VIEW, nunca en
+     POL_ORDER, para que ningún bucle de comparación la trate como una más. */
+  __aniso:            {c:'#c9b6ff',nm:'óptimo anisótropo (cota)',mode:'DIFUSA',flat0:false,
+                       ds:'máximo EXACTO de la misma Perez sobre θ ∈ [0, θ_n]. NO es del core y no es servible como consigna: está para medir el techo.'}
 };
 /* ÚNICA FUENTE DE VERDAD del estado: texto Y color salen de aquí, para que
    ninguna vista pueda contradecir a otra en el mismo fotograma (la mesa 3D
@@ -2121,6 +2130,13 @@ const ST_COL={girando:'#22d3ee', PLANO:'#a78bfa', RETENIDO:'#e07b39',
 /* la política EFECTIVA: con el zonal activo y pvlib en la escena, quien decide
    de verdad es el poa_switch (lo elige computeZonal) — rotular pvlib ahí sería
    otra contradicción */
+/* qué política puede correr el ZONAL. pvlib no decide y la cota no es política:
+   las dos caen a la ejecutable en campo. Separado de polEfectiva a propósito —
+   aquella responde «con qué ficha se pinta esto», y con la cota elegida la
+   respuesta correcta es la cota misma. */
+function polZonificable(pv){
+  return (pv==='pvlib'||pv==='__aniso'||!POLICIES[pv])?'diffuse_poa_switch':pv;
+}
 function polEfectiva(pv){
   const zc=(typeof zonalCfg==='function')?zonalCfg():{on:false};
   return (zc.on&&pv==='pvlib')?'diffuse_poa_switch':pv;
@@ -2160,6 +2176,9 @@ function fillPolview(){
   const cur=$('polview').value;
   let h='';
   for(const k of POL_ORDER)if(POL_ON[k])h+='<option value="'+k+'">'+POL_META[k].nm+'</option>';
+  // la cota solo se ofrece si está encendida: ofrecer lo que no se ha calculado
+  // dejaría la escena mirando a un SIM.res que no existe
+  if($('anisoOn')&&$('anisoOn').checked)h+='<option value="__aniso">'+POL_META.__aniso.nm+'</option>';
   $('polview').innerHTML=h;
   if([...$('polview').options].some(o=>o.value===cur))$('polview').value=cur;
   else $('polview').value=POL_ON.diffuse_poa_switch?'diffuse_poa_switch':'pvlib';
@@ -2432,6 +2451,11 @@ function cfgDiffuse(){
 }
 let SIM=null;
 const DT_FINE=1;                       // el actuador se integra al MINUTO
+/* ciclo de DECISIÓN de las corridas anuales. A 30′ el confirm de la histéresis
+   colapsaba a una sola muestra y el poa_switch degeneraba hacia el flat justo en
+   la tabla estrella; 15′ lo conserva. Es una constante y no un literal repetido
+   porque el rótulo de pantalla llegó a decir 30′ mientras el código corría 15. */
+const DT_ANUAL=15;
 /* EL SLEW ES HIERRO, no una opción: en campo no hay casilla que apague la
    velocidad del actuador. La casilla gobierna SOLO el deadband (eso sí es un
    parámetro de la TCU). Desmarcarla llegó a dar 55°/min = 5,4× la spec en la
@@ -2491,8 +2515,16 @@ function recompute(){
     const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop);
     const flagF=execOnFineGrid(o.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
     const poaF=poaSeries(dayF,execF);
-    aniso={theta:o.theta,flag:o.flag,execF:execF,poaF:poaF,
-           met:dayMetrics(dayF,execF,flagF,poaF,mp)};
+    const consF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,null);
+    aniso={theta:o.theta,flag:o.flag,poa:o.poa,execF:execF,consF:consF,poaF:poaF,flagF:flagF,
+           met:dayMetrics(dayF,execF,flagF,poaF,mp),
+           metTgt:dayMetrics(dayF,consF,flagF,loop?poaSeries(dayF,consF):poaF,mp)};
+    /* LA COTA, TAMBIÉN BAJO `res`, con la MISMA forma que una política: es lo que
+       permite mirarla en la escena, el HUD y la curva de θ sin que cada vista
+       tenga que saber que es un caso especial. La clave lleva `__` y NO está en
+       POL_ORDER, así que ningún bucle de comparación la recoge: se puede VER sin
+       que entre a competir en la tabla como si fuera del core. */
+    res.__aniso=aniso;
   }
   SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop,mp:mp,aniso:aniso};
   computeZonal(d);
@@ -2509,9 +2541,23 @@ const EV_STYLE={wake:['🌅','#5c7189'],sleep:['🌙','#5c7189'],night:['🌙','
 function drawDiario(d){
   const zc=zonalCfg();
   const pv=$('polview').value||'diffuse_poa_switch';   // narra LA POLÍTICA ELEGIDA
-  const expl=EXPLAIN[pv]||explainPoaSwitch;
   const tol=SIM.loop?Math.max(1,+$('deadband').value):0.01;
   $('diariopol').textContent=POL_META[pv]?POL_META[pv].nm:pv;
+  /* LA COTA NO TIENE DIARIO, y decirlo es más honesto que fabricarle uno. No
+     razona: resuelve un argmax de Perez en cada paso, sin umbral, sin memoria y
+     sin nada que justificar — no hay «entra porque supera 1,02» que contar. El
+     fallback genérico habría narrado la máquina de estados del poa_switch sobre
+     los ángulos de la cota: un diario que describe una lógica que no se ejecutó
+     es exactamente lo que este panel existe para no hacer. */
+  if(pv==='__aniso'){
+    $('diario').innerHTML='<span style="color:var(--muted)">La <b>cota</b> no lleva diario: no '+
+      'decide, <b>resuelve</b>. En cada paso toma el máximo exacto de la misma Perez sobre '+
+      'θ ∈ [0, θ_n] —sin umbral, sin histéresis y sin memoria—, así que no hay maniobra que '+
+      'justificar: cada ángulo es, por construcción, el mejor posible de ese instante. Elige una '+
+      'política del core en el desplegable de la escena para volver a tener diario.</span>';
+    return;
+  }
+  const expl=EXPLAIN[pv]||explainPoaSwitch;
   let rows=[];
   if(zc.on&&ZR){
     ZR.zones.forEach((Z,z)=>{
@@ -2596,6 +2642,19 @@ function zskyRender(){
   // el recorte a 224 px estaba pensado para las 21 NCUs de San José, pero con
   // 4 escondía la última detrás de un scroll que no se ve venir: «¿por qué hay
   // 4 NCUs y solo me salen 3?». Con pocas zonas no se recorta nada.
+  /* «LE PONGO ZONAL PERO NO ME LO HACE». Y era verdad a la vista: activar «un
+     cielo propio por NCU» sin asignar ninguno deja TODAS las zonas con el cielo
+     de la planta, así que las NCUs salen con el MISMO θ y la escena parece no
+     hacer caso. Es un no-op EXACTO a propósito —encender el modo no puede mover
+     un número, y la QA lo exige—, pero un no-op silencioso se lee como un fallo.
+     Ahora lo dice, y ofrece el atajo en el mismo sitio donde surge la duda. */
+  const sinTocar=ZSKY.every(v=>v===null);
+  if(sinTocar)
+    h+='<div class="nota" style="grid-column:1/-1;margin-top:2px;border-left:2px solid #fbbd23;padding-left:8px">'+
+       '<b>Las '+nZ+' NCUs siguen con el cielo de la planta</b>, así que el zonal todavía no puede '+
+       'separarlas: con cielo uniforme zonal ≡ global <b>por construcción</b>, y por eso verás el mismo '+
+       'θ en todas. Dale un cielo distinto a alguna —el desplegable de cada NCU, o el ✏ para pintarla— '+
+       'o usa el botón <b>«alternar despejado/overcast»</b> de abajo, que monta el caso en un clic.</div>';
   const g=$('zskygrid');
   g.style.maxHeight=nZ>8?'300px':'none';
   g.innerHTML=h;
@@ -2686,14 +2745,25 @@ function computeZonal(d){
     (zc.on?' · '+zc.nZ+' NCUs · frente '+zc.cross+'′':'');
   ZR=null;
   if(!zc.on)return;
-  const pv=$('polview').value;
-  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv==='pvlib'?'diffuse_poa_switch':pv,d,zc.lags,
+  /* EL ZONAL SOLO SABE DE POLÍTICAS DEL CORE. La baseline no se zonifica (no
+     decide nada) y la COTA tampoco: no es una política, y barrerla por zona
+     costaría ~70 evaluaciones de Perez por paso y por NCU para un número que no
+     es servible. Las dos caen a la política ejecutable; sin este mapeo,
+     POLICIES['__aniso'] es undefined y la corrida zonal revienta. */
+  const pv=polZonificable($('polview').value);
+  ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv,d,zc.lags,
               SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,zc.ccz);
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
-   unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una
-   (Bagnarelli es monofila — dato del sim de BT). El azimut de eje ≠ 0 del
-   layout alimenta TAMBIÉN la física (axaz). */
+   unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una.
+   EL DATO ES DEL LAYOUT, NO DE AQUÍ: cada planta remedida lo declara en
+   `geometria.bifila`, y la QA exige que esta tabla coincida con él. Bagnarelli
+   figuraba monofila porque se copió del sim de BT, que a su vez lo dedujo de un
+   `filaZ 0` que el propio layout ya corrigió: «las mesas forman 8 líneas a 5,50 m,
+   agrupadas de dos en dos por seguidor, y los seguidores van a 11,00 m … la
+   cartera lo dice también: trk_bi 17, trk_mono 0». Dos piezas mirando a fuentes
+   distintas, otra vez. El azimut de eje ≠ 0 del layout alimenta TAMBIÉN la
+   física (axaz). */
 /* El huso YA NO vive aqui: lo declara el layout de cada planta (`tzFijo`). Estaba fijo todo el
    año —Ayora tz:2 tambien en enero— y era un tercer sitio diciendo lo mismo. */
 const REALMETA={
@@ -2703,7 +2773,7 @@ const REALMETA={
   fayon:     {bifila:true,  title:'Fayón'},
   paramo:    {bifila:true,  title:'Páramo'},
   tunez:     {bifila:true,  title:'Túnez'},
-  bagnarelli:{bifila:false, title:'Bagnarelli'}
+  bagnarelli:{bifila:true,  title:'Bagnarelli'}   // layout: geometria.bifila = «SI» (medido)
 };
 /* HUSO LOCAL DE LA PLANTA. El campo «UTC ±» arrancaba clavado en 2 —hora de verano peninsular— y
    al cargar una planta real no se tocaba, asi que la simulacion corria con la hora de Madrid:
@@ -2994,24 +3064,39 @@ function drawTable(){
   const base=SIM.res.pvlib.met.poaWh;
   const mB=SIM.res.pvlib.met;                 // la referencia también en COSTE
   const bat=battWh(), idleWh=TCU_IDLE_W*24;
-  let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th><th title="% del día con la política de difusa ACTIVA. Ojo: activa no es sinónimo de plano — solo flat y poa_switch van a 0°; limited retiene el ángulo previo y continuous elige un ángulo intermedio.">% difusa activa</th>'+
-        '<th title="Cambios del FLAG de la política: entrar o salir del modo difusa. NO son arranques del motor.">conmut.</th>'+
+  /* CABECERAS SIN AMBIGÜEDAD. «% difusa activa» significaba cosas distintas en
+     cada fila —cada política activa con SU criterio— y se leía como si fuera la
+     misma medida; y en las columnas de coste no quedaba claro si el porcentaje
+     era consumo o AHORRO de consumo. Ahora el modo va escrito en la propia celda
+     (PLANO / RETENIDO / DIFUSA), los Δ dicen «menos» con su signo, y aparece
+     «°/mov», que es la relación entre movimientos y recorrido y además la que
+     fija el precio: el coste por grado se multiplica por 3,5 al bajar de 5° a
+     menos de 1°. */
+  let h='<tr><th>política</th><th>POA día Wh/m²</th><th>Δ vs pvlib</th>'+
+        '<th title="% del día con la política de difusa ACTIVA — y CON QUÉ, porque cada política activa a su manera y el criterio NO es el mismo: flat y poa_switch van a 0° (PLANO), limited RETIENE el ángulo previo, continuous elige un ángulo INTERMEDIO. Por eso limited marca mucho más % que las demás sin estar plana ni un minuto. El % no es comparable entre filas; el modo dice qué se está contando.">% del día activa</th>'+
+        '<th title="Cambios del FLAG de la política: entrar o salir del modo difusa. NO son arranques del motor — suelen ser 2 al día.">conmut.</th>'+
         '<th title="ARRANQUES DEL MOTOR: tramos contiguos de movimiento sobre la rejilla del actuador (1 min). Una rampa de 55° es UN movimiento, no 55. Depende del ciclo de decisión y del deadband, que son los que deciden cuándo arranca el motor.">movimientos</th>'+
-        '<th title="Grados totales de maniobra en el día (proxy de desgaste), sobre el θ ejecutado.">recorrido °</th>'+
-        '<th title="Energía de motor del día, con su reparto arranque/giro al pasar el ratón. Ajuste de flota E = 0,0901 + 0,0447·|Δθ| sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas.">motor Wh/día</th>'+
-        '<th title="Consumo de motor del día como fracción de la batería del tracker. El reposo de la TCU va aparte, en la nota.">% batería</th>'+
+        '<th title="Grados totales de maniobra en el día (proxy de desgaste del core), sobre el θ ejecutado.">recorrido °</th>'+
+        '<th title="AMPLITUD MEDIA de cada maniobra = recorrido ÷ movimientos. Es la relación entre las dos columnas de al lado, y la que fija el precio: medido en flota, el coste por grado se multiplica por 3,5 al bajar de 5° a menos de 1°, porque cada arranque se paga. Dos políticas con el mismo recorrido cuestan distinto si una lo trocea más.">°/mov</th>'+
+        '<th title="Energía de motor del día, con su reparto arranque/giro al pasar el ratón. Ajuste de flota E = 0,0901 + 0,0447·|Δθ| sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas. El Δ en verde es AHORRO frente a pvlib, no consumo.">motor Wh/día</th>'+
+        '<th title="Consumo de motor del día como fracción de la batería del tracker: cuánta batería se GASTA, no cuánta se ahorra. El reposo de la TCU va aparte, en la nota.">% batería gastada</th>'+
         '<th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
   for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
   const fila=(k,nm,col,m,ultima)=>{
     const delta=100*(m.poaWh/base-1), ref=(k!=='pvlib');
+    // el MODO dice qué se está contando en «% del día activa»: sin él, el 59 %
+    // de limited se lee como «59 % del día en plano», que es falso
+    const modo=(POL_META[k]||{}).mode||'';
     return '<tr'+(k==='__aniso'?' style="border-top:2px solid var(--line2)"':'')+'>'+
       '<td style="color:'+col+'">'+nm+'</td>'+
       '<td'+(k===bestK?' class="best"':'')+'>'+m.poaWh.toFixed(0)+'</td>'+
       '<td'+(delta>0.005?' class="best"':'')+'>'+(k==='pvlib'?'—':(delta>=0?'+':'')+delta.toFixed(2)+' %')+'</td>'+
-      '<td>'+m.pctFlat.toFixed(0)+' %</td><td>'+m.switches+'</td>'+
+      '<td>'+m.pctFlat.toFixed(0)+' %'+(modo?' <span style="font-size:.78em;opacity:.75">'+modo+'</span>':'')+'</td>'+
+      '<td>'+m.switches+'</td>'+
       '<td>'+m.moves+(ref?deltaCoste(m.moves,mB.moves,0,''):'')+'</td>'+
       '<td>'+m.travelDeg.toFixed(0)+(ref?deltaCoste(m.travelDeg,mB.travelDeg,0,'°'):'')+'</td>'+
+      '<td>'+(m.moves?(m.travelDeg/m.moves).toFixed(2):'—')+'</td>'+
       '<td'+(m.arranqueWh==null?'':' title="'+m.moves+' arranques × 0,0901 = '+
         m.arranqueWh.toFixed(2)+' Wh · '+m.travelDeg.toFixed(0)+'° × 0,0447 = '+
         m.giroWh.toFixed(2)+' Wh de giro"')+'>'+
@@ -3168,10 +3253,20 @@ function drawScene(){
                            dayF.irr[iF],dayF.doy,dayF.albedo).total;
   const dNow=poaBase>1?100*(poaPol/poaBase-1):0;
   const ro=(k,v,s)=>'<div class="ro"><div class="k">'+k+'</div><div class="v">'+v+(s?' <small>'+s+'</small>':'')+'</div></div>';
+  /* LAS TRES TIENEN QUE CUADRAR A LA VISTA. Salían como tres números sueltos y
+     quien los leía probaba DNI + DHI = GHI (850 + 117 = 967 ≠ 855) y concluía,
+     con razón aparente, que directa y difusa iban desacopladas. No lo están: el
+     cierre es GHI = DNI·cos z + DHI y se cumple a 3e-17 W/m² en todo el día (hay
+     un check de la QA). Lo que faltaba era ENSEÑAR el coseno — el haz llega
+     inclinado y solo aporta su proyección horizontal. Con el término bien puesto,
+     los dos sumandos se leen y suman. */
+  const cz=Math.max(0,Math.cos(zen*RAD));
+  const beamH=irr.dni*cz;                       // proyección del haz sobre el plano horizontal
   $('hud').innerHTML=
-    ro('GHI',irr.ghi.toFixed(0),'W/m²')+
-    ro('DNI',irr.dni.toFixed(0),'W/m²')+
-    ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'%')+
+    ro('GHI',irr.ghi.toFixed(0),'W/m² = haz + difusa')+
+    ro('DNI',irr.dni.toFixed(0),'W/m² ⊥ al haz')+
+    ro('haz horizontal',beamH.toFixed(0),'W/m² = DNI·cos '+zen.toFixed(0)+'°')+
+    ro('DHI',irr.dhi.toFixed(0),'W/m² · '+(100*dFrac).toFixed(0)+'% de la GHI')+
     ro('θ TCU (−=este)',tcuDeg(th).toFixed(1)+'°',stateLabel(pv,th,flag,false,rate).txt)+
     ro('POA pvlib',poaBase.toFixed(0),'W/m²')+
     ro('POA política',poaPol.toFixed(0),'W/m²')+
@@ -4025,7 +4120,7 @@ $('yearbtn').onclick=()=>{
       // dos rejillas también aquí: decidir a 15 min, RAMPAR e integrar al
       // minuto. En la gruesa el techo por paso (153°) no ata nunca y el año
       // regalaba los tránsitos.
-      const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:15,cc:skyCCFor(ty),om:null}));
+      const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:DT_ANUAL,cc:skyCCFor(ty),om:null}));
       const dayF=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:DT_FINE,cc:skyCCFor(ty),om:null}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       for(const k in tot){
@@ -4123,17 +4218,19 @@ $('year365').onclick=async()=>{
     for(const k of POL_ORDER)if(POL_ON[k]){tot[k]=0;fl[k]=0;sw[k]=0;mv[k]=0;tr[k]=0;wh[k]=0;}
     const zeroCC=new Array(288).fill(0);
     let nd=0;
-    // día a día con la meteo MEDIDA, a paso de 30 min (confirm/dwell van en
-    // minutos: la histéresis conserva su física). Troceado para no congelar la UI.
-    // dos rejillas por día, como en el día suelto: la TCU DECIDE cada 30 min y
-    // el actuador RAMPA al minuto. Contar el tránsito no es cosmético: a paso
-    // de 30 min el giro salía promediado a ~0,03 °/s (gratis) y el año se
-    // sobreestimaba ~0,4 % — MÁS que la ganancia que este simulador mide.
+    /* día a día con la meteo MEDIDA. Dos rejillas por día, como en el día suelto:
+       la TCU DECIDE cada DT_ANUAL y el actuador RAMPA al minuto. Contar el
+       tránsito no es cosmético: con paso grueso el giro salía promediado a
+       ~0,03 °/s (gratis) y el año se sobreestimaba ~0,4 % — MÁS que la ganancia
+       que este simulador mide. Troceado para no congelar la UI.
+       EL PASO VA EN UNA CONSTANTE porque el comentario decía 30 min, el rótulo
+       de pantalla decía 30′ y el código corría a 15: tres sitios y dos verdades.
+       No baja al minuto como el día suelto porque serían 365 × 1.440 pasos de
+       decisión, y el año es una comparación entre políticas, no la cifra de
+       O&M — lo que sí va al minuto es el actuador, que es donde se paga. */
     for(let t0=Date.parse(dsFrom);t0<=Date.parse(dsTo);t0+=86400000){
       const ds=new Date(t0).toISOString().slice(0,10);
-      // decisión a 15 min: a 30 el confirm de la histéresis colapsaba a una sola
-      // muestra y el poa_switch degeneraba hacia el flat justo en la tabla estrella
-      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:15,cc:zeroCC,om:om}));
+      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_ANUAL,cc:zeroCC,om:om}));
       const dayF=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_FINE,cc:zeroCC,om:om}));
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       for(const k in tot){
@@ -4152,8 +4249,14 @@ $('year365').onclick=async()=>{
     }
     YR365={tot:tot,fl:fl,sw:sw,mv:mv,tr:tr,wh:wh,nd:nd,modelo:mp.modelo};
     renderYear365();
-    $('yearinfo').innerHTML='<b>'+dsFrom+' → '+dsTo+'</b> · ERA5 medido ('+nd+' días) · decisión 30′ · '+
-      'actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+' · DNI ≤ cielo claro ×1,1';
+    /* DÓNDE corrió, y que la mezcla de cielos NO pinta nada aquí. Sin el sitio no
+       se puede interpretar una ganancia baja: «poca ganancia con difusa alta» era
+       en realidad ERA5 midiendo el emplazamiento de verdad, con los pesos de
+       clima —que solo alimentan «12 × mezcla»— ignorados por completo. */
+    const donde=PLANT_REAL?PLANT_REAL.title:(c.lat.toFixed(3)+', '+c.lon.toFixed(3));
+    $('yearinfo').innerHTML='<b>'+donde+'</b> · '+dsFrom+' → '+dsTo+' · ERA5 <b>medido</b> ('+nd+
+      ' días) · decisión '+DT_ANUAL+'′ · actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+
+      ' · DNI ≤ cielo claro ×1,1 · <b>la mezcla de cielos NO se usa</b> (es meteo real)';
   }catch(e){$('yearinfo').innerHTML='<span style="color:var(--err)">'+(e&&e.message||e)+'</span>';}
 };
 /* el año en € — MWh ≈ MWp × ΔPOA(kWh/m² ≈ kWh/kWp) × PR 0,85. Es un proxy
@@ -4214,7 +4317,7 @@ function csvNum(v,d){return (v==null||!Number.isFinite(v))?'':v.toFixed(d);}
 function buildDayCSV(){
   const c=cfgDay(),d=cfgDiffuse(),day=SIM.day,dayF=SIM.dayF;
   const zc=zonalCfg(), zon=zc.on&&ZR&&ZR.zones.length>1;
-  const pv=polEfectiva($('polview').value);
+  const pv=polZonificable($('polview').value);   // lo que el zonal CORRIÓ de verdad
   const L=[];
   const meta=(k,v)=>L.push('# '+k+','+String(v).replace(/,/g,' '));
   L.push('# '+$('verlbl').textContent+' — export para auditoría');
@@ -4354,7 +4457,7 @@ $('qabtn').onclick=()=>{
 });
 $('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
 $('loopOn').addEventListener('change',recompute);
-$('anisoOn').addEventListener('change',recompute);
+$('anisoOn').addEventListener('change',()=>{fillPolview();recompute();});
 /* la capacidad NO entra en la física: solo cambia el denominador del «% batería».
    Repintar basta, y recalcular el día entero por cambiar una división sería
    tirar segundos de CPU para llegar a los mismos vatios-hora. */
