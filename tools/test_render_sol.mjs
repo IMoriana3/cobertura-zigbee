@@ -188,6 +188,74 @@ try {
   check('al bajar el tope con el mando fuera, el mando se recorta con él', baja.slider === 35 && +baja.rotulo === 35 && Math.round(baja.thHud) === 35 && baja.max === 35,
         `slider ${baja.slider} · rótulo ${baja.rotulo} · HUD ${baja.thHud}`);
 
+  /* ── 5. la mesa DE ESPALDAS al sol no lleva sombra roja, lleva «sin directa» ──
+     Reportado en la revisión del 3D: «módulos de espaldas con sombra roja».
+     Medido: con AOI 123° la página publicaba 45,2 % de sombra en tres filas y
+     la POA de fila era 33,7 W/m² en las OCHO, sombreadas y sin sombrear — con
+     el haz entrando por detrás no hay directa que sombrear, así que ese rojo no
+     costaba un vatio. Y el rojo PARCIAL dice algo peor que «de más»: dice que
+     el resto de la mesa sí produce con haz. Por eso se marca la mesa ENTERA.
+
+     Este banco no mira cómo está escrito: pone la escena de espaldas y exige
+     que NO quede ni una silueta roja y que sí haya marca de «sin directa»; y
+     después, de cara al sol y con sombra de verdad, que el rojo siga estando
+     —el arreglo no puede servir para callar sombra que sí cuesta—. */
+  const espaldas = async (slider, min) => {
+    await pg.evaluate(([v, mm]) => {
+      const m = document.getElementById('manual'); if (!m.checked) m.click();
+      const h = document.getElementById('hour'); h.value = String(mm); h.dispatchEvent(new Event('input'));
+      const t = document.getElementById('manth'); t.value = String(v); t.dispatchEvent(new Event('input'));
+    }, [slider, min]);
+    await pg.waitForTimeout(1300);
+    return pg.evaluate(() => {
+      const inst = sceneInstant(), t = timeIndex(), g = inst.g, ang = inst.pv.ang[t], sh = inst.pv.shade[t];
+      const aoi = aoiMesa(90 - elFisica(g), g.az, DAY.T, 0, ang[0]);
+      let rojo = 0, gris = 0;
+      TD.scene.traverse(o => { if (o.isMesh && o.material) { if (o.material === ovM_sil) rojo++; if (o.material === ovM_nodir) gris++; } });
+      const hud = (document.getElementById('hud') || {}).textContent || '';
+      return { elev: +g.elev.toFixed(1), aoi: +aoi.toFixed(1), sombra: Math.max(...sh), rojo, gris,
+               dice: /de espaldas al sol/.test(hud) };
+    });
+  };
+  const c5 = { lat: '-16.59577', lon: '-71.80644', nrows: '8', drive: 'quebrado', nspreset: 'rotula', axtilt: '6', date: '2026-06-21', tpreset: 'ondulado', tparam: '1', pol: 'pairwise', min: 12 * 60 };
+  // la sección 4 deja el tope en 35°: se devuelve a 55 antes de medir aquí,
+  // o el mando no llega al ángulo del caso reportado y no hay nada que mirar
+  await pg.evaluate(() => { const e = document.getElementById('maxang'); e.value = '55'; e.dispatchEvent(new Event('change')); });
+  await configura(c5);
+  await pg.click('#tab3d'); await pg.waitForTimeout(1500);
+
+  /* el testigo se BUSCA en vez de fijarlo a un (slider, hora) concreto: la
+     sección anterior deja la escena donde la deja, y un caso clavado a mano se
+     rompe en cuanto algo cambia sin que el defecto haya vuelto. Se recorre hasta
+     encontrar una postura de espaldas CON sombra publicada, y otra de cara
+     también con sombra: si no aparece ninguna, el banco lo dice en vez de
+     aprobar en silencio. */
+  let atras = null, cara = null;
+  for (const mm of [7 * 60 + 20, 7 * 60, 7 * 60 + 40, 16 * 60 + 30, 17 * 60, 6 * 60 + 40]) {
+    for (const sl of [45, 55, 35, 25, 10, -10, -25, -45, -55]) {
+      const r = await espaldas(sl, mm);
+      if (!(r.sombra > 0.02)) continue;
+      if (r.aoi >= 90 && !atras) atras = { ...r, sl, mm };
+      if (r.aoi < 90 && !cara) cara = { ...r, sl, mm };
+      if (atras && cara) break;
+    }
+    if (atras && cara) break;
+  }
+  check('se encuentra una postura DE ESPALDAS con sombra publicada (si no, no hay nada que juzgar)', !!atras,
+        'ninguna de las posturas barridas deja sombra con la cara de espaldas');
+  if (atras) {
+    check('de espaldas al sol no queda ni una silueta roja, y la mesa se marca «sin directa»',
+          atras.rojo === 0 && atras.gris > 0,
+          `slider ${atras.sl}° a las ${Math.floor(atras.mm / 60)}h · AOI ${atras.aoi}° · sombra ${(100 * atras.sombra).toFixed(1)} % · rojas ${atras.rojo} · grises ${atras.gris}`);
+    check('y el HUD lo dice, no sólo la escena', atras.dice, 'el HUD no menciona que la fila esté de espaldas');
+  }
+  check('se encuentra una postura DE CARA con sombra publicada', !!cara, 'no aparece ninguna');
+  if (cara) {
+    check('de cara al sol la sombra que SÍ cuesta se sigue pintando en rojo',
+          cara.rojo > 0 && cara.gris === 0,
+          `slider ${cara.sl}° a las ${Math.floor(cara.mm / 60)}h · AOI ${cara.aoi}° · sombra ${(100 * cara.sombra).toFixed(1)} % · rojas ${cara.rojo} · grises ${cara.gris}`);
+  }
+
   check('sin errores de página', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
 } finally {
