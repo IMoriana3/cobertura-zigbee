@@ -676,6 +676,53 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
     throw new Error('el camino por mesa sigue sin el deadband');
 });
 
+t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
+  /* Reportado: «¿por qué no me coge las coordenadas de algunos proyectos?».
+     La página llevaba COORDS_FALLBACK, una tabla A MANO con cinco plantas,
+     mientras `plantas_indice.json` declara en su cabecera ser «la FUENTE del
+     huso, del código de cartera y de las coordenadas: quien las necesite las
+     pide de aquí». Medido contra el índice: de sus 12 plantas, SIETE no
+     estaban en la tabla —bagnarelli, benante, catania, dicayagua, panbianco,
+     paramo, polvorin— y al elegirlas no pasaba nada, en silencio, quedándose
+     las coordenadas de la planta anterior; y de las cinco que sí estaban,
+     TÚNEZ ESTABA MAL por unos 3 km (33,8685/9,8433 contra 33,87924/9,87365).
+
+     Este banco prohíbe la copia, que es lo que se desfasa: cualquier tabla de
+     coordenadas de plantas escrita a mano en la página vuelve a abrir la misma
+     puerta. Y exige que, sin coordenadas, se AVISE — dejar las de otra planta
+     y callar es publicar un número falso sin marcarlo. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+
+  // 1) el índice es la fuente y se lee
+  if (!/plantas_indice\.json/.test(app))
+    throw new Error('la página no pide las coordenadas a plantas_indice.json');
+
+  // 2) ninguna tabla de coordenadas a mano: lo que se copia, se desfasa
+  const codigos = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas
+    .filter(p => p.codigo != null && p.codigo !== '').map(p => String(p.codigo));
+  const sinComentarios = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const cod of codigos) {
+    const re = new RegExp("['\"]" + cod.replace('.', '\\.') + "['\"]\\s*:\\s*\\[");
+    if (re.test(sinComentarios))
+      throw new Error(`hay coordenadas de la planta ${cod} escritas a mano en la página: eso es una copia de plantas_indice.json y se desfasará (pasó con Túnez, 3 km)`);
+  }
+
+  // 3) cuando no se saben, se dice — y NO se tocan las coordenadas de antes
+  const i = sinComentarios.indexOf("$('plant').onchange");
+  if (i < 0) throw new Error('no se encuentra el manejador del selector de planta');
+  const h = sinComentarios.slice(i, i + 2200);
+  if (!/avisoPlanta\(/.test(h)) throw new Error('el selector no avisa cuando la planta no trae coordenadas');
+  const rama = h.slice(h.lastIndexOf('else'));
+  if (/\$\('lat'\)\.value\s*=/.test(rama) || /\$\('lon'\)\.value\s*=/.test(rama))
+    throw new Error('sin coordenadas conocidas la página toca igualmente lat/lon: estaría inventando el emplazamiento');
+
+  // 4) el índice tiene coordenadas para todas sus plantas (es lo que promete)
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas;
+  const sinCoord = idx.filter(p => p.lat == null || p.lon == null).map(p => p.planta);
+  if (sinCoord.length) throw new Error('el índice se declara fuente de las coordenadas y no las trae para: ' + sinCoord.join(', '));
+  if (idx.length < 10) throw new Error('el índice tiene menos plantas de las esperadas: ' + idx.length);
+});
+
 t('v1.62 · EL CERTIFICADO NO LLAMA «MEJOR» A LO QUE NO LO ES', () => {
   /* Reportado con captura: un certificado con EMPATADO en la cabecera anunciaba
      debajo «Hay una consigna mejor» con la MISMA sombra (98,3 %) y MENOS POA
