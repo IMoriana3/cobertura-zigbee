@@ -309,7 +309,8 @@ var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,
 var FENCE_H=3.0;   // ALTURA DEL VALLADO, en metros. CONSTANTE para todas las plantas (pedido asi): antes 1,9. La hoja de las puertas se saca de aqui, no de un numero suelto.
 var LAYOUT=null,bosGroup=null,fijGroup=null,FJEXPL=0,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
 var sunPathGroup=null,sunMarker=null,sunRay=null;
-var SH_CX=-66,SH_CZ=36,SH_HALF=330,_shDirV=new THREE.Vector3();   // shadow camera ceñido a la planta (centro y semiancho en mundo, por planta en build()); cerca del suelo se ciñe a la cámara (updateSunShadow)
+var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera ceñido a la planta ENTERA (centro y semiancho en mundo, por planta en build())
+var SESGO_M=0.25;   // sesgo de profundidad EN METROS de mundo: se convierte a unidades de frustum en cada cuadro, porque el rango near..far crece con el tamaño de la caja (ver updateSunShadow)
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -513,7 +514,7 @@ function applySky(U){ if(!scene)return; var c=skyColor(U),cl=GENCLOUD||0,dir=SUN
   aoLuz(Math.max(0.05,Math.min(1,(U+0.06)/0.35)));
   updateEnvMap();updateRefl(); }   // reflejos del cielo en vidrio/acero (cubemap CPU, opt-in), regenerados al cambiar sol/nubes
 function syncSun(min){ if(!SUN)return; SUN._dir=sunVec(min); applySky(SUN._dir.U); updateSunShadow(); updateSunMarker(min); camDesdeElSol(); solCamAviso(); }   // la vista desde el sol se pega a la barra de tiempo   // la intensidad la fija applySky (nubes/luna)
-// shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara → se acabó el "solo un rectángulo que va variando". La nitidez se apoya en mapa grande (8192) + penumbra PCF (radius). En plantas de 2,5 km es el límite de un único mapa de sombra; lo fino-en-todo serían cascadas (CSM).
+// shadow camera FIJO ceñido a la planta ENTERA (SH_CX/SH_CZ/SH_HALF, calculados en build() por planta). ESTABLE: cubre TODA la planta y NO se mueve al orbitar ni subir la cámara. Esto ya lo decía este comentario mientras tres líneas más abajo la caja SÍ se ceñía a la cámara; ahora es verdad. La nitidez se apoya en mapa grande (8192). En plantas de 2,5 km el texel son 38 cm: se ve la sombra de cada fila, pero su borde es blando — lo fino-en-todo serían cascadas (CSM), que es trabajo aparte.
 /* El recuadro de sombra se ciñe a la PLANTA. Con los edificios de OSM encendidos eso deja fuera del
    mapa de sombra a todo lo que hay alrededor —el caserío, la nave del vecino— y sus sombras salen
    mal o directamente no salen: "las sombras del OSM las hace mal". Aquí se amplía el recuadro (y el
@@ -534,21 +535,42 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._d
      el cuádruple de superficie y perdiendo nitidez en los seguidores. */
   if(!SHX_HALF||SHX_BASE!==SH_CX+'|'+SH_CZ+'|'+SH_HALF)shadowExt();
   var cx=SHX_CX, cy=0, cz=SHX_CZ, half=SHX_HALF;
-  // caja ADAPTATIVA: a ras de suelo se ciñe alrededor de la cámara (texel varias veces más fino → sin
-  // sierra sobre los MÓDULOS, cuyo plano casi contiene al rayo y estira el texel aún más que el suelo);
-  // a vista de pájaro vuelve a la planta entera. Centro sesgado hacia donde MIRAS, acotado dentro de la
-  // planta y anclado a la rejilla de texels (el semiancho va en saltos de 20 m) para que no "nade".
-  var hAd=Math.min(SHX_HALF,Math.max(160,Math.ceil((100+2.4*camera.position.y)/20)*20));
-  if(hAd<SHX_HALF-1){
-    half=hAd;
-    var vd=camera.getWorldDirection(_shDirV);
-    var bx=camera.position.x+vd.x*half*0.45, bz=camera.position.z+vd.z*half*0.45;
-    cx=Math.max(SHX_CX-(SHX_HALF-half),Math.min(SHX_CX+(SHX_HALF-half),bx));
-    cz=Math.max(SHX_CZ-(SHX_HALF-half),Math.min(SHX_CZ+(SHX_HALF-half),bz));
-    var texw=2*half/(SUN.shadow.mapSize.x||4096);cx=Math.round(cx/texw)*texw;cz=Math.round(cz/texw)*texw;
-  }
+  /* LA CAJA CUBRE LA PLANTA ENTERA, SIEMPRE. Es lo que hacen los otros cinco visores
+     del repo —backtracking, overcast, produccion, el RF— cada uno con el tamaño de su
+     escena y ninguno mirando a la camara.
+
+     AQUI HABIA UNA CAJA ADAPTATIVA que se ceñia alrededor de la camara al bajar al
+     suelo, para afinar el texel. El precio no estaba medido y era este: lo que queda
+     fuera del recuadro NO PROYECTA NADA. Contado seguidor a seguidor, a ras de suelo:
+
+         El Burgo   83 de 215 dentro del recuadro
+         San Jose   48 de 2.289
+
+     O sea que protegia la nitidez de una banda borrando la sombra del resto del campo.
+     Y la decision se tomaba con `camera.position.y` ABSOLUTA, no con la altura sobre
+     el suelo: en una planta a cota alta no se ceñia nunca y en una a nivel del mar se
+     ceñia casi siempre, sin que eso tuviera nada que ver con lo cerca que estas.
+
+     POR QUE NO BASTABA CON QUITARLA —y esto costo cuatro intentos—. Al poner la caja
+     fija las sombras no se extendian: se LAVABAN, tambien las de cerca que antes
+     estaban bien. Medido sobre el suelo de San Jose, en sombra / en sombra fuerte:
+
+         caja 160 m, sesgo 0,25 m    6,75 %   5,30 %   (solo la banda)
+         caja 1578 m, sesgo 2,46 m   3,31 %   0,24 %   <- lavada
+         caja 1578 m, sesgo 0,25 m   8,51 %   2,94 %   <- lo que se hace ahora
+         caja 1578 m, sesgo 0       27,97 %   2,98 %   (eso no es sombra, es acne)
+
+     No era el texel ni la penumbra: es que `shadow.bias` va en profundidad NORMALIZADA
+     y el rango near..far crece con la caja, asi que el mismo -0,0003 vale 0,25 m de
+     mundo con la caja pequeña y 2,46 m con la grande — y se traga la sombra de todo lo
+     que este a menos de dos metros y medio del suelo, que son todos los paneles.
+     Por eso el sesgo se fija en METROS y se convierte aqui. */
   sc.left=-half;sc.right=half;sc.top=half;sc.bottom=-half;
   var d=half*4+700; sc.near=Math.max(1,d-half*2.6);sc.far=d+half*2.6;sc.updateProjectionMatrix();
+  /* SESGO CONSTANTE EN METROS, no en unidades de frustum. SESGO_M sale de la caja que
+     funcionaba (160 m de semilado por 0,0003 de rango = 0,25 m): por debajo aparece
+     acne, por encima empieza a comerse la sombra de los paneles. */
+  var rango=sc.far-sc.near; if(rango>0)SUN.shadow.bias=-(SESGO_M/rango);
   /* SOL RASANTE. Habia un suelo de 0,06 en la altura del sol (3,44 grados) para colocar la luz, y eso
      DEFORMA la sombra: su longitud va como h/tan(alt), asi que con el sol de verdad a 1 grado una
      nave de 12 m tira 690 m de sombra y con el suelo puesto salian 199 — 3,5 veces corta. De ahi que
@@ -561,6 +583,10 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._d
   var raso=(!SUN._ldir)&&dir.U<0.02;
   if(SUN.castShadow!==!raso)SUN.castShadow=!raso;
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
+  /* OJO: esto SOLO hace algo en MOVIL. `shadow.radius` lo ignora PCFSoftShadowMap, que
+     es el que usa escritorio (three.js solo lo aplica en PCF y VSM). Medido: radio 1
+     contra radio 16, mismo cuadro, cambia el 0,012 % de los pixeles y como mucho 6
+     niveles de 255 — ruido. Se deja porque en movil (PCFShadowMap) si manda. */
   SUN.shadow.radius=Math.min(7,2+1.9/Math.max(0.08,dir.U));            // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente; TOPE 7 (a 16, el PCF banda la penumbra: "sombras raras" a rayas al amanecer/atardecer)
   SUN.shadow.normalBias=Math.max(0.05,Math.min(0.2,half*0.00006)); }   // bias escalado al área cubierta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
