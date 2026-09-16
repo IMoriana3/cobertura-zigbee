@@ -98,12 +98,34 @@
     var d=(dir>0?1:(dir<0?-1:0));
     var err=target-prev, destino;
     if(d&&park!=null){
-      // EN VUELO hacia el destino ENCLAVADO al arrancar. No se recalcula: la TCU decide UNA vez
-      // —«vete a la consigna de ahora más una banda»— y conduce hasta ahí. Recalculándolo, con la
-      // consigna derivando el eje se queda de SEGUIDOR perpetuo una banda por delante y el paso de
-      // dos bandas no se hace nunca: medido en el core (media firmada +0,925° y ni una parada en
-      // una hora) y visible en cuanto el ciclo es largo.
-      if((park-prev)*d<=1e-12)d=0;                 // ha llegado: se para
+      /* EN VUELO: EL DESTINO EFECTIVO ES EL MÁS CERCANO DEL ENCLAVADO Y EL VIVO, y hacen falta los
+         DOS. Este núcleo tenía solo el enclavado y era un defecto medido, no una simplificación:
+         con la consigna RETROCEDIENDO —el codo del backtracking, una nube en la política óptima, la
+         puesta— el eje seguía viaje a un destino que ya nadie pedía. Medido con una consigna que
+         sube a 1,2° y baja luego a 0: este núcleo llegaba a 2,200° y acababa en −0,760, mientras la
+         autoridad (`solargpt_core/direction.py`, caso 06 de su contrato) llegaba a 1,700 y acababa
+         en −0,400. Medio grado de más en horas de backtracking, que es donde eso sombrea.
+         Y solo el VIVO tampoco vale: con la consigna derivando, el destino huye y el eje se queda de
+         SEGUIDOR perpetuo una banda por delante sin dar nunca el paso de dos bandas (medido en el
+         core: media firmada +0,925° y ni una parada en una hora).
+         Con el mínimo en el sentido de la marcha, el adelanto se hace cuando la consigna avanza y se
+         abandona cuando retrocede. Es la ley que ya llevaban `direction.py` y `overcast.html`; este
+         era el único cabezal que se había quedado atrás. */
+      var vivo=target+db*d;                        // el destino VIVO, recalculado
+      var invierte=err*d<0&&Math.abs(err)>db;      // invertir pide ESTRICTAMENTE más que la banda
+      // LA BANDA DE LLEGADA, con su papel: separar «el destino se movió un pelo» de «la orden
+      // cambió». Sin ella, persiguiendo el vivo con tolerancia de epsilon sale un tic de 0,1° cada
+      // vez que la consigna se mueve, que en un motor de verdad es desgaste por nada.
+      var lleg=Math.max(1e-9,0.5*db);
+      var rancio=(park-vivo)*d>lleg&&!invierte;    // la orden ya no es la que el eje ejecuta
+      /* EL ORDEN DE LAS PREGUNTAS IMPORTA, y equivocarlo no se ve en el θ de un paso: una consigna
+         que se va al otro lado por MÁS de una banda es una orden de sentido contrario, y hay que
+         volver a decidir con ella —puede arrancar una maniobra nueva, con su destino nuevo— en vez
+         de declararla «orden rancia» y quedarse parado. Al revés, el eje dejaba de invertir nunca.
+         Así que invirtiendo se cae al bloque de arranque (d=0) y la ley decide allí; llegando o con
+         la orden rancia, se para y el SENTIDO SE RECUERDA. */
+      if(invierte)d=0;                                       // vuelve a decidir con la orden nueva
+      else if(rancio||(park-prev)*d<=1e-12){d=0;park=null;}   // la orden cambió, o ya llegó
       else destino=park;
     }
     if(!d){                                        // parado: ¿arranca?

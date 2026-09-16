@@ -340,6 +340,62 @@ t('EL CICLO DECIDE SI EL ENCLAVAMIENTO ATA, y por eso importa que sea 1 s', () =
      `a 1 s el motor marcha ${uno.marchando} ciclos en ${uno.arranques} arranques: el paso no se está enclavando`);
 });
 
+/* ── LA CONSIGNA QUE RETROCEDE: el defecto que este banco NO cubría ─────────
+   Este núcleo enclavaba el destino al arrancar y NO lo recalculaba nunca, así
+   que con la consigna bajando —el codo del backtracking, una nube en la
+   política óptima, la puesta— el eje seguía viaje a un destino que ya nadie
+   pedía. Y el banco lo dejó pasar: 44 comprobaciones en verde con el defecto
+   dentro, porque ninguna movía la consigna HACIA ATRÁS a media maniobra.
+   La autoridad es `solargpt_core/direction.py` (caso 06 de su contrato) y
+   `overcast.html` ya la implementaba; este era el único cabezal atrasado.
+   Los números son los MEDIDOS a los dos lados con la misma serie —sube a 1,2°,
+   baja 0,12°/paso hasta 0— y se fijan exactos, no aproximados. */
+t('la consigna que RETROCEDE abandona el destino rancio, con la trayectoria de la autoridad', () => {
+  const loop = { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55, modo: 'libre', cicloSeg: 1 };
+  const cons = [];
+  for (let k = 0; k < 40; k++) cons.push(k < 5 ? 1.2 : (k < 25 ? 1.2 - 0.12 * (k - 5) : 0));
+  let th = 0, dir = 0, park = null, dirUlt = 0, peor = 0;
+  for (const tgt of cons) {
+    const r = C.step(th, tgt, 1, loop, false, dir, park, dirUlt);
+    th = r.theta; dir = r.dir; park = r.park; dirUlt = r.dirUlt;
+    peor = Math.max(peor, th);
+  }
+  // lo que da direction.py con la MISMA serie, medido ejecutándolo
+  close(peor, 1.70, 1e-9);
+  close(th, -0.40, 1e-9);
+  // y el ORÁCULO PUEDE PONERSE ROJO: con la ley vieja (destino solo enclavado)
+  // esta misma serie daba 2,200 de máximo y −0,760 de final. Si alguien la
+  // devuelve, estos dos números vuelven y el test lo dice.
+  ok(Math.abs(peor - 2.20) > 1e-6 && Math.abs(th + 0.76) > 1e-6,
+     `la trayectoria es la de la ley VIEJA (máx ${peor.toFixed(3)}, final ${th.toFixed(3)}): ` +
+     'el destino se ha vuelto a enclavar sin recalcular');
+});
+
+t('…y con la consigna que AVANZA el paso sigue siendo de DOS bandas exactas', () => {
+  // el otro mal, y por eso el destino efectivo es el MÁS CERCANO de los dos:
+  // recalculando solo el vivo, con la consigna derivando el destino huye y el
+  // eje se queda de seguidor perpetuo una banda por delante, sin dar nunca el
+  // paso. Con deriva hacia delante el enclavado tiene que seguir mandando.
+  const loop = { deadbandDeg: 1, slewDegS: 0.17, maxAngle: 55, modo: 'libre', cicloSeg: 1 };
+  let th = -40, dir = 0, park = null, dirUlt = 0;
+  const pasos = [];
+  for (let k = 0; k < 400; k++) {
+    const tgt = -40 + 0.02 * k;                    // deriva suave, como el sol
+    const antes = th;
+    const r = C.step(th, tgt, 1, loop, false, dir, park, dirUlt);
+    th = r.theta; dir = r.dir; park = r.park; dirUlt = r.dirUlt;
+    if (r.dir === 0 && dir === 0 && Math.abs(th - antes) < 1e-12 && pasos.length &&
+        pasos[pasos.length - 1].abierto) pasos[pasos.length - 1].abierto = false;
+    if (r.dir !== 0 && (!pasos.length || !pasos[pasos.length - 1].abierto))
+      pasos.push({ desde: antes, abierto: true });
+    if (pasos.length && pasos[pasos.length - 1].abierto) pasos[pasos.length - 1].hasta = th;
+  }
+  const largos = pasos.filter(x => !x.abierto).map(x => Math.abs(x.hasta - x.desde));
+  ok(largos.length >= 3, `solo ${largos.length} pasos completos: la serie no ejercita el enclavamiento`);
+  for (const L of largos)
+    ok(Math.abs(L - 2) < 0.06, `un paso mide ${L.toFixed(3)}° y la ley manda dos bandas (2,0°)`);
+});
+
 console.log('');
 if (FAIL) { console.error(`FALLAN ${FAIL}/${N}`); process.exit(1); }
 console.log(`OK — ${N}/${N} tests`);
