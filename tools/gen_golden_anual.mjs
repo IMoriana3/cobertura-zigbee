@@ -96,7 +96,7 @@ export const CFG0 = {
   incert: { meteo: 4.0, modelo: 3.5, soiling: 1.0, dispo: 0.5, degrada: 0.15 },
   bif: { bifa: 0, perdTras: 10 },
   pol: 'pairwise',
-  ctrl: { on: false, db: 1.0, slew: 0.17, cicloMin: 1, modo: 'libre' },
+  ctrl: { on: false, db: 1.0, slew: 0.17, cicloSeg: 1, modo: 'libre' },
 };
 
 function con(extra) { return JSON.parse(JSON.stringify(Object.assign({}, CFG0, extra))); }
@@ -119,23 +119,23 @@ export const CASOS = [
     ds: 'solsticio de INVIERNO: sombra larga todo el día, el caso donde el backtracking manda',
     dias: ['2026-12-21'], paso: 5, cfg: con({ date: '2026-12-21' }) },
   { id: 'generica_21jun_5min_lazo_libre',
-    ds: 'con el lazo de la TCU puesto (banda 1°, 0,17°/s, ciclo 1 min, modo libre): θ ejecutado, no ideal',
+    ds: 'con el lazo de la TCU puesto (banda 1°, 0,17°/s, ciclo de 1 s como la TCU real, modo libre): θ ejecutado, no ideal',
     dias: ['2026-06-21'], paso: 5,
-    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 1.0, slew: 0.17, cicloMin: 1, modo: 'libre' } }) },
+    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 1.0, slew: 0.17, cicloSeg: 1, modo: 'libre' } }) },
   { id: 'generica_21jun_5min_lazo_seguro',
     ds: 'el mismo lazo en modo seguro (arranca contra la sombra aunque no llegue a la banda)',
     dias: ['2026-06-21'], paso: 5,
-    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 2.0, slew: 0.17, cicloMin: 1, modo: 'seguro' } }) },
-  // BANDA ANCHA Y CICLO CORTO: el único caso donde el ENCLAVAMIENTO del lazo
-  // cambia la cifra. Con banda 1° y ciclo de 1 min el actuador recorre 10,2° por
-  // ciclo, o sea que cualquier movimiento cabe en uno y da igual si el motor
-  // queda enclavado; con 2,5° de banda y ciclos de 6 s ya no cabe, y quitar el
-  // enclavamiento mueve el día (1644,18 contra 1651,88 kWh). Sin este caso el
-  // mutante «prev.angMov → null» sobrevivía al canario: medido.
-  { id: 'generica_21jun_5min_lazo_ciclo6s',
-    ds: 'banda 2,5° con ciclo de 6 s: el paso del tracker no cabe en un ciclo y manda el enclavamiento',
+    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 2.0, slew: 0.17, cicloSeg: 1, modo: 'seguro' } }) },
+  // BANDA ANCHA Y CICLO LARGO. Con el ciclo de la TCU en 1 s el enclavamiento ata
+  // SIEMPRE (a 0,17°/s un paso de 1° son seis ciclos), así que el caso que hace
+  // falta ahora es el de al lado: un ciclo LARGO, de 60 s, donde el actuador
+  // recorre 10,2° por ciclo y cualquier paso cabe en uno. Con los dos, el canario
+  // ve los dos regímenes del lazo. (Este caso nació al revés —banda 2,5° y ciclo
+  // de 6 s— cuando el canónico era de 1 min y era ESE el régimen raro.)
+  { id: 'generica_21jun_5min_lazo_ciclo60s',
+    ds: 'banda 2,5° con ciclo de 60 s: el paso cabe en un ciclo y el enclavamiento no llega a atar',
     dias: ['2026-06-21'], paso: 5,
-    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 2.5, slew: 0.17, cicloMin: 0.1, modo: 'libre' } }) },
+    cfg: con({ date: '2026-06-21', ctrl: { on: true, db: 2.5, slew: 0.17, cicloSeg: 60, modo: 'libre' } }) },
   { id: 'generica_21jun_5min_bifacial_a25',
     ds: 'cara de atrás al 75 % y año 25 con 0,5 %/año: los dos caminos que mapStringW añadió a la cifra',
     dias: ['2026-06-21'], paso: 5,

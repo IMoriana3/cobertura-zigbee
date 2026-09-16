@@ -817,22 +817,61 @@ function polPoaSwitch(day,thN,poaN,d){
 const POLICIES={pvlib:polPvlib, diffuse_flat:polFlat, diffuse_limited:polLimited,
                 diffuse_continuous:polContinuous, diffuse_poa_switch:polPoaSwitch};
 
-/* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─ */
+/* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─
+   EL EJE ADELANTA AL SOL (contrato direccional 2.0.0 del core, 2026-09-14).
+   «Nosotros adelantamos al sol un grado, es decir, hacemos movimientos de dos
+   grados» (Iñaki). Esta función era la versión simple —«por debajo del umbral
+   el motor ni arranca, por encima va A la consigna»—, y con eso el error solo
+   podía ir POR DETRÁS. Ahora es la ley entera, la misma que
+   solargpt_core.direction.DirectionalController, porque el banco de paridad
+   JS↔core las carea a 1e-9 y son la MISMA física:
+
+     · arranca cuando el error alcanza el margen (`>=`, como siempre);
+     · va a `consigna + margen` en el sentido de la marcha (el ADELANTO), así
+       que el paso vale DOS márgenes y el error barre de +margen a −margen;
+     · el destino se ENCLAVA al arrancar y no se persigue (si se recalcula, con
+       la consigna derivando el eje se queda de seguidor perpetuo un margen por
+       delante y el paso no se hace nunca);
+     · si la consigna cambia y deja el destino rancio más de media banda, se
+       para (la orden ya no es la que estaba ejecutando);
+     · INVERTIR pide estrictamente MÁS que el margen, y el sentido se RECUERDA
+       al parar: sin las dos cosas el eje entra en chatter, porque aparcado está
+       siempre a un margen exacto de la consigna. Medido en el core: 200° de
+       recorrido en 200 pasos con la consigna quieta.
+   Los motivos largos están en el docstring de direction.py, que es la
+   autoridad; aquí va el algoritmo, sin una segunda versión de la historia. */
 function applyControlLoop(target,dtMin,p){
   // p = {deadbandDeg, slewDegS, maxAngle}
   // El slew NUNCA puede ser 0/negativo: sería un actuador de velocidad
   // infinita. Un 0 tecleado en la UI teletransportaba el tracker.
   if(!(p.slewDegS>0))p=Object.assign({},p,{slewDegS:CANON.slewDegS});
-  const dtS=dtMin*60;
+  const dtS=dtMin*60, db=p.deadbandDeg>0?p.deadbandDeg:0;
+  const lleg=Math.max(1e-9,0.5*db);        // banda de llegada: media banda
   const out=target.slice();
+  let dir=0, park=null;                    // sentido recordado y destino enclavado
   for(let i=1;i<out.length;i++){
-    const prev=out[i-1];
-    // deadband: por debajo del umbral el motor ni arranca (ahorra desgaste)
-    const des=(p.deadbandDeg>0&&Math.abs(target[i]-prev)<p.deadbandDeg)?prev:target[i];
+    const prev=out[i-1], tgt=target[i], err=tgt-prev;
+    let destino=null;
+    if(dir&&park!=null){
+      const sgn=dir, vivo=tgt+db*dir;
+      const invierte=err*sgn<0&&Math.abs(err)>db;
+      const rancio=(park-vivo)*sgn>lleg&&!invierte;
+      if(!invierte&&!rancio&&(park-prev)*sgn>1e-9)destino=park;
+      else if(!invierte){park=null;out[i]=prev;continue;}   // llegó, o la orden cambió
+    }
+    if(destino==null){
+      const inv=dir!==0&&((err>0?1:-1)!==dir);
+      const arranca=db<=0||(inv?Math.abs(err)>db:Math.abs(err)>=db);
+      if(!arranca||err===0){out[i]=prev;if(err===0)park=null;continue;}
+      dir=err>0?1:-1;
+      destino=tgt+db*dir;
+      park=destino;
+    }
     // y el recorte por velocidad es UNA sola pieza compartida (slewLimit1),
     // la misma que verifica la QA: si se toca, se toca en un solo sitio
-    const paso=p.slewDegS>0?slewLimit1(prev,des,dtS,p.slewDegS):des;
+    const paso=slewLimit1(prev,destino,dtS,p.slewDegS);
     out[i]=Math.max(-p.maxAngle,Math.min(p.maxAngle,paso));
+    if((park-out[i])*dir<=lleg*0+1e-9)park=null;            // llegó en este paso
   }
   return out;
 }
@@ -1834,17 +1873,34 @@ function runPhysicsQA(){
              albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
     const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
     const r=zonalRun(o,3,60,'diffuse_flat',DCFG_DEFAULT,null,loop);
-    const maxD=0.17*600+1e-9;
+    // EL EJECUTADO ES execF, NO theta. Este test decía comprobar «el θ ejecutado
+    // de CADA zona» y miraba Z.theta, que es la CONSIGNA de la política —la
+    // misma con lazo y sin él, porque la política no ve el actuador—. Pasaba por
+    // casualidad: con la ley vieja del lazo (ir A la consigna) applyControlLoop
+    // era la identidad sobre esta serie, así que comparar la consigna con la
+    // consigna daba verde. Con la ley 2.0.0 (el eje ADELANTA un margen) dejó de
+    // serlo y el test cayó, que es como se encontró el defecto. Ahora mira
+    // execF, que es lo que la energía cobra.
+    const maxD=0.17*60*DT_FINE_PHYS+1e-9;          // rejilla FINA: dt en minutos
     for(const Z of r.zones)
-      for(let i=1;i<Z.theta.length;i++)
-        A(Math.abs(Z.theta[i]-Z.theta[i-1])<=maxD,'slew violado: '+Math.abs(Z.theta[i]-Z.theta[i-1]).toFixed(1)+'°/paso');
-    // y la fontanería exacta: el θ por zona ES applyControlLoop(consigna)
+      for(let i=1;i<Z.execF.length;i++)
+        A(Math.abs(Z.execF[i]-Z.execF[i-1])<=maxD,'slew violado: '+Math.abs(Z.execF[i]-Z.execF[i-1]).toFixed(1)+'°/paso');
+    // y la fontanería exacta: el ejecutado de la zona ES el lazo sobre SU consigna
     const r0=zonalRun(o,3,60,'diffuse_flat',DCFG_DEFAULT,null,null);
     for(let z=0;z<3;z++){
-      const exec=applyControlLoop(r0.zones[z].theta,10,loop);
+      const exec=execOnFineGrid(r0.zones[z].theta,o.dtMin,1440,DT_FINE_PHYS,loop);
+      A(exec.length===r.zones[z].execF.length,'zona '+z+': largos distintos');
       for(let i=0;i<exec.length;i++)
-        A(Math.abs(exec[i]-r.zones[z].theta[i])<1e-9,'zona '+z+' paso '+i+' no es el ejecutado');
+        A(Math.abs(exec[i]-r.zones[z].execF[i])<1e-9,'zona '+z+' paso '+i+' no es el ejecutado');
     }
+    // y el ADELANTO se ve aquí: el ejecutado se separa de la consigna por los
+    // dos lados. Si no, el lazo no está haciendo lo que dice hacer.
+    let delante=0,detras=0;
+    for(const Z of r.zones)for(let i=0;i<Z.execF.length;i++){
+      const cons=Z.theta[Math.min(Z.theta.length-1,Math.floor(i*DT_FINE_PHYS/o.dtMin))];
+      if(Z.execF[i]-cons>1e-9)delante++; else if(Z.execF[i]-cons<-1e-9)detras++;
+    }
+    A(delante>0&&detras>0,'el ejecutado no cruza la consigna: no hay adelanto ('+delante+' delante, '+detras+' detrás)');
   });
   t('zonal con lags explícitos de CERO: todas las zonas ven el mismo cielo ⇒ zonal ≡ global exacto',()=>{
     const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
