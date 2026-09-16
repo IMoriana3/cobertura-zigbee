@@ -1015,9 +1015,31 @@ function gwsDe(paq){
   }
   return [...v.values()].filter(q=>q.ipGw);
 }
+/* SIN IP NO SE DEJA LA DE OTRO. Este bloque ya decía «mejor sin IP que con la de
+   otro», y sin embargo cuando la planta no traía gateways el .ps1 salía TAL CUAL —o
+   sea, con la IP de ejemplo del fichero, que es la de EL BURGO (10.100.1.54)—. El
+   que baja el paquete de Páramo se llevaba un recolector con aspecto de estar
+   configurado, apuntando a otra planta. Cuatro de las diez están así: Benante,
+   Panbianco, Páramo y El Polvorín no traen ni la IP de la NCU.
+   Ahora se sustituye por un MARCADOR que no es una IP: falla al instante y con un
+   mensaje que se entiende, en vez de agotar el tiempo de espera contra un aparato
+   que no es el suyo —o, peor, contra uno que sí responde y no es el de esta planta. */
+var MARCA_IP='PON-LA-IP-DEL-GATEWAY';
+function sinIP(txt,re,bloque,que){
+  var orig=(txt.match(re)||[""])[0].split("\n").map(function(l){return "# "+l;}).join("\n");
+  return txt.replace(re,
+    "# SIN IP. El manifiesto de esta planta no trae la direccion de "+que+", asi que\n"+
+    "# aqui va un MARCADOR y no una IP. La del fichero de ejemplo se ha quitado a\n"+
+    "# proposito: era la de EL BURGO, y un recolector que apunta a otra planta es peor\n"+
+    "# que uno que no arranca.\n"+
+    "# PON LA IP BUENA y borra el marcador. Es la del ConnectPort DIGI: la que abres en\n"+
+    "# el navegador y te saca su pagina.\n"+bloque+"\n"+
+    "# --- lo que traia el fichero antes de prepararlo ---\n"+orig);
+}
 /* La IP del gateway, escrita en el recolector y DICIENDO de dónde sale. */
 function preparaLogger(txt,gws){
-  if(!gws.length) return txt;
+  if(!gws.length) return sinIP(txt,/\$Gateways = @\([\s\S]*?\n\)/,
+    '$Gateways = @(\n  @{ Name = "GW-01"; Host = "'+MARCA_IP+'"; User = ""; Pass = "" }\n)','sus gateways');
   const orig=(txt.match(/\$Gateways = @\([\s\S]*?\n\)/)||[""])[0]
     .split("\n").map(l=>"# "+l).join("\n");
   const dec = gws.every(g=>g.declarada);
@@ -1046,7 +1068,11 @@ function preparaInventario(txt,gws){ return preparaLogger(txt,gws); }
    manifiesto. Escribirle la del gateway seria el mismo error de siempre, del
    otro lado. */
 function preparaAngulos(txt,gws){
-  if(!gws.length) return txt;
+  /* El de angulos va al MODBUS de la NCU, no al gateway: su marcador lo dice, para
+     que nadie le meta ahi la del ConnectPort. */
+  if(!gws.length) return sinIP(txt,/\$Ncus = @\([\s\S]*?\n\)/,
+    '$Ncus = @(\n  @{ Name = "NCU01-GW1"; Host = "PON-LA-IP-MODBUS-DE-LA-NCU"; Port = 503 }\n)',
+    'sus NCU (el MODBUS del SCADA, NO el gateway)');
   return txt.replace(/\$Ncus = @\([\s\S]*?\n\)/,
     "# NCU de esta planta: el MODBUS TCP del SCADA, que NO es la IP del gateway.\n"+
     "# El angulo del seguidor (registro 30111) se lee de aqui.\n"+
@@ -1060,7 +1086,8 @@ function preparaColector(nombre,txt,gws){
   return txt;
 }
 function preparaRutas(txt,gws){
-  if(!gws.length) return txt;
+  if(!gws.length) return sinIP(txt,/\$GwHost\s*=\s*"[^"]*"/,
+    '$GwHost     = "'+MARCA_IP+'"','sus gateways');
   return txt.replace(/\$GwHost\s*=\s*"[^"]*"/,'$GwHost     = "'+gws[0].ipGw+'"');
 }
 /* NO SE TOCA LA IP DE LOS RECOLECTORES, y es importante. El manifiesto trae una
@@ -1105,9 +1132,18 @@ function leemeDe(paq){
          "   COMPRUEBA una antes de empezar: abrela en el navegador y tiene que salir",
          "   el ConnectPort. Si no, corrigela en el CONFIG de los dos .ps1 — dentro",
          "   esta la linea original comentada.",""]
-      : ["   ANTES DE LANZARLOS: pon la IP del gateway DIGI arriba del todo de cada",
-         "   uno, donde pone CONFIG. Es el ConnectPort al que se entra por navegador,",
-         "   el que habla HTTP/RCI (80) y telnet (23).",""]),
+      : ["   ANTES DE LANZARLOS HAY QUE PONER LA IP. Esta planta no la trae en su",
+         "   manifiesto, asi que los .ps1 llevan un MARCADOR donde va la direccion:",
+         "",
+         "     Host = \"PON-LA-IP-DEL-GATEWAY\"",
+         "",
+         "   No es un descuido: se ha quitado la IP de ejemplo del fichero a proposito,",
+         "   porque era la de OTRA PLANTA y un recolector que apunta donde no debe es",
+         "   peor que uno que no arranca. Con el marcador falla al instante y se ve.",
+         "",
+         "   La buena es la del ConnectPort DIGI: la que abres en el navegador y te",
+         "   saca su pagina. Habla HTTP/RCI (80) y telnet (23). OJO: el de angulos va",
+         "   al MODBUS de la NCU (503/504), que es otra direccion; su marcador lo dice.",""]),
     "2) LAS COORDENADAS de este ZIP dicen qué equipo es cada nodo. Van por ámbito,",
     "   y el que se lanza es el (NCU,GW): los coords_*_NCU<nn>_GW<n>.csv.",
     ...(gws.length

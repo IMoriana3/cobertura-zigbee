@@ -38,13 +38,17 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
   if (!/id="maxang"[^>]*value="55"/.test(html)) throw new Error('θmáx ≠ 55');
 });
 t('el coste de maniobra está en la tabla del día, con sus tres columnas y la batería', () => {
-  for (const col of ['movimientos', 'recorrido °', '°/mov', 'motor Wh/día', '% batería gastada'])
+  for (const col of ['movimientos', 'recorrido °', '°/mov', 'motor Wh/día', '% SOC consumo motor'])
     if (!html.includes('>' + col + '<')) throw new Error('falta la columna «' + col + '» en la tabla del día');
   // «% batería» a secas no decía si se gasta o se ahorra, y «% difusa activa»
   // contaba cosas distintas en cada fila sin avisar: las dos cabeceras llevan
-  // ahora el sentido dentro, y esto impide que vuelvan a quedarse a medias
-  if (/>% batería<|>% difusa activa</.test(html))
-    throw new Error('cabecera ambigua: hay que decir si el % se gasta o se ahorra, y qué se cuenta como «activa»');
+  // ahora el sentido dentro, y esto impide que vuelvan a quedarse a medias.
+  // «% batería gastada» arreglaba lo de gastar/ahorrar pero seguía callando LAS
+  // OTRAS DOS: que es solo el MOTOR (el reposo de la TCU, 15,4 Wh/día, es del
+  // mismo orden y va aparte) y que es CONSUMO y no balance —no descuenta la
+  // recarga—, así que no es la caída de SOC del día. El nombre lo dice ya.
+  if (/>% batería<|>% batería gastada<|>% difusa activa</.test(html))
+    throw new Error('cabecera ambigua: el % de batería tiene que decir que es SOC, que es del motor y que es consumo');
   // el selector por defecto es el AJUSTE DE FLOTA, el único de los tres que cobra
   // cada arranque: con las bandas (escalón) o con la curva (sin término fijo), la
   // columna de movimientos podría doblarse sin mover la factura
@@ -823,6 +827,157 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
     }
   }
   if (fallos.length) throw new Error(fallos.length + '/400 · ' + fallos.slice(0, 3).join(' | '));
+});
+
+t('los DOS rellenos de la gráfica de θ están en la leyenda, y con su color', () => {
+  // La gráfica de θ lleva dos manchas con significados OPUESTOS: la banda de
+  // difusa (violeta, a toda altura, decisión de PLANTA) y la envolvente entre
+  // NCUs (magenta, acotada por las curvas, decisión POR ZONA). La leyenda solo
+  // explicaba la primera, y la segunda es la más grande de la gráfica. Leído
+  // así, el magenta se toma por la banda de difusa y sale la conclusión falsa
+  // de que «la difusa se activa con cielo despejado» — cuando lo que se abre
+  // por la mañana es la dispersión entre NCUs. Pasó de verdad leyendo una
+  // captura, y no lo cazó nadie porque no hay nada que lo exija. Esto lo exige.
+  const leg = html.slice(html.indexOf('function drawLegend()'),
+                         html.indexOf('function drawLegend()') + 2600);
+  if (!/difusa activa \(banda\)/.test(leg))
+    throw new Error('la leyenda ya no explica la banda de difusa');
+  if (!/envolvente mín–máx del θ entre NCUs/.test(leg))
+    throw new Error('la leyenda no explica la envolvente entre NCUs: la mancha más grande de la gráfica queda sin nombre');
+  // EL COLOR TIENE QUE SER EL MISMO en la leyenda y en el lienzo, o la leyenda
+  // señala a una mancha que no es. Se carea el HUE, que es lo que identifica
+  // el relleno (la opacidad sí difiere a propósito: un swatch al 0,13 de la
+  // gráfica no se vería).
+  const th = html.slice(html.indexOf('function drawTheta()'),
+                        html.indexOf('function drawPoa()'));
+  const hueLienzo = (th.match(/fillStyle='hsla\((\d+),/) || [])[1];
+  const hueLeyenda = (leg.match(/background:hsla\((\d+),/) || [])[1];
+  if (!hueLienzo || !hueLeyenda) throw new Error('no encuentro el relleno de la envolvente o su swatch');
+  if (hueLienzo !== hueLeyenda)
+    throw new Error(`la envolvente se pinta en hue ${hueLienzo} y la leyenda la anuncia en ${hueLeyenda}`);
+  // Y LA CONDICIÓN, EN UN SITIO: si la leyenda decide con su propia copia de
+  // «hay zonal en pantalla», puede anunciar una envolvente que no se pinta.
+  const nDecl = (html.match(/const zonalActivo\s*=/g) || []).length;
+  if (nDecl !== 1) throw new Error(`zonalActivo se declara ${nDecl} veces`);
+  if ((html.match(/zonalActivo\(\)/g) || []).length < 5)
+    throw new Error('alguna de las cinco piezas (atenuación, envolvente, leyenda, CSV, informe) dejó de usar la condición común');
+  // la propia declaración lleva la condición dentro, así que se descuenta antes
+  // de buscar copias — si no, el banco se señala a sí mismo (pasó al escribirlo)
+  const sinDecl = html.replace(/const zonalActivo\s*=[^\n]*\n/, '');
+  if (/ZR\s*&&\s*ZR\.zones\.length\s*>\s*1/.test(sinDecl))
+    throw new Error('vuelve a haber una copia abierta de la condición del zonal');
+});
+
+t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () => {
+  // El día sintético entra como onda cuadrada, y eso no era neutral: un escalón
+  // es el caso FAVORABLE para las políticas que conmutan (transición
+  // instantánea, inequívoca y sostenida — lo que el confirm/dwell necesita para
+  // acertar), mientras que una rampa se pasa minutos en la zona ambigua. La
+  // página ya declaraba el sesgo CONTRARIO del año real (ERA5 horario alisa los
+  // tránsitos ⇒ infraestima el difuso) y no este, así que el lector tenía media
+  // cota y se la podía tomar por la verdad.
+  const nota = html.slice(html.indexOf('id="skyedit"'), html.indexOf('id="skyedit"') + 3000);
+  if (!/presets son ESCALONES/i.test(nota))
+    throw new Error('la nota del cielo no declara que los presets son escalones');
+  if (!/ERA5/.test(nota) || !/acotada entre los dos/.test(nota))
+    throw new Error('la nota no cierra la cota: sin el sesgo contrario del año real, declara media verdad');
+  // LAS CIFRAS SE CAREAN CONTRA EL CÓDIGO, no se fijan a mano en las dos
+  // puntas: si alguien mueve el preset, la nota deja de mentir en silencio.
+  const linea = (html.match(/name==='tarde'\)\{([^}]*)\}/) || [])[1];
+  if (!linea) throw new Error('no encuentro el preset «tarde» en skyPresetSeries');
+  const spans = [...linea.matchAll(/span\((\d+),(\d+),([\d.]+)\)/g)]
+    .map(m => ({ ini: +m[1], val: +m[3] }));
+  if (spans.length !== 2) throw new Error(`el preset «tarde» ya no tiene 2 tramos, tiene ${spans.length}`);
+  for (const s of spans) {
+    const hh = String(Math.floor(s.ini / 60)).padStart(2, '0') + 'h' + String(s.ini % 60).padStart(2, '0');
+    const cc = s.val.toFixed(2).replace('.', ',');
+    if (!nota.includes(hh)) throw new Error(`la nota no dice ${hh}, que es donde el preset salta`);
+    if (!nota.includes(cc)) throw new Error(`la nota no dice cc ${cc}, que es a lo que salta el preset`);
+  }
+});
+
+t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ellas', () => {
+  // El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
+  // ventana ancha sobraba media cabecera. El hueco se llena con los números con
+  // los que corre la simulación — pero banda muerta, velocidad, θ máximo, ciclo
+  // y batería SON EDITABLES, así que un panel tecleado mentiría en cuanto se
+  // tocara un campo. Esto exige que salga del código y no de la mano.
+  if (!/id="canonbox"/.test(html)) throw new Error('no está el panel de la cabecera');
+  if (!/drawZonalTab\(\);pintaCanon\(\)/.test(html))
+    throw new Error('pintaCanon no se repinta con el resto: el panel se quedaría en los valores de la carga');
+  // la función, ACOTADA POR SUS LLAVES: con una ventana fija de N caracteres el
+  // trozo se salía a la siguiente función y se cazaban cosas de otra pieza
+  const i0 = html.indexOf('function pintaCanon()');
+  if (i0 < 0) throw new Error('no encuentro pintaCanon');
+  let d = 0, i1 = i0;
+  for (let k = html.indexOf('{', i0); k < html.length; k++) {
+    if (html[k] === '{') d++;
+    else if (html[k] === '}' && --d === 0) { i1 = k + 1; break; }
+  }
+  const fn = html.slice(i0, i1);
+  for (const k of ['CANON.deadbandDeg', 'CANON.slewDegS', 'CANON.maxAngle',
+                   'TCU_IDLE_W', 'BATT_WH_DEF', 'AJUSTE_FLOTA', 'DT_FINE'])
+    if (!fn.includes(k)) throw new Error(`el panel ya no lee ${k}: alguien tecleó el número`);
+  if (!/class="cn'\+\(off\?' off':''\)/.test(fn))
+    throw new Error('el panel perdió la marca de «fuera del canónico», que es lo que lo hace útil');
+  // Y QUE NO ESTÉN TECLEADOS. Exigir que el identificador APAREZCA no basta:
+  // se puede pintar '0,17' a mano y dejar CANON.slewDegS usándose al lado para
+  // la comparación, y la comprobación de arriba pasa — lo verifiqué y pasaba.
+  // Así que los propios valores canónicos, formateados como los pinta el panel,
+  // no pueden aparecer como literal dentro de la función.
+  // sin comentarios: el de esta misma función cita «0,17» como ejemplo de lo
+  // que NO hay que escribir, y la primera versión de esto se cazaba a sí misma
+  const fnCode = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const prohibidos = [F.CANON.deadbandDeg.toFixed(1), F.CANON.slewDegS.toFixed(2),
+                      F.TCU_IDLE_W.toFixed(2), F.BATT_WH_DEF.toFixed(1)]
+    .map(s => s.replace('.', ','))
+    .concat(F.AJUSTE_FLOTA.nManiobras.toLocaleString('es-ES'));
+  for (const p of prohibidos)
+    if (new RegExp("'[^']*" + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'").test(fnCode))
+      throw new Error(`el panel lleva «${p}» tecleado: ese número tiene que salir de la constante`);
+
+  // Y LA PROSA, CAREADA. La cabecera afirma «deadband 1° + slew 0,17°/s» y
+  // «14.759 maniobras reales» a mano, al lado de un panel que saca lo mismo del
+  // código. Dos fuentes otra vez: si una constante cambia, el párrafo se queda
+  // mintiendo. Se comprueba por VALOR, no por literal.
+  const sub = html.slice(html.indexOf('<div class="sub">'), html.indexOf('<div class="src">'));
+  const n = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+  const db = (sub.match(/deadband\s*([\d,.]+)\s*°/) || [])[1];
+  const sl = (sub.match(/slew\s*([\d,.]+)\s*°\/s/) || [])[1];
+  const nm = (sub.match(/\(([\d.,]+)\s*maniobras reales\)/) || [])[1];
+  if (db === undefined || sl === undefined || nm === undefined)
+    throw new Error('el párrafo de cabecera ya no declara deadband / slew / maniobras');
+  if (n(db) !== F.CANON.deadbandDeg)
+    throw new Error(`la cabecera dice deadband ${db}° y el canónico es ${F.CANON.deadbandDeg}°`);
+  if (n(sl) !== F.CANON.slewDegS)
+    throw new Error(`la cabecera dice slew ${sl}°/s y el canónico es ${F.CANON.slewDegS}°/s`);
+  if (n(nm) !== F.AJUSTE_FLOTA.nManiobras)
+    throw new Error(`la cabecera dice ${nm} maniobras y el ajuste se hizo con ${F.AJUSTE_FLOTA.nManiobras}`);
+});
+
+t('la fecha está TAMBIÉN junto al slider, y es el mismo campo, no un segundo', () => {
+  // Mirar un día y cambiar de día son la misma tarea, pero la fecha vivía arriba
+  // del todo en Emplazamiento mientras el tiempo se maneja abajo, en la barra de
+  // la escena. Se replica el patrón de produccion.html: el campo aparece también
+  // ahí. Lo que NO se replica es el cableado.
+  const barra = html.slice(html.indexOf('<div class="timerow">'), html.indexOf('</div>', html.indexOf('<div class="timerow">')) + 6);
+  if (!/id="date2"/.test(barra))
+    throw new Error('la fecha no está en la barra de tiempo, junto al slider');
+  if (!/id="date"/.test(html)) throw new Error('falta el campo de fecha de Emplazamiento');
+  // UN SOLO CAMINO. El espejo copia el valor y RELANZA el change del campo de
+  // verdad; si en su lugar llama a recompute/aplicaHuso por su cuenta, hay dos
+  // sitios que tienen que acordarse de hacer lo mismo y lo que se cuelgue mañana
+  // de `date` solo se enterará por uno de ellos. Es el defecto que esta auditoría
+  // lleva corrigiendo, esta vez en el cableado de la interfaz.
+  const i = html.indexOf("$('date2').addEventListener('change'");
+  if (i < 0) throw new Error('el espejo de la fecha no está cableado');
+  const h = html.slice(i, html.indexOf('});', i) + 3);
+  if (!/dispatchEvent\(new Event\('change'\)\)/.test(h))
+    throw new Error('el espejo no relanza el change de `date`: el resto del cableado no se enteraría');
+  if (/\brecompute\s*\(|\baplicaHuso\s*\(/.test(h))
+    throw new Error('el espejo se ha copiado el cableado de `date` en vez de relanzarlo: dos caminos que se van a separar');
+  if (!/\$\('date2'\)\.value\s*===?\s*\$\('date'\)\.value/.test(h))
+    throw new Error('el espejo no corta el rebote entre los dos campos');
 });
 
 console.log('');

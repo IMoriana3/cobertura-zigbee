@@ -420,6 +420,62 @@ try {
           pros ? `${pros.palabras} palabras detrás del resumen` : 'no hay plegable');
   }
 
+  /* ── LA CABECERA NO VUELVE A COLUMNAS ──────────────────────────────────────
+     Estuvo en `columns:3 54ch` y en pantalla ancha eso no ahorra alto: reparte
+     el MISMO texto en tiras y el bloque mide lo que la tira más larga. Medido
+     con este mismo Chromium, en una sonda aparte a 2560 px: 48 px en un flujo
+     contra 67 en tres columnas, o sea 19 px que empujaban hacia abajo el visor
+     3D (a 1440 y 1920 daba igual, 86 y 67 px con columnas y sin ellas). Este
+     candado no mide el alto —esta pestaña va a 1280, donde no se nota—: vigila
+     que no vuelvan las columnas. */
+  {
+    const cab = await pg.evaluate(() => {
+      const s = document.querySelector('.sub');
+      const cs = getComputedStyle(s);
+      return { cols: cs.columnCount, ancho: cs.columnWidth, regla: cs.columnRuleWidth };
+    });
+    check('la cabecera va en UN flujo, no en columnas',
+          cab.cols === 'auto' && (cab.ancho === 'auto' || cab.ancho === 'normal'),
+          `column-count ${cab.cols} · column-width ${cab.ancho}`);
+  }
+
+  /* ── GENERACIÓN FRENTE A POSICIÓN ─────────────────────────────────────────*/
+  {
+    const dib = await pg.evaluate(async () => {
+      document.getElementById('hour').value = '720';
+      document.getElementById('hour').dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 700));
+      document.getElementById('bqbtn').click();
+      await new Promise(r => setTimeout(r, 4000));
+      const g = document.getElementById('bqgraf'), o = document.getElementById('bqout');
+      return { svg: !!g.querySelector('svg'),
+               curva: g.querySelectorAll('path').length,
+               marcas: g.querySelectorAll('line[stroke-dasharray]').length,
+               punto: g.querySelectorAll('circle').length,
+               txt: (o.textContent || '') };
+    });
+    check('el barrido de posición DIBUJA: curva, las tres marcas y el punto de la política',
+          dib.svg && dib.curva >= 1 && dib.marcas === 3 && dib.punto === 1,
+          `curva ${dib.curva} · marcas ${dib.marcas} · punto ${dib.punto}`);
+    check('y dice el óptimo, el astronómico y lo que cuesta un grado',
+          /mejor ángulo ÚNICO/.test(dib.txt) && /astronómico/.test(dib.txt) && /un grado/.test(dib.txt),
+          dib.txt.slice(0, 120));
+    /* De noche NO se pinta una recta a cero —que se lee como un fallo—: se dice
+       que la POA es cero a cualquier ángulo y dónde duerme la mesa. */
+    const noche = await pg.evaluate(async () => {
+      document.getElementById('hour').value = '0';
+      document.getElementById('hour').dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 700));
+      document.getElementById('bqbtn').click();
+      await new Promise(r => setTimeout(r, 2500));
+      return { svg: !!document.getElementById('bqgraf').querySelector('svg'),
+               txt: document.getElementById('bqout').textContent || '' };
+    });
+    check('de noche no dibuja una recta a cero: dice que no hay curva y dónde duerme la mesa',
+          !noche.svg && /cero a cualquier ángulo/.test(noche.txt) && /duerme a 5°/.test(noche.txt),
+          noche.txt.slice(0, 140));
+  }
+
   check('sin errores de consola', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
 } finally {

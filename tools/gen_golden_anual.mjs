@@ -85,6 +85,7 @@ export const CFG0 = {
   lat: 41.5763, lon: -0.7981, date: '2026-06-21', tz: 2,
   alt: 300, albedo: 0.20, cc: 0,
   pitch: 6.0, cw: 2.382, maxang: 55, nrows: 10,
+  stowNoche: 5,          // dónde duerme la mesa: 5° al este (−5 en la TCU)
   manual: false, manth: 0,
   tpreset: 'pendiente', tparam: 4,
   meteo: 'cielo', tmy: null,
