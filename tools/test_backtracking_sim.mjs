@@ -196,7 +196,7 @@ const sandbox = new Function(sol + '\n' + src + `
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, lazoControl, lazoControlSeg,
-           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
+           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas, E_EMPATE_W };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -674,6 +674,50 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
   if (!/lazoControlSeg\(prevS,/.test(app))
     throw new Error('el camino por mesa sigue sin el deadband');
+});
+
+t('v1.62 · EL CERTIFICADO NO LLAMA «MEJOR» A LO QUE NO LO ES', () => {
+  /* Reportado con captura: un certificado con EMPATADO en la cabecera anunciaba
+     debajo «Hay una consigna mejor» con la MISMA sombra (98,3 %) y MENOS POA
+     (11,2 frente a 11,3), y el propio margen se delataba —«0.0 pp menos de
+     sombra · -0.0 W/m² de energía»—: un signo menos detrás de la palabra mejor.
+     La causa: el rótulo se pintaba siempre que el probador devolviera un
+     candidato, sin mirar el veredicto, y ese candidato se elige por SOMBRA, no
+     por dominancia, así que puede ganar en un eje y perder en el otro.
+
+     Se comprueba sobre la decisión sola, con márgenes dados a mano: levantar el
+     probador cuesta 1.700 candidatos por instante y para esto no hace falta. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function tipoDeMargen(');
+  if (i < 0) throw new Error('el certificado no separa la decisión del rótulo: no hay tipoDeMargen');
+  const fuente = app.slice(i, app.indexOf('\n}', i) + 2);
+  const tipo = new Function('E_EMPATE_W', fuente + '\nreturn tipoDeMargen;')(F.E_EMPATE_W);
+
+  // EL CASO REPORTADO: misma sombra, menos energía. No es mejor.
+  if (tipo({ sombra: 0.0, poa: -0.04 }) === 'mejor')
+    throw new Error('sigue llamando «mejor» al caso reportado (misma sombra, menos POA)');
+  if (tipo({ sombra: 0.0, poa: -0.04 }) !== 'empate')
+    throw new Error('el caso reportado debería salir como empate, no como ' + tipo({ sombra: 0.0, poa: -0.04 }));
+
+  // un CANJE: gana sombra y pierde energía por encima de la banda
+  if (tipo({ sombra: 5, poa: -10 }) !== 'canje') throw new Error('no reconoce el canje sombra↑/energía↓');
+  if (tipo({ sombra: -5, poa: 10 }) !== 'canje') throw new Error('no reconoce el canje energía↑/sombra↓');
+
+  // una MEJORA de verdad: gana en un eje sin perder en el otro
+  if (tipo({ sombra: 5, poa: 0 }) !== 'mejor') throw new Error('no reconoce la mejora en sombra');
+  if (tipo({ sombra: 0, poa: 10 }) !== 'mejor') throw new Error('no reconoce la mejora en energía');
+  if (tipo({ sombra: 5, poa: 10 }) !== 'mejor') throw new Error('no reconoce la mejora en los dos ejes');
+
+  // la banda de empate es la del propio probador, no una inventada aquí
+  if (tipo({ sombra: 0, poa: F.E_EMPATE_W * 0.9 }) !== 'empate')
+    throw new Error('dentro de la banda de empate energético sigue diciendo que es mejor');
+  if (tipo({ sombra: 0, poa: F.E_EMPATE_W * 1.1 }) !== 'mejor')
+    throw new Error('fuera de la banda de empate ya no lo reconoce como mejor');
+
+  // y el texto pintado tiene que usar esa decisión, no reinventarla
+  const pin = app.slice(app.indexOf('function pintaCertificado'));
+  if (!/tipoDeMargen\(/.test(pin.slice(0, 6000)))
+    throw new Error('la pintura no usa tipoDeMargen: la decisión volvería a vivir en dos sitios');
 });
 
 t('v1.62 · LA ESCENA NO PUEDE MOVER LA PLANTA MÁS RÁPIDO QUE EL MOTOR', () => {

@@ -6626,6 +6626,27 @@ $('informebtn').onclick=abrirInforme;
 /* ── EL PROBADOR EN PANTALLA (v1.58) ─────────────────────────────────────────
    El certificado del instante y la política que se están viendo. BAJO DEMANDA,
    no para el día entero: barrer el factible con el contador exacto es caro. */
+/* v1.62 — QUÉ ES ESE CANDIDATO, EN UNA PALABRA. El certificado rotulaba
+   «Hay una consigna mejor» SIEMPRE que el probador devolviera un candidato,
+   sin mirar el veredicto: un certificado con EMPATADO en la cabecera anunciaba
+   debajo una consigna «mejor». Y ese candidato se elige por SOMBRA, no por
+   dominancia, así que puede tener menos sombra Y MENOS POA — un canje, no una
+   mejora. El caso reportado lo enseñaba entero: publicado 98,3 % / 11,3 W/m²,
+   «mejor» 98,3 % / 11,2 W/m², con el margen delatándose solo —«0.0 pp menos de
+   sombra · -0.0 W/m² de energía»—: un signo menos detrás de la palabra mejor.
+
+   Vive aparte de la pintura para que el banco pueda darle márgenes y leer la
+   palabra, sin levantar el probador entero (1.700 candidatos por instante).
+   Las bandas no son nuevas: E_EMPATE_W es la del empate energético del propio
+   probador, y 0,05 pp es la resolución con la que se escribe la sombra. */
+function tipoDeMargen(margen){
+  const mS=(margen&&margen.sombra!=null)?margen.sombra:null;   // >0 = menos sombra
+  const mP=(margen&&margen.poa!=null)?margen.poa:null;         // >0 = más energía
+  const gS=mS!=null&&mS>0.05,        pS=mS!=null&&mS<-0.05;
+  const gP=mP!=null&&mP>E_EMPATE_W,  pP=mP!=null&&mP<-E_EMPATE_W;
+  if((gS&&pP)||(gP&&pS))return 'canje';
+  return (gS||gP)?'mejor':'empate';
+}
 function pintaCertificado(){
   if(!DAY)return;
   const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
@@ -6664,12 +6685,32 @@ function pintaCertificado(){
     H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
     if(isFinite(ce.elegido.poa))H.push(' · POA de planta <b>',ce.elegido.poa.toFixed(1),'</b> W/m²');
     if(ce.mejorHallado){
-      H.push(sep,'<b>Hay una consigna mejor</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
+      /* v1.62 — EL RÓTULO TIENE QUE DECIR LO QUE ES. Esto ponía «Hay una
+         consigna mejor» SIEMPRE que existiera un mejorHallado, sin mirar el
+         veredicto, así que un certificado con la etiqueta EMPATADO arriba
+         anunciaba abajo una consigna «mejor». Y peor: ese mejor se elige por
+         SOMBRA, no por dominancia, de modo que puede tener menos sombra Y
+         menos POA — un canje, no una mejora. El caso reportado lo enseñaba
+         entero: publicado 98,3 % / 11,3 W/m², «mejor» 98,3 % / 11,2 W/m², y el
+         propio margen delatándose con «0.0 pp menos de sombra · -0.0 W/m²».
+         Un signo menos detrás de la palabra «mejor».
+
+         Ahora el rótulo sale de comparar los dos ejes, y los márgenes que
+         redondean a cero se dicen como lo que son y no como un cero limpio. */
+      const tipo=tipoDeMargen(ce.margen);
+      const rot={canje:'Hay un CANJE disponible',mejor:'Hay una consigna mejor',
+                 empate:'Hay una consigna equivalente'}[tipo];
+      const mS=(ce.margen&&ce.margen.sombra!=null)?ce.margen.sombra:null;
+      const mP=(ce.margen&&ce.margen.poa!=null)?ce.margen.poa:null;
+      const cif=(x)=>Math.abs(x)<0.05?(x>0?'menos de +0,05':(x<0?'menos de −0,05':'0,0')):((x>0?'+':'')+x.toFixed(2));
+      H.push(sep,'<b>',rot,'</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
       if(isFinite(ce.mejorHallado.poa))H.push(' · POA <b>',ce.mejorHallado.poa.toFixed(1),'</b> W/m²');
       if(ce.margen){
         H.push('<br><span style="color:#9fb0c2">');
-        if(ce.margen.sombra!=null)H.push(ce.margen.sombra.toFixed(1),' pp menos de sombra');
-        if(ce.margen.poa!=null)H.push(ce.margen.sombra!=null?' · ':'',(ce.margen.poa>=0?'+':''),ce.margen.poa.toFixed(1),' W/m² de energía');
+        if(mS!=null)H.push(cif(mS),' pp de sombra evitada');
+        if(mP!=null)H.push(mS!=null?' · ':'',cif(mP),' W/m² de energía');
+        if(tipo==='canje')H.push(' — gana en un eje y pierde en el otro: es un cambio de postura, no una mejora');
+        else if(tipo==='empate')H.push(' — dentro de la banda de empate (',E_EMPATE_W.toFixed(2),' W/m²): no es mejor, es lo mismo');
         H.push('</span>');
       }
       H.push('</div>');
