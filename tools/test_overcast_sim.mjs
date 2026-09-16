@@ -38,8 +38,13 @@ t('canónicos del core en los defaults: pitch 6.00 · colector 2.382 · GCR 0.39
   if (!/id="maxang"[^>]*value="55"/.test(html)) throw new Error('θmáx ≠ 55');
 });
 t('el coste de maniobra está en la tabla del día, con sus tres columnas y la batería', () => {
-  for (const col of ['movimientos', 'recorrido °', 'motor Wh/día', '% batería'])
+  for (const col of ['movimientos', 'recorrido °', '°/mov', 'motor Wh/día', '% batería gastada'])
     if (!html.includes('>' + col + '<')) throw new Error('falta la columna «' + col + '» en la tabla del día');
+  // «% batería» a secas no decía si se gasta o se ahorra, y «% difusa activa»
+  // contaba cosas distintas en cada fila sin avisar: las dos cabeceras llevan
+  // ahora el sentido dentro, y esto impide que vuelvan a quedarse a medias
+  if (/>% batería<|>% difusa activa</.test(html))
+    throw new Error('cabecera ambigua: hay que decir si el % se gasta o se ahorra, y qué se cuenta como «activa»');
   // el selector por defecto es el AJUSTE DE FLOTA, el único de los tres que cobra
   // cada arranque: con las bandas (escalón) o con la curva (sin término fijo), la
   // columna de movimientos podría doblarse sin mover la factura
@@ -50,6 +55,37 @@ t('el coste de maniobra está en la tabla del día, con sus tres columnas y la b
   // y el CSV tiene que bajar lo mismo que enseña la pantalla, o no es auditable
   for (const c of ['movimientos', 'motor_wh', 'motor_min', 'pct_bateria'])
     if (!html.includes(c)) throw new Error('el CSV no exporta ' + c);
+});
+t('INFORME DEL EMPLAZAMIENTO: existe, sale de lo ya calculado y termina en los límites declarados', () => {
+  /* Mismo patrón que el informe de backtracking.html. Lo que esto fija no es el
+     texto sino la ESTRUCTURA y, sobre todo, que el documento siga llevando sus
+     límites: un informe que se enseña a un tercero sin decir dónde deja de valer
+     es peor que no tener informe. Y que no invente física: todo sale de SIM. */
+  if (!/id="informebtn"/.test(html)) throw new Error('falta el botón del informe');
+  if (!/function informeHTML\(\)/.test(html)) throw new Error('falta informeHTML()');
+  const inf = html.slice(html.indexOf('function informeHTML'), html.indexOf('function abrirInforme'));
+  for (const sec of ['Emplazamiento, planta y configuración', 'El cielo del día',
+                     'Resumen del día, política a política', 'Cada política: cómo decide',
+                     'Coste de maniobra', 'Diario de decisiones', 'Validación',
+                     'Método y límites declarados'])
+    if (!inf.includes(sec)) throw new Error('el informe no lleva la sección «' + sec + '»');
+  // los límites que la auditoría obligó a declarar, y que no pueden caerse
+  for (const [lim, porque] of [['cota superior', 'los Wh absolutos no están calibrados'],
+                               ['no es comparable entre filas', 'el % activa cuenta cosas distintas'],
+                               ['desgaste', 'no hay modelo que lo convierta en intervalo de servicio'],
+                               ['no es el motor bancable', 'la POA no es energía AC']])
+    if (!new RegExp(lim, 'i').test(inf)) throw new Error('el informe ya no declara: ' + porque);
+  // y las cinco políticas más la cota tienen que tener ficha propia
+  const ex = html.slice(html.indexOf('const EXPLICA_POL'), html.indexOf('function informeHTML'));
+  for (const k of ['pvlib', 'diffuse_flat', 'diffuse_limited', 'diffuse_continuous', 'diffuse_poa_switch', '__aniso'])
+    if (!new RegExp('\\b' + k + '\\s*:\\s*\\{').test(ex)) throw new Error('EXPLICA_POL sin ficha para ' + k);
+  for (const campo of ['como:', 'optimiza:', 'criterio:'])
+    if ((ex.match(new RegExp(campo, 'g')) || []).length < 6)
+      throw new Error('alguna ficha de EXPLICA_POL no declara «' + campo + '»');
+  // el diario del informe y el de pantalla salen de la MISMA pieza
+  if (!/function diarioRows\(/.test(html)) throw new Error('el diario no está factorizado: pantalla e informe pueden divergir');
+  if ((html.match(/diarioRows\(/g) || []).length < 3)
+    throw new Error('diarioRows no lo usan las dos vistas');
 });
 t('el GCR es readonly (derivado = ancho/pitch, regla del core: no es un input)', () => {
   if (!/id="gcr"[^>]*readonly/.test(html)) throw new Error('GCR editable');
@@ -77,7 +113,30 @@ t('plantas reales: selector con TODA la cartera con layout, carga por fetch y vu
   if (!/_layout\.json/.test(html)) throw new Error('no carga el layout real');
   if (!/function buildReal3D/.test(html)) throw new Error('sin escena de planta real');
   if (!/Seguidor\.instancePlan/.test(html)) throw new Error('la planta real no usa el instanciado de los cobertura 3D');
-  if (!/bifila:false/.test(html.slice(html.indexOf('REALMETA')))) throw new Error('Bagnarelli debe ser monofila en REALMETA');
+});
+t('EL ACCIONAMIENTO LO DICE EL LAYOUT, no REALMETA: bifila careado contra geometria.bifila', () => {
+  /* Bagnarelli figuraba `bifila:false` —y esta prueba lo EXIGÍA, fijando el valor
+     malo— porque el dato se copió del sim de BT, que lo dedujo de un `filaZ 0`
+     que el propio layout ya había corregido: «las mesas forman 8 líneas a 5,50 m,
+     agrupadas de dos en dos por seguidor … la cartera lo dice también: trk_bi 17,
+     trk_mono 0». Dos piezas mirando a fuentes distintas, con una prueba clavando
+     la equivocada. Ahora no se fija ningún literal: se lee el layout y se exige
+     que REALMETA lo siga. Si mañana se remide otra planta, esto lo caza. */
+  const meta = html.slice(html.indexOf('const REALMETA'), html.indexOf('const REALMETA') + 800);
+  let careadas = 0;
+  for (const p of ['ayora', 'sanjose', 'elburgo', 'fayon', 'paramo', 'tunez', 'bagnarelli']) {
+    const f = path.join(ROOT, p + '_layout.json');
+    if (!fs.existsSync(f)) continue;
+    const decl = JSON.parse(fs.readFileSync(f, 'utf-8')).geometria?.bifila;
+    if (decl === undefined) continue;                 // planta sin remedir: nada que carear
+    const esperado = (decl === true) || /^s[ií]/i.test(String(decl));
+    const m = new RegExp(p + '\\s*:\\s*\\{\\s*bifila\\s*:\\s*(true|false)').exec(meta);
+    if (!m) throw new Error('REALMETA no declara bifila para ' + p);
+    if ((m[1] === 'true') !== esperado)
+      throw new Error(p + ': el layout dice bifila=' + esperado + ' y REALMETA dice ' + m[1]);
+    careadas++;
+  }
+  if (careadas < 3) throw new Error('solo ' + careadas + ' plantas careadas: el careo dejó de tener alcance');
 });
 t('la UI NO rotula «FLAT» lo que no es plano: cada política declara su propio estado', () => {
   const meta = html.slice(html.indexOf('const POL_META'), html.indexOf('const POL_ORDER'));
@@ -436,6 +495,35 @@ t('el reparto arranque/giro cuadra con el total, y solo lo publica el modelo que
     if (o.arranqueWh !== null || o.giroWh !== null)
       throw new Error(modelo + ' publica un reparto arranque/giro que no tiene');
   }
+});
+t('DIRECTA Y DIFUSA NO VAN SUELTAS: GHI = DNI·cos z + DHI se cierra, y la difusa SUBE al nublarse', () => {
+  /* Reportado como «directa (DNI) y difusa (DHI) desacopladas» leyendo el HUD:
+     850 + 117 ≠ 855. No lo están — lo que falta al leerlo es el coseno, porque el
+     haz llega inclinado y solo aporta su proyección horizontal. Esto fija las dos
+     mitades: que el cierre se cumple a precisión de máquina, y que al meter nube
+     la difusa CRECE mientras la directa cae (si no creciera, el modelo de nubes
+     estaría perdiendo energía por el camino en vez de dispersarla). */
+  const mk = cc => F.buildDay({ lat: 41.5763, lon: -0.7981, dateStr: '2026-06-21', tz: 2, altM: 250,
+    TL: 3.5, dtMin: 1, albedo: 0.2, axisAz: 0, maxAngle: 55, gcr: 0.397, nightStowDeg: 5, cc: cc });
+  const day = mk(new Array(288).fill(0).map((_, b) => b < 150 ? 0 : 0.95));
+  let peor = 0;
+  for (let i = 0; i < day.n; i++) {
+    const r = day.irr[i], cz = Math.max(0, Math.cos(day.zen[i] * Math.PI / 180));
+    peor = Math.max(peor, Math.abs(r.ghi - (r.dni * cz + r.dhi)));
+    if (r.dhi < -1e-9 || r.dni < -1e-9) throw new Error('irradiancia negativa en el paso ' + i);
+  }
+  if (!(peor < 1e-9)) throw new Error('el cierre GHI = DNI·cos z + DHI falla por ' + peor.toExponential(2) + ' W/m²');
+  // al mismo instante, subir la nubosidad tiene que MOVER las dos a la vez
+  let prevDni = Infinity, subioDifusa = false;
+  const base = mk(new Array(288).fill(0)).irr[720].dhi;
+  for (const c of [0.2, 0.4, 0.6, 0.8, 0.95]) {
+    const r = mk(new Array(288).fill(c)).irr[720];
+    if (!(r.dni <= prevDni + 1e-9)) throw new Error('la directa no cae al nublarse (cc ' + c + ')');
+    prevDni = r.dni;
+    if (r.dhi > base) subioDifusa = true;
+  }
+  if (!subioDifusa) throw new Error('la difusa nunca sube al nublarse: el modelo pierde energía en vez de dispersarla');
+  if (prevDni > 1) throw new Error('a cc 0,95 la directa debería estar prácticamente extinguida');
 });
 t('SUELO GEOMÉTRICO: el recorrido del día no puede bajar del barrido + las dos idas al stow', () => {
   /* La comprobación que faltaba, y la que destapó que los 112,9°/día del careo
