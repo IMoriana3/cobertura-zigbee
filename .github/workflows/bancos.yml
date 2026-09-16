@@ -239,6 +239,11 @@ jobs:
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_malla_pagina.mjs }     # el boton que exporta la malla medida: los tres cargadores, el estado y la ida y vuelta del GeoJSON
+          # Las sombras: que TODOS los seguidores proyecten, suba o baje la camara.
+          # Monta la escena 3D y pinta ocho cuadros con un mapa de sombra de 8192x8192
+          # en software — 9 min 14 s medidos aqui, y esta maquina no es la peor que
+          # toca. De ahi el tope propio, por lo mismo que `test_equipos`.
+          - { banco: test_sombras.mjs, arg: elburgo, nombre: 'test_sombras.mjs · El Burgo', tope: 40 }
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           - { banco: test_produccion_lazo.mjs } # idem — el lazo de control, las políticas y la tabla por minuto
           - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)
