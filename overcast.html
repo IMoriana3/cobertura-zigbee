@@ -28,10 +28,38 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
   a{color:var(--accent);text-decoration:none}
-  header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto}
-  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
-  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:120ch}
-  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px;max-width:150ch}
+  /* EL ANCHO SOBRANTE DE LA CABECERA. El párrafo lleva su tope en ch A PROPÓSITO
+     (legibilidad), así que en una ventana ancha quedaba media cabecera vacía. La
+     salida NO es estirar el texto —eso es justo lo que el tope evita— sino llenar
+     el hueco con lo que había que ir a buscar dentro de la prosa o del código:
+     con qué números está corriendo ESTA simulación. Se pinta desde la
+     configuración viva (pintaCanon), nunca tecleado: un panel de referencia que
+     pueda mentir es peor que no tenerlo. */
+  header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto;
+         display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,31vw,560px);
+         column-gap:28px;row-gap:8px;align-items:start}
+  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em;grid-column:1/-1}
+  /* la columna se fija a mano: con auto-placement el .src se iba a la derecha,
+     al hueco del panel, en vez de quedarse debajo del párrafo */
+  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:120ch;grid-column:1}
+  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px;max-width:150ch;grid-column:1}
+  /* por debajo de esto el hueco ya no existe: una columna y el panel debajo */
+  @media(max-width:1180px){header{grid-template-columns:1fr}
+    .canon{grid-column:1!important;grid-row:auto!important}}
+  .canon{grid-column:2;grid-row:2/span 2;
+         display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:6px;margin-top:4px;align-content:start}
+  .canon .cn{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+  .canon .cn .k{font-family:var(--mono);font-size:.57rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .canon .cn .v{font-size:.84rem;font-weight:600;margin-top:1px}
+  .canon .cn .v small{font-size:.68rem;color:var(--tx2);font-weight:400}
+  /* ÁMBAR = apartado del canónico del core. Es la mitad que justifica el panel:
+     de un vistazo se ve si la corrida que estás leyendo va con los valores de
+     casa o con otros, en vez de descubrirlo al comparar cifras raras. */
+  .canon .cn.off{border-color:var(--warn)}
+  .canon .cn.off .v{color:var(--warn)}
+  .canon .cn.off .v small{color:var(--warn);opacity:.8}
+  .canon .cnh{grid-column:1/-1;font-family:var(--mono);font-size:.57rem;letter-spacing:.11em;
+               text-transform:uppercase;color:var(--muted);margin-bottom:-1px}
   .wrap{max-width:var(--ancho);margin:0 auto;padding:0 22px}
   .cols{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
   @media(max-width:980px){.cols{grid-template-columns:1fr}}
@@ -103,6 +131,7 @@
   <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
     QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
     <a href="backtracking.html">Simulador de BT</a> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
+  <aside class="canon" id="canonbox"></aside>
 </header>
 
 <div class="wrap">
@@ -207,6 +236,14 @@
       100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
       (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
       DHI = GHI − DNI·cos z. Es un generador de escenarios, no meteo real.
+      <br><b>Y los presets son ESCALONES</b>, en rejilla de 5 min: «Tarde nublada» salta cc 0 → 0,40 a las
+      13h00 y 0,40 → 0,90 a las 14h30, de golpe y <b>a la vez en toda la planta</b>. Un frente real tarda
+      minutos en barrer el emplazamiento, así que la media de planta sube y baja en <b>rampa</b>. La
+      dirección del sesgo se sabe: un escalón es el caso <b>FAVORABLE</b> para las políticas que conmutan
+      —transición instantánea, inequívoca y sostenida, justo lo que el confirm/dwell necesita para
+      acertar— mientras que una rampa se pasa minutos en la zona ambigua, que es donde la histéresis
+      decide mal. <b>El año de 365 días reales tiene el sesgo CONTRARIO</b> (ERA5 es media horaria: alisa
+      los tránsitos ⇒ infraestima el modo difuso), así que la verdad queda <b>acotada entre los dos</b>.
       <br>Con el <b>cielo por NCU</b> activo, el selector de arriba dice a QUIÉN estás pintando: la
       planta o una NCU concreta. Pintar una NCU no toca a las demás ni al cielo de planta, y los
       botones de preset y «despejar» actúan sobre esa misma NCU.</div>
@@ -389,6 +426,7 @@
     <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
+      <input type="date" id="date2" class="btn small" title="La fecha — el MISMO campo que en Emplazamiento, aquí al lado de la hora. Cambiar uno cambia el otro.">
       <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
         <option value="30">×½</option>
         <option value="60" selected>×1</option>
@@ -2585,7 +2623,7 @@ function recompute(){
   }
   SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop,mp:mp,aniso:aniso};
   computeZonal(d);
-  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
+  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();pintaCanon();
   drawDiario(d);
   refreshScene(true);
 }
@@ -2989,6 +3027,14 @@ function drawIrr(){
   for(const [txt,col] of leg){ctx.fillStyle=col;ctx.fillText(txt,lx,46);lx+=ctx.measureText(txt).width+26;}
   drawTimeCursor(ctx,W,H,26);
 }
+/* LA MISMA CONDICIÓN, EN UN SITIO. «¿El zonal está de verdad en juego?» la
+   preguntaban CINCO piezas, cada una con su copia: la atenuación de las
+   políticas que no se zonifican, la envolvente entre NCUs, su entrada de
+   leyenda, el CSV de auditoría y el informe del emplazamiento. Con copias
+   sueltas, el informe puede afirmar «control zonal por NCU» mientras la
+   gráfica no pinta ninguna envolvente — el vicio que esta auditoría lleva
+   corrigiendo en la física, aquí en lo que el usuario se lleva impreso. */
+const zonalActivo=()=>zonalCfg().on&&!!ZR&&ZR.zones.length>1;
 function drawTheta(){
   const cv=$('curves'),ctx=gridCv(cv,240),W=cv.width,H=cv.height;
   const day=SIM.day,yMax=day.maxAngle+5;
@@ -3030,7 +3076,7 @@ function drawTheta(){
   // UNA sola política (la del selector de la escena) resuelta por zona. Con 5
   // políticas y 4 NCUs eso son 9 curvas y ninguna pista de cuál es cuál. Al
   // activar el zonal, las políticas que no se están zonificando se atenúan.
-  const zcOn=zonalCfg().on&&ZR&&ZR.zones.length>1;
+  const zcOn=zonalActivo();
   const pvZ=polEfectiva($('polview').value);
   for(const k of POL_ORDER){
     if(!POL_ON[k]||!SIM.res[k])continue;
@@ -3053,8 +3099,7 @@ function drawTheta(){
   // del poa_switch y el azul del continuous ya están cogidos), variando solo
   // la luminosidad. Un arcoíris por zona chocaba con las políticas justo
   // donde hay que distinguirlas, y con 21 NCUs no habría hues suficientes.
-  const zc=zonalCfg();
-  if(zc.on&&ZR&&ZR.zones.length>1){
+  if(zonalActivo()){
     const nZ=ZR.zones.length, nF=SIM.dayF.n;
     const zcol=z=>'hsl(330,80%,'+(46+Math.round(30*(nZ>1?z/(nZ-1):0)))+'%)';
     // envolvente mín–máx entre zonas: con 2 o con 21 NCUs se lee igual de bien
@@ -3114,7 +3159,53 @@ function drawLegend(){
   h+='<span><i style="background:#9bb0c6;height:1px"></i>consigna de la TCU (escalón, cada ciclo)</span>';
   h+='<span><i style="background:#9bb0c6"></i>θ EJECUTADO por el actuador (rampa 0,17 °/s, al minuto)</span>';
   h+='<span><i style="background:rgba(167,139,250,.45)"></i>difusa activa (banda) — PLANO, RETENIDO o DIFUSA según la política</span>';
+  /* LA OTRA MANCHA. Con el zonal encendido la gráfica de θ lleva DOS rellenos
+     y la leyenda solo explicaba uno: la banda de difusa (violeta, a toda
+     altura, decisión de PLANTA) y la envolvente entre NCUs (magenta, acotada
+     por las curvas, decisión POR ZONA). Leído sin leyenda, el magenta se toma
+     por la banda de difusa y entonces «la difusa se activa con el cielo
+     despejado» — que es falso: lo que se abre por la mañana es la dispersión
+     entre NCUs, con la que está más nublada yéndose a plano mientras las demás
+     siguen al este. Una mancha sin entrada en la leyenda es una mancha que se
+     lee mal, y se leyó mal. */
+  if(zonalActivo())
+    h+='<span><i style="background:hsla(330,80%,60%,.45)"></i>envolvente mín–máx del θ entre NCUs (zonal) — cada curva magenta es una NCU, con su nubosidad media</span>';
   $('legend').innerHTML=h;
+}
+/* ── CON QUÉ NÚMEROS CORRE ESTO, en el hueco de la cabecera ────────────────
+   El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
+   ventana ancha sobraba media cabecera. Lo que faltaba no era más texto: era
+   poder ver de un vistazo los números con los que corre la simulación, que
+   estaban repartidos entre la prosa («deadband 1° + slew 0,17°/s»), la columna
+   de configuración y el código.
+   NO es una tabla de canónicos fija. Banda muerta, velocidad, θ máximo, ciclo
+   y batería SON EDITABLES, así que un panel tecleado mentiría en cuanto tocaras
+   un campo — el vicio que este trabajo lleva corrigiendo. Se pinta de la
+   configuración VIVA y, cuando un valor se aparta del canónico del core, sale
+   en ámbar. Esa es la mitad que lo hace útil y no decorativo: se ve que estás
+   leyendo una corrida fuera de casa ANTES de sacar conclusiones de sus cifras. */
+function pintaCanon(){
+  const num=(id,def)=>{const e=$(id); if(!e)return def; const v=+e.value; return Number.isFinite(v)?v:def;};
+  const nf=(v,d)=>v.toFixed(d).replace('.',',');
+  const out=['<div class="cnh">con qué números corre esto · ámbar = fuera del canónico del core</div>'];
+  const tile=(k,v,sub,off)=>out.push('<div class="cn'+(off?' off':'')+'"><div class="k">'+k+'</div>'+
+    '<div class="v">'+v+(sub?' <small>'+sub+'</small>':'')+'</div></div>');
+  const dif=(a,b)=>Math.abs(a-b)>1e-9;
+  const dt=num('dt',1), db=num('deadband',CANON.deadbandDeg), sl=num('slew',CANON.slewDegS),
+        ma=num('maxang',CANON.maxAngle), bt=num('battwh',BATT_WH_DEF);
+  /* el subtítulo dice la PROCEDENCIA cuando el valor es el de casa, y el valor
+     CANÓNICO solo cuando se ha apartado: repetirlo cuando coinciden era ruido
+     («0,17 °/s · Sunner 0,17») y encima partía la línea */
+  tile('ciclo TCU',        dt+'′',            dt===1?'la TCU real':'la real es 1′',      dt!==1);
+  tile('banda muerta',     nf(db,1)+'°',      dif(db,CANON.deadbandDeg)?'core '+nf(CANON.deadbandDeg,1)+'°':'canónico', dif(db,CANON.deadbandDeg));
+  tile('velocidad',        nf(sl,2)+' °/s',   dif(sl,CANON.slewDegS)?'core '+nf(CANON.slewDegS,2):'Sunner',            dif(sl,CANON.slewDegS));
+  tile('θ máximo',         '±'+nf(ma,0)+'°',  dif(ma,CANON.maxAngle)?'core ±'+CANON.maxAngle+'°':'canónico',           dif(ma,CANON.maxAngle));
+  tile('rejilla actuador', DT_FINE+'′',       'fija',                                    false);
+  tile('reposo TCU',       nf(TCU_IDLE_W,2)+' W', 'medido',                              false);
+  tile('batería',          nf(bt,1)+' Wh',    dif(bt,BATT_WH_DEF)?'def. '+nf(BATT_WH_DEF,1):'6 Ah × 25,6 V', dif(bt,BATT_WH_DEF));
+  tile('motor',            nf(AJUSTE_FLOTA.interceptoWh,4)+' + '+nf(AJUSTE_FLOTA.kWhDeg,4)+'·|Δθ| Wh',
+                           AJUSTE_FLOTA.nManiobras.toLocaleString('es-ES')+' maniobras',  false);
+  $('canonbox').innerHTML=out.join('');
 }
 /* Δ contra la referencia, con el signo LEÍDO: en coste, menos es mejor, y el
    verde tiene que significar lo mismo en toda la tabla (en POA marca ganar, en
@@ -3146,7 +3237,7 @@ function drawTable(){
         '<th title="Grados totales de maniobra en el día (proxy de desgaste del core), sobre el θ ejecutado.">recorrido °</th>'+
         '<th title="AMPLITUD MEDIA de cada maniobra = recorrido ÷ movimientos. Es la relación entre las dos columnas de al lado, y la que fija el precio: medido en flota, el coste por grado se multiplica por 3,5 al bajar de 5° a menos de 1°, porque cada arranque se paga. Dos políticas con el mismo recorrido cuestan distinto si una lo trocea más.">°/mov</th>'+
         '<th title="Energía de motor del día, con su reparto arranque/giro al pasar el ratón. Ajuste de flota E = 0,0901 + 0,0447·|Δθ| sobre 14.759 maniobras reales. NO incluye el reposo de la TCU (15,4 Wh/día), que es igual para todas las políticas. El Δ en verde es AHORRO frente a pvlib, no consumo.">motor Wh/día</th>'+
-        '<th title="Consumo de motor del día como fracción de la batería del tracker: cuánta batería se GASTA, no cuánta se ahorra. El reposo de la TCU va aparte, en la nota.">% batería gastada</th>'+
+        '<th title="SOC que se lleva el MOTOR en el día: energía de motor ÷ capacidad de la batería del tracker. Dos cosas que el nombre anterior («% batería gastada») no decía: es SOLO el motor —el reposo de la TCU, 15,4 Wh/día, va aparte y es del mismo orden— y es CONSUMO, no balance: no descuenta lo que el panel repone, así que no es la caída de SOC del día.">% SOC consumo motor</th>'+
         '<th>coste del lazo</th></tr>';
   let bestK=null,bestV=-1;
   for(const k of POL_ORDER)if(SIM.res[k]&&SIM.res[k].met.poaWh>bestV){bestV=SIM.res[k].met.poaWh;bestK=k;}
@@ -4389,7 +4480,7 @@ $('eurmwh').addEventListener('change',renderYear365);
 function csvNum(v,d){return (v==null||!Number.isFinite(v))?'':v.toFixed(d);}
 function buildDayCSV(){
   const c=cfgDay(),d=cfgDiffuse(),day=SIM.day,dayF=SIM.dayF;
-  const zc=zonalCfg(), zon=zc.on&&ZR&&ZR.zones.length>1;
+  const zc=zonalCfg(), zon=zonalActivo();
   const pv=polZonificable($('polview').value);   // lo que el zonal CORRIÓ de verdad
   const L=[];
   const meta=(k,v)=>L.push('# '+k+','+String(v).replace(/,/g,' '));
@@ -4581,7 +4672,7 @@ function informeHTML(){
       rows.map(r=>'<tr><td>'+hhmm(r.t)+'</td><td>'+esc(r.tag)+'</td><td>'+r.msg+'</td></tr>').join('')+'</table>'
       :'<p class="mut">Día sin maniobras de difusa que justificar (solo el stow).</p>';
   }
-  const zon=zonalCfg().on&&ZR&&ZR.zones.length>1;
+  const zon=zonalActivo();
   const zonHtml=zon?'<h2>7. Control zonal por NCU</h2><p>'+ZR.zones.length+
       ' zonas · '+(zskyOn()?'cada NCU con su propio cielo':'un frente que cruza la planta en '+zonalCfg().cross+' min')+
       '. La comparación es <b>decisión única de planta</b> frente a <b>cada NCU con su señal</b>.</p>'+
@@ -4649,7 +4740,8 @@ function informeHTML(){
   '<h2>3. Resumen del día, política a política</h2>'+tabDia+
   '<p class="mut"><b>Cómo leer.</b> «% del día activa» <b>no es comparable entre filas</b>: cada política activa con su '+
   'propio criterio, y el modo al lado dice qué se está contando. «Movimientos» son arranques del motor, no '+
-  'conmutaciones. «% batería gastada» es consumo, no ahorro; los Δ en verde sí son ahorro frente a pvlib.</p>'+
+  'conmutaciones. «% SOC consumo motor» es el SOC que se lleva el MOTOR —el reposo de la TCU va aparte y es del '+
+  'mismo orden— y es consumo, no balance ni ahorro; los Δ en verde sí son ahorro frente a pvlib.</p>'+
 
   '<h2>4. Cada política: cómo decide, qué optimiza y sus cálculos</h2>'+secs+
 
@@ -4735,6 +4827,22 @@ $('qabtn').onclick=()=>{
   $(id).addEventListener('change',id==='nncu'?()=>{zskyRender();recompute();}:recompute);
 });
 $('date').addEventListener('change',()=>aplicaHuso(null));   // cruzar el cambio de hora mueve el huso de la planta cargada
+/* LA FECHA, TAMBIÉN JUNTO AL SLIDER (el patrón de produccion.html). Mirar un
+   día y cambiar de día son la misma tarea, y la fecha estaba arriba del todo en
+   Emplazamiento mientras el tiempo se maneja abajo, en la barra de la escena.
+   `date2` NO es un segundo campo: es el MISMO, replicado donde hace falta.
+   Y no se replica el CABLEADO, que es donde esto se pudre: el espejo se limita
+   a copiar el valor y RELANZAR el change del campo de verdad, así que recompute,
+   aplicaHuso y lo que se cuelgue mañana de `date` salen solos y por un único
+   camino. Copiar los handlers —que es lo que hace la otra página— es tener dos
+   sitios que tienen que acordarse de hacer lo mismo. */
+$('date2').value=$('date').value;
+$('date').addEventListener('change',()=>{$('date2').value=$('date').value;});
+$('date2').addEventListener('change',()=>{
+  if($('date2').value===$('date').value)return;                 // sin rebote
+  $('date').value=$('date2').value;
+  $('date').dispatchEvent(new Event('change'));
+});
 $('loopOn').addEventListener('change',recompute);
 $('anisoOn').addEventListener('change',()=>{fillPolview();recompute();});
 /* la capacidad NO entra en la física: solo cambia el denominador del «% batería».

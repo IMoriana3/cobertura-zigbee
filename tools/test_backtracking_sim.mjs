@@ -2347,6 +2347,40 @@ t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
   if (vb !== vo) throw new Error(`backtracking pide sol.js?v=${vb} y overcast ?v=${vo}: es el MISMO fichero`);
 });
 
+t('v1.63: la VERSIÓN vive en un sitio y no se queda atrás', () => {
+  // Esto no lo cazó nadie durante DOS versiones. `const VER` decía 'v1.61.0'
+  // con la v1.62 y la v1.63 dentro, y encima había un SEGUNDO literal 'v1.61'
+  // en el sello del certificador: la etiqueta de la página y el informe del
+  // emplazamiento que exporta el usuario anunciaban una versión que no era.
+  // El defecto recurrente de esta auditoría —dos piezas mirando a fuentes
+  // distintas— aplicado a la etiqueta que firma el propio informe.
+  const decl = html.match(/^const VER=['"]([^'"]+)['"];/m);
+  if (!decl) throw new Error('no encuentro la declaración de VER');
+  if (!/^v\d+\.\d+\.\d+$/.test(decl[1]))
+    throw new Error(`VER no tiene forma vN.N.N: ${decl[1]}`);
+  // UNA sola declaración, y DENTRO de FÍSICA PURA: el sello lo publica el
+  // certificador, que vive en ese bloque y se extrae a Node sin la aplicación.
+  // Declarada fuera, el sello no puede leerla y vuelve al literal.
+  const nDecl = (html.match(/const VER\s*=/g) || []).length;
+  if (nDecl !== 1) throw new Error(`VER se declara ${nDecl} veces: la versión vuelve a tener dos fuentes`);
+  if (html.indexOf('const VER=') > html.indexOf('/* FIN-FÍSICA'))
+    throw new Error('VER salió de FÍSICA PURA: el sello del certificador no podrá leerla');
+  if (!/sellos:\{version:VER,/.test(html))
+    throw new Error('el sello del certificador vuelve a llevar la versión como literal');
+  // Y LA MITAD QUE CAZA EL OLVIDO: el fichero se comenta a sí mismo por
+  // versiones («/* v1.62 — …»), así que la más nueva que se nombra es una cota
+  // inferior de lo que este fichero ES. Si VER se queda por debajo, es que el
+  // arreglo entró y la etiqueta no. Con VER='v1.61.0' y la v1.62 comentada
+  // dentro, esta comprobación estaba en rojo.
+  const nums = [...html.matchAll(/\bv(\d+)\.(\d+)(?:\.\d+)?\b/g)]
+    .map(m => +m[1] * 1000 + +m[2]);
+  const maxTag = Math.max(...nums);
+  const dv = decl[1].match(/^v(\d+)\.(\d+)\./);
+  const verNum = +dv[1] * 1000 + +dv[2];
+  if (verNum < maxTag)
+    throw new Error(`VER=${decl[1]} pero el fichero ya habla de la v${Math.floor(maxTag/1000)}.${maxTag%1000}: la versión se quedó atrás`);
+});
+
 console.log('');
 console.log('cruce de un día de NCU real (tools/cruce_ncu_dia.mjs)');
 
