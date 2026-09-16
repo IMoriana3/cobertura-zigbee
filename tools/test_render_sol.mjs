@@ -151,6 +151,43 @@ try {
           `HUD ${r.thHud}`);
   }
 
+  /* ── 4. el mando manual no puede PEDIR un ángulo que el actuador no da ──
+     Reportado en la revisión del 3D: «límite de giro ±55°» y el mando marcando
+     −56°. La física recortaba bien; el que mentía era el número, porque el
+     slider nacía con min/max ±60 fijos y su rótulo escribía lo que le
+     arrastras. Aquí se mide en el navegador: se baja el tope, se intenta pasar
+     de él, y se exige que el RÓTULO, el valor del slider y el θ del HUD digan
+     los tres lo mismo y ninguno pase del tope. */
+  const tope = async (mx, pide) => {
+    await pg.evaluate(([m, v]) => {
+      // la página escucha los campos de configuración por 'change' (es lo que
+      // dispara el navegador al salir del campo), no por 'input'
+      const e = document.getElementById('maxang'); e.value = String(m); e.dispatchEvent(new Event('change'));
+      const t = document.getElementById('manth'); t.value = String(v); t.dispatchEvent(new Event('input'));
+    }, [mx, pide]);
+    await pg.waitForTimeout(900);
+    return pg.evaluate(() => ({
+      slider: +document.getElementById('manth').value,
+      max: +document.getElementById('manth').max,
+      rotulo: (document.getElementById('manthlbl').textContent || '').replace('°', '').trim(),
+      thHud: TH_DISP * sceneInstant().pv.ang[timeIndex()][0],
+    }));
+  };
+  for (const [mx, pide] of [[40, 60], [40, -60], [55, 56], [30, 31]]) {
+    const r = await tope(mx, pide);
+    const esperado = Math.max(-mx, Math.min(mx, pide));
+    check(`el mando manual no pasa del tope: θ máx ${mx}°, se pide ${pide}° ⇒ ${esperado}° en slider, rótulo y HUD`,
+          r.slider === esperado && +r.rotulo === esperado && Math.round(r.thHud) === esperado && r.max === mx,
+          `slider ${r.slider} · max ${r.max} · rótulo ${r.rotulo} · HUD ${r.thHud}`);
+  }
+  // y si el tope BAJA estando fuera, el mando se recorta con él (no se queda colgado)
+  await pg.evaluate(() => { const e = document.getElementById('maxang'); e.value = '55'; e.dispatchEvent(new Event('change')); });
+  await pg.evaluate(() => { const t = document.getElementById('manth'); t.value = '55'; t.dispatchEvent(new Event('input')); });
+  await pg.waitForTimeout(600);
+  const baja = await tope(35, 35);
+  check('al bajar el tope con el mando fuera, el mando se recorta con él', baja.slider === 35 && +baja.rotulo === 35 && Math.round(baja.thHud) === 35 && baja.max === 35,
+        `slider ${baja.slider} · rótulo ${baja.rotulo} · HUD ${baja.thHud}`);
+
   check('sin errores de página', errs.length === 0, errs.slice(0, 3).join(' · '));
   await browser.close();
 } finally {
