@@ -825,6 +825,45 @@ t('400 configuraciones aleatorias: ni NaN, ni POA negativa, ni clamp roto, ni sl
   if (fallos.length) throw new Error(fallos.length + '/400 · ' + fallos.slice(0, 3).join(' | '));
 });
 
+t('los DOS rellenos de la gráfica de θ están en la leyenda, y con su color', () => {
+  // La gráfica de θ lleva dos manchas con significados OPUESTOS: la banda de
+  // difusa (violeta, a toda altura, decisión de PLANTA) y la envolvente entre
+  // NCUs (magenta, acotada por las curvas, decisión POR ZONA). La leyenda solo
+  // explicaba la primera, y la segunda es la más grande de la gráfica. Leído
+  // así, el magenta se toma por la banda de difusa y sale la conclusión falsa
+  // de que «la difusa se activa con cielo despejado» — cuando lo que se abre
+  // por la mañana es la dispersión entre NCUs. Pasó de verdad leyendo una
+  // captura, y no lo cazó nadie porque no hay nada que lo exija. Esto lo exige.
+  const leg = html.slice(html.indexOf('function drawLegend()'),
+                         html.indexOf('function drawLegend()') + 2600);
+  if (!/difusa activa \(banda\)/.test(leg))
+    throw new Error('la leyenda ya no explica la banda de difusa');
+  if (!/envolvente mín–máx del θ entre NCUs/.test(leg))
+    throw new Error('la leyenda no explica la envolvente entre NCUs: la mancha más grande de la gráfica queda sin nombre');
+  // EL COLOR TIENE QUE SER EL MISMO en la leyenda y en el lienzo, o la leyenda
+  // señala a una mancha que no es. Se carea el HUE, que es lo que identifica
+  // el relleno (la opacidad sí difiere a propósito: un swatch al 0,13 de la
+  // gráfica no se vería).
+  const th = html.slice(html.indexOf('function drawTheta()'),
+                        html.indexOf('function drawPoa()'));
+  const hueLienzo = (th.match(/fillStyle='hsla\((\d+),/) || [])[1];
+  const hueLeyenda = (leg.match(/background:hsla\((\d+),/) || [])[1];
+  if (!hueLienzo || !hueLeyenda) throw new Error('no encuentro el relleno de la envolvente o su swatch');
+  if (hueLienzo !== hueLeyenda)
+    throw new Error(`la envolvente se pinta en hue ${hueLienzo} y la leyenda la anuncia en ${hueLeyenda}`);
+  // Y LA CONDICIÓN, EN UN SITIO: si la leyenda decide con su propia copia de
+  // «hay zonal en pantalla», puede anunciar una envolvente que no se pinta.
+  const nDecl = (html.match(/const zonalActivo\s*=/g) || []).length;
+  if (nDecl !== 1) throw new Error(`zonalActivo se declara ${nDecl} veces`);
+  if ((html.match(/zonalActivo\(\)/g) || []).length < 5)
+    throw new Error('alguna de las cinco piezas (atenuación, envolvente, leyenda, CSV, informe) dejó de usar la condición común');
+  // la propia declaración lleva la condición dentro, así que se descuenta antes
+  // de buscar copias — si no, el banco se señala a sí mismo (pasó al escribirlo)
+  const sinDecl = html.replace(/const zonalActivo\s*=[^\n]*\n/, '');
+  if (/ZR\s*&&\s*ZR\.zones\.length\s*>\s*1/.test(sinDecl))
+    throw new Error('vuelve a haber una copia abierta de la condición del zonal');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
