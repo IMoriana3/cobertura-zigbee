@@ -196,7 +196,7 @@ const sandbox = new Function(sol + '\n' + src + `
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, lazoControl, lazoControlSeg,
-           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas };`);
+           westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas, E_EMPATE_W };`);
 const F = sandbox();
 
 console.log('nubosidad · manual · colores (v1.40)');
@@ -674,6 +674,133 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
   if (!/lazoControlSeg\(prevS,/.test(app))
     throw new Error('el camino por mesa sigue sin el deadband');
+});
+
+t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
+  /* Reportado: «¿por qué no me coge las coordenadas de algunos proyectos?».
+     La página llevaba COORDS_FALLBACK, una tabla A MANO con cinco plantas,
+     mientras `plantas_indice.json` declara en su cabecera ser «la FUENTE del
+     huso, del código de cartera y de las coordenadas: quien las necesite las
+     pide de aquí». Medido contra el índice: de sus 12 plantas, SIETE no
+     estaban en la tabla —bagnarelli, benante, catania, dicayagua, panbianco,
+     paramo, polvorin— y al elegirlas no pasaba nada, en silencio, quedándose
+     las coordenadas de la planta anterior; y de las cinco que sí estaban,
+     TÚNEZ ESTABA MAL por unos 3 km (33,8685/9,8433 contra 33,87924/9,87365).
+
+     Este banco prohíbe la copia, que es lo que se desfasa: cualquier tabla de
+     coordenadas de plantas escrita a mano en la página vuelve a abrir la misma
+     puerta. Y exige que, sin coordenadas, se AVISE — dejar las de otra planta
+     y callar es publicar un número falso sin marcarlo. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+
+  // 1) el índice es la fuente y se lee
+  if (!/plantas_indice\.json/.test(app))
+    throw new Error('la página no pide las coordenadas a plantas_indice.json');
+
+  // 2) ninguna tabla de coordenadas a mano: lo que se copia, se desfasa
+  const codigos = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas
+    .filter(p => p.codigo != null && p.codigo !== '').map(p => String(p.codigo));
+  const sinComentarios = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const cod of codigos) {
+    const re = new RegExp("['\"]" + cod.replace('.', '\\.') + "['\"]\\s*:\\s*\\[");
+    if (re.test(sinComentarios))
+      throw new Error(`hay coordenadas de la planta ${cod} escritas a mano en la página: eso es una copia de plantas_indice.json y se desfasará (pasó con Túnez, 3 km)`);
+  }
+
+  // 3) cuando no se saben, se dice — y NO se tocan las coordenadas de antes
+  const i = sinComentarios.indexOf("$('plant').onchange");
+  if (i < 0) throw new Error('no se encuentra el manejador del selector de planta');
+  const h = sinComentarios.slice(i, i + 2200);
+  if (!/avisoPlanta\(/.test(h)) throw new Error('el selector no avisa cuando la planta no trae coordenadas');
+  const rama = h.slice(h.lastIndexOf('else'));
+  if (/\$\('lat'\)\.value\s*=/.test(rama) || /\$\('lon'\)\.value\s*=/.test(rama))
+    throw new Error('sin coordenadas conocidas la página toca igualmente lat/lon: estaría inventando el emplazamiento');
+
+  // 4) el índice tiene coordenadas para todas sus plantas (es lo que promete)
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8')).plantas;
+  const sinCoord = idx.filter(p => p.lat == null || p.lon == null).map(p => p.planta);
+  if (sinCoord.length) throw new Error('el índice se declara fuente de las coordenadas y no las trae para: ' + sinCoord.join(', '));
+  if (idx.length < 10) throw new Error('el índice tiene menos plantas de las esperadas: ' + idx.length);
+});
+
+t('v1.62 · EL CERTIFICADO NO LLAMA «MEJOR» A LO QUE NO LO ES', () => {
+  /* Reportado con captura: un certificado con EMPATADO en la cabecera anunciaba
+     debajo «Hay una consigna mejor» con la MISMA sombra (98,3 %) y MENOS POA
+     (11,2 frente a 11,3), y el propio margen se delataba —«0.0 pp menos de
+     sombra · -0.0 W/m² de energía»—: un signo menos detrás de la palabra mejor.
+     La causa: el rótulo se pintaba siempre que el probador devolviera un
+     candidato, sin mirar el veredicto, y ese candidato se elige por SOMBRA, no
+     por dominancia, así que puede ganar en un eje y perder en el otro.
+
+     Se comprueba sobre la decisión sola, con márgenes dados a mano: levantar el
+     probador cuesta 1.700 candidatos por instante y para esto no hace falta. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function tipoDeMargen(');
+  if (i < 0) throw new Error('el certificado no separa la decisión del rótulo: no hay tipoDeMargen');
+  const fuente = app.slice(i, app.indexOf('\n}', i) + 2);
+  const tipo = new Function('E_EMPATE_W', fuente + '\nreturn tipoDeMargen;')(F.E_EMPATE_W);
+
+  // EL CASO REPORTADO: misma sombra, menos energía. No es mejor.
+  if (tipo({ sombra: 0.0, poa: -0.04 }) === 'mejor')
+    throw new Error('sigue llamando «mejor» al caso reportado (misma sombra, menos POA)');
+  if (tipo({ sombra: 0.0, poa: -0.04 }) !== 'empate')
+    throw new Error('el caso reportado debería salir como empate, no como ' + tipo({ sombra: 0.0, poa: -0.04 }));
+
+  // un CANJE: gana sombra y pierde energía por encima de la banda
+  if (tipo({ sombra: 5, poa: -10 }) !== 'canje') throw new Error('no reconoce el canje sombra↑/energía↓');
+  if (tipo({ sombra: -5, poa: 10 }) !== 'canje') throw new Error('no reconoce el canje energía↑/sombra↓');
+
+  // una MEJORA de verdad: gana en un eje sin perder en el otro
+  if (tipo({ sombra: 5, poa: 0 }) !== 'mejor') throw new Error('no reconoce la mejora en sombra');
+  if (tipo({ sombra: 0, poa: 10 }) !== 'mejor') throw new Error('no reconoce la mejora en energía');
+  if (tipo({ sombra: 5, poa: 10 }) !== 'mejor') throw new Error('no reconoce la mejora en los dos ejes');
+
+  // la banda de empate es la del propio probador, no una inventada aquí
+  if (tipo({ sombra: 0, poa: F.E_EMPATE_W * 0.9 }) !== 'empate')
+    throw new Error('dentro de la banda de empate energético sigue diciendo que es mejor');
+  if (tipo({ sombra: 0, poa: F.E_EMPATE_W * 1.1 }) !== 'mejor')
+    throw new Error('fuera de la banda de empate ya no lo reconoce como mejor');
+
+  // y el texto pintado tiene que usar esa decisión, no reinventarla
+  const pin = app.slice(app.indexOf('function pintaCertificado'));
+  if (!/tipoDeMargen\(/.test(pin.slice(0, 6000)))
+    throw new Error('la pintura no usa tipoDeMargen: la decisión volvería a vivir en dos sitios');
+});
+
+t('v1.64 · UN CERO ESCRITO EN EL CERTIFICADO TIENE QUE SER UN CERO', () => {
+  /* El certificado decía «la postura MENOS sombreada del factible deja 0.0 % de
+     sombra», y eso se lee como que EXISTE una consigna sin sombra que la
+     política no publica. Se persiguió esa consigna durante una tarde: 344
+     instantes, 104 con sombra publicada, y en NINGUNO existe una postura sin
+     sombra —ni moviendo una unidad de accionamiento sola (que es lo que barre
+     el probador) ni moviendo varias a la vez—. La postura no existía: la
+     inventaba `toFixed(1)` al redondear un 0,04 % a «0.0».
+
+     Misma familia que el «0.0 pp · -0.0 W/m²» de los márgenes, que ya se
+     arregló con cif(). Este banco no mira cómo está escrito: coge el formateador
+     que usa el certificado y exige la propiedad — un valor NO NULO nunca se
+     escribe como cero, y el cero de verdad sí. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function pctSombra(');
+  if (i < 0) throw new Error('el certificado no tiene un formateador de sombra propio: vuelve a redondear a mano');
+  const fuente = app.slice(i, app.indexOf('\n}', i) + 2);
+  const fmt = new Function(fuente + '\nreturn pctSombra;')();
+
+  const leeCero = (s) => /^[\s0,.\u2212-]*$/.test(String(s).replace(/&lt;/g, '<').replace(/</g, '')) && !/[1-9]/.test(String(s));
+  for (const x of [0.04, 0.001, 0.049, 1e-6, 0.0499999]) {
+    const out = fmt(x);
+    if (leeCero(out)) throw new Error(`${x} % de sombra se escribe «${out}», que se lee como cero`);
+  }
+  if (!leeCero(fmt(0))) throw new Error('el cero de verdad ya no se escribe como cero: ' + fmt(0));
+  // y por encima de la banda sigue siendo el número de siempre, con su decimal
+  if (fmt(7.94) !== '7.9') throw new Error('cambió el formato normal: ' + fmt(7.94));
+
+  // la pintura tiene que PASAR por él: si algún porcentaje de sombra se
+  // sigue redondeando a mano, el defecto vuelve por la puerta de al lado
+  const pin = app.slice(app.indexOf('function pintaCertificado'));
+  const cuerpo = pin.slice(0, pin.indexOf('\nfunction ', 10) + 1 || 12000);
+  const aMano = cuerpo.match(/sombraPct[^,;)]*\.toFixed\(/g);
+  if (aMano) throw new Error('quedan ' + aMano.length + ' porcentajes de sombra redondeados a mano en el certificado');
 });
 
 t('v1.62 · LA ESCENA NO PUEDE MOVER LA PLANTA MÁS RÁPIDO QUE EL MOTOR', () => {

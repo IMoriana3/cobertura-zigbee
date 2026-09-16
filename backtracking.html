@@ -143,6 +143,7 @@
     <h2>☉ Emplazamiento</h2>
     <div class="f"><label>Planta (de la cartera)</label>
       <select id="plant"><option value="">— manual —</option></select></div>
+    <div id="plantaviso" class="nota" style="display:none;margin:-4px 0 6px;padding:6px 8px;border-radius:6px"></div>
     <div class="two">
       <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
       <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
@@ -455,7 +456,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.63.0';
+const VER='v1.64.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4451,7 +4452,47 @@ $('cp_cresta').onclick=()=>careoPreset('cresta',2);
 /* ── plantas de la cartera (localStorage compartido del Panel) ── */
 /* Va por clave de la hoja de cartera (24002 = El Burgo), no por nº de proyecto: es el mismo
    índice con el que llega `factiun_plantas`. */
-const COORDS_FALLBACK={'24002':[41.57634,-0.79814],'24025':[39.11821,-1.15985],'24019':[-16.59577,-71.80644],'24007':[41.22694,0.32415],'24021':[33.8685,9.8433]};
+/* v1.62 — LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE.
+   Aquí vivía COORDS_FALLBACK, una tabla A MANO con CINCO plantas. El repo tiene
+   `plantas_indice.json`, que declara en su propia cabecera ser «la FUENTE del
+   huso, del código de cartera y de las coordenadas: quien las necesite las pide
+   de aquí» — y esta página no se las pedía. Dos piezas, dos fuentes, otra vez.
+
+   El daño, medido contra el índice: de sus 12 plantas, SIETE no estaban en la
+   tabla (bagnarelli, benante, catania, dicayagua, panbianco, paramo, polvorin)
+   y al elegirlas `COORDS_FALLBACK[cod]` salía undefined, el `if` no entraba y
+   NO PASABA NADA: se quedaban las coordenadas de la planta anterior, en
+   silencio. El HUD decía Páramo y el cálculo iba en El Burgo. Y de las cinco
+   que sí estaban, TÚNEZ ESTABA MAL: 33,8685/9,8433 a mano contra 33,87924/
+   9,87365 en la fuente, unos 3 km. Una copia no sólo incompleta: desfasada.
+
+   Ahora se lee el índice. Si una planta no trae coordenadas por ningún camino,
+   no se toca el emplazamiento y SE DICE en la propia tarjeta: quedarse callado
+   dejando las de otra planta es publicar un número falso sin marcarlo. */
+let COORDS_IDX=null;                       // {porCodigo, porNombre} — null = aún no leído
+async function cargaIndicePlantas(){
+  if(COORDS_IDX)return COORDS_IDX;
+  const idx={porCodigo:{},porNombre:{},ok:false};
+  try{
+    const r=await fetch('plantas_indice.json',{cache:'no-store'});
+    if(r.ok){
+      const j=await r.json();
+      for(const p of (j&&j.plantas)||[]){
+        if(p.lat==null||p.lon==null)continue;
+        if(p.codigo!=null&&p.codigo!=='')idx.porCodigo[String(p.codigo)]=[p.lat,p.lon];
+        if(p.planta)idx.porNombre[String(p.planta).toLowerCase()]=[p.lat,p.lon];
+      }
+      idx.ok=Object.keys(idx.porCodigo).length>0;
+    }
+  }catch(e){}
+  COORDS_IDX=idx; return idx;
+}
+function avisoPlanta(txt,malo){
+  const e=$('plantaviso'); if(!e)return;
+  if(!txt){e.style.display='none';e.textContent='';return;}
+  e.style.display='';e.textContent=txt;
+  e.style.background=malo?'#4a1d1d':'#1d3a4a'; e.style.color=malo?'#ffb3b3':'#a8d4e8';
+}
 function loadPlants(){
   let P={}; try{P=JSON.parse(localStorage.getItem('factiun_plantas')||'{}')||{};}catch(e){}
   let opts='<option value="">— manual —</option>';
@@ -4461,10 +4502,24 @@ function loadPlants(){
      que había. */
   Object.keys(P).sort().forEach(cod=>{opts+='<option value="'+cod+'">'+((P[cod]&&P[cod].nombre)||'?')+' · '+((P[cod]&&P[cod].nproy)||cod)+'</option>';});
   $('plant').innerHTML=opts;
-  $('plant').onchange=function(){
-    const p=P[this.value]; if(!p)return;
-    const c=(p.lat!=null&&p.lon!=null)?[p.lat,p.lon]:COORDS_FALLBACK[this.value];
-    if(c){$('lat').value=c[0];$('lon').value=c[1];_huso=null;aplicaHuso(null);recompute();}
+  $('plant').onchange=async function(){
+    const cod=this.value, p=P[cod];
+    if(!cod){avisoPlanta(null);return;}
+    if(!p){avisoPlanta('La planta «'+cod+'» no está en la cartera guardada: el emplazamiento NO ha cambiado.',true);return;}
+    const idx=await cargaIndicePlantas();
+    const nom=String((p.nombre)||'').toLowerCase().replace(/\s+/g,'');
+    const c=(p.lat!=null&&p.lon!=null)?[p.lat,p.lon]
+          : idx.porCodigo[String(cod)] || idx.porNombre[nom] || null;
+    if(c){
+      $('lat').value=c[0];$('lon').value=c[1];_huso=null;aplicaHuso(null);recompute();
+      avisoPlanta(null);
+    }else{
+      /* NO se tocan lat/lon: dejarlas y callar sería calcular esta planta en el
+         emplazamiento de la anterior, que es el defecto que esto corrige. */
+      avisoPlanta('Sin coordenadas para «'+((p.nombre)||cod)+'»'+(idx.ok?'':' (no se pudo leer plantas_indice.json)')+
+                  ': el emplazamiento sigue siendo el de antes ('+$('lat').value+', '+$('lon').value+
+                  '). Ponlas a mano o añádelas al índice; lo que se calcule ahora NO es esta planta.',true);
+    }
   };
 }
 
@@ -6638,6 +6693,49 @@ $('informebtn').onclick=abrirInforme;
 /* ── EL PROBADOR EN PANTALLA (v1.58) ─────────────────────────────────────────
    El certificado del instante y la política que se están viendo. BAJO DEMANDA,
    no para el día entero: barrer el factible con el contador exacto es caro. */
+/* v1.62 — QUÉ ES ESE CANDIDATO, EN UNA PALABRA. El certificado rotulaba
+   «Hay una consigna mejor» SIEMPRE que el probador devolviera un candidato,
+   sin mirar el veredicto: un certificado con EMPATADO en la cabecera anunciaba
+   debajo una consigna «mejor». Y ese candidato se elige por SOMBRA, no por
+   dominancia, así que puede tener menos sombra Y MENOS POA — un canje, no una
+   mejora. El caso reportado lo enseñaba entero: publicado 98,3 % / 11,3 W/m²,
+   «mejor» 98,3 % / 11,2 W/m², con el margen delatándose solo —«0.0 pp menos de
+   sombra · -0.0 W/m² de energía»—: un signo menos detrás de la palabra mejor.
+
+   Vive aparte de la pintura para que el banco pueda darle márgenes y leer la
+   palabra, sin levantar el probador entero (1.700 candidatos por instante).
+   Las bandas no son nuevas: E_EMPATE_W es la del empate energético del propio
+   probador, y 0,05 pp es la resolución con la que se escribe la sombra. */
+function tipoDeMargen(margen){
+  const mS=(margen&&margen.sombra!=null)?margen.sombra:null;   // >0 = menos sombra
+  const mP=(margen&&margen.poa!=null)?margen.poa:null;         // >0 = más energía
+  const gS=mS!=null&&mS>0.05,        pS=mS!=null&&mS<-0.05;
+  const gP=mP!=null&&mP>E_EMPATE_W,  pP=mP!=null&&mP<-E_EMPATE_W;
+  if((gS&&pP)||(gP&&pS))return 'canje';
+  return (gS||gP)?'mejor':'empate';
+}
+/* v1.64 — UN CERO ESCRITO TIENE QUE SER UN CERO. Los porcentajes de sombra del
+   certificado se imprimían con toFixed(1), así que un 0,04 % salía como «0.0 %».
+   Y eso no es un decimal de más: el certificado decía «la postura MENOS
+   sombreada del factible deja 0.0 % de sombra» y se leía como que existía una
+   consigna SIN sombra que la política no publicaba. Se midió persiguiéndola:
+   de 344 instantes, 104 con sombra publicada, y en NINGUNO existe una postura
+   sin sombra —ni moviendo una unidad sola, que es lo que el probador barre, ni
+   moviendo varias—. La postura no existía; el redondeo la inventaba.
+
+   Misma familia que «0.0 pp menos de sombra · -0.0 W/m²» de la sección de
+   arriba: un número redondeado afirmando más de lo que es. Aquí un valor no
+   nulo nunca se escribe como cero: por debajo de 0,05 se dice «<0,05», y el
+   cero de verdad se escribe 0. */
+function pctSombra(x){
+  if(!(x>0))return '0';
+  return x<0.05?'&lt;0,05':x.toFixed(1);
+}
+function ppSombra(d){
+  if(!isFinite(d))return '—';
+  if(d===0)return '0';
+  return Math.abs(d)<0.05?(d>0?'&lt;+0,05':'&lt;−0,05'):((d>0?'+':'')+d.toFixed(1));
+}
 function pintaCertificado(){
   if(!DAY)return;
   const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
@@ -6673,28 +6771,48 @@ function pintaCertificado(){
            '<b>Certificado · ',(manAng?'🎛 mando manual':(POL[key]?POL[key].nm:key)),'</b>',
            '<span style="background:',col,';color:#fff;border-radius:5px;padding:1px 8px;font-weight:600">',ce.veredicto.toUpperCase(),'</span></div>',
            '<div style="color:#9fb0c2;margin:4px 0 8px">',hhmm(+$('hour').value),' · sol ',g.elev.toFixed(1),'° · ',ce.objetivo,'</div>');
-    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',ce.elegido.sombraPct.toFixed(1),' %</b>');
+    H.push('<b>Publicado</b><br>θ ',th(ce.elegido.ang),'°<br>sombra <b>',pctSombra(ce.elegido.sombraPct),' %</b>');
     if(isFinite(ce.elegido.poa))H.push(' · POA de planta <b>',ce.elegido.poa.toFixed(1),'</b> W/m²');
     if(ce.mejorHallado){
-      H.push(sep,'<b>Hay una consigna mejor</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',ce.mejorHallado.sombraPct.toFixed(1),' %</b>');
+      /* v1.62 — EL RÓTULO TIENE QUE DECIR LO QUE ES. Esto ponía «Hay una
+         consigna mejor» SIEMPRE que existiera un mejorHallado, sin mirar el
+         veredicto, así que un certificado con la etiqueta EMPATADO arriba
+         anunciaba abajo una consigna «mejor». Y peor: ese mejor se elige por
+         SOMBRA, no por dominancia, de modo que puede tener menos sombra Y
+         menos POA — un canje, no una mejora. El caso reportado lo enseñaba
+         entero: publicado 98,3 % / 11,3 W/m², «mejor» 98,3 % / 11,2 W/m², y el
+         propio margen delatándose con «0.0 pp menos de sombra · -0.0 W/m²».
+         Un signo menos detrás de la palabra «mejor».
+
+         Ahora el rótulo sale de comparar los dos ejes, y los márgenes que
+         redondean a cero se dicen como lo que son y no como un cero limpio. */
+      const tipo=tipoDeMargen(ce.margen);
+      const rot={canje:'Hay un CANJE disponible',mejor:'Hay una consigna mejor',
+                 empate:'Hay una consigna equivalente'}[tipo];
+      const mS=(ce.margen&&ce.margen.sombra!=null)?ce.margen.sombra:null;
+      const mP=(ce.margen&&ce.margen.poa!=null)?ce.margen.poa:null;
+      const cif=(x)=>Math.abs(x)<0.05?(x>0?'menos de +0,05':(x<0?'menos de −0,05':'0,0')):((x>0?'+':'')+x.toFixed(2));
+      H.push(sep,'<b>',rot,'</b><br>θ ',th(ce.mejorHallado.ang),'°<br>sombra <b>',pctSombra(ce.mejorHallado.sombraPct),' %</b>');
       if(isFinite(ce.mejorHallado.poa))H.push(' · POA <b>',ce.mejorHallado.poa.toFixed(1),'</b> W/m²');
       if(ce.margen){
         H.push('<br><span style="color:#9fb0c2">');
-        if(ce.margen.sombra!=null)H.push(ce.margen.sombra.toFixed(1),' pp menos de sombra');
-        if(ce.margen.poa!=null)H.push(ce.margen.sombra!=null?' · ':'',(ce.margen.poa>=0?'+':''),ce.margen.poa.toFixed(1),' W/m² de energía');
+        if(mS!=null)H.push(cif(mS),' pp de sombra evitada');
+        if(mP!=null)H.push(mS!=null?' · ':'',cif(mP),' W/m² de energía');
+        if(tipo==='canje')H.push(' — gana en un eje y pierde en el otro: es un cambio de postura, no una mejora');
+        else if(tipo==='empate')H.push(' — dentro de la banda de empate (',E_EMPATE_W.toFixed(2),' W/m²): no es mejor, es lo mismo');
         H.push('</span>');
       }
       H.push('</div>');
     }
     if(co){
       H.push(sep,'<b>El precio de esta elección</b><br>el mejor candidato ENERGÉTICO del factible da <b>',
-             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',co.sombraPct.toFixed(1),' %</b> de sombra.<br>',
+             (ce.elegido.poa+co.poa).toFixed(1),'</b> W/m² con <b>',pctSombra(co.sombraPct),' %</b> de sombra.<br>',
              '<span style="color:',(co.pct>50?'#f87272':'#9fb0c2'),'">la consigna publicada renuncia a ',co.poa.toFixed(1),
-             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',(co.sombraPct-ce.elegido.sombraPct).toFixed(1),' pp de sombra</span></div>');
+             ' W/m² (',co.pct.toFixed(0),' %) a cambio de ',ppSombra(co.sombraPct-ce.elegido.sombraPct),' pp de sombra</span></div>');
     }
     const fl=ce.mejorFueraDeAlcance;
     if(fl){
-      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',fl.sombraPct.toFixed(1),' %</b>');
+      H.push(sep,'<b>Mejor, pero el actuador no llega</b><br>θ ',th(fl.ang),'°<br>sombra <b>',pctSombra(fl.sombraPct),' %</b>');
       if(isFinite(fl.poa))H.push(' · POA <b>',fl.poa.toFixed(1),'</b> W/m²');
       H.push('<br><span style="color:#9fb0c2">gana en los números, pero no se puede llegar ahí en un paso de ',
              ce.sellos.pasoControl,' a ',ce.sellos.slew,'. No es una alternativa: es un deseo. (',
@@ -6703,7 +6821,7 @@ function pintaCertificado(){
     const pr=ce.precioDeLaPromesa;
     if(pr){
       H.push(sep,'<b>El precio de la promesa</b><br>la postura MENOS sombreada del factible deja <b>',
-             pr.sombraPct.toFixed(1),' %</b> de sombra');
+             pctSombra(pr.sombraPct),' %</b> de sombra');
       if(isFinite(pr.poa))H.push(' con <b>',pr.poa.toFixed(1),'</b> W/m²');
       H.push('.<br><span style="color:#9fb0c2">');
       if(pr.cuesta==null)H.push('sin cielo: no se puede poner precio');
