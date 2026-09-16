@@ -255,7 +255,12 @@ input[type=range]{accent-color:var(--live)}
         vecino. Medido en el día entero: con banda de 1°, de 1,24 % de pérdida, 1,20 % cae en horas de
         backtracking y 0,04 % en horas de seguimiento limpio. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
         banda se muestrea más grueso que en el día: la pérdida sale del mismo lazo, pero con menos
-        resolución — declarado, como el propio paso horario.</p>
+        resolución — declarado, como el propio paso horario. La <b>escena</b> va aparte: se pinta con rejilla de
+        <b>1 minuto</b> porque a 5 el θ pintado daba saltos que el actuador no puede dar (un tramo de 5 min le
+        permite 51° de recorrido, y la consigna astro da un escalón en la puesta de sol) — medido, 29,66°/min
+        contra 10,20 de tope, y hay un candado que lo exige. La integración del <b>día</b> se queda a 5 min: el
+        escalón cae con el sol ya en el suelo y pasar a 1 min mueve la POA <b>0,0027 %</b> en el agregado y
+        0,1355 % en el peor string, por 3,7× de tiempo.</p>
             </details>
 
       <details class="card">
@@ -1281,7 +1286,8 @@ function instant(F,c,T,m,prev,soloAng){
   // EJECUTADO por la TCU. Sin lazo —o en el primer paso del día, sin estado
   // previo— el tracker está EN su consigna, que es la página de siempre.
   const loop=ctrlDe(c);
-  let ang=angT, segAng=segAngT, angDir=null, segDir=null, angPark=null, segPark=null, dt=0;
+  let ang=angT, segAng=segAngT, angDir=null, segDir=null, angPark=null, segPark=null,
+      angUlt=null, segUlt=null, dt=0;
   // dt>=0 y no >0: si NO ha pasado tiempo, el tracker no se ha movido y su θ es
   // el de antes — NO la consigna. Con >0 el instante pintado que caía justo en
   // un paso de la rejilla se saltaba el lazo y pintaba el ideal: el θ de la
@@ -1294,21 +1300,24 @@ function instant(F,c,T,m,prev,soloAng){
     // adelanto de la TCU no se podría hacer, porque al cruzar la consigna el
     // error cambia de signo y el destino se daría la vuelta.
     const ev=CTRLCORE.execVector(prev.ang,prev.angT,angT,dt,loop,
-                                 seg?btRows(F,zen,az,T,angT):null,prev.angDir,prev.angPark);
-    ang=ev.theta;angDir=ev.dir;angPark=ev.park;
+                                 seg?btRows(F,zen,az,T,angT):null,prev.angDir,prev.angPark,
+                                 prev.angUlt);
+    ang=ev.theta;angDir=ev.dir;angPark=ev.park;angUlt=ev.dirUlt;
     if(porMesa&&prev.segAng&&prev.segAngT){
       const bt=seg?btSegs(F,zen,az,T,segAngT):null;
-      segAng=[];segDir=[];segPark=[];
+      segAng=[];segDir=[];segPark=[];segUlt=[];
       for(let r=0;r<segAngT.length;r++){
         const e=CTRLCORE.execVector(prev.segAng[r],prev.segAngT[r],segAngT[r],dt,loop,
                                     bt?bt[r]:null,prev.segAngDir?prev.segAngDir[r]:null,
-                                    prev.segAngPark?prev.segAngPark[r]:null);
-        segAng.push(e.theta);segDir.push(e.dir);segPark.push(e.park);
+                                    prev.segAngPark?prev.segAngPark[r]:null,
+                                    prev.segAngUlt?prev.segAngUlt[r]:null);
+        segAng.push(e.theta);segDir.push(e.dir);segPark.push(e.park);segUlt.push(e.dirUlt);
       }
     }
   }
   const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angDir:angDir,angPark:angPark,
-              segAng:segAng,segAngT:segAngT,segAngDir:segDir,segAngPark:segPark,lazo:!!loop};
+              angUlt:angUlt,segAng:segAng,segAngT:segAngT,segAngDir:segDir,segAngPark:segPark,
+              segAngUlt:segUlt,lazo:!!loop};
   // el cursor del instante pintado solo necesita el ESTADO para el paso
   // siguiente; la POA es lo caro y aquí no hace falta
   if(soloAng)return Object.assign(base,{rows:null,segs:null,plant:null,shade:null,wings:null});
@@ -1542,6 +1551,25 @@ function confAplica(o,pon){
   return {puestos:puestos,rechazados:rechazados,faltan:faltan,sobran:sobran,
           futuro:+o.v>CONFV?+o.v:0};
 }
+
+/* EL CURSOR DEL LAZO, en puro. El estado que viaja es {m,r}: el minuto del
+   último punto de rejilla recorrido y su instante. Está aquí, y no junto a su
+   caché, porque el INVARIANTE que tiene que cumplir —que dos minutos pintados
+   consecutivos no se separen más de lo que el actuador recorre en un minuto— no
+   se puede comprobar sin poder llamarlo, y copiarlo al banco sería tener dos
+   cursores. La rejilla es un parámetro por la misma razón: el banco necesita
+   poder ponerla a 5 y ver el fallo que PASO_LAZO=1 arregla. */
+function cursorLazo(F,c,T,m,cur,paso){
+  const mk=Math.floor(m/paso)*paso;
+  let k=(cur&&cur.m<=mk)?cur:{m:0,r:instant(F,c,T,0,null,true)};
+  while(k.m<mk){const t=k.m+paso;k={m:t,r:instant(F,c,T,t,k.r,true)};}
+  // los minutos que faltan hasta el pedido van de UNO en UNO: si salieran de un
+  // tramo parcial, dos fotogramas consecutivos vendrían de tramos de distinta
+  // duración sobre la misma base y su diferencia no sería un minuto de recorrido
+  let base=k.r;
+  for(let t=mk+1;t<m;t++)base=instant(F,c,T,t,base,true);
+  return {cur:k,r:instant(F,c,T,m,base)};
+}
 /* FIN-LÓGICA ═══════════════════════════════════════════════════════════════ */
 
 const $=id=>document.getElementById(id);
@@ -1589,7 +1617,19 @@ let F=null, T=null, DAYC=null;   // física extraída · terreno · caché del d
    «Σ día». Los pasos intermedios van con soloAng: los ángulos no dependen de la
    POA, que es lo caro. */
 let CTRLCUR=null;
-const PASO_LAZO=5;               // el MISMO paso que «Σ día»: una sola física en pantalla
+/* LA REJILLA DEL CURSOR ES DE UN MINUTO, y tiene que serlo. Empezó siendo 5,
+   «el mismo paso que Σ día», y con eso la ESCENA violaba el slew: el tramo de
+   cinco minutos permite 0,17·300 = 51° de recorrido, así que cuando la consigna
+   da un escalón —la puesta de sol, donde el ángulo astro se vuelve NaN y cae a
+   0— el θ pintado viajaba de golpe lo que el hierro tarda cinco minutos en
+   hacer. Medido en San José, mesa TR-08_1-097·S28.1 del 21-jun: de −55,00° a las
+   17:22 a −25,34° a las 17:23, 29,66° en un minuto con el tope en 10,20. Y
+   arreglar solo el último tramo parcial no bastaba: el salto se mudaba al
+   siguiente punto de la rejilla (28,99° en el minuto 1045). Al minuto, el
+   invariante se cumple por construcción. Cuesta unos 1,3 ms por minuto en una
+   NCU de San José (256 mesas), o sea ~1,3 s para colocar el cursor en las 17:00
+   en frío, que es el mismo orden que costaba antes. */
+const PASO_LAZO=1;
 function instantConLazo(c,m){
   if(!ctrlDe(c)){CTRLCUR=null;return instant(F,c,T.obj,m);}
   // PERIODRUN entra en la clave a propósito: lo bumpea invalida(), que es lo que
@@ -1598,15 +1638,9 @@ function instantConLazo(c,m){
   // lo que solo toca la cadena AC no lo bumpea y el cursor sigue siendo válido.
   const key=[PERIODRUN,c.date,c.plant,c.ncu,c.pol,c.manual,c.manth,c.meteo,c.maxang,
              JSON.stringify(c.ctrl)].join('|');
-  const mk=Math.floor(m/PASO_LAZO)*PASO_LAZO;
-  if(!CTRLCUR||CTRLCUR.key!==key||CTRLCUR.m>mk)
-    CTRLCUR={key:key,m:0,r:instant(F,c,T.obj,0,null,true)};
-  while(CTRLCUR.m<mk){
-    const t=CTRLCUR.m+PASO_LAZO;
-    CTRLCUR={key:key,m:t,r:instant(F,c,T.obj,t,CTRLCUR.r,true)};
-  }
-  // el minuto pedido puede caer entre pasos: el último tramo va parcial
-  return instant(F,c,T.obj,m,CTRLCUR.r);
+  const x=cursorLazo(F,c,T.obj,m,(CTRLCUR&&CTRLCUR.key===key)?CTRLCUR:null,PASO_LAZO);
+  CTRLCUR={key:key,m:x.cur.m,r:x.cur.r};
+  return x.r;
 }
 let PERIODC=null, PERIODRUN=0;   // caché Σ mes/año · testigo de cómputo en curso
 let TMY=null;                    // {key,data} — TMY cargada (fichero horneado o PVGIS)

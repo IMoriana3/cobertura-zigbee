@@ -54,7 +54,7 @@ const S = new Function(ctrl + sol + fis + log + `
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
           degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
           sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
-          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto,
+          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto, cursorLazo,
           CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
@@ -1327,6 +1327,75 @@ t('la tabla enseña el ESCALÓN, y el desalineo lo acota la banda salvo cuando m
   const distintos = new Set(th).size;
   if (!(distintos < 0.6 * th.length))
     throw new Error(`θ no sale a escalones: ${distintos} valores distintos en ${th.length} minutos`);
+});
+
+/* ── el cursor del lazo: lo que se PINTA tiene que respetar el actuador ─────
+   Esto es el defecto «no respeta slew rate» del parte. La escena no integra el
+   día: pide un minuto suelto y el cursor se lo sirve desde el último punto de
+   rejilla que recorrió. Si esa rejilla es gruesa, el θ pintado da saltos que el
+   hierro no puede dar, porque un tramo de 5 min permite 51° de recorrido y la
+   consigna da un escalón en la puesta de sol (el ángulo astro se vuelve NaN y
+   cae a 0). El invariante es el del actuador y no admite excepciones: entre dos
+   minutos pintados consecutivos, |Δθ| ≤ slew·60. */
+function recorreCursor(c, T, rIdx, paso, m0, m1) {
+  let cur = null, ant = null, peor = 0, mPeor = -1, n = 0;
+  for (let m = m0; m <= m1; m++) {
+    const x = S.cursorLazo(S.F, c, T, m, cur, paso);
+    cur = x.cur;
+    const th = x.r.ang[rIdx];
+    if (ant != null) {
+      const d = Math.abs(th - ant);
+      if (d > peor) { peor = d; mPeor = m; }
+      if (d > LAZO.slew * 60 + 1e-9) n++;
+    }
+    ant = th;
+  }
+  return { peor, mPeor, n };
+}
+
+t('el θ PINTADO no da saltos que el actuador no pueda dar (defecto «no respeta slew rate»)', () => {
+  const c = { ...base, ctrl:LAZO }, techo = LAZO.slew * 60;
+  const r = recorreCursor(c, TL, 3, 1, 0, 1439);
+  if (r.n) throw new Error(`${r.n} minutos pintados pasan del techo; el peor ${r.peor.toFixed(3)}°/min ` +
+                           `en el minuto ${r.mPeor} contra ${techo.toFixed(2)} de tope`);
+  if (!(r.peor > 0.5 * techo))
+    throw new Error(`el peor salto es ${r.peor.toFixed(3)}°/min: el día no llega a exigir el actuador y el test no mide nada`);
+});
+
+t('el cursor con rejilla GRUESA viola el techo — por eso PASO_LAZO vale 1', () => {
+  // el oráculo puede ponerse rojo: con la rejilla que tenía la página (5 min) el
+  // mismo recorrido rompe el invariante. Si algún día deja de romperlo, el test
+  // de arriba habrá dejado de vigilar nada y este avisa.
+  const c = { ...base, ctrl:LAZO };
+  const r = recorreCursor(c, TL, 3, 5, 0, 1439);
+  if (!r.n) throw new Error('con paso 5 el invariante NO se rompe: el test de arriba ya no demuestra nada');
+  const m = /^const PASO_LAZO=(\d+);/m.exec(pg);
+  if (!m || m[1] !== '1') throw new Error('la página tiene que pintar con rejilla de 1 min y tiene ' + (m ? m[1] : 'nada'));
+});
+
+t('el cursor da lo MISMO que recorrer el día entero a mano (no es una física aparte)', () => {
+  const c = { ...base, ctrl:LAZO }, rIdx = 3;
+  const mm = [400, 401, 725, 1043, 1045, 1200];
+  let prev = null, esperado = {};
+  for (let m = 0; m <= 1200; m++) {
+    const r = S.instant(S.F, c, TL, m, prev, true); prev = r;
+    if (mm.includes(m)) esperado[m] = r.ang[rIdx];
+  }
+  let cur = null;
+  for (const m of mm) {
+    const x = S.cursorLazo(S.F, c, TL, m, cur, 1); cur = x.cur;
+    const d = Math.abs(x.r.ang[rIdx] - esperado[m]);
+    if (d > 1e-9) throw new Error(`minuto ${m}: el cursor da ${x.r.ang[rIdx].toFixed(6)}° y el día entero ${esperado[m].toFixed(6)}°`);
+  }
+});
+
+t('el cursor REHACE la mañana cuando le piden ir atrás', () => {
+  const c = { ...base, ctrl:LAZO }, rIdx = 3;
+  const ida = S.cursorLazo(S.F, c, TL, 800, null, 1);
+  const vuelta = S.cursorLazo(S.F, c, TL, 700, ida.cur, 1);   // cur.m=800 > 700
+  const limpio = S.cursorLazo(S.F, c, TL, 700, null, 1);
+  if (Math.abs(vuelta.r.ang[rIdx] - limpio.r.ang[rIdx]) > 1e-12)
+    throw new Error('ir atrás con el cursor adelantado no da lo mismo que arrancar limpio');
 });
 
 t('sin lazo la columna de desalineo es CERO en todo el día', () => {
