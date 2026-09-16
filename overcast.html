@@ -3722,7 +3722,13 @@ function buildReal3D(zc,reframe){
   // unidas por el eje de transmisión. Ayora: 754 unidades = 1.508 filas.
   // MONOFILA (Bagnarelli): una fila por unidad, sin transmisión. Con eje
   // girado (rot ≠ 0) los offsets giran con él y el modelo lleva su yaw.
-  const filaZ=(J.mesa&&J.mesa.filaZ)||3;
+  /* SEPARACIÓN DE LAS DOS FILAS, del layout y no de un valor por defecto. Se
+     leía solo `mesa.filaZ`, así que Túnez (3,125) y Bagnarelli (2,75) —que lo
+     declaran arriba— se dibujaban a 3 m. Se aceptan solo valores POSITIVOS: el
+     `filaZ 0` de Páramo es el mismo marcador viejo que hizo pasar a Bagnarelli
+     por monofila, y tomarlo al pie de la letra colapsaría las dos filas en una. */
+  const fz=v=>(Number.isFinite(v)&&v>0)?v:null;
+  const filaZ=fz(J.mesa&&J.mesa.filaZ)||fz(J.filaZ)||3;
   const rotR=(R.rot||0)*RAD, cRo=Math.cos(rotR), sRo=Math.sin(rotR);
   const mkRow=(t,off,z)=>({px:t.n+off*(-sRo),pz:t.x+off*cRo,z:z});
   const bySize={largo:{all:[],west:[]},medio:{all:[],west:[]}};
