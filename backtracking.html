@@ -2724,13 +2724,93 @@ function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
    las filas (la sombra es acoplada), argmax del POA de planta neto Martinez.
    f=0 primero ⇒ en empate estricto gana el candidato conservador. */
 const OPT_FRACTIONS=[0,0.25,0.5,0.75,1];
-function anglesOptimal(zen,az,T,irr,doy,albedo){
+/* ── LA REJILLA FINA Y LA HISTÉRESIS (v1.58) ─────────────────────────────────
+   Dos defectos medidos del energy-optimal, y NO son el mismo:
+
+   1 · LA REJILLA ERA GRUESA. Con 5 fracciones fijas la f ganadora se elegía a
+   saltos de 0,25, y eso deja energía sin recoger: medido en la genérica del
+   canario, pasar a 21 puntos da +0,105 % el 21-jun y +0,214 % el 21-dic (con
+   41 ya solo +0,116 / +0,227: satura). Ahora la búsqueda va en DOS ETAPAS —la
+   rejilla gruesa de siempre y un refinado alrededor de la mejor—, y con dos
+   puntos de refinado a cada lado da +0,040 % el 21-jun y +0,132 % el 21-dic
+   por un 22 % más de tiempo. El número de puntos está elegido con su tabla,
+   más abajo.
+
+   2 · EL EJE RETROCEDÍA 29° PARA GANAR MEDIO PUNTO, y esto la rejilla no lo
+   arregla. La POA frente a f NO tiene un óptimo que se desplace: tiene DOS
+   máximos, y están en los extremos. Medido a las 07:24 del 21-jun con el sol a
+   8,3° (POA de planta, W/m²):
+
+       f:     0,00   0,05   0,10   …   0,90   0,95   1,00
+       POA:  183,9  132,2  138,3   …  179,2  182,9   ~183
+
+   O sea: un pico en pairwise, una caída del 28 % en cuanto te separas, y otro
+   pico en astro. Y los dos SE CRUZAN — 07:23 astro gana por 0,5 %, 07:24
+   pairwise gana por 0,5 % —, así que el argmax salta de f=1 a f=0 y el eje se
+   recorre 29,3° enteros para perseguir ese medio punto. Con 41 candidatas
+   pasaría lo mismo, mejor calculado: no es resolución, es un objetivo bimodal
+   cuyos picos se cambian el puesto.
+
+   La cura es la misma que la banda muerta le aplica al ángulo: HISTÉRESIS. No
+   se abandona el pico en el que está el eje si el otro no le gana por un
+   margen. Necesita memoria, y esta función no la tenía, así que entra como
+   `prev` OPCIONAL: sin él se comporta EXACTAMENTE como antes (lo exige el
+   banco), y con él el consumidor le pasa la f del instante anterior.
+
+   ⚠ Y ESTO RELAJA UNA GARANTÍA AUDITADA, así que se dice aquí y no en un
+   commit: el invariante era «lo publicado nunca rinde menos que pairwise ni
+   que astro» (auditorías v1.29, v1.29.2 y v1.57). Con histéresis pasa a ser
+   «nunca menos que el mejor de sus candidatas MENOS el margen», y el margen es
+   justo el precio de no mover el eje 29° por medio punto. Sin `prev` la
+   garantía vieja sigue intacta, porque no hay nada que retener. */
+/* Puntos de refinado a cada lado de la mejor gruesa. DOS, y el número está
+   elegido con la medida, no a ojo: la energía sube casi lineal con el refinado
+   pero el coste también, así que se busca lo que más recoge por lo que cuesta.
+   Sobre la genérica del canario (día completo a paso minutal, con histéresis):
+
+     refinado   21-jun      21-dic     coste por instante
+        0       +0,000 %    +0,000 %     6,4 ms
+        1       +0,032 %    +0,092 %     7,2 ms  (+13 %)
+        2       +0,040 %    +0,132 %     7,8 ms  (+22 %)
+        4       +0,057 %    +0,152 %     9,6 ms  (+51 %)
+
+   Con 2 se recoge el 70 % de la ganancia de junio y el 87 % de la de diciembre
+   pagando menos de la mitad del coste extra. Con 4 el banco del simulador se
+   pasaba de los 15 minutos y lo mataba su propio timeout, que es otra forma de
+   decir que no sale gratis. */
+const OPT_REFINA=2;
+const OPT_HISTERESIS=0.01;     /* 1 % de POA: lo que el otro pico tiene que ganar */
+/* 3 · LO QUE NO HAY QUE HACER: FRENAR `f`. Queda el código y queda APAGADO,
+   con la medida que lo condena, porque es la idea que se le ocurre a cualquiera
+   —«si el vaivén de f mueve el eje, que f no pueda cambiar deprisa»— y cuesta
+   un 2 % de la cifra.
+
+   El motivo es la forma del objetivo, la misma que obliga a la histéresis: los
+   dos máximos están en los EXTREMOS y en medio hay un VALLE donde la POA cae
+   un 28 %. Frenar f no hace que el eje vaya «suavemente al mejor sitio»: lo
+   obliga a CRUZAR EL VALLE DESPACIO, o sea a pasarse minutos en la peor
+   postura posible. Medido en la genérica del canario, con histéresis puesta:
+
+     21-jun   sin freno  391° de recorrido · 1688,63 kWh
+              df ≤ 0,10  221°              · 1655,47  (−1,908 %)
+     21-dic   sin freno  348°              ·  442,46 kWh
+              df ≤ 0,10  220°              ·  431,37  (−2,360 %)
+
+   Recorta el recorrido un 44 % y se lleva veinte veces la ganancia de todo el
+   energy-optimal. A null está desactivado; se deja el código para que quien
+   vuelva a tener la idea encuentre la medida al lado en vez de repetirla. */
+const OPT_DF_MAX=null;
+function anglesOptimal(zen,az,T,irr,doy,albedo,prev){
   // el acoplado de accionamiento (T.groups) se aplica a los DOS extremos antes
   // de interpolar: la combinación lineal de valores iguales por grupo conserva
   // el θ común, así toda candidata es físicamente ejecutable por los motores
   const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
   const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
   if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
+  const angDe=f=>base.map((b,i)=>b+f*(full[i]-b));
+  /* las candidatas: la rejilla gruesa, y luego un refinado alrededor de la
+     ganadora con el paso de la gruesa dividido por OPT_REFINA+1 */
+  const paso=(OPT_FRACTIONS.length>1)?(OPT_FRACTIONS[1]-OPT_FRACTIONS[0]):0.25;
   let best=-Infinity, bestAng=base, bestF=0;
   for(const f of OPT_FRACTIONS){
     const ang=base.map((b,i)=>b+f*(full[i]-b));
@@ -2743,6 +2823,49 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
        energía, 10,5100 Wh/m². El guía rápido se queda para nada crítico. */
     const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
     if(p>best+1e-12){best=p;bestAng=ang;bestF=f;}
+  }
+  /* SEGUNDA ETAPA: refinado alrededor de la ganadora gruesa, con el mismo
+     contador exacto. Se recortan las f fuera de [0,1] —no son candidatas: el
+     segmento es de pairwise a astro y salirse sería una postura que ninguna de
+     las dos políticas pide. */
+  const finas=[];
+  for(let j=1;j<=OPT_REFINA;j++){
+    const d=paso*j/(OPT_REFINA+1);
+    for(const f2 of [bestF-d,bestF+d])
+      if(f2>0&&f2<1&&finas.indexOf(f2)<0)finas.push(f2);
+  }
+  for(const f2 of finas){
+    const ang2=angDe(f2);
+    const p2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;
+    if(p2>best+1e-12){best=p2;bestAng=ang2;bestF=f2;}
+  }
+  let retenidaDF=false;
+  /* LÍMITE DE VELOCIDAD DE `f`: antes de la histéresis, porque son cosas
+     distintas —esto frena el vaivén, aquella impide el salto de pico— y porque
+     la f recortada es la que la histéresis tiene que juzgar. Se recorta y se
+     recalcula la POA: lo publicado siempre es lo que se mide, nunca una
+     candidata evaluada en otro punto. */
+  if(prev&&prev.f!=null&&isFinite(prev.f)&&OPT_DF_MAX!=null){
+    const fp=Math.max(0,Math.min(1,+prev.f));
+    if(Math.abs(bestF-fp)>OPT_DF_MAX){
+      const fr=fp+Math.sign(bestF-fp)*OPT_DF_MAX;
+      bestF=fr;bestAng=angDe(fr);
+      best=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
+      retenidaDF=true;
+    }
+  }
+  /* HISTÉRESIS: si el eje venía en otra f y la de ahora no le gana por el
+     margen, se QUEDA donde estaba —recalculada en este instante, así que sigue
+     siguiendo al sol; lo que no hace es cambiar de pico—. El margen se mide
+     sobre la POA publicada, que es la que se cobra. */
+  let retenida=false;
+  if(prev&&prev.f!=null&&isFinite(prev.f)&&Math.abs(prev.f-bestF)>1e-9){
+    const fp=Math.max(0,Math.min(1,+prev.f));
+    const angP=angDe(fp);
+    const pP=poaPlant(zen,az,T,angP,irr,doy,albedo).plant;
+    if(pP>0&&best<=pP*(1+OPT_HISTERESIS)){
+      best=pP;bestAng=angP;bestF=fp;retenida=true;
+    }
   }
   // VETO con el contador EXACTO (auditoría v1.29): el evaluador de búsqueda es
   // 2.5D y ciego a la estructura, y en llano elegía f>0 que bajo el contador
@@ -2776,16 +2899,25 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
      otra interior mejor, el veto no lo veía. Ahora se mide con el contador
      exacto toda la rejilla, y el óptimo publicado es el mejor de sus propias
      candidatas POR CONSTRUCCIÓN. Cuesta dos evaluaciones exactas más. */
-  {
+  /* EL VETO NO PUEDE DESHACER LA HISTÉRESIS, y es la única línea delicada de
+     todo esto: el veto existe para que lo publicado sea el mejor de sus
+     candidatas, y retener la f es precisamente publicar una candidata que NO
+     es la mejor —a cambio de no mover el eje—. Si el veto corriera igual,
+     volvería a poner la ganadora y la histéresis no existiría. Así que cuando
+     la f viene retenida el veto se salta, y el margen de OPT_HISTERESIS es
+     entonces la ÚNICA cota de lo que se cede: está medida arriba y el banco la
+     exige. Sin `prev` nada se retiene y el veto corre entero, como siempre. */
+  if(!retenida&&!retenidaDF){
     let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;
     const cands=OPT_FRACTIONS.map(f2=>[f2,base.map((b,i)=>b+f2*(full[i]-b))]);
     cands.push([0,pub]);
+    for(const f2 of finas)cands.push([f2,angDe(f2)]);
     for(const [f2,ang2] of cands){
       const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;
       if(e2>eBest+1e-9){eBest=e2;bestAng=ang2;bestF=f2;}
     }
   }
-  return {angles:bestAng,f:bestF};
+  return {angles:bestAng,f:bestF,retenida:retenida||retenidaDF,frenada:retenidaDF};
 }
 
 /* óptimo LIBRE (NCU): cada unidad de accionamiento con SU PROPIA fracción
@@ -2803,7 +2935,7 @@ function anglesOptimal(zen,az,T,irr,doy,albedo){
    HARDWARE: clamp ±θmáx y slew del actuador. El energy-optimal de misma-f se
    queda fiel al core (Deeptrack, f∈[0,1]), declarado. */
 const OPTFREE_F0=-0.5, OPTFREE_NF=13;
-function anglesOptimalFree(zen,az,T,irr,doy,albedo){
+function anglesOptimalFree(zen,az,T,irr,doy,albedo,prev){
   const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);
   if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
   const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
@@ -3209,9 +3341,14 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   }
   return best;
 }
-function policyAngles(key,zen,az,T,irr,doy,albedo){
-  if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo);
-  if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo);
+function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
+  /* `prev` es OPCIONAL y solo lo usan las dos políticas de energía, para su
+     histéresis (ver anglesOptimal). Quien no lo pase obtiene exactamente el
+     comportamiento de antes, y el banco lo exige: es lo que permite que las
+     otras tres cabezas de la casa —overcast, el gemelo y el core— sigan
+     llamando igual hasta que decidan usarlo. */
+  if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo,prev);
+  if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo,prev);
   /* el acoplado según la semántica de cada política: las que BUSCAN no-sombra
      (pairwise 2.5D, true-3D con su residual) refinan a nivel de accionamiento.
      BUSCAN, no GARANTIZAN: desde v1.57 la guardia de energía es incondicional,
