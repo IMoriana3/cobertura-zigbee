@@ -140,10 +140,11 @@
       <div class="f"><label>Azimut eje °</label><input id="axaz" type="number" step="1" value="0" title="pvlib: 0 o 180 = eje N-S (HSAT estándar)"></div>
     </div>
     <div class="two">
-      <div class="f"><label>Resolución temporal</label>
-        <select id="dt">
+      <div class="f"><label>Ciclo de decisión de la TCU</label>
+        <select id="dt" title="Cada cuánto DECIDE la TCU. No es la rejilla del actuador, que va SIEMPRE al minuto: son dos relojes distintos, a propósito. La TCU de campo decide al minuto; 10 min es el valor del core legacy y se deja para poder carearlo.">
+          <option value="1" selected>1 min (la TCU real)</option>
           <option value="5">5 min</option>
-          <option value="10" selected>10 min (la del core legacy)</option>
+          <option value="10">10 min (la del core legacy)</option>
           <option value="15">15 min</option>
         </select></div>
       <div class="f"><label>Stow nocturno ° (− = este)</label>
@@ -151,8 +152,15 @@
           title="Los trackers DUERMEN a −5° (5° hacia el ESTE). Toda la UI va en convención TCU: NEGATIVO = este. Por dentro la física espeja al core/pvlib (su signo va al revés con eje a 0°); la conversión vive en el borde de la UI."></div>
     </div>
     <div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
-      schema 2.1.0): cambiar la resolución NO mueve los bordes de conmutación — hay un check de la QA
-      que lo exige (5/10/15 min, mismos instantes físicos ±1 paso grueso).</div>
+      schema 2.1.0): cambiar el ciclo NO mueve los bordes de conmutación — hay un check de la QA
+      que lo exige (<b>1</b>/5/10/15 min, mismos instantes físicos ±1 paso grueso).
+      <b>Por defecto va al minuto</b>, que es lo que hace la TCU en campo; el 10 del core legacy se
+      queda para poder carear. <b>Esto NO es cosmético en el coste de maniobra</b>: el ciclo decide
+      cuándo arranca el motor, y con el mismo día y el mismo recorrido el baseline pasa de 27
+      arranques y 12,4 Wh a 30′ a <b>177 y 26,1 Wh al minuto</b>. El <b>recorrido</b> apenas se mueve
+      (±2 %) y la comparación entre políticas tampoco (el ahorro de cada una cambia 1-4 puntos): lo
+      que se dispara es el término de arranque. Por eso el número que se cita fuera es el recorrido o
+      la comparación, nunca los vatios-hora absolutos sin decir el ciclo.</div>
   </div>
 
   <div class="card">
@@ -1513,9 +1521,9 @@ function runPhysicsQA(){
       if(inWin(S10.day,i,1050,1080))A(!r.flag[i],'sigue en flat en '+S10.day.tmin[i]);
     }
   });
-  t('invarianza de resolución (schema 2.1.0): mismo nº de conmutaciones a 5/10/15 min, bordes ± 15 min',()=>{
+  t('invarianza de resolución (schema 2.1.0): mismo nº de conmutaciones a 1/5/10/15 min, bordes ± 15 min',()=>{
     const edges={};
-    for(const dt of [5,10,15]){   // la promesa del schema: el escenario tiene
+    for(const dt of [1,5,10,15]){   // la promesa del schema: el escenario tiene
       // tramos de 15 min, así que solo estas tres lo muestrean igual. El caso
       // dtMin ≥ confirmMin lo cubre su propio test (el confirm no puede valer 0′).
       const S=mk(dt);
@@ -1593,7 +1601,7 @@ function runPhysicsQA(){
     }
   });
   t('diario de decisiones: el espejo anotado reproduce EXACTAMENTE los flags del poa_switch y narra el día',()=>{
-    for(const dt of [5,10,15]){
+    for(const dt of [1,5,10,15]){
       const S=mk(dt);
       const r=polPoaSwitch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
       const e=explainPoaSwitch(S.day,S.thN,S.poaN,DCFG_DEFAULT);
@@ -1672,7 +1680,7 @@ function runPhysicsQA(){
     // paso; con el slider minutal eso son 55° en 1 min = 3× lo posible.
     const loop={deadbandDeg:1,slewDegS:0.17,maxAngle:55};
     const maxMin=0.17*60+1e-9;
-    for(const dt of [5,10,15]){
+    for(const dt of [1,5,10,15]){
       const S=mk(dt);
       for(const nm of ['diffuse_flat','diffuse_continuous','diffuse_poa_switch']){
         const r=POLICIES[nm](S.day,S.thN,S.poaN,DCFG_DEFAULT);
@@ -1680,7 +1688,20 @@ function runPhysicsQA(){
         const viejo=applyControlLoop(r.theta,dt,loop);
         let peorViejo=0;
         for(let i=1;i<viejo.length;i++)peorViejo=Math.max(peorViejo,Math.abs(viejo[i]-viejo[i-1]));
-        A(peorViejo>maxMin,'el escenario debe contener un salto que el paso grueso no ataba (dt '+dt+')');
+        if(dt>1){
+          // con malla GRUESA el camino viejo tiene que violar el slew, o el
+          // escenario no probaría nada: es el guard de que el caso es real
+          A(peorViejo>maxMin,'el escenario debe contener un salto que el paso grueso no ataba (dt '+dt+')');
+        }else{
+          // AL MINUTO la malla de decisión ES la del actuador, así que no queda
+          // nada que rampar y los dos caminos tienen que coincidir BIT A BIT.
+          // Exigirle aquí el salto del caso grueso sería pedirle al escenario
+          // un defecto que a esta resolución no puede existir.
+          A(peorViejo<=maxMin,'a 1 min el propio lazo ya viola el slew: '+peorViejo.toFixed(2)+'°/paso');
+          const f1=execOnFineGrid(r.theta,1,1440,1,loop);
+          for(let i=0;i<viejo.length;i++)
+            A(Math.abs(f1[i]-viejo[i])<1e-12,nm+': a 1 min los dos caminos difieren en el paso '+i);
+        }
         // el camino NUEVO: rampa en rejilla fina de 1 min
         const fino=execOnFineGrid(r.theta,dt,1440,1,loop);
         for(let i=1;i<fino.length;i++)
@@ -1922,7 +1943,7 @@ function runPhysicsQA(){
     // y volvía al stow con el amanecer GEOMÉTRICO. En un día de tarde nublada
     // eso son 30′ de desfase por la mañana y 79′ por la tarde: el diario
     // narraba un movimiento que la curva de θ contradecía en la misma pantalla.
-    for(const dtMin of [5,10,15]){
+    for(const dtMin of [1,5,10,15]){
       const day=canonScenario(dtMin);
       const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
       const ev=EXPLAIN.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT).events;
@@ -2067,7 +2088,7 @@ function runPhysicsQA(){
 /* FIN-FÍSICA ═══════════════════════════════════════════════════════════════ */
 
 /* ══════════════════════════ UI (solo navegador) ══════════════════════════ */
-const VER='v1.20.2';
+const VER='v1.21.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
