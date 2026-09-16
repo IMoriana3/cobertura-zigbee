@@ -24,18 +24,31 @@
                   que ella, arranca aunque no llegue a la banda. Criterio conservador: se compara la
                   MAGNITUD, así que un aguante que cruzase el cero también arranca.
 
-   EL ACTUADOR NO VIVE EN LA REJILLA DE INTEGRACIÓN. La TCU decide cada `cicloMin` y el actuador rampa
+   EL ACTUADOR NO VIVE EN LA REJILLA DE INTEGRACIÓN. La TCU decide cada `cicloSeg` y el actuador rampa
    a `slewDegS` constante; la app integra energía cada 5 min (o cada hora en los agregados largos).
    Correr el lazo en la rejilla de integración es un error físico ya pagado en overcast.html: a paso
    horario el techo por paso es 0,17·3600 = 612°, más que el recorrido entero del tracker, así que el
    slew NUNCA ataba y el deadband no veía el escalón real. Aquí la consigna se interpola al ciclo de
-   la TCU (execTramo) y el lazo corre AHÍ; la integración solo lee el θ al final del tramo. */
+   la TCU (execTramo) y el lazo corre AHÍ; la integración solo lee el θ al final del tramo.
+
+   EL CICLO ES DE UN SEGUNDO, Y ESO ES DE CAMPO. La primera versión puso el ciclo en MINUTOS con un
+   canónico de 1 min, y escribió que venía de overcast.html «como los canónicos de la casa»: FALSO.
+   El CANON de overcast solo trae deadband y slew; su «ciclo» es la resolución que elige el usuario
+   para simular, no el periodo de la TCU. La TCU real CALCULA CADA SEGUNDO —lo dice Iñaki, que las
+   configura, y el mapa Modbus de la TCU (tools/modbus_src/tcu_v6.json) trae la banda muerta en el
+   41061 pero no publica su periodo de scan, así que la autoridad aquí es el campo—. La diferencia no
+   es cosmética: a 0,17°/s, en un ciclo de 60 s el actuador recorre 10,2°, así que CUALQUIER
+   movimiento cabía en un ciclo y el enclavamiento no ataba nunca; en uno de 1 s recorre 0,17°, y un
+   paso de banda de 1° son SEIS ciclos de motor en marcha. Por eso la unidad es `cicloSeg`: en
+   minutos el valor de verdad es 1/60, y un campo cuyo valor honrado es 0,0167 pide que alguien
+   teclee 1 «porque es lo normal» y se coma un factor de sesenta. */
 (function(g){
   'use strict';
   var C={};
 
-  /* Los canónicos de la casa, los mismos que el simulador de difusa (overcast.html CANON). */
-  C.CANON={deadbandDeg:1.0, slewDegS:0.17, cicloMin:1};
+  /* Los canónicos: deadband y slew son los de la casa (los mismos que overcast.html CANON, que
+     los toma del core); el ciclo de 1 s es el de la TCU real, y no vive en ningún CANON de código. */
+  C.CANON={deadbandDeg:1.0, slewDegS:0.17, cicloSeg:1};
 
   /* Recorte por velocidad del actuador. UNA sola pieza: si se toca, se toca aquí. */
   C.slewLimit=function(prev,cmd,dtSec,rateDegS){
@@ -47,10 +60,11 @@
   /* UN ciclo del lazo, de dtSec segundos.
        prev     θ ejecutado al empezar el ciclo (grados)
        target   consigna de la política (grados)
-       loop     {deadbandDeg, slewDegS, maxAngle, modo}
+       loop     {deadbandDeg, slewDegS, cicloSeg, maxAngle, modo}
        btLimita ¿la consigna está recortada por backtracking? — solo lo mira el modo 'seguro'
-       moving   ¿venía ya MOVIÉNDOSE? (el enclavamiento; ver abajo)
-     Devuelve {theta, moving}.
+       dir      sentido en VUELO del ciclo anterior: +1, −1 o 0 (parado). Es el enclavamiento.
+       park     destino ENCLAVADO del movimiento en curso (null = parado).
+     Devuelve {theta, dir, park}.
 
      LA BANDA ARRANCA EL MOTOR, PERO NO LO PARA. Un deadband sin condición de parada no es un
      deadband: arranca al alcanzar la banda y, en cuanto el actuador recorta el error por debajo de
@@ -58,57 +72,112 @@
      medio camino, con más arranques y no menos, que es justo lo contrario de para lo que está la
      banda. Se vio con banda de 2,5° y ciclo de 6 s: el paso salía 1,02° = 0,17·6, la velocidad del
      actuador, en vez de los 2,5° de la banda. Así que hay ENCLAVAMIENTO: la banda decide el
-     ARRANQUE y el motor sigue hasta LLEGAR a la consigna (o hasta el tope mecánico). Con eso el
-     paso del tracker es la banda, sea la que sea. */
-  C.step=function(prev,target,dtSec,loop,btLimita,moving){
+     ARRANQUE y el motor sigue hasta LLEGAR a su destino (o hasta el tope mecánico).
+
+     Y EL DESTINO NO ES LA CONSIGNA: LA TCU ADELANTA AL SOL. Esto estaba mal, y lo estaba en todas
+     partes. La versión anterior paraba el eje EN la consigna, así que el error solo podía ir POR
+     DETRÁS: la columna de desalineo de la tabla salía siempre del mismo signo, y eso se vio en
+     pantalla («no siempre vamos detrás»). La TCU real arranca cuando se ha quedado un grado atrás y
+     lleva el eje un grado MÁS ALLÁ de donde está el sol, o sea que el movimiento es de DOS grados y
+     el error barre de +banda a −banda con media cero. El core NO lo hace: `apply_control_loop`,
+     `run_tcu_sim` y la máquina direccional de `direction.py` rampan con `_advance(prev, tgt, dt)` y
+     paran en la consigna; el gemelo tiene una «banda de llegada» (`dead*0,5`), que también es de
+     parada. Así que aquí el destino es `consigna + banda·sentido`, y con eso:
+       · el paso del tracker es DOS veces la banda, no una;
+       · el desalineo medio es CERO y el |desalineo| medio es banda/2, no banda/2 con signo fijo;
+       · el eje pasa la mitad del tiempo por delante de la consigna, que en las horas de
+         backtracking es el lado que NO sombrea (la trayectoria va hacia plano por la tarde).
+     EL SENTIDO SE ENCLAVA, y hace falta. Con el destino pasado la consigna, en cuanto el eje la
+     cruza el error cambia de signo; recalcular el sentido en cada ciclo daría destino nuevo hacia
+     atrás y el motor se pararía justo al llegar a la consigna —el adelanto no se haría nunca—. Por
+     eso el estado que cruza el ciclo y el tramo es el SENTIDO (+1/−1/0), no un booleano. */
+  C.step=function(prev,target,dtSec,loop,btLimita,dir,park,dirUlt){
+    dirUlt=(dirUlt>0?1:(dirUlt<0?-1:0))||(dir>0?1:(dir<0?-1:0));
     var db=(loop&&loop.deadbandDeg>0)?loop.deadbandDeg:0;
     var max=(loop&&loop.maxAngle>0)?loop.maxAngle:90;
-    var arranca=!!moving||db<=0||Math.abs(target-prev)>=db;
-    // modo 'seguro': si la consigna viene recortada por sombra y el tracker está MÁS inclinado que
-    // ella, arranca aunque no llegue a la banda (aguantar ahí sombrearía al vecino)
-    if(!arranca&&loop&&loop.modo==='seguro'&&btLimita&&Math.abs(prev)>Math.abs(target))arranca=true;
-    if(!arranca)return {theta:prev,moving:false};
+    var d=(dir>0?1:(dir<0?-1:0));
+    var err=target-prev, destino;
+    if(d&&park!=null){
+      // EN VUELO hacia el destino ENCLAVADO al arrancar. No se recalcula: la TCU decide UNA vez
+      // —«vete a la consigna de ahora más una banda»— y conduce hasta ahí. Recalculándolo, con la
+      // consigna derivando el eje se queda de SEGUIDOR perpetuo una banda por delante y el paso de
+      // dos bandas no se hace nunca: medido en el core (media firmada +0,925° y ni una parada en
+      // una hora) y visible en cuanto el ciclo es largo.
+      if((park-prev)*d<=1e-12)d=0;                 // ha llegado: se para
+      else destino=park;
+    }
+    if(!d){                                        // parado: ¿arranca?
+      // ARRANCAR pide el margen con `>=`; INVERTIR, estrictamente MÁS. Es
+      // obligado y está medido: el eje aparca un margen más allá de la consigna,
+      // así que en reposo el error vale EXACTAMENTE un margen, y con `>=` esa
+      // postura de aparcamiento era ya condición de inversión — el eje entraba
+      // en chatter perpetuo. Se vio en la traza del atardecer de San José: ±0,19°
+      // cada minuto, sin parar, con la consigna quieta en 0. El sentido se
+      // RECUERDA al parar (dirUlt) para que una orden contraria siga siendo una
+      // inversión y no un arranque en frío, que es por donde el chatter volvía.
+      var inv=dirUlt!==0&&(err>0?1:-1)!==dirUlt;
+      var arranca=db<=0||(inv?Math.abs(err)>db:Math.abs(err)>=db);
+      // modo 'seguro': si la consigna viene recortada por sombra y el tracker está MÁS inclinado que
+      // ella, arranca aunque no llegue a la banda (aguantar ahí sombrearía al vecino)
+      if(!arranca&&loop&&loop.modo==='seguro'&&btLimita&&Math.abs(prev)>Math.abs(target))arranca=true;
+      if(!arranca)return {theta:prev,dir:0,park:null,dirUlt:dirUlt};
+      d=err>0?1:(err<0?-1:0);
+      if(!d)return {theta:prev,dir:0,park:null,dirUlt:dirUlt};   // clavado en la consigna
+      // EL DESTINO: la consigna adelantada una banda en el sentido de la marcha
+      destino=target+db*d;
+      // …PERO EL ADELANTO NO VALE HACIA EL LADO QUE SOMBREA. Si la consigna viene recortada por
+      // backtracking, pasarse de ella hacia MÁS inclinado sombrea al vecino por definición: el
+      // límite es el límite. En modo 'seguro' el adelanto se conserva solo cuando va hacia PLANO.
+      // Sin esto, 'seguro' dejaba de servir en cuanto la TCU adelanta: con el eje parando en la
+      // consigna la mañana se salvaba sola —el aguante caía siempre del lado plano—, y con adelanto
+      // sobreinclinaba 59 de 120 pasos. Lo cazó el banco del núcleo al cambiar la ley.
+      if(loop&&loop.modo==='seguro'&&btLimita&&Math.abs(destino)>Math.abs(target))destino=target;
+    }
     // Un slew de 0 tecleado en la UI sería un actuador de velocidad infinita: el tracker se
     // teletransportaría y el deadband dejaría de tener forma de escalón. Cae al canónico.
-    var th=C.slewLimit(prev,target,dtSec,(loop&&loop.slewDegS>0)?loop.slewDegS:C.CANON.slewDegS);
+    var th=C.slewLimit(prev,destino,dtSec,(loop&&loop.slewDegS>0)?loop.slewDegS:C.CANON.slewDegS);
     th=Math.max(-max,Math.min(max,th));
-    // sigue moviéndose mientras no haya llegado; en el tope mecánico se para
-    return {theta:th,moving:Math.abs(target-th)>1e-9&&Math.abs(th)<max-1e-9};
+    // sigue en vuelo mientras no haya llegado a SU destino; en el tope mecánico se para
+    var sigue=(destino-th)*d>1e-9&&Math.abs(th)<max-1e-9;
+    return {theta:th,dir:sigue?d:0,park:sigue?destino:null,dirUlt:d};
   };
 
   /* Un TRAMO de integración completo: la consigna pasa de tPrev a tNow en dtMin minutos y el lazo
      corre dentro, en la rejilla del ciclo de la TCU, con la consigna interpolada linealmente (el sol
      va suave; el codo del paso backtracking→seguimiento se suaviza, y eso va declarado).
      Devuelve el θ ejecutado al FINAL del tramo, que es el que ve la integración. */
-  C.execTramo=function(prev,tPrev,tNow,dtMin,loop,btLimita,moving){
-    var ciclo=(loop&&loop.cicloMin>0)?loop.cicloMin:C.CANON.cicloMin;
-    var n=Math.max(1,Math.round(dtMin/ciclo)), dtS=(dtMin/n)*60, th=prev, mov=!!moving;
+  C.execTramo=function(prev,tPrev,tNow,dtMin,loop,btLimita,dir,park,dirUlt){
+    var ciclo=(loop&&loop.cicloSeg>0)?loop.cicloSeg:C.CANON.cicloSeg;   // segundos
+    var n=Math.max(1,Math.round(dtMin*60/ciclo)), dtS=(dtMin/n)*60, th=prev, d=(dir>0?1:(dir<0?-1:0));
+    var pk=(park==null?null:+park), du=(dirUlt>0?1:(dirUlt<0?-1:0));
     // EL ENCLAVAMIENTO CRUZA LA FRONTERA DEL TRAMO. La primera versión lo reiniciaba en cada tramo
     // pensando que solo importaría en un movimiento que no cupiera en uno; es falso, y se midió:
     // si el arranque cae en los ÚLTIMOS ciclos del tramo, el movimiento se trunca en la frontera y
-    // el tracker se queda a medio paso. Con banda 2,5°, ciclo 6 s y deriva 0,25°/min el arranque
+    // el tracker se queda a medio paso. Con banda 2,5°, ciclo de 6 s y deriva 0,25°/min el arranque
     // cae siempre en el último ciclo (2,5 = 10 × 0,25: conmensurable) y el paso salía 1,02° —la
     // velocidad del actuador— en TODOS los movimientos. Así que el estado que arrastra la app son
-    // dos cosas: el θ y el «me estoy moviendo».
+    // dos cosas: el θ y el SENTIDO en que va (que además es lo que hace posible el adelanto).
     for(var i=1;i<=n;i++){
-      var r=C.step(th,tPrev+(tNow-tPrev)*(i/n),dtS,loop,btLimita,mov);
-      th=r.theta; mov=r.moving;
+      var r=C.step(th,tPrev+(tNow-tPrev)*(i/n),dtS,loop,btLimita,d,pk,du);
+      th=r.theta; d=r.dir; pk=r.park; du=r.dirUlt;
     }
-    return {theta:th,moving:mov};
+    return {theta:th,dir:d,park:pk,dirUlt:du};
   };
 
   /* Lo mismo sobre un VECTOR de trackers (una consigna por fila o por mesa). Las cuatro mesas de un
      seguidor comparten motor y por tanto consigna: aplicar el lazo elemento a elemento las deja con
      el mismo θ por construcción, y la QA lo exige. prev/tPrev/tNow del mismo largo. */
-  C.execVector=function(prev,tPrev,tNow,dtMin,loop,bt,mov){
-    var th=new Array(tNow.length), mo=new Array(tNow.length);
+  C.execVector=function(prev,tPrev,tNow,dtMin,loop,bt,dir,park,dirUlt){
+    var th=new Array(tNow.length), dd=new Array(tNow.length), pp=new Array(tNow.length),
+        du=new Array(tNow.length);
     for(var i=0;i<tNow.length;i++){
       var r=C.execTramo(prev[i]==null?tNow[i]:prev[i],
                         tPrev[i]==null?tNow[i]:tPrev[i],tNow[i],dtMin,loop,
-                        bt?!!bt[i]:false,mov?!!mov[i]:false);
-      th[i]=r.theta; mo[i]=r.moving;
+                        bt?!!bt[i]:false,dir?dir[i]:0,park?park[i]:null,
+                        dirUlt?dirUlt[i]:0);
+      th[i]=r.theta; dd[i]=r.dir; pp[i]=r.park; du[i]=r.dirUlt;
     }
-    return {theta:th,moving:mo};
+    return {theta:th,dir:dd,park:pp,dirUlt:du};
   };
 
   /* Desalineo del paso: lo que separa al panel de su consigna. Es la magnitud que explica la pérdida

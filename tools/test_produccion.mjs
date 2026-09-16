@@ -54,7 +54,8 @@ const S = new Function(ctrl + sol + fis + log + `
           instant, dayTotals, dayEnergy, fechasPeriodo, doyOf, localToUTCms,
           degradaEta, soilingDelMes, plantaEtaAC, auxW, poaRear, poaBifacial, iamDe,
           sigmaTotal, bandaPXX, parseHorizonte, horizonteEn, irrTrasHorizonte,
-          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto,
+          estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto, cursorLazo,
+          tPlano, careoPlano, careoStats, dayInit, dayAvanza, dayCierra,
           CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
@@ -1146,7 +1147,7 @@ t('el perfil de horizonte admite decimal con coma, y el MAE es por inversor como
 console.log('');
 console.log('v1.30 · el lazo de control del tracker, y las políticas del bt3d aquí');
 
-const LAZO = { on:true, db:1.0, slew:0.17, cicloMin:1, modo:'libre' };
+const LAZO = { on:true, db:1.0, slew:0.17, cicloSeg:1, modo:'libre' };
 const ELEV = S.elevPreset('pendiente', CE.nrows, 6, CE.pitch);
 const TL   = S.buildT(S.F, CE, ELEV);
 const base = { ...CE, albedo:0.25, ac:{ ...(C.ac||{}), planta:{} } };
@@ -1154,7 +1155,7 @@ const sumDia = c => S.dayTotals(S.F, c, TL, S.mapStringW(S.F, c, TL)).reduce((a,
 
 t('APAGADO la estimación es la de ANTES, al vatio (la regla de la casa)', () => {
   const sin = sumDia(base);
-  for (const ctrl of [undefined, {on:false,db:2,slew:0.17,cicloMin:1,modo:'libre'}]) {
+  for (const ctrl of [undefined, {on:false,db:2,slew:0.17,cicloSeg:1,modo:'libre'}]) {
     const e = sumDia({ ...base, ctrl });
     if (e !== sin) throw new Error(`con ctrl=${JSON.stringify(ctrl)} la cifra se mueve: ${e} ≠ ${sin}`);
   }
@@ -1329,6 +1330,75 @@ t('la tabla enseña el ESCALÓN, y el desalineo lo acota la banda salvo cuando m
     throw new Error(`θ no sale a escalones: ${distintos} valores distintos en ${th.length} minutos`);
 });
 
+/* ── el cursor del lazo: lo que se PINTA tiene que respetar el actuador ─────
+   Esto es el defecto «no respeta slew rate» del parte. La escena no integra el
+   día: pide un minuto suelto y el cursor se lo sirve desde el último punto de
+   rejilla que recorrió. Si esa rejilla es gruesa, el θ pintado da saltos que el
+   hierro no puede dar, porque un tramo de 5 min permite 51° de recorrido y la
+   consigna da un escalón en la puesta de sol (el ángulo astro se vuelve NaN y
+   cae a 0). El invariante es el del actuador y no admite excepciones: entre dos
+   minutos pintados consecutivos, |Δθ| ≤ slew·60. */
+function recorreCursor(c, T, rIdx, paso, m0, m1) {
+  let cur = null, ant = null, peor = 0, mPeor = -1, n = 0;
+  for (let m = m0; m <= m1; m++) {
+    const x = S.cursorLazo(S.F, c, T, m, cur, paso);
+    cur = x.cur;
+    const th = x.r.ang[rIdx];
+    if (ant != null) {
+      const d = Math.abs(th - ant);
+      if (d > peor) { peor = d; mPeor = m; }
+      if (d > LAZO.slew * 60 + 1e-9) n++;
+    }
+    ant = th;
+  }
+  return { peor, mPeor, n };
+}
+
+t('el θ PINTADO no da saltos que el actuador no pueda dar (defecto «no respeta slew rate»)', () => {
+  const c = { ...base, ctrl:LAZO }, techo = LAZO.slew * 60;
+  const r = recorreCursor(c, TL, 3, 1, 0, 1439);
+  if (r.n) throw new Error(`${r.n} minutos pintados pasan del techo; el peor ${r.peor.toFixed(3)}°/min ` +
+                           `en el minuto ${r.mPeor} contra ${techo.toFixed(2)} de tope`);
+  if (!(r.peor > 0.5 * techo))
+    throw new Error(`el peor salto es ${r.peor.toFixed(3)}°/min: el día no llega a exigir el actuador y el test no mide nada`);
+});
+
+t('el cursor con rejilla GRUESA viola el techo — por eso PASO_LAZO vale 1', () => {
+  // el oráculo puede ponerse rojo: con la rejilla que tenía la página (5 min) el
+  // mismo recorrido rompe el invariante. Si algún día deja de romperlo, el test
+  // de arriba habrá dejado de vigilar nada y este avisa.
+  const c = { ...base, ctrl:LAZO };
+  const r = recorreCursor(c, TL, 3, 5, 0, 1439);
+  if (!r.n) throw new Error('con paso 5 el invariante NO se rompe: el test de arriba ya no demuestra nada');
+  const m = /^const PASO_LAZO=(\d+);/m.exec(pg);
+  if (!m || m[1] !== '1') throw new Error('la página tiene que pintar con rejilla de 1 min y tiene ' + (m ? m[1] : 'nada'));
+});
+
+t('el cursor da lo MISMO que recorrer el día entero a mano (no es una física aparte)', () => {
+  const c = { ...base, ctrl:LAZO }, rIdx = 3;
+  const mm = [400, 401, 725, 1043, 1045, 1200];
+  let prev = null, esperado = {};
+  for (let m = 0; m <= 1200; m++) {
+    const r = S.instant(S.F, c, TL, m, prev, true); prev = r;
+    if (mm.includes(m)) esperado[m] = r.ang[rIdx];
+  }
+  let cur = null;
+  for (const m of mm) {
+    const x = S.cursorLazo(S.F, c, TL, m, cur, 1); cur = x.cur;
+    const d = Math.abs(x.r.ang[rIdx] - esperado[m]);
+    if (d > 1e-9) throw new Error(`minuto ${m}: el cursor da ${x.r.ang[rIdx].toFixed(6)}° y el día entero ${esperado[m].toFixed(6)}°`);
+  }
+});
+
+t('el cursor REHACE la mañana cuando le piden ir atrás', () => {
+  const c = { ...base, ctrl:LAZO }, rIdx = 3;
+  const ida = S.cursorLazo(S.F, c, TL, 800, null, 1);
+  const vuelta = S.cursorLazo(S.F, c, TL, 700, ida.cur, 1);   // cur.m=800 > 700
+  const limpio = S.cursorLazo(S.F, c, TL, 700, null, 1);
+  if (Math.abs(vuelta.r.ang[rIdx] - limpio.r.ang[rIdx]) > 1e-12)
+    throw new Error('ir atrás con el cursor adelantado no da lo mismo que arrancar limpio');
+});
+
 t('sin lazo la columna de desalineo es CERO en todo el día', () => {
   const c = base, map = S.mapStringW(S.F, c, TL);
   let prev = null, eWh = 0, peor = 0;
@@ -1414,7 +1484,7 @@ t('el cfg del canario es el de ARRANQUE de la página: ningún valor por defecto
                  ['ldispo', CFG0.ac.planta.dispo], ['ldeg', CFG0.ac.planta.degrada],
                  ['lanio', CFG0.ac.planta.anio], ['bifa', CFG0.bif.bifa], ['bperd', CFG0.bif.perdTras],
                  ['iamb0', CFG0.iamb0], ['ctrlDb', CFG0.ctrl.db], ['ctrlSlew', CFG0.ctrl.slew],
-                 ['ctrlCiclo', CFG0.ctrl.cicloMin]];
+                 ['ctrlCiclo', CFG0.ctrl.cicloSeg]];
   for (const [id, esperado] of pares) {
     const v = +val(id);
     if (!(Math.abs(v - esperado) < 1e-12))
@@ -1504,6 +1574,101 @@ t('un fichero a medias se DECLARA, y uno que no es nuestro no se carga', () => {
     try { S.confAplica(malo, () => true); } catch (e) { saltó = true; }
     if (!saltó) throw new Error('acepta un fichero que no es una configuración: ' + JSON.stringify(malo));
   }
+});
+
+console.log('');
+console.log('careo: terreno MEDIDO frente a considerarlo todo plano');
+
+const Pca  = S.F.plantFromCotas(cotasAyora, 80, null);
+const Cca  = { ...CE, lat:layAyora.clat, lon:layAyora.clon, alt:Math.round(cotasAyora.base),
+               nrows:Pca.elev.length, cw:Pca.cw, maxang:Pca.maxAngle, pitch:Pca.pitch,
+               bif:{bifa:0,perdTras:10}, ac:{ ...(C.ac||{}), planta:{} } };
+const Tca  = S.buildTReal(S.F, Cca, Pca);
+const TcaP = S.tPlano(Tca);
+
+t('tPlano no deja NI UN número de terreno vivo (ni en T ni en su planta medida)', () => {
+  // esto es lo que hace que el careo mida UNA cosa: si se queda un campo con
+  // terreno, el «plano» sigue teniendo relieve por otro lado y la diferencia ya
+  // no se puede atribuir. Se comprueba campo por campo y no por el resultado.
+  const cero = (v, q) => { if (Math.abs(v) > 0) throw new Error(`${q} sigue con terreno: ${v}`); };
+  TcaP.pairs.forEach((p, i) => { cero(p.slope, `pairs[${i}].slope`); cero(p.axisTilt, `pairs[${i}].axisTilt`); });
+  TcaP.rowTilt.forEach((v, i) => cero(v, `rowTilt[${i}]`));
+  TcaP.segTilt.forEach((l, i) => l.forEach((v, k) => cero(v, `segTilt[${i}][${k}]`)));
+  const R = TcaP.real;
+  R.pairDz.forEach((v, i) => cero(v, `real.pairDz[${i}]`));
+  R.tilt.forEach((v, i) => cero(v, `real.tilt[${i}]`));
+  R.elev.forEach((v, i) => cero(v, `real.elev[${i}]`));
+  R.segTilt.forEach((l, i) => l.forEach((v, k) => cero(v, `real.segTilt[${i}][${k}]`)));
+  R.segZ.forEach((l, i) => l.forEach((z, k) => { cero(z[0], `real.segZ[${i}][${k}][0]`); cero(z[1], `real.segZ[${i}][${k}][1]`); }));
+  R.segMorro.forEach((l, i) => l.forEach((m, k) => cero(m[1], `real.segMorro[${i}][${k}][1]`)));
+  // y la planta MEDIDA sí los tiene: si no, el test de arriba pasa por vacío
+  if (!Tca.rowTilt.some(v => Math.abs(v) > 0.05) || !Tca.real.pairDz.some(v => Math.abs(v) > 0.01))
+    throw new Error('la planta de partida no trae terreno: el test no demuestra nada');
+});
+
+t('tPlano NO cambia nada más: misma planta, mismos strings, mismo accionamiento', () => {
+  for (const k of ['cw', 'maxAngle', 'gcr', 'z0', 'nBypass', 'axisAz', 'filaLen'])
+    if (Tca[k] !== TcaP[k]) throw new Error(`${k} cambia: ${Tca[k]} → ${TcaP[k]}`);
+  Tca.pairs.forEach((p, i) => { if (p.pitch !== TcaP.pairs[i].pitch) throw new Error(`pitch de la pareja ${i} cambia`); });
+  for (const k of ['segs', 'segPairs', 'segDrive', 'groups'])
+    if (JSON.stringify(Tca[k]) !== JSON.stringify(TcaP[k])) throw new Error(`${k} cambia`);
+  if (Tca.drive !== TcaP.drive) throw new Error('el accionamiento cambia');
+  if (!TcaP.real) throw new Error('tPlano quita el testigo de planta medida: cambiaría de MODELO, no de terreno');
+  if (Tca.real === TcaP.real || Tca.real.segZ[0][0] === TcaP.real.segZ[0][0])
+    throw new Error('tPlano muta la planta original en vez de copiarla');
+});
+
+t('en la planta PLANA el eje deja de estar inclinado: misma CONSIGNA astro en todas las filas', () => {
+  /* MEDIDO al escribir este test, y es información: en llano el backtracking NO
+     sale uniforme en Ayora —las filas se separan 0,54°—, porque tPlano mantiene
+     a propósito el PITCH MEDIDO por vano y un pitch desigual da un GCR desigual
+     y con él una consigna de backtracking desigual. Considerar la planta «toda
+     plana» no es considerarla también regular: el careo mide el terreno, no el
+     replanteo. Lo que sí desaparece es la inclinación del EJE, que es la que
+     mueve la consigna astronómica, y eso es lo que se comprueba aquí. */
+  const ca = { ...Cca, pol:'astro' };
+  let peorP = 0, peorR = 0;
+  for (const m of [420, 600, 720, 900, 1080]) {
+    const p = S.instant(S.F, ca, TcaP, m, null), r = S.instant(S.F, ca, Tca, m, null);
+    peorP = Math.max(peorP, Math.max(...p.ang) - Math.min(...p.ang));
+    peorR = Math.max(peorR, Math.max(...r.ang) - Math.min(...r.ang));
+  }
+  if (peorP !== 0) throw new Error(`con el eje horizontal la consigna astro tendría que ser la MISMA y se separa ${peorP}°`);
+  if (!(peorR > 0.05)) throw new Error(`la planta medida tampoco separa los θ (${peorR}°): el test no demuestra nada`);
+});
+
+t('el día TROCEADO da lo mismo que el día de un tirón, bit a bit', () => {
+  // la UI trocea con dayInit/dayAvanza/dayCierra y el careo de un tirón va por
+  // dayEnergy: si no fueran el MISMO bucle, la página y el banco dirían cosas
+  // distintas del mismo día
+  const map = S.mapStringW(S.F, Cca, Tca);
+  const uno = S.dayEnergy(S.F, Cca, Tca, Cca.date, 15, map);
+  const st = S.dayInit(S.F, Cca, Tca, Cca.date, 15, map);
+  while (S.dayAvanza(S.F, Tca, st));
+  const troz = S.dayCierra(st);
+  for (let k = 0; k < uno.length; k++)
+    if (uno[k] !== troz[k]) throw new Error(`string ${k}: de un tirón ${uno[k]}, troceado ${troz[k]}`);
+  if (!uno.some(v => v > 0)) throw new Error('el día sale a cero: el test no mide nada');
+});
+
+t('careoStats: el signo dice quién gana, y con dos días iguales el careo es 0', () => {
+  const z = S.careoStats([10, 20], [10, 20]);
+  if (z.difPct !== 0 || z.porString.some(v => v !== 0)) throw new Error('dos días iguales tendrían que carear a cero');
+  const g = S.careoStats([11, 20], [10, 20]);
+  if (!(g.porString[0] > 0)) throw new Error('si el terreno REAL produce más, el desvío tiene que ser positivo');
+  if (Math.abs(g.difPct - 100 * 1 / 30) > 1e-12) throw new Error('el total no es la suma careada: ' + g.difPct);
+  if (g.peor[1] !== 1 || g.mejor[1] !== 0) throw new Error('peor/mejor no señalan al string que toca');
+});
+
+t('el careo de un día REAL no sale a cero, y reparte más de lo que suma', () => {
+  // la cifra que la tarjeta declara: el total de planta casi no se mueve y un
+  // string concreto sí. Si algún día el terreno dejara de repartir, esto avisa.
+  const r = S.careoPlano(S.F, Cca, Tca, Cca.date, 30, TT => S.mapStringW(S.F, Cca, TT));
+  if (!(r.sumReal > 0 && r.sumPlano > 0)) throw new Error('el careo sale a cero');
+  const reparto = Math.max(Math.abs(r.peor[0]), Math.abs(r.mejor[0]));
+  if (!(reparto > Math.abs(r.difPct)))
+    throw new Error(`el reparto (${reparto.toFixed(2)} %) no supera al total (${r.difPct.toFixed(2)} %): ` +
+                    'la tarjeta afirma justo lo contrario');
 });
 
 console.log('');
