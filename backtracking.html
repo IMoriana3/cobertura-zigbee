@@ -456,7 +456,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.66.0';
+const VER='v1.67.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4383,10 +4383,38 @@ async function loadRealPlant(name,blockIdx,ncuSel){
 }
 /* ── plantas por LAYOUT (sin cotas de levantamiento): la implantación REAL
    del DWG (líneas, mesas, huecos, NCUs, emplazamiento) sobre terreno PLANO —
-   DECLARADO. El Burgo · Páramo · Fayón. Túnez queda fuera: instalación FIJA,
-   no hay backtracking que simular. Con el levantamiento topográfico entraría
-   el terreno de verdad, como Ayora/San José. ── */
-const PLANTAS_LAYOUT={elburgo:'El Burgo',paramo:'Páramo',fayon:'Fayón'};
+   DECLARADO. El Burgo · Páramo · Fayón · Polvorín. Con el levantamiento
+   topográfico entraría el terreno de verdad, como Ayora/San José.
+
+   QUIÉN ENTRA Y POR QUÉ NO LOS DEMÁS, MEDIDO CON ESTE MISMO CARGADOR (v1.67).
+   Aquí ponía que «Túnez queda fuera: instalación FIJA, no hay backtracking que
+   simular», y eso era falso: `plantas_indice.json` la da con `fija:false` y
+   `SingleAxisTrackerMount`, la cartera le cuenta 19 seguidores bifila y 0
+   monofila, y su propio layout habla de «cada SEGUIDOR gobierna DOS columnas
+   contiguas». La fija que tiene al norte son 14 mesas que el layout documenta
+   APARTE, en `instalacion_fija`, y que NO están en su lista de seguidores. Un
+   comentario a mano afirmando lo contrario que su fuente, que es el defecto que
+   esta auditoría lleva corrigiendo.
+
+   Las dos que siguen fuera lo están por una razón medida, no por una nota:
+
+     · TÚNEZ sale con GCR 0,762, el DOBLE del canónico. Sus 19 seguidores van en
+       dos bandas (n ≈ +26,3 y n ≈ −19,1) con paso 12,50 m DENTRO de cada banda
+       y desplazadas 6,25 m entre sí; el agrupador las junta como una sola
+       rejilla de 6,25 y de ahí sale filaZ 1,56 en vez de 3,125. El detector de
+       rejillas superpuestas existe pero no salta aquí.
+     · BAGNARELLI carga 6 filas de las 34 que tiene, porque la agrupación va por
+       la `x` del DWG y esta planta lleva el EJE A 23,7°. Proyectando
+       perpendicular al eje su paso sale 11,00 m clavado, que es justo lo que
+       dice su layout.
+
+   Las dos piden tocar el AGRUPADOR, no una declaración, y eso va aparte para no
+   mezclarlo con esto. BENANTE, PANBIANCO y CATANIA no entran por otra razón: no
+   hay de dónde sacar su accionamiento —ni el layout lo declara ni la cartera les
+   cuenta bifila/monofila—, y abrirlas sería publicarlas como monofila sin nada
+   que lo respalde (las tres salen con GCR ~0,23, que tiene la pinta de estar a
+   la mitad, pero pinta no es dato). ── */
+const PLANTAS_LAYOUT={elburgo:'El Burgo',paramo:'Páramo',fayon:'Fayón',polvorin:'Polvorín',benante:'Benante',panbianco:'Panbianco'};
 async function loadLayoutPlant(name){
   const note=$('realnote');
   note.style.display='';note.textContent='cargando '+PLANTAS_LAYOUT[name]+'…';
@@ -4496,21 +4524,103 @@ async function loadLayoutPlant(name){
        EL DATO ES DEL LAYOUT Y NO SE INFIERE: solo se expande cuando la planta
        declara `geometria.bifila`. Las que no lo declaran se quedan como estaban y
        la nota dice que el accionamiento NO está confirmado, en vez de suponerlo. */
+    /* v1.67 — EL SEMIPASO DE FILA YA ESTABA DECLARADO, Y LA PÁGINA MIRABA EN
+       OTRO SITIO. Hasta aquí sólo se leía `geometria.bifila`, que lo declaran
+       tres layouts. Pero casi todos traen `filaZ` EN SU RAÍZ, y careado contra
+       el paso entre líneas que mide este mismo cargador encaja en las nueve:
+
+         El Burgo 3,00 (geometria) = 12,00/4         Polvorín  2,25 =  9,00/4
+         Fayón    3,00 (en `mesa`)  = 12,00/4         Benante   2,62 = 10,48/4
+         Panbianco 2,62 = 10,48/4                    Bagnarelli 2,75 = 11,00/4
+         Túnez    3,125 = 12,50/4                    Catania   2,50 = pasoFilas 5 / 2
+         PÁRAMO   0  ← declara MONOFILA, y su propio layout lo razona: «filaZ = 0
+                      porque el bloque es 1V (una fila). Cuadra con la cartera:
+                      trk_mono 396, trk_bi 0»
+
+       El `/4` no es un apaño: entre las dos vigas de un seguidor hay 2·filaZ y
+       hasta la viga más cercana del seguidor de al lado hay otros 2·filaZ, así
+       que el paso entre MOTORES son 4·filaZ. El layout de El Burgo lo escribe:
+       «los ejes de fila caen a −3, +3, +9, +15, o sea 6 m clavados».
+
+       Y el CERO de Páramo es un dato, no un hueco: dice «aquí no hay segunda
+       viga», y la cartera lo confirma con 396 monofila y 0 bifila. Por eso se
+       distingue el 0 declarado del campo ausente — ausente sigue siendo «no
+       declarado», que es lo que había.
+
+       CATANIA queda fuera a propósito: declara `bifila:{filas:2,pasoFilas:5}` y
+       avisa de que «cada entrada de `trackers` es UNA FILA (un tubo)», o sea que
+       ahí no hay que expandir sino EMPAREJAR. Es otro camino y va aparte. */
     const G=lay.geometria||{};
-    const declBifila=G.bifila===true||/^s[ií]/i.test(String(G.bifila||''));
-    const fz=Number.isFinite(G.filaZ)&&G.filaZ>0?G.filaZ:pitch/4;
+    /* el MISMO número vive en hasta tres sitios según el layout —`geometria.filaZ`
+       (El Burgo), la raíz (Polvorín, Benante, Panbianco, Páramo, Catania) y
+       `mesa.filaZ` (Fayón, y duplicado en los demás)—. Se leen los tres en ese
+       orden y NO se inventa ninguno: si no está en ninguno, sigue siendo «no
+       declarado». Que el dato esté escrito tres veces es su propio defecto, de
+       los datos y no de la página, y no se arregla aquí. */
+    const fzDecl=[G.filaZ, lay.filaZ, (lay.mesa||{}).filaZ].find(v=>Number.isFinite(v));
+    const declBifila=G.bifila===true||/^s[ií]/i.test(String(G.bifila||''))||(fzDecl>0);
+    const declMono=fzDecl===0;
+    const fz=fzDecl>0?fzDecl:pitch/4;
     let segs2=segs, segZ=segZ0, lineX2=lineX, groups=null, drive='mono';
+    /* v1.67 — EL ACCIONAMIENTO ES DE CADA SEGUIDOR, NO DE LA PLANTA ENTERA.
+       Reportado: «El Burgo/Bagnarelli monofila — revisar todos». Al revisarlos
+       apareció que una planta puede llevar de los dos: la cartera cuenta
+       Polvorín como 117 bifila + 2 monofila, y su layout marca esos dos por su
+       nombre (`tp: "Mono 31+31"`, exactamente dos de 119).
+
+       Hasta aquí la expansión era todo o nada: si la planta declaraba bifila se
+       partían TODAS sus líneas en dos. Ahora se mira seguidor a seguidor:
+
+         · los bifila de la línea dan sus dos vigas a ±filaZ, con su grupo (un
+           motor, θ común);
+         · los monofila dan UNA fila en el eje de la línea, sin grupo — y eso ya
+           es exactamente lo que la física entiende por monofila, porque una fila
+           que no está en ningún grupo es su propia unidad de accionamiento;
+         · una línea con de los dos da las TRES, que es lo único fiel: la mesa
+           del monofila vive en el eje, entre las dos vigas de sus vecinos.
+
+       En los datos de hoy no hay ninguna línea mixta —los dos monofila de
+       Polvorín están cada uno solo en su línea, medido—, así que ese tercer caso
+       va cubierto por un banco con un layout sintético en vez de quedarse sin
+       probar. */
+    const esMono=t=>/^\s*mono/i.test(String((t&&t.tp)||''));
+    const mesasDe=(tks)=>tks.map(t=>{
+      const half=(String(t.t||t.tp||'').toLowerCase().indexOf('medio')>=0?mesaL/2:mesaL)/2;
+      return [t.n-half,t.n+half];
+    });
+    let nMono=0, nBi=0;
     if(declBifila){
       const lx=[],sg=[],sz=[],gp=[];
       for(let i=0;i<nR;i++){
-        // las dos vigas del seguidor, a ±filaZ de su eje; comparten implantación
-        // a lo largo (misma estructura) y motor, de ahí el grupo
-        lx.push(lineX[i]-fz,lineX[i]+fz);
-        sg.push(segs[i].map(v=>v.slice()),segs[i].map(v=>v.slice()));
-        sz.push(segZ0[i].map(v=>v.slice()),segZ0[i].map(v=>v.slice()));
-        gp.push([2*i,2*i+1]);
+        const tks=band[i].tks||[];
+        const bi=tks.filter(t=>!esMono(t)), mo=tks.filter(esMono);
+        nBi+=bi.length; nMono+=mo.length;
+        if(bi.length){
+          const m=mesasDe(bi), k=lx.length;
+          lx.push(lineX[i]-fz,lineX[i]+fz);
+          sg.push(m.map(v=>v.slice()),m.map(v=>v.slice()));
+          sz.push(m.map(()=>[0,0]),m.map(()=>[0,0]));
+          gp.push([k,k+1]);
+        }
+        if(mo.length){
+          const m=mesasDe(mo);
+          // sin grupo: en la física, una fila suelta ES una unidad de accionamiento
+          lx.push(lineX[i]); sg.push(m); sz.push(m.map(()=>[0,0]));
+        }
       }
-      lineX2=lx; segs2=sg; segZ=sz; groups=gp; drive='bifila';
+      // las filas tienen que ir ordenadas por x: con línea mixta se intercala la
+      // del monofila entre las dos vigas, así que se ordena y se reindexan los grupos
+      const ord=lx.map((x,i2)=>i2).sort((a,b)=>lx[a]-lx[b]);
+      const pos=new Array(lx.length); ord.forEach((o,k)=>pos[o]=k);
+      lineX2=ord.map(i2=>lx[i2]); segs2=ord.map(i2=>sg[i2]); segZ=ord.map(i2=>sz[i2]);
+      groups=gp.map(g=>g.map(i2=>pos[i2]).sort((a,b)=>a-b));
+      /* la CASILLA se queda en «bifila» aunque la planta sea mixta, y no es un
+         apaño: quien manda es `groups`, y ahí los monofila ya van como unidad de
+         una fila. Ponerla en «mono» sería destruir el dato — `terrain()` hace
+         `c.drive==='mono' ? null : P.groups`, o sea que tirando la casilla a
+         mono se tiran TODOS los acoples, también los de los bifila. La mezcla se
+         cuenta en la nota, con sus números. */
+      drive='bifila';
       nR=lineX2.length;
       pitch=Number.isFinite(G.pasoEntreFilas)&&G.pasoEntreFilas>0?G.pasoEntreFilas:2*fz;
     }
@@ -4529,9 +4639,12 @@ async function loadLayoutPlant(name){
     $('nrows').value=nR;$('nrows').max=400;$('pitch').value=pitch.toFixed(2);
     $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value=drive;topeManual();
     note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+
-      (declBifila?(nR/2)+' seguidores <b>BIFILA</b> = '+nR+' filas a '+pitch.toFixed(2)+
-        ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja — accionamiento DECLARADO por el layout'
-       :nR+' líneas · pitch '+pitch.toFixed(1)+' m · <b>accionamiento NO declarado</b> en el layout: se corre como monofila')+
+      (declBifila?nBi+' seguidores <b>BIFILA</b>'+(nMono?' + <b>'+nMono+' MONOFILA</b>':'')+' = '+nR+' filas a '+pitch.toFixed(2)+
+        ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja'+(nMono?' salvo los '+nMono+' monofila, que van solos':'')+
+        ' — accionamiento DECLARADO por el layout, seguidor a seguidor'
+       :nR+' líneas · pitch '+pitch.toFixed(1)+' m · '+(declMono
+          ?'<b>MONOFILA declarada</b> por el layout (filaZ 0: no hay segunda viga)'
+          :'<b>accionamiento NO declarado</b> en el layout: se corre como monofila'))+
       ' · '+nFilas+' mesas'+gridNota+') · <b>SIN cotas de levantamiento: terreno PLANO</b> — con el levantamiento entraría el terreno de verdad, como Ayora/San José';
     recompute();
   }catch(e){note.textContent='error cargando '+name+': '+e.message;}
