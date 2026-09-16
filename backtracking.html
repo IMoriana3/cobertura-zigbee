@@ -6654,17 +6654,45 @@ function manualRowsOn(){const e=$('manrow');return manualOn()&&!!(e&&e.checked)&
    malla más cercana. Lo cazó una captura de Iñaki a las 21:01: al marcar «por
    fila» las filas arrancaban en la consigna de las 21:00 y la planta saltaba a
    una postura que no era la de nadie, con el HUD atribuyéndosela a la escena. */
+/* v1.62 — LA ESCENA RECORRE LA TRAYECTORIA, NO LA IMPROVISA. Esto calculaba
+   cada minuto intermedio desde la muestra de malla con un dt que CRECE —60 s,
+   120 s, 180 s…—, así que la serie que veía el usuario no era una trayectoria
+   sino «dónde estarías si salieras de la muestra y anduvieras N minutos». Si la
+   consigna cambia entre dos minutos, los dos saltos no se encadenan y el render
+   enseña la planta moviéndose más rápido de lo que el motor puede.
+
+   Medido sobre un día completo (1.050 minutos, 8 filas, pendiente 8°): con
+   0,17 °/s el máximo por minuto son 10,2°, y el óptimo libre daba 14 saltos por
+   encima, el peor de 77,68° a las 20:20 — siete veces y media el motor. No
+   estaban sólo en la frontera con la malla: 20,40° (justo 2×10,2) entre dos
+   minutos INTERMEDIOS seguidos, que es la firma del dt creciente. Pairwise no
+   violaba ninguna: se mueve poco y la discrepancia no asomaba.
+
+   Y al integrar minuto a minuto quedaba la raíz: el lazo del día corre a paso
+   de STEP_MIN, y UN paso de 300 s autoriza 51° de golpe. Esos 51° son
+   legítimos en cinco minutos, pero el slider avanza de MINUTO en minuto y los
+   enseñaba en uno. La malla no tiene trayectoria que enseñar entre muestras.
+
+   Ahora la escena interpola entre las dos muestras que la rodean. `slewLimit`
+   mueve a velocidad constante, así que la interpolación ES la trayectoria
+   cuando el motor satura, y es conservadora cuando llega antes al objetivo;
+   en los dos casos ningún par de minutos consecutivos se separa más de
+   |Δmuestra|/STEP_MIN ≤ SLEW·60. No recalcula política —lee lo que computeDay
+   ya publicó— así que no cuesta nada y NO cambia ni un número del día. */
 function consignaEscena(key){
   if(!DAY)return null;
-  const m=+$('hour').value, c=DAY.c, tIdx=timeIndex();
+  const m=+$('hour').value;
   const p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
-  if(m%STEP_MIN===0||!p)return p&&p.ang[tIdx]?p.ang[tIdx]:null;
-  try{
-    const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
-    const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
-    const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
-    return lazoControl(p.ang[tIdx],o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
-  }catch(e){return p.ang[tIdx]||null;}
+  if(!p||!p.ang)return null;
+  let i=-1;
+  for(let k=0;k<DAY.times.length;k++){ if(DAY.times[k]<=m)i=k; else break; }
+  if(i<0)return p.ang[0]||null;
+  const a0=p.ang[i]; if(!a0)return null;
+  const a1=(i+1<DAY.times.length)?p.ang[i+1]:null;
+  const t0=DAY.times[i], t1=a1?DAY.times[i+1]:t0;
+  if(!a1||t1<=t0||m<=t0)return a0;
+  const u=Math.min(1,(m-t0)/(t1-t0));
+  return a0.map((v,j)=>v+u*(a1[j]-v));
 }
 function manualRowsInit(){
   if(!DAY)return;

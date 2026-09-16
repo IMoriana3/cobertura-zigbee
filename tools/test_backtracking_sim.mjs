@@ -593,6 +593,57 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
     throw new Error('el camino por mesa sigue sin el deadband');
 });
 
+t('v1.62 · LA ESCENA NO PUEDE MOVER LA PLANTA MÁS RÁPIDO QUE EL MOTOR', () => {
+  /* El render enseñaba 20° en un minuto (reportado con capturas: 21:14 θ 34,9°,
+     21:15 θ 55,0°). Con 0,17 °/s el máximo por minuto son 10,2°. La causa: la
+     escena calculaba cada minuto intermedio desde la muestra de la malla con un
+     dt CRECIENTE (60, 120, 180 s…), así que no era una trayectoria y dos
+     minutos seguidos no se encadenaban — la firma eran saltos de 20,40°, justo
+     2×10,2. Medido sobre un día: el óptimo libre daba 14 saltos ilegales, el
+     peor de 77,68°; pairwise ninguno, porque se mueve poco y no lo destapaba.
+
+     Este banco NO mira cómo está escrita la función: le da una serie de muestras
+     con saltos deliberadamente enormes y exige que ningún par de minutos
+     consecutivos se separe más de SLEW·60. Es la propiedad, no el nombre — tres
+     bancos de esta batería se rompieron en v1.61 por estar pinchados a nombres
+     de función. */
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  const i = app.indexOf('function consignaEscena(');
+  if (i < 0) throw new Error('no existe consignaEscena');
+  const fin = app.indexOf('\nfunction ', i + 10);
+  const fuente = app.slice(i, fin > 0 ? fin : i + 3000);
+
+  // DAY sintético: muestras cada 5 min con saltos de 50° (el peor caso legal a 300 s)
+  const STEP = 5, N = 40, nR = 4;
+  const times = [], ang = [];
+  for (let k = 0; k < N; k++) { times.push(k * STEP); ang.push(new Array(nR).fill(k % 2 ? 50 : -1)); }
+  const DAY = { times, pol: { pw: { ang } } };
+  let minuto = 0;
+  const $ = (id) => (id === 'hour' ? { value: String(minuto) } : null);
+  const fn = new Function('DAY', '$', fuente + '\nreturn consignaEscena;')(DAY, $);
+
+  const SLEW = 0.17, tope = SLEW * 60;
+  let prev = null, peor = 0, viol = 0, n = 0;
+  for (minuto = 0; minuto <= (N - 1) * STEP; minuto++) {
+    const a = fn('pw');
+    if (!a) continue;
+    if (prev) { const d = Math.max(...a.map((v, j) => Math.abs(v - prev[j])));
+      n++; if (d > tope + 1e-9) viol++; if (d > peor) peor = d; }
+    prev = a;
+  }
+  if (n < 100) throw new Error('el banco apenas recorrió minutos: ' + n);
+  if (viol) throw new Error(`la escena viola el slew en ${viol} de ${n} minutos · peor salto ${peor.toFixed(2)}° (tope ${tope.toFixed(2)}°)`);
+
+  // y en los minutos de MALLA tiene que devolver exactamente lo publicado:
+  // si la escena se separa de la curva del día, son dos físicas distintas
+  for (let k = 0; k < N; k++) {
+    minuto = times[k]; const a = fn('pw');
+    if (!a) continue;
+    const d = Math.max(...a.map((v, j) => Math.abs(v - ang[k][j])));
+    if (d > 1e-9) throw new Error(`en el minuto de malla ${minuto} la escena se separa ${d.toFixed(3)}° de lo publicado`);
+  }
+});
+
 t('v1.61 · EL TECHO DEL HAZ manda con el sol rasante — y por eso el deadband «mejoraba» la sombra', () => {
   /* La contradicción que paró este trabajo: al meter el deadband, con el sol
      rasante la sombra BAJABA. La causa no está en el lazo ni en la reparación,
@@ -774,13 +825,43 @@ t('v1.59 · EL MANUAL POR FILA ARRANCA EN LO QUE SE ESTÁ VIENDO, no en la muest
   const j = app.indexOf('function consignaEscena');
   if (j < 0) throw new Error('no existe consignaEscena');
   const ce = app.slice(j, app.indexOf('\n}', j));
-  if (!/m%STEP_MIN===0/.test(ce)) throw new Error('consignaEscena no distingue la malla del minuto exacto');
-  if (!/policyAngles\(/.test(ce)) throw new Error('consignaEscena no recalcula la política en el minuto pedido');
-  /* v1.61: era /slewLimit\(/ y se quedó viejo cuando el lazo paso a ser entero —
-     lazoControl APLICA el slew dentro, así que la exigencia se cumple mejor que
-     antes. Lo que hay que pedir es el LAZO, no una de sus mitades por su nombre. */
-  if (!/lazoControl\(|slewLimit\(/.test(ce))
-    throw new Error('consignaEscena no aplica el lazo del actuador, como hace la escena');
+  /* v1.62: esto exigía `m%STEP_MIN===0` y `policyAngles(` por su NOMBRE, y se
+     quedó viejo al arreglar el slew. Lo que protege este banco es que la escena
+     dé el MINUTO que se está viendo y no la muestra de la malla; cómo lo
+     consiga es asunto suyo. Desde v1.62 no recalcula la política: interpola la
+     trayectoria entre las dos muestras que rodean al minuto, que es lo que la
+     planta HACE —la consigna se manda cada STEP_MIN y entre mandos el tracker
+     se mueve hacia la vigente—; recalcular simulaba un mando minutal que la
+     simulación del día no asume, y por eso la escena llegaba a separarse 67,48°
+     de la curva publicada. Se comprueba por COMPORTAMIENTO, con una serie de
+     muestras sintética. */
+  {
+    const STEP = 5, N = 8, nR = 3;
+    const times = [], angM = [];
+    for (let k = 0; k < N; k++) { times.push(k * STEP); angM.push(new Array(nR).fill(k * 7)); }
+    let minuto = 0;
+    const fn = new Function('DAY', '$', ce + '\n}\nreturn consignaEscena;')(
+      { times, pol: { pw: { ang: angM } } }, (id) => (id === 'hour' ? { value: String(minuto) } : null));
+    minuto = 7;                                   // minuto INTERMEDIO (entre la muestra 5 y la 10)
+    const a = fn('pw');
+    if (!a) throw new Error('consignaEscena no devuelve nada en un minuto intermedio');
+    if (Math.abs(a[0] - angM[1][0]) < 1e-9)
+      throw new Error('la escena se queda pegada a la muestra de la malla: no da el minuto que se ve');
+    if (!(a[0] > angM[1][0] && a[0] < angM[2][0]))
+      throw new Error(`el minuto intermedio no cae entre sus dos muestras: ${a[0]} fuera de (${angM[1][0]}, ${angM[2][0]})`);
+  }
+  /* v1.62: aquí había una tercera exigencia por NOMBRE —primero /slewLimit\(/,
+     luego /lazoControl\(/— y es la TERCERA vez que rompe sin que el producto
+     tenga nada malo: v1.61 la reescribió porque el lazo pasó a ser entero, y
+     v1.62 porque la escena ya no aplica el lazo, sino que interpola muestras
+     que YA lo llevan aplicado desde computeDay. Pedirle a una función que
+     mencione cierto identificador no comprueba nada del comportamiento.
+     Se retira, y lo que protegía queda comprobado de verdad en dos sitios:
+       · que la escena no invente posturas fuera de lo ejecutado → el bloque de
+         arriba exige que el minuto intermedio caiga ENTRE sus dos muestras;
+       · que respete la velocidad del actuador → banco «v1.62 · LA ESCENA NO
+         PUEDE MOVER LA PLANTA MÁS RÁPIDO QUE EL MOTOR», que recorre un día
+         entero de minutos y mide el salto máximo contra SLEW·60. */
 });
 
 t('v1.59 · EL PROBADOR CERTIFICA UNA CONSIGNA, NO UN NOMBRE — y el HUD no llama «irreducible» a lo que nadie ha barrido', () => {
