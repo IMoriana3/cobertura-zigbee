@@ -73,6 +73,26 @@ function Gw-Carga([string]$xml) {
     return $r
 }
 
+# A que gateways se pregunta. Con una IP dada a mano, a esa y solo a esa: las
+# topologias no llevan ip_gw hasta que se regeneren desde el Excel, y el tecnico
+# ya sabe la IP del Digi (es la que abre en el navegador). Sin IP a mano, a los
+# de la topologia que la traigan. Pura.
+function Gw-Objetivos($gws, [string]$ipManual) {
+    $ip = "$ipManual".Trim()
+    # sin coma unaria: con ella el @() del llamador recibia UN elemento que era
+    # la lista entera (la suite lo cazo: 1 donde tocaban 2 y 0)
+    if ($ip -ne '') { return @(@{ncu = '?'; nGw = 0; ip = $ip}) }
+    # y a cada Digi UNA vez: la TCU suelta de El Burgo es otra entrada del mismo
+    # gateway, y sin esto se le preguntaba dos veces
+    $vistas = @{}; $out = @()
+    foreach ($g in @($gws)) {
+        $gip = "$($g.ip)".Trim()
+        if ($gip -eq '' -or $vistas.ContainsKey($gip)) { continue }
+        $vistas[$gip] = $true; $out += ,$g
+    }
+    return @($out)
+}
+
 # Memoria usada en %, con lo que haya: la usada, o total menos libre. Pura.
 function Gw-MemPct($c) {
     if ($null -eq $c.mem_total -or $c.mem_total -le 0) { return $null }
@@ -82,6 +102,13 @@ function Gw-MemPct($c) {
     return [int][math]::Round(100.0 * $u / $c.mem_total)
 }
 
+# La memoria del Digi viene en BYTES, no en KB: 16777216 en El Burgo, que son
+# los 16 MB del ConnectPort (en KB serian 16 GB). Se ensena en MB, con punto
+# decimal fijo para que el texto sea el mismo en cualquier Windows. Pura.
+function Gw-Mb($bytes) {
+    return ([double]$bytes / 1048576).ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 # Lo leido, en una linea; vacia si no se reconocio. Pura.
 function Gw-CargaResumen($c) {
     if (-not $c -or -not $c.ok) { return '' }
@@ -89,11 +116,11 @@ function Gw-CargaResumen($c) {
     $p = Gw-MemPct $c
     if ($null -ne $p) {
         $u = $c.mem_usada; if ($null -eq $u) { $u = $c.mem_total - $c.mem_libre }
-        $s += ", memoria $p % usada ($u de $($c.mem_total) KB)"
+        $s += ", memoria $p % usada ($(Gw-Mb $u) de $(Gw-Mb $c.mem_total) MB)"
     }
     if ($null -ne $c.uptime) {
-        if ($c.uptime -ge 86400) { $s += ", $([int][math]::Floor($c.uptime / 86400)) d en marcha" }
-        else { $s += ", $([int][math]::Floor($c.uptime / 3600)) h en marcha" }
+        $d = [int][math]::Floor($c.uptime / 86400); $h = [int][math]::Floor(($c.uptime % 86400) / 3600)
+        if ($d -ge 1) { $s += ", $d d $h h en marcha" } else { $s += ", $h h en marcha" }
     }
     return $s
 }
@@ -181,13 +208,14 @@ while ($true) {
     # Va a su CSV, no a zigbee_log.csv: Export-Csv -Append rechaza columnas
     # nuevas contra un fichero ya empezado, y el visor lee ese por fila de nodo.
     $k = Gw-Carga-Leer $gw
+    # la memoria en BYTES, que es como la da el Digi (16777216 = 16 MB en El Burgo)
     $fila = [ordered]@{ timestamp = $stamp; gateway = $gw.Name; host = $gw.Host; ok = 0
-                        cpu_pct = $null; mem_total_kb = $null; mem_usada_kb = $null; mem_libre_kb = $null; uptime_s = $null }
+                        cpu_pct = $null; mem_total_b = $null; mem_usada_b = $null; mem_libre_b = $null; uptime_s = $null }
     $txtCarga = "CPU sin leer"
     if ($k.ok) {
       $c = $k.carga
-      $fila.ok = 1; $fila.cpu_pct = $c.cpu; $fila.mem_total_kb = $c.mem_total; $fila.mem_usada_kb = $c.mem_usada
-      $fila.mem_libre_kb = $c.mem_libre; $fila.uptime_s = $c.uptime
+      $fila.ok = 1; $fila.cpu_pct = $c.cpu; $fila.mem_total_b = $c.mem_total; $fila.mem_usada_b = $c.mem_usada
+      $fila.mem_libre_b = $c.mem_libre; $fila.uptime_s = $c.uptime
       $txtCarga = Gw-CargaResumen $c
     } elseif (-not $cargaAvisada.ContainsKey($gw.Name)) {
       $cargaAvisada[$gw.Name] = $true
