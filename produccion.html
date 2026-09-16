@@ -221,12 +221,32 @@ input[type=range]{accent-color:var(--live)}
 
       <details class="card">
         <summary>⚙ Lazo de control del tracker</summary>
-        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Un tracker no está en su consigna:
-        está donde lo deja su TCU. <b>La banda muerta es el PASO del tracker</b>: no arranca hasta que el
-        error la alcanza, y entonces avanza una banda. Medido en el núcleo: con banda de 1°, 60 movimientos
-        de 1,000° exactos para 60° de recorrido. En seguimiento normal eso <b>no cuesta</b>: la pérdida
-        por coseno es b²/6 (0,005 % con banda de 1°, 0,02 % con 2°), y lo que ahorra son arranques de
-        motor. Todo el coste está en el backtracking, aquí abajo.</p>
+        <p style="color:var(--muted-2);font-size:.68rem;margin-bottom:8px">Un tracker no está donde le
+        mandan: está donde lo deja su TCU. <b>La banda muerta es el PASO del tracker</b> —y el eje
+        <b>adelanta</b> al sol: aparca una banda más allá de la consigna, así que el paso son dos—.
+        Todo el coste está en el backtracking.</p>
+        <details style="margin-bottom:8px">
+          <summary style="cursor:pointer;color:var(--muted-2);font-size:.68rem">los números, y de dónde salen</summary>
+          <p style="color:var(--muted-2);font-size:.68rem;margin:6px 0">En seguimiento normal la banda
+          <b>no cuesta</b>: la pérdida por coseno es b²/6 (0,005 % con banda de 1°, 0,02 % con 2°), y lo que
+          ahorra son arranques de motor. Apagado el lazo, la estimación es <b>exactamente</b> la de antes, al
+          vatio, y hay un careo que lo exige. Encendido cuesta TIEMPO, porque la banda tiene MEMORIA: el θ de
+          un minuto depende de la mañana entera, así que el día se recorre en orden. Medido en San José NCU 14
+          (71 strings) con el reloj a las 12:00: <b>10,3 s</b> de paseo del cursor, que son 60 sub-ciclos de
+          TCU × 71 strings × 721 minutos ≈ tres millones de pasos de lazo; un instante suelto son 2,3 ms. En
+          Ayora, 0,15 s.</p>
+          <p style="color:var(--muted-2);font-size:.68rem;margin:6px 0">Lo que se paga en energía no es el
+          coseno sino la <b>sombra</b>: en backtracking de tarde la consigna baja hacia plano y aguantar deja
+          al tracker sobreinclinado sobre el vecino. Medido en el día entero con banda de 1°: de 1,24 % de
+          pérdida, 1,20 % cae en horas de backtracking y 0,04 % en seguimiento limpio. En los agregados de
+          <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la banda se muestrea más
+          grueso — declarado, como el propio paso horario.</p>
+          <p style="color:var(--muted-2);font-size:.68rem;margin:6px 0">La <b>escena</b> va aparte: se pinta
+          con rejilla de <b>1 minuto</b> porque a 5 el θ pintado daba saltos que el actuador no puede dar
+          (29,66°/min medidos contra 10,20 de tope), y hay un candado que lo exige. La integración del
+          <b>día</b> se queda a 5 min: el escalón cae con el sol en el suelo y pasar a 1 min mueve la POA
+          0,0027 % en el agregado, por 3,7× de tiempo.</p>
+        </details>
         <div class="f">
           <label style="display:flex;align-items:center;gap:6px">
             <input id="ctrlOn" type="checkbox" style="width:auto"> Estimar con el θ <b>EJECUTADO</b></label>
@@ -245,22 +265,6 @@ input[type=range]{accent-color:var(--live)}
             <option value="libre">banda a secas</option>
             <option value="seguro">no sombrear</option></select></div>
         </div>
-        <p style="color:var(--muted-2);font-size:.68rem">Apagado, la estimación es <b>exactamente</b> la de
-        antes, al vatio, y hay un careo que lo exige. Encendido cuesta tiempo, porque la banda muerta tiene
-        MEMORIA: el θ de un minuto depende de la mañana entera, así que el día se recorre en orden. Medido en
-        San José entera (9.156 mesas): avanzar el reloj cuesta lo mismo que antes (0,5 s, que es lo que ya
-        costaba un instante), pero mover el tiempo <b>hacia atrás</b> rehace la mañana y son ~7 s; en Ayora,
-        0,15 s. Lo que se paga en energía no es el coseno (1° de banda son 0,005 %) sino la <b>sombra</b>: en
-        backtracking de tarde la consigna baja hacia plano y aguantar deja al tracker sobreinclinado sobre el
-        vecino. Medido en el día entero: con banda de 1°, de 1,24 % de pérdida, 1,20 % cae en horas de
-        backtracking y 0,04 % en horas de seguimiento limpio. En los agregados de <b>mes/año</b> el paso sigue siendo horario, así que ahí la sierra de la
-        banda se muestrea más grueso que en el día: la pérdida sale del mismo lazo, pero con menos
-        resolución — declarado, como el propio paso horario. La <b>escena</b> va aparte: se pinta con rejilla de
-        <b>1 minuto</b> porque a 5 el θ pintado daba saltos que el actuador no puede dar (un tramo de 5 min le
-        permite 51° de recorrido, y la consigna astro da un escalón en la puesta de sol) — medido, 29,66°/min
-        contra 10,20 de tope, y hay un candado que lo exige. La integración del <b>día</b> se queda a 5 min: el
-        escalón cae con el sol ya en el suelo y pasar a 1 min mueve la POA <b>0,0027 %</b> en el agregado y
-        0,1355 % en el peor string, por 3,7× de tiempo.</p>
             </details>
 
       <details class="card">
@@ -2625,6 +2629,32 @@ function paintLegend(mn,mx,unit,fmt,esc){
   $('leghi').textContent=fmt(R.hi)+' '+unit+(R.rel?' · las de la vista se reparten '+(d<0.05?'<0,1':d.toFixed(d<10?1:0)).replace('.',',')+' %':'');
 }
 
+/* ── EL ACUSE DE RECIBO, y no es cosmética ─────────────────────────────────
+   «Cuando voy a marcar el check no me lo coge» (Iñaki, sobre la casilla del
+   lazo). El clic SÍ entraba: lo que pasaba es que el manejador recalculaba TODO
+   dentro del propio `change`, síncrono, y el navegador no puede repintar la
+   casilla hasta que eso acabe. MEDIDO en San José NCU 14 (71 strings) con el
+   reloj a las 12:00: 10.709 ms. Diez segundos y medio en los que la casilla
+   sigue pintada como estaba, así que parece que el clic se ha perdido — y el
+   segundo clic la desmarca. Con la planta entera es peor.
+   Y el coste NO es un despilfarro que se pueda optimizar: el paseo del cursor
+   son 10.274 ms porque simula el ciclo REAL de la TCU, un segundo, minuto a
+   minuto desde el amanecer — 60 sub-ciclos × 71 strings × 721 minutos son tres
+   millones de pasos de lazo. Un instante suelto cuesta 2,3 ms; lo caro es la
+   MEMORIA de la banda muerta, que es física, no ineficiencia.
+   Así que lo que se arregla es lo que sí está roto: que la página no acusaba el
+   clic. `conAcuse` deja que el navegador pinte el control ya cambiado y escriba
+   «calculando…», y solo entonces corre el trabajo. Dos saltos hacen falta: el
+   rAF entra antes del siguiente pintado y el setTimeout se ejecuta DESPUÉS de
+   él; con solo uno de los dos, el pintado se queda detrás del trabajo otra vez. */
+function conAcuse(fn){
+  const pill=$('modepill'), antes=pill?pill.textContent:'';
+  if(pill){pill.textContent='calculando…';pill.classList.remove('on');}
+  requestAnimationFrame(()=>setTimeout(()=>{
+    try{fn();}
+    finally{if(pill&&pill.textContent==='calculando…'){pill.textContent=antes;pill.classList.add('on');}}
+  },0));
+}
 function repaint(){
   if(!F||!T)return;
   const c=cfg(), m=+$('hour').value;
@@ -3518,8 +3548,23 @@ function repaintPick(){
   $('cscale').addEventListener('change',repaint);
   // la POLÍTICA y el LAZO cambian el θ, y con el θ cambia todo: POA, sombra,
   // potencia y el carril de horas de backtracking
+  // ESTOS SON LOS CAROS: cambian el θ, y con el lazo puesto rehacer la mañana
+  // cuesta segundos (10,7 s medidos en una NCU de San José a las 12:00). Van por
+  // `conAcuse` para que el control se vea cambiado ANTES de que empiece el
+  // trabajo; sin eso el clic parece perdido y el usuario vuelve a pulsar.
   for(const id of ['pol','ctrlOn','ctrlDb','ctrlSlew','ctrlCiclo','ctrlModo'])
-    $(id).addEventListener('change',()=>{invalida();TRACKC=null;repaint();});
+    $(id).addEventListener('change',()=>{
+      /* INVALIDAR VA SÍNCRONO Y SOLO SE DIFIERE LO CARO. Diferir también el
+         `invalida()` dejaba las cachés RANCIAS en la ventana entre el clic y el
+         trabajo: cualquier cosa que leyera en ese hueco —un clic en «Calcular»
+         de la tabla por minuto, el propio reloj— habría respondido con el cursor
+         y el día de la configuración ANTERIOR, que es exactamente el «dejarla
+         mintiendo» que esta página vigila en otro sitio. Lo cazó
+         test_produccion_lazo.mjs a la primera («MINT vacío»), y tenía razón.
+         Invalidar es barato: tira cachés y bumpea testigos. */
+      invalida();TRACKC=null;
+      conAcuse(repaint);
+    });
   $('manual').addEventListener('change',()=>{$('manth').disabled=!$('manual').checked;invalida();repaint();});
   $('manth').addEventListener('input',()=>{invalida();repaint();});
   $('tpreset').addEventListener('change',()=>{
