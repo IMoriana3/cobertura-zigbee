@@ -456,7 +456,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.64.0';
+const VER='v1.65.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4155,7 +4155,7 @@ async function loadRealPlant(name,blockIdx,ncuSel){
     const pMed=P.lineX.length>1?(P.lineX[P.lineX.length-1]-P.lineX[0])/(P.lineX.length-1):P.pitch;
     $('nrows').value=P.elev.length;$('nrows').max=200;$('pitch').value=P.pitch.toFixed(2);
     $('cw').value=P.cw;$('maxang').value=P.maxAngle;$('axaz').value=0;
-    $('drive').value=P.drive;
+    $('drive').value=P.drive;topeManual();
     const blkSel=P.blocks.length>1?
       ' · bloque <select id="blksel" class="btn small">'+P.blocks.map(bk=>
         '<option value="'+bk.i+'"'+(bk.i===P.block?' selected':'')+'>'+(bk.i+1)+' — '+bk.lines+' líneas, '+bk.filas+' filas</option>').join('')+'</select>':'';
@@ -4371,7 +4371,7 @@ async function loadLayoutPlant(name){
     if(isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
     aplicaHuso(lay);
     $('nrows').value=nR;$('nrows').max=400;$('pitch').value=pitch.toFixed(2);
-    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value=drive;
+    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value=drive;topeManual();
     note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+
       (declBifila?(nR/2)+' seguidores <b>BIFILA</b> = '+nR+' filas a '+pitch.toFixed(2)+
         ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja — accionamiento DECLARADO por el layout'
@@ -6932,6 +6932,27 @@ function consignaEscena(key){
   const u=Math.min(1,(m-t0)/(t1-t0));
   return a0.map((v,j)=>v+u*(a1[j]-v));
 }
+/* v1.65 — EL SLIDER MANUAL NO PUEDE ENSEÑAR UN ÁNGULO QUE LA MESA NO TIENE.
+   Reportado en la revisión del 3D: «límite de giro ±55°» y el mando manual
+   marcando −56°. La física estaba bien —`sceneInstant` recorta a `mx` antes de
+   tocar nada—; lo que no estaba bien era el número: el `<input type=range>`
+   nacía con min/max ±60 fijos y su rótulo escribía lo que le arrastras, así que
+   con el tope en 55 el HUD decía −56 mientras la mesa estaba en −55. Otra vez
+   render≠física, y de la peor especie: la que parece que el tope no se respeta.
+
+   El recorte no vale aquí: dejar el slider llegar a 56 y que la mesa se quede en
+   55 es exactamente lo que confunde. El tope es del ACTUADOR, así que el mando
+   no debe poder pedirlo: el recorrido del propio slider pasa a ser el tope
+   configurado, y si baja mientras estás fuera, el valor se recorta con él. */
+function topeManual(){
+  const mx=Math.abs(+$('maxang').value)||55;
+  const sl=$('manth'); if(!sl)return;
+  sl.min=-mx; sl.max=mx;
+  const v=Math.max(-mx,Math.min(mx,+sl.value||0));
+  if(v!==+sl.value){ sl.value=v; if(manualRowsOn())manualRowSet(+$('rowsel').value||0,v); }
+  $('manthlbl').textContent=(+sl.value)+'°';
+  if(MANUAL_ROWS)for(let r=0;r<MANUAL_ROWS.length;r++)MANUAL_ROWS[r]=Math.max(-mx,Math.min(mx,MANUAL_ROWS[r]||0));
+}
 function manualRowsInit(){
   if(!DAY)return;
   const key=$('polview').value;
@@ -7190,10 +7211,12 @@ INPUT_IDS.forEach(id=>$(id).addEventListener('change',()=>{
   // v1.55: cambiar el sitio arrastra el huso (regla peninsular en su sitio,
   // estándar de la longitud fuera); el de verano fuera de Europa, a mano después
   if(id==='lon'||id==='lat'){_huso=null;aplicaHuso(null);}
+  if(id==='maxang')topeManual();
   ensureElev(cfg().nrows);recomputePronto();}));
 $('hour').addEventListener('input',()=>{$('hourlbl').textContent=hhmm(+$('hour').value);drawScene();drawCurves();update3D();updateBtUI();});
 $('manual').addEventListener('change',()=>{
   $('manth').disabled=!$('manual').checked;
+  topeManual();
   $('manrow').disabled=!$('manual').checked;
   if($('manual').checked&&$('manrow').checked)manualRowsInit();
   INSTANT=null;drawScene();update3D();updateBtUI();
@@ -7562,6 +7585,7 @@ if(window.ResizeObserver){
   }
   loadPlants();
   $('hourlbl').textContent=hhmm(+$('hour').value);
+  topeManual();            // el recorrido del mando manual es el tope configurado, desde el arranque
   $('date2').value=$('date').value;
   if(!has3D()){$('tab3d').style.display='none';VIEW3D=false;setTab(false);}
   recompute();
