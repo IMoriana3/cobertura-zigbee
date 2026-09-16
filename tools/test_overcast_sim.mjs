@@ -980,6 +980,36 @@ t('la fecha está TAMBIÉN junto al slider, y es el mismo campo, no un segundo',
     throw new Error('el espejo no corta el rebote entre los dos campos');
 });
 
+t('la versión está en UN sitio, y el informe la lee de ahí', () => {
+  // En backtracking.html vivía DOS veces —el `const VER` y un literal dentro del
+  // sello del certificador— y las dos se quedaron en v1.61 con dos arreglos
+  // dentro: la etiqueta de la página y el informe que exporta el usuario
+  // anunciaban una versión que el fichero ya no era. Aquí todavía no había
+  // pasado, y esto es lo que impide que pase.
+  const decl = html.match(/^const VER=['"]([^'"]+)['"];/m);
+  if (!decl) throw new Error('no encuentro la declaración de VER');
+  if (!/^v\d+\.\d+\.\d+$/.test(decl[1]))
+    throw new Error(`VER no tiene forma vN.N.N: ${decl[1]}`);
+  if ((html.match(/const VER\s*=/g) || []).length !== 1)
+    throw new Error('VER se declara más de una vez: la versión vuelve a tener dos fuentes');
+  // la etiqueta de la página y el informe del emplazamiento tienen que LEERLA,
+  // no llevar su propia copia
+  if (!/\$\('verlbl'\)\.textContent='overcast\.html '\+VER/.test(html))
+    throw new Error('la etiqueta de la página ya no lee VER');
+  if (!/esc\(VER\)/.test(html))
+    throw new Error('el informe del emplazamiento ya no lee VER: volvería a firmarse con un literal');
+  // y ningún literal de versión suelto por el fichero, que es como empezó el otro
+  const sueltos = (html.replace(/const VER\s*=[^\n]*\n/, '').match(/'v\d+\.\d+\.\d+'/g) || []);
+  if (sueltos.length) throw new Error('literales de versión sueltos: ' + sueltos.join(' '));
+  // LO QUE ESTO NO ALCANZA, dicho para que no se lea como más garantía de la que
+  // da: la TARJETA del Panel vive en otro repositorio y ningún banco de aquí
+  // puede carearla. Es la vía por la que la versión de backtracking se fue DOS
+  // versiones sin que nadie lo notara.
+  if (!/subir tambien\s*\n?\s*`version` en proyectos\/index\.html/.test(html.replace(/\s+/g, ' ').replace(/ /g, ' ')) &&
+      !/`version` en proyectos\/index\.html/.test(html))
+    throw new Error('falta la nota que recuerda subir la versión también en la tarjeta del Panel');
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
