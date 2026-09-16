@@ -892,6 +892,65 @@ t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () =>
   }
 });
 
+t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ellas', () => {
+  // El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
+  // ventana ancha sobraba media cabecera. El hueco se llena con los números con
+  // los que corre la simulación — pero banda muerta, velocidad, θ máximo, ciclo
+  // y batería SON EDITABLES, así que un panel tecleado mentiría en cuanto se
+  // tocara un campo. Esto exige que salga del código y no de la mano.
+  if (!/id="canonbox"/.test(html)) throw new Error('no está el panel de la cabecera');
+  if (!/drawZonalTab\(\);pintaCanon\(\)/.test(html))
+    throw new Error('pintaCanon no se repinta con el resto: el panel se quedaría en los valores de la carga');
+  // la función, ACOTADA POR SUS LLAVES: con una ventana fija de N caracteres el
+  // trozo se salía a la siguiente función y se cazaban cosas de otra pieza
+  const i0 = html.indexOf('function pintaCanon()');
+  if (i0 < 0) throw new Error('no encuentro pintaCanon');
+  let d = 0, i1 = i0;
+  for (let k = html.indexOf('{', i0); k < html.length; k++) {
+    if (html[k] === '{') d++;
+    else if (html[k] === '}' && --d === 0) { i1 = k + 1; break; }
+  }
+  const fn = html.slice(i0, i1);
+  for (const k of ['CANON.deadbandDeg', 'CANON.slewDegS', 'CANON.maxAngle',
+                   'TCU_IDLE_W', 'BATT_WH_DEF', 'AJUSTE_FLOTA', 'DT_FINE'])
+    if (!fn.includes(k)) throw new Error(`el panel ya no lee ${k}: alguien tecleó el número`);
+  if (!/class="cn'\+\(off\?' off':''\)/.test(fn))
+    throw new Error('el panel perdió la marca de «fuera del canónico», que es lo que lo hace útil');
+  // Y QUE NO ESTÉN TECLEADOS. Exigir que el identificador APAREZCA no basta:
+  // se puede pintar '0,17' a mano y dejar CANON.slewDegS usándose al lado para
+  // la comparación, y la comprobación de arriba pasa — lo verifiqué y pasaba.
+  // Así que los propios valores canónicos, formateados como los pinta el panel,
+  // no pueden aparecer como literal dentro de la función.
+  // sin comentarios: el de esta misma función cita «0,17» como ejemplo de lo
+  // que NO hay que escribir, y la primera versión de esto se cazaba a sí misma
+  const fnCode = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const prohibidos = [F.CANON.deadbandDeg.toFixed(1), F.CANON.slewDegS.toFixed(2),
+                      F.TCU_IDLE_W.toFixed(2), F.BATT_WH_DEF.toFixed(1)]
+    .map(s => s.replace('.', ','))
+    .concat(F.AJUSTE_FLOTA.nManiobras.toLocaleString('es-ES'));
+  for (const p of prohibidos)
+    if (new RegExp("'[^']*" + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'").test(fnCode))
+      throw new Error(`el panel lleva «${p}» tecleado: ese número tiene que salir de la constante`);
+
+  // Y LA PROSA, CAREADA. La cabecera afirma «deadband 1° + slew 0,17°/s» y
+  // «14.759 maniobras reales» a mano, al lado de un panel que saca lo mismo del
+  // código. Dos fuentes otra vez: si una constante cambia, el párrafo se queda
+  // mintiendo. Se comprueba por VALOR, no por literal.
+  const sub = html.slice(html.indexOf('<div class="sub">'), html.indexOf('<div class="src">'));
+  const n = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+  const db = (sub.match(/deadband\s*([\d,.]+)\s*°/) || [])[1];
+  const sl = (sub.match(/slew\s*([\d,.]+)\s*°\/s/) || [])[1];
+  const nm = (sub.match(/\(([\d.,]+)\s*maniobras reales\)/) || [])[1];
+  if (db === undefined || sl === undefined || nm === undefined)
+    throw new Error('el párrafo de cabecera ya no declara deadband / slew / maniobras');
+  if (n(db) !== F.CANON.deadbandDeg)
+    throw new Error(`la cabecera dice deadband ${db}° y el canónico es ${F.CANON.deadbandDeg}°`);
+  if (n(sl) !== F.CANON.slewDegS)
+    throw new Error(`la cabecera dice slew ${sl}°/s y el canónico es ${F.CANON.slewDegS}°/s`);
+  if (n(nm) !== F.AJUSTE_FLOTA.nManiobras)
+    throw new Error(`la cabecera dice ${nm} maniobras y el ajuste se hizo con ${F.AJUSTE_FLOTA.nManiobras}`);
+});
+
 console.log('');
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);

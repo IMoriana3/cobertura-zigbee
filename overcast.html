@@ -28,10 +28,38 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:60px}
   a{color:var(--accent);text-decoration:none}
-  header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto}
-  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em}
-  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:120ch}
-  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px;max-width:150ch}
+  /* EL ANCHO SOBRANTE DE LA CABECERA. El párrafo lleva su tope en ch A PROPÓSITO
+     (legibilidad), así que en una ventana ancha quedaba media cabecera vacía. La
+     salida NO es estirar el texto —eso es justo lo que el tope evita— sino llenar
+     el hueco con lo que había que ir a buscar dentro de la prosa o del código:
+     con qué números está corriendo ESTA simulación. Se pinta desde la
+     configuración viva (pintaCanon), nunca tecleado: un panel de referencia que
+     pueda mentir es peor que no tenerlo. */
+  header{padding:26px 22px 10px;max-width:var(--ancho);margin:0 auto;
+         display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,31vw,560px);
+         column-gap:28px;row-gap:8px;align-items:start}
+  header h1{margin:0;font-size:1.35rem;letter-spacing:.01em;grid-column:1/-1}
+  /* la columna se fija a mano: con auto-placement el .src se iba a la derecha,
+     al hueco del panel, en vez de quedarse debajo del párrafo */
+  header .sub{color:var(--tx2);font-size:.85rem;margin-top:4px;max-width:120ch;grid-column:1}
+  header .src{font-family:var(--mono);font-size:.68rem;color:var(--muted);margin-top:6px;max-width:150ch;grid-column:1}
+  /* por debajo de esto el hueco ya no existe: una columna y el panel debajo */
+  @media(max-width:1180px){header{grid-template-columns:1fr}
+    .canon{grid-column:1!important;grid-row:auto!important}}
+  .canon{grid-column:2;grid-row:2/span 2;
+         display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:6px;margin-top:4px;align-content:start}
+  .canon .cn{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+  .canon .cn .k{font-family:var(--mono);font-size:.57rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .canon .cn .v{font-size:.84rem;font-weight:600;margin-top:1px}
+  .canon .cn .v small{font-size:.68rem;color:var(--tx2);font-weight:400}
+  /* ÁMBAR = apartado del canónico del core. Es la mitad que justifica el panel:
+     de un vistazo se ve si la corrida que estás leyendo va con los valores de
+     casa o con otros, en vez de descubrirlo al comparar cifras raras. */
+  .canon .cn.off{border-color:var(--warn)}
+  .canon .cn.off .v{color:var(--warn)}
+  .canon .cn.off .v small{color:var(--warn);opacity:.8}
+  .canon .cnh{grid-column:1/-1;font-family:var(--mono);font-size:.57rem;letter-spacing:.11em;
+               text-transform:uppercase;color:var(--muted);margin-bottom:-1px}
   .wrap{max-width:var(--ancho);margin:0 auto;padding:0 22px}
   .cols{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
   @media(max-width:980px){.cols{grid-template-columns:1fr}}
@@ -103,6 +131,7 @@
   <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
     QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
     <a href="backtracking.html">Simulador de BT</a> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
+  <aside class="canon" id="canonbox"></aside>
 </header>
 
 <div class="wrap">
@@ -2593,7 +2622,7 @@ function recompute(){
   }
   SIM={day:day,dayF:dayF,thN:thN,thNF:thNF,poaN:poaN,res:res,loop:loop,mp:mp,aniso:aniso};
   computeZonal(d);
-  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();
+  drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();pintaCanon();
   drawDiario(d);
   refreshScene(true);
 }
@@ -3141,6 +3170,41 @@ function drawLegend(){
   if(zonalActivo())
     h+='<span><i style="background:hsla(330,80%,60%,.45)"></i>envolvente mín–máx del θ entre NCUs (zonal) — cada curva magenta es una NCU, con su nubosidad media</span>';
   $('legend').innerHTML=h;
+}
+/* ── CON QUÉ NÚMEROS CORRE ESTO, en el hueco de la cabecera ────────────────
+   El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
+   ventana ancha sobraba media cabecera. Lo que faltaba no era más texto: era
+   poder ver de un vistazo los números con los que corre la simulación, que
+   estaban repartidos entre la prosa («deadband 1° + slew 0,17°/s»), la columna
+   de configuración y el código.
+   NO es una tabla de canónicos fija. Banda muerta, velocidad, θ máximo, ciclo
+   y batería SON EDITABLES, así que un panel tecleado mentiría en cuanto tocaras
+   un campo — el vicio que este trabajo lleva corrigiendo. Se pinta de la
+   configuración VIVA y, cuando un valor se aparta del canónico del core, sale
+   en ámbar. Esa es la mitad que lo hace útil y no decorativo: se ve que estás
+   leyendo una corrida fuera de casa ANTES de sacar conclusiones de sus cifras. */
+function pintaCanon(){
+  const num=(id,def)=>{const e=$(id); if(!e)return def; const v=+e.value; return Number.isFinite(v)?v:def;};
+  const nf=(v,d)=>v.toFixed(d).replace('.',',');
+  const out=['<div class="cnh">con qué números corre esto · ámbar = fuera del canónico del core</div>'];
+  const tile=(k,v,sub,off)=>out.push('<div class="cn'+(off?' off':'')+'"><div class="k">'+k+'</div>'+
+    '<div class="v">'+v+(sub?' <small>'+sub+'</small>':'')+'</div></div>');
+  const dif=(a,b)=>Math.abs(a-b)>1e-9;
+  const dt=num('dt',1), db=num('deadband',CANON.deadbandDeg), sl=num('slew',CANON.slewDegS),
+        ma=num('maxang',CANON.maxAngle), bt=num('battwh',BATT_WH_DEF);
+  /* el subtítulo dice la PROCEDENCIA cuando el valor es el de casa, y el valor
+     CANÓNICO solo cuando se ha apartado: repetirlo cuando coinciden era ruido
+     («0,17 °/s · Sunner 0,17») y encima partía la línea */
+  tile('ciclo TCU',        dt+'′',            dt===1?'la TCU real':'la real es 1′',      dt!==1);
+  tile('banda muerta',     nf(db,1)+'°',      dif(db,CANON.deadbandDeg)?'core '+nf(CANON.deadbandDeg,1)+'°':'canónico', dif(db,CANON.deadbandDeg));
+  tile('velocidad',        nf(sl,2)+' °/s',   dif(sl,CANON.slewDegS)?'core '+nf(CANON.slewDegS,2):'Sunner',            dif(sl,CANON.slewDegS));
+  tile('θ máximo',         '±'+nf(ma,0)+'°',  dif(ma,CANON.maxAngle)?'core ±'+CANON.maxAngle+'°':'canónico',           dif(ma,CANON.maxAngle));
+  tile('rejilla actuador', DT_FINE+'′',       'fija',                                    false);
+  tile('reposo TCU',       nf(TCU_IDLE_W,2)+' W', 'medido',                              false);
+  tile('batería',          nf(bt,1)+' Wh',    dif(bt,BATT_WH_DEF)?'def. '+nf(BATT_WH_DEF,1):'6 Ah × 25,6 V', dif(bt,BATT_WH_DEF));
+  tile('motor',            nf(AJUSTE_FLOTA.interceptoWh,4)+' + '+nf(AJUSTE_FLOTA.kWhDeg,4)+'·|Δθ| Wh',
+                           AJUSTE_FLOTA.nManiobras.toLocaleString('es-ES')+' maniobras',  false);
+  $('canonbox').innerHTML=out.join('');
 }
 /* Δ contra la referencia, con el signo LEÍDO: en coste, menos es mejor, y el
    verde tiene que significar lo mismo en toda la tabla (en POA marca ganar, en
