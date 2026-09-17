@@ -456,7 +456,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.67.0';
+const VER='v1.68.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4414,7 +4414,7 @@ async function loadRealPlant(name,blockIdx,ncuSel){
    cuenta bifila/monofila—, y abrirlas sería publicarlas como monofila sin nada
    que lo respalde (las tres salen con GCR ~0,23, que tiene la pinta de estar a
    la mitad, pero pinta no es dato). ── */
-const PLANTAS_LAYOUT={elburgo:'El Burgo',paramo:'Páramo',fayon:'Fayón',polvorin:'Polvorín',benante:'Benante',panbianco:'Panbianco'};
+const PLANTAS_LAYOUT={elburgo:'El Burgo',paramo:'Páramo',fayon:'Fayón',polvorin:'Polvorín',benante:'Benante',panbianco:'Panbianco',bagnarelli:'Bagnarelli',tunez:'Túnez'};
 async function loadLayoutPlant(name){
   const note=$('realnote');
   note.style.display='';note.textContent='cargando '+PLANTAS_LAYOUT[name]+'…';
@@ -4427,15 +4427,43 @@ async function loadLayoutPlant(name){
     const lay=LAYOUT_CACHE[name];
     const tks=(lay.trackers||[]).filter(t=>isFinite(t.x)&&isFinite(t.n));
     if(!tks.length)throw new Error('layout sin trackers');
+    /* v1.68 — LA COORDENADA TRANSVERSAL NO ES `x` CUANDO EL EJE VA GIRADO.
+       Las líneas se agrupaban por la `x` cruda del DWG. Vale mientras el eje
+       mire al norte de cuadrícula, que es lo que pasa en casi todas; pero
+       Bagnarelli lleva el EJE A 23,7° —lo dice cada seguidor en su `rot`, y el
+       índice lo confirma con axis_azimuth 23,7— y ahí `x` no es «a través de
+       las filas»: es una diagonal. Medido: cargaba 6 filas de las 34 que tiene,
+       porque seguidores de la misma fila caían en «líneas» distintas.
+
+       Se agrupa por la coordenada PERPENDICULAR al eje, u = x·cos a − n·sin a,
+       que con a = 0 es exactamente la `x` de siempre: las plantas que ya iban
+       bien no se mueven ni un milímetro (verificado con El Burgo, Páramo,
+       Fayón, Polvorín, Benante y Panbianco). Y el azimut sale del DATO del
+       layout —el `rot` que comparten sus seguidores—, no de una suposición. */
+    /* el semipaso declarado se lee AQUÍ, antes de agrupar, porque el agrupador
+       lo necesita: 4·filaZ es el paso que la planta DICE tener, y compararlo con
+       el medido es lo que destapa una proyección que está fundiendo rejillas. */
+    const Gp=lay.geometria||{};
+    const fzDecl=[Gp.filaZ, lay.filaZ, (lay.mesa||{}).filaZ].find(v=>Number.isFinite(v));
+    const rotDe=(t)=>Number.isFinite(t&&t.rot)?+(+t.rot).toFixed(2):null;
+    const rotCuenta={};
+    for(const t of tks){const r=rotDe(t); if(r!=null)rotCuenta[r]=(rotCuenta[r]||0)+1;}
+    const rotEnt=Object.entries(rotCuenta).sort((a2,b2)=>b2[1]-a2[1]);
+    // sólo se acepta un azimut si lo comparte la MAYORÍA: un `rot` suelto de un
+    // seguidor torcido no puede girar la planta entera
+    const ejeAz=(rotEnt.length&&rotEnt[0][1]>tks.length/2)?+rotEnt[0][0]:0;
+    const aR=ejeAz*RAD;
+    const uDe=(t)=>t.x*Math.cos(aR)-t.n*Math.sin(aR);
     const enLineas=arr=>{
       const L=[];
       for(const t of arr){
+        const u=uDe(t);
         let q=null;
-        for(const l of L)if(Math.abs(l.x-t.x)<=0.8){q=l;break;}
-        if(!q){q={x:t.x,tks:[]};L.push(q);}
+        for(const l of L)if(Math.abs(l.x-u)<=0.8){q=l;break;}
+        if(!q){q={x:u,tks:[]};L.push(q);}
         q.tks.push(t);
       }
-      L.sort((a,b)=>a.x-b.x);
+      L.sort((a2,b2)=>a2.x-b2.x);
       return L;
     };
     const vanoMin=L=>{let m=Infinity;for(let i=1;i<L.length;i++)m=Math.min(m,L[i].x-L[i-1].x);return m;};
@@ -4455,6 +4483,40 @@ async function loadLayoutPlant(name){
        módulo el paso intra-banda con más trackers), que es la mayor porción
        coherente de la planta. Las plantas de una sola rejilla no se tocan: El
        Burgo (vano mín 12 m) y Fayón (11,74) pasan de largo, comprobado. */
+    /* v1.68 — EL SEGUNDO DISPARADOR: EL PASO QUE LA PLANTA DICE TENER.
+       El de arriba es físico —dos líneas más juntas que el colector— y caza
+       Páramo, cuyas sub-plantas caen a 1 m. Pero no caza a Túnez, y el suyo es
+       el mismo defecto con otra cara: sus 19 seguidores van en DOS BANDAS
+       (n ≈ +26,3 y n ≈ −19,1) con paso 12,50 m dentro de cada una y desplazadas
+       EXACTAMENTE MEDIA PASADA, 6,25 m. Al proyectarlas se funden en una rejilla
+       perfecta de 6,25 que no existe: ninguna línea queda más cerca que el
+       colector, así que el disparador físico no salta, y la planta salía con
+       GCR 0,762 — el DOBLE del canónico, imposible.
+
+       Lo que lo destapa es un dato que antes no se leía: el `filaZ` declarado
+       dice que el paso entre seguidores son 4·filaZ = 12,50 m. Si el medido es
+       la mitad, la proyección está fundiendo rejillas, y se elige la clase de
+       resto dominante módulo el paso DECLARADO. No es un umbral a ojo: es el
+       careo entre lo que la planta dice de sí misma y lo que sale de proyectar.
+
+       Las que ya iban bien pasan de largo porque su medido ES 4·filaZ: El Burgo
+       12,00 = 4×3,00 · Polvorín 9,00 = 4×2,25 · Benante y Panbianco 10,48 =
+       4×2,62 · Bagnarelli 11,00 = 4×2,75. Verificado en las seis. */
+    const vanoMed=(L)=>{const d=[];for(let i=1;i<L.length;i++)d.push(L[i].x-L[i-1].x);
+      d.sort((a2,b2)=>a2-b2); return d.length?d[Math.floor(d.length/2)]:NaN;};
+    if(fzDecl>0&&lines.length>2&&vanoMed(lines)<4*fzDecl*0.75){
+      const P=4*fzDecl, cls={};
+      for(const t of tks){const r=(((uDe(t)%P)+P)%P).toFixed(2);(cls[r]=cls[r]||[]).push(t);}
+      const ord=Object.entries(cls).sort((a2,b2)=>b2[1].length-a2[1].length);
+      const dom=ord[0][1], L2=enLineas(dom);
+      if(L2.length>=2&&Math.abs(vanoMed(L2)-P)<0.5*P){
+        gridNota=' · <b>bandas desplazadas</b>: la planta trae '+ord.length+' bandas con el mismo paso ('+
+          P.toFixed(2)+' m, el que declara su filaZ) y orígenes distintos, así que se simula la '+
+          '<b>dominante</b> ('+Math.round(100*dom.length/tks.length)+' % de los seguidores). Proyectarlas '+
+          'todas daba filas a '+vanoMed(lines).toFixed(2)+' m, que no es el paso que la planta declara';
+        lines=L2;
+      }
+    }
     if(vanoMin(lines)<CW_CANON){
       // paso REAL entre filas: el salto dominante DENTRO de una banda (mismo n),
       // que no puede contaminarse con los desplazamientos entre bloques
@@ -4550,14 +4612,7 @@ async function loadLayoutPlant(name){
        CATANIA queda fuera a propósito: declara `bifila:{filas:2,pasoFilas:5}` y
        avisa de que «cada entrada de `trackers` es UNA FILA (un tubo)», o sea que
        ahí no hay que expandir sino EMPAREJAR. Es otro camino y va aparte. */
-    const G=lay.geometria||{};
-    /* el MISMO número vive en hasta tres sitios según el layout —`geometria.filaZ`
-       (El Burgo), la raíz (Polvorín, Benante, Panbianco, Páramo, Catania) y
-       `mesa.filaZ` (Fayón, y duplicado en los demás)—. Se leen los tres en ese
-       orden y NO se inventa ninguno: si no está en ninguno, sigue siendo «no
-       declarado». Que el dato esté escrito tres veces es su propio defecto, de
-       los datos y no de la página, y no se arregla aquí. */
-    const fzDecl=[G.filaZ, lay.filaZ, (lay.mesa||{}).filaZ].find(v=>Number.isFinite(v));
+    const G=Gp;   // el mismo `lay.geometria` que ya se leyó arriba
     const declBifila=G.bifila===true||/^s[ií]/i.test(String(G.bifila||''))||(fzDecl>0);
     const declMono=fzDecl===0;
     const fz=fzDecl>0?fzDecl:pitch/4;
@@ -4637,7 +4692,12 @@ async function loadLayoutPlant(name){
     if(isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
     aplicaHuso(lay);
     $('nrows').value=nR;$('nrows').max=400;$('pitch').value=pitch.toFixed(2);
-    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=0;$('drive').value=drive;topeManual();
+    /* v1.68: y el AZIMUT DEL EJE deja de ponerse a cero. Si la planta declara su
+       giro —Bagnarelli, 23,7° en el `rot` de sus 17 seguidores— simularla con el
+       eje al norte es simular otra planta: el sol le entra con otro ángulo todo
+       el día. Se pone el mismo que usa la agrupación, para que el dibujo y la
+       física miren al mismo sitio. */
+    $('cw').value=P.cw;$('maxang').value=55;$('axaz').value=ejeAz;$('drive').value=drive;topeManual();
     note.innerHTML='⛰ <b>'+PLANTAS_LAYOUT[name]+'</b> · layout REAL ('+
       (declBifila?nBi+' seguidores <b>BIFILA</b>'+(nMono?' + <b>'+nMono+' MONOFILA</b>':'')+' = '+nR+' filas a '+pitch.toFixed(2)+
         ' m (GCR '+(P.cw/pitch).toFixed(3)+'), un motor por pareja'+(nMono?' salvo los '+nMono+' monofila, que van solos':'')+

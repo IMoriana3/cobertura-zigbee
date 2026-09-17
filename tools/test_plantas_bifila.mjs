@@ -22,6 +22,27 @@
  * va con un layout SINTÉTICO servido por interceptación, para que ese camino no
  * quede sin probar.
  *
+ * v1.68 añade las dos que el AGRUPADOR dejaba mal, y sus dos causas distintas.
+ * Las cifras, contra la versión ANTERIOR INMEDIATA (v1.67, que ya lee el filaZ),
+ * no contra el estado de hace dos versiones — que es lo que las haría parecer
+ * más grandes de lo que son:
+ *
+ *   Bagnarelli   6 → 12 filas · 6 → 34 MESAS (todas las que tiene: 17 seguidores
+ *                × 2). Las líneas se agrupaban por la `x` cruda del DWG y esta
+ *                planta lleva el EJE A 23,7°, así que seguidores de la misma fila
+ *                caían en líneas distintas y se cargaban 6 mesas de 34. Ahora se
+ *                agrupa por la perpendicular al eje. (Su GCR ya era 0,433 en
+ *                v1.67: eso lo arregló leer el filaZ, no esto.)
+ *   Túnez       38 → 22 filas · 19 → 11 parejas. El GCR ya era 0,381 en v1.67;
+ *                lo que estaba mal es CUÁNTO se simula: sus dos bandas van
+ *                desplazadas MEDIA PASADA (6,25 de 12,50) y al proyectarlas se
+ *                funden en una rejilla perfecta que no existe, así que la planta
+ *                salía con el doble de filas de las que tiene su banda. Lo
+ *                destapa el `filaZ` declarado: 4·filaZ es el paso que la planta
+ *                dice tener, y el medido era la mitad.
+ *                (Antes de v1.67, con el filaZ sin leer, Túnez salía además con
+ *                GCR 0,762 — el doble del canónico.)
+ *
  *     node tools/test_plantas_bifila.mjs
  */
 import path from 'node:path';
@@ -56,7 +77,8 @@ try {
       const en = new Set(); gs.forEach(g => g.forEach(x => en.add(x)));
       const nR = P.elev ? P.elev.length : 0;
       const ordenadas = P.lineX ? P.lineX.every((x, i) => i === 0 || x >= P.lineX[i - 1] - 1e-9) : false;
-      return { nR, pitch: P.pitch, gcr: P.cw && P.pitch ? +(P.cw / P.pitch).toFixed(3) : null,
+      return { nR, pitch: P.pitch, mesas: P.nFilas, axaz: +document.getElementById('axaz').value,
+               gcr: P.cw && P.pitch ? +(P.cw / P.pitch).toFixed(3) : null,
                pares: gs.length, sueltas: nR - en.size, grupos: gs, lineX: P.lineX, ordenadas,
                casilla: document.getElementById('drive').value,
                nota: ((document.getElementById('realnote') || {}).textContent || '').replace(/\s+/g, ' '),
@@ -71,6 +93,9 @@ try {
     { n: 'polvorin',  nR: 78, pitch: 4.50, gcr: 0.529, pares: 39, bi: true },
     { n: 'benante',   nR: 90, pitch: 5.24, gcr: 0.455, pares: 45, bi: true },
     { n: 'panbianco', nR: 92, pitch: 5.24, gcr: 0.455, pares: 46, bi: true },
+    // v1.68: las dos que el agrupador dejaba mal
+    { n: 'bagnarelli', nR: 12, pitch: 5.50, gcr: 0.433, pares: 6, bi: true, mesas: 34, az: 23.7 },
+    { n: 'tunez',      nR: 22, pitch: 6.25, gcr: 0.381, pares: 11, bi: true, mesas: 22 },
   ];
   for (const c of CASOS) {
     const r = await carga(c.n);
@@ -78,6 +103,10 @@ try {
           !r.err && r.nR === c.nR && Math.abs(r.pitch - c.pitch) < 0.01 && Math.abs(r.gcr - c.gcr) < 0.002 && r.pares === c.pares && r.casilla === 'bifila',
           `${r.nR} filas · ${r.pitch} m · GCR ${r.gcr} · parejas ${r.pares} · casilla ${r.casilla}${r.err ? ' · ' + r.err : ''}`);
     check(`${c.n}: ninguna fila se queda sin su motor`, r.sueltas === 0, 'sueltas ' + r.sueltas);
+    if (c.mesas != null)
+      check(`${c.n}: carga ${c.mesas} mesas`, r.mesas === c.mesas, `mesas ${r.mesas}`);
+    if (c.az != null)
+      check(`${c.n}: el eje entra girado ${c.az}°, como declara su layout`, Math.abs(r.axaz - c.az) < 0.01, `eje ${r.axaz}°`);
   }
 
   /* ── 2. PÁRAMO: filaZ 0 es un DATO, no un hueco ──
