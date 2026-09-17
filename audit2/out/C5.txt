@@ -1,0 +1,58 @@
+════════════════════════════════════════════════════════════════════════════════════════
+E-C5 · bisección frente a barrido fino · commit 3a574512c86d0fe78051d08c75c6e4439d20de1c · física 1a13d8799f6a · node v22.22.2
+muestra: la de C.2 (200 instantes, mulberry32(20260917) sobre los que tienen θ uniforme de sombra 0, C1_instantes.csv)
+barrido fino: paso 0.05° sobre el MISMO predicado · nb 2 · b0 0,05 · albedo 0,20 · TL 3,5 · MV = mvPara(T,zen)
+════════════════════════════════════════════════════════════════════════════════════════
+
+muestra reconstruida: 200 instantes
+
+── (1) bt3dPairMaxMag · 36 pasos de bisección sobre [0, θmáx] ──
+  parejas-instante evaluadas: 1292  (denominador)
+  |Δθ| bisección − barrido fino (0,05°):  p50 0.00000°  p90 0.02323°  p99 0.04520°  máx 0.04875°
+  |Δθ| > 0,05° (un paso del fino): 0 de 1292  ·  > 0,5°: 0
+  casos con MÁS DE UN cruce del predicado (raíz NO única en la rejilla fina): 0 de 1292
+  predicado CONSTANTE VERDADERO desde mag=0 (sombrea a cualquier θ, no hay raíz): 11 de 1292
+  predicado CONSTANTE FALSO hasta θmáx (nunca sombrea):                         1047 de 1292
+  con raíz interior (exactamente 1 cruce):                                      234 de 1292
+  TEST NULO: el nº de cruces es CONSTANTE (0 o 1) en todo el dominio medido ⇒ la hipótesis de raíz única no se viola aquí.
+
+  los 10 peores:
+   #   Δθ        bisección   barrido fino   cruces   pendiente  tiltNS   sol°   configuración · instante
+   1   0.04875°    20.9988°       20.9500°       1      -2.73°    3.00°   16.8  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 07:40Z
+   2   0.04813°     3.9481°        3.9000°       1       0.00°    0.00°    2.5  Zaragoza · cresta 1 · N-S quebrado 4° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 18:00Z
+   3   0.04778°    38.2478°       38.2000°       1       6.34°    0.00°   27.2  Zaragoza · aleatorio 13 · N-S senoidal 3° · bifila · alineadas ×1 · 6 filas · az 0° · 21-jun 17:00Z
+   4   0.04671°    43.1467°       43.1000°       1      10.00°   -0.11°    7.6  Zaragoza · pendiente 10 · N-S aleatorio 3° · quebrado · bagnarelli ×2 · 10 filas · az -20° · 21-jun 05:20Z
+   5   0.04663°    22.4966°       22.4500°       1      -0.91°    1.30°   14.5  Zaragoza · aleatorio 13 · N-S senoidal 3° · bifila · alineadas ×1 · 6 filas · az 0° · 21-jun 06:00Z
+   6   0.04654°    41.6965°       41.6500°       1       5.88°   -1.30°   27.2  Zaragoza · aleatorio 13 · N-S senoidal 3° · bifila · alineadas ×1 · 6 filas · az 0° · 21-jun 17:00Z
+   7   0.04633°    13.9463°       13.9000°       1      -1.39°    0.00°    5.9  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-jun 19:00Z
+   8   0.04614°    42.4461°       42.4000°       1      10.00°    2.62°    7.6  Zaragoza · pendiente 10 · N-S aleatorio 3° · quebrado · bagnarelli ×2 · 10 filas · az -20° · 21-jun 05:20Z
+   9   0.04565°    49.3957°       49.3500°       1      -3.81°    1.82°   17.7  Arequipa · cresta 1 · N-S aleatorio 3° · quebrado · alineadas ×2 · 6 filas · az 0° · 21-mar 21:40Z
+  10   0.04565°    49.3957°       49.3500°       1      -3.81°    1.82°   17.7  Arequipa · cresta 1 · N-S aleatorio 3° · mono · tresbolillo ×2 · 6 filas · az 0° · 21-mar 21:40Z
+
+── (2) anglesMinGroundLight · 14 pasos de bisección sobre max(shadeRows) ≤ 2e-3 (backtracking.html:2379-2383) ──
+  unidades-instante evaluadas: 601 (de 601 que superan el corte hi-lo ≥ 0,25°; tope de coste 600, declarado)
+  |Δθ| bisección − barrido fino (0,05°):  p50 0.00016°  p90 0.04111°  p99 0.04893°  máx 0.04987°
+  |Δθ| > 0,05°: 0 de 601  ·  > 0,5°: 0
+  casos con MÁS DE UN cruce (raíz NO única): 0 de 601
+
+  los 10 peores:
+   #   Δθ        bisección   barrido fino   cruces   unidad     sol°   configuración · instante
+   1   0.04987°    55.0000°       54.9501°       0   [0,1]         22.4  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-dic 10:40Z
+   2   0.04987°    55.0000°       54.9501°       0   [2,3]         22.4  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-dic 10:40Z
+   3   0.04987°    55.0000°       54.9501°       0   [4,5]         22.4  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-dic 10:40Z
+   4   0.04987°    55.0000°       54.9501°       0   [6,7]         22.4  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-dic 10:40Z
+   5   0.04949°    40.5465°       40.4970°       0   [4]           47.6  Zaragoza · aleatorio 42 · N-S aleatorio 2° · mono · tresbolillo ×1 · 6 filas · az -20° · 21-jun 09:00Z
+   6   0.04893°     7.9995°        7.9506°       0   [5]           71.8  Arequipa · pendiente -6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:20Z
+   7   0.04893°     7.9995°        7.9506°       0   [6]           71.8  Arequipa · pendiente -6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:20Z
+   8   0.04893°     7.9995°        7.9506°       0   [7]           71.8  Arequipa · pendiente -6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:20Z
+   9   0.04893°     7.9995°        7.9506°       0   [0]           71.8  Arequipa · pendiente -6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:20Z
+  10   0.04893°     7.9995°        7.9506°       0   [1]           71.8  Arequipa · pendiente -6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:20Z
+
+── (3) penetración de terreno · 3 refinos (backtracking.html:2246-2249) ──
+  NO EJECUTADA. Su predicado es `terrBlocked(x,y,z)`, definido dentro de `shadeBand3DAll` y no
+  exportado: búsqueda con  grep -n "terrBlocked" backtracking.html  ⇒ sólo apariciones locales a esa
+  función. Además el bucle no busca una RAÍZ EN θ sino la fracción de cuerda tapada, con 3 refinos
+  sobre [0,1] ⇒ resolución intrínseca 1/16 de la cuerda (0.1489 m con cuerda 2,382),
+  que es una cota conocida por construcción, no una hipótesis de raíz única.
+
+CSV: audit2/out/C5.csv

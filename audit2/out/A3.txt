@@ -1,0 +1,34 @@
+════════════════════════════════════════════════════════════════════════════════
+E-A3 · ANUAL DE AYORA REAL · commit 3a574512c86d0fe78051d08c75c6e4439d20de1c
+node v22.22.2 · playwright chromium opt
+VER de la página: v1.68.0
+sitio   lat 39.11821 · lon -1.15985 · alt 739 m · tz 2 · año 2026
+cielo   Linke TL 3.5 · albedo 0.2 · nubosidad undefined · modelo Ineichen
+planta  79 líneas · 800 filas · 1600 mesas · 400 parejas · drive bifila
+        cuerda 2.384 · z0 0.17 · nb 2 · b0 0.05 · ±55° · T.real true
+        tilts N-S medidos -3.63…-0.53°
+MV      mvPara(T,zen) = 20°:8 45°:8 70°:8 85°:8   (el anual NO fuerza MV)
+paso    10 min (backtracking.html:6911) · 12 días 21 de cada mes · pesos DIM · SIN lazo de control
+════════════════════════════════════════════════════════════════════════════════
+
+── VARIANTE 1 · TAL CUAL ─────────────────────────────────────────
+políticas ON  : pairwise, true3d
+políticas OFF : astro, global, row, bt2d, mgl, optimal, optfree   (la carga de planta real apaga los "caros": backtracking.html:4355-4358)
+(708.4 s)
+   Política  │  POA planta kWh/m²·año  │  Δ vs pairwise
+   Pairwise  │  2313.4464  │  +0.00%
+   True-3D  │  2298.7128  │  -0.64%
+   POA sin redondear: 2313.44643430  2298.71277018
+
+── VARIANTE 2 · LAS 9 POLÍTICAS ──────────────────────────────────
+políticas ON  : astro, global, row, bt2d, pairwise, true3d, mgl, optimal, optfree
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.evaluate: Target page, context or browser has been closed
+    at /home/user/cobertura-zigbee/audit2/A3_anual_ayora.mjs:84:12 {
+  log: []
+}
+
+Node.js v22.22.2

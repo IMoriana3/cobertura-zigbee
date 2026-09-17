@@ -1,0 +1,28 @@
+════ E-A4 · agregador de poaPlantSeg ════
+commit        HEAD   ·   VER en el fichero: v1.68.0
+node          v22.22.2
+sitio         lat 41.57634  lon -0.79814  alt 739 m
+cielo         TL 3.5  albedo 0.2  nubes 0  ·  ghi 82.432 dni 324.715 dhi 30.050
+geometría     6 filas · pitch 6 · cuerda 2.382 · z0 0.17 · ±55° · axisAz 0 · nb 2 · b0 0.05
+tilt N-S      -3.41 / 1.63 / 3.22 / 3.76 / -3.67 / -3.06
+instante      2026-06-21T05:30:00.000Z  (07:30 local, tz +2)  ·  sol elev 9.283° az 66.726° zen 80.717°
+MV efectivo   28
+──────────────────────────────────────────────────────────────────────
+largos de mesa por fila: 10.00 m + 54.73 m  (total 64.73 m)
+
+  fila   POA mesa 0 (10 m)   POA mesa 1 (54.7 m)   media SIMPLE   media PONDERADA por largo   poaPlantSeg.rows[r]
+   0          61.754450            54.501617      58.128034                  55.622161            55.622161
+   1          47.419157            47.419157      47.419157                  47.419157            47.419157
+   2         131.790673           158.797782     145.294227                 154.625253           154.625253
+   3          27.666433            39.156883      33.411658                  37.381638            37.381638
+   4          62.493751            62.493751      62.493751                  62.493751            62.493751
+   5         294.378252           294.378252     294.378252                 294.378252           294.378252
+
+¿rows[r] == media ponderada por LARGO de mesa?  SÍ (|Δ| < 1e-9 en las 6 filas)
+¿rows[r] == media SIMPLE de las mesas?          NO
+
+planta = 108.653369   ·   suma(rows)/nFilas = 108.653369   ⇒ media por FILA sin ponderar: SÍ
+
+MÓDULOS / ÁREA: el peso es `len = line[k][1]-line[k][0]` (metros de mesa). No interviene
+ni el nº de módulos ni la cuerda: búsqueda exhaustiva con  grep -nE "mods|nModulos|area|cw\\b"  sobre
+backtracking.html:2698-2723 (cuerpo de poaPlantSeg) ⇒ sin coincidencias.
