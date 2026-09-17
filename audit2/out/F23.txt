@@ -5,3 +5,32 @@ planta 79 líneas de simulación · cuerda 2.384 · z0 0.17 · ±55° · axisAz 
 DÍA: 21-jun-2026, paso 20 min · 9 políticas: astro, global, row, bt2d, pairwise, true3d, mgl, optimal, optfree
 sombra: la PUBLICADA (shadeRows, con estructura) en las dos variantes
 ════════════════════════════════════════════════════════════════════════════════════════════
+(3820 s)
+
+mesas con nº de MÓDULOS declarado en el levantamiento: 1600 de 1600
+
+── F.2 · energía del día 21-jun (Wh/m² de planta) ──
+  política    (a) poaPlant, tilt por FILA   (b) tilt por MESA + peso por MÓDULOS   Δ (b−a)      Δ relativo
+  astro                       11063.6677                               11058.3936     -5.2741     -0.0477 %
+  global                      11090.5951                               11089.7764     -0.8187     -0.0074 %
+  row                         11114.8047                               11113.8748     -0.9299     -0.0084 %
+  bt2d                        11132.4522                               11131.7933     -0.6589     -0.0059 %
+  pairwise                    11184.7569                               11224.1768     39.4199      0.3524 %
+  true3d                       9759.8216                                9758.8492     -0.9725     -0.0100 %
+  mgl                          9949.5526                                9948.8448     -0.7077     -0.0071 %
+  optimal                     11172.1032                               11168.7840     -3.3192     -0.0297 %
+  optfree                     11179.6672                               11176.7285     -2.9387     -0.0263 %
+
+── F.3 · dispersión de POA entre mesas del MISMO motor, (máx−mín)/media a lo largo del día ──
+  política    motores-instante   p05        p50        p95        máx
+  astro                  3388   0.0000 %   1.1319 %   177.1359 %   614.0185 %
+  global                 3388   0.0000 %   1.1659 %   60.9708 %   129.6577 %
+  row                    3388   0.0000 %   1.1845 %   56.1334 %   104.8138 %
+  bt2d                   3388   0.0000 %   1.1318 %   55.6846 %   103.7918 %
+  pairwise               3382   0.0000 %   1.1447 %   69.6740 %   206.5126 %
+  true3d                 3322   0.0000 %   1.2607 %   22.6100 %   73.7259 %
+  mgl                    3322   0.0000 %   1.2224 %   27.6840 %   73.7259 %
+  optimal                3388   0.0000 %   1.1223 %   116.8704 %   614.0185 %
+  optfree                3388   0.0000 %   1.1157 %   116.8704 %   614.0185 %
+
+CSV: audit2/out/F23.csv

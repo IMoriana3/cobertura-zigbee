@@ -1324,6 +1324,105 @@ Notas: no se ha ejecutado el experimento de cota de F.2 (transposición por mesa
 ponderada por área de módulo) ni el de dispersión intra-accionamiento de F.3
 (**NO VERIFICADO** — ver HUECOS).
 
+### E-F2  Transposición por mesa y peso por módulos, frente a la publicada
+
+Commit:      3a57451
+Script:      `audit2/F23_mesa.mjs`
+Comando:     `node audit2/F23_mesa.mjs 20`
+Node:        v22.22.2
+Salida:      `audit2/out/F23.txt` · CSV `audit2/out/F23.csv`
+Estado:      **MEDIDO** (Ayora real) · **NO APLICABLE** (caso B, ver notas)
+
+Ayora real, **día 21-jun-2026 a paso 20 min**, las 9 políticas. 79 líneas de
+simulación, cuerda 2,384, z0 0,17, ±55°, axisAz 0, drive bifila, **MV 8**
+(`if(T.real)return 8`), nb 2, b0 0,05, TL 3,5, albedo 0,20, alt 739 m.
+Sombra: la **PUBLICADA** (`shadeRows`, con estructura) en las dos variantes.
+Duración 3 820 s.
+
+- **(a)** como está: `poaPlant` con **un tilt por fila** (`rowTiltAt`) y el θ medio
+  de la línea (`segLineMean`).
+- **(b)** `poaRow` con `segTiltAt(T,r,k)` —**el tilt de cada mesa**— y la fila
+  agregada ponderando por el **nº de módulos real de cada mesa**
+  (`PLANT_REAL.segMods`), no por largo. La sombra por mesa es la misma
+  (`sh.seg` / `sh.segElec`): lo único que cambia entre (a) y (b) es la
+  transposición y el peso. **No se toca el motor**: (b) se monta en el script con
+  las funciones que la propia página exporta.
+
+**Test nulo descartado**: **1 600 de 1 600 mesas** declaran nº de módulos en el
+levantamiento, así que el peso por módulos no degenera al peso por largo y la
+variante (b) mide lo que el encargo pide.
+
+| política | (a) tilt por FILA | (b) tilt por MESA + peso por MÓDULOS | Δ (b−a) | Δ relativo |
+|---|---|---|---|---|
+| astro | 11 063,6677 | 11 058,3936 | −5,2741 | −0,0477 % |
+| global | 11 090,5951 | 11 089,7764 | −0,8187 | −0,0074 % |
+| row | 11 114,8047 | 11 113,8748 | −0,9299 | −0,0084 % |
+| bt2d | 11 132,4522 | 11 131,7933 | −0,6589 | −0,0059 % |
+| **pairwise** | 11 184,7569 | 11 224,1768 | **+39,4199** | **+0,3524 %** |
+| true3d | 9 759,8216 | 9 758,8492 | −0,9725 | −0,0100 % |
+| mgl | 9 949,5526 | 9 948,8448 | −0,7077 | −0,0071 % |
+| optimal | 11 172,1032 | 11 168,7840 | −3,3192 | −0,0297 % |
+| optfree | 11 179,6672 | 11 176,7285 | −2,9387 | −0,0263 % |
+
+(Wh/m² de planta del día 21-jun)
+
+Ocho de las nueve políticas dan Δ **negativo** y por debajo de 0,05 %. `pairwise`
+es la única con signo contrario y el único Δ por encima de 0,1 %: **+0,3524 %**,
+un orden de magnitud mayor que el de cualquier otra.
+
+**Caso B: NO APLICABLE.** El caso B canónico tiene **una sola mesa por fila y sin
+`segTilt`** (`audit2/lib_motor.mjs`, función `caso`: `segs.push([[-L/2, L/2]])`),
+de modo que `segTiltAt` cae en su rama de respaldo `rowTiltAt` y el peso por
+módulos degenera a uno solo. La variante (b) coincidiría con (a) **por
+construcción**: sería un test nulo, no una medida. Se declara en vez de publicar
+un cero.
+
+Notas: **un solo día** (21-jun), no el anual que pide el encargo — el anual de
+nueve políticas sobre Ayora real es el coste documentado en la `CRÍTICA DEL
+ENCARGO` nº 2. El paso es 20 min, no los 10 del manejador publicado. No se ha
+separado cuánto del Δ viene del tilt por mesa y cuánto del peso por módulos: el
+experimento cambia las dos cosas a la vez, como pide el enunciado.
+
+### E-F3  Dispersión de POA entre mesas del mismo accionamiento
+
+Commit:      3a57451
+Script:      `audit2/F23_mesa.mjs` (mismo comando y misma corrida que E-F2)
+Salida:      `audit2/out/F23.txt` · CSV `audit2/out/F23.csv`
+Estado:      **MEDIDO**
+
+Métrica ejecutada, declarada: para cada instante del día y cada **motor**
+(`T.segDrive`, las mesas que comparten un accionamiento), se toma la POA por mesa
+que publica `poaPlantSeg` y se calcula **(máx − mín) / media** entre las mesas de
+ese motor. Se descartan los motores con media ≤ 1 W/m² de planta (sol casi nulo:
+el cociente se dispara sin significar nada) y los motores de una sola mesa.
+
+| política | motores-instante | p05 | p50 | p95 | máx |
+|---|---|---|---|---|---|
+| astro | 3 388 | 0,0000 % | 1,1319 % | 177,1359 % | 614,0185 % |
+| global | 3 388 | 0,0000 % | 1,1659 % | 60,9708 % | 129,6577 % |
+| row | 3 388 | 0,0000 % | 1,1845 % | 56,1334 % | 104,8138 % |
+| bt2d | 3 388 | 0,0000 % | 1,1318 % | 55,6846 % | 103,7918 % |
+| pairwise | 3 382 | 0,0000 % | 1,1447 % | 69,6740 % | 206,5126 % |
+| **true3d** | 3 322 | 0,0000 % | 1,2607 % | **22,6100 %** | **73,7259 %** |
+| mgl | 3 322 | 0,0000 % | 1,2224 % | 27,6840 % | 73,7259 % |
+| optimal | 3 388 | 0,0000 % | 1,1223 % | 116,8704 % | 614,0185 % |
+| optfree | 3 388 | 0,0000 % | 1,1157 % | 116,8704 % | 614,0185 % |
+
+La mediana está entre **1,12 % y 1,26 %** en las nueve políticas: 14 puntos
+básicos de separación entre la mayor y la menor. El p95 y el máximo sí separan:
+`true3d` y `mgl` tienen el p95 más bajo (22,6 % y 27,7 %) y `astro`, `optimal` y
+`optfree` el máximo más alto (614,0 %, el mismo valor en las tres).
+
+Los denominadores no son iguales entre políticas: 3 388 motores-instante para las
+que no filtran, 3 382 para `pairwise` y 3 322 para `true3d` y `mgl` — la
+diferencia son motores cuya media cae por debajo del corte de 1 W/m² sólo en esas
+políticas.
+
+Notas: un solo día y paso 20 min, igual que E-F2. La métrica es un cociente y se
+dispara cuando la media es pequeña; el corte de 1 W/m² está declarado pero no
+elimina el efecto, y por eso los máximos de tres dígitos **no** deben leerse como
+dispersión a sol alto. No se ha cruzado con la hora del instante.
+
 ---
 
 # BLOQUE G — PARIDAD CON EL MOTOR BANCABLE
