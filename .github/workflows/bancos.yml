@@ -138,6 +138,14 @@ jobs:
         run: node tools/test_cableado_core.mjs
       - name: lazo de control del tracker
         run: node tools/test_control_core.mjs
+      # La aritmetica de tools/anual_motor.mjs: como se segmentan las maniobras
+      # y con que modelo se cobra cada una. La MEDIDA anual cuesta 45 min y no
+      # cabe aqui; estas dos cuentas, de las que cuelga su conclusion, si.
+      # Su tercer bloque es un canario cruzado contra solargpt_core y aqui se
+      # SALTA (el hermano no esta clonado), como el de las HSU: que conste que
+      # en CI ese bloque no vigila nada, solo los otros dos.
+      - name: aritmetica del consumo de motor
+        run: node tools/test_anual_motor.mjs
       - name: sombras de nube
         run: node tools/test_cloud_shadows.mjs
       - name: cielo cubierto
