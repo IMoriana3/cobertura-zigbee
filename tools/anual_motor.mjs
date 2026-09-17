@@ -172,7 +172,14 @@ export function anoDe(S, pol, opt) {
   const mes = new Array(12).fill(0);        // kWh de planta por mes: la ganancia
   const mesMan = new Array(12).fill(0);     // …y las maniobras, que es lo que cuesta
   const amps = Array.from({ length: n }, () => []);
-  let dias = 0, saltoNoche = 0, i = -1;
+  // `saltoNoche` es un CONTROL, no un resultado: el día se recorre con prev=null
+  // en m=0, así que el tracker aparece EN su consigna a medianoche y puede dar
+  // un salto de hasta la banda. De noche los dos extremos son el reposo, así
+  // que el salto sale pequeño y es el MISMO para todas las políticas — pero
+  // hay que verlo, no suponerlo. Con `--cada N` no se puede medir (entre dos
+  // días medidos hay días sin recorrer), y entonces se dice que no hay dato en
+  // vez de publicar un máximo que nadie calculó.
+  let dias = 0, saltoNoche = 0, nSalto = 0, i = -1;
   let ultimo = null;                        // θ del último minuto del día anterior
   for (const ds of S.fechasPeriodo(c.date, 'ano')) {
     if (++i % opt.cada !== 0) { ultimo = null; continue; }   // tanteo: sin día anterior
@@ -191,8 +198,9 @@ export function anoDe(S, pol, opt) {
         kwh[k] += w; mes[mi] += w; trz[k].push(r.ang[k]);
       }
     }
-    if (ultimo) for (let k = 0; k < n; k++)
-      saltoNoche = Math.max(saltoNoche, Math.abs(trz[k][0] - ultimo[k]));
+    if (ultimo) for (let k = 0; k < n; k++) {
+      saltoNoche = Math.max(saltoNoche, Math.abs(trz[k][0] - ultimo[k])); nSalto++;
+    }
     ultimo = trz.map(t => t[t.length - 1]);
     for (let k = 0; k < n; k++) {
       const ms = maniobras(trz[k], opt.eps);
@@ -203,7 +211,8 @@ export function anoDe(S, pol, opt) {
   for (let k = 0; k < n; k++) kwh[k] *= 1 / 60 / 1000;      // paso 1 min → kWh
   for (let i = 0; i < 12; i++) mes[i] *= 1 / 60 / 1000;
   const esc = opt.cada > 1 ? 365 / dias : 1;
-  return { pol, kwh, mes, mesMan, amps, dias, esc, saltoNoche, n };
+  return { pol, kwh, mes, mesMan, amps, dias, esc, n,
+           saltoNoche: nSalto ? saltoNoche : null };
 }
 
 function main() {
@@ -242,7 +251,8 @@ function main() {
                 ((cm.recG + cm.recP) * r.esc / 1000).toFixed(1) + ' k° · ' +
                 (amps.length * r.esc / 1000).toFixed(1) + ' k maniobras · motor ' +
                 (whMotor / 1000).toFixed(2) + ' kWh (bandas ' + (whMotorB / 1000).toFixed(2) + ')' +
-                ' · salto de medianoche ' + r.saltoNoche.toFixed(4) + '°');
+                ' · salto de medianoche ' +
+                (r.saltoNoche == null ? 'sin medir (días salteados)' : r.saltoNoche.toFixed(4) + '°'));
   }
 
   console.log('\n── EL NETO, sobre ' + res[0].pol + ' (planta entera: ' + res[0].r.n + ' filas) ──');
