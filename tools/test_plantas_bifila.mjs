@@ -45,6 +45,7 @@
  *
  *     node tools/test_plantas_bifila.mjs
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -112,12 +113,43 @@ try {
   /* ── 2. PÁRAMO: filaZ 0 es un DATO, no un hueco ──
      Su layout lo razona: «filaZ = 0 porque el bloque es 1V (una fila). Cuadra
      con la cartera: trk_mono 396, trk_bi 0». Así que tiene que seguir monofila
-     Y decir que está DECLARADO, no que no se sabe. */
+     Y decir que está DECLARADO, no que no se sabe.
+     Y desde el 2026-09-17 ya no hay que argumentarlo: el as-built lo confirma
+     —«Páramo es monofila, Fayón es bifila»—, y eso es lo que carea el bloque 2b. */
   const pa = await carga('paramo');
   check('páramo sigue monofila: su layout declara filaZ 0', pa.nR === 65 && pa.pares === 0 && pa.casilla === 'mono',
         `${pa.nR} filas · parejas ${pa.pares} · casilla ${pa.casilla}`);
   check('y la página dice que la monofila está DECLARADA, no que se ignore', /MONOFILA declarada/.test(pa.nota),
         pa.nota.slice(0, 120));
+
+  /* ── 2b. EL AS-BUILT CONTRA LO QUE DEDUCE EL CARGADOR ──
+     Todo lo de arriba sale de los NÚMEROS DEL PROPIO LAYOUT: el accionamiento
+     se deduce del `filaZ` que el fichero declara. Eso deja un modo de fallo que
+     ninguna comprobación anterior ve — si el `filaZ` de una planta se edita mal,
+     el cargador lo obedece, el GCR se va al doble o a la mitad y todo sigue
+     verde, porque no hay NADA con lo que contrastarlo.
+     El as-built es esa otra fuente. Las plantas que lo traen escrito
+     (`fuente_accionamiento.accionamiento`) tienen que salir cargadas como él
+     dice. NO es el número repetido una cuarta vez —el defecto que el propio
+     cargador denuncia—: es la conclusión, y viene de fuera del fichero.
+     Se recorre el directorio en vez de listar plantas, para que anotar una
+     planta nueva la meta aquí sola. */
+  const anotadas = fs.readdirSync(ROOT).filter(f => /_layout\.json$/.test(f))
+    .map(f => ({ n: f.replace('_layout.json', ''),
+                 d: JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf-8')) }))
+    .filter(x => x.d.fuente_accionamiento && x.d.fuente_accionamiento.accionamiento);
+  check('hay as-built escrito que carear (si no, este bloque no comprueba nada)', anotadas.length >= 2,
+        anotadas.length + ' plantas lo declaran');
+  for (const a of anotadas) {
+    const esBi = /^bi/i.test(a.d.fuente_accionamiento.accionamiento);
+    const r = await carga(a.n);
+    check(`${a.n}: el as-built dice ${a.d.fuente_accionamiento.accionamiento} y así sale cargada`,
+          !r.err && r.casilla === (esBi ? 'bifila' : 'mono') && (esBi ? r.pares > 0 : r.pares === 0),
+          `casilla ${r.casilla} · parejas ${r.pares}${r.err ? ' · ' + r.err : ''}`);
+    check(`${a.n}: el as-built dice de dónde viene, no sólo qué dice`,
+          /as-built/i.test(String(a.d.fuente_accionamiento.fuente || '')),
+          'sin procedencia: el siguiente no sabe si fiarse');
+  }
 
   /* ── 3. el caso MIXTO, con layout sintético ──
      Ningún dato real lo ejercita: los dos monofila de Polvorín caen fuera de la
