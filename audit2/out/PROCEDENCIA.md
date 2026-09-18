@@ -1,7 +1,7 @@
 # TABLA DE PROCEDENCIA
 
 Generada por `audit2/procedencia.mjs` sobre `audit2/EVIDENCIA_BT_R2.md`.
-Árbol 9a460c45df69c7365deab856bca0b286c46820ed · commit auditado 3a57451 · node v22.22.2.
+Árbol 0517172aeb8a1934f9098ce0d415468a2b3da43f · commit auditado 3a57451 · node v22.22.2.
 
 Columna **calibrada**: `S` el sesgo del diseño está medido para esa cifra ·
 `N` no aplica (no hay diseño reducido de por medio) ·

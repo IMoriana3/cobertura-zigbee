@@ -1590,7 +1590,7 @@ el auditor**: aquí no hay conclusión.
 | deriva del argmax instantáneo con MV 8…128 | **3,00** (52,00 / 54,75 / 52,75 / 55,00 / 54,50) | grados | E-D1 |
 | dispersión de la POA máxima instantánea con MV 8…128 | **8,767284** | W/m² instantáneos | E-D1 |
 | escalón eléctrico mínimo por mesa, MV 8 y nb 2 | **1/16 = 0,0625** (= **6,2500 %** de la mesa; 11,6218 W/m² de haz en el instante medido) | fracción de mesa | E-D4 |
-| deriva anual entre MV 8 y MV 32 | ver E-D8 | kWh/m²·año | E-D8 |
+| deriva anual entre MV 8 y MV 32 | **NO MEDIDO** — la corrida no se completó; ver `HUECOS` entrada 19 | kWh/m²·año | *(sin ítem: abierta)* |
 
 **Advertencia de unidades, para que la tabla no se lea mal.** Sólo las dos
 primeras filas y la última están en unidades **anuales** y son directamente
@@ -1609,7 +1609,7 @@ no porque sean sumables con las otras.
 | separación frente a la deriva del argmax instantáneo (3,00°) | **no comparable**: unidades distintas (energía anual frente a ángulo instantáneo) |
 | separación frente a la dispersión de la POA instantánea (8,767284 W/m²) | **no comparable**: energía anual frente a potencia instantánea |
 | separación frente al escalón eléctrico por mesa (6,2500 % de la mesa) | **no comparable**: energía anual de planta frente a fracción de una mesa |
-| separación frente a la deriva anual MV 8 → MV 32 | ver E-D8 |
+| separación frente a la deriva anual MV 8 → MV 32 | **NO COMPARABLE: la deriva no se ha medido.** El podio de abajo está publicado con **MV 8** sin comprobar si el MV lo mueve — `HUECOS` entrada 19 |
 
 **3 · ¿Intercambian posición `optfree` y `optimal` en alguna variante ya corrida?**
 
@@ -1638,8 +1638,10 @@ cambio de **distancia** entre los dos primeros. Las dos observaciones salen de l
 mismas cinco corridas.
 
 Notas: las seis variantes comparten MV 8 y el sitio de Ayora real; cinco son del
-diseño reducido y una del pleno. Falta la variante MV 32, que entra por E-D8. Un
-solo año, cielo claro.
+diseño reducido y una del pleno. **La variante MV 32 NO se ha medido**: se lanzó,
+no se completó, y queda como entrada **19 de `HUECOS`** con sus tres preguntas y
+su coste medido (14,6 h). Por tanto **todo este ítem está publicado con MV 8** sin
+comprobar si el MV mueve el podio. Un solo año, cielo claro.
 
 ### E-D6  Comprobación cruzada de la columna `nb = 2` de E-D3
 
@@ -2902,7 +2904,8 @@ Comando:     lecturas y `grep`; los números proceden de los ítems que se citan
 Estado:      **MEDIDO** (documental)
 
 Registro de las afirmaciones que esta auditoría publicó y luego tuvo que
-corregir (ocho casos). Se recogen aquí juntas porque una auditoría que se corrige a sí misma
+corregir (**siete casos**; eran ocho hasta que las tres estimaciones de coste se
+unificaron en una sola entrada, por ser el mismo defecto). Se recogen aquí juntas porque una auditoría que se corrige a sí misma
 tiene que dejar constancia de qué dijo antes, no sólo de lo que dice ahora.
 
 **1 · E-G1 — «las divergencias se concentran en sol bajo»**
@@ -2951,36 +2954,57 @@ motor. El script vigente **extrae el texto de la función del fichero** y sólo 
 sustituye el bucle de bisección; el resultado publicado es **\|Δθ\| ≤ 0,04875°**.
 De ahí sale la precondición que el encargo impuso a 2.3 y que E-G3 ejecuta.
 
-**6 · La estimación del coste del anual pleno**
+**6 · LAS TRES ESTIMACIONES DE COSTE — un solo defecto, tres veces**
 
-Se estimó que el anual pleno de las nueve políticas costaría **~21 h**,
-extrapolando desde el coste del diseño reducido con las nueve. Medido en E-D5:
-tres políticas cuestan 11 397 s, así que las nueve serían **6-7 h**. La
-extrapolación sobrestimaba por un factor de tres. **Ver el caso 7: es el mismo
-patrón.**
+Se registran juntas porque son **el mismo error**, no tres accidentes: **medir
+una parte y extrapolar el todo**. Las tres veces la parte medida era real; lo que
+no se comprobó es que fuera representativa del conjunto.
 
-**7 · La estimación del coste de MV 32 — segundo caso del mismo patrón que el 6**
+| | qué se anunció | qué se midió | qué lo destapó |
+|---|---|---|---|
+| **a** | anual pleno de las 9 políticas: **~21 h** | **6-7 h** (tres políticas costaron 11 397 s, E-D5) | correrlo |
+| **b** | anual con MV 32: **~4 h** | **~7,8 h** (razón 1,86× por `poaPlant`) | medir la razón, que no se había medido |
+| **c** | ese mismo anual: **~7,8 h** | **14,6 h** (razón real **3,528×**, `audit2/Z_razon_mv.mjs`) | que la corrida pasara de largo la estimación y siguiera viva |
 
-Se estimó que el anual con MV 32 costaría **~4 h**, extrapolando de las variantes
-del mismo diseño reducido **sin corregir por el MV forzado**: aquéllas corrían a
-MV 8 (`if(T.real)return 8`) y ésta fuerza `T.mv = 32`. Medido el coste por
-`poaPlant` sobre la geometría del caso B:
+**Qué falló en cada una.**
 
-| MV | coste por `poaPlant` |
-|---|---|
-| 8 | 0,515 ms |
-| 32 | 0,960 ms |
+- **(a)** Se extrapoló de la variante reducida a la plena sin comprobar qué cambia
+  entre las dos. Sobrestimaba por un factor de tres.
+- **(b)** Se extrapoló de las variantes a MV 8 a la de MV 32 **sin corregir por el
+  MV forzado**. Se corrigió midiendo la razón por `poaPlant`: 0,515 ms a MV 8
+  frente a 0,960 ms a MV 32, **1,86×**.
+- **(c)** Y esa corrección **también** era una medida parcial, por dos motivos
+  independientes, los dos medidos en `audit2/Z_razon_mv.mjs` sobre Ayora real:
 
-**Razón 1,86×** — no 4×, porque sólo la cuadratura axial escala con MV; el armado
-de geometría y la búsqueda de cada política, no. Estimación corregida: **~7,8 h**
-frente a las ~4 h anunciadas.
+  1. **`policyAngles` es el 98,4 % del coste** del par, no `poaPlant`: 8 604 ms
+     frente a 139 ms por llamada a MV 8. Se midió la razón sobre el **1,6 %** del
+     trabajo. Aunque la razón hubiera sido exacta, no era la que manda.
+  2. **No era la misma planta.** El 1,86× salía de `poaPlant` costando 0,515 →
+     0,960 ms; sobre Ayora real cuesta **139 → 482 ms**. Dos órdenes de magnitud:
+     aquella medida era sobre un preset de 8 filas, no sobre la planta con la que
+     corre E-D8. Se extrapoló **de una configuración a otra sin comprobar que
+     fueran comparables**.
 
-Es el **mismo patrón que el error 6** (la estimación del anual pleno, que
-sobrestimaba por un factor de tres): **extrapolar un coste sin comprobar qué
-cambia entre los dos casos**. Allí la extrapolación iba de más y aquí de menos; el
-defecto es el mismo y por eso se registran juntos.
+  La razón verdadera del par completo es **3,528×**, y aplicada al coste medido
+  del mismo diseño a MV 8 (14 871 s, `audit2/out/D2_MV8.txt`) da **14,6 h**.
 
-**8 · Un dato relatado sin verificar**
+**El (c) es, además, otro caso de M.4**: dar por supuesta la identidad del dato.
+Las dos medidas de `poaPlant` se trataron como la misma magnitud y eran de dos
+plantas distintas. El error no estaba en el número: estaba en creer que el número
+de un sitio valía para otro.
+
+**Corrección adoptada, y es de método, no de aritmética:** *el coste se mide o se
+declara desconocido; no se extrapola.* Cuando haga falta una cifra de coste, se
+mide sobre **la misma configuración** que va a correr y sobre **la operación
+completa**, no sobre una parte elegida por comodidad. Y si no hay tiempo de
+medirla, la respuesta es `NO VERIFICADO`, que ya es una respuesta válida en este
+paquete por la regla 5 del encargo.
+
+**Consecuencia registrada:** la tercera estimación es la que motivó sellar dejando
+E-D8 abierta. El motivo del auditor está transcrito íntegro en la entrada 19 de
+`HUECOS`.
+
+**7 · Un dato relatado sin verificar**
 
 Se repitió, procedente de otra sesión, que los minutos de GitHub Actions estaban
 agotados hasta el 1 de octubre, y se escribió en el cuerpo del PR. **Era falso**:
@@ -3313,29 +3337,82 @@ del paquete (Z1.6). Fuera de eso, `NO VERIFICADO`.
 | | |
 |---|---|
 | **documento** | `audit2/EVIDENCIA_BT_R2.md` |
-| **líneas** | (al sellar) |
-| **ítems de evidencia** | (al sellar) |
-| **reglas de método** | 4 (M.1 … M.4) |
-| **scripts reejecutables** | 30, todos en `audit2/`, ejecutables tal cual por un tercero |
-| **artefactos** | 62 en `audit2/out/`, con nombre, tamaño y sha256 en `MANIFEST.txt` |
-| **commit auditado** | `3a57451` (v1.68) |
-| **`main` al sellar** | `ebb5dc0` |
-| **commit de `audit2/` en #687** | (al sellar) |
-| **merge a `main`** | **no** — el paquete vive en el PR |
+| **líneas** | **3949** |
+| **ítems de evidencia** | **42** (E-A1…E-A4, E-B0…E-B4, E-C1…E-C8, E-D1…E-D7, E-E1…E-E4, E-F1…E-F3, E-G1…E-G5, E-H1, E-X1, E-Z1…E-Z4) |
+| **reglas de método** | **4** (M.1 … M.4) |
+| **scripts reejecutables** | **31**, todos en `audit2/`, ejecutables tal cual por un tercero |
+| **artefactos** | **62** en `audit2/out/`, con nombre, tamaño y sha256 en `audit2/out/MANIFEST.txt` |
+| **procedencia** | `audit2/out/PROCEDENCIA.md` — 28 filas, **27 publicables**, 1 no publicable con su motivo |
+| **commit auditado** | **`3a57451`** (v1.68) |
+| **`main` al sellar** | **`14b8c99`** (v1.69 + PR #689 y #691; ver **E-Z4**) |
+| **commit de `audit2/` en #687** | **`0517172`** |
+| **merge a `main`** | **no** — el paquete vive en el PR, por la regla del encargo |
+| **huecos abiertos** | **12**, todos con coste y con la cifra que dependa de cada uno |
 
-**Estado de CI.** Último head que completó corrida sin ser superado: **`48b4be5`**,
-**24 de 24 checks en `success`** incluido el gate `bancos en verde`
-(run 35339229274, 2026-09-18T11:51Z).
+**Estado de CI sobre el head actual.** `0517172`: corrida **35372350519**
+(`run_number` 227), `conclusion: success`, cerrada 2026-09-18T17:35:37Z, con el
+gate `bancos en verde` incluido.
 
-Durante la ronda de cierre se observaron **ocho** gates en rojo, **todos** por
-jobs en `cancelled` y **ninguno** por un banco fallando: cada push de esta sesión
-cancelaba la corrida del head anterior por la política `cancel-in-progress` del
-workflow. **Un `cancelled` de una corrida superada no es un fallo** — el
-mecanismo, su frecuencia y la asimetría entre lo que dice el *run* (`cancelled`)
-y lo que dice el *check* del PR (`failure`) están medidos en **E-H1**.
+**Los rojos del PR, contados y no estimados.** De las **30** corridas completadas
+más recientes de esta rama: **17 en `success`**, **13 en `cancelled`** y **CERO en
+`failure`**. Es decir: **ningún banco ha fallado nunca en este PR**. Todos los
+gates en rojo que se han visto vienen de corridas canceladas — cada push de esta
+sesión cancela la del head anterior por la política `cancel-in-progress` del
+workflow, y el gate corre igualmente por `if: always()`, así que un `cancelled`
+le sale como `failure`. **Un `cancelled` de una corrida superada no es un fallo**
+— el mecanismo y la asimetría entre lo que dice el *run* (`cancelled`) y lo que
+dice el *check* del PR (`failure`) están medidos en **E-H1**.
 
-**Verificador de citas**: `node audit2/verifica_citas.mjs audit2/EVIDENCIA_BT_R2.md --extra=/home/user/SolarGPTfull/solargpt`
-(salida completa en `audit2/out/CITAS.txt`, resumen al sellar).
+*(Corrección de esta misma línea: antes decía «ocho gates» y al sellar se escribió
+«once», los dos a ojo. Los números de arriba están contados sobre la API. Es el
+mismo defecto que E-X1 registra: dar una cifra sin el experimento que la produce.)*
+
+**Verificador de citas**, salida completa en `audit2/out/CITAS.txt`:
+
+```
+ejecutado: node audit2/verifica_citas.mjs audit2/EVIDENCIA_BT_R2.md --extra=/home/user/SolarGPTfull/solargpt
+citas encontradas en el documento           : 106
+  · VERIFICADAS (fragmento en su línea/rango): 49
+  · SIN FRAGMENTO pegado detrás              : 59   (se comprueba sólo que la línea exista)
+  · ROTAS                                    : 0
+  · fuera del rango del fichero              : 0
+  · fichero no encontrado                    : 0
+RESULTADO: ninguna cita rota          (EXIT=0)
+```
+
+---
+
+# SELLADO
+
+| | |
+|---|---|
+| **fecha** | **2026-09-18** |
+| **commit del paquete** | **`0517172`** (rama `claude/backtracking-6th1im`, PR #687) |
+| **commit auditado** | **`3a57451`** (v1.68) |
+| **`main` en ese momento** | **`14b8c99`** |
+| **ítems** | **42** |
+| **reglas de método** | **4** |
+| **huecos abiertos** | **12** |
+
+**A partir de aquí nada se reescribe en silencio.** Cualquier cambio sobre lo
+sellado exige un **ítem nuevo** que diga qué se cambió y por qué; no se edita una
+cifra, un enunciado ni una conclusión sin dejar constancia de la edición. El
+material nuevo no entra: va a un **paquete R3 aparte**.
+
+**Qué queda fuera del sello, y no por olvido.** Las 12 entradas abiertas de
+`HUECOS`, cada una con su coste y con la cifra publicada que dependa de ella. La
+más cara y la única que se lanzó sin completarse es la **19 · E-D8**, el anual con
+MV 32: **no se ha matado**, sigue corriendo al sellar. Si termina, su resultado
+abre R3; no reabre esto.
+
+## Qué abre R3
+
+**E-D8** si la corrida cae, con sus tres preguntas ya escritas (`HUECOS` 19) · el
+hallazgo de otra sesión sobre `policyAnglesSeg:2689` —`optimal` maximiza
+`poaPlant` **por línea** y se puntúa con `poaPlantSeg` **por mesa**, −0,556 % en
+Ayora real, **pendiente de la comprobación decisiva y no verificado aquí**— · y el
+certificado (`pintaCertificado:7287`), cuyo agujero de identidad del día se cerró
+en el PR #691 **después** del commit auditado.
 
 ---
 
@@ -3399,7 +3476,7 @@ por supuesta la identidad del dato.**
 | **E-D5** | offset del diseño reducido frente al pleno, en cuatro políticas | pairwise −0,8622 %, true-3D −0,8678 %, optimal −0,8451 %, optfree −0,8461 %: **mismo signo**, se reparten en **0,0227 pp**, **ordinal idéntico** en los dos diseños. Control exacto: pairwise reproduce `2313,44643430` |
 | **E-D6** | si la columna `nb = 2` coincide por las dos rutas de `mvPara` | **las nueve celdas, dígito a dígito**. E-D3 no se corrige. Coste de la comprobación: 15 750 s |
 | **E-D7** | resolución con la que se distinguen `optfree` y `optimal` | `optfree` es **primera en las seis variantes**; no intercambian. La separación recorre **tres órdenes de magnitud** según nb (0,0039 a 7,8460 kWh/m²·año) |
-| **E-D8** | *(hueco: anual con MV 32 — deriva del ruido de cuantización en el anual)* | *pendiente de la corrida* |
+| *(sin ítem)* | anual con MV 32 · ¿el ruido de cuantización promedia a cero o deja deriva? ¿cambia el orden? ¿cambia el podio? | **NO MEDIDO.** Se lanzó y no se completó. Queda como entrada **19 de `HUECOS`**, con las tres preguntas escritas, coste **medido** de 14,6 h y corrida no reanudable. La pregunta la abre **E-D1** |
 
 ## Bloque E — anomalías concretas
 
@@ -3438,7 +3515,7 @@ por supuesta la identidad del dato.**
 
 | ítem | qué mide | resultado |
 |---|---|---|
-| **E-X1** | las afirmaciones que esta auditoría publicó y tuvo que corregir | **ocho casos**, cada uno con qué decía, qué dice y qué lo motivó: el «sol bajo» que eran 25° y 33°; el «único candidato en pie» que E-G4 desmiente; la columna publicada por equivalencia no comprobada; 38 citas desplazadas (el verificador halló 5 más y **3 defectos en sí mismo**); el predicado reescrito que daba 55°; **dos** estimaciones de coste erradas por el mismo patrón; y un dato de otra sesión repetido sin verificar, que era falso |
+| **E-X1** | las afirmaciones que esta auditoría publicó y tuvo que corregir | **siete casos**, cada uno con qué decía, qué dice y qué lo motivó: el «sol bajo» que eran 25° y 33°; el «único candidato en pie» que E-G4 desmiente; la columna publicada por equivalencia no comprobada; 38 citas desplazadas (el verificador halló 5 más y **3 defectos en sí mismo**); el predicado reescrito que daba 55°; **las TRES estimaciones de coste** (4 h → 7,8 h → 14,6 h), unificadas en una entrada por ser el mismo defecto —medir una parte y extrapolar el todo— con su corrección de método; y un dato de otra sesión repetido sin verificar, que era falso |
 
 ---
 
@@ -3478,7 +3555,7 @@ Las cifras que la tabla de procedencia (`audit2/out/PROCEDENCIA.md`) deja como
 - escalón eléctrico mínimo por mesa **1/(nb·MV)** · E-D4 · instantáneo · `T.mv` forzado · `elecLoss`
 - el escalón de sombra existe **sólo con MV = 33** · E-E4 · instantáneo · `T.mv` forzado · sonda en `shadeBand3DAll`
 - \|Δθ\| bisección frente a barrido fino **≤ 0,04987°** · E-C5 · instantáneo · `bt3dPairMaxMag` · `shadeRows`
-- *(hueco: deriva anual entre MV 8 y MV 32 · E-D8 · reducido · `T.mv` forzado)*
+- **NO HAY CIFRA**: la deriva anual entre MV 8 y MV 32 **no se ha medido**. Era lo que respondería si el ruido de cuantización que E-D1 mide en el instante (argmax que se mueve **3,00°** sin converger) sobrevive al año. `HUECOS` entrada 19, coste medido 14,6 h. **Las cifras de E-D3 y E-D7 de este índice están todas con MV 8.**
 
 ## 6 · Sensibilidad del orden de las políticas
 
@@ -3746,14 +3823,80 @@ coste, y qué cifra publicada depende de ella (o `ninguna`).
 | 16 | **B · políticas distintas de pairwise y true-3D** | repetir `B1_caso_b_dos_commits.mjs` con las otras siete | ~10 min de compute | **ninguna** — E-B1 declara que cubre dos |
 | 17 | **C.5 (3) · penetración de terreno** | exportar `terrBlocked` o instrumentarlo, y comparar los 3 refinos contra un barrido fino de la fracción de cuerda | ~2 h de lectura + ~1 h de sonda | **ninguna** — no bisecta en θ y su resolución (1/16 de cuerda) es conocida por construcción |
 | 18 | **Páginas publicadas (GitHub Pages)** | comprobar lo desplegado contra `origin/main` desde una red con salida a Pages | ~10 min, requiere red | **ninguna** — se usa `origin/main` como referencia, declarado |
+| 19 | **E-D8 · el anual con MV 32** | ver la entrada desarrollada abajo: son TRES preguntas, no «falta MV 32» | **14,6 h MEDIDAS** (no estimadas) · corrida **no reanudable** | `orden de las 9 políticas por nb` (E-D3) y el podio de E-D7, los dos publicados con MV 8 sin comprobar si el MV los mueve |
+
+### La entrada 19 desarrollada · E-D8, el anual con MV 32
+
+**Las tres preguntas, literalmente.** No es «falta correr MV 32»: es que hay tres
+cosas sin responder, y la primera la abre el propio paquete.
+
+1. **¿El ruido de cuantización axial promedia a cero en el anual o deja deriva?**
+   **E-D1** lo midió en el instante: el argmax del barrido de θ **se mueve 3,00°**
+   entre MV 8 y MV 128 (52,00 / 54,75 / 52,75 / 55,00 / 54,50°) y **no converge**
+   dentro de la rejilla probada. Es decir: parte de la consigna que el simulador
+   publica no es física, es ruido de la malla con la que se mide. Lo que E-D1
+   **no** dice es si eso sobrevive a integrar un año o se cancela.
+2. **¿Cambia el ORDEN de las nueve políticas entre MV 8 y MV 32?** Si cambia, la
+   tabla que el simulador publica depende de un parámetro de malla y no sólo de
+   la física.
+3. **¿Cambia el PODIO `optfree`/`optimal`?** Son las dos primeras y E-D7 mide que
+   se separan por muy poco: 1,9230 kWh/m²·año en el pleno, y entre 0,0039 y
+   7,8460 según `nb` en el reducido.
+
+**Qué falta, en una frase ejecutable.**
+`node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.2 --vars=2 --etiqueta=_D2mv32`
+con la planta real de Ayora cargada — es el mismo diseño reducido que E-D3 y
+E-D5, con `T.mv` forzado a 32.
+
+**El coste, MEDIDO y no extrapolado: 14,6 h.** Sale de dos medidas:
+- el mismo diseño exacto a MV 8 tardó **14 871 s** (`audit2/out/D2_MV8.txt`, línea
+  `D.2 · MV 8 · nb cfg (2) — 14871 s`);
+- la razón MV 32 / MV 8 del **par completo** `policyAngles`+`poaPlant` sobre Ayora
+  real es **3,528×** (`audit2/Z_razon_mv.mjs`).
+
+**Salvedad de esa medida, declarada:** la sonda de la razón corrió **compitiendo
+por máquina** con la propia corrida de E-D8, así que sus tiempos absolutos están
+inflados por contención. La razón debería estar poco afectada porque las dos
+mitades se midieron bajo la misma carga, pero no se ha comprobado. Y no se sabe
+bajo qué carga se midieron los 14 871 s de referencia.
+
+**La corrida NO es reanudable.** El anual entero es un único `evaluate` síncrono
+que bloquea la página de punta a punta: no publica nada hasta terminar, no hay
+estado intermedio que guardar, y matarla obliga a empezar de cero.
+
+**Qué cifras publicadas dependen de la respuesta.** El `orden de las 9 políticas
+por nb` de **E-D3** y el podio de **E-D7**, los dos publicados con **MV 8** —el
+valor que `mvPara` devuelve con planta real, `backtracking.html:845`— sin haber
+comprobado si el MV los mueve. Si la respuesta fuera que no los mueve, esas dos
+cifras quedarían reforzadas; si fuera que sí, llevarían una etiqueta más.
+
+**Puntero:** la pregunta la abre **E-D1**. Esta entrada es su continuación en el
+anual.
 
 ## Decisión sobre las entradas que quedan abiertas
 
-Las once entradas que siguen abiertas **se quedan abiertas por decisión del
+Las **doce** entradas que siguen abiertas **se quedan abiertas por decisión del
 auditor**: son caras y sólo ajustan precisión. Se registra aquí con esa frase
 para que no parezca un olvido. La única que se pagó fue la semilla 7 (~30 min),
 por ser la más barata y la que sostenía recuentos publicados; está cerrada en la
 tabla de arriba con E-C8.
+
+**La entrada 19 (E-D8) se decide con el mismo criterio, y el motivo se transcribe
+íntegro porque es una decisión de método, no de presupuesto:**
+
+> El estimador de coste ha fallado tres veces hoy en la misma dirección
+> (4 h → 7,8 h → 14,6 h), siempre por el mismo motivo —medir una parte y
+> extrapolar el todo— y la última medida se tomó con la sonda compitiendo por
+> máquina con la propia corrida. Las «~5 h 30» restantes son el cuarto número de
+> una serie monótona creciente, no un plazo. La decisión real no es esperar cinco
+> horas más, es mantener un paquete completo sin sellar durante un tiempo
+> desconocido, que es el riesgo que la corrección de la regla 4.3 (M.3) enseñó a
+> no correr. El coste hundido de las 9 h no entra en la decisión: está gastado en
+> ambos escenarios.
+
+**La corrida no se ha matado.** Sellar y dejarla correr no son incompatibles: si
+cae, R3 se abre con ella hecha; si el contenedor muere, se pierde lo que se habría
+perdido igual. Lo que no se hace es mantener el sellado rehén de ella.
 
 ## Redacciones fijadas por el auditor
 
