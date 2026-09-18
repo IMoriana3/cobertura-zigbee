@@ -3257,6 +3257,12 @@ E-E1, E-E3, E-E4, E-G1, E-G4 y E-G5 miden el instante canónico o la rejilla de
 cinco instantes de un día. Cada uno lo declara en sus notas; se agrupa aquí para
 que el conjunto se vea.
 
+**13 · `main` avanzó durante la auditoría y ese material no se ha incorporado.**
+El commit auditado es `3a57451`; al cerrar, `origin/main` está en `ebb5dc0`. Entre
+los dos hay `tools/anual_motor.mjs` (299 líneas en `origin/main`), que toca las
+mismas preguntas que E-D3, E-D5 y E-D8. No se ha ejecutado, ni careado, ni citado
+en ningún ítem: todas las cifras del paquete son de `3a57451`.
+
 ---
 
 # CRÍTICA DEL ENCARGO

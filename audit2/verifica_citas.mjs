@@ -48,7 +48,9 @@
 import fs from 'node:fs'; import path from 'node:path';
 import { execFileSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const DOC = process.argv[2] || path.join(ROOT, 'audit2', 'EVIDENCIA_BT_R2.md');
+/* el documento es el primer argumento que NO sea una opción: con `--extra=` como
+   argv[2] la versión anterior lo tomaba por documento y moría en ENOENT. */
+const DOC = process.argv.slice(2).find(a => !a.startsWith('--')) || path.join(ROOT, 'audit2', 'EVIDENCIA_BT_R2.md');
 const SHA = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT }).toString().trim();
 const doc = fs.readFileSync(DOC, 'utf-8');
 const EXTRA = (process.argv.find(a => a.startsWith('--extra=')) || '').split('=')[1] || null;
