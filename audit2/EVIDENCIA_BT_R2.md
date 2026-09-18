@@ -101,6 +101,51 @@ una formalidad.
 La propuesta de la sexta pregunta **queda fuera del alcance y pendiente de
 decisión del titular del encargo**. Este documento no la evalúa.
 
+### M.4  Un artefacto por variante, con la variante en el nombre
+
+**Regla.** Todo script que pueda correr con más de una variante —semilla, MV, nb,
+caso, commit— escribe sus artefactos con la variante **en el nombre del fichero**.
+Un script que escribe siempre al mismo nombre no produce evidencia: produce el
+último resultado, y borra los anteriores sin avisar.
+
+**Origen de la regla, segundo caso del patrón de M.1.** `audit2/C_monotonia.mjs`
+escribía sus cuatro CSV a nombre fijo:
+
+```js
+fs.writeFileSync(path.join(OUT, 'C1_instantes.csv'), …
+```
+
+Los artefactos de la **semilla 1** ya estaban publicados y citados por E-C1, E-C2
+y E-C3. Al lanzar la **semilla 7** que pedía el encargo, el script iba a
+sobrescribirlos: mismo nombre, contenido distinto, y los ítems habrían seguido
+citándolos como si fueran los suyos.
+
+**Cómo se detectó y qué se hizo.** Se detectó al arrancar la corrida, leyendo el
+script para confirmar dónde escribía; se detuvo el proceso por PID antes de que
+llegara a escribir, y se comprobó con `git status` que los CSV de la semilla 1
+seguían intactos. Después se introdujo el sufijo:
+
+```js
+/* sufijo de salida por semilla: la semilla 1 conserva los nombres de los
+   artefactos ya publicados; cualquier otra escribe en ficheros propios. */
+const SUF = SEED === 1 ? '' : `_s${SEED}`;
+```
+
+La semilla 1 conserva sus nombres —los que citan los ítems publicados— y
+cualquier otra escribe en `_sN`. La corrida de E-C8 produjo
+`C1_instantes_s7.csv` y sus tres compañeros.
+
+**Por qué es el mismo patrón que M.1.** M.1 nace de una celda que parecía venir
+de la misma configuración y venía de otra ruta de código. M.4 nace de un fichero
+que parecía el mismo artefacto y habría sido otro. En los dos casos el error no
+está en el número: está en que **la identidad del dato se da por supuesta**. La
+regla de las dos es la misma: la procedencia se declara y se comprueba, no se
+deduce del parecido.
+
+**Consecuencia operativa.** Antes de correr una variante nueva de un script ya
+publicado, se comprueba a qué nombres escribe. Si escribe a los mismos, se
+corrige el script **antes** de correr, no después.
+
 ---
 
 # BLOQUE A — HUECOS BLOQUEANTES DEL RECONOCIMIENTO
@@ -1583,8 +1628,14 @@ adelante más, sino porque **`astro` la iguala**: las dos publican 2743,9536
 kWh/m²·año, idénticas hasta el cuarto decimal (E-D3).
 
 La separación entre ambas **no es estable**: va de **0,0039** kWh/m²·año
-(nb = 6, 0,0001 %) a **7,8460** (nb = 1, 0,3003 %), un rango de tres órdenes de
-magnitud según el valor de `nb`.
+(nb = 6, 0,0001 %) a **7,8460** (nb = 1, 0,3003 %), un rango de **tres órdenes de
+magnitud** según el valor de `nb`. Y con **nb = 0**, `astro` iguala a `optimal`
+hasta el cuarto decimal: **2743,9536** kWh/m²·año las dos.
+
+Es **la misma dependencia de `nb` que mide E-D3** por otra vía: allí se ve como
+cambio de **orden** —`astro` recorre cuatro puestos, `row` tres— y aquí como
+cambio de **distancia** entre los dos primeros. Las dos observaciones salen de las
+mismas cinco corridas.
 
 Notas: las seis variantes comparten MV 8 y el sitio de Ayora real; cinco son del
 diseño reducido y una del pleno. Falta la variante MV 32, que entra por E-D8. Un
@@ -2916,6 +2967,77 @@ el cuerpo del PR y el hecho quedó registrado en la regla **M.2**.
 
 Notas: este ítem no mide nada nuevo; es el registro de las correcciones. Las
 cifras que cita proceden de E-G3, E-G4, E-D5, E-D6, E-C5 y del verificador.
+
+---
+
+# LIMITACIONES DEL ALCANCE
+
+Una línea por limitación, sin justificarlas. Quien lea las cifras del paquete
+tiene que leer también esta lista.
+
+**1 · Toda la evidencia procede de bancos y scripts del propio auditado.** Los 30
+scripts de `audit2/` extraen la física del fichero auditado (`motorDe` en
+`audit2/lib_motor.mjs`) o replican verbatim código de `tools/`. No hay ninguna
+implementación independiente del modelo dentro del paquete, salvo el motor
+Python de G.1, que es del mismo autor.
+
+**2 · El oráculo H7 comparte con lo auditado más de lo que su nombre sugiere.**
+Documentado en `ANATOMIA_BT.md` §10.2, con las citas allí:
+`sol.js` e `irradiancia.js` **íntegros** (`tools/test_backtracking_sim.mjs:184-188`),
+el objeto de terreno `T` construido con `F.pairsFromElev`, función **del código
+auditado** (`:340`), y **dos fórmulas reescritas** —el vector solar (`:372`,
+misma expresión que `backtracking.html:1868-1869`) y la cadena de posiciones y
+cotas (`:373`, idéntica en forma a `backtracking.html:1872-1876`)—. Lo
+independiente es la geometría de rectángulos con muestreo 200×400, no la cadena
+completa.
+
+**3 · No hay ninguna medida de campo en el paquete.** Todo es modelo contra
+modelo: el JS contra su propio oráculo, el JS contra `tracker3d.py`, y el JS
+contra sí mismo con parámetros distintos. Ningún ángulo medido, ninguna
+producción medida, ninguna sombra fotografiada.
+
+**4 · La rejilla de paridad tiene dos valores de torsión.** Caso A con 0,000° y
+caso B con 7,437° (E-G5). La afirmación «con torsión 0 el Δθ es cero exacto» se
+sostiene sobre 210 valores, pero **no admite tendencia**: con dos puntos no hay
+curva.
+
+**5 · Las magnitudes de resolución instantáneas no se han convertido a anual.**
+En E-D7, la deriva del argmax con MV (3,00°), la dispersión de la POA
+instantánea (8,767284 W/m²) y el escalón eléctrico por mesa (6,2500 %) quedan en
+su unidad. La conversión exigiría una medida que no existe en el paquete.
+
+**6 · La calibración del diseño reducido cubre cuatro políticas de nueve.**
+`pairwise`, `true-3D`, `optimal` y `optfree` (E-D5). `astro`, `global`, `row`,
+`bt2d` y `mgl` siguen sin anual pleno: su offset es **NO VERIFICADO**.
+
+**7 · Once entradas de `HUECOS` quedan abiertas**, por decisión del auditor —
+caras y sólo ajustan precisión. Sus costes, de la tabla de `HUECOS`: MV 16 y 64
+(8 h 16 min), calibrar las cinco políticas restantes (~4-5 h), anualizar F.2/F.3
+(~6 h), separar tilt de peso en F.2 (~2 h), el mecanismo de MV=33 (~5 h), la
+paridad JS↔Python (no acotable), el veto con `prev` (~20 min), el ascenso con
+`T.groups` (~30 min), las otras siete políticas del bloque B (~10 min), la
+penetración de terreno de C.5 (~3 h) y las páginas publicadas (~10 min, requiere
+red).
+
+**8 · Un solo año, cielo claro, sin meteo real.** Todos los anuales usan 2026 con
+Ineichen y `cloud = 0`. No son P50 ni llevan serie meteorológica.
+
+**9 · Las muestras del bloque C son de 200 instantes sobre 4 224 y 4 217**, con
+dos semillas de las infinitas posibles, y la criba de θ va a 0,5°, que acota por
+abajo los recuentos de intervalos de sombra cero.
+
+**10 · Las páginas publicadas no se han comprobado.** El `fetch` a GitHub Pages
+devuelve `curl: (56) CONNECT tunnel failed, response 403` desde este contenedor;
+se usa `origin/main` como referencia de lo publicado, declarado en cada ítem que
+lo necesita.
+
+**11 · `bt2d` y `optfree` no tienen contraparte en el motor bancable**, así que
+la paridad de G.1 cubre 7 de las 9 políticas (E-G3).
+
+**12 · Los ítems de un solo instante son once.** E-A1, E-A2, E-A4, E-D1, E-D4,
+E-E1, E-E3, E-E4, E-G1, E-G4 y E-G5 miden el instante canónico o la rejilla de
+cinco instantes de un día. Cada uno lo declara en sus notas; se agrupa aquí para
+que el conjunto se vea.
 
 ---
 
