@@ -72,7 +72,7 @@ const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
              + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `
   return { solarPos, clearskyIneichen, policyAngles, poaPlant, plantFromCotas, slewLimit,
-           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, lazoControlSeg, segLineMean,
+           policyAnglesSeg, poaPlantSeg, segsBroadcast, slewLimitSeg, crearLazoSeg, segLineMean,
            surfaceOrient, pvTilt, segTiltAt };`)();
 const VER = (html.match(/const VER='([^']+)'/) || [, '?'])[1];
 
@@ -181,7 +181,7 @@ const tDe = new Map(BLOQUES.map(B => [B.b, B.T]));   // bloque → su T (para la
 const resumen = {};
 for (const pol of POLS) {
   let nPasos = 0, sombraAcum = 0, nSombra = 0;
-  const prev = new Map();                            // consigna anterior POR BLOQUE (slew)
+  const lazos = new Map();                           // UN lazo con estado POR BLOQUE: el adelanto recuerda sentido y destino por mesa
   for (let mm = 0; mm < 1440; mm += PASO) {
     const g = F.solarPos(day0 + mm * 60000, LAT, LON);
     const irr = F.clearskyIneichen(g.zen, doy, ALT, TL);
@@ -198,8 +198,14 @@ for (const pol of POLS) {
         : F.segsBroadcast(B.T, o.angles);
       // v1.61: el LAZO ENTERO (deadband + slew), como en computeDay: lo que sale por
       // el CSV es lo que la planta HACE. El slew ya estaba; faltaba el deadband.
-      const ang = F.lazoControlSeg(prev.get(B.b) || null, cmd, PASO * 60);
-      prev.set(B.b, ang);
+      // 2026-09-18: y el lazo ADELANTA —consigna + un margen en el sentido de la
+      // marcha—, así que necesita MEMORIA por bloque: el sentido y el destino
+      // enclavado de cada mesa. Por eso el estado deja de ser un `prev` suelto y
+      // pasa a ser un lazo POR BLOQUE, que es lo que impide que dos bloques se
+      // mezclen la memoria. Lo que sale por el CSV sigue siendo lo que la planta
+      // HACE, que es el contrato de este exportador.
+      if (!lazos.has(B.b)) lazos.set(B.b, F.crearLazoSeg());
+      const ang = lazos.get(B.b).paso(cmd, PASO * 60);
       if (!diurno) continue;
       angDe.set(B.b, { seg: ang, line: F.segLineMean(B.T, ang) });
       shDe.set(B.b, F.poaPlantSeg(g.zen, g.az, B.T, ang, irr, doy, ALB).shade);

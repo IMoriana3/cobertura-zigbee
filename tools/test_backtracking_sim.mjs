@@ -195,7 +195,7 @@ const sandbox = new Function(sol + '\n' + src + `
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
-           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, lazoControl, lazoControlSeg,
+           segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, crearLazo, crearLazoSeg,
            westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas, E_EMPATE_W };`);
 const F = sandbox();
 
@@ -653,26 +653,46 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const fis = html.slice(html.lastIndexOf('/*', html.indexOf('FÍSICA PURA')), html.indexOf('/* FIN-FÍSICA'));
   if (!/const DEADBAND_DEG=1\.0;/.test(fis)) throw new Error('el deadband no es el canónico del core (1,0°)');
   if (!/41061/.test(fis)) throw new Error('no se declara de dónde sale el valor (registro de la TCU)');
-  if (!/function lazoControl\(/.test(fis)) throw new Error('no existe el lazo entero');
+  /* 2026-09-18 · EL LAZO ADELANTA, y este banco pasa a fijar ESO. Hasta hoy
+     exigía que el eje fuera A la consigna y se parara ahí; el as-built dice que
+     el TCU la adelanta un margen («hacemos movimientos de dos grados»), y esta
+     página era la última de las tres —core, overcast, aquí— que no lo hacía.
+     El lazo es ahora una FÁBRICA CON ESTADO y no una función suelta, a
+     propósito: el adelanto necesita memoria por fila (sentido de la marcha y
+     destino enclavado), y pasarla como parámetro opcional habría dejado que
+     cualquier llamada olvidadiza se quedara SIN memoria en silencio — y sin
+     memoria no hay inversión estricta, o sea chatter. */
+  if (!/function crearLazo\(/.test(fis)) throw new Error('no existe el lazo entero');
+  if (/function lazoControl\(/.test(fis))
+    throw new Error('vuelve a haber un lazo SIN estado: el adelanto se quedaría sin memoria y entraría en chatter');
 
-  // el orden importa: deadband ANTES del slew, como apply_control_loop
-  const cuerpo = fis.slice(fis.indexOf('function lazoControl('), fis.indexOf('\n}', fis.indexOf('function lazoControl(')));
-  if (cuerpo.indexOf('deadband') > cuerpo.indexOf('slewLimit(prev,des'))
-    throw new Error('el lazo aplica el slew antes que el deadband: no es el orden del core');
-
-  // comportamiento
-  if (F.lazoControl([10], [10.4], 300)[0] !== 10) throw new Error('un salto MENOR que el deadband arranca el motor');
-  if (Math.abs(F.lazoControl([10], [12.0], 300)[0] - 12) > 1e-9) throw new Error('un salto MAYOR que el deadband no pasa');
-  if (Math.abs(F.lazoControl(null, [33], 300)[0] - 33) > 1e-9) throw new Error('sin consigna previa el arranque debe ser directo');
+  const nuevo = () => F.crearLazo(1.0, 0.17, [10]);       // sembrado en 10°
+  if (nuevo().paso([10.4], 300)[0] !== 10) throw new Error('un salto MENOR que el deadband arranca el motor');
+  if (Math.abs(nuevo().paso([12.0], 300)[0] - 13) > 1e-9)
+    throw new Error('un salto MAYOR que el deadband no llega a consigna+margen: falta el ADELANTO');
+  if (Math.abs(F.crearLazo(1.0, 0.17).paso([33], 300)[0] - 33) > 1e-9)
+    throw new Error('sin consigna previa el arranque debe ser directo, SIN adelanto: no hay sentido de marcha todavía');
   // y el deadband no puede saltarse el tope del actuador
-  const lento = F.lazoControl([0], [50], 60);
-  if (lento[0] >= 50) throw new Error('el lazo deja teletransportarse: el slew no se aplica tras el deadband');
+  if (F.crearLazo(1.0, 0.17, [0]).paso([50], 60)[0] >= 50)
+    throw new Error('el lazo deja teletransportarse: el slew no se aplica tras el deadband');
+
+  /* LAS DOS MITADES QUE HACEN QUE EL ADELANTO NO SEA CHATTER, cada una con su
+     mutante: si se quita la inversión estricta la primera se dispara, y si se
+     quita el enclavado del destino la segunda no termina la maniobra. */
+  const quieto = F.crearLazo(1.0, 0.17, [0]); let rec = 0, ant = 0;
+  for (let k = 0; k < 200; k++) { const v = quieto.paso([10], 600)[0]; rec += Math.abs(v - ant); ant = v; }
+  if (Math.abs(rec - 11) > 1e-9)
+    throw new Error(`consigna QUIETA: recorrido ${rec.toFixed(2)}° en vez de 11° (10 + un margen). Con chatter salen ~200°`);
+
+  // y con banda 0 el adelanto vale 0: la ley de antes, clavada
+  if (Math.abs(F.crearLazo(0.0, 0.17, [0]).paso([10], 600)[0] - 10) > 1e-9)
+    throw new Error('con banda muerta 0 el lazo tiene que dar EXACTAMENTE lo de siempre');
 
   // lo que la planta HACE lo usa computeDay, no sólo el slew
   const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
-  if (!/lazoControl\(prev,o\.angles,STEP_MIN\*60\)/.test(app))
+  if (!/LZ\.paso\(o\.angles,STEP_MIN\*60\)/.test(app))
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
-  if (!/lazoControlSeg\(prevS,/.test(app))
+  if (!/LZS\.paso\(segCmd\(/.test(app))
     throw new Error('el camino por mesa sigue sin el deadband');
 });
 
@@ -2982,7 +3002,7 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    for (const lit of ['segOn(T)', 'segCmd(P.key', 'lazoControlSeg(prevS', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    for (const lit of ['segOn(T)', 'segCmd(P.key', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
     for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
