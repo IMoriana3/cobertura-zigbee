@@ -346,13 +346,15 @@ check('el sesgo de profundidad vale lo mismo EN METROS en toda planta (0,25 m)',
    cuanta sombra hay (eso depende del encuadre, del sol y de la planta) sino QUE PARTE
    de la sombra que hay es oscura, que es justo lo que arruina el borron. Medido:
 
-       de los pixeles en sombra, cuantos quedan OSCUROS
-       escritorio  86 / 83 / 79 / 65 %   (10, 30, 90, 300 m)
-       movil       51 / 53 / 51 / 31 %
-       movil con el radio sin acotar          0,7 %
+       de los pixeles en sombra, cuantos quedan OSCUROS   (camara a 10, 30, 90, 300 m)
+       escritorio                       86 / 83 / 79 / 65 %
+       movil, con el borron acotado     51 / 53 / 51 / 31 %
+       movil, con el radio SIN acotar    1 /  0 /  0 /  0 %   <- el defecto
 
-   El tope de 20 % deja un factor 45 contra el defecto y un factor 1,5 contra el peor
-   caso bueno. */
+   El tope de 20 % deja un factor 1,5 contra el peor caso bueno y un factor 31 contra
+   el defecto a 10 m —donde mas sombra queda— y todo el margen del mundo mas arriba.
+   Ojo a la columna de al lado en la mutacion: el total de sombra SUBE a 51,02 % justo
+   donde la sombra oscura se hunde al 1 %. Por eso la proporcion y no el total. */
 check('la sombra es OSCURA y no un gris lavado, en los dos caminos',
       todasLasFilas.every(f => f.fuerte / f.todo >= 0.20),
       todasLasFilas.map(f => etq(f) + ':' + (100*f.fuerte/f.todo).toFixed(0) + '% de ' + f.todo + '%').join(' '));
