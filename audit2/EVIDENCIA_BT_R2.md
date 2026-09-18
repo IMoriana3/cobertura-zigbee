@@ -2902,7 +2902,7 @@ Comando:     lecturas y `grep`; los números proceden de los ítems que se citan
 Estado:      **MEDIDO** (documental)
 
 Registro de las afirmaciones que esta auditoría publicó y luego tuvo que
-corregir. Se recogen aquí juntas porque una auditoría que se corrige a sí misma
+corregir (ocho casos). Se recogen aquí juntas porque una auditoría que se corrige a sí misma
 tiene que dejar constancia de qué dijo antes, no sólo de lo que dice ahora.
 
 **1 · E-G1 — «las divergencias se concentran en sol bajo»**
@@ -2956,9 +2956,31 @@ De ahí sale la precondición que el encargo impuso a 2.3 y que E-G3 ejecuta.
 Se estimó que el anual pleno de las nueve políticas costaría **~21 h**,
 extrapolando desde el coste del diseño reducido con las nueve. Medido en E-D5:
 tres políticas cuestan 11 397 s, así que las nueve serían **6-7 h**. La
-extrapolación sobrestimaba por un factor de tres.
+extrapolación sobrestimaba por un factor de tres. **Ver el caso 7: es el mismo
+patrón.**
 
-**7 · Un dato relatado sin verificar**
+**7 · La estimación del coste de MV 32 — segundo caso del mismo patrón que el 6**
+
+Se estimó que el anual con MV 32 costaría **~4 h**, extrapolando de las variantes
+del mismo diseño reducido **sin corregir por el MV forzado**: aquéllas corrían a
+MV 8 (`if(T.real)return 8`) y ésta fuerza `T.mv = 32`. Medido el coste por
+`poaPlant` sobre la geometría del caso B:
+
+| MV | coste por `poaPlant` |
+|---|---|
+| 8 | 0,515 ms |
+| 32 | 0,960 ms |
+
+**Razón 1,86×** — no 4×, porque sólo la cuadratura axial escala con MV; el armado
+de geometría y la búsqueda de cada política, no. Estimación corregida: **~7,8 h**
+frente a las ~4 h anunciadas.
+
+Es el **mismo patrón que el error 6** (la estimación del anual pleno, que
+sobrestimaba por un factor de tres): **extrapolar un coste sin comprobar qué
+cambia entre los dos casos**. Allí la extrapolación iba de más y aquí de menos; el
+defecto es el mismo y por eso se registran juntos.
+
+**8 · Un dato relatado sin verificar**
 
 Se repitió, procedente de otra sesión, que los minutos de GitHub Actions estaban
 agotados hasta el 1 de octubre, y se escribió en el cuerpo del PR. **Era falso**:
@@ -2967,6 +2989,202 @@ el cuerpo del PR y el hecho quedó registrado en la regla **M.2**.
 
 Notas: este ítem no mide nada nuevo; es el registro de las correcciones. Las
 cifras que cita proceden de E-G3, E-G4, E-D5, E-D6, E-C5 y del verificador.
+
+---
+
+# ESTADO DEL PAQUETE
+
+| | |
+|---|---|
+| **documento** | `audit2/EVIDENCIA_BT_R2.md` |
+| **líneas** | (al sellar) |
+| **ítems de evidencia** | (al sellar) |
+| **reglas de método** | 4 (M.1 … M.4) |
+| **scripts reejecutables** | 30, todos en `audit2/`, ejecutables tal cual por un tercero |
+| **artefactos** | 62 en `audit2/out/`, con nombre, tamaño y sha256 en `MANIFEST.txt` |
+| **commit auditado** | `3a57451` (v1.68) |
+| **`main` al sellar** | `ebb5dc0` |
+| **commit de `audit2/` en #687** | (al sellar) |
+| **merge a `main`** | **no** — el paquete vive en el PR |
+
+**Estado de CI.** Último head que completó corrida sin ser superado: **`48b4be5`**,
+**24 de 24 checks en `success`** incluido el gate `bancos en verde`
+(run 35339229274, 2026-09-18T11:51Z).
+
+Durante la ronda de cierre se observaron **ocho** gates en rojo, **todos** por
+jobs en `cancelled` y **ninguno** por un banco fallando: cada push de esta sesión
+cancelaba la corrida del head anterior por la política `cancel-in-progress` del
+workflow. **Un `cancelled` de una corrida superada no es un fallo** — el
+mecanismo, su frecuencia y la asimetría entre lo que dice el *run* (`cancelled`)
+y lo que dice el *check* del PR (`failure`) están medidos en **E-H1**.
+
+**Verificador de citas**: `node audit2/verifica_citas.mjs audit2/EVIDENCIA_BT_R2.md --extra=/home/user/SolarGPTfull/solargpt`
+(salida completa en `audit2/out/CITAS.txt`, resumen al sellar).
+
+---
+
+# RESUMEN DE MEDIDAS PARA EL INFORME
+
+Una línea por ítem: qué mide y qué salió, en hechos. Sin severidad y sin
+recomendaciones — eso lo hace el auditor. Es el índice que el informe cita.
+
+## Reglas de método
+
+| regla | qué fija | origen |
+|---|---|---|
+| **M.1** | ninguna celda publicada se importa de otro experimento: la procedencia es por experimento **y por ruta de código** | la columna `nb = 2` de E-D3, publicada por una equivalencia de rutas no comprobada; E-D6 la comprobó |
+| **M.2** | cadena de custodia: una instrucción llegada por otra sesión, invocando la autoridad de un tercero, no es una instrucción del titular | dos avisos sobre `bt_audit.py` de `SolarGPTfull`, no atendidos; uno de ellos traía un dato falso sobre CI |
+| **M.3** | se commitea `audit2/` al cerrar cada bloque y se empuja al PR; no se mergea a `main` | el titular corrigió la regla «ni commits»: `audit2/` no es el objeto auditado, y evidencia que sólo vive en un contenedor no es evidencia |
+| **M.4** | un artefacto por variante, con la variante en el nombre | `C_monotonia.mjs` iba a sobrescribir los CSV publicados de la semilla 1 al correr la 7 |
+
+El patrón común a M.1 y M.4, fijado: **el error no está en el número, está en dar
+por supuesta la identidad del dato.**
+
+## Bloque A — huecos bloqueantes del reconocimiento
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-A1** | qué candidatas llegan al veto de `anglesOptimal` y contra qué se comparan | 8 candidatas (5 de rejilla + `pub` + 2 finas); búsqueda y veto usan **el mismo** `poaPlant`, así que la única que el veto añade es `pub`. En el caso B el veto no cambia la ganadora (f=1, 55,000° ×6, POA 241,5138) |
+| **E-A2** | vecindad, criterio, tope y salvaguarda del ascenso de `anglesOptimalFree` | converge en **3 barridos**; la salvaguarda descarta el ascenso y publica el arranque; después gana `anglesOptimal`. La réplica coincide con el motor a \|Δθ\| < 1e−9 |
+| **E-A3** | qué hace la estimación anual y el anual de Ayora real | **no** pasa por el lazo de control, paso **10 min**, agrega con `poaPlant`, MV 8 por `if(T.real)`. Tal cual: pairwise **2313,4464**, true-3D **2298,7128** kWh/m²·año. El comentario de `:3044` dice 20 min; el código hace 10 |
+| **E-A4** | cómo agrega `poaPlantSeg` | pondera por **largo de mesa**, no por área ni por módulos; verificado con mesas de 10 m y 54,7 m. La planta promedia filas sin ponderar |
+
+## Bloque B — regresión entre commits
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-B0** | si el −10° que afirma el documento publicado existe en v1.67 | **no existe**: el documento describe un estado que el motor no tuvo |
+| **E-B1** | el caso B en `1227252` y `3a57451` | **idénticos bit a bit** en θ, sombra de planos, sombra publicada y POA |
+| **E-B2** | commits del motor entre ambos | lista con el mensaje de cada uno, sin inferir causalidad |
+| **E-B3** | dónde cambia el caso B en el historial | el cambio de −10° a −2…38 **no aparece en ningún commit** |
+| **E-B4** | cuándo se escribió la tabla del §5 del documento | fechas y commits del documento frente a los del motor |
+
+## Bloque C — monotonía y el min(\|θ\|)
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-C1** | instantes donde existe un θ uniforme de sombra de planos 0 | **3 562 de 4 224 (84,33 %)**, semilla 1. Las dos tolerancias (1e−9 y 1e−4) dan el mismo recuento |
+| **E-C2** | cruces del predicado «sombrea» en 200 instantes | **25,00 %** tienen más de un cruce. Test nulo parcial: en 125 de 200 el predicado es constante falso |
+| **E-C3** | contraejemplos del min(\|θ\|) | **75 de 200 (37,50 %)**, con el **22,79 %** del peso energético; peor caso fs(θ₂) = 91,4192 % |
+| **E-C4** | lo mismo sobre el acople real `applyDrive` | 9 / 12 / 5 / 7 de **112** instantes con grupos, según política. `astro` y `row` **no** llaman a `repairNoShade` |
+| **E-C5** | bisección frente a barrido fino en las que asumen raíz única | \|Δθ\| **≤ 0,04987°**, por debajo de un paso del comparador; **0** casos de raíz múltiple. Test nulo: el predicado es constante en 1 058 de 1 292 |
+| **E-C6** | POA de las dos posturas en el barrido uniforme | el θ del min(\|θ\|) **gana** energía en **74 de 75**, mediana **+257,47 W/m²**; el único adverso cuesta **0,0044 W/m²** |
+| **E-C7** | lo mismo sobre el acople real, partido según lleve guardia | **ΔPOA > 0 en las 41 celdas**, también en `astro` y `row`, que no llevan guardia |
+| **E-C8** | el bloque C con la semilla 7 de CI | órdenes de magnitud mantenidos: **68 de 200 (34,00 %)** y **22,03 %** del peso energético |
+
+## Bloque D — resolución del modelo frente a la ganancia
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-D1** | ruido de cuantización axial en el barrido del caso B | el **argmax se mueve con MV**: 52,00 / 54,75 / 52,75 / 55,00 / 54,50°. Dispersión de la POA máxima **8,767284 W/m²** |
+| **E-D2** | anual de Ayora real con MV forzado | MV 8 medido; MV 16 y 64 cerrados por decisión del auditor. Incluye la calibración del diseño reducido |
+| **E-D3** | orden de las 9 políticas por energía anual, con nb 0/1/2/3/6 | **el orden cambia** en los puestos 2 a 6: `astro` recorre **4 puestos**, `row` 3. Los extremos no se mueven. Con nb = 0, `astro` y `optimal` dan el mismo número hasta el 4º decimal |
+| **E-D4** | escalón mínimo no nulo de pérdida eléctrica por mesa | **1/(nb·MV)**, derivado y verificado: **0** valores fuera de esa retícula en cuatro combinaciones. Con MV 8 y nb 2, **6,2500 %** de la mesa |
+| **E-D5** | offset del diseño reducido frente al pleno, en cuatro políticas | pairwise −0,8622 %, true-3D −0,8678 %, optimal −0,8451 %, optfree −0,8461 %: **mismo signo**, se reparten en **0,0227 pp**, **ordinal idéntico** en los dos diseños. Control exacto: pairwise reproduce `2313,44643430` |
+| **E-D6** | si la columna `nb = 2` coincide por las dos rutas de `mvPara` | **las nueve celdas, dígito a dígito**. E-D3 no se corrige. Coste de la comprobación: 15 750 s |
+| **E-D7** | resolución con la que se distinguen `optfree` y `optimal` | `optfree` es **primera en las seis variantes**; no intercambian. La separación recorre **tres órdenes de magnitud** según nb (0,0039 a 7,8460 kWh/m²·año) |
+| **E-D8** | *(hueco: anual con MV 32 — deriva del ruido de cuantización en el anual)* | *pendiente de la corrida* |
+
+## Bloque E — anomalías concretas
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-E1** | el tramo θ 21,75→22,00 a paso 0,01° | el escalón **no viene de la poda**: la lista de emisores es **constante**. La fila 0 cae 1,40 pp y el máximo pasa a la fila 3 |
+| **E-E2** | qué combinación reproduce el «13,4 % / 105» del §5 del documento | la combinación que lo reproduce, con su altitud, turbidez y MV |
+| **E-E3** | θ 54,25° frente a 55,00° con MV alto | con MV 128 el argmax **no se mantiene** en 54,25°: pasa a 54,50°. El 54,25° sólo es argmax con MV 33 |
+| **E-E4** | la hipótesis del muestreo impar para el escalón de MV 33 | **refutada dos veces**: MV 65 es impar y no lo reproduce, y la estación responsable es **j = 30**, no la central. `mvPara` da impares en el **39,2 %** de su dominio. Causa **no identificada** |
+
+## Bloque F — granularidad de la transposición
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-F1** | con qué tilt transpone `poaPlant` frente al contador | `poaPlant` usa **un tilt por fila** (`rowTiltAt`); el contador y `poaPlantSeg`, **tilt por mesa** (`segTiltAt`). 30 llamantes de `poaPlant`, incluida la estimación anual |
+| **E-F2** | POA con tilt por mesa y peso por módulos, frente a la publicada | 8 de 9 políticas se mueven **menos del 0,05 %** y con signo negativo; `pairwise` es la excepción: **+0,3524 %**. Las 1 600 mesas declaran módulos |
+| **E-F3** | dispersión de POA entre mesas de un mismo motor | mediana entre **1,12 % y 1,26 %** en las nueve; el p95 separa (`true3d` 22,6 %, `astro` hasta 614,0 % de máximo) |
+
+## Bloque G — paridad con el motor bancable
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-G1** | \|Δθ\| y \|ΔPOA\| JS ↔ `tracker3d.py` sobre la rejilla declarada | caso A: **0,0000° exacto** en las 7 comparables. Caso B: hasta **65,0000°** |
+| **E-G2** | qué funciones del Python dice espejar el JS, con sus constantes | tabla de firmas y constantes: coinciden las fracciones del energy-optimal, la banda de transición, el epsilon y el umbral de polvo; difieren el refinado, la histéresis, el paso y las iteraciones de min-ground-light |
+| **E-G3** | si el arnés de G.1 reimplementa algo, y qué constante difiere | **0** funciones del motor reimplementadas. Deferral y acople **descartados**; `bt2d` y `optfree` **no existen** en el Python |
+| **E-G4** | la rejilla con `repairNoShade` desactivado | **0 de 14** divergencias caen; máximo residual **idéntico**, 65,0000°; en 11 de 14 el θ **no se mueve**. `repairNoShade` **descartado** |
+| **E-G5** | caracterización de las divergencias | lados **opuestos** del eje en **14 de 14**; \|θ_JS\| < \|θ_PY\| en 14 de 14 y en 103 de 148; con torsión 0, Δθ **cero exacto** en los 210 valores del caso A |
+
+## Bloque H — el sistema de verificación
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-H1** | si el gate de CI distingue `cancelled` de `failure` | **no lo distingue**: `cancel-in-progress` + `if: always()` con `== success` dejan el check en rojo sin que falle ningún banco. **4 de 30 runs (13,3 %)** en la ventana medida. Asimetría: el *run* dice `cancelled`, el *check* dice `failure` |
+
+## Bloque X — correcciones de la propia auditoría
+
+| ítem | qué mide | resultado |
+|---|---|---|
+| **E-X1** | las afirmaciones que esta auditoría publicó y tuvo que corregir | **ocho casos**, cada uno con qué decía, qué dice y qué lo motivó: el «sol bajo» que eran 25° y 33°; el «único candidato en pie» que E-G4 desmiente; la columna publicada por equivalencia no comprobada; 38 citas desplazadas (el verificador halló 5 más y **3 defectos en sí mismo**); el predicado reescrito que daba 55°; **dos** estimaciones de coste erradas por el mismo patrón; y un dato de otra sesión repetido sin verificar, que era falso |
+
+---
+
+# ÍNDICE DE CIFRAS PUBLICABLES
+
+Las cifras que la tabla de procedencia (`audit2/out/PROCEDENCIA.md`) deja como
+**publicables**, agrupadas por el hallazgo al que sirven. Formato:
+**cifra · ítem · diseño · ruta de código · etiqueta de alcance**.
+
+## 1 · Qué hace realmente la estimación anual
+
+- POA pairwise anual Ayora **2313,4464 kWh/m²·año** · E-A3 · pleno · `T.real` → MV 8 · `poaPlant`
+- POA true-3D anual Ayora **2298,7128 kWh/m²·año** · E-A3 · pleno · `T.real` → MV 8 · `poaPlant`
+
+## 2 · Cómo agregan los evaluadores
+
+- `poaPlantSeg` pondera por **largo de mesa**, no por área ni módulos · E-A4 · instantáneo · `poaPlantSeg` · `segTiltAt`
+- Δ de transponer por mesa, pairwise **+0,3524 %** · E-F2 · un día · `poaRow`+`segTiltAt`+`segMods` · **`INDICIO DIMENSIONADO · un día, no anualizado`**
+
+## 3 · El enunciado geométrico del min(\|θ\|)
+
+- instantes con θ uniforme de sombra 0: **3 562 / 4 224 = 84,33 %** · E-C1 · instantáneo · `shadeBand3DAll` noStruct
+- instantes con más de un cruce: **50 / 200 = 25,00 %** · E-C2 · instantáneo · `shadeBand3DAll` noStruct
+- contraejemplos del min(\|θ\|): **75 / 200 = 37,50 %** · E-C3 · instantáneo · `shadeBand3DAll` noStruct
+- peso energético del contraejemplo: **22,79 %** · E-C3 · instantáneo · `poaPlant` con θ de pairwise
+- lo mismo con la semilla 7: **68 / 200 = 34,00 %** y **22,03 %** · E-C8 · instantáneo · `shadeBand3DAll` noStruct
+- `applyDrive` deja sombra evitable: **9 / 12 / 5 / 7 de 112** · E-C4 · instantáneo · `policyAngles` → `applyDrive`
+
+## 4 · La severidad de ese enunciado, en energía
+
+- el min(\|θ\|) gana energía en **74 de 75** instantes, mediana **+257,47 W/m²** · E-C6 · instantáneo · `poaPlant` · θ uniforme
+- **ΔPOA > 0 en las 41 celdas** de las dos poblaciones · E-C7 · instantáneo · `policyAngles` · `poaPlant`
+
+## 5 · Resolución del modelo
+
+- el argmax del barrido de θ **se mueve con MV** (52,00…55,00°) · E-D1 · instantáneo · `T.mv` forzado · `poaPlant`
+- escalón eléctrico mínimo por mesa **1/(nb·MV)** · E-D4 · instantáneo · `T.mv` forzado · `elecLoss`
+- el escalón de sombra existe **sólo con MV = 33** · E-E4 · instantáneo · `T.mv` forzado · sonda en `shadeBand3DAll`
+- \|Δθ\| bisección frente a barrido fino **≤ 0,04987°** · E-C5 · instantáneo · `bt3dPairMaxMag` · `shadeRows`
+- *(hueco: deriva anual entre MV 8 y MV 32 · E-D8 · reducido · `T.mv` forzado)*
+
+## 6 · Sensibilidad del orden de las políticas
+
+- **orden de las 9 políticas por nb**, tabla de 5 columnas · E-D3 · reducido · `T.nBypass` + `T.real` → MV 8 · **`calibrada en 4 de 9 · offset de modo común verificado en esas 4`**
+- offsets del diseño reducido **−0,8451…−0,8678 %**, repartidos en **0,0227 pp** · E-D5 · pleno · `T.real` → MV 8 · `poaPlant`
+- la columna `nb = 2` coincide por las dos rutas, **9 de 9** · E-D6 · reducido · `T.mv` frente a `T.real`
+
+## 7 · Paridad con el motor bancable
+
+- \|Δθ\| JS↔Python **0,0000° exacto** en el caso A · E-G1 · instantáneo · `policyAngles` ↔ `tracker3d.py`
+- \|Δθ\| JS↔Python **hasta 65,0000°** en el caso B · E-G1 · instantáneo · `policyAngles` ↔ `tracker3d.py`
+- `repairNoShade` descartado: **0 de 14** caen · E-G4 · instantáneo · `repairNoShadeCore` anulado en memoria
+- \|θ_JS\| < \|θ_PY\| en **14 de 14** y en **103 de 148** · E-G5 · instantáneo · `policyAngles` ↔ `tracker3d.py`
+- **7 de 9** políticas tienen contraparte en `tracker3d.py` · E-G3 · — · lectura de `tracker3d.py`
+
+## 8 · El sistema de verificación
+
+- el gate de CI cuenta `cancelled` como `failure`; **4 de 30 runs (13,3 %)** · E-H1 · — · GitHub Actions API
+
+## No publicable
+
+- **dispersión intra-motor, mediana 1,12-1,26 %** · E-F3 · un día · `poaPlantSeg` · `T.segDrive` · **NO PUBLICABLE por DOMINIO**: una distribución de un día no responde a un enunciado anual, y calibrar no lo corrige.
 
 ---
 
