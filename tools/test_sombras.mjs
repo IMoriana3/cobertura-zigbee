@@ -337,11 +337,25 @@ check('el sesgo de profundidad vale lo mismo EN METROS en toda planta (0,25 m)',
    cazado que el arreglo de la caja rompiera el movil. Un borron ancho no BORRA la
    sombra: la reparte, y el numero de arriba («hay sombra») SUBE en vez de bajar. Con
    la penumbra de 7,85 m del movil salia 50,54 % de sombra y 0,33 % de sombra fuerte:
-   mirando solo el primer numero, aquello parecia el campo entero sombreado. El tope de
-   3 % va bajo a proposito, como el otro: vigila que la sombra SE VEA, no cuanta hay. */
+   mirando solo el primer numero, aquello parecia el campo entero sombreado.
+
+   SE MIDE LA PROPORCION, no el valor absoluto, y no por elegancia: un umbral fijo en
+   «% de la pantalla» lo puse primero en 3 % y lo tumbo el propio banco, con razon —a
+   300 m de altura los seguidores ocupan cuatro pixeles y la sombra fuerte cae a 2,21 %
+   en escritorio y 1,25 % en movil sin que nada este mal—. Lo que se quiere saber no es
+   cuanta sombra hay (eso depende del encuadre, del sol y de la planta) sino QUE PARTE
+   de la sombra que hay es oscura, que es justo lo que arruina el borron. Medido:
+
+       de los pixeles en sombra, cuantos quedan OSCUROS
+       escritorio  86 / 83 / 79 / 65 %   (10, 30, 90, 300 m)
+       movil       51 / 53 / 51 / 31 %
+       movil con el radio sin acotar          0,7 %
+
+   El tope de 20 % deja un factor 45 contra el defecto y un factor 1,5 contra el peor
+   caso bueno. */
 check('la sombra es OSCURA y no un gris lavado, en los dos caminos',
-      todasLasFilas.every(f => f.fuerte >= 3),
-      todasLasFilas.map(f => etq(f) + ':' + f.fuerte + '%').join(' '));
+      todasLasFilas.every(f => f.fuerte / f.todo >= 0.20),
+      todasLasFilas.map(f => etq(f) + ':' + (100*f.fuerte/f.todo).toFixed(0) + '% de ' + f.todo + '%').join(' '));
 /* LA PENUMBRA, EN METROS. `shadow.radius` va en TEXELES, asi que el mismo radio vale
    0,46 m en El Burgo y 7,85 m en San Jose. Se comprueba el ANCHO REAL, que es el que
    tiene sentido fisico. Es el SEMIANCHO: el nucleo PCF muestrea de -radio*texel a
