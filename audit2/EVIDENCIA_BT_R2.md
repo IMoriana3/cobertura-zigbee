@@ -1171,6 +1171,76 @@ publicado; el espacio conjunto no se explora, así que el ΔPOA es el de una
 perturbación local, no el del óptimo global. Sombra de PLANOS para decidir el
 caso; POA con el contador publicado. Una semilla, paso 0,25°.
 
+### E-C8  El bloque C con la semilla 7 de CI
+
+Commit:      3a57451
+Script:      `audit2/C_monotonia.mjs`
+Comando:     `node audit2/C_monotonia.mjs 40 7 0.5 200`
+Node:        v22.22.2
+Salida:      `audit2/out/C_s7.txt` · CSV `C1_instantes_s7.csv`, `C2_muestra_s7.csv`,
+             `C2_barridos_s7.csv`, `C3_contraejemplos_s7.csv`
+Estado:      **MEDIDO**
+
+CI corre dos semillas (`.github/workflows/bancos.yml:189`, `semilla: [1, 7]`) y
+E-C1…E-C3 sólo cubrían la 1. Esta corrida cierra la entrada de `HUECOS`
+correspondiente. Mismos parámetros que E-C1: 40 configuraciones, días 21-jun /
+21-mar / 21-dic, paso 20 min, sol > 2°, criba de θ a 0,5°, barrido fino a 0,25°,
+muestra de 200 con `mulberry32(20260917)`, sombra de PLANOS, nb 2, b0 0,05.
+
+**Corrección del arnés que hizo falta antes de ejecutar.** `C_monotonia.mjs`
+escribía siempre a los mismos nombres de CSV, así que una segunda semilla
+**habría sobrescrito los artefactos publicados de la primera**. Se detectó al
+lanzar la corrida, se detuvo a tiempo (los CSV de la semilla 1 quedaron intactos,
+`git diff` vacío) y ahora el nombre lleva sufijo por semilla: `''` para la 1,
+`_sN` para el resto. Queda registrado en E-X1.
+
+**Comparación de las dos semillas:**
+
+| magnitud | semilla 1 | semilla 7 | ¿mismo orden? |
+|---|---|---|---|
+| instantes-configuración con sol > 2° (denominador) | 4 224 | 4 217 | sí |
+| con algún θ uniforme de sombra 0 | 3 562 (**84,33 %**) | 3 696 (**87,65 %**) | sí |
+| ídem con la tolerancia 1e−4 | 3 562 | 3 696 | sí, e idéntico a 1e−9 en las dos |
+| instantes con más de un cruce (de 200) | 50 (**25,00 %**) | 42 (**21,00 %**) | sí |
+| **contraejemplos del min(\|θ\|)** (de 200) | **75 (37,50 %)** | **68 (34,00 %)** | **sí** |
+| pares (θ₁,θ₂) sobre la rejilla de 0,25° | 12 239 | 11 282 | sí |
+| **peso energético del contraejemplo** | **22,79 %** | **22,03 %** | **sí** |
+| peor fs(θ₂) de la muestra | 91,4192 % | 87,5550 % | sí |
+
+Histograma de cruces de la semilla 7: 0 cruces 132 (66,0 %), 1 cruce 26
+(13,0 %), 2 cruces 40 (20,0 %), **4 cruces 2 (1,0 %)**. La semilla 1 llegaba a 3
+cruces como máximo; la 7 alcanza **4** en dos instantes.
+
+**TEST NULO**: el predicado «existe θ con sombra de planos 0» no es constante
+(3 696 de 4 217), así que el recuento informa. Como en la semilla 1, las dos
+tolerancias (1e−9 y 1e−4) dan el **mismo** recuento: ningún instante tiene su
+mínimo entre ambas.
+
+**¿Cambia el enunciado de la entrada (b) de `HUECOS`?** **No.** Ese enunciado
+afirma que el enunciado geométrico es falso «en 75 de 200 instantes, 22,79 % del
+peso energético». Con la semilla 7 son **68 de 200 y 22,03 %**. Los dos
+recuentos están en el mismo orden y sostienen la misma afirmación; el enunciado
+se amplía para citar las dos semillas en vez de una, sin cambiar de sentido.
+
+Los 5 peores contraejemplos de la semilla 7:
+
+| # | θ₁ (fs=0) | fs₁ | θ₂ | fs₂ | sol | MV | configuración · instante |
+|---|---|---|---|---|---|---|---|
+| 1 | 34° | 0 | −33,75° | **87,5550 %** | 27,1° | 17 | Arequipa · ondulado 2 · N-S constante −3° · mono · alineadas ×1 · 6 filas · az 0° · 21-mar 21:00Z |
+| 2 | 19,25° | 0 | −19° | 81,3151 % | 13,4° | 17 | Zaragoza · ondulado 1,2 · N-S rotula 6° · mono · alineadas ×1 · 8 filas · az −20° · 21-mar 17:00Z |
+| 3 | −3° | 0 | 2,75° | 80,3943 % | 2,3° | 28 | Zaragoza · cresta 2 · N-S constante 0° · mono · bagnarelli ×2 · 8 filas · az 0° · 21-mar 06:20Z |
+| 4 | 9,5° | 0 | −9,25° | 80,1613 % | 5,9° | 28 | Zaragoza · cresta 2 · N-S constante 0° · mono · bagnarelli ×2 · 8 filas · az 0° · 21-jun 19:00Z |
+| 5 | −16,75° | 0 | 16,5° | 72,8418 % | 9,9° | 17 | Arequipa · valle 3 · N-S constante 0° · quebrado · alineadas ×2 · 8 filas · az 0° · 21-dic 11:00Z |
+
+Como en la semilla 1, en los cinco el par está a un lado y otro de θ = 0, con
+módulos separados por un paso de rejilla (0,25°). Aparece un MV nuevo, **28**,
+que la semilla 1 no producía (allí eran 17 y 33).
+
+Notas: las dos semillas son las que corre CI; no se han probado otras. La criba a
+0,5° acota por abajo los recuentos de θ con sombra 0 en las dos. El peso
+energético usa la misma definición que E-C3 (`poaPlant` con los θ publicados de
+`pairwise` × 20/60 h).
+
 ---
 
 # BLOQUE D — RESOLUCIÓN DEL MODELO FRENTE A LA GANANCIA
@@ -2989,6 +3059,7 @@ coste, y qué cifra publicada depende de ella (o `ninguna`).
 | 4 | **F.2 en el caso B** | **E-F2** | NO APLICABLE por construcción: una mesa por fila y sin `segTilt`, así que (b) ≡ (a). Declarado en vez de publicar un cero |
 | 5 | **A.3 variante 9 políticas** | **E-D5** (parcialmente) | la pregunta de fondo era el coste y la calibración. Medido: el pleno de tres políticas cuesta 11 397 s, así que el de nueve serían 6-7 h — no las ~21 h estimadas. La variante en sí sigue sin ejecutarse, pero ninguna cifra publicada la necesita |
 | 6 | **Comprobación de la columna `nb = 2`** (abierto por M.1) | **E-D6** | las nueve celdas coinciden dígito a dígito; E-D3 no se corrige |
+| 7 | **C.1 / C.2 / C.3 con la semilla 7** | **E-C8** | los órdenes de magnitud se mantienen: contraejemplos 68/200 frente a 75/200, peso energético 22,03 % frente a 22,79 %. El enunciado (b) no cambia de sentido; se amplía para citar las dos semillas |
 
 ## ABIERTAS
 
@@ -2998,7 +3069,6 @@ coste, y qué cifra publicada depende de ella (o `ninguna`).
 | 8 | **(d) paridad JS↔Python** | ver la redacción abajo | no acotable: es depuración de causa raíz en dos motores | `\|Δθ\| JS↔Python hasta 65° en el caso B` (E-G1), que se publica como medida, no como diagnóstico |
 | 9 | **D.2 · MV 16 y 64** | ejecutar las dos variantes del anual reducido | 2 × 4 h 8 min = **8 h 16 min** de compute | **ninguna** — cerradas por decisión del auditor, no por fallo (punto 0.1 del encargo de cierre) |
 | 10 | **Calibración de las 5 políticas restantes** | anual pleno de `astro`, `global`, `row`, `bt2d` y `mgl` | ~4-5 h de compute (por extrapolación de E-D5) | `orden de las 9 políticas por nb` (E-D3), publicada con la etiqueta `calibrada en 4 de 9` |
-| 11 | **C.1 / C.2 con la semilla 7** | repetir `C_monotonia.mjs` con semilla 7, la otra de CI (`.github/workflows/bancos.yml:189`) | ~30 min de compute | los recuentos de E-C1, E-C2 y E-C3, que se publican con «una semilla» declarado |
 | 12 | **F.2 / F.3 · el anual** | anualizar la corrida de un día de `F23_mesa.mjs` | ~6 h de compute | `Δ de transponer por mesa +0,3524 %` (E-F2), publicada como `INDICIO DIMENSIONADO · un día, no anualizado`; y la de E-F3, **no publicable por dominio** |
 | 13 | **F.2 · separar tilt de peso** | repetir la variante (b) cambiando sólo el tilt por mesa, y luego sólo el peso por módulos | ~2 × 1 h de compute | la misma de la fila 12 |
 | 14 | **A.1 · veto con `prev` definido** | recorrer un día encadenando `prev` para ejercitar la histéresis y el salto del veto (`backtracking.html:2910`) | ~20 min de compute | **ninguna** — E-A1 declara que mide un instante con `prev` sin definir |
@@ -3006,6 +3076,14 @@ coste, y qué cifra publicada depende de ella (o `ninguna`).
 | 16 | **B · políticas distintas de pairwise y true-3D** | repetir `B1_caso_b_dos_commits.mjs` con las otras siete | ~10 min de compute | **ninguna** — E-B1 declara que cubre dos |
 | 17 | **C.5 (3) · penetración de terreno** | exportar `terrBlocked` o instrumentarlo, y comparar los 3 refinos contra un barrido fino de la fracción de cuerda | ~2 h de lectura + ~1 h de sonda | **ninguna** — no bisecta en θ y su resolución (1/16 de cuerda) es conocida por construcción |
 | 18 | **Páginas publicadas (GitHub Pages)** | comprobar lo desplegado contra `origin/main` desde una red con salida a Pages | ~10 min, requiere red | **ninguna** — se usa `origin/main` como referencia, declarado |
+
+## Decisión sobre las entradas que quedan abiertas
+
+Las once entradas que siguen abiertas **se quedan abiertas por decisión del
+auditor**: son caras y sólo ajustan precisión. Se registra aquí con esa frase
+para que no parezca un olvido. La única que se pagó fue la semilla 7 (~30 min),
+por ser la más barata y la que sostenía recuentos publicados; está cerrada en la
+tabla de arriba con E-C8.
 
 ## Redacciones fijadas por el auditor
 
@@ -3015,8 +3093,10 @@ El enunciado tiene **dos partes que no se funden**:
 
 1. **El enunciado geométrico es FALSO.** `backtracking.html:208`, `651-654`,
    `824-827` y `2672-2675` afirman que reducir \|θ\| desde un ángulo de
-   backtracking «nunca crea sombra». Medido: la crea en **75 de 200 instantes**
-   de la muestra, que pesan el **22,79 %** de la energía del barrido.
+   backtracking «nunca crea sombra». Medido en **las dos semillas de CI**: la
+   crea en **75 de 200 instantes** con la semilla 1, que pesan el **22,79 %** de
+   la energía del barrido (E-C3), y en **68 de 200** con la semilla 7, que pesan
+   el **22,03 %** (E-C8).
 2. **La regla derivada es energéticamente favorable.** El θ que la regla elige
    gana energía en **74 de 75** casos medidos, con mediana **+257,47 W/m²**, y el
    único caso adverso cuesta **0,0044 W/m²** — cinco órdenes de magnitud por
