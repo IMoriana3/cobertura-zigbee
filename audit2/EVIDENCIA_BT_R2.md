@@ -1048,63 +1048,94 @@ Notas: la calibración cubre **dos** políticas, las únicas para las que existe
 anual pleno (E-A3 variante 1); no se ha calibrado ninguna de las siete restantes,
 y en particular ninguno de los dos optimizadores. Un solo año (2026), cielo claro.
 
-### E-D3  Anual de Ayora real con nb forzado: orden de las políticas — PARCIAL
+### E-D3  Anual de Ayora real con nb forzado: orden de las políticas
 
 Commit:      3a57451
 Script:      `audit2/D23_anual_variantes.mjs`
 Comandos:    `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.3 --vars=0,1,2 --etiqueta=_D3a`
              `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.3 --vars=3,4 --etiqueta=_D3b`
+             `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.2 --etiqueta=_D2`  (la columna nb = 2)
 Node:        v22.22.2
-Salida:      `audit2/out/D3a.txt`, `audit2/out/D3b.txt`
-Estado:      **MEDIDO** para nb 0, 2 y 3 · **NO VERIFICADO** para nb 1 y nb 6
+Salida:      `audit2/out/D3a.txt`, `audit2/out/D3b.txt`, `audit2/out/D2.txt`
+Estado:      **MEDIDO** — los cinco valores de nb que pide el encargo
 
 `nb` se fuerza con `T.nBypass` y el mismo valor en `Tcfg`. Con `nb = 0`,
-`elecLoss` es lineal y no hay escalón de diodos (`backtracking.html:628-632`).
-Mismo diseño reducido y mismos parámetros que E-D2; MV sin forzar, o sea **8** por
-`if(T.real)`. La columna nb = 2 es la corrida MV 8 de E-D2 (misma configuración).
+`elecLoss` es lineal y no hay escalón de diodos (`backtracking.html:628-632`):
+
+```js
+function elecLoss(f,nBypass){
+  if(!(f>1e-6))return 0;
+  if(nBypass<=0)return Math.min(1,f);
+  return Math.min(1,Math.ceil(nBypass*f)/nBypass);
+}
+```
+
+Mismo diseño reducido y mismos parámetros que E-D2, con su calibración medida
+allí. MV **sin forzar**, o sea **8** por `if(T.real)` (`backtracking.html:845`).
+La columna **nb = 2** es la corrida MV 8 de E-D2: forzar `T.mv = 8` con `nb` de
+`cfg` (= 2) y forzar `nb = 2` con MV sin forzar (= 8) son **la misma
+configuración**, así que no se ha vuelto a calcular.
+
+Coste: 14 871 s (nb 1), 14 799 s (nb 0), 14 908 s (nb 6), 14 980 s (nb 3) por
+variante, con las nueve políticas.
 
 Energía anual, kWh/m²·año:
 
-| política | nb = 0 | nb = 2 | nb = 3 |
-|---|---|---|---|
-| astro | 2743,9536 | 2631,8894 | 2673,1460 |
-| global | 2707,4372 | 2643,3184 | 2667,3713 |
-| row | 2706,7388 | 2648,8196 | 2670,0694 |
-| bt2d | 2707,3194 | 2640,7619 | 2666,0507 |
-| pairwise | 2298,1223 | 2293,5007 | 2295,2661 |
-| true3d | 2283,0564 | 2278,7642 | 2280,3449 |
-| mgl | 2331,1919 | 2326,5231 | 2328,3046 |
-| optimal | 2743,9536 | 2666,4889 | 2686,0193 |
-| optfree | 2743,9607 | 2668,3689 | 2686,7296 |
+| política | nb = 0 | nb = 1 | nb = 2 | nb = 3 | nb = 6 |
+|---|---|---|---|---|---|
+| astro | 2743,9536 | 2478,2994 | 2631,8894 | 2673,1460 | 2710,5368 |
+| global | 2707,4372 | 2570,6208 | 2643,3184 | 2667,3713 | 2690,4937 |
+| row | 2706,7388 | 2584,8117 | 2648,8196 | 2670,0694 | 2690,8309 |
+| bt2d | 2707,3194 | 2564,1551 | 2640,7619 | 2666,0507 | 2689,9543 |
+| pairwise | 2298,1223 | 2287,2662 | 2293,5007 | 2295,2661 | 2296,7722 |
+| true3d | 2283,0564 | 2274,0059 | 2278,7642 | 2280,3449 | 2281,8807 |
+| mgl | 2331,1919 | 2320,2401 | 2326,5231 | 2328,3046 | 2329,8269 |
+| optimal | 2743,9536 | 2612,4872 | 2666,4889 | 2686,0193 | 2711,7812 |
+| optfree | 2743,9607 | 2620,3332 | 2668,3689 | 2686,7296 | 2711,7851 |
 
 **ORDEN por energía anual, una columna por nb:**
 
-| puesto | nb = 0 | nb = 2 | nb = 3 |
-|---|---|---|---|
-| 1 | optfree | optfree | optfree |
-| 2 | **astro** ≡ optimal | optimal | optimal |
-| 3 | global ← **CAMBIA** | **row** ← **CAMBIA** | **astro** ← **CAMBIA** |
-| 4 | bt2d ← **CAMBIA** | global ← **CAMBIA** | row ← **CAMBIA** |
-| 5 | row ← **CAMBIA** | bt2d ← **CAMBIA** | global ← **CAMBIA** |
-| 6 | mgl | **astro** ← **CAMBIA** | bt2d ← **CAMBIA** |
-| 7 | pairwise | mgl | mgl |
-| 8 | true3d | pairwise | pairwise |
-| 9 | — | true3d | true3d |
+| puesto | nb = 0 | nb = 1 | nb = 2 | nb = 3 | nb = 6 | ¿cambia? |
+|---|---|---|---|---|---|---|
+| 1 | optfree | optfree | optfree | optfree | optfree | no |
+| 2 | **astro** | optimal | optimal | optimal | optimal | **SÍ** |
+| 3 | optimal | row | row | **astro** | **astro** | **SÍ** |
+| 4 | global | global | global | row | row | **SÍ** |
+| 5 | bt2d | bt2d | bt2d | global | global | **SÍ** |
+| 6 | row | **astro** | **astro** | bt2d | bt2d | **SÍ** |
+| 7 | mgl | mgl | mgl | mgl | mgl | no |
+| 8 | pairwise | pairwise | pairwise | pairwise | pairwise | no |
+| 9 | true3d | true3d | true3d | true3d | true3d | no |
 
-**El orden cambia con nb.** `astro` se mueve del puesto 2 (nb = 0) al 6 (nb = 2) y
-vuelve al 3 (nb = 3): **cuatro puestos de recorrido** por un parámetro del modelo
-eléctrico. `global`, `row` y `bt2d` permutan entre sí en los tres casos. Lo que
-**no** cambia: `optfree` es primero en los tres, y `pairwise` y `true3d` son
-últimos en los tres.
+**El orden cambia con nb en los puestos 2 a 6.** Recorrido de puesto por
+política a lo largo de los cinco nb:
 
-Con **nb = 0** (pérdida lineal, sin escalón de diodos), `astro` y `optimal` dan
-**el mismo número hasta el cuarto decimal**: 2743,9536 kWh/m²·año, y `optfree`
-sólo les saca 0,0071 (2743,9607). Con nb = 2 y nb = 3 se separan.
+| política | puestos (nb 0, 1, 2, 3, 6) | recorrido |
+|---|---|---|
+| **astro** | 2 · 6 · 6 · 3 · 3 | **4 puestos** |
+| **row** | 6 · 3 · 3 · 4 · 4 | **3 puestos** |
+| optimal | 3 · 2 · 2 · 2 · 2 | 1 |
+| global | 4 · 4 · 4 · 5 · 5 | 1 |
+| bt2d | 5 · 5 · 5 · 6 · 6 | 1 |
+| optfree, mgl, pairwise, true3d | fijos en 1, 7, 8 y 9 | 0 |
 
-Notas: **tres de los cinco nb** que pide el encargo; faltan nb = 1 y nb = 6,
-todavía calculando. El diseño es el reducido de E-D2, con el sesgo de −0,86 %
-medido allí sobre el nivel absoluto y de 0,0057 pp sobre la comparación entre
-políticas. Un solo año, cielo claro, sin lazo de control.
+Dos observaciones sobre los extremos, que **no** se mueven: `optfree` es primera
+en los cinco casos, y `mgl`, `pairwise` y `true3d` ocupan los puestos 7, 8 y 9 en
+los cinco.
+
+Con **nb = 0** (pérdida lineal, sin escalón de diodos), `astro` y `optimal`
+publican **el mismo número hasta el cuarto decimal**: 2743,9536 kWh/m²·año, y
+`optfree` les saca 0,0071 (2743,9607). Con nb ≥ 1 se separan: a nb = 1 la
+distancia `optimal` − `astro` es de 134,19 kWh/m²·año.
+
+**nb = 1 es el caso más desfavorable para `astro`** (2478,2994, su mínimo entre
+los cinco) y donde la horquilla entre políticas es mayor.
+
+Notas: diseño reducido (4 días, paso 20 min) con el sesgo de nivel de −0,86 %
+medido en E-D2 sobre pairwise y true-3D; **ese sesgo no se ha calibrado para las
+otras siete políticas**, y en particular no para los dos optimizadores, que son
+los que encabezan la tabla (ver HUECOS). Un solo año (2026), cielo claro, sin
+lazo de control, MV 8 en todas las columnas.
 
 ### E-D4  Escalón mínimo no nulo de pérdida eléctrica por mesa
 
@@ -1860,7 +1891,7 @@ Lo que el encargo pide y **no** se ha ejecutado, con la razón.
 |---|---|---|
 | **A.3 variante 9 políticas** | NO VERIFICADO | detenida a los 38 min de CPU sin terminar; coste del orden de horas (medido en E-A3) |
 | **D.2 · MV 16, 32 y 64** | NO VERIFICADO | 14 871 s por variante medidos (4 h 8 min); MV 8 sí está en E-D2, y el efecto de MV sobre el argmax está medido aparte en E-D1 |
-| **D.3 · nb 1 y nb 6** | NO VERIFICADO | ídem; nb 0, 2 y 3 sí están en E-D3, y el cambio de orden queda documentado con esos tres |
+| **D.2 · calibración de las 7 políticas restantes** | NO VERIFICADO | el sesgo del diseño reducido (−0,86 % de nivel) está medido sólo para pairwise y true-3D, las únicas con anual pleno en E-A3; **no** para los dos optimizadores, que encabezan la tabla de E-D3 |
 | **C.3 / C.4 con columna de energía** | NO EJECUTADO | el encargo pide sólo sombra; la variante con POA de las dos posturas es la corrección de la CRÍTICA nº 5 y no dio tiempo |
 | **C.1 / C.2 con la semilla 7** | NO EJECUTADO | CI corre las semillas 1 y 7 (`bancos.yml:189`); sólo se ha corrido la 1 |
 | **C.5 (3)** penetración de terreno | NO EJECUTADO | `terrBlocked` no exportado y no bisecta en θ (CRÍTICA nº 9) |

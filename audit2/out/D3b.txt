@@ -18,3 +18,41 @@ D.3 · MV sin forzar (8) · nb 3 — 14980 s
      mgl       2328.3046 kWh/m²·año
      optimal   2686.0193 kWh/m²·año
      optfree   2686.7296 kWh/m²·año
+D.3 · MV sin forzar (8) · nb 6 — 14908 s
+     astro     2710.5368 kWh/m²·año
+     global    2690.4937 kWh/m²·año
+     row       2690.8309 kWh/m²·año
+     bt2d      2689.9543 kWh/m²·año
+     pairwise  2296.7722 kWh/m²·año
+     true3d    2281.8807 kWh/m²·año
+     mgl       2329.8269 kWh/m²·año
+     optimal   2711.7812 kWh/m²·año
+     optfree   2711.7851 kWh/m²·año
+
+── D.2 · ganancia relativa sobre pairwise y sobre row, por MV ──
+
+── D.3 · ORDEN de las políticas por energía anual, una columna por nb ──
+  puesto | nb=3        | nb=6        
+     1    | optfree     | optfree     
+     2    | optimal     | optimal     
+     3    | astro       | astro       
+     4    | row         | row         
+     5    | global      | global      
+     6    | bt2d        | bt2d        
+     7    | mgl         | mgl         
+     8    | pairwise    | pairwise    
+     9    | true3d      | true3d      
+
+  energía (kWh/m²·año) por política y nb:
+  política   |         nb=3 |         nb=6
+  astro      |    2673.1460 |    2710.5368
+  global     |    2667.3713 |    2690.4937
+  row        |    2670.0694 |    2690.8309
+  bt2d       |    2666.0507 |    2689.9543
+  pairwise   |    2295.2661 |    2296.7722
+  true3d     |    2280.3449 |    2281.8807
+  mgl        |    2328.3046 |    2329.8269
+  optimal    |    2686.0193 |    2711.7812
+  optfree    |    2686.7296 |    2711.7851
+
+CSV: audit2/out/D23_D3b.csv
