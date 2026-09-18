@@ -4096,6 +4096,41 @@ const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
 /* ── estado ── */
 let ELEV=[];                 // cota por fila [m] (editable arrastrando)
 let DAY=null;                // resultado del día {times, sun, irr, pol:{key:{ang[t][r],shade,poaP,poaR,f}}}
+/* ══ NÚMERO DE SERIE DEL DÍA, Y LA INVARIANTE QUE PROTEGE A SUS CONSUMIDORES ══
+   `recompute` recalcula el día POR FRAGMENTOS: cede el control cada 40 ms para
+   que la página siga respondiendo, y al acabar SUSTITUYE `DAY` por un objeto
+   nuevo. De ahí sale una invariante que hasta hoy no estaba escrita en ninguna
+   parte, y una invariante que nadie declara es una invariante que alguien
+   rompe:
+
+     UN CONSUMIDOR DE `DAY` QUE LEA MÁS DE UNA VEZ SÓLO ES SEGURO SI ENTRE SU
+     PRIMERA Y SU ÚLTIMA LECTURA NO CEDE EL CONTROL.
+
+   Mientras es SÍNCRONO de punta a punta, nada puede colarse entre sus lecturas:
+   el bucle de eventos no corre, así que `recompute` no puede sustituir `DAY` a
+   mitad. En cuanto cede —`await`, `setTimeout`, `requestAnimationFrame`, un
+   generador troceado—, puede leer la mitad de sus datos de un día y la otra
+   mitad de otro, y publicar una cifra perfectamente creíble que no describe
+   ninguno de los dos. Sin error y sin aviso.
+
+   ESTADO DE LOS CUATRO CONSUMIDORES, a día de hoy:
+     · `fillDayTable`      SÍNCRONA  — protegida por la invariante
+     · `informeHTML`       SÍNCRONA  — protegida por la invariante (captura
+                                       `const d=DAY` y no vuelve a cederlo)
+     · `$('yearbtn')`      SÍNCRONA  — y además ni siquiera lee `DAY`: recalcula
+                                       `cfg()`, `terrain()` y `terrainTCU()`
+     · `pintaCertificado`  **CEDE** con `setTimeout` ⇒ NO está protegida por la
+                                       invariante y necesita comprobarlo a mano.
+                                       Es lo que hace el guardián de más abajo.
+
+   Si mañana alguien trocea `fillDayTable` o `informeHTML` para que no congelen
+   la pestaña, HEREDAN el agujero: tendrán que capturar `DAY` y su serie igual
+   que hace el certificado, o dejarán de estar protegidas sin que nadie lo note.
+
+   El testigo es barato: un contador que sube cada vez que `DAY` se sustituye.
+   Comparar el objeto no basta por sí solo —podría reciclarse—, así que se
+   comparan los dos: identidad y serie. */
+let DAY_SERIAL=0;
 let playing=false, playTimer=null;
 const LS_KEY='bt_sim_cfg_v1';
 
@@ -5017,6 +5052,7 @@ function* computeDayGen(){
     if((++__done&31)===0)yield __done/__tot;
   }
   DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
+  DAY_SERIAL++;                 // el día ha sido SUSTITUIDO: lo ve quien lo esté leyendo a trozos
   return DAY;
 }
 /* La integral del día vive en UN solo sitio. `dayKpis` la llama con lo que
@@ -7189,7 +7225,14 @@ function ppSombra(d){
   if(d===0)return '0';
   return Math.abs(d)<0.05?(d>0?'&lt;+0,05':'&lt;−0,05'):((d>0?'+':'')+d.toFixed(1));
 }
-function pintaCertificado(){
+/* `CERT_SIN_GUARDA` desarma el guardián de identidad del día. NO lo usa la
+   página: existe para que el banco pueda comprobar que su caso de prueba SÍ
+   produce la mezcla cuando el guardián no está. Sin ese control negativo, la
+   prueba pasaría aunque el guardián no hiciera nada. `CERT_ULT` publica el
+   resultado del último intento para que el banco lo lea. */
+let CERT_SIN_GUARDA=false, CERT_ULT=null;
+function pintaCertificado(intento){
+  intento=intento||0;
   if(!DAY)return;
   const cerrar='<div style="margin-top:8px"><button class="btn small" onclick="this.closest(\'#certpanel\').remove()">cerrar</button></div>';
   let pan=document.getElementById('certpanel');
@@ -7204,9 +7247,41 @@ function pintaCertificado(){
      tuvieras en pantalla. Lo cazó Iñaki preguntando por otra cosa. */
   const tIdx=timeIndex(), key=($('polview')&&$('polview').value)||'pairwise';
   const inst=sceneInstant(), g=inst?inst.g:DAY.sun[tIdx], c=DAY.c;
+  /* EL DÍA DEL QUE SALE ESTA CAPTURA. `g` y `c` se leen AQUÍ y `DAY.T` se lee
+     DENTRO del `setTimeout` de abajo: entre las dos lecturas el bucle de eventos
+     corre, así que un `recompute` puede sustituir `DAY` y dejar el certificado
+     con el instante y el cielo de un día y el TERRENO de otro. No daba error ni
+     aviso; daba un certificado creíble de algo que no existe. Y cae sobre el
+     artefacto que se emite como PRUEBA, que es el peor sitio donde puede caer.
+     Se apunta identidad y serie, y se comprueban antes de calcular nada. */
+  const d0=DAY, n0=DAY_SERIAL;
   if(!(g.elev>0)){pan.innerHTML='<b>Certificado</b><br>El sol está bajo el horizonte: no hay nada que certificar.'+cerrar;return;}
   pan.innerHTML='<b>Certificando…</b><br><span style="color:#9fb0c2">barriendo el conjunto factible con el contador exacto</span>';
   setTimeout(()=>{
+    /* EL GUARDIÁN. Si el día ha cambiado entre la captura y esta lectura, lo que
+       hay sobre la mesa son datos de dos días: se ABORTA y se vuelve a empezar
+       con el día nuevo, que es el mismo patrón —número de serie, abortar y
+       reintentar— con el que se cerró la mezcla de días del informe gráfico.
+       Si al reintentar vuelve a cambiar, NO SE EMITE NADA: un certificado que no
+       sale es preferible a uno que sale mal, porque éste se enseña como prueba.
+       `CERT_SIN_GUARDA` sólo existe para el banco: sin poder DESARMAR el
+       guardián no hay forma de comprobar que el caso de prueba produce de verdad
+       la mezcla, y una prueba que no puede fallar no comprueba nada. */
+    if(!CERT_SIN_GUARDA&&(DAY!==d0||DAY_SERIAL!==n0)){
+      if(intento>=1){
+        pan.innerHTML='<b>Certificado</b><br><span style="color:#fbbd23">NO SE EMITE: el día se ha recalculado dos veces mientras se certificaba, '+
+          'así que lo que había sobre la mesa eran datos de días distintos —el instante y el cielo de uno y el terreno de otro—. '+
+          'Un certificado se enseña como prueba: antes que uno mezclado, ninguno. Deja de tocar la configuración y vuelve a pulsar.</span>'+cerrar;
+        CERT_ULT={emitido:false,motivo:'dia-cambiado-dos-veces',serieCaptura:n0,serieLectura:DAY_SERIAL,intento:intento};
+        return;
+      }
+      CERT_ULT={emitido:false,motivo:'dia-cambiado-reintento',serieCaptura:n0,serieLectura:DAY_SERIAL,intento:intento};
+      pintaCertificado(intento+1);
+      return;
+    }
+    /* de aquí abajo se usa `d0`, no `DAY`: si el guardián ha dejado pasar, son
+       el mismo objeto, y escribirlo así impide que una edición futura vuelva a
+       meter una lectura del global a mitad del cálculo */
     const doy=doyOf(c.date);
     const irr=skyWithClouds(Irr.clearskyIneichen(g.zen,doy,c.alt,c.tl||3.5),c.cc,g.zen);
     /* v1.59: con el mando puesto se certifica LO QUE HAY EN PANTALLA, no la
@@ -7214,7 +7289,7 @@ function pintaCertificado(){
        viendo» y con el manual activo estaba juzgando otra cosa. */
     const manAng=(manualOn()&&inst&&inst.pv&&inst.pv.ang&&inst.pv.ang[tIdx])?inst.pv.ang[tIdx]:null;
     let ce;
-    try{ce=certifica(key,g.zen,g.az,DAY.T,irr,doy,c.albedo,manAng);}
+    try{ce=certifica(key,g.zen,g.az,d0.T,irr,doy,c.albedo,manAng);}
     catch(e){pan.innerHTML='<b>Certificado</b><br>no se pudo calcular: '+e.message+cerrar;return;}
     const col={'óptimo':'#1a8a5a','empatado':'#b7791f','mejorable':'#c0392b','sin objetivo':'#5b6a7c'}[ce.veredicto]||'#5b6a7c';
     const th=a=>a.map(v=>(TH_DISP*v).toFixed(1)).join(' / ');
@@ -7291,9 +7366,17 @@ function pintaCertificado(){
            ce.candidatos.evaluados,' candidatos medidos · ',ce.candidatos.dominan,' mejores que el publicado',
            '<br>malla ',ce.sellos.mv,' estaciones · empate ',ce.sellos.empate,' W/m² · ',VER,'</span></div>',cerrar);
     pan.innerHTML=H.join('');
+    /* Lo EMITIDO, con las dos series al lado: si el guardián ha hecho su
+       trabajo, la del momento de capturar y la del momento de leer son la
+       misma, y eso es exactamente lo que el banco exige. */
+    CERT_ULT={emitido:true,motivo:null,serieCaptura:n0,serieLectura:DAY_SERIAL,intento:intento,
+              mezclado:(DAY_SERIAL!==n0),politica:key,veredicto:ce.veredicto,
+              fecha:c.date,filas:d0.T.pairs.length+1};
   },30);
 }
-$('certbtn').onclick=pintaCertificado;
+/* OJO: `onclick=pintaCertificado` le pasaría el EVENTO como primer argumento, y
+   el primer argumento es ahora el nº de intento. Se envuelve. */
+$('certbtn').onclick=()=>pintaCertificado(0);
 
 /* ── QA ── */
 $('qabtn').onclick=()=>{
