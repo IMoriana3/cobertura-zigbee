@@ -127,7 +127,14 @@ try {
                  nrows: '6', drive: 'mono', nspreset: 'constante', axtilt: '0', nbp: '2',
                  date: '2026-06-21', tpreset: 'pendiente', tparam: '8' };
   await configura(pend);
-  await informe('astro', 'pairwise');
+  /* El par del caso en pendiente era `astro` vs `pairwise`, y era mala
+     elección: es JUSTO la pareja donde la propia página avisa de que la banda
+     puede cruzar el cero —el IAM juega a favor del astronómico y la sombra en
+     contra—, así que que salga o no salga ámbar depende de la configuración y
+     no dice nada del cableado. Pasó por suerte hasta que v1.69 metió el
+     adelanto en el lazo y dejó de pasar. Ahora el par es `optfree` vs
+     `pairwise`, que se separa mucho y en el mismo sentido con las dos cotas. */
+  await informe('optfree', 'pairwise');
 
   /* ── 1. los seis campos del pie, en las cinco gráficas ─────────────────── */
   const CAMPOS = ['ver', 'fecha', 'nb', 'mv', 'cielo', 'geom'];
@@ -204,11 +211,28 @@ try {
         sueltos.slice(0, 6).join(' | '));
 
   /* ── 3b. caso NEGATIVO de la marca ámbar ───────────────────────────────── */
-  const sep = await pg.evaluate(() => ({ ambar: !!window.__GRAF.ambar.g2,
-                                        pie: (window.__GRAF.pies.g2.extra || []).join(' · ') }));
+  const sep = await pg.evaluate(() => {
+    const G = window.__GRAF, b = grBanda(G.kp[G.A], G.kp[G.B]);
+    const fs = Array.from(document.querySelectorAll('#grtab tr td:last-child')).map(td => td.textContent);
+    return { ambar: !!G.ambar.g2, pie: (G.pies.g2.extra || []).join(' · '), banda: b,
+             separadas: fs.filter(t => /^sí/.test(t.trim())).length,
+             ambarTabla: fs.filter(t => /NO · bajo la resoluci/.test(t)).length };
+  });
   const pieG2Pendiente = sep.pie;
-  check('en pendiente, astro vs pairwise NO levanta la marca ámbar (el predicado no es constante)',
-        sep.ambar === false);
+  /* Lo que se comprueba NO es qué sale, que es física y puede cambiar: es que
+     lo que se PINTA concuerda con lo que se ha decidido. La marca ámbar tiene
+     que salir exactamente cuando la banda cruza el cero o la separación no
+     llega a la resolución, y ni una vez más. */
+  check('en pendiente, la marca ámbar concuerda con la banda medida',
+        sep.ambar === (sep.banda.cruza || Math.abs(sep.banda.d) <= sep.banda.res),
+        JSON.stringify(sep.banda));
+  check('en pendiente, optfree vs pairwise se separa por encima de la resolución',
+        sep.ambar === false, JSON.stringify(sep.banda));
+  /* Y el TEST NULO del predicado: en pendiente tiene que haber filas que SÍ se
+     separan de la anterior. Sin esto, un predicado que siempre dijera «no se
+     separa» pasaría el caso positivo de más abajo y no querría decir nada. */
+  check('en pendiente hay filas que SÍ se separan de la anterior (el predicado no es constante)',
+        sep.separadas > 0, `separadas ${sep.separadas} · ámbar ${sep.ambarTabla}`);
 
   /* ── las cinco gráficas pintan de verdad, y se exportan ────────────────── */
   const pintadas = await pg.evaluate(() => {
@@ -298,8 +322,8 @@ try {
         /(no llega a la resoluci[óo]n del modelo|CRUZA EL CERO)/.test(uni.pie), uni.pie.slice(0, 260));
   /* y el control de que la frase no está SIEMPRE: en el caso en pendiente, el
      pie de G2 publica la resolución pero NO dice que no haya ganador */
-  check('esa frase NO aparece cuando sí hay ganador', pieG2Pendiente.indexOf('NO se declara ganador') < 0,
-        pieG2Pendiente.slice(0, 200));
+  check('y esa frase NO está en el pie del caso que sí se decide',
+        pieG2Pendiente.indexOf('NO se declara ganador') < 0, pieG2Pendiente.slice(0, 200));
   check('la tabla de apoyo marca en ámbar las filas que no se separan de la anterior',
         uni.tablaAmbar > 0, 'marcas: ' + uni.tablaAmbar);
 

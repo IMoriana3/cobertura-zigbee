@@ -923,11 +923,27 @@ function applyControlLoop(target,dtMin,p){
    rejilla FINA y se le aplica el MISMO apply_control_loop del core con el paso
    fino: a 1 min el techo es 10,2°/min, que sí ata y dibuja la rampa real.
    Devuelve el θ EJECUTADO minuto a minuto. */
-function execOnFineGrid(theta,dtMin,nFine,dtFine,loop){
+function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine){
   const cons=new Array(nFine);
   for(let i=0;i<nFine;i++)
     cons[i]=theta[Math.min(theta.length-1,Math.floor((i*dtFine)/dtMin))];
-  return loop?applyControlLoop(cons,dtFine,loop):cons;
+  if(!loop)return cons;
+  const exec=applyControlLoop(cons,dtFine,loop);
+  /* EL BACKTRACKING ES EL TOPE DEL ADELANTO, y hasta hoy no lo era aquí.
+     Desde que el lazo ADELANTA —el eje va a la consigna MÁS un margen, como el
+     TCU de campo— su salida puede pasarse del ángulo que el backtracking
+     calculó para no comerse la fila de delante. Las políticas ya aplican
+     `clampBT` a SU salida, pero eso pasa ANTES del lazo: el adelanto se añade
+     después y nadie lo acotaba.
+     MEDIDO en un día claro con GCR 0,397 y banda 1°: |θ_ejecutado| se pasaba
+     del tope en 51 de 144 instantes —el 35 % del día— por 1,0° exacto, y en
+     las cinco políticas por igual.
+     El tope va AQUÍ y no dentro de `applyControlLoop` a propósito: el banco de
+     paridad carea esa función contra `apply_control_loop` del core a 1e-9, y
+     el core también la deja pura y acota fuera (`poa.py`, tras el lazo).
+     `thNFine` es OPCIONAL: sin él esto se comporta como siempre, que es lo que
+     los bancos del lazo necesitan para medir el lazo y nada más. */
+  return thNFine?clampBT(exec,thNFine):exec;
 }
 /* velocidad instantánea del actuador (°/s de tiempo simulado) en el paso i */
 function slewRateAt(exec,i,dtFine){
@@ -1314,14 +1330,14 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
   const rG=POLICIES[polName](mean,thN,poaNmean,d);
-  const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop);
+  const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop,thNF);
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
     const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
     const rZ=POLICIES[polName](day,thN,poaNz,d);
     // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
-    const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop);
+    const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop,thNF);
     const poaZ=poaSeries(dayF,execZ);
     const poaG=poaSeries(dayF,execG);
     const poaNf=poaSeries(dayF,thNF);
@@ -1340,8 +1356,13 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
       flagF:execOnFineGrid(rZ.flag.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v),
       signalF:execOnFineGrid(signal.map(v=>v?1:0),day.dtMin,F.n,F.dt,null).map(v=>!!v)});
   }
+  /* `thNF` SALE en el resultado a propósito: el θ ejecutado es el lazo Y LUEGO
+     el tope de backtracking, así que quien quiera rehacer esa cuenta —la QA de
+     la fontanería lo hace— necesita el MISMO tope, no uno que se calcule por su
+     cuenta. Devolverlo es lo que impide que la regla viva en dos sitios. */
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
-          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,thN:thN};
+          zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,
+          thN:thN,thNF:thNF};
 }
 
 /* ── diario de decisiones: la máquina del poa_switch EXPLICADA ─────────────
@@ -1882,7 +1903,10 @@ function runPhysicsQA(){
     const day=buildDay(o), dayF=buildDay(Object.assign({},o,{dtMin:1}));
     const thN=thetaBaselineDay(day), poaN=poaSeries(day,thN);
     const rp=POLICIES.diffuse_poa_switch(day,thN,poaN,DCFG_DEFAULT);
-    const ex=execOnFineGrid(rp.theta,day.dtMin,dayF.n,1,loop);
+    // la referencia del día lleva el MISMO tope de backtracking que la cadena
+    // zonal: si una lo lleva y la otra no, vuelven a ser dos físicas — que es
+    // exactamente lo que este banco existe para impedir.
+    const ex=execOnFineGrid(rp.theta,day.dtMin,dayF.n,1,loop,thetaBaselineDay(dayF));
     const wh=poaSeries(dayF,ex).reduce((s,v)=>s+v/60,0);
     A(Math.abs(r.plantZonal-wh)<1e-6,
       'la tabla zonal ('+r.plantZonal.toFixed(1)+') no cuadra con la del día ('+wh.toFixed(1)+') — físicas distintas');
@@ -1926,7 +1950,11 @@ function runPhysicsQA(){
     // y la fontanería exacta: el ejecutado de la zona ES el lazo sobre SU consigna
     const r0=zonalRun(o,3,60,'diffuse_flat',DCFG_DEFAULT,null,null);
     for(let z=0;z<3;z++){
-      const exec=execOnFineGrid(r0.zones[z].theta,o.dtMin,1440,DT_FINE_PHYS,loop);
+      // el ejecutado es el lazo Y LUEGO el tope de backtracking (desde el
+      // 2026-09-18): el adelanto puede pasarse del ángulo que evita la sombra
+      // de la fila de delante, y `clampBT` lo devuelve. Se usa el MISMO `thNF`
+      // que usó la cadena —lo devuelve `zonalRun`— y no uno recalculado aquí.
+      const exec=execOnFineGrid(r0.zones[z].theta,o.dtMin,1440,DT_FINE_PHYS,loop,r.thNF);
       A(exec.length===r.zones[z].execF.length,'zona '+z+': largos distintos');
       for(let i=0;i<exec.length;i++)
         A(Math.abs(exec[i]-r.zones[z].execF[i])<1e-9,'zona '+z+' paso '+i+' no es el ejecutado');
@@ -2192,7 +2220,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.24.0';
+const VER='v1.25.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2598,7 +2626,7 @@ function recompute(){
     const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
     // consigna → actuador (rampa al minuto) → POA fina, y la consigna sin lazo
     // en la MISMA rejilla fina para poder medir el coste del hierro
-    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop);
+    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF);
     const consF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,null);
     const poaF=poaSeries(dayF,execF);
     const poaConsF=loop?poaSeries(dayF,consF):poaF;
@@ -2616,7 +2644,7 @@ function recompute(){
     // instantáneo: salía un techo que ninguna TCU puede alcanzar y el hueco
     // que mide dejaba de ser comparable con las filas de al lado.
     const o=optimoAniso(day,thN,d);
-    const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop);
+    const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF);
     const flagF=execOnFineGrid(o.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
     const poaF=poaSeries(dayF,execF);
     const consF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,null);
