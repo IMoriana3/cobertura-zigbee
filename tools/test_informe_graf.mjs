@@ -284,6 +284,35 @@ try {
         lienzos.zonas5.minY > 0 && lienzos.zonas5.maxY <= lienzos.zonas5.cssH - 54,
         `y de ${lienzos.zonas5.minY.toFixed(1)} a ${lienzos.zonas5.maxY.toFixed(1)} · caja ${lienzos.zonas5.cssH}`);
 
+  /* ── el pie CABE, y los rótulos de la escala de G5 no se pisan ──────────
+     Las dos con control negativo: una comprobación que no puede fallar no dice
+     nada, y hoy ya han aparecido tres que pasaban sin mirar. */
+  const encaje = await pg.evaluate(() => {
+    const G = window.__GRAF;
+    // control del criterio de solape: con cajas de mentira que SÍ se pisan
+    const ctrlSolape = grSolapan({ x: 0, w: 50 }, { x: 40, w: 50 }) &&
+                      !grSolapan({ x: 0, w: 30 }, { x: 40, w: 50 });
+    // control del detector de recorte: se fuerza un pie imposible y se mira
+    const cv = document.createElement('canvas'); cv.width = 400; cv.height = 200;
+    const c2 = cv.getContext('2d');
+    const largo = grPieObj([('palabra ').repeat(400)]);
+    grDibujaPie(c2, 400, 200, largo, 54, 4, '__control__');
+    const ctrlCorte = !!(G.pieCortado.__control__ && G.pieCortado.__control__.cortado);
+    delete G.pieCortado.__control__;
+    return { cortados: Object.entries(G.pieCortado).filter(([, v]) => v.cortado).map(([k, v]) => `${k}: ${v.lineas}>${v.cupo}`),
+             examinados: Object.keys(G.pieCortado).length,
+             leyenda: G.g5leyenda, ctrlSolape, ctrlCorte };
+  });
+  check('el detector de recorte del pie SÍ salta con un pie imposible (control)', encaje.ctrlCorte === true);
+  check('se ha mirado el pie de las cinco gráficas', encaje.examinados === 5, 'n = ' + encaje.examinados);
+  check('ningún pie se recorta: los seis campos caben en la imagen',
+        encaje.cortados.length === 0, encaje.cortados.join(' · '));
+  check('el criterio de solape SÍ detecta dos cajas que se pisan (control)', encaje.ctrlSolape === true);
+  check('los rótulos de los extremos de la escala de color de G5 no se pisan',
+        !!encaje.leyenda && encaje.leyenda.solapan === false, JSON.stringify(encaje.leyenda));
+  check('y el denominador de esa escala está una vez, en su título',
+        !!encaje.leyenda && /del área de módulo/.test(encaje.leyenda.titulo), (encaje.leyenda || {}).titulo);
+
   const exportadas = await pg.evaluate(async () => {
     const out = {};
     for (const n of [1, 2, 3, 4, 5]) {

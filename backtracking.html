@@ -428,7 +428,7 @@
       <button class="btn small grexp" data-gr="4">⇩ PNG</button></div>
 
     <div class="grbloque"><div class="grtit" id="grt5"></div>
-      <canvas id="gr5" class="viz" height="420" style="cursor:crosshair;height:420px"></canvas>
+      <canvas id="gr5" class="viz" height="470" style="cursor:crosshair;height:470px"></canvas>
       <div class="grpie" id="grp5"></div>
       <button class="btn small grexp" data-gr="5">⇩ PNG</button>
       <div class="nota">Pincha una mesa para resaltarla: la fracción sombreada que el contador
@@ -8217,17 +8217,28 @@ function grFit(cv){
   const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
   return {ctx:ctx,W:w,H:h};
 }
-const GR_PIE_H=54;   // franja reservada al pie DENTRO del lienzo (4 líneas)
-const GR_PIE_LINEAS=4;
+const GR_PIE_H=54;    // franja del pie DENTRO del lienzo: 4 líneas
+const GR_PIE_H5=90;   // G5 escribe más (orientación, azimut, qué NO se pinta): 7
+const GR_PIE_LINEAS=4, GR_PIE_LINEAS5=7;
+/* ¿SE HA RECORTADO ALGÚN PIE? La regla dice que la captura viaja sola, así que
+   un pie que no cabe es un defecto, no una molestia. El aviso en ámbar dentro
+   de la imagen es el último recurso; esto lo publica para que el banco lo pueda
+   exigir a CERO. */
+GR.pieCortado={};
+/* ¿SE SOLAPAN DOS RÓTULOS? Dos cajas [x,x+w] a la misma altura. Se saca a
+   función para que el banco pueda comprobar el criterio con cajas de mentira
+   —que diga que sí cuando se pisan— antes de creerse que las de verdad no. */
+function grSolapan(a,b){return a.x<b.x+b.w&&b.x<a.x+a.w;}
 
 /* El pie se dibuja dentro del lienzo para que el PNG exportado se explique
    solo: una captura que viaje sin su VER, su fecha y su cielo no es evidencia
    de nada. Se parte en líneas a la anchura real del lienzo. */
-function grDibujaPie(ctx,W,H,P){
+function grDibujaPie(ctx,W,H,P,alto,nLin,id){
+  const banda=alto||GR_PIE_H, cupo=nLin||GR_PIE_LINEAS;
   const txt=grPieTexto(P);
   ctx.save();
-  ctx.fillStyle='#0d1420'; ctx.fillRect(0,H-GR_PIE_H,W,GR_PIE_H);
-  ctx.strokeStyle='#1e2a3a'; ctx.beginPath(); ctx.moveTo(0,H-GR_PIE_H+.5); ctx.lineTo(W,H-GR_PIE_H+.5); ctx.stroke();
+  ctx.fillStyle='#0d1420'; ctx.fillRect(0,H-banda,W,banda);
+  ctx.strokeStyle='#1e2a3a'; ctx.beginPath(); ctx.moveTo(0,H-banda+.5); ctx.lineTo(W,H-banda+.5); ctx.stroke();
   ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='#5c7189';
   const max=W-12; const pal=txt.split(' '); const lineas=[]; let ln='';
   for(const w of pal){
@@ -8236,14 +8247,17 @@ function grDibujaPie(ctx,W,H,P){
   }
   if(ln)lineas.push(ln);
   /* si no cabe, se DICE. Un pie cortado en silencio deja una captura que
-     parece completa y no lo está, que es justo lo que el pie viene a evitar. */
-  const sobra=lineas.length>GR_PIE_LINEAS;
-  const pinta=sobra?lineas.slice(0,GR_PIE_LINEAS-1):lineas;
-  let y=H-GR_PIE_H+12;
+     parece completa y no lo está, que es justo lo que el pie viene a evitar.
+     Y queda publicado en `GR.pieCortado` para que el banco lo exija a cero:
+     el aviso es el último recurso, no el comportamiento aceptable. */
+  const sobra=lineas.length>cupo;
+  if(id)GR.pieCortado[id]={cortado:sobra,lineas:lineas.length,cupo:cupo};
+  const pinta=sobra?lineas.slice(0,cupo-1):lineas;
+  let y=H-banda+12;
   for(const l of pinta){ctx.fillText(l,6,y);y+=11;}
   if(sobra){
     ctx.fillStyle='#fbbd23';
-    ctx.fillText('⚠ el pie no cabe entero en la imagen ('+(lineas.length-GR_PIE_LINEAS+1)+' líneas más): está completo bajo la gráfica, en la página',6,y);
+    ctx.fillText('⚠ el pie no cabe entero en la imagen ('+(lineas.length-cupo+1)+' líneas más): está completo bajo la gráfica, en la página',6,y);
   }
   ctx.restore();
 }
@@ -8511,7 +8525,7 @@ function grG1(){
     'filas dibujadas: '+sel.filas.map(r=>r+1).join(', '),
     'abanico máx (separación entre los seguidores dibujados): '+grNombre(GR.A)+' '+grNum(abanico[GR.A])+'° · '+grNombre(GR.B)+' '+grNum(abanico[GR.B])+'°'
   ]);
-  grDibujaPie(ctx,W,H,pie); grPublicaPie(1,pie);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g1'); grPublicaPie(1,pie);
   $('grt1').innerHTML='<b>G1 · Perfiles de θ</b> — '+grEsc(grNombre(GR.A))+' frente a '+grEsc(grNombre(GR.B))+
     '. Enseña si una política abre el abanico entre seguidores o los mantiene juntos.'+
     (sel.nulo?' <span class="amb">⚠ el criterio pedido resultó nulo en este emplazamiento; el pie lo dice.</span>':'');
@@ -8580,7 +8594,7 @@ function grG2(){
     'banda del circunsolar sobre la diferencia: ['+grNum(b.lo,3)+' … '+grNum(b.hi,3)+'] pp · resolución del modelo '+grNum(b.res,4)+' pp'+(b.indeciso?' — NO se declara ganador: '+b.motivo:''),
     'CIELO CLARO Ineichen sin meteo real: es comparativa de políticas, NO un P50'
   ]);
-  grDibujaPie(ctx,W,H,pie); grPublicaPie(2,pie);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g2'); grPublicaPie(2,pie);
   $('grt2').innerHTML='<b>G2 · Curva del día</b> — POA de planta de '+grEsc(grNombre(GR.A))+' y '+grEsc(grNombre(GR.B))+
     ', con el área entre ambas y las marcas del periodo de backtracking.'+
     (b.indeciso?' <span class="amb">⚠ separación por debajo de la resolución del modelo.</span>':'');
@@ -8647,7 +8661,7 @@ function grG3(){
     'reducción media en el periodo de backtracking'+(vBT?' ('+hhmm(DAY.times[vBT[0]])+'–'+hhmm(DAY.times[vBT[1]])+')':'')+' — óptica: '+rOp.txt+' · eléctrica: '+rEl.txt,
     'CIELO CLARO Ineichen sin meteo real'
   ]);
-  grDibujaPie(ctx,W,H,pie); grPublicaPie(3,pie);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g3'); grPublicaPie(3,pie);
 }
 
 /* ── G4 · barras mensuales (12 días representativos) ─────────────────────── */
@@ -8662,7 +8676,7 @@ function grG4(){
     ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
     ctx.fillText('Una gráfica vacía es preferible a una gráfica reconstruida: aquí no se dibuja nada hasta que hay cálculo.',M.padL,yTop+42);
     const pie0=grPieObj(['G4 · anual SIN CALCULAR: los 12 días representativos no se han corrido en esta sesión']);
-    grDibujaPie(ctx,W,H,pie0); grPublicaPie(4,pie0);
+    grDibujaPie(ctx,W,H,pie0,GR_PIE_H,GR_PIE_LINEAS,'g4'); grPublicaPie(4,pie0);
     $('grt4').innerHTML='<b>G4 · Barras mensuales</b> — <span class="amb">sin calcular</span>.';
     return;
   }
@@ -8720,7 +8734,7 @@ function grG4(){
     'EL ANUAL NO LLEVA LAZO DE CONTROL: se integra la consigna que la política PIDE (policyAngles), sin banda muerta ni límite de velocidad del actuador — el mismo camino que el estimador anual que ya existía en la página. La curva del día (G2) SÍ lleva el lazo entero, así que es lo que la planta EJECUTA. Las dos razones porcentuales miden cosas distintas y NO son comparables entre sí',
     'total anual — '+grNombre(GR.A)+': '+grNum(tA,1)+' kWh/m²·año · '+grNombre(GR.B)+': '+grNum(tB,1)+' kWh/m²·año'
   ]);
-  grDibujaPie(ctx,W,H,pie); grPublicaPie(4,pie);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g4'); grPublicaPie(4,pie);
   $('grt4').innerHTML='<b>G4 · Barras mensuales</b> — 12 días representativos, cielo claro. '+
     grEsc(grNombre(GR.A))+' = '+grEsc(razon)+'.';
 }
@@ -8738,7 +8752,7 @@ function grG5(){
   const T=DAY.T, ser=GR.ser[GR.A], sh=ser.shade[t], g=DAY.sun[t];
   const f=grFit($('gr5')), ctx=f.ctx, W=f.W, H=f.H;
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#0f1724'; ctx.fillRect(0,0,W,H);
-  const padL=46,padR=16,padT=40,padB=34+GR_PIE_H;
+  const padL=46,padR=16,padT=40,padB=34+GR_PIE_H5;
   const n=T.pairs.length+1;
   // posiciones transversales, con la MISMA acumulación de pitch que el contador
   const xs=[0]; for(let i=0;i<T.pairs.length;i++)xs.push(xs[i]+T.pairs[i].pitch);
@@ -8818,13 +8832,20 @@ function grG5(){
    ctx.fillText(et,Math.min(W-padR-ctx.measureText(et).width,cx-rr),cy+rr+11);}
   // ESCALA DE COLOR: sin ella el color es decorativo
   {
-    const bw=120,bx=W-padR-bw,by=H-padB-24;
+    /* El denominador va UNA vez, en el título de la escala. Antes iba en cada
+       extremo —«0 % del área de módulo» y «100 % del área de módulo»— y los dos
+       rótulos, de 25 caracteres cada uno sobre una barra de 120 px, se pisaban
+       enteros. Los extremos quedan como MARCAS de la escala que el título ya
+       nombra, que es como se rotula una escala de color. */
+    const bw=140,bx=W-padR-bw,by=H-padB-26;
     for(let i=0;i<bw;i++){ctx.fillStyle=tono(i/(bw-1));ctx.fillRect(bx+i,by,1,8);}
     ctx.fillStyle='#9bb0c6';ctx.font='9px ui-monospace,monospace';
-    ctx.fillText('sombra óptica por mesa',bx,by-4);
-    ctx.fillText(grPct(0,'del área de módulo',{dec:0}),bx-2,by+18);
-    const t100=grPct(100,'del área de módulo',{dec:0});
-    ctx.fillText(t100,bx+bw-ctx.measureText(t100).width,by+18);
+    const tit='sombra óptica por mesa · '+grPct(100,'del área de módulo',{dec:0})+' = tapada entera';
+    ctx.fillText(tit,Math.max(padL,bx+bw-ctx.measureText(tit).width),by-5);
+    const a={x:bx,y:by+18,w:ctx.measureText('0').width};
+    const d={x:bx+bw-ctx.measureText('100').width,y:by+18,w:ctx.measureText('100').width};
+    ctx.fillText('0',a.x,a.y); ctx.fillText('100',d.x,d.y);
+    GR.g5leyenda={izq:a,der:d,solapan:grSolapan(a,d),titulo:tit};
   }
   // BARRA DE ESCALA: la prueba de que las proporciones son las de verdad
   {
@@ -8848,7 +8869,7 @@ function grG5(){
             :'este emplazamiento NO trae tramos de mesa: cada fila se pinta como una sola pieza y la fracción es la de la fila entera',
     'el render 3D desde el sol vive en la pestaña 3D («👁 sol»); aquí se dibuja la cenital porque es la que se carea con una ortofoto'
   ]);
-  grDibujaPie(ctx,W,H,pie); grPublicaPie(5,pie);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H5,GR_PIE_LINEAS5,'g5'); grPublicaPie(5,pie);
   $('grt5').innerHTML='<b>G5 · Careo render ↔ realidad</b> — planta cenital a las '+hhmm(DAY.times[t])+
     ', coloreada por la sombra óptica que el contador predice por mesa. Pensado para ponerse al lado de una ortofoto de esa hora.';
 }
