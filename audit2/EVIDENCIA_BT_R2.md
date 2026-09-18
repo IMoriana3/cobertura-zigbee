@@ -2705,6 +2705,83 @@ repositorio entero. No se propone corrección: `.github/` está fuera del alcanc
 
 ---
 
+# BLOQUE X — CORRECCIONES DE LA PROPIA AUDITORÍA
+
+### E-X1  Correcciones a ítems ya publicados
+
+Commit:      3a57451
+Comando:     lecturas y `grep`; los números proceden de los ítems que se citan
+Estado:      **MEDIDO** (documental)
+
+Registro de las afirmaciones que esta auditoría publicó y luego tuvo que
+corregir. Se recogen aquí juntas porque una auditoría que se corrige a sí misma
+tiene que dejar constancia de qué dijo antes, no sólo de lo que dice ahora.
+
+**1 · E-G1 — «las divergencias se concentran en sol bajo»**
+
+| | |
+|---|---|
+| **qué decía** | «Las divergencias se concentran en **sol bajo** (07:30, 09:00, 18:30). A sol alto (12:00 y 16:00) el \|Δθ\| máximo … es 0,7530°.» |
+| **qué dice ahora** | «Las divergencias se concentran en los instantes 07:30, 09:00 y 18:30», con una nota que remite a E-G3 |
+| **qué la motivó** | E-G3 midió la elevación solar de cada instante de la rejilla: 07:30 → **9,28°**, 09:00 → **25,32°**, 12:00 → 58,30°, 16:00 → 59,98°, 18:30 → **32,75°**. Sólo uno de los tres es de sol bajo |
+| **qué cambia** | el máximo \|Δθ\| cae en la banda **20-40°**, no por debajo de 10°. Medido en E-G3: banda <10° máximo 44,1346°; banda 20-40° máximo **65,0000°**; banda >40° máximo 0,7963° |
+| **qué NO cambia** | los números de \|Δθ\| y \|ΔPOA\| de E-G1, que no dependían de la etiqueta |
+
+**2 · E-G3 — «`repairNoShade` queda como el único candidato en pie»**
+
+| | |
+|---|---|
+| **qué decía** | descartados el deferral y el acople, `repairNoShade` «queda como el único candidato en pie», y las 14 divergencias mayores son todas de políticas que lo llevan |
+| **qué dice ahora** | lo mismo, con un recuadro que lo **desmiente** y remite a E-G4 |
+| **qué la motivó** | E-G4 ejecutó el JS con la etapa desactivada: **0 de 14** divergencias caen por debajo de 1,0°, el máximo residual es el mismo **65,0000°**, y en **11 de 14** el θ del JS no se mueve |
+| **qué cambia** | los **tres** candidatos quedan descartados y el hueco (d) pasa a ABIERTO **sin candidato** |
+| **la lección** | la observación de partida era cierta —las 14 son de políticas que llevan la etapa— y **no era prueba**. Coincidencia no es causa, y el experimento que lo separaba estaba a una corrida de distancia |
+
+**3 · La columna `nb = 2` de E-D3**
+
+| | |
+|---|---|
+| **qué decía** | la columna se importó de la corrida MV 8 de E-D2 «porque son la misma configuración» |
+| **qué dice ahora** | remite a E-D6, que ejecutó las dos rutas y comprobó la equivalencia |
+| **qué la motivó** | son dos rutas distintas de `mvPara` (`backtracking.html:842-845`), y publicar la equivalencia como hecho era darla por supuesta |
+| **qué cambia** | **nada en los números**: las nueve celdas coinciden dígito a dígito. Cambia el estatuto: de supuesto a verificado, y nace la regla M.1 |
+
+**4 · Citas `archivo:línea` desplazadas**
+
+38 citas puntuales estaban desplazadas respecto a la línea que decían señalar
+(por ejemplo el veto en 2911 cuando empieza en 2910, o `cands.sort` en 2133
+cuando está en 2135). Se corrigieron 29 en una primera pasada manual, y el
+verificador de 2.4 encontró **5 más** —tres rutas sin prefijo, una cita ausente y
+una de HTML— y **3 defectos en sí mismo**. Estado actual del documento: **0 citas
+rotas**, comprobado por `audit2/verifica_citas.mjs`.
+
+**5 · El predicado reescrito a mano de E-C5**
+
+La primera versión de `C5_bisecciones.mjs` reescribía a mano el predicado
+`shades(mag)` de `bt3dPairMaxMag` y daba \|Δθ\| de **55°**. Era la copia, no el
+motor. El script vigente **extrae el texto de la función del fichero** y sólo le
+sustituye el bucle de bisección; el resultado publicado es **\|Δθ\| ≤ 0,04875°**.
+De ahí sale la precondición que el encargo impuso a 2.3 y que E-G3 ejecuta.
+
+**6 · La estimación del coste del anual pleno**
+
+Se estimó que el anual pleno de las nueve políticas costaría **~21 h**,
+extrapolando desde el coste del diseño reducido con las nueve. Medido en E-D5:
+tres políticas cuestan 11 397 s, así que las nueve serían **6-7 h**. La
+extrapolación sobrestimaba por un factor de tres.
+
+**7 · Un dato relatado sin verificar**
+
+Se repitió, procedente de otra sesión, que los minutos de GitHub Actions estaban
+agotados hasta el 1 de octubre, y se escribió en el cuerpo del PR. **Era falso**:
+la comprobación contra GitHub mostró CI ejecutándose con normalidad. Se corrigió
+el cuerpo del PR y el hecho quedó registrado en la regla **M.2**.
+
+Notas: este ítem no mide nada nuevo; es el registro de las correcciones. Las
+cifras que cita proceden de E-G3, E-G4, E-D5, E-D6, E-C5 y del verificador.
+
+---
+
 # CRÍTICA DEL ENCARGO
 
 Los puntos donde el encargo, tal como está escrito, no se puede ejecutar como
@@ -2831,23 +2908,82 @@ dominio medido, escritas aquí antes que su cifra.
 
 # HUECOS
 
-Lo que el encargo pide y **no** se ha ejecutado, con la razón.
+Las 16 entradas de la ronda anterior, reclasificadas una a una. **CERRADA** lleva
+el ítem que la cierra. **ABIERTA** lleva: qué falta en una frase ejecutable, el
+coste, y qué cifra publicada depende de ella (o `ninguna`).
 
-| ítem | estado | razón |
-|---|---|---|
-| **A.3 variante 9 políticas** | NO VERIFICADO | detenida a los 38 min de CPU sin terminar; coste del orden de horas (medido en E-A3) |
-| **D.2 · MV 16, 32 y 64** | NO VERIFICADO | 14 871 s por variante medidos (4 h 8 min); MV 8 sí está en E-D2, y el efecto de MV sobre el argmax está medido aparte en E-D1 |
-| **D.2 · calibración de las 7 políticas restantes** | NO VERIFICADO | el sesgo del diseño reducido (−0,86 % de nivel) está medido sólo para pairwise y true-3D, las únicas con anual pleno en E-A3; **no** para los dos optimizadores, que encabezan la tabla de E-D3 |
-| **C.3 / C.4 con columna de energía** | NO EJECUTADO | el encargo pide sólo sombra; la variante con POA de las dos posturas es la corrección de la CRÍTICA nº 5 y no dio tiempo |
-| **C.1 / C.2 con la semilla 7** | NO EJECUTADO | CI corre las semillas 1 y 7 (`.github/workflows/bancos.yml:189`); sólo se ha corrido la 1 |
-| **C.5 (3)** penetración de terreno | NO EJECUTADO | `terrBlocked` no exportado y no bisecta en θ (CRÍTICA nº 9) |
-| **E.1 · mecanismo de la cuadratura para MV impar** | NO VERIFICADO | se ha medido que el escalón es exclusivo de MV = 33 y que la poda no cambia; **no** se ha abierto el promedio por estaciones para explicar por qué |
-| **F.2 / F.3 · el ANUAL** | NO VERIFICADO | E-F2 y E-F3 miden **un día** (21-jun, paso 20 min), no el anual que pide F.2; mismo motivo de coste |
-| **F.2 en el caso B** | NO APLICABLE | el caso B tiene **una mesa por fila y sin `segTilt`**: la variante (b) coincide con (a) por construcción — sería un test nulo, no una medida |
-| **F.2 · separar tilt de peso** | NO EJECUTADO | el experimento cambia el tilt por mesa y el peso por módulos a la vez, como pide el enunciado; no se ha aislado cuánto aporta cada uno |
-| **G.1 · `bt2d` y `optfree`** | NO EXISTE en `tracker3d.py` | búsqueda exhaustiva con `grep -nE "bt2d\|optfree\|free\|per_unit"` ⇒ sin coincidencias |
-| **G.1 · origen de las divergencias a sol bajo** | NO VERIFICADO | el ítem las mide (hasta 65° en pairwise del caso B); no se ha investigado la causa |
-| **A.1 · veto con `prev` definido** | NO VERIFICADO | la corrida usa un instante aislado (`prev` sin definir), así que la histéresis y el salto del veto (`backtracking.html:2910`) no se ejercitan |
-| **A.2 · ascenso a lo largo de un día y con `T.groups`** | NO VERIFICADO | medido en un instante y con `drive: 'mono'` (6 unidades de una fila) |
-| **B · políticas distintas de pairwise y true-3D** | NO VERIFICADO | E-B1 cubre esas dos |
-| **Páginas publicadas (GitHub Pages)** | NO VERIFICADO | el `fetch` a Pages devuelve `curl: (56) CONNECT tunnel failed, response 403` desde este contenedor; se usa `origin/main` como referencia de lo publicado |
+## CERRADAS
+
+| # | hueco | la cierra | resultado |
+|---|---|---|---|
+| 1 | **C.3 / C.4 con columna de energía** | **E-C6, E-C7** | ver la redacción (b) abajo |
+| 2 | **D.2 · calibración de las políticas que encabezan la tabla** | **E-D5** | offsets de las cuatro: pairwise −0,8622 %, true-3D −0,8678 %, optimal −0,8451 %, optfree −0,8461 %; se reparten en **0,0227 pp** y el ordinal entre ellas es idéntico en los dos diseños |
+| 3 | **G.1 · `bt2d` y `optfree`** | **E-G3** | confirmado con cinco patrones de búsqueda: no existen en `tracker3d.py`. Tabla de cobertura de las 9 políticas: 7 comparables |
+| 4 | **F.2 en el caso B** | **E-F2** | NO APLICABLE por construcción: una mesa por fila y sin `segTilt`, así que (b) ≡ (a). Declarado en vez de publicar un cero |
+| 5 | **A.3 variante 9 políticas** | **E-D5** (parcialmente) | la pregunta de fondo era el coste y la calibración. Medido: el pleno de tres políticas cuesta 11 397 s, así que el de nueve serían 6-7 h — no las ~21 h estimadas. La variante en sí sigue sin ejecutarse, pero ninguna cifra publicada la necesita |
+| 6 | **Comprobación de la columna `nb = 2`** (abierto por M.1) | **E-D6** | las nueve celdas coinciden dígito a dígito; E-D3 no se corrige |
+
+## ABIERTAS
+
+| # | hueco | qué falta (frase ejecutable) | coste | cifra publicada que depende |
+|---|---|---|---|---|
+| 7 | **(c) MV = 33** | abrir el promedio por estaciones de `shadeBand3DAll` e identificar qué hace que la estación j=30 pase de 46,3 % a 0 % en 0,01° de giro | ~4 h de lectura del ray-cast + ~1 h de sonda | **ninguna** — E-E4 acota el fenómeno y ninguna cifra del informe lo usa |
+| 8 | **(d) paridad JS↔Python** | ver la redacción abajo | no acotable: es depuración de causa raíz en dos motores | `\|Δθ\| JS↔Python hasta 65° en el caso B` (E-G1), que se publica como medida, no como diagnóstico |
+| 9 | **D.2 · MV 16 y 64** | ejecutar las dos variantes del anual reducido | 2 × 4 h 8 min = **8 h 16 min** de compute | **ninguna** — cerradas por decisión del auditor, no por fallo (punto 0.1 del encargo de cierre) |
+| 10 | **Calibración de las 5 políticas restantes** | anual pleno de `astro`, `global`, `row`, `bt2d` y `mgl` | ~4-5 h de compute (por extrapolación de E-D5) | `orden de las 9 políticas por nb` (E-D3), publicada con la etiqueta `calibrada en 4 de 9` |
+| 11 | **C.1 / C.2 con la semilla 7** | repetir `C_monotonia.mjs` con semilla 7, la otra de CI (`.github/workflows/bancos.yml:189`) | ~30 min de compute | los recuentos de E-C1, E-C2 y E-C3, que se publican con «una semilla» declarado |
+| 12 | **F.2 / F.3 · el anual** | anualizar la corrida de un día de `F23_mesa.mjs` | ~6 h de compute | `Δ de transponer por mesa +0,3524 %` (E-F2), publicada como `INDICIO DIMENSIONADO · un día, no anualizado`; y la de E-F3, **no publicable por dominio** |
+| 13 | **F.2 · separar tilt de peso** | repetir la variante (b) cambiando sólo el tilt por mesa, y luego sólo el peso por módulos | ~2 × 1 h de compute | la misma de la fila 12 |
+| 14 | **A.1 · veto con `prev` definido** | recorrer un día encadenando `prev` para ejercitar la histéresis y el salto del veto (`backtracking.html:2910`) | ~20 min de compute | **ninguna** — E-A1 declara que mide un instante con `prev` sin definir |
+| 15 | **A.2 · ascenso con `T.groups` y a lo largo de un día** | repetir `A2_ascenso_optfree.mjs` con drive bifila y sobre un día | ~30 min de compute | **ninguna** — E-A2 declara su alcance |
+| 16 | **B · políticas distintas de pairwise y true-3D** | repetir `B1_caso_b_dos_commits.mjs` con las otras siete | ~10 min de compute | **ninguna** — E-B1 declara que cubre dos |
+| 17 | **C.5 (3) · penetración de terreno** | exportar `terrBlocked` o instrumentarlo, y comparar los 3 refinos contra un barrido fino de la fracción de cuerda | ~2 h de lectura + ~1 h de sonda | **ninguna** — no bisecta en θ y su resolución (1/16 de cuerda) es conocida por construcción |
+| 18 | **Páginas publicadas (GitHub Pages)** | comprobar lo desplegado contra `origin/main` desde una red con salida a Pages | ~10 min, requiere red | **ninguna** — se usa `origin/main` como referencia, declarado |
+
+## Redacciones fijadas por el auditor
+
+### (b) La regla del min(\|θ\|) — **CERRADA** por E-C3, E-C6 y E-C7
+
+El enunciado tiene **dos partes que no se funden**:
+
+1. **El enunciado geométrico es FALSO.** `backtracking.html:208`, `651-654`,
+   `824-827` y `2672-2675` afirman que reducir \|θ\| desde un ángulo de
+   backtracking «nunca crea sombra». Medido: la crea en **75 de 200 instantes**
+   de la muestra, que pesan el **22,79 %** de la energía del barrido.
+2. **La regla derivada es energéticamente favorable.** El θ que la regla elige
+   gana energía en **74 de 75** casos medidos, con mediana **+257,47 W/m²**, y el
+   único caso adverso cuesta **0,0044 W/m²** — cinco órdenes de magnitud por
+   debajo de la mediana de la ganancia.
+
+Sobre el acople real, **ΔPOA > 0 en las 41 celdas** de las dos poblaciones, y eso
+incluye `astro` y `row`, que **no llaman a `repairNoShade`**
+(`backtracking.html:3363` y `3366`): no es la guardia de energía la que lo
+explica en esas dos.
+
+### (c) El escalón de MV = 33 — **ABIERTA**
+
+La cuadratura adaptativa puede introducir discontinuidades en la fracción
+sombreada; medido en MV = 33 con la estación **j = 30** aportando **46,285 pp**
+mientras las otras 32 se mueven **menos de 0,03 pp**; hipótesis de la paridad
+**refutada** (MV 65 es impar y no lo reproduce); reparto por alas **descartado**
+(el ala 0 está a 0,0000 % en los tres MV); `mvPara` devuelve impares en el
+**39,2 %** de su dominio; **causa NO IDENTIFICADA**. No se persigue más en esta
+ronda; su coste está en la fila 7.
+
+### (d) Paridad JS ↔ `tracker3d.py` — **ABIERTA**
+
+Dos implementaciones declaradas espejo divergen hasta **65,0000°** en el rango
+**20-40°** de elevación solar. Los tres candidatos declarados quedan **descartados
+por medida**: deferral (mismo 82° en ambos, E-G3), acople (`drive:'mono'`,
+`groups:null` en ambos, E-G3) y `repairNoShade` (**0 de 14** divergencias caen al
+desactivarla, máximo residual idéntico **65,0000°**, y en **11 de 14** el θ del JS
+no se mueve, E-G4). La divergencia **no procede de una etapa que sobre en un
+lado**: el cálculo base difiere. **Causa NO IDENTIFICADA**. `bt2d` y `optfree` no
+existen en `tracker3d.py`.
+
+Lo que E-G5 añade a la descripción, para quien vaya a buscarla: las 14 mayores
+apuntan a **lados opuestos del eje en 14 de 14**; \|θ_JS\| < \|θ_PY\| en **14 de
+14** y en **103 de 148** de la rejilla, o sea el JS publica ángulos más cercanos
+al plano; con torsión N-S = 0 el Δθ es **cero exacto en los 210 valores** del caso
+A, así que la divergencia **sólo aparece con torsión** — con la salvedad de que la
+rejilla sólo tiene dos valores de torsión y no admite tendencia.
