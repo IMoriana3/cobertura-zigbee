@@ -1,0 +1,74 @@
+════════════════════════════════════════════════════════════════════════════════════════════════
+E-G4 · la rejilla de G.1 con repairNoShade DESACTIVADO · commit dfda36cc8b55011354766f9ad9497a07e716332a · node v22.22.2
+VER del fichero: v1.68.0
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+── EL PARCHE, exacto ────────────────────────────────────────────────
+se sustituye el cuerpo de  backtracking.html:3103  `function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){`
+(241 líneas, 14961 caracteres) por la identidad  { return ang; }
+La envoltura repairNoShade (3098-3102) queda INTACTA, así que la marca `sinReparar` y el
+tipo de retorno no cambian. Se parchea el TEXTO extraído, en memoria; el fichero no se toca.
+primeras 3 líneas del cuerpo original, para que se vea qué se anula:
+     if(!(isFinite(zen)&&zen<90))return ang;
+     // en las plantas REALES no entra: allí la consigna va por MESA (policyAnglesSeg,
+     // con las cotas de cada tramo) y una reparación por fila la pisaría; además
+
+comprobación del parche: repairNoShadeCore con parche devuelve el mismo array que recibe:
+     ¿mismo objeto? SÍ (identidad estricta)
+
+── CONTROL 1 · el motor SIN parche reproduce G1_js.json ──────────────
+   |Δθ| máximo sobre 540 valores = 0.000e+0  ⇒ IDÉNTICO dígito a dígito
+
+── CONTROL 2 · las políticas que NO llaman a repairNoShade no cambian ─
+   (astro 3363, global 3364, bt2d 3365, row 3366: el despachador no la llama)
+   |Δθ| máximo sobre 240 valores = 0.000e+0  ⇒ IDÉNTICO dígito a dígito
+
+── TEST NULO · ¿desactivar la etapa CAMBIA el θ del JS? ───────────────
+   combinaciones (caso × instante × política con guardia): 30
+   en las que el parche MUEVE el θ: 3  (10.0 %) · |Δθ| máximo 34.5000°
+   ⇒ el predicado no es constante: la comparación informa.
+
+── |Δθ| CONTRA tracker3d.py, con la etapa ACTIVA y DESACTIVADA ───────
+  caso  política   n   |Δθ| máx CON   |Δθ| máx SIN   mediana CON   mediana SIN   |ΔPOA| máx CON   SIN
+   A   astro      30        0.0000°        0.0000°       0.0000°       0.0000°          22.182    22.182
+   A   global     30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   row        30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   bt2d       —   NO COMPARABLE (sin contraparte en tracker3d.py)
+   A   pairwise   30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   true3d     30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   mgl        30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   optimal    30        0.0000°        0.0000°       0.0000°       0.0000°           6.476     6.476
+   A   optfree    —   NO COMPARABLE (sin contraparte en tracker3d.py)
+   B   astro      30        0.7963°        0.7963°       0.0000°       0.0000°         161.170   161.170
+   B   global     30        0.8374°        0.8374°       0.0753°       0.0753°         161.170   161.170
+   B   row        30        7.8953°        7.8953°       0.5262°       0.5262°         161.170   161.170
+   B   bt2d       —   NO COMPARABLE (sin contraparte en tracker3d.py)
+   B   pairwise   30       65.0000°       65.0000°       0.7528°       0.7528°         428.283   428.283
+   B   true3d     30       57.0000°       55.0000°      16.7995°      16.7995°         373.773   373.773
+   B   mgl        30       65.0000°       65.0000°       0.7528°       0.7528°         428.283   428.283
+   B   optimal    30       16.8262°       16.8262°       0.4660°       0.4660°         161.170   161.170
+   B   optfree    —   NO COMPARABLE (sin contraparte en tracker3d.py)
+
+── LAS 14 DIVERGENCIAS MAYORES DE E-G1, CON LA ETAPA DESACTIVADA ─────
+  tolerancia declarada para «cae»: |Δθ| < 1.0°
+   #  caso hora   política   fila  θ JS CON  θ JS SIN   θ PY     |Δθ| CON  |Δθ| SIN  ¿cae?
+   1   B  18:30  pairwise     0     10.00     10.00   -55.00    65.000    65.000  no
+   2   B  18:30  pairwise     1     10.00     10.00   -55.00    65.000    65.000  no
+   3   B  18:30  pairwise     3     10.00     10.00   -55.00    65.000    65.000  no
+   4   B  18:30  pairwise     4     10.00     10.00   -55.00    65.000    65.000  no
+   5   B  18:30  mgl          0     10.00     10.00   -55.00    65.000    65.000  no
+   6   B  18:30  mgl          1     10.00     10.00   -55.00    65.000    65.000  no
+   7   B  18:30  mgl          3     10.00     10.00   -55.00    65.000    65.000  no
+   8   B  18:30  mgl          4     10.00     10.00   -55.00    65.000    65.000  no
+   9   B  09:00  pairwise     0     -2.00     -2.00    55.00    57.000    57.000  no
+  10   B  09:00  pairwise     1     -2.00     -2.00    55.00    57.000    57.000  no
+  11   B  09:00  pairwise     4     -2.00     -2.00    55.00    57.000    57.000  no
+  12   B  09:00  true3d       0     -2.00      0.00    55.00    57.000    55.000  no
+  13   B  09:00  true3d       1     -2.00      0.00    55.00    57.000    55.000  no
+  14   B  09:00  true3d       4     -2.00      0.00    55.00    57.000    55.000  no
+
+  de las 14 mayores, caen por debajo de 1.0° al desactivar la etapa: 0 de 14
+  |Δθ| máximo RESIDUAL en toda la rejilla, con la etapa desactivada: 65.0000°
+  |Δθ| máximo con la etapa ACTIVA (E-G1):                            65.0000°
+
+CSV: audit2/out/G4.csv

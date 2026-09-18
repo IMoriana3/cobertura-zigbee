@@ -2193,8 +2193,12 @@ explicar la divergencia** y queda descartado.
 
 **Las 14 divergencias mayores son todas de políticas que llevan `repairNoShade`
 en el JS y no lo tienen en el Python.** Eso es lo que se mide: esa etapa existe en
-un lado y no en el otro. **No** se afirma que sea la causa — no se ha ejecutado el
-JS desactivando esa etapa para comprobarlo (ver HUECOS).
+un lado y no en el otro. **No** se afirma que sea la causa.
+
+> **DESMENTIDO por E-G4.** Ejecutado el JS con `repairNoShade` desactivado,
+> **ninguna de las 14 cae** y el \|Δθ\| máximo residual es el mismo, 65,0000°. La
+> coincidencia de que todas sean de políticas que llevan la etapa **no era
+> prueba**: divergen por otra razón. Los tres candidatos quedan descartados.
 
 Además, en los cuatro casos de 65° y 57° el JS publica un θ **de signo contrario**
 al del Python y de módulo pequeño (10,00° y −2,00° frente a ±55,00°): el Python va
@@ -2244,6 +2248,88 @@ por debajo de 0,80°. El ítem E-G1 se corrige en su nota.
 7 de 9. Notas: la rejilla es de 5 instantes de un día y 2 casos; el reparto por
 bandas de elevación tiene 0 instantes entre 10° y 20°, así que esa banda no
 informa.
+
+### E-G4  La rejilla de G.1 con `repairNoShade` desactivado
+
+Commit:      3a57451
+Script:      `audit2/G4_sin_repair.mjs`
+Comando:     `node audit2/G4_sin_repair.mjs`
+Node:        v22.22.2
+Salida:      `audit2/out/G4.txt` · CSV `audit2/out/G4.csv`
+Estado:      **MEDIDO** — `repairNoShade` **queda descartado** como causa
+
+**El parche, exacto.** Sobre el texto de la FÍSICA PURA extraído del fichero —no
+sobre el fichero— se sustituye el **cuerpo** de `repairNoShadeCore`
+(`backtracking.html:3103`, 241 líneas, 14 961 caracteres) por la identidad
+`{ return ang; }`. La envoltura `repairNoShade` (`backtracking.html:3098-3102`)
+queda intacta, para que la marca `sinReparar` y el tipo de retorno no cambien:
+
+```js
+function repairNoShade(zen,az,T,ang,irr,doy,albedo){
+  const out=repairNoShadeCore(zen,az,T,ang,irr,doy,albedo);
+  if(!(irr&&irr.ghi>0)){try{Object.defineProperty(out,'sinReparar',{value:true,enumerable:false});}catch(e){}}
+  return out;
+}
+```
+
+Se parchea el núcleo y no la envoltura porque el contrato de retorno de la
+envoltura forma parte de lo que se compara. Comprobación del parche:
+`repairNoShadeCore` parcheado devuelve **el mismo objeto** que recibe (identidad
+estricta `===`).
+
+**Los tres controles, antes del resultado.**
+
+| control | qué exige | medido |
+|---|---|---|
+| **1 · identidad sin parche** | el motor reconstruido sin parchear reproduce `G1_js.json` | \|Δθ\| máx sobre 540 valores = **0,000e+0** — idéntico dígito a dígito |
+| **2 · políticas sin la etapa** | `astro` (3363), `global` (3364), `bt2d` (3365) y `row` (3366) no la llaman, así que no pueden moverse | \|Δθ\| máx sobre 240 valores = **0,000e+0** — el parche no toca de más |
+| **3 · TEST NULO** | desactivarla tiene que cambiar *algo*, o la comparación no informa | mueve el θ en **3 de 30** combinaciones (10,0 %), \|Δθ\| máximo **34,5000°** ⇒ **el predicado no es constante: informa** |
+
+**El resultado.** \|Δθ\| contra `tracker3d.py`, con la etapa activa y desactivada:
+
+| caso | política | n | \|Δθ\| máx CON | \|Δθ\| máx SIN | mediana CON | mediana SIN | \|ΔPOA\| máx CON | SIN |
+|---|---|---|---|---|---|---|---|---|
+| A | las 7 comparables | 30 | 0,0000° | 0,0000° | 0,0000° | 0,0000° | 6,476–22,182 | igual |
+| B | astro | 30 | 0,7963° | 0,7963° | 0,0000° | 0,0000° | 161,170 | 161,170 |
+| B | global | 30 | 0,8374° | 0,8374° | 0,0753° | 0,0753° | 161,170 | 161,170 |
+| B | row | 30 | 7,8953° | 7,8953° | 0,5262° | 0,5262° | 161,170 | 161,170 |
+| B | **pairwise** | 30 | **65,0000°** | **65,0000°** | 0,7528° | 0,7528° | 428,283 | 428,283 |
+| B | **true3d** | 30 | **57,0000°** | **55,0000°** | 16,7995° | 16,7995° | 373,773 | 373,773 |
+| B | **mgl** | 30 | **65,0000°** | **65,0000°** | 0,7528° | 0,7528° | 428,283 | 428,283 |
+| B | optimal | 30 | 16,8262° | 16,8262° | 0,4660° | 0,4660° | 161,170 | 161,170 |
+
+**Las 14 divergencias mayores, una a una** (tolerancia declarada para «cae»:
+\|Δθ\| < 1,0°):
+
+| # | caso | hora | política | fila | θ JS CON | θ JS SIN | θ PY | \|Δθ\| CON | \|Δθ\| SIN | ¿cae? |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1-4 | B | 18:30 | pairwise | 0,1,3,4 | 10,00° | **10,00°** | −55,00° | 65,000° | **65,000°** | no |
+| 5-8 | B | 18:30 | mgl | 0,1,3,4 | 10,00° | **10,00°** | −55,00° | 65,000° | **65,000°** | no |
+| 9-11 | B | 09:00 | pairwise | 0,1,4 | −2,00° | **−2,00°** | 55,00° | 57,000° | **57,000°** | no |
+| 12-14 | B | 09:00 | true3d | 0,1,4 | −2,00° | **0,00°** | 55,00° | 57,000° | **55,000°** | no |
+
+```
+  de las 14 mayores, caen por debajo de 1.0° al desactivar la etapa: 0 de 14
+  |Δθ| máximo RESIDUAL en toda la rejilla, con la etapa desactivada: 65.0000°
+  |Δθ| máximo con la etapa ACTIVA (E-G1):                            65.0000°
+```
+
+> **`repairNoShade` queda descartado.** Ninguna de las 14 cae, el máximo residual
+> es **el mismo número** (65,0000°) y en 11 de las 14 el θ del JS **no se mueve
+> en absoluto** al desactivar la etapa: en esos instantes la etapa no estaba
+> actuando. Sólo las tres filas de `true3d` a las 09:00 se mueven, y de −2,00° a
+> 0,00°, que **reduce** el \|Δθ\| de 57° a 55° sin acercarlo a la tolerancia.
+
+**CORRECCIÓN A E-G3.** Ese ítem concluye que, descartados el umbral de deferral y
+el acople, «`repairNoShade` queda como el único candidato en pie», y observa que
+las 14 divergencias mayores son todas de políticas que lo llevan. La observación
+es cierta pero **no era prueba**: medido aquí, esas políticas divergen por otra
+razón. Con este experimento **los tres candidatos del auditor quedan descartados**
+y el hueco (d) sigue **ABIERTO sin candidato**.
+
+Notas: la rejilla es la de E-G1 (2 casos × 5 instantes × 9 políticas); `bt2d` y
+`optfree` siguen sin contraparte. El parche anula la etapa **entera**; no se ha
+explorado desactivar partes de ella. No se ha buscado el candidato siguiente.
 
 ---
 
