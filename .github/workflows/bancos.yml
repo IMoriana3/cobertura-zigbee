@@ -260,6 +260,10 @@ jobs:
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           - { banco: test_produccion_lazo.mjs } # idem — el lazo de control, las políticas y la tabla por minuto
           - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)
+          # El informe gráfico: los seis campos del pie de cada gráfica, que
+          # ningún porcentaje se pinte sin denominador y que la marca ámbar
+          # salte —y NO salte— donde debe. Levanta su propio servidor.
+          - { banco: test_informe_graf.mjs }
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,
