@@ -2992,6 +2992,173 @@ cifras que cita proceden de E-G3, E-G4, E-D5, E-D6, E-C5 y del verificador.
 
 ---
 
+# BLOQUE Z — NOTA DE ESTADO DEL OBJETO AUDITADO
+
+Este bloque **no recalcula ni corrige ninguna cifra**. Es una nota de estado: el
+objeto auditado siguió moviéndose después de `3a57451` y quien lea el paquete
+tiene que poder saber qué preguntas del paquete están tocadas por ese
+movimiento. Todo lo que hay aquí sale de **leer** `cd2dc3d`, sin ejecutar nada.
+
+## E-Z1 · Qué cambió entre `3a57451` (auditado) y `cd2dc3d` (`main` al sellar)
+
+**Qué se ejecutó.** Nada. Lecturas de `git show 3a57451:…` y `git show cd2dc3d:…`,
+comparación de los cuerpos de cada función por resumen MD5 y `grep` con su
+control. Sin navegador, sin motor, sin recálculo.
+
+**Commits entre los dos, sobre `backtracking.html`:** `3868a14` —
+«v1.69: el lazo de backtracking.html ADELANTA, como el core y como overcast».
+
+### Z1.1 · ¿La ruta de cálculo ANUAL de v1.69 llama al lazo de control?
+
+**NO.**
+
+`cd2dc3d:backtracking.html:6983-6984`
+```js
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+```
+
+El manejador anual va de `policyAngles` a `poaPlant` sin nada en medio: ni
+`crearLazo`, ni `crearLazoSeg`, ni banda muerta, ni límite de velocidad. Es
+**exactamente la misma pareja de líneas** que en `3a57451`. La ruta anual integra
+la consigna que la política **pide**, no la que el tracker **ejecutaría**, en los
+dos commits.
+
+### Z1.2 · Qué es exactamente «el lazo adelanta»
+
+**Un cambio de comportamiento del lazo Y de su forma. NO un cambio de la ruta
+anual.**
+
+`3a57451:backtracking.html:3065-3070` — función pura, sin memoria:
+```js
+function lazoControl(prev,cmd,dtSec,deadband,rate){
+  if(!prev)return slewLimit(prev,cmd,dtSec,rate);
+  const db=(deadband==null?DEADBAND_DEG:deadband);
+  const des=cmd.map((v,i)=>(db>0&&Math.abs(v-prev[i])<db)?prev[i]:v);
+  return slewLimit(prev,des,dtSec,rate);
+}
+```
+
+`cd2dc3d:backtracking.html:3088-3089` — fábrica con estado:
+```js
+function crearLazo(deadband,rate,desde){
+  const db=(deadband==null?DEADBAND_DEG:deadband);
+```
+
+y `cd2dc3d:backtracking.html:3098`, el estado que antes no existía:
+```js
+  let prev=(desde?desde.slice():null); const est=[];
+```
+
+En `cd2dc3d` **no existe ninguna definición** de `function lazoControl(`:
+`grep -c '^function lazoControl('` da **0**. En `3a57451` la cadena `lazoControl`
+aparece en **7 líneas**.
+
+Lo que cambia, por tanto, es **qué hace el lazo** (añade adelanto, con memoria
+por fila del sentido de la marcha y del destino enclavado) y **cómo se le llama**
+(de función suelta a objeto con `paso()`). La ruta anual no lo llamaba antes y
+no lo llama ahora, así que no la toca.
+
+### Z1.3 · ¿`anual_motor.mjs` sustituye, duplica o complementa la ruta anual de E-A3?
+
+**COMPLEMENTA.** No sustituye ni duplica, y lo dice su propia cabecera.
+
+`cd2dc3d:tools/anual_motor.mjs:13-19`
+```
+   POR QUÉ NO SALE DE LA PÁGINA NI DEL CANARIO. `golden_anual.json` tiene la
+   cifra anual, pero a paso HORARIO y sin lazo: a paso horario el techo de
+   velocidad del actuador son 0,17·3600 = 612°, más que el recorrido entero del
+   tracker, así que la banda muerta se vuelve invisible y el recorrido que se
+   mide no es el que hace el tracker. El consumo de motor SOLO tiene sentido con
+   el lazo real y en una rejilla que el actuador no pueda saltarse: aquí el año
+   va a paso de 1 MINUTO, con banda 1°, 0,17 °/s y ciclo 1 s — los valores de
+```
+
+Mide **otra cosa** y a **otra resolución**: año a paso de 1 minuto, **con** lazo,
+y con el consumo de motor al lado. E-A3 mide la ruta anual de la página: 12 días
+representativos, paso 10 min, **sin** lazo.
+
+**Quién lo invoca:** nadie de la página ni del simulador. Las únicas referencias
+en `cd2dc3d` son su propio banco —`cd2dc3d:tools/test_anual_motor.mjs:19`, que importa
+`maniobras, costeMotor, motorDelCore, BANDAS_FLOTA`—, la entrada de CI que lo
+corre (`cd2dc3d:.github/workflows/bancos.yml:148`) y una cita en
+`cd2dc3d:docs/algoritmos_backtracking.html:326`.
+
+### Z1.4 · Paso temporal, agregador y `mvPara`
+
+| qué | `3a57451` | `cd2dc3d` | veredicto |
+|---|---|---|---|
+| paso del anual | `m+=10` | `m+=10` | **SIN CAMBIOS** |
+| agregador | `poaPlant`, línea 2453 | `poaPlant`, línea 2453 | **SIN CAMBIOS** (mismo cuerpo, MD5 `2947a91013b2`) |
+| `mvPara` | línea 842 | línea 842 | **SIN CAMBIOS** (MD5 `bbd311e5c144`) |
+| `if(T.real)return 8` | presente | presente, `cd2dc3d:backtracking.html:845` | **SIN CAMBIOS** |
+
+### Z1.5 · `elecLoss`, `nBypass` por defecto, `rowTiltAt`, `poaPlant`
+
+| función | línea en los dos | MD5 del cuerpo | veredicto |
+|---|---|---|---|
+| `elecLoss` | 628 | `5f6ddc8902e9` | **SIN CAMBIOS** |
+| `rowTiltAt` | 1154 | `a5b23f7358ab` | **SIN CAMBIOS** |
+| `poaPlant` | 2453 | `2947a91013b2` | **SIN CAMBIOS** |
+| `mvPara` | 842 | `bbd311e5c144` | **SIN CAMBIOS** |
+
+`nBypass` por defecto, el control del DOM, idéntico en los dos —`3a57451` y
+`cd2dc3d:backtracking.html:179`, del que se pega sólo el principio de la línea
+porque el resto es el `title` de ayuda:
+```html
+      <div class="f"><label>Subcadenas en la cuerda</label><input id="nbp" type="number" step="1" min="0" max="6" value="2"
+```
+
+**TEST NULO de esta comparación.** Un extractor que devolviera vacío haría que
+todo saliera «SIN CAMBIOS» sin haber mirado nada. Líneas extraídas por función:
+`elecLoss` 5, `rowTiltAt` 8, `mvPara` 16, `poaPlant` 26 — ninguna vacía. Y el
+control por el otro lado: la única función que **sí** cambió sale como cambiada —
+`lazoControl` extrae 6 líneas en `3a57451` y **0 definiciones** en `cd2dc3d`.
+
+### Z1.6 · Ningún script del paquete usa el lazo
+
+`grep -c 'lazoControl\|crearLazo' audit2/*.mjs` → **0 ficheros con coincidencia**,
+sobre los 28 `.mjs` del paquete.
+
+**TEST NULO del grep**, porque un patrón que no acertara a nadie daría el mismo
+cero: el mismo `grep` sobre `poaPlant` da **22 ficheros** y sobre `motorDe` da
+**15**; y sobre el fichero auditado, `lazoControl` da **7 líneas**. El patrón
+acierta donde tiene que acertar.
+
+Los 28 scripts llaman a `policyAngles` y `poaPlant` directamente, que es la misma
+ruta sin lazo que usa el anual de la página.
+
+## E-Z2 · Tabla de exposición
+
+Una fila por ítem cuya **pregunta** pueda estar tocada por el avance de `main`.
+La tercera columna dice si la medida hecha sobre `3a57451` **sigue describiendo**
+`cd2dc3d`.
+
+| ítem | qué mide | qué cambió en v1.69 que le afecte | ¿la medida de `3a57451` sigue describiendo v1.69? |
+|---|---|---|---|
+| **E-A3** | POA anual por política por la ruta del manejador anual de la página (12 días, paso 10 min, sin lazo) | **Nada.** La ruta anual no llamaba al lazo y sigue sin llamarlo (Z1.1); paso, agregador y `mvPara` sin cambios (Z1.4) | **SÍ** |
+| **E-D3** | orden de las nueve políticas en el anual según `nb` | **Nada.** Misma ruta anual, mismo `elecLoss`, mismo `nBypass` por defecto (Z1.5) | **SÍ** |
+| **E-D5** | calibración del diseño reducido contra el anual pleno, cuatro políticas | **Nada**, por lo mismo | **SÍ** |
+| **E-D7** | podio interno `optfree`/`optimal` y las cinco magnitudes que acotan su resolución | **Nada** en las magnitudes anuales. Las instantáneas (E-D1, E-D4) tampoco pasan por el lazo | **SÍ** |
+| **E-D8** | anual con MV 32 · deriva del ruido de cuantización | **Nada.** Misma ruta anual y `mvPara` sin cambios; el MV se fuerza con `T.mv`, que es el primer camino de `mvPara` y no ha variado | **SÍ** |
+| **cualquier ítem que midiera lo que la planta EJECUTA** | — | el lazo cambia de comportamiento (adelanto) y de forma | **NO APLICA: no hay ninguno.** Ningún script del paquete usa el lazo (Z1.6); todo el paquete mide la consigna que la política PIDE |
+
+**Lo que esta tabla NO dice.** No dice que v1.69 no cambie nada del simulador:
+cambia lo que la página ejecuta en el día, y eso es un cambio real y medido por
+sus propios bancos. Dice que **ninguna de las preguntas que este paquete
+responde pasa por ahí**, porque el paquete entero mide la ruta sin lazo. Lo que
+v1.69 sí hace es **abrir preguntas nuevas** —¿cuánto se aparta lo ejecutado de lo
+pedido, ahora que el lazo adelanta?— que este paquete no responde y que, por la
+regla del sellado, irían a un R3 aparte.
+
+**Alcance de E-Z1 y E-Z2.** Son declarativos: comparan fuentes, no resultados.
+Que dos cuerpos de función sean idénticos byte a byte garantiza que la función no
+cambió; **no** garantiza que no haya cambiado algo que la llama. La comprobación
+de llamadores se ha hecho sólo para el manejador anual (Z1.1) y para los scripts
+del paquete (Z1.6). Fuera de eso, `NO VERIFICADO`.
+
+---
+
 # ESTADO DEL PAQUETE
 
 | | |
@@ -3258,10 +3425,15 @@ cinco instantes de un día. Cada uno lo declara en sus notas; se agrupa aquí pa
 que el conjunto se vea.
 
 **13 · `main` avanzó durante la auditoría y ese material no se ha incorporado.**
-El commit auditado es `3a57451`; al cerrar, `origin/main` está en `ebb5dc0`. Entre
-los dos hay `tools/anual_motor.mjs` (299 líneas en `origin/main`), que toca las
-mismas preguntas que E-D3, E-D5 y E-D8. No se ha ejecutado, ni careado, ni citado
-en ningún ítem: todas las cifras del paquete son de `3a57451`.
+El commit auditado es `3a57451`; al cerrar, `origin/main` está en `cd2dc3d`
+(v1.69). Entre los dos hay `tools/anual_motor.mjs` (299 líneas) y el cambio del
+lazo de control, que pasa a fábrica con estado y añade adelanto (`3868a14`).
+Nada de eso se ha ejecutado, careado ni citado en ningún ítem: **todas las cifras
+del paquete son de `3a57451`**. Qué preguntas del paquete quedan tocadas por ese
+avance está determinado, por lectura y sin recalcular nada, en **E-Z1** y en la
+tabla de exposición de **E-Z2**: la respuesta medida es que **ninguna**, porque
+ningún script del paquete usa el lazo y la ruta anual no lo llamaba ni lo llama.
+Lo que v1.69 sí abre son preguntas NUEVAS que este paquete no responde.
 
 ---
 

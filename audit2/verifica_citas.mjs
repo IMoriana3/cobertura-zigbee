@@ -55,10 +55,21 @@ const SHA = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT }).toString()
 const doc = fs.readFileSync(DOC, 'utf-8');
 const EXTRA = (process.argv.find(a => a.startsWith('--extra=')) || '').split('=')[1] || null;
 const cache = new Map();
+/* `rel` puede venir como `fichero` (árbol de trabajo) o `sha:fichero` (otro
+   commit). Se cachea por la clave entera, así que las dos versiones del mismo
+   fichero conviven sin pisarse. */
 const lee = rel => { if (!cache.has(rel)) {
-    let p = path.join(ROOT, rel);
-    if (!fs.existsSync(p) && EXTRA) p = path.join(EXTRA, rel);
-    cache.set(rel, fs.existsSync(p) ? fs.readFileSync(p, 'utf-8').split('\n') : null); } return cache.get(rel); };
+    const m = /^([0-9a-f]{7,40}):(.+)$/.exec(rel);
+    if (m) {
+      let txt = null;
+      try { txt = execFileSync('git', ['show', m[1] + ':' + m[2]], { cwd: ROOT, maxBuffer: 1 << 28 }).toString(); }
+      catch (e) { txt = null; }
+      cache.set(rel, txt === null ? null : txt.split('\n'));
+    } else {
+      let p = path.join(ROOT, rel);
+      if (!fs.existsSync(p) && EXTRA) p = path.join(EXTRA, rel);
+      cache.set(rel, fs.existsSync(p) ? fs.readFileSync(p, 'utf-8').split('\n') : null);
+    } } return cache.get(rel); };
 const rs = s => s.replace(/\s+$/, '');
 
 console.log('═'.repeat(94));
@@ -67,7 +78,10 @@ console.log(`ejecutado: node audit2/verifica_citas.mjs${EXTRA ? ' --extra=' + EX
 if (EXTRA) console.log(`raíz externa declarada para ficheros fuera del repo: ${EXTRA}`);
 console.log('═'.repeat(94));
 
-const RECITA = /([A-Za-z0-9_./-]+\.(?:html|js|mjs|py|md|yml|json)):(\d+)(?:-(\d+))?/;
+/* El prefijo `<sha>:` es OPCIONAL y va delante de la ruta. Sin él, esta misma
+   expresión se comía el `cd2dc3d:` y dejaba la cita como si fuera del árbol de
+   trabajo: las líneas del bloque Z salían ROTAS señalando a otro fichero. */
+const RECITA = /((?:[0-9a-f]{7,40}:)?[A-Za-z0-9_./-]+\.(?:html|js|mjs|py|md|yml|json)):(\d+)(?:-(\d+))?/;
 const RE = new RegExp(RECITA.source, 'g');
 const citas = []; let m;
 while ((m = RE.exec(doc)) !== null) citas.push({ rel: m[1], a: +m[2], b: m[3] ? +m[3] : null, pos: m.index, txt: m[0], usada: false });
