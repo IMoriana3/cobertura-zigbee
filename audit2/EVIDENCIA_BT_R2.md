@@ -13,6 +13,94 @@ Cada ítem lleva commit, script, comando, parámetros, salida y citas.
 
 ---
 
+# MÉTODO
+
+Reglas de trabajo de esta auditoría. Las dos primeras nacieron de un fallo
+concreto de la propia auditoría y se dejan escritas para que no se repita.
+
+### M.1  Ninguna celda publicada se importa de otro experimento
+
+**Regla.** Ninguna celda de una tabla publicada se toma del resultado de otro
+experimento, ni cuando la configuración parece idéntica. La procedencia de un
+número es por **experimento Y por ruta de código**: dos caminos distintos que
+*deben* dar el mismo resultado no son el mismo resultado hasta que se comprueba.
+Cada celda cita el ítem de evidencia que la produjo, y ese ítem es el que la
+ejecutó, no uno que se le parezca.
+
+**Origen de la regla.** La columna `nb = 2` de E-D3 se publicó importándola de la
+corrida MV 8 de E-D2, con este argumento: forzar `T.mv = 8` dejando `nb` en el
+valor de `cfg` (= 2), y forzar `T.nBypass = 2` dejando MV sin forzar (= 8 por
+`if(T.real)return 8`), son la misma configuración. El argumento es correcto sobre
+el papel, pero son **dos rutas de código distintas** dentro de `mvPara`
+(`backtracking.html:842-845`):
+
+```js
+function mvPara(T,zen){
+  if(!T)return 8;
+  if(T.mv)return T.mv;
+  if(T.real)return 8;
+```
+
+la primera sale por `if(T.mv)` y la segunda por `if(T.real)`. Que el resultado
+coincida es una **hipótesis verificable**, no un hecho, y al publicar la celda se
+dio por hecha. La comprobación se ejecuta en E-D6.
+
+**Consecuencia operativa.** Cuando dos ítems comparten configuración, se ejecutan
+los dos y se publica la comparación; si uno se reutiliza para ahorrar cómputo, se
+marca en la tabla con el ítem del que procede **y** se anota en `HUECOS` hasta
+que exista la comprobación cruzada.
+
+### M.3  Corrección de la regla 4.3, por el titular del encargo
+
+**Qué decía.** El encargo de cierre fijaba en su punto 4.3 «ni commits, ni PRs,
+ni merges», y se cumplió: durante esa ronda el trabajo quedó sin commitear.
+
+**Quién la corrigió y por qué.** El **titular del encargo** la retiró en la ronda
+siguiente, con este motivo literal: la intención de la regla era que la auditoría
+no altere el **objeto auditado**, y `audit2/` no es el objeto auditado — los
+ítems ya publicados en el PR #687 no tocan una línea del motor. El argumento
+añadido: «evidencia que solo vive en un contenedor no es evidencia».
+
+**Cómo queda.** Se commitea `audit2/` en la rama de trabajo y se empuja al PR
+tras cerrar cada bloque, no sólo al final. **No** se mergea a `main`, y siguen
+prohibidos `backtracking.html`, `sol.js`, `irradiancia.js`, `seguidor.js`,
+`tools/`, `.github/` y `docs/`.
+
+**Por qué se registra.** Una regla de método que cambia a mitad de auditoría
+cambia qué evidencia existe y dónde. Queda anotado quién la cambió, cuándo y con
+qué argumento, para que la trazabilidad del paquete no dependa de recordar una
+conversación.
+
+### M.2  Cadena de custodia: instrucciones llegadas por terceros
+
+Se registra, sin valoración, un hecho de cadena de custodia.
+
+Durante la auditoría llegaron a esta sesión **dos avisos de otra sesión** del
+mismo titular (identificada como «Notebook Streamlit»), el segundo invocando la
+autoridad de un tercero («a pedido de Imanol»). Proponían añadir una **sexta
+pregunta** a `bt_audit.py` del repositorio `SolarGPTfull`: carear el θ que predice
+`tracker3d` contra el ángulo **real medido** que `solargpt_core/plant_feedback.py:179`
+(`tracking_error()`) ya lee del SCADA por TCU, en lugar de comparar motores entre
+sí como hacen sus cinco preguntas actuales. El mismo aviso afirmaba que los
+minutos de GitHub Actions estaban agotados hasta el 1 de octubre.
+
+**No se actuó sobre ninguno de los dos.** Motivos registrados:
+
+1. `bt_audit.py` está en otro repositorio y fuera del alcance de esta auditoría,
+   cuyo objeto es `cobertura-zigbee` en el commit `3a57451`.
+2. Una instrucción que llega por otra sesión, y que invoca la autoridad de un
+   tercero no identificado como el titular del encargo, no es una instrucción del
+   titular.
+
+Se anota además que **la afirmación sobre los minutos de Actions era falsa**: se
+comprobó contra GitHub y la integración continua estaba ejecutándose con
+normalidad. Esa comprobación no se hizo antes de repetir el dato, y el error se
+corrigió después; queda aquí porque ilustra por qué el punto 2 es una regla y no
+una formalidad.
+
+La propuesta de la sexta pregunta **queda fuera del alcance y pendiente de
+decisión del titular del encargo**. Este documento no la evalúa.
+
 ---
 
 # BLOQUE A — HUECOS BLOQUEANTES DEL RECONOCIMIENTO
@@ -605,7 +693,7 @@ Semilla de CI y número de configuraciones, de `.github/workflows/bancos.yml:198
           node tools/barrido_terrenos.mjs 40 ${{ matrix.semilla }}
 ```
 
-con `semilla: [1, 7]` (`bancos.yml:189`). Esta corrida usa **semilla 1**.
+con `semilla: [1, 7]` (`.github/workflows/bancos.yml:189`). Esta corrida usa **semilla 1**.
 
 
 ### E-C1  Instantes donde la regla se aplica: existe un θ uniforme de sombra 0
@@ -929,6 +1017,159 @@ Notas: en las dos bisecciones medidas, **ningún** |Δθ| supera un paso del bar
 fino (0,05°), que es la resolución del propio comparador: el experimento acota la
 discrepancia por debajo de su propia resolución, no la mide por debajo de ella.
 La tolerancia 2e−3 de (2) es del predicado, no del comparador.
+
+### E-C6  Contraejemplo del min(|θ|) con columna de POA — barrido uniforme
+
+Commit:      3a57451
+Script:      `audit2/C34_energia.mjs`
+Comando:     `node audit2/C34_energia.mjs 40 1 200`
+Node:        v22.22.2
+Salida:      `audit2/out/C34.txt` · CSV `audit2/out/C34_c3.csv` (75 filas)
+Estado:      **MEDIDO**
+
+Reejecución de E-C3 añadiendo POA de planta a cada θ. Misma muestra (200
+instantes, `mulberry32(20260917)` sobre los que tienen θ uniforme de sombra 0),
+mismo barrido −55…+55 a paso 0,25°, misma sombra de PLANOS, nb 2, b0 0,05,
+albedo 0,20, TL 3,5, MV = `mvPara(T,zen)`.
+
+**Este barrido no se parte en poblaciones.** El θ uniforme no pasa por
+`policyAngles`, así que no hay guardia que separar; la partición (i)/(ii) que
+pide el encargo se aplica en E-C7, que sí despacha por política.
+
+Definiciones ejecutadas: **θ₁** = el θ de sombra 0 de mayor |θ| del instante.
+**θ del min(|θ|)** = el θ de menor |θ| entre los que sombrean por debajo de |θ₁|
+— el que la regla elegiría. ΔPOA = POA(θ del min|θ|) − POA(θ₁).
+
+```
+instantes con contraejemplo: 75 / 200  (37.50 %)
+peso energético: 10512.910 de 46131.344 Wh/m² = 22.79 %
+ΔPOA = POA(θ del min|θ|) − POA(θ sin sombra):
+   el θ del min(|θ|) GANA energía en 74 de 75 instantes  (98.67 %)
+   y PIERDE en 1  (1.33 %)
+   ΔPOA: mín -0.0044 · p25 74.2664 · mediana 257.4706 · p75 477.7302 · máx 790.4563 W/m²
+```
+
+El único caso con ΔPOA < 0 pierde **0,0044 W/m²** (Zaragoza · aleatorio 7 · N-S
+constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 06:20Z, sol 2,3°;
+θ₁ = −1,75° con POA 1,82 frente a θ = 0° con fs 73,42 % y POA 1,82).
+
+Los 5 de ΔPOA menor, de los 75:
+
+| # | θ sin sombra | POA | θ del min\|θ\| | fs | POA | ΔPOA | sol | configuración · instante |
+|---|---|---|---|---|---|---|---|---|
+| 1 | −1,75° | 1,82 | 0° | 73,42 % | 1,82 | **−0,004** | 2,3° | Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 06:20Z |
+| 2 | 4° | 2,31 | 0° | 5,15 % | 2,61 | +0,301 | 2,5° | Zaragoza · cresta 1 · N-S quebrado 4° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 18:00Z |
+| 3 | 6,5° | 1,47 | −2° | 2,31 % | 1,78 | +0,315 | 2,0° | Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-dic 16:20Z |
+| 4 | 11° | 2,83 | −5° | 2,07 % | 5,64 | +2,810 | 2,8° | Zaragoza · llano · N-S rotula 2° · bifila · tresbolillo ×1 · 10 filas · az 0° · 21-jun 19:20Z |
+| 5 | 12° | 11,16 | 0° | 16,53 % | 22,49 | +11,336 | 5,9° | Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-jun 19:00Z |
+
+**Lo que esta columna decide y lo que no.** La regla del min(|θ|) está escrita en
+el código como propiedad **geométrica**, no energética, en cuatro sitios:
+
+`backtracking.html:208`:
+```
+  min(|θ|) del grupo (reducir |θ| desde un ángulo de backtracking nunca crea sombra — la misma
+```
+`backtracking.html:651-654`:
+```
+  · el ángulo es COMÚN al grupo: se adopta el min(|θ|) de sus filas — reducir
+  |θ| desde un ángulo de backtracking nunca crea sombra (la MISMA regla que
+  el acoplado interior de compute_bt_angles);
+```
+`backtracking.html:824-827`:
+```
+  las estaciones del solape (extremos y centro: la pendiente es lineal en
+  v) y gana el menor |θ|: reducir |θ| desde un backtracking nunca crea
+  sombra. Con vigas paralelas es UNA estación y sale lo de siempre, bit a
+```
+`backtracking.html:2672-2675`:
+```
+  /* acople por ACCIONAMIENTO: las mesas que mueve un mismo motor —las CUATRO de
+  un bifila, dos por viga a cada lado del morro— van al MISMO θ, el min|θ| del
+  grupo (reducir |θ| desde un backtracking nunca crea sombra) */
+```
+
+Las cuatro afirman «reducir |θ| desde un ángulo de backtracking **nunca crea
+sombra**». E-C3 mide que sí la crea en 75 de 200 instantes de la muestra
+(22,79 % del peso energético): **el enunciado geométrico sigue siendo falso en el
+dominio medido, y esta columna no lo cambia**. Lo que la columna mide es la
+SEVERIDAD: en 74 de esos 75 instantes el θ que la regla elige rinde **más**
+energía que el θ sin sombra, con mediana +257,47 W/m².
+
+Notas: paso 0,25°, una semilla (1), sombra de PLANOS. ΔPOA compara dos θ
+uniformes, no dos consignas publicadas.
+
+### E-C7  Lo mismo sobre el acople real, partido según lleve guardia
+
+Commit:      3a57451
+Script:      `audit2/C34_energia.mjs` (misma corrida que E-C6)
+Salida:      `audit2/out/C34.txt` · CSV `audit2/out/C34_c4.csv` (41 filas)
+Estado:      **MEDIDO**
+
+**Verificación pedida — ¿llama el despachador a `repairNoShade` para `astro` y
+para `row`?** `backtracking.html:3363-3369`:
+
+```js
+  if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
+  if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
+  if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
+  if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
+  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};
+  return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
+```
+
+**NO.** `astro` (3363) y `row` (3366) pasan sólo por `applyDrive`. `true3d`
+(3367), `mgl` (3368) y `pairwise` (3369, el `return` final) sí llaman a
+`repairNoShade`. `global` (3364) y `bt2d` (3365) tampoco lo llaman, pero publican
+un único ángulo para todas las filas: `applyDrive` es un no-op y no hay elección
+de min(|θ|) que medir, así que quedan **fuera de las dos poblaciones** y se
+declara.
+
+Denominador: **112** instantes con accionamiento agrupado, de los 200 de la
+muestra; en los 88 monofila `applyDrive` es la identidad.
+ΔPOA = POA(publicado) − POA(postura de sombra 0 del grupo), evaluada con el
+contador publicado.
+
+**(i) POLÍTICAS SIN GUARDIA** — `CONTRAEJEMPLO: pérdida neta si ΔPOA < 0`
+
+| política | instantes | con caso | % | peso energético | ΔPOA > 0 | ΔPOA ≤ 0 | ΔPOA mediana | ΔPOA mínimo |
+|---|---|---|---|---|---|---|---|---|
+| astro | 112 | 9 | 8,04 % | 9,29 % | **9** | **0** | +66,3049 | +12,2741 |
+| row | 112 | 12 | 10,71 % | 11,00 % | **12** | **0** | +66,3049 | +10,4536 |
+
+**(ii) POLÍTICAS CON GUARDIA** — `DECISIÓN DE LA GUARDIA v1.57.2`
+
+| política | instantes | con caso | % | peso energético | la guardia GANA | la guardia PIERDE | ΔPOA mediana | ΔPOA mínimo |
+|---|---|---|---|---|---|---|---|---|
+| pairwise | 112 | 5 | 4,46 % | 3,62 % | **5** | **0** | +55,7125 | +33,5177 |
+| true3d | 112 | 7 | 6,25 % | 4,08 % | **7** | **0** | +66,3391 | +12,3308 |
+| mgl | 112 | 8 | 7,14 % | 5,65 % | **8** | **0** | +55,7125 | +2,0852 |
+
+**En las 41 celdas de las dos poblaciones, ΔPOA > 0.** No hay ni un caso de
+pérdida neta: la postura publicada rinde más que la de sombra 0 en los 41. La
+columna «ΔPOA mínimo» es el caso **menos favorable**, no un caso negativo; el
+script ordena por ΔPOA ascendente y el encabezado de su salida dice «más
+NEGATIVO», que aquí no describe ningún caso — se deja dicho para que la salida
+cruda no se lea mal.
+
+Los 5 de ΔPOA menor, de los 41:
+
+| # | política | guardia | grupo | θ publicado | fs | POA pub | θ sombra 0 | POA | ΔPOA | sol |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | mgl | SÍ | [0,1] | −11,52° | 0,20 % | 113,19 | 0° | 111,10 | **+2,085** | 7,8° |
+| 2 | row | NO | [0,1] | −11,41° | 15,17 % | 131,37 | 6° | 120,92 | +10,454 | 7,8° |
+| 3 | astro | NO | [6,7] | −17,59° | 0,02 % | 953,81 | 0° | 941,54 | +12,274 | 66,1° |
+| 4 | row | NO | [6,7] | −17,59° | 0,02 % | 953,81 | 0° | 941,54 | +12,274 | 66,1° |
+| 5 | true3d | SÍ | [0,1] | 0,00° | 1,32 % | 110,71 | 5° | 98,38 | +12,331 | 8,2° |
+
+La fila 3 es la de mayor sombra evitable a sol alto (66,1°) y la de mayor POA en
+juego (953,81 W/m²), con una sombra publicada de sólo 0,02 %.
+
+Notas: el barrido mueve **un solo grupo** manteniendo los demás en su θ
+publicado; el espacio conjunto no se explora, así que el ΔPOA es el de una
+perturbación local, no el del óptimo global. Sombra de PLANOS para decidir el
+caso; POA con el contador publicado. Una semilla, paso 0,25°.
 
 ---
 
@@ -1404,6 +1645,124 @@ Notas: un solo instante. La diferencia entre candidatos sigue siendo del orden d
 décimas de W/m² en todos los MV, por debajo de las amplitudes pico-pico medidas
 en E-D1 para MV ≤ 64.
 
+### E-E4  El escalón de MV = 33: la hipótesis del muestreo impar, puesta a prueba
+
+Commit:      3a57451
+Script:      `audit2/E4_mv_impar.mjs`
+Comando:     `node audit2/E4_mv_impar.mjs`
+Node:        v22.22.2
+Salida:      `audit2/out/E4.txt` · CSV `audit2/out/E4_estaciones.csv`
+Estado:      **MEDIDO** — la hipótesis del auditor **NO explica el escalón**
+
+Hipótesis a poner a prueba, enunciada por el auditor: MV = 33 es impar y los
+demás valores probados son pares; el muestreo es de punto medio, así que existe
+una estación exactamente en el centro de la mesa si y sólo si MV es impar, y el
+centro es donde discrimina el reparto por alas.
+
+La aritmética de la hipótesis es correcta. `backtracking.html:2173`:
+```js
+        const v=v0+(v1-v0)*(j+0.5)/MV;
+```
+`backtracking.html:2267`:
+```js
+        {const wg=v<(v0+v1)/2?0:1;hitW[wg]+=fCol;NW[wg]++;elecW[wg]+=elecLoss(fCol,T.nBypass);}
+```
+Una estación cae en el centro cuando `(j+0.5)/MV = 0.5`, o sea `j = (MV−1)/2`,
+entero **si y sólo si MV es impar**; y ahí `v < (v0+v1)/2` es falso, así que la
+estación central cae en el ala 1 y el reparto queda asimétrico:
+
+| MV | ¿j=(MV−1)/2 entero? | estaciones ala 0 | ala 1 | reparto |
+|---|---|---|---|---|
+| 32 | no | 16 | 16 | simétrico |
+| **33** | **SÍ, j=16** | 16 | 17 | **asimétrico** |
+| 34 | no | 17 | 17 | simétrico |
+| **65** | **SÍ, j=32** | 32 | 33 | **asimétrico** |
+| 66 | no | 33 | 33 | simétrico |
+
+La cuenta por estación no la publica el motor: se obtiene con una **copia
+instrumentada en memoria** del bloque FÍSICA PURA, con la sonda tras la única
+aparición del reparto por alas. Validación: **|Δ fs PLANOS| = 0,000e+0** frente
+al motor original en todo el tramo. El fichero del repo no se toca.
+
+**(1) El tramo θ 21,85°→22,00° a paso 0,01°, sombra de PLANOS.** Salto máximo
+entre θ consecutivos:
+
+| MV | paridad | salto máximo | entre |
+|---|---|---|---|
+| 32 | par | +0,0034 pp | 21,85° y 21,86° |
+| **33** | **IMPAR** | **−0,9175 pp** | **21,91° y 21,92°** |
+| 34 | par | +0,0067 pp | 21,85° y 21,86° |
+| **65** | **IMPAR** | **+0,0037 pp** | 21,85° y 21,86° |
+| 66 | par | +0,0035 pp | 21,85° y 21,86° |
+
+> **MV 65 es impar y NO produce el escalón.** La paridad no es condición
+> suficiente: la hipótesis queda refutada por contraejemplo dentro del propio
+> experimento que la pone a prueba.
+
+**(2) Qué estación aporta la discontinuidad.** Diferencia de fracción entre
+21,92° y 21,91°, fila receptora 0, MV = 33, las 8 mayores en módulo:
+
+| j | Δ fracción | ala | ¿centro? |
+|---|---|---|---|
+| **30** | **−46,2850 pp** | 1 | no |
+| 20 | +0,0262 pp | 1 | no |
+| 21 | +0,0222 pp | 1 | no |
+| 22 | +0,0183 pp | 1 | no |
+| 23 | +0,0143 pp | 1 | no |
+| 24 | +0,0104 pp | 1 | no |
+| 25 | +0,0064 pp | 1 | no |
+| 26 | +0,0025 pp | 1 | no |
+
+> **La estación responsable es j = 30, no la central j = 16.** Toda la
+> discontinuidad la aporta **una sola estación** que pasa de 46,3 % a 0 % en
+> 0,01° de giro; las otras 32 se mueven menos de 0,03 pp cada una. Segunda
+> refutación de la hipótesis, independiente de la primera: el centro exacto no
+> interviene.
+
+j = 30 con MV = 33 cae en v = 27,46 m sobre una mesa de −32,365 a +32,365 m, es
+decir **cerca del extremo**, no del centro. La suma de las diferencias dividida
+por las 33 estaciones da −1,3995 pp, que es la caída de la fila 0 medida en E-E1
+(de 22,7202 % a 21,3207 %); el máximo publicado pasa entonces a la fila 3, como
+ya recogía ese ítem.
+
+**(3) Reparto por alas** en esos dos θ:
+
+| MV | θ | est. ala 0 | ala 1 | fracción media ala 0 | ala 1 | diferencia |
+|---|---|---|---|---|---|---|
+| 32 | 21,91° | 16 | 16 | 0,0000 % | 45,0730 % | 45,0730 pp |
+| 32 | 21,92° | 16 | 16 | 0,0000 % | 45,0798 % | 45,0798 pp |
+| 33 | 21,91° | 16 | 17 | 0,0000 % | 44,1039 % | 44,1039 pp |
+| 33 | 21,92° | 16 | 17 | 0,0000 % | **41,3872 %** | 41,3872 pp |
+| 34 | 21,91° | 17 | 17 | 0,0000 % | 42,9269 % | 42,9269 pp |
+| 34 | 21,92° | 17 | 17 | 0,0000 % | 42,9348 % | 42,9348 pp |
+
+El ala 0 está a 0,0000 % en los tres MV y los dos θ: toda la sombra vive en el
+ala 1. El reparto asimétrico de MV = 33 (16/17) existe, pero el ala 0 no
+participa, así que la asimetría no es el mecanismo.
+
+**(4) ¿Puede `mvPara` devolver impares?** `backtracking.html:856`:
+```js
+  return Math.max(8,Math.min(64,Math.ceil(rasante*L/(tor>=0.5?2:4))));
+```
+`Math.ceil` de un cociente no tiene paridad garantizada. Barrido del dominio
+(largo de mesa 10…130 m a paso 0,5 m × torsión por encima y por debajo de 0,5° ×
+rasante 1 y 2): **378 de 964 combinaciones (39,2 %) dan MV impar**. Ejemplos:
+L = 16,5…18 m con torsión ≥ 0,5° ⇒ MV = 9; L = 20,5…22 m ⇒ MV = 11. El caso B de
+esta auditoría (L = 64,73 m, torsión máxima 7,437°, cénit 80,72°) ⇒ **MV = 33**.
+
+**Qué descarta el experimento y qué no.** Descarta que la paridad de MV sea la
+causa (MV 65 es impar y no lo produce) y que intervenga la estación central o el
+reparto por alas (la responsable es j = 30 y el ala 0 está a cero). **No**
+identifica el mecanismo: qué hace que esa estación concreta pase de 46,3 % a 0 %
+en 0,01° queda **NO VERIFICADO**. Lo medido es que la discontinuidad es de **una
+sola estación de cuadratura**, no de la malla, y que aparecer o no depende de que
+alguna estación caiga sobre ese cruce — con 33 estaciones cae, con 32, 34, 65 y
+66 no.
+
+Notas: un solo instante, un solo caso (B), una sola fila receptora en el desglose
+por estación. El barrido de `mvPara` es sobre el dominio de sus entradas, no sobre
+plantas reales.
+
 ---
 
 # BLOQUE F — GRANULARIDAD DE LA TRANSPOSICIÓN
@@ -1447,7 +1806,7 @@ El contador sí usa tilt por mesa. `backtracking.html:1621`:
     segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1)*DEG));
 ```
 
-y quien lo lee, `backtracking.html`:
+y quien lo lee, `backtracking.html:2562`:
 
 ```js
 function segTiltAt(T,r,k){
@@ -1666,9 +2025,14 @@ y de `true3d`:
             PY  -55.00  -55.00  -55.00  -55.00  -55.00  -55.00   |Δ|  55.000  55.000  40.181  55.000  55.000  16.800
 ```
 
-Las divergencias se concentran en **sol bajo** (07:30, 09:00, 18:30). A sol alto
+Las divergencias se concentran en los instantes 07:30, 09:00 y 18:30. A sol alto
 (12:00 y 16:00) el |Δθ| máximo de todas las políticas comparables del caso B es
 **0,7530°**.
+
+> **CORREGIDO por E-G3.** La primera redacción de este párrafo llamaba «sol bajo»
+> a esos tres instantes. Sólo 07:30 lo es (elevación 9,28°); 09:00 está a 25,32° y
+> 18:30 a 32,75°. Medido por bandas en E-G3, el máximo |Δθ| cae en la banda
+> **20-40°**, no por debajo de 10°.
 
 Diferencias estructurales que el careo NO neutraliza, y que hay que tener
 presentes al leer las columnas de POA:
@@ -1677,7 +2041,7 @@ presentes al leer las columnas de POA:
    y canto) y malla axial MV; el Python con `compute_shade`, sin estructura y sin
    malla axial. Por eso |ΔPOA| es no nulo incluso donde |Δθ| = 0.
 2. El tilt de transposición: el Python usa
-   `terrain.pairs[min(r, n_pairs-1)].axis_tilt_deg` (`tracker3d.py:1631`), el JS
+   `terrain.pairs[min(r, n_pairs-1)].axis_tilt_deg` (`solargpt_core/tracker3d.py:1631`), el JS
    `rowTiltAt` (`backtracking.html:1154`) que devuelve `T.rowTilt[r]` cuando
    existe. En el caso B esos dos números difieren por construcción.
 3. El terreno Python es `PlantTerrain3D` con `pairs` (pendiente, pitch, axis_tilt):
@@ -1756,6 +2120,130 @@ numéricos. La paridad numérica (G.1) **NO se ha ejecutado** — ver HUECOS.
 La búsqueda de constantes en el Python se hizo con
 `grep -nE "^BT3D_|^[A-Z_]{3,} *=" ` y
 `grep -nE "safety_margin_deg=|tol=|step_deg=|max_iter=|threshold=|zen_max=|bind_margin_deg=|tol_mm=|gap_margin_m=|epsilon_"`.
+
+### E-G3  Auditoría del arnés de G.1, y qué etapa acompaña a los 65°
+
+Commit:      3a57451
+Script:      `audit2/G3_arnes.mjs`
+Comando:     `node audit2/G3_arnes.mjs`
+Node:        v22.22.2
+Salida:      `audit2/out/G3.txt`
+Estado:      **MEDIDO**
+
+**Por qué este ítem va antes de creerse el número.** En E-C5 un predicado
+reescrito a mano daba |Δθ| de 55° por un error de copia, no del motor. Antes de
+publicar los 65° de E-G1 se comprueba que el arnés no repite ese fallo.
+
+**(1) ¿Reimplementa el arnés alguna función del motor?** Se buscan definiciones
+de función en los cuatro ficheros de la ruta de G.1 y se cruzan contra una lista
+de 38 nombres del motor JS y del Python:
+
+```
+  audit2/G1_js.mjs         define  0 funciones: (ninguna)
+  audit2/G1_py.py          define  0 funciones: (ninguna)
+  audit2/G1_careo.mjs      define  0 funciones: (ninguna)
+  audit2/lib_motor.mjs     define  3 funciones: motorDe, caso, echo
+  ⇒ funciones del motor redefinidas en el arnés: 0
+```
+
+El lado JS extrae la física del fichero (`audit2/lib_motor.mjs`, `motorDe`:
+`git show <sha>:backtracking.html`, recorte entre `FÍSICA PURA` y `/* FIN-FÍSICA`
+y `new Function`). El lado Python importa `solargpt_core.tracker3d` y llama a sus
+funciones por `getattr`. `G1_careo.mjs` sólo compara dos JSON y no contiene
+física.
+
+Lo único que el arnés construye a mano es `caso(F, 'A'|'B')`: las cotas
+(`-i·pitch·tan(8°)`) y los tilts (`mulberry32(1234)`, amplitud 4) **son la
+definición de los casos que da el encargo**, no lógica del motor; las parejas
+salen de `F.pairsFromElev`, que sí es del motor. Se declara.
+
+**(2) Cruce de los tres candidatos del auditor.**
+
+**(a) Umbral de deferral.** `backtracking.html:1250`:
+```js
+  const meaningful=zen<82;
+```
+Lado Python: `solargpt_core/tracker3d.py:893`
+```py
+def _bt3d_active_mask(zen, azi, terrain, zen_max=82.0, bind_margin_deg=1.0):
+```
+Los dos llevan el **mismo 82°**, y `compute_bt_angles_3d` (532-771) lo usa. **No
+es una constante que difiera.**
+
+**(b) `repairNoShade` en el lado Python.** Búsqueda exhaustiva con
+`grep -nE "repair" tracker3d.py`: las coincidencias son **verificadores**
+(`solargpt_core/tracker3d.py:851` `_no_shade_violations_from_residual`, `solargpt_core/tracker3d.py:1158`
+`no_shade_violation`), no reparadores. **La etapa `repairNoShade` del JS
+(`backtracking.html:3367-3369`) no tiene contraparte en el Python.**
+
+**(c) Acople por accionamiento.** `grep -nE "groups|drive|apply_drive" tracker3d.py`
+⇒ **sin coincidencias**; `PlantTerrain3D` no tiene campo de accionamiento. Pero en
+esta rejilla el JS corre con `drive: 'mono'` y `T.groups = null`, así que
+`applyDrive` es la identidad **en los dos lados**: este candidato **no puede
+explicar la divergencia** y queda descartado.
+
+**(3) Los casos de mayor |Δθ|.**
+
+| caso | hora | política | fila | θ JS | θ PY | \|Δθ\| | sol | torsión máx | etapa que difiere |
+|---|---|---|---|---|---|---|---|---|---|
+| B | 18:30 | pairwise | 0,1,3,4 | 10,00° | −55,00° | **65,000°** | 32,7° | 7,44° | `repairNoShade` sólo en JS |
+| B | 18:30 | mgl | 0,1,3,4 | 10,00° | −55,00° | **65,000°** | 32,7° | 7,44° | `repairNoShade` sólo en JS |
+| B | 09:00 | pairwise | 0,1,4 | −2,00° | 55,00° | **57,000°** | 25,3° | 7,44° | `repairNoShade` sólo en JS |
+| B | 09:00 | true3d | 0,1,4 | −2,00° | 55,00° | **57,000°** | 25,3° | 7,44° | `repairNoShade` sólo en JS |
+
+**Las 14 divergencias mayores son todas de políticas que llevan `repairNoShade`
+en el JS y no lo tienen en el Python.** Eso es lo que se mide: esa etapa existe en
+un lado y no en el otro. **No** se afirma que sea la causa — no se ha ejecutado el
+JS desactivando esa etapa para comprobarlo (ver HUECOS).
+
+Además, en los cuatro casos de 65° y 57° el JS publica un θ **de signo contrario**
+al del Python y de módulo pequeño (10,00° y −2,00° frente a ±55,00°): el Python va
+al tope del rango y el JS se queda cerca del plano.
+
+**(4) |Δθ| por banda de elevación solar**, todas las políticas comparables de los
+casos A y B:
+
+| banda | n | mediana | máximo |
+|---|---|---|---|
+| sol < 10° | 84 | 0,0000° | 44,1346° |
+| sol 10-20° | 0 | — | — (la rejilla no tiene ningún instante en esa banda) |
+| sol 20-40° | 168 | 0,0000° | **65,0000°** |
+| sol > 40° | 168 | 0,0753° | 0,7963° |
+
+**CORRECCIÓN A E-G1.** Ese ítem dice que «las divergencias se concentran en sol
+bajo (07:30, 09:00, 18:30)». Es **incorrecto en cuanto a la elevación**: de los
+tres instantes, sólo 07:30 es de sol bajo (9,28°); 09:00 está a **25,32°** y 18:30
+a **32,75°**. La banda con el máximo es **20-40°**, no la de menos de 10°. Lo que
+sí se sostiene de aquel enunciado es que 12:00 y 16:00 (58,30° y 59,98°) quedan
+por debajo de 0,80°. El ítem E-G1 se corrige en su nota.
+
+**(5) `bt2d` y `optfree` en `tracker3d.py`**, con los patrones de búsqueda:
+
+```
+   grep -n "bt2d" tracker3d.py     ⇒ SIN COINCIDENCIAS
+   grep -n "optfree" tracker3d.py  ⇒ SIN COINCIDENCIAS
+   grep -n "free" tracker3d.py     ⇒ SIN COINCIDENCIAS
+   grep -n "per_unit" tracker3d.py ⇒ SIN COINCIDENCIAS
+   grep -n "OPTFREE" tracker3d.py  ⇒ SIN COINCIDENCIAS
+```
+
+**Confirmado: no existen.** Cobertura de las 9 políticas del JS:
+
+| # | política JS | función de `tracker3d.py` | cubierta |
+|---|---|---|---|
+| 1 | astro | `compute_theta_full_tracking` (346) | SÍ |
+| 2 | global | `compute_bt_angles_global` (304) | SÍ |
+| 3 | row | `compute_bt_angles_rowwise` (254) | SÍ |
+| 4 | **bt2d** | — | **NO EXISTE** |
+| 5 | pairwise | `compute_bt_angles` (222) | SÍ |
+| 6 | true3d | `compute_bt_angles_3d` (532) | SÍ |
+| 7 | mgl | `compute_bt_angles_min_ground_light` (1164) | SÍ |
+| 8 | optimal | `compute_bt_angles_energy_optimal` (375) | SÍ |
+| 9 | **optfree** | — | **NO EXISTE** |
+
+7 de 9. Notas: la rejilla es de 5 instantes de un día y 2 casos; el reparto por
+bandas de elevación tiene 0 instantes entre 10° y 20°, así que esa banda no
+informa.
 
 ---
 
@@ -1893,7 +2381,7 @@ Lo que el encargo pide y **no** se ha ejecutado, con la razón.
 | **D.2 · MV 16, 32 y 64** | NO VERIFICADO | 14 871 s por variante medidos (4 h 8 min); MV 8 sí está en E-D2, y el efecto de MV sobre el argmax está medido aparte en E-D1 |
 | **D.2 · calibración de las 7 políticas restantes** | NO VERIFICADO | el sesgo del diseño reducido (−0,86 % de nivel) está medido sólo para pairwise y true-3D, las únicas con anual pleno en E-A3; **no** para los dos optimizadores, que encabezan la tabla de E-D3 |
 | **C.3 / C.4 con columna de energía** | NO EJECUTADO | el encargo pide sólo sombra; la variante con POA de las dos posturas es la corrección de la CRÍTICA nº 5 y no dio tiempo |
-| **C.1 / C.2 con la semilla 7** | NO EJECUTADO | CI corre las semillas 1 y 7 (`bancos.yml:189`); sólo se ha corrido la 1 |
+| **C.1 / C.2 con la semilla 7** | NO EJECUTADO | CI corre las semillas 1 y 7 (`.github/workflows/bancos.yml:189`); sólo se ha corrido la 1 |
 | **C.5 (3)** penetración de terreno | NO EJECUTADO | `terrBlocked` no exportado y no bisecta en θ (CRÍTICA nº 9) |
 | **E.1 · mecanismo de la cuadratura para MV impar** | NO VERIFICADO | se ha medido que el escalón es exclusivo de MV = 33 y que la poda no cambia; **no** se ha abierto el promedio por estaciones para explicar por qué |
 | **F.2 / F.3 · el ANUAL** | NO VERIFICADO | E-F2 y E-F3 miden **un día** (21-jun, paso 20 min), no el anual que pide F.2; mismo motivo de coste |

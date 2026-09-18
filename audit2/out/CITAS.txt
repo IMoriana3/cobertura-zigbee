@@ -1,0 +1,90 @@
+══════════════════════════════════════════════════════════════════════════════════════════════
+VERIFICADOR DE CITAS · documento audit2/EVIDENCIA_BT_R2.md · commit 3096c7bce181c2ac247eaa744ef32cd220d1bb82 · node v22.22.2
+ejecutado: node audit2/verifica_citas.mjs --extra=/home/user/SolarGPTfull/solargpt
+raíz externa declarada para ficheros fuera del repo: /home/user/SolarGPTfull/solargpt
+══════════════════════════════════════════════════════════════════════════════════════════════
+
+citas encontradas en el documento           : 75
+bloques de código del documento             : 59
+  · VERIFICADAS (fragmento en su línea/rango): 35
+  · SIN FRAGMENTO pegado detrás              : 42   (se comprueba sólo que la línea exista)
+  · ROTAS                                    : 0
+  · fuera del rango del fichero              : 0
+  · fichero no encontrado                    : 0
+
+── VERIFICADAS, una por línea ───────────────────────────────────────────
+  OK  backtracking.html:842-845        L  842  function mvPara(T,zen){
+  OK  backtracking.html:2910-2923      L 2910  if(!retenida&&!retenidaDF){
+  OK  backtracking.html:2848-2873      L 2848  if(prev&&prev.f!=null&&isFinite(prev.f)&&OPT_DF_MAX!=null){
+  OK  backtracking.html:2890           L 2890  const pub=repairNoShade(zen,az,T,base,irr,doy,albedo);
+  OK  backtracking.html:2983-3003      L 2983  for(let sweep=0;sweep<8;sweep++){
+  OK  backtracking.html:2961-2970      L 2961  const pairContrib=p=>noShade?0:
+  OK  backtracking.html:6902-6923      L 6902  $('yearbtn').onclick=()=>{
+  OK  backtracking.html:4355-4358      L 4355  const caros=POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl
+  OK  backtracking.html:2698-2721      L 2698  function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
+  OK  tools/barrido_terrenos.mjs:143-150 L  143  const sh = F.shadeBand3DAll(g.zen, g.az, T, ang[key], { noStruct: 
+  OK  .github/workflows/bancos.yml:198-201 L  198  - name: invariantes sobre 40 configuraciones
+  OK  backtracking.html:3363-3369      L 3363  if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T
+  OK  backtracking.html:2379-2383      L 2379  for(let b=0;b<14;b++){
+  OK  backtracking.html:208            L  208  min(|θ|) del grupo (reducir |θ| desde un ángulo de backtracking nu
+  OK  backtracking.html:651-654        L  652  · el ángulo es COMÚN al grupo: se adopta el min(|θ|) de sus filas 
+  OK  backtracking.html:824-827        L  824  las estaciones del solape (extremos y centro: la pendiente es line
+  OK  backtracking.html:2672-2675      L 2672  /* acople por ACCIONAMIENTO: las mesas que mueve un mismo motor —l
+  OK  backtracking.html:3363-3369      L 3363  if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T
+  OK  backtracking.html:842-845        L  842  function mvPara(T,zen){
+  OK  backtracking.html:628-632        L  628  function elecLoss(f,nBypass){
+  OK  backtracking.html:2265-2270      L 2265  elecSum+=elecLoss(fCol,T.nBypass); nCol++;
+  OK  backtracking.html:628-632        L  628  function elecLoss(f,nBypass){
+  OK  backtracking.html:2115-2130      L 2115  for(const pl of planes){
+  OK  backtracking.html:2164-2172      L 2164  const detras=(bx)=>{
+  OK  docs/algoritmos_backtracking.html:115 L  115  <tr><td>Sol (NOAA)</td><td>elevación 9,28° · azimut 66,7° (E-NE) ·
+  OK  backtracking.html:154            L  154  <div class="f"><label>Altitud m</label><input id="alt" type="numbe
+  OK  backtracking.html:2173           L 2173  const v=v0+(v1-v0)*(j+0.5)/MV;
+  OK  backtracking.html:2267           L 2267  {const wg=v<(v0+v1)/2?0:1;hitW[wg]+=fCol;NW[wg]++;elecW[wg]+=elecL
+  OK  backtracking.html:856            L  856  return Math.max(8,Math.min(64,Math.ceil(rasante*L/(tor>=0.5?2:4)))
+  OK  backtracking.html:2461           L 2461  const p=poaRow(rowAngles[r],rowTiltAt(T,r),T.axisAz,zen,az,irr,doy
+  OK  backtracking.html:1154-1160      L 1154  function rowTiltAt(T,r){
+  OK  backtracking.html:1621           L 1621  segTilt.push(sg.map(o=>Math.atan2(o.z[1]-o.z[0],(o.s[1]-o.s[0])||1
+  OK  backtracking.html:2562           L 2562  function segTiltAt(T,r,k){
+  OK  backtracking.html:1250           L 1250  const meaningful=zen<82;
+  OK  solargpt_core/tracker3d.py:893   L  893  def _bt3d_active_mask(zen, azi, terrain, zen_max=82.0, bind_margin
+
+── SIN FRAGMENTO (la línea existe; el contenido no se puede verificar) ──
+  --  solargpt_core/plant_feedback.py:179        def tracking_error(
+  --  backtracking.html:2802                  const OPT_DF_MAX=null;
+  --  backtracking.html:2824                  const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
+  --  backtracking.html:2457                  const sh=fast?shadeRows25(zen,az,T,rowAngles):shadeRows(zen,az,T,r
+  --  backtracking.html:2910                  if(!retenida&&!retenidaDF){
+  --  backtracking.html:845                   if(T.real)return 8;
+  --  backtracking.html:3044                  const TRACKER_SLEW=0.17;                             // °/s (spec 
+  --  backtracking.html:6929                  '<td class="'+(Math.abs(tot[P.key]-best)<1e-9?'best':'')+'">'+tot[
+  --  backtracking.html:4344-4346             // COSTE: con planta real los dos optimizadores se llevan el 84% d
+  --  backtracking.html:4926                  lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c
+  --  backtracking.html:7370                  const pp=ls?poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo):
+  --  backtracking.html:7396                  if(segOn(DAY.T)&&PK.segAng){ls=PK.segAng[tIdx];ang=segLineMean(DAY
+  --  backtracking.html:7403                  ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,
+  --  tools/careo_produccion.mjs:103          const ps = F.poaPlantSeg(g.zen, g.az, Ts, segAng, irr, doy, C.albe
+  --  tools/export_consignas.mjs:205          shDe.set(B.b, F.poaPlantSeg(g.zen, g.az, B.T, ang, irr, doy, ALB).
+  --  tools/gen_golden_anual.mjs:70           policyAngles,policyAnglesSeg,poaPlantSeg,anglesAstro,anglesAstroSe
+  --  tools/test_produccion.mjs:447           const ps = S.F.poaPlantSeg(zen, g.az, T, seg, irr, doy, c.albedo);
+  --  backtracking.html:6918                  tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60
+  --  tools/barrido_terrenos.mjs:66-104        const z = new Array(n).fill(0);
+  --  .github/workflows/bancos.yml:189        semilla: [1, 7]
+  --  backtracking.html:3338                  if(poaPlant(zen,az,T,c2,irr,doy,albedo).plant>=pRef-E_EMPATE_W){be
+  --  backtracking.html:2246-2249             for(let it=0;it<3;it++){
+  --  backtracking.html:842-845               function mvPara(T,zen){
+  --  backtracking.html:6902-6923             $('yearbtn').onclick=()=>{
+  --  backtracking.html:2135                  cands.sort((a,b)=>a.adx-b.adx);
+  --  docs/algoritmos_backtracking.html:115        <tr><td>Sol (NOAA)</td><td>elevación 9,28° · azimut 66,7° (E-NE) ·
+  --  backtracking.html:154                   <div class="f"><label>Altitud m</label><input id="alt" type="numbe
+  --  tools/export_consignas.mjs:177          const ALT = 739, TL = 3.5, ALB = 0.20, TH_DISP = -1;
+  --  backtracking.html:4147                  rowTilt:P.tilt,groups:groups,drive:c.drive,lineX:P.lineX,
+  --  backtracking.html:2706                  const p=poaRow(segAngles[r][k],segTiltAt(T,r,k),T.axisAz,zen,az,ir
+  --  solargpt_core/tracker3d.py:1631         albedo : ground albedo for the ground-diffuse term (project conven
+  --  backtracking.html:1154                  function rowTiltAt(T,r){
+  --  solargpt_core/tracker3d.py:851          def _no_shade_violations_from_residual(residual_mm, tol_mm=-1.0):
+  --  solargpt_core/tracker3d.py:1158         def no_shade_violation(zen, azi, terrain, row_angles, tol=2e-3):
+  --  backtracking.html:3367-3369             if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupl
+  --  backtracking.html:4355-4358             const caros=POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl
+
+RESULTADO: ninguna cita rota

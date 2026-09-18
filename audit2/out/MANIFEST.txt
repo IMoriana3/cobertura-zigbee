@@ -1,6 +1,6 @@
 MANIFEST — audit2/out
-generado   2026-09-18T06:09:51Z
-commit     2e1b6c0b3212e54c6364f2a6a73564362d9a5b46
+generado   2026-09-18T09:36:24Z
+commit     3096c7bce181c2ac247eaa744ef32cd220d1bb82
 node       v22.22.2
 sha256sum  sha256sum (GNU coreutils) 9.4
 
@@ -17,23 +17,34 @@ C.txt                              7110  5f17db057baf9fa795679a4d7a7518989088cc9
 C1_instantes.csv                 641913  f18222e3d57db5e4229eaef70eb0ebfbf9642dd4930af86bc9f67628b9423e1e
 C2_barridos.csv                 3897266  8609f549f79b612b2bad3bdfd819dded96722f52d10bddad4d52d5fd64d66024
 C2_muestra.csv                    32165  ebc56c1105fd26bc24bc4df7cccca3b2345bd53c42fa7488e3293928c1721e1d
+C34.prog.txt                        294  20f96b735fe8eee24a35310ec21278e0cda04d6d7596b888ca754912b94be642
+C34.txt                            9483  be3b8a49059148b43c94f9c444b6f9ebf01a192f5e1e9f52d2f36315852f7e24
+C34_c3.csv                        16340  9ab25161e207045ac2abbbf38d2bbabfcbeb058dd77733b2ae4f6d2eb9d2c252
+C34_c4.csv                         7791  e97defacaa649549ca6491bbc3337e54faf69a336b2781552a453661f4e6f878
 C3_contraejemplos.csv             11648  b51a39bb2ee8a9f4209fb3df771ccbf472a227c08d605e04b8a873a120e2128e
 C4.csv                             5141  854130ea327e76bf5be74c61e75790d595110d1d9cd8b59856553ecde0326c03
 C4.progreso.txt                     266  736b57fc803e85e288bf90cd60dda7487b94a36dd9be36e4176f3918d13bdcea
 C4.txt                             5682  983be9c3fb400362b25c15f640cb7b5fc8256cf43746909449bc48b74aff3f48
 C5.csv                           322642  4138b158221da6de9d7399f5ad8aeea806ad2ce1dde5cdaabbd16bfa48701e72
 C5.txt                             6825  3d1481355ca03cc9162530e70ce912253aea69ae8b60b270a2fdedeb9acc5611
+CITAS.txt                          8461  7448b99d12c52cf9e73a3e857ee78f23c060891228f06dd136c74dc2d938ffa7
 D1.txt                             2161  e637ede7e96d04758d57098e54a54284ac6f86a6b19d65e2199509040db8f5bf
 D1_barrido.csv                    72274  26c87412070dd3baf869ba9ebd49de5a2730b15214487350b7cbfc3a5212f2e8
-D2.txt                             1683  24e18525fb1e5996532e327f2b2d5ea586a55e7bd4a22980464adda0bbe4aa42
+D2.txt                             1923  c7e0ea5c40d55fdf612e33913bd9e657866ba790198bbaeff49a985593d52505
 D23_D3b.csv                         507  73479ac663692c93e07dc94d16b4511934e3046914f216b9ac0bda11c6a22d66
+D2_MV8.txt                         1683  24e18525fb1e5996532e327f2b2d5ea586a55e7bd4a22980464adda0bbe4aa42
+D2mv32.txt                         1294  d43d273924ae64710898bd4c7725966121887537f41eaa47b50a01fb967c7bbc
 D3a.txt                            2086  3d8320fe9b9c55a881c3861118b0948cad8773351d4ef65854ab8a599cdc2aba
 D3b.txt                            3143  4bf627fc3da8a7c6d4183929e0deba9e4e8b2ebc499c215ab77cf6fe2fa4da83
 D4.txt                             3515  d1722109e48466339acdc181d2fcf2a8d3090803cbde081d4db15b5e18266186
+D5.csv                              127  69e9656bac3a0f2a24ffd8f303bf703752a52b4ed19c700018d763cb0adf0462
+D5.txt                             1542  d646bf279ff3d5aac7cb67b0e605adac19d726b8f11cb120c54b38101549e807
 E1.csv                             2180  9a9c56aafdd41177162b52aa4085248e381b25d4f66a618fa1fb782415f4110e
 E1.txt                             5398  8049b83d3197c7bd24cf26c721456b517d31bdb71bdfaef9b4e08e8e8db92815
 E13.txt                            3297  c30022a6780d2977c11b0cf14953ef0855296778d1b804ab72e7cc920d7622ae
 E2.txt                             2726  f61b88988ddba80ec4e380850a5be7013b662db0958bf09f1d0269a08269e314
+E4.txt                             9198  08207450d8f344ce4c414d615ed01c44b1f95bdb3da37cec6613cbe69dfdabd7
+E4_estaciones.csv                  2277  9580e1780885ce2da27315d09b5bbc2a55479c6ee402d1a93824438e990d6eaf
 F23.csv                            1240  c93976cb7f5561aa1e4f1b7572b66e2378e1af71f80a68e81f4aafbaf5f4f928
 F23.txt                            3173  7429bee40a12ba4b5614b29d9b12802380492d5b3629395125b0c171277e844a
 G1.txt                            16540  45c4a9a0ea8303a82f8f3b947dd57c30e5c9f61bb7cfd3d1110de41af917ace6
@@ -41,6 +52,8 @@ G1_careo.csv                        860  95dd769c8bfd001bdaa40f0fa57b31d463e1d4c
 G1_js.json                        27427  941760e1eb3585b26224e444a97ba1714aea72c33ce35ba7b76610706e207aad
 G1_py.json                        13591  83ce194bb606a639a909124b222d33f3890ba300e70595cd59d02829ec5c3589
 G1_py.txt                          1759  d32c2bd7bb4f64fc9281659fde6057f0b5ff896c7379ea526e66180556948b73
+G3.txt                             7797  a4a1a57d7d87ff48ae271833d3ed9ffcbc92ebc0b70b3c04d20874d934a18efb
+PROCEDENCIA.md                     4031  b4efbfde2a1c2dadbf706e38d7f22bc402599b261691926bcf300fcbfb517083
 
 scripts de audit2/ (los que producen lo anterior)
 script                                bytes  sha256
@@ -50,18 +63,24 @@ A3_anual_ayora.mjs                     7092  ea7c32ca68539118a0a9153d86f26cac2dc
 A4_poaplantseg.mjs                     2719  e3b620a67e38143d32ef5fa7303bc3d01b84b62be829171f5a0bbf658d4ebe94
 B1_caso_b_dos_commits.mjs              1372  edf6a1e0a6b796175534151aba1ff1fb32046900e7f697a76b52550e8edd0533
 B3_biseccion.mjs                       2049  f9ef88a22d854d34d235719a42a65a648718d588d94e0feac5020447f7c45bee
+C34_energia.mjs                       17543  4fb3956b77c9170edac909ad76f7c5a6eeb14688ade74c96ed468ebae38f916a
 C4_applydrive.mjs                     11597  680e4817a5d3f741edc1ad5a68e8d13f307d601254f65f9e9b6e1465e5aaf8be
 C5_bisecciones.mjs                    15860  70c55ffd9ef5d4f72a5485fb46ba37b695763265394d3175be87a86909a00a12
 C_monotonia.mjs                       19012  29247d7c21e7180f469409442a6f63a276d781dd529407be997174d7a7a5c65d
 D1_cuantizacion_mv.mjs                 4667  4d8c4ce95f9c24cfb7bffdad8dd46e2be44e4995f1024f538e54084901297659
 D23_anual_variantes.mjs                8705  e347639c35ebae7ee37861535359eaf3e4998552614577499d31b8dfc36888c7
 D4_escalon.mjs                         4210  f0b17c392940de45c7699f4fb03868b911d7ad2a0166c74f0c6d009a6edd7b5f
+D5_calibracion_plena.mjs               5409  ba0b72f596266cb942e01d2962649b6390af7d234709c3b230ab9ca399065c47
 E13_detalle.mjs                        3440  ed9a830bb5b65fd6f331b67db4bfc289682c978b7e32b0032aacd6c0b083552f
 E1_tramo_2175_2200.mjs                 6032  f423b56ce67944614ec371ae6cc09a0bf56e04280a1d5dcc23afb94dc22e0846
 E2_hipotesis.mjs                       2753  658f01b1ee82bee15af45d161429bb0b514ea74d0c6622018ffcb66ff00a9183
+E4_mv_impar.mjs                       10593  3da5b599431c990fc88d0c88947bc87b43760615b0fe359131b4ac5cd0ac8abd
 F23_mesa.mjs                           7924  899b51370584160a5e652342693ca4705bc4169a42e402d2a6b3ee75bb6727df
 G1_careo.mjs                           4727  76d33bc34dd77cbab7c3916ff17970e965dcb583df36cc4d4de1ab0cfb6f8c86
 G1_js.mjs                              2884  6c73de060af8f4d309fa54e59203e3de6a96fbeb9498eaba4ab0e2c366e3baee
 G1_py.py                               4412  24d2c30eb374316f041cc78cd63e0b7e2772a4d08bd22d5be2c8e2ee0a2e8799
+G3_arnes.mjs                           9344  f4148291ab2e036cbe6a5927fcafa08d023c290d8de2574142edb2a2fe3e6ddd
 lib_motor.mjs                          4718  ccc53ac6df7d94680d02f622e5ec376023aaaaaa5580dd371ec6840c5dbe4ea2
 manifiesto.sh                          1243  c1129d7b4c80e5eb7f6e5e1ef26fc435fbeaa7eae848577d8b7976da45d00fc8
+procedencia.mjs                        6472  29693ff7db5a63790726a3ab23e8feabdee1f01bb4593179089fdbe1471941d0
+verifica_citas.mjs                    10244  e2d5de290c946b24594d55de08b91cf7bc5696e5021f240757b8ebd2ba8d28bd

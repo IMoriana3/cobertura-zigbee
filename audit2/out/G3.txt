@@ -1,0 +1,109 @@
+════════════════════════════════════════════════════════════════════════════════════════════
+E-G3 · auditoría del arnés de G.1 · commit 3096c7bce181c2ac247eaa744ef32cd220d1bb82 · node v22.22.2
+════════════════════════════════════════════════════════════════════════════════════════════
+
+── ¿define alguno de los scripts una función del motor? ───────────────
+  audit2/G1_js.mjs         define  0 funciones: (ninguna)
+  audit2/G1_py.py          define  0 funciones: (ninguna)
+  audit2/G1_careo.mjs      define  0 funciones: (ninguna)
+  audit2/lib_motor.mjs     define  3 funciones: motorDe, caso, echo
+  ⇒ funciones del motor redefinidas en el arnés: 0
+
+── ¿de dónde sale la física de cada lado? ─────────────────────────────
+  LADO JS — audit2/lib_motor.mjs, función motorDe:
+     export function motorDe(sha) {
+       const html = leeDe(sha, 'backtracking.html');
+       const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
+       if (i0 < 0 || i1 < 0) throw new Error(`sin delimitadores de FÍSICA PURA en ${sha}`);
+       const j0 = html.lastIndexOf('/*', i0);
+       const sol = leeDe(sha, 'sol.js') + '\n' + leeDe(sha, 'irradiancia.js');
+       const dev = EXPORTA.map(n => `typeof ${n}!=='undefined'?${n}:undefined`).join(',');
+       const F = new Function(sol + '\n' + html.slice(j0, i1) + `return [${dev}];`)();
+       const o = {}; EXPORTA.forEach((n, i) => { o[n] = F[i]; });
+       o.__sha = sha; o.__html = html;
+       return o;
+     }
+
+  LADO PYTHON — audit2/G1_py.py, importación y llamada:
+     import json, os, sys, traceback
+     sys.path.insert(0, "/home/user/SolarGPTfull/solargpt")
+     import numpy as np, pandas as pd
+     from solargpt_core import tracker3d as t3
+     terrain = t3.build_terrain_from_profile(
+     f = getattr(t3, fn)
+     sh = t3.compute_shade(zen, azi, a, terrain)
+     se = t3.electrical_shade_loss(np.asarray(sh, dtype=float), terrain.n_bypass_diodes)
+     pr, pp = t3.compute_bt3d_poa_per_row(sp, wx, terrain, a, shade_elec=se,
+
+── lo que el arnés SÍ construye a mano, y por qué no es física ────────
+     export function caso(F, cual, nR = CANON.nR) {
+       const RAD = Math.PI / 180, L = 2 * 28 * 1.146 + 0.55;
+       const r = F.mulberry32(1234); const tilts = [];
+       for (let i = 0; i < nR; i++) tilts.push(cual === 'B' ? (r() * 2 - 1) * 4 : 0);
+       const ELEV = []; for (let i = 0; i < nR; i++) ELEV.push(-i * CANON.pitch * Math.tan(8 * RAD));
+       const segs = []; for (let i = 0; i < nR; i++) segs.push([[-L / 2, L / 2]]);
+       return { pairs: F.pairsFromElev(ELEV, CANON.pitch, tilts), cw: CANON.cw, axisAz: CANON.axisAz,
+                maxAngle: CANON.maxAngle, gcr: CANON.cw / CANON.pitch, z0: CANON.z0, nBypass: CANON.nBypass,
+                iam: CANON.iam, rowTilt: tilts, groups: null, drive: 'mono', segs };
+     }
+
+  Es la DEFINICIÓN de los casos A y B del encargo (pendiente 8°, tilt N-S aleatorio
+  amplitud 4 con mulberry32(1234)), no lógica del motor: las cotas salen de la fórmula
+  del enunciado y las parejas de F.pairsFromElev, que es del motor. Se declara.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+── CRUCE DE CONSTANTES CONTRA LOS CASOS DIVERGENTES ──────────────────
+candidatos declarados por el auditor, verificados uno a uno:
+
+  (a) UMBRAL DE DEFERRAL. backtracking.html:1250:
+        const meaningful=zen<82;
+      y su uso inmediato, 1251-1256:
+        for(let r=0;r<nR;r++){
+        // signo de ESTA fila: el de sus parejas; si discrepan (tránsito), arbitra
+        // el signo de la baseline pvlib, que es continua
+        const sgnR=(r===0)?ps[0]:(r===nR-1)?ps[ps.length-1]:
+        (ps[r-1]===ps[r]?ps[r]:(Math.sign(base[r])||ps[r]));
+        let v=sgnR*mag[r];
+      lado Python: solargpt_core/tracker3d.py:893  def _bt3d_active_mask(zen, azi, terrain, zen_max=82.0, bind_margin_deg=1.0):
+      ¿lo usa compute_bt_angles_3d (532-771)? SÍ
+
+  (b) repairNoShade EN EL LADO PYTHON:
+      búsqueda exhaustiva  grep -nE "repair" tracker3d.py  ⇒ hay coincidencias
+      lo más parecido son VERIFICADORES, no reparadores: tracker3d.py:851, tracker3d.py:1158
+      ⇒ la etapa repairNoShade del JS (backtracking.html:3367-3369) NO tiene contraparte en el Python.
+
+  (c) ACOPLE POR ACCIONAMIENTO:
+      grep -nE "groups|drive|apply_drive" tracker3d.py ⇒ SIN COINCIDENCIAS
+      PlantTerrain3D no tiene campo de accionamiento: sus campos son pairs, collector_width_m,
+      axis_azimuth_deg, max_angle_deg, gcr, surface_to_axis_offset_m, n_bypass_diodes.
+      En esta rejilla el JS corre con drive 'mono' y T.groups = null, así que applyDrive es
+      la identidad en los DOS lados: este candidato NO puede explicar la divergencia.
+
+── LOS CASOS DE MAYOR |Δθ|, con su etapa ──────────────────────────────
+  caso  hora   política   fila  θ JS      θ PY      |Δθ|     sol°   torsión máx  etapa que difiere
+   B   18:30  pairwise     0    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  pairwise     1    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  pairwise     3    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  pairwise     4    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  mgl          0    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  mgl          1    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  mgl          3    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   18:30  mgl          4    10.00   -55.00   65.000   32.7       7.44°  repairNoShade solo en JS
+   B   09:00  pairwise     0    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+   B   09:00  pairwise     1    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+   B   09:00  pairwise     4    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+   B   09:00  true3d       0    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+   B   09:00  true3d       1    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+   B   09:00  true3d       4    -2.00    55.00   57.000   25.3       7.44°  repairNoShade solo en JS
+
+  |Δθ| por banda de elevación solar (todas las políticas comparables, casos A y B):
+     sol <10°    n=  84  mediana   0.0000°  máx  44.1346°
+     sol 20-40°  n= 168  mediana   0.0000°  máx  65.0000°
+     sol >40°    n= 168  mediana   0.0753°  máx   0.7963°
+
+── bt2d y optfree en tracker3d.py, con cita ───────────────────────────
+   grep -n "bt2d" tracker3d.py ⇒ SIN COINCIDENCIAS
+   grep -n "optfree" tracker3d.py ⇒ SIN COINCIDENCIAS
+   grep -n "free" tracker3d.py ⇒ SIN COINCIDENCIAS
+   grep -n "per_unit" tracker3d.py ⇒ SIN COINCIDENCIAS
+   grep -n "OPTFREE" tracker3d.py ⇒ SIN COINCIDENCIAS
