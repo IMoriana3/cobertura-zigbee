@@ -39,6 +39,62 @@ try {
   await pg.goto(`http://localhost:${PORT}/produccion.html`, { waitUntil: 'load' });
   await pg.waitForTimeout(2000);
 
+  /* ────────────────────────────────────────────────────────────────────────────
+     QUE LA ESCENA SE VEA. Este banco miraba el MODELO —posiciones, normales,
+     tintes— y nunca lo PINTADO, y por ese hueco se colo que la pagina no mostrara
+     absolutamente nada: solo cielo. La causa fue que `coloca()` movia la camara sin
+     apuntarla (quien la orienta es R3.ctrl.update(), que corre DESPUES del bucle de
+     encuadre), asi que el bucle proyectaba las ocho esquinas contra una vista que no
+     era la real, `lleno()` no bajaba nunca y la distancia se multiplicaba por su tope
+     1,7 las ocho vueltas: 1,7^8 = 70, y los 134 m de salida acababan en 9,3 km. Con
+     el plano lejano en 6000 m la escena entera quedaba recortada.
+
+     Se comprueban las dos caras del mismo hecho, porque cada una caza cosas
+     distintas: que la caja de la escena OCUPE el lienzo (geometria) y que el lienzo
+     tenga COLORES (pixeles). Lo segundo sobrevive a que alguien deje la camara bien
+     y rompa el render por otro sitio.
+
+     VA AQUI, RECIEN CARGADA LA PAGINA, y no al final: puesto al final medía un estado
+     que había fabricado el propio banco —que pasea la página por varias plantas y
+     ámbitos— y daba lleno=9,76 con el codigo bueno. Lo que se quiere vigilar es lo que
+     ve quien abre la pagina. */
+  {
+    const m = await pg.evaluate(() => {
+      const bb = new THREE.Box3().setFromObject(R3.world);
+      let mx = 0, my = 0;
+      for (let i = 0; i < 8; i++) {
+        const p = new THREE.Vector3(i & 1 ? bb.min.x : bb.max.x, i & 2 ? bb.min.y : bb.max.y,
+                                    i & 4 ? bb.min.z : bb.max.z).project(R3.cam);
+        if (!isFinite(p.x) || !isFinite(p.y)) return { roto: true };
+        mx = Math.max(mx, Math.abs(p.x)); my = Math.max(my, Math.abs(p.y));
+      }
+      const R = R3.renderer, gl = R.getContext(), cv = R.domElement, w = cv.width, h = cv.height;
+      R.render(R3.scene, R3.cam);                       // PINTAR antes de leer: con
+      const bf = new Uint8Array(w * h * 4);             // preserveDrawingBuffer apagado
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, bf);   // el buffer llega vacio
+      const col = new Set();
+      for (let i = 0; i < w * h; i += 13) col.add(bf[i * 4] + ',' + bf[i * 4 + 1] + ',' + bf[i * 4 + 2]);
+      const tam = bb.getSize(new THREE.Vector3());
+      return { lleno: +Math.max(mx, my).toFixed(2), colores: col.size,
+               dist: +R3.cam.position.distanceTo(R3.ctrl.target).toFixed(0),
+               diag: +tam.length().toFixed(0) };
+    });
+    /* el objetivo del codigo es 0,86 del lienzo; la banda va holgada porque depende
+       del tamano del lienzo, pero 9,3 km de camara dan 0,00 y eso no se salva */
+    check('la escena OCUPA el lienzo (no se ha ido la cámara a tomar viento)',
+          !m.roto && m.lleno >= 0.45 && m.lleno <= 1.15,
+          'lleno=' + m.lleno + ' objetivo 0,86');
+    /* y que la distancia guarde relacion con el tamano: un multiplo sano anda por 1-3
+       diagonales, nunca por 60 */
+    check('la cámara está a una distancia del orden del tamaño de la escena',
+          !m.roto && m.dist < m.diag * 6,
+          'dist=' + m.dist + ' m · diagonal=' + m.diag + ' m · ' + (m.dist / m.diag).toFixed(1) + '×');
+    /* y que se PINTE: un lienzo de solo cielo da un punado de colores del degradado */
+    check('el lienzo pinta la escena, no solo el cielo',
+          m.colores >= 40, 'colores distintos: ' + m.colores);
+  }
+
+
   /* 8) LOS LÍMITES DE MESA. Un listón claro en cada extremo del paño de tinte,
         porque con el color de producción por mesa cuatro mesas seguidas del
         mismo tracker se leen como una viga continua de 65 m. Lo que se mide no
