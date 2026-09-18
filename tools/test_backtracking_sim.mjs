@@ -782,8 +782,24 @@ t('v1.62 · EL CERTIFICADO NO LLAMA «MEJOR» A LO QUE NO LO ES', () => {
     throw new Error('fuera de la banda de empate ya no lo reconoce como mejor');
 
   // y el texto pintado tiene que usar esa decisión, no reinventarla
-  const pin = app.slice(app.indexOf('function pintaCertificado'));
-  if (!/tipoDeMargen\(/.test(pin.slice(0, 6000)))
+  /* El corte era una VENTANA FIJA de 6.000 caracteres desde el principio de la
+     función, y eso caduca solo: en cuanto la función crece por arriba —el
+     guardián de identidad del día le añadió comentario y comprobación—,
+     `tipoDeMargen(` se sale de la ventana y el banco dice que no está cuando
+     sigue estando. Se corta el CUERPO ENTERO contando llaves, que no depende de
+     cuánto mida, con su control de que el corte no sale vacío. */
+  const cuerpoCert = (() => {
+    const i = app.indexOf('function pintaCertificado');
+    if (i < 0) return null;
+    let d = 0;
+    for (let k = app.indexOf('{', i); k < app.length; k++) {
+      if (app[k] === '{') d++; else if (app[k] === '}') { d--; if (!d) return app.slice(i, k + 1); }
+    }
+    return null;
+  })();
+  if (!cuerpoCert || cuerpoCert.length < 2000)
+    throw new Error('el corte del cuerpo de pintaCertificado sale vacío: el banco no está mirando nada');
+  if (!/tipoDeMargen\(/.test(cuerpoCert))
     throw new Error('la pintura no usa tipoDeMargen: la decisión volvería a vivir en dos sitios');
 });
 
