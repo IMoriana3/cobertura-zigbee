@@ -989,6 +989,123 @@ Notas: un solo instante y un solo caso. La suma pico-pico decrece
 monótonamente con MV (56,4 → 1,2 W/m²), el número de oscilaciones también
 (45 → 13), pero el argmax **no** converge dentro de la rejilla probada.
 
+### E-D2  Anual de Ayora real con MV forzado — PARCIAL
+
+Commit:      3a57451
+Script:      `audit2/D23_anual_variantes.mjs`
+Comando:     `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.2 --etiqueta=_D2`
+Node:        v22.22.2
+Salida:      `audit2/out/D2.txt` · CSV `audit2/out/D23_D2.csv`
+Estado:      **MEDIDO** para MV 8 · **NO VERIFICADO** para MV 16, 32 y 64
+
+**Cómo se fuerza MV**: con `T.mv`, que gana a todo lo demás en `mvPara`
+(`backtracking.html:842-845`) — se comprueba **antes** que `if(T.real)return 8`,
+así que forzarlo **sí** sobreescribe la regla de planta real. Verificado en E-D1.
+Se fija también en `Tcfg`, el terreno con el que se calculan los ángulos.
+
+**Diseño reducido, declarado** (ver `CRÍTICA DEL ENCARGO` nº 2): 4 días
+representativos (21-mar, 21-jun, 21-sep, 21-dic) en vez de 12, y paso 20 min en
+vez de 10, con los pesos renormalizados a 365 días. El bucle es el del manejador
+publicado (`backtracking.html:6902-6923`), ejecutado dentro de la página con sus
+propias funciones. Sitio lat 39,11821 lon −1,15985 alt 739 m tz +2, TL 3,5,
+albedo 0,20, 79 líneas de simulación, cuerda 2,384, z0 0,17, ±55°, axisAz 0,
+drive bifila, nb 2, b0 0,05. Sin lazo de control.
+
+Coste medido: **14 871 s por variante** (4 h 8 min) con las nueve políticas. Las
+cuatro variantes de este ítem son ~16,5 h de CPU.
+
+| política | MV 8 (kWh/m²·año) | vs pairwise | vs row |
+|---|---|---|---|
+| astro | 2631,8894 | +14,7500 % | −0,6389 % |
+| global | 2643,3184 | +15,2483 % | −0,2075 % |
+| row | 2648,8196 | +15,4882 % | 0,0000 % |
+| bt2d | 2640,7619 | +15,1368 % | −0,3040 % |
+| pairwise | 2293,5007 | 0,0000 % | −13,4106 % |
+| true3d | 2278,7642 | −0,6425 % | −13,9670 % |
+| mgl | 2326,5231 | +1,4392 % | −12,1636 % |
+| optimal | 2666,4889 | +16,2589 % | +0,6672 % |
+| **optfree** | **2668,3689** | **+16,3409 %** | **+0,7382 %** |
+
+MV 16, 32 y 64 estaban todavía calculando al escribir esto.
+
+**Calibración del diseño reducido.** Esta variante (MV 8, nb 2) es exactamente la
+misma configuración que la variante 1 de E-A3, y sólo cambia el muestreo
+temporal. Eso permite medir el sesgo que la `CRÍTICA DEL ENCARGO` nº 2 daba por
+no calibrable:
+
+| política | 12 días / 10 min (E-A3) | 4 días / 20 min | Δ absoluto | Δ relativo |
+|---|---|---|---|---|
+| pairwise | 2313,4464 | 2293,5007 | −19,9457 | **−0,8622 %** |
+| true3d | 2298,7128 | 2278,7642 | −19,9486 | **−0,8678 %** |
+
+El sesgo es el mismo en las dos políticas hasta 6 milésimas de punto, y la
+**diferencia relativa** entre ellas se mueve **0,0057 pp** (−0,6369 % en el
+diseño pleno frente a −0,6425 % en el reducido). El diseño reducido baja el nivel
+absoluto un 0,86 % y deja las comparaciones entre políticas prácticamente
+intactas — que es lo que D.2 y D.3 preguntan.
+
+Notas: la calibración cubre **dos** políticas, las únicas para las que existe el
+anual pleno (E-A3 variante 1); no se ha calibrado ninguna de las siete restantes,
+y en particular ninguno de los dos optimizadores. Un solo año (2026), cielo claro.
+
+### E-D3  Anual de Ayora real con nb forzado: orden de las políticas — PARCIAL
+
+Commit:      3a57451
+Script:      `audit2/D23_anual_variantes.mjs`
+Comandos:    `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.3 --vars=0,1,2 --etiqueta=_D3a`
+             `node audit2/D23_anual_variantes.mjs 20 --dias=2,5,8,11 --solo=D.3 --vars=3,4 --etiqueta=_D3b`
+Node:        v22.22.2
+Salida:      `audit2/out/D3a.txt`, `audit2/out/D3b.txt`
+Estado:      **MEDIDO** para nb 0, 2 y 3 · **NO VERIFICADO** para nb 1 y nb 6
+
+`nb` se fuerza con `T.nBypass` y el mismo valor en `Tcfg`. Con `nb = 0`,
+`elecLoss` es lineal y no hay escalón de diodos (`backtracking.html:628-632`).
+Mismo diseño reducido y mismos parámetros que E-D2; MV sin forzar, o sea **8** por
+`if(T.real)`. La columna nb = 2 es la corrida MV 8 de E-D2 (misma configuración).
+
+Energía anual, kWh/m²·año:
+
+| política | nb = 0 | nb = 2 | nb = 3 |
+|---|---|---|---|
+| astro | 2743,9536 | 2631,8894 | 2673,1460 |
+| global | 2707,4372 | 2643,3184 | 2667,3713 |
+| row | 2706,7388 | 2648,8196 | 2670,0694 |
+| bt2d | 2707,3194 | 2640,7619 | 2666,0507 |
+| pairwise | 2298,1223 | 2293,5007 | 2295,2661 |
+| true3d | 2283,0564 | 2278,7642 | 2280,3449 |
+| mgl | 2331,1919 | 2326,5231 | 2328,3046 |
+| optimal | 2743,9536 | 2666,4889 | 2686,0193 |
+| optfree | 2743,9607 | 2668,3689 | 2686,7296 |
+
+**ORDEN por energía anual, una columna por nb:**
+
+| puesto | nb = 0 | nb = 2 | nb = 3 |
+|---|---|---|---|
+| 1 | optfree | optfree | optfree |
+| 2 | **astro** ≡ optimal | optimal | optimal |
+| 3 | global ← **CAMBIA** | **row** ← **CAMBIA** | **astro** ← **CAMBIA** |
+| 4 | bt2d ← **CAMBIA** | global ← **CAMBIA** | row ← **CAMBIA** |
+| 5 | row ← **CAMBIA** | bt2d ← **CAMBIA** | global ← **CAMBIA** |
+| 6 | mgl | **astro** ← **CAMBIA** | bt2d ← **CAMBIA** |
+| 7 | pairwise | mgl | mgl |
+| 8 | true3d | pairwise | pairwise |
+| 9 | — | true3d | true3d |
+
+**El orden cambia con nb.** `astro` se mueve del puesto 2 (nb = 0) al 6 (nb = 2) y
+vuelve al 3 (nb = 3): **cuatro puestos de recorrido** por un parámetro del modelo
+eléctrico. `global`, `row` y `bt2d` permutan entre sí en los tres casos. Lo que
+**no** cambia: `optfree` es primero en los tres, y `pairwise` y `true3d` son
+últimos en los tres.
+
+Con **nb = 0** (pérdida lineal, sin escalón de diodos), `astro` y `optimal` dan
+**el mismo número hasta el cuarto decimal**: 2743,9536 kWh/m²·año, y `optfree`
+sólo les saca 0,0071 (2743,9607). Con nb = 2 y nb = 3 se separan.
+
+Notas: **tres de los cinco nb** que pide el encargo; faltan nb = 1 y nb = 6,
+todavía calculando. El diseño es el reducido de E-D2, con el sesgo de −0,86 %
+medido allí sobre el nivel absoluto y de 0,0057 pp sobre la comparación entre
+políticas. Un solo año, cielo claro, sin lazo de control.
+
 ### E-D4  Escalón mínimo no nulo de pérdida eléctrica por mesa
 
 Commit:      3a57451
@@ -1647,8 +1764,18 @@ ejecutado dentro de la página con sus propias funciones), pero
 esto puede sesgar: el reparto estacional (4 días en vez de 12) y el aliasing del
 paso (20 min en vez de 10). La pregunta que D.3 hace —el **orden** de las nueve
 políticas— es robusta a ese sesgo sólo si las diferencias entre políticas son
-mayores que él, y eso **no se ha podido calibrar** porque la corrida de
-calibración (12 días, 10 min, 9 políticas) es justamente la que no cabe.
+mayores que él. **Eso sí se ha podido calibrar**, aunque no como esperaba: la
+variante MV 8 de D.2 resulta ser la misma configuración que la variante 1 de
+E-A3 (MV 8, nb 2), de modo que la única diferencia entre las dos es el muestreo
+temporal. Medido (E-D2): el diseño reducido baja el nivel absoluto **−0,8622 %**
+en pairwise y **−0,8678 %** en true-3D, y la **diferencia relativa** entre las
+dos se mueve **0,0057 pp**. El sesgo es de nivel, no de orden. La calibración
+cubre dos políticas, no las nueve.
+
+Coste real, para que la cuenta quede con su número: **14 871 s por variante
+reducida** (4 h 8 min) con las nueve políticas sobre Ayora real. Las nueve
+variantes de D.2 + D.3 son ~37 h de CPU en el diseño reducido, y en el diseño
+publicado (12 días, paso 10 min) serían ~6 veces más.
 
 ### 3 · C.1 pide «al menos un θ uniforme con sombra de planos = 0»
 
@@ -1720,6 +1847,8 @@ dominio medido, escritas aquí antes que su cifra.
 | **E-C5 (2)** | `max(shadeRows) ≤ 2e−3` en [lo, hi] de cada unidad | NO | informa (0 casos con más de un cruce de 601) |
 | **E-E1** | «la lista de emisores candidatos cambia» | **SÍ: constante** en los 26 puntos del tramo | el recuento de «qué emisor entra o sale» no informa: no entra ni sale ninguno |
 | **E-A1** | «el veto cambia la ganadora» | medido en **un solo instante** (no cambia) | un punto no es una distribución: no se entrega porcentaje |
+| **E-F2** | «el peso por módulos difiere del peso por largo» | NO: **1 600 de 1 600** mesas declaran módulos | descartado antes de medir — si ninguna los declarase, (b) degeneraría a (a) y el Δ sería cero por construcción |
+| **E-F2 · caso B** | ídem sobre el caso B | **SÍ, constante**: una mesa por fila y sin `segTilt` | (b) ≡ (a) por construcción ⇒ declarado NO APLICABLE en vez de publicar un cero |
 
 ---
 
@@ -1730,14 +1859,15 @@ Lo que el encargo pide y **no** se ha ejecutado, con la razón.
 | ítem | estado | razón |
 |---|---|---|
 | **A.3 variante 9 políticas** | NO VERIFICADO | detenida a los 38 min de CPU sin terminar; coste del orden de horas (medido en E-A3) |
-| **D.2** (anual con MV 8/16/32/64) | EN CURSO al cerrar el documento | diseño reducido declarado (4 días, paso 20 min); si no figura tabla en E-D2, la corrida no había terminado |
-| **D.3** (anual con nb 0/1/2/3/6) | EN CURSO al cerrar el documento | ídem |
+| **D.2 · MV 16, 32 y 64** | NO VERIFICADO | 14 871 s por variante medidos (4 h 8 min); MV 8 sí está en E-D2, y el efecto de MV sobre el argmax está medido aparte en E-D1 |
+| **D.3 · nb 1 y nb 6** | NO VERIFICADO | ídem; nb 0, 2 y 3 sí están en E-D3, y el cambio de orden queda documentado con esos tres |
 | **C.3 / C.4 con columna de energía** | NO EJECUTADO | el encargo pide sólo sombra; la variante con POA de las dos posturas es la corrección de la CRÍTICA nº 5 y no dio tiempo |
 | **C.1 / C.2 con la semilla 7** | NO EJECUTADO | CI corre las semillas 1 y 7 (`bancos.yml:189`); sólo se ha corrido la 1 |
 | **C.5 (3)** penetración de terreno | NO EJECUTADO | `terrBlocked` no exportado y no bisecta en θ (CRÍTICA nº 9) |
 | **E.1 · mecanismo de la cuadratura para MV impar** | NO VERIFICADO | se ha medido que el escalón es exclusivo de MV = 33 y que la poda no cambia; **no** se ha abierto el promedio por estaciones para explicar por qué |
-| **F.2 / F.3** | EN CURSO al cerrar el documento | corrida de un día sobre Ayora real; si no figura tabla en E-F2/E-F3, no había terminado |
+| **F.2 / F.3 · el ANUAL** | NO VERIFICADO | E-F2 y E-F3 miden **un día** (21-jun, paso 20 min), no el anual que pide F.2; mismo motivo de coste |
 | **F.2 en el caso B** | NO APLICABLE | el caso B tiene **una mesa por fila y sin `segTilt`**: la variante (b) coincide con (a) por construcción — sería un test nulo, no una medida |
+| **F.2 · separar tilt de peso** | NO EJECUTADO | el experimento cambia el tilt por mesa y el peso por módulos a la vez, como pide el enunciado; no se ha aislado cuánto aporta cada uno |
 | **G.1 · `bt2d` y `optfree`** | NO EXISTE en `tracker3d.py` | búsqueda exhaustiva con `grep -nE "bt2d\|optfree\|free\|per_unit"` ⇒ sin coincidencias |
 | **G.1 · origen de las divergencias a sol bajo** | NO VERIFICADO | el ítem las mide (hasta 65° en pairwise del caso B); no se ha investigado la causa |
 | **A.1 · veto con `prev` definido** | NO VERIFICADO | la corrida usa un instante aislado (`prev` sin definir), así que la histéresis y el salto del veto (`backtracking.html:2910`) no se ejercitan |
