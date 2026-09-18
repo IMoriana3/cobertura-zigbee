@@ -33,15 +33,24 @@
  * EN CI VA SOLO EL BURGO. Medido aqui: El Burgo 9 min 14 s, San Jose 19 min 55 s
  * —2.289 seguidores y un mapa de sombra que cubre 3,2 km de lado—. El defecto es el
  * mismo en las dos y El Burgo lo caza igual, asi que San Jose se corre A MANO cuando
- * se toque esto. Su resultado, para no tener que repetirlo por curiosidad:
+ * se toque esto. Su resultado, para no tener que repetirlo por curiosidad (35 min):
  *
- *     camara   dentro del recuadro   px en sombra   sesgo(m)
- *       10 m        2289/2289          16,61 %       0,250
- *       30 m        2289/2289          13,33 %       0,250
- *       90 m        2289/2289          10,93 %       0,250
- *      300 m        2289/2289           8,03 %       0,250
+ *   ESCRITORIO · PCFSoft · mapa 8192 · texel 38,5 cm
+ *     camara   dentro       sombra   fuerte   borron   sesgo
+ *       10 m   2289/2289   16,46 %   9,34 %   0,40 m   0,250 m
+ *       30 m   2289/2289   13,25 %   7,13 %   0,40 m   0,250 m
+ *       90 m   2289/2289   10,86 %   4,88 %   0,40 m   0,250 m
+ *      300 m   2289/2289    7,96 %   2,37 %   0,40 m   0,250 m
  *
- * Antes del arreglo eran 48 de 2.289 a ras de suelo.
+ *   MOVIL · PCF · mapa 4096 · texel 77,1 cm
+ *       10 m   2289/2289   18,45 %   7,48 %   0,77 m   0,250 m
+ *       30 m   2289/2289   14,79 %   5,51 %   0,77 m   0,250 m
+ *       90 m   2289/2289   12,24 %   4,02 %   0,77 m   0,250 m
+ *      300 m   2289/2289    8,90 %   2,00 %   0,77 m   0,250 m
+ *
+ * San Jose es la UNICA de las diez que pide mapa de 4096 en movil: con 2048 su texel
+ * mide 1,54 m, mas ancho que la cuerda de un modulo, y la sombra de una mesa no cabe.
+ * Antes del arreglo de la caja eran 48 de 2.289 con sombra a ras de suelo.
  */
 import { chromium } from 'playwright-core';
 import zlib from 'node:zlib';
@@ -347,16 +356,23 @@ check('el sesgo de profundidad vale lo mismo EN METROS en toda planta (0,25 m)',
    de la sombra que hay es oscura, que es justo lo que arruina el borron. Medido:
 
        de los pixeles en sombra, cuantos quedan OSCUROS   (camara a 10, 30, 90, 300 m)
-       escritorio                       86 / 83 / 79 / 65 %
-       movil, con el borron acotado     51 / 53 / 51 / 31 %
-       movil, con el radio SIN acotar    1 /  0 /  0 /  0 %   <- el defecto
+       El Burgo  escritorio             86 / 83 / 79 / 65 %
+       El Burgo  movil, acotado         51 / 53 / 51 / 31 %
+       San Jose  escritorio             57 / 54 / 45 / 30 %
+       San Jose  movil, acotado (4096)  41 / 37 / 33 / 22 %   <- el peor caso bueno
+       El Burgo  movil, SIN acotar       1 /  0 /  0 /  0 %   <- el defecto
 
-   El tope de 20 % deja un factor 1,5 contra el peor caso bueno y un factor 31 contra
-   el defecto a 10 m —donde mas sombra queda— y todo el margen del mundo mas arriba.
+   El tope va en 15 %, no en 20: lo puse en 20 mirando solo El Burgo, cuyo peor caso es
+   31 %, y San Jose en movil a 300 m da 22 % sin que nada este mal —es una planta cuatro
+   veces mas grande y desde 300 m entra entera en el cuadro, con los seguidores a cuatro
+   pixeles—. A 20 % eso quedaba a un 10 % de ponerse rojo por nada. A 15 % hay factor
+   1,5 contra el peor caso bueno y factor 15 contra el defecto, que es el reparto que
+   se quiere: holgado con lo bueno, implacable con lo malo.
+
    Ojo a la columna de al lado en la mutacion: el total de sombra SUBE a 51,02 % justo
    donde la sombra oscura se hunde al 1 %. Por eso la proporcion y no el total. */
 check('la sombra es OSCURA y no un gris lavado, en los dos caminos',
-      todasLasFilas.every(f => f.fuerte / f.todo >= 0.20),
+      todasLasFilas.every(f => f.fuerte / f.todo >= 0.15),
       todasLasFilas.map(f => etq(f) + ':' + (100*f.fuerte/f.todo).toFixed(0) + '% de ' + f.todo + '%').join(' '));
 /* LA PENUMBRA, EN METROS. `shadow.radius` va en TEXELES, asi que el mismo radio vale
    0,46 m en El Burgo y 7,85 m en San Jose. Se comprueba el ANCHO REAL, que es el que
