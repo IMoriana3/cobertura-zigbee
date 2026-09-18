@@ -1373,11 +1373,85 @@ distancia `optimal` − `astro` es de 134,19 kWh/m²·año.
 **nb = 1 es el caso más desfavorable para `astro`** (2478,2994, su mínimo entre
 los cinco) y donde la horquilla entre políticas es mayor.
 
-Notas: diseño reducido (4 días, paso 20 min) con el sesgo de nivel de −0,86 %
-medido en E-D2 sobre pairwise y true-3D; **ese sesgo no se ha calibrado para las
-otras siete políticas**, y en particular no para los dos optimizadores, que son
-los que encabezan la tabla (ver HUECOS). Un solo año (2026), cielo claro, sin
+Notas: diseño reducido (4 días, paso 20 min) con el sesgo de nivel medido en
+**E-D5** para **cuatro** de las nueve políticas —pairwise −0,8622 %, true-3D
+−0,8678 %, optimal −0,8451 %, optfree −0,8461 %, repartidos en 0,0227 pp— y con
+el ordinal entre esas cuatro idéntico en los dos diseños. Las otras cinco
+(`astro`, `global`, `row`, `bt2d`, `mgl`) siguen sin calibrar: **NO VERIFICADO**.
+E-D5 anota además que `optfree` y `optimal` se separan sólo 0,0715 % en el diseño
+pleno, del mismo orden que el reparto de los offsets. Un solo año (2026), cielo claro, sin
 lazo de control, MV 8 en todas las columnas.
+
+### E-D5  Calibración del diseño reducido: anual pleno de los optimizadores
+
+Commit:      3a57451
+Script:      `audit2/D5_calibracion_plena.mjs`
+Comando:     `node audit2/D5_calibracion_plena.mjs pairwise,optfree,optimal 10`
+Node:        v22.22.2
+Salida:      `audit2/out/D5.txt` · CSV `audit2/out/D5.csv`
+Estado:      **MEDIDO**
+
+Cierra el hueco (a): E-D2 y E-D3 usan un **diseño reducido** (4 días, paso 20 min)
+cuyo sesgo estaba medido sólo para `pairwise` y `true-3D`, las únicas con anual
+pleno en E-A3 — y **no** para los optimizadores, que encabezan la tabla de E-D3.
+
+Diseño **pleno**: 12 días 21 de cada mes, paso **10 min**, pesos `DIM`, sin lazo
+de control — el del manejador publicado (`backtracking.html:6902-6923`). Ayora
+real, 79 líneas de simulación, **MV 8** sin forzar (`if(T.real)return 8`,
+`backtracking.html:845`), nb 2, b0 0,05, TL 3,5, albedo 0,20, alt 739 m.
+**875 instantes** con sol por encima del horizonte.
+
+**El control, primero.** `pairwise` se incluye en la corrida para validar el
+arnés: su anual pleno ya está medido en E-A3 variante 1.
+
+```
+PLENO · pairwise       2313.44643430 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 525 s
+```
+
+**2313,44643430** frente a los **2313,44643430** de E-A3: **idéntico dígito a
+dígito**. El arnés queda validado antes de leer las otras dos.
+
+Las otras dos:
+
+```
+PLENO · optfree        2691.13906045 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 5955 s
+PLENO · optimal        2689.21610119 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 4917 s
+```
+
+**La tabla de calibración, con las cuatro políticas:**
+
+| política | pleno 12d/10min | reducido 4d/20min | Δ absoluto | Δ relativo |
+|---|---|---|---|---|
+| pairwise | 2313,44643430 | 2293,5007 | −19,9457 | **−0,8622 %** |
+| true3d | 2298,71277018 | 2278,7642 | −19,9486 | **−0,8678 %** |
+| optimal | 2689,21610119 | 2666,4889 | −22,7272 | **−0,8451 %** |
+| optfree | 2691,13906045 | 2668,3689 | −22,7702 | **−0,8461 %** |
+
+Las tres respuestas que pide el encargo, sin interpretar:
+
+- **¿Mismo signo y mismo orden de magnitud que las otras?** Sí: los **cuatro**
+  offsets son negativos y todos entre −0,84 % y −0,87 %.
+- **¿En cuántos pp se reparten los cuatro?** En **0,0227 pp** (de −0,8678 % a
+  −0,8451 %).
+- **¿El ordinal entre las cuatro es idéntico en los dos diseños?** **Sí**:
+  `optfree > optimal > pairwise > true3d` en el pleno y en el reducido.
+
+**Una distancia que conviene leer junto a esto.** En el diseño pleno, `optfree` y
+`optimal` se separan **1,9230 kWh/m²·año** (2691,1391 frente a 2689,2161), un
+**0,0715 %**. Es la distancia entre el primer y el segundo puesto de la tabla de
+E-D3, y es **menor que el reparto de los offsets** (0,0227 pp sobre un nivel de
+~2690 equivale a ~0,61 kWh/m²·año, del mismo orden). El ordinal entre esas dos
+políticas concretas descansa, por tanto, en una diferencia fina; el resto de la
+tabla de E-D3 se separa por márgenes dos órdenes de magnitud mayores.
+
+**Coste**: 525 s (`pairwise`) + 5 955 s (`optfree`) + 4 917 s (`optimal`) =
+11 397 s, 3 h 10 min. El anual pleno de las **nueve** políticas sería del orden de
+6-7 h con este reparto, no las ~21 h que estimé antes de medirlo — la estimación
+inicial extrapolaba desde el coste del diseño reducido con las nueve, y sobrestimó.
+
+Notas: la calibración cubre **cuatro de las nueve** políticas. `astro`, `global`,
+`row`, `bt2d` y `mgl` siguen sin anual pleno, así que su offset es **NO
+VERIFICADO**. Un solo año (2026), cielo claro, MV 8, nb 2.
 
 ### E-D6  Comprobación cruzada de la columna `nb = 2` de E-D3
 
