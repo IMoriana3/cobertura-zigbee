@@ -2681,9 +2681,26 @@ Los cuatro `cancelled`, con su commit y su run:
 concurrencia. El único `failure` de run es de `0742bbe` (2026-09-11T11:49, run
 34595882409), anterior a la ventana de trabajo de esta auditoría y no examinado.
 
-Notas: se han inspeccionado los logs de **dos** casos (`dfda36c` y `d64e2cb`);
-**NO VERIFICADO** si los otros dos `cancelled` de la tabla produjeron también un
-check en rojo, aunque el gate es el mismo. La ventana es de una rama y de 30 runs, no del
+**Recuento al cerrar la auditoría.** Durante la ronda de cierre, trabajando con la
+cadencia de M.3, se han observado **cuatro** casos con el log inspeccionado, todos
+con el mismo patrón —ningún `failure`, sólo `cancelled`— y todos causados por el
+push siguiente de esta misma sesión:
+
+| run | commit cancelado | lo canceló | jobs en `cancelled` |
+|---|---|---|---|
+| 35330463872 | `dfda36c` | `d64e2cb` | datos, barrido, navegador |
+| 35330672062 | `d64e2cb` | `467c941` | datos, barrido (navegador llegó a `success`) |
+| 35331432509 | `467c941` | `796bdde` | datos, barrido, navegador |
+| 35334693199 | `acec1c3` | `a4c5545` | datos, barrido, navegador |
+
+El único head que completó corrida sin ser superado, `796bdde`, salió **verde
+24/24** (run 35331552512): ninguno de los cuatro rojos correspondía a un banco
+roto.
+
+Notas: los cuatro casos de la ronda de cierre tienen log inspeccionado; de los
+cuatro `cancelled` de la tabla histórica, dos coinciden con estos y los otros dos
+(`37a911e`, `d3732ae`, `b42214e`) siguen como **NO VERIFICADO** en cuanto a si
+produjeron check en rojo, aunque el gate es el mismo. La ventana es de una rama y de 30 runs, no del
 repositorio entero. No se propone corrección: `.github/` está fuera del alcance.
 
 ---
