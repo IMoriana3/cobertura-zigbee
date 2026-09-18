@@ -5646,7 +5646,7 @@ function init3D(){
     controls.maxPolarAngle=Math.PI*0.52;controls.minDistance=3;controls.maxDistance=1500;
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
-    sun.castShadow=true;sun.shadow.mapSize.width=4096;sun.shadow.mapSize.height=4096;
+    sun.castShadow=true;var __ms=Math.min(renderer.capabilities.maxTextureSize,4096);sun.shadow.mapSize.width=__ms;sun.shadow.mapSize.height=__ms;   // TOPE DE LA GPU: pedir un mapa mayor del que declara `maxTextureSize` es pedir una textura que no existe, y en un movil que declare 2048 esto eran 4096. Nadie mas en la pagina consulta el tope; terreno.html si lo hacia y por eso no le pasaba.
     sun.shadow.bias=-2e-4;sun.shadow.normalBias=0.3;
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
       new THREE.MeshBasicMaterial({color:0xfbbd23}));

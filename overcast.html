@@ -3528,7 +3528,7 @@ function init3D(){
     });
     const hemi=new THREE.HemisphereLight(0xbcd4ff,0x1a2510,0.55);
     const sun=new THREE.DirectionalLight(0xffeecc,1.45);
-    sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048;
+    sun.castShadow=true;var __ms=Math.min(renderer.capabilities.maxTextureSize,2048);sun.shadow.mapSize.width=__ms;sun.shadow.mapSize.height=__ms;   // TOPE DE LA GPU: pedir un mapa mayor del que declara `maxTextureSize` es pedir una textura que no existe, y en un movil que declare 2048 esto eran 4096. Nadie mas en la pagina consulta el tope; terreno.html si lo hacia y por eso no le pasaba. Aqui son 2048, que casi toda GPU aguanta, pero la regla es la misma para las cuatro paginas.
     sun.shadow.bias=-2e-4;
     sun.shadow.camera.left=-140;sun.shadow.camera.right=140;
     sun.shadow.camera.top=140;sun.shadow.camera.bottom=-140;
