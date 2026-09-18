@@ -311,6 +311,8 @@ var LAYOUT=null,bosGroup=null,fijGroup=null,FJEXPL=0,FB=null,_fAcc=0,CORRIDOR=23
 var sunPathGroup=null,sunMarker=null,sunRay=null;
 var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera ceñido a la planta ENTERA (centro y semiancho en mundo, por planta en build())
 var SESGO_M=0.25;   // sesgo de profundidad EN METROS de mundo: se convierte a unidades de frustum en cada cuadro, porque el rango near..far crece con el tamaño de la caja (ver updateSunShadow)
+var BORRON_M=0.40;  // SEMIANCHO maximo de la penumbra EN METROS (el nucleo PCF va de -radio*texel a +radio*texel: 0,40 a cada lado, 0,80 de ancho total; verificado en el getShadow de lib/three.min.js). `shadow.radius` va en TEXELES, y el texel mide 2*SH_HALF/mapSize: en El Burgo son 11 cm y en San Jose 154 cm, asi que un radio fijo difumina 0,5 m en una planta y 8 m en la otra (y a 8 m no queda sombra, solo un gris). Se acota aqui y se convierte a texeles en updateSunShadow
+var TEXEL_M=0.80;   // texel MAXIMO que se admite antes de subir el mapa en movil: la cuerda de un modulo son 1,13 m, asi que por encima de ~0,80 m la sombra de una mesa no cabe en un texel y se pierde entera en el borron (ver build())
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -386,7 +388,7 @@ function initThree(){
     var ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1),camera);var hit=rayoSuelo(ray);if(!hit.length)return;
     var p=hit[0].point,off=new THREE.Vector3().subVectors(camera.position,controls.target);controls.target.copy(p);camera.position.copy(p).add(off);controls.update();});
   SUN=new THREE.DirectionalLight(0xfff2d4,2.6);SUN.position.set(-360,300,300);SUN.castShadow=true;SUN._dir={E:-0.5,U:0.6,N:-0.5};scene.add(SUN);scene.add(SUN.target);var sun=SUN;
-  var __hiShad=!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);sun.shadow.mapSize.set(__hiShad?4096:2048,__hiShad?4096:2048);   // escritorio: 4096 (sombra fina); móvil: 2048 (memoria). El shadow camera se ciñe al zoom (updateSunShadow)
+  var __hiShad=!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);sun.shadow.mapSize.set(__hiShad?4096:2048,__hiShad?4096:2048);   // valores de ARRANQUE, para el primer cuadro: build() los recalcula por planta (el mapa sale del texel que pide su tamaño) y updateSunShadow ciñe la caja a la planta ENTERA, no al zoom
   var shc=sun.shadow.camera;shc.left=-520;shc.right=520;shc.top=520;shc.bottom=-520;shc.near=1;shc.far=2400;shc.updateProjectionMatrix();
   sun.shadow.bias=-0.0003;sun.shadow.normalBias=0.08;
   sun.shadow.radius=__hiShad?5:2;   // PENUMBRA PCFSoft: difumina ~5 téxeles → funde el "escalonado" del borde (la sombra de un panel de 6 cm es más fina que un téxel; sin radio el borde sale dentado y asimétrico). Radio en téxeles = independiente del zoom/mapSize
@@ -583,11 +585,19 @@ function updateSunShadow(){ if(!SUN||!SUN._dir)return; var dir=SUN._ldir||SUN._d
   var raso=(!SUN._ldir)&&dir.U<0.02;
   if(SUN.castShadow!==!raso)SUN.castShadow=!raso;
   SUN.target.position.set(cx,cy,cz); SUN.target.updateMatrixWorld();
-  /* OJO: esto SOLO hace algo en MOVIL. `shadow.radius` lo ignora PCFSoftShadowMap, que
-     es el que usa escritorio (three.js solo lo aplica en PCF y VSM). Medido: radio 1
-     contra radio 16, mismo cuadro, cambia el 0,012 % de los pixeles y como mucho 6
-     niveles de 255 — ruido. Se deja porque en movil (PCFShadowMap) si manda. */
-  SUN.shadow.radius=Math.min(7,2+1.9/Math.max(0.08,dir.U));            // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente; TOPE 7 (a 16, el PCF banda la penumbra: "sombras raras" a rayas al amanecer/atardecer)
+  /* PENUMBRA, ACOTADA EN METROS. `shadow.radius` va en TEXELES y lo ignora PCFSoftShadowMap,
+     que es el de escritorio (three.js solo lo aplica en PCF y VSM): medido, radio 1 contra
+     radio 16 en el mismo cuadro cambia el 0,012 % de los pixeles — ruido. En MOVIL
+     (PCFShadowMap) si manda —su rama del shader escala las 17 muestras por
+     `texelSize * shadowRadius`, mientras que la de PCFSoft ni lo nombra: esta mirado en
+     lib/three.min.js, no deducido—, y ahi un radio en texeles es una trampa: al ceñir la caja a la
+     PLANTA ENTERA el texel paso de 15,6 cm a 45,2 cm en El Burgo y a 154,1 cm en San Jose, y
+     el mismo radio de siempre difuminaba 2,09 m y 7,85 m. Medido en movil antes de acotar:
+     la sombra tocaba el 51 % de los pixeles pero solo el 0,33 % quedaba OSCURA — todo gris,
+     ninguna sombra. Acotando el borron a BORRON_M: 9,65 % de sombra fuerte, contra 11,50 %
+     de escritorio. En escritorio no cambia nada (confirma que el radio ahi esta muerto). */
+  var texel=2*half/(SUN.shadow.mapSize.x||2048);
+  SUN.shadow.radius=Math.max(1,Math.min(7,2+1.9/Math.max(0.08,dir.U),BORRON_M/texel));   // sol bajo: el texel se estira 1/sin(alt) (dientes de sierra) → penumbra PCF creciente; TOPE 7 (a 16, el PCF banda la penumbra: "sombras raras" a rayas al amanecer/atardecer). SUELO 1: por debajo de un texel el PCF no difumina nada
   SUN.shadow.normalBias=Math.max(0.05,Math.min(0.2,half*0.00006)); }   // bias escalado al área cubierta
 // trayectoria solar: arco del sol del día elegido (simDoy) + marcas horarias + sol actual + rayo sol→centro
 // el sol va LEJOS (R grande) para que su dirección case con los rayos PARALELOS de la sombra; si está cerca, el paralaje "engaña"
@@ -820,13 +830,26 @@ async function build(){
   if(_fu)console.warn('[cobertura] '+_fu+' equipo(s) del layout a más de 300 m del campo: fuera del recorte');
   var cm=45;CLP={x0:exmin-cm,x1:exmax+cm,n0:nmin-cm,n1:nmax+cm};   // recorte de instalaciones al footprint real (seguidores + vallado + NCU/HSU del listado)
   // shadow camera FIJO a la planta entera (lo usa updateSunShadow): centro en el origen (los seguidores van centrados ahí), semiancho = mayor semieje + margen
-  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096,__ms=(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))?2048:Math.min(__cap,8192);   // escritorio: 8192 en TODAS (incl. San José) para la sombra más fina posible cubriendo toda la planta; móvil → 2048
-  if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var marg=70,hx=Math.max(Math.abs(exmin),Math.abs(exmax))+marg,hz=Math.max(Math.abs(nmin),Math.abs(nmax))+marg;
   var fadeBand=Math.max(110,0.10*Math.max(exmax-exmin,nmax-nmin));   // ancho del difuminado del borde, proporcional al tamaño de la planta
   var tmarg=Math.round(fadeBand*1.15)+30,thx=Math.max(Math.abs(exmin),Math.abs(exmax))+tmarg,thz=Math.max(Math.abs(nmin),Math.abs(nmax))+tmarg;   // el terreno se extiende MÁS que la caja de sombra: deja un anillo donde fundir el borde con el cielo (mata el "cuadrado sobre el azul")
   var widthM=2*thx,depthM=2*thz;
   SH_CX=0;SH_CZ=0;SH_HALF=Math.max(hx,hz);   // recuadro de sombra ceñido a la planta (marg, no tmarg) → no perdemos resolución de sombra al ampliar el terreno
+  /* TAMAÑO DEL MAPA DE SOMBRA, elegido por el TEXEL QUE SALE y no por un numero fijo.
+     Va DESPUES de SH_HALF a proposito: el texel mide 2*SH_HALF/mapSize, asi que el mapa
+     que hace falta depende de lo grande que sea la planta. Escritorio: 8192 siempre (o lo
+     que declare la GPU), que es la sombra mas fina posible cubriendo la planta entera.
+     MOVIL: se parte de 2048 —que es lo que cabe comodo en memoria— y solo se SUBE si con
+     ese mapa el texel pasa de TEXEL_M; por encima de ~0,80 m la sombra de una mesa no cabe
+     en un texel y desaparece. De las diez plantas solo San Jose lo pide (2*1.578/2048 =
+     1,54 m/texel → 4096 y 0,77 m); las otras nueve se quedan en 2048 y no pagan nada.
+     TOPE 4096 en movil aunque la GPU declare mas: 4096² x 4 B son 67 MB de mapa, que ya es
+     mucho para un telefono, y si la GPU declara 2048 nos quedamos ahi sin discutir. */
+  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096;
+  var __movil=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  var __ms=Math.min(__cap,__movil?2048:8192);
+  if(__movil){var __tope=Math.min(__cap,4096);while(__ms<__tope&&2*SH_HALF/__ms>TEXEL_M)__ms*=2;}
+  if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var lonW=lon0-thx/mPerLon,lonE=lon0+thx/mPerLon,latS=lat0-thz/mPerLat,latN=lat0+thz/mPerLat;
   function edgeAlpha(lx,ly){var dx=(thx-Math.abs(lx))/fadeBand,dy=(thz-Math.abs(ly))/fadeBand,a=Math.min(1,Math.max(0,Math.min(dx,dy)));return a*a*(3-2*a);}   // 1 en el interior, →0 en el borde (smoothstep): alfa por vértice del relieve
   function edgeFade(cv){var w=cv.width,h=cv.height,x=cv.getContext('2d'),bx=Math.max(1,Math.round(w*fadeBand/widthM)),by=Math.max(1,Math.round(h*fadeBand/depthM));x.save();x.globalCompositeOperation='destination-out';   // vacía el alfa del satélite en una orla → el borde del plano se funde con el cielo
