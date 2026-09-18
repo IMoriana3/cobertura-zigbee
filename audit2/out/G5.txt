@@ -1,0 +1,68 @@
+════════════════════════════════════════════════════════════════════════════════════════════════════════
+E-G5 · caracterización de las divergencias JS ↔ tracker3d.py · commit d64e2cbc1d89aca04c5866cf5b0e5bfa24f15eeb · node v22.22.2
+fuente: audit2/out/G1_js.json y G1_py.json (rejilla de E-G1) · columna del parche recalculada como en E-G4
+════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+── 1.1 · LAS 14 DIVERGENCIAS MAYORES ─────────────────────────────────
+ #  caso hora   política  fila  elev°   azimut°  torsión°   θ_JS      θ_PY     Δθ con signo   ΔPOA      ¿se movió sin repair?  (fila / política)
+  1  B   18:30  pairwise    0   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  2  B   18:30  pairwise    1   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  3  B   18:30  pairwise    3   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  4  B   18:30  pairwise    4   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  5  B   18:30  mgl         0   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  6  B   18:30  mgl         1   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  7  B   18:30  mgl         3   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  8  B   18:30  mgl         4   32.75    273.56     7.437    10.00   -55.00  +   65.000   -428.283  no  / no
+  9  B   09:00  pairwise    0   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  no  / SÍ
+ 10  B   09:00  pairwise    1   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  no  / SÍ
+ 11  B   09:00  pairwise    4   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  no  / SÍ
+ 12  B   09:00  true3d      0   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  SÍ  / SÍ
+ 13  B   09:00  true3d      1   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  SÍ  / SÍ
+ 14  B   09:00  true3d      4   25.32     80.27     7.437    -2.00    55.00    -57.000   -286.389  SÍ  / SÍ
+
+── 1.2 · COMPARACIONES NUMÉRICAS ─────────────────────────────────────
+
+  (a) ¿el JS va más EMPINADO o más PLANO que el Python?
+      Δθ = θ_JS − θ_PY. Nota: θ>0 y θ<0 son lados distintos del eje, así que el SIGNO de Δθ
+      no es «más empinado»: se dan los dos, el signo de Δθ y el de |θ_JS| − |θ_PY|.
+      las 14 mayores               n= 14 · Δθ>0   8 · Δθ<0   6 · Δθ=0   0 · media con signo   12.7143°
+                                   |θ_JS|>|θ_PY|   0 · |θ_JS|<|θ_PY|  14  ⇒ el JS va MÁS PLANO
+      toda la rejilla con Δθ ≠ 0   n=148 · Δθ>0  67 · Δθ<0  81 · Δθ=0   0 · media con signo   -1.5582°
+                                   |θ_JS|>|θ_PY|  45 · |θ_JS|<|θ_PY| 103  ⇒ el JS va MÁS PLANO
+      la rejilla completa          n=420 · Δθ>0  67 · Δθ<0  81 · Δθ=0 272 · media con signo   -0.5491°
+                                   |θ_JS|>|θ_PY|  45 · |θ_JS|<|θ_PY| 103  ⇒ el JS va MÁS PLANO
+
+  (b) ¿se concentran en alguna política?
+      política    en las 14   en la rejilla (Δθ≠0 / total)   |Δθ| máx
+      astro              0               12 /  60              0.7963°
+      global             0               18 /  60              0.8374°
+      row                0               18 /  60              7.8953°
+      bt2d               0   NO COMPARABLE (sin contraparte en tracker3d.py)
+      pairwise           7               27 /  60             65.0000°
+      true3d             3               28 /  60             57.0000°
+      mgl                4               27 /  60             65.0000°
+      optimal            0               18 /  60             16.8262°
+      optfree            0   NO COMPARABLE (sin contraparte en tracker3d.py)
+
+  (c) ¿relación con la torsión máxima entre vecinas?
+      valores de torsión presentes en la rejilla: 0, 7.437°   (sólo 2: caso A y caso B)
+      torsión  0.000° : n=210 · Δθ≠0 en   0 · |Δθ| máx   0.0000° · mediana 0.0000°
+      torsión  7.437° : n=210 · Δθ≠0 en 148 · |Δθ| máx  65.0000° · mediana 0.3682°
+      rango de torsión de las 14 : 7.437…7.437°
+      rango de torsión de la rejilla: 0.000…7.437°
+      La rejilla sólo tiene DOS valores de torsión, así que no admite ajuste ni tendencia:
+      lo único que se puede afirmar es en cuál de los dos aparecen las divergencias.
+
+  (d) ¿coinciden los SIGNOS de θ_JS y θ_PY en las 14?
+      apuntan a lados OPUESTOS del eje: 14 de 14
+      detalle: 10/-55 · 10/-55 · 10/-55 · 10/-55 · 10/-55 · 10/-55 · 10/-55 · 10/-55 · -2/55 · -2/55 · -2/55 · -2/55 · -2/55 · -2/55
+
+── 1.3 · ¿HAY DIVERGENCIA SIN TORSIÓN? ───────────────────────────────
+      valores de la rejilla con torsión N-S = 0 : 210  (el caso A entero: tilt N-S 0,00 en las 6 filas)
+      de ellos, con |Δθ| > 0 : 0
+      ⇒ divergencia SIN torsión: NO EXISTE en la rejilla medida.
+      cita del tilt del caso A, audit2/lib_motor.mjs (función caso):
+         for (let i = 0; i < nR; i++) tilts.push(cual === 'B' ? (r() * 2 - 1) * 4 : 0);
+      y el eco de la corrida (audit2/out/G1_js.json): caso A · tilt N-S 0.00 ×6.
+
+CSV: audit2/out/G5.csv (420 filas, ordenadas por |Δθ|)

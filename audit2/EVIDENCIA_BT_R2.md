@@ -2331,6 +2331,194 @@ Notas: la rejilla es la de E-G1 (2 casos × 5 instantes × 9 políticas); `bt2d`
 `optfree` siguen sin contraparte. El parche anula la etapa **entera**; no se ha
 explorado desactivar partes de ella. No se ha buscado el candidato siguiente.
 
+### E-G5  Caracterización de las divergencias JS ↔ `tracker3d.py`
+
+Commit:      3a57451
+Script:      `audit2/G5_caracteriza.mjs`
+Comando:     `node audit2/G5_caracteriza.mjs`
+Node:        v22.22.2
+Salida:      `audit2/out/G5.txt` · CSV `audit2/out/G5.csv` (420 filas)
+Estado:      **MEDIDO**
+
+Descartados los tres candidatos (E-G3, E-G4), este ítem **describe** la
+divergencia; no propone causa. Sin cómputo nuevo: relee `G1_js.json` y
+`G1_py.json` y recalcula la columna del parche con el mismo procedimiento de
+E-G4. Rejilla: 2 casos × 5 instantes × 9 políticas × 6 filas = **420 valores**,
+de los cuales 420 − 120 (bt2d y optfree sin contraparte) = **300 comparables**.
+
+**1.1 · Las 14 divergencias mayores.**
+
+| # | caso | hora | política | fila | elev | azimut | torsión | θ_JS | θ_PY | Δθ con signo | ΔPOA | ¿se movió sin repair? (fila / política) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1-4 | B | 18:30 | pairwise | 0,1,3,4 | 32,75° | 273,56° | 7,437° | +10,00° | −55,00° | **+65,000°** | −428,283 | no / no |
+| 5-8 | B | 18:30 | mgl | 0,1,3,4 | 32,75° | 273,56° | 7,437° | +10,00° | −55,00° | **+65,000°** | −428,283 | no / no |
+| 9-11 | B | 09:00 | pairwise | 0,1,4 | 25,32° | 80,27° | 7,437° | −2,00° | +55,00° | **−57,000°** | −286,389 | **no / SÍ** |
+| 12-14 | B | 09:00 | true3d | 0,1,4 | 25,32° | 80,27° | 7,437° | −2,00° | +55,00° | **−57,000°** | −286,389 | SÍ / SÍ |
+
+La columna del parche se da **por fila y por política**: en las filas 9-11 el θ de
+esa fila no se mueve al desactivar `repairNoShade`, pero el vector de la política
+sí cambia en otras filas. E-G4 lo reporta por fila; las dos tablas coinciden.
+
+**1.2 · Comparaciones numéricas.**
+
+**(a) ¿Más empinado o más plano?** Δθ = θ_JS − θ_PY. El signo de Δθ **no** es
+«más empinado», porque θ>0 y θ<0 son lados distintos del eje; se dan los dos
+indicadores:
+
+| conjunto | n | Δθ>0 | Δθ<0 | Δθ=0 | media con signo | \|θ_JS\|>\|θ_PY\| | \|θ_JS\|<\|θ_PY\| | lectura |
+|---|---|---|---|---|---|---|---|---|
+| las 14 mayores | 14 | 8 | 6 | 0 | +12,7143° | **0** | **14** | el JS va más plano |
+| rejilla con Δθ ≠ 0 | 148 | 67 | 81 | 0 | −1,5582° | 45 | **103** | el JS va más plano |
+| rejilla completa | 420 | 67 | 81 | 272 | −0,5491° | 45 | **103** | el JS va más plano |
+
+El **signo de Δθ alterna** (8 contra 6 en las 14; 67 contra 81 en la rejilla),
+pero el **módulo no**: en las 14 mayores, |θ_JS| < |θ_PY| en **14 de 14**, y en
+toda la rejilla en 103 de 148. El JS publica ángulos **más cercanos al plano**.
+
+**(b) Concentración por política.**
+
+| política | en las 14 | en la rejilla (Δθ≠0 / total) | \|Δθ\| máx |
+|---|---|---|---|
+| astro | 0 | 12 / 60 | 0,7963° |
+| global | 0 | 18 / 60 | 0,8374° |
+| row | 0 | 18 / 60 | 7,8953° |
+| bt2d | 0 | NO COMPARABLE | — |
+| **pairwise** | **7** | 27 / 60 | **65,0000°** |
+| **true3d** | **3** | 28 / 60 | **57,0000°** |
+| **mgl** | **4** | 27 / 60 | **65,0000°** |
+| optimal | 0 | 18 / 60 | 16,8262° |
+| optfree | 0 | NO COMPARABLE | — |
+
+Las 14 se reparten entre **pairwise, true3d y mgl**, que son exactamente las tres
+que llevan `repairNoShade` — pero E-G4 mide que desactivarla no las mueve.
+`astro`, `global` y `optimal` se quedan por debajo de 0,84°; `row` llega a 7,90°.
+
+**(c) Relación con la torsión.**
+
+| torsión | n | Δθ≠0 | \|Δθ\| máx | mediana |
+|---|---|---|---|---|
+| 0,000° (caso A) | 210 | **0** | 0,0000° | 0,0000° |
+| 7,437° (caso B) | 210 | **148** | 65,0000° | 0,3682° |
+
+Rango de torsión de las 14: 7,437…7,437°. De la rejilla: 0,000…7,437°.
+**La rejilla sólo tiene dos valores de torsión**, así que no admite ajuste ni
+tendencia: lo único afirmable es en cuál de los dos aparecen las divergencias —
+todas en el de 7,437°.
+
+**(d) Signos de θ_JS y θ_PY.** Apuntan a **lados opuestos del eje en 14 de 14**:
+`10/−55` ×8 y `−2/55` ×6. No es una diferencia de magnitud sobre el mismo lado;
+los dos motores mandan el tracker a lados contrarios.
+
+**1.3 · ¿Divergencia sin torsión?**
+
+```
+      valores de la rejilla con torsión N-S = 0 : 210  (el caso A entero)
+      de ellos, con |Δθ| > 0 : 0
+      ⇒ divergencia SIN torsión: NO EXISTE en la rejilla medida.
+```
+
+El caso A tiene tilt N-S 0 en las seis filas (`audit2/lib_motor.mjs`, función
+`caso`: `tilts.push(cual === 'B' ? (r() * 2 - 1) * 4 : 0)`, y el eco de la corrida
+lo confirma: «caso A · tilt N-S 0.00 ×6»), y ahí **los 210 valores dan Δθ = 0
+exacto**. La divergencia sólo aparece con torsión.
+
+Notas: `NO EXISTE en la rejilla medida` no es `NO EXISTE`: la rejilla tiene dos
+casos, cinco instantes y un solo valor de torsión no nula. No se ha explorado
+torsión intermedia ni otros azimuts de eje.
+
+---
+
+# BLOQUE H — EL SISTEMA DE VERIFICACIÓN
+
+### E-H1  El gate de CI trata `cancelled` igual que `failure`
+
+Commit:      3a57451 · árbol de la rama al medir: `d64e2cb`
+Comando:     `mcp github actions_list` sobre `bancos.yml`, rama `claude/backtracking-6th1im`,
+             y `get_job_logs` del job 105554114569
+Node:        v22.22.2 (la medida es de la API de GitHub, no de un script)
+Salida:      `audit2/out/H1_runs.txt`
+Estado:      **MEDIDO** · no se corrige: `.github/` no se toca
+
+**La política de concurrencia**, `.github/workflows/bancos.yml:33-35`:
+
+```yaml
+concurrency:
+  group: bancos-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+**El gate**, `.github/workflows/bancos.yml:311-333`:
+
+```yaml
+  puerta:
+    name: bancos en verde
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [nucleo, powershell, datos, barrido, navegador]
+    if: always()
+    steps:
+      - name: ninguno ha fallado
+        run: |
+          for j in "nucleo ${{ needs.nucleo.result }}" \
+                   "powershell ${{ needs.powershell.result }}" \
+                   "datos ${{ needs.datos.result }}" \
+                   "barrido ${{ needs.barrido.result }}" \
+                   "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
+```
+
+El `if: always()` hace que el gate corra aunque sus dependencias se cancelen, y
+la comparación exige `== success` en los cinco. Un `cancelled` no es `success`,
+así que el gate sale en rojo.
+
+**El caso observado.** Run 35330463872 sobre `dfda36c`, log del job 105554114569:
+
+```
+nucleo success
+powershell success
+datos cancelled
+barrido cancelled
+navegador cancelled
+##[error]hay bancos que no han pasado
+##[error]Process completed with exit code 1.
+```
+
+Tres jobs en `cancelled`, **ninguno en `failure`**. La cancelación la provocó el
+push de `d64e2cb`, que entró en el mismo grupo de concurrencia 47 s después.
+
+**Asimetría medida entre el run y el check.** La conclusión del *run* es
+`cancelled`; la del *check run* «bancos en verde» que se publica en el PR es
+`failure`. Un consumidor que mire el check —el PR, o una automatización
+suscrita a `check_run.completed`— ve un fallo donde el run dice cancelación.
+
+**Frecuencia en el historial reciente.** Se han examinado **30 runs** de
+`bancos.yml` en la rama `claude/backtracking-6th1im`, ventana
+**2026-09-11T10:06 → 2026-09-18T09:39**:
+
+| conclusión del run | nº |
+|---|---|
+| `success` | 24 |
+| `cancelled` | **4** |
+| `failure` | 1 |
+| en curso al medir | 1 |
+
+Los cuatro `cancelled`, con su commit y su run:
+
+| fecha | commit | run |
+|---|---|---|
+| 2026-09-18T09:37 | `dfda36c` | 35330463872 |
+| 2026-09-16T15:01 | `37a911e` | 35112473824 |
+| 2026-09-16T13:40 | `d3732ae` | 35103411778 |
+| 2026-09-13T10:58 | `b42214e` | 34753232999 |
+
+**4 de 30 runs (13,3 %)** en esa ventana acabaron cancelados por la política de
+concurrencia. El único `failure` de run es de `0742bbe` (2026-09-11T11:49, run
+34595882409), anterior a la ventana de trabajo de esta auditoría y no examinado.
+
+Notas: sólo se ha inspeccionado el log del job del caso de `dfda36c`; **NO
+VERIFICADO** si los otros tres `cancelled` produjeron también un check en rojo,
+aunque el gate es el mismo. La ventana es de una rama y de 30 runs, no del
+repositorio entero. No se propone corrección: `.github/` está fuera del alcance.
+
 ---
 
 # CRÍTICA DEL ENCARGO
