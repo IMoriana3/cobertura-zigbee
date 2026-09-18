@@ -313,6 +313,11 @@ var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera ceñido a la planta ENTER
 var SESGO_M=0.25;   // sesgo de profundidad EN METROS de mundo: se convierte a unidades de frustum en cada cuadro, porque el rango near..far crece con el tamaño de la caja (ver updateSunShadow)
 var BORRON_M=0.40;  // SEMIANCHO maximo de la penumbra EN METROS (el nucleo PCF va de -radio*texel a +radio*texel: 0,40 a cada lado, 0,80 de ancho total; verificado en el getShadow de lib/three.min.js). `shadow.radius` va en TEXELES, y el texel mide 2*SH_HALF/mapSize: en El Burgo son 11 cm y en San Jose 154 cm, asi que un radio fijo difumina 0,5 m en una planta y 8 m en la otra (y a 8 m no queda sombra, solo un gris). Se acota aqui y se convierte a texeles en updateSunShadow
 var TEXEL_M=0.80;   // texel MAXIMO que se admite antes de subir el mapa en movil: la cuerda de un modulo son 1,13 m, asi que por encima de ~0,80 m la sombra de una mesa no cabe en un texel y se pierde entera en el borron (ver build())
+/* NADIE PIDE UN MAPA MAYOR DEL QUE DECLARA LA GPU. `maxTextureSize` es el tope real;
+   por encima se pide una textura que no existe. build() ya lo miraba, pero el selector de
+   calidad (setShadowQ, hasta 8192 y los presets) y el boton de foto (8192 fijo) NO, asi que
+   en una GPU que declare 4096 bastaba con elegir «presentacion» o sacar una foto. */
+function topeMapa(px){var c=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096;return Math.min(px,c);}
 
 function projX(lon){return (lon-lon0)*mPerLon;}
 function projZ(lat){return -(lat-lat0)*mPerLat;}
@@ -845,10 +850,9 @@ async function build(){
      1,54 m/texel → 4096 y 0,77 m); las otras nueve se quedan en 2048 y no pagan nada.
      TOPE 4096 en movil aunque la GPU declare mas: 4096² x 4 B son 67 MB de mapa, que ya es
      mucho para un telefono, y si la GPU declara 2048 nos quedamos ahi sin discutir. */
-  var __cap=(renderer&&renderer.capabilities)?renderer.capabilities.maxTextureSize:4096;
   var __movil=/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  var __ms=Math.min(__cap,__movil?2048:8192);
-  if(__movil){var __tope=Math.min(__cap,4096);while(__ms<__tope&&2*SH_HALF/__ms>TEXEL_M)__ms*=2;}
+  var __ms=topeMapa(__movil?2048:8192);
+  if(__movil){var __tope=topeMapa(4096);while(__ms<__tope&&2*SH_HALF/__ms>TEXEL_M)__ms*=2;}
   if(SUN&&SUN.shadow.mapSize.x!==__ms){SUN.shadow.mapSize.set(__ms,__ms);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}}
   var lonW=lon0-thx/mPerLon,lonE=lon0+thx/mPerLon,latS=lat0-thz/mPerLat,latN=lat0+thz/mPerLat;
   function edgeAlpha(lx,ly){var dx=(thx-Math.abs(lx))/fadeBand,dy=(thz-Math.abs(ly))/fadeBand,a=Math.min(1,Math.max(0,Math.min(dx,dy)));return a*a*(3-2*a);}   // 1 en el interior, →0 en el borde (smoothstep): alfa por vértice del relieve
@@ -4955,7 +4959,7 @@ function setCableNegro(on){['cable_pos','cable_neg'].forEach(function(k){var G=n
   var m=G.userData.cabs[0].im.material;m.color.setHex(on?0x15181c:m.userData.tec);m.needsUpdate=true;
   var lm=G.userData.cabs[0].lm;if(lm){lm.color.setHex(on?0x15181c:lm.userData.tec);lm.needsUpdate=true;}});}                     // modo presentación: cable solar NEGRO; técnico: rojo/azul por polaridad
 function setVegDensity(f){VEGM.forEach(function(m){if(m.userData.full===undefined)m.userData.full=m.count;m.count=Math.max(0,Math.floor(m.userData.full*f));});}
-function setShadowQ(px){if(!SUN)return;SUN.shadow.mapSize.set(px,px);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();}
+function setShadowQ(px){if(!SUN)return;px=topeMapa(px);SUN.shadow.mapSize.set(px,px);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}updateSunShadow();}
 /* Dos mandos independientes sobre la MISMA opacidad: el slider "AO" (_aoF, lo pone el usuario) y la
    luz que hay (_aoL, lo pone applySky). Antes solo existía el primero y multiplicaba sobre op0, así
    que si el segundo escribiera aparte se pisarían: se guardan separados y se aplican juntos.
@@ -5037,7 +5041,7 @@ $('recBtn').onclick=function(){ var b=this;
 };
 $('fotoBtn').onclick=function(){ var sz=new THREE.Vector2();renderer.getSize(sz);var pr=renderer.getPixelRatio(),ms=SUN.shadow.mapSize.x;
   try{
-    var mult=Math.min(SKY_MOB?1.5:2,4096/Math.max(sz.x,sz.y)),hi=SKY_MOB?4096:8192;   // 2× resolución + sombras al máximo, un solo frame
+    var mult=Math.min(SKY_MOB?1.5:2,4096/Math.max(sz.x,sz.y)),hi=topeMapa(SKY_MOB?4096:8192);   // 2× resolución + sombras al máximo (sin pasar del tope de la GPU), un solo frame
     SUN.shadow.mapSize.set(hi,hi);if(SUN.shadow.map){SUN.shadow.map.dispose();SUN.shadow.map=null;}
     renderer.setPixelRatio(1);renderer.setSize(Math.round(sz.x*mult),Math.round(sz.y*mult),false);
     updateSunShadow();renderer.render(scene,camera);renderPost();

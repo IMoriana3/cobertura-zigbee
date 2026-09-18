@@ -257,6 +257,11 @@ jobs:
           # igual de pesada compitiendo por la CPU, asi que a solas baja bastante. De ahi
           # el tope propio y holgado, por lo mismo que `test_equipos`.
           - { banco: test_sombras.mjs, arg: elburgo, nombre: 'test_sombras.mjs · El Burgo', tope: 55 }
+          # Nadie pide un mapa de sombra mayor del que declara la GPU. Abre las CUATRO
+          # paginas 3D mintiendoles: parchea getParameter(MAX_TEXTURE_SIZE) a 2048 antes
+          # de que three.js lea las capacidades. Lo que mide es si el codigo PREGUNTA,
+          # que es el defecto, y por eso vale aunque el navegador de CI aguante 8192.
+          - { banco: test_tope_mapa.mjs }
           - { banco: test_produccion_3d.mjs }   # se levanta su propio servidor
           - { banco: test_produccion_lazo.mjs } # idem — el lazo de control, las políticas y la tabla por minuto
           - { banco: test_render_sol.mjs }      # render ≡ física: desde el sol no se ve rojo · borde de sombra en 2D · signo del manual (servidor propio)

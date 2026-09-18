@@ -2151,7 +2151,7 @@ function build3D(c){
     R3.scene.add(R3.hemi);
     R3.sun=new THREE.DirectionalLight(0xffeecc,1.1);
     R3.sun.castShadow=true;
-    R3.sun.shadow.mapSize.width=4096;R3.sun.shadow.mapSize.height=4096;
+    var __ms=Math.min(R3.renderer.capabilities.maxTextureSize,4096);R3.sun.shadow.mapSize.width=__ms;R3.sun.shadow.mapSize.height=__ms;   // TOPE DE LA GPU: pedir un mapa mayor del que declara `maxTextureSize` es pedir una textura que no existe, y en un movil que declare 2048 esto eran 4096. Nadie mas en la pagina consulta el tope; terreno.html si lo hacia y por eso no le pasaba.
     R3.sun.shadow.bias=-2e-4;R3.sun.shadow.normalBias=0.3;   // los del simulador
     R3.scene.add(R3.amb,R3.sun,R3.sun.target);
     (function loop(){requestAnimationFrame(loop);
