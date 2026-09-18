@@ -1453,6 +1453,73 @@ Notas: la calibración cubre **cuatro de las nueve** políticas. `astro`, `globa
 `row`, `bt2d` y `mgl` siguen sin anual pleno, así que su offset es **NO
 VERIFICADO**. Un solo año (2026), cielo claro, MV 8, nb 2.
 
+### E-D7  Resolución con la que se distinguen `optfree` y `optimal`
+
+Commit:      3a57451
+Fuentes:     E-D1, E-D3, E-D4, E-D5 y E-D8 — este ítem **no mide nada nuevo**,
+             reúne cifras ya medidas y cita el ítem de cada una
+Estado:      **MEDIDO** (recopilación)
+
+El ítem existe porque E-D3 publica hacia fuera un **orden** de nueve políticas
+cuyos dos primeros puestos son `optfree` y `optimal`, y la distancia entre ellos
+es del mismo orden que varias magnitudes de resolución del propio modelo. Se
+ponen las cinco juntas, con sus unidades y su procedencia. **La lectura la hace
+el auditor**: aquí no hay conclusión.
+
+**1 · Las cinco magnitudes**
+
+| magnitud | valor | unidad | ítem |
+|---|---|---|---|
+| separación `optfree` − `optimal`, anual pleno | **1,9230** (= **0,0715 %**) | kWh/m²·año | E-D5 |
+| reparto de los cuatro offsets de calibración | **0,0227** (= **0,6105** kWh/m²·año sobre un nivel de 2 689) | pp | E-D5 |
+| deriva del argmax instantáneo con MV 8…128 | **3,00** (52,00 / 54,75 / 52,75 / 55,00 / 54,50) | grados | E-D1 |
+| dispersión de la POA máxima instantánea con MV 8…128 | **8,767284** | W/m² instantáneos | E-D1 |
+| escalón eléctrico mínimo por mesa, MV 8 y nb 2 | **1/16 = 0,0625** (= **6,2500 %** de la mesa; 11,6218 W/m² de haz en el instante medido) | fracción de mesa | E-D4 |
+| deriva anual entre MV 8 y MV 32 | ver E-D8 | kWh/m²·año | E-D8 |
+
+**Advertencia de unidades, para que la tabla no se lea mal.** Sólo las dos
+primeras filas y la última están en unidades **anuales** y son directamente
+comparables con la separación. Las filas tercera, cuarta y quinta son
+**instantáneas o por mesa**: convertirlas a un equivalente anual exigiría una
+medida que no se ha hecho, así que **no se convierten**. Se incluyen porque el
+encargo las pide y porque acotan la resolución del modelo en su propio dominio,
+no porque sean sumables con las otras.
+
+**2 · La separación frente a cada magnitud**
+
+| comparación | resultado |
+|---|---|
+| separación (1,9230 kWh/m²·año) frente al reparto de los offsets (0,6105 kWh/m²·año) | **mayor**, por un factor de **3,15×** |
+| separación (0,0715 %) frente al reparto de los offsets (0,0227 pp) | **mayor**, por un factor de **3,15×** |
+| separación frente a la deriva del argmax instantáneo (3,00°) | **no comparable**: unidades distintas (energía anual frente a ángulo instantáneo) |
+| separación frente a la dispersión de la POA instantánea (8,767284 W/m²) | **no comparable**: energía anual frente a potencia instantánea |
+| separación frente al escalón eléctrico por mesa (6,2500 % de la mesa) | **no comparable**: energía anual de planta frente a fracción de una mesa |
+| separación frente a la deriva anual MV 8 → MV 32 | ver E-D8 |
+
+**3 · ¿Intercambian posición `optfree` y `optimal` en alguna variante ya corrida?**
+
+| variante | puesto `optfree` | puesto `optimal` | separación | % |
+|---|---|---|---|---|
+| reducido · nb 0 · MV 8 | **1** | **3** | 0,0071 | 0,0003 % |
+| reducido · nb 1 · MV 8 | **1** | 2 | 7,8460 | 0,3003 % |
+| reducido · nb 2 · MV 8 | **1** | 2 | 1,8800 | 0,0705 % |
+| reducido · nb 3 · MV 8 | **1** | 2 | 0,7103 | 0,0264 % |
+| reducido · nb 6 · MV 8 | **1** | 2 | 0,0039 | 0,0001 % |
+| **pleno** · nb 2 · MV 8 | **1** | 2 | 1,9230 | 0,0715 % |
+
+**`optfree` es primera en las seis variantes y no intercambian posición en
+ninguna.** `optimal` baja al tercer puesto con **nb = 0**, no porque `optfree` la
+adelante más, sino porque **`astro` la iguala**: las dos publican 2743,9536
+kWh/m²·año, idénticas hasta el cuarto decimal (E-D3).
+
+La separación entre ambas **no es estable**: va de **0,0039** kWh/m²·año
+(nb = 6, 0,0001 %) a **7,8460** (nb = 1, 0,3003 %), un rango de tres órdenes de
+magnitud según el valor de `nb`.
+
+Notas: las seis variantes comparten MV 8 y el sitio de Ayora real; cinco son del
+diseño reducido y una del pleno. Falta la variante MV 32, que entra por E-D8. Un
+solo año, cielo claro.
+
 ### E-D6  Comprobación cruzada de la columna `nb = 2` de E-D3
 
 Commit:      3a57451

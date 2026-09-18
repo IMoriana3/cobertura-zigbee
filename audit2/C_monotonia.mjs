@@ -7,8 +7,11 @@
 
    Ejecutable por un tercero:
      node audit2/C_monotonia.mjs [nCfg=40] [semilla=1] [pasoCriba=0.5] [nMuestra=200]
-   Salidas: audit2/out/C1_instantes.csv, C2_muestra.csv, C2_barridos.csv,
-            C3_contraejemplos.csv  (+ resumen por stdout)
+   Salidas: audit2/out/C1_instantes<SUF>.csv, C2_muestra<SUF>.csv,
+            C2_barridos<SUF>.csv, C3_contraejemplos<SUF>.csv, donde <SUF> es
+            '' para la semilla 1 (los artefactos ya publicados) y '_sN' para
+            cualquier otra. Sin esto, correr otra semilla PISA la evidencia de
+            la primera; se detectó al lanzar la semilla 7.
    ═══════════════════════════════════════════════════════════════════════════ */
 import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
@@ -29,6 +32,9 @@ const SUCIO = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT }).toSt
 const A = process.argv.slice(2);
 const NCFG = +(A[0] || 40), SEED = +(A[1] || 1), PASO_CRIBA = +(A[2] || 0.5), NMUE = +(A[3] || 200);
 const PASO_FINO = 0.25, SEED_MUESTRA = 20260917;
+/* sufijo de salida por semilla: la semilla 1 conserva los nombres de los
+   artefactos ya publicados; cualquier otra escribe en ficheros propios. */
+const SUF = SEED === 1 ? '' : `_s${SEED}`;
 const TOL0 = 1e-9;            // "sombra de planos = 0" = fs <= TOL0
 const TOL0B = 1e-4;           // variante declarada (fs <= 1e-4 = 0,01 % de una fila)
 const RAD = Math.PI / 180;
@@ -145,7 +151,7 @@ for (const [a, b] of [[-0.001,0.001],[0.001,1],[1,3],[3,6],[6,100]]) {
   const d = inst.filter(x => x.tors > a && x.tors <= b), n0 = d.filter(x => x.hay0).length;
   if (d.length) console.log(`   torsión ${a<=0?'= 0':'> '+a+'° ≤ '+b+'°'} : ${String(n0).padStart(5)} / ${String(d.length).padStart(5)}  (${(100*n0/d.length).toFixed(1)} %)`);
 }
-fs.writeFileSync(path.join(OUT, 'C1_instantes.csv'),
+fs.writeFileSync(path.join(OUT, `C1_instantes${SUF}.csv`),
   'cfg,nombre,dia,minZ,elev,az,torsion_max,mv,fs_min_criba,theta_fs_min,hay_cero\n' +
   inst.map(x => [x.ci, JSON.stringify(x.nm), x.dnm, x.m, x.elev.toFixed(4), x.az.toFixed(4), x.tors.toFixed(4), x.mv,
                  x.min.toExponential(6), x.thMin, x.hay0 ? 1 : 0].join(',')).join('\n') + '\n');
@@ -201,8 +207,8 @@ for (let k = 0; k < mues.length; k++) {
   for (let i = 0; i < TH_F.length; i++) filasSw.push([x.ci, x.dnm, x.m, TH_F[i], fsv[i].toExponential(8), poav[i].toFixed(6)].join(','));
   if ((k + 1) % 25 === 0) console.error(`  …C.2 ${k + 1}/${mues.length} · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 }
-fs.writeFileSync(path.join(OUT, 'C2_muestra.csv'), 'cfg,nombre,dia,minZ,elev,mv,intervalos_fs0,n_cruces,theta_poa_max,fs_en_theta_max,poa_max_Wm2,n_pares_contraejemplo\n' + filasB.join('\n') + '\n');
-fs.writeFileSync(path.join(OUT, 'C2_barridos.csv'), 'cfg,dia,minZ,theta_deg,fs_planos,poa_planta_Wm2\n' + filasSw.join('\n') + '\n');
+fs.writeFileSync(path.join(OUT, `C2_muestra${SUF}.csv`), 'cfg,nombre,dia,minZ,elev,mv,intervalos_fs0,n_cruces,theta_poa_max,fs_en_theta_max,poa_max_Wm2,n_pares_contraejemplo\n' + filasB.join('\n') + '\n');
+fs.writeFileSync(path.join(OUT, `C2_barridos${SUF}.csv`), 'cfg,dia,minZ,theta_deg,fs_planos,poa_planta_Wm2\n' + filasSw.join('\n') + '\n');
 
 console.log(`\nhistograma de nº de cambios de signo del predicado "sombrea" (fs > ${TOL0}), paso ${PASO_FINO}°:`);
 for (const k of Object.keys(hist).map(Number).sort((a, b) => a - b))
@@ -224,7 +230,7 @@ console.log(`\nlos 20 de mayor fs(θ2):`);
 console.log(`  #  θ1(fs=0)   fs1       θ2        fs2        sol°   MV  configuración · instante`);
 for (let i = 0; i < Math.min(20, contra.length); i++) { const q = contra[i];
   console.log(`  ${String(i+1).padStart(2)} ${String(q.th1).padStart(7)}°  ${q.fs1.toExponential(2)}  ${String(q.th2).padStart(7)}°  ${(100*q.fs2).toFixed(4)} %  ${q.x.elev.toFixed(1).padStart(5)}  ${String(q.x.mv).padStart(3)}  ${q.x.nm} · ${q.x.dnm} ${String(Math.floor(q.x.m/60)).padStart(2,'0')}:${String(q.x.m%60).padStart(2,'0')}Z`); }
-fs.writeFileSync(path.join(OUT, 'C3_contraejemplos.csv'),
+fs.writeFileSync(path.join(OUT, `C3_contraejemplos${SUF}.csv`),
   'cfg,nombre,dia,minZ,elev,mv,theta1_fs0,fs1,theta2,fs2,n_pares\n' +
   contra.map(q => [q.x.ci, JSON.stringify(q.x.nm), q.x.dnm, q.x.m, q.x.elev.toFixed(3), q.x.mv, q.th1, q.fs1.toExponential(6), q.th2, q.fs2.toExponential(6), q.nPares].join(',')).join('\n') + '\n');
-console.log(`\nCSV escritos en audit2/out/: C1_instantes.csv C2_muestra.csv C2_barridos.csv C3_contraejemplos.csv`);
+console.log(`\nCSV escritos en audit2/out/: C1_instantes${SUF}.csv C2_muestra${SUF}.csv C2_barridos${SUF}.csv C3_contraejemplos${SUF}.csv`);
