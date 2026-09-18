@@ -290,13 +290,29 @@ t('TODO el que extrae el bloque de física antepone los módulos', () => {
      revienta. En vez de ir arreglándolas de una en una, esto las cuenta. */
   const dir = path.join(ROOT, 'tools');
   const malas = [];
+  let examinados = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.mjs')) continue;
     const src = fs.readFileSync(path.join(dir, f), 'utf-8');
-    if (!/FIN-FÍSICA/.test(src)) continue;                 // no extrae el bloque
+    if (!/FIN-FÍSICA/.test(src)) continue;                 // ni nombra el bloque
+    /* NOMBRAR EL MARCADOR NO ES EJECUTAR EL BLOQUE. La exigencia es de quien lo
+       EVALÚA —ahí es donde falta `Sol` e `Irr` y revienta—, y evaluarlo en este
+       repo es siempre `new Function` sobre el trozo. Un banco que sólo corta por
+       el marcador para MIRARLO (comprobar dónde vive una función, por ejemplo)
+       no necesita ningún módulo, y exigírselos era un falso positivo: lo
+       levantó `test_informe_graf.mjs`, que abre la página en el navegador —donde
+       los módulos los carga la propia página— y sólo lee el fuente para situar
+       el bloque. */
+    if (!/new Function\(/.test(src)) continue;
+    examinados++;
     const falta = ['sol.js', 'irradiancia.js'].filter(m2 => !src.includes(m2));
     if (falta.length) malas.push(f + ' (sin ' + falta.join(' ni ') + ')');
   }
+  /* Y el control de que la criba no se ha quedado vacía: si un cambio futuro
+     dejara el filtro sin acertar a nadie, esto pasaría en verde sin mirar nada.
+     Medido hoy: 16 ficheros de `tools/` evalúan el bloque. */
+  if (examinados < 10) throw new Error('la criba sólo ha examinado ' + examinados +
+    ' extractores: el filtro ha dejado de acertar y esta comprobación no está mirando nada');
   if (malas.length) throw new Error(malas.join(', '));
 });
 t('el cielo claro se carga del módulo, no está escrito en la página', () => {
