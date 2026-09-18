@@ -70,7 +70,7 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <li><a href="#optimal">Energy-optimal (Deeptrack, f común)</a></li>
 <li><a href="#optfree">Óptimo libre (f por accionamiento)</a></li>
 <li><a href="#acople">Acople por accionamiento y reparación global</a></li>
-<li><a href="#dia">Comparativa del día</a></li>
+<li><a href="#dia">Comparativa del día</a><ul><li><a href="#anual">…y la del AÑO, con el consumo del motor dentro</a></li></ul></li>
 <li><a href="#verif">Verificación: lo que se prueba y con qué cifras</a></li>
 <li><a href="#limites">Límites conocidos</a></li>
 <li><a href="#auditoria">Auditoría externa: qué cambió y qué se midió</a><ul><li><a href="#reauditoria">Segunda vuelta (v1.57.1)</a></li><li><a href="#tercera">Tercera vuelta (v1.57.1)</a></li><li><a href="#cuarta">Cuarta vuelta: el residuo irreducible del accionamiento (v1.57.2)</a></li></ul></li>
@@ -318,6 +318,110 @@ POA<sub>r</sub> = DNI·cos AOI·<i>K</i> &nbsp;+&nbsp; DHI·<i>F<sub>1</sub></i>
 <tr><td>Óptimo libre</td><td>42,1</td><td>0</td><td>290,4</td><td>55,0</td><td>38,2 %</td><td>231</td></tr>
 </table></div>
 <p>Las dos columnas resumen el argumento del documento: con relieve transversal uniforme, conocer la pendiente vale un 26 % de POA a esa hora frente al astronómico y un 79 % frente a un controlador sin configurar; con torsión N-S entre vecinas y sol rasante, la sombra ya no se puede evitar —y una política que lo prometa está mintiendo o tirando energía—, así que el criterio energético es el que decide bien. Ninguna política domina a todas horas: por eso el informe del emplazamiento y los KPI del día (sombra ponderada por energía, minutos con sombra relevante, horas de backtracking, pérdida Martinez, peor momento) están para cada una.</p>
+
+<!-- ───────────────────────────────────────────────────────────────────── -->
+<h3 id="anual">5.1 …y la del año, con el consumo del motor dentro</h3>
+<p>La comparativa de arriba es de UN instante y UN día. La pregunta que decide si energy-optimal
+debería ser el defecto es anual y tiene dos términos: cuánta energía gana y cuánto motor cuesta
+ganarla. Lo mide <code>tools/anual_motor.mjs</code>, que recorre el año a paso de <b>1 minuto</b>
+con el lazo real de la TCU (banda 1°, 0,17 °/s, ciclo 1 s) y saca la energía y el recorrido
+<em>ejecutado</em> del mismo paso. No entra en CI: cuesta ~4 min el año de pairwise y ~31 el de
+energy-optimal. La aritmética de la que cuelga la conclusión sí está en CI
+(<code>tools/test_anual_motor.mjs</code>, 19 comprobaciones).</p>
+
+<dl class="dl">
+<dt>Por qué a paso de minuto y con lazo</dt><dd>El canario <code>golden_anual.json</code> tiene la
+cifra anual, pero a paso HORARIO y sin lazo, y así no se puede preguntar por el motor: a paso
+horario el actuador puede recorrer 0,17·3600 = 612°, más que el recorrido entero del tracker, de
+modo que la banda muerta se vuelve invisible y el recorrido medido no es el que hace el tracker.</dd>
+<dt>De dónde sale el Wh de motor</dt><dd><code>solargpt_core.motor_energy</code>, medido en El Burgo,
+leído del fuente del hermano y no copiado aquí. Pero ese modelo <b>se niega</b> a dar un número para
+esto: <code>daily_motor_energy_wh</code> devuelve NaN por debajo de 20° de amplitud, porque su
+intercepto sale de barridos de ±55° y extrapolarlo a micro-maniobras se equivoca por un factor 27
+(su validación contra 106 TCUs de flota). Las maniobras de un backtracking son de grado y medio. Así
+que cada maniobra se cobra <b>en su régimen</b>: ≥20° con el ensayo dedicado, &lt;20° con el ajuste
+sobre las 14.759 maniobras reales de flota (<i>E</i> = 0,0901 + 0,0447·|Δθ|), y la tabla por bandas
+de Wh/° del mismo careo como segunda opinión. Una maniobra es un tramo <b>contiguo</b> de
+movimiento: una rampa de 55° en pasos de 1° es UNA maniobra de 55°, no 55 de 1°.</dd>
+<dt>Por qué se pueden restar</dt><dd>La genérica es monofila y sin accionamiento acoplado: una fila
+es un string Y un motor. En una planta bifila un motor mueve dos filas y la resta no valdría.</dd>
+</dl>
+
+<div class="tw"><table>
+<tr><th>Planta</th><th>ΔE estimada</th><th>Δ motor</th><th>NETO</th><th>el motor se come…</th><th>recorrido</th><th>maniobras</th></tr>
+<tr><td>10 filas · año completo</td><td>+3.147,6 kWh</td><td>+59,2 kWh</td><td><b>+3.088,5 kWh (+0,784 %)</b></td><td>1,9 % de la ganancia</td><td>+90 %</td><td>−6 %</td></tr>
+<tr><td>79 filas · 13 días escalados</td><td>+14.794,6 kWh</td><td>+622,4 kWh</td><td><b>+14.172,3 kWh (+0,475 %)</b></td><td>4,2 % de la ganancia</td><td>+118 %</td><td>−4 %</td></tr>
+</table></div>
+<p>El consumo de motor <b>no decide nada</b>: se lleva entre el 2 y el 4 % de lo que la política gana.
+Lo que sí es grande es el <b>recorrido</b>, que se dobla, y con <b>menos</b> maniobras que pairwise:
+energy-optimal se mueve menos veces pero mucho más lejos, porque cambia de pico. En 79 filas hace
+199.627 maniobras de más de 20° al año donde pairwise hace <b>cero</b> — son los saltos entre los dos
+máximos del objetivo bimodal. Eso vale 621 de sus 1.219 kWh de motor: la mitad de su consumo son esos
+saltos. Y el desgaste NO es energía: doblar el recorrido es una pregunta de vida mecánica que esta
+medida no responde.</p>
+
+<dl class="dl">
+<dt>Dónde gana (10 filas, año completo)</dt><dd>La ganancia absoluta es casi plana mes a mes
+(215–292 kWh), así que en porcentaje va al revés de la producción: <b>+1,59 % en diciembre y
++1,54 % en enero</b> frente a <b>+0,56 % en junio</b>. No hay estación en la que apagarla ahorre
+algo, así que hacerla estacional no compra nada.</dd>
+<dt>El 100 % se cobra en sombra ACEPTADA</dt><dd>Cero en los instantes limpios, medido: donde no hay
+sombra que esquivar, las tres políticas coinciden. En un instante típico (15-dic 17:15, elev 10,9°,
+DNI 383) energy-optimal colapsa a <i>f</i> = 1 y manda las diez filas al tope de −55°: la fila de
+cabeza pasa de 174,5 a 337,7 W/m², y las otras nueve <em>también</em> ganan (+19,9 cada una) con un
+45 % de sombra encima, porque a <code>nBypass</code> = 2 pierden medio haz pero lo pierden con el sol
+casi normal a la mesa.</dd>
+<dt>Cuánto de eso es borde</dt><dd>Parte sale de la fila de cabeza, que nunca se sombrea y es
+exactamente 1/n de la planta. Medido a 12 días, paso 5 min, sin lazo: <b>+0,460 %</b> con 10 filas,
+<b>+0,298 %</b> con 20, <b>+0,229 %</b> con 40 y <b>+0,200 %</b> con 79. Converge en vez de
+desvanecerse: hay un 0,2 % estructural que no es borde, y algo más de la mitad del +0,46 de la
+genérica de diez filas sí lo era.</dd>
+</dl>
+
+<div class="tw"><table>
+<tr><th colspan="4">La ventaja no la pone el paso: la pone EL LAZO (12 días, kWh/fila)</th></tr>
+<tr><th>caso</th><th>pairwise</th><th>energy-optimal</th><th>astronómico</th></tr>
+<tr><td>60 min, sin lazo</td><td>13.250</td><td>+0,460 %</td><td>−2,522 %</td></tr>
+<tr><td>1 min, sin lazo</td><td>13.248</td><td>+0,449 %</td><td>−2,558 %</td></tr>
+<tr><td>60 min, con lazo</td><td>12.911</td><td>+1,057 %</td><td>+0,036 %</td></tr>
+<tr><td>1 min, con lazo</td><td>12.945</td><td><b>+0,840 %</b></td><td>−0,283 %</td></tr>
+</table></div>
+<p>Bajar el paso sin lazo no mueve nada (+0,460 → +0,449). Encender el lazo <b>duplica</b> la ventaja
+(+0,460 → +1,057 a paso horario) y le cambia el signo al astronómico; ese +1,057 es el artefacto de
+los 612°, y la fila honrada es la última, cuyo +0,840 % en 12 días cuadra con el +0,784 % del año
+completo. La lectura importa más que el número: <b>buena parte de la ventaja de energy-optimal no es
+apuntar mejor, es que pairwise paga más por tener un actuador finito</b> — su propia columna cae de
+13.250 a 12.945 kWh (−2,3 %) al encender el lazo, porque su consigna se mueve rápido justo en las
+horas rasantes y el retraso le cuesta sombra, mientras energy-optimal se pasa esas horas pegado al
+tope, donde la consigna está quieta. Corolario: la cifra que la página publica hoy (sin lazo, paso
+horario) <b>subestima energy-optimal casi a la mitad</b>.</p>
+
+<dl class="dl">
+<dt>De qué depende el signo, y de qué no</dt><dd>Energy-optimal no puede perder: su veto mete
+<i>f</i> = 0 y el pairwise publicado como candidatos, así que su suelo <em>es</em> pairwise y el signo
+está garantizado por construcción. Lo que se mueve es la magnitud, y la mueve <code>nBypass</code>
+×4: año entero a paso horario, +0,15 % con <i>n</i> = 1, <b>+0,47 % con <i>n</i> = 2</b> (el de la
+página) y +0,60 % con <i>n</i> = 3, mientras el astronómico va de −8,06 % a −1,22 %. Pairwise sale
+idéntico en las tres, hasta el último decimal: no sombrea, así que <code>elecLoss</code> no llega a
+dispararse nunca.</dd>
+<dt>Dos hipótesis que la medición tumbó</dt><dd><b>No se apoya en el filo del escalón.</b> A
+<i>n</i> = 2 una fila con 49 % de sombra pierde medio haz y con 51 % lo pierde entero, y parecía que
+la ganancia vivía en ese borde. Medido: la sombra media que acepta es del 60 % y un tercio de esas
+filas ya está por encima del escalón, y la cifra se mueve suave y monótona con el GCR (+0,642 % a
+0,476 → +0,352 % a 0,340), sin acantilado. — <b>El sesgo de difusa declarado (§7) no cambia el
+signo.</b> Sobre los 305 instantes de desvío de 12 días, la ganancia son 4.530 W/m² frente a 4.357 de
+TODO el cielo que energy-optimal recibe ahí: descontárselo entero la deja todavía positiva.</dd>
+<dt>Qué NO dice esto</dt><dd>No dice que el defecto de la página deba cambiar, y hay tres razones para
+que no cambie. La primera es de flota: energy-optimal es <span class="tag ncu">NCU</span> y pairwise
+es <span class="tag">TCU</span>; el defecto debe describir lo que los seguidores ejecutan de verdad, y
+estimar con una política que la TCU no corre sería estimar una planta que no existe. La segunda es que
+la ganancia entera se cobra en sombra que <code>elecLoss</code> tasa con un <code>nBypass</code>
+clavado a 2, y en ese régimen (40–60 % de sombra) no hay careo de campo: los goldens van con pairwise
+y astro, que no sombrean. La tercera es el recorrido doblado, que es desgaste y no vatios. Lo que la
+cifra sí justifica es un piloto a nivel NCU, una medida de campo de <code>elecLoss</code> en esa banda
+de sombra, y mirar si el modo «no sombrear» del lazo le devuelve a pairwise la mitad de la diferencia
+que hoy pierde por el actuador.</dd>
+</dl>
 
 <!-- ───────────────────────────────────────────────────────────────────── -->
 <h2 id="verif">6. Verificación: lo que se prueba y con qué cifras</h2>
