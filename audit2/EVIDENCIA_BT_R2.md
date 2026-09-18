@@ -1313,9 +1313,10 @@ function elecLoss(f,nBypass){
 
 Mismo diseño reducido y mismos parámetros que E-D2, con su calibración medida
 allí. MV **sin forzar**, o sea **8** por `if(T.real)` (`backtracking.html:845`).
-La columna **nb = 2** es la corrida MV 8 de E-D2: forzar `T.mv = 8` con `nb` de
-`cfg` (= 2) y forzar `nb = 2` con MV sin forzar (= 8) son **la misma
-configuración**, así que no se ha vuelto a calcular.
+La columna **nb = 2** se publicó importándola de la corrida MV 8 de E-D2, por ser
+la misma configuración por dos rutas de código distintas de `mvPara`. **E-D6
+comprueba esa equivalencia**: las nueve celdas coinciden dígito a dígito, así que
+esta tabla no cambia.
 
 Coste: 14 871 s (nb 1), 14 799 s (nb 0), 14 908 s (nb 6), 14 980 s (nb 3) por
 variante, con las nueve políticas.
@@ -1377,6 +1378,73 @@ medido en E-D2 sobre pairwise y true-3D; **ese sesgo no se ha calibrado para las
 otras siete políticas**, y en particular no para los dos optimizadores, que son
 los que encabezan la tabla (ver HUECOS). Un solo año (2026), cielo claro, sin
 lazo de control, MV 8 en todas las columnas.
+
+### E-D6  Comprobación cruzada de la columna `nb = 2` de E-D3
+
+Commit:      3a57451
+Script:      `audit2/D6_nb2_cruzada.mjs`
+Comando:     `node audit2/D6_nb2_cruzada.mjs`
+Node:        v22.22.2
+Salida:      `audit2/out/D6.txt` · fuentes `audit2/out/D2_MV8.txt` y `audit2/out/D3a.txt`
+Estado:      **MEDIDO** — las nueve celdas coinciden; **E-D3 no se corrige**
+
+**Por qué existe este ítem.** La columna `nb = 2` de E-D3 se publicó
+**importándola** de la corrida MV 8 de E-D2, con este argumento: forzar
+`T.mv = 8` dejando `nb` en el valor de `cfg` (= 2), y forzar `T.nBypass = 2`
+dejando MV sin forzar (= 8 por `if(T.real)`), son la misma configuración. El
+argumento es correcto sobre el papel, pero son **dos rutas de código distintas**
+dentro de `mvPara` (`backtracking.html:842-845`):
+
+```js
+function mvPara(T,zen){
+  if(!T)return 8;
+  if(T.mv)return T.mv;
+  if(T.real)return 8;
+```
+
+la corrida de E-D2 sale por `if(T.mv)` y la de E-D3 por `if(T.real)`. La regla
+M.1 exige comprobarlo en vez de darlo por hecho.
+
+Las dos corridas comparadas:
+
+| | corrida | ruta | coste |
+|---|---|---|---|
+| **A** | `D.2 · MV 8 · nb cfg (2)` | `if(T.mv)return T.mv` | 14 871 s |
+| **B** | `D.3 · MV sin forzar (8) · nb 2` | `if(T.real)return 8` | 15 750 s |
+
+Comparación celda a celda, energía anual en kWh/m²·año:
+
+| política | A (ruta `T.mv`) | B (ruta `T.real`) | ¿coinciden? |
+|---|---|---|---|
+| astro | 2631,8894 | 2631,8894 | SÍ, dígito a dígito |
+| global | 2643,3184 | 2643,3184 | SÍ, dígito a dígito |
+| row | 2648,8196 | 2648,8196 | SÍ, dígito a dígito |
+| bt2d | 2640,7619 | 2640,7619 | SÍ, dígito a dígito |
+| pairwise | 2293,5007 | 2293,5007 | SÍ, dígito a dígito |
+| true3d | 2278,7642 | 2278,7642 | SÍ, dígito a dígito |
+| mgl | 2326,5231 | 2326,5231 | SÍ, dígito a dígito |
+| optimal | 2666,4889 | 2666,4889 | SÍ, dígito a dígito |
+| optfree | 2668,3689 | 2668,3689 | SÍ, dígito a dígito |
+
+```
+  celdas comparadas: 9 · coinciden: 9 · difieren: 0
+  coste de la comprobación: 15750 s de CPU
+```
+
+**E-D3 no se corrige**: la tabla de orden que publica se sostiene sin cambios.
+
+**La regla M.1 se mantiene, y se registra por qué.** Lo que M.1 prohíbe no es el
+número: es publicar como hecho una equivalencia de rutas que no se ha
+comprobado. Que el argumento resultara correcto no convierte retroactivamente la
+publicación en una verificación — la verificación es esta corrida, y ha costado
+**4 h 22 min de CPU** para confirmar nueve números que ya estaban escritos. El
+coste de comprobar es el precio de la regla, y queda anotado con su cifra para
+que la decisión de aplicarla o no se tome con el número delante.
+
+Notas: la comparación es de los valores tal como los imprime cada corrida (4
+decimales); no se ha comparado a más precisión porque el renderizador de
+`D23_anual_variantes.mjs` no la publica. Es el mismo diseño reducido de E-D2, con
+su sesgo de nivel medido allí.
 
 ### E-D4  Escalón mínimo no nulo de pérdida eléctrica por mesa
 

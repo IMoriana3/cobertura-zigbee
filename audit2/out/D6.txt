@@ -1,0 +1,31 @@
+════════════════════════════════════════════════════════════════════════════════════════════
+E-D6 · comprobación cruzada de la columna nb = 2 · commit 796bdde720cc9ee32b94b0c5f18ec1b8556cb0db · node v22.22.2
+════════════════════════════════════════════════════════════════════════════════════════════
+
+las dos rutas, backtracking.html:842-845:
+
+function mvPara(T,zen){
+  if(!T)return 8;
+  if(T.mv)return T.mv;        <-- ruta A: la corrida de E-D2 fuerza T.mv = 8
+  if(T.real)return 8;         <-- ruta B: la corrida de E-D3 deja MV sin forzar y sale por aquí
+
+A · D.2 · MV 8 · nb cfg (2) — 14871 s
+B · D.3 · MV sin forzar (8) · nb 2 — 15750 s
+
+  política    A (ruta T.mv)      B (ruta T.real)    ¿coinciden?
+  astro            2631.8894          2631.8894    SÍ, dígito a dígito
+  global           2643.3184          2643.3184    SÍ, dígito a dígito
+  row              2648.8196          2648.8196    SÍ, dígito a dígito
+  bt2d             2640.7619          2640.7619    SÍ, dígito a dígito
+  pairwise         2293.5007          2293.5007    SÍ, dígito a dígito
+  true3d           2278.7642          2278.7642    SÍ, dígito a dígito
+  mgl              2326.5231          2326.5231    SÍ, dígito a dígito
+  optimal          2666.4889          2666.4889    SÍ, dígito a dígito
+  optfree          2668.3689          2668.3689    SÍ, dígito a dígito
+
+  celdas comparadas: 9 · coinciden: 9 · difieren: 0
+  coste de la comprobación: 15750 s de CPU
+
+  RESULTADO: la importación habría dado EL MISMO número en las nueve celdas.
+  La regla M.1 se mantiene igualmente: lo que prohíbe no es el número, es publicar
+  como hecho una equivalencia de rutas que no se ha comprobado. Aquí se ha comprobado.
