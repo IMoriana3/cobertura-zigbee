@@ -2521,7 +2521,13 @@ function build3D(c){
     const asp=R3.cam.aspect||1.6, fov=R3.cam.fov*D2R;
     let d=Math.max((sz.z/2)/Math.tan(fov/2),(sz.x/2)/(Math.tan(fov/2)*asp),40)*1.15;
     R3.ctrl.target.copy(ctr);
+    /* APUNTAR, no solo colocar. Quien orienta la camara es R3.ctrl.update(), y eso se
+       llama DESPUES del bucle: sin este lookAt, las ocho esquinas se proyectaban contra
+       una vista que no era la que se iba a ver, `lleno()` no bajaba nunca y la distancia
+       se multiplicaba por su tope 1,7 las ocho vueltas —1,7^8 = 70—. Los 134 m de salida
+       acababan en 9,3 km, con la escena detras del plano lejano (6000 m): solo cielo. */
     const coloca=dd=>{R3.cam.position.set(ctr.x+dd*0.42,ctr.y+dd*0.55,ctr.z+dd*0.62);
+                      R3.cam.lookAt(ctr);
                       R3.cam.updateMatrixWorld();R3.cam.updateProjectionMatrix();};
     /* AJUSTE POR PROYECCIÓN, y por eso se hace dos veces. La cuenta de arriba
        encuadra la caja como si se mirase de frente, pero la cámara mira desde
