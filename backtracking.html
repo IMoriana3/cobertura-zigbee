@@ -8127,6 +8127,27 @@ function grPieTexto(P){
   return 'VER '+P.ver+' · fecha '+P.fecha+' · nb '+P.nb+' · MV efectivo '+P.mv+
          ' · cielo '+P.cielo+' · '+P.geom+(P.extra.length?' · '+P.extra.join(' · '):'');
 }
+/* EL LIENZO, MEDIDO AL DIBUJAR. `fitCanvas` usa la altura del ATRIBUTO como
+   altura en CSS y sólo redimensiona el búfer cuando la anchura no cuadra, y eso
+   deja dos desajustes que en estas gráficas sí importan:
+     · el búfer se queda con la anchura de la última vez —medido aquí, 1174 px
+       de búfer para una caja de 1499— y el navegador estira lo dibujado un 28 %
+       en horizontal;
+     · `.viz` lleva borde de 1 px con caja de borde, así que la caja real mide
+       418 px de alto donde el atributo dice 420.
+   Para G1..G4 eso es cosmética. Para G5 NO lo es: su escala es ISÓTROPA, y una
+   escala isótropa pintada sobre un lienzo estirado deja de serlo — que es
+   exactamente lo que G5 viene a garantizar para poder carearse con una
+   ortofoto. Así que aquí el búfer se toma SIEMPRE de la caja real. */
+function grFit(cv){
+  const w=cv.clientWidth||+cv.getAttribute('width')||900;
+  const h=cv.clientHeight||+cv.getAttribute('height')||300;
+  const dpr=window.devicePixelRatio||1;
+  const bw=Math.max(1,Math.round(w*dpr)), bh=Math.max(1,Math.round(h*dpr));
+  if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh;}
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx:ctx,W:w,H:h};
+}
 const GR_PIE_H=54;   // franja reservada al pie DENTRO del lienzo (4 líneas)
 const GR_PIE_LINEAS=4;
 
@@ -8286,7 +8307,7 @@ function grVentanaBT(ser){
 /* ── marco común de las gráficas de tiempo ──────────────────────────────── */
 function grMarco(cv,opt){
   const o=opt||{};
-  const f=fitCanvas(cv), ctx=f.ctx, W=f.W, H=f.H;
+  const f=grFit(cv), ctx=f.ctx, W=f.W, H=f.H;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#0f1724'; ctx.fillRect(0,0,W,H);
   const padL=o.padL==null?46:o.padL, padR=o.padR==null?52:o.padR, padT=o.padT==null?26:o.padT;
@@ -8646,7 +8667,7 @@ function grInstante5(){
 function grG5(){
   const t=grInstante5();
   const T=DAY.T, ser=GR.ser[GR.A], sh=ser.shade[t], g=DAY.sun[t];
-  const f=fitCanvas($('gr5')), ctx=f.ctx, W=f.W, H=f.H;
+  const f=grFit($('gr5')), ctx=f.ctx, W=f.W, H=f.H;
   ctx.clearRect(0,0,W,H); ctx.fillStyle='#0f1724'; ctx.fillRect(0,0,W,H);
   const padL=46,padR=16,padT=40,padB=34+GR_PIE_H;
   const n=T.pairs.length+1;

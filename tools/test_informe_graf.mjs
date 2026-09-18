@@ -52,7 +52,11 @@ const check = (nombre, cond, detalle) => {
 {
   const src = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
   const ini = src.indexOf('FÍSICA PURA —');
-  const fin = src.indexOf('FIN-FÍSICA');
+  // OJO: la primera aparición de «FIN-FÍSICA» está en la propia cabecera del
+  // bloque («de aquí a FIN-FÍSICA no se toca el DOM»); el marcador de cierre es
+  // el comentario que abre línea. Buscar el primero dejaba un corte de 80
+  // caracteres que no contenía nada, y el control de abajo lo cazó.
+  const fin = src.indexOf('/* FIN-FÍSICA');
   check('las marcas de la FÍSICA PURA siguen en el fichero', ini > 0 && fin > ini,
         `inicio ${ini} · fin ${fin}`);
   const fisica = src.slice(ini, fin);
@@ -95,7 +99,17 @@ try {
       document.getElementById('tparam').value = c.tparam; document.getElementById('tapply').click();
     }, c);
     await pg.waitForFunction(() => DAY && DAY.pol, null, { timeout: 120000 });
-    await pg.waitForTimeout(1200);
+    /* Y se espera a que la página esté QUIETA. `configura` encola un recálculo
+       del día (agrupado a 120 ms) y pedir el informe con uno en vuelo es pedir
+       un informe de un día que va a morir: el bloque se defiende —aborta y
+       reintenta— pero el banco tiene que medir el caso estable, no la carrera.
+       El testigo «calculando…» está visible desde que se encola hasta que
+       termina, así que sirve de señal sin exponer nada nuevo. */
+    await pg.waitForTimeout(400);
+    await pg.waitForFunction(() => {
+      const b = document.getElementById('calcbusy');
+      return (!b || b.style.display === 'none') && !window.__GRAF.ocupado;
+    }, null, { timeout: 180000 });
   };
   const informe = async (A, B) => {
     await pg.evaluate(({ A, B }) => {
@@ -217,6 +231,35 @@ try {
         await pg.evaluate(() => /sin calcular/i.test(document.getElementById('grt4').textContent) &&
                                 /SIN CALCULAR/.test((window.__GRAF.pies.g4.extra || []).join(' '))));
 
+  /* ── el lienzo no deforma lo dibujado ───────────────────────────────────
+     El búfer se quedaba con la anchura de la última vez —1174 px para una caja
+     de 1499— y el navegador estiraba lo pintado un 28 % en horizontal. Para las
+     de tiempo es cosmética; para G5 NO, porque su escala es ISÓTROPA y una
+     escala isótropa sobre un lienzo estirado deja de serlo, que es justo lo que
+     G5 garantiza para poder carearse con una ortofoto. */
+  const lienzos = await pg.evaluate(() => {
+    const o = {};
+    for (const n of [1, 2, 3, 4, 5]) {
+      const cv = document.getElementById('gr' + n);
+      o['g' + n] = { cssW: cv.clientWidth, cssH: cv.clientHeight, bufW: cv.width, bufH: cv.height };
+    }
+    o.zonas5 = { maxY: Math.max(...window.__GRAF.zonas5.map(z => z.y + z.h)),
+                 minY: Math.min(...window.__GRAF.zonas5.map(z => z.y)),
+                 cssH: document.getElementById('gr5').clientHeight };
+    return o;
+  });
+  for (const n of [1, 2, 3, 4, 5]) {
+    const L = lienzos['g' + n];
+    const kx = L.bufW / L.cssW, ky = L.bufH / L.cssH;
+    check(`G${n}: el búfer no deforma el dibujo (misma escala en los dos ejes)`,
+          L.cssW > 0 && L.cssH > 0 && Math.abs(kx - ky) < 0.01,
+          `caja ${L.cssW}x${L.cssH} · búfer ${L.bufW}x${L.bufH} · kx ${kx.toFixed(3)} ky ${ky.toFixed(3)}`);
+  }
+  // y las mesas de G5 no invaden la franja del pie
+  check('G5: las mesas caben en su área de dibujo y no pisan el pie',
+        lienzos.zonas5.minY > 0 && lienzos.zonas5.maxY <= lienzos.zonas5.cssH - 54,
+        `y de ${lienzos.zonas5.minY.toFixed(1)} a ${lienzos.zonas5.maxY.toFixed(1)} · caja ${lienzos.zonas5.cssH}`);
+
   const exportadas = await pg.evaluate(async () => {
     const out = {};
     for (const n of [1, 2, 3, 4, 5]) {
@@ -239,10 +282,18 @@ try {
     // y en la tabla de apoyo: alguna fila tiene que decir que NO se separa
     tablaAmbar: document.querySelectorAll('#grtab .amb').length,
     uniforme: terrainIsUniform(DAY.T),
+    // el detalle que hace falta para diagnosticar un fallo de esta pareja sin
+    // tener que volver a instrumentar el banco
+    dbg: { A: window.__GRAF.A, B: window.__GRAF.B,
+           kwhA: window.__GRAF.kp[window.__GRAF.A].kwh,
+           kwhB: window.__GRAF.kp[window.__GRAF.B].kwh,
+           banda: grBanda(window.__GRAF.kp[window.__GRAF.A], window.__GRAF.kp[window.__GRAF.B]),
+           elev: ELEV.slice(), fechaDia: DAY.c.date, pendientes: DAY.T.pairs.map(p => +p.slope.toFixed(4)) },
   }));
-  check('el terreno del caso positivo es de verdad uniforme', uni.uniforme === true);
+  check('el terreno del caso positivo es de verdad uniforme', uni.uniforme === true,
+        JSON.stringify(uni.dbg.pendientes));
   check('en terreno uniforme, global vs row levanta la marca ámbar', uni.ambar === true,
-        'título: ' + uni.titulo);
+        JSON.stringify(uni.dbg));
   check('y dice POR QUÉ no se declara ganador', /NO se declara ganador/.test(uni.pie) &&
         /(no llega a la resoluci[óo]n del modelo|CRUZA EL CERO)/.test(uni.pie), uni.pie.slice(0, 260));
   /* y el control de que la frase no está SIEMPRE: en el caso en pendiente, el
