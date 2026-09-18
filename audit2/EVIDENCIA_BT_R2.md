@@ -3128,6 +3128,68 @@ acierta donde tiene que acertar.
 Los 28 scripts llaman a `policyAngles` y `poaPlant` directamente, que es la misma
 ruta sin lazo que usa el anual de la página.
 
+## E-Z3 · Las DOS rutas anuales que conviven en `cd2dc3d`
+
+**Qué se ejecutó.** Nada. `git show` sobre `cd2dc3d` y `git grep` con su control.
+
+**El hecho.** En `cd2dc3d` conviven dos rutas para la cifra anual, y **la que
+publica la página no es la que declara corregir el problema del paso y del
+lazo**.
+
+### Ruta 1 — la que publica la página
+
+`cd2dc3d:backtracking.html:6983-6984`
+```js
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+```
+
+12 días representativos, paso 10 min, **sin lazo de control**. Es la que llena la
+tabla de «Estimación anual» de la página y la que mide E-A3.
+
+### Ruta 2 — la que declara el problema, y que la página no llama
+
+`cd2dc3d:tools/anual_motor.mjs:13-19`
+```
+   POR QUÉ NO SALE DE LA PÁGINA NI DEL CANARIO. `golden_anual.json` tiene la
+   cifra anual, pero a paso HORARIO y sin lazo: a paso horario el techo de
+   velocidad del actuador son 0,17·3600 = 612°, más que el recorrido entero del
+   tracker, así que la banda muerta se vuelve invisible y el recorrido que se
+   mide no es el que hace el tracker. El consumo de motor SOLO tiene sentido con
+   el lazo real y en una rejilla que el actuador no pueda saltarse: aquí el año
+   va a paso de 1 MINUTO, con banda 1°, 0,17 °/s y ciclo 1 s — los valores de
+```
+
+### Quién invoca a la ruta 2
+
+`git grep -l "anual_motor" cd2dc3d` devuelve **cuatro ficheros**, y ninguno es la
+página:
+
+```
+.github/workflows/bancos.yml
+docs/algoritmos_backtracking.html
+tools/anual_motor.mjs
+tools/test_anual_motor.mjs
+```
+
+- `cd2dc3d:tools/test_anual_motor.mjs:19` — su propio banco, que importa
+  `maniobras, costeMotor, motorDelCore, BANDAS_FLOTA`;
+- `cd2dc3d:.github/workflows/bancos.yml:148` — la entrada de CI que corre ese banco;
+- `cd2dc3d:docs/algoritmos_backtracking.html:326` — una cita en la documentación.
+
+Y en `backtracking.html` de `cd2dc3d`, la cadena `anual_motor` aparece **0 veces**.
+
+**TEST NULO del grep.** Un grep que no acertara a nadie daría el mismo cero: el
+mismo grep sobre la misma página, buscando otras herramientas de `tools/` que sí
+se nombran ahí, devuelve **1**. El patrón acierta cuando hay algo que acertar.
+
+**Lo que este ítem afirma y lo que no.** Afirma que hay dos rutas anuales, que la
+de la página va a paso 10 min y sin lazo, que la otra declara por escrito que ese
+camino no mide el recorrido que hace el tracker, y que la página no la llama. **No
+afirma** que la cifra de la página esté mal, ni que la de `anual_motor.mjs` sea la
+buena: son medidas distintas de cosas distintas, y ninguna de las dos se ha
+ejecutado en este bloque.
+
 ## E-Z2 · Tabla de exposición
 
 Una fila por ítem cuya **pregunta** pueda estar tocada por el avance de `main`.
@@ -3142,6 +3204,23 @@ La tercera columna dice si la medida hecha sobre `3a57451` **sigue describiendo*
 | **E-D7** | podio interno `optfree`/`optimal` y las cinco magnitudes que acotan su resolución | **Nada** en las magnitudes anuales. Las instantáneas (E-D1, E-D4) tampoco pasan por el lazo | **SÍ** |
 | **E-D8** | anual con MV 32 · deriva del ruido de cuantización | **Nada.** Misma ruta anual y `mvPara` sin cambios; el MV se fuerza con `T.mv`, que es el primer camino de `mvPara` y no ha variado | **SÍ** |
 | **cualquier ítem que midiera lo que la planta EJECUTA** | — | el lazo cambia de comportamiento (adelanto) y de forma | **NO APLICA: no hay ninguno.** Ningún script del paquete usa el lazo (Z1.6); todo el paquete mide la consigna que la política PIDE |
+
+**LA CRÍTICA DEL ANUAL SIN LAZO SIGUE VIGENTE EN `cd2dc3d`, NO RESUELTA.** La
+crítica que el paquete hace a la ruta anual —que integra la consigna que la
+política PIDE, sin banda muerta ni límite de velocidad, así que no es lo que la
+planta EJECUTA— **no la ha cerrado v1.69**. El lazo cambió; la ruta anual no.
+Sigue siendo, literalmente, estas dos líneas:
+
+`cd2dc3d:backtracking.html:6983-6984`
+```js
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+```
+
+Y eso es lo que hace que las cinco filas de arriba digan `SÍ`: la medida de
+`3a57451` sigue describiendo `cd2dc3d` **porque el camino que mide no se ha
+tocado**, no porque la crítica se haya atendido. Las dos rutas anuales que
+conviven, y cuál de las dos publica, están en **E-Z3**.
 
 **Lo que esta tabla NO dice.** No dice que v1.69 no cambie nada del simulador:
 cambia lo que la página ejecuta en el día, y eso es un cambio real y medido por
