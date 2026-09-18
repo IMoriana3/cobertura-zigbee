@@ -30,6 +30,7 @@
  *
  *     node tools/test_informe_graf.mjs
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +43,28 @@ const check = (nombre, cond, detalle) => {
   if (cond) { ok++; console.log('  ✓ ' + nombre); }
   else { ko++; console.log('  ✗ ' + nombre + (detalle ? ' — ' + detalle : '')); }
 };
+
+/* ── 4. EL BLOQUE VIVE FUERA DE LA FÍSICA PURA ──────────────────────────────
+   Se comprueba sobre el fuente, no sobre la palabra de nadie: ningún nombre del
+   informe gráfico puede aparecer antes de la marca FIN-FÍSICA. Es la regla que
+   dice que este bloque es capa de aplicación, hecha mecánica para que siga
+   valiendo el día que alguien mueva código sin acordarse de ella. */
+{
+  const src = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+  const ini = src.indexOf('FÍSICA PURA —');
+  const fin = src.indexOf('FIN-FÍSICA');
+  check('las marcas de la FÍSICA PURA siguen en el fichero', ini > 0 && fin > ini,
+        `inicio ${ini} · fin ${fin}`);
+  const fisica = src.slice(ini, fin);
+  const NOMBRES = ['grPct', 'grPieObj', 'grDibujaPie', 'grBanda', 'grSeriesGen',
+                   'grG1', 'grG2', 'grG3', 'grG4', 'grG5', 'grTabla', '__GRAF'];
+  const dentro = NOMBRES.filter(n => fisica.includes(n));
+  check('ningún nombre del informe gráfico está dentro de la FÍSICA PURA',
+        dentro.length === 0, dentro.join(', '));
+  // y el control de que la búsqueda mira donde cree: un nombre que SÍ está
+  check('la comprobación mira de verdad dentro del bloque (control)',
+        fisica.includes('function poaPlant('));
+}
 
 const { chromium } = await import('playwright');
 const srv = spawn('python3', ['-m', 'http.server', String(PORT), '--directory', ROOT], { stdio: 'ignore' });

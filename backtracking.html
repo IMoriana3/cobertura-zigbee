@@ -408,7 +408,7 @@
     <div class="nota" id="grestado">Sin calcular. El informe no muestra ninguna cifra hasta que se pulsa el botón: una gráfica vacía es preferible a una gráfica reconstruida.</div>
 
     <div class="grbloque"><div class="grtit" id="grt1"></div>
-      <canvas id="gr1" class="viz" height="330" style="height:330px"></canvas>
+      <canvas id="gr1" class="viz" height="346" style="height:346px"></canvas>
       <div class="grpie" id="grp1"></div>
       <button class="btn small grexp" data-gr="1">⇩ PNG</button></div>
 
@@ -8127,7 +8127,8 @@ function grPieTexto(P){
   return 'VER '+P.ver+' · fecha '+P.fecha+' · nb '+P.nb+' · MV efectivo '+P.mv+
          ' · cielo '+P.cielo+' · '+P.geom+(P.extra.length?' · '+P.extra.join(' · '):'');
 }
-const GR_PIE_H=42;   // franja reservada al pie DENTRO del lienzo
+const GR_PIE_H=54;   // franja reservada al pie DENTRO del lienzo (4 líneas)
+const GR_PIE_LINEAS=4;
 
 /* El pie se dibuja dentro del lienzo para que el PNG exportado se explique
    solo: una captura que viaje sin su VER, su fecha y su cielo no es evidencia
@@ -8138,14 +8139,22 @@ function grDibujaPie(ctx,W,H,P){
   ctx.fillStyle='#0d1420'; ctx.fillRect(0,H-GR_PIE_H,W,GR_PIE_H);
   ctx.strokeStyle='#1e2a3a'; ctx.beginPath(); ctx.moveTo(0,H-GR_PIE_H+.5); ctx.lineTo(W,H-GR_PIE_H+.5); ctx.stroke();
   ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='#5c7189';
-  const max=W-12; const pal=txt.split(' '); let ln='', y=H-GR_PIE_H+12, n=0;
+  const max=W-12; const pal=txt.split(' '); const lineas=[]; let ln='';
   for(const w of pal){
     const pr=ln?ln+' '+w:w;
-    if(ctx.measureText(pr).width>max&&ln){
-      ctx.fillText(ln,6,y); y+=11; ln=w; if(++n>=3)break;
-    }else ln=pr;
+    if(ctx.measureText(pr).width>max&&ln){lineas.push(ln);ln=w;}else ln=pr;
   }
-  if(n<3&&ln)ctx.fillText(ln,6,y);
+  if(ln)lineas.push(ln);
+  /* si no cabe, se DICE. Un pie cortado en silencio deja una captura que
+     parece completa y no lo está, que es justo lo que el pie viene a evitar. */
+  const sobra=lineas.length>GR_PIE_LINEAS;
+  const pinta=sobra?lineas.slice(0,GR_PIE_LINEAS-1):lineas;
+  let y=H-GR_PIE_H+12;
+  for(const l of pinta){ctx.fillText(l,6,y);y+=11;}
+  if(sobra){
+    ctx.fillStyle='#fbbd23';
+    ctx.fillText('⚠ el pie no cabe entero en la imagen ('+(lineas.length-GR_PIE_LINEAS+1)+' líneas más): está completo bajo la gráfica, en la página',6,y);
+  }
   ctx.restore();
 }
 function grPublicaPie(n,P){
@@ -8358,7 +8367,13 @@ function grG1(){
       ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x0+half,yy);ctx.stroke();
       if(x0===M.padL)ctx.fillText((a>0?'+':'')+a+'°',4,yy+3);
     }
-    for(let h=0;h<=24;h+=6){const p=xx(h*60);ctx.beginPath();ctx.moveTo(p,yTop);ctx.lineTo(p,yBot);ctx.stroke();ctx.fillText((h<10?'0':'')+h+'h',p-8,yBot+12);}
+    // el 24h del panel izquierdo chocaba con el 00h del derecho: sólo lo rotula
+    // el panel de la derecha, que es donde queda margen
+    for(let h=0;h<=24;h+=6){
+      const p=xx(h*60);
+      ctx.beginPath();ctx.moveTo(p,yTop);ctx.lineTo(p,yBot);ctx.stroke();
+      if(h<24||x0!==M.padL)ctx.fillText((h<10?'0':'')+h+'h',p-8,yBot+12);
+    }
     // una curva por seguidor elegido, TODAS con el mismo eje y la misma unidad.
     // Un degradado de un solo tono no se lee con seis curvas encima: se recorre
     // el círculo de tonos, que sí separa, y la leyenda dice cuál es cuál.
@@ -8385,15 +8400,17 @@ function grG1(){
     ctx.fillStyle=grColor(key);ctx.font='11px ui-monospace,monospace';
     ctx.fillText(grNombre(key)+'  ·  abanico máx '+grNum(ab)+'°',x0,yTop-8);
   }
-  // leyenda de los seguidores dibujados, con el mismo tono que su curva
+  // leyenda de los seguidores dibujados, con el mismo tono que su curva. Va
+  // ARRIBA A LA DERECHA: abajo se comía los rótulos de hora del eje.
   {
-    let lx=M.padL;
     ctx.font='9px ui-monospace,monospace';
+    let w=0; sel.filas.forEach((r,i)=>{w+=13+ctx.measureText('fila '+(r+1)).width+12;});
+    let lx=Math.max(M.padL,W-M.padR-w);
     sel.filas.forEach((r,i)=>{
       const et='fila '+(r+1);
       ctx.fillStyle=grTono(i,sel.filas.length);
-      ctx.fillRect(lx,H-M.padB+6,9,3);
-      ctx.fillStyle='#9bb0c6'; ctx.fillText(et,lx+13,H-M.padB+9);
+      ctx.fillRect(lx,12,9,3);
+      ctx.fillStyle='#9bb0c6'; ctx.fillText(et,lx+13,15);
       lx+=13+ctx.measureText(et).width+12;
     });
   }
@@ -8643,11 +8660,20 @@ function grG5(){
   /* ESCALA ÚNICA para los dos ejes. Con una escala por eje la planta sale
      estirada, y una planta estirada NO se puede poner al lado de una ortofoto:
      que las proporciones sean las de verdad es el punto entero de G5. Lo que
-     sobra se reparte como margen, y la barra de escala de abajo lo publica. */
+     sobra se reparte como margen, y la barra de escala lo publica.
+
+     Y el EJE DE SEGUIMIENTO VA EN HORIZONTAL, no en vertical. Una planta es
+     larga a lo largo del eje y estrecha a lo ancho —aquí 8 filas de 6 m contra
+     mesas de 65 m—, así que con el eje en vertical la escala isótropa dejaba la
+     planta en una tira de cien píxeles en un lienzo de mil quinientos. Con el
+     eje tumbado, las proporciones siguen siendo las de verdad y además se ve.
+     La orientación va declarada en el lienzo y en el pie, con el azimut del
+     eje, que es lo que hace falta para girar la ortofoto y superponerla. */
   const anch=Math.max(1e-6,x1-x0), larg=Math.max(1e-6,n1-n0);
-  const es=Math.min((W-padL-padR)/anch,(H-padT-padB)/larg);
-  const ox=padL+((W-padL-padR)-anch*es)/2, oy=padT+((H-padT-padB)-larg*es)/2;
-  const PX=v=>ox+(v-x0)*es, PY=v=>H-padB-oy+padT-(v-n0)*es;
+  const es=Math.min((W-padL-padR)/larg,(H-padT-padB)/anch);
+  const ox=padL+((W-padL-padR)-larg*es)/2, oy=padT+((H-padT-padB)-anch*es)/2;
+  const PX=v=>ox+(v-n0)*es;      // v = norte a lo largo del eje  → horizontal
+  const PY=v=>oy+(v-x0)*es;      // v = posición transversal      → vertical
   const tono=fr=>{const q=Math.max(0,Math.min(1,fr));
     return 'rgb('+Math.round(40+215*q)+','+Math.round(140-90*q)+','+Math.round(200-150*q)+')';};
   GR.zonas5=[];
@@ -8656,8 +8682,8 @@ function grG5(){
     for(let k=0;k<linea.length;k++){
       const s2=linea[k];
       const fr=(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:(sh[r]||0);
-      const ax=PX(xs[r]-T.cw/2), bx=PX(xs[r]+T.cw/2);
-      const ay=PY(Math.max(s2[0],s2[1])), by=PY(Math.min(s2[0],s2[1]));
+      const ax=PX(Math.min(s2[0],s2[1])), bx=PX(Math.max(s2[0],s2[1]));
+      const ay=PY(xs[r]-T.cw/2), by=PY(xs[r]+T.cw/2);
       const rect={x:Math.min(ax,bx),y:Math.min(ay,by),w:Math.abs(bx-ax),h:Math.abs(by-ay),r:r,k:k,f:fr};
       GR.zonas5.push(rect);
       ctx.fillStyle=tono(fr); ctx.fillRect(rect.x,rect.y,Math.max(1.5,rect.w),Math.max(1.5,rect.h));
@@ -8721,11 +8747,11 @@ function grG5(){
     ctx.fillStyle='#9bb0c6';ctx.font='9px ui-monospace,monospace';ctx.fillText(m+' m',bx+2,by-6);
   }
   ctx.fillStyle='#eaf4ff';ctx.font='12px ui-monospace,monospace';
-  ctx.fillText(DAY.c.date+' '+hhmm(DAY.times[t])+' (UTC'+(DAY.c.tz>=0?'+':'')+DAY.c.tz+')',padL,20);
+  ctx.fillText(DAY.c.date+' '+hhmm(DAY.times[t])+' (UTC'+(DAY.c.tz>=0?'+':'')+DAY.c.tz+') · '+DAY.c.lat+', '+DAY.c.lon,padL,20);
   ctx.fillStyle='#9bb0c6';ctx.font='10px ui-monospace,monospace';
-  ctx.fillText('G5 · planta cenital en el marco del eje · escala isótropa · '+grNombre(GR.A),padL,32);
+  ctx.fillText('G5 · planta cenital · eje de seguimiento en HORIZONTAL (azimut '+grNum(T.axisAz,0)+'°) · transversal en vertical · escala isótropa · '+grNombre(GR.A),padL,32);
   const pie=grPieObj([
-    'G5 · vista CENITAL de la implantación en el marco del eje (eje transversal en horizontal, eje de seguimiento en vertical), a la hora rotulada en la imagen. Es la vista que se carea con una ORTOFOTO de esa misma hora; aquí NO se incluye ninguna foto',
+    'G5 · vista CENITAL de la implantación en el marco del eje, a la hora rotulada en la imagen: el EJE DE SEGUIMIENTO va en horizontal (azimut de eje '+grNum(T.axisAz,1)+'°) y el eje transversal en vertical, con ESCALA ISÓTROPA y barra de escala — para superponer una ortofoto basta girarla ese azimut. Es la vista que se carea con una ORTOFOTO de esa misma hora; aquí NO se incluye ninguna foto',
     'el color de cada mesa es la fracción de área de módulo tapada (sombra ÓPTICA) que predice el contador ray-cast 3D con estructura para ese instante · política '+grNombre(GR.A),
     'NO se proyecta la silueta de la sombra sobre el suelo: lo que se pinta es la fracción sombreada por mesa, no su mancha',
     hayMesas?('mesas resaltadas: '+(puestas.length?puestas.join(' · '):'ninguna — pincha una mesa'))
