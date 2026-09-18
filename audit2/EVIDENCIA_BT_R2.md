@@ -2485,6 +2485,31 @@ navegador cancelled
 Tres jobs en `cancelled`, **ninguno en `failure`**. La cancelación la provocó el
 push de `d64e2cb`, que entró en el mismo grupo de concurrencia 47 s después.
 
+**Segundo caso, observado mientras se redactaba este ítem.** Run 35330672062
+sobre `d64e2cb`, job 105556506944:
+
+```
+nucleo success
+powershell success
+datos cancelled
+barrido cancelled
+navegador success
+##[error]hay bancos que no han pasado
+##[error]Process completed with exit code 1.
+```
+
+Aquí `navegador` **sí llegó a terminar en `success`** antes de la cancelación:
+sólo dos jobs quedaron en `cancelled` y el gate salió en rojo igual. Lo canceló el
+push de `467c941`. Confirma que basta **un** `cancelled` para el rojo, sin que
+ningún banco haya fallado.
+
+**Nota sobre la frecuencia futura.** La regla M.3 de esta auditoría pide
+commitear y empujar al cerrar cada bloque. Cada push entra en el mismo grupo de
+concurrencia y cancela el anterior, así que el 13,3 % medido **subirá** mientras
+dure este modo de trabajo. Es una consecuencia de la cadencia de trabajo, no del
+contenido de los commits, y se registra para que no se lea como degradación de
+los bancos.
+
 **Asimetría medida entre el run y el check.** La conclusión del *run* es
 `cancelled`; la del *check run* «bancos en verde» que se publica en el PR es
 `failure`. Un consumidor que mire el check —el PR, o una automatización
@@ -2514,9 +2539,9 @@ Los cuatro `cancelled`, con su commit y su run:
 concurrencia. El único `failure` de run es de `0742bbe` (2026-09-11T11:49, run
 34595882409), anterior a la ventana de trabajo de esta auditoría y no examinado.
 
-Notas: sólo se ha inspeccionado el log del job del caso de `dfda36c`; **NO
-VERIFICADO** si los otros tres `cancelled` produjeron también un check en rojo,
-aunque el gate es el mismo. La ventana es de una rama y de 30 runs, no del
+Notas: se han inspeccionado los logs de **dos** casos (`dfda36c` y `d64e2cb`);
+**NO VERIFICADO** si los otros dos `cancelled` de la tabla produjeron también un
+check en rojo, aunque el gate es el mismo. La ventana es de una rama y de 30 runs, no del
 repositorio entero. No se propone corrección: `.github/` está fuera del alcance.
 
 ---
