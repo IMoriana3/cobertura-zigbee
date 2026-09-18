@@ -269,6 +269,10 @@ jobs:
           # ningún porcentaje se pinte sin denominador y que la marca ámbar
           # salte —y NO salte— donde debe. Levanta su propio servidor.
           - { banco: test_informe_graf.mjs }
+          # El certificado no se emite con datos de dos días: el guardián de
+          # identidad del DAY, con su control negativo —desarmarlo tiene que
+          # producir la mezcla— y la invariante de los consumidores síncronos.
+          - { banco: test_certificado_dia.mjs }
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,
