@@ -290,13 +290,29 @@ t('TODO el que extrae el bloque de física antepone los módulos', () => {
      revienta. En vez de ir arreglándolas de una en una, esto las cuenta. */
   const dir = path.join(ROOT, 'tools');
   const malas = [];
+  let examinados = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.mjs')) continue;
     const src = fs.readFileSync(path.join(dir, f), 'utf-8');
-    if (!/FIN-FÍSICA/.test(src)) continue;                 // no extrae el bloque
+    if (!/FIN-FÍSICA/.test(src)) continue;                 // ni nombra el bloque
+    /* NOMBRAR EL MARCADOR NO ES EJECUTAR EL BLOQUE. La exigencia es de quien lo
+       EVALÚA —ahí es donde falta `Sol` e `Irr` y revienta—, y evaluarlo en este
+       repo es siempre `new Function` sobre el trozo. Un banco que sólo corta por
+       el marcador para MIRARLO (comprobar dónde vive una función, por ejemplo)
+       no necesita ningún módulo, y exigírselos era un falso positivo: lo
+       levantó `test_informe_graf.mjs`, que abre la página en el navegador —donde
+       los módulos los carga la propia página— y sólo lee el fuente para situar
+       el bloque. */
+    if (!/new Function\(/.test(src)) continue;
+    examinados++;
     const falta = ['sol.js', 'irradiancia.js'].filter(m2 => !src.includes(m2));
     if (falta.length) malas.push(f + ' (sin ' + falta.join(' ni ') + ')');
   }
+  /* Y el control de que la criba no se ha quedado vacía: si un cambio futuro
+     dejara el filtro sin acertar a nadie, esto pasaría en verde sin mirar nada.
+     Medido hoy: 16 ficheros de `tools/` evalúan el bloque. */
+  if (examinados < 10) throw new Error('la criba sólo ha examinado ' + examinados +
+    ' extractores: el filtro ha dejado de acertar y esta comprobación no está mirando nada');
   if (malas.length) throw new Error(malas.join(', '));
 });
 t('el cielo claro se carga del módulo, no está escrito en la página', () => {
@@ -2403,8 +2419,19 @@ t('v1.37: cambiar el registro NO cambia el terreno — solo la creencia de la TC
 });
 t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría real', () => {
   const f = html.slice(html.indexOf('function computeDay()'), html.indexOf('function kpisSerie('));
+  /* CONTROL DE LA REBANADA: si los dos anclajes dejaran de existir, `slice`
+     devolvería algo vacío o absurdo y todo lo de abajo pasaría sin mirar nada.
+     Se exige que el trozo sea de verdad el pipeline del día. */
+  if (f.length < 1000 || !f.includes('function* computeDayGen'))
+    throw new Error('la rebanada del pipeline del día no contiene el pipeline: los anclajes han cambiado');
   if (!/const Tcfg=terrainTCU\(c,T\);/.test(f)) throw new Error('computeDay no construye Tcfg');
-  if (!/policyAngles\(P\.key,g\.zen,g\.az,Tcfg,/.test(f))
+  /* La consigna se calcula con la CREENCIA de la TCU. El cuerpo por política
+     salió de `computeDayGen` a `serieDiaGen`, y allí la clave de la política se
+     llama `key` en vez de `P.key`; se acepta cualquiera de las dos, porque lo
+     que esto vigila es que el ángulo use `Tcfg`, no cómo se llame la variable
+     que lleva la política — que es la lección que ya lleva escrita el test de
+     por mesa, tres puestos más abajo. */
+  if (!/policyAngles\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f))
     throw new Error('el ángulo no usa la creencia de la TCU');
   if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
     throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
@@ -3012,14 +3039,26 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     // la ficha (Tcfg) siga mandando por línea cuando la TCU no conoce el
     // levantamiento
     const ui = html.slice(html.indexOf('/* FIN-FÍSICA'));
-    const dayFn = ui.slice(ui.indexOf('function* computeDayGen'), ui.indexOf('function kpisSerie'));
+    /* El cuerpo POR POLÍTICA del día vive en `serieDiaGen` desde que se extrajo
+       para que el informe gráfico pudiera drenarlo sin duplicar el pipeline;
+       `computeDayGen` lo llama. La rebanada arranca en el primero de los dos y
+       llega hasta `kpisSerie`, así que cubre a los dos y la exigencia sigue
+       siendo la misma: el día tiene que pasar por el camino por mesa. */
+    const dayFn = ui.slice(ui.indexOf('function* serieDiaGen'), ui.indexOf('function kpisSerie'));
+    // CONTROL: sin esto, un anclaje que dejara de existir daría rebanada vacía
+    // y los seis literales de abajo «pasarían» sin haber mirado nada
+    if (dayFn.length < 1000 || !dayFn.includes('function* computeDayGen'))
+      throw new Error('la rebanada del cuerpo del día no lo contiene: los anclajes han cambiado');
     /* v1.61: era 'slewLimitSeg(prevS' y se quedó viejo al completar el lazo —
        lazoControlSeg APLICA el slew dentro, así que la exigencia se cumple
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    for (const lit of ['segOn(T)', 'segCmd(P.key', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
-      if (!dayFn.includes(lit)) throw new Error('computeDayGen sin «' + lit + '»');
+    for (const lit of ['segOn(T)', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+      if (!dayFn.includes(lit)) throw new Error('el cuerpo del día sin «' + lit + '»');
+    // la política llega como `P.key` o como `key` según quién drene el cuerpo:
+    // lo que se exige es que sea la política, no el nombre de su variable
+    if (!/segCmd\((?:P\.)?key,/.test(dayFn)) throw new Error('el cuerpo del día no manda por mesa con la política');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
     for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
       if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');

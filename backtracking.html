@@ -89,6 +89,16 @@
   .legend span{display:flex;align-items:center;gap:5px}
   .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
   .chip{font-family:var(--mono);font-size:.64rem;color:var(--warn);border:1px dashed var(--warn);border-radius:7px;padding:2px 8px}
+  /* informe gráfico: cada gráfica es un bloque con su título, su lienzo y su
+     PIE. El pie va TAMBIÉN dibujado dentro del lienzo, para que la imagen
+     exportada viaje sola; el de aquí abajo es el mismo texto, seleccionable. */
+  .grbloque{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+  .grtit{font-size:.82rem;color:var(--tx);margin-bottom:6px}
+  .grtit .amb{color:var(--warn)}
+  .grpie{font-family:var(--mono);font-size:.60rem;color:var(--muted);margin-top:4px;line-height:1.5;word-break:break-word}
+  .grpie .falta{color:var(--warn)}
+  button.grexp{margin-top:6px}
+  td.amb,span.amb{color:var(--warn)}
 
 /* ── careo: cajita de resumen (formato de captura) ── */
 #careobox{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
@@ -369,6 +379,65 @@
     <div style="overflow-x:auto;margin-top:8px"><table id="yeartab"></table></div>
     <div class="nota">Cielo claro Ineichen con la turbidez configurada, sin meteo real: es una
       <b>comparativa de políticas</b>, no un P50. Para energía bancable, el motor SolarGPT.</div>
+  </div>
+
+  <!-- ══ INFORME GRÁFICO ═══════════════════════════════════════════════════
+       Cinco gráficas al estilo de un informe de planta, PARAMETRIZADAS POR EL
+       EMPLAZAMIENTO CARGADO. Nada atado a una planta concreta: todo sale de
+       `cfg()`, `terrain()` y las series que ya calcula el pipeline del día. -->
+  <div class="card" id="grafcard">
+    <h2>▦ Informe gráfico <span class="sn">cinco gráficas del emplazamiento cargado · par A/B · cada pie viaja con su imagen</span></h2>
+    <div class="three">
+      <div class="f"><label>Política A</label><select id="grA"></select></div>
+      <div class="f"><label>Política B <span class="sn">(baseline)</span></label><select id="grB"></select></div>
+      <div class="f"><label>Seguidores en G1</label><input id="grN" type="number" min="2" max="12" step="1" value="6"></div>
+    </div>
+    <div class="three">
+      <div class="f"><label>Criterio de selección de G1</label>
+        <select id="grcrit">
+          <option value="disp">mayor dispersión de tilt</option>
+          <option value="unif">muestreo uniforme por bloque</option>
+        </select></div>
+      <div class="f"><label>Hora de G5</label><input id="grhora" type="time" value="08:00" step="300"></div>
+      <div class="f"><label>&nbsp;</label>
+        <div style="display:flex;gap:6px">
+          <button class="btn small" id="grbtn" title="Calcula las nueve políticas sobre el día cargado y pinta G1, G2, G3 y G5 más la tabla de apoyo. El anual (G4) va aparte porque cuesta doce días de cálculo.">▦ Calcular informe</button>
+          <button class="btn small" id="granbtn" title="Los 12 días representativos (día 21 de cada mes, paso 10 min) para las nueve políticas: llena G4 y la columna anual de la tabla. Hasta entonces esa columna dice «sin calcular», no un número inventado.">Σ Calcular anual</button>
+        </div></div>
+    </div>
+    <div class="nota" id="grestado">Sin calcular. El informe no muestra ninguna cifra hasta que se pulsa el botón: una gráfica vacía es preferible a una gráfica reconstruida.</div>
+
+    <div class="grbloque"><div class="grtit" id="grt1"></div>
+      <canvas id="gr1" class="viz" height="346" style="height:346px"></canvas>
+      <div class="grpie" id="grp1"></div>
+      <button class="btn small grexp" data-gr="1">⇩ PNG</button></div>
+
+    <div class="grbloque"><div class="grtit" id="grt2"></div>
+      <canvas id="gr2" class="viz" height="300" style="height:300px"></canvas>
+      <div class="grpie" id="grp2"></div>
+      <button class="btn small grexp" data-gr="2">⇩ PNG</button></div>
+
+    <div class="grbloque"><div class="grtit" id="grt3"></div>
+      <canvas id="gr3" class="viz" height="300" style="height:300px"></canvas>
+      <div class="grpie" id="grp3"></div>
+      <button class="btn small grexp" data-gr="3">⇩ PNG</button></div>
+
+    <div class="grbloque"><div class="grtit" id="grt4"></div>
+      <canvas id="gr4" class="viz" height="320" style="height:320px"></canvas>
+      <div class="grpie" id="grp4"></div>
+      <button class="btn small grexp" data-gr="4">⇩ PNG</button></div>
+
+    <div class="grbloque"><div class="grtit" id="grt5"></div>
+      <canvas id="gr5" class="viz" height="470" style="cursor:crosshair;height:470px"></canvas>
+      <div class="grpie" id="grp5"></div>
+      <button class="btn small grexp" data-gr="5">⇩ PNG</button>
+      <div class="nota">Pincha una mesa para resaltarla: la fracción sombreada que el contador
+        predice para ese instante se rotula sobre cada mesa resaltada. El panel está pensado para
+        ponerse <b>al lado</b> de una ortofoto de la misma hora; aquí no se incluye ninguna foto.</div></div>
+
+    <div class="grbloque"><div class="grtit">Tabla de apoyo · las nueve políticas</div>
+      <div style="overflow-x:auto"><table id="grtab"></table></div>
+      <div class="nota" id="grtabnota"></div></div>
   </div>
 
 </div>
@@ -4113,7 +4182,7 @@ let DAY=null;                // resultado del día {times, sun, irr, pol:{key:{a
    mitad de otro, y publicar una cifra perfectamente creíble que no describe
    ninguno de los dos. Sin error y sin aviso.
 
-   ESTADO DE LOS CUATRO CONSUMIDORES, a día de hoy:
+   ESTADO DE LOS CONSUMIDORES, a día de hoy:
      · `fillDayTable`      SÍNCRONA  — protegida por la invariante
      · `informeHTML`       SÍNCRONA  — protegida por la invariante (captura
                                        `const d=DAY` y no vuelve a cederlo)
@@ -4122,6 +4191,11 @@ let DAY=null;                // resultado del día {times, sun, irr, pol:{key:{a
      · `pintaCertificado`  **CEDE** con `setTimeout` ⇒ NO está protegida por la
                                        invariante y necesita comprobarlo a mano.
                                        Es lo que hace el guardián de más abajo.
+     · INFORME GRÁFICO     **CEDE**: calcula las nueve políticas a trozos. Ya
+                                       comprueba identidad y serie por su cuenta
+                                       —`grVigilaDia`, que aborta y reintenta— y
+                                       además carea en vivo contra `dayKpis`.
+                                       Este testigo es el que usa.
 
    Si mañana alguien trocea `fillDayTable` o `informeHTML` para que no congelen
    la pestaña, HEREDAN el agujero: tendrán que capturar `DAY` y su serie igual
@@ -4988,6 +5062,51 @@ function segIdxAtN(T,r,v){
 }
 function angAtN(p,t,r,v){const k=segIdxAtN(DAY&&DAY.T,r,v);return k<0?p.ang[t][r]:angAt(p,t,r,k);}
 function computeDay(){for(const _ of computeDayGen());return DAY;}
+/* LA SERIE DEL DÍA DE UNA POLÍTICA, en un solo cuerpo. Misma doctrina que
+   `computeDay`/`computeDayGen`: un cálculo, dos bebedores. Lo drena
+   `computeDayGen` para las políticas ENCENDIDAS —por fragmentos, alimentando
+   la barra de avance— y lo drena el INFORME GRÁFICO para las que no lo están,
+   porque su tabla de apoyo lista las nueve y una segunda copia del pipeline
+   serían dos verdades. Ni una fórmula nueva: las mismas llamadas de antes.
+   Escribe el resultado en `dest.s` porque el valor de retorno de un generador
+   no se puede leer desde un `for…of`. */
+function* serieDiaGen(key,D,dest){
+  const T=D.T, Tcfg=D.Tcfg, times=D.times, sun=D.sun, irr=D.irr, doy=D.doy, c=D.c;
+  const nT=times.length;
+  const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
+  // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
+  // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
+  const poaHi=new Array(nT), poaLo=new Array(nT);
+  const seg=segOn(T), segAng=seg?new Array(nT):null, poaS=seg?new Array(nT):null;
+  // UN LAZO POR CADENA, y con estado (v1.69): el adelanto recuerda el sentido de
+  // la marcha y el destino enclavado de CADA fila. Se crean AQUÍ, en el cuerpo
+  // de una serie, así que cada política —y cada llamada, venga de la escena o
+  // del informe gráfico— tiene el suyo y no hay memoria compartida entre dos
+  // simulaciones distintas, que es lo que pide la doctrina del lazo.
+  const LZ=crearLazo(), LZS=crearLazoSeg();
+  for(let t=0;t<nT;t++){
+    const g=sun[t];
+    const o=policyAngles(key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
+    fArr[t]=o.f;
+    let lim,pp;
+    if(seg){
+      // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
+      const ls=LZS.paso(segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60);
+      lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
+      segAng[t]=ls; poaS[t]=pp.segs;
+    }else{
+      // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
+      // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
+      lim=LZ.paso(o.angles,STEP_MIN*60);
+      pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+    }
+    ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
+    poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
+    yield t;
+  }
+  dest.s={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
+}
+function serieDia(key,D){const d={};for(const _ of serieDiaGen(key,D,d));return d.s;}
 function* computeDayGen(){
   const c=cfg(); ensureElev(c.nrows); clampSlopes(c);
   const T=terrain(c), doy=doyOf(c.date);
@@ -5002,41 +5121,15 @@ function* computeDayGen(){
     irr.push(skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen));
   }
   const nT=times.length;
+  const D={T:T,Tcfg:Tcfg,times:times,sun:sun,irr:irr,doy:doy,c:c};
   const __nAct=POLICIES.reduce((n,P)=>n+(P.on?1:0),0);
   const __tot=(__nAct+1)*nT; let __done=0;
   const pol={};
   for(const P of POLICIES){
     if(!P.on)continue;
-    const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
-    // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
-    // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
-    const poaHi=new Array(nT), poaLo=new Array(nT);
-    const seg=segOn(T), segAng=seg?new Array(nT):null, poaS=seg?new Array(nT):null;
-    // UN LAZO POR CADENA, y con estado: el adelanto recuerda el sentido de la
-    // marcha y el destino enclavado de CADA fila. Compartirlos mezclaria la
-    // memoria de dos simulaciones distintas.
-    const LZ=crearLazo(), LZS=crearLazoSeg();
-    for(let t=0;t<nT;t++){
-      const g=sun[t];
-      const o=policyAngles(P.key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
-      fArr[t]=o.f;
-      let lim,pp;
-      if(seg){
-        // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
-        const ls=LZS.paso(segCmd(P.key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60);
-        lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
-        segAng[t]=ls; poaS[t]=pp.segs;
-      }else{
-        // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
-        // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
-        lim=LZ.paso(o.angles,STEP_MIN*60);
-        pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
-      }
-      ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
-      poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
-      if((++__done&15)===0)yield __done/__tot;
-    }
-    pol[P.key]={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
+    const dest={};
+    for(const _ of serieDiaGen(P.key,D,dest))if((++__done&15)===0)yield __done/__tot;
+    pol[P.key]=dest.s;
   }
   // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
   // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
@@ -5051,7 +5144,7 @@ function* computeDayGen(){
     astroAng[t2]=limA;
     if((++__done&31)===0)yield __done/__tot;
   }
-  DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng};
+  DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng,D:D};
   DAY_SERIAL++;                 // el día ha sido SUSTITUIDO: lo ve quien lo esté leyendo a trozos
   return DAY;
 }
@@ -7564,13 +7657,22 @@ function sceneInstant(){
 /* ── HORAS DE BT: el slider se pinta por tramos (noche · seguimiento · BT) y
    el aviso «BT ON» se enciende cuando la política de la ESCENA está fuera de
    la posición astronómica — la misma referencia (limitada a slew) de computeDay ── */
-function btActiveAt(t){
-  if(!DAY||!DAY.astroAng)return false;
-  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
-  if(!p||DAY.sun[t].elev<=0)return false;
+/* BACKTRACKING ACTIVO EN UN INSTANTE, para una serie CUALQUIERA. Se parametriza
+   porque el informe gráfico necesita el periodo de BT de las DOS políticas del
+   par A/B —que no tienen por qué estar en la escena— y el criterio (apartarse
+   >0,5° de la referencia astronómica limitada al mismo slew) tiene que ser uno
+   solo: dos copias serían dos definiciones de «periodo de backtracking». */
+function btActivoSerie(p,t){
+  if(!DAY||!DAY.astroAng||!p)return false;
+  if(DAY.sun[t].elev<=0)return false;
   const a=p.ang[t], ref=DAY.astroAng[t];
   for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>0.5)return true;
   return false;
+}
+function btActiveAt(t){
+  if(!DAY||!DAY.astroAng)return false;
+  const key=$('polview').value, p=DAY.pol[key]||DAY.pol[Object.keys(DAY.pol)[0]];
+  return btActivoSerie(p,t);
 }
 function paintHourTrack(){
   if(!DAY)return;
@@ -8086,6 +8188,991 @@ if(window.ResizeObserver){
   ['curves','poacv'].forEach(id=>{ const e=$(id); if(e)_ro.observe(e); });
 }
 
+/* ══ INFORME GRÁFICO (v1.69) ════════════════════════════════════════════════
+   Cinco gráficas al estilo de un informe de planta de proveedor, PARAMETRIZADAS
+   POR EL EMPLAZAMIENTO CARGADO: todo sale de `cfg()`, `terrain()` y las series
+   que ya calcula el pipeline del día. Ni una constante de ninguna planta
+   concreta, ni una física nueva — este bloque vive ENTERO en la capa de
+   aplicación y solo consume lo que ya existe.
+
+   Cuatro reglas gobiernan todo lo que se pinta aquí, y las cuatro están
+   implementadas en un solo sitio para que no puedan divergir:
+
+   1 · NINGÚN PORCENTAJE SIN SU DENOMINADOR. `grPct` es el ÚNICO camino por el
+       que sale un «%» de este bloque, y exige el texto del denominador. Si
+       alguien lo llama sin él, no se pinta el número: se pinta «—» y queda
+       registrado en `GR.pct` con denominador vacío, que es lo que caza el banco.
+   2 · SOMBRA ÓPTICA y PÉRDIDA ELÉCTRICA son dos magnitudes, no dos curvas de la
+       misma. Nunca comparten serie, y donde comparten eje va dicho en la leyenda
+       y en el pie cuál es cuál.
+   3 · CADA GRÁFICA LLEVA SU PIE, con los seis campos que hacen la captura
+       autoexplicativa: VER, fecha de cálculo, nb, MV efectivo, cielo (Linke,
+       albedo, nubosidad) y el tamaño del emplazamiento (filas y mesas). El pie
+       va DIBUJADO DENTRO del lienzo, para que la imagen exportada viaje sola, y
+       repetido debajo en texto seleccionable. `GR.pies` lo publica en objeto
+       para que el banco pueda comprobarlo campo a campo.
+   4 · DONDE EL MODELO NO RESUELVE, SE DICE EN ÁMBAR. La resolución es la MISMA
+       que ya usa la tabla del día: el ancho de la banda del circunsolar. Si el
+       signo cambia dentro de la banda, o si la separación entre las dos
+       políticas no llega a la mitad de su ancho, no se declara ganador.
+
+   Lo que este bloque NO hace, dicho aquí y en los pies: no es un P50 (cielo
+   claro Ineichen, sin meteo real), el anual son 12 días representativos, y
+   donde el emplazamiento cargado no trae un dato la serie se OCULTA con su
+   motivo en vez de rellenarse. */
+const GR={
+  A:'', B:'',                 // el par elegido
+  ser:{}, kp:{}, sig:'',      // series y KPIs del día, cacheados por firma del DAY
+  anual:null,                 // {mes:{key:[12]}, tot:{key:kWh}, sig}
+  pies:{}, pct:[], ambar:{},  // lo que el banco lee
+  sel5:new Set(), zonas5:[],  // mesas resaltadas en G5
+  listo:false, ocupado:false
+};
+window.__GRAF=GR;             // superficie de banco: nada de la UI depende de esto
+
+const grNum=(v,d)=>(isFinite(v)?Number(v):0).toFixed(d==null?2:d).replace('.',',');
+const grEsc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+/* EL ÚNICO EMISOR DE PORCENTAJES DEL BLOQUE. `de` es obligatorio y es el texto
+   del denominador: «frente a Pairwise», «del área de módulo», «de la POA de
+   planta de Pairwise». Sin él no se pinta el número. */
+function grPct(v,de,opt){
+  const o=opt||{};
+  const cifra=((o.signo&&v>=0)?'+':'')+grNum(v,o.dec)+' %';
+  if(!de){
+    GR.pct.push({txt:cifra,de:''});      // queda el rastro para el banco
+    try{console.warn('informe gráfico: porcentaje sin denominador, no se pinta:',cifra);}catch(e){}
+    return '—';
+  }
+  GR.pct.push({txt:cifra,de:de});
+  return cifra+' '+de;
+}
+
+/* ── el pie, en un solo sitio ───────────────────────────────────────────── */
+function grPieObj(extra){
+  const d=DAY, c=d.c, T=d.T;
+  const nFilas=T.pairs.length+1;
+  let nMesas=0; const hayMesas=!!T.segs;
+  if(T.segs)for(const l of T.segs)nMesas+=((l||[]).length);
+  /* MV EFECTIVO: no el de la configuración, el que la física usa HOY. Depende
+     del cenit (se dobla con sol rasante), así que se publica su recorrido sobre
+     los instantes con sol — un número solo mentiría en las dos puntas del día. */
+  let mvLo=Infinity, mvHi=-Infinity;
+  for(let t=0;t<d.times.length;t++){
+    if(d.sun[t].elev<=0)continue;
+    const m=mvPara(T,d.sun[t].zen); mvLo=Math.min(mvLo,m); mvHi=Math.max(mvHi,m);
+  }
+  const mv=!isFinite(mvLo)?'—':(mvLo===mvHi?String(mvLo):mvLo+'…'+mvHi);
+  return {
+    ver:VER,
+    fecha:d.c.date+' (calculado '+new Date().toISOString().slice(0,16).replace('T',' ')+' UTC)',
+    nb:String(T.nBypass),
+    mv:mv,
+    cielo:'Linke TL '+grNum(c.tl)+', albedo '+grNum(c.albedo)+', nubosidad '+grPct(100*cloudCC(),'de cielo cubierto',{dec:0}),
+    geom:nFilas+' filas · '+(hayMesas?nMesas+' mesas':'mesas: NO las trae este emplazamiento'),
+    extra:(extra||[]).filter(Boolean)
+  };
+}
+function grPieTexto(P){
+  return 'VER '+P.ver+' · fecha '+P.fecha+' · nb '+P.nb+' · MV efectivo '+P.mv+
+         ' · cielo '+P.cielo+' · '+P.geom+(P.extra.length?' · '+P.extra.join(' · '):'');
+}
+/* EL LIENZO, MEDIDO AL DIBUJAR. `fitCanvas` usa la altura del ATRIBUTO como
+   altura en CSS y sólo redimensiona el búfer cuando la anchura no cuadra, y eso
+   deja dos desajustes que en estas gráficas sí importan:
+     · el búfer se queda con la anchura de la última vez —medido aquí, 1174 px
+       de búfer para una caja de 1499— y el navegador estira lo dibujado un 28 %
+       en horizontal;
+     · `.viz` lleva borde de 1 px con caja de borde, así que la caja real mide
+       418 px de alto donde el atributo dice 420.
+   Para G1..G4 eso es cosmética. Para G5 NO lo es: su escala es ISÓTROPA, y una
+   escala isótropa pintada sobre un lienzo estirado deja de serlo — que es
+   exactamente lo que G5 viene a garantizar para poder carearse con una
+   ortofoto. Así que aquí el búfer se toma SIEMPRE de la caja real. */
+function grFit(cv){
+  const w=cv.clientWidth||+cv.getAttribute('width')||900;
+  const h=cv.clientHeight||+cv.getAttribute('height')||300;
+  const dpr=window.devicePixelRatio||1;
+  const bw=Math.max(1,Math.round(w*dpr)), bh=Math.max(1,Math.round(h*dpr));
+  if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh;}
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx:ctx,W:w,H:h};
+}
+const GR_PIE_H=54;    // franja del pie DENTRO del lienzo: 4 líneas
+const GR_PIE_H5=90;   // G5 escribe más (orientación, azimut, qué NO se pinta): 7
+const GR_PIE_LINEAS=4, GR_PIE_LINEAS5=7;
+/* ¿SE HA RECORTADO ALGÚN PIE? La regla dice que la captura viaja sola, así que
+   un pie que no cabe es un defecto, no una molestia. El aviso en ámbar dentro
+   de la imagen es el último recurso; esto lo publica para que el banco lo pueda
+   exigir a CERO. */
+GR.pieCortado={};
+/* ¿SE SOLAPAN DOS RÓTULOS? Dos cajas [x,x+w] a la misma altura. Se saca a
+   función para que el banco pueda comprobar el criterio con cajas de mentira
+   —que diga que sí cuando se pisan— antes de creerse que las de verdad no. */
+function grSolapan(a,b){return a.x<b.x+b.w&&b.x<a.x+a.w;}
+
+/* El pie se dibuja dentro del lienzo para que el PNG exportado se explique
+   solo: una captura que viaje sin su VER, su fecha y su cielo no es evidencia
+   de nada. Se parte en líneas a la anchura real del lienzo. */
+function grDibujaPie(ctx,W,H,P,alto,nLin,id){
+  const banda=alto||GR_PIE_H, cupo=nLin||GR_PIE_LINEAS;
+  const txt=grPieTexto(P);
+  ctx.save();
+  ctx.fillStyle='#0d1420'; ctx.fillRect(0,H-banda,W,banda);
+  ctx.strokeStyle='#1e2a3a'; ctx.beginPath(); ctx.moveTo(0,H-banda+.5); ctx.lineTo(W,H-banda+.5); ctx.stroke();
+  ctx.font='9px ui-monospace,monospace'; ctx.fillStyle='#5c7189';
+  const max=W-12; const pal=txt.split(' '); const lineas=[]; let ln='';
+  for(const w of pal){
+    const pr=ln?ln+' '+w:w;
+    if(ctx.measureText(pr).width>max&&ln){lineas.push(ln);ln=w;}else ln=pr;
+  }
+  if(ln)lineas.push(ln);
+  /* si no cabe, se DICE. Un pie cortado en silencio deja una captura que
+     parece completa y no lo está, que es justo lo que el pie viene a evitar.
+     Y queda publicado en `GR.pieCortado` para que el banco lo exija a cero:
+     el aviso es el último recurso, no el comportamiento aceptable. */
+  const sobra=lineas.length>cupo;
+  if(id)GR.pieCortado[id]={cortado:sobra,lineas:lineas.length,cupo:cupo};
+  const pinta=sobra?lineas.slice(0,cupo-1):lineas;
+  let y=H-banda+12;
+  for(const l of pinta){ctx.fillText(l,6,y);y+=11;}
+  if(sobra){
+    ctx.fillStyle='#fbbd23';
+    ctx.fillText('⚠ el pie no cabe entero en la imagen ('+(lineas.length-cupo+1)+' líneas más): está completo bajo la gráfica, en la página',6,y);
+  }
+  ctx.restore();
+}
+function grPublicaPie(n,P){
+  GR.pies['g'+n]=P;
+  const e=$('grp'+n); if(e)e.textContent=grPieTexto(P);
+}
+
+/* ── LA RESOLUCIÓN DEL MODELO, en un solo sitio ─────────────────────────────
+   La misma banda que ya publica la tabla del día: el circunsolar de Perez tiene
+   DOS cotas (sin sombrear, lo de hasta la v1.30, y la subcadena muerta tampoco
+   lo convierte) y la distancia entre ellas es con lo que este modelo distingue,
+   o no, dos políticas. Dos casos levantan la marca ámbar, y son distintos:
+     · la banda CRUZA EL CERO — con una cota gana uno y con la otra el otro;
+     · la separación no llega a la MITAD del ancho de banda — el número existe
+       pero está por debajo de lo que el modelo resuelve.
+   En los dos, lo que se publica es «no se declara ganador», no un ganador. */
+function grBanda(kA,kB){
+  const d =kB.kwh  ?100*(kA.kwh  /kB.kwh  -1):0;
+  const dL=kB.kwhLo?100*(kA.kwhLo/kB.kwhLo-1):d;
+  const dH=kB.kwhHi?100*(kA.kwhHi/kB.kwhHi-1):d;
+  const lo=Math.min(dL,dH), hi=Math.max(dL,dH), ancho=hi-lo;
+  const cruza=lo<-1e-9&&hi>1e-9;
+  /* SUELO DE RESOLUCIÓN. La banda del circunsolar puede tener ancho CERO —dos
+     políticas que mandan lo mismo lo tienen— y entonces «menor que la banda» se
+     reduce a comparar ruido de coma flotante, que no es una resolución: medido,
+     dos políticas idénticas por construcción daban separaciones de 1e-13 % y el
+     criterio de banda sola las declaraba separadas. El suelo lo pone el propio
+     motor: `E_EMPATE_W` es la banda de POA de planta con la que los
+     optimizadores declaran EMPATE (backtracking.html:963), así que una
+     diferencia del día por debajo de esa misma banda sostenida no es una
+     diferencia que este modelo distinga. No es un umbral inventado aquí: es el
+     que ya usa la búsqueda. */
+  const pisoKwh=E_EMPATE_W*(DAY.times.length*STEP_MIN/60)/1000;
+  const pisoPct=kB.kwh?100*pisoKwh/kB.kwh:0;
+  const res=Math.max(ancho/2,pisoPct);
+  const bajoRes=Math.abs(d)<=res;
+  return {d:d,lo:lo,hi:hi,ancho:ancho,piso:pisoPct,res:res,cruza:cruza,indeciso:cruza||bajoRes,
+          motivo:cruza?'la banda del circunsolar CRUZA EL CERO: con la cota alta gana una y con la baja la otra'
+                :(bajoRes?('la separación ('+grNum(Math.abs(d),4)+' pp) no llega a la resolución del modelo ('+grNum(res,4)+' pp'+
+                           (ancho/2>pisoPct?', media banda del circunsolar':', banda de empate E_EMPATE_W='+E_EMPATE_W+' W/m² del propio motor')+')')
+                        :'')};
+}
+
+/* ── series del día: las nueve políticas, sin duplicar el pipeline ───────── */
+function grFirma(){
+  if(!DAY)return '';
+  return [DAY.c.date,DAY.c.lat,DAY.c.lon,DAY.c.tz,DAY.c.alt,DAY.c.tl,DAY.c.albedo,cloudCC(),
+          DAY.c.pitch,DAY.c.cw,DAY.c.maxang,DAY.c.nrows,DAY.c.axaz,DAY.c.axtilt,DAY.c.nspreset,
+          DAY.c.drive,DAY.c.nbp,DAY.c.iam,DAY.c.z0,DAY.c.nsl,DAY.c.ntrk,DAY.c.mods,DAY.c.tcucfg,
+          (DAY.T.real?'real':'preset'),ELEV.join(',')].join('|');
+}
+/* IDENTIDAD DEL DATO, de punta a punta. Este generador corre a trozos y
+   `recompute` también: si entra un recálculo a mitad, las políticas leídas
+   antes son de un DAY y las de después de otro, y `kpisSerie` —que lee el DAY
+   global— acabaría integrando series de un terreno sobre el sol y el cielo de
+   otro. No da error, no da aviso, y el número resultante parece perfectamente
+   razonable: medido, con el día en vuelo salían las seis políticas del terreno
+   llano de arranque y las dos últimas del ondulado configurado, 11,08 kWh/m²·d
+   contra los 8,67 de la tabla del día. El error no estaba en el número: estaba
+   en dar por supuesto que el dato era el mismo. Aquí se comprueba. */
+const GR_REINTENTA='__informe_grafico_dia_cambiado__';
+function grVigilaDia(d0,n0){
+  if(DAY!==d0||DAY_SERIAL!==n0){const e=new Error(GR_REINTENTA);e.reintenta=true;throw e;}
+}
+function* grSeriesGen(){
+  const d0=DAY, n0=DAY_SERIAL;
+  const sig=grFirma();
+  if(GR.sig!==sig){GR.ser={};GR.kp={};GR.sig=sig;GR.anual=null;}
+  const D=DAY.D||{T:DAY.T,Tcfg:DAY.Tcfg,times:DAY.times,sun:DAY.sun,irr:DAY.irr,doy:DAY.doy,c:DAY.c};
+  for(const P of POLICIES){
+    grVigilaDia(d0,n0);
+    if(GR.ser[P.key])continue;
+    if(DAY.pol[P.key]){GR.ser[P.key]=DAY.pol[P.key];continue;}   // ya calculada por la escena
+    const dest={};
+    for(const _ of serieDiaGen(P.key,D,dest)){grVigilaDia(d0,n0);yield P.key;}
+    GR.ser[P.key]=dest.s;
+  }
+  grVigilaDia(d0,n0);
+  for(const P of POLICIES)if(!GR.kp[P.key])GR.kp[P.key]=kpisSerie(DAY.T,GR.ser[P.key].ang,GR.ser[P.key]);
+  grVigilaDia(d0,n0);
+}
+/* Y EL CAREO, EN VIVO, no sólo en el banco: toda política que la ESCENA haya
+   calculado tiene que dar aquí exactamente su misma energía del día. Si no la
+   da, el informe está consumiendo otra cosa que el pipeline del día y lo dice
+   en vez de publicar la cifra. */
+function grCareoEscena(){
+  const out=[];
+  for(const k in DAY.pol){
+    if(!GR.kp[k])continue;
+    const a=GR.kp[k].kwh, b=dayKpis(k).kwh;
+    if(Math.abs(a-b)>1e-12)out.push({key:k,informe:a,escena:b});
+  }
+  GR.careo=out;
+  return out;
+}
+
+/* ── agregados de planta por instante ───────────────────────────────────────
+   Las DOS magnitudes de la regla 2, cada una con su cuenta y sin mezclarse:
+     · óptica  — fracción de área de módulo tapada, media de planta;
+     · eléctrica — pérdida Martinez sobre el haz, media de planta, ponderada por
+       el largo de cada mesa cuando el contador la da por mesa (que es la misma
+       agregación que hace `poaPlantSeg`), y con `elecLoss` de la física cuando
+       el emplazamiento no trae tramos. Ni una fórmula nueva. */
+function grOptica(sh){
+  const n=sh.length; if(!n)return 0;
+  let s=0; for(let r=0;r<n;r++)s+=sh[r]||0; return s/n;
+}
+function grElectrica(sh,T){
+  const n=sh.length; if(!n)return 0;
+  let s=0;
+  for(let r=0;r<n;r++){
+    const se=sh.segElec&&sh.segElec[r], line=T.segs&&T.segs[r];
+    if(se&&line&&se.length===line.length&&se.length){
+      let acc=0,wt=0;
+      for(let k=0;k<se.length;k++){const L=Math.max(1e-6,Math.abs(line[k][1]-line[k][0]));acc+=(se[k]||0)*L;wt+=L;}
+      s+=wt?acc/wt:0;
+    }else s+=elecLoss(sh[r]||0,T.nBypass);
+  }
+  return s/n;
+}
+/* periodo de backtracking de UNA serie: [t0,t1] con el mismo criterio que el
+   indicador BT de la escena (`btActivoSerie`), no uno propio */
+function grVentanaBT(ser){
+  let a=-1,b=-1;
+  for(let t=0;t<DAY.times.length;t++)if(btActivoSerie(ser,t)){if(a<0)a=t;b=t;}
+  return a<0?null:[a,b];
+}
+
+/* ── marco común de las gráficas de tiempo ──────────────────────────────── */
+function grMarco(cv,opt){
+  const o=opt||{};
+  const f=grFit(cv), ctx=f.ctx, W=f.W, H=f.H;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0f1724'; ctx.fillRect(0,0,W,H);
+  const padL=o.padL==null?46:o.padL, padR=o.padR==null?52:o.padR, padT=o.padT==null?26:o.padT;
+  const padB=(o.padB==null?26:o.padB)+GR_PIE_H;
+  return {ctx:ctx,W:W,H:H,padL:padL,padR:padR,padT:padT,padB:padB,
+          x:m=>padL+(m/1440)*(W-padL-padR)};
+}
+function grEjeHoras(M,yTop,yBot){
+  const ctx=M.ctx;
+  ctx.strokeStyle='#1e2a3a'; ctx.fillStyle='#5c7189'; ctx.font='10px ui-monospace,monospace'; ctx.lineWidth=1;
+  for(let h=0;h<=24;h+=3){
+    const xx=M.x(h*60);
+    ctx.beginPath();ctx.moveTo(xx,yTop);ctx.lineTo(xx,yBot);ctx.stroke();
+    ctx.fillText((h<10?'0':'')+h+'h',xx-8,yBot+12);
+  }
+}
+function grTitulo(M,txt,ambar){
+  M.ctx.font='11px ui-monospace,monospace';
+  M.ctx.fillStyle=ambar?'#fbbd23':'#eaf4ff';
+  M.ctx.fillText(txt,M.padL,16);
+}
+/* tonos para series SIN identidad propia (los N seguidores de G1): se recorren
+   270° del círculo, que separa a la vista mucho mejor que un degradado de un
+   solo tono, y sin pisar los colores de las políticas, que sí tienen identidad */
+function grTono(i,n){
+  const h=(200+(i*270)/Math.max(1,n))%360, a=h*Math.PI/180;
+  const f=k=>{const x=Math.max(0,Math.min(1,0.55+0.42*Math.cos(a-k)));return Math.round(255*x);};
+  return 'rgb('+f(0)+','+f(2.094)+','+f(4.189)+')';
+}
+function grNombre(k){return (POL[k]&&POL[k].nm)||k;}
+function grColor(k){return (POL[k]&&POL[k].col)||'#9bb0c6';}
+
+/* ── G1 · perfiles de θ de N seguidores, dos paneles ────────────────────── */
+function grDispersionTilt(T){
+  const n=T.pairs.length+1, out=new Array(n).fill(0);
+  if(T.segTilt){
+    for(let r=0;r<n;r++){const st=T.segTilt[r]||[];if(st.length)out[r]=Math.max.apply(null,st)-Math.min.apply(null,st);}
+  }else if(T.rowTilt&&T.rowTilt.length){
+    const m=T.rowTilt.reduce((a,v)=>a+(v||0),0)/T.rowTilt.length;
+    for(let r=0;r<n;r++)out[r]=Math.abs((T.rowTilt[r]||0)-m);
+  }
+  return out;
+}
+/* TEST NULO antes de publicar una selección: si la dispersión de tilt es la
+   misma en todas las filas, el criterio pedido no ordena nada y elegir «las de
+   mayor dispersión» sería elegir las primeras y llamarlo criterio. Se cae al
+   muestreo uniforme y se dice por qué, en el pie. */
+function grSelFilas(N,crit){
+  const n=DAY.T.pairs.length+1;
+  N=Math.max(2,Math.min(Math.min(12,n),Math.round(N)||6));
+  const unif=()=>{const o=[];for(let i=0;i<N;i++)o.push(Math.round(i*(n-1)/(N-1)));return Array.from(new Set(o));};
+  if(crit==='unif')return {filas:unif(),crit:'muestreo uniforme por bloque sobre las '+n+' filas',nulo:false};
+  const d=grDispersionTilt(DAY.T);
+  const lo=Math.min.apply(null,d), hi=Math.max.apply(null,d);
+  if(!(hi-lo>1e-9))
+    return {filas:unif(),nulo:true,
+            crit:'muestreo uniforme por bloque — TEST NULO: la dispersión de tilt es CONSTANTE ('+grNum(lo,3)+'°) en las '+n+' filas de este emplazamiento, así que el criterio «mayor dispersión» no ordena nada y no se usa'};
+  const idx=d.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).slice(0,N).map(e=>e[1]).sort((a,b)=>a-b);
+  return {filas:idx,nulo:false,
+          crit:'las '+idx.length+' filas de MAYOR dispersión de tilt a lo largo de la mesa (recorrido '+grNum(lo,2)+'° … '+grNum(hi,2)+'° en las '+n+' filas)'};
+}
+function grG1(){
+  const sel=grSelFilas(+$('grN').value,$('grcrit').value);
+  const M=grMarco($('gr1'),{padL:40,padR:14,padT:46,padB:36});
+  const ctx=M.ctx, W=M.W, H=M.H;
+  const maxA=DAY.c.maxang;
+  const half=(W-M.padL-M.padR-18)/2;
+  const yTop=M.padT, yBot=H-M.padB;
+  const y=th=>yTop+(1-(th+maxA)/(2*maxA))*(yBot-yTop);
+  const pares=[[GR.A,M.padL],[GR.B,M.padL+half+18]];
+  const abanico={};
+  for(const [key,x0] of pares){
+    const ser=GR.ser[key];
+    const xx=m=>x0+(m/1440)*half;
+    ctx.strokeStyle='#1e2a3a';ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';ctx.lineWidth=1;
+    for(const fq of [-1,-0.5,0,0.5,1]){
+      const a=Math.round(fq*maxA), yy=y(a);
+      ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x0+half,yy);ctx.stroke();
+      if(x0===M.padL)ctx.fillText((a>0?'+':'')+a+'°',4,yy+3);
+    }
+    // el 24h del panel izquierdo chocaba con el 00h del derecho: sólo lo rotula
+    // el panel de la derecha, que es donde queda margen
+    for(let h=0;h<=24;h+=6){
+      const p=xx(h*60);
+      ctx.beginPath();ctx.moveTo(p,yTop);ctx.lineTo(p,yBot);ctx.stroke();
+      if(h<24||x0!==M.padL)ctx.fillText((h<10?'0':'')+h+'h',p-8,yBot+12);
+    }
+    // una curva por seguidor elegido, TODAS con el mismo eje y la misma unidad.
+    // Un degradado de un solo tono no se lee con seis curvas encima: se recorre
+    // el círculo de tonos, que sí separa, y la leyenda dice cuál es cuál.
+    sel.filas.forEach((r,i)=>{
+      ctx.strokeStyle=grTono(i,sel.filas.length);
+      ctx.lineWidth=1.4; ctx.beginPath(); let st=false;
+      for(let t=0;t<DAY.times.length;t++){
+        if(DAY.sun[t].elev<=0){st=false;continue;}
+        const v=Math.max(-maxA,Math.min(maxA,TH_DISP*ser.ang[t][Math.min(r,ser.ang[t].length-1)]));
+        const px=xx(DAY.times[t]), py=y(v);
+        if(!st){ctx.moveTo(px,py);st=true;}else ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    });
+    // ABANICO: cuánto se separan entre sí los seguidores elegidos, en grados
+    let ab=0;
+    for(let t=0;t<DAY.times.length;t++){
+      if(DAY.sun[t].elev<=0)continue;
+      let lo=Infinity,hi=-Infinity;
+      for(const r of sel.filas){const v=ser.ang[t][Math.min(r,ser.ang[t].length-1)];lo=Math.min(lo,v);hi=Math.max(hi,v);}
+      if(isFinite(lo))ab=Math.max(ab,hi-lo);
+    }
+    abanico[key]=ab;
+    ctx.fillStyle=grColor(key);ctx.font='11px ui-monospace,monospace';
+    ctx.fillText(grNombre(key)+'  ·  abanico máx '+grNum(ab)+'°',x0,yTop-8);
+  }
+  // leyenda de los seguidores dibujados, con el mismo tono que su curva. Va
+  // ARRIBA A LA DERECHA: abajo se comía los rótulos de hora del eje.
+  {
+    ctx.font='9px ui-monospace,monospace';
+    let w=0; sel.filas.forEach((r,i)=>{w+=13+ctx.measureText('fila '+(r+1)).width+12;});
+    let lx=Math.max(M.padL,W-M.padR-w);
+    sel.filas.forEach((r,i)=>{
+      const et='fila '+(r+1);
+      ctx.fillStyle=grTono(i,sel.filas.length);
+      ctx.fillRect(lx,12,9,3);
+      ctx.fillStyle='#9bb0c6'; ctx.fillText(et,lx+13,15);
+      lx+=13+ctx.measureText(et).width+12;
+    });
+  }
+  grTitulo(M,'G1 · θ de '+sel.filas.length+' seguidores · '+grNombre(GR.A)+' (izq) vs '+grNombre(GR.B)+' (der)',false);
+  const pie=grPieObj([
+    'G1 · eje θ en convención TCU (TH_DISP='+TH_DISP+'): θ NEGATIVO = cara al ESTE, positivo al oeste; los dos paneles comparten eje, escala y unidad de accionamiento ('+DAY.c.drive+')',
+    'criterio de selección: '+sel.crit,
+    'filas dibujadas: '+sel.filas.map(r=>r+1).join(', '),
+    'abanico máx (separación entre los seguidores dibujados): '+grNombre(GR.A)+' '+grNum(abanico[GR.A])+'° · '+grNombre(GR.B)+' '+grNum(abanico[GR.B])+'°'
+  ]);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g1'); grPublicaPie(1,pie);
+  $('grt1').innerHTML='<b>G1 · Perfiles de θ</b> — '+grEsc(grNombre(GR.A))+' frente a '+grEsc(grNombre(GR.B))+
+    '. Enseña si una política abre el abanico entre seguidores o los mantiene juntos.'+
+    (sel.nulo?' <span class="amb">⚠ el criterio pedido resultó nulo en este emplazamiento; el pie lo dice.</span>':'');
+}
+
+/* ── G2 · curva del día con área entre curvas ───────────────────────────── */
+function grG2(){
+  const M=grMarco($('gr2'),{padR:16});
+  const ctx=M.ctx, W=M.W, H=M.H;
+  const sA=GR.ser[GR.A], sB=GR.ser[GR.B];
+  const yTop=M.padT, yBot=H-M.padB;
+  let maxP=10;
+  for(const s of [sA,sB])for(const v of s.poaP)maxP=Math.max(maxP,v);
+  const y=v=>yTop+(1-v/maxP)*(yBot-yTop);
+  grEjeHoras(M,yTop,yBot);
+  ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
+  ctx.fillText(Math.round(maxP)+' W/m²',4,yTop+4);
+  // ÁREA ENTRE CURVAS: verde donde A va por encima, roja donde va por debajo
+  for(let t=0;t+1<DAY.times.length;t++){
+    const a0=sA.poaP[t],b0=sB.poaP[t],a1=sA.poaP[t+1],b1=sB.poaP[t+1];
+    if(Math.max(a0,b0,a1,b1)<=0)continue;
+    ctx.fillStyle=(a0+a1)>=(b0+b1)?'rgba(54,211,153,.20)':'rgba(248,114,114,.20)';
+    ctx.beginPath();
+    ctx.moveTo(M.x(DAY.times[t]),y(a0));ctx.lineTo(M.x(DAY.times[t+1]),y(a1));
+    ctx.lineTo(M.x(DAY.times[t+1]),y(b1));ctx.lineTo(M.x(DAY.times[t]),y(b0));
+    ctx.closePath();ctx.fill();
+  }
+  for(const [key,s,gr] of [[GR.B,sB,1.6],[GR.A,sA,2.2]]){
+    ctx.strokeStyle=grColor(key);ctx.lineWidth=gr;ctx.beginPath();
+    for(let t=0;t<DAY.times.length;t++){
+      const px=M.x(DAY.times[t]),py=y(s.poaP[t]);
+      if(!t)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  // marcas verticales del periodo de BACKTRACKING, con su hora
+  const vA=grVentanaBT(sA), vB=grVentanaBT(sB);
+  const marca=(v,key,dash)=>{
+    if(!v)return null;
+    ctx.strokeStyle=grColor(key);ctx.setLineDash(dash);ctx.lineWidth=1;
+    for(const t of v){
+      const px=M.x(DAY.times[t]);
+      ctx.beginPath();ctx.moveTo(px,yTop);ctx.lineTo(px,yBot);ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle=grColor(key);ctx.font='9px ui-monospace,monospace';
+    // el rótulo de la marca de INICIO va a su izquierda y el de FIN a su derecha:
+    // con las dos políticas arrancando casi a la vez se solapaban los cuatro
+    const dy=dash[0]===5?12:24;
+    ctx.fillText(hhmm(DAY.times[v[0]]),Math.max(2,M.x(DAY.times[v[0]])-32),yTop+dy);
+    ctx.fillText(hhmm(DAY.times[v[1]]),M.x(DAY.times[v[1]])+4,yTop+dy);
+    return hhmm(DAY.times[v[0]])+'–'+hhmm(DAY.times[v[1]]);
+  };
+  const hA=marca(vA,GR.A,[5,3]), hB=marca(vB,GR.B,[2,4]);
+  const kA=GR.kp[GR.A], kB=GR.kp[GR.B];
+  const b=grBanda(kA,kB);
+  GR.ambar.g2=b.indeciso;
+  const razon=kB.kwh?grPct(100*kA.kwh/kB.kwh,'de la POA de planta del día de '+grNombre(GR.B)):'—';
+  const rot=b.indeciso
+    ? '⚠ '+grNombre(GR.A)+' = '+razon+' — pero NO se declara ganador: '+b.motivo
+    : grNombre(GR.A)+' = '+razon;
+  grTitulo(M,'G2 · POA de planta del día · '+rot,b.indeciso);
+  const pie=grPieObj([
+    'G2 · POA de planta (W/m²), paso '+STEP_MIN+' min; el relleno es el área entre las dos curvas (verde: '+grNombre(GR.A)+' por encima · roja: por debajo)',
+    'periodo de backtracking marcado en vertical — '+grNombre(GR.A)+': '+(hA||'no hay backtracking en el día')+' · '+grNombre(GR.B)+': '+(hB||'no hay backtracking en el día')+' (criterio: la consigna se aparta >0,5° de la referencia astronómica con el mismo límite de velocidad)',
+    'banda del circunsolar sobre la diferencia: ['+grNum(b.lo,3)+' … '+grNum(b.hi,3)+'] pp · resolución del modelo '+grNum(b.res,4)+' pp'+(b.indeciso?' — NO se declara ganador: '+b.motivo:''),
+    'CIELO CLARO Ineichen sin meteo real: es comparativa de políticas, NO un P50'
+  ]);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g2'); grPublicaPie(2,pie);
+  $('grt2').innerHTML='<b>G2 · Curva del día</b> — POA de planta de '+grEsc(grNombre(GR.A))+' y '+grEsc(grNombre(GR.B))+
+    ', con el área entre ambas y las marcas del periodo de backtracking.'+
+    (b.indeciso?' <span class="amb">⚠ separación por debajo de la resolución del modelo.</span>':'');
+}
+
+/* ── G3 · sombra media de planta a lo largo del día ──────────────────────── */
+function grG3(){
+  const M=grMarco($('gr3'),{padR:16,padT:52});
+  const ctx=M.ctx, W=M.W, H=M.H;
+  const T=DAY.T, yTop=M.padT, yBot=H-M.padB;
+  const dat={};
+  let maxS=0.02;
+  for(const key of [GR.A,GR.B]){
+    const s=GR.ser[key], op=[], el=[];
+    for(let t=0;t<DAY.times.length;t++){op.push(grOptica(s.shade[t]));el.push(grElectrica(s.shade[t],T));}
+    dat[key]={op:op,el:el};
+    maxS=Math.max(maxS,Math.max.apply(null,op),Math.max.apply(null,el));
+  }
+  const y=v=>yTop+(1-v/maxS)*(yBot-yTop);
+  grEjeHoras(M,yTop,yBot);
+  ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
+  for(const fq of [0,0.5,1]){const yy=y(fq*maxS);ctx.fillText(grNum(100*fq*maxS,1)+' %',4,yy+3);}
+  // ÓPTICA = trazo continuo · ELÉCTRICA = trazo discontinuo. Dos magnitudes.
+  for(const key of [GR.B,GR.A]){
+    for(const [cual,dash,gr] of [['op',[],2.0],['el',[6,4],1.5]]){
+      ctx.strokeStyle=grColor(key);ctx.lineWidth=gr;ctx.setLineDash(dash);ctx.beginPath();
+      const arr=dat[key][cual];
+      for(let t=0;t<arr.length;t++){const px=M.x(DAY.times[t]),py=y(arr[t]);if(!t)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+      ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+  // reducción MEDIA en el periodo de BT, cada magnitud por separado
+  const vBT=grVentanaBT(GR.ser[GR.A])||grVentanaBT(GR.ser[GR.B]);
+  const media=(arr,v)=>{if(!v)return null;let s=0,n=0;for(let t=v[0];t<=v[1];t++){s+=arr[t];n++;}return n?s/n:null;};
+  const red=(cual)=>{
+    const a=media(dat[GR.A][cual],vBT), b=media(dat[GR.B][cual],vBT);
+    if(a==null||b==null)return {txt:'no hay periodo de backtracking en el día: no se rotula reducción',val:null};
+    if(!(b>1e-12))return {txt:grNombre(GR.B)+' no deja '+(cual==='op'?'sombra óptica':'pérdida eléctrica')+' medible en el periodo ('+grNum(100*b,3)+' pp): no se publica una reducción sobre cero',val:null};
+    return {txt:grPct(100*(a/b-1),'frente a '+grNombre(GR.B)+' (media en el periodo de backtracking)',{signo:true}),val:100*(a/b-1)};
+  };
+  const rOp=red('op'), rEl=red('el');
+  /* en el lienzo va la etiqueta CORTA de cada magnitud —que es lo que impide
+     confundirlas— y la reducción sólo si es publicable; la frase entera de por
+     qué no lo es vive en el pie, que es donde cabe */
+  ctx.font='10px ui-monospace,monospace';
+  const corto=r=>r.val==null?'sin reducción publicable (ver pie)':r.txt;
+  ctx.fillStyle='#eaf4ff';
+  ctx.fillText('sombra ÓPTICA (área de módulo tapada) · '+corto(rOp),M.padL+22,yTop-24);
+  ctx.fillText('pérdida ELÉCTRICA Martinez (del haz) · '+corto(rEl),M.padL+22,yTop-11);
+  // muestras de trazo, para que «continuo» y «discontinuo» no sean sólo palabras
+  ctx.strokeStyle='#9bb0c6';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(M.padL,yTop-28);ctx.lineTo(M.padL+16,yTop-28);ctx.stroke();
+  ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(M.padL,yTop-15);ctx.lineTo(M.padL+16,yTop-15);ctx.stroke();ctx.setLineDash([]);
+  grTitulo(M,'G3 · sombra media de planta · '+grNombre(GR.A)+' vs '+grNombre(GR.B),false);
+  // leyenda explícita: cuatro entradas, magnitud y política
+  $('grt3').innerHTML='<b>G3 · Sombra media de planta</b> — cuatro series: '+
+    ['<span style="color:'+grColor(GR.A)+'">'+grEsc(grNombre(GR.A))+' óptica</span>',
+     '<span style="color:'+grColor(GR.A)+'">'+grEsc(grNombre(GR.A))+' eléctrica</span>',
+     '<span style="color:'+grColor(GR.B)+'">'+grEsc(grNombre(GR.B))+' óptica</span>',
+     '<span style="color:'+grColor(GR.B)+'">'+grEsc(grNombre(GR.B))+' eléctrica</span>'].join(' · ')+
+    '. Óptica y eléctrica <b>no son la misma magnitud</b>: la óptica es área de módulo tapada, la eléctrica es lo que el escalón Martinez se come del haz.';
+  const pie=grPieObj([
+    'G3 · dos magnitudes DISTINTAS en el mismo eje, etiquetadas: SOMBRA ÓPTICA (trazo continuo) = fracción de área de módulo tapada, media de planta, del contador ray-cast 3D con estructura; PÉRDIDA ELÉCTRICA (trazo discontinuo) = escalón Martinez sobre el haz con nb='+T.nBypass+', media de planta',
+    'reducción media en el periodo de backtracking'+(vBT?' ('+hhmm(DAY.times[vBT[0]])+'–'+hhmm(DAY.times[vBT[1]])+')':'')+' — óptica: '+rOp.txt+' · eléctrica: '+rEl.txt,
+    'CIELO CLARO Ineichen sin meteo real'
+  ]);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g3'); grPublicaPie(3,pie);
+}
+
+/* ── G4 · barras mensuales (12 días representativos) ─────────────────────── */
+function grG4(){
+  const M=grMarco($('gr4'),{padL:52,padR:56,padT:30});
+  const ctx=M.ctx, W=M.W, H=M.H;
+  const yTop=M.padT, yBot=H-M.padB;
+  const A=GR.anual;
+  if(!A){
+    ctx.fillStyle='#fbbd23';ctx.font='12px ui-monospace,monospace';
+    ctx.fillText('G4 · anual SIN CALCULAR — pulsa «Σ Calcular anual».',M.padL,yTop+24);
+    ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
+    ctx.fillText('Una gráfica vacía es preferible a una gráfica reconstruida: aquí no se dibuja nada hasta que hay cálculo.',M.padL,yTop+42);
+    const pie0=grPieObj(['G4 · anual SIN CALCULAR: los 12 días representativos no se han corrido en esta sesión']);
+    grDibujaPie(ctx,W,H,pie0,GR_PIE_H,GR_PIE_LINEAS,'g4'); grPublicaPie(4,pie0);
+    $('grt4').innerHTML='<b>G4 · Barras mensuales</b> — <span class="amb">sin calcular</span>.';
+    return;
+  }
+  const mA=A.mes[GR.A], mB=A.mes[GR.B];
+  const MES=['E','F','M','A','M','J','J','A','S','O','N','D'];
+  let maxI=1; for(let i=0;i<12;i++)maxI=Math.max(maxI,mA[i].wm2,mB[i].wm2);
+  const y=v=>yTop+(1-v/(maxI*1.12))*(yBot-yTop);
+  // eje derecho: cambio porcentual de A frente a B
+  let maxD=0.5; for(let i=0;i<12;i++)maxD=Math.max(maxD,Math.abs(mB[i].wm2?100*(mA[i].wm2/mB[i].wm2-1):0));
+  const y2=v=>yTop+(1-(v+maxD)/(2*maxD))*(yBot-yTop);
+  ctx.strokeStyle='#1e2a3a';ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
+  for(const fq of [0,0.25,0.5,0.75,1]){
+    const yy=y(fq*maxI*1.12);
+    ctx.beginPath();ctx.moveTo(M.padL,yy);ctx.lineTo(W-M.padR,yy);ctx.stroke();
+    ctx.fillText(Math.round(fq*maxI*1.12)+'',4,yy+3);
+  }
+  ctx.fillText('W/m²',4,yTop-8);
+  ctx.fillStyle='#c084fc';
+  for(const v of [-maxD,0,maxD]){ctx.fillText((v>=0?'+':'')+grNum(v,1)+'%',W-M.padR+4,y2(v)+3);}
+  const bw=(W-M.padL-M.padR)/12;
+  for(let i=0;i<12;i++){
+    const x0=M.padL+i*bw;
+    ctx.fillStyle=grColor(GR.B)+'66';
+    ctx.fillRect(x0+bw*0.12,y(mB[i].wm2),bw*0.34,yBot-y(mB[i].wm2));
+    ctx.fillStyle=grColor(GR.A);
+    ctx.fillRect(x0+bw*0.50,y(mA[i].wm2),bw*0.34,yBot-y(mA[i].wm2));
+    ctx.fillStyle='#5c7189';ctx.font='10px ui-monospace,monospace';
+    ctx.fillText(MES[i],x0+bw*0.42,yBot+12);
+  }
+  ctx.strokeStyle='#c084fc';ctx.lineWidth=1.6;ctx.beginPath();
+  for(let i=0;i<12;i++){
+    const d=mB[i].wm2?100*(mA[i].wm2/mB[i].wm2-1):0;
+    const px=M.padL+i*bw+bw/2, py=y2(d);
+    if(!i)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  for(let i=0;i<12;i++){
+    const d=mB[i].wm2?100*(mA[i].wm2/mB[i].wm2-1):0;
+    ctx.fillStyle='#c084fc';ctx.beginPath();ctx.arc(M.padL+i*bw+bw/2,y2(d),2.6,0,7);ctx.fill();
+  }
+  // recuadro del total anual
+  const tA=A.tot[GR.A], tB=A.tot[GR.B];
+  const razon=tB?grPct(100*tA/tB,'del total anual de '+grNombre(GR.B)):'—';
+  const cajaW=Math.min(330,W-M.padL-M.padR-10), cajaX=W-M.padR-cajaW-2;
+  ctx.fillStyle='rgba(13,20,32,.92)';ctx.strokeStyle='#1e2a3a';
+  ctx.fillRect(cajaX,yTop+4,cajaW,44);ctx.strokeRect(cajaX+.5,yTop+4.5,cajaW,44);
+  ctx.font='10px ui-monospace,monospace';
+  ctx.fillStyle=grColor(GR.A);ctx.fillText(grNombre(GR.A)+': '+grNum(tA,1)+' kWh/m²·año',cajaX+8,yTop+20);
+  ctx.fillStyle=grColor(GR.B);ctx.fillText(grNombre(GR.B)+': '+grNum(tB,1)+' kWh/m²·año',cajaX+8,yTop+33);
+  ctx.fillStyle='#eaf4ff';ctx.fillText(grNombre(GR.A)+' = '+razon,cajaX+8,yTop+45);
+  grTitulo(M,'G4 · irradiancia media captada por mes · barras: '+grNombre(GR.A)+' y '+grNombre(GR.B)+' · línea (eje dcho): cambio de '+grNombre(GR.A)+' frente a '+grNombre(GR.B),false);
+  const pie=grPieObj([
+    'G4 · barras: POA de planta MEDIA del día representativo en W/m² sobre los instantes con sol · línea y eje derecho: cambio porcentual de '+grNombre(GR.A)+' frente a '+grNombre(GR.B)+', mes a mes',
+    'SON 12 DÍAS REPRESENTATIVOS (día 21 de cada mes, paso 10 min, pesados por los días del mes), NO un año meteorológico ni un P50: cielo claro Ineichen con la turbidez configurada',
+    'EL ANUAL NO LLEVA LAZO DE CONTROL: se integra la consigna que la política PIDE (policyAngles), sin banda muerta ni límite de velocidad del actuador — el mismo camino que el estimador anual que ya existía en la página. La curva del día (G2) SÍ lleva el lazo entero, así que es lo que la planta EJECUTA. Las dos razones porcentuales miden cosas distintas y NO son comparables entre sí',
+    'total anual — '+grNombre(GR.A)+': '+grNum(tA,1)+' kWh/m²·año · '+grNombre(GR.B)+': '+grNum(tB,1)+' kWh/m²·año'
+  ]);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H,GR_PIE_LINEAS,'g4'); grPublicaPie(4,pie);
+  $('grt4').innerHTML='<b>G4 · Barras mensuales</b> — 12 días representativos, cielo claro. '+
+    grEsc(grNombre(GR.A))+' = '+grEsc(razon)+'.';
+}
+
+/* ── G5 · careo render ↔ realidad ────────────────────────────────────────── */
+function grInstante5(){
+  const hm=String($('grhora').value||'08:00').split(':');
+  const min=Math.max(0,Math.min(1439,(+hm[0]||0)*60+(+hm[1]||0)));
+  let best=0,bd=Infinity;
+  for(let t=0;t<DAY.times.length;t++){const d=Math.abs(DAY.times[t]-min);if(d<bd){bd=d;best=t;}}
+  return best;
+}
+function grG5(){
+  const t=grInstante5();
+  const T=DAY.T, ser=GR.ser[GR.A], sh=ser.shade[t], g=DAY.sun[t];
+  const f=grFit($('gr5')), ctx=f.ctx, W=f.W, H=f.H;
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#0f1724'; ctx.fillRect(0,0,W,H);
+  const padL=46,padR=16,padT=40,padB=34+GR_PIE_H5;
+  const n=T.pairs.length+1;
+  // posiciones transversales, con la MISMA acumulación de pitch que el contador
+  const xs=[0]; for(let i=0;i<T.pairs.length;i++)xs.push(xs[i]+T.pairs[i].pitch);
+  const hayMesas=!!(T.segs&&T.segs.length);
+  let n0=Infinity,n1=-Infinity;
+  if(hayMesas)for(const l of T.segs)for(const s2 of (l||[])){n0=Math.min(n0,s2[0],s2[1]);n1=Math.max(n1,s2[0],s2[1]);}
+  if(!isFinite(n0)){n0=0;n1=T.filaLen||60;}
+  const x0=xs[0]-T.cw, x1=xs[n-1]+T.cw;
+  /* ESCALA ÚNICA para los dos ejes. Con una escala por eje la planta sale
+     estirada, y una planta estirada NO se puede poner al lado de una ortofoto:
+     que las proporciones sean las de verdad es el punto entero de G5. Lo que
+     sobra se reparte como margen, y la barra de escala lo publica.
+
+     Y el EJE DE SEGUIMIENTO VA EN HORIZONTAL, no en vertical. Una planta es
+     larga a lo largo del eje y estrecha a lo ancho —aquí 8 filas de 6 m contra
+     mesas de 65 m—, así que con el eje en vertical la escala isótropa dejaba la
+     planta en una tira de cien píxeles en un lienzo de mil quinientos. Con el
+     eje tumbado, las proporciones siguen siendo las de verdad y además se ve.
+     La orientación va declarada en el lienzo y en el pie, con el azimut del
+     eje, que es lo que hace falta para girar la ortofoto y superponerla. */
+  const anch=Math.max(1e-6,x1-x0), larg=Math.max(1e-6,n1-n0);
+  const es=Math.min((W-padL-padR)/larg,(H-padT-padB)/anch);
+  const ox=padL+((W-padL-padR)-larg*es)/2, oy=padT+((H-padT-padB)-anch*es)/2;
+  const PX=v=>ox+(v-n0)*es;      // v = norte a lo largo del eje  → horizontal
+  const PY=v=>oy+(v-x0)*es;      // v = posición transversal      → vertical
+  const tono=fr=>{const q=Math.max(0,Math.min(1,fr));
+    return 'rgb('+Math.round(40+215*q)+','+Math.round(140-90*q)+','+Math.round(200-150*q)+')';};
+  GR.zonas5=[];
+  for(let r=0;r<n;r++){
+    const linea=hayMesas?(T.segs[r]||[]):[[n0,n1]];
+    for(let k=0;k<linea.length;k++){
+      const s2=linea[k];
+      const fr=(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:(sh[r]||0);
+      const ax=PX(Math.min(s2[0],s2[1])), bx=PX(Math.max(s2[0],s2[1]));
+      const ay=PY(xs[r]-T.cw/2), by=PY(xs[r]+T.cw/2);
+      const rect={x:Math.min(ax,bx),y:Math.min(ay,by),w:Math.abs(bx-ax),h:Math.abs(by-ay),r:r,k:k,f:fr};
+      GR.zonas5.push(rect);
+      ctx.fillStyle=tono(fr); ctx.fillRect(rect.x,rect.y,Math.max(1.5,rect.w),Math.max(1.5,rect.h));
+      if(GR.sel5.has(r+':'+k)){
+        ctx.strokeStyle='#fbbd23';ctx.lineWidth=2;
+        ctx.strokeRect(rect.x-1,rect.y-1,Math.max(1.5,rect.w)+2,Math.max(1.5,rect.h)+2);
+      }
+    }
+  }
+  // etiquetas de las mesas RESALTADAS: la fracción que predice el contador
+  ctx.font='10px ui-monospace,monospace';
+  const puestas=[], ocupadas=[];
+  for(const z of GR.zonas5){
+    if(!GR.sel5.has(z.r+':'+z.k))continue;
+    const txt='F'+(z.r+1)+'·M'+(z.k+1)+' '+grPct(100*z.f,'del área de módulo de esa mesa (sombra ÓPTICA)',{dec:1});
+    const wd=ctx.measureText(txt).width+8;
+    const lx=Math.min(W-padR-wd,z.x+z.w+4);
+    // se busca la primera altura libre hacia abajo: dos mesas a la misma altura
+    // se tapaban la una a la otra y el rótulo dejaba de decir de quién era
+    let ly=Math.max(padT+14,Math.min(H-padB-6,z.y+z.h/2));
+    for(let g=0;g<40;g++){
+      const choca=ocupadas.some(o=>Math.abs(o.y-ly)<14&&lx<o.x+o.w&&lx+wd>o.x);
+      if(!choca)break;
+      ly+=15; if(ly>H-padB-6)ly=padT+14+((ly-padT)%13);
+    }
+    ocupadas.push({x:lx,y:ly,w:wd});
+    ctx.fillStyle='rgba(13,20,32,.92)';ctx.fillRect(lx,ly-9,wd,13);
+    ctx.strokeStyle='#fbbd23';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(z.x+z.w/2,z.y+z.h/2);ctx.lineTo(lx,ly-2);ctx.stroke();
+    ctx.fillStyle='#fbbd23';ctx.fillText(txt,lx+4,ly+1);
+    puestas.push(txt);
+  }
+  // flecha del sol y MARCA DE TIEMPO, dentro de la imagen
+  const azR=(g.az-T.axisAz)*Math.PI/180;
+  const rr=22, cx=W-padR-rr-6, cy=padT+rr+16;
+  ctx.strokeStyle='#fbbd23';ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.arc(cx,cy,rr,0,7);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+rr*Math.sin(azR),cy-rr*Math.cos(azR));ctx.stroke();
+  ctx.fillStyle='#fbbd23';ctx.font='9px ui-monospace,monospace';
+  {const et='sol '+grNum(g.elev,1)+'° · az '+grNum(g.az,0)+'°';
+   ctx.fillText(et,Math.min(W-padR-ctx.measureText(et).width,cx-rr),cy+rr+11);}
+  // ESCALA DE COLOR: sin ella el color es decorativo
+  {
+    /* El denominador va UNA vez, en el título de la escala. Antes iba en cada
+       extremo —«0 % del área de módulo» y «100 % del área de módulo»— y los dos
+       rótulos, de 25 caracteres cada uno sobre una barra de 120 px, se pisaban
+       enteros. Los extremos quedan como MARCAS de la escala que el título ya
+       nombra, que es como se rotula una escala de color. */
+    const bw=140,bx=W-padR-bw,by=H-padB-26;
+    for(let i=0;i<bw;i++){ctx.fillStyle=tono(i/(bw-1));ctx.fillRect(bx+i,by,1,8);}
+    ctx.fillStyle='#9bb0c6';ctx.font='9px ui-monospace,monospace';
+    const tit='sombra óptica por mesa · '+grPct(100,'del área de módulo',{dec:0})+' = tapada entera';
+    ctx.fillText(tit,Math.max(padL,bx+bw-ctx.measureText(tit).width),by-5);
+    const a={x:bx,y:by+18,w:ctx.measureText('0').width};
+    const d={x:bx+bw-ctx.measureText('100').width,y:by+18,w:ctx.measureText('100').width};
+    ctx.fillText('0',a.x,a.y); ctx.fillText('100',d.x,d.y);
+    GR.g5leyenda={izq:a,der:d,solapan:grSolapan(a,d),titulo:tit};
+  }
+  // BARRA DE ESCALA: la prueba de que las proporciones son las de verdad
+  {
+    const cand=[5,10,20,25,50,100,200,500];
+    let m=cand[0];for(const v of cand)if(v*es<(W-padL-padR)*0.28)m=v;
+    const bx=padL,by=H-padB-10;
+    ctx.strokeStyle='#9bb0c6';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+m*es,by);
+    ctx.moveTo(bx,by-4);ctx.lineTo(bx,by+4);ctx.moveTo(bx+m*es,by-4);ctx.lineTo(bx+m*es,by+4);ctx.stroke();
+    ctx.fillStyle='#9bb0c6';ctx.font='9px ui-monospace,monospace';ctx.fillText(m+' m',bx+2,by-6);
+  }
+  ctx.fillStyle='#eaf4ff';ctx.font='12px ui-monospace,monospace';
+  ctx.fillText(DAY.c.date+' '+hhmm(DAY.times[t])+' (UTC'+(DAY.c.tz>=0?'+':'')+DAY.c.tz+') · '+DAY.c.lat+', '+DAY.c.lon,padL,20);
+  ctx.fillStyle='#9bb0c6';ctx.font='10px ui-monospace,monospace';
+  ctx.fillText('G5 · planta cenital · eje de seguimiento en HORIZONTAL (azimut '+grNum(T.axisAz,0)+'°) · transversal en vertical · escala isótropa · '+grNombre(GR.A),padL,32);
+  const pie=grPieObj([
+    'G5 · vista CENITAL de la implantación en el marco del eje, a la hora rotulada en la imagen: el EJE DE SEGUIMIENTO va en horizontal (azimut de eje '+grNum(T.axisAz,1)+'°) y el eje transversal en vertical, con ESCALA ISÓTROPA y barra de escala — para superponer una ortofoto basta girarla ese azimut. Es la vista que se carea con una ORTOFOTO de esa misma hora; aquí NO se incluye ninguna foto',
+    'el color de cada mesa es la fracción de área de módulo tapada (sombra ÓPTICA) que predice el contador ray-cast 3D con estructura para ese instante · política '+grNombre(GR.A),
+    'NO se proyecta la silueta de la sombra sobre el suelo: lo que se pinta es la fracción sombreada por mesa, no su mancha',
+    hayMesas?('mesas resaltadas: '+(puestas.length?puestas.join(' · '):'ninguna — pincha una mesa'))
+            :'este emplazamiento NO trae tramos de mesa: cada fila se pinta como una sola pieza y la fracción es la de la fila entera',
+    'el render 3D desde el sol vive en la pestaña 3D («👁 sol»); aquí se dibuja la cenital porque es la que se carea con una ortofoto'
+  ]);
+  grDibujaPie(ctx,W,H,pie,GR_PIE_H5,GR_PIE_LINEAS5,'g5'); grPublicaPie(5,pie);
+  $('grt5').innerHTML='<b>G5 · Careo render ↔ realidad</b> — planta cenital a las '+hhmm(DAY.times[t])+
+    ', coloreada por la sombra óptica que el contador predice por mesa. Pensado para ponerse al lado de una ortofoto de esa hora.';
+}
+
+/* ── tabla de apoyo: las nueve políticas ────────────────────────────────── */
+function grTabla(){
+  const T=DAY.T;
+  const filas=POLICIES.map(P=>{
+    const s=GR.ser[P.key], k=GR.kp[P.key];
+    const v=grVentanaBT(s);
+    let op=null,el=null;
+    if(v){let so=0,se=0,nn=0;for(let t=v[0];t<=v[1];t++){so+=grOptica(s.shade[t]);se+=grElectrica(s.shade[t],T);nn++;}
+      op=nn?so/nn:null; el=nn?se/nn:null;}
+    return {P:P,k:k,op:op,el:el,bt:v};
+  });
+  const kB=GR.kp[GR.B];
+  const orden=filas.slice().sort((a,b)=>b.k.kwh-a.k.kwh);
+  const th='<tr><th>Política</th>'+
+    '<th title="POA de planta del día cargado, del mismo pipeline que la tabla del día">Día kWh/m²·d</th>'+
+    '<th title="12 días representativos (día 21 de cada mes, paso 10 min). Sin calcular hasta que se pulsa «Σ Calcular anual»: no se rellena con una extrapolación">Año (12 días) kWh/m²·año</th>'+
+    '<th title="Fracción de área de módulo tapada, media de planta, promediada sobre el periodo de backtracking de esa misma política">Sombra ÓPTICA media en BT</th>'+
+    '<th title="Escalón Martinez sobre el haz, media de planta, promediado sobre el mismo periodo. NO es la misma magnitud que la óptica">Pérdida ELÉCTRICA media en BT</th>'+
+    '<th title="Ganancia de POA de planta del día frente a la baseline elegida en el selector B">Ganancia frente a la baseline</th>'+
+    '<th title="Ámbar cuando la separación con la fila de ARRIBA en este orden no llega a lo que el modelo resuelve (ancho de la banda del circunsolar)">¿Separada de la fila anterior?</th></tr>';
+  const out=[th];
+  let anterior=null;
+  for(const e of orden){
+    const b=kB.kwh?grBanda(e.k,kB):null;
+    const gan=(e.P.key===GR.B)?'<span class="mut">— es la baseline</span>'
+             :(b?grEsc(grPct(b.d,'frente a '+grNombre(GR.B)+' (POA de planta del día)',{signo:true})):'—');
+    const bp=anterior?grBanda(e.k,anterior.k):null;
+    const sep=!anterior?'<span class="mut">— primera fila</span>'
+             :(bp.indeciso?'<span class="amb" title="'+grEsc(bp.motivo)+'">⚠ NO · bajo la resolución ('+grNum(bp.res,4)+' pp)</span>'
+                          :'sí · '+grEsc(grPct(bp.d,'frente a '+grNombre(anterior.P.key),{signo:true,dec:3})));
+    const anual=GR.anual?grNum(GR.anual.tot[e.P.key],1):'<span class="amb">sin calcular</span>';
+    out.push('<tr><td style="color:'+e.P.col+'">'+grEsc(e.P.nm)+
+      (e.P.key===GR.A?' <span class="mut">(A)</span>':'')+(e.P.key===GR.B?' <span class="mut">(B)</span>':'')+'</td>'+
+      '<td>'+grNum(e.k.kwh,3)+'</td>'+
+      '<td>'+anual+'</td>'+
+      '<td>'+(e.op==null?'<span class="mut">sin periodo de BT en el día</span>':grEsc(grPct(100*e.op,'del área de módulo',{dec:3})))+'</td>'+
+      '<td>'+(e.el==null?'<span class="mut">sin periodo de BT en el día</span>':grEsc(grPct(100*e.el,'del haz (Martinez, nb '+T.nBypass+')',{dec:3})))+'</td>'+
+      '<td>'+gan+'</td>'+
+      '<td>'+sep+'</td></tr>');
+    anterior=e;
+  }
+  $('grtab').innerHTML=out.join('');
+  $('grtabnota').innerHTML='Ordenadas por POA de planta del día, de mayor a menor. La baseline de la columna de ganancia es <b>'+
+    grEsc(grNombre(GR.B))+'</b>, la política B del selector. La última columna marca en ámbar las filas cuya diferencia con la de arriba '+
+    'no llega a lo que el modelo resuelve — el mismo criterio que la banda del circunsolar de la tabla del día. '+
+    'Sombra <b>óptica</b> y pérdida <b>eléctrica</b> son dos magnitudes distintas y van en dos columnas distintas. '+
+    '<b>La columna del día y la del año no se calculan igual</b>: la del día lleva el lazo de control entero (banda muerta y velocidad del actuador) '+
+    'y es lo que la planta EJECUTA; la del año integra la consigna que la política PIDE, sin lazo, que es el camino del estimador anual que ya existía. '+
+    'Por eso el orden de una columna puede no ser el de la otra, y comparar una razón del día con una del año no mide lo mismo. '+
+    (GR.anual?'':'La columna del año dice «sin calcular» mientras no se pulse el botón del anual: no se rellena con una extrapolación.');
+}
+
+/* ── anual: 12 días representativos, por fragmentos ─────────────────────── */
+function* grAnualGen(){
+  const c=DAY.c, T=DAY.T, Tcfg=DAY.Tcfg;
+  const DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
+  const year=c.date.slice(0,4);
+  const mes={}, tot={};
+  for(const P of POLICIES){mes[P.key]=[];tot[P.key]=0;}
+  for(let mo=0;mo<12;mo++){
+    const ds=year+'-'+(mo<9?'0':'')+(mo+1)+'-21', doy=doyOf(ds);
+    const acc={}, sum={}, nn={};
+    for(const P of POLICIES){acc[P.key]=0;sum[P.key]=0;nn[P.key]=0;}
+    for(let m=0;m<1440;m+=10){
+      const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
+      if(g.elev<=0)continue;
+      const irr=skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen);
+      for(const P of POLICIES){
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        const p=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant;
+        acc[P.key]+=p*(10/60)/1000;      // kWh/m² del día representativo
+        sum[P.key]+=p; nn[P.key]++;      // media en W/m² sobre los instantes con sol
+      }
+      yield (mo*144+m/10)/(12*144);
+    }
+    for(const P of POLICIES){
+      mes[P.key].push({kwh:acc[P.key],wm2:nn[P.key]?sum[P.key]/nn[P.key]:0});
+      tot[P.key]+=acc[P.key]*DIM[mo];
+    }
+  }
+  GR.anual={mes:mes,tot:tot,sig:grFirma()};
+}
+
+/* ── driver por fragmentos: la página sigue viva mientras calcula ────────── */
+function grCorre(gen,etiqueta,fin,intento){
+  if(GR.ocupado)return;
+  const n=intento||0;
+  if(n>3){$('grestado').innerHTML='<span class="amb">el día se ha recalculado cuatro veces seguidas mientras se hacía el informe: no se publica nada. Deja de tocar la configuración y vuelve a pulsar.</span>';return;}
+  // si hay un recálculo del día ENCOLADO, se espera: empezar ahora sería
+  // empezar con un día que va a morir en 120 ms
+  if(_recT){setTimeout(()=>grCorre(gen,etiqueta,fin,n),150);return;}
+  GR.ocupado=true;
+  const it=gen();
+  const paso=()=>{
+    const t0=performance.now();
+    let r;
+    try{
+      do{ r=it.next(); }while(!r.done&&performance.now()-t0<40);
+    }catch(e){
+      GR.ocupado=false;
+      if(e&&e.reintenta){
+        $('grestado').textContent='el día se ha recalculado a mitad del informe: se empieza otra vez con el día nuevo…';
+        setTimeout(()=>grCorre(gen,etiqueta,fin,n+1),150);
+        return;
+      }
+      $('grestado').innerHTML='<span class="amb">error al calcular: '+grEsc(e.message)+'</span>';
+      throw e;
+    }
+    if(r.done){
+      GR.ocupado=false;
+      try{fin();}catch(e){$('grestado').innerHTML='<span class="amb">error al pintar: '+grEsc(e.message)+'</span>';throw e;}
+      return;
+    }
+    const pc=typeof r.value==='number'?' · '+Math.round(100*r.value)+' %':'';
+    $('grestado').textContent=etiqueta+pc;
+    setTimeout(paso,0);
+  };
+  setTimeout(paso,0);
+}
+
+function grPinta(){
+  GR.pct=[]; GR.pies={}; GR.ambar={};
+  const mal=grCareoEscena();
+  if(mal.length){
+    GR.listo=false;
+    $('grestado').innerHTML='<span class="amb">NO se publica: para '+mal.map(e=>grEsc(e.key)).join(', ')+
+      ' el informe y la tabla del día no dan la misma energía ('+
+      mal.map(e=>grNum(e.informe,4)+' frente a '+grNum(e.escena,4)+' kWh/m²·d').join(' · ')+
+      '). Vuelve a pulsar «Calcular informe».</span>';
+    return;
+  }
+  grG1(); grG2(); grG3(); grG4(); grG5(); grTabla();
+  GR.listo=true;
+  const sinDen=GR.pct.filter(e=>!e.de).length;
+  $('grestado').innerHTML='Calculado sobre '+grEsc(DAY.c.date)+' · par <b>'+grEsc(grNombre(GR.A))+'</b> (A) frente a <b>'+
+    grEsc(grNombre(GR.B))+'</b> (B) · '+GR.pct.length+' porcentajes publicados, todos con denominador'+
+    (sinDen?' <span class="amb">salvo '+sinDen+', que NO se han pintado</span>':'')+
+    ' · las '+Object.keys(DAY.pol).length+' políticas que la escena ya tenía calculadas dan aquí su MISMA energía del día'+
+    '. Cada gráfica lleva su pie dibujado dentro de la imagen.';
+}
+function grCalcula(){
+  if(!DAY){$('grestado').textContent='No hay día calculado todavía.';return;}
+  grLeePar();
+  grCorre(grSeriesGen,'calculando las nueve políticas sobre el día…',grPinta);
+}
+function grCalculaAnual(){
+  if(!DAY){$('grestado').textContent='No hay día calculado todavía.';return;}
+  grLeePar();
+  if(!GR.listo){grCorre(function*(){yield* grSeriesGen();yield* grAnualGen();},'calculando el día y los 12 días representativos…',grPinta);return;}
+  grCorre(grAnualGen,'calculando los 12 días representativos…',grPinta);
+}
+
+/* ── el par A/B ─────────────────────────────────────────────────────────── */
+/* «la política del emplazamiento si la tiene»: la que el emplazamiento cargado
+   declare (`PLANT_REAL.politica`), y si no la declara, la de la ESCENA — que es
+   la que el usuario está mirando. Nunca se inventa una: si la que sale coincide
+   con la baseline, A se mueve a la primera que no sea ella y el pie lo dice. */
+function grPolEmplazamiento(){
+  if(PLANT_REAL&&PLANT_REAL.politica&&POL[PLANT_REAL.politica])return PLANT_REAL.politica;
+  const v=$('polview')&&$('polview').value;
+  return (v&&POL[v])?v:'true3d';
+}
+function grLlenaSelectores(){
+  const op=k=>POLICIES.map(P=>'<option value="'+P.key+'"'+(P.key===k?' selected':'')+'>'+P.nm+'</option>').join('');
+  const a=GR.A||grPolEmplazamiento();
+  let b=GR.B||'pairwise';
+  if(a===b)b=(a==='pairwise')?'true3d':'pairwise';
+  GR.A=a; GR.B=b;
+  $('grA').innerHTML=op(GR.A); $('grB').innerHTML=op(GR.B);
+}
+function grLeePar(){
+  GR.A=$('grA').value||grPolEmplazamiento();
+  GR.B=$('grB').value||'pairwise';
+  if(GR.A===GR.B){GR.B=(GR.A==='pairwise')?'true3d':'pairwise';$('grB').value=GR.B;}
+}
+
+function grExporta(n){
+  const cv=$('gr'+n); if(!cv||!cv.toBlob)return;
+  cv.toBlob(b=>{
+    if(!b)return;
+    const a=document.createElement('a'), u=URL.createObjectURL(b);
+    a.href=u; a.download='informe_G'+n+'_'+(DAY?DAY.c.date:'')+'_'+GR.A+'_vs_'+GR.B+'.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+  });
+}
+
+function grInit(){
+  grLlenaSelectores();
+  $('grbtn').onclick=grCalcula;
+  $('granbtn').onclick=grCalculaAnual;
+  $('grA').onchange=()=>{grLeePar();if(GR.listo)grPinta();};
+  $('grB').onchange=()=>{grLeePar();if(GR.listo)grPinta();};
+  $('grN').onchange=()=>{if(GR.listo)grPinta();};
+  $('grcrit').onchange=()=>{if(GR.listo)grPinta();};
+  $('grhora').onchange=()=>{if(GR.listo){GR.pct=[];grG5();}};
+  document.querySelectorAll('.grexp').forEach(b=>b.onclick=()=>grExporta(+b.getAttribute('data-gr')));
+  // zonas resaltables de G5, como las de una ortofoto
+  $('gr5').addEventListener('click',ev=>{
+    if(!GR.listo)return;
+    const r=$('gr5').getBoundingClientRect();
+    const px=ev.clientX-r.left, py=ev.clientY-r.top;
+    for(const z of GR.zonas5){
+      if(px>=z.x-1&&px<=z.x+Math.max(1.5,z.w)+1&&py>=z.y-1&&py<=z.y+Math.max(1.5,z.h)+1){
+        const id=z.r+':'+z.k;
+        if(GR.sel5.has(id))GR.sel5.delete(id);else GR.sel5.add(id);
+        GR.pct=[]; grG5(); return;
+      }
+    }
+  });
+  if(window.ResizeObserver){
+    let q=null;
+    const ro=new ResizeObserver(()=>{if(!GR.listo)return;if(q)cancelAnimationFrame(q);
+      q=requestAnimationFrame(()=>{q=null;GR.pct=[];grPinta();});});
+    ['gr1','gr2','gr3','gr4','gr5'].forEach(id=>{const e=$(id);if(e)ro.observe(e);});
+  }
+}
+
 /* arranque: restaurar config guardada si la hay */
 (function(){
   buildPolicyBox();
@@ -8126,6 +9213,7 @@ if(window.ResizeObserver){
   $('date2').value=$('date').value;
   if(!has3D()){$('tab3d').style.display='none';VIEW3D=false;setTab(false);}
   recompute();
+  grInit();
   loop3D();
 })();
 </script>
