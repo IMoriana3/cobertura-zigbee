@@ -3190,6 +3190,76 @@ afirma** que la cifra de la página esté mal, ni que la de `anual_motor.mjs` se
 buena: son medidas distintas de cosas distintas, y ninguna de las dos se ha
 ejecutado en este bloque.
 
+## E-Z4 · El objeto auditado ha vuelto a moverse, y en parte por mano del auditor
+
+**Qué se ejecutó.** Nada. `git log`, `git show` y comparación de cuerpos de
+función por resumen, con su control.
+
+**El hecho.** E-Z1 y E-Z2 comparan `3a57451` contra **`cd2dc3d`**. Al sellar,
+`main` está en **`14b8c99`**, seis commits más allá sobre `backtracking.html`:
+
+```
+c582619  Nadie pide un mapa de sombra mayor del que declara la GPU (#692)
+f784dc3  el certificado no se emite con datos de dos días
+0014be3  G5: la escala de color deja de pisarse y el pie cabe entero
+09ae195  informe gráfico: el lienzo no deforma lo dibujado
+f6835c9  informe gráfico: el pie no se trunca en silencio, G5 tumbado
+a700410  informe gráfico: cinco gráficas del emplazamiento cargado
+```
+
+**Cinco de los seis son de esta misma sesión**, escritos por quien firma esta
+auditoría: los cuatro del informe gráfico (PR #689) y el del certificado (PR
+#691). El sexto (#692) es ajeno.
+
+Esto se declara porque es una **circunstancia del encargo, no un detalle de
+intendencia**: la auditoría y la modificación del programa auditado se han hecho
+en la misma sesión y por la misma mano. Todas las cifras del paquete siguen
+siendo de `3a57451`, que no se ha tocado; pero quien lea el paquete tiene derecho
+a saber que el auditor no fue solo observador del objeto durante el periodo.
+
+### Qué cambió, y por qué no alcanza a ninguna cifra del paquete
+
+| función | `cd2dc3d` → `14b8c99` | líneas extraídas |
+|---|---|---|
+| `policyAngles` | **SIN CAMBIOS** | 27 |
+| `poaPlant` | **SIN CAMBIOS** | 26 |
+| `shadeBand3DAll` (el contador) | **SIN CAMBIOS** | 424 |
+| `mvPara` | **SIN CAMBIOS** | 16 |
+| `elecLoss` | **SIN CAMBIOS** | 5 |
+| `rowTiltAt` | **SIN CAMBIOS** | 8 |
+
+Y la ruta anual sigue siendo la misma línea, ahora en
+`14b8c99:backtracking.html:7113`:
+```js
+        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+```
+
+**TEST NULO de la comparación**, el mismo de Z1.5: un extractor que devolviera
+vacío haría que las seis salieran «SIN CAMBIOS» sin haber mirado nada. Las líneas
+extraídas van en la tabla y ninguna es cero; la mayor, `shadeBand3DAll` con 424,
+es el contador entero.
+
+### Lo que sí cambió, y dónde
+
+- **#689** añadió el bloque de informe gráfico y **extrajo** el cuerpo por
+  política del pipeline del día a `serieDiaGen`, que drenan `computeDayGen` y el
+  informe. Es un movimiento de código, no una fórmula nueva.
+- **#691** añadió el número de serie del `DAY`, el guardián de identidad del
+  certificado y la declaración de la invariante de los consumidores de `DAY`.
+- **#692**, ajeno, tocó una línea de `init3D` (tope del mapa de sombra según lo
+  que declara la GPU).
+
+Los tres viven en la **capa de aplicación**. Ninguno toca la FÍSICA PURA, y
+ninguno toca la ruta anual, que es por donde pasan E-A3, E-D3, E-D5, E-D7 y E-D8.
+
+### Lo que este ítem NO dice
+
+No dice que esos cambios sean correctos: tienen sus propios bancos y su propio
+CI, y eso es asunto de sus PR, no de este paquete. Dice **qué** cambió, **quién**
+lo cambió y **por qué no alcanza** a ninguna cifra publicada aquí. La
+comprobación de llamadores fuera de la ruta anual sigue siendo `NO VERIFICADO`,
+igual que en E-Z1.
+
 ## E-Z2 · Tabla de exposición
 
 Una fila por ítem cuya **pregunta** pueda estar tocada por el avance de `main`.
@@ -3512,7 +3582,10 @@ del paquete son de `3a57451`**. Qué preguntas del paquete quedan tocadas por es
 avance está determinado, por lectura y sin recalcular nada, en **E-Z1** y en la
 tabla de exposición de **E-Z2**: la respuesta medida es que **ninguna**, porque
 ningún script del paquete usa el lazo y la ruta anual no lo llamaba ni lo llama.
-Lo que v1.69 sí abre son preguntas NUEVAS que este paquete no responde.
+Lo que v1.69 sí abre son preguntas NUEVAS que este paquete no responde. Y `main`
+volvió a moverse DESPUÉS de esa comparación, en parte por mano del propio
+auditor: **E-Z4** lo declara con sus commits y comprueba, función a función, que
+tampoco alcanza a ninguna cifra.
 
 ---
 
