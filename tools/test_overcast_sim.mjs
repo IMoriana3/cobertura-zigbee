@@ -241,8 +241,14 @@ t('la cota anisótropa paga el actuador como las demás: decide en su ciclo y ej
   const blq = html.slice(i, i + 900);
   if (!/optimoAniso\(day,\s*thN/.test(blq))
     throw new Error('la cota decide en la rejilla FINA: sería un techo con actuador instantáneo, no comparable');
-  if (!/execOnFineGrid\(o\.theta[^)]*loop\)/.test(blq))
+  if (!/execOnFineGrid\(o\.theta[^)]*loop[,)]/.test(blq))
     throw new Error('la cota no pasa por el lazo: su POA no sería comparable con las políticas');
+  /* y desde el 2026-09-18 tiene que pasar TAMBIÉN por el tope de backtracking:
+     el lazo ADELANTA, y sin tope la cota se apuntaría energía que en la planta
+     se pierde en la sombra de la fila de delante — justo el sesgo que haría que
+     la cota dejara de ser comparable, que es lo que este banco vigila. */
+  if (!/execOnFineGrid\(o\.theta[^)]*loop\s*,\s*thNF\s*\)/.test(blq))
+    throw new Error('la cota pasa por el lazo pero NO por el tope de backtracking: se apunta la POA del adelanto');
   if (!/poaSeries\(dayF,\s*execF\)/.test(blq))
     throw new Error('la POA de la cota no sale del θ ejecutado');
   if (!/NO es del core/.test(html))
