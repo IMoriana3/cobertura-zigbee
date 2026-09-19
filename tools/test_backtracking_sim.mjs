@@ -3065,7 +3065,16 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    for (const lit of ['segOn(T)', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    /* 2026-09-19 · 'LZS.paso(segCmd(' pasa a 'LZS.paso(segN,' + el tope. Es el
+       CUARTO test por cadena que salta en este fichero al mejorar la pieza, y
+       por la misma razón que dice el párrafo de arriba: la consigna por mesa
+       ahora se guarda en una variable porque el tope del backtracking necesita
+       alimentarse de LA MISMA que alimentó al lazo. Lo que se exige sigue
+       siendo lo que la pieza HACE —el día pasa por el camino por mesa, con
+       lazo y con tope—, sólo que dicho sobre el texto de hoy. */
+    for (const lit of ['segOn(T)', 'const segN=segCmd(', 'LZS.paso(segN,STEP_MIN*60)',
+                       'topeBacktrackingSeg(g.zen,g.az,T,segN,',
+                       'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('el cuerpo del día sin «' + lit + '»');
     // la política llega como `P.key` o como `key` según quién drene el cuerpo:
     // lo que se exige es que sea la política, no el nombre de su variable
