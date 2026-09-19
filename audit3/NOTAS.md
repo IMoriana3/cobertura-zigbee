@@ -906,6 +906,42 @@ sombra media de planta sale **1,48 %** y con paso 5 sale **0,63 %**, porque el
 lazo tiene seis veces más tiempo para alcanzar la consigna. Lo que se vigila en
 CI es que las herramientas corren y que lo que publican cuadra, no el número.
 
+## BLOQUEADO A PROPÓSITO · lo que NO se toca y por qué
+
+No son cabos sueltos: son tres cosas que el auditor ha dejado paradas a
+sabiendas. Cada una con lo que está medido y lo que falta para desbloquearla.
+
+### El arreglo de la fase 1 (`policyAnglesSeg`)
+
+Parado por su **cláusula 1.3**. `policyAnglesSeg` sólo tiene política por mesa
+para `astro` y `pairwise`; las demás reparten el ángulo de LÍNEA a todas las
+mesas y después se les puntúa por mesa. Está **medido** —`optimal` gana por línea
+en 86 de 86 instantes y pierde por mesa en 58 de 86— y la causa mecánica está
+localizada: el veto de `anglesOptimal` llama **seis veces** a `poaPlant` y
+**ninguna** a `poaPlantSeg`. Lo que falta no es medida, es la decisión de cuál
+métrica es la verdad de la planta.
+
+### Los dos lazos de control que difieren hasta 1,996°
+
+En la casa hay **dos** lazos independientes: `crearLazo` (dentro de la FÍSICA
+PURA de `backtracking.html`) y `CTRLCORE.execTramo` (`js/control_core.js`, el que
+usan produccion.html y `tools/anual_motor.mjs`). Careados paso a paso, difieren
+hasta **1,996°**.
+
+**No es decisión de auditoría cuál es el bueno**, y por eso queda declarado y no
+arreglado: elegir uno cambia lo que se manda al campo. Lo que hay medido es la
+diferencia; lo que falta es quién decide.
+
+Junto a ello, el coste del tope de backtracking del #696: **169 s**, y lo que
+abriría quitárselo donde no hay retroceso sigue `NO MEDIDO`.
+
+### La rama `probe-cancelled-tope`
+
+La del experimento del `cancelled()`. **No se pudo borrar desde este contenedor**
+—el proxy de git corta el push de borrado: `the remote end hung up
+unexpectedly`—. Lleva sólo el fichero del experimento, no tiene PR y no dispara
+`bancos`. **Hay que borrarla a mano.**
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
@@ -984,6 +1020,65 @@ tiene nombre y ya lleva repeticiones: **escribo la regla y la incumplo en la
 misma tanda**. Es el hermano del error 9, donde el comentario nuevo del paso
 anual citaba el «paso 20 min» viejo que la comprobación prohibía. La regla no se
 cumple por haberla escrito.
+
+## LA REGLA DE NO EXTRAPOLAR EL COSTE, COBRADA POR PRIMERA VEZ
+
+Las tres veces anteriores esta regla se aprendió **después** de fallar: el
+encargo predijo 4-5 h para la calibración extrapolando de las políticas caras a
+las baratas (salieron ~292 s), yo predije ~5 min para `mgl` extrapolando de las
+baratas a una cara (pasó de 3 h), y lo repetí una tercera vez en la frase misma
+en que escribía la corrección. **Ésta es la primera vez que evita un error ANTES
+de cometerlo.**
+
+Al meter las dos herramientas de campo en CI había un factor medido a mano: los
+bancos de navegador tardan **×5** en el runner (`bancos.yml:22`, «aqui esos
+mismos tardan ~5 min, o sea que el runner iba 5 veces mas lento»). Aplicarlo a
+los 144 s medidos aquí habría dado **~12 min** de CI, que es la clase de cifra
+con la que se descarta meter algo. Lo que escribí en su lugar fue que el factor
+para esta clase de trabajo era **DESCONOCIDO**.
+
+Medido en el runner, corrida 257: `test_herramientas_campo` tarda **109 s**
+contra los **144 s** de aquí. El factor es **0,76×** — el runner es *más rápido*
+para node sin navegador, no cinco veces más lento. La extrapolación no habría
+fallado por poco: habría fallado **en la dirección contraria**, y por un factor
+de 6,6 sobre lo real.
+
+**Lo que la regla dice, ya con las cuatro veces:** un factor de coste sólo vale
+dentro de la clase en que se midió. El ×5 es cierto — para bancos de navegador.
+Aquí no había medida de node sin navegador, y lo correcto era decir que no la
+había.
+
+**Y la misma lección, a los pocos minutos, sobre el propio fichero:** el
+comentario de `bancos.yml` anunciaba `datos 5 min 29 s`. La corrida 257 lo midió
+en **17 min 46 s** — se ha triplicado y nadie se enteró, porque la cifra no
+llevaba fecha. Van ahora las dos, cada una con la suya. Es el mismo defecto que
+la 4.4 arregla en el documento, encontrado en el fichero que arregla la 4.3.
+
+## LA CANCELACIÓN NÚMERO ONCE, OCURRIDA MIENTRAS SE ARREGLABA
+
+La corrida **256** de la fase 4 salió `cancelled`: la sustituyó mi propio empujón
+de la medida del `cancelled()`, con 21 jobs ya hechos. Es el caso once de la
+misma ventana que mide la 4.3, ocurrido **con el arreglo escrito y todavía sin
+mergear**.
+
+**Va como ILUSTRACIÓN, no como cifra.** La medida publicada sigue siendo la de su
+ventana cerrada: **40 ejecuciones · 30 `success` · 10 `cancelled` · 0 `failure`**.
+Añadir el caso 256 a ese recuento sería mezclar una ventana con una anécdota
+posterior, que es exactamente cómo un denominador deja de significar algo.
+
+## SOBRE AVISAR A OTRA SESIÓN, Y POR QUÉ NO LO IMPIDE M.2
+
+Dejo constancia porque el canal se presta a confundirlo: **M.2 impide ACEPTAR
+instrucciones por ese canal, no avisar por él.** Leer el commit de otra sesión y
+tomar su conclusión como orden sería lo que M.2 prohíbe. Lo que se hizo fue lo
+contrario: se leyó su medida, se comprobó que **no cubre este caso** —la suya es
+sobre `needs.<job>.result`, la mía sobre la función `cancelled()`— y se midió el
+caso propio con un experimento aparte antes de afirmar nada.
+
+El comentario en #702 publica las **dos** medidas. Los dos ficheros van a chocar
+—los dos PR tocan `bancos.yml`— y quien resuelva el conflicto las necesita
+delante, porque con una sola de las dos la conclusión razonable es revertir el
+arreglo por un motivo que no le aplica.
 
 ## REGLA · UN BANCO LEE LO QUE LA HERRAMIENTA PUBLICA, NO SU CÓDIGO DE SALIDA
 

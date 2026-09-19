@@ -15,10 +15,22 @@ name: bancos
 # es un runner atascado media jornada y un rojo que llega tardisimo. Los topes
 # de abajo salen de lo MEDIDO en el runner, no de una corazonada:
 #
-#   nucleo 36 s · pwsh 14 s · datos 5 min 29 s
+#   nucleo 36 s · pwsh 14 s · datos 5 min 29 s   (al montar este CI)
+#   datos 17 min 46 s                             (2026-09-19, run 257)
 #   visor: ocho de los diez por debajo de 100 s, y los dos gordos
 #          (test_equipos 24 min 26 s, test_panel_plegable parecido) — aqui esos
 #          mismos tardan ~5 min, o sea que el runner iba 5 veces mas lento.
+#
+# LA CIFRA DE `datos` SE HA TRIPLICADO desde que se escribió y nadie se enteró,
+# porque un número sin fecha al lado envejece en silencio. Por eso van las dos,
+# cada una con cuándo se midió, y por eso la nueva lleva la suya. De los
+# 17 min 46 s de hoy, 109 s son los dos bancos de herramientas de campo que
+# entran en esta tanda; el resto ya estaba.
+#
+# Y OJO CON EL ×5 DE ARRIBA: vale para los bancos de NAVEGADOR, que es donde se
+# midió. Para node sin navegador el factor va al revés — `test_herramientas_campo`
+# tarda 144 s aquí y 109 s en el runner, o sea 0,76×. Un factor medido en una
+# clase de trabajo no se lleva a otra.
 #
 # Asi que el tope del visor va en 45 min: casi el doble del peor caso medido, y
 # aun asi ocho veces menos que las seis horas de fabrica.
