@@ -135,18 +135,22 @@ jobs:
         run: python3 tools/test_logger_rssi.py
       - name: rutas por telnet (zigbee_routes_logger.ps1)
         run: python3 tools/test_rutas_telnet.py
+      - name: qué hace ESTE PowerShell con Export-Csv y la codificación
+        run: python3 tools/test_export_csv_esquema.py
       - name: y las mutaciones de los dos, en rojo
+        shell: bash
         run: |
+          log=$(mktemp)
           rojo () {
             banco="$1"; shift
             for m in "$@"; do
               set +e
-              MUTA="$m" python3 "$banco" > /tmp/muta.txt 2>&1
+              MUTA="$m" $PY "$banco" > "$log" 2>&1
               rc=$?
               set -e
               if [ "$rc" -ne 1 ]; then
                 echo "::error::$banco con la mutación «$m» salió rc=$rc; se esperaba 1 (banco en rojo)"
-                tail -40 /tmp/muta.txt
+                tail -40 "$log"
                 exit 1
               fi
               echo "  $banco · $m: roja, bien"
@@ -154,6 +158,81 @@ jobs:
           }
           rojo tools/test_logger_rssi.py  signo rol filtro caido carga sello
           rojo tools/test_rutas_telnet.py saltos coord iac separador puerto
+        env:
+          PY: python3
+
+  # ── LOS MISMOS .ps1, EN LA VERSIÓN QUE CORRE EN PLANTA ───────────────────
+  # El job de arriba usa `pwsh`, que es PowerShell 7. En el PC de la planta hay
+  # **Windows PowerShell 5.1**: es lo que trae Windows, y allí no se instala nada
+  # ni hay admin. Probar solo en 7 es probar otro intérprete y llamarlo el mismo.
+  #
+  # Y no es una diferencia teórica: es justo donde el bloque 2 va a apoyarse.
+  #
+  #   · `Export-Csv -Encoding UTF8` NO escribe lo mismo en las dos versiones
+  #     (5.1 pone BOM; 7 no). `tools/test_export_csv_esquema.py` lo mide en vez
+  #     de suponerlo, y por eso corre en los dos jobs.
+  #   · La regla de rotación a `<nombre>.v1.<fecha>.csv` existe porque
+  #     `Export-Csv -Append` rechaza una cabecera distinta. Esa regla se cumple
+  #     o se incumple en 5.1, no en 7.
+  #
+  # EL TOPE DE TIEMPO ES PROVISIONAL: 20 min a ojo, porque este job no se ha
+  # medido nunca. En cuanto haya una ejecución, se pone la cifra medida con su
+  # fecha, como las de arriba. Dejarlo sin medir y sin decirlo sería justo el
+  # número que envejece en silencio del comentario de la cabecera.
+  windows:
+    timeout-minutes: 20
+    name: scripts de campo (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    env:
+      PWSH: powershell          # el 5.1 de Windows, NO el pwsh 7 que también está
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      # SIN ESTO EL JOB PUEDE VOLVERSE UN DUPLICADO DEL DE ARRIBA sin que nadie
+      # lo note: si algún día `powershell` apuntara a 7 en el runner, todo
+      # seguiría en verde y ya no se estaría probando la versión de planta.
+      - name: es Windows PowerShell 5.1, no pwsh 7
+        shell: powershell
+        run: |
+          $v = $PSVersionTable.PSVersion
+          Write-Host "$($PSVersionTable.PSEdition) $v"
+          if ($v.Major -ne 5) { throw "se esperaba PowerShell 5.x y hay $v" }
+
+      - name: ángulos del barrido (zigbee_angulos.ps1)
+        run: python tools/test_angulos_barrido.py
+      - name: inventario zigbee (zigbee_inventario.ps1)
+        run: python tools/test_inventario_zb.py
+      - name: RSSI (zigbee_logger.ps1)
+        run: python tools/test_logger_rssi.py
+      - name: rutas por telnet (zigbee_routes_logger.ps1)
+        run: python tools/test_rutas_telnet.py
+      - name: qué hace ESTE PowerShell con Export-Csv y la codificación
+        run: python tools/test_export_csv_esquema.py
+      - name: y las mutaciones de los dos, en rojo
+        shell: bash
+        run: |
+          log=$(mktemp)
+          rojo () {
+            banco="$1"; shift
+            for m in "$@"; do
+              set +e
+              MUTA="$m" $PY "$banco" > "$log" 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -ne 1 ]; then
+                echo "::error::$banco con la mutación «$m» salió rc=$rc; se esperaba 1 (banco en rojo)"
+                tail -40 "$log"
+                exit 1
+              fi
+              echo "  $banco · $m: roja, bien"
+            done
+          }
+          rojo tools/test_logger_rssi.py  signo rol filtro caido carga sello
+          rojo tools/test_rutas_telnet.py saltos coord iac separador puerto
+        env:
+          PY: python
 
   # ── node sin navegador: layouts, mapas, física y paquetes de campo ────────
   datos:
@@ -424,7 +503,7 @@ jobs:
     name: bancos en verde
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [nucleo, powershell, datos, barrido, navegador]
+    needs: [nucleo, powershell, windows, datos, barrido, navegador]
     # `always()` para que el gate corra aunque un banco falle —si no, un rojo se
     # volvería invisible—, pero `!cancelled()` para que NO corra cuando la corrida
     # entera se ha cancelado. Sin ese segundo trozo, `cancel-in-progress` deja los
@@ -461,11 +540,13 @@ jobs:
         run: |
           for j in "nucleo ${{ needs.nucleo.result }}" \
                    "powershell ${{ needs.powershell.result }}" \
+                   "windows ${{ needs.windows.result }}" \
                    "datos ${{ needs.datos.result }}" \
                    "barrido ${{ needs.barrido.result }}" \
                    "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
           if [ "${{ needs.nucleo.result }}"    != "success" ] || \
              [ "${{ needs.powershell.result }}" != "success" ] || \
+             [ "${{ needs.windows.result }}"   != "success" ] || \
              [ "${{ needs.datos.result }}"     != "success" ] || \
              [ "${{ needs.barrido.result }}"   != "success" ] || \
              [ "${{ needs.navegador.result }}" != "success" ]; then

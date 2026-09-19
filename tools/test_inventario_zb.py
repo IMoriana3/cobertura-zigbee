@@ -124,7 +124,7 @@ open(ruta, "w", encoding="utf-8").write(txt)
 
 print("\n· se corre el recolector de verdad contra un ConnectPort de mentira")
 p = subprocess.run([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ruta],
-                   capture_output=True, text=True, timeout=180)
+                   capture_output=True, text=True, errors="replace", timeout=180)
 salida = p.stdout + p.stderr
 di(p.returncode == 0, "termina sin error", salida[-400:])
 

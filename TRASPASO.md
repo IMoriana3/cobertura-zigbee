@@ -458,6 +458,36 @@ en el navegador», y en el navegador cabe un puerto. Con `10.100.1.54:8080` el a
 HTTP seguía funcionando y el telnet intentaba resolver `"10.100.1.54:8080"` como nombre de máquina.
 Ahora se le quita el puerto al conectar (`$TelnetHost`); una IP a secas no cambia en nada.
 
+### El arnés corre en las DOS versiones de PowerShell
+
+`pwsh` (7) en `ubuntu-latest` y **Windows PowerShell 5.1** en `windows-latest`, que es la que hay en
+el PC de la planta: allí no se instala nada ni hay admin. Probar solo en 7 es probar otro intérprete
+y llamarlo el mismo.
+
+`tools/test_export_csv_esquema.py` es una **sonda del entorno**, no un banco del repo: mide qué hace
+la versión que tenga delante con las tres cosas de las que depende el bloque 2 — `-Append` con una
+columna de más, `-Append -Force` con una columna de más, y si `-Encoding UTF8` deja BOM. Una versión
+que no esté en su tabla sale con **rc = 2** y enseña lo observado, en vez de darse por buena.
+
+Lo que hizo falta adaptar de los bancos que ya había, que asumían Linux:
+
+- `text=True` sin `errors` decodifica en modo **estricto** con la codificación de la consola. En
+  Windows eso puede reventar con `UnicodeDecodeError` en bytes que cp1252 no define. Lleva ya
+  `errors="replace"` en los cuatro sitios.
+- `test_angulos_barrido.py` abría el CSV **mientras PowerShell lo estaba escribiendo**. En Linux
+  eso se tolera; en Windows lanza `PermissionError` y tumbaba el banco. Ahora se reintenta.
+
+**HALLAZGO SIN RESOLVER — el BOM de los `.ps1`.** De los cinco recolectores, **solo
+`zigbee_logger.ps1` tiene BOM**; los otros cuatro no, y cuatro de los cinco traen caracteres no
+ASCII (`—`, `·`, `ñ`, `í`). Windows PowerShell 5.1 lee un `.ps1` **sin BOM como ANSI**
+(Windows-1252), no como UTF-8: esos caracteres le llegan como mojibake.
+
+Hoy el efecto es **cosmético** —el no-ASCII está en comentarios y en dos cadenas que solo se
+imprimen o se escriben en el `.xml` en bruto— y por eso no se ha tocado: cambiarle los bytes a
+cuatro ficheros de campo merece su propio cambio, no una línea colada en este. Pero conviene
+decidirlo antes del bloque 2, porque ahí se comparan cabeceras de CSV y se renombran ficheros. Lo
+que el job de Windows enseñe es el dato para decidir.
+
 ---
 
 ## Herramientas que quedan hechas
