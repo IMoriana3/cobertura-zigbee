@@ -1,0 +1,75 @@
+{
+ "commit": "570654f820d325cec2da95403cf3ce0a051b3f0e",
+ "fecha": "2026-06-21",
+ "lat": 39.11821,
+ "lon": -1.15985,
+ "lineas": 79,
+ "mesas": 1600,
+ "torsion": {
+  "mesasConTorsion": 1600,
+  "torsionMax_deg": 3.7143
+ },
+ "paso_min": 10,
+ "res": {
+  "medida": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 2.1652,
+   "inversionesDeOrden": 65,
+   "optimal_pierde_por_mesa": 58,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.5103,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67337.7,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -63.525268490160556,
+    "pwMesa": 568.2374319545441,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 1.3376605825501997
+   }
+  },
+  "sinTorsion": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 29,
+   "testNulo_difMetricaMax_Wm2": 2.1373,
+   "inversionesDeOrden": 22,
+   "optimal_pierde_por_mesa": 15,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.3482,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67235.1,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -54.97168839960557,
+    "pwMesa": 559.7268526497094,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 1.2946597968299898
+   }
+  },
+  "tilt0": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 9.2949,
+   "inversionesDeOrden": 26,
+   "optimal_pierde_por_mesa": 18,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.306,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67388.7,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -56.02391278710206,
+    "pwMesa": 557.2469835479399,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 4.826753286095993
+   }
+  }
+ }
+}
