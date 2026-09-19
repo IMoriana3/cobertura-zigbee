@@ -393,6 +393,22 @@ columnas de v2, el primero que arranque sobre un `zigbee_log.csv` de v1 **muere 
 eso el contrato exige comprobar la cabecera al arrancar y **renombrar** el viejo a
 `<nombre>.v1.<AAAAMMDDTHHMMSSZ>.csv`. Nunca se borra.
 
+### El agregador `bancos en verde` y los jobs cancelados — NO se relaja
+
+Con `cancel-in-progress: true`, empujar dos veces seguidas deja la ejecución anterior con jobs
+**cancelados**, y el agregador los cuenta como rojo. Parece ruido y se propuso tratar `cancelled`
+como «no concluyente». **No se hace**, y hay una medida que lo cierra.
+
+**Medido en el runner del repo** (19-09, rama desechable ya borrada): un job con
+`timeout-minutes: 1` ejecutando `sleep 150` acaba con **`conclusion: cancelled`**, cortado a los
+72 s, y su dependiente lee **`needs.<job>.result == "cancelled"`**.
+
+Es decir: un banco **colgado y cortado por su tope** y uno **cancelado por un empujón posterior**
+son **indistinguibles** en `needs.*.result`. Relajar el agregador dejaría pasar exactamente lo que
+el tope existe para cazar.
+
+El rojo solo aparece en SHAs sustituidos, que no se mergean. **Manda la ejecución de la cabeza.**
+
 ### Rojo que NO es de este bloque: `bench_cobertura_multi.mjs`
 
 Está **rojo en main** (6bcb688), 6 fallos, y lo estaba antes de tocar nada — comprobado con el
