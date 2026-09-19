@@ -4299,7 +4299,7 @@ function cfg(){
     // con planta real cargada el tope sube: un bloque real puede tener 80 líneas
     nrows:Math.max(2,Math.min(PLANT_REAL?200:24,Math.round(+$('nrows').value))),
     axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
-    drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value, iam:+$('iam').value,
+    drive:$('drive').value, nbp:nbDe().n, nbFuente:nbDe().fuente, z0:+$('z0').value, iam:+$('iam').value,
     nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
     mods:Math.max(8,Math.min(32,Math.round(+$('mods').value))),
     tcucfg:($('tcucfg')?$('tcucfg').value:'levantamiento'),
@@ -4377,6 +4377,32 @@ function nsProfile(c){
   return out;
 }
 let PLANT_REAL=null;   // planta cargada de cotas reales (Ayora/San José); null = presets
+/* v1.72 · DE DÓNDE SALE `nb`, Y POR QUÉ HOY SALE DEL FORMULARIO
+   `nb` —cuántas subcadenas de diodo atraviesa la sombra al subir por la cuerda—
+   decide el escalón de la pérdida electrica de Martinez, y con él la POA que la
+   página publica. Debería salir de la FICHA DEL MÓDULO de cada planta.
+   NO SALE, porque el dato NO ESTÁ. Buscado sobre todos los .json, .csv y
+   .geojson del repositorio con trece patrones —bypass, by-pass, subcaden,
+   sub-caden, diodo, diode, modulo_v, mod_v, n_bp, nbp, celul, half-cell, media
+   celda—: cero. El único acierto de «subcaden» es de las cadenas ZigBee del
+   gateway. Y las propias fichas lo dicen: `modulos_en_vertical` viene como
+   «null · el bloque no dice la V».
+   Así que se queda CONFIGURABLE, como estaba, y lo que cambia es que la página
+   DICE de dónde lo ha sacado en vez de presentarlo como dato de planta. El día
+   que una ficha lo traiga, `nbDe()` lo coge sin tocar nada más. */
+function nbFicha(){
+  const P=PLANT_REAL;
+  if(!P)return null;
+  const cand=[P.nBypass,P.nb,P.modulo&&P.modulo.nBypass,P.modulo&&P.modulo.subcadenas,
+              P.ficha&&P.ficha.nBypass,P.ficha&&P.ficha.subcadenas];
+  for(const v of cand){const n=Math.round(+v);if(Number.isFinite(n)&&n>=0&&n<=6)return n;}
+  return null;
+}
+function nbDe(){
+  const f=nbFicha();
+  if(f!=null)return {n:f,fuente:'ficha del módulo'};
+  return {n:Math.round(+$('nbp').value),fuente:'CONFIGURADO a mano (ninguna ficha lo trae)'};
+}
 /* Testigo de «ya te lo dije»: los optimizadores se apagan la PRIMERA vez que
    se carga una planta real, no cada vez. Si el usuario los reenciende a
    sabiendas del coste, la página no se lo vuelve a discutir. */
@@ -7388,7 +7414,7 @@ function informeHTML(){
   '<div><b>Latitud / longitud</b>'+c.lat+'° / '+c.lon+'°</div><div><b>Altitud · huso</b>'+c.alt+' m · UTC'+(c.tz>=0?'+':'')+c.tz+'</div>'+
   '<div><b>Albedo</b>'+c.albedo+'</div><div><b>Sol del día</b>'+(t0>=0?'de '+hhmm(d.times[t0])+' a '+hhmm(d.times[t1])+', máx '+f1(elMax)+'°':'no sale')+'</div>'+
   '<div><b>GHI / DNI / DHI del día</b>'+f2(ghi)+' / '+f2(dni)+' / '+f2(dhi)+' kWh/m²</div><div><b>Planta</b>'+esc(plantSel)+(realTxt?' — '+esc(realTxt):'')+'</div>'+
-  '<div><b>Filas · pitch · cuerda · GCR</b>'+n+' · '+c.pitch+' m · '+c.cw+' m · '+(c.cw/c.pitch).toFixed(3)+'</div><div><b>θ máx · cara sobre eje · subcadenas · IAM b₀</b>±'+c.maxang+'° · '+c.z0+' m · '+c.nbp+' · '+c.iam+'</div>'+
+  '<div><b>Filas · pitch · cuerda · GCR</b>'+n+' · '+c.pitch+' m · '+c.cw+' m · '+(c.cw/c.pitch).toFixed(3)+'</div><div><b>θ máx · cara sobre eje · subcadenas · IAM b₀</b>±'+c.maxang+'° · '+c.z0+' m · '+c.nbp+' <span class="mut">('+(c.nbFuente||'procedencia sin declarar')+')</span> · '+c.iam+'</div>'+
   '<div><b>Azimut del eje</b>'+c.axaz+'°</div><div><b>Accionamiento</b>'+drvNm+' — '+nMotorsSegs(T)+' motores</div>'+
   '<div><b>Terreno transversal (E-O)</b>'+(uni?'uniforme':'irregular')+': cotas de '+zmin.toFixed(2)+' a '+zmax.toFixed(2)+' m, pendiente por vano '+pend(slopes)+'</div><div><b>Perfil longitudinal (N-S)</b>'+nsp+', valor '+c.axtilt+'°'+(T.rotula?(T.rotula.sigue?' — cada mesa sigue su terreno':' — tubo recto al tilt medio (no lo sigue)'):'')+'; tilt por fila '+pend(T.rowTilt||[0])+'</div>'+
   '<div><b>Implantación a lo largo</b>'+esc(c.nsl)+' × '+c.ntrk+' tracker/línea · '+c.mods+' módulos por ala ('+(T.filaLen||0).toFixed(1)+' m por tracker)</div><div><b>Lo que la TCU cree tener delante</b>'+tcu+'</div>'+
@@ -7399,7 +7425,7 @@ function informeHTML(){
   '<h2>4. Tabla horaria</h2>'+hor+
   yearHtml+
   '<h2>Validación</h2>'+qaTxt+
-  '<h2>Método y límites declarados</h2><ul class="mut"><li>Seguimiento: pvlib <code>singleaxis</code> (Anderson & Mikofski 2020) con tilt N-S y azimut del eje; sombra 2.5D analítica (≡ Anderson 2023) como referencia de QA; contador publicado: ray-cast 3D multi-emisora con la cota de cada tramo, viga (120 mm) y canto (60 mm), '+(T.real?8:8)+' estaciones por tramo.</li><li>Cielo claro Ineichen con turbidez Linke '+c.tl+'; transposición Perez con circunsolar e IAM ASHRAE (b₀='+c.iam+'); sin meteo real: comparativa de políticas, no un P50.</li><li>Eléctrico: pérdida Martinez por subcadenas ('+c.nbp+' en la cuerda) sobre el haz; sin mismatch en serie ni temperatura.</li><li>Fuera del modelo: el bloqueo de bóveda por la fila de delante (difusa enmascarada), el cono real del circunsolar, y la estructura en el criterio de las políticas sin-sombra (el contador la cobra; pvlib no la esquiva).</li><li>Con planta medida las consignas van por mesa (tilt y cota de cada tramo) y el careo con la producción por string es idéntico en las mesas interiores (tools/careo_produccion.mjs).</li></ul>'+
+  '<h2>Método y límites declarados</h2><ul class="mut"><li>Seguimiento: pvlib <code>singleaxis</code> (Anderson & Mikofski 2020) con tilt N-S y azimut del eje; sombra 2.5D analítica (≡ Anderson 2023) como referencia de QA; contador publicado: ray-cast 3D multi-emisora con la cota de cada tramo, viga (120 mm) y canto (60 mm), '+(T.real?8:8)+' estaciones por tramo.</li><li>Cielo claro Ineichen con turbidez Linke '+c.tl+'; transposición Perez con circunsolar e IAM ASHRAE (b₀='+c.iam+'); sin meteo real: comparativa de políticas, no un P50.</li><li>Eléctrico: pérdida Martinez por subcadenas ('+c.nbp+' en la cuerda, '+(c.nbFuente||'procedencia sin declarar')+') sobre el haz; sin mismatch en serie ni temperatura.</li><li>Fuera del modelo: el bloqueo de bóveda por la fila de delante (difusa enmascarada), el cono real del circunsolar, y la estructura en el criterio de las políticas sin-sombra (el contador la cobra; pvlib no la esquiva).</li><li>Con planta medida las consignas van por mesa (tilt y cota de cada tramo) y el careo con la producción por string es idéntico en las mesas interiores (tools/careo_produccion.mjs).</li></ul>'+
   '</body></html>';
 }
 function abrirInforme(){
