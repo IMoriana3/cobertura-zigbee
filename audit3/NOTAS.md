@@ -17,7 +17,7 @@ desconocido, nunca extrapolado.
 | **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — PR #697 |
 | **1** | `policyAnglesSeg` — medir ANTES de arreglar | **MEDIDA · PARADA** por la cláusula 1.3 |
 | **2** | el anual por el lazo | **HECHA** — 2.1, 2.3, 2.4 y 2.5; 2.2 razonado con medida |
-| 3 | calibración y transposición | pendiente |
+| **3** | calibración y transposición | **3.1 y 3.3 hechas** · 3.2 esperando decisión |
 | 4.2 - 4.5 | texto, gate de CI, docs, señal | pendiente |
 
 ---
@@ -593,6 +593,118 @@ anuales. Una planta, una configuración.
 
 ---
 
+## FASE 3 · CALIBRACIÓN Y TRANSPOSICIÓN
+
+### 3.1 · Las políticas que faltaban de la calibración
+
+**El arnés está validado antes que ninguna cifra.** `pairwise` tenía que
+reproducir los **2 313,44643430 kWh/m²·año** de E-A3 variante 1, y los reproduce
+**dígito a dígito**:
+
+```
+PLENO · pairwise       2313.44643430 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 637 s
+```
+
+Sin ese control, ninguno de los números de abajo sería publicable: el guion lleva
+una copia CONGELADA del anual sin lazo y, si esa copia se hubiera desviado del
+original, lo mediría todo mal en silencio.
+
+**Lo medido** (`audit3/F3_calibracion.mjs`, Ayora real, anual PLENO de 12 días a
+paso 10 min, **875 instantes**, MV 8, nb 2; salida en
+`audit3/out/F3_calibracion.txt`, diario en `audit3/out/F3_calibracion.jsonl`):
+
+| política | kWh/m²·año PLENO | coste |
+|---|---|---|
+| `astro` | **2 655,07172979** | 315,6 s |
+| `global` | **2 664,35669996** | 298,2 s |
+| `row` | **2 671,39751091** | 291,2 s |
+| `bt2d` | **2 663,19199678** | 294,2 s |
+| `pairwise` *(control)* | 2 313,44643430 | 637 s |
+| **`mgl`** | **NO MEDIDA** | > 3 h, ver HUECOS R3 entrada 1 |
+
+Con esto el orden de las nueve pasa de **`calibrada en 4 de 9`** a
+**`calibrada en 8 de 9`**. No a «calibrada»: `mgl` falta y se dice.
+
+### Lo que esta calibración NO corrige
+
+**No corrige la cifra que la página enseña hoy.** El guion lleva congelado el
+anual **sin lazo** —copia literal del manejador tal como estaba cuando se
+midieron E-D2/E-D3— porque la calibración compara el diseño PLENO con el REDUCIDO
+sobre la MISMA física, y las políticas ya calibradas se midieron así. Desde la
+fase 2 la página publica su anual **con** lazo. Así que lo que aquí se completa es
+el **orden de E-D3**, que es un artefacto de R2. Recalibrar las nueve sobre la
+ruta nueva es otra corrida: `NO MEDIDO`.
+
+**Y el coste de esa corrida tampoco se estima**, por lo aprendido en esta misma
+fase: cuatro de las nueve son baratas (~292 s) y las otras cinco buscan; una tasa
+medida sobre las baratas no cubre la clase de las caras.
+
+---
+
+## HUECOS R3 · entrada 1 · `mgl`, la política que no se calibró
+
+**Decisión del auditor, opción B, con su motivo textual:**
+
+> *«No es que `mgl` importe poco — eso es argumento, no medida. Es que la máquina
+> bloqueada tiene un coste medido: sin ella no corre el control del arnés ni el
+> banco del informe, y sin esas dos verificaciones NO se publica ninguno de los
+> cinco números. Esperar a `mgl` no retrasa una cifra, retrasa cuatro y dos
+> verificaciones. Precedente directo: E-D8, corrida sin señal intermedia y con
+> estimador inservible, que acabó en 13 h 48 min y cero resultado.»*
+
+### Qué falta, en una frase ejecutable
+
+```
+node audit3/F3_calibracion.mjs mgl 10
+```
+
+con el diario en `/tmp/claude-0/f3/calibracion.jsonl` o en `F3_DIARIO`: el anual
+PLENO de Ayora real —12 días, paso 10 min, sin lazo, el diseño congelado de
+E-D2/E-D3— para `mgl`, cuyo offset frente al diseño reducido es la calibración
+que falta.
+
+### Coste MEDIDO, y por qué se paró
+
+| | |
+|---|---|
+| `mgl` al pararla | **> 3 h de CPU** (2 h 57 min al pasar la decisión, 103 % de un núcleo) |
+| media de las otras cuatro | **≈ 292 s** (astro 315,6 · global 298,2 · row 291,2 · bt2d 294,2) |
+| **factor** | **≈ 36, y subiendo** |
+| señal intermedia | **ninguna** — un `evaluate` síncrono por política |
+| reanudable | **no**: el diario guarda por política, y `mgl` no llegó a cerrar |
+
+No se mató por juicio sobre su importancia. Se mató porque tenía la máquina y sin
+máquina no había verificación posible.
+
+### Qué cifra depende de ella
+
+El **orden de las nueve políticas** de E-D3, que pasa a publicarse con la etiqueta
+**`calibrada en 8 de 9`** — no «4 de 9», que era lo anterior, ni «calibrada» a
+secas, que sería redondear un hueco hasta hacerlo desaparecer.
+
+### Y el estimador falló en LAS DOS direcciones
+
+Es el mismo defecto de siempre —**medir una parte y darla por el todo**— y aquí se
+manifestó simétrico, que es lo que lo hace instructivo:
+
+| estimación | qué predijo | qué salió | de qué extrapolaba |
+|---|---|---|---|
+| la del encargo | **4-5 h** para las cinco | **~292 s** cada una de las cuatro baratas | de las políticas **caras** (los optimizadores de E-D5, 11 397 s las tres) a las baratas |
+| la mía, impresa por la propia sonda | **~5 min** para `mgl` | **> 3 h** y sin terminar | de las **baratas** ya medidas a una cara |
+
+La sonda imprime «restante ~N s **MEDIDOS sobre k**», que es mejor que una
+extrapolación a ciegas, pero **no basta**: una tasa medida sobre `k` casos sólo
+vale si lo que queda se parece a esos `k`. Aquí no se parecía —`mgl` llama a
+`repairNoShade` y busca, como los optimizadores— y la tasa mintió por un factor 36.
+
+**Corrección de método, adoptada:** una estimación de coste sólo es publicable si
+la muestra medida **cubre la clase** de lo que queda. Si no, se declara
+**desconocido**. Vale para las estimaciones ajenas y para las propias.
+
+Casos anteriores del mismo defecto, para no contarlo como nuevo:
+`audit2/EVIDENCIA_BT_R2.md` E-X1 lo registra **tres veces** (4 h → 7,8 h → 14,6 h
+para E-D8, siempre midiendo una parte), y esta ronda añade estas dos.
+
 ## HALLAZGO · el día con planta real tarda 6 min 33 s, y el tope del #696 le añadió 169 s
 
 **No es una fase del encargo.** Salió persiguiendo otra cosa —una captura del
@@ -767,3 +879,45 @@ lo que dice. Y arrastró una segunda corrección: `VER` vive DENTRO de FÍSICA P
 así que mi afirmación de que el bloque quedaba idéntico carácter a carácter dejó
 de ser cierta en cuanto la subí. Rectificada en el apartado de arriba con el diff
 que la sustituye.
+
+**12 · Tercer fallo de estimación de coste, mío, en la misma frase en que escribía
+la corrección.** Al pasar la decisión sobre `mgl` dije que el control del arnés
+«tarda lo que una política barata, ~5 min». `pairwise` tampoco es barata: llama a
+`repairNoShade` y busca, como `mgl` y como los optimizadores. Las cuatro baratas
+eran `astro`, `global`, `row` y `bt2d`. Al verlo pasar de los 10 min corregí en la
+otra dirección —«puede irse a la hora»— y también fallé: costó **637 s**. Ninguna
+de las dos fue una medida; la primera extrapolaba de la clase equivocada y la
+segunda de un total ajeno (los 11 397 s que E-D5 costó con TRES políticas).
+
+Lo que este caso añade a los otros dos: el defecto no se cura sabiéndolo. Lo
+escribí mientras redactaba la regla que lo prohíbe. La regla, por tanto, no puede
+ser «acuérdate»: tiene que ser **que la sonda declare la clase de lo que le queda
+y calle si no la cubre**, que es lo que queda anotado para R4.
+
+**13 · Rompí la tabla del día con una zona muerta temporal, y diagnostiqué mal dos
+veces antes de acertar.** Al publicar las dos métricas puse
+`const DOS=kk.some(...)` en la construcción de la cabecera, y `kk` se declara diez
+líneas MÁS ABAJO en `fillDayTable`. La página lanzaba
+`Cannot access 'kk' before initialization`, la tabla del día no se pintaba, y con
+ella el careo del informe gráfico nunca marcaba `listo`: el banco del informe se
+agotaba a los 300 s.
+
+Los dos diagnósticos fallidos, en orden:
+
+1. **«Es contención»**, con una comparación controlada a favor —el mismo banco en
+   verde sin la calibración corriendo, rojo con ella—. Era **correlación**: el
+   banco también fallaba con la máquina libre.
+2. **«La v1.74 está descartada por construcción»**, porque ese banco corre sobre
+   un preset sin `segTilt` y en esa rama mi cambio es una asignación. El
+   razonamiento era **válido para el trozo que miré** y lo presenté como si
+   cubriera todo el cambio. El fallo estaba en otra línea del mismo commit.
+
+Lo que lo resolvió fue **correr el banco en solitario**, que es lo que el auditor
+había fijado como la prueba que separa contención de defecto. Sin esa instrucción
+me habría quedado en la explicación cómoda, que además tenía datos a favor.
+
+**La lección, que es distinta de las anteriores:** «descartado por construcción»
+sólo vale si la construcción cubre **todo lo que cambió**. Argumenté sobre una
+rama del diff y concluí sobre el diff entero. Un argumento correcto sobre una
+parte no es un argumento sobre el todo — que es, otra vez, medir una parte y
+darla por el todo, esta vez razonando en lugar de cronometrando.

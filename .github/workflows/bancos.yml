@@ -134,6 +134,16 @@ jobs:
       # fuente y de conducta, con control negativo sobre el código de antes.
       - name: el anual pasa por el lazo de control
         run: node tools/test_anual_lazo.mjs
+      # `nb` decide el escalón de la pérdida eléctrica y ninguna ficha de planta
+      # lo trae: el banco vigila que la página DIGA de dónde sale, y que el día
+      # que una ficha lo traiga se use (con planta sintética y control negativo).
+      - name: nb dice de dónde sale
+        run: node tools/test_nb_procedencia.mjs
+      # La página publica LAS DOS métricas de POA de planta —por mesa y por
+      # línea— en vez de elegir una en silencio según haya segTilt. Con control
+      # negativo sobre el código de antes y test nulo de cada corte.
+      - name: la página publica las dos métricas
+        run: node tools/test_dos_metricas.mjs
       - name: simulador de backtracking
         run: node tools/test_backtracking_sim.mjs
       - name: producción por string
