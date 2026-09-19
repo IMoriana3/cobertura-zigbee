@@ -1,0 +1,23 @@
+# PRUEBA DESECHABLE, no forma parte de la suite. Responde a una sola pregunta:
+# ¿qué pone `needs.<job>.result` cuando un job excede su `timeout-minutes`?
+# De la respuesta depende si el agregador `bancos en verde` puede tratar
+# «cancelled» como no concluyente sin dejar pasar un banco colgado.
+# Esta rama y este fichero se borran en cuanto se lea el resultado.
+name: prueba timeout
+on: push
+jobs:
+  lento:
+    name: excede su tope a proposito
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: sleep 150
+  veredicto:
+    name: que dice needs.lento.result
+    needs: [lento]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "RESULTADO=${{ needs.lento.result }}"
+          echo "::notice::needs.lento.result = ${{ needs.lento.result }}"
