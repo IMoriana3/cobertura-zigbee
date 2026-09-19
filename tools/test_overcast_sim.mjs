@@ -342,6 +342,14 @@ t('el tope dirigido no deja el eje del lado del sol respecto a la consigna', () 
   /* muestra perdida: sale INTACTA, no se inventa un lado */
   const nan = F.clampAdelantoDirigido([3], [NaN], [0], 1.0);
   if (nan[0] !== 3) throw new Error('con la consigna perdida el ángulo tiene que salir intacto');
+  /* SIN RETROCESO tampoco hay lado, y ahí son DOS TERCIOS del día: el ángulo
+     sale intacto, no empujado hasta la consigna. */
+  for (const th of [29.2, 30.0, 30.8, -12.3]) {
+    const o = F.clampAdelantoDirigido([th], [30.0], [30.0], 1.0);
+    if (o[0] !== th)
+      throw new Error('sin retroceso (θ_n == θ_astro) el ángulo tiene que salir ' +
+                      'intacto y sale ' + o[0].toFixed(4) + ' en vez de ' + th.toFixed(4));
+  }
 });
 
 t('la GUARDA del borde lejano llega a dispararse, y aparca en la consigna', () => {

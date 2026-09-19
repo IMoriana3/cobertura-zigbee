@@ -787,7 +787,14 @@ function clampAdelantoDirigido(thOut,thN,thAstro,margen){
   return thOut.map((v,i)=>{
     const tn=thN[i], ta=thAstro[i];
     if(!isFinite(v)||!isFinite(tn)||!isFinite(ta))return v;
-    let d=Math.sign(tn-ta); if(d===0)d=1;
+    const d=Math.sign(tn-ta);
+    /* SIN RETROCESO NO HAY TOPE, y son DOS TERCIOS del día: con el sol alto el
+       backtracking no retrocede y θ_n == θ_astro, así que no hay ángulo de roce
+       que imponer y el ángulo sale INTACTO. Resolver este empate eligiendo un
+       lado (p.ej. d=+1 «por determinismo») empuja el eje hasta la consigna sin
+       ninguna sombra que lo justifique. Medido en el núcleo: quitarlo no cambia
+       la sombra en ninguno de los 8 casos de la descomposición del §6.4. */
+    if(d===0)return v;
     return tn+d*Math.max(0,Math.min(m,d*(v-tn)));
   });
 }
@@ -2312,7 +2319,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.26.0';
+const VER='v1.26.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
