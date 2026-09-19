@@ -14,11 +14,64 @@ desconocido, nunca extrapolado.
 | fase | qué cierra | estado |
 |---|---|---|
 | **0** | mergear el paquete sellado a `main` | **HECHA** — PR #694 |
-| **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — adelantada a petición del auditor |
-| 1 | `policyAnglesSeg:2689` — medir ANTES de arreglar | pendiente |
+| **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — PR #697 |
+| **1** | `policyAnglesSeg` — medir ANTES de arreglar | **MEDIDA · PARADA** por la cláusula 1.3 |
 | 2 | el anual por el lazo | pendiente |
 | 3 | calibración y transposición | pendiente |
 | 4.2 - 4.5 | texto, gate de CI, docs, señal | pendiente |
+
+---
+
+## FASE 0 · el paquete sellado, mergeado a `main`
+
+**Qué se ejecutó.** Merge del PR #687 (`claude/backtracking-6th1im` → `main`),
+commit de merge `a1bd80e`. Rama en `c948ed7`, `main` antes del merge en
+`b7918b9`, base común `91a9a3b`.
+
+**Antes de mergear.** `main` no había tocado `audit2/` en ningún momento desde la
+base común — `git diff --name-only 91a9a3b origin/main -- audit2/` devuelve vacío
+—, así que el merge no tenía por dónde alterar el paquete. Lo único que la rama
+aporta fuera de `audit2/` es `ANATOMIA_BT.md`.
+
+**Después del merge, comprobado y no supuesto.**
+
+| comprobación | resultado |
+|---|---|
+| sha256 del árbol `audit2/` (97 ficheros, hash de la lista objeto+ruta) antes | `8f72a074e7f0e180…` |
+| el mismo, en `main` tras el merge | `8f72a074e7f0e180…` — **idéntico** |
+| `git diff origin/claude/backtracking-6th1im origin/main -- audit2/` | **vacío** |
+| entradas del `MANIFEST.txt` verificadas | **92 de 92 casan**, 0 no casan |
+
+El verificador es `audit3/verifica_manifiesto.mjs`, ejecutable tal cual. Lleva
+**control negativo automático**: antes de dar por buena ninguna comprobación,
+cambia un byte de la primera entrada en memoria y exige que el verificador la
+marque como NO CASA; si el control no salta, sale con error en vez de publicar un
+verde. En la corrida de esta fase el control saltó (`A1.txt` → DETECTADO).
+
+### El defecto del sellado que declaré, y que NO se materializó
+
+`audit2/R3_NOTAS.md` § 1 declara un defecto del propio sellado: la línea 43 del
+`MANIFEST` sella `D2mv32.txt` con 1 294 bytes y su sha256, y esos 1 294 bytes son
+sólo la cabecera — el productor (E-D8) seguía corriendo al sellar, y el hash
+dejaría de casar en cuanto la corrida terminase.
+
+**La corrida no terminó.** Murió con el reinicio del contenedor tras 13 h 48 min
+de reloj sin haber escrito ninguna línea de resultado, así que el fichero nunca
+cambió:
+
+```
+sha256  d43d273924ae64710898bd4c7725966121887537f41eaa47b50a01fb967c7bbc  out/D2mv32.txt
+MANIFEST  D2mv32.txt   1294   d43d273924ae64710898bd4c7725966121887537f41eaa47b50a01fb967c7bbc
+```
+
+Lo que se anotó como defecto era **de método** —sellar un directorio con un
+proceso escribiendo dentro— y sigue siéndolo; la **consecuencia** anunciada no se
+produjo. Se deja dicho aquí, y `audit2/R3_NOTAS.md` no se edita.
+
+### Lo que la fase 0 NO comprueba
+
+Que el contenido del paquete sea correcto. Comprueba que es **el mismo**. Son
+cosas distintas y el manifiesto sólo puede responder a la segunda.
 
 ---
 
@@ -226,3 +279,43 @@ sin poder fallar.
 Corregido: el corte va de `function* serieDiaGen` a `dest.s={ang:ang`, mide
 **2 287 caracteres** y contiene `crearLazoSeg` y `LZS.paso`. El test nulo exige
 ahora las dos cosas, longitud **y** contenido, no sólo la longitud.
+
+**5 · Cambié de rama en el árbol donde estaba corriendo una medida.** Es «el
+objeto se movió bajo los pies», y por mi propia mano — lo mismo que E-Z4 registra
+en R2. Consecuencia comprobada: el proceso siguió escribiendo a un inodo marcado
+`(deleted)` en `/proc`, así que su resultado se habría perdido al final. La física
+medida **no** quedó contaminada (`git diff` entre los dos commits, vacío sobre
+`backtracking.html` y `tools/`), pero eso fue suerte, no diseño. Corregido: las
+medidas corren en su propio árbol y escriben fuera del repositorio.
+
+**6 · Al resolver el merge con `main` borré el apartado 4.1 entero.** La
+resolución de `audit3/NOTAS.md` se quedó con la tabla de fases y el lado de
+`main`, y tiró las 165 líneas del apartado del indicador. Lo destapó comparar los
+encabezados de los dos lados —`git show HEAD:… | grep '^## '` contra el de
+`origin/main`—, no releer el resultado. Reconstruido desde los dos originales.
+
+---
+
+## LA COMPROBACIÓN QUE SE ROMPE SIEMPRE, Y VA POR CINCO
+
+`tools/test_backtracking_sim.mjs` lleva desde hace tiempo escrita su propia
+lección, en el comentario de uno de estos casos:
+
+> *«los que se atan al NOMBRE de una función caducan cada vez que la pieza mejora;
+> el que se ata a lo que la pieza HACE, no»*
+
+El recuento, hasta hoy: tres veces por exigir la anidación literal
+`LZS.paso(segCmd(`, y dos más —el mismo día, en el PR #696, en el commit que se
+titula *«el CUARTO test por cadena que caduca al mejorar la pieza»*— por exigir el
+**nombre de la variable** `segN`. La quinta se escribió dentro del arreglo de la
+cuarta.
+
+En este merge las dos comprobaciones pasan a atarse al **dato**: de dónde viene lo
+que entra en el lazo y de dónde viene lo que entra en el tope, con **test nulo** del
+corte y **control negativo**. Los nombres de **función** sí se pinchan —son la
+interfaz de la pieza—; los de **variable local**, no.
+
+Y no se afloja nada del #696: sus dos exigencias nuevas —que la rama por línea y
+la rama por mesa pasen por el tope del backtracking— se conservan, generalizadas
+al nombre de la variable, **y se añaden también al cuerpo del día**, donde su
+versión sólo las pedía por literal.
