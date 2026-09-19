@@ -68,20 +68,27 @@ def di(ok, texto, extra=None):
 # Asi que lo que no se haya medido se queda en None hasta que se mida.
 DESCONOCIDO = None
 ESPERADO = {
-    # medido en Windows PowerShell 5.1, run 35474112229 (2026-09-19)
+    # Windows PowerShell 5.1, medido en los runs 35474112229 y 35475714525
     5: {"append_falla": False, "append_escribe": True, "forzado_falla": False,
         "forzado_escribe": True, "bom": True,
-        "menos_falla": DESCONOCIDO, "menos_escribe": DESCONOCIDO,
-        "otras_falla": DESCONOCIDO, "otras_escribe": DESCONOCIDO},
-    # medido en PowerShell 7.6.5, run 35472054575 (2026-09-19). `append_escribe`
-    # se midio ahi tambien, pero no lo he LEIDO del registro, asi que no se
-    # escribe: lo pone la siguiente ejecucion. Suponerlo «igual que en 5.1» es
-    # exactamente el error que trajo hasta aqui.
-    7: {"append_falla": False, "append_escribe": DESCONOCIDO, "forzado_falla": False,
+        "menos_falla": True, "menos_escribe": False,
+        "otras_falla": True, "otras_escribe": False},
+    # PowerShell 7.6.5, medido en los runs 35472054575 y 35475714525
+    7: {"append_falla": False, "append_escribe": True, "forzado_falla": False,
         "forzado_escribe": True, "bom": False,
-        "menos_falla": DESCONOCIDO, "menos_escribe": DESCONOCIDO,
-        "otras_falla": DESCONOCIDO, "otras_escribe": DESCONOCIDO},
+        "menos_falla": True, "menos_escribe": False,
+        "otras_falla": True, "otras_escribe": False},
 }
+# LAS DOS VERSIONES COINCIDEN EN TODO MENOS EN EL BOM. Y lo que coinciden no es
+# «rechaza cuando las columnas no cuadran», que es lo que decia el contrato:
+#
+#   columnas de MAS  -> NO falla, escribe la fila, y se come las nuevas callando
+#   columnas de MENOS-> FALLA y no escribe
+#   columnas OTRAS   -> FALLA y no escribe
+#
+# O sea que rechaza en dos de los tres casos, y NO en el unico que le importa al
+# bloque 2, que es anadir columnas. De ahi que rotar el fichero no sea una
+# precaucion sino la unica forma de no perder ciclo_id y latencia_ms.
 
 SONDA = r"""
 param([string]$Dir)

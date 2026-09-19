@@ -470,27 +470,32 @@ en su tabla sale con **rc = 2** y enseña lo observado, en vez de darse por buen
 
 ### `Export-Csv -Append` NO rechaza: pierde el dato en silencio
 
-El contrato decía —y el comentario del propio logger dice— que `Export-Csv -Append` de 5.1
-**rechaza** filas cuyas columnas no cuadren. **Medido, es falso.** Sobre un CSV de v1, añadiendo una
-fila con dos columnas de más:
+El contrato decía —y el comentario del propio logger dice— que `Export-Csv -Append` **rechaza** filas
+cuyas columnas no cuadren. Medido, eso es **cierto en dos casos de tres, y falso justamente en el
+que le importa al bloque 2**:
 
-| | Windows PowerShell 5.1 | PowerShell 7.6.5 |
-|---|---|---|
-| ¿da error? | **no** | **no** |
-| ¿escribe la fila? | **sí** | *sin medir* |
-| ¿entran las columnas nuevas? | **no** | no |
-| `-Encoding UTF8` deja BOM | sí | no |
+| la fila que se añade… | ¿falla? | ¿se escribe? | ¿entran sus columnas? |
+|---|---|---|---|
+| trae columnas **de más** ← el caso del bloque 2 | **no** | **sí** | **no** |
+| trae columnas **de menos** | sí | no | — |
+| trae las columnas **renombradas** | sí | no | — |
 
-5.1 → run 35474112229 · 7.6.5 → run 35472054575.
+**5.1 y 7.6.5 dan lo mismo en las tres.** La única diferencia medida entre versiones es el BOM:
+`-Encoding UTF8` lo deja en 5.1 y no en 7. Runs 35472054575, 35474112229 y 35475714525.
 
-O sea que no hay rechazo ruidoso: **la fila entra y `ciclo_id` y `latencia_ms` se caen por el
-camino, sin un solo error en pantalla.** Eso es peor de lo que suponía el contrato, y convierte la
-rotación en la única forma de no perder columnas. Corregido en `docs/contrato_datos_zigbee.md`.
+Es decir: añadir las columnas de v2 sobre un fichero de v1 **no da ningún error** y se come
+`ciclo_id` y `latencia_ms` en silencio. Peor que un fallo ruidoso, y convierte la rotación en la
+única forma de no perder columnas. Y al revés —un recolector de v1 sobre un fichero ya rotado a v2—
+sí falla y no escribe nada: ruidoso, pero deja de registrar hasta que se actualice.
 
-**Queda por medir el caso contrario** —una fila con columnas de **menos**, o **renombradas**, que es
-lo que pasaría si un recolector viejo escribiera sobre un fichero ya rotado a v2—. La sonda ya lo
-prueba; los valores los pone la siguiente ejecución. Hasta entonces el contrato no afirma nada sobre
-ese caso.
+Corregido en `docs/contrato_datos_zigbee.md`, que es el documento que manda.
+
+**El camino hasta este número importa tanto como el número**: la primera versión de la tabla de la
+sonda decía que en PowerShell 7 `-Append` falla, porque es lo que dice la documentación de 5.1 y se
+dio por bueno para las dos. La CI lo desmintió. Después solo se había probado UNA dirección
+—columnas de más—, y al probar las otras dos salió la asimetría, que es lo que explica de dónde
+venía la creencia original. Por eso la tabla lleva `None` para lo que no está medido y el banco sale
+con **rc = 2** ante una versión que no conoce.
 
 Lo que hizo falta adaptar de los bancos que ya había, que asumían Linux:
 
