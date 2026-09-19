@@ -49,10 +49,27 @@ function Invoke-RCI($GW, $Body) {
   }
   return Invoke-RestMethod @p
 }
-# lo mismo pero devolviendo el texto sin parsear, para el volcado en crudo
+# lo mismo pero devolviendo el texto sin parsear, para el volcado en crudo.
+#
+# UseBasicParsing NO ES OPCIONAL, y esto costo encontrarlo. Windows PowerShell
+# 5.1 —el del PC de la planta— parsea la respuesta de Invoke-WebRequest con el
+# MOTOR DE INTERNET EXPLORER si no se le dice que no. En una maquina sin IE
+# —Windows 11 ya no lo trae, y el runner de Windows tampoco— eso revienta con:
+#
+#     Object reference not set to an instance of an object.
+#
+# Y lo peor no es que falle: es COMO falla. Esta llamada esta dentro del mismo
+# try que la consulta de verdad al nodo, asi que la excepcion se lleva por
+# delante tambien esa, y el nodo sale en el censo con estado_ok = 0. Es decir,
+# la planta entera aparece como nodos que no contestan, que se lee como un
+# problema de radio y no del programa. Un fallo que se disfraza de dato.
+#
+# En PowerShell 7 el parametro se acepta y se ignora (alli ya es el unico modo),
+# asi que ponerlo vale para las dos versiones.
 function Invoke-RCIRaw($GW, $Body) {
   $p = @{ Uri = "http://$($GW.Host)/UE/rci"; Method = "Post";
-          ContentType = "text/xml"; Body = $Body; TimeoutSec = $TimeoutSec }
+          ContentType = "text/xml"; Body = $Body; TimeoutSec = $TimeoutSec
+          UseBasicParsing = $true }
   if ($GW.User) {
     $sec = ConvertTo-SecureString $GW.Pass -AsPlainText -Force
     $p.Credential = New-Object System.Management.Automation.PSCredential($GW.User, $sec)

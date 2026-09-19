@@ -509,10 +509,39 @@ El error a 79 líneas del problema es justo lo que hace que esto no se vea leyen
 **Arreglado poniéndole BOM a los cuatro que no lo tenían**, que es lo que ya hacía
 `zigbee_logger.ps1` — o sea, un camino ya probado, paquete de medida incluido (50 OK después).
 
-**Y vigilado**: `tools/gate_ps1_bom.py` exige que todo `.ps1` con no-ASCII lleve BOM, y dice además
-cuántas comillas tipográficas falsas vería 5.1. Corre en el job `nucleo`, no en el de Windows, para
-que el aviso llegue en segundos y sin runner de Windows. Probado en rojo quitándole el BOM a una
-copia: lo caza y nombra el fichero.
+### Y detrás salió el segundo, peor: `Invoke-WebRequest` sin `-UseBasicParsing`
+
+Con el fichero ya compilando, el job de Windows enseñó lo siguiente: en 5.1 el `discover`
+funcionaba y **todas** las consultas por nodo fallaban, con
+
+```
+Object reference not set to an instance of an object.
+```
+
+`Invoke-RCIRaw` usa `Invoke-WebRequest`, y **Windows PowerShell 5.1 parsea su respuesta con el
+motor de Internet Explorer** si no se le pasa `-UseBasicParsing`. En una máquina sin IE —Windows 11
+ya no lo trae, y el runner tampoco— eso revienta.
+
+**Lo grave no es que falle, es cómo falla.** Esa llamada está dentro del mismo `try` que la consulta
+de verdad al nodo (`zigbee_inventario.ps1:126` y `:129`), así que la excepción se llevaba por
+delante también esa y **cada nodo salía con `estado_ok = 0`**. La planta entera aparecía como nodos
+que no contestan: un fallo del programa **disfrazado de problema de radio**. Y el `.xml` en bruto
+salía con las etiquetas `<nodo>` abiertas y vacías.
+
+Arreglado con `UseBasicParsing = $true`. En PowerShell 7 el parámetro se acepta y se ignora, así que
+vale para las dos versiones.
+
+### La puerta que vigila las dos
+
+`tools/gate_ps1_planta.py`: un `.ps1` con no-ASCII tiene que llevar BOM, y un `Invoke-WebRequest`
+tiene que llevar `-UseBasicParsing`. Corre en el job `nucleo`, no en el de Windows, porque no
+necesita PowerShell: el aviso llega en segundos.
+
+Probada en rojo, tres veces: sin BOM, con el `-UseBasicParsing` quitado del splat, y con una llamada
+directa sin el parámetro. **Y la prueba en rojo encontró dos agujeros en la propia puerta**: se
+señalaba a sí misma (su comentario nombra `Invoke-WebRequest`) y el splat buscaba `UseBasicParsing`
+en el texto **con comentarios**, así que un fichero que solo lo mencionara en un comentario pasaba.
+Las dos cosas arregladas mirando el código sin comentarios.
 
 ---
 
