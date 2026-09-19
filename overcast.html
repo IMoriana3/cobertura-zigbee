@@ -1028,16 +1028,23 @@ function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine,dayFine){
   const dir=clampAdelantoDirigido(exec,thNFine,astro,loop.deadbandDeg);
   /* GUARDA DEL BORDE LEJANO: el backtracking da el borde que mira al sol, no el
      otro. Cerca del horizonte el intervalo limpio se cierra por debajo del
-     margen y el adelanto se sale por arriba; ahí se aparca en la consigna, que
-     es el único ángulo que el backtracking garantiza limpio. */
-  return dir.map((v,i)=>{
-    const f=shadedFraction1d({zen:dayFine.zen[i],az:dayFine.az[i],
-      axisAz:dayFine.axisAz,axisTilt:dayFine.axisTilt,thShaded:v,
+     margen y el adelanto se sale por arriba; ahí se aparca en la consigna.
+     COMPARATIVA («sombrea MÁS que la consigna») y no absoluta: aquí son lo
+     mismo —la consigna de esta página no sombrea nunca, es llana— pero es la
+     única forma que vale también donde la consigna sí sombrea, que es lo normal
+     con terreno real. Se enuncia así para que los tres consumidores lleven la
+     MISMA física y no tres parecidas.
+     Y SOLO DONDE EL BACKTRACKING RETROCEDE, por lo mismo que la regla: sin
+     retroceso no hay tope, y la guarda no tiene nada que guardar. */
+  const fr=(th,i)=>shadedFraction1d({zen:dayFine.zen[i],az:dayFine.az[i],
+      axisAz:dayFine.axisAz,axisTilt:dayFine.axisTilt,thShaded:th,
       /* con `offset` 0 la fórmula sólo usa el COCIENTE pitch/cw, que es 1/gcr:
          no es una aproximación, es que la cuerda y el paso no entran por
          separado. Por eso basta el `gcr` que el día ya trae. */
       cw:1,pitch:1/dayFine.gcr,offset:0,slope:0});
-    return f>1e-9?thNFine[i]:v;
+  return dir.map((v,i)=>{
+    if(!(Math.abs(thNFine[i]-astro[i])>1e-9))return v;   // sin retroceso: no hay tope
+    return fr(v,i)>fr(thNFine[i],i)+1e-12?thNFine[i]:v;
   });
 }
 /* velocidad instantánea del actuador (°/s de tiempo simulado) en el paso i */
@@ -2319,7 +2326,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.26.1';
+const VER='v1.26.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
