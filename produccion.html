@@ -2544,9 +2544,19 @@ function build3D(c){
        Asi que no se busca el angulo que mas llena, sino EL MAS PARECIDO AL DE SIEMPRE
        que deje los dos ejes por encima de MIN_EJE. Los candidatos se prueban en orden
        de cercania a la direccion original, y se para en el primero que cumple; si
-       ninguno cumple se coge el mejor. En escritorio la de siempre YA cumple y no se
-       mueve nada: esto solo entra donde el lienzo lo pide. */
-    const MIN_EJE=0.55;                       // fraccion minima del lienzo en el eje corto
+       ninguno cumple se coge el mejor.
+
+       MIN_EJE ES UN CRITERIO, NO UN OPTIMO, y por eso esta suelto en una linea: subirlo
+       llena mas y aplana, bajarlo devuelve relieve y encoge la planta. Probado a ojo
+       sobre el render, que es lo unico que puede decidirlo:
+
+           0,55   retrato 54 %, elevacion 64   se ven las sombras
+           0,60   retrato 59 %, elevacion 64   IGUAL de elevado y mas lleno: los cinco
+                                               puntos salen de girar el azimut a 0, no
+                                               de mirar mas a plomo. Es el elegido.
+           0,65   retrato 64 %, elevacion 76   plano cenital: las mesas son rayas y no
+                                               se ve ni una sombra. Pasado de rosca. */
+    const MIN_EJE=0.60;                       // fraccion minima del lienzo en el eje corto
     let DIR={x:0.42,y:0.55,z:0.62};           // elevacion 36, azimut 34: la de siempre
     {
       const E0=36, F0=34;
