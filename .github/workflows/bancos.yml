@@ -393,6 +393,21 @@ jobs:
     # Un `cancelled` por fail-fast de la matriz sigue cayendo: ahí la corrida NO
     # está cancelada, `!cancelled()` es cierto, el gate corre y el job que falló
     # de verdad aparece como `failure`.
+    # Y MEDIDO QUE ESTO NO ABRE EL AGUJERO CONTRARIO. La objeción obvia: si un
+    # banco se CUELGA y lo corta su `timeout-minutes`, ¿se salta también la
+    # puerta y pasa en silencio lo que el tope existe para cazar? Se midió con
+    # un experimento en el runner de este repo (rama desechable, ya borrada):
+    # un job con `timeout-minutes: 1` haciendo `sleep 150`, un job sano, y una
+    # puerta con exactamente esta condición. Resultado, del log:
+    #
+    #   lento.result = cancelled     ← cortado a los 72 s por su tope
+    #   sano.result  = success
+    #   LA PUERTA HA CORRIDO
+    #
+    # O sea: `cancelled()` es función del WORKFLOW, y un job muerto por su
+    # propio tope no la pone cierta. La puerta corre, lee `cancelled` y su
+    # `== success` la deja en ROJO. Lo que se salta es sólo la corrida que
+    # alguien canceló de verdad empujando encima.
     if: always() && !cancelled()
     steps:
       - name: ninguno ha fallado

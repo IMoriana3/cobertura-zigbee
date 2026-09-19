@@ -785,6 +785,40 @@ falla — que es lo único que tiene que cazar.
 banco que corra GitHub Actions en local. Lo que hay es el recuento medido escrito
 al lado, en el comentario, con su fecha y su denominador.
 
+**Y la objeción que había que descartar MIDIENDO, no razonando.** Otra sesión, en
+el PR #702, midió en el runner de este repo que **un job cortado por
+`timeout-minutes` concluye `cancelled`**, y por eso rechazó relajar el agregador:
+un banco colgado y uno cancelado por un empujón posterior son indistinguibles en
+`needs.<job>.result`. Su medida es correcta y mi cambio no es el suyo —el suyo
+tocaba lo que la puerta ACEPTA, el mío cuándo la puerta CORRE— pero la pregunta
+que abre es la buena: **¿se salta la puerta cuando un banco se cuelga?**
+
+Experimento propio, rama desechable, un job con `timeout-minutes: 1` haciendo
+`sleep 150`, un job sano y una puerta con exactamente mi condición. Del log
+(`actions/runs/35437926102`):
+
+```
+lento.result = cancelled     ← cortado a los 72 s por su tope
+sano.result  = success
+LA PUERTA HA CORRIDO
+```
+
+**`cancelled()` es función del WORKFLOW**, y un job muerto por su propio tope no
+la pone cierta. La puerta corre, lee `cancelled` y su `== success` la deja en
+rojo. Lo que se salta es sólo la corrida que alguien canceló de verdad empujando
+encima. El arreglo no abre el agujero contrario, y ahora eso está medido en vez
+de argumentado.
+
+**Lo que NO está resuelto:** el PR #702 también toca `bancos.yml`, así que los
+dos cambios van a chocar cuando uno de los dos entre. No lo edito ni lo toco:
+queda dicho aquí con puntero.
+
+**Pendiente de mano ajena:** la rama `probe-cancelled-tope` del experimento
+**no se pudo borrar** desde este contenedor —el proxy de git corta el push de
+borrado, `the remote end hung up unexpectedly`— y sigue en el remoto. Lleva sólo
+el fichero del experimento, no tiene PR y no dispara `bancos`. Hay que borrarla a
+mano.
+
 ### 4.4 · El documento iba diecisiete versiones por detrás
 
 **Qué medía antes.** `docs/algoritmos_backtracking.html` declaraba describir la
