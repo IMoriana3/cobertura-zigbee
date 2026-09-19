@@ -130,6 +130,10 @@ jobs:
       # señala ahí. Por eso se prueba, y se prueba aquí, que es lo barato.
       - name: la ruta del navegador se resuelve bien
         run: node tools/test_pw_navegador.mjs
+      # La cifra anual pasa por el lazo y no puede volver a saltárselo: banco de
+      # fuente y de conducta, con control negativo sobre el código de antes.
+      - name: el anual pasa por el lazo de control
+        run: node tools/test_anual_lazo.mjs
       - name: simulador de backtracking
         run: node tools/test_backtracking_sim.mjs
       - name: producción por string
