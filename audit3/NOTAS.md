@@ -761,6 +761,187 @@ saltárselo donde no hay retroceso: **NO MEDIDO**.
 
 ---
 
+## FASE 4 · CERRAR LOS DEFECTOS DE PRESENTACIÓN Y DE PUERTA
+
+### 4.3 · La puerta de CI daba rojo por cancelación
+
+**Qué medía antes.** El gate `bancos en verde` corría con `if: always()` y exigía
+`result == 'success'` de los cinco jobs. Con `concurrency: cancel-in-progress:
+true` arriba, un empujón nuevo cancela la ejecución anterior — y un job
+`cancelled` no es `success`, así que la puerta lo publicaba como **fallo**. El
+rojo no decía «algo está mal», decía «alguien empujó otra vez».
+
+**Cuánto de ese rojo era eso.** Sobre las **40 ejecuciones completadas más
+recientes** del flujo: **30 `success` · 10 `cancelled` · 0 `failure`**. Es decir,
+**las diez veces** que la puerta dio rojo en esa ventana fue por cancelación, y
+**ninguna** por un banco roto. Un rojo que en el 100 % de los casos medidos
+significa otra cosa deja de leerse.
+
+**Qué mide ahora.** `if: always() && !cancelled()` (`bancos.yml:396`): la puerta
+no se ejecuta cuando la corrida se cancela, y sigue ejecutándose cuando un job
+falla — que es lo único que tiene que cazar.
+
+**Qué lo protege.** Nada automático, y se dice: es una línea de YAML y no hay
+banco que corra GitHub Actions en local. Lo que hay es el recuento medido escrito
+al lado, en el comentario, con su fecha y su denominador.
+
+**Y la objeción que había que descartar MIDIENDO, no razonando.** Otra sesión, en
+el PR #702, midió en el runner de este repo que **un job cortado por
+`timeout-minutes` concluye `cancelled`**, y por eso rechazó relajar el agregador:
+un banco colgado y uno cancelado por un empujón posterior son indistinguibles en
+`needs.<job>.result`. Su medida es correcta y mi cambio no es el suyo —el suyo
+tocaba lo que la puerta ACEPTA, el mío cuándo la puerta CORRE— pero la pregunta
+que abre es la buena: **¿se salta la puerta cuando un banco se cuelga?**
+
+Experimento propio, rama desechable, un job con `timeout-minutes: 1` haciendo
+`sleep 150`, un job sano y una puerta con exactamente mi condición. Del log
+(`actions/runs/35437926102`):
+
+```
+lento.result = cancelled     ← cortado a los 72 s por su tope
+sano.result  = success
+LA PUERTA HA CORRIDO
+```
+
+**`cancelled()` es función del WORKFLOW**, y un job muerto por su propio tope no
+la pone cierta. La puerta corre, lee `cancelled` y su `== success` la deja en
+rojo. Lo que se salta es sólo la corrida que alguien canceló de verdad empujando
+encima. El arreglo no abre el agujero contrario, y ahora eso está medido en vez
+de argumentado.
+
+**Lo que NO está resuelto:** el PR #702 también toca `bancos.yml`, así que los
+dos cambios van a chocar cuando uno de los dos entre. No lo edito ni lo toco:
+queda dicho aquí con puntero.
+
+**Pendiente de mano ajena:** la rama `probe-cancelled-tope` del experimento
+**no se pudo borrar** desde este contenedor —el proxy de git corta el push de
+borrado, `the remote end hung up unexpectedly`— y sigue en el remoto. Lleva sólo
+el fichero del experimento, no tiene PR y no dispara `bancos`. Hay que borrarla a
+mano.
+
+### 4.4 · El documento iba diecisiete versiones por detrás
+
+**Qué medía antes.** `docs/algoritmos_backtracking.html` declaraba describir la
+**v1.57.2**; `backtracking.html:531` iba por la **v1.74.0**. Diecisiete versiones.
+**Ningún banco miraba `docs/`** — comprobado con `grep -rln algoritmos_backtracking
+tools/ .github/`: cero aciertos. No había señal posible.
+
+**Regenerar no es una operación que exista.** Son 81 kB de prosa escrita a mano,
+con derivaciones, casos numéricos y el relato de cuatro vueltas de auditoría. No
+sale del código. Decir que lo he regenerado sería inventarlo, así que **está
+marcado**, que es la otra mitad del encargo.
+
+**Qué afirmaba que hoy es falso, medido y no reconstruido:**
+
+| afirmación del documento | medido hoy |
+|---|---|
+| «192 comprobaciones» (§6) | el banco da **211** |
+| «*n*<sub>b</sub> = 2 por mesa» (§2) | desde la 3.3 sale de la ficha del módulo si la planta la trae — `backtracking.html:4416` |
+| ruta anual (§5) | pasa por el lazo y su paso es de **10 min** — `backtracking.html:7313` |
+| una sola métrica de POA | la planta publica **dos** — `backtracking.html:5256` y el ramal por mesa |
+
+**Qué mide ahora.** El documento lleva sello legible por máquina
+(`data-describe-ver`, `data-contrastado-con`, `data-contrastado-el`) y una banda
+visible con la lista de arriba, cada punto con su `archivo:línea`. Y dice lo que
+no sabe: **§3 y §4 no están reverificados contra la v1.74.0**; no se afirma que
+estén mal, se afirma que no se ha comprobado.
+
+**Qué lo protege.** `tools/test_doc_version.mjs` (11 comprobaciones, en CI). La
+que importa es la 2: `data-contrastado-con` tiene que ser la `VER` de la página.
+En cuanto `VER` se mueva, rojo.
+
+**El coste de esa puerta, dicho y no escondido:** cada subida de `VER` obliga a
+tocar el documento. Las dos salidas honradas son actualizarlo o volver a
+contrastarlo anotando qué ha cambiado; la segunda cuesta **un minuto**. Está
+puesto a propósito: el mecanismo que falló fue precisamente que nadie tenía que
+mirar.
+
+**Y lo que NO tiene:** no hay cláusula «...o que lleve el aviso puesto». El aviso
+está puesto siempre, así que esa comprobación habría pasado sin poder fallar
+nunca — que es el vicio que este cuaderno lleva cinco entradas persiguiendo.
+
+### 4.5 · Las dos herramientas de campo, y el signo escrito dos veces
+
+**La constante duplicada.** `TH_DISP = -1` —el signo con el que sale la consigna
+que se manda al campo— vivía **dos veces** como dos constantes independientes:
+`backtracking.html:4245` y `tools/export_consignas.mjs:177`, esta segunda
+enterrada en `const ALT = 739, TL = 3.5, ALB = 0.20, TH_DISP = -1;`. Es
+literalmente el vicio que el propio código tiene documentado en
+`backtracking.html:521` para `VER`: «vivía DOS VECES y las dos se quedaron
+atrás». **Qué mide ahora:** el exportador lo **lee** de la página por expresión
+regular y revienta con motivo si no lo encuentra. **Qué lo protege:**
+`tools/test_signo_unico.mjs` (7 comprobaciones, en CI), con control negativo que
+se pone rojo si alguien vuelve a copiar el literal.
+
+**Las dos herramientas no estaban en CI.** Y aquí está el hallazgo de la fase:
+**ninguna de las dos llama a `process.exit`**. `careo_produccion.mjs` imprime
+`veredicto: IDÉNTICOS` o su contrario y **sale 0 en los dos casos**. Meterlas en
+`bancos.yml` como un `run:` pelado —que es lo obvio— habría sido verde
+garantizado mientras el careo publica que las dos plantas discrepan: la **sexta**
+comprobación que pasa sin poder fallar, y me la habría puesto yo mismo.
+
+**Qué mide ahora.** `tools/test_herramientas_campo.mjs` (11 comprobaciones, en
+CI) **no mira el código de salida**: lee lo que publican. Del exportador, que las
+filas que anuncia son las que escribe, y que la versión que sella el CSV es la
+`const VER` de la página. Del careo, `sin casar: 0`, `sol distinto entre páginas:
+0`, peor |Δθ| y |ΔPOA| interiores **exactamente 0**, y el veredicto. Con control
+negativo sobre una salida adulterada a `sin casar: 3` y `|Δθ| 4,2°`.
+
+**Coste MEDIDO en esta máquina** (no extrapolado, que es donde llevo tres
+fallos):
+
+| guion | tiempo |
+|---|---|
+| `export_consignas --paso 5` (el de campo) | **280,6 s** |
+| `export_consignas --paso 30` (el que corre en CI) | **50,3 s** / 48,6 s en el banco |
+| `careo_produccion` | **105,0 s** / 95,5 s en el banco |
+
+En CI van los dos: **144 s** medidos aquí. El job `datos` tiene el tope en 30 min
+contra los **5 min 29 s** medidos en el runner, así que hay holgura — pero **el
+factor del runner para esta clase de trabajo es desconocido** y no lo extrapolo
+del ×5 medido para los bancos de navegador. Si no cabe, lo dirá la CI.
+
+**Y la cifra de CI no es la publicable, dicho en el banco:** con paso 30 la
+sombra media de planta sale **1,48 %** y con paso 5 sale **0,63 %**, porque el
+lazo tiene seis veces más tiempo para alcanzar la consigna. Lo que se vigila en
+CI es que las herramientas corren y que lo que publican cuadra, no el número.
+
+## BLOQUEADO A PROPÓSITO · lo que NO se toca y por qué
+
+No son cabos sueltos: son tres cosas que el auditor ha dejado paradas a
+sabiendas. Cada una con lo que está medido y lo que falta para desbloquearla.
+
+### El arreglo de la fase 1 (`policyAnglesSeg`)
+
+Parado por su **cláusula 1.3**. `policyAnglesSeg` sólo tiene política por mesa
+para `astro` y `pairwise`; las demás reparten el ángulo de LÍNEA a todas las
+mesas y después se les puntúa por mesa. Está **medido** —`optimal` gana por línea
+en 86 de 86 instantes y pierde por mesa en 58 de 86— y la causa mecánica está
+localizada: el veto de `anglesOptimal` llama **seis veces** a `poaPlant` y
+**ninguna** a `poaPlantSeg`. Lo que falta no es medida, es la decisión de cuál
+métrica es la verdad de la planta.
+
+### Los dos lazos de control que difieren hasta 1,996°
+
+En la casa hay **dos** lazos independientes: `crearLazo` (dentro de la FÍSICA
+PURA de `backtracking.html`) y `CTRLCORE.execTramo` (`js/control_core.js`, el que
+usan produccion.html y `tools/anual_motor.mjs`). Careados paso a paso, difieren
+hasta **1,996°**.
+
+**No es decisión de auditoría cuál es el bueno**, y por eso queda declarado y no
+arreglado: elegir uno cambia lo que se manda al campo. Lo que hay medido es la
+diferencia; lo que falta es quién decide.
+
+Junto a ello, el coste del tope de backtracking del #696: **169 s**, y lo que
+abriría quitárselo donde no hay retroceso sigue `NO MEDIDO`.
+
+### La rama `probe-cancelled-tope`
+
+La del experimento del `cancelled()`. **No se pudo borrar desde este contenedor**
+—el proxy de git corta el push de borrado: `the remote end hung up
+unexpectedly`—. Lleva sólo el fichero del experimento, no tiene PR y no dispara
+`bancos`. **Hay que borrarla a mano.**
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
@@ -816,6 +997,141 @@ encabezados de los dos lados —`git show HEAD:… | grep '^## '` contra el de
 `origin/main`—, no releer el resultado. Reconstruido desde los dos originales.
 
 ---
+
+### Error 14 · el mismo `mkdir` que ya me había roto un lanzamiento
+
+Lancé el cronometraje de las dos herramientas redirigiendo a `/tmp/claude-0/f4/`,
+un directorio que no existía. La redirección murió antes de arrancar `node` y el
+lanzamiento se perdió entero. **Ya me había pasado con `/tmp/claude-0/f2/` en
+esta misma sesión.** Lo escribí como riesgo conocido en la nota de la sonda y aun
+así lo repetí. La repetición es el dato: saber dónde está el agujero no basta si
+lo que se hace a continuación no lo cierra — el `mkdir -p` va **en la misma
+orden** que la redirección, no en la anterior.
+
+### Error 15 · mi propia banda incumplió la regla que yo acababa de escribir
+
+El banco 4.4 exige que toda cifra de «N comprobaciones» lleve su versión al lado,
+porque «192 comprobaciones» estuvo publicado con el banco en 211. La primera
+ejecución del banco dio **2 rojos**, y uno era **mi propio texto**: la banda de
+desfase que acababa de escribir decía «va por 211 comprobaciones» sin versión.
+
+Lo caza el banco, no yo, y eso es exactamente para lo que sirve — pero el patrón
+tiene nombre y ya lleva repeticiones: **escribo la regla y la incumplo en la
+misma tanda**. Es el hermano del error 9, donde el comentario nuevo del paso
+anual citaba el «paso 20 min» viejo que la comprobación prohibía. La regla no se
+cumple por haberla escrito.
+
+## LA REGLA DE NO EXTRAPOLAR EL COSTE, COBRADA POR PRIMERA VEZ
+
+Las tres veces anteriores esta regla se aprendió **después** de fallar: el
+encargo predijo 4-5 h para la calibración extrapolando de las políticas caras a
+las baratas (salieron ~292 s), yo predije ~5 min para `mgl` extrapolando de las
+baratas a una cara (pasó de 3 h), y lo repetí una tercera vez en la frase misma
+en que escribía la corrección. **Ésta es la primera vez que evita un error ANTES
+de cometerlo.**
+
+Al meter las dos herramientas de campo en CI había un factor medido a mano: los
+bancos de navegador tardan **×5** en el runner (`bancos.yml:22`, «aqui esos
+mismos tardan ~5 min, o sea que el runner iba 5 veces mas lento»). Aplicarlo a
+los 144 s medidos aquí habría dado **~12 min** de CI, que es la clase de cifra
+con la que se descarta meter algo. Lo que escribí en su lugar fue que el factor
+para esta clase de trabajo era **DESCONOCIDO**.
+
+Medido en el runner, corrida 257: `test_herramientas_campo` tarda **109 s**
+contra los **144 s** de aquí. El factor es **0,76×** — el runner es *más rápido*
+para node sin navegador, no cinco veces más lento. La extrapolación no habría
+fallado por poco: habría fallado **en la dirección contraria**, y por un factor
+de 6,6 sobre lo real.
+
+**Lo que la regla dice, ya con las cuatro veces:** un factor de coste sólo vale
+dentro de la clase en que se midió. El ×5 es cierto — para bancos de navegador.
+Aquí no había medida de node sin navegador, y lo correcto era decir que no la
+había.
+
+**Y la misma lección, a los pocos minutos, sobre el propio fichero:** el
+comentario de `bancos.yml` anunciaba `datos 5 min 29 s`. La corrida 257 lo midió
+en **17 min 46 s** — se ha triplicado y nadie se enteró, porque la cifra no
+llevaba fecha. Van ahora las dos, cada una con la suya. Es el mismo defecto que
+la 4.4 arregla en el documento, encontrado en el fichero que arregla la 4.3.
+
+## LA CANCELACIÓN NÚMERO ONCE, OCURRIDA MIENTRAS SE ARREGLABA
+
+La corrida **256** de la fase 4 salió `cancelled`: la sustituyó mi propio empujón
+de la medida del `cancelled()`, con 21 jobs ya hechos. Es el caso once de la
+misma ventana que mide la 4.3, ocurrido **con el arreglo escrito y todavía sin
+mergear**.
+
+**Va como ILUSTRACIÓN, no como cifra.** La medida publicada sigue siendo la de su
+ventana cerrada: **40 ejecuciones · 30 `success` · 10 `cancelled` · 0 `failure`**.
+Añadir el caso 256 a ese recuento sería mezclar una ventana con una anécdota
+posterior, que es exactamente cómo un denominador deja de significar algo.
+
+## SOBRE AVISAR A OTRA SESIÓN, Y POR QUÉ NO LO IMPIDE M.2
+
+Dejo constancia porque el canal se presta a confundirlo: **M.2 impide ACEPTAR
+instrucciones por ese canal, no avisar por él.** Leer el commit de otra sesión y
+tomar su conclusión como orden sería lo que M.2 prohíbe. Lo que se hizo fue lo
+contrario: se leyó su medida, se comprobó que **no cubre este caso** —la suya es
+sobre `needs.<job>.result`, la mía sobre la función `cancelled()`— y se midió el
+caso propio con un experimento aparte antes de afirmar nada.
+
+El comentario en #702 publica las **dos** medidas. Los dos ficheros van a chocar
+—los dos PR tocan `bancos.yml`— y quien resuelva el conflicto las necesita
+delante, porque con una sola de las dos la conclusión razonable es revertir el
+arreglo por un motivo que no le aplica.
+
+## REGLA · UN BANCO LEE LO QUE LA HERRAMIENTA PUBLICA, NO SU CÓDIGO DE SALIDA
+
+**Enunciado, dictado por el auditor:** *un banco lee lo que la herramienta
+publica, no su código de salida, salvo que se haya comprobado que ese código
+significa algo.*
+
+**Por qué va aparte y no como sexta entrada del recuento de abajo.** Las cinco de
+ahí son comprobaciones que **no comprobaban nada**: un corte vacío, una negación
+sobre una cadena vacía, un ancla en un texto que no existe. Su fallo es de
+omisión — pasan porque no miran.
+
+Ésta es de otra clase. `careo_produccion.mjs` publica `veredicto: IDÉNTICOS` o su
+contrario y **sale 0 en los dos casos**. Un `run: node tools/careo_produccion.mjs`
+en `bancos.yml` no habría sido una comprobación hueca: habría sido una
+**conformidad ACTIVA publicada sobre un careo en desacuerdo**. La puerta de CI
+habría dicho en verde que el simulador y la producción por string calculan lo
+mismo, con el propio careo escribiendo en su salida que no. No es no mirar: es
+afirmar lo contrario de lo que el fichero de al lado dice.
+
+**Cómo se aplica.** Antes de meter una herramienta en CI, mirar si llama a
+`process.exit` con algo distinto de 0. Si no lo hace, el código de salida **no
+significa nada** y el banco tiene que leer su salida. Comprobado sobre los dos
+guiones de la 4.5 con `grep -n "process.exit"`: cero aciertos en los dos. La
+comprobación 11 de `tools/test_herramientas_campo.mjs` deja eso amarrado — si
+algún día uno de los dos empieza a salir con código, el banco avisa de que hay
+que revisar si sigue siendo él quien protege.
+
+**Qué NO dice la regla.** No dice que el código de salida se ignore siempre. Dice
+que se usa **después de comprobar que significa algo**, no antes. Los bancos de
+este repositorio sí salen con código —lo hacen a propósito, con `process.exit(FAIL
+=== 0 ? 0 : 1)`— y ahí leerlo es correcto.
+
+## LA AUSENCIA DE SEÑAL NO ES SEÑAL
+
+Mismo patrón que la puerta de CI de la 4.3, y anotado por el auditor: el PR #703
+llevaba **cero ejecuciones del flujo** en su rama, y eso se leía como «sin
+problemas». No había rojo porque **no había nada**.
+
+La secuencia observada: el PR estaba en `mergeable_state: dirty` por el conflicto
+de `audit3/NOTAS.md`; ocho commits empujados y `list_workflow_runs` sobre esa rama
+devolvía `total_count: 0`; al resolver el conflicto y empujar, el flujo arrancó
+en el mismo minuto (run 253). **Lo que está medido es la secuencia, no el
+mecanismo:** que GitHub no lance un flujo `pull_request` cuando no puede calcular
+la ref de merge es la explicación que encaja, y no la he verificado por dentro.
+`NO VERIFICADO`.
+
+Lo que sí queda dicho es la lectura: **«ningún rojo» y «ninguna corrida» se ven
+igual desde fuera y no son lo mismo.** La 4.3 es la otra cara — un rojo que en el
+100 % de los casos medidos significaba «alguien empujó otra vez». En los dos
+casos el color de la puerta se estaba leyendo sin mirar si había algo detrás.
+
+Sin acción: #703 ya está empujado y su CI corriendo.
 
 ## LA COMPROBACIÓN QUE SE ROMPE SIEMPRE, Y VA POR CINCO
 
