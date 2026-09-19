@@ -81,11 +81,19 @@ CARGA = """<rci_reply version="1.1"><query_state><device_stats>
   <cpu>37</cpu><total_memory>16777216</total_memory><used_memory>9437184</used_memory>
   <uptime>259200</uptime></device_stats></query_state></rci_reply>"""
 
-# El nodo 03 tarda: asi las filas de un ciclo NO caben todas en el mismo segundo
-# de reloj, y la comprobacion del sello unico por ciclo puede distinguirse de
-# «es que ha ido tan rapido que ha coincidido». Sin esta espera, la mutacion
-# `sello` pasaria desapercibida.
-RETRASO_03_S = 1.4
+# EL PRIMER NODO TARDA, y tiene que ser el PRIMERO. El recolector arma la fila
+# —sello incluido— ANTES de preguntarle a ese nodo, asi que lo que separa los
+# sellos de dos filas es lo que tarda la consulta de la fila ANTERIOR. Con la
+# espera puesta en el ultimo nodo, las tres filas seguian cayendo en el mismo
+# segundo de reloj y la mutacion `sello` pasaba desapercibida: lo dijo la propia
+# CI en la primera ejecucion (rc=0 donde se esperaba 1).
+#
+# Con la espera en el primero, las filas 2 y 3 toman su sello >= 1 s despues que
+# la 1: el segundo truncado avanza siempre, sin depender de donde caiga el
+# instante dentro del segundo. Asi «llevan el mismo sello» se distingue de «ha
+# ido tan rapido que ha coincidido», que es lo unico que hace util esa
+# comprobacion — y es la que el bloque 2 tiene que poner en rojo.
+RETRASO_01_S = 1.4
 
 
 class GW(BaseHTTPRequestHandler):
@@ -102,9 +110,9 @@ class GW(BaseHTTPRequestHandler):
         elif m:
             addr = m.group(1)
             if addr.endswith(":01!"):
+                time.sleep(RETRASO_01_S)
                 r = RADIO_01
             elif addr.endswith(":03!"):
-                time.sleep(RETRASO_03_S)
                 r = RADIO_03
             else:
                 r = None                       # el 02 no contesta: enlace caido
@@ -273,7 +281,8 @@ di("CPU 37 %" in salida and "3 d 0 h en marcha" in salida,
 print("\n· EL SELLO ES DEL CICLO, no de la fila  (esto lo cambia el bloque 2)")
 sellos = sorted(set(f.get("timestamp") for f in filas))
 di(len(sellos) == 1,
-   "las tres filas del ciclo llevan el MISMO sello, aunque un nodo tardase 1,4 s", sellos)
+   "las tres filas llevan el MISMO sello, aunque el primer nodo tardase 1,4 s y las"
+   " otras dos se midan despues", sellos)
 di(len(sellos) == 1 and sellos[0] == (gfilas[0].get("timestamp") if gfilas else None),
    "y la fila del gateway lleva ese mismo sello",
    (sellos[:1], gfilas[0].get("timestamp") if gfilas else None))
