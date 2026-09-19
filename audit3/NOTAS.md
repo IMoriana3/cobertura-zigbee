@@ -16,7 +16,7 @@ desconocido, nunca extrapolado.
 | **0** | mergear el paquete sellado a `main` | **HECHA** — PR #694 |
 | **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — PR #697 |
 | **1** | `policyAnglesSeg` — medir ANTES de arreglar | **MEDIDA · PARADA** por la cláusula 1.3 |
-| **2** | el anual por el lazo | **MEDIDO el antes/después**; el cambio, pendiente |
+| **2** | el anual por el lazo | **HECHA** — 2.1, 2.3, 2.4 y 2.5; 2.2 razonado con medida |
 | 3 | calibración y transposición | pendiente |
 | 4.2 - 4.5 | texto, gate de CI, docs, señal | pendiente |
 
@@ -444,6 +444,132 @@ Así que **la pregunta del orden sigue abierta**: en un preset llano de 8 filas
 esas seis coinciden por construcción, y hace falta una configuración donde
 difieran para responderla. `NO VERIFICADO`.
 
+### 2.1 · Hecho: la ruta anual pasa por el lazo
+
+`backtracking.html`, en el cuerpo de `$('yearbtn').onclick`: un `crearLazo()` por
+política **y por día**, y lo que entra en `poaPlant` es la salida del lazo.
+
+**Un lazo por cadena, y la cadena es el día.** Los doce días representativos no
+son consecutivos —van del 21 de enero al 21 de diciembre—, así que arrastrar el
+estado de uno al siguiente sería inventarse una historia. Es la misma doctrina
+que sigue `serieDiaGen`, y el banco lo exige: los lazos se crean **dentro** del
+bucle de meses.
+
+**Comprobado en la página, no sólo en la sonda.** `audit3/F2_verifica_pagina.mjs`
+pulsa «Calcular año» y lee la tabla publicada:
+
+| | publicado | la sonda predijo |
+|---|---|---|
+| `pairwise` | 2 559,9 | 2 559,93 |
+| `true3d` | 2 559,9 | 2 559,93 |
+| `optimal` | 2 586,2 · **+1,03 %** | 2 586,23 · +1,027 % |
+| `optfree` | 2 588,9 · **+1,13 %** | 2 588,94 · +1,133 % |
+
+Antes del cambio esos deltas eran +0,447 % y +0,522 %.
+
+Efecto colateral que conviene dejar dicho: la página lleva una **envolvente de
+mercado** que compara con TrueCapture (2-6 % en lazo cerrado, 2,2 % medido por
+B&V) y avisa si la ganancia estimada la supera. Con el anual sin lazo `optimal`
+daba +0,447 %; con el lazo da **+1,03 %**. No se ha tocado esa envolvente.
+
+### 2.3 · Hecho: el paso, una sola vez
+
+El bucle iba a 10 min y el comentario que justificaba omitir el slew decía 20.
+Ahora el paso es la constante `PASO_ANUAL_MIN = 10`, y el bucle, la ponderación
+y el lazo la usan los tres — el banco lo exige, para que no vuelvan a separarse.
+
+El párrafo del slew ya no justifica omitir nada: **a 10 min el tope de recorrido
+son 102°**, más que el recorrido entero del tracker, así que el slew efectivamente
+no muerde. Lo que muerde es la **banda muerta**, y ése era el hueco del
+razonamiento anterior, no la cifra.
+
+### 2.2 · Las dos rutas: cuál elijo y por qué
+
+**Elijo que la página lleve el lazo en su propia ruta, y que `anual_motor.mjs`
+siga siendo un instrumento aparte. No las unifico en una sola.** Y digo por qué,
+con lo medido:
+
+**1 · No pueden ser la misma ruta, por coste.** `anual_motor.mjs` declara en su
+cabecera su propio precio: *«Cuesta ~10 min el año de pairwise y ~33 min el de
+optimal»*, a paso de **1 minuto**. La tabla de la página lista **nueve**
+políticas y se pulsa desde el navegador. Delegar en esa ruta sería cambiar una
+tabla de segundos por uno de horas.
+
+**2 · Y no miden lo mismo.** `anual_motor.mjs` existe para poner al lado los kWh
+de string y los **Wh de motor**, y su propia cabecera explica por qué eso exige el
+minuto: *«a paso horario el techo de velocidad del actuador son 612°, más que el
+recorrido entero del tracker, así que la banda muerta se vuelve invisible y el
+recorrido que se mide no es el que hace el tracker»*. La página no publica consumo
+de motor.
+
+**3 · Y hay una unificación más urgente que ésa, que NO hago aquí porque es
+física y es decisión del auditor.** Persiguiendo este punto encontré que en la
+casa hay **dos lazos de control distintos**:
+
+| | dónde | quién lo usa |
+|---|---|---|
+| `crearLazo` | `backtracking.html:3233`, dentro de FÍSICA PURA | la página: día, informe y ahora el anual |
+| `CTRLCORE.execTramo` | `js/control_core.js` | `produccion.html` y `tools/anual_motor.mjs` |
+
+**Careados, no supuestos.** `audit3/F2_careo_lazos.mjs`, sin navegador, mismo
+mando, mismo dt (10 min), misma banda (1,0°) y mismo slew (0,17 °/s), sobre una
+rampa que sube, se mantiene e invierte —que es donde la banda muerta y la memoria
+de sentido deciden—:
+
+```
+pasos careados: 100 · con diferencia: 99 · |Δ| máx: 1.995833 °
+peor: {"paso":63,"cmd":37,"pag":36,"nuc":37.99583333333333,"d":1.99583333333333}
+```
+
+**99 de 100 pasos difieren, hasta 1,996° — dos bandas muertas.** No es redondeo.
+
+Esto **no es nuevo del todo**: otra sesión ya reportó que el lazo de
+`overcast.html` y el `apply_control_loop` del core discrepaban en **exactamente
+una banda muerta**, con su medida. Lo que aquí se añade es que `backtracking.html`
+tiene el mismo problema y con **el doble** de separación en el peor paso.
+
+Cuál de los dos tiene razón depende de qué hace el TCU real cuando la consigna
+cae dentro de la banda, y eso **no lo decide una medida de sobremesa**. Por eso se
+anota y no se toca: `crearLazo` vive dentro de FÍSICA PURA y cambiarlo movería
+todas las cifras del día, del informe y del anual a la vez.
+
+**Lo que sí queda unificado con este cambio**, y no es poco: **el día y el año de
+la página ya llevan el mismo lazo**. Hasta ahora la curva del día llevaba el lazo
+entero y la tabla anual no, y las dos se enseñaban en la misma pantalla.
+
+### 2.5 · El banco
+
+`tools/test_anual_lazo.mjs`, **12 comprobaciones**, sin navegador, en el bloque de
+node de CI. De fuente y de conducta, y cada mitad con su control:
+
+- **test nulo del corte** antes de nada: un ancla que dejara de existir daría
+  rebanada vacía y todo lo demás pasaría sin mirar;
+- que lo que entra en el lazo es el **mando de la política** y lo que entra en
+  `poaPlant` es la **salida del lazo** — siguiendo el dato, no el nombre de la
+  variable;
+- **CONTROL NEGATIVO**: sobre el código de antes —quitándole el `lim` y el
+  `crearLazo`— el banco se pone rojo;
+- que el paso es **una** constante con nombre y que el bucle, la ponderación y el
+  lazo usan **la misma**;
+- que **ningún comentario afirma un paso del anual distinto del que usa el
+  código**, con su propio control de que el buscador de esas frases no está ciego;
+- que los lazos se crean **dentro** del bucle de días.
+
+**Y este banco me cazó a mí, dos veces.** La primera versión de la comprobación
+del comentario prohibía *cualquier* «paso N min ⇒», y el que quedaba era el del
+**día**, que sí es 5: rojo falso por banda demasiado ancha. La segunda vez me pilló
+citando el «paso 20 min ⇒ 204°» viejo **dentro del comentario nuevo** para explicar
+la corrección — y la comprobación, con razón, no distingue una cita de una
+afirmación. La historia va al commit y aquí; el comentario del código dice lo que
+**es**.
+
+### FÍSICA PURA: lo que ejecuta, intacto
+
+El único hunk que cae dentro del bloque es el comentario del slew, que el punto
+2.3 manda corregir y que vive ahí. Comprobado quitando **todos** los comentarios y
+el espacio del bloque en las dos versiones: **90 971 caracteres, idénticos**. Con
+su control: cambiándole un número al bloque, el despojador lo detecta.
+
 ### Lo que esta medida NO dice
 
 Ni que 2 559,93 sea la cifra correcta —lleva el lazo pero sigue siendo cielo claro,
@@ -544,3 +670,20 @@ predicado que no discrimina en el dominio medido.
 **8 · La misma sonda publicó `gcr: null` sin inmutarse.** Dividía por `T.pitch`,
 que no existe. Un campo que no resuelve no se imprime con un `null`: se declara.
 Ahora dice `NO DISPONIBLE` si no lo encuentra, y con el campo bueno da 0,397.
+
+**9 · Mi propia comprobación del comentario del paso salió con banda demasiado
+ancha, y después me cazó citando el error.** Prohibía *cualquier* «paso N min ⇒»
+en el fuente, y el que quedaba era el del día, que es 5 y es correcto: rojo falso.
+Reescrita para mirar sólo lo que se afirma del **anual**, con test nulo de que
+acierta a alguna frase. Y en la segunda pasada me pilló reproduciendo el «paso 20
+min ⇒ 204°» viejo dentro del comentario nuevo: una comprobación de fuente no
+puede distinguir una cita de una afirmación, y tenía razón en pararme. La historia
+va al commit y al cuaderno; el comentario dice lo que ES.
+
+**10 · El careo de los dos lazos pasó sin comparar nada.** Leía `r.th` de un
+objeto que devuelve `{theta,dir,park,dirUlt}`, así que el valor del núcleo salía
+`NaN`, `NaN > 1e-9` era falso y el careo anunciaba «los dos lazos coinciden». Lo
+vi porque imprimí también el `|Δ| máx`, que salía `NaN`. Ahora el guion lanza en
+cuanto un valor no es finito, en vez de dejar pasar la comparación. Y había un
+segundo error de planteamiento en el mismo careo: le pasaba al núcleo la
+**posición** anterior donde espera la **consigna** anterior.

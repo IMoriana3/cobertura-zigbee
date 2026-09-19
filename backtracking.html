@@ -3108,8 +3108,14 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo,prev){
    cada paso el tracker avanza como mucho rate·dt hacia su objetivo. Se aplica
    SECUENCIALMENTE en la simulación del día (paso 5 min ⇒ 51°/paso: muerde en
    los saltos de amanecer/ocaso, en los virajes rasantes y en los cambios de f
-   del energy-optimal). En la estimación anual (paso 20 min ⇒ 204°) no llega a
-   morder y se omite, declarado. */
+   del energy-optimal).
+
+   v1.71 · Y EN LA ESTIMACIÓN ANUAL TAMBIÉN, que hasta aquí no lo llevaba. Su
+   bucle va a PASO_ANUAL_MIN = 10 min, donde el tope de recorrido son 102° —más
+   que el recorrido entero del tracker—, así que el SLEW efectivamente no muerde;
+   lo que muerde es la BANDA MUERTA, y ésa sí cuenta. El párrafo anterior
+   justificaba omitir el lazo entero con un paso que el bucle no usaba: la
+   historia, con sus cifras, en audit3/NOTAS.md, fase 2. Aquí sólo lo que ES. */
 const TRACKER_SLEW=0.17;                             // °/s (spec del actuador)
 /* v1.61: LA OTRA MITAD DEL LAZO. El core tiene un lazo de control canónico con
    DOS mitades —deadband y slew— y este fichero implementaba sólo la segunda:
@@ -7204,16 +7210,43 @@ $('yearbtn').onclick=()=>{
   const year=c.date.slice(0,4);
   const tot={};
   for(const P of POLICIES){if(P.on)tot[P.key]=0;}
+  /* v1.71 · EL ANUAL PASA POR EL LAZO, como el día. Antes sumaba la consigna que
+     la política PIDE —`policyAngles` y a sumar—, sin banda muerta y sin velocidad
+     de actuador, así que publicaba lo que la planta pediría y no lo que ejecuta.
+     Y no era un desplazamiento inocuo: medido sobre el preset genérico, 12 días,
+     paso 10 min (audit3/F2_anual_lazo.mjs y audit3/out/F2_anual_lazo.json),
+
+         astro                    +0,0095 %     no tiene de qué apartarse
+         global/row/bt2d          −2,3117 %
+         pairwise/true3d/mgl      −2,3118 %
+         optimal                  −1,7474 %
+         optfree                  −1,7177 %
+
+     con lo que la cifra publicada decía que el backtracking gana +2,638 % sobre
+     el seguimiento astronómico puro cuando con el lazo gana +0,255 % —diez veces
+     menos— y escondía la mitad de lo que gana el control avanzado (optfree sobre
+     pairwise, de +0,522 % a +1,133 %).
+
+     UN LAZO POR CADENA Y POR DÍA. Cada política tiene el suyo y se crea al
+     empezar cada día representativo: su estado ES la cadena de ese día, y los
+     doce días no son consecutivos —van del 21 de enero al 21 de diciembre—, así
+     que arrastrar el estado de uno al siguiente sería inventarse una historia.
+     Es la misma doctrina que sigue `serieDiaGen`.
+
+     EL PASO ES 10 MIN, y el bucle y su ponderación lo dicen los dos. */
+  const PASO_ANUAL_MIN=10;
   for(let mo=0;mo<12;mo++){
     const ds=year+'-'+days[mo], doy=doyOf(ds);
-    for(let m=0;m<1440;m+=10){
+    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=crearLazo();
+    for(let m=0;m<1440;m+=PASO_ANUAL_MIN){
       const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
       if(g.elev<=0)continue;
       const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
       for(const P of POLICIES){
         if(!P.on)continue;
         const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
-        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+        const lim=LZ[P.key].paso(a,PASO_ANUAL_MIN*60);
+        tot[P.key]+=poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
       }
     }
   }
