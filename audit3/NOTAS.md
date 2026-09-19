@@ -972,18 +972,29 @@ de 4 a 36 mesas. Difieren, así que las cifras informan.
 
 ### Resultado · Ayora, 2026-06-21, paso 10 min, 86 instantes por política
 
-| política | B vs A (día) | C vs B (día) | peor instante B vs A |
-|---|---|---|---|
-| `astro` | −0,0363 % | −0,0002 % | −10,233 % (20:40, sol 8,58°) |
-| `global` | −0,0258 % | 0,0000 % | −4,600 % (21:10, sol 3,45°) |
-| `row` | −0,0205 % | −0,0000 % | −7,733 % (21:10) |
-| `bt2d` | −0,0047 % | −0,0001 % | −3,636 % (21:10) |
-| `pairwise` | **+0,0109 %** | −0,0001 % | −9,623 % (21:10) |
-| `true3d` | **−2,0714 %** | +0,0028 % | −17,254 % (21:10) |
-| `mgl` · `optimal` · `optfree` | `PENDIENTE` | `PENDIENTE` | `PENDIENTE` |
+| política | B vs A (día) | C vs B (día) | peor instante | instantes con \|Δ\| > 1 % |
+|---|---|---|---|---|
+| `astro` | −0,0363 % | −0,0002 % | −10,233 % (20:40, sol 8,58°) | 13/86 |
+| `global` | −0,0258 % | 0,0000 % | −4,600 % (21:10, sol 3,45°) | 21/86 |
+| `row` | −0,0205 % | −0,0000 % | −7,733 % (21:10) | 13/86 |
+| `bt2d` | −0,0047 % | −0,0001 % | −3,636 % (21:10) | 18/86 |
+| `pairwise` | **+0,0109 %** | −0,0001 % | −9,623 % (21:10) | 10/86 |
+| `true3d` | **−2,0714 %** | +0,0028 % | −17,254 % (21:10) | **49/86** |
+| `mgl` | **−2,1344 %** | +0,0030 % | −11,460 % (07:10, sol 4,62°) | **53/86** |
+| `optimal` | **+0,0775 %** | −0,0003 % | −9,019 % (21:10) | 10/86 |
+| `optfree` | **+0,0509 %** | −0,0003 % | −5,620 % (21:10) | 7/86 |
 
-Las tres que faltan son las que **buscan**. `mgl` va a ~28 s por instante medidos,
-frente a menos de 1 s de las baratas: no se extrapola su total, se mide.
+**Las nueve, completas.** Coste medido: **8 672 s** de instantes (2 h 25 min) más
+**429,2 s** de cálculo del día. `mgl` sola se llevó unos 5 000 s, con un coste por
+instante que **no es constante** —tramos medidos a 28, 92 y 68,5 s— razón por la
+cual su total no se estimó, se midió.
+
+**Cuidado con la columna «peor instante»**, que tiene dos lecturas y no son la
+misma: aquí va el peor en términos **relativos**. La salida cruda de la sonda
+elige el peor por diferencia **absoluta**, y da otros números (p. ej. `true3d`
+−8,697 % en vez de −17,254 %). Los dos son ciertos y responden a preguntas
+distintas; se publica el relativo porque la pregunta es cuánto puede desviarse la
+cifra, no cuántos W/m² se mueven.
 
 ### Lo que dicen los números
 
@@ -994,10 +1005,18 @@ ponderar por largo y por módulos, en el día, va de **−0,0002 % a +0,0028 %**
 salvedad deja de ser una precaución abstracta y pasa a ser una cifra: existe y no
 mueve nada. **Ponderar por largo queda avalado por medida, no por argumento.**
 
-**2 · La ponderación de planta casi no importa, salvo en `true3d`.** Cinco
-políticas se mueven entre −0,036 % y +0,011 %. `true3d` se mueve **−2,0714 %**,
-unas cincuenta veces más. Es el único caso medido donde elegir A o B cambia un
-número publicado, y va dicho aparte en vez de escondido en una media.
+**2 · La ponderación de planta casi no importa, salvo en DOS políticas.** Siete
+se mueven entre −0,036 % y +0,078 %. **`true3d` se mueve −2,0714 % y `mgl`
+−2,1344 %**, unas treinta veces más. Con las seis primeras parecía que `true3d`
+era una rareza; con las nueve se ve que son **dos**, y las dos son las que buscan
+una FORMA (3D sin sombra, mínima luz al suelo) en vez de maximizar energía. No se
+afirma que la causa sea ésa: se afirma que las dos que se salen comparten eso y
+que **por qué, `NO MEDIDO`**.
+
+Y no es un instante raro. La última columna lo dice: la discrepancia pasa del 1 %
+en **49 de 86** instantes para `true3d` y **53 de 86** para `mgl`, frente a 7–21
+de las otras siete. Para esas dos políticas, las dos agregaciones discrepan más de
+medio día; para el resto, son cuatro ratos sueltos que se compensan.
 
 **3 · Y NO es lo mismo que el +0,3524 % de E-F2.** Aquel mide cambiar la
 **granularidad de la física** —tilt de línea a tilt de mesa— en `pairwise`. Esto
