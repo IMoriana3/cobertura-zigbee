@@ -593,6 +593,72 @@ anuales. Una planta, una configuración.
 
 ---
 
+## HUECOS R3 · entrada 1 · `mgl`, la política que no se calibró
+
+**Decisión del auditor, opción B, con su motivo textual:**
+
+> *«No es que `mgl` importe poco — eso es argumento, no medida. Es que la máquina
+> bloqueada tiene un coste medido: sin ella no corre el control del arnés ni el
+> banco del informe, y sin esas dos verificaciones NO se publica ninguno de los
+> cinco números. Esperar a `mgl` no retrasa una cifra, retrasa cuatro y dos
+> verificaciones. Precedente directo: E-D8, corrida sin señal intermedia y con
+> estimador inservible, que acabó en 13 h 48 min y cero resultado.»*
+
+### Qué falta, en una frase ejecutable
+
+```
+node audit3/F3_calibracion.mjs mgl 10
+```
+
+con el diario en `/tmp/claude-0/f3/calibracion.jsonl` o en `F3_DIARIO`: el anual
+PLENO de Ayora real —12 días, paso 10 min, sin lazo, el diseño congelado de
+E-D2/E-D3— para `mgl`, cuyo offset frente al diseño reducido es la calibración
+que falta.
+
+### Coste MEDIDO, y por qué se paró
+
+| | |
+|---|---|
+| `mgl` al pararla | **> 3 h de CPU** (2 h 57 min al pasar la decisión, 103 % de un núcleo) |
+| media de las otras cuatro | **≈ 292 s** (astro 315,6 · global 298,2 · row 291,2 · bt2d 294,2) |
+| **factor** | **≈ 36, y subiendo** |
+| señal intermedia | **ninguna** — un `evaluate` síncrono por política |
+| reanudable | **no**: el diario guarda por política, y `mgl` no llegó a cerrar |
+
+No se mató por juicio sobre su importancia. Se mató porque tenía la máquina y sin
+máquina no había verificación posible.
+
+### Qué cifra depende de ella
+
+El **orden de las nueve políticas** de E-D3, que pasa a publicarse con la etiqueta
+**`calibrada en 8 de 9`** — no «4 de 9», que era lo anterior, ni «calibrada» a
+secas, que sería redondear un hueco hasta hacerlo desaparecer.
+
+### Y el estimador falló en LAS DOS direcciones
+
+Es el mismo defecto de siempre —**medir una parte y darla por el todo**— y aquí se
+manifestó simétrico, que es lo que lo hace instructivo:
+
+| estimación | qué predijo | qué salió | de qué extrapolaba |
+|---|---|---|---|
+| la del encargo | **4-5 h** para las cinco | **~292 s** cada una de las cuatro baratas | de las políticas **caras** (los optimizadores de E-D5, 11 397 s las tres) a las baratas |
+| la mía, impresa por la propia sonda | **~5 min** para `mgl` | **> 3 h** y sin terminar | de las **baratas** ya medidas a una cara |
+
+La sonda imprime «restante ~N s **MEDIDOS sobre k**», que es mejor que una
+extrapolación a ciegas, pero **no basta**: una tasa medida sobre `k` casos sólo
+vale si lo que queda se parece a esos `k`. Aquí no se parecía —`mgl` llama a
+`repairNoShade` y busca, como los optimizadores— y la tasa mintió por un factor 36.
+
+**Corrección de método, adoptada:** una estimación de coste sólo es publicable si
+la muestra medida **cubre la clase** de lo que queda. Si no, se declara
+**desconocido**. Vale para las estimaciones ajenas y para las propias.
+
+Casos anteriores del mismo defecto, para no contarlo como nuevo:
+`audit2/EVIDENCIA_BT_R2.md` E-X1 lo registra **tres veces** (4 h → 7,8 h → 14,6 h
+para E-D8, siempre midiendo una parte), y esta ronda añade estas dos.
+
+---
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
