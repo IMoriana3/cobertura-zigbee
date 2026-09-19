@@ -144,6 +144,28 @@ jobs:
       # negativo sobre el código de antes y test nulo de cada corte.
       - name: la página publica las dos métricas
         run: node tools/test_dos_metricas.mjs
+      # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
+      # que se manda al campo, y estaba escrito DOS veces como dos constantes
+      # independientes. Ahora el exportador lo LEE de la página; este banco vigila
+      # que nadie vuelva a copiarlo, con su control negativo.
+      - name: el signo de presentación vive en un sitio
+        run: node tools/test_signo_unico.mjs
+      # `docs/algoritmos_backtracking.html` es prosa a mano: no se regenera desde
+      # el código y decir que sí sería inventarlo. Lo que sí puede vigilarse es
+      # que no se quede atrás EN SILENCIO, que es lo que pasó — declaraba la
+      # v1.57.2 con el código en la v1.74.0, diecisiete versiones, ningún banco
+      # mirando `docs/`. Este se pone rojo en cuanto `VER` se mueva sin que nadie
+      # vuelva a contrastar. Coste de apagarlo honradamente: un minuto.
+      - name: el documento no se queda atrás en silencio
+        run: node tools/test_doc_version.mjs
+      # Las dos herramientas de campo, que no estaban en CI. Ninguna llama a
+      # `process.exit`: `careo_produccion` publica «veredicto: IDÉNTICOS» o su
+      # contrario y SALE 0 en los dos casos, así que un `run:` pelado habría sido
+      # verde garantizado. El banco lee lo que publican. Coste medido en esta
+      # máquina: export con paso 30 → 48,6 s (con el paso 5 de campo son 280,6 s,
+      # por eso aquí va el 30); careo → 95,5 s.
+      - name: consignas de campo y careo con producción
+        run: node tools/test_herramientas_campo.mjs
       - name: simulador de backtracking
         run: node tools/test_backtracking_sim.mjs
       - name: producción por string
@@ -356,7 +378,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [nucleo, powershell, datos, barrido, navegador]
-    if: always()
+    # `always()` para que el gate corra aunque un banco falle —si no, un rojo se
+    # volvería invisible—, pero `!cancelled()` para que NO corra cuando la corrida
+    # entera se ha cancelado. Sin ese segundo trozo, `cancel-in-progress` deja los
+    # bancos en `cancelled`, el bucle de abajo exige `success` y el PR enseña un
+    # ROJO donde no ha fallado nada.
+    #
+    # MEDIDO sobre las 40 corridas completadas más recientes de este workflow:
+    # 30 success · 10 cancelled · CERO failure. Una de cada cuatro salía en rojo
+    # sin que hubiera fallado un solo banco, y esos rojos se confunden con los de
+    # verdad — que es el coste real: un rojo que no significa nada enseña a no
+    # mirar los rojos.
+    #
+    # Un `cancelled` por fail-fast de la matriz sigue cayendo: ahí la corrida NO
+    # está cancelada, `!cancelled()` es cierto, el gate corre y el job que falló
+    # de verdad aparece como `failure`.
+    if: always() && !cancelled()
     steps:
       - name: ninguno ha fallado
         run: |

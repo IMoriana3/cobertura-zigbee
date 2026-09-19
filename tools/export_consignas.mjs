@@ -174,7 +174,23 @@ const day0 = Date.UTC(Y, M - 1, D, 0, 0, 0) - huso * 3600000;   // 00:00 LOCAL e
 const doy = Math.round((Date.UTC(Y, M - 1, D) - Date.UTC(Y, 0, 1)) / 86400000) + 1;
 const LAT = cotas.lat != null ? cotas.lat : (lay.clat != null ? lay.clat : 39.1182081);
 const LON = cotas.lon != null ? cotas.lon : (lay.clon != null ? lay.clon : -1.1598527);
-const ALT = 739, TL = 3.5, ALB = 0.20, TH_DISP = -1;
+const ALT = 739, TL = 3.5, ALB = 0.20;
+/* EL SIGNO DE PRESENTACIÓN SE LEE DE LA PÁGINA, NO SE COPIA. `TH_DISP` decide si
+   la columna `theta_tcu_deg` que se manda al campo sale con el signo de la TCU o
+   con el del simulador, y estaba escrito DOS VECES —aquí y en
+   `backtracking.html`— como dos constantes independientes. Un número copiado se
+   queda viejo en silencio el día que alguien cambie el convenio, y aquí lo que
+   se queda viejo es una consigna que se le manda a un seguidor.
+   Mismo idioma que `motorDelCore` usa con las constantes del núcleo: por regex
+   sobre el fuente, y si no aparece o no es ±1, revienta con el motivo. */
+const TH_DISP = (() => {
+  const f = path.join(ROOT, 'backtracking.html');
+  const m = /const\s+TH_DISP\s*=\s*(-?1)\s*;/.exec(fs.readFileSync(f, 'utf-8'));
+  if (!m) throw new Error('no encuentro `const TH_DISP` en ' + f +
+    '\nEl signo de presentación se LEE de la página; si ha cambiado de forma, ' +
+    'hay que actualizar esta lectura, no volver a copiar el número.');
+  return +m[1];
+})();
 
 const filas = [];
 const tDe = new Map(BLOQUES.map(B => [B.b, B.T]));   // bloque → su T (para la marca de fila sacrificada)
@@ -256,7 +272,7 @@ const meta = {
   claves_cruce: 'CONTRATO de scada · diagnostico_tcu: (planta, NCU, TCU) + fecha',
   convenciones: {
     theta_sim_deg: 'marco interno del simulador — la consigna de la MESA del seguidor (columna mesa: índice 1..n dentro de su línea; vacío = casado por x, consigna de la línea)',
-    theta_tcu_deg: 'presentación TCU: θ<0 = este (TH_DISP=-1). CUÁL casa con el registro Objetivo se confirma con una lectura real',
+    theta_tcu_deg: `presentación TCU: θ<0 = este (TH_DISP=${TH_DISP}, LEÍDO de backtracking.html). CUÁL casa con el registro Objetivo se confirma con una lectura real`,
     consigna: 'ya limitada por la velocidad del actuador (slewLimit)',
     bifila: 'la consigna es la de la línea MOTORA; la gemela va soldada al mismo eje',
   },
