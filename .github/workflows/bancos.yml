@@ -273,6 +273,10 @@ jobs:
           # identidad del DAY, con su control negativo —desarmarlo tiene que
           # producir la mezcla— y la invariante de los consumidores síncronos.
           - { banco: test_certificado_dia.mjs }
+          # El indicador «BT ON» dice backtracking, no deriva de lazo: compara
+          # MANDOS y no salidas de lazo. Con su control negativo —revertir el
+          # predicado a posiciones tiene que ponerlo rojo— y sus dos tests nulos.
+          - { banco: test_indicador_bt.mjs }
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,

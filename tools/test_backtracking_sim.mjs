@@ -35,6 +35,28 @@ function cuerpoFn(src, nombre) {
   return null;
 }
 
+/* EL MANDO POR MESA VIENE DE `segCmd`, ESTÉ ESCRITO COMO ESTÉ.
+   Esto se comprobaba en dos sitios exigiendo la anidación LITERAL
+   `LZS.paso(segCmd(`. Es un accidente de escritura: sacar `segCmd(...)` a una
+   variable —para poder guardar el mando crudo sin calcular la política dos
+   veces— no cambia una coma de lo que hace el código, y ponía los dos en rojo.
+   El comentario que acompañaba a uno de ellos ya decía la lección: «los que se
+   atan al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
+   ata a lo que la pieza HACE, no». Ahora se sigue el DATO. */
+function mandoPorMesaVieneDeSegCmd(txt) {
+  const m = /LZS\.paso\(\s*(segCmd\(|[A-Za-z_$][\w$]*)/.exec(txt);
+  if (!m) return false;
+  if (m[1] === 'segCmd(') return true;                       // inline, como estaba
+  const v = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*segCmd\\(').test(txt);
+}
+/* y su CONTROL NEGATIVO, para usar junto a cada llamada: con el mando cambiado
+   por otra cosa, el criterio tiene que decir que no */
+function controlMandoPorMesa(txt) {
+  return mandoPorMesaVieneDeSegCmd(
+    txt.replace(/=\s*segCmd\(/g, '=o.angles.slice(').replace(/LZS\.paso\(segCmd\(/g, 'LZS.paso(o.angles,('));
+}
+
 let N = 0, FAIL = 0;
 function t(name, fn) {
   N++;
@@ -708,19 +730,43 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
   if (!/LZ\.paso\(o\.angles,STEP_MIN\*60\)/.test(app))
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
-  if (!/const segN=segCmd\(/.test(app) || !/LZS\.paso\(segN,STEP_MIN\*60\)/.test(app))
-    throw new Error('el camino por mesa sigue sin el deadband');
+  /* EL CAMINO POR MESA: lazo entero Y tope del backtracking, siguiendo el DATO.
+     Esta comprobación se ha puesto roja CINCO veces por atarse a cómo está
+     escrito en vez de a lo que hace. Las tres primeras exigían la anidación
+     literal `LZS.paso(segCmd(`; la cuarta y la quinta, el nombre de la variable
+     `segN`. El propio fichero lleva escrita la lección desde hace tiempo —«los
+     que se atan al NOMBRE de una función caducan cada vez que la pieza mejora;
+     el que se ata a lo que la pieza HACE, no»— y se sigue incumpliendo cada vez
+     que alguien mejora esta línea. Aquí se ata al dato: da igual cómo se llame
+     la variable. Los NOMBRES DE FUNCIÓN sí se pinchan, porque son la interfaz.
+
+     El corte va de `function* serieDiaGen` a `dest.s={ang:ang`: el ancla previa
+     era `const LZS=crearLazoSeg()` y el fuente declara los dos lazos en una sola
+     línea, así que indexOf devolvía -1 y el corte salía VACÍO. Lo cazó el test
+     nulo, que por eso va escrito ANTES de lo que protege. */
+  const segBloque = app.slice(app.indexOf('function* serieDiaGen'), app.indexOf('dest.s={ang:ang'));
+  if (segBloque.length < 200 || !segBloque.includes('crearLazoSeg'))
+    throw new Error('el corte del cuerpo por mesa mide ' + segBloque.length + ' caracteres y ' +
+                    (segBloque.includes('crearLazoSeg') ? 'sí' : 'NO') + ' contiene crearLazoSeg: no está mirando nada');
+  if (!mandoPorMesaVieneDeSegCmd(segBloque))
+    throw new Error('el camino por mesa sigue sin el deadband: lo que entra en LZS.paso no viene de segCmd');
+  if (controlMandoPorMesa(segBloque))
+    throw new Error('la comprobación del camino por mesa no puede fallar: acepta un mando que no viene de segCmd');
+  // el paso del lazo por mesa es el de la simulación, no otro
+  if (!/LZS\.paso\([^,)]+,\s*STEP_MIN\*60\s*\)/.test(segBloque))
+    throw new Error('el lazo por mesa no recibe STEP_MIN*60 como paso');
   /* 2026-09-19 · Y LAS DOS RAMAS PASAN POR EL TOPE DEL BACKTRACKING. El
      adelanto puede pasarse del ángulo que la política calculó para no comerse
      la fila de delante, y hasta hoy aquí no lo devolvía nadie (medido: hasta
      +1,4 % de POA y la sombra de `pairwise` en llano de 591 pasos·fila a 31).
      Se exige en LAS DOS porque si sólo lo llevara una, la página tendría dos
      físicas según el usuario tenga encendida la segmentación o no — y eso no
-     se ve en ninguna cifra de la pantalla. */
+     se ve en ninguna cifra de la pantalla. El tope se alimenta de la consigna
+     y de la salida del lazo: eso es lo que se exige, no cómo se llamen. */
   if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(app))
     throw new Error('la rama por LÍNEA pasa por el lazo pero no por el tope del backtracking');
-  if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,segN,LZS\.paso\(/.test(app))
-    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking');
+  if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,\s*[A-Za-z_$][\w$]*\s*,\s*LZS\.paso\(/.test(app))
+    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking')
 });
 
 t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
@@ -3065,17 +3111,23 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    /* 2026-09-19 · 'LZS.paso(segCmd(' pasa a 'LZS.paso(segN,' + el tope. Es el
-       CUARTO test por cadena que salta en este fichero al mejorar la pieza, y
-       por la misma razón que dice el párrafo de arriba: la consigna por mesa
-       ahora se guarda en una variable porque el tope del backtracking necesita
-       alimentarse de LA MISMA que alimentó al lazo. Lo que se exige sigue
-       siendo lo que la pieza HACE —el día pasa por el camino por mesa, con
-       lazo y con tope—, sólo que dicho sobre el texto de hoy. */
-    for (const lit of ['segOn(T)', 'const segN=segCmd(', 'LZS.paso(segN,STEP_MIN*60)',
-                       'topeBacktrackingSeg(g.zen,g.az,T,segN,',
-                       'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    /* los literales que quedan son NOMBRES DE FUNCIÓN y claves de salida —la
+       interfaz de la pieza—, no nombres de variable local. Lo que pasa por el
+       lazo y por el tope se comprueba con los criterios que siguen el dato. */
+    for (const lit of ['segOn(T)', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('el cuerpo del día sin «' + lit + '»');
+    /* el mando por mesa: el DATO, no la forma de escribirlo — y con su control */
+    if (!mandoPorMesaVieneDeSegCmd(dayFn))
+      throw new Error('el cuerpo del día no mete en LZS.paso nada que venga de segCmd');
+    if (controlMandoPorMesa(dayFn))
+      throw new Error('la comprobación del mando por mesa del día no puede fallar');
+    /* y el TOPE del backtracking en las dos ramas del cuerpo del día — lo que
+       main exigía con el literal `topeBacktrackingSeg(g.zen,g.az,T,segN,`, dicho
+       sin atarse al nombre de la variable */
+    if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(dayFn))
+      throw new Error('el cuerpo del día: la rama por LÍNEA sin el tope del backtracking');
+    if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,\s*[A-Za-z_$][\w$]*\s*,\s*LZS\.paso\(/.test(dayFn))
+      throw new Error('el cuerpo del día: la rama por MESA sin el tope del backtracking');
     // la política llega como `P.key` o como `key` según quién drene el cuerpo:
     // lo que se exige es que sea la política, no el nombre de su variable
     if (!/segCmd\((?:P\.)?key,/.test(dayFn)) throw new Error('el cuerpo del día no manda por mesa con la política');
