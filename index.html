@@ -711,6 +711,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .btn:hover{border-color:var(--accent);background:#1d3042}
   .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .btn .k{color:var(--muted);font-size:10.5px;display:block;margin-top:2px}
+  /* Aviso de esquema antiguo: ámbar, dentro del bloque de Datos, junto a los botones que lo
+     cargaron. No es un error —el fichero se lee— pero sí una interpretación nuestra de su hora. */
+  #avisoEsquema{margin-top:10px;padding:9px 11px;border-radius:8px;font-size:11px;line-height:1.5;
+    background:rgba(227,193,73,.10);border:1px solid rgba(227,193,73,.42);color:#e8d7a0}
+  #avisoEsquema[hidden]{display:none}
+  #avisoEsquema .ae-t{font-weight:700;color:#e3c149;margin-bottom:4px}
+  #avisoEsquema b{color:#fff}
   .btn.loaded{border-color:var(--s-exc)} .btn.loaded .k{color:var(--s-good)}
   input[type=file]{display:none}
 
@@ -822,6 +829,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <button class="btn" id="demo">Datos de ejemplo <span class="k">malla simulada evolucionando en el tiempo</span></button>
       <button class="btn" id="paqBtn" title="Baja el ZIP que se copia en el PC de la planta: los dos recolectores con la IP del gateway ya puesta, las coordenadas de todos los ámbitos, el manifiesto y un léeme con los comandos">↓ Medir en planta <span class="k" id="paqK">recolectores + coordenadas de esta planta</span></button>
       <button class="btn" id="mallaBtn" disabled title="Con los tres CSV cargados, escribe el &lt;planta&gt;_real.geojson: la malla medida (SPOF crónicos, dominadores, RSSI y saltos) que esta misma página dibuja al abrirse. Es el paso de vuelta del viaje a la planta.">↓ Exportar malla real <span class="k" id="mallaK">faltan CSV por cargar</span></button>
+      <div id="avisoEsquema" hidden></div>
     </div>
 
     <div class="block">
@@ -1424,14 +1432,64 @@ function distM(a,b){ if(!a||!b)return null; const R=6371000,D=Math.PI/180;
   return Math.round(Math.hypot(dla,dlo*Math.cos(la))*R); }
 
 /* ---------- los tres CSV, cada uno a su estructura (sin tocar estado) ---------- */
+/* ---------- LA HORA, A UTC ---------- (contrato: docs/contrato_datos_zigbee.md)
+   v2 llega en UTC ISO con Z y no se toca. v1 es hora LOCAL sin zona, y convertirla NO siempre
+   tiene respuesta: dos noches al año Madrid repite una hora y se salta otra.
+
+     · último domingo de marzo, 02:00-02:59 local -> esa hora NO EXISTIO
+     · último domingo de octubre, 02:00-02:59 local -> ocurrió DOS VECES, con dos UTC distintos
+
+   Se prueban los dos desfases posibles (+1 y +2) y se mira cuál devuelve la misma hora local al
+   reformatearlo en Europe/Madrid. El navegador ya trae la base de zonas horarias, así que esto no
+   necesita ni tabla de cambios de hora ni librería:
+
+     0 candidatos válidos -> inexistente     2 -> ambigua     1 -> conversión exacta
+
+   Ninguna de las dos se rellena en silencio. La inexistente NO se convierte y se cuenta aparte;
+   la ambigua se resuelve a la PRIMERA de las dos (todavía en CEST) y se marca. Inventar una hora
+   es peor que perder una fila: entra en la línea de tiempo y ya nadie la distingue. */
+const TZ_CAMPO='Europe/Madrid';
+let _fmtTZ=null;
+function _horaLocalEnTZ(ms){
+  if(!_fmtTZ) _fmtTZ=new Intl.DateTimeFormat('en-CA',{timeZone:TZ_CAMPO,hourCycle:'h23',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const p={}; for(const x of _fmtTZ.formatToParts(new Date(ms))) p[x.type]=x.value;
+  const h=(p.hour==='24')?'00':p.hour;                       // algún motor devuelve 24 a medianoche
+  return p.year+'-'+p.month+'-'+p.day+' '+h+':'+p.minute+':'+p.second;
+}
+function normalizaTs(raw){
+  const s=String(raw==null?'':raw).trim();
+  if(!s) return null;
+  const mz=s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?Z$/);
+  if(mz) return {ts:mz[1]+'T'+mz[2]+'Z', v:2, dudosa:''};
+  const ml=s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/);
+  if(!ml) return null;
+  const local=ml[1]+'-'+ml[2]+'-'+ml[3]+' '+ml[4]+':'+ml[5]+':'+ml[6];
+  const base=Date.UTC(+ml[1],+ml[2]-1,+ml[3],+ml[4],+ml[5],+ml[6]);
+  const val=[];
+  for(const off of [1,2]){ const ms=base-off*3600000; if(_horaLocalEnTZ(ms)===local) val.push(ms); }
+  if(!val.length) return {ts:null, v:1, dudosa:'inexistente', local};
+  const ms=Math.min.apply(null,val);                          // la primera de las dos: CEST, UTC+2
+  return {ts:new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z'), v:1,
+          dudosa:(val.length>1?'ambigua':''), local};
+}
+/* El recuento que alimenta el aviso: de qué versión es el fichero y cuántas filas quedaron
+   marcadas. Se cuelga del propio array para no cambiar la forma que esperan los que ya llaman. */
+function _cuenta(){ return {v1:0,v2:0,inexistente:0,ambigua:0,ilegible:0}; }
+
 function filasDeLog(text){
-  const rows=objs(text), out=[];
+  const rows=objs(text), out=[]; const cnt=_cuenta();
   for(const o of rows){const id=o.node_id||o.ext_addr; if(!id||!o.timestamp) continue;
-    out.push({ts:o.timestamp, id, role:o.role||'', gw:o.gateway||'',
+    const t=normalizaTs(o.timestamp);
+    if(!t){ cnt.ilegible++; continue; }
+    if(t.v===2) cnt.v2++; else cnt.v1++;
+    if(t.dudosa){ cnt[t.dudosa]++; if(t.dudosa==='inexistente') continue; }
+    out.push({ts:t.ts, id, role:o.role||'', gw:o.gateway||'',
       online:String(o.online)==='1',
       rssi:o.rssi_dbm===''||o.rssi_dbm==null?null:parseInt(o.rssi_dbm,10),
       ack:o.ack_failures===''||o.ack_failures==null?null:parseInt(o.ack_failures,10),
       mv:o.supply_mv===''?null:parseInt(o.supply_mv,10), temp:o.temp_c===''?null:parseInt(o.temp_c,10)});}
+  out.esquema=cnt;
   return out;
 }
 function coordsDe(text){
@@ -1447,9 +1505,17 @@ function coordsDe(text){
    son 406.457 filas. */
 function snapsDeRutas(text){
   const rows=objs(text); const byTs={}; const nodeIds=new Set(); let filas=0;
-  const agr={}, aristas={};
+  const agr={}, aristas={}; const cnt=_cuenta();
   const par=n=>agr[n]||(agr[n]={rutas:0,padres:{},hops:[],pasan:new Set()});
-  for(const o of rows){ if(!o.timestamp||!o.path_ids) continue;
+  for(const o0 of rows){ if(!o0.timestamp||!o0.path_ids) continue;
+    /* La hora de las rutas pasa por el MISMO conversor que la del RSSI. Si una se convirtiera y la
+       otra no, la línea de tiempo —que es la unión de las dos— quedaría con las capturas
+       desplazadas una o dos horas y nadie lo vería: saldrían simplemente como instantes distintos. */
+    const _t=normalizaTs(o0.timestamp);
+    if(!_t){ cnt.ilegible++; continue; }
+    if(_t.v===2) cnt.v2++; else cnt.v1++;
+    if(_t.dudosa){ cnt[_t.dudosa]++; if(_t.dudosa==='inexistente') continue; }
+    const o={...o0, timestamp:_t.ts};
     const ids=o.path_ids.split('>').map(s=>s.trim()).filter(Boolean);
     if(ids.length<2) continue;
     filas++;
@@ -1482,7 +1548,7 @@ function snapsDeRutas(text){
     const spof={}; apset.forEach(n=>{ spof[n]=1; });
     return {ts, depth, crit, pathByTarget, spof};
   });
-  return {nodeIds:[...nodeIds], snaps, filas, agr, aristas};
+  return {nodeIds:[...nodeIds], snaps, filas, agr, aristas, esquema:cnt};
 }
 
 /* ---------- la malla real ---------- */
@@ -1560,7 +1626,28 @@ let map,layer,routeLayer,gwMarker,didFit=false;
 let predLayer=null,PRED=null,predLoaded=false,predFit=false;   // Tarea D: malla predicha (GeoJSON del driver)
 
 function loadLog(text){
-  S.rows=filasDeLog(text); buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
+  S.rows=filasDeLog(text); S.esqLog=S.rows.esquema; avisoEsquema();
+  buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
+}
+/* EL AVISO DE ESQUEMA, VISIBLE. Un CSV v1 se puede leer, pero su hora es LOCAL y se ha
+   interpretado como Europe/Madrid: eso es una decisión nuestra sobre el dato de otro, y quien
+   mire la pantalla tiene derecho a saberlo. Las horas dudosas se cuentan aquí y no en la consola,
+   porque la consola no la abre nadie en planta. */
+function avisoEsquema(){
+  const el=document.getElementById('avisoEsquema'); if(!el) return;
+  const c=[S.esqLog,S.esqRutas].filter(Boolean);
+  if(!c.length){ el.hidden=true; return; }
+  const s=c.reduce((a,x)=>({v1:a.v1+x.v1,v2:a.v2+x.v2,inexistente:a.inexistente+x.inexistente,
+                            ambigua:a.ambigua+x.ambigua,ilegible:a.ilegible+x.ilegible}),_cuenta());
+  if(!s.v1 && !s.ilegible){ el.hidden=true; return; }        // todo v2 y legible: nada que avisar
+  const p=[];
+  if(s.v1) p.push('<b>'+s.v1.toLocaleString('es-ES')+'</b> filas sin zona horaria (esquema v1): '+
+                  'se han leído como hora local de <b>Europe/Madrid</b>.');
+  if(s.ambigua) p.push('<b>'+s.ambigua+'</b> en la hora que se repite al volver de verano: se ha tomado la primera.');
+  if(s.inexistente) p.push('<b>'+s.inexistente+'</b> en la hora que no existió al entrar en verano: <b>descartadas</b>, no se inventan.');
+  if(s.ilegible) p.push('<b>'+s.ilegible+'</b> con una fecha que no se sabe leer.');
+  el.innerHTML='<div class="ae-t">⚠ Datos en esquema antiguo</div>'+p.map(x=>'<div>'+x+'</div>').join('');
+  el.hidden=false;
 }
 function buildFrames(){
   const bf={}, series={};
@@ -1591,6 +1678,7 @@ const coordFor=id=>S.coords[id]||(digits(id)&&S.coords['#'+digits(id)])||null;
 /* ---------- rutas / saltos / criticidad / SPOF ---------- */
 function loadRoutes(text){
   const r=snapsDeRutas(text);
+  S.esqRutas=r.esquema; avisoEsquema();
   S.routeNodeIds=r.nodeIds; S.routeSnaps=r.snaps; S.rutas=r;   // `S.rutas` guarda los acumulados del periodo: es lo que exporta la malla real
   // Persistencia del SPOF: en qué fracción de los instantes cada nodo es punto de
   // articulación (crónico vs esporádico). Candidatos a repetidor = los crónicos.
@@ -2050,24 +2138,26 @@ function demo(){
 
   const N = 24, ack = {}, caen = [nodos[Math.floor(nodos.length * 0.35)].id, nodos[Math.floor(nodos.length * 0.7)].id];
   nodos.forEach(nd => ack[nd.id] = Math.floor(Math.random() * 300));
-  const sello = f => '2026-06-16 ' + String(12 + Math.floor(f / 6)).padStart(2, '0') + ':' + String((f * 10) % 60).padStart(2, '0') + ':00';
-  let log = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
+  /* La demo va en el esquema VIGENTE (v2, UTC con Z). Dejarla en v1 pondría el aviso de esquema
+     antiguo sobre unos datos que nos inventamos nosotros, y el aviso dejaría de significar algo. */
+  const sello = f => '2026-06-16T' + String(12 + Math.floor(f / 6)).padStart(2, '0') + ':' + String((f * 10) % 60).padStart(2, '0') + ':00Z';
+  let log = '"schema_version","timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
   for(let f = 0; f < N; f++){ const ts = sello(f);
     nodos.forEach((nd, i) => {
       let online = 1, rssi = -(60 + Math.floor(Math.random() * 32));
       if(esCableada(nd.id)) rssi = '';        // por cable: no hay RSSI que dar, y no se cae con la malla
       else if((nd.id === caen[0] && f >= 8 && f <= 15) || (nd.id === caen[1] && f >= 11)){ online = 0; rssi = ''; }
       const dack = online ? Math.floor(Math.random() * Math.random() * 6) : 0; ack[nd.id] += dack;
-      log += '"' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
+      log += '"2","' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
              '","' + (nd.rol || 'TCU') + '","00:13:a2:00:00:00:' + String(i + 1).padStart(4, '0') + '","' + online + '","' + rssi +
              '","' + (online ? ack[nd.id] : '') + '","3290","44"\n'; });
   }
   loadCoords(co); loadLog(log);
 
-  let rt = '"timestamp","target","hop_count","path_ids","path_addrs"\n';
+  let rt = '"schema_version","timestamp","target","hop_count","path_ids","path_addrs"\n';
   for(let f = 0; f < N; f++){ const ts = sello(f);
     nodos.forEach(nd => { const c = camino(nd.id);
-      rt += '"' + ts + '","' + nd.id + '","' + c.length + '","' + (['COORD'].concat(c)).join('>') + '","x"\n'; });
+      rt += '"2","' + ts + '","' + nd.id + '","' + c.length + '","' + (['COORD'].concat(c)).join('>') + '","x"\n'; });
   }
   loadRoutes(rt);
   drawStrip(); legend();

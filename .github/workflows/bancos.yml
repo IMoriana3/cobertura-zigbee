@@ -252,6 +252,10 @@ jobs:
           - { banco: test_plantas_bifila.mjs }   # el accionamiento de cada planta sale de su layout: filaZ leido donde esta, y el caso mixto con layout sintetico
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_malla_pagina.mjs }     # el boton que exporta la malla medida: los tres cargadores, el estado y la ida y vuelta del GeoJSON
+          # El contrato de datos v2: que el visor lea las dos versiones y que la hora NO se
+          # invente. Incluye las dos noches del año en que convertir hora local a UTC no tiene
+          # respuesta — la que no existio y la que ocurrio dos veces.
+          - { banco: test_contrato_datos.mjs }
           # Las sombras: que TODOS los seguidores proyecten, suba o baje la camara, y
           # que la sombra salga OSCURA y no un gris lavado. Recorre la pagina DOS veces,
           # con user-agent de escritorio y de movil, porque son dos caminos distintos

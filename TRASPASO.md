@@ -349,6 +349,43 @@ para calibrarlo: `elburgo_real_rssi.csv`.
 
 ---
 
+## Contrato de datos v2 — UTC (2026-09-19, bloque 1 de 7)
+
+`docs/contrato_datos_zigbee.md` es desde ahora **el documento que manda** sobre columnas, tipos y
+unidades de cada CSV. Si el código y ese fichero no coinciden, es un fallo.
+
+**Qué cambia.** Todo timestamp va en **UTC ISO 8601 con `Z`** y cada CSV lleva `schema_version=2`.
+Este PR **solo toca el visor y el documento**: los recolectores siguen escribiendo v1 hasta el
+bloque 2. El visor ya acepta los dos.
+
+**Qué pasa con los datos ya recogidos.** Nada se pierde y nada se reescribe:
+
+| dato anterior | cómo se reinterpreta |
+|---|---|
+| `zigbee_log.csv` y `zigbee_routes.csv` sin `schema_version` | hora **local de Europe/Madrid** → UTC, con aviso visible en el visor |
+| una fila en la hora repetida de octubre | se toma la **primera** (CEST) y se marca `ambigua`; el aviso dice cuántas hay |
+| una fila en la hora inexistente de marzo | **se descarta** y se cuenta. No se convierte |
+| una fila con fecha ilegible | se descarta y se cuenta |
+| `timestamp` de v1 | es el del **ciclo**, no el de la fila: todos los nodos de una vuelta comparten marca. No hay de dónde sacar el instante de cada nodo; se lee tal cual |
+| `zigbee_routes.csv` de v1 | **solo trae las rutas que salieron bien**. La ausencia de un nodo no se puede distinguir de un fallo |
+
+**Lo que hay que saber para el bloque 2.** `Export-Csv -Append` de PS 5.1 **rechaza** filas cuyas
+columnas no cuadren con la cabecera del fichero existente. En cuanto los recolectores escriban las
+columnas de v2, el primero que arranque sobre un `zigbee_log.csv` de v1 **muere en planta**. Por
+eso el contrato exige comprobar la cabecera al arrancar y **renombrar** el viejo a
+`<nombre>.v1.<AAAAMMDDTHHMMSSZ>.csv`. Nunca se borra.
+
+### Rojo que NO es de este bloque: `bench_cobertura_multi.mjs`
+
+Está **rojo en main** (6bcb688), 6 fallos, y lo estaba antes de tocar nada — comprobado con el
+árbol limpio. Todos son el mismo: `bench_cobertura_multi.mjs:56` espera **7** plantas en el
+selector y hay **10**; el repo tiene ya 12 `*_layout.json` (benante, catania, dicayagua, panbianco
+y polvorín se añadieron después). El banco **no está en `bancos.yml`**, que es justo por lo que se
+pudrió sin que nadie se enterara. No se toca aquí: decidir si el número bueno es 10 o si sobra
+alguna planta del selector no es parte del contrato de datos.
+
+---
+
 ## Herramientas que quedan hechas
 
 - **`tools/extract_dwg_tracker_types.mjs`** — saca la taxonomía real del DWG y la inyecta en el
