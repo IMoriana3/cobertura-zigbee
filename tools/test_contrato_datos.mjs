@@ -50,6 +50,40 @@ t('el visor no se inventa la zona: la declara', /Europe\/Madrid/.test(html));
 t('la demo ya va en v2 (si no, el aviso saltaría sobre datos nuestros)',
   /schema_version","timestamp"/.test(html) && /T' \+ String\(12/.test(html));
 
+/* ── SIN NAVEGADOR Y SIN `S`: el bloque de la malla se ejecuta SUELTO ─────────
+   `tools/test_malla_real.mjs` extrae MALLA-INI..MALLA-FIN del fuente y lo corre en Node, sin DOM
+   y sin el estado `S`. Al meter la zona por `S.tzPlanta` eso revento en CI con
+   «ReferenceError: S is not defined» — un banco que ya existia y que yo no habia mirado.
+   Esta comprobacion es para que no vuelva: las dos funciones tienen que valer sueltas, con la
+   zona por parametro. */
+console.log('sin S');
+const i0 = html.indexOf('/* MALLA-INI'), i1 = html.indexOf('/* MALLA-FIN');
+t('el bloque MALLA-INI..MALLA-FIN se localiza', i0 >= 0 && i1 > i0);
+const bloqueMalla = html.slice(i0, html.indexOf('*/', i1) + 2);
+t('y no se apoya en el global S para saber la zona',
+  !/nuevoLectorTs\(S\.tzPlanta\)/.test(bloqueMalla) && /_tzActual\(tz\)/.test(bloqueMalla));
+let FS = null, errSuelto = '';
+try { FS = new Function(bloqueMalla + ';return {filasDeLog,snapsDeRutas};')(); }
+catch (e) { errSuelto = e.message; }
+t('el bloque compila fuera del navegador', !!FS, errSuelto);
+if (FS) {
+  const CABS = 'timestamp,gateway,node_id,role,ext_addr,online,rssi_dbm,ack_failures\n';
+  let r1 = null, e1 = '';
+  try { r1 = FS.filasDeLog(CABS + '2026-09-01T10:00:00Z,GW-01,A,TCU,0013A200,1,-60,10\n'); }
+  catch (e) { e1 = e.message; }
+  t('filasDeLog corre sin S y sin zona, con una hora v2', !!r1 && r1.length === 1, e1 || JSON.stringify(r1));
+  let r2 = null, e2 = '';
+  try { r2 = FS.snapsDeRutas('timestamp,path_ids\n2026-09-01T10:00:00Z,COORD>A>B\n'); }
+  catch (e) { e2 = e.message; }
+  t('snapsDeRutas también', !!r2 && r2.snaps.length === 1, e2 || JSON.stringify(r2 && r2.snaps));
+  /* Y la zona por parámetro funciona igual fuera del navegador. */
+  let r3 = null, e3 = '';
+  try { r3 = FS.filasDeLog(CABS + '2026-09-01 12:00:00,GW-01,A,TCU,0013A200,1,-60,10\n', 'America/Lima'); }
+  catch (e) { e3 = e.message; }
+  t('y una hora v1 con la zona pasada a mano se convierte igual',
+    !!r3 && r3[0] && r3[0].ts === '2026-09-01T17:00:00Z', e3 || JSON.stringify(r3 && r3[0]));
+}
+
 /* ── el conversor, aislado ────────────────────────────────────────────────── */
 const srv = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

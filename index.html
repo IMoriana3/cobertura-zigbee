@@ -1534,11 +1534,20 @@ function nuevoLectorTs(tz){
 /* El recuento que alimenta el aviso: de qué versión es el fichero y cuántas filas quedaron
    marcadas. Se cuelga del propio array para no cambiar la forma que esperan los que ya llaman. */
 function _cuenta(){ return {v1:0,v2:0,inexistente:0,ambigua:0,ilegible:0,sin_zona:0,v2_sin_z:0}; }
+/* LA ZONA SE PASA, NO SE COGE DEL GLOBAL. `filasDeLog` y `snapsDeRutas` las extrae
+   `tools/test_malla_real.mjs` del fuente y las ejecuta SUELTAS, en Node, donde no hay `S`: con
+   `S.tzPlanta` dentro reventaban con «S is not defined». Y tenía razón el banco — una función que
+   convierte un CSV no debería depender de un global para saber en qué zona está. Se pasa por
+   parámetro, y sin él se mira `S` solo si existe. */
+function _tzActual(tz){
+  if(tz!==undefined) return tz;
+  return (typeof S!=='undefined' && S) ? S.tzPlanta : null;
+}
 /* Las que no tienen hora utilizable se descartan de la serie, pero SIEMPRE se cuentan. */
 const _SIN_TS={inexistente:1, sin_zona:1, v2_sin_z:1};
 
-function filasDeLog(text){
-  const rows=objs(text), out=[]; const cnt=_cuenta(); const lee=nuevoLectorTs(S.tzPlanta);
+function filasDeLog(text,tz){
+  const rows=objs(text), out=[]; const cnt=_cuenta(); const lee=nuevoLectorTs(_tzActual(tz));
   for(const o of rows){const id=o.node_id||o.ext_addr; if(!id||!o.timestamp) continue;
     const t=lee(o.timestamp,o.schema_version);
     if(!t){ cnt.ilegible++; continue; }
@@ -1563,9 +1572,9 @@ function coordsDe(text){
    camino, los acumulados de todo el periodo que necesita la malla. Se agregan aqui
    y no despues para no tener que guardar los cientos de miles de caminos: El Burgo
    son 406.457 filas. */
-function snapsDeRutas(text){
+function snapsDeRutas(text,tz){
   const rows=objs(text); const byTs={}; const nodeIds=new Set(); let filas=0;
-  const agr={}, aristas={}; const cnt=_cuenta(); const lee=nuevoLectorTs(S.tzPlanta);
+  const agr={}, aristas={}; const cnt=_cuenta(); const lee=nuevoLectorTs(_tzActual(tz));
   const par=n=>agr[n]||(agr[n]={rutas:0,padres:{},hops:[],pasan:new Set()});
   for(const o of rows){ if(!o.timestamp||!o.path_ids) continue;
     /* La hora de las rutas pasa por el MISMO conversor que la del RSSI. Si una se convirtiera y la
