@@ -17,7 +17,7 @@ desconocido, nunca extrapolado.
 | **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — PR #697 |
 | **1** | `policyAnglesSeg` — medir ANTES de arreglar | **MEDIDA · PARADA** por la cláusula 1.3 |
 | **2** | el anual por el lazo | **HECHA** — 2.1, 2.3, 2.4 y 2.5; 2.2 razonado con medida |
-| 3 | calibración y transposición | pendiente |
+| **3** | calibración y transposición | **3.1 y 3.3 hechas** · 3.2 esperando decisión |
 | 4.2 - 4.5 | texto, gate de CI, docs, señal | pendiente |
 
 ---
@@ -593,6 +593,54 @@ anuales. Una planta, una configuración.
 
 ---
 
+## FASE 3 · CALIBRACIÓN Y TRANSPOSICIÓN
+
+### 3.1 · Las políticas que faltaban de la calibración
+
+**El arnés está validado antes que ninguna cifra.** `pairwise` tenía que
+reproducir los **2 313,44643430 kWh/m²·año** de E-A3 variante 1, y los reproduce
+**dígito a dígito**:
+
+```
+PLENO · pairwise       2313.44643430 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 637 s
+```
+
+Sin ese control, ninguno de los números de abajo sería publicable: el guion lleva
+una copia CONGELADA del anual sin lazo y, si esa copia se hubiera desviado del
+original, lo mediría todo mal en silencio.
+
+**Lo medido** (`audit3/F3_calibracion.mjs`, Ayora real, anual PLENO de 12 días a
+paso 10 min, **875 instantes**, MV 8, nb 2; salida en
+`audit3/out/F3_calibracion.txt`, diario en `audit3/out/F3_calibracion.jsonl`):
+
+| política | kWh/m²·año PLENO | coste |
+|---|---|---|
+| `astro` | **2 655,07172979** | 315,6 s |
+| `global` | **2 664,35669996** | 298,2 s |
+| `row` | **2 671,39751091** | 291,2 s |
+| `bt2d` | **2 663,19199678** | 294,2 s |
+| `pairwise` *(control)* | 2 313,44643430 | 637 s |
+| **`mgl`** | **NO MEDIDA** | > 3 h, ver HUECOS R3 entrada 1 |
+
+Con esto el orden de las nueve pasa de **`calibrada en 4 de 9`** a
+**`calibrada en 8 de 9`**. No a «calibrada»: `mgl` falta y se dice.
+
+### Lo que esta calibración NO corrige
+
+**No corrige la cifra que la página enseña hoy.** El guion lleva congelado el
+anual **sin lazo** —copia literal del manejador tal como estaba cuando se
+midieron E-D2/E-D3— porque la calibración compara el diseño PLENO con el REDUCIDO
+sobre la MISMA física, y las políticas ya calibradas se midieron así. Desde la
+fase 2 la página publica su anual **con** lazo. Así que lo que aquí se completa es
+el **orden de E-D3**, que es un artefacto de R2. Recalibrar las nueve sobre la
+ruta nueva es otra corrida: `NO MEDIDO`.
+
+**Y el coste de esa corrida tampoco se estima**, por lo aprendido en esta misma
+fase: cuatro de las nueve son baratas (~292 s) y las otras cinco buscan; una tasa
+medida sobre las baratas no cubre la clase de las caras.
+
+---
+
 ## HUECOS R3 · entrada 1 · `mgl`, la política que no se calibró
 
 **Decisión del auditor, opción B, con su motivo textual:**
@@ -777,3 +825,17 @@ lo que dice. Y arrastró una segunda corrección: `VER` vive DENTRO de FÍSICA P
 así que mi afirmación de que el bloque quedaba idéntico carácter a carácter dejó
 de ser cierta en cuanto la subí. Rectificada en el apartado de arriba con el diff
 que la sustituye.
+
+**12 · Tercer fallo de estimación de coste, mío, en la misma frase en que escribía
+la corrección.** Al pasar la decisión sobre `mgl` dije que el control del arnés
+«tarda lo que una política barata, ~5 min». `pairwise` tampoco es barata: llama a
+`repairNoShade` y busca, como `mgl` y como los optimizadores. Las cuatro baratas
+eran `astro`, `global`, `row` y `bt2d`. Al verlo pasar de los 10 min corregí en la
+otra dirección —«puede irse a la hora»— y también fallé: costó **637 s**. Ninguna
+de las dos fue una medida; la primera extrapolaba de la clase equivocada y la
+segunda de un total ajeno (los 11 397 s que E-D5 costó con TRES políticas).
+
+Lo que este caso añade a los otros dos: el defecto no se cura sabiéndolo. Lo
+escribí mientras redactaba la regla que lo prohíbe. La regla, por tanto, no puede
+ser «acuérdate»: tiene que ser **que la sonda declare la clase de lo que le queda
+y calle si no la cubre**, que es lo que queda anotado para R4.
