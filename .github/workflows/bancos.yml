@@ -94,9 +94,17 @@ jobs:
           fi
 
   # ── los .ps1, ejecutados de verdad ────────────────────────────────────────
-  # `pwsh` viene de serie en ubuntu-latest. Los dos bancos lo buscan en el PATH
+  # `pwsh` viene de serie en ubuntu-latest. Los bancos lo buscan en el PATH
   # (o en $PWSH) y, si no está, se saltan diciéndolo — que es justo lo que pasa
   # en la máquina de desarrollo. Aquí SÍ corren.
+  #
+  # LAS MUTACIONES SE CORREN AQUÍ, no a mano. Un banco que nadie ha visto fallar
+  # no es un banco, y comprobarlo una vez el día que se escribe no sirve: basta
+  # que alguien afloje una comprobación para que se quede verde para siempre sin
+  # que nadie se entere. Así que cada mutación se pone y se EXIGE rc = 1.
+  # Exactamente 1, no «distinto de cero»: rc = 2 es «no hay pwsh» o «la mutación
+  # ya no casa con el código», y contarlo como cazada sería el falso verde que
+  # esto viene a evitar.
   powershell:
     timeout-minutes: 15
     name: scripts de campo (pwsh)
@@ -111,6 +119,29 @@ jobs:
         run: python3 tools/test_angulos_barrido.py
       - name: inventario zigbee (zigbee_inventario.ps1)
         run: python3 tools/test_inventario_zb.py
+      - name: RSSI (zigbee_logger.ps1)
+        run: python3 tools/test_logger_rssi.py
+      - name: rutas por telnet (zigbee_routes_logger.ps1)
+        run: python3 tools/test_rutas_telnet.py
+      - name: y las mutaciones de los dos, en rojo
+        run: |
+          rojo () {
+            banco="$1"; shift
+            for m in "$@"; do
+              set +e
+              MUTA="$m" python3 "$banco" > /tmp/muta.txt 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -ne 1 ]; then
+                echo "::error::$banco con la mutación «$m» salió rc=$rc; se esperaba 1 (banco en rojo)"
+                tail -40 /tmp/muta.txt
+                exit 1
+              fi
+              echo "  $banco · $m: roja, bien"
+            done
+          }
+          rojo tools/test_logger_rssi.py  signo rol filtro caido carga sello
+          rojo tools/test_rutas_telnet.py saltos coord iac separador puerto
 
   # ── node sin navegador: layouts, mapas, física y paquetes de campo ────────
   datos:

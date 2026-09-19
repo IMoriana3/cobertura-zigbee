@@ -91,9 +91,17 @@ function ParseRoute($text) {
 }
 
 # ---------- Conexion + login ----------
-Write-Host "Conectando a $GwHost`:$TelnetPort (telnet)..."
+# $GwHost es "la misma que en el navegador", y en el navegador cabe un puerto.
+# Si el Digi tiene su web en un puerto que no es el 80 y aqui se escribe la IP
+# con ":<puerto>" detras, el HTTP del autodescubrimiento sigue funcionando —la
+# URL se arma con $GwHost tal cual— y el telnet, que lleva SU puerto aparte en
+# $TelnetPort, se quedaba intentando resolver "IP:puerto" como si fuera un
+# nombre de maquina. Se le quita el puerto al conectar; una IP a secas, que es
+# el caso normal, no cambia en nada.
+$TelnetHost = ($GwHost -split ':')[0]
+Write-Host "Conectando a $TelnetHost`:$TelnetPort (telnet)..."
 $client = New-Object Net.Sockets.TcpClient
-try { $client.Connect($GwHost, $TelnetPort) } catch { Write-Error "No conecta: $($_.Exception.Message)"; exit 1 }
+try { $client.Connect($TelnetHost, $TelnetPort) } catch { Write-Error "No conecta: $($_.Exception.Message)"; exit 1 }
 $ns = $client.GetStream()
 $r = TelnetRead $ns $LoginRe 7000; if ($Debug) { Write-Host "[prompt login]`n$r" -ForegroundColor DarkGray }
 TelnetSend $ns $User

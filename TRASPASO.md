@@ -418,6 +418,46 @@ y polvorín se añadieron después). El banco **no está en `bancos.yml`**, que 
 pudrió sin que nadie se enterara. No se toca aquí: decidir si el número bueno es 10 o si sobra
 alguna planta del selector no es parte del contrato de datos.
 
+## Arnés de los recolectores (2026-09-19, antes del bloque 2)
+
+Los cuatro `.ps1` corren en el PC de la planta, **con Windows PowerShell 5.1, sin instalar nada y
+sin admin**. Dos de ellos ya se ejecutaban en una prueba (`zigbee_angulos.ps1`,
+`zigbee_inventario.ps1`); los otros dos **no se habían ejecutado nunca fuera de las plantas**:
+
+| recolector | banco | qué levanta |
+|---|---|---|
+| `zigbee_logger.ps1` (RSSI) | `tools/test_logger_rssi.py` | ConnectPort falso por HTTP/RCI |
+| `zigbee_routes_logger.ps1` (rutas) | `tools/test_rutas_telnet.py` | HTTP para el censo **y telnet de verdad**, socket crudo con negociación IAC |
+
+**No se les toca el bucle para probarlos.** Los dos son `while ($true)`: se les deja hacer **un
+ciclo** y se les corta durante el `Start-Sleep`, que es cuando no tienen nada a medias
+(`Export-Csv` cierra el fichero en cada llamada). Probar una versión con el bucle desactivado
+sería probar otro programa.
+
+La sustitución de CONFIG es **la misma que hace el paquete de medida** (`preparaLogger` y
+`preparaRutas`, en `index.html`). Si esa expresión deja de casar, el banco aborta con rc = 2 y lo
+dice: es la señal de que el paquete tampoco sabría preparar el recolector.
+
+**Las mutaciones las corre la CI**, no la mano, y exige **rc = 1 exactamente**. `rc = 2` es «no hay
+pwsh» o «la mutación ya no casa con el código»: contarlo como cazada sería el falso verde que esto
+viene a evitar. Once mutaciones: seis del logger (signo del RSSI, rol HSU/TCU, filtro de routers,
+nodo caído, carga del gateway, sello por ciclo) y cinco de las rutas (saltos, COORD, IAC,
+separador, puerto).
+
+**Lo que estos bancos dejan fijado es v1, a propósito**, incluidos sus dos agujeros:
+
+- el sello de tiempo es **del ciclo**, no de la fila;
+- un nodo **sin ruta no aparece** en `zigbee_routes.csv`, así que «sin ruta» y «no preguntado» se
+  confunden.
+
+El bloque 2 cambia las dos cosas. **Cuando se cambien, estos bancos tienen que ponerse rojos** y
+hay que darles la vuelta: esa es la prueba de que el cambio ocurrió de verdad.
+
+**Un arreglo real que salió de montar el arnés.** `$GwHost` está documentado como «la misma IP que
+en el navegador», y en el navegador cabe un puerto. Con `10.100.1.54:8080` el autodescubrimiento
+HTTP seguía funcionando y el telnet intentaba resolver `"10.100.1.54:8080"` como nombre de máquina.
+Ahora se le quita el puerto al conectar (`$TelnetHost`); una IP a secas no cambia en nada.
+
 ---
 
 ## Herramientas que quedan hechas
