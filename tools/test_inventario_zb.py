@@ -190,5 +190,23 @@ di("ConnectPort X4" in crudo, "con lo que dice el gateway de si mismo")
 di("firmware_version" in crudo, "y con las respuestas de los nodos tal cual")
 
 srv.shutdown()
+
+# EN ROJO, LO QUE DIJO POWERSHELL. Sin esto, un fallo solo enseña que las
+# columnas no estan: no dice POR QUE, y «por que» es lo unico que sirve cuando
+# el rojo llega de un runner que no se puede tocar. Paso en la primera ejecucion
+# del job de Windows, donde el censo salio bien y las consultas por nodo NO, y el
+# banco no daba el motivo que el propio CSV ya traia escrito.
+if fallos:
+    print("\n── por qué, según el propio recolector ──────────────────────────")
+    for f in filas:
+        print("  %-8s estado_ok=%s  ajuste_ok=%s" % (f.get("node_id"), f.get("estado_ok"), f.get("ajuste_ok")))
+        for c in ("estado_error", "ajuste_error"):
+            if f.get(c):
+                print("      %s: %s" % (c, f[c][:300]))
+    print("\n── lo que PowerShell escribió por consola ───────────────────────")
+    print((salida or "(nada)")[-1500:])
+    print("\n── el volcado en bruto, primeros 600 ────────────────────────────")
+    print((crudo or "(vacío)")[:600])
+
 print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
 sys.exit(1 if fallos else 0)
