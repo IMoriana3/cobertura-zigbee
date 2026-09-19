@@ -16,7 +16,7 @@ desconocido, nunca extrapolado.
 | **0** | mergear el paquete sellado a `main` | **HECHA** — PR #694 |
 | **4.1** | el indicador «BT ON» que se encendía sin backtracking | **HECHA** — PR #697 |
 | **1** | `policyAnglesSeg` — medir ANTES de arreglar | **MEDIDA · PARADA** por la cláusula 1.3 |
-| 2 | el anual por el lazo | pendiente |
+| **2** | el anual por el lazo | **MEDIDO el antes/después**; el cambio, pendiente |
 | 3 | calibración y transposición | pendiente |
 | 4.2 - 4.5 | texto, gate de CI, docs, señal | pendiente |
 
@@ -363,6 +363,95 @@ con la máquina compartida. No extrapolado: es el reloj de la corrida.
 
 ---
 
+## FASE 2 · EL ANUAL POR EL LAZO — la medida del ANTES y el DESPUÉS
+
+**Medida primero, cambio después.** Esto es el punto 2.4 del encargo: el antes y
+el después por política. El motor **todavía no se toca**.
+
+### El defecto, citado
+
+`6408044:backtracking.html:7116-7135` — la ruta que llena la tabla de «Estimación
+anual» llama a `policyAngles` y suma, **sin lazo**:
+
+```js
+    for(let m=0;m<1440;m+=10){
+      const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
+      if(g.elev<=0)continue;
+      const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
+      for(const P of POLICIES){
+        if(!P.on)continue;
+        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        tot[P.key]+=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant*(10/60)/1000*DIM[mo];
+      }
+    }
+```
+
+Ni banda muerta ni velocidad de actuador: publica la consigna que la política
+**pide**, no la que la planta **ejecuta**.
+
+### Qué se ejecutó
+
+`audit3/F2_anual_lazo.mjs`: calcula **las dos cifras en la misma pasada** —la de
+hoy y la que saldría con el lazo entero—, usando `crearLazo()` **de la propia
+página**, uno por política y por día («un lazo por cadena», la doctrina que el
+cuerpo del día ya sigue). Salida cruda en `audit3/out/F2_anual_lazo.json`, diario
+por meses en `audit3/out/F2_meses.jsonl`.
+
+Configuración: **preset genérico de arranque**, 41,5763 / −0,7981, **8 filas**,
+gcr **0,397**, accionamiento mono, 12 días representativos, paso **10 min**,
+banda muerta 1,0°, slew 0,17 °/s. No es Ayora: allí **un solo día** tarda 6 min
+33 s medidos y doce días serían otra E-D8.
+
+### 2.4 · La deriva por política
+
+| política | sin lazo (kWh/m²·año) | con lazo | deriva |
+|---|---|---|---|
+| `astro` | 2 553,17 | 2 553,41 | **+0,0095 %** |
+| `global` · `row` · `bt2d` | 2 620,51 | 2 559,93 | **−2,3117 %** |
+| `pairwise` · `true3d` · `mgl` | 2 620,51 | 2 559,93 | **−2,3118 %** |
+| `optimal` | 2 632,23 | 2 586,23 | **−1,7474 %** |
+| `optfree` | 2 634,18 | 2 588,94 | **−1,7177 %** |
+
+`astro` **no se mueve**: no tiene de qué apartarse, así que la banda muerta no le
+cuesta nada. Todas las demás la pagan.
+
+### Lo que cambia no es la cifra: es lo que la cifra AFIRMA
+
+| lo que se publica | sin lazo | con lazo | |
+|---|---|---|---|
+| lo que gana el backtracking (`pairwise`) frente al astronómico puro | **+2,638 %** | **+0,255 %** | **10,3× menos** |
+| lo que gana `optfree` sobre `pairwise` | +0,522 % | **+1,133 %** | 2,2× más |
+| lo que gana `optimal` sobre `pairwise` | +0,447 % | **+1,027 %** | 2,3× más |
+
+El anual de hoy **infla diez veces el valor del backtracking** y **reduce a la
+mitad el del control avanzado**.
+
+### TEST NULO DEL ORDEN, y una cifra que estuve a punto de publicar mal
+
+La primera versión de la sonda imprimió `elOrdenCambia: true`. **Es ruido.** Seis
+políticas dan el **mismo** número —2 620,51 sin lazo y 2 559,93 con lazo— y lo que
+el `sort` reordenaba eran empates:
+
+```
+empates sin lazo: [["global","row","bt2d","pairwise","true3d","mgl"]]
+empates con lazo: [["global","row","bt2d","pairwise","true3d","mgl"]]
+```
+
+La sonda corregida agrupa por empate al 0,01 % antes de comparar puestos, y con
+eso **ninguna política cambia de puesto**: `elOrdenCambia: false`.
+
+Así que **la pregunta del orden sigue abierta**: en un preset llano de 8 filas
+esas seis coinciden por construcción, y hace falta una configuración donde
+difieran para responderla. `NO VERIFICADO`.
+
+### Lo que esta medida NO dice
+
+Ni que 2 559,93 sea la cifra correcta —lleva el lazo pero sigue siendo cielo claro,
+12 días y paso 10 min— ni nada del punto **2.2**, la unificación de las dos rutas
+anuales. Una planta, una configuración.
+
+---
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
@@ -442,3 +531,16 @@ Y no se afloja nada del #696: sus dos exigencias nuevas —que la rama por líne
 la rama por mesa pasen por el tope del backtracking— se conservan, generalizadas
 al nombre de la variable, **y se añaden también al cuerpo del día**, donde su
 versión sólo las pedía por literal.
+
+**7 · Publiqué que el orden de las políticas cambiaba, y era ruido.** La sonda de
+la fase 2 ordenaba nueve valores de los que **seis eran idénticos** y anunciaba
+`elOrdenCambia: true`. Lo que barajaba el `sort` eran empates. Lo vi al mirar la
+tabla —seis filas con el mismo 2 620,51— y no porque la sonda lo dijera: no tenía
+test nulo del orden. Ahora agrupa por empate al 0,01 % antes de comparar puestos y
+publica los grupos, y con eso ninguna política cambia de puesto. Es el mismo
+defecto que R2 registra ocho veces bajo `TESTS NULOS DETECTADOS`: contar sobre un
+predicado que no discrimina en el dominio medido.
+
+**8 · La misma sonda publicó `gcr: null` sin inmutarse.** Dividía por `T.pitch`,
+que no existe. Un campo que no resuelve no se imprime con un `null`: se declara.
+Ahora dice `NO DISPONIBLE` si no lo encuentra, y con el campo bueno da 0,397.

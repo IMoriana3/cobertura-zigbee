@@ -1,0 +1,126 @@
+{
+ "commit": "36cf87d",
+ "config": {
+  "preset": "genérico de arranque",
+  "lat": 41.5763,
+  "lon": -0.7981,
+  "filas": 8,
+  "gcr": 0.397,
+  "drive": "mono",
+  "paso_min": 10,
+  "porMesa": false,
+  "politicas": [
+   "astro",
+   "global",
+   "row",
+   "bt2d",
+   "pairwise",
+   "true3d",
+   "mgl",
+   "optimal",
+   "optfree"
+  ],
+  "deadband": 1,
+  "slew": 0.17
+ },
+ "tabla": [
+  {
+   "politica": "astro",
+   "sinLazo_kWh_m2": 2553.17,
+   "conLazo_kWh_m2": 2553.41,
+   "deriva_pct": 0.0095
+  },
+  {
+   "politica": "global",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3117
+  },
+  {
+   "politica": "row",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3117
+  },
+  {
+   "politica": "bt2d",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3117
+  },
+  {
+   "politica": "pairwise",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3118
+  },
+  {
+   "politica": "true3d",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3118
+  },
+  {
+   "politica": "mgl",
+   "sinLazo_kWh_m2": 2620.51,
+   "conLazo_kWh_m2": 2559.93,
+   "deriva_pct": -2.3118
+  },
+  {
+   "politica": "optimal",
+   "sinLazo_kWh_m2": 2632.23,
+   "conLazo_kWh_m2": 2586.23,
+   "deriva_pct": -1.7474
+  },
+  {
+   "politica": "optfree",
+   "sinLazo_kWh_m2": 2634.18,
+   "conLazo_kWh_m2": 2588.94,
+   "deriva_pct": -1.7177
+  }
+ ],
+ "ordenSinLazo": [
+  "optfree",
+  "optimal",
+  "pairwise",
+  "true3d",
+  "mgl",
+  "global",
+  "row",
+  "bt2d",
+  "astro"
+ ],
+ "ordenConLazo": [
+  "optfree",
+  "optimal",
+  "global",
+  "row",
+  "bt2d",
+  "pairwise",
+  "true3d",
+  "mgl",
+  "astro"
+ ],
+ "empatesSinLazo": [
+  [
+   "global",
+   "row",
+   "bt2d",
+   "pairwise",
+   "true3d",
+   "mgl"
+  ]
+ ],
+ "empatesConLazo": [
+  [
+   "global",
+   "row",
+   "bt2d",
+   "pairwise",
+   "true3d",
+   "mgl"
+  ]
+ ],
+ "politicasQueCambianDePUESTO_sinContarEmpates": [],
+ "elOrdenCambia": false
+}
