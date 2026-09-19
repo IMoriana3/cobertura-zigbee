@@ -1,4 +1,4 @@
-<#
+﻿<#
   ============================================================================
   zigbee_inventario.ps1  —  QUE HAY en la malla: cada modulo con su numero de
   serie, su firmware y todo lo que el gateway sepa decir de el.

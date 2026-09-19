@@ -94,6 +94,15 @@ jobs:
       - name: TCUs retiradas y huecos de esclavo
         run: python3 tools/test_coords_retiradas.py
 
+      # UN .ps1 CON NO-ASCII Y SIN BOM NO COMPILA EN PowerShell 5.1, que es el
+      # que hay en el PC de la planta. `zigbee_inventario.ps1` estaba asi y no
+      # arrancaba: la raya «—» dentro de una cadena se le convierte en «”», que
+      # 5.1 acepta como comilla de cierre. Esta puerta va aquí, y no en el job
+      # de Windows, porque no necesita PowerShell y así el aviso llega en
+      # segundos en vez de esperar al runner de Windows.
+      - name: los .ps1 los puede leer PowerShell 5.1
+        run: python3 tools/gate_ps1_bom.py
+
       # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
       # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo
       # dentro del repo, en silencio; me apareceieron dos veces en `git status`

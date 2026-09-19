@@ -477,16 +477,42 @@ Lo que hizo falta adaptar de los bancos que ya había, que asumían Linux:
 - `test_angulos_barrido.py` abría el CSV **mientras PowerShell lo estaba escribiendo**. En Linux
   eso se tolera; en Windows lanza `PermissionError` y tumbaba el banco. Ahora se reintenta.
 
-**HALLAZGO SIN RESOLVER — el BOM de los `.ps1`.** De los cinco recolectores, **solo
-`zigbee_logger.ps1` tiene BOM**; los otros cuatro no, y cuatro de los cinco traen caracteres no
-ASCII (`—`, `·`, `ñ`, `í`). Windows PowerShell 5.1 lee un `.ps1` **sin BOM como ANSI**
-(Windows-1252), no como UTF-8: esos caracteres le llegan como mojibake.
+### `zigbee_inventario.ps1` NO ARRANCABA en el PC de una planta
 
-Hoy el efecto es **cosmético** —el no-ASCII está en comentarios y en dos cadenas que solo se
-imprimen o se escriben en el `.xml` en bruto— y por eso no se ha tocado: cambiarle los bytes a
-cuatro ficheros de campo merece su propio cambio, no una línea colada en este. Pero conviene
-decidirlo antes del bloque 2, porque ahí se comparan cabeceras de CSV y se renombran ficheros. Lo
-que el job de Windows enseñe es el dato para decidir.
+Lo encontró la primera ejecución del job de Windows, y es un fallo de campo de verdad, no del
+banco. De los cinco recolectores solo `zigbee_logger.ps1` llevaba BOM. Windows PowerShell 5.1 lee
+un `.ps1` **sin BOM como Windows-1252**, no como UTF-8, y ahí está la trampa:
+
+```
+la raya «—» son los bytes  E2 80 94
+el 94 en Windows-1252 es  «”»  — la comilla tipográfica de cierre
+y PowerShell 5.1 la acepta como delimitador de cadena
+```
+
+Así que esta línea, la 83 de `zigbee_inventario.ps1`:
+
+```powershell
+[void]$crudo.AppendLine("<!-- zigbee_inventario.ps1 — respuestas en bruto, ... -->")
+```
+
+cerraba la cadena en medio. El error que sale es éste, **y apunta a la línea 162**:
+
+```
+zigbee_inventario.ps1:162 char:87
+The string is missing the terminator: ".
+ParserError ... MissingEndParenthesisInMethodCall
+```
+
+El error a 79 líneas del problema es justo lo que hace que esto no se vea leyendo el fichero. Y en
+`pwsh` 7 no pasa nada, porque 7 asume UTF-8: por eso el job de Linux lo daba por bueno.
+
+**Arreglado poniéndole BOM a los cuatro que no lo tenían**, que es lo que ya hacía
+`zigbee_logger.ps1` — o sea, un camino ya probado, paquete de medida incluido (50 OK después).
+
+**Y vigilado**: `tools/gate_ps1_bom.py` exige que todo `.ps1` con no-ASCII lleve BOM, y dice además
+cuántas comillas tipográficas falsas vería 5.1. Corre en el job `nucleo`, no en el de Windows, para
+que el aviso llegue en segundos y sin runner de Windows. Probado en rojo quitándole el BOM a una
+copia: lo caza y nombra el fichero.
 
 ---
 

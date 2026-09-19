@@ -133,6 +133,16 @@ di(os.path.exists(csvp), "escribe el CSV")
 filas = list(csv.DictReader(open(csvp, encoding="utf-8-sig"))) if os.path.exists(csvp) else []
 di(len(filas) == 3, "una fila por modulo, incluido el que no contesta", len(filas))
 
+# SIN ESTO, un .ps1 que ni siquiera compila acababa en un IndexError de Python
+# quince lineas mas abajo, y el traceback tapaba el error de PowerShell —que es
+# el dato— con uno del banco. Paso en la primera ejecucion del job de Windows.
+if len(filas) < 3:
+    print("\nEl recolector no ha dejado las tres filas, asi que lo de abajo no se puede")
+    print("comprobar. Lo que dijo PowerShell, que es lo que hay que leer:\n")
+    print(salida[-1200:])
+    print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
+    sys.exit(1)
+
 print("\n· el numero de serie, entero")
 series = [f.get("serie") for f in filas]
 di(series == ["00:13:a2:00:41:5c:9e:01!", "00:13:a2:00:41:5c:9e:02!", "00:13:a2:00:41:5c:9e:03!"],

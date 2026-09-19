@@ -53,14 +53,27 @@ def di(ok, texto, extra=None):
                          "" if ok or extra is None else "  -> %s" % (extra,)))
 
 
-# ── lo esperado por version mayor de PowerShell ──────────────────────────────
+# ── lo MEDIDO por version mayor de PowerShell ────────────────────────────────
 # append_falla   : `-Append` con columnas que no cuadran lanza error
+# append_escribe : ...y aun asi, ¿acaba la fila en el fichero?
 # forzado_falla  : lo mismo con `-Force`
 # forzado_escribe: con `-Force`, la fila acaba en el fichero
 # bom            : `-Encoding UTF8` deja BOM al crear el fichero
+#
+# `None` = SIN MEDIR. No se exige, se mide y se ensena, y de ahi sale el valor
+# que se escribe aqui. Esto no es prudencia de mas: la primera version de esta
+# tabla decia que en PowerShell 7 `-Append` con una columna de mas FALLA, porque
+# es lo que dice la documentacion de 5.1 y lo di por bueno para las dos. La
+# primera ejecucion (run 35472054575, PowerShell 7.6.5) lo desmintio: NO falla.
+# Asi que lo que no se haya medido se queda en None hasta que se mida.
+DESCONOCIDO = None
 ESPERADO = {
-    5: {"append_falla": True, "forzado_falla": False, "forzado_escribe": True, "bom": True},
-    7: {"append_falla": True, "forzado_falla": False, "forzado_escribe": True, "bom": False},
+    # nunca medido: el job de Windows es nuevo
+    5: {"append_falla": DESCONOCIDO, "append_escribe": DESCONOCIDO, "forzado_falla": DESCONOCIDO,
+        "forzado_escribe": DESCONOCIDO, "bom": DESCONOCIDO},
+    # medido en PowerShell 7.6.5, run 35472054575 (2026-09-19)
+    7: {"append_falla": False, "append_escribe": DESCONOCIDO, "forzado_falla": False,
+        "forzado_escribe": True, "bom": False},
 }
 
 SONDA = r"""
@@ -125,15 +138,28 @@ print("  PowerShell %s  (mayor %d)" % (version, mayor))
 
 bytes_simple = open(os.path.join(tmp, "simple.csv"), "rb").read()
 bytes_forz = open(os.path.join(tmp, "forzado.csv"), "rb").read()
+
+
+def hay_dos_filas(crudo):
+    """cabecera + 2 filas de datos = la segunda se escribio"""
+    return len([l for l in crudo.decode("utf-8-sig", "replace").splitlines() if l.strip()]) > 2
+
+
 obs = {
     "append_falla": inf.get("simple.error", "") != "",
+    "append_escribe": hay_dos_filas(bytes_simple),
     "forzado_falla": inf.get("forzado.error", "") != "",
-    "forzado_escribe": len([l for l in bytes_forz.decode("utf-8-sig", "replace").splitlines() if l.strip()]) > 2,
+    "forzado_escribe": hay_dos_filas(bytes_forz),
     "bom": bytes_simple[:3] == b"\xef\xbb\xbf",
 }
 print("  observado: " + ", ".join("%s=%s" % (k, obs[k]) for k in sorted(obs)))
 if inf.get("simple.error"):
     print("  el error de -Append: " + inf["simple.error"][:160])
+# EL CASO FEO, y por eso se dice aparte: ni error ni columna. La fila entra y el
+# dato nuevo se pierde sin que nadie se entere — que es peor que un error.
+if not obs["append_falla"] and obs["append_escribe"]:
+    print("  OJO: «-Append» NI falla NI guarda la columna nueva. La fila entra y el dato")
+    print("       se pierde EN SILENCIO. La rotación del CSV no es opcional en esta versión.")
 
 # ── lo que vale en CUALQUIER version: los invariantes de los que depende la regla
 print("\n· la cabecera de un fichero ya empezado NO cambia, pase lo que pase")
@@ -161,19 +187,30 @@ if mayor not in ESPERADO:
     print("después de mirar si son los que esa versión debería dar.")
     sys.exit(2)
 esp = ESPERADO[mayor]
-di(obs["append_falla"] == esp["append_falla"],
-   "«-Append» con una columna de más %s" % ("falla" if esp["append_falla"] else "pasa"),
-   obs["append_falla"])
-di(obs["forzado_falla"] == esp["forzado_falla"],
-   "«-Append -Force» %s" % ("falla" if esp["forzado_falla"] else "no falla"),
-   obs["forzado_falla"])
-di(obs["forzado_escribe"] == esp["forzado_escribe"],
-   "y con «-Force» la fila %s" % ("SÍ se escribe — con la columna nueva perdida en silencio"
-                                  if esp["forzado_escribe"] else "no se escribe"),
-   obs["forzado_escribe"])
-di(obs["bom"] == esp["bom"],
-   "«-Encoding UTF8» escribe %s BOM en esta versión" % ("CON" if esp["bom"] else "SIN"),
-   obs["bom"])
+COMO = {
+    "append_falla": ("«-Append» con una columna de más FALLA",
+                     "«-Append» con una columna de más NO falla"),
+    "append_escribe": ("«-Append» escribe la fila igual",
+                       "«-Append» no escribe la fila"),
+    "forzado_falla": ("«-Append -Force» falla", "«-Append -Force» no falla"),
+    "forzado_escribe": ("con «-Force» la fila SÍ se escribe — y la columna nueva se pierde callando",
+                        "con «-Force» la fila no se escribe"),
+    "bom": ("«-Encoding UTF8» escribe CON BOM", "«-Encoding UTF8» escribe SIN BOM"),
+}
+sin_medir = []
+for clave in ("append_falla", "append_escribe", "forzado_falla", "forzado_escribe", "bom"):
+    if esp[clave] is None:
+        sin_medir.append("%s=%s" % (clave, obs[clave]))
+        continue
+    di(obs[clave] == esp[clave], COMO[clave][0 if esp[clave] else 1], obs[clave])
 
-print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
+if sin_medir:
+    # NO es un fallo y NO es un verde: es lo que hay que ir a escribir en la
+    # tabla. Se dice fuerte para que no se quede ahi para siempre.
+    print("\n  SIN MEDIR todavía en PowerShell %d — llévalo a ESPERADO[%d]:" % (mayor, mayor))
+    for s in sin_medir:
+        print("      " + s)
+
+print("\n%d comprobaciones, %d fallos%s"
+      % (n, len(fallos), ", %d sin medir" % len(sin_medir) if sin_medir else ""))
 sys.exit(1 if fallos else 0)
