@@ -708,8 +708,19 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
   if (!/LZ\.paso\(o\.angles,STEP_MIN\*60\)/.test(app))
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
-  if (!/LZS\.paso\(segCmd\(/.test(app))
+  if (!/const segN=segCmd\(/.test(app) || !/LZS\.paso\(segN,STEP_MIN\*60\)/.test(app))
     throw new Error('el camino por mesa sigue sin el deadband');
+  /* 2026-09-19 · Y LAS DOS RAMAS PASAN POR EL TOPE DEL BACKTRACKING. El
+     adelanto puede pasarse del ángulo que la política calculó para no comerse
+     la fila de delante, y hasta hoy aquí no lo devolvía nadie (medido: hasta
+     +1,4 % de POA y la sombra de `pairwise` en llano de 591 pasos·fila a 31).
+     Se exige en LAS DOS porque si sólo lo llevara una, la página tendría dos
+     físicas según el usuario tenga encendida la segmentación o no — y eso no
+     se ve en ninguna cifra de la pantalla. */
+  if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(app))
+    throw new Error('la rama por LÍNEA pasa por el lazo pero no por el tope del backtracking');
+  if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,segN,LZS\.paso\(/.test(app))
+    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking');
 });
 
 t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
