@@ -152,6 +152,39 @@ medido para un día y una configuración**: las 15,25 h de `pairwise` —el día
 de sol—, y 548 de 549 discrepancias con mando idéntico y sombra cero. Cuántas
 **configuraciones** lo levantan sigue `NO VERIFICADO`. `audit2/` no se edita.
 
+### Dos comprobaciones del banco de física que se pusieron rojas sin defecto
+
+Al guardar el mando crudo en el camino por mesa hubo que sacar `segCmd(...)` a
+una variable, para no calcular la política **dos veces** en modo por mesa. Dos
+comprobaciones distintas del banco de física exigían la anidación escrita
+**literalmente**:
+
+`a1bd80e:tools/test_backtracking_sim.mjs:711-712`
+```js
+  if (!/LZS\.paso\(segCmd\(/.test(app))
+    throw new Error('el camino por mesa sigue sin el deadband');
+```
+
+y la lista de literales de `a1bd80e:tools/test_backtracking_sim.mjs:3079`, que
+incluye `'LZS.paso(segCmd('`. Las dos se pusieron rojas sin que el código hiciera
+nada distinto.
+
+El comentario que acompaña a la segunda ya tenía escrita la lección, tres líneas
+más arriba: *«los que se atan al NOMBRE de una función caducan cada vez que la
+pieza mejora; el que se ata a lo que la pieza HACE, no»*. Estaba justo encima de
+una comprobación atada a la sintaxis.
+
+**Qué se hizo.** Una sola definición a nivel de módulo, `mandoPorMesaVieneDeSegCmd`,
+que sigue el **dato**: el argumento de `LZS.paso` tiene que venir de `segCmd`,
+inline o por una variable asignada en el mismo cuerpo. Los dos sitios la llaman.
+Y `controlMandoPorMesa`, su **control negativo**, que sustituye el mando por otra
+cosa y exige que el criterio lo rechace.
+
+**No se afloja.** Antes se aceptaba una sola forma de escribirlo y la
+comprobación no se verificaba a sí misma. Ahora se comprueba la procedencia del
+dato y además se verifica. El banco del informe gráfico (59 comprobaciones) pasó
+en verde sin tocarlo, con el mismo cambio de `serieDiaGen`.
+
 ---
 
 ## E-X1 · mis propios errores en esta ronda
@@ -161,3 +194,16 @@ junto a `DEADBAND_DEG`, en la línea ~3130, dentro del bloque 497-4138. Lo desta
 la comprobación de hunks, no yo. Corregido antes de commitear: la constante vive
 ahora en la capa de interfaz. La comprobación existía porque en #689 falló una
 equivalente por cortar por la **primera** aparición del marcador.
+
+**2 · El control de la fase 1 medía otra cosa.** La primera versión de
+`F1_seg_metrica.mjs` aplicaba la sustitución de tilts sólo a la geometría que
+**puntúa** (`T`), no a la que **manda** (`Tcfg`) — y es `Tcfg` la que usa
+`anglesPairwiseSeg` para decidir el θ de cada mesa. El control habría dado los
+mismos ángulos con distinta puntuación, que no es «una planta sin torsión».
+Corregido antes de ejecutarlo: la sustitución llega a las dos geometrías.
+
+**3 · Di por cerrado el arreglo antes de pasar los bancos.** Conté aquí el antes
+y el después del indicador mientras el banco de física seguía corriendo, y ese
+banco trajo dos rojos. Eran suyos, no del arreglo, pero eso no lo sabía al
+escribirlo. Es el mismo error que E-X1 de R2 registra: dar por buena una corrida
+que aún no ha cerrado.
