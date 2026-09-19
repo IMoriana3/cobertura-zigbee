@@ -68,12 +68,19 @@ def di(ok, texto, extra=None):
 # Asi que lo que no se haya medido se queda en None hasta que se mida.
 DESCONOCIDO = None
 ESPERADO = {
-    # nunca medido: el job de Windows es nuevo
-    5: {"append_falla": DESCONOCIDO, "append_escribe": DESCONOCIDO, "forzado_falla": DESCONOCIDO,
-        "forzado_escribe": DESCONOCIDO, "bom": DESCONOCIDO},
-    # medido en PowerShell 7.6.5, run 35472054575 (2026-09-19)
+    # medido en Windows PowerShell 5.1, run 35474112229 (2026-09-19)
+    5: {"append_falla": False, "append_escribe": True, "forzado_falla": False,
+        "forzado_escribe": True, "bom": True,
+        "menos_falla": DESCONOCIDO, "menos_escribe": DESCONOCIDO,
+        "otras_falla": DESCONOCIDO, "otras_escribe": DESCONOCIDO},
+    # medido en PowerShell 7.6.5, run 35472054575 (2026-09-19). `append_escribe`
+    # se midio ahi tambien, pero no lo he LEIDO del registro, asi que no se
+    # escribe: lo pone la siguiente ejecucion. Suponerlo «igual que en 5.1» es
+    # exactamente el error que trajo hasta aqui.
     7: {"append_falla": False, "append_escribe": DESCONOCIDO, "forzado_falla": False,
-        "forzado_escribe": True, "bom": False},
+        "forzado_escribe": True, "bom": False,
+        "menos_falla": DESCONOCIDO, "menos_escribe": DESCONOCIDO,
+        "otras_falla": DESCONOCIDO, "otras_escribe": DESCONOCIDO},
 }
 
 SONDA = r"""
@@ -82,23 +89,32 @@ $ErrorActionPreference = 'Continue'
 $inf = New-Object System.Collections.Generic.List[string]
 $inf.Add("version=" + $PSVersionTable.PSVersion.ToString())
 
-function Prueba([string]$nombre, [bool]$forzar) {
+# la fila de v1 (3 columnas) y la del bloque 2 (las mismas mas dos)
+function FilaV1 { [pscustomobject][ordered]@{ timestamp='2026-01-01 00:00:00'; node_id='TCU_01'; rssi_dbm=-61 } }
+function FilaV2 { [pscustomobject][ordered]@{ timestamp='2026-01-01T00:00:10Z'; node_id='TCU_02'; rssi_dbm=-62
+                                              ciclo_id=7; latencia_ms=143 } }
+# y una con el MISMO numero de columnas pero otros nombres
+function FilaOtras { [pscustomobject][ordered]@{ sello='2026-01-01T00:00:10Z'; nodo='TCU_02'; senal=-62 } }
+
+function Prueba([string]$nombre, [bool]$forzar, $base, $anadida) {
   $ruta = Join-Path $Dir "$nombre.csv"
-  $v1 = [pscustomobject][ordered]@{ timestamp='2026-01-01 00:00:00'; node_id='TCU_01'; rssi_dbm=-61 }
-  $v1 | Export-Csv -Path $ruta -NoTypeInformation -Encoding UTF8
-  # la fila del bloque 2: la misma mas ciclo_id y latencia_ms
-  $v2 = [pscustomobject][ordered]@{ timestamp='2026-01-01T00:00:10Z'; node_id='TCU_02'; rssi_dbm=-62
-                                    ciclo_id=7; latencia_ms=143 }
+  $base | Export-Csv -Path $ruta -NoTypeInformation -Encoding UTF8
   $err = ''
   try {
-    if ($forzar) { $v2 | Export-Csv -Path $ruta -Append -Force -NoTypeInformation -Encoding UTF8 -ErrorAction Stop }
-    else         { $v2 | Export-Csv -Path $ruta -Append        -NoTypeInformation -Encoding UTF8 -ErrorAction Stop }
+    if ($forzar) { $anadida | Export-Csv -Path $ruta -Append -Force -NoTypeInformation -Encoding UTF8 -ErrorAction Stop }
+    else         { $anadida | Export-Csv -Path $ruta -Append        -NoTypeInformation -Encoding UTF8 -ErrorAction Stop }
   } catch { $err = ($_.Exception.Message -replace "`r?`n", ' ') }
   $inf.Add("$nombre.error=" + $err)
 }
 
-Prueba 'simple'  $false
-Prueba 'forzado' $true
+# el caso del bloque 2: al fichero de v1 se le anade una fila con DOS columnas de mas
+Prueba 'simple'  $false (FilaV1) (FilaV2)
+Prueba 'forzado' $true  (FilaV1) (FilaV2)
+# el caso contrario, que es el que se daria si un recolector VIEJO escribiera sobre
+# un fichero ya rotado a v2: una fila con dos columnas de MENOS
+Prueba 'menos'   $false (FilaV2) (FilaV1)
+# y columnas renombradas, mismo numero: ni sobran ni faltan, pero no son las mismas
+Prueba 'otras'   $false (FilaV1) (FilaOtras)
 
 # la cabecera que ve PowerShell al releer el fichero: si el BOM se pegara al
 # nombre de la primera columna, Import-Csv devolveria una clave con basura
@@ -136,8 +152,8 @@ version = inf.get("version", "?")
 mayor = int(version.split(".")[0]) if version[:1].isdigit() else 0
 print("  PowerShell %s  (mayor %d)" % (version, mayor))
 
-bytes_simple = open(os.path.join(tmp, "simple.csv"), "rb").read()
-bytes_forz = open(os.path.join(tmp, "forzado.csv"), "rb").read()
+CRUDO = {n: open(os.path.join(tmp, n + ".csv"), "rb").read()
+         for n in ("simple", "forzado", "menos", "otras")}
 
 
 def hay_dos_filas(crudo):
@@ -147,11 +163,16 @@ def hay_dos_filas(crudo):
 
 obs = {
     "append_falla": inf.get("simple.error", "") != "",
-    "append_escribe": hay_dos_filas(bytes_simple),
+    "append_escribe": hay_dos_filas(CRUDO["simple"]),
     "forzado_falla": inf.get("forzado.error", "") != "",
-    "forzado_escribe": hay_dos_filas(bytes_forz),
-    "bom": bytes_simple[:3] == b"\xef\xbb\xbf",
+    "forzado_escribe": hay_dos_filas(CRUDO["forzado"]),
+    "menos_falla": inf.get("menos.error", "") != "",
+    "menos_escribe": hay_dos_filas(CRUDO["menos"]),
+    "otras_falla": inf.get("otras.error", "") != "",
+    "otras_escribe": hay_dos_filas(CRUDO["otras"]),
+    "bom": CRUDO["simple"][:3] == b"\xef\xbb\xbf",
 }
+bytes_simple = CRUDO["simple"]
 print("  observado: " + ", ".join("%s=%s" % (k, obs[k]) for k in sorted(obs)))
 if inf.get("simple.error"):
     print("  el error de -Append: " + inf["simple.error"][:160])
@@ -163,12 +184,21 @@ if not obs["append_falla"] and obs["append_escribe"]:
 
 # ── lo que vale en CUALQUIER version: los invariantes de los que depende la regla
 print("\n· la cabecera de un fichero ya empezado NO cambia, pase lo que pase")
-for nombre, crudo in (("simple", bytes_simple), ("forzado", bytes_forz)):
-    cab = crudo.decode("utf-8-sig", "replace").splitlines()[0].strip()
-    di(cab == '"timestamp","node_id","rssi_dbm"',
-       "%s.csv conserva la cabecera de v1" % nombre, cab)
+CAB_V1 = '"timestamp","node_id","rssi_dbm"'
+CAB_V2 = '"timestamp","node_id","rssi_dbm","ciclo_id","latencia_ms"'
+for nombre, esperada in (("simple", CAB_V1), ("forzado", CAB_V1),
+                         ("menos", CAB_V2), ("otras", CAB_V1)):
+    cab = CRUDO[nombre].decode("utf-8-sig", "replace").splitlines()[0].strip()
+    di(cab == esperada, "%s.csv conserva la cabecera con la que nació" % nombre, cab)
+# y la de v1 no gana columnas por mucho que se le empuje una fila que las trae
+for nombre in ("simple", "forzado"):
+    cab = CRUDO[nombre].decode("utf-8-sig", "replace").splitlines()[0].strip()
     di("ciclo_id" not in cab and "latencia_ms" not in cab,
        "%s.csv no ha ganado las columnas nuevas" % nombre, cab)
+# ni la de v2 gana las de otro nombre
+cab_otras = CRUDO["otras"].decode("utf-8-sig", "replace").splitlines()[0].strip()
+di("sello" not in cab_otras and "senal" not in cab_otras,
+   "otras.csv no ha ganado las columnas renombradas", cab_otras)
 
 print("\n· y el visor lo sigue leyendo, lleve BOM o no")
 filas = list(csv.DictReader(open(os.path.join(tmp, "simple.csv"), encoding="utf-8-sig")))
@@ -195,10 +225,16 @@ COMO = {
     "forzado_falla": ("«-Append -Force» falla", "«-Append -Force» no falla"),
     "forzado_escribe": ("con «-Force» la fila SÍ se escribe — y la columna nueva se pierde callando",
                         "con «-Force» la fila no se escribe"),
+    "menos_falla": ("una fila con columnas de MENOS falla", "una fila con columnas de MENOS no falla"),
+    "menos_escribe": ("y aun asi se escribe", "y no se escribe"),
+    "otras_falla": ("una fila con las columnas RENOMBRADAS falla",
+                    "una fila con las columnas RENOMBRADAS no falla"),
+    "otras_escribe": ("y aun asi se escribe", "y no se escribe"),
     "bom": ("«-Encoding UTF8» escribe CON BOM", "«-Encoding UTF8» escribe SIN BOM"),
 }
 sin_medir = []
-for clave in ("append_falla", "append_escribe", "forzado_falla", "forzado_escribe", "bom"):
+for clave in ("append_falla", "append_escribe", "forzado_falla", "forzado_escribe",
+              "menos_falla", "menos_escribe", "otras_falla", "otras_escribe", "bom"):
     if esp[clave] is None:
         sin_medir.append("%s=%s" % (clave, obs[clave]))
         continue

@@ -186,12 +186,12 @@ jobs:
   #     `Export-Csv -Append` rechaza una cabecera distinta. Esa regla se cumple
   #     o se incumple en 5.1, no en 7.
   #
-  # EL TOPE DE TIEMPO ES PROVISIONAL: 20 min a ojo, porque este job no se ha
-  # medido nunca. En cuanto haya una ejecución, se pone la cifra medida con su
-  # fecha, como las de arriba. Dejarlo sin medir y sin decirlo sería justo el
-  # número que envejece en silencio del comentario de la cabecera.
+  # MEDIDO: 64 s (2026-09-19, run 35474112229), con los cuatro bancos y las once
+  # mutaciones dentro. El tope se queda en 10 min —nueve veces el peor caso
+  # medido— y la cifra va con su fecha, como las de arriba, porque un número sin
+  # fecha al lado envejece en silencio.
   windows:
-    timeout-minutes: 20
+    timeout-minutes: 10
     name: scripts de campo (Windows PowerShell 5.1)
     runs-on: windows-latest
     env:

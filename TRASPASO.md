@@ -465,9 +465,32 @@ el PC de la planta: allí no se instala nada ni hay admin. Probar solo en 7 es p
 y llamarlo el mismo.
 
 `tools/test_export_csv_esquema.py` es una **sonda del entorno**, no un banco del repo: mide qué hace
-la versión que tenga delante con las tres cosas de las que depende el bloque 2 — `-Append` con una
-columna de más, `-Append -Force` con una columna de más, y si `-Encoding UTF8` deja BOM. Una versión
-que no esté en su tabla sale con **rc = 2** y enseña lo observado, en vez de darse por buena.
+la versión que tenga delante con las cosas de las que depende el bloque 2. Una versión que no esté
+en su tabla sale con **rc = 2** y enseña lo observado, en vez de darse por buena.
+
+### `Export-Csv -Append` NO rechaza: pierde el dato en silencio
+
+El contrato decía —y el comentario del propio logger dice— que `Export-Csv -Append` de 5.1
+**rechaza** filas cuyas columnas no cuadren. **Medido, es falso.** Sobre un CSV de v1, añadiendo una
+fila con dos columnas de más:
+
+| | Windows PowerShell 5.1 | PowerShell 7.6.5 |
+|---|---|---|
+| ¿da error? | **no** | **no** |
+| ¿escribe la fila? | **sí** | *sin medir* |
+| ¿entran las columnas nuevas? | **no** | no |
+| `-Encoding UTF8` deja BOM | sí | no |
+
+5.1 → run 35474112229 · 7.6.5 → run 35472054575.
+
+O sea que no hay rechazo ruidoso: **la fila entra y `ciclo_id` y `latencia_ms` se caen por el
+camino, sin un solo error en pantalla.** Eso es peor de lo que suponía el contrato, y convierte la
+rotación en la única forma de no perder columnas. Corregido en `docs/contrato_datos_zigbee.md`.
+
+**Queda por medir el caso contrario** —una fila con columnas de **menos**, o **renombradas**, que es
+lo que pasaría si un recolector viejo escribiera sobre un fichero ya rotado a v2—. La sonda ya lo
+prueba; los valores los pone la siguiente ejecución. Hasta entonces el contrato no afirma nada sobre
+ese caso.
 
 Lo que hizo falta adaptar de los bancos que ya había, que asumían Linux:
 
