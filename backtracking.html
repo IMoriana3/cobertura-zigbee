@@ -215,8 +215,11 @@
     </div>
     <span class="pill" id="motorsinfo"></span>
     <div class="nota">En <b>bifila</b> las dos filas del grupo giran con el MISMO θ: se adopta el
-      min(|θ|) del grupo (reducir |θ| desde un ángulo de backtracking nunca crea sombra — la misma
-      regla que el acoplado interior del core). La <b>rígida</b> además comparte tilt N-S (el medio del
+      min(|θ|) del grupo — la misma regla que el acoplado interior del core. Esa regla es la del
+      LLANO: <b>reducir |θ| desde un ángulo de backtracking SÍ puede crear sombra en cuesta</b>, y
+      está medido — el contraejemplo aparece en <b>75 de 200</b> instantes del barrido de terrenos
+      (semilla 1) y en <b>68 de 200</b> con la semilla 7, con el 22,79 % y el 22,03 % del peso
+      energético. El peor llega a 91,4 % de fracción sombreada con |θ| MENOR. La <b>rígida</b> además comparte tilt N-S (el medio del
       grupo: el tubo no se dobla); la <b>quebrada</b> lleva cardan y cada fila conserva su tilt local.</div>
   </div>
 
@@ -525,7 +528,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.71.0';
+const VER='v1.74.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -2941,6 +2944,18 @@ function anglesOptimal(zen,az,T,irr,doy,albedo,prev){
   // publicado rendía MENOS que la base (medido: −0,27% el 21-jun). El core
   // garantiza energy-optimal ≥ pairwise porque f=0 ES pairwise: se comprueba
   // con la métrica que se publica, no con la de la búsqueda.
+  // v1.73 · Y ESA PROMESA SÓLO SE CUMPLE DONDE LA PUBLICADA ES ÉSTA. El veto
+  // llama a `poaPlant` —por LÍNEA— seis veces y a `poaPlantSeg` ninguna. En una
+  // planta sin `segTilt` la publicada ES `poaPlant` y la promesa se cumple; en
+  // una planta CON `segTilt` —Ayora y las demás reales— la que se publica es
+  // `poaPlantSeg`, por MESA, y el veto sigue comprobando con la otra.
+  // MEDIDO (R3 fase 1, audit3/out/F1_seg_metrica.json, Ayora real, 21-jun, 86
+  // instantes con haz): `optimal` no pierde NUNCA por línea —0 de 86, que es
+  // justo lo que esta garantía promete— y pierde por mesa en 58 de 86, con el
+  // día en −0,5103 %. No es casualidad: es la consecuencia de esta línea.
+  // No se cambia aquí: cuál de las dos métricas es la verdad de la planta es
+  // una decisión del auditor, y cambiar el objetivo de la búsqueda mueve todas
+  // las cifras publicadas a la vez.
   // Se compara contra los DOS extremos de la rejilla —f=0 (pairwise) y f=1
   // (astro)—: ambos SON candidatos, así que el óptimo no puede quedar por
   // debajo de ninguno. Con solo el extremo f=0 se colaba lo contrario: en
@@ -4299,7 +4314,7 @@ function cfg(){
     // con planta real cargada el tope sube: un bloque real puede tener 80 líneas
     nrows:Math.max(2,Math.min(PLANT_REAL?200:24,Math.round(+$('nrows').value))),
     axaz:+$('axaz').value, axtilt:+$('axtilt').value, nspreset:$('nspreset').value,
-    drive:$('drive').value, nbp:Math.round(+$('nbp').value), z0:+$('z0').value, iam:+$('iam').value,
+    drive:$('drive').value, nbp:nbDe().n, nbFuente:nbDe().fuente, z0:+$('z0').value, iam:+$('iam').value,
     nsl:$('nsl').value, ntrk:Math.max(1,Math.min(3,Math.round(+$('ntrk').value))),
     mods:Math.max(8,Math.min(32,Math.round(+$('mods').value))),
     tcucfg:($('tcucfg')?$('tcucfg').value:'levantamiento'),
@@ -4377,6 +4392,32 @@ function nsProfile(c){
   return out;
 }
 let PLANT_REAL=null;   // planta cargada de cotas reales (Ayora/San José); null = presets
+/* v1.72 · DE DÓNDE SALE `nb`, Y POR QUÉ HOY SALE DEL FORMULARIO
+   `nb` —cuántas subcadenas de diodo atraviesa la sombra al subir por la cuerda—
+   decide el escalón de la pérdida electrica de Martinez, y con él la POA que la
+   página publica. Debería salir de la FICHA DEL MÓDULO de cada planta.
+   NO SALE, porque el dato NO ESTÁ. Buscado sobre todos los .json, .csv y
+   .geojson del repositorio con trece patrones —bypass, by-pass, subcaden,
+   sub-caden, diodo, diode, modulo_v, mod_v, n_bp, nbp, celul, half-cell, media
+   celda—: cero. El único acierto de «subcaden» es de las cadenas ZigBee del
+   gateway. Y las propias fichas lo dicen: `modulos_en_vertical` viene como
+   «null · el bloque no dice la V».
+   Así que se queda CONFIGURABLE, como estaba, y lo que cambia es que la página
+   DICE de dónde lo ha sacado en vez de presentarlo como dato de planta. El día
+   que una ficha lo traiga, `nbDe()` lo coge sin tocar nada más. */
+function nbFicha(){
+  const P=PLANT_REAL;
+  if(!P)return null;
+  const cand=[P.nBypass,P.nb,P.modulo&&P.modulo.nBypass,P.modulo&&P.modulo.subcadenas,
+              P.ficha&&P.ficha.nBypass,P.ficha&&P.ficha.subcadenas];
+  for(const v of cand){const n=Math.round(+v);if(Number.isFinite(n)&&n>=0&&n<=6)return n;}
+  return null;
+}
+function nbDe(){
+  const f=nbFicha();
+  if(f!=null)return {n:f,fuente:'ficha del módulo'};
+  return {n:Math.round(+$('nbp').value),fuente:'CONFIGURADO a mano (ninguna ficha lo trae)'};
+}
 /* Testigo de «ya te lo dije»: los optimizadores se apagan la PRIMERA vez que
    se carga una planta real, no cada vez. Si el usuario los reenciende a
    sabiendas del coste, la página no se lo vuelve a discutir. */
@@ -5161,6 +5202,10 @@ function* serieDiaGen(key,D,dest){
      seguidor y `cmd` dice qué le han PEDIDO, y sólo la segunda distingue
      «la política se aparta del astronómico» de «los lazos han derivado». */
   const cmd=new Array(nT);
+  /* la POA de planta por LÍNEA, siempre — con mesas es la segunda métrica y sin
+     mesas coincide con la publicada. Se guarda para que la tabla pueda enseñar
+     las dos sin recalcular el día. */
+  const poaLin=new Array(nT);
   // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
   // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
   const poaHi=new Array(nT), poaLo=new Array(nT);
@@ -5188,6 +5233,17 @@ function* serieDiaGen(key,D,dest){
       const ls=topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60));
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
       segAng[t]=ls; poaS[t]=pp.segs;
+      /* v1.74 · LA OTRA MÉTRICA, sobre el MISMO estado ejecutado. `poaPlantSeg`
+         usa el tilt, la sombra y el largo de CADA MESA; `poaPlant` usa el tilt y
+         la sombra de la LÍNEA y promedia líneas sin ponderar. No son dos
+         precisiones de lo mismo: son dos agregaciones distintas, y el orden
+         entre políticas depende de cuál se use (medido en R3 fase 1: `optimal`
+         gana por línea en 86 de 86 instantes y pierde por mesa en 58 de 86).
+         Hasta aquí la página elegía una en silencio según hubiera `segTilt`.
+         Ahora publica LAS DOS y deja la elección a la vista.
+         Se le pasa `lim`, que es la media de línea del MISMO θ ejecutado: así lo
+         único que cambia entre las dos cifras es la agregación, no el mando. */
+      poaLin[t]=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo).plant;
     }else{
       // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
       // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
@@ -5197,12 +5253,13 @@ function* serieDiaGen(key,D,dest){
       cmd[t]=o.angles;                   // el MANDO: antes del lazo y antes del tope
       lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+      poaLin[t]=pp.plant;                // sin mesas, las dos métricas SON la misma
     }
     ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
     poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
     yield t;
   }
-  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
+  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaLin:poaLin,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS,porMesa:!!seg};
 }
 function serieDia(key,D){const d={};for(const _ of serieDiaGen(key,D,d));return d.s;}
 function* computeDayGen(){
@@ -5266,6 +5323,9 @@ function kpisSerie(T,angArr,pre){
   const p=pre||null;
   const dtH=STEP_MIN/60;
   let kwh=0, kwhHi=0, kwhLo=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0, glW=0;
+  /* v1.74 · la MISMA integral con la otra agregación. Sin mesas las dos cifras
+     son la misma por construcción y la tabla no enseña la segunda. */
+  let kwhLin=0;
   let worstT=-1, shPeak=0;
   for(let t=0;t<d.times.length;t++){
     const ang=angArr[t];
@@ -5275,6 +5335,10 @@ function kpisSerie(T,angArr,pre){
     kwh+=pp.plant*dtH/1000;
     kwhHi+=pp.plantHi*dtH/1000;
     kwhLo+=pp.plantLo*dtH/1000;
+    /* la otra agregación, si la serie la trae. Cuando no —el careo llama con
+       `pre` a null y recalcula— se usa la misma y las dos cifras coinciden, que
+       es lo correcto: sin mesas no hay dos métricas. */
+    kwhLin+=((p&&p.poaLin&&p.poaLin[t]!=null)?p.poaLin[t]:pp.plant)*dtH/1000;
     const nRt=ang.length;
     const med=pp.shade.reduce((a,v)=>a+v,0)/nRt;            // media de PLANTA
     // el peor momento se mide con la MISMA magnitud que el resto de la v1.31
@@ -5310,7 +5374,7 @@ function kpisSerie(T,angArr,pre){
     elecKwh+=(e/nRt)*dtH/1000;
     elecPl+=(ep/nRt)*dtH/1000;
   }
-  return {kwh:kwh,kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
+  return {kwh:kwh,kwhLin:kwhLin,porMesa:!!(p&&p.porMesa),kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
           elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl),
           worstT:worstT,shPeak:shPeak};
 }
@@ -7159,15 +7223,26 @@ function fillDayTable(){
   // que es contra quien compara la cajita — y la cabecera lo dice
   const refKey=DAY.pol['pairwise']?'pairwise':(CAREO&&DAY.pol[CAREO_A]?CAREO_A:null);
   const ref=refKey?dayKpis(refKey):null;
-  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th>'+
+  /* v1.74 · LAS DOS MÉTRICAS, cuando hay mesas. `poaPlantSeg` usa el tilt, la
+     sombra y el largo de CADA MESA; `poaPlant` usa los de la LÍNEA y promedia
+     líneas sin ponderar. Hasta aquí la página elegía una en silencio según
+     hubiera `segTilt`, y el ORDEN entre políticas depende de cuál se use —medido
+     en R3 fase 1: `optimal` gana por línea en 86 de 86 instantes y pierde por
+     mesa en 58 de 86—. Ahora se publican las dos y la elección queda a la vista.
+     La columna sólo aparece con mesas: sin ellas las dos cifras SON la misma y
+     una segunda columna repetida sería ruido. */
+  let best=-1;
+  const kk=POLICIES.filter(P=>DAY.pol[P.key]).map(P=>({P:P,k:dayKpis(P.key)}));
+  const DOS=kk.some(e=>e.k&&e.k.porMesa);
+  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d'+(DOS?' <span class="mut">(por mesa)</span>':'')+'</th>'+
+    (DOS?'<th title="La MISMA consigna ejecutada, agregada por LÍNEA: tilt y sombra de la línea, y media de líneas SIN ponderar. La columna de al lado agrega por MESA: tilt, sombra y largo de cada una. No son dos precisiones de lo mismo, son dos agregaciones, y el orden entre políticas puede cambiar según cuál se mire.">POA planta <span class="mut">(por línea)</span></th>':'')+
     '<th title="Diferencia de POA de planta contra pairwise, y entre corchetes la BANDA del circunsolar: cota alta = circunsolar SIN sombrear (lo que se hacía hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte. Si la banda CRUZA EL CERO el simulador NO decide quién gana: sale marcada en ámbar">Δ vs pairwise (banda)</th>'+
     '<th title="Sombra media de PLANTA ponderada por la DNI del instante: cuánta sombra te comes donde hay energía. Sustituye al «máximo de una fila», que en terreno roto saturaba al 100% en todas las políticas y no distinguía nada">Sombra (pond. energía)</th>'+
     '<th title="Minutos con sombra media de planta >1% y DNI>25 W/m² (antes: cualquier fila >0,1%, que salía igual para todas)">Min con sombra >1%</th>'+
     '<th title="Pérdida eléctrica Martinez sobre el beam. Entre paréntesis, la parte que NO puede evitar ninguna consigna: la estructura de la mesa (viga de torsión y canto del laminado)">Pérdida Martinez (de estructura)</th>'+
     '<th title="LUZ DIRECTA AL SUELO: fracción del haz que llega al suelo entre filas (ground_light_fraction de pvlib infinite-sheds, la misma que minimiza min ground light), media de filas y ponderada por la DNI del instante. Menos = más sombra en el suelo (agrivoltaica inversa / pastoreo)">Luz al suelo</th>'+
     '<th>|θ| máx</th></tr>');
-  let best=-1;
-  const kk=POLICIES.filter(P=>DAY.pol[P.key]).map(P=>({P:P,k:dayKpis(P.key)}));
+
   for(const e of kk)best=Math.max(best,e.k.kwh);
   for(const e of kk){
     const d=ref?100*(e.k.kwh/ref.kwh-1):0;
@@ -7182,6 +7257,7 @@ function fillDayTable(){
       (bl>=0?'+':'')+bl.toFixed(2)+' \u2026 '+(bh>=0?'+':'')+bh.toFixed(2)+']'+(cruza?' \u26a0':'')+'</span>':'';
     rows.push('<tr><td style="color:'+e.P.col+'">'+e.P.nm+'</td>'+
       '<td class="'+(Math.abs(e.k.kwh-best)<1e-9?'best':'')+'">'+e.k.kwh.toFixed(3)+'</td>'+
+      (DOS?'<td class="mut">'+e.k.kwhLin.toFixed(3)+'</td>':'')+
       '<td>'+(ref?(d>=0?'+':'')+d.toFixed(2)+'%'+banda:'—')+'</td>'+
       '<td>'+(e.k.shW*100).toFixed(2)+'%</td>'+
       '<td>'+e.k.minSh+'</td>'+
@@ -7195,7 +7271,7 @@ function fillDayTable(){
   $('daynote').innerHTML=
     'Accionamiento <b>'+(drv==='mono'?'monofila':drv==='bifila'?'bifila rígida':'bifila quebrada')+'</b> ('+nm2+' motores'+
     (drv==='mono'?'': ' — θ común por grupo; pairwise y true-3D refinan a nivel de accionamiento y el residuo que ni así se evita es IRREDUCIBLE: el precio físico de la bifila en terreno roto')+'). '+
-    (u?'Terreno <b>uniforme</b>: global = row = pairwise por construcción (la diferencia que veas es 0). ':'Terreno <b>no uniforme</b>: las políticas divergen — pairwise garantiza sombra cero <b>entre planos de módulo</b> (la estructura deja su residuo, entre paréntesis en la columna Martinez), row apunta mejor y puede dejar sombra residual. ')+
+    (u?'Terreno <b>uniforme</b>: global = row = pairwise por construcción (la diferencia que veas es 0). ':'Terreno <b>no uniforme</b>: las políticas divergen — pairwise <b>busca</b> sombra cero <b>entre planos de módulo</b> —la busca, no la garantiza: su criterio es el primer θ sin sombra dentro del cono de haz, y bajo torsión puede quedarse en el θ que menos sombra deja— y la estructura añade su residuo, entre paréntesis en la columna Martinez; row apunta mejor y puede dejar sombra residual. ')+
     'Con tilt N-S del eje = '+DAY.c.axtilt+'° '+(Math.abs(DAY.c.axtilt)<=0.5?'true-3D <b>ES</b> la baseline (guard de degeneración 2.5D, como el core).':
     'true-3D puede empinar más: la sombra 3D se deflecta a lo largo del eje. ')+
     'La columna de sombra y su pérdida Martinez salen del <b>ray-cast 3D multi-emisora</b> (cotas por tramo, todas las filas al alcance, Martinez por estación axial) — el mismo contador de la escena; el 2.5D exacto queda como referencia analítica de QA. '+
@@ -7388,7 +7464,7 @@ function informeHTML(){
   '<div><b>Latitud / longitud</b>'+c.lat+'° / '+c.lon+'°</div><div><b>Altitud · huso</b>'+c.alt+' m · UTC'+(c.tz>=0?'+':'')+c.tz+'</div>'+
   '<div><b>Albedo</b>'+c.albedo+'</div><div><b>Sol del día</b>'+(t0>=0?'de '+hhmm(d.times[t0])+' a '+hhmm(d.times[t1])+', máx '+f1(elMax)+'°':'no sale')+'</div>'+
   '<div><b>GHI / DNI / DHI del día</b>'+f2(ghi)+' / '+f2(dni)+' / '+f2(dhi)+' kWh/m²</div><div><b>Planta</b>'+esc(plantSel)+(realTxt?' — '+esc(realTxt):'')+'</div>'+
-  '<div><b>Filas · pitch · cuerda · GCR</b>'+n+' · '+c.pitch+' m · '+c.cw+' m · '+(c.cw/c.pitch).toFixed(3)+'</div><div><b>θ máx · cara sobre eje · subcadenas · IAM b₀</b>±'+c.maxang+'° · '+c.z0+' m · '+c.nbp+' · '+c.iam+'</div>'+
+  '<div><b>Filas · pitch · cuerda · GCR</b>'+n+' · '+c.pitch+' m · '+c.cw+' m · '+(c.cw/c.pitch).toFixed(3)+'</div><div><b>θ máx · cara sobre eje · subcadenas · IAM b₀</b>±'+c.maxang+'° · '+c.z0+' m · '+c.nbp+' <span class="mut">('+(c.nbFuente||'procedencia sin declarar')+')</span> · '+c.iam+'</div>'+
   '<div><b>Azimut del eje</b>'+c.axaz+'°</div><div><b>Accionamiento</b>'+drvNm+' — '+nMotorsSegs(T)+' motores</div>'+
   '<div><b>Terreno transversal (E-O)</b>'+(uni?'uniforme':'irregular')+': cotas de '+zmin.toFixed(2)+' a '+zmax.toFixed(2)+' m, pendiente por vano '+pend(slopes)+'</div><div><b>Perfil longitudinal (N-S)</b>'+nsp+', valor '+c.axtilt+'°'+(T.rotula?(T.rotula.sigue?' — cada mesa sigue su terreno':' — tubo recto al tilt medio (no lo sigue)'):'')+'; tilt por fila '+pend(T.rowTilt||[0])+'</div>'+
   '<div><b>Implantación a lo largo</b>'+esc(c.nsl)+' × '+c.ntrk+' tracker/línea · '+c.mods+' módulos por ala ('+(T.filaLen||0).toFixed(1)+' m por tracker)</div><div><b>Lo que la TCU cree tener delante</b>'+tcu+'</div>'+
@@ -7399,7 +7475,7 @@ function informeHTML(){
   '<h2>4. Tabla horaria</h2>'+hor+
   yearHtml+
   '<h2>Validación</h2>'+qaTxt+
-  '<h2>Método y límites declarados</h2><ul class="mut"><li>Seguimiento: pvlib <code>singleaxis</code> (Anderson & Mikofski 2020) con tilt N-S y azimut del eje; sombra 2.5D analítica (≡ Anderson 2023) como referencia de QA; contador publicado: ray-cast 3D multi-emisora con la cota de cada tramo, viga (120 mm) y canto (60 mm), '+(T.real?8:8)+' estaciones por tramo.</li><li>Cielo claro Ineichen con turbidez Linke '+c.tl+'; transposición Perez con circunsolar e IAM ASHRAE (b₀='+c.iam+'); sin meteo real: comparativa de políticas, no un P50.</li><li>Eléctrico: pérdida Martinez por subcadenas ('+c.nbp+' en la cuerda) sobre el haz; sin mismatch en serie ni temperatura.</li><li>Fuera del modelo: el bloqueo de bóveda por la fila de delante (difusa enmascarada), el cono real del circunsolar, y la estructura en el criterio de las políticas sin-sombra (el contador la cobra; pvlib no la esquiva).</li><li>Con planta medida las consignas van por mesa (tilt y cota de cada tramo) y el careo con la producción por string es idéntico en las mesas interiores (tools/careo_produccion.mjs).</li></ul>'+
+  '<h2>Método y límites declarados</h2><ul class="mut"><li>Seguimiento: pvlib <code>singleaxis</code> (Anderson & Mikofski 2020) con tilt N-S y azimut del eje; sombra 2.5D analítica (≡ Anderson 2023) como referencia de QA; contador publicado: ray-cast 3D multi-emisora con la cota de cada tramo, viga (120 mm) y canto (60 mm), '+(T.real?8:8)+' estaciones por tramo.</li><li>Cielo claro Ineichen con turbidez Linke '+c.tl+'; transposición Perez con circunsolar e IAM ASHRAE (b₀='+c.iam+'); sin meteo real: comparativa de políticas, no un P50.</li><li>Eléctrico: pérdida Martinez por subcadenas ('+c.nbp+' en la cuerda, '+(c.nbFuente||'procedencia sin declarar')+') sobre el haz; sin mismatch en serie ni temperatura.</li><li>Fuera del modelo: el bloqueo de bóveda por la fila de delante (difusa enmascarada), el cono real del circunsolar, y la estructura en el criterio de las políticas sin-sombra (el contador la cobra; pvlib no la esquiva).</li><li>Con planta medida las consignas van por mesa (tilt y cota de cada tramo) y el careo con la producción por string es idéntico en las mesas interiores (tools/careo_produccion.mjs).</li></ul>'+
   '</body></html>';
 }
 function abrirInforme(){
