@@ -528,7 +528,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.73.0';
+const VER='v1.74.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -5202,6 +5202,10 @@ function* serieDiaGen(key,D,dest){
      seguidor y `cmd` dice qué le han PEDIDO, y sólo la segunda distingue
      «la política se aparta del astronómico» de «los lazos han derivado». */
   const cmd=new Array(nT);
+  /* la POA de planta por LÍNEA, siempre — con mesas es la segunda métrica y sin
+     mesas coincide con la publicada. Se guarda para que la tabla pueda enseñar
+     las dos sin recalcular el día. */
+  const poaLin=new Array(nT);
   // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
   // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
   const poaHi=new Array(nT), poaLo=new Array(nT);
@@ -5229,6 +5233,17 @@ function* serieDiaGen(key,D,dest){
       const ls=topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60));
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
       segAng[t]=ls; poaS[t]=pp.segs;
+      /* v1.74 · LA OTRA MÉTRICA, sobre el MISMO estado ejecutado. `poaPlantSeg`
+         usa el tilt, la sombra y el largo de CADA MESA; `poaPlant` usa el tilt y
+         la sombra de la LÍNEA y promedia líneas sin ponderar. No son dos
+         precisiones de lo mismo: son dos agregaciones distintas, y el orden
+         entre políticas depende de cuál se use (medido en R3 fase 1: `optimal`
+         gana por línea en 86 de 86 instantes y pierde por mesa en 58 de 86).
+         Hasta aquí la página elegía una en silencio según hubiera `segTilt`.
+         Ahora publica LAS DOS y deja la elección a la vista.
+         Se le pasa `lim`, que es la media de línea del MISMO θ ejecutado: así lo
+         único que cambia entre las dos cifras es la agregación, no el mando. */
+      poaLin[t]=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo).plant;
     }else{
       // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
       // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
@@ -5238,12 +5253,13 @@ function* serieDiaGen(key,D,dest){
       cmd[t]=o.angles;                   // el MANDO: antes del lazo y antes del tope
       lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
+      poaLin[t]=pp.plant;                // sin mesas, las dos métricas SON la misma
     }
     ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
     poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
     yield t;
   }
-  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
+  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaLin:poaLin,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS,porMesa:!!seg};
 }
 function serieDia(key,D){const d={};for(const _ of serieDiaGen(key,D,d));return d.s;}
 function* computeDayGen(){
@@ -5307,6 +5323,9 @@ function kpisSerie(T,angArr,pre){
   const p=pre||null;
   const dtH=STEP_MIN/60;
   let kwh=0, kwhHi=0, kwhLo=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0, glW=0;
+  /* v1.74 · la MISMA integral con la otra agregación. Sin mesas las dos cifras
+     son la misma por construcción y la tabla no enseña la segunda. */
+  let kwhLin=0;
   let worstT=-1, shPeak=0;
   for(let t=0;t<d.times.length;t++){
     const ang=angArr[t];
@@ -5316,6 +5335,10 @@ function kpisSerie(T,angArr,pre){
     kwh+=pp.plant*dtH/1000;
     kwhHi+=pp.plantHi*dtH/1000;
     kwhLo+=pp.plantLo*dtH/1000;
+    /* la otra agregación, si la serie la trae. Cuando no —el careo llama con
+       `pre` a null y recalcula— se usa la misma y las dos cifras coinciden, que
+       es lo correcto: sin mesas no hay dos métricas. */
+    kwhLin+=((p&&p.poaLin&&p.poaLin[t]!=null)?p.poaLin[t]:pp.plant)*dtH/1000;
     const nRt=ang.length;
     const med=pp.shade.reduce((a,v)=>a+v,0)/nRt;            // media de PLANTA
     // el peor momento se mide con la MISMA magnitud que el resto de la v1.31
@@ -5351,7 +5374,7 @@ function kpisSerie(T,angArr,pre){
     elecKwh+=(e/nRt)*dtH/1000;
     elecPl+=(ep/nRt)*dtH/1000;
   }
-  return {kwh:kwh,kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
+  return {kwh:kwh,kwhLin:kwhLin,porMesa:!!(p&&p.porMesa),kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
           elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl),
           worstT:worstT,shPeak:shPeak};
 }
@@ -7200,7 +7223,17 @@ function fillDayTable(){
   // que es contra quien compara la cajita — y la cabecera lo dice
   const refKey=DAY.pol['pairwise']?'pairwise':(CAREO&&DAY.pol[CAREO_A]?CAREO_A:null);
   const ref=refKey?dayKpis(refKey):null;
-  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d</th>'+
+  /* v1.74 · LAS DOS MÉTRICAS, cuando hay mesas. `poaPlantSeg` usa el tilt, la
+     sombra y el largo de CADA MESA; `poaPlant` usa los de la LÍNEA y promedia
+     líneas sin ponderar. Hasta aquí la página elegía una en silencio según
+     hubiera `segTilt`, y el ORDEN entre políticas depende de cuál se use —medido
+     en R3 fase 1: `optimal` gana por línea en 86 de 86 instantes y pierde por
+     mesa en 58 de 86—. Ahora se publican las dos y la elección queda a la vista.
+     La columna sólo aparece con mesas: sin ellas las dos cifras SON la misma y
+     una segunda columna repetida sería ruido. */
+  const DOS=kk.some(e=>e.k&&e.k.porMesa);
+  rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d'+(DOS?' <span class="mut">(por mesa)</span>':'')+'</th>'+
+    (DOS?'<th title="La MISMA consigna ejecutada, agregada por LÍNEA: tilt y sombra de la línea, y media de líneas SIN ponderar. La columna de al lado agrega por MESA: tilt, sombra y largo de cada una. No son dos precisiones de lo mismo, son dos agregaciones, y el orden entre políticas puede cambiar según cuál se mire.">POA planta <span class="mut">(por línea)</span></th>':'')+
     '<th title="Diferencia de POA de planta contra pairwise, y entre corchetes la BANDA del circunsolar: cota alta = circunsolar SIN sombrear (lo que se hacía hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte. Si la banda CRUZA EL CERO el simulador NO decide quién gana: sale marcada en ámbar">Δ vs pairwise (banda)</th>'+
     '<th title="Sombra media de PLANTA ponderada por la DNI del instante: cuánta sombra te comes donde hay energía. Sustituye al «máximo de una fila», que en terreno roto saturaba al 100% en todas las políticas y no distinguía nada">Sombra (pond. energía)</th>'+
     '<th title="Minutos con sombra media de planta >1% y DNI>25 W/m² (antes: cualquier fila >0,1%, que salía igual para todas)">Min con sombra >1%</th>'+
@@ -7223,6 +7256,7 @@ function fillDayTable(){
       (bl>=0?'+':'')+bl.toFixed(2)+' \u2026 '+(bh>=0?'+':'')+bh.toFixed(2)+']'+(cruza?' \u26a0':'')+'</span>':'';
     rows.push('<tr><td style="color:'+e.P.col+'">'+e.P.nm+'</td>'+
       '<td class="'+(Math.abs(e.k.kwh-best)<1e-9?'best':'')+'">'+e.k.kwh.toFixed(3)+'</td>'+
+      (DOS?'<td class="mut">'+e.k.kwhLin.toFixed(3)+'</td>':'')+
       '<td>'+(ref?(d>=0?'+':'')+d.toFixed(2)+'%'+banda:'—')+'</td>'+
       '<td>'+(e.k.shW*100).toFixed(2)+'%</td>'+
       '<td>'+e.k.minSh+'</td>'+
