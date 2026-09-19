@@ -194,6 +194,13 @@ jobs:
     runs-on: windows-latest
     env:
       PWSH: powershell          # el 5.1 de Windows, NO el pwsh 7 que también está
+      # LA SALIDA DE PYTHON, EN UTF-8. En Windows la stdout de Python es cp1252,
+      # y los bancos imprimen «·», «á», «→»… Con cp1252 eso no es que salga feo:
+      # es un UnicodeEncodeError que TUMBA el banco antes de decir nada. Pasó con
+      # el bloque de diagnóstico, que se cayó justo donde tenía que explicar el
+      # fallo. Esto es del entorno, no del banco: no cambia lo que comprueba
+      # ninguno, y de paso los acentos salen legibles en el registro.
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

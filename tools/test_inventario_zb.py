@@ -197,16 +197,20 @@ srv.shutdown()
 # del job de Windows, donde el censo salio bien y las consultas por nodo NO, y el
 # banco no daba el motivo que el propio CSV ya traia escrito.
 if fallos:
-    print("\n── por qué, según el propio recolector ──────────────────────────")
+    # ASCII PURO AQUI. La primera version de este bloque usaba rayas de caja y
+    # se cayo con UnicodeEncodeError en Windows: la stdout de Python alli es
+    # cp1252 y no tiene esos caracteres. Un diagnostico que revienta antes de
+    # imprimir el diagnostico es peor que no tenerlo.
+    print("\n--- por que, segun el propio recolector ---")
     for f in filas:
         print("  %-8s estado_ok=%s  ajuste_ok=%s" % (f.get("node_id"), f.get("estado_ok"), f.get("ajuste_ok")))
         for c in ("estado_error", "ajuste_error"):
             if f.get(c):
                 print("      %s: %s" % (c, f[c][:300]))
-    print("\n── lo que PowerShell escribió por consola ───────────────────────")
+    print("\n--- lo que PowerShell escribio por consola ---")
     print((salida or "(nada)")[-1500:])
-    print("\n── el volcado en bruto, primeros 600 ────────────────────────────")
-    print((crudo or "(vacío)")[:600])
+    print("\n--- el volcado en bruto, primeros 600 ---")
+    print((crudo or "(vacio)")[:600])
 
 print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
 sys.exit(1 if fallos else 0)
