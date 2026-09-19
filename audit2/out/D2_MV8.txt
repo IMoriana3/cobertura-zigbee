@@ -1,0 +1,20 @@
+════════════════════════════════════════════════════════════════════════════════════════
+E-D2/E-D3 · anual de Ayora real variando MV y nb · commit 3a574512c86d0fe78051d08c75c6e4439d20de1c · node v22.22.2 · VER v1.68.0
+sitio lat 39.11821 lon -1.15985 alt 739 m tz 2 · TL 3.5 · albedo 0.2 · año 2026
+planta 79 líneas de simulación · cuerda 2.384 · z0 0.17 · ±55° · axisAz 0 · drive bifila · T.real true
+MV sin forzar = 8 (if(T.real)return 8, backtracking.html:845) · nb de cfg = 2 · b0 0.05
+DISEÑO REDUCIDO DECLARADO: paso 20 min (el manejador publicado usa 10) · días 21 de los meses [3, 6, 9, 12] de 12
+   los pesos se renormalizan a 365 días: peso(mes) = DIM[mes]·365/suma(DIM de los meses usados)
+   sólo el bloque D.2 · SIN lazo de control
+políticas: astro, global, row, bt2d, pairwise, true3d, mgl, optimal, optfree  (9)
+════════════════════════════════════════════════════════════════════════════════════════
+D.2 · MV 8 · nb cfg (2) — 14871 s
+     astro     2631.8894 kWh/m²·año
+     global    2643.3184 kWh/m²·año
+     row       2648.8196 kWh/m²·año
+     bt2d      2640.7619 kWh/m²·año
+     pairwise  2293.5007 kWh/m²·año
+     true3d    2278.7642 kWh/m²·año
+     mgl       2326.5231 kWh/m²·año
+     optimal   2666.4889 kWh/m²·año
+     optfree   2668.3689 kWh/m²·año

@@ -1,0 +1,17 @@
+════════════════════════════════════════════════════════════════════════════════════════════
+E-D5 · ANUAL PLENO de Ayora real · calibración de los optimizadores · commit 3096c7bce181c2ac247eaa744ef32cd220d1bb82
+node v22.22.2 · VER v1.68.0
+sitio   lat 39.11821 · lon -1.15985 · alt 739 m · tz 2 · año 2026
+cielo   Linke TL 3.5 · albedo 0.2 · Ineichen
+planta  79 líneas de simulación · cuerda 2.384 · z0 0.17 · ±55° · axisAz 0 · drive bifila · T.real true
+MV      8 (sin forzar: if(T.real)return 8, backtracking.html:845) · nb 2 · b0 0.05
+DISEÑO  PLENO: 12 días 21 de cada mes · paso 10 min · pesos DIM · SIN lazo de control
+        (es el diseño del manejador publicado; E-D2/E-D3 usan el reducido de 4 días y 20 min)
+políticas, en orden de ejecución: pairwise, optfree, optimal
+control: pairwise debe reproducir 2313,44643430 kWh/m²·año de E-A3 variante 1
+════════════════════════════════════════════════════════════════════════════════════════════
+PLENO · pairwise       2313.44643430 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 525 s
+PLENO · optfree        2691.13906045 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 5955 s
+PLENO · optimal        2689.21610119 kWh/m²·año · 875 instantes · MV 8 · nb 2 · 4917 s
+
+CSV: audit2/out/D5.csv

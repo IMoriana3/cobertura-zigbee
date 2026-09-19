@@ -1,0 +1,79 @@
+════════════════════════════════════════════════════════════════════════════════════════════════
+E-C6/E-C7 · columna de POA en los contraejemplos · commit 3096c7bce181c2ac247eaa744ef32cd220d1bb82 · física 1a13d8799f6a · node v22.22.2
+muestra: la MISMA de E-C2/E-C4 · 40 configuraciones · semilla 1 · mulberry32(20260917)
+sombra: de PLANOS (noStruct, sin 'terreno') · POA: poaPlant(...).plant · nb 2 · b0 0,05 · albedo 0,20 · TL 3,5 · MV = mvPara(T,zen)
+════════════════════════════════════════════════════════════════════════════════════════════════
+
+VERIFICACIÓN PEDIDA — ¿llama el despachador a repairNoShade para astro y para row?
+backtracking.html:3363-3369:
+
+  if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
+  if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
+  if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
+  if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
+  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
+  if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
+  return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
+
+⇒ astro (3363) y row (3366): SOLO applyDrive, SIN repairNoShade  ⇒ población (i), SIN GUARDIA
+⇒ true3d (3367), mgl (3368) y pairwise (3369, el return final): CON repairNoShade ⇒ población (ii), CON GUARDIA
+⇒ global (3364) y bt2d (3365) tampoco llaman a repairNoShade, pero publican UN ángulo para todas las filas:
+   applyDrive es un no-op y no hay elección de min(|θ|) que medir. Quedan fuera de las dos poblaciones.
+
+muestra reconstruida: 200 instantes
+
+── E-C6 · C.3 con POA · barrido de θ UNIFORME ──────────────────────────
+Este barrido NO es de ninguna política: θ uniforme no pasa por el despachador, así que no hay
+guardia que separar. La partición (i)/(ii) se aplica en E-C7, que sí usa policyAngles.
+instantes con contraejemplo: 75 / 200  (37.50 %)
+peso energético: 10512.910 de 46131.344 Wh/m² = 22.79 %
+ΔPOA = POA(θ del min|θ|) − POA(θ sin sombra):
+   el θ del min(|θ|) GANA energía en 74 de 75 instantes  (98.67 %)
+   y PIERDE en 1  (1.33 %)
+   ΔPOA: mín -0.0044 · p25 74.2664 · mediana 257.4706 · p75 477.7302 · máx 790.4563 W/m²
+
+   los 10 de ΔPOA más NEGATIVO (el min|θ| pierde más):
+    #   θ sin sombra  POA      θ del min|θ|  fs       POA       ΔPOA       sol°  configuración · instante
+    1     -1.75°      1.82         0°   73.42 %      1.82     -0.004    2.3  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 06:20Z
+    2         4°      2.31         0°    5.15 %      2.61      0.301    2.5  Zaragoza · cresta 1 · N-S quebrado 4° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 18:00Z
+    3       6.5°      1.47        -2°    2.31 %      1.78      0.315    2.0  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-dic 16:20Z
+    4        11°      2.83        -5°    2.07 %      5.64      2.810    2.8  Zaragoza · llano · N-S rotula 2° · bifila · tresbolillo ×1 · 10 filas · az 0° · 21-jun 19:20Z
+    5        12°     11.16         0°   16.53 %     22.49     11.336    5.9  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-jun 19:00Z
+    6     12.25°      7.68      -2.5°    1.84 %     21.02     13.337    4.4  Arequipa · cresta 1 · N-S constante -3° · mono · alineadas ×1 · 10 filas · az 15° · 21-jun 22:00Z
+    7     20.25°      5.42     -13.5°    0.47 %     21.13     15.718    3.5  Arequipa · pendiente 10 · N-S rotula 4° · mono · alineadas ×1 · 6 filas · az 0° · 21-mar 22:40Z
+    8     -11.5°     11.30      1.25°    1.21 %     27.41     16.115    5.9  Zaragoza · cresta 1 · N-S rotula 4° · quebrado · alineadas ×1 · 8 filas · az 15° · 21-mar 06:40Z
+    9       -14°     11.48      2.25°    0.67 %     29.80     18.317    5.9  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-mar 06:40Z
+   10        -8°     15.65         0°    7.23 %     39.48     23.832    7.6  Zaragoza · pendiente 10 · N-S aleatorio 3° · quebrado · bagnarelli ×2 · 10 filas · az -20° · 21-jun 05:20Z
+
+── E-C7 · C.4 con POA · acople real (applyDrive) ───────────────────────
+denominador: 112 instantes con accionamiento agrupado (de 200; en 88 monofila applyDrive es la identidad)
+
+  (i) POLÍTICAS SIN GUARDIA — el despachador NO llama a repairNoShade
+  etiqueta: CONTRAEJEMPLO: pérdida neta si ΔPOA < 0
+  política   instantes  con caso   %      peso energético   ΔPOA>0 (lo publicado gana)  ΔPOA<=0 (pierde)  ΔPOA mediana   ΔPOA peor
+  astro            112         9   8.04            9.29 %                          9                 0       66.3049     12.2741
+  row              112        12  10.71           11.00 %                         12                 0       66.3049     10.4536
+
+  (ii) POLÍTICAS CON GUARDIA — el despachador SÍ llama a repairNoShade
+  etiqueta: DECISIÓN DE LA GUARDIA v1.57.2
+  política   instantes  con caso   %      peso energético   ΔPOA>0 (lo publicado gana)  ΔPOA<=0 (pierde)  ΔPOA mediana   ΔPOA peor
+  pairwise         112         5   4.46            3.62 %                          5                 0       55.7125     33.5177
+  true3d           112         7   6.25            4.08 %                          7                 0       66.3391     12.3308
+  mgl              112         8   7.14            5.65 %                          8                 0       55.7125      2.0852
+
+  los 12 casos de ΔPOA más NEGATIVO (lo publicado pierde más energía que la postura sin sombra):
+   #  política  guardia  grupo    θ publicado  fs       POA pub   θ sombra0   POA      ΔPOA      sol°  configuración · instante
+   1  mgl       SÍ       [0,1]              -11.52°    0.20 %    113.19         0°    111.10      2.085    7.8  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-dic 15:40Z
+   2  row       NO       [0,1]              -11.41°   15.17 %    131.37         6°    120.92     10.454    7.8  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-dic 15:40Z
+   3  astro     NO       [6,7]              -17.59°    0.02 %    953.81         0°    941.54     12.274   66.1  Zaragoza · llano · N-S aleatorio 6° · quebrado · bagnarelli ×1 · 8 filas · az 0° · 21-jun 13:20Z
+   4  row       NO       [6,7]              -17.59°    0.02 %    953.81         0°    941.54     12.274   66.1  Zaragoza · llano · N-S aleatorio 6° · quebrado · bagnarelli ×1 · 8 filas · az 0° · 21-jun 13:20Z
+   5  true3d    SÍ       [0,1]                0.00°    1.32 %    110.71         5°     98.38     12.331    8.2  Arequipa · pendiente -3 · N-S senoidal 2° · bifila · tresbolillo ×1 · 6 filas · az 0° · 21-mar 22:20Z
+   6  mgl       SÍ       [2,3]               -7.75°    0.20 %    517.69         0°    492.20     25.492   27.2  Zaragoza · aleatorio 13 · N-S senoidal 3° · bifila · alineadas ×1 · 6 filas · az 0° · 21-jun 17:00Z
+   7  true3d    SÍ       [0,1]                0.00°    1.61 %    211.99      -9.5°    183.58     28.416   14.5  Zaragoza · aleatorio 13 · N-S senoidal 3° · bifila · alineadas ×1 · 6 filas · az 0° · 21-jun 06:00Z
+   8  row       NO       [2,3]               15.38°   15.02 %    457.82         0°    427.23     30.590   16.8  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 07:40Z
+   9  astro     NO       [2,3]               47.67°    2.26 %    419.57         0°    386.05     33.518   20.9  Zaragoza · aleatorio 7 · N-S rotula 6° · quebrado · tresbolillo ×1 · 8 filas · az 0° · 21-dic 10:20Z
+  10  row       NO       [2,3]               47.67°    2.26 %    419.57         0°    386.05     33.518   20.9  Zaragoza · aleatorio 7 · N-S rotula 6° · quebrado · tresbolillo ×1 · 8 filas · az 0° · 21-dic 10:20Z
+  11  pairwise  SÍ       [2,3]               47.67°    2.26 %    419.57         0°    386.05     33.518   20.9  Zaragoza · aleatorio 7 · N-S rotula 6° · quebrado · tresbolillo ×1 · 8 filas · az 0° · 21-dic 10:20Z
+  12  true3d    SÍ       [2,3]               47.67°    2.26 %    419.57         0°    386.05     33.518   20.9  Zaragoza · aleatorio 7 · N-S rotula 6° · quebrado · tresbolillo ×1 · 8 filas · az 0° · 21-dic 10:20Z
+
+CSV: audit2/out/C34_c3.csv (75 filas) · audit2/out/C34_c4.csv (41 filas)

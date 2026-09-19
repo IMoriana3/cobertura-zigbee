@@ -1,0 +1,31 @@
+════ E-D1 · cuantización axial · caso B · barrido de θ paso 0,25° ════
+commit        HEAD   ·   VER en el fichero: v1.68.0
+node          v22.22.2
+sitio         lat 41.57634  lon -0.79814  alt 739 m
+cielo         TL 3.5  albedo 0.2  nubes 0  ·  ghi 82.432 dni 324.715 dhi 30.050
+geometría     6 filas · pitch 6 · cuerda 2.382 · z0 0.17 · ±55° · axisAz 0 · nb 2 · b0 0.05
+tilt N-S      -3.41 / 1.63 / 3.22 / 3.76 / -3.67 / -3.06
+instante      2026-06-21T05:30:00.000Z  (07:30 local, tz +2)  ·  sol elev 9.283° az 66.726° zen 80.717°
+MV efectivo   33
+──────────────────────────────────────────────────────────────────────
+MV adaptativo que publicaría el motor sin forzar: mvPara(T,zen) = 33
+MV forzados: 8, 16, 32, 64, 128  ·  vía T.mv  ·  441 ángulos de -55° a +55°
+
+ MV   θ de POA máx   POA máx      fs PLANOS en ese θ   extremos locales   nº oscilaciones   pico-pico MAYOR (θ)        suma pp
+   8           52°   238.1388            37.0133 %                47               45    4.536472 (52°)    56.3579
+  16        54.75°   246.9061            37.8428 %                44               42    2.038737 (47°)    30.3536
+  32        52.75°   241.2544            37.2560 %                47               45    1.174659 (43.75°)    16.5673
+  64           55°   242.3925            37.9606 %                31               29    0.678147 (38.5°)     7.6308
+ 128         54.5°   242.3709            37.8275 %                15               13    0.229333 (43°)     1.2267
+
+¿se mueve el argmax con MV?  SÍ — MV 8: 52° · MV 16: 54.75° · MV 32: 52.75° · MV 64: 55° · MV 128: 54.5°
+dispersión de la POA máxima entre MV: 8.767284 W/m²
+
+diferencia máxima de POA(θ) frente a MV=128, por MV:
+   MV   8 : 9.441699 W/m² en θ = 34.75°
+   MV  16 : 4.739598 W/m² en θ = 53.5°
+   MV  32 : 2.215171 W/m² en θ = 54.25°
+   MV  64 : 0.996268 W/m² en θ = 48.75°
+   MV 128 : 0.000000 W/m² en θ = null°
+
+CSV: audit2/out/D1_barrido.csv (2205 filas)

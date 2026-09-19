@@ -1,0 +1,72 @@
+════════════════════════════════════════════════════════════════════════════════════
+BLOQUE C · monotonía · commit d47ed31b1bbc61450541bd651714aced4266146a
+física (sha256 del bloque FÍSICA PURA, 12 hex) 1a13d8799f6a · árbol limpio
+node v22.22.2
+barrido replicado: 40 configuraciones · semilla 7 (semilla de CI, .github/workflows/bancos.yml:201)
+días 21-jun, 21-mar, 21-dic · paso 20 min · umbral de sol elev > 2° (igual que el barrido)
+criba C.1: θ uniforme de -55° a +55° paso 0.5° · "sombra 0" = fs <= 1e-9 (variante declarada fs <= 0.0001)
+muestra C.2: 200 instantes, mulberry32(20260917) · barrido fino paso 0.25°
+sombra reportada: de PLANOS (noStruct, sin la parte 'terreno' del desglose). POA: poaPlant, albedo 0.2, TL 3.5, nb 2, b0 0.05, altitud del sitio, MV = mvPara(T,zen) publicado
+════════════════════════════════════════════════════════════════════════════════════
+
+── C.1 ────────────────────────────────────────────────────────────
+instantes-configuración con sol > 2°           : 4217   (denominador)
+  · con ALGÚN θ uniforme de sombra de planos 0 : 3696  (87.65 %)  [fs <= 1e-9]
+  · ídem con la variante fs <= 0.0001          : 3696  (87.65 %)
+evaluaciones de shadeBand3DAll en la criba     : 221377 · 161 s
+TEST NULO: el predicado NO es constante (3696 de 4217) = el recuento informa.
+
+distribución por elevación solar (numerador con θ de sombra 0 / denominador de instantes):
+   sol  2– 5° :   101 /   211  (47.9 %)
+   sol  5–10° :   184 /   314  (58.6 %)
+   sol 10–20° :   478 /   616  (77.6 %)
+   sol 20–30° :   647 /   719  (90.0 %)
+   sol 30–45° :   822 /   869  (94.6 %)
+   sol 45–90° :  1464 /  1488  (98.4 %)
+
+distribución por torsión máxima entre filas vecinas |rowTilt[i]-rowTilt[i+1]| (T.rowTilt tras effRowTilts):
+   torsión = 0 :  2274 /  2318  (98.1 %)
+   torsión > 1° ≤ 3° :   184 /   211  (87.2 %)
+   torsión > 3° ≤ 6° :   877 /  1055  (83.1 %)
+   torsión > 6° ≤ 100° :   361 /   633  (57.0 %)
+
+── C.2 ────────────────────────────────────────────────────────────
+muestra: 200 de 3696 (instantes con θ de sombra 0) · barajado Fisher-Yates con mulberry32(20260917)
+
+histograma de nº de cambios de signo del predicado "sombrea" (fs > 1e-9), paso 0.25°:
+    0 cruces :  132 / 200  (66.0 %)
+    1 cruces :   26 / 200  (13.0 %)
+    2 cruces :   40 / 200  (20.0 %)
+    4 cruces :    2 / 200  (1.0 %)
+instantes con MÁS DE UN cruce: 42 / 200  (21.00 %)
+
+── C.3 ────────────────────────────────────────────────────────────
+instantes de la muestra con contraejemplo del min(|θ|): 68 / 200  (34.00 %)
+pares (θ1,θ2) contraejemplo, total sobre la rejilla de 0.25°: 11282
+peso energético: 11218.256 de 50913.428 Wh/m² de la muestra = 22.03 %
+  (energía del instante = poaPlant con los θ PUBLICADOS de pairwise × 20/60 h; misma malla MV y mismos nb/b0/albedo)
+
+los 20 de mayor fs(θ2):
+  #  θ1(fs=0)   fs1       θ2        fs2        sol°   MV  configuración · instante
+   1      34°  0.00e+0   -33.75°  87.5550 %   27.1   17  Arequipa · ondulado 2 · N-S constante -3° · mono · alineadas ×1 · 6 filas · az 0° · 21-mar 21:00Z
+   2   19.25°  0.00e+0      -19°  81.3151 %   13.4   17  Zaragoza · ondulado 1.2 · N-S rotula 6° · mono · alineadas ×1 · 8 filas · az -20° · 21-mar 17:00Z
+   3      -3°  0.00e+0     2.75°  80.3943 %    2.3   28  Zaragoza · cresta 2 · N-S constante 0° · mono · bagnarelli ×2 · 8 filas · az 0° · 21-mar 06:20Z
+   4     9.5°  0.00e+0    -9.25°  80.1613 %    5.9   28  Zaragoza · cresta 2 · N-S constante 0° · mono · bagnarelli ×2 · 8 filas · az 0° · 21-jun 19:00Z
+   5  -16.75°  0.00e+0     16.5°  72.8418 %    9.9   17  Arequipa · valle 3 · N-S constante 0° · quebrado · alineadas ×2 · 8 filas · az 0° · 21-dic 11:00Z
+   6  -36.25°  0.00e+0       36°  65.7134 %   17.2   17  Arequipa · ondulado 2 · N-S constante -3° · mono · alineadas ×1 · 6 filas · az 0° · 21-jun 12:40Z
+   7   13.75°  0.00e+0    -13.5°  59.2442 %    6.1   17  Zaragoza · pendiente 3 · N-S constante 0° · bifila · medios ×1 · 10 filas · az 0° · 21-mar 17:40Z
+   8     3.5°  0.00e+0    -3.25°  59.2174 %    2.5   28  Zaragoza · cresta 2 · N-S constante 0° · mono · bagnarelli ×2 · 8 filas · az 0° · 21-mar 18:00Z
+   9   25.75°  0.00e+0    -25.5°  55.0222 %   12.8   17  Arequipa · ondulado 0.6 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az 0° · 21-jun 21:20Z
+  10      55°  0.00e+0   -49.75°  48.6548 %   39.4   17  Arequipa · ondulado 2 · N-S constante -3° · mono · alineadas ×1 · 6 filas · az 0° · 21-dic 20:20Z
+  11      36°  0.00e+0   -35.75°  48.4697 %   30.7   33  Zaragoza · valle 3 · N-S senoidal 4° · quebrado · tresbolillo ×1 · 10 filas · az 0° · 21-mar 15:20Z
+  12   -40.5°  0.00e+0    40.25°  45.7889 %   14.5   14  Zaragoza · cresta 2 · N-S constante 3° · quebrado · bagnarelli ×1 · 10 filas · az 0° · 21-jun 06:00Z
+  13   40.25°  0.00e+0      -40°  44.8659 %   30.3   28  Arequipa · ondulado 2 · N-S quebrado 3° · quebrado · bagnarelli ×1 · 10 filas · az 0° · 21-dic 21:00Z
+  14   31.75°  0.00e+0    -31.5°  44.2213 %    7.9   17  Arequipa · cresta 1 · N-S constante 6° · mono · alineadas ×1 · 8 filas · az 0° · 21-dic 22:40Z
+  15     -20°  0.00e+0    19.75°  41.9511 %    4.5   28  Zaragoza · llano · N-S constante 0° · quebrado · bagnarelli ×1 · 6 filas · az 0° · 21-dic 08:00Z
+  16      18°  0.00e+0   -17.75°  40.9091 %   17.0   33  Zaragoza · aleatorio 13 · N-S senoidal 4° · bifila · alineadas ×1 · 10 filas · az -20° · 21-mar 16:40Z
+  17      52°  0.00e+0   -51.75°  38.8023 %   10.5   14  Zaragoza · cresta 2 · N-S constante 3° · quebrado · bagnarelli ×1 · 10 filas · az 0° · 21-dic 15:20Z
+  18   20.75°  0.00e+0    -20.5°  37.3779 %   20.6   33  Zaragoza · aleatorio 13 · N-S senoidal 4° · bifila · alineadas ×1 · 10 filas · az -20° · 21-mar 16:20Z
+  19  -36.75°  0.00e+0     36.5°  35.1612 %   34.6   28  Arequipa · ondulado 2 · N-S quebrado 3° · quebrado · bagnarelli ×1 · 10 filas · az 0° · 21-mar 13:20Z
+  20  -20.25°  0.00e+0       20°  34.3664 %   20.4   33  Arequipa · llano · N-S aleatorio 6° · quebrado · medios ×2 · 6 filas · az 0° · 21-mar 12:20Z
+
+CSV escritos en audit2/out/: C1_instantes_s7.csv C2_muestra_s7.csv C2_barridos_s7.csv C3_contraejemplos_s7.csv

@@ -1,0 +1,56 @@
+════ E-D4 · escalón mínimo de pérdida eléctrica por mesa ════
+commit        HEAD   ·   VER en el fichero: v1.68.0
+node          v22.22.2
+sitio         lat 41.57634  lon -0.79814  alt 739 m
+cielo         TL 3.5  albedo 0.2  nubes 0  ·  ghi 82.432 dni 324.715 dhi 30.050
+geometría     6 filas · pitch 6 · cuerda 2.382 · z0 0.17 · ±55° · axisAz 0 · nb 2 · b0 0.05
+tilt N-S      -3.41 / 1.63 / 3.22 / 3.76 / -3.67 / -3.06
+instante      2026-06-21T05:30:00.000Z  (07:30 local, tz +2)  ·  sol elev 9.283° az 66.726° zen 80.717°
+MV efectivo   33
+──────────────────────────────────────────────────────────────────────
+
+DERIVACIÓN, de backtracking.html:2265-2271:
+
+        elecSum+=elecLoss(fCol,T.nBypass); nCol++;
+        hitS+=fCol; NS++; elecS+=elecLoss(fCol,T.nBypass);   // la cuenta de este tramo (v1.41)
+        ...
+      segElec[r].push(NS?elecS/NS:0);
+
+y de backtracking.html:628-632:
+
+function elecLoss(f,nBypass){
+  if(!(f>1e-6))return 0;
+  if(nBypass<=0)return Math.min(1,f);
+  return Math.min(1,Math.ceil(nBypass*f)/nBypass);
+}
+
+Cada estación aporta un múltiplo entero de 1/nb (el escalón de Martinez), y la mesa
+promedia sobre sus NS estaciones. El bucle axial es
+  for(let j=0;j<MV;j++){ const v=v0+(v1-v0)*(j+0.5)/MV; ... }
+con (v0,v1) los extremos de la MESA ⇒ NS = MV exactamente.
+
+  escalón mínimo no nulo de segElec  =  1 / (nb · MV)
+
+y la pérdida por mesa sólo puede tomar los valores  m/(nb·MV)  con m entero 0…nb·MV.
+
+tabla del escalón:
+   nb\MV        8        16        32        64       128
+    1     0.125000  0.062500  0.031250  0.015625  0.007813
+    2     0.062500  0.031250  0.015625  0.007813  0.003906
+    3     0.041667  0.020833  0.010417  0.005208  0.002604
+    6     0.020833  0.010417  0.005208  0.002604  0.001302
+   Ayora real publica MV = 8 (if(T.real)return 8, backtracking.html:845) y nb = 2 (cfg)
+   ⇒ escalón = 1/(2·8) = 0.062500 = 6.2500 % de la mesa
+   con nb = 0 elecLoss es LINEAL (min(1,f)) y no hay escalón de diodos; queda el de la cuadratura
+
+VERIFICACIÓN NUMÉRICA — caso B, instante canónico, una mesa por fila, θ uniforme -55…55 paso 0,01°
+  MV   8 nb 2:  10 valores distintos · mínimo no nulo OBSERVADO 0.06250000 · escalón TEÓRICO 1/(nb·MV) = 0.06250000 · ¿el observado es ese escalón? SÍ · valores NO múltiplos de 1/(nb·MV): 0
+  MV   8 nb 3:  11 valores distintos · mínimo no nulo OBSERVADO 0.04166667 · escalón TEÓRICO 1/(nb·MV) = 0.04166667 · ¿el observado es ese escalón? SÍ · valores NO múltiplos de 1/(nb·MV): 0
+  MV  16 nb 2:  19 valores distintos · mínimo no nulo OBSERVADO 0.03125000 · escalón TEÓRICO 1/(nb·MV) = 0.03125000 · ¿el observado es ese escalón? SÍ · valores NO múltiplos de 1/(nb·MV): 0
+  MV  32 nb 6:  80 valores distintos · mínimo no nulo OBSERVADO 0.00520833 · escalón TEÓRICO 1/(nb·MV) = 0.00520833 · ¿el observado es ese escalón? SÍ · valores NO múltiplos de 1/(nb·MV): 0
+
+TRADUCCIÓN A ENERGÍA — el escalón eléctrico multiplica el haz de la mesa:
+  a θ=30°, tilt 0, este instante: beam 185.9482 W/m² (circ 40.8847, sky 20.2444, gnd 0.9454)
+  un escalón de 1/(2·8) sobre el haz = 11.6218 W/m² de esa mesa
+  (la planta promedia por fila y la fila por largo de mesa: el efecto en la POA de planta se
+   divide por el nº de filas y por la fracción de largo de esa mesa)

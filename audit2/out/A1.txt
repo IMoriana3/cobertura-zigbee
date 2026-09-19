@@ -1,0 +1,39 @@
+════ E-A1 · candidatas del veto de anglesOptimal · caso B ════
+commit        HEAD   ·   VER en el fichero: v1.68.0
+node          v22.22.2
+sitio         lat 41.57634  lon -0.79814  alt 739 m
+cielo         TL 3.5  albedo 0.2  nubes 0  ·  ghi 82.432 dni 324.715 dhi 30.050
+geometría     6 filas · pitch 6 · cuerda 2.382 · z0 0.17 · ±55° · axisAz 0 · nb 2 · b0 0.05
+tilt N-S      -3.41 / 1.63 / 3.22 / 3.76 / -3.67 / -3.06
+instante      2026-06-21T05:30:00.000Z  (07:30 local, tz +2)  ·  sol elev 9.283° az 66.726° zen 80.717°
+MV efectivo   33
+──────────────────────────────────────────────────────────────────────
+ganadora de la BÚSQUEDA : f = 1   POA = 241.5138 W/m²
+prev = undefined (instante aislado) ⇒ retenida = false, retenidaDF = false ⇒ el veto CORRE ENTERO (backtracking.html:2913)
+OPT_FRACTIONS = [0, 0.25, 0.5, 0.75, 1]  ·  OPT_REFINA = 2  ·  paso = 0.25  ·  finas = [0.9166666666666666, 0.8333333333333334]
+
+CANDIDATAS QUE LLEGAN AL VETO (backtracking.html:2915-2917: OPT_FRACTIONS + [0,pub] + finas)
+  #  origen              f        θ por fila (°)                                       POA_busqueda   POA_veto     Δ
+   1  rejilla gruesa           0    -2.00   -2.00   15.92   -2.00   -2.00   38.10      108.7362    108.7362  0.0e+0
+   2  rejilla gruesa        0.25    12.25   12.25   25.69   12.25   12.25   42.33      172.2141    172.2141  0.0e+0
+   3  rejilla gruesa         0.5    26.50   26.50   35.46   26.50   26.50   46.55      217.7171    217.7171  0.0e+0
+   4  rejilla gruesa        0.75    40.75   40.75   45.23   40.75   40.75   50.78      230.7871    230.7871  0.0e+0
+   5  rejilla gruesa           1    55.00   55.00   55.00   55.00   55.00   55.00      241.5138    241.5138  0.0e+0
+   6  repairNoShade (pub)      0    -2.00   -2.00   15.92   -2.00   -2.00   38.10    no evaluada    108.7362     —
+   7  refinado (finas)    0.9166666666666666    50.25   50.25   51.74   50.25   50.25   53.59      239.1123    239.1123  0.0e+0
+   8  refinado (finas)    0.8333333333333334    45.50   45.50   48.49   45.50   45.50   52.18      235.8025    235.8025  0.0e+0
+
+POA de la ganadora de la búsqueda, reevaluada por el veto : 241.5138 W/m²
+¿el veto CAMBIA la ganadora? NO (ninguna candidata supera a la de búsqueda por más de 1e-9)
+
+anglesOptimal() publicado : f = 1 · retenida false · frenada false
+  θ = 55.000  55.000  55.000  55.000  55.000  55.000
+  POA = 241.5138 W/m²  ·  sombra publicada por fila = 32.036% 19.860% 27.552% 38.225% 8.230% 0.000%
+
+POA con el evaluador RÁPIDO 2.5D (poaPlant(...,fast=true), backtracking.html:2457) para las mismas candidatas —
+  no interviene ya en la búsqueda de anglesOptimal desde v1.57.2 (2820-2828); se da como referencia:
+    f=    0  exacto 108.7362   rápido 111.0775   Δ -2.3413
+    f= 0.25  exacto 172.2141   rápido 185.5240   Δ -13.3098
+    f=  0.5  exacto 217.7171   rápido 252.9486   Δ -35.2316
+    f= 0.75  exacto 230.7871   rápido 245.9057   Δ -15.1186
+    f=    1  exacto 241.5138   rápido 145.8792   Δ 95.6346

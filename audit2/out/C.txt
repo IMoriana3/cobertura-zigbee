@@ -1,0 +1,72 @@
+════════════════════════════════════════════════════════════════════════════════════
+BLOQUE C · monotonía · commit 3a574512c86d0fe78051d08c75c6e4439d20de1c
+física (sha256 del bloque FÍSICA PURA, 12 hex) 1a13d8799f6a · árbol limpio
+node v22.22.2
+barrido replicado: 40 configuraciones · semilla 1 (semilla de CI, .github/workflows/bancos.yml:201)
+días 21-jun, 21-mar, 21-dic · paso 20 min · umbral de sol elev > 2° (igual que el barrido)
+criba C.1: θ uniforme de -55° a +55° paso 0.5° · "sombra 0" = fs <= 1e-9 (variante declarada fs <= 0.0001)
+muestra C.2: 200 instantes, mulberry32(20260917) · barrido fino paso 0.25°
+sombra reportada: de PLANOS (noStruct, sin la parte 'terreno' del desglose). POA: poaPlant, albedo 0.2, TL 3.5, nb 2, b0 0.05, altitud del sitio, MV = mvPara(T,zen) publicado
+════════════════════════════════════════════════════════════════════════════════════
+
+── C.1 ────────────────────────────────────────────────────────────
+instantes-configuración con sol > 2°           : 4224   (denominador)
+  · con ALGÚN θ uniforme de sombra de planos 0 : 3562  (84.33 %)  [fs <= 1e-9]
+  · ídem con la variante fs <= 0.0001          : 3562  (84.33 %)
+evaluaciones de shadeBand3DAll en la criba     : 256377 · 157 s
+TEST NULO: el predicado NO es constante (3562 de 4224) = el recuento informa.
+
+distribución por elevación solar (numerador con θ de sombra 0 / denominador de instantes):
+   sol  2– 5° :   101 /   232  (43.5 %)
+   sol  5–10° :   186 /   328  (56.7 %)
+   sol 10–20° :   475 /   672  (70.7 %)
+   sol 20–30° :   659 /   768  (85.8 %)
+   sol 30–45° :   790 /   848  (93.2 %)
+   sol 45–90° :  1351 /  1376  (98.2 %)
+
+distribución por torsión máxima entre filas vecinas |rowTilt[i]-rowTilt[i+1]| (T.rowTilt tras effRowTilts):
+   torsión = 0 :  2069 /  2109  (98.1 %)
+   torsión > 1° ≤ 3° :   200 /   211  (94.8 %)
+   torsión > 3° ≤ 6° :   610 /   845  (72.2 %)
+   torsión > 6° ≤ 100° :   683 /  1059  (64.5 %)
+
+── C.2 ────────────────────────────────────────────────────────────
+muestra: 200 de 3562 (instantes con θ de sombra 0) · barajado Fisher-Yates con mulberry32(20260917)
+
+histograma de nº de cambios de signo del predicado "sombrea" (fs > 1e-9), paso 0.25°:
+    0 cruces :  125 / 200  (62.5 %)
+    1 cruces :   25 / 200  (12.5 %)
+    2 cruces :   49 / 200  (24.5 %)
+    3 cruces :    1 / 200  (0.5 %)
+instantes con MÁS DE UN cruce: 50 / 200  (25.00 %)
+
+── C.3 ────────────────────────────────────────────────────────────
+instantes de la muestra con contraejemplo del min(|θ|): 75 / 200  (37.50 %)
+pares (θ1,θ2) contraejemplo, total sobre la rejilla de 0.25°: 12239
+peso energético: 10512.910 de 46131.344 Wh/m² de la muestra = 22.79 %
+  (energía del instante = poaPlant con los θ PUBLICADOS de pairwise × 20/60 h; misma malla MV y mismos nb/b0/albedo)
+
+los 20 de mayor fs(θ2):
+  #  θ1(fs=0)   fs1       θ2        fs2        sol°   MV  configuración · instante
+   1   -1.75°  0.00e+0      1.5°  91.4192 %    2.3   33  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 06:20Z
+   2      12°  0.00e+0   -11.75°  66.5637 %    5.9   33  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-jun 19:00Z
+   3     -14°  0.00e+0    13.75°  57.9871 %    5.9   33  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-mar 06:40Z
+   4   12.25°  0.00e+0      -12°  55.9903 %    4.4   33  Arequipa · cresta 1 · N-S constante -3° · mono · alineadas ×1 · 10 filas · az 15° · 21-jun 22:00Z
+   5     6.5°  0.00e+0    -6.25°  55.1677 %    2.0   33  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-dic 16:20Z
+   6   31.25°  0.00e+0      -31°  51.6522 %   12.3   17  Arequipa · pendiente 6 · N-S rotula 2° · mono · alineadas ×1 · 8 filas · az 0° · 21-dic 22:20Z
+   7   31.75°  0.00e+0    -31.5°  51.5681 %   13.0   17  Zaragoza · pendiente 6 · N-S constante -3° · quebrado · alineadas ×1 · 10 filas · az -20° · 21-dic 15:00Z
+   8   -11.5°  0.00e+0    11.25°  50.9128 %    5.9   33  Zaragoza · cresta 1 · N-S rotula 4° · quebrado · alineadas ×1 · 8 filas · az 15° · 21-mar 06:40Z
+   9   -20.5°  0.00e+0    20.25°  50.1900 %    6.2   17  Arequipa · cresta 1 · N-S constante -3° · mono · alineadas ×1 · 10 filas · az 15° · 21-mar 11:20Z
+  10   -43.5°  0.00e+0    43.25°  47.7508 %   16.8   17  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-mar 07:40Z
+  11     -28°  0.00e+0    27.75°  47.3156 %    7.6   17  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-jun 05:20Z
+  12      55°  0.00e+0   -54.75°  43.7947 %   21.2   17  Arequipa · pendiente 10 · N-S rotula 4° · mono · alineadas ×1 · 6 filas · az 0° · 21-dic 21:40Z
+  13      11°  0.00e+0   -10.75°  40.9308 %    2.8   33  Zaragoza · llano · N-S rotula 2° · bifila · tresbolillo ×1 · 10 filas · az 0° · 21-jun 19:20Z
+  14      47°  0.00e+0   -46.75°  40.4875 %    7.8   17  Zaragoza · aleatorio 7 · N-S constante 3° · quebrado · medios ×1 · 6 filas · az 15° · 21-dic 15:40Z
+  15  -15.25°  0.00e+0       15°  39.1661 %    7.4   17  Zaragoza · cresta 1 · N-S rotula 4° · quebrado · alineadas ×1 · 8 filas · az 15° · 21-dic 08:20Z
+  16   35.25°  0.00e+0      -35°  38.9058 %    9.8   17  Zaragoza · llano · N-S rotula 2° · bifila · tresbolillo ×1 · 10 filas · az 0° · 21-mar 17:20Z
+  17   -47.5°  0.00e+0    47.25°  38.0084 %   12.7   17  Zaragoza · valle 1 · N-S constante 0° · quebrado · medios ×2 · 8 filas · az 15° · 21-dic 09:00Z
+  18     -55°  0.00e+0    54.75°  36.8133 %   18.0   17  Zaragoza · aleatorio 42 · N-S constante 0° · mono · medios ×1 · 6 filas · az 0° · 21-jun 06:20Z
+  19    9.25°  0.00e+0       -9°  35.4818 %    9.3   33  Zaragoza · cresta 1 · N-S quebrado 4° · quebrado · medios ×1 · 6 filas · az 15° · 21-jun 18:40Z
+  20  -45.25°  0.00e+0       45°  32.3973 %   15.1   17  Zaragoza · ondulado 1.2 · N-S constante 3° · mono · tresbolillo ×1 · 8 filas · az 15° · 21-dic 09:20Z
+
+CSV escritos en audit2/out/: C1_instantes.csv C2_muestra.csv C2_barridos.csv C3_contraejemplos.csv
