@@ -708,8 +708,30 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
   if (!/LZ\.paso\(o\.angles,STEP_MIN\*60\)/.test(app))
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
-  if (!/LZS\.paso\(segCmd\(/.test(app))
-    throw new Error('el camino por mesa sigue sin el deadband');
+  /* El camino POR MESA tiene que pasar por el lazo entero, y lo que se le mete
+     tiene que ser el mando por mesa. Antes esto se comprobaba exigiendo la
+     anidación literal `LZS.paso(segCmd(`, que es un accidente de escritura: sacar
+     `segCmd(...)` a una variable —para poder guardar también el mando crudo— no
+     cambia una coma de lo que hace el código y ponía el banco en rojo. Ahora se
+     sigue el DATO: sea inline o por variable, el argumento de `LZS.paso` tiene
+     que venir de `segCmd(`. */
+  const segBloque = app.slice(app.indexOf('const LZS=crearLazoSeg()'), app.indexOf('dest.s={ang:ang'));
+  if (segBloque.length < 200)                                   // test nulo del corte
+    throw new Error(`el corte del cuerpo por mesa mide ${segBloque.length} caracteres: no está mirando nada`);
+  const vieneDeSegCmd = (txt) => {
+    const m = /LZS\.paso\(\s*(segCmd\(|[A-Za-z_$][\w$]*)/.exec(txt);
+    if (!m) return false;
+    if (m[1] === 'segCmd(') return true;                          // inline, como estaba
+    const v = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*segCmd\\(').test(txt);
+  };
+  if (!vieneDeSegCmd(segBloque))
+    throw new Error('el camino por mesa sigue sin el deadband: lo que entra en LZS.paso no viene de segCmd');
+  /* CONTROL NEGATIVO de la comprobación de arriba: con el mando cambiado por otra
+     cosa tiene que rechazarlo. Sin esto, una expresión regular que no acertara a
+     nadie diría que sí a cualquier cosa. */
+  if (vieneDeSegCmd(segBloque.replace(/=\s*segCmd\(/g, '=o.angles.slice(').replace(/LZS\.paso\(segCmd\(/g, 'LZS.paso(o.angles,(')))
+    throw new Error('la comprobación del camino por mesa no puede fallar: acepta un mando que no viene de segCmd');
 });
 
 t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {

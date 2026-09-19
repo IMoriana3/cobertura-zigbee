@@ -5074,6 +5074,11 @@ function* serieDiaGen(key,D,dest){
   const T=D.T, Tcfg=D.Tcfg, times=D.times, sun=D.sun, irr=D.irr, doy=D.doy, c=D.c;
   const nT=times.length;
   const ang=new Array(nT), shade=new Array(nT), poaP=new Array(nT), poaR=new Array(nT), fArr=new Array(nT);
+  /* EL MANDO CRUDO, antes del lazo, en la misma forma que `ang` (por línea).
+     Es lo que compara el indicador de backtracking: `ang` dice dónde ESTÁ el
+     seguidor y `cmd` dice qué le han PEDIDO, y sólo la segunda distingue
+     «la política se aparta del astronómico» de «los lazos han derivado». */
+  const cmd=new Array(nT);
   // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
   // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
   const poaHi=new Array(nT), poaLo=new Array(nT);
@@ -5091,12 +5096,15 @@ function* serieDiaGen(key,D,dest){
     let lim,pp;
     if(seg){
       // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
-      const ls=LZS.paso(segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60);
+      const sc=segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo);
+      const ls=LZS.paso(sc,STEP_MIN*60);
+      cmd[t]=segLineMean(T,sc);          // el mando por mesa, promediado a línea
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
       segAng[t]=ls; poaS[t]=pp.segs;
     }else{
       // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
       // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
+      cmd[t]=o.angles;
       lim=LZ.paso(o.angles,STEP_MIN*60);
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
     }
@@ -5104,7 +5112,7 @@ function* serieDiaGen(key,D,dest){
     poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
     yield t;
   }
-  dest.s={ang:ang,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
+  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS};
 }
 function serieDia(key,D){const d={};for(const _ of serieDiaGen(key,D,d));return d.s;}
 function* computeDayGen(){
@@ -5134,8 +5142,19 @@ function* computeDayGen(){
   // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
   // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
   // BT en la política astro, y en las demás marca exactamente las horas de BT
-  const astroAng=new Array(nT); const LZA=crearLazo();
+  const astroAng=new Array(nT), astroCmd=new Array(nT); const LZA=crearLazo();
+  const segRef=segOn(T);
   for(let t2=0;t2<nT;t2++){
+    /* EL MANDO de la referencia, por la MISMA maquinaria que el de cualquier
+       política: `policyAngles('astro',…)` por línea y `segCmd('astro',…)` por
+       mesa, con su mismo acoplamiento de accionamiento. Así la política astro
+       sale EXACTAMENTE 0 contra su propia referencia —no «casi 0»— y lo que el
+       indicador compara es mando contra mando, con la misma cocina a los dos
+       lados. `astroAng` (con lazo) se mantiene porque es lo que la referencia
+       EJECUTA; el indicador ya no la usa. */
+    const gR=sun[t2];
+    const oA=policyAngles('astro',gR.zen,gR.az,Tcfg,irr[t2],doy,c.albedo);
+    astroCmd[t2]=segRef?segLineMean(T,segCmd('astro',gR.zen,gR.az,Tcfg,T,oA,irr[t2],doy,c.albedo)):oA.angles;
     const limA=LZA.paso(anglesAstro(sun[t2].zen,sun[t2].az,Tcfg),STEP_MIN*60);
     // bifila: la referencia astro se ACOPLA como el accionamiento (la gemela
     // copia a la motora) — si no, el mero acoplamiento contaría como «BT»
@@ -5144,7 +5163,7 @@ function* computeDayGen(){
     astroAng[t2]=limA;
     if((++__done&31)===0)yield __done/__tot;
   }
-  DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng,D:D};
+  DAY={c:c,T:T,Tcfg:Tcfg,doy:doy,times:times,sun:sun,irr:irr,pol:pol,astroAng:astroAng,astroCmd:astroCmd,D:D};
   DAY_SERIAL++;                 // el día ha sido SUSTITUIDO: lo ve quien lo esté leyendo a trozos
   return DAY;
 }
@@ -7200,7 +7219,10 @@ function informeHTML(){
   const pols=POLICIES.filter(P=>d.pol[P.key]);
   const K={}; for(const P of pols)K[P.key]=dayKpis(P.key);
   const refA=K['astro']||null, refP=K['pairwise']||null;
-  const btH=(key)=>{const p=d.pol[key];let m=0;for(let t=0;t<d.times.length;t++){if(!(d.irr[t].dni>25))continue;const a=p.ang[t],ref=d.astroAng[t];for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>0.5){m+=STEP_MIN;break;}}return m/60;};
+  /* las horas de BT llevaban su propia copia del predicado —y por tanto su
+     propio defecto—; ahora llaman al único que hay, y sólo añaden lo suyo: que
+     haya sol directo que perder */
+  const btH=(key)=>{const p=d.pol[key];let m=0;for(let t=0;t<d.times.length;t++){if(!(d.irr[t].dni>25))continue;if(btActivoSerie(p,t))m+=STEP_MIN;}return m/60;};
   const peorFila=(key)=>{const p=d.pol[key];let b={v:0,t:-1,r:-1};for(let t=0;t<d.times.length;t++){if(!(d.irr[t].dni>25))continue;const sh=p.shade[t];for(let r=0;r<sh.length;r++)if((sh[r]||0)>b.v)b={v:sh[r],t:t,r:r};}return b;};
   const fMedia=(key)=>{const p=d.pol[key];let s=0,k=0;for(let t=0;t<d.times.length;t++){const v=p.f[t];if(v==null||!(d.irr[t].dni>25))continue;const x=typeof v==='number'?v:(v.min+v.max)/2;s+=x;k++;}return k?s/k:null;};
   let secs='';
@@ -7657,16 +7679,33 @@ function sceneInstant(){
 /* ── HORAS DE BT: el slider se pinta por tramos (noche · seguimiento · BT) y
    el aviso «BT ON» se enciende cuando la política de la ESCENA está fuera de
    la posición astronómica — la misma referencia (limitada a slew) de computeDay ── */
+/* UMBRAL DEL INDICADOR DE BACKTRACKING. Vive AQUÍ, en la capa de interfaz y
+   pegado a su único consumidor, y no junto a `DEADBAND_DEG` dentro de FÍSICA
+   PURA: el indicador es una afirmación de la pantalla, no una magnitud del
+   modelo, y nada del cálculo lo lee.
+
+   Por qué puede ser MENOR que la banda muerta sin contradicción: es un criterio
+   sobre CONSIGNAS, no sobre posiciones. Cuando se aplicaba a posiciones, 0,5°
+   —la mitad de la banda— encendía el indicador por la deriva entre dos lazos con
+   memorias distintas, sin backtracking ninguno. */
+const BT_UMBRAL_DEG=0.5;                             // ° de separación del mando frente al astronómico
 /* BACKTRACKING ACTIVO EN UN INSTANTE, para una serie CUALQUIERA. Se parametriza
    porque el informe gráfico necesita el periodo de BT de las DOS políticas del
    par A/B —que no tienen por qué estar en la escena— y el criterio (apartarse
    >0,5° de la referencia astronómica limitada al mismo slew) tiene que ser uno
-   solo: dos copias serían dos definiciones de «periodo de backtracking». */
+   solo: dos copias serían dos definiciones de «periodo de backtracking».
+
+   COMPARA MANDOS, NO POSICIONES. Backtracking es que la política PIDA algo
+   distinto de lo que pediría el seguimiento astronómico; dónde acabe el eje
+   después del lazo es otra cosa. Comparando salidas de lazo, el indicador se
+   encendía con el mando idéntico en todas las filas y la sombra en cero, por
+   la deriva entre dos lazos con memorias distintas dentro de la banda muerta
+   (medido: audit2/R3_NOTAS.md §4). */
 function btActivoSerie(p,t){
-  if(!DAY||!DAY.astroAng||!p)return false;
+  if(!DAY||!DAY.astroCmd||!p||!p.cmd)return false;
   if(DAY.sun[t].elev<=0)return false;
-  const a=p.ang[t], ref=DAY.astroAng[t];
-  for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>0.5)return true;
+  const a=p.cmd[t], ref=DAY.astroCmd[t];
+  for(let r=0;r<a.length;r++)if(Math.abs(a[r]-ref[r])>BT_UMBRAL_DEG)return true;
   return false;
 }
 function btActiveAt(t){
