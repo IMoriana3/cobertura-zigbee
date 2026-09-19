@@ -35,6 +35,28 @@ function cuerpoFn(src, nombre) {
   return null;
 }
 
+/* EL MANDO POR MESA VIENE DE `segCmd`, ESTÉ ESCRITO COMO ESTÉ.
+   Esto se comprobaba en dos sitios exigiendo la anidación LITERAL
+   `LZS.paso(segCmd(`. Es un accidente de escritura: sacar `segCmd(...)` a una
+   variable —para poder guardar el mando crudo sin calcular la política dos
+   veces— no cambia una coma de lo que hace el código, y ponía los dos en rojo.
+   El comentario que acompañaba a uno de ellos ya decía la lección: «los que se
+   atan al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
+   ata a lo que la pieza HACE, no». Ahora se sigue el DATO. */
+function mandoPorMesaVieneDeSegCmd(txt) {
+  const m = /LZS\.paso\(\s*(segCmd\(|[A-Za-z_$][\w$]*)/.exec(txt);
+  if (!m) return false;
+  if (m[1] === 'segCmd(') return true;                       // inline, como estaba
+  const v = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*segCmd\\(').test(txt);
+}
+/* y su CONTROL NEGATIVO, para usar junto a cada llamada: con el mando cambiado
+   por otra cosa, el criterio tiene que decir que no */
+function controlMandoPorMesa(txt) {
+  return mandoPorMesaVieneDeSegCmd(
+    txt.replace(/=\s*segCmd\(/g, '=o.angles.slice(').replace(/LZS\.paso\(segCmd\(/g, 'LZS.paso(o.angles,('));
+}
+
 let N = 0, FAIL = 0;
 function t(name, fn) {
   N++;
@@ -718,19 +740,9 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const segBloque = app.slice(app.indexOf('const LZS=crearLazoSeg()'), app.indexOf('dest.s={ang:ang'));
   if (segBloque.length < 200)                                   // test nulo del corte
     throw new Error(`el corte del cuerpo por mesa mide ${segBloque.length} caracteres: no está mirando nada`);
-  const vieneDeSegCmd = (txt) => {
-    const m = /LZS\.paso\(\s*(segCmd\(|[A-Za-z_$][\w$]*)/.exec(txt);
-    if (!m) return false;
-    if (m[1] === 'segCmd(') return true;                          // inline, como estaba
-    const v = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*segCmd\\(').test(txt);
-  };
-  if (!vieneDeSegCmd(segBloque))
+  if (!mandoPorMesaVieneDeSegCmd(segBloque))
     throw new Error('el camino por mesa sigue sin el deadband: lo que entra en LZS.paso no viene de segCmd');
-  /* CONTROL NEGATIVO de la comprobación de arriba: con el mando cambiado por otra
-     cosa tiene que rechazarlo. Sin esto, una expresión regular que no acertara a
-     nadie diría que sí a cualquier cosa. */
-  if (vieneDeSegCmd(segBloque.replace(/=\s*segCmd\(/g, '=o.angles.slice(').replace(/LZS\.paso\(segCmd\(/g, 'LZS.paso(o.angles,(')))
+  if (controlMandoPorMesa(segBloque))
     throw new Error('la comprobación del camino por mesa no puede fallar: acepta un mando que no viene de segCmd');
 });
 
@@ -3076,8 +3088,13 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    for (const lit of ['segOn(T)', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    for (const lit of ['segOn(T)', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('el cuerpo del día sin «' + lit + '»');
+    /* el mando por mesa: el DATO, no la forma de escribirlo — y con su control */
+    if (!mandoPorMesaVieneDeSegCmd(dayFn))
+      throw new Error('el cuerpo del día no mete en LZS.paso nada que venga de segCmd');
+    if (controlMandoPorMesa(dayFn))
+      throw new Error('la comprobación del mando por mesa del día no puede fallar');
     // la política llega como `P.key` o como `key` según quién drene el cuerpo:
     // lo que se exige es que sea la política, no el nombre de su variable
     if (!/segCmd\((?:P\.)?key,/.test(dayFn)) throw new Error('el cuerpo del día no manda por mesa con la política');
