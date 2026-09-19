@@ -2526,7 +2526,58 @@ function build3D(c){
        una vista que no era la que se iba a ver, `lleno()` no bajaba nunca y la distancia
        se multiplicaba por su tope 1,7 las ocho vueltas —1,7^8 = 70—. Los 134 m de salida
        acababan en 9,3 km, con la escena detras del plano lejano (6000 m): solo cielo. */
-    const coloca=dd=>{R3.cam.position.set(ctr.x+dd*0.42,ctr.y+dd*0.55,ctr.z+dd*0.62);
+    /* LA DIRECCION SE APARTA DE LA DE SIEMPRE SOLO LO QUE HAGA FALTA. Con una unica
+       direccion fija la planta se proyecta siempre con la misma forma, y esa forma no
+       encaja en cualquier lienzo: el tope lo pone el eje que primero toca el borde y el
+       otro se queda corto. Medido con la de siempre (0,42 0,55 0,62 = elevacion 36
+       grados, azimut 34), cuanto se ocupaba de cada lado:
+
+           escritorio 16:10   ancho 58 %   alto 88 %
+           movil retrato      ancho 86 %   alto 38 %    <- dos tercios de cielo
+           movil apaisado     ancho 48 %   alto 88 %
+
+       Mirar mas a plomo estira el fondo en vertical y llena un lienzo alto; mirar mas
+       rasante lo aplasta. Pero eso no tiene optimo: medida la curva en retrato, sube
+       lisa del 41 % a 28 grados al 77 % a 80, sin codo — se gana lienzo y se pierde
+       relieve, y a 68 grados las mesas ya se leen como rayas planas.
+
+       Asi que no se busca el angulo que mas llena, sino EL MAS PARECIDO AL DE SIEMPRE
+       que deje los dos ejes por encima de MIN_EJE. Los candidatos se prueban en orden
+       de cercania a la direccion original, y se para en el primero que cumple; si
+       ninguno cumple se coge el mejor. En escritorio la de siempre YA cumple y no se
+       mueve nada: esto solo entra donde el lienzo lo pide. */
+    const MIN_EJE=0.55;                       // fraccion minima del lienzo en el eje corto
+    let DIR={x:0.42,y:0.55,z:0.62};           // elevacion 36, azimut 34: la de siempre
+    {
+      const E0=36, F0=34;
+      const esq=i=>new THREE.Vector3(i&1?bb.min.x:bb.max.x,i&2?bb.min.y:bb.max.y,i&4?bb.min.z:bb.max.z);
+      const reparto=v=>{                      // min/max de lo proyectado = lienzo aprovechado
+        R3.cam.position.set(ctr.x+d*v.x,ctr.y+d*v.y,ctr.z+d*v.z);
+        R3.cam.lookAt(ctr);R3.cam.updateMatrixWorld();R3.cam.updateProjectionMatrix();
+        let mx=0,my=0;
+        for(let i=0;i<8;i++){const p=esq(i).project(R3.cam);
+          if(!isFinite(p.x)||!isFinite(p.y))return -1;
+          mx=Math.max(mx,Math.abs(p.x));my=Math.max(my,Math.abs(p.y));}
+        return (mx>1e-6&&my>1e-6)?Math.min(mx,my)/Math.max(mx,my):-1;
+      };
+      const cand=[];
+      for(let e=24;e<=76;e+=4)for(let f=0;f<=90;f+=5)
+        cand.push({e,f,lejos:Math.hypot(e-E0,f-F0)});
+      cand.sort((a,b)=>a.lejos-b.lejos);
+      /* el bucle de la distancia deja el eje largo en OBJ (0,86), asi que el corto
+         acaba en OBJ*reparto: el listado se traduce a reparto para compararlo */
+      const META=MIN_EJE/0.86;
+      let mejor=reparto(DIR), mejorV=DIR;
+      if(mejor<META) for(const c of cand){
+        const ce=Math.cos(c.e*D2R);
+        const v={x:Math.sin(c.f*D2R)*ce,y:Math.sin(c.e*D2R),z:Math.cos(c.f*D2R)*ce};
+        const q=reparto(v);
+        if(q>mejor){mejor=q;mejorV=v;}
+        if(q>=META){mejorV=v;break;}          // el primero que cumple, y es el mas cercano
+      }
+      DIR=mejorV;
+    }
+    const coloca=dd=>{R3.cam.position.set(ctr.x+dd*DIR.x,ctr.y+dd*DIR.y,ctr.z+dd*DIR.z);
                       R3.cam.lookAt(ctr);
                       R3.cam.updateMatrixWorld();R3.cam.updateProjectionMatrix();};
     /* AJUSTE POR PROYECCIÓN, y por eso se hace dos veces. La cuenta de arriba

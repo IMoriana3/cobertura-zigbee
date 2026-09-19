@@ -94,6 +94,41 @@ try {
           m.colores >= 40, 'colores distintos: ' + m.colores);
   }
 
+  /* EL ENCUADRE EN RETRATO, que necesita su propia pestaña: en apaisado esta
+     comprobacion NO DISCRIMINA. La direccion de camara era fija, asi que la planta se
+     proyectaba siempre con la misma forma y en un lienzo alto llenaba el ancho y dejaba
+     dos tercios de cielo: 86 % de ancho contra 38 % de alto. En apaisado el reparto era
+     al reves y pasable, por eso hace falta abrir de verdad en 412x915.
+
+     Ahora la direccion se aparta de la de siempre SOLO lo que haga falta para que
+     ningun eje baje de 0,55. El tope de aqui va en 0,45, por debajo del objetivo:
+     vigila que no se vuelva a una direccion fija, no que acierte al decimal —el bucle
+     de la distancia para con 0,03 de tolerancia y el reparto depende de la planta—. */
+  {
+    const vert = await browser.newPage({ viewport: { width: 412, height: 915 } });
+    const errsV = [];
+    vert.on('pageerror', e => errsV.push('pageerror: ' + e.message));
+    await vert.goto(`http://localhost:${PORT}/produccion.html`, { waitUntil: 'load' });
+    await vert.waitForTimeout(6000);
+    const v = await vert.evaluate(() => {
+      const bb = new THREE.Box3().setFromObject(R3.world);
+      let mx = 0, my = 0;
+      for (let i = 0; i < 8; i++) {
+        const p = new THREE.Vector3(i & 1 ? bb.min.x : bb.max.x, i & 2 ? bb.min.y : bb.max.y,
+                                    i & 4 ? bb.min.z : bb.max.z).project(R3.cam);
+        if (!isFinite(p.x) || !isFinite(p.y)) return { roto: true };
+        mx = Math.max(mx, Math.abs(p.x)); my = Math.max(my, Math.abs(p.y));
+      }
+      const cv = R3.renderer.domElement;
+      return { mx: +mx.toFixed(2), my: +my.toFixed(2), lienzo: cv.width + 'x' + cv.height };
+    });
+    check('en RETRATO la planta ocupa los dos ejes, no sólo el ancho',
+          !v.roto && Math.min(v.mx, v.my) >= 0.45,
+          'lienzo ' + v.lienzo + ' · ancho ' + v.mx + ' · alto ' + v.my);
+    check('y en retrato la página tampoco suelta errores', errsV.length === 0, errsV[0]);
+    await vert.close();
+  }
+
 
   /* 8) LOS LÍMITES DE MESA. Un listón claro en cada extremo del paño de tinte,
         porque con el color de producción por mesa cuatro mesas seguidas del
