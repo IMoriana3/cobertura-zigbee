@@ -737,9 +737,15 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
      cambia una coma de lo que hace el código y ponía el banco en rojo. Ahora se
      sigue el DATO: sea inline o por variable, el argumento de `LZS.paso` tiene
      que venir de `segCmd(`. */
-  const segBloque = app.slice(app.indexOf('const LZS=crearLazoSeg()'), app.indexOf('dest.s={ang:ang'));
-  if (segBloque.length < 200)                                   // test nulo del corte
-    throw new Error(`el corte del cuerpo por mesa mide ${segBloque.length} caracteres: no está mirando nada`);
+  /* el cuerpo de la serie del día, cortado por sus DOS extremos reales. El ancla
+     de antes era `const LZS=crearLazoSeg()` y el fuente declara los dos lazos en
+     una sola línea —`const LZ=crearLazo(), LZS=crearLazoSeg();`—, así que
+     indexOf devolvía -1 y el corte salía VACÍO. Lo cazó el test nulo de la línea
+     siguiente, y por eso está escrito antes que la comprobación que protege. */
+  const segBloque = app.slice(app.indexOf('function* serieDiaGen'), app.indexOf('dest.s={ang:ang'));
+  if (segBloque.length < 200 || !segBloque.includes('crearLazoSeg'))
+    throw new Error('el corte del cuerpo por mesa mide ' + segBloque.length + ' caracteres y ' +
+                    (segBloque.includes('crearLazoSeg') ? 'sí' : 'NO') + ' contiene crearLazoSeg: no está mirando nada');
   if (!mandoPorMesaVieneDeSegCmd(segBloque))
     throw new Error('el camino por mesa sigue sin el deadband: lo que entra en LZS.paso no viene de segCmd');
   if (controlMandoPorMesa(segBloque))

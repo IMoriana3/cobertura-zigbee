@@ -207,3 +207,22 @@ y el después del indicador mientras el banco de física seguía corriendo, y es
 banco trajo dos rojos. Eran suyos, no del arreglo, pero eso no lo sabía al
 escribirlo. Es el mismo error que E-X1 de R2 registra: dar por buena una corrida
 que aún no ha cerrado.
+
+**4 · Mi propia comprobación no miraba nada, y su test nulo la cazó.** Al
+reescribir la comprobación del camino por mesa la anclé en
+`const LZS=crearLazoSeg()`. El fuente declara los dos lazos en una sola línea:
+
+`backtracking.html:5091`
+```js
+  const LZ=crearLazo(), LZS=crearLazoSeg();
+```
+
+así que `indexOf` devolvía −1, el corte salía **vacío** y la comprobación habría
+pasado sobre 0 caracteres. No la cazó una revisión: la cazó el **test nulo** que
+había escrito una línea antes —«el corte mide 0 caracteres: no está mirando
+nada»— y que puse ahí precisamente porque en #689 tres comprobaciones pasaron
+sin poder fallar.
+
+Corregido: el corte va de `function* serieDiaGen` a `dest.s={ang:ang`, mide
+**2 287 caracteres** y contiene `crearLazoSeg` y `LZS.paso`. El test nulo exige
+ahora las dos cosas, longitud **y** contenido, no sólo la longitud.
