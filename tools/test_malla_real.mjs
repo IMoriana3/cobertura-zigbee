@@ -68,14 +68,14 @@ const F = new Function(bloque + ';return {parseCSV,objs,digits,medianaDe,distM,a
    ───────────────────────────────────────────────────────────────────────────── */
 const RUTAS_CSV = [
   'timestamp,path_ids',
-  '2026-09-01 10:00:00,COORD>A',
-  '2026-09-01 10:00:00,COORD>A>B',
-  '2026-09-01 10:00:00,COORD>A>D',
-  '2026-09-01 10:00:00,COORD>C',
-  '2026-09-01 10:10:00,COORD>A',
-  '2026-09-01 10:10:00,COORD>A>B',
-  '2026-09-01 10:10:00,COORD>A>D',
-  '2026-09-01 10:10:00,COORD>C',
+  '2026-09-01T10:00:00Z,COORD>A',
+  '2026-09-01T10:00:00Z,COORD>A>B',
+  '2026-09-01T10:00:00Z,COORD>A>D',
+  '2026-09-01T10:00:00Z,COORD>C',
+  '2026-09-01T10:10:00Z,COORD>A',
+  '2026-09-01T10:10:00Z,COORD>A>B',
+  '2026-09-01T10:10:00Z,COORD>A>D',
+  '2026-09-01T10:10:00Z,COORD>C',
 ].join('\n') + '\n';
 
 /* A: dos lecturas, -60 y -70 -> mediana PAR = -65 (es el caso que se redondea)
@@ -83,11 +83,11 @@ const RUTAS_CSV = [
    ACK del XBee es ACUMULATIVO: vale el ULTIMO, no el primero ni la suma */
 const LOG_CSV = [
   'timestamp,gateway,node_id,role,ext_addr,online,rssi_dbm,ack_failures',
-  '2026-09-01 10:00:00,GW-01,A,TCU,0013A200,1,-60,10',
-  '2026-09-01 10:10:00,GW-01,A,TCU,0013A200,1,-70,25',
-  '2026-09-01 10:00:00,GW-01,B,TCU,0013A201,1,-80,3',
-  '2026-09-01 10:10:00,GW-01,C,TCU,0013A202,0,,',
-  '2026-09-01 10:00:00,GW-01,D,TCU,0013A203,1,-90,7',
+  '2026-09-01T10:00:00Z,GW-01,A,TCU,0013A200,1,-60,10',
+  '2026-09-01T10:10:00Z,GW-01,A,TCU,0013A200,1,-70,25',
+  '2026-09-01T10:00:00Z,GW-01,B,TCU,0013A201,1,-80,3',
+  '2026-09-01T10:10:00Z,GW-01,C,TCU,0013A202,0,,',
+  '2026-09-01T10:00:00Z,GW-01,D,TCU,0013A203,1,-90,7',
 ].join('\n') + '\n';
 
 /* 0,001 grados de latitud = 0,001·(pi/180)·6371000 = 111,19 m -> 111
