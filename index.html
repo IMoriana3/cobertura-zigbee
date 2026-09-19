@@ -1434,20 +1434,12 @@ function distM(a,b){ if(!a||!b)return null; const R=6371000,D=Math.PI/180;
 /* ---------- los tres CSV, cada uno a su estructura (sin tocar estado) ---------- */
 /* ---------- LA HORA, A UTC ---------- (contrato: docs/contrato_datos_zigbee.md)
    v2 llega en UTC ISO con Z y no se toca. v1 es hora LOCAL sin zona, y convertirla NO siempre
-   tiene respuesta: dos noches al año Madrid repite una hora y se salta otra.
+   tiene respuesta: en una zona con cambio de hora, dos noches al año una hora se repite y otra
+   no llega a existir. Ninguna de las dos se rellena en silencio — inventar una hora es peor que
+   perder una fila, porque entra en la línea de tiempo y ya nadie la distingue.
 
-     · último domingo de marzo, 02:00-02:59 local -> esa hora NO EXISTIO
-     · último domingo de octubre, 02:00-02:59 local -> ocurrió DOS VECES, con dos UTC distintos
-
-   Se prueban los dos desfases posibles (+1 y +2) y se mira cuál devuelve la misma hora local al
-   reformatearlo en Europe/Madrid. El navegador ya trae la base de zonas horarias, así que esto no
-   necesita ni tabla de cambios de hora ni librería:
-
-     0 candidatos válidos -> inexistente     2 -> ambigua     1 -> conversión exacta
-
-   Ninguna de las dos se rellena en silencio. La inexistente NO se convierte y se cuenta aparte;
-   la ambigua se resuelve a la PRIMERA de las dos (todavía en CEST) y se marca. Inventar una hora
-   es peor que perder una fila: entra en la línea de tiempo y ya nadie la distingue. */
+   El cómo está justo debajo, en el sitio donde vive cada parte: la zona y los candidatos en
+   `_candidatosUTC`, y la desambiguación por orden en `nuevoLectorTs`. */
 /* LA ZONA ES LA DE LA PLANTA, y no hay una por defecto. `plantas_indice.json` la declara en
    `tz_iana` y es LA fuente (ese fichero lo dice de sí mismo). Aquí no se copia: se pide.
 
