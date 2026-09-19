@@ -246,9 +246,13 @@ t('la cota anisótropa paga el actuador como las demás: decide en su ciclo y ej
   /* y desde el 2026-09-18 tiene que pasar TAMBIÉN por el tope de backtracking:
      el lazo ADELANTA, y sin tope la cota se apuntaría energía que en la planta
      se pierde en la sombra de la fila de delante — justo el sesgo que haría que
-     la cota dejara de ser comparable, que es lo que este banco vigila. */
-  if (!/execOnFineGrid\(o\.theta[^)]*loop\s*,\s*thNF\s*\)/.test(blq))
-    throw new Error('la cota pasa por el lazo pero NO por el tope de backtracking: se apunta la POA del adelanto');
+     la cota dejara de ser comparable, que es lo que este banco vigila.
+     2026-09-19: y con el DÍA FINO, que es lo que la guarda del borde lejano
+     necesita para preguntar si el ángulo propuesto sombrea. Se exige aquí y no
+     sólo en tiempo de ejecución porque un `dayF` olvidado deja el tope a medias
+     —sin borde lejano— y eso no se ve en ninguna cifra. */
+  if (!/execOnFineGrid\(o\.theta[^)]*loop\s*,\s*thNF\s*,\s*dayF\s*\)/.test(blq))
+    throw new Error('la cota pasa por el lazo pero NO por el tope de backtracking CON su día fino: se apunta la POA del adelanto, o se queda sin la guarda del borde lejano');
   if (!/poaSeries\(dayF,\s*execF\)/.test(blq))
     throw new Error('la POA de la cota no sale del θ ejecutado');
   if (!/NO es del core/.test(html))
@@ -270,6 +274,7 @@ const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
 const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
            poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
+           thetaAstroDay, projSolarZenith, shadedFraction1d, clampAdelantoDirigido,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
            skyPresetSeries, skyNubeCorta, optimoAniso,
@@ -284,6 +289,100 @@ for (const r of F.runPhysicsQA()) {
   else { FAIL++; console.error('  ✗ ' + r.name + ' — ' + r.err); }
 }
 
+
+/* ── el tope de DOS LADOS, espejado del núcleo ──────────────────────────────
+   El núcleo cambió `|θ| ≤ |θ_n|` por una regla que mira el LADO
+   (`clamp_adelanto_dirigido`, docs/tracker_route_map.md §6.4). Esta página es
+   LLANA, así que aquí el cambio no quita sombra: lo que hace es dejar de
+   recortar el adelanto hacia el lado que no sombrea. Se espeja igualmente
+   porque núcleo y espejo tienen que ser la MISMA física, no dos parecidas. */
+t('el oráculo de sombra es un puerto LITERAL de pvlib, no una fórmula parecida', () => {
+  /* valores sacados de pvlib.shading (shaded_fraction1d y
+     projected_solar_zenith_angle) con cuerda 1 y paso 1/gcr: en la fórmula sólo
+     entra el cociente, así que esto NO es un caso particular. */
+  const REF = [
+    [64.8029,304.0633,-35.2888,0.5151,8.0,-60.40550033021075,0.20313819262849941],
+    [78.4413,315.5506,-46.6851,0.2705,8.0,-73.71933514611806,0.3963836044844967],
+    [81.7952,277.5348,-51.9957,0.3438,-8.0,-81.72472328457646,0.052059979470433726],
+    [87.9815,299.4435,31.6205,0.5374,0.0,-87.68243067850307,0.8462532197868458],
+    [84.4427,245.0697,-51.033,0.3161,0.0,-83.87580915941398,0.5982910854692136],
+  ];
+  let pp = 0, pf = 0;
+  for (const [zen, az, th, gcr, slope, pRef, fRef] of REF) {
+    pp = Math.max(pp, Math.abs(F.projSolarZenith(zen, az, 0, 0) - pRef));
+    pf = Math.max(pf, Math.abs(F.shadedFraction1d({
+      zen, az, axisAz: 0, axisTilt: 0, thShaded: th,
+      cw: 1, pitch: 1 / gcr, offset: 0, slope }) - fRef));
+  }
+  if (pp > 1e-10 || pf > 1e-10)
+    throw new Error('el puerto no es literal: proyectado ' + pp.toExponential(2) +
+                    ', fracción ' + pf.toExponential(2) + ' (se exige 1e-10)');
+});
+
+t('el tope dirigido no deja el eje del lado del sol respecto a la consigna', () => {
+  const thN    = [-18.285, 2.872,  5.883, -0.305, 40.0];
+  const astro  = [-55.0,  -55.0,  -55.0,  -55.0,  55.0];
+  const lazo   = [-17.285, 2.335,  9.000, -1.305, 38.5];
+  const out = F.clampAdelantoDirigido(lazo, thN, astro, 1.0);
+  for (let i = 0; i < thN.length; i++) {
+    const d = Math.sign(thN[i] - astro[i]) || 1;
+    const avance = d * (out[i] - thN[i]);
+    if (avance < -1e-9)
+      throw new Error('caso ' + i + ': el eje queda ' + (-avance).toFixed(4) +
+                      '° del lado del astronómico, que es el que sombrea');
+    if (avance > 1.0 + 1e-9)
+      throw new Error('caso ' + i + ': adelanta ' + avance.toFixed(4) +
+                      '° y el margen es 1,0°: el tope no acota por arriba');
+  }
+  /* y que NO es la regla vieja disfrazada: el caso 1 es el de cuesta del §6.4,
+     donde la magnitud dejaba pasar +2,335 y el lado exige +2,872 */
+  if (Math.abs(out[1] - 2.872) > 1e-9)
+    throw new Error('el caso de cuesta sale ' + out[1].toFixed(4) +
+                    ' y tenía que subir a la consigna (2,8720): esto es el tope viejo');
+  /* muestra perdida: sale INTACTA, no se inventa un lado */
+  const nan = F.clampAdelantoDirigido([3], [NaN], [0], 1.0);
+  if (nan[0] !== 3) throw new Error('con la consigna perdida el ángulo tiene que salir intacto');
+  /* SIN RETROCESO tampoco hay lado, y ahí son DOS TERCIOS del día: el ángulo
+     sale intacto, no empujado hasta la consigna. */
+  for (const th of [29.2, 30.0, 30.8, -12.3]) {
+    const o = F.clampAdelantoDirigido([th], [30.0], [30.0], 1.0);
+    if (o[0] !== th)
+      throw new Error('sin retroceso (θ_n == θ_astro) el ángulo tiene que salir ' +
+                      'intacto y sale ' + o[0].toFixed(4) + ' en vez de ' + th.toFixed(4));
+  }
+});
+
+t('la GUARDA del borde lejano llega a dispararse, y aparca en la consigna', () => {
+  /* 21-DIC y no el escenario canónico (21-jun) a propósito: la guarda sólo
+     tiene caso donde el intervalo limpio se cierra por debajo del margen, y eso
+     pasa en el horizonte. Medido barriendo marzo/junio/diciembre × gcr
+     0,397/0,55: en junio y marzo NO dispara ni una vez; en diciembre dispara en
+     UN instante, a 0,02° de elevación, con las dos geometrías. Un test escrito
+     sobre junio habría pasado por no disparar nunca. */
+  const mk = (dt) => F.buildDay({ lat: 40.4, lon: -3.7, dateStr: '2024-12-21', tz: 0,
+    altM: 600, TL: 2.5, dtMin: dt, albedo: 0.2, axisAz: 0, maxAngle: 55,
+    gcr: 0.397, cc: F.canonCC() });
+  const day  = mk(10);
+  const dayF = mk(1);
+  const thNF = F.thetaBaselineDay(dayF);
+  const loop = { deadbandDeg: 1.0, slewDegS: 0.17, maxAngle: day.maxAngle };
+  const thN  = F.thetaBaselineDay(day);
+  const conGuarda = F.execOnFineGrid(thN, day.dtMin, dayF.n, 1, loop, thNF, dayF);
+  /* la misma cadena SIN guarda: lazo + regla direccional a secas */
+  const cons = [];
+  for (let i = 0; i < dayF.n; i++) cons.push(thN[Math.min(thN.length - 1, Math.floor(i / day.dtMin))]);
+  const sinGuarda = F.clampAdelantoDirigido(
+    F.applyControlLoop(cons, 1, loop), thNF, F.thetaAstroDay(dayF), loop.deadbandDeg);
+  let n = 0, k = -1;
+  for (let i = 0; i < dayF.n; i++)
+    if (dayF.zen[i] < 90 && Math.abs(sinGuarda[i] - conGuarda[i]) > 1e-9) { n++; if (k < 0) k = i; }
+  if (!n) throw new Error('la guarda no se dispara en ningún instante DE DÍA de un día entero ' +
+                          'al minuto. O sobra, o el caso que la justificaba —el intervalo que se ' +
+                          'cierra en el horizonte— ha dejado de existir; las dos piden mirar');
+  if (Math.abs(conGuarda[k] - thNF[k]) > 1e-9)
+    throw new Error('la guarda dejó el eje en ' + conGuarda[k].toFixed(4) +
+                    '° y la consigna es ' + thNF[k].toFixed(4) + '°: eso no es la guarda');
+});
 
 /* ── el sol, de `sol.js` y de ningún otro sitio ─────────────────────────────
    Había TRES copias de la posición NOAA y del `singleaxis`: aquí, en la otra

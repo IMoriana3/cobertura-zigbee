@@ -708,8 +708,19 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
   const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
   if (!/LZ\.paso\(o\.angles,STEP_MIN\*60\)/.test(app))
     throw new Error('computeDay sigue publicando sólo con el slew: falta la mitad del lazo');
-  if (!/LZS\.paso\(segCmd\(/.test(app))
+  if (!/const segN=segCmd\(/.test(app) || !/LZS\.paso\(segN,STEP_MIN\*60\)/.test(app))
     throw new Error('el camino por mesa sigue sin el deadband');
+  /* 2026-09-19 · Y LAS DOS RAMAS PASAN POR EL TOPE DEL BACKTRACKING. El
+     adelanto puede pasarse del ángulo que la política calculó para no comerse
+     la fila de delante, y hasta hoy aquí no lo devolvía nadie (medido: hasta
+     +1,4 % de POA y la sombra de `pairwise` en llano de 591 pasos·fila a 31).
+     Se exige en LAS DOS porque si sólo lo llevara una, la página tendría dos
+     físicas según el usuario tenga encendida la segmentación o no — y eso no
+     se ve en ninguna cifra de la pantalla. */
+  if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(app))
+    throw new Error('la rama por LÍNEA pasa por el lazo pero no por el tope del backtracking');
+  if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,segN,LZS\.paso\(/.test(app))
+    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking');
 });
 
 t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
@@ -3054,7 +3065,16 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
        mejor. Tercer test por CADENA que salta en este cambio: los que se atan
        al NOMBRE de una función caducan cada vez que la pieza mejora; el que se
        ata a lo que la pieza HACE, no. */
-    for (const lit of ['segOn(T)', 'LZS.paso(segCmd(', 'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
+    /* 2026-09-19 · 'LZS.paso(segCmd(' pasa a 'LZS.paso(segN,' + el tope. Es el
+       CUARTO test por cadena que salta en este fichero al mejorar la pieza, y
+       por la misma razón que dice el párrafo de arriba: la consigna por mesa
+       ahora se guarda en una variable porque el tope del backtracking necesita
+       alimentarse de LA MISMA que alimentó al lazo. Lo que se exige sigue
+       siendo lo que la pieza HACE —el día pasa por el camino por mesa, con
+       lazo y con tope—, sólo que dicho sobre el texto de hoy. */
+    for (const lit of ['segOn(T)', 'const segN=segCmd(', 'LZS.paso(segN,STEP_MIN*60)',
+                       'topeBacktrackingSeg(g.zen,g.az,T,segN,',
+                       'poaPlantSeg(g.zen,g.az,T,ls', 'segLineMean(T,ls)', 'segAng:segAng,poaS:poaS'])
       if (!dayFn.includes(lit)) throw new Error('el cuerpo del día sin «' + lit + '»');
     // la política llega como `P.key` o como `key` según quién drene el cuerpo:
     // lo que se exige es que sea la política, no el nombre de su variable

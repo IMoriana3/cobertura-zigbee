@@ -525,7 +525,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.69.0';
+const VER='v1.70.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -3128,6 +3128,82 @@ const TRACKER_SLEW=0.17;                             // °/s (spec del actuador)
    No cuesta energía, baja la sombra 0,18 pp y quita el 13 % de los arranques
    de motor — que es desgaste que el simulador estaba ignorando. */
 const DEADBAND_DEG=1.0;                              // ° (canónico del core; TCU 41061 = 45 pulsos)
+
+/* ── EL BACKTRACKING ES UN TOPE, Y EN CUESTA TIENE DOS LADOS ───────────────
+   Hasta hoy esta página no tenía tope NINGUNO tras el lazo: el adelanto —el eje
+   va a la consigna MÁS un margen, como el TCU de campo— se pasaba del ángulo
+   que la política calculó para no comerse la fila de delante, y nadie lo
+   devolvía. Medido aquí mismo, 21-mar, 40,10/0,14, 6 filas, rejilla de 1 min:
+
+     llano   `pairwise`  591 pasos·fila con sombra → 31   ·  POA +1,38 %
+     ⊥8°     `pairwise`  665 → 230                        ·  POA +1,13 %
+     ⊥8°     `astro`     sin cambio (no hay tope que aplicar)
+
+   La regla es la del núcleo (`solargpt_core.tracker.clamp_adelanto_dirigido`,
+   docs/tracker_route_map.md §6.4) y mira el LADO, no la magnitud: `|θ| ≤ |θ_n|`
+   vale en LLANO, donde aplanarse no sombrea nunca, pero en cuesta el conjunto
+   de ángulos limpios NO contiene el 0 y esa regla autoriza justo lo prohibido.
+   Confirmado por Ignacio el 2026-09-18: el TCU adelanta, pero el ángulo de
+   backtracking es un tope que no cruza, y en cuesta la consigna manda sobre la
+   banda muerta.
+
+   SIN RETROCESO NO HAY TOPE. Donde la política no retrocede —`astro` por
+   definición, y con el sol alto casi todas— `θ_n == θ_astro` y el ángulo sale
+   intacto. Elegir un lado ahí empujaría el eje sin ninguna sombra que lo
+   justifique.
+
+   LA GUARDA usa el ORÁCULO DE ESTA PÁGINA (`shadeRows`: trazado 3D por fila,
+   con su terreno), no la fórmula 1D del núcleo. Es el mismo enunciado —«si el
+   adelanto sombrea MÁS que la consigna, aparca en la consigna»— preguntado al
+   mejor modelo disponible en cada sitio. Por eso se enuncia COMPARATIVO: aquí
+   la consigna sombrea a menudo, que es precisamente lo que esta página mide. */
+function clampAdelantoDirigido(thOut,thN,thAstro,margen){
+  const m=Math.abs(margen);
+  return thOut.map((v,i)=>{
+    const tn=thN[i], ta=Array.isArray(thAstro)?thAstro[i]:thAstro;
+    if(!isFinite(v)||!isFinite(tn)||!isFinite(ta))return v;
+    const d=Math.sign(tn-ta);
+    if(d===0)return v;                       // sin retroceso no hay tope
+    return tn+d*Math.max(0,Math.min(m,d*(v-tn)));
+  });
+}
+function topeBacktracking(zen,az,T,thN,thLazo,margen){
+  if(!(zen<90))return thLazo;
+  const ast=anglesAstro(zen,az,T);
+  const dir=clampAdelantoDirigido(thLazo,thN,ast,margen==null?DEADBAND_DEG:margen);
+  /* si la regla no movió nada, la guarda no tiene qué guardar: se ahorran DOS
+     trazados 3D por paso, que en un día de 1440 pasos × 9 políticas se nota */
+  let toco=false;
+  for(let r=0;r<dir.length;r++) if(Math.abs(dir[r]-thLazo[r])>1e-9){toco=true;break;}
+  const retro=thN.map((tn,r)=>{const ta=Array.isArray(ast)?ast[r]:ast;
+    return isFinite(tn)&&isFinite(ta)&&Math.abs(tn-ta)>1e-9;});
+  if(!toco&&!retro.some(Boolean))return dir;
+  const fP=shadeRows(zen,az,T,dir), fC=shadeRows(zen,az,T,thN);
+  return dir.map((v,r)=>(retro[r]&&(+fP[r]||0)>(+fC[r]||0)+1e-12)?thN[r]:v);
+}
+/* El mismo tope POR MESA. Misma regla, mismo oráculo: `shadeRows` acepta las
+   dos formas —ángulos por fila y por segmento— y en la segunda publica
+   `sh.seg[r][k]`. Se escribe aparte y no se "generaliza" la de arriba porque el
+   lado y el retroceso se deciden por SEGMENTO: cada mesa tiene su tilt y su
+   vecina, así que su consigna y su astronómico son suyos. Si esta rama se
+   quedara sin tope, la página tendría DOS físicas según el usuario tenga o no
+   la segmentación encendida, que es justo lo que no puede pasar. */
+function topeBacktrackingSeg(zen,az,T,segN,segLazo,margen){
+  if(!(zen<90))return segLazo;
+  const ast=anglesAstroSeg(zen,az,T);
+  const m=margen==null?DEADBAND_DEG:margen;
+  const dir=segLazo.map((l,r)=>clampAdelantoDirigido(l,segN[r],ast[r]||[],m));
+  const retro=segN.map((l,r)=>l.map((tn,k)=>{const ta=ast[r]&&ast[r][k];
+    return isFinite(tn)&&isFinite(ta)&&Math.abs(tn-ta)>1e-9;}));
+  let hay=false;
+  for(let r=0;r<retro.length&&!hay;r++) for(let k=0;k<retro[r].length;k++) if(retro[r][k]){hay=true;break;}
+  if(!hay)return dir;
+  const fP=shadeRows(zen,az,T,dir), fC=shadeRows(zen,az,T,segN);
+  const sub=(sh,r,k)=>{const v=(sh.seg&&sh.seg[r]&&sh.seg[r][k]!=null)?sh.seg[r][k]:sh[r];
+    return Math.max(0,Math.min(1,+v||0));};
+  return dir.map((l,r)=>l.map((v,k)=>
+    (retro[r][k]&&sub(fP,r,k)>sub(fC,r,k)+1e-12)?segN[r][k]:v));
+}
 /* El lazo entero, en un sitio: por debajo del umbral el motor NI ARRANCA, y lo
    que arranca va limitado a la velocidad del actuador. Misma regla y mismo
    orden que apply_control_loop del core (y que overcast.html). */
@@ -5091,13 +5167,20 @@ function* serieDiaGen(key,D,dest){
     let lim,pp;
     if(seg){
       // POR MESA: consigna, slew, POA y sombra de cada mesa; la línea, su media
-      const ls=LZS.paso(segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo),STEP_MIN*60);
+      // v1.70: el tope del backtracking TAMBIÉN por mesa — si sólo lo llevara
+      // la rama por línea, la página tendría dos físicas según el usuario
+      // tenga o no encendida la segmentación.
+      const segN=segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo);
+      const ls=topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60));
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
       segAng[t]=ls; poaS[t]=pp.segs;
     }else{
       // lo que la planta HACE: el LAZO ENTERO — deadband (el motor ni arranca)
       // y despues la velocidad del actuador. v1.61: antes era solo la segunda mitad
-      lim=LZ.paso(o.angles,STEP_MIN*60);
+      // y v1.70: Y EL TOPE DEL BACKTRACKING, que el adelanto no cruza. Va AQUÍ,
+      // tras el lazo, porque el margen se añade DESPUÉS: aplicarlo antes es
+      // aplicarlo donde no sirve, que es lo que le pasó al núcleo en su día.
+      lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
     }
     ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;

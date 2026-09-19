@@ -731,6 +731,73 @@ function thetaBaselineDay(day){
   }
   return th;
 }
+/* get_baseline_theta SIN backtracking: el seguimiento PURO. Da el LADO limpio
+   —el tope de dos lados mira de qué parte de la consigna queda el sol—, y hasta
+   hoy esta página no lo necesitaba porque su tope miraba la magnitud. */
+function thetaAstroDay(day){
+  const stow=Math.max(-day.maxAngle,Math.min(day.maxAngle,day.nightStow));
+  const th=[];
+  for(let i=0;i<day.n;i++){
+    const v=singleaxis(day.zen[i],day.az[i],{axisTilt:day.axisTilt,axisAz:day.axisAz,
+      maxAngle:day.maxAngle,backtrack:false,gcr:day.gcr,crossAxisTilt:0});
+    th.push(isFinite(v)?v:stow);
+  }
+  return th;
+}
+/* pvlib.shading.projected_solar_zenith_angle — puerto literal.
+   Ángulo del sol PROYECTADO sobre el plano perpendicular al eje. Es lo único
+   que la sombra entre filas necesita saber del sol. */
+function projSolarZenith(zen,az,axisTilt,axisAz){
+  const R=Math.PI/180, sz=Math.sin(zen*R);
+  const sx=sz*Math.sin(az*R), sy=sz*Math.cos(az*R), szz=Math.cos(zen*R);
+  const sxp=sx*Math.cos(axisAz*R)-sy*Math.sin(axisAz*R);
+  const szp=sx*Math.sin(axisAz*R)*Math.sin(axisTilt*R)
+           +sy*Math.sin(axisTilt*R)*Math.cos(axisAz*R)
+           +szz*Math.cos(axisTilt*R);
+  return Math.atan2(sxp,szp)/R;
+}
+/* pvlib.shading.shaded_fraction1d — puerto literal (ec. 12 de Anderson 2024).
+   ESTA PÁGINA NO MODELA SOMBRA ENTRE FILAS, y sigue sin modelarla: su POA es de
+   superficies aisladas, a propósito. Esto entra SOLO como oráculo del tope —
+   para preguntar «¿este ángulo sombrearía?»— y no toca ninguna POA. */
+function shadedFraction1d(o){
+  const R=Math.PI/180;
+  const thShading=(o.thShading===undefined||o.thShading===null)?o.thShaded:o.thShading;
+  const psz=projSolarZenith(o.zen,o.az,o.axisTilt||0,o.axisAz||0);
+  const d1=thShading-psz, d2=o.thShaded-psz, dS=psz-(o.slope||0);
+  const c2=Math.abs(Math.cos(d2*R));
+  const off=o.offset||0;
+  const t=0.5
+    +Math.abs(Math.cos(d1*R))/c2/2
+    +(Math.sign(psz)*off/o.cw/c2*(Math.sin(d2*R)-Math.sin(d1*R)))
+    -(o.pitch/o.cw*Math.cos(dS*R)/c2/Math.cos((o.slope||0)*R));
+  return Math.max(0,Math.min(1,t));
+}
+/* clamp_adelanto_dirigido: el tope del backtracking mirando el LADO, no la
+   magnitud. Espejo literal de `solargpt_core.tracker.clamp_adelanto_dirigido`;
+   el porqué entero está en su docstring y en docs/tracker_route_map.md §6.4.
+   En dos líneas: `|θ| ≤ |θ_n|` es la regla del LLANO, donde aplanarse no
+   sombrea nunca y el conjunto limpio es simétrico. En cuesta no lo es y esa
+   regla autoriza justo lo prohibido. Esta página es llana, así que aquí el
+   cambio no arregla sombra: deja de recortar el adelanto hacia el lado que no
+   sombrea, y eso mueve la POA ~+0,03 %. Se pone igual porque el núcleo y los
+   espejos tienen que ser la MISMA física, no dos parecidas. */
+function clampAdelantoDirigido(thOut,thN,thAstro,margen){
+  const m=Math.abs(margen);
+  return thOut.map((v,i)=>{
+    const tn=thN[i], ta=thAstro[i];
+    if(!isFinite(v)||!isFinite(tn)||!isFinite(ta))return v;
+    const d=Math.sign(tn-ta);
+    /* SIN RETROCESO NO HAY TOPE, y son DOS TERCIOS del día: con el sol alto el
+       backtracking no retrocede y θ_n == θ_astro, así que no hay ángulo de roce
+       que imponer y el ángulo sale INTACTO. Resolver este empate eligiendo un
+       lado (p.ej. d=+1 «por determinismo») empuja el eje hasta la consigna sin
+       ninguna sombra que lo justifique. Medido en el núcleo: quitarlo no cambia
+       la sombra en ninguno de los 8 casos de la descomposición del §6.4. */
+    if(d===0)return v;
+    return tn+d*Math.max(0,Math.min(m,d*(v-tn)));
+  });
+}
 /* clamp_to_backtrack: |θ_out| ≤ |θ_n|, conservando el signo — innegociable.
    compute_poa_perez modela superficies aisladas: cualquier |θ|>|θ_n| inflaría
    la POA con energía que en la planta real se pierde en sombra fila a fila. */
@@ -923,7 +990,7 @@ function applyControlLoop(target,dtMin,p){
    rejilla FINA y se le aplica el MISMO apply_control_loop del core con el paso
    fino: a 1 min el techo es 10,2°/min, que sí ata y dibuja la rampa real.
    Devuelve el θ EJECUTADO minuto a minuto. */
-function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine){
+function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine,dayFine){
   const cons=new Array(nFine);
   for(let i=0;i<nFine;i++)
     cons[i]=theta[Math.min(theta.length-1,Math.floor((i*dtFine)/dtMin))];
@@ -942,8 +1009,43 @@ function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine){
      paridad carea esa función contra `apply_control_loop` del core a 1e-9, y
      el core también la deja pura y acota fuera (`poa.py`, tras el lazo).
      `thNFine` es OPCIONAL: sin él esto se comporta como siempre, que es lo que
-     los bancos del lazo necesitan para medir el lazo y nada más. */
-  return thNFine?clampBT(exec,thNFine):exec;
+     los bancos del lazo necesitan para medir el lazo y nada más.
+
+     2026-09-19 — Y EL TOPE MIRA EL LADO, NO LA MAGNITUD. `clampBT` impone
+     |θ| ≤ |θ_n|, que es la regla del LLANO. El núcleo cambió a
+     `clamp_adelanto_dirigido` (ver docs/tracker_route_map.md §6.4) y aquí se
+     espeja para que no haya dos físicas. Esta página es llana, así que el
+     cambio no le quita sombra: lo que hace es dejar de recortar el adelanto
+     hacia el lado que NO sombrea. Medido: la POA sube ~0,03 %.
+     La GUARDA del borde lejano necesita preguntar «¿sombrearía este ángulo?»,
+     y para eso hace falta `dayFine` (posición solar y geometría de la rejilla
+     fina). Sin él no se puede garantizar el borde lejano, así que se exige:
+     pasar `thNFine` sin `dayFine` es un error de programación, no un modo. */
+  if(!thNFine)return exec;
+  if(!dayFine)throw new Error('execOnFineGrid: con thNFine hace falta dayFine '+
+    'para la guarda del borde lejano; sin ella el tope no es el del núcleo');
+  const astro=thetaAstroDay(dayFine);
+  const dir=clampAdelantoDirigido(exec,thNFine,astro,loop.deadbandDeg);
+  /* GUARDA DEL BORDE LEJANO: el backtracking da el borde que mira al sol, no el
+     otro. Cerca del horizonte el intervalo limpio se cierra por debajo del
+     margen y el adelanto se sale por arriba; ahí se aparca en la consigna.
+     COMPARATIVA («sombrea MÁS que la consigna») y no absoluta: aquí son lo
+     mismo —la consigna de esta página no sombrea nunca, es llana— pero es la
+     única forma que vale también donde la consigna sí sombrea, que es lo normal
+     con terreno real. Se enuncia así para que los tres consumidores lleven la
+     MISMA física y no tres parecidas.
+     Y SOLO DONDE EL BACKTRACKING RETROCEDE, por lo mismo que la regla: sin
+     retroceso no hay tope, y la guarda no tiene nada que guardar. */
+  const fr=(th,i)=>shadedFraction1d({zen:dayFine.zen[i],az:dayFine.az[i],
+      axisAz:dayFine.axisAz,axisTilt:dayFine.axisTilt,thShaded:th,
+      /* con `offset` 0 la fórmula sólo usa el COCIENTE pitch/cw, que es 1/gcr:
+         no es una aproximación, es que la cuerda y el paso no entran por
+         separado. Por eso basta el `gcr` que el día ya trae. */
+      cw:1,pitch:1/dayFine.gcr,offset:0,slope:0});
+  return dir.map((v,i)=>{
+    if(!(Math.abs(thNFine[i]-astro[i])>1e-9))return v;   // sin retroceso: no hay tope
+    return fr(v,i)>fr(thNFine[i],i)+1e-12?thNFine[i]:v;
+  });
 }
 /* velocidad instantánea del actuador (°/s de tiempo simulado) en el paso i */
 function slewRateAt(exec,i,dtFine){
@@ -1330,14 +1432,14 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
   mean.ghi=mean.irr.map(w=>w.ghi);
   const poaNmean=poaSeries(mean,thN);
   const rG=POLICIES[polName](mean,thN,poaNmean,d);
-  const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop,thNF);
+  const execG=execOnFineGrid(rG.theta,days[0].dtMin,F.n,F.dt,loop,thNF,daysF[0]);
   let whG=0,whZ=0,whN=0; const zones=[];
   for(let z=0;z<nZ;z++){
     const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
     const rZ=POLICIES[polName](day,thN,poaNz,d);
     // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
-    const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop,thNF);
+    const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop,thNF,daysF[0]);
     const poaZ=poaSeries(dayF,execZ);
     const poaG=poaSeries(dayF,execG);
     const poaNf=poaSeries(dayF,thNF);
@@ -1362,7 +1464,11 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
      cuenta. Devolverlo es lo que impide que la regla viva en dos sitios. */
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
           zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,
-          thN:thN,thNF:thNF};
+          thN:thN,thNF:thNF,
+          /* el día FINO con el que se calculó `thNF`. Lo consume la guarda del
+             borde lejano, y se devuelve por la misma razón que `thNF`: que
+             quien rehaga la cuenta use EL MISMO, no uno recalculado. */
+          dayF:daysF[0]};
 }
 
 /* ── diario de decisiones: la máquina del poa_switch EXPLICADA ─────────────
@@ -1906,7 +2012,7 @@ function runPhysicsQA(){
     // la referencia del día lleva el MISMO tope de backtracking que la cadena
     // zonal: si una lo lleva y la otra no, vuelven a ser dos físicas — que es
     // exactamente lo que este banco existe para impedir.
-    const ex=execOnFineGrid(rp.theta,day.dtMin,dayF.n,1,loop,thetaBaselineDay(dayF));
+    const ex=execOnFineGrid(rp.theta,day.dtMin,dayF.n,1,loop,thetaBaselineDay(dayF),dayF);
     const wh=poaSeries(dayF,ex).reduce((s,v)=>s+v/60,0);
     A(Math.abs(r.plantZonal-wh)<1e-6,
       'la tabla zonal ('+r.plantZonal.toFixed(1)+') no cuadra con la del día ('+wh.toFixed(1)+') — físicas distintas');
@@ -1954,7 +2060,7 @@ function runPhysicsQA(){
       // 2026-09-18): el adelanto puede pasarse del ángulo que evita la sombra
       // de la fila de delante, y `clampBT` lo devuelve. Se usa el MISMO `thNF`
       // que usó la cadena —lo devuelve `zonalRun`— y no uno recalculado aquí.
-      const exec=execOnFineGrid(r0.zones[z].theta,o.dtMin,1440,DT_FINE_PHYS,loop,r.thNF);
+      const exec=execOnFineGrid(r0.zones[z].theta,o.dtMin,1440,DT_FINE_PHYS,loop,r.thNF,r.dayF);
       A(exec.length===r.zones[z].execF.length,'zona '+z+': largos distintos');
       for(let i=0;i<exec.length;i++)
         A(Math.abs(exec[i]-r.zones[z].execF[i])<1e-9,'zona '+z+' paso '+i+' no es el ejecutado');
@@ -2220,7 +2326,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.25.0';
+const VER='v1.26.2';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2626,7 +2732,7 @@ function recompute(){
     const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
     // consigna → actuador (rampa al minuto) → POA fina, y la consigna sin lazo
     // en la MISMA rejilla fina para poder medir el coste del hierro
-    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF);
+    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF,dayF);
     const consF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,null);
     const poaF=poaSeries(dayF,execF);
     const poaConsF=loop?poaSeries(dayF,consF):poaF;
@@ -2644,7 +2750,7 @@ function recompute(){
     // instantáneo: salía un techo que ninguna TCU puede alcanzar y el hueco
     // que mide dejaba de ser comparable con las filas de al lado.
     const o=optimoAniso(day,thN,d);
-    const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF);
+    const execF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF,dayF);
     const flagF=execOnFineGrid(o.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
     const poaF=poaSeries(dayF,execF);
     const consF=execOnFineGrid(o.theta,day.dtMin,dayF.n,DT_FINE,null);
