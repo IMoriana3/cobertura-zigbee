@@ -563,12 +563,27 @@ la corrección — y la comprobación, con razón, no distingue una cita de una
 afirmación. La historia va al commit y aquí; el comentario del código dice lo que
 **es**.
 
-### FÍSICA PURA: lo que ejecuta, intacto
+### FÍSICA PURA: dos hunks dentro, y qué son exactamente
 
-El único hunk que cae dentro del bloque es el comentario del slew, que el punto
-2.3 manda corregir y que vive ahí. Comprobado quitando **todos** los comentarios y
-el espacio del bloque en las dos versiones: **90 971 caracteres, idénticos**. Con
-su control: cambiándole un número al bloque, el despojador lo detecta.
+Dentro del bloque caen **dos** cosas, y ninguna es física:
+
+1. **El comentario del slew**, que el punto 2.3 manda corregir y que vive ahí.
+2. **`const VER`**, la etiqueta de versión, que sube de `v1.70.0` a `v1.71.0`.
+
+Comprobado con un diff del bloque **despojado de comentarios y de espacio**, no de
+memoria. Cambia **una sola línea de código**:
+
+```
+-const VER='v1.70.0';
++const VER='v1.71.0';
+```
+
+**Corrección de lo que escribí primero**: antes de subir la versión afirmé que el
+código del bloque quedaba idéntico carácter a carácter (90 971 en las dos). Con
+`VER` dentro del bloque, esa afirmación ya no vale y se sustituye por ésta, que es
+más precisa: una línea, y es la etiqueta.
+
+El despojador lleva su control: cambiándole un número al bloque, lo detecta.
 
 ### Lo que esta medida NO dice
 
@@ -687,3 +702,12 @@ vi porque imprimí también el `|Δ| máx`, que salía `NaN`. Ahora el guion lan
 cuanto un valor no es finito, en vez de dejar pasar la comparación. Y había un
 segundo error de planteamiento en el mismo careo: le pasaba al núcleo la
 **posición** anterior donde espera la **consigna** anterior.
+
+**11 · Dejé la versión atrás, y me paró el banco.** Escribí «v1.71» en los
+comentarios del cambio del anual y dejé `VER` en `v1.70.0`. Es la misma
+comprobación que cazó al PR #696 la misma noche, y existe para que la etiqueta de
+la página y el sello del certificador no anuncien una versión que no lleva dentro
+lo que dice. Y arrastró una segunda corrección: `VER` vive DENTRO de FÍSICA PURA,
+así que mi afirmación de que el bloque quedaba idéntico carácter a carácter dejó
+de ser cierta en cuanto la subí. Rectificada en el apartado de arriba con el diff
+que la sustituye.
