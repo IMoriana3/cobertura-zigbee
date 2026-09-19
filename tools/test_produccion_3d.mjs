@@ -101,7 +101,7 @@ try {
      al reves y pasable, por eso hace falta abrir de verdad en 412x915.
 
      Ahora la direccion se aparta de la de siempre SOLO lo que haga falta para que
-     ningun eje baje de 0,55. El tope de aqui va en 0,45, por debajo del objetivo:
+     ningun eje baje de MIN_EJE (0,60). El tope de aqui va en 0,45, por debajo:
      vigila que no se vuelva a una direccion fija, no que acierte al decimal —el bucle
      de la distancia para con 0,03 de tolerancia y el reparto depende de la planta—. */
   {
