@@ -593,6 +593,62 @@ anuales. Una planta, una configuración.
 
 ---
 
+## HALLAZGO · el día con planta real tarda 6 min 33 s, y el tope del #696 le añadió 169 s
+
+**No es una fase del encargo.** Salió persiguiendo otra cosa —una captura del
+auditor con el corte 2D en blanco— y se anota aquí con su medida, sin tocar el PR
+que lo causó.
+
+### Qué se ejecutó
+
+`audit3/F_coste_dia.mjs`, que cronometra **`computeDay()`** con Ayora real cargada
+por el mismo botón que pulsa el usuario, **después** de que la carga termine y la
+página esté quieta — así el número es el del cálculo y no el de la cola. Salida
+cruda en `audit3/out/F_coste_dia.jsonl`.
+
+| commit | qué lleva | ms | |
+|---|---|---|---|
+| `b8396e9` | antes del tope del backtracking | **224 222** | 3 min 44 s |
+| `0a589c5` | `main` con el tope (#696) | **393 042** | 6 min 33 s |
+
+**+168 820 ms · +75,3 %.** Mismo diseño en las dos: **79 líneas**, 288 instantes,
+2 políticas encendidas, camino **por mesa** (`porMesa: true` en las dos salidas —
+si fuera `false` no se estaría midiendo el caso caro, y el guion lo dice antes del
+número).
+
+### Qué lo explica, citado
+
+El tope pregunta a `shadeRows` —el trazado 3D con el terreno— por **instante** y
+por **rama**, y se llama **siempre**, haya o no retroceso de backtracking:
+`0a589c5:backtracking.html`, en el cuerpo del día,
+```js
+      lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
+```
+y su gemela por mesa `topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60))`.
+
+### Qué NO dice
+
+No dice que el tope esté mal: el #696 mide lo que **gana** —hasta +1,4 % de POA y
+la sombra de `pairwise` en llano de 591 pasos·fila a 31— y esa medida no se
+discute aquí. Dice lo que **cuesta**, que su PR no midió.
+
+Tampoco dice que 6 min 33 s sea la causa de la captura del auditor. Durante ese
+rato **el hilo principal está bloqueado** —comprobado de rebote: Playwright no
+consigue estabilizar el lienzo para capturarlo mientras dura—, y una interfaz
+congelada enseña lo que hubiera en el lienzo. Pero la imagen exacta **no se ha
+reproducido**: con el día terminado, el corte 2D pinta el 100 % de sus píxeles
+tanto en el preset genérico (5 707 colores) como en Ayora real (11 625 colores,
+con sol, rayos y las 79 mesas). Explicación compatible, **no** causa demostrada:
+`NO VERIFICADO`.
+
+### Lo que abre
+
+El oráculo sólo hace falta **donde el backtracking retrocede** —lo dice el propio
+enunciado del tope— y hoy se llama en todos los instantes. Cuánto ahorraría
+saltárselo donde no hay retroceso: **NO MEDIDO**.
+
+---
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
