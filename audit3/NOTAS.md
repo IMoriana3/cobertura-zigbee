@@ -942,6 +942,96 @@ La del experimento del `cancelled()`. **No se pudo borrar desde este contenedor*
 unexpectedly`—. Lleva sólo el fichero del experimento, no tiene PR y no dispara
 `bancos`. **Hay que borrarla a mano.**
 
+## FASE 3.2 · LA PONDERACIÓN DE PLANTA, MEDIDA ANTES DE ELEGIR
+
+### Qué se agregaba mal, y dónde
+
+`poaPlantSeg` hace dos pasos y sólo el primero pondera:
+
+1. dentro de cada línea, las mesas pesan por su **largo** (`acc/wt`, `backtracking.html:2786`)
+2. entre líneas, **media sin ponderar** (`sum/n`, `backtracking.html:2792`)
+
+El paso 2 es el mismo vicio que el paso 1 arregla, una capa más arriba: trata
+igual una línea de 147,74 m y una de 1 185,51 m — un factor **8** en el dominio
+medido, con líneas de **4 a 36 mesas**. Así que «ponderar por mesa» no estaba
+hecho a nivel de planta, sólo dentro de cada línea.
+
+### Las tres agregaciones, sobre el MISMO θ y el MISMO POA por mesa
+
+Una sola llamada a `poaPlantSeg` devuelve `segs` —el POA de cada mesa— así que
+cambiar el peso no vuelve a tocar la física. Lo único que cambia entre las tres
+cifras es el peso:
+
+- **A** · media sin ponderar de las medias de línea (lo que se publica hoy)
+- **B** · todas las mesas de la planta, peso = **largo**
+- **C** · todas las mesas de la planta, peso = **módulos** (`md` del levantamiento)
+
+**Test nulo, antes de ningún recuento:** los tres pesos tienen que diferir en el
+dominio medido. **385 largos distintos**, **3 valores de `md`** (14/21/28), líneas
+de 4 a 36 mesas. Difieren, así que las cifras informan.
+
+### Resultado · Ayora, 2026-06-21, paso 10 min, 86 instantes por política
+
+| política | B vs A (día) | C vs B (día) | peor instante B vs A |
+|---|---|---|---|
+| `astro` | −0,0363 % | −0,0002 % | −10,233 % (20:40, sol 8,58°) |
+| `global` | −0,0258 % | 0,0000 % | −4,600 % (21:10, sol 3,45°) |
+| `row` | −0,0205 % | −0,0000 % | −7,733 % (21:10) |
+| `bt2d` | −0,0047 % | −0,0001 % | −3,636 % (21:10) |
+| `pairwise` | **+0,0109 %** | −0,0001 % | −9,623 % (21:10) |
+| `true3d` | **−2,0714 %** | +0,0028 % | −17,254 % (21:10) |
+| `mgl` · `optimal` · `optfree` | `PENDIENTE` | `PENDIENTE` | `PENDIENTE` |
+
+Las tres que faltan son las que **buscan**. `mgl` va a ~28 s por instante medidos,
+frente a menos de 1 s de las baratas: no se extrapola su total, se mide.
+
+### Lo que dicen los números
+
+**1 · La salvedad del encargo es real y vale ≤ 0,003 %.** El auditor dictó que se
+escribiera junto a la cifra que «el largo no es el área cuando las mesas difieren
+en número de módulos». Difieren de verdad —14, 21 y 28— y la diferencia entre
+ponderar por largo y por módulos, en el día, va de **−0,0002 % a +0,0028 %**. La
+salvedad deja de ser una precaución abstracta y pasa a ser una cifra: existe y no
+mueve nada. **Ponderar por largo queda avalado por medida, no por argumento.**
+
+**2 · La ponderación de planta casi no importa, salvo en `true3d`.** Cinco
+políticas se mueven entre −0,036 % y +0,011 %. `true3d` se mueve **−2,0714 %**,
+unas cincuenta veces más. Es el único caso medido donde elegir A o B cambia un
+número publicado, y va dicho aparte en vez de escondido en una media.
+
+**3 · Y NO es lo mismo que el +0,3524 % de E-F2.** Aquel mide cambiar la
+**granularidad de la física** —tilt de línea a tilt de mesa— en `pairwise`. Esto
+mide cambiar el **peso de la agregación** dejando la física igual: **+0,0109 %**
+en `pairwise`, **treinta y dos veces menor**. Son dos cosas distintas y el
+cuaderno no las mezcla: la granularidad paga, el peso casi no.
+
+**4 · Por instante sí importa siempre.** De −3,6 % a −17,3 %, y el peor caso de
+cinco de las seis cae en el **mismo instante**: las 21:10 con el sol a **3,45°**.
+A sol rasante la media sin ponderar y la ponderada se separan mucho; en el total
+del día se compensa. Publicar sólo el día escondería eso, así que va la columna.
+
+### El dato de módulos existe, y dónde se cae por el camino
+
+El encargo daba por hecho que el área «no está en los datos». Medido:
+
+- `ayora_cotas.json` trae `md` en **1 502 de 1 502 mesas, el 100 %** (14/21/28).
+- `plantFromCotas` lo construye bien en `P.segMods` (`backtracking.html:1695`).
+- **`terrain()` NO lo copia a `T`**: el literal de `backtracking.html:4443-4445`
+  pasa `segs`, `segTilt`, `segPairs`, `segDrive`, `segZ`, `segSide` y `segMorro`,
+  y **deja `segMods` fuera**.
+- El dato **no se pierde**: sigue en `T.real`, porque esa misma rama guarda
+  `real:P`. La sonda lo lee de ahí.
+
+Es **un campo en un literal**, no un trabajo de fontanería. No se toca el código:
+cuál es la ponderación buena es decisión de auditoría, y la decisión ya está
+tomada a favor del largo — que además es la que los números avalan.
+
+**Y el test nulo hizo aquí su trabajo por primera vez ANTES y no DESPUÉS.** La
+primera corrida leía `T.segMods` y el test nulo saltó: «1600 mesas sin md: C no se
+puede calcular entera». Paró la publicación de una columna hueca en vez de
+publicar ceros. Las veces anteriores de esta ronda, un test nulo cazó el fallo
+después de escrito; éste lo cazó antes de escribirlo.
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
@@ -1079,6 +1169,34 @@ El comentario en #702 publica las **dos** medidas. Los dos ficheros van a chocar
 —los dos PR tocan `bancos.yml`— y quien resuelva el conflicto las necesita
 delante, porque con una sola de las dos la conclusión razonable es revertir el
 arreglo por un motivo que no le aplica.
+
+### Error 16 · puse una espera por debajo de un número que yo mismo había medido
+
+La sonda de 3.2 esperaba **300 s** a que el cálculo del día terminara. Ese valor
+lo copié de `F1_seg_metrica.mjs`, escrita cuando el día costaba menos. Entre
+medias, **mi propio cuaderno** tiene una sección entera —«el día con planta real
+tarda 6 min 33 s»— con la medida: **393 042 ms**. La sonda murió por `Timeout
+300000ms exceeded` contra un techo que la medida ya desmentía.
+
+No es que faltara el dato: el dato estaba escrito, por mí, en el fichero que
+estaba editando. **Copiar un parámetro de una sonda anterior es heredar sus
+supuestos**, y los supuestos caducan igual que las cifras. La espera va ahora en
+900 s y **cronometrada**, así que el día que se quede corta lo dice en vez de
+morirse, y de paso mide.
+
+### Error 17 · di un delta como punto teniendo una sola muestra
+
+Publiqué que la segunda métrica de la v1.74 añade **«+98,3 s, +25 %»** al coste
+del día, restando una medida mía (491,3 s) de la de `main` (393,0 s). La
+siguiente corrida del mismo commit y la misma planta dio **429,2 s**: **13 % de
+dispersión sobre lo mismo**.
+
+Con dos muestras propias y una ajena, lo que se puede decir es un **intervalo de
+~36 a ~98 s**, no un punto. Es la misma familia que los tres fallos de coste
+anteriores —dar por fijo lo que la muestra no fija— pero con una variante nueva:
+allí extrapolaba **de una clase a otra**, y aquí extrapolé **de una sola
+repetición**. Una medida sin repetir no tiene dispersión conocida, y una
+diferencia entre dos medidas sin dispersión conocida no es una cifra publicable.
 
 ## REGLA · UN BANCO LEE LO QUE LA HERRAMIENTA PUBLICA, NO SU CÓDIGO DE SALIDA
 
