@@ -240,6 +240,129 @@ en verde sin tocarlo, con el mismo cambio de `serieDiaGen`.
 
 ---
 
+## FASE 1 · LA MÉTRICA POR LÍNEA CONTRA LA MÉTRICA POR MESA
+
+**MEDIDO, NO ARREGLADO.** La cláusula 1.3 del encargo dice: *«Si falla también
+sin torsión, el problema es mayor: dilo y para.»* Falla también sin torsión. Este
+apartado es la medida; el arreglo **no se ha hecho**.
+
+### El defecto, citado
+
+`b8396e9:backtracking.html:2758-2763`
+```js
+function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
+  const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
+  if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
+  if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
+  return segsBroadcast(T,policyAngles(key,zen,az,T,irr,doy,albedo).angles);   // el resto sigue por línea
+}
+```
+
+Sólo `astro` y `pairwise` tienen política **por mesa**. Las otras siete reciben el
+ángulo de **línea** repartido a todas sus mesas. Y cuando la planta trae `segTilt`,
+lo que la página puntúa es `poaPlantSeg` — **por mesa**.
+
+### Qué se ejecutó
+
+`audit3/F1_seg_metrica.mjs` sobre `570654f`, planta **Ayora real** (botón `⛰ Ayora
+real`), 21-jun-2026, paso 10 min, **86 instantes** con `dni > 25`. Salida cruda en
+`audit3/out/F1_seg_metrica.json`; el diario instante a instante, en
+`audit3/out/F1_instantes.jsonl` (258 líneas = 86 × 3 geometrías).
+
+Geometría: **79 líneas · 1 600 mesas · torsión en 1 600 de 1 600 mesas**, máximo
+**3,7143°**.
+
+### 1.2 · TEST NULO, antes de ningún recuento
+
+| geometría | instantes donde las DOS métricas difieren | dif. máxima |
+|---|---|---|
+| **medida** (Ayora) | **86 de 86** | 2,1652 W/m² |
+| **sinTorsion** | **29 de 86** | 2,1373 W/m² |
+| tilt0 | 86 de 86 | 9,2949 W/m² |
+
+En `sinTorsion` las métricas coinciden en 57 de los 86 instantes, así que los
+recuentos de esa fila van sobre **29**, no sobre 86. Se dice aquí y no después.
+
+### 1.1 · El recuento
+
+| geometría | inversiones de orden | `optimal` pierde **por mesa** | `optimal` pierde **por línea** | Δ día por mesa | Δ día por línea |
+|---|---|---|---|---|---|
+| **medida** (Ayora real) | **65 de 86** | **58 de 86** | **0 de 86** | **−0,5103 %** | **+13,7221 %** |
+| **sinTorsion** | 22 de 86 (**22 de 29** informativos) | **15 de 86** | **0 de 86** | **−0,3482 %** | +13,7221 % |
+| tilt0 | 26 de 86 | 18 de 86 | 0 de 86 | −0,3060 % | +13,7221 % |
+
+Denominador de los porcentajes: la POA del día de `pairwise` con **la misma
+métrica con la que se resta**, integrada sobre los mismos instantes —
+**67 337,7 W/m²** en la geometría medida.
+
+**Por su propia métrica `optimal` no pierde nunca** (0 de 86 en las tres filas),
+que es lo que tiene que pasar si el optimizador funciona. Por la métrica con la
+que se le puntúa, pierde en **58 de 86** instantes y el día entero sale
+**−0,5103 %**.
+
+El peor instante es el mismo en las tres geometrías — **08:30**: `optimal` gana
+**+136,16 W/m²** por línea y pierde **−63,53 W/m²** por mesa. Doscientos vatios
+por metro cuadrado de diferencia según con qué regla se mire el mismo ángulo.
+
+### 1.3 · EL CONTROL, y por qué obliga a parar
+
+El control limpio es **`sinTorsion`**: cada mesa al tilt de SU línea, con todo lo
+demás igual —cotas, solapes, parejas—, y con la sustitución aplicada a las **dos**
+geometrías, la que puntúa y la que manda.
+
+**Sin torsión sigue fallando**: `optimal` pierde por mesa en **15 de 86**
+instantes y el día sale **−0,3482 %**. La torsión **agrava** el efecto —de 15 a 58
+instantes, de −0,35 % a −0,51 %— pero **no lo causa**.
+
+Por tanto la causa **no** queda acotada al reparto por línea con torsión, que es
+lo que el encargo daba como hipótesis. Las dos métricas son **agregaciones
+distintas** —`poaPlantSeg` pondera por largo de mesa dentro de la línea y luego
+promedia líneas; `poaPlant` promedia filas sin ponderar— y `optimal` maximiza una
+mientras la página publica la otra siempre que haya `segTilt`.
+
+**`tilt0` no es un control limpio y no se usa como tal.** Poner todas las mesas a
+0 no sólo quita la torsión: aleja el tilt de mesa del tilt de línea, así que
+introduce un desajuste **distinto** entre las dos métricas — se ve en su test
+nulo, que salta a 9,2949 W/m² frente a los 2,14 de los otros dos. Se publica su
+fila por completitud y se declara confundida.
+
+### Lo que NO dice esta medida
+
+Ni que `optimal` sea peor que `pairwise`, ni al revés: dice que **el orden entre
+las dos depende de con qué regla se mida**, y que la regla con la que se busca no
+es la regla con la que se publica. Cuál de las dos es la buena es una decisión de
+qué se quiere maximizar, y no la toma una medida.
+
+Tampoco dice nada del año: es **un día**, el 21 de junio, en **una planta**.
+`NO VERIFICADO` para el resto.
+
+### Comparación con el hallazgo previo
+
+La otra sesión reportó **−0,556 %** en Ayora real. Aquí sale **−0,5103 %**. No es
+la misma cifra —ni la fecha ni el paso tienen por qué coincidir— pero es el mismo
+signo y el mismo orden de magnitud. Lo que esa nota **no** tenía y ésta sí: el
+control sin torsión, que es el que cambia la conclusión.
+
+### El objeto se ha movido, y la medida sigue en pie
+
+Entre la corrida y este PR, `main` ha pasado por **#695**, **#696** (el tope del
+backtracking, `VER` a **v1.70.0**) y **#697** (la fase 4.1). Comprobado, no
+supuesto: `policyAnglesSeg` **no se ha tocado** —`git diff b8396e9 origin/main --
+backtracking.html` no devuelve nada sobre esa función— y la línea del reparto
+sigue en `backtracking.html:2762`. La medida se tomó sobre `570654f`, que lleva
+la 4.1 pero no el tope; lo que el tope cambia son las **salidas del lazo**, y esta
+medida compara **POA de mandos evaluados con dos métricas**, no salidas de lazo.
+`NO VERIFICADO` si el tope mueve las cifras: no se ha vuelto a correr.
+
+### Coste
+
+**2 613 s medidos** (43 min 33 s) para 258 instantes, 10,1 s por instante,
+con la máquina compartida. No extrapolado: es el reloj de la corrida.
+
+---
+
+---
+
 ## HALLAZGO · el día con planta real tarda 6 min 33 s, y el tope del #696 le añadió 169 s
 
 **No es una fase del encargo.** Salió persiguiendo otra cosa —una captura del
