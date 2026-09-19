@@ -54,7 +54,19 @@ await new Promise(r => setTimeout(r, 1200));
 const browser = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 try {
   const pg = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  pg.on('pageerror', e => console.error('ERR ' + e.message));
+  pg.on('pageerror', e => console.error('ERR pageerror: ' + e.message));
+  /* POR QUÉ ESTA INSTRUMENTACIÓN. La sonda murió DOS veces sin dejar traza: la
+     primera tras el mes 4 de 108, la segunda durante el cálculo del día, las dos
+     con stderr limpio, sin OOM y con disco de sobra. Un proceso que se va sin
+     decir nada no se relanza una tercera vez igual: se le pone señal. */
+  pg.on('crash', () => console.error('MUERTE · la PÁGINA se ha caído (renderer crash)'));
+  pg.on('close', () => console.error('MUERTE · la página se ha cerrado'));
+  browser.on('disconnected', () => console.error('MUERTE · el NAVEGADOR se ha desconectado'));
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { console.error('MUERTE · recibida ' + sig); process.exit(9); });
+  process.on('uncaughtException', e => { console.error('MUERTE · excepción no capturada: ' + (e && e.stack || e)); process.exit(8); });
+  process.on('unhandledRejection', e => { console.error('MUERTE · promesa rechazada: ' + (e && e.stack || e)); process.exit(7); });
+  const LAT = setInterval(() => console.error(`  ·latido· ${new Date().toISOString().slice(11,19)} rss ${(process.memoryUsage().rss/1e6).toFixed(0)} MB`), 60000);
+  LAT.unref?.();
   await pg.goto(`http://localhost:${PORT}/backtracking.html?limpio`, { waitUntil: 'load' });
   await pg.waitForFunction(() => typeof DAY !== 'undefined' && DAY && DAY.pol, null, { timeout: 120000 });
   await pg.evaluate(() => document.getElementById('ayorabtn').click());
@@ -79,6 +91,12 @@ try {
   for (const pol of ORDEN) {
     for (const mo of meses) {
       if (hechos.has(pol + '|' + mo)) { n++; continue; }
+      /* TROCEADO. Antes cada mes era UN evaluate síncrono que corría las 144
+         zancadas del día dentro de la página. Es el patrón que E-D8 dejó
+         prohibido: bloquea la página entera y no deja ver avanzar. Ahora el lazo
+         vive en `window.__LZ` entre llamadas y el día va en seis trozos de 4 h,
+         así que ningún evaluate pasa de unos segundos. El estado del lazo es la
+         cadena del día y NO se reinicia entre trozos: eso lo haría otra cosa. */
       const r = await pg.evaluate(([pk, mm]) => {
         const { c, T, Tcfg } = window.__A;
         /* los mismos doce días y pesos que la ruta anual de la página */
