@@ -40,7 +40,29 @@ zigbee_routes_logger.ps1 ─telnet(23)─┘
 - Visor: **HTML + JavaScript + Leaflet** (teselas satélite), un único fichero `index.html`, sin build.
 - Recolectores: **PowerShell** (incluido en Windows; no requiere instalación ni administrador).
 - Gateway: Digi **ConnectPort X2**, XBee ZB **2,4 GHz canal 14**; RSSI/estado por **RCI** (HTTP), rutas por **CLI telnet**.
-- Datos: CSV (`zigbee_log.csv`, `zigbee_routes.csv`, `gateway_stats.csv` con `timestamp, gateway, host, ok, cpu_pct, mem_total_b, mem_usada_b, mem_libre_b, uptime_s` (memoria en bytes, como la da el Digi), `coords_ElBurgo_NCU1.csv` con `node_id, lat, lon`).
+- Datos: CSV (`zigbee_log.csv`, `zigbee_routes.csv`, `gateway_stats.csv` con `timestamp, gateway, host, ok, cpu_pct, mem_total_b, mem_usada_b, mem_libre_b, uptime_s` (memoria en bytes, como la da el Digi), `coords_ElBurgo_NCU1.csv` con `node_id, lat, lon`). **Las columnas, tipos y unidades de cada uno están en [`docs/contrato_datos_zigbee.md`](docs/contrato_datos_zigbee.md)**, que es el documento que manda.
+
+### El tiempo va en UTC (`schema_version = 2`)
+
+Todo timestamp se escribe en **UTC, ISO 8601 con `Z`**. Una hora local sin zona es ambigua dos
+veces al año: en octubre hay dos horas que se llaman igual y en marzo hay una que no existe.
+
+El visor **lee también los CSV antiguos** (v1, hora local sin zona), y para eso necesita saber en
+qué zona se escribieron. **La zona es la de la planta** y sale de `plantas_indice.json`
+(`tz_iana`), que es la fuente declarada del huso: `Europe/Madrid`, `Europe/Rome`,
+`America/Santo_Domingo`, `America/Lima` y `Africa/Tunis`. **No hay zona por defecto** — si no se
+sabe, el visor lo dice y ofrece elegirla en vez de suponer.
+
+Importa: con una zona fija de Madrid, un v1 de San José (Perú, UTC−5) salía **siete horas
+desplazado** y el aviso decía que estaba bien leído.
+
+Las dos noches del cambio de hora se tratan una por una. La que **no existió** se descarta y se
+cuenta. La **repetida** se desambigua por el orden del fichero —los recolectores escriben en
+orden, así que cuando la hora local retrocede, lo que sigue es la segunda pasada—, y solo lo que
+el orden no resuelve queda marcado. Sin eso, las dos vueltas del recolector caían en el mismo UTC
+y el visor las fundía en una.
+
+QA: `node tools/test_contrato_datos.mjs` (54 comprobaciones, en CI).
 
 ## Despliegue
 

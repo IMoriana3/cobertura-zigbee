@@ -711,6 +711,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .btn:hover{border-color:var(--accent);background:#1d3042}
   .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .btn .k{color:var(--muted);font-size:10.5px;display:block;margin-top:2px}
+  /* Aviso de esquema antiguo: ámbar, dentro del bloque de Datos, junto a los botones que lo
+     cargaron. No es un error —el fichero se lee— pero sí una interpretación nuestra de su hora. */
+  #avisoEsquema{margin-top:10px;padding:9px 11px;border-radius:8px;font-size:11px;line-height:1.5;
+    background:rgba(227,193,73,.10);border:1px solid rgba(227,193,73,.42);color:#e8d7a0}
+  #avisoEsquema[hidden]{display:none}
+  #avisoEsquema .ae-t{font-weight:700;color:#e3c149;margin-bottom:4px}
+  #avisoEsquema b{color:#fff}
   .btn.loaded{border-color:var(--s-exc)} .btn.loaded .k{color:var(--s-good)}
   input[type=file]{display:none}
 
@@ -822,6 +829,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <button class="btn" id="demo">Datos de ejemplo <span class="k">malla simulada evolucionando en el tiempo</span></button>
       <button class="btn" id="paqBtn" title="Baja el ZIP que se copia en el PC de la planta: los dos recolectores con la IP del gateway ya puesta, las coordenadas de todos los ámbitos, el manifiesto y un léeme con los comandos">↓ Medir en planta <span class="k" id="paqK">recolectores + coordenadas de esta planta</span></button>
       <button class="btn" id="mallaBtn" disabled title="Con los tres CSV cargados, escribe el &lt;planta&gt;_real.geojson: la malla medida (SPOF crónicos, dominadores, RSSI y saltos) que esta misma página dibuja al abrirse. Es el paso de vuelta del viaje a la planta.">↓ Exportar malla real <span class="k" id="mallaK">faltan CSV por cargar</span></button>
+      <div id="avisoEsquema" hidden></div>
     </div>
 
     <div class="block">
@@ -1424,14 +1432,133 @@ function distM(a,b){ if(!a||!b)return null; const R=6371000,D=Math.PI/180;
   return Math.round(Math.hypot(dla,dlo*Math.cos(la))*R); }
 
 /* ---------- los tres CSV, cada uno a su estructura (sin tocar estado) ---------- */
-function filasDeLog(text){
-  const rows=objs(text), out=[];
+/* ---------- LA HORA, A UTC ---------- (contrato: docs/contrato_datos_zigbee.md)
+   v2 llega en UTC ISO con Z y no se toca. v1 es hora LOCAL sin zona, y convertirla NO siempre
+   tiene respuesta: en una zona con cambio de hora, dos noches al año una hora se repite y otra
+   no llega a existir. Ninguna de las dos se rellena en silencio — inventar una hora es peor que
+   perder una fila, porque entra en la línea de tiempo y ya nadie la distingue.
+
+   El cómo está justo debajo, en el sitio donde vive cada parte: la zona y los candidatos en
+   `_candidatosUTC`, y la desambiguación por orden en `nuevoLectorTs`. */
+/* LA ZONA ES LA DE LA PLANTA, y no hay una por defecto. `plantas_indice.json` la declara en
+   `tz_iana` y es LA fuente (ese fichero lo dice de sí mismo). Aquí no se copia: se pide.
+
+   Con una zona fija de Madrid, un CSV v1 de San José (Perú, UTC−5) salía SIETE horas desplazado
+   en verano y el aviso decía que estaba bien leído. Y peor: probando solo los desfases de Madrid
+   (+1 y +2), ninguno cuadra en Perú, así que las 2.289 TCU salían como «hora inexistente» y se
+   descartaban en silencio. Hoy el desfase se PREGUNTA a la zona en vez de enumerarlo.
+
+   `tz_regla` («UTC+2 del día 88 al 298») NO sirve para esto: es una aproximación de la regla
+   peninsular, y el cambio cae en el último domingo de marzo y de octubre, que no son días fijos. */
+const _fmtTZ={};
+function _partesTZ(tz,ms){
+  if(!_fmtTZ[tz]) _fmtTZ[tz]=new Intl.DateTimeFormat('en-CA',{timeZone:tz,hourCycle:'h23',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const p={}; for(const x of _fmtTZ[tz].formatToParts(new Date(ms))) p[x.type]=x.value;
+  if(p.hour==='24') p.hour='00';                             // algún motor devuelve 24 a medianoche
+  return p;
+}
+function _localEnTZ(tz,ms){ const p=_partesTZ(tz,ms);
+  return p.year+'-'+p.month+'-'+p.day+' '+p.hour+':'+p.minute+':'+p.second; }
+function _offTZ(tz,ms){ const p=_partesTZ(tz,ms);
+  return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second)-ms; }
+/* Los candidatos, sin enumerar desfases a mano: se le preguntan a la zona. Los desfases a probar
+   se toman del DÍA ANTERIOR, del instante tentativo y del DÍA SIGUIENTE — así se cubren los dos
+   lados de un cambio de hora, que es justo donde hay dos respuestas.
+
+   Con un solo paso esto fallaba, y en silencio: para las 02:30 del 25-oct, el desfase en el
+   instante tentativo ya es el de invierno (+1), así que solo aparecía el candidato CET y la hora
+   repetida NO salía como repetida — las dos pasadas caían en el mismo UTC. */
+function _candidatosUTC(tz,base,local){
+  const D=86400000, offs=[], vistos=[];
+  for(const t of [base-D, base, base+D]){ const o=_offTZ(tz,t); if(offs.indexOf(o)<0) offs.push(o); }
+  for(const o of offs){ const c=base-o;
+    if(_localEnTZ(tz,c)===local && vistos.indexOf(c)<0) vistos.push(c); }
+  return vistos.sort(function(a,b){return a-b;});
+}
+const _iso=ms=>new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z');
+
+/* Una hora, con la zona de su planta. `sv` es el schema_version DECLARADO en la fila: si dice 2 y
+   la hora no trae Z, eso es un fichero mal escrito, no un v1 — y se dice como error. */
+function normalizaTs(raw,tz,sv){
+  const s=String(raw==null?'':raw).trim();
+  if(!s) return null;
+  const mz=s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?Z$/);
+  if(mz) return {ts:mz[1]+'T'+mz[2]+'Z', v:2, dudosa:'', cands:null};
+  if(String(sv==null?'':sv).trim()==='2')
+    return {ts:null, v:2, dudosa:'v2_sin_z', local:s, cands:null};
+  const ml=s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/);
+  if(!ml) return null;
+  const local=ml[1]+'-'+ml[2]+'-'+ml[3]+' '+ml[4]+':'+ml[5]+':'+ml[6];
+  if(!tz) return {ts:null, v:1, dudosa:'sin_zona', local, cands:null};
+  const base=Date.UTC(+ml[1],+ml[2]-1,+ml[3],+ml[4],+ml[5],+ml[6]);
+  const cands=_candidatosUTC(tz,base,local);
+  if(!cands.length) return {ts:null, v:1, dudosa:'inexistente', local, cands};
+  return {ts:_iso(cands[0]), v:1, dudosa:(cands.length>1?'ambigua':''), local, cands};
+}
+
+/* LECTOR CON MEMORIA: la hora repetida se desambigua por el ORDEN DEL FICHERO.
+   Tomar siempre la primera lleva las DOS pasadas reales por 02:00–02:59 al mismo UTC, y
+   `buildFrames` las funde sin decir nada: dos vueltas del recolector se convierten en una.
+
+   Los recolectores escriben en orden cronológico, así que dentro de la franja ambigua:
+     · si la hora local RETROCEDE respecto a la fila anterior, lo que sigue es la segunda pasada;
+     · si ya se vio una hora ≥ 03:00 de esa fecha, también;
+     · y una vez que una fecha entra en segunda pasada, se queda (02:00 CET, luego 02:10 CET…
+       no retroceden entre sí, pero siguen siendo la segunda).
+   Solo queda marcada `ambigua` la que el orden NO resuelve: la primera fila del fichero, si cae
+   justo dentro de la franja y no hay nada antes con que compararla. */
+function nuevoLectorTs(tz){
+  let prevLocal=null; const segunda={}, tarde={};
+  return function(raw,sv){
+    const r=normalizaTs(raw,tz,sv);
+    if(!r || !r.local){ return r; }
+    const f=r.local.slice(0,10);
+    if(!r.cands || r.cands.length<2){                        // nada que desambiguar
+      if(+r.local.slice(11,13)>=3) tarde[f]=true;
+      prevLocal=r.local; return r;
+    }
+    const retrocede = prevLocal!==null && r.local < prevLocal;
+    if(retrocede || tarde[f]) segunda[f]=true;
+    /* El orden solo resuelve si venimos siguiendo ESA MISMA NOCHE. Una fila anterior de otra
+       fecha no dice nada: el fichero podría empezar en la segunda pasada y no habría forma de
+       saberlo. En ese caso se marca ambigua, que es lo honesto. */
+    const mismaFecha = prevLocal!==null && prevLocal.slice(0,10)===f;
+    const resuelto = segunda[f] || mismaFecha;
+    const ms = segunda[f] ? r.cands[r.cands.length-1] : r.cands[0];
+    prevLocal=r.local;
+    return {ts:_iso(ms), v:1, dudosa:(resuelto?'':'ambigua'), local:r.local, cands:r.cands,
+            pasada:(segunda[f]?2:1)};
+  };
+}
+/* El recuento que alimenta el aviso: de qué versión es el fichero y cuántas filas quedaron
+   marcadas. Se cuelga del propio array para no cambiar la forma que esperan los que ya llaman. */
+function _cuenta(){ return {v1:0,v2:0,inexistente:0,ambigua:0,ilegible:0,sin_zona:0,v2_sin_z:0}; }
+/* LA ZONA SE PASA, NO SE COGE DEL GLOBAL. `filasDeLog` y `snapsDeRutas` las extrae
+   `tools/test_malla_real.mjs` del fuente y las ejecuta SUELTAS, en Node, donde no hay `S`: con
+   `S.tzPlanta` dentro reventaban con «S is not defined». Y tenía razón el banco — una función que
+   convierte un CSV no debería depender de un global para saber en qué zona está. Se pasa por
+   parámetro, y sin él se mira `S` solo si existe. */
+function _tzActual(tz){
+  if(tz!==undefined) return tz;
+  return (typeof S!=='undefined' && S) ? S.tzPlanta : null;
+}
+/* Las que no tienen hora utilizable se descartan de la serie, pero SIEMPRE se cuentan. */
+const _SIN_TS={inexistente:1, sin_zona:1, v2_sin_z:1};
+
+function filasDeLog(text,tz){
+  const rows=objs(text), out=[]; const cnt=_cuenta(); const lee=nuevoLectorTs(_tzActual(tz));
   for(const o of rows){const id=o.node_id||o.ext_addr; if(!id||!o.timestamp) continue;
-    out.push({ts:o.timestamp, id, role:o.role||'', gw:o.gateway||'',
+    const t=lee(o.timestamp,o.schema_version);
+    if(!t){ cnt.ilegible++; continue; }
+    if(t.v===2) cnt.v2++; else cnt.v1++;
+    if(t.dudosa){ cnt[t.dudosa]++; if(_SIN_TS[t.dudosa]) continue; }
+    out.push({ts:t.ts, id, role:o.role||'', gw:o.gateway||'',
       online:String(o.online)==='1',
       rssi:o.rssi_dbm===''||o.rssi_dbm==null?null:parseInt(o.rssi_dbm,10),
       ack:o.ack_failures===''||o.ack_failures==null?null:parseInt(o.ack_failures,10),
       mv:o.supply_mv===''?null:parseInt(o.supply_mv,10), temp:o.temp_c===''?null:parseInt(o.temp_c,10)});}
+  out.esquema=cnt;
   return out;
 }
 function coordsDe(text){
@@ -1445,11 +1572,26 @@ function coordsDe(text){
    camino, los acumulados de todo el periodo que necesita la malla. Se agregan aqui
    y no despues para no tener que guardar los cientos de miles de caminos: El Burgo
    son 406.457 filas. */
-function snapsDeRutas(text){
+function snapsDeRutas(text,tz){
   const rows=objs(text); const byTs={}; const nodeIds=new Set(); let filas=0;
-  const agr={}, aristas={};
+  const agr={}, aristas={}; const cnt=_cuenta(); const lee=nuevoLectorTs(_tzActual(tz));
   const par=n=>agr[n]||(agr[n]={rutas:0,padres:{},hops:[],pasan:new Set()});
   for(const o of rows){ if(!o.timestamp||!o.path_ids) continue;
+    /* La hora de las rutas pasa por el MISMO conversor que la del RSSI. Si una se convirtiera y la
+       otra no, la línea de tiempo —que es la unión de las dos— quedaría con las capturas
+       desplazadas una o dos horas y nadie lo vería: saldrían simplemente como instantes distintos.
+       Se escribe sobre `o.timestamp` en vez de clonar la fila. `objs()` ya devuelve objetos recién
+       hechos, así que no se pisa nada de fuera.
+       Y NO se hace por velocidad, aunque lo pareciera: medido con 406.457 filas —las de El Burgo—
+       sobre el mismo navegador, alternando el orden y con el JIT caliente, sale 1.000 ms sin clonar
+       contra 1.006 ms clonando, con los rangos solapados (970-1081 y 940-1038). O sea que clonar no
+       cuesta nada medible; lo que se evita es una asignación por fila y una copia que no hacía
+       falta. Si alguien prefiere el clon por claridad, que lo ponga: no hay argumento de coste. */
+    const _t=lee(o.timestamp,o.schema_version);
+    if(!_t){ cnt.ilegible++; continue; }
+    if(_t.v===2) cnt.v2++; else cnt.v1++;
+    if(_t.dudosa){ cnt[_t.dudosa]++; if(_SIN_TS[_t.dudosa]) continue; }
+    o.timestamp=_t.ts;
     const ids=o.path_ids.split('>').map(s=>s.trim()).filter(Boolean);
     if(ids.length<2) continue;
     filas++;
@@ -1482,7 +1624,7 @@ function snapsDeRutas(text){
     const spof={}; apset.forEach(n=>{ spof[n]=1; });
     return {ts, depth, crit, pathByTarget, spof};
   });
-  return {nodeIds:[...nodeIds], snaps, filas, agr, aristas};
+  return {nodeIds:[...nodeIds], snaps, filas, agr, aristas, esquema:cnt};
 }
 
 /* ---------- la malla real ---------- */
@@ -1554,13 +1696,81 @@ function mallaReal(rows,rutas,coords,meta){
 
 /* ---------- estado ---------- */
 const S={rows:[],coords:{},frames:[],byFrame:{},ackDelta:{},idx:0,mode:'rssi',markers:{},
+         tzPlanta:null, tzOrigen:'', rawLog:null, rawRutas:null,   // la zona sale del índice; el CSV crudo se guarda para poder reconvertir si cambia
+
          routeSnaps:[], gw:null, placingGw:false, sel:null,
          playing:false,timer:null,baseMs:700};
 let map,layer,routeLayer,gwMarker,didFit=false;
 let predLayer=null,PRED=null,predLoaded=false,predFit=false;   // Tarea D: malla predicha (GeoJSON del driver)
 
 function loadLog(text){
-  S.rows=filasDeLog(text); buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
+  S.rawLog=text;
+  S.rows=filasDeLog(text); S.esqLog=S.rows.esquema; avisoEsquema();
+  buildFrames(); rebuildTimeline(); if(S.mode==='predicho')setMode('rssi'); else render();   // al cargar datos (CSV o demo) salta a la "máquina del tiempo" RSSI si veníamos de la malla real
+}
+/* LA ZONA DE LA PLANTA, pedida al índice. `plantas_indice.json` se declara a sí mismo «la FUENTE
+   del huso: quien lo necesite lo pide de aquí en vez de guardar una copia», así que aquí no hay
+   tabla de zonas. Si el índice no se puede leer, o la planta no está, la zona queda en null y el
+   aviso lo dice: NO se asume Madrid. */
+async function cargaZonaPlanta(){
+  try{
+    const r=await fetch('plantas_indice.json',{cache:'no-store'}); if(!r.ok) throw 0;
+    const j=await r.json();
+    const f=(j.plantas||[]).find(x=>x.planta===PLANT);
+    S.tzPlanta=(f&&f.tz_iana)||null;
+  }catch(e){ S.tzPlanta=null; }
+  S.tzOrigen=S.tzPlanta?'índice':'';
+  if(S.rawLog||S.rawRutas) reconvierte();                   // si ya había datos cargados, se rehacen
+  else avisoEsquema();
+}
+/* Cambiar de zona rehace la conversión desde el texto original: convertir lo ya convertido
+   acumularía el error. Por eso se guarda el CSV tal cual llegó. */
+function reconvierte(){
+  if(S.rawLog) loadLog(S.rawLog);
+  if(S.rawRutas) loadRoutes(S.rawRutas);
+  avisoEsquema();
+}
+/* Las zonas que se ofrecen cuando no se sabe la de la planta: las que hay en la cartera, ni una
+   lista mundial. Salen del índice al cargarlo; esta es la reserva si el índice no se pudo leer. */
+const TZ_OFRECIDAS=['Europe/Madrid','Europe/Rome','America/Santo_Domingo','America/Lima','Africa/Tunis','UTC'];
+function eligeZona(tz){ S.tzPlanta=tz||null; S.tzOrigen=tz?'elegida a mano':''; reconvierte(); }
+/* EL AVISO DE ESQUEMA, VISIBLE. Un CSV v1 se puede leer, pero su hora es LOCAL y se ha
+   interpretado como Europe/Madrid: eso es una decisión nuestra sobre el dato de otro, y quien
+   mire la pantalla tiene derecho a saberlo. Las horas dudosas se cuentan aquí y no en la consola,
+   porque la consola no la abre nadie en planta. */
+function avisoEsquema(){
+  const el=document.getElementById('avisoEsquema'); if(!el) return;
+  const c=[S.esqLog,S.esqRutas].filter(Boolean);
+  if(!c.length){ el.hidden=true; return; }
+  /* La suma recorre las claves de `_cuenta()`, no una lista escrita aquí: con la lista a mano, al
+     añadir `sin_zona` y `v2_sin_z` los dos se quedaron fuera y el aviso decía la rama equivocada. */
+  const s=_cuenta();
+  for(const x of c) for(const k in s) s[k]+=(x[k]||0);
+  if(!s.v1 && !s.ilegible && !s.v2_sin_z){ el.hidden=true; return; }   // todo v2 y legible: nada que avisar
+  const p=[]; let sel='';
+  if(s.sin_zona){
+    /* NO se asume una zona. Sin saber la de la planta, una hora local no se puede convertir, y
+       convertirla con la de otra planta es el fallo que este bloque arregla: un v1 de San José
+       leído como Madrid sale siete horas desplazado y con cara de estar bien. */
+    p.push('<b>No se sabe la zona horaria de esta planta</b>, así que <b>'+s.sin_zona.toLocaleString('es-ES')+
+           '</b> filas con hora local no se han podido situar en el tiempo. Elige la zona:');
+    sel='<select id="tzSel"><option value="">— elegir zona —</option>'+
+        TZ_OFRECIDAS.map(z=>'<option value="'+z+'">'+z+'</option>').join('')+'</select>';
+  } else if(s.v1){
+    p.push('<b>'+s.v1.toLocaleString('es-ES')+'</b> filas sin zona horaria (esquema v1): se han leído '+
+           'como hora local de <b>'+(S.tzPlanta||'—')+'</b>'+(S.tzOrigen?' ('+S.tzOrigen+')':'')+'.');
+  }
+  if(s.ambigua) p.push('<b>'+s.ambigua+'</b> en la hora que se repite al volver de verano y que el '+
+                       'orden del fichero no resuelve: se ha tomado la primera pasada.');
+  if(s.inexistente) p.push('<b>'+s.inexistente+'</b> en la hora que no existió al entrar en verano: <b>descartadas</b>, no se inventan.');
+  if(s.v2_sin_z) p.push('<b>'+s.v2_sin_z+'</b> filas dicen <code>schema_version=2</code> pero su hora no trae <code>Z</code>: '+
+                        'eso es un <b>fichero mal escrito</b>, no un v1, y no se convierte.');
+  if(s.ilegible) p.push('<b>'+s.ilegible+'</b> con una fecha que no se sabe leer.');
+  el.innerHTML='<div class="ae-t">⚠ '+(s.sin_zona?'Falta la zona horaria':'Datos en esquema antiguo')+'</div>'+
+               p.map(x=>'<div>'+x+'</div>').join('')+(sel?'<div style="margin-top:6px">'+sel+'</div>':'');
+  el.hidden=false;
+  const ts=document.getElementById('tzSel');
+  if(ts) ts.onchange=function(){ if(this.value) eligeZona(this.value); };
 }
 function buildFrames(){
   const bf={}, series={};
@@ -1590,7 +1800,9 @@ const coordFor=id=>S.coords[id]||(digits(id)&&S.coords['#'+digits(id)])||null;
 
 /* ---------- rutas / saltos / criticidad / SPOF ---------- */
 function loadRoutes(text){
+  S.rawRutas=text;
   const r=snapsDeRutas(text);
+  S.esqRutas=r.esquema; avisoEsquema();
   S.routeNodeIds=r.nodeIds; S.routeSnaps=r.snaps; S.rutas=r;   // `S.rutas` guarda los acumulados del periodo: es lo que exporta la malla real
   // Persistencia del SPOF: en qué fracción de los instantes cada nodo es punto de
   // articulación (crónico vs esporádico). Candidatos a repetidor = los crónicos.
@@ -2050,24 +2262,26 @@ function demo(){
 
   const N = 24, ack = {}, caen = [nodos[Math.floor(nodos.length * 0.35)].id, nodos[Math.floor(nodos.length * 0.7)].id];
   nodos.forEach(nd => ack[nd.id] = Math.floor(Math.random() * 300));
-  const sello = f => '2026-06-16 ' + String(12 + Math.floor(f / 6)).padStart(2, '0') + ':' + String((f * 10) % 60).padStart(2, '0') + ':00';
-  let log = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
+  /* La demo va en el esquema VIGENTE (v2, UTC con Z). Dejarla en v1 pondría el aviso de esquema
+     antiguo sobre unos datos que nos inventamos nosotros, y el aviso dejaría de significar algo. */
+  const sello = f => '2026-06-16T' + String(12 + Math.floor(f / 6)).padStart(2, '0') + ':' + String((f * 10) % 60).padStart(2, '0') + ':00Z';
+  let log = '"schema_version","timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
   for(let f = 0; f < N; f++){ const ts = sello(f);
     nodos.forEach((nd, i) => {
       let online = 1, rssi = -(60 + Math.floor(Math.random() * 32));
       if(esCableada(nd.id)) rssi = '';        // por cable: no hay RSSI que dar, y no se cae con la malla
       else if((nd.id === caen[0] && f >= 8 && f <= 15) || (nd.id === caen[1] && f >= 11)){ online = 0; rssi = ''; }
       const dack = online ? Math.floor(Math.random() * Math.random() * 6) : 0; ack[nd.id] += dack;
-      log += '"' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
+      log += '"2","' + ts + '","NCU' + String(nd.ncu).padStart(2, '0') + '-GW' + nd.gw + '","' + nd.id +
              '","' + (nd.rol || 'TCU') + '","00:13:a2:00:00:00:' + String(i + 1).padStart(4, '0') + '","' + online + '","' + rssi +
              '","' + (online ? ack[nd.id] : '') + '","3290","44"\n'; });
   }
   loadCoords(co); loadLog(log);
 
-  let rt = '"timestamp","target","hop_count","path_ids","path_addrs"\n';
+  let rt = '"schema_version","timestamp","target","hop_count","path_ids","path_addrs"\n';
   for(let f = 0; f < N; f++){ const ts = sello(f);
     nodos.forEach(nd => { const c = camino(nd.id);
-      rt += '"' + ts + '","' + nd.id + '","' + c.length + '","' + (['COORD'].concat(c)).join('>') + '","x"\n'; });
+      rt += '"2","' + ts + '","' + nd.id + '","' + c.length + '","' + (['COORD'].concat(c)).join('>') + '","x"\n'; });
   }
   loadRoutes(rt);
   drawStrip(); legend();
@@ -2230,6 +2444,9 @@ function angAt(min){const a=ANG&&ANG.field;if(!a||!a.length)return null;
   for(let i=1;i<a.length;i++){if(a[i][0]>=min){const p=a[i-1],q=a[i],f=(min-p[0])/((q[0]-p[0])||1);return p[1]+(q[1]-p[1])*f;}}return null;}
 // Telemetría de basculación (solo la planta que la tenga; el resto lo dice en la pestaña de 24 h)
 if(PMETA.ang)fetch(PMETA.ang,{cache:'no-store'}).then(r=>r.json()).then(j=>{ANG={date:j.date||'',field:Object.keys(j.field||{}).map(k=>[_hm(k),j.field[k]]).sort((a,b)=>a[0]-b[0])};}).catch(()=>{});
+/* La zona de la planta, del índice. Se pide al arrancar; si alguien carga un CSV antes de que
+   llegue, `reconvierte()` lo rehace desde el texto original en cuanto se sepa. */
+cargaZonaPlanta();
 function render24angle(){
   const note=document.getElementById('s24angnote'),cv=document.getElementById('s24angle'),ctx=cv.getContext('2d'),wrap=document.getElementById('s24angwrap'),tbl=document.getElementById('s24angtbl');
   if(!ANG||!ANG.field.length){note.innerHTML=PMETA.ang?('Perfil de ángulos no disponible (no cargó <code>'+PMETA.ang+'</code>).')
