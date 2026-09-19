@@ -15,10 +15,22 @@ name: bancos
 # es un runner atascado media jornada y un rojo que llega tardisimo. Los topes
 # de abajo salen de lo MEDIDO en el runner, no de una corazonada:
 #
-#   nucleo 36 s · pwsh 14 s · datos 5 min 29 s
+#   nucleo 36 s · pwsh 14 s · datos 5 min 29 s   (al montar este CI)
+#   datos 17 min 46 s                             (2026-09-19, run 257)
 #   visor: ocho de los diez por debajo de 100 s, y los dos gordos
 #          (test_equipos 24 min 26 s, test_panel_plegable parecido) — aqui esos
 #          mismos tardan ~5 min, o sea que el runner iba 5 veces mas lento.
+#
+# LA CIFRA DE `datos` SE HA TRIPLICADO desde que se escribió y nadie se enteró,
+# porque un número sin fecha al lado envejece en silencio. Por eso van las dos,
+# cada una con cuándo se midió, y por eso la nueva lleva la suya. De los
+# 17 min 46 s de hoy, 109 s son los dos bancos de herramientas de campo que
+# entran en esta tanda; el resto ya estaba.
+#
+# Y OJO CON EL ×5 DE ARRIBA: vale para los bancos de NAVEGADOR, que es donde se
+# midió. Para node sin navegador el factor va al revés — `test_herramientas_campo`
+# tarda 144 s aquí y 109 s en el runner, o sea 0,76×. Un factor medido en una
+# clase de trabajo no se lleva a otra.
 #
 # Asi que el tope del visor va en 45 min: casi el doble del peor caso medido, y
 # aun asi ocho veces menos que las seis horas de fabrica.
@@ -144,6 +156,28 @@ jobs:
       # negativo sobre el código de antes y test nulo de cada corte.
       - name: la página publica las dos métricas
         run: node tools/test_dos_metricas.mjs
+      # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
+      # que se manda al campo, y estaba escrito DOS veces como dos constantes
+      # independientes. Ahora el exportador lo LEE de la página; este banco vigila
+      # que nadie vuelva a copiarlo, con su control negativo.
+      - name: el signo de presentación vive en un sitio
+        run: node tools/test_signo_unico.mjs
+      # `docs/algoritmos_backtracking.html` es prosa a mano: no se regenera desde
+      # el código y decir que sí sería inventarlo. Lo que sí puede vigilarse es
+      # que no se quede atrás EN SILENCIO, que es lo que pasó — declaraba la
+      # v1.57.2 con el código en la v1.74.0, diecisiete versiones, ningún banco
+      # mirando `docs/`. Este se pone rojo en cuanto `VER` se mueva sin que nadie
+      # vuelva a contrastar. Coste de apagarlo honradamente: un minuto.
+      - name: el documento no se queda atrás en silencio
+        run: node tools/test_doc_version.mjs
+      # Las dos herramientas de campo, que no estaban en CI. Ninguna llama a
+      # `process.exit`: `careo_produccion` publica «veredicto: IDÉNTICOS» o su
+      # contrario y SALE 0 en los dos casos, así que un `run:` pelado habría sido
+      # verde garantizado. El banco lee lo que publican. Coste medido en esta
+      # máquina: export con paso 30 → 48,6 s (con el paso 5 de campo son 280,6 s,
+      # por eso aquí va el 30); careo → 95,5 s.
+      - name: consignas de campo y careo con producción
+        run: node tools/test_herramientas_campo.mjs
       - name: simulador de backtracking
         run: node tools/test_backtracking_sim.mjs
       - name: producción por string
@@ -356,7 +390,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [nucleo, powershell, datos, barrido, navegador]
-    if: always()
+    # `always()` para que el gate corra aunque un banco falle —si no, un rojo se
+    # volvería invisible—, pero `!cancelled()` para que NO corra cuando la corrida
+    # entera se ha cancelado. Sin ese segundo trozo, `cancel-in-progress` deja los
+    # bancos en `cancelled`, el bucle de abajo exige `success` y el PR enseña un
+    # ROJO donde no ha fallado nada.
+    #
+    # MEDIDO sobre las 40 corridas completadas más recientes de este workflow:
+    # 30 success · 10 cancelled · CERO failure. Una de cada cuatro salía en rojo
+    # sin que hubiera fallado un solo banco, y esos rojos se confunden con los de
+    # verdad — que es el coste real: un rojo que no significa nada enseña a no
+    # mirar los rojos.
+    #
+    # Un `cancelled` por fail-fast de la matriz sigue cayendo: ahí la corrida NO
+    # está cancelada, `!cancelled()` es cierto, el gate corre y el job que falló
+    # de verdad aparece como `failure`.
+    # Y MEDIDO QUE ESTO NO ABRE EL AGUJERO CONTRARIO. La objeción obvia: si un
+    # banco se CUELGA y lo corta su `timeout-minutes`, ¿se salta también la
+    # puerta y pasa en silencio lo que el tope existe para cazar? Se midió con
+    # un experimento en el runner de este repo (rama desechable, ya borrada):
+    # un job con `timeout-minutes: 1` haciendo `sleep 150`, un job sano, y una
+    # puerta con exactamente esta condición. Resultado, del log:
+    #
+    #   lento.result = cancelled     ← cortado a los 72 s por su tope
+    #   sano.result  = success
+    #   LA PUERTA HA CORRIDO
+    #
+    # O sea: `cancelled()` es función del WORKFLOW, y un job muerto por su
+    # propio tope no la pone cierta. La puerta corre, lee `cancelled` y su
+    # `== success` la deja en ROJO. Lo que se salta es sólo la corrida que
+    # alguien canceló de verdad empujando encima.
+    if: always() && !cancelled()
     steps:
       - name: ninguno ha fallado
         run: |
