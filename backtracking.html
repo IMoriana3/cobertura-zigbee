@@ -7231,6 +7231,8 @@ function fillDayTable(){
      mesa en 58 de 86—. Ahora se publican las dos y la elección queda a la vista.
      La columna sólo aparece con mesas: sin ellas las dos cifras SON la misma y
      una segunda columna repetida sería ruido. */
+  let best=-1;
+  const kk=POLICIES.filter(P=>DAY.pol[P.key]).map(P=>({P:P,k:dayKpis(P.key)}));
   const DOS=kk.some(e=>e.k&&e.k.porMesa);
   rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d'+(DOS?' <span class="mut">(por mesa)</span>':'')+'</th>'+
     (DOS?'<th title="La MISMA consigna ejecutada, agregada por LÍNEA: tilt y sombra de la línea, y media de líneas SIN ponderar. La columna de al lado agrega por MESA: tilt, sombra y largo de cada una. No son dos precisiones de lo mismo, son dos agregaciones, y el orden entre políticas puede cambiar según cuál se mire.">POA planta <span class="mut">(por línea)</span></th>':'')+
@@ -7240,8 +7242,7 @@ function fillDayTable(){
     '<th title="Pérdida eléctrica Martinez sobre el beam. Entre paréntesis, la parte que NO puede evitar ninguna consigna: la estructura de la mesa (viga de torsión y canto del laminado)">Pérdida Martinez (de estructura)</th>'+
     '<th title="LUZ DIRECTA AL SUELO: fracción del haz que llega al suelo entre filas (ground_light_fraction de pvlib infinite-sheds, la misma que minimiza min ground light), media de filas y ponderada por la DNI del instante. Menos = más sombra en el suelo (agrivoltaica inversa / pastoreo)">Luz al suelo</th>'+
     '<th>|θ| máx</th></tr>');
-  let best=-1;
-  const kk=POLICIES.filter(P=>DAY.pol[P.key]).map(P=>({P:P,k:dayKpis(P.key)}));
+
   for(const e of kk)best=Math.max(best,e.k.kwh);
   for(const e of kk){
     const d=ref?100*(e.k.kwh/ref.kwh-1):0;

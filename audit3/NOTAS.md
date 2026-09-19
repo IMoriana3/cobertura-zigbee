@@ -839,3 +839,31 @@ Lo que este caso añade a los otros dos: el defecto no se cura sabiéndolo. Lo
 escribí mientras redactaba la regla que lo prohíbe. La regla, por tanto, no puede
 ser «acuérdate»: tiene que ser **que la sonda declare la clase de lo que le queda
 y calle si no la cubre**, que es lo que queda anotado para R4.
+
+**13 · Rompí la tabla del día con una zona muerta temporal, y diagnostiqué mal dos
+veces antes de acertar.** Al publicar las dos métricas puse
+`const DOS=kk.some(...)` en la construcción de la cabecera, y `kk` se declara diez
+líneas MÁS ABAJO en `fillDayTable`. La página lanzaba
+`Cannot access 'kk' before initialization`, la tabla del día no se pintaba, y con
+ella el careo del informe gráfico nunca marcaba `listo`: el banco del informe se
+agotaba a los 300 s.
+
+Los dos diagnósticos fallidos, en orden:
+
+1. **«Es contención»**, con una comparación controlada a favor —el mismo banco en
+   verde sin la calibración corriendo, rojo con ella—. Era **correlación**: el
+   banco también fallaba con la máquina libre.
+2. **«La v1.74 está descartada por construcción»**, porque ese banco corre sobre
+   un preset sin `segTilt` y en esa rama mi cambio es una asignación. El
+   razonamiento era **válido para el trozo que miré** y lo presenté como si
+   cubriera todo el cambio. El fallo estaba en otra línea del mismo commit.
+
+Lo que lo resolvió fue **correr el banco en solitario**, que es lo que el auditor
+había fijado como la prueba que separa contención de defecto. Sin esa instrucción
+me habría quedado en la explicación cómoda, que además tenía datos a favor.
+
+**La lección, que es distinta de las anteriores:** «descartado por construcción»
+sólo vale si la construcción cubre **todo lo que cambió**. Argumenté sobre una
+rama del diff y concluí sobre el diff entero. Un argumento correcto sobre una
+parte no es un argumento sobre el todo — que es, otra vez, medir una parte y
+darla por el todo, esta vez razonando en lugar de cronometrando.
