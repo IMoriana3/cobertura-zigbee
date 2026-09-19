@@ -1,0 +1,35 @@
+name: prueba · ¿cancelled() es cierto cuando un job lo corta su tope?
+
+# EXPERIMENTO, rama desechable. Otra sesión midió que un job cortado por
+# `timeout-minutes` concluye `cancelled` en `needs.<job>.result`. Lo que ESTO
+# mide es otra cosa: si la FUNCIÓN `cancelled()` —que es del workflow, no del
+# job— también se pone cierta, porque de eso depende que la puerta de `bancos`
+# con `if: always() && !cancelled()` se SALTE cuando un banco se cuelga.
+#
+# Si la puerta se salta, mi arreglo de la 4.3 deja pasar lo que el tope existe
+# para cazar y hay que deshacerlo.
+
+on: push
+
+jobs:
+  lento:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: sleep 150
+
+  sano:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+
+  puerta:
+    needs: [lento, sano]
+    runs-on: ubuntu-latest
+    if: always() && !cancelled()
+    steps:
+      - name: si esto se imprime, la puerta SÍ corre con un job cortado por su tope
+        run: |
+          echo "lento.result = ${{ needs.lento.result }}"
+          echo "sano.result  = ${{ needs.sano.result }}"
+          echo "LA PUERTA HA CORRIDO"
