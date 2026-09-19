@@ -358,12 +358,30 @@ unidades de cada CSV. Si el código y ese fichero no coinciden, es un fallo.
 Este PR **solo toca el visor y el documento**: los recolectores siguen escribiendo v1 hasta el
 bloque 2. El visor ya acepta los dos.
 
+**La zona horaria es la de la PLANTA.** `plantas_indice.json` gana un campo `tz_iana` por planta,
+que lo mantiene `tools/indice_plantas.mjs`. Es la fuente: el visor lo pide de ahí y no guarda copia.
+
+| planta | zona |
+|---|---|
+| El Burgo, Fayón, Ayora, Páramo, El Polvorín | `Europe/Madrid` |
+| Bagnarelli, Benante, Catania, Panbianco | `Europe/Rome` |
+| Dicayagua | `America/Santo_Domingo` (UTC−4 fijo) |
+| San José | `America/Lima` (UTC−5 fijo) |
+| Túnez | `Africa/Tunis` (UTC+1 fijo) |
+
+`tz_regla` **no sirve** para convertir: «UTC+2 del día 88 al 298» es una aproximación, y el cambio
+cae en el último domingo de marzo y de octubre. `tz_fijo_min` solo da el desfase, no la zona.
+
+Una planta nueva sin entrada en `TZ_IANA` **aborta el generador** sin escribir el índice. Es
+deliberado: el fallo tiene que ser ruidoso y donde se arregla, no un silencioso «pues Madrid».
+
 **Qué pasa con los datos ya recogidos.** Nada se pierde y nada se reescribe:
 
 | dato anterior | cómo se reinterpreta |
 |---|---|
-| `zigbee_log.csv` y `zigbee_routes.csv` sin `schema_version` | hora **local de Europe/Madrid** → UTC, con aviso visible en el visor |
-| una fila en la hora repetida de octubre | se toma la **primera** (CEST) y se marca `ambigua`; el aviso dice cuántas hay |
+| `zigbee_log.csv` y `zigbee_routes.csv` sin `schema_version` | hora local **de la zona de su planta** → UTC, con aviso visible en el visor |
+| un CSV de una planta cuya zona no se sabe | **no se convierte**: el visor lo dice y ofrece elegir la zona. No se asume Madrid |
+| una fila en la hora repetida de octubre | se desambigua **por el orden del fichero**; solo lo que el orden no resuelve se marca `ambigua` |
 | una fila en la hora inexistente de marzo | **se descarta** y se cuenta. No se convierte |
 | una fila con fecha ilegible | se descarta y se cuenta |
 | `timestamp` de v1 | es el del **ciclo**, no el de la fila: todos los nodos de una vuelta comparten marca. No hay de dónde sacar el instante de cada nodo; se lee tal cual |

@@ -47,12 +47,22 @@ zigbee_routes_logger.ps1 ─telnet(23)─┘
 Todo timestamp se escribe en **UTC, ISO 8601 con `Z`**. Una hora local sin zona es ambigua dos
 veces al año: en octubre hay dos horas que se llaman igual y en marzo hay una que no existe.
 
-El visor **lee también los CSV antiguos** (v1, hora local sin zona): los interpreta como
-`Europe/Madrid` y **lo dice en pantalla**, con el recuento de filas afectadas. Las dos noches del
-cambio de hora se tratan una por una — la hora repetida se resuelve a la primera y se marca; la
-que no existió se descarta y se cuenta. Ninguna se rellena en silencio.
+El visor **lee también los CSV antiguos** (v1, hora local sin zona), y para eso necesita saber en
+qué zona se escribieron. **La zona es la de la planta** y sale de `plantas_indice.json`
+(`tz_iana`), que es la fuente declarada del huso: `Europe/Madrid`, `Europe/Rome`,
+`America/Santo_Domingo`, `America/Lima` y `Africa/Tunis`. **No hay zona por defecto** — si no se
+sabe, el visor lo dice y ofrece elegirla en vez de suponer.
 
-QA: `node tools/test_contrato_datos.mjs` (32 comprobaciones, en CI).
+Importa: con una zona fija de Madrid, un v1 de San José (Perú, UTC−5) salía **siete horas
+desplazado** y el aviso decía que estaba bien leído.
+
+Las dos noches del cambio de hora se tratan una por una. La que **no existió** se descarta y se
+cuenta. La **repetida** se desambigua por el orden del fichero —los recolectores escriben en
+orden, así que cuando la hora local retrocede, lo que sigue es la segunda pasada—, y solo lo que
+el orden no resuelve queda marcado. Sin eso, las dos vueltas del recolector caían en el mismo UTC
+y el visor las fundía en una.
+
+QA: `node tools/test_contrato_datos.mjs` (54 comprobaciones, en CI).
 
 ## Despliegue
 

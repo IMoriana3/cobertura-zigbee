@@ -29,6 +29,29 @@ const NOTA_CODIGO = {
   polvorin: 'en la cartera es «El polvorin + Higueras»',
 };
 
+/* LA ZONA HORARIA DE CADA PLANTA, EN NOMBRE IANA. Es una decisión por planta, igual que el código
+   de cartera, y por eso va escrita aquí y no adivinada de la latitud.
+
+   No se puede derivar de `tz_regla`: esa cadena («UTC+2 del día 88 al 298») es una APROXIMACIÓN
+   de la regla peninsular, no la regla real — el cambio de hora cae en el último domingo de marzo
+   y de octubre, que no son días fijos del año. Y `tz_fijo_min` solo dice el desfase, no la zona:
+   un desfase no sabe si ese país cambia la hora o no.
+
+   Lo que esto arregla, medido: con una zona fija de Madrid, un CSV v1 de San José (Perú, UTC−5)
+   salía SIETE horas desplazado en verano, y el aviso del visor decía que estaba bien leído.
+
+   Una planta nueva sin entrada aquí ABORTA el generador. Es deliberado: el fallo tiene que ser
+   ruidoso y en el sitio donde se arregla, no un silencioso «pues Madrid». */
+const TZ_IANA = {
+  elburgo: 'Europe/Madrid', fayon: 'Europe/Madrid', ayora: 'Europe/Madrid',
+  paramo: 'Europe/Madrid', polvorin: 'Europe/Madrid',
+  bagnarelli: 'Europe/Rome', benante: 'Europe/Rome', catania: 'Europe/Rome',
+  panbianco: 'Europe/Rome',
+  dicayagua: 'America/Santo_Domingo',   // República Dominicana, UTC−4 todo el año
+  sanjose: 'America/Lima',              // Arequipa, Perú, UTC−5 todo el año
+  tunez: 'Africa/Tunis',                // UTC+1 todo el año
+};
+
 /* La regla peninsular del huso, la misma de backtracking y overcast: del día 88 al 298, UTC+2. */
 const REGLA_PENINSULAR = 'UTC+2 del día 88 al 298 y UTC+1 el resto (regla peninsular; vale también para las italianas)';
 
@@ -46,10 +69,21 @@ for (const f of readdirSync(RAIZ).filter(x => /_layout\.json$/.test(x)).sort()) 
     crs: L.crs || null,
     tz_fijo_min: L.tzFijo != null ? L.tzFijo : null,
     tz_regla: L.tzFijo != null ? 'huso FIJO declarado en el layout, sin cambio de hora' : REGLA_PENINSULAR,
+    tz_iana: TZ_IANA[nombre],
+    tz_iana_nota: 'nombre IANA. Es LA fuente de la zona para leer horas locales; `tz_regla` es una aproximación y no vale para convertir',
     fija: !!L.fija,
     unidades: T.length,
     montaje: L.montaje || null,
   });
+}
+
+/* GUARDA: una planta sin zona declarada aborta, sin escribir nada. Sin esto, el visor leería sus
+   horas locales con la zona de otra planta y el aviso diría que van bien. */
+const sinTz = filas.filter(r => !r.tz_iana).map(r => r.planta);
+if (sinTz.length) {
+  console.error('\nABORTA: estas plantas no tienen zona horaria declarada en TZ_IANA:\n  ' + sinTz.join(', '));
+  console.error('Ponles su nombre IANA en tools/indice_plantas.mjs. No se adivina de la latitud.\n');
+  process.exit(1);
 }
 
 console.log('planta        código    lat        lon         huso                unidades  montaje');

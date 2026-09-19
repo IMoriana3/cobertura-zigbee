@@ -72,7 +72,7 @@ const conv = await pg.evaluate(() => {
                  '2026-06-16 12:00:00', '2026-01-15 12:00:00',
                  '2026-03-29 02:30:00', '2026-10-25 02:30:00',
                  '16/06/2026 12:00', 'ayer', ''];
-  const r = {}; for (const c of casos) r[c] = normalizaTs(c);
+  const r = {}; for (const c of casos) r[c] = normalizaTs(c, 'Europe/Madrid');
   return r;
 });
 const c = k => conv[k] || {};
@@ -102,13 +102,86 @@ t('una fecha que no se sabe leer devuelve null, no una fecha inventada',
   conv['16/06/2026 12:00'] === null && conv['ayer'] === null && conv[''] === null,
   JSON.stringify([conv['16/06/2026 12:00'], conv['ayer'], conv['']]));
 
+const CAB2 = '"schema_version","timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
+
+/* ── LA ZONA ES LA DE LA PLANTA, no una fija ──────────────────────────────── */
+/* Con Madrid fijo, un v1 de San José (Perú, UTC−5) salía siete horas desplazado en verano; y como
+   solo se probaban los desfases de Madrid (+1/+2), ninguno cuadraba y las filas se descartaban
+   como «hora inexistente». Las tres plantas de abajo son las tres reglas distintas que hay en la
+   cartera: una con cambio de hora y dos con huso fijo. */
+console.log('zona por planta');
+const IDX = JSON.parse(fs.readFileSync(path.join(ROOT, 'plantas_indice.json'), 'utf-8'));
+const tzDe = p => (IDX.plantas.find(x => x.planta === p) || {}).tz_iana;
+t('el índice declara tz_iana en las 12 plantas',
+  IDX.plantas.length === 12 && IDX.plantas.every(p => !!p.tz_iana),
+  IDX.plantas.filter(p => !p.tz_iana).map(p => p.planta).join(','));
+t('y son las que tocan', tzDe('elburgo') === 'Europe/Madrid' && tzDe('sanjose') === 'America/Lima'
+  && tzDe('tunez') === 'Africa/Tunis' && tzDe('dicayagua') === 'America/Santo_Domingo'
+  && tzDe('catania') === 'Europe/Rome',
+  JSON.stringify([tzDe('elburgo'), tzDe('sanjose'), tzDe('tunez'), tzDe('dicayagua'), tzDe('catania')]));
+/* El huso fijo que declara el layout y la zona IANA tienen que decir lo mismo. Si alguien pone un
+   nombre IANA equivocado —America/Bogota en vez de America/Lima, por ejemplo— esto lo caza. */
+const coherencia = await pg.evaluate(zs => zs.map(z => {
+  const off = (tz, iso) => {
+    const d = new Date(iso), f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const p = {}; for (const x of f.formatToParts(d)) p[x.type] = x.value;
+    return (Date.UTC(+p.year, +p.month - 1, +p.day, +(p.hour === '24' ? 0 : p.hour), +p.minute, +p.second) - d.getTime()) / 60000;
+  };
+  return { ...z, inv: off(z.tz, '2026-01-15T12:00:00Z'), ver: off(z.tz, '2026-07-15T12:00:00Z') };
+}), IDX.plantas.map(p => ({ planta: p.planta, tz: p.tz_iana, fijo: p.tz_fijo_min })));
+const malas = coherencia.filter(z => z.fijo == null ? z.inv === z.ver : (z.inv !== z.fijo || z.ver !== z.fijo));
+t('la zona IANA cuadra con el tz_fijo_min que declara el layout', malas.length === 0,
+  JSON.stringify(malas));
+
+const filaTz = (ts) => `"${ts}","GW-01","TCU_01","TCU","00:13:a2:00:41:0a!","1","-70","3","3300","21"\n`;
+const CABT = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
+const porZona = await pg.evaluate(async ({ cab, fila, casos }) => {
+  const out = [];
+  for (const c of casos) {
+    S.tzPlanta = c.tz; S.tzOrigen = 'banco';
+    loadLog(cab + fila.replace('__TS__', c.local));
+    out.push({ planta: c.planta, tz: c.tz, local: c.local, ts: S.rows[0] && S.rows[0].ts, esq: S.rows.esquema });
+  }
+  return out;
+}, { cab: CABT, fila: filaTz('__TS__'), casos: [
+  { planta: 'elburgo', tz: tzDe('elburgo'), local: '2026-07-15 12:00:00' },   // Madrid en verano: UTC+2
+  { planta: 'sanjose', tz: tzDe('sanjose'), local: '2026-07-15 12:00:00' },   // Perú: UTC−5 todo el año
+  { planta: 'tunez',   tz: tzDe('tunez'),   local: '2026-07-15 12:00:00' },   // Túnez: UTC+1 todo el año
+] });
+const pz = n => porZona.find(x => x.planta === n) || {};
+t('El Burgo, 15-jul 12:00 local -> 10:00Z (UTC+2)', pz('elburgo').ts === '2026-07-15T10:00:00Z', JSON.stringify(pz('elburgo')));
+t('San José, 15-jul 12:00 local -> 17:00Z (UTC−5)', pz('sanjose').ts === '2026-07-15T17:00:00Z', JSON.stringify(pz('sanjose')));
+t('Túnez, 15-jul 12:00 local -> 11:00Z (UTC+1)', pz('tunez').ts === '2026-07-15T11:00:00Z', JSON.stringify(pz('tunez')));
+/* Los siete de diferencia entre El Burgo y San José son exactamente el fallo que esto arregla. */
+t('y entre El Burgo y San José hay 7 h, que era el desfase que se colaba',
+  (Date.parse(pz('sanjose').ts) - Date.parse(pz('elburgo').ts)) / 3600000 === 7);
+t('ninguna de las tres sale como hora inexistente',
+  porZona.every(x => x.esq.inexistente === 0), JSON.stringify(porZona.map(x => x.esq.inexistente)));
+
+/* SIN ZONA: no se asume ninguna. */
+const sinZona = await pg.evaluate(({ cab, fila }) => {
+  S.tzPlanta = null; S.tzOrigen = '';
+  loadLog(cab + fila.replace('__TS__', '2026-07-15 12:00:00'));
+  const el = document.getElementById('avisoEsquema');
+  return { n: S.rows.length, esq: S.rows.esquema, txt: el.textContent, hay: !!document.getElementById('tzSel') };
+}, { cab: CABT, fila: filaTz('__TS__') });
+t('sin zona conocida NO se inventa Madrid: la fila no entra', sinZona.n === 0 && sinZona.esq.sin_zona === 1,
+  JSON.stringify(sinZona.esq));
+t('se dice que falta la zona', /No se sabe la zona horaria/.test(sinZona.txt), sinZona.txt.slice(0, 120));
+t('y se ofrece un selector para elegirla', sinZona.hay === true);
+const trasElegir = await pg.evaluate(() => { eligeZona('America/Lima');
+  return { n: S.rows.length, ts: S.rows[0] && S.rows[0].ts }; });
+t('al elegirla, el mismo CSV se reconvierte desde el texto original',
+  trasElegir.n === 1 && trasElegir.ts === '2026-07-15T17:00:00Z', JSON.stringify(trasElegir));
+
 /* ── el fichero entero: recuento y aviso VISIBLE ──────────────────────────── */
 console.log('carga y aviso');
 const CAB = '"timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
 const fila = (ts, id, rssi) => `"${ts}","GW-01","${id}","TCU","00:13:a2:00:41:${id.slice(-2)}!","1","${rssi}","3","3300","21"\n`;
 
 const v1 = CAB + fila('2026-06-16 12:00:00', 'TCU_01', -70) + fila('2026-06-16 12:10:00', 'TCU_01', -72);
-const res1 = await pg.evaluate(txt => { loadLog(txt);
+const res1 = await pg.evaluate(txt => { S.tzPlanta = 'Europe/Madrid'; S.tzOrigen = 'banco'; loadLog(txt);
   const el = document.getElementById('avisoEsquema');
   return { esq: S.rows.esquema, ts: S.rows.map(r => r.ts), visible: !el.hidden, txt: el.textContent };
 }, v1);
@@ -119,9 +192,8 @@ t('el recuento dice que son v1', res1.esq.v1 === 2 && res1.esq.v2 === 0, JSON.st
 t('EL AVISO SE VE', res1.visible === true);
 t('y nombra la zona que se ha supuesto', /Europe\/Madrid/.test(res1.txt), res1.txt);
 
-const CAB2 = '"schema_version","timestamp","gateway","node_id","role","ext_addr","online","rssi_dbm","ack_failures","supply_mv","temp_c"\n';
 const fila2 = (ts, id, rssi) => `"2","${ts}","GW-01","${id}","TCU","00:13:a2:00:41:0a!","1","${rssi}","3","3300","21"\n`;
-const res2 = await pg.evaluate(txt => { loadLog(txt);
+const res2 = await pg.evaluate(txt => { S.tzPlanta = 'Europe/Madrid'; loadLog(txt);
   const el = document.getElementById('avisoEsquema');
   return { esq: S.rows.esquema, ts: S.rows.map(r => r.ts), visible: !el.hidden };
 }, CAB2 + fila2('2026-06-16T10:00:00Z', 'TCU_01', -70));
@@ -133,21 +205,80 @@ t('y su hora no se toca', res2.ts[0] === '2026-06-16T10:00:00Z');
 const raro = CAB + fila('2026-03-29 02:30:00', 'TCU_01', -70)      // no existió
                  + fila('2026-10-25 02:30:00', 'TCU_02', -71)      // ocurrió dos veces
                  + fila('2026-06-16 12:00:00', 'TCU_03', -72);     // normal
-const res3 = await pg.evaluate(txt => { loadLog(txt);
+const res3 = await pg.evaluate(txt => { S.tzPlanta = 'Europe/Madrid'; loadLog(txt);
   const el = document.getElementById('avisoEsquema');
   return { esq: S.rows.esquema, n: S.rows.length, txt: el.textContent };
 }, raro);
 t('la fila de la hora inexistente NO entra en la serie', res3.n === 2, 'filas=' + res3.n);
+/* Aqui las dos noches van sueltas, con fechas distintas: el orden NO puede resolver la de
+   octubre (la fila anterior es de marzo, otra noche), asi que sigue marcada ambigua. */
 t('pero se cuenta', res3.esq.inexistente === 1 && res3.esq.ambigua === 1, JSON.stringify(res3.esq));
 t('y el aviso lo dice con sus números',
   /1<\/b> en la hora que se repite|1 en la hora que se repite/.test(res3.txt.replace(/\s+/g, ' ')) &&
   /descartadas/.test(res3.txt), res3.txt.replace(/\s+/g, ' ').slice(0, 220));
 
+/* ── LA NOCHE DE OCTUBRE, ENTERA ──────────────────────────────────────────
+   Este es el caso por el que existe el lector con memoria. Tomando siempre la primera, las DOS
+   pasadas reales por 02:00–02:59 caen en el mismo UTC y `buildFrames` las funde sin decir nada:
+   dos vueltas del recolector se convierten en una. El fichero de abajo cruza la noche con dos
+   filas por hora local, en el orden en que las escribe el recolector, y NINGÚN UTC puede
+   repetirse. */
+console.log('noche de octubre');
+const NOCHE = [   // hora local tal como la escribiría el recolector, en orden
+  '2026-10-25 01:30:00',                       // antes del cambio, CEST
+  '2026-10-25 02:00:00', '2026-10-25 02:30:00',// primera pasada por las 02 (CEST, UTC+2)
+  '2026-10-25 02:00:00', '2026-10-25 02:30:00',// el reloj retrocede: segunda pasada (CET, UTC+1)
+  '2026-10-25 03:00:00', '2026-10-25 03:30:00',// ya en CET
+];
+const csvNoche = CABT + NOCHE.map(x => filaTz(x)).join('');
+const noche = await pg.evaluate(txt => {
+  S.tzPlanta = 'Europe/Madrid'; S.tzOrigen = 'banco';
+  loadLog(txt);
+  return { ts: S.rows.map(r => r.ts), esq: S.rows.esquema, instantes: S.frames.length };
+}, csvNoche);
+t('las 7 filas de la noche se leen todas', noche.ts.length === 7, JSON.stringify(noche.ts));
+t('NINGÚN UTC se repite: las dos pasadas no colapsan',
+  new Set(noche.ts).size === 7, JSON.stringify(noche.ts));
+t('y la línea de tiempo tiene los 7 instantes, no 5',
+  noche.instantes === 7, 'instantes=' + noche.instantes);
+/* Los UTC exactos: 01:30 CEST = 23:30Z del día anterior; luego 00:00Z, 00:30Z (primera pasada),
+   01:00Z, 01:30Z (segunda), 02:00Z, 02:30Z. */
+t('y salen en su UTC exacto, primera y segunda pasada donde toca',
+  JSON.stringify(noche.ts) === JSON.stringify([
+    '2026-10-24T23:30:00Z', '2026-10-25T00:00:00Z', '2026-10-25T00:30:00Z',
+    '2026-10-25T01:00:00Z', '2026-10-25T01:30:00Z', '2026-10-25T02:00:00Z', '2026-10-25T02:30:00Z']),
+  JSON.stringify(noche.ts));
+t('y están en orden creciente, como se escribieron',
+  noche.ts.every((x, i) => i === 0 || x > noche.ts[i - 1]));
+/* Resueltas por el orden -> ya NO son «ambiguas». Solo lo sería una que empezara el fichero. */
+t('el orden las resuelve, así que ninguna queda marcada ambigua',
+  noche.esq.ambigua === 0, JSON.stringify(noche.esq));
+/* Y el caso que el orden NO puede resolver: el fichero empieza dentro de la franja. */
+const soloAmbigua = await pg.evaluate(({ cab, fila }) => {
+  S.tzPlanta = 'Europe/Madrid';
+  loadLog(cab + fila.replace('__TS__', '2026-10-25 02:30:00'));
+  return { esq: S.rows.esquema, ts: S.rows[0] && S.rows[0].ts };
+}, { cab: CABT, fila: filaTz('__TS__') });
+t('si el fichero EMPIEZA dentro de la franja, eso sí queda ambiguo y se dice',
+  soloAmbigua.esq.ambigua === 1 && soloAmbigua.ts === '2026-10-25T00:30:00Z',
+  JSON.stringify(soloAmbigua));
+
+/* ── schema_version manda: v2 sin Z es un fichero roto, no un v1 ──────────── */
+console.log('schema_version');
+const rotoV2 = await pg.evaluate(txt => { S.tzPlanta = 'Europe/Madrid'; loadLog(txt);
+  const el = document.getElementById('avisoEsquema');
+  return { n: S.rows.length, esq: S.rows.esquema, txt: el.textContent }; },
+  CAB2 + '"2","2026-07-15 12:00:00","GW-01","TCU_01","TCU","00:13:a2:00:41:0a!","1","-70","3","3300","21"\n');
+t('una fila que dice schema_version=2 y no trae Z NO se lee como v1',
+  rotoV2.esq.v2_sin_z === 1 && rotoV2.esq.v1 === 0, JSON.stringify(rotoV2.esq));
+t('no entra en la serie', rotoV2.n === 0);
+t('y se dice que es un fichero mal escrito', /mal escrito/.test(rotoV2.txt), rotoV2.txt.slice(0, 160));
+
 /* ── rutas: el MISMO conversor, o la línea de tiempo se desalinea ─────────── */
 console.log('rutas');
 const rutas = '"timestamp","target","hop_count","path_ids","path_addrs"\n'
   + '"2026-06-16 12:00:00","TCU_01","2","COORD>TCU_09>TCU_01","x"\n';
-const res4 = await pg.evaluate(txt => { const r = snapsDeRutas(txt);
+const res4 = await pg.evaluate(txt => { S.tzPlanta = 'Europe/Madrid'; const r = snapsDeRutas(txt);
   return { esq: r.esquema, ts: r.snaps.map(s => s.ts) }; }, rutas);
 t('las rutas v1 se convierten igual que el RSSI',
   res4.ts[0] === '2026-06-16T10:00:00Z', JSON.stringify(res4.ts));
@@ -156,7 +287,7 @@ t('y su recuento también sale', res4.esq.v1 === 1, JSON.stringify(res4.esq));
 /* EL GUARDIA DE ALINEAMIENTO. Un RSSI y una ruta apuntados a la MISMA hora local tienen que caer
    en el MISMO instante de la línea de tiempo. Si un lado se convirtiera y el otro no, aquí
    saldrían dos instantes separados por dos horas. */
-const res5 = await pg.evaluate(({ l, r }) => { loadLog(l); loadRoutes(r);
+const res5 = await pg.evaluate(({ l, r }) => { S.tzPlanta = 'Europe/Madrid'; loadLog(l); loadRoutes(r);
   return { rssi: S.rssiTs, rutas: S.routeSnaps.map(s => s.ts), linea: S.frames.length }; },
   { l: v1, r: rutas });
 t('RSSI y rutas de la misma hora local caen en el mismo instante',

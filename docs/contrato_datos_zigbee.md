@@ -31,6 +31,59 @@ Un `yyyy-MM-dd HH:mm:ss` local sin zona es ambiguo dos veces al año y no se pue
 En octubre hay **dos** horas que se llaman igual y en marzo hay una que **no existe**. Una campaña
 de medida que cruce esa noche queda sin ordenar, y el visor lo único que puede hacer es adivinar.
 
+### `tz_pc_min`: el reloj del PC puede no ser el de la planta
+
+El PC de campo puede estar configurado en otra zona que la planta — un portátil traído de España a
+Perú, por ejemplo. Escribiendo en UTC eso ya no corrompe el dato, pero **sí conviene poder
+auditarlo**: `tz_pc_min` guarda el desfase UTC del reloj del PC en el momento de escribir la fila.
+
+Si a mitad de campaña ese número cambia, alguien tocó la hora del equipo, y eso explica saltos que
+si no parecerían de red. Es un dato de diagnóstico: **no se usa para convertir nada**.
+
+### La zona horaria es la de la PLANTA, y no hay una por defecto
+
+Para leer un CSV **v1** (hora local sin zona) hace falta saber en qué zona se escribió. Esa zona
+sale de **`plantas_indice.json`, campo `tz_iana`**, que es la fuente declarada del huso. No se
+copia en ningún otro sitio.
+
+| planta | zona | huso |
+|---|---|---|
+| El Burgo, Fayón, Ayora, Páramo, El Polvorín | `Europe/Madrid` | cambia con la estación |
+| Bagnarelli, Benante, Catania, Panbianco | `Europe/Rome` | cambia con la estación |
+| Dicayagua | `America/Santo_Domingo` | UTC−4 fijo |
+| San José | `America/Lima` | UTC−5 fijo |
+| Túnez | `Africa/Tunis` | UTC+1 fijo |
+
+**`tz_regla` no vale para convertir.** La cadena «UTC+2 del día 88 al 298» es una aproximación de
+la regla peninsular; el cambio cae en el último domingo de marzo y de octubre, que no son días
+fijos del año. Y `tz_fijo_min` solo dice el desfase, no la zona: un desfase no sabe si ese país
+cambia la hora.
+
+Medido, por si hace falta justificarlo: con una zona fija de Madrid, un v1 de **San José salía
+siete horas desplazado** en verano y el visor decía que estaba bien leído. Y como los candidatos
+de desfase se tomaban de Madrid (+1/+2), en Perú no cuadraba ninguno: las filas se descartaban
+como «hora inexistente», 2.289 TCU en silencio.
+
+**Si no se sabe la zona, no se asume ninguna.** El visor lo dice y ofrece elegirla; las filas no
+entran en la serie hasta que se elige.
+
+### La hora repetida se desambigua por el ORDEN del fichero
+
+Tomar siempre la primera de las dos lleva las **dos pasadas reales** por 02:00–02:59 al mismo UTC,
+y el visor las funde sin decir nada: dos vueltas del recolector se convierten en una.
+
+Los recolectores escriben en orden cronológico, así que dentro de la franja ambigua:
+
+- si la hora local **retrocede** respecto a la fila anterior → lo que sigue es la **segunda** pasada (UTC+1);
+- si ya se vio una hora **≥ 03:00** de esa fecha → también;
+- y una vez que una fecha entra en segunda pasada, **se queda**: 02:00 CET y luego 02:10 CET no
+  retroceden entre sí, pero siguen siendo la segunda.
+
+El orden solo resuelve si se viene siguiendo **esa misma noche**: una fila anterior de otra fecha
+no dice nada, porque el fichero podría empezar ya en la segunda pasada. Lo que el orden no
+resuelve —típicamente la primera fila del fichero, si cae dentro de la franja— queda marcado
+`ambigua` y se cuenta en el aviso.
+
 ### Rotación del fichero al cambiar de esquema
 
 `Export-Csv -Append` de PowerShell 5.1 **rechaza** filas cuyas columnas no cuadren con la cabecera
@@ -58,6 +111,7 @@ Lo escribe `zigbee_logger.ps1`. Una fila **por nodo y por ciclo**.
 | `timestamp` | ISO 8601 Z | UTC | **el instante de ESTA fila**, no el del ciclo |
 | `ciclo_id` | entero | — | número de vuelta desde que arrancó el recolector, empezando en 0 |
 | `latencia_ms` | entero | ms | lo que tardó la consulta de ESTE nodo |
+| `tz_pc_min` | entero | min | desfase UTC del **reloj del PC** al escribir la fila. Ver abajo |
 | `gateway` | texto | — | nombre del CONFIG, no la IP |
 | `ext_addr` | texto | — | dirección de 64 bits. **Es la clave del nodo** |
 | `node_id` | texto | — | etiqueta del módulo. **NO es única entre NCUs** |
@@ -252,31 +306,38 @@ Convertir una hora local a UTC no siempre tiene una respuesta. Dos noches al añ
 
 | caso | cuándo | qué pasa | qué se hace |
 |---|---|---|---|
-| **hora inexistente** | último domingo de marzo, 02:00–02:59 local | el reloj salta de 02:00 a 03:00: esa hora no existió | la fila se marca `hora_dudosa=inexistente` y **no se convierte**; queda fuera de la línea de tiempo y se cuenta en el aviso |
-| **hora ambigua** | último domingo de octubre, 02:00–02:59 local | ocurre **dos veces**, con dos UTC distintos | se toma la **primera** (todavía en CEST, UTC+2), se marca `hora_dudosa=ambigua` y el aviso dice cuántas hay |
+| **hora inexistente** | último domingo de marzo, 02:00–02:59 local | el reloj salta de 02:00 a 03:00: esa hora no existió | se marca `inexistente` y **no se convierte**; queda fuera de la línea de tiempo y se cuenta en el aviso |
+| **hora ambigua** | último domingo de octubre, 02:00–02:59 local | ocurre **dos veces**, con dos UTC distintos | se resuelve **por el orden del fichero** (ver arriba). Lo que el orden no resuelve se marca `ambigua`, se toma la primera pasada y el aviso dice cuántas hay |
 
 Ninguna de las dos se rellena en silencio. Un fichero v1 que no cruce esas dos noches no tiene
 ninguna fila marcada, que es el caso normal.
 
 ### Cómo se resuelve el desfase, sin librerías
 
-Para una hora local `L` se prueban los dos desfases posibles de Madrid (+01:00 y +02:00). Para
-cada candidato se calcula el instante UTC y se vuelve a formatear en `Europe/Madrid` con
-`Intl.DateTimeFormat`: si devuelve `L`, el candidato es válido.
+Los desfases NO se enumeran a mano: se le preguntan a la zona. Para una hora local `L` se toma el
+desfase que esa zona tiene **el día anterior, en el instante tentativo y el día siguiente** — así
+quedan cubiertos los dos lados de un cambio de hora. Para cada desfase distinto se calcula el
+instante UTC y se vuelve a formatear en la zona con `Intl.DateTimeFormat`: si devuelve `L`, el
+candidato es válido.
+
+Con un solo paso esto falla **en silencio**: para las 02:30 del 25-oct el desfase en el instante
+tentativo ya es el de invierno, así que solo aparece el candidato CET y la hora repetida no sale
+como repetida.
 
 - ningún candidato válido → hora **inexistente**
-- dos candidatos válidos → hora **ambigua**
+- dos candidatos válidos → hora **ambigua**, que el orden del fichero resuelve casi siempre
 - uno → conversión exacta
 
 No hace falta tabla de cambios de hora ni dependencia: el navegador ya trae la base de datos de
-zonas horarias.
+zonas horarias. Y vale igual para una zona sin cambio de hora (Perú, Túnez) que para una con él.
 
 ### Lo que NO se arregla leyendo v1
 
 - `timestamp` de v1 es **el del ciclo**, no el de la fila: todos los nodos de una vuelta comparten
   marca. Con vueltas de minutos, eso es un error real de hasta el intervalo completo, y no hay de
   dónde sacar el instante de cada nodo. Se lee tal cual.
-- v1 **no trae** `ciclo_id`, `latencia_ms`, `motivo` ni `reinicio`. Esas columnas quedan vacías.
+- v1 **no trae** `ciclo_id`, `latencia_ms`, `tz_pc_min`, `motivo` ni `reinicio`. Quedan vacías.
+- v1 no dice **en qué zona** se escribió: la pone el visor desde `plantas_indice.json`, y lo avisa.
 - Un `zigbee_routes.csv` de v1 **solo tiene filas de rutas que salieron bien**: las que fallaron no
   se escribían. La ausencia de un nodo en una vuelta v1 no se puede distinguir de un fallo.
 
