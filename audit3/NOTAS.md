@@ -326,6 +326,54 @@ introduce un desajuste **distinto** entre las dos métricas — se ve en su test
 nulo, que salta a 9,2949 W/m² frente a los 2,14 de los otros dos. Se publica su
 fila por completitud y se declara confundida.
 
+### 1.4 · LA CAUSA, LOCALIZADA EN EL CÓDIGO Y CONTADA POR PROGRAMA
+
+El recuento de arriba dice **qué** pasa. Esto dice **por qué**, y no es una
+interpretación: es un recuento de llamadas.
+
+`anglesOptimal` ocupa las líneas **2925-3071** de `backtracking.html` (147
+líneas, commit `0a38ddc`). Dentro de ese cuerpo:
+
+| línea | llamada |
+|---|---|
+| `backtracking.html:2946` | `const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;` |
+| `backtracking.html:2961` | `const p2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+| `backtracking.html:2975` | `best=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:2987` | `const pP=poaPlant(zen,az,T,angP,irr,doy,albedo).plant;` |
+| `backtracking.html:3045` | `let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:3050` | `const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+
+**`poaPlant`: 6 llamadas. `poaPlantSeg`: 0.**
+
+El recuento se hace **por programa**, no a ojo: se recorta el cuerpo entre
+`function anglesOptimal(zen` y `function anglesOptimalFree(` y se cuentan las
+apariciones de `\bpoaPlant\(` y `\bpoaPlantSeg\(`. Reproducible con
+
+```
+node -e 'const L=require("fs").readFileSync("backtracking.html","utf8").split("\n");
+ const a=L.findIndex(l=>l.startsWith("function anglesOptimal(zen")),
+       b=L.findIndex((l,i)=>i>a&&l.startsWith("function anglesOptimalFree("));
+ let p=0,s=0; for(let i=a;i<b;i++){p+=(L[i].match(/\bpoaPlant\(/g)||[]).length;
+ s+=(L[i].match(/\bpoaPlantSeg\(/g)||[]).length;} console.log(p,s);'
+```
+
+**Control del recorte:** el cuerpo mide **147 líneas**, no cero. Un recorte
+vacío daría «0 y 0» y parecería confirmar cualquier cosa — es el fallo que este
+cuaderno ya cometió dos veces (errores 4 y el de los controles sobre cadena
+vacía), y por eso la longitud va publicada al lado del recuento.
+
+**Qué explica, exactamente.** `optimal` busca su máximo con `poaPlant` —y con
+ella lo encuentra: por eso **no pierde nunca por línea, 0 de 86**— y la página lo
+puntúa con `poaPlantSeg` siempre que la planta traiga `segTilt`, que es el caso de
+Ayora y de todas las reales. Es decir: **la regla con la que se busca no es la
+regla con la que se publica**, y el 58 de 86 de la tabla 1.1 es la consecuencia
+mecánica de estas seis líneas.
+
+**Lo que NO demuestra el recuento.** Que cambiar esas seis llamadas a
+`poaPlantSeg` arregle el defecto: eso sería otra medida, y no se ha hecho.
+`NO MEDIDO`. Tampoco es una decisión de auditoría cuál de las dos métricas debe
+usar el optimizador — es decidir qué se quiere maximizar.
+
 ### Lo que NO dice esta medida
 
 Ni que `optimal` sea peor que `pairwise`, ni al revés: dice que **el orden entre
