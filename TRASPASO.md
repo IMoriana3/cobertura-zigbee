@@ -797,23 +797,74 @@ cruzadas reales** de `rfRows()` contra los extremos reales de cada enlace:
 | peor diferencia en un enlace | — | **11 filas** |
 | enlaces donde no coinciden | — | **47 de 49** |
 
-**LAS DOS INCÓGNITAS, BARRIDAS EN VEZ DE ELEGIDAS.** Media de (predicho − medido), en dB:
+### UNA MEDIA NO ES UNA VALIDACIÓN
+
+**Que nadie saque de aquí un número suelto.** Con σ ≈ 10 dB y un recorrido de −18 a +36 dB,
+*cualquier* media es compatible con que el modelo acierte y con que falle en los dos sentidos
+compensándose. Lo que hay que mirar es la dispersión y la estructura.
+
+**EL ÁNGULO, CERRADO CON LO MEDIDO.** El barrido 0/30/55/90° se queda como **sensibilidad**, no
+como resultado: el +1,1 dB que llegó a figurar aquí era un artefacto de haber elegido 30°. Con la
+telemetría de basculación **medida** (`trackers_2026-06-17.json`, `field`, cada 5 min):
+
+| | n | media | **σ** | p10 | p50 | p90 | recorrido |
+|---|---|---|---|---|---|---|---|
+| antena 0,775 m | 49 | **+10,33 dB** | **9,97** | 0,2 | 10,3 | 21,6 | −17,8 … +36,5 |
+| antena 1,500 m | 49 | +10,96 dB | 9,61 | −0,5 | 11,2 | 22,2 | −7,5 … +37,3 |
+
+**LA CORRELACIÓN PREDICHO-MEDIDO ES NULA:**
+
+| | r | p | n |
+|---|---|---|---|
+| Pearson | **−0,009** | 0,95 | 49 |
+| Spearman | **−0,014** | 0,93 | 49 |
+
+El modelo **no ordena los enlaces como los ordena el árbitro**. Eso es lo que hay que decir, no
+«la media es pequeña».
+
+**Y EL RESIDUO TIENE ESTRUCTURA**, o sea que el modelo reparte mal la culpa:
+
+| pendiente del residuo | dB por unidad | p | |
+|---|---|---|---|
+| distancia (m) | −0,1370 ± 0,0364 | 0,0005 | **significativa** |
+| filas cruzadas reales | **−1,7466 ± 0,2701** | 5,3e-8 | **significativa** |
+| `padres_distintos` del nodo | −0,0677 ± 0,2404 | 0,78 | no |
+
+Cobra **1,75 dB de más por cada fila cruzada** y 0,137 dB/m de más con la distancia. Ningún sesgo
+global arregla eso: es exactamente lo que la campaña de barrido viene a medir, y para lo que
+`calibra_barrido.py` separa `l_mod_db` de `l_roce_db`.
+
+**POR QUÉ LA TELEMETRÍA VA POR `field` Y NO POR SEGUIDOR** — y esto costó un resultado falso antes
+de verlo. El preset de El Burgo tiene 215 seguidores y sólo **108 etiquetas distintas**; las dos
+entradas de cada etiqueta están a 82–454 m, así que no son las mitades de la bifila: son seguidores
+distintos. La clave única es **(NCU, etiqueta)**, 215 de 215, porque la renumeración fue «esclavo
+corrido dentro de cada NCU». Y la telemetría va de 1 a **109**, que no cabe ni en NCU1 (1–108) ni
+en NCU2 (1–107): es una **tercera numeración** sin correspondencia documentada. Cruzarla por
+etiqueta da «202 de 215 coincidencias» y asigna la misma serie a seguidores separados 200 m.
+
+Lo que se pierde al usar `field` está **acotado con el propio fichero**: la dispersión entre
+seguidores es de **2,3° de mediana y 28,0° máxima**, y el máximo se concentra en la hora de
+transición del backtracking (05:00–06:30). El resto del día la planta va dentro de 1–2°.
+
+**LAS FECHAS DE LA CAMPAÑA NO ESTÁN EN EL GEOJSON.** `periodo_filas_routes` **no es un periodo**:
+la línea que lo escribe es `periodo_filas_routes: rutas.filas||0` (`index.html:1700`), o sea el
+número de filas del CSV de rutas. En todo el fichero no hay una sola fecha ISO. Comprobado.
+
+**CORRECCIÓN sobre `padres_distintos`.** Esta nota llegó a decir que `r = −0,248` explicaba el
+«RSSI del enlace» tanto como la distancia. Con su p-valor, **ninguna de las dos es significativa**
+al 5 % con n = 49: p = 0,085 y p = 0,124. Lo que sostiene la conclusión del defecto de atribución
+es la **observación directa** —29 dB de recorrido entre enlaces de 12,0 m—, que no necesita
+estadística para leerse.
+
+**Sensibilidad al ángulo y a la altura** (media, en dB; queda como sensibilidad, no como resultado):
 
 | antena | tilt 0° | 30° | 55° | 90° |
 |---|---|---|---|---|
-| **0,775 m** | +18,2 | **+1,1** | −5,8 | −8,8 |
-| **1,500 m** | +18,8 | **+1,7** | −5,1 | −8,1 |
+| 0,775 m | +18,2 | +1,1 | −5,8 | −8,8 |
+| 1,500 m | +18,8 | +1,7 | −5,1 | −8,1 |
 
-**La altura de antena casi no importa: 0,64 dB** entre las dos. Los 0,725 m de duda del montaje
-mueven el careo menos de 1 dB, así que se puede decidir sin prisa y no es la incógnita que manda.
-**El ángulo sí: 27 dB** entre palas planas y de canto — y el ángulo de la campaña no se sabe,
-porque la mediana del nodo promedia 8.053 instantes del día entero. Ésa es la que hay que cerrar.
-
-**El error sigue sin ser constante**, aun con filas reales: de +27,1 dB sin filas cruzadas a
-−28,4 dB con 24. Ningún sesgo global arregla eso, y es la confirmación numérica de lo que decía el
-comentario de `cobertura-rf-fv` —«sobra offset y falta exponente»— y de su r = +0,16 con
-log(distancia). La campaña de barrido no es un lujo: es la única forma de repartir la culpa entre
-distancia y mesas, y `calibra_barrido.py` está escrito justo para eso.
+**La altura casi no importa: 0,64 dB** entre las dos. Los 0,725 m de duda del montaje mueven el
+careo menos de 1 dB, así que se puede decidir sin prisa. **El ángulo sí: 27 dB.**
 
 Por régimen: los 5 enlaces **por pasillo** salen +15,2 dB (cruzan 0,80 filas de media) y los 44 de
 **cruce**, −0,5 dB (4,27 filas).
