@@ -689,7 +689,19 @@ Llegaron a convivir dos «calibraciones de El Burgo» que se llaman igual y vale
 | altura de antena del ajuste | 1,5 m (`RF_ANT_H`, `index.html:2357`) | **0,775 m** (viga 1,50 − caída 0,725) |
 | terreno del ajuste | **llano** (`ground: 0` en las llamadas de `index.html:2442`) | **real** |
 | patrón de antena | isótropo (no hay `elev` ni dipolo en el fichero) | **dipolo** (`ant_patron`, `dipole_gain_db`) |
-| enlaces | «El Burgo I (NCU1)», sin número anotado | 49, anotados en `EL_BURGO_AJUSTE` |
+| enlaces | **49** (ver abajo) | 49, anotados en `EL_BURGO_AJUSTE` |
+
+**Los dos ajustes son sobre LOS MISMOS 49 ENLACES.** La procedencia del −33,6 estaba a la vista y
+no en el código: el bloque `calibracion` de `elburgo_real.geojson` dice
+`{"bias_db": −33.63, "sigma_db": 6.82, "n_eff": 0.38, "n_enlaces": 49}` — que es exactamente el
+−33,6 y el 6,8 de `defaultParamsElBurgo()`. Y los 49 son los mismos que anota `EL_BURGO_AJUSTE` en
+el hermano Python. Eso **refuerza** la conclusión de abajo en vez de debilitarla: con los mismos
+datos de entrada, dos modelos distintos dan −33,6 y −16,58. La diferencia está en el modelo, no en
+la muestra.
+
+Anótese también el `n_eff = 0,38` de ese bloque: el exponente de pérdida efectivo que sale del
+ajuste. El espacio libre es 2,0. Un 0,38 no es un medio de propagación, es el ajuste diciendo que
+la distancia casi no explica lo medido.
 
 **No están reconciliadas, y esta nota no las reconcilia.** Lo que sí se puede afirmar mirando los
 ficheros es que **no son dos ajustes del mismo modelo**: se hicieron con la antena a alturas que se
@@ -723,3 +735,44 @@ paridad. En el visor se queda como **«modelo antiguo (A)»**, sólo para compar
 **Lo que falta decir cuando Siting cambie de motor:** el PR de ese cambio tiene que enseñar cuánto
 se mueven los números **planta por planta**, no en agregado. Hasta entonces, cualquier cifra de
 cobertura que circule sigue siendo la del modelo antiguo con su sesgo dentro.
+
+---
+
+## El árbitro de El Burgo: qué dice de verdad, y qué NO dice (2026-09-20, antes de la fase 2)
+
+`elburgo_real.geojson` es el árbitro contra el que se valida la predicción de malla. Antes de
+usarlo conviene saber tres cosas, porque las tres se pueden leer mal.
+
+**1. Las 52 líneas NO son la malla: son el árbol del padre dominante.** El exportador dibuja
+**una línea por nodo**, de `padre_dominante` a `id`. 53 nodos y 52 aristas, conexo: es un árbol por
+construcción. Calcular puntos de articulación sobre esas 52 líneas da 31 de 53 nodos, y no
+significa nada — en un árbol todo nodo interno es articulación por definición. La conectividad real
+está en `padres_distintos`, y ahí **ningún TCU tuvo un solo padre**: entre 6 y 30, mediana 18, 950
+pares padre-hijo observados frente a 52 aristas dibujadas.
+
+**2. El 062 es el nodo más crítico, pero el dato dice que NO es punto único de fallo.**
+
+| | valor |
+|---|---|
+| descendientes que pasan por él | **47** de 52 |
+| hijos directos | 3 |
+| padres distintos observados | 9 |
+| `hop_tipico` | 2 (cuelga directo del COORD) |
+| `is_spof` | **False** |
+
+El único `is_spof: True` de todo el fichero es `COORD`. Y no es que el umbral sea laxo: `UMBRAL`
+son **0,5** —articulación en al menos la mitad de los 8.053 instantes— y el propio comentario de
+`index.html:1659` explica por qué, «uno esporádico es la malla reconfigurándose, no un punto único
+de fallo».
+
+Así que la pregunta «¿identifica el modelo el 062 como punto único de fallo?» tiene la premisa
+cambiada: **el árbitro no dice eso**. La pregunta que sí se puede arbitrar, y que es la útil, es si
+el modelo lo identifica como **el relé más cargado** — 47 de 52 descendientes, a un salto del
+coordinador. Eso sí está en el dato.
+
+**3. El fichero guardado es una exportación VIEJA.** No trae `spof_frac`, ni `generado`
+(planta/por/fecha/`umbral_spof`), ni `nodos_sin_coordenada`, que son campos que el exportador
+actual de `index.html` sí escribe. Trae en cambio un `calibracion` que el exportador actual deja
+deliberadamente a `null`. O sea: para validar la fase 2 **hay que regenerarlo con el recolector**,
+como dice el encargo, y ponerlo al lado del viejo. Validar contra este sin regenerar sería medirse
+contra una foto de fecha desconocida.
