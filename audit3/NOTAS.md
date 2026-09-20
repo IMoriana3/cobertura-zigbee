@@ -944,11 +944,22 @@ vez.
 | `pairwise` | 2 306,817752 | 2 253,628446 | **−2,3057 %** | **sí** |
 | `mgl` | — | — | **`NO MEDIDA`** | sí |
 
-**`mgl`, con su coste y no con una excusa:** **más de 91 minutos** en su primer
-mes **sin terminarlo**, frente a los ~25 s por mes de las baratas. Doce meses
-pasarían de **18 h**. (La primera vez que se escribió esta nota la cifra era «más
-de 57 min»: era el reloj en ese momento, no el coste del mes. Un límite inferior
-que sigue creciendo no es una medida, y se dice cuál es el reloj.) Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
+**`mgl`, con su coste MEDIDO y sin multiplicarlo por doce.** Su primer mes
+—enero— costó **7 974 s: 2 h 12 min 54 s**, frente a los ~25 s por mes de las
+baratas. **Los otros once meses: desconocidos.** No se extrapola el total, y esta
+vez por una razón medida y no por prudencia: el coste por instante de `mgl` ya se
+midió como **no constante** en la sonda diaria (tramos a 28, 92 y 68,5 s). Doce
+por 7 974 s sería inventarse once meses.
+
+Se declara **`NO MEDIDA`**, con el criterio que el auditor fijó en la 3.1, y se
+publica el mes que sí se midió.
+
+**Y el recorrido de esta cifra es el ejemplo de la trampa:** primero escribí «más
+de 57 min», luego «más de 91 min», y las dos veces eran **el reloj en el momento
+de escribirlo**, con el mes todavía corriendo. De las dos saqué totales —«más de
+11 h», «más de 18 h»— que eran extrapolaciones de una cota creciente. El valor
+real del mes, cuando por fin terminó, fue **2 h 13 min**, y el total sigue sin
+saberse. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
 en la 3.1, y no se extrapola su total: su coste por instante ya se midió como **no
 constante** (tramos a 28, 92 y 68,5 s en la sonda diaria).
 
@@ -1212,17 +1223,41 @@ la señal desde dentro del contenedor. Lo que hay es una correlación de 4 de 4 
 una variable que se controla, y una regla operativa que funciona. Eso no es
 saber la causa; es saber qué hacer.
 
+### Un límite inferior que sigue creciendo no es una medida
+
+Va aquí y no sólo junto a la cifra, porque es la trampa más fácil de pasar por
+alto de las tres de esta tanda. La nota de `mgl` dijo primero «más de 57 minutos
+en su primer mes» y después «más de 91». Ninguna de las dos era el coste del mes:
+las dos eran **el reloj en el instante de escribirlas**, con el mes todavía
+corriendo. Y de cada una saqué un total —«más de 11 h», «más de 18 h»— que era
+una extrapolación de una cota creciente.
+
+**El mes acabó costando 7 974 s: 2 h 13 min.** Ninguna de mis dos frases era
+falsa, y las dos inducían a error, que es peor: un «más de X» sobre algo que no
+ha terminado envejece **hacia arriba** mientras se lee, y se cita después como si
+fuera el valor.
+
+Si se publica, se publica **con el reloj al lado** —*más de 91 min medidos a las
+06:20, sin terminar*— y se declara como **cota**, no como coste. Y el total de
+doce meses **sigue sin saberse**, porque multiplicar el mes medido por doce sería
+la misma extrapolación otra vez.
+
 ### La regla, para llevársela
 
 1. Un proceso que muere en silencio **no se relanza igual**. Se instrumenta.
 2. Se instrumenta **por eliminación**: un manejador por cada causa capturable, y
-   la lista escrita para que se pueda auditar su completitud.
+   la lista escrita **entera** para que se pueda auditar su completitud. El
+   silencio de los manejadores sólo prueba algo si el conjunto es **exhaustivo
+   sobre lo capturable**; si falta uno, el silencio prueba que no se miró ahí.
+   Publicar la lista es lo que convierte la inferencia en **falsable**.
 3. Un **latido** convierte «sin salida» en «vivo y lento» o «muerto».
 4. Descartar lo capturable **acota** la causa; no la demuestra.
 5. La confirmación viene de mover una variable que se controla y ver si el
    fenómeno la sigue.
-6. Y lo que no se ha visto se declara `NO VERIFICADO`, aunque la regla operativa
-   ya funcione.
+6. Lo que no se ha visto se declara `NO VERIFICADO`, aunque la regla operativa ya
+   funcione: **eso no es saber la causa, es saber qué hacer.**
+7. Y un **límite inferior que sigue creciendo no es una medida**: se publica con
+   su reloj, y como cota.
 
 ## E-X1 · mis propios errores en esta ronda
 
@@ -1304,6 +1339,13 @@ anual citaba el «paso 20 min» viejo que la comprobación prohibía. La regla n
 cumple por haberla escrito.
 
 ### Error 18 · confundir el rastro con la cosa, en las dos direcciones el mismo día
+
+> **Origen de M.6 · «el rastro no es la cosa».** El auditor eleva este error a
+> regla del método, junto a M.1, M.4 y M.5, porque comparte con ellas la raíz:
+> **una identidad supuesta entre lo que se observa y lo que se afirma.** Allí era
+> medir una parte y darla por el todo; aquí es tomar la huella de un proceso —una
+> línea de órdenes que lo menciona, un fichero que escribió— por el proceso
+> mismo.
 
 Es **un** error, no dos, y por eso va en una entrada: en los dos casos tomé un
 **rastro** de un proceso por el **proceso** mismo.
