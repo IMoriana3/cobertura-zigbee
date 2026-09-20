@@ -675,3 +675,51 @@ hace horas, el siguiente PR lo empuja encima y **borra en silencio** lo que haya
 sesiones — y en el diff parece un simple reordenado.
 Usar **`git rebase origin/main`** o un merge normal. En `proyectos`, además, correr
 `node tests/test_integridad.js` antes de empujar.
+
+---
+
+## Las DOS cifras de sesgo, y por qué el motor nuevo no lleva ninguna (2026-09-20, fase 1)
+
+Llegaron a convivir dos «calibraciones de El Burgo» que se llaman igual y valen cosas distintas:
+
+| | `Siting/zigbee_pv_model.js:115` | `cobertura-rf-fv/python/zigbee_pv_model.py:300` |
+|---|---|---|
+| sesgo | **−33,6 dB** | **−16,58 dB** |
+| sigma | 6,8 dB | 10,99 dB |
+| altura de antena del ajuste | 1,5 m (`RF_ANT_H`, `index.html:2357`) | **0,775 m** (viga 1,50 − caída 0,725) |
+| terreno del ajuste | **llano** (`ground: 0` en las llamadas de `index.html:2442`) | **real** |
+| patrón de antena | isótropo (no hay `elev` ni dipolo en el fichero) | **dipolo** (`ant_patron`, `dipole_gain_db`) |
+| enlaces | «El Burgo I (NCU1)», sin número anotado | 49, anotados en `EL_BURGO_AJUSTE` |
+
+**No están reconciliadas, y esta nota no las reconcilia.** Lo que sí se puede afirmar mirando los
+ficheros es que **no son dos ajustes del mismo modelo**: se hicieron con la antena a alturas que se
+diferencian en 0,725 m, uno sobre terreno llano y otro sobre terreno real, y uno con ganancia plana
+y otro con patrón de dipolo dependiente de la elevación. Con esas tres diferencias, que las dos
+cifras no se reproduzcan no es una contradicción a resolver: es lo esperable. Reconciliarlas de
+verdad exige rehacer un ajuste con las tres cosas fijadas, y eso no se ha hecho.
+
+**Ninguna de las dos es una calibración de propagación.** Lo dice el propio comentario del hermano
+Python, y conviene no perderlo: el residuo de un ajuste de un solo número «barre unos 35 dB entre
+los tramos corto y largo: sobra offset y falta exponente», y sirve «para recentrar el modelo sobre
+el nivel típico de un enlace que la malla USA. No para el nivel absoluto de un enlace cualquiera,
+ni para decidir a qué distancia deja de haber enlace». Un sesgo global ajustado sobre los enlaces
+que sobrevivieron está midiendo la supervivencia, no el medio: en El Burgo la correlación de esas
+49 medidas con log(distancia) es r = +0,16 sobre un recorrido de ×14.
+
+**El motor nuevo (`Siting/radio_pv_model.js` + `.py`) NO lleva sesgo global, y no lo va a llevar.**
+Lo que en el modelo antiguo tapaba el sesgo —un filo de cuchillo que sube desde el suelo hasta el
+borde superior del módulo, y por tanto da por tapado lo que pasa POR DEBAJO del seguidor— está
+arreglado en la geometría, que es donde estaba el error. Medido en el banco, enlace de 100 m con
+una fila en medio y antenas a 1,0 m: **3,29 dB el nuevo frente a 15,67 dB el antiguo, 12,38 dB de
+diferencia**, y sin tocar una sola constante de potencia.
+
+**El modelo antiguo sigue CONGELADO.** `Siting/zigbee_pv_model.js` no se toca ni como envoltorio:
+`SolarGPTfull/siting/zigbee_pv_model.lock.json` lo pincha por sha256
+(`ac06599f6343a41ac7286cb39d6f392a50a8dd7d1ee3b85a0fc0c5a717ca8d57`, comprobado hoy) y
+`SolarGPTfull/tests/test_paridad_rf_zigbee.py` lo corre contra `factiun_core.rf` a 0,000000 dB.
+Un envoltorio cambiaría el sha256 igual, y si además delegase en la física nueva rompería esa
+paridad. En el visor se queda como **«modelo antiguo (A)»**, sólo para comparar, y rotulado.
+
+**Lo que falta decir cuando Siting cambie de motor:** el PR de ese cambio tiene que enseñar cuánto
+se mueven los números **planta por planta**, no en agregado. Hasta entonces, cualquier cifra de
+cobertura que circule sigue siendo la del modelo antiguo con su sesgo dentro.
