@@ -1284,6 +1284,124 @@ la misma extrapolación otra vez.
 7. Y un **límite inferior que sigue creciendo no es una medida**: se publica con
    su reloj, y como cota.
 
+## DIAGNÓSTICO · POR QUÉ CUESTA EL TERRENO CON PENDIENTE N-S
+
+**Sólo medido. No se ha tocado `mvPara`, ni `anglesPairwiseRaw`, ni
+`anglesTrue3d`, ni ningún umbral.** Guion en `audit3/F5_coste_tilt.mjs`, salida
+cruda en `audit3/out/F5_coste_tilt.json`, commit `8dc2115`.
+
+Barrido de tilt N-S en 0,0 / 0,2 / 0,4 / 0,45 / 0,49 / 0,51 / 0,55 / 0,6 / 1,0 /
+2,0 / 4,0°, todo lo demás idéntico: 8 filas, 29 instantes con DNI > 25, paso
+30 min. **Dos presets, no uno** — el encargo pedía uno, pero el síntoma dice
+«quebrado o constante da igual» y eso sólo se confirma o se refuta midiendo los
+dos, y los tres guardas se reparten distinto entre ellos.
+
+### TEST NULO, antes de interpretar
+
+El tiempo total **sí varía**: de **673,7 ms** a **6 430,9 ms**, un factor **9,5**.
+El experimento informa.
+
+### CONTROL DEL INSTRUMENTO
+
+Las iteraciones del bucle de reparación se cuentan con una **réplica** escrita en
+la sonda, no tocando el original. La réplica lleva su control: su resultado tiene
+que coincidir con `anglesPairwiseRaw` ángulo a ángulo. **Coincide en los 22
+puntos × 29 instantes.** Una réplica desviada contaría las iteraciones de otro
+bucle, y el recuento parecería igual de creíble.
+
+### La tabla
+
+| preset | tilt | ms | MV | atajo true3d | guarda repar. | iteraciones | agota el tope |
+|---|---|---|---|---|---|---|---|
+| constante | 0,0 | 811,9 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,2 | 1 247,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,4 | 1 209,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,45 | 1 200,4 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,49 | 1 262,1 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | **0,51** | 1 204,9 | 17 | **0/7** | 0/29 | 0 | 0 |
+| constante | 0,55 | 1 187,8 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 0,6 | 1 214,5 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 1,0 | 1 207,3 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 2,0 | 1 148,2 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 4,0 | 1 197,2 | 17 | 0/7 | 0/29 | 0 | 0 |
+| quebrado | 0,0 | 673,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| quebrado | 0,2 | 731,0 | 17 | 7/7 | **29/29** | 29 | 0 |
+| quebrado | **0,4** | 1 381,6 | **33** | 7/7 | 29/29 | 34 | 0 |
+| quebrado | 0,45 | 1 557,1 | 33 | 7/7 | 29/29 | 34 | 0 |
+| quebrado | 0,49 | 1 491,3 | 33 | 7/7 | 29/29 | 37 | 0 |
+| quebrado | **0,51** | 1 544,9 | 33 | **1/7** | 29/29 | 37 | 0 |
+| quebrado | 0,55 | 1 803,9 | 33 | 1/7 | 29/29 | 37 | 0 |
+| quebrado | 0,6 | 1 828,9 | 33 | 1/7 | 29/29 | 37 | 0 |
+| quebrado | 1,0 | 2 260,8 | 33 | 1/7 | 29/29 | 46 | 0 |
+| quebrado | 2,0 | 3 582,2 | 33 | 1/7 | 29/29 | 111 | 0 |
+| quebrado | 4,0 | 6 430,9 | 33 | 1/7 | 29/29 | **226** | 0 |
+
+### LA RESPUESTA, Y NO ES LA HIPÓTESIS
+
+**1 · El 71 % al 99,7 % del coste son TRES políticas.** `mgl`, `optimal` y
+`optfree`, en **los 22 puntos del barrido**. Las cuatro baratas —`astro`,
+`global`, `row`, `bt2d`— suman entre **0,0 y 0,7 ms** en todo el experimento.
+`mgl` sola va de 457 a 1 569 ms.
+
+**Si el usuario ve las nueve dibujadas, lo que está pagando no es el terreno: son
+ellas.** Ésta es la respuesta a la pregunta 4 del encargo y, por tamaño, la
+respuesta a la pregunta entera.
+
+**2 · El guarda de `anglesTrue3d` se dispara donde se predijo y NO CUESTA NADA.**
+El atajo pasa de 7/7 a 0/7 parejas entre 0,49 y 0,51 —exactamente en
+`EPS_TILT`— y el tiempo **no salta**: constante −4,53 %, quebrado +3,59 %. Las
+dos dentro del ruido del barrido. La hipótesis acierta el mecanismo y **falla en
+que sea una causa del coste**.
+
+**3 · El guarda de `mvPara` sí cuesta, y no salta en 0,5 sino donde de verdad
+está su umbral.** En `quebrado` el tilt de filas vecinas se lleva **2·v**, así
+que el umbral de torsión ≥ 0,5° se cruza en **v ≥ 0,25**: MV pasa de 17 a 33
+entre 0,2 y 0,4, y el tiempo de 731 a 1 382 ms. **+651 ms de escalón.** Buscar el
+salto en 0,49-0,51 lo habría dado por inexistente: estaba dos puntos antes.
+
+**4 · El bucle de reparación se enciende por umbral pero CUESTA POR MAGNITUD.**
+En `quebrado` el guarda está activo en 29 de 29 instantes desde 0,2°, pero sus
+iteraciones crecen **29 → 34 → 37 → 46 → 111 → 226**. Eso no es insensible al
+valor: es lo contrario.
+
+**5 · En `constante` el bucle NO se enciende nunca**, y estaba predicho por el
+código: `pairStations:1074` devuelve **una** estación cuando las filas vecinas
+tienen el mismo tilt, así que `length>1` es falso siempre. Por eso `constante` y
+`quebrado` **no** cuestan igual — 1 197 contra 6 431 ms a 4°, un factor **5,4**.
+
+### Salto o gradual, con la proporción
+
+| preset | escalón | gradual |
+|---|---|---|
+| **constante** | **+436 ms** de 0,0 a 0,2, y después **plano** (1 248 → 1 197, −50 ms) | **ninguno** |
+| **quebrado** | **+651 ms** de 0,2 a 0,4 (el MV) · **11 %** | **+5 049 ms** de 0,4 a 4,0 · **89 %** |
+
+**En `constante` es todo escalón, y está en CERO, no en 0,5.** El coste sube al
+pasar de plano a no-plano y ahí se queda, insensible al valor — que es el síntoma
+descrito. Pero el escalón **no lo produce ninguno de los tres guardas**: MV no se
+mueve (17), el bucle no se enciende (0 iteraciones) y el atajo de `true3d` sigue
+puesto (7/7) a 0,2. Lo que sube es **`mgl`**, de 531 a 969 ms. **Qué hace `mgl`
+distinto al pasar de tilt 0 a tilt 0,2: `NO MEDIDO`.**
+
+**En `quebrado` son las dos cosas, y el gradual domina 89 a 11.**
+
+### Nadie agota el tope de 60
+
+En los 22 puntos, **cero instantes** llegan al tope de iteraciones. El máximo
+observado es 226 iteraciones repartidas en 29 instantes — una media de 7,8 sobre
+un tope de 60. El tope **no está limitando nada** en este barrido.
+
+### Lo que esta medida NO dice
+
+- **No dice nada de Ayora ni de ninguna planta real:** son 8 filas sintéticas.
+  Con 79 líneas y 1 600 mesas el reparto puede ser otro. `NO VERIFICADO`.
+- **Un confundido declarado:** el primer punto del barrido (`constante` 0,0)
+  muestra `pairwise` 17 ms y `true3d` 24 ms frente a 2-3 ms en el resto del
+  preset. Huele a calentamiento del JIT, no a física. No se ha aislado repitiendo
+  el punto, así que **la cifra de `constante` 0,0 se lee con reserva** — y da la
+  casualidad de que es el punto contra el que se mide el escalón.
+- **No propone arreglo.** El encargo era diagnosticar.
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
