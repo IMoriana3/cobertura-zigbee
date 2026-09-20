@@ -25,7 +25,25 @@ const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); 
 const i0 = html.indexOf('/* PAQUETE-INI');
 const i1 = html.indexOf('/* PAQUETE-FIN');
 if (i0 < 0 || i1 < 0) { console.error('no encuentro PAQUETE-INI / PAQUETE-FIN'); process.exit(1); }
-const F = new Function(html.slice(i0, html.indexOf('*/', i1) + 2) +
+let bloque = html.slice(i0, html.indexOf('*/', i1) + 2);
+
+/* MUTACIONES. Rompen UNA cosa del empaquetado; si el banco sigue verde con una
+   puesta, esa comprobación no comprobaba nada. */
+const MUTACIONES = {
+  // el BOM que hace que PowerShell 5.1 pueda leer el fichero
+  bom: [/function conBOM\(txt\)\{[^\n]*\}/, 'function conBOM(txt){ return String(txt); }'],
+};
+const MUTA = process.env.MUTA;
+if (MUTA) {
+  const m = MUTACIONES[MUTA];
+  if (!m) { console.error('mutacion desconocida. Hay: ' + Object.keys(MUTACIONES).join(', ')); process.exit(2); }
+  const antes = bloque;
+  bloque = bloque.replace(m[0], m[1]);
+  if (bloque === antes) { console.error('la mutacion «' + MUTA + '» no casó con el código (¿cambió index.html?)'); process.exit(2); }
+  console.log('### MUTACION «' + MUTA + '» PUESTA: este banco TIENE que salir rojo\n');
+}
+
+const F = new Function(bloque +
   ';return {crc32,zipStore,dosFecha,paqueteDeManifiesto,gwsDe,preparaLogger,preparaRutas,preparaInventario,preparaAngulos,preparaColector,leemeDe,COLECTORES};')();
 
 check('el CRC32 da el valor canónico de "123456789"',
@@ -100,7 +118,48 @@ check('el despachador manda cada recolector a su preparador',
       F.preparaColector('zigbee_logger.ps1', LOGGER, gws) === F.preparaLogger(LOGGER, gws) &&
       F.preparaColector('zigbee_routes_logger.ps1', RUTAS, gws) === F.preparaRutas(RUTAS, gws));
 check('y uno que no conozca lo deja TAL CUAL, sin inventarle una IP',
-      F.preparaColector('otro.ps1', LOGGER, gws) === LOGGER);
+      F.preparaColector('otro.ps1', LOGGER, gws).replace(/^﻿/, '') === LOGGER.replace(/^﻿/, ''));
+
+/* ───────────────────────────────────────────────────────────────────────────────
+   EL BOM, Y POR EL CAMINO DE VERDAD.
+
+   El técnico NO usa el .ps1 del repo: usa el que sale del ZIP. Y por ahí el texto
+   pasa antes por `Response.text()`, que decodifica UTF-8 y QUITA el BOM —lo manda
+   el estándar de Fetch—, y sale por `TextEncoder`, que no lo escribe nunca:
+
+       EF BB BF 61 62  ->  .text()  ->  encode  ->  61 62
+
+   Sin BOM, Windows PowerShell 5.1 lee el fichero como Windows-1252 y
+   `zigbee_inventario.ps1` no compila.
+
+   Y ESTE BANCO NO LO VEÍA porque le daba a `preparaColector` los BYTES DEL REPO,
+   que sí llevan BOM, en vez del texto que la página le pasa de verdad. Probaba
+   una entrada que la página nunca ve. De ahí el ayudante de abajo: reproduce el
+   camino entero —decodificar, preparar, codificar— y mira los BYTES que acaban
+   dentro del ZIP.                                                             */
+const comoLaPagina = (nombre, bytes, g) =>
+  Buffer.from(new TextEncoder().encode(
+    F.preparaColector(nombre, new TextDecoder('utf-8').decode(bytes), g)));
+
+const CRUDO = new Uint8Array([0xEF, 0xBB, 0xBF, 0x61, 0x62]);
+check('`.text()` quita el BOM: por eso hay que reponerlo al empaquetar',
+      new TextDecoder('utf-8').decode(CRUDO) === 'ab',
+      JSON.stringify(new TextDecoder('utf-8').decode(CRUDO)));
+
+const ps1Repo = fs.readdirSync(RAIZ).filter(f => f.toLowerCase().endsWith('.ps1')).sort();
+check('hay recolectores .ps1 que empaquetar', ps1Repo.length >= 4, ps1Repo.length);
+for (const nom of ps1Repo) {
+  const salen = comoLaPagina(nom, fs.readFileSync(path.join(RAIZ, nom)), gws);
+  check(nom + ' sale del paquete CON BOM',
+        salen[0] === 0xEF && salen[1] === 0xBB && salen[2] === 0xBF,
+        salen.subarray(0, 6).toString('hex'));
+  check('y con UNO solo, no dos',
+        !(salen[3] === 0xEF && salen[4] === 0xBB && salen[5] === 0xBF),
+        salen.subarray(0, 9).toString('hex'));
+}
+check('un fichero que no es .ps1 no se lleva BOM',
+      comoLaPagina('LEEME.txt', new TextEncoder().encode('hola'), gws)[0] !== 0xEF,
+      comoLaPagina('LEEME.txt', new TextEncoder().encode('hola'), gws).subarray(0, 4).toString('hex'));
 /* ───────────────────────────────────────────────────────────────────────────────
    SIN IP, MARCADOR — NUNCA LA DE OTRA PLANTA.
 

@@ -40,6 +40,21 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 PWSH = os.environ.get("PWSH", "pwsh")
 
+# DE DONDE SALE EL .ps1. Por defecto, el del repo. Con PS1_DIR, el que sale del
+# ZIP que se descarga en planta — que NO es el mismo fichero: el paquete le pone
+# el BOM y le sustituye el CONFIG. Correr solo el del repo dejaba fuera todas
+# esas transformaciones, y por ahi se colo que el BOM no llegaba a la planta.
+PS1_DIR = os.environ.get("PS1_DIR") or RAIZ
+
+
+def fuente(nombre):
+    ruta = os.path.join(PS1_DIR, nombre)
+    if not os.path.exists(ruta):
+        print("no encuentro %s en %s" % (nombre, PS1_DIR))
+        sys.exit(2)
+    return ruta
+
+
 fallos, n = [], 0
 
 
@@ -165,7 +180,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 puerto = srv.server_address[1]
 
 tmp = tempfile.mkdtemp()
-txt = open(os.path.join(RAIZ, "zigbee_logger.ps1"), encoding="utf-8").read()
+txt = open(fuente("zigbee_logger.ps1"), encoding="utf-8").read()
 # LA MISMA sustitucion que hace el paquete de medida (preparaLogger, index.html).
 # Si esta expresion deja de casar, el paquete tampoco prepara el recolector.
 txt, cuantas = re.subn(r"\$Gateways = @\([\s\S]*?\n\)",

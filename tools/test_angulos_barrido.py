@@ -36,6 +36,21 @@ import threading
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 PWSH = os.environ.get("PWSH", "pwsh")
+
+# DE DONDE SALE EL .ps1. Por defecto, el del repo. Con PS1_DIR, el que sale del
+# ZIP que se descarga en planta — que NO es el mismo fichero: el paquete le pone
+# el BOM y le sustituye el CONFIG. Correr solo el del repo dejaba fuera todas
+# esas transformaciones, y por ahi se colo que el BOM no llegaba a la planta.
+PS1_DIR = os.environ.get("PS1_DIR") or RAIZ
+
+
+def fuente(nombre):
+    ruta = os.path.join(PS1_DIR, nombre)
+    if not os.path.exists(ruta):
+        print("no encuentro %s en %s" % (nombre, PS1_DIR))
+        sys.exit(2)
+    return ruta
+
 fallos, n = [], 0
 
 
@@ -112,7 +127,7 @@ with open(os.path.join(tmp, "barrido_prueba_NCU01.csv"), "w", newline="", encodi
     w.writerow(["C", "D", "", "", "", "", "18", "9", "filas", "40", "41"])
     w.writerow(["E", "F", "", "", "", "", "25", "3", "diagonal", "31", "30"])
 
-txt = open(os.path.join(RAIZ, "zigbee_angulos.ps1"), encoding="utf-8").read()
+txt = open(fuente("zigbee_angulos.ps1"), encoding="utf-8").read()
 txt = re.sub(r'\$Ncus = @\([\s\S]*?\n\)',
              '$Ncus = @(\n  @{ Name = "NCU01-GW1"; Host = "127.0.0.1"; Port = %d }\n)' % puerto,
              txt, count=1)
@@ -127,12 +142,17 @@ print("\n· se corre el recolector de ángulos contra una NCU Modbus de mentira 
 ES = "[Globalization.CultureInfo]::CurrentCulture=[Globalization.CultureInfo]::new('es-ES'); "
 p = subprocess.Popen([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass",
                       "-Command", ES + "& '%s'" % ruta],
-                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=tmp)
+                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                     errors="replace", cwd=tmp)
 csvp = os.path.join(tmp, "angulos.csv")
 import time
 for _ in range(120):                                  # espera a la primera pasada
-    if os.path.exists(csvp) and len(open(csvp, encoding="utf-8-sig").readlines()) >= 5:
-        break
+    try:
+        if os.path.exists(csvp) and len(open(csvp, encoding="utf-8-sig").readlines()) >= 5:
+            break
+    except OSError:
+        pass          # en Windows el fichero puede estar abierto por PowerShell en ese
+                      # instante y abrirlo lanza PermissionError; se reintenta y ya
     time.sleep(0.5)
 p.terminate()
 try:
@@ -204,7 +224,7 @@ with open(hoja, "w", newline="", encoding="utf-8") as f:
     w.writerows(filas)
 
 r = subprocess.run([sys.executable, os.path.join(AQUI, "rellena_barrido.py"), hoja, csvp],
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, errors="replace")
 di(r.returncode == 0, "el cruce termina bien", r.stderr[-300:])
 out = list(csv.DictReader(open(hoja, encoding="utf-8-sig")))
 if len(out) < 3:
@@ -246,7 +266,7 @@ _sh.copy(csvp, os.path.join(tmp, "ps", "angulos.csv"))
 _sh.copy(os.path.join(RAIZ, "rellena_barrido.ps1"), os.path.join(tmp, "ps", "rellena_barrido.ps1"))
 rp = subprocess.run([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
                      ES + "& '%s'" % os.path.join(tmp, "ps", "rellena_barrido.ps1")],
-                    capture_output=True, text=True, cwd=os.path.join(tmp, "ps"), timeout=180)
+                    capture_output=True, text=True, errors="replace", cwd=os.path.join(tmp, "ps"), timeout=180)
 di(rp.returncode == 0, "el cruce en PowerShell termina bien", (rp.stdout + rp.stderr)[-300:])
 outps = list(csv.DictReader(open(hoja2, encoding="utf-8-sig")))
 di(len(outps) == len(out), "mismas filas", (len(outps), len(out)))

@@ -458,6 +458,152 @@ en el navegador», y en el navegador cabe un puerto. Con `10.100.1.54:8080` el a
 HTTP seguía funcionando y el telnet intentaba resolver `"10.100.1.54:8080"` como nombre de máquina.
 Ahora se le quita el puerto al conectar (`$TelnetHost`); una IP a secas no cambia en nada.
 
+### El arnés corre en las DOS versiones de PowerShell
+
+`pwsh` (7) en `ubuntu-latest` y **Windows PowerShell 5.1** en `windows-latest`, que es la que hay en
+el PC de la planta: allí no se instala nada ni hay admin. Probar solo en 7 es probar otro intérprete
+y llamarlo el mismo.
+
+`tools/test_export_csv_esquema.py` es una **sonda del entorno**, no un banco del repo: mide qué hace
+la versión que tenga delante con las cosas de las que depende el bloque 2. Una versión que no esté
+en su tabla sale con **rc = 2** y enseña lo observado, en vez de darse por buena.
+
+### `Export-Csv -Append` NO rechaza: pierde el dato en silencio
+
+El contrato decía —y el comentario del propio logger dice— que `Export-Csv -Append` **rechaza** filas
+cuyas columnas no cuadren. Medido, eso es **cierto en dos casos de tres, y falso justamente en el
+que le importa al bloque 2**:
+
+| la fila que se añade… | ¿falla? | ¿se escribe? | ¿entran sus columnas? |
+|---|---|---|---|
+| trae columnas **de más** ← el caso del bloque 2 | **no** | **sí** | **no** |
+| trae columnas **de menos** | sí | no | — |
+| trae las columnas **renombradas** | sí | no | — |
+
+**5.1 y 7.6.5 dan lo mismo en las tres.** La única diferencia medida entre versiones es el BOM:
+`-Encoding UTF8` lo deja en 5.1 y no en 7. Runs 35472054575, 35474112229 y 35475714525.
+
+Es decir: añadir las columnas de v2 sobre un fichero de v1 **no da ningún error** y se come
+`ciclo_id` y `latencia_ms` en silencio. Peor que un fallo ruidoso, y convierte la rotación en la
+única forma de no perder columnas. Y al revés —un recolector de v1 sobre un fichero ya rotado a v2—
+sí falla y no escribe nada: ruidoso, pero deja de registrar hasta que se actualice.
+
+Corregido en `docs/contrato_datos_zigbee.md`, que es el documento que manda.
+
+**El camino hasta este número importa tanto como el número**: la primera versión de la tabla de la
+sonda decía que en PowerShell 7 `-Append` falla, porque es lo que dice la documentación de 5.1 y se
+dio por bueno para las dos. La CI lo desmintió. Después solo se había probado UNA dirección
+—columnas de más—, y al probar las otras dos salió la asimetría, que es lo que explica de dónde
+venía la creencia original. Por eso la tabla lleva `None` para lo que no está medido y el banco sale
+con **rc = 2** ante una versión que no conoce.
+
+Lo que hizo falta adaptar de los bancos que ya había, que asumían Linux:
+
+- `text=True` sin `errors` decodifica en modo **estricto** con la codificación de la consola. En
+  Windows eso puede reventar con `UnicodeDecodeError` en bytes que cp1252 no define. Lleva ya
+  `errors="replace"` en los cuatro sitios.
+- `test_angulos_barrido.py` abría el CSV **mientras PowerShell lo estaba escribiendo**. En Linux
+  eso se tolera; en Windows lanza `PermissionError` y tumbaba el banco. Ahora se reintenta.
+
+### `zigbee_inventario.ps1` NO ARRANCABA en el PC de una planta
+
+Lo encontró la primera ejecución del job de Windows, y es un fallo de campo de verdad, no del
+banco. De los cinco recolectores solo `zigbee_logger.ps1` llevaba BOM. Windows PowerShell 5.1 lee
+un `.ps1` **sin BOM como Windows-1252**, no como UTF-8, y ahí está la trampa:
+
+```
+la raya «—» son los bytes  E2 80 94
+el 94 en Windows-1252 es  «”»  — la comilla tipográfica de cierre
+y PowerShell 5.1 la acepta como delimitador de cadena
+```
+
+Así que esta línea, la 83 de `zigbee_inventario.ps1`:
+
+```powershell
+[void]$crudo.AppendLine("<!-- zigbee_inventario.ps1 — respuestas en bruto, ... -->")
+```
+
+cerraba la cadena en medio. El error que sale es éste, **y apunta a la línea 162**:
+
+```
+zigbee_inventario.ps1:162 char:87
+The string is missing the terminator: ".
+ParserError ... MissingEndParenthesisInMethodCall
+```
+
+El error a 79 líneas del problema es justo lo que hace que esto no se vea leyendo el fichero. Y en
+`pwsh` 7 no pasa nada, porque 7 asume UTF-8: por eso el job de Linux lo daba por bueno.
+
+**Arreglado poniéndole BOM a los cuatro que no lo tenían**, que es lo que ya hacía
+`zigbee_logger.ps1` — o sea, un camino ya probado, paquete de medida incluido (50 OK después).
+
+### Y detrás salió el segundo, peor: `Invoke-WebRequest` sin `-UseBasicParsing`
+
+Con el fichero ya compilando, el job de Windows enseñó lo siguiente: en 5.1 el `discover`
+funcionaba y **todas** las consultas por nodo fallaban, con
+
+```
+Object reference not set to an instance of an object.
+```
+
+`Invoke-RCIRaw` usa `Invoke-WebRequest`, y **Windows PowerShell 5.1 parsea su respuesta con el
+motor de Internet Explorer** si no se le pasa `-UseBasicParsing`. En una máquina sin IE —Windows 11
+ya no lo trae, y el runner tampoco— eso revienta.
+
+**Lo grave no es que falle, es cómo falla.** Esa llamada está dentro del mismo `try` que la consulta
+de verdad al nodo (`zigbee_inventario.ps1:126` y `:129`), así que la excepción se llevaba por
+delante también esa y **cada nodo salía con `estado_ok = 0`**. La planta entera aparecía como nodos
+que no contestan: un fallo del programa **disfrazado de problema de radio**. Y el `.xml` en bruto
+salía con las etiquetas `<nodo>` abiertas y vacías.
+
+Arreglado con `UseBasicParsing = $true`. En PowerShell 7 el parámetro se acepta y se ignora, así que
+vale para las dos versiones.
+
+### EL BOM SE PERDÍA AL EMPAQUETAR — hay que regenerar los paquetes
+
+**Ponerle el BOM a los `.ps1` del repo no bastaba, y por poco se queda así.** El técnico no usa el
+fichero del repo: usa el que sale del ZIP de «Medir en planta». Y por ese camino el BOM desaparece:
+
+```
+EF BB BF 61 62  ->  Response.text()  ->  TextEncoder.encode()  ->  61 62
+```
+
+`.text()` decodifica UTF-8 y **quita el BOM** —lo manda el estándar de Fetch— y `TextEncoder` no lo
+escribe nunca. Así que los cinco recolectores llegaban a planta **sin BOM** y
+`zigbee_inventario.ps1` seguía sin compilar en 5.1 con el repo ya «arreglado».
+
+Puesto en `preparaColector` (`index.html`), que es el embudo por el que pasan los cuatro, y solo
+para `.ps1`.
+
+> **ACCIÓN EN PLANTAS.** Todo paquete descargado **antes de este arreglo** lleva los `.ps1` sin BOM.
+> Hay que **regenerarlo** —volver a pulsar «Medir en planta»— para cualquier planta, y **sobre todo
+> antes de correr el inventario**, que es el que no arranca. Los otros cuatro sí arrancan; lo que
+> tienen sin BOM es mojibake en lo que imprimen.
+
+### Los bancos corren LO QUE SE DESCARGA, no el fichero del repo
+
+Ésta es la lección de fondo: el arnés probaba el `.ps1` del repo, y entre ése y el que llega a
+planta hay transformaciones —BOM, sustitución del CONFIG, fines de línea— que quedaban **enteras
+fuera de la prueba**. Por eso el agujero del BOM pasó por un banco verde.
+
+- `tools/paquete_planta.mjs` arma el ZIP con el **mismo bloque de `index.html`** que usa la página
+  (`preparaColector`, `zipStore`, `leemeDe`): no reimplementa nada.
+- Los dos jobs de PowerShell lo generan, lo abren con `zipfile` de Python —que lo lea otro programa
+  es parte de la prueba— y **repiten los cuatro bancos** con `PS1_DIR` apuntando a lo extraído.
+- Los bancos aceptan `PS1_DIR`; sin esa variable siguen usando el del repo.
+
+### La puerta que vigila las dos
+
+`tools/gate_ps1_planta.py`: un `.ps1` con no-ASCII tiene que llevar BOM, y un `Invoke-WebRequest`
+tiene que llevar `-UseBasicParsing`. Corre en el job `nucleo`, no en el de Windows, porque no
+necesita PowerShell: el aviso llega en segundos.
+
+Probada en rojo, tres veces: sin BOM, con el `-UseBasicParsing` quitado del splat, y con una llamada
+directa sin el parámetro. **Y la prueba en rojo encontró dos agujeros en la propia puerta**: se
+señalaba a sí misma (su comentario nombra `Invoke-WebRequest`) y el splat buscaba `UseBasicParsing`
+en el texto **con comentarios**, así que un fichero que solo lo mencionara en un comentario pasaba.
+Las dos cosas arregladas mirando el código sin comentarios.
+
 ---
 
 ## Herramientas que quedan hechas

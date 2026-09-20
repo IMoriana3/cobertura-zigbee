@@ -94,6 +94,17 @@ jobs:
       - name: TCUs retiradas y huecos de esclavo
         run: python3 tools/test_coords_retiradas.py
 
+      # DOS COSAS QUE ROMPEN UN .ps1 EN EL PC DE UNA PLANTA, las dos encontradas
+      # por el job de Windows y las dos invisibles bajo `pwsh` 7:
+      #   · no-ASCII sin BOM → 5.1 lo lee como Windows-1252 y el fichero NI
+      #     COMPILA: la raya dentro de una cadena se le vuelve comilla de cierre
+      #   · `Invoke-WebRequest` sin `-UseBasicParsing` → 5.1 parsea con el motor
+      #     de Internet Explorer, y sin IE revienta
+      # Va aquí y no en el job de Windows porque no necesita PowerShell: así el
+      # aviso llega en segundos en vez de esperar al runner.
+      - name: los .ps1 no se rompen en el PC de una planta
+        run: python3 tools/gate_ps1_planta.py
+
       # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
       # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo
       # dentro del repo, en silencio; me apareceieron dos veces en `git status`
@@ -135,18 +146,50 @@ jobs:
         run: python3 tools/test_logger_rssi.py
       - name: rutas por telnet (zigbee_routes_logger.ps1)
         run: python3 tools/test_rutas_telnet.py
-      - name: y las mutaciones de los dos, en rojo
+      - name: qué hace ESTE PowerShell con Export-Csv y la codificación
+        run: python3 tools/test_export_csv_esquema.py
+
+      # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
+      # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
+      # planta», y no es el mismo fichero — el paquete le pone el BOM y le
+      # sustituye el CONFIG. Probar solo el del repo dejaba fuera todas esas
+      # transformaciones, y por ahí se coló que el BOM SE PERDÍA al empaquetar
+      # (`Response.text()` lo quita al decodificar y `TextEncoder` no lo
+      # escribe), así que `zigbee_inventario.ps1` seguía sin compilar en 5.1
+      # aunque el fichero del repo estuviera arreglado.
+      #
+      # El ZIP lo arma `tools/paquete_planta.mjs` con el MISMO bloque de
+      # index.html que usa la página, y lo abre `zipfile` de Python: que lo lea
+      # otro programa es parte de la prueba.
+      - name: el paquete que se descarga en planta
+        shell: bash
         run: |
+          node tools/paquete_planta.mjs elburgo _medir.zip
+          python3 -c "import zipfile; zipfile.ZipFile('_medir.zip').extractall('_paq')"
+          ls -l _paq/elburgo
+      - name: los recolectores DEL PAQUETE, con PowerShell
+        shell: bash
+        env:
+          PS1_DIR: _paq/elburgo
+        run: |
+          python3 tools/test_angulos_barrido.py
+          python3 tools/test_inventario_zb.py
+          python3 tools/test_logger_rssi.py
+          python3 tools/test_rutas_telnet.py
+      - name: y las mutaciones de los dos, en rojo
+        shell: bash
+        run: |
+          log=$(mktemp)
           rojo () {
             banco="$1"; shift
             for m in "$@"; do
               set +e
-              MUTA="$m" python3 "$banco" > /tmp/muta.txt 2>&1
+              MUTA="$m" $PY "$banco" > "$log" 2>&1
               rc=$?
               set -e
               if [ "$rc" -ne 1 ]; then
                 echo "::error::$banco con la mutación «$m» salió rc=$rc; se esperaba 1 (banco en rojo)"
-                tail -40 /tmp/muta.txt
+                tail -40 "$log"
                 exit 1
               fi
               echo "  $banco · $m: roja, bien"
@@ -154,6 +197,123 @@ jobs:
           }
           rojo tools/test_logger_rssi.py  signo rol filtro caido carga sello
           rojo tools/test_rutas_telnet.py saltos coord iac separador puerto
+        env:
+          PY: python3
+
+  # ── LOS MISMOS .ps1, EN LA VERSIÓN QUE CORRE EN PLANTA ───────────────────
+  # El job de arriba usa `pwsh`, que es PowerShell 7. En el PC de la planta hay
+  # **Windows PowerShell 5.1**: es lo que trae Windows, y allí no se instala nada
+  # ni hay admin. Probar solo en 7 es probar otro intérprete y llamarlo el mismo.
+  #
+  # Y no es una diferencia teórica: es justo donde el bloque 2 va a apoyarse.
+  #
+  #   · `Export-Csv -Encoding UTF8` NO escribe lo mismo en las dos versiones
+  #     (5.1 pone BOM; 7 no). `tools/test_export_csv_esquema.py` lo mide en vez
+  #     de suponerlo, y por eso corre en los dos jobs.
+  #   · La regla de rotación a `<nombre>.v1.<fecha>.csv` existe porque
+  #     `Export-Csv -Append` rechaza una cabecera distinta. Esa regla se cumple
+  #     o se incumple en 5.1, no en 7.
+  #
+  # MEDIDO: 64 s (2026-09-19, run 35474112229), con los cuatro bancos y las once
+  # mutaciones dentro. El tope se queda en 10 min —nueve veces el peor caso
+  # medido— y la cifra va con su fecha, como las de arriba, porque un número sin
+  # fecha al lado envejece en silencio.
+  #
+  # OJO: esos 64 s son de ANTES de añadir la segunda pasada sobre el paquete
+  # descargado, que corre los cuatro bancos otra vez. La cifra hay que volver a
+  # medirla; hasta entonces ésta dice de cuándo es y qué NO incluye.
+  windows:
+    timeout-minutes: 10
+    name: scripts de campo (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    env:
+      PWSH: powershell          # el 5.1 de Windows, NO el pwsh 7 que también está
+      # LA SALIDA DE PYTHON, EN UTF-8. En Windows la stdout de Python es cp1252,
+      # y los bancos imprimen «·», «á», «→»… Con cp1252 eso no es que salga feo:
+      # es un UnicodeEncodeError que TUMBA el banco antes de decir nada. Pasó con
+      # el bloque de diagnóstico, que se cayó justo donde tenía que explicar el
+      # fallo. Esto es del entorno, no del banco: no cambia lo que comprueba
+      # ninguno, y de paso los acentos salen legibles en el registro.
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      # node, para armar el ZIP con el mismo código que la página
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      # SIN ESTO EL JOB PUEDE VOLVERSE UN DUPLICADO DEL DE ARRIBA sin que nadie
+      # lo note: si algún día `powershell` apuntara a 7 en el runner, todo
+      # seguiría en verde y ya no se estaría probando la versión de planta.
+      - name: es Windows PowerShell 5.1, no pwsh 7
+        shell: powershell
+        run: |
+          $v = $PSVersionTable.PSVersion
+          Write-Host "$($PSVersionTable.PSEdition) $v"
+          if ($v.Major -ne 5) { throw "se esperaba PowerShell 5.x y hay $v" }
+
+      - name: ángulos del barrido (zigbee_angulos.ps1)
+        run: python tools/test_angulos_barrido.py
+      - name: inventario zigbee (zigbee_inventario.ps1)
+        run: python tools/test_inventario_zb.py
+      - name: RSSI (zigbee_logger.ps1)
+        run: python tools/test_logger_rssi.py
+      - name: rutas por telnet (zigbee_routes_logger.ps1)
+        run: python tools/test_rutas_telnet.py
+      - name: qué hace ESTE PowerShell con Export-Csv y la codificación
+        run: python tools/test_export_csv_esquema.py
+
+      # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
+      # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
+      # planta», y no es el mismo fichero — el paquete le pone el BOM y le
+      # sustituye el CONFIG. Probar solo el del repo dejaba fuera todas esas
+      # transformaciones, y por ahí se coló que el BOM SE PERDÍA al empaquetar
+      # (`Response.text()` lo quita al decodificar y `TextEncoder` no lo
+      # escribe), así que `zigbee_inventario.ps1` seguía sin compilar en 5.1
+      # aunque el fichero del repo estuviera arreglado.
+      #
+      # El ZIP lo arma `tools/paquete_planta.mjs` con el MISMO bloque de
+      # index.html que usa la página, y lo abre `zipfile` de Python: que lo lea
+      # otro programa es parte de la prueba.
+      - name: el paquete que se descarga en planta
+        shell: bash
+        run: |
+          node tools/paquete_planta.mjs elburgo _medir.zip
+          python -c "import zipfile; zipfile.ZipFile('_medir.zip').extractall('_paq')"
+          ls -l _paq/elburgo
+      - name: los recolectores DEL PAQUETE, con PowerShell
+        shell: bash
+        env:
+          PS1_DIR: _paq/elburgo
+        run: |
+          python tools/test_angulos_barrido.py
+          python tools/test_inventario_zb.py
+          python tools/test_logger_rssi.py
+          python tools/test_rutas_telnet.py
+      - name: y las mutaciones de los dos, en rojo
+        shell: bash
+        run: |
+          log=$(mktemp)
+          rojo () {
+            banco="$1"; shift
+            for m in "$@"; do
+              set +e
+              MUTA="$m" $PY "$banco" > "$log" 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -ne 1 ]; then
+                echo "::error::$banco con la mutación «$m» salió rc=$rc; se esperaba 1 (banco en rojo)"
+                tail -40 "$log"
+                exit 1
+              fi
+              echo "  $banco · $m: roja, bien"
+            done
+          }
+          rojo tools/test_logger_rssi.py  signo rol filtro caido carga sello
+          rojo tools/test_rutas_telnet.py saltos coord iac separador puerto
+        env:
+          PY: python
 
   # ── node sin navegador: layouts, mapas, física y paquetes de campo ────────
   datos:
@@ -431,7 +591,7 @@ jobs:
     name: bancos en verde
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [nucleo, powershell, datos, barrido, navegador]
+    needs: [nucleo, powershell, windows, datos, barrido, navegador]
     # `always()` para que el gate corra aunque un banco falle —si no, un rojo se
     # volvería invisible—, pero `!cancelled()` para que NO corra cuando la corrida
     # entera se ha cancelado. Sin ese segundo trozo, `cancel-in-progress` deja los
@@ -468,11 +628,13 @@ jobs:
         run: |
           for j in "nucleo ${{ needs.nucleo.result }}" \
                    "powershell ${{ needs.powershell.result }}" \
+                   "windows ${{ needs.windows.result }}" \
                    "datos ${{ needs.datos.result }}" \
                    "barrido ${{ needs.barrido.result }}" \
                    "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
           if [ "${{ needs.nucleo.result }}"    != "success" ] || \
              [ "${{ needs.powershell.result }}" != "success" ] || \
+             [ "${{ needs.windows.result }}"   != "success" ] || \
              [ "${{ needs.datos.result }}"     != "success" ] || \
              [ "${{ needs.barrido.result }}"   != "success" ] || \
              [ "${{ needs.navegador.result }}" != "success" ]; then
