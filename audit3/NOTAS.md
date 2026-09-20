@@ -288,7 +288,7 @@ recuentos de esa fila van sobre **29**, no sobre 86. Se dice aquí y no después
 | geometría | inversiones de orden | `optimal` pierde **por mesa** | `optimal` pierde **por línea** | Δ día por mesa | Δ día por línea |
 |---|---|---|---|---|---|
 | **medida** (Ayora real) | **65 de 86** | **58 de 86** | **0 de 86** | **−0,5103 %** | **+13,7221 %** |
-| **sinTorsion** | 22 de 86 (**22 de 29** informativos) | **15 de 86** | **0 de 86** | **−0,3482 %** | +13,7221 % |
+| **sinTorsion** | 22 de 86 (**22 de 29** informativos) | **15 de 86** (**15 de 29** informativos) | **0 de 86** | **−0,3482 %** | +13,7221 % |
 | tilt0 | 26 de 86 | 18 de 86 | 0 de 86 | −0,3060 % | +13,7221 % |
 
 Denominador de los porcentajes: la POA del día de `pairwise` con **la misma
@@ -311,11 +311,24 @@ demás igual —cotas, solapes, parejas—, y con la sustitución aplicada a las
 geometrías, la que puntúa y la que manda.
 
 **Sin torsión sigue fallando**: `optimal` pierde por mesa en **15 de 86**
-instantes y el día sale **−0,3482 %**. La torsión **agrava** el efecto —de 15 a 58
-instantes, de −0,35 % a −0,51 %— pero **no lo causa**.
+instantes — y el denominador que informa ahí es **29, no 86**, porque en los
+otros 57 las dos métricas coinciden y no pueden discrepar. O sea **15 de 29**, el
+**51,7 %** de los instantes en que la pregunta tiene sentido. El día sale
+**−0,3482 %**.
 
-Por tanto la causa **no** queda acotada al reparto por línea con torsión, que es
-lo que el encargo daba como hipótesis. Las dos métricas son **agregaciones
+Se repite aquí el denominador y no se deja sólo en el test nulo a propósito:
+«15 de 86» leído suelto da el **17,4 %** y es una proporción falsa. Tres veces
+menor que la real.
+
+La torsión **agrava** el efecto —de 15 a 58 instantes, de −0,35 % a −0,51 %—
+pero **no lo causa**.
+
+**EL ENUNCIADO DEL HALLAZGO, CORREGIDO POR ESTE CONTROL.** La hipótesis del
+encargo era que el defecto vivía en el reparto por línea **con geometría
+quebrada**. Es falsa. El defecto es que **el veto puntúa con una métrica distinta
+de la que decide, SIEMPRE**, y la torsión sólo **amplía la brecha**. Sin el
+control se habría publicado una causa acotada donde no lo está — que es
+exactamente para lo que la cláusula 1.3 exigía el control. Las dos métricas son **agregaciones
 distintas** —`poaPlantSeg` pondera por largo de mesa dentro de la línea y luego
 promedia líneas; `poaPlant` promedia filas sin ponderar— y `optimal` maximiza una
 mientras la página publica la otra siempre que haya `segTilt`.
@@ -325,6 +338,58 @@ mientras la página publica la otra siempre que haya `segTilt`.
 introduce un desajuste **distinto** entre las dos métricas — se ve en su test
 nulo, que salta a 9,2949 W/m² frente a los 2,14 de los otros dos. Se publica su
 fila por completitud y se declara confundida.
+
+### 1.4 · LA CAUSA, LOCALIZADA EN EL CÓDIGO Y CONTADA POR PROGRAMA
+
+El recuento de arriba dice **qué** pasa. Esto dice **por qué**, y no es una
+interpretación: es un recuento de llamadas.
+
+> **Esto NO es una receta.** Que cambiar estas seis llamadas a `poaPlantSeg`
+> arregle el defecto **es otra medida, y no está hecha**: `NO MEDIDO`. Y cuál de
+> las dos métricas debe usar el optimizador no lo decide un recuento — es decidir
+> qué se quiere maximizar. Va aquí arriba y no al final para que nadie lea la
+> tabla como una lista de líneas que tocar.
+
+`anglesOptimal` ocupa las líneas **2925-3071** de `backtracking.html` (147
+líneas, commit `0a38ddc`). Dentro de ese cuerpo:
+
+| línea | llamada |
+|---|---|
+| `backtracking.html:2946` | `const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;` |
+| `backtracking.html:2961` | `const p2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+| `backtracking.html:2975` | `best=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:2987` | `const pP=poaPlant(zen,az,T,angP,irr,doy,albedo).plant;` |
+| `backtracking.html:3045` | `let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:3050` | `const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+
+**`poaPlant`: 6 llamadas. `poaPlantSeg`: 0.**
+
+El recuento se hace **por programa**, no a ojo: se recorta el cuerpo entre
+`function anglesOptimal(zen` y `function anglesOptimalFree(` y se cuentan las
+apariciones de `\bpoaPlant\(` y `\bpoaPlantSeg\(`. Reproducible con
+
+```
+node -e 'const L=require("fs").readFileSync("backtracking.html","utf8").split("\n");
+ const a=L.findIndex(l=>l.startsWith("function anglesOptimal(zen")),
+       b=L.findIndex((l,i)=>i>a&&l.startsWith("function anglesOptimalFree("));
+ let p=0,s=0; for(let i=a;i<b;i++){p+=(L[i].match(/\bpoaPlant\(/g)||[]).length;
+ s+=(L[i].match(/\bpoaPlantSeg\(/g)||[]).length;} console.log(p,s);'
+```
+
+**Control del recorte:** el cuerpo mide **147 líneas**, no cero. Un recorte
+vacío daría «0 y 0» y parecería confirmar cualquier cosa — es el fallo que este
+cuaderno ya cometió dos veces (errores 4 y el de los controles sobre cadena
+vacía), y por eso la longitud va publicada al lado del recuento.
+
+**Qué explica, exactamente.** `optimal` busca su máximo con `poaPlant` —y con
+ella lo encuentra: por eso **no pierde nunca por línea, 0 de 86**— y la página lo
+puntúa con `poaPlantSeg` siempre que la planta traiga `segTilt`, que es el caso de
+Ayora y de todas las reales. Es decir: **la regla con la que se busca no es la
+regla con la que se publica**, y el 58 de 86 de la tabla 1.1 es la consecuencia
+mecánica de estas seis líneas.
+
+**Y se repite, porque es lo que más fácil se olvida:** el recuento localiza la
+causa, no prescribe el arreglo. Ver arriba.
 
 ### Lo que NO dice esta medida
 
@@ -1185,6 +1250,39 @@ primera corrida leía `T.segMods` y el test nulo saltó: «1600 mesas sin md: C 
 puede calcular entera». Paró la publicación de una columna hueca en vez de
 publicar ceros. Las veces anteriores de esta ronda, un test nulo cazó el fallo
 después de escrito; éste lo cazó antes de escribirlo.
+
+## MÉTODO · CUANDO UN FALLO DEL INSTRUMENTO PRODUCE EL RESULTADO QUE ESPERAS
+
+Dictada por el auditor a partir del control del recorte de la 1.4, y es la más
+peligrosa de las que lleva este cuaderno, porque no se nota.
+
+**El caso.** Para localizar la causa de la fase 1 hay que contar, dentro del
+cuerpo de `anglesOptimal`, cuántas veces llama a `poaPlant` y cuántas a
+`poaPlantSeg`. La tesis es «muchas y ninguna». El recuento se hace sobre un
+recorte del fichero entre dos anclas de texto.
+
+**Si el recorte sale vacío** —porque un ancla cambió de nombre, porque el
+fichero se reordenó— el recuento da **«0 y 0»**. Y ahí está la trampa: **la mitad
+que importa coincide con la tesis.** Cero llamadas a `poaPlantSeg` es
+exactamente lo que se quería demostrar. Un revisor rápido lee el cero, le cuadra,
+y sigue.
+
+**La regla.** Cuando el modo de fallo del instrumento produce un resultado
+**indistinguible del esperado**, o parcialmente compatible con él, el instrumento
+necesita **su propio control**, independiente de la medida. Aquí: publicar la
+**longitud del recorte** (147 líneas) junto al recuento. Un recorte roto mide
+cero y se delata solo.
+
+**Cómo se reconoce el caso.** Preguntarse: *si mi instrumento se rompiera del
+modo más probable, ¿qué número daría?* Si la respuesta se parece al número que
+espero, hace falta un control. Si daría algo absurdo —un `NaN`, un negativo, un
+error— el propio resultado avisa y el control es menos urgente.
+
+**Hermana de las anteriores, y no la misma.** El test nulo pregunta *¿puede esta
+comprobación fallar?*; el control negativo, *¿falla cuando debe?*. Ésta pregunta
+*¿el resultado que veo podría venir de que el instrumento no funcione?* — y es la
+que faltaba en los errores 4 y en los dos controles negativos que pasaron sobre
+una cadena vacía: en los tres, el instrumento roto **producía el verde**.
 
 ## MÉTODO · DIAGNOSTICAR POR ELIMINACIÓN CUANDO NO SE PUEDE OBSERVAR
 
