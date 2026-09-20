@@ -675,3 +675,147 @@ hace horas, el siguiente PR lo empuja encima y **borra en silencio** lo que haya
 sesiones — y en el diff parece un simple reordenado.
 Usar **`git rebase origin/main`** o un merge normal. En `proyectos`, además, correr
 `node tests/test_integridad.js` antes de empujar.
+
+---
+
+## Las DOS cifras de sesgo, y por qué el motor nuevo no lleva ninguna (2026-09-20, fase 1)
+
+Llegaron a convivir dos «calibraciones de El Burgo» que se llaman igual y valen cosas distintas:
+
+| | `Siting/zigbee_pv_model.js:115` | `cobertura-rf-fv/python/zigbee_pv_model.py:300` |
+|---|---|---|
+| sesgo | **−33,6 dB** | **−16,58 dB** |
+| sigma | 6,8 dB | 10,99 dB |
+| altura de antena del ajuste | 1,5 m (`RF_ANT_H`, `index.html:2357`) | **0,775 m** (viga 1,50 − caída 0,725) |
+| terreno del ajuste | **llano** (`ground: 0` en las llamadas de `index.html:2442`) | **real** |
+| patrón de antena | isótropo (no hay `elev` ni dipolo en el fichero) | **dipolo** (`ant_patron`, `dipole_gain_db`) |
+| enlaces | **49** (ver abajo) | 49, anotados en `EL_BURGO_AJUSTE` |
+
+**Los dos ajustes son sobre LOS MISMOS 49 ENLACES.** La procedencia del −33,6 estaba a la vista y
+no en el código: el bloque `calibracion` de `elburgo_real.geojson` dice
+`{"bias_db": −33.63, "sigma_db": 6.82, "n_eff": 0.38, "n_enlaces": 49}` — que es exactamente el
+−33,6 y el 6,8 de `defaultParamsElBurgo()`. Y los 49 son los mismos que anota `EL_BURGO_AJUSTE` en
+el hermano Python. Eso **refuerza** la conclusión de abajo en vez de debilitarla: con los mismos
+datos de entrada, dos modelos distintos dan −33,6 y −16,58. La diferencia está en el modelo, no en
+la muestra.
+
+Anótese también el `n_eff = 0,38` de ese bloque: el exponente de pérdida efectivo que sale del
+ajuste. El espacio libre es 2,0. Un 0,38 no es un medio de propagación, es el ajuste diciendo que
+la distancia casi no explica lo medido.
+
+**No están reconciliadas, y esta nota no las reconcilia.** Lo que sí se puede afirmar mirando los
+ficheros es que **no son dos ajustes del mismo modelo**: se hicieron con la antena a alturas que se
+diferencian en 0,725 m, uno sobre terreno llano y otro sobre terreno real, y uno con ganancia plana
+y otro con patrón de dipolo dependiente de la elevación. Con esas tres diferencias, que las dos
+cifras no se reproduzcan no es una contradicción a resolver: es lo esperable. Reconciliarlas de
+verdad exige rehacer un ajuste con las tres cosas fijadas, y eso no se ha hecho.
+
+**Ninguna de las dos es una calibración de propagación.** Lo dice el propio comentario del hermano
+Python, y conviene no perderlo: el residuo de un ajuste de un solo número «barre unos 35 dB entre
+los tramos corto y largo: sobra offset y falta exponente», y sirve «para recentrar el modelo sobre
+el nivel típico de un enlace que la malla USA. No para el nivel absoluto de un enlace cualquiera,
+ni para decidir a qué distancia deja de haber enlace». Un sesgo global ajustado sobre los enlaces
+que sobrevivieron está midiendo la supervivencia, no el medio: en El Burgo la correlación de esas
+49 medidas con log(distancia) es r = +0,16 sobre un recorrido de ×14.
+
+**El motor nuevo (`Siting/radio_pv_model.js` + `.py`) NO lleva sesgo global, y no lo va a llevar.**
+Lo que en el modelo antiguo tapaba el sesgo —un filo de cuchillo que sube desde el suelo hasta el
+borde superior del módulo, y por tanto da por tapado lo que pasa POR DEBAJO del seguidor— está
+arreglado en la geometría, que es donde estaba el error. Medido en el banco, enlace de 100 m con
+una fila en medio y antenas a 1,0 m: **3,29 dB el nuevo frente a 15,67 dB el antiguo, 12,38 dB de
+diferencia**, y sin tocar una sola constante de potencia.
+
+**El modelo antiguo sigue CONGELADO.** `Siting/zigbee_pv_model.js` no se toca ni como envoltorio:
+`SolarGPTfull/siting/zigbee_pv_model.lock.json` lo pincha por sha256
+(`ac06599f6343a41ac7286cb39d6f392a50a8dd7d1ee3b85a0fc0c5a717ca8d57`, comprobado hoy) y
+`SolarGPTfull/tests/test_paridad_rf_zigbee.py` lo corre contra `factiun_core.rf` a 0,000000 dB.
+Un envoltorio cambiaría el sha256 igual, y si además delegase en la física nueva rompería esa
+paridad. En el visor se queda como **«modelo antiguo (A)»**, sólo para comparar, y rotulado.
+
+**Lo que falta decir cuando Siting cambie de motor:** el PR de ese cambio tiene que enseñar cuánto
+se mueven los números **planta por planta**, no en agregado. Hasta entonces, cualquier cifra de
+cobertura que circule sigue siendo la del modelo antiguo con su sesgo dentro.
+
+---
+
+## El árbitro de El Burgo: qué dice de verdad, y qué NO dice (2026-09-20, antes de la fase 2)
+
+`elburgo_real.geojson` es el árbitro contra el que se valida la predicción de malla. Antes de
+usarlo conviene saber tres cosas, porque las tres se pueden leer mal.
+
+**1. Las 52 líneas NO son la malla: son el árbol del padre dominante.** El exportador dibuja
+**una línea por nodo**, de `padre_dominante` a `id`. 53 nodos y 52 aristas, conexo: es un árbol por
+construcción. Calcular puntos de articulación sobre esas 52 líneas da 31 de 53 nodos, y no
+significa nada — en un árbol todo nodo interno es articulación por definición. La conectividad real
+está en `padres_distintos`, y ahí **ningún TCU tuvo un solo padre**: entre 6 y 30, mediana 18, 950
+pares padre-hijo observados frente a 52 aristas dibujadas.
+
+**2. El 062 es el nodo más crítico, pero el dato dice que NO es punto único de fallo.**
+
+| | valor |
+|---|---|
+| descendientes que pasan por él | **47** de 52 |
+| hijos directos | 3 |
+| padres distintos observados | 9 |
+| `hop_tipico` | 2 (cuelga directo del COORD) |
+| `is_spof` | **False** |
+
+El único `is_spof: True` de todo el fichero es `COORD`. Y no es que el umbral sea laxo: `UMBRAL`
+son **0,5** —articulación en al menos la mitad de los 8.053 instantes— y el propio comentario de
+`index.html:1659` explica por qué, «uno esporádico es la malla reconfigurándose, no un punto único
+de fallo».
+
+Así que la pregunta «¿identifica el modelo el 062 como punto único de fallo?» tiene la premisa
+cambiada: **el árbitro no dice eso**. La pregunta que sí se puede arbitrar, y que es la útil, es si
+el modelo lo identifica como **el relé más cargado** — 47 de 52 descendientes, a un salto del
+coordinador. Eso sí está en el dato.
+
+**3. El fichero guardado es una exportación VIEJA.** No trae `spof_frac`, ni `generado`
+(planta/por/fecha/`umbral_spof`), ni `nodos_sin_coordenada`, que son campos que el exportador
+actual de `index.html` sí escribe. Trae en cambio un `calibracion` que el exportador actual deja
+deliberadamente a `null`. O sea: para validar la fase 2 **hay que regenerarlo con el recolector**,
+como dice el encargo, y ponerlo al lado del viejo. Validar contra este sin regenerar sería medirse
+contra una foto de fecha desconocida.
+
+---
+
+## Cuánto se equivoca el motor SIN calibrar, medido contra las 49 de El Burgo (2026-09-20)
+
+El motor nuevo (`Siting/radio_pv_model.js`) no lleva sesgo global. La pregunta obvia es cuánto se
+equivoca entonces, y ya tiene respuesta. Careado contra las 49 medidas del árbitro, con la antena
+a 0,775 m y en modo TEÓRICO:
+
+| filas cruzadas (supuestas) | enlaces | predicho − medido |
+|---|---|---|
+| 0 | 11 | **+37,4 dB** |
+| 1 | 20 | +23,5 dB |
+| 2 | 4 | +12,8 dB |
+| 3 | 1 | −0,5 dB |
+| 4 | 3 | −5,8 dB |
+| ≥5 | 10 | **−11,8 dB** |
+
+En los 35 enlaces de 0 a 2 filas la media es **+26,65 dB de optimismo**. Eso deja las dos cifras
+históricas —−16,58 y −33,6— una a cada lado, lo que encaja con que sean dos ajustes del mismo
+fenómeno con distinta geometría (ver la nota de arriba).
+
+**Lo que importa es que el error NO es constante**: va de +37 dB sin filas a −12 dB con cinco o
+más. Ningún sesgo global arregla eso. Es la confirmación numérica de lo que ya decía el comentario
+de `cobertura-rf-fv` —«sobra offset y falta exponente»— y de su r = +0,16 con log(distancia). La
+campaña de barrido no es un lujo: es la única forma de repartir la culpa entre distancia y mesas,
+y `calibra_barrido.py` está escrito justo para eso.
+
+**UNA SUPOSICIÓN MÍA DENTRO, que hay que conocer antes de citar estos números.** El geojson no trae
+el rumbo de cada enlace, así que las filas cruzadas son una suposición: cruce perpendicular con
+paso de 12 m. Por eso la tabla va desglosada por número de filas y la conclusión se apoya en el
+subconjunto de 0–2, donde esa suposición pesa poco, y no en la media global. La altura de 0,775 m
+sale de `EL_BURGO_AJUSTE` en el hermano Python; no está medida en campo por esta sesión.
+
+**Y un enlace que merece una visita, más que cualquier promedio.** Hay uno de **12 m que mide
+−87 dBm** mientras otro de 11,9 m mide −75. A 12 m el espacio libre son 62 dB, así que con el
+balance del XBee-PRO eso predice −37,5 dBm: hay unos **50 dB que ningún modelo de propagación
+explica**. Eso no es propagación, es una obstrucción concreta, una antena mal montada o un enlace
+mal atribuido. Un ajuste de un solo número se lo traga y lo esconde; conviene mirarlo en planta
+antes de la campaña.
+
+La herramienta que saca el careo planta por planta es `Siting/tools/malla_plantas.mjs`, y entra en
+la CI de Siting con un arranque sobre El Burgo.
