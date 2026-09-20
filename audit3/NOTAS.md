@@ -944,9 +944,11 @@ vez.
 | `pairwise` | 2 306,817752 | 2 253,628446 | **−2,3057 %** | **sí** |
 | `mgl` | — | — | **`NO MEDIDA`** | sí |
 
-**`mgl`, con su coste y no con una excusa:** más de **57 minutos** en su primer
-mes sin terminarlo, frente a los ~25 s por mes de las baratas. Doce meses serían
-**más de 11 h**. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
+**`mgl`, con su coste y no con una excusa:** **más de 91 minutos** en su primer
+mes **sin terminarlo**, frente a los ~25 s por mes de las baratas. Doce meses
+pasarían de **18 h**. (La primera vez que se escribió esta nota la cifra era «más
+de 57 min»: era el reloj en ese momento, no el coste del mes. Un límite inferior
+que sigue creciendo no es una medida, y se dice cuál es el reloj.) Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
 en la 3.1, y no se extrapola su total: su coste por instante ya se midió como **no
 constante** (tramos a 28, 92 y 68,5 s en la sonda diaria).
 
@@ -1148,6 +1150,80 @@ puede calcular entera». Paró la publicación de una columna hueca en vez de
 publicar ceros. Las veces anteriores de esta ronda, un test nulo cazó el fallo
 después de escrito; éste lo cazó antes de escribirlo.
 
+## MÉTODO · DIAGNOSTICAR POR ELIMINACIÓN CUANDO NO SE PUEDE OBSERVAR
+
+Vale fuera de este repositorio, así que va escrito entero.
+
+### El problema
+
+`audit3/F32_anual.mjs` se murió **tres veces sin dejar nada**. Ni traza, ni
+código de salida útil, ni línea en `stderr`. Un proceso que se va en silencio no
+da por dónde empezar: no hay nada que leer, y la tentación es relanzarlo a ver si
+esta vez sale — que es repetir el mismo experimento esperando otro resultado.
+
+### Lo que se hizo, y por qué funcionó
+
+**No se buscó la causa: se instrumentó para descartarlas todas.** Se pusieron
+siete manejadores, uno por cada forma de morir que un proceso Node con navegador
+*puede* notar:
+
+| manejador | qué descartaría si callara |
+|---|---|
+| `pg.on('crash')` | caída del renderizador |
+| `pg.on('close')` | cierre de la página |
+| `browser.on('disconnected')` | el navegador se fue |
+| `SIGTERM` · `SIGINT` · `SIGHUP` | alguien lo mató con una señal capturable |
+| `uncaughtException` | error de programa |
+| `unhandledRejection` | promesa sin `catch` |
+
+más un **latido cada 60 s con el RSS**, que convierte «no hay salida nueva» —que
+puede ser un proceso lento o un proceso muerto, y el fichero no los distingue— en
+dos estados distinguibles.
+
+La cuarta muerte **no disparó ninguno**, y el RSS estaba **plano en 135 MB** en
+los tres últimos latidos, con 29 GB de disco libres.
+
+**La instrumentación no dijo de qué murió. Dijo de qué NO murió, y eso bastó:**
+descartadas todas las formas capturables, lo único que queda es una señal que no
+se puede capturar — `SIGKILL`. Y el RSS plano descarta además la única causa
+externa que habría sido cosa nuestra, la memoria.
+
+### La condición que hace válido el argumento
+
+**El conjunto de manejadores tiene que ser exhaustivo sobre lo capturable.** Si
+falta uno, el silencio no prueba nada: prueba que no miramos ahí. El argumento
+por eliminación es tan fuerte como completa sea la lista, y por eso la lista va
+escrita arriba y no resumida — para que quien la lea pueda decir «te falta
+éste».
+
+### Y la confirmación, que es otra cosa
+
+Descartar no confirma. La hipótesis —«el entorno siega los procesos desprendidos
+cuando la sesión queda ociosa»— se confirmó por una variable **manipulable**: el
+canal de lanzamiento.
+
+| lanzamiento | resultado |
+|---|---|
+| desprendido (`nohup`, `setsid`) | **3 de 3 muertes**, todas a los pocos minutos de acabar el turno |
+| como tarea del arnés | vivo **31 min** y pasando de largo el mes 4, donde las tres murieron; luego **más de 5 h sin una caída** |
+
+**El mecanismo sigue `NO VERIFICADO`** y así se dice: no se puede ver quién manda
+la señal desde dentro del contenedor. Lo que hay es una correlación de 4 de 4 con
+una variable que se controla, y una regla operativa que funciona. Eso no es
+saber la causa; es saber qué hacer.
+
+### La regla, para llevársela
+
+1. Un proceso que muere en silencio **no se relanza igual**. Se instrumenta.
+2. Se instrumenta **por eliminación**: un manejador por cada causa capturable, y
+   la lista escrita para que se pueda auditar su completitud.
+3. Un **latido** convierte «sin salida» en «vivo y lento» o «muerto».
+4. Descartar lo capturable **acota** la causa; no la demuestra.
+5. La confirmación viene de mover una variable que se controla y ver si el
+   fenómeno la sigue.
+6. Y lo que no se ha visto se declara `NO VERIFICADO`, aunque la regla operativa
+   ya funcione.
+
 ## E-X1 · mis propios errores en esta ronda
 
 **1 · Puse la constante del umbral dentro de FÍSICA PURA.** `BT_UMBRAL_DEG` quedó
@@ -1226,6 +1302,35 @@ tiene nombre y ya lleva repeticiones: **escribo la regla y la incumplo en la
 misma tanda**. Es el hermano del error 9, donde el comentario nuevo del paso
 anual citaba el «paso 20 min» viejo que la comprobación prohibía. La regla no se
 cumple por haberla escrito.
+
+### Error 18 · confundir el rastro con la cosa, en las dos direcciones el mismo día
+
+Es **un** error, no dos, y por eso va en una entrada: en los dos casos tomé un
+**rastro** de un proceso por el **proceso** mismo.
+
+**Dirección A · el rastro de más.** Usé `pkill -f F32_ponderacion` para parar una
+sonda. El patrón casaba también con **mi propia línea de órdenes**, que contenía
+esa cadena, así que maté el `python3` que estaba aplicando un parche a mitad. Más
+tarde, `pgrep -f "wt-f32/audit3"` me dijo «sonda aún viva» cuando llevaba rato
+terminada: lo que encontraba era, otra vez, mi propio intérprete. Estuve a punto
+de no recoger un *worktree* por esa lectura falsa.
+
+**Dirección B · el rastro de menos.** Leí `/tmp/claude-0/f32a/progreso.txt`, vi
+las líneas de siempre y le dije al auditor que la sonda «arrancó bien y va por 4
+de 108». Llevaba **27 minutos muerta**. Un fichero que no crece no distingue un
+proceso lento de un proceso muerto, y yo no pregunté por el proceso.
+
+**La misma confusión.** En A, un texto que casa con un patrón se tomó por un
+proceso que existe. En B, un fichero que existe se tomó por un proceso que corre.
+El rastro no es la cosa: la línea de órdenes que menciona un guion no es el guion
+corriendo, y el fichero que un guion escribió no es el guion escribiendo.
+
+**Lo que se hace en su lugar:** preguntar por el proceso, no por su rastro —
+`ps -eo comm` filtrando por el ejecutable, o la CPU del renderizador cuando lo
+que importa es si trabaja, que es la lección de E-D8—, y no usar nunca un patrón
+que la propia orden contiene. Y el latido del apartado anterior existe justo para
+esto: para que el rastro **sí** distinga los dos estados.
+
 
 ## LA REGLA DE NO EXTRAPOLAR EL COSTE, COBRADA POR PRIMERA VEZ
 
