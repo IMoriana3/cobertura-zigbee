@@ -906,6 +906,92 @@ sombra media de planta sale **1,48 %** y con paso 5 sale **0,63 %**, porque el
 lazo tiene seis veces más tiempo para alcanzar la consigna. Lo que se vigila en
 CI es que las herramientas corren y que lo que publican cuadra, no el número.
 
+## FASE 3.2 · EL DELTA ANUAL, Y POR QUÉ NO ES EL DEL DÍA
+
+### Lo primero, porque cambia la pregunta
+
+**La ruta anual de la página NO usa la métrica por mesa.** En el bucle anual,
+`backtracking.html:7388`:
+
+```js
+tot[P.key]+=poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
+```
+
+Es `poaPlant`, la de **línea**. Así que el delta A-vs-B **no existe hoy en el
+anual publicado**: la agregación que cambia la 3.2 no interviene en él. Lo que
+sigue mide lo que ese delta **sería** si el anual puntuara por mesa, y va
+etiquetado **`HIPOTÉTICO`**.
+
+### Qué se mantuvo fijo
+
+El mando es **exactamente** el de la ruta anual de la página: `policyAngles` por
+línea, pasado por `crearLazo()`, un lazo por política y por día, paso 10 min,
+doce días representativos con su peso `DIM[mo]`. Lo único que cambia es cómo se
+agrega el POA de las mesas. Cambiar también el mando habría medido dos cosas a la
+vez.
+
+### Resultado · Ayora, 12 días, paso 10 min
+
+| política | anual A (kWh/m²) | anual B (kWh/m²) | B vs A | ¿retrocede? |
+|---|---|---|---|---|
+| `astro` | 2 653,204837 | 2 659,273739 | **+0,2287 %** | no |
+| `row` | 2 670,928887 | 2 677,475253 | **+0,2451 %** | no |
+| `optfree` | 2 690,060817 | 2 698,438189 | **+0,3114 %** | no |
+| `global` | 2 664,911076 | 2 673,277961 | **+0,3140 %** | no |
+| `bt2d` | 2 662,889516 | 2 671,534520 | **+0,3246 %** | no |
+| `optimal` | 2 688,314455 | 2 697,616905 | **+0,3460 %** | no |
+| `true3d` | 2 287,588537 | 2 239,490363 | **−2,1026 %** | **sí** |
+| `pairwise` | 2 306,817752 | 2 253,628446 | **−2,3057 %** | **sí** |
+| `mgl` | — | — | **`NO MEDIDA`** | sí |
+
+**`mgl`, con su coste y no con una excusa:** más de **57 minutos** en su primer
+mes sin terminarlo, frente a los ~25 s por mes de las baratas. Doce meses serían
+**más de 11 h**. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
+en la 3.1, y no se extrapola su total: su coste por instante ya se midió como **no
+constante** (tramos a 28, 92 y 68,5 s en la sonda diaria).
+
+### EL ANUAL Y EL DÍA NO SON COMPARABLES, y hay que decirlo antes que las cifras
+
+Las dos tablas de esta fase **no miden lo mismo**, y ponerlas juntas sin esto
+invitaría a restarlas:
+
+| | el día | el anual |
+|---|---|---|
+| mando | **por mesa** (`policyAnglesSeg`) | **por línea** (`policyAngles`) |
+| lazo de control | **no** | **sí**, uno por política y día |
+| cuándo | 21 de junio | **doce** días representativos |
+
+Con sol bajo es donde las dos agregaciones más se separan, y doce días pesan eso
+mucho más que un solsticio de verano solo. Así que el cambio de signo y de orden
+de magnitud entre las dos tablas **no es una contradicción: es que son dos
+medidas distintas**, y la diferencia entre ellas no se ha desglosado —cuánto
+viene del mando, cuánto del lazo y cuánto del calendario sigue **`NO MEDIDO`**.
+
+### Lo que sí dice el anual
+
+**1 · El corte es si la política RETROCEDE.** Las seis que no retroceden: entre
+**+0,2287 % y +0,3460 %**. Las dos que sí: **−2,1026 %** y **−2,3057 %**. Limpio,
+con signo opuesto entre los dos grupos y sin solape.
+
+**2 · El peso paga del mismo orden que la granularidad.** `optimal` da
+**+0,3460 %** contra el **+0,3524 %** de E-F2, que es el careo que el encargo
+pedía. En el día el peso valía treinta y dos veces menos que la granularidad; en
+el año, lo mismo. **Esto corrige la conclusión de la sección anterior.**
+
+**3 · Y refuta la agrupación que salió del día.** Allí las dos que se salían eran
+`true3d` y `mgl`, y se explicó por «buscar una forma». En el anual son `true3d` y
+`pairwise`, y `pairwise` en el día era despreciable. La única que aguanta en las
+dos medidas es `true3d`. **Por qué el retroceso invierte el signo: `NO MEDIDO`.**
+
+**Salida cruda** en `audit3/out/F32_anual.json` y los 96 meses medidos en
+`audit3/out/F32_anual_meses.jsonl`.
+
+### Lo que este resultado NO autoriza
+
+No autoriza a cambiar el anual para que puntúe por mesa. Eso movería una cifra
+publicada entre **−2,3 % y +0,35 %** según la política, y es una decisión de
+auditoría que no se ha tomado. Queda propuesto y medido, nada más.
+
 ## BLOQUEADO A PROPÓSITO · lo que NO se toca y por qué
 
 No son cabos sueltos: son tres cosas que el auditor ha dejado paradas a
@@ -1005,13 +1091,18 @@ ponderar por largo y por módulos, en el día, va de **−0,0002 % a +0,0028 %**
 salvedad deja de ser una precaución abstracta y pasa a ser una cifra: existe y no
 mueve nada. **Ponderar por largo queda avalado por medida, no por argumento.**
 
-**2 · La ponderación de planta casi no importa, salvo en DOS políticas.** Siete
-se mueven entre −0,036 % y +0,078 %. **`true3d` se mueve −2,0714 % y `mgl`
-−2,1344 %**, unas treinta veces más. Con las seis primeras parecía que `true3d`
-era una rareza; con las nueve se ve que son **dos**, y las dos son las que buscan
-una FORMA (3D sin sombra, mínima luz al suelo) en vez de maximizar energía. No se
-afirma que la causa sea ésa: se afirma que las dos que se salen comparten eso y
-que **por qué, `NO MEDIDO`**.
+**2 · La ponderación de planta casi no importa EN EL DÍA, salvo en dos
+políticas.** Siete se mueven entre −0,036 % y +0,078 %. **`true3d` se mueve
+−2,0714 % y `mgl` −2,1344 %**, unas treinta veces más.
+
+> ⚠️ **La explicación que se dio aquí está REFUTADA por la medida anual de más
+> abajo.** Se escribió que las dos que se salen «son las que buscan una FORMA en
+> vez de maximizar energía». En el anual las que se salen son **`true3d` y
+> `pairwise`** —y `pairwise` en el día vale **+0,0109 %**, despreciable—, así que
+> esa agrupación no sobrevive. La única que se sale en las DOS medidas es
+> `true3d`. La agrupación buena, la del anual, es otra: **si la política
+> retrocede o no**. Se deja escrito el error en vez de borrarlo, porque el
+> patrón es el de siempre: una explicación construida sobre una sola medida.
 
 Y no es un instante raro. La última columna lo dice: la discrepancia pasa del 1 %
 en **49 de 86** instantes para `true3d` y **53 de 86** para `mgl`, frente a 7–21
@@ -1021,8 +1112,14 @@ medio día; para el resto, son cuatro ratos sueltos que se compensan.
 **3 · Y NO es lo mismo que el +0,3524 % de E-F2.** Aquel mide cambiar la
 **granularidad de la física** —tilt de línea a tilt de mesa— en `pairwise`. Esto
 mide cambiar el **peso de la agregación** dejando la física igual: **+0,0109 %**
-en `pairwise`, **treinta y dos veces menor**. Son dos cosas distintas y el
-cuaderno no las mezcla: la granularidad paga, el peso casi no.
+en `pairwise` **en el día**, treinta y dos veces menor.
+
+> ⚠️ **«La granularidad paga y el peso casi no» está CORREGIDO por la medida
+> anual.** En el anual el peso paga **del mismo orden** que la granularidad:
+> `optimal` da **+0,3460 %** contra el +0,3524 % de E-F2, casi idéntico. La frase
+> valía para un día de junio y se publicó como si valiera en general. Un día no
+> es un año, y el error fue tratar la conclusión de una medida como si fuera la
+> conclusión del fenómeno.
 
 **4 · Por instante sí importa siempre.** De −3,6 % a −17,3 %, y el peor caso de
 cinco de las seis cae en el **mismo instante**: las 21:10 con el sol a **3,45°**.
