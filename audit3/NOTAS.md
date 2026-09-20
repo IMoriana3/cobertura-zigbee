@@ -999,6 +999,31 @@ dos medidas es `true3d`. **Por qué el retroceso invierte el signo: `NO MEDIDO`.
 **Salida cruda** en `audit3/out/F32_anual.json` y los 96 meses medidos en
 `audit3/out/F32_anual_meses.jsonl`.
 
+### Cómo se cita M-5 en el informe, acordado con el auditor
+
+M-5 sube de «indicio dimensionado, un día» a **medido en el anual**. El ascenso
+es legítimo **sólo con la limitación dentro de la frase que lo concede**, no en
+la línea de al lado: una tabla de casillas se lee por la casilla, y quien la lea
+así se llevaría la categoría sin la salvedad. La redacción que aguanta lo que el
+dato da:
+
+> **M-5 · medido en el anual, sobre un anual que la página no publica.** La ruta
+> anual publicada puntúa con `poaPlant`, por línea (`backtracking.html:7388`), y
+> por eso la sonda tuvo que **replicar su mando** para aislar la agregación. El
+> corte por retroceso —seis políticas entre **+0,2287 %** y **+0,3460 %**, dos en
+> **−2,1026 %** y **−2,3057 %**— está medido sobre esa réplica, no sobre lo que
+> el simulador enseña hoy.
+
+Así la casilla **arrastra su propia limitación** y no se puede citar más fuerte
+de lo que aguanta.
+
+**Y una advertencia sobre el recuento del expediente:** el ascenso de M-5 y el
+refuerzo del hallazgo del anual sin lazo **salen de la MISMA medida**. No son dos
+confirmaciones independientes, y contarlas como dos inflaría el expediente. La
+sonda tuvo que replicar el mando de la página precisamente **porque** el anual no
+pasa por la métrica por mesa: ese hecho es la premisa de una y el contenido de la
+otra.
+
 ### Lo que este resultado NO autoriza
 
 No autoriza a cambiar el anual para que puntúe por mesa. Eso movería una cifra
