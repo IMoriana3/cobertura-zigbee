@@ -187,6 +187,13 @@ jobs:
       # negativo sobre el código de antes y test nulo de cada corte.
       - name: la página publica las dos métricas
         run: node tools/test_dos_metricas.mjs
+      # La POA de planta pesa cada MESA por su largo, no cada LÍNEA por igual.
+      # Con Ayora, siete de las nueve políticas casi no distinguen las dos
+      # agregaciones, así que el banco empieza por un TEST NULO que exige que su
+      # caso SÍ las distinga: un caso mal elegido pasaría con el código nuevo y
+      # con el viejo y no protegería nada.
+      - name: la planta pondera por largo de mesa
+        run: node tools/test_ponderacion_planta.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
       # independientes. Ahora el exportador lo LEE de la página; este banco vigila
