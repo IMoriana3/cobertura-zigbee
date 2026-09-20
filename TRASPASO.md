@@ -781,41 +781,64 @@ contra una foto de fecha desconocida.
 
 ## Cuánto se equivoca el motor SIN calibrar, medido contra las 49 de El Burgo (2026-09-20)
 
-El motor nuevo (`Siting/radio_pv_model.js`) no lleva sesgo global. La pregunta obvia es cuánto se
-equivoca entonces, y ya tiene respuesta. Careado contra las 49 medidas del árbitro, con la antena
-a 0,775 m y en modo TEÓRICO:
+> **CORREGIDO EL MISMO DÍA.** La primera versión de esta nota decía **+26,65 dB de optimismo** y
+> estaba mal: las filas cruzadas eran una SUPOSICIÓN mía —cruce perpendicular con paso de 12 m— y
+> contaba **de menos**. Con las filas reales son **+1,1 dB**. La herramienta que lo rehace es
+> `Siting/tools/careo_elburgo.mjs`, con su banco. Se deja escrito el error porque el mecanismo
+> vuelve: suponer geometría en vez de sacarla del layout es exactamente el defecto RF-01.
 
-| filas cruzadas (supuestas) | enlaces | predicho − medido |
+El motor nuevo (`Siting/radio_pv_model.js`) no lleva sesgo global, así que la pregunta obvia es
+cuánto se equivoca. Careado contra las 49 medidas del árbitro, en modo TEÓRICO, con las **filas
+cruzadas reales** de `rfRows()` contra los extremos reales de cada enlace:
+
+| | REALES | supuestas (paso 12 m) |
 |---|---|---|
-| 0 | 11 | **+37,4 dB** |
-| 1 | 20 | +23,5 dB |
-| 2 | 4 | +12,8 dB |
-| 3 | 1 | −0,5 dB |
-| 4 | 3 | −5,8 dB |
-| ≥5 | 10 | **−11,8 dB** |
+| filas cruzadas, total | **192** | 146 |
+| peor diferencia en un enlace | — | **11 filas** |
+| enlaces donde no coinciden | — | **47 de 49** |
 
-En los 35 enlaces de 0 a 2 filas la media es **+26,65 dB de optimismo**. Eso deja las dos cifras
-históricas —−16,58 y −33,6— una a cada lado, lo que encaja con que sean dos ajustes del mismo
-fenómeno con distinta geometría (ver la nota de arriba).
+**LAS DOS INCÓGNITAS, BARRIDAS EN VEZ DE ELEGIDAS.** Media de (predicho − medido), en dB:
 
-**Lo que importa es que el error NO es constante**: va de +37 dB sin filas a −12 dB con cinco o
-más. Ningún sesgo global arregla eso. Es la confirmación numérica de lo que ya decía el comentario
-de `cobertura-rf-fv` —«sobra offset y falta exponente»— y de su r = +0,16 con log(distancia). La
-campaña de barrido no es un lujo: es la única forma de repartir la culpa entre distancia y mesas,
-y `calibra_barrido.py` está escrito justo para eso.
+| antena | tilt 0° | 30° | 55° | 90° |
+|---|---|---|---|---|
+| **0,775 m** | +18,2 | **+1,1** | −5,8 | −8,8 |
+| **1,500 m** | +18,8 | **+1,7** | −5,1 | −8,1 |
 
-**UNA SUPOSICIÓN MÍA DENTRO, que hay que conocer antes de citar estos números.** El geojson no trae
-el rumbo de cada enlace, así que las filas cruzadas son una suposición: cruce perpendicular con
-paso de 12 m. Por eso la tabla va desglosada por número de filas y la conclusión se apoya en el
-subconjunto de 0–2, donde esa suposición pesa poco, y no en la media global. La altura de 0,775 m
-sale de `EL_BURGO_AJUSTE` en el hermano Python; no está medida en campo por esta sesión.
+**La altura de antena casi no importa: 0,64 dB** entre las dos. Los 0,725 m de duda del montaje
+mueven el careo menos de 1 dB, así que se puede decidir sin prisa y no es la incógnita que manda.
+**El ángulo sí: 27 dB** entre palas planas y de canto — y el ángulo de la campaña no se sabe,
+porque la mediana del nodo promedia 8.053 instantes del día entero. Ésa es la que hay que cerrar.
 
-**Y un enlace que merece una visita, más que cualquier promedio.** Hay uno de **12 m que mide
-−87 dBm** mientras otro de 11,9 m mide −75. A 12 m el espacio libre son 62 dB, así que con el
-balance del XBee-PRO eso predice −37,5 dBm: hay unos **50 dB que ningún modelo de propagación
-explica**. Eso no es propagación, es una obstrucción concreta, una antena mal montada o un enlace
-mal atribuido. Un ajuste de un solo número se lo traga y lo esconde; conviene mirarlo en planta
-antes de la campaña.
+**El error sigue sin ser constante**, aun con filas reales: de +27,1 dB sin filas cruzadas a
+−28,4 dB con 24. Ningún sesgo global arregla eso, y es la confirmación numérica de lo que decía el
+comentario de `cobertura-rf-fv` —«sobra offset y falta exponente»— y de su r = +0,16 con
+log(distancia). La campaña de barrido no es un lujo: es la única forma de repartir la culpa entre
+distancia y mesas, y `calibra_barrido.py` está escrito justo para eso.
+
+Por régimen: los 5 enlaces **por pasillo** salen +15,2 dB (cruzan 0,80 filas de media) y los 44 de
+**cruce**, −0,5 dB (4,27 filas).
+
+La altura de 0,775 m sale de `EL_BURGO_AJUSTE` en el hermano Python; no está medida en campo por
+esta sesión.
+
+**EL ENLACE DE 12 m A −87 dBm NO ES UNA OBSTRUCCIÓN: ES EL DEFECTO DE ATRIBUCIÓN.** Lo escribí
+primero como «una obstrucción concreta, una antena mal montada o un enlace mal atribuido», y la
+tercera es la buena. Medido:
+
+- a **12,0 m exactos** hay **10 enlaces, de −58 a −87 dBm**: veintinueve decibelios A LA MISMA
+  DISTANCIA. A 24,0 m, doce enlaces con 20 dB de recorrido.
+- `r(padres_distintos del nodo, RSSI) = −0,248` frente a `r(log distancia, RSSI) = −0,223`.
+  **Cuántos padres tuvo el nodo explica el «RSSI del enlace» tanto como la distancia.**
+- los nodos de esos enlaces de 12 m tienen entre **9 y 24 padres distintos**.
+
+La causa es conocida y está en el punto 6 de la auditoría del recolector: el `rssi_medido_dbm` de
+un LineString es la **mediana del NODO** sobre toda la campaña, atribuida a su padre dominante, así
+que mezcla los enlaces a todos sus padres. Ningún modelo de propagación explica 29 dB a la misma
+distancia ni debe intentarlo.
+
+**Consecuencia para la fase 2:** el árbitro v1 puede acotar el orden de magnitud del desvío frente
+a un ESTADÍSTICO DE NODO, pero no sirve para calibrar ni para validar enlace a enlace. Por eso todo
+lo que salga de él va rotulado, y por eso hay que regenerarlo.
 
 La herramienta que saca el careo planta por planta es `Siting/tools/malla_plantas.mjs`, y entra en
 la CI de Siting con un arranque sobre El Burgo.
