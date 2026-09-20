@@ -776,3 +776,46 @@ actual de `index.html` sí escribe. Trae en cambio un `calibracion` que el expor
 deliberadamente a `null`. O sea: para validar la fase 2 **hay que regenerarlo con el recolector**,
 como dice el encargo, y ponerlo al lado del viejo. Validar contra este sin regenerar sería medirse
 contra una foto de fecha desconocida.
+
+---
+
+## Cuánto se equivoca el motor SIN calibrar, medido contra las 49 de El Burgo (2026-09-20)
+
+El motor nuevo (`Siting/radio_pv_model.js`) no lleva sesgo global. La pregunta obvia es cuánto se
+equivoca entonces, y ya tiene respuesta. Careado contra las 49 medidas del árbitro, con la antena
+a 0,775 m y en modo TEÓRICO:
+
+| filas cruzadas (supuestas) | enlaces | predicho − medido |
+|---|---|---|
+| 0 | 11 | **+37,4 dB** |
+| 1 | 20 | +23,5 dB |
+| 2 | 4 | +12,8 dB |
+| 3 | 1 | −0,5 dB |
+| 4 | 3 | −5,8 dB |
+| ≥5 | 10 | **−11,8 dB** |
+
+En los 35 enlaces de 0 a 2 filas la media es **+26,65 dB de optimismo**. Eso deja las dos cifras
+históricas —−16,58 y −33,6— una a cada lado, lo que encaja con que sean dos ajustes del mismo
+fenómeno con distinta geometría (ver la nota de arriba).
+
+**Lo que importa es que el error NO es constante**: va de +37 dB sin filas a −12 dB con cinco o
+más. Ningún sesgo global arregla eso. Es la confirmación numérica de lo que ya decía el comentario
+de `cobertura-rf-fv` —«sobra offset y falta exponente»— y de su r = +0,16 con log(distancia). La
+campaña de barrido no es un lujo: es la única forma de repartir la culpa entre distancia y mesas,
+y `calibra_barrido.py` está escrito justo para eso.
+
+**UNA SUPOSICIÓN MÍA DENTRO, que hay que conocer antes de citar estos números.** El geojson no trae
+el rumbo de cada enlace, así que las filas cruzadas son una suposición: cruce perpendicular con
+paso de 12 m. Por eso la tabla va desglosada por número de filas y la conclusión se apoya en el
+subconjunto de 0–2, donde esa suposición pesa poco, y no en la media global. La altura de 0,775 m
+sale de `EL_BURGO_AJUSTE` en el hermano Python; no está medida en campo por esta sesión.
+
+**Y un enlace que merece una visita, más que cualquier promedio.** Hay uno de **12 m que mide
+−87 dBm** mientras otro de 11,9 m mide −75. A 12 m el espacio libre son 62 dB, así que con el
+balance del XBee-PRO eso predice −37,5 dBm: hay unos **50 dB que ningún modelo de propagación
+explica**. Eso no es propagación, es una obstrucción concreta, una antena mal montada o un enlace
+mal atribuido. Un ajuste de un solo número se lo traga y lo esconde; conviene mirarlo en planta
+antes de la campaña.
+
+La herramienta que saca el careo planta por planta es `Siting/tools/malla_plantas.mjs`, y entra en
+la CI de Siting con un arranque sobre El Burgo.
