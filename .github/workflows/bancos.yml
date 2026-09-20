@@ -148,6 +148,34 @@ jobs:
         run: python3 tools/test_rutas_telnet.py
       - name: qué hace ESTE PowerShell con Export-Csv y la codificación
         run: python3 tools/test_export_csv_esquema.py
+
+      # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
+      # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
+      # planta», y no es el mismo fichero — el paquete le pone el BOM y le
+      # sustituye el CONFIG. Probar solo el del repo dejaba fuera todas esas
+      # transformaciones, y por ahí se coló que el BOM SE PERDÍA al empaquetar
+      # (`Response.text()` lo quita al decodificar y `TextEncoder` no lo
+      # escribe), así que `zigbee_inventario.ps1` seguía sin compilar en 5.1
+      # aunque el fichero del repo estuviera arreglado.
+      #
+      # El ZIP lo arma `tools/paquete_planta.mjs` con el MISMO bloque de
+      # index.html que usa la página, y lo abre `zipfile` de Python: que lo lea
+      # otro programa es parte de la prueba.
+      - name: el paquete que se descarga en planta
+        shell: bash
+        run: |
+          node tools/paquete_planta.mjs elburgo _medir.zip
+          python3 -c "import zipfile; zipfile.ZipFile('_medir.zip').extractall('_paq')"
+          ls -l _paq/elburgo
+      - name: los recolectores DEL PAQUETE, con PowerShell
+        shell: bash
+        env:
+          PS1_DIR: _paq/elburgo
+        run: |
+          python3 tools/test_angulos_barrido.py
+          python3 tools/test_inventario_zb.py
+          python3 tools/test_logger_rssi.py
+          python3 tools/test_rutas_telnet.py
       - name: y las mutaciones de los dos, en rojo
         shell: bash
         run: |
@@ -190,6 +218,10 @@ jobs:
   # mutaciones dentro. El tope se queda en 10 min —nueve veces el peor caso
   # medido— y la cifra va con su fecha, como las de arriba, porque un número sin
   # fecha al lado envejece en silencio.
+  #
+  # OJO: esos 64 s son de ANTES de añadir la segunda pasada sobre el paquete
+  # descargado, que corre los cuatro bancos otra vez. La cifra hay que volver a
+  # medirla; hasta entonces ésta dice de cuándo es y qué NO incluye.
   windows:
     timeout-minutes: 10
     name: scripts de campo (Windows PowerShell 5.1)
@@ -207,6 +239,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      # node, para armar el ZIP con el mismo código que la página
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
 
       # SIN ESTO EL JOB PUEDE VOLVERSE UN DUPLICADO DEL DE ARRIBA sin que nadie
       # lo note: si algún día `powershell` apuntara a 7 en el runner, todo
@@ -228,6 +263,34 @@ jobs:
         run: python tools/test_rutas_telnet.py
       - name: qué hace ESTE PowerShell con Export-Csv y la codificación
         run: python tools/test_export_csv_esquema.py
+
+      # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
+      # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
+      # planta», y no es el mismo fichero — el paquete le pone el BOM y le
+      # sustituye el CONFIG. Probar solo el del repo dejaba fuera todas esas
+      # transformaciones, y por ahí se coló que el BOM SE PERDÍA al empaquetar
+      # (`Response.text()` lo quita al decodificar y `TextEncoder` no lo
+      # escribe), así que `zigbee_inventario.ps1` seguía sin compilar en 5.1
+      # aunque el fichero del repo estuviera arreglado.
+      #
+      # El ZIP lo arma `tools/paquete_planta.mjs` con el MISMO bloque de
+      # index.html que usa la página, y lo abre `zipfile` de Python: que lo lea
+      # otro programa es parte de la prueba.
+      - name: el paquete que se descarga en planta
+        shell: bash
+        run: |
+          node tools/paquete_planta.mjs elburgo _medir.zip
+          python -c "import zipfile; zipfile.ZipFile('_medir.zip').extractall('_paq')"
+          ls -l _paq/elburgo
+      - name: los recolectores DEL PAQUETE, con PowerShell
+        shell: bash
+        env:
+          PS1_DIR: _paq/elburgo
+        run: |
+          python tools/test_angulos_barrido.py
+          python tools/test_inventario_zb.py
+          python tools/test_logger_rssi.py
+          python tools/test_rutas_telnet.py
       - name: y las mutaciones de los dos, en rojo
         shell: bash
         run: |

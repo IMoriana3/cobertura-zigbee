@@ -559,6 +559,39 @@ salía con las etiquetas `<nodo>` abiertas y vacías.
 Arreglado con `UseBasicParsing = $true`. En PowerShell 7 el parámetro se acepta y se ignora, así que
 vale para las dos versiones.
 
+### EL BOM SE PERDÍA AL EMPAQUETAR — hay que regenerar los paquetes
+
+**Ponerle el BOM a los `.ps1` del repo no bastaba, y por poco se queda así.** El técnico no usa el
+fichero del repo: usa el que sale del ZIP de «Medir en planta». Y por ese camino el BOM desaparece:
+
+```
+EF BB BF 61 62  ->  Response.text()  ->  TextEncoder.encode()  ->  61 62
+```
+
+`.text()` decodifica UTF-8 y **quita el BOM** —lo manda el estándar de Fetch— y `TextEncoder` no lo
+escribe nunca. Así que los cinco recolectores llegaban a planta **sin BOM** y
+`zigbee_inventario.ps1` seguía sin compilar en 5.1 con el repo ya «arreglado».
+
+Puesto en `preparaColector` (`index.html`), que es el embudo por el que pasan los cuatro, y solo
+para `.ps1`.
+
+> **ACCIÓN EN PLANTAS.** Todo paquete descargado **antes de este arreglo** lleva los `.ps1` sin BOM.
+> Hay que **regenerarlo** —volver a pulsar «Medir en planta»— para cualquier planta, y **sobre todo
+> antes de correr el inventario**, que es el que no arranca. Los otros cuatro sí arrancan; lo que
+> tienen sin BOM es mojibake en lo que imprimen.
+
+### Los bancos corren LO QUE SE DESCARGA, no el fichero del repo
+
+Ésta es la lección de fondo: el arnés probaba el `.ps1` del repo, y entre ése y el que llega a
+planta hay transformaciones —BOM, sustitución del CONFIG, fines de línea— que quedaban **enteras
+fuera de la prueba**. Por eso el agujero del BOM pasó por un banco verde.
+
+- `tools/paquete_planta.mjs` arma el ZIP con el **mismo bloque de `index.html`** que usa la página
+  (`preparaColector`, `zipStore`, `leemeDe`): no reimplementa nada.
+- Los dos jobs de PowerShell lo generan, lo abren con `zipfile` de Python —que lo lea otro programa
+  es parte de la prueba— y **repiten los cuatro bancos** con `PS1_DIR` apuntando a lo extraído.
+- Los bancos aceptan `PS1_DIR`; sin esa variable siguen usando el del repo.
+
 ### La puerta que vigila las dos
 
 `tools/gate_ps1_planta.py`: un `.ps1` con no-ASCII tiene que llevar BOM, y un `Invoke-WebRequest`
