@@ -307,7 +307,7 @@ var freeCam=false,fYaw=0,fPitch=0,_md=false,_mx=0,_my=0,_eul=new THREE.Euler(0,0
 var imBearing=null,imSaddle=null,imVirola=null,imBush=null;
 var ELEV=null,GWS=[{name:'N',lat:41.578,lon:-0.7988,h:2.5},{name:'S',lat:41.576,lon:-0.7988,h:2.5}],gwG=null,gwMasts=[],linkGroup=null,fresOn=false,placingGw=false,NCUMESH=null;
 var FENCE_H=3.0;   // ALTURA DEL VALLADO, en metros. CONSTANTE para todas las plantas (pedido asi): antes 1,9. La hoja de las puertas se saca de aqui, no de un numero suelto.
-var LAYOUT=null,bosGroup=null,fijGroup=null,FJEXPL=0,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[];
+var LAYOUT=null,bosGroup=null,fijGroup=null,FJEXPL=0,FB=null,_fAcc=0,CORRIDOR=23,NIDX=0,SIDX=1,LBL=[],labelsBuilt=false,corrGroup=null,CLP=null,HLBL=[],HSUS=[];   // HSUS: las estaciones meteo con su sitio REAL (tras fueraDeLosa) y su grupo — la cobertura las usa como anclas y les pone su marca
 var sunPathGroup=null,sunMarker=null,sunRay=null;
 var SH_CX=-66,SH_CZ=36,SH_HALF=330;   // shadow camera ceñido a la planta ENTERA (centro y semiancho en mundo, por planta en build())
 var SESGO_M=0.25;   // sesgo de profundidad EN METROS de mundo: se convierte a unidades de frustum en cada cuadro, porque el rango near..far crece con el tamaño de la caja (ver updateSunShadow)
@@ -4462,6 +4462,7 @@ function buildBOS(){
      tenía su versión de la misma torre y el día que se tocara una quedaba la
      otra vieja. Esta página sigue poniendo lo suyo: dónde va, si lleva módulo
      (Ayora no) y con qué células se viste. */
+  HSUS.length=0;   // se reconstruye el BOS: fuera las de la planta anterior
   var EQM = Equipos.materials(THREE);
   var HSU_PV = !(LAYOUT.hsu && LAYOUT.hsu.pv === false);      // por defecto SÍ lleva módulo; Ayora lo desactiva en su layout
   var HSU_GIRO = (lat0 < 0) ? Math.PI : 0;                    // la cara del módulo mira al ECUADOR: medio giro en el hemisferio sur
@@ -4473,6 +4474,7 @@ function buildBOS(){
     if(CELLNRM){pvM.normalMap=CELLNRM;pvM.normalScale=new THREE.Vector2(0.4,0.4);}
     var b9=Equipos.buildHSU(THREE,{materials:EQM,pv:HSU_PV,giro:HSU_GIRO,panelMaterial:pvM});
     var g=b9.group;g.position.set(X,y,Z);bosGroup.add(g);
+    HSUS.push({g:g,x:qm[0],n:qm[1],name:m.name||'HSU'});   // el sitio de VERDAD es el de fueraDeLosa, no el del listado
     var lb=makeLabel(m.name,'poi');lb.position.set(0,Equipos.DIMS.hsuTowerH+1.7,0);lb.visible=labelGroup.visible;lb.userData.bos=true;g.add(lb);HLBL.push(lb);});
   bosGroup.traverse(function(o){if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});   // sombras en todas las instalaciones (CT, inversores, vallado, CCTV, meteo)
   instanciaBOS();
@@ -4629,6 +4631,15 @@ function cobAnchors(){                                                          
   for(i=0;i<GWS.length;i++)A.push({x:projX(GWS[i].lon),n:-projZ(GWS[i].lat),lat:GWS[i].lat,lon:GWS[i].lon,h:GWS[i].h,ncu:true});
   for(i=0;i<TRK.length;i++){var t=TRK[i],tp=t.aTip,h=tp?Math.max(0.1,tp[1]-t.rel*vex):(TC.postH+(TC.off||0)-(TC.antHang||0.5));
     A.push({x:t.gx,n:-t.gz,lat:t.glat,lon:t.glon,h:h,ncu:false});}
+  /* LAS HSU TAMBIEN REPITEN. En esta red todos los equipos hacen de salto, no solo las
+     NCU, y la estacion meteo es ademas la mejor colocada de todas: su latigo va a 6,50 m
+     (Equipos.ANT_H.hsu) contra los 3,15 de una NCU y el poco mas de dos metros de un TCU.
+     Dejarlas fuera del calculo no era neutral: SUBESTIMABA la cobertura de los seguidores
+     que las tienen al lado. Van AL FINAL de la lista a proposito, porque el bucle de
+     cobCompute direcciona el tracker i como A[GWS.length+i] y ese indice no puede moverse. */
+  for(i=0;i<HSUS.length;i++){var u=HSUS[i];
+    A.push({x:u.x,n:u.n,lat:lat0+u.n/mPerLat,lon:lon0+u.x/mPerLon,
+            h:(Equipos.ANT_H&&Equipos.ANT_H.hsu)||6.5,ncu:false,hsu:true});}
   return A;
 }
 function cobIndex(A){var B={},s=COBR,i;                                         // rejilla de cubos de lado COBR: el muestreo mira solo 3x3 cubos, no las 2.300 antenas
@@ -4650,7 +4661,7 @@ function cobDispose(){ if(!cobG)return; scene.remove(cobG);
   cobG.traverse(function(o){if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material&&o.material.dispose)o.material.dispose();});
   cobG=null;
 }
-var COBTRK=null,COBCOLH=[0xE2574C,0xE3C149,0x7FD18A,0x36D399];   // clase de cobertura POR TRACKER (0..3) y sus colores
+var COBTRK=null,COBHSU=null,COBCOLH=[0xE2574C,0xE3C149,0x7FD18A,0x36D399];   // clase de cobertura POR TRACKER (0..3) y sus colores
 function cobCompute(){
   /* COBERTURA SOBRE LOS MODULOS: nada de cuadrados en el suelo ("tiene que
      pintar los modulos"). Se evalua la malla DESDE LA ANTENA REAL de cada
@@ -4658,7 +4669,7 @@ function cobCompute(){
      rojo aislado / ambar un camino / verdes 2 y 3+. Es ademas mas fiel:
      la cobertura importa en la antena, no en un punto del campo. */
   cobDispose();                                                                 // retira el mosaico antiguo si quedara
-  if(!cobOn||!TRK.length){COBTRK=null;pintaEstadoModulos();cobStat(null);return;}
+  if(!cobOn||!TRK.length){COBTRK=null;COBHSU=null;pintaHSU();pintaEstadoModulos();cobStat(null);return;}
   var t0=performance.now();
   var A=cobAnchors(),ix=cobIndex(A),i,q,cand=[];
   var hist=[0,0,0,0],ncud=0;COBTRK=new Array(TRK.length);
@@ -4671,9 +4682,40 @@ function cobCompute(){
       c++;if(a.ncu)nd=1;
       if(c>=8)break;}                                                            // cuenta hasta 8: en plantas densas (El Burgo) TODO pasa de 3 y la capa se saturaba plana
     COBTRK[i]=Math.min(8,c);hist[Math.min(3,c)]++;if(nd)ncud++;}
+  /* la clase de cada HSU, con la MISMA cuenta que un seguidor: cuantos vecinos alcanza
+     con el Fresnel despejado. No entra en el histograma de los TCU —son equipos
+     distintos y mezclarlos ensuciaria el porcentaje— pero se pinta con la misma escala. */
+  COBHSU=new Array(HSUS.length);
+  for(i=0;i<HSUS.length;i++){var ah=A[GWS.length+TRK.length+i];
+    cobNear(ix,A,ah.x,ah.n,cand);
+    var ch=0,lh=Math.min(cand.length,22);
+    for(q=0;q<lh;q++){var a2=cand[q].a;
+      var cl2=linkClearance(ah.lat,ah.lon,ah.h,a2.lat,a2.lon,a2.h);
+      if(cl2.blocked||cl2.partial)continue;
+      ch++; if(ch>=8)break;}
+    COBHSU[i]=Math.min(8,ch);}
+  pintaHSU();
   pintaEstadoModulos();
   cobStat({n:TRK.length,hist:hist,ncud:ncud,ms:Math.round(performance.now()-t0),
            ang:panelAngle(curMin),fuente:(simOn?'simulacion':(ANG?'telemetria':'sin telemetria: simulacion astronomica'))});   // solo El Burgo trae telemetria real
+}
+/* LA MARCA DE LA HSU: una bola a la altura del latigo, con LA MISMA escala de color que
+   los modulos de un seguidor de su clase (rojo aislado, ambar un camino, verde graduado
+   de 2 a 8). No se tine la torre entera por dos razones: el material sale de equipos.js y
+   lo COMPARTEN todas las HSU —pintarlo cambiaria las cuatro a la vez— y ademas la bola se
+   lee de lejos sin desfigurar el modelo. Se apaga con la capa de cobertura. */
+function pintaHSU(){
+  var i,clr=new THREE.Color(0xB9EBCF),osc=new THREE.Color(0x0E7A4E),col=new THREE.Color();
+  for(i=0;i<HSUS.length;i++){var u=HSUS[i];
+    if(!u._marca){
+      u._marca=new THREE.Mesh(new THREE.SphereGeometry(0.55,12,10),new THREE.MeshBasicMaterial({color:0xffffff}));
+      u._marca.position.y=(Equipos.ANT_H&&Equipos.ANT_H.hsu)||6.5;u._marca.renderOrder=4;u.g.add(u._marca);
+    }
+    var c=(COBHSU&&COBHSU[i]!=null)?COBHSU[i]:null,on=!!(cobOn&&c!=null);
+    u._marca.visible=on;
+    if(on){ if(c<=1)col.setHex(COBCOLH[c]); else col.copy(clr).lerp(osc,Math.min(1,(c-2)/6));
+            u._marca.material.color.copy(col); }
+  }
 }
 /* un unico pintor de modulos con prioridad: Afeccion BT > SCADA > cobertura > normal */
 function pintaEstadoModulos(){
