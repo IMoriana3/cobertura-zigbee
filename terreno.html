@@ -1239,7 +1239,21 @@ function yMedia(c){var s9=0,n9=0,i,fi;for(i=0;i<c.f.length;i++){fi=c.f[i];s9+=fi
 function prepCotas(){
   if(!COTAS||!ELEV||!TRK.length)return;
   var d=[],i,c;
-  var HEJE=TC.postH+(TC.off||0);                              // el eje del tubo va HEJE por encima del suelo
+  /* HEJE = CARA DEL MÓDULO sobre el suelo, NO el eje del tubo. Aquí ponía «el
+     eje del tubo va HEJE por encima del suelo» y era falso: `TC.off` es «cara
+     del módulo sobre el eje del tubo» (seguidor.js), así que postH + off es la
+     cara, y el eje se queda en postH.
+
+     LA FÓRMULA ESTÁ BIEN Y EL RÓTULO ESTABA MAL, y esto es lo que lo decide:
+     `<planta>_cotas.json` dice de su propia `y` «cota MEDIDA sobre el modulo».
+     O sea que para pasar de cota medida a cota de suelo hay que restar la cara
+     del módulo, que es lo que hace la línea de abajo. Si HEJE fuese el eje,
+     todo el terreno reconstruido saldría 0,14 m bajo.
+
+     Y POR ESO HEJE NO ES COSMÉTICO: reconstruye el suelo de las dos plantas con
+     levantamiento (Ayora y San José) restando a cada cota medida. Cambiar la
+     altura del poste mueve el terreno la misma cantidad, metro por metro. */
+  var HEJE=TC.postH+(TC.off||0);
   for(i=0;i<TRK.length;i++){c=COTAS.t[i];if(!c)continue;d.push((COTAS.base+yMedia(c)-baseElev-HEJE)-TRK[i].rel);}
   if(!d.length)return;
   d.sort(function(a,b){return a-b;});
@@ -4522,6 +4536,29 @@ function panelTopH(){ if(!TC.modH)return 0; var a=Math.abs(panelAngle(curMin)); 
 // BANDA que ocupa el panel: es un PLANO inclinado, no un muro. Su borde bajo BAJA al inclinarse
 // (media cuerda·sen α por debajo del tubo) y su cresta sube. Un rayo por DEBAJO del borde bajo pasa
 // limpio — que es lo que ocurre a mediodía, con los paneles casi planos a 2,14 m y las antenas a 1,3 m.
+/* ESTO ES LA BANDA VERTICAL, y es un TERCER camino de cálculo del despeje de
+   una fila. Proyecta el panel sobre el eje como un segmento vertical de
+   semialto (cuerda/2)·sen α, y `linkClearance` apantalla con él.
+
+   EL MOTOR DE SITING YA NO LA USA. Allí se sacó del camino de cálculo —vive en
+   `tests/referencia_banda_vertical.js`, solo para carearla, con una puerta en
+   la CI que impide que vuelva— porque la banda y el plano inclinado real dan el
+   MISMO despeje (0,000000 m de diferencia) pero ponen el canto difractante en
+   sitios distintos: la banda en el eje (w = 0), el plano en el borde real
+   (w = ±(cuerda/2)·cos α). Para la fila propia eso lleva d1 de 0,9 a 9,3
+   longitudes de onda, o sea de «campo cercano, el filo de cuchillo no aplica» a
+   «aplica».
+
+   Aquí sigue en pie, y es lo que colorea los enlaces del 3D. No se cambia en
+   este PR: sustituirla por `cortaPanel` es parte de la consolidación del motor
+   (que las herramientas consuman el motor en vez de llevar su propia copia), y
+   eso cambia números y necesita su careo.
+
+   Y OTRO DETALLE QUE NO CUADRA, anotado para cuando se toque: `c` es
+   postH + off, o sea la CARA del módulo, pero se usa como CENTRO de la banda.
+   El panel bascula alrededor del EJE (postH), y su cara está 0,14 m por encima
+   medidos perpendicular al panel, no en vertical: en vertical son 0,14·cos α.
+   A α = 0 coincide; a 55° el centro de la banda se va 0,06 m alto. */
 function panelBand(){ if(!TC.modH)return null;
   var a=Math.abs(panelAngle(curMin)),h=(TC.modH/2)*Math.sin(a*DEG),c=TC.postH+TC.off;
   return {bot:c-h,top:c+h,hw:(TC.modH/2)*Math.cos(a*DEG)};   // hw = SEMIANCHO de la huella del panel en el suelo
@@ -4578,7 +4615,20 @@ function applyFresnel(){
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
   TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,tp[1]-t.rel*vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
-  (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado // estación meteo: antena a 8 m (mástil 8,5 m)
+  (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado
+  /* ESTOS 8 m CONTRADICEN AL MODELO, y el rótulo lo decía como si nada: aquí
+     ponía «estación meteo: antena a 8 m (mástil 8,5 m)». Los látigos de la HSU
+     NO están en la cabeza: van en su propio brazo a media torre, a 6,50 m al
+     centro del elemento, cota de montaje confirmada por Ignacio (ago-2026).
+     `equipos.js` ya lo recoge —`E.ANT_H.hsu = 6.50`— y explica que los 8,x
+     eran la posición vieja, la de esta copia embebida de la que se sacó aquel
+     módulo. Esta línea se quedó con la vieja.
+
+     NO SE TOCA EN ESTE PR: son 1,50 m de altura de antena y cambian el
+     coloreado de enlaces de la meteo en todas las plantas, o sea que es un
+     cambio de física y va con su careo, no colado en un PR de comentarios.
+     Queda escrito para que el número no vuelva a leerse como si estuviera
+     citado de un plano. */
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   /* OPACIDAD .20, NO .55. En El Burgo son 215 enlaces y 154 salen «sin vision»
      (rojo): a .55 se superponen hasta parecer bandas solidas que tapan la planta.
