@@ -2488,8 +2488,23 @@ t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría rea
      que esto vigila es que el ángulo use `Tcfg`, no cómo se llame la variable
      que lleva la política — que es la lección que ya lleva escrita el test de
      por mesa, tres puestos más abajo. */
-  if (!/policyAngles\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f))
+  /* v1.76: el cuerpo del día ya no le pide el ángulo a `policyAngles`: se lo
+     pide a `segCmd`, que es la ÚNICA fuente del mando —por mesa cuando la hay
+     y por línea cuando no—. Lo que esto vigila no ha cambiado: que la consigna
+     se calcule con la CREENCIA de la TCU. Así que se acepta a cualquiera de
+     los dos como portador y, ADEMÁS, se entra en `segCmd` a comprobar que su
+     rama por línea le pasa `Tcfg` a la política y que su rama por mesa sólo
+     corre cuando esa creencia ES el levantamiento. Es más de lo que se exigía
+     antes, no menos: antes bastaba con que la llamada llevara `Tcfg` escrito. */
+  if (!/policyAngles\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f) &&
+      !/segCmd\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f))
     throw new Error('el ángulo no usa la creencia de la TCU');
+  const sc = cuerpoFn(html, 'segCmd');
+  if (!sc) throw new Error('no existe `segCmd`: el mando del día no tiene fuente única');
+  if (!/policyAngles\(key,zen,az,Tcfg,/.test(sc))
+    throw new Error('segCmd calcula el ángulo por línea con la geometría REAL, no con la creencia de la TCU');
+  if (!/Tcfg===T/.test(sc))
+    throw new Error('segCmd manda por mesa sin exigir que la creencia de la TCU SEA el levantamiento');
   if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
     throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
   // y los caminos de instante (el slider entre pasos de malla) no pueden usar
