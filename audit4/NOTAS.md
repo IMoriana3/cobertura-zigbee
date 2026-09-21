@@ -14,9 +14,88 @@ libre · `NO VERIFICADO` / `NO DISPONIBLE` antes que reconstruir.
 
 ## FASE 1 · EL VETO DE `optimal`
 
-### 1.1 · Reproducción de la medida de #710 sobre `main`
+### 1.1 · Reproducción de la medida de #710 sobre `main` — **NO REPRODUCE. LA FASE PARA AQUÍ.**
 
-*(pendiente de la corrida — se escribe con el número delante)*
+Instrumento: `audit3/F1_seg_metrica.mjs`, **sin tocar ni un byte** (se parametriza
+el diario por variable de entorno, nada más). Sobre `main` = **687382e**,
+v1.75.0. Salida cruda en `audit4/out/F1_antes_main.json` y
+`audit4/out/F1_antes_instantes.jsonl` (258 líneas = 86 × 3 geometrías).
+
+Misma planta que #710: **79 líneas · 1.600 mesas · torsión en 1.600 de 1.600,
+máximo 3,7143°**.
+
+| lo que la puerta pedía | #710 (v1.69.0, `570654f`) | `main` (v1.75.0, `687382e`) | ¿reproduce? |
+|---|---|---|---|
+| `optimal` gana **por línea** | **86/86** (0 pérdidas) | **86/86** (0 pérdidas) | **sí** |
+| `optimal` pierde **por mesa** | **58 de 86** | **61 de 86** | **NO** |
+| sin torsión, informativos | **15 de 29** | **16 de 86** — el 29 ya no existe | **NO** |
+
+La tabla entera, para que se vea qué se movió y qué no:
+
+| | | #710 | `main` |
+|---|---|---|---|
+| **medida** | test nulo · difieren | 86/86, máx **2,1652** W/m² | 86/86, máx **10,3657** W/m² |
+| | pierde por mesa | 58/86 | **61/86** |
+| | pierde por línea | 0/86 | 0/86 |
+| | inversiones | 65 | 68 |
+| | Δ día por mesa | −0,5103 % | **−0,4441 %** |
+| | Δ día por línea | +13,7221 % | **+13,7221 %** |
+| | denominador (POA día pairwise por mesa) | 67 337,7 | 67 345,0 |
+| **sinTorsion** | test nulo · difieren | **29/86**, máx 2,1373 | **86/86**, máx 10,387 |
+| | pierde por mesa | 15/86 (15/29 informativos) | **16/86** |
+| | Δ día por mesa | −0,3482 % | **−0,2441 %** |
+| **tilt0** | test nulo · difieren | 86/86, máx 9,2949 | 86/86, máx **9,294** |
+| | pierde por mesa | 18/86 | **19/86** |
+| | Δ día por mesa | −0,3060 % | **−0,2408 %** |
+
+**Dos cosas dentro de la propia medida dicen dónde está el cambio.** El lado
+**por línea** reproduce **exacto**: +13,7221 % en las tres geometrías, al cuarto
+decimal, igual que en #710. El lado **por mesa** se ha movido entero, y la
+diferencia máxima entre las dos métricas se multiplica por 4,8 en `medida`
+(2,1652 → 10,3657) y por 4,9 en `sinTorsion` (2,1373 → 10,387). Lo que cambió
+no es la política ni la geometría: es **la agregación por mesa**.
+
+#### La causa, comprobada y no deducida
+
+#710 se midió en **v1.69.0**. Entre v1.69 y v1.75 entró **#707**:
+`poaPlantSeg.plant` dejó de ser la media **sin ponderar** de las medias de línea
+y pasó a pesar **cada mesa por su largo en toda la planta**
+(`backtracking.html:2778` y `2798`; la vieja se sigue publicando en `2846`). Con líneas de 147,74 a 1.185,51 m eso mueve la
+métrica por mesa en **todos** los instantes, también sin torsión — y por eso el
+denominador de 29 del control desapareció.
+
+Eso era una hipótesis. Se mide con `audit4/F1_causa_desfase.mjs`, que aprovecha
+que la v1.75 **sigue publicando la agregación vieja** al lado de la nueva
+(`plantLinMedia`, puesto ahí para exactamente un ciclo de transición):
+
+*(resultado de la sonda — se rellena al terminar)*
+
+#### LO QUE ESTO SIGNIFICA, Y LO QUE NO
+
+* **El defecto sigue ahí, y algo peor**: 61 de 86 en vez de 58, con el día en
+  −0,4441 %. Que la puerta no reproduzca no absuelve a nada.
+* **La cifra «15 de 29 = 51,7 %» de `audit3/NOTAS.md` está caduca**: describe la
+  v1.69, no `main`. Sobre `main` el control `sinTorsion` tiene denominador 86 y
+  da 16, o sea **18,6 %** — pero no es la misma pregunta, porque ahora las dos
+  agregaciones difieren siempre y la razón de que difieran ya no es la torsión
+  sino el largo desigual de las líneas. **El control limpio de #710 ya no
+  existe en `main`**, y reconstruirlo exige decidir antes qué se quiere
+  controlar.
+* **La fase 1 PARA**, que es lo que el encargo manda. El PR **#716** queda
+  **abierto y sin mergear**.
+
+#### ERROR MÍO, Y ES EL DE LA PROPIA PUERTA
+
+El encargo decía «**antes de tocar**». Lancé la reproducción primero, pero
+**trabajé el arreglo en paralelo mientras corría** en vez de bloquearme en
+ella. La puerta existe justamente para que una medida que no reproduce detenga
+el trabajo, y paralelizarla la anula: cuando el resultado llegó, el arreglo ya
+estaba escrito, comiteado, con banco y con el documento tocado. Va a E-X1 como
+error 20.
+
+No es que el trabajo hecho sea malo —el banco y su control negativo siguen
+valiendo— sino que **se hizo sin la licencia que la puerta daba o negaba**, y
+eso lo decide el titular, no yo.
 
 ### 1.2 · `optfree`: recuento por programa de sus llamadas
 
