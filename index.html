@@ -1086,12 +1086,28 @@ function preparaAngulos(txt,gws){
     "# El angulo del seguidor (registro 30111) se lee de aqui.\n"+
     "$Ncus = @(\n"+gws.map(g=>'  @{ Name = "'+g.nombre+'"; Host = "'+g.ipNcu+'"; Port = '+g.puerto+' }').join("\n")+"\n)");
 }
+/* EL BOM LO TIENE QUE PONER EL PAQUETE, y sin esto no llega a la planta.
+   El .ps1 del repo lo lleva, pero el tecnico NO USA ESE: usa el que sale del ZIP,
+   y por el camino se pierde. `Response.text()` decodifica UTF-8 y QUITA el BOM
+   —lo manda el estandar de Fetch— y `TextEncoder` no lo escribe nunca. Medido:
+
+       EF BB BF 61 62  ->  .text()  ->  encode  ->  61 62
+
+   Sin BOM, Windows PowerShell 5.1 lee el fichero como Windows-1252 y
+   `zigbee_inventario.ps1` NO COMPILA: la raya dentro de una cadena se le vuelve
+   comilla de cierre (el porque entero, en tools/gate_ps1_planta.py).
+
+   Va AQUI, en el embudo por el que pasan los cuatro, y no en el boton: asi
+   cualquier otro camino que prepare un colector se lo lleva tambien. Y se quita
+   antes de ponerlo, para que dos pasadas no dejen dos BOM. */
+function conBOM(txt){ return '﻿'+String(txt).replace(/^﻿/,''); }
 function preparaColector(nombre,txt,gws){
-  if(nombre==='zigbee_logger.ps1')        return preparaLogger(txt,gws);
-  if(nombre==='zigbee_inventario.ps1')    return preparaInventario(txt,gws);
-  if(nombre==='zigbee_routes_logger.ps1') return preparaRutas(txt,gws);
-  if(nombre==='zigbee_angulos.ps1')       return preparaAngulos(txt,gws);
-  return txt;
+  let t=txt;
+  if(nombre==='zigbee_logger.ps1')        t=preparaLogger(txt,gws);
+  else if(nombre==='zigbee_inventario.ps1')    t=preparaInventario(txt,gws);
+  else if(nombre==='zigbee_routes_logger.ps1') t=preparaRutas(txt,gws);
+  else if(nombre==='zigbee_angulos.ps1')       t=preparaAngulos(txt,gws);
+  return /\.ps1$/i.test(nombre)?conBOM(t):t;
 }
 function preparaRutas(txt,gws){
   if(!gws.length) return sinIP(txt,/\$GwHost\s*=\s*"[^"]*"/,

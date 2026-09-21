@@ -3078,11 +3078,38 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
   t('poaPlantSeg publica la banda plantHi/plantLo: sin segTilt es la de poaPlant, con segTilt encierra a plant', () => {
     const rows = F.policyAngles('pairwise', zen, az, T0, irr, doy, 0.2).angles;
     const a = F.poaPlant(zen, az, T0, rows, irr, doy, 0.2), b = F.poaPlantSeg(zen, az, T0, F.segsBroadcast(T0, rows), irr, doy, 0.2);
-    // sin segTilt cada mesa es su línea; la diferencia con poaPlant es SOLO la
-    // sombra por tramo (sh.seg) frente a la de fila — la banda se mueve con
-    // ella dentro del mismo orden de magnitud que plant
-    if (!(Math.abs(b.plant - a.plant) < 5) || !(Math.abs(b.plantHi - a.plantHi) < 5) || !(Math.abs(b.plantLo - a.plantLo) < 5))
-      throw new Error('banda por mesa lejos de la de poaPlant: ' + [a.plant, b.plant, a.plantHi, b.plantHi, a.plantLo, b.plantLo].map(v => v.toFixed(1)));
+    /* v1.75 · ESTA COMPROBACIÓN CAMBIA, Y NO POR AFLOJARLA.
+       Antes exigía que sin segTilt `poaPlantSeg.plant` estuviera a menos de
+       5 W/m² de `poaPlant.plant`. Eso era cierto mientras las DOS promediaban
+       las líneas sin ponderar. Desde la v1.75 la planta por mesa pesa cada mesa
+       por su largo y `poaPlant` sigue promediando líneas a pelo, así que sobre
+       Ayora —líneas de 147,74 a 1 185,51 m, de 4 a 36 mesas— se separan 15,1
+       W/m², un 1,56 %. Esa separación ES el defecto que la v1.75 arregla, no un
+       fallo: aparece incluso SIN torsión porque no la causa la torsión, la causa
+       que las líneas pesan distinto.
+       Aflojar la tolerancia hasta que pasara sería corregir hacia lo que el test
+       pide. Lo que se hace es exigir MÁS: que la diferencia se explique ENTERA
+       por el peso. Se recalcula la planta a partir de las filas de `poaPlant`
+       ponderadas por el largo de las mesas y tiene que dar `b.plant` al bit. */
+    const largos = T0.segs.map(l => l.map(m => Math.max(1e-6, m[1] - m[0])));
+    const pesada = (() => { let ac = 0, w = 0;
+      for (let r = 0; r < b.segs.length; r++) for (let k = 0; k < b.segs[r].length; k++) { ac += b.segs[r][k] * largos[r][k]; w += largos[r][k]; }
+      return w > 0 ? ac / w : 0; })();
+    if (!(Math.abs(b.plant - pesada) < 1e-9))
+      throw new Error('la planta por mesa NO es la media de sus mesas pesada por largo: ' + b.plant + ' vs ' + pesada);
+    // TEST NULO: si en esta planta las dos agregaciones coincidieran, lo de abajo
+    // no distinguiría nada y esta comprobación pasaría sin poder fallar
+    const mediaLineas = b.rows.reduce((x, y) => x + y, 0) / (b.rows.length || 1);
+    if (!(Math.abs(b.plant - mediaLineas) > 1e-6))
+      throw new Error('en esta planta las dos agregaciones coinciden: la comprobación no distingue nada');
+    // y la vieja se sigue publicando, que es lo que hace comprobable el cambio
+    if (!(Math.abs(b.plantLinMedia - mediaLineas) < 1e-9))
+      throw new Error('plantLinMedia no es la media sin ponderar de las líneas: ' + b.plantLinMedia + ' vs ' + mediaLineas);
+    // las FILAS sí siguen siendo las de poaPlant: lo que cambió es la agregación
+    // de planta, no el POA de cada línea
+    for (let r = 0; r < a.rows.length; r++)
+      if (!(Math.abs(a.rows[r] - b.rows[r]) < 5))
+        throw new Error('la fila ' + r + ' difiere entre poaPlant y poaPlantSeg sin segTilt: ' + a.rows[r] + ' vs ' + b.rows[r]);
     if (!(b.plantHi >= b.plant - 1e-9 && b.plantLo <= b.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto sin segTilt');
     const s = F.policyAnglesSeg('pairwise', zen, az, T, irr, doy, 0.2), c = F.poaPlantSeg(zen, az, T, s, irr, doy, 0.2);
     if (!(c.plantHi >= c.plant - 1e-9 && c.plantLo <= c.plant + 1e-9)) throw new Error('plantLo ≤ plant ≤ plantHi roto con segTilt');

@@ -86,9 +86,32 @@ resuelve —típicamente la primera fila del fichero, si cae dentro de la franja
 
 ### Rotación del fichero al cambiar de esquema
 
-`Export-Csv -Append` de PowerShell 5.1 **rechaza** filas cuyas columnas no cuadren con la cabecera
-del fichero que ya existe. Esto ya está escrito en `zigbee_logger.ps1` como motivo de que la carga
-del gateway vaya a su propio CSV.
+Este documento decía que `Export-Csv -Append` **rechaza** filas cuyas columnas no cuadren con la
+cabecera del fichero que ya existe. **Medido, eso es cierto en dos casos de tres — y falso
+justamente en el que le importa al bloque 2.**
+
+`tools/test_export_csv_esquema.py` le pregunta a PowerShell en vez de a la documentación:
+
+| la fila que se añade… | ¿falla? | ¿se escribe? | ¿entran sus columnas? |
+|---|---|---|---|
+| trae columnas **de más** ← el caso del bloque 2 | **no** | **sí** | **no** |
+| trae columnas **de menos** | sí | no | — |
+| trae las columnas **renombradas** | sí | no | — |
+
+**Windows PowerShell 5.1 y PowerShell 7.6.5 dan lo mismo en las tres.** La única diferencia medida
+entre versiones es el BOM: `-Encoding UTF8` lo deja en 5.1 y no lo deja en 7.
+
+Medido en el runner de este repo: 5.1 → runs 35474112229 y 35475714525; 7.6.5 → runs 35472054575 y
+35475714525.
+
+**Lo que esto significa.** Añadir las columnas de v2 sobre un fichero de v1 **no da ningún error**:
+la fila entra, `ciclo_id` y `latencia_ms` se caen por el camino y no aparece nada en pantalla. Es
+**peor** que el fallo ruidoso que este documento suponía, y hace que la rotación no sea una
+precaución sino la única forma de no perder columnas.
+
+Y al revés —un recolector de v1 escribiendo sobre un fichero ya rotado a v2— **sí falla, y no
+escribe nada**. Eso es ruidoso, que es mejor, pero significa que ese recolector deja de registrar
+hasta que se actualice.
 
 Por eso, al arrancar, cada recolector **comprueba la cabecera** del CSV que va a ampliar:
 

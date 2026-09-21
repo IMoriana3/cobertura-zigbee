@@ -528,7 +528,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.74.0';
+const VER='v1.75.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -2770,6 +2770,7 @@ function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
 function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
   const sh=shadeRows(zen,az,T,segAngles);
   const rows=[],segs=[];let sum=0,sumHi=0,sumLo=0;
+  let pAcc=0,pWt=0,pHi=0,pLo=0;        // v1.75: la planta, pesando cada mesa por su largo
   const wings=sh.wing?[]:null;                     // v1.43: POA de cada ALA de cada mesa
   for(let r=0;r<segAngles.length;r++){
     const line=T.segs?T.segs[r]:null, o=[], wo=[];
@@ -2787,9 +2788,58 @@ function poaPlantSeg(zen,az,T,segAngles,irr,doy,albedo){
     rows.push(rv);segs.push(o);sum+=rv;if(wings)wings.push(wo);
     // la BANDA del circunsolar, la misma cuenta que poaPlant (por mesa, ponderada)
     sumHi+=rv+(wt>0?cOpt/wt:0);sumLo+=rv-(wt>0?(cEle-cOpt)/wt:0);
+    // v1.75: y los mismos acumulados SIN pasar por la media de línea, para que la
+    // planta pese cada mesa por su largo en vez de cada LÍNEA por igual
+    pAcc+=acc;pWt+=wt;pHi+=acc+cOpt;pLo+=acc-(cEle-cOpt);
   }
   const n=segAngles.length||1;
-  return {rows:rows,segs:segs,plant:segAngles.length?sum/n:0,plantHi:sumHi/n,plantLo:sumLo/n,shade:sh,wings:wings};
+  /* ── v1.75 · LA PLANTA PESA CADA MESA POR SU LARGO ─────────────────────────
+     Hasta aquí esta función ponderaba por largo DENTRO de cada línea (`acc/wt`)
+     y después promediaba las líneas SIN PONDERAR (`sum/n`). El segundo paso es el
+     mismo defecto que arregla el primero, una capa más arriba: trata igual una
+     línea de 147,74 m y una de 1 185,51 m — un factor 8 en Ayora, con líneas de 4
+     a 36 mesas.
+
+     MEDIDO ANTES DE CAMBIARLO (`audit3/F32_ponderacion.mjs`, salida cruda en
+     `audit3/out/`), Ayora 2026-06-21, paso 10 min, 86 instantes × 9 políticas.
+     Diferencia en el POA de día entre pesar por mesa y promediar líneas:
+
+         astro -0,0363 %   global -0,0258 %   row -0,0205 %   bt2d -0,0047 %
+         pairwise +0,0109 %   optimal +0,0775 %   optfree +0,0509 %
+         true3d -2,0714 %     mgl -2,1344 %
+
+     Que en siete políticas sea despreciable no dice que la media sin ponderar
+     valga: dice que ahí el error es pequeño. En `true3d` y `mgl` es un 2 % del día
+     y la discrepancia pasa del 1 % en 49 y 53 de los 86 instantes —más de medio
+     día—, y son precisamente las políticas de NO-SOMBRA, donde repartir la sombra
+     de forma desigual entre mesas desiguales es el mecanismo, no un residuo.
+
+     LA SALVEDAD, CON SU CIFRA Y NO COMO INCÓGNITA. El largo no es el área cuando
+     las mesas difieren en número de módulos, y en Ayora difieren: 14, 21 y 28
+     módulos. Medido, pesar por largo frente a pesar por módulos cambia el día
+     entre -0,0003 % y +0,0030 % en las NUEVE políticas. El largo es un sustituto
+     suficiente del área en estos datos. Lo que haría falta para levantar la
+     salvedad del todo es el área por módulo, que no está: la ficha de Ayora da
+     `modW` y no la altura. El número de módulos sí está (`P.segMods`, el 100 % de
+     las mesas) pero `terrain()` no lo copia a `T` —el literal de más abajo pasa
+     siete campos por mesa y deja `segMods` fuera—, así que hoy sólo se alcanza
+     por `T.real.segMods`.
+
+     `plantLinMedia` PUBLICA LA CIFRA VIEJA al lado de la nueva. Va a propósito y
+     por un ciclo: nadie tiene que ver moverse un 2 % en `true3d` sin poder
+     comprobar de dónde viene. Cambia la granularidad de la agregación, no el
+     resultado físico — el θ ejecutado y el POA de cada mesa son los mismos.
+
+     `poaPlant` (la métrica POR LÍNEA) NO cambia: ahí no hay mesas que pesar, y
+     ponderar las líneas por su largo sería otro cambio distinto, sin medida
+     detrás. `NO MEDIDO`. */
+  const W=pWt>0?pWt:0;
+  return {rows:rows,segs:segs,
+          plant:   W>0?pAcc/W:0,
+          plantHi: W>0?pHi/W:0,
+          plantLo: W>0?pLo/W:0,
+          plantLinMedia:segAngles.length?sum/n:0,   // A, la de antes: media sin ponderar de líneas
+          shade:sh,wings:wings};
 }
 
 /* energy-optimal (Deeptrack): θ_c(f)=θ_bt+f·(θ_full−θ_bt), MISMA f para todas
@@ -5206,6 +5256,7 @@ function* serieDiaGen(key,D,dest){
      mesas coincide con la publicada. Se guarda para que la tabla pueda enseñar
      las dos sin recalcular el día. */
   const poaLin=new Array(nT);
+  const poaLinMedia=new Array(nT);   // v1.75: la agregación VIEJA, publicada un ciclo al lado de la nueva
   // la BANDA del circunsolar: hi = sin sombrear (lo de ≤v1.30) · lo = la
   // subcadena muerta tampoco lo convierte. Publicamos el número Y su banda
   const poaHi=new Array(nT), poaLo=new Array(nT);
@@ -5232,6 +5283,7 @@ function* serieDiaGen(key,D,dest){
       cmd[t]=segLineMean(T,segN);
       const ls=topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60));
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
+      poaLinMedia[t]=pp.plantLinMedia;
       segAng[t]=ls; poaS[t]=pp.segs;
       /* v1.74 · LA OTRA MÉTRICA, sobre el MISMO estado ejecutado. `poaPlantSeg`
          usa el tilt, la sombra y el largo de CADA MESA; `poaPlant` usa el tilt y
@@ -5254,12 +5306,13 @@ function* serieDiaGen(key,D,dest){
       lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
       poaLin[t]=pp.plant;                // sin mesas, las dos métricas SON la misma
+      poaLinMedia[t]=pp.plant;           // y la agregación vieja también, por lo mismo
     }
     ang[t]=lim; shade[t]=pp.shade; poaP[t]=pp.plant; poaR[t]=pp.rows;
     poaHi[t]=pp.plantHi; poaLo[t]=pp.plantLo;
     yield t;
   }
-  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaLin:poaLin,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS,porMesa:!!seg};
+  dest.s={ang:ang,cmd:cmd,shade:shade,poaP:poaP,poaLin:poaLin,poaLinMedia:poaLinMedia,poaR:poaR,poaHi:poaHi,poaLo:poaLo,f:fArr,segAng:segAng,poaS:poaS,porMesa:!!seg};
 }
 function serieDia(key,D){const d={};for(const _ of serieDiaGen(key,D,d));return d.s;}
 function* computeDayGen(){
@@ -5325,7 +5378,7 @@ function kpisSerie(T,angArr,pre){
   let kwh=0, kwhHi=0, kwhLo=0, minSh=0, thMax=0, elecKwh=0, elecPl=0, shW=0, wSum=0, glW=0;
   /* v1.74 · la MISMA integral con la otra agregación. Sin mesas las dos cifras
      son la misma por construcción y la tabla no enseña la segunda. */
-  let kwhLin=0;
+  let kwhLin=0, kwhLinMedia=0;   // v1.75: A y B del día, las dos publicadas
   let worstT=-1, shPeak=0;
   for(let t=0;t<d.times.length;t++){
     const ang=angArr[t];
@@ -5339,6 +5392,7 @@ function kpisSerie(T,angArr,pre){
        `pre` a null y recalcula— se usa la misma y las dos cifras coinciden, que
        es lo correcto: sin mesas no hay dos métricas. */
     kwhLin+=((p&&p.poaLin&&p.poaLin[t]!=null)?p.poaLin[t]:pp.plant)*dtH/1000;
+    kwhLinMedia+=((p&&p.poaLinMedia&&p.poaLinMedia[t]!=null)?p.poaLinMedia[t]:pp.plant)*dtH/1000;
     const nRt=ang.length;
     const med=pp.shade.reduce((a,v)=>a+v,0)/nRt;            // media de PLANTA
     // el peor momento se mide con la MISMA magnitud que el resto de la v1.31
@@ -5374,7 +5428,7 @@ function kpisSerie(T,angArr,pre){
     elecKwh+=(e/nRt)*dtH/1000;
     elecPl+=(ep/nRt)*dtH/1000;
   }
-  return {kwh:kwh,kwhLin:kwhLin,porMesa:!!(p&&p.porMesa),kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
+  return {kwh:kwh,kwhLin:kwhLin,kwhLinMedia:kwhLinMedia,porMesa:!!(p&&p.porMesa),kwhHi:kwhHi,kwhLo:kwhLo,shW:wSum?shW/wSum:0,glW:wSum?glW/wSum:0,minSh:minSh,thMax:thMax,
           elecKwh:elecKwh,elecPl:elecPl,elecStr:Math.max(0,elecKwh-elecPl),
           worstT:worstT,shPeak:shPeak};
 }
@@ -7236,6 +7290,13 @@ function fillDayTable(){
   const DOS=kk.some(e=>e.k&&e.k.porMesa);
   rows.push('<tr><th>Política</th><th>POA planta kWh/m²·d'+(DOS?' <span class="mut">(por mesa)</span>':'')+'</th>'+
     (DOS?'<th title="La MISMA consigna ejecutada, agregada por LÍNEA: tilt y sombra de la línea, y media de líneas SIN ponderar. La columna de al lado agrega por MESA: tilt, sombra y largo de cada una. No son dos precisiones de lo mismo, son dos agregaciones, y el orden entre políticas puede cambiar según cuál se mire.">POA planta <span class="mut">(por línea)</span></th>':'')+
+    /* v1.75 · LA AGREGACIÓN VIEJA, UN CICLO AL LADO DE LA NUEVA. La columna de por
+       mesa pesa ahora cada mesa por su largo; antes promediaba las líneas SIN
+       ponderar. En siete políticas la diferencia está por debajo del 0,08 %, pero
+       en `true3d` y `mgl` es un 2 % del día. Nadie tiene que ver moverse un 2 %
+       sin poder comprobar de dónde sale, así que la cifra de antes se publica
+       mientras dure la transición. */
+    (DOS?'<th title="La agregación ANTERIOR de la columna por mesa: pesaba cada mesa por su largo dentro de su línea, pero después promediaba las líneas SIN PONDERAR, tratando igual una de 148 m y una de 1.186 m. Se publica un ciclo para que el cambio sea comprobable: en true3d y mgl vale un 2 % del día, en las otras siete menos del 0,08 %. El θ ejecutado y el POA de cada mesa son los mismos: cambia la agregación, no el resultado.">POA planta <span class="mut">(por mesa, agregación anterior)</span></th>':'')+
     '<th title="Diferencia de POA de planta contra pairwise, y entre corchetes la BANDA del circunsolar: cota alta = circunsolar SIN sombrear (lo que se hacía hasta v1.30) · cota baja = la subcadena muerta tampoco lo convierte. Si la banda CRUZA EL CERO el simulador NO decide quién gana: sale marcada en ámbar">Δ vs pairwise (banda)</th>'+
     '<th title="Sombra media de PLANTA ponderada por la DNI del instante: cuánta sombra te comes donde hay energía. Sustituye al «máximo de una fila», que en terreno roto saturaba al 100% en todas las políticas y no distinguía nada">Sombra (pond. energía)</th>'+
     '<th title="Minutos con sombra media de planta >1% y DNI>25 W/m² (antes: cualquier fila >0,1%, que salía igual para todas)">Min con sombra >1%</th>'+
@@ -7258,6 +7319,7 @@ function fillDayTable(){
     rows.push('<tr><td style="color:'+e.P.col+'">'+e.P.nm+'</td>'+
       '<td class="'+(Math.abs(e.k.kwh-best)<1e-9?'best':'')+'">'+e.k.kwh.toFixed(3)+'</td>'+
       (DOS?'<td class="mut">'+e.k.kwhLin.toFixed(3)+'</td>':'')+
+      (DOS?'<td class="mut">'+e.k.kwhLinMedia.toFixed(3)+'</td>':'')+
       '<td>'+(ref?(d>=0?'+':'')+d.toFixed(2)+'%'+banda:'—')+'</td>'+
       '<td>'+(e.k.shW*100).toFixed(2)+'%</td>'+
       '<td>'+e.k.minSh+'</td>'+

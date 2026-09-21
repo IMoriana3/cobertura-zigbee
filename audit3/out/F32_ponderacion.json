@@ -1,0 +1,157 @@
+{
+ "commit": "0c2f1a77b67f584bf4fdc97d4bf5713aa5ade48f",
+ "fecha": "2026-06-21",
+ "paso_min": 10,
+ "coste_dia_s": 429.2,
+ "geometria": {
+  "lineas": 79,
+  "mesas": 1600,
+  "mesasSinMd": 0,
+  "largoLinea_m": [
+   147.74,
+   1185.51
+  ],
+  "mesasPorLinea": [
+   4,
+   36
+  ]
+ },
+ "testNulo": "los tres pesos difieren",
+ "res": {
+  "astro": {
+   "instantes": 86,
+   "dia_A": 66341.294,
+   "dia_B": 66317.1946,
+   "dia_C": 66317.0405,
+   "delta_B_vs_A_%": -0.0363,
+   "delta_C_vs_B_%": -0.0002,
+   "peor_instante_B_vs_A_%": -4.5734,
+   "peor_instante": {
+    "hora": "19:30",
+    "elev": 21.38,
+    "A": 539.477,
+    "B": 514.805
+   }
+  },
+  "global": {
+   "instantes": 86,
+   "dia_A": 66515.6289,
+   "dia_B": 66498.4917,
+   "dia_C": 66498.4976,
+   "delta_B_vs_A_%": -0.0258,
+   "delta_C_vs_B_%": 0,
+   "peor_instante_B_vs_A_%": -3.7585,
+   "peor_instante": {
+    "hora": "19:30",
+    "elev": 21.38,
+    "A": 562.022,
+    "B": 540.898
+   }
+  },
+  "row": {
+   "instantes": 86,
+   "dia_A": 66677.0009,
+   "dia_B": 66663.3258,
+   "dia_C": 66663.3004,
+   "delta_B_vs_A_%": -0.0205,
+   "delta_C_vs_B_%": 0,
+   "peor_instante_B_vs_A_%": -1.8429,
+   "peor_instante": {
+    "hora": "19:30",
+    "elev": 21.38,
+    "A": 596.228,
+    "B": 585.241
+   }
+  },
+  "bt2d": {
+   "instantes": 86,
+   "dia_A": 66762.5856,
+   "dia_B": 66759.4777,
+   "dia_C": 66759.4204,
+   "delta_B_vs_A_%": -0.0047,
+   "delta_C_vs_B_%": -0.0001,
+   "peor_instante_B_vs_A_%": -2.767,
+   "peor_instante": {
+    "hora": "19:30",
+    "elev": 21.38,
+    "A": 588.177,
+    "B": 571.902
+   }
+  },
+  "pairwise": {
+   "instantes": 86,
+   "dia_A": 67337.7046,
+   "dia_B": 67345.0476,
+   "dia_C": 67344.9587,
+   "delta_B_vs_A_%": 0.0109,
+   "delta_C_vs_B_%": -0.0001,
+   "peor_instante_B_vs_A_%": -1.1626,
+   "peor_instante": {
+    "hora": "19:40",
+    "elev": 19.5,
+    "A": 586.164,
+    "B": 579.349
+   }
+  },
+  "true3d": {
+   "instantes": 86,
+   "dia_A": 58556.998,
+   "dia_B": 57344.0652,
+   "dia_C": 57345.685,
+   "delta_B_vs_A_%": -2.0714,
+   "delta_C_vs_B_%": 0.0028,
+   "peor_instante_B_vs_A_%": -8.6971,
+   "peor_instante": {
+    "hora": "09:20",
+    "elev": 28.43,
+    "A": 619.771,
+    "B": 565.869
+   }
+  },
+  "mgl": {
+   "instantes": 86,
+   "dia_A": 59673.0852,
+   "dia_B": 58399.4347,
+   "dia_C": 58401.1636,
+   "delta_B_vs_A_%": -2.1344,
+   "delta_C_vs_B_%": 0.003,
+   "peor_instante_B_vs_A_%": -7.7357,
+   "peor_instante": {
+    "hora": "18:50",
+    "elev": 28.99,
+    "A": 610.936,
+    "B": 563.676
+   }
+  },
+  "optimal": {
+   "instantes": 86,
+   "dia_A": 66994.0819,
+   "dia_B": 67045.9703,
+   "dia_C": 67045.7713,
+   "delta_B_vs_A_%": 0.0775,
+   "delta_C_vs_B_%": -0.0003,
+   "peor_instante_B_vs_A_%": 2.6944,
+   "peor_instante": {
+    "hora": "08:20",
+    "elev": 17.1,
+    "A": 421.835,
+    "B": 433.201
+   }
+  },
+  "optfree": {
+   "instantes": 86,
+   "dia_A": 67043.2052,
+   "dia_B": 67077.3395,
+   "dia_C": 67077.1522,
+   "delta_B_vs_A_%": 0.0509,
+   "delta_C_vs_B_%": -0.0003,
+   "peor_instante_B_vs_A_%": 1.5598,
+   "peor_instante": {
+    "hora": "08:20",
+    "elev": 17.1,
+    "A": 432.254,
+    "B": 438.996
+   }
+  }
+ }
+}

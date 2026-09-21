@@ -4,10 +4,36 @@
  * uso: node tools/bench_cobertura_multi.mjs
  */
 import { chromium } from 'playwright-core';
+import { readFileSync } from 'node:fs';
+import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 
-const EXE = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
-const BASE = 'http://127.0.0.1:8123';
-const PLANTAS = ['elburgo', 'ayora', 'sanjose', 'fayon', 'bagnarelli', 'paramo'];
+const PUERTO = process.env.PUERTO || 8124;  // el convenio de bancos.yml; un servidor sirve a todos
+const BASE = `http://127.0.0.1:${PUERTO}`;
+const DIR = new URL('..', import.meta.url).pathname;
+
+/* LAS PLANTAS NO SE ESCRIBEN A MANO, y esa lista a mano es justo lo que se
+ * viene a quitar: decía seis cuando el selector ya lista DIEZ, y afirmaba
+ * `opciones === PLANTAS.length + 1` —siete— con un comentario que solo excusaba
+ * a Túnez. O sea que este banco estaba ROJO y nadie lo veía, porque tampoco
+ * corría en CI. Las dos mitades del mismo fallo: una lista copiada y un banco
+ * que no corre.
+ *
+ * EL CRITERIO, y no es «las que me sé»: `plantas_indice.json` es el índice
+ * GENERADO de las plantas con layout (doce), y de ellas la Cobertura Zigbee
+ * lista las que tienen AL MENOS UNA NCU. Tiene sentido físico —sin coordinador
+ * no hay malla que dibujar— y se comprueba solo:
+ *
+ *     con >= 1 NCU   ayora bagnarelli benante elburgo fayon panbianco
+ *                    paramo polvorin sanjose tunez        (10)
+ *     con 0 NCU      catania (3.314 seguidores), dicayagua (5.493, fija)
+ *
+ * y esas diez son EXACTAMENTE las del selector, comprobado entrada a entrada.
+ * Así que añadir una planta con NCU y olvidar el selector pone esto rojo, que
+ * es lo que un número codificado a mano nunca haría. */
+const INDICE = JSON.parse(readFileSync(DIR + 'plantas_indice.json', 'utf8')).plantas.map(e => e.planta);
+const NCUS = p => (JSON.parse(readFileSync(DIR + p + '_layout.json', 'utf8')).ncus || []).length;
+const PLANTAS = INDICE.filter(p => NCUS(p) > 0).sort();
+const SIN_NCU = INDICE.filter(p => NCUS(p) === 0).sort();
 
 const browser = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
@@ -40,7 +66,11 @@ for (const p of PLANTAS) {
       modos: document.querySelectorAll('.mode').length,
       centro: b ? [(b.getNorth() + b.getSouth()) / 2, (b.getEast() + b.getWest()) / 2] : null,
       clat: LAY ? LAY.clat : null, clon: LAY ? LAY.clon : null,
-      docTitle: document.title, opciones: document.getElementById('plantSel').options.length
+      docTitle: document.title,
+      /* POR NOMBRE, no por cuenta. Una cuenta correcta con la planta equivocada
+         dentro pasaba en verde; y el mensaje de un fallo de cuenta no dice cuál
+         falta, que es lo único que hace falta saber para arreglarlo. */
+      opciones: [...document.getElementById('plantSel').options].map(o => o.value).sort()
     };
   });
 
@@ -53,7 +83,12 @@ for (const p of PLANTAS) {
   ok(r.trk > 0, `layout cargado (${r.trk} seguidores)`);
   ok(r.canvas && r.pintados > 3000, `la capa del mapa de planta pinta (${r.pintados} px)`);
   ok(r.modos === 8, `los 8 modos de coloreado siguen ahí (${r.modos})`);
-  ok(r.opciones === PLANTAS.length + 1, `el selector lista las ${PLANTAS.length + 1} plantas con layout (${r.opciones})`);   // +1: Túnez, que no entra en este banco pero sí en el selector
+  const faltan = PLANTAS.filter(x => !r.opciones.includes(x));
+  const sobran = r.opciones.filter(x => x !== 'custom' && !PLANTAS.includes(x));
+  ok(faltan.length === 0 && sobran.length === 0,
+     `el selector lista las ${PLANTAS.length} plantas con NCU` +
+     (faltan.length ? ` — FALTAN: ${faltan.join(', ')}` : '') +
+     (sobran.length ? ` — SOBRAN (sin NCU en su layout): ${sobran.join(', ')}` : ''));
   ok(r.docTitle.includes(r.titulo), `título de página con la planta: "${r.docTitle}"`);
   // el mapa tiene que estar SOBRE la planta, no sobre El Burgo
   const dLat = Math.abs(r.centro[0] - r.clat), dLon = Math.abs(r.centro[1] - r.clon);
@@ -86,13 +121,37 @@ console.log('\n\n########## LAYOUT 2D ##########');
    número aquí: se leen del propio layout, que es la autoridad, y así no vuelven a quedarse viejas
    —esta tabla decía que Ayora medía 32,37 de semilargo cuando su DWG dibuja 37,379—.
    Las demás sí van a mano, porque su cota es derivada y lo que se vigila es que no cambie sola. */
-import { readFileSync as _rf } from 'node:fs';
-const LAY_DIR = new URL('..', import.meta.url).pathname;
 function esperado(p) {
-  const L = JSON.parse(_rf(LAY_DIR + p + '_layout.json', 'utf8'));
+  const L = JSON.parse(readFileSync(DIR + p + '_layout.json', 'utf8'));
   if (L.mesa) return [Math.max(...Object.values(L.mesa.tipos).map(z => z.largo)) / 2,
                       (L.mesa.filaZ != null ? L.mesa.filaZ : 3.0), 'del DWG medido'];
-  const M = { elburgo: [32.363, 3], bagnarelli: [27.878, 2.75], paramo: [27.767, 0] };
+  /* COTAS DERIVADAS, FIJADAS PARA QUE NO SE MUEVAN SOLAS. Cada una es
+     `halfL = (2·(mods·modW + (mods−1)·0,012) + 0,55) / 2`, la fórmula de
+     `resuelveTDIM` (index.html:1272), calculada con el `modW` y el `mods` del
+     layout de esa planta. No son medidas de DWG: son el resultado de la
+     fórmula, escrito aquí para que un cambio en la fórmula salte.
+
+       planta      modW   mods    halfL
+       elburgo    1,134    28    32,351
+       bagnarelli 1,303    21    27,878
+       paramo     1,134    24    27,767
+       tunez      1,300    14    18,631
+
+     EL BURGO ESTABA MAL, Y LA TOLERANCIA DE 0,02 LO TAPABA. Decía 32,363, que
+     es esta misma fórmula con N huecos por ala en vez de N−1: 28·1,134 +
+     28·0,012 = 32,088 → 32,363, contra 28·1,134 + 27·0,012 = 32,076 → 32,351.
+     La página se corrigió a N−1 —lo dice su propio comentario, «la fórmula
+     buena: N-1 huecos por ala, que es lo que miden los tres DWG»— y este
+     número se quedó en la anterior. Son 12 mm, justo por debajo del umbral.
+     Bagnarelli y Páramo sí casaban con N−1; se comprobaron las cuatro. */
+  const M = { elburgo: [32.351, 3], bagnarelli: [27.878, 2.75], paramo: [27.767, 0], tunez: [18.631, 3.125] };
+  /* NI `mesa` NI COTA ESCRITA. Antes esto era `M[p][0]` sobre un `undefined`, o
+     sea que la planta número once reventaba el banco con «cannot read
+     properties of undefined» en vez de decir qué le falta. Se devuelve `null` y
+     quien llama lo cuenta como FALLO con su motivo: una planta en el selector
+     cuya cota de seguidor nadie vigila es un hueco real, no un caso a saltar.
+     Hoy le pasa a Túnez, cuyo layout además trae `aviso_dwg`. */
+  if (!M[p]) return null;
   return [M[p][0], M[p][1], 'derivada (su DWG no se ha medido)'];
 }
 for (const p of PLANTAS) {
@@ -109,8 +168,20 @@ for (const p of PLANTAS) {
   ok(errs.length === 0, `sin errores de JS ${errs.length ? '→ ' + errs[0].slice(0, 140) : ''}`);
   ok(r.plant === p, `?planta= resuelve a ${r.plant} (antes bagnarelli/paramo caían a El Burgo)`);
   const ESP = esperado(p);
-  ok(Math.abs(r.tdim.halfL - ESP[0]) < 0.02 && Math.abs(r.tdim.filaZ - ESP[1]) < 0.01,
-     `cotas del seguidor correctas (halfL ${r.tdim.halfL.toFixed(3)} vs ${ESP[0].toFixed(3)}, filaZ ${r.tdim.filaZ} vs ${ESP[1]}) — ${ESP[2]}`);
+  if (ESP === null) {
+    ok(false, `SIN COTA ESPERADA para ${p}: su layout no trae \`mesa\` (DWG medido) y tampoco hay ` +
+              `cota derivada escrita en el banco. La página dibuja halfL ${r.tdim.halfL.toFixed(3)} · ` +
+              `filaZ ${r.tdim.filaZ}, pero nadie vigila que eso no cambie solo.`);
+  } else {
+    /* TOLERANCIA 1 mm, NO 2 cm. Los 0,02 de antes eran lo que dejaba pasar los
+       12 mm de El Burgo: un cambio de fórmula entero —N huecos por ala contra
+       N−1— cabía dentro del umbral. Medido sobre las diez plantas, el residuo
+       real es CERO: las de `mesa` salen del propio layout y las fijadas están
+       escritas a tres decimales, así que el peor caso es 1e-14. 1 mm deja sitio
+       de sobra al redondeo y no le deja ninguno a una fórmula distinta. */
+    ok(Math.abs(r.tdim.halfL - ESP[0]) < 1e-3 && Math.abs(r.tdim.filaZ - ESP[1]) < 1e-3,
+       `cotas del seguidor correctas (halfL ${r.tdim.halfL.toFixed(3)} vs ${ESP[0].toFixed(3)}, filaZ ${r.tdim.filaZ} vs ${ESP[1]}) — ${ESP[2]}`);
+  }
   ok(r.azul > 2000, `dibuja los seguidores (${r.azul} px)`);
   ok(r.titulo.includes('Layout 2D'), `se llama Layout 2D ("${r.titulo}")`);
   /* Lo que de verdad importa: las dos vistas dibujan el MISMO seguidor. Si divergen, el mapa de la

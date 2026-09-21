@@ -288,7 +288,7 @@ recuentos de esa fila van sobre **29**, no sobre 86. Se dice aquí y no después
 | geometría | inversiones de orden | `optimal` pierde **por mesa** | `optimal` pierde **por línea** | Δ día por mesa | Δ día por línea |
 |---|---|---|---|---|---|
 | **medida** (Ayora real) | **65 de 86** | **58 de 86** | **0 de 86** | **−0,5103 %** | **+13,7221 %** |
-| **sinTorsion** | 22 de 86 (**22 de 29** informativos) | **15 de 86** | **0 de 86** | **−0,3482 %** | +13,7221 % |
+| **sinTorsion** | 22 de 86 (**22 de 29** informativos) | **15 de 86** (**15 de 29** informativos) | **0 de 86** | **−0,3482 %** | +13,7221 % |
 | tilt0 | 26 de 86 | 18 de 86 | 0 de 86 | −0,3060 % | +13,7221 % |
 
 Denominador de los porcentajes: la POA del día de `pairwise` con **la misma
@@ -311,11 +311,24 @@ demás igual —cotas, solapes, parejas—, y con la sustitución aplicada a las
 geometrías, la que puntúa y la que manda.
 
 **Sin torsión sigue fallando**: `optimal` pierde por mesa en **15 de 86**
-instantes y el día sale **−0,3482 %**. La torsión **agrava** el efecto —de 15 a 58
-instantes, de −0,35 % a −0,51 %— pero **no lo causa**.
+instantes — y el denominador que informa ahí es **29, no 86**, porque en los
+otros 57 las dos métricas coinciden y no pueden discrepar. O sea **15 de 29**, el
+**51,7 %** de los instantes en que la pregunta tiene sentido. El día sale
+**−0,3482 %**.
 
-Por tanto la causa **no** queda acotada al reparto por línea con torsión, que es
-lo que el encargo daba como hipótesis. Las dos métricas son **agregaciones
+Se repite aquí el denominador y no se deja sólo en el test nulo a propósito:
+«15 de 86» leído suelto da el **17,4 %** y es una proporción falsa. Tres veces
+menor que la real.
+
+La torsión **agrava** el efecto —de 15 a 58 instantes, de −0,35 % a −0,51 %—
+pero **no lo causa**.
+
+**EL ENUNCIADO DEL HALLAZGO, CORREGIDO POR ESTE CONTROL.** La hipótesis del
+encargo era que el defecto vivía en el reparto por línea **con geometría
+quebrada**. Es falsa. El defecto es que **el veto puntúa con una métrica distinta
+de la que decide, SIEMPRE**, y la torsión sólo **amplía la brecha**. Sin el
+control se habría publicado una causa acotada donde no lo está — que es
+exactamente para lo que la cláusula 1.3 exigía el control. Las dos métricas son **agregaciones
 distintas** —`poaPlantSeg` pondera por largo de mesa dentro de la línea y luego
 promedia líneas; `poaPlant` promedia filas sin ponderar— y `optimal` maximiza una
 mientras la página publica la otra siempre que haya `segTilt`.
@@ -325,6 +338,58 @@ mientras la página publica la otra siempre que haya `segTilt`.
 introduce un desajuste **distinto** entre las dos métricas — se ve en su test
 nulo, que salta a 9,2949 W/m² frente a los 2,14 de los otros dos. Se publica su
 fila por completitud y se declara confundida.
+
+### 1.4 · LA CAUSA, LOCALIZADA EN EL CÓDIGO Y CONTADA POR PROGRAMA
+
+El recuento de arriba dice **qué** pasa. Esto dice **por qué**, y no es una
+interpretación: es un recuento de llamadas.
+
+> **Esto NO es una receta.** Que cambiar estas seis llamadas a `poaPlantSeg`
+> arregle el defecto **es otra medida, y no está hecha**: `NO MEDIDO`. Y cuál de
+> las dos métricas debe usar el optimizador no lo decide un recuento — es decidir
+> qué se quiere maximizar. Va aquí arriba y no al final para que nadie lea la
+> tabla como una lista de líneas que tocar.
+
+`anglesOptimal` ocupa las líneas **2925-3071** de `backtracking.html` (147
+líneas, commit `0a38ddc`). Dentro de ese cuerpo:
+
+| línea | llamada |
+|---|---|
+| `backtracking.html:2946` | `const p=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;` |
+| `backtracking.html:2961` | `const p2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+| `backtracking.html:2975` | `best=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:2987` | `const pP=poaPlant(zen,az,T,angP,irr,doy,albedo).plant;` |
+| `backtracking.html:3045` | `let eBest=poaPlant(zen,az,T,bestAng,irr,doy,albedo).plant;` |
+| `backtracking.html:3050` | `const e2=poaPlant(zen,az,T,ang2,irr,doy,albedo).plant;` |
+
+**`poaPlant`: 6 llamadas. `poaPlantSeg`: 0.**
+
+El recuento se hace **por programa**, no a ojo: se recorta el cuerpo entre
+`function anglesOptimal(zen` y `function anglesOptimalFree(` y se cuentan las
+apariciones de `\bpoaPlant\(` y `\bpoaPlantSeg\(`. Reproducible con
+
+```
+node -e 'const L=require("fs").readFileSync("backtracking.html","utf8").split("\n");
+ const a=L.findIndex(l=>l.startsWith("function anglesOptimal(zen")),
+       b=L.findIndex((l,i)=>i>a&&l.startsWith("function anglesOptimalFree("));
+ let p=0,s=0; for(let i=a;i<b;i++){p+=(L[i].match(/\bpoaPlant\(/g)||[]).length;
+ s+=(L[i].match(/\bpoaPlantSeg\(/g)||[]).length;} console.log(p,s);'
+```
+
+**Control del recorte:** el cuerpo mide **147 líneas**, no cero. Un recorte
+vacío daría «0 y 0» y parecería confirmar cualquier cosa — es el fallo que este
+cuaderno ya cometió dos veces (errores 4 y el de los controles sobre cadena
+vacía), y por eso la longitud va publicada al lado del recuento.
+
+**Qué explica, exactamente.** `optimal` busca su máximo con `poaPlant` —y con
+ella lo encuentra: por eso **no pierde nunca por línea, 0 de 86**— y la página lo
+puntúa con `poaPlantSeg` siempre que la planta traiga `segTilt`, que es el caso de
+Ayora y de todas las reales. Es decir: **la regla con la que se busca no es la
+regla con la que se publica**, y el 58 de 86 de la tabla 1.1 es la consecuencia
+mecánica de estas seis líneas.
+
+**Y se repite, porque es lo que más fácil se olvida:** el recuento localiza la
+causa, no prescribe el arreglo. Ver arriba.
 
 ### Lo que NO dice esta medida
 
@@ -906,6 +971,130 @@ sombra media de planta sale **1,48 %** y con paso 5 sale **0,63 %**, porque el
 lazo tiene seis veces más tiempo para alcanzar la consigna. Lo que se vigila en
 CI es que las herramientas corren y que lo que publican cuadra, no el número.
 
+## FASE 3.2 · EL DELTA ANUAL, Y POR QUÉ NO ES EL DEL DÍA
+
+### Lo primero, porque cambia la pregunta
+
+**La ruta anual de la página NO usa la métrica por mesa.** En el bucle anual,
+`backtracking.html:7388`:
+
+```js
+tot[P.key]+=poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
+```
+
+Es `poaPlant`, la de **línea**. Así que el delta A-vs-B **no existe hoy en el
+anual publicado**: la agregación que cambia la 3.2 no interviene en él. Lo que
+sigue mide lo que ese delta **sería** si el anual puntuara por mesa, y va
+etiquetado **`HIPOTÉTICO`**.
+
+### Qué se mantuvo fijo
+
+El mando es **exactamente** el de la ruta anual de la página: `policyAngles` por
+línea, pasado por `crearLazo()`, un lazo por política y por día, paso 10 min,
+doce días representativos con su peso `DIM[mo]`. Lo único que cambia es cómo se
+agrega el POA de las mesas. Cambiar también el mando habría medido dos cosas a la
+vez.
+
+### Resultado · Ayora, 12 días, paso 10 min
+
+| política | anual A (kWh/m²) | anual B (kWh/m²) | B vs A | ¿retrocede? |
+|---|---|---|---|---|
+| `astro` | 2 653,204837 | 2 659,273739 | **+0,2287 %** | no |
+| `row` | 2 670,928887 | 2 677,475253 | **+0,2451 %** | no |
+| `optfree` | 2 690,060817 | 2 698,438189 | **+0,3114 %** | no |
+| `global` | 2 664,911076 | 2 673,277961 | **+0,3140 %** | no |
+| `bt2d` | 2 662,889516 | 2 671,534520 | **+0,3246 %** | no |
+| `optimal` | 2 688,314455 | 2 697,616905 | **+0,3460 %** | no |
+| `true3d` | 2 287,588537 | 2 239,490363 | **−2,1026 %** | **sí** |
+| `pairwise` | 2 306,817752 | 2 253,628446 | **−2,3057 %** | **sí** |
+| `mgl` | — | — | **`NO MEDIDA`** | sí |
+
+**`mgl`, con su coste MEDIDO y sin multiplicarlo por doce.** Su primer mes
+—enero— costó **7 974 s: 2 h 12 min 54 s**, frente a los ~25 s por mes de las
+baratas. **Los otros once meses: desconocidos.** No se extrapola el total, y esta
+vez por una razón medida y no por prudencia: el coste por instante de `mgl` ya se
+midió como **no constante** en la sonda diaria (tramos a 28, 92 y 68,5 s). Doce
+por 7 974 s sería inventarse once meses.
+
+Se declara **`NO MEDIDA`**, con el criterio que el auditor fijó en la 3.1, y se
+publica el mes que sí se midió.
+
+**Y el recorrido de esta cifra es el ejemplo de la trampa:** primero escribí «más
+de 57 min», luego «más de 91 min», y las dos veces eran **el reloj en el momento
+de escribirlo**, con el mes todavía corriendo. De las dos saqué totales —«más de
+11 h», «más de 18 h»— que eran extrapolaciones de una cota creciente. El valor
+real del mes, cuando por fin terminó, fue **2 h 13 min**, y el total sigue sin
+saberse. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
+en la 3.1, y no se extrapola su total: su coste por instante ya se midió como **no
+constante** (tramos a 28, 92 y 68,5 s en la sonda diaria).
+
+### EL ANUAL Y EL DÍA NO SON COMPARABLES, y hay que decirlo antes que las cifras
+
+Las dos tablas de esta fase **no miden lo mismo**, y ponerlas juntas sin esto
+invitaría a restarlas:
+
+| | el día | el anual |
+|---|---|---|
+| mando | **por mesa** (`policyAnglesSeg`) | **por línea** (`policyAngles`) |
+| lazo de control | **no** | **sí**, uno por política y día |
+| cuándo | 21 de junio | **doce** días representativos |
+
+Con sol bajo es donde las dos agregaciones más se separan, y doce días pesan eso
+mucho más que un solsticio de verano solo. Así que el cambio de signo y de orden
+de magnitud entre las dos tablas **no es una contradicción: es que son dos
+medidas distintas**, y la diferencia entre ellas no se ha desglosado —cuánto
+viene del mando, cuánto del lazo y cuánto del calendario sigue **`NO MEDIDO`**.
+
+### Lo que sí dice el anual
+
+**1 · El corte es si la política RETROCEDE.** Las seis que no retroceden: entre
+**+0,2287 % y +0,3460 %**. Las dos que sí: **−2,1026 %** y **−2,3057 %**. Limpio,
+con signo opuesto entre los dos grupos y sin solape.
+
+**2 · El peso paga del mismo orden que la granularidad.** `optimal` da
+**+0,3460 %** contra el **+0,3524 %** de E-F2, que es el careo que el encargo
+pedía. En el día el peso valía treinta y dos veces menos que la granularidad; en
+el año, lo mismo. **Esto corrige la conclusión de la sección anterior.**
+
+**3 · Y refuta la agrupación que salió del día.** Allí las dos que se salían eran
+`true3d` y `mgl`, y se explicó por «buscar una forma». En el anual son `true3d` y
+`pairwise`, y `pairwise` en el día era despreciable. La única que aguanta en las
+dos medidas es `true3d`. **Por qué el retroceso invierte el signo: `NO MEDIDO`.**
+
+**Salida cruda** en `audit3/out/F32_anual.json` y los 96 meses medidos en
+`audit3/out/F32_anual_meses.jsonl`.
+
+### Cómo se cita M-5 en el informe, acordado con el auditor
+
+M-5 sube de «indicio dimensionado, un día» a **medido en el anual**. El ascenso
+es legítimo **sólo con la limitación dentro de la frase que lo concede**, no en
+la línea de al lado: una tabla de casillas se lee por la casilla, y quien la lea
+así se llevaría la categoría sin la salvedad. La redacción que aguanta lo que el
+dato da:
+
+> **M-5 · medido en el anual, sobre un anual que la página no publica.** La ruta
+> anual publicada puntúa con `poaPlant`, por línea (`backtracking.html:7388`), y
+> por eso la sonda tuvo que **replicar su mando** para aislar la agregación. El
+> corte por retroceso —seis políticas entre **+0,2287 %** y **+0,3460 %**, dos en
+> **−2,1026 %** y **−2,3057 %**— está medido sobre esa réplica, no sobre lo que
+> el simulador enseña hoy.
+
+Así la casilla **arrastra su propia limitación** y no se puede citar más fuerte
+de lo que aguanta.
+
+**Y una advertencia sobre el recuento del expediente:** el ascenso de M-5 y el
+refuerzo del hallazgo del anual sin lazo **salen de la MISMA medida**. No son dos
+confirmaciones independientes, y contarlas como dos inflaría el expediente. La
+sonda tuvo que replicar el mando de la página precisamente **porque** el anual no
+pasa por la métrica por mesa: ese hecho es la premisa de una y el contenido de la
+otra.
+
+### Lo que este resultado NO autoriza
+
+No autoriza a cambiar el anual para que puntúe por mesa. Eso movería una cifra
+publicada entre **−2,3 % y +0,35 %** según la política, y es una decisión de
+auditoría que no se ha tomado. Queda propuesto y medido, nada más.
+
 ## BLOQUEADO A PROPÓSITO · lo que NO se toca y por qué
 
 No son cabos sueltos: son tres cosas que el auditor ha dejado paradas a
@@ -941,6 +1130,375 @@ La del experimento del `cancelled()`. **No se pudo borrar desde este contenedor*
 —el proxy de git corta el push de borrado: `the remote end hung up
 unexpectedly`—. Lleva sólo el fichero del experimento, no tiene PR y no dispara
 `bancos`. **Hay que borrarla a mano.**
+
+## FASE 3.2 · LA PONDERACIÓN DE PLANTA, MEDIDA ANTES DE ELEGIR
+
+### Qué se agregaba mal, y dónde
+
+`poaPlantSeg` hace dos pasos y sólo el primero pondera:
+
+1. dentro de cada línea, las mesas pesan por su **largo** (`acc/wt`, `backtracking.html:2786`)
+2. entre líneas, **media sin ponderar** (`sum/n`, `backtracking.html:2792`)
+
+El paso 2 es el mismo vicio que el paso 1 arregla, una capa más arriba: trata
+igual una línea de 147,74 m y una de 1 185,51 m — un factor **8** en el dominio
+medido, con líneas de **4 a 36 mesas**. Así que «ponderar por mesa» no estaba
+hecho a nivel de planta, sólo dentro de cada línea.
+
+### Las tres agregaciones, sobre el MISMO θ y el MISMO POA por mesa
+
+Una sola llamada a `poaPlantSeg` devuelve `segs` —el POA de cada mesa— así que
+cambiar el peso no vuelve a tocar la física. Lo único que cambia entre las tres
+cifras es el peso:
+
+- **A** · media sin ponderar de las medias de línea (lo que se publica hoy)
+- **B** · todas las mesas de la planta, peso = **largo**
+- **C** · todas las mesas de la planta, peso = **módulos** (`md` del levantamiento)
+
+**Test nulo, antes de ningún recuento:** los tres pesos tienen que diferir en el
+dominio medido. **385 largos distintos**, **3 valores de `md`** (14/21/28), líneas
+de 4 a 36 mesas. Difieren, así que las cifras informan.
+
+### Resultado · Ayora, 2026-06-21, paso 10 min, 86 instantes por política
+
+| política | B vs A (día) | C vs B (día) | peor instante | instantes con \|Δ\| > 1 % |
+|---|---|---|---|---|
+| `astro` | −0,0363 % | −0,0002 % | −10,233 % (20:40, sol 8,58°) | 13/86 |
+| `global` | −0,0258 % | 0,0000 % | −4,600 % (21:10, sol 3,45°) | 21/86 |
+| `row` | −0,0205 % | −0,0000 % | −7,733 % (21:10) | 13/86 |
+| `bt2d` | −0,0047 % | −0,0001 % | −3,636 % (21:10) | 18/86 |
+| `pairwise` | **+0,0109 %** | −0,0001 % | −9,623 % (21:10) | 10/86 |
+| `true3d` | **−2,0714 %** | +0,0028 % | −17,254 % (21:10) | **49/86** |
+| `mgl` | **−2,1344 %** | +0,0030 % | −11,460 % (07:10, sol 4,62°) | **53/86** |
+| `optimal` | **+0,0775 %** | −0,0003 % | −9,019 % (21:10) | 10/86 |
+| `optfree` | **+0,0509 %** | −0,0003 % | −5,620 % (21:10) | 7/86 |
+
+**Las nueve, completas.** Coste medido: **8 672 s** de instantes (2 h 25 min) más
+**429,2 s** de cálculo del día. `mgl` sola se llevó unos 5 000 s, con un coste por
+instante que **no es constante** —tramos medidos a 28, 92 y 68,5 s— razón por la
+cual su total no se estimó, se midió.
+
+**Cuidado con la columna «peor instante»**, que tiene dos lecturas y no son la
+misma: aquí va el peor en términos **relativos**. La salida cruda de la sonda
+elige el peor por diferencia **absoluta**, y da otros números (p. ej. `true3d`
+−8,697 % en vez de −17,254 %). Los dos son ciertos y responden a preguntas
+distintas; se publica el relativo porque la pregunta es cuánto puede desviarse la
+cifra, no cuántos W/m² se mueven.
+
+### Lo que dicen los números
+
+**1 · La salvedad del encargo es real y vale ≤ 0,003 %.** El auditor dictó que se
+escribiera junto a la cifra que «el largo no es el área cuando las mesas difieren
+en número de módulos». Difieren de verdad —14, 21 y 28— y la diferencia entre
+ponderar por largo y por módulos, en el día, va de **−0,0002 % a +0,0028 %**. La
+salvedad deja de ser una precaución abstracta y pasa a ser una cifra: existe y no
+mueve nada. **Ponderar por largo queda avalado por medida, no por argumento.**
+
+**2 · La ponderación de planta casi no importa EN EL DÍA, salvo en dos
+políticas.** Siete se mueven entre −0,036 % y +0,078 %. **`true3d` se mueve
+−2,0714 % y `mgl` −2,1344 %**, unas treinta veces más.
+
+> ⚠️ **La explicación que se dio aquí está REFUTADA por la medida anual de más
+> abajo.** Se escribió que las dos que se salen «son las que buscan una FORMA en
+> vez de maximizar energía». En el anual las que se salen son **`true3d` y
+> `pairwise`** —y `pairwise` en el día vale **+0,0109 %**, despreciable—, así que
+> esa agrupación no sobrevive. La única que se sale en las DOS medidas es
+> `true3d`. La agrupación buena, la del anual, es otra: **si la política
+> retrocede o no**. Se deja escrito el error en vez de borrarlo, porque el
+> patrón es el de siempre: una explicación construida sobre una sola medida.
+
+Y no es un instante raro. La última columna lo dice: la discrepancia pasa del 1 %
+en **49 de 86** instantes para `true3d` y **53 de 86** para `mgl`, frente a 7–21
+de las otras siete. Para esas dos políticas, las dos agregaciones discrepan más de
+medio día; para el resto, son cuatro ratos sueltos que se compensan.
+
+**3 · Y NO es lo mismo que el +0,3524 % de E-F2.** Aquel mide cambiar la
+**granularidad de la física** —tilt de línea a tilt de mesa— en `pairwise`. Esto
+mide cambiar el **peso de la agregación** dejando la física igual: **+0,0109 %**
+en `pairwise` **en el día**, treinta y dos veces menor.
+
+> ⚠️ **«La granularidad paga y el peso casi no» está CORREGIDO por la medida
+> anual.** En el anual el peso paga **del mismo orden** que la granularidad:
+> `optimal` da **+0,3460 %** contra el +0,3524 % de E-F2, casi idéntico. La frase
+> valía para un día de junio y se publicó como si valiera en general. Un día no
+> es un año, y el error fue tratar la conclusión de una medida como si fuera la
+> conclusión del fenómeno.
+
+**4 · Por instante sí importa siempre.** De −3,6 % a −17,3 %, y el peor caso de
+cinco de las seis cae en el **mismo instante**: las 21:10 con el sol a **3,45°**.
+A sol rasante la media sin ponderar y la ponderada se separan mucho; en el total
+del día se compensa. Publicar sólo el día escondería eso, así que va la columna.
+
+### El dato de módulos existe, y dónde se cae por el camino
+
+El encargo daba por hecho que el área «no está en los datos». Medido:
+
+- `ayora_cotas.json` trae `md` en **1 502 de 1 502 mesas, el 100 %** (14/21/28).
+- `plantFromCotas` lo construye bien en `P.segMods` (`backtracking.html:1695`).
+- **`terrain()` NO lo copia a `T`**: el literal de `backtracking.html:4443-4445`
+  pasa `segs`, `segTilt`, `segPairs`, `segDrive`, `segZ`, `segSide` y `segMorro`,
+  y **deja `segMods` fuera**.
+- El dato **no se pierde**: sigue en `T.real`, porque esa misma rama guarda
+  `real:P`. La sonda lo lee de ahí.
+
+Es **un campo en un literal**, no un trabajo de fontanería. No se toca el código:
+cuál es la ponderación buena es decisión de auditoría, y la decisión ya está
+tomada a favor del largo — que además es la que los números avalan.
+
+**Y el test nulo hizo aquí su trabajo por primera vez ANTES y no DESPUÉS.** La
+primera corrida leía `T.segMods` y el test nulo saltó: «1600 mesas sin md: C no se
+puede calcular entera». Paró la publicación de una columna hueca en vez de
+publicar ceros. Las veces anteriores de esta ronda, un test nulo cazó el fallo
+después de escrito; éste lo cazó antes de escribirlo.
+
+## MÉTODO · CUANDO UN FALLO DEL INSTRUMENTO PRODUCE EL RESULTADO QUE ESPERAS
+
+Dictada por el auditor a partir del control del recorte de la 1.4, y es la más
+peligrosa de las que lleva este cuaderno, porque no se nota.
+
+**El caso.** Para localizar la causa de la fase 1 hay que contar, dentro del
+cuerpo de `anglesOptimal`, cuántas veces llama a `poaPlant` y cuántas a
+`poaPlantSeg`. La tesis es «muchas y ninguna». El recuento se hace sobre un
+recorte del fichero entre dos anclas de texto.
+
+**Si el recorte sale vacío** —porque un ancla cambió de nombre, porque el
+fichero se reordenó— el recuento da **«0 y 0»**. Y ahí está la trampa: **la mitad
+que importa coincide con la tesis.** Cero llamadas a `poaPlantSeg` es
+exactamente lo que se quería demostrar. Un revisor rápido lee el cero, le cuadra,
+y sigue.
+
+**La regla.** Cuando el modo de fallo del instrumento produce un resultado
+**indistinguible del esperado**, o parcialmente compatible con él, el instrumento
+necesita **su propio control**, independiente de la medida. Aquí: publicar la
+**longitud del recorte** (147 líneas) junto al recuento. Un recorte roto mide
+cero y se delata solo.
+
+**Cómo se reconoce el caso.** Preguntarse: *si mi instrumento se rompiera del
+modo más probable, ¿qué número daría?* Si la respuesta se parece al número que
+espero, hace falta un control. Si daría algo absurdo —un `NaN`, un negativo, un
+error— el propio resultado avisa y el control es menos urgente.
+
+**Hermana de las anteriores, y no la misma.** El test nulo pregunta *¿puede esta
+comprobación fallar?*; el control negativo, *¿falla cuando debe?*. Ésta pregunta
+*¿el resultado que veo podría venir de que el instrumento no funcione?* — y es la
+que faltaba en los errores 4 y en los dos controles negativos que pasaron sobre
+una cadena vacía: en los tres, el instrumento roto **producía el verde**.
+
+## MÉTODO · DIAGNOSTICAR POR ELIMINACIÓN CUANDO NO SE PUEDE OBSERVAR
+
+Vale fuera de este repositorio, así que va escrito entero.
+
+### El problema
+
+`audit3/F32_anual.mjs` se murió **tres veces sin dejar nada**. Ni traza, ni
+código de salida útil, ni línea en `stderr`. Un proceso que se va en silencio no
+da por dónde empezar: no hay nada que leer, y la tentación es relanzarlo a ver si
+esta vez sale — que es repetir el mismo experimento esperando otro resultado.
+
+### Lo que se hizo, y por qué funcionó
+
+**No se buscó la causa: se instrumentó para descartarlas todas.** Se pusieron
+siete manejadores, uno por cada forma de morir que un proceso Node con navegador
+*puede* notar:
+
+| manejador | qué descartaría si callara |
+|---|---|
+| `pg.on('crash')` | caída del renderizador |
+| `pg.on('close')` | cierre de la página |
+| `browser.on('disconnected')` | el navegador se fue |
+| `SIGTERM` · `SIGINT` · `SIGHUP` | alguien lo mató con una señal capturable |
+| `uncaughtException` | error de programa |
+| `unhandledRejection` | promesa sin `catch` |
+
+más un **latido cada 60 s con el RSS**, que convierte «no hay salida nueva» —que
+puede ser un proceso lento o un proceso muerto, y el fichero no los distingue— en
+dos estados distinguibles.
+
+La cuarta muerte **no disparó ninguno**, y el RSS estaba **plano en 135 MB** en
+los tres últimos latidos, con 29 GB de disco libres.
+
+**La instrumentación no dijo de qué murió. Dijo de qué NO murió, y eso bastó:**
+descartadas todas las formas capturables, lo único que queda es una señal que no
+se puede capturar — `SIGKILL`. Y el RSS plano descarta además la única causa
+externa que habría sido cosa nuestra, la memoria.
+
+### La condición que hace válido el argumento
+
+**El conjunto de manejadores tiene que ser exhaustivo sobre lo capturable.** Si
+falta uno, el silencio no prueba nada: prueba que no miramos ahí. El argumento
+por eliminación es tan fuerte como completa sea la lista, y por eso la lista va
+escrita arriba y no resumida — para que quien la lea pueda decir «te falta
+éste».
+
+### Y la confirmación, que es otra cosa
+
+Descartar no confirma. La hipótesis —«el entorno siega los procesos desprendidos
+cuando la sesión queda ociosa»— se confirmó por una variable **manipulable**: el
+canal de lanzamiento.
+
+| lanzamiento | resultado |
+|---|---|
+| desprendido (`nohup`, `setsid`) | **3 de 3 muertes**, todas a los pocos minutos de acabar el turno |
+| como tarea del arnés | vivo **31 min** y pasando de largo el mes 4, donde las tres murieron; luego **más de 5 h sin una caída** |
+
+**El mecanismo sigue `NO VERIFICADO`** y así se dice: no se puede ver quién manda
+la señal desde dentro del contenedor. Lo que hay es una correlación de 4 de 4 con
+una variable que se controla, y una regla operativa que funciona. Eso no es
+saber la causa; es saber qué hacer.
+
+### Un límite inferior que sigue creciendo no es una medida
+
+Va aquí y no sólo junto a la cifra, porque es la trampa más fácil de pasar por
+alto de las tres de esta tanda. La nota de `mgl` dijo primero «más de 57 minutos
+en su primer mes» y después «más de 91». Ninguna de las dos era el coste del mes:
+las dos eran **el reloj en el instante de escribirlas**, con el mes todavía
+corriendo. Y de cada una saqué un total —«más de 11 h», «más de 18 h»— que era
+una extrapolación de una cota creciente.
+
+**El mes acabó costando 7 974 s: 2 h 13 min.** Ninguna de mis dos frases era
+falsa, y las dos inducían a error, que es peor: un «más de X» sobre algo que no
+ha terminado envejece **hacia arriba** mientras se lee, y se cita después como si
+fuera el valor.
+
+Si se publica, se publica **con el reloj al lado** —*más de 91 min medidos a las
+06:20, sin terminar*— y se declara como **cota**, no como coste. Y el total de
+doce meses **sigue sin saberse**, porque multiplicar el mes medido por doce sería
+la misma extrapolación otra vez.
+
+### La regla, para llevársela
+
+1. Un proceso que muere en silencio **no se relanza igual**. Se instrumenta.
+2. Se instrumenta **por eliminación**: un manejador por cada causa capturable, y
+   la lista escrita **entera** para que se pueda auditar su completitud. El
+   silencio de los manejadores sólo prueba algo si el conjunto es **exhaustivo
+   sobre lo capturable**; si falta uno, el silencio prueba que no se miró ahí.
+   Publicar la lista es lo que convierte la inferencia en **falsable**.
+3. Un **latido** convierte «sin salida» en «vivo y lento» o «muerto».
+4. Descartar lo capturable **acota** la causa; no la demuestra.
+5. La confirmación viene de mover una variable que se controla y ver si el
+   fenómeno la sigue.
+6. Lo que no se ha visto se declara `NO VERIFICADO`, aunque la regla operativa ya
+   funcione: **eso no es saber la causa, es saber qué hacer.**
+7. Y un **límite inferior que sigue creciendo no es una medida**: se publica con
+   su reloj, y como cota.
+
+## DIAGNÓSTICO · POR QUÉ CUESTA EL TERRENO CON PENDIENTE N-S
+
+**Sólo medido. No se ha tocado `mvPara`, ni `anglesPairwiseRaw`, ni
+`anglesTrue3d`, ni ningún umbral.** Guion en `audit3/F5_coste_tilt.mjs`, salida
+cruda en `audit3/out/F5_coste_tilt.json`, commit `8dc2115`.
+
+Barrido de tilt N-S en 0,0 / 0,2 / 0,4 / 0,45 / 0,49 / 0,51 / 0,55 / 0,6 / 1,0 /
+2,0 / 4,0°, todo lo demás idéntico: 8 filas, 29 instantes con DNI > 25, paso
+30 min. **Dos presets, no uno** — el encargo pedía uno, pero el síntoma dice
+«quebrado o constante da igual» y eso sólo se confirma o se refuta midiendo los
+dos, y los tres guardas se reparten distinto entre ellos.
+
+### TEST NULO, antes de interpretar
+
+El tiempo total **sí varía**: de **673,7 ms** a **6 430,9 ms**, un factor **9,5**.
+El experimento informa.
+
+### CONTROL DEL INSTRUMENTO
+
+Las iteraciones del bucle de reparación se cuentan con una **réplica** escrita en
+la sonda, no tocando el original. La réplica lleva su control: su resultado tiene
+que coincidir con `anglesPairwiseRaw` ángulo a ángulo. **Coincide en los 22
+puntos × 29 instantes.** Una réplica desviada contaría las iteraciones de otro
+bucle, y el recuento parecería igual de creíble.
+
+### La tabla
+
+| preset | tilt | ms | MV | atajo true3d | guarda repar. | iteraciones | agota el tope |
+|---|---|---|---|---|---|---|---|
+| constante | 0,0 | 811,9 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,2 | 1 247,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,4 | 1 209,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,45 | 1 200,4 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | 0,49 | 1 262,1 | 17 | 7/7 | 0/29 | 0 | 0 |
+| constante | **0,51** | 1 204,9 | 17 | **0/7** | 0/29 | 0 | 0 |
+| constante | 0,55 | 1 187,8 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 0,6 | 1 214,5 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 1,0 | 1 207,3 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 2,0 | 1 148,2 | 17 | 0/7 | 0/29 | 0 | 0 |
+| constante | 4,0 | 1 197,2 | 17 | 0/7 | 0/29 | 0 | 0 |
+| quebrado | 0,0 | 673,7 | 17 | 7/7 | 0/29 | 0 | 0 |
+| quebrado | 0,2 | 731,0 | 17 | 7/7 | **29/29** | 29 | 0 |
+| quebrado | **0,4** | 1 381,6 | **33** | 7/7 | 29/29 | 34 | 0 |
+| quebrado | 0,45 | 1 557,1 | 33 | 7/7 | 29/29 | 34 | 0 |
+| quebrado | 0,49 | 1 491,3 | 33 | 7/7 | 29/29 | 37 | 0 |
+| quebrado | **0,51** | 1 544,9 | 33 | **1/7** | 29/29 | 37 | 0 |
+| quebrado | 0,55 | 1 803,9 | 33 | 1/7 | 29/29 | 37 | 0 |
+| quebrado | 0,6 | 1 828,9 | 33 | 1/7 | 29/29 | 37 | 0 |
+| quebrado | 1,0 | 2 260,8 | 33 | 1/7 | 29/29 | 46 | 0 |
+| quebrado | 2,0 | 3 582,2 | 33 | 1/7 | 29/29 | 111 | 0 |
+| quebrado | 4,0 | 6 430,9 | 33 | 1/7 | 29/29 | **226** | 0 |
+
+### LA RESPUESTA, Y NO ES LA HIPÓTESIS
+
+**1 · El 71 % al 99,7 % del coste son TRES políticas.** `mgl`, `optimal` y
+`optfree`, en **los 22 puntos del barrido**. Las cuatro baratas —`astro`,
+`global`, `row`, `bt2d`— suman entre **0,0 y 0,7 ms** en todo el experimento.
+`mgl` sola va de 457 a 1 569 ms.
+
+**Si el usuario ve las nueve dibujadas, lo que está pagando no es el terreno: son
+ellas.** Ésta es la respuesta a la pregunta 4 del encargo y, por tamaño, la
+respuesta a la pregunta entera.
+
+**2 · El guarda de `anglesTrue3d` se dispara donde se predijo y NO CUESTA NADA.**
+El atajo pasa de 7/7 a 0/7 parejas entre 0,49 y 0,51 —exactamente en
+`EPS_TILT`— y el tiempo **no salta**: constante −4,53 %, quebrado +3,59 %. Las
+dos dentro del ruido del barrido. La hipótesis acierta el mecanismo y **falla en
+que sea una causa del coste**.
+
+**3 · El guarda de `mvPara` sí cuesta, y no salta en 0,5 sino donde de verdad
+está su umbral.** En `quebrado` el tilt de filas vecinas se lleva **2·v**, así
+que el umbral de torsión ≥ 0,5° se cruza en **v ≥ 0,25**: MV pasa de 17 a 33
+entre 0,2 y 0,4, y el tiempo de 731 a 1 382 ms. **+651 ms de escalón.** Buscar el
+salto en 0,49-0,51 lo habría dado por inexistente: estaba dos puntos antes.
+
+**4 · El bucle de reparación se enciende por umbral pero CUESTA POR MAGNITUD.**
+En `quebrado` el guarda está activo en 29 de 29 instantes desde 0,2°, pero sus
+iteraciones crecen **29 → 34 → 37 → 46 → 111 → 226**. Eso no es insensible al
+valor: es lo contrario.
+
+**5 · En `constante` el bucle NO se enciende nunca**, y estaba predicho por el
+código: `pairStations:1074` devuelve **una** estación cuando las filas vecinas
+tienen el mismo tilt, así que `length>1` es falso siempre. Por eso `constante` y
+`quebrado` **no** cuestan igual — 1 197 contra 6 431 ms a 4°, un factor **5,4**.
+
+### Salto o gradual, con la proporción
+
+| preset | escalón | gradual |
+|---|---|---|
+| **constante** | **+436 ms** de 0,0 a 0,2, y después **plano** (1 248 → 1 197, −50 ms) | **ninguno** |
+| **quebrado** | **+651 ms** de 0,2 a 0,4 (el MV) · **11 %** | **+5 049 ms** de 0,4 a 4,0 · **89 %** |
+
+**En `constante` es todo escalón, y está en CERO, no en 0,5.** El coste sube al
+pasar de plano a no-plano y ahí se queda, insensible al valor — que es el síntoma
+descrito. Pero el escalón **no lo produce ninguno de los tres guardas**: MV no se
+mueve (17), el bucle no se enciende (0 iteraciones) y el atajo de `true3d` sigue
+puesto (7/7) a 0,2. Lo que sube es **`mgl`**, de 531 a 969 ms. **Qué hace `mgl`
+distinto al pasar de tilt 0 a tilt 0,2: `NO MEDIDO`.**
+
+**En `quebrado` son las dos cosas, y el gradual domina 89 a 11.**
+
+### Nadie agota el tope de 60
+
+En los 22 puntos, **cero instantes** llegan al tope de iteraciones. El máximo
+observado es 226 iteraciones repartidas en 29 instantes — una media de 7,8 sobre
+un tope de 60. El tope **no está limitando nada** en este barrido.
+
+### Lo que esta medida NO dice
+
+- **No dice nada de Ayora ni de ninguna planta real:** son 8 filas sintéticas.
+  Con 79 líneas y 1 600 mesas el reparto puede ser otro. `NO VERIFICADO`.
+- **Un confundido declarado:** el primer punto del barrido (`constante` 0,0)
+  muestra `pairwise` 17 ms y `true3d` 24 ms frente a 2-3 ms en el resto del
+  preset. Huele a calentamiento del JIT, no a física. No se ha aislado repitiendo
+  el punto, así que **la cifra de `constante` 0,0 se lee con reserva** — y da la
+  casualidad de que es el punto contra el que se mide el escalón.
+- **No propone arreglo.** El encargo era diagnosticar.
 
 ## E-X1 · mis propios errores en esta ronda
 
@@ -1021,6 +1579,42 @@ misma tanda**. Es el hermano del error 9, donde el comentario nuevo del paso
 anual citaba el «paso 20 min» viejo que la comprobación prohibía. La regla no se
 cumple por haberla escrito.
 
+### Error 18 · confundir el rastro con la cosa, en las dos direcciones el mismo día
+
+> **Origen de M.6 · «el rastro no es la cosa».** El auditor eleva este error a
+> regla del método, junto a M.1, M.4 y M.5, porque comparte con ellas la raíz:
+> **una identidad supuesta entre lo que se observa y lo que se afirma.** Allí era
+> medir una parte y darla por el todo; aquí es tomar la huella de un proceso —una
+> línea de órdenes que lo menciona, un fichero que escribió— por el proceso
+> mismo.
+
+Es **un** error, no dos, y por eso va en una entrada: en los dos casos tomé un
+**rastro** de un proceso por el **proceso** mismo.
+
+**Dirección A · el rastro de más.** Usé `pkill -f F32_ponderacion` para parar una
+sonda. El patrón casaba también con **mi propia línea de órdenes**, que contenía
+esa cadena, así que maté el `python3` que estaba aplicando un parche a mitad. Más
+tarde, `pgrep -f "wt-f32/audit3"` me dijo «sonda aún viva» cuando llevaba rato
+terminada: lo que encontraba era, otra vez, mi propio intérprete. Estuve a punto
+de no recoger un *worktree* por esa lectura falsa.
+
+**Dirección B · el rastro de menos.** Leí `/tmp/claude-0/f32a/progreso.txt`, vi
+las líneas de siempre y le dije al auditor que la sonda «arrancó bien y va por 4
+de 108». Llevaba **27 minutos muerta**. Un fichero que no crece no distingue un
+proceso lento de un proceso muerto, y yo no pregunté por el proceso.
+
+**La misma confusión.** En A, un texto que casa con un patrón se tomó por un
+proceso que existe. En B, un fichero que existe se tomó por un proceso que corre.
+El rastro no es la cosa: la línea de órdenes que menciona un guion no es el guion
+corriendo, y el fichero que un guion escribió no es el guion escribiendo.
+
+**Lo que se hace en su lugar:** preguntar por el proceso, no por su rastro —
+`ps -eo comm` filtrando por el ejecutable, o la CPU del renderizador cuando lo
+que importa es si trabaja, que es la lección de E-D8—, y no usar nunca un patrón
+que la propia orden contiene. Y el latido del apartado anterior existe justo para
+esto: para que el rastro **sí** distinga los dos estados.
+
+
 ## LA REGLA DE NO EXTRAPOLAR EL COSTE, COBRADA POR PRIMERA VEZ
 
 Las tres veces anteriores esta regla se aprendió **después** de fallar: el
@@ -1079,6 +1673,34 @@ El comentario en #702 publica las **dos** medidas. Los dos ficheros van a chocar
 —los dos PR tocan `bancos.yml`— y quien resuelva el conflicto las necesita
 delante, porque con una sola de las dos la conclusión razonable es revertir el
 arreglo por un motivo que no le aplica.
+
+### Error 16 · puse una espera por debajo de un número que yo mismo había medido
+
+La sonda de 3.2 esperaba **300 s** a que el cálculo del día terminara. Ese valor
+lo copié de `F1_seg_metrica.mjs`, escrita cuando el día costaba menos. Entre
+medias, **mi propio cuaderno** tiene una sección entera —«el día con planta real
+tarda 6 min 33 s»— con la medida: **393 042 ms**. La sonda murió por `Timeout
+300000ms exceeded` contra un techo que la medida ya desmentía.
+
+No es que faltara el dato: el dato estaba escrito, por mí, en el fichero que
+estaba editando. **Copiar un parámetro de una sonda anterior es heredar sus
+supuestos**, y los supuestos caducan igual que las cifras. La espera va ahora en
+900 s y **cronometrada**, así que el día que se quede corta lo dice en vez de
+morirse, y de paso mide.
+
+### Error 17 · di un delta como punto teniendo una sola muestra
+
+Publiqué que la segunda métrica de la v1.74 añade **«+98,3 s, +25 %»** al coste
+del día, restando una medida mía (491,3 s) de la de `main` (393,0 s). La
+siguiente corrida del mismo commit y la misma planta dio **429,2 s**: **13 % de
+dispersión sobre lo mismo**.
+
+Con dos muestras propias y una ajena, lo que se puede decir es un **intervalo de
+~36 a ~98 s**, no un punto. Es la misma familia que los tres fallos de coste
+anteriores —dar por fijo lo que la muestra no fija— pero con una variante nueva:
+allí extrapolaba **de una clase a otra**, y aquí extrapolé **de una sola
+repetición**. Una medida sin repetir no tiene dispersión conocida, y una
+diferencia entre dos medidas sin dispersión conocida no es una cifra publicable.
 
 ## REGLA · UN BANCO LEE LO QUE LA HERRAMIENTA PUBLICA, NO SU CÓDIGO DE SALIDA
 

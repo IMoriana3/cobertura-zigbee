@@ -35,6 +35,21 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 PWSH = os.environ.get("PWSH", "pwsh")
 
+# DE DONDE SALE EL .ps1. Por defecto, el del repo. Con PS1_DIR, el que sale del
+# ZIP que se descarga en planta — que NO es el mismo fichero: el paquete le pone
+# el BOM y le sustituye el CONFIG. Correr solo el del repo dejaba fuera todas
+# esas transformaciones, y por ahi se colo que el BOM no llegaba a la planta.
+PS1_DIR = os.environ.get("PS1_DIR") or RAIZ
+
+
+def fuente(nombre):
+    ruta = os.path.join(PS1_DIR, nombre)
+    if not os.path.exists(ruta):
+        print("no encuentro %s en %s" % (nombre, PS1_DIR))
+        sys.exit(2)
+    return ruta
+
+
 fallos, n = [], 0
 
 
@@ -114,7 +129,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 puerto = srv.server_address[1]
 
 tmp = tempfile.mkdtemp()
-txt = open(os.path.join(RAIZ, "zigbee_inventario.ps1"), encoding="utf-8").read()
+txt = open(fuente("zigbee_inventario.ps1"), encoding="utf-8").read()
 # la misma sustitucion que hace el paquete al preparar el recolector
 txt = re.sub(r'\$Gateways = @\([\s\S]*?\n\)',
              '$Gateways = @(\n  @{ Name = "GW-01"; Host = "127.0.0.1:%d"; User = ""; Pass = "" }\n)' % puerto,
@@ -124,7 +139,7 @@ open(ruta, "w", encoding="utf-8").write(txt)
 
 print("\n· se corre el recolector de verdad contra un ConnectPort de mentira")
 p = subprocess.run([PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ruta],
-                   capture_output=True, text=True, timeout=180)
+                   capture_output=True, text=True, errors="replace", timeout=180)
 salida = p.stdout + p.stderr
 di(p.returncode == 0, "termina sin error", salida[-400:])
 
@@ -132,6 +147,16 @@ csvp = os.path.join(tmp, "zigbee_inventario.csv")
 di(os.path.exists(csvp), "escribe el CSV")
 filas = list(csv.DictReader(open(csvp, encoding="utf-8-sig"))) if os.path.exists(csvp) else []
 di(len(filas) == 3, "una fila por modulo, incluido el que no contesta", len(filas))
+
+# SIN ESTO, un .ps1 que ni siquiera compila acababa en un IndexError de Python
+# quince lineas mas abajo, y el traceback tapaba el error de PowerShell —que es
+# el dato— con uno del banco. Paso en la primera ejecucion del job de Windows.
+if len(filas) < 3:
+    print("\nEl recolector no ha dejado las tres filas, asi que lo de abajo no se puede")
+    print("comprobar. Lo que dijo PowerShell, que es lo que hay que leer:\n")
+    print(salida[-1200:])
+    print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
+    sys.exit(1)
 
 print("\n· el numero de serie, entero")
 series = [f.get("serie") for f in filas]
@@ -180,5 +205,27 @@ di("ConnectPort X4" in crudo, "con lo que dice el gateway de si mismo")
 di("firmware_version" in crudo, "y con las respuestas de los nodos tal cual")
 
 srv.shutdown()
+
+# EN ROJO, LO QUE DIJO POWERSHELL. Sin esto, un fallo solo enseña que las
+# columnas no estan: no dice POR QUE, y «por que» es lo unico que sirve cuando
+# el rojo llega de un runner que no se puede tocar. Paso en la primera ejecucion
+# del job de Windows, donde el censo salio bien y las consultas por nodo NO, y el
+# banco no daba el motivo que el propio CSV ya traia escrito.
+if fallos:
+    # ASCII PURO AQUI. La primera version de este bloque usaba rayas de caja y
+    # se cayo con UnicodeEncodeError en Windows: la stdout de Python alli es
+    # cp1252 y no tiene esos caracteres. Un diagnostico que revienta antes de
+    # imprimir el diagnostico es peor que no tenerlo.
+    print("\n--- por que, segun el propio recolector ---")
+    for f in filas:
+        print("  %-8s estado_ok=%s  ajuste_ok=%s" % (f.get("node_id"), f.get("estado_ok"), f.get("ajuste_ok")))
+        for c in ("estado_error", "ajuste_error"):
+            if f.get(c):
+                print("      %s: %s" % (c, f[c][:300]))
+    print("\n--- lo que PowerShell escribio por consola ---")
+    print((salida or "(nada)")[-1500:])
+    print("\n--- el volcado en bruto, primeros 600 ---")
+    print((crudo or "(vacio)")[:600])
+
 print("\n%d comprobaciones, %d fallos" % (n, len(fallos)))
 sys.exit(1 if fallos else 0)
