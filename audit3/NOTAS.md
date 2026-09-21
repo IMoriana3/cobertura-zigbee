@@ -1007,24 +1007,46 @@ vez.
 | `optimal` | 2 688,314455 | 2 697,616905 | **+0,3460 %** | no |
 | `true3d` | 2 287,588537 | 2 239,490363 | **−2,1026 %** | **sí** |
 | `pairwise` | 2 306,817752 | 2 253,628446 | **−2,3057 %** | **sí** |
-| `mgl` | — | — | **`NO MEDIDA`** | sí |
+| `mgl` | 2 340,216471 | 2 289,460732 | **−2,1688 %** | **sí** |
 
-**`mgl`, con su coste MEDIDO y sin multiplicarlo por doce.** Su primer mes
-—enero— costó **7 974 s: 2 h 12 min 54 s**, frente a los ~25 s por mes de las
-baratas. **Los otros once meses: desconocidos.** No se extrapola el total, y esta
-vez por una razón medida y no por prudencia: el coste por instante de `mgl` ya se
-midió como **no constante** en la sonda diaria (tramos a 28, 92 y 68,5 s). Doce
-por 7 974 s sería inventarse once meses.
+**`mgl`, COMPLETA.** Los doce meses, **−2,1688 %**, del lado negativo como las
+otras dos que retroceden. Deja de ser `NO MEDIDA`. Sus doce meses, uno a uno:
 
-Se declara **`NO MEDIDA`**, con el criterio que el auditor fijó en la 3.1, y se
-publica el mes que sí se midió.
+| mes | delta | | mes | delta |
+|---|---|---|---|---|
+| enero | −1,9197 % | | julio | −2,2083 % |
+| febrero | −2,1520 % | | agosto | −2,2455 % |
+| marzo | −2,1961 % | | septiembre | −2,1671 % |
+| abril | −2,1736 % | | octubre | −2,0952 % |
+| mayo | −2,2328 % | | noviembre | −2,0351 % |
+| junio | −2,2112 % | | diciembre | −1,9023 % |
 
-**Y el recorrido de esta cifra es el ejemplo de la trampa:** primero escribí «más
-de 57 min», luego «más de 91 min», y las dos veces eran **el reloj en el momento
-de escribirlo**, con el mes todavía corriendo. De las dos saqué totales —«más de
-11 h», «más de 18 h»— que eran extrapolaciones de una cota creciente. El valor
-real del mes, cuando por fin terminó, fue **2 h 13 min**, y el total sigue sin
-saberse. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
+**Ninguno cambia de signo**, y el rango entero cabe en **0,34 puntos** (−1,90 a
+−2,25), con los extremos en los dos meses de sol más bajo. El corte por retroceso
+queda cerrado con las nueve políticas: seis positivas entre +0,2287 % y
++0,3460 %, tres negativas entre −2,1026 % y −2,3057 %.
+
+**Su coste, y por qué se publica como COTA y no como total.** Nueve de los doce
+meses tienen tramo medible —mes a mes dentro de un mismo lanzamiento—:
+
+```
+7 499 · 7 341 · 7 355 · 7 518 · 7 718 · 7 396 · 7 508 · 8 188 · 8 481 s
+suma de lo medido: 69 004 s = 19 h 10 min
+```
+
+Los otros tres abrieron lanzamiento y su tiempo **incluye el cálculo del día**,
+así que no son comparables. **No se multiplica la media por doce**: lo que se
+publica es la **suma de lo medido, como cota inferior**. Y se ve que el coste por
+mes **no es constante** —de 7 341 a 8 481 s, un 16 % de recorrido—, que es
+exactamente la razón por la que no se extrapoló en su momento.
+
+**El recorrido de esta cifra es el ejemplo de la trampa, y queda escrito entero:**
+primero publiqué «más de 57 min», luego «más de 91 min». Las dos veces era **el
+reloj en el momento de escribirlo**, con el mes corriendo. De las dos saqué
+totales —«más de 11 h», «más de 18 h»— que eran extrapolaciones de una cota
+creciente. El primer mes acabó costando **7 974 s** y el total medido es
+**19 h 10 min**. La cota de 18 h no era falsa; era una cota presentada como
+estimación. Se declara `NO MEDIDA` con el mismo criterio que el auditor fijó
 en la 3.1, y no se extrapola su total: su coste por instante ya se midió como **no
 constante** (tramos a 28, 92 y 68,5 s en la sonda diaria).
 
@@ -1364,6 +1386,40 @@ Si se publica, se publica **con el reloj al lado** —*más de 91 min medidos a 
 06:20, sin terminar*— y se declara como **cota**, no como coste. Y el total de
 doce meses **sigue sin saberse**, porque multiplicar el mes medido por doce sería
 la misma extrapolación otra vez.
+
+### LA CONTRAPRUEBA, que llegó sola y cierra el argumento
+
+El argumento por eliminación tenía un punto débil que no se podía cerrar desde
+dentro: **¿y si los manejadores simplemente no funcionaran?** Silencio y
+manejadores rotos producen lo mismo.
+
+Lo cerró el uso. A lo largo de la corrida completa de `mgl` —casi **20 h de
+máquina**— el fichero de progreso acumuló **cinco** líneas `MUERTE`:
+
+| línea | qué era |
+|---|---|
+| `MUERTE · recibida SIGTERM` | primer reinicio del contenedor |
+| `MUERTE · recibida SIGTERM` | parada deliberada, para medir el coste del terreno con la máquina en silencio |
+| `MUERTE · recibida SIGTERM` | segundo reinicio del contenedor |
+| `MUERTE · la página se ha cerrado` | **cierre normal** al terminar |
+| `MUERTE · el NAVEGADOR se ha desconectado` | **cierre normal** al terminar |
+
+**Los manejadores funcionan.** Cazaron tres señales reales y dos cierres
+ordenados. Luego los **tres silencios iniciales** —sin una sola línea, con el RSS
+plano— no eran manejadores mudos: eran `SIGKILL`, que no se puede capturar. El
+argumento queda cerrado por el lado que le faltaba.
+
+**Y un matiz que las dos últimas líneas obligan a hacer, porque si no la
+instrumentación engaña en la otra dirección:** `MUERTE` **no significa fallo**.
+Dos de las cinco son el apagado normal del navegador al acabar bien. Lo que
+informa no es que haya una línea, es **cuál**. Un contador de «cuántas MUERTE hay»
+habría dicho que la corrida buena falló dos veces.
+
+**Y lo que evitó perder las 20 h:** el diario vive **fuera del repositorio** y se
+escribe mes a mes. Los dos reinicios del contenedor se llevaron el proceso y
+**ninguna medida** — se reanudó desde el mes 4 y desde el 9. Esa decisión salió
+del error 5, donde git se llevó el inodo de un fichero que un proceso estaba
+escribiendo. Es la primera vez que esa lección paga, y pagó dos veces.
 
 ### La regla, para llevársela
 
