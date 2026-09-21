@@ -494,6 +494,15 @@ jobs:
           - { banco: test_plantas_bifila.mjs }   # el accionamiento de cada planta sale de su layout: filaZ leido donde esta, y el caso mixto con layout sintetico
           - { banco: test_plano_zoom.mjs }       # ampliar el visor 2D: rueda, pinza y botones
           - { banco: test_malla_pagina.mjs }     # el boton que exporta la malla medida: los tres cargadores, el estado y la ida y vuelta del GeoJSON
+          # La Cobertura Zigbee en LAS DIEZ plantas con NCU, y el Layout 2D de
+          # cada una: que cargan, que pintan, que el encuadre cae sobre SU
+          # planta y que las dos vistas dibujan el MISMO seguidor. La lista de
+          # plantas sale de `plantas_indice.json`, no escrita a mano.
+          #
+          # Estaba escrito y no corria aqui, que es como se quedo afirmando que
+          # el selector tenia siete opciones cuando tiene diez. 50 s medidos, o
+          # sea que cabe de sobra en el tope general.
+          - { banco: bench_cobertura_multi.mjs, nombre: 'bench_cobertura_multi.mjs · las 10 plantas con NCU' }
           # El contrato de datos v2: que el visor lea las dos versiones y que la hora NO se
           # invente. Incluye las dos noches del año en que convertir hora local a UTC no tiene
           # respuesta — la que no existio y la que ocurrio dos veces.
