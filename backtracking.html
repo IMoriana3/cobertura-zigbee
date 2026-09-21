@@ -2758,16 +2758,25 @@ function applyDriveSeg(segAngles,grupos){
   }
   return out;
 }
-function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
+/* v1.76 · LA DECISIÓN POR MESA, diciendo también la fracción elegida. Se parte
+   en dos formas de la MISMA función porque `policyAnglesSeg` —que devuelve el
+   array a secas— la llaman bancos, el exportador de campo y las sondas de
+   `audit3/` y `audit4/`; cambiarle la forma invalidaría medidas ya tomadas.
+   Así que la que decide es ésta y aquélla es su envoltorio: una sola verdad. */
+function policyAnglesSegF(key,zen,az,T,irr,doy,albedo){
   const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
-  if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
-  if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
+  if(key==='astro')return {angles:applyDriveSeg(anglesAstroSeg(zen,az,T),drv),f:undefined,linea:null};
+  if(key==='pairwise'||key==null)return {angles:applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv),f:undefined,linea:null};
   // v1.76 (R4 fase 1): `optimal` y `optfree` también mandan por MESA, y con la
   // métrica que se cobra. Antes repartían a las mesas un ángulo de línea que
   // habían elegido con `poaPlant` — medido: perdían por mesa en 58 de 86.
-  if(key==='optimal')return anglesOptimalSeg(zen,az,T,irr,doy,albedo).angles;
-  if(key==='optfree')return anglesOptimalFreeSeg(zen,az,T,irr,doy,albedo).angles;
-  return segsBroadcast(T,policyAngles(key,zen,az,T,irr,doy,albedo).angles);   // el resto sigue por línea
+  if(key==='optimal'){const r=anglesOptimalSeg(zen,az,T,irr,doy,albedo);return {angles:r.angles,f:r.f,linea:null};}
+  if(key==='optfree'){const r=anglesOptimalFreeSeg(zen,az,T,irr,doy,albedo);return {angles:r.angles,f:r.f,linea:null};}
+  const o=policyAngles(key,zen,az,T,irr,doy,albedo);                          // el resto sigue por línea
+  return {angles:segsBroadcast(T,o.angles),f:o.f,linea:o.angles};
+}
+function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
+  return policyAnglesSegF(key,zen,az,T,irr,doy,albedo).angles;
 }
 /* POA por MESA: transposición con el tilt y el θ de cada mesa, sombra del
    contador 3D por tramo (Martinez por estación, como la fila). Fila = media
@@ -5331,8 +5340,23 @@ function segOn(T){return !!(T&&T.segTilt&&T.segs);}
    lo declarado. Sólo con la TCU al corriente del levantamiento (Tcfg === T):
    si la TCU no sabe de mesas, no puede mandarlas. */
 const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1};
-function segCmd(key,zen,az,Tcfg,T,o,irr,doy,alb){
-  if(Tcfg===T&&POL_POR_MESA[key])return policyAnglesSeg(key,zen,az,T,irr,doy,alb);
+/* v1.76 · `segCmd` SIGUE SIENDO LA ÚNICA FUENTE DEL MANDO POR MESA, y eso es
+   una propiedad que el banco de física vigila. Al entrar `optimal` y `optfree`
+   en el mando por mesa lo saqué fuera —el cuerpo del día llamaba a la política
+   por su cuenta para no calcularla dos veces— y con eso había DOS fuentes del
+   mismo mando: el banco lo cazó con dos comprobaciones en rojo, y tenía razón.
+   La salida está en decir más, no en calcular dos veces: `segCmd` devuelve el
+   mando por mesa como siempre y, si se le pasa `out`, deja ahí la fracción
+   elegida y —cuando la política manda por línea— el θ de línea que ya ha
+   calculado. Quien no pase `out` se comporta exactamente igual que antes. */
+function segCmd(key,zen,az,Tcfg,T,irr,doy,alb,out){
+  if(segOn(T)&&Tcfg===T&&POL_POR_MESA[key]){
+    const r=policyAnglesSegF(key,zen,az,T,irr,doy,alb);
+    if(out){out.f=r.f;out.linea=null;}
+    return r.angles;
+  }
+  const o=policyAngles(key,zen,az,Tcfg,irr,doy,alb);
+  if(out){out.f=o.f;out.linea=o.angles;}
   return segsBroadcast(T,o.angles);
 }
 function angAt(p,t,r,k){const s=p&&p.segAng&&p.segAng[t];return (s&&s[r]&&s[r][k]!=null)?s[r][k]:p.ang[t][r];}
@@ -5379,16 +5403,16 @@ function* serieDiaGen(key,D,dest){
   const LZ=crearLazo(), LZS=crearLazoSeg();
   for(let t=0;t<nT;t++){
     const g=sun[t];
-    /* v1.76 · con mando por mesa, `optimal` y `optfree` se calculan UNA vez y
-       POR MESA; la línea es su resumen. Pedir además el de línea sería pagar el
-       doble por publicar una sola cosa —y son las dos políticas más caras que
-       hay (medido #711: entre las tres caras, 71-99,7 % del coste del día)—.
-       Sin mesas, o con la TCU a ciegas, el camino es el de siempre. */
-    const porMesaOpt=seg&&(Tcfg===T)&&(key==='optimal'||key==='optfree');
-    const so=porMesaOpt?((key==='optimal')?anglesOptimalSeg(g.zen,g.az,T,irr[t],doy,c.albedo)
-                                          :anglesOptimalFreeSeg(g.zen,g.az,T,irr[t],doy,c.albedo)):null;
-    const o=so?{angles:segLineMean(T,so.angles),f:so.f}
-              :policyAngles(key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
+    /* v1.76 · con mesas, la política se pide UNA vez y por `segCmd`, que es la
+       única fuente del mando por mesa. Antes esta línea llamaba a
+       `policyAngles` y `segCmd` volvía a decidir: con `optimal` y `optfree`
+       mandando por mesa eso serían DOS cálculos de las dos políticas más caras
+       que hay (medido #711: entre las tres caras, 71-99,7 % del coste del día).
+       `info` trae de vuelta la fracción y, si la política manda por línea, el θ
+       de línea que `segCmd` ya calculó. */
+    const info={};
+    const segN=segCmd(key,g.zen,g.az,Tcfg,T,irr[t],doy,c.albedo,info);
+    const o={angles:info.linea||segLineMean(T,segN),f:info.f};
     fArr[t]=o.f;
     let lim,pp;
     if(seg){
@@ -5396,7 +5420,6 @@ function* serieDiaGen(key,D,dest){
       // v1.70: el tope del backtracking TAMBIÉN por mesa — si sólo lo llevara
       // la rama por línea, la página tendría dos físicas según el usuario
       // tenga o no encendida la segmentación.
-      const segN=so?so.angles:segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo);
       // el MANDO por mesa, promediado a línea: ANTES del lazo y ANTES del tope,
       // porque el indicador de backtracking compara lo que la política PIDE
       cmd[t]=segLineMean(T,segN);
@@ -5473,7 +5496,7 @@ function* computeDayGen(){
        EJECUTA; el indicador ya no la usa. */
     const gR=sun[t2];
     const oA=policyAngles('astro',gR.zen,gR.az,Tcfg,irr[t2],doy,c.albedo);
-    astroCmd[t2]=segRef?segLineMean(T,segCmd('astro',gR.zen,gR.az,Tcfg,T,oA,irr[t2],doy,c.albedo)):oA.angles;
+    astroCmd[t2]=segRef?segLineMean(T,segCmd('astro',gR.zen,gR.az,Tcfg,T,irr[t2],doy,c.albedo)):oA.angles;
     const limA=LZA.paso(anglesAstro(sun[t2].zen,sun[t2].az,Tcfg),STEP_MIN*60);
     // bifila: la referencia astro se ACOPLA como el accionamiento (la gemela
     // copia a la motora) — si no, el mero acoplamiento contaría como «BT»
@@ -8035,12 +8058,17 @@ function sceneInstant(){
     if(segOn(DAY.T)&&PK.segAng){ls=PK.segAng[tIdx];ang=segLineMean(DAY.T,ls);pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);}
     else{ang=PK.ang[tIdx];pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);}
   }else{
-    const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo); f=o.f;
     if(segOn(DAY.T)&&PK.segAng){
       // POR MESA, desde la malla de 5 min de cada mesa (el mismo slew por mesa)
-      ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,o,irr,DAY.doy,c.albedo),dt);
+      // v1.76: la fracción sale del propio `segCmd` (parámetro `info`), no de
+      // una segunda llamada a la política: con los optimizadores mandando por
+      // mesa, esa segunda llamada era calcular dos veces lo más caro que hay.
+      const info={};
+      ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,irr,DAY.doy,c.albedo,info),dt);
+      f=info.f;
       ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);
     }else{
+      const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo); f=o.f;
       ang=slewLimit(PK.ang[tIdx],o.angles,dt);
       pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
     }
