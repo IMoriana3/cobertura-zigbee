@@ -3161,8 +3161,19 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
     for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
       if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
-    const cmd = ui.slice(ui.indexOf('function segCmd'), ui.indexOf('function angAt'));
-    if (!cmd.includes("Tcfg===T&&(key==='pairwise'||key==='astro')")) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    /* v1.76: el mando por mesa ya no son dos políticas escritas a mano en el
+       `if` —`optimal` y `optfree` entraron en R4 fase 1— así que exigir el
+       literal ataba el banco a una ORTOGRAFÍA. Lo que protege es lo que la
+       regla HACE: que el mando por mesa siga reservado a la TCU que conoce el
+       levantamiento (`Tcfg===T`), y que la lista de quién manda por mesa esté
+       en UN sitio y contenga al menos las dos de siempre. */
+    const cmd = ui.slice(ui.indexOf('const POL_POR_MESA'), ui.indexOf('function angAt'));
+    if (!/Tcfg===T\s*&&/.test(cmd)) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    const lista = /const POL_POR_MESA=\{([^}]*)\}/.exec(cmd);
+    if (!lista) throw new Error('no hay una lista única de las políticas que mandan por mesa');
+    for (const k of ['pairwise', 'astro', 'optimal', 'optfree'])
+      if (!new RegExp('\\b' + k + '\\s*:').test(lista[1])) throw new Error(`\`${k}\` no manda por mesa`);
+    if (!/POL_POR_MESA\[key\]/.test(cmd)) throw new Error('segCmd no consulta la lista: hay dos verdades sobre quién manda por mesa');
     // el 3D gira cada mesa con SU θ, la silueta y el rayo también
     const u3 = ui.slice(ui.indexOf('function update3D'), ui.indexOf('function clipPoly'));
     if (!u3.includes('angAt(p,tIdx,r,k)')) throw new Error('update3D no gira cada mesa con su θ');

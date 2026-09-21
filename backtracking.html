@@ -528,7 +528,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.75.0';
+const VER='v1.76.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -2762,6 +2762,11 @@ function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
   const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
   if(key==='astro')return applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
   if(key==='pairwise'||key==null)return applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
+  // v1.76 (R4 fase 1): `optimal` y `optfree` también mandan por MESA, y con la
+  // métrica que se cobra. Antes repartían a las mesas un ángulo de línea que
+  // habían elegido con `poaPlant` — medido: perdían por mesa en 58 de 86.
+  if(key==='optimal')return anglesOptimalSeg(zen,az,T,irr,doy,albedo).angles;
+  if(key==='optfree')return anglesOptimalFreeSeg(zen,az,T,irr,doy,albedo).angles;
   return segsBroadcast(T,policyAngles(key,zen,az,T,irr,doy,albedo).angles);   // el resto sigue por línea
 }
 /* POA por MESA: transposición con el tilt y el θ de cada mesa, sombra del
@@ -3003,9 +3008,10 @@ function anglesOptimal(zen,az,T,irr,doy,albedo,prev){
   // instantes con haz): `optimal` no pierde NUNCA por línea —0 de 86, que es
   // justo lo que esta garantía promete— y pierde por mesa en 58 de 86, con el
   // día en −0,5103 %. No es casualidad: es la consecuencia de esta línea.
-  // No se cambia aquí: cuál de las dos métricas es la verdad de la planta es
-  // una decisión del auditor, y cambiar el objetivo de la búsqueda mueve todas
-  // las cifras publicadas a la vez.
+  // v1.76 (R4 fase 1) · ARREGLADO, pero NO AQUÍ: esta función es la rama POR
+  // LÍNEA y se queda como está —es la que corre sin `segTilt`, donde la métrica
+  // publicada ES `poaPlant` y la garantía se cumple—. El arreglo vive en
+  // `anglesOptimalSeg`, que es la que manda en cuanto hay mesas.
   // Se compara contra los DOS extremos de la rejilla —f=0 (pairwise) y f=1
   // (astro)—: ambos SON candidatos, así que el óptimo no puede quedar por
   // debajo de ninguno. Con solo el extremo f=0 se colaba lo contrario: en
@@ -3135,6 +3141,11 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo,prev){
   // salvaguarda: si bajo la MISMA métrica del arranque el ascenso no mejora,
   // se queda el arranque (que ya es ≥ energy-optimal por construcción)
   let cand=(poaPlant(zen,az,T,ang,irr,doy,albedo,true).plant<bestS-1e-9)?startAng:ang;
+  /* v1.76: el vector de f que el ASCENSO dejó, una por fila, publicado tal cual
+     —antes de la elección exacta y del veto—. La rama por mesa lo necesita para
+     llevar el ascenso a las mesas y volver a elegir con `poaPlantSeg`; aquí no
+     cambia nada de lo que esta función decide. */
+  const fRow=[]; for(let r=0;r<nR;r++)fRow.push(OPTFREE_F0+(cand===startAng?bestK:k[unitOf[r]])*(1-OPTFREE_F0)/(OPTFREE_NF-1));
   // ELECCIÓN EXACTA (v1.27, auditoría punto 4): el buscador rápido es ciego a
   // la torsión y bajo el contador exacto el libre podía rendir MENOS que el
   // óptimo común (medido: −0,01% anual). Se elige por instante, con el
@@ -3157,7 +3168,7 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo,prev){
   // unidades afectadas y gana quien prefiera el contador exacto. Solo sol
   // <40° (la torsión muerde ahí; con sol alto era coste sin hallazgo —
   // barrido de sensibilidad: 0,0000%)
-  if((90-zen)>=40)return {angles:cand,f:fOut};
+  if((90-zen)>=40)return {angles:cand,f:fOut,fRow:fRow};
   if(ev.shade.some(v=>v>1e-3)){
     const df=(1-OPTFREE_F0)/(OPTFREE_NF-1)/2;
     const alt=cand.slice();
@@ -3166,7 +3177,101 @@ function anglesOptimalFree(zen,az,T,irr,doy,albedo,prev){
         alt[rr]=Math.max(-T.maxAngle,Math.min(T.maxAngle,alt[rr]-df*(full[rr]-base[rr])));
     if(poaPlant(zen,az,T,alt,irr,doy,albedo).plant>ev.plant+1e-9)cand=alt;
   }
-  return {angles:cand,f:fOut};
+  return {angles:cand,f:fOut,fRow:fRow};
+}
+/* ── v1.76 · EL ÓPTIMO POR MESA ────────────────────────────────────────────
+   R4 fase 1. Hasta v1.75 `optimal` y `optfree` buscaban y vetaban con
+   `poaPlant` —por LÍNEA, media sin ponderar de filas— y después se les
+   puntuaba con `poaPlantSeg` —por MESA—, que es lo que la planta con cotas
+   publica. Medido en R3 fase 1 (audit3/out/F1_seg_metrica.json, Ayora real,
+   21-jun, 86 instantes con haz): `optimal` no perdía NUNCA por su propia
+   métrica —0 de 86— y perdía por la métrica publicada en 58 de 86, con el día
+   en −0,5103 %. El control sin torsión lo dejó claro: no es la geometría
+   quebrada, es que el veto comprueba con una regla distinta de la que cobra.
+   Aquí se arregla como lo tienen `pairwise` y `astro`: los dos extremos del
+   huso son los PUBLICADOS por mesa, la rejilla se interpola mesa a mesa, el
+   accionamiento real (`T.segDrive`) acopla, y TODA puntuación —búsqueda,
+   histéresis y veto— es `poaPlantSeg`. `pairwise` sigue siendo el defecto.
+   La garantía «≥ pairwise» pasa a ser por CONSTRUCCIÓN bajo la métrica
+   publicada: f=0 de la rejilla ES el pairwise por mesa y el veto lo compara.
+   Dónde NO alcanza, dicho aquí y no en el documento: cuando la histéresis
+   retiene (el veto se salta a propósito, igual que en la rama por línea) y
+   cuando la TCU no conoce el levantamiento (Tcfg !== T), donde el mando sigue
+   siendo por línea porque la TCU no sabe de mesas. */
+function anglesOptimalSeg(zen,az,T,irr,doy,albedo,prev){
+  const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
+  const base=applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
+  if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
+  const full=applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
+  /* interpolar dos juegos ya acoplados con una f COMÚN conserva el θ común de
+     cada grupo de accionamiento: toda candidata es ejecutable. Es el mismo
+     argumento que la rama por línea, con `applyDriveSeg` en vez de `applyDrive`. */
+  const angDe=f=>base.map((l,r)=>l.map((b,k)=>b+f*(full[r][k]-b)));
+  const poa=a=>poaPlantSeg(zen,az,T,a,irr,doy,albedo).plant;
+  const paso=(OPT_FRACTIONS.length>1)?(OPT_FRACTIONS[1]-OPT_FRACTIONS[0]):0.25;
+  let best=-Infinity,bestAng=base,bestF=0;
+  for(const f of OPT_FRACTIONS){const a=angDe(f),p=poa(a);if(p>best+1e-12){best=p;bestAng=a;bestF=f;}}
+  const finas=[];
+  for(let j=1;j<=OPT_REFINA;j++){const d=paso*j/(OPT_REFINA+1);
+    for(const f2 of [bestF-d,bestF+d])if(f2>0&&f2<1&&finas.indexOf(f2)<0)finas.push(f2);}
+  for(const f2 of finas){const a=angDe(f2),p=poa(a);if(p>best+1e-12){best=p;bestAng=a;bestF=f2;}}
+  let retenidaDF=false;
+  if(prev&&prev.f!=null&&isFinite(prev.f)&&OPT_DF_MAX!=null){
+    const fp=Math.max(0,Math.min(1,+prev.f));
+    if(Math.abs(bestF-fp)>OPT_DF_MAX){
+      const fr=fp+Math.sign(bestF-fp)*OPT_DF_MAX;
+      bestF=fr;bestAng=angDe(fr);best=poa(bestAng);retenidaDF=true;}
+  }
+  let retenida=false;
+  if(prev&&prev.f!=null&&isFinite(prev.f)&&Math.abs(prev.f-bestF)>1e-9){
+    const fp=Math.max(0,Math.min(1,+prev.f)),angP=angDe(fp),pP=poa(angP);
+    if(pP>0&&best<=pP*(1+OPT_HISTERESIS)){best=pP;bestAng=angP;bestF=fp;retenida=true;}
+  }
+  /* EL VETO YA ESTÁ HECHO, y decirlo importa más que escribirlo otra vez. En la
+     rama por LÍNEA la búsqueda usa un guía y el veto vuelve a puntuar con el
+     contador exacto: allí las dos pasadas dicen cosas distintas y las dos hacen
+     falta. Aquí la búsqueda YA puntúa con `poaPlantSeg`, la misma métrica que
+     se cobra, sobre la misma lista de candidatas —la rejilla entera más el
+     refinado— y f=0 de la rejilla ES el pairwise publicado por mesa. Volver a
+     puntuarlas sería pagar el doble por el mismo número: medido, son 19
+     evaluaciones de `poaPlantSeg` en vez de 9, y `poaPlantSeg` recorre las
+     1.600 mesas de Ayora. Así que «optimal ≥ pairwise por mesa» es aquí un
+     hecho de CONSTRUCCIÓN —el máximo de un conjunto que contiene a pairwise—
+     y no el resultado de una segunda comprobación. Lo que no cubre, igual que
+     en la rama por línea: cuando la histéresis retiene, que es publicar a
+     sabiendas una candidata que no es la mejor a cambio de no mover el eje, y
+     entonces lo cedido está acotado por OPT_HISTERESIS.
+     El banco `tools/test_veto_por_mesa.mjs` lo comprueba desde fuera, y su
+     control negativo lo ve ponerse rojo con la métrica de antes. */
+  return {angles:bestAng,f:bestF,retenida:retenida||retenidaDF,frenada:retenidaDF};
+}
+/* ÓPTIMO LIBRE POR MESA. El ascenso coordinado sigue corriendo POR LÍNEA y con
+   su evaluador rápido: es un GUÍA y el código ya lo declara ciego a la torsión
+   —lo que decide es la elección exacta de después—. Lo que cambia es que esa
+   elección y el veto se hacen por MESA y con `poaPlantSeg`: el vector de f que
+   el ascenso encontró se lleva a las mesas (cada mesa la f de SU fila), se
+   acopla con el accionamiento real, y compite contra el óptimo común por mesa
+   y contra el pairwise por mesa bajo la métrica publicada. Así
+   `optfree ≥ optimal ≥ pairwise` por mesa queda por construcción, que es lo
+   que la rama por línea sólo tenía bajo su propia métrica. */
+function anglesOptimalFreeSeg(zen,az,T,irr,doy,albedo,prev){
+  const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
+  const base=applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv);
+  if(!(zen<90)||irr.ghi<=0)return {angles:base,f:0};
+  const full=applyDriveSeg(anglesAstroSeg(zen,az,T),drv);
+  const poa=a=>poaPlantSeg(zen,az,T,a,irr,doy,albedo).plant;
+  const mez=fDe=>applyDriveSeg(base.map((l,r)=>l.map((b,k)=>
+    Math.max(-T.maxAngle,Math.min(T.maxAngle,b+fDe(r)*(full[r][k]-b))))),drv);
+  let cand=base,best=poa(base),bestF=0;
+  const prueba=(a,f)=>{const p=poa(a);if(p>best+1e-9){best=p;cand=a;bestF=f;}};
+  const lib=anglesOptimalFree(zen,az,T,irr,doy,albedo,prev);
+  if(lib.fRow&&lib.fRow.length){
+    const fr=lib.fRow;
+    prueba(mez(r=>(fr[r]!=null?fr[r]:0)),{min:Math.min(...fr),max:Math.max(...fr),n:fr.length});
+  }
+  const co=anglesOptimalSeg(zen,az,T,irr,doy,albedo,prev);
+  prueba(co.angles,co.f);
+  return {angles:cand,f:bestF};
 }
 
 /* velocidad del actuador (Sunner: 0,17 °/s) — la consigna no teletransporta:
@@ -5221,8 +5326,13 @@ function cloudCC(){const e=$('cloud');return Math.max(0,Math.min(1,(+((e&&e.valu
    que sabe —por línea— y la física evalúa igualmente cada mesa con su tilt.
    Sin T.segTilt (presets, El Burgo) todo es el camino de siempre. */
 function segOn(T){return !!(T&&T.segTilt&&T.segs);}
+/* v1.76: la lista de las que mandan POR MESA. `optimal` y `optfree` entran
+   aquí en R4 fase 1; el resto sigue repartiendo el ángulo de su línea, que es
+   lo declarado. Sólo con la TCU al corriente del levantamiento (Tcfg === T):
+   si la TCU no sabe de mesas, no puede mandarlas. */
+const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1};
 function segCmd(key,zen,az,Tcfg,T,o,irr,doy,alb){
-  if(Tcfg===T&&(key==='pairwise'||key==='astro'))return policyAnglesSeg(key,zen,az,T,irr,doy,alb);
+  if(Tcfg===T&&POL_POR_MESA[key])return policyAnglesSeg(key,zen,az,T,irr,doy,alb);
   return segsBroadcast(T,o.angles);
 }
 function angAt(p,t,r,k){const s=p&&p.segAng&&p.segAng[t];return (s&&s[r]&&s[r][k]!=null)?s[r][k]:p.ang[t][r];}
@@ -5269,7 +5379,16 @@ function* serieDiaGen(key,D,dest){
   const LZ=crearLazo(), LZS=crearLazoSeg();
   for(let t=0;t<nT;t++){
     const g=sun[t];
-    const o=policyAngles(key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
+    /* v1.76 · con mando por mesa, `optimal` y `optfree` se calculan UNA vez y
+       POR MESA; la línea es su resumen. Pedir además el de línea sería pagar el
+       doble por publicar una sola cosa —y son las dos políticas más caras que
+       hay (medido #711: entre las tres caras, 71-99,7 % del coste del día)—.
+       Sin mesas, o con la TCU a ciegas, el camino es el de siempre. */
+    const porMesaOpt=seg&&(Tcfg===T)&&(key==='optimal'||key==='optfree');
+    const so=porMesaOpt?((key==='optimal')?anglesOptimalSeg(g.zen,g.az,T,irr[t],doy,c.albedo)
+                                          :anglesOptimalFreeSeg(g.zen,g.az,T,irr[t],doy,c.albedo)):null;
+    const o=so?{angles:segLineMean(T,so.angles),f:so.f}
+              :policyAngles(key,g.zen,g.az,Tcfg,irr[t],doy,c.albedo);
     fArr[t]=o.f;
     let lim,pp;
     if(seg){
@@ -5277,7 +5396,7 @@ function* serieDiaGen(key,D,dest){
       // v1.70: el tope del backtracking TAMBIÉN por mesa — si sólo lo llevara
       // la rama por línea, la página tendría dos físicas según el usuario
       // tenga o no encendida la segmentación.
-      const segN=segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo);
+      const segN=so?so.angles:segCmd(key,g.zen,g.az,Tcfg,T,o,irr[t],doy,c.albedo);
       // el MANDO por mesa, promediado a línea: ANTES del lazo y ANTES del tope,
       // porque el indicador de backtracking compara lo que la política PIDE
       cmd[t]=segLineMean(T,segN);
