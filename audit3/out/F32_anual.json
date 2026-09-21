@@ -1,58 +1,71 @@
 {
- "HIPOTETICO": "el anual PUBLICADO usa poaPlant (por línea, backtracking.html:7388); esto mide lo que el delta sería si puntuara por mesa",
- "mando": "policyAngles + crearLazo, un lazo por política y día — idéntico a la ruta anual de la página",
- "NO_COMPARABLE_CON_EL_DIA": "la tabla del día usa mando por MESA (policyAnglesSeg) sin lazo sobre el 21 de junio; ésta usa mando por LÍNEA a través del lazo sobre doce días representativos. No son la misma medida con distinto horizonte.",
- "paso_min": 10,
- "dias": 12,
- "planta": "Ayora, 79 líneas, 1600 mesas",
- "res": {
-  "astro": {
-   "anual_A_kWh_m2": 2653.204837,
-   "anual_B_kWh_m2": 2659.273739,
-   "delta_B_vs_A_%": 0.2287
+  "HIPOTETICO": "el anual PUBLICADO usa poaPlant (por línea, backtracking.html:7388); esto mide lo que el delta sería si puntuara por mesa",
+  "mando": "policyAngles + crearLazo, un lazo por política y día — idéntico a la ruta anual de la página",
+  "NO_COMPARABLE_CON_EL_DIA": "la tabla del día usa mando por MESA (policyAnglesSeg) sin lazo sobre el 21 de junio; ésta usa mando por LÍNEA a través del lazo sobre doce días representativos. No son la misma medida con distinto horizonte.",
+  "paso_min": 10,
+  "dias": 12,
+  "planta": "Ayora, 79 líneas, 1600 mesas",
+  "res": {
+    "astro": {
+      "anual_A_kWh_m2": 2653.204837,
+      "anual_B_kWh_m2": 2659.273739,
+      "delta_B_vs_A_%": 0.2287
+    },
+    "global": {
+      "anual_A_kWh_m2": 2664.911076,
+      "anual_B_kWh_m2": 2673.277961,
+      "delta_B_vs_A_%": 0.314
+    },
+    "row": {
+      "anual_A_kWh_m2": 2670.928887,
+      "anual_B_kWh_m2": 2677.475253,
+      "delta_B_vs_A_%": 0.2451
+    },
+    "bt2d": {
+      "anual_A_kWh_m2": 2662.889516,
+      "anual_B_kWh_m2": 2671.53452,
+      "delta_B_vs_A_%": 0.3246
+    },
+    "pairwise": {
+      "anual_A_kWh_m2": 2306.817752,
+      "anual_B_kWh_m2": 2253.628446,
+      "delta_B_vs_A_%": -2.3057
+    },
+    "true3d": {
+      "anual_A_kWh_m2": 2287.588537,
+      "anual_B_kWh_m2": 2239.490363,
+      "delta_B_vs_A_%": -2.1026
+    },
+    "optimal": {
+      "anual_A_kWh_m2": 2688.314455,
+      "anual_B_kWh_m2": 2697.616905,
+      "delta_B_vs_A_%": 0.346
+    },
+    "optfree": {
+      "anual_A_kWh_m2": 2690.060817,
+      "anual_B_kWh_m2": 2698.438189,
+      "delta_B_vs_A_%": 0.3114
+    },
+    "mgl": {
+      "anual_A_kWh_m2": 2340.216471,
+      "anual_B_kWh_m2": 2289.460732,
+      "delta_B_vs_A_%": -2.1688
+    }
   },
-  "global": {
-   "anual_A_kWh_m2": 2664.911076,
-   "anual_B_kWh_m2": 2673.277961,
-   "delta_B_vs_A_%": 0.314
-  },
-  "row": {
-   "anual_A_kWh_m2": 2670.928887,
-   "anual_B_kWh_m2": 2677.475253,
-   "delta_B_vs_A_%": 0.2451
-  },
-  "bt2d": {
-   "anual_A_kWh_m2": 2662.889516,
-   "anual_B_kWh_m2": 2671.53452,
-   "delta_B_vs_A_%": 0.3246
-  },
-  "pairwise": {
-   "anual_A_kWh_m2": 2306.817752,
-   "anual_B_kWh_m2": 2253.628446,
-   "delta_B_vs_A_%": -2.3057
-  },
-  "true3d": {
-   "anual_A_kWh_m2": 2287.588537,
-   "anual_B_kWh_m2": 2239.490363,
-   "delta_B_vs_A_%": -2.1026
-  },
-  "optimal": {
-   "anual_A_kWh_m2": 2688.314455,
-   "anual_B_kWh_m2": 2697.616905,
-   "delta_B_vs_A_%": 0.346
-  },
-  "optfree": {
-   "anual_A_kWh_m2": 2690.060817,
-   "anual_B_kWh_m2": 2698.438189,
-   "delta_B_vs_A_%": 0.3114
-  },
-  "mgl": "NO MEDIDA · 1/12 meses · el mes medido (enero) costó 7974 s = 2 h 12 min 54 s; los otros once, desconocidos. NO se extrapola: el coste por instante de mgl está medido como no constante."
- },
- "mgl_mes_medido": {
-  "mes": "enero",
-  "A_kWh_m2": 95.71,
-  "B_kWh_m2": 93.8727,
-  "delta_B_vs_A_%": -1.9197,
-  "coste_s": 7974
- }
+  "coste_mgl": {
+    "tramos_mes_a_mes_s": [
+      7499,
+      7341,
+      7355,
+      7518,
+      7718,
+      7396,
+      7508,
+      8188,
+      8481
+    ],
+    "suma_de_los_tramos_medibles_s": 69004,
+    "suma_h": 19.17,
+    "nota": "Nueve de los doce meses tienen tramo medible (mes a mes dentro de un mismo lanzamiento). Los tres que abrieron lanzamiento no lo tienen, porque su tiempo incluye el cálculo del día. El total de los doce NO se extrapola: lo que se publica es la suma de lo medido, 69 004 s, como COTA INFERIOR."
+  }
 }
