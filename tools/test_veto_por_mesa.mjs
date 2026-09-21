@@ -93,9 +93,15 @@ const LAT = 39.1182081, LON = -1.1598527;
 /* los instantes: el 21-jun de Ayora, con haz. Son los MISMOS del ítem medido,
    diezmados para que el banco quepa en CI — el recuento completo vive en la
    sonda, no aquí. */
+/* EL PASO ES UNA DECISIÓN DE COSTE, y va con su medida al lado. Con paso 30
+   (29 instantes) el banco tarda más de 8 minutos sólo en `optfree`, porque
+   `anglesOptimalFreeSeg` corre el ascenso por línea Y el óptimo por mesa. El
+   recuento completo vive en la sonda (`audit4/out/F1_*.json`); aquí basta con
+   que el banco DISTINGA el arreglo del defecto, y el control negativo
+   comprueba que lo distingue. `optfree` va sobre un subconjunto, declarado. */
 const DOY = 172, DIA = Date.UTC(2026, 5, 21);
 const INST = [];
-for (let m = 0; m < 1440; m += 30) {
+for (let m = 0; m < 1440; m += 60) {
   const g = F.solarPos(DIA + m * 60000, LAT, LON);
   if (!(g.elev > 0)) continue;
   const irr = F.clearskyIneichen(g.zen, DOY, 500, 3.5);
@@ -103,9 +109,12 @@ for (let m = 0; m < 1440; m += 30) {
   INST.push({ m, g, irr });
 }
 const ALB = 0.2;
-const pmesa = (ang) => F.poaPlantSeg(INST[0].g.zen, 0, T, ang, INST[0].irr, DOY, ALB).plant;  // sólo para tipos
+/* `optfree` sobre uno de cada tres: sale más caro que `optimal` porque arrastra
+   el ascenso coordinado de la rama por línea. El denominador va impreso. */
+const INST_OF = INST.filter((_, i) => i % 3 === 0);
+const crono = (f) => { const t0 = Date.now(); const r = f(); return { r, s: (Date.now() - t0) / 1000 }; };
 
-console.log(`veto por mesa · planta ${T.segs.length} líneas · ${INST.length} instantes con haz (21-jun, paso 30 min)`);
+console.log(`veto por mesa · planta ${T.segs.length} líneas · ${INST.length} instantes con haz (21-jun, paso 60 min)`);
 
 // ── 1-2 · LOS DOS TESTS NULOS, antes de cualquier recuento ──────────────────
 t('TEST NULO A · la planta de prueba TIENE torsión (si no, no hay nada que distinguir)', () => {
@@ -150,9 +159,9 @@ t('`policyAnglesSeg` encamina `optimal` y `optfree` por mesa, no por reparto de 
 });
 
 // ── 5-6 · LO QUE TIENE QUE CUMPLIRSE, con la métrica que se cobra ───────────
-function peorMargen(fnOpt) {
+function peorMargen(fnOpt, lista) {
   let peor = Infinity, donde = null;
-  for (const { m, g, irr } of INST) {
+  for (const { m, g, irr } of (lista || INST)) {
     const pw = F.applyDriveSeg(F.anglesPairwiseSeg(g.zen, g.az, T), T.segDrive || T.segPairs);
     const op = fnOpt(g.zen, g.az, T, irr, DOY, ALB).angles;
     const d = F.poaPlantSeg(g.zen, g.az, T, op, irr, DOY, ALB).plant
@@ -161,14 +170,14 @@ function peorMargen(fnOpt) {
   }
   return { peor, donde };
 }
-t('`optimal` ≥ `pairwise` POR MESA en todos los instantes, dentro de E_EMPATE_W', () => {
-  const { peor, donde } = peorMargen(F.anglesOptimalSeg);
-  console.log(`      · margen peor ${peor.toFixed(4)} W/m² (minuto ${donde}), banda ${F.E_EMPATE_W}`);
+t(`\`optimal\` ≥ \`pairwise\` POR MESA en los ${INST.length} instantes, dentro de E_EMPATE_W`, () => {
+  const { r: { peor, donde }, s } = crono(() => peorMargen(F.anglesOptimalSeg));
+  console.log(`      · margen peor ${peor.toFixed(4)} W/m² (minuto ${donde}) · banda ${F.E_EMPATE_W} · ${s.toFixed(1)} s`);
   if (!(peor >= -F.E_EMPATE_W)) throw new Error(`pierde ${(-peor).toFixed(4)} W/m² en el minuto ${donde}`);
 });
-t('`optfree` ≥ `pairwise` POR MESA en todos los instantes, dentro de E_EMPATE_W', () => {
-  const { peor, donde } = peorMargen(F.anglesOptimalFreeSeg);
-  console.log(`      · margen peor ${peor.toFixed(4)} W/m² (minuto ${donde})`);
+t(`\`optfree\` ≥ \`pairwise\` POR MESA en ${INST_OF.length} de los ${INST.length} instantes (uno de cada tres, por coste)`, () => {
+  const { r: { peor, donde }, s } = crono(() => peorMargen(F.anglesOptimalFreeSeg, INST_OF));
+  console.log(`      · margen peor ${peor.toFixed(4)} W/m² (minuto ${donde}) · ${s.toFixed(1)} s`);
   if (!(peor >= -F.E_EMPATE_W)) throw new Error(`pierde ${(-peor).toFixed(4)} W/m² en el minuto ${donde}`);
 });
 
@@ -185,8 +194,8 @@ t('CONTROL NEGATIVO · con el veto de vuelta en `poaPlant`, la 5 SE PONE ROJA', 
     'const poa=a=>poaPlant(zen,az,T,segLineMean(T,a),irr,doy,albedo).plant;')
     .replace('function anglesOptimalSeg(', 'function anglesOptimalSegRoto(');
   const G = new Function(sol + '\n' + src + '\n' + roto + '\nreturn anglesOptimalSegRoto;')();
-  const { peor, donde } = peorMargen(G);
-  console.log(`      · desarmado: margen peor ${peor.toFixed(4)} W/m² (minuto ${donde})`);
+  const { r: { peor, donde }, s } = crono(() => peorMargen(G));
+  console.log(`      · desarmado: margen peor ${peor.toFixed(4)} W/m² (minuto ${donde}) · ${s.toFixed(1)} s`);
   if (peor >= -F.E_EMPATE_W)
     throw new Error(`desarmado TAMBIÉN pasa (peor ${peor.toFixed(4)} ≥ −${F.E_EMPATE_W}): este banco no distingue el arreglo del defecto`);
 });
