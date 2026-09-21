@@ -75,6 +75,7 @@ const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n'
 const EXPORTA = `return { plantFromCotas, solarPos, clearskyIneichen, poaPlant, poaPlantSeg,
   anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, segLineMean, segTiltAt,
   anglesOptimal, anglesOptimalSeg, anglesOptimalFreeSeg, rowTiltAt, E_EMPATE_W,
+  policyAngles, segsBroadcast, policyAnglesSegF,
   OPT_FRACTIONS, OPT_REFINA, OPT_HISTERESIS, OPT_DF_MAX };`;
 const F = new Function(sol + '\n' + src + '\n' + EXPORTA)();
 
@@ -149,13 +150,31 @@ t('`anglesOptimalSeg` existe y NO llama a `poaPlant` ni una vez (comentarios apa
   if (ps < 1) throw new Error('no puntúa con `poaPlantSeg` ni una vez');
   if (pp > 0) throw new Error(`el veto ha vuelto a la métrica por línea: ${pp} llamada(s) a poaPlant`);
 });
-t('`policyAnglesSeg` encamina `optimal` y `optfree` por mesa, no por reparto de línea', () => {
-  const b = sinComentarios(cuerpoFn(src, 'policyAnglesSeg'));
-  for (const [k, fn] of [['optimal', 'anglesOptimalSeg'], ['optfree', 'anglesOptimalFreeSeg']])
-    if (!new RegExp(`key===['"]${k}['"][\\s\\S]{0,80}${fn}\\(`).test(b))
-      throw new Error(`\`${k}\` no va a \`${fn}\``);
-  if (/key===['"]optimal['"][\s\S]{0,80}segsBroadcast/.test(b))
-    throw new Error('`optimal` sigue repartiendo el ángulo de su línea');
+/* ESTA COMPROBACIÓN ESTUVO ATADA AL NOMBRE, Y CADUCÓ EN UNA HORA. Exigía leer
+   `key==='optimal'` seguido de `anglesOptimalSeg(` DENTRO del cuerpo de
+   `policyAnglesSeg`; en cuanto esa función pasó a ser el envoltorio de
+   `policyAnglesSegF` —donde vive el encaminamiento— se puso roja sin que nada
+   del comportamiento hubiera cambiado. Es el mismo defecto que este mismo PR
+   corrige en el banco de física, cometido aquí una hora después.
+   Ahora se sigue el DATO: lo que `policyAnglesSeg` devuelve para `optimal`
+   TIENE que ser lo que devuelve el óptimo por mesa, y NO puede ser el reparto
+   del ángulo de línea. Con su test nulo delante, porque si las dos cosas
+   coincidieran la comprobación no distinguiría nada. */
+t('`optimal` y `optfree` por `policyAnglesSeg` SON el óptimo por mesa, no el reparto de línea', () => {
+  const { g, irr } = INST[Math.floor(INST.length / 2)];
+  const igual = (A, B) => A.length === B.length &&
+    A.every((l, r) => l.length === B[r].length && l.every((v, k) => Math.abs(v - B[r][k]) < 1e-12));
+  for (const [k, fn] of [['optimal', F.anglesOptimalSeg], ['optfree', F.anglesOptimalFreeSeg]]) {
+    const via = F.policyAnglesSeg(k, g.zen, g.az, T, irr, DOY, ALB);
+    const porMesa = fn(g.zen, g.az, T, irr, DOY, ALB).angles;
+    const reparto = F.segsBroadcast(T, F.policyAngles(k, g.zen, g.az, T, irr, DOY, ALB).angles);
+    // TEST NULO: si el reparto de línea y el óptimo por mesa coincidieran aquí,
+    // la comprobación de abajo pasaría con el código roto
+    if (igual(porMesa, reparto))
+      throw new Error(`TEST NULO de \`${k}\`: por mesa y reparto de línea dan lo MISMO en este instante; la comprobación no distingue nada`);
+    if (!igual(via, porMesa)) throw new Error(`\`${k}\` por policyAnglesSeg no es el óptimo por mesa`);
+    if (igual(via, reparto)) throw new Error(`\`${k}\` sigue repartiendo el ángulo de su línea`);
+  }
 });
 
 // ── 5-6 · LO QUE TIENE QUE CUMPLIRSE, con la métrica que se cobra ───────────
