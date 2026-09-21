@@ -486,6 +486,11 @@ jobs:
           - { banco: test_relieve_plantas.mjs }
           - { banco: test_relieve_bos.mjs }
           - { banco: test_suelo.mjs }
+          # Las HSU son REPETIDORES, como todo equipo de esta red, y la suya es la antena
+          # mejor colocada (6,50 m contra 3,15 de una NCU). Vigila una PROPIEDAD, no un
+          # numero: añadir un repetidor no puede quitarle caminos a nadie. En El Burgo
+          # mejora a 16 seguidores y no empeora a ninguno.
+          - { banco: test_cobertura_hsu.mjs }
           - { banco: test_telemetria.mjs }
           - { banco: test_bt3d_rot.mjs }
           - { banco: test_huso_plantas.mjs }
