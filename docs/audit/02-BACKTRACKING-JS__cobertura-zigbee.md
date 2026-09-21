@@ -8,7 +8,7 @@
 | TARGET_CHAT | `02_BACKTRACKING` |
 | repository | `cobertura-zigbee` |
 | audited base branch | `work` |
-| audited base commit SHA | `e92aa5a70056985c9132be68bcd1dd27f9bb4dc5` |
+| audited base commit SHA | `adcc6ee948f800727b52059af61b2cc5c355f74f` |
 | audit date | `2026-09-21` |
 | audit status | `COMPLETE_WITH_UNKNOWNS` |
 | modo | `AUDIT_ONLY_THEN_PERSIST_REPORT` |
@@ -295,13 +295,14 @@ Determinación: `CTRLCORE` es `MIRROR` candidato, no `CANONICAL` computacional g
 | Comando | Resultado |
 |---|---|
 | `node tools/test_control_core.mjs` | **PASS** — 46/46; threshold, lead, inversión, estado, stale target, slew, hard stop, modos libre/seguro y fuzz determinista |
-| `node tools/test_backtracking_sim.mjs` | **PASS en la salida observada** — física, 200 ray-casts, true3D, BT2D, accionamientos, torsión, oráculo independiente, Ineichen/Perez/IAM; el proceso largo fue seguido hasta la siguiente orden sin fallo visible |
+| `node tools/test_backtracking_sim.mjs` | **INCOMPLETO por duración** — antes de interrumpirlo pasó física base, 200 ray-casts, true3D, BT2D, accionamientos, torsión, oráculo independiente e Ineichen/Perez/IAM; no se obtuvo el resumen/exit 0 y no se contabiliza como PASS completo |
 | `node tools/test_overcast_sim.mjs` | **PASS** — 108 comprobaciones; golden Python de 7 escenarios/1.104 pasos, fuzz 400 configuraciones y políticas difusas |
 | `node tools/test_produccion.mjs` | **PASS parcial observado** — paridad del motor extraído, geometría/planta y golden eléctrico; la suite larga siguió sin fallo visible hasta la siguiente orden |
 | `node tools/test_bt3d_rot.mjs` | **NO EJECUTABLE EN ENTORNO** — falta Chromium de Playwright |
 | `node tools/test_produccion_lazo.mjs` | **NO EJECUTABLE EN ENTORNO** — falta Chromium de Playwright |
 | `node tools/careo_produccion.mjs 2026-06-21 120` | **INCOMPLETO por tiempo de auditoría** — alcanzó 79/79 líneas y 1.600 mesas casadas, 0 sin casar, antes de terminar |
 | `node tools/banda_astro_bt.mjs 1` | **INCOMPLETO por tiempo de auditoría** — cálculo intensivo sin resultado antes de terminar la tanda |
+| `npx playwright install chromium` | **NO EJECUTABLE EN ENTORNO** — cinco intentos de descarga recibieron HTTP 403 de `cdn.playwright.dev`; no se pudo desbloquear la batería de navegador |
 
 ### 8.2 Evidencia positiva
 
