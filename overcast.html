@@ -2441,7 +2441,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.29.0';
+const VER='v1.30.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -4383,6 +4383,15 @@ function buildReal3D(zc,reframe){
   // ── los seguidores: el instanciado de los cobertura 3D ──
   const mats=Seguidor.materials(THREE);
   mats.glass.color.set(0xffffff);                       // la MESA toma el color por instancia (estado)
+  mats.glass.roughness=0.30;mats.glass.metalness=0.14;  // el reflejo, como en la sintetica
+  /* LA ESTRUCTURA NO SE ACLARA AQUI, Y ESO NO ES UN OLVIDO. En la escena
+     SINTETICA hay cuatro filas y la pala ocupa casi todo el pixel, asi que un
+     acero mas claro hace de contorno fino. En una planta REAL se mira desde
+     ~260 m a 600 m de campo: cada mesa son dos pixeles y lo que domina es el
+     BASTIDOR. Probado y medido en Paramo: con el acero aclarado salian 23.799
+     pixeles gris claro contra 2.847 azules, o sea un campo blanco en vez de
+     una planta azul. La misma constante ayuda en una escala y estropea la
+     otra, asi que se queda en cada rama la que su escala pide. */
   const ncuIdx={};R.ncuIds.forEach((id,i)=>ncuIdx[id]=i);
   const isShort=t=>/medio|corto/i.test((t.t||'')+' '+(t.tp||''));
   // BIFILA (como terreno.html): cada entrada del layout es una UNIDAD de dos
@@ -4484,8 +4493,20 @@ function buildReal3D(zc,reframe){
   TD.real.colz0=bx0-120;TD.real.colz1=bx1+120;
   for(let k=0;k<NC;k++){
     const colx=TD.real.colz0+(k+0.5)*(TD.real.colz1-TD.real.colz0)/NC;
-    const man=makeMantle(D*1.15,(TD.real.colz1-TD.real.colz0)/NC*1.7,k+3,170);
-    man.cloud.position.set(cx,170,colx);
+    /* LAS NUBES ESTABAN POR DEBAJO DE LA CAMARA, Y SE VEIAN TUMBADAS SOBRE LA
+       PLANTA. La altura estaba CLAVADA en 170 m mientras el encuadre de esta
+       rama coloca la camara en 0,42*L — con Paramo, L = 617, o sea camara a
+       259 m y mantos 89 m POR DEBAJO. Resultado: se miraban desde arriba y se
+       leian como churretes blancos velando los trackers, no como cielo.
+       Reportado mirando Paramo, y reproducido con esos dos numeros.
+       Es el mismo defecto que la v1.27 arreglo en la escena SINTETICA (manto a
+       34 m con la camara a 32), y no le llego a esta rama porque verifique
+       sobre la sintetica y no abri una planta real. Ahora la altura sale del
+       tamano de la planta, como alli: 0,95*L deja el manto por encima del ojo
+       con el margen de la sintetica aunque se orbite hacia arriba. */
+    const yN=Math.max(170,0.95*L);
+    const man=makeMantle(D*1.15,(TD.real.colz1-TD.real.colz0)/NC*1.7,k+3,yN);
+    man.cloud.position.set(cx,yN,colx);
     man.shadow.position.set(cx,0.8,colx);
     world.add(man.cloud,man.shadow);
     TD.real.cols.push({mw:man.mw,ms:man.ms,cloud:man.cloud,shadow:man.shadow});
@@ -4508,7 +4529,13 @@ function buildReal3D(zc,reframe){
 const _m4=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rot=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rxl=[];                                           // caché Rx(θ_zona)·local por frame
-const COL_TRACK=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x2a4b8f);
+/* EL AZUL DE LA MESA EN LA PLANTA REAL. La rama real pinta cada mesa POR
+   INSTANCIA (`setColorAt`) sobre un material blanco, asi que el azul nuevo de
+   la v1.29 —que se puso en `mats.glass` del constructor SINTETICO— no le
+   llegaba: seguia con este 0x2a4b8f, que es del mismo brillo que el terreno.
+   Mismo tono que la sintetica, misma razon: el tracker tiene que separarse del
+   suelo en LUMINANCIA y no solo en tono. */
+const COL_TRACK=new (typeof THREE!=='undefined'?THREE.Color:Object)(0x1b46c4);
 const _colCache={};
 function stCol(hex){ // cache: son ≤6 valores, no un THREE.Color por instancia
   if(!hex)return COL_TRACK;
@@ -4750,8 +4777,11 @@ function update3D(){
       const b=Math.max(0,Math.min(287,bin-Math.round(lag/5)));
       col.objNube=0.9*CC[b];
       col.objDrape=drapeOpac(CC[b]);
-      col.shadow.position.x=col.cloud.position.x+TD.cOffX*170;
-      col.shadow.position.z=col.cloud.position.z+TD.cOffZ*170;
+      // el desplazamiento de la sombra es PROPORCIONAL A LA ALTURA del manto:
+      // era la misma constante 170 escrita dos veces, asi que al subir la nube
+      // la sombra se habria quedado proyectando desde la altura vieja
+      col.shadow.position.x=col.cloud.position.x+TD.cOffX*col.cloud.position.y;
+      col.shadow.position.z=col.cloud.position.z+TD.cOffZ*col.cloud.position.y;
     }
     TD.realDirty=true;
   }

@@ -298,6 +298,48 @@ t('EL θ NO SE SUAVIZA: la viga llega entera en el mismo instante', () => {
     throw new Error('el θ publicado a los 120 ms (' + pronto.th + ') no es el final (' + luego.th + ')');
 });
 
+console.log('Y TAMBIÉN EN UNA PLANTA REAL, que es por donde se coló');
+/* ESTE BLOQUE EXISTE POR UN FALLO CONCRETO. La v1.27 subió el manto de nubes
+   en la escena SINTÉTICA porque estaba a 34 m con la cámara a 32 — se veía de
+   canto. La rama de PLANTA REAL tiene su propio constructor, con la altura
+   CLAVADA en 170 m y un encuadre que pone la cámara en 0,42·L: con Páramo
+   (L = 617) eso son 259 m de cámara y las nubes 89 m POR DEBAJO. Resultado:
+   los mantos se veían desde arriba, tumbados sobre la planta como churretes
+   blancos que velaban los trackers.
+
+   No lo cazó nadie porque verifiqué sobre la sintética y no abrí una planta
+   real — y el banco hacía lo mismo. Lo reportó Iñaki mirando Páramo.
+
+   Así que la comprobación no se queda en «la nube está arriba en la escena de
+   siempre»: se carga una planta REAL y se exige lo mismo allí. */
+await pg.check('#zonalOn');
+await pg.selectOption('#realplant', 'paramo');
+await pg.waitForTimeout(3500);
+await pg.selectOption('#skypreset', 'overcast');
+await pg.click('#skyapply');
+await pg.waitForTimeout(1200);
+await pg.click('#tab3d').catch(() => {});
+await pg.waitForTimeout(2500);
+const REAL = await pg.evaluate(() => {
+  if (!TD.real) return { sinPlanta: true };
+  const c = TD.real.cols.map(x => ({ y: +x.cloud.position.y.toFixed(1), op: +x.mw.opacity.toFixed(3) }));
+  return { camY: +TD.camera.position.y.toFixed(1), n: c.length,
+           yMin: Math.min(...c.map(x => x.y)), opMax: Math.max(...c.map(x => x.op)),
+           mesas: (TD.real.groups.find(g => g.key === 'mesa') || {}).n };
+});
+t('la planta real carga de verdad (si no, lo de abajo no mide nada)', () => {
+  if (REAL.sinPlanta) throw new Error('no hay TD.real: la planta no cargó');
+  if (!(REAL.n > 0)) throw new Error('sin mantos que comprobar');
+});
+t('en la planta REAL la nube también está por encima de la cámara', () => {
+  if (!(REAL.yMin > REAL.camY)) throw new Error('manto a ' + REAL.yMin +
+    ' m con la cámara a ' + REAL.camY + ' m: se ve desde arriba, tumbado sobre la planta');
+});
+t('y con margen, no rozando (orbitar hacia arriba no debe meterse dentro)', () => {
+  if (!(REAL.yMin > 1.8 * REAL.camY)) throw new Error('manto a ' + REAL.yMin +
+    ' m contra cámara a ' + REAL.camY + ' m: margen ' + (REAL.yMin / REAL.camY).toFixed(2) + '×');
+});
+
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
 });
