@@ -129,5 +129,33 @@ t('cada puntero `backtracking.html:N` de la banda señala una línea que existe'
     'la banda apunta a backtracking.html:' + n + ' y el fichero tiene ' + lineas.length + ' líneas');
 });
 
+/* ── 5b · Y SEÑALA LO QUE DICE SEÑALAR (v1.76) ─────────────────────────────
+   «Existe» es un listón que cualquier número dentro del fichero cruza. Con
+   eso, CINCO de los siete punteros de esta banda llevaban tiempo apuntando a
+   líneas sin ninguna relación con su texto —el de `function nbDe` caía en un
+   `const cerca=x=>{`, el de `BT_UMBRAL_DEG` en un `const mx=+c.maxang||55`—
+   y el banco los daba por buenos. Se pudrieron en silencio porque cualquier
+   inserción por encima los desplaza y nada lo mira.
+   Cuando la entrada NOMBRA su destino en un `<code>` detrás del puntero, la
+   línea tiene que contenerlo. Las que no nombran símbolo se quedan con la
+   comprobación de existencia de arriba: no se puede exigir lo que no se
+   declara, y obligar a nombrarlo sería reescribir la banda entera. */
+t('y cada puntero que NOMBRA su destino cae en la línea que lo contiene', () => {
+  const banda = /<div class="box bad">([\s\S]*?)<\/div>/.exec(doc)[1];
+  const lineas = pag.split('\n');
+  // «backtracking.html:N</code>, <code>SIMBOLO</code>»
+  const re = /backtracking\.html:(\d+)<\/code>\s*,\s*<code>([^<]+)<\/code>/g;
+  const pares = [...banda.matchAll(re)].map(m => [+m[1], m[2].trim()]);
+  debe(pares.length > 0,
+    'ningún puntero de la banda nombra su destino: esta comprobación no mira nada');
+  for (const [n, sim] of pares) {
+    const l = lineas[n - 1] || '';
+    debe(l.includes(sim),
+      'la banda dice que `' + sim + '` está en backtracking.html:' + n +
+      ' y ahí pone «' + l.trim().slice(0, 60) + '». Un puntero que señala otra cosa ' +
+      'es peor que ninguno: manda a quien lo sigue a leer código que no viene a cuento');
+  }
+});
+
 console.log(FAIL === 0 ? `OK — ${N} comprobaciones` : `${FAIL}/${N} FALLOS`);
 process.exit(FAIL === 0 ? 0 : 1);
