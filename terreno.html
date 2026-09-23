@@ -645,8 +645,14 @@ var PLANTS={
      23003 en el DWG y en el Excel de siting; se rotula el 23003 (decidido 2026-08-13). La
      equivalencia vive en proyectos/cartera-tabla.html (NPROY) y viaja en `factiun_plantas`. */
   elburgo:{file:'elburgo_layout.json', title:'El Burgo I 23003', angles:'trackers_2026-06-17.json', cod:24002},
-  ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025},
-  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
+  /* RELIEVE PROPIO. `<planta>_relieve.json` lo escribe
+     tools/relieve_de_levantamiento.mjs empalmando el levantamiento con el DEM,
+     el mismo empalme que esta pagina hacia en vivo. Ahora viene hecho, y lo lee
+     TAMBIEN el motor de radio de Siting, que no puede bajarse el DEM: un
+     fichero por planta, dos consumidores. Validado contra las cotas medidas:
+     Ayora |error| p50 0,030 m, San Jose 0,074. */
+  ayora:{file:'ayora_layout.json', title:'Ayora 24025', angles:null, cod:24025, relieve:'ayora_relieve.json'},
+  sanjose:{file:'sanjose_layout.json', title:'San José 24019', angles:null, mods:32, cod:24019, relieve:'sanjose_relieve.json'},   // San José: 32 módulos/ala (4x32≈74 m completo, 2x32≈37 m "medio"); El Burgo/Ayora 28. Sin telemetría → simulación astronómica
   fayon:{file:'fayon_layout.json', title:'Fayón 24007', angles:null, mods:24, cod:24007},   // mods = modulos por ALA, no por fila. Fayon es 2x1V48: 48 por fila en DOS alas de 24. Con 48 salia span 110,57 m cuando el DWG mide 55,15 (y 46,03 el 1V40, que sale del mr 0,833). Estaba mal desde la #317   // 24 seguidores del DWG (12x 2x1V48 + 12x 2x1V40 = 2.112 mód). El DWG no trae georreferencia, pero el listado de coordenadas del cliente da los 24 TCU en UTM 31N: encajan con el DWG por TRASLACION PURA (escala 1,0000016, rotación -0,0008°, residuo RMS 3,1 mm), así que las coords locales del DWG SON UTM 31N menos un offset. Centro = origen local (0,0) -> E 275719,936 N 4567402,475
   bagnarelli:{file:'bagnarelli_layout.json', title:'Bagnarelli 24030', angles:null, mods:21, cod:24030},   // 17 seguidores de UNA fila (filaZ 0) con modulo Risen de 1,303 m. El DWG ya viene en UTM 33N y sus 17 INSERT coinciden con el listado del cliente a 0,000 m
   paramo:{file:'paramo_layout.json', title:'Páramo 25019', angles:null, mods:24, cod:25019},
@@ -4595,20 +4601,39 @@ function applyFresnel(){
     if(c.blocked){r=.886;g=.341;b=.298;bl++;}else if(c.partial){r=.890;g=.757;b=.286;pa++;}else{r=.212;g=.827;b=.6;cl++;}
     pos.push(gx,ay,gz,gwp[i].x,gwp[i].y,gwp[i].z);col.push(r,g,b,r,g,b);}
   TRK.forEach(function(t){var tp=t.aTip;if(tp){var hA=Math.max(0.1,tp[1]-t.rel*vex);link(t.glat,t.glon,tp[0],tp[2],hA,tp[1],-t.gz);}else link(t.glat,t.glon,t.gx,t.gz,0.3,t.rel*vex+0.3,-t.gz);});   // el enlace sale de la PUNTA de la antena (no del centro entre filas); norte/sur del pasillo
-  (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),8,(ELEV(glat,glon)-baseElev)*vex+8,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado
-  /* ESTOS 8 m CONTRADICEN AL MODELO, y el rótulo lo decía como si nada: aquí
-     ponía «estación meteo: antena a 8 m (mástil 8,5 m)». Los látigos de la HSU
-     NO están en la cabeza: van en su propio brazo a media torre, a 6,50 m al
-     centro del elemento, cota de montaje confirmada por Ignacio (ago-2026).
-     `equipos.js` ya lo recoge —`E.ANT_H.hsu = 6.50`— y explica que los 8,x
-     eran la posición vieja, la de esta copia embebida de la que se sacó aquel
-     módulo. Esta línea se quedó con la vieja.
+  var _hHSU=(Equipos.ANT_H&&Equipos.ANT_H.hsu)||6.5;                            // FUENTE ÚNICA: equipos.js, plano FTR.24.00145_5_C. Ver el bloque de abajo
+  (LAYOUT.meteo||[]).forEach(function(m){var qm=fueraDeLosa(m.x,m.n,0.90),glat=lat0+qm[1]/mPerLat,glon=lon0+qm[0]/mPerLon;link(glat,glon,projX(glon),projZ(glat),_hHSU,(ELEV(glat,glon)-baseElev)*vex+_hHSU,qm[1]);});   // el enlace sale de donde ESTÁ el mástil, ya desplazado
+  /* AQUÍ HABÍA UN 8 LITERAL, Y ERA LA ALTURA DE LA TORRE USADA COMO ALTURA DE
+     ANTENA. El plano FTR.24.00145_5_C trae las dos cotas y no son la misma:
 
-     NO SE TOCA EN ESTE PR: son 1,50 m de altura de antena y cambian el
-     coloreado de enlaces de la meteo en todas las plantas, o sea que es un
-     cambio de física y va con su careo, no colado en un PR de comentarios.
-     Queda escrito para que el número no vuelva a leerse como si estuviera
-     citado de un plano. */
+         hsuTowerH  8,00 m   la torre de celosía autoportante («8000»)
+         hsuAntY    6,50 m   los DOS látigos, en su brazo a media torre
+
+     Los látigos estuvieron en la CABEZA, junto al ultrasónico, y de ahí salía
+     el 8; se bajaron a 6,50 al centro del elemento (confirmado por Ignacio,
+     ago-2026), `equipos.js` lo recogió y esta línea se quedó atrás.
+
+     Y NO ERA UN RÓTULO: EL NÚMERO ENTRABA EN LA FÍSICA. El 5º argumento de
+     `link()` es `hA` y va DIRECTO a `linkClearance()`, que decide
+     rojo/ámbar/verde y alimenta los contadores de «con visión / rozando / sin
+     visión» de `updateFres`. El 6º es la coordenada de dibujo. Los dos eran 8.
+
+     Encima la misma página ya usaba la cota buena en la OTRA capa:
+     `cobAnchors()` lee `Equipos.ANT_H.hsu`. O sea que el mapa de cobertura y
+     la capa de enlaces discrepaban 1,50 m entre sí.
+
+     CUÁNTO MUEVE, MEDIDO, y no es poco. Con el motor de Siting sobre los 40
+     enlaces HSU→NCU más cercana REALES de las diez plantas con meteo:
+
+         mediana  −1,37 dB      mínimo  −15,18 dB      máximo  +11,57 dB
+
+     No es monótono, y eso también es físico: a estas distancias el directo y
+     el reflejado en el suelo entran y salen de fase, así que bajar la antena
+     1,50 m puede subir o bajar el margen más de 10 dB según dónde caiga el
+     enlace en el patrón de lóbulos. Los peores: Panbianco a 333,1 m pierde
+     15,18 dB y San José a 319,1 m pierde 12,13.
+
+     `tools/test_equipos.mjs` tiene una guarda de FUENTE para que no vuelva. */
   var geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   /* OPACIDAD .20, NO .55. En El Burgo son 215 enlaces y 154 salen «sin vision»
      (rojo): a .55 se superponen hasta parecer bandas solidas que tapan la planta.
