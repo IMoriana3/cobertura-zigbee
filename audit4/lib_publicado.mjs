@@ -13,14 +13,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function cargaSimulador(ROOT) {
+/* `extra`: nombres de funciones/constantes del bloque de física que el que
+   llama necesita además (p. ej. el careo término a término de G_careo_609).
+   Sin `extra`, devuelve exactamente lo de siempre. */
+export function cargaSimulador(ROOT, extra = []) {
   const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
   const i0 = html.indexOf('FÍSICA PURA'), i1 = html.lastIndexOf('/* FIN-FÍSICA');
   const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n'
             + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
   const VER = /const VER='([^']+)'/.exec(html)[1];
   const F = new Function(sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) + `return {
-    plantFromCotas, policyAngles, policyAnglesSeg, anglesAstro, solarPos, clearskyIneichen, doyOf };`)();
+    plantFromCotas, policyAngles, policyAnglesSeg, anglesAstro, solarPos, clearskyIneichen, doyOf${extra.length ? ', ' + extra.join(', ') : ''} };`)();
   return { F, VER };
 }
 

@@ -1,0 +1,38 @@
+
+RAMA LINEA · 18695 extremos con sombra EVITABLE > 1 mm
+  receptor/emisor sol    extremos  mesas   mediana   p90     máx (mm)
+  SOLAPA      <1°        2327   1535     2384   2384    2384
+  SOLAPA      1–3°       5333   1508     2384   2384    2384
+  SOLAPA      3–6°        877    259      538   2384    2384
+  SOLAPA      6–10°      1236    165      465   1024    2384
+  SOLAPA      ≥10°       3394    254      161    680    1480
+  NO SOLAPA   <1°         927    889     2384   2384    2384
+  NO SOLAPA   1–3°       2025    993     2384   2384    2384
+  NO SOLAPA   3–6°        379    156      508   2384    2384
+  NO SOLAPA   6–10°       611    116      552   1085    2384
+  NO SOLAPA   ≥10°       1586    199      331    750    1389
+
+RAMA MESA · 22241 extremos con sombra EVITABLE > 1 mm
+  receptor/emisor sol    extremos  mesas   mediana   p90     máx (mm)
+  SOLAPA      <1°        1772   1249     2384   2384    2384
+  SOLAPA      1–3°       4204   1241     2384   2384    2384
+  SOLAPA      3–6°       1318    345       72   2106    2384
+  SOLAPA      6–10°      1589    257       34     94    2384
+  SOLAPA      ≥10°       6699    363       23     70     201
+  NO SOLAPA   <1°         951    809     2384   2384    2384
+  NO SOLAPA   1–3°       2020    842     2384   2384    2384
+  NO SOLAPA   3–6°        537    174      177   1093    2384
+  NO SOLAPA   6–10°       704    148       63    281     902
+  NO SOLAPA   ≥10°       2447    229       34    140     609
+
+CONTROL DE MODELO · mismos hallazgos con las mesas en la x de su LÍNEA (F_sombra_extremos_xlinea.json)
+  RAMA LINEA · evitables: 18695 con x de fila → 18513 con x de línea
+    NO SOLAPA|<10°     3942 extremos · siguen con x de línea   3904 (99.0 %) en 1139 mesas, máx 2384 mm
+    NO SOLAPA|≥10°     1586 extremos · siguen con x de línea   1557 (98.2 %) en 194 mesas, máx 1389 mm
+    SOLAPA|<10°        9773 extremos · siguen con x de línea   9654 (98.8 %) en 1631 mesas, máx 2384 mm
+    SOLAPA|≥10°        3394 extremos · siguen con x de línea   3287 (96.8 %) en 245 mesas, máx 1480 mm
+  RAMA MESA · evitables: 22241 con x de fila → 12682 con x de línea
+    NO SOLAPA|<10°     4212 extremos · siguen con x de línea   3802 (90.3 %) en 1099 mesas, máx 2384 mm
+    NO SOLAPA|≥10°     2447 extremos · siguen con x de línea   1029 (42.1 %) en 93 mesas, máx 609 mm
+    SOLAPA|<10°        8883 extremos · siguen con x de línea   6375 (71.8 %) en 1502 mesas, máx 2384 mm
+    SOLAPA|≥10°        6699 extremos · siguen con x de línea    493 (7.4 %) en 65 mesas, máx 105 mm

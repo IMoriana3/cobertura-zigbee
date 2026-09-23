@@ -1,0 +1,55 @@
+CASO · el peor de la rama MESA con sol ≥ 10° ENTRE LOS QUE SOLAPAN en norte en F_sombra_extremos_antes.json
+  21-dic 09:30 (UTC 08:30) elev 10.215° · emisor línea 32 mesa 1 → receptor línea 31 mesa 1 (PD-32-1) · extremo N n=-1280.79 · 201.2 mm
+  sol: zen 79.7846° az 131.7617° elev 10.2154° · simulador v1.78.0
+
+CONTROL DE RÉPLICA · min|θ| de la réplica = anglesPairwiseSeg: emisor 12.141460 vs 12.141460 ✓ · receptor 12.925692 vs 12.925692 ✓
+
+DE DÓNDE SALE CADA θ PUBLICADO (candidatos de cada solape; manda el de menor |θ|; luego el acople de accionamiento)
+  emisor línea 32 mesa 1: publicado 12.1415° · sin acople 12.1415°
+    vecino línea 31 mesa 0 · solape [-1317.760, -1299.885] · tilts -3.2969°/-3.4010° · pendiente en el medio -1.9153° · singleaxis 14.7136° → candidato 14.3136° · estaciones 4, sombra 2.5D antes 0.0156 después 0.0000
+    vecino línea 31 mesa 1 · solape [-1299.335, -1280.790] · tilts -3.2969°/-3.4010° · pendiente en el medio -2.2076° · singleaxis 13.8229° → candidato 13.3229° · estaciones 4, sombra 2.5D antes 0.0168 después 0.0000
+    vecino línea 33 mesa 1 · solape [-1317.760, -1280.850] · tilts -3.2969°/-3.2383° · pendiente en el medio -1.7034° · singleaxis 12.6415° → candidato 12.1415° · estaciones 6, sombra 2.5D antes 0.0196 después 0.0000
+  receptor línea 31 mesa 1: publicado 11.6888° · sin acople 12.9257°
+    vecino línea 30 mesa 1 · solape [-1299.262, -1262.363] · tilts -3.4010°/-3.3822° · pendiente en el medio -1.4506° · singleaxis 13.1257° → candidato 12.9257° · estaciones 6, sombra 2.5D antes 0.0062 después 0.0000
+    vecino línea 32 mesa 1 · solape [-1299.335, -1280.790] · tilts -3.4010°/-3.2969° · pendiente en el medio -2.2076° · singleaxis 13.8229° → candidato 13.3229° · estaciones 4, sombra 2.5D antes 0.0168 después 0.0000
+    vecino línea 32 mesa 2 · solape [-1280.314, -1262.363] · tilts -3.4010°/-3.8140° · pendiente en el medio -1.3971° · singleaxis 15.8326° → candidato 14.1326° · estaciones 4, sombra 2.5D antes 0.0605 después 0.0000
+
+SOLAPE EN NORTE del emisor y el receptor del caso
+  emisor   línea 32 mesa 1: n [-1317.760, -1280.790]
+  receptor línea 31 mesa 1: n [-1299.335, -1262.363]
+  solape: 18.545 m · el rayo sale del emisor en n=-1280.790 y cae en n=-1277.333 (3.457 m)
+  ¿la política evalúa esta pareja? SÍ
+
+CONTADOR 3D DEL SIMULADOR con θ PUBLICADO (v1.78.0)
+  fracción óptica de la mesa receptora (línea 31 mesa 1): 0.0000
+  su línea entera: 0.0000 · solo planos de módulo 0.0000 · de quién: —
+  control · emisor y receptor al θ que mi verificador da como limpio (9.9°): mesa receptora 0.0000
+  estaciones del contador en esta mesa: 8 → paso 4.621 m; la más al norte en n=-1264.674 · la franja sombreada (3D) va de n=-1277.333 al extremo n=-1262.363
+  MV=  8: mesa receptora con θ publicado 0.00000 (= 0.000 m·cuerda) · con θ limpio 0.00000
+  MV= 16: mesa receptora con θ publicado 0.00000 (= 0.000 m·cuerda) · con θ limpio 0.00000
+  MV= 64: mesa receptora con θ publicado 0.00000 (= 0.000 m·cuerda) · con θ limpio 0.00000
+  MV=256: mesa receptora con θ publicado 0.00000 (= 0.000 m·cuerda) · con θ limpio 0.00000
+           mi verificador con ese θ: 0.0 mm
+
+TABLA · mismo instante, mismo extremo
+  término                             | POLÍTICA DEL SIMULADOR (anglesPairwiseSeg)                        | MI VERIFICADOR (3D)
+  instante                            | 21-dic 08:30 UTC                                                  | 21-dic 08:30 UTC
+  pareja que se mira                  | línea 32 m1 con línea 31 m1 (la que SOLAPA)                       | línea 32 m1 con línea 31 m1 (donde CAE el rayo)
+  tilt emisor (+ = norte alto)        | -3.2969° → usa la MEDIA -3.3489°                                  | -3.2969° (el suyo)
+  tilt receptor                       | -3.4010° (m1) → la MEDIA                                          | -3.4010° (el suyo, m1)
+  sol                                 | 2D: ψ con el tilt medio = 79.2964°                                | 3D: ŝ = (0.7341, -0.6555, 0.1773)
+  punto donde se evalúa               | estaciones del solape; la del extremo n=-1280.790; emisor y receptor en la MISMA n| sale en n=-1280.790, cae en n=-1277.333
+  separación entre ejes               | pitch de LÍNEA 6.6935 m (x de línea: -1046.668 / -1053.361)       | x de FILA 5.9900 m (x de fila: -1046.665 / -1052.655)
+  altura de eje                       | cota = EJE; cara a +z0 = 0.17 m por la normal                     | cota = CARA a θ=0 (supuesto); eje a −0.17 m
+  θ que comprueba la política         | 13.3229° común                                                    | —
+  θ publicado                         | emisor 12.1415° · receptor 11.6888°                               | emisor 12.1415° · receptor 11.6888°
+  sombra 2.5D en el extremo, θ común  | 0.0 mm (lo que comprueba)                                         | 321.8 mm
+  sombra en el extremo, θ PUBLICADO   | 0.0 mm (2.5D, receptor m1 a 11.6888°) · contador 3D: 0.0000 de la mesa| 201.2 mm
+
+SUSTITUCIÓN · un término del simulador cada vez, en el 3D (intrusión en el extremo, θ publicado salvo donde se dice)
+  3D con θ publicado (el hallazgo)               201.2 mm · impacto n=-1277.333 dentro de la mesa
+    x = la de LÍNEA (como el simulador)            0.0 mm · impacto n=-1277.004 dentro de la mesa
+    tilt = la MEDIA de la pareja                 193.0 mm · impacto n=-1277.340 dentro de la mesa
+    θ = el común que comprueba la política       321.8 mm · impacto n=-1277.218 dentro de la mesa
+    x de línea + tilt medio                        0.0 mm · impacto n=-1277.012 dentro de la mesa
+done

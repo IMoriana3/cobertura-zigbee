@@ -71,6 +71,13 @@ const LAT = lay.clat, LON = lay.clon, ALT = datos.base, TL = 3.5, CW = datos.cue
 
 /* ── LA GEOMETRÍA DEL VERIFICADOR, desde las cotas en bruto ─────────────── */
 const LIN = lineasDesdeCotas(datos, 0);
+/* --x=linea: CONTROL DE MODELO, no veredicto. Coloca cada mesa en la x de su
+   LÍNEA, como hace el simulador (`backtracking.html:1946-1948`, xs acumulado
+   por pitch de pareja), en vez de la x de su FILA del levantamiento. Sirve para
+   separar qué parte de los hallazgos es sólo esa diferencia de modelo. */
+const X_LINEA = process.argv.includes('--x=linea');
+if (X_LINEA) for (const L of LIN) for (const m of L.mesas) m.x = L.x;
+if (X_LINEA) console.log('VARIANTE · --x=linea: mesas en la x de su LÍNEA (modelo del simulador), NO en la de su fila');
 const nMesas = LIN.reduce((s, L) => s + L.mesas.length, 0);
 
 /* ── LO QUE EL SIMULADOR PUBLICA, y la correspondencia entre las dos ─────── */
