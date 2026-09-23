@@ -85,9 +85,24 @@ for (const planta of PLANTAS) {
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(`http://127.0.0.1:${PUERTO}/terreno.html?planta=` + planta, { waitUntil: 'load', timeout: 150000 });
-  try { await p.waitForFunction(() => window.TRK && window.TRK.length > 0, { timeout: 120000 }); } catch (e) {}
+  /* LA ESPERA IBA ROTA, y por eso un cuelgue no se veia. `waitForFunction(fn,
+     {timeout})` mete las opciones en el hueco del ARGUMENTO: se quedaba en los
+     30 s de siempre, el `catch` se lo tragaba y el banco seguia como si nada.
+     Ahora la espera es de verdad y, si no llega, se DICE con la planta delante. */
+  const _t0 = Date.now();
+  try { await p.waitForFunction(() => window.TRK && window.TRK.length > 0, null, { timeout: 120000 }); }
+  catch (e) { console.log(`   ${planta}: los seguidores no aparecieron en 120 s`); }
   await p.waitForTimeout(9000);
-  const r = await p.evaluate(() => {
+  /* Y SE DICE DONDE SE ESTA antes de la sonda. El Burgo se colgo 33 minutos en
+     el runner —aqui tarda 40 s— y el log no traia NI UNA linea suya: el job
+     salio cancelado por su tope sin decir en que planta. Un banco que se cuelga
+     tiene que dejar dicho al menos donde. */
+  console.log(`   ${planta}: cargada en ${((Date.now()-_t0)/1000).toFixed(0)} s, midiendo…`);
+  /* LA SONDA, ACOTADA. Recorre 3.368 postes y hace un Box3 de la escena entera
+     (440.097 instancias en El Burgo): si se atasca ahi, sin tope se lleva el job
+     por delante sin contar nada. */
+  const r = await Promise.race([
+    p.evaluate(() => {
     const out = { planta: PLANT, seguidores: TRK.length, baseElev: +baseElev.toFixed(1), vex,
       relieve_trk: [+Math.min(...TRK.map(t => t.rel)).toFixed(2), +Math.max(...TRK.map(t => t.rel)).toFixed(2)] };
     // ¿el DEM ha llegado de verdad? (en plano todos los rel salen 0)
@@ -146,7 +161,13 @@ for (const planta of PLANTAS) {
     out.escena = [bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z].map(v => +v.toFixed(0));
     out.camara = [+camera.position.x.toFixed(0), +camera.position.y.toFixed(0), +camera.position.z.toFixed(0)];
     return out;
-  });
+  }),
+    new Promise(res => setTimeout(() => res({ planta: planta, colgada: true }), 240000)),
+  ]);
+  if (r.colgada) {
+    console.log(`FAIL ${planta}: la sonda no terminó en 240 s — se cuelga al medir, no al cargar`);
+    ko++; await p.close(); continue;
+  }
   r.errores = errs.length ? errs.slice(0, 3) : 'ninguno';
   console.log(JSON.stringify(r));
 

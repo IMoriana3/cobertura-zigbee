@@ -521,8 +521,17 @@ jobs:
           # seguidores) carga despacio.
           - { banco: test_relieve_plantas.mjs, arg: 'tunez fayon bagnarelli',
               nombre: 'relieve · chicas', tope: 25 }
-          - { banco: test_relieve_plantas.mjs, arg: 'polvorin paramo elburgo',
-              nombre: 'relieve · grandes', tope: 35 }
+          - { banco: test_relieve_plantas.mjs, arg: 'polvorin paramo',
+              nombre: 'relieve · grandes', tope: 30 }
+          # EL BURGO VA SOLO, y no por capricho. En la primera corrida de verdad
+          # de este banco se colgo 33 MINUTOS en el runner —aqui tarda 40 s— sin
+          # imprimir ni una linea, y se llevo por delante a Polvorin y Paramo,
+          # que ya habian pasado en 20 y 64 segundos. Aislado, un cuelgue suyo
+          # deja de costar las otras dos plantas. Y el banco ya lo cuenta: la
+          # espera de carga tiene tope real y la sonda se corta a los 240 s
+          # diciendo en que planta se atasco.
+          - { banco: test_relieve_plantas.mjs, arg: 'elburgo',
+              nombre: 'relieve · El Burgo', tope: 30 }
           - { banco: test_relieve_bos.mjs }
           # El `soporte` del slew es la UNICA pieza que la app estira hasta el suelo,
           # y miraba la cota del centro del seguidor en vez de la de su propio pie:
