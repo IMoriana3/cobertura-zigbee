@@ -2441,7 +2441,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.28.0';
+const VER='v1.29.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -4085,7 +4085,27 @@ function build3D(){
   if(PLANT_REAL){buildReal3D(zc,reframe);BUILT.key=key;return;}
   const world=new THREE.Group();
   const mats=Seguidor.materials(THREE);
-  mats.glass.color.set(0x16305e);mats.glass.roughness=0.35;   // pala azulada, no blanco quirófano (el mismo ajuste que backtracking.html)
+  /* LOS TRACKERS TENÍAN EL MISMO BRILLO QUE EL SUELO. Medido clasificando los
+     píxeles del render por color (azulados = pala, verdosos = terreno), bajo el
+     horizonte y con saturación > 0,30:
+
+                      módulos   terreno   contraste
+        overcast        65,5      68,4      0,043
+        despejado       87,5      84,8      0,031
+
+     O sea que se distinguían SOLO POR TONO, no por luminancia: en escala de
+     grises la planta desaparece dentro del campo, y quien no separe bien azul
+     de verde no la ve. Por eso «no destacan» — no era tamaño ni encuadre.
+
+     La pala sube a un azul más eléctrico y algo más luminoso, con reflejo
+     MODERADO (roughness 0,28: se le nota el vidrio sin volverse espejo). Y la
+     estructura de acero se aclara un punto: NO se inventa geometría —las 46
+     mallas del tracker ya están ahí, con su acero, sus cajas y sus correas—,
+     se hace legible la que hay, y de paso el borde claro del bastidor contra
+     la pala oscura hace de contorno fino sin dibujar ninguna línea. */
+  mats.glass.color.set(0x1b46c4);mats.glass.roughness=0.30;mats.glass.metalness=0.14;
+  mats.glass.emissive.set(0x0d2044);mats.glass.emissiveIntensity=0.10;
+  mats.steel.color.set(0xb9c3cc);mats.frame.color.set(0xccd4dc);
   Seguidor.setModsPerStr(28);
   const D0=Seguidor.DIMS, span=D0.span, pitch=+$('pitch').value||6, zgap=6;
   const depth=nZ*ROWSZONE*pitch+(nZ-1)*zgap-pitch;   // z de la primera a la última fila
@@ -4529,8 +4549,70 @@ function writeRealInstances(thByZone,colByZone,sigByZone){
   }
 }
 
+/* ── LA TRANSICION ENTRE CIELOS ES DE PRESENTACION, NO DE FISICA ──────────
+   `update3D()` NO corre por frame: se llama al mover la hora o al
+   reconstruir. Asi que un lerp escrito aqui dentro no animaria nada — se
+   ejecutaria una vez y se quedaria quieto. La suavizacion vive en `loop3D`, y
+   esta funcion pasa a fijar OBJETIVOS en `OBJ`, que es lo que la fisica dice
+   que la escena deberia estar ense~nando AHORA.
+
+   QUE SE SUAVIZA Y QUE NO, porque la distincion es lo que hace esto legitimo:
+   se suavizan la intensidad y el color de las luces, el fondo, la exposicion,
+   el velo del disco solar y las opacidades de nube y sombra — todo lo que es
+   PINTURA. NO se suaviza nada que sea dato: ni el theta ejecutado, ni la POA,
+   ni la sombra calculada, ni una sola cifra del panel de cielo. El tracker
+   sigue colocandose en el angulo exacto del instante, con su banda muerta y su
+   rampa de 0,17 grados/s, que es fisica del actuador y no tiene nada que ver
+   con esto. El banco lo fija con un control: al cambiar de cielo, las luces
+   tardan en llegar y el theta NO.
+
+   Los interruptores (visible, castShadow) van en seco: interpolar un booleano
+   no significa nada, y un disco solar medio visible de noche seria peor que el
+   salto. */
+/* EL SUAVIZADO, POR TIEMPO Y NO POR FOTOGRAMA. La primera version de la
+   exposicion usaba un factor fijo por frame (0,12), y eso ata la velocidad de
+   la transicion a los FPS: a 120 Hz va el doble de rapido que a 60, y en una
+   maquina que se atasca se arrastra. Con una constante de tiempo la transicion
+   dura lo mismo en cualquier maquina, que es lo que se puede prometer.
+
+   TAU = 0,18 s: a los ~0,5 s ha recorrido el 94 % y a 1 s esta. Lo bastante
+   para que el cambio de cielo se lea como un fundido y no como un corte, y lo
+   bastante corto para que arrastrar el reloj del dia no deje la luz atras.
+
+   El primer valor NO se interpola: se adopta. Si no, al abrir la pagina la
+   escena empezaria a oscuras y subiria, que es un efecto de entrada que nadie
+   ha pedido y que ademas falsearia la primera captura. */
+const SUAV_TAU=0.18;
+function suav1(k,obj,a){
+  const S=TD.suav||(TD.suav={});
+  if(obj==null)return S[k];
+  if(S[k]==null||!Number.isFinite(S[k])){S[k]=obj;return obj;}
+  return (S[k]=S[k]+(obj-S[k])*a);
+}
+function suavizaLuz(dt){
+  if(!TD||!TD.obj)return;
+  const O=TD.obj, a=1-Math.exp(-Math.max(0,Math.min(0.25,dt))/SUAV_TAU);
+  if(O.sunI!=null) TD.sun.intensity=suav1('sunI',O.sunI,a);
+  if(O.hemiI!=null)TD.hemi.intensity=suav1('hemiI',O.hemiI,a);
+  if(O.hemiC)TD.hemi.color.setRGB(suav1('hcR',O.hemiC[0],a),suav1('hcG',O.hemiC[1],a),suav1('hcB',O.hemiC[2],a));
+  if(O.bg)TD.scene.background.setRGB(suav1('bgR',O.bg[0],a),suav1('bgG',O.bg[1],a),suav1('bgB',O.bg[2],a));
+  if(O.disco!=null&&TD.sunMesh)TD.sunMesh.material.opacity=suav1('disco',O.disco,a);
+  if(O.exp!=null)TD.renderer.toneMappingExposure=suav1('exp',O.exp,a);
+  TD.scene.fog.color.copy(TD.scene.background);   // la niebla ES el cielo lejano, tambien mientras cambia
+  // las nubes, por zona y por columna: cada manto lleva SU cc, asi que cada
+  // uno persigue su propio objetivo y no una media que no es de nadie
+  (TD.zones||[]).forEach((Z,z)=>{
+    if(Z.cloudMat&&Z.objNube!=null)Z.cloudMat.opacity=suav1('nube'+z,Z.objNube,a);
+    if(Z.shadowMat&&Z.objDrape!=null)Z.shadowMat.opacity=suav1('drape'+z,Z.objDrape,a);
+  });
+  if(TD.real)TD.real.cols.forEach((col,k)=>{
+    if(col.objNube!=null)col.mw.opacity=suav1('cnube'+k,col.objNube,a);
+    if(col.objDrape!=null)col.ms.opacity=suav1('cdrape'+k,col.objDrape,a);
+  });
+}
 function update3D(){
   if(!TD||!TD.world||!SIM)return;
+  const OBJ=TD.obj||(TD.obj={});
   const day=SIM.day,m=+$('hour').value;
   const i=Math.min(day.n-1,Math.round(m/day.dtMin));
   const iF=fineIdx(m);                 // el actuador vive al minuto
@@ -4557,8 +4639,8 @@ function update3D(){
     const _c=Sol.sunLook(el).color; TD.sun.color.setRGB(_c[0],_c[1],_c[2]);
     // …con lo que este simulador añade: las NUBES. El sol va con el DNI del
     // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
-    TD.sun.intensity=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
-    TD.hemi.intensity=0.25+0.12*warm+1.05*Math.min(1,irr.dhi/350);   // clara ≈0,55 (como BT) · overcast ≈1,2
+    OBJ.sunI=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
+    OBJ.hemiI=0.25+0.12*warm+1.05*Math.min(1,irr.dhi/350);   // clara ≈0,55 (como BT) · overcast ≈1,2
     /* EL COLOR DE LA LUZ AMBIENTE ES EL DEL CIELO, Y UN CIELO CUBIERTO NO ES
        AZUL. `hemi` nacio en 0xbcd4ff (azul palido) y se quedaba ahi pasara lo
        que pasara, asi que bajo manto cerrado el terreno se seguia ba~nando en
@@ -4569,24 +4651,24 @@ function update3D(){
        que es la que dice cuanto del total llega del cielo y no del disco. */
     const _dif=irr.ghi>0?Math.max(0,Math.min(1,(irr.ghi-irr.dni*Math.max(0,Math.sin(el*RAD)))/irr.ghi)):1;
     const _k=Math.max(0,Math.min(1,(_dif-0.25)/0.55));
-    TD.hemi.color.setRGB(0.737+(0.855-0.737)*_k, 0.831+(0.878-0.831)*_k, 1.0+(0.925-1.0)*_k);
+    OBJ.hemiC=[0.737+(0.855-0.737)*_k, 0.831+(0.878-0.831)*_k, 1.0+(0.925-1.0)*_k];
     let r0=0.07+0.10*up+0.22*warm*(1-up),
         g0=0.11+0.13*up+0.04*warm*(1-up),
         b0=0.20+0.20*up-0.04*warm*(1-up);
     // …y el fondo se agrisa hacia la tapa lechosa del overcast
     const grey=(0.30*r0+0.50*g0+0.20*b0)*1.9+0.10, f=0.8*ccMean;
-    TD.scene.background.setRGB(r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f);
+    OBJ.bg=[r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f];
     TD.sunMesh.visible=true;
-    TD.sunMesh.material.opacity=1-0.85*ccMean;      // el disco, velado por las nubes
+    OBJ.disco=1-0.85*ccMean;                        // el disco, velado por las nubes
     /* SIN HAZ NO HAY SOMBRA DURA. Medido a mediodia con «Overcast total»: el
        sol baja a intensidad 0,054 (4 % de la clara) y aun asi se seguia
        renderizando su mapa de sombras de 2048x2048 cada frame, para una luz
        que ya no se ve. Se apaga por debajo de un DNI que no proyecta nada. */
     TD.sun.castShadow=irr.dni>40;
   }else{
-    TD.sun.intensity=0.02;TD.sunMesh.visible=false;TD.sun.castShadow=false;
-    TD.hemi.intensity=0.12;
-    TD.scene.background.setRGB(0.043,0.055,0.08);   // la noche de backtracking.html
+    OBJ.sunI=0.02;TD.sunMesh.visible=false;TD.sun.castShadow=false;
+    OBJ.hemiI=0.12;OBJ.disco=0;
+    OBJ.bg=[0.043,0.055,0.08];                      // la noche de backtracking.html
   }
   /* ── LA EXPOSICION SE ADAPTA; LA FISICA NO SE TOCA ────────────────────────
      MEDIDO sobre el render, no supuesto. A mediodia, leyendo la luma de los
@@ -4608,11 +4690,8 @@ function update3D(){
      como se mapea la luz a pixeles, igual que una camara al cerrar el diafragma.
      Se normaliza contra la luz de referencia del dia claro (1,80) con tope,
      para que el cielo cubierto se lea PLANO Y CLARO en vez de oscuro. */
-  const _luzUtil=TD.sun.intensity*0.95+TD.hemi.intensity;
-  const _expObj=Math.max(1.05,Math.min(2.10,1.05*(1.80/Math.max(0.35,_luzUtil))));
-  // sin saltos al cambiar de cielo: la pupila tampoco salta
-  TD.exp=(TD.exp==null)?_expObj:TD.exp+(_expObj-TD.exp)*0.12;
-  TD.renderer.toneMappingExposure=TD.exp;
+  const _luzUtil=OBJ.sunI*0.95+OBJ.hemiI;
+  OBJ.exp=Math.max(1.05,Math.min(2.10,1.05*(1.80/Math.max(0.35,_luzUtil))));
   /* CONTRASTE DE SOMBRA DE NUBE: NO es monotono con la nubosidad, y lo era.
      La regla anterior —0,38*min(1, cc*1,4)— satura a partir de cc = 0,714 y
      crece con la nubosidad, asi que en «Overcast total» (cc 0,95) la sombra
@@ -4646,8 +4725,8 @@ function update3D(){
     for(const s of Z.spins)s.rotation.x=th*RAD;              // escena sintética
     if(Z.th==null||Math.abs(Z.th-th)>1e-9){Z.th=th;TD.realDirty=true;}   // planta real
     if(Z.cloudMat){
-      Z.cloudMat.opacity=0.9*ccz;
-      if(Z.shadowMat)Z.shadowMat.opacity=drapeOpac(ccz);
+      Z.objNube=0.9*ccz;
+      if(Z.shadowMat)Z.objDrape=drapeOpac(ccz);
     }
     // el estado con el NOMBRE de la política, no un «FLAT» genérico: PLANO
     // (flat/poa_switch) · RETENIDO (limited) · DIFUSA (continuous, ángulo
@@ -4669,8 +4748,8 @@ function update3D(){
     for(const col of TD.real.cols){
       const lag=(zc.on&&R0)?zc.cross*(col.cloud.position.z-R0.x0)/((R0.x1-R0.x0)||1):0;
       const b=Math.max(0,Math.min(287,bin-Math.round(lag/5)));
-      col.mw.opacity=0.9*CC[b];
-      col.ms.opacity=drapeOpac(CC[b]);
+      col.objNube=0.9*CC[b];
+      col.objDrape=drapeOpac(CC[b]);
       col.shadow.position.x=col.cloud.position.x+TD.cOffX*170;
       col.shadow.position.z=col.cloud.position.z+TD.cOffZ*170;
     }
@@ -4707,6 +4786,7 @@ function loop3D(){
       if(col.cloud.position.z>TD.real.colz1)col.cloud.position.z=TD.real.colz0;
     }
   }
+  suavizaLuz(fdt);        // la pintura persigue a la fisica; la fisica no espera a nadie
   if(FLY)flyStep(fdt);
   if(TD.real&&TD.realDirty){
     writeRealInstances(TD.zones.map(Z=>Z.th||0),TD.zones.map(Z=>Z.stCol),TD.zones.map(Z=>!!Z.sig));
