@@ -64,10 +64,23 @@ try {
   });
   console.error(`  2.6 · terrain(): tilt 0 → ${t26.tilt0} ms · tilt 4 quebrado → ${t26.tilt4} ms`);
 
-  /* ── 2.3 · el informe, difiriendo y sin diferir ─────────────────────────── */
+  /* ── 2.6 bis · EL PRIMER DÍA DE LA PLANTA REAL, cronometrado ─────────────
+     Es la cifra que el auditor pidió leer en clave de fase 2: sobre `main` el
+     apagado automático deja fuera a `optimal` y `optfree` pero NO a `mgl`, la
+     más cara de las nueve medidas, así que parte de ese tiempo es `mgl`
+     calculándose sin que nadie la haya pedido. La fase 2 la mete en la lista.
+     LAS DOS CORRIDAS VAN SEGUIDAS Y EN LA MISMA MÁQUINA, que es la lección del
+     error 24: dos medidas separadas por dos días y un contenedor no son
+     comparables, y de ahí salió una atribución falsa. */
+  const tDia0 = Date.now();
   await pg.evaluate(() => document.getElementById('ayorabtn').click());
   await pg.waitForFunction(() => { const T = terrain(cfg()); return !!(T && T.segs && T.segTilt); }, null, { timeout: 600000 });
   await pg.waitForFunction(() => { const b = document.getElementById('calcbusy'); return !b || b.style.display === 'none'; }, null, { timeout: 1800000 });
+  const sPrimerDia = (Date.now() - tDia0) / 1000;
+  const quienSeCalculo = await pg.evaluate(() => ({
+    encendidas: POLICIES.filter(P => P.on).map(P => P.key),
+    enElDia: Object.keys(DAY.pol || {}) }));
+  console.error(`  2.6bis · primer día de Ayora · ${sPrimerDia.toFixed(1)} s · en el día: ${quienSeCalculo.enElDia.join(', ')}`);
   await pg.waitForTimeout(400);
 
   const t23 = await pg.evaluate(async () => {
@@ -95,5 +108,7 @@ try {
   const cargaFin = carga();
   console.log(JSON.stringify({ commit: sha, ver: await pg.evaluate(() => VER),
     carga: { alEmpezar: cargaIni, alAcabar: cargaFin },
-    '2.6_terrain_ms': t26, '2.3_informe': t23 }, null, 1));
+    '2.6_terrain_ms': t26,
+    '2.6bis_primer_dia_ayora_s': +sPrimerDia.toFixed(1), '2.6bis_quien': quienSeCalculo,
+    '2.3_informe': t23 }, null, 1));
 } finally { clearInterval(LAT); await browser.close(); srv.kill(); }
