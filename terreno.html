@@ -444,7 +444,7 @@ function angleAt(num,min){
   if(ANG){var v=(num&&ANG.trk[num])?interp(ANG.trk[num],min):interp(ANG.fieldArr,min);if(v!=null)return v;}
   return solarTilt(min);
 }
-var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40,tMin=0,tMax=840;
+var SUN=null,btOn=true,simOn=false,SIM_GCR=0.40/*solo hasta que gcrPlanta() lo calcula con los seguidores de la planta*/,tMin=0,tMax=840;
 // posición del sol (fecha de la telemetría, hora local CEST) → vector hacia el sol en mundo (x=E, y=arriba, z=-N)
 /* HUSO de la planta. Estaba clavado al de España (con San José como excepción a mano) y por eso
    Túnez iba una hora adelantado: Tunicia es UTC+1 TODO EL AÑO, sin cambio de hora, así que en
@@ -479,6 +479,24 @@ function sunVec(min){
    toca: mide alrededor del eje real, ya está en el marco del tubo. */
 function trueTrack(min,rot){ var sv=sunVec(min); if(sv.U<=0.02)return -5*DEG; if(rot)sv=afbtSol(sv,rot); return -Math.atan2(sv.E,sv.U); }   // sol bajo el horizonte: DORMIDO real a −5° (5° al ESTE) — antes devolvía 0 y los paneles pasaban un momento PLANOS entre la puesta y el fundido nocturno
 function noBtAngle(min,rot){ return Math.max(-55,Math.min(55,trueTrack(min,rot)/DEG)); }                              // sin BT: sigue al sol y topa en ±55°
+/* EL GCR DE CADA PLANTA = longitud del modulo / pitch. Estaba fijo en 0,40 para todas, que es El
+   Burgo redondeado (2,382/6 = 0,397), y el backtracking de la animacion lo usaba en todas: en
+   Bagnarelli (pitch 5,5 m, GCR 0,433) aplanaba de menos y se veia sombra entre filas; en Tunez (6,25,
+   0,376) y Paramo (7,0, 0,340) aplanaba de mas. El pitch es la distancia mediana entre ejes de filas
+   contiguas (la que mide afbtVecinos, ya sin la fila de detras). Con cotas medidas manda COTAS.gcr
+   donde se use (BT3D), que es la misma cuenta con el pitch del levantamiento. */
+function gcrPlanta(){
+  if(!TRK.length||!TC||!TC.modH)return;
+  var g=[],paso=Math.max(1,Math.floor(TRK.length/300));
+  for(var i=0;i<TRK.length;i+=paso){var vs=afbtVecinos(i),m=null;
+    for(var q=0;q<vs.length;q++){var v=vs[q];if(v.lado==='E'&&v.ov>0&&(m===null||v.gap<m))m=v.gap;}
+    if(m!==null)g.push(m);}
+  if(TC.filaZ)g.push(2*TC.filaZ);               // bifila: el pitch entre las dos filas del propio tracker tambien cuenta (y salva la planta de un solo tracker)
+  if(!g.length)return;
+  g.sort(function(a,b){return a-b;});
+  var pitch=g[g.length>>1];
+  if(pitch>0.5)SIM_GCR=TC.modH/pitch;
+}
 function simBtAngle(min,rot){ var R=trueTrack(min,rot); if(!R)return 0; var temp=Math.min(Math.abs(Math.cos(R))/SIM_GCR,1); return Math.max(-55,Math.min(55,(R-(R<0?-1:1)*Math.acos(temp))/DEG)); }  // backtracking desde el ángulo VERDADERO → al amanecer se APLANA
 function panelAngle(min,rot){
   var a=simOn ? (btOn ? simBtAngle(min,rot) : noBtAngle(min,rot))     // SIMULACIÓN pura: con / sin backtracking
@@ -1218,7 +1236,7 @@ function buildTrackers(elevAt){
     var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relSop:relSop,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
-  buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
+  buildPickBoxes();applySavedTrackers();layoutTrackers();gcrPlanta();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
 }
 /* ---------- Fusion 3D: de donde sale la cota del seguidor -------------------
    Habia dos escenas solapadas porque dos ejes independientes estaban soldados:
