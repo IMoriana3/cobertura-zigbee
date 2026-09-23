@@ -554,8 +554,30 @@ jobs:
       fail-fast: false          # si cae el del terreno se quiere saber igual si pasa el del huso
       matrix:
         include:
-          - { banco: test_terreno_plantas.mjs }
-          - { banco: test_relieve_plantas.mjs }
+          # TAMBIEN ENTRABA SIN ARGUMENTOS: cero plantas, bucle vacio y un
+          # «todas las plantas OK» que no habia mirado ninguna. Ahora aborta sin
+          # plantas y aqui se le dan seis. Medido: tres tardan 56 s.
+          - { banco: test_terreno_plantas.mjs, arg: 'tunez fayon bagnarelli polvorin paramo elburgo',
+              nombre: 'terreno · seis plantas', tope: 25 }
+          # ESTE ENTRABA SIN ARGUMENTOS, o sea con CERO plantas: el bucle no daba
+          # ni una vuelta y el tick salia verde por no haber hecho nada, desde el
+          # 9 de septiembre. Ahora el banco ABORTA si no le dan plantas, asi que
+          # esa forma de fallar ya no se puede repetir en silencio. Se parte en
+          # dos entradas porque son seis plantas y una de ellas (Paramo, 396
+          # seguidores) carga despacio.
+          - { banco: test_relieve_plantas.mjs, arg: 'tunez fayon bagnarelli',
+              nombre: 'relieve · chicas', tope: 25 }
+          - { banco: test_relieve_plantas.mjs, arg: 'polvorin paramo',
+              nombre: 'relieve · grandes', tope: 30 }
+          # EL BURGO VA SOLO, y no por capricho. En la primera corrida de verdad
+          # de este banco se colgo 33 MINUTOS en el runner —aqui tarda 40 s— sin
+          # imprimir ni una linea, y se llevo por delante a Polvorin y Paramo,
+          # que ya habian pasado en 20 y 64 segundos. Aislado, un cuelgue suyo
+          # deja de costar las otras dos plantas. Y el banco ya lo cuenta: la
+          # espera de carga tiene tope real y la sonda se corta a los 240 s
+          # diciendo en que planta se atasco.
+          - { banco: test_relieve_plantas.mjs, arg: 'elburgo',
+              nombre: 'relieve · El Burgo', tope: 30 }
           - { banco: test_relieve_bos.mjs }
           # El `soporte` del slew es la UNICA pieza que la app estira hasta el suelo,
           # y miraba la cota del centro del seguidor en vez de la de su propio pie:
@@ -563,7 +585,13 @@ jobs:
           # `test_relieve_plantas.mjs` mide los pilotes de `imPost` y no las piezas
           # de `SEG`, asi que esta no la veia nadie.
           - { banco: test_apoyo_soporte.mjs }
-          - { banco: test_suelo.mjs }
+          # Y ESTE IGUAL: sin argumentos imprimia «no se puede ir bajo tierra»
+          # sin haber mirado nada. Se le dan dos plantas y no mas, MEDIDO: Tunez
+          # 84 s y Fayon 110 s, pero El Burgo pasa de 600 s el solo — diez veces
+          # lo que cuesta una planta chica, con 215 seguidores contra 24. Eso no
+          # es el presupuesto de CI: es este banco, que deberia mirarse. Se deja
+          # fuera A PROPOSITO y con el numero delante, no por olvido.
+          - { banco: test_suelo.mjs, arg: 'tunez fayon', nombre: 'suelo · dos plantas', tope: 25 }
           # Las HSU son REPETIDORES, como todo equipo de esta red, y la suya es la antena
           # mejor colocada (6,50 m contra 3,15 de una NCU). Vigila una PROPIEDAD, no un
           # numero: añadir un repetidor no puede quitarle caminos a nadie. En El Burgo

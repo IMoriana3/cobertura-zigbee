@@ -20,7 +20,17 @@ import { chromium } from 'playwright-core';
 import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 let malo = 0;
-for (const p of process.argv.slice(2)) {
+const PLANTAS_ARG = process.argv.slice(2);
+/* SIN PLANTAS NO HAY NADA QUE MIRAR, y salir en verde seria mentir. Este banco
+   entraba en CI SIN ARGUMENTOS: el bucle no daba ni una vuelta y aun asi
+   imprimia su mensaje de conforme y salia con 0. Peor que un banco que falla es
+   uno que tranquiliza sin haber mirado. */
+if (!PLANTAS_ARG.length) {
+  console.error('sin plantas que mirar: `node tools/test_terreno_plantas.mjs <planta> [...]`\n' +
+                'las del indice: tunez fayon bagnarelli polvorin paramo elburgo ayora sanjose');
+  process.exit(2);
+}
+for (const p of PLANTAS_ARG) {
   const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
   const pg = await b.newPage({ viewport: { width: 640, height: 420 } });
   const errs = [];
