@@ -1,7 +1,7 @@
 /* R4 · ¿CUÁNTOS hallazgos de F_sombra_extremos son del mecanismo del caso de
  * 609 mm? — sombra que cae en una mesa vecina que NO SOLAPA en norte con la
  * mesa que la proyecta (la política por mesa solo compara mesas que solapan,
- * `backtracking.html:2687-2688`). Se lee el JSON de F_sombra_extremos y la
+ * `backtracking.html:2690`). Se lee el JSON de F_sombra_extremos y la
  * geometría del verificador; no se recalcula ningún ángulo.
  *
  *   node audit4/G_mecanismos.mjs

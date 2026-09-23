@@ -25,7 +25,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lineasDesdeCotas, intrusion, aoi, zEn, tauDe, centroCara, marco } from './lib_sombra_geo.mjs';
+import { lineasDesdeCotas, intrusion, aoi, zEn, tauDe, centroCara, marco, cotaComoEje } from './lib_sombra_geo.mjs';
+const COTA_EJE = process.argv.includes('--cota=eje');
+if (COTA_EJE) cotaComoEje(true);
 import { cargaSimulador, terrenoComoLaPagina } from './lib_publicado.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -67,6 +69,23 @@ const LAT = lay.clat, LON = lay.clon, ALT = datos.base, TL = 3.5, CW = datos.cue
   console.log('CONTROL DEL INSTRUMENTO · caso de libro (dos filas llanas, GCR ' + (CW / 6).toFixed(4) + ')');
   for (const l of out) console.log('  ' + l);
   if (!bien) throw new Error('el verificador no reproduce el caso de libro');
+  /* (b del revisor) TANGENCIA EXACTA: en θ_bt analítico la intrusión tiene que
+     ser 0 al límite de máquina, y a θ_bt+ε crecer PROPORCIONAL a ε. Un offset
+     sistemático daría milímetros en ε=0 o una razón que no escala. */
+  const tg = [];
+  for (const [e, este] of [[10, true], [20, true], [10, false], [20, false]]) {
+    const s = [(este ? 1 : -1) * Math.cos(e * D), 0, Math.sin(e * D)];
+    const psi = (90 - e) * (este ? 1 : -1);
+    const tbt = psi - Math.sign(psi) * Math.acos(Math.min(1, Math.cos(psi * D) / GCR)) / D;
+    const [em, re] = este ? [fila(P), fila(0)] : [fila(0), fila(P)];
+    const I = eps => intrusion(em, re, 20, tbt + Math.sign(psi) * eps, tbt + Math.sign(psi) * eps, s, CW, Z0).intr;
+    const i0 = I(0), i3 = I(1e-3), i2 = I(1e-2), i1 = I(1e-1);
+    const ok = i0 < 1e-9 && Math.abs(i2 / i3 - 10) < 0.1 && Math.abs(i1 / i2 - 10) < 0.5; bien = bien && ok;
+    tg.push(`${este ? 'mañana' : 'tarde'} ${e}°: ε=0 → ${i0.toExponential(2)} m · ε=1e-3° → ${(1000 * i3).toFixed(4)} mm · 1e-2° → ${(1000 * i2).toFixed(4)} mm · 1e-1° → ${(1000 * i1).toFixed(3)} mm · razones ${(i2 / i3).toFixed(3)} / ${(i1 / i2).toFixed(3)} ${ok ? '✓' : '✗'}`);
+  }
+  console.log('CONTROL DE TANGENCIA EXACTA · intrusión en θ_bt+ε (0 en ε=0, proporcional a ε)');
+  for (const l of tg) console.log('  ' + l);
+  if (!bien) throw new Error('el verificador tiene un offset en la tangencia');
 }
 
 /* ── LA GEOMETRÍA DEL VERIFICADOR, desde las cotas en bruto ─────────────── */
@@ -77,11 +96,12 @@ const LIN = lineasDesdeCotas(datos, 0);
    separar qué parte de los hallazgos es sólo esa diferencia de modelo. */
 const X_LINEA = process.argv.includes('--x=linea');
 if (X_LINEA) for (const L of LIN) for (const m of L.mesas) m.x = L.x;
+if (COTA_EJE) console.log('VARIANTE · --cota=eje: la cota es el EJE (como el simulador), no la cara a θ=0');
 if (X_LINEA) console.log('VARIANTE · --x=linea: mesas en la x de su LÍNEA (modelo del simulador), NO en la de su fila');
 const nMesas = LIN.reduce((s, L) => s + L.mesas.length, 0);
 
 /* ── LO QUE EL SIMULADOR PUBLICA, y la correspondencia entre las dos ─────── */
-const { F, VER } = cargaSimulador(ROOT);
+const { F, VER } = cargaSimulador(ROOT, ['rangoHaz']);
 const { P, T } = terrenoComoLaPagina(F, datos, 500, 0);
 {
   /* CONTROL DE CORRESPONDENCIA: mis líneas y mis mesas tienen que ser LAS
@@ -216,7 +236,29 @@ function verifica(thetaDe, etiqueta) {
               if (fuera || q.intr <= UMBRAL) { par = [tE, tR]; break; }
             }
           }
-          hallazgos.push({ dia: I.dia, local: I.local, utc: I.utc, manana: I.manana, elev: +I.elev.toFixed(3),
+          /* (2 del revisor) EVITABLE DENTRO DEL RANGO QUE LA POLÍTICA PUEDE MANDAR:
+             `rangoHaz` (`backtracking.html:983-998`) —entre 0, ψ y la paralela al
+             terreno, ±2°, recortado a AOI ≤ 88°—, fijado en el código ANTES de ver
+             este resultado. Se le da el tilt medio de las dos mesas y la pendiente
+             transversal en ese extremo (convenio del simulador: + = línea este más
+             baja). Mismos barridos que arriba, restringidos a ese rango. */
+          const [iW, iE2] = lE < lR ? [lE, lR] : [lR, lE];
+          const mW = iW === lE ? em : mejor.re, mEst = iW === lE ? mejor.re : em;
+          const slopeX = Math.atan2(zEn(mW, n) - zEn(mEst, n), Math.abs(mEst.x - mW.x)) * 180 / Math.PI;
+          const [rLo, rHi] = F.rangoHaz(I.zen, I.az, T, (T.segTilt[lE][kE] + T.segTilt[lR][mejor.kR]) / 2, slopeX);
+          let limpioR = null, parR = null;
+          for (let th = rLo; th <= rHi + 1e-9 && limpioR == null; th += 0.1) {
+            const q = intrusion(em, mejor.re, n, th, th, s, CW, Z0);
+            const fuera = q.nImpacto == null || q.nImpacto < mejor.re.n[0] || q.nImpacto > mejor.re.n[1];
+            if (fuera || q.intr <= UMBRAL) limpioR = th;
+          }
+          if (limpioR == null)
+            for (let tE = rLo; tE <= rHi + 1e-9 && !parR; tE += 1) for (let tR = rLo; tR <= rHi + 1e-9; tR += 1) {
+              const q = intrusion(em, mejor.re, n, tE, tR, s, CW, Z0);
+              const fuera = q.nImpacto == null || q.nImpacto < mejor.re.n[0] || q.nImpacto > mejor.re.n[1];
+              if (fuera || q.intr <= UMBRAL) { parR = [tE, tR]; break; }
+            }
+          hallazgos.push({ evitable_rango: limpioR != null || parR != null, rango: [+rLo.toFixed(3), +rHi.toFixed(3)], dia: I.dia, local: I.local, utc: I.utc, manana: I.manana, elev: +I.elev.toFixed(3),
                            par: S.par, receptor: lR, mesaR: mejor.kR, filaR: mejor.re.fila, emisor: lE, mesaE: kE,
                            lado: solEste ? 'E' : 'O', extremo, n: +n.toFixed(3),
                            thE: +thE.toFixed(4), thR: +mejor.thR.toFixed(4), intr_m: +mejor.r.intr.toFixed(4),
@@ -247,6 +289,8 @@ function informe(R) {
   const eMax = ev.reduce((m, h) => Math.max(m, h.elev), 0), iMax = ir.reduce((m, h) => Math.max(m, h.elev), 0);
   console.log(`    · EVITABLE (algún θ —común, o emisor≠receptor— en el cono de haz la quita): ${ev.length} extremos · ${mEv.size} mesas · elevación solar hasta ${eMax.toFixed(3)}°`);
   console.log(`    · IRREDUCIBLE (ningún θ común cada 0,1° ni par (θE,θR) cada 1° la quita): ${ir.length} extremos · ${mIr.size} mesas · elevación solar hasta ${iMax.toFixed(3)}°`);
+  const evR = R.hallazgos.filter(h => h.evitable_rango), mEvR = new Set(evR.map(h => `${h.receptor}|${h.mesaR}`));
+  console.log(`    · EVITABLE DENTRO DE rangoHaz (lo que la política puede mandar): ${evR.length} extremos · ${mEvR.size} mesas · deja de ser evitable el ${(100 * (ev.length - evR.length) / Math.max(1, ev.length)).toFixed(1)} % de los evitables`);
   R.evitables = ev; R.mesasEvitables = mEv.size;
   const top = [...porFila.values()].sort((a, b) => b.intr_m - a.intr_m).slice(0, 12);
   if (top.length) {

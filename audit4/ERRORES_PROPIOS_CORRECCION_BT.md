@@ -30,3 +30,14 @@ Formato E-X1: qué decía · qué dice ahora · qué lo destapó.
 - **Qué lo destapó:** montar `audit4/lib_publicado.mjs` replicando `terrain(c)`
   (`backtracking.html:4655-4676`) para que F_sombra_extremos use lo que la página
   publica de verdad.
+
+## E-X1-C3 · Cité el filtro de solape de la rama mesa en una línea que no es
+
+- **Qué decía:** `backtracking.html:2687-2688` para `if(hi<=lo)continue;` de
+  `anglesPairwiseSeg`, en el informe del bloqueo 2, en la consulta al revisor y
+  en los comentarios de `G_careo_609.mjs` y `G_mecanismos.mjs`.
+- **Qué dice ahora:** `:2689` calcula `lo`/`hi` y el filtro está en `:2690`.
+  El filtro homólogo de `pairDz` (rama línea) está en `:1739`.
+- **Qué lo destapó:** contrastar la respuesta del revisor, que heredó la cita,
+  con el código imprimiendo las líneas. Una cita rota viaja: el revisor
+  construyó un argumento sobre ella.

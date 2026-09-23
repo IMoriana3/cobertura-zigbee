@@ -93,9 +93,15 @@ export function marco(m, thetaDeg) {
    horizontal (θ = 0) — SUPUESTO declarado —, así que el eje está a z0 por
    debajo de esa cara según la normal a θ = 0, y la cara, a z0 por encima del
    eje según la normal a θ. */
+/* VARIANTE DE CONTROL (a del revisor): interpretar la cota como EJE —como hace
+   el simulador— en vez de como cara a θ=0. Solo cambia de dónde sale el eje;
+   por defecto, el supuesto declarado de arriba. */
+let COTA_ES_EJE = false;
+export function cotaComoEje(b) { COTA_ES_EJE = !!b; }
 export function centroCara(m, n, thetaDeg, z0) {
   const M = marco(m, thetaDeg);
   const p = [m.x, n, zEn(m, n)];
+  if (COTA_ES_EJE) return [p[0] + z0 * M.nr[0], p[1] + z0 * M.nr[1], p[2] + z0 * M.nr[2]];
   return [p[0] + z0 * (M.nr[0] - M.nr0[0]), p[1] + z0 * (M.nr[1] - M.nr0[1]), p[2] + z0 * (M.nr[2] - M.nr0[2])];
 }
 

@@ -116,7 +116,7 @@ for (const [nom, r, k, L] of [['emisor', rE, kE, cE], ['receptor', rR, kR, cR]])
 
 /* ── 2 · ¿SOLAPAN EN NORTE el emisor y el receptor del caso? ───────────────
    La política por mesa solo compara mesas que SOLAPAN en n
-   (`backtracking.html:2687-2688`: `if(hi<=lo)continue;`). El rayo 3D, con sol
+   (`backtracking.html:2689-2690`: `if(hi<=lo)continue;` en :2690). El rayo 3D, con sol
    de componente norte, puede caer en una mesa vecina que NO solapa. */
 const em = LIN[rE].mesas[kE], re = LIN[rR].mesas[kR];
 const loER = Math.max(em.n[0], re.n[0]), hiER = Math.min(em.n[1], re.n[1]);
