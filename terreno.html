@@ -1639,12 +1639,30 @@ function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombr
 function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
   var p=afbtPuntas(t,lado);return (p[0]+p[1])/2;
 }
+/* LA MISMA GEOMETRIA QUE EL 3D. El render solo usa las cotas medidas en modo levantamiento
+   (usaCotas); en modo terreno —el de por defecto, y el UNICO en El Burgo— cada seguidor se apoya en
+   el DEM (trackerBase): el tubo con su pendiente longitudinal y el marco girado con la transversal,
+   la fila este filaZ·gE mas alta que la oeste. Aqui se usaban las cotas medidas siempre que las
+   hubiera y, sin ellas, t.rel PLANO para las dos filas y ningun tubo inclinado; en El Burgo, con el
+   relieve real (pendiente longitudinal mediana 0,8 %, maxima 6,2 %), la afeccion no era la del
+   terreno que se ve. Ahora sale de la misma fuente que el dibujo. */
+function afbtDrape(t){                          // pendientes con las que trackerBase apoya el seguidor en el DEM (sin exagerar)
+  var cl=0.8;
+  return {gN:Math.max(-cl,Math.min(cl,(t.relN-t.relS)/(t.span||TC.span)))||0,
+          gE:Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*(t.dE||1))))||0};
+}
+function afbtPendTubo(t){                       // pendiente longitudinal del tubo (subiendo al norte)
+  if(usaCotas(t))return isFinite(t.mc.gN)?t.mc.gN:0;
+  return afbtDrape(t).gN;
+}
 function afbtPuntas(t,lado){                    // [sur, norte]: cota de SUELO (escena) en las dos puntas de la fila E/O
-  if(t.mc&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
+  if(usaCotas(t)&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
     if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1])){
-      var k=COTAS.base-baseElev-COTAOFF-(TC.postH+(TC.off||0));   // al SUELO de escena, como mc.gnd (prepCotas): la y medida va sobre el MODULO y relativa a COTAS.base, y restarla tal cual de t.rel mezclaba datums (~6 m en Ayora) en cuanto a uno de la pareja le faltaba la cota
+      var k=COTAS.base-baseElev-COTAOFF-(TC.postH+(TC.off||0));   // al SUELO de escena, como mc.gnd (prepCotas): la y medida va sobre el MODULO y relativa a COTAS.base
       return [f.y[0]+k,f.y[1]+k];}}
-  return [t.rel,t.rel];                         // sin cota medida: DEM del centro, fila plana (y sin pendiente de tubo: gN solo existe medida)
+  var g=afbtDrape(t),s=(t.medio?(t.mr||0.5):1)*(t.span||TC.span);
+  var h=t.rel+((GEO==='levantamiento')?corrSuelo(t.gx,-t.gz):0)+(lado==='E'?1:-1)*(TC.filaZ||0)*g.gE;   // el centro como trackerBase, y la fila a su lado del marco girado
+  return [h-g.gN*s/2,h+g.gN*s/2];
 }
 function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al ladoB de A) impone a A con este sol
   var sv=afbtSol(sv0,A.rot||0);                 // "este/oeste" son los lados del TUBO, no los del mundo
@@ -1652,13 +1670,13 @@ function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al l
   var s=ladoB==='E'?1:-1;
   if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
   var d=gap||(TC.filaZ?2*TC.filaZ:6);           // hueco REAL entre las filas limitrofes de la pareja
-  /* EL TUBO NO ES HORIZONTAL. Con las cotas medidas el eje lleva su pendiente longitudinal (gN), y
+  /* EL TUBO NO ES HORIZONTAL. Medido o apoyado en el DEM, el eje lleva su pendiente longitudinal (gN), y
      aqui el sol se tomaba en el plano vertical E-U. Pero el rayo, al cruzar el hueco, avanza tambien
      a lo largo del eje —hasta 10 m en una mañana de invierno— subiendo o bajando con la pendiente:
      el plano que manda es el perpendicular al TUBO. Se gira el sol a ese marco (normal (0,-sen b,
      cos b): con el tubo subiendo al norte, el sol del norte queda mas BAJO), igual que bt3dAng.
      Con el 1,4 % de Ayora eran 4-5 grados de recorte que no salian. */
-  var gA=(A.mc&&isFinite(A.mc.gN))?A.mc.gN:0,bA=Math.atan(gA);
+  var gA=afbtPendTubo(A),bA=Math.atan(gA);
   var suT=sv.U*Math.cos(bA)-sv.N*Math.sin(bA);
   if(suT<=0.02)return 0;
   /* Y EL DESNIVEL NO ES UNO. Las dos filas enfrentadas no llevan la misma pendiente (en Ayora se

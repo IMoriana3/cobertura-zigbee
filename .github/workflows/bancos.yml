@@ -529,6 +529,7 @@ jobs:
           # La afeccion BT E/O contra un trazado de rayos 3D sobre las filas medidas (pendiente y alabeo
           # incluidos), y bt3dAng con el tubo inclinado. En Ayora, antes del arreglo: 14,5 grados de error medio.
           - { banco: test_afbt_rayos.mjs, arg: ayora, nombre: 'test_afbt_rayos.mjs · Ayora' }
+          - { banco: test_afbt_rayos.mjs, arg: elburgo, nombre: 'test_afbt_rayos.mjs · El Burgo (DEM sintético)' }   # sin cotas: el seguidor apoyado en el DEM, como lo dibuja trackerBase
           # BT3D con cotas: cso/aso vienen con el signo "sube hacia el OESTE" y la formula los quiere hacia
           # el este. Las dos plantas porque fallaban al reves: en Ayora faltaba recorte, en San Jose sobraba.
           - { banco: test_bt3d_rayos.mjs, arg: ayora,   nombre: 'test_bt3d_rayos.mjs · Ayora' }
