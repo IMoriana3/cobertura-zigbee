@@ -55,34 +55,92 @@ diferencia máxima entre las dos métricas se multiplica por 4,8 en `medida`
 (2,1652 → 10,3657) y por 4,9 en `sinTorsion` (2,1373 → 10,387). Lo que cambió
 no es la política ni la geometría: es **la agregación por mesa**.
 
-#### La causa, comprobada y no deducida
+#### La causa, COMPROBADA — siete cifras de siete
+
+`audit4/F1_causa_reagregacion.mjs`, sobre `main` (`687382e`): la sonda de #710
+byte a byte, más **un campo del mismo objeto** —`poaPlantSeg` ya devuelve las
+dos agregaciones, así que no cuesta una evaluación más—. Salida cruda en
+`audit4/out/F1_causa_reagregacion.json` y `F1_causa_instantes.jsonl`.
+
+**Criterio fijado por el auditor ANTES de mirar**: si con la agregación vieja
+reaparecen los 58 de 86 y los 29 informativos, la causa queda comprobada.
+
+**TEST NULO primero**: las dos agregaciones difieren entre sí en **86 de 86**
+instantes (medida y sinTorsion, máx 11,37 W/m²) y en **79 de 86** (tilt0). Si
+coincidieran, la comparación de abajo no distinguiría nada.
+
+| | #710 (v1.69) | `main` + agregación **vieja** | `main` tal cual (v1.75) |
+|---|---|---|---|
+| **medida** · pierde por mesa | 58/86 | **58/86** ✔ | 61/86 |
+| **medida** · Δ día por mesa | −0,5103 % | **−0,5103 %** ✔ | −0,4441 % |
+| **sinTorsion** · test nulo | 29/86 | **29/86** ✔ | 86/86 |
+| **sinTorsion** · pierde por mesa | 15/86 → **15/29** | **15/86 → 15/29** ✔ | 16/86 |
+| **sinTorsion** · Δ día por mesa | −0,3482 % | **−0,3482 %** ✔ | −0,2441 % |
+| **tilt0** · pierde por mesa | 18/86 | **18/86** ✔ | 19/86 |
+| **tilt0** · Δ día por mesa | −0,3060 % | **−0,3060 %** ✔ | −0,2408 % |
+
+**Siete de siete, al cuarto decimal.** La causa es **#707** —la ponderación por
+largo de mesa— y nada más. No hay un segundo cambio escondido.
+
+#### LA PUERTA 1.1, RE-BASELINADA
+
+La puerta preguntaba si el defecto había cambiado **sin que nadie lo tocara**.
+Lo tocó #707, deliberadamente y con su propio banco. Así que no se da por
+fallada: se re-baselina, y ésta es la línea base nueva sobre `main`
+(`687382e`, v1.75.0), **antes de ningún arreglo**:
+
+| geometría | test nulo · difieren | pierde por **mesa** | pierde por **línea** | Δ día por mesa | Δ día por línea |
+|---|---|---|---|---|---|
+| **medida** (Ayora real) | **86/86**, máx **10,3657** W/m² | **61 de 86** | **0 de 86** | **−0,4441 %** | **+13,7221 %** |
+| **sinTorsion** | **86/86**, máx 10,387 | **16 de 86** | 0 de 86 | −0,2441 % | +13,7221 % |
+| **tilt0** | 86/86, máx 9,294 | 19 de 86 | 0 de 86 | −0,2408 % | +13,7221 % |
+
+Denominador de los porcentajes: la POA del día de `pairwise` con la misma
+métrica con la que se resta, **67 345,0 W/m²** en la geometría medida.
+
+**Y la advertencia, pegada a la cifra y no en una nota**: sobre `main` el
+control `sinTorsion` **ya no aísla la torsión**. Con la agregación vieja las
+dos métricas coincidían en 57 de los 86 instantes —y ésa era la señal de que
+sin torsión no había nada que discrepar—; con la ponderación por largo difieren
+en los 86, porque las líneas miden de **147,74 a 1.185,51 m** y eso las separa
+aunque ninguna mesa se aparte del tilt de su línea. Así que **«16 de 86» no es
+comparable con «15 de 29»**: el control limpio de #710 **ya no existe en
+`main`**, y reconstruirlo exige decidir antes qué se quiere controlar.
+
+**La cifra «15 de 29 = 51,7 %» de `audit3/NOTAS.md` (sección «1.3 · EL CONTROL,
+y por qué obliga a parar») describe la v1.69, no `main`.** No se edita
+`audit3/`: aquello es el registro de lo que se midió entonces y era correcto
+entonces. Queda el puntero aquí.
+
+#### La hipótesis, y el instrumento que NO servía para juzgarla
 
 #710 se midió en **v1.69.0**. Entre v1.69 y v1.75 entró **#707**:
 `poaPlantSeg.plant` dejó de ser la media **sin ponderar** de las medias de línea
 y pasó a pesar **cada mesa por su largo en toda la planta**
-(`backtracking.html:2778` y `2798`; la vieja se sigue publicando en `2846`). Con líneas de 147,74 a 1.185,51 m eso mueve la
-métrica por mesa en **todos** los instantes, también sin torsión — y por eso el
-denominador de 29 del control desapareció.
+(`backtracking.html:2778` y `2798`; la vieja se sigue publicando en `2846`).
 
-Eso era una hipótesis. Se mide con `audit4/F1_causa_desfase.mjs`, que aprovecha
-que la v1.75 **sigue publicando la agregación vieja** al lado de la nueva
-(`plantLinMedia`, puesto ahí para exactamente un ciclo de transición):
+**La primera sonda que escribí para comprobarlo no servía, y no la presento
+como si sirviera.** `audit4/F1_causa_desfase.mjs` compara las dos agregaciones
+sobre **el mismo mando**; la medida de #710 cambia **agregación y mando a la
+vez** —`poaPlant` sobre los ángulos de la política POR LÍNEA, `poaPlantSeg`
+sobre los de la política POR MESA—. Mide algo real y lo publica
+(`sinTorsion`: la agregación vieja difiere de `poaPlant` en 79 de 86, la nueva
+en 86 de 86) pero **no es la pregunta**, y sus 79 no son los 29. Queda en el
+repositorio con esta advertencia encima, porque un instrumento descartado que
+no se publica es un instrumento que alguien repite.
 
-*(resultado de la sonda — se rellena al terminar)*
+La que sí responde es `audit4/F1_causa_reagregacion.mjs`, arriba: la misma
+sonda de #710, leyendo **otro campo del mismo objeto**.
 
 #### LO QUE ESTO SIGNIFICA, Y LO QUE NO
 
-* **El defecto sigue ahí, y algo peor**: 61 de 86 en vez de 58, con el día en
-  −0,4441 %. Que la puerta no reproduzca no absuelve a nada.
-* **La cifra «15 de 29 = 51,7 %» de `audit3/NOTAS.md` está caduca**: describe la
-  v1.69, no `main`. Sobre `main` el control `sinTorsion` tiene denominador 86 y
-  da 16, o sea **18,6 %** — pero no es la misma pregunta, porque ahora las dos
-  agregaciones difieren siempre y la razón de que difieran ya no es la torsión
-  sino el largo desigual de las líneas. **El control limpio de #710 ya no
-  existe en `main`**, y reconstruirlo exige decidir antes qué se quiere
-  controlar.
-* **La fase 1 PARA**, que es lo que el encargo manda. El PR **#716** queda
-  **abierto y sin mergear**.
+* **El defecto está confirmado y es algo mayor que en v1.69**: 61 de 86 en vez
+  de 58, con el día en −0,4441 %.
+* **La puerta 1.1 se re-baselina, no se da por fallada.** Preguntaba si el
+  defecto había cambiado sin que nadie lo tocara; lo tocó #707, con nombre,
+  fecha y banco propio.
+* **El control `sinTorsion` de #710 ya no existe sobre `main`**, y por qué está
+  dicho arriba, pegado a la cifra.
 
 #### ERROR MÍO, Y ES EL DE LA PROPIA PUERTA
 
@@ -207,6 +265,50 @@ se cumplía.
 * `tools/export_consignas.mjs:212` repetía el par `pairwise || astro`. Ahora
   lee la misma lista. Importa: el CSV que baja a campo tiene que llevar la
   consigna que la planta **ejecuta**, no un promedio de ella.
+
+### 1.4 · ANTES Y DESPUÉS, con el mismo instrumento byte a byte
+
+Las dos corridas usan **`audit3/F1_seg_metrica.mjs` sin tocar**; la de «después»
+es `audit4/F1_veto_despues.mjs`, copia literal con **una** diferencia: el plazo
+de espera a que la página cierre su primer cálculo del día pasa de 300 s a
+1.800 s, porque el óptimo por mesa no cabe en 300 s. Es un **plazo**, no una
+medida: no entra en ninguna cifra. El diff de una línea está en
+`audit4/out/F1_diff_instrumento.txt`.
+
+Misma planta en las dos: **79 líneas · 1.600 mesas · torsión en 1.600 de 1.600,
+máx 3,7143°**. Salidas crudas en `audit4/out/F1_antes_main.json` y
+`audit4/out/F1_despues.json`, 258 instantes cada una.
+
+| geometría | | **antes** (`687382e`, v1.75) | **después** (`487714e`, v1.77) |
+|---|---|---|---|
+| **medida** | `optimal` pierde **por mesa** | **61 de 86** | **0 de 86** |
+| | Δ día por mesa | **−0,4441 %** | **+0,2336 %** |
+| | pierde **por línea** | 0 de 86 | 0 de 86 |
+| | Δ día por línea | +13,7221 % | **+13,7221 %** |
+| **sinTorsion** | pierde por mesa | 16 de 86 | **0 de 86** |
+| | Δ día por mesa | −0,2441 % | **+0,2726 %** |
+| | Δ día por línea | +13,7221 % | **+13,7221 %** |
+| **tilt0** | pierde por mesa | 19 de 86 | **0 de 86** |
+| | Δ día por mesa | −0,2408 % | **+0,2976 %** |
+| | Δ día por línea | +13,7221 % | **+13,7221 %** |
+
+**EL CIERRE DE 1.4 SE CUMPLE, y por encima de lo pedido.** El criterio era
+`optimal ≥ pairwise` por mesa en los 86, **dentro de `E_EMPATE_W`** (0,05 W/m²).
+El resultado no necesita la banda: son **cero pérdidas** en las tres
+geometrías, y el día pasa de negativo a positivo en las tres. No quedan
+instantes por debajo: **0 de 86, 0 de 86 y 0 de 86.**
+
+**La rama por línea queda intacta, y se comprueba en vez de suponerse**: Δ día
+por línea **+13,7221 %** en las seis celdas —tres geometrías × antes/después—
+al cuarto decimal, y **0 de 86** pérdidas por línea en todas. Era el diseño
+—allí la métrica publicada ES `poaPlant` y la garantía se cumplía— y la medida
+lo confirma.
+
+**Y lo que NO es bueno, dicho aquí**: el test nulo de «después» sube a
+**65,45 W/m²** de diferencia máxima entre las dos métricas (era 10,37). Tiene
+sentido —ahora las dos políticas mandan cosas distintas de verdad, no dos
+agregaciones del mismo mando— pero queda **anotado, no explicado**: nadie ha
+medido de dónde sale ese número.
 
 ### 1.5 · El banco, con su control negativo
 
