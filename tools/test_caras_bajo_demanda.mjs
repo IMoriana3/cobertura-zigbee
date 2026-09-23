@@ -75,11 +75,43 @@ t('FÍSICA PURA idéntica byte a byte a la de `origin/main` (2.2: 0 hunks dentro
      comparar nada que importe */
   if (!b.includes('function poaPlantSeg')) throw new Error('el corte no contiene física: no está cortando donde dice');
   if (b.includes('function* grSeriesGen')) throw new Error('el corte se ha tragado la capa de aplicación');
-  if (a !== b) throw new Error(`la física ha cambiado: ${a.length} → ${b.length} caracteres · ${sha(a).slice(0, 16)} → ${sha(b).slice(0, 16)}`);
+  /* LA ETIQUETA DE VERSIÓN VIVE DENTRO DE LOS DELIMITADORES, así que «0 hunks
+     dentro» es literalmente imposible para cualquier cambio que suba `VER`.
+     No se resuelve con un hash y una excepción a ciegas: se comparan las líneas
+     y se EXIGE que la única que difiera sea la de la versión, publicándola. Si
+     difiere cualquier otra cosa, esto sigue poniéndose rojo y la nombra. Mover
+     `const VER` fuera del bloque es una decisión del titular, no mía. */
+  if (a !== b) {
+    const A = a.split('\n'), B = b.split('\n');
+    if (A.length !== B.length)
+      throw new Error(`la física ha cambiado: ${A.length} → ${B.length} líneas · ${sha(a).slice(0, 16)} → ${sha(b).slice(0, 16)}`);
+    const dif = [];
+    for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) dif.push({ n: i + 1, antes: A[i].trim(), ahora: B[i].trim() });
+    const esVersion = (d) => /^const VER='v[\d.]+';$/.test(d.antes) && /^const VER='v[\d.]+';$/.test(d.ahora);
+    const reales = dif.filter(d => !esVersion(d));
+    if (reales.length)
+      throw new Error(`la física ha cambiado en ${reales.length} línea(s) que NO son la versión: ` +
+        reales.slice(0, 3).map(d => `${d.n}: «${d.antes}» → «${d.ahora}»`).join(' · '));
+    console.log(`      · la ÚNICA diferencia con main es la etiqueta de versión: ${dif.map(d => d.antes + ' → ' + d.ahora).join(', ')}`);
+  }
   console.log(`      · ${b.length} caracteres · sha256 ${sha(b).slice(0, 16)}…`);
 });
 
 // ── 2 · el criterio es una lista MEDIDA, no una propiedad ───────────────────
+t('CONTROL NEGATIVO de la 1 · un cambio en la física que NO sea la versión se ve', () => {
+  /* la excepción de la versión no puede ser una puerta trasera: se comprueba
+     que con UNA línea de física cambiada el criterio dice que no */
+  const b = fisica(html);
+  const A = b.split('\n');
+  const i = A.findIndex(l => l.includes('function poaPlantSeg'));
+  if (i < 0) throw new Error('no encuentro `poaPlantSeg` para el control: el control no dice nada');
+  const B = A.slice(); B[i] = B[i] + ' /* mutante */';
+  const dif = [];
+  for (let k = 0; k < A.length; k++) if (A[k] !== B[k]) dif.push({ antes: A[k].trim(), ahora: B[k].trim() });
+  const esVersion = (d) => /^const VER='v[\d.]+';$/.test(d.antes) && /^const VER='v[\d.]+';$/.test(d.ahora);
+  if (!dif.filter(d => !esVersion(d)).length)
+    throw new Error('con una línea de física mutada el criterio sigue diciendo que no ha cambiado: la excepción de la versión es una puerta trasera');
+});
 t('TEST NULO · la lista por COSTE no es la misma que «las de cerebro NCU»', () => {
   const m = /const POL_CARAS=\{([^}]*)\}/.exec(html);
   if (!m) throw new Error('no existe `POL_CARAS`');
