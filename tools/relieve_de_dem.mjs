@@ -52,8 +52,22 @@ const ZOOM = parseInt(arg('zoom', '14'), 10);
 const MARGEN = parseFloat(arg('margen', '250'));   // para que los vanos a NCU quepan
 const VERSION = 'relieve_de_dem.mjs v1';
 
+/* MEDIR CUÁNTO SE PIERDE SIN LEVANTAMIENTO. `--forzar-dem-solo` genera el DEM
+   solo de una planta que SÍ lo tiene, que es la única forma de compararlos.
+   `--comoel <fichero>` copia la GEOMETRÍA DE MALLA de un relieve existente
+   —x0, n0, paso, nx, nn— para que la comparación salga nodo a nodo y no de
+   interpolar una malla contra otra, que mezclaría el error del DEM con el del
+   remuestreo. `--sufijo` evita pisar el fichero bueno, y es OBLIGATORIO con
+   `--forzar-dem-solo`. */
+const FORZAR = process.argv.includes('--forzar-dem-solo');
+const COMOEL = arg('comoel', null);
+const SUFIJO = arg('sufijo', '');
+if (FORZAR && !SUFIJO) {
+  console.error('--forzar-dem-solo EXIGE --sufijo: sin el pisarias el terreno bueno de esa planta.');
+  process.exit(2);
+}
 const PLANTAS = process.argv.slice(2).filter(a => !a.startsWith('--') &&
-  !['--paso', '--zoom', '--margen'].includes(process.argv[process.argv.indexOf(a) - 1]));
+  !['--paso', '--zoom', '--margen', '--comoel', '--sufijo'].includes(process.argv[process.argv.indexOf(a) - 1]));
 if (!PLANTAS.length) {
   console.error('uso: node tools/relieve_de_dem.mjs <planta…> [--write]');
   process.exit(2);
@@ -139,6 +153,27 @@ const REFERENCIA = {
   util: 'tools/dem_error_vertical.mjs'
 };
 
+/* EL ± EN dB, QUE ES LO QUE DE VERDAD IMPORTA AL QUE MIRA EL MAPA.
+   Los metros de error no dicen nada por si solos: lo que decide es cuanto
+   mueven el relieveDb. Medido comparando el terreno EMPALMADO contra el mismo
+   sitio con SOLO DEM, sobre 400 vanos por banda
+   (`Siting/tools/relieve_valor_incertidumbre.mjs`).
+   Va aqui, en el fichero, para que la pantalla lo pueda poner al lado del
+   valor sin tener que saberselo. Y rotulado: NO es de esta planta. */
+const Z_DB = {
+  nota: 'Cuanto cambia relieveDb si en vez de terreno empalmado se usa solo DEM. '
+      + 'p90 de |empalmado - solo DEM|. MEDIDO en ayora y sanjose, NO en esta planta.',
+  util: 'Siting/tools/relieve_valor_incertidumbre.mjs',
+  medido_en: ['ayora', 'sanjose'],
+  p90_db: {
+    '10-20': [0.00, 0.00], '20-50': [0.00, 6.57], '50-100': [0.00, 8.07],
+    '100-200': [3.74, 12.94], '200-400': [5.00, 13.14],
+    '400-800': [4.37, 12.94], '800-1600': [4.59, 12.87]
+  },
+  aviso: 'A menos de 100 m el relieve verdadero es CERO EXACTO y el DEM solo llega '
+       + 'a inventarse hasta 8,1 dB. Ahi no es que sea impreciso: cobra relieve que no hay.'
+};
+
 const hoy = new Date().toISOString().slice(0, 10);
 console.log('terreno SOLO DEM · teselas z' + ZOOM + ' · paso ' + PASO + ' m · margen ' + MARGEN + ' m');
 console.log(ESCRIBE ? 'se ESCRIBE en disco\n' : 'ensayo: NO se escribe (usa --write)\n');
@@ -156,8 +191,12 @@ for (const planta of PLANTAS) {
 
   /* ¿ESTA PLANTA TIENE LEVANTAMIENTO? Si lo tiene, este útil NO es el suyo: el
      bueno es `relieve_de_levantamiento.mjs`, y generar aquí el pobre encima del
-     bueno seria degradarla sin que nadie se entere. */
-  if (fs.existsSync(path.join(RAIZ, planta + '_cotas.json'))) {
+     bueno seria degradarla sin que nadie se entere.
+     `--forzar-dem-solo` lo salta A PROPOSITO y sólo para MEDIR: generar el DEM
+     solo de una planta que SI tiene levantamiento es la unica forma de saber
+     cuanto se pierde por no tenerlo. Va con `--sufijo` para que no pise el
+     fichero bueno, y el guardia de abajo lo exige. */
+  if (fs.existsSync(path.join(RAIZ, planta + '_cotas.json')) && !FORZAR) {
     console.log('═══ ' + planta.toUpperCase() + ' ═══  TIENE LEVANTAMIENTO (' + planta
       + '_cotas.json). Este util NO es el suyo: usa relieve_de_levantamiento.mjs.');
     console.log('  Se salta, para no degradar un terreno bueno con uno pobre.\n');
@@ -179,15 +218,30 @@ for (const planta of PLANTAS) {
   let xmin = Infinity, xmax = -Infinity, nmin = Infinity, nmax = -Infinity;
   for (const [x, n] of pts) { if (x < xmin) xmin = x; if (x > xmax) xmax = x;
                               if (n < nmin) nmin = n; if (n > nmax) nmax = n; }
-  const x0 = Math.floor((xmin - MARGEN) / PASO) * PASO, n0 = Math.floor((nmin - MARGEN) / PASO) * PASO;
-  const nx = Math.ceil((xmax + MARGEN - x0) / PASO) + 1, nn = Math.ceil((nmax + MARGEN - n0) / PASO) + 1;
+  let x0 = Math.floor((xmin - MARGEN) / PASO) * PASO, n0 = Math.floor((nmin - MARGEN) / PASO) * PASO;
+  let nx = Math.ceil((xmax + MARGEN - x0) / PASO) + 1, nn = Math.ceil((nmax + MARGEN - n0) / PASO) + 1;
+  let paso = PASO;
+  if (COMOEL) {
+    const R = JSON.parse(fs.readFileSync(path.join(RAIZ, COMOEL), 'utf8'));
+    /* Y SE EXIGE EL MISMO ORIGEN UTM. Copiar la rejilla de un fichero cuyo
+       cE/cN sea otro daría dos mallas que parecen iguales y están desplazadas:
+       la comparación mediría el desfase, no el error del DEM. */
+    if (Math.abs(R.cE - org.cE) > 1e-6 || Math.abs(R.cN - org.cN) > 1e-6) {
+      console.error(planta + ': --comoel ' + COMOEL + ' tiene otro origen UTM ('
+        + R.cE + ',' + R.cN + ' frente a ' + org.cE + ',' + org.cN + '). ABORTA.');
+      process.exit(1);
+    }
+    x0 = R.x0; n0 = R.n0; paso = R.paso; nx = R.nx; nn = R.nn;
+    console.log('  malla copiada de ' + COMOEL + ': ' + nx + '×' + nn + ' a ' + paso + ' m');
+  }
+  const PASO_USO = paso;
 
   const mPerLat = 111320, mPerLon = 111320 * Math.cos(L.clat * Math.PI / 180);
   const z = new Array(nx * nn).fill(null);
   let nulos = 0, zmin = Infinity, zmax = -Infinity;
   for (let j = 0; j < nn; j++) {
     for (let i = 0; i < nx; i++) {
-      const x = x0 + i * PASO, n = n0 + j * PASO;
+      const x = x0 + i * PASO_USO, n = n0 + j * PASO_USO;
       const c = await cotaDem(ZOOM, L.clat + n / mPerLat, L.clon + x / mPerLon);
       if (c === null) { nulos++; continue; }
       const v = Math.round(c * 100) / 100;
@@ -198,7 +252,7 @@ for (const planta of PLANTAS) {
 
   console.log('═══ ' + planta.toUpperCase() + ' ═══  ' + pts.length + ' puntos de huella · origen '
             + org.de);
-  console.log('  malla ' + nx + ' × ' + nn + ' a ' + PASO + ' m  ·  ' + (nx * nn).toLocaleString('es')
+  console.log('  malla ' + nx + ' × ' + nn + ' a ' + PASO_USO + ' m  ·  ' + (nx * nn).toLocaleString('es')
             + ' nodos  ·  teselas ' + cacheTeselas.size);
   if (nulos) {
     console.log('  ⚠ ' + nulos + ' nodos SIN DATO (' + (100 * nulos / (nx * nn)).toFixed(1)
@@ -215,7 +269,7 @@ for (const planta of PLANTAS) {
   const pxM = 156543.03392 * Math.cos(L.clat * Math.PI / 180) / Math.pow(2, ZOOM);
   const obj = {
     planta: planta, crs: L.crs || null, cE: org.cE, cN: org.cN,
-    x0: x0, n0: n0, paso: PASO, nx: nx, nn: nn,
+    x0: x0, n0: n0, paso: PASO_USO, nx: nx, nn: nn,
     productor: VERSION, tipo: 'dem', generado: hoy,
     /* eje_m/eje_medido NO APLICAN aqui: el empalme los necesita porque resta la
        altura de viga de la cota medida sobre modulo. Sin levantamiento no hay
@@ -227,24 +281,26 @@ for (const planta of PLANTAS) {
       motivo: 'sin levantamiento: el layout no trae cotas de seguidor, asi que no hay '
             + 'verdad de campo contra la que validar esta planta',
       px_tesela_m: Math.round(pxM * 10) / 10,
-      referencia: REFERENCIA
+      referencia: REFERENCIA,
+      z_db: Z_DB
     },
     z: z
   };
   const texto = JSON.stringify(obj);
   const sha = crypto.createHash('sha256').update(texto, 'utf8').digest('hex');
   const man = {
-    fichero: planta + '_relieve.json', sha256: sha, bytes: Buffer.byteLength(texto),
+    fichero: planta + SUFIJO + '_relieve.json', sha256: sha, bytes: Buffer.byteLength(texto),
     productor: VERSION, tipo: 'dem', generado: hoy,
-    planta: planta, crs: obj.crs, cE: org.cE, cN: org.cN, paso: PASO, nx: nx, nn: nn,
+    planta: planta, crs: obj.crs, cE: org.cE, cN: org.cN, paso: PASO_USO, nx: nx, nn: nn,
     eje_m: null, eje_medido: false, calidad: obj.calidad
   };
   console.log('  ' + (texto.length / 1048576).toFixed(2) + ' MB  ·  sha256 ' + sha.slice(0, 16) + '…');
   console.log('  ROTULO: solo DEM ~' + obj.calidad.px_tesela_m + ' m/pixel, SIN VALIDAR');
   if (ESCRIBE) {
-    fs.writeFileSync(path.join(RAIZ, planta + '_relieve.json'), texto);
-    fs.writeFileSync(path.join(RAIZ, planta + '_relieve.sha256.json'), JSON.stringify(man, null, 2) + '\n');
-    console.log('  escritos ' + planta + '_relieve.json y su manifiesto');
+    const base = planta + SUFIJO;
+    fs.writeFileSync(path.join(RAIZ, base + '_relieve.json'), texto);
+    fs.writeFileSync(path.join(RAIZ, base + '_relieve.sha256.json'), JSON.stringify(man, null, 2) + '\n');
+    console.log('  escritos ' + base + '_relieve.json y su manifiesto');
   }
   console.log('');
 }
