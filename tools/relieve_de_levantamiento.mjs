@@ -297,6 +297,20 @@ for (const planta of PLANTAS) {
     tipo: 'empalme',            // empalme | levantamiento | dem | curvas
     generado: new Date().toISOString().slice(0, 10),
     eje_m: EJE, eje_medido: false,
+    /* LA CALIDAD, DECLARADA EN EL FICHERO. El consumidor la pinta en pantalla,
+       y sin este bloque el rotulo de un terreno VALIDADO diria «calidad no
+       declarada» — o sea, se presentaria igual que uno de solo DEM, que es
+       justo lo que el rotulo viene a impedir. Los numeros son los de la
+       validacion de arriba, no unos escritos a mano. */
+    calidad: {
+      validado: true,
+      metodo: 'contra las cotas as-built medidas, punto a punto',
+      n_cotas: err.length,
+      p50_m: +pct(finitos, 0.5).toFixed(3),
+      p95_m: +pct(finitos, 0.95).toFixed(3),
+      max_m: +Math.max(...finitos).toFixed(3),
+      fuera_de_malla: fuera
+    },
     fuente: planta + '_cotas.json (levantamiento) + DEM Terrarium z' + ZOOM,
     nota: 'suelo = DEM + residuo IDW del levantamiento, el mismo empalme que hace terreno.html. '
         + 'Cota de suelo = base + y - (eje ' + EJE.toFixed(2) + ' DECLARADO + off ' + OFF + '); '
@@ -330,6 +344,9 @@ for (const planta of PLANTAS) {
       productor: salida.productor, tipo: salida.tipo, generado: salida.generado,
       planta, crs: L.crs, cE: L.cE, cN: L.cN, paso: PASO, nx, nn,
       eje_m: EJE, eje_medido: false,
+      /* La calidad va TAMBIEN en el manifiesto: es lo que viaja con el preset,
+         y la pantalla lo lee de ahi sin tener que bajar 1,5 MB de malla. */
+      calidad: salida.calidad,
       _que_es: 'Manifiesto del terreno de esta planta. Viaja con el preset del proyecto; '
              + 'quien consuma el fichero comprueba este sha256 antes de usarlo. '
              + 'El sha se calcula sobre el TEXTO del JSON, byte a byte.'

@@ -1,1 +1,12 @@
 __pycache__/
+
+# LOS TERRENOS «SOLO DEM» DE PLANTAS QUE SI TIENEN LEVANTAMIENTO son ARTEFACTOS
+# DE MEDIDA, no producto: existen para comparar el bueno contra el pobre y
+# saber cuanto se pierde sin levantamiento (tools/dem_solo_vs_empalme.mjs y
+# Siting/tools/relieve_valor_incertidumbre.mjs). NO se versionan por dos
+# motivos: pesan 3,6 MB y, sobre todo, nadie debe consumir el terreno pobre de
+# una planta que tiene el bueno. Se regeneran con:
+#   node tools/relieve_de_dem.mjs <planta> --forzar-dem-solo \
+#        --sufijo _demsolo --comoel <planta>_relieve.json --write
+*_demsolo_relieve.json
+*_demsolo_relieve.sha256.json

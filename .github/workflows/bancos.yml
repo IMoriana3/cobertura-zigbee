@@ -349,6 +349,43 @@ jobs:
       # señala ahí. Por eso se prueba, y se prueba aquí, que es lo barato.
       - name: la ruta del navegador se resuelve bien
         run: node tools/test_pw_navegador.mjs
+
+      # EL DETECTOR DE RESOLUCIÓN REAL DEL DEM. Entra aquí y NO con los útiles
+      # que bajan teselas: éste es puro, fabrica sus propias teselas sintéticas
+      # de N conocido y no toca la red. `dem_cobertura_cartera.mjs` y
+      # `dem_error_vertical.mjs` se quedan FUERA de la CI a propósito —dependen
+      # de s3.amazonaws.com, y un banco que dependa de un servicio ajeno sale
+      # verde un día y rojo otro sin que nadie haya tocado el código—.
+      #
+      # Este banco existe porque la PRIMERA versión del detector daba N = 1 en
+      # las doce plantas, Túnez incluida, por usar umbral 1/256 m —que es
+      # exactamente el escalón de cuantización de terrarium—. Se habría
+      # publicado «resolución real 7 m» sin que nada chillara.
+      - name: el detector de resolución del DEM, contra N conocido
+        run: node tools/test_dem_cobertura.mjs
+
+      # Y SUS MUTACIONES, con la misma regla que los .ps1: rc = 1 EXACTO. rc = 2
+      # es «la mutación ya no casa con el código», y contarlo como cazada sería
+      # el falso verde que esto viene a evitar.
+      #
+      # `faseFija` merece la nota: sustituye a una primera mutación que salió
+      # DORMIDA por no modelar nada, y al buscarle sustituto se vio que TODOS
+      # los casos del banco tenían los nodos en fase 0 —y una tesela de verdad
+      # no—. Entraron tres casos desfasados con ella.
+      - name: y las mutaciones del detector, en rojo
+        run: |
+          log=$(mktemp)
+          for m in umbralFuera faseFija soloFilas; do
+            set +e
+            MUTA="$m" node tools/test_dem_cobertura.mjs > "$log" 2>&1
+            rc=$?
+            set -e
+            if [ "$rc" -ne 1 ]; then
+              echo "::error::test_dem_cobertura.mjs con «$m» salió rc=$rc; se esperaba 1"
+              tail -30 "$log"; exit 1
+            fi
+            echo "  test_dem_cobertura.mjs · $m: roja, bien"
+          done
       # La cifra anual pasa por el lazo y no puede volver a saltárselo: banco de
       # fuente y de conducta, con control negativo sobre el código de antes.
       - name: el anual pasa por el lazo de control
