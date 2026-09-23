@@ -28,6 +28,16 @@
     modW: 1.134, modH: 2.382, gapMod: 0.012, gapDrive: 0.55, modsPerStr: 28,
     off: 0.14,            // cara del módulo sobre el eje del tubo
     tube: 0.12,           // viga de torsión cuadrada 120 mm
+    /* postH = del suelo al EJE DEL TUBO, no a la base de la horquilla: el marco
+       canónico de `apoyoGeoms` tiene su origen en el eje y el poste baja desde
+       `-postH`. La cara del módulo queda `off` (0,14) más arriba.
+
+       OJO, HAY DOS VALORES DE postH EN ESTE FICHERO. Este 2,00 es el de `D`, el
+       que usa la app; `apoyoGeoms` usa 1,747 («2 − 0,253 del gemelo») cuando
+       quien llama NO le pasa `postH`. No son la misma cota y ninguno de los dos
+       está citado de un plano de seguidor: el estándar Factiun es 1,20 m
+       (indicado por Iñaki). Mientras no se declare por planta, esto es un valor
+       heredado, no una medida. */
     postH: 2.0, filaZ: 3.0,
     purlY: 0.085,         // correas apoyadas sobre el tubo
     jbY: 0.09, jbZ: 0.71, // cajas de conexión bajo el módulo
