@@ -73,7 +73,15 @@ const COLS = [
 const FILAS = [0.5, 1, 2, 3, 4];               // amplitud de la fluctuación N-S, en grados
 const DIAS = [['21-mar', Date.UTC(2026, 2, 21), 80], ['21-jun', Date.UTC(2026, 5, 21), 172], ['21-dic', Date.UTC(2026, 11, 21), 355]];
 const SITIO = { nm: 'Zaragoza', lat: 41.5763, lon: -0.7981, alt: 300, tl: 3.5 };
-const BASE = { pendienteEO: 10, nrows: 8, pitch: 6, cw: 2.382, maxang: 55, nbp: 2, iam: 0.05, mods: 28, drive: 'bifila' };
+/* la pendiente E-O es un PARÁMETRO, no una constante: con 10° el caso sale
+   extremo —pairwise se aplana para evitar una sombra que en buena parte es
+   irreducible— y las ganancias se salen de la envolvente de mercado que la
+   propia página vigila (>8 % = «sospecha de bug del evaluador, no ventaja»).
+   Con 3° el terreno es realista. Se corren las dos y se publican LAS DOS,
+   porque cuál de ellas representa una planta es una decisión del titular y no
+   se toma escondiendo la otra. */
+const PEND_EO = +((process.argv.find(a => a.startsWith('--pendiente=')) || '--pendiente=10').slice(12));
+const BASE = { pendienteEO: PEND_EO, nrows: 8, pitch: 6, cw: 2.382, maxang: 55, nbp: 2, iam: 0.05, mods: 28, drive: 'bifila' };
 const PASO_MIN = 20, ALB = 0.2;
 
 /* la POA del día de una política, PASADA POR EL LAZO: lo que la planta ejecuta */
@@ -129,7 +137,7 @@ const salida = {
   geometria: BASE, sitio: SITIO, paso_min: PASO_MIN, fechas: DIAS.map(d => d[0]),
   test_nulo: nulo, segundos: +((Date.now() - t0) / 1000).toFixed(1), celdas,
 };
-const dest = (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || 'audit4/out/rejilla.json';
+const dest = (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || ('audit4/out/rejilla_eo' + PEND_EO + '.json');
 fs.mkdirSync(path.dirname(path.join(ROOT, dest)), { recursive: true });
 fs.writeFileSync(path.join(ROOT, dest), JSON.stringify(salida, null, 1));
 console.error(`  rejilla → ${dest} · ${salida.segundos} s`);
