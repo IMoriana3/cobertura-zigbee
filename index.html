@@ -978,7 +978,7 @@ function zipStore(ficheros,fecha){
    no se puede dar. `rellena_barrido.ps1` no recolecta, cruza — pero va aqui
    porque se corre alli mismo, al acabar el barrido. */
 const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1",
-                  "zigbee_angulos.ps1","rellena_barrido.ps1"];
+                  "zigbee_angulos.ps1","zigbee_config.ps1","rellena_barrido.ps1"];
 function paqueteDeManifiesto(man){
   if(!man||!man.ambitos) return null;
   /* LA HOJA DE BARRIDO. Los recolectores miden la malla COMO FUNCIONA, y esa es
@@ -1075,6 +1075,13 @@ function preparaInventario(txt,gws){ return preparaLogger(txt,gws); }
    NCU: otra IP y otro puerto (503 el GW1, 504 el GW2), y esos SI salen del
    manifiesto. Escribirle la del gateway seria el mismo error de siempre, del
    otro lado. */
+/* El volcador de configuracion va al MISMO sitio que el de angulos —el MODBUS
+   de la NCU—, asi que reutiliza su preparacion en vez de tener otra copia: si un
+   dia cambia como se pone la IP, cambia para los dos. Lo unico que este NO hace
+   es escribir: no tiene funcion de escritura, y `tools/test_config_planta.py` lo
+   comprueba sobre el fuente Y contra una NCU de mentira que responde con
+   excepcion a cualquier codigo de funcion que no sea FC03. */
+function preparaConfig(txt,gws){ return preparaAngulos(txt,gws); }
 function preparaAngulos(txt,gws){
   /* El de angulos va al MODBUS de la NCU, no al gateway: su marcador lo dice, para
      que nadie le meta ahi la del ConnectPort. */
@@ -1107,6 +1114,7 @@ function preparaColector(nombre,txt,gws){
   else if(nombre==='zigbee_inventario.ps1')    t=preparaInventario(txt,gws);
   else if(nombre==='zigbee_routes_logger.ps1') t=preparaRutas(txt,gws);
   else if(nombre==='zigbee_angulos.ps1')       t=preparaAngulos(txt,gws);
+  else if(nombre==='zigbee_config.ps1')        t=preparaConfig(txt,gws);
   return /\.ps1$/i.test(nombre)?conBOM(t):t;
 }
 function preparaRutas(txt,gws){

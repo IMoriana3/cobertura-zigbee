@@ -243,10 +243,17 @@ check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
       gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
 
 /* ---- el paquete y el léeme ---- */
-check('el paquete lleva los cuatro recolectores y el cruce', JSON.stringify(paq.colectores) ===
+check('el paquete lleva los cinco recolectores y el cruce', JSON.stringify(paq.colectores) ===
       JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1',
-                      'zigbee_angulos.ps1','rellena_barrido.ps1']),
+                      'zigbee_angulos.ps1','zigbee_config.ps1','rellena_barrido.ps1']),
       JSON.stringify(paq.colectores));
+/* `zigbee_config.ps1` es el quinto y es el UNICO que no recolecta una serie: lee
+   de una pasada los valores CONFIGURADOS de viento y el stow autonomo (40022) y
+   los pone al lado de su defecto de fabrica. Va aqui porque el de planta ya
+   tiene el ZIP en la mano y es el unico que puede leerlos.
+   NO ESCRIBE NADA: lo comprueba `tools/test_config_planta.py`, sobre el fuente y
+   contra una NCU de mentira que responde con excepcion a cualquier FC que no
+   sea 3. */
 /* TODO LO DEL ZIP TIENE QUE PODER CORRERSE ALLI. En el PC de la planta hay
    PowerShell y no hay Python: un paso del léeme que pida `python3` es un paso
    que no se puede dar, y el que está allí no lo puede arreglar. */

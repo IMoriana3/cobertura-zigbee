@@ -140,6 +140,12 @@ jobs:
         run: pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
       - name: ángulos del barrido (zigbee_angulos.ps1)
         run: python3 tools/test_angulos_barrido.py
+      # EL VOLCADOR DE CONFIGURACIÓN, y lo que este banco vigila de verdad es
+      # que NO ESCRIBA. La NCU de mentira apunta el código de función de cada
+      # trama y exige que TODOS sean 3; además responde con excepción a
+      # cualquier otro, para que una escritura no pueda colarse en silencio.
+      - name: configuración de planta (zigbee_config.ps1)
+        run: python3 tools/test_config_planta.py
       - name: inventario zigbee (zigbee_inventario.ps1)
         run: python3 tools/test_inventario_zb.py
       - name: RSSI (zigbee_logger.ps1)
@@ -176,6 +182,7 @@ jobs:
           python3 tools/test_inventario_zb.py
           python3 tools/test_logger_rssi.py
           python3 tools/test_rutas_telnet.py
+          python3 tools/test_config_planta.py
       - name: y las mutaciones de los dos, en rojo
         shell: bash
         run: |
