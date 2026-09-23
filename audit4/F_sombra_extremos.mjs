@@ -29,10 +29,11 @@ import { lineasDesdeCotas, intrusion, aoi, zEn, tauDe, centroCara, marco, cotaCo
 const COTA_EJE = process.argv.includes('--cota=eje');
 if (COTA_EJE) cotaComoEje(true);
 import { cargaSimulador, terrenoComoLaPagina } from './lib_publicado.mjs';
+import { dzPorPareja, anglesLineaP2 } from './lib_p2_arnes.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const arg = (n, d) => (process.argv.find(a => a.startsWith('--' + n + '=')) || ('--' + n + '=' + d)).slice(n.length + 3);
-const RAMAS = arg('rama', 'ambas') === 'ambas' ? ['linea', 'mesa'] : [arg('rama', 'linea')];
+const RAMAS = arg('rama', 'ambas') === 'ambas' ? ['linea', 'mesa'] : arg('rama', 'linea').split(',');   // linea | mesa | p2 (P2 reproducido en el arnés)
 const UMBRAL = 0.001;                                      // m — sombra > 0 ⇔ intrusión > 1 mm
 const Z0 = 0.17;
 
@@ -101,8 +102,10 @@ if (X_LINEA) console.log('VARIANTE · --x=linea: mesas en la x de su LÍNEA (mod
 const nMesas = LIN.reduce((s, L) => s + L.mesas.length, 0);
 
 /* ── LO QUE EL SIMULADOR PUBLICA, y la correspondencia entre las dos ─────── */
-const { F, VER } = cargaSimulador(ROOT, ['rangoHaz']);
+const { F, VER } = cargaSimulador(ROOT, ['rangoHaz', 'pairEval3D', 'pairThetaTorsion', 'pairStations', 'driveCoupleSafe',
+  'repairNoShade', 'singleaxis', 'trueTrackAngle', 'pvTilt', 'nan0', 'PASO_BUSQ']);
 const { P, T } = terrenoComoLaPagina(F, datos, 500, 0);
+const DZ = dzPorPareja(P);
 {
   /* CONTROL DE CORRESPONDENCIA: mis líneas y mis mesas tienen que ser LAS
      MISMAS que las del simulador, o el θ de cada mesa se le asignaría a otra.
@@ -163,9 +166,11 @@ for (const [nm, Y, Mo, Dd, off] of DIAS) {
     let bt = false; for (let r = 0; r < lin.length; r++) if (Math.abs(lin[r] - ast[r]) > 0.1) { bt = true; break; }
     if (!bt) continue;
     const mes = RAMAS.includes('mesa') ? F.policyAnglesSeg('pairwise', g.zen, g.az, T, irr, doy, 0.2) : null;
+    // P2 reproducido en el arnés (`lib_p2_arnes.mjs`), con sus controles en H_p2_controles.mjs
+    const p2 = RAMAS.includes('p2') ? anglesLineaP2(F, T, DZ, g.zen, g.az, irr, doy, 0.2, 'extremos') : null;
     const hh = Math.floor((min + off * 60) / 60) % 24, mm = (min + off * 60) % 60;
     INST.push({ dia: nm, utc: new Date(ms).toISOString().slice(11, 16), local: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`,
-                zen: g.zen, az: g.az, elev: g.elev, manana: g.az < 180, lin, ast, mes });
+                zen: g.zen, az: g.az, elev: g.elev, manana: g.az < 180, lin, ast, mes, p2, idx: INST.length });
     nBT++;
   }
   console.log(`  ${nm}: ${nBT} instantes con backtracking activo · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
@@ -308,11 +313,83 @@ const RA = verifica(thAstro, 'CONTROL POSITIVO · θ astronómico (sin backtrack
 const IA = informe(RA);
 if (RA.hallazgos.length === 0) throw new Error('con seguimiento astronómico el verificador no encuentra sombra: no sabe medir');
 
+/* ── T5a / T5b (decisión del titular) ─────────────────────────────────────────
+   Solo en las ramas POR LÍNEA, cuyo contrato es UN θ por línea
+   (`policyAngles`, `backtracking.html:3738`):
+     T5a · evitable dentro de rangoHaz, en mesas que SOLAPAN en norte, y que la
+           pareja puede quitar con UN θ por línea → tiene que llegar a 0;
+     T5b · evitable dentro de rangoHaz pero sobre una mesa que NO solapa con la
+           que la proyecta, o que exigiría θ distintos dentro de una línea → se
+           congela (C5).
+   «Resoluble con un θ por línea»: existe un θ común a las dos líneas de la
+   pareja (cada 0,1°) o un par (θi, θi+1) (cada 1°), dentro del rangoHaz de la
+   pareja, que deja limpios A LA VEZ todos los extremos que solapan de esa
+   pareja en ese instante y que son limpiables por separado. No depende de qué θ
+   se publique: es geometría del instante, y se memoriza por (instante, pareja). */
+const SOLp = new Map();
+for (const S of SOL) { if (!SOLp.has(S.par)) SOLp.set(S.par, []); SOLp.get(S.par).push(S); }
+const solapaNorte = (a, b) => Math.min(a.n[1], b.n[1]) > Math.max(a.n[0], b.n[0]);
+const memoRes = new Map();
+function resoluble(I, p) {
+  const key = I.idx + '|' + p; if (memoRes.has(key)) return memoRes.get(key);
+  const D = Math.PI / 180, s = [Math.sin(I.zen * D) * Math.sin(I.az * D), Math.sin(I.zen * D) * Math.cos(I.az * D), Math.cos(I.zen * D)];
+  const solEste = s[0] > 0;
+  const [lo, hi] = F.rangoHaz(I.zen, I.az, T, T.pairs[p].axisTilt, T.pairs[p].slope);
+  const ext = [];
+  for (const S of SOLp.get(p) || []) { const [lE, kE, lR] = solEste ? [p + 1, S.b, p] : [p, S.a, p + 1]; for (const n of [S.lo, S.hi]) ext.push({ lE, kE, lR, n }); }
+  const estado = (e, tE, tR) => {                       // 1 limpio · 0 sombra · -1 no cuenta (no solapa)
+    const em = LIN[e.lE].mesas[e.kE];
+    for (const re of LIN[e.lR].mesas) {
+      const r = intrusion(em, re, e.n, tE, tR, s, CW, Z0);
+      if (r.nImpacto == null || r.nImpacto < re.n[0] || r.nImpacto > re.n[1]) continue;
+      if (aoi(re, tR, s) >= 90) return 1;
+      if (!solapaNorte(em, re)) return -1;
+      return r.intr <= UMBRAL ? 1 : 0;
+    }
+    return 1;                                            // cae fuera de toda mesa
+  };
+  const rejillas = [[], []];                             // [común 0,1°] y [(θi,θi+1) 1°]
+  for (let t = lo; t <= hi + 1e-9; t += 0.1) rejillas[0].push([t, t]);
+  for (let a = lo; a <= hi + 1e-9; a += 1) for (let b = lo; b <= hi + 1e-9; b += 1) rejillas[1].push([a, b]);
+  const limpiable = new Array(ext.length).fill(false), filas = [[], []];
+  let ok = false;
+  for (let g = 0; g < 2 && !ok; g++) {
+    for (const [tA, tB] of rejillas[g]) {
+      // θ de la línea p = tA, de la línea p+1 = tB; el emisor es la del lado del sol
+      const st = ext.map(e => e.lE === p ? estado(e, tA, tB) : estado(e, tB, tA));
+      st.forEach((v, i) => { if (v === 1) limpiable[i] = true; });
+      filas[g].push(st);
+    }
+    ok = [...filas[0], ...filas[1]].some(st => st.every((v, i) => v !== 0 || !limpiable[i]));
+  }
+  memoRes.set(key, ok);
+  return ok;
+}
+function clasificaT5(R) {
+  const byIdx = new Map(INST.map(I => [`${I.dia}|${I.utc}`, I]));
+  for (const h of R.hallazgos) {
+    if (!h.evitable) h.clase = 'irreducible';
+    else if (!h.evitable_rango) h.clase = 'fuera_de_rango';
+    else if (!solapaNorte(LIN[h.emisor].mesas[h.mesaE], LIN[h.receptor].mesas[h.mesaR])) h.clase = 'T5b_no_solapa';
+    else h.clase = resoluble(byIdx.get(`${h.dia}|${h.utc}`), h.par) ? 'T5a' : 'T5b_theta_distinto';
+  }
+  const cls = ['T5a', 'T5b_no_solapa', 'T5b_theta_distinto', 'fuera_de_rango', 'irreducible'];
+  console.log(`  T5 · clase                 extremos  mesas   ≥10°: extremos  mesas  mediana  p90   máx (mm)`);
+  for (const c of cls) {
+    const H = R.hallazgos.filter(h => h.clase === c), A = H.filter(h => h.elev >= 10);
+    const mm = H.map(h => h.intr_m * 1000).sort((x, y) => x - y), q = f => mm.length ? mm[Math.min(mm.length - 1, Math.floor(f * mm.length))].toFixed(0) : '—';
+    console.log(`    ${c.padEnd(22)} ${String(H.length).padStart(8)} ${String(new Set(H.map(h => h.receptor + '|' + h.mesaR)).size).padStart(6)}   ${String(A.length).padStart(13)} ${String(new Set(A.map(h => h.receptor + '|' + h.mesaR)).size).padStart(6)}  ${q(0.5).padStart(7)} ${q(0.9).padStart(5)} ${(mm.length ? mm[mm.length - 1].toFixed(0) : '—').padStart(6)}`);
+  }
+}
+
 const RES = {};
+const TH = { linea: thLinea, mesa: thMesa, p2: (I, l, k) => I.p2[l] };
+const ETQ = { linea: 'RAMA LÍNEA · policyAngles(pairwise) — usa pairDz', mesa: 'RAMA MESA · policyAnglesSeg(pairwise) — no usa pairDz',
+              p2: 'RAMA P2 (ARNÉS) · la de línea con dzMin/dzMax por extremo de solape — NO es el motor' };
 for (const rama of RAMAS) {
-  const R = verifica(rama === 'linea' ? thLinea : thMesa,
-    rama === 'linea' ? 'RAMA LÍNEA · policyAngles(pairwise) — usa pairDz' : 'RAMA MESA · policyAnglesSeg(pairwise) — no usa pairDz');
+  const R = verifica(TH[rama], ETQ[rama]);
   RES[rama] = { R, I: informe(R) };
+  if (rama !== 'mesa') clasificaT5(R);
 }
 
 /* ── PUERTA P0 ───────────────────────────────────────────────────────────────
@@ -338,7 +415,7 @@ for (const rama of RAMAS) {
     console.log(`    cota receptor (línea 2, mesa ${solN.a}) en n: ${zEn(re, n).toFixed(4)} m · tilt ${(tauDe(re) * 180 / Math.PI).toFixed(4)}°`);
     console.log(`    Δz en ese extremo (receptor − emisor): ${(zEn(re, n) - zEn(em, n)).toFixed(4)} m · dx ${(em.x - re.x).toFixed(4)} m`);
     for (const rama of RAMAS) {
-      const th = rama === 'linea' ? I.lin[3] : I.mes[3][solN.b], thr = rama === 'linea' ? I.lin[2] : I.mes[2][solN.a];
+      const th = rama === 'mesa' ? I.mes[3][solN.b] : TH[rama](I, 3, solN.b), thr = rama === 'mesa' ? I.mes[2][solN.a] : TH[rama](I, 2, solN.a);
       const D = Math.PI / 180, s = [Math.sin(I.zen * D) * Math.sin(I.az * D), Math.sin(I.zen * D) * Math.cos(I.az * D), Math.cos(I.zen * D)];
       const r = intrusion(em, re, n, th, thr, s, CW, Z0);
       console.log(`    rama ${rama}: θ publicado emisor ${th.toFixed(4)}° / receptor ${thr.toFixed(4)}° · arista alta a z ${r.P ? r.P[2].toFixed(4) : '—'} m · el rayo llega al plano receptor a z ${r.H ? r.H[2].toFixed(4) : '—'} m, u ${r.u != null ? r.u.toFixed(4) : '—'} m (borde a +${(CW / 2).toFixed(3)}) · intrusión ${(1000 * r.intr).toFixed(1)} mm`);

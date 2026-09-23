@@ -1,0 +1,43 @@
+P1 · ALCANCE DE pairDz (v1.78.0)
+
+EL COMENTARIO que describe el cálculo:
+   1729│   // Δz por PAREJA medido en el SOLAPE norte de las dos líneas — la cota media
+   1730│   // de línea engaña cuando las líneas van escalonadas y no comparten norte
+   1731│   // (fabricaba pendientes absurdas y sombras del 85% en pairwise); sin solape,
+   1732│   // Δz=0: esas líneas no interactúan (la cobertura axial ya lo pone a cero)
+
+EL BUCLE y su acumulador (acc, w): recorre TODAS las mesas A de la línea i contra TODAS las B de la i+1:
+   1733│   const pairDz=[];
+   1734│   for(let i=0;i<band.length-1;i++){
+   1735│     let acc=0,w=0;
+   1736│     const A=segs[i],ZA=segZ[i],B=segs[i+1],ZB=segZ[i+1];
+   1737│     for(let ai=0;ai<A.length;ai++)for(let bi=0;bi<B.length;bi++){
+   1738│       const lo=Math.max(A[ai][0],B[bi][0]),hi=Math.min(A[ai][1],B[bi][1]);
+   1739│       if(hi<=lo)continue;
+   1740│       const mid=(lo+hi)/2,len=hi-lo;
+   1741│       const za=ZA[ai][0]+(ZA[ai][1]-ZA[ai][0])*((mid-A[ai][0])/((A[ai][1]-A[ai][0])||1));
+   1742│       const zb=ZB[bi][0]+(ZB[bi][1]-ZB[bi][0])*((mid-B[bi][0])/((B[bi][1]-B[bi][0])||1));
+   1743│       acc+=(za-zb)*len;w+=len;
+   1744│     }
+   1745│     pairDz.push(w>0?acc/w:0);
+
+EL CONTRATO DE SALIDA de la ruta por línea: un θ por LÍNEA
+   1185│ function anglesPairwiseRaw(zen,az,T){
+   1186│   // por pareja; filas interiores adoptan min(|θ|) de sus dos parejas
+   1187│   const nR=T.pairs.length+1, out=new Array(nR);
+   3763│   return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
+
+VOLCADO · 106 parejas
+  filas distintas (de las dos líneas) que entran en el ÚNICO Δz de cada pareja: mín 2 · mediana 14 · máx 35
+  ¿pairDz = Δz del solape NORTE, como dice el comentario? difiere en 106 de 106 parejas (peor 0.2523 m)
+
+  pareja 2 (líneas 2/3): 2 solapes · 1 filas de la línea 2 + 1 de la 3 · Σlen 55.539 m · pairDz 0.165977 m · solape norte 0.110147 m
+    fila a     fila b        n desde    n hasta      len  Δz medio    peso
+    PD-2-0     PD-2-1       -832.283   -804.520   27.763    0.2218  0.4999
+    PD-2-0     PD-2-1       -803.947   -776.171   27.776    0.1101  0.5001
+
+  pareja 3 (líneas 3/4): 3 solapes · 1 filas de la línea 3 + 1 de la 4 · Σlen 55.048 m · pairDz 0.233665 m · solape norte 0.221278 m
+    fila a     fila b        n desde    n hasta      len  Δz medio    peso
+    PD-2-1     PD-3-0       -832.319   -810.955   21.364    0.2490  0.3881
+    PD-2-1     PD-3-0       -810.405   -804.520    5.885    0.2365  0.1069
+    PD-2-1     PD-3-0       -803.970   -776.171   27.799    0.2213  0.5050
