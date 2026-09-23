@@ -2,9 +2,17 @@
  *
  * Copia LITERAL de `audit3/F1_seg_metrica.mjs` con UNA diferencia, y sólo una:
  * el tiempo que espera a que la página cierre su primer cálculo del día pasa
- * de 300 s a 1.800 s. El óptimo por mesa de la v1.76 no cabe en 300 s —eso es
- * un COSTE del arreglo y se mide aparte, en 1.6—, y una sonda que muere
- * esperando no mide nada.
+ * de 300 s a 1.800 s, porque con 300 s la sonda murió esperando y una sonda
+ * que muere no mide nada.
+ *
+ * CUIDADO CON LA ATRIBUCIÓN, Y LO DIGO AQUÍ PORQUE YO MISMO LA HICE MAL. Al
+ * principio escribí que el plazo se quedaba corto «por el coste del arreglo».
+ * Eso NO está demostrado: medido después sobre `main` —sin arreglo ninguno— el
+ * primer día de Ayora tarda **516,6 s**, también por encima de los 300.
+ * La corrida de «antes» sí pasó esa espera, pero fue en otro contenedor y con
+ * otra carga, así que las dos no son comparables. Lo único cierto es que el
+ * primer día de Ayora pasa de 300 s con y sin arreglo; **cuánto añade el
+ * arreglo está NO MEDIDO**.
  *
  * La espera NO entra en ningún número que esta sonda publique: es un plazo,
  * no una medida. El diff contra el original es de una línea y está en

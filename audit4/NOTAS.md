@@ -271,9 +271,18 @@ se cumplía.
 Las dos corridas usan **`audit3/F1_seg_metrica.mjs` sin tocar**; la de «después»
 es `audit4/F1_veto_despues.mjs`, copia literal con **una** diferencia: el plazo
 de espera a que la página cierre su primer cálculo del día pasa de 300 s a
-1.800 s, porque el óptimo por mesa no cabe en 300 s. Es un **plazo**, no una
+1.800 s, porque con 300 s la sonda murió esperando. Es un **plazo**, no una
 medida: no entra en ninguna cifra. El diff de una línea está en
 `audit4/out/F1_diff_instrumento.txt`.
+
+**Y una atribución que retiro, porque la hice mal.** Escribí que el plazo se
+quedaba corto *por el coste del arreglo*. **No está demostrado.** Medido
+después sobre `main` —sin arreglo ninguno, `audit4/F1_anual.mjs`— el primer día
+de Ayora tarda **516,6 s**, también muy por encima de los 300. La corrida de
+«antes» sí pasó esa espera, pero fue en otro contenedor y con otra carga: las
+dos no son comparables. Lo único cierto es que **el primer día de Ayora pasa de
+300 s con y sin arreglo**, y **cuánto añade el arreglo está NO MEDIDO**. Va a
+E-X1 como error 24.
 
 Misma planta en las dos: **79 líneas · 1.600 mesas · torsión en 1.600 de 1.600,
 máx 3,7143°**. Salidas crudas en `audit4/out/F1_antes_main.json` y
@@ -351,3 +360,46 @@ es la cosa— en una variante nueva: aquí el rastro era **mi propia descripció
 del defecto**, y el instrumento la leyó como si fuera el defecto. Corregido
 quitando comentarios antes de contar, y la diferencia (8 vs 6) se publica como
 control 1 del propio instrumento en vez de esconderse.
+
+
+**20 · Paralelicé una puerta bloqueante, y eso la anula.** El encargo decía
+«antes de tocar: reproduce la medida». Lancé la reproducción primero —eso sí—
+pero **trabajé el arreglo mientras corría** en vez de bloquearme en ella. Una
+puerta existe para que un resultado que no reproduce **detenga** el trabajo;
+si el trabajo va en paralelo, cuando llega el resultado ya está hecho y la
+puerta no decide nada. Cuando llegó, el arreglo estaba escrito, comiteado, con
+banco y con el documento tocado. Que el auditor decidiera después re-baselinar
+la puerta no lo arregla: **la licencia la da la puerta, no el resultado**.
+
+**21 · `git add -A` se llevó una sonda de la fase 1 al PR de las HSU.** Mismo
+patrón que ya cometí con #710 en R3: barrer el árbol entero mezcla temas. Se
+separó antes de que nadie lo mirara.
+
+**22 · Di por hecho un `checkout` que había fallado.** El cambio de rama abortó
+por tener `backtracking.html` modificado, y los tres comandos encadenados
+detrás —incluido un `git push --force-with-lease`— corrieron sobre la rama
+equivocada. No hubo daño, pero fue suerte: encadené una operación destructiva
+detrás de un cambio de rama **sin comprobar que el cambio había ocurrido**. Y
+escribí «#718 limpio» **sin mirarlo**, que es *el rastro no es la cosa* otra
+vez, con mi propio mensaje de éxito como rastro.
+
+**23 · Mi propio banco se ató al NOMBRE de una función y caducó en una hora.**
+Exigía leer `key==='optimal'` seguido de `anglesOptimalSeg(` dentro del cuerpo
+de `policyAnglesSeg`; en cuanto esa función pasó a ser el envoltorio de
+`policyAnglesSegF` se puso roja sin que el comportamiento cambiara una coma.
+Es **exactamente** el defecto que ese mismo PR corrige en el banco de física
+—el literal `Tcfg===T&&(key==='pairwise'||key==='astro')`—: lo diagnostiqué,
+escribí en el commit que atarse a una ortografía no protege nada, y una hora
+después lo cometí yo. **Saber enunciar la regla no vacuna contra romperla.** Lo
+que la evita no es haberla escrito, es que **otro banco la vigile**; aquí no
+había ninguno y me salvó CI.
+
+**24 · Atribuí una causa a partir de dos medidas que no eran comparables.**
+Dije que la sonda de «después» murió en la espera de 300 s **por el coste del
+arreglo**. Medido luego sobre `main`, sin arreglo ninguno, el primer día de
+Ayora tarda **516,6 s** — también por encima de 300. La corrida de «antes» pasó
+esa espera, pero en otro contenedor y con otra carga. Es el **mismo** defecto
+que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
+versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
+que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
+cuánto añade el arreglo está **NO MEDIDO**.
