@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factiun.local/canon/backtracking.contrato.json",
+  "title": "Contrato del backtracking — entradas, salidas, signo y umbrales",
+  "contrato_version": "1.0.0",
+  "que_sube_la_version": {
+    "mayor": "cambia el SIGNIFICADO de una entrada o de la salida, o la convención de signo. Rompe a todo consumidor.",
+    "menor": "entra una entrada o una salida NUEVA, opcional, sin tocar las que había.",
+    "parche": "cambia el VALOR de un umbral, o su procedencia, sin cambiar su significado.",
+    "no_la_sube": "un cambio interno del algoritmo que no altera entradas, salidas ni umbrales. El motor tiene su propia `VER`, que es otra cosa."
+  },
+  "implementaciones": {
+    "js": { "fichero": "cobertura-zigbee/backtracking.html", "granularidad": "MESA", "politicas": 9 },
+    "python": { "fichero": "SolarGPTfull/solargpt/solargpt_core/tracker3d.py", "granularidad": "FILA", "politicas": 7,
+                "no_expresa": "la geometría por MESA: `segment|mesa|seg_` aparece 0 veces en sus 2.186 líneas" }
+  },
+  "convencion_de_signo": {
+    "interna": "θ > 0 = ESTE",
+    "presentacion": { "constante": "TH_DISP", "valor": -1, "donde": "cobertura-zigbee/backtracking.html:4444",
+                      "significa": "lo que se MUESTRA y lo que sale al campo va con el signo contrario al interno" },
+    "python": "θ_py = +θ_js — MEDIDO, no supuesto, en audit2/out/G1.txt:105-113, las nueve políticas",
+    "pendiente_EO": "positivo = ESTE más alto. El Python la NIEGA para axis_azimuth ≈ 0 y la conserva para ≈ 180 (tracker3d.py:124-131)"
+  },
+  "entradas": {
+    "geometria_por_mesa": {
+      "obligatorio_para": "el motor JS con planta levantada",
+      "segs":     "por línea, lista de [n0, n1] en metros: los DOS extremos N y S de cada mesa",
+      "segTilt":  "por mesa, el tilt N-S del eje en grados, DEDUCIDO DE SUS DOS COTAS",
+      "segPairs": "por mesa, la pareja bifila exacta",
+      "segDrive": "por mesa, el grupo de accionamiento: las mesas de un grupo llevan θ COMÚN",
+      "segZ":     "por mesa, la cota",
+      "si_falta": "el motor cae al camino POR LÍNEA, y eso es OTRO cálculo, no una aproximación del mismo"
+    },
+    "geometria_por_linea": {
+      "pairs": "por pareja de filas: { slope (pendiente E-O, °), pitch (m), axisTilt (tilt N-S del eje, °) }",
+      "rowTilt": "por fila, el tilt N-S efectivo tras el accionamiento",
+      "cw": "cuerda del colector (m)", "gcr": "DERIVADO = cw / pitch, no es una entrada",
+      "axisAz": "azimut del eje (°)", "maxAngle": "tope mecánico (°)",
+      "z0": "altura de la cara colectora sobre el eje (m)", "groups": "grupos de accionamiento por fila"
+    },
+    "sol":  { "zen": "cenit aparente (°)", "az": "azimut (°)", "nota": "SE PASAN, no se recalculan: si cada motor regenera su sol, la comparación mide dos modelos de cielo en vez del backtracking" },
+    "cielo":{ "ghi": "W/m²", "dni": "W/m²", "dhi": "W/m²", "albedo": "adimensional", "doy": "día del año" },
+    "parametros": {
+      "nb": { "significa": "número de diodos de bypass por módulo — el escalón del modelo Martinez",
+              "procedencia": "`nbDe()` lo toma de la ficha del módulo de la planta si la trae; si no, queda DECLARADO como configurado a mano",
+              "donde": "cobertura-zigbee/backtracking.html, function nbDe",
+              "por_defecto": 2,
+              "aviso": "un `nb` por defecto NO es un `nb` medido, y el informe publica su procedencia junto al número" },
+      "iam": { "significa": "coeficiente b0 de ASHRAE", "por_defecto": 0.05 }
+    }
+  },
+  "salidas": {
+    "angles": { "forma": "POR MESA: array[linea][mesa] de θ en grados, convención interna θ>0=este",
+                "sin_mesas": "array[linea] de θ — y entonces es el camino por línea, declarado",
+                "garantia_de_acoplamiento": "las mesas de un mismo grupo de `segDrive` salen con θ IDÉNTICO" },
+    "f": "sólo para `optimal` y `optfree`: la fracción elegida del huso pairwise→astro, o su rango por accionamiento",
+    "shade": "fracción de sombra ÓPTICA por fila/mesa — NO es la pérdida eléctrica",
+    "elec": "pérdida ELÉCTRICA del escalón Martinez — magnitud DISTINTA de la óptica, nunca se suman ni se comparan"
+  },
+  "umbrales": [
+    { "nombre": "DEADBAND_DEG", "valor": 1.0, "unidad": "°", "donde": "backtracking.html:3316",
+      "origen": "canónico del core · TCU 41061 = 45 pulsos" },
+    { "nombre": "TRACKER_SLEW", "valor": 0.17, "unidad": "°/s", "donde": "backtracking.html:3299",
+      "origen": "especificación del actuador" },
+    { "nombre": "E_EMPATE_W", "valor": 0.05, "unidad": "W/m²", "donde": "backtracking.html:967",
+      "origen": "banda de empate energético del propio motor: por debajo, dos posturas no son distintas" },
+    { "nombre": "OPT_HISTERESIS", "valor": 0.01, "unidad": "fracción de POA", "donde": "backtracking.html:2919",
+      "origen": "lo que el otro pico tiene que ganar para que el eje se mueva" },
+    { "nombre": "OPT_FRACTIONS", "valor": [0, 0.25, 0.5, 0.75, 1], "unidad": "fracción del huso", "donde": "backtracking.html:2863",
+      "origen": "rejilla del core (Deeptrack)" },
+    { "nombre": "OPT_REFINA", "valor": 2, "unidad": "subdivisiones", "donde": "backtracking.html:2918", "origen": "refinado alrededor de la ganadora gruesa" },
+    { "nombre": "OPTFREE_F0", "valor": -0.5, "unidad": "fracción del huso", "donde": "backtracking.html:3087",
+      "origen": "petición explícita: sin límites algorítmicos, la rejilla baja por debajo de pairwise" },
+    { "nombre": "OPTFREE_NF", "valor": 13, "unidad": "valores de la rejilla", "donde": "backtracking.html:3087", "origen": "ídem" },
+    { "nombre": "EPS_TILT", "valor": 0.5, "unidad": "°", "donde": "backtracking.html:1300",
+      "origen": "guarda de degeneración 2.5D: por debajo, true-3D ES la baseline de pvlib" },
+    { "nombre": "BT_UMBRAL_DEG", "valor": 0.5, "unidad": "°", "donde": "backtracking.html:8169",
+      "origen": "separación del MANDO frente al astronómico para decir que hay backtracking" },
+    { "nombre": "CERT_PASO", "valor": 0.1, "unidad": "°", "donde": "backtracking.html:4284",
+      "origen": "resolución de mando: el probador barre a lo que la política puede mandar" },
+    { "nombre": "BT3D_TRANSITION_BAND_DEG", "valor": 0.5, "unidad": "°", "donde": "tracker3d.py:529",
+      "origen": "lado PYTHON — no tiene contraparte declarada en el JS" }
+  ],
+  "canonicos_de_planta": {
+    "pitch_m": 6.0, "collector_width_m": 2.382, "gcr": 0.397, "max_angle_deg": 55.0, "axis_azimuth_deg": 0.0,
+    "donde_python": "SolarGPTfull/solargpt/solargpt_core/tracker.py:124-145",
+    "quien_se_aparta": [
+      { "consumidor": "scada/collector/drivers/simulated.py:33", "gcr": 0.35, "axis_azimuth_deg": 180, "declarado": false },
+      { "consumidor": "cobertura-rf-fv/sol.js:124", "max_angle_deg_por_defecto": 60, "declarado": false }
+    ]
+  }
+}
