@@ -41,3 +41,34 @@ Formato E-X1: qué decía · qué dice ahora · qué lo destapó.
 - **Qué lo destapó:** contrastar la respuesta del revisor, que heredó la cita,
   con el código imprimiendo las líneas. Una cita rota viaja: el revisor
   construyó un argumento sobre ella.
+
+---
+
+# Errores del revisor, retirados por él (misma forma)
+
+## E-R1 · El «2,3 % al ponderar por mesa»
+
+- **Qué decía:** que `pairwise` retrocedía un 2,3 % al ponderar la planta por
+  mesa, y que eso era la métrica viendo lo que el mando tiraba.
+- **Qué dice ahora:** ese 2,3 % es la caída de `pairwise` **al encender el lazo**,
+  medida en otra sesión con `anual_motor.mjs`; no tiene nada que ver con la
+  ponderación. Lo que el repo registra de la ponderación por mesa (v1.75) es
+  −2,07 % en `true3d`, −2,13 % en `mgl` y menos del 0,08 % en las otras siete,
+  `pairwise` incluida (`docs/algoritmos_backtracking.html:66`).
+- **Qué lo destapó:** contrastar la premisa con ese registro antes de escribirla en P1.
+
+## E-R2 · «El escalar promediado obliga a proteger a la fila peor»
+
+- **Qué decía:** que el retroceso de más de la ruta por línea nace de que el
+  promedio obliga a proteger a la peor de 35 filas.
+- **Qué dice ahora:** explicación sin medida. `pairDz` es una **media**, no un
+  peor caso, y por sí sola no produce eso. Qué etapa produce el retroceso se mide
+  con la ablación de P1.
+- **Qué lo destapó:** leer el acumulador (`:1743-1745`): suma ponderada, no máximo.
+
+## E-R3 · «(b) descartada por medida»
+
+- **Qué decía:** que el −18,5 % de P2 era el techo medido de (b) y la descartaba.
+- **Qué dice ahora:** el −18,5 % es de **extremos con sombra evitable** (T5a), no
+  de energía. La energía de (b) no está medida.
+- **Qué lo destapó:** la etiqueta de la cifra en su propia tabla.

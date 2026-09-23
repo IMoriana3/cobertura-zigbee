@@ -86,3 +86,53 @@ export function anglesLineaP2(F, T, DZ, zen, az, irr, doy, albedo, modo, diag) {
   // y el resto de la cadena de `policyAngles` (`:3763`)
   return F.repairNoShade(zen, az, T, F.driveCoupleSafe(zen, az, T, out, false), irr, doy, albedo);
 }
+
+/* ── ABLACIÓN (P1, medida que decide): la ruta por LÍNEA de pairwise con cada
+   etapa APAGABLE, para saber cuál produce el retroceso de más. Con todo
+   encendido es `anglesPairwiseRaw` + `driveCoupleSafe` + `repairNoShade` tal
+   cual (`:1185-1224`, `:3763`), y lo controla la diferencia 0 contra
+   `policyAngles`. Las etapas:
+     torsion    · el barrido 3D de `pairThetaTorsion` (`:1121`) sobre el candidato
+                  de singleaxis; apagada, el candidato es singleaxis a secas;
+     regla      · la fila interior toma el MÁS retrocedido de sus dos parejas,
+                  min(sg·θ) (`:1197`); apagada, toma la MEDIA de los dos
+                  (sustituto declarado: «desactivar» una regla exige otra, y la
+                  media no favorece a ninguna de las dos parejas);
+     reparacion · el bucle de reparación por torsión de `anglesPairwiseRaw`
+                  (`:1198-1224`), que lleva las dos filas de una pareja con
+                  sombra 3D al más retrocedido —añadida a las cuatro del
+                  encargo porque también retrocede, y dejarla fuera la
+                  escondería—;
+     drive      · `driveCoupleSafe` (`:789`);
+     repair     · `repairNoShade` (`:3492`).
+   `apaga` es un Set con las que se apagan. */
+export function anglesLineaAblacion(F, T, zen, az, irr, doy, albedo, apaga) {
+  const nR = T.pairs.length + 1, out = new Array(nR);
+  const ev = F.pairEval3D(zen, az, T, new Map());
+  const sg = F.trueTrackAngle(zen, az, 0, T.axisAz) >= 0 ? 1 : -1;
+  const th = T.pairs.map((q, p) => {
+    const t0 = F.nan0(F.singleaxis(zen, az, { axisTilt: F.pvTilt(q.axisTilt), axisAz: T.axisAz,
+      maxAngle: T.maxAngle, backtrack: true, gcr: T.cw / q.pitch, crossAxisTilt: q.slope }));
+    return apaga.has('torsion') ? t0 : F.pairThetaTorsion(zen, az, T, p, t0, ev);
+  });
+  out[0] = th[0]; out[nR - 1] = th[th.length - 1];
+  for (let r = 1; r < nR - 1; r++)
+    out[r] = apaga.has('regla') ? (th[r - 1] + th[r]) / 2 : (sg * th[r - 1] < sg * th[r] ? th[r - 1] : th[r]);
+  if (!apaga.has('reparacion') && T.rowTilt && isFinite(zen) && zen < 90 && T.pairs.some((_, i) => F.pairStations(T, i).length > 1)) {
+    const ITS = Math.round(12 * 0.5 / F.PASO_BUSQ);
+    for (let it = 0; it < ITS; it++) {
+      let dirty = false;
+      for (let p = 0; p < T.pairs.length; p++) {
+        if (ev(p, out[p], out[p + 1]) <= 1e-3) continue;
+        let t = sg * out[p] < sg * out[p + 1] ? out[p] : out[p + 1];
+        if (out[p] === out[p + 1]) t = t - sg * F.PASO_BUSQ;
+        const [hLo, hHi] = F.rangoHaz(zen, az, T, T.pairs[p].axisTilt, T.pairs[p].slope);
+        t = Math.max(hLo, Math.min(hHi, t));
+        if (out[p] !== t || out[p + 1] !== t) { out[p] = t; out[p + 1] = t; dirty = true; }
+      }
+      if (!dirty) break;
+    }
+  }
+  const d = apaga.has('drive') ? out : F.driveCoupleSafe(zen, az, T, out, false);
+  return apaga.has('repair') ? d : F.repairNoShade(zen, az, T, d, irr, doy, albedo);
+}

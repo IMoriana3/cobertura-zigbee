@@ -245,9 +245,12 @@ kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
   el ángulo para toda la línea, lo esperable es que (b) **agrande** el retroceso;
   es una hipótesis hasta medirla.
 
-## Lectura recibida (no es la decisión)
+## Lectura del revisor (no es la decisión)
 
-Lectura trasladada al titular: **(c)**, con (a) como trabajo posterior si
-alguna vez hace falta esa ruta por sí misma; (b), descartada por lo medido.
-Se registra aquí; la decisión sigue siendo del titular y P2 no empieza hasta que
-la tome.
+Lectura del revisor: **(c)**, con (a) como trabajo posterior si alguna vez hace
+falta esa ruta por sí misma. **Motivo, corregido:** no que el promedio proteja a
+la peor fila —eso era una explicación sin medida y se retiró—, sino que la ruta
+por mesa da un **17,3 % más de energía** en `pairwise` con el control de `astro`
+en **+0,17 %**, y **cuesta menos tiempo** (409 s frente a 910 s). La decisión es
+del titular y P2 no empieza hasta que la tome. Si (b) queda descartada o no lo
+dice la ablación de abajo, no esta lectura.
