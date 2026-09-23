@@ -1693,7 +1693,11 @@ function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al l
   if(hi<lo){lo=hi=Math.max(-sA/2,Math.min(sA/2,(lo+hi)/2));}          // sin solape la llamada ya viene ponderada por 0; se mide en la punta mas cercana
   function dhEn(a){return hEn(pB,sB,lc[1],a-dz)-hEn(pA,sA,0,a)-gA*dz;}
   var dhs=[dhEn(lo),dhEn(hi)];
-  var c=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // cuerda del colector = GCR x paso de fila. OJO: TC.mesaC NO es la cuerda en todas las plantas (El Burgo 16,3 m) y sombreaba hasta a mediodia
+  /* CUERDA = EL MODULO QUE SE DIBUJA (TC.modH: seguidor 1V, un modulo en vertical). Se deducia como
+     GCR x paso con un GCR fijo de 0,40, que solo cuadra donde el paso es 6 m: Tunez va a 6,25 (salia
+     2,50 m contra 2,35 dibujados, +6 %: sombra de mas) y Bagnarelli a 5,5 (2,20 contra 2,38, −8 %:
+     331 instantes de recorte que no salian). OJO: TC.mesaC NO es la cuerda (El Burgo 16,3 m). */
+  var c=(COTAS&&COTAS.cuerda)||TC.modH||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));
   var se=Math.abs(sv.E),su=suT;                 // trabajamos con el sol "a la derecha": simetrico E/W
   var w=Math.atan2(se,su);                      // angulo de perfil
   var track=Math.min(Math.PI/2-1e-3,Math.min(w,((COTAS&&COTAS.limite)||55)*DEG));
@@ -1767,7 +1771,7 @@ function afbtStat(){
   if(afbtMode==='mom'&&tot<0.005&&res.length){
     var sv0=sunVec(curMin),el0=Math.asin(Math.max(-1,Math.min(1,sv0.U)))/DEG;
     var gap0=res.reduce(function(m,v){var g=(afbtVecinos(afbtSel).filter(function(w){return w.j===v.j;})[0]||{}).gap;return g&&(m===null||g<m)?g:m;},null);
-    var cue=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));
+    var cue=(COTAS&&COTAS.cuerda)||TC.modH||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // la misma que afbtDeficit
     var ini=null,fin=null,d0=simDoy;
     for(var mm=240;mm<=1260;mm+=10){var svm=sunVec(mm);if(svm.U<=0.02)continue;
       var hay=false;

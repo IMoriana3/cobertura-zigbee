@@ -16,6 +16,10 @@
  *     backtracking tiene que librar el peor punto.
  * Con las tres corregidas: 0,4° en Ayora, 1,0° en San José, 0,2° en El Burgo.
  *
+ * La cuerda del trazado es la del módulo que DIBUJA el 3D (TC.modH), no la que
+ * deduce la fórmula: así destapó que GCR 0,40 × paso no vale donde el paso no es
+ * 6 m (Túnez +2,9° de sesgo, Bagnarelli −3,55°).
+ *
  * La geometría es LA DEL 3D: cotas medidas en modo levantamiento (Ayora, San
  * José) y, si no, el seguidor apoyado en el DEM como trackerBase (tubo en
  * pendiente, fila este filaZ·gE más alta). En El Burgo no hay cotas: sin red el
@@ -97,7 +101,7 @@ for (const a of ang) check(`bt3dAng mira al sol con el tubo inclinado (gN ${a.gN
 /* 2 · afbtDeficit contra los rayos, pareja a pareja, 12 días tipo cada 15 min. */
 const r = await pg.evaluate(() => {
   const DEG = Math.PI / 180, lim = ((COTAS && COTAS.limite) || 55) * DEG;
-  const c = (COTAS && COTAS.cuerda) || (((COTAS && COTAS.gcr) || SIM_GCR) * (TC.filaZ ? 2 * TC.filaZ : 6));
+  const c = TC.modH;                  // la cuerda que DIBUJA el 3D (seguidor.js: el módulo en vertical), no la que deduce la fórmula
   const fz = TC.filaZ || 0, HOFF = TC.off || 0;
   function ejes(t, lado) {            // cota del EJE en las puntas [sur, norte], coordenadas de escena, como las dibuja el 3D
     if (usaCotas(t) && t.mc.f) { const f = t.mc.f[lado]; const cv = y => (COTAS.base + y - baseElev) - COTAOFF - HOFF; return [cv(f.y[0]), cv(f.y[1])]; }
