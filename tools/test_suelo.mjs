@@ -9,7 +9,17 @@ import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo
 const PUERTO = process.env.PUERTO || 8124;
 const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 let malo = 0;
-for (const p of process.argv.slice(2)) {
+const PLANTAS_ARG = process.argv.slice(2);
+/* SIN PLANTAS NO HAY NADA QUE MIRAR, y salir en verde seria mentir. Este banco
+   entraba en CI SIN ARGUMENTOS: el bucle no daba ni una vuelta y aun asi
+   imprimia su mensaje de conforme y salia con 0. Peor que un banco que falla es
+   uno que tranquiliza sin haber mirado. */
+if (!PLANTAS_ARG.length) {
+  console.error('sin plantas que mirar: `node tools/test_suelo.mjs <planta> [...]`\n' +
+                'las del indice: tunez fayon bagnarelli polvorin paramo elburgo ayora sanjose');
+  process.exit(2);
+}
+for (const p of PLANTAS_ARG) {
   const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
   const pg = await ctx.newPage(); const t0 = Date.now();
