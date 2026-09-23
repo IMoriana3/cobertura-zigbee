@@ -1520,8 +1520,20 @@ function layoutTrackers(){
   imPost.instanceMatrix.needsUpdate=true;imShaft.instanceMatrix.needsUpdate=true;imBearing.instanceMatrix.needsUpdate=true;imSaddle.instanceMatrix.needsUpdate=true;imVirola.instanceMatrix.needsUpdate=true;   // (antes casquillo/base no se re-subían al arrastrar un seguidor)
   for(var si=0;si<SEG.length;si++){if(!SEG[si].spin)SEG[si].im.instanceMatrix.needsUpdate=true;}
   if(labelsBuilt)for(var j=0;j<TRK.length;j++)LBL[j].position.set(TRK[j].gx,TRK[j].rel*vex+TC.postH+3.5,TRK[j].gz);
-  for(var pb=0;pb<TRK.length;pb++){if(PICK[pb]){var tb=TRK[pb];PICK[pb].position.set(tb.gx,tb.rel*vex+TC.postH*0.6+1,tb.gz);}}   // cajas de selección siguen al seguidor (también al arrastrarlo)
-  if(selIdx>=0&&selWire&&PICK[selIdx]){selWire.position.copy(PICK[selIdx].position);selWire.scale.copy(PICK[selIdx].scale);}
+  /* CAJAS DE SELECCION EN EL MARCO DEL SEGUIDOR DIBUJADO. Iban rectas y a la cota del centro
+     (gx, rel+..., gz): ni se inclinaban con el terreno ni giraban con el rumbo, y el render si
+     (trackerBase). En Fayon, con tubos al 20 % del DEM, las puntas quedaban +-4,6 m fuera de su
+     caja y el clic se iba al vecino ("selecciono el rojo y me coge aquel de arriba"); en Bagnarelli,
+     girado 23,7 grados, las cajas ni seguian a las filas. Ahora salen de la base de las dos filas
+     (t.fb, ya con drapeado, rumbo y el levantamiento del tubo): el punto medio entre ellas y su giro.
+     Y del tamaño de los paneles: las dos filas mas media cuerda a cada lado, y ±1,15 m alrededor del
+     tubo (cuerda/2 · sen 55 grados + grosor). Con 5 m de alto (hasta 2,7 por encima del tubo) un rayo que pasaba por encima de los
+     paneles del vecino se quedaba en su caja. */
+  for(var pb=0;pb<TRK.length;pb++){if(PICK[pb]){var tb=TRK[pb],e0=tb.fb[0].elements,e1=tb.fb[1].elements;
+    _PV.set((e0[12]+e1[12])/2,(e0[13]+e1[13])/2,(e0[14]+e1[14])/2);tb.fb[0].decompose(_PA,_Q,_PB);
+    _PT.set(0,0,0);   // centrada en el tubo: la caja abraza los paneles (cuerda·sen 55 grados = ±1 m), no los 5 m de antes, que se comian el rayo que pasaba por encima del vecino
+    PICK[pb].position.copy(_PV).add(_PT);PICK[pb].quaternion.copy(_Q);}}   // cajas de selección siguen al seguidor (también al arrastrarlo)
+  if(selIdx>=0&&selWire&&PICK[selIdx]){selWire.position.copy(PICK[selIdx].position);selWire.quaternion.copy(PICK[selIdx].quaternion);selWire.scale.copy(PICK[selIdx].scale);}
   updateSpin(panelAngle(curMin));
   if(pileOn)applyPileReveal();   // re-colorea pilotes por reveal tras recolocar (arrastre/cambio de planta)
 }
@@ -5031,7 +5043,7 @@ function buildPickBoxes(){                                             // una ca
   if(pickGroup)nodeGroup.remove(pickGroup);
   pickGroup=new THREE.Group();nodeGroup.add(pickGroup);PICK=[];
   var pg=new THREE.BoxGeometry(1,1,1),pm=new THREE.MeshBasicMaterial({visible:false});   // material invisible: no se dibuja pero SÍ se puede pulsar (raycast)
-  for(var i=0;i<TRK.length;i++){var m=new THREE.Mesh(pg,pm);m.scale.set(2*TC.filaZ+3,5,(TRK[i].medio?TC.span*TC.mr:TC.span)+2);m.userData.tk=i;pickGroup.add(m);PICK.push(m);}   // caja de selección = largo REAL del tracker (San José 74/37 m; resto 64,7/32,6 m)
+  for(var i=0;i<TRK.length;i++){var m=new THREE.Mesh(pg,pm);m.scale.set(2*TC.filaZ+(TC.modH||2.4)+0.3,2.3,(TRK[i].medio?(TRK[i].mr||TC.mr):1)*(TRK[i].span||TC.span)+2);   /* el largo de ESTE seguidor: en Fayon los de 46 m son 'medio' con mr 0,833 y la caja salia con el 0,504 generico, 29,8 m para un tracker de 46: el ultimo tercio no se podia pulsar */m.userData.tk=i;pickGroup.add(m);PICK.push(m);}   // caja de selección = largo REAL del tracker (San José 74/37 m; resto 64,7/32,6 m)
   if(!selWire){selWire=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0x36D399}));selWire.material.depthTest=false;selWire.renderOrder=999;selWire.visible=false;scene.add(selWire);}
 }
 function applySavedTrackers(){                                         // al abrir: aplica posición y "articulado" guardados (por id del DWG) antes del primer layout
@@ -5057,7 +5069,7 @@ function pickAt(e){if(!pickGroup)return -1;_v2.set((e.clientX/innerWidth)*2-1,-(
 function terrainPt(e){if(!terrain)return null;_v2.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);_pr.setFromCamera(_v2,camera);var h=rayoSuelo(_pr);return h.length?h[0].point:null;}
 function selectTracker(i){selIdx=i;
   if(i<0||!PICK[i]){if(selWire)selWire.visible=false;$('edSel').style.display='none';return;}
-  selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.scale.copy(PICK[i].scale);
+  selWire.visible=true;selWire.position.copy(PICK[i].position);selWire.quaternion.copy(PICK[i].quaternion);selWire.scale.copy(PICK[i].scale);
   var _t9=TRK[i],_et=[];if(_t9.tpx)_et.push(_t9.tpx);if(_t9.cal)_et.push('calibración');if(_t9.suc)_et.push('suciedad');   // taxonomía REAL del DWG (Int/Ext · largo/corto) + instrumentación
   $('edSel').style.display='block';$('edNum').textContent=(_t9.id!=null?_t9.id:('#'+(i+1)))+(_et.length?(' · '+_et.join(' · ')):'');$('edArtic').checked=!!_t9.artic;$('edMsg').style.display='none';
 }
