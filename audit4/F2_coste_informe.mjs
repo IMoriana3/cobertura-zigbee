@@ -54,15 +54,24 @@ try {
       const c = cfg();
       /* una pasada en vacío para que el JIT no cuente como coste del terreno */
       terrain(c);
-      const N = 20, t0 = performance.now();
+      /* N GRANDE, Y POR QUÉ. Con N=20 el coste por llamada salía 0,02-0,05 ms,
+         o sea UNO O DOS TICS del reloj: a esa escala la cifra no puede
+         sostener lo que aparenta, y la conclusión «generar el terreno no es
+         caro» necesitaba un número que aguantara. Con N=2000 el total va a
+         decenas de ms y el por-llamada tiene tres cifras de margen sobre la
+         resolución. Se publica también el TOTAL para que se vea. */
+      const N = 2000, t0 = performance.now();
       for (let i = 0; i < N; i++) terrain(cfg());
-      r['tilt' + tilt] = +((performance.now() - t0) / N).toFixed(2);
+      const tot = performance.now() - t0;
+      r['tilt' + tilt] = +(tot / N).toFixed(5);
+      r['tilt' + tilt + '_total_ms'] = +tot.toFixed(1);
+      r.N = N;
     }
     document.getElementById('axtilt').value = '0';
     document.getElementById('nspreset').value = 'constante';
     return r;
   });
-  console.error(`  2.6 · terrain(): tilt 0 → ${t26.tilt0} ms · tilt 4 quebrado → ${t26.tilt4} ms`);
+  console.error(`  2.6 · terrain() sobre ${t26.N} llamadas: tilt 0 → ${t26.tilt0} ms/llamada (${t26.tilt0_total_ms} ms totales) · tilt 4 quebrado → ${t26.tilt4} ms/llamada (${t26.tilt4_total_ms} ms totales)`);
 
   /* ── 2.6 bis · EL PRIMER DÍA DE LA PLANTA REAL, cronometrado ─────────────
      Es la cifra que el auditor pidió leer en clave de fase 2: sobre `main` el
