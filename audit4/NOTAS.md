@@ -607,6 +607,24 @@ Y **un banco no escribe en el repo** —regla que el propio CI de esta casa ya
 tenía escrita—: sin `--registra` el banco que no encuentra trinquete **falla**
 diciendo cómo fijarlo, en vez de bendecir en silencio lo que acaba de medir.
 
+#### Un banco de la casa se puso rojo por culpa del canon, y no se ha aflojado
+
+`tools/test_nb_procedencia.mjs` certifica que **ninguna ficha de planta trae el
+recuento de subcadenas** —es lo que sostiene que `nb` haya que declararlo—, y
+lo hace barriendo TODOS los `.json`/`.csv` del repo. Al entrar `canon/`, el
+contrato y los vectores empezaron a dar positivo en `bypass` y el banco cayó.
+
+**El contrato está OBLIGADO a nombrar `nb` y su procedencia**: es exactamente
+lo que este banco pide que se declare. O sea que el banco se ponía rojo por el
+PR que añade la declaración que el banco reclama.
+
+Se ha **acotado el barrido**, no aflojado: `canon/` sale de él **con el motivo
+escrito**, y la exclusión lleva **dos controles propios** para que no sea una
+puerta trasera —que `canon/` no esconda ningún recuento de subcadenas, y que el
+contrato sí declare la procedencia—. Los dos se han probado en rojo antes de
+darlos por buenos: con un fichero falso dentro de `canon/`, y con el contrato
+fuera. El banco pasa de 14 comprobaciones a **16**.
+
 #### Lo que este banco NO dice
 
 No dice quién tiene razón. Publica dos columnas. `quien_se_aparta` sigue
