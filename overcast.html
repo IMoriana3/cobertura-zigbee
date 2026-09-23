@@ -85,6 +85,21 @@
   .viz3d{width:100%;height:440px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
   .viz3d canvas{display:block}
   .viz3d .hint{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:.64rem;color:var(--muted);pointer-events:none}
+  /* PANELES SOBRE LA ESCENA. Van encima del lienzo y NO capturan el raton
+     (salvo la ficha, que se cierra), para no robarle el orbitar a nadie. */
+  .sky3d{position:absolute;right:10px;top:10px;min-width:186px;background:rgba(11,16,23,.82);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:.68rem;color:var(--tx);pointer-events:none;backdrop-filter:blur(3px)}
+  .sky3d .st{font-size:.86rem;font-weight:700;letter-spacing:.06em;display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .sky3d .row{display:flex;justify-content:space-between;gap:12px;color:var(--tx2);line-height:1.5}
+  .sky3d .row b{color:var(--tx);font-weight:600}
+  .sky3d .bar{display:flex;height:7px;border-radius:4px;overflow:hidden;margin:7px 0 5px;background:var(--bg2);border:1px solid var(--line)}
+  .sky3d .bar i{display:block;height:100%}
+  .sky3d .bl{display:flex;justify-content:space-between;font-size:.6rem;letter-spacing:.08em;color:var(--muted)}
+  .pick3d{position:absolute;left:10px;top:10px;min-width:196px;background:rgba(11,16,23,.86);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:.68rem;color:var(--tx);backdrop-filter:blur(3px)}
+  .pick3d .hd{display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:700;margin-bottom:6px}
+  .pick3d .x{margin-left:auto;cursor:pointer;color:var(--muted);padding:0 3px}
+  .pick3d .row{display:flex;justify-content:space-between;gap:12px;color:var(--tx2);line-height:1.55}
+  .pick3d .row b{color:var(--tx);font-weight:600}
+  .pick3d .sep{border-top:1px solid var(--line);margin:6px 0 5px}
   .hud{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
   .ro{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
   .ro .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
@@ -419,10 +434,28 @@
     <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
       <span style="margin-left:auto;display:flex;gap:6px">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
+        <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
         <button class="btn small acc" id="tab3d">3D</button>
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
       </span></h2>
-    <div id="view3d" class="viz3d"></div>
+    <div id="view3d" class="viz3d">
+      <!-- CONDICION DE CIELO: sale del MISMO `irr` que alimenta la fisica, no
+           de una etiqueta aparte. Si un dato no existe en el instante, la fila
+           dice «--» en vez de inventarlo. -->
+      <div class="sky3d" id="sky3d" style="display:none">
+        <div class="st"><span id="sky3dIco">☁</span><span id="sky3dTxt">—</span></div>
+        <div class="row"><span>Nubosidad</span><b id="sky3dCC">--</b></div>
+        <div class="row"><span>GHI</span><b id="sky3dGHI">--</b></div>
+        <div class="row"><span>DNI</span><b id="sky3dDNI">--</b></div>
+        <div class="row"><span>DHI</span><b id="sky3dDHI">--</b></div>
+        <div class="bar"><i id="sky3dBarD"></i><i id="sky3dBarF"></i></div>
+        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>
+      </div>
+      <div class="pick3d" id="pick3d" style="display:none">
+        <div class="hd"><span id="pickTit">—</span><span class="x" id="pickX" title="cerrar">✕</span></div>
+        <div id="pickBody"></div>
+      </div>
+    </div>
     <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
     <div class="timerow">
       <button class="btn small acc" id="play">▶</button>
@@ -2326,7 +2359,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.26.2';
+const VER='v1.27.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -3647,14 +3680,142 @@ function init3D(){
     holder.appendChild(hint);
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
         sunMesh:sunMesh,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
+    pickInit(holder);
+    $('cenitbtn').onclick=toggleCenit;
   }catch(e){TD=null;$('tab3d').style.display='none';setTab(false);}
 }
+/* ── EL PANEL DE CIELO: lo que el modelo YA sabe, sin inventar nada ────────
+   Todo sale del mismo `irr` que alimenta la transposicion de Perez y del
+   mismo CC que mueve las nubes. No hay ni una cifra nueva: si una componente
+   no existe en el instante (de noche, o con meteo con huecos), la fila dice
+   «--» en vez de escribir un cero que se leeria como medida.
+
+   LA CLASIFICACION es de PRESENTACION y va dicha: el rotulo sale de la
+   FRACCION DIFUSA del instante —difusa/global sobre el plano horizontal—, que
+   es la magnitud que de verdad separa los tres estados, y no de la nubosidad,
+   que puede ser alta con el sol asomando por un hueco. Los cortes (0,3 y 0,8)
+   son de lectura, no del core: no deciden nada del calculo. */
+function claseCielo(irr,el){
+  if(!irr||!(irr.ghi>0))return {k:'noche',txt:'NOCHE',ico:'○',col:'#5c7189'};
+  const dif=irr.ghi>0?Math.max(0,Math.min(1,(irr.ghi-irr.dni*Math.max(0,Math.sin((el||0)*RAD)))/irr.ghi)):1;
+  if(dif>=0.80)return {k:'overcast',txt:'OVERCAST',ico:'☁',col:'#9bb0c6',dif:dif};
+  if(dif>=0.30)return {k:'parcial', txt:'PARCIALMENTE NUBLADO',ico:'⛅',col:'#c9b6ff',dif:dif};
+  return {k:'claro',txt:'DESPEJADO',ico:'☀',col:'#ffd479',dif:dif};
+}
+const _n0=(v,u)=>Number.isFinite(v)?Math.round(v)+' '+u:'--';
+function pintaCielo3D(irr,ccMean,el){
+  const box=$('sky3d'); if(!box)return;
+  box.style.display='';
+  const c=claseCielo(irr,el);
+  $('sky3dIco').textContent=c.ico;
+  $('sky3dTxt').textContent=c.txt; $('sky3dTxt').style.color=c.col;
+  $('sky3dCC').textContent=Number.isFinite(ccMean)?Math.round(100*ccMean)+' %':'--';
+  $('sky3dGHI').textContent=_n0(irr&&irr.ghi,'W/m²');
+  $('sky3dDNI').textContent=_n0(irr&&irr.dni,'W/m²');
+  $('sky3dDHI').textContent=_n0(irr&&irr.dhi,'W/m²');
+  // la barra reparte la GLOBAL en su componente directa (proyectada) y difusa
+  // el coseno del cenit sale de la ELEVACION, que es lo que hay en este ambito:
+  // `irr` no lleva `zen` (el cenit vive en el objeto del dia, en otro array), y
+  // leerlo de ahi habria dado cos(0)=1 siempre, o sea una directa inflada.
+  const cz=Math.max(0,Math.sin((el||0)*RAD));
+  const dir=Math.max(0,(irr&&irr.dni||0)*cz), tot=(irr&&irr.ghi)||0;
+  if(tot>0){
+    const pd=Math.max(0,Math.min(100,100*dir/tot));
+    $('sky3dBarD').style.width=pd+'%'; $('sky3dBarD').style.background='#ffd479';
+    $('sky3dBarF').style.width=(100-pd)+'%'; $('sky3dBarF').style.background='#8fb3d9';
+    $('sky3dPD').textContent='DIRECTA '+Math.round(pd)+' %';
+    $('sky3dPF').textContent=Math.round(100-pd)+' % DIFUSA';
+  }else{
+    $('sky3dBarD').style.width='0%'; $('sky3dBarF').style.width='100%';
+    $('sky3dBarF').style.background='#1a2430';
+    $('sky3dPD').textContent='DIRECTA --'; $('sky3dPF').textContent='-- DIFUSA';
+  }
+}
+/* ── SELECCIONAR UN TRACKER EN LA ESCENA ──────────────────────────────────
+   No habia NINGUN `Raycaster` en la pagina: lo unico seleccionable era el
+   lienzo 2D del cielo. Esto a~nade la seleccion en el 3D y NADA mas — no
+   mueve nada, no recalcula nada y no escribe en el modelo: lee lo que el
+   bucle por frame ya dejo en la zona.
+
+   CLIC, NO ARRASTRE: `OrbitControls` usa el mismo boton, asi que orbitar
+   terminaba siempre en un clic y la ficha se abria sola. Se exige que el
+   puntero no se haya movido mas de 4 px entre pulsar y soltar. */
+let PICK=null;
+function pickInit(holder){
+  const rc=new THREE.Raycaster();let x0=0,y0=0,t0=0;
+  holder.addEventListener('pointerdown',e=>{x0=e.clientX;y0=e.clientY;t0=Date.now();});
+  holder.addEventListener('pointerup',e=>{
+    if(Math.abs(e.clientX-x0)>4||Math.abs(e.clientY-y0)>4||Date.now()-t0>600)return;
+    if(!TD||!TD.world)return;
+    const r=TD.renderer.domElement.getBoundingClientRect();
+    rc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,
+                                       -((e.clientY-r.top)/r.height)*2+1),TD.camera);
+    const hits=rc.intersectObject(TD.world,true);
+    for(const h of hits){
+      let o=h.object,g=null;
+      while(o){ if(o.userData&&o.userData.pick){g=o.userData.pick;break;} o=o.parent; }
+      if(g){PICK=g;pintaFicha();return;}
+    }
+    // clic en el suelo o en el cielo: se deselecciona, que es lo que espera
+    PICK=null;$('pick3d').style.display='none';
+  });
+  $('pickX').onclick=()=>{PICK=null;$('pick3d').style.display='none';};
+}
+const _fw=(v,u)=>Number.isFinite(v)?Math.round(v)+' '+u:'--';
+function fila(k,v){return '<div class="row"><span>'+k+'</span><b>'+v+'</b></div>';}
+function pintaFicha(){
+  const box=$('pick3d');
+  if(!PICK||!TD||!TD.zones[PICK.z]){box.style.display='none';return;}
+  const Z=TD.zones[PICK.z],zc=zonalCfg(),irr=LASTIRR,el=LASTEL;
+  box.style.display='';
+  $('pickTit').textContent=(zc.on?'NCU '+String(PICK.z+1).padStart(2,'0'):'PLANTA');
+  const c=claseCielo(irr,el);
+  let h='';
+  h+=fila('Tracker','#'+String(PICK.fila+1).padStart(2,'0')+(PICK.motora?' (motora)':' (gemela)'));
+  h+=fila('θ ejecutado',(Z.thDeg>=0?'+':'')+(Z.thDeg==null?'--':Z.thDeg.toFixed(2)+'°'));
+  h+=fila('Estado',Z.st?Z.st.txt:'--');
+  h+=fila('Nubosidad',Number.isFinite(Z.ccz)?Math.round(100*Z.ccz)+' %':'--');
+  h+='<div class="sep"></div>';
+  h+=fila('Cielo',c.txt);
+  h+=fila('GHI',_fw(irr&&irr.ghi,'W/m²'));
+  h+=fila('DNI',_fw(irr&&irr.dni,'W/m²'));
+  h+=fila('DHI',_fw(irr&&irr.dhi,'W/m²'));
+  $('pickBody').innerHTML=h;
+}
+let LASTIRR=null,LASTEL=0,CENIT=false;
+/* VISTA DE INGENIERIA. No es una camara nueva ni un viewport nuevo —eso
+   duplicaria estado y `OrbitControls` ya sabe orbitar desde donde se le
+   deje—: coloca LA MISMA camara en una postura casi cenital y guarda la
+   anterior para volver. Casi, no del todo: a 90 grados exactos se pierde la
+   topografia y el encargo pide justo poder apreciarla, asi que se deja
+   inclinada (~68 grados) y con el norte hacia arriba. */
+function toggleCenit(){
+  if(!TD)return;
+  const b=$('cenitbtn');
+  if(!CENIT){
+    TD.camPrev={p:TD.camera.position.clone(),t:TD.controls.target.clone()};
+    const R=Math.max(60,TD.camera.position.distanceTo(TD.controls.target));
+    const c=TD.controls.target;
+    TD.camera.position.set(c.x-0.36*R,0.92*R,c.z);
+    CENIT=true;b.classList.add('acc');
+  }else if(TD.camPrev){
+    TD.camera.position.copy(TD.camPrev.p);TD.controls.target.copy(TD.camPrev.t);
+    CENIT=false;b.classList.remove('acc');
+  }
+  TD.controls.update();
+}
 function makeLabel(){
-  const cv=document.createElement('canvas');cv.width=320;cv.height=72;
+  // CAJA DE DOS LINEAS. Era de una sola (320x72) con autoencogido, y el propio
+  // codigo contaba que «NCU 1 · θ -31° · ☁ retiene» se leia «retien». Encoger
+  // el texto arregla el desbordamiento pero no la jerarquia: la NCU y el
+  // angulo son dos datos distintos y competian por el mismo renglon. En dos
+  // lineas caben enteros y sin encoger, con la NCU arriba y el angulo debajo,
+  // que es como se lee de un vistazo sobre la escena.
+  const cv=document.createElement('canvas');cv.width=384;cv.height=132;
   const ctx=cv.getContext('2d');
   const tex=new THREE.CanvasTexture(cv);
   const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
-  spr.scale.set(17,3.8,1);spr.renderOrder=9;
+  spr.scale.set(15,5.2,1);spr.renderOrder=9;
   spr.userData={cv:cv,ctx:ctx,tex:tex,last:''};
   return spr;
 }
@@ -3703,8 +3864,13 @@ function makeMantle(sizeX,sizeZ,seed,yCloud){
   sh.rotation.x=-Math.PI/2;sh.renderOrder=1;sh.frustumCulled=false;sh.position.y=0.55;
   return {cloud:cw2,shadow:sh,mw:mw,ms:ms,y:yCloud};
 }
+/* setLabel(spr, txt, color) — `txt` puede traer un salto de linea: lo de
+   arriba va en grande (la NCU) y lo de abajo en el color del estado (el
+   angulo y lo que haga el tracker). Sin salto se comporta como antes, en una
+   sola linea centrada, para no obligar a tocar a quien ya lo llamaba asi. */
 function setLabel(spr,txt,color){
   if(spr.userData.last===txt)return;
+  if(txt.indexOf('\n')>=0)return setLabel2(spr,txt,color);
   // AUTOAJUSTE: el canvas es de 320 px y «NCU 1 · θ -31° · ☁ retiene» se salía,
   // así que se leía «retien» — cortado justo en el estado que hay que explicar.
   // El texto se encoge hasta caber y la caja se ajusta a él, en vez de ocupar
@@ -3720,6 +3886,26 @@ function setLabel(spr,txt,color){
   x.fillStyle=color;x.textAlign='center';x.textBaseline='middle';
   x.fillText(txt,W/2,36);
   x.textBaseline='alphabetic';
+  spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
+}
+function setLabel2(spr,txt,color){
+  const x=spr.userData.ctx,W=384,H=132,pad=16;
+  const p=txt.split('\n'),t1=p[0],t2=p.slice(1).join(' ');
+  x.clearRect(0,0,W,H);
+  x.textAlign='center';x.textBaseline='middle';
+  // el ancho de la caja lo manda la linea mas larga, no el lienzo: una caja
+  // fija de 384 px sobre un rotulo corto es un pegote opaco tapando la escena
+  x.font='700 40px system-ui,sans-serif';const w1=x.measureText(t1).width;
+  x.font='600 34px system-ui,sans-serif';const w2=x.measureText(t2).width;
+  const w=Math.min(W-2*pad,Math.max(w1,w2));
+  x.fillStyle='rgba(10,15,22,.80)';
+  x.strokeStyle='rgba(155,176,198,.30)';x.lineWidth=2;
+  const bx=(W-w)/2-pad,bw=w+2*pad;
+  x.beginPath();x.roundRect?x.roundRect(bx,14,bw,H-30,10):x.rect(bx,14,bw,H-30);
+  x.fill();x.stroke();
+  x.font='700 40px system-ui,sans-serif';x.fillStyle='#d7e2ee';x.fillText(t1,W/2,46);
+  x.font='600 34px system-ui,sans-serif';x.fillStyle=color;x.fillText(t2,W/2,92);
+  x.textBaseline='alphabetic';x.textAlign='left';
   spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
 }
 /* ── la planta 3D: bifila real, tamaño real y sitio alrededor ──────────────
@@ -3861,6 +4047,9 @@ function build3D(){
         gpr.position.set(0,D0.postH,zr+half*pitch);
         gpr.add(beam.spin,beam.static);
         world.add(gpr);
+        // IDENTIDAD PARA PODER SELECCIONARLA. Solo `userData`: no cambia ni la
+        // geometria, ni la posicion, ni el material, ni el orden de `spins`.
+        beam.spin.userData.pick={z:z,fila:p*2+half,motora:half===0};
         spins.push(beam.spin);
         for(let k=0;k<9;k++){                        // postes cada ~7 m
           const post=new THREE.Mesh(postGeo,postM);
@@ -3882,8 +4071,26 @@ function build3D(){
     }
     // nube de la zona: manto fBm (cobertura 3D) sobre SUS filas + su sombra
     const zcen=z00+(ROWSZONE-1)*pitch/2;
-    const man=makeMantle(span*1.5,ROWSZONE*pitch*3.4,z+1,34);
-    man.cloud.position.set(0,34,zcen);
+    /* LA NUBE ESTABA A LA ALTURA DE LOS OJOS. Medido: manto a y=34 m con la
+       camara encuadrada a y=32 m — dos metros por encima—, asi que el plano
+       se veia DE CANTO y se leia como un ara~nazo horizontal sobre el
+       horizonte, no como cielo. Sube a una altura proporcional al tama~no de
+       la escena (la camara se coloca a 0,34*L, asi que 1,6*L la deja muy por
+       encima y sigue entrando en un campo de 45 grados) y se ensancha para que
+       su borde caiga fuera de la niebla (far = 850) en vez de verse recortado.
+       Es decoracion: no toca ni una cota del terreno ni una fila. */
+    /* LA ALTURA DE LA NUBE, Y LO QUE ENSE~NA HABER PROBADO 1,6*L: a esa altura
+       el manto cae a mas de 3 km de distancia visual con este encuadre, muy
+       por detras de la niebla (far = 850), asi que se borra del todo. Y ahi se
+       ve lo que en realidad pasa: UN CIELO CUBIERTO NO TIENE NUBES CON FORMA.
+       La textura fBm es la representacion correcta de PARCIALMENTE NUBLADO
+       —masas discretas que proyectan sombra—; el overcast es una tapa
+       uniforme, y esa la llevan ya el fondo y la niebla, que es lo que se
+       midio agrisandose a luma 129. Asi que el manto se queda a una altura
+       desde la que se ve al orbitar hacia arriba, sin estar nunca de canto. */
+    const yNube=Math.max(70,0.9*Math.max(80,Math.max(span,depth)+30));
+    const man=makeMantle(span*4.2,ROWSZONE*pitch*7.0,z+1,yNube);
+    man.cloud.position.set(0,yNube,zcen);
     man.shadow.position.set(0,0.55,zcen);
     world.add(man.cloud,man.shadow);
     const spr=makeLabel();
@@ -3898,8 +4105,23 @@ function build3D(){
   const sc2=TD.sun.shadow.camera,R2=Math.max(70,span*0.62,depth*0.72);
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
   if(reframe){
+    /* ENCUADRE: mas elevado y mas cerca. El anterior (0,60 / 0,34 / 0,72)
+       dejaba la planta en torno a un cuarto del cuadro y el resto era terreno
+       vacio con el horizonte alto. Se sube el ojo y se acorta el radio, que es
+       lo que da superficie a los trackers sin convertirlo en ortofoto: sigue
+       siendo 3/4 aereo y se sigue leyendo el relieve entre filas. El objetivo
+       se levanta un poco del suelo para bajar el horizonte en el cuadro. */
+    /* ENCUADRE: la planta mas grande SIN perder el cielo. El primer intento
+       subio el ojo a 0,46*L y el horizonte se salio del cuadro por arriba —la
+       planta ganaba y el cielo desaparecia, y sin cielo el overcast no se lee—.
+       La inclinacion sale de la RELACION altura/distancia, no de la altura: si
+       se acercan las dos a la vez, la planta crece y el horizonte se queda
+       donde estaba. Se acorta el radio a 0,74 del anterior (la planta ocupa
+       ~1,36x) y se sube el ojo lo justo: 20,7 grados de picado contra los 19,9
+       de antes, con media vertical de campo de 22,5, o sea que quedan ~1,8
+       grados de cielo sobre el borde superior. Sigue siendo 3/4 aereo. */
     const L=Math.max(80,Math.max(span,depth)+30);
-    TD.camera.position.set(cx-0.60*L,0.34*L,cz+0.72*L);
+    TD.camera.position.set(cx-0.44*L,0.26*L,cz+0.53*L);
     TD.controls.target.set(cx,0,cz);
   }
   TD.scene.fog.near=260;TD.scene.fog.far=850;
@@ -4201,6 +4423,17 @@ function update3D(){
     // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
     TD.sun.intensity=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
     TD.hemi.intensity=0.25+0.12*warm+1.05*Math.min(1,irr.dhi/350);   // clara ≈0,55 (como BT) · overcast ≈1,2
+    /* EL COLOR DE LA LUZ AMBIENTE ES EL DEL CIELO, Y UN CIELO CUBIERTO NO ES
+       AZUL. `hemi` nacio en 0xbcd4ff (azul palido) y se quedaba ahi pasara lo
+       que pasara, asi que bajo manto cerrado el terreno se seguia ba~nando en
+       luz azulada sobre verde y salia un verde intenso que no pega con un dia
+       gris. La boveda cubierta es gris neutra tirando a blanco, y ba~nar con
+       ella DESATURA el suelo sin tocar el material del terreno ni una cota:
+       cambia la luz, no la superficie. Se interpola con la FRACCION DIFUSA,
+       que es la que dice cuanto del total llega del cielo y no del disco. */
+    const _dif=irr.ghi>0?Math.max(0,Math.min(1,(irr.ghi-irr.dni*Math.max(0,Math.sin(el*RAD)))/irr.ghi)):1;
+    const _k=Math.max(0,Math.min(1,(_dif-0.25)/0.55));
+    TD.hemi.color.setRGB(0.737+(0.855-0.737)*_k, 0.831+(0.878-0.831)*_k, 1.0+(0.925-1.0)*_k);
     let r0=0.07+0.10*up+0.22*warm*(1-up),
         g0=0.11+0.13*up+0.04*warm*(1-up),
         b0=0.20+0.20*up-0.04*warm*(1-up);
@@ -4209,11 +4442,57 @@ function update3D(){
     TD.scene.background.setRGB(r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f);
     TD.sunMesh.visible=true;
     TD.sunMesh.material.opacity=1-0.85*ccMean;      // el disco, velado por las nubes
+    /* SIN HAZ NO HAY SOMBRA DURA. Medido a mediodia con «Overcast total»: el
+       sol baja a intensidad 0,054 (4 % de la clara) y aun asi se seguia
+       renderizando su mapa de sombras de 2048x2048 cada frame, para una luz
+       que ya no se ve. Se apaga por debajo de un DNI que no proyecta nada. */
+    TD.sun.castShadow=irr.dni>40;
   }else{
-    TD.sun.intensity=0.02;TD.sunMesh.visible=false;
+    TD.sun.intensity=0.02;TD.sunMesh.visible=false;TD.sun.castShadow=false;
     TD.hemi.intensity=0.12;
     TD.scene.background.setRGB(0.043,0.055,0.08);   // la noche de backtracking.html
   }
+  /* ── LA EXPOSICION SE ADAPTA; LA FISICA NO SE TOCA ────────────────────────
+     MEDIDO sobre el render, no supuesto. A mediodia, leyendo la luma de los
+     pixeles de la captura:
+
+                      terreno   cielo
+        despejado       94,1     60,1     el suelo manda
+        overcast        54,5    128,9     el cielo es 2,4x el suelo
+
+     O sea que en overcast la escena sale INFRAEXPUESTA y el contraste queda
+     ALTO, que es justo lo contrario de lo que un cielo cubierto ense~na. Y el
+     motor no estaba mintiendo: la cuenta del renderizador —sol*cos + hemi—
+     da 1,80 claro contra 1,14 overcast (0,63) y el ratio de pixeles medido
+     fue 0,58. Hace exactamente lo que dice el modelo.
+
+     Lo que faltaba es que el OJO se adapta y `toneMappingExposure` estaba
+     clavado en 1,05. Esto es una transformacion de PRESENTACION, no de
+     fisica: ni la irradiancia, ni el angulo, ni la sombra cambian — cambia
+     como se mapea la luz a pixeles, igual que una camara al cerrar el diafragma.
+     Se normaliza contra la luz de referencia del dia claro (1,80) con tope,
+     para que el cielo cubierto se lea PLANO Y CLARO en vez de oscuro. */
+  const _luzUtil=TD.sun.intensity*0.95+TD.hemi.intensity;
+  const _expObj=Math.max(1.05,Math.min(2.10,1.05*(1.80/Math.max(0.35,_luzUtil))));
+  // sin saltos al cambiar de cielo: la pupila tampoco salta
+  TD.exp=(TD.exp==null)?_expObj:TD.exp+(_expObj-TD.exp)*0.12;
+  TD.renderer.toneMappingExposure=TD.exp;
+  /* CONTRASTE DE SOMBRA DE NUBE: NO es monotono con la nubosidad, y lo era.
+     La regla anterior —0,38*min(1, cc*1,4)— satura a partir de cc = 0,714 y
+     crece con la nubosidad, asi que en «Overcast total» (cc 0,95) la sombra
+     drapeada estaba en su MAXIMO. Medido: 0,38, el tope. Eso es lo que se ve
+     como manchas pegadas al terreno, y es falso: una sombra de nube necesita
+     HUECOS por donde pase el haz y NUBE que lo corte, asi que su contraste es
+     maximo con cobertura parcial y tiende a CERO con manto uniforme — bajo
+     una tapa cerrada no hay bordes que proyectar, solo penumbra homogenea, y
+     esa ya la lleva dentro la caida del DNI.
+     4*cc*(1-cc) vale 1 en cc=0,5 y 0 en los dos extremos; el factor del DNI
+     apaga la sombra cuando no hay haz que cortar. En cc=0,95 pasa de 0,38 a
+     0,072: la mancha desaparece sin borrar la variacion del cielo parcial. */
+  const drapeOpac=cc=>(el>0?1:0)*0.38*(4*cc*(1-cc))*Math.min(1,irr.dni/300);
+  pintaCielo3D(irr,ccMean,el);
+  LASTIRR=irr;LASTEL=el;
+  if(PICK)pintaFicha();          // la ficha sigue el reloj: si corre el dia, corre ella
   for(let z=0;z<TD.zones.length;z++){
     const Z=TD.zones[z];
     let th,fl,ccz,sig=false,rate=0;
@@ -4232,15 +4511,17 @@ function update3D(){
     if(Z.th==null||Math.abs(Z.th-th)>1e-9){Z.th=th;TD.realDirty=true;}   // planta real
     if(Z.cloudMat){
       Z.cloudMat.opacity=0.9*ccz;
-      if(Z.shadowMat)Z.shadowMat.opacity=(el>0?1:0)*0.38*Math.min(1,ccz*1.4);
+      if(Z.shadowMat)Z.shadowMat.opacity=drapeOpac(ccz);
     }
     // el estado con el NOMBRE de la política, no un «FLAT» genérico: PLANO
     // (flat/poa_switch) · RETENIDO (limited) · DIFUSA (continuous, ángulo
     // intermedio) · ↻ girando · ☁ retiene (señal viva bloqueada por histéresis)
     const st=stateLabel(pv,th,fl,sig,rate);
     Z.stCol=(st.estado==='track')?null:st.col;   // la mesa se tiñe con SU estado
-    setLabel(Z.label,(zc.on?'NCU '+(z+1)+' · ':'')+'θ '+tcuDeg(th).toFixed(0)+'°'+
-             (st.txt==='track'?'':' · '+st.txt),st.col);
+    Z.ccz=ccz;Z.st=st;Z.thDeg=tcuDeg(th);       // para la ficha del clic: ya calculado, no se repite
+    setLabel(Z.label,(zc.on?'NCU '+String(z+1).padStart(2,'0'):'PLANTA')+'\n'+
+             (tcuDeg(th)>=0?'+':'')+tcuDeg(th).toFixed(2)+'°'+
+             (st.txt==='track'?'':'  '+st.txt),st.col);
   }
   // sombra de nube desplazada según el sol (m de desplazamiento por m de altura)
   const kOff=el>3?Math.min(3,1/Math.tan(el*RAD)):0;
@@ -4253,7 +4534,7 @@ function update3D(){
       const lag=(zc.on&&R0)?zc.cross*(col.cloud.position.z-R0.x0)/((R0.x1-R0.x0)||1):0;
       const b=Math.max(0,Math.min(287,bin-Math.round(lag/5)));
       col.mw.opacity=0.9*CC[b];
-      col.ms.opacity=(el>0?1:0)*0.38*Math.min(1,CC[b]*1.4);
+      col.ms.opacity=drapeOpac(CC[b]);
       col.shadow.position.x=col.cloud.position.x+TD.cOffX*170;
       col.shadow.position.z=col.cloud.position.z+TD.cOffZ*170;
     }
