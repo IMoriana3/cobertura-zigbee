@@ -4,8 +4,8 @@
 medida, el lazo de control de la TCU, y la geometría de sombra entre filas.
 
 **Árbol auditado.** Las mediciones de los §1.2, §1.3 y §5.1 se hicieron sobre
-`ebb5dc0` (`backtracking.html` v1.68.0). Los §1.5 y §5.2 vuelven a medir sobre
-**v1.78.0** con el mismo protocolo. Las citas de código están
+`ebb5dc0` (`backtracking.html` v1.68.0). Los §1.5, §5.2 y §5.3 vuelven a medir
+sobre **v1.78.0** con el mismo protocolo. Las citas de código están
 **re-verificadas sobre `d686640`** (v1.78.0) salvo donde se cite un commit
 explícito. Entre ambos árboles hay 115 commits y algunas líneas se movieron;
 cuando el código ha cambiado, se dice.
@@ -445,7 +445,7 @@ que no hay— y, para que la señal dominante quepa, que El Burgo tenga `segTilt
 
 ---
 
-## §5 · El lazo en planta medida — **CERRADO, remedido en v1.78**
+## §5 · El lazo en planta medida — **CERRADO en los dos solsticios**
 
 ### 5.1 Medida sobre v1.68
 
@@ -520,12 +520,63 @@ La celda completa necesita checkpoint **por paso**; con checkpoint cada 10
 min de simulación entra en *livelock* porque un solo paso rasante dura más que
 el contenedor (§8).
 
-**Advertencia de alcance, para el §5 entero:** junio es un test **menos afilado**
-que diciembre, porque la banda rasante (0,5–10°), donde `optimal` gana +17,6 %
-y 69 de 69, pesa menos en verano. La celda de 21-dic con lazo quedó **sin
-terminar** (pausada en m=580 de 1440) y **no** se ha rehecho sobre v1.78: el
-signo del delta del lazo en diciembre es `NO VERIFICADO`. Solo está medido el de
-junio.
+Junio es un test **menos afilado** que diciembre, porque la banda rasante
+(0,5–10°), donde `optimal` gana +17,6 % y 69 de 69, pesa menos en verano. Esa
+advertencia estuvo abierta hasta el §5.3, que mide el solsticio de invierno.
+
+### 5.3 El solsticio de invierno, el test afilado — **CERRADO**
+
+Mientras el §5 solo tenía junio, quedaba la duda de si el día afilado podía
+**darle la vuelta** al resultado. Medidas las cuatro celdas también en
+**21-dic**, mismo árbol (v1.78.0), mismo protocolo (Ayora real, kWh/fila):
+
+| | pairwise | optimal | optimal vs pairwise |
+|---|---|---|---|
+| sin lazo (paso 5 min) | 40,66629735290969 | 41,034817933438916 | **+0,906 %** |
+| con lazo (paso 1 min) | 40,61401843840256 | 40,96667316421885 | **+0,868 %** |
+
+**El lazo mueve −0,038 pp.** No le da la vuelta a nada: **mismo signo** que en
+junio y **2,7× más grande** en magnitud.
+
+**Careo de los dos solsticios, mismo árbol y mismo protocolo:**
+
+| | 21-dic | 21-jun | factor |
+|---|---|---|---|
+| sin lazo | **+0,906 %** | +0,264 % | **3,44×** |
+| con lazo | **+0,868 %** | +0,249 % | **3,48×** |
+| delta del lazo | **−0,038 pp** | −0,014 pp | 2,7× |
+| pago de `pairwise` | −0,1286 % | −0,0869 % | 1,48× |
+| pago de `optimal` | **−0,1661 %** | −0,1011 % | 1,64× |
+
+Las dos preguntas que el §5.2 dejó abiertas quedan contestadas. **(1)** El delta
+del lazo **mantiene el signo negativo** en el día afilado: el lazo recorta algo
+de la ventaja de `optimal` en los dos solsticios, y recorta más en invierno.
+**(2)** `optimal` **paga más** al lazo con el sol bajo (−0,166 % contra
+−0,101 %), pero `pairwise` también paga más, y **el orden no cambia**: `optimal`
+sigue siendo la política que más sufre el actuador finito, en los dos días. Es
+lo que predice el mecanismo del §5.2 —ángulos más dispersos, banda muerta de
+1,0°— y no hace falta nada más para explicarlo.
+
+**Segundo test nulo, ahora en diciembre.** `pairwise` con lazo da
+**40,61401843840256**, idéntico al último dígito al valor medido sobre v1.68.
+Es el mismo control del §5.2 repetido en el otro solsticio: dos de dos.
+
+#### Lo que esto obliga a decir sobre el +0,402 % anual
+
+El factor **3,44** entre los dos solsticios es el resultado con más consecuencias
+de este §5. **El +0,402 % anual del §1.5 es una media de doce meses, no un
+techo:** el día de invierno da **+0,906 %** sin lazo y el de verano **+0,264 %**.
+
+Citar el anual como «lo que vale la corrección de v1.76» es citar el promedio de
+un efecto que varía por un factor 3,4 a lo largo del año, y que se concentra
+justo en los meses en que la planta produce menos. No es lo mismo decir
+«+0,4 %» que decir «+0,9 % en invierno, +0,26 % en verano».
+
+**Nota de infraestructura.** El contenedor se reinició con la celda a cuatro
+pasos de la puesta. El proceso sobrevivió porque iba desacoplado, y el cerrojo
+lo verificó leyendo `/proc/<pid>/cmdline` en vez de fiarse de que el PID
+existiese — que es exactamente el fallo del §8 que costó 40 min de parón en
+silencio. La defensa funcionó.
 
 ---
 
@@ -541,7 +592,7 @@ Ninguno de los recuentos de este informe se presenta sin su test nulo delante.
 | control sin quiebro (genérica) | las métricas **coinciden** (0 de 8) | el recuento **no informaría ahí**; se paró |
 | reconstrucción de El Burgo a 0°/0° | **idéntica** a `tElburgo` | lo medido es de la pendiente |
 | máquina de checkpoints | 40,61401843840256 reanudado = 40,6140 de un tirón | el arrastre de estado del lazo es exacto |
-| `pairwise` medido en v1.68 y en v1.78 | **idéntico al último dígito** en las dos celdas | v1.76 tocó solo `optimal`/`optfree`; el careo del §5.2 vale |
+| `pairwise` medido en v1.68 y en v1.78 | **idéntico al último dígito**, en 21-jun **y** en 21-dic | v1.76 tocó solo `optimal`/`optfree`; el careo de los §5.2 y §5.3 vale |
 | origen del layout vs origen del relieve | `cE`/`cN` **iguales**; 0 de 90 líneas fuera de la malla | el muestreo del DEM del §4.5 está en el sistema correcto |
 | El Burgo llano reconstruido en el §4.5 | **1331,608** = 1331,608 del §4.3 | lo medido es de la torsión, no del arnés nuevo |
 | uniforme a la misma \|media\| que el array real | **+0,163 %** contra −3,094 % | la pérdida es de la **forma**, no de la magnitud |
@@ -612,14 +663,15 @@ Se registran porque afectaron a lo que se informó, aunque no a las cifras.
 1. ~~`optimal` sobre v1.78~~ — **cerrado en el §1.5**: medido con el mismo
    protocolo, da **+0,402 %** (M3) y 288/289 instantes. ~~Queda sin medir sobre
    v1.78 el **lazo**~~ — **cerrado en el §5.2**: el delta del lazo pasa de
-   +0,048 pp a **−0,014 pp**. Sigue sin medir el lazo en **21-dic** (punto 4).
+   +0,048 pp a **−0,014 pp**, y el §5.3 lo mide también en 21-dic: **−0,038 pp**.
 2. **Cuál de las dos causas candidatas** domina la dependencia del paso con lazo
    (interpolación en el tramo o cuadratura por extremo derecho).
 3. Si con **otra latitud o `axisAz≠0`** el llano cruza el corte de 89,9°.
-4. El lazo en Ayora **21-dic**, en **ninguno** de los dos árboles (pausado en
-   m=580 de 1440 sobre v1.68, no reintentado sobre v1.78). Junio es el test
-   menos afilado de los dos, así que el delta del lazo del §5.2 está medido
-   donde `optimal` tiene menos que ganar.
+4. ~~El lazo en Ayora **21-dic**~~ — **cerrado en el §5.3**: las cuatro celdas
+   medidas sobre v1.78. El delta del lazo mantiene el signo (−0,038 pp) y
+   `optimal` gana **+0,906 %** sin lazo, **3,44×** lo de junio. Queda sin medir
+   el lazo en 21-dic sobre **v1.68**, que ya no interesa: el árbol está
+   superado y `pairwise` da el mismo valor en ambos (dos tests nulos).
 5. **Por qué** el eje inclinado anula la sombra por completo más allá del efecto
    de `psz` ya medido (§3): el control aísla la causa, pero no se ha verificado
    que no haya un segundo término.
