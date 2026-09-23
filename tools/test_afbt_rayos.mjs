@@ -108,14 +108,19 @@ const r = await pg.evaluate(() => {
   function fila(t, lado, u0, a0) {    // rectángulo de la fila: u perpendicular al tubo, a a lo largo (positivo al SUR)
     const s = (t.medio ? (t.mr || 0.5) : 1) * (t.span || TC.span), e = ejes(t, lado);
     return { u: u0 + (lado ? fz : -fz), a0: a0 - s / 2, a1: a0 + s / 2, g: (e[0] - e[1]) / s, h0: e[1] }; }
+  /* El panel gira alrededor del TUBO, que va inclinado (trackerBase inclina el marco entero y
+     updateSpin bascula dentro): la cuerda es perpendicular al eje, cosβ·u + senβ·n0 con
+     n0 = (0, −g, 1)/w, w = √(1+g²). Tomarla en el plano vertical valía con tubos al 1 %, no al 21 %
+     que da el DEM en algún seguidor de Fayón. En (u, a, z): a lo largo del eje, positivo al SUR. */
   function sombreado(FA, FB, sv, beta) {   // ¿algún punto de FA a la sombra de FB, las dos a beta?
     const su = sv.E, sa = -sv.N, sz = sv.U, cb = Math.cos(beta), sb = Math.sin(beta), tb = Math.tan(beta);
-    const den = sz - FB.g * sa - su * tb; if (Math.abs(den) < 1e-9) return false;
-    for (let ia = 0; ia <= 24; ia++) { const Pa = FA.a0 + (FA.a1 - FA.a0) * ia / 24;
+    const wA = Math.hypot(1, FA.g), wB = Math.hypot(1, FB.g);
+    const den = sz - FB.g * sa - su * tb * wB; if (Math.abs(den) < 1e-9) return false;
+    for (let ia = 0; ia <= 24; ia++) { const Aa = FA.a0 + (FA.a1 - FA.a0) * ia / 24;
       for (let it = -5; it <= 5; it++) { const t = it / 10;
-        const Pu = FA.u + t * c * cb, Pz = FA.h0 + FA.g * (Pa - FA.a0) + t * c * sb;
-        const k = (FB.h0 + FB.g * (Pa - FB.a0) + (Pu - FB.u) * tb - Pz) / den; if (k <= 1e-6) continue;
-        const qa = Pa + k * sa, tq = (Pu + k * su - FB.u) / (c * cb);
+        const Pu = FA.u + t * c * cb, Pa = Aa - t * c * FA.g * sb / wA, Pz = FA.h0 + FA.g * (Aa - FA.a0) + t * c * sb / wA;
+        const k = (FB.h0 + FB.g * (Pa - FB.a0) + (Pu - FB.u) * tb * wB - Pz) / den; if (k <= 1e-6) continue;
+        const tq = (Pu + k * su - FB.u) / (c * cb), qa = Pa + k * sa + tq * c * FB.g * sb / wB;   // qa: punto del EJE de B
         if (Math.abs(tq) <= 0.5 && qa >= FB.a0 && qa <= FB.a1) return true; } }
     return false; }
   const o = { pares: 0, ambos: 0, soloF: 0, soloR: 0, dif: [] };
