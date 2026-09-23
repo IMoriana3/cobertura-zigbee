@@ -49,6 +49,21 @@ try {
      arreglo no cambia el anual pero SÍ cambia esto. */
   const sDia = (Date.now() - t1) / 1000;
   console.error(`  Ayora cargada y primer día cerrado · ${sDia.toFixed(1)} s`);
+  /* LAS DOS POLÍTICAS QUE 1.6 PIDE TIENEN QUE ESTAR ENCENDIDAS, Y HAY QUE
+     DECIRLO. Con planta real la página apaga sola `optimal` y `optfree` por
+     caras (`backtracking.html`, el filtro de políticas caras), y el anual sólo
+     integra las ENCENDIDAS. Sin encenderlas a mano, esta sonda mediría el
+     anual de todo MENOS lo que se le pregunta — y habría publicado una tabla
+     sin las dos filas que importan, que es peor que no medir.
+     Se enciende también `pairwise`, que es el denominador de los porcentajes. */
+  const encendidas = await pg.evaluate(() => {
+    for (const P of POLICIES) P.on = (P.key === 'pairwise' || P.key === 'optimal' || P.key === 'optfree');
+    buildPolicyBox();
+    return POLICIES.filter(P => P.on).map(P => P.key);
+  });
+  console.error(`  encendidas para el anual: ${encendidas.join(', ')}`);
+  if (!encendidas.includes('optimal') || !encendidas.includes('optfree'))
+    throw new Error('no he podido encender las dos políticas que 1.6 pide: la medida no serviría');
   const t2 = Date.now();
   await pg.evaluate(() => document.getElementById('yearbtn').click());
   await pg.waitForFunction(() => { const t = document.getElementById('yeartab'); return t && t.innerHTML.trim().length > 0; }, null, { timeout: 3600000 });
@@ -63,6 +78,7 @@ try {
   });
   console.error(`  anual · ${sAnual.toFixed(1)} s`);
   console.log(JSON.stringify({ commit: sha, ver: tab.ver, segundos: { primerDia: +sDia.toFixed(1), anual: +sAnual.toFixed(1) },
+    encendidas: encendidas,
     nota: 'los tiempos se midieron con la máquina compartida salvo que el cuaderno diga lo contrario',
     tabla: tab.filas }, null, 1));
 } finally { clearInterval(LAT); await browser.close(); srv.kill(); }
