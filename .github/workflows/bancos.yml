@@ -354,6 +354,14 @@ jobs:
       # con el viejo y no protegería nada.
       - name: la planta pondera por largo de mesa
         run: node tools/test_ponderacion_planta.mjs
+      # R4 fase 1. `optimal` buscaba y vetaba con la métrica POR LÍNEA y se le
+      # cobraba con la de POR MESA: medido, perdía en 58 de 86 instantes de
+      # Ayora. Desde v1.76 manda `anglesOptimalSeg` y puntúa con `poaPlantSeg`.
+      # El banco lleva DOS tests nulos delante —que la planta tenga torsión y
+      # que las dos métricas difieran en ella— y un control negativo que
+      # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
+      - name: el veto del óptimo puntúa con la métrica que se cobra
+        run: node tools/test_veto_por_mesa.mjs
       # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
       # planta real la página apaga ella sola las caras: el informe las volvía a
       # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que

@@ -1,0 +1,75 @@
+{
+ "commit": "687382ed8f31cbe12755c6493135403d2343259d",
+ "fecha": "2026-06-21",
+ "lat": 39.11821,
+ "lon": -1.15985,
+ "lineas": 79,
+ "mesas": 1600,
+ "torsion": {
+  "mesasConTorsion": 1600,
+  "torsionMax_deg": 3.7143
+ },
+ "paso_min": 10,
+ "res": {
+  "medida": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 10.3657,
+   "inversionesDeOrden": 68,
+   "optimal_pierde_por_mesa": 61,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.4441,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67345,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -57.05001415573224,
+    "pwMesa": 571.5010139636269,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 8.401175760960825
+   }
+  },
+  "sinTorsion": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 10.387,
+   "inversionesDeOrden": 23,
+   "optimal_pierde_por_mesa": 16,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.2441,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67218.1,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -46.36758608793002,
+    "pwMesa": 560.8537088949436,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 8.436298760079751
+   }
+  },
+  "tilt0": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 9.294,
+   "inversionesDeOrden": 27,
+   "optimal_pierde_por_mesa": 19,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": -0.2408,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67362.6,
+   "peor": {
+    "min": 510,
+    "hora": "08:30",
+    "dLinea": 136.15894144383736,
+    "dMesa": -48.44663236445308,
+    "pwMesa": 559.8566699595916,
+    "pwLinea": 369.89088260309643,
+    "difMetrica": 5.36021354820474
+   }
+  }
+ }
+}

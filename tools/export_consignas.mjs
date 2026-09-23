@@ -62,6 +62,10 @@ const PASO = Math.max(1, +arg('paso', 5));
 const POLS = arg('pol', 'pairwise').split(',').map(s => s.trim()).filter(Boolean);
 const SALIDA = arg('salida', `/tmp/consignas_${PLANTA}_${FECHA}.csv`);
 const GEOMETRICAS = new Set(['pairwise', 'true3d', 'row', 'mgl', 'astro', 'global', 'bt2d']);
+/* las que mandan MESA A MESA (la misma lista que `POL_POR_MESA` de la página;
+   aquí se repite porque este guion no carga la capa de aplicación, y el banco
+   `tools/test_veto_por_mesa.mjs` comprueba que no se separen) */
+const POR_MESA = new Set(['pairwise', 'astro', 'optimal', 'optfree']);
 
 const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
 const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
@@ -205,11 +209,17 @@ for (const pol of POLS) {
     const hh = String(Math.floor(mm / 60)).padStart(2, '0'), mi = String(mm % 60).padStart(2, '0');
     const angDe = new Map(), shDe = new Map();
     for (const B of BLOQUES) {
-      const o = F.policyAngles(pol, g.zen, g.az, B.T, irr, doy, ALB);
       // v1.42 POR MESA: pairwise y astro mandan a cada mesa con SU tilt y su
       // pareja exacta; el resto de políticas siguen mandando por línea
       // (difundido a sus mesas, declarado). El actuador limita MESA a MESA.
-      const cmd = (pol === 'pairwise' || pol === 'astro')
+      // v1.76 (R4 fase 1): `optimal` y `optfree` pasan a mandar por mesa
+      // también, y allí el θ de línea ya no se usa — pedirlo sería calcular la
+      // política DOS veces, y son las dos más caras que hay. El CSV de campo
+      // tiene que llevar la consigna que la planta ejecuta, no un promedio de
+      // ella, así que esta rama sigue a `policyAnglesSeg` y no al revés.
+      const porMesa = POR_MESA.has(pol);
+      const o = porMesa ? null : F.policyAngles(pol, g.zen, g.az, B.T, irr, doy, ALB);
+      const cmd = porMesa
         ? F.policyAnglesSeg(pol, g.zen, g.az, B.T, irr, doy, ALB)
         : F.segsBroadcast(B.T, o.angles);
       // v1.61: el LAZO ENTERO (deadband + slew), como en computeDay: lo que sale por
