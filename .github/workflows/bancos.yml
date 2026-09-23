@@ -262,6 +262,14 @@ jobs:
 
       - name: ángulos del barrido (zigbee_angulos.ps1)
         run: python tools/test_angulos_barrido.py
+      # `zigbee_config.ps1` VIAJA AL PC DE PLANTA —va en el ZIP, index.html lo
+      # lista y `preparaConfig` lo transforma— y hasta ahora solo se probaba con
+      # `pwsh` 7. En planta hay Windows PowerShell 5.1, que es OTRO intérprete:
+      # ahí es donde el BOM importa y donde su hermano `zigbee_inventario.ps1`
+      # ya se quedó sin compilar una vez. Probar solo con 7 dejaba al volcador
+      # de configuración sin la única prueba que cubre la versión de planta.
+      - name: configuración de planta (zigbee_config.ps1)
+        run: python tools/test_config_planta.py
       - name: inventario zigbee (zigbee_inventario.ps1)
         run: python tools/test_inventario_zb.py
       - name: RSSI (zigbee_logger.ps1)
@@ -295,6 +303,7 @@ jobs:
           PS1_DIR: _paq/elburgo
         run: |
           python tools/test_angulos_barrido.py
+          python tools/test_config_planta.py
           python tools/test_inventario_zb.py
           python tools/test_logger_rssi.py
           python tools/test_rutas_telnet.py
