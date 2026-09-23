@@ -80,7 +80,18 @@ PWSH = os.environ.get('PWSH') or shutil.which('pwsh') or shutil.which('powershel
 if not PWSH:
     print('\nSIN PWSH: no se ha ejecutado el .ps1. Las comprobaciones de fuente SI se han hecho.')
     print('Esto no es un verde del banco entero.')
-    sys.exit(2 if fallos else 0)
+    # LOS DOS CODIGOS ESTABAN CAMBIADOS, y por eso nadie lo vio: en este repo
+    # rc = 1 es «comprobado y falla» y rc = 2 «no comprobado» —lo dice el propio
+    # bancos.yml al exigir rc = 1 EXACTO a las mutaciones—. Aqui salia rc = 2
+    # cuando el fuente FALLABA (o sea, un rojo de verdad disfrazado de «no
+    # comprobado») y rc = 0 cuando NO se habia ejecutado el .ps1 (o sea, media
+    # prueba haciendose pasar por verde entero). En CI no se notaba porque alli
+    # `pwsh` siempre esta y esta rama no se pisa; muerde fuera de CI, que es
+    # donde la maquina de desarrollo informa de si misma.
+    #
+    # Un fallo del fuente MANDA sobre la falta de pwsh: si ya hemos encontrado
+    # algo mal, eso es un rojo, no una duda.
+    sys.exit(1 if fallos else 2)
 
 
 # ── 2 · LA NCU DE MENTIRA ─────────────────────────────────────────────────
