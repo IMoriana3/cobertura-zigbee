@@ -1549,7 +1549,10 @@ function bt3dAng(t){
      habia quedado sin usarla. */
   var sv=afbtSol(sv0,t.rot||0);
   var b=Math.atan(mc.gN||0);                                  // el eje no es horizontal: lleva la pendiente longitudinal medida
-  var y=sv.N*Math.sin(b)+sv.U*Math.cos(b);
+  /* SIGNO: con el eje subiendo hacia el norte (gN>0) la normal del plano del tubo se inclina al SUR,
+     (0, -sen b, cos b), y el sol del norte queda MAS BAJO respecto a ella, no mas alto. Aqui sumaba
+     N·sen b; lo destapo el contraste de la Afeccion BT con trazado de rayos (tools/test_afbt_rayos.mjs). */
+  var y=sv.U*Math.cos(b)-sv.N*Math.sin(b);
   var R=-Math.atan2(sv.E,y);
   var lim=(COTAS&&COTAS.limite)||55;
   if(!btOn) return Math.max(-lim,Math.min(lim,R/DEG));
@@ -1627,9 +1630,14 @@ function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombr
   var lo2=Math.max(v.b0,v.a0-dz),hi2=Math.min(v.b1,v.a1-dz);return Math.max(0,hi2-lo2)/v.sB;
 }
 function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
+  var p=afbtPuntas(t,lado);return (p[0]+p[1])/2;
+}
+function afbtPuntas(t,lado){                    // [sur, norte]: cota de SUELO (escena) en las dos puntas de la fila E/O
   if(t.mc&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
-    if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1]))return (f.y[0]+f.y[1])/2;}
-  return t.rel;                                 // sin cota medida: DEM del centro
+    if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1])){
+      var k=COTAS.base-baseElev-COTAOFF-(TC.postH+(TC.off||0));   // al SUELO de escena, como mc.gnd (prepCotas): la y medida va sobre el MODULO y relativa a COTAS.base, y restarla tal cual de t.rel mezclaba datums (~6 m en Ayora) en cuanto a uno de la pareja le faltaba la cota
+      return [f.y[0]+k,f.y[1]+k];}}
+  return [t.rel,t.rel];                         // sin cota medida: DEM del centro, fila plana (y sin pendiente de tubo: gN solo existe medida)
 }
 function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al ladoB de A) impone a A con este sol
   var sv=afbtSol(sv0,A.rot||0);                 // "este/oeste" son los lados del TUBO, no los del mundo
@@ -1637,25 +1645,48 @@ function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al l
   var s=ladoB==='E'?1:-1;
   if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
   var d=gap||(TC.filaZ?2*TC.filaZ:6);           // hueco REAL entre las filas limitrofes de la pareja
-  var hA=afbtAlturaFila(A,ladoB),hB=afbtAlturaFila(B,ladoB==='E'?'O':'E');
-  var dh=hB-hA;                                 // vecino mas alto -> sombra mas larga (sale solo de la proyeccion)
+  /* EL TUBO NO ES HORIZONTAL. Con las cotas medidas el eje lleva su pendiente longitudinal (gN), y
+     aqui el sol se tomaba en el plano vertical E-U. Pero el rayo, al cruzar el hueco, avanza tambien
+     a lo largo del eje —hasta 10 m en una mañana de invierno— subiendo o bajando con la pendiente:
+     el plano que manda es el perpendicular al TUBO. Se gira el sol a ese marco (normal (0,-sen b,
+     cos b): con el tubo subiendo al norte, el sol del norte queda mas BAJO), igual que bt3dAng.
+     Con el 1,4 % de Ayora eran 4-5 grados de recorte que no salian. */
+  var gA=(A.mc&&isFinite(A.mc.gN))?A.mc.gN:0,bA=Math.atan(gA);
+  var suT=sv.U*Math.cos(bA)-sv.N*Math.sin(bA);
+  if(suT<=0.02)return 0;
+  /* Y EL DESNIVEL NO ES UNO. Las dos filas enfrentadas no llevan la misma pendiente (en Ayora se
+     alabean hasta 10 cm de punta a punta) y el backtracking tiene que librar el PEOR punto, no el
+     medio. La sombra de B cae sobre A corrida dz a lo largo del eje (la misma cuenta que
+     afbtSolape); en el tramo que solapa el desnivel varia linealmente, asi que el peor esta en una
+     de sus dos puntas. Se mide en el marco del tubo: sin la parte que es solo pendiente por estar
+     los dos puntos desplazados a lo largo del eje. */
+  var lc=afbtLoc(A,B),sA=(A.medio?(A.mr||0.5):1)*(A.span||TC.span),sB=(B.medio?(B.mr||0.5):1)*(B.span||TC.span);
+  var pA=afbtPuntas(A,ladoB),pB=afbtPuntas(B,ladoB==='E'?'O':'E');
+  function hEn(p,s0,c0,a){return p[1]+(p[0]-p[1])*((a-c0)/s0+0.5);}   // a lo largo del eje, positivo al SUR (gz): punta norte en c0-s0/2
+  var dz=Math.abs(sv.E)>0.03?s*d*(sv.N/sv.E):0;
+  var lo=Math.max(-sA/2,lc[1]-sB/2+dz),hi=Math.min(sA/2,lc[1]+sB/2+dz);
+  if(hi<lo){lo=hi=Math.max(-sA/2,Math.min(sA/2,(lo+hi)/2));}          // sin solape la llamada ya viene ponderada por 0; se mide en la punta mas cercana
+  function dhEn(a){return hEn(pB,sB,lc[1],a-dz)-hEn(pA,sA,0,a)-gA*dz;}
+  var dhs=[dhEn(lo),dhEn(hi)];
   var c=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // cuerda del colector = GCR x paso de fila. OJO: TC.mesaC NO es la cuerda en todas las plantas (El Burgo 16,3 m) y sombreaba hasta a mediodia
-  var se=Math.abs(sv.E),su=sv.U;                // trabajamos con el sol "a la derecha": simetrico E/W
+  var se=Math.abs(sv.E),su=suT;                 // trabajamos con el sol "a la derecha": simetrico E/W
   var w=Math.atan2(se,su);                      // angulo de perfil
-  function sombra(phi){                         // ambas filas a tilt phi (phi<0 = borde del sol hacia abajo = seguimiento)
-    var ux=Math.cos(phi)*c/2,uy=Math.sin(phi)*c/2;
-    function pr(x,y){return x-y*(se/su);}       // proyeccion al suelo por el rayo de sol
-    var a1=pr(-ux,-uy),a2=pr(ux,uy),b1=pr(d-ux,dh-uy),b2=pr(d+ux,dh+uy);
-    var lo=Math.max(Math.min(a1,a2),Math.min(b1,b2)),hi=Math.min(Math.max(a1,a2),Math.max(b1,b2));
-    return hi-lo>1e-4;
-  }
   var track=Math.min(Math.PI/2-1e-3,Math.min(w,((COTAS&&COTAS.limite)||55)*DEG));
-  var phit=-track;                              // seguimiento puro: perpendicular al sol (borde del sol abajo)
-  if(!sombra(phit))return 0;
-  if(sombra(0))return track/DEG;                // ni en plano se libra (escalon fuerte): recorte total
-  var mlo=0,mhi=1;                              // m: 0=seguimiento (sombra), 1=plano (sin sombra)
-  for(var k=0;k<22;k++){var mm=(mlo+mhi)/2;sombra(phit*(1-mm))?(mlo=mm):(mhi=mm);}
-  return track*mhi/DEG;
+  var phit=-track,peor=0;                       // seguimiento puro: perpendicular al sol (borde del sol abajo)
+  for(var q=0;q<dhs.length;q++){var dh=dhs[q];   // vecino mas alto -> sombra mas larga (sale solo de la proyeccion)
+    var sombra=function(phi){                   // ambas filas a tilt phi (phi<0 = borde del sol hacia abajo = seguimiento)
+      var ux=Math.cos(phi)*c/2,uy=Math.sin(phi)*c/2;
+      function pr(x,y){return x-y*(se/su);}     // proyeccion al suelo por el rayo de sol
+      var a1=pr(-ux,-uy),a2=pr(ux,uy),b1=pr(d-ux,dh-uy),b2=pr(d+ux,dh+uy);
+      var l=Math.max(Math.min(a1,a2),Math.min(b1,b2)),h=Math.min(Math.max(a1,a2),Math.max(b1,b2));
+      return h-l>1e-4;
+    };
+    if(!sombra(phit))continue;
+    if(sombra(0))return track/DEG;              // ni en plano se libra (escalon fuerte): recorte total
+    var mlo=0,mhi=1;                            // m: 0=seguimiento (sombra), 1=plano (sin sombra)
+    for(var k=0;k<22;k++){var mm=(mlo+mhi)/2;sombra(phit*(1-mm))?(mlo=mm):(mhi=mm);}
+    peor=Math.max(peor,track*mhi/DEG);}
+  return peor;
 }
 function afbtAgg(i){                            // agregado por vecino: media de grados de recorte (x solape)
   var A=TRK[i],vs=afbtVecinos(i),res=[],doys,mins,d0=simDoy;
