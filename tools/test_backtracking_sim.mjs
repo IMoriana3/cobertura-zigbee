@@ -2551,8 +2551,23 @@ t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría rea
      que esto vigila es que el ángulo use `Tcfg`, no cómo se llame la variable
      que lleva la política — que es la lección que ya lleva escrita el test de
      por mesa, tres puestos más abajo. */
-  if (!/policyAngles\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f))
+  /* v1.76: el cuerpo del día ya no le pide el ángulo a `policyAngles`: se lo
+     pide a `segCmd`, que es la ÚNICA fuente del mando —por mesa cuando la hay
+     y por línea cuando no—. Lo que esto vigila no ha cambiado: que la consigna
+     se calcule con la CREENCIA de la TCU. Así que se acepta a cualquiera de
+     los dos como portador y, ADEMÁS, se entra en `segCmd` a comprobar que su
+     rama por línea le pasa `Tcfg` a la política y que su rama por mesa sólo
+     corre cuando esa creencia ES el levantamiento. Es más de lo que se exigía
+     antes, no menos: antes bastaba con que la llamada llevara `Tcfg` escrito. */
+  if (!/policyAngles\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f) &&
+      !/segCmd\((?:P\.)?key,g\.zen,g\.az,Tcfg,/.test(f))
     throw new Error('el ángulo no usa la creencia de la TCU');
+  const sc = cuerpoFn(html, 'segCmd');
+  if (!sc) throw new Error('no existe `segCmd`: el mando del día no tiene fuente única');
+  if (!/policyAngles\(key,zen,az,Tcfg,/.test(sc))
+    throw new Error('segCmd calcula el ángulo por línea con la geometría REAL, no con la creencia de la TCU');
+  if (!/Tcfg===T/.test(sc))
+    throw new Error('segCmd manda por mesa sin exigir que la creencia de la TCU SEA el levantamiento');
   if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
     throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
   // y los caminos de instante (el slider entre pasos de malla) no pueden usar
@@ -3224,8 +3239,19 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
     for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
       if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
-    const cmd = ui.slice(ui.indexOf('function segCmd'), ui.indexOf('function angAt'));
-    if (!cmd.includes("Tcfg===T&&(key==='pairwise'||key==='astro')")) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    /* v1.76: el mando por mesa ya no son dos políticas escritas a mano en el
+       `if` —`optimal` y `optfree` entraron en R4 fase 1— así que exigir el
+       literal ataba el banco a una ORTOGRAFÍA. Lo que protege es lo que la
+       regla HACE: que el mando por mesa siga reservado a la TCU que conoce el
+       levantamiento (`Tcfg===T`), y que la lista de quién manda por mesa esté
+       en UN sitio y contenga al menos las dos de siempre. */
+    const cmd = ui.slice(ui.indexOf('const POL_POR_MESA'), ui.indexOf('function angAt'));
+    if (!/Tcfg===T\s*&&/.test(cmd)) throw new Error('segCmd no reserva el mando por mesa a la TCU que conoce el levantamiento');
+    const lista = /const POL_POR_MESA=\{([^}]*)\}/.exec(cmd);
+    if (!lista) throw new Error('no hay una lista única de las políticas que mandan por mesa');
+    for (const k of ['pairwise', 'astro', 'optimal', 'optfree'])
+      if (!new RegExp('\\b' + k + '\\s*:').test(lista[1])) throw new Error(`\`${k}\` no manda por mesa`);
+    if (!/POL_POR_MESA\[key\]/.test(cmd)) throw new Error('segCmd no consulta la lista: hay dos verdades sobre quién manda por mesa');
     // el 3D gira cada mesa con SU θ, la silueta y el rayo también
     const u3 = ui.slice(ui.indexOf('function update3D'), ui.indexOf('function clipPoly'));
     if (!u3.includes('angAt(p,tIdx,r,k)')) throw new Error('update3D no gira cada mesa con su θ');
