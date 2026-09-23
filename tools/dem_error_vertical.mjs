@@ -144,8 +144,69 @@ for (const planta of PLANTAS) {
   console.log('  error del DEM una vez quitado el escalón:');
   console.log('      |err| p50 ' + pct(abs, 0.5).toFixed(2) + ' m   p95 ' + pct(abs, 0.95).toFixed(2)
             + '   máx ' + Math.max(...abs).toFixed(2));
-  console.log('      firmado p05 ' + pct(res, 0.05).toFixed(2) + '   p95 ' + pct(res, 0.95).toFixed(2) + '\n');
-  resumen.push({ planta, n: pts.length, esc, p50: pct(abs, 0.5), p95: pct(abs, 0.95), max: Math.max(...abs) });
+  console.log('      firmado p05 ' + pct(res, 0.05).toFixed(2) + '   p95 ' + pct(res, 0.95).toFixed(2));
+
+  /* ── LA LONGITUD DE CORRELACIÓN DEL ERROR ──────────────────────────────
+     Y esto NO es un extra. `Siting/tools/relieve_incertidumbre.mjs` traduce
+     estos metros a dB, y el resultado depende POR COMPLETO de si el error es
+     independiente punto a punto o correlado: con 1,29 m de sigma sale |Δ| p95
+     de 27 dB si es independiente y de 0,3 dB si se correla en 100 m. Sin este
+     número, la «cota» es 0–27 dB, que no acota nada.
+
+     Semivariograma empírico: γ(h) = ½·media (res_i − res_j)² sobre las parejas
+     separadas h. Se muestrean parejas al azar con semilla fija —todas serían
+     42 millones en San José— y se busca el ALCANCE: la distancia a la que γ
+     llega al 95 % de su meseta. Por debajo del alcance los errores se parecen;
+     por encima, ya no. */
+  let s = 987654321 >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const BINS = [5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 800, 1200];
+  const suma = new Array(BINS.length).fill(0), cnt = new Array(BINS.length).fill(0);
+  const NPAR = 400000;
+  for (let k = 0; k < NPAR; k++) {
+    const i = Math.floor(rnd() * pts.length), j = Math.floor(rnd() * pts.length);
+    if (i === j) continue;
+    const h = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+    let b = -1;
+    for (let q = 0; q < BINS.length; q++) if (h <= BINS[q]) { b = q; break; }
+    if (b < 0) continue;
+    const d = res[i] - res[j];
+    suma[b] += d * d / 2; cnt[b]++;
+  }
+  const g = BINS.map((_, q) => (cnt[q] > 200 ? suma[q] / cnt[q] : null));
+  const validos = g.filter(v => v != null);
+  const meseta = validos.length ? Math.max(...validos) : null;
+  let alcance = null;
+  if (meseta) for (let q = 0; q < BINS.length; q++)
+    if (g[q] != null && g[q] >= 0.95 * meseta) { alcance = BINS[q]; break; }
+
+  console.log('  correlación espacial del error (semivariograma, ' + NPAR.toLocaleString('es') + ' parejas):');
+  console.log('      h(m)   ' + BINS.map(b => String(b).padStart(7)).join(''));
+  console.log('      γ      ' + g.map(v => (v == null ? '      -' : v.toFixed(2).padStart(7))).join(''));
+  /* LA L QUE HACE FALTA AGUAS ABAJO no es el alcance sino la longitud de
+     e-PLEGADO: `relieve_incertidumbre.mjs` genera el ruido suavizando con una
+     gaussiana de desviación L, y para ese modelo γ(L) = σ²(1 − 1/e) = 0,632·σ².
+     Se interpola entre los dos bins que lo cruzan, en vez de dar el bin entero:
+     el bin es la rejilla de la medida, no la respuesta. */
+  let Lef = null;
+  if (meseta) {
+    const obj = 0.632 * meseta;
+    for (let q = 1; q < BINS.length; q++) {
+      if (g[q] == null || g[q - 1] == null) continue;
+      if (g[q - 1] < obj && g[q] >= obj) {
+        const t = (obj - g[q - 1]) / (g[q] - g[q - 1]);
+        Lef = BINS[q - 1] + t * (BINS[q] - BINS[q - 1]);
+        break;
+      }
+    }
+  }
+  console.log('      ALCANCE (γ llega al 95 % de la meseta): '
+            + (alcance == null ? 'no se alcanza dentro de ' + BINS[BINS.length - 1] + ' m' : alcance + ' m')
+            + '   meseta ' + (meseta == null ? '-' : meseta.toFixed(2)) + ' m²');
+  console.log('      L de e-plegado (la que usa relieve_incertidumbre): '
+            + (Lef == null ? 'no determinada' : Lef.toFixed(0) + ' m') + '\n');
+  resumen.push({ planta, n: pts.length, esc, p50: pct(abs, 0.5), p95: pct(abs, 0.95),
+                 max: Math.max(...abs), alcance, Lef });
 }
 
 if (resumen.length) {
