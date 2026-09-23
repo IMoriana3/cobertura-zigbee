@@ -493,6 +493,7 @@ jobs:
           - { banco: test_cobertura_hsu.mjs }
           - { banco: test_telemetria.mjs }
           - { banco: test_bt3d_rot.mjs }
+          - { banco: test_afbt_mismo_tubo.mjs, arg: fayon }   # afeccion BT: el del mismo tubo es coplanar y no sombrea modulos (falla sin el arreglo)
           - { banco: test_huso_plantas.mjs }
           - { banco: test_panel_plegable.mjs }
           - { banco: test_plano_bifila.mjs }     # el visor 2D contando bífilas (Catania)
