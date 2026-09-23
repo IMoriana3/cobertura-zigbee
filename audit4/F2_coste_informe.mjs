@@ -72,10 +72,21 @@ try {
      LAS DOS CORRIDAS VAN SEGUIDAS Y EN LA MISMA MÁQUINA, que es la lección del
      error 24: dos medidas separadas por dos días y un contenedor no son
      comparables, y de ahí salió una atribución falsa. */
+  /* `--sin-planta` mide 2.3 sobre el PRESET en vez de sobre Ayora. No es un
+     atajo: es la medida que CIERRA. Con la planta real y las nueve políticas
+     sin diferir, la variante «sin diferir» de 2.3 supera la hora en una
+     máquina libre, o sea que ahí el ítem solo puede dar una COTA. Con el
+     preset la medida termina y da un número entero. Se corren las dos y se
+     publican las dos: la cota con su presupuesto declarado, y el número con
+     su geometría declarada. Un número completo de una geometría pequeña y una
+     cota de la grande dicen más que una sola cifra a medias. */
+  const SIN_PLANTA = process.argv.includes('--sin-planta');
   const tDia0 = Date.now();
-  await pg.evaluate(() => document.getElementById('ayorabtn').click());
-  await pg.waitForFunction(() => { const T = terrain(cfg()); return !!(T && T.segs && T.segTilt); }, null, { timeout: 600000 });
-  await pg.waitForFunction(() => { const b = document.getElementById('calcbusy'); return !b || b.style.display === 'none'; }, null, { timeout: 1800000 });
+  if (!SIN_PLANTA) await pg.evaluate(() => document.getElementById('ayorabtn').click());
+  if (!SIN_PLANTA) {
+    await pg.waitForFunction(() => { const T = terrain(cfg()); return !!(T && T.segs && T.segTilt); }, null, { timeout: 600000 });
+    await pg.waitForFunction(() => { const b = document.getElementById('calcbusy'); return !b || b.style.display === 'none'; }, null, { timeout: 1800000 });
+  }
   const sPrimerDia = (Date.now() - tDia0) / 1000;
   const quienSeCalculo = await pg.evaluate(() => ({
     encendidas: POLICIES.filter(P => P.on).map(P => P.key),
@@ -83,7 +94,12 @@ try {
   console.error(`  2.6bis · primer día de Ayora · ${sPrimerDia.toFixed(1)} s · en el día: ${quienSeCalculo.enElDia.join(', ')}`);
   await pg.waitForTimeout(400);
 
-  const t23 = await pg.evaluate(async () => {
+  /* EL PRESUPUESTO DE 2.3 VA DECLARADO, y es un UMBRAL, no una medida. Si la
+     variante sin diferir lo supera, la sonda NO se queda colgada ni inventa
+     una cifra: aborta y publica «> presupuesto». Por defecto 45 min. */
+  const PRES = +((process.argv.find(a => a.startsWith('--tope23=')) || '--tope23=2700').slice(9)) * 1000;
+  const t23 = await Promise.race([
+    pg.evaluate(async () => {
     const drena = (gen) => { const t0 = performance.now(); let n = 0;
       for (const _ of gen()) n++; return { ms: +(performance.now() - t0).toFixed(0), pasos: n }; };
     /* TEST NULO: con la configuración cargada, ¿hay algo que diferir? */
@@ -104,7 +120,9 @@ try {
     out.sinDiferir.calculadas = Object.keys(GR.ser).length;
     window.grDiferida = guarda;
     return out;
-  });
+    }),
+    new Promise(r => setTimeout(() => r({ ABORTADA: true, presupuesto_s: PRES / 1000 }), PRES)),
+  ]);
   const cargaFin = carga();
   console.log(JSON.stringify({ commit: sha, ver: await pg.evaluate(() => VER),
     carga: { alEmpezar: cargaIni, alAcabar: cargaFin },
