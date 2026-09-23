@@ -195,6 +195,109 @@ await pg.waitForTimeout(300);
 const trasArrastre = await pg.evaluate(() => document.getElementById('pick3d').style.display !== 'none');
 t('orbitar (arrastrar) NO cambia la selección por accidente', () => eq(trasArrastre, true));
 
+console.log('los trackers se separan del terreno POR BRILLO, no sólo por tono');
+/* SE MIDE EL RENDER, NO EL MATERIAL. Fijar `mats.glass.color` a una constante
+   pinaría el número que escribí, no la propiedad que importa — y la propiedad
+   es que el tracker se distinga del suelo en LUMINANCIA. Se repinta la escena y
+   se leen sus píxeles clasificándolos por color: azulados saturados = pala,
+   verdosos = terreno, bajo el horizonte.
+
+   POR QUÉ, con la medida que lo motivó. Antes de este cambio:
+
+                    módulos   terreno   contraste
+       overcast       65,5      68,4      0,043
+       despejado      87,5      84,8      0,031
+
+   O sea el MISMO brillo: se distinguían sólo por tono. En escala de grises la
+   planta desaparecía dentro del campo, y quien no separe bien azul de verde no
+   la veía. El listón de 0,15 deja fuera con holgura aquel 0,043 y no ata la
+   elección exacta del azul. */
+async function contrasteRender() {
+  return pg.evaluate(() => {
+    const cv = TD.renderer.domElement;
+    TD.renderer.render(TD.scene, TD.camera);        // repintar y leer en el MISMO turno
+    const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height;
+    const x = c2.getContext('2d');
+    x.drawImage(cv, 0, 0);
+    const d = x.getImageData(0, Math.floor(c2.height * 0.30), c2.width, Math.floor(c2.height * 0.65)).data;
+    let na = 0, la = 0, nv = 0, lv = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0;
+      const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (b > r + 22 && b > g + 10 && sat > 0.30) { na++; la += L; }
+      else if (g > r + 8 && g > b + 8) { nv++; lv += L; }
+    }
+    if (!na || !nv) return { na, nv, contraste: null };
+    la /= na; lv /= nv;
+    return { na, nv, lumaMod: +la.toFixed(1), lumaTer: +lv.toFixed(1),
+             contraste: +(Math.abs(la - lv) / Math.max(la, lv)).toFixed(3) };
+  });
+}
+await pon('overcast');
+const CTO = await contrasteRender();
+await pon('despejado');
+const CTC = await contrasteRender();
+/* TEST NULO: si la clasificación no encuentra píxeles de los dos tipos, el
+   contraste no mide nada y un cero saldría «verde» por vacío. */
+t('la escena tiene píxeles de pala Y de terreno que clasificar', () => {
+  if (!(CTO.na > 2000 && CTO.nv > 2000)) throw new Error('pala ' + CTO.na + ' · terreno ' + CTO.nv);
+});
+t('con cielo cubierto la pala se separa del terreno en brillo', () => {
+  if (!(CTO.contraste > 0.15)) throw new Error('contraste ' + CTO.contraste +
+    ' (pala ' + CTO.lumaMod + ' vs terreno ' + CTO.lumaTer + ')');
+});
+t('y con cielo claro también', () => {
+  if (!(CTC.contraste > 0.15)) throw new Error('contraste ' + CTC.contraste +
+    ' (pala ' + CTC.lumaMod + ' vs terreno ' + CTC.lumaTer + ')');
+});
+
+console.log('la transición es de pintura: el θ no pasa por ella');
+/* EL CONTROL QUE HACE QUE ESTO PRUEBE ALGO, y es el único que importa de esta
+   tanda. Suavizar la luz sería indefendible si suavizara también la física, así
+   que no basta con ver que las luces tardan: hay que ver que el θ NO tarda.
+   Se salta de overcast a despejado y se mira 120 ms después —bastante menos que
+   la constante de 0,18 s— qué ha cambiado ya y qué no.
+   Si alguien metiera el θ por el mismo interpolador, la segunda comprobación
+   se pondría roja aunque la primera siguiera verde. */
+await pon('overcast');
+/* SE LEE LA ROTACIÓN DE LA VIGA, NO `thDeg`. La primera versión de esta
+   comprobación miraba `TD.zones[0].thDeg` y el mutante que mete el θ por el
+   interpolador SALIÓ VERDE: `thDeg` se reescribe con el valor sin suavizar unas
+   líneas más abajo, así que estaba vigilando el θ REPORTADO y no el que gira en
+   pantalla — que es justo lo que la afirmación promete. Se lee la rotación real
+   de la malla, en radianes. */
+const rot = () => pg.evaluate(() => ({ sun: TD.sun.intensity,
+                                       th: TD.zones[0].thDeg,
+                                       rx: TD.zones[0].spins[0].rotation.x }));
+const antes = await rot();
+await pg.selectOption('#skypreset', 'despejado');
+await pg.click('#skyapply');
+await pg.waitForTimeout(120);
+const pronto = Object.assign(await rot(), { objSun: await pg.evaluate(() => TD.obj.sunI) });
+await pg.waitForTimeout(1500);
+const luego = await rot();
+t('la luz NO ha llegado a su destino a los 120 ms (hay transición)', () => {
+  const recorrido = Math.abs(pronto.sun - antes.sun) / Math.max(1e-9, Math.abs(pronto.objSun - antes.sun));
+  if (!(recorrido < 0.92)) throw new Error('a los 120 ms ya ha recorrido el ' + (100 * recorrido).toFixed(0) + ' %: no hay transición');
+  if (!(recorrido > 0.05)) throw new Error('a los 120 ms no se ha movido nada (' + (100 * recorrido).toFixed(1) + ' %): no arranca');
+});
+t('y SÍ llega cuando acaba', () => {
+  if (!(Math.abs(luego.sun - pronto.objSun) < 0.02 * Math.max(0.1, pronto.objSun)))
+    throw new Error('la luz se queda en ' + luego.sun.toFixed(3) + ' con destino ' + pronto.objSun.toFixed(3));
+});
+t('EL θ NO SE SUAVIZA: la viga llega entera en el mismo instante', () => {
+  // TEST NULO: el θ del instante TIENE que cambiar entre los dos cielos
+  // (poa_switch aplana en overcast). Si no cambiara, esto no distinguiría nada.
+  if (Math.abs(luego.rx - antes.rx) < 1e-6)
+    throw new Error('la viga no se mueve entre los dos cielos: la comprobación no distingue nada');
+  if (Math.abs(pronto.rx - luego.rx) > 1e-9)
+    throw new Error('a los 120 ms la viga está en ' + pronto.rx.toFixed(6) + ' rad y acaba en ' +
+                    luego.rx.toFixed(6) + ': está pasando por el interpolador');
+  if (Math.abs(pronto.th - luego.th) > 1e-9)
+    throw new Error('el θ publicado a los 120 ms (' + pronto.th + ') no es el final (' + luego.th + ')');
+});
+
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
 });
