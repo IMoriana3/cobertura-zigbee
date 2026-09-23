@@ -1,0 +1,31 @@
+R5 · FASE 0 · v1.78.1 · Ayora 107 líneas · 1708 mesas en la x de su FILA
+
+DENOMINADOR · 264 instantes con BT activo · 450711 receptor×instante con haz (de 450912)
+
+═══ emisor efectivo = sombra > 1 cm² ═══
+  TEST NULO · relaciones que la rama por mesa NO enumera: 23733 de 41311 · casos en que gemelo (a) y real (b) difieren en presencia: 4832
+  0.1 · receptor×instante con ≥2 emisores efectivos: 7089 · mesas distintas: 1559 de 1708
+  0.2 · relaciones emisor→receptor efectivas: 41311 · NO enumeradas por la rama por mesa: 23733 (57.4 %) en 1603 mesas · NO enumeradas por la rama por línea (r±1): 17781 (43.0 %)
+  0.3 · por relación (Δlínea emisor−receptor · norte/sur): Δlínea -1 · solapa: 9584 | Δlínea +1 · solapa: 7994 | Δlínea ≤−3 · al sur: 3694 | Δlínea ≥+3 · al sur: 3265 | Δlínea ≤−3 · solapa: 2993 | Δlínea 0 · al sur: 2084 | Δlínea -1 · al sur: 1652 | Δlínea -1 · al norte: 1600 | Δlínea ≥+3 · solapa: 1585 | Δlínea +1 · al sur: 1473 | Δlínea -2 · solapa: 1420 | Δlínea +1 · al norte: 1227 | Δlínea 0 · al norte: 989 | Δlínea +2 · solapa: 690 | Δlínea ≤−3 · al norte: 335 | Δlínea -2 · al sur: 296 | Δlínea ≥+3 · al norte: 178 | Δlínea +2 · al sur: 131 | Δlínea -2 · al norte: 89 | Δlínea +2 · al norte: 32
+        por rumbo del emisor visto desde el receptor: O 8858 · S 6922 · E 6427 · SO 5704 · N 5438 · SE 4885 · NO 2005 · NE 1072
+  0.4 · receptor×instante con sombra en (a) o (b): 26089 · el GEMELO dice «sin sombra» y con los θ reales HAY: 1706 · al revés: 3126 · las dos con sombra: 21257
+        fracción real − fracción gemelo (pp): mín -79.725 · p10 -0.760 · mediana 0.000 · p90 0.240 · máx 92.082
+
+═══ emisor efectivo = sombra > 100 cm² ═══
+  TEST NULO · relaciones que la rama por mesa NO enumera: 21851 de 36995 · casos en que gemelo (a) y real (b) difieren en presencia: 4071
+  0.1 · receptor×instante con ≥2 emisores efectivos: 6299 · mesas distintas: 1555 de 1708
+  0.2 · relaciones emisor→receptor efectivas: 36995 · NO enumeradas por la rama por mesa: 21851 (59.1 %) en 1598 mesas · NO enumeradas por la rama por línea (r±1): 16840 (45.5 %)
+  0.3 · por relación (Δlínea emisor−receptor · norte/sur): Δlínea -1 · solapa: 8390 | Δlínea +1 · solapa: 6754 | Δlínea ≤−3 · al sur: 3624 | Δlínea ≥+3 · al sur: 3155 | Δlínea ≤−3 · solapa: 2960 | Δlínea 0 · al sur: 1640 | Δlínea ≥+3 · solapa: 1561 | Δlínea -1 · al sur: 1465 | Δlínea -2 · solapa: 1402 | Δlínea +1 · al sur: 1307 | Δlínea -1 · al norte: 1258 | Δlínea +1 · al norte: 981 | Δlínea 0 · al norte: 782 | Δlínea +2 · solapa: 680 | Δlínea ≤−3 · al norte: 327 | Δlínea -2 · al sur: 287 | Δlínea ≥+3 · al norte: 175 | Δlínea +2 · al sur: 127 | Δlínea -2 · al norte: 88 | Δlínea +2 · al norte: 32
+        por rumbo del emisor visto desde el receptor: O 8032 · S 5973 · E 5602 · SO 5557 · SE 4635 · N 4443 · NO 1788 · NE 965
+  0.4 · receptor×instante con sombra en (a) o (b): 22578 · el GEMELO dice «sin sombra» y con los θ reales HAY: 1283 · al revés: 2788 · las dos con sombra: 18507
+        fracción real − fracción gemelo (pp): mín -79.725 · p10 -1.004 · mediana 0.000 · p90 0.427 · máx 92.082
+
+═══ POR ELEVACIÓN DEL SOL · emisor efectivo = sombra > 1 cm² ═══
+  banda    instantes  rec×inst   ≥2 emisores (mesas)   relaciones  NO enum. mesa        NO enum. línea   gemelo no/real sí   gemelo sí/real no   real−gemelo p10/p90 (pp)
+  <3°            14     23711       3842 (1550)        21822    17095 (78.3 %)    15569 (71.3 %)         441                 313          -7.661 / 8.472
+  3-10°          34     58072       1260 ( 345)         7735     3384 (43.7 %)     1806 (23.3 %)         634                1153          -0.420 / 0.070
+  ≥10°          216    368928       1987 ( 196)        11754     3254 (27.7 %)      406 ( 3.5 %)         631                1660          -0.265 / 0.017
+  <3° · por relación: Δlínea ≤−3 · al sur: 3693 | Δlínea ≥+3 · al sur: 3169 | Δlínea -1 · solapa: 3067 | Δlínea ≤−3 · solapa: 2956 | Δlínea +1 · solapa: 1660 | Δlínea ≥+3 · solapa: 1468 | Δlínea -2 · solapa: 1362 | Δlínea 0 · al norte: 690
+  3-10° · por relación: Δlínea +1 · solapa: 2253 | Δlínea -1 · solapa: 2098 | Δlínea 0 · al sur: 1089 | Δlínea +1 · al sur: 486 | Δlínea -1 · al sur: 404 | Δlínea -1 · al norte: 377 | Δlínea +1 · al norte: 311 | Δlínea 0 · al norte: 290
+  ≥10° · por relación: Δlínea -1 · solapa: 4419 | Δlínea +1 · solapa: 4081 | Δlínea -1 · al norte: 867 | Δlínea +1 · al sur: 718 | Δlínea +1 · al norte: 694 | Δlínea -1 · al sur: 569 | Δlínea 0 · al sur: 397 | Δlínea 0 · al norte: 9
+RC=0
