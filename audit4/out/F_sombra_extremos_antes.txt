@@ -1,0 +1,91 @@
+INDEPENDENCIA · audit4/lib_sombra_geo.mjs tiene 0 import/require
+CONTROL DEL INSTRUMENTO · caso de libro (dos filas llanas, GCR 0.3973)
+  mañana 10°: +1° → 82.3 mm, −1° → 0.000 mm ✓
+  mañana 20°: +1° → 24.0 mm, −1° → 0.000 mm ✓
+  tarde 10°: +1° → 82.3 mm, −1° → 0.000 mm ✓
+  tarde 20°: +1° → 24.0 mm, −1° → 0.000 mm ✓
+
+CONTROL DE CORRESPONDENCIA · verificador contra simulador (v1.78.0)
+  líneas 107 = 107 · mesas 1708 · líneas con distinto nº de mesas: 0
+  peor |Δx| de línea 0.00e+0 m · peor |Δn| de mesa 0.00e+0 m (tras nMid) · peor |Δz| 0.00e+0 m (tras eMean = 33.114456 m, traslación pura)
+
+DENOMINADOR · 107 líneas · 1708 mesas · 106 parejas · 1847 solapes mesa-mesa · 3694 extremos
+  21-jun: 86 instantes con backtracking activo · 100 s
+  21-dic: 107 instantes con backtracking activo · 212 s
+
+═══ CONTROL POSITIVO · θ astronómico (sin backtracking) ═══
+  extremos evaluados 712942 · sin haz en el receptor 0 · impacto fuera de toda mesa 112414
+  CON SOMBRA > 1 mm: 298702 extremos · 1708 mesas distintas · 854 filas
+    · EVITABLE (algún θ —común, o emisor≠receptor— en el cono de haz la quita): 298672 extremos · 1708 mesas · elevación solar hasta 27.469°
+    · IRREDUCIBLE (ningún θ común cada 0,1° ni par (θE,θR) cada 1° la quita): 30 extremos · 23 mesas · elevación solar hasta 1.245°
+  por fila, la peor (máx 12):   línea fila            lado ext  día     local  θ_emisor  θ_recep   intrusión
+                               1  PD-1-1          O    N   21-jun  21:20   -55.000   -55.000   2384.0 mm
+                               2  PD-2-0          O    S   21-jun  21:20   -55.000   -55.000   2384.0 mm
+                               3  PD-2-1          O    S   21-dic  17:20   -55.000   -55.000   2384.0 mm
+                               4  PD-3-0          O    S   21-dic  17:25   -55.000   -55.000   2384.0 mm
+                               5  PD-3-1          O    S   21-dic  17:25   -55.000   -55.000   2384.0 mm
+                               6  PD-4-0          O    S   21-dic  17:20   -55.000   -55.000   2384.0 mm
+                               7  PD-4-1          O    S   21-dic  17:30   -55.000   -55.000   2384.0 mm
+                               8  PD-5-0          O    S   21-dic  17:30   -55.000   -55.000   2384.0 mm
+                               8  PD-6-0          O    N   21-dic  17:30   -55.000   -55.000   2384.0 mm
+                               9  PD-5-1          O    N   21-jun  21:25   -55.000   -55.000   2384.0 mm
+                               9  PD-6-1          O    N   21-dic  17:30   -55.000   -55.000   2384.0 mm
+                              10  PD-7-0          O    S   21-dic  17:30   -55.000   -55.000   2384.0 mm
+
+═══ RAMA LÍNEA · policyAngles(pairwise) — usa pairDz ═══
+  extremos evaluados 712942 · sin haz en el receptor 11 · impacto fuera de toda mesa 367705
+  CON SOMBRA > 1 mm: 18725 extremos · 1652 mesas distintas · 838 filas
+    · EVITABLE (algún θ —común, o emisor≠receptor— en el cono de haz la quita): 18695 extremos · 1651 mesas · elevación solar hasta 27.073°
+    · IRREDUCIBLE (ningún θ común cada 0,1° ni par (θE,θR) cada 1° la quita): 30 extremos · 23 mesas · elevación solar hasta 1.245°
+  por fila, la peor (máx 12):   línea fila            lado ext  día     local  θ_emisor  θ_recep   intrusión
+                               1  PD-1-1          O    N   21-jun  21:25     0.983     0.983   2384.0 mm
+                               2  PD-2-0          O    S   21-jun  21:25     0.983     0.653   2384.0 mm
+                               4  PD-3-0          O    S   21-dic  17:25    -0.292    -0.004   2384.0 mm
+                               7  PD-4-1          O    S   21-dic  17:30    -0.605    -0.605   2384.0 mm
+                              10  PD-8-0          O    N   21-dic  17:30    -0.420    -0.312   2384.0 mm
+                              13  PD-10-1         O    N   21-dic  17:35    -1.129    -1.129   2384.0 mm
+                              18  PD-17-0         E    N   21-jun  06:45     0.480     0.480   2384.0 mm
+                              20  PD-21-0         O    S   21-dic  17:40    -2.169    -2.495   2384.0 mm
+                              21  PD-21-1         E    N   21-dic  08:30     1.859     1.742   2384.0 mm
+                              34  PD-39-0         E    N   21-jun  06:45    -0.868    -0.868   2384.0 mm
+                              35  PD-37-1         E    N   21-dic  08:30     2.741     2.815   2384.0 mm
+                              35  PD-39-1         E    N   21-jun  06:45    -0.798    -0.868   2384.0 mm
+
+═══ RAMA MESA · policyAnglesSeg(pairwise) — no usa pairDz ═══
+  extremos evaluados 712942 · sin haz en el receptor 101 · impacto fuera de toda mesa 122730
+  CON SOMBRA > 1 mm: 22271 extremos · 1572 mesas distintas · 825 filas
+    · EVITABLE (algún θ —común, o emisor≠receptor— en el cono de haz la quita): 22241 extremos · 1568 mesas · elevación solar hasta 27.073°
+    · IRREDUCIBLE (ningún θ común cada 0,1° ni par (θE,θR) cada 1° la quita): 30 extremos · 23 mesas · elevación solar hasta 1.245°
+  por fila, la peor (máx 12):   línea fila            lado ext  día     local  θ_emisor  θ_recep   intrusión
+                               7  PD-4-1          O    S   21-dic  17:30     0.151     0.151   2384.0 mm
+                              18  PD-17-0         O    N   21-dic  17:40    -0.507    -0.054   2384.0 mm
+                              20  PD-21-0         O    S   21-dic  17:40    -0.931    -0.393   2384.0 mm
+                              21  PD-21-1         O    S   21-dic  17:35     0.065     0.065   2384.0 mm
+                              26  PD-28-0         E    N   21-dic  08:30    -0.083    -0.083   2384.0 mm
+                              27  PD-26-1         E    S   21-dic  08:30     5.092     3.102   2384.0 mm
+                              27  PD-28-1         E    N   21-dic  08:35     0.571    -0.199   2384.0 mm
+                              28  PD-31-0         O    S   21-dic  17:35     0.038     0.046   2384.0 mm
+                              29  PD-31-1         E    N   21-dic  08:30     0.607    -0.083   2384.0 mm
+                              31  PD-32-1         E    S   21-dic  08:30     4.477     5.196   2384.0 mm
+                              34  PD-39-0         E    N   21-jun  06:45    -0.211    -0.211   2384.0 mm
+                              35  PD-37-1         E    N   21-jun  06:45     0.499    -0.519   2384.0 mm
+
+═══ PUERTA P0 · extremo NORTE de la pareja 2, línea 2 sombreada por la 3, mañana del 21-jun ═══
+  rama linea: 24 instantes con sombra · intrusión máxima 135.3 mm
+      06:45 (elev 0.651°) · n -1063.059 · θ emisor 4.9704° · θ receptor 4.9704° · 29.7 mm
+      06:50 (elev 1.393°) · n -1063.059 · θ emisor 6.323° · θ receptor 6.323° · 54.2 mm
+      06:55 (elev 2.169°) · n -1063.059 · θ emisor 7.7324° · θ receptor 7.7324° · 70.4 mm
+      07:00 (elev 2.97°) · n -1063.059 · θ emisor 9.2879° · θ receptor 9.2879° · 98.1 mm
+      07:05 (elev 3.788°) · n -1063.059 · θ emisor 10.7831° · θ receptor 10.7831° · 104.7 mm
+      07:10 (elev 4.622°) · n -1063.059 · θ emisor 12.316° · θ receptor 12.316° · 110.2 mm
+  rama mesa : 0 instantes con sombra · intrusión máxima 0.0 mm
+
+  DESGLOSE en n = -1063.059 (extremo norte del solape más al norte de la pareja 2), 21-jun 06:45, elev 0.651°
+    cota emisor (línea 3, mesa 1) en n: 46.1700 m · tilt -2.4415°
+    cota receptor (línea 2, mesa 1) en n: 46.2254 m · tilt -2.6668°
+    Δz en ese extremo (receptor − emisor): 0.0554 m · dx 5.9910 m
+    rama linea: θ publicado emisor 4.9704° / receptor 4.9704° · arista alta a z 46.2725 m · el rayo llega al plano receptor a z 46.2244 m, u 1.1623 m (borde a +1.192) · intrusión 29.7 mm
+    rama mesa: θ publicado emisor 4.5605° / receptor 4.5605° · arista alta a z 46.2642 m · el rayo llega al plano receptor a z 46.2179 m, u 1.3015 m (borde a +1.192) · intrusión 0.0 mm
+
+JSON en audit4/out/F_sombra_extremos_antes.json
+RC=0
