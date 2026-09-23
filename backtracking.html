@@ -4343,6 +4343,37 @@ const POLICIES=[
   {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
 ];
 const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
+/* ── QUÉ ES UNA POLÍTICA CARA ─────────────────────────────────────────────
+   Hasta la v1.77 la respuesta era `brain==='ncu'`, con `mgl` excluida A MANO:
+   `POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl')`. Eso pregunta DE
+   QUIÉN es la política, no lo que CUESTA — y dejaba fuera precisamente a la
+   más cara de las nueve.
+
+   MEDIDO (R3 #711, `audit3/out/F5_coste_tilt.json`, commit 8dc2115: barrido de
+   22 puntos de tilt N-S, 29 instantes careados en cada uno), milisegundos por
+   punto, mínimo–máximo:
+
+       mgl      456,8 – 1 569,4       pairwise  1,5 – 971,3
+       optfree  117,4 – 1 936,4       true3d    2,3 – 895,3
+       optimal   95,1 – 1 058,4       row/global/astro/bt2d   0,0 – 0,3
+
+   Las tres primeras son el 71,0 – 99,7 % del total en LOS 22 PUNTOS, sin que
+   ninguno se salga; las cuatro últimas SUMADAS no llegan a 0,7 ms en todo el
+   experimento.
+
+   Y LA SALVEDAD, pegada a la cifra: `pairwise` y `true3d` NO son gratis —hasta
+   971 y 895 ms—. Lo que las separa de las tres caras no es que cuesten poco,
+   es que no DOMINAN. `pairwise` además no sería diferible aunque dominase: es
+   el defecto y la referencia contra la que se comparan las demás.
+
+   CÓMO SE ACTUALIZA ESTA LISTA: no se deriva, se MIDE. Se vuelve a correr
+   `audit3/F5_coste_tilt.mjs` sobre la planta y el relieve de interés y entra
+   aquí la política que pase a dominar, con su medida y su fecha al lado. Una
+   lista calculada en caliente sería una lista distinta cada día —el coste
+   depende de la planta, del relieve y hasta del navegador— y nadie sabría por
+   qué se apagó lo que se apagó. Es un DATO MEDIDO y se cambia mirando. */
+const POL_CARAS={mgl:1,optimal:1,optfree:1};
+const POL_CARAS_FUENTE='medido en R3 #711 (audit3/out/F5_coste_tilt.json): el 71,0-99,7 % del coste del día en los 22 puntos del barrido de tilt N-S';
 
 /* ── estado ── */
 let ELEV=[];                 // cota por fila [m] (editable arrastrando)
@@ -4732,15 +4763,15 @@ async function loadRealPlant(name,blockIdx,ncuSel){
        congelada. «En cuanto cambio algún valor de los menús peta.» Apagar es
        la protección; no repetir la charla es cortesía, y confundirlas dejaba
        la página inusable. */
-    const caros=POLICIES.filter(P=>P.brain==='ncu'&&P.on&&P.key!=='mgl');
+    const caros=POLICIES.filter(P=>POL_CARAS[P.key]&&P.on);   // v1.77: por COSTE medido, no por cerebro
     if(caros.length){
       caros.forEach(P=>{P.on=false;});
       if(!POLICIES.some(P=>P.on))POL['pairwise'].on=true;
       buildPolicyBox();
       if(!OPT_AVISADO){
         OPT_AVISADO=true;
-        avisoCaras=' <b>'+caros.map(P=>P.nm).join(' y ')+'</b> se han apagado: con planta real '+
-          'cuestan el grueso del cálculo y son de <b>asesoría</b>. Enciéndelos cuando quieras el número de energía.';
+        avisoCaras=' <b>'+caros.map(P=>P.nm).join(', ')+'</b> se han apagado: con planta real '+
+          'cuestan el grueso del cálculo ('+POL_CARAS_FUENTE+'). Enciéndelos cuando quieras su número de energía.';
       }
     }
     note.innerHTML='<b>'+name+'</b> (cotas reales'+(ncuSel!=null?' · <b>NCU '+ncuSel+'</b>':'')+'): '+P.elev.length+' líneas (pitch medio '+pMed.toFixed(1)+' m, vanos REALES por pareja) · '+
@@ -8744,21 +8775,40 @@ const GR_REINTENTA='__informe_grafico_dia_cambiado__';
 function grVigilaDia(d0,n0){
   if(DAY!==d0||DAY_SERIAL!==n0){const e=new Error(GR_REINTENTA);e.reintenta=true;throw e;}
 }
+/* v1.77 · QUÉ NO CALCULA EL INFORME, en un solo sitio. Una política se difiere
+   si es CARA por la medida (`POL_CARAS`) y nadie la ha pedido: ni encendida en
+   la escena, ni elegida como A o B del careo. Pedirla es encenderla — no hace
+   falta un mando nuevo, y no tener dos maneras de pedir lo mismo es medio
+   arreglo de por sí. */
+function grDiferida(key){
+  return !!POL_CARAS[key] && !(POL[key]&&POL[key].on) && key!==GR.A && key!==GR.B;
+}
 function* grSeriesGen(){
   const d0=DAY, n0=DAY_SERIAL;
   const sig=grFirma();
   if(GR.sig!==sig){GR.ser={};GR.kp={};GR.sig=sig;GR.anual=null;}
   const D=DAY.D||{T:DAY.T,Tcfg:DAY.Tcfg,times:DAY.times,sun:DAY.sun,irr:DAY.irr,doy:DAY.doy,c:DAY.c};
+  /* v1.77 · EL INFORME CALCULABA LAS NUEVE SIEMPRE, incluso las que el usuario
+     había apagado —y con planta real la página las apaga ella sola por caras—.
+     Así que el informe las volvía a encender de facto y el apagado no servía
+     de nada fuera de la escena. Ahora aplica EL MISMO criterio de coste, con
+     dos excepciones que no son excepciones: lo que la escena ya calculó se
+     reutiliza (no cuesta nada) y las DOS del selector se calculan siempre,
+     porque el informe trata de ellas — pedirlas ES pedir que se calculen.
+     Lo que queda fuera no se estima ni se extrapola: se DICE, con la misma
+     palabra que la columna del año. */
+  GR.sinCalc={};
   for(const P of POLICIES){
     grVigilaDia(d0,n0);
     if(GR.ser[P.key])continue;
     if(DAY.pol[P.key]){GR.ser[P.key]=DAY.pol[P.key];continue;}   // ya calculada por la escena
+    if(grDiferida(P.key)){GR.sinCalc[P.key]=true;continue;}
     const dest={};
     for(const _ of serieDiaGen(P.key,D,dest)){grVigilaDia(d0,n0);yield P.key;}
     GR.ser[P.key]=dest.s;
   }
   grVigilaDia(d0,n0);
-  for(const P of POLICIES)if(!GR.kp[P.key])GR.kp[P.key]=kpisSerie(DAY.T,GR.ser[P.key].ang,GR.ser[P.key]);
+  for(const P of POLICIES)if(!GR.kp[P.key]&&GR.ser[P.key])GR.kp[P.key]=kpisSerie(DAY.T,GR.ser[P.key].ang,GR.ser[P.key]);
   grVigilaDia(d0,n0);
 }
 /* Y EL CAREO, EN VIVO, no sólo en el banco: toda política que la ESCENA haya
@@ -9300,14 +9350,17 @@ function grTabla(){
   const T=DAY.T;
   const filas=POLICIES.map(P=>{
     const s=GR.ser[P.key], k=GR.kp[P.key];
+    if(!s||!k)return {P:P,k:null,op:null,el:null,bt:null,sin:true};   // v1.77: diferida, y se dice
     const v=grVentanaBT(s);
     let op=null,el=null;
     if(v){let so=0,se=0,nn=0;for(let t=v[0];t<=v[1];t++){so+=grOptica(s.shade[t]);se+=grElectrica(s.shade[t],T);nn++;}
       op=nn?so/nn:null; el=nn?se/nn:null;}
-    return {P:P,k:k,op:op,el:el,bt:v};
+    return {P:P,k:k,op:op,el:el,bt:v,sin:false};
   });
   const kB=GR.kp[GR.B];
-  const orden=filas.slice().sort((a,b)=>b.k.kwh-a.k.kwh);
+  /* las diferidas van AL FINAL y no participan del orden por energía: ordenar
+     por una cifra que no se ha calculado sería inventarse el orden */
+  const orden=filas.slice().sort((a,b)=>(a.sin?1:0)-(b.sin?1:0)||(a.sin?0:b.k.kwh-a.k.kwh));
   const th='<tr><th>Política</th>'+
     '<th title="POA de planta del día cargado, del mismo pipeline que la tabla del día">Día kWh/m²·d</th>'+
     '<th title="12 días representativos (día 21 de cada mes, paso 10 min). Sin calcular hasta que se pulsa «Σ Calcular anual»: no se rellena con una extrapolación">Año (12 días) kWh/m²·año</th>'+
@@ -9317,7 +9370,15 @@ function grTabla(){
     '<th title="Ámbar cuando la separación con la fila de ARRIBA en este orden no llega a lo que el modelo resuelve (ancho de la banda del circunsolar)">¿Separada de la fila anterior?</th></tr>';
   const out=[th];
   let anterior=null;
+  const SINCALC='<span class="amb">sin calcular</span>';
   for(const e of orden){
+    if(e.sin){   // v1.77 · diferida por cara: ni una cifra estimada en toda la fila
+      out.push('<tr><td style="color:'+e.P.col+'">'+grEsc(e.P.nm)+'</td>'+
+        '<td>'+SINCALC+'</td><td>'+SINCALC+'</td><td>'+SINCALC+'</td><td>'+SINCALC+'</td>'+
+        '<td colspan="2" class="mut">enciéndela en el panel de políticas (o elígela como A o B) para que se calcule</td></tr>');
+      anterior=null;   // la siguiente no tiene con quién compararse: no se finge una separación
+      continue;
+    }
     const b=kB.kwh?grBanda(e.k,kB):null;
     const gan=(e.P.key===GR.B)?'<span class="mut">— es la baseline</span>'
              :(b?grEsc(grPct(b.d,'frente a '+grNombre(GR.B)+' (POA de planta del día)',{signo:true})):'—');
@@ -9325,7 +9386,7 @@ function grTabla(){
     const sep=!anterior?'<span class="mut">— primera fila</span>'
              :(bp.indeciso?'<span class="amb" title="'+grEsc(bp.motivo)+'">⚠ NO · bajo la resolución ('+grNum(bp.res,4)+' pp)</span>'
                           :'sí · '+grEsc(grPct(bp.d,'frente a '+grNombre(anterior.P.key),{signo:true,dec:3})));
-    const anual=GR.anual?grNum(GR.anual.tot[e.P.key],1):'<span class="amb">sin calcular</span>';
+    const anual=(GR.anual&&GR.anual.tot[e.P.key]!=null)?grNum(GR.anual.tot[e.P.key],1):'<span class="amb">sin calcular</span>';
     out.push('<tr><td style="color:'+e.P.col+'">'+grEsc(e.P.nm)+
       (e.P.key===GR.A?' <span class="mut">(A)</span>':'')+(e.P.key===GR.B?' <span class="mut">(B)</span>':'')+'</td>'+
       '<td>'+grNum(e.k.kwh,3)+'</td>'+
@@ -9344,7 +9405,12 @@ function grTabla(){
     '<b>La columna del día y la del año no se calculan igual</b>: la del día lleva el lazo de control entero (banda muerta y velocidad del actuador) '+
     'y es lo que la planta EJECUTA; la del año integra la consigna que la política PIDE, sin lazo, que es el camino del estimador anual que ya existía. '+
     'Por eso el orden de una columna puede no ser el de la otra, y comparar una razón del día con una del año no mide lo mismo. '+
-    (GR.anual?'':'La columna del año dice «sin calcular» mientras no se pulse el botón del anual: no se rellena con una extrapolación.');
+    (GR.anual?'':'La columna del año dice «sin calcular» mientras no se pulse el botón del anual: no se rellena con una extrapolación.')+
+    (Object.keys(GR.sinCalc||{}).length
+      ? ' <b>Las filas en ámbar no se han calculado</b>: son las políticas caras que nadie ha pedido ('+POL_CARAS_FUENTE+
+        '). Se dicen con la misma palabra que la columna del año y por la misma razón: <b>no se rellenan con una extrapolación</b>. '+
+        'Enciéndelas en el panel de políticas, o elígelas como A o B, y se calculan.'
+      : '');
 }
 
 /* ── anual: 12 días representativos, por fragmentos ─────────────────────── */
@@ -9352,17 +9418,21 @@ function* grAnualGen(){
   const c=DAY.c, T=DAY.T, Tcfg=DAY.Tcfg;
   const DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
   const year=c.date.slice(0,4);
+  /* v1.77 · el mismo criterio que la serie del día: el anual del informe son
+     12 días × 144 pasos × política, y meter ahí las caras que nadie ha pedido
+     es multiplicar por doce el problema que la fase 2 viene a arreglar. */
+  const POLS=POLICIES.filter(P=>!grDiferida(P.key));
   const mes={}, tot={};
-  for(const P of POLICIES){mes[P.key]=[];tot[P.key]=0;}
+  for(const P of POLS){mes[P.key]=[];tot[P.key]=0;}
   for(let mo=0;mo<12;mo++){
     const ds=year+'-'+(mo<9?'0':'')+(mo+1)+'-21', doy=doyOf(ds);
     const acc={}, sum={}, nn={};
-    for(const P of POLICIES){acc[P.key]=0;sum[P.key]=0;nn[P.key]=0;}
+    for(const P of POLS){acc[P.key]=0;sum[P.key]=0;nn[P.key]=0;}
     for(let m=0;m<1440;m+=10){
       const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
       if(g.elev<=0)continue;
       const irr=skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen);
-      for(const P of POLICIES){
+      for(const P of POLS){
         const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
         const p=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant;
         acc[P.key]+=p*(10/60)/1000;      // kWh/m² del día representativo
@@ -9370,7 +9440,7 @@ function* grAnualGen(){
       }
       yield (mo*144+m/10)/(12*144);
     }
-    for(const P of POLICIES){
+    for(const P of POLS){
       mes[P.key].push({kwh:acc[P.key],wm2:nn[P.key]?sum[P.key]/nn[P.key]:0});
       tot[P.key]+=acc[P.key]*DIM[mo];
     }
@@ -9435,15 +9505,27 @@ function grPinta(){
     ' · las '+Object.keys(DAY.pol).length+' políticas que la escena ya tenía calculadas dan aquí su MISMA energía del día'+
     '. Cada gráfica lleva su pie dibujado dentro de la imagen.';
 }
+/* v1.77 · el rótulo del avance dice EL NÚMERO que va a calcular, no «las
+   nueve», y nombra las que se quedan fuera. Un rótulo que promete nueve y
+   entrega seis es una cifra sin denominador en la cara del usuario. */
+function grRotulo(donde){
+  const dif=POLICIES.filter(P=>grDiferida(P.key));
+  const n=POLICIES.length-dif.length;
+  return 'calculando '+n+' de las '+POLICIES.length+' políticas '+donde+'…'+
+    (dif.length?' ('+dif.map(P=>P.nm).join(', ')+' se difieren por coste: '+POL_CARAS_FUENTE+')':'');
+}
 function grCalcula(){
   if(!DAY){$('grestado').textContent='No hay día calculado todavía.';return;}
   grLeePar();
-  grCorre(grSeriesGen,'calculando las nueve políticas sobre el día…',grPinta);
+  /* v1.77 · el rótulo decía «las nueve» y desde que el informe difiere las
+     caras eso era falso la mitad de las veces. Dice el número que va a
+     calcular y, si difiere alguna, cuál y por qué. */
+  grCorre(grSeriesGen,grRotulo('sobre el día'),grPinta);
 }
 function grCalculaAnual(){
   if(!DAY){$('grestado').textContent='No hay día calculado todavía.';return;}
   grLeePar();
-  if(!GR.listo){grCorre(function*(){yield* grSeriesGen();yield* grAnualGen();},'calculando el día y los 12 días representativos…',grPinta);return;}
+  if(!GR.listo){grCorre(function*(){yield* grSeriesGen();yield* grAnualGen();},grRotulo('sobre el día y los 12 días representativos'),grPinta);return;}
   grCorre(grAnualGen,'calculando los 12 días representativos…',grPinta);
 }
 
