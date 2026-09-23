@@ -602,6 +602,7 @@ jobs:
           - { banco: test_afbt_mismo_tubo.mjs, arg: fayon }   # afeccion BT: el del mismo tubo es coplanar y no sombrea modulos (falla sin el arreglo)
           - { banco: test_afbt_vecinos.mjs }   # Paramo: la fila de detras no es vecina, y el recorte que necesita es el del vecino que mas obliga, no la suma
           - { banco: test_seleccion.mjs }   # el clic coge el seguidor pulsado: cajas de seleccion en el marco del seguidor dibujado (Fayon empinado, Bagnarelli girado)
+          - { banco: test_gcr_planta.mjs }   # GCR = modulo / pitch de cada planta, y el BT de la animacion aplana lo que hace falta (antes 0,40 fijo)
           # La afeccion BT E/O contra un trazado de rayos 3D sobre las filas medidas (pendiente y alabeo
           # incluidos), y bt3dAng con el tubo inclinado. En Ayora, antes del arreglo: 14,5 grados de error medio.
           - { banco: test_afbt_rayos.mjs, arg: ayora, nombre: 'test_afbt_rayos.mjs · Ayora' }
