@@ -181,6 +181,72 @@ const PNG = Buffer.from(
         !!(lay.pilotes && lay.pilotes.porTipo && lay.pilotes.fuente &&
            /Tierras/i.test(lay.pilotes.fuente)),
         JSON.stringify(lay.pilotes && lay.pilotes.fuente));
+
+  /* LA ALTURA DE ANTENA DE LA HSU, UNA SOLA FUENTE — y esto viene de una avería
+     que estuvo viva y callada.
+
+     La capa de enlaces de la meteo llamaba a `link(..., 8, ...)` con un 8
+     LITERAL, que es la altura de la TORRE (`hsuTowerH`, «8000» del plano
+     FTR.24.00145_5_C), no la de la antena (`hsuAntY` = 6,50, los látigos en su
+     brazo a media torre). Y no era decorativo: ese argumento es `hA` y va
+     directo a `linkClearance()`, que decide rojo/ámbar/verde. La MISMA página
+     ya usaba 6,50 en `cobAnchors()`, así que sus dos capas discrepaban 1,50 m.
+
+     Medido con el motor de Siting sobre los 40 enlaces HSU→NCU reales de las
+     diez plantas con meteo: mediana −1,37 dB, de −15,18 a +11,57. No es
+     monótono porque a esas distancias el directo y el reflejado entran y salen
+     de fase.
+
+     ESTO MIRA LA FUENTE Y NO LO QUE LA PÁGINA HACE, por la misma razón que la
+     retícula de arriba: con la cota escrita a mano la página se comporta igual
+     de bien mientras el número coincida, así que un banco de comportamiento no
+     puede distinguir «lo lee de equipos.js» de «lo tiene copiado». */
+  /* LOS ARGUMENTOS SE PARTEN CONTANDO PARÉNTESIS, NO CON UNA EXPRESIÓN REGULAR.
+     El primer intento usó `/link\([^)]*?,\s*8\s*,/` y salió DORMIDO: la llamada
+     lleva `projX(glon)` dentro, así que `[^)]*` se para en ese paréntesis y no
+     llega nunca al 5º argumento. Volví a meter el 8 a mano y la guarda no dijo
+     nada. Esto parte de verdad. */
+  const argsDe = (linea, fn) => {
+    const i = linea.indexOf(fn + '(');
+    if (i < 0) return null;
+    let d = 0, arg = '', out = [];
+    for (let k = i + fn.length + 1; k < linea.length; k++) {
+      const c = linea[k];
+      if (c === '(' || c === '[') d++;
+      else if (c === ']') d--;
+      else if (c === ')') { if (d === 0) { out.push(arg); return out; } d--; }
+      if (c === ',' && d === 0) { out.push(arg); arg = ''; continue; }
+      arg += c;
+    }
+    return null;
+  };
+  const meteoLink = src.split('\n').filter(l => /LAYOUT\.meteo\|\|\[\]\)\.forEach/.test(l) && /link\(/.test(l));
+  check('la capa de enlaces de la meteo existe y es una sola línea',
+        meteoLink.length === 1, meteoLink.length + ' líneas');
+  // el 5º argumento de `link()` es `hA`, el que va a `linkClearance()`
+  const hA = meteoLink.length === 1 ? (argsDe(meteoLink[0], 'link') || [])[4] : undefined;
+  check('el 5º argumento de link() (la altura que entra en linkClearance) se lee',
+        typeof hA === 'string' && hA.trim().length > 0, hA);
+  check('y NO es un número escrito a mano',
+        typeof hA === 'string' && !/^\s*[\d.]+\s*$/.test(hA), hA);
+  /* Y QUE EL IDENTIFICADOR QUE SE USE VENGA DE `equipos.js`. Sin esto, cambiar
+     el 8 por una variable que valga 8 pasaría las dos de arriba. No se
+     hard-codea el nombre: se busca la asignación del identificador que la línea
+     use de verdad. */
+  const idA = typeof hA === 'string' ? hA.trim() : '';
+  const asigna = /^[A-Za-z_$][\w$]*$/.test(idA)
+    ? new RegExp('\\b(?:var|let|const)\\s+' + idA.replace(/\$/g, '\\$') + '\\s*=[^;\\n]*Equipos\\.ANT_H')
+    : null;
+  check('y el identificador que usa sale de equipos.js (Equipos.ANT_H.hsu)',
+        !!asigna && asigna.test(src), idA + (asigna ? ' — sin asignación desde Equipos.ANT_H' : ' — no es un identificador'));
+  /* Y QUE LAS DOS COTAS DEL PLANO SIGAN SIENDO DISTINTAS. Si alguien «cuadrara»
+     el módulo poniendo la antena a 8, esto seguiría leyendo de equipos.js y
+     pasaría en verde con el número malo otra vez. */
+  const eq = fs.readFileSync(path.join(RAIZ, 'equipos.js'), 'utf-8');
+  check('equipos.js mantiene separadas torre (8,00) y antena (6,50) de la HSU',
+        /hsuTowerH:\s*8\.00/.test(eq) && /hsuAntY:\s*6\.50/.test(eq),
+        (eq.match(/hsuTowerH:\s*[\d.]+/) || [''])[0] + ' / ' + (eq.match(/hsuAntY:\s*[\d.]+/) || [''])[0]);
+  check('y cita el plano FTR.24.00145_5_C', /FTR\.24\.00145_5_C/.test(eq));
 }
 
 const browser = await chromium.launch({ executablePath: EXEC,
