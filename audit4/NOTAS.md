@@ -351,6 +351,90 @@ minutos él solo.
 
 ---
 
+---
+
+## FASE 4 · CANON DEL BACKTRACKING
+
+Arranca con la fase 1 **mergeada** (`bf539b6`), que era la condición: el canon
+no congela un defecto conocido.
+
+### 4.1 · CONSUMIDORES DE BACKTRACKING EN LOS ONCE REPOS
+
+Barrido sobre los once repos clonados. Cuatro no tienen ninguno
+(`checklist-solar`, `checklist-solar-v2`, `gorraiz-dashboard`, `siting`), y se
+dice para que el cero conste: **ningún consumidor sin dato**.
+
+**DOS IMPLEMENTACIONES COMPLETAS Y CUATRO PARCIALES.** Las completas —las que
+resuelven el ángulo con geometría de terreno— son sólo dos:
+
+| # | implementación | dónde | qué resuelve |
+|---|---|---|---|
+| **A** | **el motor JS** | `cobertura-zigbee/backtracking.html` | 9 políticas · **por MESA** desde v1.42, con `segTilt`, `segPairs` y `segDrive` · contador 3D exacto |
+| **B** | **el motor Python** | `SolarGPTfull/solargpt/solargpt_core/tracker3d.py` (2.186 líneas) | 7 políticas · **por FILA**, `PlantTerrain3D` = lista de `RowPairTerrain` |
+
+Las parciales calculan un θ de seguimiento pero **no** resuelven terreno:
+
+| consumidor | qué hace | umbrales CABLEADOS | ¿casan con los canónicos? |
+|---|---|---|---|
+| `proyectos/sim-solar.html:589` | `singleaxis` propio con `backtrack` y `crossAxisTilt` | GCR 0,397 · θmáx 55 (campos de UI) | **sí** |
+| `cobertura-rf-fv/sol.js:124` | `singleaxis` propio | **θmáx por defecto 60**, no 55 | **NO** |
+| `scada/collector/drivers/simulated.py:33` | `pvlib.tracking.singleaxis` | **`axis_azimuth=180`**, `max_angle=55`, **`gcr=0.35`** | **NO** (GCR y azimut) |
+| `gemelo-digital/sim/planta.js:340` | BT Anderson-Mikofski propio, eje N-S | `K.GCR`, `K.AXIS_MAX` desde `F.e` | **heredados, no cableados** |
+| `factiun-cartera/seguimiento-pem.html` | sólo **nombra** el backtracking (seguimiento de PEM) | — | no calcula |
+
+**El hallazgo de 4.1**: hay **tres** valores distintos de GCR vivos en la casa
+—0,397 (canónico), 0,35 (`scada`) y el heredado del gemelo— y **dos** de θmáx
+—55 y el 60 por defecto de `cobertura-rf-fv/sol.js`—. Ninguno de los dos que se
+apartan lo declara como decisión: están escritos en la llamada.
+
+`scada/collector/drivers/simulated.py` merece una línea aparte: es un
+**simulador**, no la planta, así que su GCR 0,35 no manda ningún seguidor. Pero
+es el que alimenta las pruebas del colector, y una consigna simulada con otra
+geometría es una consigna que no reproduce la real.
+
+#### El signo, medido y no supuesto
+
+El careo congelado de R2 (`audit2/out/G1.txt:105-113`) lo resuelve caso por
+caso y sale **`θpy = +θjs`** en las nueve políticas: **misma convención**, sin
+negación. La conversión que sí existe está en el lado Python y está declarada
+(`tracker3d.py:124-131`): `slope_ew_deg` positivo = este más alto se **niega**
+para `axis_azimuth ≈ 0` y se conserva para `≈ 180`.
+
+#### El banco que ya existe, y lo que NO cubre
+
+| | |
+|---|---|
+| dónde | `audit2/G1_careo.mjs`, `G4_sin_repair.mjs`, `G5_caracteriza.mjs` |
+| estado | **CONGELADO en el paquete sellado**. No hay banco en CI |
+| rejilla | **2 casos** × 9 políticas × 5 horas × 6 filas |
+| torsión N-S | **dos valores y sólo dos**: caso A todo a 0,00°, caso B el vector `−3,41 1,63 3,22 3,76 −3,67 −3,06` |
+| divergencia medida | **`pairwise` y `mgl`: 65,0000°** de \|Δθ\| máx en el caso B |
+| | `true3d`: 57,0000° · `optimal`: 16,8262° |
+| sin contraparte | **`bt2d` y `optfree` NO EXISTEN en `tracker3d.py`** |
+
+Y el careo lo declara: *«El Python no tiene malla axial (contador 2.5D)»*.
+
+#### LA DIFERENCIA ESTRUCTURAL, que es más grave que los 65°
+
+**El motor Python no tiene el concepto de MESA.** Comprobado por recuento:
+`segment|mesa|seg_|per_seg` aparece **0 veces** en las 2.186 líneas de
+`tracker3d.py`. Su geometría es `PlantTerrain3D` = lista de `RowPairTerrain`,
+y cada pareja lleva **un** `axis_tilt_deg`.
+
+El motor JS manda **por mesa** desde la v1.42, con dos cotas por mesa, y desde
+la v1.77 también los dos optimizadores.
+
+Consecuencia para la paridad: **con torsión no hay nada que comparar todavía**,
+porque la entrada que el JS toma **no se puede expresar en el modelo Python**.
+Los 65° del caso B no son «dos motores que discrepan sobre la misma pregunta»:
+son **dos motores a los que se ha hecho una pregunta distinta**, porque al
+Python hubo que darle un tilt por pareja donde el JS tiene uno por mesa.
+
+Cómo se proyecta una geometría por mesa sobre un modelo por fila —media,
+peor caso, o no proyectar— **es una decisión, no un hecho**, y va a 4.5.
+
+---
+
 ## E-X1 · MIS ERRORES
 
 **19 · Conté menciones y las llamé llamadas.** El recuento programático de 1.2
