@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.0';
+const VER='v1.78.1';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -7271,16 +7271,25 @@ function drawCriticalRay(g,p,tIdx){
   }
   let litW=0; for(const seg2 of lit)litW+=seg2[1]-seg2[0];
   const pct=100*litW/Math.max(0.01,V[1]-V[0]);
-  const cv2=document.createElement('canvas');cv2.width=300;cv2.height=72;
+  /* v1.78.1: EL CARTEL SE LEE. Iba a 6,4 m de MUNDO: con el encuadre normal de
+     la planta aterrizaba en unos pocos píxeles y no se leía nada, con la
+     segunda línea además en gris verdoso sobre casi negro. Un rótulo de datos
+     no es un objeto de la escena: se le fija el ancho EN PANTALLA
+     (`tallaRotulos`, por frame) —lo mismo que overcast v1.31 (#744)—, el lienzo
+     va al doble de resolución para que caiga cerca del 1:1, y las dos líneas
+     van en tinta clara. No toca nada de la física: solo la talla del cartel. */
+  const cv2=document.createElement('canvas');cv2.width=600;cv2.height=144;
   const cx2=cv2.getContext('2d');
-  cx2.fillStyle='rgba(10,14,18,0.78)';cx2.fillRect(0,0,300,72);
-  cx2.font='bold 34px sans-serif';cx2.textBaseline='middle';
-  cx2.fillStyle='#fbe08a';cx2.fillText('haz '+litW.toFixed(2)+' m',12,24);
-  cx2.fillStyle='#9aa89b';cx2.font='28px sans-serif';cx2.fillText(pct.toFixed(0)+'% del vano',12,54);
+  cx2.fillStyle='rgba(8,11,15,0.88)';cx2.fillRect(0,0,600,144);
+  cx2.font='bold 64px sans-serif';cx2.textBaseline='middle';
+  cx2.fillStyle='#ffe38c';cx2.fillText('haz '+litW.toFixed(2)+' m',22,46);
+  cx2.fillStyle='#e6eee6';cx2.font='52px sans-serif';cx2.fillText(pct.toFixed(0)+'% del vano',22,108);
   const spr2=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv2),depthTest:false,transparent:true}));
   const mx2=lit.length?(lit[0][0]+lit[lit.length-1][1])/2:(V[0]+V[1])/2;
   spr2.position.set(mx2,gY(mx2)+1.5,zC);
-  spr2.scale.set(6.4,1.55,1); spr2.renderOrder=8; grp.add(spr2);
+  spr2.scale.set(6.4,1.536,1); spr2.renderOrder=8;
+  spr2.userData.rotulo={px:170,alto:144/600};      // ancho en pantalla (px CSS) y proporción del lienzo
+  grp.add(spr2);
 }
 /* v1.39.4: RENDER BAJO DEMANDA. El bucle renderizaba la escena entera en CADA
    frame, incondicionalmente: 854 mesas con sombras suaves, sesenta veces por
@@ -7290,6 +7299,24 @@ function drawCriticalRay(g,p,tIdx){
    tras soltar la órbita se dejan ~0,5 s de frames para que el damping repose.
    El rAF sigue girando (es baratísimo sin render) para vigilar el tamaño. */
 let R3_DIRTY=true, R3_CALMA=0;
+/* rótulos de ancho FIJO EN PANTALLA: cada sprite con userData.rotulo recibe,
+   antes de cada render, la escala de mundo que le da `px` píxeles CSS de ancho
+   a su distancia (perspectiva) o con el zoom de la cámara (vista del sol,
+   ortográfica). Tope: un 30 % del ancho del visor, para que en una ventana
+   estrecha no se coma la escena. */
+function tallaRotulos(cam){
+  if(!TD||!TD.w||!cam)return;
+  const pos=new THREE.Vector3(), cp=new THREE.Vector3(); cam.getWorldPosition(cp);
+  TD.scene.traverse(o=>{
+    if(!o.isSprite||!o.userData||!o.userData.rotulo)return;
+    const rt=o.userData.rotulo, frac=Math.min(0.30,rt.px/TD.w);
+    let ancho;
+    if(cam.isOrthographicCamera)ancho=frac*(cam.right-cam.left)/(cam.zoom||1);
+    else{o.getWorldPosition(pos);const d=pos.distanceTo(cp);if(!(d>0))return;
+      ancho=frac*2*d*Math.tan(cam.fov*RAD/2)*(cam.aspect||1);}
+    o.scale.set(ancho,ancho*rt.alto,1);
+  });
+}
 function pinta3D(){R3_DIRTY=true;}
 function loop3D(){
   requestAnimationFrame(loop3D);
@@ -7309,6 +7336,7 @@ function loop3D(){
   const cam=(TD.sunPov&&TD.orthoCam)?TD.orthoCam:TD.camera;
   // la cúpula de cielo viaja con la vista (en modo sol, con la planta)
   if(TD.skyMesh)TD.skyMesh.position.copy(TD.sunPov?TD.controls.target:TD.camera.position);
+  tallaRotulos(cam);
   TD.renderer.render(TD.scene,cam);
 }
 function setTab(three){
