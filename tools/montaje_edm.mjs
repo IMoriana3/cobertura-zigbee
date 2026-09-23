@@ -116,7 +116,7 @@ function montajeDe(nombre, L) {
       backtrack: true,
       gcr,
       cross_axis_tilt: 0,
-      module_height: null,
+      eje_m: null,
       night_stow_deg: CANON.night_stow_deg,
       pitch, cuerda,
       modulos_en_vertical: v,
@@ -130,7 +130,14 @@ function montajeDe(nombre, L) {
           + 'CANONICAL_MAX_ANGLE_DEG del core y con lo unico medido, la plantilla TCU de El Burgo',
       backtrack: 'canon · CANONICAL_BACKTRACK, y es lo que ejecutan las fichas',
       cross_axis_tilt: 'canon · 0, que es lo que pasa el JS a singleaxis',
-      module_height: 'null · no se ha medido la altura del tubo en ninguna planta',
+      eje_m: 'null · no se ha medido la altura del tubo en ninguna planta. '
+        + 'SE LLAMABA `module_height`, Y ESE NOMBRE ERA DE PVLIB Y NO SIGNIFICA ESTO: '
+        + 'alli es la altura del CENTRO DE LA FILA DE MODULOS sobre el suelo, y aqui se '
+        + 'usaba para la del EJE DEL TUBO. No son la misma cota: el modulo va `off` = 0,14 m '
+        + 'por encima del eje (seguidor.js), que es justo la diferencia que usa prepCotas '
+        + 'para reconstruir el suelo. Cerrado en `eje_m`, y el motor de Siting LANZA si le '
+        + 'llega `module_height` con valor, para que una medida no se cuele con la etiqueta '
+        + 'equivocada. Se comprobo que NADIE mas lo leia antes de renombrarlo.',
       night_stow_deg: 'canon · 5° al este, dato de proyecto',
       modulos_en_vertical: v != null ? 'medido · del nombre del bloque del DWG' : 'null · el bloque no dice la V',
     }),
