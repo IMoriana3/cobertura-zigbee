@@ -148,6 +148,13 @@ declarado del arnés: las etapas después del candidato (reparación por torsió
 
 ### (c) Que las rutas anuales consuman la rama por mesa
 
+> **`global` y `bt2d` NO deben migrar a la rama por mesa.** En esas dos el
+> colapso a un ángulo común **es la política** (`:4450` «un motor, un ángulo»;
+> `:4452` «ignora el relieve … un tracker sin configurar»; su código devuelve un
+> único θ para todas, `:1246` y `:2410`). Aplicar (c) a las nueve sin distinguir
+> rompería las dos que están bien. El alcance de (c) es `POL_POR_MESA` (`:5408`),
+> que ya las deja fuera.
+
 - **Arregla:** las **4** de `POL_POR_MESA` (`pairwise`, `astro`, `optimal`,
   `optfree`, `:5408`) en el anual, que pasaría a publicar lo mismo que el día.
 - **Deja fuera:** `row`, `true3d` y `mgl`, que tampoco van por mesa en el día
@@ -221,3 +228,26 @@ kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
   línea** en `pairwise` (409 s frente a 910 s) y 1.01× en `astro`.
 - Contra la sintética de `D_anual_por_mesa` (+0,39 %), Ayora da **44 veces más**: el
   relieve real es donde el promediado por línea hace daño.
+
+## Lo que P1 deja medido, y lo que NO
+
+- **Dirección del defecto:** la ruta por línea no pierde por sombrear de más,
+  **pierde por retroceder de más**: `pairwise` por línea queda un 13,1 % por
+  debajo de `astro`, y por mesa un 1,7 % por encima.
+- **Qué etapa de la cadena por línea causa el retroceso: NO MEDIDO.** `pairDz` es
+  una **media**, no el peor caso, así que por sí sola no obliga a proteger a la
+  peor fila. Candidatas sin medir: el barrido 3D de `pairThetaTorsion`
+  (`:1121`), que exige limpiar la pareja de líneas entera con un θ; el
+  min(sg·θ) de las dos parejas (`:1197`); `driveCoupleSafe`; y `repairNoShade`.
+  Separarlas es desactivar una cada vez en el arnés, con el mismo anual.
+- **Techo de (b):** el −18,5 % es de extremos con sombra evitable (T5a), no de
+  energía. La energía de (b) está **NO MEDIDA**. Como el candidato extremo cierra
+  el ángulo para toda la línea, lo esperable es que (b) **agrande** el retroceso;
+  es una hipótesis hasta medirla.
+
+## Lectura recibida (no es la decisión)
+
+Lectura trasladada al titular: **(c)**, con (a) como trabajo posterior si
+alguna vez hace falta esa ruta por sí misma; (b), descartada por lo medido.
+Se registra aquí; la decisión sigue siendo del titular y P2 no empieza hasta que
+la tome.
