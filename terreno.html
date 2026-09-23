@@ -1626,7 +1626,20 @@ function afbtVecinos(i){                        // vecinos E/W en columnas conti
     if(ov<=-3*gap)continue;                     // ni desplazando la sombra 3 huecos llegaria a tocarle
     out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,Math.max(0,ov)/sA),rot:A.rot||0,dx:dx,
       gap:gap,a0:a0,a1:a1,b0:b0,b1:b1,sA:sA,sB:sB});}
-  return out;
+  /* LA SEGUNDA FILA NO CUENTA SI LA PRIMERA LA TAPA. Con una sola fila por tracker el radio de
+     arriba (2,6 x paso, con el paso de 6 m por defecto) llega a 15,6 m, y en Paramo, con filas a 7 m,
+     metia la de 14 m: 1.414 parejas que son la fila de DETRAS. Su sombra cae sobre la de delante; para
+     llegar a los modulos tendria que estar bastante mas alta, y entonces la de delante ya obliga a
+     mas. Se descarta el vecino cuyo tramo enfrentado queda cubierto entero por filas mas cercanas
+     del mismo lado. */
+  return out.filter(function(v){
+    var lo=v.ov>0?Math.max(v.a0,v.b0):v.b0,hi=v.ov>0?Math.min(v.a1,v.b1):v.b1;
+    var tapan=out.filter(function(c){return c!==v&&c.lado===v.lado&&Math.abs(c.dx)<=Math.abs(v.dx)-1.5;})
+                 .map(function(c){return [c.b0,c.b1];}).sort(function(x,y){return x[0]-y[0];});
+    var hasta=lo;
+    for(var k=0;k<tapan.length&&hasta<hi;k++){if(tapan[k][0]>hasta+0.05)break;hasta=Math.max(hasta,tapan[k][1]);}
+    return hasta<hi-0.05;                       // queda algun trozo al descubierto: cuenta
+  });
 }
 function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombra ALCANZA de verdad con este sol:
   var sv=afbtSol(sv0,v.rot);                    // en el marco del seguidor: con rot 0 es el mismo sol
@@ -1722,16 +1735,24 @@ function afbtAgg(i){                            // agregado por vecino: media de
   if(afbtMode==='mom'){doys=[simDoy];mins=[curMin];}
   else {doys=[15,46,74,105,135,166,196,227,258,288,319,349];
         mins=[];for(var m=270;m<=1290;m+=15)mins.push(m);}
+  /* EL TOTAL NO ES LA SUMA. El backtracking tiene que librar al vecino que MAS obliga en cada
+     instante, no a todos a la vez: la cifra "recorte total" sumaba las medias de cada vecino y en
+     Paramo salia un 36 % por encima (10,4 contra 7,7 grados/med). Se guarda el mayor por instante. */
+  var mx=[],nI=0;
   for(var q=0;q<vs.length;q++){var v=vs[q],B=TRK[v.j],me=0,yo=0,n=0;
     for(var di=0;di<doys.length;di++){simDoy=doys[di];
       for(var mi=0;mi<mins.length;mi++){var sv=sunVec(mins[mi]);
-        if(sv.U<=0.02)continue;n++;
+        if(sv.U<=0.02)continue;
         var fme=afbtSolape(v,sv,'me'),fyo=afbtSolape(v,sv,'yo');   // solape REAL de la sombra en este instante (viaja N-S con el sol)
-        var op=v.lado==='E'?'O':'E';
-        if(fme>0)me+=afbtDeficit(A,B,v.lado,sv,v.gap)*fme;
-        if(fyo>0)yo+=afbtDeficit(B,A,op,sv,v.gap)*fyo;}}
+        var op=v.lado==='E'?'O':'E',dm=0;
+        if(fme>0){dm=afbtDeficit(A,B,v.lado,sv,v.gap)*fme;me+=dm;}
+        if(fyo>0)yo+=afbtDeficit(B,A,op,sv,v.gap)*fyo;
+        mx[n]=Math.max(mx[n]||0,dm);n++;}}
+    nI=n;
     res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0),yo:(n?yo/n:0)});}
   simDoy=d0;
+  var sm=0;for(var k=0;k<mx.length;k++)sm+=mx[k];
+  res.totMe=nI?sm/nI:0;                         // media del MAYOR recorte en cada instante
   return res;
 }
 function afbtCol(t,c1,c2){var r=((c1>>16)&255)/255+(((c2>>16)&255)/255-((c1>>16)&255)/255)*t,
@@ -1763,7 +1784,7 @@ function afbtStat(){
     .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.me.toFixed(2)+uni+'</b>';});
   var yoL=res.filter(function(v){return v.yo>0.005;}).sort(function(a,b){return b.yo-a.yo;})
     .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.yo.toFixed(2)+uni+'</b>';});
-  var tot=0;res.forEach(function(v){tot+=v.me;});
+  var tot=(res.totMe!=null)?res.totMe:0;         // el mayor en cada instante (afbtAgg), no la suma de vecinos
   /* Que salga "nadie" no es un fallo: con este hueco y esta cuerda, a esta hora
      la sombra sencillamente no llega a la fila de al lado. Se dice POR QUE, y a
      que horas de HOY sí entra el backtracking, que es lo accionable. */
@@ -1791,7 +1812,7 @@ function afbtStat(){
   e.innerHTML='<b style="color:#36D399">'+(A.id||('#'+afbtSel))+'</b> · '+(afbtMode==='mom'?'con el sol de AHORA':'promedio anual (12 dias tipo, cada 15 min)')
     +'<br><span style="color:#EF9A3D">■</span> le recortan: '+(meL.length?meL.join(' · '):'nadie')
     +'<br><span style="color:#5E96F5">■</span> el recorta a: '+(yoL.length?yoL.join(' · '):'nadie')
-    +(res.length?'<br>recorte total sobre el: <b>'+tot.toFixed(2)+uni+'</b> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua')
+    +(res.length?'<br>recorte que necesita: <b>'+tot.toFixed(2)+uni+'</b> <span style="color:#9bb0c6">(el vecino que más obliga en cada instante)</span> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua')
     +expl;
 }
 function afbtCompute(){
