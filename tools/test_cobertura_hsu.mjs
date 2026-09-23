@@ -38,12 +38,22 @@ await pg.route('**/tcu.glb', r => r.abort());   // 4,4 MB que aqui no pintan nad
 await pg.goto(`http://localhost:${PUERTO}/terreno.html?planta=${PLANTA}`,
               { waitUntil: 'domcontentloaded', timeout: 180000 });
 const t0 = Date.now();
+/* LA ESPERA MIRABA `typeof HSUS !== 'undefined'`, Y ESO ES CIERTO DESDE EL
+   PRIMER INSTANTE: `HSUS` se declara vacio en `terreno.html:310` y no se llena
+   hasta que se reconstruye el BOS, en `terreno.html:4465-4477`. Asi que la
+   condicion daba por montada una escena que todavia no tenia ni una estacion
+   meteo, y lo unico que salvaba la carrera era la espera fija de 2.500 ms de
+   la linea siguiente — que basta en un portatil y no basta en el runner.
+   Medido: con la espera fija a 0 se reproduce el fallo del runner EXACTO,
+   «217 anclas para 2+215+0» y las mismas dos comprobaciones en rojo.
+   Un array vacio no es «aun no ha cargado»: es un array vacio. Se espera a lo
+   que se va a MEDIR —que haya HSU— en vez de a que el nombre exista. */
 while (!(await pg.evaluate(() => typeof TRK !== 'undefined' && TRK && TRK.length &&
-                                 typeof cobCompute === 'function' && typeof HSUS !== 'undefined'))) {
-  if (Date.now() - t0 > 300000) throw new Error('la escena no montó en 5 min');
+                                 typeof cobCompute === 'function' &&
+                                 typeof HSUS !== 'undefined' && HSUS.length > 0))) {
+  if (Date.now() - t0 > 300000) throw new Error('la escena no montó en 5 min (o la planta no tiene ninguna HSU, y entonces este banco no mide nada)');
   await pg.waitForTimeout(800);
 }
-await pg.waitForTimeout(2500);
 
 const m = await pg.evaluate((MUT) => {
   /* MUTACION: se vacia el registro de HSU, que es exactamente lo que hacia el codigo
