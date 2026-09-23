@@ -1,0 +1,330 @@
+{
+ "fuente": "tools/fixture_ncu12",
+ "ficheros": [
+  "TCU_001_2026-08-07.csv",
+  "TCU_002_2026-08-07.csv",
+  "TCU_003_2026-08-07.csv",
+  "TCU_004_2026-08-07.csv",
+  "TCU_005_2026-08-07.csv",
+  "TCU_006_2026-08-07.csv"
+ ],
+ "dia": "2026-08-07",
+ "denominador": {
+  "filas": 3320,
+  "corruptas": 6,
+  "no_auto": 879,
+  "en_seguridad": 216,
+  "en_alarma": 0,
+  "utilizables": 2219
+ },
+ "por_tcu": [
+  {
+   "tcu": "TCU_001_2026-08-07.csv",
+   "n": 371,
+   "mae": 0.40377358490566234,
+   "rmse": 0.4693862483443355,
+   "max": 1.5,
+   "p95": 0.8000000000000007,
+   "sesgo": -0.2161725067385446,
+   "alarmadas": 0
+  },
+  {
+   "tcu": "TCU_002_2026-08-07.csv",
+   "n": 370,
+   "mae": 0.4818918918918903,
+   "rmse": 0.5501105539994852,
+   "max": 1.4000000000000021,
+   "p95": 0.8000000000000043,
+   "sesgo": -0.2948648648648648,
+   "alarmadas": 0
+  },
+  {
+   "tcu": "TCU_003_2026-08-07.csv",
+   "n": 371,
+   "mae": 0.38840970350404347,
+   "rmse": 0.4641021822611008,
+   "max": 1.1000000000000014,
+   "p95": 0.8999999999999986,
+   "sesgo": -0.1630727762803232,
+   "alarmadas": 0
+  },
+  {
+   "tcu": "TCU_004_2026-08-07.csv",
+   "n": 371,
+   "mae": 0.2989218328840961,
+   "rmse": 0.44850755807410403,
+   "max": 1.3000000000000007,
+   "p95": 1.0999999999999943,
+   "sesgo": -0.08221024258760096,
+   "alarmadas": 0
+  },
+  {
+   "tcu": "TCU_005_2026-08-07.csv",
+   "n": 370,
+   "mae": 0.417567567567566,
+   "rmse": 0.5363288624050087,
+   "max": 1.6000000000000014,
+   "p95": 1,
+   "sesgo": -0.16459459459459502,
+   "alarmadas": 0
+  },
+  {
+   "tcu": "TCU_006_2026-08-07.csv",
+   "n": 366,
+   "mae": 0.3076502732240428,
+   "rmse": 0.43595257174232127,
+   "max": 1.6000000000000014,
+   "p95": 0.8999999999999986,
+   "sesgo": -0.17650273224043705,
+   "alarmadas": 0
+  }
+ ],
+ "flota": {
+  "n": 2219,
+  "mae": 0.38314556106354614,
+  "rmse": 0.4860561318580495,
+  "max": 1.6000000000000014,
+  "p95": 0.9000000000000004,
+  "sesgo": -0.18287516899504294
+ },
+ "eventos": {
+  "total": 24,
+  "por_tipo": {
+   "cambio de main_state": 6,
+   "posición de seguridad": 18
+  },
+  "muestra": [
+   {
+    "tcu": "TCU_001_2026-08-07.csv",
+    "t": "2026-08-07T06:30:03.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": 54.5,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_001_2026-08-07.csv",
+    "t": "2026-08-07T06:30:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": 54.5,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_001_2026-08-07.csv",
+    "t": "2026-08-07T07:30:05.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -26.3,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_001_2026-08-07.csv",
+    "t": "2026-08-07T08:00:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -55,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_002_2026-08-07.csv",
+    "t": "2026-08-07T06:30:03.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": 55.4,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_002_2026-08-07.csv",
+    "t": "2026-08-07T06:30:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": 55.4,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_002_2026-08-07.csv",
+    "t": "2026-08-07T07:30:05.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -26.6,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_002_2026-08-07.csv",
+    "t": "2026-08-07T08:00:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -55.2,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_003_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": 54.7,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_003_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": 54.7,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_003_2026-08-07.csv",
+    "t": "2026-08-07T07:30:05.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -28.5,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_003_2026-08-07.csv",
+    "t": "2026-08-07T08:00:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -55,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_004_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": 54.9,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_004_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": 54.9,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_004_2026-08-07.csv",
+    "t": "2026-08-07T07:30:05.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -28.6,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_004_2026-08-07.csv",
+    "t": "2026-08-07T08:00:03.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -55,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_005_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": -40.9,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_005_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": -40.9,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_005_2026-08-07.csv",
+    "t": "2026-08-07T07:30:06.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -28.9,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_005_2026-08-07.csv",
+    "t": "2026-08-07T08:00:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -54.9,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_006_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "cambio de main_state",
+    "de": "OFF",
+    "a": "AUTO",
+    "ang": 55.1,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_006_2026-08-07.csv",
+    "t": "2026-08-07T06:30:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "0",
+    "a": "7",
+    "ang": 55.1,
+    "cmd": 55
+   },
+   {
+    "tcu": "TCU_006_2026-08-07.csv",
+    "t": "2026-08-07T07:30:06.000Z",
+    "tipo": "posición de seguridad",
+    "de": "7",
+    "a": "1",
+    "ang": -25,
+    "cmd": -55
+   },
+   {
+    "tcu": "TCU_006_2026-08-07.csv",
+    "t": "2026-08-07T08:00:04.000Z",
+    "tipo": "posición de seguridad",
+    "de": "1",
+    "a": "0",
+    "ang": -54.8,
+    "cmd": -55
+   }
+  ]
+ },
+ "corriente_string": {
+  "ficheros_barridos": 257,
+  "control_motor_current": 7,
+  "aciertos": {},
+  "patrones": [
+   "string_current",
+   "corriente_string",
+   "i_string",
+   "istring",
+   "current_string",
+   "amp_string",
+   "idc_",
+   "i_dc"
+  ]
+ }
+}
