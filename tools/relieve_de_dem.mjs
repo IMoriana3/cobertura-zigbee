@@ -174,6 +174,25 @@ const Z_DB = {
        + 'a inventarse hasta 8,1 dB. Ahi no es que sea impreciso: cobra relieve que no hay.'
 };
 
+/* EL VANO POR DEBAJO DEL CUAL ESTE TERRENO NO TIENE RESOLUCION.
+   Medido con bandas finas, empalmado contra solo DEM, 400 vanos por banda:
+
+     vano        relieve VERDADERO p95      el que da el DEM solo p95
+     30-50 m          0,00 dB                       9,89 dB
+     50-75 m          2,54                         11,10
+     75-100 m         1,21                         13,14
+     100-150 m        3,89 (ayora) / 2,96 (sj)      5,13 / 13,66
+
+   Por debajo de 100 m el relieve de verdad es cero en mediana en las DOS
+   plantas y su p95 no pasa de 2,54 dB, mientras el DEM solo llega a 13,14. Lo
+   que se pinta ahi es un termino que no existe.
+
+   100 m ES UNA ELECCION, informada por la medida y con su coste dicho: por
+   debajo se pierde hasta ~2,5 dB de relieve REAL en la cola p95 de San Jose. A
+   cambio se quitan hasta 13 dB de invento. No es gratis y no se presenta como
+   si lo fuera. */
+const VANO_MIN_UTIL_M = 100;
+
 const hoy = new Date().toISOString().slice(0, 10);
 console.log('terreno SOLO DEM · teselas z' + ZOOM + ' · paso ' + PASO + ' m · margen ' + MARGEN + ' m');
 console.log(ESCRIBE ? 'se ESCRIBE en disco\n' : 'ensayo: NO se escribe (usa --write)\n');
@@ -282,7 +301,8 @@ for (const planta of PLANTAS) {
             + 'verdad de campo contra la que validar esta planta',
       px_tesela_m: Math.round(pxM * 10) / 10,
       referencia: REFERENCIA,
-      z_db: Z_DB
+      z_db: Z_DB,
+      vano_min_util_m: VANO_MIN_UTIL_M
     },
     z: z
   };
