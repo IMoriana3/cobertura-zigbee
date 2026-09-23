@@ -1201,6 +1201,7 @@ function buildTrackers(elevAt){
     var relE=_E(dE,0),relW=_E(-dE,0);                                               // a un lado y otro del eje
     var zPk=zPfor({tp:n.tp}),half=TC.np/2;
     var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
+    var relSop=[_E(-filaZ,0),_E(filaZ,0)];   // cota bajo el pie de CADA soporte del slew (fila 0 = OESTE, igual que t.fb[0] y que postRel): el soporte está a ±filaZ del eje, no en el centro
     // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
     var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);
     /* Si el DWG está MEDIDO, la razón sale del largo real de SU bloque y no de una proporción de
@@ -1209,7 +1210,7 @@ function buildTrackers(elevAt){
     if(LAYOUT&&LAYOUT.mesa&&n.blk&&LAYOUT.mesa.tipos[n.blk]&&D&&D.span){
       var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);}}
     var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
-    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
+    TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relSop:relSop,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
 }
@@ -1498,7 +1499,15 @@ function layoutTrackers(){
     _T.makeTranslation(0,ph,0);_M2.multiplyMatrices(Tw,_T);imShaft.setMatrixAt(i,_M2);             // eje de transmisión entre filas
     for(var si=0;si<SEG.length;si++){var s=SEG[si];if(s.spin||s.motorLink||s.damperLink)continue;var filas=s.twin?2:1;   // slew: OESTE = drive completo; ESTE (viga gemela) = corona + soporte (twin). motorlink/amortiguadores se calculan por frame
       for(var sf=0;sf<filas;sf++){var bi=s.twin?(i*2+sf):i,fbx=t.fb[sf];
-        if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=(t.rel+((GEO==='levantamiento')?corrSuelo(sxx,-szz):0))*vex,sl=Math.max(0.3,syT-terY);
+        /* EL PIE DEL SOPORTE, A SU SUELO Y NO AL DEL CENTRO. Iba con `t.rel`, la
+           cota bajo el EJE del seguidor, cuando el soporte está a ±filaZ de ahí:
+           en cuanto el terreno tiene pendiente transversal, el de la cuesta
+           arriba queda ENTERRADO y el de abajo flota. Medido en Túnez con el DEM
+           real: 0,23 m bajo tierra en 11 de los 38. Los pilotes ya lo hacían bien
+           —usan `postRel[pi]`, la cota bajo CADA uno— y esta pieza se quedó con
+           la del centro. Ahora usa `relSop[sf]`, muestreada igual y con la misma
+           convención de fila (0 = oeste). */
+        if(s.terrain){var sxx=fbx.elements[12],syT=fbx.elements[13]-0.22,szz=fbx.elements[14],terY=((t.relSop?t.relSop[sf]:t.rel)+((GEO==='levantamiento')?corrSuelo(sxx,-szz):0))*vex,sl=Math.max(0.3,syT-terY);
           _PV.set(sxx,(syT+terY)/2,szz);_Q.identity();_SC.set(1,sl,1);_M2.compose(_PV,_Q,_SC);s.im.setMatrixAt(bi,_M2);}
         else {var fo=_OS.multiplyMatrices(fbx,SEGO);for(var l=0;l<s.n;l++){_M2.multiplyMatrices(fo,s.L[l]);s.im.setMatrixAt(bi*s.n+l,_M2);}}}}
   }
@@ -4941,6 +4950,7 @@ function resampleTracker(t){ if(!ELEV)return;                          // al mov
   t.relE=_E(dE,0);t.relW=_E(-dE,0);
   var pr=[];for(var pf=0;pf<2;pf++){var pfx=pf?fz:-fz;for(var pk=0;pk<half;pk++){pr.push(_E(pfx,(pk<zP.length?zP[pk]:0)));}}
   t.postRel=pr;
+  t.relSop=[_E(-fz,0),_E(fz,0)];                                       // y el pie de los dos soportes del slew, o al soltar el seguidor se quedaban con la cota de donde estaba antes
 }
 function buildPickBoxes(){                                             // una caja invisible por seguidor (raycast de selección) + un contorno de selección reutilizable
   if(pickGroup)nodeGroup.remove(pickGroup);
