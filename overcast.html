@@ -2437,11 +2437,14 @@ function runPhysicsQA(){
    se quedaron en v1.61 con dos arreglos dentro: la etiqueta de la pagina y el
    informe que exporta el usuario anunciaban lo que ya no era. Aqui hay una sola
    declaracion y el informe la lee de ella; el banco lo exige.
-   LO QUE NINGUN BANCO DE ESTE REPO PUEDE COMPROBAR es que la TARJETA del Panel
-   diga lo mismo, porque vive en otro repositorio. Es la via por la que la
-   version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
-   `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.30.0';
+   LA TARJETA DEL PANEL YA NO COPIA ESTE NUMERO, Y ESE PARRAFO ESTABA VIEJO.
+   Decia «al subir esto, subir tambien `version` en proyectos/index.html», que
+   es justo el mecanismo que hizo que la version se fuera CINCO veces. Desde el
+   #497 de aquel repo la tarjeta lleva `verEnApp: true` y LEE esta linea al
+   pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
+   haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
+   eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
+const VER='v1.31.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -3950,10 +3953,53 @@ function makeLabel(){
   const cv=document.createElement('canvas');cv.width=384;cv.height=132;
   const ctx=cv.getContext('2d');
   const tex=new THREE.CanvasTexture(cv);
+  /* ANISOTROPIA AL MAXIMO. La etiqueta se lee siempre de frente, asi que esto
+     solo entra cuando la minificacion es fuerte; cuesta nada y quita parte del
+     desmigajado. El grueso del arreglo NO es este: es la talla de abajo. */
+  try{ if(TD&&TD.renderer) tex.anisotropy=TD.renderer.capabilities.getMaxAnisotropy(); }catch(e){}
   const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
   spr.scale.set(15,5.2,1);spr.renderOrder=9;
-  spr.userData={cv:cv,ctx:ctx,tex:tex,last:''};
+  spr.userData={cv:cv,ctx:ctx,tex:tex,last:'',rotulo:true};
   return spr;
+}
+/* ── LAS ETIQUETAS NO ENCOGEN CON LA DISTANCIA ────────────────────────────
+   POR QUE, CON LA MEDIDA QUE LO MOTIVO. La talla era un tama~o de MUNDO fijo
+   —15 x 5,2 en la escena sintetica, 120 x 27 clavado en la rama de planta
+   real— asi que la etiqueta menguaba al alejarse la camara. En Paramo, con el
+   encuadre de planta entera, se midio:
+
+       rotulo en pantalla   47,7 - 52,6 px CSS  (95 - 105 px de dispositivo)
+       textura              384 x 132
+       minificacion         3,65x - 4,03x
+
+   O sea: el renglon de la NCU, dibujado a 40 px en el lienzo, aterrizaba en
+   unos 10 px de dispositivo, y el del angulo a 8,5. A esa talla el mipmap
+   trilineal mezcla los niveles 1 y 2 y el texto se deshace — que es lo que se
+   ve como «letras pixeladas». No era el filtro: el filtro ya era el correcto
+   (LinearMipmapLinear); la primera lectura dijo otra cosa porque mi tabla de
+   constantes estaba desplazada una posicion. Era el TAMA~O.
+
+   Un rotulo de datos no es un objeto de la escena: no tiene por que alejarse.
+   Se le fija el ancho EN PANTALLA y se recalcula la escala de mundo por frame
+   a partir de la distancia, con lo que la textura cae cerca del 1:1 y el texto
+   se queda del tama~o con el que se dibujo, se mire desde donde se mire.
+
+   NO TOCA NADA DE LA FISICA: es la talla del cartel, igual que `rangoColor` o
+   la exposicion. Ni geometria, ni posiciones, ni angulos. */
+const LBL_PX=92;                        // ancho objetivo del rotulo, en px CSS
+function tallaEtiquetas(){
+  if(!TD||!TD.camera||!TD.w)return;
+  const tan=Math.tan(TD.camera.fov*RAD/2), asp=TD.camera.aspect||1;
+  const frac=Math.min(0.22,LBL_PX/TD.w);   // tope: en una ventana estrecha no se come la escena
+  const cam=new THREE.Vector3(), pos=new THREE.Vector3();
+  TD.camera.getWorldPosition(cam);
+  TD.scene.traverse(o=>{
+    if(!o.isSprite||!o.userData||!o.userData.rotulo)return;
+    o.getWorldPosition(pos);
+    const d=pos.distanceTo(cam); if(!(d>0))return;
+    const anchoMundo=frac*2*d*tan*asp;
+    o.scale.set(anchoMundo,anchoMundo*132/384,1);
+  });
 }
 /* ── nubes al estilo cobertura 3D (terreno.html): masa fBm por manto ───────
    NADA de esferas ni gradientes radiales (allí los quitaron por «círculos
@@ -4004,9 +4050,9 @@ function makeMantle(sizeX,sizeZ,seed,yCloud){
    arriba va en grande (la NCU) y lo de abajo en el color del estado (el
    angulo y lo que haga el tracker). Sin salto se comporta como antes, en una
    sola linea centrada, para no obligar a tocar a quien ya lo llamaba asi. */
-function setLabel(spr,txt,color){
+function setLabel(spr,txt,color,idCol){
   if(spr.userData.last===txt)return;
-  if(txt.indexOf('\n')>=0)return setLabel2(spr,txt,color);
+  if(txt.indexOf('\n')>=0)return setLabel2(spr,txt,color,idCol);
   // AUTOAJUSTE: el canvas es de 320 px y «NCU 1 · θ -31° · ☁ retiene» se salía,
   // así que se leía «retien» — cortado justo en el estado que hay que explicar.
   // El texto se encoge hasta caber y la caja se ajusta a él, en vez de ocupar
@@ -4024,7 +4070,12 @@ function setLabel(spr,txt,color){
   x.textBaseline='alphabetic';
   spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
 }
-function setLabel2(spr,txt,color){
+/* LA ETIQUETA PARTE EL COLOR EN DOS, y es la contrapartida de la huella:
+   el renglon de arriba dice QUIEN (el color de identidad de la NCU, el mismo
+   de su mancha en el suelo) y el de abajo QUE (el color de estado, que ya
+   estaba). Sin esto la huella seria un color huerfano: se veria la particion
+   pero no cual es cual. */
+function setLabel2(spr,txt,color,idCol){
   const x=spr.userData.ctx,W=384,H=132,pad=16;
   const p=txt.split('\n'),t1=p[0],t2=p.slice(1).join(' ');
   x.clearRect(0,0,W,H);
@@ -4039,11 +4090,39 @@ function setLabel2(spr,txt,color){
   const bx=(W-w)/2-pad,bw=w+2*pad;
   x.beginPath();x.roundRect?x.roundRect(bx,14,bw,H-30,10):x.rect(bx,14,bw,H-30);
   x.fill();x.stroke();
-  x.font='700 40px system-ui,sans-serif';x.fillStyle='#d7e2ee';x.fillText(t1,W/2,46);
+  x.font='700 40px system-ui,sans-serif';x.fillStyle=idCol||'#d7e2ee';x.fillText(t1,W/2,46);
   x.font='600 34px system-ui,sans-serif';x.fillStyle=color;x.fillText(t2,W/2,92);
   x.textBaseline='alphabetic';x.textAlign='left';
   spr.userData.tex.needsUpdate=true;spr.userData.last=txt;
 }
+/* ── LA HUELLA DE CADA NCU, SOBRE EL SUELO ────────────────────────────────
+   EL PROBLEMA: en una planta real no se veia QUE TCUs cuelgan de cada NCU. La
+   mesa lleva `instanceColor` de ESTADO, asi que cuando las cuatro NCUs estan
+   en el mismo estado la planta entera es del mismo azul y la particion no se
+   ve por ningun lado. Y desde que cada NCU puede correr SU algoritmo, saber
+   que trozo de campo manda cada una dejo de ser un adorno.
+
+   EL DATO YA EXISTE, NO SE INVENTA NADA: cada tracker del layout trae su
+   `ncu` (de ahi sale `byN`), y cada fila instanciada ya guarda su zona en
+   `t.z`. Lo unico que faltaba era ense~arlo.
+
+   POR QUE EN EL SUELO Y NO EN LA PALA. Te~ir la pala por NCU obligaria a
+   quitarle el color de estado, que es una se~al que ya se usa. La huella es
+   una CAPA DE ANOTACION —como las etiquetas—, no un elemento estructural: no
+   a~ade hierro que no exista ni mueve un tracker de su sitio.
+
+   POR QUE TAN ANCHA COMO EL PASO. Se probo con una banda estrecha al pie de
+   cada fila y no vale: a 600 m de campo la escala es de ~1,1 m por pixel, asi
+   que un margen de 0,8 m a cada lado del colector (2,382 m) cae POR DEBAJO
+   del pixel y no se ve nada. Con el ancho del paso las bandas embaldosan y
+   cada NCU queda como una mancha continua, que es lo que se lee de un vistazo;
+   con la mesa plana sigue asomando el hueco entre filas (GCR 0,397, o sea 3,6
+   de cada 6 m), que es de donde sale el color.
+
+   El largo NO es inventado: es el `span` real de la fila (64,7 m la larga,
+   32,6 la media), el mismo que usan los postes. */
+const NCU_PAL=[0xff8a3d,0x22d3ee,0xf472b6,0xa3e635,0xfacc15,0x60a5fa,0xfb7185,0xc084fc];
+const ncuColor=z=>NCU_PAL[((z|0)%NCU_PAL.length+NCU_PAL.length)%NCU_PAL.length];
 /* ── la planta 3D: bifila real, tamaño real y sitio alrededor ──────────────
    Filas 'largo' (2 alas de 28 = 64,7 m) a lo largo de +X (norte), en PAREJAS
    BIFILA: viga MOTORA (oeste: motor, TCU) + viga GEMELA unidas por el eje de
@@ -4473,6 +4552,34 @@ function buildReal3D(zc,reframe){
     imSh.frustumCulled=false;world.add(imSh);
   }
 
+  /* la huella de cada NCU: una banda por FILA, del ancho del paso, tendida
+     sobre el suelo y por debajo de las palas. Sin luz (`MeshBasicMaterial`)
+     para que se lea como anotacion y no como una superficie mas de la escena,
+     y sin escribir en el z-buffer para no tapar nada. */
+  if(R.ncuIds.length>1){
+    const anchoBanda=2*filaZ;                          // el paso real entre filas
+    const total=bySize.largo.all.length+bySize.medio.all.length;
+    const qGeo=new THREE.PlaneGeometry(1,1);qGeo.rotateX(-Math.PI/2);
+    const imH=new THREE.InstancedMesh(qGeo,
+      new THREE.MeshBasicMaterial({transparent:true,opacity:0.28,depthWrite:false}),total);
+    const cH=new THREE.Color();let hi=0;
+    for(const size of ['largo','medio']){
+      const largo=size==='largo'?64.7:32.6;
+      for(const t of bySize[size].all){
+        _m4.makeScale(largo,1,anchoBanda);
+        if(TD.real.ry)_m4.premultiply(TD.real.ry);
+        _m4.elements[12]=t.px;_m4.elements[13]=0.35;_m4.elements[14]=t.pz;
+        imH.setMatrixAt(hi,_m4);
+        imH.setColorAt(hi,cH.setHex(ncuColor(t.z)));
+        hi++;
+      }
+    }
+    imH.count=hi;imH.frustumCulled=false;imH.renderOrder=1;
+    if(imH.instanceColor)imH.instanceColor.needsUpdate=true;
+    world.add(imH);
+    TD.real.huella=imH;
+  }
+
   // marcadores + etiquetas de NCU (las etiquetas llevan el estado vivo)
   TD.zones=[];
   const mM=new THREE.MeshLambertMaterial({color:0xd8d4c8});
@@ -4481,7 +4588,8 @@ function buildReal3D(zc,reframe){
     const nc=(J.ncus||[])[z];
     box.position.set(nc?nc.n:c.n,3,nc?nc.x:c.x);world.add(box);
     const spr=makeLabel();
-    spr.scale.set(120,27,1);
+    // la talla la pone tallaEtiquetas() por frame: el rotulo mantiene su
+    // tama~o EN PANTALLA en vez de menguar con el encuadre de planta entera
     spr.position.set(c.n,40,c.x);world.add(spr);
     TD.zones.push({spins:[],cloudMat:null,cloud:null,label:spr,zx:c.x});
   });
@@ -4761,10 +4869,17 @@ function update3D(){
     const st=stateLabel(pv,th,fl,sig,rate);
     Z.stCol=(st.estado==='track')?null:st.col;   // la mesa se tiñe con SU estado
     Z.ccz=ccz;Z.st=st;Z.thDeg=tcuDeg(th);       // para la ficha del clic: ya calculado, no se repite
+    // el nombre de la NCU va en SU color de identidad —el mismo de su huella
+    // en el suelo— pero solo cuando hay huella que emparejar: en modo PLANTA,
+    // o sin planta real, no hay particion y pintarlo de color mentiria
+    const idc=(TD.real&&TD.real.huella&&zc.on)?'#'+ncuColor(z).toString(16).padStart(6,'0'):null;
     setLabel(Z.label,(zc.on?'NCU '+String(z+1).padStart(2,'0'):'PLANTA')+'\n'+
              (tcuDeg(th)>=0?'+':'')+tcuDeg(th).toFixed(2)+'°'+
-             (st.txt==='track'?'':'  '+st.txt),st.col);
+             (st.txt==='track'?'':'  '+st.txt),st.col,idc);
   }
+  /* la huella solo tiene sentido cuando hay particion: en modo PLANTA las
+     TCUs no cuelgan de NCUs distintas y pintar cuatro manchas seria mentir */
+  if(TD.real&&TD.real.huella)TD.real.huella.visible=!!zc.on;
   // sombra de nube desplazada según el sol (m de desplazamiento por m de altura)
   const kOff=el>3?Math.min(3,1/Math.tan(el*RAD)):0;
   TD.cOffX=-Math.cos(az*RAD)*kOff;TD.cOffZ=-Math.sin(az*RAD)*kOff;
@@ -4823,6 +4938,7 @@ function loop3D(){
     TD.realDirty=false;
   }
   if(!FLY)TD.controls.update();      // en vuelo libre manda flyStep, no la órbita
+  tallaEtiquetas();                  // despues de mover la camara y antes de pintar
   TD.renderer.render(TD.scene,TD.camera);
 }
 function setTab(three){
