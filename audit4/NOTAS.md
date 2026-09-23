@@ -433,6 +433,302 @@ Python hubo que darle un tilt por pareja donde el JS tiene uno por mesa.
 Cómo se proyecta una geometría por mesa sobre un modelo por fila —media,
 peor caso, o no proyectar— **es una decisión, no un hecho**, y va a 4.5.
 
+### 4.2 · EL CONTRATO VERSIONADO
+
+`canon/backtracking.contrato.json`, v1.0.0. Prosa y esquema legible por
+máquina en el mismo fichero, porque separarlos garantiza que uno de los dos
+envejezca sin que nadie se entere.
+
+Lo que fija, cada cosa con su `archivo:línea`:
+
+* **Convenio de signo.** `θ>0 = este` internamente; la presentación invierte
+  con `TH_DISP=-1` (`backtracking.html:4444`). La relación con el motor Python
+  es `θ_py = +θ_js`, y no es una declaración: está **medida** en el careo
+  congelado de R2 (`audit2/out/G1.txt:105-113`).
+* **Entradas.** Incluye `segs` = «los DOS extremos N y S de cada mesa», que es
+  la entrada que el modelo Python no tiene dónde meter (ver 4.1 y 4.4).
+* **Salidas.** θ **POR MESA**, con la garantía de acoplamiento por
+  accionamiento.
+* **Doce umbrales**, cada uno con su línea: `DEADBAND_DEG` 1,0 (3316),
+  `TRACKER_SLEW` 0,17 (3299), `E_EMPATE_W` 0,05 (967), `OPT_HISTERESIS` 0,01
+  (2919), `OPT_FRACTIONS` (2863), `OPT_REFINA` 2 (2918), `OPTFREE_F0` −0,5 y
+  `OPTFREE_NF` 13 (3087), `EPS_TILT` 0,5 (1300), `BT_UMBRAL_DEG` 0,5 (8169),
+  `CERT_PASO` 0,1 (4284), y `BT3D_TRANSITION_BAND_DEG` 0,5 del lado Python
+  (`tracker3d.py:529`).
+
+Y un campo que el contrato lleva **en blanco a propósito**: `quien_se_aparta`,
+con `"declarado": false`. Cuál de los dos motores es el de referencia no está
+decidido, y ponerlo por defecto habría convertido una decisión del titular en
+una constante de un fichero. Va a 4.5.
+
+### 4.3 · LOS VECTORES DE REFERENCIA CONGELADOS
+
+`canon/gen_vectores.mjs` → `canon/vectores.json` (261 KB) + `canon/vectores.sha256`.
+
+**121 geometrías × 6 instantes**, sha256
+`2a9780bbe515e621bdb4ac2ca7822e92ab732a13e8c86f2deb47dae930a8d2e3`.
+
+Tres decisiones que llevan su motivo pegado:
+
+* **Los instantes se eligen por ELEVACIÓN, no por hora.** 5°, 10°, 45° y 70°
+  el 21-jun y el 21-dic. Los dos que no existen —en Zaragoza el sol de
+  diciembre no llega a 45° ni a 70°— se publican como `NO_EXISTE` con el
+  motivo, en vez de desaparecer de la lista. Son **6 de 8**, y el denominador
+  se ve.
+* **Llevan la ENTRADA, no la respuesta.** Ni un ángulo. Congelar los ángulos
+  habría congelado la respuesta junto con la pregunta, y el careo de 4.4 no
+  mediría nada.
+* **Llevan los dos extremos de cada mesa, no el tilt derivado.** El tilt es lo
+  que cada motor tiene que deducir.
+
+**Y su test nulo me cazó a mí.** La primera versión tenía 58 geometrías y
+**2 valores distintos de torsión por mesa**: cobertura CERO sobre justo lo que
+la fase 1 acababa de arreglar. La causa: los perfiles N-S (`quebrado`,
+`senoidal`) varían el tilt **por LÍNEA**, no por mesa; la torsión por mesa sale
+solo de la rótula (`nspreset==='rotula'`). Corregido → **121 geometrías y 14
+valores distintos de torsión**. Un banco de vectores sin test nulo habría
+pasado por completo estando vacío de lo único nuevo.
+
+### 4.4 · BANCO DE PARIDAD JS ↔ `tracker3d.py` — **ROJO, Y ESO ES EL RESULTADO**
+
+`tools/test_careo_motores.mjs`, más `canon/careo_python.py` que produce la
+columna Python, más `canon/trinquete_careo.json`.
+
+**En CI va como JOB PROPIO, `careo`, FUERA de `needs:` de la puerta**
+(`.github/workflows/bancos.yml`). Su rojo informa; no bloquea ningún PR. Lo
+que bloquea es el **empeoramiento**.
+
+#### De dónde sale cada columna, y qué NO garantiza
+
+La columna JS se ejecuta en el banco, del bloque FÍSICA PURA. La columna
+Python se **lee congelada** de `canon/out/careo_py.json`, porque en CI no está
+clonado `SolarGPTfull`. El fichero lleva dentro el commit del motor
+(`046022b16f81`) y el sha256 de los vectores, y el banco comprueba el segundo e
+imprime el primero.
+
+**Eso es una etiqueta, no una comprobación de frescura.** Si el motor Python se
+mueve y nadie regenera el fichero, el job seguirá en verde careando una versión
+que ya no existe. Se dice aquí porque un instrumento que parece vigilar algo
+que no vigila es peor que no tenerlo.
+
+#### Lo que no se carea, con su motivo
+
+* **`bt2d` y `optfree`: NO COMPARABLE — NO EXISTEN en `tracker3d.py`.** Sin
+  contraparte no hay careo; ponerles un Δ=0 sería inventar un acuerdo. El
+  careo congelado de R2 ya las declara igual (`audit2/out/G1.txt:108` y `:113`).
+* **22 de 121 geometrías llevan torsión POR MESA**, que `PlantTerrain3D` no
+  puede recibir (un `axis_tilt_deg` por pareja; «mesa» no aparece en sus 2.186
+  líneas). Se carean en su rama **POR LÍNEA**, que es la única entrada que los
+  dos motores aceptan igual, y la rama por mesa del JS se publica como **NO
+  CAREABLE**. `canon/careo_python.py` marca esos casos con
+  `PROYECCION_NECESARIA`, dice que ha usado el único dato de nivel pareja que
+  el vector trae, y **lista las proyecciones posibles sin elegir ninguna**.
+
+#### El test nulo, antes de ninguna cifra
+
+Dos columnas que en realidad fueran la misma darían 0,0000° y parecerían
+paridad perfecta. El banco comprueba primero que existen dos, que hablan de los
+mismos vectores sellados, y que el comparador mide algo: control negativo con
+`astro` contra `pairwise` del **mismo** motor → **54,4257°**.
+
+#### EL HALLAZGO: la divergencia empieza ANTES del backtracking
+
+Antes de contar los 62° de `true3d` hay que saber si los dos motores coinciden
+siquiera en el seguimiento astronómico, que no lleva backtracking ninguno.
+
+| eje N-S | geometrías | peor \|Δθ\| en `astro` |
+|---|---|---|
+| horizontal (tilt = 0) | 12 | **4,26·10⁻⁷°** |
+| inclinado (tilt ≠ 0) | 109 | **0,8157°** |
+
+Con el eje horizontal los dos motores coinciden **hasta donde el fichero puede
+decirlo**: 4,26·10⁻⁷° contra los 5·10⁻⁷° que vale medio dígito del redondeo a
+6 decimales con que se congela la columna Python. No es «casi cero»: es el
+ruido del propio fichero, y por debajo de eso el careo no puede afirmar nada.
+Ese es a la vez el control de que el comparador mide de verdad y de que los dos
+motores reciben la misma posición solar. En cuanto el eje se inclina aparece una diferencia que **crece
+con la inclinación**, monótona:
+
+| \|tilt N-S\| | peor \|Δθ\| `astro` |
+|---|---|
+| 0,500° | 0,067720° |
+| 1,000° | 0,135449° |
+| 2,000° | 0,270983° |
+| 3,000° | 0,406685° |
+| 3,630° (Ayora real) | 0,490403° |
+| 4,000° | 0,542642° |
+| 6,000° | 0,815657° |
+
+**El desacuerdo no es sobre backtracking.** Es el término de inclinación N-S
+del seguimiento astronómico, y todas las cifras de la tabla siguiente lo llevan
+dentro. Yo había supuesto que los 0,82° eran el acoplamiento por accionamiento
+que el JS aplica y el Python no; lo medí (`groups: null`, `anglesAstro` crudo
+contra `policyAngles`) y **la suposición era falsa**: los dos daban 44,4421°
+contra los 45,2578° del Python. La medida desmontó la explicación, no la
+confirmó.
+
+#### La tabla: peor \|Δθ\| por política, misma entrada
+
+| política | peor \|Δθ\| | geometría | instante | fila | JS | Python |
+|---|---|---|---|---|---|---|
+| `astro` | 0,8157° | `sint-constante-6-mono` | 21-jun elev≈45° | 0 | 44,442 | 45,258 |
+| `pairwise` | **57,0000°** | `sint-quebrado-2-mono` | 21-dic elev≈10° | 3 | −2,000 | 55,000 |
+| `row` | 20,3795° | `sint-constante-6-mono` | 21-dic elev≈5° | 0 | 43,992 | 23,612 |
+| `global` | 20,3795° | `sint-constante-6-mono` | 21-dic elev≈5° | 0 | 43,992 | 23,612 |
+| `true3d` | **62,0735°** | `sint-constante-6-bifila` | 21-jun elev≈5° | 0 | −55,000 | 7,074 |
+| `mgl` | 57,0000° | `sint-quebrado-2-mono` | 21-dic elev≈10° | 3 | −2,000 | 55,000 |
+| `optimal` | 56,8197° | `sint-constante-3-mono` | 21-jun elev≈10° | 0 | −55,000 | 1,820 |
+| `bt2d` | — | NO COMPARABLE: NO EXISTE en `tracker3d.py` | | | | |
+| `optfree` | — | NO COMPARABLE: NO EXISTE en `tracker3d.py` | | | | |
+
+`row` y `global` coinciden al dígito porque la peor geometría es de pendiente
+**constante**: ahí el terreno local de cada fila ES la media de la planta, y
+las dos políticas son la misma. No es un fallo del comparador; es lo que tiene
+que pasar.
+
+Denominador: **121 geometrías × 6 instantes × 6 filas** por política.
+
+#### El trinquete
+
+`canon/trinquete_careo.json` guarda el peor \|Δθ\| registrado por política. El
+banco **falla solo si alguna empeora** por encima de 1e-6 (el redondeo de la
+columna congelada). Una mejora se imprime pero **no aprieta el trinquete sola**:
+para bajar la línea hay que reescribirla a mano con `--registra`, y entonces el
+commit enseña qué se movió y por qué.
+
+**Nunca se relaja la tolerancia para ponerlo verde**, y el banco no tiene
+ninguna perilla para hacerlo: no hay tolerancia que tocar, solo un registro que
+reescribir a la vista de todos.
+
+Con su control negativo: con un registro 1° mejor que el medido, el banco tiene
+que declarar empeoramiento. Lo declara.
+
+Y **un banco no escribe en el repo** —regla que el propio CI de esta casa ya
+tenía escrita—: sin `--registra` el banco que no encuentra trinquete **falla**
+diciendo cómo fijarlo, en vez de bendecir en silencio lo que acaba de medir.
+
+#### Lo que este banco NO dice
+
+No dice quién tiene razón. Publica dos columnas. `quien_se_aparta` sigue
+`"declarado": false` en el contrato, y por qué es así va a 4.5.
+
+#### Un apunte de instrumento
+
+El control de arriba salió **rojo la primera vez**, y la cifra que imprimía
+junto al rojo era «0.000000°». Las dos cosas no podían ser ciertas a la vez, y
+la que mentía era la cifra: `toFixed(6)` sobre un residuo de 4,26·10⁻⁷. El
+criterio (`=== 0`) exigía una exactitud que **yo mismo había hecho imposible**
+al redondear la columna Python a 6 decimales. Corregido: criterio `< 5e-7` con
+el motivo escrito al lado, y la cifra en notación exponencial, que es la única
+que puede sostener lo que afirma. Va a E-X1 26.
+
+### 4.5 · DECISIONES PARA EL TITULAR — **opciones y coste, sin tomarlas**
+
+Seis. Ninguna se decide aquí, y el contrato (4.2) lleva `quien_se_aparta`
+`"declarado": false` precisamente para no decidir la primera por omisión.
+
+**Sobre el coste.** Ninguna de las cifras de esfuerzo de abajo está medida:
+medir el coste de escribir algo que no está escrito no se puede hacer sin
+escribirlo. Donde hay un número, es un **hecho del código actual**, no una
+estimación. Donde haría falta una estimación, pone **NO MEDIDO**.
+
+---
+
+**D1 · ¿Cuál de los dos motores es la referencia?**
+
+Hoy no lo dice nadie, y por eso el careo publica dos columnas sin flecha.
+
+| opción | a favor | en contra |
+|---|---|---|
+| **JS canónico** | es el que produce la consigna que va a la planta; es el único que tiene geometría **por mesa**, que es como está construido el hierro | el motor Python es el que usan `SolarGPTfull` y los informes de energía; declararlo secundario obliga a decir qué valen esos informes |
+| **Python canónico** | está en un paquete con tests propios y es el que consumen los análisis anuales | **no puede recibir** la entrada real de una planta con torsión (D3); una referencia que no admite el caso real es una referencia a medias |
+| **ninguno: dominios distintos** | es lo que el careo mide: en 22 de 121 geometrías **no se les está haciendo la misma pregunta** | deja el 62,07° de `true3d` sin dueño para siempre |
+
+Coste: **NO MEDIDO** en los tres casos. Hecho: hoy la ausencia de decisión
+cuesta que ninguna cifra del careo se pueda leer como «error» de nadie.
+
+---
+
+**D2 · El término de inclinación N-S del seguimiento astronómico.**
+
+Es el hallazgo de 4.4: **antes de cualquier backtracking** los dos motores
+discrepan, 0,8157° a 6° de inclinación, creciendo monótona con ella
+(0,1355°/° medido entre 0,5° y 6°). Con eje horizontal coinciden hasta el
+ruido del fichero. No es una diferencia de criterio de sombra: es la fórmula
+del ángulo ideal.
+
+| opción | qué da |
+|---|---|
+| **carear los dos contra un tercero** (`pvlib.tracking.singleaxis` con `axis_tilt`) | dice **cuál** de los dos se aparta, no solo que se apartan. Es la única opción que produce un hecho nuevo |
+| **declarar uno correcto** | cierra el punto sin averiguar nada |
+| **no tocarlo** | todas las cifras del careo siguen llevando esta diferencia dentro, y ninguna política se puede leer aislada |
+
+Hecho medido: `pvlib` ya está instalado en el entorno del motor Python
+(`pvlib 0.15.2`), y los vectores ya llevan zen/az congelados, así que el careo
+a tres columnas usaría **los mismos** instantes. Coste de escribirlo: **NO
+MEDIDO**.
+
+---
+
+**D3 · Cómo se proyecta una geometría POR MESA sobre un modelo POR FILA.**
+
+Afecta a **22 de 121** geometrías del banco, y a la planta real.
+
+Hecho medido: en `tracker3d.py`, `segment|mesa|seg_|per_seg` aparece **0 veces
+en 2.186 líneas**. No es que la proyección esté mal elegida: es que el concepto
+no existe.
+
+| opción | consecuencia |
+|---|---|
+| **media de las mesas de la pareja** | comparable siempre, pero el careo mediría la proyección además del motor, y no habría forma de separarlas |
+| **peor caso (máx \|tilt\|)** | conservador y explicable, misma objeción |
+| **no proyectar: declarar NO CAREABLE** | es lo que 4.4 hace hoy. Honesto, y deja el caso real fuera del careo |
+| **dar geometría por mesa al motor Python** | única que hace comparable el caso real. Toca el modelo de datos de `PlantTerrain3D`, no solo una función |
+
+---
+
+**D4 · `bt2d` y `optfree` no existen en `tracker3d.py`.**
+
+Hecho: el careo congelado de R2 ya las declaraba sin contraparte
+(`audit2/out/G1.txt:108` y `:113`); **dos auditorías después siguen igual**.
+
+Opciones: portarlas al Python (coste **NO MEDIDO**), o declararlas
+explícitamente **exclusivas del JS** en el contrato, que al menos convierte un
+hueco en una decisión escrita. Hoy no son ninguna de las dos: son un silencio.
+
+---
+
+**D5 · Tres GCR y dos θmáx distintos entre repos.**
+
+De 4.1. Mientras no haya una sola fuente, cualquier careo entre repos mide
+también la diferencia de constantes. El contrato de 4.2 las fija para el
+backtracking; que los once repos lo lean es otra cosa.
+
+Opciones: importar el contrato donde se pueda, o poner un banco que falle si
+las constantes de un repo se apartan del contrato. La segunda no unifica nada
+pero **hace visible** cada divergencia el día que aparece.
+
+---
+
+**D6 · La columna Python congelada puede envejecer en silencio.**
+
+Hecho: `canon/out/careo_py.json` lleva el commit del motor
+(`046022b16f81`) y el banco lo imprime, pero **no lo comprueba** — en CI no
+está clonado `SolarGPTfull`. Si el motor se mueve, el job sigue verde careando
+una versión que ya no existe.
+
+| opción | coste |
+|---|---|
+| **clonar `SolarGPTfull` en el job del careo** | lo que ya hace el job `núcleo` con `cobertura-rf-fv`: un `actions/checkout` más. Deja de estar congelada |
+| **banco en el repo Python que falle si `tracker3d.py` cambia sin regenerar** | pone el aviso donde está la causa |
+| **dejarlo y decirlo** | es lo que hay hoy, y está escrito en el banco, en el CI y aquí. Sigue siendo una etiqueta, no una guardia |
+
+---
+
+**MERGE: NO.** El PR de la fase 4 queda abierto hasta que el titular decida.
+Eso es lo que pedía el encargo, y también lo que tiene sentido: el canon
+congela un acuerdo, y de estas seis todavía no hay ninguno.
+
 ---
 
 ## E-X1 · MIS ERRORES
@@ -487,3 +783,34 @@ que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
 versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
 que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
 cuánto añade el arreglo está **NO MEDIDO**.
+**25 · Mensaje de commit con acentos graves a través de bash, otra vez.** La
+sustitución de comandos se comió `true3d`. Reescrito con `-F` desde fichero,
+que es lo que el cuaderno ya exigía.
+
+**26 · Puse un criterio de exactitud que yo mismo había hecho imposible, y la
+cifra de al lado lo tapaba.** El control del careo exigía que con eje N-S
+horizontal los dos motores coincidieran en `astro` **exactamente** (`=== 0`).
+Falla: el residuo real es 4,26·10⁻⁷°. Pero la columna Python la congelo yo
+**redondeada a 6 decimales**, o sea que medio dígito —5·10⁻⁷°— es ruido del
+fichero y por debajo de eso ninguna afirmación es posible. Pedí una exactitud
+que mi propio formato había destruido.
+
+Lo peor no es el criterio: es que el mismo `console.log` imprimía
+**«0.000000°» junto a una cruz roja**. Un rojo y una cifra que lo desmiente en
+la misma línea, y la que mentía era la cifra, porque `toFixed(6)` no puede
+enseñar nada por debajo de 10⁻⁶. **Una cifra impresa a seis decimales no puede
+sostener una afirmación sobre el séptimo.** Corregido: criterio `< 5e-7` con el
+motivo escrito al lado, y la cifra en exponencial.
+
+Del mismo árbol que el 19 y el 24: el instrumento decía algo distinto de lo que
+parecía decir. Aquí me cazó mi propio banco en la primera pasada, que es la
+única parte buena.
+
+**27 · Supuse la causa de los 0,82° y la medí; era falsa.** Dije que la
+diferencia de `astro` entre los dos motores era el acoplamiento por
+accionamiento que el JS aplica y el Python no. Lo comprobé antes de escribirlo
+en ningún sitio: en esa geometría `groups` es `null`, `anglesAstro` crudo y
+`policyAngles('astro')` dan **la misma** cifra (44,4421°), y el Python da
+45,2578°. La suposición no explicaba nada. Lo apunto porque la medida llegó
+**antes** que la afirmación —que es el orden que la fase 1 me enseñó a la
+mala—, no porque acertara.
