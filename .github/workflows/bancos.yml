@@ -541,6 +541,14 @@ jobs:
           # MANDOS y no salidas de lazo. Con su control negativo —revertir el
           # predicado a posiciones tiene que ponerlo rojo— y sus dos tests nulos.
           - { banco: test_indicador_bt.mjs }
+          # La vista de OVERCAST: que el estado del cielo se LEA de la irradiancia
+          # que ya existe (DNI 0 · DHI = GHI · 100 % difusa), que la sombra de
+          # nube se apague con manto cerrado en vez de estar en su maximo, que la
+          # exposicion se adapte y que se pueda seleccionar un tracker. Por
+          # COMPORTAMIENTO —que hace la escena al cambiar de cielo, no que
+          # constantes tiene— y con los cuatro mutantes vistos en rojo. Levanta
+          # su propio servidor.
+          - { banco: test_overcast_vista.mjs }
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,
