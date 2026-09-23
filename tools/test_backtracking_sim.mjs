@@ -2279,12 +2279,32 @@ t('v1.31 Perez: el desglose SUMA lo mismo que la fórmula agregada (clamp por co
 });
 
 t('v1.33: al cargar planta real las políticas de ASESORÍA se apagan, y se DICE', () => {
-  // medido: a 80 líneas optimal+optfree son 4,6 s de los 5,5 s del día. Son
-  // justo las que la página marca como asesoría (evaluador provisional), así
-  // que con planta real arrancan apagadas — pero apagarlas en silencio sería
-  // peor que la lentitud: el usuario tiene que saber qué le falta y por qué
-  if (!/const caros=POLICIES\.filter\(P=>P\.brain==='ncu'&&P\.on&&P\.key!=='mgl'\)/.test(html))
-    throw new Error('no se seleccionan las políticas caras al cargar planta real');
+  // medido: a 80 líneas optimal+optfree son 4,6 s de los 5,5 s del día. Con
+  // planta real arrancan apagadas — pero apagarlas en silencio sería peor que
+  // la lentitud: el usuario tiene que saber qué le falta y por qué.
+  /* ESTA COMPROBACIÓN CLAVABA EL CRITERIO DEFECTUOSO. Exigía el literal
+     `P.brain==='ncu'&&P.on&&P.key!=='mgl'`, o sea que preguntara DE QUIÉN es la
+     política y excluyera `mgl` A MANO — y `mgl` es, medida, la más cara de las
+     nueve (R3 #711: 456,8-1.569,4 ms por punto, contra 0,0-0,2 ms de `global`,
+     que ese criterio SÍ apagaba). Un banco que fija la ortografía del defecto
+     obliga a mantenerlo. Ahora se vigila la PROPIEDAD: que haya un filtro de
+     caras, que consulte una lista declarada, que NO pregunte por el cerebro y
+     que NO excluya ninguna a mano. */
+  const filtroCaras = /const caros=POLICIES\.filter\(([^;]*)\);/.exec(html);
+  if (!filtroCaras) throw new Error('no se seleccionan las políticas caras al cargar planta real');
+  if (/brain/.test(filtroCaras[1]))
+    throw new Error('el filtro de caras pregunta por el CEREBRO, no por lo que cuesta: ' + filtroCaras[1]);
+  if (/key!==/.test(filtroCaras[1]))
+    throw new Error('el filtro de caras excluye una política A MANO: ' + filtroCaras[1]);
+  if (!/POL_CARAS\[/.test(filtroCaras[1]))
+    throw new Error('el filtro de caras no consulta la lista declarada de caras: ' + filtroCaras[1]);
+  const lista = /const POL_CARAS=\{([^}]*)\}/.exec(html);
+  if (!lista) throw new Error('no existe la lista `POL_CARAS`');
+  if (!/const POL_CARAS_FUENTE='[^']*F5_coste_tilt[^']*'/.test(html))
+    throw new Error('la lista de caras no declara de dónde sale su medida');
+  for (const k of ['mgl', 'optimal', 'optfree'])
+    if (!new RegExp('\\b' + k + '\\s*:').test(lista[1]))
+      throw new Error(`\`${k}\` está medida como una de las tres caras y no está en la lista`);
   if (!/OPT_AVISADO=true;/.test(html)) throw new Error('falta el testigo: las apagaría en CADA carga');
   // se comprueba la PROPIEDAD —que el aviso acabe DENTRO de la nota— y no el
   // texto que tiene al lado: fijar el vecino hacía fallar el test cada vez que
