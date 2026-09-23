@@ -124,9 +124,15 @@ for (const flu of FILAS) {
   if (Math.max(...v) - Math.min(...v) < 1e-6) nulo.filasQueNoDistinguen.push(flu);
 }
 for (const c of COLS) {
+  /* la BASELINE vale 0 en todas las filas POR CONSTRUCCIÓN, así que decir que
+     «no separa» sería publicar un no-hallazgo como si fuera uno. Se excluye y
+     se dice por qué, en vez de dejar que aparezca en la lista y que alguien
+     crea que significa algo. */
+  if (c.key === 'pairwise') continue;
   const v = FILAS.map(f => celdas[f + '|' + c.key].dias['21-jun'].pct);
   if (Math.max(...v) - Math.min(...v) < 1e-6) nulo.columnaQueNoSepara.push(c.key);
 }
+nulo.nota = '`pairwise` queda fuera del test nulo de columnas: es la baseline y vale 0 en todas las filas por construcción';
 
 const salida = {
   commit: sha, ver: VER, generado: new Date().toISOString().slice(0, 10),
