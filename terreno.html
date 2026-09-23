@@ -1626,7 +1626,20 @@ function afbtVecinos(i){                        // vecinos E/W en columnas conti
     if(ov<=-3*gap)continue;                     // ni desplazando la sombra 3 huecos llegaria a tocarle
     out.push({j:j,lado:dx>0?'E':'O',ov:Math.min(1,Math.max(0,ov)/sA),rot:A.rot||0,dx:dx,
       gap:gap,a0:a0,a1:a1,b0:b0,b1:b1,sA:sA,sB:sB});}
-  return out;
+  /* LA SEGUNDA FILA NO CUENTA SI LA PRIMERA LA TAPA. Con una sola fila por tracker el radio de
+     arriba (2,6 x paso, con el paso de 6 m por defecto) llega a 15,6 m, y en Paramo, con filas a 7 m,
+     metia la de 14 m: 1.414 parejas que son la fila de DETRAS. Su sombra cae sobre la de delante; para
+     llegar a los modulos tendria que estar bastante mas alta, y entonces la de delante ya obliga a
+     mas. Se descarta el vecino cuyo tramo enfrentado queda cubierto entero por filas mas cercanas
+     del mismo lado. */
+  return out.filter(function(v){
+    var lo=v.ov>0?Math.max(v.a0,v.b0):v.b0,hi=v.ov>0?Math.min(v.a1,v.b1):v.b1;
+    var tapan=out.filter(function(c){return c!==v&&c.lado===v.lado&&Math.abs(c.dx)<=Math.abs(v.dx)-1.5;})
+                 .map(function(c){return [c.b0,c.b1];}).sort(function(x,y){return x[0]-y[0];});
+    var hasta=lo;
+    for(var k=0;k<tapan.length&&hasta<hi;k++){if(tapan[k][0]>hasta+0.05)break;hasta=Math.max(hasta,tapan[k][1]);}
+    return hasta<hi-0.05;                       // queda algun trozo al descubierto: cuenta
+  });
 }
 function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombra ALCANZA de verdad con este sol:
   var sv=afbtSol(sv0,v.rot);                    // en el marco del seguidor: con rot 0 es el mismo sol
@@ -1639,12 +1652,30 @@ function afbtSolape(v,sv0,quien){               // fraccion de fila que la sombr
 function afbtAlturaFila(t,lado){                // cota real (m) de la fila este/oeste (0=oeste, 1=este)
   var p=afbtPuntas(t,lado);return (p[0]+p[1])/2;
 }
+/* LA MISMA GEOMETRIA QUE EL 3D. El render solo usa las cotas medidas en modo levantamiento
+   (usaCotas); en modo terreno —el de por defecto, y el UNICO en El Burgo— cada seguidor se apoya en
+   el DEM (trackerBase): el tubo con su pendiente longitudinal y el marco girado con la transversal,
+   la fila este filaZ·gE mas alta que la oeste. Aqui se usaban las cotas medidas siempre que las
+   hubiera y, sin ellas, t.rel PLANO para las dos filas y ningun tubo inclinado; en El Burgo, con el
+   relieve real (pendiente longitudinal mediana 0,8 %, maxima 6,2 %), la afeccion no era la del
+   terreno que se ve. Ahora sale de la misma fuente que el dibujo. */
+function afbtDrape(t){                          // pendientes con las que trackerBase apoya el seguidor en el DEM (sin exagerar)
+  var cl=0.8;
+  return {gN:Math.max(-cl,Math.min(cl,(t.relN-t.relS)/(t.span||TC.span)))||0,
+          gE:Math.max(-cl,Math.min(cl,(t.relE-t.relW)/(2*(t.dE||1))))||0};
+}
+function afbtPendTubo(t){                       // pendiente longitudinal del tubo (subiendo al norte)
+  if(usaCotas(t))return isFinite(t.mc.gN)?t.mc.gN:0;
+  return afbtDrape(t).gN;
+}
 function afbtPuntas(t,lado){                    // [sur, norte]: cota de SUELO (escena) en las dos puntas de la fila E/O
-  if(t.mc&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
+  if(usaCotas(t)&&t.mc.f){var f=t.mc.f[lado==='E'?1:0];
     if(f&&f.y&&f.y.length===2&&isFinite(f.y[0])&&isFinite(f.y[1])){
-      var k=COTAS.base-baseElev-COTAOFF-(TC.postH+(TC.off||0));   // al SUELO de escena, como mc.gnd (prepCotas): la y medida va sobre el MODULO y relativa a COTAS.base, y restarla tal cual de t.rel mezclaba datums (~6 m en Ayora) en cuanto a uno de la pareja le faltaba la cota
+      var k=COTAS.base-baseElev-COTAOFF-(TC.postH+(TC.off||0));   // al SUELO de escena, como mc.gnd (prepCotas): la y medida va sobre el MODULO y relativa a COTAS.base
       return [f.y[0]+k,f.y[1]+k];}}
-  return [t.rel,t.rel];                         // sin cota medida: DEM del centro, fila plana (y sin pendiente de tubo: gN solo existe medida)
+  var g=afbtDrape(t),s=(t.medio?(t.mr||0.5):1)*(t.span||TC.span);
+  var h=t.rel+((GEO==='levantamiento')?corrSuelo(t.gx,-t.gz):0)+(lado==='E'?1:-1)*(TC.filaZ||0)*g.gE;   // el centro como trackerBase, y la fila a su lado del marco girado
+  return [h-g.gN*s/2,h+g.gN*s/2];
 }
 function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al ladoB de A) impone a A con este sol
   var sv=afbtSol(sv0,A.rot||0);                 // "este/oeste" son los lados del TUBO, no los del mundo
@@ -1652,13 +1683,13 @@ function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al l
   var s=ladoB==='E'?1:-1;
   if(s*sv.E<=0)return 0;                        // B no esta del lado del sol
   var d=gap||(TC.filaZ?2*TC.filaZ:6);           // hueco REAL entre las filas limitrofes de la pareja
-  /* EL TUBO NO ES HORIZONTAL. Con las cotas medidas el eje lleva su pendiente longitudinal (gN), y
+  /* EL TUBO NO ES HORIZONTAL. Medido o apoyado en el DEM, el eje lleva su pendiente longitudinal (gN), y
      aqui el sol se tomaba en el plano vertical E-U. Pero el rayo, al cruzar el hueco, avanza tambien
      a lo largo del eje —hasta 10 m en una mañana de invierno— subiendo o bajando con la pendiente:
      el plano que manda es el perpendicular al TUBO. Se gira el sol a ese marco (normal (0,-sen b,
      cos b): con el tubo subiendo al norte, el sol del norte queda mas BAJO), igual que bt3dAng.
      Con el 1,4 % de Ayora eran 4-5 grados de recorte que no salian. */
-  var gA=(A.mc&&isFinite(A.mc.gN))?A.mc.gN:0,bA=Math.atan(gA);
+  var gA=afbtPendTubo(A),bA=Math.atan(gA);
   var suT=sv.U*Math.cos(bA)-sv.N*Math.sin(bA);
   if(suT<=0.02)return 0;
   /* Y EL DESNIVEL NO ES UNO. Las dos filas enfrentadas no llevan la misma pendiente (en Ayora se
@@ -1675,7 +1706,11 @@ function afbtDeficit(A,B,ladoB,sv0,gap){        // grados de recorte que B (al l
   if(hi<lo){lo=hi=Math.max(-sA/2,Math.min(sA/2,(lo+hi)/2));}          // sin solape la llamada ya viene ponderada por 0; se mide en la punta mas cercana
   function dhEn(a){return hEn(pB,sB,lc[1],a-dz)-hEn(pA,sA,0,a)-gA*dz;}
   var dhs=[dhEn(lo),dhEn(hi)];
-  var c=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // cuerda del colector = GCR x paso de fila. OJO: TC.mesaC NO es la cuerda en todas las plantas (El Burgo 16,3 m) y sombreaba hasta a mediodia
+  /* CUERDA = EL MODULO QUE SE DIBUJA (TC.modH: seguidor 1V, un modulo en vertical). Se deducia como
+     GCR x paso con un GCR fijo de 0,40, que solo cuadra donde el paso es 6 m: Tunez va a 6,25 (salia
+     2,50 m contra 2,35 dibujados, +6 %: sombra de mas) y Bagnarelli a 5,5 (2,20 contra 2,38, −8 %:
+     331 instantes de recorte que no salian). OJO: TC.mesaC NO es la cuerda (El Burgo 16,3 m). */
+  var c=(COTAS&&COTAS.cuerda)||TC.modH||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));
   var se=Math.abs(sv.E),su=suT;                 // trabajamos con el sol "a la derecha": simetrico E/W
   var w=Math.atan2(se,su);                      // angulo de perfil
   var track=Math.min(Math.PI/2-1e-3,Math.min(w,((COTAS&&COTAS.limite)||55)*DEG));
@@ -1700,16 +1735,24 @@ function afbtAgg(i){                            // agregado por vecino: media de
   if(afbtMode==='mom'){doys=[simDoy];mins=[curMin];}
   else {doys=[15,46,74,105,135,166,196,227,258,288,319,349];
         mins=[];for(var m=270;m<=1290;m+=15)mins.push(m);}
+  /* EL TOTAL NO ES LA SUMA. El backtracking tiene que librar al vecino que MAS obliga en cada
+     instante, no a todos a la vez: la cifra "recorte total" sumaba las medias de cada vecino y en
+     Paramo salia un 36 % por encima (10,4 contra 7,7 grados/med). Se guarda el mayor por instante. */
+  var mx=[],nI=0;
   for(var q=0;q<vs.length;q++){var v=vs[q],B=TRK[v.j],me=0,yo=0,n=0;
     for(var di=0;di<doys.length;di++){simDoy=doys[di];
       for(var mi=0;mi<mins.length;mi++){var sv=sunVec(mins[mi]);
-        if(sv.U<=0.02)continue;n++;
+        if(sv.U<=0.02)continue;
         var fme=afbtSolape(v,sv,'me'),fyo=afbtSolape(v,sv,'yo');   // solape REAL de la sombra en este instante (viaja N-S con el sol)
-        var op=v.lado==='E'?'O':'E';
-        if(fme>0)me+=afbtDeficit(A,B,v.lado,sv,v.gap)*fme;
-        if(fyo>0)yo+=afbtDeficit(B,A,op,sv,v.gap)*fyo;}}
+        var op=v.lado==='E'?'O':'E',dm=0;
+        if(fme>0){dm=afbtDeficit(A,B,v.lado,sv,v.gap)*fme;me+=dm;}
+        if(fyo>0)yo+=afbtDeficit(B,A,op,sv,v.gap)*fyo;
+        mx[n]=Math.max(mx[n]||0,dm);n++;}}
+    nI=n;
     res.push({j:v.j,lado:v.lado,ov:v.ov,me:(n?me/n:0),yo:(n?yo/n:0)});}
   simDoy=d0;
+  var sm=0;for(var k=0;k<mx.length;k++)sm+=mx[k];
+  res.totMe=nI?sm/nI:0;                         // media del MAYOR recorte en cada instante
   return res;
 }
 function afbtCol(t,c1,c2){var r=((c1>>16)&255)/255+(((c2>>16)&255)/255-((c1>>16)&255)/255)*t,
@@ -1741,7 +1784,7 @@ function afbtStat(){
     .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.me.toFixed(2)+uni+'</b>';});
   var yoL=res.filter(function(v){return v.yo>0.005;}).sort(function(a,b){return b.yo-a.yo;})
     .map(function(v){return nom(v.j)+' ('+v.lado+') <b>'+v.yo.toFixed(2)+uni+'</b>';});
-  var tot=0;res.forEach(function(v){tot+=v.me;});
+  var tot=(res.totMe!=null)?res.totMe:0;         // el mayor en cada instante (afbtAgg), no la suma de vecinos
   /* Que salga "nadie" no es un fallo: con este hueco y esta cuerda, a esta hora
      la sombra sencillamente no llega a la fila de al lado. Se dice POR QUE, y a
      que horas de HOY sí entra el backtracking, que es lo accionable. */
@@ -1749,7 +1792,7 @@ function afbtStat(){
   if(afbtMode==='mom'&&tot<0.005&&res.length){
     var sv0=sunVec(curMin),el0=Math.asin(Math.max(-1,Math.min(1,sv0.U)))/DEG;
     var gap0=res.reduce(function(m,v){var g=(afbtVecinos(afbtSel).filter(function(w){return w.j===v.j;})[0]||{}).gap;return g&&(m===null||g<m)?g:m;},null);
-    var cue=(COTAS&&COTAS.cuerda)||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));
+    var cue=(COTAS&&COTAS.cuerda)||TC.modH||(((COTAS&&COTAS.gcr)||SIM_GCR)*(TC.filaZ?2*TC.filaZ:6));   // la misma que afbtDeficit
     var ini=null,fin=null,d0=simDoy;
     for(var mm=240;mm<=1260;mm+=10){var svm=sunVec(mm);if(svm.U<=0.02)continue;
       var hay=false;
@@ -1769,7 +1812,7 @@ function afbtStat(){
   e.innerHTML='<b style="color:#36D399">'+(A.id||('#'+afbtSel))+'</b> · '+(afbtMode==='mom'?'con el sol de AHORA':'promedio anual (12 dias tipo, cada 15 min)')
     +'<br><span style="color:#EF9A3D">■</span> le recortan: '+(meL.length?meL.join(' · '):'nadie')
     +'<br><span style="color:#5E96F5">■</span> el recorta a: '+(yoL.length?yoL.join(' · '):'nadie')
-    +(res.length?'<br>recorte total sobre el: <b>'+tot.toFixed(2)+uni+'</b> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua')
+    +(res.length?'<br>recorte que necesita: <b>'+tot.toFixed(2)+uni+'</b> <span style="color:#9bb0c6">(el vecino que más obliga en cada instante)</span> · <span style="color:#9B6DF0">■</span> = mutuo · intensidad ∝ grados':'<br>sin vecinos de columna contigua')
     +expl;
 }
 function afbtCompute(){

@@ -526,9 +526,12 @@ jobs:
           - { banco: test_telemetria.mjs }
           - { banco: test_bt3d_rot.mjs }
           - { banco: test_afbt_mismo_tubo.mjs, arg: fayon }   # afeccion BT: el del mismo tubo es coplanar y no sombrea modulos (falla sin el arreglo)
+          - { banco: test_afbt_vecinos.mjs }   # Paramo: la fila de detras no es vecina, y el recorte que necesita es el del vecino que mas obliga, no la suma
           # La afeccion BT E/O contra un trazado de rayos 3D sobre las filas medidas (pendiente y alabeo
           # incluidos), y bt3dAng con el tubo inclinado. En Ayora, antes del arreglo: 14,5 grados de error medio.
           - { banco: test_afbt_rayos.mjs, arg: ayora, nombre: 'test_afbt_rayos.mjs · Ayora' }
+          - { banco: test_afbt_rayos.mjs, arg: elburgo, nombre: 'test_afbt_rayos.mjs · El Burgo (DEM sintético)' }   # sin cotas: el seguidor apoyado en el DEM, como lo dibuja trackerBase
+          - { banco: test_afbt_rayos.mjs, arg: bagnarelli, nombre: 'test_afbt_rayos.mjs · Bagnarelli (DEM sintético)' }   # filas giradas 23,7° y paso de 5,5 m: la cuerda sale del modulo dibujado, no de GCR 0,40 x paso
           # BT3D con cotas: cso/aso vienen con el signo "sube hacia el OESTE" y la formula los quiere hacia
           # el este. Las dos plantas porque fallaban al reves: en Ayora faltaba recorte, en San Jose sobraba.
           - { banco: test_bt3d_rayos.mjs, arg: ayora,   nombre: 'test_bt3d_rayos.mjs · Ayora' }

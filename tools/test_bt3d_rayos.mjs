@@ -40,6 +40,9 @@ while (!(await pg.evaluate(() => typeof bt3dAng === 'function' && TRK.length > 0
   if (Date.now() - t0 > 300000) throw new Error('la página no cargó las cotas (¿planta sin levantamiento?)');
   await pg.waitForTimeout(500);
 }
+/* BT3D solo existe en modo levantamiento (bt3dOn), y es el modo en que la pareja se mide con cotas. */
+await pg.evaluate(async () => { const s = $('geosrc'); s.value = 'levantamiento'; s.onchange();
+  for (let k = 0; k < 200 && !(GEO === 'levantamiento' && TRK.some(t => usaCotas(t))); k++) await new Promise(r => setTimeout(r, 100)); });
 
 const r = await pg.evaluate(() => {
   const DEG = Math.PI / 180;
