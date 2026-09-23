@@ -1556,8 +1556,15 @@ function bt3dAng(t){
   var R=-Math.atan2(sv.E,y);
   var lim=(COTAS&&COTAS.limite)||55;
   if(!btOn) return Math.max(-lim,Math.min(lim,R/DEG));
+  /* SIGNO DEL LADO OESTE. La formula (Anderson & Mikofski, la de pvlib) quiere la pendiente de la
+     linea de ejes medida SUBIENDO HACIA EL ESTE, a los dos lados. Los vectores del as-built no la
+     dan asi: cse/ase es positiva si el vecino ESTE esta mas alto (casa con las cotas: r 0,88 y
+     0,27 pp de mediana en Ayora) y cso/aso positiva si el vecino OESTE esta mas alto (casa con la
+     pendiente medida CAMBIADA de signo: 0,11 pp en Ayora, 0,46 en San Jose). Aqui se metia cso tal
+     cual, y por la tarde un vecino oeste mas alto QUITABA backtracking en vez de añadirlo: con rayos,
+     2,7 % del modulo a la sombra por la tarde contra 0,6 % por la mañana. Ver tools/test_bt3d_rayos.mjs. */
   var sx=(sv.E>0)?((BT3D==='agr')?mc.ase:mc.cse)              // sol al ESTE (mañana): manda la pendiente del lado este
-                : ((BT3D==='agr')?mc.aso:mc.cso);
+                : -((BT3D==='agr')?mc.aso:mc.cso);            // sol al OESTE: la del lado oeste, pasada a "sube hacia el este"
   var bc=Math.atan((sx||0)/100);
   var gcr=(COTAS&&COTAS.gcr)||SIM_GCR;
   var dist=1/(gcr*Math.cos(bc));
