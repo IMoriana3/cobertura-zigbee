@@ -1424,7 +1424,31 @@ function shiftOM(om,lagMin){
   if(!om)return null;
   return {tms:om.tms.map(t=>t+lagMin*60000),ghi:om.ghi,dni:om.dni,dhi:om.dhi,cc:om.cc};
 }
-function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
+/* UNA POLITICA POR NCU (polZ, opcional). Pedido de I~naki: «debemos poder
+   simular en cada NCU un algoritmo diferente tambien». Hasta aqui el zonal
+   daba a cada NCU su propia SE~NAL de cielo —con el retardo del frente segun
+   el centroide real— pero NO su propia POLITICA: habia un unico `polName`
+   para toda la planta, y se llamaba a POLICIES[polName] tanto para el sensor
+   global como para cada zona.
+
+   `polZ` es un array de nombres por zona; sin el, todas usan `polName` y el
+   comportamiento es EXACTAMENTE el de antes (la QA lo exige abajo).
+
+   EL BRAZO GLOBAL SIGUE CON UNA SOLA POLITICA, y no es un descuido: GLOBAL es
+   la arquitectura de «un sensor de planta decide UN theta comun». Darle una
+   politica por zona seria otra cosa, y dejaria de ser la referencia contra la
+   que se mide la ganancia del zonal.
+
+   Y SE ROMPE UNA INVARIANTE, QUE ES LO QUE HAY QUE DECIR. La QA exige
+   «zonal >= global por construccion para diffuse_continuous». Ese teorema se
+   apoya en que TODAS las zonas corren el mismo argmax local, que domina paso a
+   paso a cualquier theta comun. Con politicas mezcladas deja de valer: una NCU
+   en `diffuse_flat` puede quedar por debajo del global y arrastrar la media.
+   No es un defecto del cambio; es que la garantia era de ese caso. La QA lo
+   comprueba en su caso —todas con continuous— y hay un banco nuevo que fija
+   lo contrario: con mezcla, el resultado sale de la MEDIDA, no del teorema. */
+function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz,polZ){
+  const polDe=z=>(polZ&&polZ[z])||polName;
   // lags (min) opcional: con planta REAL cada NCU retarda según la posición de
   // su centroide proyectada en la dirección del frente; sin él, reparto
   // uniforme (las zonas sintéticas equiespaciadas). lags de ceros ⇒ todas las
@@ -1470,7 +1494,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
   for(let z=0;z<nZ;z++){
     const day=days[z],dayF=daysF[z];
     const poaNz=poaSeries(day,thN);
-    const rZ=POLICIES[polName](day,thN,poaNz,d);
+    const rZ=POLICIES[polDe(z)](day,thN,poaNz,d);
     // el θ EJECUTADO por el actuador de esta NCU, y la energía sobre él
     const execZ=execOnFineGrid(rZ.theta,day.dtMin,F.n,F.dt,loop,thNF,daysF[0]);
     const poaZ=poaSeries(dayF,execZ);
@@ -1496,6 +1520,7 @@ function zonalRun(o,nZ,crossMin,polName,d,lags,loop,fine,ccz){
      la fontanería lo hace— necesita el MISMO tope, no uno que se calcule por su
      cuenta. Devolverlo es lo que impide que la regla viva en dos sitios. */
   return {plantZonal:whZ/nZ,plantGlobal:whG/nZ,plantPvlib:whN/nZ,
+          polZonas:Array.from({length:nZ},(_,z)=>polDe(z)),polGlobal:polName,
           zones:zones,thetaGlobal:execG,flagGlobal:rG.flagGlobal||rG.flag,
           thN:thN,thNF:thNF,
           /* el día FINO con el que se calculó `thNF`. Lo consume la guarda del
@@ -2027,6 +2052,63 @@ function runPhysicsQA(){
       'zonal '+r.plantZonal.toFixed(1)+' < global '+r.plantGlobal.toFixed(1));
     A(r.plantZonal>r.plantPvlib,'el zonal no gana a pvlib con frente overcast');
   });
+  /* ── UNA POLITICA POR NCU ────────────────────────────────────────────────
+     Pedido: «debemos poder simular en cada NCU un algoritmo diferente». Tres
+     comprobaciones, y la tercera es la que de verdad importa. */
+  t('sin politica por NCU el resultado es EXACTAMENTE el de antes (no-op)',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const sin=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT);
+    // el mismo nombre repetido por zona TIENE que dar lo mismo que no pasar nada
+    const igual=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,null,
+                         ['diffuse_poa_switch','diffuse_poa_switch','diffuse_poa_switch','diffuse_poa_switch']);
+    A(Math.abs(sin.plantZonal-igual.plantZonal)<1e-9,
+      'pasar la MISMA politica por zona mueve el resultado: '+sin.plantZonal.toFixed(6)+' vs '+igual.plantZonal.toFixed(6));
+  });
+  t('con politicas MEZCLADAS cada NCU decide con la suya (y se declara cual)',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const mezcla=['pvlib','diffuse_flat','diffuse_continuous','diffuse_poa_switch'];
+    const r=zonalRun(o,4,90,'diffuse_poa_switch',DCFG_DEFAULT,null,null,null,null,mezcla);
+    A(r.polZonas.join(',')===mezcla.join(','),'el resultado no declara la politica de cada NCU');
+    A(r.polGlobal==='diffuse_poa_switch','el brazo global no conserva SU politica');
+    /* EL CONTROL QUE HACE QUE ESTO PRUEBE ALGO: la zona 0 va en `pvlib`, que
+       NO tiene politica de difusa, asi que su theta tiene que ser el baseline
+       en TODO el dia. Sin esto, la comprobacion pasaria aunque `polZ` se
+       ignorara por dentro y las cuatro corrieran poa_switch. */
+    const z0=r.zones[0];
+    let maxDif=0;
+    for(let i=0;i<z0.theta.length;i++)maxDif=Math.max(maxDif,Math.abs(z0.theta[i]-r.thN[i]));
+    A(maxDif<1e-9,'la NCU en pvlib no sigue el baseline: se aparta '+maxDif.toFixed(3)+'°');
+    // y la 1 va en flat, que SI se aparta: si las dos fueran iguales, polZ no haria nada
+    let maxDif1=0;
+    const z1=r.zones[1];
+    for(let i=0;i<z1.theta.length;i++)maxDif1=Math.max(maxDif1,Math.abs(z1.theta[i]-r.thN[i]));
+    A(maxDif1>1,'la NCU en diffuse_flat se comporta como el baseline: polZ no esta haciendo nada');
+  });
+  /* LA INVARIANTE QUE SE ROMPE, MEDIDA EN VEZ DE ASUMIDA. «zonal >= global por
+     construccion para diffuse_continuous» se apoya en que TODAS las zonas
+     corren el mismo argmax local. Con politicas mezcladas el teorema no aplica
+     —una NCU en flat puede quedar por debajo y arrastrar la media— y lo honesto
+     es NO exigirlo y dejar constancia de que el caso existe. Este banco no pide
+     una desigualdad: pide que la mezcla PUEDA dar menos, porque si nunca
+     pudiera, la garantia seguiria en pie y esta nota sobraria. */
+  t('con mezcla, «zonal ≥ global» YA NO es un teorema: se mide',()=>{
+    const cc=new Array(288).fill(0);
+    for(let m=420;m<600;m+=5)cc[m/5]=1;
+    const o={lat:40.4,lon:-3.7,dateStr:'2024-06-21',tz:0,altM:600,TL:2.5,dtMin:15,
+             albedo:0.2,axisAz:0,maxAngle:55,gcr:0.397,cc:cc,om:null};
+    const todas=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT);
+    A(todas.plantZonal>=todas.plantGlobal-1e-6,'con TODAS en continuous la garantia debe seguir valiendo');
+    const mezcla=zonalRun(o,4,90,'diffuse_continuous',DCFG_DEFAULT,null,null,null,null,
+                          ['pvlib','pvlib','pvlib','diffuse_continuous']);
+    A(mezcla.plantZonal<todas.plantZonal-1e-9,
+      'mezclar tres NCUs en pvlib no baja el zonal: entonces polZ no llega al calculo');
+  });
   t('LA ENERGÍA ZONAL SE COBRA SOBRE EL EJECUTADO: zonal y tabla del día no pueden usar físicas distintas',()=>{
     // el bug: zonalRun integraba en la rejilla de DECISIÓN, donde el techo por
     // paso (102° a 10 min) nunca ata ⇒ la tabla zonal cobraba teletransporte
@@ -2359,7 +2441,7 @@ function runPhysicsQA(){
    diga lo mismo, porque vive en otro repositorio. Es la via por la que la
    version se fue dos veces sin que nadie lo notara: al subir esto, subir tambien
    `version` en proyectos/index.html (docId «overcast-sim»). */
-const VER='v1.27.0';
+const VER='v1.28.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2881,10 +2963,28 @@ let PLANT_REAL=null;
    la planta», que es lo que hace que activar el modo no cambie NADA hasta que
    se toca algo (y que la QA pueda exigir zonal ≡ global en ese caso). */
 let ZSKY=[];                       // [{preset, semilla}] o null por zona
+/* LA POLITICA DE CADA NCU. null = la de la planta (el desplegable de arriba),
+   que es el comportamiento de siempre. Vive al lado de ZSKY a proposito: son
+   las dos cosas que se pueden dar por NCU —lo que VE y como DECIDE— y
+   separarlas en dos sitios distintos invitaria a que una se reiniciara sin la
+   otra al cambiar de planta. */
+let ZPOL=[];                       // [nombre de politica] o null por zona
 const ZSKY_OPC=[['—','igual que la planta'],['despejado','despejado'],
   ['overcast','overcast total'],['manana','mañana nublada'],['tarde','tarde nublada'],
   ['frentes','frentes'],['test','escenario del test'],['aleatorio','aleatorio']];
 function zskyOn(){return $('zskymode').value==='porncu';}
+/* Devuelve null —no un array de nulls— cuando ninguna NCU lleva politica
+   propia: asi `zonalRun` entra por la rama de siempre y el caso «todas
+   iguales» no se parece al caso «todas iguales pero por otro camino». */
+function zpolSerie(nZ){
+  let alguna=false;
+  const out=Array.from({length:nZ},(_,z)=>{
+    const v=ZPOL[z];
+    if(v&&POLICIES[v]){alguna=true;return v;}
+    return null;
+  });
+  return alguna?out:null;
+}
 function zskyNombres(nZ){
   if(PLANT_REAL&&PLANT_REAL.ncuIds&&PLANT_REAL.ncuIds.length===nZ)
     return PLANT_REAL.ncuIds.map(id=>'NCU '+id);
@@ -2901,6 +3001,8 @@ function zskyRender(){
   const nZ=PLANT_REAL?PLANT_REAL.ncuIds.length:Math.max(2,Math.min(6,+$('nncu').value||4));
   while(ZSKY.length<nZ)ZSKY.push(null);
   ZSKY.length=nZ;
+  while(ZPOL.length<nZ)ZPOL.push(null);
+  ZPOL.length=nZ;
   const nom=zskyNombres(nZ);
   let h='';
   for(let z=0;z<nZ;z++){
@@ -2918,7 +3020,17 @@ function zskyRender(){
        '<button class="btn small zpick" data-z="'+z+'" style="flex:none;padding:4px 8px'+
        (SKYSEL.indexOf(z)>=0?';border-color:hsl(330,80%,62%);color:hsl(330,80%,72%);background:hsla(330,80%,62%,.12)':'')+
        '" title="Pintar el cielo de esta NCU en la tira de arriba">✏</button>'+
-       '</div></div>';
+       '</div>'+
+       /* LO QUE VE Y COMO DECIDE, uno debajo del otro. Son las dos cosas que
+          se pueden dar por NCU y separarlas en dos tarjetas obligaria a ir y
+          venir para leer una sola zona. */
+       '<div style="display:flex;gap:5px;align-items:center;margin-top:4px">'+
+       '<span style="font-family:var(--mono);font-size:.6rem;letter-spacing:.09em;color:var(--muted);flex:none">ALGORITMO</span>'+
+       '<select data-z="'+z+'" class="zpol" style="flex:1;min-width:0" title="La política con la que DECIDE esta NCU. «igual que la planta» = la del desplegable de arriba, que es el comportamiento de siempre.">'+
+       '<option value=""'+(ZPOL[z]?'':' selected')+'>igual que la planta</option>'+
+       Object.keys(POLICIES).map(k=>'<option value="'+k+'"'+
+         (ZPOL[z]===k?' selected':'')+'>'+((POL_META[k]&&POL_META[k].nm)||k)+'</option>').join('')+
+       '</select></div></div>';
   }
   // el recorte a 224 px estaba pensado para las 21 NCUs de San José, pero con
   // 4 escondía la última detrás de un scroll que no se ve venir: «¿por qué hay
@@ -2932,10 +3044,18 @@ function zskyRender(){
   const sinTocar=ZSKY.every(v=>v===null);
   if(sinTocar)
     h+='<div class="nota" style="grid-column:1/-1;margin-top:2px;border-left:2px solid #fbbd23;padding-left:8px">'+
-       '<b>Las '+nZ+' NCUs siguen con el cielo de la planta</b>, así que el zonal todavía no puede '+
-       'separarlas: con cielo uniforme zonal ≡ global <b>por construcción</b>, y por eso verás el mismo '+
-       'θ en todas. Dale un cielo distinto a alguna —el desplegable de cada NCU, o el ✏ para pintarla— '+
-       'o usa el botón <b>«alternar despejado/overcast»</b> de abajo, que monta el caso en un clic.</div>';
+       /* ESTA NOTA SE QUEDO FALSA AL PODER DAR UN ALGORITMO POR NCU. Decía
+          «verás el mismo θ en todas», y con cielo uniforme eso solo vale si
+          TODAS deciden igual: basta cambiar el algoritmo de una para que su θ
+          se separe sin tocar el cielo. Es el mismo vicio que la v1.73 quitó de
+          la nota del bifila —la interfaz prometiendo lo que el código no
+          cumple— así que se corrige aquí antes de dejarlo escrito. */
+       '<b>Las '+nZ+' NCUs siguen con el cielo de la planta</b>, así que <b>el CIELO</b> todavía no las '+
+       'separa: con cielo uniforme y el mismo algoritmo en todas, zonal ≡ global <b>por construcción</b>. '+
+       'Hay dos formas de separarlas, y son independientes: dale un cielo distinto a alguna —el '+
+       'desplegable de cada NCU, o el ✏ para pintarla, o el botón <b>«alternar despejado/overcast»</b>— '+
+       'o dale un <b>algoritmo distinto</b> en su selector ALGORITMO, que mueve su θ aunque todas vean '+
+       'el mismo cielo.</div>';
   const g=$('zskygrid');
   g.style.maxHeight=nZ>8?'300px':'none';
   g.innerHTML=h;
@@ -2944,6 +3064,13 @@ function zskyRender(){
       const z=+el.dataset.z;
       if(el.value==='@')return;              // «pintado a mano» no es elegible
       ZSKY[z]=el.value==='—'?null:{preset:el.value,semilla:z+1};
+      zskyRender();recompute();
+    };
+  });
+  $('zskygrid').querySelectorAll('select.zpol').forEach(el=>{
+    el.onchange=()=>{
+      const z=+el.dataset.z;
+      ZPOL[z]=el.value||null;                // '' = la de la planta
       zskyRender();recompute();
     };
   });
@@ -2968,6 +3095,9 @@ function zskyRender(){
     el.onchange=()=>{const z=+el.dataset.z;if(ZSKY[z])ZSKY[z].semilla=+el.value||1;recompute();};
   });
 }
+/* El enganche va DONDE los demas de la tarjeta: `zskyRender` repinta el HTML
+   entero, asi que los manejadores se vuelven a poner cada vez, como los del
+   cielo. Poner este en otro sitio lo dejaria muerto tras el primer repintado. */
 $('zskymode').onchange=()=>{SKYSEL=[];zskyRender();recompute();};
 $('skyscope').onchange=function(){
   const v=this.value;
@@ -3003,10 +3133,11 @@ function zonalCfg(){
     const c=PLANT_REAL;
     const lags=c.cents.map(ct=>cross*(ct.x-c.x0)/((c.x1-c.x0)||1));
     return {on:$('zonalOn').checked,nZ:c.ncuIds.length,cross:cross,lags:lags,real:c,
-            ccz:zskySeries(c.ncuIds.length)};
+            ccz:zskySeries(c.ncuIds.length),polz:zpolSerie(c.ncuIds.length)};
   }
   const nZ=Math.max(2,Math.min(6,+$('nncu').value||4));
-  return {on:$('zonalOn').checked,nZ:nZ,cross:cross,lags:null,real:null,ccz:zskySeries(nZ)};
+  return {on:$('zonalOn').checked,nZ:nZ,cross:cross,lags:null,real:null,ccz:zskySeries(nZ),
+          polz:zpolSerie(nZ)};
 }
 /* Las series por zona, o null si el modo está apagado o TODAS dicen «igual que
    la planta» — así el modo encendido sin tocar nada es un no-op exacto. */
@@ -3033,7 +3164,7 @@ function computeZonal(d){
      POLICIES['__aniso'] es undefined y la corrida zonal revienta. */
   const pv=polZonificable($('polview').value);
   ZR=zonalRun(cfgDay(),zc.nZ,zc.cross,pv,d,zc.lags,
-              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,zc.ccz);
+              SIM?SIM.loop:null,SIM?{n:SIM.dayF.n,dt:DT_FINE}:null,zc.ccz,zc.polz);
 }
 /* metadatos por planta: huso, accionamiento y título. `bifila` decide si cada
    unidad del layout son DOS filas a ±filaZ (SUNNER estándar de la casa) o una.
@@ -3096,7 +3227,7 @@ async function loadRealPlant(name){
     aplicaHuso(j);   // huso del LAYOUT (tzFijo) o regla peninsular sobre la fecha simulada
     $('axaz').value=rot;                               // la física sigue el eje real
     if(ncuIds.length>1)$('zonalOn').checked=true;
-    ZSKY=[];zskyRender();     // otra planta, otras NCUs: el cielo por zona se reinicia
+    ZSKY=[];ZPOL=[];zskyRender();     // otra planta, otras NCUs: el cielo Y la politica por zona se reinician
     $('plantinfo').innerHTML='<b>'+meta.title+'</b> · '+j.trackers.length+' uds · '+
       ncuIds.length+' NCU'+(ncuIds.length>1?'s':'')+' · '+(meta.bifila?'bifila':'monofila')+
       (rot?' · eje '+rot+'°':'');
@@ -3121,6 +3252,11 @@ function drawZonalTab(){
         '<th>Δ global</th><th>Δ zonal</th><th>zonal − global</th></tr>';
   for(const k of ['diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch']){
     if(!POL_ON[k])continue;
+    /* ESTA LLAMADA NO LLEVA `polz` A PROPOSITO. La tabla barre las nueve
+       politicas para comparar que daria la planta ENTERA con k. Meterle la
+       mezcla por NCU haria que las nueve filas salieran con las mismas zonas
+       fijadas a otra cosa, y la columna dejaria de significar lo que dice su
+       cabecera. La mezcla se ve en la escena y en la tabla zonal. */
     const r=zonalRun(o,zc.nZ,zc.cross,k,d,zc.lags,SIM?SIM.loop:null,null,zc.ccz);
     const dG=100*(r.plantGlobal/r.plantPvlib-1),dZ=100*(r.plantZonal/r.plantPvlib-1);
     const dd=100*(r.plantZonal/r.plantGlobal-1);
