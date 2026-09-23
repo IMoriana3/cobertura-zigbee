@@ -1,0 +1,38 @@
+{
+  "fichero": "fayon_relieve.json",
+  "sha256": "83a7a8af675102c950fa40d0d70c3c24dc547add0b44c90174cc28258b6c0a4c",
+  "bytes": 30914,
+  "productor": "relieve_de_dem.mjs v1",
+  "tipo": "dem",
+  "generado": "2026-09-23",
+  "planta": "fayon",
+  "crs": "EPSG:25831",
+  "cE": 275719.936,
+  "cN": 4567402.475,
+  "paso": 10,
+  "nx": 71,
+  "nn": 67,
+  "eje_m": null,
+  "eje_medido": false,
+  "calidad": {
+    "validado": false,
+    "motivo": "sin levantamiento: el layout no trae cotas de seguidor, asi que no hay verdad de campo contra la que validar esta planta",
+    "px_tesela_m": 7.2,
+    "referencia": {
+      "nota": "NO es el error de esta planta. Es el del MISMO producto (solo DEM) medido donde si habia levantamiento as-built con que compararlo.",
+      "medido_en": [
+        "ayora",
+        "sanjose"
+      ],
+      "err_p50_m": [
+        0.83,
+        1.29
+      ],
+      "err_p95_m": [
+        2.37,
+        3.77
+      ],
+      "util": "tools/dem_error_vertical.mjs"
+    }
+  }
+}

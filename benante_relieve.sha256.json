@@ -1,0 +1,38 @@
+{
+  "fichero": "benante_relieve.json",
+  "sha256": "c259ea18e768f92816d52d6d4ad027d177995eaf9e81252cf0bc7f384d7cda84",
+  "bytes": 169445,
+  "productor": "relieve_de_dem.mjs v1",
+  "tipo": "dem",
+  "generado": "2026-09-23",
+  "planta": "benante",
+  "crs": "EPSG:25833",
+  "cE": 491533.633,
+  "cN": 4136535.064,
+  "paso": 10,
+  "nx": 164,
+  "nn": 175,
+  "eje_m": null,
+  "eje_medido": false,
+  "calidad": {
+    "validado": false,
+    "motivo": "sin levantamiento: el layout no trae cotas de seguidor, asi que no hay verdad de campo contra la que validar esta planta",
+    "px_tesela_m": 7.6,
+    "referencia": {
+      "nota": "NO es el error de esta planta. Es el del MISMO producto (solo DEM) medido donde si habia levantamiento as-built con que compararlo.",
+      "medido_en": [
+        "ayora",
+        "sanjose"
+      ],
+      "err_p50_m": [
+        0.83,
+        1.29
+      ],
+      "err_p95_m": [
+        2.37,
+        3.77
+      ],
+      "util": "tools/dem_error_vertical.mjs"
+    }
+  }
+}

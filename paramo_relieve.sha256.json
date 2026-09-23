@@ -1,0 +1,38 @@
+{
+  "fichero": "paramo_relieve.json",
+  "sha256": "2e0beaea826a542727c8580c6f2281f09b4bfaf3a1f5915c237dad1b0973dfde",
+  "bytes": 71406,
+  "productor": "relieve_de_dem.mjs v1",
+  "tipo": "dem",
+  "generado": "2026-09-23",
+  "planta": "paramo",
+  "crs": "EPSG:25830",
+  "cE": 285767.233,
+  "cN": 4688645.535,
+  "paso": 10,
+  "nx": 113,
+  "nn": 91,
+  "eje_m": null,
+  "eje_medido": false,
+  "calidad": {
+    "validado": false,
+    "motivo": "sin levantamiento: el layout no trae cotas de seguidor, asi que no hay verdad de campo contra la que validar esta planta",
+    "px_tesela_m": 7.1,
+    "referencia": {
+      "nota": "NO es el error de esta planta. Es el del MISMO producto (solo DEM) medido donde si habia levantamiento as-built con que compararlo.",
+      "medido_en": [
+        "ayora",
+        "sanjose"
+      ],
+      "err_p50_m": [
+        0.83,
+        1.29
+      ],
+      "err_p95_m": [
+        2.37,
+        3.77
+      ],
+      "util": "tools/dem_error_vertical.mjs"
+    }
+  }
+}
