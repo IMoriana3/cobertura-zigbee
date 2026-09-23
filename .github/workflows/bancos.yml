@@ -369,6 +369,17 @@ jobs:
       # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
       - name: el veto del óptimo puntúa con la métrica que se cobra
         run: node tools/test_veto_por_mesa.mjs
+      # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
+      # planta real la página apaga ella sola las caras: el informe las volvía a
+      # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que
+      # apagaba `global` (0,0-0,2 ms medidos) y dejaba encendida `mgl`
+      # (456-1.569 ms), la más cara de las nueve. Ahora es una lista MEDIDA con
+      # su procedencia escrita. El banco comprueba ademas que FÍSICA PURA sea
+      # idéntica byte a byte a la de main, que es lo que la fase 2 promete.
+      - name: las políticas caras, sólo bajo demanda
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node tools/test_caras_bajo_demanda.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
       # independientes. Ahora el exportador lo LEE de la página; este banco vigila
