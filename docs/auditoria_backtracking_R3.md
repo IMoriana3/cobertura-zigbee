@@ -3,7 +3,7 @@
 **Ámbito.** `optimal` (Energy-optimal / Deeptrack) frente a `pairwise` en planta
 medida, el lazo de control de la TCU, y la geometría de sombra entre filas.
 
-**Árbol auditado.** Las mediciones de los §1.2, §1.3 y §5 se hicieron sobre
+**Árbol auditado.** Las mediciones de los §1.2, §1.3 y §5.1 se hicieron sobre
 `ebb5dc0` (`backtracking.html` v1.68.0). Los §1.5 y §5.2 vuelven a medir sobre
 **v1.78.0** con el mismo protocolo. Las citas de código están
 **re-verificadas sobre `d686640`** (v1.78.0) salvo donde se cite un commit
@@ -350,7 +350,98 @@ Firma inequívoca de inclinación hacia el ecuador. Si el terreno cayera al
 13 % los días de invierno**.
 
 **La pregunta útil para El Burgo no es «¿es llano el campo?» sino «¿están las
-mesas a nivel, y si no, con qué signo?».**
+mesas a nivel, y si no, con qué signo?».** El §4.5 le añade un tercer término,
+que resulta ser el dominante: **y con cuánta dispersión entre vecinas.** Todas
+las cifras de este §4.4 son de tilt **uniforme**, y esa es precisamente la forma
+que menos cuesta.
+
+---
+
+### 4.5 El DEM de #742 no cierra el §4, y corrige mi propio barrido
+
+Desde que se escribió el §4, main ha ganado `elburgo_relieve.json` (PR #742,
+`3f8a681`). Hay que decir tres cosas sobre él, y la tercera obliga a corregir el
+§4.3.
+
+**(a) El modelo de producción no lo lee.** `produccion.html` no abre ningún
+`*_relieve.json`: las coincidencias de `grep relieve` en ese fichero son prosa y
+comentarios. El consumidor es `terreno.html:908` (`relAt`, bilineal). Así que El
+Burgo **sigue modelándose llano** en producción, exactamente como dice el §4.1.
+
+**(b) La pendiente entre filas que daría es sub-malla, es decir, inventada.**
+El paso de la malla es **10 m** y el pitch de El Burgo es **6,00 m exacto en los
+89 pares** (medido: `dx` único = 6). Muestrear a 6 m en una malla de 10 m no da
+terreno, da la dirección de la interpolación bilineal. Y #742 midió justamente
+eso: «por debajo de 100 m el relieve verdadero es cero exacto mientras el DEM
+solo se inventa hasta 8,07 dB — ahí no es impreciso, cobra relieve que no hay».
+El propio fichero se rotula `calidad.validado: false`, con el motivo escrito:
+«sin levantamiento: el layout no trae cotas de seguidor, así que no hay verdad
+de campo contra la que validar esta planta». Careo de origen antes de muestrear:
+el layout y el relieve declaran el **mismo** `cE`/`cN` (683562.922059555 /
+4605080.984298119), y **0 de 90** líneas caen fuera de la malla.
+
+**(c) La inclinación del eje no es una pregunta de terreno.** `montaje.axis_tilt`
+vale **0** y `montaje_origen.axis_tilt` declara la convención: «canon · el eje se
+genera horizontal; el terreno se aplica aparte (bt3d)». Los pilotes nivelan el
+tubo. Y `pilotes.porTipo` da **posiciones** a lo largo del tubo
+(`interior`/`exterior`/`medio`), **no alturas**, así que no hay dato con el que
+derivar una torsión real: el relieve se rotula `eje_medido: false`. Lo que el
+DEM sugiere es, por tanto, una **cota de lo que el terreno podría imponer si los
+pilotes no nivelaran**, no una medida del seguidor.
+
+Con el tramo correcto —la mesa declarada en `tipos_largo`, **64,6 m**
+(32,6 la «Medio»)— la torsión que sugiere el DEM en las 215 mesas es:
+
+| | valor |
+|---|---|
+| media **con signo** | +0,0660° (103 al norte / 112 al sur) |
+| \|media\| | **0,5982°** |
+| p50 · p95 · máx | 0,4796° · 1,5698° · **3,5141°** |
+
+Media casi nula con dispersión: **no es una pendiente, es torsión mesa a mesa.**
+
+**Y el canal que el modelo tiene no la puede llevar.** En El Burgo `porMesa` es
+falso (§4.2), así que `buildTX` solo admite **un** valor por línea. Promediada a
+línea, la señal queda en \|media\| **0,2144°** (máx 0,7088°) — el promediado se
+come el **64 %**. La dispersión **dentro** de cada línea, que es la señal
+dominante, no tiene dónde entrar: recorrido máx−mín de \|media\| **1,8497°**,
+p95 3,9288°, máx **4,8160°** sobre las 82 líneas con más de una mesa.
+
+#### La corrección al §4.3: mi barrido midió la forma equivocada
+
+El §4.3 barrió pendientes **uniformes** (1°, 2°, 4°) y salieron **ganancias**
+(+0,757 / +1,500 / +2,915 %). Metido el array real por línea, sale una
+**pérdida** de **−3,094 %** con \|media\| de solo 0,2144°. Eso es una afirmación
+de mecanismo, así que va con su control: tres arrays con la **misma** \|media\|
+0,2144° y distinta forma.
+
+| forma de la perturbación | kWh/fila | vs llano |
+|---|---|---|
+| llano (test nulo) | **1331,608** | reproduce el §4.3 clavado |
+| A · uniforme +0,2144° | 1333,783 | **+0,163 %** |
+| B · magnitudes reales, **sin** mezcla de signo | 1300,006 | **−2,373 %** |
+| C · real, con signo | 1290,407 | **−3,094 %** |
+
+Descomposición: la **magnitud** aporta **+0,163 %**; la **dispersión** de esa
+magnitud, **−2,536 pp**; la **mezcla de signo** encima, **−0,721 pp**. La forma
+pesa **19×** la magnitud y con el signo contrario. El mecanismo es
+`pairsFromElevX`: `axisTilt = media(tilt[i], tilt[i+1])`, así que dos vecinas
+desalineadas se sombrean, y eso no depende de cuánto valga el tilt sino de
+cuánto se **diferencien**.
+
+**Qué es sólido y qué es indicativo.** El **mecanismo** es sólido: es una
+propiedad del modelo, controlada tres veces, y vale venga de donde venga el
+array. El **−3,094 % de El Burgo** es indicativo, no una medida de la planta:
+además del `validado: false`, la variación **entre líneas** —que es la que cobra—
+se muestrea a 6 m en una malla de 10 m, o sea parcialmente interpolación. Da el
+orden y el signo, no la cifra.
+
+**Consecuencia sobre la recomendación del §4.** Cablear `*_relieve.json` a
+`produccion.html` **no** es la acción que cierra esto, y podría empeorarlo: lo
+que entraría por el canal E-O sería artefacto de malla. Lo que falta es
+**levantamiento de cotas de seguidor** —lo que el propio `calidad.motivo` dice
+que no hay— y, para que la señal dominante quepa, que El Burgo tenga `segTilt`
+(hoy `porMesa` es falso).
 
 ---
 
@@ -451,6 +542,9 @@ Ninguno de los recuentos de este informe se presenta sin su test nulo delante.
 | reconstrucción de El Burgo a 0°/0° | **idéntica** a `tElburgo` | lo medido es de la pendiente |
 | máquina de checkpoints | 40,61401843840256 reanudado = 40,6140 de un tirón | el arrastre de estado del lazo es exacto |
 | `pairwise` medido en v1.68 y en v1.78 | **idéntico al último dígito** en las dos celdas | v1.76 tocó solo `optimal`/`optfree`; el careo del §5.2 vale |
+| origen del layout vs origen del relieve | `cE`/`cN` **iguales**; 0 de 90 líneas fuera de la malla | el muestreo del DEM del §4.5 está en el sistema correcto |
+| El Burgo llano reconstruido en el §4.5 | **1331,608** = 1331,608 del §4.3 | lo medido es de la torsión, no del arnés nuevo |
+| uniforme a la misma \|media\| que el array real | **+0,163 %** contra −3,094 % | la pérdida es de la **forma**, no de la magnitud |
 
 ---
 
@@ -478,6 +572,14 @@ Se registran todas, con lo que las refutó.
 8. **«La frase *el paso de 1 min es honrado* (§2) no está sostenida.»**
    Retirada **deshecha**: con los datos por debajo del minuto, 1 min queda a
    ~0,05 pp del límite. La frase era correcta y la retirada fue precipitada.
+
+**Un cuarto error de método, del §4.5.** Medí la torsión N-S sobre el **extremo
+de línea** (284 m de tramo medio) cuando la mesa declarada son **64,6 m**:
+subestimaba **2,91×**. Con ese tramo malo llegué a tener en pantalla un
+−1,514 % y estuve a punto de publicarlo como el coste real del eje en El Burgo.
+Lo que lo paró fue leer `tipos_largo` y `montaje_origen` **antes** de escribir,
+no un test. El patrón es el mismo de los otros tres: tomar el denominador que
+tenía a mano en vez del que declara el proyecto.
 
 **Corrección a una cita recibida.** El parámetro que fija las subcadenas no es
 `nb` sino **`nbp`**: `ebb5dc0:backtracking.html:179` (hoy `:189`),
@@ -523,3 +625,11 @@ Se registran porque afectaron a lo que se informó, aunque no a las cifras.
    que no haya un segundo término.
 6. El **control que pedía el auditor** —una planta con mesas pero **sin**
    torsión— no existe entre los presets. No se ha podido hacer.
+7. La **torsión real de El Burgo**. El DEM de #742 da el orden y el signo
+   (§4.5) pero se rotula `validado: false` y `eje_medido: false`, y la variación
+   entre líneas que cobra se muestrea a 6 m en una malla de 10 m. Hace falta
+   **levantamiento de cotas de seguidor**; `pilotes` da posiciones, no alturas.
+8. El **coste de que El Burgo no tenga `segTilt`**. La señal dominante del §4.5
+   es la dispersión **dentro** de la línea (recorrido \|media\| 1,8497°) y el
+   modelo no tiene canal para ella, así que su coste no se ha medido: solo se ha
+   medido el de la parte que **sí** cabe, promediada a línea.
