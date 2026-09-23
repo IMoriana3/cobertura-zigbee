@@ -3,10 +3,11 @@
 **Ámbito.** `optimal` (Energy-optimal / Deeptrack) frente a `pairwise` en planta
 medida, el lazo de control de la TCU, y la geometría de sombra entre filas.
 
-**Árbol auditado.** Las mediciones de los §1 y §5 se hicieron sobre
-`ebb5dc0` (`backtracking.html` v1.68.0). Las citas de código de este informe
-están **re-verificadas sobre `d686640`** (v1.78.0) salvo donde se cite un
-commit explícito. Entre ambos hay 115 commits y algunas líneas se movieron;
+**Árbol auditado.** Las mediciones de los §1.2, §1.3 y §5 se hicieron sobre
+`ebb5dc0` (`backtracking.html` v1.68.0). El §1.5 vuelve a medir sobre
+**v1.78.0** con el mismo protocolo. Las citas de código están
+**re-verificadas sobre `d686640`** (v1.78.0) salvo donde se cite un commit
+explícito. Entre ambos árboles hay 115 commits y algunas líneas se movieron;
 cuando el código ha cambiado, se dice.
 
 **Formato.** Toda afirmación lleva `archivo:línea` y fragmento. Todo recuento
@@ -91,9 +92,51 @@ Con `anglesOptimalSeg` en `:3211` y `anglesOptimalFreeSeg` en `:3267`. La
 medición de R4 («perdían por mesa en 58 de 86») es **independiente de esta
 auditoría** y coincide en el diagnóstico.
 
-**`NO VERIFICADO`:** esta auditoría no ha vuelto a medir `optimal` sobre
-v1.78. La cifra de −0,556 % describe el árbol anterior a v1.76 y **no debe
-citarse como estado actual**.
+### 1.5 Verificación de la corrección sobre v1.78 — **el signo se invierte**
+
+Mismo protocolo que el §1.2: Ayora real, los 24 días (el 7 y el 21 de cada
+mes), paso horario, lazo apagado, ambas rutas puntuadas con `poaPlantSeg`.
+Lo único que cambia entre las dos columnas es la versión.
+
+| | v1.68 (`optimal` por línea) | **v1.78 (`optimal` por mesa)** |
+|---|---|---|
+| M1 · POA media de planta | −0,589 % | **+0,385 %** |
+| M3 · energía DC por string | **−0,556 %** | **+0,402 %** |
+| instantes con `optimal` ≥ `pairwise` (M3) | 106/289 | **288/289** |
+
+**Control previo al recuento.** Que `policyAnglesSeg('optimal')` mande por
+mesa no se da por supuesto: medido, devuelve **θ distinto entre mesas de la
+misma línea en 37 de 79 líneas**, con `|θ_mesa − θ_línea|` de hasta
+**3,5985°**. No es difusión con otro nombre.
+
+**Coste, contra la intuición.** Pasar de 79 líneas a 1.600 mesas **abarata** el
+cálculo: 3,81 s por llamada frente a 7,87 s de la ruta por línea.
+
+**La pérdida desaparece justo donde vivía:**
+
+| banda | v1.68 | v1.78 | C≥B (v1.78) |
+|---|---|---|---|
+| 0,5–10° | +17,285 % | **+20,137 %** | 46/46 |
+| 10–20° | **−4,823 %** | **+1,161 %** | 48/49 |
+| 20–35° | **−0,841 %** | **+0,004 %** | 84/84 |
+| 35–50° | −0,001 % | +0,001 % | 60/60 |
+| 50–90° | −0,000 % | +0,001 % | 50/50 |
+
+Las dos bandas que sangraban —la de 10–20°, que aportaba −0,566 pp, y la de
+20–35°— pasan a positiva y a cero. Confirma que la pérdida no estaba repartida:
+vivía exactamente donde el ángulo por mesa se separa del de línea.
+
+Mes a mes (M3) sale positivo los doce, con la estacionalidad **invertida**
+respecto al árbol anterior: ahora gana más en invierno (ene **+0,965 %**, nov
++0,775 %, dic +0,770 %) y menos en verano (jun +0,194 %). Antes diciembre era
+el peor mes, con −1,292 %.
+
+**Alcance.** Esto es Ayora: planta con cotas medidas y torsión real. En El
+Burgo `porMesa` es falso (§4.2), así que allí `optimal` sigue yendo por línea y
+la corrección **no cambia nada**.
+
+**Cómo citar el −0,556 %.** Describe el árbol anterior a v1.76 y **no debe
+citarse como estado actual**. El estado actual es **+0,402 %**.
 
 ---
 
@@ -418,8 +461,9 @@ Se registran porque afectaron a lo que se informó, aunque no a las cifras.
 
 ## §9 · Qué queda `NO VERIFICADO`
 
-1. `optimal` sobre **v1.78** (tras la corrección de R4 fase 1). Toda cifra de
-   `optimal` en este informe es del árbol anterior.
+1. ~~`optimal` sobre v1.78~~ — **cerrado en el §1.5**: medido con el mismo
+   protocolo, da **+0,402 %** (M3) y 288/289 instantes. Queda sin medir sobre
+   v1.78 el **lazo** (el §5 es del árbol anterior).
 2. **Cuál de las dos causas candidatas** domina la dependencia del paso con lazo
    (interpolación en el tramo o cuadratura por extremo derecho).
 3. Si con **otra latitud o `axisAz≠0`** el llano cruza el corte de 89,9°.
