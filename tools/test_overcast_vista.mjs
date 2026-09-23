@@ -340,6 +340,84 @@ t('y con margen, no rozando (orbitar hacia arriba no debe meterse dentro)', () =
     ' m contra cámara a ' + REAL.camY + ' m: margen ' + (REAL.yMin / REAL.camY).toFixed(2) + '×');
 });
 
+console.log('el rótulo no mengua con la distancia, y cada NCU se ve en el suelo');
+/* POR QUÉ ESTAS TRES, con la medida que las motivó. Iñaki dijo «las letras muy
+   pixeladas» y la sonda lo reprodujo con su mismo encuadre en Páramo:
+
+       ancho del rótulo en pantalla    47,7 - 52,6 px CSS
+       textura                         384 x 132
+       minificación                    3,65x - 4,03x
+       alto real del texto «NCU»       ~9,9 px de dispositivo
+
+   No era el filtro —ya era el correcto, y mi primera lectura dijo otra cosa
+   porque la tabla de constantes estaba desplazada una posición—: era que la
+   talla era un tamaño de MUNDO fijo y el rótulo encogía al alejarse la cámara.
+
+   Se mide POR COMPORTAMIENTO: se aleja la cámara y se exige que el ancho EN
+   PANTALLA no se mueva. Con la regla vieja esta comprobación sale roja sola,
+   porque el ancho caía en proporción a la distancia. */
+async function anchoRotulo() {
+  return pg.evaluate(() => {
+    const r = document.querySelector('#view3d canvas').getBoundingClientRect();
+    let s = null; TD.scene.traverse(o => { if (!s && o.isSprite && o.userData && o.userData.rotulo) s = o; });
+    if (!s) return null;
+    const c = new THREE.Vector3(); s.getWorldPosition(c);
+    const der = new THREE.Vector3(); TD.camera.getWorldDirection(der);
+    der.crossVectors(der, new THREE.Vector3(0, 1, 0)).normalize();
+    const a = c.clone().addScaledVector(der, -s.scale.x / 2).project(TD.camera);
+    const b = c.clone().addScaledVector(der,  s.scale.x / 2).project(TD.camera);
+    const cam = new THREE.Vector3(); TD.camera.getWorldPosition(cam);
+    return { px: Math.abs(b.x - a.x) / 2 * r.width, d: cam.distanceTo(c) };
+  });
+}
+const ROT1 = await anchoRotulo();
+await pg.evaluate(() => { TD.camera.position.multiplyScalar(1.8); TD.controls.update(); });
+await pg.waitForTimeout(500);
+const ROT2 = await anchoRotulo();
+t('TEST NULO: la cámara se ha alejado de verdad', () => {
+  if (!ROT1 || !ROT2) throw new Error('no hay rótulo que medir');
+  if (!(ROT2.d > 1.4 * ROT1.d)) throw new Error('distancia ' + ROT1.d.toFixed(0) + ' -> ' + ROT2.d.toFixed(0) + ': no se ha alejado');
+});
+t('el rótulo mantiene su ancho EN PANTALLA al alejarse la cámara', () => {
+  const rel = Math.abs(ROT2.px - ROT1.px) / Math.max(1, ROT1.px);
+  if (!(rel < 0.08)) throw new Error('ancho ' + ROT1.px.toFixed(1) + ' -> ' + ROT2.px.toFixed(1) +
+    ' px (' + (100 * rel).toFixed(0) + ' %): está menguando con la distancia');
+});
+t('y a esa talla la textura ya no se minifica: el texto se lee', () => {
+  if (!(ROT2.px * 2 > 0.4 * 384)) throw new Error('rótulo a ' + ROT2.px.toFixed(1) +
+    ' px CSS: la textura de 384 px se minifica más de 2,5x y el texto se deshace');
+});
+/* LA HUELLA NO SE INVENTA LA PARTICIÓN: sale del layout. Se exige que las
+   bandas cubran TODAS las filas y que repartan entre TODAS las NCUs que el
+   layout declara — si alguien las pintara todas del mismo color, o se dejara
+   una zona fuera, esto se pone rojo. */
+const HU = await pg.evaluate(() => {
+  const h = TD.real && TD.real.huella;
+  if (!h) return { sinHuella: true };
+  const filas = TD.real.groups.filter(g => g.key === 'mesa').reduce((s, g) => s + g.rows.length, 0);
+  const cols = new Set(); const c = new THREE.Color();
+  for (let i = 0; i < h.count; i++) { h.getColorAt(i, c); cols.add(c.getHexString()); }
+  return { visible: h.visible, n: h.count, filas: filas, tonos: cols.size,
+           nZonas: TD.real.nZones };
+});
+t('la planta real dibuja la huella de las NCUs', () => {
+  if (HU.sinHuella) throw new Error('no hay TD.real.huella');
+  if (!HU.visible) throw new Error('la huella existe pero está oculta con el zonal puesto');
+});
+t('hay una banda por fila: la huella no se inventa suelo', () => {
+  if (HU.n !== HU.filas) throw new Error(HU.n + ' bandas contra ' + HU.filas + ' filas de mesa');
+});
+t('y hay tantos colores como NCUs declara el layout', () => {
+  if (HU.tonos !== HU.nZonas) throw new Error(HU.tonos + ' tonos para ' + HU.nZonas + ' NCUs');
+});
+/* EN MODO PLANTA NO HAY PARTICIÓN, así que pintar cuatro manchas sería mentir. */
+await pg.uncheck('#zonalOn');
+await pg.waitForTimeout(1200);
+const HU_OFF = await pg.evaluate(() => !!(TD.real && TD.real.huella && TD.real.huella.visible));
+t('en modo PLANTA la huella se apaga (no hay NCUs que separar)', () => eq(HU_OFF, false));
+await pg.check('#zonalOn');
+await pg.waitForTimeout(1200);
+
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
 });
