@@ -349,6 +349,7 @@
       <span class="t" id="manthlbl" style="min-width:3ch">0°</span>
       <label class="btn small" title="MANUAL POR FILA (v1.55): con esta casilla el slider mueve SOLO la fila seleccionada en «fila N» (en bifila, las dos filas de su tracker: giran con el mismo motor); las demás conservan su ángulo. Al activarla, cada fila arranca en la consigna que tenía la política de la escena en este instante — así se puede corregir una fila y ver, con el contador, qué le hace a las vecinas." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="manrow" disabled> por fila</label>
       <select id="colprod" class="btn small" title="PRODUCCIÓN POR FILA (string) EN COLORES, pintada sobre las palas: azul = la fila que menos produce, rojo = la que más (escala min→max de la planta, leyenda al lado).&#10;· instante: POA neta W/m² del momento del slider — responde en vivo al manual y a la nubosidad.&#10;· día: POA acumulada kWh/m² del día de la política de la ESCENA.&#10;La sombra calculada (silueta roja) se sigue pintando encima."><option value="off">sin color</option><option value="inst">⚡ producción · instante</option><option value="day">Σ producción · día</option></select>
+      <select id="colscale" class="btn small" title="Cómo se reparte la rampa de color. FIEL: de 0 al máximo — el color es proporcional a lo que produce cada mesa, así que una planta sin sombra sale de un color. CONTRASTE: estira el mínimo y el máximo de la vista para inspeccionar diferencias finas; la leyenda dice entonces qué porcentaje del máximo abarca ese tramo.&#10;Hasta la v1.75 esta página estiraba SIEMPRE mín→máx: medido sobre terreno ondulado a las 17h, repartía un 6,4 % de diferencia por todo el arcoíris."><option value="abs" selected>escala fiel (0 → máx)</option><option value="rel">contraste (mín → máx)</option></select>
       <span id="prodleg" style="display:none;align-items:center;gap:4px;font-family:var(--mono);font-size:.62rem;color:var(--muted)"><span id="prodlo"></span><span id="prodbar" style="display:inline-block;width:70px;height:8px;border-radius:4px"></span><span id="prodhi"></span></span>
       <label class="btn small" title="RAYO CRÍTICO + HAZ AL SUELO de la fila seleccionada: el rayo por el borde del emisor (marcador VERDE al suelo / ROJO si pincha a la vecina) y la franja de luz del vano MEDIDA en metros y % — la magnitud que optimiza min-ground-light" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ray3d" checked> ☀ rayo</label>
       <label class="btn small" title="HAZ DE SOMBRA (solo de la fila elegida en «fila N», con el sol por encima de 1° y si la fila no está tapada entera): el volumen tenue que va desde el objeto que sombrea (la pala vecina) hasta su mancha roja sobre la mesa sombreada — para ver DE DÓNDE viene cada sombra. El globo de la fila dice de quién es (fila emisora o terreno) y cuánto." style="display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="haz3d" checked> ▤ haz</label>
@@ -528,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.76.0';
+const VER='v1.77.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4208,13 +4209,47 @@ function anglesManual(n,thetaDeg,maxAng){
 
 /* ── PRODUCCIÓN POR FILA EN COLOR (v1.40) — rampa continua tipo turbo ───────
    La misma familia que la carta solar de la casa (turbo): azul=mínimo de la
-   planta, rojo=máximo. x se normaliza FUERA (min→max de las filas). */
+   planta, rojo=máximo. x se normaliza con `rangoColor` + `normProd`. */
 const PROD_RAMP=[[48,18,59],[69,91,205],[62,155,254],[24,214,203],[72,248,130],
                  [164,252,59],[226,220,56],[254,163,49],[239,89,17],[122,4,3]];
 function prodColor(x){
   const v=Math.max(0,Math.min(1,x))*(PROD_RAMP.length-1);
   const i=Math.floor(v), f=v-i, a=PROD_RAMP[i], b=PROD_RAMP[Math.min(i+1,PROD_RAMP.length-1)];
   return 'rgb('+[0,1,2].map(k=>Math.round(a[k]+f*(b[k]-a[k]))).join(',')+')';
+}
+
+/* ── LA ESCALA DE LA RAMPA (v1.76) ─────────────────────────────────────────
+   Vive AQUÍ, en física pura, y no en cada página, por la misma razón que
+   `prodColor`: es una regla de lectura compartida y una segunda copia se
+   desincroniza el día que alguien toque una. `produccion.html` la extrae de
+   este bloque.
+
+   LA LECCIÓN ES SUYA, y la aprendió cara (su v1.18): la rampa se estiraba
+   SIEMPRE del mínimo al máximo de la vista, así que a mediodía —cuando ninguna
+   mesa tiene sombra, todas están al 99 % y el rango entero son 15 W/m² sobre
+   1.009, un 1,5 %— la planta salía en ARCOÍRIS, como si unas produjeran el
+   doble que otras. Este simulador se quedó con el mín→máx: medido sobre
+   terreno ondulado a las 17h, reparte un 6,4 % de diferencia por toda la
+   rampa.
+
+   Por defecto la escala se ANCLA A CERO: el color es proporcional a lo que
+   produce cada mesa, y una planta sin sombra sale de un color. «Contraste»
+   mantiene el mín→máx para mirar diferencias finas, y entonces la leyenda dice
+   qué porcentaje del máximo abarca ese tramo — sin ese dato, un arcoíris sobre
+   el 1,5 % se lee como si unas mesas produjeran el doble. */
+function rangoColor(mn,mx,modo){
+  if(modo==='rel')return {lo:mn,hi:mx,rel:true};
+  return {lo:Math.min(0,mn),hi:Math.max(mx,mn+1e-9),rel:false};
+}
+/* Y NO SE NORMALIZA SI LA DISPERSIÓN ES POLVO. Con la planta uniforme el rango
+   es ruido de coma flotante (1e-13) y el mín→máx lo amplificaba a colores de
+   escala completa: «¿por qué esas producen menos?» sin producir menos. Umbral:
+   0,1 % del máximo, o 1e-9 absoluto. Un `mx>mn` a secas —que es lo que este
+   simulador tenía— no lo ve: 1e-13 > 0 es cierto. */
+function normProd(v,esc){
+  const s=esc.hi-esc.lo;
+  if(!(s>Math.max(1e-9,Math.abs(esc.hi)*1e-3)))return 0.5;
+  return Math.max(0,Math.min(1,(v-esc.lo)/s));
 }
 
 /* ── EL PROBADOR (v1.58) ─────────────────────────────────────────────────────
@@ -6540,7 +6575,7 @@ function eDayOf(key){
   for(let r2=0;r2<nR;r2++)out[r2]*=STEP_MIN/60/1000;  // W/m²·paso → kWh/m²
   DAY.eDay[key]=out; return out;
 }
-function paintProdLegend(mn,mx,unit){
+function paintProdLegend(mn,mx,unit,esc){
   const leg=$('prodleg');if(!leg)return;
   if(mn===null){leg.style.display='none';return;}
   leg.style.display='inline-flex';
@@ -6548,8 +6583,15 @@ function paintProdLegend(mn,mx,unit){
   const stops=[];for(let i=0;i<=8;i++)stops.push(prodColor(i/8)+' '+(i*12.5)+'%');
   bar.style.background='linear-gradient(90deg,'+stops.join(',')+')';
   const fmt=v=>unit.indexOf('kWh')>=0?v.toFixed(2):v.toFixed(0);
-  $('prodlo').textContent=fmt(mn);
-  $('prodhi').textContent=fmt(mx)+' '+unit;
+  // v1.76: la leyenda dice los EXTREMOS DE LA RAMPA —lo que el color
+  // significa— y, en contraste, cuánto abarca de verdad ese tramo. Sin ese
+  // dato un arcoíris sobre el 1,5 % se lee como si unas mesas produjeran el
+  // doble que otras, que es el defecto que `produccion.html` ya se comió.
+  const R=esc||{lo:mn,hi:mx,rel:true};
+  $('prodlo').textContent=fmt(R.lo);
+  const d=mx>0?100*(mx-mn)/mx:0;
+  $('prodhi').textContent=fmt(R.hi)+' '+unit
+    +(R.rel?' · las de la vista se reparten '+(d<0.05?'<0,1':d.toFixed(d<10?1:0)).replace('.',',')+' %':'');
 }
 function update3D(){
   pinta3D();
@@ -6573,7 +6615,10 @@ function update3D(){
   let pmin=0,pmax=0;
   if(pS){pmin=Infinity;pmax=-Infinity;for(const l of pS)for(const v of l){if(v<pmin)pmin=v;if(v>pmax)pmax=v;}}
   else if(pvals){pmin=Math.min.apply(null,pvals);pmax=Math.max.apply(null,pvals);}
-  paintProdLegend(pvals?pmin:null,pmax,punit);
+  // v1.76: la rampa ya no se estira siempre de mín a máx. Ver `rangoColor` en
+  // física pura, que es de donde `produccion.html` la saca también.
+  const pesc=rangoColor(pmin,pmax,($('colscale')&&$('colscale').value)||'abs');
+  paintProdLegend(pvals?pmin:null,pmax,punit,pesc);
   TD.rows.forEach((row,r)=>{
     row.spins.forEach((sp,k)=>{
       // modelo Seguidor: spin gira sobre su X local (el tubo, que apunta al
@@ -6605,7 +6650,7 @@ function update3D(){
           const ov=row.ovls[k];
           if(!ov.g)continue;
           const val=(pS&&pS[r]&&pS[r][k]!=null)?pS[r][k]:pvals[r];   // el valor de ESTA mesa
-          const x01=pmax>pmin?(val-pmin)/(pmax-pmin):0.5;
+          const x01=normProd(val,pesc);
           if(!ov.tint){
             const ggeo=(ov.ax==='model')
               ?new THREE.PlaneGeometry(ov.x1-ov.x0,2*ov.half)
@@ -8323,6 +8368,7 @@ function manualRowSet(r,v){
   for(const q of filas)MANUAL_ROWS[q]=v;
 }
 $('colprod').addEventListener('change',()=>{update3D();});
+$('colscale').addEventListener('change',()=>{update3D();});
 $('rowsel').onchange=()=>{
   // manual por fila: el slider pasa a enseñar (y a mover) la fila elegida
   if(manualRowsOn()){const r=+$('rowsel').value||0;$('manth').value=MANUAL_ROWS[r];$('manthlbl').textContent=MANUAL_ROWS[r]+'°';}

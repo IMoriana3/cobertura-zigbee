@@ -1,0 +1,75 @@
+{
+ "commit": "487714e3c8e63d2ad73f9aad4e06c192e942027a",
+ "fecha": "2026-06-21",
+ "lat": 39.11821,
+ "lon": -1.15985,
+ "lineas": 79,
+ "mesas": 1600,
+ "torsion": {
+  "mesasConTorsion": 1600,
+  "torsionMax_deg": 3.7143
+ },
+ "paso_min": 10,
+ "res": {
+  "medida": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 65.4512,
+   "inversionesDeOrden": 20,
+   "optimal_pierde_por_mesa": 0,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": 0.2336,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67345,
+   "peor": {
+    "min": 480,
+    "hora": "08:00",
+    "dLinea": 110.19676619801734,
+    "dMesa": 0,
+    "pwMesa": 325.16380818707387,
+    "pwLinea": 198.653550056451,
+    "difMetrica": 16.31349193260553
+   }
+  },
+  "sinTorsion": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 54.8039,
+   "inversionesDeOrden": 18,
+   "optimal_pierde_por_mesa": 0,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": 0.2726,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67218.1,
+   "peor": {
+    "min": 480,
+    "hora": "08:00",
+    "dLinea": 110.19676619801734,
+    "dMesa": 0,
+    "pwMesa": 318.57179294022194,
+    "pwLinea": 198.653550056451,
+    "difMetrica": 9.7214766857536
+   }
+  },
+  "tilt0": {
+   "instantes": 86,
+   "testNulo_instantesDondeLasMetricasDifieren": 86,
+   "testNulo_difMetricaMax_Wm2": 53.8068,
+   "inversionesDeOrden": 70,
+   "optimal_pierde_por_mesa": 0,
+   "optimal_pierde_por_linea": 0,
+   "delta_dia_porMesa_pct": 0.2976,
+   "delta_dia_porLinea_pct": 13.7221,
+   "denominador_poaDia_pairwise_porMesa": 67362.6,
+   "peor": {
+    "min": 480,
+    "hora": "08:00",
+    "dLinea": 110.19676619801734,
+    "dMesa": 0,
+    "pwMesa": 315.9254348443084,
+    "pwLinea": 198.653550056451,
+    "difMetrica": 7.075118589840088
+   }
+  }
+ }
+}

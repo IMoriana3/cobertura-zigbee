@@ -897,18 +897,14 @@ function strInvCotas(segs,invRows,pitchMod,gapDrive,filaLen,opt){
     return [{inv:invRows[r],k:k,w:null,mods:mods}];
   }));
 }
-/* ESCALA DE COLOR (v1.18). La rampa se estiraba SIEMPRE del mínimo al máximo
-   de la vista, así que a mediodía —cuando ninguna mesa tiene sombra, todas
-   están al 99 % y el rango entero son 15 W/m² sobre 1.009, un 1,5 %— la planta
-   salía en arcoíris, como si unas produjeran el doble que otras. Por defecto
-   la escala se ANCLA A CERO: el color es proporcional a lo que produce cada
-   string y una planta sin sombra sale de un color. «Contraste» mantiene el
-   mín→máx de siempre para mirar diferencias finas, y entonces la leyenda dice
-   qué porcentaje del máximo abarca ese tramo. */
-function rangoColor(mn,mx,modo){
-  if(modo==='rel')return {lo:mn,hi:mx,rel:true};
-  return {lo:Math.min(0,mn),hi:Math.max(mx,mn+1e-9),rel:false};
-}
+/* ESCALA DE COLOR (v1.18) — LA REGLA YA NO VIVE AQUÍ (v1.22). Subió al bloque
+   FÍSICA PURA de `backtracking.html`, que es de donde esta página extrae todo
+   lo demás, porque el simulador la necesitaba igual y una segunda copia se
+   desincroniza el día que alguien toque una: `rangoColor` + `normProd`.
+   La lección que la motivó, que es de esta página, viaja con ella: la rampa se
+   estiraba SIEMPRE del mínimo al máximo de la vista, así que a mediodía —sin
+   sombra, todas al 99 %, un rango de 15 W/m² sobre 1.009— la planta salía en
+   arcoíris. */
 
 /* strings de El Burgo → su MESA y su ALA (v1.14): cada string del plano cae
    dentro de la mesa de su tracker (verificado en elburgoSegs). En la mesa
@@ -1912,6 +1908,7 @@ async function cargaFisica(){
     const src=html.slice(html.lastIndexOf('/*',i0),i1);
     F=new Function(src+`
       return {poaPlant,anglesPairwise,anglesManual,anglesAstro,skyWithClouds,prodColor,
+              rangoColor,normProd,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
               policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,
               surfaceOrient};`)();
@@ -2938,8 +2935,8 @@ function repaint(){
   // el rango es polvo de coma flotante (1e-13) y el min→máx lo amplificaba a
   // colores de escala completa — «¿por qué esas producen menos?» sin producir
   // menos. Umbral: 0,1 % del máximo (o 1e-9 absoluto).
-  const esc=rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs');
-  const norm=(v,lo,hi)=>{const s=esc.hi-esc.lo;return s>Math.max(1e-9,Math.abs(esc.hi)*1e-3)?(v-esc.lo)/s:0.5;};
+  const esc=F.rangoColor(mn,mx,($('cscale')&&$('cscale').value)||'abs');
+  const norm=(v,lo,hi)=>F.normProd(v,esc);
   paintLegend(mn,mx,unit,fmt,esc);
   if(R3.inst)updateInstanced(c,vals,mn,mx,norm,inst,segVals,wingVals);
   else for(let r=0;r<c.nrows;r++){

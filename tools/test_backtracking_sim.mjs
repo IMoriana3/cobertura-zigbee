@@ -216,10 +216,73 @@ const sandbox = new Function(sol + '\n' + src + `
            pairsFromElev, elevFromPairs, solarPos, bt3dPairMaxMag, nsSegments, plantFromCotas,
            shadeBand3DAll, anglesOptimalFree, policyAngles, iamAshrae, PEREZ_BINS, PEREZ_F,
            airmassKY, dniExtra, surfaceOrient, skyWithClouds, anglesManual, prodColor,
+           rangoColor, normProd,
            anglesPairwiseSeg, anglesAstroSeg, applyDriveSeg, policyAnglesSeg, poaPlantSeg,
            segTiltAt, segZAt, pairsFromElevX, segsBroadcast, segLineMean, slewLimitSeg, slewLimit, mvPara, rangoHaz, rangosFila, rangosUnidad, repairNoShade, mulberry32, driveCoupleSafe, certifica, crearLazo, crearLazoSeg,
            westPorMesa, ejesPorMesa, pvTilt, shadePair3DBand, driveGroups, effRowTilts, rotulaMesas, E_EMPATE_W };`);
 const F = sandbox();
+
+/* ── LA ESCALA DE LA RAMPA DE COLOR (v1.76) ────────────────────────────────
+   La regla vive en FÍSICA PURA y `produccion.html` la extrae de aquí, así que
+   lo que se fija es que sea UNA y que haga lo que dice. */
+t('v1.76 · la rampa se ANCLA A CERO por defecto, y «contraste» sigue existiendo', () => {
+  /* el caso de `produccion.html`: sin sombra, todas al 99 %, 15 W/m² de rango
+     sobre 1.009. Con mín→máx la planta salía en arcoíris. */
+  const esc = F.rangoColor(994, 1009, 'abs');
+  if (esc.rel) throw new Error('la escala fiel no puede declararse relativa');
+  if (esc.lo !== 0) throw new Error('la escala fiel tiene que anclarse en 0 y arranca en ' + esc.lo);
+  const lo = F.normProd(994, esc), hi = F.normProd(1009, esc);
+  if (hi - lo > 0.05)
+    throw new Error('con 1,5 % de rango la escala fiel reparte ' + (100 * (hi - lo)).toFixed(1) +
+                    ' % de la rampa: eso es el arcoíris que esto viene a quitar');
+  /* y contraste TIENE que seguir estirando, o se ha perdido la herramienta de
+     inspección en vez de arreglar la lectura por defecto */
+  const rel = F.rangoColor(994, 1009, 'rel');
+  if (!rel.rel) throw new Error('el modo contraste no se declara relativo');
+  if (Math.abs(F.normProd(994, rel) - 0) > 1e-9 || Math.abs(F.normProd(1009, rel) - 1) > 1e-9)
+    throw new Error('contraste tiene que repartir la rampa entera entre mín y máx');
+});
+
+t('v1.76 · el POLVO de coma flotante no se amplifica a escala completa', () => {
+  /* `mx > mn` a secas —lo que este simulador tenía— es cierto con 1e-13 de
+     diferencia, y entonces dos mesas que producen LO MISMO salen en extremos
+     opuestos de la rampa. Umbral: 0,1 % del máximo. */
+  const esc = F.rangoColor(1009, 1009 + 1e-13, 'rel');
+  const a = F.normProd(1009, esc), b = F.normProd(1009 + 1e-13, esc);
+  if (Math.abs(a - 0.5) > 1e-9 || Math.abs(b - 0.5) > 1e-9)
+    throw new Error('con 1e-13 de dispersión la rampa devuelve ' + a.toFixed(3) + '/' + b.toFixed(3) +
+                    ' en vez de 0,5: el polvo se está pintando como diferencia real');
+  // y una dispersión REAL sí se normaliza, o el umbral se habría comido todo
+  const real = F.rangoColor(500, 1000, 'rel');
+  if (Math.abs(F.normProd(500, real) - 0) > 1e-9 || Math.abs(F.normProd(1000, real) - 1) > 1e-9)
+    throw new Error('el umbral se está comiendo dispersiones reales');
+});
+
+t('v1.76 · la página PINTA con esa regla, y la leyenda declara cuál está puesta', () => {
+  const app = html.slice(html.indexOf('/* FIN-FÍSICA'));
+  if (!/const pesc=rangoColor\(pmin,pmax,/.test(app))
+    throw new Error('el coloreado no pasa por `rangoColor`: sigue con su propia escala');
+  if (!/const x01=normProd\(val,pesc\);/.test(app))
+    throw new Error('el tinte no normaliza con `normProd`');
+  if (/x01=pmax>pmin\?/.test(app))
+    throw new Error('sigue el `pmax>pmin` a pelo, que es el que amplifica el polvo');
+  if (!/id="colscale"/.test(html))
+    throw new Error('no hay selector de escala: la herramienta de contraste se habría perdido');
+  if (!/se reparten/.test(app))
+    throw new Error('la leyenda no dice cuánto abarca el tramo en contraste');
+});
+
+t('v1.76 · la escala es UNA: produccion.html no vuelve a tener su copia', () => {
+  const prod = fs.readFileSync(path.join(ROOT, 'produccion.html'), 'utf-8');
+  if (/\nfunction rangoColor\s*\(/.test(prod))
+    throw new Error('produccion.html ha vuelto a declarar `rangoColor` por su cuenta: ' +
+                    'dos copias de la misma regla de lectura se desincronizan');
+  if (!/F\.rangoColor\(/.test(prod) || !/F\.normProd\(/.test(prod))
+    throw new Error('produccion.html ya no usa la regla compartida');
+  if (!/rangoColor,normProd,/.test(prod))
+    throw new Error('produccion.html no exporta la regla del bloque extraído: la llamada sería undefined');
+});
+
 
 console.log('nubosidad · manual · colores (v1.40)');
 t('nubosidad a 0 es NO-OP EXACTO (mismo objeto, ===)', () => {
