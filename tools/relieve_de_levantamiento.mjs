@@ -59,6 +59,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -285,8 +286,17 @@ for (const planta of PLANTAS) {
             + ' m y difieren hasta ' + Math.max(...paso2).toFixed(3) + ' m en cota;');
   console.log('     con paso de malla ' + PASO + ' m caen en celdas contiguas y la bilineal reparte)');
 
+  /* LA VERSION DEL PRODUCTOR VA DENTRO DEL FICHERO, y se sube A MANO cuando
+     cambia como se construye la malla -el empalme, el densificado, los radios
+     del IDW-. No es la version del repo: lo que le importa a quien consume es
+     si la malla se hizo con el MISMO metodo, no si alguien toco un comentario.
+     Quien la lea puede decir «este terreno es de la v1» sin mirar el diff. */
   const salida = {
     planta, crs: L.crs, cE: L.cE, cN: L.cN, x0, n0, paso: PASO, nx, nn,
+    productor: 'relieve_de_levantamiento.mjs v1',
+    tipo: 'empalme',            // empalme | levantamiento | dem | curvas
+    generado: new Date().toISOString().slice(0, 10),
+    eje_m: EJE, eje_medido: false,
     fuente: planta + '_cotas.json (levantamiento) + DEM Terrarium z' + ZOOM,
     nota: 'suelo = DEM + residuo IDW del levantamiento, el mismo empalme que hace terreno.html. '
         + 'Cota de suelo = base + y - (eje ' + EJE.toFixed(2) + ' DECLARADO + off ' + OFF + '); '
@@ -299,11 +309,32 @@ for (const planta of PLANTAS) {
         + 'Generado por tools/relieve_de_levantamiento.mjs',
     z
   };
+  /* EL SHA SE CALCULA SOBRE EL TEXTO QUE SE ESCRIBE, no sobre el objeto: es el
+     que va a comprobar quien lo consuma, y tiene que ser byte a byte lo mismo.
+     Se imprime siempre, se escriba o no, para poder carearlo sin tocar disco. */
+  const texto = JSON.stringify(salida);
+  const sha = crypto.createHash('sha256').update(texto, 'utf8').digest('hex');
+  console.log('  productor  ' + salida.productor + '  ·  tipo ' + salida.tipo);
+  console.log('  sha256     ' + sha);
   if (ESCRIBE) {
     const destino = path.join(RAIZ, planta + '_relieve.json');
-    fs.writeFileSync(destino, JSON.stringify(salida));
+    fs.writeFileSync(destino, texto);
     console.log('  ESCRITO ' + planta + '_relieve.json  ('
               + (fs.statSync(destino).size / 1048576).toFixed(2) + ' MB)');
+    /* Y EL MANIFIESTO, que es lo que viaja con el preset del proyecto. El
+       fichero no puede llevar su propio sha dentro -se mordería la cola-, así
+       que vive aquí al lado y es lo que Siting comprueba. */
+    const man = path.join(RAIZ, planta + '_relieve.sha256.json');
+    fs.writeFileSync(man, JSON.stringify({
+      fichero: planta + '_relieve.json', sha256: sha, bytes: texto.length,
+      productor: salida.productor, tipo: salida.tipo, generado: salida.generado,
+      planta, crs: L.crs, cE: L.cE, cN: L.cN, paso: PASO, nx, nn,
+      eje_m: EJE, eje_medido: false,
+      _que_es: 'Manifiesto del terreno de esta planta. Viaja con el preset del proyecto; '
+             + 'quien consuma el fichero comprueba este sha256 antes de usarlo. '
+             + 'El sha se calcula sobre el TEXTO del JSON, byte a byte.'
+    }, null, 2) + '\n');
+    console.log('  ESCRITO ' + planta + '_relieve.sha256.json');
   } else {
     console.log('  (sin --write: no se ha escrito nada)');
   }
