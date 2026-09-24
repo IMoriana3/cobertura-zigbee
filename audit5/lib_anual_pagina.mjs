@@ -31,6 +31,7 @@ function linea(src, cabecera) {
 }
 
 export function rutasAnuales(ROOT, html) {
+  if (html.includes('function* anualGen(')) return rutaUnica(ROOT, html);
   const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
   const i0 = html.indexOf('FÍSICA PURA'), i1 = html.lastIndexOf('/* FIN-FÍSICA');
   const fisica = html.slice(html.lastIndexOf('/*', i0), i1);
@@ -56,4 +57,30 @@ export function rutasAnuales(ROOT, html) {
       segOn, segCmd, POL_POR_MESA, VER: ${JSON.stringify(VER)}
     };`)();
   return { F, fuentes: { boton: boton.length, informe: gr.length, fuera: fuera.length } };
+}
+
+/* Desde el paso 2 hay UNA ruta (`function* anualGen`) y dos consumidores: el
+   botón la drena (`drenaGen`) y el informe la consume con `yield*`. Se corta
+   la ruta, `drenaGen` y el informe tal cual; el botón es una línea que llama a
+   `anualGen` (lo exige tools/test_anual_lazo.mjs) y aquí se reproduce igual. */
+function rutaUnica(ROOT, html) {
+  const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
+  const i0 = html.indexOf('FÍSICA PURA'), i1 = html.lastIndexOf('/* FIN-FÍSICA');
+  const fisica = html.slice(html.lastIndexOf('/*', i0), i1);
+  const ruta = cuerpo(html, 'function* anualGen('), drena = cuerpo(html, 'function drenaGen(');
+  const gr = cuerpo(html, 'function* grAnualGen(');
+  const fuera = [cuerpo(html, 'function segOn('), linea(html, 'const POL_POR_MESA='), cuerpo(html, 'function segCmd(')].join('\n');
+  const VER = /const VER='([^']+)'/.exec(html)[1];
+  const F = new Function(sol + '\n' + fisica + '\n' + fuera + '\n' + ruta + '\n' + drena + `
+    return {
+      boton(c, T, Tcfg, POLICIES) { return drenaGen(anualGen(c, T, Tcfg, POLICIES.filter(P => P.on))).tot; },
+      informe(DAY, POLICIES, grDiferida, cloudCC) {
+        const GR = {}; const grFirma = () => 'arnés';
+        ${gr}
+        for (const _ of grAnualGen());
+        return GR.anual;
+      },
+      segOn, segCmd, POL_POR_MESA, VER: ${JSON.stringify(VER)}
+    };`)();
+  return { F, fuentes: { ruta: ruta.length, informe: gr.length, fuera: fuera.length } };
 }
