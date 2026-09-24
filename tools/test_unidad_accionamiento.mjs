@@ -152,7 +152,11 @@ if (MAIN) {
    de líneas en contacto 3D (residuo < −1 mm) de lo que `true3d` PUBLICA (la
    media de línea de sus mesas) no pueden aumentar respecto a main.
    CONTROL NEGATIVO: sin la reparación tiene que ponerse roja (medido: 119 frente
-   a 53). `mgl` no entra: 40-90 s por instante en Ayora; su contacto se mide en
+   a 53).
+   LÍMITE CONOCIDO: verifica que NO EMPEORA respecto a main, no que la reparación
+   funcione. Si mañana se rompe de otra forma que deje 53 parejas o menos,
+   pasaría. Hoy la ata su control negativo: el único defecto conocido, quitar la
+   reparación, da 119 y la pone roja. `mgl` no entra: 40-90 s por instante en Ayora; su contacto se mide en
    audit5/, no aquí, y queda dicho. */
 if (MAIN) {
   const INST48 = [];
