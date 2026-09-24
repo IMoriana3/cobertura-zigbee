@@ -209,12 +209,30 @@ Tal como queda, **no es implementable en una TCU**.
 
 ### Lo que falta para decidir: el MODO DEGRADADO (siguiente PR, no este)
 
-Encargado por el titular. Con la decisión nueva y el plan precargado, UNA
-unidad fuera de plan (aparcada, en stow, con encoder inválido):
+Encargado por el titular y ampliado antes de medirlo. Se mide con **DOS
+arquitecturas**, porque la NCU sí puede calcular y repartir: es lo que hace el
+proveedor de control en El Burgo.
+
+- **(i) PLAN ABIERTO.** La NCU calcula una vez y reparte, y nadie relee. Es lo
+  que se rompe cuando un seguidor no sigue el plan.
+- **(ii) LAZO CERRADO.** La NCU lee el encoder de todos, recalcula con las
+  posiciones REALES y vuelve a repartir en cada ciclo.
+
+Para cada una, con UNA unidad fuera de plan (aparcada, en stow, con encoder
+inválido):
 
 - sombra real resultante en sus vecinas;
 - cuántas unidades se ven afectadas por una sola que falle;
-- lo mismo con `pairwiseLocal`, que no depende de nadie.
+- lo mismo con `pairwiseLocal`, que no depende de nadie: es la referencia.
+
+**Medida nueva, la que decide si (ii) es viable:** cuánto tarda la NCU en leer
+a todas sus TCU y repartir, con el número real de unidades de Ayora y de San
+José, y si eso cabe en el paso de control. Se usa lo que el repo sepa del
+enlace de radio de las TCU. Lo que no sepa sale `NO DISPONIBLE`, con a quién
+preguntar.
+
+**Qué hace el sistema mientras el lazo no ha cerrado:** se declara, y el
+fallback **nunca** puede ser el caso optimista.
 
 Criterio del titular:
 
