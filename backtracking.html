@@ -126,7 +126,7 @@
     rígida / bifila quebrada e implantación real a lo largo del eje (trackers cortos, tresbolillo,
     huecos). La escena 3D usa el MODELO del seguidor de la casa (<code>seguidor.js</code>). Todo corre offline.</div>
   <div class="src">motor: pvlib singleaxis + shaded_fraction geométrico + Martinez + Ineichen/Perez ·
-    QA integrada con ray-cast bruto · <span id="verlbl"></span> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
+    QA integrada con ray-cast bruto · <span id="verlbl"></span> · <button class="btn small" id="cfgexp" title="Baja un JSON con TODO lo que define el estado de la página (emplazamiento, geometría, TCU, terreno con sus cotas, implantación, políticas, instante, manual) más la versión y el hash de la configuración. Para reproducir una anomalía: se manda el fichero, no una captura.">⤓ configuración</button> <label class="btn small" title="Carga un JSON exportado con ⤓ y reproduce el estado exacto. Al terminar comprueba que el hash de la página es el del fichero, y si no, dice qué campos difieren." style="cursor:pointer">⤒ cargar<input type="file" id="cfgimp" accept=".json,application/json" style="display:none"></label> <span id="cfgmsg" style="font-family:var(--mono);font-size:.7rem"></span> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
 </header>
 
 <div class="wrap">
@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.1';
+const VER='v1.80.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -4808,6 +4808,7 @@ async function loadRealPlant(name,blockIdx,ncuSel){
     // el BLOQUE es la unidad con forma real (la planta se parte por sus
     // huecos de x); hasta 80 líneas — más ya no es una escena, es la planta
     const P=plantFromCotas(data,80,blockIdx);
+    P.origen={tipo:'cotas',nombre:name,bloque:blockIdx==null?null:blockIdx,ncu:ncuSel==null?null:ncuSel};   // v1.80.0: para exportar la configuración
     PLANT_REAL=P;
     // la FICHA de configuración (lo que de verdad se escribe en cada TCU), si
     // la planta la tiene publicada. Opcional: sin ella el selector se queda
@@ -5211,7 +5212,8 @@ async function loadLayoutPlant(name){
              pitch:pitch,cw:2.382,maxAngle:55,drive:drive,
              xFrom:lineX2[0],xTo:lineX2[nR-1],
              nFilas:nFilas,nPairs:groups?groups.length:0,
-             blocks:[{i:0,lines:nR,filas:nFilas}],block:0};
+             blocks:[{i:0,lines:nR,filas:nFilas}],block:0,
+             origen:{tipo:'layout',nombre:name}};   // v1.80.0: para exportar la configuración
     PLANT_REAL=P;
     ELEV=P.elev.slice();
     if(isFinite(lay.clat)&&isFinite(lay.clon)){$('lat').value=(+lay.clat).toFixed(5);$('lon').value=(+lay.clon).toFixed(5);}
@@ -8298,7 +8300,7 @@ let RECOMP_TOKEN=0;
 function recompute(light){
   $('gcr').value=(cfg().cw/cfg().pitch).toFixed(3);
   rebuildSelectors();
-  if(typeof DAY==='undefined'||!DAY){computeDay();recomputeTail(light);return;}
+  if(typeof DAY==='undefined'||!DAY){computeDay();recomputeTail(light);finCalculo();return;}
   const my=++RECOMP_TOKEN;
   ocupado(true,0);
   const g=computeDayGen();
@@ -8327,6 +8329,7 @@ function recompute(light){
     if(!r.done){ocupado(true,r.value);setTimeout(paso,0);return;}
     ocupado(false);
     recomputeTail(light);
+    finCalculo();                     // v1.80.0: suelta a quien espera (cargar configuración)
   })();
 }
 function recomputeTail(light){
@@ -9769,6 +9772,208 @@ function grInit(){
     ['gr1','gr2','gr3','gr4','gr5'].forEach(id=>{const e=$(id);if(e)ro.observe(e);});
   }
 }
+
+/* ── v1.80.0 · EXPORTAR / IMPORTAR CONFIGURACIÓN ───────────────────────────
+   «Hoy una anomalía se comunica con capturas y nadie puede reproducir el
+   estado» (titular, 2026-09-24). El botón ⤓ baja un JSON con TODO lo que define
+   el cálculo y la escena; el ⤒ lo carga y reproduce el estado exacto. Es
+   reproducibilidad, no comodidad: un informe de defecto pasa a ser un fichero.
+
+   QUÉ LLEVA. `config` es lo que entra en el HASH: emplazamiento, geometría,
+   TCU, accionamiento, perfil N-S, terreno transversal (preset, parámetro y las
+   COTAS que resultaron, que son las que se calculan: el preset solo es cómo se
+   generaron, y el editor del corte 2D las mueve a mano), implantación, planta
+   real si la hay (cuál, bloque y NCU: se reconstruye con SU cargador),
+   políticas activas y la de la escena, careo, instante, fila y mando manual.
+   `vista` va FUERA del hash: la cámara y las capas del 3D cambian cómo se mira,
+   no lo que se calcula, y la cámara se mueve con cada arrastre —si entrara, dos
+   exportaciones del mismo estado darían hashes distintos—. Se restaura igual.
+   `ver` también va fuera: el hash identifica la CONFIGURACIÓN; `ver` dice qué
+   simulador la evaluó. Mismo hash con otra `ver` = mismo estado en otro código.
+
+   EL HASH es SHA-256 del JSON CANÓNICO de `config` (claves ordenadas, sin
+   espacios; los números con el `toString` de JS, que es exacto en ida y vuelta).
+   Síncrono y propio —no `crypto.subtle`— para que funcione también abriendo el
+   fichero en local (file://), donde el contexto no siempre es seguro.
+
+   CARGAR SE COMPRUEBA SOLO: tras reproducir, se vuelve a sacar la
+   configuración de la página y se compara su hash con el del fichero. Si no
+   casan, se dice QUÉ campos difieren en vez de fingir que cargó (p. ej. una
+   planta de la cartera que no está en el localStorage de este navegador).
+   Banco: tools/test_config_json.mjs. */
+const CFG_FORMATO='bt-config/1';
+function sha256Hex(s){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const b=new TextEncoder().encode(s), n=((b.length+9+63)>>6)<<6, m=new Uint8Array(n);
+  m.set(b); m[b.length]=0x80;
+  const bits=b.length*8, dv=new DataView(m.buffer);
+  dv.setUint32(n-8,Math.floor(bits/0x100000000)); dv.setUint32(n-4,bits>>>0);
+  const H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19], W=new Array(64);
+  const rot=(x,k)=>(x>>>k)|(x<<(32-k));
+  for(let o=0;o<n;o+=64){
+    for(let i=0;i<16;i++)W[i]=dv.getUint32(o+4*i);
+    for(let i=16;i<64;i++){
+      const s0=rot(W[i-15],7)^rot(W[i-15],18)^(W[i-15]>>>3), s1=rot(W[i-2],17)^rot(W[i-2],19)^(W[i-2]>>>10);
+      W[i]=(W[i-16]+s0+W[i-7]+s1)|0;
+    }
+    let [a,bb,c,d,e,f,g,h]=H;
+    for(let i=0;i<64;i++){
+      const t1=(h+(rot(e,6)^rot(e,11)^rot(e,25))+((e&f)^(~e&g))+K[i]+W[i])|0;
+      const t2=((rot(a,2)^rot(a,13)^rot(a,22))+((a&bb)^(a&c)^(bb&c)))|0;
+      h=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0;
+    }
+    H[0]=(H[0]+a)|0;H[1]=(H[1]+bb)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+h)|0;
+  }
+  return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+}
+function canonJSON(v){
+  if(Array.isArray(v))return '['+v.map(canonJSON).join(',')+']';
+  if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonJSON(v[k])).join(',')+'}';
+  return JSON.stringify(v===undefined?null:v);
+}
+const hashConfig=C=>sha256Hex(canonJSON(C));
+/* la configuración que define el estado, leída de los MANDOS (no de cfg(),
+   que recorta y deriva: lo que se exporta es lo que hay escrito, y lo que se
+   carga se escribe igual) */
+function configEstado(){
+  const num=id=>+$(id).value, n=cfg().nrows;
+  return {
+    emplazamiento:{planta_cartera:$('plant').value, lat:num('lat'), lon:num('lon'), fecha:$('date').value,
+      utc:num('tz'), altitud:num('alt'), albedo:num('albedo'), linke:num('tl'), nubosidad:num('cloud')},
+    geometria:{pitch:num('pitch'), cuerda:num('cw'), gcr:$('gcr').value, theta_max:num('maxang'), filas:num('nrows'),
+      azimut_eje:num('axaz'), cara_sup_eje:num('z0'), nb:num('nbp'), iam_b0:num('iam')},
+    tcu:$('tcucfg').value,
+    accionamiento:$('drive').value,
+    perfil_ns:{preset:$('nspreset').value, valor:num('axtilt')},
+    terreno:{preset:$('tpreset').value, parametro:num('tparam'), cotas:ELEV.slice(0,n)},
+    implantacion:{preset:$('nsl').value, filas_por_linea:num('ntrk'), modulos_por_ala:num('mods')},
+    planta_real:PLANT_REAL&&PLANT_REAL.origen?Object.assign({},PLANT_REAL.origen):null,
+    politicas:{inteligencia:$('brainsel').value, activas:POLICIES.filter(P=>P.on).map(P=>P.key), escena:$('polview').value},
+    careo:{on:!!CAREO, libro:!!CAREO_LIBRO, previas:CAREO_PREV?POLICIES.filter((P,i)=>CAREO_PREV.pol[i]).map(P=>P.key):null,
+      escena_previa:CAREO_PREV?CAREO_PREV.view:null},
+    instante:{minuto:num('hour'), fila:num('rowsel')},
+    manual:{on:$('manual').checked, por_fila:$('manrow').checked, theta:num('manth'), filas:MANUAL_ROWS?MANUAL_ROWS.slice():null},
+  };
+}
+function vistaEstado(){
+  const v={tab3d:!!VIEW3D, capas:{etiquetas:$('lbl3d').checked, produccion:$('colprod').value, escala:$('colscale').value,
+    rayo:$('ray3d').checked, haz:$('haz3d').checked, luz:$('light3d').value}, camara:null};
+  if(typeof TD!=='undefined'&&TD&&TD.camera&&TD.controls)
+    v.camara={pos:TD.camera.position.toArray(), objetivo:TD.controls.target.toArray()};
+  return v;
+}
+function exportaConfig(){
+  const C=configEstado();
+  return {formato:CFG_FORMATO, ver:VER, hash:hashConfig(C), exportado:new Date().toISOString(), config:C, vista:vistaEstado()};
+}
+/* ESPERAR AL CÁLCULO: recompute() trocea y termina cuando termina. Cada
+   fin de cálculo suelta a quien espere (ver `finCalculo` en recompute). Con
+   tope, para que una carga que no llega a calcular no se quede colgada. */
+let _esperasCalculo=[];
+function finCalculo(){_esperasCalculo.splice(0).forEach(f=>f());}
+function esperaCalculo(ms){
+  return new Promise((res,rej)=>{
+    const t=setTimeout(()=>rej(new Error('el cálculo no terminó en '+((ms||900000)/1000)+' s')),ms||900000);
+    _esperasCalculo.push(()=>{clearTimeout(t);res();});
+  });
+}
+/* las diferencias campo a campo entre dos configuraciones (para decir QUÉ no casó) */
+function difConfig(a,b,pre){
+  const out=[];
+  if(canonJSON(a)===canonJSON(b))return out;
+  if(a&&b&&typeof a==='object'&&typeof b==='object'&&!Array.isArray(a)&&!Array.isArray(b)){
+    for(const k of new Set([...Object.keys(a),...Object.keys(b)]))out.push(...difConfig(a[k],b[k],(pre?pre+'.':'')+k));
+    return out;
+  }
+  return [pre||'(raíz)'];
+}
+async function cargaConfig(doc){
+  if(!doc||doc.formato!==CFG_FORMATO||!doc.config)throw new Error('no es una configuración '+CFG_FORMATO);
+  const C=doc.config;
+  /* INTEGRIDAD antes que nada: el hash del fichero tiene que ser el de SU
+     configuración. Si alguien la edita a mano y deja el hash, la página
+     reproduciría lo editado, su hash casaría campo a campo con el fichero y la
+     comprobación del final diría que todo va bien — el banco lo cazó (D). */
+  const integro=hashConfig(C)===doc.hash;
+  // 1 · la planta real se reconstruye con SU cargador (trae segmentos, tilts
+  //     por mesa y parejas que no caben en las cotas por línea)
+  if(C.planta_real){
+    const o=C.planta_real, p=esperaCalculo();
+    if(o.tipo==='cotas')await loadRealPlant(o.nombre,o.bloque,o.ncu);
+    else await loadLayoutPlant(o.nombre);
+    if(!PLANT_REAL||!PLANT_REAL.origen||PLANT_REAL.origen.nombre!==o.nombre)
+      throw new Error('no se pudo cargar la planta real «'+o.nombre+'»: '+$('realnote').textContent);
+    await p;
+  }else{PLANT_REAL=null;$('realnote').style.display='none';}
+  // 2 · los mandos, escritos SIN disparar sus `change` (que, entre otras cosas,
+  //     abandonan la planta real o reponen el parámetro del preset)
+  const E=C.emplazamiento, G=C.geometria, set=(id,v)=>{$(id).value=v;};
+  if([...$('plant').options].some(o=>o.value===E.planta_cartera))set('plant',E.planta_cartera);
+  set('lat',E.lat);set('lon',E.lon);set('date',E.fecha);set('date2',E.fecha);set('tz',E.utc);set('alt',E.altitud);
+  set('albedo',E.albedo);set('tl',E.linke);set('cloud',E.nubosidad);
+  set('pitch',G.pitch);set('cw',G.cuerda);set('maxang',G.theta_max);set('nrows',G.filas);set('axaz',G.azimut_eje);
+  set('z0',G.cara_sup_eje);set('nbp',G.nb);set('iam',G.iam_b0);
+  set('tcucfg',C.tcu);set('drive',C.accionamiento);
+  set('nspreset',C.perfil_ns.preset);set('axtilt',C.perfil_ns.valor);
+  set('tpreset',C.terreno.preset);if(typeof tparamLabel==='function')tparamLabel();set('tparam',C.terreno.parametro);
+  set('nsl',C.implantacion.preset);set('ntrk',C.implantacion.filas_por_linea);set('mods',C.implantacion.modulos_por_ala);
+  ELEV=C.terreno.cotas.slice();
+  ensureElev(cfg().nrows);
+  // 3 · políticas y careo
+  set('brainsel',C.politicas.inteligencia);
+  POLICIES.forEach(P=>{P.on=C.politicas.activas.includes(P.key);});
+  const K=C.careo||{};
+  CAREO=!!K.on; CAREO_LIBRO=!!K.libro;
+  CAREO_PREV=K.previas?{pol:POLICIES.map(P=>K.previas.includes(P.key)),view:K.escena_previa}:null;
+  CAREO_RES=null;
+  $('careo').checked=CAREO;$('careolibro').checked=CAREO_LIBRO;$('careolibro').disabled=!CAREO;$('careolibrolbl').style.opacity=CAREO?1:.5;
+  buildPolicyBox();
+  set('polview',C.politicas.escena);             // antes del cálculo: rebuildSelectors lo conserva si existe
+  topeManual();
+  const p=esperaCalculo(); recompute(); await p;
+  // 4 · instante, fila y mando manual (sobre el DAY ya calculado)
+  rebuildSelectors();
+  set('polview',C.politicas.escena);
+  set('hour',C.instante.minuto);$('hourlbl').textContent=hhmm(+$('hour').value);
+  set('rowsel',C.instante.fila);
+  const M=C.manual;
+  $('manual').checked=M.on;$('manth').disabled=!M.on;$('manrow').disabled=!M.on;$('manrow').checked=M.por_fila;
+  set('manth',M.theta);$('manthlbl').textContent=(+$('manth').value)+'°';
+  MANUAL_ROWS=M.filas?M.filas.slice():null;
+  // 5 · la vista (fuera del hash)
+  const V=doc.vista;
+  if(V){
+    if(V.capas){$('lbl3d').checked=!!V.capas.etiquetas;set('colprod',V.capas.produccion);set('colscale',V.capas.escala);
+      $('ray3d').checked=!!V.capas.rayo;$('haz3d').checked=!!V.capas.haz;set('light3d',V.capas.luz);}
+    setTab(!!V.tab3d);
+    if(V.camara&&typeof TD!=='undefined'&&TD&&TD.camera&&TD.controls){
+      TD.camera.position.fromArray(V.camara.pos);TD.controls.target.fromArray(V.camara.objetivo);TD.controls.update();
+    }
+  }
+  INSTANT=null;drawScene();drawCurves();update3D();updateBtUI();
+  // 6 · la comprobación: ¿la página está en el estado del fichero?
+  const ahora=configEstado(), h=hashConfig(ahora);
+  return {ok:integro&&h===doc.hash, integro:integro, hash:h, esperado:doc.hash, difieren:difConfig(doc.config,ahora)};
+}
+function avisoCfg(txt,mal){const s=$('cfgmsg');s.textContent=txt;s.style.color=mal?'var(--err)':'var(--ok)';}
+$('cfgexp').onclick=()=>{
+  const d=exportaConfig(), a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,1)],{type:'application/json'}));
+  a.download='bt_config_'+d.config.emplazamiento.fecha+'_'+hhmm(d.config.instante.minuto).replace(':','')+'_'+d.hash.slice(0,8)+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  avisoCfg('exportada · '+d.hash.slice(0,12));
+};
+$('cfgimp').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  try{
+    const r=await cargaConfig(JSON.parse(await f.text()));
+    avisoCfg(r.ok?'cargada · '+r.hash.slice(0,12)+' = el fichero'
+      :!r.integro?'el fichero NO casa con su propio hash (editado a mano o dañado): cargado, pero no es el estado exportado'
+      :'NO reproduce el fichero: difieren '+r.difieren.join(', '),!r.ok);
+  }catch(err){avisoCfg('no se pudo cargar: '+(err&&err.message||err),true);}
+  e.target.value='';
+};
 
 /* arranque: restaurar config guardada si la hay */
 (function(){
