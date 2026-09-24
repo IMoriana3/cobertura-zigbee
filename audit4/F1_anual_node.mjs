@@ -106,7 +106,11 @@ const salida = {
   kwh_m2_de_los_meses_corridos: Object.fromEntries(POLS.map(k => [k, +tot[k].toFixed(6)])),
   delta_vs_pairwise_pct: Object.fromEntries(POLS.map(k => [k, +(100 * (tot[k] / tot.pairwise - 1)).toFixed(6)])),
 };
-const dest = (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || 'audit4/out/anual.json';
-fs.mkdirSync(path.dirname(path.join(ROOT, dest)), { recursive: true });
-fs.writeFileSync(path.join(ROOT, dest), JSON.stringify(salida, null, 1));
+/* `path.join(ROOT, dest)` con una ruta ABSOLUTA la pega detrás de ROOT y
+   escribe en un sitio que nadie mira: la primera corrida dejo el JSON en
+   `<ROOT>/tmp/claude-0/...`. Se respeta la ruta absoluta. */
+const dest0 = (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || 'audit4/out/anual.json';
+const dest = path.isAbsolute(dest0) ? dest0 : path.join(ROOT, dest0);
+fs.mkdirSync(path.dirname(dest), { recursive: true });
+fs.writeFileSync(dest, JSON.stringify(salida, null, 1));
 console.log(JSON.stringify(salida, null, 1));

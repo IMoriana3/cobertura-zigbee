@@ -819,6 +819,39 @@ jobs:
         # exista NO pasa en verde: el banco aborta con la lista de las que hay.
         run: node tools/${{ matrix.banco }} ${{ matrix.arg }}
 
+  # ── EL CAREO DE MOTORES: FUERA DE LA PUERTA, A PROPÓSITO ──────────────────
+  # R4 fase 4.4. Este job compara el backtracking del JS con el de
+  # `tracker3d.py` (SolarGPTfull) sobre los vectores sellados de `canon/`, y
+  # SALE EN ROJO: los dos motores divergen hasta 62°. Ese rojo es el hallazgo,
+  # no un fallo de la rama que lo cruza — por eso NO está en `needs:` de la
+  # puerta y no bloquea ningún PR.
+  #
+  # Lo que SÍ bloquea es el empeoramiento: el banco lleva trinquete contra
+  # `canon/trinquete_careo.json` y falla si alguna política se aparta más que
+  # la cifra registrada. Bajar la tolerancia para verlo verde está prohibido
+  # por el encargo y el banco no tiene ninguna perilla para hacerlo: la única
+  # forma de mover la línea es reescribir el trinquete a mano, con `--registra`,
+  # y entonces el commit enseña qué se movió.
+  #
+  # La columna Python va CONGELADA en `canon/out/careo_py.json` porque aquí no
+  # se clona `SolarGPTfull`. La produce `canon/careo_python.py` a mano y lleva
+  # dentro el commit del motor del que salió; el banco lo imprime en cada
+  # corrida. Eso es una ETIQUETA, no una comprobación de frescura: si el motor
+  # Python se mueve y nadie regenera, este job seguirá en verde careando una
+  # versión que ya no existe. Se dice para que nadie lo confunda.
+  careo:
+    name: careo JS↔python (informativo, fuera de la puerta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cobertura-zigbee
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: cobertura-zigbee }
+      - name: paridad contra los vectores sellados
+        run: node tools/test_careo_motores.mjs
+
   # ── LA PUERTA ─────────────────────────────────────────────────────────────
   # Un solo check que resume a TODOS, para que la proteccion de rama tenga
   # UNA casilla que marcar.
