@@ -400,6 +400,67 @@ No se decide nada hasta tenerla. Si la sombra explica la ventaja en Ayora y en
 los presets se pierde, hay algo de la geometría real que el criterio de
 contacto 3D no ve: mesas partidas, morros o longitudes distintas.
 
+## (c) AMPLIADO · 2: la descomposición — el acople paga por HAZ, no por sombra. REFUTACIÓN — PARADA
+
+**La medida.** `audit5/P3_3c_descompone.mjs`, salida en
+`audit5/out/P3_3c_descompone_{6,12}.{txt,json}`.
+
+- **Qué se compara:** el ángulo que EJECUTA la página, en el paso 2 y en (a).
+  Sale de `segCmd` cortado de la página → lazo por mesa → tope, en Ayora, cada
+  5 min.
+- **Cómo se evalúa:** con una sola física, descompuesto por mesa como lo suma
+  `poaPlantSeg`: `v = beam·(1−se) + circ·(1−fo) + sky + gnd`.
+- **Controles:**
+  - la suma de los términos reproduce `poaPlantSeg` (peor diferencia por
+    instante, 4e-12 W/m²);
+  - el cierre del día es de 1e-15 kWh/m²;
+  - TEST NULO: los dos términos difieren entre el paso 2 y (a).
+
+| `true3d`, (a) − paso 2 | 21-jun | 21-dic |
+|---|---|---|
+| ΔE total | −0,036288 kWh/m² (**−0,381 %**) | −0,013014 (**−0,548 %**) |
+| término de **ÁNGULO** (sin sombra) | **−0,039688 (−0,417 %)**: haz −0,033554, circunsolar −0,003691, cielo+suelo −0,002443 | **−0,014796 (−0,624 %)**: haz −0,012041, circ −0,001763, cielo+suelo −0,000992 |
+| término de **SOMBRA** | **+0,003400 (+0,036 %)**: pérdida por sombra 0,007709 → 0,004309 | **+0,001782 (+0,075 %)**: 0,004895 → 0,003113 |
+
+**Lo que dice.**
+
+- **La sombra NO explica la pérdida: va en contra.** Con (a) hay MENOS sombra
+  (−44 % el 21-jun, −36 % el 21-dic). Toda la pérdida, y algo más, está en el
+  ángulo de incidencia, y el 85 % de ella en el haz directo.
+- **El acople de líneas enteras no ganaba sombreando menos.** Ganaba dando a las
+  líneas un ángulo con mejor incidencia del haz.
+- Encaja con los presets: si lo que mueve la energía es el AOI, imponer un
+  ángulo común ayuda o estorba según cómo estén repartidos los tilts, y eso
+  depende de la planta. En Ayora ayuda; en relieve genérico estorba hasta un
+  4,8 %.
+
+**REFUTACIÓN de la premisa del paso 3.** El problema no es el acople: es el
+CRITERIO con el que decide `true3d`.
+
+- **La premisa:** retirar el acople corrige el modelo sin coste, y lo que había
+  que conservar era la ausencia de contacto.
+- **Lo medido:** `true3d` decide con el contacto 3D, que no gobierna lo que se
+  cobra. El contacto apenas mueve la energía (la sombra es del 0,03-0,08 % del
+  día), y el ángulo de incidencia la mueve cuatro veces más.
+- **Por qué el acople arreglaba algo:** alineaba las líneas y, en Ayora, por
+  casualidad de su geometría, las acercaba a su óptimo de haz. `true3d` nunca
+  lo buscó.
+- **Es el mismo defecto que `optimal` tenía con `poaPlant`/`poaPlantSeg`**
+  (R4 fase 1): la decisión optimiza una cosa y la energía la cobra otra, ahora
+  en otra política y con otro par de criterios.
+- **Consecuencia:** el paso 3 deja de ser «retirar el acople» y pasa a ser
+  «revisar con qué criterio decide `true3d`». Toca también al paso 5: un
+  optimizador de conjunto que decida por contacto repetiría el mismo defecto.
+
+**Lo que NO se sabe todavía.**
+
+- `mgl`: sus días están en pausa y no se han medido.
+- Si hay otras políticas con el mismo desajuste entre criterio y cobro.
+- Qué criterio debería usar `true3d`. Candidatos: ¿el POA por mesa, como
+  `optimal` desde la v1.76?
+
+**PARO aquí.** La decisión es del titular: (b'), (a) o reformular el paso 3.
+
 ## Incidencia · la primera corrida del banco del paso 3 murió en silencio
 
 La corrida de `tools/test_unidad_accionamiento.mjs` (PID 17739) terminó tras la
