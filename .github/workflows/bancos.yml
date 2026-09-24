@@ -604,10 +604,26 @@ jobs:
           - { banco: test_apoyo_soporte.mjs }
           # Y ESTE IGUAL: sin argumentos imprimia «no se puede ir bajo tierra»
           # sin haber mirado nada. Se le dan dos plantas y no mas, MEDIDO: Tunez
-          # 84 s y Fayon 110 s, pero El Burgo pasa de 600 s el solo — diez veces
-          # lo que cuesta una planta chica, con 215 seguidores contra 24. Eso no
-          # es el presupuesto de CI: es este banco, que deberia mirarse. Se deja
-          # fuera A PROPOSITO y con el numero delante, no por olvido.
+          # 84 s y Fayon 110 s, pero El Burgo pasa de 600 s el solo.
+          #
+          # YA SE POR QUE, y no era lo que yo decia. No es recompilacion de
+          # shaders —los programas GL no se mueven, mismas claves de cache frame
+          # a frame— ni el mapa de sombras —congelarlo no cambia nada— ni JS —el
+          # hilo esta ~84 % OCIOSO, esperando al proceso grafico—. Es un ESCALON
+          # por numero de instancias, medido con `tools/perfil_frames.mjs`:
+          #
+          #     Tunez      236.829 instancias    6,7 s/frame
+          #     Fayon      246.525              6,5
+          #     El Burgo   440.097             51,8
+          #     Paramo     545.867             66,8
+          #
+          # 1,8 veces las instancias cuestan 7,9 veces el tiempo, y por encima
+          # del escalon vuelve a ser casi lineal. POR QUE hay escalon se queda
+          # sin saber: cae del lado del proceso grafico y el perfilador no lo ve.
+          #
+          # Tunez y Fayon son justo las dos que quedan POR DEBAJO, cosa que se
+          # habia acertado por medida y sin saber el motivo. Y ojo para el dia
+          # que se amplie: PARAMO ES PEOR QUE EL BURGO.
           - { banco: test_suelo.mjs, arg: 'tunez fayon', nombre: 'suelo · dos plantas', tope: 25 }
           # Las HSU son REPETIDORES, como todo equipo de esta red, y la suya es la antena
           # mejor colocada (6,50 m contra 3,15 de una NCU). Vigila una PROPIEDAD, no un
