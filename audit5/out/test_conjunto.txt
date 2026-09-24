@@ -1,0 +1,10 @@
+R5 · banco de la política conjunto sin sombra evitable (simulador v1.78.1) · E_EMPATE_W = 0.05 W/m² (:967)
+  ✓ 2.6a · NUNCA POR DEBAJO de pairwise: POA del ganador ≥ POA de pairwise − E_EMPATE_W — ganador − pairwise (W/m²): 72/95: 0.000 · 78/105: 31.860 · 70/265: 11.084 · 80/250: 30.359
+  ✓ CONTROL NEGATIVO de 2.6a: una «política» que deja todo plano (0°) SÍ cae por debajo de pairwise — el plano queda por debajo en 4 de 4 soles
+  ✓ 2.6b · SOMBRA EVITABLE CERO en el ganador — 4 soles, 0 mesas con sombra evitable
+  ✓ CONTROL NEGATIVO de 2.6b: el ganador SIN la restricción, evaluado con ella, SÍ deja sombra evitable — sin restricción queda sombra evitable en 2 de 4 soles
+  ✓ 2.6c · RESTRINGIDA A UN θ COMÚN, coincide con pairwise: mismo θ en la rejilla de 0,1° y POA dentro de E_EMPATE_W — 72/95: θ 33.20 vs 33.20 (θ_bt 33.234) · 78/105: θ 20.30 vs 20.30 (θ_bt 20.334) · 70/265: θ -39.60 vs -39.60 (θ_bt -39.663) · 80/250: θ -17.00 vs -17.00 (θ_bt -17.028)
+  ✓ CONTROL NEGATIVO de 2.6c: el θ común SIN la restricción de sombra NO coincide con pairwise — sin restricción se aparta en 2 de 4 soles (hasta 38.0°)
+  ✓ la ganancia sin sombra sobre pairwise, a la vista (el hallazgo de las filas alternas, SIN PUBLICAR hasta cerrar difusa enmascarada, mismatch y albedo) — 72/95: 0.00 % (33.2/33.2/33.2/33.2/33.2/33.2/33.2) · 78/105: 6.15 % (41.7/0.0/41.7/0.0/41.7/0.0/55.0) · 70/265: 1.29 % (-55.0/-33.8/-43.8/-37.4/-41.1/-38.8/-40.2) · 80/250: 7.08 % (-42.3/0.0/-34.1/-4.4/-29.2/-7.6/-25.8)
+
+7/7 comprobaciones en verde

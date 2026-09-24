@@ -446,6 +446,11 @@ jobs:
       # banco sale 1 si falla alguna.
       - name: el motor de sombra por proyección
         run: node audit5/test_motor.mjs
+      # R5 · fase 2: la política «conjunto sin sombra evitable». 2.6 reescrito
+      # (opción 1): nunca por debajo de pairwise, sombra evitable cero, y en θ
+      # común coincide con pairwise; cada una con su control negativo.
+      - name: la política de conjunto sin sombra evitable
+        run: node audit5/test_conjunto.mjs
       # Las dos herramientas de campo, que no estaban en CI. Ninguna llama a
       # `process.exit`: `careo_produccion` publica «veredicto: IDÉNTICOS» o su
       # contrario y SALE 0 en los dos casos, así que un `run:` pelado habría sido
