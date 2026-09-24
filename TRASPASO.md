@@ -8,6 +8,56 @@ el Panel. Este fichero es lo equivalente para las **plantas**.
 
 ---
 
+## ⚠ UNA PUERTA VERDE AFIRMA DOS COSAS (2026-09-23)
+
+**«He mirado» y «está bien». Hasta hoy sólo comprobábamos la segunda.**
+
+Esto no es una idea: es lo que ha aparecido **cuatro veces en un día**, y las
+cuatro habrían pasado la prueba clásica de «rompe la puerta y mira si salta».
+
+| dónde | miraba | de cuántos |
+|---|---|---|
+| la regex de la HSU | se paraba en el paréntesis de `projX(glon)` | — |
+| `auditoria_verdes.mjs` | 3 ficheros | de 17 pasos |
+| `careo_terreno_3d.mjs` | 1 planta | de 11 |
+| `gate_ps1_planta.py` | **0 ficheros `.ps1`** y decía «ninguno se rompería» | de 6 |
+
+Las cuatro **funcionaban** sobre lo que miraban. Romperles el dato de dentro las
+ponía rojas, como debe ser. Lo que ninguna decía es **cuánto había mirado**.
+
+### La regla que sale de aquí
+
+> Cada puerta publica su **ALCANCE** —cuántos ficheros, casos, plantas o líneas
+> examina, **de cuántos existen**— y cuando el alcance es parcial o cero sale
+> con **rc = 2** o en rojo, nunca en verde.
+
+Con la convención de códigos de salida que ya usamos (#738):
+
+```
+0  ha mirado lo suficiente Y está bien
+1  ha mirado y está MAL
+2  no ha mirado lo suficiente — «no comprobado» ≠ «comprobado y pasa»
+```
+
+Y el piso del alcance se **mide**, no se pone a ojo, igual que los pisos de
+comprobaciones de `factiun-cartera/tests/correr.sh`: se baja a propósito y con
+el motivo escrito, para que el cambio se vea en el diff.
+
+### Por qué el negativo solo no basta
+
+Romper la puerta prueba que **reacciona a lo que mira**. No prueba que mire
+donde debe. Son dos fallos distintos y el segundo es el caro, porque produce un
+verde tranquilizador en vez de un rojo.
+
+*(Y un aviso de dentro de la propia prueba: al mutar `-UseBasicParsing` con un
+`sed` que buscaba el guion, la mutación NO casó —en el splat va
+`UseBasicParsing = $true`, sin guion— y la puerta salió verde. Un segundo más y
+lo habría apuntado como «regla dormida». Una mutación que no casa es rc = 2, no
+«no cazada»; esa distinción ya está escrita en el corredor de mutaciones y vale
+igual cuando la mutación la escribe uno a mano.)*
+
+---
+
 ## Estado por planta
 
 | Planta | Layout 3D | Layout 2D | Cobertura | Siting | Tipos reales del DWG | Georref. |
@@ -893,3 +943,15 @@ lo que salga de él va rotulado, y por eso hay que regenerarlo.
 
 La herramienta que saca el careo planta por planta es `Siting/tools/malla_plantas.mjs`, y entra en
 la CI de Siting con un arranque sobre El Burgo.
+
+---
+
+## Cómo se comprueba una comprobación
+
+El estándar de puertas —piso por banco, alcance publicado, los tres estados
+MIDE / NO COMPROBADO / ROJO— vive en un solo sitio:
+**[`proyectos/docs/puertas-y-alcance.md`](https://github.com/IMoriana3/proyectos/blob/main/docs/puertas-y-alcance.md)**.
+
+Un original y enlaces; dos copias divergen. `docs/enlace_guia.sh` comprueba en
+CI que este enlace apunta a algo que existe — un enlace roto a la guía de
+puertas sería el chiste final.
