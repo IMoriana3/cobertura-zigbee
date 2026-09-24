@@ -177,11 +177,39 @@ la fase A, solo en cómo se etiqueta el A.4.
      (`:7813`) en el anual. Usa `DEADBAND_DEG=1.0` (`:3493`) y
      `TRACKER_SLEW=0.17` (`:3476`). Para (b) hay que construir un lazo que
      avance cada 30 s.
-   - El ciclo de 30 s lo da el titular. En el repo, 30 s solo aparece como
-     cadencia de LECTURA de telemetría (`index.html:1206`, «Lee el registro
-     30111 de los TCU de la hoja cada 30 s»), no como ciclo de control. El dato
-     de firmware: **NO DISPONIBLE** en el repo; hay que preguntarlo a SUNNER
-     (TCU FW v1.4.3, mapa v6.1).
+   - El ciclo de 30 s lo da el titular. El dato de firmware: **NO
+     DISPONIBLE** en el repo; hay que preguntarlo a SUNNER (TCU FW v1.4.3,
+     mapa v6.1).
+   - **No cruzar dos números iguales que son cosas distintas.** En el repo, 30 s
+     solo aparece como cadencia de **TELEMETRÍA**: un script de campo que lee
+     el ángulo (registro 30111) de las TCU cada 30 s contra el MODBUS de la NCU
+     (`index.html:1206`, «Lee el registro 30111 de los TCU de la hoja cada
+     30 s»). **30 s de cadencia de telemetría NO es 30 s de ciclo de CONTROL.**
+     Que coincida el número es lo que hace peligrosa la confusión: ese
+     `index.html:1206` no confirma el ciclo de control.
+   - **LA FAMILIA DE LA HISTÉRESIS: parámetros que existen SOLO por el control,
+     no por la física.** Con mando ideal, ir y venir entre candidatos empatados
+     no cuesta nada, así que sobran. Inventario en `backtracking.html` (v1.80.0):
+
+     | parámetro | dónde | qué hace | con control ideal |
+     |---|---|---|---|
+     | `OPT_HISTERESIS=0.01` y el argumento `prev` | `:3096`; uso en `:3180` y `:3415` | `optimal` y `optfree` no cambian de pico si el otro no gana ≥ 1 % | sobra |
+     | `OPT_DF_MAX=null` | `:3116` | freno de la velocidad de `f` (desactivado: cuesta 1,9-2,4 %, medido en su comentario) | sobra, ya apagado |
+     | `TRACKER_SLEW=0.17` °/s, `slewLimit`, `slewLimitSeg` | `:3476`, `:3645`, `:2677` | límite de giro del actuador | sobra |
+     | `DEADBAND_DEG=1.0` | `:3493`; lazo en `crearLazo` `:3596-3598` | banda muerta: no se mueve por menos de 1° | sobra |
+     | umbral de llegada `lleg=0.5·db` | `:3599` | el lazo da por llegado a media banda | sobra |
+     | aparcamiento en consigna + banda (`S.park`) | `:3627` | el lazo se pasa una banda en la dirección del movimiento | sobra |
+     | `topeBacktracking(Seg)` con margen `DEADBAND_DEG` y `clampAdelantoDirigido` | `:3533`, `:3554`, `:3523` | limita el adelanto del lazo en backtracking | sobra: sin lazo no hay adelanto |
+     | cadencia del lazo `STEP_MIN=5` y `PASO_ANUAL_MIN=10` | `:5575`, `:7813` | cada cuánto actúa el lazo | solo muestrea la energía (punto 4) |
+     | ciclo de control de la TCU (30 s) y latencia de reparto de la NCU | **no existen en el código** | — | hay que AÑADIRLOS para (b) |
+
+     - **No es de esta familia** el tope mecánico ±θmáx: es física del
+       actuador y vale en los dos regímenes. En #751, sin fusionar, `crearLazo`
+       gana `tope` y `fija`: `tope` es física y `fija` es de la familia.
+     - **Cuando se mida el coste del control (b), se encienden TODOS a la vez,
+       no uno a uno.** Si se encienden por separado, el coste sale repartido y
+       no se ve. Una descomposición por parámetro, si se hace, va aparte y dice
+       que no suma.
 4. **El paso de integración** importa para (b) y no para (a). En control ideal
    solo afecta al muestreo de la energía, no a la decisión: se usa el que sea y
    se dice cuál.
@@ -197,6 +225,17 @@ sin lazo ni giro. Sus cifras comparan la decisión vieja con la nueva en esas
 mismas condiciones. **No son comparables con el anual de la página, que va con
 lazo**, y así se etiquetan. Tampoco son una cota superior de nada: son dos
 políticas evaluadas con el mismo control perfecto.
+
+**QUÉ NO SE COMPARA CON QUÉ: son tres regímenes distintos.**
+
+| régimen | qué mide | ejemplos |
+|---|---|---|
+| **A.4 de la fase A** | consigna **sin lazo ni giro** (control ideal) | `audit5/A4_efecto.mjs`, todas las tablas A.4 |
+| **anual de la página** | consigna **con lazo** (banda muerta y aparcamiento) | la columna del año, `grAnualGen` |
+| **#751** | **el efecto del giro** (tope tras el lazo, giro máximo, tope mecánico) | `audit_giro/G1-G3` |
+
+- Una cifra de A.4 no se resta ni se suma a una del anual ni a una de #751.
+- Tampoco se usa para «confirmar» ninguna de las otras dos.
 
 ## HALLAZGO · la etiqueta TCU/NCU es una restricción de información
 
