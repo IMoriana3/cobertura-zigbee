@@ -1,0 +1,95 @@
+{
+  "_que": "PARÁMETROS DECLARADOS DEL BT3D DE CONJUNTO. Un solo sitio: lo leen el lado JS (audit5/lib_parametros.mjs) y el optimizador Python (bt3d/parametros.py). El banco audit5/test_parametros.mjs cae si los dos resuelven algo distinto, o si esto se aparta del simulador en lo que el simulador también fija.",
+  "version": 1,
+  "convencion_signo": {
+    "marco": "x = ESTE, y = NORTE, z = ARRIBA (m); ŝ = vector hacia el sol",
+    "theta": "θ > 0 ⇒ la cara mira al ESTE (su borde este BAJA). Es el signo de pvlib trueTrackAngle con eje N-S (sol.js:102-108) y el del motor (audit5/lib_proyeccion.mjs:8-9)",
+    "tau": "τ > 0 ⇒ el extremo NORTE de la mesa está MÁS ALTO; τ = atan2(z_N − z_S, n_N − n_S)",
+    "a_pvlib": "a pvlib se le pasa −τ (pvTilt, backtracking.html:606). Precedente medido: con +τ la divergencia JS↔Python del astronómico era ENTERA (R4-A)",
+    "pendiente_transversal": "cross_axis_tilt de pvlib con eje al norte: > 0 si el plano de ejes BAJA al este; slope = atan2(z_oeste − z_este, dx) (backtracking.html:4665-4667, y :718 para el terreno sintético)",
+    "tau_a_pvlib_signo": -1
+  },
+  "rejilla_deg": 0.1,
+  "banda_muerta_deg": 0.1,
+  "_rejilla_fuente": "PASO_BUSQ = 0.1 (backtracking.html:980): resolución de mando de la política. Banda muerta = la rejilla, declarada por el encargo",
+  "aoi_haz_deg": 88,
+  "_aoi_haz_fuente": "AOI_HAZ = 88 (backtracking.html:950), el techo del cono de haz de rangoHaz",
+  "margen_rango_deg": 2,
+  "_margen_rango_fuente": "rangoHaz: [min(ψ, pendiente, 0) − 2, max(ψ, pendiente, 0) + 2] (backtracking.html:987)",
+  "penumbra": "FUERA DEL MODELO. El sol es puntual: la sombra es geométrica, con borde nítido. El disco solar (0,53°) difumina el borde a 1 cm por metro de distancia al emisor aprox.; no se modela y no se corrige. Lo que dependa de un borde más fino que eso no es una afirmación del modelo.",
+  "envolvente": {
+    "que": "Emisores POTENCIALES (cualquier θ): cada mesa barre, al girar, un sólido que está dentro del cilindro de radio ρ alrededor de su eje. Condición necesaria de sombra: las proyecciones de los dos cilindros en la vista del sol se tocan (distancia entre los ejes proyectados ≤ 2ρ) y el emisor tiene algún punto más cerca del sol que algún punto del receptor.",
+    "rho": "hypot(cuerda/2, z0 + canto) + margen_m",
+    "canto_m": 0.04,
+    "margen_m": 0.02,
+    "_canto_fuente": "espesor de marco del módulo, declarado 40 mm (no hay ficha en el repositorio); el margen cubre la viga, que queda dentro del radio de todos modos"
+  },
+  "plantas": {
+    "ayora": {
+      "geometria": "ayora_cotas.json (levantamiento as-built) · banda = bloque 0 entero (lineasDesdeCotas(datos, 0)): 107 líneas, 1.708 mesas",
+      "x_fila": "levantamiento",
+      "_x_fila_nota": "cada mesa en la x de SU FILA medida, no en la de su línea (audit5/lib_mesas.mjs)",
+      "unidad": "accionamiento real: las mesas de un mismo tracker (tk), un motor, un θ (backtracking.html:1778-1788)",
+      "theta_max_deg": 55,
+      "_theta_max_fuente": "ayora_cotas.json 'limite': 55 → T.maxAngle = data.limite||55 (backtracking.html:1796)",
+      "theta_max_por_unidad": {},
+      "_theta_max_por_unidad_nota": "ninguna ficha trae un θmáx distinto por unidad; si llega, se escribe aquí por id de tracker y lo leen los dos lados",
+      "rango_haz": "por unidad y por instante: rangoHaz(zen, az, {maxAngle: θmáx de la unidad, axisAz: 0}, tilt de la unidad, pendiente transversal de la unidad) — backtracking.html:983-1000 con conoHaz :1026-1036",
+      "tilt_unidad": "media de los τ de las mesas de la unidad (grados)",
+      "pendiente_unidad": "la del plano de sus dos filas: atan2(z_oeste − z_este, x_este − x_oeste) con z en el centro de cada fila",
+      "cuerda_m": 2.384,
+      "_cuerda_fuente": "ayora_cotas.json 'cuerda'",
+      "z0_m": 0.17,
+      "_z0_fuente": "backtracking.html:186 input z0 value=0.17 (cara colectora sobre el eje, modelo de la casa)",
+      "nb": 2,
+      "nb_fuente": "CONFIGURADO a mano: backtracking.html:189 (el control de la página, value=2); nbFicha() no encuentra ninguna ficha que lo traiga (backtracking.html:4638-4650). Es un supuesto, no un dato de planta.",
+      "axis_az_deg": 0,
+      "convergencia_deg": 1.161,
+      "_convergencia_nota": "CALCULADA, no leída: (λ − λ0)·sen φ con UTM 30N (λ0 = −3°), de clat/clon de ayora_layout.json. El marco de ayora_cotas.json ES el UTM 30N del layout (EPSG:25830): ajuste de los 751 seguidores cotas↔layout, rotación −0,0003°, residuo p50 0,06 m / p95 0,10 m (bt3d, fase 0)."
+    },
+    "fayon": {
+      "geometria": "fayon_layout.json (24 seguidores, x/n del DWG) + fayon_relieve.json (DEM, paso 10 m). EL PLANO, NO LA MEDIDA: no hay levantamiento de cotas; el propio relieve dice validado=false, y el error del mismo producto donde sí se pudo medir fue p50 0,83 / 1,29 m y p95 2,37 / 3,77 m (Ayora / San José)",
+      "x_fila": "plano",
+      "_x_fila_nota": "sin levantamiento: la x de fila es la del DWG ± filaZ (3 m)",
+      "unidad": "accionamiento bifila (fayon_layout.json fuente_accionamiento: as-built confirmado por el propietario): 2 filas × 2 mesas por tracker, un motor",
+      "theta_max_deg": 55,
+      "_theta_max_fuente": "fayon_layout.json montaje.max_angle = 55 ('declarado por la casa · 55° en TODAS las plantas')",
+      "theta_max_por_unidad": {},
+      "rango_haz": "igual que Ayora",
+      "tilt_unidad": "media de los τ de las mesas, τ del DEM a lo largo de cada fila",
+      "pendiente_unidad": "igual que Ayora, con z del DEM",
+      "cuerda_m": 2.411,
+      "_cuerda_fuente": "fayon_layout.json mesa.modH 2,411 × 1V (montaje_origen.cuerda)",
+      "z0_m": 0.17,
+      "_z0_fuente": "el mismo valor de casa que Ayora (backtracking.html:186); no hay modelo propio de Fayón",
+      "nb": 2,
+      "nb_fuente": "CONFIGURADO a mano, como Ayora (backtracking.html:189); ninguna ficha de Fayón lo trae",
+      "axis_az_deg": 0,
+      "fila_offset_m": 3,
+      "_fila_offset_fuente": "fayon_layout.json mesa.filaZ",
+      "hueco_motor_m": 0.4,
+      "_hueco_motor_fuente": "fayon_layout.json mesa.gapDrive",
+      "convergencia_deg": -1.764,
+      "_convergencia_nota": "fayon_layout.json georef.nota: n es norte de CUADRÍCULA UTM 31N; convergencia −1,764° respecto al geográfico (la misma cuenta da −1,765°)"
+    }
+  },
+  "aplicar_convergencia": true,
+  "_aplicar_convergencia_nota": "DECISIÓN DEL TITULAR (2026-09-24): el BT3D la aplica; el simulador no. Convenio: γ = ángulo del norte geográfico al de cuadrícula, positivo si la cuadrícula está al este; el acimut del sol en el marco de la planta es az_malla = az − γ. Diferencia declarada entre el BT3D y la página, con su efecto medido (audit5/F0_convergencia.mjs).",
+  "dias": [
+    [
+      2026,
+      6,
+      21
+    ],
+    [
+      2026,
+      12,
+      21
+    ]
+  ],
+  "paso_min": 5,
+  "elev_min_deg": 0.5,
+  "_dias_nota": "los dos días del encargo (solsticios), cada 5 min, sol > 0,5° (el mismo criterio que audit5/F0_dimension.mjs)",
+  "cono_haz": "comentario",
+  "_cono_haz_nota": "DECISIÓN DEL TITULAR (2026-09-24): el BT3D usa la fórmula CORRECTA de conoHaz, la de su comentario (backtracking.html:992-994: sin λ = s·a con s·a = sen Z·cos ΔA·cos τ + cos Z·sen τ). La página usa la de backtracking.html:1030, con seno y coseno de τ cambiados, y NO se toca. Diferencia declarada y medida (audit5/F0_conohaz.mjs, audit5/F0_conohaz_anual.mjs)."
+}

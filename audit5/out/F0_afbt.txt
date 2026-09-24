@@ -1,0 +1,24 @@
+BT3D · F0.1 · Afección BT · terreno.html afbtLoc :1626-1631 · afbtSol :1632-1636 · afbtVecinos :1637-1673 · afbtDeficit :1710-1762 · simulador v1.78.1
+
+C1 · TANGENCIA (filas de 2000 m, planas, paso 6, cuerda 2.384, sol ⟂ eje, elevación 2-60°, Δh ∈ {0, ±0,3, ±0,8} m, sol E y O)
+     300 casos, 106 con recorte · en su dominio (290): máx |θ_afbt − θ_bt pvlib| = 0.0048° PASA · control con la pendiente de signo cambiado: 52.55° (el control cae: protege)
+     FUERA de su dominio: 10 casos en que pvlib libra la sombra pasando la horizontal (θ_bt de 0.75° a 6.97° al otro lado) y Afección BT da recorte TOTAL (θ = 0, «ni en plano se libra», :1757): Δh 0.3 sol E elev 4° · Δh 0.3 sol O elev 4° · Δh 0.8 sol E elev 6° · Δh 0.8 sol E elev 8° · Δh 0.8 sol E elev 10° · Δh 0.8 sol E elev 12° · Δh 0.8 sol O elev 6° · Δh 0.8 sol O elev 8° · Δh 0.8 sol O elev 10° · Δh 0.8 sol O elev 12°
+
+C2 · ESPEJO E↔O (400 casos aleatorios, 147 con recorte): máx |Δ| = 0.00e+0° PASA · control (espejo sin cambiar el lado): 55.00° (cae: protege)
+
+C3 · θ POR MESA · firma afbtDeficit(A,B,ladoB,sv0,gap): no recibe el θ del vecino; la sombra se evalúa con «ambas filas a tilt phi» (terreno.html:1749). NO PASA por construcción.
+     consecuencia (motor, filas planas de 50 m, paso 6, sol del este; A en el θ que Afección BT da por libre, B fila delantera en su θ astronómico):
+     elev  5° · recorte 47.33° · θA 7.67° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 100.00 %
+     elev 10° · recorte 39.08° · θA 15.92° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 45.91 %
+     elev 15° · recorte 29.35° · θA 25.65° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 17.57 %
+     elev 20° · recorte 15.59° · θA 39.41° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 4.04 %
+     elev 25° · recorte 0.00° · θA 55.00° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 0.00 %
+     elev 30° · recorte 0.00° · θA 55.00° θB 55.00° · sombra sobre A: gemelo 0.00 % · con B en su θ 0.00 %
+
+C4 · ENUMERACIÓN en Ayora (427 unidades, 1708 mesas; 21-jun y 21-dic cada 5 min; cada unidad a su θ astronómico; par = sombra > 1 cm²)
+     banda    instantes  pares reales  los cubre Afección BT   intra-unidad  mismo tubo  > 2,6·paso  fila trasera  quitado por el filtro de 2ª fila
+     <3°            14        318474   17980 (5.6 %)         17934 (5.6 %)  2271 (0.7 %)  226239 (71.0 %)  54050 (17.0 %)  0 (0.0 %)
+     3-10°          34        237523   43742 (18.4 %)        43554 (18.3 %)  5508 (2.3 %)  52517 (22.1 %)  92202 (38.8 %)  0 (0.0 %)
+     10-30°        129        126383   58935 (46.6 %)        57979 (45.9 %)  7507 (5.9 %)  4 (0.0 %)   1958 (1.5 %)  0 (0.0 %)
+     ≥30°          111             0   0 (0.0 %)             0 (0.0 %)     0 (0.0 %)   0 (0.0 %)   0 (0.0 %)     0 (0.0 %)
+     TOTAL         288        682380   120657 (17.7 %)
