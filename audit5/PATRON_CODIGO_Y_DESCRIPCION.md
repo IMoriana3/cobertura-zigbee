@@ -52,7 +52,7 @@ lado un control negativo que tenga que suspender: el tilt espejado. Y su hermana
 escrita en el contrato del paso 4 (`audit5/CONTRATO_BT.md`): **un esquema que
 nadie valida es un rastro, no la cosa** — por eso el esquema se valida contra el
 `T` que monta la página y contra seis mutaciones que tienen que suspender
-(`audit5/P4_valida_esquema.py`).
+(`tools/test_esquema_contrato.py`, en CI).
 
 **El décimo, por una tercera cara:** ni un comentario desactualizado ni un nombre
 mal leído. La solución y su razón estaban escritas y correctas, pero en UN sitio.
