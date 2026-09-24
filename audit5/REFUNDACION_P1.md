@@ -1,10 +1,11 @@
 # Refundación del BT · PASO 1 — La ruta anual pasa a la rama por mesa (P1 → c)
 
 **Encargo «REFUNDACIÓN DEL BT» (titular, 2026-09-24), paso 1.** Rama
-`claude/refundacion-p1-6th1im`, apilada sobre la fase A (#757). Simulador
-**v1.81.0**. La física no cambia: solo cambian las dos rutas anuales de la
-página, que están fuera del bloque FÍSICA PURA
-(`tools/test_caras_bajo_demanda.mjs`, 9/9: la física es la declarada de v1.80.0).
+`claude/refundacion-p1-6th1im`, **sobre `main`** (re-apilada por decisión del
+titular: su lógica no depende de la fase A, #757). Simulador **v1.81.0**. La
+física no cambia: solo cambian las dos rutas anuales de la página, que están
+fuera del bloque FÍSICA PURA (`tools/test_caras_bajo_demanda.mjs`, 9/9: la
+única diferencia de física con main es la etiqueta de versión).
 
 **El porqué, en una frase.** La «línea» agrupa hasta 35 filas bajo un ángulo
 cuando cada seguidor lleva su TCU. El anual decidía por línea y acoplaba las
@@ -91,14 +92,14 @@ paso 3: retirar `driveCoupleSafe` donde la unidad ya es el motor.
 Con mesas (`segOn(T)`), las DOS rutas anuales de la página hacen lo que el día:
 `segCmd` → lazo por mesa → `poaPlantSeg`.
 
-- **Botón del año** (`backtracking.html:7813-7839`):
+- **Botón del año** (`backtracking.html:7621-7650`):
   `const a=segA?segCmd(P.key,g.zen,g.az,Tcfg,T,irr,doy,c.albedo):policyAngles(…)`,
   `LZ[P.key]=segA?crearLazoSeg():crearLazo()` y
   `(segA?poaPlantSeg(…):poaPlant(…)).plant`.
-- **Informe gráfico** (`grAnualGen`, `:9805-9819`): lo mismo, sin lazo (el
+- **Informe gráfico** (`grAnualGen`, `:9606-9628`): lo mismo, sin lazo (el
   paso 2 unifica las rutas).
-- **Alcance, el de `POL_POR_MESA`.** `segCmd` (`:5610-5619`) manda por mesa solo
-  a `pairwise`, `astro`, `optimal` y `optfree` (`:5600`,
+- **Alcance, el de `POL_POR_MESA`.** `segCmd` (`:5418-5427`) manda por mesa solo
+  a `pairwise`, `astro`, `optimal` y `optfree` (`:5408`,
   `const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1};`). El resto
   reparte a sus mesas el ángulo de su línea. **`global` y `bt2d` NO migran**:
   en ellas el colapso a un ángulo ES la política. Cambia dónde se miden (por
@@ -118,7 +119,7 @@ Las dos comprobaciones viejas que exigían literales (`policyAngles(` y un solo
 
 ## 1.3 · Se elige por CORRECCIÓN, no por coste
 
-Queda escrito en el código (`backtracking.html:7814-7825`) y aquí. La rama por
+Queda escrito en el código (`backtracking.html:7622-7634`) y aquí. La rama por
 mesa **solo ahorra tiempo en `pairwise`**: 0,45× la de línea, 409 s frente a
 910 s con la máquina libre. En **`optfree` cuesta 1,41×**, con cota de 4 meses
 y la máquina compartida (R4 P1, `audit4/P1_ALCANCE_PAIRDZ.md:230-236`). Se
@@ -126,8 +127,8 @@ migra porque la ruta por línea mide otra planta, no porque sea más barata.
 
 ## 1.4 · Efecto antes/después en las nueve
 
-**ANTES** = `backtracking.html` de la fase A (v1.80.0). **DESPUÉS** = esta rama
-(v1.81.0). `audit5/P1_4_efecto_anual.mjs` ejecuta el **código real** de las
+**ANTES** = `backtracking.html` de `origin/main` (v1.78.1). **DESPUÉS** = esta
+rama (v1.81.0). `audit5/P1_4_efecto_anual.mjs` ejecuta el **código real** de las
 rutas anuales. `audit5/lib_anual_pagina.mjs` corta de la página el bucle del
 botón y `grAnualGen`, más `segOn`, `POL_POR_MESA` y `segCmd`, y los corre con
 su física. No es una reimplementación.
@@ -135,16 +136,18 @@ su física. No es una reimplementación.
 - **Día: sin cambio, por construcción.** El diff de este paso solo toca
   `$('yearbtn').onclick`, `grAnualGen`, `VER`, el banco y el documento; la
   serie del día no se toca.
-- **TEST NULO, preset senoidal sin mesas:** las nueve políticas, antes y
-  después, **idénticas bit a bit** (`audit5/out/P1_4_senoidal_boton.json`):
-  astro 2.509,4136 · global 2.463,6024 · row 2.463,3784 · bt2d 2.465,7726 ·
-  pairwise 2.225,6266 · true3d 2.214,7684 · mgl 2.225,8037 · optimal
-  2.509,9272 · optfree 2.510,6756 kWh/m²·año.
+- **TEST NULO, preset senoidal sin mesas:** EN CURSO, sobre la base `main`. La
+  primera corrida se hizo contra la fase A y dio las nueve idénticas bit a bit;
+  se repite porque la base cambió.
 - **Ayora, las nueve, ruta del botón: EN CURSO.** Una corrida por política.
   Su control negativo es que, con mesas, antes y después tienen que diferir.
 
 ## Errores propios (E-X1)
 
+- **E-X1-R1-2.** Las primeras corridas del 1.4 y del 2.1 se lanzaron contra la
+  base de la fase A. Con la decisión (iii) y el re-apilado sobre `main`
+  quedaron sin base válida: se pararon por PID y se relanzaron. Ninguna cifra
+  suya se publicó.
 - **E-X1-R1-1.** El script del 1.1 se escribió y lanzó desde el worktree de la
   fase A (`cz-fa`) y no desde el de este paso. Se vio antes del commit de la
   fase A: se excluyó allí y se trajo aquí al terminar la corrida. No llegó a
