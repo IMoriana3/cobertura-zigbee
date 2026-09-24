@@ -2,7 +2,7 @@
    Uso:  PUERTO=8127 node tools/test_produccion_lazo.mjs   (levanta su propio servidor si no hay)
 
    Los bancos Node de LÓGICA PURA ya comprueban la física del lazo; esto comprueba lo que solo se
-   ve en la página: que el selector se pueble con las nueve políticas, que el interruptor cambie de
+   ve en la página: que el selector se pueble con las diez políticas, que el interruptor cambie de
    verdad el θ pintado, que el CURSOR del lazo dé lo mismo que recorrer el día en orden —si no, la
    escena y la energía estarían contando dos físicas distintas— y lo que cuesta en tiempo mover el
    reloj hacia atrás, que es el precio declarado de que la banda muerta tenga memoria. */
@@ -74,10 +74,10 @@ const ui = await pg.evaluate(() => ({
 t('el núcleo del lazo ha cargado en la página (js/control_core.js)', () => {
   if (!ui.nucleo) throw new Error('CTRLCORE no está: el <script src> no ha entrado');
 });
-t('el selector trae las NUEVE políticas del bt3d, con su descripción', () => {
-  if (ui.pols.length !== 9) throw new Error(`${ui.pols.length} políticas: ${ui.pols.join(',')}`);
-  if (ui.titulos !== 9) throw new Error(`${ui.titulos} de 9 opciones llevan descripción`);
-  for (const k of ['pairwise','true3d','row','global','bt2d','mgl','optimal','optfree','astro'])
+t('el selector trae las DIEZ políticas del bt3d (la décima, coordinada, desde R5 fase A), con su descripción', () => {
+  if (ui.pols.length !== 10) throw new Error(`${ui.pols.length} políticas: ${ui.pols.join(',')}`);
+  if (ui.titulos !== 10) throw new Error(`${ui.titulos} de 10 opciones llevan descripción`);
+  for (const k of ['pairwise','true3d','row','global','bt2d','mgl','optimal','optfree','astro','coordinada'])
     if (!ui.pols.includes(k)) throw new Error(`falta la política ${k}`);
 });
 t('arranca en PAIRWISE y con el lazo APAGADO (quien no toque nada ve la página de antes)', () => {
