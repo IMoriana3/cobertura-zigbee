@@ -471,12 +471,14 @@ jobs:
       # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
       - name: el veto del óptimo puntúa con la métrica que se cobra
         run: node tools/con_piso.mjs tools/test_veto_por_mesa.mjs
-      # Refundación del BT, paso 3. La unidad es el ACCIONAMIENTO: en planta
-      # real con motores medidos, row, true3d y mgl ya no acoplan las dos líneas
-      # enteras de cada grupo, acoplan por motor. El banco compara con main (las
-      # seis que no cambian, bit a bit), trae su control negativo (con el cambio
-      # desarmado la comprobación 2 se pone roja) y carea la FUENTE DE MANDO de la
-      # página (`segCmd`, cortada tal cual) — regla R-1, audit5/REGLAS.md.
+      # Refundación del BT, paso 3 REFORMULADO (decisión del titular). row, true3d
+      # y mgl SIGUEN acoplando las dos líneas enteras de cada grupo: el acople
+      # queda DECLARADO junto al código como casualidad de la geometría de Ayora
+      # (retirarlo costaba −0,38/−0,55 % del día). El banco lo CUENTA —motores con
+      # θ distintos, y no más que en main—, exige que las nueve den lo mismo que
+      # main (con un desacople inyectado como control negativo), que true3d no
+      # publique más contactos 3D (sin la reparación, rojo) y que la declaración
+      # siga escrita. Carea la FUENTE DE MANDO de la página (`segCmd`) — R-1.
       - name: la unidad es el accionamiento
         run: |
           git fetch --no-tags --depth=1 origin main
