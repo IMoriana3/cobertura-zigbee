@@ -30,6 +30,7 @@ addEventListener('DOMContentLoaded',function(){
 <script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js?v=2.71"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <script src="equipos.js?v=1"></script><!-- FUENTE ÚNICA de la NCU y la HSU (compartida con el simulador de cobertura RF): cotas de los planos DR_NCU_v0 y FTR.24.00145_5_C -->
+<script src="orto.js"></script><!-- FUENTE ÚNICA de la ortofoto (compartida con plano.html y con el simulador de cobertura RF): qué servidores, en qué orden y cómo se numeran las teselas -->
 <script src="viento.js"></script><!-- FUENTE ÚNICA del abanderamiento (compartida con el gemelo digital): las cuatro estrategias canónicas de SolarGPT. Ver sim/README.md del gemelo -->
 <script src="js/cableado_core.js"></script><!-- núcleo PURO del cableado DC (sin THREE/DOM): lo testean en Node tools/test_cableado_core.mjs -->
 <style>
@@ -295,9 +296,11 @@ function pintaTeselas(sat){
     x.strokeText(t.fuente,px+12,py+12);x.fillText(t.fuente,px+12,py+12);});
   x.restore();
 }
-var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};SAT.fuente="ESRI";
-var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};PNOA.fuente="PNOA";   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
-function satSources(lat,lon){return (lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[PNOA,SAT]:[SAT];}   // España (península+islas): PNOA primero, ESRI de respaldo tesela a tesela
+/* De dónde sale la ortofoto: `orto.js`, FUENTE ÚNICA compartida con plano.html y
+   con el simulador de cobertura RF. Estaba escrito aquí, otra vez en plano.html
+   —y allí SIN PNOA, así que la misma planta salía borrosa— y una tercera en el
+   simulador. Aquí sólo quedan los alias con los nombres de siempre. */
+var SAT=Orto.ESRI, PNOA=Orto.PNOA, satSources=Orto.fuentes;
 var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
 
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
