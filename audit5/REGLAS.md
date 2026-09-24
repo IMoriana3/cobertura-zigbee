@@ -83,34 +83,48 @@ su piso sube en el mismo commit (trinquete). Si no, el margen entre lo que
 publica y su piso es espacio para encoger sin que nadie se entere. En el paso 3,
 `test_veto_por_mesa` pasa de 7 a 8 y `test_unidad_accionamiento` entra con 7.
 
-**Los dos casos son el mismo, y se registran juntos:**
+**La lección, corregida con el dato: no hace falta que entre nada nuevo para
+que un contador manual mienta. Basta con escribirlo.** El contador de la matriz
+`navegador` (`MATRIZ_SIN_MEDIR = 36`) no se quedó atrás: entró en 242f3aa (#755)
+cuando la matriz ya tenía **39 entradas (33 ficheros distintos)**. El 36 no
+casa con ninguna de las dos cuentas: era falso el día que se escribió. Medido
+reconstruyendo el workflow de aquel commit: 39 entradas entonces y 39 hoy.
 
-1. `test_anual_lazo` encogió de 12 a 10 comprobaciones sin avisar, y solo lo
-   paró su piso (arriba).
-2. El contador de la matriz `navegador` no sabía a cuántos vigilaba.
-   `tools/con_piso.mjs` decía `MATRIZ_SIN_MEDIR = 36`.
-   - Ese número entró en 242f3aa (#755), y ese mismo día la matriz ya tenía
-     **39 entradas (33 ficheros distintos)**. No entraron tres bancos después:
-     el 36 se contó a mano y ya era falso el día que se escribió.
-   - Medido reconstruyendo el workflow de aquel commit: 39 entradas entonces y
-     39 hoy, ninguna nueva y ninguna quitada.
-   - Además, `con_piso.mjs --tabla` no corría en ningún paso del CI.
+**Tres capas del mismo defecto:**
 
-**El vigilante necesita su propio vigilante.** Es la tercera vez que aparece la
-idea en este proyecto:
+1. **Un banco que puede encoger.** `test_anual_lazo` pasó de 12 comprobaciones
+   a 10 sin avisar, y solo lo paró su piso.
+2. **Un contador que lo vigila con un número falso.** El 36 de la matriz, contado a
+   mano.
+3. **Una guardia de ese contador que nadie ejecuta.** `con_piso.mjs --tabla`
+   existía y NO corría en ningún paso del CI.
+
+Es la tercera vez que aparece en este proyecto la idea de que el vigilante
+necesita su propio vigilante:
 
 - el banco de la barrera de órdenes salía 0 sin comprobar nada, porque el hook
-  terminaba al importarlo (`~/.claude/barreras/test_barrera.py`);
+  terminaba al importarlo;
 - el piso de `test_caras_bajo_demanda` estaba escrito y ningún paso lo aplicaba
-  (`bancos.yml`, «EL ÚNICO DE LOS 32 PISOS…»);
+  («EL ÚNICO DE LOS 32 PISOS…», `bancos.yml`);
 - y este contador.
 
-La corrección va en su propio PR (#760):
+**LA SALIDA: que el vigilante se incluya a sí mismo.** Añadir capas de
+vigilancia no corta la recursión: cada una podría volver a no ejecutarse o a
+contar a mano. La corta que la guardia viva en el CI como un banco más y se
+someta a la regla que aplica (#760):
 
-- la tabla se carea con el workflow en los dos sentidos:
-  - un banco que corre sin piso, o una entrada de la matriz sin registrar;
-  - un piso que ningún paso aplica, o una entrada registrada que ya no está;
-- `tools/test_piso_careo.mjs` trae cinco mutantes y exige rojo en cada uno.
+- el contador deja de ser un número escrito a mano y pasa a ser la LISTA de
+  entradas;
+- esa lista se carea con el workflow en los dos sentidos: un banco que corre
+  sin piso, o una entrada sin registrar; un piso que ningún paso aplica, o una
+  entrada registrada que ya no está;
+- el careo corre en CI como banco (`tools/test_piso_careo.mjs`), con cinco
+  mutantes que exige ver en rojo;
+- **ese banco tiene su propio piso, y el careo exige que esté registrado:** sin
+  su piso, la tabla sale roja (comprobado).
+
+Un vigilante que no se cuenta a sí mismo puede dejar de ejecutarse en silencio,
+como `--tabla`. Uno que se cuenta, no.
 
 **Bancos SIN piso:** las 39 entradas de la matriz `navegador`, más las tres
 exenciones con motivo (`test_nb_procedencia`, `test_dos_metricas`,
