@@ -41,8 +41,10 @@ T('lo que se suma sale del lazo, no de policyAngles directo', !!porElLazo,
   porElLazo ? 'paso(' + porElLazo[2] + ', …)' : 'no hay ninguna llamada a .paso(');
 if (porElLazo) {
   const v = porElLazo[2];
+  /* REFUNDACIÓN · PASO 1: con mesas el mando sale de `segCmd` (rama por mesa) y
+     sin mesas de `policyAngles`; las dos son «el mando de la política». */
   T('y lo que entra en el lazo es el mando de la política',
-    new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*policyAngles\\(').test(anual));
+    new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*(?:[A-Za-z_$][\\w$]*\\s*\\?\\s*segCmd\\([^;]*:\\s*)?policyAngles\\(').test(anual));
   const salida = /\.paso\([^)]*\)\s*;[\s\S]{0,200}?poaPlant\(([^)]*)\)/.exec(anual);
   T('y lo que entra en poaPlant es la SALIDA del lazo, no el mando',
     /tot\[P\.key\]\+=poaPlant\([^)]*,\s*lim\s*,/.test(anual) ||
@@ -52,10 +54,27 @@ if (porElLazo) {
 /* CONTROL NEGATIVO de las dos de arriba: sobre el código VIEJO tienen que fallar.
    Sin esto serían expresiones regulares que nadie ha visto ponerse rojas. */
 const viejo = anual.replace(/const lim=[^;]+;\s*/, '')
-                   .replace(/,\s*lim\s*,/, ',a,')
-                   .replace(/crearLazo\(/g, 'noCrearLazo(');
+                   .replace(/,\s*lim\s*,/g, ',a,')
+                   .replace(/crearLazo(Seg)?\(/g, 'noCrearLazo(');
 T('CONTROL · sobre el código de antes, el banco se pondría rojo',
-  !/crearLazo\(/.test(viejo) && !/,\s*lim\s*,/.test(viejo));
+  !/crearLazo(Seg)?\(/.test(viejo) && !/,\s*lim\s*,/.test(viejo));
+
+/* REFUNDACIÓN · PASO 1 · con mesas, el anual consume la RAMA POR MESA, como el
+   día: `segCmd` (única fuente del mando por mesa) → lazo por mesa → `poaPlantSeg`.
+   Se exige en las DOS rutas anuales de la página: la del botón y `grAnualGen`. */
+const g0 = html.indexOf('function* grAnualGen(');
+const gr = g0 >= 0 ? html.slice(g0, html.indexOf('GR.anual=', g0)) : '';
+T('el corte de grAnualGen no está vacío', gr.length > 300 && /for\(let mo=0;mo<12;mo\+\+\)/.test(gr), gr.length + ' caracteres');
+const porMesa = src => /(?:const|let)\s+segA\s*=\s*segOn\(T\)/.test(src)
+  && /segA\s*\?\s*segCmd\(/.test(src) && /segA\s*\?\s*poaPlantSeg\(/.test(src);
+T('con mesas, el anual del botón usa segCmd → crearLazoSeg → poaPlantSeg',
+  porMesa(anual) && /segA\s*\?\s*crearLazoSeg\(\)/.test(anual));
+T('con mesas, grAnualGen usa segCmd → poaPlantSeg', porMesa(gr));
+/* CONTROL NEGATIVO: el código de antes (policyAngles y poaPlant por línea) tiene
+   que ponerlas rojas */
+const deLinea = src => src.replace(/segA\s*\?\s*segCmd\([^:]*:\s*/g, '').replace(/segA\s*\?\s*poaPlantSeg\([^:]*:\s*/g, '(')
+                          .replace(/segA\s*\?\s*crearLazoSeg\(\)\s*:\s*/g, '');
+T('CONTROL · con el anual por línea de antes, las dos se pondrían rojas', !porMesa(deLinea(anual)) && !porMesa(deLinea(gr)));
 
 /* 2 · el paso, una sola vez y coherente con su ponderación */
 const pasos = [...anual.matchAll(/m\+=\s*([A-Za-z_$][\w$]*|\d+)/g)].map(m => m[1]);

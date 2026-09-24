@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.1';
+const VER='v1.81.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -7619,18 +7619,32 @@ $('yearbtn').onclick=()=>{
 
      EL PASO ES 10 MIN, y el bucle y su ponderación lo dicen los dos. */
   const PASO_ANUAL_MIN=10;
+  /* REFUNDACIÓN · PASO 1 · EL ANUAL CONSUME LA RAMA POR MESA, como el día.
+     Con mesas (`segOn(T)`), el mando sale de `segCmd` —la ÚNICA fuente del
+     mando por mesa, la misma que usa la serie del día—, pasa por un lazo POR
+     MESA y se mide con `poaPlantSeg`. Así, las cuatro de `POL_POR_MESA` deciden
+     por mesa y el resto (`global`, `bt2d`, `row`, `true3d`, `mgl`) reparte a sus
+     mesas el ángulo de su línea, que en `global` y `bt2d` ES la política: un
+     ángulo. Antes el anual decidía POR LÍNEA con `policyAngles` y medía con
+     `poaPlant`, y la ruta por línea acopla las DOS LÍNEAS ENTERAS de cada grupo
+     (`driveCoupleSafe`), cuando el motor real mueve cuatro mesas: en Ayora eso
+     es el 95,1 % de un hueco del 20,03 % (audit5/REFUNDACION_P1.md).
+     SE ELIGE POR CORRECCIÓN, NO POR COSTE: en `pairwise` la cadena por mesa
+     tarda 0,45× la de línea, pero en `optfree` 1,41× (medido en R4 P1).
+     Sin mesas, todo sigue como antes. */
+  const segA=segOn(T);
   for(let mo=0;mo<12;mo++){
     const ds=year+'-'+days[mo], doy=doyOf(ds);
-    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=crearLazo();
+    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=segA?crearLazoSeg():crearLazo();
     for(let m=0;m<1440;m+=PASO_ANUAL_MIN){
       const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
       if(g.elev<=0)continue;
       const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
       for(const P of POLICIES){
         if(!P.on)continue;
-        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        const a=segA?segCmd(P.key,g.zen,g.az,Tcfg,T,irr,doy,c.albedo):policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
         const lim=LZ[P.key].paso(a,PASO_ANUAL_MIN*60);
-        tot[P.key]+=poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
+        tot[P.key]+=(segA?poaPlantSeg(g.zen,g.az,T,lim,irr,doy,c.albedo):poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo)).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
       }
     }
   }
@@ -9597,6 +9611,7 @@ function* grAnualGen(){
      12 días × 144 pasos × política, y meter ahí las caras que nadie ha pedido
      es multiplicar por doce el problema que la fase 2 viene a arreglar. */
   const POLS=POLICIES.filter(P=>!grDiferida(P.key));
+  const segA=segOn(T);
   const mes={}, tot={};
   for(const P of POLS){mes[P.key]=[];tot[P.key]=0;}
   for(let mo=0;mo<12;mo++){
@@ -9608,8 +9623,9 @@ function* grAnualGen(){
       if(g.elev<=0)continue;
       const irr=skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen);
       for(const P of POLS){
-        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
-        const p=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant;
+        // REFUNDACIÓN · PASO 1: con mesas, la rama por mesa (ver el anual del botón)
+        const a=segA?segCmd(P.key,g.zen,g.az,Tcfg,T,irr,doy,c.albedo):policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+        const p=(segA?poaPlantSeg(g.zen,g.az,T,a,irr,doy,c.albedo):poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo)).plant;
         acc[P.key]+=p*(10/60)/1000;      // kWh/m² del día representativo
         sum[P.key]+=p; nn[P.key]++;      // media en W/m² sobre los instantes con sol
       }
