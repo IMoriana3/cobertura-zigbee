@@ -22,8 +22,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const OUT = path.join(ROOT, 'audit5', 'out');
-const bin = (p, m) => { const f = path.join(OUT, `P3r_mesa_${p}_${m}.bin`); if (!fs.existsSync(f)) return null; const b = fs.readFileSync(f); return new Float64Array(b.buffer, b.byteOffset, b.byteLength / 8); };
-const POLS = ['optimal', 'optfree', 'pairwise', 'true3d', 'row', 'global', 'bt2d', 'astro', 'mgl'];
+const SUF = (process.argv.find(a => a.startsWith('--sufijo=')) || '').slice(9);   // otra página: careo contra SU optimal
+const bin = (p, m) => { const f = path.join(OUT, `P3r_mesa_${p}_${m}${SUF}.bin`); if (!fs.existsSync(f)) return null; const b = fs.readFileSync(f); return new Float64Array(b.buffer, b.byteOffset, b.byteLength / 8); };
+const POLS = ['optimal', 'optfree', 'pairwise', 'true3d', 'row', 'global', 'bt2d', 'astro', 'mgl', 'coordinada'];
 const EPS = 1e-12, filas = [];
 const pc = (v, ref) => (100 * v / ref).toFixed(3) + ' %';
 for (const m of [6, 12]) {
@@ -50,4 +51,4 @@ for (const m of [6, 12]) {
 }
 const nulo = filas.filter(f => f.pol === 'optimal');
 console.log('\nTEST NULO · optimal contra sí mismo: ' + (nulo.length && nulo.every(f => f.dTotal === 0 && f.sombra[3] === 0 && f.objetivo[3] === 0) ? 'Δ = 0 exacto, todo en AOI con 0' : 'NO DA CERO'));
-fs.writeFileSync(path.join(OUT, 'P3r_careo.json'), JSON.stringify(filas, null, 1));
+fs.writeFileSync(path.join(OUT, `P3r_careo${SUF}.json`), JSON.stringify(filas, null, 1));

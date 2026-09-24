@@ -1,7 +1,7 @@
 /* PASO 3 REFORMULADO · ¿el criterio con el que DECIDE cada política gobierna lo
  * que se COBRA? Una política, un día.
  *
- *   node audit5/P3r_criterio.mjs <pol> <mes 6|12> [--json=RUTA]
+ *   node audit5/P3r_criterio.mjs <pol> <mes 6|12> [--json=RUTA] [--html=RUTA]
  *
  * La serie del día TAL CUAL la ejecuta la página (`segCmd` cortado de la página
  * → lazo por mesa → tope → ángulo ejecutado; Ayora, banda de la página, cielo
@@ -24,9 +24,14 @@ import { cargaSimulador, terrenoComoLaPagina } from './lib_simulador.mjs';
 import { rutasAnuales } from './lib_anual_pagina.mjs';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const [key, mesS] = process.argv.slice(2), mo = (+mesS) - 1;
+// `--sufijo=_757`: sus salidas van aparte y se carean contra el `optimal` de LA MISMA página
+const SUF = (process.argv.find(a => a.startsWith('--sufijo=')) || '').slice(9);
 const OUT = path.join(ROOT, 'audit5', 'out');
-const dest = path.resolve(ROOT, (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || `audit5/out/P3r_criterio_${key}_${mo + 1}.json`);
-const h = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+const dest = path.resolve(ROOT, (process.argv.find(a => a.startsWith('--json=')) || '').slice(7) || `audit5/out/P3r_criterio_${key}_${mo + 1}${SUF}.json`);
+// `--html=RUTA`: la página de OTRA rama (p. ej. `coordinada`, que solo existe en #757);
+// los datos de planta y sol.js siguen siendo los de esta.
+const HTML = (process.argv.find(a => a.startsWith('--html=')) || '').slice(7) || path.join(ROOT, 'backtracking.html');
+const h = fs.readFileSync(HTML, 'utf-8');
 const E = cargaSimulador(ROOT, ['crearLazoSeg', 'topeBacktrackingSeg', 'poaPlantSeg', 'shadeRows', 'poaRow', 'segTiltAt', 'elecLoss'], () => h).F;
 const P = rutasAnuales(ROOT, h).F, VER = /const VER='([^']+)'/.exec(h)[1];
 const datos = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));
@@ -65,7 +70,7 @@ for (let m = 0; m < 1440; m += STEP) {
   acc.E += plant * dt; acc.beam += b / wt * dt; acc.circ += c / wt * dt; acc.skygnd += sg / wt * dt; acc.perdB += pb / wt * dt; acc.perdC += pc / wt * dt; acc.n++;
 }
 fs.mkdirSync(OUT, { recursive: true });
-fs.writeFileSync(path.join(OUT, `P3r_mesa_${key}_${mo + 1}.bin`), Buffer.from(new Float64Array(det).buffer));
+fs.writeFileSync(path.join(OUT, `P3r_mesa_${key}_${mo + 1}${SUF}.bin`), Buffer.from(new Float64Array(det).buffer));
 const R = { pol: key, mes: mo + 1, VER, paso_min: STEP, ...acc, mesas_por_instante: mesasPorInstante, peor_reconstruccion_Wm2: peorRecon, s: Math.round((Date.now() - t0) / 1000), cpu: os.cpus().length };
 fs.writeFileSync(dest, JSON.stringify(R, null, 1));
 console.log(`${key.padEnd(9)} 21-${mo === 5 ? 'jun' : 'dic'}: E ${acc.E.toFixed(6)} · haz ${acc.beam.toFixed(6)} · circ ${acc.circ.toFixed(6)} · sky+gnd ${acc.skygnd.toFixed(6)} · sombra ${(acc.perdB + acc.perdC).toFixed(6)} kWh/m² · reconstrucción ${peorRecon.toExponential(1)} · ${acc.n} pasos × ${mesasPorInstante} mesas · ${R.s} s`);
