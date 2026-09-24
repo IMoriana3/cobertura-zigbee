@@ -86,7 +86,7 @@ const PISO = {
   'test_anual_motor.mjs': { piso: 19, alcances: { 'sin-hermano': 14 } },
   'test_cloud_shadows.mjs': 13,
   'test_overcast_sim.mjs': 111,
-  'test_modbus_map.mjs': 26,
+  'test_modbus_map.mjs': 51,
   'test_paquete_medida.mjs': 65,
   'test_malla_real.mjs': 30,
   'test_pilotes_dwg.mjs': 12,

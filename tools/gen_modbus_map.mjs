@@ -5,7 +5,16 @@
  * significan otra cosa. Esto lo genera del documento, así que no se puede volver a desviar.
  *
  *   tools/modbus_src/ncu_r7_hsu_r23.json   <- extract_modbus_xlsx.py  (NCU_Modbus_Map_R7.xlsx + HSU R23)
+ *   tools/modbus_src/ncu_r8.json           <- extract_modbus_xlsx.py  (NCU_Modbus_Map_R8.xlsx)
  *   tools/modbus_src/tcu_v6.json           <- extract_modbus_pdf.py   (SUNNER_TCU_ModbusMap_v6.pdf)
+ *
+ * LAS DOS REVISIONES DE LA NCU SE GUARDAN Y SE PUBLICAN LAS DOS. La tabla de la NCU es la
+ * UNION de R7 y R8, y cada registro lleva de que revision es: sin marca = esta en las dos,
+ * 'R8' = nuevo en el R8, 'R7' = estaba en el R7 y el R8 ya no lo trae, y ademas la lista de
+ * lo que cambia cuando la misma direccion dice cosas distintas en cada una. La pagina filtra
+ * por revision con un selector. No se sustituye una por otra porque en planta conviven: hay
+ * NCUs con firmware R7 —y El Burgo va incluso por debajo—, y un registro que solo existe en
+ * el R8 escrito contra una NCU R7 responde ilegal.
  *
  * Lo que el documento NO trae y sí aporta la herramienta (conversiones de unidad, escalas de
  * ingeniería) se conserva: CURADO[] lleva las que ya estaban validadas y se aplican por dirección.
@@ -17,6 +26,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
 const XL = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r7_hsu_r23.json', 'utf8'));
+const XL8 = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r8.json', 'utf8'));
 const PDF = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/tcu_v6.json', 'utf8'));
 const WRITE = process.argv.includes('--write');
 
@@ -95,6 +105,57 @@ function agrupaXL(filas, { quitaSufijo = true } = {}) {
   }
   return out;
 }
+/* ---------- fusion de dos revisiones del MISMO documento ----------
+   Devuelve la UNION de los registros del R7 y del R8 en orden de direccion, cada uno con:
+     _rev  null  el registro esta igual en las dos revisiones
+           'R8'  nuevo en el R8 (no existia en el R7)
+           'R7'  estaba en el R7 y el R8 ya no lo trae
+     _chg  [[campo, valorR7, valorR8], …] cuando la MISMA direccion dice cosas distintas.
+   Ese ultimo caso es el peligroso y por eso se marca registro a registro: una direccion que
+   sigue existiendo y ha cambiado de significado se lleva por delante a un maestro ya escrito
+   sin dar ningun error (es lo que paso con la pestaña de la TCU). El cuerpo que se publica es
+   el del R8 salvo en los que solo trae el R7. */
+const nrm = x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim();
+const firmaBits = r => (r.hijos || []).map(h => h.nombre + (h.bits ? '[' + h.bits.join('..') + ']' : '') + '=' + nrm(h.desc)).join(' · ');
+function comparaReg(a, b) {
+  const dif = [];
+  const campos = [['nombre', 'nombre'], ['descripción', 'desc'], ['tipo', 'tipo'], ['unidad', 'unidad'],
+                  ['acceso', 'acc'], ['rango', 'rango'], ['por defecto', 'defecto']];
+  for (const [et, k] of campos) if (nrm(a[k]) !== nrm(b[k])) dif.push([et, nrm(a[k]), nrm(b[k])]);
+  if (firmaBits(a) !== firmaBits(b)) dif.push(['subvariables', firmaBits(a) || '—', firmaBits(b) || '—']);
+  return dif;
+}
+function fusiona(r7, r8, etiq) {
+  /* La clave NO puede ser la direccion a secas: el documento repite direccion en el solape
+     conocido de 30513 (StateOfCharge U8 y RemainingCapacity U16 declarados los dos ahi). Con la
+     direccion sola, el segundo pisaba al primero y la fusion cantaba un cambio de significado
+     donde las dos revisiones dicen exactamente lo mismo. La clave lleva ademas cuantas veces ha
+     salido ya esa direccion en la hoja, asi el n-esimo registro de una direccion se compara con
+     el n-esimo de la otra revision. */
+  const indexa = regs => { const cuenta = new Map(), m = new Map(), claves = [];
+    for (const r of regs) { const n = (cuenta.get(r.addr) || 0) + 1; cuenta.set(r.addr, n);
+      const k = r.addr + '#' + n; m.set(k, r); claves.push(k); }
+    return { m, claves }; };
+  const A = indexa(r7), B = indexa(r8);
+  const out = [], pendientes = A.claves.filter(k => !B.m.has(k));
+  const suelta = (r, rev, chg) => { const c = Object.assign({}, r); c._rev = rev || null;
+    if (chg && chg.length) c._chg = chg; out.push(c); };
+  for (const k of B.claves) {
+    const r = B.m.get(k);
+    /* lo que el R7 traia por debajo de esta direccion y el R8 ya no trae, en su sitio */
+    while (pendientes.length && A.m.get(pendientes[0]).addr < r.addr) suelta(A.m.get(pendientes.shift()), 'R7');
+    const a = A.m.get(k);
+    if (!a) suelta(r, 'R8'); else suelta(r, null, comparaReg(a, r));
+  }
+  while (pendientes.length) suelta(A.m.get(pendientes.shift()), 'R7');
+  const n8 = out.filter(r => r._rev === 'R8').length, n7 = out.filter(r => r._rev === 'R7').length,
+        nc = out.filter(r => r._chg).length;
+  INFORME.push(`  ${etiq}: ${out.length} registros · ${n8} nuevos en R8 · ${n7} solo en R7 · ${nc} con la misma dirección cambiada`);
+  for (const r of out) if (r._chg) CAMBIOS.push({ hoja: etiq, addr: r.addr, nombre: r.nombre, dif: r._chg });
+  return out;
+}
+const INFORME = [], CAMBIOS = [];
+
 function agrupaPDF(filas) {
   const out = []; const porAddr = new Map(), usados = new Map();
   for (const f of filas) {
@@ -161,9 +222,14 @@ function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null,
     const dir = (offsetDe !== null) ? (r.addr - offsetDe) : r.addr;
     const lim = (r.rango && r.rango !== 'None') ? String(r.rango).trim() : null;
     const def = (r.defecto && r.defecto !== 'None') ? String(r.defecto).trim() : null;
-    return [dir, r.nombre, TIPO(r.tipo), un, Object.keys(bits).length ? bits : null,
+    const fila = [dir, r.nombre, TIPO(r.tipo), un, Object.keys(bits).length ? bits : null,
             ESC(r.escala), null, r.desc || '', (r.acc || '').toUpperCase() || null,
             Object.keys(bdesc).length ? bdesc : null, def, lim];
+    /* 12 = revision, 13 = lo que cambia entre revisiones. Solo se escriben en los registros que
+       NO estan igual en las dos: asi los mapas de un solo documento (TCU, HSU) salen tal cual
+       estaban y el diff de modbus.html se queda en lo que de verdad ha cambiado. */
+    if (r._rev || r._chg) { fila.push(r._rev || null); if (r._chg) fila.push(r._chg); }
+    return fila;
   });
   const s = { t, sn, rw, f };
   if (base !== null) { s.base = base; s.stride = stride; s.max = max; }   // max = cuántas unidades tiene el bloque, del R7 (hoja Overview)
@@ -177,12 +243,14 @@ const entre = (regs, a, b) => regs.filter(r => r.addr >= a && r.addr <= b);
    sobrevive a la siguiente pasada — es justo lo que paso. */
 
 /* ================= NCU ================= */
-const nInfo = agrupaXL(XL.ncu_r7['NCU Info']);
-const nRW = agrupaXL(XL.ncu_r7['NCU RW registers']);
-const nTCUc = agrupaXL(XL.ncu_r7['TCU Compat']);
-const nTCU = agrupaXL(XL.ncu_r7['TCU']);
-const nHSU = agrupaXL(XL.ncu_r7['HSU']);
-const nHSUx = agrupaXL(XL.ncu_r7['HSU EXT']);
+/* Cada hoja, las dos revisiones fusionadas: la tabla publica R7 ∪ R8 con la marca de cual es. */
+const hojaNCU = (h, o) => fusiona(agrupaXL(XL.ncu_r7[h], o), agrupaXL(XL8.ncu_r8[h], o), h);
+const nInfo = hojaNCU('NCU Info');
+const nRW = hojaNCU('NCU RW registers');
+const nTCUc = hojaNCU('TCU Compat');
+const nTCU = hojaNCU('TCU');
+const nHSU = hojaNCU('HSU');
+const nHSUx = hojaNCU('HSU EXT');
 
 DEV = 'ncu';
 const NCU = [
@@ -239,9 +307,17 @@ const HSU = [
     nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
-/* ---------- reparto del espacio de direcciones (hoja Overview del R7) ---------- */
-const BLOQUES = (XL.bloques_r7 || []).map(b => ({ de: b.de, a: b.a, n: b.nombre,
+/* ---------- reparto del espacio de direcciones (hoja «Overview») ----------
+   Se publica el del R8, que es la revision vigente. Si alguna vez las dos no reparten igual el
+   espacio, un hueco «reservado» de una seria un bloque con registros de la otra: eso NO puede
+   pasar en silencio, asi que se avisa aqui y sale en el informe. */
+const mapaBloques = l => (l || []).map(b => ({ de: b.de, a: b.a, n: b.nombre,
   res: /^reserved/i.test(b.nombre), lib: b.libre || null }));
+const B7 = mapaBloques(XL.bloques_r7), B8 = mapaBloques(XL8.bloques_r8);
+const BLOQUES = B8.length ? B8 : B7;
+const bloquesIguales = JSON.stringify(B7) === JSON.stringify(B8);
+if (!bloquesIguales) INFORME.push('  ⚠ la hoja «Overview» NO reparte igual el espacio en R7 y R8: ' +
+  `R7 ${B7.length} bloques · R8 ${B8.length}. Se publica el del R8 — revisa los huecos reservados.`);
 
 /* ---------- salida ---------- */
 const cuenta = secs => secs.reduce((n, s) => n + s.f.length, 0);
@@ -251,22 +327,27 @@ const bloque =
 `/* ==================================================================================
    MAPA GENERADO — no editar a mano. Sale de tools/gen_modbus_map.mjs a partir de los
    documentos del fabricante:
-     NCU  NCU_Modbus_Map_R7.xlsx      (hojas NCU Info · NCU RW registers · TCU Compat · TCU · HSU · HSU EXT)
+     NCU  NCU_Modbus_Map_R7.xlsx y NCU_Modbus_Map_R8.xlsx  — LAS DOS REVISIONES, fusionadas
+          (hojas NCU Info · NCU RW registers · TCU Compat · TCU · HSU · HSU EXT)
      TCU  SUNNER_TCU_ModbusMap_v6.pdf (FW v1.4.3)
      HSU  250506_HSU_Modbus_Map_R23.xlsx
    Para regenerar:  node tools/gen_modbus_map.mjs --write
+   La tabla de la NCU es la UNION del R7 y del R8. Campo 12 de cada fila = revisión: ausente o
+   null si el registro está igual en las dos, 'R8' si es nuevo del R8, 'R7' si el R8 ya no lo
+   trae. Campo 13 = qué cambia cuando la misma dirección dice cosas distintas en cada revisión.
+   La página filtra por revisión (selector «revisión» de la pestaña NCU).
    La pestaña de TCU llevaba un mapa que NO era el de Sunner (venía del modelo del gemelo
    digital): sus direcciones significan otra cosa en el equipo real. Ver TRASPASO_MODBUS.md.
    Los nombres de registro de la TCU se derivan de su descripción porque el PDF de Sunner
    no trae columna de nombre de variable; la descripción va literal en su columna.
    ================================================================================== */
-/* Reparto COMPLETO del espacio de direcciones, de la hoja «Overview» del R7. Sirve para que una
-   dirección que no cae en ningún registro diga QUE es (hueco reservado, rango libre, o de qué
-   bloque) en vez de un «no existe» a secas. */
+/* Reparto COMPLETO del espacio de direcciones, de la hoja «Overview» (R7 y R8 lo reparten igual;
+   si dejaran de hacerlo, el generador avisa). Sirve para que una dirección que no cae en ningún
+   registro diga QUE es (hueco reservado, rango libre, o de qué bloque) en vez de un «no existe». */
 var BLOQUES=${js(BLOQUES)};
 var DEV={
- ncu:{tab:'NCU',eti:'Network Control Unit',max:0,
-  nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona.',
+ ncu:{tab:'NCU',eti:'Network Control Unit',max:0,revs:['R8','R7'],revAl:'R8',
+  nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7 y R8): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona. Se guardan <b>las dos revisiones</b>: el selector de arriba elige cuál se ve, y en «ambas» los registros llevan de qué revisión son. En planta conviven, así que un registro que solo trae el R8 escrito contra una NCU R7 responde ilegal.',
   secs:${js(NCU)}},
 
  tcu:{tab:'TCU',eti:'Tracker Control Unit',max:0,idlab:'Nº TCU',
@@ -278,6 +359,15 @@ var DEV={
   secs:${js(HSU)}}
 };`;
 
+console.log('\nNCU · fusión de revisiones R7 + R8');
+for (const l of INFORME) console.log(l);
+if (CAMBIOS.length) {
+  console.log('  ⚠ MISMA DIRECCIÓN, DISTINTO QUÉ ES — revisar antes de publicar:');
+  for (const c of CAMBIOS) console.log(`     ${c.hoja} ${c.addr} ${c.nombre}: ` +
+    c.dif.map(d => `${d[0]} «${d[1] || '—'}» → «${d[2] || '—'}»`).join(' · '));
+}
+const cuentaRev = (secs, v) => secs.reduce((n, s) => n + s.f.filter(r => r[12] === v).length, 0);
+console.log(`  publicado: ${cuenta(NCU)} registros · ${cuentaRev(NCU, 'R8')} marcados nuevos del R8 · ${cuentaRev(NCU, 'R7')} solo del R7\n`);
 console.log('NCU  secciones', NCU.length, '· registros', cuenta(NCU));
 console.log('TCU  secciones', TCU.length, '· registros', cuenta(TCU));
 console.log('HSU  secciones', HSU.length, '· registros', cuenta(HSU));

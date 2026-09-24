@@ -1,4 +1,25 @@
-import openpyxl, json, re, sys
+"""Extrae un Excel de mapa Modbus del fabricante a JSON, para tools/gen_modbus_map.mjs.
+
+Las rutas van por ARGUMENTOS: el documento no vive en el repo (llega por correo o por
+la carpeta de subidas de la sesion) y cada revision es un fichero distinto. Antes
+estaban escritas dentro, apuntando a la carpeta temporal de la sesion en que se hizo
+la del R7: nadie podia repetir la extraccion, que es justo lo que hizo falta al llegar
+el R8.
+
+uso:
+  # NCU R8 (solo el Excel de la NCU)
+  python3 tools/extract_modbus_xlsx.py --ncu NCU_Modbus_Map_R8.xlsx \
+      --clave ncu_r8 --out tools/modbus_src/ncu_r8.json
+
+  # NCU R7 + HSU R23 en un mismo JSON (como se genero el fichero historico)
+  python3 tools/extract_modbus_xlsx.py --ncu NCU_Modbus_Map_R7.xlsx --clave ncu_r7 \
+      --hsu 250506_HSU_Modbus_Map_R23.xlsx --clave-hsu hsu_r23 \
+      --out tools/modbus_src/ncu_r7_hsu_r23.json
+
+El reparto del espacio de direcciones (hoja «Overview») sale aparte, con la clave
+bloques_<revision>: no es una tabla de registros.
+"""
+import argparse, openpyxl, json, re, sys
 
 def norm(s):
     return re.sub(r'\s+',' ',str(s)).strip().lower() if s is not None else ''
@@ -55,22 +76,40 @@ def extrae_overview(ws):
         bloques.append(b)
     return bloques
 
-out={}
-for f,lab in [('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/32737926-NCU_Modbus_Map_R7_1.xlsx','ncu_r7'),
-              ('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/91ba946e-250506_HSU_Modbus_Map_R23.xlsx','hsu_r23')]:
-    wb=openpyxl.load_workbook(f,data_only=True)
-    out[lab]={}
-    for ws in wb.worksheets:
-        cols,filas=extrae(ws)
-        if filas is None:
-            print(f'  {lab}/{ws.title}: SIN cabecera "Variable name" (no es hoja de registros)')
-            continue
-        out[lab][ws.title]=filas
-        print(f'  {lab}/{ws.title}: {len(filas)} filas · columnas {sorted(cols.keys())}')
-# el reparto del espacio de direcciones va aparte: no es una tabla de registros
-wb=openpyxl.load_workbook('/root/.claude/uploads/73817923-79b4-5d11-9e5e-27a79f17b20a/32737926-NCU_Modbus_Map_R7_1.xlsx',data_only=True)
-out['bloques_r7']=extrae_overview(wb['Overview'])
-print(f"  bloques del espacio de direcciones (hoja Overview): {len(out['bloques_r7'])}")
+def arranca(argv=None):
+    ap = argparse.ArgumentParser(description='Extrae un Excel de mapa Modbus a JSON.')
+    ap.add_argument('--ncu', required=True, help='Excel de la NCU (NCU_Modbus_Map_R8.xlsx…)')
+    ap.add_argument('--clave', required=True, help='clave del documento en el JSON (ncu_r7, ncu_r8…)')
+    ap.add_argument('--hsu', help='Excel del mapa propio de la HSU (opcional)')
+    ap.add_argument('--clave-hsu', default='hsu_r23', help='clave del mapa de la HSU en el JSON')
+    ap.add_argument('--out', required=True, help='JSON de salida (tools/modbus_src/…)')
+    a = ap.parse_args(argv)
 
-json.dump(out,open('/tmp/modbus_docs.json','w'),ensure_ascii=False,indent=1)
-print('\nescrito /tmp/modbus_docs.json')
+    out = {}
+    fuentes = [(a.ncu, a.clave)] + ([(a.hsu, a.clave_hsu)] if a.hsu else [])
+    for f, lab in fuentes:
+        wb = openpyxl.load_workbook(f, data_only=True)
+        out[lab] = {}
+        for ws in wb.worksheets:
+            cols, filas = extrae(ws)
+            if filas is None:
+                print(f'  {lab}/{ws.title}: SIN cabecera "Variable name" (no es hoja de registros)')
+                continue
+            out[lab][ws.title] = filas
+            print(f'  {lab}/{ws.title}: {len(filas)} filas · columnas {sorted(cols.keys())}')
+
+    # el reparto del espacio de direcciones va aparte: no es una tabla de registros
+    wb = openpyxl.load_workbook(a.ncu, data_only=True)
+    if 'Overview' in wb.sheetnames:
+        # bloques_ncu_r8 -> bloques_r8: la clave lleva la REVISION, no el dispositivo
+        rev = a.clave.split('_')[-1]
+        out['bloques_' + rev] = extrae_overview(wb['Overview'])
+        print(f"  bloques del espacio de direcciones (hoja Overview): {len(out['bloques_' + rev])}")
+    else:
+        print('  sin hoja «Overview»: este documento no trae el reparto del espacio de direcciones')
+
+    json.dump(out, open(a.out, 'w'), ensure_ascii=False, indent=1)
+    print('\nescrito ' + a.out)
+
+if __name__ == '__main__':
+    arranca()
