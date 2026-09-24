@@ -106,6 +106,26 @@ ninguna superficie.**
   normal forma **90°** con él. Son **paralelas** al rayo, no perpendiculares.
   Así que el haz **no** encaja con «la mancha se ve perpendicular al rayo».
 
+## DEFECTO DE RENDER registrado (independiente de la mancha)
+
+Pedido por el titular el 2026-09-24. Es un defecto sea o no la mancha que vio.
+
+- El HAZ DE SOMBRA proyecta sobre el **plano infinito** de la pala receptora y
+  **no recorta a la pala** (`backtracking.html:6965`,
+  `const H=[P[0]+t*dsh[0],…]`).
+- La silueta sí se recorta (`:6973`, `poly=clipPoly(poly,edge)`).
+- Su comentario dice «el volumen que va del objeto que sombrea **a su mancha
+  sobre la mesa**» (`:6841`).
+- Resultado: **dibuja volumen donde no hay superficie**. Medido en monofila,
+  llega a 13,9 y 14,5 m del eje de la receptora, a 1,22 m del suelo.
+- Es el **séptimo caso** del registro del patrón
+  (`audit5/PATRON_CODIGO_Y_DESCRIPCION.md`, rama `claude/r5-bt3d-f0-6th1im`,
+  commit `3ff900a`).
+- **No arreglado.**
+- **No es la respuesta a 2.1.** El haz es candidato: sus caras son paralelas
+  al rayo y la pista del titular decía perpendicular. La mancha sigue
+  **ABIERTA** hasta su ⤓.
+
 ## 2.2 · Si es sombra, ¿intersección o contorno colgado?
 
 - **La sombra que se pinta y se cuenta es intersección.**
@@ -121,9 +141,8 @@ ninguna superficie.**
     mancha sobre la mesa». El código lo lleva a `Hs`, que puede caer a 14 m de
     la mesa.
 
-  Es **candidato** al séptimo caso del patrón: descripción al lado del código,
-  conducta concreta, medida distinta. **No lo registro** hasta que 2.1 diga si
-  la mancha del titular es esto o no.
+  El titular pidió registrarlo como séptimo caso del patrón y está registrado
+  (ver arriba). Registrarlo **no** decide si la mancha del titular es esto.
 
 ## 2.3 · Si es geometría
 
@@ -194,5 +213,31 @@ mismas sondas.
   terreno de cada estación. Dio 0,33 m en las gemelas y no mide nada. Se
   sustituyó por el apoyo eje-poste de `M3_apoyo.mjs`, que da 0,00 m en los 24
   postes. La columna sigue en su JSON, pero **no se usa**.
-- **E-X1-B2-3.** Repetición de uno ya registrado: un `pkill -f` con un patrón
-  que casaba con la propia shell la mató (exit 144). Desde ahí se mata por PID.
+## REGLA (no es una entrada de errores)
+
+Un error que reaparece después de registrado necesita una barrera, no otra
+anotación (titular, 2026-09-24).
+
+**Regla.** En esta sesión está **prohibido matar procesos por patrón**:
+`pkill` con la opción de línea completa, `pgrep` en esa modalidad encadenado a
+`kill`, y `killall` con expresión regular. El patrón puede casar con la línea
+de órdenes de la propia shell que lo lanza, y la mata. Pasó dos veces.
+
+Se mata **por PID**:
+
+1. leerlo antes con `ps -eo pid,args`;
+2. `kill <PID>`;
+3. verificar después con `ps -p <PID>`.
+
+**Barrera.** Un hook `PreToolUse` sobre Bash (`~/.claude/barreras/no_pkill_f.py`,
+declarado en `~/.claude/settings.json`) rechaza la orden **antes de
+ejecutarla**.
+
+- Probado fuera del hook: 6 formas prohibidas rechazadas y 4 legítimas que
+  pasan (`kill <PID>`, `pgrep` sin matar, `ps | grep`, `pkill` por nombre
+  exacto).
+- Probado dentro de la sesión: la orden prohibida no llegó a ejecutarse.
+- **Limitación declarada:** mira el TEXTO de la orden. Por eso también
+  rechaza un heredoc que solo menciona la forma prohibida. Así lo cazó al
+  escribir esta misma sección, que hubo que editar sin shell. Se prefiere
+  estricta.
