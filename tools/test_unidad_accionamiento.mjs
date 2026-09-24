@@ -15,8 +15,10 @@
  *
  * Así que este banco vigila lo que el paso 3 deja, que no es una forma sino
  * PROPIEDADES (regla R-4):
- *   1 · cada motor, un θ: en Ayora, las cuatro mesas de cada `segDrive` publican el
- *       MISMO ángulo en `row`, `true3d` y `mgl`;
+ *   1 · un motor, un θ: las que deciden por mesa lo cumplen siempre; `row`, `true3d`
+ *       y `mgl` NO (acoplan líneas enteras y en Ayora hay motores que caen en dos
+ *       líneas con θ distinto): defecto conocido y declarado, se CUENTA y no puede
+ *       aumentar respecto a main;
  *   2 · ninguna política cambia de ángulo: las NUEVE por mesa en Ayora y por línea
  *       en presets mono y bifila, bit a bit como `origin/main`, y la FUENTE DE
  *       MANDO de la página (`segCmd`, cortada tal cual) también. CONTROL NEGATIVO:
@@ -62,15 +64,29 @@ function pas(F, k, i) {
 const igualJ = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 console.log('el acople, declarado, y lo que hay que conservar');
-t('1 · cada motor, un θ: las mesas de cada segDrive publican el MISMO ángulo (row, true3d, mgl · Ayora · 5 soles)', () => {
-  let n = 0;
-  for (const k of ['row', 'true3d', 'mgl']) for (let i = 0; i < inst.length; i++) {
-    const A = pas(HOY, k, i), g = inst[i].g;
-    for (const mot of Tay.segDrive) { const v = mot.map(([r, j]) => A[r][j]); if (v.some(x => x !== v[0])) throw new Error(`${k} sol ${g.elev.toFixed(1)}°: un motor con θ distintos`); n++; }
-  }
-  return `${n} motor×instante`;
+/* 1 · UN MOTOR, UN θ. Las que deciden por mesa (POL_POR_MESA) acoplan por
+   MOTOR (`applyDriveSeg`) y lo cumplen siempre. `row`, `true3d` y `mgl` acoplan
+   las dos LÍNEAS ENTERAS de cada grupo (`T.groups`), y en Ayora esos grupos no
+   coinciden en todas partes con los motores medidos (`T.segDrive`): hay motores
+   cuyas mesas caen en líneas con θ distintos, una orden que ningún motor puede
+   cumplir. Es DEFECTO CONOCIDO y DECLARADO (el paso 3 lo iba a corregir y la
+   decisión del titular deja el acople como está). Aquí se CUENTA, y se exige que
+   no aumente respecto a main. */
+const partidos = F => { const out = {}; for (const k of ['pairwise', 'astro', 'row', 'true3d', 'mgl']) { let n = 0;
+  for (let i = 0; i < inst.length; i++) { const A = pas(F, k, i);
+    for (const mot of Tay.segDrive) { const v = mot.map(([r, j]) => A[r][j]); if (v.some(x => x !== v[0])) n++; } }
+  out[k] = n; } return out; };
+const partHoy = partidos(HOY);
+t('1 · un motor, un θ: las que deciden por mesa (pairwise, astro) lo cumplen SIEMPRE', () => {
+  if (partHoy.pairwise || partHoy.astro) throw new Error(`motores partidos: pairwise ${partHoy.pairwise}, astro ${partHoy.astro}`);
+  return `${Tay.segDrive.length} motores × ${inst.length} instantes`;
 });
 if (MAIN) {
+  t('1 · y row, true3d y mgl NO lo cumplen (defecto conocido, declarado): cuántos motores reciben θ distintos, y no más que en main', () => {
+    const partMain = partidos(MAIN);
+    for (const k of ['row', 'true3d', 'mgl']) if (partHoy[k] > partMain[k]) throw new Error(`${k}: ${partHoy[k]} motor×instante partidos, main ${partMain[k]}`);
+    return ['row', 'true3d', 'mgl'].map(k => `${k} ${partHoy[k]}`).join(' · ') + ` de ${Tay.segDrive.length * inst.length} motor×instante (main igual)`;
+  });
   t('2 · las NUEVE por mesa en Ayora, bit a bit como origin/main (ninguna política cambia de ángulo)', () => {
     let n = 0;
     for (const k of NUEVE) for (let i = 0; i < inst.length; i++) {
