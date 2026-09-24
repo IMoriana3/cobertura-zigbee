@@ -50,6 +50,21 @@ const fisica = (txt) => {
   return txt.slice(txt.lastIndexOf('/*', i0), i1);
 };
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+/* la física SIN la etiqueta de versión, que vive dentro del bloque */
+const sinVersion = (f) => f.replace(/const VER='v[\d.]+';/, "const VER='*';");
+/* CAMBIOS DE FÍSICA DECLARADOS. Este banco nació para demostrar que el PR de las
+   caras (R4 fase 2, v1.78) no tocaba la física, y se quedó en CI exigiendo «0
+   hunks» PARA SIEMPRE: cualquier cambio de física posterior, también uno
+   autorizado, lo pone rojo. Lo que protege —que la física no cambie EN SILENCIO—
+   se conserva así: un cambio sólo pasa si el sha256 de la física nueva (sin la
+   versión) está escrito aquí con su versión, su motivo y quién lo autorizó. Es
+   la misma salida honrada que `test_doc_version`: obliga a mirar. */
+const FISICA_DECLARADA = [
+  { ver: 'v1.79.0', sha: '71ddefebbb5db0332da20aa9b3186302048ab7bbb1d21d8e4ecfa29bff8e4fec',
+    motivo: 'el eje gira como el actuador puede: tope mecánico en crearLazo, giro limitado tras topeBacktracking (fija); autorizado por el titular el 2026-09-24 (PR #751), con el efecto en energía medido en audit_giro/' },
+  { ver: 'v1.80.0', sha: '03958c089c5b8d9729ce73a423a5a424f024a6ab12aa9f1ee56963b2439a5c0a',
+    motivo: 'R5 fase A.1 con la decisión (iii) del titular (2026-09-24): la decisión con el contador (decideProyeccion, guardaEnergia) entra como política DÉCIMA, `coordinada`, cerebro NCU; `pairwise` y `true3d` siguen siendo LOCALES y bit a bit las de main (tools/test_decide_mide.mjs, 4); el contador gana opciones inertes por defecto. Efecto medido en audit5/FASE_A.md' },
+];
 /* el cuerpo exacto de una función, contando llaves y sin tragarse comentarios */
 function cuerpoFn(src, nombre) {
   const i = src.indexOf('function ' + nombre + '(');
@@ -65,7 +80,7 @@ function cuerpoFn(src, nombre) {
 console.log('las políticas caras, sólo bajo demanda');
 
 // ── 1 · la física no se toca, y se demuestra ────────────────────────────────
-t('FÍSICA PURA idéntica byte a byte a la de `origin/main` (2.2: 0 hunks dentro)', () => {
+t('FÍSICA PURA idéntica byte a byte a la de `origin/main` (2.2: 0 hunks dentro), o su cambio DECLARADO con sha256, versión y motivo', () => {
   let base;
   try { base = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
   catch (e) { throw new Error('no puedo leer `origin/main:backtracking.html` para comparar: ' + e.message); }
@@ -81,7 +96,10 @@ t('FÍSICA PURA idéntica byte a byte a la de `origin/main` (2.2: 0 hunks dentro
      y se EXIGE que la única que difiera sea la de la versión, publicándola. Si
      difiere cualquier otra cosa, esto sigue poniéndose rojo y la nombra. Mover
      `const VER` fuera del bloque es una decisión del titular, no mía. */
-  if (a !== b) {
+  const decl = FISICA_DECLARADA.find(d => d.sha === sha(sinVersion(b)));
+  if (a !== b && decl) {
+    console.log(`      · la física CAMBIA respecto a main, y el cambio está DECLARADO: ${decl.ver} · ${decl.motivo}`);
+  } else if (a !== b) {
     const A = a.split('\n'), B = b.split('\n');
     if (A.length !== B.length)
       throw new Error(`la física ha cambiado: ${A.length} → ${B.length} líneas · ${sha(a).slice(0, 16)} → ${sha(b).slice(0, 16)}`);
@@ -111,12 +129,27 @@ t('CONTROL NEGATIVO de la 1 · un cambio en la física que NO sea la versión se
   const esVersion = (d) => /^const VER='v[\d.]+';$/.test(d.antes) && /^const VER='v[\d.]+';$/.test(d.ahora);
   if (!dif.filter(d => !esVersion(d)).length)
     throw new Error('con una línea de física mutada el criterio sigue diciendo que no ha cambiado: la excepción de la versión es una puerta trasera');
+  /* y la lista de cambios declarados tampoco es una puerta trasera: la física
+     mutada no puede coincidir con ningún sha declarado */
+  if (FISICA_DECLARADA.some(d => d.sha === sha(sinVersion(B.join('\n')))))
+    throw new Error('una física mutada coincide con un cambio declarado: la lista no distingue nada');
 });
-t('TEST NULO · la lista por COSTE no es la misma que «las de cerebro NCU»', () => {
+t('TEST NULO · la lista por COSTE no es la misma que «las de cerebro NCU» (con los rótulos de main)', () => {
   const m = /const POL_CARAS=\{([^}]*)\}/.exec(html);
   if (!m) throw new Error('no existe `POL_CARAS`');
   const caras = m[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean).sort();
-  const ncu = [...html.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  /* R5 fase A: `global` pasó de ncu a tcu (el rótulo es una restricción de
+     información) y desde entonces las de cerebro NCU son, POR COINCIDENCIA, las
+     mismas tres que las caras. Comparar los conjuntos de HOY ya no discrimina
+     nada. El test nulo se hace con los rótulos de `origin/main`, de cuando se
+     cambió el criterio; que el filtro no pregunte por el cerebro lo vigila la
+     comprobación siguiente. */
+  let base;
+  try { base = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
+  catch (e) { throw new Error('no puedo leer `origin/main:backtracking.html`: ' + e.message); }
+  const ncu = [...base.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  const ncuHoy = [...html.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  console.log(`      · cerebro NCU hoy [${ncuHoy}]${ncuHoy.join() === caras.join() ? ' — coincide con las caras POR EL RÓTULO de global, no por el criterio' : ''}`);
   if (!ncu.length) throw new Error('no encuentro ninguna política de cerebro NCU: el test nulo no puede comparar');
   if (caras.join() === ncu.join())
     throw new Error(`la lista por coste [${caras}] es exactamente la de cerebro NCU: el criterio no ha cambiado de naturaleza`);

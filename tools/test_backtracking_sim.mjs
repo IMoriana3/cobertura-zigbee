@@ -1559,7 +1559,8 @@ t('v1.26: terreno a TODA elevación (el gate de 25° costaba −0,34% anual medi
   // punto 3 de la auditoría: umbrales con dato, no con fe — podas 0,0000%,
   // reparación <40° 0,0000%, marcha 4 m ≤0,03% (declarado), y el único
   // material (gate de terreno) RETIRADO
-  if (!/const doTerr=true;/.test(html)) throw new Error('el contador aún tiene gate de elevación en el terreno');
+  // v1.80.0: `doTerr` depende SOLO de la opción `noTerr` (la decisión de la fase A mira solo planos), nunca de la elevación
+  if (!/const doTerr=(true|!\(res&&res\.noTerr\));/.test(html)) throw new Error('el contador aún tiene gate de elevación en el terreno');
   if (!/TERRENO a TODA elevación/.test(html)) throw new Error('sin la justificación medida del cambio');
 });
 

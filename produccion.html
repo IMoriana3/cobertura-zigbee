@@ -1854,6 +1854,8 @@ const POLS=[
   {key:'optimal', nm:'Energy-optimal',  ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto) — BUSCA el ángulo: cuesta mucho más'},
   {key:'optfree', nm:'Óptimo libre',    ds:'cada accionamiento con SU fracción — nunca menos que energy-optimal; el más caro de calcular'},
   {key:'astro',   nm:'Astronómico',     ds:'SIN backtracking: el que se auto-sombrea. Es la referencia contra la que se mide lo que el BT salva'},
+  // R5 fase A, decisión (iii): la décima. Aquí coordina la planta ENTERA, y su θ depende de ese alcance
+  {key:'coordinada',nm:'Coordinada',    ds:'la NCU coordina la planta con la posición real de TODAS las emisoras — aquí la planta entera: su θ depende de cuánta planta entre en la coordinación, y el simulador (80 líneas) da otro; cuesta mucho más'},
 ];
 const POLNM=Object.fromEntries(POLS.map(P=>[P.key,P.nm]));
 (function(){const el=document.getElementById('pol');if(!el)return;
