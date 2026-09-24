@@ -88,20 +88,39 @@ const unico = (base, usados, lo) => {            // desempate estable: el propio
 };
 
 /* ---------- agrupar filas del documento en registro padre + sus bits ---------- */
+/* El documento declara bits «Reserved» sin nombre: son dato (ese bit está declarado y vacío) y
+   por eso el extractor v2 ya no los tira, pero no se publican como subvariable — llenarían de
+   chips «reservado» los registros de banderas sin decirle nada a quien mira la tabla. Viven en
+   tools/modbus_src/*.json, que es la transcripción fiel del documento. */
+const esReservado = f => f.nombre_doc === false && /^reserved$/i.test(String(f.desc || '').trim());
+let RESERVADOS = 0;
+
 function agrupaXL(filas, { quitaSufijo = true } = {}) {
   const out = []; let cur = null;
   for (const f of filas) {
+    if (f.epigrafe) { out.push({ epigrafe: f.epigrafe }); continue; }   // título de bloque de la hoja
+    if (esReservado(f)) { RESERVADOS++; continue; }
     /* La hoja «TCU Compat» repite un campo con sufijo de OTRA unidad (StateOfCharge_s22) para
-       enseñar el paso del bloque. No es una subvariable: si se cuela, sale como un bit fantasma. */
-    if (/_(s|hsu)\d+$/i.test(String(f.nombre)) && !/_(s|hsu)1$/i.test(String(f.nombre))
-        && (f.addr === null || f.addr === '')) continue;
+       enseñar el paso del bloque. No es una subvariable: si se cuela, sale como un bit fantasma.
+       PERO las unidades se numeran desde 1, asi que _s0 no es «otra unidad»: es una errata del
+       documento por _s1. Descartarlo tambien se llevaba por delante SafePositionState_s0, los
+       bits 15..13 del MSR — la posicion segura activa de cada TCU, que es justo lo que se mira
+       cuando la planta esta en viento. Solo se descarta de _s2 en adelante. */
+    const otraUnidad = String(f.nombre).match(/_(?:s|hsu)(\d+)$/i);
+    if (otraUnidad && +otraUnidad[1] >= 2 && (f.addr === null || f.addr === '')) continue;
     const tieneAddr = f.addr !== null && f.addr !== '' && !isNaN(+f.addr);
     const nom = quitaSufijo ? String(f.nombre).replace(/_(s|hsu)\d+$/i, '') : String(f.nombre);
     if (tieneAddr) { cur = { addr: +f.addr, nombre: nom, tipo: f.tipo, bits: f.bits, desc: f.desc,
         acc: f.acc, unidad: f.unidad, escala: '', rango: f.rango, defecto: f.defecto, hijos: [] };
       out.push(cur); continue; }
     if (!cur) continue;
-    cur.hijos.push({ nombre: nom, bits: bitsXL(f.bits), desc: f.desc, tipo: f.tipo, unidad: f.unidad, rango: f.rango, defecto: f.defecto });
+    /* Subvariable que el fabricante describe pero deja SIN nombre (el extractor le puso
+       MSR_s1.b11). Para la tabla se deriva del propio texto del documento —igual que se hace con
+       todo el mapa de la TCU, cuyo PDF tampoco trae columna de nombre—, que es lo que sirve a
+       quien lee: «magnet_presence [11]» y no «MSR_s1.b11». El nombre sintetizado sigue en el JSON. */
+    const nomH = (f.nombre_doc === false && f.desc) ? slug(f.desc, 4) : nom;
+    cur.hijos.push({ nombre: nomH, bits: bitsXL(f.bits), desc: f.desc, tipo: f.tipo, unidad: f.unidad,
+                     rango: f.rango, defecto: f.defecto, sinNombre: f.nombre_doc === false });
   }
   return out;
 }
@@ -117,40 +136,42 @@ function agrupaXL(filas, { quitaSufijo = true } = {}) {
    el del R8 salvo en los que solo trae el R7. */
 const nrm = x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim();
 const firmaBits = r => (r.hijos || []).map(h => h.nombre + (h.bits ? '[' + h.bits.join('..') + ']' : '') + '=' + nrm(h.desc)).join(' · ');
-function comparaReg(a, b) {
+function comparaReg(a, b, { bits = true } = {}) {
   const dif = [];
   const campos = [['nombre', 'nombre'], ['descripción', 'desc'], ['tipo', 'tipo'], ['unidad', 'unidad'],
                   ['acceso', 'acc'], ['rango', 'rango'], ['por defecto', 'defecto']];
   for (const [et, k] of campos) if (nrm(a[k]) !== nrm(b[k])) dif.push([et, nrm(a[k]), nrm(b[k])]);
-  if (firmaBits(a) !== firmaBits(b)) dif.push(['subvariables', firmaBits(a) || '—', firmaBits(b) || '—']);
+  if (bits && firmaBits(a) !== firmaBits(b)) dif.push(['subvariables', firmaBits(a) || '—', firmaBits(b) || '—']);
   return dif;
 }
-function fusiona(r7, r8, etiq) {
+function fusiona(r7, r8, etiq, { bits = true } = {}) {
   /* La clave NO puede ser la direccion a secas: el documento repite direccion en el solape
      conocido de 30513 (StateOfCharge U8 y RemainingCapacity U16 declarados los dos ahi). Con la
      direccion sola, el segundo pisaba al primero y la fusion cantaba un cambio de significado
      donde las dos revisiones dicen exactamente lo mismo. La clave lleva ademas cuantas veces ha
      salido ya esa direccion en la hoja, asi el n-esimo registro de una direccion se compara con
-     el n-esimo de la otra revision. */
-  const indexa = regs => { const cuenta = new Map(), m = new Map(), claves = [];
-    for (const r of regs) { const n = (cuenta.get(r.addr) || 0) + 1; cuenta.set(r.addr, n);
-      const k = r.addr + '#' + n; m.set(k, r); claves.push(k); }
-    return { m, claves }; };
+     el n-esimo de la otra revision.
+     Los EPIGRAFES no son registros: pasan de largo, en su sitio, sin compararse ni contarse. */
+  const indexa = regs => { const cuenta = new Map(), m = new Map();
+    for (const r of regs) { if (r.epigrafe) continue;
+      const n = (cuenta.get(r.addr) || 0) + 1; cuenta.set(r.addr, n);
+      r._k = r.addr + '#' + n; m.set(r._k, r); }
+    return m; };
   const A = indexa(r7), B = indexa(r8);
-  const out = [], pendientes = A.claves.filter(k => !B.m.has(k));
+  const out = [], pendientes = [...A.keys()].filter(k => !B.has(k));
   const suelta = (r, rev, chg) => { const c = Object.assign({}, r); c._rev = rev || null;
     if (chg && chg.length) c._chg = chg; out.push(c); };
-  for (const k of B.claves) {
-    const r = B.m.get(k);
+  for (const r of r8) {
+    if (r.epigrafe) { out.push(r); continue; }
     /* lo que el R7 traia por debajo de esta direccion y el R8 ya no trae, en su sitio */
-    while (pendientes.length && A.m.get(pendientes[0]).addr < r.addr) suelta(A.m.get(pendientes.shift()), 'R7');
-    const a = A.m.get(k);
-    if (!a) suelta(r, 'R8'); else suelta(r, null, comparaReg(a, r));
+    while (pendientes.length && A.get(pendientes[0]).addr < r.addr) suelta(A.get(pendientes.shift()), 'R7');
+    const a = A.get(r._k);
+    if (!a) suelta(r, 'R8'); else suelta(r, null, comparaReg(a, r, { bits }));
   }
-  while (pendientes.length) suelta(A.m.get(pendientes.shift()), 'R7');
+  while (pendientes.length) suelta(A.get(pendientes.shift()), 'R7');
   const n8 = out.filter(r => r._rev === 'R8').length, n7 = out.filter(r => r._rev === 'R7').length,
         nc = out.filter(r => r._chg).length;
-  INFORME.push(`  ${etiq}: ${out.length} registros · ${n8} nuevos en R8 · ${n7} solo en R7 · ${nc} con la misma dirección cambiada`);
+  INFORME.push(`  ${etiq}: ${out.filter(r => !r.epigrafe).length} registros · ${n8} nuevos en R8 · ${n7} solo en R7 · ${nc} con la misma dirección cambiada`);
   for (const r of out) if (r._chg) CAMBIOS.push({ hoja: etiq, addr: r.addr, nombre: r.nombre, dif: r._chg });
   return out;
 }
@@ -182,6 +203,56 @@ function agrupaPDF(filas) {
   return out;
 }
 
+/* ---------- donde el DOCUMENTO se contradice a si mismo ----------
+   Dos sitios del R8 (y del R7: son las mismas filas) no pueden ser verdad tal como estan escritos.
+   Copiarlos tal cual mete en la tabla bits que se pisan; resolverlos en silencio es peor, porque
+   entonces la herramienta afirma algo que su documento no dice. Se hace lo que ya se hizo con el
+   41106 de la TCU: se publica la lectura coherente CUANDO la hay, se dice que es nuestra, y
+   cuando no la hay se enseña el conflicto sin elegir.
+
+   Esto NO es una correccion del documento: es la unica forma de que la tabla no mienta en
+   ninguno de los dos sentidos. Si Sunner aclara cualquiera de las dos, se quita de aqui. */
+const CONTRADICCIONES = {
+  30501: {
+    /* El Excel de la NCU pone «Magnet Presence» como U1 en (12..11) —dos bits para un tipo de
+       UNO— y «BLE Enabled» como U2 en (13..12), que ademas pisa el bit 13, ya asignado a
+       SafePositionState (15..13). No hay que adivinar: este registro es el MISMO que la TCU
+       publica en su 30001 (Main status register) de su propio PDF v6, y alli esta sin ambiguedad
+       —bit 11 imán (reed sensor), bit 12 BLE—, ademas de coincidir bit a bit en dia/noche (7),
+       modo (9:8) y posicion segura (15:13). Se publica lo que dicen los dos documentos cuando
+       se leen juntos, y se dice de donde sale. */
+    bits: { magnet_presence: [11, 11], ble_enabled: [12, 12] },
+    porBit: {
+      magnet_presence: 'el Excel de la NCU lo declara U1 en (12..11), dos bits para un tipo de uno; el PDF v6 de la TCU lo sitúa en el bit 11 de su 30001 (mismo registro) — se publica el 11',
+      ble_enabled: 'el Excel de la NCU lo declara U2 en (13..12), pisando el bit 13 de SafePositionState; el PDF v6 de la TCU lo sitúa en el bit 12 de su 30001 (mismo registro) — se publica el 12' },
+    nota: '⚠ 30501 (MSR): el Excel de la NCU declara «Magnet Presence» U1 en (12..11) y «BLE Enabled» U2 en (13..12), que se pisan entre sí y con SafePositionState (15..13). Se publican en los bits 11 y 12 porque es donde los pone el PDF v6 de la TCU para este mismo registro (su 30001), que además coincide en día/noche, modo y posición segura. Aviso aparte: ese PDF sitúa «backtracking activo» en el bit 1 y el Excel de la NCU en el bit 0 — ahí los dos documentos NO concuerdan y se publica lo que dice el Excel de la NCU, que es el documento de esta tabla.'
+  },
+  30504: {
+    /* El Excel de la NCU declara el bit 10 DOS VECES: FlagBatteryHeaterEnabled («battery heater
+       is on») y ChargeBlockMotor («battery relaxation is active»). El mismo registro es el 30006
+       del PDF v6 de la TCU —coinciden literalmente los bits 0, 1, 6, 11 y 15—, y alli el
+       calentador esta en el bit 9 y la relajacion en el 10. Asi que el duplicado es del Excel:
+       el calentador se publica en el 9, con la etiqueta diciendo lo que el Excel dice. */
+    bits: { FlagBatteryHeaterEnabled: [9, 9] },
+    porBit: {
+      FlagBatteryHeaterEnabled: 'el Excel de la NCU lo declara en el bit 10, donde ya está ChargeBlockMotor; el PDF v6 de la TCU lo sitúa en el bit 9 de su 30006 (mismo registro) — se publica el 9',
+      ChargeBlockMotor: 'bit 10 según los dos documentos (30006 del PDF v6 de la TCU); el Excel de la NCU declaraba aquí también el calentador, que va al bit 9' },
+    nota: '⚠ 30504 (FlagsA): el Excel de la NCU declara el bit 10 dos veces — calentador de batería y relajación de batería. El PDF v6 de la TCU, que trae este mismo registro en su 30006 y coincide literalmente en los bits 0, 1, 6, 11 y 15, pone el calentador en el bit 9 y la relajación en el 10. Se publica así.'
+  }
+};
+const AVISOS_DOC = new Map();      // dirección -> nota, para colgarla de la sección donde vive
+function aplicaContradicciones(regs) {
+  for (const r of regs) {
+    const c = CONTRADICCIONES[r.addr]; if (!c) continue;
+    AVISOS_DOC.set(r.addr, c.nota);
+    for (const h of (r.hijos || [])) {
+      if (c.bits && c.bits[h.nombre]) h.bits = c.bits[h.nombre];
+      if (c.porBit && c.porBit[h.nombre]) h.desc = (h.desc ? h.desc + ' · ' : '') + c.porBit[h.nombre];
+    }
+  }
+  return regs;
+}
+
 /* ---------- conversiones ya validadas en la herramienta, por dirección ---------- */
 /* Son las que el documento no da y sí estaban comprobadas contra registros reales. Se aplican
    ENCIMA de lo generado; si el documento trae unidad, gana la del documento salvo aquí. */
@@ -206,7 +277,7 @@ let DEV = 'ncu';
 
 /* ---------- construcción de una sección ---------- */
 function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null, max = null } = {}) {
-  const f = regs.map(r => {
+  const f = regs.filter(r => !r.epigrafe).map(r => {
     const bits = {}, bdesc = {};
     for (const h of r.hijos) if (h.bits) { bits[h.nombre] = h.bits; if (h.desc) bdesc[h.nombre] = h.desc; }
     // por DISPOSITIVO, no solo por dirección: los tres mapas comparten rangos
@@ -231,11 +302,28 @@ function seccion(t, sn, rw, regs, { base = null, stride = null, offsetDe = null,
     if (r._rev || r._chg) { fila.push(r._rev || null); if (r._chg) fila.push(r._chg); }
     return fila;
   });
-  const s = { t, sn, rw, f };
+  /* Las contradicciones del documento se ven en el subtítulo de la sección, no solo en el
+     «title» de un chip: quien mira la tabla tiene que tropezar con ellas sin pasar el ratón. */
+  const avisos = regs.filter(r => AVISOS_DOC.has(r.addr)).map(r => AVISOS_DOC.get(r.addr));
+  const s = { t, sn: sn + (avisos.length ? ' · ' + [...new Set(avisos)].join(' ') : ''), rw, f };
   if (base !== null) { s.base = base; s.stride = stride; s.max = max; }   // max = cuántas unidades tiene el bloque, del R7 (hoja Overview)
   return s;
 }
-const entre = (regs, a, b) => regs.filter(r => r.addr >= a && r.addr <= b);
+const entre = (regs, a, b) => regs.filter(r => !r.epigrafe && r.addr >= a && r.addr <= b);
+
+/* Los EPIGRAFES de la hoja son sus propios títulos de bloque («Change Safe Position 7 (Custom)
+   target angle»), y son el contexto de los registros que los siguen: el R8 mete diez registros
+   nuevos bajo uno de ellos. Partir la hoja por sus epígrafes deja que la tabla los enseñe como
+   secciones con el título del fabricante, en vez de amontonarlo todo bajo un rótulo nuestro. */
+function porEpigrafe(regs) {
+  const grupos = []; let g = null;
+  for (const r of regs) {
+    if (r.epigrafe) { g = { t: r.epigrafe, regs: [] }; grupos.push(g); continue; }
+    if (!g) { g = { t: null, regs: [] }; grupos.push(g); }
+    g.regs.push(r);
+  }
+  return grupos.filter(x => x.regs.length);
+}
 
 /* Los `eti:` de los tres equipos son los NOMBRES DEL FABRICANTE, puestos por Ignacio (31-08,
    ediciones web sobre modbus.html): Network Control Unit, Tracker Control Unit y Hub Sensor Unit.
@@ -243,8 +331,17 @@ const entre = (regs, a, b) => regs.filter(r => r.addr >= a && r.addr <= b);
    sobrevive a la siguiente pasada — es justo lo que paso. */
 
 /* ================= NCU ================= */
-/* Cada hoja, las dos revisiones fusionadas: la tabla publica R7 ∪ R8 con la marca de cual es. */
-const hojaNCU = (h, o) => fusiona(agrupaXL(XL.ncu_r7[h], o), agrupaXL(XL8.ncu_r8[h], o), h);
+/* ¿SON COMPARABLES BIT A BIT LAS DOS EXTRACCIONES?
+   El R7 se extrajo con la v1 del extractor, que tiraba las filas sin «Variable name» — entre
+   ellas cuatro subvariables descritas del MSR y de FlagsA. El R8 va con la v2, que las conserva.
+   Comparar los bits de las dos extracciones diria que el R8 «cambia» esos dos registros, y es
+   MENTIRA: lo que cambio fue nuestro extractor, no el documento. Mientras no se vuelva a extraer
+   el R7 con la v2 —hace falta el NCU_Modbus_Map_R7.xlsx, que no esta en el repo—, la fusion
+   compara todo MENOS los bits, y lo dice en voz alta en vez de publicar un cambio inventado. */
+const EXTRACTOR_R7 = XL.extractor || 1, EXTRACTOR_R8 = XL8.extractor || 1;
+const BITS_COMPARABLES = EXTRACTOR_R7 === EXTRACTOR_R8;
+const hojaNCU = (h, o) => aplicaContradicciones(
+  fusiona(agrupaXL(XL.ncu_r7[h], o), agrupaXL(XL8.ncu_r8[h], o), h, { bits: BITS_COMPARABLES }));
 const nInfo = hojaNCU('NCU Info');
 const nRW = hojaNCU('NCU RW registers');
 const nTCUc = hojaNCU('TCU Compat');
@@ -256,7 +353,10 @@ DEV = 'ncu';
 const NCU = [
   seccion('Identidad', 'hoja «NCU Info» · el documento numera estas tres SIN el prefijo 3xxxx', 'ro', entre(nInfo, 0, 999)),
   seccion('Registros propios', 'hoja «NCU Info» · direcciones absolutas · una NCU por planta', 'ro', entre(nInfo, 30000, 30199)),
-  seccion('Comandos y forzados', 'hoja «NCU RW registers» · ESCRITURA sobre la planta entera: fuerza posiciones seguras y limpieza por grupo', 'w', nRW),
+  ...porEpigrafe(nRW).map(g => seccion(
+    g.t ? 'Comandos · ' + g.t : 'Comandos y forzados',
+    'hoja «NCU RW registers»' + (g.t ? ' · epígrafe del propio documento' : '') + ' · ESCRITURA sobre la planta entera',
+    'w', g.regs)),
   seccion('Bloque TCU (republicado)', 'hoja «TCU Compat» · base 30500 · 22 registros/TCU · hasta 200 TCU · lastComm 29500+(id−1)·2', 'ro',
     entre(nTCUc, 30500, 30599), { base: 30500, stride: 22, offsetDe: 30500, max: 200 }),
   seccion('TCU · último contacto', 'hoja «TCU Compat» · base 29500 · 2 registros/TCU', 'ro',
@@ -347,7 +447,7 @@ const bloque =
 var BLOQUES=${js(BLOQUES)};
 var DEV={
  ncu:{tab:'NCU',eti:'Network Control Unit',max:0,revs:['R8','R7'],revAl:'R8',
-  nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7 y R8): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona. Se guardan <b>las dos revisiones</b>: el selector de arriba elige cuál se ve, y en «ambas» los registros llevan de qué revisión son. En planta conviven, así que un registro que solo trae el R8 escrito contra una NCU R7 responde ilegal.',
+  nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7 y R8): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona. Se guardan <b>las dos revisiones</b>: el selector de arriba elige cuál se ve, y en «ambas» los registros llevan de qué revisión son. En planta conviven, así que un registro que solo trae el R8 escrito contra una NCU R7 responde ilegal. <b>Cinco subvariables volvieron a la tabla</b> al arreglar el extractor: la posición segura activa del MSR y, sin bautizar en el documento, el imán y el BLE (MSR) y dos banderas de batería (FlagsA) — estaban en los dos documentos y no llegaban aquí.',
   secs:${js(NCU)}},
 
  tcu:{tab:'TCU',eti:'Tracker Control Unit',max:0,idlab:'Nº TCU',
@@ -360,6 +460,11 @@ var DEV={
 };`;
 
 console.log('\nNCU · fusión de revisiones R7 + R8');
+if (!BITS_COMPARABLES) console.log(
+  `  ⚠ el R7 está extraído con el extractor v${EXTRACTOR_R7} y el R8 con el v${EXTRACTOR_R8}: NO se comparan\n` +
+  '    las subvariables (la v1 tiraba las filas sin «Variable name»). Las direcciones sí se comparan.\n' +
+  '    Para cerrarlo hace falta volver a extraer el R7 con el extractor actual.');
+if (RESERVADOS) console.log(`  ${RESERVADOS} bits/registros «Reserved» del documento quedan en el JSON y fuera de la tabla`);
 for (const l of INFORME) console.log(l);
 if (CAMBIOS.length) {
   console.log('  ⚠ MISMA DIRECCIÓN, DISTINTO QUÉ ES — revisar antes de publicar:');

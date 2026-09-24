@@ -24,10 +24,30 @@ import argparse, openpyxl, json, re, sys
 def norm(s):
     return re.sub(r'\s+',' ',str(s)).strip().lower() if s is not None else ''
 
+EXTRACTOR = 2   # v2: deja de tirar las filas sin «Variable name» (ver extrae)
+
 def extrae(ws):
     """Localiza la fila de cabecera por la celda 'Variable name' y mapea columnas por su rótulo.
        Las hojas del R7 tienen distinto número de columnas de relleno a la izquierda, así que
-       fijar índices a mano se rompe en cuanto cambia una."""
+       fijar índices a mano se rompe en cuanto cambia una.
+
+       v2 — LAS FILAS SIN NOMBRE YA NO SE TIRAN. La v1 saltaba toda fila cuya celda «Variable
+       name» estuviera vacía, y el documento las usa para tres cosas distintas:
+
+         · subvariables que el fabricante dejó sin bautizar pero SÍ describe. En el R8 son
+           cuatro, todas en «TCU Compat»: «Magnet Presence» y «BLE Enabled» del MSR (30501), y
+           la preservación de batería y el «SoC insuficiente para mover el motor» de FlagsA
+           (30504). Cuatro banderas de estado reales que no llegaban a la herramienta;
+         · bits marcados «Reserved», que también son dato: dicen que ese bit está declarado y
+           vacío, no que nadie lo haya mirado;
+         · epígrafes de sección, filas fusionadas con el título del bloque que viene debajo
+           («Change Safe Position 7 (Custom) target angle»). Son el contexto de los registros
+           que los siguen.
+
+       Nada de esto se inventa: a la subvariable sin nombre se le sintetiza uno a partir del
+       registro padre y su bit (MSR_s1.b11), y va marcada con `nombre_doc: false` para que
+       nadie lo confunda con un nombre del fabricante. El epígrafe sale como `{'epigrafe': …}`.
+    """
     hdr=None
     for r in range(1, min(ws.max_row,15)+1):
         for c in range(1, min(ws.max_column,20)+1):
@@ -40,22 +60,52 @@ def extrae(ws):
         k=norm(ws.cell(hdr,c).value)
         if k: cols[k]=c
     filas=[]
+    padre=None                      # último registro con nombre: del que cuelgan los bits sin nombre
     for r in range(hdr+1, ws.max_row+1):
         g=lambda k: ws.cell(r,cols[k]).value if k in cols else None
+        txt=lambda k: re.sub(r'\s+',' ',str(g(k))).strip() if g(k) is not None else ''
         nombre=g('variable name')
-        if nombre is None or str(nombre).strip()=='': continue
-        filas.append({
-            'addr':   g('register address'),
+        bits=txt('(msb..lsb)')
+        desc=txt('variable description')
+        addr=g('register address')
+        sin_nombre = nombre is None or str(nombre).strip()==''
+        if sin_nombre:
+            """Una fila con TEXTO en la columna de dirección y nada más es un epígrafe de
+               sección (celda fusionada), no un registro: se guarda como tal."""
+            if isinstance(addr,str) and addr.strip() and not bits and not desc:
+                filas.append({'epigrafe': re.sub(r'\s+',' ',addr).strip()})
+                continue
+            if not bits and not desc and (addr is None or str(addr).strip()==''):
+                continue                                  # fila de relleno: no hay nada que guardar
+            tieneDir = addr is not None and str(addr).strip()!='' and not isinstance(addr,str)
+            if tieneDir:
+                """Fila con DIRECCION propia y sin nombre: es un registro entero que el documento
+                   declara y deja vacío (30515, 30517, 50034 en el R8, los tres «Reserved»). No es
+                   un bit del registro de arriba, y colgárselo como tal sería inventar."""
+                nombre=(re.sub(r'[^A-Za-z0-9]+','_',desc).strip('_') or 'reg')+'_'+str(int(addr))
+            else:
+                m=re.match(r'\((\d+)\.\.(\d+)\)', bits or '')
+                if m: suf='.b'+m.group(2) if m.group(1)==m.group(2) else '.b'+m.group(2)+'_'+m.group(1)
+                else: suf='.r'+str(r)
+                nombre=((padre+suf) if padre else ('reg'+suf))
+        else:
+            nombre=str(nombre).strip()
+            if addr is not None and str(addr).strip()!='' and not isinstance(addr,str):
+                padre=nombre                              # solo un registro con dirección hace de padre
+        f={
+            'addr':   addr,
             'offset': g('offset'),
             'acc':    (str(g('register access')).strip() if g('register access') is not None else ''),
-            'bits':   (str(g('(msb..lsb)')).strip() if g('(msb..lsb)') is not None else ''),
+            'bits':   bits,
             'tipo':   (str(g('type')).strip() if g('type') is not None else ''),
-            'nombre': str(nombre).strip(),
-            'desc':   re.sub(r'\s+',' ',str(g('variable description'))).strip() if g('variable description') is not None else '',
+            'nombre': nombre,
+            'desc':   desc,
             'rango':  str(g('range')).strip() if g('range') is not None else '',
             'unidad': str(g('unit')).strip() if g('unit') is not None else '',
             'defecto':str(g('default value')).strip() if g('default value') is not None else '',
-        })
+        }
+        if sin_nombre: f['nombre_doc']=False              # el nombre lo ponemos nosotros, no el documento
+        filas.append(f)
     return cols, filas
 
 def extrae_overview(ws):
@@ -108,6 +158,9 @@ def arranca(argv=None):
     else:
         print('  sin hoja «Overview»: este documento no trae el reparto del espacio de direcciones')
 
+    # Version del extractor: el R7 se extrajo con la v1, que tiraba las filas sin nombre. Quien
+    # compare dos extracciones tiene que saber si son comparables bit a bit o no.
+    out['extractor'] = EXTRACTOR
     json.dump(out, open(a.out, 'w'), ensure_ascii=False, indent=1)
     print('\nescrito ' + a.out)
 

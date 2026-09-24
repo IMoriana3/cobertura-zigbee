@@ -14,6 +14,19 @@ const DEV = (new Function(h.slice(h.indexOf('var DEV={'), h.indexOf('/* @@MAPA_F
 let fallos = 0;
 const ok = (c, m) => { console.log((c ? '  ok   ' : '  FALLO') + ' ' + m); if (!c) fallos++; };
 
+/* QUE SE COMPARA CON QUE. El extractor v2 conserva filas que la v1 tiraba, y son de dos clases:
+     · con contenido real (cuatro subvariables descritas del MSR y de FlagsA) → la tabla LAS DEBE
+       publicar, y hay comprobaciones abajo que lo exigen una por una;
+     · «Reserved» → se quedan en el JSON como transcripción fiel y NO se publican: un chip
+       «reservado» por bit llenaría los registros de banderas sin decir nada.
+   Ademas, el R7 esta extraido con la v1: comparar sus filas contra las de la v2 diria que el R8
+   «añade» cosas que en realidad añadio nuestro extractor. Asi que lo que se compara entre
+   revisiones son las filas que las DOS extracciones tienen: las que el documento bautiza. */
+const esEpigrafe = f => !!f.epigrafe;
+const esReservado = f => f.nombre_doc === false && /^reserved$/i.test(String(f.desc || '').trim());
+const publicable = f => !esEpigrafe(f) && !esReservado(f);
+const comparable = f => publicable(f) && f.nombre_doc !== false;
+
 /* direcciones y bits que la herramienta publica, por pestaña (unidad 1 en los bloques por unidad) */
 const dirs = {}, bitsDe = {}, descDe = {};
 for (const k of Object.keys(DEV)) {
@@ -28,7 +41,7 @@ for (const k of Object.keys(DEV)) {
 
 /* ---------- direcciones ---------- */
 function compruebaDirs(nom, filas, tab, campo = 'addr') {
-  const set = new Set(filas.filter(f => f[campo] !== null && f[campo] !== '' && !isNaN(+f[campo]))
+  const set = new Set(filas.filter(f => publicable(f) && f[campo] !== null && f[campo] !== '' && !isNaN(+f[campo]))
                            .map(f => +f[campo]));   // addr vacío es una fila de subvariable, no la dirección 0
   const falta = [...set].filter(a => !dirs[tab].has(a)).sort((x, y) => x - y);
   ok(falta.length === 0, `${nom}: ${set.size} direcciones del documento, faltan ${falta.length}` +
@@ -61,8 +74,9 @@ console.log('\n=== subvariables (bits) ===');
 function bitsDoc(filas, bitsFn) {
   const m = new Map(); let cur = null;
   for (const f of filas) {
-    if (/_(s|hsu)\d+$/i.test(String(f.nombre)) && !/_(s|hsu)1$/i.test(String(f.nombre))
-        && (f.addr === null || f.addr === '')) continue;   // ejemplo de otra unidad, no subvariable
+    if (!publicable(f)) continue;                          // epígrafe o bit «Reserved»: no va a la tabla
+    const ou = String(f.nombre).match(/_(?:s|hsu)(\d+)$/i);                 // _s22 es el ejemplo de OTRA unidad;
+    if (ou && +ou[1] >= 2 && (f.addr === null || f.addr === '')) continue;  // _s0 es errata por _s1 y sí cuenta
     const tiene = f.addr !== null && f.addr !== '' && !isNaN(+f.addr);
     if (tiene) { cur = +f.addr; if (!m.has(cur)) m.set(cur, 0); continue; }
     if (cur !== null && bitsFn(f.bits)) m.set(cur, m.get(cur) + 1);
@@ -136,7 +150,7 @@ ok(enDesc.length === 0, `ninguna descripción arrastra ya el rango ni el valor p
 console.log('\n=== revisiones R7 y R8 de la NCU ===');
 const dirsDoc = doc => { const t = new Set();
   for (const hj of HOJAS_NCU) for (const f of (doc[hj] || []))
-    if (f.addr !== null && f.addr !== '' && !isNaN(+f.addr)) t.add(+f.addr);
+    if (comparable(f) && f.addr !== null && f.addr !== '' && !isNaN(+f.addr)) t.add(+f.addr);
   return t; };
 const D7 = dirsDoc(XL.ncu_r7), D8 = dirsDoc(XL8.ncu_r8);
 const marcadas = { R7: new Set(), R8: new Set(), sin: new Set() };
@@ -173,7 +187,7 @@ for (const hj of HOJAS_NCU) {
     for (const f of (filas || [])) { if (f.addr === null || f.addr === '' || isNaN(+f.addr)) continue;
       const n = (c.get(+f.addr) || 0) + 1; c.set(+f.addr, n); m.set(+f.addr + '#' + n, f); }
     return m; };
-  const a = idx(XL.ncu_r7[hj]), b = idx(XL8.ncu_r8[hj]);
+  const a = idx((XL.ncu_r7[hj] || []).filter(comparable)), b = idx((XL8.ncu_r8[hj] || []).filter(comparable));
   const nr = x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim();
   for (const [k, v] of a) { const w = b.get(k); if (!w) continue;
     if (['nombre', 'desc', 'tipo', 'unidad', 'acc', 'rango', 'defecto'].some(c => nr(v[c]) !== nr(w[c])))
@@ -191,6 +205,109 @@ ok(/function enRev\(/.test(h) && /if\(!enRev\(r\)\)return;/.test(h),
    'la tabla filtra por la revisión elegida (enRev)');
 ok(/function difRevHTML\(/.test(h) && /difRevHTML\(\)/.test(h),
    'la pestaña Versiones enseña la comparación R7 ↔ R8 sacada del propio mapa');
+
+/* ---------- NADA CON CONTENIDO SE QUEDA POR EL CAMINO ----------
+   La v1 del extractor tiraba toda fila sin «Variable name» y se llevó por delante cuatro
+   subvariables que el fabricante SÍ describe. No se vio en años porque ningún banco miraba el
+   .xlsx: miraban el JSON, que ya salía sin ellas. Esto compara contra el documento extraído con
+   la v2 y exige que cada fila con contenido esté publicada — como registro o como bit de su
+   padre. Es la comprobación que habría cantado aquel fallo el primer día. */
+console.log('\n=== ninguna fila con contenido del documento se pierde ===');
+{
+  const nombresBit = new Set();
+  for (const sc of DEV.ncu.secs) for (const r of (sc.f || []))
+    for (const k of Object.keys(r[4] || {})) nombresBit.add(k);
+  const descsBit = new Set();
+  for (const sc of DEV.ncu.secs) for (const r of (sc.f || []))
+    for (const d of Object.values(r[9] || {})) descsBit.add(String(d).toLowerCase());
+  const descsReg = new Set();
+  for (const sc of DEV.ncu.secs) for (const r of (sc.f || [])) if (r[7]) descsReg.add(String(r[7]).toLowerCase());
+  const perdidas = [];
+  let recuperadas = 0;
+  for (const hj of HOJAS_NCU) for (const f of (XL8.ncu_r8[hj] || [])) {
+    if (!publicable(f) || !f.desc) continue;
+    /* El ejemplo de OTRA unidad (StateOfCharge_s22) no es una fila que publicar: es el mismo
+       campo de la unidad 22 puesto para enseñar el paso del bloque. Su contenido sí está, en el
+       registro de la unidad 1. */
+    const ou = String(f.nombre).match(/_(?:s|hsu)(\d+)$/i);
+    if (ou && +ou[1] >= 2 && (f.addr === null || f.addr === '')) continue;
+    if (f.nombre_doc === false) recuperadas++;
+    const tieneDir = f.addr !== null && f.addr !== '' && !isNaN(+f.addr);
+    const trozo = String(f.desc).toLowerCase().slice(0, 40);
+    const ok2 = tieneDir ? dirs.ncu.has(+f.addr)
+      : [...descsBit, ...descsReg].some(d => d.startsWith(trozo));
+    if (!ok2) perdidas.push(hj + ' «' + String(f.desc).slice(0, 48) + '»');
+  }
+  ok(perdidas.length === 0, `todas las filas con contenido del R8 están en la tabla` +
+     (perdidas.length ? ` — faltan ${perdidas.length}: ` + perdidas.slice(0, 6).join(' · ') : ''));
+  /* TEST NULO: si el filtro `publicable` se volviera a comer las filas sin nombre, la de arriba
+     pasaría sin comprobar nada. Esto exige que esas filas EXISTAN y estén contadas. */
+  ok(recuperadas >= 4, `${recuperadas} filas sin «Variable name» con contenido real llegan del documento (la v1 del extractor las tiraba)`);
+  const b501 = (() => { for (const sc of DEV.ncu.secs) for (const r of (sc.f || []))
+      if ((sc.stride ? sc.base + r[0] : r[0]) === 30501) return r[4] || {}; return {}; })();
+  ok(JSON.stringify(b501.SafePositionState) === '[13,15]',
+     'publicada SafePositionState (bits 15..13 del MSR): el filtro de «otra unidad» se la comía por llamarse _s0');
+  for (const t of ['Magnet Presence', 'BLE Enabled', 'battery life preservation', 'battery Soc is not enough'])
+    ok([...descsBit].some(d => d.includes(t.toLowerCase())), `publicada la subvariable «${t}», que el documento describe sin bautizar`);
+  ok((XL8.extractor || 1) >= 2, `el JSON del R8 viene del extractor v${XL8.extractor || 1} (el que conserva las filas sin nombre)`);
+}
+
+/* ---------- donde el documento se contradice, la tabla lo DICE ----------
+   Ni copiarlo tal cual (bits que se pisan) ni arreglarlo en silencio (la herramienta afirmando
+   lo que su documento no dice). Las dos salidas honradas están en el generador y esto las ata. */
+console.log('\n=== contradicciones del documento ===');
+{
+  const secDe = a => DEV.ncu.secs.find(sc => (sc.f || []).some(r => (sc.stride ? sc.base + r[0] : r[0]) === a));
+  const regDe = a => { const sc = secDe(a); return sc && (sc.f || []).find(r => (sc.stride ? sc.base + r[0] : r[0]) === a); };
+  const s01 = secDe(30501), s04 = secDe(30504);
+  ok(!!s01 && /30501/.test(s01.sn) && /⚠/.test(s01.sn), 'la sección de 30501 avisa de la contradicción del MSR en su subtítulo');
+  ok(!!s04 && /30504/.test(s04.sn) && /⚠/.test(s04.sn), 'la sección de 30504 avisa de que el bit 10 está declarado dos veces');
+  const b01 = (regDe(30501) || [])[4] || {};
+  ok(JSON.stringify(b01.magnet_presence) === '[11,11]' && JSON.stringify(b01.ble_enabled) === '[12,12]',
+     'en 30501 se publica la lectura coherente: imán bit 11, BLE bit 12');
+  const b04 = (regDe(30504) || [])[4] || {};
+  ok(JSON.stringify(b04.FlagBatteryHeaterEnabled) === '[9,9]' && JSON.stringify(b04.ChargeBlockMotor) === '[10,10]',
+     'en 30504 el calentador va al bit 9 y la relajación al 10, como los sitúa el PDF v6 de la TCU (su 30006)');
+  const d04 = (regDe(30504) || [])[9] || {};
+  ok(/bit 10/.test(d04.FlagBatteryHeaterEnabled || '') && /PDF v6/.test(d04.FlagBatteryHeaterEnabled || ''),
+     'y la etiqueta sigue diciendo lo que el Excel de la NCU declaraba, con de dónde sale la corrección');
+  /* Cruce entre los dos documentos del fabricante: si no coincidieran en estos cinco bits, la
+     resolución de arriba no se sostendría y habría que volver a dejar el conflicto a la vista. */
+  const pdf30006 = new Map(PDF.filter(f => f.addr === 30006 && /^\d+$/.test(String(f.bits || '').trim()))
+                              .map(f => [+String(f.bits).trim(), String(f.desc || '').toLowerCase()]));
+  const cruce = [[0, 'west tilt limit'], [1, 'east tilt limit'], [6, 'soc is not enough'], [11, 'motor alarm is locked'], [15, 'system ok']];
+  ok(cruce.every(([b, t]) => (pdf30006.get(b) || '').includes(t)),
+     `el 30006 del PDF de la TCU coincide con el 30504 de la NCU en los ${cruce.length} bits que los dos nombran`);
+  ok((pdf30006.get(9) || '').includes('heater') && (pdf30006.get(10) || '').includes('relaxation'),
+     'y es ese PDF el que pone el calentador en el bit 9 y la relajación en el 10');
+  /* Invariante general: dentro de un registro, dos subvariables no pueden compartir bit. La única
+     excepción es la de arriba, que es del documento y está marcada. Es lo que habría cantado el
+     (12..11)/(13..12) del MSR en cuanto se publicó. */
+  const solapes = [], ajenos = [];
+  for (const k of Object.keys(DEV)) for (const sc of DEV[k].secs) for (const r of (sc.f || [])) {
+    const bits = r[4]; if (!bits || typeof bits === 'string' || r[6] === 'ENUM') continue;
+    const usados = new Map();
+    for (const [n, b] of Object.entries(bits)) { if (!Array.isArray(b)) continue;
+      for (let i = b[0]; i <= b[1]; i++) { if (usados.has(i)) (k === 'ncu' ? solapes : ajenos).push(`${k} · ${sc.t} · ${r[1]} bit ${i}: ${usados.get(i)} / ${n}`); usados.set(i, n); } }
+  }
+  ok(solapes.length === 0, 'ningún registro de la NCU publica dos subvariables sobre el mismo bit' +
+     (solapes.length ? ': ' + solapes.slice(0, 4).join(' · ') : ''));
+  /* Los otros dos mapas salen de otros documentos y no son de este cambio, pero que se vean:
+     el PDF de la TCU declara su 30001 con «backtracking» en el bit 1 y «low capacity» en 2:1. */
+  if (ajenos.length) console.log(`  (aviso, fuera de este mapa) ${ajenos.length} solapes de bits en TCU/HSU: ` +
+    ajenos.slice(0, 5).join(' · '));
+}
+
+/* ---------- los epígrafes del documento son las secciones ---------- */
+{
+  const titulos = DEV.ncu.secs.map(sc => sc.t).join(' | ');
+  const eps = (XL8.ncu_r8['NCU RW registers'] || []).filter(esEpigrafe).map(f => f.epigrafe);
+  ok(eps.length >= 4, `la hoja «NCU RW» trae ${eps.length} epígrafes de sección y ya no se tiran`);
+  ok(eps.every(e => titulos.includes(e)), 'cada epígrafe del documento es una sección de la tabla' +
+     (eps.every(e => titulos.includes(e)) ? '' : ' — falta ' + eps.find(e => !titulos.includes(e))));
+  ok(titulos.includes('Change Safe Position 7 (Custom) target angle'),
+     'los 10 registros nuevos del R8 salen bajo el epígrafe del fabricante que los explica');
+}
 
 console.log('\n=== espacio de direcciones ===');
 const BLOQUES = (new Function(h.slice(h.indexOf('var BLOQUES='), h.indexOf('var DEV={')) + '; return BLOQUES;'))();

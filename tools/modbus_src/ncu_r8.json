@@ -352,6 +352,9 @@
   ],
   "NCU RW registers": [
    {
+    "epigrafe": "Force Safe Position Request (0 = request deactivated, 1 = request activated)"
+   },
+   {
     "addr": 40001,
     "offset": null,
     "acc": "RW",
@@ -1276,6 +1279,9 @@
     "defecto": "0"
    },
    {
+    "epigrafe": "Change Safe Position 7 (Custom) target angle"
+   },
+   {
     "addr": 40030,
     "offset": null,
     "acc": "RW",
@@ -1394,6 +1400,9 @@
     "rango": "-18k..18k",
     "unidad": "Deg x100",
     "defecto": "0x7FFF"
+   },
+   {
+    "epigrafe": "Change TCUs state by groups (0 = request deactivated, 1 = request activated)"
    },
    {
     "addr": 40070,
@@ -1660,6 +1669,9 @@
     "defecto": "0"
    },
    {
+    "epigrafe": "NCU actions"
+   },
+   {
     "addr": 40080,
     "offset": null,
     "acc": "RW",
@@ -1785,6 +1797,32 @@
     "addr": null,
     "offset": null,
     "acc": "R",
+    "bits": "(12..11)",
+    "tipo": "U1",
+    "nombre": "MSR_s1.b11_12",
+    "desc": "Magnet Presence",
+    "rango": "0..1",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(13..12)",
+    "tipo": "U2",
+    "nombre": "MSR_s1.b12_13",
+    "desc": "BLE Enabled",
+    "rango": "0..1",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
     "bits": "(15..13)",
     "tipo": "U3",
     "nombre": "SafePositionState_s0",
@@ -1821,6 +1859,19 @@
     "addr": null,
     "offset": null,
     "acc": "R",
+    "bits": "(3..3)",
+    "tipo": "",
+    "nombre": "Alarms1_s1.b3",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
     "bits": "(4..4)",
     "tipo": "B",
     "nombre": "AlarmStopButton_s1",
@@ -1828,6 +1879,19 @@
     "rango": "0..1",
     "unidad": "bit",
     "defecto": ""
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(5..5)",
+    "tipo": "",
+    "nombre": "Alarms1_s1.b5",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
    },
    {
     "addr": null,
@@ -1852,6 +1916,19 @@
     "rango": "0..1",
     "unidad": "bit",
     "defecto": ""
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(10..10)",
+    "tipo": "",
+    "nombre": "Alarms1_s1.b10",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
    },
    {
     "addr": null,
@@ -1977,6 +2054,19 @@
     "addr": null,
     "offset": null,
     "acc": "R",
+    "bits": "(12..12)",
+    "tipo": "B",
+    "nombre": "Alarms2_s1.b12",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
     "bits": "(14..14)",
     "tipo": "B",
     "nombre": "AlarmAxis1LowSpeed_s1",
@@ -2025,6 +2115,71 @@
     "addr": null,
     "offset": null,
     "acc": "R",
+    "bits": "(3..3)",
+    "tipo": "B",
+    "nombre": "FlagsA_s1.b3",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(5..5)",
+    "tipo": "B",
+    "nombre": "FlagsA_s1.b5",
+    "desc": "Set if the battery life preservation is enabled. Full charge of batteries not allowed",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(6..6)",
+    "tipo": "B",
+    "nombre": "FlagsA_s1.b6",
+    "desc": "Set if the battery Soc is not enough to move motor in automatic mode",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(7..7)",
+    "tipo": "",
+    "nombre": "FlagsA_s1.b7",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(8..8)",
+    "tipo": "",
+    "nombre": "FlagsA_s1.b8",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
     "bits": "(10..10)",
     "tipo": "B",
     "nombre": "FlagBatteryHeaterEnabled_s1",
@@ -2056,6 +2211,45 @@
     "rango": "0..1",
     "unidad": "bit",
     "defecto": ""
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(12..12)",
+    "tipo": "",
+    "nombre": "FlagsA_s1.b12",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(13..13)",
+    "tipo": "",
+    "nombre": "FlagsA_s1.b13",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(14..14)",
+    "tipo": "",
+    "nombre": "FlagsA_s1.b14",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
    },
    {
     "addr": null,
@@ -2166,6 +2360,19 @@
     "defecto": ""
    },
    {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(15..8)",
+    "tipo": "U8",
+    "nombre": "StateOfCharge_s1.b8_15",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
     "addr": 30513,
     "offset": 13,
     "acc": "R",
@@ -2178,6 +2385,19 @@
     "defecto": ""
    },
    {
+    "addr": 30515,
+    "offset": 15,
+    "acc": "R",
+    "bits": "(15..0)",
+    "tipo": "U16",
+    "nombre": "Reserved_30515",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
     "addr": 30516,
     "offset": 16,
     "acc": "R",
@@ -2188,6 +2408,19 @@
     "rango": "",
     "unidad": "miliVolts",
     "defecto": ""
+   },
+   {
+    "addr": 30517,
+    "offset": 17,
+    "acc": "R",
+    "bits": "(15..0)",
+    "tipo": "S16",
+    "nombre": "Reserved_30517",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
    },
    {
     "addr": 30518,
@@ -2248,6 +2481,19 @@
     "rango": "0..100",
     "unidad": "%",
     "defecto": ""
+   },
+   {
+    "addr": null,
+    "offset": null,
+    "acc": "R",
+    "bits": "(15..8)",
+    "tipo": "U8",
+    "nombre": "StateOfHealth_s1.b8_15",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
    }
   ],
   "TCU": [
@@ -3716,6 +3962,19 @@
     "defecto": ""
    },
    {
+    "addr": 50034,
+    "offset": 34,
+    "acc": "R",
+    "bits": "",
+    "tipo": "",
+    "nombre": "Reserved_50034",
+    "desc": "Reserved",
+    "rango": "",
+    "unidad": "",
+    "defecto": "",
+    "nombre_doc": false
+   },
+   {
     "addr": 50047,
     "offset": 47,
     "acc": "RW",
@@ -4609,5 +4868,6 @@
     65534
    ]
   }
- ]
+ ],
+ "extractor": 2
 }
