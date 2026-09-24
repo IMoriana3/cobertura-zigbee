@@ -153,6 +153,51 @@ SE MIDE»):
   la máquina no ha estado libre en toda la fase (carga 8-9 en 4 núcleos, por las
   medidas largas de conoHaz y del giro) y dos corridas así no son comparables.
 
+## CAMBIO DE ALCANCE DEL TITULAR (2026-09-24): el optimizador trabaja con CONTROL IDEAL
+
+Cada unidad va a su ángulo al instante: sin banda muerta, sin límite de
+velocidad y sin latencia de reparto. Afecta a la fase D y al MODO DEGRADADO; a
+la fase A, solo en cómo se etiqueta el A.4.
+
+1. **Consecuencia buena.** Con mando instantáneo, cada instante es
+   independiente del anterior y desaparece la dimensión temporal del solver
+   (D.5). El óptimo del día es la suma de los óptimos por instante, sin
+   acoplamiento. También deja de tener sentido la histéresis de `optimal` y
+   `optfree` (su argumento `prev`).
+2. **Cómo se publica, no negociable.** El resultado es una **COTA SUPERIOR**: lo
+   máximo alcanzable si el control fuera perfecto. Cada cifra lleva la etiqueta
+   «control ideal, cota superior». No se compara con las nueve políticas
+   medidas CON lazo sin decir que no son comparables.
+3. **La distancia, que vale por sí sola.** El mismo óptimo se evalúa (a) con
+   control ideal y (b) con el lazo real: banda muerta, 0,17 °/s y el ciclo de
+   30 s de la TCU. La diferencia es **EL COSTE DEL CONTROL**: cuánto de la
+   ganancia teórica se cobra de verdad. Se mide al menos en un día por estación.
+   - El lazo de la página NO avanza cada 30 s: avanza con el paso de la malla,
+     `STEP_MIN=5` (`backtracking.html:5575`) en el día y `PASO_ANUAL_MIN=10`
+     (`:7813`) en el anual. Usa `DEADBAND_DEG=1.0` (`:3493`) y
+     `TRACKER_SLEW=0.17` (`:3476`). Para (b) hay que construir un lazo que
+     avance cada 30 s.
+   - El ciclo de 30 s lo da el titular. En el repo, 30 s solo aparece como
+     cadencia de LECTURA de telemetría (`index.html:1206`, «Lee el registro
+     30111 de los TCU de la hoja cada 30 s»), no como ciclo de control. El dato
+     de firmware: **NO DISPONIBLE** en el repo; hay que preguntarlo a SUNNER
+     (TCU FW v1.4.3, mapa v6.1).
+4. **El paso de integración** importa para (b) y no para (a). En control ideal
+   solo afecta al muestreo de la energía, no a la decisión: se usa el que sea y
+   se dice cuál.
+5. **El MODO DEGRADADO cambia de forma.** Con mando instantáneo y
+   realimentación, un seguidor fuera de plan se corrige en el siguiente
+   instante. Se mide igual, porque la pregunta pasa a ser cuánta sombra hay
+   DURANTE ese instante y cuántas unidades la sufren. Una unidad aparcada o en
+   stow no se corrige; lo que cambia es que las demás replanifican a su
+   alrededor.
+
+**El A.4 de esta fase ya está medido con control ideal.** Evalúa la consigna
+sin lazo ni giro. Sus cifras comparan la decisión vieja con la nueva en esas
+mismas condiciones. **No son comparables con el anual de la página, que va con
+lazo**, y así se etiquetan. Tampoco son una cota superior de nada: son dos
+políticas evaluadas con el mismo control perfecto.
+
 ## HALLAZGO · la etiqueta TCU/NCU es una restricción de información
 
 **Qué pasó.** Al conectar `pairwise` al motor de proyección, la política pasa a
