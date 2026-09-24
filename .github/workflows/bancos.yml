@@ -131,7 +131,7 @@ jobs:
           if [ ! -d ../Siting ] && [ ! -d ../siting ]; then
             git clone --depth 1 -q https://github.com/IMoriana3/siting.git ../siting || true
           fi
-          node tools/test_canon_pin.mjs
+          node tools/con_piso.mjs tools/test_canon_pin.mjs
 
       # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
       # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo

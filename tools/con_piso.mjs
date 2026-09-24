@@ -92,6 +92,10 @@ const PISO = {
   'test_pilotes_dwg.mjs': 12,
   'test_hsus_gw.mjs': 33,
   'test_pares_observados.mjs': 28,
+  // MEDIDO ejecutandolo, 18 comprobaciones: 1 copia fijada careada byte a byte,
+  // el despeje de `terreno.html` ejecutado contra el canon, y 5 mutaciones.
+  // Sin el clon de `siting` al lado sale rc = 2, no verde.
+  'test_canon_pin.mjs': 18,
   // los tres lentos, MEDIDOS en una corrida completa (tardan 3-9 min cada uno,
   // por eso estuvieron un rato declarados sin piso en vez de con un numero a ojo)
   'test_veto_por_mesa.mjs': 7,
