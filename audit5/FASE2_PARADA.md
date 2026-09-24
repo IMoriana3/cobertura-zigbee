@@ -98,3 +98,31 @@ enmascarada, el mismatch y el albedo, medidos, no lo explican
 (`audit5/F3_CIERRES_FILAS_ALTERNAS.md`).
 
 Estado: **la fase 2 queda desbloqueada**.
+
+---
+
+## Consecuencia para la política de conjunto (bloque 2.4 del complemento, 2026-09-24)
+
+**Su justificación deja de ser solo «evita mejor las sombras».** Hay dos
+razones, y son independientes:
+
+1. **Enumeración.** La política ve a todos sus emisores por proyección, con el
+   θ real de cada uno (`audit5/lib_conjunto.mjs`, cabecera 2.3). Las nueve
+   miran por vecindad y suponen gemelo al vecino (`audit5/FASE0_1_PROYECCION.md`:
+   27,7 % de relaciones no enumeradas con sol ≥ 10°, y 631 y 1.660 errores del
+   gemelo).
+2. **Configuración.** Existen configuraciones **SIN SOMBRA que producen más que
+   la tangencia uniforme**, incluso en terreno llano y uniforme:
+   - **+4,12 %** y **+5,90 %**, con los tres cierres medidos
+     (`audit5/F3_CIERRES_FILAS_ALTERNAS.md`);
+   - son **instantes** de sol medio-bajo, no un anual;
+   - están **medidas en el modelo**, no en campo.
+
+   **Ninguna de las nueve puede encontrarlas**, porque todas parten de la misma
+   idea: retroceder hasta la tangencia, todas igual. La política de conjunto sí
+   puede, porque busca un θ por unidad de accionamiento con el objetivo de
+   energía y sombra evitable cero.
+
+La segunda razón no desaparece aunque la fase A arregle la enumeración de las
+nueve: una política que retrocede hasta la tangencia sigue sin poder salir de
+la configuración uniforme.

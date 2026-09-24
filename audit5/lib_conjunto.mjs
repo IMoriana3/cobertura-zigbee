@@ -16,6 +16,14 @@
  *     aceptar un θ que deje sombra evitable en ella NI en las que ella sombrea.
  * 2.4 PASADA FINAL con todos los θ definitivos: se recalcula la planta entera y la
  *     sombra evitable que quede se REPORTA, no se tapa.
+ * POR QUÉ EXISTE, DOS RAZONES INDEPENDIENTES (2026-09-24, audit5/FASE2_PARADA.md):
+ *   (1) ve a TODOS sus emisores por proyección con su θ real (las nueve miran
+ *       por vecindad y suponen gemelo al vecino);
+ *   (2) existen configuraciones SIN SOMBRA que producen más que la tangencia
+ *       uniforme, en llano incluido (+4,12 % y +5,90 %, INSTANTES de sol
+ *       medio-bajo, MEDIDO EN EL MODELO: audit5/F3_CIERRES_FILAS_ALTERNAS.md),
+ *       y ninguna de las nueve puede encontrarlas: todas retroceden hasta la
+ *       tangencia, todas igual.
  * 2.5 PREDICADO NO MONÓTONO: nada de bisección. Barrido cada 1° por todo el rango
  *     y refino cada 0,1° alrededor del mejor, y MULTIARRANQUE.
  * 2.7 ENERGÍA: la de `poaPlantSeg` (`backtracking.html:2785`), mesa a mesa —

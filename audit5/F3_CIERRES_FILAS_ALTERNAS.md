@@ -1,10 +1,36 @@
 # R5 · Los tres cierres del hallazgo de las filas alternas
 
-**PUBLICADO** (decisión del titular, 2026-09-24, tras ver los tres cierres):
-**+4,12 % a sol 78/105 y +5,90 % a 80/250**, con la difusa enmascarada, el
-albedo real y el mismatch medidos, y **ninguno de los tres lo explica**. Es la
-cifra del modelo 2D de este documento, con sus límites declarados abajo; no
-es medida de campo.
+**PUBLICADO**: el titular levantó el veto el 2026-09-24, tras ver los tres
+cierres.
+
+> **En terreno llano y uniforme, el backtracking uniforme NO es la
+> configuración sin sombra de máxima energía.** Los tres términos que podían
+> explicarlo están medidos y ninguno lo hace: difusa enmascarada, albedo con el
+> suelo real y mismatch.
+>
+> **+4,12 %** a sol 78/105 y **+5,90 %** a sol 80/250 sobre la tangencia
+> uniforme, con los tres cierres puestos. **Son INSTANTES de sol medio-bajo
+> (10-12° de elevación), no un anual. Están MEDIDOS EN EL MODELO (vista 2D de
+> este documento), no en campo.**
+
+### Qué falta para subirlo de grado
+
+- **El ANUAL de esa configuración.** Hace falta la política de conjunto sobre
+  un año con este mismo modelo de vista. Este documento no lo tiene.
+  - Solo sirve en horas de hombro: a sol 70/265 la ganancia es +1,15 % y a
+    72/95 pierde (−1,44 %).
+  - Lo que pesa en el año depende de cuántas horas-energía hay a 10-12° de sol,
+    y eso no se ha medido.
+- **La medida en CAMPO.** Hace falta:
+  - dos filas contiguas de una misma planta en llano, una a la tangencia y la
+    otra en la configuración alterna, en las horas de hombro de días claros;
+  - la corriente de string de las dos filas, y de una fila de referencia a la
+    tangencia, a la misma hora;
+  - el control: el mismo par con las dos a la tangencia, otro día de cielo
+    parecido.
+
+  Requiere mandar consignas a mano en campo. Eso no es de este repositorio:
+  lo tiene que autorizar quien opera la planta.
 
 ## El hallazgo
 En terreno uniforme, a sol bajo, la política de conjunto encuentra
