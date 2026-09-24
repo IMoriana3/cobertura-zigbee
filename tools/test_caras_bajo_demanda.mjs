@@ -60,8 +60,8 @@ const sinVersion = (f) => f.replace(/const VER='v[\d.]+';/, "const VER='*';");
    versión) está escrito aquí con su versión, su motivo y quién lo autorizó. Es
    la misma salida honrada que `test_doc_version`: obliga a mirar. */
 const FISICA_DECLARADA = [
-  { ver: 'v1.83.0', sha: 'd9a41d3935362a8e72b5ed526974a3f2bd979d3385fe91170a31e2a521edb9c1',
-    motivo: 'Refundación del BT, paso 3 (encargo del titular, 2026-09-24): la unidad es el ACCIONAMIENTO. En planta real con motores medidos, las políticas que deciden por línea (row, true3d, mgl) ya no acoplan las dos líneas enteras de cada grupo: reparten su ángulo de línea a sus mesas y lo acoplan por motor (applyDriveSeg). Decisión (a) del titular: true3d y la base de mgl CONSERVAN la reparación de sombra de driveCoupleSafe con cada línea como su unidad (porLinea). Efecto medido en audit5/REFUNDACION_P3.md' },
+  { ver: 'v1.83.0', sha: 'cbf849ac79f9a63bfea5332091871fdd061592a2d939bc20c0d147932a62d686',
+    motivo: 'Refundación del BT, paso 3 REFORMULADO (decisión del titular, 2026-09-24): el desacople de líneas enteras se REVIERTE —en Ayora costaba energía por ángulo de incidencia, no por sombra, y en relieve genérico la gana: casualidad de la geometría, no regla—; dentro de la física solo cambian COMENTARIOS: la regla falsa «reducir |θ| nunca crea sombra» (3.2) y la declaración del acople como casualidad junto a row/true3d/mgl. Ninguna política cambia de ángulo. audit5/REFUNDACION_P3.md' },
 ];
 /* el cuerpo exacto de una función, contando llaves y sin tragarse comentarios */
 function cuerpoFn(src, nombre) {

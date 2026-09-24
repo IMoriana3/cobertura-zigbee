@@ -461,6 +461,86 @@ CRITERIO con el que decide `true3d`.
 
 **PARO aquí.** La decisión es del titular: (b'), (a) o reformular el paso 3.
 
+## DECISIÓN DEL TITULAR: REFORMULAR EL PASO 3 — ni (a) ni (b')
+
+**Motivo (acta).** (a) y (b') respondían a la pregunta equivocada: si el acople
+se queda o se va. La medida dice que la pregunta es con qué criterio decide
+`true3d`:
+
+- con (a), la sombra MEJORA (+0,036 / +0,075 %) y la energía empeora
+  (−0,381 / −0,548 %);
+- el 85 % de la diferencia está en el haz directo;
+- el acople gana por ÁNGULO DE INCIDENCIA, no por sombra.
+
+**1 · El paso 3 pasa a ser:** «revisar con qué criterio decide cada política, y
+si ese criterio gobierna lo que se cobra».
+
+- **El defecto, enunciado:** `true3d` decide por contacto 3D. El contacto mueve
+  entre el 0,03 % y el 0,08 % del día, y lo que mueve la energía es el ángulo de
+  incidencia, que `true3d` nunca mira.
+- Es el mismo defecto que `optimal` tuvo con `poaPlant`/`poaPlantSeg` y que se
+  corrigió en la v1.76.
+
+**2 · El acople se queda como está, declarado por lo que es.** No es una regla:
+es una casualidad favorable de la geometría de Ayora, y en relieve genérico
+resta hasta un 4,8 %.
+
+- **Código:** el desacople del paso 3 se REVIERTE (`LINEA_SIN_ACOPLE`,
+  `porLinea` y la puerta `porMotor` de `segCmd` desaparecen). Ninguna política
+  cambia de ángulo respecto a `main`.
+- **Declaración, junto al código que acopla** (despacho de `row`, `true3d` y
+  `mgl` en `policyAngles`): no es una restricción del accionamiento; cuesta por
+  ángulo, no por sombra; en relieve genérico resta; lo que falla es el CRITERIO.
+- **La nota de la interfaz** dice ya que `row`, `true3d` y `mgl` siguen
+  acoplando líneas enteras, y por qué.
+- **Física:** solo cambian comentarios (el 3.2 y la declaración). Declarada con
+  su sha en `FISICA_DECLARADA`. El banco de caras sale 9/9.
+- **Lo que el paso 3 conserva:**
+  - 3.2, la regla falsa «reducir |θ| nunca crea sombra» fuera de la interfaz y
+    de los comentarios;
+  - R-1 (`segCmd` y los bancos B1-B3);
+  - el θ de línea de `produccion.html` sacado de sus mesas;
+  - las reglas R-3, R-4 y R-5.
+- **Banco `tools/test_unidad_accionamiento.mjs` reescrito para PROPIEDADES**
+  (R-4), con piso 8:
+  - cada motor, un θ;
+  - las nueve políticas y `segCmd`, bit a bit como `main`, con un desacople
+    inyectado como control;
+  - el contacto 3D no aumenta, con control sin reparación y su límite conocido
+    escrito;
+  - la declaración del acople está escrita junto al código.
+
+**3 · La revisión de las nueve:** con qué criterio DECIDE cada una y con qué
+magnitud se COBRA (`poaPlantSeg` por mesa en planta real).
+
+| política | con qué DECIDE | ¿gobierna lo cobrado? |
+|---|---|---|
+| `astro` | incidencia pura (`singleaxis` sin backtracking); no mira la sombra | no: ignora la sombra |
+| `global` | tangencia 2D de pvlib con la pendiente MEDIA de la planta | no: geometría media |
+| `row` | tangencia 2D de pvlib por fila con su terreno local, + acople de grupo | no: tangencia |
+| `bt2d` | tangencia 2D de pvlib ignorando el relieve | no: tangencia en llano |
+| `pairwise` | tangencia por pareja (planos sin sombra, con torsión) + reparación | no: tangencia |
+| `true3d` | contacto 3D (tope = sin sombra − margen) + reparación de `driveCoupleSafe` | **no, medido**: pierde por ángulo de incidencia |
+| `mgl` | parte de `pairwise` y empina mientras la sombra siga en 0 y la LUZ AL SUELO baje | no: luz al suelo (el candidato más probable tras `true3d`) |
+| `optimal` | `poaPlantSeg` por mesa, sobre la fracción común entre `pairwise` y `astro` | **sí** (corregido en la v1.76) |
+| `optfree` | ascenso libre guiado por la métrica de LÍNEA; elección final y veto con `poaPlantSeg` | a medias: el guía no es lo cobrado, la elección sí |
+| `coordinada` (#757) | contador `shadeBand3DAll` + guardia de energía | por comprobar en su rama |
+
+**La medida del desajuste** (`audit5/P3r_criterio.mjs` y `audit5/P3r_careo.mjs`,
+EN CURSO):
+
+- **La referencia** es `optimal`, que decide con lo que se cobra.
+- **Lo que se mide:** la distancia de cada política a la referencia, partida en
+  SOMBRA (lo que su criterio mira) y ÁNGULO (lo que no mira).
+- **Condiciones:** Ayora, 21-jun y 21-dic, la serie que ejecuta la página.
+- **Test nulo:** `optimal` contra sí mismo.
+- **`mgl`** espera a que la máquina lo permita: 40-90 s por instante.
+
+**4 · El paso 5 queda tocado.** Un optimizador que decida por contacto
+repetiría el defecto. El criterio de decisión y la función que se cobra tienen
+que ser LA MISMA. Es un INVARIANTE del contrato del paso 4, no una
+recomendación (`audit5/REFUNDACION_P4.md`).
+
 ## Incidencia · la primera corrida del banco del paso 3 murió en silencio
 
 La corrida de `tools/test_unidad_accionamiento.mjs` (PID 17739) terminó tras la
