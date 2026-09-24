@@ -306,7 +306,8 @@ energía y θ idénticos bit a bit.
   diferir de verdad del de la página.
 - Es el **cuarto caso** del patrón «el código y su descripción dejaron de
   coincidir»: registrado en `audit5/PATRON_CODIGO_Y_DESCRIPCION.md` con los
-  otros tres (y con un quinto, encontrado después: la escena y el giro máximo).
+  otros tres (y con un quinto, la escena y el giro máximo, y un sexto, un banco:
+  `test_anual_lazo` no ve `grAnualGen`).
 
 ---
 
@@ -332,7 +333,7 @@ de la omisión (`audit5/F0_convergencia.mjs`). La medida:
 | planta | γ | \|Δθ\| backtracking p50 / p90 / p99 / máx | Δθ medio con signo | \|Δθ\| astronómico p50 / máx | energía, con γ frente a sin γ |
 |---|---|---|---|---|---|
 | Ayora | +1,161° | 0,253° / 1,253° / 2,189° / 5,249° | +0,327° | 0,054° / 2,612° | **+0,018 %** |
-| Fayón (el plano, solo relativo) | −1,764° | 0,698° / 1,931° / 3,656° / 16,223° | −0,420° | 0,384° / 3,186° | **−0,082 %** |
+| Fayón (el plano, solo relativo) | −1,764° | 0,698° / 1,931° / 3,656° / 16,223° | −0,420° | 0,384° / 3,186° | **−0,082 %** — el backtracking de pvlib no optimiza energía, minimiza sombra, así que corregir el azimut no tiene por qué producir más |
 
 - **Test nulo** (γ = 0): Δθ = 0 exacto (es la identidad del cálculo, y se dice).
 - **Control** en un instante del 21-jun sin unidades contra el tope: el Δθ
@@ -343,7 +344,9 @@ de la omisión (`audit5/F0_convergencia.mjs`). La medida:
   el titular (Δθ medio con signo +0,33° en Ayora y −0,42° en Fayón). En energía
   el efecto es pequeño y **no tiene signo fijo**: el backtracking de pvlib no
   busca energía, así que apuntarlo bien no garantiza más. Ayora gana un 0,018 %
-  y Fayón pierde un 0,082 %, y lo de Fayón es sobre el plano.
+  y Fayón pierde un 0,082 %, y lo de Fayón es sobre el plano. **El −0,082 % de
+  Fayón no es un error: el backtracking de pvlib no optimiza energía, minimiza
+  sombra, así que corregir el azimut no tiene por qué producir más.**
 
 ---
 

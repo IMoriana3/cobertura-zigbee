@@ -3,3 +3,4 @@ BT3D · F0 · convergencia · v1.78.1 · FAYON (EL PLANO: solo diferencia relati
   θ backtracking pvlib por unidad · |Δθ| p50 0.698° · p90 1.931° · p99 3.656° · máx 16.223° · Δθ medio con signo -0.4199° (20856 unidad×instante)
   θ astronómico       por unidad · |Δθ| p50 0.384° · p90 1.744° · p99 2.630° · máx 3.186° · Δθ medio con signo -0.5964° (20856 unidad×instante)
   ENERGÍA (sol verdadero, sombra del motor): Δ -0.0817 % · 3 s
+  (el backtracking de pvlib no optimiza energía, minimiza sombra, así que corregir el azimut no tiene por qué producir más)
