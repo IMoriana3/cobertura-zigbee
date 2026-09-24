@@ -446,6 +446,18 @@ jobs:
       # banco sale 1 si falla alguna.
       - name: el motor de sombra por proyección
         run: node audit5/test_motor.mjs
+      # BT3D · fase 0: los parámetros declarados (audit5/bt3d_parametros.json)
+      # los leen el lado JS y el paquete Python `bt3d`; el banco cae si resuelven
+      # distinto, si se apartan del simulador, si el rango por unidad del
+      # optimizador no es el del simulador, si los dos enumeradores por
+      # envolvente difieren o si la envolvente pierde un par con sombra del
+      # motor. Solo biblioteca estándar de Python: nada que instalar.
+      - name: BT3D · escenas de Ayora y Fayón
+        run: node audit5/F0_escenas.mjs
+      - name: BT3D · parámetros, rango y envolvente (JS ↔ Python ↔ simulador ↔ motor)
+        run: node audit5/test_parametros.mjs
+      - name: BT3D · cotas de la anchura de árbol
+        run: python3 -m bt3d.test_grafo
       # Las dos herramientas de campo, que no estaban en CI. Ninguna llama a
       # `process.exit`: `careo_produccion` publica «veredicto: IDÉNTICOS» o su
       # contrario y SALE 0 en los dos casos, así que un `run:` pelado habría sido

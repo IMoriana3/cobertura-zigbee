@@ -1,0 +1,15 @@
+BT3D · F0 · conoHaz contra el cono del motor · v1.78.1 · AOI_HAZ 88° · barrido de θ cada 0,01°
+
+ayora: 73728 instante × τ de unidad (256 τ distintos) · |Δ extremo| entre conoHaz y el cono del motor: p50 0.910° · p90 3.511° · máx 8.055° · > 0,1°: 68063 · > 1°: 34834 · uno nulo y el otro no: 0
+   peor caso: {"fecha":"2026-06-21","min":725,"elev":74.32,"az":178.8,"tau":-4.3,"motor":[-87.51,88.22],"conoHaz":[-79.46,80.17]}
+   CONTROL POSITIVO (s·a como en el comentario): máx |Δ| 0.010° — se va al paso del barrido: la diferencia es la de la fórmula
+
+fayon: 6601 instante × τ de unidad (23 τ distintos) · |Δ extremo| entre conoHaz y el cono del motor: p50 0.775° · p90 1.849° · máx 3.195° · > 0,1°: 6078 · > 1°: 2601 · uno nulo y el otro no: 0
+   peor caso: {"fecha":"2026-06-21","min":720,"elev":72.22,"az":179.6,"tau":4.64,"motor":[-87.82,88.07],"conoHaz":[-84.63,84.87]}
+   CONTROL POSITIVO (s·a como en el comentario): máx |Δ| 0.010° — se va al paso del barrido: la diferencia es la de la fórmula
+
+Efecto en rangoHaz por unidad (el rango que leen simulador y optimizador): rango con conoHaz tal cual vs con s·a del comentario
+  ayora: 122976 unidad×instante · rango distinto en ≥ 0,1° (un paso de mando): 7901 (6.42 %) · máx 0.55° · peor ('2026-12-21', 495, 8.02, 129.1, '39', [-5.39, 55], [-4.84, 55])
+     por elevación: <3° 5636 de 5978 (máx 0.39°) · 3-10° 2265 de 14518 (máx 0.55°) · ≥10° 0 de 102480 (máx 0.00°)
+  fayon: 6888 unidad×instante · rango distinto en ≥ 0,1° (un paso de mando): 662 (9.61 %) · máx 0.52° · peor ('2026-12-21', 500, 8.26, 131.3, 'TK003', [-18.14, 55], [-17.61, 55])
+     por elevación: <3° 211 de 312 (máx 0.40°) · 3-10° 424 de 864 (máx 0.52°) · ≥10° 27 de 5712 (máx 0.12°)

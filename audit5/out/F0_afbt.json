@@ -1,0 +1,216 @@
+{
+ "ver": "v1.78.1",
+ "lineas": {
+  "afbtLoc": [
+   1626,
+   1631
+  ],
+  "afbtSol": [
+   1632,
+   1636
+  ],
+  "afbtVecinos": [
+   1637,
+   1673
+  ],
+  "afbtDeficit": [
+   1710,
+   1762
+  ]
+ },
+ "C1": {
+  "casos": 300,
+  "con_recorte": 106,
+  "en_dominio": 290,
+  "max_abs_dif_deg": 0.004764751520312416,
+  "control_signo_cambiado_max_dif_deg": 52.545057557768075,
+  "fuera_de_dominio": [
+   {
+    "dh": 0.3,
+    "lado": "E",
+    "elev": 4,
+    "theta_pvlib": -1.1323405331768868,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.3,
+    "lado": "O",
+    "elev": 4,
+    "theta_pvlib": 1.1323405331768868,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "E",
+    "elev": 6,
+    "theta_pvlib": -1.9482652029894751,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "E",
+    "elev": 8,
+    "theta_pvlib": -6.970731931987316,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "E",
+    "elev": 10,
+    "theta_pvlib": -3.8828552952604554,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "E",
+    "elev": 12,
+    "theta_pvlib": -0.7535105482737237,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "O",
+    "elev": 6,
+    "theta_pvlib": 1.9482652029894751,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "O",
+    "elev": 8,
+    "theta_pvlib": 6.970731931987316,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "O",
+    "elev": 10,
+    "theta_pvlib": 3.8828552952604554,
+    "theta_afbt": 0
+   },
+   {
+    "dh": 0.8,
+    "lado": "O",
+    "elev": 12,
+    "theta_pvlib": 0.7535105482737237,
+    "theta_afbt": 0
+   }
+  ]
+ },
+ "C2": {
+  "casos": 400,
+  "con_recorte": 147,
+  "max_abs_dif_deg": 0,
+  "control_max_dif_deg": 55
+ },
+ "C3": {
+  "firma": "A,B,ladoB,sv0,gap",
+  "linea_ambas_filas": 1749,
+  "casos": [
+   {
+    "elev": 5,
+    "recorte_afbt": 47.328829765319824,
+    "thA": 7.671170234680176,
+    "thB": 55,
+    "sombra_gemelo": 0.00001646214336180432,
+    "sombra_B_en_su_theta": 1
+   },
+   {
+    "elev": 10,
+    "recorte_afbt": 39.08475160598755,
+    "thA": 15.915248394012451,
+    "thB": 55,
+    "sombra_gemelo": 0.00001641086430408903,
+    "sombra_B_en_su_theta": 0.459084478395198
+   },
+   {
+    "elev": 15,
+    "recorte_afbt": 29.35268640518189,
+    "thA": 25.64731359481811,
+    "thB": 55,
+    "sombra_gemelo": 0.000016534631939211898,
+    "sombra_B_en_su_theta": 0.1756848427758701
+   },
+   {
+    "elev": 20,
+    "recorte_afbt": 15.593113899230957,
+    "thA": 39.40688610076904,
+    "thB": 55,
+    "sombra_gemelo": 0.000016552765584198308,
+    "sombra_B_en_su_theta": 0.040357541282062405
+   },
+   {
+    "elev": 25,
+    "recorte_afbt": 0,
+    "thA": 55,
+    "thB": 55,
+    "sombra_gemelo": 0,
+    "sombra_B_en_su_theta": 0
+   },
+   {
+    "elev": 30,
+    "recorte_afbt": 0,
+    "thA": 55,
+    "thB": 55,
+    "sombra_gemelo": 0,
+    "sombra_B_en_su_theta": 0
+   }
+  ]
+ },
+ "C4": [
+  {
+   "banda": "<3°",
+   "inst": 14,
+   "rel": 318474,
+   "cubre": 17980,
+   "intra": 17934,
+   "mismo_tubo": 2271,
+   "lejos": 226239,
+   "fila_trasera": 54050,
+   "filtrado": 0
+  },
+  {
+   "banda": "3-10°",
+   "inst": 34,
+   "rel": 237523,
+   "cubre": 43742,
+   "intra": 43554,
+   "mismo_tubo": 5508,
+   "lejos": 52517,
+   "fila_trasera": 92202,
+   "filtrado": 0
+  },
+  {
+   "banda": "10-30°",
+   "inst": 129,
+   "rel": 126383,
+   "cubre": 58935,
+   "intra": 57979,
+   "mismo_tubo": 7507,
+   "lejos": 4,
+   "fila_trasera": 1958,
+   "filtrado": 0
+  },
+  {
+   "banda": "≥30°",
+   "inst": 111,
+   "rel": 0,
+   "cubre": 0,
+   "intra": 0,
+   "mismo_tubo": 0,
+   "lejos": 0,
+   "fila_trasera": 0,
+   "filtrado": 0
+  }
+ ],
+ "C4_total": {
+  "inst": 288,
+  "rel": 682380,
+  "cubre": 120657,
+  "intra": 119467,
+  "mismo_tubo": 15286,
+  "lejos": 278760,
+  "fila_trasera": 148210,
+  "filtrado": 0
+ }
+}
