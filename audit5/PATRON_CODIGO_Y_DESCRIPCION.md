@@ -13,7 +13,8 @@ que costaba.
 
 Los tres primeros los reconstruí yo a partir de lo documentado en el repo; el
 titular confirmó (2026-09-24) que son los que él tenía. El sexto lo señaló él,
-el mismo día.
+el mismo día. El séptimo lo pidió registrar él (2026-09-24), a partir de la
+medida de B.2.
 
 | # | dónde | lo que dice la descripción | lo que hace el código | cómo se vio | estado |
 |---|---|---|---|---|---|
@@ -23,10 +24,11 @@ el mismo día.
 | 4 | `backtracking.html:992-994` frente a `:1030` · `conoHaz` | «cos AOI = cos(θ − ψ)·cos λ, con sin λ = s·a» | `sa = sin Z·cos ΔA·sin τ + cos Z·cos τ`: seno y coseno de τ cambiados. El cono se aparta del del motor hasta 8,06° (p50 0,91° en Ayora); `rangoHaz` cambia hasta 0,55° con sol < 10° | `audit5/F0_conohaz.mjs` (BT3D, fase 0) | **no se toca la página** (decisión del titular); el BT3D usa la fórmula del comentario; efecto en el anual de las nueve medido en `audit5/F0_conohaz_anual.mjs` |
 | 5 | `backtracking.html` · `consignaEscena` / `sceneInstant` (v1.78.1) | el comentario de `consignaEscena`: «Ahora la escena interpola entre las dos muestras que la rodean… ningún par de minutos consecutivos se separa más de \|Δmuestra\|/STEP_MIN ≤ SLEW·60» | `sceneInstant` no la usaba. Los optimizadores mantenían la muestra y saltaban en el último minuto; el resto iba hacia la consigna del minuto. Resultado: 51° en un minuto (0→51° a las 06:35; 56,0° → 5,0° a las 22:04-22:05 en la captura del titular) con un actuador de 10,2°/min | reportado por el titular viendo la escena; medido con `tools/test_giro_maximo.mjs` | **arreglado** en la rama `claude/giro-maximo-6th1im` (v1.79.0), junto con los otros dos defectos del giro (tope tras el lazo y aparcamiento fuera de ±θmáx); pendiente del visto bueno del titular a las cifras de energía |
 | 6 | `tools/test_anual_lazo.mjs` · un BANCO, no un comentario | su título: «LA RUTA ANUAL PASA POR EL LAZO, Y NO PUEDE VOLVER A SALTÁRSELO» (`:1`) | corta su fuente en el `onclick` del botón del año —de `$('yearbtn').onclick` a `const ref=tot['pairwise']` (`:26-28`)— y por eso no ve la OTRA ruta anual de la página: `grAnualGen` (`backtracking.html:9627-9659`) suma `policyAngles → poaPlant` sin `crearLazo`, y es lo que publica la columna del año del informe gráfico (`:9599`). El banco está en verde con esa ruta saltándose el lazo | señalado por el titular; verificado leyendo las dos citas | **registrado, no arreglado**: arreglar `grAnualGen` mueve las cifras del informe; lo decide el titular. Es el peor de los seis: un comentario desactualizado engaña a quien lo lee; un banco que no ve lo que dice vigilar engaña a todo el mundo |
+| 7 | `backtracking.html` · el HAZ DE SOMBRA (`ovM_haz`) de la escena 3D | su comentario: «HAZ DE SOMBRA: el volumen que va del objeto que sombrea a su mancha sobre la mesa» (`:6839` en `main` v1.78.1 · `:6841` en v1.80.0) | lleva el volumen hasta `Hs`, la proyección del contorno emisor sobre el plano INFINITO de la pala receptora (`const H=[P[0]+t*dsh[0],…]`, `:6963` · `:6965`), SIN recortar a la pala; la silueta, que es la sombra que se pinta, sí se recorta (`poly=clipPoly(poly,edge)`, `:6971` · `:6973`). Medido en el estado de la «mancha» con monofila: dos de los cuatro extremos del haz caen a 13,9 y 14,5 m del eje de la pala receptora, fuera de su largo y a 1,22 m sobre el terreno: dibuja volumen donde no hay superficie | medido en B.2 (`audit_mancha/MANCHA.md` y sondas `M0`–`M4`, rama `claude/config-json-6th1im`, PR #753) | **registrado, no arreglado** (el titular no lo ha pedido). Defecto de render por sí solo, sea o no la mancha que vio el titular (esa sigue ABIERTA: el haz es candidato, no respuesta — sus caras son paralelas al rayo y su pista decía perpendicular). No afecta al contador: el haz es una ayuda visual y no se cuenta |
 
 ## Lo que tienen en común
 
-En los seis el texto era **razonable**: describía lo que el código debía hacer.
+En los siete el texto era **razonable**: describía lo que el código debía hacer.
 Por eso nadie lo contrastó. En tres (2, 4, 5) el error estaba en una rama o en
 una línea que las pruebas de conducta no tocaban: `pairDz` solo en líneas
 escalonadas, `conoHaz` solo en el extremo trasero del rango con sol bajo, la
