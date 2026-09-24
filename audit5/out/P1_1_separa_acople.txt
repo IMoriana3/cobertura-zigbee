@@ -1,0 +1,21 @@
+REFUNDACIÓN · 1.1 · separar el acople · física v1.78.1 (origin/main) · Ayora, 79 líneas, 1600 mesas, 400 motores, 40 grupos de línea
+
+2 · TEST NULO (21-jun y 21-dic, cada 10 min)
+  control negativo del detector (LM contra sí misma): 0 de 232000 mesas×instante (0.0 %), mayor |Δθ| 0.000° ✓
+  LM ≠ L : 130926 de 232000 mesas×instante (56.4 %), mayor |Δθ| 57.000°
+  LM ≠ M : 203132 de 232000 mesas×instante (87.6 %), mayor |Δθ| 28.416°
+  L  ≠ M : 224032 de 232000 mesas×instante (96.6 %), mayor |Δθ| 57.000°
+
+3 · ANUAL de pairwise, 12/12 meses (días 21, cada 10 min, cielo claro, CON lazo), kWh/m²
+  1 · FIDELIDAD: L con métrica de línea 2307.0294 (ref 2307.0294) ✓ · M con métrica de mesa 2705.1154 (ref 2705.1154) ✓
+  métrica de LÍNEA (crearLazo → poaPlant): L 2307.0294 · L0 2677.6999 (16.067 %)
+  métrica de MESA (crearLazoSeg → poaPlantSeg):
+    L    2253.6664     0.000 % vs L
+    L0   2685.2794    19.152 % vs L
+    LM   2683.0381    19.052 % vs L
+    M    2705.1154    20.032 % vs L
+  hueco L → M en la MISMA métrica: 451.4490 kWh/m² (20.032 %)
+    «acoplar líneas enteras» (LM − L): 429.3716 = 95.1 % del hueco
+    «un ángulo por línea»    (M − LM): 22.0773 = 4.9 % del hueco
+  solo MÉTRICA (L por mesa − L por línea): -53.3630 kWh/m² (-2.313 %)
+  coste 3388 s · carga 6.6/6.4/6.7 → 16.4/17.0/17.1 (máquina OCUPADA: no es una medida de tiempo)
