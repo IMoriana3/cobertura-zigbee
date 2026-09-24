@@ -63,7 +63,7 @@ const PISO = {
   // ── datos y física (node) ──
   'test_pw_navegador.mjs': 6,
   'test_dem_cobertura.mjs': 10,
-  'test_anual_lazo.mjs': 12,
+  'test_anual_lazo.mjs': 25,   // paso 2: cada comprobación de fuente en su línea (antes 12)
   'test_ponderacion_planta.mjs': 10,
   'test_caras_bajo_demanda.mjs': 9,
   'test_signo_unico.mjs': 7,

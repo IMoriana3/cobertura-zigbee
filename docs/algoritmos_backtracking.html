@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-describe-ver="v1.57.2" data-contrastado-con="v1.78.1" data-contrastado-el="2026-09-23">
+<html lang="es" data-describe-ver="v1.57.2" data-contrastado-con="v1.82.0" data-contrastado-el="2026-09-24">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -53,13 +53,13 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 </div>
 
 <div class="box bad">
-<b>Este documento describe la v1.57.2. El código va por la v1.78.1</b> (<code>backtracking.html:532</code>, <code>const VER</code>), contrastado el 2026-09-23. No está regenerado desde el código: es prosa escrita a mano, y regenerarlo no es una operación que exista. Lo que hay es <b>este sello y la lista de abajo</b>, y un banco (<code>tools/test_doc_version.mjs</code>, en CI) que se pone rojo en cuanto <code>VER</code> se mueva y nadie vuelva a contrastar.
+<b>Este documento describe la v1.57.2. El código va por la v1.82.0</b> (<code>backtracking.html:532</code>, <code>const VER</code>), contrastado el 2026-09-24. No está regenerado desde el código: es prosa escrita a mano, y regenerarlo no es una operación que exista. Lo que hay es <b>este sello y la lista de abajo</b>, y un banco (<code>tools/test_doc_version.mjs</code>, en CI) que se pone rojo en cuanto <code>VER</code> se mueva y nadie vuelva a contrastar.
 <p style="margin:.6em 0 0"><b>Lo que ha cambiado desde la v1.57.2 y este documento aún NO recoge</b> —medido, con puntero, no reconstruido—:</p>
 <ul style="margin:.4em 0 0">
-<li><b>El anual pasa por el lazo de control</b> y su paso es de 10 min, no de 20 (<code>backtracking.html:7621</code>, <code>const PASO_ANUAL_MIN=10</code>). Antes la ruta anual saltaba el lazo entero: daba el ángulo que la política pide, no el que el seguidor alcanza. §5 no lo dice.</li>
+<li><b>El anual pasa por el lazo de control</b> y su paso es de 10 min, no de 20 (<code>backtracking.html:7637</code>, <code>const PASO_ANUAL_MIN=10</code>). Antes la ruta anual saltaba el lazo entero: daba el ángulo que la política pide, no el que el seguidor alcanza. §5 no lo dice.</li>
 <li><b>La planta publica DOS métricas de POA</b>, por línea y por mesa (<code>backtracking.html:5291</code> y el ramal por mesa). El documento habla de una sola y no distingue cuál.</li>
 <li><b><i>n<sub>b</sub></i> ya no es la constante 2</b>: sale de la ficha del módulo si la planta la trae, y si no, queda declarado como configurado a mano (<code>backtracking.html:4646</code>, <code>function nbDe</code>). §2 sigue escribiendo «= 2 por mesa», que hoy es el valor por defecto, no la procedencia.</li>
-<li><b>El indicador de backtracking compara mandos</b>, no posiciones (<code>backtracking.html:8197</code>, <code>BT_UMBRAL_DEG</code>). El documento no lo menciona.</li>
+<li><b>El indicador de backtracking compara mandos</b>, no posiciones (<code>backtracking.html:8245</code>, <code>BT_UMBRAL_DEG</code>). El documento no lo menciona.</li>
 <li><b>La interfaz dice BUSCAN, no GARANTIZAN</b> (<code>backtracking.html:3634</code>). El documento ya lo decía bien en §3; la interfaz es la que se ha corregido.</li>
 <li><b>El banco de física va por 211 comprobaciones en la v1.74.0</b>, no 192 — corregido en §6 con su versión al lado.</li>
 <li><b>La rampa de color se ancla a cero</b> desde la v1.76 (<code>backtracking.html:4240</code>, <code>function rangoColor</code>). Antes se estiraba SIEMPRE del mínimo al máximo de la vista, así que una diferencia pequeña se leía como si unas mesas produjeran el doble: medido sobre terreno ondulado a las 17h, repartía un <b>6,4 %</b> por toda la rampa. «Contraste» mantiene el mín→máx como opción y la leyenda dice entonces cuánto abarca. Va con una segunda guarda: no se normaliza si la dispersión baja del 0,1 % del máximo (<code>function normProd</code>), porque con la planta uniforme el rango es polvo de coma flotante y el <code>pmax&gt;pmin</code> anterior lo amplificaba a escala completa. La regla vive en FÍSICA PURA y <code>produccion.html</code> la extrae de ahí, en vez de tener su copia. El documento no describe el color.</li>
@@ -68,6 +68,8 @@ small.src{color:var(--mut);font-family:var(--mono);font-size:11.5px}
 <li><b>Los dos optimizadores mandan MESA A MESA</b> desde la v1.77 (<code>backtracking.html:3211</code>, <code>anglesOptimalSeg</code>; <code>backtracking.html:3267</code>, <code>anglesOptimalFreeSeg</code>). Antes buscaban y vetaban con la POA <b>por línea</b> y se les cobraba con la de <b>por mesa</b>: medido en Ayora real el 21-jun, <code>optimal</code> no perdía nunca por su propia métrica —0 de 86 instantes— y perdía por la publicada en <b>58 de 86</b>, con el día en <b>−0,5103 %</b>. §3.8 está reescrito; §3.9 lo menciona.</li>
 </ul>
 <p style="margin:.6em 0 0">La v1.78.1 solo cambia la <b>talla del cartel «haz · % del vano»</b> de la vista 3D (ancho fijo en pantalla, <code>function tallaRotulos</code>): nada de lo que este documento describe. Contrastado mirando el diff; dos punteros de arriba se han movido de línea y están corregidos.</p>
+<p style="margin:.6em 0 0"><b>La v1.81.0 (refundación, paso 1) cambia QUÉ CALCULA EL ANUAL</b>, no cómo decide ninguna política: con mesas, las dos rutas anuales de la página (el botón del año y el informe gráfico) consumen la RAMA POR MESA, como el día (<code>segCmd</code> → lazo por mesa → <code>poaPlantSeg</code>). Las cuatro de <code>POL_POR_MESA</code> deciden por mesa; el resto reparte a sus mesas el ángulo de su línea. Antes el anual decidía por línea y la ruta por línea acopla las dos líneas enteras de cada grupo. La física no cambia. Ver <code>audit5/REFUNDACION_P1.md</code>. Los punteros de arriba se han corrido y están corregidos.</p>
+<p style="margin:.6em 0 0"><b>La v1.82.0 (refundación, paso 2) deja UNA sola ruta anual</b>, <code>function* anualGen</code>: con lazo, cielo claro y la rama por mesa. El botón del año y el informe gráfico la CONSUMEN; el informe iba antes sin lazo y con las nubes del deslizador, y publicaba otra cifra. La física no cambia. Ver <code>audit5/REFUNDACION_P2.md</code>.</p>
 <p style="margin:.6em 0 0">Todo lo demás de §3 y §4 <b>no está reverificado contra la v1.74.0</b>. No se afirma que esté mal: se afirma que <b>no se ha comprobado</b>.</p>
 </div>
 
