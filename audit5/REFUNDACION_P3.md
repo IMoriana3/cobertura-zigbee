@@ -348,6 +348,58 @@ nadie crea que una restricción mecánica acopla las líneas, sin tirar energía
 
 **PARO aquí**, como pide la condición.
 
+## (c) AMPLIADO (decisión del titular) · 1: el acople en presets genéricos — la ventaja NO es general
+
+**La pregunta.** ¿El acople de líneas enteras gana en Ayora por una propiedad
+del problema, o por casualidad de esa geometría?
+
+**La medida.** `audit5/P3_3c_preset.mjs`, salida en
+`audit5/out/P3_3c_preset.{txt,json}`:
+
+- `true3d` con el acople de líneas enteras (`driveCoupleSafe` con los grupos
+  bifila) frente a la reparación por línea (`porLinea`);
+- presets genéricos de 10 filas, paso 6 m, bifila;
+- ruta de línea con lazo (`crearLazo` → `topeBacktracking` → `poaPlant`);
+- cielo claro, lat/lon de la genérica, cada 5 min.
+
+| preset | 21-jun: por línea frente a acople | 21-dic |
+|---|---|---|
+| llano | idéntico bit a bit | idéntico bit a bit |
+| pendiente uniforme 4° | idéntico bit a bit | idéntico bit a bit |
+| ondulado ±1,5 m | **+2,73 %** | **+4,76 %** |
+| pendiente 5° + torsión N-S ±3° | +0,04 % | +0,72 % |
+| aleatorio 1 (semilla 7) | +2,71 % | +4,34 % |
+| aleatorio 2 | +3,00 % | +4,79 % |
+| aleatorio 3 | +2,09 % | +3,12 % |
+
+TEST NULO: `astro` sale idéntico en las dos variantes, en todos los presets.
+
+**Lo que dice.**
+
+- **La ventaja del acople no es una propiedad del problema.** En relieve
+  genérico, el acople PIERDE entre un 0,04 % y un 4,8 % del día. En Ayora GANA
+  un 0,38-0,55 %. La ventaja es de la geometría de Ayora o de la ruta por mesa
+  en planta real, y no de «dos líneas, un θ».
+- **El preset uniforme no es un control superado: no puede distinguir.** Sale
+  idéntico bit a bit porque ahí `true3d` ya da el mismo θ a las dos líneas de
+  cada grupo, y el acople no tiene nada que cambiar.
+- **No es una comparación de igual a igual con Ayora.**
+  - En los presets, ruta de línea con `repairNoShade` activo.
+  - En Ayora, rama por mesa en planta real, con acople por motor y sin
+    `repairNoShade`.
+
+  Esto descarta la regla general, no explica Ayora.
+
+**Consecuencia para las opciones.** (b') deja de ser «devolver el acople como
+regla de decisión». Como mucho sería «el acople ayuda en Ayora y estorba en
+otras plantas», y eso no es una regla, es un caso. La pregunta buena pasa a ser
+**por qué Ayora es distinta**. La descomposición sombra/haz, en curso
+(`audit5/P3_3c_descompone.mjs`), es la que lo dice.
+
+No se decide nada hasta tenerla. Si la sombra explica la ventaja en Ayora y en
+los presets se pierde, hay algo de la geometría real que el criterio de
+contacto 3D no ve: mesas partidas, morros o longitudes distintas.
+
 ## Incidencia · la primera corrida del banco del paso 3 murió en silencio
 
 La corrida de `tools/test_unidad_accionamiento.mjs` (PID 17739) terminó tras la
