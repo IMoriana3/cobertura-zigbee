@@ -218,6 +218,35 @@ mismas sondas.
 Un error que reaparece después de registrado necesita una barrera, no otra
 anotación (titular, 2026-09-24).
 
+> **LA REGLA VIGENTE, por el MECANISMO y no por la forma (titular, 2026-09-24,
+> noche). Sustituye a las tres versiones de abajo, que quedan como historia.**
+>
+> **Prohibido seleccionar procesos por patrón de texto. Permitido solo por PID
+> leído APARTE, mirado y verificado después.**
+>
+> Un patrón que casa contra líneas de órdenes casa también con la shell que lo
+> lanza. Pasó cuatro veces, cada una con otra sintaxis. Las tres ampliaciones
+> por forma dejaban siempre la siguiente sin cubrir. La barrera
+> (`~/.claude/barreras/no_pkill_f.py`) detecta ahora el mecanismo:
+>
+> - hay un **selector por texto**: `pgrep`, `pidof`, la salida de `ps` filtrada
+>   por texto (grep, awk, sed, perl, python) o `/proc/*/cmdline` con un filtro;
+> - y a la vez una **acción o espera** sobre lo seleccionado: `kill`, `xargs`,
+>   un bucle o `wait`;
+> - `pkill` y `killall` son las dos cosas a la vez; `pgrep` y `pidof` no se usan
+>   nunca, porque solo sirven para seleccionar por texto.
+>
+> Listar con `ps -eo pid,args | grep …`, sin actuar, es como se LEEN los PIDs.
+>
+> Las 21 formas registradas son **ejemplos** de la regla y viven en su banco
+> (`test_barrera.py`). El banco añade **6 variantes que aún no han pasado**
+> (`pidof … | xargs kill`, una variable con la salida de `ps | grep`, filtros
+> perl y python, `/proc/*/cmdline`, `wait $(pgrep …)`), para comprobar que la
+> regla las cubre antes de que existan.
+>
+> **Resultado:** 27 formas bloqueadas y 11 legítimas que pasan. Contra la
+> barrera de la mañana, 22 fallos.
+
 **Regla.** En esta sesión está **prohibido matar procesos por patrón**:
 `pkill` con la opción de línea completa, `pgrep` en esa modalidad encadenado a
 `kill`, y `killall` con expresión regular. El patrón puede casar con la línea
