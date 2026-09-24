@@ -1,9 +1,82 @@
 # R5 · FASE A — Decidir con lo que se mide
 
 **Encargo R5 «el backtracking, enfocado», fase A (2026-09-24).** Rama
-`claude/r5-fase-a-6th1im`, simulador **v1.80.0**. La física de `pairwise` y de
-`true3d` cambia y está declarada; las otras siete políticas y el contador por
-defecto siguen **bit a bit** iguales a `origin/main` (banco, A.3).
+`claude/r5-fase-a-6th1im`, simulador **v1.80.0**.
+
+## DECISIÓN DEL TITULAR (iii) y lo que queda publicado
+
+**Decisión (2026-09-24):** `pairwise` vuelve a `pairwiseLocal`, y la decisión
+nueva sale como política NCU aparte, con nombre propio.
+
+**Motivo, para el acta (del titular):**
+
+- Las dos violaciones del CI son la misma propiedad: la decisión nueva coordina
+  la planta, así que su resultado depende de qué planta coordina.
+- (iii) restaura los dos contratos SOLOS, sin relajar ningún banco, y coincide
+  con la opción (b) del defecto de la casa: `pairwise` tiene que ser ejecutable
+  por una TCU sin depender de que la planta entera siga un plan.
+- (i) arregla la garantía y deja el careo rojo; (ii) relaja un banco, que es
+  corregir hacia lo que el test pide.
+
+**Qué queda publicado:**
+
+- **`pairwise` = `pairwiseLocal`**, tal como estaba:
+  `backtracking.html:3948` `return {angles:pairwiseLocal(zen,az,T,irr,doy,albedo),f:undefined};`.
+  Por mesa, `applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv)`, el de main.
+- **`true3d` también vuelve a su fórmula local.** La decisión (iii) no lo
+  nombra. Se extiende por el mismo motivo del acta: en la fase A también
+  decidía coordinado, con la misma propiedad, y su rótulo `tcu` quedaría
+  falso. Se declara aquí y se revierte en un commit si el titular no lo quiere.
+- **La DÉCIMA política, `coordinada`, rótulo NCU:** `backtracking.html:4662`,
+  despacho por línea en `:3946` y por mesa en `:2792`.
+  - **Nombre:** dice lo que hace, coordinar la planta con la posición real de
+    todas las emisoras, no cómo se calcula.
+  - **Código:** es, expresión por expresión, el `pairwise` que decidía la fase
+    A, así que todo lo medido en A.3/A.4 para «pairwise nuevo» es de
+    `coordinada`.
+  - **Arranque:** apagada (`on:false`), fuera de `POL_CARAS` porque su coste no
+    está medido con la máquina libre, y dentro de `POL_POR_MESA`.
+  - **Junto a ella queda ESCRITO (comentario de `:4654-4661`) que su resultado
+    depende del alcance de la planta coordinada.** El mismo seguidor, con la
+    misma física, da θ distinto según cuánta planta entre en la coordinación:
+    medido, hasta 1,3954° entre la ventana de 80 líneas del simulador y la
+    planta entera de `produccion.html`. No es un defecto, es su naturaleza.
+- **Bancos:**
+  - `tools/test_decide_mide.mjs`: decidir = medir se exige a `coordinada`, y la
+    comprobación 4 exige ahora que las NUEVE de siempre, `pairwise` y `true3d`
+    incluidas, sean bit a bit las de main: 135 + 25 comparaciones.
+  - `tools/cruce_ncu_dia.mjs` vuelve a ser idéntico al de main.
+  - El careo y la garantía de `optimal` no se tocan (ver abajo si vuelven a verde).
+- **A.4 con (iii):** la fila «pairwise» carea el `pairwise` de main con
+  `coordinada` (`audit5/A4_efecto.mjs`), que reproduce exactamente lo
+  publicado (senoidal día: 433 → 0). `true3d` pasa a ser un TEST NULO: 302 →
+  302, Δ 0. **Las filas `true3d` de las tablas A.4 son de la variante
+  coordinada de `true3d`, retirada por (iii): quedan como historia, no
+  describen ninguna política publicada.**
+
+## HALLAZGO · la decisión nueva no es local, y por eso no cabe bajo contratos escritos para una decisión local
+
+Es la misma propiedad vista desde tres sitios:
+
+1. **Información (TCU/NCU).** `decideProyeccion` (`backtracking.html:2880`)
+   evalúa la planta entera en cada vuelta: `:2899`,
+   `const evalua=()=>{info.evals++;C=shadeBand3DAll(zen,az,T,A,{noStruct:true,noTerr:true,MV:MV,atrMesa:true});};`.
+   Necesita la posición de todas las emisoras, así que no la ejecuta una TCU.
+2. **Garantía de `optimal`.** Se construye contra la decisión LOCAL, en
+   `backtracking.html:3123`
+   (`const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);`) y
+   `:3219`. Una decisión coordinada con guardia de energía la supera: 2 y 6
+   violaciones en el barrido del CI de #757.
+3. **Careo con `produccion.html`.** La misma física
+   (`tools/careo_produccion.mjs:4-5`) sobre dos alcances, la ventana de 80
+   líneas y la planta entera, da hasta 1,3954° de diferencia en mesas
+   INTERIORES (CI de #757).
+
+La afirmación es: una decisión que coordina depende de lo que coordina. Los
+contratos escritos para una decisión local —«ejecutable por TCU», «`optimal` ≥
+`pairwise`», «interior idéntico a cualquier ventana»— no la cubren, y no se
+relajan para que quepa: la decisión va aparte, con su naturaleza escrita al
+lado.
 
 ## El defecto de fondo
 

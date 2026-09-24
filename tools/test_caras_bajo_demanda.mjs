@@ -62,8 +62,8 @@ const sinVersion = (f) => f.replace(/const VER='v[\d.]+';/, "const VER='*';");
 const FISICA_DECLARADA = [
   { ver: 'v1.79.0', sha: '71ddefebbb5db0332da20aa9b3186302048ab7bbb1d21d8e4ecfa29bff8e4fec',
     motivo: 'el eje gira como el actuador puede: tope mecánico en crearLazo, giro limitado tras topeBacktracking (fija); autorizado por el titular el 2026-09-24 (PR #751), con el efecto en energía medido en audit_giro/' },
-  { ver: 'v1.80.0', sha: '1026c13ea269eb0bac147bcee3c88e6ad503323476c980212159e46a68cdf2ec',
-    motivo: 'R5 fase A.1: `pairwise` y `true3d` deciden con el mismo contador que mide (decideProyeccion, guardaEnergia, pairwiseLocal; el contador gana opciones inertes por defecto); lo exige el encargo R5 del titular, el resto de políticas bit a bit (tools/test_decide_mide.mjs) y el efecto medido en audit5/FASE_A.md. El merge lo autoriza el titular en el PR de la fase A' },
+  { ver: 'v1.80.0', sha: '03958c089c5b8d9729ce73a423a5a424f024a6ab12aa9f1ee56963b2439a5c0a',
+    motivo: 'R5 fase A.1 con la decisión (iii) del titular (2026-09-24): la decisión con el contador (decideProyeccion, guardaEnergia) entra como política DÉCIMA, `coordinada`, cerebro NCU; `pairwise` y `true3d` siguen siendo LOCALES y bit a bit las de main (tools/test_decide_mide.mjs, 4); el contador gana opciones inertes por defecto. Efecto medido en audit5/FASE_A.md' },
 ];
 /* el cuerpo exacto de una función, contando llaves y sin tragarse comentarios */
 function cuerpoFn(src, nombre) {

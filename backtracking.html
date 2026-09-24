@@ -2786,7 +2786,10 @@ function policyAnglesSegF(key,zen,az,T,irr,doy,albedo){
   const drv=(T.segDrive&&T.segDrive.length)?T.segDrive:(T.segPairs||null);
   if(key==='astro')return {angles:applyDriveSeg(anglesAstroSeg(zen,az,T),drv),f:undefined,linea:null};
   // v1.80.0 (R5 fase A): pairwise por MESA decide con el contador (decideProyeccion)
-  if(key==='pairwise'||key==null)return {angles:decideProyeccion(zen,az,T,anglesPairwiseSeg(zen,az,T,{candidato:true}),true).ang,f:undefined,linea:null};
+  if(key==='pairwise'||key==null)return {angles:applyDriveSeg(anglesPairwiseSeg(zen,az,T),drv),f:undefined,linea:null};
+  // v1.80.0 (R5 fase A, decisión (iii)): la COORDINADA por mesa. Sin guardia de energía: la ruta
+  // por mesa no la tenía y cada evaluación cuesta una pasada del contador (declarado en audit5/FASE_A.md)
+  if(key==='coordinada')return {angles:decideProyeccion(zen,az,T,anglesPairwiseSeg(zen,az,T,{candidato:true}),true).ang,f:undefined,linea:null};
   // v1.76 (R4 fase 1): `optimal` y `optfree` también mandan por MESA, y con la
   // métrica que se cobra. Antes repartían a las mesas un ángulo de línea que
   // habían elegido con `poaPlant` — medido: perdían por mesa en 58 de 86.
@@ -2851,10 +2854,9 @@ function guardaEnergia(zen,az,T,dec,ref,irr,doy,albedo){
 }
 /* LA FÓRMULA LOCAL de pairwise, la de siempre (v1.57-v1.78): pvlib por pareja,
    acople de accionamiento y reparación. Es lo que puede calcular una TCU con lo
-   que sabe —sus dos vanos y su tilt—, y por eso la usan (1) la guardia de
-   energía como referencia y (2) el cruce con la telemetría real
-   (`tools/cruce_ncu_dia.mjs`), que modela lo que hace el FIRMWARE con sus
-   registros. La decisión de la fase A necesita el θ real de TODAS las mesas
+   que sabe —sus dos vanos y su tilt—. Desde la decisión (iii) del titular ES la
+   política `pairwise` publicada, y la guardia de energía de `coordinada` la usa
+   como referencia. La decisión coordinada necesita el θ real de TODAS las mesas
    emisoras, que solo tiene una NCU central: no es lo que ejecuta una TCU. */
 function pairwiseLocal(zen,az,T,irr,doy,albedo){
   return repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo);
@@ -3935,13 +3937,15 @@ function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
-  // v1.80.0 (R5 fase A): pairwise y true3d deciden con el CONTADOR (decideProyeccion): su
-  // semilla es su candidato de siempre; la aceptación ya no pregunta por vecindad ni gemelo
-  if(key==='true3d')return {angles:guardaEnergia(zen,az,T,decideProyeccion(zen,az,T,anglesTrue3d(zen,az,T),false).ang,
-    repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),irr,doy,albedo),f:undefined};
+  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
   if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
-  return {angles:guardaEnergia(zen,az,T,decideProyeccion(zen,az,T,anglesPairwiseRaw(zen,az,T,{candidato:true}),false).ang,
+  /* v1.80.0 (R5 fase A, decisión del titular (iii)): la decisión con el CONTADOR
+     (decideProyeccion) es una política PROPIA, `coordinada`, de cerebro NCU. Coordina
+     la planta con la posición real de todas las emisoras, así que su θ DEPENDE DEL
+     ALCANCE de la planta coordinada. `pairwise` y `true3d` siguen siendo LOCALES. */
+  if(key==='coordinada')return {angles:guardaEnergia(zen,az,T,decideProyeccion(zen,az,T,anglesPairwiseRaw(zen,az,T,{candidato:true}),false).ang,
     pairwiseLocal(zen,az,T,irr,doy,albedo),irr,doy,albedo),f:undefined};
+  return {angles:pairwiseLocal(zen,az,T,irr,doy,albedo),f:undefined};
 }
 
 /* ray-cast BRUTO para el QA: muestrea M puntos del panel sombreado y lanza el
@@ -4647,6 +4651,15 @@ const POLICIES=[
   {key:'mgl',     nm:'Min ground light',ds:'mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes, con su misma guardia de energía', col:'#2dd4bf', on:false, brain:'ncu'},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
   {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
+  /* R5 fase A, decisión del titular (iii): la DÉCIMA. La NCU coordina la planta
+     con la posición REAL de todas las emisoras: retrocede juntas la receptora y
+     sus emisoras hasta que el contador no ve sombra (o el rango no deja más).
+     SU RESULTADO DEPENDE DEL ALCANCE DE LA PLANTA COORDINADA: el mismo seguidor,
+     con la misma física, da θ distinto según cuánta planta entre en la
+     coordinación (medido: hasta 1,3954° entre la ventana de 80 líneas del
+     simulador y la planta entera de produccion.html). No es un defecto, es su
+     naturaleza. Y no la ejecuta una TCU: necesita a quien vea todos los encoders. */
+  {key:'coordinada',nm:'Coordinada',  ds:'la NCU coordina la planta con la posición real de TODAS las emisoras: ninguna mesa a la sombra de otra si su rango lo permite — su θ depende de cuánta planta entre en la coordinación', col:'#e879f9', on:false, brain:'ncu'},
 ];
 const POL=Object.fromEntries(POLICIES.map(p=>[p.key,p]));
 /* ── QUÉ ES UNA POLÍTICA CARA ─────────────────────────────────────────────
@@ -5597,7 +5610,7 @@ function segOn(T){return !!(T&&T.segTilt&&T.segs);}
    aquí en R4 fase 1; el resto sigue repartiendo el ángulo de su línea, que es
    lo declarado. Sólo con la TCU al corriente del levantamiento (Tcfg === T):
    si la TCU no sabe de mesas, no puede mandarlas. */
-const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1};
+const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1,coordinada:1};
 /* v1.76 · `segCmd` SIGUE SIENDO LA ÚNICA FUENTE DEL MANDO POR MESA, y eso es
    una propiedad que el banco de física vigila. Al entrar `optimal` y `optfree`
    en el mando por mesa lo saqué fuera —el cuerpo del día llamaba a la política

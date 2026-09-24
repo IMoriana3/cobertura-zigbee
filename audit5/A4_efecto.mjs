@@ -64,8 +64,14 @@ const nR = T.pairs.length + 1;
 const largo = []; for (let r = 0; r < nR; r++) largo.push(segsOf(r).map(s => Math.abs(s[1] - s[0])));
 const LT = largo.flat().reduce((a, b) => a + b, 0);
 const media = seg => { let s = 0; seg.forEach((l, r) => l.forEach((v, k) => { s += (v || 0) * largo[r][k]; })); return s / LT; };
+/* Decisión (iii) del titular: la decisión coordinada es la política `coordinada`
+   y `pairwise` sigue siendo local. La fila «pairwise» de este script carea el
+   `pairwise` de main (ANTES) con `coordinada` (DESPUÉS): es la misma comparación
+   que se midió cuando `pairwise` decidía coordinado, porque `coordinada` es ese
+   mismo código. `true3d` pasa a ser un TEST NULO más (igual que en main). */
 const aTramos = (F, key, zen, az, irr, doy) => {
-  if (porMesa && key === 'pairwise') return F.policyAnglesSeg(key, zen, az, T, irr, doy, 0.2);
+  if (F === N && key === 'pairwise') key = 'coordinada';
+  if (porMesa && (key === 'pairwise' || key === 'coordinada')) return F.policyAnglesSeg(key, zen, az, T, irr, doy, 0.2);
   const a = F.policyAngles(key, zen, az, T, irr, doy, 0.2).angles;
   const out = a.map((v, r) => segsOf(r).map(() => v));
   out.declarada = !!(a.aceptadaPorEnergia);
@@ -142,7 +148,7 @@ for (const [mo, dd, peso] of dias) {
         /* ANTES no hay declaración: la política vieja decía «0 %» por vecindad.
            Lo que ANTES está en el tope con sombra también se cuenta como error:
            no lo declaraba. */
-        S.errNo += cl.malas - (lado === 'N' ? cl.declaradas : 0);
+        S.errNo += cl.malas - (lado === 'N' && k === 'pairwise' ? cl.declaradas : 0);   // solo `coordinada` (la fila pairwise, lado DESPUÉS) declara; una política local no
         if (min % (3 * PASO) === 0) { const e = errorSi(g.zen, g.az, A, k); S.errSi += e.n; S.siMirados += e.mirados; }
       }
     }

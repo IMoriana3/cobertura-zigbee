@@ -2,9 +2,11 @@
  *
  *   node tools/test_decide_mide.mjs
  *
- * `pairwise` (por línea y por mesa) y `true3d` deciden desde v1.80.0 con el
- * contador (`decideProyeccion`, backtracking.html). Este banco se pone ROJO si
- * vuelven a separarse:
+ * La política `coordinada` (la décima, cerebro NCU) decide desde v1.80.0 con el
+ * contador (`decideProyeccion`, backtracking.html), por línea y por mesa. Por la
+ * decisión (iii) del titular, `pairwise` y `true3d` siguen siendo LOCALES: la
+ * decisión coordinada no cabe bajo contratos escritos para una decisión local.
+ * Este banco se pone ROJO si decidir y medir vuelven a separarse:
  *
  *   1 · lo que VE el que decide (`info.sombraDecision`) es, bit a bit, lo que
  *       CUENTA el contador en una llamada aparte con la consigna publicada
@@ -15,10 +17,11 @@
  *   3 · CONTROL NEGATIVO: la decisión VIEJA (vecindad y gemelo, la de v1.78.1:
  *       `applyDriveSeg(anglesPairwiseSeg(...))`) tiene que SUSPENDER la 2 en
  *       Ayora —si no, la 2 no distingue nada—;
- *   4 · las otras SIETE políticas y el contador por defecto siguen BIT A BIT
- *       iguales a los de `origin/main`: la fase A no toca nada más.
- *   5 · TEST NULO de la 4: comparar `pairwise` con main SÍ tiene que dar
- *       diferencias (si no, la comparación no mira).
+ *   4 · las NUEVE políticas de siempre —`pairwise` y `true3d` incluidas— y el
+ *       contador por defecto siguen BIT A BIT iguales a los de `origin/main`:
+ *       la fase A solo AÑADE la décima;
+ *   5 · TEST NULO de la 4: comparar `coordinada` con el `pairwise` de main SÍ
+ *       tiene que dar diferencias (si no, la comparación no mira).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -64,12 +67,12 @@ const sombra = (F, T, zen, az, ang) => F.shadeBand3DAll(zen, az, T, ang, { noStr
 const noPublicaCero = (seg, irreducibles) => { let n = 0; seg.forEach(l => l.forEach(v => { if (v > 1e-3) n++; })); return n <= irreducibles ? null : n; };
 
 console.log('R5 fase A.3 · decidir = medir');
-t('1-2 · presets: pairwise y true3d por línea — lo que ve el que decide = lo que cuenta el contador, y ninguna mesa con sombra evitable sin declarar', () => {
+t('1-2 · presets: coordinada por línea — lo que ve el que decide = lo que cuenta el contador, y ninguna mesa con sombra evitable sin declarar', () => {
   let n = 0, aceptadas = 0;
   for (const [nom, T] of casos) for (const { g, irr, doy } of inst) {
     if (!(g.elev > 1)) continue;
-    for (const key of ['pairwise', 'true3d']) {
-      const semilla = key === 'pairwise' ? HOY.anglesPairwiseRaw(g.zen, g.az, T, { candidato: true }) : HOY.anglesTrue3d(g.zen, g.az, T);
+    for (const key of ['coordinada']) {
+      const semilla = HOY.anglesPairwiseRaw(g.zen, g.az, T, { candidato: true });
       const d = HOY.decideProyeccion(g.zen, g.az, T, semilla, false);
       const pub = HOY.policyAngles(key, g.zen, g.az, T, irr, doy, 0.2).angles;
       /* la guardia de energía de la ruta por línea puede publicar la fórmula de
@@ -87,11 +90,11 @@ t('1-2 · presets: pairwise y true3d por línea — lo que ve el que decide = lo
   return `${n} decisiones con sombra evitable cero salvo lo irreducible · ${aceptadas} en que la guardia de energía publicó la fórmula de siempre, MARCADA`;
 });
 const semAy = inst.map(({ g }) => HOY.anglesPairwiseSeg(g.zen, g.az, Tay, { candidato: true }));
-t('1-2 · Ayora real (79 líneas, por mesa): pairwise decide con lo que el contador cuenta, bit a bit, y no deja sombra evitable sin declarar', () => {
+t('1-2 · Ayora real (79 líneas, por mesa): coordinada decide con lo que el contador cuenta, bit a bit, y no deja sombra evitable sin declarar', () => {
   const out = [];
   inst.forEach(({ g, irr, doy }, i) => {
     const d = HOY.decideProyeccion(g.zen, g.az, Tay, semAy[i], true);
-    const pub = HOY.policyAnglesSeg('pairwise', g.zen, g.az, Tay, irr, doy, 0.2);
+    const pub = HOY.policyAnglesSeg('coordinada', g.zen, g.az, Tay, irr, doy, 0.2);
     if (JSON.stringify(pub) !== JSON.stringify(d.ang)) throw new Error(`sol ${g.elev.toFixed(1)}°: lo publicado no es lo que decide`);
     const seg = sombra(HOY, Tay, g.zen, g.az, pub);
     if (JSON.stringify(seg) !== JSON.stringify(d.info.sombraDecision)) throw new Error(`sol ${g.elev.toFixed(1)}°: decide ≠ mide`);
@@ -101,7 +104,7 @@ t('1-2 · Ayora real (79 líneas, por mesa): pairwise decide con lo que el conta
   });
   return out.join(' · ');
 });
-t('3 · CONTROL NEGATIVO: la decisión VIEJA (vecindad y gemelo) suspende la 2 en Ayora', () => {
+t('3 · CONTROL NEGATIVO: la decisión LOCAL (vecindad y gemelo: la de `pairwise`) suspende la 2 en Ayora', () => {
   let malas = 0; const det = [];
   inst.forEach(({ g }, i) => {
     const vieja = HOY.applyDriveSeg(HOY.anglesPairwiseSeg(g.zen, g.az, Tay), (Tay.segDrive && Tay.segDrive.length) ? Tay.segDrive : Tay.segPairs);
@@ -113,8 +116,8 @@ t('3 · CONTROL NEGATIVO: la decisión VIEJA (vecindad y gemelo) suspende la 2 e
   return `la vieja publica sombra que el contador ve en ${malas} de ${inst.length} instantes (${det.join(', ')})`;
 });
 if (MAIN) {
-  const OTRAS = ['astro', 'global', 'row', 'bt2d', 'mgl', 'optimal', 'optfree'];
-  t('4 · las otras SIETE políticas, por línea, BIT A BIT iguales a origin/main (tres presets × 5 soles)', () => {
+  const OTRAS = ['astro', 'global', 'row', 'bt2d', 'pairwise', 'true3d', 'mgl', 'optimal', 'optfree'];
+  t('4 · las NUEVE políticas de siempre, por línea, BIT A BIT iguales a origin/main (tres presets × 5 soles)', () => {
     let n = 0;
     for (const [nom, T] of casos) for (const { g, irr, doy } of inst) for (const k of OTRAS) {
       const a = HOY.policyAngles(k, g.zen, g.az, T, irr, doy, 0.2).angles, b = MAIN.policyAngles(k, g.zen, g.az, T, irr, doy, 0.2).angles;
@@ -123,10 +126,10 @@ if (MAIN) {
     }
     return `${n} comparaciones`;
   });
-  t('4 · y por mesa (astro, optimal, optfree) en Ayora, y el contador por defecto', () => {
+  t('4 · y por mesa (astro, pairwise, optimal, optfree) en Ayora, y el contador por defecto', () => {
     let n = 0;
     inst.forEach(({ g, irr, doy }) => {
-      for (const k of ['astro', 'optimal', 'optfree']) {
+      for (const k of ['astro', 'pairwise', 'optimal', 'optfree']) {
         const a = HOY.policyAnglesSeg(k, g.zen, g.az, Tay, irr, doy, 0.2), b = MAIN.policyAnglesSeg(k, g.zen, g.az, Tay, irr, doy, 0.2);
         if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${k} por mesa · sol ${g.elev.toFixed(1)}° cambia`); n++;
       }
@@ -138,10 +141,10 @@ if (MAIN) {
     });
     return `${n} comparaciones`;
   });
-  t('5 · TEST NULO de la 4: pairwise SÍ difiere de origin/main (la comparación mira)', () => {
+  t('5 · TEST NULO de la 4: coordinada SÍ difiere del pairwise de origin/main (la comparación mira)', () => {
     let dif = 0;
-    inst.forEach(({ g, irr, doy }) => { if (JSON.stringify(HOY.policyAnglesSeg('pairwise', g.zen, g.az, Tay, irr, doy, 0.2)) !== JSON.stringify(MAIN.policyAnglesSeg('pairwise', g.zen, g.az, Tay, irr, doy, 0.2))) dif++; });
-    if (!dif) throw new Error('pairwise sale igual que en main: o la fase A no hace nada o la comparación no compara');
+    inst.forEach(({ g, irr, doy }) => { if (JSON.stringify(HOY.policyAnglesSeg('coordinada', g.zen, g.az, Tay, irr, doy, 0.2)) !== JSON.stringify(MAIN.policyAnglesSeg('pairwise', g.zen, g.az, Tay, irr, doy, 0.2))) dif++; });
+    if (!dif) throw new Error('coordinada sale igual que el pairwise de main: o la decisión no hace nada o la comparación no compara');
     return `difiere en ${dif} de ${inst.length} instantes`;
   });
 }
