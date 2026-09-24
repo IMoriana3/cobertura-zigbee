@@ -2,6 +2,8 @@
  *
  *   node audit4/G_ablacion_anual.mjs [--json=RUTA]
  *
+ * [CORRECCIÓN 2026-09-24: el 17,3 % mezclaba métrica y política; en la MISMA métrica
+ *  por mesa el hueco es 20,03 % (audit5/P1_1_separa_acople.mjs, audit5/REGISTRO_CORRECCIONES.md C-1).]
  * `pairwise` por línea queda un 17,3 % por debajo de la rama por mesa en el anual
  * de Ayora (D_anual_ayora), con el control `astro` en +0,17 %. Aquí se apaga UNA
  * etapa cada vez (`lib_p2_arnes.anglesLineaAblacion`) y se repite el anual de la

@@ -1,5 +1,29 @@
 # P1 · `pairDz` es UN escalar por pareja de LÍNEAS enteras; la línea no es una unidad de control
 
+> **CORRECCIÓN (2026-09-24, refundación del BT, paso 1.1 · a petición del titular).**
+> El hueco de este documento, **+17,26 %** (2.307,0294 → 2.705,1154, «17,3 %» en
+> el texto), **mezclaba métrica y política**. La ruta por línea se medía con
+> `crearLazo → poaPlant` y la rama por mesa con `crearLazoSeg → poaPlantSeg`
+> (`audit4/D_anual_ayora.mjs:13-14`).
+>
+> Medido con la MISMA métrica por mesa en los dos lados
+> (`audit5/P1_1_separa_acople.mjs`, rama `claude/refundacion-p1-6th1im`):
+>
+> - **el hueco es +20,03 %** (2.253,6664 → 2.705,1154);
+> - **el 95,1 %** de ese hueco es **acoplar líneas enteras** y **el 4,9 %**, un
+>   ángulo por línea;
+> - del +17,26 % publicado, la **ruta** es el **113,4 %** y la **métrica** el
+>   **−13,4 %**. Se compensaban y daban un número que parecía limpio;
+> - el «93,1 % del hueco lo produce `driveCoupleSafe`» es, en la misma métrica,
+>   el **95,6 %**;
+> - la frase «la métrica no fabrica el hueco» (control `astro` en +0,17 %) no
+>   bastaba: la métrica no fabricaba el hueco, pero **tapaba** una parte, y el
+>   control con `astro` —que no acopla líneas— no podía verlo.
+>
+> **La conclusión P1 → (c) se refuerza.** Las cifras de abajo se dejan como se
+> publicaron, marcadas «[corregida]». Entrada en
+> `audit5/REGISTRO_CORRECCIONES.md` (C-1).
+
 **Evidencia y opciones. No se arregla nada en este paso; P2 espera la decisión
 del titular.** Sonda: `audit4/P1_alcance_pairdz.mjs` →
 `audit4/out/P1_alcance_pairdz.txt` (las citas se imprimen leyendo el fichero).
@@ -221,7 +245,7 @@ kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
 
 **Lecturas, cada una con su cifra:**
 
-- El control sale a **+0.17 %**: la métrica no fabrica el hueco.
+- El control sale a **+0.17 %**: la métrica no fabrica el hueco. [corregida: no lo fabrica, pero tapa el −13,4 % del publicado; ver el aviso de arriba]
 - `pairwise` por línea queda un **13.1 % por debajo de `astro` por línea**
   (2307.0 frente a 2655.0). Por mesa queda un **1.7 % por encima**
   (2705.1 frente a 2659.4). El backtracking por línea no solo sombrea: **retrocede
@@ -256,7 +280,7 @@ paso 10 min).
 | sin `pairThetaTorsion` (`:1121`) | 2.308,1028 | +0,047 % | 0,3 % |
 | sin la regla del más retrocedido (`:1197`) | 2.307,3045 | +0,012 % | 0,1 % |
 | sin la reparación por torsión (`:1198-1224`) | 2.306,9509 | −0,003 % | −0,0 % |
-| **sin `driveCoupleSafe`** (`:789`) | **2.677,6999** | **+16,067 %** | **93,1 %** |
+| **sin `driveCoupleSafe`** (`:789`) | **2.677,6999** | **+16,067 %** | **93,1 %** [corregida: 95,6 % en la misma métrica] |
 | sin `repairNoShade` (`:3492`) | 2.307,0294 | 0 | no informa (test nulo) |
 
 **Lectura, con la cifra:** el 93,1 % del hueco entre la ruta por línea y la rama
@@ -272,7 +296,7 @@ está separado; separarlo es la misma ablación con el acople por mesa.
 
 **Consecuencia para la decisión:** la opción **(b)** —dejar la ruta por línea y
 que P2 solo mejore el candidato— actúa sobre etapas que, apagadas enteras, mueven
-el anual menos de un 0,05 %. **No puede cerrar el 17 % del hueco.** Esto sí es
+el anual menos de un 0,05 %. **No puede cerrar el 17 % del hueco** [corregida: 20,03 % en la misma métrica]. Esto sí es
 una medida, no una hipótesis.
 
 ## Lo que P1 deja medido, y lo que NO
@@ -291,7 +315,7 @@ una medida, no una hipótesis.
 Lectura del revisor: **(c)**, con (a) como trabajo posterior si alguna vez hace
 falta esa ruta por sí misma. **Motivo, corregido:** no que el promedio proteja a
 la peor fila —eso era una explicación sin medida y se retiró—, sino que la ruta
-por mesa da un **17,3 % más de energía** en `pairwise` con el control de `astro`
+por mesa da un **17,3 % más de energía** [corregida: 20,03 % en la misma métrica] en `pairwise` con el control de `astro`
 en **+0,17 %**, y **cuesta menos tiempo** (409 s frente a 910 s). La decisión es
 del titular y P2 no empieza hasta que la tome. Si (b) queda descartada o no lo
 dice la ablación, no esta lectura — y la ablación dice que (b) no llega.
