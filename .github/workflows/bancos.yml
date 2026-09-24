@@ -701,6 +701,12 @@ jobs:
           # constantes tiene— y con los cuatro mutantes vistos en rojo. Levanta
           # su propio servidor.
           - { banco: test_overcast_vista.mjs }
+          # v1.80.0 · EXPORTAR → CARGAR → EXPORTAR da el mismo hash, un campo
+          # cambiado lo cambia, la carga se comprueba sola (y su control
+          # negativo), y todo mando de la página está en el JSON o excluido con
+          # motivo. Con planta real de layout (Fayón); la de cotas va con
+          # CFG_COTAS=1, fuera del CI por coste (ver la cabecera del banco).
+          - { banco: test_config_json.mjs }
           # `test_equipos` monta DOS escenas 3D pesadas y en runners compartidos
           # su tiempo es una loteria: 11 min 54 s en una ejecucion y mas de 44 en
           # la siguiente, con el mismo codigo. La variacion no esta en el banco,
