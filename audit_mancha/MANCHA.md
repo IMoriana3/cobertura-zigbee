@@ -338,3 +338,47 @@ declarada: mira el TEXTO.
 
 La lección es la misma: se lee la lista de PIDs APARTE, se mira, y se mata PID
 a PID.
+
+### Tercer ajuste (2026-09-24, noche): mirar la orden EFECTIVA, sin aflojar ninguna forma
+
+**Lo que pedía el titular.** La barrera bloqueaba texto que solo MENCIONA el
+patrón (una regla escrita a un fichero con un heredoc) y obligó tres veces a
+rodear por la herramienta de edición. Pidió que examine la orden efectiva, sin
+aflojar nunca qué formas bloquea.
+
+**El cambio.**
+
+- El cuerpo de un heredoc que alimenta a `cat > f`, `cat >> f` o `tee [-a] f` se
+  quita antes de examinar, pero SOLO si el resto de la orden no ejecuta nada:
+  ninguna shell, ningún intérprete, ni `nohup`, `timeout`, `./x` o `. x`.
+- Si ejecuta algo, la orden se examina entera, como antes.
+
+**Lo que tiene que seguir bloqueado, y lo exige el banco.** Ocho formas nuevas:
+
+- `bash <<EOF` con la orden dentro;
+- escribir un `x.sh` con la orden y ejecutarlo en la misma orden (`bash x.sh`,
+  `./x.sh` o `. x.sh`);
+- `sh -c "$(cat <<EOF …)"`;
+- `python3 - <<EOF` con `os.system('…')`;
+- la orden fuera del heredoc;
+- `nohup bash x.sh`.
+
+**Agujero PREVIO que el banco destapó, y queda cerrado.** `python3 - <<EOF` con
+`os.system('pkill -f algo')` ya pasaba ANTES de este ajuste: la frontera de
+palabra no admitía comillas delante. Ahora, tras una comilla, la palabra cuenta
+si va seguida de espacio (una orden con argumentos dentro de una cadena). Así
+`grep -n "pkill" notas.md`, que es buscar texto, sigue permitido.
+
+**Banco:** 35 formas bloqueadas (27 + 8) y 14 permitidas (11 + 3 de texto
+escrito a un fichero). Todas en verde.
+
+**Error propio, y es de los que importan.** Al cerrar el agujero de las comillas
+escribí una comilla doble dentro de una expresión `r"…"`, y el hook quedó con
+un **error de sintaxis durante un minuto**. Un hook que falla así no bloquea:
+sale con un código que no es 2 y la orden pasa. La barrera estuvo APAGADA sin
+avisar. Lo vio el banco (`test_barrera.py` importa el hook y cae si no carga), y
+se corrigió antes de ninguna otra orden de procesos.
+
+Es el vigilante del vigilante otra vez: el banco de la barrera solo protege si
+se corre DESPUÉS de cada cambio del hook. Queda como regla: tocar el hook y
+correr su banco van en la misma tanda, siempre.
