@@ -80,7 +80,28 @@ kWh/m²·año. Máquina OCUPADA: el coste no es medida de tiempo.
   integre; aquí queda la cita.
 - **La interacción lazo × cielo no se puede medir con el código de hoy:**
   ninguna ruta tenía lazo Y nubes. Se dice, no se inventa.
-- **`anual_motor`: EN CURSO** (`astro` y `pairwise`, 365 días a 1 min).
+- **`anual_motor`** (`astro` y `pairwise`, 365 días a 1 min, lazo de
+  `control_core` a ciclo de 1 s; `audit5/out/P2_1_tres_rutas_motor.txt`):
+  ganancia de `pairwise` sobre `astro` **+0,288 %**. Sus kWh son suma de
+  strings (392.881,89 → 394.015,34), no POA/m², y no se comparan en valor.
+  **Las tres rutas daban TRES cifras para la misma ganancia:**
+
+  | ruta | ganancia de `pairwise` sobre `astro` |
+  |---|---|
+  | `anual_motor` | +0,288 % |
+  | botón | +0,700 % |
+  | informe | +2,464 % |
+
+  Entre `anual_motor` y el botón cambian a la vez cinco cosas, y **no se han
+  separado**:
+  - 365 días frente a 12 representativos;
+  - 1 min frente a 10 min;
+  - el lazo de `control_core` (ciclo de 1 s, modo libre) frente a `crearLazo`;
+  - la cadena eléctrica de string frente a la POA;
+  - el motor de `produccion.html` (la planta genérica montada por
+    `gen_golden_anual`) frente al de la página.
+
+  Se declara así, sin atribuir la diferencia a ninguna de ellas.
 
 ## 2.2 · Unificadas en una: sobrevive la del BOTÓN
 

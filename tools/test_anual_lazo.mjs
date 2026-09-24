@@ -48,8 +48,8 @@ function cuerpo(src, cab) {
 
 /* TODAS las comprobaciones de fuente, como lista de fallos: [] = verde */
 function revisa(html, motor) {
-  const mal = [];
-  const no = (c, n) => { if (!c) mal.push(n); };
+  const mal = [], hechas = [];
+  const no = (c, n) => { hechas.push([n, !!c]); if (!c) mal.push(n); };
   const ruta = cuerpo(html, 'function* anualGen(');
   // TEST NULO del corte, antes de lo que protege
   no(ruta.length > 800 && /for\(let mo=0;mo<12;mo\+\+\)/.test(ruta), 'el corte de la ruta anual está vacío o no es la ruta');
@@ -85,12 +85,17 @@ function revisa(html, motor) {
   no(/yield\*\s*anualGen\(/.test(gr) && !/policyAngles\(|poaPlant(?:Seg)?\(|clearskyIneichen\(|skyWithClouds\(/.test(gr), 'el informe (grAnualGen) calcula por su cuenta en vez de consumir la ruta');
   // 7 · la otra cifra anual, tools/anual_motor.mjs: con su lazo REAL encendido
   no(/c\.ctrl\s*=\s*\{\s*on:\s*true\b/.test(motor), 'tools/anual_motor.mjs no enciende el lazo real');
+  mal.hechas = hechas;
   return mal;
 }
 
 console.log('la ruta anual: una, con lazo, y todas las vistas la consumen');
 const mal = revisa(HTML, MOTOR);
-T('FUENTE · la página y anual_motor cumplen todas las comprobaciones', mal.length === 0, mal.join(' · '));
+/* Cada comprobación de fuente se publica en SU línea: juntas en una sola, el
+   banco publicaba 10 y su piso (tools/con_piso.mjs) son 12 — y un piso que se
+   cumple juntando comprobaciones no cuenta lo que protege. */
+for (const [n, ok] of mal.hechas) T('FUENTE · descartado: «' + n + '»', ok, ok ? '' : 'OCURRE');
+if (mal.hechas.length < 16) T('FUENTE · las 16 comprobaciones de fuente se ejecutaron', false, 'solo ' + mal.hechas.length);
 
 /* CONTROL NEGATIVO ruta por ruta: cada mutante tiene que ponerlo ROJO */
 const mut = [
