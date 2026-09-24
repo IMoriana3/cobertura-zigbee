@@ -690,6 +690,11 @@ jobs:
           # identidad del DAY, con su control negativo —desarmarlo tiene que
           # producir la mezcla— y la invariante de los consumidores síncronos.
           - { banco: test_certificado_dia.mjs }
+          # El eje no gira más de lo que el actuador puede (v1.79.0): ningún paso
+          # de la malla por encima de 0,17 °/s × 300 s, ningún minuto de la
+          # escena por encima de 0,17 °/s × 60 s, ningún ángulo fuera de ±θmáx,
+          # las nueve políticas, dos días. Con el control del detector.
+          - { banco: test_giro_maximo.mjs }
           # El indicador «BT ON» dice backtracking, no deriva de lazo: compara
           # MANDOS y no salidas de lazo. Con su control negativo —revertir el
           # predicado a posiciones tiene que ponerlo rojo— y sus dos tests nulos.

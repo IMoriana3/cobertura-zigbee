@@ -230,7 +230,9 @@ for (const pol of POLS) {
       // pasa a ser un lazo POR BLOQUE, que es lo que impide que dos bloques se
       // mezclen la memoria. Lo que sale por el CSV sigue siendo lo que la planta
       // HACE, que es el contrato de este exportador.
-      if (!lazos.has(B.b)) lazos.set(B.b, F.crearLazoSeg());
+      // v1.79.0: con el TOPE MECÁNICO. Sin él el lazo aparcaba en consigna + margen
+      // aunque eso cayera fuera de ±θmáx: el CSV habría mandado 56° con un tope de 55°.
+      if (!lazos.has(B.b)) lazos.set(B.b, F.crearLazoSeg(null, null, B.T.maxAngle));
       const ang = lazos.get(B.b).paso(cmd, PASO * 60);
       if (!diurno) continue;
       angDe.set(B.b, { seg: ang, line: F.segLineMean(B.T, ang) });
