@@ -515,6 +515,12 @@ jobs:
       # vuelva a contrastar. Coste de apagarlo honradamente: un minuto.
       - name: el documento no se queda atrás en silencio
         run: node tools/con_piso.mjs tools/test_doc_version.mjs
+      # R5 · el motor de sombra POR PROYECCIÓN (audit5/lib_proyeccion.mjs): cada
+      # mesa con su θ, su tilt y su x de fila, y la sombra de cualquier emisor que
+      # la proyección alcance. Cada comprobación lleva su control negativo, y el
+      # banco sale 1 si falla alguna.
+      - name: el motor de sombra por proyección
+        run: node audit5/test_motor.mjs
       # Las dos herramientas de campo, que no estaban en CI. Ninguna llama a
       # `process.exit`: `careo_produccion` publica «veredicto: IDÉNTICOS» o su
       # contrario y SALE 0 en los dos casos, así que un `run:` pelado habría sido

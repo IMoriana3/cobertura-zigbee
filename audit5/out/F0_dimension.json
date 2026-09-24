@@ -1,0 +1,220 @@
+{
+ "ver": "v1.78.1",
+ "denominador": {
+  "instantes": 264,
+  "receptor_instante": 450711,
+  "mesas": 1708
+ },
+ "umbrales_m2": [
+  0.0001,
+  0.01
+ ],
+ "por_elevacion": [
+  {
+   "banda": "<3°",
+   "instantes": 14,
+   "receptor_instante": 23711,
+   "multi_ri": 3842,
+   "multi_mesas": 1550,
+   "relaciones": 21822,
+   "no_enum_mesa": 17095,
+   "no_enum_linea": 15569,
+   "por_clase": {
+    "Δlínea +1 · solapa": 1660,
+    "Δlínea 0 · al norte": 690,
+    "Δlínea +2 · solapa": 594,
+    "Δlínea +1 · al norte": 222,
+    "Δlínea ≥+3 · solapa": 1468,
+    "Δlínea +2 · al norte": 32,
+    "Δlínea ≥+3 · al norte": 178,
+    "Δlínea -1 · al norte": 356,
+    "Δlínea -1 · solapa": 3067,
+    "Δlínea -2 · solapa": 1362,
+    "Δlínea -2 · al norte": 88,
+    "Δlínea ≤−3 · solapa": 2956,
+    "Δlínea ≤−3 · al norte": 335,
+    "Δlínea ≥+3 · al sur": 3169,
+    "Δlínea 0 · al sur": 598,
+    "Δlínea +1 · al sur": 269,
+    "Δlínea +2 · al sur": 118,
+    "Δlínea -2 · al sur": 288,
+    "Δlínea -1 · al sur": 679,
+    "Δlínea ≤−3 · al sur": 3693
+   },
+   "gemelo_no_real_si": 441,
+   "gemelo_si_real_no": 313,
+   "ambas": 6681,
+   "dif_pp_p10": -7.661299233629958,
+   "dif_pp_p90": 8.472073160673322
+  },
+  {
+   "banda": "3-10°",
+   "instantes": 34,
+   "receptor_instante": 58072,
+   "multi_ri": 1260,
+   "multi_mesas": 345,
+   "relaciones": 7735,
+   "no_enum_mesa": 3384,
+   "no_enum_linea": 1806,
+   "por_clase": {
+    "Δlínea +1 · solapa": 2253,
+    "Δlínea 0 · al norte": 290,
+    "Δlínea +1 · al norte": 311,
+    "Δlínea +2 · solapa": 96,
+    "Δlínea -1 · solapa": 2098,
+    "Δlínea -1 · al norte": 377,
+    "Δlínea -2 · solapa": 58,
+    "Δlínea -2 · al norte": 1,
+    "Δlínea 0 · al sur": 1089,
+    "Δlínea +1 · al sur": 486,
+    "Δlínea +2 · al sur": 13,
+    "Δlínea ≥+3 · solapa": 117,
+    "Δlínea ≥+3 · al sur": 96,
+    "Δlínea -1 · al sur": 404,
+    "Δlínea -2 · al sur": 8,
+    "Δlínea ≤−3 · solapa": 37,
+    "Δlínea ≤−3 · al sur": 1
+   },
+   "gemelo_no_real_si": 634,
+   "gemelo_si_real_no": 1153,
+   "ambas": 5467,
+   "dif_pp_p10": -0.4202526855577221,
+   "dif_pp_p90": 0.06967664548157308
+  },
+  {
+   "banda": "≥10°",
+   "instantes": 216,
+   "receptor_instante": 368928,
+   "multi_ri": 1987,
+   "multi_mesas": 196,
+   "relaciones": 11754,
+   "no_enum_mesa": 3254,
+   "no_enum_linea": 406,
+   "por_clase": {
+    "Δlínea +1 · solapa": 4081,
+    "Δlínea +1 · al norte": 694,
+    "Δlínea 0 · al norte": 9,
+    "Δlínea -1 · solapa": 4419,
+    "Δlínea -1 · al norte": 867,
+    "Δlínea 0 · al sur": 397,
+    "Δlínea +1 · al sur": 718,
+    "Δlínea -1 · al sur": 569
+   },
+   "gemelo_no_real_si": 631,
+   "gemelo_si_real_no": 1660,
+   "ambas": 9109,
+   "dif_pp_p10": -0.2650274280317573,
+   "dif_pp_p90": 0.016587185948547807
+  }
+ ],
+ "resultados": [
+  {
+   "umbral_m2": 0.0001,
+   "multi_ri": 7089,
+   "multi_mesas": 1559,
+   "relaciones": 41311,
+   "no_enum_mesa": 23733,
+   "no_enum_linea": 17781,
+   "no_enum_mesa_mesas": 1603,
+   "por_clase": {
+    "Δlínea +1 · solapa": 7994,
+    "Δlínea 0 · al norte": 989,
+    "Δlínea +2 · solapa": 690,
+    "Δlínea +1 · al norte": 1227,
+    "Δlínea ≥+3 · solapa": 1585,
+    "Δlínea +2 · al norte": 32,
+    "Δlínea ≥+3 · al norte": 178,
+    "Δlínea -1 · solapa": 9584,
+    "Δlínea -1 · al norte": 1600,
+    "Δlínea -2 · solapa": 1420,
+    "Δlínea -2 · al norte": 89,
+    "Δlínea ≤−3 · solapa": 2993,
+    "Δlínea ≤−3 · al norte": 335,
+    "Δlínea ≥+3 · al sur": 3265,
+    "Δlínea 0 · al sur": 2084,
+    "Δlínea +1 · al sur": 1473,
+    "Δlínea +2 · al sur": 131,
+    "Δlínea -1 · al sur": 1652,
+    "Δlínea -2 · al sur": 296,
+    "Δlínea ≤−3 · al sur": 3694
+   },
+   "por_rumbo": {
+    "NE": 1072,
+    "N": 5438,
+    "E": 6427,
+    "SE": 4885,
+    "S": 6922,
+    "O": 8858,
+    "NO": 2005,
+    "SO": 5704
+   },
+   "gemelo": {
+    "con_sombra": 26089,
+    "gemelo_no_real_si": 1706,
+    "gemelo_si_real_no": 3126,
+    "ambas": 21257,
+    "dif_pp": {
+     "min": -79.72465869558398,
+     "p10": -0.760036161823987,
+     "med": 0,
+     "p90": 0.23962930402295113,
+     "max": 92.0820984220796
+    }
+   }
+  },
+  {
+   "umbral_m2": 0.01,
+   "multi_ri": 6299,
+   "multi_mesas": 1555,
+   "relaciones": 36995,
+   "no_enum_mesa": 21851,
+   "no_enum_linea": 16840,
+   "no_enum_mesa_mesas": 1598,
+   "por_clase": {
+    "Δlínea +1 · solapa": 6754,
+    "Δlínea 0 · al norte": 782,
+    "Δlínea +2 · solapa": 680,
+    "Δlínea +1 · al norte": 981,
+    "Δlínea ≥+3 · solapa": 1561,
+    "Δlínea +2 · al norte": 32,
+    "Δlínea ≥+3 · al norte": 175,
+    "Δlínea -1 · solapa": 8390,
+    "Δlínea -1 · al norte": 1258,
+    "Δlínea -2 · solapa": 1402,
+    "Δlínea -2 · al norte": 88,
+    "Δlínea ≤−3 · solapa": 2960,
+    "Δlínea ≤−3 · al norte": 327,
+    "Δlínea ≥+3 · al sur": 3155,
+    "Δlínea 0 · al sur": 1640,
+    "Δlínea +1 · al sur": 1307,
+    "Δlínea +2 · al sur": 127,
+    "Δlínea -1 · al sur": 1465,
+    "Δlínea -2 · al sur": 287,
+    "Δlínea ≤−3 · al sur": 3624
+   },
+   "por_rumbo": {
+    "NE": 965,
+    "N": 4443,
+    "E": 5602,
+    "SE": 4635,
+    "S": 5973,
+    "O": 8032,
+    "NO": 1788,
+    "SO": 5557
+   },
+   "gemelo": {
+    "con_sombra": 22578,
+    "gemelo_no_real_si": 1283,
+    "gemelo_si_real_no": 2788,
+    "ambas": 18507,
+    "dif_pp": {
+     "min": -79.72465869558398,
+     "p10": -1.0040041430591673,
+     "med": 0,
+     "p90": 0.42675860004564165,
+     "max": 92.0820984220796
+    }
+   }
+  }
+ ]
+}
