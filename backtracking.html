@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.1';
+const VER='v1.79.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -3416,10 +3416,18 @@ function topeBacktrackingSeg(zen,az,T,segN,segLazo,margen){
        al parar: tras adelantar el eje queda a un margen EXACTO de la consigna,
        asi que un «>=» invierte en cuanto para y la inversion vuelve a adelantar.
    Con `deadband` 0 el adelanto vale 0 y esto es, exactamente, la ley de antes. */
-function crearLazo(deadband,rate,desde){
+function crearLazo(deadband,rate,desde,tope){
   const db=(deadband==null?DEADBAND_DEG:deadband);
   const rt=(rate==null?TRACKER_SLEW:rate);
   const lleg=Math.max(1e-9,0.5*db);
+  /* v1.79.0 · EL TOPE MECÁNICO. El lazo aparca en consigna + banda muerta (el
+     adelanto del contrato direccional), y con la consigna en el tope eso era
+     aparcar FUERA de él: 56° con θmáx 55°, en las nueve políticas (136-640
+     muestras·fila al día en la planta por defecto). Reportado por el titular
+     viendo «56,0°» en el HUD. El núcleo ya lo limita (`apply_control_loop`,
+     `limit_front_deg`/`limit_rear_deg` = ±max_angle); aquí faltaba. Sin `tope`
+     se comporta como antes (lo usan los bancos de lógica pura). */
+  const mx=(tope>0)?tope:Infinity, clampT=v=>Math.max(-mx,Math.min(mx,v));
   /* `desde` SIEMBRA el angulo de partida sin tratarlo como primera muestra.
      Lo usa el fotograma interpolado entre dos puntos de la malla, que sale de
      un angulo ya conocido y no de un arranque en frio. Lo que esa via NO puede
@@ -3430,14 +3438,14 @@ function crearLazo(deadband,rate,desde){
   return {
     get prev(){return prev;},
     paso(cmd,dtSec){
-      if(!prev){ prev=slewLimit(null,cmd,dtSec,rt); for(let r=0;r<cmd.length;r++)est[r]={dir:0,park:null}; return prev; }
+      if(!prev){ prev=slewLimit(null,cmd,dtSec,rt).map(clampT); for(let r=0;r<cmd.length;r++)est[r]={dir:0,park:null}; return prev; }
       const out=cmd.slice();
       for(let r=0;r<cmd.length;r++){
         if(!est[r])est[r]={dir:0,park:null};
         const p=prev[r], t=cmd[r], err=t-p, S=est[r];
         let destino=null;
         if(S.dir&&S.park!=null){
-          const sgn=S.dir, vivo=t+db*sgn;
+          const sgn=S.dir, vivo=clampT(t+db*sgn);
           const invierte=err*sgn<0&&Math.abs(err)>db;
           const rancia=!invierte&&(S.park-vivo)*sgn>lleg;
           if(!invierte&&!rancia&&(S.park-p)*sgn>1e-9)destino=S.park;
@@ -3447,23 +3455,35 @@ function crearLazo(deadband,rate,desde){
           const invMem=S.dir!==0&&((err>0?1:-1)!==S.dir);
           const arranca=db<=0||(invMem?Math.abs(err)>db:Math.abs(err)>=db);
           if(!arranca||err===0){ out[r]=p; if(err===0)S.park=null; continue; }
-          S.dir=err>0?1:-1; destino=t+db*S.dir; S.park=destino;
+          S.dir=err>0?1:-1; destino=clampT(t+db*S.dir); S.park=destino;
         }
         const lim=rt*dtSec, d=destino-p;
-        out[r]=Math.abs(d)<=lim?destino:p+Math.sign(d)*lim;
+        out[r]=clampT(Math.abs(d)<=lim?destino:p+Math.sign(d)*lim);
         if((S.park-out[r])*S.dir<=1e-9)S.park=null;
       }
       prev=out; return out;
+    },
+    /* v1.79.0 · LA POSICIÓN QUE DE VERDAD SE PUBLICA. `topeBacktracking` va
+       DESPUÉS del lazo y puede mover la salida; el lazo seguía creyendo que el
+       eje estaba donde él lo dejó, y el paso siguiente limitaba el giro desde
+       un sitio en el que el eje no estaba. Quien retoca la salida se la dice
+       aquí. La mesa retocada pierde su aparcamiento (ya no está camino de él). */
+    fija(pos){
+      if(!prev){ prev=pos.slice(); return; }
+      for(let r=0;r<pos.length;r++) if(Math.abs(pos[r]-prev[r])>1e-12&&est[r]) est[r].park=null;
+      prev=pos.slice();
     }
   };
 }
 /* Por MESA: un lazo independiente por linea, porque cada una tiene su propio
    sentido de marcha y su propio destino enclavado. */
-function crearLazoSeg(deadband,rate){
+function crearLazoSeg(deadband,rate,tope){
   const lazos=[];
   return { paso(cmdSeg,dtSec){
-    return cmdSeg.map((l,i)=>{ if(!lazos[i])lazos[i]=crearLazo(deadband,rate); return lazos[i].paso(l,dtSec); });
-  } };
+    return cmdSeg.map((l,i)=>{ if(!lazos[i])lazos[i]=crearLazo(deadband,rate,null,tope); return lazos[i].paso(l,dtSec); });
+  },
+  get prev(){ return lazos.length?lazos.map(z=>z.prev):null; },
+  fija(pos){ pos.forEach((l,i)=>{ if(lazos[i])lazos[i].fija(l); }); } };
 }
 function slewLimit(prev,cmd,dtSec,rate){
   const r=(rate==null?TRACKER_SLEW:rate)*dtSec;
@@ -5466,7 +5486,7 @@ function* serieDiaGen(key,D,dest){
   // de una serie, así que cada política —y cada llamada, venga de la escena o
   // del informe gráfico— tiene el suyo y no hay memoria compartida entre dos
   // simulaciones distintas, que es lo que pide la doctrina del lazo.
-  const LZ=crearLazo(), LZS=crearLazoSeg();
+  const LZ=crearLazo(null,null,null,T.maxAngle), LZS=crearLazoSeg(null,null,T.maxAngle);
   for(let t=0;t<nT;t++){
     const g=sun[t];
     /* v1.76 · con mesas, la política se pide UNA vez y por `segCmd`, que es la
@@ -5489,7 +5509,15 @@ function* serieDiaGen(key,D,dest){
       // el MANDO por mesa, promediado a línea: ANTES del lazo y ANTES del tope,
       // porque el indicador de backtracking compara lo que la política PIDE
       cmd[t]=segLineMean(T,segN);
-      const ls=topeBacktrackingSeg(g.zen,g.az,T,segN,LZS.paso(segN,STEP_MIN*60));
+      /* v1.79.0 · el tope va DESPUÉS del lazo y podía devolver el mando crudo de
+         la política: optfree giraba 69,3° en un paso de 5 min (el actuador da
+         51°). Lo que sale del tope se limita al giro desde la posición anterior
+         y el lazo se entera de dónde quedó el eje. */
+      const antesS=LZS.prev, lzS=LZS.paso(segN,STEP_MIN*60);
+      let ls=topeBacktrackingSeg(g.zen,g.az,T,segN,lzS);
+      if(antesS&&antesS.every(Boolean))ls=slewLimitSeg(antesS,ls,STEP_MIN*60);
+      ls=ls.map(l=>l.map(v=>Math.max(-T.maxAngle,Math.min(T.maxAngle,v))));
+      if(ls.some((l,r)=>l.some((v,k)=>Math.abs(v-lzS[r][k])>1e-12)))LZS.fija(ls);
       lim=segLineMean(T,ls); pp=poaPlantSeg(g.zen,g.az,T,ls,irr[t],doy,c.albedo);
       poaLinMedia[t]=pp.plantLinMedia;
       segAng[t]=ls; poaS[t]=pp.segs;
@@ -5511,7 +5539,11 @@ function* serieDiaGen(key,D,dest){
       // tras el lazo, porque el margen se añade DESPUÉS: aplicarlo antes es
       // aplicarlo donde no sirve, que es lo que le pasó al núcleo en su día.
       cmd[t]=o.angles;                   // el MANDO: antes del lazo y antes del tope
-      lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));
+      const antes=LZ.prev?LZ.prev.slice():null, lz=LZ.paso(o.angles,STEP_MIN*60);
+      lim=topeBacktracking(g.zen,g.az,T,o.angles,lz);
+      if(antes)lim=slewLimit(antes,lim,STEP_MIN*60);          // v1.79.0: ver la rama por mesa
+      lim=lim.map(v=>Math.max(-T.maxAngle,Math.min(T.maxAngle,v)));
+      if(lim.some((v,r)=>Math.abs(v-lz[r])>1e-12))LZ.fija(lim);
       pp=poaPlant(g.zen,g.az,T,lim,irr[t],doy,c.albedo);
       poaLin[t]=pp.plant;                // sin mesas, las dos métricas SON la misma
       poaLinMedia[t]=pp.plant;           // y la agregación vieja también, por lo mismo
@@ -5550,7 +5582,7 @@ function* computeDayGen(){
   // referencia ASTRONÓMICA con el MISMO límite de slew: backtracking ⇔ la
   // consigna se aparta de ella (>0,5°) — así la rampa del alba no cuenta como
   // BT en la política astro, y en las demás marca exactamente las horas de BT
-  const astroAng=new Array(nT), astroCmd=new Array(nT); const LZA=crearLazo();
+  const astroAng=new Array(nT), astroCmd=new Array(nT); const LZA=crearLazo(null,null,null,T.maxAngle);
   const segRef=segOn(T);
   for(let t2=0;t2<nT;t2++){
     /* EL MANDO de la referencia, por la MISMA maquinaria que el de cualquier
@@ -7382,7 +7414,9 @@ function updateHud(tIdx,g,irrN,key,p,sh){
       const sa=p.segAng&&p.segAng[tIdx]&&p.segAng[tIdx][selRow];
       let mes='';
       if(sa&&sa.length>1){const a=Math.min(...sa),b=Math.max(...sa);if(b-a>0.005)mes=' · mesas '+(TH_DISP*(TH_DISP<0?b:a)).toFixed(1)+'…'+(TH_DISP*(TH_DISP<0?a:b)).toFixed(1)+'°';}
-      const held=(INSTANT&&INSTANT.stamp===DAY&&INSTANT.key===key&&INSTANT.held!=null&&INSTANT.m===+$('hour').value)?' · consigna de las '+hhmm(INSTANT.held):'';
+      /* v1.79.0: entre muestras el eje está EN CAMINO entre dos posiciones de la
+         malla (sceneInstant): ya no hay una «consigna de las HH:MM» mantenida. */
+      const held='';
       /* v1.59: el rótulo dice DE DÓNDE sale el ángulo, no qué hay en el
          selector. Con el mando puesto el valor es manual y el rótulo ponía
          «Pairwise»: el número y su etiqueta, dos piezas mirando a sitios
@@ -7621,7 +7655,7 @@ $('yearbtn').onclick=()=>{
   const PASO_ANUAL_MIN=10;
   for(let mo=0;mo<12;mo++){
     const ds=year+'-'+days[mo], doy=doyOf(ds);
-    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=crearLazo();
+    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=crearLazo(null,null,null,T.maxAngle);   // v1.79.0: con tope mecánico
     for(let m=0;m<1440;m+=PASO_ANUAL_MIN){
       const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
       if(g.elev<=0)continue;
@@ -8023,9 +8057,7 @@ function careoGhostInstant(){
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
-  const o=policyAngles(CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo);
-  const ang=crearLazo(null,null,DAY.pol[CAREO_A].ang[tIdx])
-              .paso(o.angles,Math.max(60,(m-DAY.times[tIdx])*60));
+  const ang=interpMalla(DAY.pol[CAREO_A].ang,m);     // v1.79.0: la misma recta que sceneInstant
   const pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
   GHOST={m:m,stamp:DAY,ang:ang,shade:pp.shade};
   return GHOST;
@@ -8070,6 +8102,20 @@ function manualRowsOn(){const e=$('manrow');return manualOn()&&!!(e&&e.checked)&
    en los dos casos ningún par de minutos consecutivos se separa más de
    |Δmuestra|/STEP_MIN ≤ SLEW·60. No recalcula política —lee lo que computeDay
    ya publicó— así que no cuesta nada y NO cambia ni un número del día. */
+/* v1.79.0 · la posición del eje en el minuto `m` a partir de una serie de la
+   malla (por línea o por mesa): recta entre la muestra de antes y la de después.
+   Es lo que `sceneInstant` y el fantasma del careo enseñan entre muestras. */
+function interpMalla(serie,m){
+  let i=-1;
+  for(let k=0;k<DAY.times.length;k++){ if(DAY.times[k]<=m)i=k; else break; }
+  if(i<0)return serie[0]||null;
+  const a0=serie[i]; if(!a0)return null;
+  const a1=(i+1<DAY.times.length)?serie[i+1]:null, t0=DAY.times[i], t1=a1?DAY.times[i+1]:t0;
+  if(!a1||t1<=t0||m<=t0)return a0;
+  const u=Math.min(1,(m-t0)/(t1-t0));
+  const mez=(x,y)=>Array.isArray(x)?x.map((v,j)=>mez(v,y[j])):x+u*(y-x);
+  return mez(a0,a1);
+}
 function consignaEscena(key){
   if(!DAY)return null;
   const m=+$('hour').value;
@@ -8147,37 +8193,26 @@ function sceneInstant(){
   const c=DAY.c, tIdx=timeIndex();
   const g=solarPos(localToUTCms(c.date,m,c.tz),c.lat,c.lon);
   const irr=skyWithClouds(clearskyIneichen(g.zen,DAY.doy,c.alt,c.tl),cloudCC(),g.zen);
-  const dt=Math.max(60,(m-DAY.times[tIdx])*60), PK=DAY.pol[key];
-  // v1.53.3: los OPTIMIZADORES (búsqueda por instante: ascenso + reparación
-  // exacta) harían lento el arrastre del slider, y hasta aquí devolvían null:
-  // la escena y el HUD enseñaban la muestra de la malla de 5 min ENTERA —sol,
-  // irradiancia y sombra de las 15:20 bajo el rótulo «15:23»— mientras el
-  // resto de políticas calculaba el minuto exacto. Ahora mantienen la CONSIGNA
-  // de la malla (lo que hace un TCU que recibe consigna cada 5 min) y la
-  // física —sol, cielo, sombra, POA— es la del minuto pedido, como en todas.
-  const held=(key==='optimal'||key==='optfree');
-  let ang,pp,ls=null,f=null;
-  if(held){
-    f=PK.f?PK.f[tIdx]:null;
-    if(segOn(DAY.T)&&PK.segAng){ls=PK.segAng[tIdx];ang=segLineMean(DAY.T,ls);pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);}
-    else{ang=PK.ang[tIdx];pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);}
-  }else{
-    if(segOn(DAY.T)&&PK.segAng){
-      // POR MESA, desde la malla de 5 min de cada mesa (el mismo slew por mesa)
-      // v1.76: la fracción sale del propio `segCmd` (parámetro `info`), no de
-      // una segunda llamada a la política: con los optimizadores mandando por
-      // mesa, esa segunda llamada era calcular dos veces lo más caro que hay.
-      const info={};
-      ls=slewLimitSeg(PK.segAng[tIdx],segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,irr,DAY.doy,c.albedo,info),dt);
-      f=info.f;
-      ang=segLineMean(DAY.T,ls); pp=poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo);
-    }else{
-      const o=policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T,irr,DAY.doy,c.albedo); f=o.f;
-      ang=slewLimit(PK.ang[tIdx],o.angles,dt);
-      pp=poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
-    }
-  }
-  INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,held:held?DAY.times[tIdx]:null,
+  const PK=DAY.pol[key];
+  /* v1.79.0 · EL EJE ENTRE DOS MUESTRAS ES LA RECTA ENTRE LAS DOS POSICIONES
+     PUBLICADAS. Reportado por el titular: con «Óptimo libre» la fila 5 pasaba de
+     56,0° a las 22:04 a 5,0° a las 22:05, 51° en un minuto con un actuador de
+     0,17 °/s. Había dos maneras de saltar y las dos estaban aquí:
+       · optimal/optfree MANTENÍAN la muestra (v1.53.3) cuatro minutos y en el
+         quinto aparecía la siguiente de golpe;
+       · las demás iban por `slewLimit` hacia la consigna DEL MINUTO, mientras la
+         malla llega a la de final de paso: al ponerse el sol la consigna del
+         minuto sigue en −55° y la muestra siguiente ya está en −4,45°.
+     El comentario de `consignaEscena` (arriba) llevaba tiempo diciendo que la
+     escena interpolaba; no lo hacía. Ahora sí: las dos muestras son salidas del
+     lazo, así que ningún minuto se separa del anterior más de |Δmuestra|/STEP_MIN
+     ≤ TRACKER_SLEW·60 (banco `tools/test_giro_maximo.mjs`). No recalcula la
+     política: la física del minuto (sol, cielo, sombra, POA) es la del minuto
+     pedido con el θ que el eje TIENE en ese minuto. */
+  const ang=interpMalla(PK.ang,m), ls=(segOn(DAY.T)&&PK.segAng)?interpMalla(PK.segAng,m):null;
+  const f=PK.f?PK.f[tIdx]:null;
+  const pp=ls?poaPlantSeg(g.zen,g.az,DAY.T,ls,irr,DAY.doy,c.albedo):poaPlant(g.zen,g.az,DAY.T,ang,irr,DAY.doy,c.albedo);
+  INSTANT={m:m,key:key,stamp:DAY,g:g,irr:irr,held:null,
            pv:{ang:{[tIdx]:ang},shade:{[tIdx]:pp.shade},poaP:{[tIdx]:pp.plant},poaR:{[tIdx]:pp.rows},f:{[tIdx]:f},
                segAng:ls?{[tIdx]:ls}:null,poaS:ls?{[tIdx]:pp.segs}:null}};
   return INSTANT;
