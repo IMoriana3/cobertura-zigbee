@@ -32,7 +32,7 @@ import { cargaSimulador, terrenoComoLaPagina } from '../audit5/lib_simulador.mjs
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let ok = 0, ko = 0;
 const t = (n, f) => { try { const m = f(); ok++; console.log('  ✓ ' + n + (m ? ' — ' + m : '')); } catch (e) { ko++; console.log('  ✗ ' + n + ' — ' + e.message); } };
-const EXTRA = ['applyDriveSeg', 'segsBroadcast'];
+const EXTRA = ['applyDriveSeg', 'segsBroadcast', 'segLineMean', 'tangentResidualPairMm'];
 const HOY = cargaSimulador(ROOT, EXTRA).F;
 let MAIN = null;
 try { const h = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }); MAIN = cargaSimulador(ROOT, EXTRA, () => h).F; }
@@ -142,6 +142,43 @@ if (MAIN) {
     }
     if (!difViejo) throw new Error('CONTROL: el segCmd de antes da lo mismo: la comprobación no distingue');
     return `${n} comparaciones · el segCmd de antes difiere en ${difViejo} (control)`;
+  });
+}
+/* 6 · LA PROPIEDAD, no la forma (regla R-4, audit5/REGLAS.md). Las 1-5 miran la
+   FORMA del cambio —un motor, un θ; líneas desacopladas; la puerta de la página—
+   y estuvieron en verde 7/7 mientras el paso 3 se llevaba la REPARACIÓN de
+   sombra que iba dentro de `driveCoupleSafe` (E-X1-R3-3). Lo que hay que
+   conservar es que no aparezca contacto que el código sabía evitar: las parejas
+   de líneas en contacto 3D (residuo < −1 mm) de lo que `true3d` PUBLICA (la
+   media de línea de sus mesas) no pueden aumentar respecto a main.
+   CONTROL NEGATIVO: sin la reparación tiene que ponerse roja (medido: 119 frente
+   a 53). `mgl` no entra: 40-90 s por instante en Ayora; su contacto se mide en
+   audit5/, no aquí, y queda dicho. */
+if (MAIN) {
+  const INST48 = [];
+  for (const d of [172, 355]) for (let hh = 5; hh <= 19; hh++) for (const mm of [0, 30]) {
+    const g = HOY.solarPos(Date.UTC(2026, 0, 1) + (d - 1) * 864e5 + (hh * 60 + mm) * 6e4, lay.clat, lay.clon);
+    if (g.elev > 1) INST48.push({ g, doy: d, irr: HOY.clearskyIneichen(g.zen, d, datos.base, 3.5) });
+  }
+  const contacto = F => { let n = 0;
+    for (const { g, irr, doy } of INST48) {
+      const lin = F.segLineMean(Tay, F.policyAnglesSeg('true3d', g.zen, g.az, Tay, irr, doy, 0.2));
+      for (let p = 0; p < Tay.pairs.length; p++) { const r = F.tangentResidualPairMm(g.zen, g.az, Tay, lin, p); if (isFinite(r) && r < -1) n++; }
+    }
+    return n; };
+  const SIN_REP = cargaSimulador(ROOT, EXTRA, h => {
+    const a = 'true3d:(zen,az,T)=>driveCoupleSafe(zen,az,porLinea(T),anglesTrue3d(zen,az,T),true),';
+    if (!h.includes(a)) throw new Error('no encuentro la reparación de true3d para quitarla');
+    return h.replace(a, 'true3d:(zen,az,T)=>anglesTrue3d(zen,az,T),');
+  }).F;
+  const nHoy = contacto(HOY), nMain = contacto(MAIN), nSin = contacto(SIN_REP);
+  t(`6 · PROPIEDAD: true3d no publica MÁS parejas en contacto 3D que main (${INST48.length} instantes × ${Tay.pairs.length} parejas)`, () => {
+    if (nHoy > nMain) throw new Error(`hoy ${nHoy} parejas en contacto, main ${nMain}: el cambio deja contacto que el código sabía reparar`);
+    return `hoy ${nHoy} · main ${nMain}`;
+  });
+  t('6 · CONTROL NEGATIVO: sin la reparación, la 6 se pone roja', () => {
+    if (!(nSin > nMain)) throw new Error(`sin la reparación salen ${nSin} parejas y main ${nMain}: la 6 no distingue`);
+    return `sin la reparación ${nSin} parejas en contacto (main ${nMain}): roja`;
   });
 }
 console.log(ko ? `${ko} FALLOS de ${ok + ko}` : `OK — ${ok} comprobaciones`);

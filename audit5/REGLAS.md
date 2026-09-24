@@ -130,3 +130,28 @@ como `--tabla`. Uno que se cuenta, no.
 exenciones con motivo (`test_nb_procedencia`, `test_dos_metricas`,
 `test_meteo_csv`, que no publican recuento). Lo que publica hoy cada entrada va
 en «Bancos sin piso» cuando termine la medida (EN CURSO).
+
+## R-4 · Un banco verifica la PROPIEDAD que hay que conservar, no la FORMA del cambio
+
+**Enunciado.** Verificar tu propio cambio es verificar que hiciste lo que
+quisiste hacer, no que no rompiste nada. Cada cambio tiene que venir con al
+menos una comprobación de lo que había que CONSERVAR, y con su control negativo:
+quitando lo que la sostiene, esa comprobación se pone roja.
+
+**Nació de:** refundación del BT, paso 3 (`audit5/REFUNDACION_P3.md`,
+REFUTACIÓN y E-X1-R3-3).
+
+- `tools/test_unidad_accionamiento.mjs` salía 7/7 en verde. Comprobaba la forma
+  del cambio: cada motor con un solo θ, líneas desacopladas y la puerta de la
+  página.
+- Mientras tanto, el paso 3 se llevaba la REPARACIÓN de sombra que iba dentro de
+  `driveCoupleSafe`. `true3d` pasó de 53 a 119 parejas en contacto 3D, y perdió
+  un 0,42-0,57 % del día.
+- El banco gana la comprobación 6, de PROPIEDAD: las parejas en contacto 3D de
+  lo que `true3d` publica no pueden aumentar respecto a `main`. Su control quita
+  la reparación y tiene que dar rojo, con 119.
+
+**El nombre avisaba.** `driveCoupleSafe` llevaba «Safe» dentro, y se leyó como
+si solo acoplara. Va al registro del patrón por el otro lado: allí el código y
+su descripción dejaron de coincidir; aquí el nombre decía la verdad y no se
+leyó.

@@ -2797,12 +2797,20 @@ function policyAnglesSegF(key,zen,az,T,irr,doy,albedo){
    consulta con los grupos quitados: su base y sus unidades son por fila. En
    planta real `repairNoShade` no entra (`if(T.real)return ang;`), así que no hay
    que quitarla. */
-const _TSG=new WeakMap();
-function sinGrupos(T){let t=_TSG.get(T);if(!t){t=Object.assign({},T,{groups:null});_TSG.set(T,t);}return t;}
+/* DECISIÓN DEL TITULAR (a), paso 3: `driveCoupleSafe` hace DOS trabajos —acopla
+   el grupo y REPARA la sombra entre parejas (el candidato sin contacto más
+   cercano)— y solo el primero necesitaba acoplar líneas enteras. Medido
+   (audit5/P3_3_reparacion.mjs, true3d, Ayora, 48 instantes × 78 parejas): sin
+   reparación 119 parejas en contacto 3D; con acople + reparación 53; con la
+   reparación tomando CADA LÍNEA como su unidad, 53 también. Así que aquí la
+   reparación se conserva con la línea como unidad (`porLinea`) y el acople de
+   líneas enteras se retira. `row` no tenía reparación (solo `applyDrive`). */
+const _TPL=new WeakMap();
+function porLinea(T){let t=_TPL.get(T);if(!t){const n=T.pairs.length+1;t=Object.assign({},T,{groups:Array.from({length:n},(_,i)=>[i])});_TPL.set(T,t);}return t;}
 const LINEA_SIN_ACOPLE={
   row:(zen,az,T)=>anglesRow(zen,az,T),
-  true3d:(zen,az,T)=>anglesTrue3d(zen,az,T),
-  mgl:(zen,az,T)=>anglesMinGroundLight(zen,az,sinGrupos(T)),
+  true3d:(zen,az,T)=>driveCoupleSafe(zen,az,porLinea(T),anglesTrue3d(zen,az,T),true),
+  mgl:(zen,az,T)=>anglesMinGroundLight(zen,az,porLinea(T)),
 };
 function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
   return policyAnglesSegF(key,zen,az,T,irr,doy,albedo).angles;
