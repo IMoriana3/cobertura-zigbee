@@ -47,7 +47,7 @@ cuatro variantes se miden con la MISMA métrica por mesa, la del día.
   por línea en Ayora.
 - El +16,067 % del P1 (L → L0, métrica de línea) es +19,152 % en la de mesa.
 
-**La cifra del P1, reescrita (lo pide el titular).** El hueco que el P1
+**La cifra del P1, reescrita (lo pide el titular; entrada C-1 de `audit5/REGISTRO_CORRECCIONES.md`, corregida también en `audit4/P1_ALCANCE_PAIRDZ.md`, commit `78bc1f3`).** El hueco que el P1
 publicó, 2.307,0294 (ruta por línea medida con `poaPlant`) → 2.705,1154 (rama
 por mesa medida con `poaPlantSeg`), es de +398,086 kWh/m², un **+17,26 %**. Se
 descompone en:
