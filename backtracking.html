@@ -2849,6 +2849,16 @@ function guardaEnergia(zen,az,T,dec,ref,irr,doy,albedo){
   const pD=poaPlant(zen,az,T,dec,irr,doy,albedo).plant, pR=poaPlant(zen,az,T,ref,irr,doy,albedo).plant;
   return pR>pD?marca(ref.slice(),'aceptadaPorEnergia'):dec;
 }
+/* LA FÓRMULA LOCAL de pairwise, la de siempre (v1.57-v1.78): pvlib por pareja,
+   acople de accionamiento y reparación. Es lo que puede calcular una TCU con lo
+   que sabe —sus dos vanos y su tilt—, y por eso la usan (1) la guardia de
+   energía como referencia y (2) el cruce con la telemetría real
+   (`tools/cruce_ncu_dia.mjs`), que modela lo que hace el FIRMWARE con sus
+   registros. La decisión de la fase A necesita el θ real de TODAS las mesas
+   emisoras, que solo tiene una NCU central: no es lo que ejecuta una TCU. */
+function pairwiseLocal(zen,az,T,irr,doy,albedo){
+  return repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo);
+}
 const UMBRAL_DEC=1e-3;
 function unidadesDecision(T,porMesa){
   const segsOfU=r=>(T.segs&&T.segs[r])?T.segs[r]:[[-30,30]];
@@ -3931,7 +3941,7 @@ function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
     repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),irr,doy,albedo),f:undefined};
   if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
   return {angles:guardaEnergia(zen,az,T,decideProyeccion(zen,az,T,anglesPairwiseRaw(zen,az,T,{candidato:true}),false).ang,
-    repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),irr,doy,albedo),f:undefined};
+    pairwiseLocal(zen,az,T,irr,doy,albedo),irr,doy,albedo),f:undefined};
 }
 
 /* ray-cast BRUTO para el QA: muestrea M puntos del panel sombreado y lanza el

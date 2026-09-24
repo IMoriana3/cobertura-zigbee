@@ -139,14 +139,176 @@ SE MIDE»):
   vecindad ni por gemelo. Un retroceso de más que venga del propio pvlib (una
   vecina más corta, por ejemplo) no se deshace aquí: eso es optimizar, fase D.
 - **La ruta por mesa, la de las plantas reales, no tiene guardia de energía.**
-  No la tenía antes (`repairNoShade` se salta en `T.real`, `:3507`) y cada
+  No la tenía antes (`repairNoShade` se salta en `T.real`, en `repairNoShadeCore`, `backtracking.html:3680`, `if(T.real)return ang;`) y cada
   evaluación de energía cuesta una pasada completa del contador. Queda
   declarado.
 - **`true3d` en planta real sigue por línea**, como antes: la difusión a mesas
   es la misma. Solo cambia cómo se acepta.
-- **Coste:** `pairwise` por mesa en Ayora pasa de 0,2-3 s a 0,15-5 s por
-  instante (1-8 pasadas completas del contador). **No medido con la máquina
-  libre**; se medirá antes del PR.
+- **`pairwise` y `true3d` con el motor nuevo son políticas de NCU, no de TCU.**
+  Es un hallazgo, no un banco arreglado: ver «HALLAZGO · la etiqueta TCU/NCU es
+  una restricción de información», abajo.
+- **Coste: DESCONOCIDO en tiempo.** Lo que sí se cuenta es el trabajo: la
+  decisión hace entre 1 y 8 pasadas completas del contador por instante en
+  Ayora (`info.evals`), frente a ninguna de antes. Los segundos no se publican:
+  la máquina no ha estado libre en toda la fase (carga 8-9 en 4 núcleos, por las
+  medidas largas de conoHaz y del giro) y dos corridas así no son comparables.
+
+## HALLAZGO · la etiqueta TCU/NCU es una restricción de información
+
+**Qué pasó.** Al conectar `pairwise` al motor de proyección, la política pasa a
+necesitar el θ REAL de todas las mesas emisoras. `decideProyeccion`
+(`backtracking.html:2878`) retrocede JUNTAS la receptora y sus emisoras hasta
+que el contador no ve sombra, y para eso evalúa la planta entera en cada vuelta
+(`shadeBand3DAll(zen,az,T,A,{noStruct:true,noTerr:true,MV:MV,atrMesa:true})`).
+Una TCU no puede saberlo: ve su encoder y lo que la NCU le manda, no el ángulo
+de una mesa dos filas más allá.
+
+- **Cómo salió.** El cruce con la telemetría real de Ayora
+  (`tools/cruce_ncu_dia.mjs`) modela lo que hace el FIRMWARE de la TCU con sus
+  registros. Con la `pairwise` nueva el veredicto pasó de «cero» (registros a
+  cero) a «cfg»: 1 de 215 en `tools/test_backtracking_sim.mjs`.
+- **Qué se cambió.** El cruce usa ahora `pairwiseLocal`
+  (`backtracking.html:2859`, `return repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo);`
+  y `tools/cruce_ncu_dia.mjs:316`, `cero: F.pairwiseLocal(g.zen, g.az, T0, irr, doy, 0.20),`).
+  Con ella vuelve a votar «cero»: 215/215. El rojo con la `pairwise` nueva es el
+  control negativo, y se vio antes del cambio.
+- **Qué queda dicho:**
+  - `pairwise` con el motor nuevo es una política de **NCU**, no de TCU;
+  - `pairwiseLocal` es lo que una TCU puede ejecutar de verdad. En planta real
+    `repairNoShade` no entra (`backtracking.html:3680`, `if(T.real)return ang;`),
+    así que queda pvlib por pareja más el acople del propio motor;
+  - `true3d` corre la misma suerte: su decisión también pasa por
+    `decideProyeccion` y por `guardaEnergia`, que compara la POA de TODA la
+    planta (`backtracking.html:2845`).
+
+**Precisión que importa para las opciones.** En el simulador, el θ de las
+emisoras que usa la decisión no es una lectura de encoder: es el que la propia
+decisión les asigna. Una TCU que llevara precargado el modelo de toda la planta
+podría recalcularlo, suponiendo que las demás obedecen. «El θ REAL» es la
+condición de campo: decidir = medir solo se cumple fuera del simulador si las
+demás están donde el plan dice, y eso solo lo sabe quien lee sus encoders.
+
+### El defecto de la casa: opciones, con su coste. NO se elige aquí: es del titular
+
+Hoy el defecto es `pairwise` (`on:true`, «canónica», `backtracking.html:4634`).
+Tal como queda, **no es implementable en una TCU**.
+
+| opción | qué se publica por defecto | coste |
+|---|---|---|
+| **(a)** `pairwise` = decisión por proyección, y su rótulo pasa a `ncu` | la fase A tal cual | Exige una NCU que lea el encoder de todas las mesas y pase 1-8 veces el contador de planta por instante; el tiempo no se ha medido con la máquina libre. En una planta solo con TCU, como la del cruce de Ayora, el defecto no se puede ejecutar, y el simulador deja de predecir lo que hace su firmware (el cruce ya usa `pairwiseLocal`). Gana lo medido en A.4. |
+| **(b)** el defecto vuelve a `pairwiseLocal` (TCU); la decisión por proyección sale como política NUEVA de cerebro NCU | la fórmula de siempre | El defecto vuelve a decir «0 %» donde el contador ve sombra, así que A.3 (decidir = medir) deja de cumplirse en el defecto, salvo que esa sombra se DECLARE. Una política más en el catálogo, con sus bancos, su columna del anual y su sitio en la lista de caras. La ganancia de A.4 queda solo para plantas con NCU. |
+| **(c)** `pairwise` = proyección ejecutada EN la TCU, con el modelo de planta precargado (o solo el de su alcance), suponiendo que las demás obedecen | la fase A tal cual | Memoria y cómputo embarcados: la geometría del alcance más 1-8 pasadas del contador por instante; coste en TCU DESCONOCIDO, no medido. Ciega a la realidad: con una vecina en fallo, en defensa, en manual o en banda muerta, lo decidido deja de ser lo medido en campo sin que nadie lo vea. Exige un protocolo de firmware que hoy no existe. |
+
+### Las nueve, revisadas con ese criterio
+
+Niveles de información:
+
+- **L0**: el sol y la configuración propia.
+- **L1**: registros estáticos de los vecinos (pendiente, paso, tilt del vano).
+  Es lo que tiene una TCU; el cruce de Ayora careaba justo eso, registros «cero»
+  frente a «cfg».
+- **L2**: un cálculo conjunto sobre el modelo de TODA la planta (POA de planta,
+  contador de todas las filas).
+- **L3**: el θ real, en tiempo de ejecución, de otras mesas.
+
+TCU = L0-L1. NCU = L2-L3.
+
+| política | rótulo hoy (`:4630-4638`) | lo que consume su código | familia por información | ¿cambia? |
+|---|---|---|---|---|
+| `astro` | tcu | L0: `anglesAstro`, su tilt y su pendiente | TCU | no |
+| `row` | tcu | L1: `anglesRow` (`:1236`), la media de sus dos vanos | TCU | no |
+| `bt2d` | tcu | L0: `anglesBt2d` (`:2427`), sin pendiente | TCU | no |
+| `global` | ncu | L1 de PLANTA: `anglesGlobal` (`:1247`) usa `meanPair(T)` (`:880`), tres escalares estáticos de la planta, y da un solo ángulo | TCU si esos tres escalares se cargan como registros | **sí, podría BAJAR a TCU**. El rótulo `ncu` responde a «un motor, un ángulo», no a la información |
+| `pairwise` | tcu | ANTES, en planta real: L1 (pvlib por pareja con el gemelo estático, más el acople). En los presets ya era L2 desde v1.57: `repairNoShade` evalúa todas las filas y la POA de planta. AHORA: L2 en el simulador y L3 en campo (`decideProyeccion`) | NCU | **sí, SUBE a NCU** |
+| `true3d` | tcu | igual que `pairwise`: su semilla `anglesTrue3d` (`:1293`) es L1, y la decisión y la guardia son L2/L3 | NCU | **sí, SUBE a NCU** |
+| `mgl` | ncu | L2: `glSum` suma la luz al suelo de TODAS las unidades (`:2461`), más `repairNoShade` | NCU | no |
+| `optimal` | ncu | L2: argmax de la POA neta de planta | NCU | no |
+| `optfree` | ncu | L2: ascenso coordinado con vista de planta | NCU | no |
+
+**Lectura.**
+
+- Con el criterio de información cambian de familia **tres**: `pairwise` y
+  `true3d` suben a NCU y `global` podría bajar a TCU.
+- De la familia TCU quedan `astro`, `row`, `bt2d` y `pairwiseLocal`; esta
+  última no está en el catálogo.
+- El rótulo `tcu` de `pairwise` y `true3d` **ya era inexacto en los presets
+  desde v1.57**, por `repairNoShade`. Solo en planta real, donde esa reparación
+  no entra, eran de TCU de verdad.
+- Si el rótulo pasa a ser una restricción, lo coherente es que un banco la haga
+  cumplir. Eso ya es parte del Canon del BT (complemento, bloque 6).
+
+## Las mesas residuales de A.4: ¿tope o iteraciones? — `audit5/A4_sonda_evitable.mjs`, `audit5/A4_nulo_rango.mjs`
+
+Ayora, `pairwise` por mesa, 21-jun y 21-dic cada 30 min (48 instantes).
+Salidas: `audit5/out/A4_sonda_evitable_{pairwise,true3d}.txt`,
+`audit5/out/A4_nulo_rango.{txt,json}`.
+
+**1 · No se quedaron sin iteraciones.**
+
+- Las **647** unidades implicadas en sombra residual, sumadas sobre los 48
+  instantes, están **todas en el tope** de su rango legítimo: 647 de 647.
+- Ninguna decisión agotó el retroceso: `iter` máximo 11, con un tope de 80.
+- Las 7 de las 5:00 UTC del 21-jun (sol 3,0°) son 7 unidades, y las 7 están en
+  el tope.
+
+**Resultado legítimo:** la política quiere retroceder más y el rango no se lo
+permite.
+
+**2 · Por qué SUBE la media de la sombra de planos:** bajan los casos y suben
+los residuos.
+
+- Mesas×instante con sombra > 1e-3: **1.342 → 1.450**. La subida entera está en
+  dos instantes de sol rasante del 21-dic:
+  - 07:30, sol 1,2°: 534 → 689;
+  - 16:30, sol 2,0°: 639 → 746.
+
+  En los otros 46 instantes bajan: 169 → 15.
+- En esos dos instantes la decisión **vieja** tenía **1.080 y 1.072 de 1.600
+  mesas FUERA del rango legítimo**, más allá del cono del haz
+  (`AOI_HAZ=88`, `backtracking.html:950`). Quitaba sombra apuntando a donde ya
+  no llega el haz, y eso no es ganar: la POA de planta es **la misma**, 0,4 →
+  0,4 y 1,2 → 1,2 W/m². Es el mismo vicio que cerró v1.57.1 en
+  `repairNoShade`.
+- Energía de los 48 instantes: 14,2606 → 14,2611 kWh/m².
+- **Dos instantes CUESTAN**: 09:00 y 15:00 del 21-dic, con −1,0 y −0,7 W/m².
+  Es la ruta por mesa sin guardia de energía, ya declarada arriba.
+
+**3 · TEST NULO: el rango ¿acota de verdad?** Las unidades implicadas se sacan
+del rango: retroceden juntas d grados más allá del tope, sin pasar de
+±`T.maxAngle`.
+
+| instante (UTC) | sol | mesas con sombra | en el tope | +1° fuera | +2° | +5° | +10° | +40° |
+|---|---|---|---|---|---|---|---|---|
+| 21-jun 05:00 | 2,97° | **7** | 7 de 7 | **2** siguen | 3 | 7 (+1 nueva) | 7 (+16) | 7 (+31) |
+| 21-jun 19:00 | 5,12° | 1 | 2 de 2 | **0** | 0 | 0 | 1 (+2) | 1 (+7) |
+| 21-dic 07:30 | 1,18° | 689 | 317 de 317 | 484 | 436 (+12) | 660 (+215) | 689 (+544) | 689 (+648) |
+| 21-dic 08:00 | 5,76° | 6 | 4 de 4 | 5 | 3 | 6 | 6 (+3) | 6 (+12) |
+| 21-dic 16:00 | 6,59° | 1 | 1 de 1 | **0** | 0 | 0 | 1 | 1 (+4) |
+| 21-dic 16:30 | 2,00° | 746 | 316 de 316 | 487 | 402 (+6) | 713 (+233) | 746 (+496) | 746 (+583) |
+
+**Lectura.**
+
+- **El rango acota.** Un θ 1-2° fuera del rango arregla parte de lo residual:
+  - de las 7 del 21-jun a las 5:00, 5 se arreglan y **2 siguen**;
+  - la del 21-jun 19:00 y la del 21-dic 16:00 se arreglan enteras.
+
+  Por eso la decisión no llega a 0: el rango se lo impide, y eso es lo que se
+  quería.
+- **Lo que sigue ni fuera del rango** es irreducible por geometría, **dentro de
+  esta familia de pruebas**:
+  - 2 mesas a las 5:00 del 21-jun;
+  - 3 a las 08:00 del 21-dic;
+  - unas 400-490 en cada instante de sol < 2,1°.
+
+  Pasado el tope, la pala se inclina hacia el otro lado y crea sombra nueva.
+  El empuje es UNIFORME; una combinación no uniforme no se ha probado. Por eso
+  se llaman irreducibles de la prueba, no «irreducibles demostrados».
+- **Los 30 de Ayora.** No se pueden sumar a esta lista:
+  - la lista congelada de «los 30 irreducibles» no está en ningún archivo del
+    repo; se buscó con `git grep irreducib` en todas las ramas remotas;
+  - aquellos eran EXTREMOS de fila con sombra > 1 mm, medidos con el motor;
+    estos son MESAS del contador con fracción > 1e-3;
+  - sin la lista, el cruce entre las dos queda **NO MEDIDO**.
 
 ## A.3 · Decidir = medir — `tools/test_decide_mide.mjs`
 
@@ -205,6 +367,15 @@ errores. En llano, pvlib ya es exacto y la decisión no tiene nada que corregir.
 - **E-X1-A-3.** El primer control negativo de la poda (alcance ×0,3) no
   controlaba nada: 0 mesas perdidas. Se endureció a ×0,3, ×0,1 y ×0,03, y se
   exige que alguno pierda.
+- **E-X1-A-5.** El primer `A4_efecto.mjs` contaba como DECLARADAS
+  `irreducibles×4` mesas: «una unidad irreducible, hasta 4 mesas». En la ruta
+  por línea la unidad es una línea entera, así que se quedaba corta. Además
+  leía el informe de la propia decisión en vez de comprobar los ángulos (el
+  rastro no es la cosa). Lo destapó el error «no» de `true3d` en Ayora, 4.541 →
+  2.058, que no casaba con lo que la decisión hace. La primera tabla de Ayora
+  (día) no se publica. Ahora «declarada» se comprueba sobre los ángulos: la
+  unidad y todas sus emisoras en el tope, o la marca `aceptadaPorEnergia`. Se
+  repitieron las cuatro corridas.
 - **E-X1-A-4.** La primera coincidencia de la banda de la página se hizo con
   `lineX`, que es relativa al origen de cada carga, y solo casaba 1 línea. Se
   cambió a `lineXAbs`, con una aserción que exige que casen todas.

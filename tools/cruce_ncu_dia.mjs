@@ -58,7 +58,7 @@ const i0 = html.indexOf('FÍSICA PURA'), i1 = html.indexOf('/* FIN-FÍSICA');
 const _sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
              + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
 const F = new Function(_sol + '\n' + html.slice(html.lastIndexOf('/*', i0), i1) +
-  ';return {solarPos,clearskyIneichen,policyAngles,poaPlant,plantFromCotas,slewLimit};')();
+  ';return {solarPos,clearskyIneichen,policyAngles,poaPlant,plantFromCotas,slewLimit,pairwiseLocal};')();
 
 const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, PLANTA + '_cotas.json'), 'utf-8'));
 const lay = JSON.parse(fs.readFileSync(path.join(ROOT, PLANTA + '_layout.json'), 'utf-8'));
@@ -309,8 +309,12 @@ else {
     const irr = F.clearskyIneichen(g.zen, doy, ALT, 3.5);
     const pol = {
       astro: F.policyAngles('astro', g.zen, g.az, T0, irr, doy, 0.20).angles,
-      cero: F.policyAngles('pairwise', g.zen, g.az, T0, irr, doy, 0.20).angles,
-      cfg: F.policyAngles('pairwise', g.zen, g.az, Treal, irr, doy, 0.20).angles,
+      /* v1.80.0: la FÓRMULA LOCAL de pairwise, la que calcula el firmware de una
+         TCU con sus registros. La `pairwise` publicada decide desde la fase A
+         con el θ real de todas las mesas (una NCU central), y eso no es lo que
+         hace una TCU: carearla contra la telemetría mediría otra cosa. */
+      cero: F.pairwiseLocal(g.zen, g.az, T0, irr, doy, 0.20),
+      cfg: F.pairwiseLocal(g.zen, g.az, Treal, irr, doy, 0.20),
       tri: F.policyAngles('true3d', g.zen, g.az, Treal, irr, doy, 0.20).angles,
     };
     const m2 = {};

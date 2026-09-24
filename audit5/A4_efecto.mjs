@@ -15,8 +15,17 @@
  *     quitar), media de mesa ponderada por largo;
  *   · SOMBRA PUBLICADA: la del contador completo (`shadeRows(...).seg`);
  *   · ERROR «NO» (el 631 de la fase 0, ahora de la DECISIÓN): mesas×instante
- *     con sombra evitable > 1e-3 que la política no declara (irreducible o
- *     aceptada por energía);
+ *     con sombra de planos > 1e-3 que la política no declara. DECLARADA se
+ *     COMPRUEBA sobre los ángulos, no se lee del informe de la decisión: o la
+ *     guardia la aceptó por energía (`aceptadaPorEnergia`), o la unidad
+ *     receptora y TODAS sus emisoras están en el tope de su rango legítimo
+ *     (`rangosFila` intersecado por unidad): nada puede retroceder más. (La
+ *     primera versión contaba `irreducibles×4` y se quedaba corta en la ruta por
+ *     línea, donde la unidad es una línea entera: E-X1-A-5.);
+ *   · IRREDUCIBLE: la parte de la sombra de planos que cumple lo anterior;
+ *     EVITABLE DE VERDAD = planos − irreducible;
+ *   · FUERA DEL HAZ: mesas×instante con θ fuera de su rango legítimo (el módulo
+ *     ya no ve el haz directo: a sol rasante, quitar sombra así no es ganar);
  *   · ERROR «SÍ» (el 1.660, retroceso pagado a cambio de nada): unidades
  *     retrocedidas más de PASO_BUSQ desde su candidato de pvlib que podrían
  *     VOLVER a él sin que el contador vea sombra en ninguna mesa. Se mide con
@@ -37,7 +46,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PL = process.argv[2] || 'ayora';
 const arg = (n, d) => (process.argv.find(a => a.startsWith('--' + n + '=')) || ('--' + n + '=' + d)).slice(n.length + 3);
 const MODO = arg('dias', 'dia'), PASO = +arg('paso', 10);
-const EXTRA = ['shadeBand3DAll', 'shadeRows', 'mvPara', 'poaPlantSeg', 'poaPlant', 'decideProyeccion', 'anglesPairwiseSeg', 'anglesPairwiseRaw', 'anglesTrue3d', 'unidadesDecision', 'segsBroadcast'];
+const EXTRA = ['rangosFila', 'trueTrackAngle', 'shadeBand3DAll', 'shadeRows', 'mvPara', 'poaPlantSeg', 'poaPlant', 'decideProyeccion', 'anglesPairwiseSeg', 'anglesPairwiseRaw', 'anglesTrue3d', 'unidadesDecision', 'segsBroadcast'];
 const { F: N, VER } = cargaSimulador(ROOT, EXTRA);
 const htmlMain = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
 const { F: V } = cargaSimulador(ROOT, [], () => htmlMain);
@@ -64,6 +73,27 @@ const aTramos = (F, key, zen, az, irr, doy) => {
 };
 const poa = (zen, az, A, irr, doy) => porMesa || T.segs ? N.poaPlantSeg(zen, az, T, A, irr, doy, 0.2).plant : N.poaPlant(zen, az, T, A.map(l => l[0]), irr, doy, 0.2).plant;
 const evitable = (zen, az, A, extra = {}) => N.shadeBand3DAll(zen, az, T, A, { noStruct: true, noTerr: true, MV: N.mvPara(T, zen), ...extra });
+/* sombra de planos, irreducible comprobada en los ángulos y mesas fuera del haz */
+function clasifica(zen, az, A, key, aceptada) {
+  const C = evitable(zen, az, A, { atrMesa: true });
+  const RF = N.rangosFila(zen, az, T), porU = porMesa && key === 'pairwise';
+  const { U, de } = N.unidadesDecision(T, porU);
+  const sg = N.trueTrackAngle(zen, az, 0, T.axisAz) >= 0 ? 1 : -1;
+  const enTope = U.map(t => { let lo = -Infinity, hi = Infinity; for (const [r] of new Set(t.map(q => q[0])).entries()) { lo = Math.max(lo, RF[r][0]); hi = Math.min(hi, RF[r][1]); }
+    if (hi < lo) return false; const v = A[t[0][0]][t[0][1]]; return Math.abs(v - (sg > 0 ? lo : hi)) < 1e-9; });
+  let malas = 0, declaradas = 0, irr = 0, fuera = 0;
+  const irrSeg = C.seg.map(l => l.map(() => 0));
+  C.seg.forEach((l, r) => l.forEach((v, k) => {
+    if (A[r][k] < RF[r][0] - 1e-9 || A[r][k] > RF[r][1] + 1e-9) fuera++;
+    if (!(v > 1e-3)) return;
+    malas++;
+    let tope = enTope[de.get(r + '|' + k)];
+    const at = C.atrMesa[r][k] || {}; for (const q in at) if (at[q] > 1e-4) { const u = de.get(q); if (u !== undefined && !enTope[u]) tope = false; }
+    if (aceptada || tope) declaradas++;
+    if (tope) irrSeg[r][k] = v;
+  }));
+  return { C, malas, declaradas, irr: media(irrSeg), fuera };
+}
 /* ERROR «SÍ»: unidades retrocedidas desde su candidato que podrían volver a él sin sombra */
 function errorSi(zen, az, A, key) {
   const semilla = key === 'pairwise' ? (porMesa ? N.anglesPairwiseSeg(zen, az, T, { candidato: true }) : N.anglesPairwiseRaw(zen, az, T, { candidato: true })) : N.anglesTrue3d(zen, az, T);
@@ -94,7 +124,8 @@ const t0 = Date.now();
 for (const [mo, dd, peso] of dias) {
   const ds = `2026-${String(mo + 1).padStart(2, '0')}-${dd}`, doy = N.doyOf(ds);
   const D = { dia: ds, peso, pol: {} };
-  for (const k of POLS) D.pol[k] = { V: { kwh: 0, evit: 0, publ: 0, errNo: 0, errSi: 0, siMirados: 0 }, N: { kwh: 0, evit: 0, publ: 0, errNo: 0, errSi: 0, siMirados: 0 }, pasos: 0 };
+  const cero = () => ({ kwh: 0, evit: 0, irr: 0, fuera: 0, publ: 0, errNo: 0, errSi: 0, siMirados: 0 });
+  for (const k of POLS) D.pol[k] = { V: cero(), N: cero(), pasos: 0 };
   for (let min = 0; min < 1440; min += PASO) {
     const g = N.solarPos(Date.UTC(2026, mo, dd) + min * 60000, lat, lon);
     if (!(g.elev > 0.5)) continue;
@@ -104,17 +135,14 @@ for (const [mo, dd, peso] of dias) {
       for (const [lado, F] of [['V', V], ['N', N]]) {
         const A = aTramos(F, k, g.zen, g.az, irr, doy), S = Dk[lado];
         S.kwh += poa(g.zen, g.az, A, irr, doy) * dt;
-        const ev = evitable(g.zen, g.az, A); S.evit += media(ev.seg);
+        const cl = clasifica(g.zen, g.az, A, k, lado === 'N' && A.declarada);
+        S.evit += media(cl.C.seg); S.irr += cl.irr; S.fuera += cl.fuera;
         S.publ += media(N.shadeRows(g.zen, g.az, T, A).seg);
         if (k === 'astro') continue;
-        let malas = 0; ev.seg.forEach(l => l.forEach(v => { if (v > 1e-3) malas++; }));
-        let declaradas = 0;
-        if (lado === 'N') {
-          if (A.declarada) declaradas = malas;
-          else { const semilla = k === 'pairwise' ? (porMesa ? N.anglesPairwiseSeg(g.zen, g.az, T, { candidato: true }) : N.anglesPairwiseRaw(g.zen, g.az, T, { candidato: true })) : N.anglesTrue3d(g.zen, g.az, T);
-            declaradas = Math.min(malas, N.decideProyeccion(g.zen, g.az, T, semilla, porMesa && k === 'pairwise').info.irreducibles * 4); }   // una unidad irreducible = hasta 4 mesas (bifila)
-        }
-        S.errNo += Math.max(0, malas - declaradas);
+        /* ANTES no hay declaración: la política vieja decía «0 %» por vecindad.
+           Lo que ANTES está en el tope con sombra también se cuenta como error:
+           no lo declaraba. */
+        S.errNo += cl.malas - (lado === 'N' ? cl.declaradas : 0);
         if (min % (3 * PASO) === 0) { const e = errorSi(g.zen, g.az, A, k); S.errSi += e.n; S.siMirados += e.mirados; }
       }
     }
@@ -128,9 +156,9 @@ console.log(`R5 · A.4 · efecto de unificar el enumerador · ANTES ${R.base} �
 for (const k of POLS) {
   const e = c => [suma(k, 'V', c), suma(k, 'N', c)];
   const [kv, kn] = e('kwh'), pasos = R.dias.reduce((a, d) => a + d.pol[k].pasos * d.peso, 0);
-  const [ev, en] = e('evit'), [pv, pn] = e('publ'), [nv, nn] = e('errNo'), [sv, sn] = e('errSi'), [mv, mn] = e('siMirados');
-  console.log(`  ${k.padEnd(9)} energía ${kv.toFixed(4)} → ${kn.toFixed(4)} kWh/m² (${(100 * (kn / kv - 1)).toFixed(3)} %) · sombra evitable media ${(100 * ev / pasos).toFixed(4)} → ${(100 * en / pasos).toFixed(4)} % · publicada ${(100 * pv / pasos).toFixed(4)} → ${(100 * pn / pasos).toFixed(4)} %` +
+  const [ev, en] = e('evit'), [iv, inn] = e('irr'), [fv, fn] = e('fuera'), [pv, pn] = e('publ'), [nv, nn] = e('errNo'), [sv, sn] = e('errSi'), [mv, mn] = e('siMirados');
+  console.log(`  ${k.padEnd(9)} energía ${kv.toFixed(4)} → ${kn.toFixed(4)} kWh/m² (${(100 * (kn / kv - 1)).toFixed(3)} %) · sombra de planos media ${(100 * ev / pasos).toFixed(4)} → ${(100 * en / pasos).toFixed(4)} % (irreducible ${(100 * iv / pasos).toFixed(4)} → ${(100 * inn / pasos).toFixed(4)} · evitable de verdad ${(100 * (ev - iv) / pasos).toFixed(4)} → ${(100 * (en - inn) / pasos).toFixed(4)}) · fuera del haz ${fv} → ${fn} mesas×inst · publicada ${(100 * pv / pasos).toFixed(4)} → ${(100 * pn / pasos).toFixed(4)} %` +
     (k === 'astro' ? '   [TEST NULO: Δ energía tiene que ser 0]' : ` · error «no» ${nv} → ${nn} mesas×inst · error «sí» ${sv} → ${sn} unidades×inst (de ${mv} → ${mn} retrocedidas mirados, 1 de cada 3 pasos)`));
 }
-console.log(`  coste ${R.s.toFixed(0)} s · carga ${R.maquina.carga_inicio.map(x => x.toFixed(1)).join('/')} → ${R.maquina.carga_fin.map(x => x.toFixed(1)).join('/')} (máquina OCUPADA: no es una medida de tiempo)`);
+console.log(`  coste ${R.s.toFixed(0)} s · carga ${R.maquina.carga_inicio.map(x => x.toFixed(1)).join('/')} → ${R.maquina.carga_fin.map(x => x.toFixed(1)).join('/')} (${R.maquina.carga_inicio[0] > 0.5 ? 'máquina OCUPADA: no es una medida de tiempo' : 'máquina libre'})`);
 fs.writeFileSync(path.resolve(ROOT, arg('json', `audit5/out/A4_efecto_${PL}_${MODO}.json`)), JSON.stringify(R));
