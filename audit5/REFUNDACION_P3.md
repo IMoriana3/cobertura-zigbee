@@ -186,15 +186,102 @@ con |θ| MENOR (nota de la interfaz). Se reescribieron las cuatro afirmaciones:
 `grep -i "nunca crea sombra" backtracking.html` → 0. Ningún banco dependía del
 texto.
 
-## 3.3 · Efecto medido en las nueve, día y anual — EN CURSO
+## REFUTACIÓN (3.3, día) · el acople que se retiró llevaba dentro una REPARACIÓN de sombra — PARADA
 
-- **Anual:** `audit5/P1_4_efecto_anual.mjs ayora boton <pol>
-  --base=origin/claude/refundacion-p2-6th1im`, el código real de la ruta anual
-  única.
-- **Día:** `audit5/P3_3_efecto_dia.mjs`, la receta de la serie del día
-  (`segCmd` → lazo por mesa → `topeBacktrackingSeg` → `poaPlantSeg`,
-  `backtracking.html:5525`), con `segCmd` cortado de la página.
-- **Test nulo:** las seis que no cambian tienen que dar lo mismo.
+**La premisa que no se sostiene.** En 3.1 escribí que el acople de las dos
+líneas enteras de cada grupo «no tiene objeto» en planta real, porque acopla lo
+que no mueve ningún motor. La medida del día dice que sí tenía objeto: dentro de
+la misma función iba una reparación de sombra, y el paso 3 la retiró con el
+acople.
+
+**La medida.** `audit5/P3_3_efecto_dia.mjs`, salida en
+`audit5/out/P3_3_dia_baratas.{txt,json}`:
+
+- página del paso 2 (v1.82.0) → página del paso 3 (v1.83.0);
+- Ayora, banda de la página; 21-jun y 21-dic, cada 5 min;
+- cielo claro, con lazo y tope; `segCmd` cortado de la página.
+
+| política | 21-jun (kWh/m²) | Δ | 21-dic (kWh/m²) | Δ |
+|---|---|---|---|---|
+| astro · pairwise · global · bt2d (TEST NULO) | = | idéntico bit a bit | = | idéntico bit a bit |
+| row | 11,1234 → 11,1230 | −0,0039 % | 2,9933 → 2,9936 | +0,0091 % |
+| **true3d** | 9,5158 → 9,4756 | **−0,4232 %** | 2,3729 → 2,3594 | **−0,5669 %** |
+| mgl | NO MEDIDO | | NO MEDIDO | |
+
+**El mecanismo.** `driveCoupleSafe` (`backtracking.html` del paso 2, `:789`) hace
+DOS cosas:
+
+1. acopla los ángulos del grupo (`applyDrive`);
+2. REPARA la sombra: para cada pareja de líneas en contacto, barre el ángulo del
+   grupo y se queda con el candidato sin sombra más cercano. En `true3d` lo mide
+   con el residuo de tangencia 3D.
+
+El paso 3 sustituyó `driveCoupleSafe(anglesTrue3d(…),true)` por el ángulo crudo
+(`LINEA_SIN_ACOPLE`), así que se llevó también la reparación.
+
+`audit5/P3_3_reparacion.mjs` cuenta las parejas de líneas en contacto 3D
+(residuo < −1 mm) de `true3d` sobre 48 instantes × 78 parejas = 3.744
+pareja·instante (Ayora, 21-jun y 21-dic cada 30 min, sol > 1°):
+
+| ángulo de línea de `true3d` | parejas en contacto 3D |
+|---|---|
+| crudo: lo que el paso 3 reparte a las mesas | **119** |
+| solo el acople de líneas enteras, sin reparación | 101 |
+| `driveCoupleSafe`: acople + reparación (paso 2) | **53** |
+| reparación con CADA LÍNEA como su unidad, sin acople | **53** |
+
+- El acople solo quita 18 contactos; la reparación, 48 más.
+- La reparación NO necesita el acople de líneas enteras: tomando cada línea como
+  su propia unidad deja los mismos 53 contactos.
+
+**Alcance.**
+
+- **`true3d`:** medido, arriba.
+- **`mgl`:** pierde lo mismo por otro camino. Su base es
+  `driveCoupleSafe(pairwise,false)` (`anglesMinGroundLight`, `:2436` del paso 2),
+  y el paso 3 la llama con los grupos quitados (`sinGrupos`), así que su base
+  queda en `pairwise` crudo. NO MEDIDO.
+- **`row`:** solo usaba `applyDrive`, sin reparación. Para `row`, el paso 3
+  quitó solo el acople, y el efecto es de −0,004 % y +0,009 %.
+
+**E-X1-R3-3 (mío).**
+
+- Traté `driveCoupleSafe` como «el acople» sin leer su cuerpo. El nombre ya
+  decía «Safe».
+- El banco del paso 3 (7/7) no lo podía ver: comprueba que cada motor tiene un
+  θ y que ya no se acoplan líneas enteras, no que se mantenga la ausencia de
+  contacto.
+- Es el rastro que no es la cosa: el banco vigila la forma del cambio, no lo
+  que el cambio rompe.
+
+**Opciones, con su coste. Decide el titular:**
+
+- **(a) Unidad = accionamiento Y reparación, por línea.**
+  - Qué: `driveCoupleSafe` con cada línea como su propia unidad (grupos de una
+    línea) para `true3d` y para la base de `mgl`; luego el acople por motor
+    (`applyDriveSeg`).
+  - A favor: deja los mismos 53 contactos que el paso 2, sin acoplar lo que no
+    mueve ningún motor.
+  - Coste: la energía no está medida; la física cambia otra vez (sha nuevo), y
+    el banco del paso 3 tiene que ganar una comprobación de contacto con su
+    control negativo.
+- **(b) Revertir `true3d` y `mgl` al paso 2 y dejar solo `row` desacoplada.**
+  - A favor: vuelve la energía medida y los 53 contactos.
+  - Coste: `true3d` y `mgl` siguen acoplando las dos líneas enteras de cada
+    grupo en planta real, que es lo que el paso 3 existe para retirar.
+- **(c) Dejarlo como está.**
+  - Coste: `true3d` pierde un 0,42-0,57 % del día y publica más del doble de
+    parejas en contacto 3D (119 frente a 53).
+  - No lo recomiendo: sería publicar sombra que el código sabía reparar.
+
+**Recomendación: (a).** Es la única que cumple a la vez la premisa del paso
+(«la unidad es el accionamiento») y lo que el código ya garantizaba (no dejar
+contacto que sabe reparar). Antes de aplicarla hay que medir su energía en los
+mismos dos días.
+
+**PARO aquí**, como dice el encargo para una medida que contradice la premisa
+de un paso. El PR del paso 3 no se abre hasta la decisión. `mgl` (día) y el
+anual del 3.3 quedan sin lanzar.
 
 ## Incidencia · la primera corrida del banco del paso 3 murió en silencio
 
