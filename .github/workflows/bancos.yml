@@ -485,6 +485,16 @@ jobs:
       # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
       - name: el veto del óptimo puntúa con la métrica que se cobra
         run: node tools/con_piso.mjs tools/test_veto_por_mesa.mjs
+      # EL VIGILANTE DEL VIGILANTE. La tabla de pisos se carea con ESTE
+      # workflow en los dos sentidos: un banco que corre sin piso, una entrada
+      # de la matriz sin registrar, un piso que ningún paso aplica, o una
+      # entrada registrada que ya no está. Nació de dos casos del mismo defecto
+      # el mismo día: test_anual_lazo encogió de 12 a 10 comprobaciones y solo
+      # lo paró su piso, y el contador de la matriz decía 36 con 39 entradas
+      # desde que se escribió — el vigilante no sabía a cuántos vigilaba.
+      # El banco trae cinco mutantes del workflow y exige rojo en cada uno.
+      - name: el contador del piso cuadra con el workflow
+        run: node tools/con_piso.mjs tools/test_piso_careo.mjs
       # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
       # planta real la página apaga ella sola las caras: el informe las volvía a
       # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que
