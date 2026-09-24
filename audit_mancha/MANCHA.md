@@ -241,3 +241,51 @@ ejecutarla**.
   rechaza un heredoc que solo menciona la forma prohibida. Así lo cazó al
   escribir esta misma sección, que hubo que editar sin shell. Se prefiere
   estricta.
+
+### Ampliación (2026-09-24, tarde): la barrera estaba INCOMPLETA
+
+El defecto volvió **después** de instalar la barrera, en otra forma: no mató,
+**se colgó**. Una espera `until ! pgrep` en modalidad de línea completa sobre el
+nombre del banco se encontró a sí misma, porque la línea de órdenes de su bucle
+lleva ese nombre, y no iba a terminar nunca. Dos bucles así quedaron colgados y
+se pararon por PID (E-X1-A-6, `audit5/FASE_A.md`, rama de la fase A). La misma
+mañana, un `for` sobre la salida de `pgrep` en esa modalidad con `kill -STOP`
+(para pausar las medidas largas) tampoco estaba cubierto: podía pararse a sí
+mismo.
+
+**No es que el registro no sirviera: es que la barrera estaba incompleta.**
+Cubría la forma de MATAR y dejaba pasar ESPERAR y SEÑALAR; su propia prueba
+contaba «`pgrep` sin matar» como legítimo. Una barrera que cubre una forma del
+defecto y no las demás da **falsa seguridad**, que es peor que no tenerla.
+
+**Regla ampliada.** Está prohibido seleccionar procesos por patrón en cualquier
+forma: `pkill` y `killall` con cualquier opción, `pgrep` en modalidad de línea
+completa en cualquier uso, cualquier `pgrep` en un bucle o alimentando a `kill`,
+y los bucles `while`/`until` cuya condición mire `ps … | grep`.
+
+**Se espera por PID:** `while kill -0 <PID>; do sleep N; done`, con el PID leído
+antes y verificado después, igual que para matar.
+
+**Barrera nueva** (mismo hook). Tiene un banco propio,
+`~/.claude/barreras/test_barrera.py`:
+
+- **17 formas bloqueadas**, entre ellas las tres que llegaron a pasar en la
+  sesión, copiadas tal cual;
+- **8 legítimas que pasan**: la espera con `kill -0`, `ps | grep` fuera de
+  bucles, `kill <PID>` con verificación y mencionar la palabra en un `grep` de
+  texto;
+- la entrada real del hook: JSON por stdin, código 2 y mensaje.
+
+**Control negativo:** contra la barrera de la mañana, el banco sale ROJO con
+**12 formas que dejaba pasar**, entre ellas la espera que se colgó y el
+`kill -STOP`.
+
+El propio banco tenía un verde falso en su primera versión, y se corrigió antes
+de dar la cifra. Contra la barrera vieja salía con 0 sin mirar nada: importarla
+ejecutaba el hook, que leía un stdin vacío y hacía `exit(0)`. Ahora un `exit`
+durante la carga cuenta como fallo.
+
+La barrera ya estaba activa al escribir esta ampliación: paró dos órdenes que
+llevaban el patrón como texto (el control negativo y la primera escritura de
+este apartado), y hubo que hacerlo con ficheros. Sigue siendo la limitación
+declarada: mira el TEXTO.
