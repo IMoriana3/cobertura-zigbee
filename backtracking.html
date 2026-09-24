@@ -7901,6 +7901,9 @@ const EXPLICA={
   optfree:{como:'Como energy-optimal pero con <b>una fracción por accionamiento</b>: arranca en la mejor f común y hace un ascenso coordinado unidad a unidad mirando también a sus vecinas; por instante se elige, con el ray-cast, entre el resultado libre y el común, y si el contador ve sombra en el ganador se prueba el mismo juego aplanado medio paso.',
            optimiza:'<b>Energía</b> con más libertad que el óptimo común: nunca menos que energy-optimal bajo la métrica publicada.',
            criterio:'argmax de la POA neta por accionamiento'},
+  coordinada:{como:'La NCU <b>coordina la planta</b>: parte del candidato de pvlib de cada unidad (sin el barrido de gemelo) y, mientras el contador 3D vea una mesa sombreada por otra, retrocede JUNTAS a la receptora y a sus emisoras hacia la paralela al terreno, dentro de su rango legítimo; después devuelve el exceso a pasos de 0,1°. Decide con el MISMO contador que mide la energía. Por línea lleva la guardia de energía (si quitar la sombra cuesta más que la fórmula local, publica la local, marcada).',
+           optimiza:'<b>Ninguna mesa a la sombra de otra</b> si el rango lo permite; lo que no se va, se declara irreducible. <b>Su resultado depende del alcance de la planta coordinada</b>: el mismo seguidor da θ distinto según cuánta planta entre en la coordinación. No la ejecuta una TCU: necesita a quien vea todos los encoders.',
+           criterio:'sombra evitable cero con el contador que mide (planos, sin terreno)'},
   manual:{como:'θ común a todas las filas, el que marca el mando; recortado al tope.',optimiza:'Nada: es un mando para mirar.',criterio:'—'}
 };
 function informeHTML(){
