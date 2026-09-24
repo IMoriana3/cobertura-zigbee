@@ -844,7 +844,7 @@ async function build(){
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   ajustaPanelPlanta();   // fuera los mandos de seguimiento y de radio si la planta no los tiene
-  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
+  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv,blk:t.blk};});   /* blk: el bloque del DWG, con el que se busca el largo REAL en mesa.tipos. No se copiaba y en Ayora los 106 de bloque anonimo (*U9 21 mod, *U10 14 mod), que no traen mods ni mr, salian de 74,8 m: se solapaban 9-18 m con el siguiente del tubo y la capa de afeccion los pintaba a rayas de dos colores */ // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
@@ -1226,17 +1226,18 @@ function buildTrackers(elevAt){
     var rel=elevAt(n.glat,n.glon)-baseElev,dE=15;
     var relN=_E(0,-span/2),relS=_E(0,span/2);                                       // extremos del tubo (dz>0 = hacia el sur en el marco canónico)
     var relE=_E(dE,0),relW=_E(-dE,0);                                               // a un lado y otro del eje
-    var zPk=zPfor({tp:n.tp}),half=TC.np/2;
-    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
-    var relSop=[_E(-filaZ,0),_E(filaZ,0)];   // cota bajo el pie de CADA soporte del slew (fila 0 = OESTE, igual que t.fb[0] y que postRel): el soporte está a ±filaZ del eje, no en el centro
     // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
     var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);
     /* Si el DWG está MEDIDO, la razón sale del largo real de SU bloque y no de una proporción de
        módulos: el hueco del motor no escala, así que 0,75 sobre el 1V28 de Ayora dejaba el 1V21 en
        56,07 m cuando mide 56,306, y el 1V14 en 37,38 cuando mide 37,854. */
+    var _mrBlk=false;
     if(LAYOUT&&LAYOUT.mesa&&n.blk&&LAYOUT.mesa.tipos[n.blk]&&D&&D.span){
-      var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);}}
-    var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
+      var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);_mrBlk=medio;}}
+    var zPk=zPfor({tp:n.tp,mr:mr}),half=TC.np/2;   // la retícula de postes de SU largo (antes la del completo: la cota se muestreaba en postes que no existen)
+    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
+    var relSop=[_E(-filaZ,0),_E(filaZ,0)];   // cota bajo el pie de CADA soporte del slew (fila 0 = OESTE, igual que t.fb[0] y que postRel): el soporte está a ±filaZ del eje, no en el centro
+    var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)||_mrBlk;   // razon REAL (del DWG o del largo de su bloque): modulos a su tamaño y en su sitio, no el layout 'medio' generico   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relSop:relSop,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();gcrPlanta();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
