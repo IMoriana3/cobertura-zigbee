@@ -237,6 +237,64 @@ políticas evaluadas con el mismo control perfecto.
 - Una cifra de A.4 no se resta ni se suma a una del anual ni a una de #751.
 - Tampoco se usa para «confirmar» ninguna de las otras dos.
 
+## REFUTACIÓN (CI de #757, 2026-09-24): la premisa «las otras siete no cambian y ningún contrato se rompe» no se sostiene
+
+**Dos bancos del CI se ponen rojos, y NO se encajan.** Los dos dicen lo mismo:
+una decisión COORDINADA no es local, y eso choca con dos contratos que la
+página daba por ciertos.
+
+**1 · Invariante C del barrido de terrenos, «energía `optimal` ≥ `pairwise`».**
+
+- **Medido en el CI** (40 configuraciones por semilla):
+  - semilla 1: **2 violaciones** en 4.152 instantes;
+  - semilla 7: **6 violaciones**, la peor 677,1 frente a 717,4 W/m², en
+    «Zaragoza · aleatorio 13 · N-S rótula 3° · quebrado · medios ×2 · 8 filas ·
+    az −20° · 21-jun 17:00Z · sol 27,2°».
+- **Causa, en el código:** la garantía de `optimal` se construye contra
+  `pairwiseLocal`, no contra el `pairwise` publicado:
+  - `backtracking.html:3121`: `const base=driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false);`
+  - `:3217`: `const pub=repairNoShade(zen,az,T,base,irr,doy,albedo);`
+  - `optfree` hace lo mismo en `:3266`.
+
+  Desde la fase A, `guardaEnergia` publica lo MEJOR entre la decisión y esa
+  referencia, así que `pairwise` puede superar a `optimal`.
+- **Grado:** medido en el CI, dos semillas.
+
+**2 · Careo simulador ↔ producción, «las mesas interiores son idénticas bit a bit».**
+
+- **Medido en el CI** (`tools/test_herramientas_campo.mjs`, careo sobre
+  Ayora): peor |Δθ| interior **1,3954°**; el veredicto pasa a «DIFIEREN».
+- **Causa:** las dos páginas comen la MISMA física
+  (`tools/careo_produccion.mjs:4-5`, «produccion.html extrae el bloque FÍSICA
+  PURA de backtracking.html»). Pero el simulador coordina una ventana de 80
+  líneas y `produccion.html` la planta entera. `decideProyeccion` retrocede
+  JUNTAS las unidades que ve, así que el θ de una mesa INTERIOR depende de
+  hasta dónde llega el conjunto coordinado. Antes no dependía, porque la
+  decisión por pareja era local.
+- **Grado:** medido en el CI, un día (21-jun) y paso 30 min.
+
+**Qué refuta.** La premisa de la fase A era que solo cambiaba cómo deciden
+`pairwise` y `true3d` y que las otras siete y los contratos seguían. No es
+así:
+
+- el contrato «`optimal` ≥ `pairwise`» depende de que `pairwise` sea local;
+- el contrato «interior idéntico a cualquier ventana» también.
+
+Es la misma propiedad que el HALLAZGO de abajo, vista desde otro lado: la
+decisión nueva COORDINA la planta y su resultado depende de QUÉ planta
+coordina.
+
+**Opciones, con su coste. NO se elige aquí: es del titular.**
+
+| opción | qué hace | coste |
+|---|---|---|
+| (i) el veto de `optimal`/`optfree` incluye el `pairwise` PUBLICADO como candidato | restaura C por construcción | cambia `optimal` y `optfree` (dejan de ser bit a bit); una decisión coordinada más por instante (1-8 pasadas del contador), sin medir con la máquina libre. El careo sigue rojo: hay que redefinirlo o hacer que la ventana coordine lo mismo que la planta entera |
+| (ii) C se reenuncia como «`optimal` ≥ `pairwiseLocal`» y se declara que la política de NCU puede superarlo | ninguna política cambia | un banco se RELAJA: su enunciado protegía otra cosa. «Energy-optimal» deja de ser la mejor de la casa. El careo sigue rojo por la misma razón |
+| (iii) `pairwise` publicado vuelve a `pairwiseLocal`; la decisión por proyección sale como política NCU nueva | los dos contratos vuelven solos | es la opción (b) del defecto de la casa, más abajo: la decisión nueva deja de ser el defecto |
+
+Con esto, #757 **no puede ponerse en verde sin una decisión**. Los pasos de la
+refundación apilados sobre la fase A heredan los dos rojos.
+
 ## HALLAZGO · la etiqueta TCU/NCU es una restricción de información
 
 **Qué pasó.** Al conectar `pairwise` al motor de proyección, la política pasa a
