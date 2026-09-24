@@ -134,11 +134,22 @@ t('CONTROL NEGATIVO de la 1 · un cambio en la física que NO sea la versión se
   if (FISICA_DECLARADA.some(d => d.sha === sha(sinVersion(B.join('\n')))))
     throw new Error('una física mutada coincide con un cambio declarado: la lista no distingue nada');
 });
-t('TEST NULO · la lista por COSTE no es la misma que «las de cerebro NCU»', () => {
+t('TEST NULO · la lista por COSTE no es la misma que «las de cerebro NCU» (con los rótulos de main)', () => {
   const m = /const POL_CARAS=\{([^}]*)\}/.exec(html);
   if (!m) throw new Error('no existe `POL_CARAS`');
   const caras = m[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean).sort();
-  const ncu = [...html.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  /* R5 fase A: `global` pasó de ncu a tcu (el rótulo es una restricción de
+     información) y desde entonces las de cerebro NCU son, POR COINCIDENCIA, las
+     mismas tres que las caras. Comparar los conjuntos de HOY ya no discrimina
+     nada. El test nulo se hace con los rótulos de `origin/main`, de cuando se
+     cambió el criterio; que el filtro no pregunte por el cerebro lo vigila la
+     comprobación siguiente. */
+  let base;
+  try { base = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
+  catch (e) { throw new Error('no puedo leer `origin/main:backtracking.html`: ' + e.message); }
+  const ncu = [...base.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  const ncuHoy = [...html.matchAll(/\{key:'([a-z0-9]+)'[^}]*brain:'ncu'/g)].map(x => x[1]).sort();
+  console.log(`      · cerebro NCU hoy [${ncuHoy}]${ncuHoy.join() === caras.join() ? ' — coincide con las caras POR EL RÓTULO de global, no por el criterio' : ''}`);
   if (!ncu.length) throw new Error('no encuentro ninguna política de cerebro NCU: el test nulo no puede comparar');
   if (caras.join() === ncu.join())
     throw new Error(`la lista por coste [${caras}] es exactamente la de cerebro NCU: el criterio no ha cambiado de naturaleza`);

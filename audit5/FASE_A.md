@@ -181,6 +181,14 @@ de una mesa dos filas más allá.
     `decideProyeccion` y por `guardaEnergia`, que compara la POA de TODA la
     planta (`backtracking.html:2845`).
 
+**EL NOMBRE CORRECTO DEL PROBLEMA (lo fija el titular): la decisión nueva no
+necesita LEER la planta, necesita COORDINARLA.** Con el plan precargado
+funciona mientras todos lo sigan. El día que una unidad no lo sigue, las demás
+calculan contra un fantasma. Es exactamente lo que hace el proveedor de control
+con sus tablas subidas a la NCU, así que la pregunta no es teórica: es la de su
+modo degradado. La medida que separa (b) de (c) es el MODO DEGRADADO (abajo) y
+va en su propio PR, después de este.
+
 **Precisión que importa para las opciones.** En el simulador, el θ de las
 emisoras que usa la decisión no es una lectura de encoder: es el que la propia
 decisión les asigna. Una TCU que llevara precargado el modelo de toda la planta
@@ -190,7 +198,7 @@ demás están donde el plan dice, y eso solo lo sabe quien lee sus encoders.
 
 ### El defecto de la casa: opciones, con su coste. NO se elige aquí: es del titular
 
-Hoy el defecto es `pairwise` (`on:true`, «canónica», `backtracking.html:4634`).
+Hoy el defecto es `pairwise` (`on:true`, «canónica», `backtracking.html:4645`).
 Tal como queda, **no es implementable en una TCU**.
 
 | opción | qué se publica por defecto | coste |
@@ -198,6 +206,23 @@ Tal como queda, **no es implementable en una TCU**.
 | **(a)** `pairwise` = decisión por proyección, y su rótulo pasa a `ncu` | la fase A tal cual | Exige una NCU que lea el encoder de todas las mesas y pase 1-8 veces el contador de planta por instante; el tiempo no se ha medido con la máquina libre. En una planta solo con TCU, como la del cruce de Ayora, el defecto no se puede ejecutar, y el simulador deja de predecir lo que hace su firmware (el cruce ya usa `pairwiseLocal`). Gana lo medido en A.4. |
 | **(b)** el defecto vuelve a `pairwiseLocal` (TCU); la decisión por proyección sale como política NUEVA de cerebro NCU | la fórmula de siempre | El defecto vuelve a decir «0 %» donde el contador ve sombra, así que A.3 (decidir = medir) deja de cumplirse en el defecto, salvo que esa sombra se DECLARE. Una política más en el catálogo, con sus bancos, su columna del anual y su sitio en la lista de caras. La ganancia de A.4 queda solo para plantas con NCU. |
 | **(c)** `pairwise` = proyección ejecutada EN la TCU, con el modelo de planta precargado (o solo el de su alcance), suponiendo que las demás obedecen | la fase A tal cual | Memoria y cómputo embarcados: la geometría del alcance más 1-8 pasadas del contador por instante; coste en TCU DESCONOCIDO, no medido. Ciega a la realidad: con una vecina en fallo, en defensa, en manual o en banda muerta, lo decidido deja de ser lo medido en campo sin que nadie lo vea. Exige un protocolo de firmware que hoy no existe. |
+
+### Lo que falta para decidir: el MODO DEGRADADO (siguiente PR, no este)
+
+Encargado por el titular. Con la decisión nueva y el plan precargado, UNA
+unidad fuera de plan (aparcada, en stow, con encoder inválido):
+
+- sombra real resultante en sus vecinas;
+- cuántas unidades se ven afectadas por una sola que falle;
+- lo mismo con `pairwiseLocal`, que no depende de nadie.
+
+Criterio del titular:
+
+- si una unidad fuera de plan degrada a muchas, (c) es frágil y el defecto
+  tiene que ser local;
+- si el daño se queda en las contiguas, (c) es viable.
+
+**La decisión del defecto la toma el titular con esa medida delante.**
 
 ### Las nueve, revisadas con ese criterio
 
@@ -213,12 +238,12 @@ Niveles de información:
 
 TCU = L0-L1. NCU = L2-L3.
 
-| política | rótulo hoy (`:4630-4638`) | lo que consume su código | familia por información | ¿cambia? |
+| política | rótulo en main (hoy `:4630-4649`) | lo que consume su código | familia por información | ¿cambia? |
 |---|---|---|---|---|
 | `astro` | tcu | L0: `anglesAstro`, su tilt y su pendiente | TCU | no |
 | `row` | tcu | L1: `anglesRow` (`:1236`), la media de sus dos vanos | TCU | no |
 | `bt2d` | tcu | L0: `anglesBt2d` (`:2427`), sin pendiente | TCU | no |
-| `global` | ncu | L1 de PLANTA: `anglesGlobal` (`:1247`) usa `meanPair(T)` (`:880`), tres escalares estáticos de la planta, y da un solo ángulo | TCU si esos tres escalares se cargan como registros | **sí, podría BAJAR a TCU**. El rótulo `ncu` responde a «un motor, un ángulo», no a la información |
+| `global` | ncu | L1 de PLANTA: `anglesGlobal` (`:1247`) usa `meanPair(T)` (`:880`), tres escalares estáticos de la planta, y da un solo ángulo | TCU si esos tres escalares se cargan como registros | **sí, BAJA a TCU: corregido en este PR** (`:4642`). El `ncu` respondía a «un motor, un ángulo», no a la información |
 | `pairwise` | tcu | ANTES, en planta real: L1 (pvlib por pareja con el gemelo estático, más el acople). En los presets ya era L2 desde v1.57: `repairNoShade` evalúa todas las filas y la POA de planta. AHORA: L2 en el simulador y L3 en campo (`decideProyeccion`) | NCU | **sí, SUBE a NCU** |
 | `true3d` | tcu | igual que `pairwise`: su semilla `anglesTrue3d` (`:1293`) es L1, y la decisión y la guardia son L2/L3 | NCU | **sí, SUBE a NCU** |
 | `mgl` | ncu | L2: `glSum` suma la luz al suelo de TODAS las unidades (`:2461`), más `repairNoShade` | NCU | no |
@@ -232,12 +257,29 @@ TCU = L0-L1. NCU = L2-L3.
 - De la familia TCU quedan `astro`, `row`, `bt2d` y `pairwiseLocal`; esta
   última no está en el catálogo.
 - El rótulo `tcu` de `pairwise` y `true3d` **ya era inexacto en los presets
-  desde v1.57**, por `repairNoShade`. Solo en planta real, donde esa reparación
-  no entra, eran de TCU de verdad.
+  desde v1.57**, por `repairNoShade`, que evalúa la planta entera. Solo en
+  planta real, donde esa reparación no entra, eran de TCU de verdad. **El rótulo
+  llevaba tiempo mintiendo; no lo ha roto la fase A.**
+- **Corregido en este PR: `global` pasa de `ncu` a `tcu`**
+  (`backtracking.html:4642`). Su justificación va escrita junto a la lista de
+  políticas (`:4631-4641`): tres escalares fijos de planta, `meanPair(T)`, y
+  ninguna información de las vecinas. El documento de algoritmos, en su §3.3,
+  dice lo mismo. `pairwise` y `true3d` NO se reetiquetan aquí: van con la
+  decisión del defecto. En §3.5 y §3.6 llevan la nota «rótulo inexacto,
+  pendiente del titular».
+- **Efecto del cambio en la página.** Con el selector de cerebro en «TCU»,
+  `global` deja de apagarse (`backtracking.html:8465`, `if(bs2.value==='tcu')POLICIES.forEach(P=>{if(P.brain==='ncu')P.on=false;});`).
+  En los bancos: las de cerebro NCU pasan a ser, POR COINCIDENCIA, las mismas
+  tres que las caras (`mgl`, `optimal`, `optfree`). El test nulo
+  «la lista por coste no es la de cerebro NCU» dejaría de discriminar, así que
+  ahora compara con los rótulos de `origin/main`, de cuando se cambió el
+  criterio (`tools/test_caras_bajo_demanda.mjs`). Que el filtro de caras no
+  pregunte por el cerebro lo sigue vigilando la comprobación siguiente del mismo
+  banco.
 - Si el rótulo pasa a ser una restricción, lo coherente es que un banco la haga
   cumplir. Eso ya es parte del Canon del BT (complemento, bloque 6).
 
-## Las mesas residuales de A.4: ¿tope o iteraciones? — `audit5/A4_sonda_evitable.mjs`, `audit5/A4_nulo_rango.mjs`
+## Las mesas residuales de A.4: ¿tope o iteraciones? — CERRADO por el titular — `audit5/A4_sonda_evitable.mjs`, `audit5/A4_nulo_rango.mjs`
 
 Ayora, `pairwise` por mesa, 21-jun y 21-dic cada 30 min (48 instantes).
 Salidas: `audit5/out/A4_sonda_evitable_{pairwise,true3d}.txt`,
@@ -302,13 +344,15 @@ del rango: retroceden juntas d grados más allá del tope, sin pasar de
 
   Pasado el tope, la pala se inclina hacia el otro lado y crea sombra nueva.
   El empuje es UNIFORME; una combinación no uniforme no se ha probado. Por eso
-  se llaman irreducibles de la prueba, no «irreducibles demostrados».
+  se llaman **irreducibles de la prueba, no demostrados**: solo se probó un
+  empuje uniforme.
 - **Los 30 de Ayora.** No se pueden sumar a esta lista:
   - la lista congelada de «los 30 irreducibles» no está en ningún archivo del
     repo; se buscó con `git grep irreducib` en todas las ramas remotas;
   - aquellos eran EXTREMOS de fila con sombra > 1 mm, medidos con el motor;
     estos son MESAS del contador con fracción > 1e-3;
-  - sin la lista, el cruce entre las dos queda **NO MEDIDO**.
+  - sin la lista, el cruce entre las dos queda **NO MEDIDO**. Es lo correcto,
+    lo confirma el titular: listas de métricas distintas no se cruzan.
 
 ## A.3 · Decidir = medir — `tools/test_decide_mide.mjs`
 

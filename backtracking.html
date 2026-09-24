@@ -4628,7 +4628,18 @@ $('verlbl').textContent='backtracking.html '+VER;
 /* Políticas — colores CVD-safe, mismos nombres que el core */
 const POLICIES=[
   {key:'astro',   nm:'Astronómico',   ds:'sin backtracking — el que auto-sombrea (referencia)', col:'#f87272', on:false, brain:'tcu'},
-  {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false, brain:'ncu'},
+  /* `brain` es una RESTRICCIÓN DE INFORMACIÓN (R5 fase A, audit5/FASE_A.md), no
+     una anotación: TCU = el sol, lo suyo y registros ESTÁTICOS de sus vecinas;
+     NCU = un cálculo conjunto sobre la planta entera o el θ de otras mesas.
+     · `global` pasa de ncu a TCU: usa `meanPair(T)`, tres escalares fijos de la
+       planta (pendiente, paso y tilt medios), y ninguna información de sus
+       vecinas; cargados como registros, una TCU lo ejecuta sola.
+     · el `tcu` de `pairwise` y `true3d` es INEXACTO, y no desde la fase A: desde
+       v1.57 su reparación (`repairNoShade`) evalúa la planta entera en los
+       presets. Con la fase A además deciden con `decideProyeccion`, que necesita
+       COORDINAR la planta. Su rótulo y el defecto de la casa los decide el
+       titular (FASE_A.md, «El defecto de la casa»): aquí no se tocan. */
+  {key:'global',  nm:'Global',        ds:'un motor, un ángulo: pendiente media de la planta',    col:'#9bb0c6', on:false, brain:'tcu'},
   {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false, brain:'tcu'},
   {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false, brain:'tcu'},
   {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — evita la sombra de PLANOS salvo cuando evitarla CUESTA energía de planta (guardia de v1.57); la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
