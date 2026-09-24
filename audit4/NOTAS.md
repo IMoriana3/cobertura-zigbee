@@ -403,3 +403,14 @@ que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
 versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
 que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
 cuánto añade el arreglo está **NO MEDIDO**.
+**31 · Cité dos líneas sin mirarlas.** En el documento del encargo A puse
+`backtracking.html:1220-1226` para `anglesAstro` (está en **1253**) y
+`tracker3d.py:1108-1133` para `compute_theta_full_tracking` (está en **346**,
+y la línea del signo es la **366**). Las dos salieron de memoria, no del
+fichero.
+
+Es el fallo más barato de cometer de toda la auditoría y el más caro de dejar
+pasar: una cita rota convierte una medida verificable en una afirmación. La
+regla de esta casa es `archivo:línea` **más fragmento**, y el fragmento existe
+precisamente para que una cita mal copiada se note. Corregidas las dos, y
+comprobadas imprimiendo la línea.
