@@ -58,7 +58,15 @@ export const PESADA = /\/terreno\.html(?:[?#]|$)/;
 export async function navegador(chromium, opciones = {}) {
   const b = await chromium.launch({ executablePath: EXE, ...opciones });
   let pesadas = 0;
+  /* UNA sola vigilancia por página. `browser.newPage()` de Playwright llama POR
+     DENTRO a `browser.newContext()` y a `context.newPage()`, que también están
+     vigilados: sin esta marca la página quedaba envuelta dos veces y la PRIMERA
+     carga contaba doble (lo cazó test_terreno_plantas, que da un navegador por
+     planta y aun así saltaba R-5 en la primera). */
+  const vigiladas = new WeakSet();
   const vigila = pg => {
+    if (vigiladas.has(pg)) return pg;
+    vigiladas.add(pg);
     const ir = pg.goto.bind(pg);
     pg.goto = async (url, o) => {
       if (PESADA.test(String(url)) && pesadas++ >= 1)

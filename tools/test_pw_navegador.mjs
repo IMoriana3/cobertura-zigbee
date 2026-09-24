@@ -53,6 +53,17 @@ const lanza = async f => { try { await f(); return null; } catch (e) { return e.
   check('navegador(): una página NO pesada carga siempre', e0 === null, e0);
   check('navegador(): la SEGUNDA pesada en el mismo navegador (otro contexto) LANZA y dice por qué', !!e2 && /R-5/.test(e2), e2);
   const b2 = await navegador(falso()); const e3 = await lanza(async () => (await b2.newPage()).goto(U));
+  /* EL CAMINO REAL de Playwright: `browser.newPage()` crea por dentro un contexto
+     y su página con `this.newContext()` → `ctx.newPage()`, que también están
+     vigilados. La primera carga NO puede contar doble (le pasó a la primera
+     versión: test_terreno_plantas saltaba R-5 en su primera planta). */
+  const realista = () => { const pag = () => ({ goto: async u => u });
+    return { launch: async o => { const br = { o, newContext: async () => ({ newPage: async () => pag() }) };
+      br.newPage = async function () { const c = await this.newContext(); return c.newPage(); }; return br; } }; };
+  const b3 = await navegador(realista()); const p3 = await b3.newPage();
+  const e4 = await lanza(() => p3.goto(U)), e5 = await lanza(() => p3.goto(U));
+  check('navegador(): con el camino REAL de newPage (contexto por dentro), la primera carga no cuenta doble', e4 === null, e4);
+  check('navegador(): y la segunda, en ese mismo navegador, sí lanza', !!e5 && /R-5/.test(e5), e5);
   check('navegador(): otro navegador empieza de cero', e3 === null, e3);
   check('navegador(): respeta las opciones y pone la ruta del ejecutable', b.o.args[0] === 'x' && 'executablePath' in b.o);
   check('PESADA reconoce terreno.html con y sin consulta, y no otras', PESADA.test(U) && PESADA.test('/terreno.html') && !PESADA.test('/terrenos.html') && !PESADA.test('/plano.html'));

@@ -24,11 +24,16 @@ const PUERTO = process.env.PUERTO || 8124;
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra != null ? ' -> ' + extra : '')); } };
-const b = await navegador(chromium, { executablePath: EXE,
-  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UNA PLANTA POR NAVEGADOR (regla R-5, tools/pw_navegador.mjs): las tres
+   plantas iban una tras otra en el MISMO navegador y el proceso de GPU seguía
+   ocupado con la anterior. Lo cazó el guardia de `navegador()` al estrenarlo:
+   el `goto` vive dentro de `mide()` y se llama tres veces. */
+const LANZA = { executablePath: EXE,
+  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 const errores = [];
 
 async function mide(planta, empinado) {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: { width: 640, height: 480 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errores.push(planta + ': ' + e)); const t0 = Date.now();
@@ -67,7 +72,7 @@ async function mide(planta, empinado) {
     camera.position.copy(cam0.p); camera.quaternion.copy(cam0.q); camera.updateMatrixWorld(true);
     return { n: bien.length + mal.length, bien: bien.length, tapados, ej: mal.slice(0, 4) };
   }, empinado);
-  await ctx.close();
+  await b.close();
   return r;
 }
 const F = await mide('fayon', true);
@@ -81,5 +86,4 @@ console.log(`El Burgo (llano, N-S): ${E.bien}/${E.n}`);
 check('El Burgo: sigue cogiendo el seguidor pulsado (≥ 99 %)', E.bien >= 0.99 * E.n, `${(100 * E.bien / E.n).toFixed(1)} %`);
 check('sin errores de página', errores.length === 0, errores.join(' | '));
 console.log(`\n${ok} OK · ${ko} FAIL`);
-await b.close();
 process.exit(ko ? 1 : 0);
