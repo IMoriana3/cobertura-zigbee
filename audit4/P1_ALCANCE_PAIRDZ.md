@@ -197,9 +197,10 @@ diera un hueco parecido al de `pairwise`, el hueco sería del instrumento.
 | `astro` (control) | 12/12 | 2654.9656 | 2659.3533 | **+0.1653 %** | 1.7618° | 418 | 421 | 1.01× |
 | `pairwise` | 12/12 | 2307.0294 | 2705.1154 | **+17.2554 %** | 59.0000° | 910 | 409 | 0.45× |
 | `optimal` | **8/12 · COTA** (tope de 7.200 s agotado) | 2092.3610 | 2111.1432 | **+0.8977 %** | 46.2785° | 5307* | 2390* | 0.45×* |
-| `optfree` | (en curso) | | | | | | | |
+| `optfree` | **4/12 · COTA** (tope de 7.200 s agotado) | 796.1559 | 805.3695 | **+1.1573 %** | 62.8750° | 3027** | 4261** | 1.41×** |
 
 \* `optimal` se cronometró con la ablación corriendo en la misma máquina (carga 2,0 al acabar): sus segundos absolutos no son comparables con los de `pairwise`/`astro`; el cociente mesa/línea sí, porque las dos cadenas se miden en la misma pasada y paso a paso. Y es una **cota**: 8 de 12 meses (ene-ago), sin extrapolar.
+\*\* `optfree` empezó con la ablación aún corriendo (carga 2,0 al empezar, 1,0 al acabar): igual que arriba, cuenta el cociente, no los segundos. Es una **cota**: 4 de 12 meses (ene-abr).
 
 kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
 
@@ -226,7 +227,11 @@ kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
   (2705.1 frente a 2659.4). El backtracking por línea no solo sombrea: **retrocede
   mucho más de lo necesario**, y esa es pérdida de haz neta. Es el «θ demasiado
   conservador» del enunciado de P1, medido.
-- **El coste de (c) no es un coste: la cadena por mesa tarda 0.45× lo que la de
+- **El coste de (c) depende de la política:** en `optfree` la cadena por mesa es
+  **más lenta**, 1,41× la de línea (cota de 4 meses), al revés que en `pairwise`.
+  El cociente de `optimal` (0,45×) y el de `optfree` se tomaron con la máquina
+  compartida; los de `pairwise` y `astro`, con la máquina libre.
+- En `pairwise`, en cambio, **la cadena por mesa tarda 0.45× lo que la de
   línea** en `pairwise` (409 s frente a 910 s) y 1.01× en `astro`.
 - Contra la sintética de `D_anual_por_mesa` (+0,39 %), Ayora da **44 veces más**: el
   relieve real es donde el promediado por línea hace daño.
