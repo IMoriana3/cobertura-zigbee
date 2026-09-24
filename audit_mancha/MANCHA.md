@@ -382,3 +382,53 @@ se corrigió antes de ninguna otra orden de procesos.
 Es el vigilante del vigilante otra vez: el banco de la barrera solo protege si
 se corre DESPUÉS de cada cambio del hook. Queda como regla: tocar el hook y
 correr su banco van en la misma tanda, siempre.
+
+### El boquete de la comilla: estaba ANTES, y solo se vio al ampliar el banco
+
+Hay que registrarlo como lo que es. `os.system('pkill -f …')` dentro de un
+heredoc de Python pasaba la barrera desde su primera versión por mecanismo: la
+frontera de palabra no admitía una comilla delante. Nadie lo había probado. No
+lo abrió el tercer ajuste: salió al escribir, para ese ajuste, las formas que no
+podían abrirse. La barrera tenía un boquete justo por donde alguien lo cruzaría
+sin querer, que es escribir la orden dentro de un script de Python, y su banco no
+lo veía porque nadie había pensado esa forma. Cerrado; tras una comilla, la
+palabra cuenta si va seguida de argumentos.
+
+### La barrera, VIVA: señal de vida, no solo banco
+
+**La otra mitad de la regla.** «Tocar el hook y correr su banco en la misma
+tanda» depende de que alguien se acuerde. Un hook con error de sintaxis falla en
+ABIERTO: no bloquea y no avisa. **Un vigilante que puede morir en silencio
+necesita una señal de vida, no solo un banco.** Es la cuarta cara de «el
+vigilante necesita su propio vigilante», y esta vez el vigilante no se
+equivocaba: estaba muerto.
+
+**Lo que se ha puesto:**
+
+- **Falla en CERRADO** (`~/.claude/barreras/vigia.sh`, que es ahora el hook de
+  PreToolUse). Corre el hook de verdad. Si sale con algo que no es 0 (permite)
+  ni 2 (bloquea), BLOQUEA toda orden Bash con «BARRERA ROTA» y el motivo:
+  - un error de sintaxis;
+  - una excepción;
+  - una entrada ilegible, que antes salía con 0, o sea permiso.
+- **Canario en cada llamada** (`no_pkill_f.py`): antes de juzgar la orden, el
+  hook comprueba que una forma prohibida que ya pasó (el `for p in $(pgrep -f …);
+  do kill -STOP $p` de E-X1-A-6) sigue rechazándose. Una edición que rompa el
+  veredicto sin romper la sintaxis no puede seguir dando órdenes por buenas.
+- **Señal de vida al empezar cada sesión** (`~/.claude/barreras/latido.sh`, hook
+  SessionStart). Corre el banco y publica en el contexto «Barrera de órdenes
+  VIVA» o «BARRERA ROTA» con los fallos.
+
+**Banco** (`test_barrera.py`): 35 formas bloqueadas, 14 permitidas y 5 del
+vigilante. Las 5 del vigilante:
+
+1. una forma prohibida con el hook de verdad da 2;
+2. una orden legítima da 0;
+3. un hook con ERROR DE SINTAXIS bloquea;
+4. un hook SANO de sintaxis con el veredicto roto (no rechaza nada) lo bloquea el
+   CANARIO;
+5. una entrada ilegible bloquea.
+
+Verificado en vivo, ya a través de `vigia.sh`: una orden con `pgrep -f` queda
+bloqueada. La configuración anterior está guardada en
+`~/.claude/backups/settings.json.antes-vigia`.
