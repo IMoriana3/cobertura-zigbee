@@ -83,8 +83,36 @@ su piso sube en el mismo commit (trinquete). Si no, el margen entre lo que
 publica y su piso es espacio para encoger sin que nadie se entere. En el paso 3,
 `test_veto_por_mesa` pasa de 7 a 8 y `test_unidad_accionamiento` entra con 7.
 
-**Bancos SIN piso:** pueden haber encogido ya sin que nadie lo sepa. La lista y
-lo que publica cada uno hoy van en «Bancos sin piso» cuando termine la medida
-(EN CURSO). Primer dato: `tools/con_piso.mjs` declara 36 entradas de la matriz
-`navegador` sin medir (`MATRIZ_SIN_MEDIR = 36`) y el workflow tiene hoy 39. Tres
-entraron sin que la cuenta se enterase.
+**Los dos casos son el mismo, y se registran juntos:**
+
+1. `test_anual_lazo` encogió de 12 a 10 comprobaciones sin avisar, y solo lo
+   paró su piso (arriba).
+2. El contador de la matriz `navegador` no sabía a cuántos vigilaba.
+   `tools/con_piso.mjs` decía `MATRIZ_SIN_MEDIR = 36`.
+   - Ese número entró en 242f3aa (#755), y ese mismo día la matriz ya tenía
+     **39 entradas (33 ficheros distintos)**. No entraron tres bancos después:
+     el 36 se contó a mano y ya era falso el día que se escribió.
+   - Medido reconstruyendo el workflow de aquel commit: 39 entradas entonces y
+     39 hoy, ninguna nueva y ninguna quitada.
+   - Además, `con_piso.mjs --tabla` no corría en ningún paso del CI.
+
+**El vigilante necesita su propio vigilante.** Es la tercera vez que aparece la
+idea en este proyecto:
+
+- el banco de la barrera de órdenes salía 0 sin comprobar nada, porque el hook
+  terminaba al importarlo (`~/.claude/barreras/test_barrera.py`);
+- el piso de `test_caras_bajo_demanda` estaba escrito y ningún paso lo aplicaba
+  (`bancos.yml`, «EL ÚNICO DE LOS 32 PISOS…»);
+- y este contador.
+
+La corrección va en su propio PR (#760):
+
+- la tabla se carea con el workflow en los dos sentidos:
+  - un banco que corre sin piso, o una entrada de la matriz sin registrar;
+  - un piso que ningún paso aplica, o una entrada registrada que ya no está;
+- `tools/test_piso_careo.mjs` trae cinco mutantes y exige rojo en cada uno.
+
+**Bancos SIN piso:** las 39 entradas de la matriz `navegador`, más las tres
+exenciones con motivo (`test_nb_procedencia`, `test_dos_metricas`,
+`test_meteo_csv`, que no publican recuento). Lo que publica hoy cada entrada va
+en «Bancos sin piso» cuando termine la medida (EN CURSO).
