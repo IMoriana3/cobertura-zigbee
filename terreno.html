@@ -32,6 +32,7 @@ addEventListener('DOMContentLoaded',function(){
 <script src="equipos.js?v=1"></script><!-- FUENTE ÚNICA de la NCU y la HSU (compartida con el simulador de cobertura RF): cotas de los planos DR_NCU_v0 y FTR.24.00145_5_C -->
 <script src="orto.js"></script><!-- FUENTE ÚNICA de la ortofoto (compartida con plano.html y con el simulador de cobertura RF): qué servidores, en qué orden y cómo se numeran las teselas -->
 <script src="viento.js"></script><!-- FUENTE ÚNICA del abanderamiento (compartida con el gemelo digital): las cuatro estrategias canónicas de SolarGPT. Ver sim/README.md del gemelo -->
+<script src="lib/radio_pv_model.js"></script><!-- COPIA FIJADA del canon de radio de `siting`: λ y el radio de Fresnel salen de aquí, no de un 0,125 escrito a mano. Ver lib/canon.lock.json y tools/test_canon_pin.mjs -->
 <script src="js/cableado_core.js"></script><!-- núcleo PURO del cableado DC (sin THREE/DOM): lo testean en Node tools/test_cableado_core.mjs -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
@@ -4757,10 +4758,25 @@ function inField(lon,lat){ if(!FB)return false; var x=projX(lon),n=-projZ(lat); 
 // fila no cruza ningún panel; solo se topa con la banda quien CRUZA filas. Tratarlo como un muro
 // omnidireccional daba 95% de la planta aislada, contra los 52 enlaces MEDIDOS que están vivos.
 // ratio<0 = sin visión, <0.6 = roza Fresnel.
+//
+// LA FRECUENCIA, DECLARADA. Hasta el 2026-09-24 esto llevaba `var lam=0.125`
+// escrito a mano: la longitud de onda de 2,4 GHz, redondeada, y sin decir de qué
+// frecuencia salía. Ahora λ y el radio de Fresnel los pone el CANON
+// (`lib/radio_pv_model.js`, copia fijada de `siting`), y la frecuencia es este
+// número con su cita. 2,45 GHz es lo que declara `siting/radio_params.json` para
+// `zigbee_pro_24`, que es la variante que monta esta cartera.
+//
+// CUÁNTO CAMBIA: r ∝ √λ, así que pasar de 0,125 a λ(2,45 GHz) = 0,12236 encoge
+// TODOS los radios un 1,06 % y sube todos los `ratio` un 1,07 %. Como es un
+// factor POSITIVO y constante, NO puede cambiar el signo: ningún enlace pasa de
+// «sin visión» a «con visión» ni al revés. Lo único que puede moverse es el
+// corte de 0,6 —«roza»— y sólo para los que estuvieran a menos de un 1,07 % por
+// debajo, o sea con ratio en [0,5936 · 0,6). Medido abajo, en el banco.
+var RF_F_HZ = 2.45e9;
 function linkClearance(latA,lonA,hA,latB,lonB,hB){
   var eA=ELEV(latA,lonA)+hA,eB=ELEV(latB,lonB)+hB,dE=(lonB-lonA)*mPerLon,dN=(latB-latA)*mPerLat,D=Math.hypot(dE,dN);
   if(D<2)return{blocked:false,partial:false};
-  var lam=0.125,worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),bd=panelBand();
+  var worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),bd=panelBand();
   for(var i=1;i<N;i++){var f=i/N,lat=latA+(latB-latA)*f,lon=lonA+(lonB-lonA)*f,los=eA+(eB-eA)*f,terr=ELEV(lat,lon),hueco;
     if(Math.min(f,1-f)*D>4 && inField(lon,lat) && bd && nearRowD(projX(lon))<=bd.hw){   // apantalla el panel solo donde ESTA: su banda de altura y su huella en el suelo
       var pb=terr+bd.bot,pt=terr+bd.top;
@@ -4768,7 +4784,7 @@ function linkClearance(latA,lonA,hA,latB,lonB,hB){
       else if(los<=pb) hueco=Math.min(los-terr,pb-los);                 // por debajo del panel: limita el suelo o el propio panel
       else hueco=-Math.min(los-pb,pt-los);                              // dentro de la banda: tapado
     } else hueco=los-terr;                                              // fuera del campo manda el relieve
-    var r=Math.sqrt(lam*D*f*(1-f)),ratio=hueco/(r||1e-6);if(ratio<worst)worst=ratio;}
+    var r=RadioPV.radioFresnel(f*D,(1-f)*D,RF_F_HZ),ratio=hueco/(r||1e-6);if(ratio<worst)worst=ratio;}
   return{blocked:worst<0,partial:worst>=0&&worst<0.6,ratio:worst};
 }
 function applyFresnel(){
