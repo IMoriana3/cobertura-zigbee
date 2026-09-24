@@ -136,9 +136,11 @@ su física. No es una reimplementación.
 - **Día: sin cambio, por construcción.** El diff de este paso solo toca
   `$('yearbtn').onclick`, `grAnualGen`, `VER`, el banco y el documento; la
   serie del día no se toca.
-- **TEST NULO, preset senoidal sin mesas:** EN CURSO, sobre la base `main`. La
-  primera corrida se hizo contra la fase A y dio las nueve idénticas bit a bit;
-  se repite porque la base cambió.
+- **TEST NULO, preset senoidal sin mesas, base `main`:** las nueve políticas,
+  antes y después, **idénticas bit a bit** (`audit5/out/P1_4_senoidal_boton.{txt,json}`):
+  astro 2.509,4136 · global 2.463,6024 · row 2.463,3784 · bt2d 2.465,7726 ·
+  pairwise 2.225,6561 · true3d 2.214,7730 · mgl 2.225,8037 · optimal 2.509,9272 ·
+  optfree 2.510,6756 kWh/m²·año.
 - **Ayora, las nueve, ruta del botón: EN CURSO.** Una corrida por política.
   Su control negativo es que, con mesas, antes y después tienen que diferir.
 
