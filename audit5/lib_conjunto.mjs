@@ -165,3 +165,22 @@ export function conjuntoSinSombraEvitable(planta, arranques) {
   const g = (factibles.length ? factibles : res).reduce((b, r) => (!b || (factibles.length ? r.poa > b.poa : r.evitMax < b.evitMax)) ? r : b, null);
   return { ganador: g, arranques: res };
 }
+
+/* 2.6 REESCRITO (decisión del titular, 2026-09-24, opción 1 de FASE2_PARADA.md) ·
+   LA POLÍTICA RESTRINGIDA A UN θ COMÚN. En terreno uniforme la política de
+   conjunto NO tiene por qué degenerar a `pairwise` (filas alternas: +6-7 % sin
+   sombra a sol bajo, refutación de 2.6); lo que sí tiene que cumplir es que, en
+   el subespacio de un θ COMÚN a todas las unidades —el único donde la uniforme
+   es el óptimo—, encuentre lo mismo que `pairwise`. Mismo barrido y misma
+   rejilla que la política (PASO_G y refino PASO_F sobre el rango común), misma
+   restricción (sombra evitable cero), misma energía. */
+export function optimoComun(planta, lo, hi) {
+  const rejilla = (a, b, p) => { const g = []; for (let t = a; t <= b + 1e-9; t += p) g.push(t); if (g[g.length - 1] < b - 1e-9) g.push(b); return g; };
+  const nU = planta.th.length;
+  const evalua = t => { const r = (planta.fijar(new Array(nU).fill(t)), planta.pasadaFinal()); return { t, poa: r.poa, factible: r.mesasConEvitable === 0, evit: r.mesasConEvitable }; };
+  let b = null;
+  for (const t of rejilla(lo, hi, PASO_G)) { const r = evalua(t); if (r.factible && (!b || r.poa > b.poa + 1e-12)) b = r; }
+  if (!b) return null;
+  for (const t of rejilla(Math.max(lo, b.t - PASO_G), Math.min(hi, b.t + PASO_G), PASO_F)) { const r = evalua(t); if (r.factible && r.poa > b.poa + 1e-12) b = r; }
+  return b;
+}

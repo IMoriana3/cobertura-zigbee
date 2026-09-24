@@ -1,4 +1,4 @@
-# R5 · Fase 2 — PARADA: en terreno uniforme, el backtracking uniforme NO es el óptimo sin sombra (+6,15 % y +7,08 % a sol de 10-12°, sombra 0)
+# R5 · Fase 2 — (era) PARADA: en terreno uniforme, el backtracking uniforme NO es el óptimo sin sombra (+6,15 % y +7,08 % a sol de 10-12°, sombra 0)
 
 **Refutación de la premisa del control 2.6, y parada (A10).** No se ha tocado el
 control para que pase (R3).
@@ -64,3 +64,35 @@ en ese sol.
 Estado de la rama `claude/r5-f2-conjunto-6th1im`: la política
 (`audit5/lib_conjunto.mjs`), su banco (en rojo en 2.6, por lo de arriba) y esta
 evidencia. **No hay PR de fase 2** hasta que se decida.
+
+
+---
+
+## 2.6 reescrito — decisión del titular (2026-09-24): opción 1
+
+La premisa vieja queda refutada y no se fuerza. `audit5/test_conjunto.mjs`
+(7/7 → `audit5/out/test_conjunto.txt`) controla lo que la política SÍ tiene que
+cumplir en terreno uniforme (7 filas planas, paso 6, cuerda 2,384, cuatro soles
+de 10-20°):
+
+| comprobación | resultado | control negativo |
+|---|---|---|
+| **2.6a · nunca por debajo de `pairwise`** (POA ganador ≥ POA `pairwise` − `E_EMPATE_W`) | ganador − pairwise: 0,000 / +31,860 / +11,084 / +30,359 W/m² | una «política» que deja todo plano cae por debajo en 4 de 4 soles |
+| **2.6b · sombra evitable cero** en el ganador | 0 mesas en los 4 soles | el ganador SIN la restricción, evaluado con ella, deja sombra evitable en 2 de 4 |
+| **2.6c · restringida a un θ COMÚN, coincide con `pairwise`** (`optimoComun`, misma rejilla de 0,1° y misma restricción) | mismo θ en los 4 soles (33,2 / 20,3 / −39,6 / −17,0°) y POA dentro de `E_EMPATE_W` | sin la restricción, el θ común se aparta en 2 de 4 soles (hasta 38,0°) |
+
+Lo que se compara en 2.6c es `pairwise` **en la misma rejilla** que la política
+(puntos lo + k·0,1° del rango, el más cercano a la tangencia por el lado sin
+sombra), no la tangencia exacta de pvlib: la diferencia entre las dos es menor
+que un paso de mando (θ_bt 33,234° frente a 33,20°) y es de rejilla, no de
+política. Declarado.
+
+La comprobación vieja «la política no retrocede de más» desaparece: con filas
+alternas es LEGÍTIMO que una fila quede plana, dentro de la tangencia. Su
+contenido sobrevive en 2.6c (en θ común, el óptimo es la tangencia).
+
+**El hallazgo de las filas alternas** (+6,15 % y +7,08 % a sol de 10-12°, sombra
+cero) **sigue sin publicarse** hasta cerrar la difusa enmascarada, el mismatch y
+el albedo (decisión del titular). El banco lo enseña con esa etiqueta.
+
+Estado: **la fase 2 queda desbloqueada**.
