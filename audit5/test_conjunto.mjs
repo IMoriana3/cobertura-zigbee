@@ -80,7 +80,7 @@ t('CONTROL NEGATIVO de 2.6c: el θ común SIN la restricción de sombra NO coinc
   debe(dif > 0, 'sin la restricción el θ común sigue siendo el de pairwise: 2.6c no probaría la restricción');
   return `sin restricción se aparta en ${dif} de ${SOLES.length} soles (hasta ${peor.toFixed(1)}°)`;
 });
-t('la ganancia sin sombra sobre pairwise, a la vista (el hallazgo de las filas alternas, SIN PUBLICAR hasta cerrar difusa enmascarada, mismatch y albedo)', () => {
+t('la ganancia sin sombra sobre pairwise, a la vista (el hallazgo de las filas alternas, con la métrica de la página; publicado con los tres cierres: +4,12 % y +5,90 %, audit5/F3_CIERRES_FILAS_ALTERNAS.md)', () => {
   const filas = [];
   for (const [zen, az] of SOLES) { const { pl, tbt, r } = ganador(zen, az); const pw = pl.poaPlanta(new Array(NR).fill(tbt));
     filas.push(`${zen}/${az}: ${(100 * (r.ganador.poa / pw - 1)).toFixed(2)} % (${r.ganador.th.map(v => v.toFixed(1)).join('/')})`); }

@@ -1,5 +1,6 @@
 /* R5 · LOS TRES CIERRES DEL HALLAZGO DE LAS FILAS ALTERNAS (decisión del titular:
- * no se publica hasta cerrar difusa enmascarada, mismatch y albedo).
+ * no se publicaba hasta cerrar difusa enmascarada, mismatch y albedo; cerrados
+ * y publicado el 2026-09-24).
  *
  *   node audit5/F3_filas_alternas_cierres.mjs
  *

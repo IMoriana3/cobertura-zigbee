@@ -1,8 +1,10 @@
 # R5 · Los tres cierres del hallazgo de las filas alternas
 
-**No publicado.** Decisión del titular (2026-09-24): el hallazgo no se publica
-hasta cerrar la difusa enmascarada, el mismatch y el albedo. Aquí están los tres
-cierres medidos; **publicarlo o no lo decide él**.
+**PUBLICADO** (decisión del titular, 2026-09-24, tras ver los tres cierres):
+**+4,12 % a sol 78/105 y +5,90 % a 80/250**, con la difusa enmascarada, el
+albedo real y el mismatch medidos, y **ninguno de los tres lo explica**. Es la
+cifra del modelo 2D de este documento, con sus límites declarados abajo; no
+es medida de campo.
 
 ## El hallazgo
 En terreno uniforme, a sol bajo, la política de conjunto encuentra

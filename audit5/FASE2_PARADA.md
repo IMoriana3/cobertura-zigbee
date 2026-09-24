@@ -92,7 +92,9 @@ alternas es LEGÍTIMO que una fila quede plana, dentro de la tangencia. Su
 contenido sobrevive en 2.6c (en θ común, el óptimo es la tangencia).
 
 **El hallazgo de las filas alternas** (+6,15 % y +7,08 % a sol de 10-12°, sombra
-cero) **sigue sin publicarse** hasta cerrar la difusa enmascarada, el mismatch y
-el albedo (decisión del titular). El banco lo enseña con esa etiqueta.
+cero, con la métrica de la página) **se publica** (decisión del titular,
+2026-09-24) con los tres cierres puestos: **+4,12 % y +5,90 %**; la difusa
+enmascarada, el mismatch y el albedo, medidos, no lo explican
+(`audit5/F3_CIERRES_FILAS_ALTERNAS.md`).
 
 Estado: **la fase 2 queda desbloqueada**.
