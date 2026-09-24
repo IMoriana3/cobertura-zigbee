@@ -131,3 +131,53 @@ vieja de `optimal` con `poaPlant` tiene que ponerlo rojo.
 
 **Lo que sigue en marcha sin esperar:** el contrato en prosa y en esquema del
 lado JS, y sus vectores congelados. No dependen de esta decisión.
+
+## DECISIÓN del titular sobre la paridad (2026-09-24): (p1), con (p2) en paralelo
+
+- **(p3) descartada:** parchear el arnés deja el defecto dentro del motor que
+  produce los informes.
+- **(p1)** va en un PR propio de `SolarGPTfull`.
+  - Rama `claude/backtracking-6th1im` sobre `main` d521ec85.
+  - Informe: `docs/audit/BT3D-SIGNO-TILT.md` de ese repo.
+  - Contenido: una sola frontera de signo (`_axis_rise_rad`), la fuerza bruta de
+    los tests desde pvlib, un test de anclaje contra pvlib con control negativo,
+    y el efecto medido antes/después.
+  - **Resultado principal:** la «ganancia 3D en torsión» era el espejo. En la
+    matriz de 30 topografías, los casos estrella pasan de +11,6 %…+16,8 % a
+    −0,09 %…−0,15 %. En un plano, `true3d` pasa de cobrar un 2 % menos que
+    `pairwise` a igualarlo.
+- **(p2):** paridad SIN torsión, como job propio fuera de la puerta y con
+  trinquete (paso 4.4).
+- **El arnés de audit2 contaminaba el careo:** nota posterior al sello N-R2-1
+  en `audit5/NOTAS_POSTERIORES_SELLO_R2.md`, con puntero a E-G1/E-G3/E-G5. No
+  se sabe cuánto de la divergencia del caso B era el arnés. Se rehace cuando
+  entre (p1).
+
+## Errores propios (E-X1)
+
+- **E-X1-P4-1 · Cité `tracker3d.py` de una copia 160 commits atrasada.**
+  - Las citas y la primera medida del signo (hallazgo 4.0) salieron de
+    `/home/user/SolarGPTfull` en 046022b. `origin/main` estaba en d521ec85.
+  - Rehecha la medida sobre `main`: el resultado es idéntico. Las líneas se
+    mueven poco (`:43-44` → `:45`, `:486-488` → `:488-490`).
+  - Regla que incumplí, la de la casa de `SolarGPTfull`: «Ningún veredicto
+    sobre un repo sin `git fetch` en la misma cadena».
+- **E-X1-P4-2 · Escribí un documento con un heredoc SIN comillas.**
+  - La shell ejecutó como órdenes 70 fragmentos entre comillas invertidas del
+    texto.
+  - Revisada la salida, todas dieron «command not found», «No such file» o error
+    de sintaxis: ninguna hizo nada. El documento quedó sin esas citas y se
+    reescribió entero con la herramienta de escritura.
+  - La regla de siempre: texto con comillas invertidas, en heredoc CITADO
+    (`<<'EOF'`) o sin pasar por la shell.
+
+## Lista de defectos de infraestructura (se anotan y se sigue; no generan paso)
+
+- **I-1 · Faltaban dependencias en el entorno local de pruebas de `SolarGPTfull`.**
+  - Faltaban pytest, pytest-xdist, shapely, matplotlib, scikit-learn, nbformat,
+    httpx, python-dateutil, pyarrow, openpyxl y reportlab.
+  - Sin `matplotlib`, dos ficheros de test no llegan a importarse y ESCONDÍAN
+    7 fallos de la rama.
+  - Se instalaron con `pip` solo para medir.
+- **I-2 · La máquina está saturada.** 4 CPU con carga de 19 a 20 sostenida: los
+  tiempos de este paso son de máquina saturada.
