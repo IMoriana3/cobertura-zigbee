@@ -16,18 +16,24 @@
  *     node tools/test_gcr_planta.mjs
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 const PUERTO = process.env.PUERTO || 8124;
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra != null ? ' -> ' + extra : '')); } };
-const b = await chromium.launch({ executablePath: EXE,
-  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UN NAVEGADOR POR PÁGINA PESADA (regla R-5, tools/pw_navegador.mjs): el
+   proceso de GPU es de todo el navegador, y con la escena anterior aún en él la
+   siguiente puede no arrancar (medido: 7 de 12 lentas o colgadas en el mismo
+   navegador; 12 de 12 bien con uno nuevo). `navegador()` ya no deja cargar la
+   segunda. */
+const LANZA = { executablePath: EXE,
+  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 const errores = [];
 /* módulo / pitch medidos en el layout (pitch = distancia entre ejes de filas contiguas) */
 const ESPERA = { elburgo: 2.382 / 6.0, fayon: 2.411 / 6.0, ayora: 2.384 / 6.0, sanjose: 2.382 / 6.2,
                  tunez: 2.35 / 6.25, bagnarelli: 2.382 / 5.5, paramo: 2.382 / 7.0 };
 for (const [planta, esp] of Object.entries(ESPERA)) {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errores.push(planta + ': ' + e)); const t0 = Date.now();
@@ -55,9 +61,8 @@ for (const [planta, esp] of Object.entries(ESPERA)) {
   /* El BT de la animación es el de terreno llano: solo se le puede exigir donde el terreno sale llano
      (sin red, las plantas sin relieve propio). Ayora y San José traen el suyo; con relieve manda BT3D. */
   if (r.llano) check(`${planta}: el BT de la animación aplana lo que hace falta (|sesgo| < 0,5°)`, Math.abs(r.sesgo) < 0.5, r.sesgo.toFixed(2) + '°');
-  await ctx.close();
+  await b.close();
 }
 check('sin errores de página', errores.length === 0, errores.join(' | '));
 console.log(`\n${ok} OK · ${ko} FAIL`);
-await b.close();
 process.exit(ko ? 1 : 0);

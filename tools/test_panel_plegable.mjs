@@ -5,12 +5,17 @@
        python3 -m http.server 8124 --directory .   &
        node tools/test_panel_plegable.mjs                                                      */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 // El Burgo tarda en construirse, y por eso su goto se da 120 s.
 const ESPERA = 120000;
 const MOVIL = { width: 390, height: 844 };          // iPhone 14 en vertical
-const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UNA PÁGINA PESADA POR NAVEGADOR (regla R-5, tools/pw_navegador.mjs): cada
+   visita a terreno.html va en su propio navegador. La «vuelta» hereda lo que la
+   primera guardó con `storageState` (cookies y localStorage del origen), que es
+   lo que ve alguien que vuelve: antes se abría en otra pestaña del MISMO
+   navegador con la primera aún viva, y eso es el patrón que cuelga la GPU. */
+const LANZA = { executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 let malo = 0;
 const di = (ok, t) => { if (!ok) malo++; console.log((ok ? '  ok    ' : '  FALLA ') + t); };
 
@@ -90,6 +95,7 @@ const mide = pg => pg.evaluate(() => {
 
 console.log('=== móvil 390×844, primera visita (sin nada guardado) ===');
 {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: MOVIL });
   const { pg, errs } = await abre(ctx);
   const m = await mide(pg);
@@ -112,15 +118,20 @@ console.log('=== móvil 390×844, primera visita (sin nada guardado) ===');
   // la elección se recuerda entre visitas
   const g = await pg.evaluate(() => localStorage.getItem('cobertura_panel_plegado'));
   di(g === '0', 'guarda la elección (abierto = 0)');
-  const p2 = await ctx.newPage();
+  const estado = await ctx.storageState();
+  await b.close();
+  const b2 = await navegador(chromium, LANZA);
+  const ctx2 = await b2.newContext({ viewport: MOVIL, storageState: estado });
+  const p2 = await ctx2.newPage();
   await p2.goto(`http://localhost:${PUERTO}/terreno.html?planta=elburgo`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await esperaPanel(p2);
   di(!(await mide(p2)).plegado, 'al volver sigue abierto, como se dejó');
-  await ctx.close();
+  await b2.close();
 }
 
 console.log('=== escritorio 1440×900, primera visita ===');
 {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
   const { pg, errs } = await abre(ctx);
   const m = await mide(pg);
@@ -133,8 +144,7 @@ console.log('=== escritorio 1440×900, primera visita ===');
   await pulsa(pg, '#panelHdr');
   di((await mide(pg)).huella === m.huella, 'y al volver a abrirlo queda igual que estaba');
   di(!errs.length, 'sin errores de consola' + (errs.length ? ': ' + errs[0] : ''));
-  await ctx.close();
+  await b.close();
 }
-await b.close();
 console.log(malo ? `\n${malo} comprobación(es) con fallo` : '\ntodo OK');
 process.exit(malo ? 1 : 0);

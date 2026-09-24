@@ -16,7 +16,7 @@
  *   HSU_ANCLAS=no node tools/test_cobertura_hsu.mjs   (mutacion: TIENE que salir rojo)
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 
 const PUERTO = process.env.PUERTO || 8124;
 const MUT = process.env.HSU_ANCLAS === 'no';
@@ -26,7 +26,7 @@ let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra !== undefined ? ' -> ' + extra : '')); } };
 
-const b = await chromium.launch({ executablePath: EXE,
+const b = await navegador(chromium, { executablePath: EXE,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
          '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 1100, height: 700 } });

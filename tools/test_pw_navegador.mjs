@@ -1,7 +1,10 @@
 /* De este modulo depende que ARRANQUEN los diez bancos de navegador del CI.
    Si se equivoca no falla uno: fallan todos, y con un «Failed to launch» que
    no señala aqui. Asi que se prueba, con el sistema de ficheros inyectado. */
-import { resuelve } from './pw_navegador.mjs';
+import { resuelve, navegador, PESADA } from './pw_navegador.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let ok = 0, ko = 0;
 const check = (n, c, e) => { if (c) { ok++; console.log('OK   ' + n); }
@@ -33,6 +36,40 @@ check('y no devuelve la CADENA "undefined", que Playwright tomaria por una ruta'
 
 check('una cadena vacia en PW_CHROMIUM no cuenta como ruta',
       resuelve('', [A, B], hay(A)) === A);
+
+/* ── UNA PÁGINA PESADA POR NAVEGADOR (regla R-5) ────────────────────────────
+   La conducta, con un chromium de mentira (sin navegador de verdad): la
+   PRIMERA carga pesada pasa, la SEGUNDA en el mismo navegador lanza —en otra
+   pestaña o en otro contexto—, las no pesadas pasan, y otro `navegador()`
+   empieza de cero. */
+const falso = () => { const pag = () => ({ goto: async u => u }); return { launch: async o => ({ o, newPage: async () => pag(), newContext: async () => ({ newPage: async () => pag() }) }) }; };
+const U = 'http://localhost:8124/terreno.html?planta=elburgo';
+const lanza = async f => { try { await f(); return null; } catch (e) { return e.message; } };
+{
+  const b = await navegador(falso(), { args: ['x'] });
+  const p1 = await b.newPage(); const c = await b.newContext(); const p2 = await c.newPage();
+  const e1 = await lanza(() => p1.goto(U)), e0 = await lanza(() => p1.goto('http://localhost:8124/plano.html')), e2 = await lanza(() => p2.goto(U));
+  check('navegador(): la primera página pesada carga', e1 === null, e1);
+  check('navegador(): una página NO pesada carga siempre', e0 === null, e0);
+  check('navegador(): la SEGUNDA pesada en el mismo navegador (otro contexto) LANZA y dice por qué', !!e2 && /R-5/.test(e2), e2);
+  const b2 = await navegador(falso()); const e3 = await lanza(async () => (await b2.newPage()).goto(U));
+  check('navegador(): otro navegador empieza de cero', e3 === null, e3);
+  check('navegador(): respeta las opciones y pone la ruta del ejecutable', b.o.args[0] === 'x' && 'executablePath' in b.o);
+  check('PESADA reconoce terreno.html con y sin consulta, y no otras', PESADA.test(U) && PESADA.test('/terreno.html') && !PESADA.test('/terrenos.html') && !PESADA.test('/plano.html'));
+}
+
+/* EL GUARDIA: la regla solo protege si nadie la esquiva. Todo fichero de tools/
+   que cargue terreno.html lanza el navegador con `navegador()`, nunca con
+   `chromium.launch(` a pelo. CONTROL NEGATIVO: un fichero que lo haga sale
+   señalado. */
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const esquiva = txt => /terreno\.html/.test(txt) && /chromium\.launch\(/.test(txt);
+const culpables = fs.readdirSync(path.join(RAIZ, 'tools')).filter(f => f.endsWith('.mjs') && f !== 'pw_navegador.mjs' && f !== 'test_pw_navegador.mjs')
+  .filter(f => esquiva(fs.readFileSync(path.join(RAIZ, 'tools', f), 'utf8')));
+check('ningún fichero de tools/ que cargue terreno.html lanza el navegador por su cuenta', culpables.length === 0, culpables);
+check('CONTROL · el guardia señala un fichero que lo haga',
+      esquiva("const b = await chromium.launch({}); await pg.goto('http://x/terreno.html?planta=a');") &&
+      !esquiva("const b = await navegador(chromium, {}); await pg.goto('http://x/terreno.html');"));
 
 console.log('\n' + ok + ' OK, ' + ko + ' FALL');
 process.exit(ko ? 1 : 0);

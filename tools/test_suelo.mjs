@@ -5,9 +5,14 @@
        python3 -m http.server 8124 --directory .   &
        node tools/test_suelo.mjs elburgo dicayagua                                                */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
-const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UN NAVEGADOR POR PÁGINA PESADA (regla R-5, tools/pw_navegador.mjs): el
+   proceso de GPU es de todo el navegador, y con la escena anterior aún en él la
+   siguiente puede no arrancar (medido: 7 de 12 lentas o colgadas en el mismo
+   navegador; 12 de 12 bien con uno nuevo). `navegador()` ya no deja cargar la
+   segunda. */
+const LANZA = { executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 let malo = 0;
 const PLANTAS_ARG = process.argv.slice(2);
 /* SIN PLANTAS NO HAY NADA QUE MIRAR, y salir en verde seria mentir. Este banco
@@ -20,6 +25,7 @@ if (!PLANTAS_ARG.length) {
   process.exit(2);
 }
 for (const p of PLANTAS_ARG) {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) { } });
   const pg = await ctx.newPage(); const t0 = Date.now();
@@ -56,8 +62,7 @@ for (const p of PLANTAS_ARG) {
     console.log(`   ${ok ? 'ok   ' : 'FALLA'} ${c.caso.padEnd(32)} la cámara queda ${c.sobre} m sobre el suelo`); });
   const okT = r.objetivoSobreSuelo >= -0.01; if (!okT) malo++;
   console.log(`   ${okT ? 'ok   ' : 'FALLA'} el objetivo tampoco se entierra      ${r.objetivoSobreSuelo} m`);
-  await ctx.close();
+  await b.close();
 }
-await b.close();
 console.log(malo ? `\n${malo} caso(s) con fallo` : '\nno se puede ir bajo tierra');
 process.exit(malo ? 1 : 0);

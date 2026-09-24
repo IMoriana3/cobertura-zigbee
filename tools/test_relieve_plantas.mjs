@@ -45,7 +45,7 @@
 import pw from 'playwright-core';
 const { chromium } = pw;
 import { teselaTerrarium, relieve, zxy } from './dem_sintetico.mjs';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8123;   // mismo convenio que el resto de bancos: un solo servidor sirve a todos
 
 
@@ -67,8 +67,15 @@ const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
 /* Topes, de la tabla de la cabecera y con holgura. El centro es lo que se juzga;
    la cola se acota aparte y se declara. */
 const TOPE_P50 = 0.50, TOPE_GRUESOS = 25;
-const b = await chromium.launch({ executablePath: EXE,
-  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UNA PLANTA POR NAVEGADOR (regla R-5, tools/pw_navegador.mjs). Las plantas
+   iban una tras otra en el MISMO navegador, y su proceso de GPU seguía ocupado
+   con la anterior: la siguiente puede no arrancar. Es lo que #741 vio aquí
+   («relieve · grandes» cancelado tras 33 min sin una línea, con El Burgo) y
+   rodeó sacando El Burgo a su propia entrada, sin conectarlo con #479, que ya
+   lo había escrito. Ahora cada planta abre su navegador con sus rutas. */
+const LANZA = { executablePath: EXE,
+  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
+async function abreCtx(b) {
 const ctx = await b.newContext({ viewport: { width: 1000, height: 700 } });
 await ctx.route('**/elevation-tiles-prod/**', r => {
   if (PLANO) return r.abort();          // MUTACION: sin relieve. El banco tiene que cazarlo.
@@ -80,8 +87,12 @@ await ctx.route('**/elevation-tiles-prod/**', r => {
 });
 await ctx.route('**/server.arcgisonline.com/**', r => r.abort());
 await ctx.route('**/pnoa**', r => r.abort());
+return ctx;
+}
 
 for (const planta of PLANTAS) {
+  const b = await navegador(chromium, LANZA);
+  const ctx = await abreCtx(b);
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(`http://127.0.0.1:${PUERTO}/terreno.html?planta=` + planta, { waitUntil: 'load', timeout: 150000 });
@@ -166,7 +177,7 @@ for (const planta of PLANTAS) {
   ]);
   if (r.colgada) {
     console.log(`FAIL ${planta}: la sonda no terminó en 240 s — se cuelga al medir, no al cargar`);
-    ko++; await p.close(); continue;
+    ko++; await b.close(); continue;
   }
   r.errores = errs.length ? errs.slice(0, 3) : 'ninguno';
   console.log(JSON.stringify(r));
@@ -202,9 +213,8 @@ for (const planta of PLANTAS) {
         ctMal.length === 0, JSON.stringify(ctMal.slice(0, 2)));
 
   check(`${planta}: sin errores de JS`, errs.length === 0, JSON.stringify(errs.slice(0, 2)));
-  await p.close();
+  await b.close();
 }
-await b.close();
 
 if (PLANO) { console.log(ko ? `\nMUTACION OK: el banco la caza (${ko} rojo)` : '\nMUTACION NO CAZADA: el banco no vale');
              process.exit(ko ? 0 : 1); }

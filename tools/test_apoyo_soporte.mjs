@@ -37,7 +37,7 @@
  * plantas de la cartera no se han medido aqui.
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 import { teselaTerrarium, relieve, zxy } from './dem_sintetico.mjs';
 
 const PUERTO = process.env.PUERTO || 8124;
@@ -51,7 +51,7 @@ const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
 
 const COTA = relieve(25, 800, 300);
 const CACHE = new Map();
-const b = await chromium.launch({ executablePath: EXE,
+const b = await navegador(chromium, { executablePath: EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 1000, height: 700 } });
 

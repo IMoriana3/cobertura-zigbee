@@ -15,16 +15,22 @@
  *     node tools/test_solapes.mjs
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 const PUERTO = process.env.PUERTO || 8124;
 const PLANTAS = (process.env.PLANTAS || 'ayora,elburgo,fayon,tunez,bagnarelli,paramo').split(',');
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra != null ? ' -> ' + extra : '')); } };
-const b = await chromium.launch({ executablePath: EXE,
-  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UN NAVEGADOR POR PÁGINA PESADA (regla R-5, tools/pw_navegador.mjs): el
+   proceso de GPU es de todo el navegador, y con la escena anterior aún en él la
+   siguiente puede no arrancar (medido: 7 de 12 lentas o colgadas en el mismo
+   navegador; 12 de 12 bien con uno nuevo). `navegador()` ya no deja cargar la
+   segunda. */
+const LANZA = { executablePath: EXE,
+  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 const errores = [];
 for (const planta of PLANTAS) {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
   await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errores.push(planta + ': ' + e)); const t0 = Date.now();
@@ -60,8 +66,7 @@ for (const planta of PLANTAS) {
   check(`${planta}: ningún seguidor se pisa con el siguiente de su tubo`, r.solapes === 0, `${r.solapes}, peor ${r.peor.toFixed(2)} m (${r.ej})`);
   if (r.blkN) check(`${planta}: los de bloque del DWG miden el largo de su bloque`, r.blkMal === 0, r.blkEj);
   check(`${planta}: los módulos visibles caen dentro de su seguidor`, r.chk > 0 && r.fuera === 0, `${r.fuera}/${r.chk}`);
-  await ctx.close();
+  await b.close();
 }
 check('sin errores de página', errores.length === 0, errores.join(' | '));
-await b.close();
 console.log(`\n${ok} OK, ${ko} FAIL`); process.exit(ko ? 1 : 0);

@@ -32,7 +32,7 @@
  *     node tools/test_afbt_rayos.mjs elburgo      (DEM sintético; ONLINE=1 → real)
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 import { execFileSync } from 'node:child_process';
 const PUERTO = process.env.PUERTO || 8124;
 const planta = process.argv[2] || 'ayora';
@@ -40,7 +40,7 @@ let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra != null ? ' -> ' + extra : '')); } };
 
-const b = await chromium.launch({ executablePath: EXE,
+const b = await navegador(chromium, { executablePath: EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
 const ONLINE = process.env.ONLINE === '1';

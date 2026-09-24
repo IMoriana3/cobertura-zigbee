@@ -16,11 +16,11 @@
  *     python3 -m http.server 8124 &
  *     node tools/perfil_3d.mjs <planta> [<planta> ...]
  */
-import pw from '/home/user/Cobertura-Zigbee/node_modules/playwright-core/index.js';
-const { chromium } = pw;
+import { chromium } from 'playwright-core';
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador y la regla de una página pesada, en un solo sitio
 const FN=['buildTrackers','layoutTrackers','buildBOS','buildVeg','buildContactAO','buildCloudShadows',
           'buildGateways','buildCorridor','buildSunPath','dressMaterials','indexaEquipos','redesPanel','invPanel'];
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell',args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
+const b=await navegador(chromium, {executablePath:EXE,args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
 for(const PL of process.argv.slice(2)){
   const pg=await b.newPage({viewport:{width:640,height:420}});
   await pg.addInitScript(()=>{localStorage.cobertura_offline='1';});

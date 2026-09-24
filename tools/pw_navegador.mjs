@@ -29,3 +29,52 @@ export function resuelve(env, candidatos = CANDIDATOS, existe = existsSync) {
 
 export const EXE = resuelve(process.env.PW_CHROMIUM);
 export const EXEC = EXE;            // los bancos lo llaman de las dos maneras
+
+/* UNA PÁGINA PESADA POR NAVEGADOR — IMPUESTO, NO ACONSEJADO (regla R-5 de la
+   refundación del BT: la protección va donde todos pasan).
+
+   LA RAZÓN, que estuvo escrita en un solo sitio desde #479 (cabecera de
+   test_terreno_plantas.mjs): «reusando uno solo, el proceso de render se quedaba
+   ocupado con la planta anterior y la siguiente no arrancaba nunca». Los bancos
+   vecinos no la leyeron y repitieron el patrón; test_bt3d_rot se colgó así en CI
+   (#753, #759) y #741 lo rodeó otra vez con El Burgo sin conectarlo.
+
+   MEDIDO (2026-09-24, diagnóstico de test_bt3d_rot): `terreno.html` renderiza
+   con swiftshader y su proceso de GPU es COMPARTIDO por todo el navegador. Con
+   la escena anterior aún en él (98-105 % de un núcleo en el momento del
+   cuelgue), la página siguiente recibe su HTML del servidor (200) y no llega a
+   procesarlo: su render espera a la GPU. Segunda carga en el mismo navegador
+   con contexto nuevo, 12 pasadas: 5 bien, 5 a ~80 s, 2 agotadas a 120 s. Con
+   NAVEGADOR NUEVO: 12 de 12 bien, 0,44-1,70 s. Subir el timeout solo movería el
+   umbral: la espera depende de lo que tarde la GPU en soltarse.
+
+   `navegador(chromium, opciones)` lanza como `chromium.launch` y vigila
+   `goto`: la SEGUNDA carga de una página pesada en el mismo navegador —en
+   cualquier pestaña o contexto, cerrada o no la primera— LANZA un error que
+   dice por qué. Para cargar otra planta, otro `navegador()`. El guardia de
+   tools/test_pw_navegador.mjs exige que todo banco que cargue `terreno.html`
+   lance por aquí y no por su cuenta. */
+export const PESADA = /\/terreno\.html(?:[?#]|$)/;
+export async function navegador(chromium, opciones = {}) {
+  const b = await chromium.launch({ executablePath: EXE, ...opciones });
+  let pesadas = 0;
+  const vigila = pg => {
+    const ir = pg.goto.bind(pg);
+    pg.goto = async (url, o) => {
+      if (PESADA.test(String(url)) && pesadas++ >= 1)
+        throw new Error('R-5 · segunda página pesada (' + url + ') en el MISMO navegador: su proceso de GPU sigue ocupado ' +
+          'con la anterior y esta puede no arrancar (medido: 7 de 12 lentas o colgadas). Lanza otro `navegador()` por página pesada.');
+      return ir(url, o);
+    };
+    return pg;
+  };
+  const nuevaPag = b.newPage.bind(b);
+  b.newPage = async (...a) => vigila(await nuevaPag(...a));
+  const nuevoCtx = b.newContext.bind(b);
+  b.newContext = async (...a) => {
+    const c = await nuevoCtx(...a), np = c.newPage.bind(c);
+    c.newPage = async (...x) => vigila(await np(...x));
+    return c;
+  };
+  return b;
+}

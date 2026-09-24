@@ -54,7 +54,7 @@
  */
 import { chromium } from 'playwright-core';
 import zlib from 'node:zlib';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 
 const PUERTO = process.env.PUERTO || 8124;
 const PLANTAS = { elburgo:'El Burgo', ayora:'Ayora', sanjose:'San José', paramo:'Páramo',
@@ -120,7 +120,7 @@ const MODOS = [
 ];
 
 async function mide(modo) {
-  const b = await chromium.launch({ executablePath: EXE,
+  const b = await navegador(chromium, { executablePath: EXE,
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
            '--no-sandbox', '--disable-dev-shm-usage'] });
   const ctx = await b.newContext({ viewport: { width: 900, height: 520 },

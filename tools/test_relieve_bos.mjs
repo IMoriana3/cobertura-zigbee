@@ -1,10 +1,10 @@
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8123;   // mismo convenio que el resto de bancos: un solo servidor sirve a todos
 
 const dem=readFileSync(new URL('./dem_pendiente_test.png', import.meta.url));   // el DEM sintetico VIVE EN EL REPO: en /tmp solo estaba en mi maquina
-const b=await chromium.launch({executablePath:EXE,args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
+const b=await navegador(chromium, {executablePath:EXE,args:['--use-angle=swiftshader','--no-sandbox','--disable-dev-shm-usage']});
 const c=await b.newContext({viewport:{width:1000,height:700}});
 await c.route('**/elevation-tiles-prod/**', r=>r.fulfill({status:200,contentType:'image/png',body:dem}));
 await c.route('**/server.arcgisonline.com/**', r=>r.abort());

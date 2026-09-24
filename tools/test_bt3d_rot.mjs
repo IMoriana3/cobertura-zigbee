@@ -12,14 +12,15 @@
  *     node tools/test_bt3d_rot.mjs elburgo
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra ? ' -> ' + extra : '')); } };
 
-const b = await chromium.launch({ executablePath: EXE,
-  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+const LANZA = { executablePath: EXE,
+  args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
+let b = await navegador(chromium, LANZA);
 const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
 await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
 const pg = await ctx.newPage(); const t0 = Date.now();
@@ -103,13 +104,18 @@ check('CONTROL rot 0 (El Burgo, Fayón, Túnez, Ayora, San José, Páramo): sin 
  * con cotas (solo El Burgo). Un layout IMPORTADO pasa por `updateSpin` con el
  * `panelAngle` global — tubo N-S del mundo, rot ignorado. El banco de arriba
  * daba 28 verdes sin proteger el caso del cliente: verde que no vigila.   */
-/* La primera página ya no hace falta y NO puede seguir viva: sigue
-   renderizando El Burgo (escena entera, sombras) con swiftshader mientras la
-   segunda intenta cargar, y en el runner de CI las dos pestañas comparten
-   proceso: pg2 no llegó a domcontentloaded en 120 s con el test sin cambiar.
-   Cerrada, la segunda carga en lo que tarda el HTML.                        */
-await pg.close();
-const pg2 = await ctx.newPage(); const t1 = Date.now();
+/* LA SEGUNDA CARGA, EN OTRO NAVEGADOR (regla R-5, tools/pw_navegador.mjs).
+   Cerrar la pestaña NO bastaba: el proceso de GPU es de todo el navegador y
+   seguía ocupado con El Burgo, así que la segunda página recibía su HTML y no
+   arrancaba. Se colgó así en CI (#753, #759) y pasaba al relanzar. Medido: con
+   otro contexto del mismo navegador, 7 de 12 lentas (~80 s) o colgadas; con
+   NAVEGADOR NUEVO, 12 de 12 en 0,44-1,70 s. `navegador()` ya no deja hacer la
+   segunda carga en el mismo: lanzaría un error.                              */
+await b.close();
+b = await navegador(chromium, LANZA);
+const ctx2 = await b.newContext({ viewport: { width: 320, height: 200 } });
+await ctx2.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
+const pg2 = await ctx2.newPage(); const t1 = Date.now();
 await pg2.goto(`http://localhost:${PUERTO}/terreno.html?planta=${process.argv[2] || 'elburgo'}`,
                { waitUntil: 'domcontentloaded', timeout: 120000 });
 while (!(await pg2.evaluate(() => typeof panelAngle === 'function' && typeof afbtSol === 'function'))) {

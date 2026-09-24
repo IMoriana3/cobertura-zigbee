@@ -40,7 +40,7 @@ const PUERTO = process.env.PUERTO || 8100;   // mismo convenio que el resto de b
 const RAIZ = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const BASE = process.env.BASE || `http://127.0.0.1:${PUERTO}`;
-import { EXEC } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXEC, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 let ok = 0, ko = 0;
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const check = (n, cond, extra) => { if (cond) { ok++; console.log('OK   ' + n); }
@@ -249,7 +249,7 @@ const PNG = Buffer.from(
   check('y cita el plano FTR.24.00145_5_C', /FTR\.24\.00145_5_C/.test(eq));
 }
 
-const browser = await chromium.launch({ executablePath: EXEC,
+const browser = await navegador(chromium, { executablePath: EXEC,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 /* CRONOMETRO GLOBAL. El de cada planta arrancaba y moria dentro del bucle, y
    por eso NO vio lo que se cuenta abajo: el tiempo no estaba en ningun tramo

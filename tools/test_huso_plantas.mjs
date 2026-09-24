@@ -14,7 +14,7 @@
        python3 -m http.server 8124 &
        node tools/test_huso_plantas.mjs                                                          */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 /* Huso REAL de cada emplazamiento en el solsticio de junio, en minutos sobre UTC. Escritos aquí a
    propósito: son el oráculo, y vienen de la zona horaria del país, no del código que se prueba. */
@@ -25,7 +25,7 @@ const ESPERADO = {
   sanjose: -300,                                       // Perú, UTC−5 todo el año
   dicayagua: -240,                                     // República Dominicana, UTC−4 todo el año
 };
-const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+const b = await navegador(chromium, { executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const pg = await b.newPage({ viewport: { width: 500, height: 300 } });
 /* Se corta `build()` antes de que empiece: la página se queda parseada, con sus funciones y sin
    una sola malla. Sin esto el banco tardaba minutos por planta construyendo geometría que no mira. */

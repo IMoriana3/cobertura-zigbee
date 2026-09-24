@@ -8,7 +8,7 @@
        python3 -m http.server 8124 --directory .   &
        node tools/test_fps.mjs elburgo ayora fayon                                                */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 const PLANTAS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 if (!PLANTAS.length) { console.error('uso: node tools/test_fps.mjs <planta…>'); process.exit(2); }
@@ -25,9 +25,15 @@ try {
   process.exit(2);
 }
 
-const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+/* UN NAVEGADOR POR PÁGINA PESADA (regla R-5, tools/pw_navegador.mjs): el
+   proceso de GPU es de todo el navegador, y con la escena anterior aún en él la
+   siguiente puede no arrancar (medido: 7 de 12 lentas o colgadas en el mismo
+   navegador; 12 de 12 bien con uno nuevo). `navegador()` ya no deja cargar la
+   segunda. */
+const LANZA = { executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] };
 console.log('planta        listo    objetos  mallas  instancias  triángulos   ms/frame   fps    ms/frame(cámara)  fps');
 for (const p of PLANTAS) {
+  const b = await navegador(chromium, LANZA);
   /* Ventana MINUSCULA en la pasada de escena: aqui se rasteriza por software, el coste va con los
      pixeles y cada evaluate tiene que esperar a que el bucle suelte un fotograma. A 1280x720 eso
      son 31 s por fotograma y medir cuesta minutos; a 320x200 son 7,5 veces menos pixeles. No
@@ -73,6 +79,5 @@ for (const p of PLANTAS) {
   const quieto = soloEscena ? { ms: '—', fps: '—' } : await mide(false);
   const movido = soloEscena ? { ms: '—', fps: '—' } : await mide(true);
   console.log(`${p.padEnd(13)} ${listo.padStart(5)}s ${String(escena.obj).padStart(8)} ${String(escena.mallas).padStart(7)} ${String(escena.inst).padStart(11)} ${String(escena.tri).padStart(11)} ${String(quieto.ms).padStart(10)} ${String(quieto.fps).padStart(6)} ${String(movido.ms).padStart(17)} ${String(movido.fps).padStart(6)}`);
-  await ctx.close();
+  await b.close();
 }
-await b.close();

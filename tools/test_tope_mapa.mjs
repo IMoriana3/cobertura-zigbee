@@ -22,7 +22,7 @@
  * (8192 terreno, 4096 backtracking y produccion, 2048 overcast, que ya estaba bien).
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 
 const PUERTO = process.env.PUERTO || 8124;
 const VIEJO = process.env.TOPE_MAPA === 'viejo';
@@ -42,12 +42,18 @@ const PAGS = [
   { id:'produccion',   url:'produccion.html',                        luz:'R3.sun',  rend:'R3.renderer', antes:4096 },
 ];
 
-const b = await chromium.launch({ executablePath: EXE,
+/* UN NAVEGADOR POR PÁGINA PESADA (regla R-5, tools/pw_navegador.mjs): el
+   proceso de GPU es de todo el navegador, y con la escena anterior aún en él la
+   siguiente puede no arrancar (medido: 7 de 12 lentas o colgadas en el mismo
+   navegador; 12 de 12 bien con uno nuevo). `navegador()` ya no deja cargar la
+   segunda. */
+const LANZA = { executablePath: EXE,
   args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader',
-        '--no-sandbox','--disable-dev-shm-usage'] });
+        '--no-sandbox','--disable-dev-shm-usage'] };
 
 const filas = [];
 for (const p of PAGS) {
+  const b = await navegador(chromium, LANZA);
   const ctx = await b.newContext({ viewport:{ width:900, height:520 } });
   await ctx.addInitScript(({ TOPE, MTS, VIEJO }) => {
     try { localStorage.cobertura_offline = '1'; } catch (e) {}
@@ -83,9 +89,8 @@ for (const p of PAGS) {
     }, { ...p, VIEJO });
   } catch (e) { f = { error: String(e).slice(0, 110) }; }
   filas.push({ id: p.id, ...f, errores });
-  await ctx.close();
+  await b.close();
 }
-await b.close();
 
 if (VIEJO) console.log('### SIN TOPE (la mutación): la GPU sigue declarando 2048 y se le devuelve a cada página el mapa que pedía antes. Este banco TIENE que salir rojo\n');
 console.log('página          pide mapa   declara la GPU');

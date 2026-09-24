@@ -17,7 +17,7 @@
    Va en modo SIN CONEXIÓN (localStorage cobertura_offline=1): ni satélite ni DEM, cero llamadas
    externas. El levantamiento propio de la planta SÍ se carga, que es un fichero del repo.         */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
+import { EXE, navegador } from './pw_navegador.mjs';   // la ruta del navegador, en un solo sitio
 const PUERTO = process.env.PUERTO || 8124;
 let malo = 0;
 const PLANTAS_ARG = process.argv.slice(2);
@@ -31,7 +31,7 @@ if (!PLANTAS_ARG.length) {
   process.exit(2);
 }
 for (const p of PLANTAS_ARG) {
-  const b = await chromium.launch({ executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
+  const b = await navegador(chromium, { executablePath: EXE, args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
   const pg = await b.newPage({ viewport: { width: 640, height: 420 } });
   const errs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR: ' + String(e).slice(0, 160)));

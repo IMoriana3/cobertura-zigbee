@@ -11,13 +11,13 @@
  *     node tools/test_afbt_mismo_tubo.mjs elburgo
  */
 import { chromium } from 'playwright-core';
-import { EXE } from './pw_navegador.mjs';
+import { EXE, navegador } from './pw_navegador.mjs';
 const PUERTO = process.env.PUERTO || 8124;
 let ok = 0, ko = 0;
 const check = (n, c, extra) => { if (c) { ok++; console.log('OK   ' + n); }
   else { ko++; console.log('FAIL ' + n + (extra ? ' -> ' + extra : '')); } };
 
-const b = await chromium.launch({ executablePath: EXE,
+const b = await navegador(chromium, { executablePath: EXE,
   args: ['--use-angle=swiftshader', '--no-sandbox', '--disable-dev-shm-usage'] });
 const ctx = await b.newContext({ viewport: { width: 320, height: 200 } });
 await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
