@@ -471,6 +471,16 @@ jobs:
       # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
       - name: el veto del óptimo puntúa con la métrica que se cobra
         run: node tools/con_piso.mjs tools/test_veto_por_mesa.mjs
+      # Refundación del BT, paso 3. La unidad es el ACCIONAMIENTO: en planta
+      # real con motores medidos, row, true3d y mgl ya no acoplan las dos líneas
+      # enteras de cada grupo, acoplan por motor. El banco compara con main (las
+      # seis que no cambian, bit a bit), trae su control negativo (con el cambio
+      # desarmado la comprobación 2 se pone roja) y carea la FUENTE DE MANDO de la
+      # página (`segCmd`, cortada tal cual) — regla R-1, audit5/REGLAS.md.
+      - name: la unidad es el accionamiento
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node tools/con_piso.mjs tools/test_unidad_accionamiento.mjs
       # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
       # planta real la página apaga ella sola las caras: el informe las volvía a
       # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que

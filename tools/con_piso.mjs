@@ -94,7 +94,8 @@ const PISO = {
   'test_pares_observados.mjs': 28,
   // los tres lentos, MEDIDOS en una corrida completa (tardan 3-9 min cada uno,
   // por eso estuvieron un rato declarados sin piso en vez de con un numero a ojo)
-  'test_veto_por_mesa.mjs': 7,
+  'test_veto_por_mesa.mjs': 8,   // paso 3 (R-1): + la puerta segCmd con dos controles
+  'test_unidad_accionamiento.mjs': 7,
   'test_backtracking_sim.mjs': 215,
   'test_produccion.mjs': 93,
 };
