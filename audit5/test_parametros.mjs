@@ -97,14 +97,27 @@ t('B · el signo declarado es el del motor: a θ = +30° la normal mira al ESTE,
   return `nr_x = ${M.nr[0].toFixed(3)} (a −30°: ${M2.nr[0].toFixed(3)})`;
 });
 
-/* ── C · el rango por unidad del optimizador = el del simulador ─────────── */
+/* ── C · el rango por unidad: la copia de la página = la página; el del BT3D = su fórmula ─ */
+/* Dos rangos por decisión del titular: el BT3D usa el cono CORRECTO (el del
+   comentario de conoHaz) y el acimut en el marco de la planta (convergencia).
+   La página no se toca. Se exige: (1) que la copia Python de la página siga
+   siendo la página, (2) que el rango del BT3D sea el de su fórmula declarada, y
+   (3) CONTROL: que los dos difieran de verdad, o la decisión no estaría aplicada. */
 for (const pl of ['ayora', 'fayon']) {
-  t(`C · ${pl}: rango Python (copia de rangoHaz) = rango del simulador en cada unidad × instante`, () => {
-    const [peor, n] = py(['-m', 'bt3d.careo', 'rangos', pl]).trim().split(' ');
+  t(`C · ${pl}: la copia Python de rangoHaz = el simulador tal cual (cono de :1030, sin convergencia)`, () => {
+    const [peor, n] = py(['-m', 'bt3d.careo', 'rangos', pl, '-1', 'pagina']).trim().split(' ');
     debe(+peor <= 1e-9, `máx |Δ| = ${peor}° en ${n}`);
-    const [peorNeg] = py(['-m', 'bt3d.careo', 'rangos', pl, '1']).trim().split(' ');
+    const [peorNeg] = py(['-m', 'bt3d.careo', 'rangos', pl, '1', 'pagina']).trim().split(' ');
     debe(+peorNeg > 1, `CONTROL NEGATIVO: con +τ a pvlib el careo no cae (máx |Δ| ${peorNeg})`);
     return `máx |Δ| ${(+peor).toExponential(1)}° en ${n} unidad×instante · control con +τ: ${(+peorNeg).toFixed(2)}°`;
+  });
+  t(`C · ${pl}: el rango del BT3D = la fórmula del comentario con el acimut en el marco de la planta`, () => {
+    const [peor, n] = py(['-m', 'bt3d.careo', 'rangos', pl, '-1', 'bt3d']).trim().split(' ');
+    debe(+peor <= 1e-9, `máx |Δ| = ${peor}° en ${n}`);
+    let dif = 0, mx = 0;
+    E[pl].instantes.forEach(q => q.rangos.forEach((r, k) => { const d = Math.max(Math.abs(r[0] - q.rangos_pagina[k][0]), Math.abs(r[1] - q.rangos_pagina[k][1])); if (d >= 0.1) dif++; mx = Math.max(mx, d); }));
+    debe(dif > 0, 'CONTROL: el rango del BT3D es el de la página en todas partes: ni el cono ni la convergencia están aplicados');
+    return `máx |Δ| ${(+peor).toExponential(1)}° en ${n} · difiere ≥ 0,1° del de la página en ${dif} unidad×instante (máx ${mx.toFixed(2)}°) · convergencia ${E[pl].convergencia}°`;
   });
 }
 
@@ -115,7 +128,7 @@ for (const pl of ['ayora', 'fayon']) {
     const Es = E[pl], r = rho(P, pl), lin = py(['-m', 'bt3d.careo', 'pares', pl]).trim().split('\n');
     debe(lin.length === Es.instantes.length, `instantes ${lin.length} ≠ ${Es.instantes.length}`);
     let dif = 0, tot = 0, difNeg = 0;
-    Es.instantes.forEach((q, i) => { const s = vectorSol(q.zen, q.az), pj = pares(Es.mesas, s, r), [, n, h] = lin[i].split(' ');
+    Es.instantes.forEach((q, i) => { const s = vectorSol(q.zen, q.az_malla), pj = pares(Es.mesas, s, r), [, n, h] = lin[i].split(' ');
       tot += pj.length; if (+n !== pj.length || h !== huella(pj)) dif++;
       if (i % 12 === 0) { const pn = pares(Es.mesas, s, r * 0.99); if (huella(pn) !== h) difNeg++; } });
     debe(dif === 0, `${dif} instantes difieren`);
@@ -139,7 +152,7 @@ function completitud(pl, factor, cada) {
   let reales = 0, faltan = 0, inst = 0;
   Es.instantes.forEach((q, k) => {
     if (k % cada) return; inst++;
-    const s = vectorSol(q.zen, q.az), env = new Set(pares(sub, s, r).map(([e, rr]) => e + ',' + rr));
+    const s = vectorSol(q.zen, q.az_malla), env = new Set(pares(sub, s, r).map(([e, rr]) => e + ',' + rr));
     for (let rep = 0; rep < 2; rep++) {
       const C = sub.map(m => caraMesa(m, (2 * rnd() - 1) * par.theta_max, par.z0, par.cuerda));
       for (let a = 0; a < C.length; a++) for (let b = 0; b < C.length; b++) { if (a === b) continue;

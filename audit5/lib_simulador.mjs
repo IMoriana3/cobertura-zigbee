@@ -17,8 +17,13 @@ import path from 'node:path';
 /* `extra`: nombres de funciones/constantes del bloque de física que el que
    llama necesita además (p. ej. el careo término a término de G_careo_609).
    Sin `extra`, devuelve exactamente lo de siempre. */
-export function cargaSimulador(ROOT, extra = []) {
-  const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+/* `parche`: función texto → texto sobre el HTML leído, SOLO para medir el efecto
+   de un cambio sin tocar la página (p. ej. audit5/F0_conohaz_anual.mjs). Sin
+   parche, devuelve exactamente lo de siempre. El que parchea comprueba que su
+   parche ha cambiado el texto: un parche que no encuentra su ancla mediría cero. */
+export function cargaSimulador(ROOT, extra = [], parche = null) {
+  let html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+  if (parche) html = parche(html);
   const i0 = html.indexOf('FÍSICA PURA'), i1 = html.lastIndexOf('/* FIN-FÍSICA');
   const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8') + '\n'
             + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');

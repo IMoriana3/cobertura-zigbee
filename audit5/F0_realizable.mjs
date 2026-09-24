@@ -36,7 +36,7 @@ for (const pl of ['ayora', 'fayon']) {
   const t0 = process.hrtime.bigint();
   E.instantes.forEach((q, qi) => {
     if (qi % CADA) return;
-    const s = vectorSol(q.zen, q.az), ti = process.hrtime.bigint();
+    const s = vectorSol(q.zen, q.az_malla), ti = process.hrtime.bigint();   // el sol en el marco de la planta
     const pm = pares(E.mesas, s, r);
     const porArista = new Map();
     for (const [e, rr] of pm) { const ue = E.mesas[e].u, ur = E.mesas[rr].u; if (ue === ur) continue;

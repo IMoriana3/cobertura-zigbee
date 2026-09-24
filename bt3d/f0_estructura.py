@@ -46,7 +46,7 @@ def por_instante(E, P, planta):
     filas = []
     for q in E['instantes']:
         t0 = time.process_time()
-        s = sol.vector_sol(q['zen'], q['az'])
+        s = sol.vector_sol(q['zen'], q['az_malla'])   # el sol en el marco de la planta (convergencia aplicada)
         pm = envolvente.pares(E['mesas'], s, rho)
         ua = escena.aristas_unidades(E, pm)
         est = grafo.estructura(nU, list(ua))
@@ -176,7 +176,7 @@ def main(argv):
         H = horquilla(pl, E, filas, len(E['unidades']), REALIZABLE)
         if H:
             todo[pl]['horquilla'] = H
-            print('  ANCHURA DEL PROBLEMA (dominio = rango del simulador) · %d instantes (1 de cada %d) · rejilla de %d θ por rango para el realizado' % (len(H['por_instante']), H['cada'], H['k']))
+            print('  ANCHURA DEL PROBLEMA (dominio = el rango del BT3D: cono del comentario, convergencia aplicada) · %d instantes (1 de cada %d) · rejilla de %d θ por rango para el realizado' % (len(H['por_instante']), H['cada'], H['k']))
             print('  elevación  inst  realizados/envolvente   PARES: anchura ∈ [inf real., sup env.]   MORAL: anchura máx ∈ [inf, sup] · p50 ∈ [inf, sup]   mayor comp. moral realizada')
             for r in H['por_banda']:
                 print('  %-9s %5d  %18.1f %%   %30s   %18s · %-14s %12d' % (r['banda'], r['instantes'], 100 * r['realizados_sobre_envolvente'],

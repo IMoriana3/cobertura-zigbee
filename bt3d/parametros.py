@@ -37,6 +37,7 @@ def resolver(P, planta, ids):
         'rejilla': P['rejilla_deg'], 'banda_muerta': P['banda_muerta_deg'], 'aoi_haz': P['aoi_haz_deg'],
         'margen_rango': P['margen_rango_deg'], 'rho': r, 'tau_a_pvlib': P['convencion_signo']['tau_a_pvlib_signo'],
         'convergencia': conv,
+        'cono_haz': P['cono_haz'],
     } for i in ids]
 
 

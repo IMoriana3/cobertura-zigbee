@@ -44,8 +44,8 @@
       "nb": 2,
       "nb_fuente": "CONFIGURADO a mano: backtracking.html:189 (el control de la página, value=2); nbFicha() no encuentra ninguna ficha que lo traiga (backtracking.html:4638-4650). Es un supuesto, no un dato de planta.",
       "axis_az_deg": 0,
-      "convergencia_deg": null,
-      "_convergencia_nota": "el fichero no la declara. Si el marco de ayora_cotas.json es UTM 30N (no verificado), sería +1,16° (calculada con (λ−λ0)·sen φ, no leída)"
+      "convergencia_deg": 1.161,
+      "_convergencia_nota": "CALCULADA, no leída: (λ − λ0)·sen φ con UTM 30N (λ0 = −3°), de clat/clon de ayora_layout.json. El marco de ayora_cotas.json ES el UTM 30N del layout (EPSG:25830): ajuste de los 751 seguidores cotas↔layout, rotación −0,0003°, residuo p50 0,06 m / p95 0,10 m (bt3d, fase 0)."
     },
     "fayon": {
       "geometria": "fayon_layout.json (24 seguidores, x/n del DWG) + fayon_relieve.json (DEM, paso 10 m). EL PLANO, NO LA MEDIDA: no hay levantamiento de cotas; el propio relieve dice validado=false, y el error del mismo producto donde sí se pudo medir fue p50 0,83 / 1,29 m y p95 2,37 / 3,77 m (Ayora / San José)",
@@ -70,11 +70,11 @@
       "hueco_motor_m": 0.4,
       "_hueco_motor_fuente": "fayon_layout.json mesa.gapDrive",
       "convergencia_deg": -1.764,
-      "_convergencia_nota": "fayon_layout.json georef.nota: n es norte de CUADRÍCULA UTM; convergencia −1,764° respecto al geográfico"
+      "_convergencia_nota": "fayon_layout.json georef.nota: n es norte de CUADRÍCULA UTM 31N; convergencia −1,764° respecto al geográfico (la misma cuenta da −1,765°)"
     }
   },
-  "aplicar_convergencia": false,
-  "_aplicar_convergencia_nota": "false = como el simulador: el acimut del sol se usa tal cual contra el eje n (axisAz 0). La sensibilidad a esto es de la fase 5",
+  "aplicar_convergencia": true,
+  "_aplicar_convergencia_nota": "DECISIÓN DEL TITULAR (2026-09-24): el BT3D la aplica; el simulador no. Convenio: γ = ángulo del norte geográfico al de cuadrícula, positivo si la cuadrícula está al este; el acimut del sol en el marco de la planta es az_malla = az − γ. Diferencia declarada entre el BT3D y la página, con su efecto medido (audit5/F0_convergencia.mjs).",
   "dias": [
     [
       2026,
@@ -89,5 +89,7 @@
   ],
   "paso_min": 5,
   "elev_min_deg": 0.5,
-  "_dias_nota": "los dos días del encargo (solsticios), cada 5 min, sol > 0,5° (el mismo criterio que audit5/F0_dimension.mjs)"
+  "_dias_nota": "los dos días del encargo (solsticios), cada 5 min, sol > 0,5° (el mismo criterio que audit5/F0_dimension.mjs)",
+  "cono_haz": "comentario",
+  "_cono_haz_nota": "DECISIÓN DEL TITULAR (2026-09-24): el BT3D usa la fórmula CORRECTA de conoHaz, la de su comentario (backtracking.html:992-994: sin λ = s·a con s·a = sen Z·cos ΔA·cos τ + cos Z·sen τ). La página usa la de backtracking.html:1030, con seno y coseno de τ cambiados, y NO se toca. Diferencia declarada y medida (audit5/F0_conohaz.mjs, audit5/F0_conohaz_anual.mjs)."
 }

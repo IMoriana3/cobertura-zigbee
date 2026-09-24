@@ -70,23 +70,30 @@ export function unidadesDe(mesas) {
   });
 }
 
-/* instantes de los días declarados, con el rango de cada unidad */
-export function instantes(F, P, planta, clat, clon, unidades) {
+/* instantes de los días declarados, con el rango de cada unidad EN LAS DOS
+   VERSIONES: `rangos_pagina` = el del simulador tal cual (su cono de
+   backtracking.html:1030 y el acimut sin convergencia), para el careo; y
+   `rangos` = el del BT3D (cono de la fórmula del comentario y acimut en el
+   marco de la planta, az_malla = az − γ). `Fc` es el simulador cargado con el
+   cono corregido (audit5/lib_conohaz.mjs). */
+export function instantes(F, Fc, P, planta, clat, clon, unidades) {
   const par = resolver(P, planta, unidades.map(u => u.id)), out = [];
   for (const [Y, M, D] of P.dias) {
     const fecha = `${Y}-${String(M).padStart(2, '0')}-${String(D).padStart(2, '0')}`, doy = F.doyOf(fecha);
     for (let min = 0; min < 1440; min += P.paso_min) {
       const g = F.solarPos(Date.UTC(Y, M - 1, D, 0, min), clat, clon);
       if (!(g.elev > P.elev_min_deg)) continue;
-      const az = g.az - par[0].convergencia;
-      const rangos = unidades.map((u, k) => F.rangoHaz(g.zen, az, { maxAngle: par[k].theta_max, axisAz: par[k].axis_az }, u.tilt, u.pendiente));
-      out.push({ fecha, doy, min, zen: g.zen, az, elev: g.elev, rangos });
+      const azM = g.az - par[0].convergencia;
+      const Fr = par[0].cono_haz === 'comentario' ? Fc : F;
+      const rangos_pagina = unidades.map((u, k) => F.rangoHaz(g.zen, g.az, { maxAngle: par[k].theta_max, axisAz: par[k].axis_az }, u.tilt, u.pendiente));
+      const rangos = unidades.map((u, k) => Fr.rangoHaz(g.zen, azM, { maxAngle: par[k].theta_max, axisAz: par[k].axis_az }, u.tilt, u.pendiente));
+      out.push({ fecha, doy, min, zen: g.zen, az: g.az, az_malla: azM, elev: g.elev, rangos, rangos_pagina });
     }
   }
   return out;
 }
 
-export function escena(ROOT, F, VER, P, planta) {
+export function escena(ROOT, F, Fc, VER, P, planta) {
   const lay = JSON.parse(fs.readFileSync(path.join(ROOT, `${planta}_layout.json`), 'utf-8'));
   const { mesas, lineas } = planta === 'ayora' ? mesasAyora(ROOT) : mesasFayon(ROOT, P);
   const unidades = unidadesDe(mesas);
@@ -94,5 +101,6 @@ export function escena(ROOT, F, VER, P, planta) {
   return { planta, ver: VER, lineas, clat: lay.clat, clon: lay.clon,
     mesas: mesas.map(m => ({ x: m.x, n: m.n, z: m.z, u: uDe.get(m.uid) })),
     unidades: unidades.map(u => ({ id: u.id, mesas: u.mesas, tilt: u.tilt, pendiente: u.pendiente, filas: u.filas })),
-    instantes: instantes(F, P, planta, lay.clat, lay.clon, unidades) };
+    convergencia: resolver(P, planta, ['x'])[0].convergencia, cono_haz: P.cono_haz,
+    instantes: instantes(F, Fc, P, planta, lay.clat, lay.clon, unidades) };
 }
