@@ -99,6 +99,7 @@ const PISO = {
   // los tres lentos, MEDIDOS en una corrida completa (tardan 3-9 min cada uno,
   // por eso estuvieron un rato declarados sin piso en vez de con un numero a ojo)
   'test_veto_por_mesa.mjs': 7,
+  'test_piso_careo.mjs': 6,       // el careo de esta tabla con el workflow, con cinco mutantes
   'test_backtracking_sim.mjs': 215,
   'test_produccion.mjs': 93,
 };
@@ -143,7 +144,55 @@ function declaraAlcance(txt) {
    Queda escrito aquí y no en una nota al pie porque es la mitad de los bancos
    del repo, y una lista de pisos que no dice qué NO cubre se lee como si lo
    cubriera todo. */
-const MATRIZ_SIN_MEDIR = 36;
+/* ERA UN NÚMERO, Y ERA FALSO DESDE QUE SE ESCRIBIÓ. `MATRIZ_SIN_MEDIR = 36`
+   entró en 242f3aa (#755); ese mismo día la matriz tenía 39 entradas (33
+   ficheros distintos). Treinta y seis no es ninguna de las dos cuentas: se
+   contó a mano, y nada lo comparaba con el workflow. Es el mismo defecto que el
+   piso vigila en los bancos —encoger o crecer sin que nadie se entere— dentro
+   del propio vigilante. Ahora es la LISTA de entradas, con el nombre con que
+   salen en los checks, y `careoWorkflow` la carea con el workflow en los dos
+   sentidos. */
+const MATRIZ_SIN_MEDIR = [
+  'terreno · seis plantas',
+  'relieve · chicas',
+  'relieve · grandes',
+  'relieve · El Burgo',
+  'test_relieve_bos.mjs',
+  'test_apoyo_soporte.mjs',
+  'suelo · dos plantas',
+  'test_cobertura_hsu.mjs',
+  'test_telemetria.mjs',
+  'test_bt3d_rot.mjs',
+  'test_afbt_mismo_tubo.mjs fayon',
+  'test_afbt_vecinos.mjs',
+  'test_seleccion.mjs',
+  'test_gcr_planta.mjs',
+  'test_solapes.mjs',
+  'test_afbt_rayos.mjs · Ayora',
+  'test_afbt_rayos.mjs · El Burgo (DEM sintético)',
+  'test_afbt_rayos.mjs · Bagnarelli (DEM sintético)',
+  'test_bt3d_rayos.mjs · Ayora',
+  'test_bt3d_rayos.mjs · San José',
+  'test_huso_plantas.mjs',
+  'test_panel_plegable.mjs',
+  'test_plano_bifila.mjs',
+  'test_plantas_bifila.mjs',
+  'test_plano_zoom.mjs',
+  'test_malla_pagina.mjs',
+  'bench_cobertura_multi.mjs · las 10 plantas con NCU',
+  'test_contrato_datos.mjs',
+  'test_sombras.mjs · El Burgo',
+  'test_tope_mapa.mjs',
+  'test_produccion_3d.mjs',
+  'test_produccion_lazo.mjs',
+  'test_render_sol.mjs',
+  'test_informe_graf.mjs',
+  'test_certificado_dia.mjs',
+  'test_indicador_bt.mjs',
+  'test_overcast_vista.mjs',
+  'test_equipos.mjs · El Burgo',
+  'test_equipos.mjs · Ayora',
+];
 
 /* ── EL LECTOR DEL RECUENTO ──────────────────────────────────────────────
    Seis formatos, porque cada banco publica a su manera y unificarlos sería
@@ -194,14 +243,63 @@ function guardiaTabla() {
   return malo;
 }
 
+/* ── EL VIGILANTE DEL VIGILANTE: la tabla contra el WORKFLOW ─────────────
+   `guardiaTabla` carea la tabla con los ficheros; nadie la careaba con lo que
+   el CI CORRE. Así pudo pasar lo de arriba (36 contra 39) y así podría pasar
+   que un banco entre en CI sin piso, o que un piso se quede escrito para un
+   banco que ya nadie envuelve —que es como `test_caras_bajo_demanda.mjs` tuvo
+   su piso escrito y sin aplicar (bancos.yml, «EL ÚNICO DE LOS 32 PISOS…»).
+   Cae si no cuadran, en los DOS sentidos:
+     · un banco en el workflow sin piso ni exención, o una entrada de la matriz
+       que la lista no conoce;
+     · un piso (o exención) que ningún paso aplica con `con_piso`, o una
+       entrada de la lista que ya no está en la matriz.
+   `CON_PISO_YML` apunta a otro workflow: así lo prueba su banco de controles
+   (`tools/test_piso_careo.mjs`) sin tocar el de verdad. */
+function entradasMatriz(yml) {
+  const i0 = yml.indexOf('\n  navegador:'), i1 = yml.indexOf('\n  puerta:');
+  if (i0 < 0 || i1 < i0) return null;
+  const out = [];
+  for (const m of yml.slice(i0, i1).matchAll(/-\s*\{\s*banco:\s*([^,}\s]+)([^}]*)\}/g)) {
+    const a = /arg:\s*(?:'([^']*)'|([^,}\s]+))/.exec(m[2]), n = /nombre:\s*'([^']*)'/.exec(m[2]);
+    const arg = a ? (a[1] !== undefined ? a[1] : a[2]) : '';
+    out.push(n ? n[1] : m[1] + (arg ? ' ' + arg : ''));
+  }
+  return out;
+}
+function careoWorkflow() {
+  const f = process.env.CON_PISO_YML || path.join(RAIZ, '.github', 'workflows', 'bancos.yml');
+  if (!fs.existsSync(f)) { console.log('ROJO · no encuentro el workflow ' + f); return 1; }
+  const yml = fs.readFileSync(f, 'utf8');
+  // las líneas de comentario no corren nada: un banco NOMBRADO en un comentario no está en CI
+  const vivo = yml.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+  let malo = 0;
+  const envueltos = new Set([...vivo.matchAll(/con_piso\.mjs\s+(?:tools|tests)\/([\w.-]+)/g)].map(m => m[1]));
+  const nombrados = new Set([...vivo.matchAll(/(?:tools|tests)\/(test_[\w-]+\.(?:mjs|js|py))/g)].map(m => m[1]));
+  for (const b of nombrados) if (!PISO[b] && !SIN_PISO[b]) {
+    console.log('ROJO · ' + b + ' corre en el workflow y no tiene piso ni está declarado sin él'); malo++;
+  }
+  for (const b of Object.keys(PISO).concat(Object.keys(SIN_PISO))) if (!envueltos.has(b)) {
+    console.log('ROJO · ' + b + ' tiene piso (o exención) y NINGÚN paso del workflow lo corre con con_piso: el piso no se aplica'); malo++;
+  }
+  const mat = entradasMatriz(yml);
+  if (!mat) { console.log('ROJO · no encuentro el job `navegador` en el workflow'); return malo + 1; }
+  if (!mat.length) { console.log('ROJO · el job `navegador` no tiene entradas: el lector no está leyendo'); malo++; }
+  const lista = new Set(MATRIZ_SIN_MEDIR), enYml = new Set(mat);
+  for (const e of mat) if (!lista.has(e)) { console.log('ROJO · «' + e + '» está en la matriz y NO en MATRIZ_SIN_MEDIR: entró en CI sin registrar'); malo++; }
+  for (const e of MATRIZ_SIN_MEDIR) if (!enYml.has(e)) { console.log('ROJO · «' + e + '» está en MATRIZ_SIN_MEDIR y ya NO está en la matriz'); malo++; }
+  if (mat.length !== enYml.size) { console.log('ROJO · la matriz repite nombres de entrada (' + mat.length + ' entradas, ' + enYml.size + ' nombres)'); malo++; }
+  return malo;
+}
+
 /* ── MAIN ─────────────────────────────────────────────────────────────── */
 const args = process.argv.slice(2);
 if (args[0] === '--tabla') {
-  const malo = guardiaTabla();
+  const malo = guardiaTabla() + careoWorkflow();
   const n = Object.keys(PISO).length, s = Object.keys(SIN_PISO).length;
   console.log(malo ? malo + ' problema(s) en la tabla de pisos'
     : n + ' bancos con piso medido · ' + s + ' declarados sin piso, con motivo');
-  if (!malo) console.log('  y ' + MATRIZ_SIN_MEDIR + ' del job `navegador` SIN MEDIR: necesitan Chromium y el repo servido.');
+  if (!malo) console.log('  y ' + MATRIZ_SIN_MEDIR.length + ' entradas del job `navegador` SIN MEDIR (careadas con el workflow): necesitan Chromium y el repo servido.');
   process.exit(malo ? 1 : 0);
 }
 if (!args.length) { console.log('uso: node tools/con_piso.mjs tools/test_x.mjs [args...]'); process.exit(1); }
