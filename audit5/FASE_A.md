@@ -517,9 +517,15 @@ consigna podría quitarla.
 | `pairwise` · día (21-jun y 21-dic, cada 10 min) | 14,2650 → 14,2659 kWh/m² (**+0,006 %**) | 0,3138 → 0,5492 % | 0,0000 → 0,5464 | 0,3138 → **0,0028** | 4.964 → **0** | 1,0642 → 1,1248 % | 3.079 → **0** | 1.215 → **91** (de 5.475 → 3.949 mirados) |
 | `true3d` · día | 11,9533 → 11,9533 (**−0,000 %**) | 0,5625 → 0,5773 % | 0,0001 → 0,5109 | 0,5624 → 0,0664 | 4.978 → 1.120 | 1,1466 → 1,1527 % | 4.541 → **0** | 0 → 0 (de 33 → 33) |
 | `astro` (TEST NULO) | Δ **0** exacto | = | 0 → 0 | = | 0 → 0 | = | — | — |
-| anual (21 de cada mes, cada 20 min) | **EN CURSO** | | | | | | | |
+| `pairwise` · anual (21 de cada mes, cada 20 min, ponderado por días) | 2.711,5112 → 2.711,7360 kWh/m² (**+0,008 %**) | 0,3918 → 0,6260 % | 0,0000 → 0,6232 | 0,3918 → **0,0029** | 382.812 → **0** | 0,9016 → 0,9814 % | 270.239 → **0** | 150.802 → **4.725** (de 521.122 → 381.168 mirados) |
+| `true3d` · anual | 2.251,6537 → 2.251,6578 (**+0,000 %**) | 0,6438 → 0,6508 % | 0,0000 → 0,4513 | 0,6437 → 0,1995 | 453.214 → 214.260 | 1,0035 → 1,0066 % | 424.825 → **0** | 0 → 0 (de 2.924 → 2.954) |
+| `astro` (TEST NULO), anual | 2.659,5102 → 2.659,5102 (Δ **0** exacto) | = | 0 → 0 | = | 0 → 0 | = | — | — |
 
-**Lectura (día).**
+Las cuentas del anual (mesas×instante, unidades×instante) van ponderadas por
+los días de cada mes. El anual es cada 20 min y el día cada 10 min: sus cifras
+no se suman entre sí.
+
+**Lectura (día y anual: dicen lo mismo).**
 
 - **`pairwise`:** la sombra que una consigna podía quitar desaparece (0,3138 →
   0,0028 %) y ya no se apunta fuera del haz (4.964 → 0). La media de la
