@@ -289,3 +289,23 @@ La barrera ya estaba activa al escribir esta ampliación: paró dos órdenes que
 llevaban el patrón como texto (el control negativo y la primera escritura de
 este apartado), y hubo que hacerlo con ficheros. Sigue siendo la limitación
 declarada: mira el TEXTO.
+
+### Segunda ampliación (2026-09-24, noche): el filtro no era solo `grep`
+
+**Pasó otra forma de la misma familia (E-X1-R3-2, `audit5/REFUNDACION_P3.md`).**
+
+- **La orden:** para parar un banco se usó `for p in $(ps … | awk
+  '/patrón/'); do kill $p`. Es selección por patrón sobre la línea de órdenes,
+  con `awk` en lugar de `grep`, en un `for` y matando.
+- **Qué casó:** también la shell envoltorio de la corrida vieja. Esa vez era la
+  que se quería parar, así que no hubo daño.
+- **Por qué no la paró la barrera:** solo cubría `ps | grep` dentro de
+  `while`/`until`.
+- **Cambio en la barrera:** ahora bloquea también `kill` alimentado por la
+  salida de `ps` filtrada con `grep`, `awk` o `sed` (en `$(…)` o vía `xargs`),
+  y las esperas con esos filtros.
+- **Banco:** 21 formas bloqueadas (las cuatro que pasaron, tal cual) y 8
+  legítimas que pasan. Contra la barrera de la mañana, 16 fallos.
+
+La lección es la misma: se lee la lista de PIDs APARTE, se mira, y se mata PID
+a PID.
