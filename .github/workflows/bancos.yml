@@ -395,6 +395,23 @@ jobs:
       # que una ficha lo traiga se use (con planta sintética y control negativo).
       - name: nb dice de dónde sale
         run: node tools/test_nb_procedencia.mjs
+      # De dónde sale la ortofoto. Estaba escrito CUATRO veces y no coincidían:
+      # `plano.html` pedía SÓLO ESRI, así que la misma planta salía borrosa en el
+      # plano y nítida en el terreno —PNOA da 25 cm/px— y nada lo decía. Ahora hay
+      # un `orto.js` y este banco vigila las dos mitades: que numere bien las
+      # teselas (el x/y cambiado de sitio da otro punto del planeta y la página no
+      # chilla) y que las páginas NO se vuelvan a escribir la URL. Contra las
+      # plantas de verdad, sin red. Mutación `ORTO_SUELTO=si`.
+      - name: la ortofoto sale de un solo sitio
+        run: node tools/test_orto.mjs
+      - name: y su mutación, en rojo
+        run: |
+          set +e
+          ORTO_SUELTO=si node tools/test_orto.mjs > /tmp/orto_mut.log 2>&1
+          rc=$?
+          set -e
+          [ "$rc" = "1" ] || { echo "la mutacion debia salir 1 y salio $rc"; cat /tmp/orto_mut.log; exit 1; }
+          echo "la mutacion sale en rojo, como debe"
       # La página publica LAS DOS métricas de POA de planta —por mesa y por
       # línea— en vez de elegir una en silencio según haya segTilt. Con control
       # negativo sobre el código de antes y test nulo de cada corte.
