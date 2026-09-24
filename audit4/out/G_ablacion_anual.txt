@@ -1,1 +1,20 @@
 R4 · P1 · ABLACIÓN DE LA RUTA POR LÍNEA (pairwise) · v1.78.0 · Ayora, banda de la página (79 líneas)
+
+1 · FIDELIDAD (21-jun y 21-dic) · peor |θ arnés con todo encendido − policyAngles| = 0.000e+0° ✓
+
+2 · TEST NULO (21-jun y 21-dic, 11455 línea×instante) · ¿apagar la etapa cambia el θ?
+  sin torsion    cambia    613 de 11455 (5.4 %) · mayor cambio 23.7000°
+  sin regla      cambia   5605 de 11455 (48.9 %) · mayor cambio 13.7000°
+  sin reparacion cambia    569 de 11455 (5.0 %) · mayor cambio 3.7635°
+  sin drive      cambia   7381 de 11455 (64.4 %) · mayor cambio 57.0000°
+  sin repair     cambia      0 de 11455 (0.0 %) · mayor cambio 0.0000°   ⚠ NO CAMBIA NADA: su fila de energía no informa
+
+3 · ANUAL de pairwise por LÍNEA, 12/12, kWh/m² · control: base = 2307.0294 (D_anual_ayora) → 2307.0294 ✓
+  variante           anual      vs base      cierra del hueco línea→mesa (2307.0294 → 2705.1154)
+  todo encendido    2307.0294     0.000 %       0.0 %
+  sin torsion       2308.1028     0.047 %       0.3 %
+  sin regla         2307.3045     0.012 %       0.1 %
+  sin reparacion    2306.9509    -0.003 %      -0.0 %
+  sin drive         2677.6999    16.067 %      93.1 %
+  sin repair        2307.0294     0.000 %       0.0 %
+RC=0

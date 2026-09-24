@@ -196,8 +196,10 @@ diera un hueco parecido al de `pairwise`, el hueco sería del instrumento.
 |---|---|---|---|---|---|---|---|---|
 | `astro` (control) | 12/12 | 2654.9656 | 2659.3533 | **+0.1653 %** | 1.7618° | 418 | 421 | 1.01× |
 | `pairwise` | 12/12 | 2307.0294 | 2705.1154 | **+17.2554 %** | 59.0000° | 910 | 409 | 0.45× |
-| `optimal` | (en curso) | | | | | | | |
+| `optimal` | **8/12 · COTA** (tope de 7.200 s agotado) | 2092.3610 | 2111.1432 | **+0.8977 %** | 46.2785° | 5307* | 2390* | 0.45×* |
 | `optfree` | (en curso) | | | | | | | |
+
+\* `optimal` se cronometró con la ablación corriendo en la misma máquina (carga 2,0 al acabar): sus segundos absolutos no son comparables con los de `pairwise`/`astro`; el cociente mesa/línea sí, porque las dos cadenas se miden en la misma pasada y paso a paso. Y es una **cota**: 8 de 12 meses (ene-ago), sin extrapolar.
 
 kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
 
@@ -229,21 +231,52 @@ kWh/m² de planta. Mes a mes (el hueco no es de un mes raro: está en los doce):
 - Contra la sintética de `D_anual_por_mesa` (+0,39 %), Ayora da **44 veces más**: el
   relieve real es donde el promediado por línea hace daño.
 
+## La ablación: el retroceso de más lo produce el ACOPLE DE ACCIONAMIENTO de la ruta por línea, no `pairDz`
+
+Sonda: `audit4/G_ablacion_anual.mjs` → `audit4/out/G_ablacion_anual.txt`. La ruta por
+línea de `pairwise`, con cada etapa apagable (`audit4/lib_p2_arnes.mjs`,
+`anglesLineaAblacion`), el mismo anual de Ayora (banda de la página, días 21,
+paso 10 min).
+
+**Controles, antes de contar:**
+- fidelidad: con todo encendido el arnés da los θ de `policyAngles` con diferencia
+  **0** en 21-jun y 21-dic, y el anual **2.307,0294** de `D_anual_ayora` exacto;
+- test nulo (11.455 línea×instante): apagar cada etapa cambia el θ en el 5,4 %
+  (torsión), 48,9 % (regla del más retrocedido), 5,0 % (reparación) y 64,4 %
+  (acople); **`repairNoShade` no cambia nada: 0 de 11.455**, y su fila no informa.
+
+| variante | anual kWh/m² | vs todo encendido | **cierra del hueco línea→mesa** (2.307,03 → 2.705,12) |
+|---|---|---|---|
+| todo encendido | 2.307,0294 | 0 | 0 |
+| sin `pairThetaTorsion` (`:1121`) | 2.308,1028 | +0,047 % | 0,3 % |
+| sin la regla del más retrocedido (`:1197`) | 2.307,3045 | +0,012 % | 0,1 % |
+| sin la reparación por torsión (`:1198-1224`) | 2.306,9509 | −0,003 % | −0,0 % |
+| **sin `driveCoupleSafe`** (`:789`) | **2.677,6999** | **+16,067 %** | **93,1 %** |
+| sin `repairNoShade` (`:3492`) | 2.307,0294 | 0 | no informa (test nulo) |
+
+**Lectura, con la cifra:** el 93,1 % del hueco entre la ruta por línea y la rama
+por mesa lo produce **una sola etapa, el acople de accionamiento de la ruta por
+línea**. Las etapas que tocan el candidato de la pareja —donde vive `pairDz`—
+suman menos del 0,4 % del hueco. En Ayora la banda va en **bifila** (`T.groups`,
+54 grupos): en la ruta por línea un grupo acopla **líneas enteras** y las lleva a
+un θ común —el de la más restrictiva—, cuando el acople real es de las cuatro
+mesas de un motor.
+
+**Consecuencia para la decisión:** la opción **(b)** —dejar la ruta por línea y
+que P2 solo mejore el candidato— actúa sobre etapas que, apagadas enteras, mueven
+el anual menos de un 0,05 %. **No puede cerrar el 17 % del hueco.** Esto sí es
+una medida, no una hipótesis.
+
 ## Lo que P1 deja medido, y lo que NO
 
 - **Dirección del defecto:** la ruta por línea no pierde por sombrear de más,
   **pierde por retroceder de más**: `pairwise` por línea queda un 13,1 % por
   debajo de `astro`, y por mesa un 1,7 % por encima.
-- **Qué etapa de la cadena por línea causa el retroceso: NO MEDIDO.** `pairDz` es
-  una **media**, no el peor caso, así que por sí sola no obliga a proteger a la
-  peor fila. Candidatas sin medir: el barrido 3D de `pairThetaTorsion`
-  (`:1121`), que exige limpiar la pareja de líneas entera con un θ; el
-  min(sg·θ) de las dos parejas (`:1197`); `driveCoupleSafe`; y `repairNoShade`.
-  Separarlas es desactivar una cada vez en el arnés, con el mismo anual.
-- **Techo de (b):** el −18,5 % es de extremos con sombra evitable (T5a), no de
-  energía. La energía de (b) está **NO MEDIDA**. Como el candidato extremo cierra
-  el ángulo para toda la línea, lo esperable es que (b) **agrande** el retroceso;
-  es una hipótesis hasta medirla.
+- **Qué etapa causa el retroceso: MEDIDO**, en la sección anterior: el acople
+  de accionamiento de la ruta por línea, el 93,1 % del hueco.
+- **Techo de (b):** en sombra, −18,5 % de T5a; en energía, las etapas que (b)
+  toca mueven el anual < 0,05 % apagadas enteras, así que (b) no llega al hueco
+  del 17 % aunque mejore su candidato. La energía exacta de (b) no se ha corrido.
 
 ## Lectura del revisor (no es la decisión)
 
@@ -253,4 +286,4 @@ la peor fila —eso era una explicación sin medida y se retiró—, sino que la
 por mesa da un **17,3 % más de energía** en `pairwise` con el control de `astro`
 en **+0,17 %**, y **cuesta menos tiempo** (409 s frente a 910 s). La decisión es
 del titular y P2 no empieza hasta que la tome. Si (b) queda descartada o no lo
-dice la ablación de abajo, no esta lectura.
+dice la ablación, no esta lectura — y la ablación dice que (b) no llega.
