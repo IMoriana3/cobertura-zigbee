@@ -111,12 +111,20 @@ check('CONTROL rot 0 (El Burgo, Fayón, Túnez, Ayora, San José, Páramo): sin 
    renderizando El Burgo (escena entera, sombras) con swiftshader mientras la
    segunda intenta cargar, y en el runner de CI las dos pestañas comparten
    proceso: pg2 no llegó a domcontentloaded en 120 s con el test sin cambiar.
-   CERRAR LA PESTAÑA NO BASTÓ: con `pg.close()` y la segunda en el MISMO
-   contexto, el mismo timeout volvió en #753 y #759 (PRs que no tocaban ni la
-   página ni el test) y pasó al relanzar. Un test que depende de la carga del
-   runner no distingue código bueno de malo. Ahora se cierra el CONTEXTO entero
-   —con él, su proceso de render y su red— y la segunda carga va en uno nuevo,
-   sin nada de la primera. Los tiempos de las dos cargas salen en el log. */
+   LO QUE SE SABE DEL CUELGUE (2026-09-24), antes de buscarle la causa:
+   · NO ES LENTITUD. Cuando la segunda carga termina, tarda 0,4-1,4 s; cuando
+     no, se agota a 120 s. No hay tiempos intermedios, así que no es
+     contención de CPU ni tamaño del repo: es una espera que nunca se resuelve,
+     un recurso que la carga pide y no obtiene.
+   · Colgó en CI con la segunda pestaña en el MISMO contexto (#753 f0a0363,
+     #759 a0e4ab9), en PRs que no tocaban ni la página ni el test, y pasó al
+     relanzar. Relanzamientos necesarios hasta hoy: 2.
+   · En local, 3 pasadas por versión con la máquina a carga 6-10: la de la
+     pestaña (la de main) no colgó; la de CONTEXTO NUEVO colgó en 1 de 3. La
+     hipótesis «es la pestaña compartida» queda REFUTADA: un contexto nuevo no
+     lo arregla.
+   La causa se busca registrando las peticiones de la segunda carga.
+   ↓ EN MEDIDA, no es el arreglo: */
 await pg.close();
 await ctx.close();
 const ctx2 = await b.newContext({ viewport: { width: 320, height: 200 } });
