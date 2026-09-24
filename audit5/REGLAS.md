@@ -155,3 +155,28 @@ REFUTACIÓN y E-X1-R3-3).
 si solo acoplara. Va al registro del patrón por el otro lado: allí el código y
 su descripción dejaron de coincidir; aquí el nombre decía la verdad y no se
 leyó.
+
+## R-5 · La protección va donde todos pasan, no en la cabecera del primero que la pagó
+
+**Enunciado.** Una advertencia en la cabecera de un fichero protege a quien lee
+ese fichero. La protección tiene que estar donde pasan todos, y mejor IMPUESTA
+que aconsejada: que el defecto no se pueda repetir por descuido, no solo que se
+desaconseje. Es la misma forma que resolvió `pkill` (R-2): por mecanismo, no por
+caso.
+
+**Nació de:** el cuelgue de `test_bt3d_rot` (registro del patrón, caso 10).
+
+- #479 escribió la razón en `tools/test_terreno_plantas.mjs:10-11`: «reusando
+  uno solo, el proceso de render se quedaba ocupado con la planta anterior y la
+  siguiente no arrancaba nunca».
+- Tres bancos vecinos (`test_bt3d_rot`, `test_panel_plegable` y
+  `test_relieve_plantas`) repitieron el patrón.
+- #741 volvió a toparse con el cuelgue (33 min con El Burgo) y lo rodeó sin
+  conectarlo.
+
+**Arreglo previsto,** en su PR propio cuando el experimento confirme la GPU
+compartida:
+
+- el lanzador común (`tools/pw_navegador.mjs`) documenta la restricción y la
+  IMPONE: no permite abrir una segunda página pesada en el mismo navegador;
+- va a los cuatro bancos del barrido.
