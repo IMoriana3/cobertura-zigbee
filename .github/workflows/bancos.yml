@@ -350,8 +350,33 @@ jobs:
     timeout-minutes: 30
     name: datos y física (node)
     runs-on: ubuntu-latest
+    # EL HERMANO AL LADO, Y POR QUÉ CAMBIA LA FORMA DEL JOB.
+    # `test_hsus_gw.mjs` carea las HSU de los layouts contra la hoja que escribe
+    # `SCADA/tools/tcu-toolbox/make_plantas.py --excel`, y la busca en
+    # `<repo>/../SCADA/...`. Con el checkout por defecto el repo ES la raíz del
+    # workspace, así que ese `..` cae fuera y `actions/checkout` no sabe escribir
+    # ahí. Por eso el repo se clona en un subdirectorio y SCADA a su lado, que es
+    # el mismo patrón que el job `núcleo (python)` ya usa con `cobertura-rf-fv`.
+    # `working-directory` deja el cwd de todos los `run:` dentro del repo, así que
+    # las rutas relativas de los pasos siguen valiendo tal cual.
+    #
+    # ESTO NO ES UN ADORNO: hasta hoy ese banco salía con 0 sin carear NADA, y el
+    # comentario de aquí abajo lo decía —«hoy no vigila nada»—. Al envolverlo con
+    # el piso pasó a decir rc = 2, que es el veredicto honesto, y eso en CI es
+    # rojo. La salida no es bajarle la exigencia: es traerle la hoja. SCADA es
+    # PÚBLICO y ocupa 2,6 MB. Medido: con la hoja delante publica 33
+    # comprobaciones, que es justo su piso.
+    defaults:
+      run:
+        working-directory: cobertura-zigbee
     steps:
       - uses: actions/checkout@v4
+        with: { path: cobertura-zigbee }
+      - name: la toolbox de scada, de hermano
+        uses: actions/checkout@v4
+        with:
+          repository: IMoriana3/SCADA
+          path: SCADA
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       # NO se instala nada: el repo versiona node_modules con playwright 1.62.1
@@ -453,10 +478,15 @@ jobs:
       # (456-1.569 ms), la más cara de las nueve. Ahora es una lista MEDIDA con
       # su procedencia escrita. El banco comprueba ademas que FÍSICA PURA sea
       # idéntica byte a byte a la de main, que es lo que la fase 2 promete.
+      # EL ÚNICO DE LOS 32 PISOS DECLARADOS QUE NO SE APLICABA. Corre dentro de
+      # un `run:` compuesto —hay un `git fetch` delante— y al envolver los bancos
+      # uno a uno éste se quedó fuera: su piso estaba escrito en la tabla y no lo
+      # miraba nadie. Es la cuarta lección dentro del PR que la establece.
+      # Cruzado a mano: 32 pisos declarados, 31 envueltos, éste no. Ahora 32.
       - name: las políticas caras, sólo bajo demanda
         run: |
           git fetch --no-tags --depth=1 origin main
-          node tools/test_caras_bajo_demanda.mjs
+          node tools/con_piso.mjs tools/test_caras_bajo_demanda.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
       # independientes. Ahora el exportador lo LEE de la página; este banco vigila
@@ -512,11 +542,14 @@ jobs:
         run: node tools/con_piso.mjs tools/test_pilotes_dwg.mjs
       - name: CSV de meteo
         run: node tools/con_piso.mjs tools/test_meteo_csv.mjs
-      # Este se SALTA solo si no encuentra plantas/ de la toolbox del repo
-      # `scada`, que aquí no está: en CI pasa en verde SIN COMPROBAR NADA. Se
-      # deja porque el día que se monte el checkout cruzado empieza a servir,
-      # pero que conste que hoy no vigila nada.
-      - name: HSU contra la hoja (se salta sin la toolbox de scada)
+      # HOY SÍ VIGILA. Aquí ponía «en CI pasa en verde SIN COMPROBAR NADA … el
+      # día que se monte el checkout cruzado empieza a servir, pero que conste
+      # que hoy no vigila nada». Ese día es hoy: SCADA se clona arriba, la hoja
+      # está delante y el banco carea de verdad — 33 comprobaciones, 22 HSU
+      # careadas contra la toolbox. Si mañana desaparece la hoja, el banco sale
+      # con rc = 2 y el paso se pone rojo; ya no puede volver a pasar por verde
+      # sin haber mirado.
+      - name: HSU contra la hoja (carea contra la toolbox de scada)
         run: node tools/con_piso.mjs tools/test_hsus_gw.mjs
 
   # ── el barrido de terrenos, que es el que BLOQUEA ─────────────────────────

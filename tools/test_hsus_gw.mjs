@@ -44,8 +44,16 @@ const TOOLBOX = { ayora: '24025-ayora.json', sanjose: '24019-san-jose.json', fay
    que aparecio despues en cuatro pasos de Siting. El comentario del propio
    workflow ya lo decia —«hoy no vigila nada»— y el codigo de salida decia lo
    contrario; el agregador lee el codigo de salida.
-   SCADA es PUBLICO: la CI lo clona, asi que esta rama solo salta cuando de
-   verdad no esta. */
+   SCADA es PUBLICO y la CI lo clona al lado, asi que esta rama solo salta
+   cuando de verdad no esta la hoja.
+
+   ESA FRASE ERA FALSA CUANDO LA ESCRIBI, y me pille en la corrida. Decia «la
+   CI lo clona» y la CI NO lo clonaba: el job `datos` hacia un `checkout`
+   pelado. La escribi en prosa y no la ejecute nunca — la sexta leccion, en el
+   PR que existe justamente para eso. Lo vi porque este banco salio con rc = 2
+   en un arbol sin hermanos al lado, que es como corre la CI.
+   Ahora es verdad: `bancos.yml` clona `IMoriana3/SCADA` a `../SCADA` y este
+   banco carea 22 HSU contra la toolbox, 33 comprobaciones. */
 const SIN_HOJA = !DIR;
 if (SIN_HOJA) {
   console.log('SIN CAREO: no encuentro plantas/ de la toolbox, no hay hoja contra la que carear.');

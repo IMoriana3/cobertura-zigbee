@@ -71,7 +71,19 @@ const PISO = {
   'test_herramientas_campo.mjs': 11,
   'test_cableado_core.mjs': 40,
   'test_control_core.mjs': 40,
-  'test_anual_motor.mjs': 19,
+  // EL PISO QUE DEPENDE DE DÓNDE CORRE. Lo medí en mi máquina, donde está
+  // `SolarGPTfull` clonado al lado, y en CI falló: 14 publicadas contra un piso
+  // de 19. No es un defecto del banco, es que su tercera sección —el CANARIO
+  // CRUZADO, las cinco comprobaciones que carean las constantes del motor
+  // contra el fuente de `solargpt_core`— no se puede correr sin el hermano, y
+  // el hermano es PRIVADO y ocupa 820 MB: clonarlo en CI no es una opción.
+  //
+  // Lo de fondo no es el número: es que en CI las 14 que SÍ corren verifican
+  // la aritmética con un modelo INVENTADO de números redondos escrito en el
+  // propio banco (k=0,05 e0=1,0 …), y la única sección que ata esos números
+  // al modelo REAL medido es justo la que se salta. Un piso de 14 a secas lo
+  // habría tapado; por eso el alcance se DECLARA y se ve.
+  'test_anual_motor.mjs': { piso: 19, alcances: { 'sin-hermano': 14 } },
   'test_cloud_shadows.mjs': 13,
   'test_overcast_sim.mjs': 111,
   'test_modbus_map.mjs': 26,
@@ -96,6 +108,27 @@ const SIN_PISO = {
   'test_dos_metricas.mjs': 'no publica recuento: imprime dos tablas y un veredicto. Debería publicar cuántas comparaciones hace.',
   'test_meteo_csv.mjs': 'no publica recuento: dice «41 HSU: el CSV dice lo mismo que el layout» y ese 41 es el dato, no el número de comprobaciones.',
 };
+
+/* ── EL ALCANCE: UN BANCO QUE MIDE MENOS TIENE QUE DECIRLO ────────────────
+   Un banco cuyo alcance encoge según lo que haya en la máquina no puede tener
+   UN piso: el de mi portátil tapa lo que falta en CI, y el de CI tapa lo que
+   falta en el portátil. Así que el banco DECLARA en qué alcance ha corrido
+   —una línea `[alcance] <nombre>`— y la tabla dice qué piso le toca a cada uno.
+
+   El reparto es a propósito: la CONDICIÓN vive en el banco, que es el único que
+   sabe qué le falta, y los NÚMEROS viven en la tabla, que es donde se ven en el
+   diff. Una segunda copia de la condición aquí se quedaría vieja el día que el
+   banco cambie, que es el defecto que este repo acaba de pagar con el 0,125
+   escrito a mano en `terreno.html`.
+
+   Y LO IMPORTANTE, que es lo que casi se me escapa: un alcance que la tabla NO
+   conozca sale con rc = 2, no con el piso base. Si mañana el banco aprende a
+   correr recortado de otra manera, eso es un entorno que nadie ha medido, y un
+   entorno sin medir no puede pasar por verde por defecto. */
+function declaraAlcance(txt) {
+  const m = /^\s*\[alcance\]\s+(\S+)/m.exec(txt);
+  return m ? m[1] : null;
+}
 
 /* ── LO QUE FALTA, DICHO ──────────────────────────────────────────────────
    Los 36 bancos del job `navegador` —los `visor · ...` de la matriz— NO
@@ -192,7 +225,23 @@ if (r.status === 2) {
 if (r.status !== 0) { console.log('\n[piso] ' + base + ': rc=' + r.status); process.exit(1); }
 if (SIN_PISO[base]) process.exit(0);
 
-const { n: cuenta, leido } = leeCuenta(salida), piso = PISO[base];
+const { n: cuenta, leido } = leeCuenta(salida);
+
+/* EL PISO QUE TOCA, según el alcance que el banco haya declarado. */
+const decl = PISO[base];
+const tieneAlcances = decl && typeof decl === 'object';
+const alcance = declaraAlcance(salida);
+let piso = tieneAlcances ? decl.piso : decl, comoCorrio = '';
+if (alcance) {
+  if (!tieneAlcances || !(alcance in decl.alcances)) {
+    console.log('\n[piso] ' + base + ': ha declarado el alcance «' + alcance + '» y la tabla no lo conoce.');
+    console.log('[piso] Un alcance sin medir NO cae al piso base: eso sería dar por bueno un');
+    console.log('[piso] entorno que nadie ha mirado. Mide cuántas publica ahí y añádelo.');
+    process.exit(2);   // 2 = no comprobado, NO 1
+  }
+  piso = decl.alcances[alcance];
+  comoCorrio = ' · alcance «' + alcance + '»';
+}
 if (!leido) {
   console.log('\n[piso] ' + base + ': no sé leer su recuento — ningún formato conocido casó');
   console.log('[piso] y no publica ni una línea `ok`/`✓`. El banco puede estar perfectamente;');
@@ -202,9 +251,9 @@ if (!leido) {
   process.exit(2);   // 2 = no comprobado, NO 1
 }
 if (cuenta < piso) {
-  console.log('\n[piso] ' + base + ': ha publicado ' + cuenta + ' comprobaciones y el piso son ' + piso + '.');
+  console.log('\n[piso] ' + base + ': ha publicado ' + cuenta + ' comprobaciones y el piso son ' + piso + comoCorrio + '.');
   console.log('[piso] Un banco que publica menos que su piso NO es un verde, aunque salga con 0.');
   console.log('[piso] Mira su salida antes de bajar el piso, y si lo bajas, escribe por qué.');
   process.exit(1);
 }
-console.log('\n[piso] ' + base + ': ' + cuenta + ' comprobaciones (piso ' + piso + ')');
+console.log('\n[piso] ' + base + ': ' + cuenta + ' comprobaciones (piso ' + piso + comoCorrio + ')');
