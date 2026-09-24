@@ -25,10 +25,14 @@ await ctx.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } ca
 const pg = await ctx.newPage(); const t0 = Date.now();
 await pg.goto(`http://localhost:${PUERTO}/terreno.html?planta=${process.argv[2] || 'elburgo'}`,
               { waitUntil: 'domcontentloaded', timeout: 120000 });
+const dcl1 = Date.now() - t0;
 while (!(await pg.evaluate(() => typeof bt3dAng === 'function' && typeof afbtSol === 'function'))) {
   if (Date.now() - t0 > 300000) throw new Error('la página no expuso bt3dAng/afbtSol');
   await pg.waitForTimeout(400);
 }
+// el tiempo de carga se PUBLICA: si crece de un PR a otro, lo que empeora es la
+// página o el repo, no el runner, y el log lo enseña antes de que se agote
+console.log(`· carga 1: domcontentloaded ${dcl1} ms · lista ${Date.now() - t0} ms`);
 
 /* El invariante FÍSICO, y por eso se mide así y no comparando con un número:
    el panel tiene que MIRAR AL SOL. Se comprueba con el producto escalar entre
@@ -107,15 +111,25 @@ check('CONTROL rot 0 (El Burgo, Fayón, Túnez, Ayora, San José, Páramo): sin 
    renderizando El Burgo (escena entera, sombras) con swiftshader mientras la
    segunda intenta cargar, y en el runner de CI las dos pestañas comparten
    proceso: pg2 no llegó a domcontentloaded en 120 s con el test sin cambiar.
-   Cerrada, la segunda carga en lo que tarda el HTML.                        */
+   CERRAR LA PESTAÑA NO BASTÓ: con `pg.close()` y la segunda en el MISMO
+   contexto, el mismo timeout volvió en #753 y #759 (PRs que no tocaban ni la
+   página ni el test) y pasó al relanzar. Un test que depende de la carga del
+   runner no distingue código bueno de malo. Ahora se cierra el CONTEXTO entero
+   —con él, su proceso de render y su red— y la segunda carga va en uno nuevo,
+   sin nada de la primera. Los tiempos de las dos cargas salen en el log. */
 await pg.close();
-const pg2 = await ctx.newPage(); const t1 = Date.now();
+await ctx.close();
+const ctx2 = await b.newContext({ viewport: { width: 320, height: 200 } });
+await ctx2.addInitScript(() => { try { localStorage.cobertura_offline = '1'; } catch (e) {} });
+const pg2 = await ctx2.newPage(); const t1 = Date.now();
 await pg2.goto(`http://localhost:${PUERTO}/terreno.html?planta=${process.argv[2] || 'elburgo'}`,
                { waitUntil: 'domcontentloaded', timeout: 120000 });
+const dcl2 = Date.now() - t1;
 while (!(await pg2.evaluate(() => typeof panelAngle === 'function' && typeof afbtSol === 'function'))) {
   if (Date.now() - t1 > 300000) throw new Error('la página no expuso panelAngle');
   await pg2.waitForTimeout(400);
 }
+console.log(`· carga 2: domcontentloaded ${dcl2} ms · lista ${Date.now() - t1} ms`);
 const r2 = await pg2.evaluate(() => {
   const DEG = Math.PI / 180;
   const antes = { sim: window.simOn, bt: (typeof btOn !== 'undefined' ? btOn : null) };
