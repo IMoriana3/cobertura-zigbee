@@ -29,7 +29,9 @@
   .err{color:#ff6b6b}
   #tip{position:absolute;z-index:6;pointer-events:none;background:#0e1218e6;border:1px solid var(--line2);border-radius:7px;padding:5px 8px;font-size:12px;opacity:0;transition:opacity .1s;max-width:220px}
   #tip b{color:#9fd0ff}
-</style></head><body>
+</style>
+<script src="orto.js"></script><!-- FUENTE ÚNICA de la ortofoto (compartida con terreno.html y con el simulador de cobertura RF): qué servidores, en qué orden y cómo se numeran las teselas -->
+</head><body>
 <canvas id="cv"></canvas>
 <header>
   <a id="link3d" href="terreno.html">▦ Ver en 3D →</a>
@@ -104,14 +106,23 @@ function lat2tyf(lat,z){var r=lat*DEG;return (1-Math.log(Math.tan(r)+1/Math.cos(
 function tx2lon(tx,z){return tx/Math.pow(2,z)*360-180;}
 function ty2lat(ty,z){var n=Math.PI*(1-2*ty/Math.pow(2,z));return Math.atan(Math.sinh(n))*180/Math.PI;}
 function loadImg(url){return new Promise(function(res,rej){var im=new Image();im.crossOrigin='anonymous';im.onload=function(){res(im);};im.onerror=function(){rej(new Error(url));};im.src=url;});}
-var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};
+/* De dónde sale la ortofoto: `orto.js`, FUENTE ÚNICA compartida con terreno.html
+   y con el simulador de cobertura RF. ESTA PÁGINA PEDÍA SÓLO ESRI: en España la
+   misma planta salía BORROSA aquí y nítida en el terreno —PNOA da 25 cm/px— sin
+   que nada lo dijera, porque las tres copias de esto nunca se compararon. */
+var SAT=Orto.ESRI;
 async function mosaic(z,latN,latS,lonW,lonE){
   var xmin=Math.floor(lon2txf(lonW,z)),xmax=Math.floor(lon2txf(lonE,z));
   var ymin=Math.floor(lat2tyf(latN,z)),ymax=Math.floor(lat2tyf(latS,z));
   var W=(xmax-xmin+1)*256,H=(ymax-ymin+1)*256;
+  /* La fuente se elige por el CENTRO del mosaico, y la caída a ESRI es tesela a
+     tesela: donde el IGN no sirve ese zoom cae ESA y no el mosaico entero. */
+  var fns=Orto.fuentes((latN+latS)/2,(lonW+lonE)/2);
   var cv=document.createElement('canvas');cv.width=W;cv.height=H;var ctx=cv.getContext('2d');var ok=0,tasks=[];
   for(var tx=xmin;tx<=xmax;tx++)for(var ty=ymin;ty<=ymax;ty++){(function(tx,ty){
-    tasks.push(loadImg(SAT(z,tx,ty)).then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256);ok++;}).catch(function(){}));})(tx,ty);}
+    var p=Promise.reject();
+    fns.forEach(function(fn){p=p.catch(function(){return loadImg(fn(z,tx,ty));});});
+    tasks.push(p.then(function(im){ctx.drawImage(im,(tx-xmin)*256,(ty-ymin)*256);ok++;}).catch(function(){}));})(tx,ty);}
   await Promise.all(tasks);
   return {canvas:cv,z:z,xmin:xmin,ymin:ymin,xmax:xmax,ymax:ymax,W:W,H:H,ok:ok};
 }

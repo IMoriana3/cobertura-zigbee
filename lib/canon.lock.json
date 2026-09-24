@@ -1,0 +1,44 @@
+{
+  "_que_es_esto": [
+    "EL CANDADO DEL CANON DE RADIO. `terreno.html` calcula el despeje de la primera",
+    "zona de Fresnel para pintar la cobertura de malla, y hasta hoy se escribia la",
+    "formula el mismo: `var lam=0.125` y `r = sqrt(lam*D*f*(1-f))`.",
+    "",
+    "Es la MISMA formula del canon —radioFresnel(d1,d2,f) con d1 = f*D y d2 =",
+    "(1-f)*D da exactamente eso— pero con la longitud de onda REDONDEADA a mano y",
+    "sin decir de que frecuencia sale. Una segunda copia de una formula es una",
+    "copia que se queda vieja: la del canon depende de la frecuencia, y el dia que",
+    "esta pagina tenga que pintar 868 MHz, un 0,125 escrito a mano no se entera.",
+    "",
+    "Copia FIJADA y no import porque `terreno.html` se sirve desde Pages y no puede",
+    "leer un repo hermano en tiempo de ejecucion. Lo que hace que la copia valga es",
+    "el CAREO, no el candado: un candado cuadra consigo mismo y no dice NADA sobre",
+    "si la copia esta al dia. `tools/test_canon_pin.mjs` la carea BYTE A BYTE contra",
+    "el original y, sin original, sale con rc = 2 — no con verde."
+  ],
+  "canon": {
+    "repo": "imoriana3/siting",
+    "rama": "main",
+    "commit": "da28c04a1a14731ff40e341145eb87ccfa83e81c",
+    "_commit_nota": "el commit de `main` donde viven ESTOS bytes. Es procedencia, no la comprobacion: lo que se carea es el sha256 del contenido."
+  },
+  "copias": [
+    {
+      "aqui": "lib/radio_pv_model.js",
+      "alli": "radio_pv_model.js",
+      "sha256": "8a68a48c537d7185c1041758d3ddcc4c87ac816ae1ab5a90564bbd906452ba8d",
+      "lo_carga": "terreno.html con <script>, y el banco con require()"
+    }
+  ],
+  "lo_que_NO_cubre": [
+    "La GEOMETRIA de esta pagina: donde cae cada fila, que huella tiene un panel en",
+    "el suelo y que banda de altura ocupa. Eso es de `terreno.html` y del",
+    "levantamiento, no del canon. Lo unico que se toma del canon es la fisica: la",
+    "longitud de onda y el radio de la primera zona de Fresnel.",
+    "",
+    "Y el puerto Python de este repo NO necesita copia: `tools/plan_barrido_rf.py`",
+    "importa `zigbee_pv_model` del clon hermano `cobertura-rf-fv`, que desde el",
+    "2026-09-24 DELEGA en este mismo canon. Comprobado ejecutandolo: `Z._RPV` es",
+    "literalmente el mismo objeto de modulo que `radio_pv_model`."
+  ]
+}

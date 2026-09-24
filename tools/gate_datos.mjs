@@ -31,17 +31,26 @@ import { spawnSync } from 'node:child_process';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
 const RAPIDO = process.argv.includes('--rapido');
-const SCADA = ['/home/user/SCADA/', '/home/user/scada/',
+/* Relativos a proposito: habia dos rutas absolutas de un contenedor concreto
+   delante, redundantes con los relativos, y que hacian que esto encontrara el
+   SCADA SIEMPRE en local y NUNCA en CI sin que la diferencia se notara. */
+const SCADA = [
   new URL('../../SCADA/', import.meta.url).pathname, new URL('../../scada/', import.meta.url).pathname]
   .find(p => { try { return existsSync(p + 'tools'); } catch (e) { return false; } });
 
-let malo = 0;
+let malo = 0, sinComprobar = 0;
+/* TRES ESTADOS, no dos. `paso()` daba FALLA a cualquier rc distinto de 0, o sea
+   que confundia «se ha roto» con «no he podido comprobarlo» — el error
+   contrario al que acabamos de arreglar, pero la misma confusion. La
+   convencion es la de #738: 1 = fallo, 2 = no comprobado. Un rc = 2 NO cuenta
+   como fallo (un hermano ausente no es un hallazgo) pero TAMPOCO como ok, y
+   sale en el recuento del final. */
 const paso = (nombre, cmd, args, cwd) => {
   const r = spawnSync(cmd, args, { cwd: cwd || RAIZ, encoding: 'utf8' });
-  const bien = r.status === 0;
-  if (!bien) malo++;
+  const est = r.status === 0 ? 'ok   ' : (r.status === 2 ? '··   ' : 'FALLA');
+  if (r.status === 2) sinComprobar++; else if (r.status !== 0) malo++;
   const cola = String(r.stdout || '').trim().split('\n').filter(Boolean).slice(-1)[0] || String(r.stderr || '').trim().split('\n').slice(-1)[0] || '';
-  console.log(`  ${bien ? 'ok   ' : 'FALLA'} ${nombre.padEnd(34)} ${cola.slice(0, 96)}`);
+  console.log(`  ${est} ${nombre.padEnd(34)} ${r.status === 2 ? 'NO COMPROBADO · ' : ''}${cola.slice(0, 80)}`);
   return r;
 };
 
@@ -92,5 +101,9 @@ console.log('\n· el inventario (informativo, no falla)\n');
 const inv = spawnSync(process.execPath, [RAIZ + 'tools/estado_datos.mjs', '--pendientes'], { encoding: 'utf8' });
 console.log('  ' + String(inv.stdout || '').trim().split('\n')[0]);
 
-console.log(`\n${malo ? malo + ' paso(s) en rojo' : 'el dato cuadra: bancos y invariantes, todo en verde'}`);
-process.exit(malo ? 1 : 0);
+console.log(`\n${malo ? malo + ' paso(s) en rojo'
+  : sinComprobar ? `los invariantes cuadran, PERO ${sinComprobar} paso(s) NO SE HAN COMPROBADO`
+  : 'el dato cuadra: bancos y invariantes, todo en verde'}`);
+if (sinComprobar && !malo) console.log('Un «no comprobado» no es un verde entero.');
+/* 1 = algo esta roto · 2 = algo no se ha podido comprobar · 0 = todo medido */
+process.exit(malo ? 1 : sinComprobar ? 2 : 0);

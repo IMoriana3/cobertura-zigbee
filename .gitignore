@@ -10,3 +10,11 @@ __pycache__/
 #        --sufijo _demsolo --comoel <planta>_relieve.json --write
 *_demsolo_relieve.json
 *_demsolo_relieve.sha256.json
+
+# LA INSTRUMENTACION DE UNA MEDIDA no es producto, por el mismo motivo de
+# arriba: existe para contestar UNA pregunta y su respuesta se escribe donde
+# corresponda (un comentario, un banco, el mensaje de un commit), no dejando el
+# aparato de medir tirado en el repo. Si una de estas resulta valer para algo
+# mas que su pregunta, se promueve a `tools/<nombre>.mjs` con su cabecera y se
+# versiona como cualquier otra herramienta; mientras tanto, fuera.
+tools/_*.mjs

@@ -93,10 +93,33 @@ console.log('\ncoste: cada maniobra con el modelo medido EN SU régimen');
 }
 
 console.log('\ncanario cruzado: las constantes SALEN del core, no de aquí');
+let recortado = false;
 {
   const hermano = path.join(path.dirname(ROOT), 'SolarGPTfull');
   if (!fs.existsSync(hermano)) {
-    console.log('  – sin SolarGPTfull al lado: el canario cruzado no se puede correr');
+    /* DECIRLO ASÍ Y NO CON UN GUIÓN. Un `–` entre `✓` se lee como un tick más:
+       es el vacío pasando por normal. Y lo que falta aquí no es un detalle —
+       las dos secciones de arriba comprueban la ARITMÉTICA con un modelo
+       inventado de números redondos escrito veinte líneas más arriba
+       (k=0,05 e0=1,0 …); ésta es la ÚNICA que carea las constantes contra el
+       modelo REAL medido. Sin ella el banco no está probando que la cifra
+       publicada del motor salga de los ensayos, sólo que sabe multiplicar.
+
+       El `[alcance]` lo lee `tools/con_piso.mjs` para elegir el piso que toca
+       (14 aquí, 19 con el hermano al lado). No es decoración: si se quita esta
+       línea, el envoltorio exige 19 y el banco se pone rojo. */
+    recortado = true;
+    console.log('  ⚠ SIN SolarGPTfull AL LADO: el canario cruzado NO se ha corrido.');
+    /* OJO CON LA REDACCIÓN, que aquí me pillé a mí mismo: `leeCuenta` de
+       `con_piso.mjs` busca `/(\d+) comprobaciones/` y se queda con la PRIMERA
+       del texto. La primera versión de este aviso decía «las 5 comprobaciones
+       que carean k, e0…» y el envoltorio leyó 5 en vez de 14 — rojo por una
+       frase. Un número seguido de «comprobaciones» en la prosa de un banco
+       envenena su propio recuento; que no lo haya. */
+    console.log('    Las cinco que carean k, e0, el ajuste de flota y el dominio contra');
+    console.log('    el fuente del core NO se han hecho — y son las únicas que atan este');
+    console.log('    banco al modelo medido de verdad.');
+    console.log('[alcance] sin-hermano');
   } else {
     const M = motorDelCore();
     // Fase 2.L de solargpt_core.motor_energy, Consumos_motor_02.xlsx, 8 ensayos
@@ -118,5 +141,10 @@ console.log('\ncanario cruzado: las constantes SALEN del core, no de aquí');
   }
 }
 
-console.log('\n' + (mal ? mal + ' FALLOS de ' + (ok + mal) : '✓ ' + ok + ' comprobaciones, todas bien'));
+/* «todas bien» tiene que significar «he mirado TODO y está bien». Con el
+   canario sin correr, lo honesto es decir las dos cosas: lo que ha salido bien
+   y lo que no se ha llegado a mirar. */
+console.log('\n' + (mal ? mal + ' FALLOS de ' + (ok + mal)
+  : '✓ ' + ok + ' comprobaciones, todas bien'
+    + (recortado ? ' — y 5 SIN CORRER (el canario cruzado, sin el core al lado)' : '')));
 process.exit(mal ? 1 : 0);

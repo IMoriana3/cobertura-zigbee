@@ -88,11 +88,25 @@ jobs:
       - name: pyproj (lo pide gen_coords_cobertura)
         run: python3 -m pip install --disable-pip-version-check pyproj==3.7.2
       - name: barrido RF
-        run: python3 tools/test_barrido_rf.py
+        run: node tools/con_piso.mjs tools/test_barrido_rf.py
       - name: ajuste censurado (Tobit) del barrido
-        run: python3 tools/test_calibra_barrido.py
+        run: node tools/con_piso.mjs tools/test_calibra_barrido.py
       - name: TCUs retiradas y huecos de esclavo
-        run: python3 tools/test_coords_retiradas.py
+        run: node tools/con_piso.mjs tools/test_coords_retiradas.py
+
+      # EL ENLACE A LA GUÍA DE PUERTAS, COMPROBADO. Un enlace roto al documento
+      # que dice «una puerta verde afirma dos cosas» sería el chiste final.
+      # Resuelve el fichero en el clon de `proyectos` que haya al lado —el del
+      # PIN si este repo lo fija— y si no hay, lo trae con --depth 1 (es
+      # público). Sin red y sin clon sale con rc = 2, no con 0.
+      - name: el enlace a la guía de puertas apunta a algo que existe
+        run: bash docs/enlace_guia.sh
+
+      # LOS PARES OBSERVADOS del crudo de rutas, con su banco y su manifiesto.
+      # Sin el CSV crudo —que NO va en el repo, son 248 MB— sale con rc = 2 y lo
+      # dice: «no comprobado» no es «está bien».
+      - name: los pares observados del crudo de rutas
+        run: node tools/con_piso.mjs tools/test_pares_observados.mjs
 
       # DOS COSAS QUE ROMPEN UN .ps1 EN EL PC DE UNA PLANTA, las dos encontradas
       # por el job de Windows y las dos invisibles bajo `pwsh` 7:
@@ -104,6 +118,20 @@ jobs:
       # aviso llega en segundos en vez de esperar al runner.
       - name: los .ps1 no se rompen en el PC de una planta
         run: python3 tools/gate_ps1_planta.py
+
+      # LA COPIA FIJADA DEL CANON DE RADIO, CAREADA CONTRA SU ORIGINAL.
+      # `terreno.html` escribía su propio radio de Fresnel con `lam = 0.125` — la
+      # misma fórmula del canon, con la longitud de onda redondeada a mano y sin
+      # decir de qué frecuencia salía. Ahora la toma del canon, y esto vigila que
+      # la copia no se quede vieja Y que la página siga delegando de verdad: si
+      # al canon se le toca `radioFresnel`, el despeje de la página cambia con
+      # él. Sin el clon de `siting` al lado sale rc = 2, no verde.
+      - name: la copia del canon de radio sigue siendo el canon
+        run: |
+          if [ ! -d ../Siting ] && [ ! -d ../siting ]; then
+            git clone --depth 1 -q https://github.com/IMoriana3/siting.git ../siting || true
+          fi
+          node tools/con_piso.mjs tools/test_canon_pin.mjs
 
       # UN BANCO NO ESCRIBE EN EL REPO. `test_barrido_rf.py` corria el
       # planificador sin `--salida` y reescribia DIEZ hojas de barrido de campo
@@ -139,21 +167,21 @@ jobs:
       - name: pwsh está
         run: pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
       - name: ángulos del barrido (zigbee_angulos.ps1)
-        run: python3 tools/test_angulos_barrido.py
+        run: node tools/con_piso.mjs tools/test_angulos_barrido.py
       # EL VOLCADOR DE CONFIGURACIÓN, y lo que este banco vigila de verdad es
       # que NO ESCRIBA. La NCU de mentira apunta el código de función de cada
       # trama y exige que TODOS sean 3; además responde con excepción a
       # cualquier otro, para que una escritura no pueda colarse en silencio.
       - name: configuración de planta (zigbee_config.ps1)
-        run: python3 tools/test_config_planta.py
+        run: node tools/con_piso.mjs tools/test_config_planta.py
       - name: inventario zigbee (zigbee_inventario.ps1)
-        run: python3 tools/test_inventario_zb.py
+        run: node tools/con_piso.mjs tools/test_inventario_zb.py
       - name: RSSI (zigbee_logger.ps1)
-        run: python3 tools/test_logger_rssi.py
+        run: node tools/con_piso.mjs tools/test_logger_rssi.py
       - name: rutas por telnet (zigbee_routes_logger.ps1)
-        run: python3 tools/test_rutas_telnet.py
+        run: node tools/con_piso.mjs tools/test_rutas_telnet.py
       - name: qué hace ESTE PowerShell con Export-Csv y la codificación
-        run: python3 tools/test_export_csv_esquema.py
+        run: node tools/con_piso.mjs tools/test_export_csv_esquema.py
 
       # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
       # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
@@ -261,7 +289,7 @@ jobs:
           if ($v.Major -ne 5) { throw "se esperaba PowerShell 5.x y hay $v" }
 
       - name: ángulos del barrido (zigbee_angulos.ps1)
-        run: python tools/test_angulos_barrido.py
+        run: node tools/con_piso.mjs tools/test_angulos_barrido.py
       # `zigbee_config.ps1` VIAJA AL PC DE PLANTA —va en el ZIP, index.html lo
       # lista y `preparaConfig` lo transforma— y hasta ahora solo se probaba con
       # `pwsh` 7. En planta hay Windows PowerShell 5.1, que es OTRO intérprete:
@@ -269,15 +297,15 @@ jobs:
       # ya se quedó sin compilar una vez. Probar solo con 7 dejaba al volcador
       # de configuración sin la única prueba que cubre la versión de planta.
       - name: configuración de planta (zigbee_config.ps1)
-        run: python tools/test_config_planta.py
+        run: node tools/con_piso.mjs tools/test_config_planta.py
       - name: inventario zigbee (zigbee_inventario.ps1)
-        run: python tools/test_inventario_zb.py
+        run: node tools/con_piso.mjs tools/test_inventario_zb.py
       - name: RSSI (zigbee_logger.ps1)
-        run: python tools/test_logger_rssi.py
+        run: node tools/con_piso.mjs tools/test_logger_rssi.py
       - name: rutas por telnet (zigbee_routes_logger.ps1)
-        run: python tools/test_rutas_telnet.py
+        run: node tools/con_piso.mjs tools/test_rutas_telnet.py
       - name: qué hace ESTE PowerShell con Export-Csv y la codificación
-        run: python tools/test_export_csv_esquema.py
+        run: node tools/con_piso.mjs tools/test_export_csv_esquema.py
 
       # ── Y LOS MISMOS BANCOS SOBRE LO QUE SE DESCARGA ──────────────────────
       # El técnico NO usa el .ps1 del repo: usa el que sale del ZIP de «Medir en
@@ -336,8 +364,33 @@ jobs:
     timeout-minutes: 30
     name: datos y física (node)
     runs-on: ubuntu-latest
+    # EL HERMANO AL LADO, Y POR QUÉ CAMBIA LA FORMA DEL JOB.
+    # `test_hsus_gw.mjs` carea las HSU de los layouts contra la hoja que escribe
+    # `SCADA/tools/tcu-toolbox/make_plantas.py --excel`, y la busca en
+    # `<repo>/../SCADA/...`. Con el checkout por defecto el repo ES la raíz del
+    # workspace, así que ese `..` cae fuera y `actions/checkout` no sabe escribir
+    # ahí. Por eso el repo se clona en un subdirectorio y SCADA a su lado, que es
+    # el mismo patrón que el job `núcleo (python)` ya usa con `cobertura-rf-fv`.
+    # `working-directory` deja el cwd de todos los `run:` dentro del repo, así que
+    # las rutas relativas de los pasos siguen valiendo tal cual.
+    #
+    # ESTO NO ES UN ADORNO: hasta hoy ese banco salía con 0 sin carear NADA, y el
+    # comentario de aquí abajo lo decía —«hoy no vigila nada»—. Al envolverlo con
+    # el piso pasó a decir rc = 2, que es el veredicto honesto, y eso en CI es
+    # rojo. La salida no es bajarle la exigencia: es traerle la hoja. SCADA es
+    # PÚBLICO y ocupa 2,6 MB. Medido: con la hoja delante publica 33
+    # comprobaciones, que es justo su piso.
+    defaults:
+      run:
+        working-directory: cobertura-zigbee
     steps:
       - uses: actions/checkout@v4
+        with: { path: cobertura-zigbee }
+      - name: la toolbox de scada, de hermano
+        uses: actions/checkout@v4
+        with:
+          repository: IMoriana3/SCADA
+          path: SCADA
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       # NO se instala nada: el repo versiona node_modules con playwright 1.62.1
@@ -348,7 +401,7 @@ jobs:
       # ruta no falla un banco, fallan los nueve a la vez y con un error que no
       # señala ahí. Por eso se prueba, y se prueba aquí, que es lo barato.
       - name: la ruta del navegador se resuelve bien
-        run: node tools/test_pw_navegador.mjs
+        run: node tools/con_piso.mjs tools/test_pw_navegador.mjs
 
       # EL DETECTOR DE RESOLUCIÓN REAL DEL DEM. Entra aquí y NO con los útiles
       # que bajan teselas: éste es puro, fabrica sus propias teselas sintéticas
@@ -362,7 +415,7 @@ jobs:
       # exactamente el escalón de cuantización de terrarium—. Se habría
       # publicado «resolución real 7 m» sin que nada chillara.
       - name: el detector de resolución del DEM, contra N conocido
-        run: node tools/test_dem_cobertura.mjs
+        run: node tools/con_piso.mjs tools/test_dem_cobertura.mjs
 
       # Y SUS MUTACIONES, con la misma regla que los .ps1: rc = 1 EXACTO. rc = 2
       # es «la mutación ya no casa con el código», y contarlo como cazada sería
@@ -389,24 +442,41 @@ jobs:
       # La cifra anual pasa por el lazo y no puede volver a saltárselo: banco de
       # fuente y de conducta, con control negativo sobre el código de antes.
       - name: el anual pasa por el lazo de control
-        run: node tools/test_anual_lazo.mjs
+        run: node tools/con_piso.mjs tools/test_anual_lazo.mjs
       # `nb` decide el escalón de la pérdida eléctrica y ninguna ficha de planta
       # lo trae: el banco vigila que la página DIGA de dónde sale, y que el día
       # que una ficha lo traiga se use (con planta sintética y control negativo).
       - name: nb dice de dónde sale
-        run: node tools/test_nb_procedencia.mjs
+        run: node tools/con_piso.mjs tools/test_nb_procedencia.mjs
+      # De dónde sale la ortofoto. Estaba escrito CUATRO veces y no coincidían:
+      # `plano.html` pedía SÓLO ESRI, así que la misma planta salía borrosa en el
+      # plano y nítida en el terreno —PNOA da 25 cm/px— y nada lo decía. Ahora hay
+      # un `orto.js` y este banco vigila las dos mitades: que numere bien las
+      # teselas (el x/y cambiado de sitio da otro punto del planeta y la página no
+      # chilla) y que las páginas NO se vuelvan a escribir la URL. Contra las
+      # plantas de verdad, sin red. Mutación `ORTO_SUELTO=si`.
+      - name: la ortofoto sale de un solo sitio
+        run: node tools/con_piso.mjs tools/test_orto.mjs
+      - name: y su mutación, en rojo
+        run: |
+          set +e
+          ORTO_SUELTO=si node tools/test_orto.mjs > /tmp/orto_mut.log 2>&1
+          rc=$?
+          set -e
+          [ "$rc" = "1" ] || { echo "la mutacion debia salir 1 y salio $rc"; cat /tmp/orto_mut.log; exit 1; }
+          echo "la mutacion sale en rojo, como debe"
       # La página publica LAS DOS métricas de POA de planta —por mesa y por
       # línea— en vez de elegir una en silencio según haya segTilt. Con control
       # negativo sobre el código de antes y test nulo de cada corte.
       - name: la página publica las dos métricas
-        run: node tools/test_dos_metricas.mjs
+        run: node tools/con_piso.mjs tools/test_dos_metricas.mjs
       # La POA de planta pesa cada MESA por su largo, no cada LÍNEA por igual.
       # Con Ayora, siete de las nueve políticas casi no distinguen las dos
       # agregaciones, así que el banco empieza por un TEST NULO que exige que su
       # caso SÍ las distinga: un caso mal elegido pasaría con el código nuevo y
       # con el viejo y no protegería nada.
       - name: la planta pondera por largo de mesa
-        run: node tools/test_ponderacion_planta.mjs
+        run: node tools/con_piso.mjs tools/test_ponderacion_planta.mjs
       # R4 fase 1. `optimal` buscaba y vetaba con la métrica POR LÍNEA y se le
       # cobraba con la de POR MESA: medido, perdía en 58 de 86 instantes de
       # Ayora. Desde v1.76 manda `anglesOptimalSeg` y puntúa con `poaPlantSeg`.
@@ -414,7 +484,7 @@ jobs:
       # que las dos métricas difieran en ella— y un control negativo que
       # reconstruye el veto roto desde la fuente y EXIGE verlo en rojo.
       - name: el veto del óptimo puntúa con la métrica que se cobra
-        run: node tools/test_veto_por_mesa.mjs
+        run: node tools/con_piso.mjs tools/test_veto_por_mesa.mjs
       # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
       # planta real la página apaga ella sola las caras: el informe las volvía a
       # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que
@@ -422,16 +492,21 @@ jobs:
       # (456-1.569 ms), la más cara de las nueve. Ahora es una lista MEDIDA con
       # su procedencia escrita. El banco comprueba ademas que FÍSICA PURA sea
       # idéntica byte a byte a la de main, que es lo que la fase 2 promete.
+      # EL ÚNICO DE LOS 32 PISOS DECLARADOS QUE NO SE APLICABA. Corre dentro de
+      # un `run:` compuesto —hay un `git fetch` delante— y al envolver los bancos
+      # uno a uno éste se quedó fuera: su piso estaba escrito en la tabla y no lo
+      # miraba nadie. Es la cuarta lección dentro del PR que la establece.
+      # Cruzado a mano: 32 pisos declarados, 31 envueltos, éste no. Ahora 32.
       - name: las políticas caras, sólo bajo demanda
         run: |
           git fetch --no-tags --depth=1 origin main
-          node tools/test_caras_bajo_demanda.mjs
+          node tools/con_piso.mjs tools/test_caras_bajo_demanda.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
       # independientes. Ahora el exportador lo LEE de la página; este banco vigila
       # que nadie vuelva a copiarlo, con su control negativo.
       - name: el signo de presentación vive en un sitio
-        run: node tools/test_signo_unico.mjs
+        run: node tools/con_piso.mjs tools/test_signo_unico.mjs
       # `docs/algoritmos_backtracking.html` es prosa a mano: no se regenera desde
       # el código y decir que sí sería inventarlo. Lo que sí puede vigilarse es
       # que no se quede atrás EN SILENCIO, que es lo que pasó — declaraba la
@@ -439,7 +514,7 @@ jobs:
       # mirando `docs/`. Este se pone rojo en cuanto `VER` se mueva sin que nadie
       # vuelva a contrastar. Coste de apagarlo honradamente: un minuto.
       - name: el documento no se queda atrás en silencio
-        run: node tools/test_doc_version.mjs
+        run: node tools/con_piso.mjs tools/test_doc_version.mjs
       # R5 · el motor de sombra POR PROYECCIÓN (audit5/lib_proyeccion.mjs): cada
       # mesa con su θ, su tilt y su x de fila, y la sombra de cualquier emisor que
       # la proyección alcance. Cada comprobación lleva su control negativo, y el
@@ -453,15 +528,15 @@ jobs:
       # máquina: export con paso 30 → 48,6 s (con el paso 5 de campo son 280,6 s,
       # por eso aquí va el 30); careo → 95,5 s.
       - name: consignas de campo y careo con producción
-        run: node tools/test_herramientas_campo.mjs
+        run: node tools/con_piso.mjs tools/test_herramientas_campo.mjs
       - name: simulador de backtracking
-        run: node tools/test_backtracking_sim.mjs
+        run: node tools/con_piso.mjs tools/test_backtracking_sim.mjs
       - name: producción por string
-        run: node tools/test_produccion.mjs
+        run: node tools/con_piso.mjs tools/test_produccion.mjs
       - name: cableado
-        run: node tools/test_cableado_core.mjs
+        run: node tools/con_piso.mjs tools/test_cableado_core.mjs
       - name: lazo de control del tracker
-        run: node tools/test_control_core.mjs
+        run: node tools/con_piso.mjs tools/test_control_core.mjs
       # La aritmetica de tools/anual_motor.mjs: como se segmentan las maniobras
       # y con que modelo se cobra cada una. La MEDIDA anual cuesta 45 min y no
       # cabe aqui; estas dos cuentas, de las que cuelga su conclusion, si.
@@ -469,30 +544,33 @@ jobs:
       # SALTA (el hermano no esta clonado), como el de las HSU: que conste que
       # en CI ese bloque no vigila nada, solo los otros dos.
       - name: aritmetica del consumo de motor
-        run: node tools/test_anual_motor.mjs
+        run: node tools/con_piso.mjs tools/test_anual_motor.mjs
       - name: sombras de nube
-        run: node tools/test_cloud_shadows.mjs
+        run: node tools/con_piso.mjs tools/test_cloud_shadows.mjs
       - name: cielo cubierto
-        run: node tools/test_overcast_sim.mjs
+        run: node tools/con_piso.mjs tools/test_overcast_sim.mjs
       - name: mapa modbus
-        run: node tools/test_modbus_map.mjs
+        run: node tools/con_piso.mjs tools/test_modbus_map.mjs
       - name: paquete de medida
-        run: node tools/test_paquete_medida.mjs
+        run: node tools/con_piso.mjs tools/test_paquete_medida.mjs
       # El PASO DE VUELTA del viaje a la planta: de los tres CSV al
       # <planta>_real.geojson. Antes lo hacia un `adaptador_elburgo.py` que no
       # existe en el repo, y por eso solo El Burgo tenia su malla.
       - name: la malla real, del CSV al GeoJSON
-        run: node tools/test_malla_real.mjs
+        run: node tools/con_piso.mjs tools/test_malla_real.mjs
       - name: pilotes del DWG
-        run: node tools/test_pilotes_dwg.mjs
+        run: node tools/con_piso.mjs tools/test_pilotes_dwg.mjs
       - name: CSV de meteo
-        run: node tools/test_meteo_csv.mjs
-      # Este se SALTA solo si no encuentra plantas/ de la toolbox del repo
-      # `scada`, que aquí no está: en CI pasa en verde SIN COMPROBAR NADA. Se
-      # deja porque el día que se monte el checkout cruzado empieza a servir,
-      # pero que conste que hoy no vigila nada.
-      - name: HSU contra la hoja (se salta sin la toolbox de scada)
-        run: node tools/test_hsus_gw.mjs
+        run: node tools/con_piso.mjs tools/test_meteo_csv.mjs
+      # HOY SÍ VIGILA. Aquí ponía «en CI pasa en verde SIN COMPROBAR NADA … el
+      # día que se monte el checkout cruzado empieza a servir, pero que conste
+      # que hoy no vigila nada». Ese día es hoy: SCADA se clona arriba, la hoja
+      # está delante y el banco carea de verdad — 33 comprobaciones, 22 HSU
+      # careadas contra la toolbox. Si mañana desaparece la hoja, el banco sale
+      # con rc = 2 y el paso se pone rojo; ya no puede volver a pasar por verde
+      # sin haber mirado.
+      - name: HSU contra la hoja (carea contra la toolbox de scada)
+        run: node tools/con_piso.mjs tools/test_hsus_gw.mjs
 
   # ── el barrido de terrenos, que es el que BLOQUEA ─────────────────────────
   #
@@ -593,10 +671,26 @@ jobs:
           - { banco: test_apoyo_soporte.mjs }
           # Y ESTE IGUAL: sin argumentos imprimia «no se puede ir bajo tierra»
           # sin haber mirado nada. Se le dan dos plantas y no mas, MEDIDO: Tunez
-          # 84 s y Fayon 110 s, pero El Burgo pasa de 600 s el solo — diez veces
-          # lo que cuesta una planta chica, con 215 seguidores contra 24. Eso no
-          # es el presupuesto de CI: es este banco, que deberia mirarse. Se deja
-          # fuera A PROPOSITO y con el numero delante, no por olvido.
+          # 84 s y Fayon 110 s, pero El Burgo pasa de 600 s el solo.
+          #
+          # YA SE POR QUE, y no era lo que yo decia. No es recompilacion de
+          # shaders —los programas GL no se mueven, mismas claves de cache frame
+          # a frame— ni el mapa de sombras —congelarlo no cambia nada— ni JS —el
+          # hilo esta ~84 % OCIOSO, esperando al proceso grafico—. Es un ESCALON
+          # por numero de instancias, medido con `tools/perfil_frames.mjs`:
+          #
+          #     Tunez      236.829 instancias    6,7 s/frame
+          #     Fayon      246.525              6,5
+          #     El Burgo   440.097             51,8
+          #     Paramo     545.867             66,8
+          #
+          # 1,8 veces las instancias cuestan 7,9 veces el tiempo, y por encima
+          # del escalon vuelve a ser casi lineal. POR QUE hay escalon se queda
+          # sin saber: cae del lado del proceso grafico y el perfilador no lo ve.
+          #
+          # Tunez y Fayon son justo las dos que quedan POR DEBAJO, cosa que se
+          # habia acertado por medida y sin saber el motivo. Y ojo para el dia
+          # que se amplie: PARAMO ES PEOR QUE EL BURGO.
           - { banco: test_suelo.mjs, arg: 'tunez fayon', nombre: 'suelo · dos plantas', tope: 25 }
           # Las HSU son REPETIDORES, como todo equipo de esta red, y la suya es la antena
           # mejor colocada (6,50 m contra 3,15 de una NCU). Vigila una PROPIEDAD, no un
@@ -609,6 +703,7 @@ jobs:
           - { banco: test_afbt_vecinos.mjs }   # Paramo: la fila de detras no es vecina, y el recorte que necesita es el del vecino que mas obliga, no la suma
           - { banco: test_seleccion.mjs }   # el clic coge el seguidor pulsado: cajas de seleccion en el marco del seguidor dibujado (Fayon empinado, Bagnarelli girado)
           - { banco: test_gcr_planta.mjs }   # GCR = modulo / pitch de cada planta, y el BT de la animacion aplana lo que hace falta (antes 0,40 fijo)
+          - { banco: test_solapes.mjs }   # ningun seguidor se pisa con el siguiente de su tubo: en Ayora los *U9/*U10 del DWG salian de 74,8 m y la afeccion BT se veia a rayas
           # La afeccion BT E/O contra un trazado de rayos 3D sobre las filas medidas (pendiente y alabeo
           # incluidos), y bt3dAng con el tubo inclinado. En Ayora, antes del arreglo: 14,5 grados de error medio.
           - { banco: test_afbt_rayos.mjs, arg: ayora, nombre: 'test_afbt_rayos.mjs · Ayora' }

@@ -30,7 +30,9 @@ addEventListener('DOMContentLoaded',function(){
 <script src="lib/GLTFLoader.js"></script>
 <script src="seguidor.js?v=2.71"></script><!-- FUENTE ÚNICA del seguidor (compartida con el gemelo digital); ?v= rompe la caché del móvil al actualizar -->
 <script src="equipos.js?v=1"></script><!-- FUENTE ÚNICA de la NCU y la HSU (compartida con el simulador de cobertura RF): cotas de los planos DR_NCU_v0 y FTR.24.00145_5_C -->
+<script src="orto.js"></script><!-- FUENTE ÚNICA de la ortofoto (compartida con plano.html y con el simulador de cobertura RF): qué servidores, en qué orden y cómo se numeran las teselas -->
 <script src="viento.js"></script><!-- FUENTE ÚNICA del abanderamiento (compartida con el gemelo digital): las cuatro estrategias canónicas de SolarGPT. Ver sim/README.md del gemelo -->
+<script src="lib/radio_pv_model.js"></script><!-- COPIA FIJADA del canon de radio de `siting`: λ y el radio de Fresnel salen de aquí, no de un 0,125 escrito a mano. Ver lib/canon.lock.json y tools/test_canon_pin.mjs -->
 <script src="js/cableado_core.js"></script><!-- núcleo PURO del cableado DC (sin THREE/DOM): lo testean en Node tools/test_cableado_core.mjs -->
 <style>
   :root{--bg:#0B0F14;--panel:#121821;--line:#23303d;--line2:#2c3a49;--tx:#e7eef6;--tx2:#9fb2c4;--accent:#36D399;--mono:ui-monospace,monospace;--sans:system-ui,'Segoe UI',sans-serif}
@@ -295,9 +297,11 @@ function pintaTeselas(sat){
     x.strokeText(t.fuente,px+12,py+12);x.fillText(t.fuente,px+12,py+12);});
   x.restore();
 }
-var SAT=function(z,x,y){return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"+z+"/"+y+"/"+x;};SAT.fuente="ESRI";
-var PNOA=function(z,x,y){return "https://www.ign.es/wmts/pnoa-ma?service=WMTS&request=GetTile&version=1.0.0&layer=OI.OrthoimageCoverage&style=default&format=image/jpeg&tilematrixset=GoogleMapsCompatible&tilematrix="+z+"&tilerow="+y+"&tilecol="+x;};PNOA.fuente="PNOA";   // ortofoto PNOA máxima actualidad (IGN, 25 cm/px): mucho más nítida que ESRI en España
-function satSources(lat,lon){return (lat>27&&lat<44.2&&lon>-18.5&&lon<4.7)?[PNOA,SAT]:[SAT];}   // España (península+islas): PNOA primero, ESRI de respaldo tesela a tesela
+/* De dónde sale la ortofoto: `orto.js`, FUENTE ÚNICA compartida con plano.html y
+   con el simulador de cobertura RF. Estaba escrito aquí, otra vez en plano.html
+   —y allí SIN PNOA, así que la misma planta salía borrosa— y una tercera en el
+   simulador. Aquí sólo quedan los alias con los nombres de siempre. */
+var SAT=Orto.ESRI, PNOA=Orto.PNOA, satSources=Orto.fuentes;
 var DEM=function(z,x,y){return "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"+z+"/"+x+"/"+y+".png";};
 
 var renderer,scene,camera,controls,terrain,nodeGroup,labelGroup;
@@ -841,7 +845,7 @@ async function build(){
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   ajustaPanelPlanta();   // fuera los mandos de seguimiento y de radio si la planta no los tiene
-  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv};}); // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
+  NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv,blk:t.blk};});   /* blk: el bloque del DWG, con el que se busca el largo REAL en mesa.tipos. No se copiaba y en Ayora los 106 de bloque anonimo (*U9 21 mod, *U10 14 mod), que no traen mods ni mr, salian de 74,8 m: se solapaban 9-18 m con el siguiente del tubo y la capa de afeccion los pintaba a rayas de dos colores */ // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
   FB={x0:1e9,x1:-1e9,n0:1e9,n1:-1e9};NODES.forEach(function(n){var nn=-n.gz;if(n.gx<FB.x0)FB.x0=n.gx;if(n.gx>FB.x1)FB.x1=n.gx;if(nn<FB.n0)FB.n0=nn;if(nn>FB.n1)FB.n1=nn;}); // huella del campo de paneles (para el apantallamiento)
   var _px={};NODES.forEach(function(n){_px[Math.round(n.gx)]=1;});var _pxl=Object.keys(_px).map(Number).sort(function(a,b){return a-b;});var _pm=1e9;for(var _pi=1;_pi<_pxl.length;_pi++){var _pd=_pxl[_pi]-_pxl[_pi-1];if(_pd>3&&_pd<_pm)_pm=_pd;}if(_pm<1e9)PITCH=_pm;   // pitch REAL entre ejes (para las pérdidas por sombreado)
   var exmin=1e9,exmax=-1e9,nmin=1e9,nmax=-1e9;
@@ -1223,17 +1227,18 @@ function buildTrackers(elevAt){
     var rel=elevAt(n.glat,n.glon)-baseElev,dE=15;
     var relN=_E(0,-span/2),relS=_E(0,span/2);                                       // extremos del tubo (dz>0 = hacia el sur en el marco canónico)
     var relE=_E(dE,0),relW=_E(-dE,0);                                               // a un lado y otro del eje
-    var zPk=zPfor({tp:n.tp}),half=TC.np/2;
-    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
-    var relSop=[_E(-filaZ,0),_E(filaZ,0)];   // cota bajo el pie de CADA soporte del slew (fila 0 = OESTE, igual que t.fb[0] y que postRel): el soporte está a ±filaZ del eje, no en el centro
     // razón de longitud REAL del DWG cuando existe (Ayora tiene TRES: 28/21/14 mód → 1 / 0,75 / 0,5); si no, el par completo/medio de siempre
     var medio=/^medio/i.test(n.tp||''),mr=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)?n.mr:(medio?0.504:1);
     /* Si el DWG está MEDIDO, la razón sale del largo real de SU bloque y no de una proporción de
        módulos: el hueco del motor no escala, así que 0,75 sobre el 1V28 de Ayora dejaba el 1V21 en
        56,07 m cuando mide 56,306, y el 1V14 en 37,38 cuando mide 37,854. */
+    var _mrBlk=false;
     if(LAYOUT&&LAYOUT.mesa&&n.blk&&LAYOUT.mesa.tipos[n.blk]&&D&&D.span){
-      var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);}}
-    var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1);   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
+      var _lr=LAYOUT.mesa.tipos[n.blk].largo/D.span; if(_lr>0&&_lr<=1.0001){mr=Math.min(1,_lr);medio=(mr<0.999);_mrBlk=medio;}}
+    var zPk=zPfor({tp:n.tp,mr:mr}),half=TC.np/2;   // la retícula de postes de SU largo (antes la del completo: la cota se muestreaba en postes que no existen)
+    var postRel=[]; for(var pf=0;pf<2;pf++){var pfx=pf?filaZ:-filaZ;for(var pk=0;pk<half;pk++){postRel.push(_E(pfx,(pk<zPk.length?zPk[pk]:0)));}}  // cota del terreno bajo cada poste (retícula REAL por tipo; huecos rellenan con el centro) → postes de longitud variable
+    var relSop=[_E(-filaZ,0),_E(filaZ,0)];   // cota bajo el pie de CADA soporte del slew (fila 0 = OESTE, igual que t.fb[0] y que postRel): el soporte está a ±filaZ del eje, no en el centro
+    var art0=(typeof n.artic==='boolean')?n.artic:kinked;var _mrF=(typeof n.mr==='number'&&n.mr>0&&n.mr<1)||_mrBlk;   // razon REAL (del DWG o del largo de su bloque): modulos a su tamaño y en su sitio, no el layout 'medio' generico   // RÓTULA REAL del DWG por seguidor (San José: 1.723 de 2.289 articulados); sin dato, manda el maestro
     TRK.push({gx:n.gx,gz:n.gz,gx0:n.gx,gz0:n.gz,rot:(n.rot||0)*DEG,id:n.id,tp:n.tp,tpx:n.tpx,cal:n.cal,suc:n.suc,artic:art0,artic0:art0,mrFull:_mrF,rel:rel,medio:medio,mr:mr,postRel:postRel,relSop:relSop,relN:relN,relS:relS,relE:relE,relW:relW,span:span,dE:dE,num:n.num,postH:postH,glat:n.glat,glon:n.glon,fb:[new THREE.Matrix4(),new THREE.Matrix4()],kink:[{dN:0,dS:0},{dN:0,dS:0}]});
   });
   buildPickBoxes();applySavedTrackers();layoutTrackers();gcrPlanta();if(NODES.length<=1000)loadTCU();   // El Burgo + Ayora: con la TCU real (tcu.glb). Solo San José (2289) sin TCU para no saturar la GPU
@@ -4753,10 +4758,25 @@ function inField(lon,lat){ if(!FB)return false; var x=projX(lon),n=-projZ(lat); 
 // fila no cruza ningún panel; solo se topa con la banda quien CRUZA filas. Tratarlo como un muro
 // omnidireccional daba 95% de la planta aislada, contra los 52 enlaces MEDIDOS que están vivos.
 // ratio<0 = sin visión, <0.6 = roza Fresnel.
+//
+// LA FRECUENCIA, DECLARADA. Hasta el 2026-09-24 esto llevaba `var lam=0.125`
+// escrito a mano: la longitud de onda de 2,4 GHz, redondeada, y sin decir de qué
+// frecuencia salía. Ahora λ y el radio de Fresnel los pone el CANON
+// (`lib/radio_pv_model.js`, copia fijada de `siting`), y la frecuencia es este
+// número con su cita. 2,45 GHz es lo que declara `siting/radio_params.json` para
+// `zigbee_pro_24`, que es la variante que monta esta cartera.
+//
+// CUÁNTO CAMBIA: r ∝ √λ, así que pasar de 0,125 a λ(2,45 GHz) = 0,12236 encoge
+// TODOS los radios un 1,06 % y sube todos los `ratio` un 1,07 %. Como es un
+// factor POSITIVO y constante, NO puede cambiar el signo: ningún enlace pasa de
+// «sin visión» a «con visión» ni al revés. Lo único que puede moverse es el
+// corte de 0,6 —«roza»— y sólo para los que estuvieran a menos de un 1,07 % por
+// debajo, o sea con ratio en [0,5936 · 0,6). Medido abajo, en el banco.
+var RF_F_HZ = 2.45e9;
 function linkClearance(latA,lonA,hA,latB,lonB,hB){
   var eA=ELEV(latA,lonA)+hA,eB=ELEV(latB,lonB)+hB,dE=(lonB-lonA)*mPerLon,dN=(latB-latA)*mPerLat,D=Math.hypot(dE,dN);
   if(D<2)return{blocked:false,partial:false};
-  var lam=0.125,worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),bd=panelBand();
+  var worst=9,N=Math.max(12,Math.min(90,Math.round(D/4))),bd=panelBand();
   for(var i=1;i<N;i++){var f=i/N,lat=latA+(latB-latA)*f,lon=lonA+(lonB-lonA)*f,los=eA+(eB-eA)*f,terr=ELEV(lat,lon),hueco;
     if(Math.min(f,1-f)*D>4 && inField(lon,lat) && bd && nearRowD(projX(lon))<=bd.hw){   // apantalla el panel solo donde ESTA: su banda de altura y su huella en el suelo
       var pb=terr+bd.bot,pt=terr+bd.top;
@@ -4764,7 +4784,7 @@ function linkClearance(latA,lonA,hA,latB,lonB,hB){
       else if(los<=pb) hueco=Math.min(los-terr,pb-los);                 // por debajo del panel: limita el suelo o el propio panel
       else hueco=-Math.min(los-pb,pt-los);                              // dentro de la banda: tapado
     } else hueco=los-terr;                                              // fuera del campo manda el relieve
-    var r=Math.sqrt(lam*D*f*(1-f)),ratio=hueco/(r||1e-6);if(ratio<worst)worst=ratio;}
+    var r=RadioPV.radioFresnel(f*D,(1-f)*D,RF_F_HZ),ratio=hueco/(r||1e-6);if(ratio<worst)worst=ratio;}
   return{blocked:worst<0,partial:worst>=0&&worst<0.6,ratio:worst};
 }
 function applyFresnel(){

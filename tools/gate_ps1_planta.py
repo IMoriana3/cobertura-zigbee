@@ -49,6 +49,14 @@ import re
 import sys
 
 BOM = b"\xef\xbb\xbf"
+
+# EL PISO DEL ALCANCE. Seis .ps1 en la raiz del repo, MEDIDOS el 2026-09-23:
+# zigbee_angulos, zigbee_config, zigbee_inventario, zigbee_logger,
+# zigbee_routes_logger y el de arranque. Se pone en 6 y no en 1 porque lo que
+# tiene que cazar es que el alcance se ENCOJA, no solo que se vacie: si manana
+# quedan dos, esta puerta seguiria diciendo «ninguno se rompe» de los dos que
+# ve. Solo se BAJA a proposito y con el motivo escrito.
+PISO = int(os.environ.get("PISO_PS1", "6"))
 # En Windows-1252 estos bytes son comillas tipograficas, y PowerShell las acepta
 # como delimitador: son las que rompen el parseo al caer dentro de una cadena.
 COMILLAS = "‘’“”"
@@ -96,7 +104,31 @@ for nombre in sorted(f for f in os.listdir(raiz) if f.lower().endswith(".ps1")):
                       "revienta con «Object reference not set to an instance of an object»."
                       % (nombre, i))
 
-print("%d ficheros .ps1 en %s" % (vistos, raiz))
+print("%d ficheros .ps1 en %s   (piso: %d)" % (vistos, raiz, PISO))
+
+# ══ EL ALCANCE, Y POR QUE UNA PUERTA VERDE AFIRMA DOS COSAS ═══════════════
+#
+# Una puerta verde dice «HE MIRADO» y «ESTA BIEN». Hasta hoy esto solo
+# comprobaba la segunda: con CERO ficheros .ps1 imprimia «ninguno se romperia
+# en el PC de una planta» y salia con 0. Y la prueba negativa clasica —romper
+# un .ps1 y ver si salta— la pasaba sin enterarse, porque con los seis del
+# repo delante funciona.
+#
+# Es el mismo modo de fallo que ya aparecio tres veces en esta casa:
+#   · la regex de la HSU se paraba en el parentesis de projX(glon);
+#   · el auditor de verdes veia 3 ficheros de 17 pasos;
+#   · el careo del terreno contra el 3D careaba 1 planta de 11.
+# Las tres pasaban «rompela y mira si salta». Lo que las caza es PUBLICAR EL
+# ALCANCE y ponerse rojo cuando es parcial.
+#
+# `os.listdir` NO recorre subcarpetas: si manana los .ps1 se mueven a tools/,
+# el alcance cae a cero y esto lo dice en vez de aprobar.
+if vistos < PISO:
+    print("")
+    print("ALCANCE INSUFICIENTE: se han mirado %d ficheros .ps1 y el piso son %d." % (vistos, PISO))
+    print("Una puerta verde afirma dos cosas: «he mirado» y «esta bien».")
+    print("Esto no ha mirado lo suficiente, asi que NO es un verde.")
+    sys.exit(2)   # 2 = no comprobado, no 0
 if not quejas:
     print("ninguno se rompería en el PC de una planta por estas dos causas")
     sys.exit(0)
