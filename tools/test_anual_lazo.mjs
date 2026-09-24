@@ -1,4 +1,4 @@
-/* LA RUTA ANUAL PASA POR EL LAZO, Y NO PUEDE VOLVER A SALTÁRSELO
+/* LA RUTA ANUAL PASA POR EL LAZO, ES UNA SOLA, Y NINGUNA VISTA SE LA SALTA
  *
  * La cifra de «Estimación anual» es la que sale de la empresa. Hasta v1.70
  * sumaba la consigna que la política PIDE —`policyAngles` y a sumar—, sin banda
@@ -8,7 +8,20 @@
  * página afirmaba que el backtracking gana +2,638 % sobre el astronómico puro
  * cuando con el lazo gana +0,255 %.
  *
- * Este banco es de FUENTE y de CONDUCTA, y las dos mitades llevan su control.
+ * REFUNDACIÓN · PASO 2 (v1.82). Este banco cortaba su fuente en el `onclick` del
+ * botón del año y por eso NO VEÍA `grAnualGen`, que publicaba otra cifra: sin
+ * lazo y con nubes (sexto caso del registro del patrón). Ahora hay UNA ruta,
+ * `function* anualGen`, y el banco la cubre a ella y a TODOS sus consumidores:
+ *   · la ruta: lazo por día y por política, paso único y coherente, cielo claro,
+ *     rama por mesa con mesas;
+ *   · el botón del año y el informe gráfico: CONSUMEN la ruta, no calculan;
+ *   · `tools/anual_motor.mjs`, la otra cifra anual (otro motor, a 1 min): con
+ *     su lazo real encendido;
+ *   · CONDUCTA: con la página cortada tal cual (audit5/lib_anual_pagina.mjs),
+ *     el botón y el informe dan el MISMO total, bit a bit.
+ * CONTROL NEGATIVO, ruta por ruta: se desarma el lazo (o se hace calcular a un
+ * consumidor por su cuenta) en CADA ruta por separado, y el banco tiene que
+ * ponerse rojo en cada caso.
  *
  *     node tools/test_anual_lazo.mjs
  */
@@ -17,100 +30,123 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+const HTML = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
+const MOTOR = fs.readFileSync(path.join(ROOT, 'tools', 'anual_motor.mjs'), 'utf-8');
 let ok = 0, fail = 0;
 const T = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n + (d ? '   ' + d : '')); }
                          else { fail++; console.log('  ✗ ' + n + (d ? '   ' + d : '')); } };
 
-/* el cuerpo del estimador anual, cortado por sus dos extremos reales */
-const i0 = html.indexOf("$('yearbtn').onclick");
-const i1 = html.indexOf("const ref=tot['pairwise']");
-const anual = (i0 >= 0 && i1 > i0) ? html.slice(i0, i1) : '';
-/* TEST NULO del corte, escrito ANTES de lo que protege: un ancla que deje de
-   existir daría rebanada vacía y todo lo de abajo pasaría sin mirar nada */
-T('el corte del estimador anual no está vacío',
-  anual.length > 400 && /for\(let mo=0;mo<12;mo\+\+\)/.test(anual),
-  anual.length + ' caracteres');
-
-/* 1 · pasa por el lazo, siguiendo el DATO y no el nombre de la variable */
-const creaLazo = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{\s*\}\s*;[\s\S]{0,200}?\1\[[^\]]+\]\s*=\s*crearLazo\(/.test(anual)
-              || /crearLazo\(/.test(anual);
-T('el anual crea lazos', creaLazo);
-const porElLazo = /([A-Za-z_$][\w$]*)(?:\[[^\]]+\])?\.paso\(\s*([A-Za-z_$][\w$]*)\s*,/.exec(anual);
-T('lo que se suma sale del lazo, no de policyAngles directo', !!porElLazo,
-  porElLazo ? 'paso(' + porElLazo[2] + ', …)' : 'no hay ninguna llamada a .paso(');
-if (porElLazo) {
-  const v = porElLazo[2];
-  /* REFUNDACIÓN · PASO 1: con mesas el mando sale de `segCmd` (rama por mesa) y
-     sin mesas de `policyAngles`; las dos son «el mando de la política». */
-  T('y lo que entra en el lazo es el mando de la política',
-    new RegExp('(?:const|let|var)\\s+' + v + '\\s*=\\s*(?:[A-Za-z_$][\\w$]*\\s*\\?\\s*segCmd\\([^;]*:\\s*)?policyAngles\\(').test(anual));
-  const salida = /\.paso\([^)]*\)\s*;[\s\S]{0,200}?poaPlant\(([^)]*)\)/.exec(anual);
-  T('y lo que entra en poaPlant es la SALIDA del lazo, no el mando',
-    /tot\[P\.key\]\+=poaPlant\([^)]*,\s*lim\s*,/.test(anual) ||
-    (!!salida && /\blim\b/.test(salida[1])),
-    salida ? salida[1].slice(0, 60) : '');
+/* el cuerpo exacto de una función, contando llaves */
+function cuerpo(src, cab) {
+  const i = src.indexOf(cab); if (i < 0) return '';
+  let n = 0;
+  for (let k = src.indexOf('{', i); k < src.length; k++) {
+    if (src[k] === '{') n++; else if (src[k] === '}') { n--; if (n === 0) return src.slice(i, k + 1); }
+  }
+  return '';
 }
-/* CONTROL NEGATIVO de las dos de arriba: sobre el código VIEJO tienen que fallar.
-   Sin esto serían expresiones regulares que nadie ha visto ponerse rojas. */
-const viejo = anual.replace(/const lim=[^;]+;\s*/, '')
-                   .replace(/,\s*lim\s*,/g, ',a,')
-                   .replace(/crearLazo(Seg)?\(/g, 'noCrearLazo(');
-T('CONTROL · sobre el código de antes, el banco se pondría rojo',
-  !/crearLazo(Seg)?\(/.test(viejo) && !/,\s*lim\s*,/.test(viejo));
 
-/* REFUNDACIÓN · PASO 1 · con mesas, el anual consume la RAMA POR MESA, como el
-   día: `segCmd` (única fuente del mando por mesa) → lazo por mesa → `poaPlantSeg`.
-   Se exige en las DOS rutas anuales de la página: la del botón y `grAnualGen`. */
-const g0 = html.indexOf('function* grAnualGen(');
-const gr = g0 >= 0 ? html.slice(g0, html.indexOf('GR.anual=', g0)) : '';
-T('el corte de grAnualGen no está vacío', gr.length > 300 && /for\(let mo=0;mo<12;mo\+\+\)/.test(gr), gr.length + ' caracteres');
-const porMesa = src => /(?:const|let)\s+segA\s*=\s*segOn\(T\)/.test(src)
-  && /segA\s*\?\s*segCmd\(/.test(src) && /segA\s*\?\s*poaPlantSeg\(/.test(src);
-T('con mesas, el anual del botón usa segCmd → crearLazoSeg → poaPlantSeg',
-  porMesa(anual) && /segA\s*\?\s*crearLazoSeg\(\)/.test(anual));
-T('con mesas, grAnualGen usa segCmd → poaPlantSeg', porMesa(gr));
-/* CONTROL NEGATIVO: el código de antes (policyAngles y poaPlant por línea) tiene
-   que ponerlas rojas */
-const deLinea = src => src.replace(/segA\s*\?\s*segCmd\([^:]*:\s*/g, '').replace(/segA\s*\?\s*poaPlantSeg\([^:]*:\s*/g, '(')
-                          .replace(/segA\s*\?\s*crearLazoSeg\(\)\s*:\s*/g, '');
-T('CONTROL · con el anual por línea de antes, las dos se pondrían rojas', !porMesa(deLinea(anual)) && !porMesa(deLinea(gr)));
+/* TODAS las comprobaciones de fuente, como lista de fallos: [] = verde */
+function revisa(html, motor) {
+  const mal = [], hechas = [];
+  const no = (c, n) => { hechas.push([n, !!c]); if (!c) mal.push(n); };
+  const ruta = cuerpo(html, 'function* anualGen(');
+  // TEST NULO del corte, antes de lo que protege
+  no(ruta.length > 800 && /for\(let mo=0;mo<12;mo\+\+\)/.test(ruta), 'el corte de la ruta anual está vacío o no es la ruta');
+  // 1 · pasa por el lazo, y lo que se suma es la SALIDA del lazo
+  no(/crearLazo(Seg)?\(\)/.test(ruta), 'la ruta no crea lazos');
+  const paso = /(?:const|let)\s+lim\s*=\s*LZ\[P\.key\]\.paso\(\s*a\s*,/.test(ruta);
+  no(paso, 'lo que se suma no sale del lazo (`lim = LZ[…].paso(a, …)`)');
+  no(/(?:const|let)\s+a\s*=\s*(?:segA\s*\?\s*segCmd\([^;]*:\s*)?policyAngles\(/.test(ruta), 'lo que entra en el lazo no es el mando de la política');
+  no(/poaPlant(?:Seg)?\(g\.zen,g\.az,T,lim,/.test(ruta) && !/poaPlant(?:Seg)?\(g\.zen,g\.az,T,a,/.test(ruta), 'lo que entra en la POA no es la salida del lazo');
+  // 2 · el paso: una constante con nombre, el mismo en el bucle, la ponderación y el lazo
+  const pasos = [...ruta.matchAll(/m\+=\s*([A-Za-z_$][\w$]*|\d+)/g)].map(m => m[1]);
+  no(pasos.length === 1 && !/^\d+$/.test(pasos[0]), 'el paso del bucle no es UNA constante con nombre');
+  if (pasos.length === 1) {
+    const P = pasos[0];
+    no(new RegExp('\\(\\s*' + P + '\\s*/\\s*60\\s*\\)').test(ruta), 'la ponderación no usa el paso del bucle');
+    no(new RegExp('\\.paso\\([^,]+,\\s*' + P + '\\s*\\*\\s*60\\s*\\)').test(ruta), 'el lazo no recibe el paso del bucle en segundos');
+  }
+  // 3 · un lazo por política Y por día
+  const dentro = ruta.slice(ruta.indexOf('for(let mo=0'));
+  no(/for\(let mo=0[\s\S]{0,500}?crearLazo(Seg)?\(/.test(dentro) && !/crearLazo(Seg)?\([\s\S]{0,500}?for\(let mo=0/.test(ruta), 'los lazos no se crean DENTRO del bucle de días');
+  // 4 · cielo CLARO: lo que el deslizador de nubes declara del anual
+  no(/clearskyIneichen\(/.test(ruta) && !/skyWithClouds\(|cloudCC\(/.test(ruta), 'la ruta anual no es de cielo claro');
+  // 5 · rama por mesa con mesas (paso 1)
+  no(/(?:const|let)\s+segA\s*=\s*segOn\(T\)/.test(ruta) && /segA\s*\?\s*segCmd\(/.test(ruta) && /segA\s*\?\s*poaPlantSeg\(/.test(ruta)
+     && /segA\s*\?\s*crearLazoSeg\(\)/.test(ruta), 'con mesas la ruta no usa segCmd → crearLazoSeg → poaPlantSeg');
+  // 6 · los CONSUMIDORES consumen, no calculan
+  const i0 = html.indexOf("$('yearbtn').onclick"), i1 = html.indexOf("const ref=tot['pairwise']");
+  const boton = (i0 >= 0 && i1 > i0) ? html.slice(i0, i1) : '';
+  no(boton.length > 50, 'el corte del botón del año está vacío');
+  no(/anualGen\(/.test(boton) && !/policyAngles\(|poaPlant(?:Seg)?\(|clearskyIneichen\(|crearLazo/.test(boton), 'el botón del año calcula por su cuenta en vez de consumir la ruta');
+  const gr = cuerpo(html, 'function* grAnualGen(');
+  no(gr.length > 50, 'el corte de grAnualGen está vacío');
+  no(/yield\*\s*anualGen\(/.test(gr) && !/policyAngles\(|poaPlant(?:Seg)?\(|clearskyIneichen\(|skyWithClouds\(/.test(gr), 'el informe (grAnualGen) calcula por su cuenta en vez de consumir la ruta');
+  // 7 · la otra cifra anual, tools/anual_motor.mjs: con su lazo REAL encendido
+  no(/c\.ctrl\s*=\s*\{\s*on:\s*true\b/.test(motor), 'tools/anual_motor.mjs no enciende el lazo real');
+  mal.hechas = hechas;
+  return mal;
+}
 
-/* 2 · el paso, una sola vez y coherente con su ponderación */
-const pasos = [...anual.matchAll(/m\+=\s*([A-Za-z_$][\w$]*|\d+)/g)].map(m => m[1]);
-T('el paso del bucle es una constante con nombre, no un número suelto',
-  pasos.length === 1 && !/^\d+$/.test(pasos[0]), 'paso: ' + pasos.join(', '));
-if (pasos.length === 1 && !/^\d+$/.test(pasos[0])) {
-  const P = pasos[0];
-  T('la ponderación usa el MISMO paso que el bucle',
-    new RegExp('\\(\\s*' + P + '\\s*/\\s*60\\s*\\)').test(anual));
-  T('y el lazo recibe ese mismo paso, en segundos',
-    new RegExp('\\.paso\\([^,]+,\\s*' + P + '\\s*\\*\\s*60\\s*\\)').test(anual));
-  const m = new RegExp('(?:const|let|var)\\s+' + P + '\\s*=\\s*(\\d+)').exec(anual);
-  /* NINGÚN COMENTARIO PUEDE AFIRMAR UN PASO DEL ANUAL QUE EL CÓDIGO NO USE. La
-     primera versión de esta comprobación prohibía cualquier «paso N min», y el
-     que quedaba era el del DÍA, que sí es 5: banda ancha, rojo falso. Ahora mira
-     sólo las frases que hablan del ANUAL, que es de lo que responde este banco. */
-  const frases = [...html.matchAll(/[^.;*]*\banual(?:es)?\b[^.;]*paso\s+(\d+)\s*min[^.;]*/gi)]
-                 .concat([...html.matchAll(/[^.;*]*paso\s+(\d+)\s*min[^.;]*\banual(?:es)?\b[^.;]*/gi)]);
-  /* TEST NULO: si no acertara a ninguna frase, la comprobación diría que sí sin
-     mirar nada — y el día que alguien escriba una afirmación falsa, tampoco. */
+console.log('la ruta anual: una, con lazo, y todas las vistas la consumen');
+const mal = revisa(HTML, MOTOR);
+/* Cada comprobación de fuente se publica en SU línea: juntas en una sola, el
+   banco publicaba 10 y su piso (tools/con_piso.mjs) son 12 — y un piso que se
+   cumple juntando comprobaciones no cuenta lo que protege. */
+for (const [n, ok] of mal.hechas) T('FUENTE · descartado: «' + n + '»', ok, ok ? '' : 'OCURRE');
+if (mal.hechas.length < 16) T('FUENTE · las 16 comprobaciones de fuente se ejecutaron', false, 'solo ' + mal.hechas.length);
+
+/* CONTROL NEGATIVO ruta por ruta: cada mutante tiene que ponerlo ROJO */
+const mut = [
+  ['el lazo DESARMADO en la ruta única', HTML.replace(/(const lim=)LZ\[P\.key\]\.paso\(a,PASO_ANUAL_MIN\*60\);/, '$1a;')],
+  ['el BOTÓN calcula por su cuenta, sin lazo', HTML.replace(/const tot=drenaGen\(anualGen\([^;]*\)\)\.tot;/,
+    "const tot={};for(const P of POLICIES)if(P.on){tot[P.key]=poaPlant(0,0,T,policyAngles(P.key,0,0,Tcfg,clearskyIneichen(0,1,0,3),1,0.2).angles,{},1,0.2).plant;}")],
+  ['el INFORME calcula por su cuenta, sin lazo y con nubes', HTML.replace(/const r=yield\* anualGen\([^;]*\);/,
+    "const r={mes:{},tot:{}};for(const P of POLS){const irr=skyWithClouds(clearskyIneichen(0,1,0,3),cloudCC(),0);r.tot[P.key]=poaPlant(0,0,DAY.T,policyAngles(P.key,0,0,DAY.Tcfg,irr,1,0.2).angles,irr,1,0.2).plant;}yield 1;")],
+  ['nubes DENTRO de la ruta única', HTML.replace(/const irr=clearskyIneichen\(g\.zen,doy,c\.alt,c\.tl\);/, 'const irr=skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen);')],
+];
+for (const [nombre, h] of mut) {
+  if (h === HTML) { T('CONTROL · ' + nombre + ': el mutante no se pudo construir', false); continue; }
+  const m = revisa(h, MOTOR);
+  T('CONTROL · ' + nombre + ' → el banco se pone ROJO', m.length > 0, m.length ? m.join(' · ') : 'NO LO VE');
+}
+{
+  const hm = MOTOR.replace(/c\.ctrl\s*=\s*\{\s*on:\s*true/, 'c.ctrl = { on: false');
+  const m = hm === MOTOR ? [] : revisa(HTML, hm);
+  T('CONTROL · el lazo DESARMADO en tools/anual_motor.mjs → el banco se pone ROJO', m.length > 0, m.length ? m.join(' · ') : 'NO LO VE');
+}
+
+/* NINGÚN COMENTARIO afirma un paso del ANUAL que el código no use */
+{
+  const ruta = cuerpo(HTML, 'function* anualGen(');
+  const m = /(?:const|let)\s+PASO_ANUAL_MIN\s*=\s*(\d+)/.exec(ruta);
+  const frases = [...HTML.matchAll(/[^.;*]*\banual(?:es)?\b[^.;]*paso\s+(\d+)\s*min[^.;]*/gi)]
+                 .concat([...HTML.matchAll(/[^.;*]*paso\s+(\d+)\s*min[^.;]*\banual(?:es)?\b[^.;]*/gi)]);
   const malas = frases.filter(f => m && f[1] !== m[1]);
-  T('ningún comentario afirma un paso del ANUAL distinto del que usa el código',
-    !!m && malas.length === 0,
+  T('ningún comentario afirma un paso del ANUAL distinto del que usa el código', !!m && malas.length === 0,
     'paso = ' + (m ? m[1] : '?') + ' min · frases sobre el anual con paso: ' + frases.length +
     (malas.length ? ' · MALAS: ' + malas.map(x => '«' + x[0].trim().slice(0, 60) + '»').join(' ') : ''));
-  T('CONTROL · el buscador de esas frases no está ciego',
-    /paso\s+\d+\s*min/i.test(html),
-    frases.length ? 'acierta a ' + frases.length : 'ninguna frase sobre el anual menciona paso: el test nulo lo dice');
+  T('CONTROL · el buscador de esas frases no está ciego', /paso\s+\d+\s*min/i.test(HTML), 'acierta a ' + frases.length);
 }
 
-/* 3 · un lazo por cadena: por política Y por día, no uno global */
-const dentroDelAnio = anual.slice(anual.indexOf('for(let mo=0'));
-T('los lazos se crean DENTRO del bucle de días, no fuera',
-  /for\(let mo=0[\s\S]{0,400}?crearLazo\(/.test(dentroDelAnio) &&
-  !/crearLazo\([\s\S]{0,400}?for\(let mo=0/.test(anual),
-  'los 12 días no son consecutivos: arrastrar el estado sería inventar una historia');
+/* CONDUCTA: la página cortada tal cual; el botón y el informe, el MISMO total */
+{
+  const { rutasAnuales } = await import('../audit5/lib_anual_pagina.mjs');
+  const n = 4, pitch = 6, z = [...Array(n)].map((_, i) => -i * pitch * Math.tan(4 * Math.PI / 180));
+  const pairs = []; for (let i = 0; i < n - 1; i++) pairs.push({ slope: Math.atan2(z[i] - z[i + 1], pitch) * 180 / Math.PI, pitch, axisTilt: 0 });
+  const Tp = { pairs, cw: 2.382, axisAz: 0, maxAngle: 55, gcr: 2.382 / pitch, z0: 0.17, nBypass: 2, iam: 0.05, rowTilt: new Array(n).fill(0), groups: null, drive: 'mono' };
+  const c = { lat: 41.5763, lon: -0.7981, tz: 2, alt: 300, tl: 3.5, albedo: 0.2, date: '2026-06-21' };
+  const P = [{ key: 'astro', on: true }, { key: 'pairwise', on: true }];
+  const F = rutasAnuales(ROOT, HTML).F;
+  const b = F.boton(c, Tp, Tp, P), i = F.informe({ c, T: Tp, Tcfg: Tp }, P, () => false, () => 0.6).tot;
+  T('CONDUCTA · el botón y el informe dan el MISMO anual, bit a bit (4 filas, astro y pairwise; el deslizador de nubes a 0,6 no entra)',
+    b.astro === i.astro && b.pairwise === i.pairwise, `pairwise ${b.pairwise.toFixed(4)} / ${i.pairwise.toFixed(4)} kWh/m²`);
+  const Fsin = rutasAnuales(ROOT, mut[0][1]).F;
+  const bs = Fsin.boton(c, Tp, Tp, P);
+  T('CONTROL · con el lazo desarmado, el anual CAMBIA (la conducta de arriba mira)', bs.pairwise !== b.pairwise,
+    `pairwise con lazo ${b.pairwise.toFixed(4)} · sin lazo ${bs.pairwise.toFixed(4)}`);
+}
 
 console.log('\n' + ok + ' OK · ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
