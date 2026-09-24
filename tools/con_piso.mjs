@@ -96,6 +96,8 @@ const PISO = {
   // por eso estuvieron un rato declarados sin piso en vez de con un numero a ojo)
   'test_veto_por_mesa.mjs': 8,   // paso 3 (R-1): + la puerta segCmd con dos controles
   'test_unidad_accionamiento.mjs': 9,   // paso 3 reformulado: motor, las nueve como main (+segCmd, +control), contacto (+control), declaración
+  'test_vectores_bt.mjs': 18,   // paso 4.2: manifiesto declarado, 7 ficheros, casos, 7 reproducciones, invariante 5, control negativo
+  'test_esquema_contrato.py': 8,   // paso 4.1: el T de la página y un preset válidos + seis mutaciones que suspenden
   'test_backtracking_sim.mjs': 215,
   'test_produccion.mjs': 93,
 };

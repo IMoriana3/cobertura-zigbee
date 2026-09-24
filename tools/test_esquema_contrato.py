@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PASO 4.1 · el esquema del contrato, validado contra terrenos que la página CONSTRUYE.
 
-    node audit5/P4_dump_T.mjs audit5/out/P4_T.json && python3 audit5/P4_valida_esquema.py
+    node audit5/P4_dump_T.mjs audit5/out/P4_T.json && python3 tools/test_esquema_contrato.py [RUTA_DEL_T]
 
 · Ayora tal como la monta la página (`terrenoComoLaPagina`, banda 80, bloque 0);
   `real` se sustituye por {} (es el objeto entero de la planta, no cabe en JSON
@@ -10,20 +10,20 @@
 CONTROLES NEGATIVOS: cada mutación tiene que SUSPENDER; si alguna pasa, el
 esquema no distingue esa forma y se dice.
 """
-import json, os, copy
+import json, os, sys, copy
 import jsonschema
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S = json.load(open(os.path.join(ROOT, "audit5", "contrato_bt.schema.json")))
 V = jsonschema.Draft202012Validator({**S["$defs"]["T"], "$defs": S["$defs"]})
-ay = json.load(open(os.path.join(ROOT, "audit5", "out", "P4_T.json")))["ayora"]
+ay = json.load(open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "audit5", "out", "P4_T.json")))["ayora"]
 preset = {"pairs": [{"slope": 0, "pitch": 6, "axisTilt": 0}] * 9, "cw": 2.382, "axisAz": 0, "maxAngle": 55,
           "gcr": 2.382 / 6, "z0": 0.17, "nBypass": 2, "iam": 0.05, "rowTilt": [0] * 10,
           "groups": [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]], "drive": "bifila"}
-fallos = 0
+fallos = 0; n = 0
 for nombre, T in [("Ayora (página)", ay), ("preset genérico", preset)]:
     e = list(V.iter_errors(T))
     print(f"{nombre:18s} {'VÁLIDO' if not e else 'INVÁLIDO: ' + '; '.join(x.message[:80] for x in e[:3])}")
-    fallos += bool(e)
+    fallos += bool(e); n += 1
 fuera = sorted(set(ay) - set(S["$defs"]["T"]["properties"]))
 print("campos de Ayora que el esquema NO describe (la física no los lee por T; CONTRATO_BT.md §1.1): " + (", ".join(fuera) or "ninguno"))
 def muta(f):
@@ -39,6 +39,6 @@ NEG = [
 for nombre, f in NEG:
     ok = not list(V.iter_errors(muta(f)))
     print(f"control «{nombre}»: {'PASA — el esquema NO lo distingue' if ok else 'suspende (bien)'}")
-    fallos += ok
-print("\nTODO OK" if not fallos else f"\n{fallos} FALLO(S)")
+    fallos += ok; n += 1
+print(f"\nTODO OK — {n} comprobaciones" if not fallos else f"\n{fallos} FALLO(S) de {n}")
 raise SystemExit(1 if fallos else 0)

@@ -50,7 +50,7 @@ campos de la tabla de abajo.
   `T.rotula` (0 coincidencias en `:505-4453`).
 - `segSide`, `segMorro` y `lineX` se leen a través del objeto de planta `P`
   (`:2596`, `:2613`, `:2621`).
-- `audit5/P4_valida_esquema.py` los lista aparte para que no queden fuera en
+- `tools/test_esquema_contrato.py` los lista aparte para que no queden fuera en
   silencio.
 
 **Dónde se construye:**
@@ -188,6 +188,17 @@ noche es 0.
 - Por línea (`row`, `true3d`, `mgl`) la unidad es el par de líneas. Está
   declarado y contado; no puede empeorar respecto de `main`.
 
+**INVARIANTE 5 · un solo delimitador de cierre.**
+- La física se consume CORTÁNDOLA, y los consumidores cortan de forma distinta:
+  - `produccion.html:1914` usa `indexOf('/* FIN-FÍSICA')`, la PRIMERA
+    aparición;
+  - los bancos usan `lastIndexOf`, la ÚLTIMA (`tools/test_caras_bajo_demanda.mjs:46`,
+    `audit5/lib_simulador.mjs`).
+- Hoy hay UN marcador (`:4453`) y cortan lo mismo. Con un segundo marcador,
+  cortarían bloques distintos sin avisar.
+- **Verificación:** `tools/test_vectores_bt.mjs` exige exactamente un
+  `/* FIN-FÍSICA` y un `FÍSICA PURA —` de apertura.
+
 ## 7 · Huecos declarados (el código y su propia descripción discrepan)
 
 1. **Cabecera incompleta.** La de `T` (`:712`) omite 12 campos que la física
@@ -206,7 +217,7 @@ noche es 0.
 
 ## 8 · Verificación del esquema
 
-`audit5/P4_valida_esquema.py`:
+`tools/test_esquema_contrato.py`:
 - **Válidos:** el `T` de Ayora tal como lo monta la página
   (`audit5/P4_dump_T.mjs`) y un preset con la forma de `terrain(c)`.
 - **Seis controles negativos, y SUSPENDEN:** `real` booleano, `drive`
@@ -215,8 +226,35 @@ noche es 0.
 - **Dónde corre:** hoy, en local (`jsonschema` 4.26). Pasarlo a CI va con los
   vectores (4.2).
 
-## 9 · Lo que NO está en este contrato
+## 9 · Consumidores de la física (inventario, 2026-09-24)
+
+Se busca quién nombra `backtracking.html` y, de esos, quién CORTA y EJECUTA el
+bloque. Un consumidor que ejecuta es un sitio donde un cambio de física se nota;
+uno que solo enlaza, no.
+
+| consumidor | cómo | cita |
+|---|---|---|
+| `produccion.html` | EJECUTA: `fetch('backtracking.html')` y corta el bloque en caliente, sin copia | `:1910-1926` |
+| `overcast.html` | enlaza y comparte `sol.js` / `irradiancia.js`; su propio bloque FÍSICA PURA es OTRO | `:148` |
+| `terreno.html` | describe la misma operación que el botón «👁 sol»; no ejecuta el bloque | `:731` |
+| `docs/algoritmos_backtracking.html` | documento de referencia; no ejecuta | `:49` |
+| `sol.js`, `irradiancia.js` | la física los USA (van delante del bloque); declaran su procedencia | `sol.js:16`, `irradiancia.js:19` |
+| `tools/` (23 bancos y herramientas) | EJECUTAN el bloque (cortado, o vía `cargaSimulador` / `rutasAnuales`) | p. ej. `tools/test_vectores_bt.mjs`, `tools/careo_produccion.mjs:25-30` |
+| `SolarGPTfull/tools/parity_js_core.py` | EJECUTA el bloque cortado (arnés de paridad JS ↔ core) | `:133` |
+| `SolarGPTfull/solargpt/scripts/cruce_circunsolar_js.py` | transporta sol, cielo y terreno desde la página | `:3` |
+| `proyectos/sim-solar.html`, `gemelo-digital/sim/campo3d.js` | citan la página como origen de ajustes; no ejecutan | `sim-solar.html:986`, `campo3d.js:69` |
+
+- **Método:** búsqueda de la cadena `backtracking.html` en `*.mjs`, `*.js`,
+  `*.py` y `*.html`, más de «FÍSICA PURA» o de los cargadores. No se miró
+  `audit*/`: son medidas, no consumidores.
+- **Otros repos:** `proyectos` y `gemelo-digital` se leyeron de clones locales
+  SIN `git fetch`, así que pueden estar atrasados.
+- **Límite:** es un inventario por cadena, así que un consumidor que construya
+  la ruta con variables no sale. Es la regla de la casa de `SolarGPTfull`:
+  «buscar por consumidor y por AST, nunca solo por cadena». Declarado.
+
+## 10 · Lo que NO está en este contrato
 
 - **La paridad con `tracker3d.py`:** PARADA por el hallazgo 4.0
   (`audit5/REFUNDACION_P4.md`), pendiente de la decisión del titular.
-- **Los vectores congelados (4.2):** van en su propio fichero con sha256.
+- **Los vectores congelados (4.2)** están en `tools/vectores_bt/` (banco `tools/test_vectores_bt.mjs`, en CI con piso 17): son el CUÁNTO de este contrato.

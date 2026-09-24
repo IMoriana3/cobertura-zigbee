@@ -483,6 +483,25 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           node tools/con_piso.mjs tools/test_unidad_accionamiento.mjs
+      # Refundación del BT, paso 4.2. EL CANON: la consigna que EJECUTA la página
+      # y lo que se cobra con ella, congelados con sha256 en siete casos (torsión
+      # de más de dos valores, bifila rígida y quebrada, otro azimut de eje y tres
+      # bloques de plantas reales irregulares) × seis instantes de sol bajo y
+      # alto × nueve políticas. Un cambio de física sin declarar (sin
+      # `--regenerar "motivo"`, apuntado en tools/vectores_bt/CAMBIOS.json) lo
+      # pone rojo, y un vector tocado a mano también.
+      - name: vectores congelados del BT
+        run: node tools/con_piso.mjs tools/test_vectores_bt.mjs
+      # Paso 4.1. Un esquema que nadie valida es un rastro, no la cosa: el del
+      # contrato (audit5/contrato_bt.schema.json) se valida contra el T que monta
+      # la página en Ayora y contra seis mutaciones que TIENEN que suspender.
+      # jsonschema va fijado y en su propio venv (no se toca el Python del runner).
+      - name: el esquema del contrato valida el T de la página
+        run: |
+          python3 -m venv "$RUNNER_TEMP/esq"
+          "$RUNNER_TEMP/esq/bin/pip" install -q --disable-pip-version-check jsonschema==4.26.0
+          node audit5/P4_dump_T.mjs "$RUNNER_TEMP/P4_T.json"
+          PATH="$RUNNER_TEMP/esq/bin:$PATH" node tools/con_piso.mjs tools/test_esquema_contrato.py "$RUNNER_TEMP/P4_T.json"
       # R4 fase 2. El informe gráfico calculaba LAS NUEVE políticas siempre, y con
       # planta real la página apaga ella sola las caras: el informe las volvía a
       # encender de facto. Y el criterio de «cara» era `brain==='ncu'`, que
