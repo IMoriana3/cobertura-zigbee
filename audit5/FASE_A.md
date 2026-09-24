@@ -372,33 +372,75 @@ el de main. Se mide la consigna, **sin lazo ni giro**, igual antes y después.
 Las cifras de «error» son mesas×instante (o unidades×instante) y, en el anual,
 van ponderadas por los días del mes.
 
-- **Error «no»**, el 631 de la fase 0 pasado a la decisión: sombra evitable
-  que la política no declara.
+- **Sombra de planos**: la del contador sin terreno, media de mesa ponderada
+  por largo. Se parte en:
+  - **irreducible**: mesas cuya unidad y todas sus emisoras están en el tope
+    del rango legítimo; nada puede retroceder más;
+  - **evitable de verdad**: el resto.
+- **Fuera del haz**: mesas×instante con θ fuera de su rango legítimo. A sol
+  rasante, quitar sombra así no es ganar.
+- **Error «no»**, el 631 de la fase 0 pasado a la decisión: mesas×instante con
+  sombra de planos > 1e-3 que la política no declara. «Declarada» se
+  COMPRUEBA sobre los ángulos: la unidad y todas sus emisoras en el tope, o la
+  marca `aceptadaPorEnergia` de la guardia. No se lee del informe de la propia
+  decisión (E-X1-A-5).
 - **Error «sí»**, el 1.660: unidades retrocedidas desde su candidato que podrían
   volver a él sin sombra. Se mira 1 de cada 3 pasos.
 
+Salidas: `audit5/out/A4_efecto_{senoidal,ayora}_{dia,anual}.{txt,json}`. En las
+cuatro corridas la máquina estaba OCUPADA (carga 8-9 en 4 núcleos): no hay
+medida de tiempo.
+
 ### Preset senoidal (8 filas, N-S ±3°, pendiente 5°, monofila: ruta por línea con guardia)
 
-| | energía | sombra evitable media | publicada | error «no» | error «sí» |
-|---|---|---|---|---|---|
-| `pairwise` · día (21-jun y 21-dic) | 11,8790 → 11,8794 kWh/m² (**+0,003 %**) | 1,5003 → 1,4988 % | 3,5076 → 3,5102 % | 433 → **0** | 0 → 0 |
-| `true3d` · día | 11,8019 → 11,8019 (**0,000 %**) | 2,0427 → 2,0413 % | 3,9626 → 3,9653 % | 302 → **0** | 0 → 0 |
-| `pairwise` · anual | 2.226,2820 → 2.226,3079 kWh/m² (**+0,001 %**) | 1,4893 → 1,4887 % | 3,2795 → 3,2789 % | 79.961 → **0** | 0 → 0 |
-| `true3d` · anual | 2.214,3336 → 2.214,3336 (**0,000 %**) | 2,1647 → 2,1641 % | 3,8309 → 3,8304 % | 55.802 → **0** | 0 → 0 |
-| `astro` (TEST NULO) | Δ **0** exacto | = | = | — | — |
+| | energía | sombra de planos | irreducible | evitable de verdad | fuera del haz | error «no» | error «sí» |
+|---|---|---|---|---|---|---|---|
+| `pairwise` · día (21-jun y 21-dic, cada 10 min) | 11,8790 → 11,8794 kWh/m² (**+0,003 %**) | 1,5003 → 1,4988 % | 1,0159 → 1,0871 | 0,4843 → 0,4118 | 2 → 2 | 433 → **0** | 0 → 0 |
+| `true3d` · día | 11,8019 → 11,8019 (**0,000 %**) | 2,0427 → 2,0413 % | 0,4270 → 0,4981 | 1,6157 → 1,5431 | 2 → 2 | 302 → **0** | 0 → 0 |
+| `pairwise` · anual (21 de cada mes, ponderado) | 2.226,2820 → 2.226,3079 kWh/m² (**+0,001 %**) | 1,4893 → 1,4887 % | 1,0763 → 1,1346 | 0,4131 → 0,3541 | 62 → 62 | 79.961 → **0** | 0 → 0 |
+| `true3d` · anual | 2.214,3336 → 2.214,3336 (**0,000 %**) | 2,1647 → 2,1641 % | 0,4200 → 0,4783 | 1,7447 → 1,6858 | 62 → 62 | 55.802 → **0** | 0 → 0 |
+| `astro` (TEST NULO), día y anual | Δ **0** exacto | = | 0 → 0 | = | 0 → 0 | — | — |
 
 **Lectura.** En la ruta por línea el efecto es de **declaración**, no de energía.
 Donde evitar la sombra cuesta más de lo que vale, la guardia publica lo de
 siempre y lo MARCA. El error «no» cae a 0 porque la política ya no dice «0 %»
-donde el contador ve sombra; la sombra evitable apenas baja porque esa sombra
-se acepta a sabiendas.
+donde el contador ve sombra. La «evitable de verdad» que queda (0,35-1,69 %) es
+la aceptada por energía: la guardia la marca, así que está declarada, pero una
+consigna podría quitarla.
 
-### Ayora real (banda de la página, 79 líneas, 1.600 mesas: ruta por mesa, sin guardia)
+### Ayora real (banda de la página, 79 líneas, 1.600 mesas; `pairwise` por mesa SIN guardia, `true3d` por línea CON guardia)
 
-**EN CURSO.**
+| | energía | sombra de planos | irreducible | evitable de verdad | fuera del haz | publicada | error «no» | error «sí» |
+|---|---|---|---|---|---|---|---|---|
+| `pairwise` · día (21-jun y 21-dic, cada 10 min) | 14,2650 → 14,2659 kWh/m² (**+0,006 %**) | 0,3138 → 0,5492 % | 0,0000 → 0,5464 | 0,3138 → **0,0028** | 4.964 → **0** | 1,0642 → 1,1248 % | 3.079 → **0** | 1.215 → **91** (de 5.475 → 3.949 mirados) |
+| `true3d` · día | 11,9533 → 11,9533 (**−0,000 %**) | 0,5625 → 0,5773 % | 0,0001 → 0,5109 | 0,5624 → 0,0664 | 4.978 → 1.120 | 1,1466 → 1,1527 % | 4.541 → **0** | 0 → 0 (de 33 → 33) |
+| `astro` (TEST NULO) | Δ **0** exacto | = | 0 → 0 | = | 0 → 0 | = | — | — |
+| anual (21 de cada mes, cada 20 min) | **EN CURSO** | | | | | | | |
+
+**Lectura (día).**
+
+- **`pairwise`:** la sombra que una consigna podía quitar desaparece (0,3138 →
+  0,0028 %) y ya no se apunta fuera del haz (4.964 → 0). La media de la
+  sombra de planos SUBE porque pasa a irreducible lo que antes se «quitaba»
+  apuntando de espaldas al haz a sol rasante. Está medido y cerrado en «Las
+  mesas residuales», abajo: POA idéntica en esos instantes.
+- **El error «sí» no llega a 0.** Quedan 91 unidades×instante, de 3.949
+  mirados, que podrían volver a su candidato sin sombra. El afinado a 0,1° de
+  la decisión es parcial. Eso ya es optimizar: fase D.
+- **`true3d` en planta real:** el efecto es de declaración, como en el preset
+  (Δ energía 0). Las 1.120 mesas×instante que siguen fuera del haz son las de
+  la **referencia que publica la guardia**, y se ha medido, no deducido.
+  `audit5/A4_sonda_evitable.mjs --pol=true3d`, cada 30 min: después del cambio
+  hay 76 mesas×instante fuera del haz, **las 76 en instantes aceptados por
+  energía y 0 en instantes en que publica la decisión** (`fueraN_aceptada: 76`,
+  `fueraN_decision: 0`, `audit5/out/A4_sonda_evitable_true3d.txt`). En planta
+  real la referencia no se recorta, porque `repairNoShade` no entra
+  (`backtracking.html:3680`). Salen marcadas `aceptadaPorEnergia`.
 
 **Planta por defecto (8 filas, llano):** Δ = 0 exacto en energía, sombra y
-errores. En llano, pvlib ya es exacto y la decisión no tiene nada que corregir.
+errores. Se midió con la primera versión de la sonda; energía y sombra no
+dependen de la cuenta del error «no», y sin sombra ese error es 0 con
+cualquiera de las dos cuentas. En llano, pvlib ya es exacto y la decisión no tiene nada que corregir.
 
 ## Errores propios (E-X1)
 
@@ -420,6 +462,12 @@ errores. En llano, pvlib ya es exacto y la decisión no tiene nada que corregir.
   (día) no se publica. Ahora «declarada» se comprueba sobre los ángulos: la
   unidad y todas sus emisoras en el tope, o la marca `aceptadaPorEnergia`. Se
   repitieron las cuatro corridas.
+- **E-X1-A-6.** Esperé al banco del simulador con
+  `until ! pgrep -f "tools/test_backtracking_sim.mjs"`. La línea de comando del
+  propio bucle contiene ese texto, así que `pgrep -f` se encontraba a sí mismo y
+  la espera no iba a terminar nunca. Dos bucles así quedaron colgados; se vio
+  en `ps` y se pararon por PID (10966 y 11103), comprobado después. Las esperas
+  se hacen con `kill -0 <PID>`.
 - **E-X1-A-4.** La primera coincidencia de la banda de la página se hizo con
   `lineX`, que es relativa al origen de cada carga, y solo casaba 1 línea. Se
   cambió a `lineXAbs`, con una aserción que exige que casen todas.

@@ -54,9 +54,10 @@ for (const [mo, dd] of [[5, 21], [11, 21]]) {
     for (const u of S) { const t = U[u]; let lo = -Infinity, hi = Infinity; for (const [r] of t) { lo = Math.max(lo, RF[r][0]); hi = Math.min(hi, RF[r][1]); }
       const v = AN[t[0][0]][t[0][1]]; if (Math.abs(v - (sg > 0 ? lo : hi)) < 1e-9) enTope++; }
     let fuera = 0, mesas = 0; AV.forEach((l, r) => l.forEach(v => { mesas++; if (v < RF[r][0] - 1e-9 || v > RF[r][1] + 1e-9) fuera++; }));
+    let fueraN = 0; AN.forEach((l, r) => l.forEach(v => { if (v < RF[r][0] - 1e-9 || v > RF[r][1] + 1e-9) fueraN++; }));
     const agotada = D.info.iter >= 80;
-    tot.kwhV += pV / 1000 / 2; tot.kwhN += pN / 1000 / 2; tot.aceptadas += acept ? 1 : 0; tot.inst++; tot.malasV += malas(CV); tot.malasN += malas(CN); tot.implic += S.size; tot.enTope += enTope; tot.fueraTope += S.size - enTope; tot.agotadas += agotada ? 1 : 0; tot.fueraRangoV += fuera; tot.mesas += mesas;
-    console.log(`${mo + 1}-${dd} ${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')} UTC sol ${g.elev.toFixed(1)}° · mesas con sombra evitable ${malas(CV)} → ${malas(CN)} · implicadas después ${S.size} (en tope ${enTope}) · iter ${D.info.iter} irred ${D.info.irreducibles}${agotada ? ' AGOTADA' : ''} · antes fuera de rango ${fuera}/${mesas} · POA ${pV.toFixed(1)} → ${pN.toFixed(1)} W/m²${acept ? ' · ACEPTADA POR ENERGÍA' : ''}${igual ? '' : ' · ¡DECISIÓN ≠ PUBLICADA!'}`);
+    tot.kwhV += pV / 1000 / 2; tot.kwhN += pN / 1000 / 2; tot.aceptadas += acept ? 1 : 0; tot.inst++; tot.malasV += malas(CV); tot.malasN += malas(CN); tot.implic += S.size; tot.enTope += enTope; tot.fueraTope += S.size - enTope; tot.agotadas += agotada ? 1 : 0; tot.fueraRangoV += fuera; tot[acept ? 'fueraN_aceptada' : 'fueraN_decision'] = (tot[acept ? 'fueraN_aceptada' : 'fueraN_decision'] || 0) + fueraN; tot.mesas += mesas;
+    console.log(`${mo + 1}-${dd} ${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')} UTC sol ${g.elev.toFixed(1)}° · mesas con sombra evitable ${malas(CV)} → ${malas(CN)} · implicadas después ${S.size} (en tope ${enTope}) · iter ${D.info.iter} irred ${D.info.irreducibles}${agotada ? ' AGOTADA' : ''} · fuera de rango ${fuera} → ${fueraN} /${mesas} · POA ${pV.toFixed(1)} → ${pN.toFixed(1)} W/m²${acept ? ' · ACEPTADA POR ENERGÍA' : ''}${igual ? '' : ' · ¡DECISIÓN ≠ PUBLICADA!'}`);
   }
 }
 console.log('TOTAL', JSON.stringify(tot));
