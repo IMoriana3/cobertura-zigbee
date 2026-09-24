@@ -819,6 +819,46 @@ jobs:
   # pasar. Asi corre siempre y falla diciendo quien cayo.
   #
   # `result` de un job de matriz es success solo si TODAS sus entradas pasaron.
+  # ── PASO 4.4 (p2) · paridad JS ↔ tracker3d.py SIN torsión ─────────────────
+  # Job PROPIO y FUERA de la puerta (no está en `needs` de `puerta`): informa, no
+  # bloquea. Su trinquete vive dentro del banco (tools/paridad_py_piso.json).
+  # SolarGPTfull es PRIVADO: sin el secreto SOLARGPT_TOKEN (lectura) el job NO
+  # comprueba nada y lo dice con su motivo — «no comprobado» no es verde.
+  # El commit de SolarGPTfull va FIJADO: comparar contra su HEAD mediría el reloj.
+  paridad_py:
+    name: paridad JS ↔ tracker3d.py (sin torsión, fuera de la puerta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOLARGPT_TOKEN: ${{ secrets.SOLARGPT_TOKEN }}
+      SOLARGPT_PIN: d521ec8541fc235269700f29441479672ebc6b84
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: sin secreto, NO COMPROBADO
+        if: env.SOLARGPT_TOKEN == ''
+        run: |
+          echo "::warning::paridad JS ↔ tracker3d.py NO COMPROBADA: falta el secreto SOLARGPT_TOKEN (SolarGPTfull es privado)"
+          node tools/test_paridad_py.mjs
+      - name: checkout de SolarGPTfull en el commit fijado
+        if: env.SOLARGPT_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: IMoriana3/SolarGPTfull
+          token: ${{ secrets.SOLARGPT_TOKEN }}
+          ref: ${{ env.SOLARGPT_PIN }}
+          path: _solargpt
+          sparse-checkout: solargpt/solargpt_core
+      - uses: actions/setup-python@v5
+        if: env.SOLARGPT_TOKEN != ''
+        with: { python-version: '3.11' }
+      - name: paridad sin torsión (con trinquete y control negativo)
+        if: env.SOLARGPT_TOKEN != ''
+        run: |
+          pip install -q numpy pandas pvlib
+          SOLARGPT_ROOT="$GITHUB_WORKSPACE/_solargpt" node tools/test_paridad_py.mjs
+
   puerta:
     name: bancos en verde
     runs-on: ubuntu-latest

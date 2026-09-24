@@ -49,3 +49,187 @@ vieja de `optimal` con `poaPlant` tiene que ponerlo rojo.
    - job propio de CI, fuera de la puerta, con trinquete: el número de casos en
      paridad no puede bajar;
    - PARADA cuando diga quién manda.
+
+## HALLAZGO 4.0 · el signo del tilt N-S: `tracker3d.py` no es coherente consigo mismo, y el arnés de audit2 mezclaba convenios — PARADA de la paridad
+
+**Qué hay escrito (citas):**
+
+- **El JS** convierte antes de cada llamada a pvlib: `backtracking.html:596-610`,
+  «pvlib … lo definen AL REVÉS … Se convierte AQUÍ», `const pvTilt=t=>-(t||0);`.
+  La app usa tilt POSITIVO = el extremo que apunta a `axisAz` MÁS ALTO.
+- **`tracker3d.py` DECLARA el convenio de pvlib** para el campo
+  (`SolarGPTfull/solargpt/solargpt_core/tracker3d.py:43-44`, «All slope angles
+  follow the pvlib right-hand convention», commit 046022b).
+- **Sus llamadas a pvlib cumplen lo declarado:** `:209-212`,
+  `axis_tilt=pair.axis_tilt_deg`, en crudo (y `:297`, `:326`, `:364`, `:658`,
+  `:935`, `:1336`).
+- **Su geometría 3D NO:** `_bt3d_pair_max_magnitude`, `:486-488`,
+  `a = np.array([0.0, ca, sa])` con y = norte, es decir, tilt positivo = norte
+  MÁS ALTO, el convenio de la app. Esa función es la de su `true3d`
+  (`compute_bt_angles_3d`).
+- **El arnés de paridad de audit2** le entrega el `axisTilt` de la APP en
+  crudo: `audit2/G1_py.py:39`, `axis_tilts_deg=[p["axisTilt"] for p in C["pairs"]]`.
+
+**La medida** (`audit5/P4_signo_tilt.py`, solo Python, sin el JS; resultado en
+`audit5/out/P4_signo_tilt.json`):
+
+- **Montaje:** una pareja plana E-O con el mismo tilt en las dos filas es un
+  plano, y ahí el backtracking de pvlib es exacto. Su |θ| en retroceso tiene
+  que coincidir con la magnitud sin sombra del 3D de `tracker3d.py` con UNO de
+  los dos signos.
+- **Base:** 266 instantes con sol > 5° (21-jun y 21-dic, cada 5 min; entre 55
+  y 75 en retroceso según el tilt); pitch 6 m, cuerda 2,382 m, θmáx 55°.
+
+| tilt N-S | máx \|\|θ_pvlib(+t)\| − mag3D(t)\| (lo que hace `tracker3d.py`) | con −t (lo que hace el JS) |
+|---|---|---|
+| 0° (TEST NULO) | 0,0001° | 0,0001° (idéntico) |
+| +2° | 17,98° | 0,0001° |
+| +5° | 31,64° | 0,0001° |
+| −5° | 31,64° | 0,0001° |
+| +8° | 39,63° | 0,0001° |
+
+- **Control:** la prueba distingue. Un signo casa a 1e-4° y el otro falla por
+  18-40°. Si ninguno casara, habría dicho «NO DISTINGUE» y no se concluiría.
+
+**Qué dice:**
+
+1. **Dentro de `tracker3d.py`, el mismo campo se lee con signos opuestos:**
+   pvlib lo lee como lo declara (convenio pvlib) y el 3D como la app. Con
+   torsión, su `true3d` combina un 3D y una base pvlib que ven terrenos
+   espejo: en `compute_bt_angles_3d` la MISMA clave de pareja pide
+   `_bt3d_pair_max_magnitude(..., pair.axis_tilt_deg, ...)` y
+   `pvlib.tracking.singleaxis(..., axis_tilt=pair.axis_tilt_deg, ...)`
+   (`tracker3d.py:655-662`).
+   - Su garantía «No inter-row self-shade in 3-D» (`:607`) la respalda
+     `solargpt/tests/test_bt3d_true3d.py`, con torsión (`:135`, `(0, 6.7)`,
+     `(5, 4)`…).
+   - Pero su ray-cast de fuerza bruta usa el MISMO
+     `a = np.array([0, ca, sa])` (`:52`) que el 3D que comprueba: carea el 3D
+     consigo mismo en el mismo convenio.
+   - **Un control que no puede distinguir no es un control superado:** no ve
+     el desacuerdo con pvlib.
+2. **El arnés G1 de audit2 no pasaba el mismo terreno a los dos lados.** Con
+   tilt ≠ 0, las políticas de pvlib de Python veían el terreno espejo del JS.
+   - La divergencia del caso B (`audit2/EVIDENCIA_BT_R2.md`: hasta 65°, lados
+     opuestos en 14 de 14, «divergencia SIN torsión: NO EXISTE») lleva dentro,
+     como MÍNIMO, este error del arnés.
+   - No se ha separado cuánto es del arnés y cuánto de otra cosa.
+   - `audit2/` queda intacto: esto se registra aquí.
+3. **Ningún cambio de signo en el arnés deja a Python coherente:** si se le
+   pasa −t, cuadran sus funciones de pvlib pero se espeja su 3D. Por eso un
+   banco de paridad con torsión no puede decir «quién manda» entre el JS y un
+   `tracker3d.py` que se contradice. Hace falta antes una decisión.
+
+**PARADA de la paridad (punto de parada del encargo).** Opciones, sin decidir:
+
+- **(p1)** Arreglar el 3D de `tracker3d.py` al convenio que declara (en
+  SolarGPTfull, en su propio PR) y medir la paridad después.
+- **(p2)** Paridad solo SIN torsión (tilt 0), donde los dos convenios
+  coinciden, y el caso con torsión declarado fuera de la paridad hasta (p1).
+- **(p3)** El arnés convierte (−t) para las funciones de pvlib de Python y
+  declara `true3d` de Python como incoherente, fuera de la paridad.
+
+**Lo que sigue en marcha sin esperar:** el contrato en prosa y en esquema del
+lado JS, y sus vectores congelados. No dependen de esta decisión.
+
+## DECISIÓN del titular sobre la paridad (2026-09-24): (p1), con (p2) en paralelo
+
+- **(p3) descartada:** parchear el arnés deja el defecto dentro del motor que
+  produce los informes.
+- **(p1)** va en un PR propio de `SolarGPTfull`.
+  - Rama `claude/backtracking-6th1im` sobre `main` d521ec85.
+  - Informe: `docs/audit/BT3D-SIGNO-TILT.md` de ese repo.
+  - Contenido: una sola frontera de signo (`_axis_rise_rad`), la fuerza bruta de
+    los tests desde pvlib, un test de anclaje contra pvlib con control negativo,
+    y el efecto medido antes/después.
+  - **Resultado principal:** la «ganancia 3D en torsión» era el espejo. En la
+    matriz de 30 topografías, los casos estrella pasan de +11,6 %…+16,8 % a
+    −0,09 %…−0,15 %. En un plano, `true3d` pasa de cobrar un 2 % menos que
+    `pairwise` a igualarlo.
+- **(p2):** paridad SIN torsión, como job propio fuera de la puerta y con
+  trinquete (paso 4.4).
+- **El arnés de audit2 contaminaba el careo:** nota posterior al sello N-R2-1
+  en `audit5/NOTAS_POSTERIORES_SELLO_R2.md`, con puntero a E-G1/E-G3/E-G5. No
+  se sabe cuánto de la divergencia del caso B era el arnés. Se rehace cuando
+  entre (p1).
+
+## Errores propios (E-X1)
+
+- **E-X1-P4-1 · Cité `tracker3d.py` de una copia 160 commits atrasada.**
+  - Las citas y la primera medida del signo (hallazgo 4.0) salieron de
+    `/home/user/SolarGPTfull` en 046022b. `origin/main` estaba en d521ec85.
+  - Rehecha la medida sobre `main`: el resultado es idéntico. Las líneas se
+    mueven poco (`:43-44` → `:45`, `:486-488` → `:488-490`).
+  - Regla que incumplí, la de la casa de `SolarGPTfull`: «Ningún veredicto
+    sobre un repo sin `git fetch` en la misma cadena».
+- **E-X1-P4-2 · Escribí un documento con un heredoc SIN comillas.**
+  - La shell ejecutó como órdenes DECENAS de fragmentos entre comillas invertidas del (sin contar)
+    texto.
+  - Revisada la salida, todas dieron «command not found», «No such file» o error
+    de sintaxis: ninguna hizo nada. El documento quedó sin esas citas y se
+    reescribió entero con la herramienta de escritura.
+  - La regla de siempre: texto con comillas invertidas, en heredoc CITADO
+    (`<<'EOF'`) o sin pasar por la shell.
+
+## Lista de defectos de infraestructura (se anotan y se sigue; no generan paso)
+
+- **I-1 · Faltaban dependencias en el entorno local de pruebas de `SolarGPTfull`.**
+  - Faltaban pytest, pytest-xdist, shapely, matplotlib, scikit-learn, nbformat,
+    httpx, python-dateutil, pyarrow, openpyxl y reportlab.
+  - Sin `matplotlib`, dos ficheros de test no llegan a importarse y ESCONDÍAN
+    7 fallos de la rama.
+  - Se instalaron con `pip` solo para medir.
+- **I-2 · La máquina está saturada.** 4 CPU con carga de 19 a 20 sostenida: los
+  tiempos de este paso son de máquina saturada.
+
+## 4.4 · (p2) PARIDAD SIN TORSIÓN — resultado y banco
+
+**Banco:** `tools/test_paridad_py.mjs`, que llama a `tools/paridad_py.py` para
+el lado Python.
+- **CI:** job propio `paridad_py` en `.github/workflows/bancos.yml`, FUERA de la
+  puerta.
+- **Pin:** `SolarGPTfull` en d521ec8541. Comparar contra su HEAD mediría el
+  reloj.
+- **Sin secreto:** sin `SOLARGPT_TOKEN` el job publica «NO COMPROBADO» con su
+  motivo y NO da verde.
+- **Trinquete:** `tools/paridad_py_piso.json`, 794 de 840.
+
+**Rejilla declarada:**
+- 5 terrenos SIN torsión: llano, pendiente ±6°, ondulado y escalonado fuerte.
+- 6 filas, sin grupos de accionamiento (el Python no los tiene, E-G3).
+- 21-jun y 21-dic, cada hora con sol > 3°: 24 instantes por terreno.
+- 9 políticas.
+- Una celda está en paridad si el máx |Δθ| de sus filas es ≤ 0,01°.
+- El lado Python RECHAZA un caso con torsión.
+
+**Resultado (JS v1.83.0 · `tracker3d.py` d521ec8541 · pvlib 0.15.2):**
+
+| política | llano | +6° | −6° | ondulado | escalonado |
+|---|---|---|---|---|---|
+| astro, global, row | 24/24 | 24/24 | 24/24 | 24/24 | 24/24 · Δ 0,000° |
+| pairwise, true3d | 24/24 | 23/24 (0,42°) | 24/24 | 24/24 | 21/24 (60,74°) |
+| mgl | 24/24 | 20/24 (0,65°) | 21/24 (0,17°) | 15/24 (1,51°) | 15/24 (60,74°) |
+| optimal | 21/24 (34,68°) | 23/24 (38,74°) | 21/24 (28,89°) | 20/24 (30,78°) | 22/24 (4,76°) |
+| bt2d, optfree | NO EXISTEN en `tracker3d.py` | | | | |
+
+- **En paridad:** 794 de 840 celdas comparables. 240 celdas son de políticas
+  sin contraparte en Python.
+- **Control negativo:** con la pendiente invertida en el lado Python, los
+  terrenos con pendiente caen de 629 celdas en paridad a 449. El banco distingue.
+- **Entorno limpio:** el banco da lo mismo en un venv solo con
+  numpy/pandas/pvlib y SOLO `solargpt/solargpt_core` copiado, que es lo que
+  hará el checkout disperso de CI.
+
+**Dónde discrepan, por política:**
+- **`pairwise` y `true3d`:** SOLO con sol < 6°. Da 0,42° el 21-jun a las 19 UTC
+  (sol 5,9°), y 19,9° y 60,7° en el escalonado del 21-dic (sol 4,5° y 4,9°).
+  Candidatos ya conocidos, NO verificados aquí: la fila interior (`min(sg·θ)` en
+  JS, `min|θ|` en Python) y la reparación, que Python no tiene.
+- **`mgl`:** discrepancias pequeñas (≤ 1,5°) a cualquier hora, además de los
+  mismos instantes de sol bajo.
+- **`optimal`:** grande (hasta 38,7°) incluso en llano. Los dos deciden con
+  modelos de POA distintos: Perez + IAM ASHRAE en el JS, y el de
+  `compute_bt3d_poa_per_row` en Python.
+
+**Qué NO dice este banco:** quién manda. Publica dónde discrepan; la decisión es
+la PARADA 4.5.

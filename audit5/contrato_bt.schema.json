@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "audit5/contrato_bt.schema.json",
+  "title": "Contrato de la física del BT (lado JS, v1.83.0)",
+  "description": "Prosa y citas en audit5/CONTRATO_BT.md. Ángulos en grados, longitudes en metros, irradiancia en W/m². Tilt N-S en CONVENIO APP (positivo = extremo hacia axisAz más alto); la conversión a pvlib es pvTilt (backtracking.html:610).",
+  "$defs": {
+    "grados": { "type": "number" },
+    "par": {
+      "type": "object",
+      "required": ["slope", "pitch", "axisTilt"],
+      "properties": {
+        "slope":    { "$ref": "#/$defs/grados", "description": ">0: la fila p+1 (este) más baja (backtracking.html:714)" },
+        "pitch":    { "type": "number", "exclusiveMinimum": 0, "description": "m, entre ejes" },
+        "axisTilt": { "$ref": "#/$defs/grados", "description": "convenio app; media de las dos filas" }
+      }
+    },
+    "mesaRef": { "type": "array", "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 0 }], "minItems": 2, "maxItems": 2, "description": "[línea r, mesa k]" },
+    "T": {
+      "type": "object",
+      "required": ["pairs", "cw", "axisAz", "maxAngle", "gcr", "z0", "nBypass"],
+      "properties": {
+        "pairs":    { "type": "array", "items": { "$ref": "#/$defs/par" }, "minItems": 1 },
+        "cw":       { "type": "number", "exclusiveMinimum": 0, "description": "m, cuerda" },
+        "axisAz":   { "$ref": "#/$defs/grados", "description": "brújula; 0 = eje N-S" },
+        "maxAngle": { "type": "number", "exclusiveMinimum": 0, "maximum": 90 },
+        "gcr":      { "type": "number", "exclusiveMinimum": 0, "description": "cw/pitch NOMINAL (hueco 4)" },
+        "z0":       { "type": "number", "description": "m, cara sobre el eje" },
+        "nBypass":  { "type": "integer", "minimum": 0, "maximum": 6 },
+        "iam":      { "type": "number", "minimum": 0, "description": "b0 ASHRAE; 0 = sin IAM" },
+        "rowTilt":  { "type": "array", "items": { "$ref": "#/$defs/grados" }, "description": "una por línea; longitud pairs.length+1" },
+        "groups":   { "type": ["array", "null"], "items": { "type": "array", "items": { "type": "integer", "minimum": 0 } } },
+        "drive":    { "enum": ["mono", "bifila", "quebrado"] },
+        "segs":     { "type": "array", "items": { "type": "array", "items": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "minItems": 2, "maxItems": 2 } }, "description": "[y0,y1] en m, y = +norte" },
+        "segTilt":  { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/grados" } }, "description": "su presencia enciende la ruta por mesa" },
+        "segZ":     { "type": "array", "items": { "type": "array", "items": { "type": "array", "minItems": 2, "maxItems": 2 } } },
+        "segDrive": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/mesaRef" } }, "description": "mesas de un motor: MISMO θ (invariante 4)" },
+        "segPairs": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/mesaRef" } } },
+        "real":     { "type": "object", "description": "el objeto de plantFromCotas, NO un booleano (hueco 2)" },
+        "mv":       { "type": "integer", "minimum": 1 }
+      },
+      "dependentRequired": { "segTilt": ["segs"], "segDrive": ["segs"] }
+    },
+    "irr": {
+      "type": "object",
+      "required": ["ghi", "dni", "dhi"],
+      "properties": { "ghi": { "type": "number", "minimum": 0 }, "dni": { "type": "number", "minimum": 0 }, "dhi": { "type": "number", "minimum": 0 } }
+    },
+    "politica": { "enum": ["astro", "global", "row", "bt2d", "pairwise", "true3d", "mgl", "optimal", "optfree"] },
+    "salidaLinea": {
+      "type": "object",
+      "required": ["angles"],
+      "properties": {
+        "angles": { "type": "array", "items": { "$ref": "#/$defs/grados" }, "description": "longitud pairs.length+1; en [−maxAngle, maxAngle]; 0 de noche" },
+        "f": { "description": "optimal: número; optfree: número o {min,max,n}; resto: undefined" },
+        "fRow": { "type": "array", "items": { "type": "number" } },
+        "retenida": {}, "frenada": {}
+      }
+    },
+    "salidaMesa": {
+      "type": "object",
+      "required": ["angles", "linea"],
+      "properties": {
+        "angles": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/grados" } }, "description": "alineado con T.segs" },
+        "f": {},
+        "linea": { "type": ["array", "null"], "description": "null si la política calcula por mesa; los θ de línea si reparte (segsBroadcast)" }
+      }
+    },
+    "cobro": {
+      "type": "object",
+      "required": ["plant"],
+      "properties": {
+        "plant": { "type": "number", "minimum": 0, "description": "W/m²; con mesas: poaPlantSeg (media por mesa ponderada por largo); sin mesas: poaPlant (media por fila)" }
+      }
+    }
+  },
+  "x-invariantes": {
+    "1": "decidir con lo que se cobra: criterio de decisión ≡ función de cobro, o desajuste medido y declarado (SOMBRA/AOI/OBJETIVO)",
+    "2": "una sola frontera de signo con pvlib: pvTilt (backtracking.html:610)",
+    "3": "θ ∈ [−maxAngle, maxAngle]; 0 de noche",
+    "4": "con segDrive y ruta por mesa, un θ por motor; por línea, el par de líneas, contado y no peor que main"
+  },
+  "x-cobra-por-politica": {
+    "optimal": "sí (poaPlantSeg)",
+    "optfree": "a medias: la guía con rowVal (backtracking.html:3131), la elección con poaPlantSeg",
+    "astro": "no: incidencia", "global": "no: tangencia media", "row": "no: tangencia", "bt2d": "no: tangencia en llano",
+    "pairwise": "no: tangencia + reparación", "true3d": "no: contacto 3D (medido)", "mgl": "no: luz al suelo"
+  }
+}
