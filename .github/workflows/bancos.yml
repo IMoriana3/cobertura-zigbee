@@ -426,6 +426,15 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           node tools/test_caras_bajo_demanda.mjs
+      # R5 fase A (v1.80.0). `pairwise` y `true3d` deciden con el MISMO contador
+      # que mide (`decideProyeccion`). El banco se pone rojo si vuelven a
+      # separarse: lo que ve el que decide tiene que ser, bit a bit, lo que cuenta
+      # el contador; ninguna mesa con sombra evitable sin declarar; la decisión
+      # VIEJA (vecindad y gemelo) tiene que suspender eso (control negativo); y
+      # las otras siete políticas y el contador por defecto, bit a bit iguales a
+      # main (con test nulo de esa comparación). Lee `origin/main`, ya traído.
+      - name: el que decide y el que mide ven la misma sombra
+        run: node tools/test_decide_mide.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
       # independientes. Ahora el exportador lo LEE de la página; este banco vigila

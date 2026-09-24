@@ -1,0 +1,7 @@
+R5 · A.2 (b) · sombra fuera del dominio del contador · v1.78.1 · AYORA planta entera: bloque 0 107 líneas (79 en la banda de la página) · bloque 1 188 líneas (80 en la banda de la página) · 3004 mesas · 21-jun y 21-dic cada 10 min · solo planos, sin terreno
+  TEST NULO · receptores sin relaciones fuera: fracción «todo» = «solo dentro» en todos (0 fallos)
+  sol      inst   rel. con receptor fuera de banda (no simulado)   relaciones: OTRO_BLOQUE / FUERA_DE_BANDA / MISMA_LINEA / DENTRO   mesas×inst con sombra que el contador no ve (>0 / >1 pp, peor)   haz tapado: todo / solo dentro
+  0-3°       7   5712   0 / 140 / 1000 / 15923   511 / 59, 65.37 pp   21948.0 / 21821.8
+  3-10°     17   1417   0 / 30 / 954 / 4610   284 / 17, 41.95 pp   17124.9 / 16878.9
+  10-90°   120   2068   0 / 36 / 230 / 7123   37 / 11, 1.62 pp   12087.0 / 12001.9
+  coste: 256 s (máquina OCUPADA: declarado, no es una medida de tiempo)

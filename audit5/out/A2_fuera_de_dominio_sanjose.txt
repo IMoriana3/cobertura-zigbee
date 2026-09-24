@@ -1,0 +1,7 @@
+R5 · A.2 (b) · sombra fuera del dominio del contador · v1.78.1 · SANJOSE planta entera: bloque 0 186 líneas (80 en la banda de la página) · bloque 1 290 líneas (80 en la banda de la página) · 9156 mesas · 21-jun y 21-dic cada 20 min · solo planos, sin terreno
+  TEST NULO · receptores sin relaciones fuera: fracción «todo» = «solo dentro» en todos (0 fallos)
+  sol      inst   rel. con receptor fuera de banda (no simulado)   relaciones: OTRO_BLOQUE / FUERA_DE_BANDA / MISMA_LINEA / DENTRO   mesas×inst con sombra que el contador no ve (>0 / >1 pp, peor)   haz tapado: todo / solo dentro
+  0-3°       2   179225   9182 / 49801 / 147 / 66461   2452 / 2205, 100.00 pp   40785.9 / 33684.5
+  3-10°      8   7934   0 / 79 / 720 / 4869   211 / 25, 74.25 pp   42988.1 / 42458.3
+  10-90°    62   7882   0 / 81 / 147 / 5279   77 / 13, 1.56 pp   6610.1 / 6346.0
+  coste: 670 s (máquina OCUPADA: declarado, no es una medida de tiempo)
