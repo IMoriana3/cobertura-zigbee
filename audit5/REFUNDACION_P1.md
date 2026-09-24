@@ -144,6 +144,11 @@ su física. No es una reimplementación.
 
 ## Errores propios (E-X1)
 
+- **E-X1-R1-3.** Al re-apilar el paso 1 sobre `main` no se trajo
+  `audit5/lib_simulador.mjs`, que vivía en las ramas R5: en `main` no existe
+  `audit5/`. Las diez corridas del 1.4 murieron al arrancar
+  (`ERR_MODULE_NOT_FOUND`). Lo cazó su propio registro; se trajo el módulo y se
+  relanzaron. Ninguna cifra salió de ellas.
 - **E-X1-R1-2.** Las primeras corridas del 1.4 y del 2.1 se lanzaron contra la
   base de la fase A. Con la decisión (iii) y el re-apilado sobre `main`
   quedaron sin base válida: se pararon por PID y se relanzaron. Ninguna cifra
