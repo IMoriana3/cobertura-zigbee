@@ -61,7 +61,7 @@ const PISO = {
   'test_rutas_telnet.py': 1,
   'test_export_csv_esquema.py': 1,
   // ── datos y física (node) ──
-  'test_pw_navegador.mjs': 6,
+  'test_pw_navegador.mjs': 14,   // + navegador() impuesto y su guardia (una página pesada por navegador)
   'test_dem_cobertura.mjs': 10,
   'test_anual_lazo.mjs': 12,
   'test_ponderacion_planta.mjs': 10,
