@@ -25,20 +25,39 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const RAIZ = new URL('..', import.meta.url).pathname;
-const DIR = ['/home/user/SCADA/tools/tcu-toolbox/plantas/',
+/* Los candidatos son todos RELATIVOS a proposito. Habia un
+   '/home/user/SCADA/tools/tcu-toolbox/plantas/' absoluto delante —la ruta de
+   un contenedor concreto—, redundante porque '../../SCADA/...' ya resuelve
+   ahi, y que hacia que el banco careara SIEMPRE en local y NUNCA en CI sin
+   que la diferencia se notara. Eso es lo que hay que poder deprivar para
+   probar la guarda. */
+const DIR = [
   new URL('../../SCADA/tools/tcu-toolbox/plantas/', import.meta.url).pathname,
   new URL('../../scada/tools/tcu-toolbox/plantas/', import.meta.url).pathname]
   .find(p => { try { return existsSync(p); } catch (e) { return false; } });
 const TOOLBOX = { ayora: '24025-ayora.json', sanjose: '24019-san-jose.json', fayon: '24007-fayon.json',
   tunez: '24021-tunez.json', bagnarelli: '24030-bagnarelli.json', elburgo: 'elburgo.json' };
 
-if (!DIR) { console.log('no encuentro plantas/ de la toolbox: no hay hoja contra la que carear'); process.exit(0); }
+/* rc = 2, NO 0. Salia con 0 y en la pagina de checks se veia igual que un
+   careo hecho: «comprobado y pasa» y «no comprobado» pintados del mismo
+   verde. Es el mismo defecto que #738 arreglo en el banco de configuracion y
+   que aparecio despues en cuatro pasos de Siting. El comentario del propio
+   workflow ya lo decia —«hoy no vigila nada»— y el codigo de salida decia lo
+   contrario; el agregador lee el codigo de salida.
+   SCADA es PUBLICO: la CI lo clona, asi que esta rama solo salta cuando de
+   verdad no esta. */
+const SIN_HOJA = !DIR;
+if (SIN_HOJA) {
+  console.log('SIN CAREO: no encuentro plantas/ de la toolbox, no hay hoja contra la que carear.');
+  console.log('  la escribe SCADA/tools/tcu-toolbox/make_plantas.py --excel');
+  console.log('No se ha careado ninguna HSU. Esto no es un verde.');
+}
 
 let malo = 0, ok = 0, sinHoja = [];
 const di = (bien, txt) => { if (!bien) malo++; console.log(`  ${bien ? 'ok   ' : 'FALLA'} ${txt}`); };
 const indice = s => { const m = /(\d+)/.exec(String(s || '')); return m ? +m[1] : null; };
 
-for (const [planta, fichero] of Object.entries(TOOLBOX).sort()) {
+for (const [planta, fichero] of (SIN_HOJA ? [] : Object.entries(TOOLBOX).sort())) {
   const ruta = DIR + fichero, lay = `${RAIZ}${planta}_layout.json`;
   if (!existsSync(ruta) || !existsSync(lay)) continue;
   const L = JSON.parse(readFileSync(lay, 'utf8'));
@@ -84,4 +103,24 @@ di(sueltas === 0, `ninguna HSU con gateway y sin NCU en los once layouts (hay ${
 if (sinHoja.length) console.log('\nsin `rsu` en su fichero, así que no se carean: ' + sinHoja.join(', '));
 console.log(`\n${malo ? malo + ' divergencia(s): el layout se ha separado de la hoja'
   : `${ok} HSU dicen en el layout exactamente lo que dice la hoja`}`);
-process.exit(malo ? 1 : 0);
+
+/* EL PISO. Sin esto, encontrar la carpeta y no carear NI UNA HSU salia igual
+   de verde que carearlas todas: el bucle hace `continue` cuando falta el
+   fichero de una planta, asi que con la carpeta presente pero vacia daba
+   ok = 0, malo = 0 y rc = 0. Un cero no es un aprobado.
+   El numero es el MEDIDO —22 el 2026-09-23: ayora 10 HSU (20 comprobaciones,
+   con su esclavo Modbus), bagnarelli 2 y fayon 1— y solo se BAJA a proposito,
+   con el motivo escrito, igual que los pisos de
+   factiun-cartera/tests/correr.sh. San Jose, Tunez y El Burgo no entran
+   porque su fichero de la toolbox no trae `rsu`, y el banco ya lo dice.
+   Se pone en 20 y no en 22 para que anyadir una HSU no lo rompa solo: lo que
+   tiene que cazar es que el careo DESAPAREZCA, no que crezca. */
+const PISO = 20;
+if (malo) process.exit(1);
+if (SIN_HOJA) process.exit(2);
+if (ok < PISO) {
+  console.log(`\nSIN CAREO SUFICIENTE: ${ok} HSU careadas, y el piso son ${PISO}.`);
+  console.log('Encontrar la carpeta y no carear casi nada no es un verde.');
+  process.exit(2);
+}
+process.exit(0);
