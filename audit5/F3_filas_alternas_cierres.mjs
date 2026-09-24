@@ -75,6 +75,7 @@ const Imod = (V, g) => { const dV = MOD.dv * Math.log(g / 1000); const i = MOD.i
 const pmpp = gs => { let best = 0; for (let v = 0; v <= MOD.voc * 1.2 * MOD.n; v += 0.05) { const V = v / MOD.n; const p = gs.reduce((a, g) => a + Imod(V, g), 0) * v; if (p > best) best = p; } return best; };
 const perdidaMismatch = pos => { const juntos = pmpp(pos), sueltos = pos.reduce((a, g) => a + pmpp([g]), 0); return 1 - juntos / sueltos; };
 
+const LOO = [];
 console.log(`R5 · cierres de las filas alternas · simulador ${VER} · ${NR} filas, paso ${P}, cuerda ${CW}, z0 ${Z0}, eje a ${H} m del suelo, ρ ${ALB}`);
 /* TEST NULO */
 {
@@ -103,5 +104,18 @@ for (const [zen, az, alt] of CASOS) {
   console.log(`  factor de vista al cielo (fila → [real / sin vecinas]): uniforme ${U.map(f => (f.vfC / f.vfC0).toFixed(3)).join(' ')} · alterna ${A.map(f => (f.vfC / f.vfC0).toFixed(3)).join(' ')}`);
   console.log(`  cielo por fila (W/m², página → enmascarado): alterna ${A.map(f => f.sky0.toFixed(1) + '→' + f.sky1.toFixed(1)).join(' ')}`);
   console.log(`  suelo por fila (W/m², página → real): alterna ${A.map(f => f.gnd0.toFixed(1) + '→' + f.gnd2.toFixed(1)).join(' ')}`);
+  /* CON Y SIN CADA UNO (pedido del titular, 2026-09-24): la cifra final con los
+     tres cierres, y quitando UNO cada vez con los otros dos puestos. La
+     secuencia de arriba es acumulativa y su orden reparte las interacciones; esto
+     no depende del orden. */
+  const conMM = (k, mmOn) => { const a = m(A, k), u = m(U, k); if (!mmOn) return 100 * (a / u - 1);
+    return 100 * ((a * (1 - perdidaMismatch(A.map(k)))) / (u * (1 - perdidaMismatch(U.map(k)))) - 1); };
+  const e3sinDif = f => f.beam + f.circ + f.sky0 + f.gnd2, e3sinAlb = f => f.beam + f.circ + f.sky1 + f.gnd0;
+  const L = { tres: conMM(e2, true), sin_difusa: conMM(e3sinDif, true), sin_albedo: conMM(e3sinAlb, true), sin_mismatch: conMM(e2, false) };
+  LOO.push({ sol: `${zen}/${az}`, pagina: g(e0), ...L });
+  console.log(`  CON Y SIN CADA UNO: los tres ${L.tres.toFixed(2)} % · sin difusa enmascarada ${L.sin_difusa.toFixed(2)} % · sin albedo real ${L.sin_albedo.toFixed(2)} % · sin mismatch ${L.sin_mismatch.toFixed(2)} % · (página ${g(e0).toFixed(2)} %)`);
   if (zen === 78) { const fi = U[3]; console.log(`  CONTROL · fila interior uniforme: VF cielo ${fi.vfC.toFixed(4)} frente a (1+cos β)/2 ${fi.vfC0.toFixed(4)} ${fi.vfC < fi.vfC0 - 1e-3 ? '(enmascara: el control protege)' : '⚠ NO enmascara'}`); }
 }
+console.log('\nCIFRA FINAL, CON Y SIN CADA CIERRE (ganancia de la alterna sobre la tangencia uniforme):');
+console.log('  sol       página   los tres   sin difusa enm.   sin albedo real   sin mismatch');
+for (const r of LOO) console.log(`  ${r.sol.padEnd(8)} ${r.pagina.toFixed(2).padStart(6)} %  ${r.tres.toFixed(2).padStart(6)} %  ${r.sin_difusa.toFixed(2).padStart(12)} %  ${r.sin_albedo.toFixed(2).padStart(14)} %  ${r.sin_mismatch.toFixed(2).padStart(11)} %`);

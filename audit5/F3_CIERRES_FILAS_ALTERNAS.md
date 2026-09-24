@@ -46,6 +46,30 @@ frente a 0,9688 sin vecinas, así que la máscara actúa.
 | 70/265 | −55/−33,8/−43,8/−37,4/−41,1/−38,8/−40,2 | +1,29 % | +1,30 % | +1,15 % | **+1,15 %** |
 | 72/95 | 55/13,5 alternas | −0,46 % | −0,38 % | −1,28 % | **−1,44 %** |
 
+### Cifra final, con y sin cada cierre
+
+La tabla de arriba es acumulativa, y el orden de los cierres reparte sus
+interacciones. Esta no depende del orden: son los tres cierres puestos, y
+luego quitando **uno** cada vez con los otros dos puestos. Pedida por el
+titular el 2026-09-24.
+
+| sol (cenit/acimut) | página | **los tres** | sin difusa enmascarada | sin albedo real | sin mismatch |
+|---|---|---|---|---|---|
+| 78/105 | +6,15 % | **+4,12 %** | +4,08 % | +5,59 % | +4,70 % |
+| 80/250 | +7,08 % | **+5,90 %** | +5,89 % | +6,71 % | +6,26 % |
+| 70/265 | +1,29 % | **+1,15 %** | +1,14 % | +1,29 % | +1,15 % |
+| 72/95 | −0,46 % | **−1,44 %** | −1,50 % | −0,55 % | −1,28 % |
+
+Qué resta cada cierre, medido como «sin él» menos «los tres»:
+
+- **albedo real:** 1,47 puntos a 78/105 y 0,81 a 80/250;
+- **mismatch:** 0,58 y 0,36 puntos;
+- **difusa enmascarada:** −0,04 y −0,01 puntos. Con ella la ganancia es un poco
+  **mayor**, no menor.
+
+Los tres cierres son del mismo modelo 2D y tienen las mismas limitaciones,
+declaradas abajo.
+
 ## Lectura
 - **La difusa enmascarada no se come la ganancia: la sube una centésima.** La
   fila empinada le quita cielo a la plana, pero las filas uniformes también se
