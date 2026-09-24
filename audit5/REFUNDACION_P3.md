@@ -283,6 +283,71 @@ mismos dos días.
 de un paso. El PR del paso 3 no se abre hasta la decisión. `mgl` (día) y el
 anual del 3.3 quedan sin lanzar.
 
+## DECISIÓN (a) del titular, y su medida: los contactos vuelven, la energía NO — PARADA
+
+**La decisión (titular, 2026-09-24).** Opción (a): se conserva la reparación de
+`driveCoupleSafe` con cada línea como su unidad (`porLinea`) y se retira el
+acople de líneas enteras. **Condición:** no se aplica hasta medir la energía; si
+no vuelve al nivel del paso 2, se dice y se para. Candidata en la rama
+`claude/refundacion-p3a-6th1im` (992f2d2); la rama del paso 3 no se ha tocado.
+
+**La medida del día.** `audit5/P3_3_dia_lado.mjs`, un proceso por (política,
+día, página):
+
+- misma receta que la serie del día (`segCmd` cortado de la página, lazo por
+  mesa, tope, `poaPlantSeg`);
+- Ayora, banda de la página; cada 5 min; cielo claro;
+- control del script: reproduce el `astro` del 21-dic del paso 2 (2,977626
+  frente a 2,9776).
+
+| `true3d` | paso 2 (a0e4ab9) | paso 3 actual (74ab678) | (a) | (a) frente al paso 2 | (a) frente al paso 3 | pérdida recuperada |
+|---|---|---|---|---|---|---|
+| 21-jun (kWh/m²) | 9,515829 | 9,475561 | 9,479541 | **−0,381 %** | +0,042 % | 9,9 % |
+| 21-dic (kWh/m²) | 2,372900 | 2,359448 | 2,359886 | **−0,548 %** | +0,019 % | 3,3 % |
+
+Salidas en `audit5/out/P3_3_lado_true3d_*.json`. Máquina muy cargada (carga
+15-24 con 4 núcleos): el coste no es medida de tiempo.
+
+**Lo que dice.** La reparación por línea devuelve los contactos (53 parejas,
+medido antes), pero recupera solo el 3-10 % de la energía perdida. La pérdida
+de `true3d` no venía de la reparación: venía, casi entera, de retirar el
+**acople mismo**. La premisa de 3.1, «el acople de líneas enteras no tiene
+objeto en planta real», queda refutada por segunda vez, ahora en energía.
+
+**Hipótesis, NO verificada.** El acople de líneas enteras no es una restricción
+mecánica: ningún motor lo impone. Funcionaba como una REGLA DE DECISIÓN que
+manda a las dos líneas de cada grupo el mismo θ, y ese θ común sombrea menos
+por mesa (métrica `poaPlantSeg`, 2.5D por mesa) de lo que mide el criterio de
+contacto 3D por pareja. Si es así, el contacto 3D no es la propiedad que
+gobierna la energía. Para verificarla: la fracción sombreada por mesa del paso 2
+frente a (a) en los mismos instantes. No está medida.
+
+**`mgl`.** Sus días siguen en medida: 6 procesos, 40-90 s por instante. El
+anual de `mgl` no se lanza, y los días dirán si hace falta.
+
+**Opciones para el titular:**
+
+- **(b')** El acople de líneas enteras vuelve a `true3d` y `mgl`, pero
+  DECLARADO como lo que es: una regla de decisión («dos líneas, un θ»), no una
+  restricción del accionamiento. La unidad mecánica sigue siendo el motor. La
+  energía y los contactos del paso 2 vuelven, y `row` queda desacoplada.
+  - Coste: el rótulo tiene que decir que es decisión y no mecánica; los datos
+    de energía son los ya medidos del paso 2.
+- **(a)** Aplicarla igualmente.
+  - Coste: `true3d` pierde un 0,38-0,55 % del día frente al paso 2, por no
+    alinear las líneas de cada grupo.
+- **(c)** Verificar primero la hipótesis: fracción sombreada por mesa, paso 2
+  frente a (a).
+  - Coste: una medida más.
+  - A favor: dice si el contacto 3D es el criterio equivocado para la
+    reparación, y eso afecta a (a), a (b') y al optimizador del paso 5.
+
+**Recomendación: (c) y después (b').** (c) es barata y decide si hay que
+cambiar el criterio. (b') conserva lo que el paso 3 venía a corregir, que
+nadie crea que una restricción mecánica acopla las líneas, sin tirar energía.
+
+**PARO aquí**, como pide la condición.
+
 ## Incidencia · la primera corrida del banco del paso 3 murió en silencio
 
 La corrida de `tools/test_unidad_accionamiento.mjs` (PID 17739) terminó tras la
