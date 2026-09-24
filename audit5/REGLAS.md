@@ -57,3 +57,34 @@ dos cosas. Su banco (`test_barrera.py`):
 - contra la barrera de la mañana, 22 fallos.
 
 Detalle en `audit_mancha/MANCHA.md` (REGLA, #753).
+
+## R-3 · Un banco no puede ENCOGER en silencio
+
+**Enunciado.** Cada banco tiene un piso: el número de comprobaciones que
+publica, medido y escrito en `tools/con_piso.mjs`. Cuando ese número baja, el
+CI cae. La salida correcta es devolver las comprobaciones, no bajar el piso.
+Bajarlo solo vale con el motivo escrito al lado. Es la misma idea que fijar en
+el workflow el número de configuraciones del barrido, aplicada a los bancos.
+
+**Nació de:** la reescritura de `tools/test_anual_lazo.mjs` en el paso 2. Juntó
+16 comprobaciones de fuente en una sola línea («FUENTE · cumplen todas»), así
+que el banco publicaba 10 y su piso eran 12. «datos y física (node)» cayó en
+#759 (a0e4ab9 lo corrige):
+
+- las 16 vuelven a su línea;
+- una comprobación más exige que se hayan ejecutado las 16;
+- el piso sube a lo que el banco publica, 25.
+
+Un banco que junta comprobaciones sigue en verde con menos vigilancia, y sin
+piso nadie lo habría visto.
+
+**Corolario: el piso SUBE con el banco.** Cuando un banco gana comprobaciones,
+su piso sube en el mismo commit (trinquete). Si no, el margen entre lo que
+publica y su piso es espacio para encoger sin que nadie se entere. En el paso 3,
+`test_veto_por_mesa` pasa de 7 a 8 y `test_unidad_accionamiento` entra con 7.
+
+**Bancos SIN piso:** pueden haber encogido ya sin que nadie lo sepa. La lista y
+lo que publica cada uno hoy van en «Bancos sin piso» cuando termine la medida
+(EN CURSO). Primer dato: `tools/con_piso.mjs` declara 36 entradas de la matriz
+`navegador` sin medir (`MATRIZ_SIN_MEDIR = 36`) y el workflow tiene hoy 39. Tres
+entraron sin que la cuenta se enterase.
