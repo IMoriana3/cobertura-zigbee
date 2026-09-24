@@ -466,8 +466,17 @@ cualquiera de las dos cuentas. En llano, pvlib ya es exacto y la decisión no ti
   `until ! pgrep -f "tools/test_backtracking_sim.mjs"`. La línea de comando del
   propio bucle contiene ese texto, así que `pgrep -f` se encontraba a sí mismo y
   la espera no iba a terminar nunca. Dos bucles así quedaron colgados; se vio
-  en `ps` y se pararon por PID (10966 y 11103), comprobado después. Las esperas
-  se hacen con `kill -0 <PID>`.
+  en `ps` y se pararon por PID (10966 y 11103), comprobado después.
+  **Pasó DESPUÉS de instalar la barrera contra el mismo defecto, y no porque el
+  registro no sirviera: la barrera estaba INCOMPLETA.** Cubría la forma de
+  MATAR y dejaba pasar ESPERAR (esta) y SEÑALAR (el `kill -STOP` sobre la
+  salida de `pgrep -f` que pausó las medidas largas esa misma mañana). Una
+  barrera que cubre una forma del defecto y no las demás da falsa seguridad,
+  que es peor que no tenerla. Se amplió a la familia entera, con banco propio y
+  control negativo: 17 formas bloqueadas, 8 legítimas que pasan, y la barrera
+  vieja deja pasar 12. La regla y su detalle están en `audit_mancha/MANCHA.md`,
+  «REGLA · Ampliación» (#753). **Regla:** esperar con `kill -0` sobre un PID
+  leído antes y verificado después.
 - **E-X1-A-4.** La primera coincidencia de la banda de la página se hizo con
   `lineX`, que es relativa al origen de cada carga, y solo casaba 1 línea. Se
   cambió a `lineXAbs`, con una aserción que exige que casen todas.
