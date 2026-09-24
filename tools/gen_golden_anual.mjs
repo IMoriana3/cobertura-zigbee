@@ -68,7 +68,7 @@ export function carga(root = ROOT) {
   return new Function(ctrl + sol + fis + log + `
     return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,pairsFromElevX,nsSegments,
                policyAngles,policyAnglesSeg,poaPlantSeg,anglesAstro,anglesAstroSeg,
-               westPorMesa,ejesPorMesa,clearskyIneichen},
+               westPorMesa,ejesPorMesa,segLineMean,clearskyIneichen},
             elevPreset, buildT, buildTX, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
             tGenerica, tElburgo, ebDe, cfgEB,
             dayEnergy, dayTotals, fechasPeriodo, mapStringW, instant, ctrlDe};`).call(globalThis);

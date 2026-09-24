@@ -28,7 +28,7 @@ const fis = bt.slice(bt.lastIndexOf('/*', f0), f1);
 const l0 = pg.indexOf('LÓGICA PURA'), l1 = pg.indexOf('/* FIN-LÓGICA');
 const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
 const S = new Function(sol + fis + log + `
-  return {F:{policyAngles, policyAnglesSeg, poaPlantSeg, poaPlant, plantFromCotas, solarPos, clearskyIneichen, skyWithClouds, anglesManual},
+  return {F:{policyAngles, policyAnglesSeg, poaPlantSeg, segLineMean, poaPlant, plantFromCotas, solarPos, clearskyIneichen, skyWithClouds, anglesManual},
           buildTReal, plantaCotas, instant, localToUTCms, doyOf, pStringW};`).call(globalThis);
 const F = S.F;
 const cotas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8'));

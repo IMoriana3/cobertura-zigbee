@@ -2592,9 +2592,19 @@ t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría rea
     throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
   // y los caminos de instante (el slider entre pasos de malla) no pueden usar
   // otra creencia que la del día, o el arrastre saltaría entre dos políticas
-  for (const sitio of ['CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T', 'key,g.zen,g.az,DAY.Tcfg||DAY.T'])
-    if (!html.includes('policyAngles(' + sitio))
-      throw new Error('un camino de instante sigue calculando el ángulo con la geometría real');
+  // REGLA R-1 (audit5/REGLAS.md): con mesas, el camino de instante NO pasa por
+  // `policyAngles` sino por `segCmd` (la rama por mesa de sceneInstant); antes
+  // solo se miraba la rama por línea y la que se ejecuta con mesas quedaba sin
+  // vigilar. Se exigen las TRES, con un control: quitada la creencia de la
+  // llamada por mesa, la comprobación tiene que ponerse roja.
+  const SITIOS = ['policyAngles(CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T', 'policyAngles(key,g.zen,g.az,DAY.Tcfg||DAY.T',
+                  'segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,'];
+  const faltan = h => SITIOS.filter(x => !h.includes(x));
+  if (faltan(html).length)
+    throw new Error('un camino de instante sigue calculando el ángulo con la geometría real: ' + faltan(html).join(' · '));
+  const sinCreencia = html.replace('segCmd(key,g.zen,g.az,DAY.Tcfg||DAY.T,DAY.T,', 'segCmd(key,g.zen,g.az,DAY.T,DAY.T,');
+  if (!faltan(sinCreencia).length)
+    throw new Error('CONTROL: sin la creencia en la rama por mesa la comprobación sigue en verde');
   if (!/const c=cfg\(\), T=terrain\(c\), Tcfg=terrainTCU\(c,T\);/.test(html))
     throw new Error('la tabla anual no separa creencia de geometría');
 });

@@ -1444,11 +1444,17 @@ function instant(F,c,T,m,prev,soloAng){
   const porMesa=!!(T.segTilt&&T.segs&&F.poaPlantSeg);
   // CONSIGNA de la política — el θ ideal, con el que la página estimó siempre
   const pol=c.pol||'pairwise';
-  const angT0=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang)
-                      :F.policyAngles(pol,zen,az,T,irr,doy,c.albedo).angles;
+  const angMan=c.manual?F.anglesManual(c.nrows,c.manth,c.maxang):null;
   const segAngT0=!porMesa?null
-       :(c.manual?T.segs.map((l,r)=>l.map(()=>angT0[r]))
+       :(c.manual?T.segs.map((l,r)=>l.map(()=>angMan[r]))
                  :F.policyAnglesSeg(pol,zen,az,T,irr,doy,c.albedo));
+  /* REFUNDACIÓN DEL BT · PASO 3: con mesas, el θ de LÍNEA es la MEDIA de sus
+     mesas (`segLineMean`, como la página), no la ruta por línea (`policyAngles`),
+     que acopla las dos líneas enteras de cada grupo y no es lo que mandan las
+     mesas. Antes ese θ de línea se enseñaba en la tabla por minuto y en el
+     barrido, y entraba en la ganancia BIFACIAL por string (`tiltRow`). */
+  const angT0=c.manual?angMan
+                      :(porMesa?F.segLineMean(T,segAngT0):F.policyAngles(pol,zen,az,T,irr,doy,c.albedo).angles);
   // de noche la consigna es el REPOSO, no el 0 que deja `nan0` al morir el
   // astro. Se mapea sobre lo que devolvió la política para no rehacer su forma
   // (largos por línea y por mesa): un `fill(n)` con n de la config se salía de
@@ -1489,6 +1495,8 @@ function instant(F,c,T,m,prev,soloAng){
       }
     }
   }
+  // con mesas, lo EJECUTADO de la línea es la media de lo que ejecutan sus mesas (paso 3)
+  if(porMesa&&segAng&&!c.manual)ang=F.segLineMean(T,segAng);
   const base={g:g,zen:zen,az:az,irr:irr,met:met,m:m,ang:ang,angT:angT,angDir:angDir,angPark:angPark,
               angUlt:angUlt,segAng:segAng,segAngT:segAngT,segAngDir:segDir,segAngPark:segPark,
               segAngUlt:segUlt,lazo:!!loop};
@@ -1911,7 +1919,7 @@ async function cargaFisica(){
               rangoColor,normProd,
               pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,
               policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,
-              surfaceOrient};`)();
+              surfaceOrient,segLineMean};`)();
   }catch(e){
     const a=$('aviso');a.style.display='block';
     a.innerHTML='⚠ <b>No puedo cargar la física del simulador</b> ('+e.message+'). '+
@@ -3506,9 +3514,16 @@ function paintHourTrack(){
     const g=Sol.solarPos(localToUTCms(c.date,m2,c.tz),c.lat,c.lon,{refract:true});
     if(g.elev<=0){cols.push(colNight);continue;}
     const zen=90-g.elev;
-    const ang=F.policyAngles(c.pol||'pairwise',zen,g.az,T.obj,{ghi:500,dni:500,dhi:100},doy,c.albedo).angles;
-    const ast=F.anglesAstro(zen,g.az,T.obj);
-    cols.push(ang.some((v,i)=>Math.abs(v-ast[i])>0.5)?colBT:colDay);
+    // con mesas, la franja mira lo que mandan las MESAS (paso 3), no la ruta por línea
+    const To=T.obj, iq={ghi:500,dni:500,dhi:100};
+    const bt=(To.segTilt&&To.segs&&F.poaPlantSeg)
+      ?(()=>{const a=F.policyAnglesSeg(c.pol||'pairwise',zen,g.az,To,iq,doy,c.albedo),
+                   s=F.policyAnglesSeg('astro',zen,g.az,To,iq,doy,c.albedo);
+             return a.some((l,r)=>l.some((v,k)=>Math.abs(v-s[r][k])>0.5));})()
+      :(()=>{const a=F.policyAngles(c.pol||'pairwise',zen,g.az,To,iq,doy,c.albedo).angles,
+                   s=F.anglesAstro(zen,g.az,To);
+             return a.some((v,i)=>Math.abs(v-s[i])>0.5);})();
+    cols.push(bt?colBT:colDay);
   }
   const stops=[];let cur=null,start=0;
   for(let t2=0;t2<=cols.length;t2++){

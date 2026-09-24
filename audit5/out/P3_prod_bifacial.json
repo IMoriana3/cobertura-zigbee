@@ -1,0 +1,48 @@
+{
+ "base": "origin/claude/refundacion-p2-6th1im",
+ "fecha": "2026-06-21",
+ "paso_min": 15,
+ "planta": "ayora (cotas)",
+ "filas": [
+  {
+   "pol": "pairwise",
+   "bifa": 0,
+   "strings": 79,
+   "base_kWh": 13524.254782188103,
+   "hoy_kWh": 13524.254782188103,
+   "delta_pct": 0,
+   "peor_string_pct": 0,
+   "identico": true
+  },
+  {
+   "pol": "pairwise",
+   "bifa": 75,
+   "strings": 79,
+   "base_kWh": 14436.730281399063,
+   "hoy_kWh": 14441.542443008924,
+   "delta_pct": 0.033332766603402654,
+   "peor_string_pct": 0.0579186360693182,
+   "identico": false
+  },
+  {
+   "pol": "row",
+   "bifa": 0,
+   "strings": 79,
+   "base_kWh": 13394.238882961956,
+   "hoy_kWh": 13394.238882961956,
+   "delta_pct": 0,
+   "peor_string_pct": 0,
+   "identico": true
+  },
+  {
+   "pol": "row",
+   "bifa": 75,
+   "strings": 79,
+   "base_kWh": 14313.308161668734,
+   "hoy_kWh": 14313.308509788936,
+   "delta_pct": 0.0000024321435555070933,
+   "peor_string_pct": 0.0012553919983722738,
+   "identico": false
+  }
+ ]
+}

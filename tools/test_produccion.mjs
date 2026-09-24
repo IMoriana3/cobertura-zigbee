@@ -39,13 +39,27 @@ const fis = bt.slice(bt.lastIndexOf('/*', f0), f1);
 const l0 = pg.indexOf('LÓGICA PURA'), l1 = pg.indexOf('/* FIN-LÓGICA');
 if (l0 < 0 || l1 < 0) { console.error('produccion.html sin delimitadores LÓGICA PURA / FIN-LÓGICA'); process.exit(1); }
 const log = pg.slice(pg.lastIndexOf('/*', l0), l1);
+// REGLA R-1 (audit5/REGLAS.md): el mando que la página PUBLICA sale de `segCmd`,
+// que vive FUERA de la física. Se corta tal cual (con `segOn` y `POL_POR_MESA`)
+// para carear la tarjeta contra lo que la página ejecuta, no contra la función
+// de física que suena bien.
+function cuerpoDe(src, cab) {
+  const i = src.indexOf(cab); if (i < 0) throw new Error('backtracking.html sin «' + cab + '»');
+  let n = 0;
+  for (let k = src.indexOf('{', i); k < src.length; k++) {
+    if (src[k] === '{') n++; else if (src[k] === '}' && --n === 0) return src.slice(i, k + 1);
+  }
+  throw new Error('llaves sin cerrar en «' + cab + '»');
+}
+const polPorMesa = bt.slice(bt.indexOf('const POL_POR_MESA='), bt.indexOf('\n', bt.indexOf('const POL_POR_MESA=')));
+const mando = [cuerpoDe(bt, 'function segOn('), polPorMesa, cuerpoDe(bt, 'function segCmd(')].join('\n');
 // el núcleo del lazo de control, igual que lo carga la página con su <script src>
 const ctrl = fs.readFileSync(path.join(ROOT, 'js', 'control_core.js'), 'utf-8');
 
-const S = new Function(ctrl + sol + fis + log + `
+const S = new Function(ctrl + sol + fis + '\n' + mando + '\n' + log + `
   return {F:{poaPlant,anglesPairwise,anglesManual,skyWithClouds,prodColor,
              pairsFromElev,pairsFromElevX,nsSegments,plantFromCotas,policyAngles,anglesAstro,
-             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,clearskyIneichen:clearskyIneichen},
+             policyAnglesSeg,poaPlantSeg,anglesAstroSeg,westPorMesa,ejesPorMesa,surfaceOrient,segLineMean,clearskyIneichen:clearskyIneichen},
           Sol:Sol, elevPreset, buildT, buildTX, buildTReal, westDeGroups, elburgoRows, elburgoSegs, elburgoGroups,
           tGenerica, tElburgo, ebDe, cfgEB, CAMPOS, CAMPOS_VISTA, confDe, confAplica, CONFV,
           invTotals, filtraStringsNCU, ncuPorCoordenadas, tCellPVSyst, pStringW, elburgoStrInv, plantaCotas, rangoColor,
@@ -57,7 +71,7 @@ const S = new Function(ctrl + sol + fis + log + `
           estadisticaCareo, mapStringW, bifDe, ctrlDe, btRows, btSegs, filaMinuto, cursorLazo,
           stowNocheDe, esNoche, STOW_NOCHE, barridoTheta, Irr:globalThis.Irr,
           tPlano, careoPlano, careoStats, dayInit, dayAvanza, dayCierra,
-          CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
+          segCmd, segOn, CTRLCORE:globalThis.CTRLCORE};`).call(globalThis);
 
 console.log('produccion.html — la página come la física del simulador, sin copiarla');
 
@@ -666,7 +680,7 @@ t('los presets capan a ±30° por vano (clampSlopes del simulador): sin terrenos
     throw new Error('pareja de ' + p.slope.toFixed(1) + '°: el capado no llega a la T');
 });
 
-t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS, con sol', () => {
+t('MISMO BT que el simulador: los θ del AUTO son los que MANDA la página (segCmd por mesa; policyAngles sin mesas), con sol', () => {
   // La tarjeta y el BT 3D tienen que dar EL MISMO ángulo, no uno parecido.
   // CON SOL, y esa condición no es una rebaja: de noche la página añade el
   // REPOSO NOCTURNO (5° al este, dato de proyecto) y el simulador no lo modela
@@ -685,19 +699,47 @@ t('MISMO BT que el simulador: los θ del AUTO son policyAngles(pairwise) EXACTOS
     throw new Error('la T de cotas no lleva el accionamiento real (' + P.drive + '): el acople del simulador no se aplicaría');
   const elev = S.elevPreset('pendiente', C.nrows, 4, C.pitch);
   const TGen = S.buildT(S.F, C, elev);
-  for (const [c, T] of [[C, TGen], [cAy, TAy]]) {
+  // (a) sin mesas: la página manda por línea, `policyAngles`.
+  for (let m = 0; m < 1440; m += 30) {
+    const r = S.instant(S.F, C, TGen, m);
+    const g = S.Sol.solarPos(S.localToUTCms(C.date, m, C.tz), C.lat, C.lon, { refract: true });
+    const zen = 90 - g.elev, doy = S.doyOf(C.date);
+    const irr = S.F.clearskyIneichen(zen, doy, C.alt, C.tl);
+    if (!(zen < 90)) continue;                        // de noche manda el reposo, no la política
+    const sim = S.F.policyAngles('pairwise', zen, g.az, TGen, irr, doy, C.albedo).angles;
+    for (let k = 0; k < C.nrows; k++)
+      if (r.ang[k] !== sim[k])
+        throw new Error(`min ${m}, fila ${k}: tarjeta ${r.ang[k]} ≠ simulador ${sim[k]} — el BT ya no es el mismo`);
+  }
+  // (b) Ayora real, CON mesas: la página publica por `segCmd` (cortado de la
+  // página, R-1) — no `policyAngles`, que acopla las dos líneas enteras de cada
+  // grupo y no es lo que manda ninguna mesa. La tarjeta tiene que dar, por
+  // MESA, lo que da `segCmd`, y por LÍNEA la media de sus mesas (`segLineMean`,
+  // como la página). `row` va porque el paso 3 la cambió por `segCmd`
+  // (`porMotor`); `pairwise`, porque es la de siempre.
+  if (!S.segOn(TAy)) throw new Error('la T de Ayora no lleva mesas: el careo (b) no miraría nada');
+  let nMesas = 0;
+  for (const pol of ['pairwise', 'row']) {
+    const c = { ...cAy, pol };
     for (let m = 0; m < 1440; m += 30) {
-      const r = S.instant(S.F, c, T, m);
       const g = S.Sol.solarPos(S.localToUTCms(c.date, m, c.tz), c.lat, c.lon, { refract: true });
       const zen = 90 - g.elev, doy = S.doyOf(c.date);
+      if (!(zen < 90)) continue;
+      const r = S.instant(S.F, c, TAy, m);
       const irr = S.F.clearskyIneichen(zen, doy, c.alt, C.tl);
-      const sim = S.F.policyAngles('pairwise', zen, g.az, T, irr, doy, c.albedo).angles;
-      if (!(zen < 90)) continue;                      // de noche manda el reposo, no la política
+      const cmd = S.segCmd(pol, zen, g.az, TAy, TAy, irr, doy, c.albedo);
+      for (let i = 0; i < cmd.length; i++) for (let k = 0; k < cmd[i].length; k++) {
+        nMesas++;
+        if (r.segAng[i][k] !== cmd[i][k])
+          throw new Error(`${pol} min ${m}, mesa ${i}/${k}: tarjeta ${r.segAng[i][k]} ≠ segCmd ${cmd[i][k]} — no es lo que manda la página`);
+      }
+      const lin = S.F.segLineMean(TAy, cmd);
       for (let k = 0; k < c.nrows; k++)
-        if (r.ang[k] !== sim[k])
-          throw new Error(`min ${m}, fila ${k}: tarjeta ${r.ang[k]} ≠ simulador ${sim[k]} — el BT ya no es el mismo`);
+        if (r.ang[k] !== lin[k])
+          throw new Error(`${pol} min ${m}, fila ${k}: θ de línea ${r.ang[k]} ≠ media de sus mesas ${lin[k]}`);
     }
   }
+  if (!nMesas) throw new Error('el careo por mesa no comparó ninguna mesa');
   // y la identidad que sostiene a las plantas mono: sin grupos, la política
   // del simulador ES anglesPairwise a pelo (si esto rompe, el careo de arriba
   // ya no justifica «pairwise puro» para genérica/El Burgo)
@@ -1798,13 +1840,20 @@ t('en la planta PLANA el eje deja de estar inclinado: misma CONSIGNA astro en to
      plana» no es considerarla también regular: el careo mide el terreno, no el
      replanteo. Lo que sí desaparece es la inclinación del EJE, que es la que
      mueve la consigna astronómica, y eso es lo que se comprueba aquí. */
+  /* Paso 3 (R-1): con mesas, la CONSIGNA es la de cada mesa (`segCmd`) y el θ
+     de línea es la media ponderada de sus mesas (`segLineMean`), con su
+     redondeo (4e-14° medido). La igualdad EXACTA se exige donde está la
+     consigna, en las mesas; la línea, a 1e-9°. */
   const ca = { ...Cca, pol:'astro' };
-  let peorP = 0, peorR = 0;
+  const vals = x => x.segAng ? x.segAng.flat() : x.ang;
+  let peorP = 0, peorR = 0, peorL = 0;
   for (const m of [420, 600, 720, 900, 1080]) {
     const p = S.instant(S.F, ca, TcaP, m, null), r = S.instant(S.F, ca, Tca, m, null);
-    peorP = Math.max(peorP, Math.max(...p.ang) - Math.min(...p.ang));
-    peorR = Math.max(peorR, Math.max(...r.ang) - Math.min(...r.ang));
+    peorP = Math.max(peorP, Math.max(...vals(p)) - Math.min(...vals(p)));
+    peorL = Math.max(peorL, Math.max(...p.ang) - Math.min(...p.ang));
+    peorR = Math.max(peorR, Math.max(...vals(r)) - Math.min(...vals(r)));
   }
+  if (peorL > 1e-9) throw new Error(`con el eje horizontal el θ de línea se separa ${peorL}°`);
   if (peorP !== 0) throw new Error(`con el eje horizontal la consigna astro tendría que ser la MISMA y se separa ${peorP}°`);
   if (!(peorR > 0.05)) throw new Error(`la planta medida tampoco separa los θ (${peorR}°): el test no demuestra nada`);
 });

@@ -214,12 +214,13 @@
       <div class="f"><label>Tilt N-S ° (valor)</label><input id="axtilt" type="number" step="0.5" value="0" title="Inclinación del eje a lo largo (terreno N-S): valor del perfil (constante/amplitud). Es lo que separa true-3D del 2.5D.&#10;Con «quiebro en la rótula» es el quiebro entre las dos mesas de cada viga: la mesa sur a +v y la norte a −v (loma en la rótula si v>0, vaguada si v<0). Solo la bifila QUEBRADA lo sigue (cardan); rígida y monofila llevan el tubo recto al tilt medio y la página lo dice."></div>
     </div>
     <span class="pill" id="motorsinfo"></span>
-    <div class="nota">En <b>bifila</b> las dos filas del grupo giran con el MISMO θ: se adopta el
-      min(|θ|) del grupo — la misma regla que el acoplado interior del core. Esa regla es la del
-      LLANO: <b>reducir |θ| desde un ángulo de backtracking SÍ puede crear sombra en cuesta</b>, y
-      está medido — el contraejemplo aparece en <b>75 de 200</b> instantes del barrido de terrenos
-      (semilla 1) y en <b>68 de 200</b> con la semilla 7, con el 22,79 % y el 22,03 % del peso
-      energético. El peor llega a 91,4 % de fracción sombreada con |θ| MENOR. La <b>rígida</b> además comparte tilt N-S (el medio del
+    <div class="nota">En <b>bifila</b> las dos filas del grupo giran con el MISMO θ: un motor, un ángulo.
+      En los presets se toma el menor |θ| del grupo y se refina mientras el grupo emisor sombree; en
+      planta real el acople es el del MOTOR medido (las cuatro mesas de un tracker). Tomar el menor |θ|
+      <b>NO</b> garantiza que no haya sombra en cuesta: el contraejemplo aparece en <b>75 de 200</b>
+      instantes del barrido de terrenos (semilla 1) y en <b>68 de 200</b> con la semilla 7, con el
+      22,79 % y el 22,03 % del peso energético; el peor llega a 91,4 % de fracción sombreada con |θ|
+      MENOR. La <b>rígida</b> además comparte tilt N-S (el medio del
       grupo: el tubo no se dobla); la <b>quebrada</b> lleva cardan y cada fila conserva su tilt local.</div>
   </div>
 
@@ -529,7 +530,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.82.0';
+const VER='v1.83.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -722,9 +723,10 @@ function pairsFromElev(z,pitch,axisTilt){
 /* ── accionamiento: monofila / bifila rígida / bifila quebrada ──────────────
    Nomenclatura de la casa (CONTRATO scada): bifila = UN motor mueve DOS filas
    unidas por el eje de transmisión. Reglas:
-   · el ángulo es COMÚN al grupo: se adopta el min(|θ|) de sus filas — reducir
-     |θ| desde un ángulo de backtracking nunca crea sombra (la MISMA regla que
-     el acoplado interior de compute_bt_angles);
+   · el ángulo es COMÚN al grupo: se adopta el min(|θ|) de sus filas, como el
+     acoplado interior de compute_bt_angles. Eso NO garantiza que no haya
+     sombra en cuesta (medido: 75 y 68 de 200 instantes del barrido); por eso
+     `driveCoupleSafe` refina después;
    · la RÍGIDA además comparte geometría de eje: tilt N-S = media del grupo
      (un tubo de transmisión recto no se dobla) ⇒ en terreno N-S quebrado los
      paneles quedan desalineados del terreno y el POA lo enseña;
@@ -895,8 +897,9 @@ function nan0(v){return isFinite(v)?v:0;}
    pairwise (Arequipa, 21-jun 07:00-07:20, senoidal 3° + pendiente 5,14°)
    —«¿qué sentido tiene que el primer tracker no se tumbe?»—. Se evalúa en
    las estaciones del solape (extremos y centro: la pendiente es lineal en
-   v) y gana el menor |θ|: reducir |θ| desde un backtracking nunca crea
-   sombra. Con vigas paralelas es UNA estación y sale lo de siempre, bit a
+   v) y gana el menor |θ| (el más retrocedido; eso no garantiza que no haya
+   sombra en cuesta: lo cubre la REPARACIÓN con torsión de `anglesPairwiseRaw`).
+   Con vigas paralelas es UNA estación y sale lo de siempre, bit a
    bit. Solo con perfil por fila declarado (T.rowTilt): sin él el contador
    dibuja las filas horizontales y no hay torsión que mirar. */
 /* v1.53.4: memorizado por sus ENTRADAS numéricas (pendiente, pitch, tilts y
@@ -2744,7 +2747,8 @@ function anglesPairwiseSeg(zen,az,T){
 }
 /* acople por ACCIONAMIENTO: las mesas que mueve un mismo motor —las CUATRO de
    un bifila, dos por viga a cada lado del morro— van al MISMO θ, el min|θ| del
-   grupo (reducir |θ| desde un backtracking nunca crea sombra) */
+   grupo (el más retrocedido de sus mesas; NO garantiza que no haya sombra en
+   cuesta: medido falso en 75 y 68 de 200 instantes del barrido) */
 function applyDriveSeg(segAngles,grupos){
   if(!grupos||!grupos.length)return segAngles;
   const out=segAngles.map(l=>l.slice());
@@ -2773,9 +2777,33 @@ function policyAnglesSegF(key,zen,az,T,irr,doy,albedo){
   // habían elegido con `poaPlant` — medido: perdían por mesa en 58 de 86.
   if(key==='optimal'){const r=anglesOptimalSeg(zen,az,T,irr,doy,albedo);return {angles:r.angles,f:r.f,linea:null};}
   if(key==='optfree'){const r=anglesOptimalFreeSeg(zen,az,T,irr,doy,albedo);return {angles:r.angles,f:r.f,linea:null};}
+  /* REFUNDACIÓN · PASO 3 · LA UNIDAD ES EL ACCIONAMIENTO. En planta real con los
+     motores medidos (`T.segDrive`: las cuatro mesas de un tracker, un motor, un
+     θ), las políticas que deciden por línea ya NO acoplan las dos LÍNEAS ENTERAS
+     de cada grupo (`T.groups`, vía `applyDrive`/`driveCoupleSafe`): calculan su
+     ángulo de línea SIN acople, lo reparten a sus mesas y lo acoplan POR MOTOR,
+     que es el acople que existe. Medido en el paso 1 (audit5/REFUNDACION_P1.md):
+     acoplar líneas enteras era el 95,1 % del hueco con la rama por mesa.
+     `global` y `bt2d` dan un solo ángulo (el acople no les hace nada) y siguen
+     por la línea; en los presets el grupo bifila ES el motor y su acople se queda. */
+  if(T.real&&T.segDrive&&T.segDrive.length&&LINEA_SIN_ACOPLE[key]){
+    const lin=LINEA_SIN_ACOPLE[key](zen,az,T);
+    return {angles:applyDriveSeg(segsBroadcast(T,lin),T.segDrive),f:undefined,linea:null};
+  }
   const o=policyAngles(key,zen,az,T,irr,doy,albedo);                          // el resto sigue por línea
   return {angles:segsBroadcast(T,o.angles),f:o.f,linea:o.angles};
 }
+/* el ángulo de LÍNEA de cada política, SIN acople de grupo (paso 3). `mgl` lo
+   consulta con los grupos quitados: su base y sus unidades son por fila. En
+   planta real `repairNoShade` no entra (`if(T.real)return ang;`), así que no hay
+   que quitarla. */
+const _TSG=new WeakMap();
+function sinGrupos(T){let t=_TSG.get(T);if(!t){t=Object.assign({},T,{groups:null});_TSG.set(T,t);}return t;}
+const LINEA_SIN_ACOPLE={
+  row:(zen,az,T)=>anglesRow(zen,az,T),
+  true3d:(zen,az,T)=>anglesTrue3d(zen,az,T),
+  mgl:(zen,az,T)=>anglesMinGroundLight(zen,az,sinGrupos(T)),
+};
 function policyAnglesSeg(key,zen,az,T,irr,doy,albedo){
   return policyAnglesSegF(key,zen,az,T,irr,doy,albedo).angles;
 }
@@ -5416,7 +5444,12 @@ const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1};
    elegida y —cuando la política manda por línea— el θ de línea que ya ha
    calculado. Quien no pase `out` se comporta exactamente igual que antes. */
 function segCmd(key,zen,az,Tcfg,T,irr,doy,alb,out){
-  if(segOn(T)&&Tcfg===T&&POL_POR_MESA[key]){
+  /* REFUNDACIÓN · PASO 3: en planta real con motores medidos, las que deciden
+     por línea (`LINEA_SIN_ACOPLE`) también pasan por la rama por mesa, que es
+     donde se acoplan POR MOTOR. Sin esto el día y el anual seguirían acoplando
+     líneas enteras aunque `policyAnglesSegF` ya no lo hiciera. */
+  const porMotor=T&&T.real&&T.segDrive&&T.segDrive.length&&LINEA_SIN_ACOPLE[key];
+  if(segOn(T)&&Tcfg===T&&(POL_POR_MESA[key]||porMotor)){
     const r=policyAnglesSegF(key,zen,az,T,irr,doy,alb);
     if(out){out.f=r.f;out.linea=null;}
     return r.angles;

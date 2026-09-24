@@ -78,6 +78,18 @@ const EXPORTA = `return { plantFromCotas, solarPos, clearskyIneichen, poaPlant, 
   policyAngles, segsBroadcast, policyAnglesSegF,
   OPT_FRACTIONS, OPT_REFINA, OPT_HISTERESIS, OPT_DF_MAX };`;
 const F = new Function(sol + '\n' + src + '\n' + EXPORTA)();
+/* REGLA R-1 (audit5/REGLAS.md): lo que la página PUBLICA sale de `segCmd`, que
+   vive fuera de la física. Se corta tal cual con `segOn` y `POL_POR_MESA` y se
+   ejecuta sobre la MISMA física: la comprobación de encaminamiento mira la
+   puerta que la página usa, no `policyAnglesSeg`, que es la que suena bien. */
+function mandoDe(h) {
+  const pm = h.indexOf('const POL_POR_MESA=');
+  if (pm < 0) throw new Error('no encuentro POL_POR_MESA en la página');
+  const fuera = [cuerpoFn(h, 'segOn'), h.slice(pm, h.indexOf('\n', pm)), cuerpoFn(h, 'segCmd')];
+  if (fuera.some(x => !x)) throw new Error('no encuentro segOn/segCmd en la página');
+  return new Function(sol + '\n' + src + '\n' + fuera.join('\n') + '\nreturn { segCmd };')().segCmd;
+}
+const segCmd = mandoDe(html);
 
 // ── la planta de prueba: Ayora con sus cotas, que es donde hay torsión ──────
 const P = F.plantFromCotas(JSON.parse(fs.readFileSync(path.join(ROOT, 'ayora_cotas.json'), 'utf-8')), 500, 0);
@@ -174,6 +186,27 @@ t('`optimal` y `optfree` por `policyAnglesSeg` SON el óptimo por mesa, no el re
       throw new Error(`TEST NULO de \`${k}\`: por mesa y reparto de línea dan lo MISMO en este instante; la comprobación no distingue nada`);
     if (!igual(via, porMesa)) throw new Error(`\`${k}\` por policyAnglesSeg no es el óptimo por mesa`);
     if (igual(via, reparto)) throw new Error(`\`${k}\` sigue repartiendo el ángulo de su línea`);
+  }
+});
+/* …y lo mismo por la PUERTA QUE LA PÁGINA USA (`segCmd`, día y anual), con
+   dos controles: (a) con una `Tcfg` que no es la T (la TCU con otra
+   configuración), la página reparte la línea — la puerta TIENE que dar el
+   reparto; (b) con `optimal`/`optfree` quitadas de `POL_POR_MESA` en la
+   fuente, la comprobación TIENE que ponerse roja. */
+t('`optimal` y `optfree` por `segCmd` (la puerta de la página) SON el óptimo por mesa; controles: Tcfg≠T reparte, y sin POL_POR_MESA se pone roja', () => {
+  const { g, irr } = INST[Math.floor(INST.length / 2)];
+  const igual = (A, B) => A.length === B.length &&
+    A.every((l, r) => l.length === B[r].length && l.every((v, k) => Math.abs(v - B[r][k]) < 1e-12));
+  const mutante = html.replace('const POL_POR_MESA={pairwise:1,astro:1,optimal:1,optfree:1', 'const POL_POR_MESA={pairwise:1,astro:1,_o:1,_f:1');
+  if (mutante === html) throw new Error('no encuentro la lista POL_POR_MESA para construir el control (b)');
+  const segCmdMut = mandoDe(mutante);
+  for (const [k, fn] of [['optimal', F.anglesOptimalSeg], ['optfree', F.anglesOptimalFreeSeg]]) {
+    const porMesa = fn(g.zen, g.az, T, irr, DOY, ALB).angles;
+    const reparto = F.segsBroadcast(T, F.policyAngles(k, g.zen, g.az, T, irr, DOY, ALB).angles);
+    if (!igual(segCmd(k, g.zen, g.az, T, T, irr, DOY, ALB), porMesa)) throw new Error(`\`${k}\` por segCmd no es el óptimo por mesa: la página no publica lo que dice policyAnglesSeg`);
+    const Tcfg = Object.assign({}, T);
+    if (!igual(segCmd(k, g.zen, g.az, Tcfg, T, irr, DOY, ALB), reparto)) throw new Error(`CONTROL (a) \`${k}\`: con Tcfg≠T la puerta no reparte la línea`);
+    if (igual(segCmdMut(k, g.zen, g.az, T, T, irr, DOY, ALB), porMesa)) throw new Error(`CONTROL (b) \`${k}\`: sin POL_POR_MESA la puerta sigue dando el óptimo por mesa — la comprobación no distingue`);
   }
 });
 
