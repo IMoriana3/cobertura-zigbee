@@ -257,10 +257,13 @@ paso 10 min).
 **Lectura, con la cifra:** el 93,1 % del hueco entre la ruta por línea y la rama
 por mesa lo produce **una sola etapa, el acople de accionamiento de la ruta por
 línea**. Las etapas que tocan el candidato de la pareja —donde vive `pairDz`—
-suman menos del 0,4 % del hueco. En Ayora la banda va en **bifila** (`T.groups`,
-54 grupos): en la ruta por línea un grupo acopla **líneas enteras** y las lleva a
-un θ común —el de la más restrictiva—, cuando el acople real es de las cuatro
-mesas de un motor.
+suman menos del 0,4 % del hueco. En la banda de la página Ayora va en **bifila**
+(`T.groups`: 40 grupos, 39 de dos líneas y 1 de una): en la ruta por línea cada
+grupo acopla **dos líneas enteras** —de decenas de filas cada una— y las lleva a
+un θ común, cuando el acople real es de las cuatro mesas de un motor (`T.segDrive`:
+427 grupos de 4 mesas en la banda del encargo). Qué parte del +16 % es ese
+acople entre líneas enteras y qué parte es acoplar bien pero con θ de línea NO
+está separado; separarlo es la misma ablación con el acople por mesa.
 
 **Consecuencia para la decisión:** la opción **(b)** —dejar la ruta por línea y
 que P2 solo mejore el candidato— actúa sobre etapas que, apagadas enteras, mueven
