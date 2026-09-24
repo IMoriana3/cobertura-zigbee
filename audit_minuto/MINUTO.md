@@ -1,5 +1,16 @@
 # La sombra cambia en un minuto y el HUD no — lo medido (2026-09-24)
 
+**CERRADO (2026-09-24, por indicación del titular).** Diagnóstico:
+
+- el HUD redondea, no está congelado;
+- no se dibuja sombra en ninguno de los dos minutos: 0 mallas `ovM_sil` / `ovM_haz`;
+- el diente de sierra de θ entre muestras es un defecto real, y lo arregla #751
+  (`interpMalla`).
+
+La sombra concreta que vio el titular **NO se reprodujo** desde las tres
+cámaras probadas y **sigue pendiente de su ⤓** (#753, `vista.camara`). No se
+persigue más.
+
 Estado: `audit_mancha/estado_mancha.json` (el de la mancha), 21-jun-2026,
 `pairwise`, fila 5, a las 12:40 y a las 12:41 (hora local, UTC+2). No se ha
 arreglado nada.
