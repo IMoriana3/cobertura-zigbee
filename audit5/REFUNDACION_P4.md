@@ -233,3 +233,21 @@ el lado Python.
 
 **Qué NO dice este banco:** quién manda. Publica dónde discrepan; la decisión es
 la PARADA 4.5.
+- **I-3 · Siguen corriendo dos medidas fuera del alcance del cierre**, y comen
+  CPU que necesitan los pasos 3 y 4:
+  - `G2 mgl` de #751: PID 9083, hijo del bucle PID 1356, con ~11 h de CPU;
+  - la tanda de pisos del lanzador: PID 9260, con su hijo del momento.
+  - **Pausarlas con SIGSTOP fue DENEGADO por los permisos de la sesión**
+    (2026-09-24 23:2x UTC). No se ha buscado otra vía: queda para el titular.
+
+## Lista de mejoras sin fecha (fuera de los pasos 3-6, por el encargo de cierre)
+
+- **PR del lanzador `navegador()`** (rama `claude/pw-una-pagina-6th1im`,
+  empujada y sin PR).
+  - La tanda local de pisos iba por `test_produccion_lazo` y dio rc=1 en
+    `test_produccion_3d` y `test_produccion_lazo`, sin diagnosticar.
+  - Faltan los tiempos antes/después de CI.
+- **Medidas largas de #749/#751:** conoHaz y `G2 mgl`, sin publicar.
+- **Corridas pausadas por carga, sin relanzar:** 9 de P1_4 de Ayora (PID
+  16666-16674, SIGSTOP), además de las de `mgl` y del anual de `true3d` que
+  apuntaba la revisión programada.
