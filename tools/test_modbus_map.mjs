@@ -8,8 +8,13 @@ const RAIZ = new URL('..', import.meta.url).pathname;
 const XL = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r7_hsu_r23.json', 'utf8'));
 const XL8 = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r8.json', 'utf8'));
 const PDF = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/tcu_v6.json', 'utf8'));
+const P4Q = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/p4q_ncu_revT.json', 'utf8'));
 const h = readFileSync(RAIZ + 'modbus.html', 'utf8');
-const DEV = (new Function(h.slice(h.indexOf('var DEV={'), h.indexOf('/* @@MAPA_FIN@@ */')) + '; return DEV;'))();
+/* El bloque generado trae ya MAPAS (un mapa entero por fabricante) y BLOQUES_FAB. DEV es el del
+   fabricante que la página abre por defecto; el de P4Q se comprueba aparte, más abajo. */
+const MAPA_JS = h.slice(h.indexOf('var BLOQUES_FAB='), h.indexOf('/* @@MAPA_FIN@@ */'));
+const { MAPAS, BLOQUES_FAB } = (new Function(MAPA_JS + '; return {MAPAS, BLOQUES_FAB};'))();
+const DEV = MAPAS.sunner;
 
 let fallos = 0;
 const ok = (c, m) => { console.log((c ? '  ok   ' : '  FALLO') + ' ' + m); if (!c) fallos++; };
@@ -310,7 +315,7 @@ console.log('\n=== contradicciones del documento ===');
 }
 
 console.log('\n=== espacio de direcciones ===');
-const BLOQUES = (new Function(h.slice(h.indexOf('var BLOQUES='), h.indexOf('var DEV={')) + '; return BLOQUES;'))();
+const BLOQUES = BLOQUES_FAB.sunner;
 ok(BLOQUES.length === 17, `${BLOQUES.length} bloques (hoja Overview)`);
 /* Si una revisión repartiera el espacio distinto que la otra, un «hueco reservado» de una sería
    un bloque con registros de la otra, y el localizador de direcciones contestaría lo que no es. */
@@ -322,6 +327,112 @@ const fuera = [...dirs.ncu].filter(a => !dentro(a));
 ok(fuera.length === 0, `todas las direcciones de la NCU caen dentro de un bloque declarado${fuera.length ? ': ' + fuera.slice(0,6).join(' ') : ''}`);
 
 /* ---------- lo que el mapa antiguo decía y el documento desmiente ---------- */
+/* ================= P4Q · NCU revT =================
+   Otro fabricante, otro documento. Dos cosas hay que probar y ninguna es cosmética:
+
+   1. QUE ESTÉ ENTERO. Cada dirección del Excel tiene que salir en la tabla — y como la tabla
+      publica los bloques por unidad UNA vez (base + paso), «salir» significa que la fórmula
+      reproduce la dirección del documento, no que esté escrita.
+   2. QUE LOS BLOQUES QUE SE COLAPSAN NO MIENTAN. La hoja «RW variables» trae 861 filas, de las
+      que 800 son el mismo registro repetido para 200 grupos. Publicarlas todas es un muro
+      ilegible; colapsarlas es lo correcto SIEMPRE QUE la fórmula devuelva exactamente esas 800
+      direcciones. Eso se comprueba aquí fila a fila, que es la única forma de que el atajo no
+      se convierta en una invención. */
+console.log('\n=== P4Q · NCU revT ===');
+{
+  const P = MAPAS.p4q.ncu;
+  const dirP4Q = new Set(), tramos = [];
+  for (const sc of P.secs) for (const r of (sc.f || [])) {
+    if (sc.stride) { for (let u = 1; u <= (sc.max || 1); u++) dirP4Q.add(sc.base + (u - 1) * sc.stride + r[0]); }
+    else dirP4Q.add(r[0]);
+  }
+  for (const sc of P.secs) if (sc.stride) tramos.push({ t: sc.t, base: sc.base, paso: sc.stride, max: sc.max });
+
+  /* --- 1 · las hojas de registros --- */
+  const hojas = Object.keys(P4Q.p4q_revT);
+  let faltan = [], total = 0;
+  for (const hj of hojas) for (const f of (P4Q.p4q_revT[hj].filas || [])) {
+    total++; if (!dirP4Q.has(f.addr)) faltan.push(`${hj} ${f.addr} ${f.nombre}`);
+  }
+  ok(faltan.length === 0, `las ${total} filas de las ${hojas.length} hojas de registros de P4Q están en la tabla` +
+     (faltan.length ? ` — faltan ${faltan.length}: ` + faltan.slice(0, 6).join(' · ') : ''));
+
+  /* --- 2 · la hoja «RW variables», fila a fila contra la fórmula --- */
+  const rw = P4Q.rw || [];
+  const malRW = [];
+  for (const f of rw) if (!dirP4Q.has(f.addr)) malRW.push(f.addr + ' «' + String(f.etiqueta).slice(0, 40) + '»');
+  ok(malRW.length === 0, `las ${rw.length} filas de «RW variables» (${rw.filter(x => x.matriz).length} matrices de bits) salen de la tabla` +
+     (malRW.length ? ` — faltan ${malRW.length}: ` + malRW.slice(0, 6).join(' · ') : ''));
+
+  /* El colapso por grupo, comprobado con el número de grupo que dice el propio documento:
+     «Send Off Request to Group 137» tiene que caer justo en base + 136·paso. */
+  /* TRAMPA DEL DOCUMENTO: los dos bloques de ángulo de la SP7 traen EXACTAMENTE la misma
+     etiqueta fila a fila («Safe Position 7 angle (rads) for Group 1»), uno para los 10 grupos de
+     limpieza (40030) y otro para los 200 grupos custom (40116). Lo único que los separa es el
+     título de su sección, así que es por ahí por donde hay que distinguirlos — y por eso la
+     tabla los publica con nombres de sección distintos y no como un bloque de 210. */
+  const porGrupo = [
+    { re: /^Force WindLevel Request for Group (\d+)/i, base: 40008, paso: 1 },
+    { re: /^Safe Position 7 angle \(rads\) for Group (\d+)/i, sec: /^(?!.*Custom)/i, base: 40030, paso: 2 },
+    { re: /^Safe Position 7 angle \(rads\) for Group (\d+)/i, sec: /Custom/i, base: 40116, paso: 2 },
+    { re: /^Send (?:Off|Manual|Auto) Request to Group (\d+)/i, base: 40517, paso: 1 },
+  ];
+  let comprobadas = 0; const desviadas = [];
+  for (const f of rw) for (const g of porGrupo) {
+    const m = String(f.etiqueta || '').match(g.re); if (!m) continue;
+    if (g.sec && !g.sec.test(String(f.seccion || ''))) continue;
+    const n = +m[1];
+    const esperada = g.base + (n - 1) * g.paso;
+    comprobadas++;
+    if (esperada !== f.addr) desviadas.push(`grupo ${n}: documento ${f.addr}, fórmula ${esperada}`);
+  }
+  ok(desviadas.length === 0 && comprobadas >= 800,
+     `${comprobadas} filas por grupo del documento caen exactamente donde las pone la fórmula base + (grupo−1)·paso` +
+     (desviadas.length ? ' — se desvían ' + desviadas.length + ': ' + desviadas.slice(0, 4).join(' · ') : ''));
+
+  /* --- 3 · las bases y los pasos son los del documento, no los que nos apetezca --- */
+  const par = (hj, re) => { const x = ((P4Q.p4q_revT[hj] || {}).params || []).find(y => re.test(y.clave)); return x && x.valor; };
+  const esperados = [
+    ['Bloque TCU (republicado)', par('TCUs', /TCUs Data start/), par('TCUs', /TCU registers qty/)],
+    ['TCU · último contacto', par('TCUs', /TCUs LastCom start/), 2],
+    ['TCU · cadena de módulos (SPP)', par('TCUs', /SPP start/), par('TCUs', /SPP register qty/)],
+    ['Bloque TMU', par('TMUs', /TMUs Data start/), par('TMUs', /TMU registers qty/)],
+    ['Repetidores Zigbee', par('Repeaters', /Data start/), par('Repeaters', /registers qty/)],
+    ['Bloque RSU (republicado)', par('RSUs + Local Sensors', /RSUs data start/), par('RSUs + Local Sensors', /RSU registers qty/)],
+    ['Bloque RSU extendido', par('RSUs + Local Sensors (Extended)', /RSUs data start/), par('RSUs + Local Sensors (Extended)', /RSU registers qty/)],
+    ['RSU externas', par('External RSUs', /RSUs data start/), par('External RSUs', /RSU registers qty/)],
+  ];
+  const mal = esperados.filter(([t, b, q]) => { const sc = P.secs.find(x => x.t === t);
+    return !sc || sc.base !== b || sc.stride !== q; });
+  ok(mal.length === 0, `las bases y los pasos de los ${esperados.length} bloques por unidad son los que declara el documento` +
+     (mal.length ? ': ' + mal.map(x => x[0]).join(', ') : ''));
+
+  /* --- 4 · el espacio de direcciones de P4Q es suyo, no el de Sunner --- */
+  const BP = BLOQUES_FAB.p4q;
+  ok(Array.isArray(BP) && BP.length > 0 && JSON.stringify(BP) !== JSON.stringify(BLOQUES_FAB.sunner),
+     `P4Q tiene su propio reparto del espacio de direcciones (${(BP || []).length} bloques), distinto del de Sunner`);
+  const fueraP4Q = [...dirP4Q].filter(a => !BP.some(b => a >= b.de && a <= b.a));
+  ok(fueraP4Q.length === 0, 'todas las direcciones de P4Q caen dentro de un bloque declarado' +
+     (fueraP4Q.length ? ': ' + fueraP4Q.slice(0, 6).join(' ') : ''));
+
+  /* --- 5 · los dos mapas NO se mezclan ---
+     La 40030 existe en los dos y NO es lo mismo: I16 en centésimas de grado en Sunner R8, F32 en
+     radianes en P4Q. Si algún día la página buscara en los dos a la vez, contestaría dos cosas
+     incompatibles para la misma dirección; esto vigila que sigan separados y que el aviso esté. */
+  const sun40030 = (() => { for (const k of Object.keys(MAPAS.sunner)) for (const sc of MAPAS.sunner[k].secs)
+      for (const r of (sc.f || [])) if ((sc.stride ? sc.base + r[0] : r[0]) === 40030) return r; })();
+  const p4q40030 = (() => { for (const sc of P.secs) for (const r of (sc.f || []))
+      if ((sc.stride ? sc.base + r[0] : r[0]) === 40030) return r; })();
+  ok(!!sun40030 && !!p4q40030 && sun40030[2] === 's16' && p4q40030[2] === 'f32',
+     'la 40030 existe en los dos fabricantes y significa cosas distintas (Sunner I16 deg×100, P4Q F32 radianes)');
+  ok(/40030/.test(P.nota) && /P4Q|radianes/.test(P.nota),
+     'la pestaña de P4Q avisa de que una misma dirección no significa lo mismo en cada fabricante');
+  ok(/function ponFabricante\(/.test(h) && /BLOQUES=BLOQUES_FAB\[f\]/.test(h),
+     'la página cambia el mapa Y el reparto de direcciones al cambiar de fabricante');
+  ok((P4Q.changelog || []).length >= 5 && /CAMBIOS_P4Q=/.test(h) && /changelogP4QHTML/.test(h),
+     `el historial del documento de P4Q (${(P4Q.changelog || []).length} revisiones) se publica en «Versiones»`);
+}
+
 console.log('\n=== regresión: el mapa inventado de la TCU no puede volver ===');
 const inventados = [[30003, 'tracker_id'], [30032, 'soc'], [30040, 'fault_word']];
 const nombres = new Set();

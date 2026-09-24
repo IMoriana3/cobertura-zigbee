@@ -28,6 +28,7 @@ const RAIZ = new URL('..', import.meta.url).pathname;
 const XL = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r7_hsu_r23.json', 'utf8'));
 const XL8 = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/ncu_r8.json', 'utf8'));
 const PDF = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/tcu_v6.json', 'utf8'));
+const P4Q = JSON.parse(readFileSync(RAIZ + 'tools/modbus_src/p4q_ncu_revT.json', 'utf8'));
 const WRITE = process.argv.includes('--write');
 
 /* ---------- tipos y unidades ---------- */
@@ -48,6 +49,9 @@ const UNI = (u, esc) => {
   const U = String(u || '').trim();
   const E = String(esc || '').trim();
   const m = { 'Radians': 'rad', 'radians': 'rad', 'mV': 'mV', 'mA': 'mA', 'Joules': 'J', 'Pulses': 'pulsos',
+    /* las de P4Q, que escribe las unidades con otras palabras */
+    'miliVolts': 'mV', 'miliAmperes': 'mA', 'mAh': 'mAh', 'meters/second': 'm/s', 'mm': 'mm',
+    'Kelvinx10': 'K×10', 'rads': 'rad', 'Rads': 'rad',
     'ms': 'ms', 'seconds': 's', 'Seconds': 's', 'Minutes': 'min', 'Hours': 'h', 'days': 'días', 'Days': 'días',
     'Months': 'meses', 'Years': 'años', 'Meters': 'm', 'meters': 'm', '%': '%', 'B': 'bit', 'bit': 'bit',
     'Degrees/sec': '°/s', 'mdeg/sec': 'm°/s', '%/sec': '%/s', 'degrees': '°' };
@@ -407,6 +411,179 @@ const HSU = [
     nHSUx, { base: 28000, stride: 100, offsetDe: 28000, max: 10 }),
 ];
 
+/* ================= P4Q · NCU (AUX1-S20015 revT) =================
+   Otro fabricante, otro documento y otro mapa: P4Q reparte el espacio a su manera y llama RSU
+   a la estacion meteorologica (lo que en Sunner es HSU), ademas de tener dos cosas que el mapa
+   de Sunner no tiene — los REPETIDORES Zigbee y las TMU. Las bases, los pasos y cuantas
+   unidades tiene cada bloque NO se escriben aqui: los trae el propio documento en la cabecera
+   de cada hoja («TCUs Data start register 30500», «TCU registers qty 22», «TCU slave address
+   (1…200)»), y de ahi se leen. Lo unico que se decide aqui es en que secciones se agrupan.
+
+   Un aviso que cuesta caro si se pasa por alto: las mismas direcciones significan cosas
+   DISTINTAS en cada fabricante. La 40030, sin ir mas lejos, es en Sunner R8 el angulo de la
+   SP7 del grupo 1 en I16 deg×100 (un registro) y en P4Q el angulo de la SP7 del grupo 1 en F32
+   radianes (dos registros). Por eso la pagina no mezcla nunca los dos mapas: se elige
+   fabricante y se ve el suyo. */
+const hojaP4Q = h => (P4Q.p4q_revT[h] || { filas: [], params: [] });
+const paramP4Q = (h, re) => { const p = (hojaP4Q(h).params || []).find(x => re.test(x.clave));
+  return p ? p.valor : null; };
+
+/* Agrupar en registro padre + subvariables. En este documento TODAS las filas llevan direccion
+   —tambien los bits—, asi que el criterio no puede ser «la fila sin direccion es un bit» como en
+   Sunner: aqui un bit es una fila cuyo rango CABE DENTRO del registro anterior de esa misma
+   direccion. Cuando no cabe, es otro registro (el 30501 de la TCU son dos: MSRHigh en (15..8) y
+   MSRLow en (7..0), cada uno con sus banderas). */
+const rango = b => { const m = String(b || '').match(/\((\d+)\.\.(\d+)\)/); return m ? [+m[2], +m[1]] : null; };
+function agrupaP4Q(filas) {
+  const out = []; let cur = null;
+  for (const f of filas) {
+    const r = rango(f.bits);
+    const dentro = cur && cur.addr === f.addr && r && cur._r && r[0] >= cur._r[0] && r[1] <= cur._r[1]
+                   && !(r[0] === cur._r[0] && r[1] === cur._r[1]);
+    if (dentro) { cur.hijos.push({ nombre: f.nombre, bits: r, desc: f.desc, tipo: f.tipo,
+                                   unidad: f.unidad, rango: f.rango, sinNombre: f.nombre_doc === false }); continue; }
+    cur = { addr: f.addr, offset: f.offset, nombre: f.nombre, tipo: f.tipo, bits: f.bits, desc: f.desc,
+            acc: f.acc, unidad: f.unidad, escala: '', rango: f.rango, defecto: '', hijos: [], _r: r };
+    out.push(cur);
+  }
+  return out;
+}
+/* Los nombres del documento llevan el sufijo de la unidad de ejemplo (_s1, _rsu1, _rep10,
+   _ext_rsu1, _N_s1): en una tabla que vale para las 200 unidades, sobra. */
+const limpiaP4Q = regs => regs.map(r => { const q = n => String(n || '')
+    .replace(/_N_(s|rsu|rep)\d+$/i, '').replace(/_(ext_)?(s|rsu|rep)\d+$/i, '')
+    .replace(/_day_\d+$/i, '').replace(/_\d+$/, '').replace(/_$/, '');
+  return Object.assign({}, r, { nombre: q(r.nombre) || r.nombre,
+    hijos: (r.hijos || []).map(h => Object.assign({}, h, { nombre: q(h.nombre) || h.nombre })) }); });
+
+const P4Qentre = (h, a, b) => limpiaP4Q(agrupaP4Q(hojaP4Q(h).filas.filter(f => f.addr >= a && f.addr <= b)));
+const desplaza = (regs, base) => regs.map(r => Object.assign({}, r, { addr: base + (r.offset !== null && r.offset !== undefined ? r.offset : 0) }));
+
+/* ---- la hoja «RW variables»: matrices de bits y bloques que se repiten por grupo ---- */
+const rwP4Q = P4Q.rw || [];
+const rwEntre = (a, b) => rwP4Q.filter(f => f.addr >= a && f.addr <= b);
+/* Una fila de matriz es un registro cuyos bits son grupos: se publica tal cual, con un bit por
+   grupo y el nombre que el documento le da a cada uno. */
+const deMatriz = f => ({ addr: f.addr, nombre: slug(f.etiqueta || f.seccion, 5), tipo: 'U16', bits: '(15..0)',
+  desc: f.etiqueta || f.seccion, acc: f.acc, unidad: '', escala: '', rango: '', defecto: '',
+  hijos: (f.matriz || []).map(h => ({ nombre: slug(h.desc, 2), bits: [h.bit, h.bit], desc: h.desc, tipo: 'B' })) });
+/* Una fila normal, con sus bits si los tiene: se juntan las que comparten direccion. */
+function deTabla(filas, nombrePadre) {
+  const out = [], porAddr = new Map();
+  for (const f of filas) {
+    const r = rango(f.bits), completo = !r || (r[0] === 0 && (r[1] === 15 || r[1] === 31));
+    let cur = porAddr.get(f.addr);
+    if (completo || !cur) {
+      /* El registro entero NO se llama como su primer bit: «Reset Snow BaseLine (RSU 1)» es el
+         bit 0, no el registro. Se le quita el parentesis de la unidad al ponerle nombre al padre,
+         y el rotulo completo se queda donde corresponde, en el bit. */
+      const etiqPadre = nombrePadre || String(f.etiqueta || f.desc).replace(/\s*\([^)]*\)\s*$/, '');
+      cur = { addr: f.addr, nombre: slug(etiqPadre, 5), tipo: f.tipo || 'U16', bits: f.bits,
+              desc: f.etiqueta + (f.desc ? ' — ' + f.desc : ''), acc: f.acc, unidad: '', escala: '',
+              rango: f.rango || '', defecto: '', hijos: [] };
+      if (!completo && r) cur.hijos.push({ nombre: slug(f.etiqueta, 4), bits: r, desc: f.desc || f.etiqueta, tipo: f.tipo });
+      porAddr.set(f.addr, cur); out.push(cur); continue;
+    }
+    if (r) cur.hijos.push({ nombre: slug(f.etiqueta, 4), bits: r, desc: f.desc || f.etiqueta, tipo: f.tipo });
+  }
+  return out;
+}
+/* Un bloque que se repite por grupo se publica UNA vez con su base y su paso, como los bloques
+   por unidad de la NCU: 200 filas identicas en las que solo cambia el numero de grupo no son
+   una tabla, son ruido. El banco comprueba que la formula reproduce las 200 filas del documento. */
+function porGrupo(filas, base, paso, nombrePadre) {
+  const prim = filas.filter(f => f.addr === base);
+  if (!prim.length) return [];
+  /* «Send Off Request to Group 1» vale para los 200 grupos: el «to Group 1» sobra en una fila
+     que ya lleva su selector de unidad. */
+  const g = deTabla(prim.map(f => Object.assign({}, f,
+    { etiqueta: String(f.etiqueta).replace(/\s*(to|for)\s+Group\s*\d+/i, '') })), nombrePadre);
+  return g.map(r => Object.assign({}, r, { addr: 0 }));
+}
+
+DEV = 'p4q';
+const bTCU = paramP4Q('TCUs', /TCUs Data start/), qTCU = paramP4Q('TCUs', /TCU registers qty/);
+const bSPP = paramP4Q('TCUs', /SPP start/), qSPP = paramP4Q('TCUs', /SPP register qty/);
+const bLC = paramP4Q('TCUs', /TCUs LastCom start/);
+const bTMU = paramP4Q('TMUs', /TMUs Data start/), qTMU = paramP4Q('TMUs', /TMU registers qty/);
+const bREP = paramP4Q('Repeaters', /Data start/), qREP = paramP4Q('Repeaters', /registers qty/), uREP = 10;
+const bRSU = paramP4Q('RSUs + Local Sensors', /RSUs data start/), qRSU = paramP4Q('RSUs + Local Sensors', /RSU registers qty/);
+const bRSUx = paramP4Q('RSUs + Local Sensors (Extended)', /RSUs data start/), qRSUx = paramP4Q('RSUs + Local Sensors (Extended)', /RSU registers qty/);
+const bRSUe = paramP4Q('External RSUs', /RSUs data start/), qRSUe = paramP4Q('External RSUs', /RSU registers qty/);
+const bLOC = paramP4Q('Local Sensors', /Start register/), bVIRT = 37000;
+
+const P4QNCU = [
+  seccion('Identidad', 'hoja «NCU info» · el documento numera estas dos SIN el prefijo 3xxxx', 'ro', P4Qentre('NCU info', 0, 999)),
+  seccion('Registros propios', 'hoja «NCU info» · estado global, IP, reloj y resumen de las RSU · una NCU por planta', 'ro', P4Qentre('NCU info', 30000, 30199)),
+  seccion('Bloque TCU (republicado)', `hoja «TCUs» · base ${bTCU} · ${qTCU} registros/TCU · hasta 200 TCU`, 'ro',
+    desplaza(P4Qentre('TCUs', bTCU, bTCU + qTCU - 1), 0), { base: bTCU, stride: qTCU, offsetDe: 0, max: 200 }),
+  seccion('TCU · último contacto', `hoja «TCUs» · base ${bLC} · 2 registros/TCU`, 'ro',
+    desplaza(P4Qentre('TCUs', bLC, bLC + 1), 0), { base: bLC, stride: 2, offsetDe: 0, max: 200 }),
+  seccion('TCU · cadena de módulos (SPP)', `hoja «TCUs» · base ${bSPP} · ${qSPP} registros/TCU · tensión y corriente de string, añadidos en revT`, 'ro',
+    desplaza(P4Qentre('TCUs', bSPP, bSPP + qSPP - 1), 0), { base: bSPP, stride: qSPP, offsetDe: 0, max: 200 }),
+  seccion('Bloque TMU', `hoja «TMUs» · base ${bTMU} · ${qTMU} registros/TMU · hasta 200 · la TMU manda sobre sus MDU`, 'ro',
+    desplaza(P4Qentre('TMUs', bTMU, bTMU + qTMU - 1), 0), { base: bTMU, stride: qTMU, offsetDe: 0, max: 200 }),
+  seccion('Repetidores Zigbee', `hoja «Repeaters» · base ${bREP} · ${qREP} registros/repetidor · hasta ${uREP} · no hay equivalente en el mapa de Sunner`, 'ro',
+    desplaza(P4Qentre('Repeaters', 0, 99999), 0), { base: bREP, stride: qREP, offsetDe: 0, max: uREP }),
+  seccion('Bloque RSU (republicado)', `hoja «RSUs + Local Sensors» · base ${bRSU} · ${qRSU} registros/RSU · hasta 10 · la RSU de P4Q es la estación meteorológica, lo que Sunner llama HSU`, 'ro',
+    desplaza(P4Qentre('RSUs + Local Sensors', bRSU, bRSU + qRSU - 1), 0), { base: bRSU, stride: qRSU, offsetDe: 0, max: 10 }),
+  seccion('RSU · marcas de tiempo', 'hoja «RSUs + Local Sensors» · lastValidSnow 29320 · lastValidWind 29380 · lastComm 29440 · 2 registros/RSU', 'ro',
+    P4Qentre('RSUs + Local Sensors', 29000, 29499)),
+  seccion('Bloque RSU extendido', `hoja «RSUs + Local Sensors (Extended)» · base ${bRSUx} · ${qRSUx} registros/RSU · mapa ampliado de la MISMA estación`, 'ro',
+    desplaza(P4Qentre('RSUs + Local Sensors (Extended)', bRSUx, bRSUx + qRSUx - 1), 0), { base: bRSUx, stride: qRSUx, offsetDe: 0, max: 10 }),
+  seccion('RSU externas', `hoja «External RSUs» · base ${bRSUe} · ${qRSUe} registros/RSU · hasta 20 · estaciones de otra planta o de otro fabricante integradas en esta NCU`, 'ro',
+    desplaza(P4Qentre('External RSUs', bRSUe, bRSUe + qRSUe - 1), 0), { base: bRSUe, stride: qRSUe, offsetDe: 0, max: 20 }),
+  seccion('RSU externas · marcas de tiempo', 'hoja «External RSUs» · lastValidSnow 29340 · lastValidWind 29400 · lastComm 29460 · 2 registros/RSU', 'ro',
+    P4Qentre('External RSUs', 29000, 29499)),
+  seccion('Sensor de viento local · pico por día', `hoja «Local Sensors» · base ${bLOC} · 8 registros por (sensor, día) · unidad = (sensor−1)·31 + día · solo en NCU con sensor de viento propio`, 'ro',
+    desplaza(P4Qentre('Local Sensors', 36000, 36999), 0), { base: bLOC, stride: 8, offsetDe: 0, max: 62 }),
+  seccion('RSU virtual · umbrales de viento y nieve', `hoja «Local Sensors» · base ${bVIRT} · 46 registros/RSU virtual · 2 unidades`, 'ro',
+    desplaza(P4Qentre('Local Sensors', 37000, 37999), 0), { base: bVIRT, stride: 46, offsetDe: 0, max: 2 }),
+  /* ---- escritura ---- */
+  seccion('Forzado de posición segura por grupo', 'hoja «RW variables» · matriz de bits: cada bit es un grupo de limpieza (1..10) · 0 = petición desactivada, 1 = activada', 'w',
+    rwEntre(40001, 40007).map(deMatriz)),
+  seccion('Forzado de nivel de viento por grupo', 'hoja «RW variables» · base 40008 · 1 registro por grupo de limpieza (1..10) · 0 = no forzar', 'w',
+    porGrupo(rwEntre(40008, 40017), 40008, 1, 'Force WindLevel Request'), { base: 40008, stride: 1, offsetDe: 0, max: 10 }),
+  seccion('Ángulo de la posición segura 7 · grupos de limpieza', 'hoja «RW variables» · base 40030 · 2 registros por grupo (F32 en radianes) · 10 grupos', 'w',
+    porGrupo(rwEntre(40030, 40048), 40030, 2, 'Safe Position 7 angle rads'), { base: 40030, stride: 2, offsetDe: 0, max: 10 }),
+  seccion('Auto / Manual por grupo', 'hoja «RW variables» · matriz de bits: cada bit es un grupo de limpieza', 'w',
+    rwEntre(40070, 40071).map(deMatriz)),
+  seccion('Comandos de la NCU', 'hoja «RW variables» · reinicios, calibración de nieve y sincronización de hora', 'w',
+    deTabla(rwEntre(40100, 40102))),
+  seccion('Posición segura 7 por grupo custom (matriz)', 'hoja «RW variables» · 40103–40115 · 16 grupos por registro, hasta el grupo 200', 'w',
+    rwEntre(40103, 40115).map(deMatriz)),
+  seccion('Ángulo de la posición segura 7 · grupos custom', 'hoja «RW variables» · base 40116 · 2 registros por grupo (F32 en radianes) · 200 grupos', 'w',
+    porGrupo(rwEntre(40116, 40514), 40116, 2, 'Safe Position 7 angle rads custom'), { base: 40116, stride: 2, offsetDe: 0, max: 200 }),
+  seccion('Estado por grupo · Off / Manual / Auto', 'hoja «RW variables» · base 40517 · 1 registro por grupo · bits 0, 1 y 2', 'w',
+    porGrupo(rwEntre(40517, 40716), 40517, 1, 'Group state request'), { base: 40517, stride: 1, offsetDe: 0, max: 200 }),
+];
+
+/* Reparto del espacio de direcciones de P4Q, calculado con los parametros del propio documento
+   (no hay hoja «Overview» como en Sunner, pero cada hoja trae su base, su paso y sus unidades). */
+const BLOQUES_P4Q = [
+  /* La identidad va SIN el prefijo 3xxxx, igual que en el documento de Sunner: son las
+     direcciones 0 y 1, y hay que declararlas o el localizador diria que no existen. */
+  { de: 0, a: 999, n: 'Identidad de la NCU (numerada sin prefijo)', res: false, lib: [2, bSPP - 1] },
+  { de: bSPP, a: bSPP + qSPP * 200 - 1, n: 'TCU · cadena de módulos (SPP)', res: false, lib: null },
+  { de: bREP, a: bREP + qREP * uREP - 1, n: 'Repetidores Zigbee', res: false, lib: null },
+  { de: bTMU, a: bTMU + qTMU * 200 - 1, n: 'TMU Data', res: false, lib: [bTMU + qTMU * 200, bRSUx - 1] },
+  { de: bRSUx, a: bRSUx + qRSUx * 10 - 1, n: 'RSU Data extended', res: false, lib: [bRSUx + qRSUx * 10, 29319] },
+  { de: 29320, a: 29339, n: 'RSU Last valid snow', res: false, lib: null },
+  { de: 29340, a: 29379, n: 'RSU externas · Last valid snow', res: false, lib: null },
+  { de: 29380, a: 29399, n: 'RSU Last valid wind', res: false, lib: null },
+  { de: 29400, a: 29439, n: 'RSU externas · Last valid wind', res: false, lib: null },
+  { de: 29440, a: 29459, n: 'RSU Last comunication', res: false, lib: null },
+  { de: 29460, a: 29499, n: 'RSU externas · Last comunication', res: false, lib: null },
+  { de: bLC, a: bLC + 2 * 200 - 1, n: 'TCUs Last Comunication', res: false, lib: [bLC + 400, 29999] },
+  { de: 30000, a: 30199, n: 'NCU Base Info', res: false, lib: null },
+  { de: bRSU, a: bRSU + qRSU * 10 - 1, n: 'RSU Data', res: false, lib: null },
+  { de: bRSUe, a: bRSUe + qRSUe * 20 - 1, n: 'RSU externas', res: false, lib: null },
+  { de: bTCU, a: bTCU + qTCU * 200 - 1, n: 'TCU Data', res: false, lib: [bTCU + qTCU * 200, 35999] },
+  { de: bLOC, a: bLOC + 8 * 62 - 1, n: 'Sensores de viento locales · picos por día', res: false, lib: [bLOC + 496, 36999] },
+  { de: bVIRT, a: bVIRT + 46 * 2 - 1, n: 'RSU virtuales · umbrales', res: false, lib: [bVIRT + 92, 39999] },
+  { de: 40001, a: 40716, n: 'Escritura: forzados, comandos y estado por grupo', res: false, lib: [40717, 65534] },
+];
+
 /* ---------- reparto del espacio de direcciones (hoja «Overview») ----------
    Se publica el del R8, que es la revision vigente. Si alguna vez las dos no reparten igual el
    espacio, un hueco «reservado» de una seria un bloque con registros de la otra: eso NO puede
@@ -431,7 +608,12 @@ const bloque =
           (hojas NCU Info · NCU RW registers · TCU Compat · TCU · HSU · HSU EXT)
      TCU  SUNNER_TCU_ModbusMap_v6.pdf (FW v1.4.3)
      HSU  250506_HSU_Modbus_Map_R23.xlsx
+     P4Q  AUX1-S20015_revT_NCU_Modbus_map.xlsx (NCU de P4Q: TCU, TMU, repetidores y RSU)
    Para regenerar:  node tools/gen_modbus_map.mjs --write
+   HAY MÁS DE UN FABRICANTE. Cada uno tiene su MAPA ENTERO y su propio reparto del espacio de
+   direcciones: MAPAS[fabricante] y BLOQUES_FAB[fabricante]. Los mapas NO se mezclan nunca,
+   porque la misma dirección significa cosas distintas en cada uno — la 40030 es en Sunner R8
+   el ángulo de la SP7 del grupo 1 en I16 deg×100 y en P4Q el mismo ángulo en F32 radianes.
    La tabla de la NCU es la UNION del R7 y del R8. Campo 12 de cada fila = revisión: ausente o
    null si el registro está igual en las dos, 'R8' si es nuevo del R8, 'R7' si el R8 ya no lo
    trae. Campo 13 = qué cambia cuando la misma dirección dice cosas distintas en cada revisión.
@@ -444,8 +626,13 @@ const bloque =
 /* Reparto COMPLETO del espacio de direcciones, de la hoja «Overview» (R7 y R8 lo reparten igual;
    si dejaran de hacerlo, el generador avisa). Sirve para que una dirección que no cae en ningún
    registro diga QUE es (hueco reservado, rango libre, o de qué bloque) en vez de un «no existe». */
-var BLOQUES=${js(BLOQUES)};
-var DEV={
+var BLOQUES_FAB={sunner:${js(BLOQUES)},p4q:${js(BLOQUES_P4Q)}};
+/* El propio documento de P4Q trae su historial de revisiones (hoja «Changelog»): qué se añadió
+   o cambió en cada una. Es el equivalente al careo R7 ↔ R8 de Sunner, pero hecho por el
+   fabricante, así que se publica tal cual en la pestaña «Versiones» en vez de deducirlo. */
+var CAMBIOS_P4Q=${js(P4Q.changelog || [])};
+var MAPAS={};
+MAPAS.sunner={
  ncu:{tab:'NCU',eti:'Network Control Unit',max:0,revs:['R8','R7'],revAl:'R8',
   nota:'El servidor Modbus de la planta (NCU_Modbus_Map_R7 y R8): sus registros propios, los forzados de posición segura y los bloques donde republica cada TCU y cada HSU que gestiona. Se guardan <b>las dos revisiones</b>: el selector de arriba elige cuál se ve, y en «ambas» los registros llevan de qué revisión son. En planta conviven, así que un registro que solo trae el R8 escrito contra una NCU R7 responde ilegal. <b>Cinco subvariables volvieron a la tabla</b> al arreglar el extractor: la posición segura activa del MSR y, sin bautizar en el documento, el imán y el BLE (MSR) y dos banderas de batería (FlagsA) — estaban en los dos documentos y no llegaban aquí.',
   secs:${js(NCU)}},
@@ -457,7 +644,15 @@ var DEV={
  hsu:{tab:'HSU',eti:'Hub Sensor Unit',max:10,idlab:'Nº HSU',
   nota:'El mapa <b>propio del dispositivo</b> (HSU_Modbus_Map_R23): identidad, estado, medidas, comandos, configuración y calibración. Al final, los dos bloques donde la NCU lo republica (con el selector de unidad). Las secciones de ESCRITURA cambian la estación: cuidado en planta.',
   secs:${js(HSU)}}
-};`;
+};
+
+MAPAS.p4q={
+ ncu:{tab:'NCU',eti:'Network Control Unit',max:200,idlab:'Nº TCU/TMU/RSU/grupo',
+  nota:'El servidor Modbus de la planta de <b>P4Q</b> (AUX1-S20015 revT). Mismo papel que la NCU de Sunner pero <b>otro mapa</b>: aquí la estación meteorológica se llama <b>RSU</b> (la HSU de Sunner), hay <b>repetidores Zigbee</b> y <b>TMU</b> que en Sunner no existen, y admite RSU externas. Las bases y los pasos de cada bloque salen de la cabecera de cada hoja del propio documento. <b>Ojo al cambiar de fabricante:</b> una misma dirección no significa lo mismo — la 40030 es aquí el ángulo de la posición segura 7 del grupo 1 en F32 radianes, y en Sunner R8 el mismo ángulo en I16 deg×100.',
+  secs:${js(P4QNCU)}}
+};
+
+var DEV=MAPAS.sunner, BLOQUES=BLOQUES_FAB.sunner;   // el fabricante que se está mirando`;
 
 console.log('\nNCU · fusión de revisiones R7 + R8');
 if (!BITS_COMPARABLES) console.log(
@@ -473,11 +668,17 @@ if (CAMBIOS.length) {
 }
 const cuentaRev = (secs, v) => secs.reduce((n, s) => n + s.f.filter(r => r[12] === v).length, 0);
 console.log(`  publicado: ${cuenta(NCU)} registros · ${cuentaRev(NCU, 'R8')} marcados nuevos del R8 · ${cuentaRev(NCU, 'R7')} solo del R7\n`);
+console.log('P4Q · NCU revT · secciones', P4QNCU.length, '· registros', cuenta(P4QNCU));
+{
+  const conBloque = P4QNCU.filter(s2 => s2.base).length;
+  console.log(`  ${conBloque} secciones por unidad, con base y paso leídos del propio documento`);
+}
+console.log('');
 console.log('NCU  secciones', NCU.length, '· registros', cuenta(NCU));
 console.log('TCU  secciones', TCU.length, '· registros', cuenta(TCU));
 console.log('HSU  secciones', HSU.length, '· registros', cuenta(HSU));
-console.log('TOTAL registros:', cuenta(NCU) + cuenta(TCU) + cuenta(HSU));
-const conDesc = [...NCU, ...TCU, ...HSU].reduce((n, s) => n + s.f.filter(r => r[7]).length, 0);
+console.log('TOTAL registros:', cuenta(NCU) + cuenta(TCU) + cuenta(HSU) + cuenta(P4QNCU));
+const conDesc = [...NCU, ...TCU, ...HSU, ...P4QNCU].reduce((n, s) => n + s.f.filter(r => r[7]).length, 0);
 console.log('con descripción del documento:', conDesc);
 
 if (!WRITE) { console.log('\n(dry-run: pasa --write para escribir modbus.html)'); process.exit(0); }
