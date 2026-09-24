@@ -524,7 +524,7 @@ magnitud se COBRA (`poaPlantSeg` por mesa en planta real).
 | `mgl` | parte de `pairwise` y empina mientras la sombra siga en 0 y la LUZ AL SUELO baje | no: luz al suelo (el candidato más probable tras `true3d`) |
 | `optimal` | `poaPlantSeg` por mesa, sobre la fracción común entre `pairwise` y `astro` | **sí** (corregido en la v1.76) |
 | `optfree` | ascenso libre guiado por la métrica de LÍNEA; elección final y veto con `poaPlantSeg` | a medias: el guía no es lo cobrado, la elección sí |
-| `coordinada` (#757) | contador `shadeBand3DAll` + guardia de energía | por comprobar en su rama |
+| `coordinada` (#757, 3be4a4c) | retrocede hasta que no quede sombra > 1e-3 bajo `shadeBand3DAll(...,{noStruct:true,noTerr:true,MV,atrMesa:true})` (`backtracking.html:2899`, rama `claude/r5-fase-a-6th1im`); guardia de energía con `poaPlant` SOLO por línea (`:3946`, `guardaEnergia` `:2848`); por mesa, sin guardia (`:2792`) | **no, comprobado en el código**: por mesa decide con «sombra = 0» sobre un contador SIN estructura NI terreno; lo cobrado es `poaPlantSeg` → `shadeRows` → `shadeBand3DAll(zen,az,T,rowAngles)` sin esas opciones (`:2398`, `:2965`) y multiplicado por el POA |
 
 **La medida del desajuste** (`audit5/P3r_criterio.mjs` y `audit5/P3r_careo.mjs`,
 EN CURSO):
@@ -534,6 +534,17 @@ EN CURSO):
   SOMBRA (lo que su criterio mira) y ÁNGULO (lo que no mira).
 - **Condiciones:** Ayora, 21-jun y 21-dic, la serie que ejecuta la página.
 - **Test nulo:** `optimal` contra sí mismo.
+- **Tres columnas, no el agregado** (apunte del titular). Cada mesa·instante
+  se clasifica por ds = pérdida(pol) − pérdida(`optimal`):
+  - SOMBRA (ds > ε): su trabajo de no-sombra falla;
+  - AOI (|ds| ≤ ε): sombrean igual y falta ángulo → el desajuste de criterio;
+  - OBJETIVO (ds < −ε): `optimal` ACEPTA sombra a propósito para ganar haz →
+    diferencia de objetivo, se DESCUENTA.
+- **`optfree`, medida propia** (`audit5/P3r_optfree_guia.mjs`): la misma guía
+  con cada elección evaluada con `poaPlantSeg`; ¿cambia el candidato ganador?
+  Coste MEDIDO: `poaPlantSeg` 0,68 s en Ayora con la máquina cargada (4 CPU,
+  carga ~19), un barrido ≈ 6 min por instante → muestra declarada (horas en
+  punto con sol > 5°) y UN barrido: cota inferior.
 - **`mgl`** espera a que la máquina lo permita: 40-90 s por instante.
 
 **4 · El paso 5 queda tocado.** Un optimizador que decida por contacto
