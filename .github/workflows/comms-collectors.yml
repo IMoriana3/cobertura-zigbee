@@ -1,0 +1,91 @@
+name: COMMS collectors
+
+on:
+  push:
+    paths:
+      - 'zigbee_logger.ps1'
+      - 'zigbee_routes_logger.ps1'
+      - 'zigbee_collectors_supervisor.ps1'
+      - 'install_zigbee_collectors_task.ps1'
+      - 'tools/test_logger_rssi.py'
+      - 'tools/test_rutas_telnet.py'
+      - 'tools/test_paquete_medida.mjs'
+      - 'tools/paquete_planta.mjs'
+      - 'index.html'
+      - 'docs/contrato_datos_zigbee.md'
+      - '.github/workflows/comms-collectors.yml'
+  pull_request:
+    paths:
+      - 'zigbee_logger.ps1'
+      - 'zigbee_routes_logger.ps1'
+      - 'zigbee_collectors_supervisor.ps1'
+      - 'install_zigbee_collectors_task.ps1'
+      - 'tools/test_logger_rssi.py'
+      - 'tools/test_rutas_telnet.py'
+      - 'tools/test_paquete_medida.mjs'
+      - 'tools/paquete_planta.mjs'
+      - 'index.html'
+      - 'docs/contrato_datos_zigbee.md'
+      - '.github/workflows/comms-collectors.yml'
+
+jobs:
+  pwsh7:
+    name: collectors · pwsh 7
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: syntax
+        shell: pwsh
+        run: |
+          foreach($f in 'zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_collectors_supervisor.ps1','install_zigbee_collectors_task.ps1'){
+            $e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$null,[ref]$e)
+            if($e.Count){ $e | Format-List; throw "$f no compila" }
+          }
+      - name: RSSI
+        run: python3 tools/test_logger_rssi.py
+      - name: routes
+        run: python3 tools/test_rutas_telnet.py
+      - name: package contract
+        run: node tools/test_paquete_medida.mjs
+      - name: package runtime
+        shell: bash
+        run: |
+          node tools/paquete_planta.mjs elburgo _medir.zip
+          python3 -c "import zipfile; zipfile.ZipFile('_medir.zip').extractall('_paq')"
+          PS1_DIR=_paq/elburgo python3 tools/test_logger_rssi.py
+          PS1_DIR=_paq/elburgo python3 tools/test_rutas_telnet.py
+
+  windows51:
+    name: collectors · Windows PowerShell 5.1
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      PWSH: powershell
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: exact interpreter
+        shell: powershell
+        run: |
+          if($PSVersionTable.PSVersion.Major -ne 5){ throw "se esperaba Windows PowerShell 5.1" }
+      - name: syntax 5.1
+        shell: powershell
+        run: |
+          foreach($f in 'zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_collectors_supervisor.ps1','install_zigbee_collectors_task.ps1'){
+            $tok=$null; $e=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tok,[ref]$e)
+            if($e.Count){ $e | Format-List; throw "$f no compila en 5.1" }
+          }
+      - name: RSSI 5.1
+        shell: cmd
+        run: python tools\test_logger_rssi.py
+      - name: routes 5.1
+        shell: cmd
+        run: python tools\test_rutas_telnet.py
