@@ -191,7 +191,7 @@ function Open-Telnet($GW) {
   $ar = $client.BeginConnect($hostOnly, $port, $null, $null)
   if (-not $ar.AsyncWaitHandle.WaitOne($ConnectTimeoutMs)) {
     $client.Close()
-    throw "timeout conectando a $hostOnly:$port"
+    throw "timeout conectando a ${hostOnly}:$port"
   }
   $client.EndConnect($ar)
   $ns = $client.GetStream()
