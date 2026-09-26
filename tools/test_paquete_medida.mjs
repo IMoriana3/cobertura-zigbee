@@ -103,7 +103,10 @@ check('el recolector dice que la IP está DERIVADA, y que hay que comprobarla',
         g2.map(g => g.ipGw).join(' '));
 }
 const RUTAS = fs.readFileSync(path.join(RAIZ, 'zigbee_routes_logger.ps1'), 'utf8');
-check('el de rutas apunta al primer gateway', /\$GwHost\s*=\s*"10\.100\.1\.53"/.test(F.preparaRutas(RUTAS, gws)));
+const rutasListo = F.preparaRutas(RUTAS, gws);
+check('el de rutas sale con TODOS los gateways, igual que RSSI',
+      ['53','54','57','58'].every(o => rutasListo.includes('Host = "10.100.1.' + o + '"')),
+      rutasListo.split('\n').filter(l => /Host =/.test(l) && !/^#/.test(l)).length + ' hosts');
 /* EL INVENTARIO TAMBIÉN LLEVA LA IP PUESTA. Lee por HTTP/RCI como el logger, y
    si sale con la IP de ejemplo el que está en la planta inventaría el gateway de
    El Burgo desde Ayora — o nada. Es el mismo error caro de siempre. */
@@ -243,8 +246,9 @@ check('y su gateway se deriva igual que en El Burgo (NCU + nº de GW)',
       gwsA.slice(0,2).map(g=>g.ipNcu+'->'+g.ipGw).join(' '));
 
 /* ---- el paquete y el léeme ---- */
-check('el paquete lleva los cinco recolectores y el cruce', JSON.stringify(paq.colectores) ===
-      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_inventario.ps1',
+check('el paquete lleva recolectores, watchdog, instalador y utilidades de campo', JSON.stringify(paq.colectores) ===
+      JSON.stringify(['zigbee_logger.ps1','zigbee_routes_logger.ps1','zigbee_collectors_supervisor.ps1',
+                      'install_zigbee_collectors_task.ps1','zigbee_inventario.ps1',
                       'zigbee_angulos.ps1','zigbee_config.ps1','rellena_barrido.ps1']),
       JSON.stringify(paq.colectores));
 /* `zigbee_config.ps1` es el quinto y es el UNICO que no recolecta una serie: lee
@@ -321,8 +325,9 @@ check('el léeme explica el barrido y por qué los recolectores no bastan',
       /LOS CEROS SON LA MITAD/.test(leeme));
 check('y dice qué dos columnas se rellenan a mano',
       /`llega`/.test(leeme) && /`beta_grados`/.test(leeme));
-check('que la malla cambia y hay que dejarlo días',
-      /DEJALOS DIAS, no horas/.test(leeme));
+check('el léeme fija el objetivo 24/7 y el arranque automático',
+      /PERMANENTE 24\/7/.test(leeme) && /SystemStartup/.test(leeme) &&
+      /zigbee_collectors_supervisor\.ps1/.test(leeme));
 const leemeSinB = F.leemeDe(sinB);
 check('sin hoja de barrido, el léeme no habla de un fichero que no está',
       !/barrido/i.test(leemeSinB) && /AL VOLVER/.test(leemeSinB));
