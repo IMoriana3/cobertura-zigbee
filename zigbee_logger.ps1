@@ -1,235 +1,325 @@
 ﻿<#
-  zigbee_logger.ps1  —  Captura de cobertura Zigbee en El Burgo
-  Lee el RSSI de cada TCU de los gateways Digi por RCI y lo guarda en un CSV.
-  Y la CPU y memoria del PROPIO gateway (query_state/device_stats), en otro CSV:
-  un coordinador saturado se ve como TCUs que no contestan sin que la radio este mal.
-  NO necesita instalar nada: PowerShell ya viene en Windows.
+  zigbee_logger.ps1 — recolector PERMANENTE de RSSI/estado Zigbee.
 
-  EJECUTAR (desde la carpeta del script, no hace falta admin):
-    powershell -ExecutionPolicy Bypass -File .\zigbee_logger.ps1
+  Objetivo operativo:
+    - 24/7, no una campaña manual.
+    - todos los gateways configurados; uno caído NO detiene los demás.
+    - censo acumulativo: un nodo descubierto no desaparece porque falle un discover posterior.
+    - schema_version=2, UTC por fila, ciclo_id y latencia_ms.
+    - el gateway caído se distingue del nodo caído.
+    - el fichero vivo conserva el nombre histórico y se rota diariamente.
 
-  Parar: Ctrl+C. Los CSV quedan en la misma carpeta (zigbee_log.csv y gateway_stats.csv).
+  Este logger NO es el canal de seguridad de viento. Su cadencia se limita para no
+  competir con el tráfico de control.
 #>
 
-# ======================= CONFIG (edita esto) =======================
+# ======================= CONFIG (el paquete de planta sustituye este bloque) =======================
 $Gateways = @(
   @{ Name = "GW-01"; Host = "10.100.1.54"; User = ""; Pass = "" }
-  # @{ Name = "GW-02"; Host = "10.100.1.55"; User = ""; Pass = "" }   # añade los que haya
 )
-$IntervalSec      = 600                       # recorrer todos los nodos cada 10 min
-$DiscoverEverySec = 3600                      # refrescar inventario cada hora
-$TimeoutSec       = 15                        # timeout por nodo (sin respuesta = enlace caído = dato)
-$CsvPath          = Join-Path $PSScriptRoot "zigbee_log.csv"
-$GwCsvPath        = Join-Path $PSScriptRoot "gateway_stats.csv"   # CPU/memoria del propio gateway, una fila por ciclo
-# Si el webserver del gateway pide login, rellena User/Pass arriba (Digi viejos: root / dbps).
-# ===================================================================
+$IntervalSec       = 600
+$DiscoverEverySec = 3600
+$TimeoutSec        = 15
+$NodePauseMs       = 100
+$GatewayPauseMs    = 500
+$MinPauseSec       = 30
+$CsvPath           = Join-Path $PSScriptRoot "zigbee_log.csv"
+$GwCsvPath         = Join-Path $PSScriptRoot "gateway_stats.csv"
+$CensoPath         = Join-Path $PSScriptRoot "censo_campania.csv"
+# ================================================================================================
 
+$SchemaVersion = 2
 $ErrorActionPreference = "Stop"
+$Invariant = [System.Globalization.CultureInfo]::InvariantCulture
 
-function Invoke-RCI($GW, $Body) {
-  $p = @{ Uri = "http://$($GW.Host)/UE/rci"; Method = "Post";
-          ContentType = "text/xml"; Body = $Body; TimeoutSec = $TimeoutSec }
+$ColsLog = @("schema_version","timestamp","ciclo_id","latencia_ms","tz_pc_min","gateway","ext_addr","node_id","net_addr","role","online","motivo","rssi_dbm","ack_failures","reinicio","supply_mv","temp_c")
+$ColsGw = @("schema_version","timestamp","ciclo_id","gateway","host","ok","cpu_pct","mem_total_b","mem_usada_b","mem_libre_b","uptime_s")
+$ColsCenso = @("schema_version","ext_addr","node_id","gateway","ncu","gw","esclavo","etiqueta","lat","lon","origen","visto_utc")
+
+function Utc-Now {
+  return [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", $Invariant)
+}
+function Utc-Tag {
+  return [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ", $Invariant)
+}
+function Pc-OffsetMin {
+  return [int][Math]::Round([TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes)
+}
+function Csv-HeaderNames([string]$Path) {
+  if (-not (Test-Path $Path)) { return @() }
+  $h = Get-Content -Path $Path -TotalCount 1
+  if ([string]::IsNullOrWhiteSpace($h)) { return @() }
+  return @($h.Split(",") | ForEach-Object { $_.Trim().Trim('"') })
+}
+function Same-Header($a, $b) {
+  if ($a.Count -ne $b.Count) { return $false }
+  for ($i=0; $i -lt $a.Count; $i++) { if ("$($a[$i])" -ne "$($b[$i])") { return $false } }
+  return $true
+}
+function Move-Safe([string]$Path, [string]$Tag) {
+  if (-not (Test-Path $Path)) { return }
+  $dir = Split-Path $Path -Parent
+  $base = [IO.Path]::GetFileNameWithoutExtension($Path)
+  $ext = [IO.Path]::GetExtension($Path)
+  $dst = Join-Path $dir ($base + "." + $Tag + $ext)
+  $n = 1
+  while (Test-Path $dst) {
+    $dst = Join-Path $dir ($base + "." + $Tag + "." + $n + $ext)
+    $n++
+  }
+  Move-Item -Path $Path -Destination $dst
+}
+function Ensure-LiveCsv([string]$Path, $ExpectedColumns) {
+  if (-not (Test-Path $Path)) { return }
+  $fi = Get-Item $Path
+  $today = [DateTime]::UtcNow.ToString("yyyyMMdd", $Invariant)
+  $fileDay = $fi.LastWriteTimeUtc.ToString("yyyyMMdd", $Invariant)
+  if ($fileDay -ne $today) {
+    Move-Safe $Path $fileDay
+    return
+  }
+  $got = Csv-HeaderNames $Path
+  if (-not (Same-Header $got $ExpectedColumns)) {
+    Move-Safe $Path ("schema-old." + (Utc-Tag))
+  }
+}
+function Append-Rows([string]$Path, $Rows, $ExpectedColumns) {
+  if (-not $Rows -or @($Rows).Count -eq 0) { return }
+  Ensure-LiveCsv $Path $ExpectedColumns
+  @($Rows) | Select-Object $ExpectedColumns | Export-Csv -Path $Path -Append -NoTypeInformation -Encoding UTF8
+}
+
+function Invoke-RCI($GW, $Body, [int]$Timeout = $TimeoutSec) {
+  $p = @{
+    Uri = "http://$($GW.Host)/UE/rci"
+    Method = "Post"
+    ContentType = "text/xml"
+    Body = $Body
+    TimeoutSec = $Timeout
+  }
   if ($GW.User) {
     $sec = ConvertTo-SecureString $GW.Pass -AsPlainText -Force
     $p.Credential = New-Object System.Management.Automation.PSCredential($GW.User, $sec)
   }
   return Invoke-RestMethod @p
 }
-
-$discoverBody = '<rci_request version="1.1"><do_command target="zigbee"><discover option="clear"/></do_command></rci_request>'
-
-# ---- la CARGA del gateway: CPU y memoria del PROPIO Digi ----
-# A las TCUs se les pide su radio (el RSSI que recoge el recolector de
-# cobertura); al gateway se le pide a si mismo. Un coordinador con la CPU
-# saturada encola los mensajes Zigbee y la planta lo ve como TCUs que "no
-# contestan" sin que ninguna radio este mal. La consulta RCI de Digi para eso
-# es query_state/device_stats que, segun su referencia, trae la CPU en % y la
-# memoria en KB. Como la identidad: NO verificado contra un Digi real. Si no
-# se reconoce se vuelca crudo, y esta vez con TODO el estado del aparato
-# (query_state sin hijos), para que la primera pasada de el esquema entero.
-$RCI_CARGA = '<rci_request version="1.1"><query_state><device_stats/></query_state></rci_request>'
-$RCI_TODO  = '<rci_request version="1.1"><query_state/></rci_request>'
-
-# Saca CPU (%), memoria (KB) y uptime (s) del XML por patron, sin depender del
-# anidado ni de si vienen como elemento (<cpu>37</cpu>) o atributo (cpu="37").
-# ok solo si hay una CPU entre 0 y 100: un <cpu_type>ARM9</cpu_type> no lo es,
-# y un 250 tampoco. Pura.
-function Gw-Carga([string]$xml) {
-    $t = "$xml"
-    $r = @{cpu = $null; mem_total = $null; mem_usada = $null; mem_libre = $null; uptime = $null; ok = $false}
-    $pat = @{
-        cpu       = 'cpu(?:_?(?:usage|util(?:ization)?|load|pct|percent))?'
-        mem_total = '(?:total_?mem(?:ory)?|mem(?:ory)?_?total)'
-        mem_usada = '(?:used_?mem(?:ory)?|mem(?:ory)?_?used)'
-        mem_libre = '(?:free_?mem(?:ory)?|mem(?:ory)?_?free)'
-        uptime    = 'up_?time'
-    }
-    foreach ($k in @('cpu','mem_total','mem_usada','mem_libre','uptime')) {
-        $m = [regex]::Match($t, ('(?is)<' + $pat[$k] + '\b[^>]*>\s*(\d+)'))
-        if (-not $m.Success) { $m = [regex]::Match($t, ('(?is)\b' + $pat[$k] + '\b\s*"?\s*[:=]\s*"?\s*(\d+)')) }
-        if ($m.Success) { $r[$k] = [long]$m.Groups[1].Value }
-    }
-    if ($null -ne $r.cpu -and $r.cpu -ge 0 -and $r.cpu -le 100) { $r.ok = $true } else { $r.cpu = $null }
-    return $r
-}
-
-# A que gateways se pregunta. Con una IP dada a mano, a esa y solo a esa: las
-# topologias no llevan ip_gw hasta que se regeneren desde el Excel, y el tecnico
-# ya sabe la IP del Digi (es la que abre en el navegador). Sin IP a mano, a los
-# de la topologia que la traigan. Pura.
-function Gw-Objetivos($gws, [string]$ipManual) {
-    $ip = "$ipManual".Trim()
-    # sin coma unaria: con ella el @() del llamador recibia UN elemento que era
-    # la lista entera (la suite lo cazo: 1 donde tocaban 2 y 0)
-    if ($ip -ne '') { return @(@{ncu = '?'; nGw = 0; ip = $ip}) }
-    # y a cada Digi UNA vez: la TCU suelta de El Burgo es otra entrada del mismo
-    # gateway, y sin esto se le preguntaba dos veces
-    $vistas = @{}; $out = @()
-    foreach ($g in @($gws)) {
-        $gip = "$($g.ip)".Trim()
-        if ($gip -eq '' -or $vistas.ContainsKey($gip)) { continue }
-        $vistas[$gip] = $true; $out += ,$g
-    }
-    return @($out)
-}
-
-# Memoria usada en %, con lo que haya: la usada, o total menos libre. Pura.
-function Gw-MemPct($c) {
-    if ($null -eq $c.mem_total -or $c.mem_total -le 0) { return $null }
-    $u = $c.mem_usada
-    if ($null -eq $u -and $null -ne $c.mem_libre) { $u = $c.mem_total - $c.mem_libre }
-    if ($null -eq $u -or $u -lt 0) { return $null }
-    return [int][math]::Round(100.0 * $u / $c.mem_total)
-}
-
-# La memoria del Digi viene en BYTES, no en KB: 16777216 en El Burgo, que son
-# los 16 MB del ConnectPort (en KB serian 16 GB). Se ensena en MB, con punto
-# decimal fijo para que el texto sea el mismo en cualquier Windows. Pura.
-function Gw-Mb($bytes) {
-    return ([double]$bytes / 1048576).ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture)
-}
-
-# Lo leido, en una linea; vacia si no se reconocio. Pura.
-function Gw-CargaResumen($c) {
-    if (-not $c -or -not $c.ok) { return '' }
-    $s = "CPU $($c.cpu) %"
-    $p = Gw-MemPct $c
-    if ($null -ne $p) {
-        $u = $c.mem_usada; if ($null -eq $u) { $u = $c.mem_total - $c.mem_libre }
-        $s += ", memoria $p % usada ($(Gw-Mb $u) de $(Gw-Mb $c.mem_total) MB)"
-    }
-    if ($null -ne $c.uptime) {
-        $d = [int][math]::Floor($c.uptime / 86400); $h = [int][math]::Floor(($c.uptime % 86400) / 3600)
-        if ($d -ge 1) { $s += ", $d d $h h en marcha" } else { $s += ", $h h en marcha" }
-    }
-    return $s
-}
-
-# Lo que devuelve Invoke-RestMethod (XML ya parseado, o texto), como texto.
 function Rci-Texto($r) {
   if ($r -is [string]) { return $r }
   if ($r -and $r.OuterXml) { return "$($r.OuterXml)" }
   return "$r"
 }
-
-# La carga del gateway: primero device_stats; si no se reconoce, TODO el estado
-# (query_state sin hijos), que a lo mejor la trae en otro grupo y, si no, es el
-# esquema entero para volcarlo y saber que pedir de verdad.
-function Gw-Carga-Leer($GW) {
-  $t1 = ""; $t2 = ""
-  try { $t1 = Rci-Texto (Invoke-RCI $GW $RCI_CARGA) } catch { }
-  $c = Gw-Carga $t1
-  if ($c.ok) { return @{ ok = $true; carga = $c; crudo = $t1 } }
-  try { $t2 = Rci-Texto (Invoke-RCI $GW $RCI_TODO) } catch { }
-  $c = Gw-Carga $t2
-  if ($c.ok) { return @{ ok = $true; carga = $c; crudo = $t2 } }
-  return @{ ok = $false; carga = $null; crudo = ("$t1`n$t2").Trim() }
+function Error-Motivo($e, [string]$fallback) {
+  $m = "$($e.Exception.Message)"
+  if ($m -match "(401|403|unauthor|forbidden)") { return "auth" }
+  if ($m -match "(500|501|502|503|504|server error)") { return "http_error" }
+  return $fallback
 }
-$cargaAvisada = @{}   # nombre gateway -> ya se aviso (y volco) que no se reconoce la CPU
 
-$inventory = @{}    # nombre gateway -> lista de nodos
-$lastDisc  = @{}    # nombre gateway -> hora del último discover
+$DiscoverBody = '<rci_request version="1.1"><do_command target="zigbee"><discover option="clear"/></do_command></rci_request>'
+$RCI_CARGA = '<rci_request version="1.1"><query_state><device_stats/></query_state></rci_request>'
+$RCI_TODO  = '<rci_request version="1.1"><query_state/></rci_request>'
 
-Write-Host "Logger Zigbee -> $CsvPath"
-Write-Host "Gateways: $($Gateways.Name -join ', ')  |  ciclo cada $IntervalSec s  |  Ctrl+C para parar`n"
+function Gw-Carga([string]$xml) {
+  $t = "$xml"
+  $r = @{cpu=$null; mem_total=$null; mem_usada=$null; mem_libre=$null; uptime=$null; ok=$false}
+  $pat = @{
+    cpu       = 'cpu(?:_?(?:usage|util(?:ization)?|load|pct|percent))?'
+    mem_total = '(?:total_?mem(?:ory)?|mem(?:ory)?_?total)'
+    mem_usada = '(?:used_?mem(?:ory)?|mem(?:ory)?_?used)'
+    mem_libre = '(?:free_?mem(?:ory)?|mem(?:ory)?_?free)'
+    uptime    = 'up_?time'
+  }
+  foreach ($k in @("cpu","mem_total","mem_usada","mem_libre","uptime")) {
+    $m = [regex]::Match($t, ('(?is)<' + $pat[$k] + '\b[^>]*>\s*(\d+)'))
+    if (-not $m.Success) { $m = [regex]::Match($t, ('(?is)\b' + $pat[$k] + '\b\s*"?\s*[:=]\s*"?\s*(\d+)')) }
+    if ($m.Success) { $r[$k] = [long]$m.Groups[1].Value }
+  }
+  if ($null -ne $r.cpu -and $r.cpu -ge 0 -and $r.cpu -le 100) { $r.ok = $true } else { $r.cpu = $null }
+  return $r
+}
+function Gw-Carga-Leer($GW) {
+  $anyReply = $false
+  $raw = ""
+  foreach ($body in @($RCI_CARGA, $RCI_TODO)) {
+    try {
+      $txt = Rci-Texto (Invoke-RCI $GW $body)
+      $anyReply = $true
+      $raw += $txt + [Environment]::NewLine
+      $c = Gw-Carga $txt
+      if ($c.ok) { return @{ reachable=$true; ok=$true; carga=$c; crudo=$raw } }
+    } catch {
+      if (Error-Motivo $_ "" -eq "auth") { return @{ reachable=$false; ok=$false; carga=$null; crudo=$raw; motivo="auth" } }
+    }
+  }
+  return @{ reachable=$anyReply; ok=$false; carga=$null; crudo=$raw; motivo=($(if ($anyReply) { "sin_metricas" } else { "gw_caido" })) }
+}
+function Test-Gateway($GW) {
+  try {
+    [void](Invoke-RCI $GW $RCI_TODO ([Math]::Min($TimeoutSec, 5)))
+    return $true
+  } catch { return $false }
+}
 
+function Device-Role($d) {
+  switch ("$($d.device_type)") {
+    "0x170000" { return "TCU" }
+    "0x120000" { return "HSU" }
+    default { return "$($d.device_type)" }
+  }
+}
+
+$inventory = @{}
+$lastDisc = @{}
+$lastAck = @{}
+$censoSeen = @{}
+if (Test-Path $CensoPath) {
+  try {
+    foreach ($r in Import-Csv $CensoPath) { $censoSeen["$($r.gateway)|$($r.ext_addr)"] = $true }
+  } catch { Write-Warning "No puedo leer el censo existente: $($_.Exception.Message)" }
+}
+
+function Add-Censo($GW, $d) {
+  $k = "$($GW.Name)|$($d.ext_addr)"
+  if ($censoSeen.ContainsKey($k)) { return }
+  $censoSeen[$k] = $true
+  $row = [pscustomobject][ordered]@{
+    schema_version=$SchemaVersion; ext_addr="$($d.ext_addr)"; node_id="$($d.node_id)"; gateway=$GW.Name
+    ncu=$null; gw=$null; esclavo=$null; etiqueta=$null; lat=$null; lon=$null
+    origen="discover"; visto_utc=(Utc-Now)
+  }
+  Append-Rows $CensoPath @($row) $ColsCenso
+}
+function Merge-Discovery($GW, $devices) {
+  if (-not $inventory.ContainsKey($GW.Name)) { $inventory[$GW.Name] = @{} }
+  foreach ($d in @($devices | Where-Object { $_.type -eq "1" })) {
+    $inventory[$GW.Name]["$($d.ext_addr)"] = $d
+    Add-Censo $GW $d
+  }
+}
+
+Write-Host "Logger Zigbee permanente (schema v2)"
+Write-Host "Gateways: $($Gateways.Name -join ', ') | objetivo de ciclo $IntervalSec s | Ctrl+C para parar"
+Write-Host "CSV vivo: $CsvPath | rutas de dias anteriores se rotan automaticamente"
+
+$ciclo = 0
 while ($true) {
-  $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+  $cycleSw = [Diagnostics.Stopwatch]::StartNew()
 
   foreach ($gw in $Gateways) {
-    # --- inventario (discover) sólo al principio y cada hora ---
-    $needDisc = (-not $inventory.ContainsKey($gw.Name)) -or `
-                (((Get-Date) - $lastDisc[$gw.Name]).TotalSeconds -gt $DiscoverEverySec)
-    if ($needDisc) {
+    if (-not $inventory.ContainsKey($gw.Name)) { $inventory[$gw.Name] = @{} }
+    $due = (-not $lastDisc.ContainsKey($gw.Name)) -or (((Get-Date) - $lastDisc[$gw.Name]).TotalSeconds -ge $DiscoverEverySec)
+    if ($due) {
       try {
-        $disc = Invoke-RCI $gw $discoverBody
-        $inventory[$gw.Name] = @($disc.rci_reply.do_command.discover.device | Where-Object { $_.type -eq "1" })
-        $lastDisc[$gw.Name]  = Get-Date
-        Write-Host "$stamp  $($gw.Name): inventario $($inventory[$gw.Name].Count) nodos"
+        $disc = Invoke-RCI $gw $DiscoverBody
+        Merge-Discovery $gw @($disc.rci_reply.do_command.discover.device)
+        $lastDisc[$gw.Name] = Get-Date
+        Write-Host "$(Utc-Now) $($gw.Name): censo acumulado $($inventory[$gw.Name].Count) nodos"
       } catch {
-        Write-Warning "$stamp  $($gw.Name): discover falló ($($_.Exception.Message)). Reintento al próximo ciclo."
+        Write-Warning "$(Utc-Now) $($gw.Name): discover fallo; conservo el censo anterior ($($_.Exception.Message))"
+      }
+    }
+
+    $g = Gw-Carga-Leer $gw
+    $gwrow = [pscustomobject][ordered]@{
+      schema_version=$SchemaVersion; timestamp=(Utc-Now); ciclo_id=$ciclo; gateway=$gw.Name; host=$gw.Host
+      ok=0; cpu_pct=$null; mem_total_b=$null; mem_usada_b=$null; mem_libre_b=$null; uptime_s=$null
+    }
+    if ($g.ok) {
+      $c = $g.carga
+      $gwrow.ok = 1
+      $gwrow.cpu_pct = $c.cpu
+      $gwrow.mem_total_b = $c.mem_total
+      $gwrow.mem_usada_b = $c.mem_usada
+      $gwrow.mem_libre_b = $c.mem_libre
+      $gwrow.uptime_s = $c.uptime
+    }
+    Append-Rows $GwCsvPath @($gwrow) $ColsGw
+
+    $known = @($inventory[$gw.Name].Values)
+    if ($known.Count -eq 0) {
+      Write-Warning "$(Utc-Now) $($gw.Name): sin censo; salto este gateway y sigo con los demas"
+      Start-Sleep -Milliseconds $GatewayPauseMs
+      continue
+    }
+
+    $rows = New-Object System.Collections.Generic.List[object]
+    if (-not $g.reachable) {
+      $mot = if ($g.motivo -eq "auth") { "auth" } else { "gw_caido" }
+      foreach ($d in $known) {
+        $rows.Add([pscustomobject][ordered]@{
+          schema_version=$SchemaVersion; timestamp=(Utc-Now); ciclo_id=$ciclo; latencia_ms=0; tz_pc_min=(Pc-OffsetMin)
+          gateway=$gw.Name; ext_addr="$($d.ext_addr)"; node_id="$($d.node_id)"; net_addr="$($d.net_addr)"
+          role=(Device-Role $d); online=$null; motivo=$mot; rssi_dbm=$null; ack_failures=$null
+          reinicio=0; supply_mv=$null; temp_c=$null
+        })
+      }
+      Append-Rows $CsvPath $rows $ColsLog
+      Write-Warning "$(Utc-Now) $($gw.Name): gateway no observable; $($known.Count) filas marcadas $mot"
+      Start-Sleep -Milliseconds $GatewayPauseMs
+      continue
+    }
+
+    $gatewayFell = $false
+    foreach ($d in $known) {
+      if ($gatewayFell) {
+        $rows.Add([pscustomobject][ordered]@{
+          schema_version=$SchemaVersion; timestamp=(Utc-Now); ciclo_id=$ciclo; latencia_ms=0; tz_pc_min=(Pc-OffsetMin)
+          gateway=$gw.Name; ext_addr="$($d.ext_addr)"; node_id="$($d.node_id)"; net_addr="$($d.net_addr)"
+          role=(Device-Role $d); online=$null; motivo="gw_caido"; rssi_dbm=$null; ack_failures=$null
+          reinicio=0; supply_mv=$null; temp_c=$null
+        })
         continue
       }
-    }
 
-    # --- RSSI de cada nodo (query_state) ---
-    $rows = New-Object System.Collections.Generic.List[object]
-    $online = 0; $rssis = @()
-    foreach ($d in $inventory[$gw.Name]) {
-      $addr = $d.ext_addr
-      $nid  = if ([string]::IsNullOrEmpty($d.node_id)) { $addr } else { $d.node_id }
-      $role = switch ($d.device_type) { "0x170000" { "TCU" } "0x120000" { "HSU" } default { "$($d.device_type)" } }
-
-      $row = [ordered]@{
-        timestamp = $stamp; gateway = $gw.Name; node_id = $nid; role = $role; ext_addr = $addr
-        online = 0; rssi_dbm = $null; ack_failures = $null; supply_mv = $null; temp_c = $null; net_addr = $null
-      }
+      $sw = [Diagnostics.Stopwatch]::StartNew()
+      $online = 0; $motivo = "timeout_nodo"; $rssi=$null; $ack=$null; $supply=$null; $temp=$null; $net="$($d.net_addr)"; $reinicio=0
       try {
-        $body  = "<rci_request version=""1.1""><do_command target=""zigbee""><query_state addr=""$addr""/></do_command></rci_request>"
-        $radio = (Invoke-RCI $gw $body).rci_reply.do_command.query_state.radio
-        if ($radio -and $radio.rssi) {
-          $row.online       = 1
-          $row.rssi_dbm     = -[int]$radio.rssi          # 61 -> -61 dBm
-          $row.ack_failures = [int]$radio.ack_failures
-          $row.supply_mv    = [int]$radio.supply_voltage
-          $row.temp_c       = [int]$radio.temperature
-          $row.net_addr     = "$($radio.net_addr)"
-          $online++; $rssis += $row.rssi_dbm
+        $body = '<rci_request version="1.1"><do_command target="zigbee"><query_state addr="' + $d.ext_addr + '"/></do_command></rci_request>'
+        $resp = Invoke-RCI $gw $body
+        $radio = $resp.rci_reply.do_command.query_state.radio
+        if ($radio -and $null -ne $radio.rssi -and "$($radio.rssi)" -ne "") {
+          $online = 1; $motivo = "ok"
+          $rssi = -[int]$radio.rssi
+          $ack = [int]$radio.ack_failures
+          $supply = [int]$radio.supply_voltage
+          $temp = [int]$radio.temperature
+          $net = "$($radio.net_addr)"
+          $ak = "$($gw.Name)|$($d.ext_addr)"
+          if ($lastAck.ContainsKey($ak) -and $ack -lt $lastAck[$ak]) { $reinicio = 1 }
+          $lastAck[$ak] = $ack
+        } else {
+          $motivo = "sin_radio"
         }
-      } catch { }   # timeout / sin respuesta -> online = 0 (enlace malo)
-      $rows.Add([pscustomobject]$row)
-      Start-Sleep -Milliseconds 100   # no saturar el radio del coordinador
-    }
-
-    $rows | Export-Csv -Path $CsvPath -Append -NoTypeInformation -Encoding UTF8
-    $avg = if ($rssis.Count) { [math]::Round(($rssis | Measure-Object -Average).Average, 1) } else { "-" }
-
-    # --- CPU y memoria del PROPIO gateway (query_state/device_stats) ---
-    # Va a su CSV, no a zigbee_log.csv: Export-Csv -Append rechaza columnas
-    # nuevas contra un fichero ya empezado, y el visor lee ese por fila de nodo.
-    $k = Gw-Carga-Leer $gw
-    # la memoria en BYTES, que es como la da el Digi (16777216 = 16 MB en El Burgo)
-    $fila = [ordered]@{ timestamp = $stamp; gateway = $gw.Name; host = $gw.Host; ok = 0
-                        cpu_pct = $null; mem_total_b = $null; mem_usada_b = $null; mem_libre_b = $null; uptime_s = $null }
-    $txtCarga = "CPU sin leer"
-    if ($k.ok) {
-      $c = $k.carga
-      $fila.ok = 1; $fila.cpu_pct = $c.cpu; $fila.mem_total_b = $c.mem_total; $fila.mem_usada_b = $c.mem_usada
-      $fila.mem_libre_b = $c.mem_libre; $fila.uptime_s = $c.uptime
-      $txtCarga = Gw-CargaResumen $c
-    } elseif (-not $cargaAvisada.ContainsKey($gw.Name)) {
-      $cargaAvisada[$gw.Name] = $true
-      if ("$($k.crudo)" -ne "") {
-        $fx = Join-Path $PSScriptRoot "gateway_stats_crudo_$($gw.Name).xml"
-        Set-Content -Path $fx -Value $k.crudo -Encoding UTF8
-        Write-Warning "$stamp  $($gw.Name): no reconozco la CPU en lo que contesta el Digi. Respuesta cruda en $fx (se avisa una vez): con ese fichero se ajusta el patron."
-      } else {
-        Write-Warning "$stamp  $($gw.Name): el Digi no contesta a query_state (o pide login: User/Pass en CONFIG). Se avisa una vez."
+      } catch {
+        $motivo = Error-Motivo $_ "timeout_nodo"
+        if ($motivo -eq "timeout_nodo" -or $motivo -eq "http_error") {
+          if (-not (Test-Gateway $gw)) {
+            $motivo = "gw_caido"
+            $online = $null
+            $gatewayFell = $true
+          }
+        }
       }
+      $sw.Stop()
+      $rows.Add([pscustomobject][ordered]@{
+        schema_version=$SchemaVersion; timestamp=(Utc-Now); ciclo_id=$ciclo; latencia_ms=[int]$sw.ElapsedMilliseconds; tz_pc_min=(Pc-OffsetMin)
+        gateway=$gw.Name; ext_addr="$($d.ext_addr)"; node_id="$($d.node_id)"; net_addr=$net
+        role=(Device-Role $d); online=$online; motivo=$motivo; rssi_dbm=$rssi; ack_failures=$ack
+        reinicio=$reinicio; supply_mv=$supply; temp_c=$temp
+      })
+      Start-Sleep -Milliseconds $NodePauseMs
     }
-    [pscustomobject]$fila | Export-Csv -Path $GwCsvPath -Append -NoTypeInformation -Encoding UTF8
-    Write-Host "$stamp  $($gw.Name): $($rows.Count) nodos, $online online, RSSI medio $avg dBm  |  $txtCarga  -> CSV"
+
+    Append-Rows $CsvPath $rows $ColsLog
+    $ok = @($rows | Where-Object { $_.motivo -eq "ok" }).Count
+    $mudos = @($rows | Where-Object { $_.motivo -ne "ok" }).Count
+    Write-Host "$(Utc-Now) $($gw.Name): $ok OK, $mudos no OK, censo $($known.Count) -> CSV"
+    Start-Sleep -Milliseconds $GatewayPauseMs
   }
 
-  Start-Sleep -Seconds $IntervalSec
+  $cycleSw.Stop()
+  $ciclo++
+  $sleep = [Math]::Max($MinPauseSec, $IntervalSec - [int][Math]::Ceiling($cycleSw.Elapsed.TotalSeconds))
+  Write-Host "$(Utc-Now) ciclo terminado en $([int]$cycleSw.Elapsed.TotalSeconds) s; pausa $sleep s"
+  Start-Sleep -Seconds $sleep
 }
