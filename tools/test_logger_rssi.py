@@ -117,6 +117,12 @@ with open(outp,"wb") as fo:
 salida=open(outp,encoding="utf-8",errors="replace").read()
 
 ff=filas(csvp); gg=filas(gwp); cc=filas(cen)
+if p.returncode not in (None, 0) or len(ff) < 3:
+    print("\n--- salida del PowerShell (diagnóstico del banco) ---")
+    print(salida[-5000:])
+    print("--- fin salida PowerShell ---\n")
+di(p.returncode in (None,0,-15,-9) or len(ff)>=3,
+   "el recolector no muere antes de completar una vuelta",p.returncode)
 di(len(ff)==3,"una fila v2 por router, incluido el que falla",len(ff))
 by={x.get("node_id"):x for x in ff}
 di(sorted(by)==["HSU_01","TCU_01","TCU_02"],"filtra el coordinador",sorted(by))
@@ -128,12 +134,13 @@ di(all(x.get("ciclo_id")=="0" for x in ff),"ciclo_id compartido por la vuelta")
 di(all(int(x.get("latencia_ms") or 0)>=1000 for x in ff),"latencia por nodo medida", [x.get("latencia_ms") for x in ff])
 di(all(x.get("tz_pc_min") not in (None,"") for x in ff),"audita el offset del PC")
 
-di(by["TCU_01"]["rssi_dbm"]=="-61","RSSI con signo correcto",by["TCU_01"]["rssi_dbm"])
-di(by["HSU_01"]["role"]=="HSU","device_type HSU se conserva",by["HSU_01"]["role"])
-di(by["TCU_01"]["motivo"]=="ok" and by["TCU_01"]["online"]=="1","nodo bueno: ok/online")
-di(by["TCU_02"]["online"]=="0" and by["TCU_02"]["motivo"]=="http_error",
-   "fallo de nodo no se confunde con gateway caído",(by["TCU_02"]["online"],by["TCU_02"]["motivo"]))
-di(by["TCU_01"]["ack_failures"]=="3" and by["TCU_01"]["supply_mv"]=="3280","telemetría de radio")
+a=by.get("TCU_01",{}); h=by.get("HSU_01",{}); malo=by.get("TCU_02",{})
+di(a.get("rssi_dbm")=="-61","RSSI con signo correcto",a.get("rssi_dbm"))
+di(h.get("role")=="HSU","device_type HSU se conserva",h.get("role"))
+di(a.get("motivo")=="ok" and a.get("online")=="1","nodo bueno: ok/online",(a.get("motivo"),a.get("online")))
+di(malo.get("online")=="0" and malo.get("motivo")=="http_error",
+   "fallo de nodo no se confunde con gateway caído",(malo.get("online"),malo.get("motivo")))
+di(a.get("ack_failures")=="3" and a.get("supply_mv")=="3280","telemetría de radio",(a.get("ack_failures"),a.get("supply_mv")))
 
 di(len(gg)==1 and gg[0].get("schema_version")=="2","gateway_stats también v2",gg)
 di(gg and gg[0].get("cpu_pct")=="37","CPU del gateway",gg[0].get("cpu_pct") if gg else None)
