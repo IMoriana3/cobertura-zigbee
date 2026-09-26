@@ -53,7 +53,7 @@ MUTACIONES={
  "filtro":(r'Where-Object \{ \$_\.type -eq "1" \}', 'Where-Object { $true }'),
  "caido":(r'\$online = 0; \$motivo = "timeout_nodo"', '$online = 1; $motivo = "timeout_nodo"'),
  "carga":(r'\$gwrow\.cpu_pct = \$c\.cpu', '$gwrow.cpu_pct = $null'),
- "sello":(r'function Utc-Now \{ return \[DateTime\]::UtcNow\.ToString\("yyyy-MM-ddTHH:mm:ssZ", \$Invariant\) \}',
+ "sello":(r'function Utc-Now \\{\\s*return \\[DateTime\\]::UtcNow\\.ToString\\("yyyy-MM-ddTHH:mm:ssZ", \\$Invariant\\)\\s*\\}',
           'function Utc-Now { return "2026-01-01T00:00:00Z" }'),
 }
 MUTA=os.environ.get("MUTA")
