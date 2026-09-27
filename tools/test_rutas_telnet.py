@@ -7,7 +7,10 @@ AQUI=os.path.dirname(os.path.abspath(__file__))
 RAIZ=os.path.dirname(AQUI)
 PWSH=os.environ.get("PWSH","pwsh")
 PS1_DIR=os.environ.get("PS1_DIR") or RAIZ
-fallos=[]; n=0; visto={"usuario":None,"clave":None,"iac":[]}
+fallos=[]; n=0
+visto={"usuario":None,"clave":None,"iac":[],"sesiones":0,"errores":[]}
+stop_telnet=threading.Event()
+ready_telnet=threading.Event()
 
 def di(ok,texto,extra=None):
     global n
@@ -48,17 +51,23 @@ def recv_line(c):
         out+=b
         if b==b"\n": return bytes(out)
 
-def telnetd(sock):
-    c,_=sock.accept()
+def handle_telnet(c):
     c.settimeout(20)
+    visto["sesiones"] += 1
     try:
         c.sendall(bytes([255,253,1])+b"login: ")
-        visto["usuario"]=recv_line(c).decode(errors="replace").strip()
+        usuario=recv_line(c).decode(errors="replace").strip()
+        if usuario:
+            visto["usuario"]=usuario
         c.sendall(b"password: ")
-        visto["clave"]=recv_line(c).decode(errors="replace").strip()
+        clave=recv_line(c).decode(errors="replace").strip()
+        if clave:
+            visto["clave"]=clave
         c.sendall(b"#>")
-        for _ in range(3):
+        while not stop_telnet.is_set():
             cmd=recv_line(c).decode(errors="replace").strip()
+            if not cmd:
+                break
             time.sleep(1.05)
             if cmd.endswith("9e:01!"):
                 body="    [0000]!\r\nTCU_01 [1a2b]!\r\n#>"
@@ -67,11 +76,31 @@ def telnetd(sock):
             else:
                 body="No source route\r\n#>"
             c.sendall(body.encode())
-    except (OSError,socket.timeout):
-        pass
+    except (OSError,socket.timeout) as e:
+        if not stop_telnet.is_set():
+            visto["errores"].append(type(e).__name__+":"+str(e))
     finally:
         try: c.close()
         except OSError: pass
+
+def telnetd(sock):
+    # El logger real abre una sesión nueva en cada vuelta. El banco anterior
+    # aceptaba UNA sola conexión y dejaba un thread daemon bloqueado; bajo carga
+    # del runner de Windows podía perder la única sesión y terminar sin ninguna
+    # fila. Aquí el servidor vive hasta que el main lo cierre y acepta tantas
+    # sesiones como hagan falta.
+    sock.settimeout(.5)
+    ready_telnet.set()
+    while not stop_telnet.is_set():
+        try:
+            c,_=sock.accept()
+        except socket.timeout:
+            continue
+        except OSError as e:
+            if not stop_telnet.is_set():
+                visto["errores"].append(type(e).__name__+":"+str(e))
+            break
+        handle_telnet(c)
 
 MUTACIONES={
  "saltos":(r"\$hop\s*=\s*\$p\.addrs\.Count - 1","$hop = $p.addrs.Count"),
@@ -95,9 +124,13 @@ threading.Thread(target=srv_bad.serve_forever,daemon=True).start()
 p_bad=srv_bad.server_address[1]
 tel=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 tel.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-tel.bind(("127.0.0.1",0)); tel.listen(1)
+tel.bind(("127.0.0.1",0)); tel.listen(4)
 p_tel=tel.getsockname()[1]
-threading.Thread(target=telnetd,args=(tel,),daemon=True).start()
+tel_thread=threading.Thread(target=telnetd,args=(tel,),daemon=False)
+tel_thread.start()
+if not ready_telnet.wait(timeout=5):
+    print("el servidor telnet falso no llegó a READY")
+    sys.exit(2)
 
 src=os.path.join(PS1_DIR,"zigbee_routes_logger.ps1")
 txt=open(src,encoding="utf-8").read()
@@ -137,6 +170,10 @@ with open(outp,"wb") as fo:
         except subprocess.TimeoutExpired:p.kill();p.wait(timeout=5)
 salida=open(outp,encoding="utf-8",errors="replace").read()
 ff=filas(csvp)
+if len(ff) < 3 or visto["usuario"] is None:
+    print("\n--- salida del PowerShell (diagnóstico del banco de rutas) ---")
+    print(salida[-5000:])
+    print("--- servidor telnet: sesiones=%s errores=%r ---" % (visto["sesiones"], visto["errores"]))
 
 di("GW-BAD" in salida and "sin censo" in salida,
    "un gateway caído no impide llegar al siguiente",salida[-600:])
@@ -162,10 +199,15 @@ di(b.get("path_ext")=="COORD>00:13:a2:00:41:5c:9e:01!>00:13:a2:00:41:5c:9e:02!",
    "path_ext completo en dos saltos",b.get("path_ext"))
 di(c.get("ok")=="0" and c.get("motivo")=="sin_ruta","sin ruta deja fila explícita",(c.get("ok"),c.get("motivo")))
 
-srv.shutdown()
-srv_bad.shutdown()
+# Cierre ordenado: no se deja un daemon escribiendo a stderr mientras Python
+# está finalizando (eso produjo un abort 0xC0000409 en Windows CI).
+stop_telnet.set()
 try: tel.close()
 except OSError: pass
+tel_thread.join(timeout=5)
+srv.shutdown(); srv.server_close()
+srv_bad.shutdown(); srv_bad.server_close()
+di(not tel_thread.is_alive(),"el servidor telnet falso termina limpio",visto["errores"])
 print("\n%d comprobaciones, %d fallos"%(n,len(fallos)))
 if MUTA: print("### %s: mutacion %s %s"%("bien" if fallos else "MAL",MUTA,"roja" if fallos else "paso"))
 sys.exit(1 if fallos else 0)
