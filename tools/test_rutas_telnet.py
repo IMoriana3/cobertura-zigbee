@@ -72,7 +72,7 @@ MUTACIONES={
  "coord":(r'\$nid = "COORD"','$nid = "?"'),
  "iac":(r"if \(\$b -eq 255\) \{","if ($false) {"),
  "separador":(r'\$ids = \$p\.ids -join ">"','$ids = $p.ids -join ","'),
- "puerto":(r'\$hostOnly = \("\$\(\$GW\.Host\)" -split ':'\)\[0\]',
+ "puerto":(r"\$hostOnly = \(\"\$\(\$GW\.Host\)\" -split ':'\)\[0\]",
            '$hostOnly = "$($GW.Host)"'),
 }
 MUTA=os.environ.get("MUTA")
