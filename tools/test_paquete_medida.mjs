@@ -297,8 +297,8 @@ check('y las coordenadas de todos sus ámbitos, con el manifiesto',
       paq.ficheros.includes('ncus_elburgo.csv') &&
       paq.ficheros.includes('manifiesto_elburgo.json'), paq.ficheros.length + ' ficheros');
 const leeme = F.leemeDe(paq);
-check('el léeme empieza por lo que se teclea en el PC de planta',
-      /ExecutionPolicy Bypass -File \.\\zigbee_logger\.ps1/.test(leeme));
+check('el léeme empieza por instalar el servicio permanente 24/7',
+      /ExecutionPolicy Bypass -File \.\\install_zigbee_collectors_task\.ps1 -Mode SystemStartup/.test(leeme));
 check('y dice cómo lanzar el inventario',
       /ExecutionPolicy Bypass -File \.\\zigbee_inventario\.ps1/.test(leeme));
 check('y el de ángulos, con su aviso de que va al Modbus y no al gateway',
