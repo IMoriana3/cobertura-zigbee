@@ -29,6 +29,17 @@ class GW(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length",0)))
+        # Un ConnectPort con credenciales desafía primero al cliente. Hacer que
+        # el mock devuelva 200 sin auth dejaba el resultado a merced de cómo
+        # cada PowerShell trate -Credential sobre HTTP. Aquí se prueba el camino
+        # real: 401 Basic -> reintento autenticado -> discover.
+        auth=self.headers.get("Authorization","")
+        if not auth:
+            self.send_response(401)
+            self.send_header("WWW-Authenticate",'Basic realm="Digi"')
+            self.send_header("Content-Length","0")
+            self.end_headers()
+            return
         b=CENSO.encode()
         self.send_response(200); self.send_header("Content-Type","text/xml")
         self.send_header("Content-Length",str(len(b))); self.end_headers(); self.wfile.write(b)
