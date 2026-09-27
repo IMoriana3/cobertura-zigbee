@@ -23,17 +23,38 @@ zigbee_routes_logger.ps1 ─telnet(23)─┘
 - **Modos de color**: RSSI, Estado (cobertura real), ACK fallos, Saltos (profundidad al coordinador) y Criticidad (puntos únicos de fallo).
 - **Rutas/topología**: clic en un TCU dibuja su cadena de saltos al gateway; opción de dibujar toda la malla; gateway reubicable sobre el mapa.
 
-## Uso
+## Uso permanente 24/7
 
-1. Edita la **IP** y las **credenciales** del gateway al principio de cada `.ps1` (`$Gateways`/`$GwHost`, `$User`/`$Pass`).
-2. Lanza los recolectores (en ventanas separadas), déjalos correr el periodo a medir (ideal: un día completo, incluido un *stow*):
+Los recolectores son instrumentación **permanente**, no una campaña que se lanza
+y se para manualmente.
+
+1. Prepara el paquete de la planta: `$Gateways` contiene todos los Digi del
+   emplazamiento. Las credenciales no se publican en GitHub; se ponen localmente
+   o mediante `FACTIUN_ZIGBEE_USER` / `FACTIUN_ZIGBEE_PASS`.
+2. Instala una vez el watchdog:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\zigbee_logger.ps1
-   powershell -ExecutionPolicy Bypass -File .\zigbee_routes_logger.ps1
+   powershell -ExecutionPolicy Bypass -File .\install_zigbee_collectors_task.ps1 -Mode SystemStartup
    ```
-3. Abre **`index.html`** y carga los tres CSV (registro RSSI, coordenadas, rutas). Para probar sin datos reales, pulsa **"Datos de ejemplo"**. Teclado: espacio = play, flechas = paso.
+   `SystemStartup` es el modo 24/7 real y requiere ejecutar ese paso como
+   administrador. `UserLogon` es la alternativa que arranca al iniciar sesión.
+3. El supervisor mantiene vivos `zigbee_logger.ps1` y
+   `zigbee_routes_logger.ps1`. Si uno termina, lo reinicia. Si un gateway no
+   responde, se registra el fallo y se continúa con los demás.
+4. `zigbee_log.csv`, `zigbee_routes.csv` y `gateway_stats.csv` son los
+   ficheros vivos del día; los días anteriores se archivan automáticamente.
 
-> Para ver saltos/criticidad *evolucionar* hace falta que `zigbee_routes.csv` tenga varias capturas dentro del mismo periodo que el log de RSSI (la línea de tiempo la marca el RSSI).
+Arranque manual de diagnóstico:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\zigbee_collectors_supervisor.ps1
+```
+
+> El logger es **instrumentación**, no el canal de seguridad de viento. La
+> cadencia se limita para no competir con el tráfico de control.
+
+Abre **`index.html`** y carga RSSI/coordenadas/rutas para reproducir la malla.
+
+> La captura permanente hace que RSSI y rutas cubran el mismo periodo, que es
+> imprescindible para reconstruir cómo cambió la topología.
 
 ## Stack
 

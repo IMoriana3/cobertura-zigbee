@@ -977,7 +977,8 @@ function zipStore(ficheros,fecha){
    PowerShell y no hay Python, asi que un paso que pida `python3` es un paso que
    no se puede dar. `rellena_barrido.ps1` no recolecta, cruza — pero va aqui
    porque se corre alli mismo, al acabar el barrido. */
-const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_inventario.ps1",
+const COLECTORES=["zigbee_logger.ps1","zigbee_routes_logger.ps1","zigbee_collectors_supervisor.ps1",
+                  "install_zigbee_collectors_task.ps1","zigbee_inventario.ps1",
                   "zigbee_angulos.ps1","zigbee_config.ps1","rellena_barrido.ps1"];
 function paqueteDeManifiesto(man){
   if(!man||!man.ambitos) return null;
@@ -1118,9 +1119,10 @@ function preparaColector(nombre,txt,gws){
   return /\.ps1$/i.test(nombre)?conBOM(t):t;
 }
 function preparaRutas(txt,gws){
-  if(!gws.length) return sinIP(txt,/\$GwHost\s*=\s*"[^"]*"/,
-    '$GwHost     = "'+MARCA_IP+'"','sus gateways');
-  return txt.replace(/\$GwHost\s*=\s*"[^"]*"/,'$GwHost     = "'+gws[0].ipGw+'"');
+  /* v2 usa la MISMA lista multi-gateway que el logger RSSI. Antes sólo se
+     sustituía $GwHost y el recolector de rutas miraba UN gateway aunque el
+     paquete llevara todos. */
+  return preparaLogger(txt,gws);
 }
 /* NO SE TOCA LA IP DE LOS RECOLECTORES, y es importante. El manifiesto trae una
    IP:puerto por (NCU,GW) —en El Burgo 10.100.1.52:503/504 y 10.100.1.56:503/504—
@@ -1135,15 +1137,20 @@ function leemeDe(paq){
   return ["MEDIR COBERTURA — "+paq.titulo,"",
     "Esto se copia entero en el PC de la planta y se lanza allí. No instala nada:",
     "PowerShell ya viene en Windows.","",
-    "1) EN EL PC DE PLANTA, dos ventanas, a la vez:","",
-    "   powershell -ExecutionPolicy Bypass -File .\\zigbee_logger.ps1",
-    "   powershell -ExecutionPolicy Bypass -File .\\zigbee_routes_logger.ps1","",
-    "   El primero saca el RSSI y el estado de cada TCU (HTTP/RCI, puerto 80).",
-    "   El segundo, las rutas y los saltos (telnet, puerto 23).",
-    "   Se paran con Ctrl+C. Dejan zigbee_log.csv y zigbee_routes.csv al lado.",
-    "   DEJALOS DIAS, no horas: la malla cambia con la temperatura, con el angulo",
-    "   de los seguidores a lo largo del dia y con el viento. Un rato bueno no dice",
-    "   nada.","",
+    "1) OBJETIVO: DEJARLO PERMANENTE 24/7. Una vez, instala el watchdog:","",
+    "   powershell -ExecutionPolicy Bypass -File .\\install_zigbee_collectors_task.ps1 -Mode SystemStartup","",
+    "   SystemStartup es el modo 24/7 real y requiere ejecutar ESTE paso una vez como admin.",
+    "   Si no puedes usar admin: cambia a -Mode UserLogon; arrancara al iniciar sesion.","",
+    "   El watchdog mantiene SIEMPRE vivos los dos recolectores:",
+    "   zigbee_logger.ps1 (RSSI/estado por HTTP-RCI) y zigbee_routes_logger.ps1 (rutas por telnet).",
+    "   Si uno cae, lo reinicia. Si un gateway cae, sigue con los demas y deja el motivo en CSV.",
+    "   Los CSV vivos conservan sus nombres; al cambiar de dia se archivan automaticamente.","",
+    "   IMPORTANTE: esto es instrumentacion, NO el canal de seguridad de viento.",
+    "   La cadencia se limita para no competir con el control de planta.","",
+    "   Credenciales telnet: NO van en GitHub. En el PC define FACTIUN_ZIGBEE_USER y",
+    "   FACTIUN_ZIGBEE_PASS (o rellena User/Pass localmente en los gateways).","",
+    "   Arranque manual de emergencia, si hiciera falta:",
+    "   powershell -ExecutionPolicy Bypass -File .\\zigbee_collectors_supervisor.ps1","",
     "1b) Y UNA VEZ, en cualquier momento, el inventario:","",
     "   powershell -ExecutionPolicy Bypass -File .\\zigbee_inventario.ps1","",
     "   Este no mide: apunta QUE hay puesto. Una fila por modulo.",

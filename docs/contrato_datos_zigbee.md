@@ -1,5 +1,13 @@
 # Contrato de datos — recolectores Zigbee
 
+> **Modo operativo canónico:** estos recolectores son instrumentación **permanente 24/7**.
+> No se consideran una campaña que se lanza y se para manualmente. El watchdog
+> `zigbee_collectors_supervisor.ps1` mantiene RSSI y rutas en ejecución y el
+> instalador de Task Scheduler permite arrancarlos con Windows. La cadencia de
+> sondeo es deliberadamente más lenta que el canal de control: este logger NO
+> forma parte de la función de seguridad de viento.
+
+
 Qué escribe cada recolector, con qué tipo y en qué unidad. Es el documento que manda: si el
 código y esto no coinciden, es un fallo, y hay un banco que lo vigila.
 
@@ -140,7 +148,7 @@ Lo escribe `zigbee_logger.ps1`. Una fila **por nodo y por ciclo**.
 | `node_id` | texto | — | etiqueta del módulo. **NO es única entre NCUs** |
 | `net_addr` | texto | — | dirección de 16 bits, cambia con la malla |
 | `role` | texto | — | `TCU`, `HSU`, o el `device_type` en crudo si no se reconoce |
-| `online` | 0/1 | — | 1 = contestó con RSSI |
+| `online` | 0/1/vacío | — | 1 = contestó; 0 = el nodo fue consultado y no contestó; **vacío = no se pudo observar porque el gateway estaba caído/auth** |
 | `motivo` | texto | — | ver tabla abajo |
 | `rssi_dbm` | entero | dBm | negativo. Vacío si no contestó |
 | `ack_failures` | entero | — | contador del módulo, acumulativo |
@@ -160,7 +168,7 @@ lo mismo, y hoy se leen igual.
 | `sin_radio` | contestó sin bloque `radio` |
 | `http_error` | el gateway devolvió 5xx u otro error HTTP |
 | `auth` | 401/403: credenciales |
-| `gw_caido` | el gateway no responde o encadenó K errores. **Ningún nodo cuenta como offline por esto** |
+| `gw_caido` | el gateway no responde. `online` queda vacío: **ningún nodo cuenta como offline por esto** |
 
 ### `reinicio`
 
@@ -191,6 +199,17 @@ porque el visor lee `zigbee_log.csv` por fila de nodo.
 
 > La memoria va en **bytes** porque es como la da el Digi. La referencia de Digi dice KB y no es
 > verdad: 16.777.216 en KB serían 16 GB en un ConnectPort X2.
+
+---
+
+## Rotación diaria de los ficheros permanentes
+
+Los nombres `zigbee_log.csv`, `zigbee_routes.csv` y `gateway_stats.csv` son
+siempre el **día vivo**. Al detectar que su última escritura pertenece a otro
+día UTC, el recolector mueve el fichero a `<nombre>.<AAAAMMDD>.csv` y empieza
+otro con el nombre canónico. No se truncan ni se sobrescriben históricos.
+
+La rotación por cambio de esquema se aplica además de la diaria.
 
 ---
 

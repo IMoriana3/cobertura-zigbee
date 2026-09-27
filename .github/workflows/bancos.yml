@@ -261,6 +261,14 @@ jobs:
     timeout-minutes: 10
     name: scripts de campo (Windows PowerShell 5.1)
     runs-on: windows-latest
+    # Los bancos lanzan powershell.exe 5.1 como proceso hijo. Si el paso padre
+    # corre bajo pwsh 7, hereda su PSModulePath y 5.1 puede encontrar
+    # Microsoft.PowerShell.Security en la ruta equivocada y no cargar
+    # ConvertTo-SecureString. cmd deja el entorno de Windows intacto. Los
+    # pasos que necesitan powershell o bash ya declaran su shell explícitamente.
+    defaults:
+      run:
+        shell: cmd
     env:
       PWSH: powershell          # el 5.1 de Windows, NO el pwsh 7 que también está
       # LA SALIDA DE PYTHON, EN UTF-8. En Windows la stdout de Python es cp1252,
