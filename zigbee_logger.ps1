@@ -84,9 +84,12 @@ function Ensure-LiveCsv([string]$Path, $ExpectedColumns) {
   }
 }
 function Append-Rows([string]$Path, $Rows, $ExpectedColumns) {
-  if (-not $Rows -or @($Rows).Count -eq 0) { return }
+  if ($null -eq $Rows) { return }
   Ensure-LiveCsv $Path $ExpectedColumns
-  @($Rows) | Select-Object $ExpectedColumns | Export-Csv -Path $Path -Append -NoTypeInformation -Encoding UTF8
+  # No usar @($Rows).Count aqui: Windows PowerShell 5.1 y pwsh 7 pueden lanzar
+  # "Argument types do not match" al envolver una Generic.List. El pipeline
+  # vacio ya es un no-op; no hace falta contarlo.
+  $Rows | Select-Object $ExpectedColumns | Export-Csv -Path $Path -Append -NoTypeInformation -Encoding UTF8
 }
 
 function Invoke-RCI($GW, $Body, [int]$Timeout = $TimeoutSec) {
