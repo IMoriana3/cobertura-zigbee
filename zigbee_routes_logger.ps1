@@ -256,7 +256,7 @@ while ($true) {
         $lastDisc[$gw.Name] = Get-Date
         Write-Host "$(Utc-Now) $($gw.Name): discover $n; censo acumulado $($inventory[$gw.Name].Count)"
       } catch {
-        Write-Warning "$(Utc-Now) $($gw.Name): discover fallo; mantengo $($inventory[$gw.Name].Count) nodos conocidos"
+        Write-Warning "$(Utc-Now) $($gw.Name): discover fallo ($($_.Exception.Message)); mantengo $($inventory[$gw.Name].Count) nodos conocidos"
       }
     }
 
