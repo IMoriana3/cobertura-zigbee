@@ -95,6 +95,12 @@ function Invoke-RCI($GW, $Body) {
   if ($u) {
     $sec = ConvertTo-SecureString $pw -AsPlainText -Force
     $p.Credential = New-Object System.Management.Automation.PSCredential($u, $sec)
+    # PowerShell 7 bloquea por defecto credenciales sobre HTTP. Los Digi de
+    # planta exponen RCI por HTTP en la LAN; Windows PowerShell 5.1 no tiene
+    # este parámetro, así que se añade sólo donde existe.
+    if ((Get-Command Invoke-RestMethod).Parameters.ContainsKey("AllowUnencryptedAuthentication")) {
+      $p.AllowUnencryptedAuthentication = $true
+    }
   }
   return Invoke-RestMethod @p
 }
