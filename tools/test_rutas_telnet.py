@@ -30,6 +30,12 @@ class GW(BaseHTTPRequestHandler):
         self.send_response(200); self.send_header("Content-Type","text/xml")
         self.send_header("Content-Length",str(len(b))); self.end_headers(); self.wfile.write(b)
 
+class GWBad(BaseHTTPRequestHandler):
+    def log_message(self,*a): pass
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length",0)))
+        self.send_error(503,"gateway unavailable")
+
 def recv_line(c):
     out=bytearray()
     while True:
@@ -84,6 +90,9 @@ if shutil.which(PWSH) is None:
 srv=HTTPServer(("127.0.0.1",0),GW)
 threading.Thread(target=srv.serve_forever,daemon=True).start()
 p_http=srv.server_address[1]
+srv_bad=HTTPServer(("127.0.0.1",0),GWBad)
+threading.Thread(target=srv_bad.serve_forever,daemon=True).start()
+p_bad=srv_bad.server_address[1]
 tel=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 tel.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
 tel.bind(("127.0.0.1",0)); tel.listen(1)
@@ -92,7 +101,7 @@ threading.Thread(target=telnetd,args=(tel,),daemon=True).start()
 
 src=os.path.join(PS1_DIR,"zigbee_routes_logger.ps1")
 txt=open(src,encoding="utf-8").read()
-block='$Gateways = @(\n  @{ Name = "GW-BAD"; Host = "127.0.0.1:1"; User = "root"; Pass = "dbps"; TelnetPort = %d }\n  @{ Name = "GW-01"; Host = "127.0.0.1:%d"; User = "root"; Pass = "dbps"; TelnetPort = %d }\n)'%(p_tel,p_http,p_tel)
+block='$Gateways = @(\n  @{ Name = "GW-BAD"; Host = "127.0.0.1:%d"; User = "root"; Pass = "dbps"; TelnetPort = %d }\n  @{ Name = "GW-01"; Host = "127.0.0.1:%d"; User = "root"; Pass = "dbps"; TelnetPort = %d }\n)'%(p_bad,p_tel,p_http,p_tel)
 txt,c=re.subn(r"\$Gateways = @\([\s\S]*?\n\)",block,txt,count=1)
 if c!=1: print("no casa el bloque $Gateways"); sys.exit(2)
 txt=txt.replace("$IntervalSec        = 300","$IntervalSec        = 30")
@@ -143,7 +152,7 @@ di(all(re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",x.get("timestamp",""))
 di(all(x.get("ciclo_id")=="0" for x in ff),"ciclo_id compartido")
 di(all(int(x.get("latencia_ms") or 0)>=900 for x in ff),"latencia por consulta", [x.get("latencia_ms") for x in ff])
 
-a=by["00:13:a2:00:41:5c:9e:01!"]; b=by["00:13:a2:00:41:5c:9e:02!"]; c=by["00:13:a2:00:41:5c:9e:03!"]
+a=by.get("00:13:a2:00:41:5c:9e:01!",{}); b=by.get("00:13:a2:00:41:5c:9e:02!",{}); c=by.get("00:13:a2:00:41:5c:9e:03!",{})
 di(a.get("ok")=="1" and a.get("hop_count")=="1","COORD->TCU son 1 salto",(a.get("ok"),a.get("hop_count")))
 di(b.get("ok")=="1" and b.get("hop_count")=="2","ruta de tres nodos son 2 saltos",b.get("hop_count"))
 di(a.get("path_ids")=="COORD>TCU_01","path_ids conserva COORD y separador >",a.get("path_ids"))
@@ -154,6 +163,7 @@ di(b.get("path_ext")=="COORD>00:13:a2:00:41:5c:9e:01!>00:13:a2:00:41:5c:9e:02!",
 di(c.get("ok")=="0" and c.get("motivo")=="sin_ruta","sin ruta deja fila explícita",(c.get("ok"),c.get("motivo")))
 
 srv.shutdown()
+srv_bad.shutdown()
 try: tel.close()
 except OSError: pass
 print("\n%d comprobaciones, %d fallos"%(n,len(fallos)))
