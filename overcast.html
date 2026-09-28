@@ -5397,6 +5397,10 @@ function buildDayCSV(){
   meta('sw_enter_ratio',d.swEnterRatio); meta('sw_exit_ratio',d.swExitRatio);
   meta('confirm_min',d.confirmMin); meta('dwell_min',d.dwellMin);
   meta('alphas_continuous',DCFG_DEFAULT.alphas.join(' '));
+  L.push('# [SKY DOME V2]');
+  meta('modelo_cielo','Perez 1990 allsitescomposite1990 · radiancia relativa derivada F1/F2');
+  meta('theta_diffuse_opt_resolution_deg','0.1');
+  meta('sky_dome_cambia_politicas','no — capa explicativa/diagnostica');
   L.push('# [METEO]');
   meta('fuente',c.om?'Open-Meteo (medida, interpolada)':'sintética (cc pintada o preset)');
   meta('cc_media_dia',(CC.reduce((a,v)=>a+v,0)/288).toFixed(3));
@@ -5450,7 +5454,9 @@ function buildDayCSV(){
   // cabecera de columnas
   const pols=POL_ORDER.filter(k=>SIM.res[k]);
   let cab=['minuto_local','hora_local','zenit_deg','azimut_deg',
-           'ghi_w_m2','dni_w_m2','dhi_w_m2','cc','theta_n_tcu_deg'];
+           'ghi_w_m2','dni_w_m2','dhi_w_m2','cc','theta_n_tcu_deg',
+           'sky_iso_pct','sky_circ_pct','sky_hor_pct',
+           'theta_diff_opt_tcu_deg','poa_diff_opt_w_m2','diff_gain_vs_pvlib_w_m2'];
   for(const k of pols)cab.push(k+'_theta_consigna_tcu_deg',k+'_theta_ejecutado_tcu_deg',
                                k+'_poa_w_m2',k+'_difusa_activa');
   let nomZ=[];
@@ -5461,9 +5467,16 @@ function buildDayCSV(){
   L.push(cab.join(','));
   for(let i=0;i<dayF.n;i++){
     const m=dayF.tmin[i];
+    const _st=skyPerezState(dayF.zen[i],dayF.az[i],dayF.irr[i],dayF.doy);
+    const _opt=diffuseOptimum01(dayF,i);
+    const _baseDiff=poaTracker(SIM.thNF[i],dayF.axisTilt,dayF.axisAz,dayF.zen[i],dayF.az[i],
+                               dayF.irr[i],dayF.doy,dayF.albedo).diff;
     const f=[m,hhmm(m),csvNum(dayF.zen[i],3),csvNum(dayF.az[i],3),
              csvNum(dayF.irr[i].ghi,1),csvNum(dayF.irr[i].dni,1),csvNum(dayF.irr[i].dhi,1),
-             csvNum(CC[Math.min(287,Math.floor(m/5))],3),csvNum(tcuDeg(SIM.thNF[i]),3)];
+             csvNum(CC[Math.min(287,Math.floor(m/5))],3),csvNum(tcuDeg(SIM.thNF[i]),3),
+             csvNum(100*_st.iso,2),csvNum(100*_st.circ,2),csvNum(100*_st.hor,2),
+             csvNum(_opt?tcuDeg(_opt.theta):NaN,2),csvNum(_opt?_opt.diff:NaN,2),
+             csvNum(_opt?_opt.diff-_baseDiff:NaN,2)];
     for(const k of pols){
       const r=SIM.res[k];
       f.push(csvNum(tcuDeg(r.consF[i]),3),csvNum(tcuDeg(r.execF[i]),3),
@@ -5512,12 +5525,22 @@ function informeHTML(){
   const f1=v=>v.toFixed(1), f2=v=>v.toFixed(2), f0=v=>v.toFixed(0);
   const bat=battWh(), idleWh=TCU_IDLE_W*24;
   // ── el cielo y el sol del día, integrados sobre la rejilla FINA ──
-  let ghi=0,dni=0,dhi=0, iw=-1,is2=-1, elMax=0;
+  let ghi=0,dni=0,dhi=0, iw=-1,is2=-1, elMax=0, skyIso=0,skyCirc=0,skyHor=0,skyN=0;
   for(let i=0;i<dayF.n;i++){
     const r=dayF.irr[i];
     ghi+=r.ghi/60; dni+=r.dni/60; dhi+=r.dhi/60;
-    if(dayF.zen[i]<90){if(iw<0)iw=i;is2=i;elMax=Math.max(elMax,90-dayF.zen[i]);}
+    if(dayF.zen[i]<90){
+      if(iw<0)iw=i;is2=i;elMax=Math.max(elMax,90-dayF.zen[i]);
+      const st=skyPerezState(dayF.zen[i],dayF.az[i],r,dayF.doy);
+      skyIso+=st.iso;skyCirc+=st.circ;skyHor+=st.hor;skyN++;
+    }
   }
+  if(skyN){skyIso/=skyN;skyCirc/=skyN;skyHor/=skyN;}
+  const skyI=Math.max(0,Math.min(dayF.n-1,Math.round(CLOCK/DT_FINE)));
+  const skyNow=skyPerezState(dayF.zen[skyI],dayF.az[skyI],dayF.irr[skyI],dayF.doy);
+  const skyOpt=diffuseOptimum01(dayF,skyI);
+  const skyPv=poaTracker(SIM.thNF[skyI],dayF.axisTilt,dayF.axisAz,dayF.zen[skyI],dayF.az[skyI],
+                         dayF.irr[skyI],dayF.doy,dayF.albedo);
   const ccMed=CC.reduce((a,v)=>a+v,0)/288;
   const fracDif=ghi>0?100*dhi/ghi:0;
   // ── el resumen: la MISMA tabla de pantalla, sin recalcular nada ──
@@ -5623,9 +5646,12 @@ function informeHTML(){
   '<div><b>Fracción difusa del día</b>'+f0(fracDif)+' %</div>'+
   '<div><b>Nubosidad media</b>'+f0(100*ccMed)+' %</div>'+
   '<div><b>Modelo nube → irradiancia</b>GHI = claro·(1−0,70·cc) · DNI = claro·(1−cc)³</div>'+
+  '<div><b>Sky diffuse medio</b>isotrópica '+f0(100*skyIso)+' % · circumsolar '+f0(100*skyCirc)+' % · horizonte '+f0(100*skyHor)+' %</div>'+
+  '<div><b>Sky Dome · '+hhmm(dayF.tmin[skyI])+'</b>θ óptimo difuso '+(skyOpt?f1(tcuDeg(skyOpt.theta))+'° TCU':'—')+
+    ' · Δ '+(skyOpt?f1(skyOpt.diff-skyPv.diff)+' W/m²':'—')+'</div>'+
   '</div>'+
-  '<p class="mut">Las tres irradiancias cierran: <b>GHI = DNI·cos z + DHI</b> — el haz llega inclinado y solo '+
-  'aporta su proyección horizontal, así que DNI + DHI no suma GHI y no es un descuadre.</p>'+
+  '<p class="mut">Las tres irradiancias cierran: <b>GHI = DNI·cos z + DHI</b>. La bóveda Sky Dome deriva su forma de los '+
+  'coeficientes Perez del MISMO instante; es explicativa y no altera por sí sola ninguna política. El θ óptimo visible se barre a 0,1° con la misma POA difusa del motor.</p>'+
 
   '<h2>3. Resumen del día, política a política</h2>'+tabDia+
   '<p class="mut"><b>Cómo leer.</b> «% del día activa» <b>no es comparable entre filas</b>: cada política activa con su '+
