@@ -48,16 +48,29 @@ const errores = [];
 pg.on('pageerror', e => errores.push(String(e).slice(0, 200)));
 await pg.goto(BASE + '/overcast.html', { waitUntil: 'networkidle' });
 
+const initialUI=await pg.evaluate(()=>({hidden:$('configPanel').hidden,expanded:$('settingsToggle').getAttribute('aria-expanded'),top:$('view3d').getBoundingClientRect().top}));
+t('los ajustes no tapan la escena al abrir',()=>{eq(initialUI.hidden,true);eq(initialUI.expanded,'false');if(initialUI.top>280)throw new Error('escena demasiado abajo: '+initialUI.top);});
+async function revealControl(selector){
+  if(await pg.locator('#configPanel').evaluate((el,selector)=>el.contains(document.querySelector(selector)),selector)){
+    if(await pg.locator('#configPanel').evaluate(el=>el.hidden))await pg.click('#settingsToggle');
+    for(const details of await pg.locator('#configPanel details').filter({has:pg.locator(selector)}).all())
+      if(!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();
+  }
+}
+async function closeControls(){if(!await pg.locator('#configPanel').evaluate(el=>el.hidden))await pg.click('#settingsToggle');}
+
 /* EL PRESET NO SE APLICA AL CAMBIAR EL SELECT: lo aplica el botón. La sonda
    con la que se midió todo esto nació sin pulsarlo y daba números IDÉNTICOS en
    los dos cielos — un instrumento roto leído como hallazgo. Queda aquí escrito
    para que el siguiente no lo repita. */
 async function pon(preset, minuto = 720) {
+  await revealControl('#skypreset');
   await pg.selectOption('#skypreset', preset);
   await pg.click('#skyapply');
   await pg.waitForTimeout(900);
   await pg.fill('#hour', String(minuto));
   await pg.dispatchEvent('#hour', 'input');
+  await closeControls();
   await pg.click('#tab3d').catch(() => {});
   await pg.waitForTimeout(1600);
   return pg.evaluate(() => {
@@ -222,14 +235,31 @@ async function contrasteRender() {
     const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height;
     const x = c2.getContext('2d');
     x.drawImage(cv, 0, 0);
-    const d = x.getImageData(0, Math.floor(c2.height * 0.30), c2.width, Math.floor(c2.height * 0.65)).data;
+    const top=Math.floor(c2.height*.30),height=Math.floor(c2.height*.65);
+    const d = x.getImageData(0, top, c2.width, height).data;
+    // Segment actual visible soil by object identity. Its new earth/olive
+    // palette must not be mistaken for missing ground by a green-only filter.
+    const saved=[],black=new THREE.MeshBasicMaterial({color:0x000000,side:THREE.DoubleSide}),white=new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide});
+    const bg=TD.scene.background,fog=TD.scene.fog;
+    let mask;
+    try{
+      TD.scene.background=new THREE.Color(0);TD.scene.fog=null;
+      TD.scene.traverse(o=>{if(!o.material)return;saved.push([o,o.material,o.visible]);
+        if(!o.isMesh||o.material.transparent){o.visible=false;return;}
+        o.material=o.name==='landscape-soil'?white:black;
+      });
+      TD.renderer.render(TD.scene,TD.camera);x.drawImage(cv,0,0);mask=x.getImageData(0,top,c2.width,height).data;
+    }finally{
+      for(const [o,material,visible] of saved){o.material=material;o.visible=visible;}
+      TD.scene.background=bg;TD.scene.fog=fog;black.dispose();white.dispose();TD.renderer.render(TD.scene,TD.camera);
+    }
     let na = 0, la = 0, nv = 0, lv = 0;
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i + 1], b = d[i + 2];
       const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0;
       const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       if (b > r + 22 && b > g + 10 && sat > 0.30) { na++; la += L; }
-      else if (g > r + 8 && g > b + 8) { nv++; lv += L; }
+      else if (mask[i]>180&&mask[i+1]>180&&mask[i+2]>180) { nv++; lv += L; }
     }
     if (!na || !nv) return { na, nv, contraste: null };
     la /= na; lv /= nv;
@@ -274,6 +304,7 @@ const rot = () => pg.evaluate(() => ({ sun: TD.sun.intensity,
                                        th: TD.zones[0].thDeg,
                                        rx: TD.zones[0].spins[0].rotation.x }));
 const antes = await rot();
+await revealControl('#skypreset');
 await pg.selectOption('#skypreset', 'despejado');
 await pg.click('#skyapply');
 await pg.waitForTimeout(120);
@@ -315,12 +346,14 @@ console.log('Y TAMBIÉN EN UNA PLANTA REAL, que es por donde se coló');
 
    Así que la comprobación no se queda en «la nube está arriba en la escena de
    siempre»: se carga una planta REAL y se exige lo mismo allí. */
+await revealControl('#zonalOn');
 await pg.check('#zonalOn');
 await pg.selectOption('#realplant', 'paramo');
 await pg.waitForTimeout(3500);
 await pg.selectOption('#skypreset', 'overcast');
 await pg.click('#skyapply');
 await pg.waitForTimeout(1200);
+await closeControls();
 await pg.click('#tab3d').catch(() => {});
 await pg.waitForTimeout(2500);
 const REAL = await pg.evaluate(() => {
@@ -414,12 +447,14 @@ t('y hay tantos colores como NCUs declara el layout', () => {
   if (HU.tonos !== HU.nZonas) throw new Error(HU.tonos + ' tonos para ' + HU.nZonas + ' NCUs');
 });
 /* EN MODO PLANTA NO HAY PARTICIÓN, así que pintar cuatro manchas sería mentir. */
+await revealControl('#zonalOn');
 await pg.uncheck('#zonalOn');
 await pg.waitForTimeout(1200);
 const HU_OFF = await pg.evaluate(() => !!(TD.real && TD.real.huella && TD.real.huella.visible));
 t('en modo PLANTA la huella se apaga (no hay NCUs que separar)', () => eq(HU_OFF, false));
 await pg.check('#zonalOn');
 await pg.waitForTimeout(1200);
+await closeControls();
 
 console.log('comparación SUNNY/OVERCAST dentro del mismo simulador');
 const original = await pg.evaluate(() => JSON.stringify({cc:CC,zsky:ZSKY,

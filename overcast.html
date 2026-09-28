@@ -150,33 +150,20 @@
   .sky-view-note{font-size:.8125rem;color:var(--tx2);margin:0 0 8px}
   @media(max-width:600px){.wrap{padding:0 10px}.scene-actions{margin-left:0}.scene-card{padding:12px 10px}.viz3d{height:360px}.sky-summary{display:block;margin:4px 0 0 16px}}
 </style>
+<link rel="stylesheet" href="overcast_ui.css">
 </head>
 <body>
 <header>
-  <h1>Simulador de radiación difusa <span class="chip">las 4 políticas del core, en el navegador</span></h1>
-  <div class="sub">Espejo JS del módulo canónico de tracking de SolarGPT (<code>solargpt_core/tracker.py</code>,
-    schema 2.1.0): las <b>cuatro políticas de difusa del core</b> — <b>diffuse_flat · diffuse_limited ·
-    diffuse_continuous · diffuse_poa_switch</b> — más la baseline pvlib, con la MISMA semántica: transposición
-    Perez 1990 única para todas, clamp de backtracking innegociable (|θ| ≤ |θ_n|, sin sombra entre filas),
-    máquina de estados con histéresis confirm/dwell <b>en minutos absolutos</b> (invariante en resolución) y
-    lazo de control real (deadband 1° + slew 0,17°/s). Pinta el cielo del día (frentes, overcast, pulsos),
-    trae <b>datos de Open-Meteo</b> (reanálisis histórico o previsión: GHI/DNI/DHI y nubosidad modeladas)
-    y mira qué hace cada política y cuánto POA gana o pierde — y <b>cuánto cuesta conseguirlo</b>:
-    arranques de motor, grados de maniobra y vatios-hora de batería, con el modelo de motor
-    <b>medido en campo</b> (14.759 maniobras reales), y la factura repartida entre arrancar y girar. La física corre offline; Open-Meteo es el
-    único extra online, opcional.</div>
-  <div class="src">motor: pvlib singleaxis + Ineichen/Perez + políticas de tracker.py ·
-    QA integrada (la misma batería que <code>tools/test_overcast_sim.mjs</code>) · <span id="verlbl"></span> ·
-    <a href="backtracking.html">Simulador de BT</a> · <a href="https://imoriana3.github.io/proyectos/">← Panel</a></div>
-  <aside class="canon" id="canonbox"></aside>
+  <div class="identity"><div class="eyebrow">FACTIUN / OVERCAST</div><h1>Simulador de radiación difusa</h1></div>
+  <div class="header-actions"><span class="version-tag" id="verlbl"></span><a class="btn small" href="https://imoriana3.github.io/proyectos/">Panel</a><button class="btn acc" id="settingsToggle" aria-expanded="false" aria-controls="configPanel">Configuración</button></div>
 </header>
 
 <div class="wrap">
-<div class="cols">
-<div><!-- columna izquierda: configuración -->
+<div class="cols" id="appColumns">
+<div id="configPanel" hidden><!-- controles originales, fuera del lienzo -->
 
-  <div class="card">
-    <h2>☉ Emplazamiento</h2>
+  <details class="card settings-group" open>
+    <summary>Emplazamiento</summary>
     <div class="f"><label>Planta (de la cartera)</label>
       <select id="plant"><option value="">— manual —</option></select></div>
     <div class="two">
@@ -192,10 +179,10 @@
       <div class="f"><label>Albedo</label><input id="albedo" type="number" step="0.01" min="0" max="1" value="0.20"></div>
       <div class="f"><label>Turbidez Linke</label><input id="tl" type="number" step="0.1" min="2" max="7" value="3.5"></div>
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>⚙ Geometría del tracker</h2>
+  <details class="card settings-group">
+    <summary>Geometría</summary>
     <div class="two">
       <div class="f"><label>Pitch m</label><input id="pitch" type="number" step="0.05" min="2" value="6.00"></div>
       <div class="f"><label>Ancho colector m</label><input id="cw" type="number" step="0.001" min="0.5" value="2.382"></div>
@@ -217,7 +204,7 @@
         <input id="stow" type="number" step="1" min="-55" max="55" value="-5"
           title="Los trackers DUERMEN a −5° (5° hacia el ESTE). Toda la UI va en convención TCU: NEGATIVO = este. Por dentro la física espeja al core/pvlib (su signo va al revés con eje a 0°); la conversión vive en el borde de la UI."></div>
     </div>
-    <div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota">La histéresis del <b>poa_switch</b> va en <b>minutos absolutos</b> (promesa del
       schema 2.1.0): cambiar el ciclo NO mueve los bordes de conmutación — hay un check de la QA
       que lo exige (<b>1</b>/5/10/15 min, mismos instantes físicos ±1 paso grueso).
       <b>Por defecto va al minuto</b>, que es lo que hace la TCU en campo; el 10 del core legacy se
@@ -226,11 +213,11 @@
       arranques y 12,4 Wh a 30′ a <b>177 y 26,1 Wh al minuto</b>. El <b>recorrido</b> apenas se mueve
       (±2 %) y la comparación entre políticas tampoco (el ahorro de cada una cambia 1-4 puntos): lo
       que se dispara es el término de arranque. Por eso el número que se cita fuera es el recorrido o
-      la comparación, nunca los vatios-hora absolutos sin decir el ciclo.</div>
-  </div>
+      la comparación, nunca los vatios-hora absolutos sin decir el ciclo.</div></details>
+  </details>
 
-  <div class="card">
-    <h2>☁ Cielo del día <span class="sn">pinta · presets · Open-Meteo</span></h2>
+  <details class="card settings-group" open>
+    <summary>Cielo del día</summary>
     <div class="f"><label>Fuente</label>
       <select id="skysource">
         <option value="paint">Sintético — pintado / presets (offline)</option>
@@ -242,9 +229,9 @@
         <button class="btn small" id="omlive" title="Modo EN VIVO: pone la fecha de hoy, carga la previsión disponible, sitúa el reloj en AHORA y se refresca cada 10 min">● En vivo</button>
         <span class="pill" id="omstatus">sin datos</span>
       </div>
-      <div class="nota" style="margin:0 0 8px">Open-Meteo (<code>open-meteo.com</code>, sin API key):
+      <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota" style="margin:0 0 8px">Open-Meteo (<code>open-meteo.com</code>, sin API key):
         histórico ERA5 desde 1940 o previsión ICON/GFS. La tira de abajo pasa a mostrar la nubosidad
-        REAL del día (solo lectura); pintar encima devuelve a la fuente sintética.</div>
+        REAL del día (solo lectura); pintar encima devuelve a la fuente sintética.</div></details>
     </div>
     <div class="two">
       <div class="f"><label>Preset</label>
@@ -268,7 +255,7 @@
       <label>Pintando el cielo de</label>
       <select id="skyscope"></select></div>
     <canvas id="skyedit" class="viz skyedit" height="86"></canvas>
-    <div class="nota">Arrastra para pintar la <b>cobertura nubosa</b> (arriba = 100 %). Modelo nube→irradiancia,
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota">Arrastra para pintar la <b>cobertura nubosa</b> (arriba = 100 %). Modelo nube→irradiancia,
       declarado: GHI = GHI<sub>claro</sub>·(1 − 0,70·cc) — con cc = 1 queda el <b>30 %</b> del cielo claro,
       100 % difuso (DNI = 0, DHI = GHI), el MISMO overcast canónico del escenario de test del core
       (<code>test_diffuse_policies.py</code>). El haz muere rápido: DNI = DNI<sub>claro</sub>·(1 − cc)³;
@@ -281,11 +268,11 @@
       el signo del sesgo ni afirmar que ambos escenarios acotan la ganancia real.
       <br>Con el <b>cielo por NCU</b> activo, el selector de arriba dice a QUIÉN estás pintando: la
       planta o una NCU concreta. Pintar una NCU no toca a las demás ni al cielo de planta, y los
-      botones de preset y «despejar» actúan sobre esa misma NCU.</div>
-  </div>
+      botones de preset y «despejar» actúan sobre esa misma NCU.</div></details>
+  </details>
 
-  <div class="card">
-    <h2>🗺 Zonal por NCU <span class="sn">opción · estilo Zonal Diffuse</span></h2>
+  <details class="card settings-group">
+    <summary>Zonas y planta real</summary>
     <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="zonalOn">
       <span><span class="nm">Activar el zonal</span>
       <span class="ds">Un frente cruza la planta: cada NCU ve el cielo con retardo y decide con SU
@@ -315,11 +302,11 @@
         <option value="porncu">Un cielo PROPIO por NCU</option>
       </select></div>
     <div id="zskybox" style="display:none">
-      <div class="nota" style="margin-bottom:8px">Cada NCU con su cielo: es la única forma de ver la
+      <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota" style="margin-bottom:8px">Cada NCU con su cielo: es la única forma de ver la
         zonificación de verdad. Con el frente, todas las zonas ven la MISMA serie retardada — si el
         cielo es uniforme, el zonal es idéntico al global por construcción.
         <b>Ojo:</b> con día real de Open-Meteo este modo usa la meteo de la fuente SIN retardar (un punto
-        no trae información espacial); lo que cambia por zona es la nubosidad sintética.</div>
+        no trae información espacial); lo que cambia por zona es la nubosidad sintética.</div></details>
       <div id="zskygrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));
            gap:6px;overflow-y:auto;padding-right:4px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -329,7 +316,7 @@
         <button class="btn small" id="zskysame">Todas igual que la planta</button>
       </div>
     </div>
-    <div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota"><b>GLOBAL</b> = un sensor de planta (la media de las zonas) decide un θ común.
       <b>ZONAL</b> = cada NCU con su señal local. Para <b>continuous</b> el zonal gana o empata por
       construcción (la QA lo exige); para las políticas con histéresis es una medición. La escena 3D
       pinta cada zona con su nube y su θ. Con día real de Open-Meteo, el frente retarda la serie
@@ -338,11 +325,11 @@
       cada NCU arrastra SU confirm (30′) y SU dwell (90′) — una nube corta puede no llegar a
       conmutar NUNCA. La etiqueta lo enseña en <span style="color:var(--warn)">ámbar</span>
       («☁ retiene»): la señal está viva, la histéresis manda. Con <b>flat</b> o <b>continuous</b>
-      en la escena, la zona reacciona al instante.</div>
-  </div>
+      en la escena, la zona reacciona al instante.</div></details>
+  </details>
 
-  <div class="card">
-    <h2>🎛 Políticas <span class="sn">las del core, mismos nombres</span></h2>
+  <details class="card settings-group">
+    <summary>Políticas</summary>
     <div class="pols" id="polbox"></div>
     <label class="pol" style="margin-top:9px"><input type="checkbox" id="anisoOn">
       <span><span class="nm">Cota: óptimo anisótropo <span class="pill" style="background:#2a1f3d;color:#c9b6ff">NO es del core</span></span>
@@ -366,16 +353,16 @@
       <div class="f"><label>Histéresis: dwell (min)</label><input id="dwell" type="number" step="5" min="0" value="90"
         title="Permanencia mínima entre conmutaciones: tras entrar o salir del plano, no se vuelve a conmutar hasta pasados estos minutos (protege el actuador; también bloquea la re-entrada, a propósito). Espeja poa_switch_dwell_minutes."></div>
     </div>
-    <div class="nota"><b>flat</b> conmuta a 0° si POA(0) &gt; ratio·POA(θ_n) — sin memoria, chattering a la
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota"><b>flat</b> conmuta a 0° si POA(0) &gt; ratio·POA(θ_n) — sin memoria, chattering a la
       vista. <b>limited</b> retiene el ángulo previo mientras no pierda. <b>continuous</b> barre
       θ = (1−α)·θ_n y se queda el argmax: es el TECHO matemático de las políticas no-anticipativas
       (α = 0 es candidato ⇒ nunca rinde menos que pvlib, paso a paso). <b>poa_switch</b> es la
       ejecutable en campo: confirm 30 min antes de conmutar (anti-chattering) y dwell 90 min entre
-      conmutaciones (protege el actuador) — el dwell también bloquea la re-entrada, a propósito.</div>
-  </div>
+      conmutaciones (protege el actuador) — el dwell también bloquea la re-entrada, a propósito.</div></details>
+  </details>
 
-  <div class="card">
-    <h2>⚙ Lazo de control <span class="sn">deadband + slew</span></h2>
+  <details class="card settings-group">
+    <summary>Actuador</summary>
     <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="loopOn" checked>
       <span><span class="nm">Aplicar el lazo real</span>
       <span class="ds">La consigna no se teletransporta: deadband + velocidad del actuador. La POA
@@ -384,18 +371,18 @@
       <div class="f"><label>Deadband °</label><input id="deadband" type="number" step="0.1" min="0" value="1.0"></div>
       <div class="f"><label>Slew °/s</label><input id="slew" type="number" step="0.01" min="0.01" value="0.17"></div>
     </div>
-    <div class="nota">Canónicos del core: deadband <b>1,0°</b> · slew <b>0,17°/s</b> (≈ 5,9 min para 60°).
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota">Canónicos del core: deadband <b>1,0°</b> · slew <b>0,17°/s</b> (≈ 5,9 min para 60°).
       <b>Dos relojes, a propósito</b>: la TCU <b>decide</b> en su ciclo de control (la resolución de
       arriba) y el <b>actuador rampa al minuto</b> hacia esa consigna. Evaluar el lazo solo en el
       ciclo de decisión era un error físico: a 10 min el techo por paso es 0,17·600 = <b>102°</b>,
       más que el recorrido entero del tracker (110°) ⇒ nunca ataba y un giro de 55° salía colocado
       «dentro del paso». Ahora la curva θ enseña la consigna (trazo fino) y lo que hace el hierro
       (trazo grueso), el HUD marca <b>↻ °/s</b> mientras gira, y la POA del día se integra al minuto:
-      <b>el tránsito se paga</b> (columna «coste del lazo»).</div>
-  </div>
+      <b>el tránsito se paga</b> (columna «coste del lazo»).</div></details>
+  </details>
 
-  <div class="card">
-    <h2>🔋 Coste de maniobra <span class="sn">motor y batería</span></h2>
+  <details class="card settings-group">
+    <summary>Motor y batería</summary>
     <div class="two">
       <div class="f"><label>Modelo de motor</label>
         <select id="motmod">
@@ -409,7 +396,7 @@
           <option value="76.8">76,8 — 3 Ah × 25,6 V</option>
         </select></div>
     </div>
-    <div class="nota">Nada de esto se estima aquí: es <b>medida de campo</b> espejada de
+    <details class="technical-note"><summary>Detalles del modelo</summary><div class="nota">Nada de esto se estima aquí: es <b>medida de campo</b> espejada de
       <code>solargpt_core/motor_energy.py</code> y del gemelo. Los tres modelos salen del mismo sitio
       —<b>14.759 maniobras reales</b>, El Burgo, 106 TCUs— pero solo uno sirve para comparar políticas.
       <b>Ajuste de flota</b> (el que manda) = <b>E = 0,0901 + 0,0447·|Δθ|</b>, el
@@ -438,20 +425,20 @@
       ellos está inflado ~2×. Sobre el mismo sitio y la misma fecha, este modelo da <b>16,7 Wh a 10′ de
       ciclo de decisión frente a 19,2 medidos (−13 %)</b>, y el día real cae dentro del abanico del
       modelo entre 5′ (23,1) y 30′ (12,4). <b>Lo auditable es el total y la comparación entre filas;
-      el valor absoluto arrastra ±30 % según el ciclo de decisión que se suponga.</b></div>
-  </div>
+      el valor absoluto arrastra ±30 % según el ciclo de decisión que se suponga.</b></div></details>
+  </details>
 
-  <div class="card">
-    <h2>🧪 QA de la física</h2>
+  <details class="card settings-group">
+    <summary>Comprobar física</summary>
     <button class="btn" id="qabtn">Verificar contra el contrato del core</button>
     <div class="qa" id="qaout" style="margin-top:8px"></div>
-  </div>
+  </details>
 
-</div>
+<details class="card settings-group"><summary>Modelo y referencias</summary><aside class="canon" id="canonbox"></aside><p class="nota">Perez, IAM y actuador compartidos. El terreno exterior es ilustrativo; no representa cotas topográficas medidas.</p><a class="btn small" href="backtracking.html">Simulador de BT</a></details></div>
 <div><!-- columna derecha: escena + resultados -->
 
   <div class="card scene-card">
-    <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
+    <h2>Planta <span class="sn"><span id="zonelbl"></span></span>
       <span class="scene-actions">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
         <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
@@ -463,7 +450,7 @@
       <button class="btn small" id="skySunny" aria-pressed="false">☀ SUNNY</button>
       <button class="btn small" id="skyOvercast" aria-pressed="false">☁ OVERCAST</button>
       <button class="btn small" id="skyRestore" disabled>Restaurar cielo</button>
-      <p class="nota" id="skyCompareNote" aria-live="polite">Compara dos cielos con la misma planta, hora y política.</p>
+      <p class="nota" id="skyCompareNote" aria-live="polite">Misma hora · misma política</p>
     </div>
     <p class="sky-view-note" id="skyViewNote" hidden>Bóveda celeste · distribución angular orientativa, recorrido y posición solar. Arrastra para orbitar.</p>
     <div id="view3d" class="viz3d">
@@ -474,7 +461,7 @@
     </div>
     <canvas id="scene" class="viz" height="360" style="display:none"></canvas>
     <div class="timerow">
-      <button class="btn small acc" id="play">▶</button>
+      <button class="btn small acc" id="play" aria-label="Reproducir o pausar el día">▶</button>
       <input type="date" id="date2" class="btn small" title="La fecha — el MISMO campo que en Emplazamiento, aquí al lado de la hora. Cambiar uno cambia el otro.">
       <select id="speed" class="btn small" title="Velocidad de la animación (minutos simulados por segundo real)">
         <option value="30">×½</option>
@@ -482,9 +469,9 @@
         <option value="150">×2,5</option>
         <option value="360">×6</option>
       </select>
-      <input type="range" id="hour" min="0" max="1439" step="1" value="720">
+      <input aria-label="Hora del día" type="range" id="hour" min="0" max="1439" step="1" value="720">
       <span class="t" id="hourlbl">12:00</span>
-      <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
+      <label for="polview" style="font-size:14px;color:var(--tx2)">Política</label>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
     </div>
     <details class="sky-details" id="skyDetails">
@@ -525,22 +512,22 @@
     <div class="hud" id="hud"></div>
   </div>
 
-  <div class="card">
-    <h2>Curvas del día <span class="sn">irradiancia · θ por política · POA</span></h2>
+  <div class="card" id="engineeringDock"></div>
+
+  <details class="card result-group">
+    <summary><span class="result-heading">Curvas del día <span class="sn">irradiancia · θ por política · POA</span></span></summary>
     <canvas id="irrcv" class="viz" height="170"></canvas>
     <canvas id="curves" class="viz" height="240" style="margin-top:10px"></canvas>
     <canvas id="poacv" class="viz" height="200" style="margin-top:10px"></canvas>
     <div class="legend" id="legend"></div>
-  </div>
+  </details>
 
-  <div class="card" id="engineeringDock"></div>
-
-  <div class="card">
-    <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span>
-      <span style="float:right">
+  <details class="card result-group">
+    <summary><span class="result-heading">El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span>
+      </span></summary><div class="result-tools">
         <button class="btn small" id="informebtn" title="Informe del emplazamiento: sitio, planta, cielo del día y configuración; cada política con cómo decide, qué optimiza y sus cálculos del día (POA, Δ, % activa, movimientos, recorrido, motor); el coste de maniobra con la procedencia del modelo; el diario de decisiones; el zonal y el año si están calculados; la QA; y los límites declarados. Se abre en una pestaña, lista para imprimir o guardar en PDF.">📄 Informe</button>
         <button class="btn small acc" id="csvbtn" title="Descarga el día MINUTO A MINUTO: meteo, θ de consigna, θ ejecutado y POA de cada política, con toda la configuración en la cabecera para que un tercero pueda reproducir los números fuera de este navegador.">⬇ CSV del día</button>
-      </span></h2>
+      </div>
     <div style="overflow-x:auto"><table id="daytab"></table></div>
     <div class="nota" id="daynote"></div>
     <div class="nota">El <b>CSV</b> baja el día <b>al minuto</b> —la rejilla del actuador, no la de
@@ -549,10 +536,10 @@
       (emplazamiento, geometría, lazo, DiffuseConfig, fuente de la meteo) y el resumen del día, para
       que quien lo audite pueda recalcularlo y comparar. Separador coma y decimal punto; las líneas
       de cabecera empiezan por <code>#</code> (en pandas, <code>comment='#'</code>).</div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>📋 Diario de decisiones <span class="sn">cada movimiento, justificado — como el SCADA · <b id="diariopol"></b></span></h2>
+  <details class="card result-group">
+    <summary><span class="result-heading">📋 Diario de decisiones <span class="sn">cada movimiento, justificado — como el SCADA · <b id="diariopol"></b></span></span></summary>
     <div class="qa" id="diario" style="max-height:320px;overflow-y:auto"></div>
     <div class="nota">La narración de la política de campo (<b>poa_switch</b>): stow del amanecer y del
       anochecer, pulsos de señal RECHAZADOS por el confirm, entradas y salidas del plano con sus W/m²
@@ -560,20 +547,20 @@
       trackers abanderan y desabanderan. Con el zonal activo, cada NCU lleva SU diario. El espejo
       anotado reproduce bit a bit los flags de la máquina real (lo exige la QA): lo narrado ES lo
       ejecutado.</div>
-  </div>
+  </details>
 
-  <div class="card" id="zonalcard" style="display:none">
-    <h2>Zonal por NCU <span class="sn">decisión global vs cada NCU con su señal</span></h2>
+  <details class="card result-group" id="zonalcard" style="display:none">
+    <summary><span class="result-heading">Zonal por NCU <span class="sn">decisión global vs cada NCU con su señal</span></span></summary>
     <div style="overflow-x:auto"><table id="zonaltab"></table></div>
     <div class="nota">POA de planta = media de las zonas, cada una evaluada con SU cielo y con el
       <b>θ ejecutado</b> (si el lazo está activo: deadband 1° + slew 0,17 °/s también por zona — el
       actuador no teletransporta tampoco aquí). La columna «Δ zonal» es la ganancia de dar la
       decisión a cada NCU frente al θ común del sensor de planta — el argumento del control
       distribuido (y de la NCU con visión de planta para coordinarlo).</div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Estimación anual <span class="sn">12 días × mezcla de cielos</span></h2>
+  <details class="card result-group">
+    <summary><span class="result-heading">Estimación anual <span class="sn">12 días × mezcla de cielos</span></span></summary>
     <div class="four">
       <div class="f"><label>Clima</label>
         <select id="climate">
@@ -614,7 +601,7 @@
     <div style="overflow-x:auto;margin-top:8px"><table id="yeartab"></table></div>
     <div class="nota" id="yearnote"></div>
     <div class="nota"><b>Archivo de 365 días</b>: ERA5, reanálisis horario; no son sensores del emplazamiento. Mismo ciclo de decisión y mismas guardas que el día; actuador al minuto. Se excluyen los días con huecos diurnos. <b>12 × mezcla</b> es un ensayo sintético. La interpolación horaria no resuelve el paso de nubes y su sesgo en la ganancia puede tener ambos signos. El recorte DNI ≤ claro ×1,1 +10 W/m² es un filtro del escenario, no una ley física; se informa en la calidad del dato. La POA de esta tabla es incidente en fila aislada; el banco de ingeniería añade IAM y sombra 1D. MWh ≈ MWp × ΔPOA × PR 0,85 es un proxy, no energía AC validada.</div>
-  </div>
+  </details>
 
 </div>
 </div>
@@ -629,6 +616,7 @@
 <script src="overcast_energy.js"></script>
 <script src="overcast_engine.js"></script>
 <script src="overcast_workbench.js"></script>
+<script src="overcast_environment.js"></script>
 <script>
 "use strict";
 /* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
@@ -2802,9 +2790,9 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.33.0';
+const VER='v1.34.0';
 function $(id){return document.getElementById(id);}
-$('verlbl').textContent='overcast.html '+VER;
+$('verlbl').textContent=VER;
 
 /* `mode` = QUÉ SIGNIFICA de verdad el flag de cada política. En el core son
    campos con NOMBRES DISTINTOS y no se pueden rotular todos «FLAT»:
@@ -2934,8 +2922,8 @@ function compareSky(mode){
   }
   $('skyRestore').disabled=!SKY_COMPARE;
   $('skyCompareNote').textContent=SKY_COMPARE
-    ?'Comparación '+mode.toUpperCase()+' · cielo sintético aplicado a toda la planta. Puedes restaurar tu cielo.'
-    :'Cielo original restaurado. Misma planta, hora y política.';
+    ?mode.toUpperCase()+' · cielo sintético de planta'
+    :'Cielo original restaurado';
   zskyRender();recompute();
 }
 $('skySunny').onclick=()=>compareSky('sunny');
@@ -4152,7 +4140,7 @@ function disposeGroup(g){g.traverse(o=>{
   if(o.geometry)o.geometry.dispose();
   if(!o.material)return;
   for(const m of (Array.isArray(o.material)?o.material:[o.material])){
-    for(const k of ['map','alphaMap','emissiveMap','normalMap','roughnessMap','metalnessMap','aoMap'])
+    for(const k of ['map','alphaMap','emissiveMap','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap'])
       if(m[k]&&m[k].dispose)m[k].dispose();
     m.dispose();
   }
@@ -4201,7 +4189,7 @@ function init3D(){
     scene3.add(hemi,sun,sun.target,sunMesh);
     const skyDome3D=makeSkyDome3D(scene3);
     const hint=document.createElement('div');hint.className='hint';
-    hint.textContent='arrastrar: orbitar · DOBLE CLIC: centrar ahí (y el zoom va ahí) · botón dcho: desplazarse · rueda: zoom · ✈ vuelo libre · +X = norte';
+    hint.textContent='Arrastra para orbitar · rueda para acercar · doble clic para centrar';
     holder.appendChild(hint);
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
         sunMesh:sunMesh,skyDome3D:skyDome3D,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
@@ -4579,32 +4567,8 @@ function build3D(){
   const P={x0:-span/2,x1:span/2,z0:-4,z1:depth+4};   // rectángulo de planta
   const cx=0, cz=depth/2;
 
-  // terreno: malla grande con colinas lejos y explanada bajo la planta
-  const TW=760,TH2=560,SX=76,SZ=56;
-  const geo=new THREE.PlaneGeometry(TW,TH2,SX,SZ);
-  geo.rotateX(-Math.PI/2);
-  const pos=geo.attributes.position, colors=[];
-  const col=new THREE.Color();
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i)+cx, z=pos.getZ(i)+cz;
-    const h=terrainH(x,z,P);
-    pos.setY(i,h);
-    const d=distPlant(x,z,P);
-    // pintado por vértice: explanada parda en planta, camino perimetral de
-    // zahorra (banda 3–8 m), verde oliva con variación, más seco en las lomas
-    // moteado pseudoaleatorio (hash), no bandas regulares
-    const v=(Math.sin(x*12.9898+z*78.233)*43758.5453)%1*0.5+0.5;
-    if(d<3)col.setRGB(0.16+0.02*v,0.15+0.02*v,0.10);                 // explanada
-    else if(d<8)col.setRGB(0.34+0.03*v,0.28+0.03*v,0.19);            // camino
-    else col.setRGB(0.10+0.05*v+h*0.012,0.16+0.06*v+h*0.008,0.07+0.03*v);
-    colors.push(col.r,col.g,col.b);
-  }
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  geo.computeVertexNormals();
-  const ground=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true}));
-  ground.position.set(cx,0,cz);
-  ground.receiveShadow=true;
-  world.add(ground);
+  const TW=2200,TH2=2000;
+  OvercastEnvironment.build(THREE,world,{bounds:P,width:TW,height:TH2,cx,cz,renderer:TD.renderer});
 
   // valla perimetral: postes + 3 hilos
   const fm=new THREE.MeshLambertMaterial({color:0x6d7a85});
@@ -4639,20 +4603,6 @@ function build3D(){
   caseta.add(cw1,roof,door);
   caseta.position.set(F.x1+7,terrainH(F.x1+7,cz,P),cz);
   world.add(caseta);
-
-  // arbustos fuera de la valla (sembrados, deterministas)
-  const bm=new THREE.MeshLambertMaterial({color:0x2c4020});
-  const bGeo=new THREE.IcosahedronGeometry(1,0);
-  let sB=12345; const rndB=()=>{sB|=0;sB=sB+0x6D2B79F5|0;let t=Math.imul(sB^sB>>>15,1|sB);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
-  for(let k=0;k<52;k++){
-    const x=cx+(rndB()-0.5)*TW*0.85, z=cz+(rndB()-0.5)*TH2*0.85;
-    if(distPlant(x,z,P)<16)continue;
-    const b=new THREE.Mesh(bGeo,bm);
-    const s0=0.5+rndB()*1.3;
-    b.scale.set(s0,s0*0.55,s0);
-    b.position.set(x,terrainH(x,z,P)+s0*0.3,z);
-    world.add(b);
-  }
 
   // las filas: por zona, 2 parejas bifila (motora + gemela + eje de transmisión)
   const postM=new THREE.MeshLambertMaterial({color:0x8a949c});
@@ -4775,32 +4725,8 @@ function buildReal3D(zc,reframe){
   const W=bx1-bx0, D=bn1-bn0, L=Math.max(W,D);
   const P={x0:bn0-20,x1:bn1+20,z0:bx0-20,z1:bx1+20};    // rectángulo de planta en ESCENA
 
-  // terreno: colinas lejos, explanada bajo la planta, camino perimetral pintado
-  const TW=D+1600,TH2=W+1600,SX=96,SZ=96;
-  const geo=new THREE.PlaneGeometry(TW,TH2,SX,SZ);
-  geo.rotateX(-Math.PI/2);
-  const pos=geo.attributes.position, colors=[];
-  const col=new THREE.Color();
-  for(let i=0;i<pos.count;i++){
-    const x=pos.getX(i)+cx, z=pos.getZ(i)+cz;
-    const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
-    const d=Math.hypot(dx,dz);
-    const f=Math.min(1,Math.max(0,(d-60)/300));
-    const h=(Math.sin(x*0.004+1.7)*Math.cos(z*0.0033-0.6)*14
-            +Math.sin(x*0.0011+0.3)*Math.cos(z*0.0009+1.1)*30)*f*f;
-    pos.setY(i,h);
-    const v=(Math.sin(x*12.9898+z*78.233)*43758.5453)%1*0.5+0.5;
-    if(d<8)col.setRGB(0.16+0.02*v,0.15+0.02*v,0.10);                 // explanada
-    else if(d<22)col.setRGB(0.34+0.03*v,0.28+0.03*v,0.19);           // camino perimetral
-    else col.setRGB(0.10+0.05*v+h*0.002,0.16+0.06*v+h*0.0015,0.07+0.03*v);
-    colors.push(col.r,col.g,col.b);
-  }
-  geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  geo.computeVertexNormals();
-  const ground=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({vertexColors:true}));
-  ground.position.set(cx,-0.25,cz);
-  ground.receiveShadow=true;
-  world.add(ground);
+  const TW=Math.max(D+2000,L*7),TH2=Math.max(W+2000,L*7);
+  OvercastEnvironment.build(THREE,world,{bounds:P,width:TW,height:TH2,cx,cz,real:true,groundY:-.25,renderer:TD.renderer});
 
   // valla perimetral instanciada + 3 hilos, y caseta del inversor
   const F={x0:P.x0-14,x1:P.x1+14,z0:P.z0-14,z1:P.z1+14};
@@ -4833,22 +4759,6 @@ function buildReal3D(zc,reframe){
   caseta.add(cw1,roof);
   caseta.position.set(F.x1+16,0,cz);
   world.add(caseta);
-  // arbustos fuera de la valla
-  const bm=new THREE.MeshLambertMaterial({color:0x2c4020});
-  const bGeo=new THREE.IcosahedronGeometry(1,0);
-  let sB=4242; const rndB=()=>{sB|=0;sB=sB+0x6D2B79F5|0;let t2=Math.imul(sB^sB>>>15,1|sB);t2=t2+Math.imul(t2^t2>>>7,61|t2)^t2;return((t2^t2>>>14)>>>0)/4294967296;};
-  const nBush=140,bushes=new THREE.InstancedMesh(bGeo,bm,nBush);
-  let bi=0;
-  for(let k=0;k<600&&bi<nBush;k++){
-    const x=cx+(rndB()-0.5)*TW*0.85, z=cz+(rndB()-0.5)*TH2*0.85;
-    const dx=Math.max(P.x0-x,x-P.x1,0),dz=Math.max(P.z0-z,z-P.z1,0);
-    if(Math.hypot(dx,dz)<30)continue;
-    const s0=1.2+rndB()*2.6;
-    _m4.makeScale(s0,s0*0.55,s0);_m4.setPosition(x,s0*0.3,z);
-    bushes.setMatrixAt(bi++,_m4);
-  }
-  bushes.count=bi;bushes.frustumCulled=false;world.add(bushes);
-
   // ── los seguidores: el instanciado de los cobertura 3D ──
   const mats=Seguidor.materials(THREE);
   mats.glass.color.set(0xffffff);                       // la MESA toma el color por instancia (estado)
@@ -6122,5 +6032,6 @@ recompute();
 loop3D();
 setTab(true);   // 3D por defecto; sin WebGL/THREE cae solo al corte 2D
 </script>
+<script src="overcast_ui.js"></script>
 </body>
 </html>

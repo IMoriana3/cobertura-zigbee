@@ -1103,7 +1103,7 @@ t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () =>
   }
 });
 
-t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ellas', () => {
+t('el panel de referencia se pinta de las CONSTANTES, sin duplicarlas en la cabecera', () => {
   // El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
   // ventana ancha sobraba media cabecera. El hueco se llena con los números con
   // los que corre la simulación — pero banda muerta, velocidad, θ máximo, ciclo
@@ -1143,23 +1143,13 @@ t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ell
     if (new RegExp("'[^']*" + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'").test(fnCode))
       throw new Error(`el panel lleva «${p}» tecleado: ese número tiene que salir de la constante`);
 
-  // Y LA PROSA, CAREADA. La cabecera afirma «deadband 1° + slew 0,17°/s» y
-  // «14.759 maniobras reales» a mano, al lado de un panel que saca lo mismo del
-  // código. Dos fuentes otra vez: si una constante cambia, el párrafo se queda
-  // mintiendo. Se comprueba por VALOR, no por literal.
-  const sub = html.slice(html.indexOf('<div class="sub">'), html.indexOf('<div class="src">'));
-  const n = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
-  const db = (sub.match(/deadband\s*([\d,.]+)\s*°/) || [])[1];
-  const sl = (sub.match(/slew\s*([\d,.]+)\s*°\/s/) || [])[1];
-  const nm = (sub.match(/\(([\d.,]+)\s*maniobras reales\)/) || [])[1];
-  if (db === undefined || sl === undefined || nm === undefined)
-    throw new Error('el párrafo de cabecera ya no declara deadband / slew / maniobras');
-  if (n(db) !== F.CANON.deadbandDeg)
-    throw new Error(`la cabecera dice deadband ${db}° y el canónico es ${F.CANON.deadbandDeg}°`);
-  if (n(sl) !== F.CANON.slewDegS)
-    throw new Error(`la cabecera dice slew ${sl}°/s y el canónico es ${F.CANON.slewDegS}°/s`);
-  if (n(nm) !== F.AJUSTE_FLOTA.nManiobras)
-    throw new Error(`la cabecera dice ${nm} maniobras y el ajuste se hizo con ${F.AJUSTE_FLOTA.nManiobras}`);
+  // La referencia ahora se despliega en Configuración. La cabecera no
+  // duplica las constantes en prosa; el contrato vivo del panel sigue igual.
+  const header=html.slice(html.indexOf('<header>'),html.indexOf('</header>'));
+  if (/deadband|slew|maniobras reales/.test(header))
+    throw new Error('la cabecera vuelve a duplicar las constantes en prosa');
+  if (!/<summary>Modelo y referencias<\/summary><aside class="canon" id="canonbox"/.test(html))
+    throw new Error('falta el acceso desplegable a la referencia canónica');
 });
 
 t('la fecha está TAMBIÉN junto al slider, y es el mismo campo, no un segundo', () => {
@@ -1201,7 +1191,7 @@ t('la versión está en UN sitio, y el informe la lee de ahí', () => {
     throw new Error('VER se declara más de una vez: la versión vuelve a tener dos fuentes');
   // la etiqueta de la página y el informe del emplazamiento tienen que LEERLA,
   // no llevar su propia copia
-  if (!/\$\('verlbl'\)\.textContent='overcast\.html '\+VER/.test(html))
+  if (!/\$\('verlbl'\)\.textContent=(?:'overcast\.html '\+)?VER/.test(html))
     throw new Error('la etiqueta de la página ya no lee VER');
   if (!/esc\(VER\)/.test(html))
     throw new Error('el informe del emplazamiento ya no lee VER: volvería a firmarse con un literal');

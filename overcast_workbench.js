@@ -39,14 +39,14 @@ function parseP1(text){
 function mount(el,bridge){
   el.innerHTML=`<style>
     .eng-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.eng-head h2{margin:0}
-    .eng-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.eng-kpis>div{border:1px solid #2e4055;border-radius:9px;padding:11px}.eng-kpis b{display:block;font-size:1.25rem;color:#e4edf8;margin-top:5px}.eng-kpis small{color:#93a7be}
+    .eng-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.eng-kpis>div{border:1px solid #2e4055;border-radius:9px;padding:11px}.eng-kpis b{display:block;font-size:1.25rem;color:#e4edf8;margin-top:5px}.eng-kpis small{color:#a9b9ca;font-size:14px}
     .eng-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eng-grid canvas{width:100%;height:230px;display:block;background:#101a29;border-radius:9px}.eng-controls{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}.eng-controls label{display:grid;gap:5px;color:#9bb0c6;font-size:.75rem}.eng-controls input{width:100px}.eng-controls select{max-width:300px}.eng-wide{grid-column:1/-1}.eng-note{color:#9bb0c6;line-height:1.6;font-size:.78rem;margin:10px 0}.eng-reason{padding:12px 14px;border-left:3px solid #fb923c;background:#182534;line-height:1.6;font-size:.85rem}.eng-table{overflow:auto}.eng-note strong{color:#c8d9ec}.eng-status{white-space:pre-wrap}.eng-grid h3{font-size:.84rem;font-weight:550;color:#dbe8f7;margin:10px 0}
-    @media(max-width:850px){.eng-grid{grid-template-columns:1fr}.eng-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:450px){.eng-kpis{grid-template-columns:1fr}.eng-controls input{width:85px}}
+    #engineeringDock .eng-note,#engineeringDock .eng-controls label,#engineeringDock .eng-grid h3{font-size:14px}#engineeringDock .eng-reason{font-size:16px}
+    @media(max-width:850px){.eng-grid{grid-template-columns:1fr}.eng-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:450px){.eng-controls input{width:100px}.eng-kpis b{font-size:18px}}
   </style>
-  <div class="eng-head"><h2>Ingeniería del emplazamiento <span class="sn">decidir · justificar · validar</span></h2><button class="btn small acc" data-e="view">Ver adaptativo en la planta</button></div>
-  <p class="eng-note" data-e="scope"></p>
+  <div class="eng-head"><h2>Decisión adaptativa</h2><button class="btn small acc" data-e="view">Ver en la planta</button></div>
   <div class="eng-kpis" data-e="kpis"></div>
-  <details data-e="detail"><summary>Por qué elige este ángulo · mismo reloj de la escena</summary>
+  <details data-e="detail"><summary>¿Por qué este ángulo?</summary>
     <p class="eng-reason" data-e="reason"></p>
     <div class="eng-grid">
       <section><h3>POA útil frente al ángulo · instante seleccionado</h3><canvas data-e="curve" aria-label="POA total y difusa frente al ángulo TCU; regiones rojas con más sombra que la referencia"></canvas><p class="eng-note">Total naranja · difusa azul · rojo: más sombra que baseline · verde: banda casi óptima. Líneas: ejecutado naranja, baseline gris, mejor candidato cian.</p></section>
@@ -55,7 +55,7 @@ function mount(el,bridge){
     </div><div class="eng-table"><table data-e="components"></table></div>
     <p class="eng-note" data-e="quality"></p>
   </details>
-  <details data-e="parameters"><summary>Parámetros del supervisor y límites del estudio</summary><div class="eng-controls">
+  <details data-e="parameters"><summary>Parámetros y alcance</summary><p class="eng-note" data-e="scope"></p><div class="eng-controls">
     <label>Ganancia entrada · W/m²<input data-e="enterGainW" type="number" min="0" step="1" value="4"></label>
     <label>Ganancia mínima salida · W/m²<input data-e="exitLossW" type="number" min="0" step="1" value="2"></label>
     <label>Confirmar · min<input data-e="confirmMin" type="number" min="0" step="5" value="10"></label>
@@ -64,7 +64,7 @@ function mount(el,bridge){
     <label>Presupuesto motor · Wh/día<input data-e="motorBudget" type="number" min="0" placeholder="Sin límite"></label>
     <label>Máximo arranques/día<input data-e="maxMoves" type="number" min="0" placeholder="Sin límite"></label>
   </div><p class="eng-note">El presupuesto sirve para rechazar configuraciones durante la calibración. No sustituye al balance de batería, la reserva de seguridad ni al stow por viento. Estos parámetros son hipótesis ajustables, no valores óptimos universales.</p></details>
-  <details data-e="study"><summary>Ajustar al emplazamiento y comprobar otros días</summary>
+  <details data-e="study"><summary>Ajustar y validar con otros días</summary>
     <div class="eng-controls"><label>Conjunto de días<select data-e="source"><option value="synthetic">48 días sintéticos reproducibles</option><option value="archive">Archivo meteorológico cargado</option></select></label>
     <label>Cargar datos propios · CSV<input data-e="csv" type="file" accept=".csv,text/csv" style="width:220px"></label></div>
     <p class="eng-note">CSV: <code>timestamp,ghi,dni,dhi</code> y <code>cc</code> opcional (0–1). Hora ISO con zona; W/m². Se interpreta cada registro en su instante, sin desplazarlo. La importación no presupone que sea una medición. El archivo ERA5 del panel anual también queda disponible aquí.</p>
@@ -72,7 +72,7 @@ function mount(el,bridge){
     <p class="eng-note eng-status" data-e="status" role="status">70 % de días iniciales para ajuste; 30 % posteriores reservados. La selección no consulta la validación. Los días sintéticos sólo ensayan el método.</p>
     <div class="eng-table"><table data-e="ranking"></table></div><div class="eng-table"><table data-e="validation"></table></div>
   </details>
-  <details data-e="p1detail"><summary>Estudio del motor con geometría finita P1</summary>
+  <details data-e="p1detail"><summary>Importar estudio 3D · P1</summary>
     <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. Comparte el reloj de esta pantalla. El archivo declara su procedencia; esta importación no certifica los datos ni envía órdenes.</p>
     <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Tracker del estudio<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
     <p class="eng-note" data-e="p1status">Sin datos de cotas e identidad: no se deducen del orden del dibujo.</p>
@@ -90,8 +90,8 @@ function mount(el,bridge){
     return {daylightMinutes:q.length*day.dtMin,missingMinutes:q.filter(v=>!v.valid).length*day.dtMin,dniCappedMinutes:q.filter(v=>v.dniCapped).length*day.dtMin,balanceWarningMinutes:q.filter(v=>v.balanceWarning).length*day.dtMin,sources:counts};}
   function recomputed(){revision++;lastClock=-1;heatSim=null;cached=null;if(busy)cancel=true;
     const q=context();if(!q)return;const a=q.adaptive,b=q.baseline;
-    $('scope').textContent=q.title+' · Modelo de decisión: filas planas, Perez + IAM canónico y guarda de sombra 1D. La planta dibujada conserva su geometría visual; las cotas y vecinas reales requieren un estudio P1. Objetivo frontal; la trasera se muestra como diagnóstico y no suma una ganancia bifacial sin validar.';
-    $('kpis').innerHTML=[['Ganancia útil del día',a?signed(100*(a.poaWh/b.poaWh-1),2)+' %':'—','Adaptativo / baseline'],['Motor',a?f(a.motorWh,2)+' Wh':'—','por TCU · baseline '+f(b.motorWh,2)],['Arranques',a?String(a.moves):'—','baseline '+b.moves],['Admisibilidad ejecutada',a?(a.violations?'REVISAR':'Sin excesos 1D'):'—','Rejilla minutal; no certificación P1']].map(([x,y,z])=>'<div><small>'+x+'</small><b>'+y+'</b><small>'+z+'</small></div>').join('');
+    $('scope').textContent=q.title+' · Perez + IAM y sombra en filas planas (1D). Objetivo frontal; trasera diagnóstica. Las cotas y vecinas reales requieren validación P1.';
+    $('kpis').innerHTML=[['Ganancia del día',a?signed(100*(a.poaWh/b.poaWh-1),2)+' %':'—','POA frontal / baseline'],['Motor por TCU',a?f(a.motorWh,2)+' Wh':'—','baseline '+f(b.motorWh,2)+' Wh'],['Arranques',a?String(a.moves):'—','baseline '+b.moves],['Guarda de sombra',a?(a.violations?'Revisar':'Sin excesos 1D'):'—','Pendiente de validar en P1']].map(([x,y,z])=>'<div><small>'+x+'</small><b>'+y+'</b><small>'+z+'</small></div>').join('');
     if(study){$('apply').disabled=true;$('status').textContent='La configuración ha cambiado. El estudio exportable conserva sus entradas; vuelve a validar antes de aplicar.';}
     clock();
   }
