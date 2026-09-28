@@ -61,7 +61,8 @@
   .canon .cnh{grid-column:1/-1;font-family:var(--mono);font-size:.57rem;letter-spacing:.11em;
                text-transform:uppercase;color:var(--muted);margin-bottom:-1px}
   .wrap{max-width:var(--ancho);margin:0 auto;padding:0 22px}
-  .cols{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
+  .cols{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px;align-items:start}
+  .cols>div{min-width:0}
   @media(max-width:980px){.cols{grid-template-columns:1fr}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
   .card h2{margin:0 0 10px;font-size:.98rem;display:flex;align-items:center;gap:8px}
@@ -82,18 +83,23 @@
   .btn.small{padding:4px 10px;font-size:.76rem}
   canvas.viz{width:100%;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:10px}
   canvas.skyedit{cursor:crosshair;touch-action:none}
-  .viz3d{width:100%;height:440px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .viz3d{width:100%;height:clamp(440px,56vh,680px);background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
   .viz3d canvas{display:block}
   .viz3d .hint{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:.64rem;color:var(--muted);pointer-events:none}
-  /* PANELES SOBRE LA ESCENA. Van encima del lienzo y NO capturan el raton
-     (salvo la ficha, que se cierra), para no robarle el orbitar a nadie. */
-  .sky3d{position:absolute;right:10px;top:10px;min-width:186px;background:rgba(11,16,23,.82);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:.68rem;color:var(--tx);pointer-events:none;backdrop-filter:blur(3px)}
+  /* Los datos viven fuera del lienzo: abrirlos nunca tapa la planta. */
+  .sky-details{margin-top:12px;border:1px solid var(--line2);border-radius:9px;background:var(--bg2)}
+  .sky-details>summary{cursor:pointer;padding:10px 12px;font-size:.875rem;min-height:44px;color:var(--tx)}
+  .sky-details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .sky-summary{color:var(--tx2);font-size:.8125rem;margin-left:10px;overflow-wrap:anywhere}
+  .sky3d{padding:4px 12px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;font-family:var(--mono);font-size:.875rem;color:var(--tx)}
+  .sky3d section{min-width:0}
   .sky3d .st{font-size:.86rem;font-weight:700;letter-spacing:.06em;display:flex;align-items:center;gap:7px;margin-bottom:7px}
-  .sky3d .row{display:flex;justify-content:space-between;gap:12px;color:var(--tx2);line-height:1.5}
-  .sky3d .row b{color:var(--tx);font-weight:600}
+  .sky3d .row{display:flex;justify-content:space-between;gap:12px;color:var(--tx2);line-height:1.6;margin:3px 0}
+  .sky3d .row span{min-width:0;overflow-wrap:anywhere}
+  .sky3d .row b{color:var(--tx);font-weight:600;flex-shrink:0}
   .sky3d .bar{display:flex;height:7px;border-radius:4px;overflow:hidden;margin:7px 0 5px;background:var(--bg2);border:1px solid var(--line)}
   .sky3d .bar i{display:block;height:100%}
-  .sky3d .bl{display:flex;justify-content:space-between;font-size:.6rem;letter-spacing:.08em;color:var(--muted)}
+  .sky3d .bl{display:flex;justify-content:space-between;gap:8px;font-size:.75rem;color:var(--tx2)}
   .pick3d{position:absolute;left:10px;top:10px;min-width:196px;background:rgba(11,16,23,.86);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-family:var(--mono);font-size:.68rem;color:var(--tx);backdrop-filter:blur(3px)}
   .pick3d .hd{display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:700;margin-bottom:6px}
   .pick3d .x{margin-left:auto;cursor:pointer;color:var(--muted);padding:0 3px}
@@ -129,16 +135,20 @@
   .chip{font-family:var(--mono);font-size:.64rem;color:var(--warn);border:1px dashed var(--warn);border-radius:7px;padding:2px 8px}
 
   /* SKY DOME V2 */
-  .skydome-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;opacity:.88;mix-blend-mode:screen}
-  .sky3d,.pick3d{z-index:3}
+  .sky-map{display:block;width:100%;height:240px}
+  .pick3d{z-index:3;max-width:calc(100% - 20px);max-height:calc(100% - 20px);overflow:auto}
   .sky3d .sep{border-top:1px solid var(--line);margin:7px 0 6px}
-  .sky3d .subt{font-size:.58rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:5px 0 3px}
+  .sky3d .subt{font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;color:var(--tx2);margin:5px 0 8px}
   .sky3d .hot{color:#ffd166!important}.sky3d .good{color:var(--ok)!important}
   .sky3d .skybar{height:5px;border-radius:4px;margin:4px 0 2px;background:linear-gradient(90deg,#163bff,#22b9e6,#f2e85c,#ff8a2a,#c81d25)}
-  .sky3d .tiny{font-size:.57rem;color:var(--muted);line-height:1.35}
+  .sky3d .tiny{grid-column:1/-1;font: .8125rem/1.5 system-ui,sans-serif;color:var(--tx2);max-width:110ch;overflow-wrap:anywhere}
   .sky-compare{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 10px}
   .sky-compare .nota{flex:1 1 240px;margin:0;font-size:.7rem}
   .scene-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .scene-card h2{flex-wrap:wrap}
+  .scene-actions .btn{min-height:36px}
+  .sky-view-note{font-size:.8125rem;color:var(--tx2);margin:0 0 8px}
+  @media(max-width:600px){.wrap{padding:0 10px}.scene-actions{margin-left:0}.scene-card{padding:12px 10px}.viz3d{height:360px}.sky-summary{display:block;margin:4px 0 0 16px}}
 </style>
 </head>
 <body>
@@ -442,48 +452,23 @@
 </div>
 <div><!-- columna derecha: escena + resultados -->
 
-  <div class="card">
+  <div class="card scene-card">
     <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
       <span class="scene-actions">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
         <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
-        <button class="btn small" id="skytoggle" aria-pressed="false" title="Alterna el aspecto natural y la distribución angular explicativa del cielo">Mapa de radiancia</button>
-        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small acc" id="tab3d" aria-pressed="true">Planta</button>
+        <button class="btn small" id="skytoggle" aria-pressed="false" title="Encuadra la bóveda celeste sobre la misma planta y los mismos trackers">Bóveda celeste</button>
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
       </span></h2>
     <div class="sky-compare" role="group" aria-label="Comparar condiciones de cielo">
       <button class="btn small" id="skySunny" aria-pressed="false">☀ SUNNY</button>
       <button class="btn small" id="skyOvercast" aria-pressed="false">☁ OVERCAST</button>
       <button class="btn small" id="skyRestore" disabled>Restaurar cielo</button>
-      <p class="nota" id="skyCompareNote" aria-live="polite">Compara dos cielos con la misma planta, hora y política. El mapa de radiancia se activa aparte.</p>
+      <p class="nota" id="skyCompareNote" aria-live="polite">Compara dos cielos con la misma planta, hora y política.</p>
     </div>
+    <p class="sky-view-note" id="skyViewNote" hidden>Bóveda celeste · distribución angular orientativa, recorrido y posición solar. Arrastra para orbitar.</p>
     <div id="view3d" class="viz3d">
-      <canvas id="skydome" class="skydome-overlay" aria-label="Bóveda radiométrica difusa"></canvas>
-      <!-- CONDICION DE CIELO: sale del MISMO `irr` que alimenta la fisica, no
-           de una etiqueta aparte. Si un dato no existe en el instante, la fila
-           dice «--» en vez de inventarlo. -->
-      <div class="sky3d" id="sky3d" style="display:none">
-        <div class="st"><span id="sky3dIco">☁</span><span id="sky3dTxt">—</span></div>
-        <div class="row"><span>Nubosidad</span><b id="sky3dCC">--</b></div>
-        <div class="row"><span>GHI</span><b id="sky3dGHI">--</b></div>
-        <div class="row"><span>DNI</span><b id="sky3dDNI">--</b></div>
-        <div class="row"><span>DHI</span><b id="sky3dDHI">--</b></div>
-        <div class="bar"><i id="sky3dBarD"></i><i id="sky3dBarF"></i></div>
-        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>
-        <div class="sep"></div>
-        <div class="subt">Sky diffuse · Perez</div>
-        <div class="row"><span>Isotrópica</span><b id="skyIso">--</b></div>
-        <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>
-        <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>
-        <div class="skybar"></div>
-        <div class="subt">Política de planta · instante actual</div>
-        <div class="row"><span>View factor 2D front/rear</span><b id="skyVF">--</b></div>
-        <div class="row"><span>POA sky Perez front/rear</span><b id="skyFR">--</b></div>
-        <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>
-        <div class="row"><span>θ óptimo diagnóstico · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>
-        <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>
-        <div class="tiny">El óptimo difuso es diagnóstico, no una consigna: no valida sombra 3D ni actuador. Perez puede incluir una corrección de horizonte negativa. El mapa angular es orientativo; los W/m² salen del motor. View factor: aproximación 2D de filas.</div>
-      </div>
       <div class="pick3d" id="pick3d" style="display:none">
         <div class="hd"><span id="pickTit">—</span><span class="x" id="pickX" title="cerrar">✕</span></div>
         <div id="pickBody"></div>
@@ -504,6 +489,41 @@
       <span style="font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;color:var(--muted)">ESCENA</span>
       <select id="polview" class="btn small" title="SOLO elige qué política se anima en la escena y en el HUD; cuáles se calculan y comparan se marca en el panel Políticas"></select>
     </div>
+    <details class="sky-details" id="skyDetails">
+      <summary>Cielo y difusa <span class="sky-summary" id="skySummary">Datos del instante · desplegar</span></summary>
+      <!-- Datos del mismo motor, fuera de la superficie de navegación 3D. -->
+      <div class="sky3d" id="sky3d">
+        <section aria-label="Irradiancia y componentes de cielo">
+          <div class="st"><span id="sky3dIco">☁</span><span id="sky3dTxt">—</span></div>
+          <div class="row"><span>Nubosidad</span><b id="sky3dCC">--</b></div>
+          <div class="row"><span>GHI</span><b id="sky3dGHI">--</b></div>
+          <div class="row"><span>DNI</span><b id="sky3dDNI">--</b></div>
+          <div class="row"><span>DHI</span><b id="sky3dDHI">--</b></div>
+          <div class="bar"><i id="sky3dBarD"></i><i id="sky3dBarF"></i></div>
+          <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>
+          <div class="sep"></div>
+          <div class="subt">Difusa de cielo · Perez</div>
+          <div class="row"><span>Isotrópica</span><b id="skyIso">--</b></div>
+          <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>
+          <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>
+        </section>
+        <section aria-label="Explicación del ángulo">
+          <div class="subt">Política de planta · instante actual</div>
+          <div class="row"><span>View factor 2D front/rear</span><b id="skyVF">--</b></div>
+          <div class="row"><span>POA sky Perez front/rear</span><b id="skyFR">--</b></div>
+          <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>
+          <div class="row"><span>θ óptimo diagnóstico · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>
+          <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>
+        </section>
+        <section aria-label="Mapa angular de cielo">
+          <div class="subt">Mapa angular · posición del Sol</div>
+          <canvas id="skydome" class="sky-map" aria-label="Distribución relativa del cielo y recorrido solar"></canvas>
+          <div class="skybar"></div>
+          <div class="bl"><span>Menor radiancia</span><span>Mayor</span></div>
+        </section>
+        <div class="tiny">El óptimo difuso es diagnóstico, no una consigna: no valida sombra 3D ni actuador. Perez puede incluir una corrección de horizonte negativa. El mapa angular es orientativo; los W/m² salen del motor. View factor: aproximación 2D de filas.</div>
+      </div>
+    </details>
     <div class="hud" id="hud"></div>
   </div>
 
@@ -793,25 +813,56 @@ function skyRamp(t,a){
    sombras, POA ni iluminación de la escena. Es una capa de lectura. */
 function makeSkyDome3D(scene){
   if(typeof THREE==="undefined")return null;
+  const group=new THREE.Group();group.visible=false;scene.add(group);
   const cv=document.createElement("canvas");cv.width=720;cv.height=360;
   const tx=new THREE.CanvasTexture(cv);
   tx.minFilter=THREE.LinearFilter;tx.magFilter=THREE.LinearFilter;
   tx.wrapS=THREE.RepeatWrapping;tx.wrapT=THREE.ClampToEdgeWrapping;
   tx.generateMipmaps=false;
   const mat=new THREE.MeshBasicMaterial({
-    map:tx,side:THREE.BackSide,transparent:true,opacity:.78,depthWrite:false,depthTest:false,
-    fog:false
+    map:tx,side:THREE.BackSide,transparent:true,opacity:.64,depthWrite:false,depthTest:true,
+    fog:false,toneMapped:false
   });
-  const mesh=new THREE.Mesh(new THREE.SphereGeometry(330,64,32),mat);
-  mesh.renderOrder=-20;mesh.frustumCulled=false;scene.add(mesh);
-  return {mesh:mesh,canvas:cv,tex:tx,key:""};
+  // Hemisferio a escala de la planta. La cara interior deja ver los trackers
+  // por delante de la bóveda, sin un mapa plano pegado a la cámara.
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(1,72,36,0,2*Math.PI,0,Math.PI/2),mat);
+  mesh.renderOrder=-20;mesh.frustumCulled=false;group.add(mesh);
+  const point=(alt,az,r=1.002)=>new THREE.Vector3(r*Math.cos(alt*RAD)*Math.cos(az*RAD),r*Math.sin(alt*RAD),r*Math.cos(alt*RAD)*Math.sin(az*RAD));
+  const lines=[];
+  for(const alt of [0,15,30,45,60,75])for(let az=0;az<360;az+=3)lines.push(point(alt,az),point(alt,az+3));
+  for(let az=0;az<360;az+=30)for(let alt=0;alt<90;alt+=3)lines.push(point(alt,az),point(alt+3,az));
+  const grid=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines),
+    new THREE.LineBasicMaterial({color:0xc7e1ff,transparent:true,opacity:.32,depthWrite:false,fog:false,toneMapped:false}));
+  group.add(grid);
+  for(const [label,az] of [['N',0],['E',90],['S',180],['O',270]]){
+    const c=document.createElement('canvas');c.width=96;c.height=64;
+    const ctx=c.getContext('2d');ctx.font='600 42px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle='#edf6ff';ctx.fillText(label,48,32);
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false,fog:false,toneMapped:false}));
+    sprite.position.copy(point(0,az,1.07));sprite.position.y=.035;sprite.scale.set(.12,.08,1);group.add(sprite);
+  }
+  const path=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({color:0xffe6a0,dashSize:.025,gapSize:.018,transparent:true,opacity:.85,depthWrite:false,fog:false,toneMapped:false}));
+  group.add(path);
+  const marker=new THREE.Mesh(new THREE.SphereGeometry(.022,16,12),new THREE.MeshBasicMaterial({color:0xffe69a,fog:false,toneMapped:false}));
+  group.add(marker);
+  return {group:group,mesh:mesh,canvas:cv,tex:tx,key:"",path:path,marker:marker,point:point};
 }
-function updateSkyDome3D(st){
+function updateSkyDome3D(st,day){
   if(!TD||!TD.skyDome3D||!st)return;
   const D=TD.skyDome3D;
   D.mesh.visible=!!SKYDOME_ON;
+  D.group.visible=!!SKYDOME_ON;
   if(!SKYDOME_ON)return;
-  D.mesh.position.set(TD.cx||0,0,TD.cz||0);
+  D.group.position.set(TD.cx||0,0,TD.cz||0);
+  D.group.scale.setScalar(TD.skyRadius||80);
+  D.marker.visible=st.zen<90;
+  D.marker.position.copy(D.point(90-st.zen,st.az,1.006));
+  if(day&&D.pathDay!==day){
+    const points=[];
+    for(let i=0;i<day.n;i+=5)if(day.zen[i]<90)points.push(D.point(90-day.zen[i],day.az[i],1.006));
+    D.path.geometry.dispose();D.path.geometry=new THREE.BufferGeometry().setFromPoints(points);
+    D.path.visible=points.length>1;D.path.computeLineDistances();D.pathDay=day;
+  }
   /* redibujar sólo cuando cambia el estado visible del cielo; el renderer
      puede ir a 60 fps, pero la distribución no necesita recalcularse 60 veces. */
   const k=[Math.round(st.zen*10),Math.round(st.az*10),
@@ -821,8 +872,8 @@ function updateSkyDome3D(st){
   const x=D.canvas.getContext("2d"),W=D.canvas.width,H=D.canvas.height;
   const img=x.createImageData(W,H),dd=img.data;
   let vmax=.001;
-  for(let yy=0;yy<H/2;yy+=2){
-    const alt=90-(yy/(H/2))*90;
+  for(let yy=0;yy<H;yy+=2){
+    const alt=90-(yy/H)*90;
     for(let xx=0;xx<W;xx+=4){
       /* THREE.SphereGeometry: u crece con phi, pero en nuestro marco de
          escena +X=N y +Z=E la dirección mundial cumple az_compás=180°-phi.
@@ -832,18 +883,17 @@ function updateSkyDome3D(st){
     }
   }
   for(let yy=0;yy<H;yy++){
-    /* equirectangular: parte superior = hemisferio visible; la inferior se deja
-       oscura para que nunca parezca que hay radiancia bajo el horizonte. */
-    const alt=90-(yy/(H/2))*90;
+    // La textura completa cubre sólo el hemisferio superior, de cenit a horizonte.
+    const alt=90-(yy/H)*90;
     for(let xx=0;xx<W;xx++){
       const az=(180-360*xx/W+360)%360;
-      const q=(yy<H/2)?Math.pow(skyRelRadiance(st,alt,az)/vmax,.55):0;
+      const q=Math.pow(skyRelRadiance(st,alt,az)/vmax,.55);
       const stops=[[13,47,178],[28,105,235],[38,194,218],[246,225,91],[255,132,42],[190,29,38]];
       const z=Math.max(0,Math.min(1,q))*(stops.length-1),ii=Math.min(stops.length-2,Math.floor(z)),f=z-ii,A=stops[ii],B=stops[ii+1],j=(yy*W+xx)*4;
       dd[j]=Math.round(A[0]+(B[0]-A[0])*f);
       dd[j+1]=Math.round(A[1]+(B[1]-A[1])*f);
       dd[j+2]=Math.round(A[2]+(B[2]-A[2])*f);
-      dd[j+3]=yy<H/2?190:0;
+      dd[j+3]=st.zen<90?190:0;
     }
   }
   x.putImageData(img,0,0);D.tex.needsUpdate=true;
@@ -880,15 +930,14 @@ function diffuseOptimum01(day,i){
   const out={theta:bestTh,diff:best,poa:bestComp};cache.set(sig,out);return out;
 }
 function drawSkyDome(){
-  const cv=$("skydome");if(!cv||!SIM||!VIEW3D){if(cv)cv.style.display="none";return;}
-  cv.style.display=SKYDOME_ON?"":"none";
+  const cv=$("skydome");if(!cv||!SIM)return;
   const i=Math.max(0,Math.min(SIM.dayF.n-1,Math.round(CLOCK/DT_FINE))),day=SIM.dayF,irr=day.irr[i],st=skyPerezState(day.zen[i],day.az[i],irr,day.doy);
-  updateSkyDome3D(st);
-  if(SKYDOME_ON){
-  const holder=$("view3d"),dpr=Math.min(2,window.devicePixelRatio||1),w=Math.max(2,holder.clientWidth),h=Math.max(2,holder.clientHeight);
+  updateSkyDome3D(st,day);
+  if($('skyDetails').open){
+  const dpr=Math.min(2,window.devicePixelRatio||1),w=Math.max(2,cv.clientWidth),h=Math.max(2,cv.clientHeight);
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
   const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
-  const R=Math.min(w*.31,h*.43),cx=w*.53,cy=h*.39;x.save();x.globalCompositeOperation="screen";
+  const R=Math.max(1,Math.min(w/2-25,h/2-24)),cx=w/2,cy=h/2;x.save();x.globalCompositeOperation="screen";
   let vmax=0,samples=[];
   for(let alt=2.5;alt<90;alt+=5)for(let az=2.5;az<360;az+=5){const L=skyRelRadiance(st,alt,az);vmax=Math.max(vmax,L);samples.push([alt,az,L]);}
   for(const q of samples){const rr=(90-q[0])/90*R,aa=q[1]*RAD,px=cx+rr*Math.sin(aa),py=cy-rr*Math.cos(aa);x.fillStyle=skyRamp(Math.pow(q[2]/(vmax||1),.55),.34);x.beginPath();x.arc(px,py,Math.max(3,R/35),0,2*Math.PI);x.fill();}
@@ -2650,7 +2699,7 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.32.0';
+const VER='v1.32.1';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -3886,6 +3935,7 @@ function drawScene(){
   // fina); la DECISIÓN de la política sigue en su ciclo de control (dtMin)
   const gm=solarPos(localToUTCms($('date').value,m,+$('tz').value),+$('lat').value,+$('lon').value);
   const irr=dayF.irr[iF],zen=gm.zen,az=gm.az;
+  pintaCielo3D(irr,cc,90-zen);
   const pv=$('polview').value,r=SIM.res[pv]||SIM.res.pvlib;
   const th=r.execF[iF],thn=SIM.thNF[iF],flag=r.flagF[iF];
   const rate=slewRateAt(r.execF,iF,DT_FINE);            // °/s que está girando AHORA
@@ -4090,6 +4140,7 @@ function pintaCielo3D(irr,ccMean,el){
   const box=$('sky3d'); if(!box)return;
   box.style.display='';
   const c=claseCielo(irr,el);
+  $('skySummary').textContent=c.txt+(Number.isFinite(c.dif)?' · '+Math.round(100*c.dif)+' % difusa':'');
   $('sky3dIco').textContent=c.ico;
   $('sky3dTxt').textContent=c.txt; $('sky3dTxt').style.color=c.col;
   $('sky3dCC').textContent=Number.isFinite(ccMean)?Math.round(100*ccMean)+' %':'--';
@@ -4174,6 +4225,7 @@ let LASTIRR=null,LASTEL=0,CENIT=false;
    inclinada (~68 grados) y con el norte hacia arriba. */
 function toggleCenit(){
   if(!TD)return;
+  if(SKYDOME_ON)setSkyView(false);
   const b=$('cenitbtn');
   if(!CENIT){
     TD.camPrev={p:TD.camera.position.clone(),t:TD.controls.target.clone()};
@@ -4580,6 +4632,7 @@ function build3D(){
   }
   TD.world=world;TD.scene.add(world);
   TD.cx=cx;TD.cz=cz;
+  TD.skyRadius=Math.max(32,Math.hypot(span/2,depth/2)+12);
   // sombras ceñidas a la planta (texel fino) y reencuadre 3/4 aéreo al tamaño
   const sc2=TD.sun.shadow.camera,R2=Math.max(70,span*0.62,depth*0.72);
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;sc2.updateProjectionMatrix();
@@ -4604,6 +4657,7 @@ function build3D(){
     TD.controls.target.set(cx,0,cz);
   }
   TD.scene.fog.near=260;TD.scene.fog.far=850;
+  if(reframe&&SKYDOME_ON)frameSkyDome(true);
   BUILT.key=key;
 }
 
@@ -4865,6 +4919,7 @@ function buildReal3D(zc,reframe){
   }
   TD.world=world;TD.scene.add(world);
   TD.cx=cx;TD.cz=cz;
+  TD.skyRadius=Math.max(32,Math.hypot(D/2,W/2)+30);
   TD.realDirty=true;   // sin esto, las piezas que BASCULAN quedaban sin matriz hasta el primer cambio de θ
   const sc2=TD.sun.shadow.camera,R2=L*0.62;
   sc2.left=-R2;sc2.right=R2;sc2.top=R2;sc2.bottom=-R2;
@@ -4877,6 +4932,7 @@ function buildReal3D(zc,reframe){
   TD.camera.far=L*8;TD.camera.updateProjectionMatrix(); // 2,7 km de planta: far acorde
   TD.controls.maxDistance=L*2.5;
   TD.scene.fog.near=L*1.1;TD.scene.fog.far=L*3.2;       // niebla lejos: la planta entera a la vista
+  if(reframe&&SKYDOME_ON)frameSkyDome(true);
 }
 const _m4=typeof THREE!=='undefined'?new THREE.Matrix4():null;
 const _rot=typeof THREE!=='undefined'?new THREE.Matrix4():null;
@@ -5037,7 +5093,7 @@ function update3D(){
     // …y el fondo se agrisa hacia la tapa lechosa del overcast
     const grey=(0.30*r0+0.50*g0+0.20*b0)*1.9+0.10, f=ccMean;
     OBJ.bg=[r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f];
-    TD.sunMesh.visible=irr.dni>1;
+    TD.sunMesh.visible=!SKYDOME_ON&&irr.dni>1;
     OBJ.disco=1-0.85*ccMean;                        // el disco, velado por las nubes
     /* SIN HAZ NO HAY SOMBRA DURA. Medido a mediodia con «Overcast total»: el
        sol baja a intensidad 0,054 (4 % de la clara) y aun asi se seguia
@@ -5104,6 +5160,7 @@ function update3D(){
     for(const s of Z.spins)s.rotation.x=th*RAD;              // escena sintética
     if(Z.th==null||Math.abs(Z.th-th)>1e-9){Z.th=th;TD.realDirty=true;}   // planta real
     if(Z.cloudMat){
+      Z.cloudMesh.visible=!SKYDOME_ON;
       Z.objNube=0.9*ccz;
       if(Z.shadowMat)Z.objDrape=drapeOpac(ccz);
     }
@@ -5132,6 +5189,7 @@ function update3D(){
   if(TD.real){
     const R0=PLANT_REAL;
     for(const col of TD.real.cols){
+      col.cloud.visible=!SKYDOME_ON;
       const lag=(zc.on&&R0)?zc.cross*(col.cloud.position.z-R0.x0)/((R0.x1-R0.x0)||1):0;
       const b=Math.max(0,Math.min(287,bin-Math.round(lag/5)));
       col.objNube=0.9*CC[b];
@@ -5194,20 +5252,58 @@ function setTab(three){
   if(!VIEW3D&&FLY)flyStop();
   $('view3d').style.display=VIEW3D?'':'none';
   $('scene').style.display=VIEW3D?'none':'';
-  $('tab3d').classList.toggle('acc',VIEW3D);
+  $('tab3d').classList.toggle('acc',VIEW3D&&!SKYDOME_ON);
+  $('tab3d').setAttribute('aria-pressed',String(VIEW3D&&!SKYDOME_ON));
   $('tab2d').classList.toggle('acc',!VIEW3D);
   if(VIEW3D){build3D();update3D();drawSkyDome();}
   else drawScene();
 }
 let SKYDOME_ON=false;
-$("skytoggle").onclick=()=>{SKYDOME_ON=!SKYDOME_ON;$("skytoggle").classList.toggle("acc",SKYDOME_ON);$("skytoggle").setAttribute('aria-pressed',String(SKYDOME_ON));$("skytoggle").textContent=SKYDOME_ON?'Volver a vista natural':'Mapa de radiancia';if(TD&&TD.skyDome3D)TD.skyDome3D.mesh.visible=SKYDOME_ON;drawSkyDome();};
-$('tab3d').onclick=()=>setTab(true);
-$('tab2d').onclick=()=>setTab(false);
+function frameSkyDome(save){
+  if(!TD)return;
+  if(save)TD.skyCamera={p:TD.camera.position.clone(),t:TD.controls.target.clone(),max:TD.controls.maxDistance};
+  const R=TD.skyRadius||80,holder=$('view3d'),aspect=holder.clientWidth/Math.max(1,holder.clientHeight)||1;
+  const vfov=TD.camera.fov*RAD,hfov=2*Math.atan(Math.tan(vfov/2)*aspect);
+  const distance=1.14*R/Math.sin(Math.min(vfov,hfov)/2);
+  const target=new THREE.Vector3(TD.cx,.32*R,TD.cz);
+  TD.controls.target.copy(target);
+  TD.camera.position.copy(target).addScaledVector(new THREE.Vector3(-.78,.65,1.05).normalize(),distance);
+  TD.controls.maxDistance=Math.max(TD.controls.maxDistance,distance*2);
+  TD.camera.far=Math.max(TD.camera.far,distance*3);TD.camera.updateProjectionMatrix();TD.controls.update();
+}
+function setSkyView(on){
+  if(on&&!VIEW3D)setTab(true);
+  if(on&&!TD){
+    $('skyDetails').open=true;$('skyViewNote').hidden=false;
+    $('skyViewNote').textContent='La bóveda 3D necesita WebGL. El mapa angular está disponible en Cielo y difusa.';
+    drawSkyDome();return;
+  }
+  if(on===SKYDOME_ON)return;
+  if(FLY)flyStop();
+  if(on&&CENIT)toggleCenit();
+  SKYDOME_ON=!!on;
+  if(on)frameSkyDome(true);
+  else if(TD&&TD.skyCamera){
+    TD.camera.position.copy(TD.skyCamera.p);TD.controls.target.copy(TD.skyCamera.t);
+    TD.controls.maxDistance=TD.skyCamera.max;TD.skyCamera=null;TD.controls.update();
+  }
+  $('skytoggle').classList.toggle('acc',SKYDOME_ON);
+  $('skytoggle').setAttribute('aria-pressed',String(SKYDOME_ON));
+  $('tab3d').classList.toggle('acc',VIEW3D&&!SKYDOME_ON);
+  $('tab3d').setAttribute('aria-pressed',String(VIEW3D&&!SKYDOME_ON));
+  $('skyViewNote').hidden=!SKYDOME_ON;
+  if(SKYDOME_ON)$('skyViewNote').textContent='Bóveda celeste · distribución angular orientativa, recorrido y posición solar. Arrastra para orbitar.';
+  update3D();drawSkyDome();
+}
+$('skytoggle').onclick=()=>setSkyView(!SKYDOME_ON);
+$('tab3d').onclick=()=>{setSkyView(false);setTab(true);};
+$('tab2d').onclick=()=>{setSkyView(false);setTab(false);};
+$('skyDetails').addEventListener('toggle',drawSkyDome);
 function refreshScene(rebuild){
   drawScene();                       // corte 2D + HUD (el HUD sirve a las dos vistas)
   drawIrr();drawTheta();drawPoa();   // el cursor de tiempo sigue al reloj (también en ▶)
-  if(VIEW3D){if(rebuild)build3D();update3D();drawSkyDome();}
-  else if($("skydome"))$("skydome").style.display="none";
+  if(VIEW3D){if(rebuild)build3D();update3D();}
+  drawSkyDome();
 }
 
 /* ── vuelo libre (como el de los cobertura 3D): WASD + ratón capturado ── */
@@ -5909,7 +6005,7 @@ $('anisoOn').addEventListener('change',()=>{fillPolview();recompute();});
    tirar segundos de CPU para llegar a los mismos vatios-hora. */
 $('battwh').addEventListener('change',()=>{if(SIM){drawTable();renderYear365();}});
 $('zonalOn').addEventListener('change',()=>{zskyRender();recompute();});
-window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();}});
+window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta();drawPoa();drawScene();drawSkyDome();}});
 
 skyPresetApply('tarde',0);
 zskyRender();

@@ -174,13 +174,13 @@ t('SKY DOME V2: el UV de la esfera respeta azimut de compás N-E-S-W', () => {
   if (!fn.includes('(180-360*xx/W+360)%360'))
     throw new Error('la textura 3D no convierte UV de SphereGeometry a azimut de compás');
   const material = html.slice(html.indexOf('function makeSkyDome3D('), i);
-  if (!material.includes('depthTest:false'))
-    throw new Error('el dome de cielo debe renderizar detrás de la planta, no competir en profundidad');
+  if (!material.includes('depthTest:true'))
+    throw new Error('la bóveda debe respetar la profundidad para no pintar sobre los trackers');
 });
 
 t('SKY DOME V2: la misma radiancia pinta también el cielo 3D real', () => {
   for (const k of ['function makeSkyDome3D(', 'function updateSkyDome3D(',
-                   'new THREE.SphereGeometry(330', 'side:THREE.BackSide',
+                   'new THREE.SphereGeometry(1,72,36', 'side:THREE.BackSide',
                    'skyRelRadiance(st,alt,az)', 'skyDome3D:skyDome3D'])
     if (!html.includes(k)) throw new Error('falta integración 3D: ' + k);
   const fn = html.slice(html.indexOf('function updateSkyDome3D('),

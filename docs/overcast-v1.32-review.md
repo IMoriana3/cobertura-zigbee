@@ -1,5 +1,23 @@
 # Overcast v1.32 — SUNNY / OVERCAST y corrección Perez
 
+## v1.32.1 — escena despejada y bóveda celeste
+
+- La ficha de cielo y el mapa polar salen del lienzo 3D. Se consultan en
+  `Cielo y difusa`, un panel nativo plegable cerrado al entrar, bajo el reloj.
+- `Bóveda celeste` encuadra un hemisferio sobre la planta existente, con
+  meridianos, puntos cardinales, posición y recorrido solar del mismo día.
+  Conserva `seguidor.js` y el pipeline de cálculo sin cambios.
+- La bóveda se dimensiona a la planta, respeta la profundidad y muestra su
+  cara interior para no velar los trackers. Al salir recupera la cámara.
+  Las nubes visuales se ocultan sólo durante esta vista explicativa.
+- Sin WebGL se ofrece el mapa angular en el panel de datos.
+- Verificación local: 122 comprobaciones; controles y restauración en DOM;
+  geometría Three.js real y encuadre proyectado a tres tamaños de pantalla
+  y planta; POA idéntica antes y después de cambiar de vista. El banco de
+  navegador incluye apertura del panel y ausencia de solapamiento a
+  2000, 1100 y 390 px. No se afirma validación local de píxeles WebGL.
+- Las funciones de física y el tracker compartido no cambian en esta revisión.
+
 Continuación de IMoriana3/cobertura-zigbee#763 sobre
 `6246d35260ea434f8741dfde7df6a6e7efded577`.
 

@@ -75,7 +75,8 @@ async function pon(preset, minuto = 720) {
       drape, nube,
       camY: +TD.camera.position.y.toFixed(1),
       nubeY: (TD.zones[0] && TD.zones[0].cloudMesh) ? +TD.zones[0].cloudMesh.position.y.toFixed(1) : null,
-      panel: { visible: document.getElementById('sky3d').style.display !== 'none',
+      panel: { outsideScene: !document.getElementById('view3d').contains(document.getElementById('sky3d')),
+               folded: !document.getElementById('skyDetails').open,
                estado: txt('sky3dTxt').trim(), cc: txt('sky3dCC').trim(),
                ghi: txt('sky3dGHI').trim(), dni: txt('sky3dDNI').trim(), dhi: txt('sky3dDHI').trim(),
                directa: txt('sky3dPD').trim() },
@@ -88,7 +89,9 @@ const OV = await pon('overcast');
 const CL = await pon('despejado');
 t('con manto cerrado el panel dice OVERCAST', () => eq(OV.panel.estado, 'OVERCAST'));
 t('y con cielo claro dice DESPEJADO', () => eq(CL.panel.estado, 'DESPEJADO'));
-t('el panel está a la vista en la escena', () => eq(OV.panel.visible, true));
+t('los datos están fuera de la escena y plegados al entrar', () => {
+  eq(OV.panel.outsideScene,true);eq(OV.panel.folded,true);
+});
 /* NO SE INVENTA NADA: en overcast el core declara DNI = 0 y DHI = GHI (el
    overcast canónico del escenario de test del core). Si el panel se estuviera
    alimentando de otra cosa, estas tres no cuadrarían entre sí. */
@@ -452,6 +455,7 @@ const restored=await pg.evaluate(()=>JSON.stringify({cc:CC,zsky:ZSKY,
   clock:CLOCK,policy:$('polview').value,poa:SIM.res.pvlib.poaF}));
 t('Restaurar cielo recupera fuente, NCUs, configuración y POA exacta',()=>eq(restored,original));
 const radianceBefore=await pg.evaluate(()=>JSON.stringify(SIM.res.pvlib));
+const cameraBefore=await pg.evaluate(()=>JSON.stringify({p:TD.camera.position.toArray(),t:TD.controls.target.toArray()}));
 await pg.click('#skytoggle');
 const radiance=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visible,
   poa:JSON.stringify(SIM.res.pvlib),theta:$('skyTheta').textContent}));
@@ -463,6 +467,21 @@ const natural=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visib
 t('la vista natural conserva la explicación numérica del instante',()=>{
   eq(natural.on,false);eq(natural.mesh,false);eq(natural.theta,radiance.theta);
 });
+const cameraAfter=await pg.evaluate(()=>JSON.stringify({p:TD.camera.position.toArray(),t:TD.controls.target.toArray()}));
+t('salir de la bóveda recupera el encuadre anterior',()=>eq(cameraAfter,cameraBefore));
+await pg.click('#skyDetails > summary');
+for(const viewport of [{width:2000,height:800},{width:1100,height:700},{width:390,height:844}]){
+  await pg.setViewportSize(viewport);
+  const box=await pg.evaluate(()=>{
+    const scene=$('view3d').getBoundingClientRect(),data=$('sky3d').getBoundingClientRect();
+    return {open:$('skyDetails').open,below:data.top>=scene.bottom,
+            fits:$('sky3d').scrollWidth<=$('sky3d').clientWidth+1};
+  });
+  t('datos desplegados sin tapar la planta a '+viewport.width+' px',()=>{
+    eq(box.open,true);eq(box.below,true);eq(box.fits,true);
+  });
+}
+await pg.click('#skyDetails > summary');
 
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
