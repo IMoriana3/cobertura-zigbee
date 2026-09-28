@@ -93,7 +93,15 @@
         tracker_asset_id:t.tracker_asset_id,tcu_asset_id:t.tcu_asset_id})),
       ncus:move(previous.ncus),hsus:move(previous.hsus),reps:move(previous.reps)};
   }
-  const api = {validate, validAt, attachLayout, load, resolveRows, plan};
+  // One continuous scale for both views; no operational good/bad thresholds.
+  function continuityColor(m) {
+    if (!m || m.estado !== 'MEDIDO' || typeof m.porcentaje !== 'number' ||
+        !Number.isFinite(m.porcentaje) || m.porcentaje < 0 || m.porcentaje > 100) return '#6A7B8B';
+    const h = 204 / 60, s = .7, l = Number((75 - 43 * m.porcentaje / 100).toFixed(1)) / 100;
+    const c = (1 - Math.abs(2*l - 1))*s, x = c*(1 - Math.abs(h%2 - 1)), a = l-c/2;
+    return '#' + [0,x,c].map(v => Math.round(255*(v+a)).toString(16).padStart(2,'0')).join('');
+  }
+  const api = {validate, validAt, attachLayout, load, resolveRows, plan, continuityColor};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ScadaProjection = api;
 })(typeof globalThis === 'undefined' ? this : globalThis);

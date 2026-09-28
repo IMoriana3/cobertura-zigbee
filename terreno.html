@@ -1895,6 +1895,7 @@ function scadaBindings(trackers,msg,plantId){
 }
 function scadaColorFila(fl,capa){
   if(!fl)return 0x6A7B8B;
+  if(capa==='continuidad')return parseInt(ScadaProjection.continuityColor(fl.continuidad).slice(1),16);
   if(capa==='posiciones'){
     var tilt=scadaNumero(fl.tilt),dif=scadaNumero(fl.dif);
     if(String(fl.salud||'').toUpperCase()==='OFFLINE'||tilt===null||dif===null)return 0x6A7B8B;
@@ -1906,10 +1907,15 @@ function scadaCasar(msg){
   if(msg.version!==2||msg.plant_key!==PLANT)return false;
   if(!TRK.length){scadaPend=msg;return true;}
   var identity=LAYOUT&&LAYOUT.scada_identity;
+  var continuity=msg.capa==='continuidad';
   var identityOK=!identity||(msg.registry_revision===identity.registry_revision&&ScadaProjection.validAt(identity,msg.at));
+  if(continuity)identityOK=!!identity&&identityOK&&msg.fuente==='telemetria_csv'&&
+    msg.timezone===identity.plant_timezone&&Number.isFinite(Date.parse(msg.until))&&
+    Date.parse(msg.until)>Date.parse(msg.at)&&ScadaProjection.validAt(identity,Date.parse(msg.until)-1);
   var joined=scadaBindings(TRK,identityOK?msg:Object.assign({},msg,{filas:[]}),LAYOUT&&LAYOUT.plant_id);
   if(!identityOK||SCADA_ID_ERROR)Object.keys(joined.motivos).forEach(function(k){joined.motivos[k]=SCADA_ID_ERROR||'Diagnóstico fuera de revisión o vigencia de identidad';});
-  SCADA3D=Object.assign(joined,{planta:msg.planta,fecha:msg.fecha||'',capa:msg.capa==='posiciones'?'posiciones':'salud'});
+  SCADA3D=Object.assign(joined,{planta:msg.planta,fecha:msg.fecha||'',
+    capa:continuity?'continuidad':msg.capa==='posiciones'?'posiciones':'salud'});
   SCADA_METEO=null;
   if(msg.meteo&&scadaNumero(msg.meteo.ws)!==null){
     SCADA_METEO=msg.meteo;WIND.ws=Math.max(0,Number(msg.meteo.ws));
@@ -1948,6 +1954,17 @@ function scadaFicha(i){
     e.title='pulsa para cerrar';e.onclick=function(){e.style.display='none';};
     document.body.appendChild(e);}
   if(!fl){e.innerHTML='<b>Punto del plano '+scadaTexto(TRK[i].id||'sin etiqueta')+'</b><br><b>UNKNOWN · sin medida atribuible</b><br>'+scadaTexto(SCADA3D&&SCADA3D.motivos[i]||'sin diagnóstico')+'<br>Esto no demuestra que esté offline ni averiado.<br>Posición visual neutra; no es un ángulo medido.';e.style.display='block';return;}
+  if(SCADA3D.capa==='continuidad'){
+    var m=fl.continuidad||{},known=scadaColorFila(fl,'continuidad')!==0x6A7B8B;
+    e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+' · '+scadaTexto(TRK[i].id)+'</b><br>NCU '+scadaTexto(fl.ncu)+' · TCU '+scadaTexto(fl.tcu)
+      +'<br>Continuidad de telemetría del día: <b>'+(known?scadaTexto(m.porcentaje)+'%':'UNKNOWN')+'</b>'
+      +'<br>'+scadaTexto(SCADA3D.fecha)
+      +(known?'<br>'+scadaTexto(m.cortes)+' huecos · '+scadaTexto(m.seg_sin_datos)+' s sin datos'
+        +'<br>Archivos: '+(m.archivos||[]).map(scadaTexto).join(', '):'<br>'+scadaTexto(m.motivo||'Sin evidencia suficiente'))
+      +'<br>APROXIMACIÓN: cadencia observada del CSV. No mide RF ni tiempo online.'
+      +'<br>Posición visual neutra; esta capa no aporta ángulos.<br><small>Pulsa para cerrar</small>';
+    e.style.display='block';return;
+  }
   var s=String(fl.salud||'').toUpperCase();
   var cH={OK:'#36D399',AVISO:'#F2A900',ALARMA:'#ef5f6b',OFFLINE:'#8093A4','SIN LECTURA':'#8093A4'};
   var hay=function(v){return v!=null&&v!=='';};
@@ -1998,6 +2015,15 @@ function scadaHud(){
   for(k in SCADA3D.byTrk){var sld=String(SCADA3D.byTrk[k].salud||'').toUpperCase();
     if(sld==='ALARMA')nAl++;else if(sld==='OFFLINE')nOff++;}
   e.style.maxWidth='calc(100vw - 40px)';e.style.width='max-content';
+  if(SCADA3D.capa==='continuidad'){
+    var measured=Object.values(SCADA3D.byTrk).filter(function(f){return scadaColorFila(f,'continuidad')!==0x6A7B8B;}).length;
+    e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · '+scadaTexto(SCADA3D.fecha)
+      +'<br><b>Continuidad de telemetría del día (%)</b> · '+measured+' con evidencia · '+(TRK.length-measured)+' UNKNOWN'
+      +'<br><span style="color:'+ScadaProjection.continuityColor({estado:'MEDIDO',porcentaje:0})+'">● 0%</span> → '
+      +'<span style="color:'+ScadaProjection.continuityColor({estado:'MEDIDO',porcentaje:100})+'">● 100%</span> · gris: UNKNOWN'
+      +'<br><span style="font-weight:400">APROXIMACIÓN · clic: porcentaje, huecos y archivos. Posición neutra, sin ángulo medido.</span>';
+    return;
+  }
   e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · diagnóstico '+scadaTexto(SCADA3D.fecha)
     +'<br>Capa: <b>'+(SCADA3D.capa==='posiciones'?'Posiciones · desviación respecto a consigna':'Salud del diagnóstico')+'</b>'
     +' · '+SCADA3D.casados+'/'+TRK.length+' puntos vinculados · <b>'+SCADA3D.sin+' UNKNOWN</b>'

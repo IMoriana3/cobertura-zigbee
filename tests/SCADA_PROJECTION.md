@@ -49,11 +49,29 @@ includes plant_id, registry_revision and an aware UTC observation instant.
 Validation: `node tests/test_scada_projection.js`, `node tests/test_scada_identity.js`.
 The Python integration test accepts real registry/config inputs and uses the
 canonical IdentityRegistry, not a local replacement. Its small package wrapper
-tests the adapter only; full load_package/publication CLI validation remains a
-release gate against the merged canonical checkout.
+tests the adapter only. The full exporter with canonical load_package was also
+run successfully in development mode against PR #273 HEAD 183a97b4, including
+the original workbook and all manifest/source hashes. Publication validation
+still requires the merged canonical revision.
 
 UNKNOWN / release blockers: the canonical package PR is still awaiting its CI
 and merge; no published binding artifact has been generated or deployed. Live
 browser validation with authenticated diagnostics is not yet performed. The
 measured CSV layer retains its explicitly labelled continuity approximation;
 this change does not redefine it as expected-sample availability or RF coverage.
+
+DECISIÓN (28 September): the first measured map layer is daily telemetry log
+continuity (%), using the existing CSV aggregation. It is not RF coverage,
+online time or expected-sample availability. A continuous blue scale has no
+operational good/bad thresholds. scada-projection.js supplies the exact same
+color for both consumers. The sender transmits the already computed historical
+metrics, local date/timezone and UTC interval; 3D neither recomputes them nor
+substitutes diagnostic health. Missing evidence is gray/UNKNOWN. The whole day
+must fall within the published binding validity. The historical layer does not
+supply an instantaneous measured tilt and therefore uses a neutral visual pose.
+
+The 2D point detail retains map context and provides links to the CSV files.
+3D point detail shows continuity, gaps and contributing record IDs.
+The integration test in factiun-cartera/tests/test_scada_continuity_handoff.js
+exercises actual daily aggregation, the canonical sender and the real 3D
+consumer, including plant/NCU isolation and equal values/colors across views.
