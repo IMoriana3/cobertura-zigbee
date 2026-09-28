@@ -167,6 +167,19 @@ t('escena 3D con las libs LOCALES del repo (three.min.js + OrbitControls + segui
   if (!/<script src="seguidor\.js/.test(html)) throw new Error('sin seguidor.js (fuente única del modelo)');
   if (!/id="view3d"/.test(html)) throw new Error('sin contenedor 3D');
 });
+t('SKY DOME V2: la misma radiancia pinta también el cielo 3D real', () => {
+  for (const k of ['function makeSkyDome3D(', 'function updateSkyDome3D(',
+                   'new THREE.SphereGeometry(330', 'side:THREE.BackSide',
+                   'skyRelRadiance(st,alt,az)', 'skyDome3D:skyDome3D'])
+    if (!html.includes(k)) throw new Error('falta integración 3D: ' + k);
+  const fn = html.slice(html.indexOf('function updateSkyDome3D('),
+                        html.indexOf('function skyMaskRatio'));
+  if (!fn.includes('skyRelRadiance('))
+    throw new Error('el cielo 3D usa una distribución distinta del sky dome');
+  if (!/mesh\.visible=!!SKYDOME_ON/.test(fn))
+    throw new Error('el toggle no gobierna el dome 3D');
+});
+
 t('SKY DOME V2: UI integrada en la escena, no simulador paralelo', () => {
   for (const id of ['skydome','skytoggle','skyIso','skyCirc','skyHor','skyVF','skyFR','skyTheta','skyThetaOpt','skyGain'])
     if (!html.includes('id="' + id + '"')) throw new Error('falta ' + id);
