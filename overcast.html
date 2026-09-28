@@ -787,7 +787,7 @@ function makeSkyDome3D(scene){
   tx.wrapS=THREE.RepeatWrapping;tx.wrapT=THREE.ClampToEdgeWrapping;
   tx.generateMipmaps=false;
   const mat=new THREE.MeshBasicMaterial({
-    map:tx,side:THREE.BackSide,transparent:true,opacity:.78,depthWrite:false,
+    map:tx,side:THREE.BackSide,transparent:true,opacity:.78,depthWrite:false,depthTest:false,
     fog:false
   });
   const mesh=new THREE.Mesh(new THREE.SphereGeometry(330,64,32),mat);
@@ -812,7 +812,11 @@ function updateSkyDome3D(st){
   for(let yy=0;yy<H/2;yy+=2){
     const alt=90-(yy/(H/2))*90;
     for(let xx=0;xx<W;xx+=4){
-      const az=360*xx/W;vmax=Math.max(vmax,skyRelRadiance(st,alt,az));
+      /* THREE.SphereGeometry: u crece con phi, pero en nuestro marco de
+         escena +X=N y +Z=E la dirección mundial cumple az_compás=180°-phi.
+         Sin esta frontera el hotspot quedaría espejado/rotado respecto al
+         sunMesh aunque ambos usaran el mismo azimut numérico. */
+      const az=(180-360*xx/W+360)%360;vmax=Math.max(vmax,skyRelRadiance(st,alt,az));
     }
   }
   for(let yy=0;yy<H;yy++){
@@ -820,7 +824,8 @@ function updateSkyDome3D(st){
        oscura para que nunca parezca que hay radiancia bajo el horizonte. */
     const alt=90-(yy/(H/2))*90;
     for(let xx=0;xx<W;xx++){
-      const q=(yy<H/2)?Math.pow(skyRelRadiance(st,alt,360*xx/W)/vmax,.55):0;
+      const az=(180-360*xx/W+360)%360;
+      const q=(yy<H/2)?Math.pow(skyRelRadiance(st,alt,az)/vmax,.55):0;
       const stops=[[13,47,178],[28,105,235],[38,194,218],[246,225,91],[255,132,42],[190,29,38]];
       const z=Math.max(0,Math.min(1,q))*(stops.length-1),ii=Math.min(stops.length-2,Math.floor(z)),f=z-ii,A=stops[ii],B=stops[ii+1],j=(yy*W+xx)*4;
       dd[j]=Math.round(A[0]+(B[0]-A[0])*f);
