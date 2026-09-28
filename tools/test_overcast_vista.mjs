@@ -483,6 +483,20 @@ for(const viewport of [{width:2000,height:800},{width:1100,height:700},{width:39
 }
 await pg.click('#skyDetails > summary');
 
+await pg.click('[data-e="view"]');
+const eng=await pg.evaluate(()=>({policy:$('polview').value,
+  detail:document.querySelector('[data-e="detail"]').open,
+  reasons:window.OVERCAST_WORKBENCH.snapshot().daily.adaptive.decisions.length,
+  curve:document.querySelector('[data-e="curve"]').width,
+  lower:document.querySelector('#engineeringDock').getBoundingClientRect().top >= $('view3d').getBoundingClientRect().bottom}));
+t('el banco de ingeniería usa la política real y mantiene libre la planta',()=>{
+  eq(eng.policy,'adaptive');eq(eng.detail,true);eq(eng.lower,true);
+  if(!(eng.reasons>0&&eng.curve>0))throw new Error('faltan decisiones o curva angular');
+});
+await pg.evaluate(()=>{CLOCK=900;$('hour').value=900;refreshScene(false);});
+const reason=await pg.locator('[data-e="reason"]').textContent();
+t('la explicación muestra el instante seleccionado',()=>{if(!reason.includes('15:00'))throw new Error(reason);});
+
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
 });

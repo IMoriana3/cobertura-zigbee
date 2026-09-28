@@ -311,7 +311,7 @@ const src = html.slice(j0, i1);
    `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
    igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
 const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
-            + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
+            + '\n' + ['irradiancia.js','overcast_iam.generated.js','overcast_energy.js','overcast_engine.js'].map(p=>fs.readFileSync(path.join(ROOT,p),'utf-8')).join('\n');
 
 const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
@@ -1081,18 +1081,13 @@ t('los DOS rellenos de la gráfica de θ están en la leyenda, y con su color', 
 });
 
 t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () => {
-  // El día sintético entra como onda cuadrada, y eso no era neutral: un escalón
-  // es el caso FAVORABLE para las políticas que conmutan (transición
-  // instantánea, inequívoca y sostenida — lo que el confirm/dwell necesita para
-  // acertar), mientras que una rampa se pasa minutos en la zona ambigua. La
-  // página ya declaraba el sesgo CONTRARIO del año real (ERA5 horario alisa los
-  // tránsitos ⇒ infraestima el difuso) y no este, así que el lector tenía media
-  // cota y se la podía tomar por la verdad.
+  // Both temporal resolutions lose information differently. Neither supplies
+  // a proven bound on real gain. The old check required an unsupported claim.
   const nota = html.slice(html.indexOf('id="skyedit"'), html.indexOf('id="skyedit"') + 3000);
   if (!/presets son ESCALONES/i.test(nota))
     throw new Error('la nota del cielo no declara que los presets son escalones');
-  if (!/ERA5/.test(nota) || !/acotada entre los dos/.test(nota))
-    throw new Error('la nota no cierra la cota: sin el sesgo contrario del año real, declara media verdad');
+  if (!/ERA5/.test(nota) || !/no se puede garantizar/.test(nota) || /acotada entre los dos/.test(nota))
+    throw new Error('la nota debe reconocer el sesgo temporal sin inventar una cota');
   // LAS CIFRAS SE CAREAN CONTRA EL CÓDIGO, no se fijan a mano en las dos
   // puntas: si alguien mueve el preset, la nota deja de mentir en silencio.
   const linea = (html.match(/name==='tarde'\)\{([^}]*)\}/) || [])[1];

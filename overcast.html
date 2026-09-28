@@ -160,7 +160,7 @@
     Perez 1990 única para todas, clamp de backtracking innegociable (|θ| ≤ |θ_n|, sin sombra entre filas),
     máquina de estados con histéresis confirm/dwell <b>en minutos absolutos</b> (invariante en resolución) y
     lazo de control real (deadband 1° + slew 0,17°/s). Pinta el cielo del día (frentes, overcast, pulsos),
-    trae <b>días reales de Open-Meteo</b> (histórico, previsión o EN VIVO: GHI/DNI/DHI y nubosidad medidas)
+    trae <b>datos de Open-Meteo</b> (reanálisis histórico o previsión: GHI/DNI/DHI y nubosidad modeladas)
     y mira qué hace cada política y cuánto POA gana o pierde — y <b>cuánto cuesta conseguirlo</b>:
     arranques de motor, grados de maniobra y vatios-hora de batería, con el modelo de motor
     <b>medido en campo</b> (14.759 maniobras reales), y la factura repartida entre arrancar y girar. La física corre offline; Open-Meteo es el
@@ -239,7 +239,7 @@
     <div id="omrow" style="display:none">
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <button class="btn small" id="omload" title="Descarga GHI/DNI/DHI y nubosidad horarias del día de la fecha (archivo ERA5 si es antiguo, previsión si es reciente o futuro) y las usa como meteo del día — la irradiancia REAL, no el modelo de nubes">⬇ Cargar la fecha</button>
-        <button class="btn small" id="omlive" title="Modo EN VIVO: pone la fecha de hoy, carga la previsión con lo ya medido, sitúa el reloj en AHORA y se refresca cada 10 min">● En vivo</button>
+        <button class="btn small" id="omlive" title="Modo EN VIVO: pone la fecha de hoy, carga la previsión disponible, sitúa el reloj en AHORA y se refresca cada 10 min">● En vivo</button>
         <span class="pill" id="omstatus">sin datos</span>
       </div>
       <div class="nota" style="margin:0 0 8px">Open-Meteo (<code>open-meteo.com</code>, sin API key):
@@ -276,11 +276,9 @@
       <br><b>Y los presets son ESCALONES</b>, en rejilla de 5 min: «Tarde nublada» salta cc 0 → 0,40 a las
       13h00 y 0,40 → 0,90 a las 14h30, de golpe y <b>a la vez en toda la planta</b>. Un frente real tarda
       minutos en barrer el emplazamiento, así que la media de planta sube y baja en <b>rampa</b>. La
-      dirección del sesgo se sabe: un escalón es el caso <b>FAVORABLE</b> para las políticas que conmutan
-      —transición instantánea, inequívoca y sostenida, justo lo que el confirm/dwell necesita para
-      acertar— mientras que una rampa se pasa minutos en la zona ambigua, que es donde la histéresis
-      decide mal. <b>El año de 365 días reales tiene el sesgo CONTRARIO</b> (ERA5 es media horaria: alisa
-      los tránsitos ⇒ infraestima el modo difuso), así que la verdad queda <b>acotada entre los dos</b>.
+      sensibilidad a los escalones debe contrastarse con rampas y series temporales del sitio.
+      El reanálisis ERA5 promedia una hora y no resuelve las nubes rápidas: no se puede garantizar
+      el signo del sesgo ni afirmar que ambos escenarios acotan la ganancia real.
       <br>Con el <b>cielo por NCU</b> activo, el selector de arriba dice a QUIÉN estás pintando: la
       planta o una NCU concreta. Pintar una NCU no toca a las demás ni al cielo de planta, y los
       botones de preset y «despejar» actúan sobre esa misma NCU.</div>
@@ -320,7 +318,7 @@
       <div class="nota" style="margin-bottom:8px">Cada NCU con su cielo: es la única forma de ver la
         zonificación de verdad. Con el frente, todas las zonas ven la MISMA serie retardada — si el
         cielo es uniforme, el zonal es idéntico al global por construcción.
-        <b>Ojo:</b> con día real de Open-Meteo este modo usa la meteo medida SIN retardar (un punto
+        <b>Ojo:</b> con día real de Open-Meteo este modo usa la meteo de la fuente SIN retardar (un punto
         no trae información espacial); lo que cambia por zona es la nubosidad sintética.</div>
       <div id="zskygrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));
            gap:6px;overflow-y:auto;padding-right:4px"></div>
@@ -535,6 +533,8 @@
     <div class="legend" id="legend"></div>
   </div>
 
+  <div class="card" id="engineeringDock"></div>
+
   <div class="card">
     <h2>El día, política a política <span class="sn">POA con la MISMA Perez para todas (regla del core)</span>
       <span style="float:right">
@@ -583,7 +583,7 @@
           <option value="custom">Personalizado</option>
         </select></div>
       <div class="f"><label>% días claros</label><input id="wclear" type="number" step="1" min="0" max="100" value="55"
-        title="Fracción de días del año tipo DESPEJADO (cielo Ineichen limpio). Solo afecta al modo sintético «12 días × mezcla»; el de 365 días reales usa la meteo medida. Si los tres pesos no suman 100, se normalizan."></div>
+        title="Fracción de días del año tipo DESPEJADO (cielo Ineichen limpio). Solo afecta al modo sintético «12 días × mezcla»; el de Archivo de 365 días usa la meteo del archivo. Si los tres pesos no suman 100, se normalizan."></div>
       <div class="f"><label>% frentes</label><input id="wpart" type="number" step="1" min="0" max="100" value="30"
         title="Días tipo FRENTES: base cc 0,15 con pulsos overcast — el día donde el chattering castiga a las políticas sin histéresis. Se normaliza con los otros dos pesos."></div>
       <div class="f"><label>% overcast</label><input id="wover" type="number" step="1" min="0" max="100" value="15"
@@ -603,7 +603,7 @@
         <option value="atacama">Atacama · Calama, Chile (el extremo claro del planeta)</option>
       </select></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn acc" id="year365" title="Descarga los ÚLTIMOS 365 DÍAS medidos (ERA5, Open-Meteo) en el emplazamiento y corre las políticas día a día con la meteo real, a paso de 30 min y con el lazo si está activo. Esto es lo enseñable: 365 días de verdad, no 12 días × mezcla.">⬇ 365 días reales (ERA5)</button>
+      <button class="btn acc" id="year365" title="Descarga reanálisis ERA5 horario; excluye días con huecos. Mismo ciclo de decisión configurado, actuador al minuto y guardas compartidas.">⬇ Archivo de 365 días (ERA5)</button>
       <button class="btn" id="yearbtn" title="La aproximación rápida sin red: 12 días representativos × tres cielos sintéticos ponderados por clima">12 días × mezcla</button>
       <span class="pill" id="yearinfo"></span>
     </div>
@@ -613,16 +613,7 @@
     </div>
     <div style="overflow-x:auto;margin-top:8px"><table id="yeartab"></table></div>
     <div class="nota" id="yearnote"></div>
-    <div class="nota"><b>365 días reales</b> = los últimos 365 días MEDIDOS (ERA5) en el emplazamiento,
-      política a política, día a día, a paso de 30 min y con el θ ejecutado si el lazo está activo —
-      esto es lo enseñable. <b>12 × mezcla</b> es la aproximación sintética sin red.
-      <b>Sesgos, declarados</b>: fila aislada (sin apantallamiento difuso de vecinas) ⇒ la POA
-      ABSOLUTA sale optimista; las <b>Δ % entre políticas</b> comparten sesgo arriba y abajo y son
-      mucho más robustas — es lo que esta tabla mide. ERA5 es media HORARIA: alisa los tránsitos
-      nube/claro ⇒ el modo difuso queda <b>infraestimado</b> (la realidad minutal está por encima).
-      El DNI medido va tapado con su techo físico (≤ cielo claro ×1,1: el DNI horario se dispara en
-      amaneceres y el tracker lo perseguiría). MWh ≈ MWp × ΔPOA × PR 0,85 — proxy para leer la
-      escala, no un yield bancable (para eso, el motor SolarGPT con TMY).</div>
+    <div class="nota"><b>Archivo de 365 días</b>: ERA5, reanálisis horario; no son sensores del emplazamiento. Mismo ciclo de decisión y mismas guardas que el día; actuador al minuto. Se excluyen los días con huecos diurnos. <b>12 × mezcla</b> es un ensayo sintético. La interpolación horaria no resuelve el paso de nubes y su sesgo en la ganancia puede tener ambos signos. El recorte DNI ≤ claro ×1,1 +10 W/m² es un filtro del escenario, no una ley física; se informa en la calidad del dato. La POA de esta tabla es incidente en fila aislada; el banco de ingeniería añade IAM y sombra 1D. MWh ≈ MWp × ΔPOA × PR 0,85 es un proxy, no energía AC validada.</div>
   </div>
 
 </div>
@@ -634,6 +625,10 @@
 <script src="seguidor.js?v=0.4.22"></script><!-- FUENTE ÚNICA del seguidor (la misma que backtracking.html y el gemelo) -->
 <script src="sol.js?v=0.3.0"></script>
 <script src="irradiancia.js?v=0.1.0"></script><!-- FUENTE ÚNICA de cielo claro, masa de aire y orientación de pala --><!-- FUENTE ÚNICA del sol: posición NOAA y singleaxis (la misma que backtracking.html) -->
+<script src="overcast_iam.generated.js"></script>
+<script src="overcast_energy.js"></script>
+<script src="overcast_engine.js"></script>
+<script src="overcast_workbench.js"></script>
 <script>
 "use strict";
 /* ══════════════════════════ FÍSICA PURA ══════════════════════════════════
@@ -716,9 +711,10 @@ var cloudToIrr = Sol.cloudToIrr;
    el caller cae al modelo sintético del paso. Pura: la QA la ejercita sin red. */
 function omInterp(om,t){
   const T=om.tms,n=T.length;
-  if(!n||t<T[0]||t>T[n-1])return null;
+  if(n<2||t<T[0]||t>T[n-1])return null;
   let i=Math.min(n-2,Math.max(0,Math.floor((t-T[0])/(T[1]-T[0]))));
   while(i>0&&t<T[i])i--; while(i<n-2&&t>T[i+1])i++;
+  if(!(T[i+1]>T[i])||T[i+1]-T[i]>7200000)return null;
   const f=(t-T[i])/(T[i+1]-T[i]);
   // Number.isFinite, no isFinite: el global coerciona null→0 y un hueco de la
   // serie pasaría por medida válida de 0 W/m² (lo cazó la QA)
@@ -726,7 +722,8 @@ function omInterp(om,t){
   const ghi=lin(om.ghi),dni=lin(om.dni),dhi=lin(om.dhi),cc=lin(om.cc);
   if(!Number.isFinite(ghi)||!Number.isFinite(dni)||!Number.isFinite(dhi))return null;
   return {ghi:Math.max(0,ghi),dni:Math.max(0,dni),dhi:Math.max(0,dhi),
-          cc:Number.isFinite(cc)?Math.max(0,Math.min(1,cc)):0};
+          cc:Number.isFinite(cc)?Math.max(0,Math.min(1,cc)):(ghi>0?Math.max(0,Math.min(1,dhi/ghi)):0),
+          ccEstimated:!Number.isFinite(cc)};
 }
 
 /* ── pvlib.tracking.singleaxis (Anderson & Mikofski 2020, Eq. 14) ────────── */
@@ -974,34 +971,36 @@ function drawSkyDome(){
    bines de 5 min. Devuelve todo lo que las políticas necesitan.          */
 function buildDay(o){
   // o = {lat,lon,dateStr,tz,altM,TL,dtMin,albedo,axisAz,maxAngle,gcr,cc[288], om?}
-  // Con o.om (meteo real horaria) la irradiancia del paso es la MEDIDA
-  // interpolada — el modelo de nubes solo actúa donde la medida tiene hueco.
+  // Los huecos externos se etiquetan explícitamente. El relleno sintético
+  // permite explorar la escena, pero nunca entra oculto en la validación.
   const n=Math.round(1440/o.dtMin);
-  const tmin=[],zen=[],az=[],clear=[],irr=[],ghi=[];
+  const tmin=[],zen=[],az=[],clear=[],irr=[],ghi=[],quality=[];
   for(let i=0;i<n;i++){
     const m=i*o.dtMin;
     const tms=localToUTCms(o.dateStr,m,o.tz);
     const g=solarPos(tms,o.lat,o.lon);
     const cs=clearskyIneichen(g.zen,doyOf(o.dateStr),o.altM,o.TL);
-    let w=null;
+    let w=null,source=o.om?'missing':'synthetic',dniCapped=false;
     if(o.om){
       w=omInterp(o.om,tms);
-      // TECHO FÍSICO al DNI medido: el DNI horario de ERA5/Open-Meteo se
-      // deriva dividiendo por el cos(z) medio de la hora y se dispara en
-      // amaneceres/ocasos — y el tracker, que lo persigue, multiplica el
-      // error. Nada puede superar el cielo claro del instante (+10 % de
-      // margen por cloud-enhancement). GHI y DHI van medidos tal cual.
-      if(w)w={ghi:w.ghi,dni:Math.min(w.dni,cs.dni*1.1+10),dhi:w.dhi,cc:w.cc};
+      // Filtro histórico del escenario horario, no ley física universal.
+      // Conservar el dato de origen y declarar cada minuto alterado permite
+      // auditar el residuo de cierre que este filtro puede introducir.
+      if(w){source=o.om.source||'external';dniCapped=w.dni>cs.dni*1.1+10;
+        w={ghi:w.ghi,dni:Math.min(w.dni,cs.dni*1.1+10),dhi:w.dhi,cc:w.cc,ccEstimated:w.ccEstimated};}
     }
     if(!w){
       const cc=o.cc[Math.min(287,Math.floor(m/5))];
       w=cloudToIrr(cs,cc,g.zen);
     }
     tmin.push(m);zen.push(g.zen);az.push(g.az);clear.push(cs);irr.push(w);ghi.push(w.ghi);
+    const closure=w.ghi-w.dhi-w.dni*Math.max(0,Math.cos(g.zen*RAD));
+    quality.push({source,valid:source!=='missing',dniCapped,ccEstimated:!!w.ccEstimated,closureW:closure,
+      balanceWarning:g.zen<90&&Math.abs(closure)>Math.max(30,.1*w.ghi)});
   }
   return {n:n,dtMin:o.dtMin,tmin:tmin,zen:zen,az:az,clear:clear,irr:irr,ghi:ghi,
           doy:doyOf(o.dateStr),albedo:o.albedo,axisAz:o.axisAz,axisTilt:CANON.axisTilt,
-          maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc,
+          maxAngle:o.maxAngle,gcr:o.gcr,cc:o.cc,quality:quality,date:o.dateStr,
           nightStow:o.nightStow!=null?o.nightStow:CANON.nightStowDeg};
 }
 /* get_baseline_theta: singleaxis + backtracking, noche NaN→stow (5° al este) */
@@ -1208,7 +1207,81 @@ function polPoaSwitch(day,thN,poaN,d){
   return {theta:clampBT(theta,thN),flag:flag};
 }
 const POLICIES={pvlib:polPvlib, diffuse_flat:polFlat, diffuse_limited:polLimited,
-                diffuse_continuous:polContinuous, diffuse_poa_switch:polPoaSwitch};
+                diffuse_continuous:polContinuous, diffuse_poa_switch:polPoaSwitch,
+                adaptive:polAdaptive};
+
+/* Preview adapter, explicitly flat-row geometry. Finite-3D studies use the
+   same supervisor with scores supplied by 04 and the independent 03 P1 judge. */
+function engineeringShade(day,i,theta){
+  if(!(day.zen[i]<90))return 0;
+  return shadedFraction1d({zen:day.zen[i],az:day.az[i],axisAz:day.axisAz,
+    axisTilt:day.axisTilt,thShaded:theta,cw:1,pitch:1/day.gcr,offset:0,slope:0});
+}
+function engineeringScore(day,i,theta){
+  const p=poaTracker(theta,day.axisTilt,day.axisAz,day.zen[i],day.az[i],day.irr[i],day.doy,day.albedo);
+  const o=surfaceOrient(theta,day.axisTilt,day.axisAz);
+  return OvercastEnergy.effective(p,o.tilt,o.az,day.zen[i],day.az[i],engineeringShade(day,i,theta));
+}
+const ENGINEERING_CACHE=new WeakMap();
+const ENGINEERING_CONTROL_CACHE=new WeakMap();
+function engineeringCurve(day,i,baseline,current,near=2){
+  let cache=ENGINEERING_CACHE.get(day);if(!cache){cache=new Map();ENGINEERING_CACHE.set(day,cache);}
+  // Baseline/current are inserted for exact comparisons, never rounded away.
+  const key=i+':'+baseline+':'+current+':'+near;if(cache.has(key))return cache.get(key);
+  const bshade=engineeringShade(day,i,baseline);
+  const curve=OvercastEngine.curve({min:-day.maxAngle,max:day.maxAngle,step:.1,
+    baseline,current,nearOptimalW:near,evaluate:th=>engineeringScore(day,i,th),
+    admissible:th=>engineeringShade(day,i,th)<=bshade+1e-6});
+  // Limit fine-clock caches while retaining the decision-grid rows used by tuning.
+  if(cache.size>(day.dtMin===1?16:160))cache.clear();cache.set(key,curve);return curve;
+}
+function engineeringCandidates(day,i,baseline){
+  let cache=ENGINEERING_CONTROL_CACHE.get(day);if(!cache){cache=new Map();ENGINEERING_CONTROL_CACHE.set(day,cache);}
+  if(cache.has(i))return cache.get(i);
+  const bshade=engineeringShade(day,i,baseline),args={baseline,current:baseline,
+    evaluate:th=>engineeringScore(day,i,th),admissible:th=>engineeringShade(day,i,th)<=bshade+1e-6};
+  const coarse=OvercastEngine.curve({...args,min:-day.maxAngle,max:day.maxAngle,step:2});
+  const center=coarse.best?coarse.best.theta:baseline;
+  const fine=OvercastEngine.curve({...args,min:Math.max(-day.maxAngle,center-2),max:Math.min(day.maxAngle,center+2),step:.1});
+  const points=[...new Map([...coarse.points,...fine.points].map(p=>[p.theta,p])).values()];
+  cache.set(i,points);return points;
+}
+function polAdaptive(day,thN,poaN,d){
+  const c=OvercastEngine.config({...d.adaptive,ghiMin:d.ghiMin}),control=OvercastEngine.supervisor(c);
+  const theta=[],flag=[],decisions=[];
+  for(let i=0;i<day.n;i++){
+    const current=i?theta[i-1]:thN[i];
+    const candidates=day.ghi[i]>c.ghiMin?engineeringCandidates(day,i,thN[i]):[];
+    const bshade=engineeringShade(day,i,thN[i]);
+    const out=control.step({t:day.tmin[i],baseline:thN[i],current,ghi:day.ghi[i],dhi:day.irr[i].dhi,
+      valid:!day.quality||day.quality[i].valid,candidates,
+      evaluate:th=>engineeringScore(day,i,th),admissible:th=>engineeringShade(day,i,th)<=bshade+1e-6});
+    theta.push(out.theta);flag.push(out.flag);decisions.push(out);
+  }
+  return {theta,flag,decisions};
+}
+
+/* One evaluation path for the day, annual runs and site calibration. */
+function evaluatePolicyDay(k,day,dayF,d,loop,mp,reference){
+  const ref=reference||{thN:thetaBaselineDay(day),thNF:thetaBaselineDay(dayF)};
+  const poaN=ref.poaN||poaSeries(day,ref.thN),r=POLICIES[k](day,ref.thN,poaN,d);
+  const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,dayF.dtMin,loop,ref.thNF,dayF);
+  const consF=execOnFineGrid(r.theta,day.dtMin,dayF.n,dayF.dtMin,null);
+  const flagF=execOnFineGrid(r.flag.map(Number),day.dtMin,dayF.n,dayF.dtMin,null).map(Boolean);
+  const poaF=poaSeries(dayF,execF),poaConsF=poaSeries(dayF,consF);
+  return {...r,poa:k==='pvlib'?poaN:poaSeries(day,r.theta),execF,consF,poaF,flagF,
+    met:dayMetrics(dayF,execF,flagF,poaF,mp),metTgt:dayMetrics(dayF,consF,flagF,poaConsF,mp)};
+}
+function engineeringMetrics(day,r,baseline,loop){
+  const effective=r.execF.map((t,i)=>engineeringScore(day,i,t).total);
+  let violations=0,shadowMinutes=0,maxSlew=0;
+  for(let i=0;i<day.n;i++){
+    if(i){const slew=Math.abs(r.execF[i]-r.execF[i-1])/(60*day.dtMin);maxSlew=Math.max(maxSlew,slew);if(slew>loop.slewDegS+1e-8)violations++;}
+    if(Math.abs(r.execF[i])>day.maxAngle+1e-8)violations++;
+    if(day.zen[i]<90&&engineeringShade(day,i,r.execF[i])>engineeringShade(day,i,baseline[i])+1e-6){shadowMinutes+=day.dtMin;violations++;}
+  }
+  return {...r.met,effective,poaWh:effective.reduce((a,b)=>a+b*day.dtMin/60,0),violations,shadowMinutes,maxSlew};
+}
 
 /* ── lazo de control: deadband + slew + tope mecánico (apply_control_loop) ─
    EL EJE ADELANTA AL SOL (contrato direccional 2.0.0 del core, 2026-09-14).
@@ -1330,10 +1403,32 @@ function execOnFineGrid(theta,dtMin,nFine,dtFine,loop,thNFine,dayFine){
          no es una aproximación, es que la cuerda y el paso no entran por
          separado. Por eso basta el `gcr` que el día ya trae. */
       cw:1,pitch:1/dayFine.gcr,offset:0,slope:0});
-  return dir.map((v,i)=>{
+  const guarded=dir.map((v,i)=>{
     if(!(Math.abs(thNFine[i]-astro[i])>1e-9))return v;   // sin retroceso: no hay tope
     return fr(v,i)>fr(thNFine[i],i)+1e-12?thNFine[i]:v;
   });
+  // A geometric clamp after the actuator can itself teleport. Project each
+  // guarded target onto angles reachable from the ACTUAL preceding output.
+  // In the rare incompatible case, retain physical slew and expose the shadow
+  // excess to engineeringMetrics; an impossible transition cannot be certified.
+  const out=guarded.slice(),delta=loop.slewDegS*dtFine*60;
+  for(let i=1;i<out.length;i++){
+    const lo=Math.max(-loop.maxAngle,out[i-1]-delta),hi=Math.min(loop.maxAngle,out[i-1]+delta);
+    let candidate=Math.max(lo,Math.min(hi,guarded[i]));
+    if(dayFine.zen[i]<90&&fr(candidate,i)>fr(thNFine[i],i)+1e-12){
+      const safe=v=>v>=lo-1e-9&&v<=hi+1e-9&&fr(v,i)<=fr(thNFine[i],i)+1e-12;
+      if(safe(thNFine[i]))candidate=thNFine[i];
+      else{
+        let best=null;
+        const consider=v=>{if(safe(v)&&(best===null||Math.abs(v-guarded[i])<Math.abs(best-guarded[i])))best=v;};
+        consider(lo);consider(hi);
+        for(let k=Math.ceil(lo*10);k<=Math.floor(hi*10);k++)consider(k/10);
+        if(best!==null)candidate=best;
+      }
+    }
+    out[i]=candidate;
+  }
+  return out;
 }
 /* velocidad instantánea del actuador (°/s de tiempo simulado) en el paso i */
 function slewRateAt(exec,i,dtFine){
@@ -1637,8 +1732,16 @@ function explainContinuous(day,thN,poaN,d){
   ev.sort((a,b)=>a.t-b.t);
   return {events:ev,flag:r.flag};
 }
+function explainAdaptive(day,thN,poaN,d){
+  const r=polAdaptive(day,thN,poaN,d);let previous='';
+  const stow=[];stowEvents(day,d,stow);
+  const events=stow.concat(r.decisions.flatMap((q,i)=>{const key=q.reason+':'+q.mode;if(key===previous)return [];previous=key;
+    return [{t:day.tmin[i],type:'info',msg:OvercastEngine.REASONS[q.reason]+' · θ '+(-q.theta).toFixed(1)+'° TCU · margen disponible '+q.gainW.toFixed(1)+' W/m² · '+q.mode}];}));
+  events.sort((a,b)=>a.t-b.t);
+  return {events,flag:r.flag};
+}
 const EXPLAIN={pvlib:explainPvlib, diffuse_flat:explainFlat, diffuse_limited:explainLimited,
-               diffuse_continuous:explainContinuous, diffuse_poa_switch:explainPoaSwitch};
+               diffuse_continuous:explainContinuous, diffuse_poa_switch:explainPoaSwitch, adaptive:explainAdaptive};
 /* cuándo LLEGA el hierro: para cada orden, el minuto en que el ejecutado
    alcanza la consigna (± deadband). Cierra el círculo entre decidir y llegar. */
 function annotateArrivals(events,theta,execF,dtFine,day,tolDeg){
@@ -2699,7 +2802,7 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.32.1';
+const VER='v1.33.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2712,6 +2815,8 @@ $('verlbl').textContent='overcast.html '+VER;
                                       parcialmente difuso el óptimo NO es 0°)
    Rotularlas todas «FLAT» hacía que la escena dijera «θ 13° · FLAT». */
 const POL_META={
+  adaptive:          {c:'#fb923c',nm:'Adaptativo · POA útil',mode:'DIFUSA',flat0:false,
+                       ds:'Supervisor causal: POA total efectiva, confirmación, permanencia y retención. Escenario de filas planas; no consigna de planta certificada.'},
   pvlib:              {c:'#9bb0c6',nm:'pvlib (baseline)',mode:null,flat0:false,
                        ds:'singleaxis + backtracking, sin política de difusa. La referencia contra la que se mide todo.'},
   diffuse_flat:       {c:'#36d399',nm:'diffuse_flat',mode:'PLANO',flat0:true,
@@ -2765,8 +2870,8 @@ function stateLabel(polKey,th,flag,sig,rate){
 // el barrido α se rotula desde la FUENTE (DCFG_DEFAULT), no a mano: si el core
 // cambia sus continuous_alpha_candidates, la UI no puede quedarse mintiendo
 $('alphas').value=DCFG_DEFAULT.alphas.map(v=>String(v).replace('.',',')).join(' · ');
-const POL_ORDER=['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch'];
-const POL_ON={pvlib:true,diffuse_flat:true,diffuse_limited:false,diffuse_continuous:true,diffuse_poa_switch:true};
+const POL_ORDER=['pvlib','diffuse_flat','diffuse_limited','diffuse_continuous','diffuse_poa_switch','adaptive'];
+const POL_ON={pvlib:true,diffuse_flat:true,diffuse_limited:false,diffuse_continuous:true,diffuse_poa_switch:true,adaptive:true};
 
 /* panel de políticas */
 (function(){
@@ -2990,7 +3095,7 @@ async function fetchOM(dateStr){
   const base=ageDays>7?'https://archive-api.open-meteo.com/v1/archive'
                       :'https://api.open-meteo.com/v1/forecast';
   const url=base+'?latitude='+lat+'&longitude='+lon+'&start_date='+d0+'&end_date='+d1+
-    '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC';
+    '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC'+(ageDays>7?'&models=era5':'');
   $('omstatus').innerHTML='descargando…';
   const r=await fetch(url);
   if(!r.ok)throw new Error('HTTP '+r.status);
@@ -3003,6 +3108,7 @@ async function fetchOM(dateStr){
             dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
   let valid=0;for(const v of om.ghi)if(isFinite(v))valid++;
   if(valid<6)throw new Error('sin datos para esa fecha (¿futuro lejano?)');
+  om.source=ageDays>7?'reanalysis_era5':'forecast';om.url=url;om.resolutionMin=60;
   return om;
 }
 function omApply(om,src){
@@ -3095,15 +3201,12 @@ function cfgDiffuse(){
   return {ghiMin:+$('ghimin').value,flatEnterRatio:+$('fratio').value,
           limitedHoldRatio:+$('hratio').value,alphas:DCFG_DEFAULT.alphas,
           swEnterRatio:+$('senter').value,swExitRatio:+$('sexit').value,
-          confirmMin:+$('confirm').value,dwellMin:+$('dwell').value};
+          confirmMin:+$('confirm').value,dwellMin:+$('dwell').value,
+          adaptive:window.OVERCAST_WORKBENCH?window.OVERCAST_WORKBENCH.config():OvercastEngine.DEFAULTS};
 }
 let SIM=null;
 const DT_FINE=1;                       // el actuador se integra al MINUTO
-/* ciclo de DECISIÓN de las corridas anuales. A 30′ el confirm de la histéresis
-   colapsaba a una sola muestra y el poa_switch degeneraba hacia el flat justo en
-   la tabla estrella; 15′ lo conserva. Es una constante y no un literal repetido
-   porque el rótulo de pantalla llegó a decir 30′ mientras el código corría 15. */
-const DT_ANUAL=15;
+/* Diario, año y ajuste usan el mismo ciclo configurado y evaluador. */
 /* EL SLEW ES HIERRO, no una opción: en campo no hay casilla que apague la
    velocidad del actuador. La casilla gobierna SOLO el deadband (eso sí es un
    parámetro de la TCU). Desmarcarla llegó a dar 55°/min = 5,4× la spec en la
@@ -3138,19 +3241,7 @@ function recompute(){
   const res={};
   for(const k of POL_ORDER){
     if(!POL_ON[k])continue;
-    const r=POLICIES[k](day,thN,poaN,d);
-    const poa=k==='pvlib'?poaN:poaSeries(day,r.theta);
-    // consigna → actuador (rampa al minuto) → POA fina, y la consigna sin lazo
-    // en la MISMA rejilla fina para poder medir el coste del hierro
-    const execF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop,thNF,dayF);
-    const consF=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,null);
-    const poaF=poaSeries(dayF,execF);
-    const poaConsF=loop?poaSeries(dayF,consF):poaF;
-    const flagF=execOnFineGrid(r.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
-    res[k]={theta:r.theta,flag:r.flag,poa:poa,
-            execF:execF,consF:consF,poaF:poaF,flagF:flagF,
-            met:dayMetrics(dayF,execF,flagF,poaF,mp),
-            metTgt:dayMetrics(dayF,consF,flagF,poaConsF,mp)};
+    res[k]=evaluatePolicyDay(k,day,dayF,d,loop,mp,{thN,thNF,poaN});
   }
   // la COTA, solo si se pide: cuesta ~70 evaluaciones de Perez por paso
   let aniso=null;
@@ -3179,6 +3270,7 @@ function recompute(){
   drawSkyEdit();drawIrr();drawTheta();drawPoa();drawLegend();drawTable();drawZonalTab();pintaCanon();
   drawDiario(d);
   refreshScene(true);
+  if(window.OVERCAST_WORKBENCH)window.OVERCAST_WORKBENCH.recomputed();
 }
 
 /* ── el diario en pantalla: planta entera o cada NCU con el suyo ── */
@@ -5304,6 +5396,7 @@ function refreshScene(rebuild){
   drawIrr();drawTheta();drawPoa();   // el cursor de tiempo sigue al reloj (también en ▶)
   if(VIEW3D){if(rebuild)build3D();update3D();}
   drawSkyDome();
+  if(window.OVERCAST_WORKBENCH)window.OVERCAST_WORKBENCH.clock();
 }
 
 /* ── vuelo libre (como el de los cobertura 3D): WASD + ratón capturado ── */
@@ -5393,7 +5486,7 @@ function skyCCFor(type){
   }else if(type==='overcast')cc.fill(0.95);
   return cc;
 }
-$('yearbtn').onclick=()=>{
+$('yearbtn').onclick=async()=>{
   const c=cfgDay(),d=cfgDiffuse();
   const loop=cfgLoop(c.maxAngle);   // el slew es hierro: nunca null
   let w=[+$('wclear').value,+$('wpart').value,+$('wover').value];
@@ -5408,24 +5501,25 @@ $('yearbtn').onclick=()=>{
   for(const k of POL_ORDER)if(POL_ON[k]){tot[k]=0;mv[k]=0;tr[k]=0;wh[k]=0;}
   const types=[['claro',w[0]],['parcial',w[1]],['overcast',w[2]]];
   for(const mo of months){
+    const daysInMonth=new Date(Date.UTC(+year,+mo,0)).getUTCDate();
     for(const [ty,wt] of types){
       if(wt<=0)continue;
       // dos rejillas también aquí: decidir a 15 min, RAMPAR e integrar al
       // minuto. En la gruesa el techo por paso (153°) no ata nunca y el año
       // regalaba los tránsitos.
-      const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:DT_ANUAL,cc:skyCCFor(ty),om:null}));
+      const day=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:c.dtMin,cc:skyCCFor(ty),om:null}));
       const dayF=buildDay(Object.assign({},c,{dateStr:year+'-'+mo+'-21',dtMin:DT_FINE,cc:skyCCFor(ty),om:null}));
-      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN),thNF=thetaBaselineDay(dayF);
       for(const k in tot){
-        const r=POLICIES[k](day,thN,poaN,d);
-        const th=execOnFineGrid(r.theta,day.dtMin,dayF.n,DT_FINE,loop);
-        tot[k]+=wt*poaSeries(dayF,th).reduce((s,v)=>s+v*DT_FINE/60,0)*30.4/1000;   // kWh/m²·año aprox
+        const result=evaluatePolicyDay(k,day,dayF,d,loop,mp,{thN,thNF,poaN}),th=result.execF;
+        tot[k]+=wt*poaSeries(dayF,th).reduce((s,v)=>s+v*DT_FINE/60,0)*daysInMonth/1000;   // kWh/m²·año aprox
         // el coste de maniobra se pondera y se escala IGUAL que la POA: mismo
-        // día tipo, mismo peso de mezcla, mismos 30,4 días por mes. Si se
+        // día tipo, mismo peso de mezcla, mismo número real de días del mes. Si se
         // escalara distinto, las columnas dejarían de hablar del mismo año.
         const m=motorMetrics(th,mp);
-        mv[k]+=wt*m.moves*30.4; tr[k]+=wt*m.travelDeg*30.4; wh[k]+=wt*m.motorWh*30.4;
+        mv[k]+=wt*m.moves*daysInMonth; tr[k]+=wt*m.travelDeg*daysInMonth; wh[k]+=wt*m.motorWh*daysInMonth;
       }
+      await new Promise(resolve=>setTimeout(resolve,0));
     }
   }
   let bestK=null,bestV=-1;
@@ -5445,16 +5539,16 @@ $('yearbtn').onclick=()=>{
        '<td>'+(wh[k]/1000).toFixed(2)+(ref?deltaCoste(wh[k]/1000,wh.pvlib/1000,2,' kWh'):'')+'</td></tr>';
   }
   $('yeartab').innerHTML=h;
-  /* YR365 es de la corrida con ERA5 MEDIDO; esta es la mezcla SINTÉTICA. Si no
+  /* YR365 es de la corrida con REANÁLISIS ERA5; esta es la mezcla SINTÉTICA. Si no
      se limpiara, la nota de abajo seguiría hablando del año medido mientras la
      tabla enseña doce días tipo extrapolados: dos años distintos en la misma
      pantalla. */
   YR365=null;
   $('yearnote').innerHTML='<b>Coste de maniobra</b> · modelo <b>'+
     (mp.modelo==='curva'?'curva I(θ) medida':mp.modelo==='bandas'?'bandas de flota (escalón)':'ajuste de flota')+'</b> · verde = <b>ahorro</b> frente a pvlib. '+
-    'Estas tres columnas se ponderan y escalan igual que la POA: <b>doce días tipo × 30,4</b>, no un año '+
+    'Estas tres columnas se ponderan y escalan igual que la POA: <b>doce días tipo ponderados por los días de cada mes</b>, no un año '+
     'recorrido día a día. Sirven para comparar filas entre sí, no como cifra absoluta de O&amp;M — para eso, '+
-    'el año con ERA5 medido. El <b>reposo</b> de la TCU (5,61 kWh/año) va aparte: es el mismo para todas.';
+    'el año con reanálisis ERA5. El <b>reposo</b> de la TCU (5,61 kWh/año) va aparte: es el mismo para todas.';
 };
 
 /* ── sitios de referencia climática: el contraste de climas en dos clics ──
@@ -5479,7 +5573,7 @@ $('refsite').onchange=function(){
   recompute();
 };
 
-/* ── anual con 365 DÍAS MEDIDOS (ERA5): lo enseñable ── */
+/* ── anual con 365 DÍAS DE REANÁLISIS (ERA5): lo enseñable ── */
 $('year365').onclick=async()=>{
   try{
     const lat=+$('lat').value,lon=+$('lon').value;
@@ -5489,7 +5583,7 @@ $('year365').onclick=async()=>{
     const d0=new Date(dEnd.getTime()-364*86400000).toISOString().slice(0,10);
     const url='https://archive-api.open-meteo.com/v1/archive?latitude='+lat+'&longitude='+lon+
       '&start_date='+d0+'&end_date='+d1+
-      '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC';
+      '&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,cloud_cover&timezone=UTC&models=era5';
     const r=await fetch(url);
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json(),h=j.hourly;
@@ -5497,6 +5591,7 @@ $('year365').onclick=async()=>{
     const om={tms:h.time.map(t=>Date.parse(t+':00Z')-1.8e6),
               ghi:h.shortwave_radiation,dni:h.direct_normal_irradiance,
               dhi:h.diffuse_radiation,cc:h.cloud_cover.map(v=>v==null?NaN:v/100)};
+    om.source='reanalysis_era5';om.url=url;om.resolutionMin=60;
     // el rango REAL con dato: ERA5 llega con retraso variable — sin este
     // recorte, una cola sin dato caería EN SILENCIO al cielo claro sintético
     let iF=-1,iL=-1;
@@ -5512,7 +5607,7 @@ $('year365').onclick=async()=>{
     const zeroCC=new Array(288).fill(0);
     let nd=0;
     /* día a día con la meteo MEDIDA. Dos rejillas por día, como en el día suelto:
-       la TCU DECIDE cada DT_ANUAL y el actuador RAMPA al minuto. Contar el
+       la TCU DECIDE con el ciclo configurado y el actuador RAMPA al minuto. Contar el
        tránsito no es cosmético: con paso grueso el giro salía promediado a
        ~0,03 °/s (gratis) y el año se sobreestimaba ~0,4 % — MÁS que la ganancia
        que este simulador mide. Troceado para no congelar la UI.
@@ -5523,15 +5618,12 @@ $('year365').onclick=async()=>{
        O&M — lo que sí va al minuto es el actuador, que es donde se paga. */
     for(let t0=Date.parse(dsFrom);t0<=Date.parse(dsTo);t0+=86400000){
       const ds=new Date(t0).toISOString().slice(0,10);
-      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_ANUAL,cc:zeroCC,om:om}));
+      const day=buildDay(Object.assign({},c,{dateStr:ds,dtMin:c.dtMin,cc:zeroCC,om:om}));
       const dayF=buildDay(Object.assign({},c,{dateStr:ds,dtMin:DT_FINE,cc:zeroCC,om:om}));
-      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN);
+      if(dayF.quality.some((q,i)=>dayF.zen[i]<90&&!q.valid))continue;
+      const thN=thetaBaselineDay(day),poaN=poaSeries(day,thN),thNF=thetaBaselineDay(dayF);
       for(const k in tot){
-        const r2=POLICIES[k](day,thN,poaN,d);
-        const th=execOnFineGrid(r2.theta,day.dtMin,dayF.n,DT_FINE,loop);
-        const flagF=execOnFineGrid(r2.flag.map(v=>v?1:0),day.dtMin,dayF.n,DT_FINE,null).map(v=>!!v);
-        const poa=poaSeries(dayF,th);
-        const met=dayMetrics(dayF,th,flagF,poa,mp);
+        const met=evaluatePolicyDay(k,day,dayF,d,loop,mp,{thN,thNF,poaN}).met;
         tot[k]+=met.poaWh/1000;fl[k]+=met.pctFlat;sw[k]+=met.switches;
         mv[k]+=met.moves;tr[k]+=met.travelDeg;wh[k]+=met.motorWh;
       }
@@ -5540,16 +5632,18 @@ $('year365').onclick=async()=>{
         await new Promise(res=>setTimeout(res,0));
       }
     }
+    if(!nd)throw new Error('No hay días completos con GHI/DNI/DHI válidas');
     YR365={tot:tot,fl:fl,sw:sw,mv:mv,tr:tr,wh:wh,nd:nd,modelo:mp.modelo};
+    if(window.OVERCAST_WORKBENCH)window.OVERCAST_WORKBENCH.setWeatherArchive(om,dsFrom,dsTo);
     renderYear365();
     /* DÓNDE corrió, y que la mezcla de cielos NO pinta nada aquí. Sin el sitio no
        se puede interpretar una ganancia baja: «poca ganancia con difusa alta» era
        en realidad ERA5 midiendo el emplazamiento de verdad, con los pesos de
        clima —que solo alimentan «12 × mezcla»— ignorados por completo. */
     const donde=PLANT_REAL?PLANT_REAL.title:(c.lat.toFixed(3)+', '+c.lon.toFixed(3));
-    $('yearinfo').innerHTML='<b>'+donde+'</b> · '+dsFrom+' → '+dsTo+' · ERA5 <b>medido</b> ('+nd+
-      ' días) · decisión '+DT_ANUAL+'′ · actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+
-      ' · DNI ≤ cielo claro ×1,1 · <b>la mezcla de cielos NO se usa</b> (es meteo real)';
+    $('yearinfo').innerHTML='<b>'+donde+'</b> · '+dsFrom+' → '+dsTo+' · ERA5 <b>reanálisis</b> ('+nd+
+      ' días) · decisión '+c.dtMin+'′ · actuador y energía al minuto'+(loop?' con lazo 0,17 °/s':'')+
+      ' · DNI ≤ claro ×1,1 +10 W/m² · días con huecos diurnos excluidos · <b>sin mezcla sintética</b>';
   }catch(e){$('yearinfo').innerHTML='<span style="color:var(--err)">'+(e&&e.message||e)+'</span>';}
 };
 /* el año en € — MWh ≈ MWp × ΔPOA(kWh/m² ≈ kWh/kWp) × PR 0,85. Es un proxy
@@ -5641,7 +5735,7 @@ function buildDayCSV(){
   meta('theta_diffuse_opt_resolution_deg','0.1');
   meta('sky_dome_cambia_politicas','no — capa explicativa/diagnostica');
   L.push('# [METEO]');
-  meta('fuente',c.om?'Open-Meteo (medida, interpolada)':'sintética (cc pintada o preset)');
+  meta('fuente',c.om?'Open-Meteo/CSV (fuente declarada; interpolación temporal)':'sintética (cc pintada o preset)');
   meta('cc_media_dia',(CC.reduce((a,v)=>a+v,0)/288).toFixed(3));
   L.push('# [ZONAL]');
   meta('activo',zon?'sí':'no');
@@ -5738,6 +5832,9 @@ function buildDayCSV(){
    folleto; y el documento termina en los límites declarados, porque un informe
    que no dice dónde deja de valer no es enseñable a un tercero. */
 const EXPLICA_POL={
+  adaptive:{como:'Supervisor causal de POA frontal efectiva: compara seguimiento, retención y candidatos intermedios; confirma la ganancia y aplica permanencia. Exploración a 2° con refino a 0,1° del mejor entorno; la curva diagnóstica completa va a 0,1°.',
+    optimiza:'POA total frontal tras IAM canónico y sombra direccional 1D. El lazo y el evaluador son los mismos del día, año y ajuste. No constituye una consigna P1 de planta ni incluye ganancia bifacial.',
+    parametros:'Entrada, salida, confirmación, permanencia y banda casi óptima se guardan en el estudio de ingeniería.'},
   pvlib:{como:'<code>singleaxis</code> de pvlib (Anderson &amp; Mikofski 2020) con backtracking: θ es el giro que minimiza el ángulo de incidencia, recortado al tope mecánico y al backtracking para no sombrear a la fila vecina. No mira la irradiancia: sigue al sol haya o no haya haz que seguir.',
     optimiza:'Nada relativo a la difusa. Es la <b>referencia</b> contra la que se mide todo lo demás, y la que cualquier tracker hace hoy.',
     criterio:'mínimo ángulo de incidencia con el sol'},
@@ -5832,13 +5929,13 @@ function informeHTML(){
   const yearHtml=$('yeartab')&&$('yeartab').innerHTML.trim()
     ?'<h2>'+(zon?8:7)+'. Estimación anual</h2><table class="tab">'+$('yeartab').innerHTML+'</table>'+
      '<p class="mut">'+($('yearinfo').textContent||'')+'</p>'
-    :'<h2>'+(zon?8:7)+'. Estimación anual</h2><p class="mut">No calculada en esta sesión (botones «365 días reales» o «12 × mezcla»).</p>';
+    :'<h2>'+(zon?8:7)+'. Estimación anual</h2><p class="mut">No calculada en esta sesión (botones «Archivo de 365 días» o «12 × mezcla»).</p>';
   const qa=$('qaout')&&$('qaout').textContent.trim()&&$('qaout').textContent.trim()!=='corriendo…'
     ?'<pre class="qa">'+esc($('qaout').textContent.trim())+'</pre>'
     :'<p class="mut">No ejecutada en esta sesión (botón «Verificar contra el contrato del core»). La batería del repositorio (<code>tools/test_overcast_sim.mjs</code>) corre la MISMA comprobación en cada versión.</p>';
   const fecha=new Date();
   const planta=PLANT_REAL?PLANT_REAL.title:'sintética';
-  const meteo=c.om?'Open-Meteo (medida, interpolada)':'sintética — cielo pintado o preset';
+  const meteo=c.om?'Open-Meteo/CSV (fuente declarada; interpolación temporal)':'sintética — cielo pintado o preset';
   return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de radiación difusa · '+
   esc(planta)+' · '+esc(c.dateStr)+'</title>'+
   '<style>body{font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b2430;background:#fff;margin:0;padding:28px 34px;max-width:1100px}'+
@@ -5938,7 +6035,7 @@ function informeHTML(){
   'el SoC aguanta sobre el 30 % de la defensa depende también de la carga, y eso vive en el gemelo digital. Los minutos '+
   'de motor salen de recorrido/slew y no representan el tiempo real con el motor encendido.</li>'+
   '<li><b>Con cielo sintético</b> los pesos de clima solo alimentan «12 × mezcla»; la corrida de 365 días usa la meteo '+
-  'MEDIDA del emplazamiento y los ignora.</li>'+
+  'de la fuente declarada del emplazamiento y los ignora.</li>'+
   '</ul></body></html>';
 }
 function abrirInforme(){
@@ -6009,6 +6106,18 @@ window.addEventListener('resize',()=>{if(SIM){drawSkyEdit();drawIrr();drawTheta(
 
 skyPresetApply('tarde',0);
 zskyRender();
+window.OVERCAST_WORKBENCH=OvercastWorkbench.mount($('engineeringDock'),{
+  get:()=>({sim:SIM,cfg:cfgDay(),diffuse:cfgDiffuse(),loop:cfgLoop(+$('maxang').value),motor:cfgMotor(),
+    minute:CLOCK,policy:$('polview').value,plant:PLANT_REAL?PLANT_REAL.name:null,
+    title:PLANT_REAL?PLANT_REAL.title:'Emplazamiento configurado',version:VER}),
+  curve:engineeringCurve,score:engineeringScore,metrics:engineeringMetrics,
+  buildDay,baseline:thetaBaselineDay,evaluate:evaluatePolicyDay,
+  recompute,download:descargar,clouds:skyCCFor,
+  name:k=>(POL_META[k]||{}).nm||k,
+  setMinute:m=>{CLOCK=m;$('hour').value=m;refreshScene(false);},
+  select:k=>{POL_ON[k]=true;fillPolview();$('polview').value=k;recompute();},
+  importWeather:om=>{$('skysource').value='om';syncSkySource();omApply(om,'CSV importado');}
+});
 recompute();
 loop3D();
 setTab(true);   // 3D por defecto; sin WebGL/THREE cae solo al corte 2D
