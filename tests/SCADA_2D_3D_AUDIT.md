@@ -25,3 +25,11 @@ HECHO / user field confirmation, 2026-09-28: “la 108 de la 2” identifies the
 BUG corrected in this branch: remove only that explicit NCU 2 / 108 auxiliary-list entry and record the source of the correction in numeracion.correccionCampo108. Keep the raw manufacturer export as historical source evidence. All geometry, NCU 1 / 108, and NCU 2 / 109 remain unchanged. No asset_id is created, removed or reassigned.
 
 Validation: node tests/test_elburgo_absent_108.js and node tests/test_scada_identity.js: PASSED 2 scripts, FAILED 0, SKIPPED 0. Structural comparison confirms all other layout fields are unchanged. Production deployment and end-to-end canonical map integration remain pending; the PR is a draft.
+
+## Correction after viewing the user's DWG screenshot (2026-09-28)
+
+HECHO / BUG: the screenshot shows distinct DWG labels 1.18.5 and 1.18.7. The previous attribution of the duplicate to the DWG was unsupported and is withdrawn. It was the exported JSON idPrevio and the persisted derived crosswalk idDwg that both contained 1.18.5. The existing canonical registry already maps NCU 1 / slave 108 to tracker asset eddb7905-6f8a-40e7-996d-71a11c2db49c, geometry_binding 1.18.7. NCU 1 / 106 retains 1.18.5.
+
+Correction in #765 (also applied to this draft): change only the derived labels for NCU 1 / 108 to 1.18.7. The raw manufacturer telemetry locators, coordinates, PANs, scene geometry and registry UUIDs are unchanged. The canonical development reconciliation now resolves 215/215 crosswalk rows with unique tracker assets; provisional means read_only=true and operationally_usable=false. The historical 213/215 result above describes the defective export before this correction. Runtime publication/integration remains pending.
+
+UNKNOWN: the exact exporter stage that originally copied the wrong label. Do not infer it from nearest-neighbor behavior elsewhere.
