@@ -222,6 +222,16 @@ t('el nombre de la app es UNO: <title> y <h1> dicen lo mismo', () => {
     throw new Error('falta la nota que declara el nombre canónico y dónde más vive');
 });
 
+t('SKY DOME V2: CSV e informe son auditables', () => {
+  const csv = html.slice(html.indexOf('function buildDayCSV()'), html.indexOf('/* ══ INFORME', html.indexOf('function buildDayCSV()')));
+  for (const k of ['[SKY DOME V2]','sky_iso_pct','sky_circ_pct','sky_hor_pct',
+                   'theta_diff_opt_tcu_deg','poa_diff_opt_w_m2','diff_gain_vs_pvlib_w_m2'])
+    if (!csv.includes(k)) throw new Error('CSV sin ' + k);
+  const inf = html.slice(html.indexOf('function informeHTML()'), html.indexOf('function abrirInforme'));
+  for (const k of ['Sky diffuse medio','Sky Dome ·','θ óptimo difuso'])
+    if (!inf.includes(k)) throw new Error('informe sin ' + k);
+});
+
 t('el CSV de auditoría es reproducible: lleva la configuración entera y saca la POA del θ EJECUTADO', () => {
   const i = html.indexOf('function buildDayCSV()');
   if (i < 0) throw new Error('no hay export CSV');
