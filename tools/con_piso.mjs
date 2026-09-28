@@ -86,6 +86,8 @@ const PISO = {
   'test_anual_motor.mjs': { piso: 19, alcances: { 'sin-hermano': 14 } },
   'test_cloud_shadows.mjs': 13,
   'test_overcast_sim.mjs': 111,
+  // 11 contratos de ingeniería + 4 contratos de importación, ejecutados.
+  'test_overcast_engine.mjs': 15,
   'test_modbus_map.mjs': 80,
   'test_paquete_medida.mjs': 65,
   'test_malla_real.mjs': 30,
