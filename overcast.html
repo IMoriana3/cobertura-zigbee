@@ -773,6 +773,64 @@ function skyRamp(t,a){
   const z=t*(stops.length-1),i=Math.min(stops.length-2,Math.floor(z)),f=z-i,A=stops[i],B=stops[i+1];
   return "rgba("+Math.round(A[0]+(B[0]-A[0])*f)+","+Math.round(A[1]+(B[1]-A[1])*f)+","+Math.round(A[2]+(B[2]-A[2])*f)+","+(a==null?.48:a)+")";
 }
+
+/* ── SKY DOME 3D: la misma distribución angular, pintada EN EL CIELO ──────
+   Visualización, no otra física. La textura se genera con skyRelRadiance(),
+   exactamente la misma función que alimenta el mapa polar explicativo.
+   El material es autoiluminado (MeshBasicMaterial): NO altera irradiancia,
+   sombras, POA ni iluminación de la escena. Es una capa de lectura. */
+function makeSkyDome3D(scene){
+  if(typeof THREE==="undefined")return null;
+  const cv=document.createElement("canvas");cv.width=720;cv.height=360;
+  const tx=new THREE.CanvasTexture(cv);
+  tx.minFilter=THREE.LinearFilter;tx.magFilter=THREE.LinearFilter;
+  tx.wrapS=THREE.RepeatWrapping;tx.wrapT=THREE.ClampToEdgeWrapping;
+  tx.generateMipmaps=false;
+  const mat=new THREE.MeshBasicMaterial({
+    map:tx,side:THREE.BackSide,transparent:true,opacity:.78,depthWrite:false,
+    fog:false
+  });
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(330,64,32),mat);
+  mesh.renderOrder=-20;mesh.frustumCulled=false;scene.add(mesh);
+  return {mesh:mesh,canvas:cv,tex:tx,key:""};
+}
+function updateSkyDome3D(st){
+  if(!TD||!TD.skyDome3D||!st)return;
+  const D=TD.skyDome3D;
+  D.mesh.visible=!!SKYDOME_ON;
+  if(!SKYDOME_ON)return;
+  D.mesh.position.set(TD.cx||0,0,TD.cz||0);
+  /* redibujar sólo cuando cambia el estado visible del cielo; el renderer
+     puede ir a 60 fps, pero la distribución no necesita recalcularse 60 veces. */
+  const k=[Math.round(st.zen*10),Math.round(st.az*10),
+           Math.round(st.iso*1000),Math.round(st.circ*1000),
+           Math.round(st.hor*1000),Math.round(st.cc*1000)].join("|");
+  if(D.key===k)return;D.key=k;
+  const x=D.canvas.getContext("2d"),W=D.canvas.width,H=D.canvas.height;
+  const img=x.createImageData(W,H),dd=img.data;
+  let vmax=.001;
+  for(let yy=0;yy<H/2;yy+=2){
+    const alt=90-(yy/(H/2))*90;
+    for(let xx=0;xx<W;xx+=4){
+      const az=360*xx/W;vmax=Math.max(vmax,skyRelRadiance(st,alt,az));
+    }
+  }
+  for(let yy=0;yy<H;yy++){
+    /* equirectangular: parte superior = hemisferio visible; la inferior se deja
+       oscura para que nunca parezca que hay radiancia bajo el horizonte. */
+    const alt=90-(yy/(H/2))*90;
+    for(let xx=0;xx<W;xx++){
+      const q=(yy<H/2)?Math.pow(skyRelRadiance(st,alt,360*xx/W)/vmax,.55):0;
+      const stops=[[13,47,178],[28,105,235],[38,194,218],[246,225,91],[255,132,42],[190,29,38]];
+      const z=Math.max(0,Math.min(1,q))*(stops.length-1),ii=Math.min(stops.length-2,Math.floor(z)),f=z-ii,A=stops[ii],B=stops[ii+1],j=(yy*W+xx)*4;
+      dd[j]=Math.round(A[0]+(B[0]-A[0])*f);
+      dd[j+1]=Math.round(A[1]+(B[1]-A[1])*f);
+      dd[j+2]=Math.round(A[2]+(B[2]-A[2])*f);
+      dd[j+3]=yy<H/2?190:0;
+    }
+  }
+  x.putImageData(img,0,0);D.tex.needsUpdate=true;
+}
 function skyMaskRatio(tiltDeg,gcr){
   const b=Math.abs(tiltDeg)*RAD,g=Math.max(0,Math.min(.95,gcr||0));if(!(g>0))return 1;
   let vf=0,N=41;
@@ -807,6 +865,7 @@ function drawSkyDome(){
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
   const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
   const i=Math.max(0,Math.min(SIM.dayF.n-1,Math.round(CLOCK/DT_FINE))),day=SIM.dayF,irr=day.irr[i],st=skyPerezState(day.zen[i],day.az[i],irr,day.doy);
+  updateSkyDome3D(st);
   const R=Math.min(w*.31,h*.43),cx=w*.53,cy=h*.39;x.save();x.globalCompositeOperation="screen";
   let vmax=0,samples=[];
   for(let alt=2.5;alt<90;alt+=5)for(let az=2.5;az<360;az+=5){const L=skyRelRadiance(st,alt,az);vmax=Math.max(vmax,L);samples.push([alt,az,L]);}
@@ -3938,11 +3997,12 @@ function init3D(){
     const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(4,16,16),
       new THREE.MeshBasicMaterial({color:0xfbbd23,transparent:true}));
     scene3.add(hemi,sun,sun.target,sunMesh);
+    const skyDome3D=makeSkyDome3D(scene3);
     const hint=document.createElement('div');hint.className='hint';
     hint.textContent='arrastrar: orbitar · DOBLE CLIC: centrar ahí (y el zoom va ahí) · botón dcho: desplazarse · rueda: zoom · ✈ vuelo libre · +X = norte';
     holder.appendChild(hint);
     TD={renderer:renderer,scene:scene3,camera:camera,controls:controls,sun:sun,hemi:hemi,
-        sunMesh:sunMesh,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
+        sunMesh:sunMesh,skyDome3D:skyDome3D,world:null,zones:[],camSet:false,w:0,h:0,cx:0,cz:0};
     pickInit(holder);
     $('cenitbtn').onclick=toggleCenit;
   }catch(e){TD=null;$('tab3d').style.display='none';setTab(false);}
@@ -5080,7 +5140,7 @@ function setTab(three){
   else drawScene();
 }
 let SKYDOME_ON=true;
-$("skytoggle").onclick=()=>{SKYDOME_ON=!SKYDOME_ON;$("skytoggle").classList.toggle("acc",SKYDOME_ON);drawSkyDome();};
+$("skytoggle").onclick=()=>{SKYDOME_ON=!SKYDOME_ON;$("skytoggle").classList.toggle("acc",SKYDOME_ON);if(TD&&TD.skyDome3D)TD.skyDome3D.mesh.visible=SKYDOME_ON;drawSkyDome();};
 $('tab3d').onclick=()=>setTab(true);
 $('tab2d').onclick=()=>setTab(false);
 function refreshScene(rebuild){
