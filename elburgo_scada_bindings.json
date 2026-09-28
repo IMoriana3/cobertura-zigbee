@@ -1,0 +1,2606 @@
+{
+  "schema_version": 1,
+  "plant_id": "23003",
+  "plant_route": "elburgo",
+  "source_plant": "El Burgo I",
+  "plant_timezone": "Europe/Madrid",
+  "registry_revision": "r1",
+  "record_status": "provisional",
+  "read_only": true,
+  "operationally_usable": false,
+  "valid_from": "2026-09-23T00:00:00+02:00",
+  "valid_to": null,
+  "layout_sha256": "sha256:f579fec2f9a0e51e9acc145fdb21d960730e0e0893549c83fbce7d5d54159cea",
+  "publication": {
+    "published": true,
+    "commit": "5de36d2f6d56ce878299ed95c41e5e1d18d35ad5"
+  },
+  "source_ncus": {
+    "1": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+    "2": "2b48971f-113c-4adb-8dc4-247cd7b44239"
+  },
+  "trackers": [
+    {
+      "geometry_binding": "1.10.3",
+      "tracker_asset_id": "24c00763-c621-4890-9c9e-0ec207608e41",
+      "tcu_asset_id": "a9642d95-27e5-49b9-902f-06aa9d1bbf3b",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "56",
+      "aliases": {
+        "construction": "TR C 27",
+        "engineering": "155"
+      }
+    },
+    {
+      "geometry_binding": "1.10.6",
+      "tracker_asset_id": "d8e03239-9b66-439f-9b25-b21c925cf559",
+      "tcu_asset_id": "40e91d7e-da93-4e38-9d46-aa0bcb1ba797",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "59",
+      "aliases": {
+        "construction": "TR C 28",
+        "engineering": "156"
+      }
+    },
+    {
+      "geometry_binding": "1.1.5",
+      "tracker_asset_id": "ee87955e-f0fd-4390-a64f-d4a1e769a9a3",
+      "tcu_asset_id": "765f5afc-2b4c-4b82-bfd9-952421dc2a8f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "5",
+      "aliases": {
+        "construction": "TR B 5",
+        "engineering": "164"
+      }
+    },
+    {
+      "geometry_binding": "1.2.1",
+      "tracker_asset_id": "62b64c5f-f020-4d64-8c8a-087a2101a332",
+      "tcu_asset_id": "662e59a2-e74d-41e3-ae91-36f1a01e8b21",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "7",
+      "aliases": {
+        "construction": "TR B 6",
+        "engineering": "157"
+      }
+    },
+    {
+      "geometry_binding": "1.16.1",
+      "tracker_asset_id": "19be10c4-1e6b-46ec-b8a3-8520fad311e0",
+      "tcu_asset_id": "2179a83f-8312-47f5-abbd-32c9964a6eac",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "90",
+      "aliases": {
+        "construction": "TR A 39",
+        "engineering": "158"
+      }
+    },
+    {
+      "geometry_binding": "1.16.4",
+      "tracker_asset_id": "b012d972-6234-45ce-b6b7-0b3a22a677c2",
+      "tcu_asset_id": "5dffe162-a26d-4fd2-8fad-40eb71302089",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "93",
+      "aliases": {
+        "construction": "TR A 40",
+        "engineering": "159"
+      }
+    },
+    {
+      "geometry_binding": "1.17.1",
+      "tracker_asset_id": "261f3ba4-3e21-452a-b6df-e8404782d5a0",
+      "tcu_asset_id": "145aec24-ad16-4d5c-9c6a-5593a6879915",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "96",
+      "aliases": {
+        "construction": "TR A 41",
+        "engineering": "160"
+      }
+    },
+    {
+      "geometry_binding": "1.17.4",
+      "tracker_asset_id": "960fdec8-8f48-4445-b42d-6737f20c1eb5",
+      "tcu_asset_id": "800ae6cb-ebcb-4070-a6ec-8554c30e57e3",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "99",
+      "aliases": {
+        "construction": "TR A 42",
+        "engineering": "161"
+      }
+    },
+    {
+      "geometry_binding": "1.18.1",
+      "tracker_asset_id": "0ce3adce-9810-4b6c-9b54-dc346fde91b7",
+      "tcu_asset_id": "fc8885f1-dda3-4381-9b41-f8765c5f9c6f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "102",
+      "aliases": {
+        "construction": "TR A 43",
+        "engineering": "162"
+      }
+    },
+    {
+      "geometry_binding": "1.18.4",
+      "tracker_asset_id": "b839a04a-7734-47dd-88b3-b1a722bce264",
+      "tcu_asset_id": "7129e4b9-1eff-4410-9bf7-19097b356bd7",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "105",
+      "aliases": {
+        "construction": "TR A 44",
+        "engineering": "163"
+      }
+    },
+    {
+      "geometry_binding": "2.1.1",
+      "tracker_asset_id": "44f698e0-e25f-4591-a261-1f899538a479",
+      "tcu_asset_id": "2cf551d5-fff8-4ff9-bc90-d32dd6706fa8",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "1",
+      "aliases": {
+        "construction": "TR D 6",
+        "engineering": "209"
+      }
+    },
+    {
+      "geometry_binding": "2.1.2",
+      "tracker_asset_id": "09bccf1a-db28-4b29-b1b2-96b15f89540a",
+      "tcu_asset_id": "9cc1d5b6-c02f-461a-a293-fc23c1ab3376",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "2",
+      "aliases": {
+        "construction": "TR D 7",
+        "engineering": "208"
+      }
+    },
+    {
+      "geometry_binding": "2.5.3",
+      "tracker_asset_id": "7f9211a2-bb30-42ef-9b13-9c090a280237",
+      "tcu_asset_id": "a1bb8d90-1bb1-49b9-8292-25d6bb43c27f",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "27",
+      "aliases": {
+        "construction": "TR F 23",
+        "engineering": "211"
+      }
+    },
+    {
+      "geometry_binding": "2.5.6",
+      "tracker_asset_id": "e6972051-28bd-4841-aa7c-03e6e4c13eae",
+      "tcu_asset_id": "2fee1dbc-9060-4cf0-a05f-259a003d39b2",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "30",
+      "aliases": {
+        "construction": "TR F 24",
+        "engineering": "210"
+      }
+    },
+    {
+      "geometry_binding": "2.16.1",
+      "tracker_asset_id": "16c76f1e-9fea-4421-aeaf-8a446f055393",
+      "tcu_asset_id": "5f57d968-bb81-4045-8fb5-be65e44d3825",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "55",
+      "aliases": {
+        "construction": "TR G 32",
+        "engineering": "213"
+      }
+    },
+    {
+      "geometry_binding": "2.16.2",
+      "tracker_asset_id": "47ed5abf-ff1a-4608-b43a-1063bae6a9cf",
+      "tcu_asset_id": "086903f2-9d61-4f5b-9007-628dc2acabd1",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "59",
+      "aliases": {
+        "construction": "TR G 33",
+        "engineering": "212"
+      }
+    },
+    {
+      "geometry_binding": "2.17.5",
+      "tracker_asset_id": "49e66a39-5cf3-4104-880e-1b51c2655169",
+      "tcu_asset_id": "5a0d740c-6efd-42ba-9ba9-ae668bebf5e6",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "92",
+      "aliases": {
+        "construction": "TR H 41",
+        "engineering": "215"
+      }
+    },
+    {
+      "geometry_binding": "2.17.7",
+      "tracker_asset_id": "4e0c401b-a1e3-45af-8e32-538cce65925f",
+      "tcu_asset_id": "ab0c4b63-107f-42fc-9652-92582174c44d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "97",
+      "aliases": {
+        "construction": "TR H 42",
+        "engineering": "214"
+      }
+    },
+    {
+      "geometry_binding": "1.1.1",
+      "tracker_asset_id": "1d1205ae-b9a2-44e4-834d-2011eb868b9a",
+      "tcu_asset_id": "2b3b5a10-dc18-4d05-a3e5-50c9fe086b86",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "1",
+      "aliases": {
+        "construction": "TR C 1",
+        "engineering": "151"
+      }
+    },
+    {
+      "geometry_binding": "2.2.5",
+      "tracker_asset_id": "55e6ae69-3142-4c55-a1e5-3b4b372a6b5f",
+      "tcu_asset_id": "4fc31c35-6af5-42db-88aa-bc969761fc82",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "12",
+      "aliases": {
+        "construction": "TR E 16",
+        "engineering": "146"
+      }
+    },
+    {
+      "geometry_binding": "2.6.3",
+      "tracker_asset_id": "571fe4c3-0b49-4f89-a83e-199bb038350c",
+      "tcu_asset_id": "40849a45-3bc9-4b88-b108-cccfe16a1731",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "33",
+      "aliases": {
+        "construction": "TR F 25",
+        "engineering": "7"
+      }
+    },
+    {
+      "geometry_binding": "2.16.3",
+      "tracker_asset_id": "a276e8cc-15b2-4909-864d-824b644357cc",
+      "tcu_asset_id": "22a4208e-8be2-469e-91e9-dcbc2e7ce9b5",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "63",
+      "aliases": {
+        "construction": "TR G 34",
+        "engineering": "70"
+      }
+    },
+    {
+      "geometry_binding": "2.1.3",
+      "tracker_asset_id": "82907c6b-98df-4e4f-a540-bd405dea21d4",
+      "tcu_asset_id": "72c33cd9-34de-4289-8d08-97f74151413c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "3",
+      "aliases": {
+        "construction": "TR D 8",
+        "engineering": "62"
+      }
+    },
+    {
+      "geometry_binding": "1.18.7",
+      "tracker_asset_id": "eddb7905-6f8a-40e7-996d-71a11c2db49c",
+      "tcu_asset_id": "77b122ed-9365-454a-9f9c-124e828c9002",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "108",
+      "aliases": {
+        "construction": "TR B 45",
+        "engineering": "207"
+      }
+    },
+    {
+      "geometry_binding": "1.15.4",
+      "tracker_asset_id": "81b4b8ef-308b-4261-8d4b-d9406b570cda",
+      "tcu_asset_id": "27562893-73bf-40d8-b18a-c85c254dd53f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "87",
+      "aliases": {
+        "construction": "TR A 38",
+        "engineering": "202"
+      }
+    },
+    {
+      "geometry_binding": "1.7.3",
+      "tracker_asset_id": "a2307410-5e55-47c9-8f58-0a9278ab9b7b",
+      "tcu_asset_id": "6692a64b-2b83-4d2c-bcb9-49659b868df9",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "39",
+      "aliases": {
+        "construction": "TR A 22",
+        "engineering": "152"
+      }
+    },
+    {
+      "geometry_binding": "1.2.3",
+      "tracker_asset_id": "652f6723-3c91-4d30-8f76-b07c1b0b7b3e",
+      "tcu_asset_id": "97743978-cc5a-4d1e-bd50-97c647694fbe",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "9",
+      "aliases": {
+        "construction": "TR B 7",
+        "engineering": "205"
+      }
+    },
+    {
+      "geometry_binding": "1.18.6",
+      "tracker_asset_id": "2a004677-1be8-463f-8cdc-4e04f8da314e",
+      "tcu_asset_id": "d3d2b39c-c0bb-4453-925d-1bd8d3f6358e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "107",
+      "aliases": {
+        "construction": "TR C 44",
+        "engineering": "201"
+      }
+    },
+    {
+      "geometry_binding": "2.14.4",
+      "tracker_asset_id": "4751e20a-a6c3-40e2-8190-9c1105628312",
+      "tcu_asset_id": "46c27f64-7393-4336-bb86-ce7030bc288e",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "93",
+      "aliases": {
+        "construction": "TR D 42",
+        "engineering": "206"
+      }
+    },
+    {
+      "geometry_binding": "2.15.4",
+      "tracker_asset_id": "c0f21fb9-2e54-4c5b-a868-a4d013b2ad1e",
+      "tcu_asset_id": "74362f78-895a-4212-90b3-60e28ecad1f7",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "102",
+      "aliases": {
+        "construction": "TR E 44",
+        "engineering": "153"
+      }
+    },
+    {
+      "geometry_binding": "2.15.5",
+      "tracker_asset_id": "f78bb7ee-5f2a-47a4-b291-7e065fb8fe2c",
+      "tcu_asset_id": "0d6e659b-8e88-4632-b918-620413280ce5",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "103",
+      "aliases": {
+        "construction": "TR F 44",
+        "engineering": "154"
+      }
+    },
+    {
+      "geometry_binding": "2.18.5",
+      "tracker_asset_id": "ea01b566-57f2-4284-82fa-4f874d251a57",
+      "tcu_asset_id": "c3f486f3-371f-409f-9a82-d931befe2a18",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "106",
+      "aliases": {
+        "construction": "TR G 45",
+        "engineering": "147"
+      }
+    },
+    {
+      "geometry_binding": "2.18.6",
+      "tracker_asset_id": "4fa1d1c3-6c5a-47bd-bc47-d5ebc6e91e37",
+      "tcu_asset_id": "ae4a02f2-d0a2-4fe0-93cd-f3c51b336bcb",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "107",
+      "aliases": {
+        "construction": "TR H 45",
+        "engineering": "200"
+      }
+    },
+    {
+      "geometry_binding": "2.18.2",
+      "tracker_asset_id": "54c69f8f-974f-4683-864a-bc71595b9fbd",
+      "tcu_asset_id": "ac047c74-c9c5-47fe-8bef-8d03f6ca95d8",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "101",
+      "aliases": {
+        "construction": "TR H 43",
+        "engineering": "198"
+      }
+    },
+    {
+      "geometry_binding": "1.9.6",
+      "tracker_asset_id": "5a7098b8-997d-4fa8-9b76-7dd9f6cc8566",
+      "tcu_asset_id": "d946a4b2-c69d-443b-aa8b-abec46918f99",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "53",
+      "aliases": {
+        "construction": "TR C 26",
+        "engineering": "149"
+      }
+    },
+    {
+      "geometry_binding": "1.11.3",
+      "tracker_asset_id": "7c0d7bc7-b769-4a3e-938d-c0eae8fedea2",
+      "tcu_asset_id": "7b8a5ef5-9bf4-4974-a745-ff1a49506cd5",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "62",
+      "aliases": {
+        "construction": "TR C 29",
+        "engineering": "148"
+      }
+    },
+    {
+      "geometry_binding": "2.18.4",
+      "tracker_asset_id": "9716ca27-2e03-4ed9-81fb-ae39e33898b4",
+      "tcu_asset_id": "85d1da9d-ec38-4ecb-b3dd-a13dab84a0df",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "105",
+      "aliases": {
+        "construction": "TR H 44",
+        "engineering": "199"
+      }
+    },
+    {
+      "geometry_binding": "2.15.3",
+      "tracker_asset_id": "1eb2a926-983f-4447-8120-b04c15f16780",
+      "tcu_asset_id": "6fe9c998-5983-4862-91c0-74b0a9fb0568",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "99",
+      "aliases": {
+        "construction": "TR F 43",
+        "engineering": "4"
+      }
+    },
+    {
+      "geometry_binding": "2.13.6",
+      "tracker_asset_id": "c4e5efab-24c0-42ad-b73f-3d1593d245c6",
+      "tcu_asset_id": "bf4243b9-e11c-4c86-be42-34cb7e8ed64e",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "86",
+      "aliases": {
+        "construction": "TR F 40",
+        "engineering": "171"
+      }
+    },
+    {
+      "geometry_binding": "2.13.3",
+      "tracker_asset_id": "9338a6a9-7726-4fcf-a8c6-3e4fe9627d56",
+      "tcu_asset_id": "d09952c2-cc9c-4fdc-b5de-7afad70399d6",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "82",
+      "aliases": {
+        "construction": "TR F 39",
+        "engineering": "170"
+      }
+    },
+    {
+      "geometry_binding": "2.12.6",
+      "tracker_asset_id": "00cc916a-4d05-4d31-8ec4-65448ca9018d",
+      "tcu_asset_id": "3cb5aabf-6518-41c5-9eca-1d6a52279257",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "78",
+      "aliases": {
+        "construction": "TR F 38",
+        "engineering": "169"
+      }
+    },
+    {
+      "geometry_binding": "2.12.3",
+      "tracker_asset_id": "bd251a39-99a7-419f-8392-150d9a95ff7e",
+      "tcu_asset_id": "4bf1ee05-37a8-432b-a7f5-e08d211c3217",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "74",
+      "aliases": {
+        "construction": "TR F 37",
+        "engineering": "168"
+      }
+    },
+    {
+      "geometry_binding": "2.11.6",
+      "tracker_asset_id": "c09688e2-3231-42dc-9531-39da38f7b7ef",
+      "tcu_asset_id": "0ea35f93-3126-4cf7-b7aa-1caa90ed5e33",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "70",
+      "aliases": {
+        "construction": "TR F 36",
+        "engineering": "167"
+      }
+    },
+    {
+      "geometry_binding": "2.11.3",
+      "tracker_asset_id": "5fadbff1-c928-4fc7-9a5e-0638a844a149",
+      "tcu_asset_id": "840fcf75-8bc4-431a-a562-88773054971d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "66",
+      "aliases": {
+        "construction": "TR F 35",
+        "engineering": "166"
+      }
+    },
+    {
+      "geometry_binding": "2.10.6",
+      "tracker_asset_id": "819d426d-b5c5-4900-86be-efe3ebf4da51",
+      "tcu_asset_id": "6f96e720-2f89-4c2a-8f1e-0a26245bc12c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "62",
+      "aliases": {
+        "construction": "TR F 34",
+        "engineering": "165"
+      }
+    },
+    {
+      "geometry_binding": "2.15.2",
+      "tracker_asset_id": "f45a6baa-098d-4491-b047-21abbfae523e",
+      "tcu_asset_id": "0a380ed8-74ce-4deb-8c10-52caab54716b",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "98",
+      "aliases": {
+        "construction": "TR E 43",
+        "engineering": "23"
+      }
+    },
+    {
+      "geometry_binding": "2.12.5",
+      "tracker_asset_id": "c7c7fe5b-0c30-42b3-9833-e7fdc4b01d9a",
+      "tcu_asset_id": "9ae4b4b6-bd27-4171-a9eb-4a433862ed11",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "77",
+      "aliases": {
+        "construction": "TR E 38",
+        "engineering": "22"
+      }
+    },
+    {
+      "geometry_binding": "2.12.2",
+      "tracker_asset_id": "da3de9a7-5999-4161-b587-952eb69df222",
+      "tcu_asset_id": "ce1f269c-3070-46f9-9fcb-d473cbb99f61",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "73",
+      "aliases": {
+        "construction": "TR E 37",
+        "engineering": "17"
+      }
+    },
+    {
+      "geometry_binding": "2.11.5",
+      "tracker_asset_id": "b7d5f6c4-9569-42b4-b1f6-52912a7b42d2",
+      "tcu_asset_id": "45adbc3c-624f-490c-90ce-28b4336dddb9",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "69",
+      "aliases": {
+        "construction": "TR E 36",
+        "engineering": "18"
+      }
+    },
+    {
+      "geometry_binding": "2.11.2",
+      "tracker_asset_id": "5a35b907-2e06-480b-b553-5f431dc98605",
+      "tcu_asset_id": "f4966377-cdeb-41c0-bcd9-adb17f1c67f0",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "65",
+      "aliases": {
+        "construction": "TR E 35",
+        "engineering": "19"
+      }
+    },
+    {
+      "geometry_binding": "2.10.5",
+      "tracker_asset_id": "d6c47767-1463-49ac-a75f-12b92d1a4469",
+      "tcu_asset_id": "b6ad5005-5590-4a04-beef-de783b18324a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "61",
+      "aliases": {
+        "construction": "TR E 34",
+        "engineering": "13"
+      }
+    },
+    {
+      "geometry_binding": "2.10.2",
+      "tracker_asset_id": "14b3a9e8-a4bd-4065-9031-c346ae5ab259",
+      "tcu_asset_id": "bbae4ae7-a221-4621-a629-639ce234d645",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "57",
+      "aliases": {
+        "construction": "TR E 33",
+        "engineering": "14"
+      }
+    },
+    {
+      "geometry_binding": "2.9.5",
+      "tracker_asset_id": "1326bb1a-f84d-48f5-8787-082ed3a6859b",
+      "tcu_asset_id": "6a31e7de-d925-4d06-9cf2-6733418b4aac",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "53",
+      "aliases": {
+        "construction": "TR E 32",
+        "engineering": "15"
+      }
+    },
+    {
+      "geometry_binding": "2.9.2",
+      "tracker_asset_id": "e9890684-2929-45cd-ac14-3b015ee9be13",
+      "tcu_asset_id": "75fc4052-4e13-4da6-bc75-9c7714676e85",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "50",
+      "aliases": {
+        "construction": "TR E 31",
+        "engineering": "16"
+      }
+    },
+    {
+      "geometry_binding": "2.14.1",
+      "tracker_asset_id": "73a6fc5d-ce93-42f5-be40-46d3111b3067",
+      "tcu_asset_id": "47848138-03b8-43f8-b0ac-24c132cabb56",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "88",
+      "aliases": {
+        "construction": "TR D 41",
+        "engineering": "197"
+      }
+    },
+    {
+      "geometry_binding": "2.13.4",
+      "tracker_asset_id": "e5555545-7333-47eb-94d3-e7e19a4ccb99",
+      "tcu_asset_id": "a72d62a9-118d-4c54-9849-6ea1a61ba81c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "84",
+      "aliases": {
+        "construction": "TR D 40",
+        "engineering": "196"
+      }
+    },
+    {
+      "geometry_binding": "2.13.1",
+      "tracker_asset_id": "e55f403b-bc3d-4e69-baa5-3b357b391daa",
+      "tcu_asset_id": "173830f1-8de5-456e-b949-190dcf87888d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "80",
+      "aliases": {
+        "construction": "TR D 39",
+        "engineering": "195"
+      }
+    },
+    {
+      "geometry_binding": "2.12.4",
+      "tracker_asset_id": "a6db4141-8611-42bf-a431-b530d54b2928",
+      "tcu_asset_id": "42452124-2da5-4855-8d00-267b5db4f4ef",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "76",
+      "aliases": {
+        "construction": "TR D 38",
+        "engineering": "47"
+      }
+    },
+    {
+      "geometry_binding": "2.6.1",
+      "tracker_asset_id": "0117d835-170b-47ca-a3ff-24b51f81123c",
+      "tcu_asset_id": "c5f55dc6-8644-4244-b3b6-e229b4948c05",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "31",
+      "aliases": {
+        "construction": "TR D 25",
+        "engineering": "54"
+      }
+    },
+    {
+      "geometry_binding": "2.5.4",
+      "tracker_asset_id": "21939e9f-4644-4e0f-88ff-abd422dc1dad",
+      "tcu_asset_id": "577d2f74-1a1f-4a13-9369-7eae2898db0c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "28",
+      "aliases": {
+        "construction": "TR D 24",
+        "engineering": "55"
+      }
+    },
+    {
+      "geometry_binding": "2.5.1",
+      "tracker_asset_id": "db9ddc43-b8a6-471e-9727-b16dba93c4fe",
+      "tcu_asset_id": "fb1a1776-6fce-4139-8970-fdc1243c58c3",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "25",
+      "aliases": {
+        "construction": "TR D 23",
+        "engineering": "56"
+      }
+    },
+    {
+      "geometry_binding": "2.4.5",
+      "tracker_asset_id": "38c53e9c-8858-4056-aeed-af931713ca1a",
+      "tcu_asset_id": "be3ff055-e83d-4999-ae17-65214fd68bb6",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "23",
+      "aliases": {
+        "construction": "TR D 22",
+        "engineering": "51"
+      }
+    },
+    {
+      "geometry_binding": "2.4.3",
+      "tracker_asset_id": "f669c2cb-2422-4bb4-9324-2caf97987008",
+      "tcu_asset_id": "1f7cd680-008a-417c-9aec-ddec9e13f0e4",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "21",
+      "aliases": {
+        "construction": "TR D 21",
+        "engineering": "52"
+      }
+    },
+    {
+      "geometry_binding": "2.4.1",
+      "tracker_asset_id": "06b1c3ad-4272-4328-8cde-c3398d374271",
+      "tcu_asset_id": "a7524ca5-d607-4b68-831c-901fdeced5f9",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "19",
+      "aliases": {
+        "construction": "TR D 20",
+        "engineering": "53"
+      }
+    },
+    {
+      "geometry_binding": "2.3.5",
+      "tracker_asset_id": "3872e25d-9f4c-4be1-b0b3-c4095d68c3f1",
+      "tcu_asset_id": "c6acd41e-9072-4549-ab65-c184353e4f34",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "17",
+      "aliases": {
+        "construction": "TR D 19",
+        "engineering": "48"
+      }
+    },
+    {
+      "geometry_binding": "2.3.3",
+      "tracker_asset_id": "4956378f-e27d-4aee-9ea6-655d5dd35ef7",
+      "tcu_asset_id": "2e357923-f9b3-4cb5-851c-581f8fa4beb0",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "15",
+      "aliases": {
+        "construction": "TR D 18",
+        "engineering": "49"
+      }
+    },
+    {
+      "geometry_binding": "2.3.1",
+      "tracker_asset_id": "2d5865fc-ba41-47be-aee3-4f28b0ccf5e2",
+      "tcu_asset_id": "26e1c380-9ebc-4725-a486-7bc9e724f563",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "13",
+      "aliases": {
+        "construction": "TR D 17",
+        "engineering": "192"
+      }
+    },
+    {
+      "geometry_binding": "2.2.4",
+      "tracker_asset_id": "53b979e3-28cf-497a-b7ed-4d02fc7ec154",
+      "tcu_asset_id": "baf45a2a-694c-4c13-b587-59204c4f0a4a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "11",
+      "aliases": {
+        "construction": "TR D 16",
+        "engineering": "50"
+      }
+    },
+    {
+      "geometry_binding": "2.2.3",
+      "tracker_asset_id": "e9812c23-2145-49ca-a39f-c7e654d0e171",
+      "tcu_asset_id": "9ce4c0b7-93cc-443d-a742-d10bfae7353f",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "10",
+      "aliases": {
+        "construction": "TR D 15",
+        "engineering": "69"
+      }
+    },
+    {
+      "geometry_binding": "1.5.4",
+      "tracker_asset_id": "88e3d09e-9ea4-4e05-a50d-8e8d15844e93",
+      "tcu_asset_id": "0f3e8f8a-f628-4c15-971e-0bd3ec9fe863",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "28",
+      "aliases": {
+        "construction": "TR C 16",
+        "engineering": "178"
+      }
+    },
+    {
+      "geometry_binding": "1.5.2",
+      "tracker_asset_id": "188b44c3-8b03-46f5-9c83-9ccaf3165bb8",
+      "tcu_asset_id": "c6824566-bdd4-4940-9c5d-333db870f1ae",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "26",
+      "aliases": {
+        "construction": "TR C 15",
+        "engineering": "177"
+      }
+    },
+    {
+      "geometry_binding": "1.4.6",
+      "tracker_asset_id": "7979f2f3-db19-41ec-a01b-aadcb3879d7b",
+      "tcu_asset_id": "f76ba76d-a4f7-443a-aa98-fe5370dee505",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "24",
+      "aliases": {
+        "construction": "TR C 14",
+        "engineering": "176"
+      }
+    },
+    {
+      "geometry_binding": "1.4.4",
+      "tracker_asset_id": "6846d7ef-c5db-4548-bb64-bb352bcbccdb",
+      "tcu_asset_id": "9ed22dd4-ff6f-4643-93da-37511165ccc8",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "22",
+      "aliases": {
+        "construction": "TR C 13",
+        "engineering": "175"
+      }
+    },
+    {
+      "geometry_binding": "1.4.2",
+      "tracker_asset_id": "63768146-b638-4860-b1f8-1a142749fad9",
+      "tcu_asset_id": "f0599a0d-eb5c-4b57-9304-e4173f94aadb",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "20",
+      "aliases": {
+        "construction": "TR C 12",
+        "engineering": "174"
+      }
+    },
+    {
+      "geometry_binding": "1.3.6",
+      "tracker_asset_id": "a5e825c9-d8ff-4e4d-ae74-834efb650f4d",
+      "tcu_asset_id": "8479fe70-fba8-4b9e-af63-6b789fee4418",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "18",
+      "aliases": {
+        "construction": "TR C 11",
+        "engineering": "173"
+      }
+    },
+    {
+      "geometry_binding": "1.3.4",
+      "tracker_asset_id": "60dcc302-b15e-4389-b799-b4fd612f4c7e",
+      "tcu_asset_id": "9d46636a-b927-49a4-bd73-460df9b29081",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "16",
+      "aliases": {
+        "construction": "TR C 10",
+        "engineering": "172"
+      }
+    },
+    {
+      "geometry_binding": "1.18.3",
+      "tracker_asset_id": "965d0522-a95d-4b81-81f6-2295dc3967b8",
+      "tcu_asset_id": "172a1740-3a97-4fc9-a7f3-2b5501631f66",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "104",
+      "aliases": {
+        "construction": "TR C 43",
+        "engineering": "100"
+      }
+    },
+    {
+      "geometry_binding": "1.17.3",
+      "tracker_asset_id": "93e75fe2-38d9-4f4e-b001-6bbde149c79c",
+      "tcu_asset_id": "c06ed72c-5299-40cf-8228-87c5e757ed24",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "98",
+      "aliases": {
+        "construction": "TR C 41",
+        "engineering": "191"
+      }
+    },
+    {
+      "geometry_binding": "1.16.6",
+      "tracker_asset_id": "8f883b46-ed6b-4923-a9d0-6bc848bb0ce6",
+      "tcu_asset_id": "e0aa1d2c-911e-4885-a663-77028a0cdf97",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "95",
+      "aliases": {
+        "construction": "TR C 40",
+        "engineering": "190"
+      }
+    },
+    {
+      "geometry_binding": "1.16.3",
+      "tracker_asset_id": "6afd8d6a-f9eb-4a54-a799-072b34120ff1",
+      "tcu_asset_id": "e057f455-f5af-45d3-a1b8-5b2dd070ad0f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "92",
+      "aliases": {
+        "construction": "TR C 39",
+        "engineering": "189"
+      }
+    },
+    {
+      "geometry_binding": "1.15.6",
+      "tracker_asset_id": "175edfb2-8664-4caa-b945-d05e56de5eaf",
+      "tcu_asset_id": "986b2664-1e42-4875-ac85-91d2bd53ab1c",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "89",
+      "aliases": {
+        "construction": "TR C 38",
+        "engineering": "184"
+      }
+    },
+    {
+      "geometry_binding": "1.15.3",
+      "tracker_asset_id": "0eba62b3-7a3e-4d0b-8435-e4afe5cede87",
+      "tcu_asset_id": "8d3f51d2-b02c-4569-b8a5-5de335945735",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "86",
+      "aliases": {
+        "construction": "TR C 37",
+        "engineering": "183"
+      }
+    },
+    {
+      "geometry_binding": "1.14.6",
+      "tracker_asset_id": "6cc8b686-c68a-4272-9b43-30ba7e8a2f8e",
+      "tcu_asset_id": "8f861e5f-0c69-49ec-a9ee-5ba1b7110cc8",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "83",
+      "aliases": {
+        "construction": "TR C 36",
+        "engineering": "182"
+      }
+    },
+    {
+      "geometry_binding": "1.2.5",
+      "tracker_asset_id": "669a8d63-6c13-49e9-8362-6287263da112",
+      "tcu_asset_id": "7d3e2359-c27a-4a61-a35b-9fb91d04af0d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "11",
+      "aliases": {
+        "construction": "TR B 8",
+        "engineering": "203"
+      }
+    },
+    {
+      "geometry_binding": "1.3.1",
+      "tracker_asset_id": "770dd030-6485-4abe-a95b-07d92a59b572",
+      "tcu_asset_id": "8d116f9d-e93b-418b-a408-34976dd59992",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "13",
+      "aliases": {
+        "construction": "TR B 9",
+        "engineering": "204"
+      }
+    },
+    {
+      "geometry_binding": "1.3.3",
+      "tracker_asset_id": "9aab0590-a8bf-4ba0-99d3-676b2365a230",
+      "tcu_asset_id": "b049e0a7-dcb3-4058-8252-bc2956425a58",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "15",
+      "aliases": {
+        "construction": "TR B 10",
+        "engineering": "129"
+      }
+    },
+    {
+      "geometry_binding": "1.12.5",
+      "tracker_asset_id": "dc42f594-ee9c-4e6c-a0be-87c702a40eae",
+      "tcu_asset_id": "2ee41f11-97b5-44e3-9752-d20377c2e1cb",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "70",
+      "aliases": {
+        "construction": "TR B 32",
+        "engineering": "104"
+      }
+    },
+    {
+      "geometry_binding": "1.13.2",
+      "tracker_asset_id": "d3cac0b3-c775-45aa-b0a0-150d44b3b988",
+      "tcu_asset_id": "3e13cafd-ed02-4b6b-96a1-64e3aacf6b5d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "73",
+      "aliases": {
+        "construction": "TR B 33"
+      }
+    },
+    {
+      "geometry_binding": "1.13.5",
+      "tracker_asset_id": "465d0b8c-7c67-4dd3-b5ae-5c30e4197b7f",
+      "tcu_asset_id": "21adebdb-721c-40d3-94b1-87c1743847ca",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "76",
+      "aliases": {
+        "construction": "TR B 34"
+      }
+    },
+    {
+      "geometry_binding": "1.14.2",
+      "tracker_asset_id": "a0786a47-d58d-4cfd-a667-3d953c9dec74",
+      "tcu_asset_id": "1e105b5d-3ad7-4a55-a079-98c692def50d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "79",
+      "aliases": {
+        "construction": "TR B 35",
+        "engineering": "101"
+      }
+    },
+    {
+      "geometry_binding": "1.14.5",
+      "tracker_asset_id": "7dac1c1e-0e5b-48bf-b5fc-3f799b537859",
+      "tcu_asset_id": "093e353e-273e-47b4-87a7-d2579899fd84",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "82",
+      "aliases": {
+        "construction": "TR B 36",
+        "engineering": "179"
+      }
+    },
+    {
+      "geometry_binding": "1.15.2",
+      "tracker_asset_id": "9d0d2df0-eed5-47c5-83c4-21523f54ecd8",
+      "tcu_asset_id": "200620a1-9920-4cbc-bbf3-2292a7108e73",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "85",
+      "aliases": {
+        "construction": "TR B 37",
+        "engineering": "180"
+      }
+    },
+    {
+      "geometry_binding": "1.15.5",
+      "tracker_asset_id": "1a17d2ac-4ac2-4c75-83a9-e1881b3386aa",
+      "tcu_asset_id": "7b993732-5b96-4247-9103-4f06dd127e9f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "88",
+      "aliases": {
+        "construction": "TR B 38",
+        "engineering": "181"
+      }
+    },
+    {
+      "geometry_binding": "1.16.2",
+      "tracker_asset_id": "65ac9bdb-4772-4526-8820-253846c0f189",
+      "tcu_asset_id": "54982eab-02f4-4ebe-851b-ba8b7f1e98f0",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "91",
+      "aliases": {
+        "construction": "TR B 39",
+        "engineering": "185"
+      }
+    },
+    {
+      "geometry_binding": "1.16.5",
+      "tracker_asset_id": "cf2d2255-0ff7-4a8f-ab15-a333bd178f58",
+      "tcu_asset_id": "eb9b2433-3f7f-4dfb-b978-00330721ef5e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "94",
+      "aliases": {
+        "construction": "TR B 40",
+        "engineering": "186"
+      }
+    },
+    {
+      "geometry_binding": "1.17.2",
+      "tracker_asset_id": "2a4cec5d-9902-40d4-b049-89ad9b33f363",
+      "tcu_asset_id": "e32aa8c4-eb9f-45cd-96c4-177e303e3313",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "97",
+      "aliases": {
+        "construction": "TR B 41",
+        "engineering": "187"
+      }
+    },
+    {
+      "geometry_binding": "1.17.5",
+      "tracker_asset_id": "7e1239e8-c5f7-45a7-8241-2443222d0876",
+      "tcu_asset_id": "5ed85a0d-b1c3-4c9d-9243-7676081f9436",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "100",
+      "aliases": {
+        "construction": "TR B 42",
+        "engineering": "188"
+      }
+    },
+    {
+      "geometry_binding": "1.15.1",
+      "tracker_asset_id": "ef58190b-8c0a-46ac-bf30-75fee49bb98c",
+      "tcu_asset_id": "46adf4db-d61d-4549-94f8-ac5fef4c1c61",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "84",
+      "aliases": {
+        "construction": "TR A 37",
+        "engineering": "194"
+      }
+    },
+    {
+      "geometry_binding": "1.14.4",
+      "tracker_asset_id": "83ceeb82-9f98-4f9f-8708-caad0909146a",
+      "tcu_asset_id": "4baed640-396e-457a-9ff5-7ec42f57d56e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "81",
+      "aliases": {
+        "construction": "TR A 36",
+        "engineering": "193"
+      }
+    },
+    {
+      "geometry_binding": "1.14.1",
+      "tracker_asset_id": "328bcdb0-28be-4761-b5a9-b6b8566a99e1",
+      "tcu_asset_id": "9d60bdd2-4c2e-4e00-9e64-a2467e6d766c",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "78",
+      "aliases": {
+        "construction": "TR A 35",
+        "engineering": "141"
+      }
+    },
+    {
+      "geometry_binding": "1.13.1",
+      "tracker_asset_id": "0860c120-727c-4c07-842c-50dfae8975fe",
+      "tcu_asset_id": "2d3e71a8-d6c4-4f81-aeee-30efb1d1d007",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "72",
+      "aliases": {
+        "construction": "TR A 33",
+        "engineering": "136"
+      }
+    },
+    {
+      "geometry_binding": "1.12.4",
+      "tracker_asset_id": "976e6fee-43b3-43be-8965-014fb9dbe7d8",
+      "tcu_asset_id": "fdd0f8c1-4a0c-4068-b2ae-699c3d03e1ed",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "69",
+      "aliases": {
+        "construction": "TR A 32",
+        "engineering": "134"
+      }
+    },
+    {
+      "geometry_binding": "1.11.1",
+      "tracker_asset_id": "ea0dd679-562c-4c48-866b-71b9c45ebabd",
+      "tcu_asset_id": "59efff8c-0f1d-4e4a-b0f5-fb8978649179",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "60",
+      "aliases": {
+        "construction": "TR A 29",
+        "engineering": "130"
+      }
+    },
+    {
+      "geometry_binding": "1.8.1",
+      "tracker_asset_id": "216cb204-a8bc-4f3b-a7bd-fa0198fa2656",
+      "tcu_asset_id": "5234b562-ed92-4cb1-a7e6-8cf48b151f93",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "42",
+      "aliases": {
+        "construction": "TR A 23",
+        "engineering": "137"
+      }
+    },
+    {
+      "geometry_binding": "1.8.4",
+      "tracker_asset_id": "3af62670-efcc-4db1-9387-84265379ef02",
+      "tcu_asset_id": "25d95037-31d7-4d84-9abf-e4cc12ddea87",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "45",
+      "aliases": {
+        "construction": "TR A 24",
+        "engineering": "139"
+      }
+    },
+    {
+      "geometry_binding": "1.9.1",
+      "tracker_asset_id": "33ce2a59-ebcb-41f3-8383-79b4d167c2f4",
+      "tcu_asset_id": "b1c46107-0274-4197-9dc7-0e21b847b223",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "48",
+      "aliases": {
+        "construction": "TR A 25",
+        "engineering": "143"
+      }
+    },
+    {
+      "geometry_binding": "1.9.4",
+      "tracker_asset_id": "0a299d85-b6b6-497a-a0bc-80c7ee6ad8c1",
+      "tcu_asset_id": "52ecc57c-ecff-41ff-a980-b5a45974420f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "51",
+      "aliases": {
+        "construction": "TR A 26",
+        "engineering": "142"
+      }
+    },
+    {
+      "geometry_binding": "1.10.1",
+      "tracker_asset_id": "2a3630c0-4c60-4a83-bb4a-95d4b0af6cdb",
+      "tcu_asset_id": "0b9e6142-2e24-406b-9e08-42352c695d4e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "54",
+      "aliases": {
+        "construction": "TR A 27",
+        "engineering": "116"
+      }
+    },
+    {
+      "geometry_binding": "1.10.4",
+      "tracker_asset_id": "51d0ede2-c833-4748-87e8-ce1e62905ead",
+      "tcu_asset_id": "a0a60443-b511-4a0e-ad32-71d2ef2fbb8d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "57",
+      "aliases": {
+        "construction": "TR A 28",
+        "engineering": "115"
+      }
+    },
+    {
+      "geometry_binding": "1.11.4",
+      "tracker_asset_id": "9c3e747d-ce09-49de-ab51-afe963e610a1",
+      "tcu_asset_id": "e551d548-5568-4164-b195-334978f987b3",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "63",
+      "aliases": {
+        "construction": "TR A 30",
+        "engineering": "133"
+      }
+    },
+    {
+      "geometry_binding": "1.12.1",
+      "tracker_asset_id": "7ddfed04-11c8-4865-bb70-5f1011406256",
+      "tcu_asset_id": "1cd18c3d-487f-43be-8432-210227719e05",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "66",
+      "aliases": {
+        "construction": "TR A 31",
+        "engineering": "132"
+      }
+    },
+    {
+      "geometry_binding": "1.13.4",
+      "tracker_asset_id": "50797fc8-47d1-4f05-8bd5-3fc287b15191",
+      "tcu_asset_id": "618eb2e9-8094-4894-a601-4128e440fb41",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "75",
+      "aliases": {
+        "construction": "TR A 34",
+        "engineering": "135"
+      }
+    },
+    {
+      "geometry_binding": "1.18.2",
+      "tracker_asset_id": "0bd85100-f0fe-46ba-ae6a-7ad54bcfeb09",
+      "tcu_asset_id": "d73aedd6-cacd-4ed2-8b94-d4c74829d450",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "103",
+      "aliases": {
+        "construction": "TR B 43",
+        "engineering": "123"
+      }
+    },
+    {
+      "geometry_binding": "1.18.5",
+      "tracker_asset_id": "1ef81292-a271-4349-b6f9-08476903e88c",
+      "tcu_asset_id": "5e2ad19c-3160-4224-9418-95af43e8377d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "106",
+      "aliases": {
+        "construction": "TR B 44",
+        "engineering": "150"
+      }
+    },
+    {
+      "geometry_binding": "1.12.2",
+      "tracker_asset_id": "e1819081-af6f-4741-a746-b66feedc5ed0",
+      "tcu_asset_id": "d0965803-1310-4927-a542-8141d312021d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "67",
+      "aliases": {
+        "construction": "TR B 31",
+        "engineering": "117"
+      }
+    },
+    {
+      "geometry_binding": "1.11.5",
+      "tracker_asset_id": "fdc00a22-aec8-4959-ab5c-cec1ee43fe22",
+      "tcu_asset_id": "fb162ff7-c0fa-4b5e-99b9-73fc724ed7ac",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "64",
+      "aliases": {
+        "construction": "TR B 30",
+        "engineering": "118"
+      }
+    },
+    {
+      "geometry_binding": "1.11.2",
+      "tracker_asset_id": "9a0b9697-48b3-4641-80f2-61b552f0d0f9",
+      "tcu_asset_id": "e95e64d4-ae5d-4e72-b561-a6824b9c7dcb",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "61",
+      "aliases": {
+        "construction": "TR B 29",
+        "engineering": "114"
+      }
+    },
+    {
+      "geometry_binding": "1.10.5",
+      "tracker_asset_id": "0e84abec-a782-47c9-ab6c-b87a51bdff52",
+      "tcu_asset_id": "858522e7-6587-4406-92ab-e4975adf4844",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "58",
+      "aliases": {
+        "construction": "TR B 28",
+        "engineering": "145"
+      }
+    },
+    {
+      "geometry_binding": "1.10.2",
+      "tracker_asset_id": "39506277-f5b4-4f95-94b7-a8039271b3a2",
+      "tcu_asset_id": "730a8a94-15cf-4ee8-b211-3a392eb985a1",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "55",
+      "aliases": {
+        "construction": "TR B 27",
+        "engineering": "144"
+      }
+    },
+    {
+      "geometry_binding": "1.9.5",
+      "tracker_asset_id": "8f574e78-c05e-4f26-92bb-74f4ee0f4f53",
+      "tcu_asset_id": "a953eee5-5c95-435f-99ad-079ab293317b",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "52",
+      "aliases": {
+        "construction": "TR B 26",
+        "engineering": "140"
+      }
+    },
+    {
+      "geometry_binding": "1.9.2",
+      "tracker_asset_id": "9aba4a37-afa3-412f-bc0e-6b331c8fecd8",
+      "tcu_asset_id": "4f8b1f9b-708b-4854-ae6f-7927c4d43e4a",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "49",
+      "aliases": {
+        "construction": "TR B 25",
+        "engineering": "138"
+      }
+    },
+    {
+      "geometry_binding": "1.8.5",
+      "tracker_asset_id": "cba2664d-30fb-4282-9f88-ba234876027f",
+      "tcu_asset_id": "680ef914-31cb-4048-b9b8-6a29f2c2ee69",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "46",
+      "aliases": {
+        "construction": "TR B 24",
+        "engineering": "113"
+      }
+    },
+    {
+      "geometry_binding": "1.8.2",
+      "tracker_asset_id": "a728f125-6c88-4d3f-b201-243ac705af8d",
+      "tcu_asset_id": "6334ac6b-3c07-49ef-87e3-7546df334988",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "43",
+      "aliases": {
+        "construction": "TR B 23",
+        "engineering": "109"
+      }
+    },
+    {
+      "geometry_binding": "1.7.4",
+      "tracker_asset_id": "e26d4ea8-4f71-4ce8-8389-e078cdae4f8d",
+      "tcu_asset_id": "dcdf296d-2f35-4ea0-8ced-5a350de1f67d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "40",
+      "aliases": {
+        "construction": "TR B 22",
+        "engineering": "110"
+      }
+    },
+    {
+      "geometry_binding": "1.7.1",
+      "tracker_asset_id": "f0b374d0-8087-44b5-a39c-9de2fdb57f54",
+      "tcu_asset_id": "139704a7-bb73-4c78-9e47-a3c3b9a6a574",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "37",
+      "aliases": {
+        "construction": "TR B 21",
+        "engineering": "111"
+      }
+    },
+    {
+      "geometry_binding": "1.6.5",
+      "tracker_asset_id": "2910d1d4-e343-49de-ba43-5b5ba70f8f04",
+      "tcu_asset_id": "86c2d695-b5e5-4bad-875e-26888575fb94",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "35",
+      "aliases": {
+        "construction": "TR B 20",
+        "engineering": "105"
+      }
+    },
+    {
+      "geometry_binding": "1.6.3",
+      "tracker_asset_id": "6936f9dc-dc5f-4c02-8e44-ebf82ca16c18",
+      "tcu_asset_id": "5eb020e2-56c5-42f2-9bd3-e9bb3b99ee5b",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "33",
+      "aliases": {
+        "construction": "TR B 19",
+        "engineering": "106"
+      }
+    },
+    {
+      "geometry_binding": "1.6.1",
+      "tracker_asset_id": "041727b3-1c27-4402-9da7-179cb15bfc0b",
+      "tcu_asset_id": "ce7da9bf-7a45-4265-b63d-f4e322e5f421",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "31",
+      "aliases": {
+        "construction": "TR B 18",
+        "engineering": "107"
+      }
+    },
+    {
+      "geometry_binding": "1.5.5",
+      "tracker_asset_id": "68a4e6e5-6c3b-4740-8468-2d72bb6ae585",
+      "tcu_asset_id": "8c2b07c1-d428-4772-affb-663c520da0b7",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "29",
+      "aliases": {
+        "construction": "TR B 17",
+        "engineering": "108"
+      }
+    },
+    {
+      "geometry_binding": "1.5.3",
+      "tracker_asset_id": "f5a93aa0-decf-49dd-92db-b74e51e6da84",
+      "tcu_asset_id": "adc530b4-e702-4afa-b324-7f93ef9f4e27",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "27",
+      "aliases": {
+        "construction": "TR B 16",
+        "engineering": "122"
+      }
+    },
+    {
+      "geometry_binding": "1.5.1",
+      "tracker_asset_id": "68d0e5c8-6c2b-4503-927a-9d07418b1857",
+      "tcu_asset_id": "e6ce9ca3-e280-4df1-a2a2-11196cf206e0",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "25",
+      "aliases": {
+        "construction": "TR B 15",
+        "engineering": "119"
+      }
+    },
+    {
+      "geometry_binding": "1.4.5",
+      "tracker_asset_id": "05449310-f3ef-43b9-9389-755cf0ae1038",
+      "tcu_asset_id": "ea04f058-1da2-45c4-955b-9548968542b0",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "23",
+      "aliases": {
+        "construction": "TR B 14",
+        "engineering": "120"
+      }
+    },
+    {
+      "geometry_binding": "1.4.3",
+      "tracker_asset_id": "87742e0c-b580-4e18-b1c8-5738eeb5d243",
+      "tcu_asset_id": "be3cbdae-c708-48db-a307-db15e17bea9a",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "21",
+      "aliases": {
+        "construction": "TR B 13",
+        "engineering": "121"
+      }
+    },
+    {
+      "geometry_binding": "1.4.1",
+      "tracker_asset_id": "ae0482e2-93a0-41ac-be93-ebfd66183f73",
+      "tcu_asset_id": "8a7b9479-7f81-4054-8d10-82dc8735b631",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "19",
+      "aliases": {
+        "construction": "TR B 12",
+        "engineering": "131"
+      }
+    },
+    {
+      "geometry_binding": "1.3.5",
+      "tracker_asset_id": "4d4ee525-bff6-431d-9b95-fd7d14cfd08e",
+      "tcu_asset_id": "bee664a0-c3f9-4f64-94d4-55358fa5b1cc",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "17",
+      "aliases": {
+        "construction": "TR B 11",
+        "engineering": "128"
+      }
+    },
+    {
+      "geometry_binding": "1.1.2",
+      "tracker_asset_id": "ecc51618-eb47-47d4-bf25-9ae873b42004",
+      "tcu_asset_id": "94005512-31ad-4552-bfdc-f52413037d8e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "2",
+      "aliases": {
+        "construction": "TR C 2",
+        "engineering": "126"
+      }
+    },
+    {
+      "geometry_binding": "1.1.3",
+      "tracker_asset_id": "d3e4bcd5-fb57-4b20-98e4-65d982aca4f9",
+      "tcu_asset_id": "5c970394-e9a3-4f4c-94f4-7f1e68360c68",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "3",
+      "aliases": {
+        "construction": "TR C 3",
+        "engineering": "125"
+      }
+    },
+    {
+      "geometry_binding": "1.1.4",
+      "tracker_asset_id": "c1b4f08a-7e26-43ee-9333-bbd1e07aac8d",
+      "tcu_asset_id": "2dbe2848-38f3-465e-9daf-4094133efd44",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "4",
+      "aliases": {
+        "construction": "TR C 4",
+        "engineering": "124"
+      }
+    },
+    {
+      "geometry_binding": "1.1.6",
+      "tracker_asset_id": "4c47fdae-a247-47f9-8729-18fe1758254d",
+      "tcu_asset_id": "fb6d8afb-e96c-47e1-a9ff-99e138a8657d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "6",
+      "aliases": {
+        "construction": "TR C 5",
+        "engineering": "127"
+      }
+    },
+    {
+      "geometry_binding": "1.2.2",
+      "tracker_asset_id": "c4c7e0b7-c64c-4800-b1c1-12092f1c45bd",
+      "tcu_asset_id": "86cbccbc-af1d-4b2f-879a-5fe15c1f7493",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "8",
+      "aliases": {
+        "construction": "TR C 6",
+        "engineering": "95"
+      }
+    },
+    {
+      "geometry_binding": "1.2.4",
+      "tracker_asset_id": "80f7f4dc-3521-4dc2-989b-bd6ea9d1940e",
+      "tcu_asset_id": "586a7073-8bd6-41b5-86db-466d7dec12cb",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "10",
+      "aliases": {
+        "construction": "TR C 7",
+        "engineering": "98"
+      }
+    },
+    {
+      "geometry_binding": "1.2.6",
+      "tracker_asset_id": "b763af37-da14-4bea-87ca-adaea6dcae84",
+      "tcu_asset_id": "77ea8fb8-11d9-408c-9851-54473114399f",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "12",
+      "aliases": {
+        "construction": "TR C 8",
+        "engineering": "97"
+      }
+    },
+    {
+      "geometry_binding": "1.3.2",
+      "tracker_asset_id": "9e19d2c7-a9ac-42c0-9716-76b61f2d6905",
+      "tcu_asset_id": "d2117a73-61d5-4130-99db-a2517f43a7dd",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "14",
+      "aliases": {
+        "construction": "TR C 9",
+        "engineering": "96"
+      }
+    },
+    {
+      "geometry_binding": "1.5.6",
+      "tracker_asset_id": "1c39d82f-65c3-487b-ba9e-ef2128b8f548",
+      "tcu_asset_id": "2e2d6bb9-26a5-404d-b378-6455cdeb331e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "30",
+      "aliases": {
+        "construction": "TR C 17",
+        "engineering": "88"
+      }
+    },
+    {
+      "geometry_binding": "1.6.2",
+      "tracker_asset_id": "7b772a87-6e89-4a70-9a13-0b2b7f027898",
+      "tcu_asset_id": "3802a3c5-4be6-4462-8138-c6578c0f7d00",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "32",
+      "aliases": {
+        "construction": "TR C 18",
+        "engineering": "87"
+      }
+    },
+    {
+      "geometry_binding": "1.6.4",
+      "tracker_asset_id": "8930de10-29d5-400e-97fe-814cbeaf6c99",
+      "tcu_asset_id": "4c8002e5-ddfe-424a-b303-837b7d554bc3",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "34",
+      "aliases": {
+        "construction": "TR C 19",
+        "engineering": "86"
+      }
+    },
+    {
+      "geometry_binding": "1.6.6",
+      "tracker_asset_id": "e14351f9-e36e-418c-b5cc-a2d0a5d37c19",
+      "tcu_asset_id": "08aad3f1-f6bc-473c-b63f-b597f6275f7d",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "36",
+      "aliases": {
+        "construction": "TR C 20",
+        "engineering": "85"
+      }
+    },
+    {
+      "geometry_binding": "1.7.2",
+      "tracker_asset_id": "7746960f-92df-4c57-9232-70b4f3a28ee8",
+      "tcu_asset_id": "234877df-9db1-4dd3-ba3c-26762b55f5bf",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "38",
+      "aliases": {
+        "construction": "TR C 21",
+        "engineering": "91"
+      }
+    },
+    {
+      "geometry_binding": "1.7.5",
+      "tracker_asset_id": "cacd67fb-e3dc-4cbf-96e3-00f2dd532b7b",
+      "tcu_asset_id": "11d61f08-4e88-4727-8cc3-68b1431bdc2e",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "41",
+      "aliases": {
+        "construction": "TR C 22",
+        "engineering": "90"
+      }
+    },
+    {
+      "geometry_binding": "1.8.3",
+      "tracker_asset_id": "b5c8871a-37d5-4d5a-a8ae-99e571c76faa",
+      "tcu_asset_id": "6e64617b-1481-41fd-8f2c-8715fb86761c",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "44",
+      "aliases": {
+        "construction": "TR C 23",
+        "engineering": "89"
+      }
+    },
+    {
+      "geometry_binding": "1.8.6",
+      "tracker_asset_id": "80397b46-5ae9-4dbd-aac7-44c9a9db9e88",
+      "tcu_asset_id": "d448357c-af9e-4322-8edd-c1b7d34a2960",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "47",
+      "aliases": {
+        "construction": "TR C 24",
+        "engineering": "92"
+      }
+    },
+    {
+      "geometry_binding": "1.9.3",
+      "tracker_asset_id": "66d15287-9746-4f4c-83c0-4e4f1f346958",
+      "tcu_asset_id": "2896e167-db74-442c-b0c6-f9d414fedfdb",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "50",
+      "aliases": {
+        "construction": "TR C 25",
+        "engineering": "112"
+      }
+    },
+    {
+      "geometry_binding": "1.11.6",
+      "tracker_asset_id": "3e8b8e20-210d-46af-add6-ebc74a98ac41",
+      "tcu_asset_id": "7c42b41b-fda1-4ea0-8476-601db7d53162",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "65",
+      "aliases": {
+        "construction": "TR C 30",
+        "engineering": "94"
+      }
+    },
+    {
+      "geometry_binding": "1.12.3",
+      "tracker_asset_id": "6667e7ac-a83e-457d-ada1-b1a312c1031d",
+      "tcu_asset_id": "a1a228b4-a444-4ebd-8813-38b9c08c69b5",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "68",
+      "aliases": {
+        "construction": "TR C 31",
+        "engineering": "93"
+      }
+    },
+    {
+      "geometry_binding": "1.12.6",
+      "tracker_asset_id": "bad46856-ff56-49aa-8a7f-b22860814e3b",
+      "tcu_asset_id": "ab3d8ad2-b182-4752-a759-0f37544dba44",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "71",
+      "aliases": {
+        "construction": "TR C 32",
+        "engineering": "84"
+      }
+    },
+    {
+      "geometry_binding": "1.13.3",
+      "tracker_asset_id": "bf0b9cc6-3bf2-4013-9486-bcceb947a5dc",
+      "tcu_asset_id": "be879d6b-6843-4b3f-a3c8-23e383b53526",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "74",
+      "aliases": {
+        "construction": "TR C 33",
+        "engineering": "83"
+      }
+    },
+    {
+      "geometry_binding": "1.13.6",
+      "tracker_asset_id": "398f3f71-f8c3-4ea1-a255-93e30e1784c0",
+      "tcu_asset_id": "e50eb3a0-ed45-47ae-94da-cefc1d473649",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "77",
+      "aliases": {
+        "construction": "TR C 34",
+        "engineering": "82"
+      }
+    },
+    {
+      "geometry_binding": "1.14.3",
+      "tracker_asset_id": "4842e25f-719d-4a68-a190-b8b1cba1a300",
+      "tcu_asset_id": "27b5ff1b-e989-439f-8a62-36ecf65034c9",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "80",
+      "aliases": {
+        "construction": "TR C 35",
+        "engineering": "81"
+      }
+    },
+    {
+      "geometry_binding": "1.17.6",
+      "tracker_asset_id": "6d912b37-3af2-42c6-9b83-4bdea9f1f953",
+      "tcu_asset_id": "fdd39364-41d1-40d1-982f-2b1bf4f8d2d9",
+      "ncu_asset_id": "06ee64ea-bb8d-47b4-8597-9b35c8ffc0b3",
+      "source_ncu": "1",
+      "source_slave": "101",
+      "aliases": {
+        "construction": "TR C 42",
+        "engineering": "99"
+      }
+    },
+    {
+      "geometry_binding": "2.1.4",
+      "tracker_asset_id": "f614d2cc-03de-4ed5-94e9-ef18c1688628",
+      "tcu_asset_id": "ea53aecc-c0c7-4db6-b6cd-cb1a39777463",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "4",
+      "aliases": {
+        "construction": "TR D 9",
+        "engineering": "65"
+      }
+    },
+    {
+      "geometry_binding": "2.1.5",
+      "tracker_asset_id": "372155b3-558b-4ea3-b2bc-4a2e67ca9fc2",
+      "tcu_asset_id": "6c226458-a824-4e06-9977-55049c78b604",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "5",
+      "aliases": {
+        "construction": "TR D 10",
+        "engineering": "64"
+      }
+    },
+    {
+      "geometry_binding": "2.1.6",
+      "tracker_asset_id": "ef00db6e-298e-4632-9356-675102f450c0",
+      "tcu_asset_id": "51af3fd9-733a-4e06-a4ea-9a0e1709e8ea",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "6",
+      "aliases": {
+        "construction": "TR D 11",
+        "engineering": "63"
+      }
+    },
+    {
+      "geometry_binding": "2.1.7",
+      "tracker_asset_id": "6615cf26-83f8-4572-8e7b-bb0dabf6bad1",
+      "tcu_asset_id": "e0e69b93-ba8f-4ad0-aeac-caf485bfaac5",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "7",
+      "aliases": {
+        "construction": "TR D 12",
+        "engineering": "68"
+      }
+    },
+    {
+      "geometry_binding": "2.2.1",
+      "tracker_asset_id": "2a4ab64b-c7c0-4cf4-91f9-f14ea20076c8",
+      "tcu_asset_id": "a6ccda45-85ac-4cbd-9186-25ac1367f2ce",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "8",
+      "aliases": {
+        "construction": "TR D 13",
+        "engineering": "67"
+      }
+    },
+    {
+      "geometry_binding": "2.2.2",
+      "tracker_asset_id": "95ca7c8c-b921-42f3-a341-d1cc41e5d986",
+      "tcu_asset_id": "7a09e747-e6dd-4431-8943-87f486177555",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "9",
+      "aliases": {
+        "construction": "TR D 14",
+        "engineering": "66"
+      }
+    },
+    {
+      "geometry_binding": "2.6.4",
+      "tracker_asset_id": "03872f8f-e2af-4a6e-ba96-e3e310ce347f",
+      "tcu_asset_id": "33a06b1f-3eb8-43fe-8508-277a5c97621d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "34",
+      "aliases": {
+        "construction": "TR D 26",
+        "engineering": "59"
+      }
+    },
+    {
+      "geometry_binding": "2.7.1",
+      "tracker_asset_id": "355972db-ff9a-4ab6-ac98-c85171d85e45",
+      "tcu_asset_id": "c02909d6-18ac-45bc-b5bd-c183c2963f9b",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "37",
+      "aliases": {
+        "construction": "TR D 27",
+        "engineering": "58"
+      }
+    },
+    {
+      "geometry_binding": "2.7.4",
+      "tracker_asset_id": "41d132cf-ca27-4fa4-bb46-7210db63f6d6",
+      "tcu_asset_id": "e35497de-daf0-4d15-a4ec-af24894abe55",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "40",
+      "aliases": {
+        "construction": "TR D 28",
+        "engineering": "57"
+      }
+    },
+    {
+      "geometry_binding": "2.8.1",
+      "tracker_asset_id": "dc77835f-79d8-4af1-8921-da0bf5aeb695",
+      "tcu_asset_id": "ba431e34-1d99-47bf-80b7-94573a23036b",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "43",
+      "aliases": {
+        "construction": "TR D 29",
+        "engineering": "61"
+      }
+    },
+    {
+      "geometry_binding": "2.8.4",
+      "tracker_asset_id": "a13d2854-7a63-46f8-9319-9e6050dc6876",
+      "tcu_asset_id": "37fe6bdf-96df-42a0-8be2-1155021cad68",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "46",
+      "aliases": {
+        "construction": "TR D 30",
+        "engineering": "60"
+      }
+    },
+    {
+      "geometry_binding": "2.9.1",
+      "tracker_asset_id": "bebbca07-7acb-4c6c-acfe-b60b205bfd41",
+      "tcu_asset_id": "bb2f7e85-646b-4cf0-8df1-4de036b66a6f",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "49",
+      "aliases": {
+        "construction": "TR D 31",
+        "engineering": "43"
+      }
+    },
+    {
+      "geometry_binding": "2.9.4",
+      "tracker_asset_id": "2a5ccd10-177b-4a70-9181-e0c67d11f43b",
+      "tcu_asset_id": "83dd72e5-5c3f-47aa-ba25-f602129d580f",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "52",
+      "aliases": {
+        "construction": "TR D 32",
+        "engineering": "42"
+      }
+    },
+    {
+      "geometry_binding": "2.10.1",
+      "tracker_asset_id": "f13a33f2-dfee-443d-b1cc-0f34fc125bb7",
+      "tcu_asset_id": "08aae227-6d8f-41a9-a126-be679be8dec6",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "56",
+      "aliases": {
+        "construction": "TR D 33",
+        "engineering": "41"
+      }
+    },
+    {
+      "geometry_binding": "2.10.4",
+      "tracker_asset_id": "565cefe3-36c3-4758-830d-f1ebcb8a04d7",
+      "tcu_asset_id": "10dfbbdd-0267-45f4-9bf3-cfd51ac69626",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "60",
+      "aliases": {
+        "construction": "TR D 34",
+        "engineering": "40"
+      }
+    },
+    {
+      "geometry_binding": "2.11.1",
+      "tracker_asset_id": "d0521774-c184-40fd-b20f-363f3fc6dd78",
+      "tcu_asset_id": "892ddcb0-c1e8-46a1-8767-3aaf75eb2a95",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "64",
+      "aliases": {
+        "construction": "TR D 35",
+        "engineering": "46"
+      }
+    },
+    {
+      "geometry_binding": "2.11.4",
+      "tracker_asset_id": "eb4ada62-dc35-488c-90ad-cf3ebe8406d6",
+      "tcu_asset_id": "f4021920-3ce0-4894-a599-a383fdc6c39e",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "68",
+      "aliases": {
+        "construction": "TR D 36",
+        "engineering": "45"
+      }
+    },
+    {
+      "geometry_binding": "2.12.1",
+      "tracker_asset_id": "42952a46-35d5-46c5-8ae8-7bba16bbc0ed",
+      "tcu_asset_id": "e5061c1c-d1ea-42a9-975c-a0edfce3cd1a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "72",
+      "aliases": {
+        "construction": "TR D 37",
+        "engineering": "44"
+      }
+    },
+    {
+      "geometry_binding": "2.3.2",
+      "tracker_asset_id": "e726afea-fbd6-4813-af2b-f1dfebef21f3",
+      "tcu_asset_id": "11c16456-6362-4801-a82d-b87610d302bd",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "14",
+      "aliases": {
+        "construction": "TR E 17",
+        "engineering": "28"
+      }
+    },
+    {
+      "geometry_binding": "2.3.4",
+      "tracker_asset_id": "bbbef786-2c75-4645-bc91-1c84987a6c78",
+      "tcu_asset_id": "e014dd71-5294-43a7-acfd-12085c5869a5",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "16",
+      "aliases": {
+        "construction": "TR E 18",
+        "engineering": "27"
+      }
+    },
+    {
+      "geometry_binding": "2.3.6",
+      "tracker_asset_id": "618a524c-93a4-4e53-812e-cfee185cede4",
+      "tcu_asset_id": "2954ffe9-2b05-40cd-a1ca-089b863c7131",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "18",
+      "aliases": {
+        "construction": "TR E 19",
+        "engineering": "26"
+      }
+    },
+    {
+      "geometry_binding": "2.4.2",
+      "tracker_asset_id": "9a737c01-993b-4f8e-9de4-4a83c35e4e63",
+      "tcu_asset_id": "cc414969-c576-4914-b6b0-6b3d55a2187b",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "20",
+      "aliases": {
+        "construction": "TR E 20",
+        "engineering": "31"
+      }
+    },
+    {
+      "geometry_binding": "2.4.4",
+      "tracker_asset_id": "c0e9ff85-d56c-44cb-a71b-fe4db9fd2ffe",
+      "tcu_asset_id": "93b27558-49f5-45e6-9ee5-356f3a651e07",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "22",
+      "aliases": {
+        "construction": "TR E 21",
+        "engineering": "30"
+      }
+    },
+    {
+      "geometry_binding": "2.4.6",
+      "tracker_asset_id": "5961365e-bab2-494c-9288-6b42af9b3806",
+      "tcu_asset_id": "4e1c49e0-add1-4e7d-a189-de786a86ed5a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "24",
+      "aliases": {
+        "construction": "TR E 22",
+        "engineering": "29"
+      }
+    },
+    {
+      "geometry_binding": "2.5.2",
+      "tracker_asset_id": "c741ef5d-ed70-4423-b7c9-6b5431de7fad",
+      "tcu_asset_id": "f753de16-9283-4484-93c7-4098c24c2197",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "26",
+      "aliases": {
+        "construction": "TR E 23",
+        "engineering": "34"
+      }
+    },
+    {
+      "geometry_binding": "2.5.5",
+      "tracker_asset_id": "3c911b86-5d3b-4337-84cf-80d5c0b743d8",
+      "tcu_asset_id": "c0ae4945-4e38-456c-baa6-675a45946c98",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "29",
+      "aliases": {
+        "construction": "TR E 24",
+        "engineering": "33"
+      }
+    },
+    {
+      "geometry_binding": "2.6.2",
+      "tracker_asset_id": "b83fe91a-65bc-4039-b13c-b5075725f07c",
+      "tcu_asset_id": "31d0ab60-bf04-4e99-9086-9eeb0ff4d997",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "32",
+      "aliases": {
+        "construction": "TR E 25",
+        "engineering": "32"
+      }
+    },
+    {
+      "geometry_binding": "2.6.5",
+      "tracker_asset_id": "7e108e3b-83fa-4c8f-b63a-c8d04faf135e",
+      "tcu_asset_id": "7b7fba2e-432f-4042-895f-1058f7177258",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "35",
+      "aliases": {
+        "construction": "TR E 26",
+        "engineering": "37"
+      }
+    },
+    {
+      "geometry_binding": "2.7.2",
+      "tracker_asset_id": "c3f2365d-6226-4c10-8f8f-f6e3f2d44a1b",
+      "tcu_asset_id": "017b407d-b0f7-4e9a-b5e2-b6a78fac457a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "38",
+      "aliases": {
+        "construction": "TR E 27",
+        "engineering": "36"
+      }
+    },
+    {
+      "geometry_binding": "2.7.5",
+      "tracker_asset_id": "e5d965f5-353c-49b9-8178-d5bf8baaa0d7",
+      "tcu_asset_id": "1862da0b-ddb7-4c9f-8876-d1df4999ccca",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "41",
+      "aliases": {
+        "construction": "TR E 28",
+        "engineering": "35"
+      }
+    },
+    {
+      "geometry_binding": "2.8.2",
+      "tracker_asset_id": "549c6de0-b0dd-4b03-8e7f-bf53d522c3e1",
+      "tcu_asset_id": "50c29739-4fb0-421d-a782-a2b9181f577d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "44",
+      "aliases": {
+        "construction": "TR E 29",
+        "engineering": "39"
+      }
+    },
+    {
+      "geometry_binding": "2.8.5",
+      "tracker_asset_id": "42a03a47-c29f-497a-b06a-c7e4d48c552a",
+      "tcu_asset_id": "e98bcf19-7017-4301-8f3d-d6205d5689a3",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "47",
+      "aliases": {
+        "construction": "TR E 30",
+        "engineering": "38"
+      }
+    },
+    {
+      "geometry_binding": "2.13.2",
+      "tracker_asset_id": "ee3484df-65f3-4f18-907a-2eb375f5680b",
+      "tcu_asset_id": "3b125c05-f55a-4e30-9e64-bfecf1107981",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "81",
+      "aliases": {
+        "construction": "TR E 39",
+        "engineering": "21"
+      }
+    },
+    {
+      "geometry_binding": "2.13.5",
+      "tracker_asset_id": "e3753941-fd44-4c57-b8c8-ec13fefe220c",
+      "tcu_asset_id": "af28227f-49fb-487d-beee-dd1fbb7b776c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "85",
+      "aliases": {
+        "construction": "TR E 40",
+        "engineering": "20"
+      }
+    },
+    {
+      "geometry_binding": "2.14.2",
+      "tracker_asset_id": "51e43784-fb81-41ef-bfd5-fbb673d722cc",
+      "tcu_asset_id": "b3e1999e-a069-434f-8c4f-2b812646dfe2",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "89",
+      "aliases": {
+        "construction": "TR E 41",
+        "engineering": "25"
+      }
+    },
+    {
+      "geometry_binding": "2.14.5",
+      "tracker_asset_id": "8638b8aa-3800-4185-8951-9fb6030f41b8",
+      "tcu_asset_id": "c82eb413-6746-437e-8e77-92041bee7bc7",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "94",
+      "aliases": {
+        "construction": "TR E 42",
+        "engineering": "24"
+      }
+    },
+    {
+      "geometry_binding": "2.6.6",
+      "tracker_asset_id": "c0022630-5b44-46b0-8cea-7dae994c8df1",
+      "tcu_asset_id": "323f76f4-a67d-4e25-aa75-9358475a6eac",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "36",
+      "aliases": {
+        "construction": "TR F 26",
+        "engineering": "10"
+      }
+    },
+    {
+      "geometry_binding": "2.7.3",
+      "tracker_asset_id": "dc469781-c361-416d-b4c3-3fdbb5721264",
+      "tcu_asset_id": "381053a8-33e3-4d8c-a9ff-99a5c21beb85",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "39",
+      "aliases": {
+        "construction": "TR F 27",
+        "engineering": "9"
+      }
+    },
+    {
+      "geometry_binding": "2.7.6",
+      "tracker_asset_id": "5f4cd9b6-f780-4f39-9c4c-40d51637f74c",
+      "tcu_asset_id": "0259345a-8a29-4a72-bb62-ceea1dbb4e4c",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "42",
+      "aliases": {
+        "construction": "TR F 28",
+        "engineering": "8"
+      }
+    },
+    {
+      "geometry_binding": "2.8.3",
+      "tracker_asset_id": "c4ce070d-4fcd-49d7-89b1-b9fbe19133d8",
+      "tcu_asset_id": "e6b7f90f-a8ba-4776-bc9b-3bd9be23be9a",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "45",
+      "aliases": {
+        "construction": "TR F 29",
+        "engineering": "12"
+      }
+    },
+    {
+      "geometry_binding": "2.8.6",
+      "tracker_asset_id": "f84e0946-322d-4fb4-8082-4a947b97ffdb",
+      "tcu_asset_id": "6a202b6d-2058-4f61-9816-0eb783e23bee",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "48",
+      "aliases": {
+        "construction": "TR F 30",
+        "engineering": "11"
+      }
+    },
+    {
+      "geometry_binding": "2.9.3",
+      "tracker_asset_id": "fd24da4f-9b39-4da8-b288-601d183a60e7",
+      "tcu_asset_id": "5aac66f0-59e6-477f-9eb3-c0fce41863e0",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "51",
+      "aliases": {
+        "construction": "TR F 31",
+        "engineering": "3"
+      }
+    },
+    {
+      "geometry_binding": "2.9.6",
+      "tracker_asset_id": "63b191ed-f36e-47d1-9ff8-d569a6dd4c99",
+      "tcu_asset_id": "773bbcff-3dc9-4904-bdd3-0a719e430070",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "54",
+      "aliases": {
+        "construction": "TR F 32",
+        "engineering": "2"
+      }
+    },
+    {
+      "geometry_binding": "2.10.3",
+      "tracker_asset_id": "7f5e186c-e114-4525-a3ce-8e98581737a0",
+      "tcu_asset_id": "36c11c88-3b13-462d-8e35-5ca52bbb11bf",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "58",
+      "aliases": {
+        "construction": "TR F 33",
+        "engineering": "1"
+      }
+    },
+    {
+      "geometry_binding": "2.14.3",
+      "tracker_asset_id": "aa0263f7-d69d-4adb-94c3-555c4446a98f",
+      "tcu_asset_id": "a196bf61-440c-41ad-a947-23df25c8880d",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "90",
+      "aliases": {
+        "construction": "TR F 41",
+        "engineering": "6"
+      }
+    },
+    {
+      "geometry_binding": "2.15.1",
+      "tracker_asset_id": "e616ceb5-d65f-4d6d-8f67-1b7e2241854d",
+      "tcu_asset_id": "cfbe0f9b-8116-4076-ac21-2d48c951a3ef",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "95",
+      "aliases": {
+        "construction": "TR F 42",
+        "engineering": "5"
+      }
+    },
+    {
+      "geometry_binding": "2.16.4",
+      "tracker_asset_id": "5c19fbc7-24a1-4b30-bcfa-ceba3139372c",
+      "tcu_asset_id": "52d306bd-1841-48a7-8ff8-65f2b9eb6522",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "67",
+      "aliases": {
+        "construction": "TR G 35",
+        "engineering": "73"
+      }
+    },
+    {
+      "geometry_binding": "2.16.5",
+      "tracker_asset_id": "4fac86ce-20db-42b4-810c-65f2d08e4c4c",
+      "tcu_asset_id": "cbf252e9-19c4-48d2-8358-4618d49f6421",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "71",
+      "aliases": {
+        "construction": "TR G 36",
+        "engineering": "72"
+      }
+    },
+    {
+      "geometry_binding": "2.16.6",
+      "tracker_asset_id": "9b91c23e-53db-442f-85d2-99ead91fb4ac",
+      "tcu_asset_id": "edb52844-7007-436b-8c45-57525e229851",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "75",
+      "aliases": {
+        "construction": "TR G 37",
+        "engineering": "71"
+      }
+    },
+    {
+      "geometry_binding": "2.17.1",
+      "tracker_asset_id": "bc2a6db5-3c7f-46b7-9edb-a1830eea3324",
+      "tcu_asset_id": "3686c155-5e18-4e64-b797-c9585c6dbb42",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "79",
+      "aliases": {
+        "construction": "TR G 38",
+        "engineering": "76"
+      }
+    },
+    {
+      "geometry_binding": "2.17.2",
+      "tracker_asset_id": "db71effd-ed2c-4020-a74a-b35999727e3d",
+      "tcu_asset_id": "4f80181b-2447-4123-91f8-53587bc39797",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "83",
+      "aliases": {
+        "construction": "TR G 39",
+        "engineering": "75"
+      }
+    },
+    {
+      "geometry_binding": "2.17.3",
+      "tracker_asset_id": "912a7026-8de1-45fc-bed9-98719f90bcec",
+      "tcu_asset_id": "6d427b4e-c5b8-420c-95f6-d8986e537fe7",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "87",
+      "aliases": {
+        "construction": "TR G 40",
+        "engineering": "74"
+      }
+    },
+    {
+      "geometry_binding": "2.17.4",
+      "tracker_asset_id": "af517027-497a-42ad-b55a-82f0b0672401",
+      "tcu_asset_id": "0c155a86-71db-4991-8495-43acb6193232",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "91",
+      "aliases": {
+        "construction": "TR G 41",
+        "engineering": "79"
+      }
+    },
+    {
+      "geometry_binding": "2.17.6",
+      "tracker_asset_id": "20ddfc3c-1d25-4610-9335-b0e79046e3b7",
+      "tcu_asset_id": "1dce684f-a4c7-4c76-972b-50565d12d441",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "96",
+      "aliases": {
+        "construction": "TR G 42",
+        "engineering": "78"
+      }
+    },
+    {
+      "geometry_binding": "2.18.1",
+      "tracker_asset_id": "b1f930ac-2e92-4a65-a7a1-61162932de54",
+      "tcu_asset_id": "c60f7d4b-821b-457b-8f5d-b6aa42538ec8",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "100",
+      "aliases": {
+        "construction": "TR G 43",
+        "engineering": "77"
+      }
+    },
+    {
+      "geometry_binding": "2.18.3",
+      "tracker_asset_id": "27463fa2-72cd-48e1-9859-6acff8384aa0",
+      "tcu_asset_id": "6ec9f01c-c879-47ec-8531-dccfe9a0bfa6",
+      "ncu_asset_id": "2b48971f-113c-4adb-8dc4-247cd7b44239",
+      "source_ncu": "2",
+      "source_slave": "104",
+      "aliases": {
+        "construction": "TR G 44",
+        "engineering": "80"
+      }
+    }
+  ],
+  "source_hashes": {
+    "template": "sha256:57303d2890994ff27327f27c30a48b341cbb03eaf398f06b23bb7af869dbefc7",
+    "config": "sha256:a142745958d84ddbfceac1d105f38734346af8e38a4ee586f186c6361f46d7c7"
+  }
+}

@@ -1,0 +1,26 @@
+name: SCADA identity consumers
+on:
+  pull_request:
+    paths:
+      - 'scada-projection.js'
+      - 'terreno.html'
+      - 'elburgo_layout.json'
+      - 'elburgo_scada_bindings.json'
+      - 'elburgo_tcu.json'
+      - 'tests/test_scada*.js'
+      - 'tests/test_elburgo*.js'
+      - '.github/workflows/scada-identity.yml'
+  workflow_dispatch:
+jobs:
+  consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          node tests/test_scada_identity.js
+          node tests/test_scada_projection.js
+          node tests/test_elburgo_geometry_labels.js
+          node tests/test_elburgo_absent_108.js
