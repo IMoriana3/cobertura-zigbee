@@ -93,15 +93,40 @@
         tracker_asset_id:t.tracker_asset_id,tcu_asset_id:t.tcu_asset_id})),
       ncus:move(previous.ncus),hsus:move(previous.hsus),reps:move(previous.reps)};
   }
-  // One continuous scale for both views; no operational good/bad thresholds.
+  // Presentation only: expand the upper end without changing the measured %.
+  // Palette anchors are visual coordinates, never availability/alarm thresholds.
+  const continuityPalette = ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'];
+  function continuityPosition(percent) { return 1 - Math.sqrt(1 - percent / 100); }
   function continuityColor(m) {
     if (!m || m.estado !== 'MEDIDO' || typeof m.porcentaje !== 'number' ||
         !Number.isFinite(m.porcentaje) || m.porcentaje < 0 || m.porcentaje > 100) return '#6A7B8B';
-    const h = 204 / 60, s = .7, l = Number((75 - 43 * m.porcentaje / 100).toFixed(1)) / 100;
-    const c = (1 - Math.abs(2*l - 1))*s, x = c*(1 - Math.abs(h%2 - 1)), a = l-c/2;
-    return '#' + [0,x,c].map(v => Math.round(255*(v+a)).toString(16).padStart(2,'0')).join('');
+    const at = continuityPosition(m.porcentaje) * (continuityPalette.length - 1);
+    const i = Math.min(Math.floor(at), continuityPalette.length - 2), f = at - i;
+    return '#' + [1,3,5].map(offset => {
+      const a = parseInt(continuityPalette[i].slice(offset, offset+2), 16);
+      const b = parseInt(continuityPalette[i+1].slice(offset, offset+2), 16);
+      return Math.round(a + (b-a)*f).toString(16).padStart(2,'0');
+    }).join('');
   }
-  const api = {validate, validAt, attachLayout, load, resolveRows, plan, continuityColor};
+  // Shared, self-contained legend; no SVG IDs that collide between views.
+  function continuityLegend() {
+    const color = percent => continuityColor({estado:'MEDIDO', porcentaje:percent});
+    let bar = '';
+    for (let i=0; i<128; i++) {
+      const t = i/127, percent = 100*(1-(1-t)*(1-t));
+      bar += '<rect x="'+(10+i*2.5)+'" y="3" width="2.6" height="12" fill="'+color(percent)+'"/>';
+    }
+    const ticks = [0,50,90,95,100].map(percent => {
+      const x = 10 + continuityPosition(percent)*320;
+      const anchor = percent===0?'start':percent===100?'end':'middle';
+      return '<g data-continuity-percent="'+percent+'"><path d="M'+x+' 16v5" stroke="currentColor"/>'
+        +'<text x="'+x+'" y="35" text-anchor="'+anchor+'" fill="currentColor" font-size="11">'+percent+'%</text></g>';
+    }).join('');
+    return '<span class="scada-continuity-legend" style="display:inline-flex;flex-direction:column;align-items:stretch;gap:2px;width:340px;max-width:100%;color:inherit">'
+      +'<svg role="img" aria-label="Continuidad: escala de 0 a 100 %, ampliada cerca del 100 %" viewBox="0 0 340 40" style="display:block;width:100%;height:auto;font-family:system-ui">'+bar+ticks+'</svg>'
+      +'<small style="font-size:11px;font-weight:400;white-space:normal">Escala ampliada cerca del 100 % · sin umbrales de alarma</small></span>';
+  }
+  const api = {validate, validAt, attachLayout, load, resolveRows, plan, continuityColor, continuityLegend};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ScadaProjection = api;
 })(typeof globalThis === 'undefined' ? this : globalThis);
