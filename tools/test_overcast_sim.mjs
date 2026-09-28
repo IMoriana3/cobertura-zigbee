@@ -167,6 +167,16 @@ t('escena 3D con las libs LOCALES del repo (three.min.js + OrbitControls + segui
   if (!/<script src="seguidor\.js/.test(html)) throw new Error('sin seguidor.js (fuente única del modelo)');
   if (!/id="view3d"/.test(html)) throw new Error('sin contenedor 3D');
 });
+t('SKY DOME V2: el UV de la esfera respeta azimut de compás N-E-S-W', () => {
+  const i = html.indexOf('function updateSkyDome3D(');
+  const j = html.indexOf('function skyMaskRatio', i);
+  const fn = html.slice(i, j);
+  if (!fn.includes('(180-360*xx/W+360)%360'))
+    throw new Error('la textura 3D no convierte UV de SphereGeometry a azimut de compás');
+  if (!fn.includes('depthTest:false'))
+    throw new Error('el dome de cielo debe renderizar detrás de la planta, no competir en profundidad');
+});
+
 t('SKY DOME V2: la misma radiancia pinta también el cielo 3D real', () => {
   for (const k of ['function makeSkyDome3D(', 'function updateSkyDome3D(',
                    'new THREE.SphereGeometry(330', 'side:THREE.BackSide',
