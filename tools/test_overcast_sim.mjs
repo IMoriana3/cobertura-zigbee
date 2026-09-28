@@ -291,7 +291,7 @@ const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
 
 const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
-           poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
+           poaTracker, poaSurfacePerez, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            thetaAstroDay, projSolarZenith, shadedFraction1d, clampAdelantoDirigido,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
@@ -299,6 +299,17 @@ const sandbox = new Function(sol + '\n' + src + `
            motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, AJUSTE_FLOTA, MOTOR_MA, MOTOR_ANG,
            TCU_IDLE_W, BATT_WH_DEF, MOVE_EPS };`);
 const F = sandbox();
+
+t('SKY DOME V2: la descomposición Perez exacta cierra sky y POA', () => {
+  const p = F.poaSurfacePerez(35, 225, 55, 180,
+    {ghi:650,dni:420,dhi:300,cc:.45}, 172, .20);
+  const sky = p.iso + p.circ + p.hor;
+  if (Math.abs(sky - p.sky) > 1e-10) throw new Error('componentes != sky');
+  if (Math.abs(p.beam + p.sky + p.gnd - p.total) > 1e-10)
+    throw new Error('beam+sky+ground != total');
+  for (const k of ['iso','circ','hor','sky','gnd','beam','total'])
+    if (!Number.isFinite(p[k]) || p[k] < -1e-12) throw new Error(k + '=' + p[k]);
+});
 
 t('SKY DOME V2: Perez visual conserva pesos normalizados', () => {
   const st = F.skyPerezState(60, 220, {ghi:500,dni:200,dhi:300,cc:.75}, 172);
