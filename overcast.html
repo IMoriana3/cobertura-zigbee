@@ -127,6 +127,15 @@
   .legend span{display:flex;align-items:center;gap:5px}
   .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
   .chip{font-family:var(--mono);font-size:.64rem;color:var(--warn);border:1px dashed var(--warn);border-radius:7px;padding:2px 8px}
+
+  /* SKY DOME V2 */
+  .skydome-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;opacity:.88;mix-blend-mode:screen}
+  .sky3d,.pick3d{z-index:3}
+  .sky3d .sep{border-top:1px solid var(--line);margin:7px 0 6px}
+  .sky3d .subt{font-size:.58rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:5px 0 3px}
+  .sky3d .hot{color:#ffd166!important}.sky3d .good{color:var(--ok)!important}
+  .sky3d .skybar{height:5px;border-radius:4px;margin:4px 0 2px;background:linear-gradient(90deg,#163bff,#22b9e6,#f2e85c,#ff8a2a,#c81d25)}
+  .sky3d .tiny{font-size:.57rem;color:var(--muted);line-height:1.35}
 </style>
 </head>
 <body>
@@ -435,7 +444,7 @@
       <span style="margin-left:auto;display:flex;gap:6px">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
         <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
-        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small acc" id="skytoggle" title="Bóveda radiométrica derivada de Perez">☁ Sky dome</button>\n        <button class="btn small acc" id="tab3d">3D</button>
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
       </span></h2>
     <div id="view3d" class="viz3d">
@@ -449,7 +458,7 @@
         <div class="row"><span>DNI</span><b id="sky3dDNI">--</b></div>
         <div class="row"><span>DHI</span><b id="sky3dDHI">--</b></div>
         <div class="bar"><i id="sky3dBarD"></i><i id="sky3dBarF"></i></div>
-        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>
+        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>\n        <div class="sep"></div>\n        <div class="subt">Sky diffuse · Perez</div>\n        <div class="row"><span>Isotrópica</span><b id="skyIso">--</b></div>\n        <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>\n        <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>\n        <div class="skybar"></div>\n        <div class="subt">Tracker seleccionado</div>\n        <div class="row"><span>Vista cielo front/rear</span><b id="skyVF">--</b></div>\n        <div class="row"><span>POA cielo front/rear</span><b id="skyFR">--</b></div>\n        <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>\n        <div class="row"><span>θ óptimo difuso · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>\n        <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>\n        <div class="tiny">Bóveda radiométrica explicativa. El óptimo usa la MISMA Perez del simulador.</div>
       </div>
       <div class="pick3d" id="pick3d" style="display:none">
         <div class="hd"><span id="pickTit">—</span><span class="x" id="pickX" title="cerrar">✕</span></div>
