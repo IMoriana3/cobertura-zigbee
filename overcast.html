@@ -444,10 +444,12 @@
       <span style="margin-left:auto;display:flex;gap:6px">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
         <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
-        <button class="btn small acc" id="skytoggle" title="Bóveda radiométrica derivada de Perez">☁ Sky dome</button>\n        <button class="btn small acc" id="tab3d">3D</button>
+        <button class="btn small acc" id="skytoggle" title="Bóveda radiométrica derivada de Perez">☁ Sky dome</button>
+        <button class="btn small acc" id="tab3d">3D</button>
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
       </span></h2>
     <div id="view3d" class="viz3d">
+      <canvas id="skydome" class="skydome-overlay" aria-label="Bóveda radiométrica difusa"></canvas>
       <!-- CONDICION DE CIELO: sale del MISMO `irr` que alimenta la fisica, no
            de una etiqueta aparte. Si un dato no existe en el instante, la fila
            dice «--» en vez de inventarlo. -->
@@ -458,7 +460,20 @@
         <div class="row"><span>DNI</span><b id="sky3dDNI">--</b></div>
         <div class="row"><span>DHI</span><b id="sky3dDHI">--</b></div>
         <div class="bar"><i id="sky3dBarD"></i><i id="sky3dBarF"></i></div>
-        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>\n        <div class="sep"></div>\n        <div class="subt">Sky diffuse · Perez</div>\n        <div class="row"><span>Isotrópica</span><b id="skyIso">--</b></div>\n        <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>\n        <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>\n        <div class="skybar"></div>\n        <div class="subt">Tracker seleccionado</div>\n        <div class="row"><span>Vista cielo front/rear</span><b id="skyVF">--</b></div>\n        <div class="row"><span>POA cielo front/rear</span><b id="skyFR">--</b></div>\n        <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>\n        <div class="row"><span>θ óptimo difuso · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>\n        <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>\n        <div class="tiny">Bóveda radiométrica explicativa. El óptimo usa la MISMA Perez del simulador.</div>
+        <div class="bl"><span id="sky3dPD">DIRECTA --</span><span id="sky3dPF">-- DIFUSA</span></div>
+        <div class="sep"></div>
+        <div class="subt">Sky diffuse · Perez</div>
+        <div class="row"><span>Isotrópica</span><b id="skyIso">--</b></div>
+        <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>
+        <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>
+        <div class="skybar"></div>
+        <div class="subt">Tracker seleccionado</div>
+        <div class="row"><span>Vista cielo front/rear</span><b id="skyVF">--</b></div>
+        <div class="row"><span>POA cielo front/rear</span><b id="skyFR">--</b></div>
+        <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>
+        <div class="row"><span>θ óptimo difuso · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>
+        <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>
+        <div class="tiny">Bóveda radiométrica explicativa. El óptimo usa la MISMA Perez del simulador.</div>
       </div>
       <div class="pick3d" id="pick3d" style="display:none">
         <div class="hd"><span id="pickTit">—</span><span class="x" id="pickX" title="cerrar">✕</span></div>
