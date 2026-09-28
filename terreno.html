@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0B0F14">
 <link rel="icon" href="favicon.svg">
 <title>Cobertura 3D · terreno real — Factiun</title>
+<script src="scada-projection.js"></script>
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="app-icon.svg"><link rel="icon" href="favicon.svg">
 <script>
 /* Selector de variante 3D: las plantas con levantamiento propio tienen además una
@@ -843,6 +844,10 @@ async function build(){
     else{var rL=await fetch(PLANTS[PLANT].file,{cache:'no-store'}); if(!rL.ok)throw new Error(PLANTS[PLANT].file+' HTTP '+rL.status); LAYOUT=await rL.json();}   // response.ok: un 404 devolvía la página de error y el parseo JSON enmascaraba la causa
     if(!LAYOUT)throw new Error('sin layout');}
   catch(e){setStatus('<span class="err">'+((PLANT==='custom')?'No hay ningún mapa en memoria. Genéralo primero en «Nuevo mapa de cobertura».':'No se pudo cargar '+PLANTS[PLANT].file)+'</span>');return;}
+  if(PLANT==='elburgo'&&new URLSearchParams(location.search).get('scada')==='1'){
+    try{var identityBundle=await ScadaProjection.load('',PLANT);LAYOUT=identityBundle.layout;}
+    catch(e){SCADA_ID_ERROR=e.message;}
+  }
   lat0=LAYOUT.clat;lon0=LAYOUT.clon;mPerLon=111320*Math.cos(lat0*DEG);                 // centroide real (UTM30N → lat/lon)
   ajustaPanelPlanta();   // fuera los mandos de seguimiento y de radio si la planta no los tiene
   NODES=LAYOUT.trackers.map(function(t){return {gx:t.x,gz:-t.n,glat:lat0+t.n/mPerLat,glon:lon0+t.x/mPerLon,num:null,id:t.id,tracker_asset_id:t.tracker_asset_id,tcu_asset_id:t.tcu_asset_id,rot:t.rot,tp:t.t,artic:t.artic,tpx:t.tp,cal:t.cal,suc:t.suc,mr:t.mr,mods:t.mods,inv:t.inv,blk:t.blk};});   /* blk: el bloque del DWG, con el que se busca el largo REAL en mesa.tipos. No se copiaba y en Ayora los 106 de bloque anonimo (*U9 21 mod, *U10 14 mod), que no traen mods ni mr, salian de 74,8 m: se solapaban 9-18 m con el siguiente del tubo y la capa de afeccion los pintaba a rayas de dos colores */ // posiciones reales del DWG (metros locales E/N); t = tipo (Medio = mitad). artic/tpx = rótula real y taxonomía Int/Ext·largo/corto del DWG (San José: capas ..._ART)
@@ -1864,7 +1869,7 @@ function afbtRestore(){
 /* ================= SCADA 3D =================
    Sólo bindings explícitos de la proyección canónica: tracker_asset_id →
    tcu_asset_id. Ni etiqueta, número, índice ni cercanía resuelven identidad. */
-var SCADA3D=null,scadaPend=null,SCADA_METEO=null;
+var SCADA3D=null,scadaPend=null,SCADA_METEO=null,SCADA_ID_ERROR=null;
 var SCADA_COL={OK:0x36D399,AVISO:0xF2A900,ALARMA:0xef5f6b,OFFLINE:0x6A7B8B};
 function scadaTexto(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function scadaNumero(v){if(v==null||String(v).trim()==='')return null;var n=Number(v);return Number.isFinite(n)?n:null;}
@@ -1900,7 +1905,10 @@ function scadaColorFila(fl,capa){
 function scadaCasar(msg){
   if(msg.version!==2||msg.plant_key!==PLANT)return false;
   if(!TRK.length){scadaPend=msg;return true;}
-  var joined=scadaBindings(TRK,msg,LAYOUT&&LAYOUT.plant_id);
+  var identity=LAYOUT&&LAYOUT.scada_identity;
+  var identityOK=!identity||(msg.registry_revision===identity.registry_revision&&ScadaProjection.validAt(identity,msg.at));
+  var joined=scadaBindings(TRK,identityOK?msg:Object.assign({},msg,{filas:[]}),LAYOUT&&LAYOUT.plant_id);
+  if(!identityOK||SCADA_ID_ERROR)Object.keys(joined.motivos).forEach(function(k){joined.motivos[k]=SCADA_ID_ERROR||'Diagnóstico fuera de revisión o vigencia de identidad';});
   SCADA3D=Object.assign(joined,{planta:msg.planta,fecha:msg.fecha||'',capa:msg.capa==='posiciones'?'posiciones':'salud'});
   SCADA_METEO=null;
   if(msg.meteo&&scadaNumero(msg.meteo.ws)!==null){
