@@ -167,6 +167,14 @@ t('escena 3D con las libs LOCALES del repo (three.min.js + OrbitControls + segui
   if (!/<script src="seguidor\.js/.test(html)) throw new Error('sin seguidor.js (fuente única del modelo)');
   if (!/id="view3d"/.test(html)) throw new Error('sin contenedor 3D');
 });
+t('SKY DOME V2: UI integrada en la escena, no simulador paralelo', () => {
+  for (const id of ['skydome','skytoggle','skyIso','skyCirc','skyHor','skyVF','skyFR','skyTheta','skyThetaOpt','skyGain'])
+    if (!html.includes('id="' + id + '"')) throw new Error('falta ' + id);
+  if (!/function drawSkyDome\(/.test(html)) throw new Error('falta drawSkyDome()');
+  if (!/drawSkyDome\(\)/.test(html.slice(html.indexOf('function refreshScene'), html.indexOf('function flyStart'))))
+    throw new Error('el dome no sigue el reloj/refresh de la escena');
+});
+
 t('degrada a 2D si THREE/WebGL no están (has3D + try/catch en init3D)', () => {
   if (!/function has3D\(\)/.test(html)) throw new Error('sin guard has3D');
   const init = html.slice(html.indexOf('function init3D'), html.indexOf('function makeLabel'));
@@ -277,10 +285,39 @@ const sandbox = new Function(sol + '\n' + src + `
            thetaAstroDay, projSolarZenith, shadedFraction1d, clampAdelantoDirigido,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           skyPresetSeries, skyNubeCorta, optimoAniso,
+           skyPresetSeries, skyNubeCorta, optimoAniso,\n           skyPerezState, skyRelRadiance, skyIntegrate, diffuseOptimum01,
            motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, AJUSTE_FLOTA, MOTOR_MA, MOTOR_ANG,
            TCU_IDLE_W, BATT_WH_DEF, MOVE_EPS };`);
 const F = sandbox();
+
+t('SKY DOME V2: Perez visual conserva pesos normalizados', () => {
+  const st = F.skyPerezState(60, 220, {ghi:500,dni:200,dhi:300,cc:.75}, 172);
+  const s = st.iso + st.circ + st.hor;
+  if (Math.abs(s - 1) > 1e-12) throw new Error('pesos no suman 1: ' + s);
+  for (const k of ['iso','circ','hor'])
+    if (!(st[k] >= 0 && st[k] <= 1)) throw new Error(k + ' fuera de [0,1]');
+});
+
+t('SKY DOME V2: integración front/rear finita y positiva', () => {
+  const st = F.skyPerezState(55, 135, {ghi:600,dni:250,dhi:350,cc:.6}, 172);
+  const z = F.skyIntegrate(st, 350, 20, 0, 0, .397);
+  for (const k of ['front','rear','vfFront','vfRear'])
+    if (!Number.isFinite(z[k]) || z[k] < 0) throw new Error(k + '=' + z[k]);
+  if (z.vfFront > 1.001 || z.vfRear > 1.001) throw new Error('view factor > 1');
+});
+
+t('SKY DOME V2: óptimo difuso 0,1° no empeora la difusa del baseline', () => {
+  const day = F.buildDay({lat:41.5763,lon:-0.7981,dateStr:'2026-06-21',tz:2,
+    altM:300,TL:3.5,dtMin:10,albedo:.2,axisAz:0,maxAngle:55,gcr:.397,cc:F.canonCC()});
+  const thN = F.thetaBaselineDay(day);
+  const i = Math.floor(day.n * .7);
+  const opt = F.diffuseOptimum01(day, i);
+  if (!opt || Math.abs(opt.theta * 10 - Math.round(opt.theta * 10)) > 1e-9)
+    throw new Error('el ángulo no está cuantizado a 0,1°');
+  const base = F.poaTracker(thN[i], day.axisTilt, day.axisAz, day.zen[i], day.az[i],
+                            day.irr[i], day.doy, day.albedo).diff;
+  if (opt.diff + 1e-9 < base) throw new Error('óptimo ' + opt.diff + ' < baseline ' + base);
+});
 
 console.log('física (la misma QA que el botón de la página)');
 for (const r of F.runPhysicsQA()) {
