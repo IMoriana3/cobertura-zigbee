@@ -54,3 +54,18 @@ const missing=c.scadaBindings(bound.trackers,{plant_id:p.plant_id,filas:[msg.fil
 assert.equal(missing.casados,1);assert.equal(missing.sin,1);
 assert.throws(()=>api.attachLayout({...layout,trackers:[layout.trackers[0],layout.trackers[0]]},p));
 console.log('Shared 2D/3D projection: plant/NCU isolation, temporal validity, duplicates, missing data, multipoint and parity passed');
+
+// Release artifact: verify the actual committed projection and layout bytes.
+const crypto=require('node:crypto');
+const released=JSON.parse(fs.readFileSync(path.join(__dirname,'../elburgo_scada_bindings.json'),'utf8'));
+api.validate(released,false);
+assert.equal(released.publication.commit,'5de36d2f6d56ce878299ed95c41e5e1d18d35ad5');
+assert.equal(released.read_only,true);assert.equal(released.operationally_usable,false);
+const rawLayout=fs.readFileSync(path.join(__dirname,'../elburgo_layout.json'));
+assert.equal(released.layout_sha256,'sha256:'+crypto.createHash('sha256').update(rawLayout).digest('hex'));
+const realBound=api.attachLayout(JSON.parse(rawLayout),released);
+assert.equal(realBound.trackers.length,released.trackers.length);
+const real108=released.trackers.find(t=>t.source_ncu==='1'&&t.source_slave==='108');
+assert.equal(real108.geometry_binding,'1.18.7');
+assert(!released.trackers.some(t=>t.source_ncu==='2'&&t.source_slave==='108'));
+console.log('Published canonical artifact, read-only policy, layout hash and explicit 108 correction passed');

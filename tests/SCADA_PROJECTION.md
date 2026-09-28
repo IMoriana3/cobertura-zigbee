@@ -54,11 +54,18 @@ run successfully in development mode against PR #273 HEAD 183a97b4, including
 the original workbook and all manifest/source hashes. Publication validation
 still requires the merged canonical revision.
 
-UNKNOWN / release blockers: the canonical package PR is still awaiting its CI
-and merge; no published binding artifact has been generated or deployed. Live
-browser validation with authenticated diagnostics is not yet performed. The
-measured CSV layer retains its explicitly labelled continuity approximation;
-this change does not redefine it as expected-sample availability or RF coverage.
+HECHO: SolarGPTfull #266 and #273 are merged. The runtime projection was
+generated with the full publication CLI from commit
+5de36d2f6d56ce878299ed95c41e5e1d18d35ad5. The shallow Git snapshot was retrieved
+through the authorized GitHub API: the signed commit, trees and local blobs
+were checked against their actual Git object hashes before invoking the CLI.
+All manifest/source hashes and exact package bytes passed. The production
+browser loader also accepts the generated projection with its exact layout.
+Provisional/read-only status is unchanged. Targeted canonical tests: 18 passed
+for PR #266 and 49 passed for PR #273, 0 failures/skips in the final runs.
+
+NOT_RUN: authenticated browser QA with actual diagnostic/telemetry records.
+Publication of these consumer PRs and their deployments still needs verification.
 
 DECISIÓN (28 September): the first measured map layer is daily telemetry log
 continuity (%), using the existing CSV aggregation. It is not RF coverage,
