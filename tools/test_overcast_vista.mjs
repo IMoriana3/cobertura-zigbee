@@ -418,6 +418,52 @@ t('en modo PLANTA la huella se apaga (no hay NCUs que separar)', () => eq(HU_OFF
 await pg.check('#zonalOn');
 await pg.waitForTimeout(1200);
 
+console.log('comparación SUNNY/OVERCAST dentro del mismo simulador');
+const original = await pg.evaluate(() => JSON.stringify({cc:CC,zsky:ZSKY,
+  source:$('skysource').value,zmode:$('zskymode').value,
+  clock:CLOCK,policy:$('polview').value,poa:SIM.res.pvlib.poaF}));
+await pg.click('#skyOvercast');
+await pg.waitForTimeout(1000);
+const oc = await pg.evaluate(() => ({
+  zeroBeam:SIM.dayF.irr.filter((r,i)=>SIM.dayF.zen[i]<90).every(r=>r.dni===0&&Math.abs(r.dhi-r.ghi)<1e-9),
+  cloud:CC.every(v=>v===1),sun:TD.obj.sunI,shadow:TD.sun.castShadow,
+  background:TD.obj.bg,dome:SKYDOME_ON,
+  clock:CLOCK,policy:$('polview').value,
+}));
+t('OVERCAST total: el mismo motor entrega DNI=0 y DHI=GHI', () => {
+  eq(oc.zeroBeam,true);eq(oc.cloud,true);
+});
+t('vista natural cubierta: sin luz directa ni sombra dura, cielo neutro', () => {
+  eq(oc.sun,0);eq(oc.shadow,false);eq(oc.dome,false);
+  if(Math.max(...oc.background)-Math.min(...oc.background)>1e-9)throw new Error('cielo no neutro');
+});
+t('comparar conserva instante y política', () => {
+  const before=JSON.parse(original);eq(oc.clock,before.clock);eq(oc.policy,before.policy);
+});
+await pg.click('#skySunny');
+await pg.waitForTimeout(1000);
+const sunny=await pg.evaluate(()=>({dni:SIM.dayF.irr[fineIdx(CLOCK)].dni,sun:TD.obj.sunI,shadow:TD.sun.castShadow}));
+t('SUNNY recupera luz directa y sombras con sol diurno', () => {
+  if(!(sunny.dni>40&&sunny.sun>0&&sunny.shadow))throw new Error(JSON.stringify(sunny));
+});
+await pg.click('#skyRestore');
+const restored=await pg.evaluate(()=>JSON.stringify({cc:CC,zsky:ZSKY,
+  source:$('skysource').value,zmode:$('zskymode').value,
+  clock:CLOCK,policy:$('polview').value,poa:SIM.res.pvlib.poaF}));
+t('Restaurar cielo recupera fuente, NCUs, configuración y POA exacta',()=>eq(restored,original));
+const radianceBefore=await pg.evaluate(()=>JSON.stringify(SIM.res.pvlib));
+await pg.click('#skytoggle');
+const radiance=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visible,
+  poa:JSON.stringify(SIM.res.pvlib),theta:$('skyTheta').textContent}));
+t('el mapa de radiancia cambia la vista y conserva el cálculo',()=>{
+  eq(radiance.on,true);eq(radiance.mesh,true);eq(radiance.poa,radianceBefore);
+});
+await pg.click('#skytoggle');
+const natural=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visible,theta:$('skyTheta').textContent}));
+t('la vista natural conserva la explicación numérica del instante',()=>{
+  eq(natural.on,false);eq(natural.mesh,false);eq(natural.theta,radiance.theta);
+});
+
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
 });

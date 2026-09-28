@@ -173,7 +173,8 @@ t('SKY DOME V2: el UV de la esfera respeta azimut de compás N-E-S-W', () => {
   const fn = html.slice(i, j);
   if (!fn.includes('(180-360*xx/W+360)%360'))
     throw new Error('la textura 3D no convierte UV de SphereGeometry a azimut de compás');
-  if (!fn.includes('depthTest:false'))
+  const material = html.slice(html.indexOf('function makeSkyDome3D('), i);
+  if (!material.includes('depthTest:false'))
     throw new Error('el dome de cielo debe renderizar detrás de la planta, no competir en profundidad');
 });
 
@@ -331,7 +332,17 @@ t('SKY DOME V2: la descomposición Perez exacta cierra sky y POA', () => {
   if (Math.abs(p.beam + p.sky + p.gnd - p.total) > 1e-10)
     throw new Error('beam+sky+ground != total');
   for (const k of ['iso','circ','hor','sky','gnd','beam','total'])
-    if (!Number.isFinite(p[k]) || p[k] < -1e-12) throw new Error(k + '=' + p[k]);
+    if (!Number.isFinite(p[k])) throw new Error(k + '=' + p[k]);
+  for (const k of ['sky','gnd','beam','total'])
+    if (p[k] < -1e-12) throw new Error(k + '=' + p[k]);
+});
+
+t('Perez conserva el oscurecimiento del horizonte: no cobra difusa ficticia', () => {
+  const p = F.poaSurfacePerez(55,90,60,90,{ghi:250,dni:0,dhi:250},172,.2);
+  if (!(p.hor < 0)) throw new Error('se perdió la corrección negativa del horizonte');
+  if (!(p.sky < p.iso + p.circ)) throw new Error('se cobró como cero una corrección negativa');
+  if (Math.abs(p.sky - p.iso - p.circ - p.hor) > 1e-10)
+    throw new Error('las componentes firmadas no cierran');
 });
 
 t('SKY DOME V2: Perez visual conserva pesos normalizados', () => {
@@ -361,6 +372,21 @@ t('SKY DOME V2: óptimo difuso 0,1° no empeora la difusa del baseline', () => {
   const base = F.poaTracker(thN[i], day.axisTilt, day.axisAz, day.zen[i], day.az[i],
                             day.irr[i], day.doy, day.albedo).diff;
   if (opt.diff + 1e-9 < base) throw new Error('óptimo ' + opt.diff + ' < baseline ' + base);
+});
+
+t('óptimo diagnóstico: otro azimut solar no hereda un resultado en caché', () => {
+  const d={n:1,maxAngle:55,axisTilt:0,axisAz:0,gcr:.397,doy:172,albedo:.2,
+    zen:[60],az:[90],irr:[{ghi:500,dni:800,dhi:100,cc:0}]};
+  const east=F.diffuseOptimum01(d,0);
+  d.az[0]=270;
+  const west=F.diffuseOptimum01(d,0);
+  if (!(east.theta>0 && west.theta<0)) throw new Error('la caché no distingue Este/Oeste');
+  if (Math.abs(east.theta+west.theta)>1e-9) throw new Error('se perdió la simetría física');
+});
+
+t('óptimo diagnóstico: de noche no se publica un ángulo ficticio', () => {
+  const d={n:1,maxAngle:55,zen:[100],irr:[{ghi:0,dni:0,dhi:0}]};
+  if (F.diffuseOptimum01(d,0)!==null) throw new Error('la noche devolvió un óptimo');
 });
 
 console.log('física (la misma QA que el botón de la página)');

@@ -136,6 +136,9 @@
   .sky3d .hot{color:#ffd166!important}.sky3d .good{color:var(--ok)!important}
   .sky3d .skybar{height:5px;border-radius:4px;margin:4px 0 2px;background:linear-gradient(90deg,#163bff,#22b9e6,#f2e85c,#ff8a2a,#c81d25)}
   .sky3d .tiny{font-size:.57rem;color:var(--muted);line-height:1.35}
+  .sky-compare{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 10px}
+  .sky-compare .nota{flex:1 1 240px;margin:0;font-size:.7rem}
+  .scene-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -441,13 +444,19 @@
 
   <div class="card">
     <h2>Escena <span class="sn">la política elegida<span id="zonelbl"></span></span>
-      <span style="margin-left:auto;display:flex;gap:6px">
+      <span class="scene-actions">
         <button class="btn small" id="flybtn" title="VUELO LIBRE: clic captura el ratón (ESC suelta) · WASD/flechas mover · ratón mirar · E/Espacio subir · Q bajar · Shift rápido">✈ Vuelo</button>
         <button class="btn small" id="cenitbtn" title="VISTA DE INGENIERÍA: cenital inclinada sobre la planta — filas, separación entre filas, orientación N-S y topografía de un vistazo. No cambia nada del cálculo: solo coloca la cámara. Vuelve a pulsar para el 3/4 aéreo.">⊤ Cenital</button>
-        <button class="btn small acc" id="skytoggle" title="Bóveda radiométrica derivada de Perez">☁ Sky dome</button>
+        <button class="btn small" id="skytoggle" aria-pressed="false" title="Alterna el aspecto natural y la distribución angular explicativa del cielo">Mapa de radiancia</button>
         <button class="btn small acc" id="tab3d">3D</button>
         <button class="btn small" id="tab2d" title="El corte ⊥ al eje, sin WebGL">Corte 2D</button>
       </span></h2>
+    <div class="sky-compare" role="group" aria-label="Comparar condiciones de cielo">
+      <button class="btn small" id="skySunny" aria-pressed="false">☀ SUNNY</button>
+      <button class="btn small" id="skyOvercast" aria-pressed="false">☁ OVERCAST</button>
+      <button class="btn small" id="skyRestore" disabled>Restaurar cielo</button>
+      <p class="nota" id="skyCompareNote" aria-live="polite">Compara dos cielos con la misma planta, hora y política. El mapa de radiancia se activa aparte.</p>
+    </div>
     <div id="view3d" class="viz3d">
       <canvas id="skydome" class="skydome-overlay" aria-label="Bóveda radiométrica difusa"></canvas>
       <!-- CONDICION DE CIELO: sale del MISMO `irr` que alimenta la fisica, no
@@ -467,13 +476,13 @@
         <div class="row"><span>Circumsolar</span><b id="skyCirc" class="hot">--</b></div>
         <div class="row"><span>Horizonte</span><b id="skyHor">--</b></div>
         <div class="skybar"></div>
-        <div class="subt">Tracker seleccionado</div>
+        <div class="subt">Política de planta · instante actual</div>
         <div class="row"><span>View factor 2D front/rear</span><b id="skyVF">--</b></div>
         <div class="row"><span>POA sky Perez front/rear</span><b id="skyFR">--</b></div>
         <div class="row"><span>θ ejecutado</span><b id="skyTheta">--</b></div>
-        <div class="row"><span>θ óptimo difuso · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>
+        <div class="row"><span>θ óptimo diagnóstico · 0,1°</span><b id="skyThetaOpt" class="good">--</b></div>
         <div class="row"><span>Δ difusa</span><b id="skyGain" class="good">--</b></div>
-        <div class="tiny">Bóveda angular explicativa; los W/m² del panel salen de la MISMA Perez del simulador. View factor: máscara 2D de filas, no terreno/obstáculos.</div>
+        <div class="tiny">El óptimo difuso es diagnóstico, no una consigna: no valida sombra 3D ni actuador. Perez puede incluir una corrección de horizonte negativa. El mapa angular es orientativo; los W/m² salen del motor. View factor: aproximación 2D de filas.</div>
       </div>
       <div class="pick3d" id="pick3d" style="display:none">
         <div class="hd"><span id="pickTit">—</span><span class="x" id="pickX" title="cerrar">✕</span></div>
@@ -729,11 +738,14 @@ function poaSurfacePerez(tiltDeg,surfAzDeg,zen,az,irr,doy,albedo){
     const F1=Math.max(0,F[0]+F[1]*delta+z*F[2]);
     const F2=F[3]+F[4]*delta+z*F[5];
     const A=Math.max(0,cosAoi),B=Math.max(Math.cos(85*RAD),Math.cos(z));
-    iso=Math.max(0,irr.dhi*(1-F1)*(1+Math.cos(b))/2);
-    circ=Math.max(0,irr.dhi*F1*A/B);
-    hor=Math.max(0,irr.dhi*F2*Math.sin(b));
+    // Perez conserva las correcciones con signo: el horizonte puede
+    // OSCURECER el cielo. pvlib recorta el TOTAL, no cada componente.
+    iso=irr.dhi*(1-F1)*(1+Math.cos(b))/2;
+    circ=irr.dhi*F1*A/B;
+    hor=irr.dhi*F2*Math.sin(b);
   }
-  const sky=iso+circ+hor;
+  const sky=Math.max(0,iso+circ+hor);
+  if(sky===0){iso=0;circ=0;hor=0;} // return_components de pvlib 0.16.1
   const gnd=Math.max(0,irr.ghi*albedo*(1-Math.cos(b))/2);
   return {total:beam+sky+gnd,beam:beam,sky:sky,gnd:gnd,diff:sky+gnd,iso:iso,circ:circ,hor:hor};
 }
@@ -852,25 +864,30 @@ function skyIntegrate(st,dhi,theta,axisTilt,axisAz,gcr){
   const scale=hsum>1e-12?Math.max(0,dhi)/hsum:0,mask=skyMaskRatio(o.tilt,gcr);
   return {front:front*scale*mask,rear:rear*scale*mask,vfFront:omegaF/Math.PI*mask,vfRear:omegaR/Math.PI*mask,mask:mask};
 }
-const SKY_OPT_CACHE=new Map();
+const SKY_OPT_CACHE=new WeakMap();
 function diffuseOptimum01(day,i){
-  if(!day||i<0||i>=day.n)return null;
-  const sig=i+"|"+day.maxAngle+"|"+day.axisTilt+"|"+day.axisAz+"|"+day.gcr+"|"+day.doy+"|"+Math.round(day.irr[i].ghi*10)+"|"+Math.round(day.irr[i].dni*10)+"|"+Math.round(day.irr[i].dhi*10);
-  if(SKY_OPT_CACHE.has(sig))return SKY_OPT_CACHE.get(sig);
+  if(!day||i<0||i>=day.n||!(day.zen[i]<90)||!(day.irr[i].ghi>0))return null;
+  // Una caché por día evita reutilizar resultados de otra fecha/emplazamiento.
+  let cache=SKY_OPT_CACHE.get(day);if(!cache){cache=new Map();SKY_OPT_CACHE.set(day,cache);}
+  const sig=[i,day.maxAngle,day.axisTilt,day.axisAz,day.gcr,day.doy,day.albedo,
+             day.zen[i],day.az[i],day.irr[i].ghi,day.irr[i].dni,day.irr[i].dhi].join('|');
+  if(cache.has(sig))return cache.get(sig);
   let best=-Infinity,bestTh=0,bestComp=null;
   for(let k=Math.round(-day.maxAngle*10);k<=Math.round(day.maxAngle*10);k++){
     const th=k/10,p=poaTracker(th,day.axisTilt,day.axisAz,day.zen[i],day.az[i],day.irr[i],day.doy,day.albedo);
     if(p.diff>best){best=p.diff;bestTh=th;bestComp=p;}
   }
-  const out={theta:bestTh,diff:best,poa:bestComp};SKY_OPT_CACHE.set(sig,out);return out;
+  const out={theta:bestTh,diff:best,poa:bestComp};cache.set(sig,out);return out;
 }
 function drawSkyDome(){
-  const cv=$("skydome");if(!cv||!SIM||!VIEW3D||!SKYDOME_ON){if(cv)cv.style.display="none";return;}cv.style.display="";
+  const cv=$("skydome");if(!cv||!SIM||!VIEW3D){if(cv)cv.style.display="none";return;}
+  cv.style.display=SKYDOME_ON?"":"none";
+  const i=Math.max(0,Math.min(SIM.dayF.n-1,Math.round(CLOCK/DT_FINE))),day=SIM.dayF,irr=day.irr[i],st=skyPerezState(day.zen[i],day.az[i],irr,day.doy);
+  updateSkyDome3D(st);
+  if(SKYDOME_ON){
   const holder=$("view3d"),dpr=Math.min(2,window.devicePixelRatio||1),w=Math.max(2,holder.clientWidth),h=Math.max(2,holder.clientHeight);
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
   const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
-  const i=Math.max(0,Math.min(SIM.dayF.n-1,Math.round(CLOCK/DT_FINE))),day=SIM.dayF,irr=day.irr[i],st=skyPerezState(day.zen[i],day.az[i],irr,day.doy);
-  updateSkyDome3D(st);
   const R=Math.min(w*.31,h*.43),cx=w*.53,cy=h*.39;x.save();x.globalCompositeOperation="screen";
   let vmax=0,samples=[];
   for(let alt=2.5;alt<90;alt+=5)for(let az=2.5;az<360;az+=5){const L=skyRelRadiance(st,alt,az);vmax=Math.max(vmax,L);samples.push([alt,az,L]);}
@@ -885,6 +902,7 @@ function drawSkyDome(){
   for(let j=0;j<day.n;j+=15){const alt=90-day.zen[j];if(alt<=0)continue;const rr=(90-alt)/90*R,a=day.az[j]*RAD,px=cx+rr*Math.sin(a),py=cy-rr*Math.cos(a);if(!started){x.moveTo(px,py);started=true;}else x.lineTo(px,py);}
   if(started)x.stroke();x.setLineDash([]);
   if(day.zen[i]<90){const alt=90-day.zen[i],rr=(90-alt)/90*R,a=day.az[i]*RAD,px=cx+rr*Math.sin(a),py=cy-rr*Math.cos(a);x.fillStyle="#fff7c2";x.shadowColor="#ffd45e";x.shadowBlur=18;x.beginPath();x.arc(px,py,6,0,2*Math.PI);x.fill();x.shadowBlur=0;}x.restore();
+  }
   const pv=$("polview").value,rr=SIM.res[pv]||SIM.res.pvlib,th=rr&&rr.execF?rr.execF[i]:SIM.thNF[i];
   const integ=skyIntegrate(st,irr.dhi,th,day.axisTilt,day.axisAz,day.gcr),opt=diffuseOptimum01(day,i);
   const now=poaTracker(th,day.axisTilt,day.axisAz,day.zen[i],day.az[i],irr,day.doy,day.albedo);
@@ -2632,7 +2650,7 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.31.0';
+const VER='v1.32.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent='overcast.html '+VER;
 
@@ -2732,6 +2750,43 @@ fillPolview();
 /* ── tira de nubosidad: 288 bines de 5 min ── */
 let CC=new Array(288).fill(0);
 function skyPresetApply(name,param){CC=skyPresetSeries(name,param);}
+/* Comparación sobre EL MISMO pipeline. Se guarda el cielo original completo,
+   incluida su fuente y sus NCUs; no hay otro cálculo ni otro tracker. */
+let SKY_COMPARE=null;
+function compareSky(mode){
+  if(mode==='restore'){
+    if(!SKY_COMPARE)return;
+    CC=SKY_COMPARE.cc;ZSKY=SKY_COMPARE.zsky;OM=SKY_COMPARE.om;
+    $('skysource').value=SKY_COMPARE.source;
+    $('zskymode').value=SKY_COMPARE.zmode;
+    $('skypreset').value=SKY_COMPARE.preset;
+    const wasLive=SKY_COMPARE.live;SKY_COMPARE=null;
+    syncSkySource();
+    if(wasLive){$('omlive').classList.add('acc');OMLIVE=setInterval(liveTick,600000);}
+  }else{
+    if(mode!=='sunny'&&mode!=='overcast')return;
+    if(!SKY_COMPARE)SKY_COMPARE={cc:CC.slice(),zsky:JSON.parse(JSON.stringify(ZSKY)),
+      om:OM,source:$('skysource').value,zmode:$('zskymode').value,
+      preset:$('skypreset').value,live:!!OMLIVE};
+    liveStop();$('skysource').value='paint';syncSkySource();
+    // El 100 % cubierto usa cloudToIrr del motor: DNI=0, DHI=GHI.
+    CC=new Array(288).fill(mode==='overcast'?1:0);
+    $('zskymode').value='frente';
+    SKY_COMPARE.mode=mode;
+  }
+  for(const [id,k] of [['skySunny','sunny'],['skyOvercast','overcast']]){
+    const on=!!SKY_COMPARE&&SKY_COMPARE.mode===k;
+    $(id).classList.toggle('acc',on);$(id).setAttribute('aria-pressed',String(on));
+  }
+  $('skyRestore').disabled=!SKY_COMPARE;
+  $('skyCompareNote').textContent=SKY_COMPARE
+    ?'Comparación '+mode.toUpperCase()+' · cielo sintético aplicado a toda la planta. Puedes restaurar tu cielo.'
+    :'Cielo original restaurado. Misma planta, hora y política.';
+  zskyRender();recompute();
+}
+$('skySunny').onclick=()=>compareSky('sunny');
+$('skyOvercast').onclick=()=>compareSky('overcast');
+$('skyRestore').onclick=()=>compareSky('restore');
 $('skypreset').onchange=function(){
   $('skyparamlbl').textContent=this.value==='aleatorio'?'Semilla':'—';
 };
@@ -4963,7 +5018,7 @@ function update3D(){
     const _c=Sol.sunLook(el).color; TD.sun.color.setRGB(_c[0],_c[1],_c[2]);
     // …con lo que este simulador añade: las NUBES. El sol va con el DNI del
     // instante, el hemisferio con el DHI (la difusa ES la luz ambiente)…
-    OBJ.sunI=(1.35-0.25*warm)*(0.04+0.96*Math.min(1,irr.dni/900));
+    OBJ.sunI=(1.35-0.25*warm)*Math.min(1,irr.dni/900);
     OBJ.hemiI=0.25+0.12*warm+1.05*Math.min(1,irr.dhi/350);   // clara ≈0,55 (como BT) · overcast ≈1,2
     /* EL COLOR DE LA LUZ AMBIENTE ES EL DEL CIELO, Y UN CIELO CUBIERTO NO ES
        AZUL. `hemi` nacio en 0xbcd4ff (azul palido) y se quedaba ahi pasara lo
@@ -4975,14 +5030,14 @@ function update3D(){
        que es la que dice cuanto del total llega del cielo y no del disco. */
     const _dif=irr.ghi>0?Math.max(0,Math.min(1,(irr.ghi-irr.dni*Math.max(0,Math.sin(el*RAD)))/irr.ghi)):1;
     const _k=Math.max(0,Math.min(1,(_dif-0.25)/0.55));
-    OBJ.hemiC=[0.737+(0.855-0.737)*_k, 0.831+(0.878-0.831)*_k, 1.0+(0.925-1.0)*_k];
+    OBJ.hemiC=[0.737+(0.88-0.737)*_k, 0.831+(0.88-0.831)*_k, 1.0+(0.88-1.0)*_k];
     let r0=0.07+0.10*up+0.22*warm*(1-up),
         g0=0.11+0.13*up+0.04*warm*(1-up),
         b0=0.20+0.20*up-0.04*warm*(1-up);
     // …y el fondo se agrisa hacia la tapa lechosa del overcast
-    const grey=(0.30*r0+0.50*g0+0.20*b0)*1.9+0.10, f=0.8*ccMean;
+    const grey=(0.30*r0+0.50*g0+0.20*b0)*1.9+0.10, f=ccMean;
     OBJ.bg=[r0+(grey-r0)*f,g0+(grey-g0)*f,b0+(grey-b0)*f];
-    TD.sunMesh.visible=true;
+    TD.sunMesh.visible=irr.dni>1;
     OBJ.disco=1-0.85*ccMean;                        // el disco, velado por las nubes
     /* SIN HAZ NO HAY SOMBRA DURA. Medido a mediodia con «Overcast total»: el
        sol baja a intensidad 0,054 (4 % de la clara) y aun asi se seguia
@@ -5141,11 +5196,11 @@ function setTab(three){
   $('scene').style.display=VIEW3D?'none':'';
   $('tab3d').classList.toggle('acc',VIEW3D);
   $('tab2d').classList.toggle('acc',!VIEW3D);
-  if(VIEW3D){build3D();update3D();}
+  if(VIEW3D){build3D();update3D();drawSkyDome();}
   else drawScene();
 }
-let SKYDOME_ON=true;
-$("skytoggle").onclick=()=>{SKYDOME_ON=!SKYDOME_ON;$("skytoggle").classList.toggle("acc",SKYDOME_ON);if(TD&&TD.skyDome3D)TD.skyDome3D.mesh.visible=SKYDOME_ON;drawSkyDome();};
+let SKYDOME_ON=false;
+$("skytoggle").onclick=()=>{SKYDOME_ON=!SKYDOME_ON;$("skytoggle").classList.toggle("acc",SKYDOME_ON);$("skytoggle").setAttribute('aria-pressed',String(SKYDOME_ON));$("skytoggle").textContent=SKYDOME_ON?'Volver a vista natural':'Mapa de radiancia';if(TD&&TD.skyDome3D)TD.skyDome3D.mesh.visible=SKYDOME_ON;drawSkyDome();};
 $('tab3d').onclick=()=>setTab(true);
 $('tab2d').onclick=()=>setTab(false);
 function refreshScene(rebuild){
