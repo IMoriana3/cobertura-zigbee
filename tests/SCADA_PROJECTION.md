@@ -69,7 +69,7 @@ Publication of these consumer PRs and their deployments still needs verification
 
 DECISIÓN (28 September): the first measured map layer is daily telemetry log
 continuity (%), using the existing CSV aggregation. It is not RF coverage,
-online time or expected-sample availability. A continuous blue scale has no
+online time or expected-sample availability. The continuous visual scale has no
 operational good/bad thresholds. scada-projection.js supplies the exact same
 color for both consumers. The sender transmits the already computed historical
 metrics, local date/timezone and UTC interval; 3D neither recomputes them nor
@@ -82,3 +82,11 @@ The 2D point detail retains map context and provides links to the CSV files.
 The integration test in factiun-cartera/tests/test_scada_continuity_handoff.js
 exercises actual daily aggregation, the canonical sender and the real 3D
 consumer, including plant/NCU isolation and equal values/colors across views.
+
+BUG / HECHO (28 September, operator feedback): the original blue ramp made
+91.1% look like the endpoint labelled 100%. DECISIÓN: replace it with a shared
+multicolor scale and a shared legend labelled 0/50/90/95/100. Presentation expands
+the upper end using 1-sqrt(1-p/100); both legend positions and marker colors use
+that mapping. The legend explicitly says the scale is expanded near 100% and
+has no alarm thresholds. Percentages, aggregation, bindings and UNKNOWN remain
+unchanged. This is a UX correction, not a new coverage/availability contract.
