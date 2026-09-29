@@ -7502,7 +7502,7 @@ function updateHud(tIdx,g,irrN,key,p,sh){
        POA de fila idéntica a la de las filas sin sombra. */
     const aoiSel=aoiMesa(90-elFisica(g),g.az,DAY.T,selRow,angAt(p,tIdx,selRow,0));
     const espaldas=(g.elev>0&&aoiSel>=90)?' · de espaldas al sol (AOI '+aoiSel.toFixed(0)+'°): sin directa, esta sombra no cuesta energía':'';
-    card('Sombra fila',(sh[selRow]*100).toFixed(1)+'%','máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+espaldas+sombraPorMesaTxt(sh,selRow,' · '));
+    card('Sombra 3D fila',(sh[selRow]*100).toFixed(1)+'%','ray-cast multi-emisor · máx planta '+(Math.max(...sh)*100).toFixed(1)+'%'+irre+espaldas+sombraPorMesaTxt(sh,selRow,' · '));
     /* v1.57.1 (tercera auditoría, R3): FILA SACRIFICADA. El óptimo libre puede
        aparcar una fila de espaldas al sol —AOI > 90°, producción de haz cero—
        para que sus vecinas lo vean: bajo el modelo es legítimo y gana energía
@@ -8654,7 +8654,7 @@ function rowInfoHTML(r,kSel){
     '<br>θ '+th.toFixed(1)+'° · tilt N-S '+tilt.toFixed(1)+'°'+(mesas?' <small>(medias de sus mesas)</small>':'')+
     '<br>vano '+vano(r>0?DAY.T.pairs[r-1]:null,'O')+
     '<br>vano '+vano(r<DAY.T.pairs.length?DAY.T.pairs[r]:null,'E')+
-    '<br>sombra <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b>'+deTxt+' · POA '+poa.toFixed(0)+' W/m²'+
+    '<br>sombra 3D <b style="color:'+(sh>1e-3?'#f87272':'#36d399')+'">'+(sh*100).toFixed(1)+'%</b>'+deTxt+' · POA '+poa.toFixed(0)+' W/m²'+
     (isFinite(rmm)?' · residual '+(rmm>=0?'+':'')+rmm.toFixed(0)+' mm':'')+evit+
     (ws>1e-3?'<br>peor de esta fila: '+hhmm(DAY.times[wt])+' ('+(ws*100).toFixed(1)+'%) <button class="btn small" onclick="gotoT('+wt+','+r+')">ir</button>'
             :'<br>sin sombra en todo el día')+(sombraPorMesaTxt(p.shade[t],r,'<br>')||'')+mesas;
