@@ -54,21 +54,21 @@
         }
         if (typeof r.search_status !== 'string' || typeof r.quality_flag !== 'string') fail('Falta el estado de búsqueda.');
       }
-      const currentSlots = [];
+      const slotSet = new Set();
       const surfaced = new Set();
       for (const face of frame.surfaces) {
         if (!ids.has(face.geometry_row_index) || !Number.isInteger(face.segment_index) || face.segment_index < 0)
           fail('Superficie con locator desconocido.');
         const key = face.geometry_row_index + ':' + face.segment_index;
-        if (currentSlots.includes(key)) fail('Superficie duplicada.');
-        currentSlots.push(key); surfaced.add(face.geometry_row_index);
+        if (slotSet.has(key)) fail('Superficie duplicada.');
+        slotSet.add(key); surfaced.add(face.geometry_row_index);
         for (const [points, n] of [[face.corners_m, 4], [face.axis_endpoints_m, 2]]) {
           if (!Array.isArray(points) || points.length !== n || points.some(p =>
             !Array.isArray(p) || p.length !== 3 || !p.every(finite))) fail('Vértices inválidos.');
         }
       }
       if (surfaced.size !== ids.size) fail('Hay receptores sin superficie.');
-      currentSlots.sort();
+      const currentSlots = Array.from(slotSet).sort();
       if (slots && JSON.stringify(currentSlots) !== JSON.stringify(slots)) fail('La geometría cambia de identidad entre frames.');
       slots = currentSlots; count += currentSlots.length;
       if (count > 200000) fail('Escena demasiado grande.');
@@ -114,7 +114,7 @@
     let data = null, yaw = -.7, pitch = .55, drag = null, hidden = [], epoch = 0;
     const legacy = () => Array.from(document.querySelectorAll('.wrap > .cols, #polcard'));
     function restore() {
-      hidden.forEach(([e, value]) => { e.hidden = value; }); hidden = [];
+      hidden.forEach(([e, value, display]) => { e.hidden = value; e.style.display = display; }); hidden = [];
       panel.hidden = true; data = null; input.value = ''; epoch++;
       status.textContent = 'Modo de simulación original. Ningún input ni cálculo ha sido sobrescrito.';
       root.dispatchEvent(new CustomEvent('bt-canonical-mode', {detail: {active: false}}));
@@ -133,8 +133,8 @@
       };
       const projected = f.surfaces.map(s => ({s, p: s.corners_m.map(project)}));
       const points = projected.flatMap(o => o.p);
-      const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-      const loX = Math.min(...xs), hiX = Math.max(...xs), loY = Math.min(...ys), hiY = Math.max(...ys);
+      let loX=Infinity, hiX=-Infinity, loY=Infinity, hiY=-Infinity;
+      for (const p of points) { loX=Math.min(loX,p[0]); hiX=Math.max(hiX,p[0]); loY=Math.min(loY,p[1]); hiY=Math.max(hiY,p[1]); }
       const scale = Math.min((w-70)/Math.max(.01,hiX-loX),(h-60)/Math.max(.01,hiY-loY));
       const xy = p => [(p[0]-(loX+hiX)/2)*scale+w/2,(p[1]-(loY+hiY)/2)*scale+h/2];
       const rs = new Map(f.receivers.map(r => [r.geometry_row_index, r]));
@@ -168,8 +168,8 @@
         if(file.size>100000000) fail('Archivo demasiado grande.');
         const candidate=await decode(JSON.parse(await file.text()));
         if(generation!==epoch)return;
-        if(!hidden.length)hidden=legacy().map(e=>[e,e.hidden]);
-        hidden.forEach(([e])=>{e.hidden=true;});
+        if(!hidden.length)hidden=legacy().map(e=>[e,e.hidden,e.style.display]);
+        hidden.forEach(([e])=>{e.hidden=true;e.style.display='none';});
         data=candidate; slider.max=String(data.frames.length-1);slider.value='0';panel.hidden=false;
         status.textContent='Referencia importada · '+data.algorithm_id+' · core '+data.source_sha.slice(0,8)+
           ' · sin recálculo JS · sin control operativo ni entorno. Color: estado del receptor, no máscara de sombra.';
