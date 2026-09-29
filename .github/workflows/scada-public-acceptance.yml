@@ -1,0 +1,59 @@
+name: SCADA public release acceptance
+on:
+  push:
+    branches: [codex/scada-sept29-acceptance]
+    paths: [.github/workflows/scada-public-acceptance.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read published static files only (no login or plant API)
+        run: |
+          mkdir -p evidence/cartera/tests evidence/viewer
+          python3 - <<'PY'
+          import urllib.request, pathlib, hashlib, json
+          root=pathlib.Path('evidence')
+          base='https://factiun-cartera.imoriana3.workers.dev/'
+          files=['seguimiento-pem','tests/correr.sh','tests/test_scada_csv_historical_controls.js','tests/test_scada_measured_locator.js','tests/test_scada_navigation_coverage.js','tests/test_scada_gw_legend.js','tests/test_scada_plant_header.js','tests/test_scada_scope_provenance.js','tests/test_scada_coverage_evidence.js','tests/test_scada_coverage_importer_time.js','tests/test_scada_continuity_handoff.js','tests/test_scada_hsu_inventory.js','tests/test_scada_solar_context.js','tests/test_scada_identity_handoff.js','tests/test_scada_operator_readiness.js','tests/test_scada_coverage_boundaries.js','tests/test_telemetria.js','tests/test_husos.js']
+          report=[]
+          for f in files:
+            try:
+              with urllib.request.urlopen(base+f,timeout=25) as r:
+                data=r.read();status=r.status
+              dest=root/'cartera'/('seguimiento-pem.html' if f=='seguimiento-pem' else f)
+              dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
+              sha=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+              report.append({'path':f,'status':status,'bytes':len(data),'git_blob_sha':sha})
+            except Exception as e:
+              report.append({'path':f,'status':'UNAVAILABLE','reason':str(e)})
+          for f in ['scada-projection.js?v=continuity-scale-2','terreno.html']:
+            try:
+              with urllib.request.urlopen('https://imoriana3.github.io/cobertura-zigbee/'+f,timeout=25) as r:data=r.read()
+              (root/'viewer'/f.split('?')[0]).write_bytes(data)
+              report.append({'viewer':f,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+            except Exception as e:report.append({'viewer':f,'status':'UNAVAILABLE','reason':str(e)})
+          (root/'public-fetch.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          shell=root/'cartera'/'seguimiento-pem.html'
+          if not shell.exists():raise SystemExit(2)
+          print('SCOPE: public static resources only. Authenticated plant-data acceptance NOT_RUN.')
+          PY
+      - name: Prepare isolated chart test dependencies
+        run: |
+          npm install --prefix evidence/deps --no-audit --no-fund chart.js@4.5.0 jsdom@26.1.0
+          tar -czf scada-public-acceptance.tar.gz evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scada-public-acceptance
+          path: |
+            scada-public-acceptance.tar.gz
+            evidence/public-fetch.json
+          retention-days: 2
