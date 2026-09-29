@@ -1,0 +1,23 @@
+name: SCADA chart harness dependencies
+on:
+  push:
+    branches: [codex/scada-sept29-acceptance]
+    paths: [.github/workflows/scada-chart-test-deps.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm install --prefix deps --no-audit --no-fund chart.js@4.5.0 jsdom@26.1.0
+          tar -czf chart-harness-deps.tar.gz deps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scada-chart-harness-deps
+          path: chart-harness-deps.tar.gz
+          retention-days: 2
