@@ -279,8 +279,8 @@
       <button class="btn small" id="fayonplbtn" title="Implantación REAL del layout — SIN cotas: terreno PLANO, declarado">⛰ Fayón</button>
     </div>
     <div class="nota" id="realnote" style="display:none"></div>
-    <div class="nota">La sombra transversal se pondera por el <b>solape axial real</b> (con la deflexión
-      de la sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
+    <div class="nota">La sombra transversal se pondera por el <b>solape axial real</b> (con el desplazamiento
+      longitudinal de la huella de sombra a lo largo del eje): un tracker corto delante de uno largo solo sombrea su tramo y los
       extremos de línea se libran. La fila «media» es tipo real de catálogo (≈0,504·larga, San José).
       La sombra punta-a-punta entre trackers de una misma línea no se modela (declarado).</div>
     <div class="nota"><b>La ESTRUCTURA sombrea y se cuenta</b> (v1.28), con las cotas del modelo de
@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.1';
+const VER='v1.78.2';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -2045,7 +2045,7 @@ function shadeBand3DAll(zen,az,T,rowAngles,res){
   // de sol (decaimiento suave, sin escalón: −2,9 kWh en 25–30°, −0,6 en
   // 50–55°). La marcha sale barata con sol alto (el rayo supera zSky en
   // pocos pasos). Paso 4 m + 3 refinos: error medido ≤0,03% anual, declarado.
-  const doTerr=true;
+  const doTerr=!(res&&res.noTerr);
   /* v1.39.3: cota EXACTA del terreno para no marchar de más. El suelo nunca
      supera gMax (la cota medida más alta menos la altura de buje), así que un
      rayo que ya vuela por encima de gMax no puede clavarse: se corta ahí.
@@ -3489,18 +3489,20 @@ function slewLimit(prev,cmd,dtSec,rate){
 /* envoltura: la marca `sinReparar` tiene que viajar en LO QUE SE DEVUELVE, y la
    reparación devuelve arrays nuevos por varios caminos. Marcarlo en la entrada
    se perdía por el camino — lo cazó su propio test. */
-function repairNoShade(zen,az,T,ang,irr,doy,albedo){
-  const out=repairNoShadeCore(zen,az,T,ang,irr,doy,albedo);
-  if(!(irr&&irr.ghi>0)){try{Object.defineProperty(out,'sinReparar',{value:true,enumerable:false});}catch(e){}}
+function repairNoShade(zen,az,T,ang,irr,doy,albedo,opts){
+  const out=repairNoShadeCore(zen,az,T,ang,irr,doy,albedo,opts);
+  if(!(irr&&irr.ghi>0)&&!(opts&&opts.strictShadow)){try{Object.defineProperty(out,'sinReparar',{value:true,enumerable:false});}catch(e){}}
   return out;
 }
-function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
+function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo,opts){
+  const strict=!!(opts&&opts.strictShadow);
+  const ZERO_TOL=strict?1e-3:0.02;
   if(!(isFinite(zen)&&zen<90))return ang;
   // en las plantas REALES no entra: allí la consigna va por MESA (policyAnglesSeg,
   // con las cotas de cada tramo) y una reparación por fila la pisaría; además
   // cuantizaba a la rejilla los ángulos con los que se carea la telemetría
   // (el cruce NCU de Ayora cambiaba de veredicto por eso). Es de los presets.
-  if(T.real)return ang;
+  if(T.real&&!strict)return ang;
   const nR=T.pairs.length+1, sg=trueTrackAngle(zen,az,0,T.axisAz)>=0?1:-1;
   const grupoDe=(r)=>{if(T.groups)for(const g of T.groups)if(g.includes(r))return g;return [r];};
   const filasDe=(sh,r)=>{const de=sh.de&&sh.de[r]?sh.de[r]:[];return Math.min(sh[r]||0,de.filter(q=>q[0]!=='terreno').reduce((a,q)=>a+q[1],0));};
@@ -3514,7 +3516,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   // reducido la reparación salía PEOR en planos. Se queda el criterio de
   // planos, y el barrido mide aparte (B2) cuánta sombra publicada evitaría un
   // θ uniforme, para decidir con números si algún día compensa.)
-  const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,{noStruct:true,MV:mvPara(T,zen)});let tot=0,mx=0,peorR=-1;   // MV=8: las MISMAS estaciones que se publican (con 6 optimizaba el muestreo, no la sombra)
+  const evalua=(a)=>{const sh=shadeBand3DAll(zen,az,T,a,strict?{noTerr:true,MV:mvPara(T,zen)}:{noStruct:true,MV:mvPara(T,zen)});let tot=0,mx=0,peorR=-1;   // strict: TODO sombreado inter-row/estructura, excluyendo sólo terreno externo
     for(let r=0;r<nR;r++){const f=filasDe(sh,r);tot+=f;if(f>mx){mx=f;peorR=r;}}return {sh:sh,tot:mx+tot/nR,mx:mx,peorR:peorR};};
   // v1.57: todo candidato dentro del rango legítimo de SU fila (entre el
   // seguimiento verdadero y la paralela al terreno de sus vanos)
@@ -3539,7 +3541,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
      consignas sin recortar creyéndolas publicadas. Así que la consigna sale
      MARCADA, `sinReparar`, y la batería lo exige. La página, el barrido y el
      export siempre traen cielo: esta rama no es la que se publica. */
-  if(irr&&irr.ghi>0&&ang.some((v,r)=>fuera(r,v))){
+  if(!strict&&irr&&irr.ghi>0&&ang.some((v,r)=>fuera(r,v))){
     /* el acople rígido empuja fuera del rango: en el caso que reportó el tercer
        auditor (Arequipa · valle 2 · senoidal 2° · quebrado · 21-jun 20:40Z,
        sol 20,9°) el acoplado manda las filas 0-3 a +9,5° y las dos últimas a
@@ -3572,7 +3574,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
     }
   }
   let cur=ang.slice(), E=evalua(cur);
-  if(E.mx<=0.02)return ang;
+  if(E.mx<=ZERO_TOL)return ang;
   const mx0=E.mx;                                        // sombra de partida (para la guardia de energía)
   const clamp=(t)=>Math.max(hLo,Math.min(hHi,t));
   const uni=(th)=>{const a=new Array(nR);for(let r=0;r<nR;r++)a[r]=clampR(r,th);return a;};
@@ -3672,7 +3674,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
      comprar su promesa con la mitad de la producción: si la reparación pierde
      energía de planta, no se publica. Lo que quede sin evitar sale como
      irreducible, con el Martinez cobrándolo — no se maquilla. */
-  if(irr&&irr.ghi>0&&best!==ang&&best.some((v,i)=>v!==ang[i])){
+  if(!strict&&irr&&irr.ghi>0&&best!==ang&&best.some((v,i)=>v!==ang[i])){
     const pB=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
     const pA=poaPlant(zen,az,T,ang,irr,doy,albedo).plant;
     if(pB<pA-1e-9)best=ang;
@@ -3697,7 +3699,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
      darse por construcción sobre este conjunto.
 
      La energía sólo se mide en los que mejoran la sombra, que son pocos. */
-  if(irr&&irr.ghi>0){
+  if(!strict&&irr&&irr.ghi>0){
     const EB=evalua(best);
     if(EB.mx>0.02){
       const pRef=poaPlant(zen,az,T,best,irr,doy,albedo).plant;
@@ -3735,6 +3737,67 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo){
   }
   return best;
 }
+/* P0 canónico de shadow-safe: primero elimina TODA sombra inter-row
+   físicamente eliminable (planos + estructura, multi-emisor; el terreno se
+   excluye porque ningún giro del tracker puede quitar una loma). Después,
+   ENTRE las soluciones sin sombra, avanza cada accionamiento hacia true
+   tracking hasta el último comando de 0,1° que sigue limpio. La energía NO
+   puede vetar ninguna de esas dos prioridades: energy-optimal es otra política. */
+function anglesShadowSafeTangency(zen,az,T,seed){
+  if(!(isFinite(zen)&&isFinite(az)&&zen<87))return seed.slice();
+  const RES=PASO_BUSQ, ZERO=1e-3;
+  let a=repairNoShadeCore(zen,az,T,seed,null,0,0,{strictShadow:true}).slice();
+  const judge=(ang)=>shadeBand3DAll(zen,az,T,ang,{noTerr:true,MV:mvPara(T,zen)});
+  const maxShade=(ang)=>{const sh=judge(ang);return sh.length?Math.max(...sh):0;};
+  // Si el buscador global no ha podido eliminar toda la sombra, no se compra
+  // "tangencia" a costa de empeorarla: se conserva la mejor postura encontrada.
+  if(maxShade(a)>ZERO)return a;
+  const units=T.groups?T.groups:a.map((_,r)=>[r]);
+  const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
+  const RG=rangosUnidad(zen,az,T);
+  const gl=(ang)=>ang.reduce((s,th)=>s+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
+  for(let sweep=0;sweep<6;sweep++){
+    let changed=false;
+    for(const u of units){
+      const r0=u[0], cur=a[r0];
+      let loR=-Infinity,hiR=Infinity;
+      for(const r of u){loR=Math.max(loR,RG[r][0]);hiR=Math.min(hiR,RG[r][1]);}
+      if(!(hiR>=loR))continue;
+      const target=Math.max(loR,Math.min(hiR,full[r0]));
+      const delta=target-cur;
+      if(Math.abs(delta)<RES*0.5)continue;
+      const trialAt=(f)=>{const b=a.slice(),v=cur+delta*f;for(const r of u)b[r]=v;return b;};
+      let flo=0,fhi=1;
+      if(maxShade(trialAt(1))<=ZERO)flo=1;
+      else for(let it=0;it<18;it++){
+        const fm=(flo+fhi)/2;
+        if(maxShade(trialAt(fm))<=ZERO)flo=fm; else fhi=fm;
+      }
+      const vSafe=cur+delta*flo;
+      let q=delta>0
+        ?Math.floor((vSafe+1e-10)/RES)*RES
+        :Math.ceil((vSafe-1e-10)/RES)*RES;
+      q=Math.max(Math.min(q,Math.max(cur,target)),Math.min(cur,target));
+      q=+q.toFixed(6);
+      let cand=a.slice();for(const r of u)cand[r]=q;
+      if(maxShade(cand)>ZERO)continue;
+      // Cierra cualquier décima segura que la bisección+cuantización haya
+      // dejado disponible. Si todavía cabe 0,1° hacia el sol, NO ha terminado.
+      const dir=Math.sign(delta);
+      while(dir&&Math.abs(target-q)>=RES-1e-9){
+        const q2=+(q+dir*RES).toFixed(6);
+        if((dir>0&&q2>target+1e-9)||(dir<0&&q2<target-1e-9))break;
+        const c2=a.slice();for(const r of u)c2[r]=q2;
+        if(maxShade(c2)>ZERO)break;
+        q=q2;cand=c2;
+      }
+      if(Math.abs(q-cur)>1e-9&&gl(cand)<=gl(a)+1e-12){a=cand;changed=true;}
+    }
+    if(!changed)break;
+  }
+  return a;
+}
+
 function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
   /* `prev` es OPCIONAL y solo lo usan las dos políticas de energía, para su
      histéresis (ver anglesOptimal). Quien no lo pase obtiene exactamente el
@@ -3758,7 +3821,10 @@ function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
   if(key==='global')return {angles:anglesGlobal(zen,az,T),f:undefined};
   if(key==='bt2d')return {angles:anglesBt2d(zen,az,T),f:undefined};      // un ángulo: el acoplado es no-op
   if(key==='row')return {angles:applyDrive(anglesRow(zen,az,T),T.groups||null),f:undefined};
-  if(key==='true3d')return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true),irr,doy,albedo),f:undefined};
+  if(key==='true3d'){
+    const seed=driveCoupleSafe(zen,az,T,anglesTrue3d(zen,az,T),true);
+    return {angles:anglesShadowSafeTangency(zen,az,T,seed),f:undefined};
+  }
   if(key==='mgl')return {angles:repairNoShade(zen,az,T,anglesMinGroundLight(zen,az,T),irr,doy,albedo),f:undefined};   // ya acoplado; busca no-sombra de planos vecinos, con la misma guardia
   return {angles:repairNoShade(zen,az,T,driveCoupleSafe(zen,az,T,anglesPairwise(zen,az,T),false),irr,doy,albedo),f:undefined};
 }
@@ -3961,6 +4027,32 @@ function runPhysicsQA(){
     const T4=mkT([8],4.5,0,{gcr:2.382/4.5});
     const sh4=shadeRows(75,110,T4,[55,55]);
     assert(Math.max(...sh4)>0.02,'la sombra real dejó de cobrarse');
+  });
+  t('shadow-safe estricto elimina sombra 3D evitable sin veto de energía',()=>{
+    const T5=mkT([0,0,0],4.5,0,{gcr:2.382/4.5});
+    const zen=75,az=110,seed=[55,55,55,55];
+    const s0=Math.max(...shadeBand3DAll(zen,az,T5,seed,{noTerr:true,MV:mvPara(T5,zen)}));
+    const out=repairNoShadeCore(zen,az,T5,seed,null,172,0.2,{strictShadow:true});
+    const s1=Math.max(...shadeBand3DAll(zen,az,T5,out,{noTerr:true,MV:mvPara(T5,zen)}));
+    assert(s1<=s0+1e-9,'la reparación estricta empeora sombra: '+s0+' → '+s1);
+    assert(s1<=1e-3,'queda sombra 3D eliminable: '+(s1*100).toFixed(2)+'%');
+  });
+  t('True-3D tangency no deja otra décima segura hacia true tracking',()=>{
+    const T6=mkT([0,0,0],6,0,{gcr:2.382/6});
+    const zen=75,az=110;
+    const seed=driveCoupleSafe(zen,az,T6,anglesTrue3d(zen,az,T6),true);
+    const out=anglesShadowSafeTangency(zen,az,T6,seed);
+    const sh=Math.max(...shadeBand3DAll(zen,az,T6,out,{noTerr:true,MV:mvPara(T6,zen)}));
+    assert(sh<=1e-3,'True-3D final sombrea '+(sh*100).toFixed(2)+'%');
+    const full=applyDrive(anglesAstro(zen,az,T6),T6.groups||null);
+    for(let r=0;r<out.length;r++){
+      const d=full[r]-out[r]; if(Math.abs(d)<PASO_BUSQ-1e-9)continue;
+      const cand=out.slice();cand[r]=+(out[r]+Math.sign(d)*PASO_BUSQ).toFixed(6);
+      const sh2=Math.max(...shadeBand3DAll(zen,az,T6,cand,{noTerr:true,MV:mvPara(T6,zen)}));
+      const g0=out.reduce((s,th)=>s+groundLightFrac(th,zen,az,T6.gcr,T6.axisAz),0);
+      const g1=cand.reduce((s,th)=>s+groundLightFrac(th,zen,az,T6.gcr,T6.axisAz),0);
+      assert(sh2>1e-3||g1>=g0-1e-12,'fila '+r+' conserva 0,1° seguro y útil sin aprovechar');
+    }
   });
   t('rayo crítico ≡ shadeFracPair: la frontera dibujada reproduce fs (200 casos aleatorios)',()=>{
     const rnd=mulberry32(7);
@@ -4451,7 +4543,7 @@ const POLICIES=[
   {key:'row',     nm:'Row',           ds:'cada fila con su terreno local, sin acoplar (A&M 2020)',col:'#fbbd23', on:false, brain:'tcu'},
   {key:'bt2d',    nm:'BT2D plano',    ds:'ignora el relieve (pvlib sin pendiente) — un tracker sin configurar; en pendiente sombrea', col:'#fb923c', on:false, brain:'tcu'},
   {key:'pairwise',nm:'Pairwise',      ds:'por pareja; interiores min(|θ|) — evita la sombra de PLANOS salvo cuando evitarla CUESTA energía de planta (guardia de v1.57); la estructura (viga y canto) deja residuo (canónica)', col:'#36d399', on:true, brain:'tcu'},
-  {key:'true3d',  nm:'True-3D',       ds:'bisección 3D: azimut + tilt N-S — más empinado donde el 2D es conservador', col:'#5aa9ff', on:true, brain:'tcu'},
+  {key:'true3d',  nm:'True-3D',       ds:'shadow-safe 3D: elimina sombra inter-row con ray-cast completo y cierra el hueco a tangencia en 0,1°', col:'#5aa9ff', on:true, brain:'tcu'},
   {key:'mgl',     nm:'Min ground light',ds:'mínima luz al suelo (agrivoltaica inversa) — pairwise + décimas por los bordes, con su misma guardia de energía', col:'#2dd4bf', on:false, brain:'ncu'},
   {key:'optimal', nm:'Energy-optimal',ds:'Deeptrack: tolera sombra cuando apuntar mejor la paga (argmax POA neto)', col:'#c084fc', on:true, brain:'ncu'},
   {key:'optfree', nm:'Óptimo libre',  ds:'cada accionamiento con SU fracción (ascenso coordinado con vista de planta) — nunca menos que energy-optimal', col:'#f472b6', on:true, brain:'ncu'},
@@ -7684,9 +7776,9 @@ const EXPLICA={
   pairwise:{como:'Por <b>pareja de filas</b>: pvlib con la pendiente transversal y el tilt medio de la pareja; la fila interior toma el más backtrackeado de sus dos parejas (min sg·θ). Si las dos vigas no son paralelas (torsión: tilts distintos), el candidato se comprueba con el ray-cast 3D de la pareja en varias estaciones a lo largo de la mesa y se barre el ángulo hasta el primer θ sin sombra. Después, el <b>acople por accionamiento</b> (θ común a las filas de un motor, refinado por bisección hasta la tangencia) y, en presets, la <b>reparación global</b> con el contador: si una fila sigue sombreada por una emisora no adyacente (Bagnarelli, tresbolillo, ondulado), se mueven las emisoras implicadas.',
             optimiza:'<b>Sombra cero entre planos de módulo</b> con el mínimo backtracking (criterio canónico de pvlib / SolarGPT). pvlib busca el θ más empinado con sombra cero de planos, y justo en esa tangencia la viga de torsión y el canto del laminado del vecino (12-18 cm bajo el vidrio) entran en el rayo a sol rasante: el contador los cobra como <b>residuo declarado</b>; la política no los esquiva (medido: donde aparece, ningún θ uniforme lo baja del 12 %).',
             criterio:'sombra cero de planos, pareja a pareja'},
-  true3d:{como:'Bisección 3D por pareja con el azimut del eje y el tilt N-S: busca el θ más empinado <b>sin contacto 3D</b> (residual de tangencia en mm entre el borde de la emisora y el plano de la receptora), y con torsión toma el peor de varias estaciones a lo largo de la mesa. Con tilt N-S 0 es exactamente pairwise (guard 2.5D, como el core). Acople y reparación, como pairwise.',
-          optimiza:'<b>Sombra cero 3D con el mínimo backtracking</b>: donde el 2.5D es conservador (la sombra se deflecta a lo largo del eje) empina más y gana POA.',
-          criterio:'contacto 3D nulo'},
+  true3d:{como:'Parte de la bisección 3D por pareja (azimut del eje + tilt N-S), aplica el accionamiento real y después usa el <b>ray-cast 3D multi-emisor completo</b> para eliminar toda sombra inter-row eliminable. Con la sombra ya a cero, avanza cada motor hacia true tracking hasta el último paso seguro de <b>0,1°</b>. El residual de pareja es diagnóstico local: no puede anular una sombra que vea el ray-cast completo.',
+          optimiza:'<b>Primero sombra inter-row eliminable = 0; después mínima luz directa entre filas / tangencia segura.</b> La energía no puede vetar esta jerarquía; para intercambiar sombra por POA existe Energy-optimal.',
+          criterio:'ray-cast 3D global = 0 + última décima segura hacia tangencia'},
   mgl:{como:'Parte de pairwise (sin sombra) y abre décimas de grado por los bordes de la planta mientras el contador no vea sombra, para que al suelo llegue la mínima luz (agrivoltaica inversa: pastoreo, evaporación).',
        optimiza:'<b>Mínima luz al suelo con sombra cero</b>. Nunca más plano que pairwise.',
        criterio:'sombra cero de planos + mínima luz al suelo'},
@@ -8106,6 +8198,14 @@ function topeManual(){
   $('manthlbl').textContent=(+sl.value)+'°';
   if(MANUAL_ROWS)for(let r=0;r<MANUAL_ROWS.length;r++)MANUAL_ROWS[r]=Math.max(-mx,Math.min(mx,MANUAL_ROWS[r]||0));
 }
+function syncManualReadout(){
+  const lab=$('manthlbl'),sl=$('manth'); if(!lab||!sl)return;
+  if(manualOn()){lab.textContent=(+sl.value)+'°';return;}
+  const key=$('polview')?$('polview').value:'pairwise';
+  const a=consignaEscena(key), r=+$('rowsel').value||0;
+  if(a&&isFinite(a[r]))lab.textContent='AUTO '+(TH_DISP*a[r]).toFixed(1)+'° · manual '+(+sl.value).toFixed(0)+'° guardado';
+  else lab.textContent='manual '+(+sl.value).toFixed(0)+'° guardado';
+}
 function manualRowsInit(){
   if(!DAY)return;
   const key=$('polview').value;
@@ -8243,6 +8343,7 @@ function updateBtUI(){
   const on=btActiveAt(timeIndex()), el=$('btflag');
   el.textContent=on?'BT ON':'BT OFF';
   el.classList.toggle('on',on);
+  syncManualReadout();
 }
 function hhmm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),m=Math.round(min%60);return (h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
 function rebuildSelectors(){
@@ -8403,7 +8504,7 @@ $('manual').addEventListener('change',()=>{
   topeManual();
   $('manrow').disabled=!$('manual').checked;
   if($('manual').checked&&$('manrow').checked)manualRowsInit();
-  INSTANT=null;drawScene();update3D();updateBtUI();
+  INSTANT=null;drawScene();update3D();updateBtUI();syncManualReadout();
 });
 $('manrow').addEventListener('change',()=>{
   if($('manrow').checked)manualRowsInit(); else MANUAL_ROWS=null;
@@ -8431,7 +8532,7 @@ $('colscale').addEventListener('change',()=>{update3D();});
 $('rowsel').onchange=()=>{
   // manual por fila: el slider pasa a enseñar (y a mover) la fila elegida
   if(manualRowsOn()){const r=+$('rowsel').value||0;$('manth').value=MANUAL_ROWS[r];$('manthlbl').textContent=MANUAL_ROWS[r]+'°';}
-  drawScene();drawCurves();};
+  drawScene();drawCurves();syncManualReadout();};
 /* ── picking del 3D: pincha una mesa y sale su globo (fila, θ, sombra, POA,
    su peor momento del día con salto directo); «⚠ ahora / ⚠ día» llevan a la
    fila con más sombra del instante o del día entero de la política animada ── */
@@ -8478,7 +8579,16 @@ function rowInfoHTML(r,kSel){
                   :'<br><b style="color:#f87272">⚠ contacto 3D que el 2.5D no ve</b> ('+rmm.toFixed(0)+' mm) — true-3D lo evitaría';
   }
   if(sh>1e-3){
-    if(key==='true3d'&&isFinite(rmm)&&rmm>=-1)evit='<br><b style="color:#36d399">sin contacto 3D</b>: sombra 2.5D del contador (deflexión axial)';
+    if(key==='true3d'&&isFinite(rmm)&&rmm>=-1){
+      const de=(p.shade&&p.shade[t]&&p.shade[t].de&&p.shade[t].de[r])?p.shade[t].de[r]:[];
+      const terr=de.filter(q=>q[0]==='terreno').reduce((s,q)=>s+q[1],0);
+      const inter=de.filter(q=>q[0]!=='terreno').reduce((s,q)=>s+q[1],0);
+      evit=inter>1e-3
+        ?'<br><b style="color:#f87272">⚠ sombra 3D real fuera del residual adyacente</b>: el residual +'+rmm.toFixed(0)+' mm sólo comprueba la pareja local; el ray-cast multi-emisor/estructura manda'
+        :(terr>1e-3
+          ?'<br><b style="color:#fbbd23">sombra 3D de terreno</b>: no la elimina el giro del tracker'
+          :'<br><b style="color:#fbbd23">sombra 3D detectada por el contador completo</b>: el residual de pareja no basta para descartarla');
+    }
     else if(!DAY.T.real){
       // v1.54: EVITABLE = algún θ uniforme para toda la planta (el 0° incluido)
       // deja esta fila a 0 % con el contador publicado. Antes decía
