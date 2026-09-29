@@ -22,5 +22,6 @@ jobs:
       - run: |
           node tests/test_scada_identity.js
           node tests/test_scada_projection.js
+          node tests/test_scada_scope.js
           node tests/test_elburgo_geometry_labels.js
           node tests/test_elburgo_absent_108.js
