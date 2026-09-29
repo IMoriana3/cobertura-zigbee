@@ -1874,23 +1874,30 @@ var SCADA_COL={OK:0x36D399,AVISO:0xF2A900,ALARMA:0xef5f6b,OFFLINE:0x6A7B8B};
 function scadaTexto(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function scadaNumero(v){if(v==null||String(v).trim()==='')return null;var n=Number(v);return Number.isFinite(n)?n:null;}
 function scadaAnguloFila(fl){var n=scadaNumero(fl&&fl.tilt);return n===null?0:n;}
-function scadaBindings(trackers,msg,plantId){
-  var byTrk={},motivos={},rows=new Map(),duplicates=new Set(),used=new Set(),count=0;
+function scadaBindings(trackers,msg,plantId,scopeAssetId){
+  var byTrk={},motivos={},fuera={},rows=new Map(),duplicates=new Set(),used=new Set(),count=0,enAmbito=0;
+  var scoped=msg.scope_ncu!=null;
   var uuid=function(v){return typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v);};
   msg.filas.forEach(function(f){if(!uuid(f.tcu_asset_id))return;
     if(rows.has(f.tcu_asset_id))duplicates.add(f.tcu_asset_id);else rows.set(f.tcu_asset_id,f);});
   var trackerIds=new Map();
   trackers.forEach(function(t){if(uuid(t.tracker_asset_id))trackerIds.set(t.tracker_asset_id,(trackerIds.get(t.tracker_asset_id)||0)+1);});
   trackers.forEach(function(t,i){
+    // El filtro se resuelve por la NCU canónica del binding publicado, nunca
+    // por posición o por contar trackers. Fuera del ámbito no es UNKNOWN.
+    if(scoped&&(!scopeAssetId||t.ncu_asset_id!==scopeAssetId)){fuera[i]=true;return;}
+    enAmbito++;
     var reason=!plantId||msg.plant_id!==plantId?'planta sin identidad canónica común':
       !uuid(t.tracker_asset_id)||!uuid(t.tcu_asset_id)?'sin binding tracker–TCU publicado':
       trackerIds.get(t.tracker_asset_id)!==1?'identidad de tracker duplicada':
       duplicates.has(t.tcu_asset_id)?'diagnóstico ambiguo para la TCU':
-      !rows.has(t.tcu_asset_id)?'sin diagnóstico identificado para esta TCU':null;
+      !rows.has(t.tcu_asset_id)?'sin diagnóstico identificado para esta TCU':
+      scoped&&String(rows.get(t.tcu_asset_id).ncu)!==msg.scope_ncu?'fila fuera de la NCU seleccionada':null;
     if(reason){motivos[i]=reason;return;}
     byTrk[i]=rows.get(t.tcu_asset_id);used.add(t.tcu_asset_id);count++;
   });
-  return {byTrk:byTrk,motivos:motivos,casados:count,sin:trackers.length-count,
+  return {byTrk:byTrk,motivos:motivos,fuera:fuera,enAmbito:enAmbito,tcusVinculadas:used.size,
+    casados:count,sin:enAmbito-count,
     filasSinVinculo:msg.filas.filter(function(f){return !used.has(f.tcu_asset_id);}).length};
 }
 function scadaColorFila(fl,capa){
@@ -1912,9 +1919,13 @@ function scadaCasar(msg){
   if(continuity)identityOK=!!identity&&identityOK&&msg.fuente==='telemetria_csv'&&
     msg.timezone===identity.plant_timezone&&Number.isFinite(Date.parse(msg.until))&&
     Date.parse(msg.until)>Date.parse(msg.at)&&ScadaProjection.validAt(identity,Date.parse(msg.until)-1);
-  var joined=scadaBindings(TRK,identityOK?msg:Object.assign({},msg,{filas:[]}),LAYOUT&&LAYOUT.plant_id);
+  var scope=msg.scope_ncu==null?null:msg.scope_ncu;
+  var scopeOK=scope===null||(typeof scope==='string'&&scope!==''&&identity&&identity.source_ncus&&
+    Object.prototype.hasOwnProperty.call(identity.source_ncus,scope));
+  var scopeAsset=scopeOK&&scope!==null?identity.source_ncus[scope]:null;
+  var joined=scadaBindings(TRK,identityOK&&scopeOK?msg:Object.assign({},msg,{filas:[]}),LAYOUT&&LAYOUT.plant_id,scopeAsset);
   if(!identityOK||SCADA_ID_ERROR)Object.keys(joined.motivos).forEach(function(k){joined.motivos[k]=SCADA_ID_ERROR||'Diagnóstico fuera de revisión o vigencia de identidad';});
-  SCADA3D=Object.assign(joined,{planta:msg.planta,fecha:msg.fecha||'',
+  SCADA3D=Object.assign(joined,{planta:msg.planta,fecha:msg.fecha||'',scope_ncu:scope,scope_valid:!!scopeOK,
     capa:continuity?'continuidad':msg.capa==='posiciones'?'posiciones':'salud'});
   SCADA_METEO=null;
   if(msg.meteo&&scadaNumero(msg.meteo.ws)!==null){
@@ -1953,6 +1964,9 @@ function scadaFicha(i){
     e.style.cssText='position:fixed;top:64px;right:14px;z-index:41;background:rgba(11,15,20,.94);border:1px solid #2a3a50;border-radius:10px;padding:10px 14px;font:12.5px system-ui;color:#eaf4ff;max-width:270px;line-height:1.6;cursor:pointer';
     e.title='pulsa para cerrar';e.onclick=function(){e.style.display='none';};
     document.body.appendChild(e);}
+  if(SCADA3D&&SCADA3D.fuera&&SCADA3D.fuera[i]){
+    e.innerHTML='<b>'+scadaTexto(TRK[i].id||'Punto del plano')+'</b><br>Fuera del ámbito seleccionado.<br>No se atribuye estado, continuidad ni ángulo.';e.style.display='block';return;
+  }
   if(!fl){e.innerHTML='<b>Punto del plano '+scadaTexto(TRK[i].id||'sin etiqueta')+'</b><br><b>UNKNOWN · sin medida atribuible</b><br>'+scadaTexto(SCADA3D&&SCADA3D.motivos[i]||'sin diagnóstico')+'<br>Esto no demuestra que esté offline ni averiado.<br>Posición visual neutra; no es un ángulo medido.';e.style.display='block';return;}
   if(SCADA3D.capa==='continuidad'){
     var m=fl.continuidad||{},known=scadaColorFila(fl,'continuidad')!==0x6A7B8B;
@@ -2004,7 +2018,7 @@ function scadaOverlay(){
   if(!SCADA3D)return;
   if(afbtOn&&afbtSel>=0)return;                 // la afeccion BT manda mientras este activa
   var col=new THREE.Color();
-  tintModulos(function(i){col.setHex(scadaColorFila(SCADA3D.byTrk[i],SCADA3D.capa));return col;});
+  tintModulos(function(i){col.setHex(SCADA3D.fuera&&SCADA3D.fuera[i]?0x23303D:scadaColorFila(SCADA3D.byTrk[i],SCADA3D.capa));return col;});
 }
 function scadaHud(){
   var e=document.getElementById('scadaHud');
@@ -2015,20 +2029,31 @@ function scadaHud(){
   for(k in SCADA3D.byTrk){var sld=String(SCADA3D.byTrk[k].salud||'').toUpperCase();
     if(sld==='ALARMA')nAl++;else if(sld==='OFFLINE')nOff++;}
   e.style.maxWidth='calc(100vw - 40px)';e.style.width='max-content';
+  var total=SCADA3D.enAmbito==null?TRK.length:SCADA3D.enAmbito;
+  var scope=SCADA3D.scope_ncu==null?'Toda la planta':'NCU '+scadaTexto(SCADA3D.scope_ncu);
+  var fuera=TRK.length-total;
+  if(SCADA3D.scope_valid===false){
+    e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · Ámbito NCU no verificable. No se han atribuido medidas.';return;
+  }
   if(SCADA3D.capa==='continuidad'){
-    var measured=Object.values(SCADA3D.byTrk).filter(function(f){return scadaColorFila(f,'continuidad')!==0x6A7B8B;}).length;
-    e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · '+scadaTexto(SCADA3D.fecha)
-      +'<br><b>Continuidad de telemetría del día (%)</b> · '+measured+' con evidencia · '+(TRK.length-measured)+' UNKNOWN'
-      +'<br>'+ScadaProjection.continuityLegend()+' · gris: UNKNOWN'
+    var measuredRows=Object.values(SCADA3D.byTrk).filter(function(f){return scadaColorFila(f,'continuidad')!==0x6A7B8B;});
+    var measured=measuredRows.length,tcus=new Set(measuredRows.map(function(f){return f.tcu_asset_id;})).size;
+    e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · '+scope+' · '+scadaTexto(SCADA3D.fecha)
+      +'<br><b>Continuidad de telemetría del día (%)</b>'
+      +'<br>'+measured+' / '+total+' trackers representados con evidencia · '+(total-measured)+' UNKNOWN · '+tcus+' TCUs con evidencia vinculada'
+      +(fuera?' · '+fuera+' puntos fuera del ámbito':'')
+      +'<br>'+ScadaProjection.continuityLegend()+' · gris: UNKNOWN · oscuro: fuera del ámbito'
       +'<br><span style="font-weight:400">APROXIMACIÓN · clic: porcentaje, huecos y archivos. Posición neutra, sin ángulo medido.</span>';
     return;
   }
-  e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · diagnóstico '+scadaTexto(SCADA3D.fecha)
+  e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · '+scope+' · diagnóstico '+scadaTexto(SCADA3D.fecha)
     +'<br>Capa: <b>'+(SCADA3D.capa==='posiciones'?'Posiciones · desviación respecto a consigna':'Salud del diagnóstico')+'</b>'
-    +' · '+SCADA3D.casados+'/'+TRK.length+' puntos vinculados · <b>'+SCADA3D.sin+' UNKNOWN</b>'
+    +' · '+SCADA3D.casados+'/'+total+' puntos vinculados · <b>'+SCADA3D.sin+' UNKNOWN</b>'
+    +' · '+SCADA3D.tcusVinculadas+' TCUs vinculadas'
     +' · '+SCADA3D.filasSinVinculo+' filas recibidas sin vínculo espacial'
+    +(fuera?' · '+fuera+' puntos fuera del ámbito':'')
     +' · '+nAl+' alarmas / '+nOff+' offline en puntos vinculados'
-    +'<br><span style="font-weight:400">Gris sin binding = UNKNOWN, no offline. Sin ángulo medido: posición visual neutra.'
+    +'<br><span style="font-weight:400">Gris sin binding = UNKNOWN, no offline. Oscuro = fuera del ámbito. Sin ángulo medido: posición visual neutra.'
     +(SCADA3D.capa==='posiciones'?' Verde ≤2°, aviso ≤5°, rojo >5°; verde no significa salud general OK.':'')
     +' Clic en un punto: motivo o diagnóstico.</span>';
 
