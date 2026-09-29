@@ -3534,6 +3534,14 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo,opts){
      vicio que el rango viene a cerrar. POA de planta: 20 W/m² en las dos. */
   const deEspaldas=(r,th)=>caraSinDirecta(zen,az,T,r,th);
   const fuera=(r,th)=>th<RF[r][0]-1e-9||th>RF[r][1]+1e-9;
+  /* Shadow-safe estricto: el rango donde la pala recibe haz es una restricción
+     física, no una preferencia energética. Se aplica SIEMPRE al seed antes de
+     juzgar sombra. Como `rangosUnidad` ya devuelve la intersección del grupo
+     de accionamiento, este recorte conserva θ común en bifila. Después el
+     buscador vuelve a eliminar cualquier sombra que el recorte pudiera abrir. */
+  if(strict&&ang.some((v,r)=>fuera(r,v))){
+    ang=ang.map((v,r)=>clampR(r,v));
+  }
   /* SIN CIELO NO SE RECORTA, Y SE DICE. El árbitro del recorte es la energía;
      sin irradiancia no hay nada que comparar y el recorte entraría a ciegas.
      Pero un guardarraíl silencioso es peor que el fallo: quien llame a las
@@ -4033,6 +4041,18 @@ function runPhysicsQA(){
     const s1=Math.max(...shadeBand3DAll(zen,az,T5,out,{noTerr:true,MV:mvPara(T5,zen)}));
     assert(s1<=s0+1e-9,'la reparación estricta empeora sombra: '+s0+' → '+s1);
     assert(s1<=1e-3,'queda sombra 3D eliminable: '+(s1*100).toFixed(2)+'%');
+  });
+  t('True-3D estricto nunca publica una pala fuera del rango legítimo de haz',()=>{
+    const T7=mkT([3,-3,6,-6,2],5.5,4,{gcr:2.382/5.5});
+    T7.rowTilt=[6,-6,4,-4,2,-2];
+    for(const [zen,az] of [[82,130],[84,250],[80,115],[80,265]]){
+      const seed=driveCoupleSafe(zen,az,T7,anglesTrue3d(zen,az,T7),true);
+      const out=anglesShadowSafeTangency(zen,az,T7,seed);
+      const RU=rangosUnidad(zen,az,T7);
+      for(let r=0;r<out.length;r++)
+        assert(out[r]>=RU[r][0]-1e-9&&out[r]<=RU[r][1]+1e-9,
+          'fila '+r+' fuera de rango: '+out[r]+' no está en ['+RU[r][0]+','+RU[r][1]+']');
+    }
   });
   t('True-3D tangency no deja otra décima segura hacia true tracking',()=>{
     const T6=mkT([0,0,0],6,0,{gcr:2.382/6});
