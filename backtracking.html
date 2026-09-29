@@ -3582,7 +3582,7 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo,opts){
   //    2,5°), recortado al rango de cada fila y memorizado por instante — las
   //    tres políticas lo comparten. Es lo que el barrido de terrenos llamó
   //    «alcanzable»: casi siempre es 0.
-  const key=zen.toFixed(4)+'|'+az.toFixed(4)+'|'+hLo.toFixed(2)+'|'+hHi.toFixed(2);
+  const key=zen.toFixed(4)+'|'+az.toFixed(4)+'|'+hLo.toFixed(2)+'|'+hHi.toFixed(2)+'|'+(strict?'strict':'legacy');
   const M=repairNoShade._memo;
   if(!M||M.key!==key||M.T!==T){
     let bt=clamp(0),bv=Infinity;
@@ -3806,15 +3806,12 @@ function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
      llamando igual hasta que decidan usarlo. */
   if(key==='optimal')return anglesOptimal(zen,az,T,irr,doy,albedo,prev);
   if(key==='optfree')return anglesOptimalFree(zen,az,T,irr,doy,albedo,prev);
-  /* el acoplado según la semántica de cada política: las que BUSCAN no-sombra
-     (pairwise 2.5D, true-3D con su residual) refinan a nivel de accionamiento.
-     BUSCAN, no GARANTIZAN: desde v1.57 la guardia de energía es incondicional,
-     así que cuando la postura sin sombra cuesta producción no se publica.
-     Medido en el barrido (semilla 1, sol ≥ 20°): 6 instantes en que la fórmula
-     acoplada llega a 2.5D CERO y lo publicado se aparta hasta el 65 % porque
-     apartarse gana hasta 91 W/m² de planta, YA netos del Martinez de esa
-     sombra. Decir «garantizan» era la promesa vieja sobreviviendo a su
-     corrección. */
+  /* Semántica separada:
+     · Pairwise conserva el baseline 2.5D/legacy, incluida su guardia energética.
+     · True-3D es SHADOW-SAFE estricto: la energía NO puede vetar eliminar una
+       sombra inter-row físicamente eliminable; después cierra el hueco hasta
+       la última décima segura. Energy-optimal es la política que sí intercambia
+       sombra por POA. No mezclar esos objetivos. */
   // astro/row toleran sombra por diseño (min|θ| simple) y
   // global ya es un único ángulo (el acoplado es un no-op)
   if(key==='astro')return {angles:applyDrive(anglesAstro(zen,az,T),T.groups||null),f:undefined};
