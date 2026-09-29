@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0B0F14">
 <link rel="icon" href="favicon.svg">
 <title>Cobertura 3D · terreno real — Factiun</title>
-<script src="scada-projection.js"></script>
+<script src="scada-projection.js?v=continuity-scale-2"></script>
 <link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="app-icon.svg"><link rel="icon" href="favicon.svg">
 <script>
 /* Selector de variante 3D: las plantas con levantamiento propio tienen además una
@@ -2019,8 +2019,7 @@ function scadaHud(){
     var measured=Object.values(SCADA3D.byTrk).filter(function(f){return scadaColorFila(f,'continuidad')!==0x6A7B8B;}).length;
     e.innerHTML='<b>'+scadaTexto(SCADA3D.planta)+'</b> · SCADA 3D · '+scadaTexto(SCADA3D.fecha)
       +'<br><b>Continuidad de telemetría del día (%)</b> · '+measured+' con evidencia · '+(TRK.length-measured)+' UNKNOWN'
-      +'<br><span style="color:'+ScadaProjection.continuityColor({estado:'MEDIDO',porcentaje:0})+'">● 0%</span> → '
-      +'<span style="color:'+ScadaProjection.continuityColor({estado:'MEDIDO',porcentaje:100})+'">● 100%</span> · gris: UNKNOWN'
+      +'<br>'+ScadaProjection.continuityLegend()+' · gris: UNKNOWN'
       +'<br><span style="font-weight:400">APROXIMACIÓN · clic: porcentaje, huecos y archivos. Posición neutra, sin ángulo medido.</span>';
     return;
   }

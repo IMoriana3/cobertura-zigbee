@@ -69,3 +69,17 @@ const real108=released.trackers.find(t=>t.source_ncu==='1'&&t.source_slave==='10
 assert.equal(real108.geometry_binding,'1.18.7');
 assert(!released.trackers.some(t=>t.source_ncu==='2'&&t.source_slave==='108'));
 console.log('Published canonical artifact, read-only policy, layout hash and explicit 108 correction passed');
+
+// Regression: 91.1% must not look like 100% on a small map marker.
+const measuredColor = porcentaje => api.continuityColor({estado:'MEDIDO',porcentaje});
+const rgb = hex => [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+const distance = (a,b) => Math.hypot(...rgb(a).map((v,i)=>v-rgb(b)[i]));
+assert(distance(measuredColor(91.1),measuredColor(100))>120);
+assert(distance(measuredColor(99),measuredColor(100))>50);
+assert.equal(api.continuityColor({estado:'UNKNOWN',porcentaje:91.1}),'#6A7B8B');
+const legend = api.continuityLegend();
+for(const pct of [0,50,90,95,100])assert(legend.includes('data-continuity-percent="'+pct+'"'));
+assert(legend.includes(measuredColor(0))&&legend.includes(measuredColor(100)));
+assert(legend.includes('Escala ampliada cerca del 100 %'));
+assert(legend.includes('sin umbrales de alarma'));
+console.log('Continuity scale: 91.1/99 distinguishable from 100, shared labelled scale and UNKNOWN preserved');
