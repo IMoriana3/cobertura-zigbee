@@ -20,9 +20,13 @@ def apply(source: bytes) -> bytes:
     actual = sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest()
     if actual != EXPECTED_BLOB:
         raise ValueError(f'HTML changed; expected {EXPECTED_BLOB}, got {actual}')
-    if source.count(b'</body>') != 1 or b'id="polcard"' not in source:
+    suffix = b'\n</body>\n</html>'
+    if not source.rstrip().endswith(suffix) or b'id="polcard"' not in source:
         raise ValueError('expected existing simulator structure not found')
-    return source.replace(b'</body>', SCRIPT.encode() + b'\n</body>')
+    # Report templates inside scripts also contain </body>; only the last
+    # document suffix is patched, after checking the full immutable base.
+    at = source.rfind(suffix)
+    return source[:at] + b'\n' + SCRIPT.encode() + source[at:]
 
 
 if __name__ == '__main__':
