@@ -72,4 +72,15 @@ const bad=sample();bad.timestamps[0].tcu.T1.candidates[0].safe=true;bad.timestam
 threw=false;try{P1.parse(bad);}catch(e){threw=/safe|sombra/i.test(e.message);}
 A(threw,'rechaza evidencia de sombra contradictoria');
 
+// El HTML carga el consumidor antes del workbench y el workbench compila en Node.
+const fs=await import('fs');
+const html=fs.readFileSync(new URL('../overcast.html',import.meta.url),'utf8');
+A(html.includes('<script src="overcast_p1.js"></script>'),'overcast.html carga consumidor P1');
+A(html.indexOf('overcast_p1.js')<html.indexOf('overcast_workbench.js'),'P1 carga antes del workbench');
+delete require.cache[require.resolve('../overcast_workbench.js')];
+require('../overcast_workbench.js');
+A(globalThis.OvercastWorkbench&&typeof globalThis.OvercastWorkbench.mount==='function','workbench compila y publica mount');
+const wb=fs.readFileSync(new URL('../overcast_workbench.js',import.meta.url),'utf8');
+A(wb.includes('P1 3D causal')&&wb.includes('p1curve'),'workbench expone evidencia P1 v2 y curva 3D');
+
 console.log('test_overcast_p1:',ok,'checks OK');
