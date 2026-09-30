@@ -14,7 +14,12 @@ assert.equal(api.unsupportedReason(c,T,null),null);tests++;
 const req=api.buildRequest(c,T,600,null);
 assert.deepEqual(req.timestamps_utc,['2024-12-21T09:00:00.000Z']);tests++;
 assert.equal(req.cross_axis_slope_deg,3);assert.equal(req.axis_tilt_deg,4);tests++;
-assert.ok(api.unsupportedReason(c,{...T,pairs:[T.pairs[0],{...T.pairs[1],slope:4},T.pairs[2]]},null));tests++;
+assert.equal(req.pairs.length,3);assert.equal(req.pairs[1].cross_axis_slope_deg,3);tests++;
+assert.equal(req.gcr,2.382/6);tests++;
+const nonuniform={...T,pairs:[T.pairs[0],{...T.pairs[1],slope:4,pitch:6.2},T.pairs[2]]};
+assert.equal(api.unsupportedReason(c,nonuniform,null),null);tests++;
+const nonReq=api.buildRequest(c,nonuniform,600,null);
+assert.equal(nonReq.pairs[1].cross_axis_slope_deg,4);assert.equal(nonReq.pairs[1].pitch_m,6.2);tests++;
 assert.ok(api.unsupportedReason({...c,nsl:'tresbolillo'},T,null));tests++;
 assert.ok(api.unsupportedReason(c,T,{real:true}));tests++;
 
