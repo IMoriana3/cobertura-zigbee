@@ -180,14 +180,40 @@ function mount(el,bridge){
     }catch(e){$('status').textContent=e.message;}finally{busy=false;$('tune').disabled=false;$('cancel').disabled=true;}
   }
   function snapshot(){const q=context();if(!q)return null;const s=q.sim,r=s.res.adaptive;return {schema:'overcast_engineering_review_v1',version:q.version,engine:OvercastEngine.VERSION,site:{plant:q.plant,title:q.title,lat:q.cfg.lat,lon:q.cfg.lon},date:q.cfg.dateStr,inputs:{...q.cfg,om:q.cfg.om,diffuse:q.diffuse,loop:q.loop,motor:q.motor},quality:quality(s.dayF),geometry:{mode:'flat_rows_1d',finite3DValidated:false,rearInObjective:false},iam:OvercastEnergy.metadata,sign:'core positive east at axisAz=0; displayed TCU sign is opposite',daily:{timeMin:s.dayF.tmin,weather:s.dayF.irr,baseline:{theta:s.res.pvlib.execF,metrics:q.baseline},adaptive:r?{theta:r.execF,commands:r.theta,decisions:r.decisions,metrics:q.adaptive}:null},study,p1};}
-  function drawP1(){if(!p1)return;const q=bridge.get(),t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000,T=p1.timestamp.map(Date.parse);let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;const span=T.length>1?T.at(-1)-T.at(-2):60000;
+  function drawP1(){if(!p1)return;const q=bridge.get();
+    if(p1.schema==='overcast_p1_candidate_surface_v2'){
+      const T=p1.timestamps.map(x=>Date.parse(x.timestamp)),t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000;
+      let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;
+      const span=T.length>1?T.at(-1)-T.at(-2):60000,tcuId=$('p1asset').value||Object.keys(p1.tcu_groups)[0];
+      const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
+      const replayKey=tcuId+'|'+JSON.stringify(config());
+      if(!p1Replay||p1Replay.key!==replayKey){
+        const rr=root.OvercastP1.replay(p1,tcuId,config());p1Replay={key:replayKey,result:rr};
+      }
+      const rr=p1Replay.result,qs=p1.quality||{},prov=p1.provenance||{};
+      $('p1status').textContent='P1 3D causal · '+(prov.geometry_source||'geometría no declarada')+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+
+        '. Supervisor: '+signed(rr.summary.gain_wh_m2,3)+' Wh/m² frente a baseline ('+(rr.summary.gain_pct==null?'—':signed(rr.summary.gain_pct,3)+' %')+'). '+
+        'Convergencia sombra: '+(qs.all_shadow_runs_converged?'sí':'NO')+'; huecos de evidencia: '+rr.summary.evidence_gap_steps+'. '+
+        'Trasera: '+p1.rear_status+' y NO vota. '+(!match?'Este estudio corresponde a otra planta. ':'')+
+        'No se emiten consignas: operational=false.';
+      if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamps[0].timestamp)+' → '+esc(p1.timestamps.at(-1).timestamp)+'</td></tr>';return;}
+      const surface=p1.timestamps[i].tcu[tcuId],dec=rr.decisions[i],chosen=surface.candidates.find(c=>Math.abs(c.theta_deg-dec.theta_deg)<1e-8);
+      const safe=surface.candidates.filter(c=>c.safe),best=safe.reduce((a,c)=>!a||c.poa_front_effective_w_m2>a.poa_front_effective_w_m2?c:a,null);
+      $('p1table').innerHTML='<tr><th>TCU</th><th>θ supervisor / baseline / mejor seguro · TCU</th><th>POA útil supervisor / baseline</th><th>Exceso sombra</th><th>Decisión</th></tr><tr><td>'+esc(tcuId)+'</td>'+
+        '<td>'+f(-dec.theta_deg)+'° / '+f(-surface.baseline_theta_deg)+'° / '+(best?f(-best.theta_deg)+'°':'—')+'</td>'+
+        '<td>'+f(dec.poa_front_effective_w_m2)+' / '+f(dec.baseline_poa_front_effective_w_m2)+' W/m²</td>'+
+        '<td>'+(chosen?f(100*chosen.max_shadow_excess_fraction,3)+' %':'—')+'</td>'+
+        '<td>'+esc(dec.reason)+(dec.evidence_exact?'':' · fallback sin evidencia exacta')+'</td></tr>';
+      return;
+    }
+    const t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000,T=p1.timestamp.map(Date.parse);let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;const span=T.length>1?T.at(-1)-T.at(-2):60000;
     const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
-    $('p1status').textContent='Procedencia del archivo: '+p1.geometry_source+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². Excesos de sombra: '+p1.summary.shadow_excess_samples+'; transiciones sin candidato: '+p1.summary.no_admissible_transition_samples+'. '+(!match?'Este estudio corresponde a otra planta. ':'')+'La escena mantiene el escenario seleccionado; el expediente P1 conserva sus cotas y su propio cálculo.';
+    $('p1status').textContent='P1 v1 retrospectivo · '+(p1.geometry_source||p1.provenance&&p1.provenance.geometry_source||'geometría no declarada')+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². '+(!match?'Este estudio corresponde a otra planta. ':'')+'No contiene alternativas θ→POA: no puede gobernar el supervisor.';
     if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamp[0])+' → '+esc(p1.timestamp.at(-1))+'</td></tr>';return;}
     const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0)),group=Object.entries(p1.tcu_groups||{}).find(([,ids])=>ids.includes(p1.asset_ids[a]));
     $('p1table').innerHTML='<tr><th>Activo / TCU</th><th>θ ejecutado / baseline · TCU</th><th>Sombra / baseline</th><th>POA útil planta / baseline</th></tr><tr><td>'+esc(p1.asset_ids[a])+' / '+esc(group?group[0]:'sin vínculo')+'</td><td>'+f(-p1.theta_exec_deg[i][a])+'° / '+f(-p1.theta_baseline_exec_deg[i][a])+'°</td><td>'+f(100*p1.shadow_row_fraction[i][a],2)+' % / '+f(100*p1.baseline_shadow_row_fraction[i][a],2)+' %</td><td>'+f(p1.poa_effective_w_m2[i])+' / '+f(p1.poa_baseline_effective_w_m2[i])+' W/m²</td></tr>';
   }
-  function exportCSV(){const q=context();if(!q||!q.sim.res.adaptive)return;const s=q.sim,r=s.res.adaptive;const rows=['# '+q.version+' '+OvercastEngine.VERSION+'; flat_rows_1d; effective frontal POA; no P1 certification','minute,ghi,dni,dhi,theta_baseline_tcu,theta_executed_tcu,poa_baseline_effective_w_m2,poa_adaptive_effective_w_m2,reason,weather_source,weather_valid'];for(let i=0;i<s.dayF.n;i++){const w=s.dayF.irr[i],d=r.decisions[Math.min(r.decisions.length-1,Math.floor(i*s.dayF.dtMin/s.day.dtMin))];rows.push([s.dayF.tmin[i],w.ghi,w.dni,w.dhi,-s.res.pvlib.execF[i],-r.execF[i],q.baseline.effective[i],q.adaptive.effective[i],d.reason,s.dayF.quality[i].source,s.dayF.quality[i].valid].join(','));}bridge.download('overcast_decisiones_'+q.cfg.dateStr+'.csv',rows.join('\n'));}
+    function exportCSV(){const q=context();if(!q||!q.sim.res.adaptive)return;const s=q.sim,r=s.res.adaptive;const rows=['# '+q.version+' '+OvercastEngine.VERSION+'; flat_rows_1d; effective frontal POA; no P1 certification','minute,ghi,dni,dhi,theta_baseline_tcu,theta_executed_tcu,poa_baseline_effective_w_m2,poa_adaptive_effective_w_m2,reason,weather_source,weather_valid'];for(let i=0;i<s.dayF.n;i++){const w=s.dayF.irr[i],d=r.decisions[Math.min(r.decisions.length-1,Math.floor(i*s.dayF.dtMin/s.day.dtMin))];rows.push([s.dayF.tmin[i],w.ghi,w.dni,w.dhi,-s.res.pvlib.execF[i],-r.execF[i],q.baseline.effective[i],q.adaptive.effective[i],d.reason,s.dayF.quality[i].source,s.dayF.quality[i].valid].join(','));}bridge.download('overcast_decisiones_'+q.cfg.dateStr+'.csv',rows.join('\n'));}
   $('view').onclick=()=>{bridge.select('adaptive');$('detail').open=true;clock();};
   $('detail').addEventListener('toggle',()=>{lastClock=-1;clock();});
   $('heat').onclick=e=>{const b=$('heat').getBoundingClientRect();bridge.setMinute(Math.max(0,Math.min(1439,Math.round((e.clientX-b.left-48)/(b.width-64)*1440))));};
