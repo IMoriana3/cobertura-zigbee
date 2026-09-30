@@ -73,6 +73,7 @@ function mount(el,bridge){
     <p class="eng-note">P1 v2 trae, para cada instante y TCU, las alternativas θ→POA útil frontal y su evidencia de sombra 3D finita. El mismo supervisor causal decide sobre ellas; esta página no recalcula geometría. P1 v1 sigue siendo legible como evidencia retrospectiva.</p>
     <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Activo / TCU<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
     <p class="eng-note" data-e="p1status">Sin datos de cotas e identidad: no se deducen del orden del dibujo.</p>
+    <canvas data-e="p1curve" aria-label="Curva P1 3D de POA útil frontal frente al ángulo" style="width:100%;height:230px;display:none;background:#101a29;border-radius:9px;margin:10px 0"></canvas>
     <div class="eng-table"><table data-e="p1table"></table></div>
   </details>`;
   const $=id=>el.querySelector('[data-e="'+id+'"]');
@@ -180,6 +181,18 @@ function mount(el,bridge){
     }catch(e){$('status').textContent=e.message;}finally{busy=false;$('tune').disabled=false;$('cancel').disabled=true;}
   }
   function snapshot(){const q=context();if(!q)return null;const s=q.sim,r=s.res.adaptive;return {schema:'overcast_engineering_review_v1',version:q.version,engine:OvercastEngine.VERSION,site:{plant:q.plant,title:q.title,lat:q.cfg.lat,lon:q.cfg.lon},date:q.cfg.dateStr,inputs:{...q.cfg,om:q.cfg.om,diffuse:q.diffuse,loop:q.loop,motor:q.motor},quality:quality(s.dayF),geometry:{mode:'flat_rows_1d',finite3DValidated:false,rearInObjective:false},iam:OvercastEnergy.metadata,sign:'core positive east at axisAz=0; displayed TCU sign is opposite',daily:{timeMin:s.dayF.tmin,weather:s.dayF.irr,baseline:{theta:s.res.pvlib.execF,metrics:q.baseline},adaptive:r?{theta:r.execF,commands:r.theta,decisions:r.decisions,metrics:q.adaptive}:null},study,p1};}
+  function drawP1Curve(surface,dec){
+    const cv=$('p1curve');if(!cv)return;cv.style.display='block';
+    const box=cv.getBoundingClientRect(),w=Math.max(280,box.width||cv.clientWidth||600),h=230,dpr=root.devicePixelRatio||1;
+    cv.width=w*dpr;cv.height=h*dpr;const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);x.font='11px system-ui';
+    const pts=surface.candidates,max=Math.max(1,...pts.map(p=>p.poa_front_effective_w_m2)),minT=pts[0].theta_deg,maxT=pts.at(-1).theta_deg,span=Math.max(1e-9,maxT-minT);
+    const X=t=>48+(t-minT)/span*(w-64),Y=v=>h-35-v/max*(h-53);
+    x.strokeStyle='#304359';x.strokeRect(48,18,w-64,h-53);x.fillStyle='#9bb0c6';x.fillText('W/m² efectivos · P1 3D',8,12);x.fillText('θ TCU · grados',w/2-30,h-7);
+    for(let k=0;k<pts.length-1;k++){const a=pts[k],b=pts[k+1];if(!a.safe||!b.safe){x.fillStyle='rgba(239,68,68,.22)';x.fillRect(X(a.theta_deg),18,Math.max(1,X(b.theta_deg)-X(a.theta_deg)),h-53);}}
+    x.strokeStyle='#22d3ee';x.lineWidth=2;x.beginPath();pts.forEach((p,k)=>{const xx=X(p.theta_deg),yy=Y(p.poa_front_effective_w_m2);if(k)x.lineTo(xx,yy);else x.moveTo(xx,yy);});x.stroke();
+    for(const [t,c] of [[surface.baseline_theta_deg,'#9bb0c6'],[dec&&dec.theta_deg,'#fb923c']])if(Number.isFinite(t)){x.strokeStyle=c;x.setLineDash([3,4]);x.beginPath();x.moveTo(X(t),18);x.lineTo(X(t),h-35);x.stroke();}x.setLineDash([]);
+    x.fillStyle='#9bb0c6';x.fillText(f(-maxT,0),X(minT)-8,h-20);x.fillText(f(-minT,0),X(maxT)-8,h-20);x.fillText(f(max,0),4,24);x.fillText('Rojo = banda muestreada no admisible',52,h-20);
+  }
   function drawP1(){if(!p1)return;const q=bridge.get();
     if(p1.schema==='overcast_p1_candidate_surface_v2'){
       const T=p1.timestamps.map(x=>Date.parse(x.timestamp)),t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000;
@@ -198,6 +211,7 @@ function mount(el,bridge){
         'No se emiten consignas: operational=false.';
       if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamps[0].timestamp)+' → '+esc(p1.timestamps.at(-1).timestamp)+'</td></tr>';return;}
       const surface=p1.timestamps[i].tcu[tcuId],dec=rr.decisions[i],chosen=surface.candidates.find(c=>Math.abs(c.theta_deg-dec.theta_deg)<1e-8);
+      drawP1Curve(surface,dec);
       const safe=surface.candidates.filter(c=>c.safe),best=safe.reduce((a,c)=>!a||c.poa_front_effective_w_m2>a.poa_front_effective_w_m2?c:a,null);
       $('p1table').innerHTML='<tr><th>TCU</th><th>θ supervisor / baseline / mejor seguro · TCU</th><th>POA útil supervisor / baseline</th><th>Exceso sombra</th><th>Decisión</th></tr><tr><td>'+esc(tcuId)+'</td>'+
         '<td>'+f(-dec.theta_deg)+'° / '+f(-surface.baseline_theta_deg)+'° / '+(best?f(-best.theta_deg)+'°':'—')+'</td>'+
@@ -206,6 +220,7 @@ function mount(el,bridge){
         '<td>'+esc(dec.reason)+(dec.evidence_exact?'':' · fallback sin evidencia exacta')+'</td></tr>';
       return;
     }
+    if($('p1curve'))$('p1curve').style.display='none';
     const t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000,T=p1.timestamp.map(Date.parse);let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;const span=T.length>1?T.at(-1)-T.at(-2):60000;
     const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
     $('p1status').textContent='P1 v1 retrospectivo · '+(p1.geometry_source||p1.provenance&&p1.provenance.geometry_source||'geometría no declarada')+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². '+(!match?'Este estudio corresponde a otra planta. ':'')+'No contiene alternativas θ→POA: no puede gobernar el supervisor.';
