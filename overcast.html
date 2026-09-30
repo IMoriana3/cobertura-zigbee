@@ -2790,7 +2790,7 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.34.0';
+const VER='v1.35.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent=VER;
 
@@ -2804,7 +2804,7 @@ $('verlbl').textContent=VER;
    Rotularlas todas «FLAT» hacía que la escena dijera «θ 13° · FLAT». */
 const POL_META={
   adaptive:          {c:'#fb923c',nm:'Adaptativo · POA útil',mode:'DIFUSA',flat0:false,
-                       ds:'Supervisor causal: POA total efectiva, confirmación, permanencia y retención. Escenario de filas planas; no consigna de planta certificada.'},
+                       ds:'Supervisor causal: POA total efectiva, confirmación, permanencia y retención. La vista local es 1D; un expediente P1 v2 puede aportar candidatos 3D evaluados por SolarGPT sin recalcular física aquí.'},
   pvlib:              {c:'#9bb0c6',nm:'pvlib (baseline)',mode:null,flat0:false,
                        ds:'singleaxis + backtracking, sin política de difusa. La referencia contra la que se mide todo.'},
   diffuse_flat:       {c:'#36d399',nm:'diffuse_flat',mode:'PLANO',flat0:true,
