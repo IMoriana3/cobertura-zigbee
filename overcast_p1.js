@@ -94,7 +94,11 @@
       const base=exact(q,q.baseline_theta_deg);
       let cur=exact(q,current),valid=true;
       if(!cur){cur=base;valid=false;degraded++;}
-      const candidates=q.candidates.map(c=>({theta:c.theta_deg,total:c.poa_front_effective_w_m2,safe:c.safe}));
+      const pathSafe=theta=>{
+        const lo=Math.min(current,theta)-1e-8,hi=Math.max(current,theta)+1e-8;
+        return q.candidates.filter(c=>c.theta_deg>=lo&&c.theta_deg<=hi).every(c=>c.safe);
+      };
+      const candidates=q.candidates.map(c=>({theta:c.theta_deg,total:c.poa_front_effective_w_m2,safe:c.safe&&pathSafe(c.theta_deg)}));
       const byTheta=new Map(q.candidates.map(c=>[String(c.theta_deg),c]));
       const ev=theta=>{
         const hit=byTheta.get(String(theta))||q.candidates.find(c=>Math.abs(c.theta_deg-theta)<1e-8);
