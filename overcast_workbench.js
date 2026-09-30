@@ -26,15 +26,12 @@ function parseCSV(text,name){
   om.resolutionMin=dt[Math.floor(dt.length/2)];return om;
 }
 function parseP1(text){
+  if(root.OvercastP1&&typeof root.OvercastP1.parse==='function')return root.OvercastP1.parse(text);
   const p=JSON.parse(text),n=p.timestamp&&p.timestamp.length,r=p.asset_ids&&p.asset_ids.length;
   if(p.schema!=='overcast_p1_sequence_v1'||!n||!r||new Set(p.asset_ids).size!==r||p.asset_ids.some(a=>typeof a!=='string'||!a.trim())||p.operational!==false)throw new Error('Contrato P1 incompatible o identidades duplicadas.');
   const members=Object.values(p.tcu_groups||{}).flat();
   if(members.length!==r||new Set(members).size!==r||members.some(a=>!p.asset_ids.includes(a)))throw new Error('P1 sin partición TCU explícita y completa.');
-  const t=p.timestamp.map(Date.parse);if(t.some((v,i)=>!Number.isFinite(v)||(i&&v<=t[i-1])))throw new Error('Reloj P1 no válido.');
-  for(const k of ['theta_exec_deg','theta_baseline_exec_deg','shadow_row_fraction','baseline_shadow_row_fraction'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(a=>!Array.isArray(a)||a.length!==r||a.some(v=>!Number.isFinite(v))))throw new Error('Matriz P1 inválida: '+k);
-  for(const k of ['poa_effective_w_m2','poa_baseline_effective_w_m2'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(v=>!Number.isFinite(v)))throw new Error('Serie P1 inválida: '+k);
-  if(!p.provenance||!p.summary||!Number.isFinite(p.summary.poa_wh_m2)||!Number.isFinite(p.summary.baseline_wh_m2))throw new Error('P1 sin procedencia o resumen.');
-  return p;
+  return {...p,kind:'retrospective_v1'};
 }
 function mount(el,bridge){
   el.innerHTML=`<style>
