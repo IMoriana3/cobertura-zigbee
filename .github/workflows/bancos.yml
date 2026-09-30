@@ -773,6 +773,7 @@ jobs:
           # MANDOS y no salidas de lazo. Con su control negativo —revertir el
           # predicado a posiciones tiene que ponerlo rojo— y sus dos tests nulos.
           - { banco: test_indicador_bt.mjs }
+          - { banco: test_bt_core_live_browser.mjs, nombre: 'BT A4 · UI → core canónico → escena' }
           # La vista de OVERCAST: que el estado del cielo se LEA de la irradiancia
           # que ya existe (DNI 0 · DHI = GHI · 100 % difusa), que la sombra de
           # nube se apague con manto cerrado en vez de estar en su maximo, que la
