@@ -27,20 +27,35 @@ function parseCSV(text,name){
 }
 function parseP1(text){
   const p=JSON.parse(text),n=p.timestamp&&p.timestamp.length,r=p.asset_ids&&p.asset_ids.length;
-  if(p.schema!=='overcast_p1_sequence_v1'||!n||!r||new Set(p.asset_ids).size!==r||p.asset_ids.some(a=>typeof a!=='string'||!a.trim())||p.operational!==false)throw new Error('Contrato P1 incompatible o identidades duplicadas.');
+  const v2=p.schema==='overcast_p1_sequence_v2';
+  if(!(p.schema==='overcast_p1_sequence_v1'||v2)||!n||!r||new Set(p.asset_ids).size!==r||p.asset_ids.some(a=>typeof a!=='string'||!a.trim())||p.operational!==false)throw new Error('Contrato P1 incompatible o identidades duplicadas.');
   const members=Object.values(p.tcu_groups||{}).flat();
   if(members.length!==r||new Set(members).size!==r||members.some(a=>!p.asset_ids.includes(a)))throw new Error('P1 sin partición TCU explícita y completa.');
   const t=p.timestamp.map(Date.parse);if(t.some((v,i)=>!Number.isFinite(v)||(i&&v<=t[i-1])))throw new Error('Reloj P1 no válido.');
   for(const k of ['theta_exec_deg','theta_baseline_exec_deg','shadow_row_fraction','baseline_shadow_row_fraction'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(a=>!Array.isArray(a)||a.length!==r||a.some(v=>!Number.isFinite(v))))throw new Error('Matriz P1 inválida: '+k);
   for(const k of ['poa_effective_w_m2','poa_baseline_effective_w_m2'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(v=>!Number.isFinite(v)))throw new Error('Serie P1 inválida: '+k);
   if(!p.provenance||!p.summary||!Number.isFinite(p.summary.poa_wh_m2)||!Number.isFinite(p.summary.baseline_wh_m2))throw new Error('P1 sin procedencia o resumen.');
+  if(v2){
+    if(!p.objective||!['front_effective','front_plus_rear_effective'].includes(p.objective.mode))throw new Error('P1 v2 sin objetivo explícito.');
+    if(!Array.isArray(p.candidate_sets)||p.candidate_sets.length!==n)throw new Error('P1 v2 sin candidatos por instante.');
+    p.candidate_sets.forEach((set,i)=>{
+      if(!Array.isArray(set)||!set.length)throw new Error('P1 v2 sin candidatos en paso '+i);
+      let selected=0;
+      for(const c of set){
+        if(!Array.isArray(c.theta_deg)||c.theta_deg.length!==r||c.theta_deg.some(v=>!Number.isFinite(v)))throw new Error('P1 v2 candidato angular inválido en paso '+i);
+        if(typeof c.safe!=='boolean'||!Number.isFinite(c.transition_total_effective_w_m2))throw new Error('P1 v2 candidato incompleto en paso '+i);
+        if(c.selected)selected++;
+      }
+      if(selected!==1)throw new Error('P1 v2 debe declarar exactamente un candidato seleccionado en paso '+i);
+    });
+  }
   return p;
 }
 function mount(el,bridge){
   el.innerHTML=`<style>
     .eng-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.eng-head h2{margin:0}
     .eng-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.eng-kpis>div{border:1px solid #2e4055;border-radius:9px;padding:11px}.eng-kpis b{display:block;font-size:1.25rem;color:#e4edf8;margin-top:5px}.eng-kpis small{color:#a9b9ca;font-size:14px}
-    .eng-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eng-grid canvas{width:100%;height:230px;display:block;background:#101a29;border-radius:9px}.eng-controls{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}.eng-controls label{display:grid;gap:5px;color:#9bb0c6;font-size:.75rem}.eng-controls input{width:100px}.eng-controls select{max-width:300px}.eng-wide{grid-column:1/-1}.eng-note{color:#9bb0c6;line-height:1.6;font-size:.78rem;margin:10px 0}.eng-reason{padding:12px 14px;border-left:3px solid #fb923c;background:#182534;line-height:1.6;font-size:.85rem}.eng-table{overflow:auto}.eng-note strong{color:#c8d9ec}.eng-status{white-space:pre-wrap}.eng-grid h3{font-size:.84rem;font-weight:550;color:#dbe8f7;margin:10px 0}
+    .eng-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.eng-grid canvas,.eng-p1curve{width:100%;height:230px;display:block;background:#101a29;border-radius:9px}.eng-controls{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}.eng-controls label{display:grid;gap:5px;color:#9bb0c6;font-size:.75rem}.eng-controls input{width:100px}.eng-controls select{max-width:300px}.eng-wide{grid-column:1/-1}.eng-note{color:#9bb0c6;line-height:1.6;font-size:.78rem;margin:10px 0}.eng-reason{padding:12px 14px;border-left:3px solid #fb923c;background:#182534;line-height:1.6;font-size:.85rem}.eng-table{overflow:auto}.eng-note strong{color:#c8d9ec}.eng-status{white-space:pre-wrap}.eng-grid h3{font-size:.84rem;font-weight:550;color:#dbe8f7;margin:10px 0}
     #engineeringDock .eng-note,#engineeringDock .eng-controls label,#engineeringDock .eng-grid h3{font-size:14px}#engineeringDock .eng-reason{font-size:16px}
     @media(max-width:850px){.eng-grid{grid-template-columns:1fr}.eng-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:450px){.eng-controls input{width:100px}.eng-kpis b{font-size:18px}}
   </style>
@@ -72,11 +87,17 @@ function mount(el,bridge){
     <p class="eng-note eng-status" data-e="status" role="status">70 % de días iniciales para ajuste; 30 % posteriores reservados. La selección no consulta la validación. Los días sintéticos sólo ensayan el método.</p>
     <div class="eng-table"><table data-e="ranking"></table></div><div class="eng-table"><table data-e="validation"></table></div>
   </details>
-  <details data-e="p1detail"><summary>Importar estudio 3D · P1</summary>
-    <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. Comparte el reloj de esta pantalla. El archivo declara su procedencia; esta importación no certifica los datos ni envía órdenes.</p>
+  <details data-e="p1detail"><summary>Importar / usar estudio 3D · P1</summary>
+    <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. P1 v2 incluye además las alternativas 3D realmente evaluadas por el motor; la interfaz las muestra, no recalcula su física.</p>
     <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Tracker del estudio<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
     <p class="eng-note" data-e="p1status">Sin datos de cotas e identidad: no se deducen del orden del dibujo.</p>
     <div class="eng-table"><table data-e="p1table"></table></div>
+    <div data-e="p1v2" hidden>
+      <h3>Candidatos P1 3D · instante seleccionado</h3>
+      <canvas data-e="p1curve" class="eng-p1curve" aria-label="Candidatos 3D evaluados por SolarGPT; el eje X muestra el ángulo del activo seleccionado"></canvas>
+      <p class="eng-note" data-e="p1note"></p>
+      <div class="eng-table"><table data-e="p1candidates"></table></div>
+    </div>
   </details>`;
   const $=id=>el.querySelector('[data-e="'+id+'"]');
   let revision=0,busy=false,cancel=false,archive=null,study=null,p1=null,cached=null,lastClock=-1,heatSim=null;
@@ -184,11 +205,18 @@ function mount(el,bridge){
   }
   function snapshot(){const q=context();if(!q)return null;const s=q.sim,r=s.res.adaptive;return {schema:'overcast_engineering_review_v1',version:q.version,engine:OvercastEngine.VERSION,site:{plant:q.plant,title:q.title,lat:q.cfg.lat,lon:q.cfg.lon},date:q.cfg.dateStr,inputs:{...q.cfg,om:q.cfg.om,diffuse:q.diffuse,loop:q.loop,motor:q.motor},quality:quality(s.dayF),geometry:{mode:'flat_rows_1d',finite3DValidated:false,rearInObjective:false},iam:OvercastEnergy.metadata,sign:'core positive east at axisAz=0; displayed TCU sign is opposite',daily:{timeMin:s.dayF.tmin,weather:s.dayF.irr,baseline:{theta:s.res.pvlib.execF,metrics:q.baseline},adaptive:r?{theta:r.execF,commands:r.theta,decisions:r.decisions,metrics:q.adaptive}:null},study,p1};}
   function drawP1(){if(!p1)return;const q=bridge.get(),t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000,T=p1.timestamp.map(Date.parse);let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;const span=T.length>1?T.at(-1)-T.at(-2):60000;
-    const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
-    $('p1status').textContent='Procedencia del archivo: '+p1.geometry_source+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². Excesos de sombra: '+p1.summary.shadow_excess_samples+'; transiciones sin candidato: '+p1.summary.no_admissible_transition_samples+'. '+(!match?'Este estudio corresponde a otra planta. ':'')+'La escena mantiene el escenario seleccionado; el expediente P1 conserva sus cotas y su propio cálculo.';
-    if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamp[0])+' → '+esc(p1.timestamp.at(-1))+'</td></tr>';return;}
-    const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0)),group=Object.entries(p1.tcu_groups||{}).find(([,ids])=>ids.includes(p1.asset_ids[a]));
-    $('p1table').innerHTML='<tr><th>Activo / TCU</th><th>θ ejecutado / baseline · TCU</th><th>Sombra / baseline</th><th>POA útil planta / baseline</th></tr><tr><td>'+esc(p1.asset_ids[a])+' / '+esc(group?group[0]:'sin vínculo')+'</td><td>'+f(-p1.theta_exec_deg[i][a])+'° / '+f(-p1.theta_baseline_exec_deg[i][a])+'°</td><td>'+f(100*p1.shadow_row_fraction[i][a],2)+' % / '+f(100*p1.baseline_shadow_row_fraction[i][a],2)+' %</td><td>'+f(p1.poa_effective_w_m2[i])+' / '+f(p1.poa_baseline_effective_w_m2[i])+' W/m²</td></tr>';
+    const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant,v2=p1.schema==='overcast_p1_sequence_v2',obj=v2?p1.objective:null;
+    $('p1status').textContent='Procedencia del archivo: '+p1.geometry_source+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². Excesos de sombra: '+p1.summary.shadow_excess_samples+'; transiciones sin candidato: '+p1.summary.no_admissible_transition_samples+'. '+(v2?'Objetivo '+obj.mode+'; trasera '+(obj.rear_authority||'no declarada')+'. ':'')+(!match?'Este estudio corresponde a otra planta. ':'')+'La escena mantiene el escenario seleccionado; el expediente P1 conserva sus cotas y su propio cálculo.';
+    if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamp[0])+' → '+esc(p1.timestamp.at(-1))+'</td></tr>';$('p1v2').hidden=true;return;}
+    const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0)),group=Object.entries(p1.tcu_groups||{}).find(([,ids])=>ids.includes(p1.asset_ids[a])),dec=p1.decisions&&p1.decisions[i],lock=dec&&dec.locked;
+    $('p1table').innerHTML='<tr><th>Activo / TCU</th><th>θ ejecutado / baseline · TCU</th><th>Sombra / baseline</th><th>POA útil planta / baseline</th><th>Decisión</th></tr><tr><td>'+esc(p1.asset_ids[a])+' / '+esc(group?group[0]:'sin vínculo')+'</td><td>'+f(-p1.theta_exec_deg[i][a])+'° / '+f(-p1.theta_baseline_exec_deg[i][a])+'°</td><td>'+f(100*p1.shadow_row_fraction[i][a],2)+' % / '+f(100*p1.baseline_shadow_row_fraction[i][a],2)+' %</td><td>'+f(p1.poa_effective_w_m2[i])+' / '+f(p1.poa_baseline_effective_w_m2[i])+' W/m²</td><td>'+esc(lock?('CONTROL: '+(dec.constraintSource||'restricción dura')):(dec?(OvercastEngine.REASONS[dec.reason]||dec.reason):'—'))+'</td></tr>';
+    $('p1v2').hidden=!v2;if(!v2)return;
+    const set=p1.candidate_sets[i],chosen=set.find(c=>c.selected)||set[0],rear=set.some(c=>Number.isFinite(c.transition_rear_effective_w_m2));
+    $('p1note').textContent='Cada punto es un vector completo de consignas P1; X muestra sólo '+p1.asset_ids[a]+'. Y es captación media durante la maniobra, no una POA instantánea aislada. '+(rear?'La trasera aparece porque el proveedor del contrato la declaró utilizable para este estudio.':'La trasera no entra: el contrato no dispone de una autoridad válida para esta geometría.');
+    $('p1candidates').innerHTML='<tr><th>θ '+esc(p1.asset_ids[a])+' · TCU</th><th>Seguro P1</th><th>Frontal</th><th>Trasera</th><th>Total transición</th><th>Origen</th></tr>'+set.map(c=>'<tr'+(c.selected?' class="best"':'')+'><td>'+f(-c.theta_deg[a],1)+'°</td><td>'+(c.safe?'sí':'NO')+'</td><td>'+f(c.transition_front_effective_w_m2,1)+'</td><td>'+f(c.transition_rear_effective_w_m2,1)+'</td><td>'+f(c.transition_total_effective_w_m2,1)+'</td><td>'+esc(c.source||'candidato')+(c.selected?' · ELEGIDO':'')+'</td></tr>').join('');
+    const o=canvas('p1curve'),xs=set.map(c=>-c.theta_deg[a]),ys=set.map(c=>c.transition_total_effective_w_m2),xmin=Math.min(...xs)-1,xmax=Math.max(...xs)+1,ymin=Math.min(0,...ys),ymax=Math.max(1,...ys),X=x=>48+(x-xmin)/Math.max(1e-9,xmax-xmin)*(o.w-64),Y=y=>o.h-35-(y-ymin)/Math.max(1e-9,ymax-ymin)*(o.h-53);axes(o,'θ TCU · activo seleccionado','W/m² · transición');
+    for(const c of set){const x=X(-c.theta_deg[a]),y=Y(c.transition_total_effective_w_m2);o.x.beginPath();o.x.arc(x,y,c.selected?5:3,0,Math.PI*2);o.x.fillStyle=!c.safe?'#f87272':c.selected?'#fb923c':'#5aa9ff';o.x.fill();}
+    o.x.fillStyle='#9bb0c6';o.x.fillText(f(xmin,0),X(xmin)-8,o.h-20);o.x.fillText(f(xmax,0),X(xmax)-8,o.h-20);o.x.fillText(f(ymax,0),2,24);o.x.fillText(f(ymin,0),2,o.h-35);
   }
   function exportCSV(){const q=context();if(!q||!q.sim.res.adaptive)return;const s=q.sim,r=s.res.adaptive;const rows=['# '+q.version+' '+OvercastEngine.VERSION+'; flat_rows_1d; effective frontal POA; no P1 certification','minute,ghi,dni,dhi,theta_baseline_tcu,theta_executed_tcu,poa_baseline_effective_w_m2,poa_adaptive_effective_w_m2,reason,weather_source,weather_valid'];for(let i=0;i<s.dayF.n;i++){const w=s.dayF.irr[i],d=r.decisions[Math.min(r.decisions.length-1,Math.floor(i*s.dayF.dtMin/s.day.dtMin))];rows.push([s.dayF.tmin[i],w.ghi,w.dni,w.dhi,-s.res.pvlib.execF[i],-r.execF[i],q.baseline.effective[i],q.adaptive.effective[i],d.reason,s.dayF.quality[i].source,s.dayF.quality[i].valid].join(','));}bridge.download('overcast_decisiones_'+q.cfg.dateStr+'.csv',rows.join('\n'));}
   $('view').onclick=()=>{bridge.select('adaptive');$('detail').open=true;clock();};
@@ -200,7 +228,7 @@ function mount(el,bridge){
   $('apply').onclick=()=>{if(!study||!study.validation.passed)return;const w=study.winner;if(w.params)for(const k of keys)$(k).value=w.params[k];bridge.select(w.key);};
   $('export').onclick=()=>{const s=snapshot();if(s)bridge.download('overcast_estudio_'+s.date+'.json',JSON.stringify(s,null,2),'application/json');};$('csvout').onclick=exportCSV;
   $('csv').onchange=async()=>{try{const file=$('csv').files[0];if(!file)return;const om=parseCSV(await file.text(),file.name);archive=om;$('source').value='archive';bridge.importWeather(om);$('status').textContent=file.name+' · '+om.tms.length+' registros · resolución mediana '+om.resolutionMin+' min. Ajuste y validación usarán sólo días completos.';}catch(e){$('status').textContent=e.message;}};
-  $('p1file').onchange=async()=>{try{const file=$('p1file').files[0];if(!file)return;p1=parseP1(await file.text());$('p1asset').innerHTML=p1.asset_ids.map((id,i)=>'<option value="'+i+'">'+esc(id)+'</option>').join('');drawP1();}catch(e){$('p1status').textContent=e.message;}};$('p1asset').onchange=drawP1;
+  $('p1file').onchange=async()=>{try{const file=$('p1file').files[0];if(!file)return;p1=parseP1(await file.text());$('p1asset').innerHTML=p1.asset_ids.map((id,i)=>'<option value="'+i+'">'+esc(id)+'</option>').join('');lastClock=-1;drawP1();clock();}catch(e){$('p1status').textContent=e.message;}};$('p1asset').onchange=()=>{lastClock=-1;drawP1();};
   root.addEventListener('resize',()=>{lastClock=-1;heatSim=null;clock();});
   return {config,recomputed,clock,tune,snapshot,parseCSV,setWeatherArchive(om){archive=om;$('status').textContent='Archivo disponible: '+om.tms.length+' muestras · '+om.source;},getStudy:()=>study};
 }
