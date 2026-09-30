@@ -8,7 +8,7 @@ readline.createInterface({input:process.stdin,crlfDelay:Infinity}).on('line',lin
     const q=JSON.parse(line);
     if(q.configure){control=engine.supervisor(q.configure);process.stdout.write(JSON.stringify({engine:engine.VERSION})+'\n');return;}
     if(!control)throw new Error('configure required');
-    const scores=new Map(q.samples.map(p=>[JSON.stringify(p.theta),p]));
+    const scores=new Map((q.samples||[]).map(p=>[JSON.stringify(p.theta),p]));
     const get=theta=>{const p=scores.get(JSON.stringify(theta));if(!p)throw new Error('Missing evaluated candidate');return p;};
     const out=control.step({...q,evaluate:get,admissible:theta=>get(theta).safe});
     process.stdout.write(JSON.stringify(out)+'\n');
