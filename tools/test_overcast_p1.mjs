@@ -40,6 +40,19 @@ A(r.summary.gain_wh_m2>0,'integra ganancia frente a baseline');
 A(r.summary.evidence_gap_steps===0,'sin huecos cuando el grid es estable');
 A(r.rear_status==='not_validated','trasera queda declarada fuera');
 
+// Un destino seguro NO se puede alcanzar atravesando una isla angular insegura.
+const island=sample();
+for(const step of island.timestamps){
+  step.tcu.T1.candidates.splice(2,0,{
+    theta_deg:5,poa_front_effective_w_m2:110,
+    components_w_m2:{beam:110,isotropic:0,circumsolar:0,horizon:0,ground:0},
+    safe:false,max_shadow_excess_fraction:.02,row_shadow_fraction:[.02,0],
+    converged:true,convergence_delta_fraction:0
+  });
+}
+const ri=P1.replay(island,'T1',{enterGainW:1,exitLossW:0,confirmMin:0,dwellMin:0,nearOptimalW:0,ghiMin:0});
+A(ri.decisions[0].theta_deg===0,'no salta por encima de una isla angular insegura');
+
 // Si el ángulo elegido desaparece del siguiente instante no se interpola:
 // se declara gap y se vuelve a baseline.
 const gap=sample();
