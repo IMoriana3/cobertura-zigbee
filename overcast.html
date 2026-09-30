@@ -1242,6 +1242,7 @@ function polAdaptive(day,thN,poaN,d){
     const candidates=day.ghi[i]>c.ghiMin?engineeringCandidates(day,i,thN[i]):[];
     const bshade=engineeringShade(day,i,thN[i]);
     const out=control.step({t:day.tmin[i],baseline:thN[i],current,ghi:day.ghi[i],dhi:day.irr[i].dhi,
+      cloudCover:Number.isFinite(day.irr[i].cc)?day.irr[i].cc:null,
       valid:!day.quality||day.quality[i].valid,candidates,
       evaluate:th=>engineeringScore(day,i,th),admissible:th=>engineeringShade(day,i,th)<=bshade+1e-6});
     theta.push(out.theta);flag.push(out.flag);decisions.push(out);
