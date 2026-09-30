@@ -561,6 +561,8 @@ jobs:
         run: node tools/con_piso.mjs tools/test_cloud_shadows.mjs
       - name: cielo cubierto
         run: node tools/con_piso.mjs tools/test_overcast_sim.mjs
+      - name: supervisor causal y contratos de ingeniería Overcast
+        run: node tools/con_piso.mjs tools/test_overcast_engine.mjs
       - name: mapa modbus
         run: node tools/con_piso.mjs tools/test_modbus_map.mjs
       - name: paquete de medida

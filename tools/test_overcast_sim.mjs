@@ -167,6 +167,38 @@ t('escena 3D con las libs LOCALES del repo (three.min.js + OrbitControls + segui
   if (!/<script src="seguidor\.js/.test(html)) throw new Error('sin seguidor.js (fuente única del modelo)');
   if (!/id="view3d"/.test(html)) throw new Error('sin contenedor 3D');
 });
+t('SKY DOME V2: el UV de la esfera respeta azimut de compás N-E-S-W', () => {
+  const i = html.indexOf('function updateSkyDome3D(');
+  const j = html.indexOf('function skyMaskRatio', i);
+  const fn = html.slice(i, j);
+  if (!fn.includes('(180-360*xx/W+360)%360'))
+    throw new Error('la textura 3D no convierte UV de SphereGeometry a azimut de compás');
+  const material = html.slice(html.indexOf('function makeSkyDome3D('), i);
+  if (!material.includes('depthTest:true'))
+    throw new Error('la bóveda debe respetar la profundidad para no pintar sobre los trackers');
+});
+
+t('SKY DOME V2: la misma radiancia pinta también el cielo 3D real', () => {
+  for (const k of ['function makeSkyDome3D(', 'function updateSkyDome3D(',
+                   'new THREE.SphereGeometry(1,72,36', 'side:THREE.BackSide',
+                   'skyRelRadiance(st,alt,az)', 'skyDome3D:skyDome3D'])
+    if (!html.includes(k)) throw new Error('falta integración 3D: ' + k);
+  const fn = html.slice(html.indexOf('function updateSkyDome3D('),
+                        html.indexOf('function skyMaskRatio'));
+  if (!fn.includes('skyRelRadiance('))
+    throw new Error('el cielo 3D usa una distribución distinta del sky dome');
+  if (!/mesh\.visible=!!SKYDOME_ON/.test(fn))
+    throw new Error('el toggle no gobierna el dome 3D');
+});
+
+t('SKY DOME V2: UI integrada en la escena, no simulador paralelo', () => {
+  for (const id of ['skydome','skytoggle','skyIso','skyCirc','skyHor','skyVF','skyFR','skyTheta','skyThetaOpt','skyGain'])
+    if (!html.includes('id="' + id + '"')) throw new Error('falta ' + id);
+  if (!/function drawSkyDome\(/.test(html)) throw new Error('falta drawSkyDome()');
+  if (!/drawSkyDome\(\)/.test(html.slice(html.indexOf('function refreshScene'), html.indexOf('function flyStart'))))
+    throw new Error('el dome no sigue el reloj/refresh de la escena');
+});
+
 t('degrada a 2D si THREE/WebGL no están (has3D + try/catch en init3D)', () => {
   if (!/function has3D\(\)/.test(html)) throw new Error('sin guard has3D');
   const init = html.slice(html.indexOf('function init3D'), html.indexOf('function makeLabel'));
@@ -212,6 +244,16 @@ t('el nombre de la app es UNO: <title> y <h1> dicen lo mismo', () => {
     throw new Error('la pestaña dice «' + norm(t1) + '» y la página «' + norm(h1) + '»');
   if (!/NOMBRE CANÓNICO DE LA APP/.test(html))
     throw new Error('falta la nota que declara el nombre canónico y dónde más vive');
+});
+
+t('SKY DOME V2: CSV e informe son auditables', () => {
+  const csv = html.slice(html.indexOf('function buildDayCSV()'), html.indexOf('/* ══ INFORME', html.indexOf('function buildDayCSV()')));
+  for (const k of ['[SKY DOME V2]','sky_iso_pct','sky_circ_pct','sky_hor_pct',
+                   'theta_diff_opt_tcu_deg','poa_diff_opt_w_m2','diff_gain_vs_pvlib_w_m2'])
+    if (!csv.includes(k)) throw new Error('CSV sin ' + k);
+  const inf = html.slice(html.indexOf('function informeHTML()'), html.indexOf('function abrirInforme'));
+  for (const k of ['Sky diffuse medio','Sky Dome ·','θ óptimo difuso'])
+    if (!inf.includes(k)) throw new Error('informe sin ' + k);
 });
 
 t('el CSV de auditoría es reproducible: lleva la configuración entera y saca la POA del θ EJECUTADO', () => {
@@ -269,18 +311,83 @@ const src = html.slice(j0, i1);
    `singleaxis` viven en `sol.js`, que la página carga aparte. Se antepone aquí,
    igual que hace el navegador, o el bloque extraído se queda sin `Sol`. */
 const sol = fs.readFileSync(path.join(ROOT, 'sol.js'), 'utf-8')
-            + '\n' + fs.readFileSync(path.join(ROOT, 'irradiancia.js'), 'utf-8');
+            + '\n' + ['irradiancia.js','overcast_iam.generated.js','overcast_energy.js','overcast_engine.js'].map(p=>fs.readFileSync(path.join(ROOT,p),'utf-8')).join('\n');
 
 const sandbox = new Function(sol + '\n' + src + `
   return { runPhysicsQA, solarPos, singleaxis, trueTrackAngle, clearskyIneichen, cloudToIrr,
-           poaTracker, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
+           poaTracker, poaSurfacePerez, omInterp, buildDay, thetaBaselineDay, clampBT, poaSeries, POLICIES,
            thetaAstroDay, projSolarZenith, shadedFraction1d, clampAdelantoDirigido,
            applyControlLoop, dayMetrics, canonScenario, canonCC, CANON, DCFG_DEFAULT,
            shiftCC, shiftOM, zonalRun, execOnFineGrid, EXPLAIN, slewLimit1,
-           skyPresetSeries, skyNubeCorta, optimoAniso,
+           skyPresetSeries, skyNubeCorta, optimoAniso,\n           skyPerezState, skyRelRadiance, skyIntegrate, diffuseOptimum01,
            motorMetrics, motorW, whPorGrado, MOTOR_BANDAS, AJUSTE_FLOTA, MOTOR_MA, MOTOR_ANG,
            TCU_IDLE_W, BATT_WH_DEF, MOVE_EPS };`);
 const F = sandbox();
+
+t('SKY DOME V2: la descomposición Perez exacta cierra sky y POA', () => {
+  const p = F.poaSurfacePerez(35, 225, 55, 180,
+    {ghi:650,dni:420,dhi:300,cc:.45}, 172, .20);
+  const sky = p.iso + p.circ + p.hor;
+  if (Math.abs(sky - p.sky) > 1e-10) throw new Error('componentes != sky');
+  if (Math.abs(p.beam + p.sky + p.gnd - p.total) > 1e-10)
+    throw new Error('beam+sky+ground != total');
+  for (const k of ['iso','circ','hor','sky','gnd','beam','total'])
+    if (!Number.isFinite(p[k])) throw new Error(k + '=' + p[k]);
+  for (const k of ['sky','gnd','beam','total'])
+    if (p[k] < -1e-12) throw new Error(k + '=' + p[k]);
+});
+
+t('Perez conserva el oscurecimiento del horizonte: no cobra difusa ficticia', () => {
+  const p = F.poaSurfacePerez(55,90,60,90,{ghi:250,dni:0,dhi:250},172,.2);
+  if (!(p.hor < 0)) throw new Error('se perdió la corrección negativa del horizonte');
+  if (!(p.sky < p.iso + p.circ)) throw new Error('se cobró como cero una corrección negativa');
+  if (Math.abs(p.sky - p.iso - p.circ - p.hor) > 1e-10)
+    throw new Error('las componentes firmadas no cierran');
+});
+
+t('SKY DOME V2: Perez visual conserva pesos normalizados', () => {
+  const st = F.skyPerezState(60, 220, {ghi:500,dni:200,dhi:300,cc:.75}, 172);
+  const s = st.iso + st.circ + st.hor;
+  if (Math.abs(s - 1) > 1e-12) throw new Error('pesos no suman 1: ' + s);
+  for (const k of ['iso','circ','hor'])
+    if (!(st[k] >= 0 && st[k] <= 1)) throw new Error(k + ' fuera de [0,1]');
+});
+
+t('SKY DOME V2: integración front/rear finita y positiva', () => {
+  const st = F.skyPerezState(55, 135, {ghi:600,dni:250,dhi:350,cc:.6}, 172);
+  const z = F.skyIntegrate(st, 350, 20, 0, 0, .397);
+  for (const k of ['front','rear','vfFront','vfRear'])
+    if (!Number.isFinite(z[k]) || z[k] < 0) throw new Error(k + '=' + z[k]);
+  if (z.vfFront > 1.001 || z.vfRear > 1.001) throw new Error('view factor > 1');
+});
+
+t('SKY DOME V2: óptimo difuso 0,1° no empeora la difusa del baseline', () => {
+  const day = F.buildDay({lat:41.5763,lon:-0.7981,dateStr:'2026-06-21',tz:2,
+    altM:300,TL:3.5,dtMin:10,albedo:.2,axisAz:0,maxAngle:55,gcr:.397,cc:F.canonCC()});
+  const thN = F.thetaBaselineDay(day);
+  const i = Math.floor(day.n * .7);
+  const opt = F.diffuseOptimum01(day, i);
+  if (!opt || Math.abs(opt.theta * 10 - Math.round(opt.theta * 10)) > 1e-9)
+    throw new Error('el ángulo no está cuantizado a 0,1°');
+  const base = F.poaTracker(thN[i], day.axisTilt, day.axisAz, day.zen[i], day.az[i],
+                            day.irr[i], day.doy, day.albedo).diff;
+  if (opt.diff + 1e-9 < base) throw new Error('óptimo ' + opt.diff + ' < baseline ' + base);
+});
+
+t('óptimo diagnóstico: otro azimut solar no hereda un resultado en caché', () => {
+  const d={n:1,maxAngle:55,axisTilt:0,axisAz:0,gcr:.397,doy:172,albedo:.2,
+    zen:[60],az:[90],irr:[{ghi:500,dni:800,dhi:100,cc:0}]};
+  const east=F.diffuseOptimum01(d,0);
+  d.az[0]=270;
+  const west=F.diffuseOptimum01(d,0);
+  if (!(east.theta>0 && west.theta<0)) throw new Error('la caché no distingue Este/Oeste');
+  if (Math.abs(east.theta+west.theta)>1e-9) throw new Error('se perdió la simetría física');
+});
+
+t('óptimo diagnóstico: de noche no se publica un ángulo ficticio', () => {
+  const d={n:1,maxAngle:55,zen:[100],irr:[{ghi:0,dni:0,dhi:0}]};
+  if (F.diffuseOptimum01(d,0)!==null) throw new Error('la noche devolvió un óptimo');
+});
 
 console.log('física (la misma QA que el botón de la página)');
 for (const r of F.runPhysicsQA()) {
@@ -974,18 +1081,13 @@ t('los DOS rellenos de la gráfica de θ están en la leyenda, y con su color', 
 });
 
 t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () => {
-  // El día sintético entra como onda cuadrada, y eso no era neutral: un escalón
-  // es el caso FAVORABLE para las políticas que conmutan (transición
-  // instantánea, inequívoca y sostenida — lo que el confirm/dwell necesita para
-  // acertar), mientras que una rampa se pasa minutos en la zona ambigua. La
-  // página ya declaraba el sesgo CONTRARIO del año real (ERA5 horario alisa los
-  // tránsitos ⇒ infraestima el difuso) y no este, así que el lector tenía media
-  // cota y se la podía tomar por la verdad.
+  // Both temporal resolutions lose information differently. Neither supplies
+  // a proven bound on real gain. The old check required an unsupported claim.
   const nota = html.slice(html.indexOf('id="skyedit"'), html.indexOf('id="skyedit"') + 3000);
   if (!/presets son ESCALONES/i.test(nota))
     throw new Error('la nota del cielo no declara que los presets son escalones');
-  if (!/ERA5/.test(nota) || !/acotada entre los dos/.test(nota))
-    throw new Error('la nota no cierra la cota: sin el sesgo contrario del año real, declara media verdad');
+  if (!/ERA5/.test(nota) || !/no se puede garantizar/.test(nota) || /acotada entre los dos/.test(nota))
+    throw new Error('la nota debe reconocer el sesgo temporal sin inventar una cota');
   // LAS CIFRAS SE CAREAN CONTRA EL CÓDIGO, no se fijan a mano en las dos
   // puntas: si alguien mueve el preset, la nota deja de mentir en silencio.
   const linea = (html.match(/name==='tarde'\)\{([^}]*)\}/) || [])[1];
@@ -1001,7 +1103,7 @@ t('la nota del preset declara el escalón, y sus cifras SALEN del preset', () =>
   }
 });
 
-t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ellas', () => {
+t('el panel de referencia se pinta de las CONSTANTES, sin duplicarlas en la cabecera', () => {
   // El párrafo de cabecera lleva su tope en ch por legibilidad, así que en una
   // ventana ancha sobraba media cabecera. El hueco se llena con los números con
   // los que corre la simulación — pero banda muerta, velocidad, θ máximo, ciclo
@@ -1041,23 +1143,13 @@ t('el panel de la cabecera se pinta de las CONSTANTES, y la prosa cuadra con ell
     if (new RegExp("'[^']*" + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'").test(fnCode))
       throw new Error(`el panel lleva «${p}» tecleado: ese número tiene que salir de la constante`);
 
-  // Y LA PROSA, CAREADA. La cabecera afirma «deadband 1° + slew 0,17°/s» y
-  // «14.759 maniobras reales» a mano, al lado de un panel que saca lo mismo del
-  // código. Dos fuentes otra vez: si una constante cambia, el párrafo se queda
-  // mintiendo. Se comprueba por VALOR, no por literal.
-  const sub = html.slice(html.indexOf('<div class="sub">'), html.indexOf('<div class="src">'));
-  const n = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
-  const db = (sub.match(/deadband\s*([\d,.]+)\s*°/) || [])[1];
-  const sl = (sub.match(/slew\s*([\d,.]+)\s*°\/s/) || [])[1];
-  const nm = (sub.match(/\(([\d.,]+)\s*maniobras reales\)/) || [])[1];
-  if (db === undefined || sl === undefined || nm === undefined)
-    throw new Error('el párrafo de cabecera ya no declara deadband / slew / maniobras');
-  if (n(db) !== F.CANON.deadbandDeg)
-    throw new Error(`la cabecera dice deadband ${db}° y el canónico es ${F.CANON.deadbandDeg}°`);
-  if (n(sl) !== F.CANON.slewDegS)
-    throw new Error(`la cabecera dice slew ${sl}°/s y el canónico es ${F.CANON.slewDegS}°/s`);
-  if (n(nm) !== F.AJUSTE_FLOTA.nManiobras)
-    throw new Error(`la cabecera dice ${nm} maniobras y el ajuste se hizo con ${F.AJUSTE_FLOTA.nManiobras}`);
+  // La referencia ahora se despliega en Configuración. La cabecera no
+  // duplica las constantes en prosa; el contrato vivo del panel sigue igual.
+  const header=html.slice(html.indexOf('<header>'),html.indexOf('</header>'));
+  if (/deadband|slew|maniobras reales/.test(header))
+    throw new Error('la cabecera vuelve a duplicar las constantes en prosa');
+  if (!/<summary>Modelo y referencias<\/summary><aside class="canon" id="canonbox"/.test(html))
+    throw new Error('falta el acceso desplegable a la referencia canónica');
 });
 
 t('la fecha está TAMBIÉN junto al slider, y es el mismo campo, no un segundo', () => {
@@ -1099,7 +1191,7 @@ t('la versión está en UN sitio, y el informe la lee de ahí', () => {
     throw new Error('VER se declara más de una vez: la versión vuelve a tener dos fuentes');
   // la etiqueta de la página y el informe del emplazamiento tienen que LEERLA,
   // no llevar su propia copia
-  if (!/\$\('verlbl'\)\.textContent='overcast\.html '\+VER/.test(html))
+  if (!/\$\('verlbl'\)\.textContent=(?:'overcast\.html '\+)?VER/.test(html))
     throw new Error('la etiqueta de la página ya no lee VER');
   if (!/esc\(VER\)/.test(html))
     throw new Error('el informe del emplazamiento ya no lee VER: volvería a firmarse con un literal');

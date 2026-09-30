@@ -48,16 +48,29 @@ const errores = [];
 pg.on('pageerror', e => errores.push(String(e).slice(0, 200)));
 await pg.goto(BASE + '/overcast.html', { waitUntil: 'networkidle' });
 
+const initialUI=await pg.evaluate(()=>({hidden:$('configPanel').hidden,expanded:$('settingsToggle').getAttribute('aria-expanded'),top:$('view3d').getBoundingClientRect().top}));
+t('los ajustes no tapan la escena al abrir',()=>{eq(initialUI.hidden,true);eq(initialUI.expanded,'false');if(initialUI.top>280)throw new Error('escena demasiado abajo: '+initialUI.top);});
+async function revealControl(selector){
+  if(await pg.locator('#configPanel').evaluate((el,selector)=>el.contains(document.querySelector(selector)),selector)){
+    if(await pg.locator('#configPanel').evaluate(el=>el.hidden))await pg.click('#settingsToggle');
+    for(const details of await pg.locator('#configPanel details').filter({has:pg.locator(selector)}).all())
+      if(!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();
+  }
+}
+async function closeControls(){if(!await pg.locator('#configPanel').evaluate(el=>el.hidden))await pg.click('#settingsToggle');}
+
 /* EL PRESET NO SE APLICA AL CAMBIAR EL SELECT: lo aplica el botón. La sonda
    con la que se midió todo esto nació sin pulsarlo y daba números IDÉNTICOS en
    los dos cielos — un instrumento roto leído como hallazgo. Queda aquí escrito
    para que el siguiente no lo repita. */
 async function pon(preset, minuto = 720) {
+  await revealControl('#skypreset');
   await pg.selectOption('#skypreset', preset);
   await pg.click('#skyapply');
   await pg.waitForTimeout(900);
   await pg.fill('#hour', String(minuto));
   await pg.dispatchEvent('#hour', 'input');
+  await closeControls();
   await pg.click('#tab3d').catch(() => {});
   await pg.waitForTimeout(1600);
   return pg.evaluate(() => {
@@ -75,7 +88,8 @@ async function pon(preset, minuto = 720) {
       drape, nube,
       camY: +TD.camera.position.y.toFixed(1),
       nubeY: (TD.zones[0] && TD.zones[0].cloudMesh) ? +TD.zones[0].cloudMesh.position.y.toFixed(1) : null,
-      panel: { visible: document.getElementById('sky3d').style.display !== 'none',
+      panel: { outsideScene: !document.getElementById('view3d').contains(document.getElementById('sky3d')),
+               folded: !document.getElementById('skyDetails').open,
                estado: txt('sky3dTxt').trim(), cc: txt('sky3dCC').trim(),
                ghi: txt('sky3dGHI').trim(), dni: txt('sky3dDNI').trim(), dhi: txt('sky3dDHI').trim(),
                directa: txt('sky3dPD').trim() },
@@ -88,7 +102,9 @@ const OV = await pon('overcast');
 const CL = await pon('despejado');
 t('con manto cerrado el panel dice OVERCAST', () => eq(OV.panel.estado, 'OVERCAST'));
 t('y con cielo claro dice DESPEJADO', () => eq(CL.panel.estado, 'DESPEJADO'));
-t('el panel está a la vista en la escena', () => eq(OV.panel.visible, true));
+t('los datos están fuera de la escena y plegados al entrar', () => {
+  eq(OV.panel.outsideScene,true);eq(OV.panel.folded,true);
+});
 /* NO SE INVENTA NADA: en overcast el core declara DNI = 0 y DHI = GHI (el
    overcast canónico del escenario de test del core). Si el panel se estuviera
    alimentando de otra cosa, estas tres no cuadrarían entre sí. */
@@ -219,14 +235,31 @@ async function contrasteRender() {
     const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height;
     const x = c2.getContext('2d');
     x.drawImage(cv, 0, 0);
-    const d = x.getImageData(0, Math.floor(c2.height * 0.30), c2.width, Math.floor(c2.height * 0.65)).data;
+    const top=Math.floor(c2.height*.30),height=Math.floor(c2.height*.65);
+    const d = x.getImageData(0, top, c2.width, height).data;
+    // Segment actual visible soil by object identity. Its new earth/olive
+    // palette must not be mistaken for missing ground by a green-only filter.
+    const saved=[],black=new THREE.MeshBasicMaterial({color:0x000000,side:THREE.DoubleSide}),white=new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide});
+    const bg=TD.scene.background,fog=TD.scene.fog;
+    let mask;
+    try{
+      TD.scene.background=new THREE.Color(0);TD.scene.fog=null;
+      TD.scene.traverse(o=>{if(!o.material)return;saved.push([o,o.material,o.visible]);
+        if(!o.isMesh||o.material.transparent){o.visible=false;return;}
+        o.material=o.name==='landscape-soil'?white:black;
+      });
+      TD.renderer.render(TD.scene,TD.camera);x.drawImage(cv,0,0);mask=x.getImageData(0,top,c2.width,height).data;
+    }finally{
+      for(const [o,material,visible] of saved){o.material=material;o.visible=visible;}
+      TD.scene.background=bg;TD.scene.fog=fog;black.dispose();white.dispose();TD.renderer.render(TD.scene,TD.camera);
+    }
     let na = 0, la = 0, nv = 0, lv = 0;
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i + 1], b = d[i + 2];
       const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0;
       const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       if (b > r + 22 && b > g + 10 && sat > 0.30) { na++; la += L; }
-      else if (g > r + 8 && g > b + 8) { nv++; lv += L; }
+      else if (mask[i]>180&&mask[i+1]>180&&mask[i+2]>180) { nv++; lv += L; }
     }
     if (!na || !nv) return { na, nv, contraste: null };
     la /= na; lv /= nv;
@@ -271,6 +304,7 @@ const rot = () => pg.evaluate(() => ({ sun: TD.sun.intensity,
                                        th: TD.zones[0].thDeg,
                                        rx: TD.zones[0].spins[0].rotation.x }));
 const antes = await rot();
+await revealControl('#skypreset');
 await pg.selectOption('#skypreset', 'despejado');
 await pg.click('#skyapply');
 await pg.waitForTimeout(120);
@@ -312,12 +346,14 @@ console.log('Y TAMBIÉN EN UNA PLANTA REAL, que es por donde se coló');
 
    Así que la comprobación no se queda en «la nube está arriba en la escena de
    siempre»: se carga una planta REAL y se exige lo mismo allí. */
+await revealControl('#zonalOn');
 await pg.check('#zonalOn');
 await pg.selectOption('#realplant', 'paramo');
 await pg.waitForTimeout(3500);
 await pg.selectOption('#skypreset', 'overcast');
 await pg.click('#skyapply');
 await pg.waitForTimeout(1200);
+await closeControls();
 await pg.click('#tab3d').catch(() => {});
 await pg.waitForTimeout(2500);
 const REAL = await pg.evaluate(() => {
@@ -411,12 +447,90 @@ t('y hay tantos colores como NCUs declara el layout', () => {
   if (HU.tonos !== HU.nZonas) throw new Error(HU.tonos + ' tonos para ' + HU.nZonas + ' NCUs');
 });
 /* EN MODO PLANTA NO HAY PARTICIÓN, así que pintar cuatro manchas sería mentir. */
+await revealControl('#zonalOn');
 await pg.uncheck('#zonalOn');
 await pg.waitForTimeout(1200);
 const HU_OFF = await pg.evaluate(() => !!(TD.real && TD.real.huella && TD.real.huella.visible));
 t('en modo PLANTA la huella se apaga (no hay NCUs que separar)', () => eq(HU_OFF, false));
 await pg.check('#zonalOn');
 await pg.waitForTimeout(1200);
+await closeControls();
+
+console.log('comparación SUNNY/OVERCAST dentro del mismo simulador');
+const original = await pg.evaluate(() => JSON.stringify({cc:CC,zsky:ZSKY,
+  source:$('skysource').value,zmode:$('zskymode').value,
+  clock:CLOCK,policy:$('polview').value,poa:SIM.res.pvlib.poaF}));
+await pg.click('#skyOvercast');
+await pg.waitForTimeout(1000);
+const oc = await pg.evaluate(() => ({
+  zeroBeam:SIM.dayF.irr.filter((r,i)=>SIM.dayF.zen[i]<90).every(r=>r.dni===0&&Math.abs(r.dhi-r.ghi)<1e-9),
+  cloud:CC.every(v=>v===1),sun:TD.obj.sunI,shadow:TD.sun.castShadow,
+  background:TD.obj.bg,dome:SKYDOME_ON,
+  clock:CLOCK,policy:$('polview').value,
+}));
+t('OVERCAST total: el mismo motor entrega DNI=0 y DHI=GHI', () => {
+  eq(oc.zeroBeam,true);eq(oc.cloud,true);
+});
+t('vista natural cubierta: sin luz directa ni sombra dura, cielo neutro', () => {
+  eq(oc.sun,0);eq(oc.shadow,false);eq(oc.dome,false);
+  if(Math.max(...oc.background)-Math.min(...oc.background)>1e-9)throw new Error('cielo no neutro');
+});
+t('comparar conserva instante y política', () => {
+  const before=JSON.parse(original);eq(oc.clock,before.clock);eq(oc.policy,before.policy);
+});
+await pg.click('#skySunny');
+await pg.waitForTimeout(1000);
+const sunny=await pg.evaluate(()=>({dni:SIM.dayF.irr[fineIdx(CLOCK)].dni,sun:TD.obj.sunI,shadow:TD.sun.castShadow}));
+t('SUNNY recupera luz directa y sombras con sol diurno', () => {
+  if(!(sunny.dni>40&&sunny.sun>0&&sunny.shadow))throw new Error(JSON.stringify(sunny));
+});
+await pg.click('#skyRestore');
+const restored=await pg.evaluate(()=>JSON.stringify({cc:CC,zsky:ZSKY,
+  source:$('skysource').value,zmode:$('zskymode').value,
+  clock:CLOCK,policy:$('polview').value,poa:SIM.res.pvlib.poaF}));
+t('Restaurar cielo recupera fuente, NCUs, configuración y POA exacta',()=>eq(restored,original));
+const radianceBefore=await pg.evaluate(()=>JSON.stringify(SIM.res.pvlib));
+const cameraBefore=await pg.evaluate(()=>JSON.stringify({p:TD.camera.position.toArray(),t:TD.controls.target.toArray()}));
+await pg.click('#skytoggle');
+const radiance=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visible,
+  poa:JSON.stringify(SIM.res.pvlib),theta:$('skyTheta').textContent}));
+t('el mapa de radiancia cambia la vista y conserva el cálculo',()=>{
+  eq(radiance.on,true);eq(radiance.mesh,true);eq(radiance.poa,radianceBefore);
+});
+await pg.click('#skytoggle');
+const natural=await pg.evaluate(()=>({on:SKYDOME_ON,mesh:TD.skyDome3D.mesh.visible,theta:$('skyTheta').textContent}));
+t('la vista natural conserva la explicación numérica del instante',()=>{
+  eq(natural.on,false);eq(natural.mesh,false);eq(natural.theta,radiance.theta);
+});
+const cameraAfter=await pg.evaluate(()=>JSON.stringify({p:TD.camera.position.toArray(),t:TD.controls.target.toArray()}));
+t('salir de la bóveda recupera el encuadre anterior',()=>eq(cameraAfter,cameraBefore));
+await pg.click('#skyDetails > summary');
+for(const viewport of [{width:2000,height:800},{width:1100,height:700},{width:390,height:844}]){
+  await pg.setViewportSize(viewport);
+  const box=await pg.evaluate(()=>{
+    const scene=$('view3d').getBoundingClientRect(),data=$('sky3d').getBoundingClientRect();
+    return {open:$('skyDetails').open,below:data.top>=scene.bottom,
+            fits:$('sky3d').scrollWidth<=$('sky3d').clientWidth+1};
+  });
+  t('datos desplegados sin tapar la planta a '+viewport.width+' px',()=>{
+    eq(box.open,true);eq(box.below,true);eq(box.fits,true);
+  });
+}
+await pg.click('#skyDetails > summary');
+
+await pg.click('[data-e="view"]');
+const eng=await pg.evaluate(()=>({policy:$('polview').value,
+  detail:document.querySelector('[data-e="detail"]').open,
+  reasons:window.OVERCAST_WORKBENCH.snapshot().daily.adaptive.decisions.length,
+  curve:document.querySelector('[data-e="curve"]').width,
+  lower:document.querySelector('#engineeringDock').getBoundingClientRect().top >= $('view3d').getBoundingClientRect().bottom}));
+t('el banco de ingeniería usa la política real y mantiene libre la planta',()=>{
+  eq(eng.policy,'adaptive');eq(eng.detail,true);eq(eng.lower,true);
+  if(!(eng.reasons>0&&eng.curve>0))throw new Error('faltan decisiones o curva angular');
+});
+await pg.evaluate(()=>{CLOCK=900;$('hour').value=900;refreshScene(false);});
+const reason=await pg.locator('[data-e="reason"]').textContent();
+t('la explicación muestra el instante seleccionado',()=>{if(!reason.includes('15:00'))throw new Error(reason);});
 
 t('la página no ha lanzado ningún error', () => {
   if (errores.length) throw new Error(errores[0]);
