@@ -161,28 +161,44 @@
     canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY];canvas.setPointerCapture(e.pointerId);};
     canvas.onpointerup=()=>{drag=null;};
     canvas.onpointermove=e=>{if(!drag)return;yaw+=(e.clientX-drag[0])*.006;pitch=Math.max(-1.4,Math.min(1.4,pitch+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw();};
-    input.onchange=async()=>{
+    async function activateEnvelope(envelope, label) {
       const generation=++epoch;
+      const candidate=await decode(envelope);
+      if(generation!==epoch)return false;
+      if(!hidden.length)hidden=legacy().map(e=>[e,e.hidden,e.style.display]);
+      hidden.forEach(([e])=>{e.hidden=true;e.style.display='none';});
+      data=candidate; slider.max=String(data.frames.length-1);slider.value='0';panel.hidden=false;
+      status.textContent=(label||'Referencia canónica')+' · '+data.algorithm_id+' · core '+data.source_sha.slice(0,8)+
+        ' · sin recálculo JS · sin control operativo ni entorno. Color: estado del receptor, no máscara de sombra.';
+      root.dispatchEvent(new CustomEvent('bt-canonical-mode',{detail:{active:true}}));draw();
+      return true;
+    }
+    input.onchange=async()=>{
+      const file=input.files[0]; if(!file)return;
       try {
-        const file=input.files[0]; if(!file)return;
         if(file.size>100000000) fail('Archivo demasiado grande.');
-        const candidate=await decode(JSON.parse(await file.text()));
-        if(generation!==epoch)return;
-        if(!hidden.length)hidden=legacy().map(e=>[e,e.hidden,e.style.display]);
-        hidden.forEach(([e])=>{e.hidden=true;e.style.display='none';});
-        data=candidate; slider.max=String(data.frames.length-1);slider.value='0';panel.hidden=false;
-        status.textContent='Referencia importada · '+data.algorithm_id+' · core '+data.source_sha.slice(0,8)+
-          ' · sin recálculo JS · sin control operativo ni entorno. Color: estado del receptor, no máscara de sombra.';
-        root.dispatchEvent(new CustomEvent('bt-canonical-mode',{detail:{active:true}}));draw();
-      } catch(e) {if(generation===epoch){status.textContent='No importado: '+e.message;}}
+        await activateEnvelope(JSON.parse(await file.text()), 'Referencia importada');
+      } catch(e) {status.textContent='No importado: '+e.message;}
     };
-    return {restore, getFrame:()=>data?viewFrame(data,Number(slider.value)):null};
+    const onLoad=ev=>{
+      const detail=ev&&ev.detail||{};
+      activateEnvelope(detail.envelope, detail.label||'Resultado calculado por SolarGPT')
+        .catch(e=>{status.textContent='No cargado: '+e.message;});
+    };
+    root.addEventListener('bt-canonical-load',onLoad);
+    return {
+      restore,
+      loadEnvelope:activateEnvelope,
+      getFrame:()=>data?viewFrame(data,Number(slider.value)):null,
+      destroy:()=>root.removeEventListener('bt-canonical-load',onLoad)
+    };
   }
   const api={SCHEMA,validate,decode,viewFrame,mount};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   root.BTCanonicalResults=api;
   if(typeof document!=='undefined') {
-    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>mount(document));
-    else mount(document);
+    const boot=()=>{api.controller=mount(document);};
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+    else boot();
   }
 })(typeof globalThis!=='undefined'?globalThis:this);
