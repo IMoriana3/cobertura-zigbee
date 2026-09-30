@@ -11,10 +11,13 @@
     return c;
   }
   function supervisor(input){
-    const c=config(input);let mode=false,pending=null,since=0,lastSwitch=-Infinity,lastTime=-Infinity;
+    const c=config(input);let mode=false,pending=null,since=0,lastSwitch=-Infinity,lastTime=-Infinity,lastCloud=null;
     return {step(q){
       if(!Number.isFinite(q.t)||q.t<=lastTime)throw new Error('El reloj de control debe crecer');lastTime=q.t;
       let reason='TRACKING',target=q.baseline;
+      const cloudCover=Number.isFinite(q.cloudCover)?q.cloudCover:null;
+      const cloudDelta=cloudCover!==null&&lastCloud!==null?cloudCover-lastCloud:null;
+      if(cloudCover!==null)lastCloud=cloudCover;
       if(q.locked===true){
         // 05_CONTROL wins over the diffuse optimizer. A hard state (wind, hail,
         // snow, battery or night) resets adaptive memory; after release the
@@ -22,7 +25,8 @@
         mode=false;pending=null;since=q.t;lastSwitch=q.t;
         return {theta:q.baseline,flag:false,reason:'HARD_CONSTRAINT',mode:'locked',
           gainW:0,pendingSince:null,fd:q.ghi>0?q.dhi/q.ghi:null,
-          locked:true,constraintSource:q.constraintSource||'hard_constraint'};
+          locked:true,constraintSource:q.constraintSource||'hard_constraint',
+          cloudCover,cloudDelta};
       }
       const base=q.evaluate(q.baseline),cur=q.evaluate(q.current);
       const valid=q.valid!==false&&Number.isFinite(base.total)&&Number.isFinite(cur.total);
@@ -50,7 +54,7 @@
       }
       const arr=v=>Array.isArray(v)?v:[v],tt=arr(target),cc=arr(q.current);
       const flat=tt.every(v=>Math.abs(v)<.05),held=tt.length===cc.length&&tt.every((v,i)=>Math.abs(v-cc[i])<.05);
-      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null,locked:false,constraintSource:null};
+      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null,locked:false,constraintSource:null,cloudCover,cloudDelta};
     }};
   }
   function curve({min,max,step=.1,baseline,current,evaluate,admissible,nearOptimalW=2}){
