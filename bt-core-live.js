@@ -122,9 +122,13 @@
       const state=document.getElementById('bt-core-state'), note=document.getElementById('bt-core-note');
       state.textContent='calculando…'; state.style.color='';
       try{
-        if(typeof root.cfg!=='function'||typeof root.terrain!=='function')fail('La UI del simulador no está inicializada.');
-        const c=root.cfg(), T=root.terrain(c), minute=Number(document.getElementById('hour').value);
-        const payload=buildRequest(c,T,minute,root.PLANT_REAL||null);
+        let snapshot=null;
+        if(typeof root.BTCoreUISnapshot==='function')snapshot=root.BTCoreUISnapshot();
+        else if(typeof root.cfg==='function'&&typeof root.terrain==='function'){
+          const c=root.cfg(); snapshot={c:c,T:root.terrain(c),plantReal:null};
+        }else fail('La UI del simulador no está inicializada.');
+        const c=snapshot.c, T=snapshot.T, minute=Number(document.getElementById('hour').value);
+        const payload=buildRequest(c,T,minute,snapshot.plantReal||null);
         const result=await requestCore(url.value,payload);
         document.getElementById('bt-core-table').innerHTML=tableFor(result.samples);
         state.textContent='core '+result.source_sha.slice(0,8)+' · '+result.samples.length+' resultado(s)';
