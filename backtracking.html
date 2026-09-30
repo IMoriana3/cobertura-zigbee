@@ -3752,22 +3752,77 @@ function repairNoShadeCore(zen,az,T,ang,irr,doy,albedo,opts){
    tracking hasta el último comando de 0,1° que sigue limpio. La energía NO
    puede vetar ninguna de esas dos prioridades: energy-optimal es otra política. */
 function anglesShadowSafeTangency(zen,az,T,seed){
-  if(!(isFinite(zen)&&isFinite(az)&&zen<87))return seed.slice();
+  if(!(isFinite(zen)&&isFinite(az))||zen>=90)return seed.slice();
   const RES=PASO_BUSQ, ZERO=1e-3;
-  let a=repairNoShadeCore(zen,az,T,seed,null,0,0,{strictShadow:true}).slice();
+  const RG=rangosUnidad(zen,az,T);
+  const clampUnits=(src)=>{
+    const out=src.slice();
+    const units=T.groups?T.groups:src.map((_,r)=>[r]);
+    for(const u of units){
+      let lo=-Infinity,hi=Infinity;
+      for(const r of u){lo=Math.max(lo,RG[r][0]);hi=Math.min(hi,RG[r][1]);}
+      if(!(hi>=lo))continue;
+      const v=Math.max(lo,Math.min(hi,src[u[0]]));
+      for(const r of u)out[r]=v;
+    }
+    return out;
+  };
+  // Incluso fuera del dominio fiable del ray-cast (sol <3° aprox.) la
+  // consigna shadow-safe NO puede quedar fuera del rango ejecutable/solar.
+  // No se inventa una certificación de sombra a sol rasante: solo se conserva
+  // la restricción cinemático-óptica del accionamiento.
+  let a=clampUnits(seed);
+  if(zen>=87)return a;
+
+  a=repairNoShadeCore(zen,az,T,a,null,0,0,{strictShadow:true}).slice();
+  a=clampUnits(a);
   const judge=(ang)=>shadeBand3DAll(zen,az,T,ang,{noTerr:true,MV:mvPara(T,zen)});
-  const maxShade=(ang)=>{const sh=judge(ang);return sh.length?Math.max(...sh):0;};
-  // Si el buscador global no ha podido eliminar toda la sombra, no se compra
-  // "tangencia" a costa de empeorarla: se conserva la mejor postura encontrada.
-  if(maxShade(a)>ZERO)return a;
+  const score=(ang)=>{
+    const sh=judge(ang);
+    return {mx:sh.length?Math.max(...sh):0,sum:sh.reduce((x,v)=>x+v,0),sh:sh};
+  };
+  const better=(x,y)=>x.mx<y.mx-1e-12||(Math.abs(x.mx-y.mx)<=1e-12&&x.sum<y.sum-1e-12);
+  let curScore=score(a);
+
+  /* Si sombra cero no es alcanzable con la reparación local, no se abandona
+     con el primer residual. El gate B encontró dos casos de cresta/quiebro en
+     los que un θ uniforme ejecutable reducía mucho la peor sombra sin coste
+     energético. Shadow-Safe es lexicográfico: primero minimiza la peor sombra
+     inter-row; solo cuando es cero pasa a tangencia. Barrido jerárquico:
+     2,5° para cubrir TODO el rango, 0,5° y finalmente 0,1° alrededor del mejor.
+     Cada candidato se recorta con rangosUnidad, por lo que conserva θ común
+     por accionamiento y nunca usa la solución vacía de poner la pala de canto. */
+  if(curScore.mx>ZERO){
+    let best=a.slice(),bestScore=curScore,bestTh=null;
+    const hLo=Math.min(...RG.map(q=>q[0])),hHi=Math.max(...RG.map(q=>q[1]));
+    const uniform=(th)=>clampUnits(new Array(a.length).fill(th));
+    const scan=(lo,hi,step)=>{
+      for(let th=Math.ceil(lo/step)*step;th<=hi+1e-9;th+=step){
+        const cand=uniform(+th.toFixed(6)), sc=score(cand);
+        if(better(sc,bestScore)){best=cand;bestScore=sc;bestTh=th;}
+      }
+    };
+    scan(hLo,hHi,PASO_GRUESO_UNI);
+    if(bestTh!==null){
+      scan(Math.max(hLo,bestTh-PASO_GRUESO_UNI),
+           Math.min(hHi,bestTh+PASO_GRUESO_UNI),PASO_GRUESO);
+      // centro actualizado: toma el θ de la primera unidad, solo como semilla
+      // del último refinado; el candidato final sigue recortado por unidad.
+      bestTh=best[0];
+      scan(Math.max(hLo,bestTh-PASO_GRUESO),
+           Math.min(hHi,bestTh+PASO_GRUESO),RES);
+    }
+    a=best;curScore=bestScore;
+    if(curScore.mx>ZERO)return a;
+  }
+
   const units=T.groups?T.groups:a.map((_,r)=>[r]);
   const full=applyDrive(anglesAstro(zen,az,T),T.groups||null);
-  const RG=rangosUnidad(zen,az,T);
-  const gl=(ang)=>ang.reduce((s,th)=>s+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
+  const gl=(ang)=>ang.reduce((sum,th)=>sum+groundLightFrac(th,zen,az,T.gcr,T.axisAz),0);
   for(let sweep=0;sweep<6;sweep++){
     let changed=false;
     for(const u of units){
-      const r0=u[0], cur=a[r0];
+      const r0=u[0],cur=a[r0];
       let loR=-Infinity,hiR=Infinity;
       for(const r of u){loR=Math.max(loR,RG[r][0]);hiR=Math.min(hiR,RG[r][1]);}
       if(!(hiR>=loR))continue;
@@ -3776,10 +3831,10 @@ function anglesShadowSafeTangency(zen,az,T,seed){
       if(Math.abs(delta)<RES*0.5)continue;
       const trialAt=(f)=>{const b=a.slice(),v=cur+delta*f;for(const r of u)b[r]=v;return b;};
       let flo=0,fhi=1;
-      if(maxShade(trialAt(1))<=ZERO)flo=1;
+      if(score(trialAt(1)).mx<=ZERO)flo=1;
       else for(let it=0;it<18;it++){
         const fm=(flo+fhi)/2;
-        if(maxShade(trialAt(fm))<=ZERO)flo=fm; else fhi=fm;
+        if(score(trialAt(fm)).mx<=ZERO)flo=fm;else fhi=fm;
       }
       const vSafe=cur+delta*flo;
       let q=delta>0
@@ -3788,22 +3843,20 @@ function anglesShadowSafeTangency(zen,az,T,seed){
       q=Math.max(Math.min(q,Math.max(cur,target)),Math.min(cur,target));
       q=+q.toFixed(6);
       let cand=a.slice();for(const r of u)cand[r]=q;
-      if(maxShade(cand)>ZERO)continue;
-      // Cierra cualquier décima segura que la bisección+cuantización haya
-      // dejado disponible. Si todavía cabe 0,1° hacia el sol, NO ha terminado.
+      if(score(cand).mx>ZERO)continue;
       const dir=Math.sign(delta);
       while(dir&&Math.abs(target-q)>=RES-1e-9){
         const q2=+(q+dir*RES).toFixed(6);
         if((dir>0&&q2>target+1e-9)||(dir<0&&q2<target-1e-9))break;
         const c2=a.slice();for(const r of u)c2[r]=q2;
-        if(maxShade(c2)>ZERO)break;
+        if(score(c2).mx>ZERO)break;
         q=q2;cand=c2;
       }
       if(Math.abs(q-cur)>1e-9&&gl(cand)<=gl(a)+1e-12){a=cand;changed=true;}
     }
     if(!changed)break;
   }
-  return a;
+  return clampUnits(a);
 }
 
 function policyAngles(key,zen,az,T,irr,doy,albedo,prev){
