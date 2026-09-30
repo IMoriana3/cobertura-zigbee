@@ -93,14 +93,17 @@
   }
 
   function tableFor(samples){
-    const head='<tr><th>Motor</th><th>True tracking</th><th>BT2.5D</th><th>Shadow-Safe + Tangency</th><th>Estado</th></tr>';
+    const hasAC=samples.some(x=>x.theta_ac_optimal_deg!==null&&x.theta_ac_optimal_deg!==undefined);
+    const head='<tr><th>Motor</th><th>True tracking</th><th>BT2.5D</th><th>Shadow-Safe + Tangency</th>'+
+      '<th>POA-optimal</th>'+(hasAC?'<th>AC-optimal</th>':'')+'<th>Estado</th></tr>';
     const rows=samples.map(x=>'<tr><td>'+escapeHtml(x.asset_id)+'</td><td>'+num(x.theta_true_tracking_deg)+'°</td><td>'+
       num(x.theta_bt25d_deg)+'°</td><td>'+num(x.theta_shadow_safe_tangency_deg)+'°</td><td>'+
+      num(x.theta_poa_optimal_deg)+'°</td>'+(hasAC?'<td>'+num(x.theta_ac_optimal_deg)+'°</td>':'')+'<td>'+
       escapeHtml(x.search_status)+'</td></tr>').join('');
     return '<table>'+head+rows+'</table>';
   }
   function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function num(v){return Number(v).toFixed(1);}
+  function num(v){return Number.isFinite(Number(v))?Number(v).toFixed(1):'—';}
 
   function mount(document){
     if(!document||document.getElementById('bt-core-live')) return;
@@ -133,7 +136,9 @@
         document.getElementById('bt-core-table').innerHTML=tableFor(result.samples);
         state.textContent='core '+result.source_sha.slice(0,8)+' · '+result.samples.length+' resultado(s)';
         state.style.color='var(--ok)';
-        note.textContent='Resultado recibido del core. El visor canónico valida SHA256 y oculta el mirror mientras muestra esta referencia.';
+        const ac=result.algorithms&&result.algorithms.ac_optimal?' · AC-optimal incluido':' · AC-optimal no ejecutado (sin full_chain explícito)';
+        note.textContent='Resultado recibido del core · '+(result.weather_source||'irradiancia no declarada')+ac+
+          '. El visor canónico valida SHA256 y oculta el mirror mientras muestra esta referencia.';
         root.dispatchEvent(new CustomEvent('bt-canonical-load',{
           detail:{envelope:result.scene,label:'Resultado recalculado por SolarGPT'}
         }));
