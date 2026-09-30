@@ -9993,6 +9993,13 @@ function grInit(){
   grInit();
   loop3D();
 })();
+
+/* Adapter-only snapshot for the canonical A4 bridge. It exposes the exact
+   current UI inputs/terrain and the real-plant flag; it performs no physics. */
+window.BTCoreUISnapshot=()=>{
+  const c=cfg();
+  return {c:c,T:terrain(c),plantReal:PLANT_REAL};
+};
 </script>
 <script src="bt-canonical-results.js"></script>
 <script src="bt-core-live.js"></script>
