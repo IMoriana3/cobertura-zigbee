@@ -5,6 +5,7 @@
  */
 (function(root){
   'use strict';
+  const DEFAULT_ENDPOINT='http://127.0.0.1:8765/bt/validate';
 
   function fail(msg){ throw new Error(msg); }
   function finite(v){ return typeof v==='number' && Number.isFinite(v); }
@@ -110,7 +111,7 @@
     const pol=document.getElementById('polcard'); if(!pol)return;
     const card=document.createElement('section'); card.className='card'; card.id='bt-core-live';
     card.innerHTML='<h2>🧠 Core SolarGPT <span class="sn">A4 · cálculo canónico</span></h2>'+
-      '<div class="f"><label>Endpoint /bt/validate</label><input id="bt-core-url" value="http://127.0.0.1:8765/bt/validate"></div>'+
+      '<div class="f"><label>Endpoint /bt/validate</label><input id="bt-core-url" value="'+DEFAULT_ENDPOINT+'"></div>'+
       '<div class="f"><label>Diodos bypass por módulo · core</label><input id="bt-core-bypass" type="number" min="0" step="1" value="3"></div>'+
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
       '<button class="btn acc" id="bt-core-run">Recalcular este instante con el core</button>'+
@@ -152,7 +153,7 @@
     };
   }
 
-  const api={utcTimestamp,declaredBindings,unsupportedReason,buildRequest,requestCore,mount};
+  const api={DEFAULT_ENDPOINT,utcTimestamp,declaredBindings,unsupportedReason,buildRequest,requestCore,mount};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   root.BTCoreLive=api;
   if(typeof document!=='undefined'){
