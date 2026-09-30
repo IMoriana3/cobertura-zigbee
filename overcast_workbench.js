@@ -69,14 +69,14 @@ function mount(el,bridge){
     <p class="eng-note eng-status" data-e="status" role="status">70 % de días iniciales para ajuste; 30 % posteriores reservados. La selección no consulta la validación. Los días sintéticos sólo ensayan el método.</p>
     <div class="eng-table"><table data-e="ranking"></table></div><div class="eng-table"><table data-e="validation"></table></div>
   </details>
-  <details data-e="p1detail"><summary>Importar estudio 3D · P1</summary>
-    <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. Comparte el reloj de esta pantalla. El archivo declara su procedencia; esta importación no certifica los datos ni envía órdenes.</p>
-    <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Tracker del estudio<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
+  <details data-e="p1detail"><summary>Importar superficie 3D · P1</summary>
+    <p class="eng-note">P1 v2 trae, para cada instante y TCU, las alternativas θ→POA útil frontal y su evidencia de sombra 3D finita. El mismo supervisor causal decide sobre ellas; esta página no recalcula geometría. P1 v1 sigue siendo legible como evidencia retrospectiva.</p>
+    <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Activo / TCU<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
     <p class="eng-note" data-e="p1status">Sin datos de cotas e identidad: no se deducen del orden del dibujo.</p>
     <div class="eng-table"><table data-e="p1table"></table></div>
   </details>`;
   const $=id=>el.querySelector('[data-e="'+id+'"]');
-  let revision=0,busy=false,cancel=false,archive=null,study=null,p1=null,cached=null,lastClock=-1,heatSim=null;
+  let revision=0,busy=false,cancel=false,archive=null,study=null,p1=null,p1Replay=null,cached=null,lastClock=-1,heatSim=null;
   const keys=['enterGainW','exitLossW','confirmMin','dwellMin','nearOptimalW'];
   const config=()=>Object.fromEntries(keys.map(k=>[k,+$(k).value]));
   const limits=()=>({motorBudgetWh:$('motorBudget').value===''?Infinity:+$('motorBudget').value,maxMoves:$('maxMoves').value===''?Infinity:+$('maxMoves').value});
