@@ -2,9 +2,9 @@
  * Shared by the existing Overcast view and Node/batch adapters. */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.OvercastEngine=api;})(globalThis,function(){
   'use strict';
-  const VERSION='adaptive-supervisor-v1';
+  const VERSION='adaptive-supervisor-v2';
   const DEFAULTS=Object.freeze({enterGainW:4,exitLossW:2,confirmMin:10,dwellMin:20,nearOptimalW:2,ghiMin:50});
-  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia'});
+  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia',HARD_CONSTRAINT:'Una restricción superior de CONTROL bloquea la optimización difusa'});
   function config(input={}){
     const c={...DEFAULTS,...input};
     for(const k of Object.keys(DEFAULTS))if(!Number.isFinite(c[k])||c[k]<0)throw new Error('Parámetro inválido: '+k);
@@ -15,11 +15,20 @@
     return {step(q){
       if(!Number.isFinite(q.t)||q.t<=lastTime)throw new Error('El reloj de control debe crecer');lastTime=q.t;
       let reason='TRACKING',target=q.baseline;
+      if(q.locked===true){
+        // 05_CONTROL wins over the diffuse optimizer. A hard state (wind, hail,
+        // snow, battery or night) resets adaptive memory; after release the
+        // gain must be confirmed again instead of inheriting a stale cloud.
+        mode=false;pending=null;since=q.t;lastSwitch=q.t;
+        return {theta:q.baseline,flag:false,reason:'HARD_CONSTRAINT',mode:'locked',
+          gainW:0,pendingSince:null,fd:q.ghi>0?q.dhi/q.ghi:null,
+          locked:true,constraintSource:q.constraintSource||'hard_constraint'};
+      }
       const base=q.evaluate(q.baseline),cur=q.evaluate(q.current);
       const valid=q.valid!==false&&Number.isFinite(base.total)&&Number.isFinite(cur.total);
       const safeCurrent=q.admissible(q.current);
       let best={theta:q.baseline,total:base.total};
-      for(const p of q.candidates)if(p.safe&&Number.isFinite(p.total)&&p.total>best.total+1e-9)best=p;
+      for(const p of (q.candidates||[]))if(p.safe&&Number.isFinite(p.total)&&p.total>best.total+1e-9)best=p;
       const gain=best.total-base.total;
       const inactive=!valid||q.ghi<=c.ghiMin||!safeCurrent;
       if(inactive){
@@ -41,7 +50,7 @@
       }
       const arr=v=>Array.isArray(v)?v:[v],tt=arr(target),cc=arr(q.current);
       const flat=tt.every(v=>Math.abs(v)<.05),held=tt.length===cc.length&&tt.every((v,i)=>Math.abs(v-cc[i])<.05);
-      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null};
+      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null,locked:false,constraintSource:null};
     }};
   }
   function curve({min,max,step=.1,baseline,current,evaluate,admissible,nearOptimalW=2}){
