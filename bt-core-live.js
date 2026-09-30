@@ -46,7 +46,7 @@
     return null;
   }
 
-  function buildRequest(c,T,minuteLocal,plantReal){
+  function buildRequest(c,T,minuteLocal,plantReal,options){
     const why=unsupportedReason(c,T,plantReal);
     if(why) fail(why);
     const p=T.pairs[0];
@@ -70,7 +70,7 @@
       })),
       gcr:finite(Number(T.gcr))?Number(T.gcr):Number(T.cw)/Number(p.pitch),
       surface_to_axis_offset_m:Number(T.z0||0),
-      n_bypass_diodes:Number(T.nBypass||0),
+      n_bypass_diodes:Number((options&&options.nBypassDiodes)!=null?options.nBypassDiodes:3),
       row_length_m:Number(T.filaLen),
       row_asset_bindings:declaredBindings(Number(c.nrows),groups),
       identity_revision:'simulator-explicit-a4-v1',
@@ -111,6 +111,7 @@
     const card=document.createElement('section'); card.className='card'; card.id='bt-core-live';
     card.innerHTML='<h2>🧠 Core SolarGPT <span class="sn">A4 · cálculo canónico</span></h2>'+
       '<div class="f"><label>Endpoint /bt/validate</label><input id="bt-core-url" value="http://127.0.0.1:8765/bt/validate"></div>'+
+      '<div class="f"><label>Diodos bypass por módulo · core</label><input id="bt-core-bypass" type="number" min="0" step="1" value="3"></div>'+
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
       '<button class="btn acc" id="bt-core-run">Recalcular este instante con el core</button>'+
       '<span class="pill" id="bt-core-state">sin ejecutar</span></div>'+
@@ -119,7 +120,7 @@
     pol.before(card);
     const url=document.getElementById('bt-core-url');
     const query=new URLSearchParams(root.location&&root.location.search||'');
-    try{url.value=query.get('bt_core')||root.localStorage.getItem('BT_CORE_VALIDATE_URL')||'';}catch(e){url.value=query.get('bt_core')||'';}
+    try{url.value=query.get('bt_core')||root.localStorage.getItem('BT_CORE_VALIDATE_URL')||url.value;}catch(e){url.value=query.get('bt_core')||url.value;}
     url.onchange=()=>{try{root.localStorage.setItem('BT_CORE_VALIDATE_URL',url.value.trim());}catch(e){}};
     document.getElementById('bt-core-run').onclick=async()=>{
       const state=document.getElementById('bt-core-state'), note=document.getElementById('bt-core-note');
@@ -131,7 +132,9 @@
           const c=root.cfg(); snapshot={c:c,T:root.terrain(c),plantReal:null};
         }else fail('La UI del simulador no está inicializada.');
         const c=snapshot.c, T=snapshot.T, minute=Number(document.getElementById('hour').value);
-        const payload=buildRequest(c,T,minute,snapshot.plantReal||null);
+        const bypass=Number(document.getElementById('bt-core-bypass').value);
+        if(!Number.isInteger(bypass)||bypass<0) fail('Diodos bypass: entero >= 0.');
+        const payload=buildRequest(c,T,minute,snapshot.plantReal||null,{nBypassDiodes:bypass});
         const result=await requestCore(url.value,payload);
         document.getElementById('bt-core-table').innerHTML=tableFor(result.samples);
         state.textContent='core '+result.source_sha.slice(0,8)+' · '+result.samples.length+' resultado(s)';
