@@ -517,7 +517,9 @@ jobs:
       # Cruzado a mano: 32 pisos declarados, 31 envueltos, éste no. Ahora 32.
       - name: las políticas caras, sólo bajo demanda
         run: |
-          git fetch --no-tags --depth=1 origin main
+          # #770 is stacked on #767. Materialize that exact physics baseline;
+          # comparing against moving main would mix the A4 patch with its base.
+          git fetch --no-tags --depth=1 origin 5359501221c9243995f9f2c13a4fa9f580269b0c
           node tools/con_piso.mjs tools/test_caras_bajo_demanda.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
