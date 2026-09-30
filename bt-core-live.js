@@ -37,11 +37,7 @@
   function unsupportedReason(c,T,plantReal){
     if(plantReal) return 'La planta real usa geometría segmentada/as-built que A4-v1 todavía no serializa.';
     if(!T||!Array.isArray(T.pairs)||!T.pairs.length) return 'Terreno sin parejas explícitas.';
-    if(typeof root.terrainIsUniform==='function'&&!root.terrainIsUniform(T))
-      return 'El terreno no es uniforme; A4-v1 no lo aplana ni promedia.';
     const p=T.pairs[0];
-    if(!T.pairs.every(x=>Math.abs(x.slope-p.slope)<1e-10&&Math.abs(x.pitch-p.pitch)<1e-10&&Math.abs(x.axisTilt-p.axisTilt)<1e-10))
-      return 'Las parejas no comparten exactamente pendiente, pitch y tilt.';
     if(T.rotula) return 'El quiebro en rótula requiere geometría segmentada y queda fuera de A4-v1.';
     if(c.nsl!=='alineadas'||c.ntrk!==1)
       return 'La implantación axial no es una fila continua alineada; A4-v1 no la simplifica.';
@@ -67,6 +63,14 @@
       axis_azimuth_deg:Number(T.axisAz),
       axis_tilt_deg:Number(p.axisTilt),
       cross_axis_slope_deg:Number(p.slope),
+      pairs:T.pairs.map(x=>({
+        pitch_m:Number(x.pitch),
+        cross_axis_slope_deg:Number(x.slope),
+        axis_tilt_deg:Number(x.axisTilt)
+      })),
+      gcr:Number(T.gcr),
+      surface_to_axis_offset_m:Number(T.z0||0),
+      n_bypass_diodes:Number(T.nBypass||0),
       row_length_m:Number(T.filaLen),
       row_asset_bindings:declaredBindings(Number(c.nrows),groups),
       identity_revision:'simulator-explicit-a4-v1',
