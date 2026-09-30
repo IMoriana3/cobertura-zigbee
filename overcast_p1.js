@@ -67,7 +67,7 @@
             throw new Error("P1 v2: candidato inválido/no ordenado");
           prev=c.theta_deg;
           if(Math.abs(c.theta_deg-q.baseline_theta_deg)<1e-8)hasBaseline=true;
-          if(!finite(c.max_shadow_excess_fraction)||!Array.isArray(c.row_shadow_fraction)||!Array.isArray?false:false){}
+          if(!finite(c.max_shadow_excess_fraction)||!Array.isArray(c.row_shadow_fraction))throw new Error("P1 v2: evidencia de sombra inválida");
           if(c.safe&&c.max_shadow_excess_fraction>(p.candidate_config.shadow_excess_tol||0)+1e-9)
             throw new Error("P1 v2: candidato marcado safe con exceso de sombra");
         }
