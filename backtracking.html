@@ -3777,11 +3777,32 @@ function anglesShadowSafeTangency(zen,az,T,seed){
   a=repairNoShadeCore(zen,az,T,a,null,0,0,{strictShadow:true}).slice();
   a=clampUnits(a);
   const judge=(ang)=>shadeBand3DAll(zen,az,T,ang,{noTerr:true,MV:mvPara(T,zen)});
+  const judgePlanes=(ang)=>shadeBand3DAll(
+    zen,az,T,ang,{noTerr:true,noStruct:true,MV:mvPara(T,zen)});
   const score=(ang)=>{
-    const sh=judge(ang);
-    return {mx:sh.length?Math.max(...sh):0,sum:sh.reduce((x,v)=>x+v,0),sh:sh};
+    const sh=judge(ang), planes=judgePlanes(ang);
+    return {
+      mx:sh.length?Math.max(...sh):0,
+      sum:sh.reduce((x,v)=>x+v,0),
+      planeMx:planes.length?Math.max(...planes):0,
+      planeSum:planes.reduce((x,v)=>x+v,0),
+      sh:sh, planes:planes
+    };
   };
-  const better=(x,y)=>x.mx<y.mx-1e-12||(Math.abs(x.mx-y.mx)<=1e-12&&x.sum<y.sum-1e-12);
+  /* Shadow-Safe is lexicographic. If zero total inter-row shadow is not
+     reachable, module/collector-plane shadow has priority over short
+     structural pieces; only then minimise total inter-row shadow. This is
+     still a shadow objective: energy never votes here. The terrain sweep's
+     counterexample (crest + broken N-S profile, low sun) exposed the inverse
+     ordering: a candidate with far less module shade was being rejected
+     because structure dominated the aggregate max. */
+  const better=(x,y)=>{
+    for(const k of ['planeMx','planeSum','mx','sum']){
+      if(x[k]<y[k]-1e-12)return true;
+      if(x[k]>y[k]+1e-12)return false;
+    }
+    return false;
+  };
   let curScore=score(a);
 
   /* Si sombra cero no es alcanzable con la reparación local, no se abandona
