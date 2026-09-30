@@ -110,7 +110,7 @@
     const pol=document.getElementById('polcard'); if(!pol)return;
     const card=document.createElement('section'); card.className='card'; card.id='bt-core-live';
     card.innerHTML='<h2>🧠 Core SolarGPT <span class="sn">A4 · cálculo canónico</span></h2>'+
-      '<div class="f"><label>Endpoint /bt/validate</label><input id="bt-core-url" placeholder="http://127.0.0.1:8000/bt/validate"></div>'+
+      '<div class="f"><label>Endpoint /bt/validate</label><input id="bt-core-url" value="http://127.0.0.1:8765/bt/validate"></div>'+
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
       '<button class="btn acc" id="bt-core-run">Recalcular este instante con el core</button>'+
       '<span class="pill" id="bt-core-state">sin ejecutar</span></div>'+
