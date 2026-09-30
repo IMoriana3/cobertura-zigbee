@@ -189,6 +189,7 @@ const MATRIZ_SIN_MEDIR = [
   'test_informe_graf.mjs',
   'test_certificado_dia.mjs',
   'test_indicador_bt.mjs',
+  'BT A4 · UI → core canónico → escena',
   'test_overcast_vista.mjs',
   'test_equipos.mjs · El Burgo',
   'test_equipos.mjs · Ayora',
