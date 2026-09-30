@@ -68,7 +68,7 @@
         cross_axis_slope_deg:Number(x.slope),
         axis_tilt_deg:Number(x.axisTilt)
       })),
-      gcr:Number(T.gcr),
+      gcr:finite(Number(T.gcr))?Number(T.gcr):Number(T.cw)/Number(p.pitch),
       surface_to_axis_offset_m:Number(T.z0||0),
       n_bypass_diodes:Number(T.nBypass||0),
       row_length_m:Number(T.filaLen),
