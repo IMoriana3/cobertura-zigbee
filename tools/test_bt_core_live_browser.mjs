@@ -26,7 +26,11 @@ const response={
          global_optimum_proven:false,environment_included:false},
   input_hash:payload.input_hash,
   reference_digest:payload.reference_digest,
-  algorithms:{shadow_safe_tangency:payload.algorithm_id||'fixture'},
+  algorithms:{
+    shadow_safe_tangency:payload.algorithm_id||'fixture',
+    poa_optimal:'bt3d_poa_optimal_01deg',ac_optimal:null
+  },
+  weather_source:'core_ineichen_clearsky',
   samples:[{
     timestamp_utc:payload.frames[0].timestamp_utc,
     asset_id:payload.rows[0].asset_id,
@@ -37,6 +41,8 @@ const response={
     theta_bt25d_deg:-25.0,
     theta_shadow_safe_tangency_deg:
       payload.frames[0].receivers[0].theta_command_deg,
+    theta_poa_optimal_deg:-25.6,
+    theta_ac_optimal_deg:null,
     search_status:payload.frames[0].receivers[0].search_status,
     quality_flag:payload.frames[0].receivers[0].quality_flag
   }],
@@ -94,6 +100,9 @@ try{
     Number.isInteger(body.n_bypass_diodes));
   T('la respuesta se pinta por el consumidor canónico',
     await pg.locator('#bt-core-import table').count()===1);
+  const comparisonText=await pg.locator('#bt-core-table').textContent();
+  T('la comparación visible incluye POA-optimal recibido del core',
+    comparisonText.includes('POA-optimal')&&comparisonText.includes('-25.6°'));
   T('el modo canónico oculta el simulador-mirror mientras enseña la referencia',
     await pg.locator('#polcard').evaluate(e=>e.hidden||e.style.display==='none'));
   const state=await pg.locator('#bt-core-state').textContent();
