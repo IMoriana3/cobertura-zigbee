@@ -67,7 +67,7 @@ try{
     encodeURIComponent('http://core.test/bt/validate'),
     {waitUntil:'load'});
   await pg.waitForFunction(
-    ()=>window.DAY&&window.DAY.pol&&window.BTCoreLive&&window.BTCanonicalResults,
+    ()=>typeof DAY!=='undefined'&&DAY&&DAY.pol&&window.BTCoreLive&&window.BTCanonicalResults,
     null,{timeout:180000});
 
   T('el panel A4 está montado',await pg.locator('#bt-core-live').count()===1);
