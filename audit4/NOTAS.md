@@ -351,6 +351,49 @@ minutos él solo.
 
 ---
 
+## FASE 5 · CAMPO — DE VERIFICADO A VALIDADO SIN CAMPAÑA
+
+Página entera en **`audit4/FASE5_CAMPO.md`**. Sonda: `audit4/F5_campo.mjs` →
+`audit4/out/F5_campo.json`.
+
+| ítem | grado |
+|---|---|
+| 5.1 exactitud de seguimiento | **solo acotado** |
+| 5.2 pérdida por sombra medida | **NO DISPONIBLE** |
+| 5.3 `nb` medido | **NO DISPONIBLE** |
+| 5.4 eventos de alto contraste | **solo acotado** |
+| 5.5 el CSV de 3.798 puntos de El Burgo | **NO DISPONIBLE** |
+
+**El número que la fase aporta**: error de seguimiento del accionamiento en
+El Burgo/NCU12, 2026-08-07, seis TCU — **MAE 0,3831° · RMSE 0,4861° · P95
+0,9000° · máx 1,6000°**, sobre **2.219 muestras utilizables de 3.320** (6
+corruptas, 879 no-AUTO, 216 en posición de seguridad, 0 en alarma). Control de
+la exclusión: las apartadas por posición de seguridad dan MAE **6,5241°** y máx
+**95,9000°** — la exclusión excluye.
+
+Dos cosas que la cifra dice sola: el máximo de flota **cabe justo en banda
+muerta más adelanto** (1,0 + 1,0 = 2,0 > 1,6), y el **sesgo es negativo en las
+seis** TCU. Lo segundo puede ser holgura o retardo, y con un día **no se
+separa**: no se atribuye.
+
+**No sube a VALIDADO** porque el encoder mide el **accionamiento, no la mesa** —
+la misma geometría por mesa que la fase 4 encontró que el motor Python ni
+siquiera puede expresar.
+
+**5.2, 5.3 y 5.4 caen los tres por lo mismo**: no hay corriente por string en
+ningún dato registrado. Y eso está **medido**: 257 ficheros barridos, ocho
+patrones, cero aciertos, con control (`motor_current` sí aparece, en 7). La
+ruta que falta **no pasa por la NCU**, así que no es una descarga más: es una
+fuente nueva.
+
+**5.5** no está en el repo. Lo único que se puede aportar sin inventar rutas es
+una pista aritmética: `215 trackers − 4 tcuSinMesa = 211`, y **211 × 18 = 3.798
+exacto**. Quien lo busque tiene un criterio para reconocerlo —211 grupos de 18—
+en vez de 3.798 puntos sueltos. **No se reconstruye**: unas cotas sacadas del
+layout serían el plano, no la medida.
+
+---
+
 ## E-X1 · MIS ERRORES
 
 **19 · Conté menciones y las llamé llamadas.** El recuento programático de 1.2
@@ -403,3 +446,24 @@ que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
 versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
 que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
 cuánto añade el arreglo está **NO MEDIDO**.
+**29 · Un `return` donde iba un `continue`, y el barrido midió CERO ficheros.**
+La sonda de 5.2 recorre el repo buscando corriente de string; la primera
+entrada que no era un fichero de dato abortaba el recorrido **entero** del
+directorio. Resultado: `ficheros de dato barridos: 0` y «ningún patrón
+encontrado», que es exactamente la respuesta que yo esperaba — publicada por un
+instrumento que **no había mirado nada**.
+
+Lo cazó su propio control: `motor_current` tenía que aparecer y salió en 0
+ficheros. Sin ese control habría escrito `NO DISPONIBLE` con toda la razón del
+mundo y ninguna medida detrás. **La ausencia de señal no es señal**, y menos
+cuando confirma lo que uno ya creía.
+
+**30 · Y a la segunda, el barrido se encontró a sí mismo.** Arreglado el
+`return`, los ocho patrones dieron acierto… en `audit4/out/F5_campo.json`, que
+es la salida de la propia sonda y guarda **la lista de patrones que busca**.
+E-X1 19 otra vez —*el rastro no es la cosa*— con mi propia salida como rastro,
+por tercera vez en esta auditoría. Excluida la carpeta, con el motivo escrito.
+
+Que los dos fallos salieran en la misma sonda y en cinco minutos dice algo del
+método: el instrumento que va a decir «no hay nada» es **el que más control
+necesita**, porque su resultado es indistinguible del de un instrumento roto.
