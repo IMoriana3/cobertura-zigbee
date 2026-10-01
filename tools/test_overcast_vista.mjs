@@ -48,8 +48,25 @@ const errores = [];
 pg.on('pageerror', e => errores.push(String(e).slice(0, 200)));
 await pg.goto(BASE + '/overcast.html', { waitUntil: 'networkidle' });
 
-const initialUI=await pg.evaluate(()=>({hidden:$('configPanel').hidden,expanded:$('settingsToggle').getAttribute('aria-expanded'),top:$('view3d').getBoundingClientRect().top}));
-t('los ajustes no tapan la escena al abrir',()=>{eq(initialUI.hidden,true);eq(initialUI.expanded,'false');if(initialUI.top>280)throw new Error('escena demasiado abajo: '+initialUI.top);});
+const initialUI=await pg.evaluate(()=>({
+  hidden:$('configPanel').hidden,
+  expanded:$('settingsToggle').getAttribute('aria-expanded'),
+  top:$('view3d').getBoundingClientRect().top,
+  site:{
+    contextVisible:$('siteContext').getBoundingClientRect().height>0,
+    plantVisible:$('plant').getBoundingClientRect().height>0,
+    realVisible:$('realplant').getBoundingClientRect().height>0,
+    plantInConfig:$('configPanel').contains($('plant')),
+    realInConfig:$('configPanel').contains($('realplant')),
+    realOptions:$('realplant').options.length
+  }
+}));
+t('los ajustes no tapan la escena al abrir',()=>{eq(initialUI.hidden,true);eq(initialUI.expanded,'false');if(initialUI.top>390)throw new Error('escena demasiado abajo: '+initialUI.top);});
+t('emplazamiento y planta real siguen visibles aunque Configuración esté cerrada',()=>{
+  eq(initialUI.site.contextVisible,true);eq(initialUI.site.plantVisible,true);eq(initialUI.site.realVisible,true);
+  eq(initialUI.site.plantInConfig,false);eq(initialUI.site.realInConfig,false);
+  if(initialUI.site.realOptions<7)throw new Error('faltan plantas reales: '+initialUI.site.realOptions+' opciones');
+});
 async function revealControl(selector){
   if(await pg.locator('#configPanel').evaluate((el,selector)=>el.contains(document.querySelector(selector)),selector)){
     if(await pg.locator('#configPanel').evaluate(el=>el.hidden))await pg.click('#settingsToggle');
