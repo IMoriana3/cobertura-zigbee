@@ -27,10 +27,20 @@ function parseCSV(text,name){
 }
 function parseP1(text){
   const p=JSON.parse(text),n=p.timestamp&&p.timestamp.length,r=p.asset_ids&&p.asset_ids.length;
-  if(p.schema!=='overcast_p1_sequence_v1'||!n||!r||new Set(p.asset_ids).size!==r||p.asset_ids.some(a=>typeof a!=='string'||!a.trim())||p.operational!==false)throw new Error('Contrato P1 incompatible o identidades duplicadas.');
+  if(!n||!r||new Set(p.asset_ids).size!==r||p.asset_ids.some(a=>typeof a!=='string'||!a.trim())||p.operational!==false)throw new Error('Contrato P1 incompatible o identidades duplicadas.');
+  const t=p.timestamp.map(Date.parse);if(t.some((v,i)=>!Number.isFinite(v)||(i&&v<=t[i-1])))throw new Error('Reloj P1 no válido.');
+  if(p.schema==='overcast_p1_candidates_v2'){
+    if(!p.provenance||!p.grid||!Array.isArray(p.steps)||p.steps.length!==n)throw new Error('P1 v2 sin procedencia, grid o pasos.');
+    for(let i=0;i<n;i++){
+      const st=p.steps[i];if(st.timestamp!==p.timestamp[i]||!Array.isArray(st.candidates)||!st.candidates.length)throw new Error('Paso P1 v2 inválido.');
+      if(!Number.isInteger(st.baseline_candidate)||!st.candidates[st.baseline_candidate])throw new Error('Baseline P1 v2 inválida.');
+      for(const c of st.candidates)if(!Array.isArray(c.theta_by_asset_deg)||c.theta_by_asset_deg.length!==r||c.theta_by_asset_deg.some(v=>!Number.isFinite(v))||!Number.isFinite(c.poa_front_effective_w_m2)||typeof c.admissible!=='boolean')throw new Error('Candidato P1 v2 inválido.');
+    }
+    return p;
+  }
+  if(p.schema!=='overcast_p1_sequence_v1')throw new Error('Schema P1 no soportado.');
   const members=Object.values(p.tcu_groups||{}).flat();
   if(members.length!==r||new Set(members).size!==r||members.some(a=>!p.asset_ids.includes(a)))throw new Error('P1 sin partición TCU explícita y completa.');
-  const t=p.timestamp.map(Date.parse);if(t.some((v,i)=>!Number.isFinite(v)||(i&&v<=t[i-1])))throw new Error('Reloj P1 no válido.');
   for(const k of ['theta_exec_deg','theta_baseline_exec_deg','shadow_row_fraction','baseline_shadow_row_fraction'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(a=>!Array.isArray(a)||a.length!==r||a.some(v=>!Number.isFinite(v))))throw new Error('Matriz P1 inválida: '+k);
   for(const k of ['poa_effective_w_m2','poa_baseline_effective_w_m2'])if(!Array.isArray(p[k])||p[k].length!==n||p[k].some(v=>!Number.isFinite(v)))throw new Error('Serie P1 inválida: '+k);
   if(!p.provenance||!p.summary||!Number.isFinite(p.summary.poa_wh_m2)||!Number.isFinite(p.summary.baseline_wh_m2))throw new Error('P1 sin procedencia o resumen.');
@@ -79,7 +89,7 @@ function mount(el,bridge){
     <div class="eng-table"><table data-e="p1table"></table></div>
   </details>`;
   const $=id=>el.querySelector('[data-e="'+id+'"]');
-  let revision=0,busy=false,cancel=false,archive=null,study=null,p1=null,cached=null,lastClock=-1,heatSim=null;
+  let revision=0,busy=false,cancel=false,archive=null,study=null,p1=null,p1run=null,cached=null,lastClock=-1,heatSim=null;
   const keys=['enterGainW','exitLossW','confirmMin','dwellMin','nearOptimalW'];
   const config=()=>Object.fromEntries(keys.map(k=>[k,+$(k).value]));
   const limits=()=>({motorBudgetWh:$('motorBudget').value===''?Infinity:+$('motorBudget').value,maxMoves:$('maxMoves').value===''?Infinity:+$('maxMoves').value});
@@ -88,7 +98,9 @@ function mount(el,bridge){
     return {...q,...cached};}
   function quality(day){const q=day.quality.filter((_,i)=>day.zen[i]<90),counts={};for(const v of q)counts[v.source]=(counts[v.source]||0)+1;
     return {daylightMinutes:q.length*day.dtMin,missingMinutes:q.filter(v=>!v.valid).length*day.dtMin,dniCappedMinutes:q.filter(v=>v.dniCapped).length*day.dtMin,balanceWarningMinutes:q.filter(v=>v.balanceWarning).length*day.dtMin,sources:counts};}
+  function runP1(){if(!p1||p1.schema!=='overcast_p1_candidates_v2'){p1run=null;return;}const q=bridge.get();p1run=OvercastEngine.runCandidateSurface(p1,{...config(),slewDegS:q.loop&&q.loop.slewDegS});}
   function recomputed(){revision++;lastClock=-1;heatSim=null;cached=null;if(busy)cancel=true;
+    if(p1&&p1.schema==='overcast_p1_candidates_v2')runP1();
     const q=context();if(!q)return;const a=q.adaptive,b=q.baseline;
     $('scope').textContent=q.title+' · Perez + IAM y sombra en filas planas (1D). Objetivo frontal; trasera diagnóstica. Las cotas y vecinas reales requieren validación P1.';
     $('kpis').innerHTML=[['Ganancia del día',a?signed(100*(a.poaWh/b.poaWh-1),2)+' %':'—','POA frontal / baseline'],['Motor por TCU',a?f(a.motorWh,2)+' Wh':'—','baseline '+f(b.motorWh,2)+' Wh'],['Arranques',a?String(a.moves):'—','baseline '+b.moves],['Guarda de sombra',a?(a.violations?'Revisar':'Sin excesos 1D'):'—','Pendiente de validar en P1']].map(([x,y,z])=>'<div><small>'+x+'</small><b>'+y+'</b><small>'+z+'</small></div>').join('');
@@ -184,10 +196,17 @@ function mount(el,bridge){
   }
   function snapshot(){const q=context();if(!q)return null;const s=q.sim,r=s.res.adaptive;return {schema:'overcast_engineering_review_v1',version:q.version,engine:OvercastEngine.VERSION,site:{plant:q.plant,title:q.title,lat:q.cfg.lat,lon:q.cfg.lon},date:q.cfg.dateStr,inputs:{...q.cfg,om:q.cfg.om,diffuse:q.diffuse,loop:q.loop,motor:q.motor},quality:quality(s.dayF),geometry:{mode:'flat_rows_1d',finite3DValidated:false,rearInObjective:false},iam:OvercastEnergy.metadata,sign:'core positive east at axisAz=0; displayed TCU sign is opposite',daily:{timeMin:s.dayF.tmin,weather:s.dayF.irr,baseline:{theta:s.res.pvlib.execF,metrics:q.baseline},adaptive:r?{theta:r.execF,commands:r.theta,decisions:r.decisions,metrics:q.adaptive}:null},study,p1};}
   function drawP1(){if(!p1)return;const q=bridge.get(),t=Date.parse(q.cfg.dateStr+'T00:00:00Z')+(q.minute-q.cfg.tz*60)*60000,T=p1.timestamp.map(Date.parse);let i=-1;for(let k=0;k<T.length;k++)if(T[k]<=t)i=k;const span=T.length>1?T.at(-1)-T.at(-2):60000;
+    if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamp[0])+' → '+esc(p1.timestamp.at(-1))+'</td></tr>';return;}
+    const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0));
+    if(p1.schema==='overcast_p1_candidates_v2'){
+      if(!p1run)runP1();const step=p1.steps[i],dec=p1run.decisions[i],base=step.candidates[step.baseline_candidate],cur=dec.candidate,prov=p1.provenance||{};
+      $('p1status').textContent='P1 3D activo como evaluador de candidatos · '+(prov.shadow_judge||'juez no declarado')+' · '+(prov.geometry_source||'geometría no declarada')+' · IAM '+((prov.iam&&prov.iam.model)||'no declarado')+'. Objetivo: '+p1.objective+'. Trasera: '+((prov.rear&&prov.rear.status)||'no declarada')+'. Error máx de proyección al grid: '+f(p1run.maxProjectionErrorDeg,3)+'°.';
+      $('p1table').innerHTML='<tr><th>Activo</th><th>θ supervisor / baseline</th><th>POA útil candidato / baseline</th><th>Sombra máx / exceso</th><th>Decisión</th></tr><tr><td>'+esc(p1.asset_ids[a])+'</td><td>'+f(-cur.theta_by_asset_deg[a])+'° / '+f(-base.theta_by_asset_deg[a])+'°</td><td>'+f(cur.poa_front_effective_w_m2)+' / '+f(base.poa_front_effective_w_m2)+' W/m²</td><td>'+f(100*cur.shadow_max_fraction,2)+' % / '+f(100*cur.shadow_excess_max_fraction,3)+' pp</td><td>'+esc(OvercastEngine.REASONS[dec.reason]||dec.reason)+(dec.slewLimited?' · limitado por slew':'')+'</td></tr>';
+      return;
+    }
     const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
     $('p1status').textContent='Procedencia del archivo: '+p1.geometry_source+' · '+p1.engine+' · '+(site||'emplazamiento no declarado')+'. Ganancia integrada '+signed(p1.summary.poa_wh_m2-p1.summary.baseline_wh_m2,3)+' Wh/m². Excesos de sombra: '+p1.summary.shadow_excess_samples+'; transiciones sin candidato: '+p1.summary.no_admissible_transition_samples+'. '+(!match?'Este estudio corresponde a otra planta. ':'')+'La escena mantiene el escenario seleccionado; el expediente P1 conserva sus cotas y su propio cálculo.';
-    if(i<0||t>T.at(-1)+span){$('p1table').innerHTML='<tr><td>El reloj está fuera del intervalo importado: '+esc(p1.timestamp[0])+' → '+esc(p1.timestamp.at(-1))+'</td></tr>';return;}
-    const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0)),group=Object.entries(p1.tcu_groups||{}).find(([,ids])=>ids.includes(p1.asset_ids[a]));
+    const group=Object.entries(p1.tcu_groups||{}).find(([,ids])=>ids.includes(p1.asset_ids[a]));
     $('p1table').innerHTML='<tr><th>Activo / TCU</th><th>θ ejecutado / baseline · TCU</th><th>Sombra / baseline</th><th>POA útil planta / baseline</th></tr><tr><td>'+esc(p1.asset_ids[a])+' / '+esc(group?group[0]:'sin vínculo')+'</td><td>'+f(-p1.theta_exec_deg[i][a])+'° / '+f(-p1.theta_baseline_exec_deg[i][a])+'°</td><td>'+f(100*p1.shadow_row_fraction[i][a],2)+' % / '+f(100*p1.baseline_shadow_row_fraction[i][a],2)+' %</td><td>'+f(p1.poa_effective_w_m2[i])+' / '+f(p1.poa_baseline_effective_w_m2[i])+' W/m²</td></tr>';
   }
   function exportCSV(){const q=context();if(!q||!q.sim.res.adaptive)return;const s=q.sim,r=s.res.adaptive;const rows=['# '+q.version+' '+OvercastEngine.VERSION+'; flat_rows_1d; effective frontal POA; no P1 certification','minute,ghi,dni,dhi,theta_baseline_tcu,theta_executed_tcu,poa_baseline_effective_w_m2,poa_adaptive_effective_w_m2,reason,weather_source,weather_valid'];for(let i=0;i<s.dayF.n;i++){const w=s.dayF.irr[i],d=r.decisions[Math.min(r.decisions.length-1,Math.floor(i*s.dayF.dtMin/s.day.dtMin))];rows.push([s.dayF.tmin[i],w.ghi,w.dni,w.dhi,-s.res.pvlib.execF[i],-r.execF[i],q.baseline.effective[i],q.adaptive.effective[i],d.reason,s.dayF.quality[i].source,s.dayF.quality[i].valid].join(','));}bridge.download('overcast_decisiones_'+q.cfg.dateStr+'.csv',rows.join('\n'));}
@@ -200,7 +219,7 @@ function mount(el,bridge){
   $('apply').onclick=()=>{if(!study||!study.validation.passed)return;const w=study.winner;if(w.params)for(const k of keys)$(k).value=w.params[k];bridge.select(w.key);};
   $('export').onclick=()=>{const s=snapshot();if(s)bridge.download('overcast_estudio_'+s.date+'.json',JSON.stringify(s,null,2),'application/json');};$('csvout').onclick=exportCSV;
   $('csv').onchange=async()=>{try{const file=$('csv').files[0];if(!file)return;const om=parseCSV(await file.text(),file.name);archive=om;$('source').value='archive';bridge.importWeather(om);$('status').textContent=file.name+' · '+om.tms.length+' registros · resolución mediana '+om.resolutionMin+' min. Ajuste y validación usarán sólo días completos.';}catch(e){$('status').textContent=e.message;}};
-  $('p1file').onchange=async()=>{try{const file=$('p1file').files[0];if(!file)return;p1=parseP1(await file.text());$('p1asset').innerHTML=p1.asset_ids.map((id,i)=>'<option value="'+i+'">'+esc(id)+'</option>').join('');drawP1();}catch(e){$('p1status').textContent=e.message;}};$('p1asset').onchange=drawP1;
+  $('p1file').onchange=async()=>{try{const file=$('p1file').files[0];if(!file)return;p1=parseP1(await file.text());runP1();$('p1asset').innerHTML=p1.asset_ids.map((id,i)=>'<option value="'+i+'">'+esc(id)+'</option>').join('');drawP1();}catch(e){p1run=null;$('p1status').textContent=e.message;}};$('p1asset').onchange=drawP1;
   root.addEventListener('resize',()=>{lastClock=-1;heatSim=null;clock();});
   return {config,recomputed,clock,tune,snapshot,parseCSV,setWeatherArchive(om){archive=om;$('status').textContent='Archivo disponible: '+om.tms.length+' muestras · '+om.source;},getStudy:()=>study};
 }

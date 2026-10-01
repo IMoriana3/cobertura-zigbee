@@ -56,6 +56,42 @@
     const bands=[];for(const p of near){const last=bands[bands.length-1];if(last&&p.theta-last[1]<=step*1.01)last[1]=p.theta;else bands.push([p.theta,p.theta]);}
     return {points,best,nearBands:bands,stepDeg:step,nearOptimalW};
   }
+  function runCandidateSurface(pkg,input={}){
+    if(!pkg||pkg.schema!=='overcast_p1_candidates_v2'||!Array.isArray(pkg.steps)||!pkg.steps.length)throw new Error('Contrato P1 v2 incompatible');
+    const slewDegS=Number.isFinite(input.slewDegS)?input.slewDegS:.17,control=supervisor(input),out=[];
+    const arr=v=>Array.isArray(v)?v:[v],dist=(a,b)=>Math.max(...arr(a).map((v,i)=>Math.abs(v-arr(b)[i])));
+    let current=null,lastT=null,maxProjectionErrorDeg=0;
+    for(let i=0;i<pkg.steps.length;i++){
+      const step=pkg.steps[i],stamp=Date.parse(step.timestamp),all=step.candidates;
+      if(!Number.isFinite(stamp)||!Array.isArray(all)||!all.length)throw new Error('Paso P1 v2 inválido');
+      const base=all[step.baseline_candidate];
+      if(!base||!Array.isArray(base.theta_by_asset_deg))throw new Error('Baseline P1 v2 inválida');
+      if(current===null)current=base.theta_by_asset_deg.slice();
+      const nearest=[...all].sort((a,b)=>dist(a.theta_by_asset_deg,current)-dist(b.theta_by_asset_deg,current))[0];
+      maxProjectionErrorDeg=Math.max(maxProjectionErrorDeg,dist(nearest.theta_by_asset_deg,current));
+      current=nearest.theta_by_asset_deg.slice();
+      const lookup=theta=>[...all].sort((a,b)=>dist(a.theta_by_asset_deg,theta)-dist(b.theta_by_asset_deg,theta))[0];
+      const q={
+        t:stamp/60000,
+        baseline:base.theta_by_asset_deg,
+        current,
+        ghi:Number.isFinite(step.ghi)?step.ghi:100,
+        dhi:Number.isFinite(step.dhi)?step.dhi:0,
+        valid:step.valid!==false,
+        candidates:all.map(c=>({theta:c.theta_by_asset_deg,total:c.poa_front_effective_w_m2,safe:c.admissible!==false,source:c})),
+        evaluate:theta=>({total:lookup(theta).poa_front_effective_w_m2}),
+        admissible:theta=>lookup(theta).admissible!==false
+      };
+      const decision=control.step(q),dtSec=lastT===null?Infinity:Math.max(0,(stamp-lastT)/1000),reach=slewDegS*dtSec;
+      const safe=all.filter(c=>c.admissible!==false&&dist(c.theta_by_asset_deg,current)<=reach+1e-9);
+      const pool=safe.length?safe:[nearest];
+      pool.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
+      const actual=pool[0],limited=dist(actual.theta_by_asset_deg,decision.theta)>1e-8;
+      current=actual.theta_by_asset_deg.slice();lastT=stamp;
+      out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:actual,reason:limited?'SLEW_CANDIDATE':decision.reason,slewLimited:limited});
+    }
+    return {decisions:out,maxProjectionErrorDeg,objective:pkg.objective,provenance:pkg.provenance};
+  }
   function chronologicalSplit(days,fraction=.7){
     const sorted=[...days].sort((a,b)=>a.date.localeCompare(b.date));
     if(sorted.length<4)throw new Error('Se necesitan al menos cuatro días independientes');
@@ -75,5 +111,5 @@
     ranked.sort((a,b)=>b.summary.poaWh-a.summary.poaWh||a.summary.motorWh-b.summary.motorWh||a.id.localeCompare(b.id));
     return ranked[0]||null;
   }
-  return Object.freeze({VERSION,DEFAULTS,REASONS,config,supervisor,curve,chronologicalSplit,aggregate,selectConfiguration});
+  return Object.freeze({VERSION,DEFAULTS,REASONS,config,supervisor,runCandidateSurface,curve,chronologicalSplit,aggregate,selectConfiguration});
 });
