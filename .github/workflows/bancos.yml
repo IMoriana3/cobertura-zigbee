@@ -517,7 +517,9 @@ jobs:
       # Cruzado a mano: 32 pisos declarados, 31 envueltos, éste no. Ahora 32.
       - name: las políticas caras, sólo bajo demanda
         run: |
-          git fetch --no-tags --depth=1 origin main
+          # #770 is stacked on #767. Materialize that exact physics baseline;
+          # comparing against moving main would mix the A4 patch with its base.
+          git fetch --no-tags --depth=1 origin 5359501221c9243995f9f2c13a4fa9f580269b0c
           node tools/con_piso.mjs tools/test_caras_bajo_demanda.mjs
       # El signo de presentación (TH_DISP) decide con qué signo sale la consigna
       # que se manda al campo, y estaba escrito DOS veces como dos constantes
@@ -541,8 +543,6 @@ jobs:
       # por eso aquí va el 30); careo → 95,5 s.
       - name: consignas de campo y careo con producción
         run: node tools/con_piso.mjs tools/test_herramientas_campo.mjs
-      - name: simulador de backtracking
-        run: node tools/con_piso.mjs tools/test_backtracking_sim.mjs
       - name: producción por string
         run: node tools/con_piso.mjs tools/test_produccion.mjs
       - name: cableado
@@ -583,6 +583,30 @@ jobs:
       # sin haber mirado.
       - name: HSU contra la hoja (carea contra la toolbox de scada)
         run: node tools/con_piso.mjs tools/test_hsus_gw.mjs
+
+  # ── simulador BT pesado, aislado para que su coste no mate `datos` ─────────
+  #
+  # Medido en el HEAD de #770: el paso `test_backtracking_sim.mjs` seguía
+  # ejecutándose cuando el job `datos` alcanzó sus 30 min; no imprimió FAIL.
+  # Se aísla para que tenga su propio tope y para que un cuelgue diga exactamente
+  # qué banco fue. Sigue siendo obligatorio en `puerta`; no se relaja ni se salta.
+  backtracking_sim:
+    name: simulador de backtracking
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: simulador de backtracking
+        run: node tools/con_piso.mjs tools/test_backtracking_sim.mjs
+      - name: el banco no ha tocado el repo
+        run: |
+          if ! git diff --quiet; then
+            echo "El banco de backtracking ha modificado ficheros del repo:"
+            git diff --stat
+            exit 1
+          fi
 
   # ── el barrido de terrenos, que es el que BLOQUEA ─────────────────────────
   #
@@ -773,6 +797,7 @@ jobs:
           # MANDOS y no salidas de lazo. Con su control negativo —revertir el
           # predicado a posiciones tiene que ponerlo rojo— y sus dos tests nulos.
           - { banco: test_indicador_bt.mjs }
+          - { banco: test_bt_core_live_browser.mjs, nombre: 'BT A4 · UI → core canónico → escena' }
           # La vista de OVERCAST: que el estado del cielo se LEA de la irradiancia
           # que ya existe (DNI 0 · DHI = GHI · 100 % difusa), que la sombra de
           # nube se apague con manto cerrado en vez de estar en su maximo, que la
@@ -845,7 +870,7 @@ jobs:
     name: bancos en verde
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [nucleo, powershell, windows, datos, barrido, navegador]
+    needs: [nucleo, powershell, windows, datos, backtracking_sim, barrido, navegador]
     # `always()` para que el gate corra aunque un banco falle —si no, un rojo se
     # volvería invisible—, pero `!cancelled()` para que NO corra cuando la corrida
     # entera se ha cancelado. Sin ese segundo trozo, `cancel-in-progress` deja los
@@ -884,12 +909,14 @@ jobs:
                    "powershell ${{ needs.powershell.result }}" \
                    "windows ${{ needs.windows.result }}" \
                    "datos ${{ needs.datos.result }}" \
+                   "backtracking_sim ${{ needs.backtracking_sim.result }}" \
                    "barrido ${{ needs.barrido.result }}" \
                    "navegador ${{ needs.navegador.result }}"; do echo "$j"; done
           if [ "${{ needs.nucleo.result }}"    != "success" ] || \
              [ "${{ needs.powershell.result }}" != "success" ] || \
              [ "${{ needs.windows.result }}"   != "success" ] || \
              [ "${{ needs.datos.result }}"     != "success" ] || \
+             [ "${{ needs.backtracking_sim.result }}" != "success" ] || \
              [ "${{ needs.barrido.result }}"   != "success" ] || \
              [ "${{ needs.navegador.result }}" != "success" ]; then
             echo "::error::hay bancos que no han pasado"

@@ -11,10 +11,11 @@
  * `optfree` son el 71,0-99,7 % del coste del día en los 22 puntos del barrido.
  *
  * LO QUE ESTE BANCO PROTEGE, y cómo evita ser una comprobación vacía:
- *   1. La FÍSICA PURA no se toca: el bloque entre los delimitadores tiene que
- *      ser IDÉNTICO al de `origin/main`, byte a byte, con el sha256 publicado.
- *      Con su control: el corte tiene que contener física y NO contener la
- *      capa de aplicación, o no estaría cortando donde dice.
+ *   1. Esta rama A4 está apilada sobre #767. Toda la FÍSICA PURA debe seguir
+ *      idéntica a ESA base salvo `anglesShadowSafeTangency`, cuya corrección
+ *      de residual True-3D tiene sus propios barridos físicos. La excepción se
+ *      aplica por cuerpo de función, no por líneas/hunks, y un control negativo
+ *      muta otra función para demostrar que cualquier cambio adicional cae.
  *   2. El criterio de cara es una LISTA MEDIDA con su procedencia escrita, no
  *      una propiedad de la política. Con TEST NULO: la lista tiene que ser
  *      distinta de «las de cerebro NCU», o el cambio no cambia nada.
@@ -62,39 +63,53 @@ function cuerpoFn(src, nombre) {
   return null;
 }
 
+const BASE_FISICA_SHA='5359501221c9243995f9f2c13a4fa9f580269b0c';
+
+function sinCambioA4Permitido(block) {
+  const fn=cuerpoFn(block,'anglesShadowSafeTangency');
+  if(!fn)throw new Error('no encuentro anglesShadowSafeTangency en el bloque físico');
+  return block.replace(fn,'function anglesShadowSafeTangency(/* A4_CHANGE_AUDITED */){}')
+    .replace(/const VER='v[\\d.]+';/g,"const VER='__VERSION__';");
+}
+
 console.log('las políticas caras, sólo bajo demanda');
 
-// ── 1 · la física no se toca, y se demuestra ────────────────────────────────
-t('FÍSICA PURA idéntica byte a byte a la de `origin/main` (2.2: 0 hunks dentro)', () => {
+// ── 1 · física estable salvo la función A4 auditada ─────────────────────────
+t('FÍSICA PURA = base #767 salvo anglesShadowSafeTangency', () => {
   let base;
-  try { base = execFileSync('git', ['show', 'origin/main:backtracking.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
-  catch (e) { throw new Error('no puedo leer `origin/main:backtracking.html` para comparar: ' + e.message); }
-  const a = fisica(base), b = fisica(html);
-  if (!a || !b) throw new Error('los delimitadores FÍSICA PURA / FIN-FÍSICA no están');
-  /* CONTROL DEL CORTE: si cortara donde no debe, lo de arriba pasaría sin
-     comparar nada que importe */
-  if (!b.includes('function poaPlantSeg')) throw new Error('el corte no contiene física: no está cortando donde dice');
-  if (b.includes('function* grSeriesGen')) throw new Error('el corte se ha tragado la capa de aplicación');
-  /* LA ETIQUETA DE VERSIÓN VIVE DENTRO DE LOS DELIMITADORES, así que «0 hunks
-     dentro» es literalmente imposible para cualquier cambio que suba `VER`.
-     No se resuelve con un hash y una excepción a ciegas: se comparan las líneas
-     y se EXIGE que la única que difiera sea la de la versión, publicándola. Si
-     difiere cualquier otra cosa, esto sigue poniéndose rojo y la nombra. Mover
-     `const VER` fuera del bloque es una decisión del titular, no mía. */
-  if (a !== b) {
-    const A = a.split('\n'), B = b.split('\n');
-    if (A.length !== B.length)
-      throw new Error(`la física ha cambiado: ${A.length} → ${B.length} líneas · ${sha(a).slice(0, 16)} → ${sha(b).slice(0, 16)}`);
-    const dif = [];
-    for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) dif.push({ n: i + 1, antes: A[i].trim(), ahora: B[i].trim() });
-    const esVersion = (d) => /^const VER='v[\d.]+';$/.test(d.antes) && /^const VER='v[\d.]+';$/.test(d.ahora);
-    const reales = dif.filter(d => !esVersion(d));
-    if (reales.length)
-      throw new Error(`la física ha cambiado en ${reales.length} línea(s) que NO son la versión: ` +
-        reales.slice(0, 3).map(d => `${d.n}: «${d.antes}» → «${d.ahora}»`).join(' · '));
-    console.log(`      · la ÚNICA diferencia con main es la etiqueta de versión: ${dif.map(d => d.antes + ' → ' + d.ahora).join(', ')}`);
-  }
-  console.log(`      · ${b.length} caracteres · sha256 ${sha(b).slice(0, 16)}…`);
+  try { base = execFileSync('git', ['show', BASE_FISICA_SHA+':backtracking.html'],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
+  catch (e) { throw new Error('no puedo leer la base A4 fijada '+BASE_FISICA_SHA+': '+e.message); }
+  const a=fisica(base), b=fisica(html);
+  if(!a||!b)throw new Error('los delimitadores FÍSICA PURA / FIN-FÍSICA no están');
+  if(!b.includes('function poaPlantSeg'))
+    throw new Error('el corte no contiene física: no está cortando donde dice');
+  if(b.includes('function* grSeriesGen'))
+    throw new Error('el corte se ha tragado la capa de aplicación');
+  const fa=cuerpoFn(a,'anglesShadowSafeTangency');
+  const fb=cuerpoFn(b,'anglesShadowSafeTangency');
+  if(!fa||!fb)throw new Error('la función A4 permitida no existe en ambos árboles');
+  if(fa===fb)throw new Error('TEST NULO: la excepción A4 no distingue ningún cambio');
+  const na=sinCambioA4Permitido(a), nb=sinCambioA4Permitido(b);
+  if(na!==nb)
+    throw new Error('hay física modificada FUERA de anglesShadowSafeTangency: '+
+      sha(na).slice(0,16)+' → '+sha(nb).slice(0,16));
+  console.log('      · única excepción física: anglesShadowSafeTangency');
+  console.log('      · resto sellado: sha256 '+sha(nb).slice(0,16)+'…');
+});
+
+t('CONTROL NEGATIVO de la 1 · tocar otra función física sigue rojo', () => {
+  let base;
+  try { base = execFileSync('git', ['show', BASE_FISICA_SHA+':backtracking.html'],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
+  catch(e){throw new Error('no puedo leer la base fijada: '+e.message);}
+  const a=sinCambioA4Permitido(fisica(base));
+  const b0=fisica(html);
+  const fn=cuerpoFn(b0,'poaPlantSeg');
+  if(!fn)throw new Error('no encuentro poaPlantSeg para el control');
+  const mut=b0.replace(fn,fn.replace('{','{/* mutante fuera de A4 */'));
+  const b=sinCambioA4Permitido(mut);
+  if(a===b)throw new Error('una mutación fuera de la excepción sigue pareciendo idéntica');
 });
 
 // ── 2 · el criterio es una lista MEDIDA, no una propiedad ───────────────────
