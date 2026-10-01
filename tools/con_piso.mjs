@@ -88,6 +88,8 @@ const PISO = {
   'test_overcast_sim.mjs': 111,
   // 11 contratos de ingeniería + 4 contratos de importación, ejecutados.
   'test_overcast_engine.mjs': 15,
+  // P1 v2: parser, replay causal, sombra, huecos, rear guard y wiring del workbench.
+  'test_overcast_p1.mjs': 18,
   'test_modbus_map.mjs': 80,
   'test_paquete_medida.mjs': 65,
   'test_malla_real.mjs': 30,
