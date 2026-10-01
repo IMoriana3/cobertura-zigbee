@@ -403,3 +403,33 @@ que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
 versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
 que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
 cuánto añade el arreglo está **NO MEDIDO**.
+## ENCARGOS A, B y C · SOBRE LOS HALLAZGOS DE LA TANDA
+
+Los tres **acotan, no arreglan**, cada uno con su rama y su PR.
+
+**A — la divergencia JS↔Python es el signo del tilt N-S.** Páginas en
+`audit4/A_DIVERGENCIA_ASTRONOMICO.md`. Separando Δ_total, Δ_fórmula y Δ_signo
+sobre 129 valores de τ: peor Δ_fórmula **1,70·10⁻⁸°**, peor
+`|Δ_total − Δ_signo|` **2,58·10⁻⁹°**. `pvTilt` (`backtracking.html:606`) pasa
+**−τ**; `tracker3d.py:366` pasa **+τ**. Causa entera. El ajuste que identifica
+el término no es paramétrico: `Δ(τ) = |θ(−τ) − θ(+τ)|`, residuo 2,86·10⁻¹⁰°.
+**El acople por accionamiento ATENÚA 15,22°**; quien amplifica es el arccos.
+A.5 queda **NO IDENTIFICADO**. Y corrige mi propio careo: el 0,8157° de `astro`
+es un **suelo**, porque cuatro de los seis instantes sellados saturan.
+
+**B — los 1,996° eran el paso de integración.** Página en
+`audit4/B_PASO_DE_INTEGRACION.md`. Se **retira** el hallazgo de R3 como
+diferencia de ley. El paso no deja de importar en ningún punto del rango para
+las políticas con backtracking, y engordarlo **infla** la cifra: la página, a
+600 s, publica **+0,86 % a +1,13 %** frente al ciclo de 1 s. El periodo real de
+la TCU es **NO DISPONIBLE** en el mapa Modbus (medido: 325 registros, 7
+aciertos de «ciclo» y los siete del PWM del motor, con control).
+
+**C — la consigna cruda ya no gana.** Página en `audit4/C_CONSIGNA_CRUDA.md`.
+C.1 **refutada** (el mínimo cae en desfase 0 para los tres). C.2 lo explica: el
+registro 41061 se llama «Deadband when backtracking **is active**» y la casa la
+aplica **siempre**. Partiendo por esa señal, **el lazo de la página gana al
+mando crudo por un 35 %** en el régimen que le toca (0,3489° contra 0,5401°,
+banda 0,75°), y fuera del BT la mejor banda es 0,1°. La cifra agregada de la
+fase 3 era la media de dos regímenes que no se parecen, con el 87,1 % de las
+muestras llevando una banda que ahí no toca.
