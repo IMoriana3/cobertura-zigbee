@@ -159,13 +159,34 @@
 </header>
 
 <div class="wrap">
+  <section class="site-context card" id="siteContext" aria-label="Contexto del emplazamiento">
+    <div class="site-field">
+      <label for="plant">Emplazamiento</label>
+      <select id="plant" title="Emplazamiento de la cartera: fija las coordenadas del estudio.">
+        <option value="">— manual / coordenadas —</option>
+      </select>
+    </div>
+    <div class="site-field">
+      <label for="realplant">Planta real · 3D</label>
+      <select id="realplant" title="Carga el layout real del repo: seguidores, NCUs, latitud/longitud, huso y eje físico.">
+        <option value="">— escena sintética —</option>
+        <option value="elburgo">23003 · El Burgo (215 uds · 2 NCUs)</option>
+        <option value="fayon">24007 · Fayón (24 uds)</option>
+        <option value="sanjose">24019 · San José, Perú (2.289 uds · 21 NCUs)</option>
+        <option value="tunez">24021 · Túnez (19 uds)</option>
+        <option value="ayora">24025 · Ayora (751 uds · 16 NCUs)</option>
+        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · bifila · eje 23,7°)</option>
+        <option value="paramo">Páramo, León (396 uds · 4 NCUs)</option>
+      </select>
+    </div>
+    <div class="site-live" id="plantinfo" aria-live="polite"></div>
+    <div class="site-note" id="plantnote" style="display:none" role="status"></div>
+  </section>
 <div class="cols" id="appColumns">
 <div id="configPanel" hidden><!-- controles originales, fuera del lienzo -->
 
   <details class="card settings-group" open>
     <summary>Emplazamiento</summary>
-    <div class="f"><label>Planta (de la cartera)</label>
-      <select id="plant"><option value="">— manual —</option></select></div>
     <div class="two">
       <div class="f"><label>Latitud °</label><input id="lat" type="number" step="0.0001" value="41.5763"></div>
       <div class="f"><label>Longitud °</label><input id="lon" type="number" step="0.0001" value="-0.7981"></div>
@@ -272,7 +293,7 @@
   </details>
 
   <details class="card settings-group">
-    <summary>Zonas y planta real</summary>
+    <summary>Zonas / NCU</summary>
     <label class="pol" style="margin-bottom:8px"><input type="checkbox" id="zonalOn">
       <span><span class="nm">Activar el zonal</span>
       <span class="ds">Un frente cruza la planta: cada NCU ve el cielo con retardo y decide con SU
@@ -281,21 +302,6 @@
       <div class="f"><label>Nº NCUs (sintética)</label><input id="nncu" type="number" step="1" min="2" max="6" value="4"></div>
       <div class="f"><label>El frente cruza en (min)</label><input id="crossmin" type="number" step="5" min="0" max="240" value="45"></div>
     </div>
-    <div class="f"><label>Planta real (layout del repo)</label>
-      <select id="realplant" title="Carga el <planta>_layout.json: los seguidores y las NCUs REALES — las zonas del zonal son las NCUs de verdad, con el retardo del frente por la posición de cada centroide. Fija lat/lon y huso.">
-        <option value="">— sintética (N zonas equiespaciadas) —</option>
-        <option value="elburgo">23003 · El Burgo (215 uds · 2 NCUs)</option>
-        <option value="fayon">24007 · Fayón (24 uds)</option>
-        <option value="sanjose">24019 · San José, Perú (2.289 uds · 21 NCUs)</option>
-        <option value="tunez">24021 · Túnez (19 uds)</option>
-        <option value="ayora">24025 · Ayora (751 uds · 16 NCUs)</option>
-        <option value="bagnarelli">24030 · Bagnarelli, Italia (17 uds · bifila · eje 23,7°)</option>
-        <option value="paramo">Páramo, León (396 uds · 4 NCUs)</option>
-      </select></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
-      <span class="pill" id="plantinfo"></span>
-    </div>
-    <div class="nota" id="plantnote" style="display:none"></div>
     <div class="f" style="margin-bottom:8px"><label>Cielo de las zonas</label>
       <select id="zskymode">
         <option value="frente" selected>Un frente que cruza la planta (el cielo de planta, retardado)</option>
@@ -2790,7 +2796,7 @@ function runPhysicsQA(){
    pintarse, asi que no hay dos numeros que puedan discrepar. Lo que sigue
    haciendo falta al subir version es la FECHA y el HISTORIAL de la tarjeta —y
    eso ya no lo avisa ningun banco en rojo, hay que acordarse. */
-const VER='v1.35.0';
+const VER='v1.36.0';
 function $(id){return document.getElementById(id);}
 $('verlbl').textContent=VER;
 
