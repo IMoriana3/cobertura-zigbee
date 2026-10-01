@@ -351,6 +351,40 @@ minutos él solo.
 
 ---
 
+## FASE 3 · LOS DOS LAZOS — PREPARAR LA DECISIÓN, NO TOMARLA
+
+La página entera está en **`audit4/FASE3_LOS_DOS_LAZOS.md`**, que es lo que el
+encargo pedía: una página, dos opciones, evidencia y coste, **sin
+recomendación**. Solo documento; no se toca ningún lazo.
+
+Sondas: `audit4/F3_lazos.mjs` (descomposición), `audit4/F3_lazos_campo.mjs`
+(contra el eje medido), `audit4/F3_anual_lazos.mjs` (energía anual). Salidas en
+`audit4/out/F3_*.json`.
+
+**Lo que esta fase añade a lo que R3 dejó**, en tres líneas:
+
+1. **Los 1,996° no son dos leyes: son una ley muestreada a dos ritmos.** Con un
+   ciclo por tramo los dos lazos coinciden en **0 de 100** pasos con
+   diferencia, `|Δ|` máx **0,000000°**. El troceo en ciclos de 1 s con la
+   consigna rampada explica el **100,0 %**. La pregunta deja de ser «qué lazo»
+   y pasa a ser «a qué ritmo se simula el lazo».
+2. **Hay encoder, y el careo contra él NO es concluyente.** 2.213 pasos de seis
+   TCU reales: núcleo RMS 0,6847°, página 0,9215° — pero **la consigna cruda,
+   sin lazo ninguno, saca 0,4867°**. Un predictor trivial gana a los dos
+   modelos, así que la métrica no separa «modela la TCU» de «no modela nada».
+   Lo único que sí dice: el núcleo queda más cerca en **6 de 6** TCU.
+3. **El coste en energía está medido**: el lazo del núcleo produce menos en
+   **8 de 9** políticas, entre −0,096 % y −1,164 % anual. Y el control destapa
+   un tercer número que nadie había pedido: **el lazo, cualquiera de los dos,
+   cuesta hasta −2,43 %** frente al mando crudo.
+
+Queda **abierto** y declarado: esa cifra no se puede leer contra la de
+`backtracking.html:3313` («no cuesta energía»), porque las dos medidas no son
+comparables —5 min y un día allí, 10 min y doce meses aquí— y cuál es la
+condición de la planta **NO ESTÁ MEDIDO**.
+
+---
+
 ## E-X1 · MIS ERRORES
 
 **19 · Conté menciones y las llamé llamadas.** El recuento programático de 1.2
@@ -403,3 +437,15 @@ que la fase 1 destapó en #710 contra `main`: allí lo incomparable era la
 versión, aquí la máquina. Retirado en los dos sitios donde estaba escrito, y lo
 que queda es: el primer día de Ayora pasa de 300 s **con y sin** arreglo, y
 cuánto añade el arreglo está **NO MEDIDO**.
+**28 · Le di la banda muerta a un lazo y no al otro, y llamé al resultado una
+variante.** La sonda de 3.2 construye las variantes pasando parámetros al
+núcleo; la banda muerta la tienen **los dos** lazos, así que «banda muerta 0»
+medía el núcleo sin banda contra la página con la suya. Salía 1,000° y parecía
+un residuo interesante. Se cazó **leyendo el peor paso**: la página daba −46,5°
+con una consigna de −47,5°, o sea con su banda puesta. Corregido, la variante
+da 0/100 y 0,000000°, que es lo que la física decía que tenía que dar.
+
+Del mismo árbol que el 26: una cifra que no medía lo que su etiqueta decía. La
+diferencia es que aquí no me cazó una comprobación, me cazó mirar el dato
+crudo de al lado — que es el motivo de que las tablas de esta auditoría lleven
+siempre el peor caso con sus valores, y no solo la magnitud.

@@ -1,0 +1,110 @@
+{
+ "fuente": "tools/fixture_ncu12",
+ "ficheros": [
+  "TCU_001_2026-08-07.csv",
+  "TCU_002_2026-08-07.csv",
+  "TCU_003_2026-08-07.csv",
+  "TCU_004_2026-08-07.csv",
+  "TCU_005_2026-08-07.csv",
+  "TCU_006_2026-08-07.csv"
+ ],
+ "filas_total": 3326,
+ "filas_rotas": 6,
+ "bytes_nul": 1693,
+ "filas_legibles": 3314,
+ "excluidas_off_o_seguridad": 1095,
+ "pasos": 2213,
+ "tramos": 6,
+ "corte_hueco_s": 15,
+ "bloques": {
+  "TODO": {
+   "pasos": 2213,
+   "rms": {
+    "pagina": 0.9215328396287543,
+    "nucleo": 0.6846566839049046,
+    "quieto": 65.57552156459063,
+    "mando_crudo": 0.48667281543303664
+   },
+   "max": {
+    "pagina": 2.6000000000000014,
+    "nucleo": 2.414965986394563,
+    "quieto": 110.30000000000001,
+    "mando_crudo": 1.6000000000000014
+   }
+  },
+  "hueco ≤ 15 s": {
+   "pasos": 1802,
+   "rms": {
+    "pagina": 0.9007519364699609,
+    "nucleo": 0.6786578346925104,
+    "quieto": 66.15314703304078,
+    "mando_crudo": 0.4835817163206245
+   },
+   "max": {
+    "pagina": 2.0999999999999996,
+    "nucleo": 2.255099648300117,
+    "quieto": 110.30000000000001,
+    "mando_crudo": 1.6000000000000014
+   }
+  },
+  "hueco > 15 s": {
+   "pasos": 411,
+   "rms": {
+    "pagina": 1.0075988658452106,
+    "nucleo": 0.7103604888153021,
+    "quieto": 62.9804621540577,
+    "mando_crudo": 0.5000000000000008
+   },
+   "max": {
+    "pagina": 2.6000000000000014,
+    "nucleo": 2.414965986394563,
+    "quieto": 110.1,
+    "mando_crudo": 1.6000000000000014
+   }
+  }
+ },
+ "por_tcu": [
+  {
+   "tcu": "TCU_001_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 370,
+   "rms_pagina": 0.8340555429038599,
+   "rms_nucleo": 0.6895180417735024
+  },
+  {
+   "tcu": "TCU_002_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 369,
+   "rms_pagina": 0.7920163968629245,
+   "rms_nucleo": 0.6974420858047212
+  },
+  {
+   "tcu": "TCU_003_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 370,
+   "rms_pagina": 0.8989633669594871,
+   "rms_nucleo": 0.7140328509077016
+  },
+  {
+   "tcu": "TCU_004_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 370,
+   "rms_pagina": 0.9652754823141189,
+   "rms_nucleo": 0.6253113914247669
+  },
+  {
+   "tcu": "TCU_005_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 369,
+   "rms_pagina": 0.9843077712879678,
+   "rms_nucleo": 0.7252900169858271
+  },
+  {
+   "tcu": "TCU_006_2026-08-07.csv",
+   "tramos": 1,
+   "pasos": 365,
+   "rms_pagina": 1.0326186952902865,
+   "rms_nucleo": 0.6506568044842832
+  }
+ ]
+}
