@@ -24,6 +24,18 @@ const html = fs.readFileSync(path.join(ROOT, 'backtracking.html'), 'utf-8');
    siguiente `function`» ya ha fallado dos veces: primero se tragaba terrain()
    entera y saltaba por un `pitch:` ajeno, y luego el comentario de aplicaFicha.
    Un test que analiza el trozo equivocado no protege nada. */
+/* v1.79.0 · el tope del backtracking va tras el lazo, su salida se limita al
+   giro desde la posición de antes y el lazo aprende la posición final. Se sigue
+   el DATO: la variable que sale de `<lazo>.paso(` entra en el tope, lo que sale
+   del tope entra en el limitador de giro, y `<lazo>.fija(` recibe el resultado. */
+function tieneTopeTrasLazo(src, lazo, tope, limitador) {
+  const mL = new RegExp('(?:const|let)\\s+[^;]*?\\b([A-Za-z_$][\\w$]*)\\s*=\\s*' + lazo + '\\.paso\\(').exec(src);
+  if (!mL) return false;
+  const mT = new RegExp('\\b([A-Za-z_$][\\w$]*)\\s*=\\s*' + tope + '\\(g\\.zen,g\\.az,T,\\s*[A-Za-z_$][\\w$.]*\\s*,\\s*' + mL[1] + '\\s*\\)').exec(src);
+  if (!mT) return false;
+  if (!new RegExp('\\b' + mT[1] + '\\s*=\\s*' + limitador + '\\([^;]*\\b' + mT[1] + '\\b').test(src)) return false;
+  return new RegExp(lazo + '\\.fija\\(\\s*' + mT[1] + '\\s*\\)').test(src);
+}
 function cuerpoFn(src, nombre) {
   const i = src.indexOf('function ' + nombre + '(');
   if (i < 0) return null;
@@ -826,10 +838,20 @@ t('v1.61 · EL LAZO ENTERO: el deadband era la mitad que faltaba', () => {
      físicas según el usuario tenga encendida la segmentación o no — y eso no
      se ve en ninguna cifra de la pantalla. El tope se alimenta de la consigna
      y de la salida del lazo: eso es lo que se exige, no cómo se llamen. */
-  if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(app))
-    throw new Error('la rama por LÍNEA pasa por el lazo pero no por el tope del backtracking');
-  if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,\s*[A-Za-z_$][\w$]*\s*,\s*LZS\.paso\(/.test(app))
-    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking')
+  /* v1.79.0 · y lo que sale del tope GIRA COMO EL EJE PUEDE. El tope podía
+     devolver el mando crudo de la política (optfree: 69,3° en un paso de 5 min
+     con un actuador de 51°). Se exige, siguiendo el dato: el tope se alimenta
+     de la salida del lazo, su salida se limita al giro desde la posición
+     anterior, y el lazo se entera de dónde quedó el eje (`fija`). */
+  /* CONTROL: la forma de v1.78.1 —el tope recibe la salida del lazo y lo que
+     devuelve se publica tal cual— tiene que salir como que NO cumple */
+  if (tieneTopeTrasLazo('lim=topeBacktracking(g.zen,g.az,T,o.angles,LZ.paso(o.angles,STEP_MIN*60));', 'LZ', 'topeBacktracking', 'slewLimit') ||
+      tieneTopeTrasLazo('const lz=LZ.paso(o.angles,STEP_MIN*60);\nlim=topeBacktracking(g.zen,g.az,T,o.angles,lz);', 'LZ', 'topeBacktracking', 'slewLimit'))
+    throw new Error('CONTROL: el detector del tope tras el lazo acepta el código de v1.78.1: no protege');
+  if (!tieneTopeTrasLazo(app, 'LZ', 'topeBacktracking', 'slewLimit'))
+    throw new Error('la rama por LÍNEA pasa por el lazo pero no por el tope del backtracking con el giro limitado');
+  if (!tieneTopeTrasLazo(app, 'LZS', 'topeBacktrackingSeg', 'slewLimitSeg'))
+    throw new Error('la rama por MESA pasa por el lazo pero no por el tope del backtracking con el giro limitado')
 });
 
 t('v1.62 · LAS COORDENADAS SE PIDEN A SU FUENTE, Y CUANDO NO SE SABEN SE DICE', () => {
@@ -2591,10 +2613,19 @@ t('v1.37: el ÁNGULO sale de lo que la TCU cree; la SOMBRA, de la geometría rea
   if (!/poaPlant\(g\.zen,g\.az,T,lim,/.test(f))
     throw new Error('el contador no mide la geometría REAL: con el registro a 0 la sombra saldría por magia');
   // y los caminos de instante (el slider entre pasos de malla) no pueden usar
-  // otra creencia que la del día, o el arrastre saltaría entre dos políticas
-  for (const sitio of ['CAREO_A,g.zen,g.az,DAY.Tcfg||DAY.T', 'key,g.zen,g.az,DAY.Tcfg||DAY.T'])
-    if (!html.includes('policyAngles(' + sitio))
-      throw new Error('un camino de instante sigue calculando el ángulo con la geometría real');
+  // otra creencia que la del día, o el arrastre saltaría entre dos políticas.
+  // v1.79.0: ya no calculan el ángulo — interpolan lo que el día PUBLICÓ (que
+  // sale de Tcfg). Se exige eso: que no llamen a la política y que lean la malla.
+  for (const fn of ['sceneInstant', 'careoGhostInstant']) {
+    const cu = cuerpoFn(html, fn);
+    if (!cu) throw new Error('no existe `' + fn + '`');
+    const sinManual = fn === 'sceneInstant' ? cu.slice(cu.indexOf('const m=+$(\'hour\').value;\n  if(m%STEP_MIN===0)')) : cu;
+    if (sinManual.length < 200) throw new Error('el corte de ' + fn + ' sin el mando manual está vacío (control)');
+    if (/policyAngles\(|segCmd\(/.test(sinManual))
+      throw new Error('un camino de instante sigue calculando el ángulo por su cuenta (' + fn + ')');
+    if (!/interpMalla\(/.test(sinManual))
+      throw new Error(fn + ' no lee la malla publicada: el arrastre no enseña lo que el día calculó');
+  }
   if (!/const c=cfg\(\), T=terrain\(c\), Tcfg=terrainTCU\(c,T\);/.test(html))
     throw new Error('la tabla anual no separa creencia de geometría');
 });
@@ -2661,10 +2692,15 @@ t('v1.53.3: los optimizadores enseñan la FÍSICA del minuto pedido con la consi
   // que hace un TCU con consigna cada 5 min) y la física es la del minuto.
   if (/if\(key==='optimal'\|\|key==='optfree'\)return null;/.test(html))
     throw new Error('sceneInstant vuelve a devolver null para los optimizadores: el HUD miente la hora');
-  if (!/held:held\?DAY\.times\[tIdx\]:null/.test(html))
-    throw new Error('el instante no declara la consigna mantenida (held)');
-  if (!/consigna de las '\+hhmm\(INSTANT\.held\)/.test(html))
-    throw new Error('el HUD ya no dice de qué muestra de la malla es la consigna');
+  /* v1.79.0 · mantener la consigna cuatro minutos y saltar en el quinto era
+     girar 51° en un minuto (reportado por el titular, «Óptimo libre» a las
+     22:04-22:05). La física sigue siendo la del minuto pedido; el θ es el que
+     el eje TIENE en ese minuto: la recta entre las dos posiciones publicadas. */
+  const si = cuerpoFn(html, 'sceneInstant');
+  if (!si || !/interpMalla\(PK\.ang,m\)/.test(si))
+    throw new Error('sceneInstant no enseña la posición interpolada entre muestras: el HUD salta de muestra en muestra');
+  if (/const held=\(key==='optimal'\|\|key==='optfree'\)/.test(si))
+    throw new Error('los optimizadores vuelven a mantener la consigna y saltar en el último minuto');
 });
 
 t('v1.39: si falta sol.js la página lo DICE, no muere en blanco', () => {
@@ -3249,15 +3285,18 @@ console.log('v1.42 · el mando por mesa en la UI y en las consignas');
     /* y el TOPE del backtracking en las dos ramas del cuerpo del día — lo que
        main exigía con el literal `topeBacktrackingSeg(g.zen,g.az,T,segN,`, dicho
        sin atarse al nombre de la variable */
-    if (!/lim=topeBacktracking\(g\.zen,g\.az,T,o\.angles,LZ\.paso\(/.test(dayFn))
+    if (!tieneTopeTrasLazo(dayFn, 'LZ', 'topeBacktracking', 'slewLimit'))
       throw new Error('el cuerpo del día: la rama por LÍNEA sin el tope del backtracking');
-    if (!/topeBacktrackingSeg\(g\.zen,g\.az,T,\s*[A-Za-z_$][\w$]*\s*,\s*LZS\.paso\(/.test(dayFn))
+    if (!tieneTopeTrasLazo(dayFn, 'LZS', 'topeBacktrackingSeg', 'slewLimitSeg'))
       throw new Error('el cuerpo del día: la rama por MESA sin el tope del backtracking');
     // la política llega como `P.key` o como `key` según quién drene el cuerpo:
     // lo que se exige es que sea la política, no el nombre de su variable
     if (!/segCmd\((?:P\.)?key,/.test(dayFn)) throw new Error('el cuerpo del día no manda por mesa con la política');
     const inst = ui.slice(ui.indexOf('function sceneInstant'), ui.indexOf('function btActiveAt'));
-    for (const lit of ['segOn(DAY.T)&&PK.segAng', 'slewLimitSeg(PK.segAng[tIdx]', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
+    /* v1.79.0: entre muestras la escena ya no va con `slewLimitSeg` hacia la
+       consigna del minuto —eso era girar 51° en un minuto al ponerse el sol—
+       sino por la recta entre las dos posiciones POR MESA publicadas */
+    for (const lit of ['segOn(DAY.T)&&PK.segAng', 'interpMalla(PK.segAng,m)', 'poaPlantSeg(g.zen,g.az,DAY.T,ls'])
       if (!inst.includes(lit)) throw new Error('sceneInstant sin «' + lit + '»');
     /* v1.76: el mando por mesa ya no son dos políticas escritas a mano en el
        `if` —`optimal` y `optfree` entraron en R4 fase 1— así que exigir el
