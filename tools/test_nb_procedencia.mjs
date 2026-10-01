@@ -26,12 +26,21 @@ const T = (n, c, d) => { if (c) { ok++; console.log('  ✓ ' + n + (d ? '   ' + 
 /* ── el dato, de verdad, no está ────────────────────────────────────────── */
 const PATRONES = ['bypass','by-pass','subcaden','sub-caden','diodo','diode',
                   'modulo_v','mod_v','n_bp','nbp','celul','half-cell','media celda'];
-const datos = [];
+const datos = [], canon = [];
+/* `canon/` NO ES DATO DE PLANTA, y por eso sale del barrido — con su motivo y
+   con su propio control tres líneas más abajo. Ahí viven el contrato del
+   backtracking (R4 4.2) y los vectores de referencia congelados (4.3): el
+   contrato ESTÁ OBLIGADO a nombrar `nb` y su procedencia, que es justo lo que
+   este banco existe para que se declare, y los vectores llevan `nBypass` como
+   parámetro del motor. Encontrar «bypass» ahí no es que una ficha de planta
+   traiga el recuento de subcadenas: es el contrato haciendo su trabajo.
+   Sin esta separación el banco se ponía rojo por el PR que AÑADE la
+   declaración que el banco pide. */
 (function anda(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
   if (e.name === '.git' || e.name === 'node_modules' || e.name === 'out') continue;
   const f = path.join(d, e.name);
   if (e.isDirectory()) anda(f);
-  else if (/\.(json|csv|geojson)$/i.test(e.name)) datos.push(f);
+  else if (/\.(json|csv|geojson)$/i.test(e.name)) (path.relative(ROOT, f).startsWith('canon' + path.sep) ? canon : datos).push(f);
 } })(ROOT);
 /* TEST NULO del barrido: si no encontrara ficheros, el «no está» no diría nada */
 T('el barrido encuentra ficheros de datos que mirar', datos.length > 20, datos.length + ' ficheros');
@@ -43,6 +52,22 @@ for (const f of datos) { let t; try { t = fs.readFileSync(f, 'utf-8').toLowerCas
 const control = datos.filter(f => { try { return fs.readFileSync(f, 'utf-8').toLowerCase().includes('panelwidth'); } catch { return false; } });
 T('CONTROL · el barrido no está ciego: «panelwidth» sí aparece', control.length > 0,
   control.length + ' fichero(s)');
+/* EL CONTROL DE LA EXCLUSIÓN, para que no sea una puerta trasera. Una carpeta
+   que se saca del barrido tiene que demostrar que es lo que dice ser: en
+   `canon/` puede aparecer el PARÁMETRO del motor (`nBypass`) y la PROCEDENCIA
+   declarada, pero NO un recuento de subcadenas de una planta — que es el dato
+   cuya ausencia este banco certifica. Si algún día alguien mete una ficha de
+   planta ahí para esquivar el barrido, esto se pone rojo. */
+{
+  const txt = canon.map(f => { try { return fs.readFileSync(f, 'utf-8').toLowerCase(); } catch { return ''; } });
+  const conSub = canon.filter((f, i) => /subcaden|sub-caden/.test(txt[i])).map(f => path.relative(ROOT, f));
+  T('CONTROL de la exclusión · `canon/` no esconde ningún recuento de subcadenas',
+    conSub.length === 0, canon.length + ' ficheros mirados' + (conSub.length ? ' · ' + conSub.join(', ') : ''));
+  const contrato = canon.findIndex(f => /backtracking\.contrato\.json$/.test(f));
+  T('CONTROL de la exclusión · el contrato SÍ declara la procedencia de `nb`',
+    contrato >= 0 && /"?nb"?/.test(txt[contrato]) && /procedencia|fuente|origen/.test(txt[contrato]),
+    contrato >= 0 ? path.relative(ROOT, canon[contrato]) : 'NO ESTÁ el contrato');
+}
 const reales = Object.entries(aciertos).filter(([p, fs_]) => p !== 'subcaden' || fs_.some(x => !/elburgo_layout/.test(x)));
 T('ninguna ficha de planta trae el recuento de subcadenas',
   reales.length === 0,
