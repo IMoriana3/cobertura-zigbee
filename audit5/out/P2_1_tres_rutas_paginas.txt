@@ -1,0 +1,24 @@
+REFUNDACIÓN · 2.1 · las tres rutas anuales · v1.81.0 · genérica 10 filas, pendiente 4° · kWh/m²·año (páginas) · 12 días × 10 min
+TEST NULO: botón con el lazo DESARMADO = informe(cc=0) (|rel| ≤ 1e-12) en 9 de 9 políticas ✓ (la única diferencia entre las dos es el lazo)
+
+ política   botón (lazo, claro)  informe cc=0   LAZO (botón−inf0)   informe cc=0,3   CIELO 0,3   informe cc=0,6   CIELO 0,6
+  astro        2543.2827     2543.9374    -0.026 %     1748.4720    -31.27 %     1115.1367    -56.16 %
+  global       2561.0775     2606.6096    -1.747 %     1774.0299    -31.94 %     1127.5733    -56.74 %
+  row          2561.0775     2606.6096    -1.747 %     1774.0299    -31.94 %     1127.5733    -56.74 %
+  bt2d         2525.6557     2524.1392     0.060 %     1742.6896    -30.96 %     1120.3839    -55.61 %
+  pairwise     2561.0767     2606.6089    -1.747 %     1774.0293    -31.94 %     1127.5737    -56.74 %
+  true3d       2561.0767     2606.6089    -1.747 %     1774.0293    -31.94 %     1127.5737    -56.74 %
+  mgl          2561.5503     2537.8763     0.933 %     1750.4380    -31.03 %     1123.1480    -55.74 %
+  optimal      2580.9887     2618.1172    -1.418 %     1777.4177    -32.11 %     1127.5955    -56.93 %
+  optfree      2582.1731     2620.3465    -1.457 %     1778.3871    -32.13 %     1127.7732    -56.96 %
+
+GANANCIA sobre astro, por ruta (lo único comparable con anual_motor):
+  global    botón 0.700 % · informe(0) 2.464 % · informe(0,6) 1.115 %
+  row       botón 0.700 % · informe(0) 2.464 % · informe(0,6) 1.115 %
+  bt2d      botón -0.693 % · informe(0) -0.778 % · informe(0,6) 0.471 %
+  pairwise  botón 0.700 % · informe(0) 2.464 % · informe(0,6) 1.115 %
+  true3d    botón 0.700 % · informe(0) 2.464 % · informe(0,6) 1.115 %
+  mgl       botón 0.718 % · informe(0) -0.238 % · informe(0,6) 0.718 %
+  optimal   botón 1.483 % · informe(0) 2.916 % · informe(0,6) 1.117 %
+  optfree   botón 1.529 % · informe(0) 3.004 % · informe(0,6) 1.133 %
+coste páginas 459 s · carga 10.0/9.3/9.4 (máquina OCUPADA: no es una medida de tiempo)

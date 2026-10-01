@@ -529,7 +529,7 @@
    publica el certificador, que está dentro de este bloque, y la QA lo extrae y
    lo corre en Node sin la aplicación. Declarada fuera, el sello no podría
    leerla y volvería al literal. */
-const VER='v1.78.1';
+const VER='v1.82.0';
 const RAD=Math.PI/180, DEG=180/Math.PI;
 
 /* ── posición solar NOAA — vive en `sol.js` ──────────────────────────────────
@@ -7587,13 +7587,29 @@ function fillDayTable(){
 }
 
 /* ── estimación anual ── */
-$('yearbtn').onclick=()=>{
-  const c=cfg(), T=terrain(c), Tcfg=terrainTCU(c,T);
+/* ══ LA RUTA ANUAL, UNA SOLA (refundación del BT, paso 2) ══════════════════
+   Hasta v1.81 había tres: el botón del año (CON lazo, cielo claro), el informe
+   gráfico `grAnualGen` (SIN lazo y con las nubes del deslizador) y
+   `tools/anual_motor.mjs` (otro motor). Medido (audit5/REFUNDACION_P2.md,
+   genérica, 12 días): la única diferencia entre las dos de la página era el
+   lazo —con el lazo desarmado dan lo mismo— y el informe publicaba para
+   `pairwise` una ganancia sobre `astro` de +2,46 % donde el botón decía
+   +0,70 %. Y las nubes del informe contradecían al propio deslizador, que
+   declara: «Cobertura nubosa del DÍA simulado… La tabla ANUAL sigue siendo
+   cielo claro y lo declara».
+   SOBREVIVE LA DEL BOTÓN: CON lazo (la doctrina de v1.71: se publica lo que la
+   planta ejecuta, no lo que pide), CIELO CLARO (lo que el deslizador declara) y
+   la RAMA POR MESA (paso 1). Las dos vistas la CONSUMEN: el botón la drena de
+   una vez y el informe con `yield*`, para seguir viva la página mientras
+   calcula. Ninguna de las dos calcula por su cuenta. Devuelve la energía de
+   cada día representativo (kWh/m² y W/m² medios, para las curvas del informe)
+   y el total del año ponderado por los días de cada mes. */
+function* anualGen(c,T,Tcfg,POLS){
   const days=['01-21','02-21','03-21','04-21','05-21','06-21','07-21','08-21','09-21','10-21','11-21','12-21'];
   const DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
   const year=c.date.slice(0,4);
-  const tot={};
-  for(const P of POLICIES){if(P.on)tot[P.key]=0;}
+  const mes={}, tot={};
+  for(const P of POLS){mes[P.key]=[];tot[P.key]=0;}
   /* v1.71 · EL ANUAL PASA POR EL LAZO, como el día. Antes sumaba la consigna que
      la política PIDE —`policyAngles` y a sumar—, sin banda muerta y sin velocidad
      de actuador, así que publicaba lo que la planta pediría y no lo que ejecuta.
@@ -7619,21 +7635,53 @@ $('yearbtn').onclick=()=>{
 
      EL PASO ES 10 MIN, y el bucle y su ponderación lo dicen los dos. */
   const PASO_ANUAL_MIN=10;
+  /* REFUNDACIÓN · PASO 1 · EL ANUAL CONSUME LA RAMA POR MESA, como el día.
+     Con mesas (`segOn(T)`), el mando sale de `segCmd` —la ÚNICA fuente del
+     mando por mesa, la misma que usa la serie del día—, pasa por un lazo POR
+     MESA y se mide con `poaPlantSeg`. Así, las cuatro de `POL_POR_MESA` deciden
+     por mesa y el resto (`global`, `bt2d`, `row`, `true3d`, `mgl`) reparte a sus
+     mesas el ángulo de su línea, que en `global` y `bt2d` ES la política: un
+     ángulo. Antes el anual decidía POR LÍNEA con `policyAngles` y medía con
+     `poaPlant`, y la ruta por línea acopla las DOS LÍNEAS ENTERAS de cada grupo
+     (`driveCoupleSafe`), cuando el motor real mueve cuatro mesas: en Ayora eso
+     es el 95,1 % de un hueco del 20,03 % (audit5/REFUNDACION_P1.md).
+     SE ELIGE POR CORRECCIÓN, NO POR COSTE: en `pairwise` la cadena por mesa
+     tarda 0,45× la de línea, pero en `optfree` 1,41× (medido en R4 P1).
+     Sin mesas, todo sigue como antes. */
+  const segA=segOn(T);
+  const pasosDia=1440/PASO_ANUAL_MIN;
   for(let mo=0;mo<12;mo++){
     const ds=year+'-'+days[mo], doy=doyOf(ds);
-    const LZ={}; for(const P of POLICIES)if(P.on)LZ[P.key]=crearLazo();
+    const LZ={}, acc={}, sum={}, nn={};
+    for(const P of POLS){LZ[P.key]=segA?crearLazoSeg():crearLazo();acc[P.key]=0;sum[P.key]=0;nn[P.key]=0;}
     for(let m=0;m<1440;m+=PASO_ANUAL_MIN){
       const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
-      if(g.elev<=0)continue;
-      const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
-      for(const P of POLICIES){
-        if(!P.on)continue;
-        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
-        const lim=LZ[P.key].paso(a,PASO_ANUAL_MIN*60);
-        tot[P.key]+=poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo).plant*(PASO_ANUAL_MIN/60)/1000*DIM[mo];
+      if(g.elev>0){
+        const irr=clearskyIneichen(g.zen,doy,c.alt,c.tl);
+        for(const P of POLS){
+          const a=segA?segCmd(P.key,g.zen,g.az,Tcfg,T,irr,doy,c.albedo):policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
+          const lim=LZ[P.key].paso(a,PASO_ANUAL_MIN*60);
+          const p=(segA?poaPlantSeg(g.zen,g.az,T,lim,irr,doy,c.albedo):poaPlant(g.zen,g.az,T,lim,irr,doy,c.albedo)).plant;
+          acc[P.key]+=p*(PASO_ANUAL_MIN/60)/1000;   // kWh/m² del día representativo
+          sum[P.key]+=p; nn[P.key]++;               // media en W/m² sobre los instantes con sol
+        }
       }
+      yield (mo*pasosDia+m/PASO_ANUAL_MIN)/(12*pasosDia);
+    }
+    for(const P of POLS){
+      mes[P.key].push({kwh:acc[P.key],wm2:nn[P.key]?sum[P.key]/nn[P.key]:0});
+      tot[P.key]+=acc[P.key]*DIM[mo];
     }
   }
+  return {mes:mes,tot:tot};
+}
+/* drena un generador y devuelve lo que RETORNA (el botón no necesita ceder el hilo) */
+function drenaGen(it){let x;do{x=it.next();}while(!x.done);return x.value;}
+
+$('yearbtn').onclick=()=>{
+  const c=cfg(), T=terrain(c), Tcfg=terrainTCU(c,T);
+  // CONSUMIDOR de la ruta anual única: no calcula nada por su cuenta
+  const tot=drenaGen(anualGen(c,T,Tcfg,POLICIES.filter(P=>P.on))).tot;
   const ref=tot['pairwise'];
   const rows=['<tr><th>Política</th><th>POA planta kWh/m²·año</th><th>Δ vs pairwise</th></tr>'];
   let best=-1;for(const k in tot)best=Math.max(best,tot[k]);
@@ -9577,8 +9625,8 @@ function grTabla(){
     grEsc(grNombre(GR.B))+'</b>, la política B del selector. La última columna marca en ámbar las filas cuya diferencia con la de arriba '+
     'no llega a lo que el modelo resuelve — el mismo criterio que la banda del circunsolar de la tabla del día. '+
     'Sombra <b>óptica</b> y pérdida <b>eléctrica</b> son dos magnitudes distintas y van en dos columnas distintas. '+
-    '<b>La columna del día y la del año no se calculan igual</b>: la del día lleva el lazo de control entero (banda muerta y velocidad del actuador) '+
-    'y es lo que la planta EJECUTA; la del año integra la consigna que la política PIDE, sin lazo, que es el camino del estimador anual que ya existía. '+
+    '<b>Las dos columnas llevan el lazo de control</b> (banda muerta y velocidad del actuador): son lo que la planta EJECUTA. La del año es la MISMA '+
+    'ruta que el botón del anual (una sola desde la v1.82), con <b>cielo claro</b> en los 12 días representativos; la del día lleva el cielo del deslizador de nubes. '+
     'Por eso el orden de una columna puede no ser el de la otra, y comparar una razón del día con una del año no mide lo mismo. '+
     (GR.anual?'':'La columna del año dice «sin calcular» mientras no se pulse el botón del anual: no se rellena con una extrapolación.')+
     (Object.keys(GR.sinCalc||{}).length
@@ -9590,37 +9638,15 @@ function grTabla(){
 
 /* ── anual: 12 días representativos, por fragmentos ─────────────────────── */
 function* grAnualGen(){
-  const c=DAY.c, T=DAY.T, Tcfg=DAY.Tcfg;
-  const DIM=[31,28,31,30,31,30,31,31,30,31,30,31];
-  const year=c.date.slice(0,4);
   /* v1.77 · el mismo criterio que la serie del día: el anual del informe son
      12 días × 144 pasos × política, y meter ahí las caras que nadie ha pedido
-     es multiplicar por doce el problema que la fase 2 viene a arreglar. */
+     es multiplicar por doce el problema que la fase 2 viene a arreglar.
+     REFUNDACIÓN · PASO 2: CONSUMIDOR de la ruta anual única (`anualGen`): CON
+     lazo y cielo claro, como el botón. Antes iba sin lazo y con las nubes del
+     deslizador, y publicaba otra cifra. */
   const POLS=POLICIES.filter(P=>!grDiferida(P.key));
-  const mes={}, tot={};
-  for(const P of POLS){mes[P.key]=[];tot[P.key]=0;}
-  for(let mo=0;mo<12;mo++){
-    const ds=year+'-'+(mo<9?'0':'')+(mo+1)+'-21', doy=doyOf(ds);
-    const acc={}, sum={}, nn={};
-    for(const P of POLS){acc[P.key]=0;sum[P.key]=0;nn[P.key]=0;}
-    for(let m=0;m<1440;m+=10){
-      const g=solarPos(localToUTCms(ds,m,c.tz),c.lat,c.lon);
-      if(g.elev<=0)continue;
-      const irr=skyWithClouds(clearskyIneichen(g.zen,doy,c.alt,c.tl),cloudCC(),g.zen);
-      for(const P of POLS){
-        const a=policyAngles(P.key,g.zen,g.az,Tcfg,irr,doy,c.albedo).angles;
-        const p=poaPlant(g.zen,g.az,T,a,irr,doy,c.albedo).plant;
-        acc[P.key]+=p*(10/60)/1000;      // kWh/m² del día representativo
-        sum[P.key]+=p; nn[P.key]++;      // media en W/m² sobre los instantes con sol
-      }
-      yield (mo*144+m/10)/(12*144);
-    }
-    for(const P of POLS){
-      mes[P.key].push({kwh:acc[P.key],wm2:nn[P.key]?sum[P.key]/nn[P.key]:0});
-      tot[P.key]+=acc[P.key]*DIM[mo];
-    }
-  }
-  GR.anual={mes:mes,tot:tot,sig:grFirma()};
+  const r=yield* anualGen(DAY.c,DAY.T,DAY.Tcfg,POLS);
+  GR.anual={mes:r.mes,tot:r.tot,sig:grFirma()};
 }
 
 /* ── driver por fragmentos: la página sigue viva mientras calcula ────────── */
