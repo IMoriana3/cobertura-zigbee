@@ -1,0 +1,105 @@
+{
+ "formato": "bt-config/1",
+ "ver": "v1.80.0",
+ "hash": "4b4cca0b34730d5010b2cc4d7197f2faf934a5c6c3a647764b362055f1bd1f95",
+ "exportado": "2026-09-24T10:20:53.868Z",
+ "config": {
+  "emplazamiento": {
+   "planta_cartera": "",
+   "lat": 42.32059,
+   "lon": -5.59981,
+   "fecha": "2026-06-21",
+   "utc": 2,
+   "altitud": 1563,
+   "albedo": 0.2,
+   "linke": 3.5,
+   "nubosidad": 0
+  },
+  "geometria": {
+   "pitch": 6,
+   "cuerda": 2.382,
+   "gcr": "0.397",
+   "theta_max": 55,
+   "filas": 8,
+   "azimut_eje": 0,
+   "cara_sup_eje": 0.17,
+   "nb": 2,
+   "iam_b0": 0.05
+  },
+  "tcu": "levantamiento",
+  "accionamiento": "bifila",
+  "perfil_ns": {
+   "preset": "senoidal",
+   "valor": 3
+  },
+  "terreno": {
+   "preset": "ondulado",
+   "parametro": 1.2,
+   "cotas": [
+    0,
+    1.2,
+    1.4695761589768238e-16,
+    -1.2,
+    -2.9391523179536476e-16,
+    1.2,
+    4.408728476930471e-16,
+    -1.2
+   ]
+  },
+  "implantacion": {
+   "preset": "alineadas",
+   "filas_por_linea": 1,
+   "modulos_por_ala": 28
+  },
+  "planta_real": null,
+  "politicas": {
+   "inteligencia": "all",
+   "activas": [
+    "pairwise",
+    "true3d",
+    "optimal",
+    "optfree"
+   ],
+   "escena": "pairwise"
+  },
+  "careo": {
+   "on": false,
+   "libro": false,
+   "previas": null,
+   "escena_previa": null
+  },
+  "instante": {
+   "minuto": 1265,
+   "fila": 4
+  },
+  "manual": {
+   "on": false,
+   "por_fila": false,
+   "theta": 0,
+   "filas": null
+  }
+ },
+ "vista": {
+  "tab3d": true,
+  "capas": {
+   "etiquetas": false,
+   "produccion": "off",
+   "escala": "abs",
+   "rayo": true,
+   "haz": true,
+   "luz": "real"
+  },
+  "camara": {
+   "pos": [
+    83.363,
+    56.12669999999998,
+    68.5993
+   ],
+   "objetivo": [
+    21,
+    0,
+    0
+   ]
+  }
+ }
+}
