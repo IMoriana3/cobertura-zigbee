@@ -1,0 +1,15 @@
+R5 · banco del motor de proyección (simulador v1.78.1)
+  ✓ convenio de signo: θ de máximo haz del motor = trueTrackAngle(…, pvTilt(τ)) del simulador — 25 casos, peor |Δ| 1.42e-14°
+  ✓ CONTROL NEGATIVO del signo: con τ sin convertir (sin pvTilt) la comprobación anterior CAE — con el signo invertido se aparta 4.6026°
+  ✓ tangencia con filas infinitas y mismo θ = raíz analítica de pvlib (singleaxis con backtracking) — 11 casos con backtracking, peor |raíz del motor − pvlib| 5.68e-14°
+  ✓ CONTROL NEGATIVO de la tangencia: con la pendiente transversal de signo cambiado la raíz SE APARTA de pvlib — con β de signo cambiado la raíz se aparta 21.1951°
+  ✓ sol perpendicular al eje (az 90°): sombra de la fila finita = la infinita truncada, por metro — 583.6770 mm²/m·1000 en las dos (|Δ| 0.0e+0)
+  ✓ sol en el plano del eje (az 180°): las filas de al lado no se sombrean — 0 exacto en 9 casos; control axial con sombra 8.981 m²
+  ✓ simetría espejo (x→−x, θ→−θ, az→360°−az) y traslación: misma sombra en cada mesa — peor |Δ| 4.51e-16 sobre una sombra total de 0.223 (fracción)
+  ✓ duplicar un emisor en la misma posición NO cambia la sombra (unión) — unión 0.236639 = 0.236639; la SUMA ingenua de áreas pasaría de 15.7952 a 31.5903 m² (control)
+  ✓ receptor de borde con dos emisores parciales: los dos aparecen, en trozos distintos de la cuerda — emisores 2 y 1 · tramos axiales [14.11–30.00] y [0.00–13.15] m
+  ✓ correspondencia de mesas con el simulador (1.708 mesas, 107 líneas) — 1708 mesas · Δx de línea 0.0e+0 · Δn 0.0e+0 · Δz 0.0e+0 (tras eMean 33.114456 m)
+  ✓ la poda por cono NO descarta ningún emisor con sombra (contra fuerza bruta, 3 instantes de Ayora) — 607 pares con sombra en 3 instantes (elev 3.0, 8.6, 8.8°), 0 perdidos · 42928 candidatos de 8746668 posibles
+  ✓ CONTROL NEGATIVO de la poda: con las cajas encogidas un 30 % la comprobación anterior CAE — la poda mutada pierde 262 pares
+
+12/12 comprobaciones en verde
